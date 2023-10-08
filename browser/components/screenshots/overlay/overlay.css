@@ -1,0 +1,481 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+:-moz-native-anonymous #screenshots-component {
+  --in-content-page-background: #fff;
+
+  --in-content-button-text-color: rgb(21, 20, 26);
+  --in-content-button-text-color-hover: var(--in-content-text-color);
+  --in-content-button-text-color-active: var(--in-content-button-text-color);
+  --in-content-button-background: rgba(207,207,216,.33);
+  --in-content-button-background-hover: rgba(207,207,216,.66);
+  --in-content-button-background-active: rgb(207,207,216);
+  --in-content-button-border-color: transparent;
+  --in-content-button-border-color-hover: transparent;
+  --in-content-button-border-color-active: transparent;
+
+  --in-content-primary-button-text-color: rgb(251,251,254);
+  --in-content-primary-button-text-color-hover: var(--in-content-primary-button-text-color);
+  --in-content-primary-button-text-color-active: var(--in-content-primary-button-text-color);
+  --in-content-primary-button-background: #0061e0;
+  --in-content-primary-button-background-hover: #0250bb;
+  --in-content-primary-button-background-active: #053e94;
+  --in-content-primary-button-border-color: transparent;
+  --in-content-primary-button-border-color-hover: transparent;
+  --in-content-primary-button-border-color-active: transparent;
+
+  --in-content-focus-outline-color: var(--in-content-primary-button-background);
+}
+
+@media (prefers-color-scheme: dark) {
+  :-moz-native-anonymous #screenshots-component {
+    --in-content-page-background: #42414d;
+
+    --in-content-button-text-color: rgb(251,251,254);
+    --in-content-button-background: rgb(43,42,51);
+    --in-content-button-background-hover: rgb(82,82,94);
+    --in-content-button-background-active: rgb(91,91,102);
+
+    --in-content-primary-button-text-color: rgb(43,42,51);
+    --in-content-primary-button-background: rgb(0,221,255);
+    --in-content-primary-button-background-hover: rgb(128,235,255);
+    --in-content-primary-button-background-active: rgb(170,242,255);
+  }
+}
+
+@media (forced-colors: active), (prefers-contrast) {
+  :-moz-native-anonymous #screenshots-component {
+    --in-content-page-background: Canvas;
+
+    --in-content-button-text-color: ButtonText;
+    --in-content-button-text-color-hover: SelectedItemText;
+    --in-content-button-text-color-active: SelectedItem;
+    --in-content-button-background: ButtonFace;
+    --in-content-button-background-hover: SelectedItem;
+    --in-content-button-background-active: SelectedItemText;
+    --in-content-button-border-color: ButtonText;
+    --in-content-button-border-color-hover: SelectedItemText;
+    --in-content-button-border-color-active: SelectedItem;
+
+    --in-content-primary-button-text-color: ButtonFace;
+    --in-content-primary-button-text-color-hover: SelectedItemText;
+    --in-content-primary-button-text-color-active: SelectedItem;
+    --in-content-primary-button-background: ButtonText;
+    --in-content-primary-button-background-hover: SelectedItem;
+    --in-content-primary-button-background-active: SelectedItemText;
+    --in-content-primary-button-border-color: ButtonFace;
+    --in-content-primary-button-border-color-hover: SelectedItemText;
+    --in-content-primary-button-border-color-active: SelectedItem;
+
+    --in-content-focus-outline-color: -moz-DialogText;
+  }
+}
+
+:-moz-native-anonymous #screenshots-component {
+  width: 100%;
+  height: 100%;
+  overflow: clip;
+  user-select: none;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+/**
+ * Overlay content is position: fixed as we need to allow for the possiblily
+ * of the document scrolling or changing size while the overlay is visible
+ */
+:-moz-native-anonymous #screenshots-overlay-container {
+  /*
+  Content CSS applying to the html element can impact the overlay.
+  To avoid that, possible cases have been set to initial.
+  */
+  text-transform: initial;
+  text-indent: initial;
+  letter-spacing: initial;
+  word-spacing: initial;
+  color: initial;
+  direction: initial;
+  writing-mode: initial;
+  z-index: 1;
+  position: absolute;
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+:-moz-native-anonymous #preview-container {
+  background-color: rgba(0, 0, 0, 0.7);
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+:-moz-native-anonymous #selection-container {
+  overflow: clip;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+:-moz-native-anonymous #screenshots-overlay-container[hidden] {
+  display: none;
+}
+
+:-moz-native-anonymous #screenshots-overlay-container[dragging] {
+  cursor: grabbing;
+}
+
+:-moz-native-anonymous #buttons {
+  position: absolute;
+  margin: 10px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--in-content-page-background);
+  border-radius: 4px;
+  padding: 4px;
+}
+
+:-moz-native-anonymous .screenshots-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  text-align: center;
+  user-select: none;
+  white-space: nowrap;
+  min-height: 36px;
+  font-size: 15px;
+  min-width: 36px;
+  z-index: 6;
+  margin-inline: 4px;
+  font-family: "Segoe UI", sans-serif;
+
+  /* Below styles are copied from common-shared.css */
+  appearance: none;
+  padding: 7px 15px;
+  text-decoration: none;
+  font-weight: 600;
+  margin: 4px;
+  border: 1px solid var(--in-content-button-border-color);
+  color: var(--in-content-button-text-color);
+  border-radius: 4px;
+  background-color: var(--in-content-button-background);
+}
+
+:-moz-native-anonymous .screenshots-button:focus-visible,
+:-moz-native-anonymous #screenshots-cancel-button:focus-visible {
+  outline: 2px solid var(--in-content-focus-outline-color);
+  outline-offset: 2px;
+}
+
+:-moz-native-anonymous .screenshots-button:hover {
+  background-color: var(--in-content-button-background-hover);
+  border-color: var(--in-content-button-border-color-hover);
+  color: var(--in-content-button-text-color-hover);
+}
+
+:-moz-native-anonymous .screenshots-button:active {
+  background-color: var(--in-content-button-background-active);
+  border-color: var(--in-content-button-border-color-active);
+  color: var(--in-content-button-text-color-active);
+}
+
+:-moz-native-anonymous .primary {
+  background-color: var(--in-content-primary-button-background);
+  border-color: var(--in-content-primary-button-border-color);
+  color: var(--in-content-primary-button-text-color);
+}
+
+:-moz-native-anonymous .primary:hover {
+  background-color: var(--in-content-primary-button-background-hover);
+  border-color: var(--in-content-primary-button-border-color-hover);
+  color: var(--in-content-primary-button-text-color-hover);
+}
+
+:-moz-native-anonymous .primary:active {
+  background-color: var(--in-content-primary-button-background-active);
+  border-color: var(--in-content-primary-button-border-color-active);
+  color: var(--in-content-primary-button-text-color-active);
+}
+
+:-moz-native-anonymous #screenshots-cancel-button {
+  background-color: transparent;
+  margin-top: 40px;
+  width: fit-content;
+  border-color: #fff;
+  color: #fff;
+}
+
+:-moz-native-anonymous #screenshots-cancel-button:hover {
+  background-color: #fff;
+  color: #000;
+}
+
+@media (forced-colors: active), (prefers-contrast) {
+  :-moz-native-anonymous #screenshots-cancel-button {
+    border-color: ButtonBorder;
+    color: CanvasText;
+  }
+}
+
+:-moz-native-anonymous .screenshots-button > img {
+  -moz-context-properties: fill;
+  fill: currentColor;
+  width: 16px;
+  height: 16px;
+}
+
+:-moz-native-anonymous #cancel > img {
+  content: url("chrome://global/skin/icons/close.svg");
+}
+
+:-moz-native-anonymous #copy > img {
+  content: url("chrome://global/skin/icons/edit-copy.svg");
+}
+
+:-moz-native-anonymous #download > img {
+  content: url("chrome://browser/skin/downloads/downloads.svg");
+}
+
+:-moz-native-anonymous #download > img,
+:-moz-native-anonymous #copy > img {
+  margin-inline-end: 5px;
+}
+
+:-moz-native-anonymous .fixed-container {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  justify-content: center;
+  inset-inline-start: 0;
+  margin: 0;
+  padding: 0;
+  position: fixed;
+  top: 0;
+  width: 100%;
+}
+
+:-moz-native-anonymous .face-container {
+  position: relative;
+  width: 64px;
+  height: 64px;
+}
+
+:-moz-native-anonymous .face {
+  width: 62px;
+  height: 62px;
+  display: block;
+  background-image: url("chrome://browser/content/screenshots/icon-welcome-face-without-eyes.svg");
+}
+
+:-moz-native-anonymous .eye {
+  background-color: #fff;
+  width: 10px;
+  height: 14px;
+  position: absolute;
+  border-radius: 100%;
+  overflow: hidden;
+  inset-inline-start: 16px;
+  top: 19px;
+}
+
+:-moz-native-anonymous .eyeball {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background-color: #000;
+  border-radius: 50%;
+  inset-inline-start: 2px;
+  top: 4px;
+  z-index: 10;
+}
+
+:-moz-native-anonymous .left {
+  margin-inline-start: 0;
+}
+
+:-moz-native-anonymous .right {
+  margin-inline-start: 20px;
+}
+
+:-moz-native-anonymous .preview-instructions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse 125mm cubic-bezier(0.07, 0.95, 0, 1);
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "segoe ui", "helvetica neue", helvetica, ubuntu, roboto, noto, arial, sans-serif;
+  font-size: 24px;
+  line-height: 32px;
+  text-align: center;
+  padding-top: 20px;
+  width: 400px;
+}
+
+@media (forced-colors: active), (prefers-contrast) {
+  :-moz-native-anonymous .preview-instructions {
+    color: CanvasText;
+  }
+}
+
+:-moz-native-anonymous #hover-highlight {
+  animation: fade-in 125ms forwards cubic-bezier(0.07, 0.95, 0, 1);
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 1px;
+  pointer-events: none;
+  position: absolute;
+  z-index: 11;
+}
+
+:-moz-native-anonymous #hover-highlight::before {
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+  bottom: 0;
+  content: "";
+  inset-inline-start: 0;
+  position: absolute;
+  inset-inline-end: 0;
+  top: 0;
+}
+
+:-moz-native-anonymous .bghighlight {
+  background-color: rgba(0, 0, 0, 0.7);
+  position: absolute;
+  overflow: clip;
+}
+
+:-moz-native-anonymous .highlight {
+  border-radius: 1px;
+  border: 2px dashed rgba(255, 255, 255, 0.8);
+  box-sizing: border-box;
+  cursor: move;
+  position: absolute;
+  pointer-events: auto;
+  z-index: 2;
+}
+
+:-moz-native-anonymous .mover-target {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  z-index: 5;
+  pointer-events: auto;
+}
+
+:-moz-native-anonymous .mover-target.direction-topLeft {
+  cursor: nwse-resize;
+  height: 60px;
+  left: -30px;
+  top: -30px;
+  width: 60px;
+}
+
+:-moz-native-anonymous .mover-target.direction-top {
+  cursor: ns-resize;
+  height: 60px;
+  inset-inline-start: 0;
+  top: -30px;
+  width: 100%;
+  z-index: 4;
+}
+
+:-moz-native-anonymous .mover-target.direction-topRight {
+  cursor: nesw-resize;
+  height: 60px;
+  right: -30px;
+  top: -30px;
+  width: 60px;
+}
+
+:-moz-native-anonymous .mover-target.direction-left {
+  cursor: ew-resize;
+  height: 100%;
+  left: -30px;
+  top: 0;
+  width: 60px;
+  z-index: 4;
+}
+
+:-moz-native-anonymous .mover-target.direction-right {
+  cursor: ew-resize;
+  height: 100%;
+  right: -30px;
+  top: 0;
+  width: 60px;
+  z-index: 4;
+}
+
+:-moz-native-anonymous .mover-target.direction-bottomLeft {
+  bottom: -30px;
+  cursor: nesw-resize;
+  height: 60px;
+  left: -30px;
+  width: 60px;
+}
+
+:-moz-native-anonymous .mover-target.direction-bottom {
+  bottom: -30px;
+  cursor: ns-resize;
+  height: 60px;
+  inset-inline-start: 0;
+  width: 100%;
+  z-index: 4;
+}
+
+:-moz-native-anonymous .mover-target.direction-bottomRight {
+  bottom: -30px;
+  cursor: nwse-resize;
+  height: 60px;
+  right: -30px;
+  width: 60px;
+}
+
+:-moz-native-anonymous .mover-target:hover .mover {
+  transform: scale(1.05);
+}
+
+:-moz-native-anonymous .mover {
+  background-color: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+  height: 16px;
+  opacity: 1;
+  position: relative;
+  transition: transform 125ms cubic-bezier(0.07, 0.95, 0, 1);
+  width: 16px;
+}
+
+:-moz-native-anonymous .small-selection .mover {
+  height: 10px;
+  width: 10px;
+}
+
+:-moz-native-anonymous .direction-topLeft .mover,
+:-moz-native-anonymous .direction-left .mover,
+:-moz-native-anonymous .direction-bottomLeft .mover {
+  left: -1px;
+}
+
+:-moz-native-anonymous .direction-topLeft .mover,
+:-moz-native-anonymous .direction-top .mover,
+:-moz-native-anonymous .direction-topRight .mover {
+  top: -1px;
+}
+
+:-moz-native-anonymous .direction-topRight .mover,
+:-moz-native-anonymous .direction-right .mover,
+:-moz-native-anonymous .direction-bottomRight .mover {
+  right: -1px;
+}
+
+:-moz-native-anonymous .direction-bottomRight .mover,
+:-moz-native-anonymous .direction-bottom .mover,
+:-moz-native-anonymous .direction-bottomLeft .mover {
+  bottom: -1px;
+}

@@ -1,0 +1,1 @@
+skip-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) load 1825445.html

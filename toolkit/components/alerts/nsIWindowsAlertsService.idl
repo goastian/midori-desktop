@@ -1,0 +1,69 @@
+/* -*- Mode: IDL; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsIAlertsService.idl"
+#include "nsISupports.idl"
+#include "nsIObserver.idl"
+
+[scriptable, function, uuid(059f8305-4e2f-4d31-a9cb-5b918ee84773)]
+interface nsIUnknownWindowsTagListener : nsISupports
+{
+  /**
+   * Handle any launch URL associated to the given Windows-specific tag string.
+   * Usually, this will navigate to the launch URL in some manner.
+   *
+   * @param {AString} aWindowsTag the tag
+   * @param {AString} aLaunchURL associated launch URL, or null.
+   * @param {AString} aPrivilegedName associated alert name if this is a chrome
+   *                                  privileged alert, or null.
+   */
+  void handleUnknownWindowsTag(in AString aWindowsTag,
+                               in AString aLaunchURL,
+                               in AString aPrivilegedName);
+};
+
+[scriptable, uuid(e01c8066-fb4b-4304-b9c9-ab6ed4a8322c)]
+interface nsIWindowsAlertsService : nsIAlertsService
+{
+  /**
+   * If callbacks for the given Windows-specific tag string will be handled by
+   * this Firefox process, set the associated event.
+   *
+   * @param {AString} aWindowsTag the tag
+   * @return {Promise}
+   * @resolves {Object}
+   *           Resolves with an Object, may contain the following optional
+   *           properties if notification exists but wasn't registered with
+   *           the WindowsAlertService:
+   *
+   *           `launchUrl` {string} a fallback URL to open.
+   *
+   *           `privilegedName` {string} a privileged name assigned by the
+   *                            browser chrome.
+   *
+   * @rejects `nsresult` when there was an error retrieving the notification.
+   */
+  [implicit_jscontext]
+  Promise handleWindowsTag(in AString aWindowsTag);
+
+  /**
+   * Get the Windows-specific XML generated for the given alert.
+   *
+   * @note This method is intended for testing purposes.
+   *
+   * @param {nsIAlertNotification} aAlert the alert
+   * @param {AString} an optional Windows tag; default is generated
+   * @return {string} generated XML
+   */
+  AString getXmlStringForWindowsAlert(in nsIAlertNotification aAlert,
+                                      [optional] in AString aWindowsTag);
+
+  /**
+   * Removes all action center and snoozed notifications associated with this
+   * install. Note that this removes all notifications regardless of which profile
+   * they originated from.
+   */
+  void removeAllNotificationsForInstall();
+};

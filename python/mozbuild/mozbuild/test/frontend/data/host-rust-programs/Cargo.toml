@@ -1,0 +1,7 @@
+[package]
+authors = ["The Mozilla Project Developers"]
+name = "testing"
+version = "0.0.1"
+
+[[bin]]
+name = "some"
