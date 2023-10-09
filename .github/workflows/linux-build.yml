@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # Please write our copyright if you use this file.
-# © 2023 Floorp Projects & Contributors
+# © 2023 Midori Projects & Contributors
 
 #! SELF HOST DOES NOT SUPPORTED
 #TODO! buildjet config not implemented
@@ -52,7 +52,7 @@ on:
 
 
 # name: Linux Build
-# description: Action of Floorp Linux build (x64, aarch64)
+# description: Action of Midori Linux build (x64, aarch64)
 
 jobs:
   linux-build:
@@ -72,7 +72,7 @@ jobs:
     - name: Clone l10n-central 🧬
       uses: actions/checkout@v3
       with:
-        repository: Floorp-Projects/l10n-central
+        repository: goastian/l10n-central
         path: l10n-central
 
     - name: Change PPA mirror servers
@@ -243,12 +243,12 @@ jobs:
 
         mkdir ~/output
         if [[ $GHA_aarch64 != 'true' ]];then
-          cp obj-x86_64-pc-linux-gnu/dist/*.tar.bz2 ~/output/floorp-$DISPVER.linux-x86_64.tar.bz2
+          cp obj-x86_64-pc-linux-gnu/dist/*.tar.bz2 ~/output/midori-$DISPVER.linux-x86_64.tar.bz2
           # echo "OUTPUT=obj-x86_64-pc-linux-gnu/dist/*.tar.bz2" >> $GITHUB_ENV
           # zip -r dist.zip obj-x86_64-pc-linux-gnu/dist/*.tar.bz2
         else
           #aarch64
-          cp obj-aarch64-unknown-linux-gnu/dist/*.tar.bz2 ~/output/floorp-$DISPVER.linux-aarch64.tar.bz2
+          cp obj-aarch64-unknown-linux-gnu/dist/*.tar.bz2 ~/output/midori-$DISPVER.linux-aarch64.tar.bz2
           # echo "OUTPUT=obj-aarch64-unknown-linux-gnu/dist/*.tar.bz2" >> $GITHUB_ENV
           # zip -r dist.zip obj-aarch64-unknown-linux-gnu/dist/*.tar.bz2
         fi
@@ -261,12 +261,12 @@ jobs:
       run: |
         if [[ $GHA_ARCH == 'aarch64' ]];then
 
-          touch "obj-aarch64-unknown-linux-gnu/dist/floorp/precomplete"
+          touch "obj-aarch64-unknown-linux-gnu/dist/midori/precomplete"
 
           MAR="obj-aarch64-unknown-linux-gnu/dist/host/bin/mar" \
           MOZ_PRODUCT_VERSION=$(cat browser/config/version_display.txt) \
           MAR_CHANNEL_ID=release \
-          ./tools/update-packaging/make_full_update.sh ~/output "obj-aarch64-unknown-linux-gnu/dist/floorp"
+          ./tools/update-packaging/make_full_update.sh ~/output "obj-aarch64-unknown-linux-gnu/dist/midori"
 
           mv ~/output/*.mar ~/output/LINUX-aarch64.mar
 
@@ -275,12 +275,12 @@ jobs:
   
         else
 
-          touch "obj-x86_64-pc-linux-gnu/dist/floorp/precomplete"
+          touch "obj-x86_64-pc-linux-gnu/dist/midori/precomplete"
 
           MAR="obj-x86_64-pc-linux-gnu/dist/host/bin/mar" \
           MOZ_PRODUCT_VERSION=$(cat browser/config/version_display.txt) \
           MAR_CHANNEL_ID=release \
-          ./tools/update-packaging/make_full_update.sh ~/output "obj-x86_64-pc-linux-gnu/dist/floorp"
+          ./tools/update-packaging/make_full_update.sh ~/output "obj-x86_64-pc-linux-gnu/dist/midori"
 
           mv ~/output/*.mar ~/output/LINUX-x86_64.mar
 
@@ -294,7 +294,7 @@ jobs:
     - name: Publish🎁
       uses: actions/upload-artifact@v3
       with:
-        name: floorp-linux-${{fromJson('["x64","aarch64"]')[inputs.aarch64]}}
+        name: midori-linux-${{fromJson('["x64","aarch64"]')[inputs.aarch64]}}
         path: ~/output
         # path: dist.zip
     #PUBLISH END
