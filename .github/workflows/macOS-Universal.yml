@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # Please write our copyright if you use this file.
-# © 2023 Floorp Projects & Contributors
+# © 2023 Midori Projects & Contributors
 
 #! SELF HOST DOES NOT SUPPORTED
 #TODO! buildjet config not implemented
@@ -108,7 +108,7 @@ jobs:
     - name: Clone l10n-central 🧬
       uses: actions/checkout@v3
       with:
-        repository: Floorp-Projects/l10n-central
+        repository: goastian/l10n-central
         path: l10n-central
 
     #! ON UBUNTU RUNNER
@@ -129,7 +129,7 @@ jobs:
       name: Download artifact if use profdata📥
       if: inputs.build-with-profdata-and-jarlog
       with:
-        name: floorp-${{ matrix.arch }}-apple-darwin-profdata-and-jarlog
+        name: midori-${{ matrix.arch }}-apple-darwin-profdata-and-jarlog
         path: ~/artifact
 
     - name: Setup Cross Build tools 🪛
@@ -274,11 +274,11 @@ jobs:
         fi
 
         if [[ $GHA_profgen = 'true' ]];then
-        tar zcvf ${arch}-apple-darwin-output.tar.xz ./obj-${arch}-apple-darwin/dist/floorp
+        tar zcvf ${arch}-apple-darwin-output.tar.xz ./obj-${arch}-apple-darwin/dist/midori
           mv ${arch}-apple-darwin-output.tar.xz ~/output/
         else
-          tar -czf floorp-${arch}-apple-darwin-with-pgo.tar.gz ./obj-${arch}-apple-darwin/dist/
-          mv floorp-${arch}-apple-darwin-with-pgo.tar.gz ~/output/
+          tar -czf midori-${arch}-apple-darwin-with-pgo.tar.gz ./obj-${arch}-apple-darwin/dist/
+          mv midori-${arch}-apple-darwin-with-pgo.tar.gz ~/output/
         fi
 
       env:
@@ -294,7 +294,7 @@ jobs:
         fs.appendFileSync(process.env.GITHUB_ENV, `ARTIFACT_NAME=${name}`);
       env:
         GHA_out_artifact_name : ${{inputs.out_artifact_name}}
-        GHA_default_name: floorp-mac-${{ matrix.arch }}-${{fromJson('["package","build-with-profgen"]')[inputs.profgen]}}
+        GHA_default_name: midori-mac-${{ matrix.arch }}-${{fromJson('["package","build-with-profgen"]')[inputs.profgen]}}
 
     - name: Publish Package🎁
       uses: actions/upload-artifact@v3
