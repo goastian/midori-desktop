@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # Please write our copyright if you use this file.
-# © 2023 Floorp Projects & Contributors
+# © 2023 Midori Projects & Contributors
 
 #! SELF HOST DOES NOT SUPPORTED
 #TODO! buildjet config not implemented
@@ -108,8 +108,8 @@ jobs:
           run: |
             brew install gnu-tar
             export PATH=/usr/local/opt/gnu-tar/libexec/gnubin:$PATH
-            tar -xf ./floorp-aarch64-apple-darwin-with-pgo.tar.gz
-            tar -xf ./floorp-x86_64-apple-darwin-with-pgo.tar.gz
+            tar -xf ./midori-aarch64-apple-darwin-with-pgo.tar.gz
+            tar -xf ./midori-x86_64-apple-darwin-with-pgo.tar.gz
 
         - name: Create environment 🌲
           shell: bash
@@ -126,16 +126,16 @@ jobs:
             echo '*********************************'
 
             echo "****************************************************************************************************"
-            echo "floorp.app folder structure: x86_64-apple-darwin"
+            echo "midori.app folder structure: x86_64-apple-darwin"
             ls -l ./obj-x86_64-apple-darwin/dist/
             echo "****************************************************************************************************"
-            echo "floorp.app folder structure: aarch64-apple-darwin"
+            echo "midori.app folder structure: aarch64-apple-darwin"
             ls -l ./obj-aarch64-apple-darwin/dist/
             echo "****************************************************************************************************"
             
         - name: Integration 🗃
           run: |
-              ./mach python ./toolkit/mozapps/installer/unify.py ./obj-x86_64-apple-darwin/dist/Floorp/Floorp.app ./obj-aarch64-apple-darwin/dist/Floorp/Floorp.app
+              ./mach python ./toolkit/mozapps/installer/unify.py ./obj-x86_64-apple-darwin/dist/Midori/Midori.app ./obj-aarch64-apple-darwin/dist/Midori/Midori.app
 
         - name: import APPLE DEVELOPER ID CERTIFICATE for .app 🔑
           uses: apple-actions/import-codesign-certs@v2
@@ -145,48 +145,48 @@ jobs:
 
         - name: Sign to .app 🖋️
           run: |
-            chmod +x ./floorp/build/codesign/mac/codesign.bash
-            ./floorp/build/codesign/mac/codesign.bash \
-              -a ./obj-x86_64-apple-darwin/dist/floorp/Floorp.app \
+            chmod +x ./midori/build/codesign/mac/codesign.bash
+            ./midori/build/codesign/mac/codesign.bash \
+              -a ./obj-x86_64-apple-darwin/dist/midori/Midori.app \
               -i "${{ secrets.macOS_AppleDeveloperId }}" \
-              -b ./floorp/build/codesign/mac/browser.developer.entitlements.xml \
-              -p ./floorp/build/codesign/mac/plugin-container.developer.entitlements.xml
+              -b ./midori/build/codesign/mac/browser.developer.entitlements.xml \
+              -p ./midori/build/codesign/mac/plugin-container.developer.entitlements.xml
 
         - name: Check Certificates 💳
           run: |
             echo "Sign Complete ! ****************************************" 
-            pkgutil --check-signature ./obj-x86_64-apple-darwin/dist/floorp/Floorp.app
+            pkgutil --check-signature ./obj-x86_64-apple-darwin/dist/midori/Midori.app
 
         - name: Create DMG 📦
           run: |
-            ./mach python -m mozbuild.action.make_dmg ./obj-x86_64-apple-darwin/dist/Floorp floorp-macOS-universal-temp.dmg
+            ./mach python -m mozbuild.action.make_dmg ./obj-x86_64-apple-darwin/dist/Midori midori-macOS-universal-temp.dmg
             unzip ./.github/base.zip
-            hdiutil attach ./floorp-macOS-universal-temp.dmg
+            hdiutil attach ./midori-macOS-universal-temp.dmg
             hdiutil attach ./base.dmg
-            cp -r /Volumes/Floorp/Floorp.app /Volumes/Floorp\ Installer/
-            hdiutil detach /Volumes/Floorp\ Installer/
-            hdiutil convert ./base.dmg -format UDZO -imagekey zlib-level=9 -o floorp-macOS-universal.dmg 
+            cp -r /Volumes/Midori/Midori.app /Volumes/Midori\ Installer/
+            hdiutil detach /Volumes/Midori\ Installer/
+            hdiutil convert ./base.dmg -format UDZO -imagekey zlib-level=9 -o midori-macOS-universal.dmg 
 
         - name: Sign to .dmg 🖋️
           run: |
-            codesign -s "${{ secrets.macOS_AppleDeveloperId }}" floorp-macOS-universal.dmg
+            codesign -s "${{ secrets.macOS_AppleDeveloperId }}" midori-macOS-universal.dmg
       
-            xcrun notarytool submit "floorp-macOS-universal.dmg" \
+            xcrun notarytool submit "midori-macOS-universal.dmg" \
                 --apple-id "${{ secrets.macOS_AppleAccountId }}" \
                 --team-id "${{ secrets.macOS_AppleTeamId }}" \
                 --password "${{ secrets.macOS_AppleAccountAppSpecificPassword }}" \
                 --wait
       
             mkdir -p ./output
-            mv ./floorp-macOS-universal.dmg ./output/floorp-macOS-universal.dmg
+            mv ./midori-macOS-universal.dmg ./output/midori-macOS-universal.dmg
 
         - name: Create MAR artifact 📦
           run: |
            brew install tree
-           chmod +x ./floorp/build/bin/mac/mar
+           chmod +x ./midori/build/bin/mac/mar
            chmod +x ./tools/update-packaging/make_full_update.sh
-           touch "obj-x86_64-apple-darwin/dist/floorp/precomplete"
-           MAR="floorp/build/bin/mac/mar" MOZ_PRODUCT_VERSION=${{ inputs.display_version }} MAR_CHANNEL_ID=release tools/update-packaging/make_full_update.sh ./output/DARWIN-Universal.mar "obj-x86_64-apple-darwin/dist/floorp/Floorp.app"
+           touch "obj-x86_64-apple-darwin/dist/midori/precomplete"
+           MAR="midori/build/bin/mac/mar" MOZ_PRODUCT_VERSION=${{ inputs.display_version }} MAR_CHANNEL_ID=release tools/update-packaging/make_full_update.sh ./output/DARWIN-Universal.mar "obj-x86_64-apple-darwin/dist/midori/Midori.app"
 
            export MACOS_MAR_SIZE=`stat -f%z ./output/DARWIN-Universal.mar`
            echo "MACOS_MAR_SIZE=$MACOS_MAR_SIZE" >> $GITHUB_ENV
