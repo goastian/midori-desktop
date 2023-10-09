@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # Please write our copyright if you use this file.
-# © 2023 Floorp Projects & Contributors
+# © 2023 Midori Projects & Contributors
 
 #! SELF HOST DOES NOT SUPPORTED
 #TODO! buildjet config not implemented
@@ -11,7 +11,7 @@
 
 #! aarch64 PGO can maybe not comportable with pgo
 # name: Windows Build
-# description: Action of Floorp Windows build (x64)
+# description: Action of Midori Windows build (x64)
 
 on:
   workflow_call:
@@ -119,7 +119,7 @@ jobs:
     - name: Clone l10n-central 🧬
       uses: actions/checkout@v3
       with:
-        repository: Floorp-Projects/l10n-central
+        repository: goastian/l10n-central
         path: l10n-central
 
     #! ON UBUNTU RUNNER
@@ -291,17 +291,17 @@ jobs:
         fi
 
         if [[ $GHA_zstd != 'true' ]];then
-          cp obj-${arch}-pc-windows-msvc/dist/install/sea/floorp-*.en-US.${arch_inst}.installer-stub.exe ~/output/floorp-stub.installer.exe
-          cp obj-${arch}-pc-windows-msvc/dist/floorp-*.en-US.${arch_inst}.zip ~/output/
-          cp obj-${arch}-pc-windows-msvc/dist/install/sea/floorp-*.en-US.${arch_inst}.installer.exe ~/output/floorp-win64.installer.exe
+          cp obj-${arch}-pc-windows-msvc/dist/install/sea/midori-*.en-US.${arch_inst}.installer-stub.exe ~/output/midori-stub.installer.exe
+          cp obj-${arch}-pc-windows-msvc/dist/midori-*.en-US.${arch_inst}.zip ~/output/
+          cp obj-${arch}-pc-windows-msvc/dist/install/sea/midori-*.en-US.${arch_inst}.installer.exe ~/output/midori-win64.installer.exe
         else
-          cp obj-${arch}-pc-windows-msvc/dist/floorp-*.en-US.${arch_inst}.zip ~/output/
-          7z x ~/output/floorp-*.en-US.${arch_inst}.zip
-          tar -I "zstd -T4 -10" --remove-files -cvf ~/output/floorp-$(cat browser/config/version.txt).en-us.win64.tar.zst floorp
-          rm ~/output/floorp-*.en-US.${arch_inst}.zip
+          cp obj-${arch}-pc-windows-msvc/dist/midori-*.en-US.${arch_inst}.zip ~/output/
+          7z x ~/output/midori-*.en-US.${arch_inst}.zip
+          tar -I "zstd -T4 -10" --remove-files -cvf ~/output/midori-$(cat browser/config/version.txt).en-us.win64.tar.zst midori
+          rm ~/output/midori-*.en-US.${arch_inst}.zip
         fi
         #? Original code used in daily b with update
-        # cp -r obj-x86_64-pc-mingw32/dist/floorp ~/output/
+        # cp -r obj-x86_64-pc-mingw32/dist/midori ~/output/
       env:
         GHA_aarch64: ${{inputs.aarch64}}
         GHA_zstd: ${{inputs.zstd}}
@@ -312,11 +312,11 @@ jobs:
       if : inputs.mar
       run: |
         # mkdir -p output
-        touch "obj-x86_64-pc-windows-msvc/dist/floorp/precomplete"
+        touch "obj-x86_64-pc-windows-msvc/dist/midori/precomplete"
         MAR="obj-x86_64-pc-windows-msvc/dist/host/bin/mar" \
         MOZ_PRODUCT_VERSION=$(cat browser/config/version_display.txt) \
         MAR_CHANNEL_ID=release \
-        ./tools/update-packaging/make_full_update.sh ~/output "obj-x86_64-pc-windows-msvc/dist/floorp"
+        ./tools/update-packaging/make_full_update.sh ~/output "obj-x86_64-pc-windows-msvc/dist/midori"
 
         mv ~/output/*.mar ~/output/WINNT-x86_64.mar
 
@@ -332,7 +332,7 @@ jobs:
         fs.appendFileSync(process.env.GITHUB_ENV, `ARTIFACT_NAME=${name}`);
       env:
         GHA_out_artifact_name : ${{inputs.out_artifact_name}}
-        GHA_default_name: floorp-windows-${{fromJson('["x86_64","aarch64"]')[inputs.aarch64]}}-${{fromJson('["package","build-with-profgen"]')[inputs.profgen]}}${{fromJson('["","-zstd"]')[inputs.zstd]}}
+        GHA_default_name: midori-windows-${{fromJson('["x86_64","aarch64"]')[inputs.aarch64]}}-${{fromJson('["package","build-with-profgen"]')[inputs.profgen]}}${{fromJson('["","-zstd"]')[inputs.zstd]}}
 
     - name: Publish Package🎁
       uses: actions/upload-artifact@v3
