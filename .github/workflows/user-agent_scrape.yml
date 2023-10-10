@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # Please write our copyright if you use this file.
-# © 2023 Floorp Projects & Contributors
+# © 2023 Midori Projects & Contributors
 
 name: "(U) 🧰 User-Agent Scrape"
 
@@ -154,6 +154,6 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "[FB] Floorp System | Update User-Agent"
+          git commit -m "[MB Floorp System | Update User-Agent"
           git push origin
         fi
