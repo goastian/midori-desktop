@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # Please write our copyright if you use this file.
-# © 2023 Floorp Projects & Contributors
+# © 2023 Midori Projects & Contributors
 
 #TODO daily build not changed about cache and refactoring
 
@@ -76,14 +76,14 @@ jobs:
     - uses: actions/download-artifact@v3
       name: Download artifact 📥
       with:
-        name: floorp-windows-x86_64-build-with-profgen-zstd
+        name: midori-windows-x86_64-build-with-profgen-zstd
         path: C:\artifact
 
     - name:  Unpack artifact
       run: |
         cd C:\artifact
-        zstd -d floorp-*.tar.zst
-        7z x floorp-*.tar
+        zstd -d midori-*.tar.zst
+        7z x midori-*.tar
 
     - uses: actions/checkout@v3
       name: Clone 🧬
@@ -100,13 +100,13 @@ jobs:
         echo "cd $workspace_dir" '' >> mozilla-build-run.sh
         echo 'export PATH=/c/mozilla-build/msys2/usr/bin:$PATH' '' >> mozilla-build-run.sh
         echo './mach --no-interactive bootstrap --application-choice browser' '' >> mozilla-build-run.sh
-        echo 'LLVM_PROFDATA=/c/Users/runneradmin/.mozbuild/clang/bin/llvm-profdata.exe JARLOG_FILE=en-US.log ./mach python build/pgo/profileserver.py --binary /c/artifact/floorp/floorp.exe' '' >> mozilla-build-run.sh
+        echo 'LLVM_PROFDATA=/c/Users/runneradmin/.mozbuild/clang/bin/llvm-profdata.exe JARLOG_FILE=en-US.log ./mach python build/pgo/profileserver.py --binary /c/artifact/midori/midori.exe' '' >> mozilla-build-run.sh
         C:\mozilla-build\start-shell.bat $workspace_dir\mozilla-build-run.sh
 
     - name: Publish 🎁
       uses: actions/upload-artifact@v3
       with:
-        name: floorp-windows-x86_64-profdata-and-jarlog
+        name: midori-windows-x86_64-profdata-and-jarlog
         path: |
           merged.profdata
           en-US.log
@@ -118,8 +118,8 @@ jobs:
       aarch64: false
       mar: true
       beta: true
-      profdata_jarlog_artifact_name: "floorp-windows-x86_64-profdata-and-jarlog"
-      out_artifact_name: please-use-this-floorp-windows-x86_64-package-build-with-profdata-and-jarlog
+      profdata_jarlog_artifact_name: "midori-windows-x86_64-profdata-and-jarlog"
+      out_artifact_name: please-use-this-midori-windows-x86_64-package-build-with-profdata-and-jarlog
       MOZ_BUILD_DATE: ${{needs.get-buildid.outputs.buildids}}
 
   win-x86_64-gen-update-xml:
@@ -136,7 +136,7 @@ jobs:
               appVersion=\"${INSDVER}\"
               platformVersion=\"${INSDVER}\"
               buildID=\"${BUILDID}\"
-              detailsURL=\"https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/\"
+              detailsURL=\"https://astian.org/midori-en/\"
             >
             <patch
               type=\"complete\"
@@ -156,7 +156,7 @@ jobs:
     - name: Publish 🎁
       uses: actions/upload-artifact@v3
       with:
-        name: update-xml-floorp-win-x86_64
+        name: update-xml-midori-win-x86_64
         path: |
           WINNT-x86_64.xml
 
@@ -184,7 +184,7 @@ jobs:
                 appVersion=\"${INSDVER}\"
                 platformVersion=\"${INSDVER}\"
                 buildID=\"${BUILDID}\"
-                detailsURL=\"https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/\"
+                detailsURL=\"https://astian.org/midori-en/\"
               >
               <patch
                 type=\"complete\"
@@ -203,7 +203,7 @@ jobs:
       - name: Publish 🎁
         uses: actions/upload-artifact@v3
         with:
-          name: update-xml-floorp-linux-x86_64
+          name: update-xml-midori-linux-x86_64
           path: |
             LINUX-x86_64.xml
 
@@ -236,7 +236,7 @@ jobs:
         if: ${{ matrix.runs-on == 'self-hosted' }}
         run: |
           rm -rf ~/downloads/artifacts
-          rm -rf ./floorp
+          rm -rf ./midori
 
       - uses: actions/checkout@v3
         name: Clone 🧬
@@ -258,7 +258,7 @@ jobs:
         id: download-artifacts-mac-enable-profgen
         name: Download artifact 📥
         with:
-          name: floorp-mac-${{ env.ARCH_TYPE }}-build-with-profgen 
+          name: midori-mac-${{ env.ARCH_TYPE }}-build-with-profgen 
           path: ~/downloads/artifacts
 
       - name: setup environment 🌲
@@ -275,20 +275,20 @@ jobs:
 
       - name: Extract artifact 📂
         run: |
-          mkdir -p ./floorp
+          mkdir -p ./midori
           cp ${{ steps.download-artifacts-mac-enable-profgen.outputs.download-path }}/${ARCH_TYPE}-apple-darwin-output.tar.xz ./
           tar xf ${ARCH_TYPE}-apple-darwin-output.tar.xz
           
       - name: Generate Profdata 📊
         run: |
-          LLVM_PROFDATA=$RUNNER_USERDIR/.mozbuild/clang/bin/llvm-profdata JARLOG_FILE=en-US.log ./mach python build/pgo/profileserver.py --binary ./obj-${ARCH_TYPE}-apple-darwin/dist/floorp/Floorp.app/Contents/MacOS/floorp
+          LLVM_PROFDATA=$RUNNER_USERDIR/.mozbuild/clang/bin/llvm-profdata JARLOG_FILE=en-US.log ./mach python build/pgo/profileserver.py --binary ./obj-${ARCH_TYPE}-apple-darwin/dist/midori/Midori.app/Contents/MacOS/midori
         env:
           GHA_BUILD_MACHINE: ${{ matrix.runs-on }}
       
       - name: Publish 🎁
         uses: actions/upload-artifact@v3
         with:
-          name: floorp-${{ env.ARCH_TYPE }}-apple-darwin-profdata-and-jarlog
+          name: midori-${{ env.ARCH_TYPE }}-apple-darwin-profdata-and-jarlog
           path: |
             merged.profdata
             en-US.log
@@ -309,8 +309,8 @@ jobs:
     with:
       beta: true
       mar: true
-      x86_64_artifact_name: floorp-mac-x86_64-package
-      aarch64_artifact_name: floorp-mac-aarch64-package
+      x86_64_artifact_name: midori-mac-x86_64-package
+      aarch64_artifact_name: midori-mac-aarch64-package
       display_version: ${{needs.get-display-version.outputs.display-version}} 
       inside_version: ${{needs.get-inside-version.outputs.inside-version}}
       MOZ_BUILD_DATE: ${{needs.get-buildid.outputs.buildids}}
@@ -343,25 +343,25 @@ jobs:
     - name: download Linux x86_64 build artifact 📥
       uses: actions/download-artifact@v3
       with:
-        name: floorp-linux-x64
+        name: midori-linux-x64
         path: ~/downloads/artifacts/linux-x64
 
     - name: download Linux x86_64 build artifact 📥
       uses: actions/download-artifact@v3
       with:
-        name: update-xml-floorp-linux-x86_64
+        name: update-xml-midori-linux-x86_64
         path: ~/downloads/artifacts/linux-x64
 
     - name: download Windows x86_64 build artifact📥
       uses: actions/download-artifact@v3
       with:
-        name: please-use-this-floorp-windows-x86_64-package-build-with-profdata-and-jarlog
+        name: please-use-this-midori-windows-x86_64-package-build-with-profdata-and-jarlog
         path: ~/downloads/artifacts/windows-x64
 
     - name: download Windows x86_64 update xml📥
       uses: actions/download-artifact@v3
       with:
-        name: update-xml-floorp-win-x86_64
+        name: update-xml-midori-win-x86_64
         path: ~/downloads/artifacts/windows-x64
 
     - name: download macOS Universal build artifact📥
@@ -386,20 +386,20 @@ jobs:
           /home/runner/downloads/artifacts/linux-x64/LINUX-x86_64.mar
           /home/runner/downloads/artifacts/windows-x64/WINNT-x86_64.mar
           /home/runner/downloads/artifacts/macOS-x64/DARWIN-Universal.mar
-          /home/runner/downloads/artifacts/linux-x64/floorp-*.linux-x86_64.tar.bz2
-          /home/runner/downloads/artifacts/windows-x64/floorp-win64.installer.exe
-          /home/runner/downloads/artifacts/windows-x64/floorp-*.en-US.win64.zip
-          /home/runner/downloads/artifacts/macOS-x64/floorp-macOS-universal.dmg
+          /home/runner/downloads/artifacts/linux-x64/midori-*.linux-x86_64.tar.bz2
+          /home/runner/downloads/artifacts/windows-x64/midori-win64.installer.exe
+          /home/runner/downloads/artifacts/windows-x64/midori-*.en-US.win64.zip
+          /home/runner/downloads/artifacts/macOS-x64/midori-macOS-universal.dmg
           /home/runner/downloads/artifacts/windows-x64/WINNT-x86_64.xml
           /home/runner/downloads/artifacts/linux-x64/LINUX-x86_64.xml
           /home/runner/downloads/artifacts/macOS-x64/DARWIN-Universal.xml
 
         tag_name: "beta"
-        name: "Floorp beta build: v${{ needs.get-display-version.outputs.display-version }} | ${{ needs.get-buildid.outputs.buildids }}"
+        name: "Midori beta build: v${{ needs.get-display-version.outputs.display-version }} | ${{ needs.get-buildid.outputs.buildids }}"
         body: |
-          "Floorp Daylight": v${{ needs.get-display-version.outputs.display-version }} (Firefox v${{ needs.get-inside-version.outputs.inside-version }})
+          "Midori Daylight": v${{ needs.get-display-version.outputs.display-version }} (Firefox v${{ needs.get-inside-version.outputs.inside-version }})
 
-          **This is NOT the release (stable) channel version of Floorp. This is a beta build of Floorp. It is intended for testing purposes only. It is not recommended that you use this version of Floorp for daily browsing. If you would like to download the release version of Floorp, please visit [floorp.app](https://floorp.app).**
+          **This is NOT the release (stable) channel version of Midori. This is a beta build of Midori. It is intended for testing purposes only. It is not recommended that you use this version of Midori for daily browsing. If you would like to download the release version of Midori, please visit [astian.org](https://astian.org/midori-browser).**
         draft: false
         prerelease: true
         token: ${{ github.token }}
