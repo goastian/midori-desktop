@@ -308,10 +308,10 @@ jobs:
 
         if [[ $GHA_zstd != 'true' ]];then
           cp obj-${arch}-pc-windows-msvc/dist/install/sea/midori-*.en-US.${arch_inst}.installer-stub.exe ~/output/midori-stub.installer.exe
-          cp obj-${arch}-pc-windows-msvc/dist/midori-*.en-US.${arch_inst}.zip ~/output/
+          cp obj-${arch}-pc-windows-msvc/dist/install/sea/midori-*.en-US.${arch_inst}.installer.exe ~/output/midori-${arch_inst}.installer.exe
           cp obj-${arch}-pc-windows-msvc/dist/install/sea/midori-*.en-US.${arch_inst}.installer.exe ~/output/midori-win64.installer.exe
         else
-          cp obj-${arch}-pc-windows-msvc/dist/midori-*.en-US.${arch_inst}.zip ~/output/
+          tar -I "zstd -T4 -10" --remove-files -cvf ~/output/midori-$(cat browser/config/version.txt).en-us.${arch_inst}.tar.zst midori
           7z x ~/output/midori-*.en-US.${arch_inst}.zip
           tar -I "zstd -T4 -10" --remove-files -cvf ~/output/midori-$(cat browser/config/version.txt).en-us.win64.tar.zst midori
           rm ~/output/midori-*.en-US.${arch_inst}.zip
