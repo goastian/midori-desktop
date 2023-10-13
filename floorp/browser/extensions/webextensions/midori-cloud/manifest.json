@@ -1,0 +1,21 @@
+{
+    "manifest_version": 2,
+    "name": "Astian Cloud",
+    "version": "1.0",
+    "description": "Extension for integrate Midori Browser with Astian Cloud",
+    "permissions": [
+        "storage",
+        "tabs",
+        "webNavigation",
+        "activeTab"
+    ],
+    "background": {
+        "scripts": ["background.js"]
+      },
+      "applications": {
+          "gecko": {
+           "id": "astian-cloud@astian.org"
+         }
+       }
+
+}
