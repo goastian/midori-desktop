@@ -22,7 +22,7 @@ on:
 jobs:
   get-display-version:
   ## only run this job if the repository owner is goastian . This is to prevent forks from running this job.
-    if: github.repository_owner == 'goastian'
+    if: github.repository_owner == 'goastian' || github.event_name != 'schedule'
     runs-on: ubuntu-latest
     outputs:
       display-version: ${{ steps.get.outputs.display-version }}
