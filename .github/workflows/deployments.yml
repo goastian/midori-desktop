@@ -123,7 +123,6 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
     uses: ./.github/workflows/windows-build.yml
     with:
       aarch64: false
-      mar: true
       build32bit: true
       beta: false
       buildjet: ${{ inputs.buildjet }}
@@ -335,11 +334,11 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
         files: |
           /home/runner/downloads/artifacts/linux-x64/LINUX-x86_64.mar
           /home/runner/downloads/artifacts/linux-aarch64/LINUX-aarch64.mar
-          /home/runner/downloads/artifacts/windows-x64/WINNT-x86_64.mar
           /home/runner/downloads/artifacts/macOS-x64/DARWIN-Universal.mar
           /home/runner/downloads/artifacts/linux-x64/midori-*.linux-x86_64.tar.bz2
           /home/runner/downloads/artifacts/linux-aarch64/midori-*.linux-aarch64.tar.bz2
           /home/runner/downloads/artifacts/windows-x64/midori-win64.installer.exe
+          /home/runner/downloads/artifacts/windows-x86/midori-win32.installer.exe
           /home/runner/downloads/artifacts/macOS-x64/midori-macOS-universal.dmg
         tag_name: "v${{ needs.get-display-version.outputs.display-version }}"
         name: "v${{ needs.get-display-version.outputs.display-version }}"
