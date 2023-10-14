@@ -1,1 +1,20 @@
-{}
+{
+    "Astian": {
+        "projectName": "Astian",
+        "description": "API for All ecosystem",
+        "type": "community",
+        "author": "goastian",
+        "version": "0.0.1",
+        "authorWebsite": "https://github.com/goastian/midori-desktop",
+        "githubUri": "https://github.com/goastian/midori-desktop",
+        "license": "MIT",
+        "lastUpdated": "1697303540852",
+        "tags": [
+            "authentication",
+            "social-logins",
+            "community"
+        ],
+        "noDirectLaunch": [],
+        "configs": {}
+    }
+}
