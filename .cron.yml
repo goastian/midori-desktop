@@ -215,10 +215,10 @@ jobs:
               mozilla-beta:
                   - {hour: 7, minute: 0}
                   - {hour: 19, minute: 0}
-              mozilla-esr115:
+              mozilla-release:
                   - {hour: 7, minute: 0}
                   - {hour: 19, minute: 0}
-              mozilla-esr102:
+              mozilla-esr115:
                   - {hour: 7, minute: 0}
                   - {hour: 19, minute: 0}
 
