@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { PrivateContainer } = ChromeUtils.importESModule(
+ const { PrivateContainer } = ChromeUtils.importESModule(
   "resource:///modules/PrivateContainer.sys.mjs"
 );
 
@@ -19,12 +19,11 @@ if (Services.prefs.getBoolPref("floorp.privateContainer.enabled", false)) {
       "TabClose",
       removeDataIfPrivateContainerTabNotExist
     );
-
     gBrowser.tabContainer.addEventListener(
       "TabOpen",
       handleTabModifications
     );
-    
+
     // Add a tab context menu to reopen in private container.
     let beforeElem = document.getElementById("context_selectAllTabs");
     let menuitemElem = window.MozXULElement.parseXULToFragment(`
@@ -111,7 +110,6 @@ function checkTabIsPrivateContainer(tab) {
   return tab.userContextId === privateContainerUserContextID;
 }
 
-
 function handleTabModifications() {
   let tabs = gBrowser.tabs;
   for (let i = 0; i < tabs.length; i++) {
@@ -193,7 +191,7 @@ function reopenInPrivateContainer() {
         }
       );
     }
-    
+
     let currentTabUserContextId = tab.getAttribute("usercontextid");
     if (currentTabUserContextId == userContextId) {
       userContextId = 0;
