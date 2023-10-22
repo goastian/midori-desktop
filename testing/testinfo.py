@@ -585,6 +585,7 @@ class TestInfoReport(TestInfo):
         display_keys = set(display_keys)
         ifd = self.get_intermittent_failure_data(start, end)
 
+        runcount = {}
         if show_testruns:
             runcount = self.get_runcount_data(start, end)
 
