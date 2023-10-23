@@ -47,6 +47,8 @@ jobs:
             7z x midori-*.tar
         - uses: actions/checkout@v3
           name: Clone 🧬
+          with:
+            submodules: 'recursive'
 
         - name: Setup 🪛
           run: |
