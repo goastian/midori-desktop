@@ -92,6 +92,7 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
     uses: ./.github/workflows/windows-build.yml
     with:
       aarch64: false
+      mar: true
       beta: false
       buildjet: ${{ inputs.buildjet }}
       profdata_jarlog_artifact_name: "midori-windows-x86_64-profdata-and-jarlog"
