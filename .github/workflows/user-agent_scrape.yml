@@ -14,7 +14,7 @@ on:
 
 jobs:
   linux:
-    if: (github.event_name == 'schedule' && github.repository_owner == 'Floorp-Projects') || (github.event_name != 'schedule')
+    if: (github.event_name == 'schedule' && github.repository_owner == 'goastian') || (github.event_name != 'schedule')
 
     name: Linux
     runs-on: ubuntu-22.04
@@ -23,7 +23,7 @@ jobs:
     - name: Clone User-Agent_Scraper 🧬
       uses: actions/checkout@v3
       with:
-        repository: Floorp-Projects/User-Agent_Scraper
+        repository: goastian/User-Agent_Scraper
         path: User-Agent_Scraper
 
     - name: Setup 🪛
@@ -101,7 +101,7 @@ jobs:
       msedge_stable_ua: ${{ steps.scrape.outputs.msedge_stable_ua }}
 
   output:
-    if: (github.event_name == 'schedule' && github.repository_owner == 'Floorp-Projects') || (github.event_name != 'schedule')
+    if: (github.event_name == 'schedule' && github.repository_owner == 'goastian') || (github.event_name != 'schedule')
     needs: [linux]
 
     name: Generate JSONP
@@ -154,6 +154,6 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "[MB Floorp System | Update User-Agent"
+          git commit -m "[MB Midori System | Update User-Agent"
           git push origin
         fi
