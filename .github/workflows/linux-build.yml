@@ -221,12 +221,6 @@ jobs:
             cp ./browser/branding/lightning/locales/en-US/brand.properties $PWD/l10n-central/l10n-central/$dir/browser/branding/lightning/brand.properties
           done
 
-    - name: Change Release Note for Japanese
-      if: inputs.release-note-url-ja
-      run: |
-        sed -i 's|https://astian.org/midori-en/#ja|${{inputs.release-note-url}}|g' ./browser/branding/official/pref/firefox-branding.js
-        echo "$(cat ./browser/branding/beta/pref/firefox-branding.js)"
-
     - name: Change Release Note URL
       if: inputs.release-note-url
       run: |
