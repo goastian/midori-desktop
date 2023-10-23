@@ -211,7 +211,6 @@ jobs:
       if: inputs.beta
       run: |
         sed -i 's|https://@MOZ_APPUPDATE_HOST@/browser/%DISPLAY_VERSION%/%OS%/%ARCH%/update.xml|https://@MOZ_APPUPDATE_HOST@/${{github.repository}}/releases/download/beta/WINNT-x86_64.xml |g' ./build/application.ini.in
-        sed -i 's/floorp-update.ablaze.one/github.com/g' ./build/moz.build
 
     #On Package, if not copies, error occur
     - name: Copy l10n files if beta
