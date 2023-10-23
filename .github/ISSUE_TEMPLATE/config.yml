@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Feature Request
-    url: https://github.com/Floorp-Projects/Floorp/discussions/new?category=feature-request
+    url: https://github.com/goastian/midori-desktop/discussions/new?category=feature-request
     about: Suggest an idea for Floorp.
   - name: User Support
-    url: https://support.ablaze.one/articles/floorp/
+    url: https://astian.org/community/midori-browser/
     about: Support for end-user.

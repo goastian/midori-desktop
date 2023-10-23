@@ -1,5 +1,5 @@
 name: "\U0001F41B Bug report"
-description: Please post any bugs you find while using Floorp here
+description: Please post any bugs you find while using Midori here
 labels: [bug]
 title: '[Bug] '
 body:
@@ -13,18 +13,18 @@ body:
 
         Please do not create an Issue for anything other than a bug or feature request, and contact [Astian Community](https://astian.org/community/) .
 
-        NOTE: Don't send Feature Requests here. Please send them to [Discussions](https://github.com/Floorp-Projects/Floorp/discussions/new?category=feature-request) .
-        
+        NOTE: Don't send Feature Requests here. Please send them to [Discussions](https://github.com/goastian/midori-desktop/discussions/new?category=feature-request) .
+
         For Japanese: 日本人の場合は、日本語で書いても構いません。
 
   - type: checkboxes
     attributes:
       label: Attention!
       description: |
-        **Windows 7/8.1 or lower does NOT support Floorp!**
+        **Windows 7/8.1 or lower does NOT support Midori!**
         Please check this box only if you understand this.
       options:
-        - label: I undertand that Floorp is NOT supported on Windows 7/8.1 or lower.
+        - label: I undertand that Midori is NOT supported on Windows 7/8.1 or lower.
           required: true
 
   - type: textarea
@@ -68,7 +68,7 @@ body:
 
   - type: input
     attributes:
-      label: Floorp Version
+      label: Midori Version
       placeholder: e.g. 10.1.2
     validations:
       required: true
