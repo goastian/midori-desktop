@@ -75,7 +75,7 @@ pref("floorp.multitab.bottommode", false);
 pref("browser.display.statusbar", false);
 
 
-pref("floorp.browser.sidebar.right", true);// サイドバーの右側を表示
+pref("floorp.browser.sidebar.right", false);// サイドバーの右側を表示
 pref("floorp.browser.sidebar.enable", true);// サイドバーを表示
 
 // url:URL width:幅 userAgent:userAgent usercontext:コンテナタブ
@@ -326,8 +326,8 @@ pref("layout.css.has-selector.enabled", true);
 pref("userChrome.tab.connect_to_window",          true); // Original, Photon
 pref("userChrome.tab.color_like_toolbar",         true); // Original, Photon
 
-pref("userChrome.tab.lepton_like_padding",        true); // Original
-pref("userChrome.tab.photon_like_padding",       false); // Photon
+pref("userChrome.tab.lepton_like_padding",        false); // Original
+pref("userChrome.tab.photon_like_padding",       true); // Photon
 
 pref("userChrome.tab.dynamic_separator",          true); // Original, Proton
 pref("userChrome.tab.static_separator",          false); // Photon
@@ -347,7 +347,7 @@ pref("userChrome.tab.bottom_rounded_corner",      true);
 
 // Photon Only
 pref("userChrome.tab.photon_like_contextline",   false);
-pref("userChrome.rounding.square_tab",           false);
+pref("userChrome.rounding.square_tab",           true);
 
 // == Theme Compatibility Settings =============================================
 // pref("userChrome.compatibility.accent_color",         true); // Firefox v103 Below

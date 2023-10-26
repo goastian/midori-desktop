@@ -129,7 +129,7 @@ function setPhotonUI() {
   Services.prefs.setBoolPref("userChrome.icon.panel_photon", true);
 
   Services.prefs.setBoolPref("userChrome.tab.box_shadow", false);
-  Services.prefs.setBoolPref("userChrome.tab.bottom_rounded_corner", false);
+  Services.prefs.setBoolPref("userChrome.tab.bottom_rounded_corner", true);
 
   Services.prefs.setBoolPref("userChrome.tab.photon_like_contextline", true);
   Services.prefs.setBoolPref("userChrome.rounding.square_tab", true);
@@ -163,7 +163,7 @@ function setLeptonUI() {
   Services.prefs.setBoolPref("userChrome.tab.bottom_rounded_corner", true);
 
   Services.prefs.setBoolPref("userChrome.tab.photon_like_contextline", false);
-  Services.prefs.setBoolPref("userChrome.rounding.square_tab", false);
+  Services.prefs.setBoolPref("userChrome.rounding.square_tab", true);
   setBrowserDesign();
 }
 
@@ -192,10 +192,10 @@ function setProtonFixUI() {
   Services.prefs.setBoolPref("userChrome.icon.panel_photon", false);
 
   Services.prefs.setBoolPref("userChrome.tab.box_shadow", false);
-  Services.prefs.setBoolPref("userChrome.tab.bottom_rounded_corner", false);
+  Services.prefs.setBoolPref("userChrome.tab.bottom_rounded_corner", true);
 
   Services.prefs.setBoolPref("userChrome.tab.photon_like_contextline", false);
-  Services.prefs.setBoolPref("userChrome.rounding.square_tab", false);
+  Services.prefs.setBoolPref("userChrome.rounding.square_tab", true);
 
   setBrowserDesign();
 }
