@@ -21,10 +21,10 @@
 ; set the update channel to beta.
 !define OFFICIAL
 !define URLStubDownloadX86 ""
-!define URLStubDownloadAMD64 "https://github.com/Floorp-Projects/Floorp/releases/latest/download/floorp-win64.installer.exe"
+!define URLStubDownloadAMD64 "https://github.com/goastian/midori-desktop/releases/latest/download/midori-win64.installer.exe"
 !define URLStubDownloadAArch64 ""
 !define URLManualDownload ""
-!define URLSystemRequirements "https://www.mozilla.org/firefox/system-requirements/"
+!define URLSystemRequirements "https://astian.org/community/midori-browser/midori-system-requirements/"
 !define Channel "release"
 
 # The installer's certificate name and issuer expected by the stub installer
