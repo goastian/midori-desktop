@@ -21,10 +21,11 @@ class MIDIPortInfo;
  */
 class MIDIInput final : public MIDIPort {
  public:
-static RefPtr<MIDIInput> Create(nsPIDOMWindowInner* aWindow,
+  static RefPtr<MIDIInput> Create(nsPIDOMWindowInner* aWindow,
                                   MIDIAccess* aMIDIAccessParent,
                                   const MIDIPortInfo& aPortInfo,
                                   const bool aSysexEnabled);
+  ~MIDIInput() = default;
 
   JSObject* WrapObject(JSContext* aCx,
                        JS::Handle<JSObject*> aGivenProto) override;
