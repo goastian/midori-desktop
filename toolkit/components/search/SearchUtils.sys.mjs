@@ -201,6 +201,7 @@ export var SearchUtils = {
   // effects before we enable it.
   GENERAL_SEARCH_ENGINE_IDS: new Set([
     "google@search.mozilla.org",
+    "astiango@search.mozilla.org",
     "ddg@search.mozilla.org",
     "bing@search.mozilla.org",
     "baidu@search.mozilla.org",
