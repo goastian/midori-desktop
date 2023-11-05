@@ -115,7 +115,7 @@ pref("floorp.display.toolbarbutton.label", false);
 // Floorp Notes
 pref("floorp.browser.note.memos", "");
 pref("floorp.browser.note.memos.using", -1);
-pref("services.sync.prefs.sync.floorp.browser.note.memos", true);
+pref("services.sync.prefs.sync.floorp.browser.note.memos", false);
 pref("floorp.browser.note.enabled", false);
 
 //Clock
@@ -135,10 +135,10 @@ pref("floorp.browser.native.downloadbar.enabled", false);
 pref("floorp.browser.workspace.tabs.state", "[]");
 pref("floorp.browser.workspace.current", "");
 pref("floorp.browser.workspace.all", "");
-pref("floorp.browser.workspace.tab.enabled",true);
+pref("floorp.browser.workspace.tab.enabled",false);
 pref("floorp.browser.workspace.closePopupAfterClick", false);
 pref("floorp.browser.workspace.info", "[]");
-pref("floorp.browser.workspace.changeWorkspaceWithDefaultKey", true);
+pref("floorp.browser.workspace.changeWorkspaceWithDefaultKey", false);
 pref("floorp.browser.workspace.manageOnBMS", false);
 pref("floorp.browser.workspace.showWorkspaceName", true);
 pref("floorp.browser.workspace.backuped", false);
@@ -548,7 +548,7 @@ pref("userChrome.tab.close_button_at_hover", true);
 pref("userChrome.tab.sound_hide_label",      true);
 pref("userChrome.tab.sound_with_favicons",   true);
 pref("userChrome.tab.pip",                   true);
-pref("userChrome.tab.container",             true);
+pref("userChrome.tab.container",             false);
 pref("userChrome.tab.crashed",               true);
 
 pref("userChrome.fullscreen.overlap",        true);
