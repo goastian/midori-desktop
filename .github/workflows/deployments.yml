@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # Please write our copyright if you use this file.
-# © 2023 Floorp Projects & Contributors
+# © 2023 Midori Projects & Contributors
 
 #TODO deployments not changed about cache and refactoring
 
@@ -26,7 +26,7 @@ on:
         description: 'Release Note URL'
         type: string
         required: true
-        default: 'https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/'
+        default: 'https://astian.org/midori-en/'
 
 #----------------------------------------- JOBS -----------------------------------------#
 jobs:
