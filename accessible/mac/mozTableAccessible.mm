@@ -356,7 +356,9 @@ using namespace mozilla::a11y;
 
   TableCellAccessibleBase* cell = mGeckoAccessible->AsTableCellBase();
   AutoTArray<Accessible*, 10> headerCells;
-  cell->RowHeaderCells(&headerCells);
+  if (cell) {
+    cell->RowHeaderCells(&headerCells);
+  }
   return utils::ConvertToNSArray(headerCells);
 }
 
@@ -365,6 +367,9 @@ using namespace mozilla::a11y;
 
   TableCellAccessibleBase* cell = mGeckoAccessible->AsTableCellBase();
   AutoTArray<Accessible*, 10> headerCells;
+  if(cell) {
+    cell->ColHeaderCells(&headerCells);
+  }
   cell->ColHeaderCells(&headerCells);
   return utils::ConvertToNSArray(headerCells);
 }
