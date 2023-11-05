@@ -6,7 +6,6 @@
 
 DIRS += [
     "about",
-    "calendar",
     "search",
     "preferences",
     "profile-manager",
