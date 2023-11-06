@@ -116,8 +116,6 @@ jobs:
           core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
           core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-          - uses: rui314/setup-mold@v1
-
     - name: Create environment 🌲
       run: |
         import os
