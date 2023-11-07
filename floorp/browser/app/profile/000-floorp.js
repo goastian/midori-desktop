@@ -112,7 +112,7 @@ pref("floorp.display.toolbarbutton.label", false);
 
 // 1つ目はタイトル、2つ目は内容
 
-// Floorp Notes
+// Midori Notes
 pref("floorp.browser.note.memos", "");
 pref("floorp.browser.note.memos.using", -1);
 pref("services.sync.prefs.sync.floorp.browser.note.memos", false);

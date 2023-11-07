@@ -5,7 +5,7 @@
 browser.jar:
 % skin browser classic/1.0 %skin/classic/browser/
 
-# Floorp Notes
+# Midori Notes
   skin/classic/browser/notes.png                                          (icons/notes.png)
   skin/classic/browser/notes-bms.svg                                      (icons/notes-bms.svg)
 

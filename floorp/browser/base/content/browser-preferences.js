@@ -103,7 +103,7 @@ const GENERAL_USERAGENT_OVERRIDE_PREF = "general.useragent.override";
   });
 }
 
-// backup Floorp Notes Pref
+// backup Midori Notes Pref
 
 const FLOORP_NOTES_PREF = "floorp.browser.note.memos";
 const FLOORP_NOTES_LATEST_BACKUP_TIME_PREF =
