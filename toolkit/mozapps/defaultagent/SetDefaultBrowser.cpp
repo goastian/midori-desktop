@@ -27,7 +27,7 @@
  * @param aSid Current user's string SID
  *
  * @param aFileExtensions Optional null-terminated list of file association
- * pairs to set as default, like `{ L".pdf", "FloorpPDF", nullptr }`.
+ * pairs to set as default, like `{ L".pdf", "MidoriPDF", nullptr }`.
  *
  * @returns S_OK           All associations set and checked successfully.
  *          MOZ_E_REJECTED UserChoice was set, but checking the default did not
@@ -224,19 +224,19 @@ static bool VerifyUserDefault(const wchar_t* aExt, const wchar_t* aProgID) {
 
 HRESULT SetDefaultBrowserUserChoice(
     const wchar_t* aAumi, const wchar_t* const* aExtraFileExtensions) {
-  auto urlProgID = FormatProgID(L"FloorpURL", aAumi);
+  auto urlProgID = FormatProgID(L"MidoriURL", aAumi);
   if (!CheckProgIDExists(urlProgID.get())) {
     LOG_ERROR_MESSAGE(L"ProgID %s not found", urlProgID.get());
     return MOZ_E_NO_PROGID;
   }
 
-  auto htmlProgID = FormatProgID(L"FloorpHTML", aAumi);
+  auto htmlProgID = FormatProgID(L"MidoriHTML", aAumi);
   if (!CheckProgIDExists(htmlProgID.get())) {
     LOG_ERROR_MESSAGE(L"ProgID %s not found", htmlProgID.get());
     return MOZ_E_NO_PROGID;
   }
 
-  auto pdfProgID = FormatProgID(L"FloorpPDF", aAumi);
+  auto pdfProgID = FormatProgID(L"MidoriPDF", aAumi);
   if (!CheckProgIDExists(pdfProgID.get())) {
     LOG_ERROR_MESSAGE(L"ProgID %s not found", pdfProgID.get());
     return MOZ_E_NO_PROGID;
