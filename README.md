@@ -69,6 +69,10 @@ Midori Browser is available for Windows, macOS, and Linux. You can install it by
 
 You can download the latest version of Midori Browser from the official website: [Astian.org](https://astian.org/midori-browser/download) or from the [Gitlab Releases](https://gitlab.com/midori-web/midori-desktop/-/releases) page.
 
+Linux (Debian, xUbuntu, Mint)
+  - Download the .deb package 
+  - Run: sudo apt install ./midori_<version>_amd64.deb
+
 ---
 
 ## 📖 Documentation
