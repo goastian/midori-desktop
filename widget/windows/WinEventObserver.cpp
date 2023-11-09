@@ -121,10 +121,10 @@ void WinEventObserver::Destroy() {
 
 // static
 already_AddRefed<DisplayStatusObserver> DisplayStatusObserver::Create(
-    if (!WinEventHub::Ensure()) {
+    DisplayStatusListener* aListener) {
+  if (!WinEventHub::Ensure()) {
     return nullptr;
   }
-  WinEventHub::Ensure();
   RefPtr<DisplayStatusObserver> observer = new DisplayStatusObserver(aListener);
   WinEventHub::Get()->AddObserver(observer);
   return observer.forget();
