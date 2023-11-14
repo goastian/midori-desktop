@@ -274,7 +274,7 @@ pref("dom.webshare.enabled", true);
 #endif
 
 // 開発者ツールの位置を「右」に変更
-pref("devtools.toolbox.host", "right");
+pref("devtools.toolbox.host", "bottom");
 
 // user.js
 pref("floorp.user.js.customize", "");
