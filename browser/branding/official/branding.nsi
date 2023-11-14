@@ -20,7 +20,7 @@
 ; Beta since they share the same branding when building with other branches that
 ; set the update channel to beta.
 !define OFFICIAL
-!define URLStubDownloadX86 ""
+!define URLStubDownloadX86 "https://github.com/goastian/midori-desktop/releases/latest/download/midori-win32.installer.exe"
 !define URLStubDownloadAMD64 "https://github.com/goastian/midori-desktop/releases/latest/download/midori-win64.installer.exe"
 !define URLStubDownloadAArch64 ""
 !define URLManualDownload ""
