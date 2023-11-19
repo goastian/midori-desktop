@@ -12,19 +12,17 @@ on: workflow_dispatch
 jobs:
   pull-upstream:
     name: Pull upstream
-    runs-on: midori
+    runs-on: ubuntu-latest
 
     steps:
     - name: Setup 🪛
       run: |
         export DATE_STR=`date +"%Y%m%d%I%M%S"`
         echo "DATE_STR=$DATE_STR" >> $GITHUB_ENV
-
     - name: Setup git 🪛
       run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
+        git config --global user.name github-actions
+        git config --global user.email github-actions@github.com
     - name: Setup git-cinnabar 🪛
       run: |
         cd ~
@@ -34,7 +32,6 @@ jobs:
         export PATH=~/git-cinnabar:$PATH
         cd ~
         git cinnabar download
-
     - name: Clone mozilla-unified 🧬
       run: |
         export PATH=~/git-cinnabar:$PATH
@@ -42,22 +39,15 @@ jobs:
         cd mozilla-unified
         git rev-list --count origin/bookmarks/esr115
         git checkout -b upstream-esr115-${DATE_STR} origin/bookmarks/esr115
-
     - name: Fetch Midori 📥
       run: |
         cd mozilla-unified
-        git remote add midori https://${GITHUB_ACTOR}:${{ github.token }}@github.com/${{ github.repository }}
-        git fetch midori
-
-    - name: Wait for Midori to be ready
-      run: |
-        sleep 30
-
+        git remote add midori-desktop https://${GITHUB_ACTOR}:${{ github.token }}@github.com/${{ github.repository }}
+        git fetch midori-desktop
     - name: Push 🎁
       run: |
         cd mozilla-unified
-        git push midori upstream-esr115-${DATE_STR}
-
+        git push midori-desktop upstream-esr115-${DATE_STR}
     - name: Create Pull Request
       run: |
         cd mozilla-unified
