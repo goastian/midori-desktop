@@ -385,7 +385,7 @@ class TestInfoReport(TestInfo):
                 break
         return url
 
-    def get_runcounts(days=MAX_DAYS):
+    def get_runcounts(self, days=MAX_DAYS):
         testrundata = {}
         # get historical data from test-info job artifact; if missing get fresh
         try:
@@ -458,6 +458,7 @@ class TestInfoReport(TestInfo):
             if not jtn:
                 print("Warning: Missing job type names from date: %s" % datekey)
                 continue
+
             for m in runcounts[datekey]["manifests"]:
                 man_name = list(m.keys())[0]
 
@@ -591,7 +592,6 @@ class TestInfoReport(TestInfo):
         display_keys = set(display_keys)
         ifd = self.get_intermittent_failure_data(start, end)
 
-        runcount = {}
         runcount = {}
         if show_testruns and os.environ.get("GECKO_HEAD_REPOSITORY", "") in [
             "https://hg.mozilla.org/mozilla-central",
@@ -775,7 +775,11 @@ class TestInfoReport(TestInfo):
                             if show_testruns:
                                 total_runs = 0
                                 for m in test_info["manifest"]:
-                                    total_runs += sum([x[3] for x in runcount[m]])
+                                    if m in runcount.keys():
+                                        for x in runcount.get("m", []):
+                                            if not x:
+                                                break
+                                            total_runs += x[3]
                                 if total_runs > 0:
                                     test_info["total_runs"] = total_runs
 

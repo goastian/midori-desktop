@@ -26,6 +26,7 @@
 #include "nsIInputStreamPump.h"
 #include "nsIThreadRetargetableRequest.h"
 #include "xpcpublic.h"
+
 using JS::loader::ModuleLoadRequest;
 using JS::loader::ScriptFetchOptions;
 using mozilla::dom::loader::WorkletModuleLoader;

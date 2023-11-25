@@ -348,7 +348,7 @@ void WinWindowOcclusionTracker::Ensure() {
       // Success!
       sTracker->mHasAttemptedShutdown = false;
 
-       // Take this opportunity to ensure that mDisplayStatusObserver and
+      // Take this opportunity to ensure that mDisplayStatusObserver and
       // mSessionChangeObserver exist. They might have failed to be
       // created when sTracker was created.
       sTracker->EnsureDisplayStatusObserver();
@@ -541,6 +541,7 @@ WinWindowOcclusionTracker::WinWindowOcclusionTracker(
 
   EnsureDisplayStatusObserver();
   EnsureSessionChangeObserver();
+
   mSerializedTaskDispatcher = new SerializedTaskDispatcher();
 }
 

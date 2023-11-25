@@ -2001,7 +2001,6 @@ void DrawTargetSkia::PopLayer() {
 
   MarkChanged();
 
-
   const PushedLayer& layer = mPushedLayers.back();
 
   mCanvas->restore();

@@ -861,7 +861,6 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
   // caller and read in the callee's prologue.
   js::ContextData<js::jit::ICScript*> inlinedICScript_;
 
-
  public:
   void* addressOfInterruptBits() { return &interruptBits_; }
   void* addressOfJitStackLimit() {

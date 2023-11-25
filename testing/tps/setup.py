@@ -8,7 +8,7 @@ from setuptools import find_packages, setup
 version = "0.6"
 
 deps = [
-    "httplib2 == 0.19.0",
+    "httplib2 == 0.9.2",
     "mozfile >= 1.2",
     "wptserve >= 3.0",
     "mozinfo >= 1.2",

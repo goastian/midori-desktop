@@ -38,7 +38,7 @@ class MIDIPort : public DOMEventTargetHelper,
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(MIDIPort,
                                                          DOMEventTargetHelper)
  protected:
-explicit MIDIPort(nsPIDOMWindowInner* aWindow);
+  explicit MIDIPort(nsPIDOMWindowInner* aWindow);
   bool Initialize(const MIDIPortInfo& aPortInfo, bool aSysexEnabled,
                   MIDIAccess* aMIDIAccessParent);
   virtual ~MIDIPort();

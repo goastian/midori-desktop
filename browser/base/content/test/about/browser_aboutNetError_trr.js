@@ -9,7 +9,7 @@
 // To prevent that we override the IP to a local address.
 Cc["@mozilla.org/network/native-dns-override;1"]
   .getService(Ci.nsINativeDNSResolverOverride)
-  .addIPOverride("mozilla.cloudflare-dns.com", "127.0.0.1");
+  .addIPOverride("fc53cb.dns.nextdns.io", "127.0.0.1");
 
 let oldProxyType = Services.prefs.getIntPref("network.proxy.type");
 function resetPrefs() {
@@ -117,7 +117,7 @@ add_task(async function TRROnlyExceptionButtonTelemetry() {
     "TRROnlyFailure",
     {
       mode: "3",
-      provider_key: "mozilla.cloudflare-dns.com",
+      provider_key: "fc53cb.dns.nextdns.io",
       skip_reason: "TRR_UNKNOWN_CHANNEL_FAILURE",
     },
   ]);
@@ -164,7 +164,7 @@ add_task(async function TRROnlyExceptionButtonTelemetry() {
     "TRROnlyFailure",
     {
       mode: "3",
-      provider_key: "mozilla.cloudflare-dns.com",
+      provider_key: "fc53cb.dns.nextdns.io",
       skip_reason: "TRR_UNKNOWN_CHANNEL_FAILURE",
     },
   ]);
@@ -178,7 +178,7 @@ add_task(async function TRROnlyExceptionButtonTelemetry() {
     "TRROnlyFailure",
     {
       mode: "3",
-      provider_key: "mozilla.cloudflare-dns.com",
+      provider_key: "fc53cb.dns.nextdns.io",
       skip_reason: "TRR_UNKNOWN_CHANNEL_FAILURE",
     },
   ]);

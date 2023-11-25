@@ -16,8 +16,8 @@
 #include "RemoteAccessible.h"
 #include "DocAccessibleParent.h"
 #include "RootAccessible.h"
-#include "mozilla/a11y/TableAccessibleBase.h"
-#include "mozilla/a11y/TableCellAccessibleBase.h"
+#include "mozilla/a11y/TableAccessible.h"
+#include "mozilla/a11y/TableCellAccessible.h"
 #include "nsMai.h"
 #include "nsMaiHyperlink.h"
 #include "nsString.h"
@@ -927,6 +927,8 @@ static uint16_t GetInterfacesForProxy(RemoteAccessible* aProxy) {
 }
 
 void a11y::ProxyCreated(RemoteAccessible* aProxy) {
+  MOZ_ASSERT(aProxy->RemoteParent() || aProxy->IsDoc(),
+             "Need parent to check for HyperLink interface");
   GType type = GetMaiAtkType(GetInterfacesForProxy(aProxy));
   NS_ASSERTION(type, "why don't we have a type!");
 
@@ -1442,7 +1444,7 @@ void AccessibleWrap::GetKeyBinding(Accessible* aAccessible,
 }
 
 // static
-Accessible* AccessibleWrap::GetColumnHeader(TableAccessibleBase* aAccessible,
+Accessible* AccessibleWrap::GetColumnHeader(TableAccessible* aAccessible,
                                             int32_t aColIdx) {
   if (!aAccessible) {
     return nullptr;
@@ -1460,7 +1462,7 @@ Accessible* AccessibleWrap::GetColumnHeader(TableAccessibleBase* aAccessible,
   }
 
   // otherwise get column header for the data cell at the first row.
-  TableCellAccessibleBase* tableCell = cell->AsTableCellBase();
+  TableCellAccessible* tableCell = cell->AsTableCell();
   if (!tableCell) {
     return nullptr;
   }
@@ -1475,7 +1477,7 @@ Accessible* AccessibleWrap::GetColumnHeader(TableAccessibleBase* aAccessible,
 }
 
 // static
-Accessible* AccessibleWrap::GetRowHeader(TableAccessibleBase* aAccessible,
+Accessible* AccessibleWrap::GetRowHeader(TableAccessible* aAccessible,
                                          int32_t aRowIdx) {
   if (!aAccessible) {
     return nullptr;
@@ -1493,7 +1495,7 @@ Accessible* AccessibleWrap::GetRowHeader(TableAccessibleBase* aAccessible,
   }
 
   // otherwise get row header for the data cell at the first column.
-  TableCellAccessibleBase* tableCell = cell->AsTableCellBase();
+  TableCellAccessible* tableCell = cell->AsTableCell();
   if (!tableCell) {
     return nullptr;
   }

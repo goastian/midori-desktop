@@ -307,7 +307,6 @@ TEST(EncodeAPI, SetRoi) {
 
 void InitCodec(const vpx_codec_iface_t &iface, int width, int height,
                vpx_codec_ctx_t *enc, vpx_codec_enc_cfg_t *cfg) {
-
   cfg->g_w = width;
   cfg->g_h = height;
   cfg->g_lag_in_frames = 0;
@@ -344,7 +343,8 @@ TEST(EncodeAPI, ConfigChangeThreadCount) {
         ~Encoder() { EXPECT_EQ(vpx_codec_destroy(&ctx), VPX_CODEC_OK); }
         vpx_codec_ctx_t ctx = {};
       } enc;
-      ASSERT_EQ(vpx_codec_enc_config_default(&iface, cfg, 0), VPX_CODEC_OK);
+
+      ASSERT_EQ(vpx_codec_enc_config_default(iface, &cfg, 0), VPX_CODEC_OK);
       EXPECT_NO_FATAL_FAILURE(
           InitCodec(*iface, kWidth, kHeight, &enc.ctx, &cfg));
       if (IsVP9(iface)) {

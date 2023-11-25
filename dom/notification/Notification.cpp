@@ -367,7 +367,7 @@ class ReleaseNotificationRunnable final : public NotificationWorkerRunnable {
       : NotificationWorkerRunnable(aNotification->mWorkerPrivate),
         mNotification(aNotification) {}
 
-        bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
+  bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
     aWorkerPrivate->AssertIsOnWorkerThread();
     aWorkerPrivate->ModifyBusyCountFromWorker(true);
     // ReleaseNotificationRunnable is only used in StrongWorkerRef's shutdown

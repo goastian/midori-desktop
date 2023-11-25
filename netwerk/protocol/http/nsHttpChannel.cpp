@@ -3969,7 +3969,7 @@ nsHttpChannel::OnCacheEntryCheck(nsICacheEntry* entry, uint32_t* aResult) {
     rv = GenerateCacheKey(mPostID, cacheKey);
     MOZ_ASSERT(NS_SUCCEEDED(rv));
 
-   auto redirectedCachekeys = mRedirectedCachekeys.Lock();
+    auto redirectedCachekeys = mRedirectedCachekeys.Lock();
     auto& ref = redirectedCachekeys.ref();
     if (!ref) {
       ref = MakeUnique<nsTArray<nsCString>>();

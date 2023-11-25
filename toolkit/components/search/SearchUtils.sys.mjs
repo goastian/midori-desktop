@@ -207,6 +207,7 @@ export var SearchUtils = {
     "baidu@search.mozilla.org",
     "ecosia@search.mozilla.org",
     "qwant@search.mozilla.org",
+    "yandex@search.mozilla.org",
   ]),
 
   /**

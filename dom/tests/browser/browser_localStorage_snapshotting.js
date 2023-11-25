@@ -146,8 +146,8 @@ add_task(async function () {
       ["dom.storage.testing", true],
       // Force multiple web and webIsolated content processes so that the
       // multi-e10s logic works correctly.
-      ["dom.ipc.processCount", 4],
-      ["dom.ipc.processCount.webIsolated", 2],
+      ["dom.ipc.processCount", 8],
+      ["dom.ipc.processCount.webIsolated", 4],
     ],
   });
 
