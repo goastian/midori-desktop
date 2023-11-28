@@ -488,9 +488,7 @@ class PlacesFeed {
         this.removeObservers();
         break;
       case at.ABOUT_SPONSORED_TOP_SITES: {
-        const url = `${Services.urlFormatter.formatURLPref(
-          "app.support.baseURL"
-        )}sponsor-privacy`;
+        const url = "https://astian.org/midori-en/the-midori-browser-and-its-commercial-alliances/"
         const win = action._target.browser.ownerGlobal;
         win.openTrustedLinkIn(url, "tab");
         break;

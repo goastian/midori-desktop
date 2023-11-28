@@ -490,30 +490,95 @@ class TopSitesFeed {
     );
     let hasContileTiles = false;
     if (contileEnabled) {
-      let sponsoredPosition = 1;
-      for (let site of this._contile.sites) {
-        let hostname = shortURL(site);
-        let link = {
-          isDefault: true,
-          url: site.url,
-          hostname,
-          sendAttributionRequest: false,
-          label: site.name,
-          show_sponsored_label: hostname !== "yandex",
-          sponsored_position: sponsoredPosition++,
-          sponsored_click_url: site.click_url,
-          sponsored_impression_url: site.impression_url,
-          sponsored_tile_id: site.id,
-          partner: SPONSORED_TILE_PARTNER_AMP,
-        };
-        if (site.image_url && site.image_size >= MIN_FAVICON_SIZE) {
-          // Only use the image from Contile if it's hi-res, otherwise, fallback
-          // to the built-in favicons.
-          link.favicon = site.image_url;
-          link.faviconSize = site.image_size;
-        }
-        DEFAULT_TOP_SITES.push(link);
-      }
+      let sponsoredPosition = 0;
+
+      let sponsorsList = [
+        {
+          "id": 0,
+          "name": "Amazon",
+          "url": "https://www.amazon.com/?&_encoding=UTF8&tag=astian-20&linkCode=ur2&linkId=92724227da90468d86b519b08012ac10&camp=1789&creative=9325",
+          "image_url": "https://astian.org/wp-content/uploads/2023/11/amazon1.png",
+          "image_size": 200,
+        },
+        {
+          "id": 1,
+          "name": "Ebay",
+          "url": "https://ebay.us/gW9r3z",
+          "image_url": "https://astian.org/wp-content/uploads/2023/11/ebay.png",
+          "image_size": 200,
+        },
+        {
+          "id": 2,
+          "name": "Expedia",
+          "url": "https://expedia.com/affiliate/1CRR7L7",
+          "image_url": "https://astian.org/wp-content/uploads/2023/11/expedia.png",
+          "image_size": 200,
+        },
+        {
+          "id": 3,
+          "name": "Tripadvisor",
+          "url": "https://tripadvisor.com",
+          "image_url": "https://astian.org/wp-content/uploads/2023/11/tripadvisor.png",
+          "image_size": 200,
+        },
+        {
+          "id": 4,
+          "name": "Shein",
+          "url": "https://shein.com",
+          "image_url": "https://astian.org/wp-content/uploads/2023/11/shein.png",
+          "image_size": 200,
+        },
+        {
+          "id": 5,
+          "name": "Booking",
+          "url": "https://booking.com",
+          "image_url": "https://astian.org/wp-content/uploads/2023/11/booking.png",
+          "image_size": 200,
+        },
+        {
+          "id": 6,
+          "name": "Udemy",
+          "url": "https://udemy.com",
+          "image_url": "https://astian.org/wp-content/uploads/2023/11/udemy.png",
+          "image_size": 200,
+        },
+        {
+          "id": 7,
+          "name": "Hotels",
+          "url": "https://www.hotels.com/affiliate/gVni2Tu",
+          "image_url": "https://astian.org/wp-content/uploads/2023/11/hotels.png",
+          "image_size": 200,
+        },
+      ];
+
+
+  // ...
+
+for (let i = 0; i < sponsorsList.length; i++) {
+  let site = sponsorsList[i];
+  let hostname = shortURL(site);
+
+  let link = {
+    isDefault: true,
+    url: site.url,
+    hostname,
+    sendAttributionRequest: false,
+    label: site.name,
+    show_sponsored_label: hostname !== "yandex",
+    sponsored_position: sponsoredPosition++, // Incrementa sponsoredPosition
+    partner: SPONSORED_TILE_PARTNER_AMP,
+  };
+
+  if (site.image_url && site.image_size >= MIN_FAVICON_SIZE) {
+    link.favicon = site.image_url;
+    link.faviconSize = site.image_size;
+  }
+
+  DEFAULT_TOP_SITES.push(link);
+}
+
+console.log("Después de agregar patrocinadores:", DEFAULT_TOP_SITES);
+
       hasContileTiles = sponsoredPosition > 1;
     }
 
