@@ -99,6 +99,7 @@ sudo wget -O /etc/apt/trusted.gpg.d/midori-archive-keyring.gpg http://repo.astia
 You can contribute through a donation on our website. We recommend that you first read our manifesto and then donate here we leave you the links
 - [Manifest](https://astian.org/community/midori-browser/donations-for-midori-please/)
 - [Donate](https://astian.org/midori-browser/donate-to-midori/)
+- Midori on Open collective(https://opencollective.com/midori-browser)
 
 ### 📜 Privacy Policy
 
