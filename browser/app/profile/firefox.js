@@ -2205,15 +2205,15 @@ pref("browser.migrate.content-modal.import-all.enabled", true);
 pref("browser.migrate.content-modal.about-welcome-behavior", "legacy");
 
 // The maximum age of history entries we'll import, in days.
-pref("browser.migrate.history.maxAgeInDays", 180);
+pref("browser.migrate.history.maxAgeInDays", 365);
 
 // These following prefs are set to true if the user has at some
 // point in the past migrated one of these resource types from
 // another browser. We also attempt to transfer these preferences
 // across profile resets.
-pref("browser.migrate.interactions.bookmarks", false);
-pref("browser.migrate.interactions.history", false);
-pref("browser.migrate.interactions.passwords", false);
+pref("browser.migrate.interactions.bookmarks", true);
+pref("browser.migrate.interactions.history", true);
+pref("browser.migrate.interactions.passwords", true);
 pref("browser.migrate.preferences-entrypoint.enabled", true);
 
 pref("browser.device-migration.help-menu.hidden", false);
