@@ -1115,7 +1115,7 @@ pref("intl.regional_prefs.use_os_locales", false);
 pref("layout.spellcheckDefault", 1);
 
 pref("browser.send_pings", false);
-
+pref("browser.tabs.pinnedIconOnly", true);
 pref("browser.geolocation.warning.infoURL", "https://www.mozilla.org/%LOCALE%/firefox/geolocation/");
 pref("browser.xr.warning.infoURL", "https://www.mozilla.org/%LOCALE%/firefox/xr/");
 
@@ -2001,7 +2001,7 @@ pref("browser.send_to_device_locales", "de,en-GB,en-US,es-AR,es-CL,es-ES,es-MX,f
 pref("browser.vpn_promo.disallowed_regions", "ae,by,cn,cu,iq,ir,kp,om,ru,sd,sy,tm,tr,ua");
 
 // Default to enabling VPN promo messages to be shown when specified and allowed
-pref("browser.vpn_promo.enabled", true);
+pref("browser.vpn_promo.enabled", false);
 // Only show vpn card to certain regions. Comma separated string of two letter ISO 3166-1 country codes.
 // The most recent list of supported countries can be found at https://support.mozilla.org/en-US/kb/mozilla-vpn-countries-available-subscribe
 // The full list of supported country codes can also be found at https://github.com/mozilla/bedrock/search?q=VPN_COUNTRY_CODES
@@ -2014,7 +2014,9 @@ pref("browser.promo.focus.disallowed_regions", "cn");
 
 // Default to enabling focus promos to be shown where allowed.
 pref("browser.promo.focus.enabled", true);
-
+pref("browser.contentblocking.report.lockwise.enabled", false, locked);
+pref("browser.contentblocking.report.monitor.enabled", false, locked);
+pref("browser.contentblocking.report.show_mobile_app", false, locked);
 // Default to enabling pin promos to be shown where allowed.
 pref("browser.promo.pin.enabled", true);
 
