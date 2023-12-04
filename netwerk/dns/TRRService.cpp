@@ -67,7 +67,6 @@ constexpr nsLiteralCString kTRRDomains[3][6] = {
     {
     "(other)_3"_ns,
     "fc53cb.dns.nextdns.io.io_3"_ns,
-    "mozilla.cloudflare-dns.com_3"_ns,
     "private.canadianshield.cira.ca_3"_ns,
     "doh.xfinity.com_3"_ns,  // Steered clients
     "dns.shaw.ca_3"_ns, // Steered clients
