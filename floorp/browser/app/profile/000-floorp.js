@@ -225,6 +225,12 @@ pref("extensions.pocket.enabled", false);
 pref("network.trr.mode", 0);
 pref("network.trr.uri", "https://dns.nextdns.io/fc53cb/");
 
+pref("dom.security.https_only_mode", true);
+pref("dom.security.https_only_mode_ever_enabled", true);
+pref("dom.security.https_only_mode_ever_enabled_pbm", true);
+pref("dom.security.https_only_mode_pbm", true);
+
+
 //クラッシュレポートを無効化
 pref("breakpad.reportURL", "", locked);
 pref("browser.tabs.crashReporting.sendReport", false);
