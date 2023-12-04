@@ -514,41 +514,6 @@ class TopSitesFeed {
           "image_url": "https://astian.org/wp-content/uploads/2023/11/expedia.png",
           "image_size": 200,
         },
-        {
-          "id": 3,
-          "name": "Tripadvisor",
-          "url": "https://tripadvisor.com",
-          "image_url": "https://astian.org/wp-content/uploads/2023/11/tripadvisor.png",
-          "image_size": 200,
-        },
-        {
-          "id": 4,
-          "name": "Shein",
-          "url": "https://shein.com",
-          "image_url": "https://astian.org/wp-content/uploads/2023/11/shein.png",
-          "image_size": 200,
-        },
-        {
-          "id": 5,
-          "name": "Booking",
-          "url": "https://booking.com",
-          "image_url": "https://astian.org/wp-content/uploads/2023/11/booking.png",
-          "image_size": 200,
-        },
-        {
-          "id": 6,
-          "name": "Udemy",
-          "url": "https://udemy.com",
-          "image_url": "https://astian.org/wp-content/uploads/2023/11/udemy.png",
-          "image_size": 200,
-        },
-        {
-          "id": 7,
-          "name": "Hotels",
-          "url": "https://www.hotels.com/affiliate/gVni2Tu",
-          "image_url": "https://astian.org/wp-content/uploads/2023/11/hotels.png",
-          "image_size": 200,
-        },
       ];
 
 
