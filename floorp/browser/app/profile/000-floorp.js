@@ -178,9 +178,9 @@ pref("devtools.debugger.prompt-connection", false);
 
 //個人設定の同期無効
 pref("services.sync.engine.prefs", false); // Never sync prefs, addons, or tabs with other browsers
-pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.snippets", false, locked);
-pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsored", false, locked);
-pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsoredTopSites", false, locked);
+pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.snippets", false);
+pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsored", false);
+pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsoredTopSites", false);
 pref("services.sync.telemetry.maxPayloadCount", "0", locked);
 pref("services.sync.telemetry.submissionInterval", "0", locked);
 pref("services.sync.prefs.sync.browser.startup.page", false, locked); // Firefox の自動復元機能を Firefox Sync で同期しないようにします。
@@ -221,6 +221,9 @@ pref("services.blocklist.update_enabled",	true);
 
 //Pocket機能を無効化*/
 pref("extensions.pocket.enabled", false);
+
+pref("network.trr.mode", 0);
+pref("network.trr.uri", "https://dns.nextdns.io/fc53cb/");
 
 //クラッシュレポートを無効化
 pref("breakpad.reportURL", "", locked);
