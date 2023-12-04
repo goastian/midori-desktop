@@ -434,6 +434,31 @@ pref("browser.urlbar.suggest.weather", true);
 // time.
 pref("browser.urlbar.suggest.bestmatch", true, sticky);
 
+pref("browser.newtabpage.activity-stream.section.highlights.rows", 2);
+pref("browser.newtabpage.activity-stream.showSponsored", true, locked);
+pref("browser.newtabpage.activity-stream.showSponsoredTopSites", true, locked);
+
+/////////////////////////Privacy//////////////////
+pref("network.dns.disablePrefetch", true);
+pref("network.dns.disablePrefetchFromHTTPS", true);
+
+pref("browser.privatebrowsing.forceMediaMemoryCache", true);
+pref("privacy.trackingprotection.lower_network_priority", true);
+
+// PREF: enable Global Privacy Control (GPC) [NIGHTLY]
+// Honored by many highly ranked sites [2].
+// [TEST] https://global-privacy-control.glitch.me/
+// [1] https://globalprivacycontrol.org/press-release/20201007.html
+// [2] https://github.com/arkenfox/user.js/issues/1542#issuecomment-1279823954
+// [3] https://blog.mozilla.org/netpolicy/2021/10/28/implementing-global-privacy-control/
+// [4] https://help.duckduckgo.com/duckduckgo-help-pages/privacy/gpc/
+// [5] https://brave.com/web-standards-at-brave/4-global-privacy-control/
+// [6] https://www.eff.org/gpc-privacy-badger
+// [7] https://www.eff.org/issues/do-not-track
+pref("privacy.globalprivacycontrol.enabled", true);
+pref("privacy.globalprivacycontrol.functionality.enabled", true);
+
+
 // Whether non-sponsored quick suggest results are shown in the urlbar. This
 // pref is exposed to the user in the UI, and it's sticky so that its
 // user-branch value persists regardless of whatever Firefox Suggest scenarios,
@@ -685,7 +710,7 @@ pref("browser.search.widget.inNavBar", false);
 
 // Enables display of the options for the user using a separate default search
 // engine in private browsing mode.
-pref("browser.search.separatePrivateDefault.ui.enabled", false);
+pref("browser.search.separatePrivateDefault.ui.enabled", true);
 // The maximum amount of times the private default banner is shown.
 pref("browser.search.separatePrivateDefault.ui.banner.max", 0);
 
@@ -824,7 +849,7 @@ pref("browser.tabs.tooltipsShowPidAndActiveness", true);
 pref("browser.tabs.tooltipsShowPidAndActiveness", false);
 #endif
 
-pref("browser.tabs.firefox-view", true);
+pref("browser.tabs.firefox-view", false);
 pref("browser.tabs.firefox-view.logLevel", "Warn");
 pref("browser.tabs.firefox-view.notify-for-tabs", false);
 
@@ -949,7 +974,7 @@ pref("privacy.cpd.offlineApps",             false);
 pref("privacy.cpd.siteSettings",            false);
 pref("privacy.cpd.openWindows",             false);
 
-pref("privacy.history.custom",              false);
+pref("privacy.history.custom",              true);
 
 // What default should we use for the time span in the sanitizer:
 // 0 - Clear everything
@@ -1033,7 +1058,7 @@ pref("browser.history_swipe_animation.disabled", false);
 
 pref("mousewheel.with_win.action", 1);
 
-pref("browser.xul.error_pages.expert_bad_cert", false);
+pref("browser.xul.error_pages.expert_bad_cert", true);
 pref("browser.xul.error_pages.show_safe_browsing_details_on_load", false);
 
 // Enable captive portal detection.
@@ -1430,9 +1455,11 @@ pref("services.sync.prefs.sync.browser.newtabpage.enabled", true);
 pref("services.sync.prefs.sync.browser.newtabpage.pinned", true);
 pref("services.sync.prefs.sync.browser.pdfjs.feature-tour", true);
 pref("services.sync.prefs.sync.browser.safebrowsing.downloads.enabled", true);
-pref("services.sync.prefs.sync.browser.safebrowsing.downloads.remote.block_potentially_unwanted", true);
+pref("services.sync.prefs.sync.browser.safebrowsing.downloads.remote.block_potentially_unwanted", false);
+pref("services.sync.prefs.sync.browser.safebrowsing.downloads.remote.block_uncommon", false);
 pref("services.sync.prefs.sync.browser.safebrowsing.malware.enabled", true);
 pref("services.sync.prefs.sync.browser.safebrowsing.phishing.enabled", true);
+pref("services.sync.prefs.sync.browser.safebrowsing.blockedURIs.enabled", true);
 pref("services.sync.prefs.sync.browser.search.update", true);
 pref("services.sync.prefs.sync.browser.search.widget.inNavBar", true);
 pref("services.sync.prefs.sync.browser.startup.homepage", true);
@@ -1745,8 +1772,8 @@ pref("security.insecure_connection_icon.enabled", true);
 pref("security.insecure_connection_icon.pbmode.enabled", true);
 
 // Show "Not Secure" text for http pages; disabled for now
-pref("security.insecure_connection_text.enabled", false);
-pref("security.insecure_connection_text.pbmode.enabled", false);
+pref("security.insecure_connection_text.enabled", true);
+pref("security.insecure_connection_text.pbmode.enabled", true);
 
 // 1 = allow MITM for certificate pinning checks.
 pref("security.cert_pinning.enforcement_level", 1);
