@@ -441,6 +441,9 @@ pref("browser.newtabpage.activity-stream.showSponsoredTopSites", true, locked);
 /////////////////////////Privacy//////////////////
 pref("network.dns.disablePrefetch", true);
 pref("network.dns.disablePrefetchFromHTTPS", true);
+pref("network.dns.echconfig.enabled", true);
+pref("network.dns.http3_echconfig.enabled", true);
+pref("network.dns.use_https_rr_as_altsvc", true); // DEFAULT
 
 pref("browser.privatebrowsing.forceMediaMemoryCache", true);
 pref("privacy.trackingprotection.lower_network_priority", true);
@@ -711,6 +714,8 @@ pref("browser.search.widget.inNavBar", false);
 // Enables display of the options for the user using a separate default search
 // engine in private browsing mode.
 pref("browser.search.separatePrivateDefault.ui.enabled", true);
+
+pref("browser.search.separatePrivateDefault", true); // DEFAULT
 // The maximum amount of times the private default banner is shown.
 pref("browser.search.separatePrivateDefault.ui.banner.max", 0);
 
@@ -1140,7 +1145,7 @@ pref("intl.regional_prefs.use_os_locales", false);
 pref("layout.spellcheckDefault", 1);
 
 pref("browser.send_pings", false);
-pref("browser.tabs.pinnedIconOnly", true);
+pref("browser.tabs.pinnedIconOnly", false);
 pref("browser.geolocation.warning.infoURL", "https://www.mozilla.org/%LOCALE%/firefox/geolocation/");
 pref("browser.xr.warning.infoURL", "https://www.mozilla.org/%LOCALE%/firefox/xr/");
 
