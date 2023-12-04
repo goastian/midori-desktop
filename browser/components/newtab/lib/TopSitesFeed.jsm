@@ -514,6 +514,13 @@ class TopSitesFeed {
           "image_url": "https://astian.org/wp-content/uploads/2023/11/expedia.png",
           "image_size": 200,
         },
+        {
+          "id": 3,
+          "name": "Eneba",
+          "url": "https://www.eneba.com/?af_id=Astian",
+          "image_url": "https://astian.org/wp-content/uploads/2023/11/expedia.png",
+          "image_size": 200,
+        },
       ];
 
 
@@ -544,7 +551,7 @@ for (let i = 0; i < sponsorsList.length; i++) {
 
 console.log("Después de agregar patrocinadores:", DEFAULT_TOP_SITES);
 
-      hasContileTiles = sponsoredPosition > 1;
+      hasContileTiles = sponsoredPosition > 0;
     }
 
     // Read defaults from remote settings.
