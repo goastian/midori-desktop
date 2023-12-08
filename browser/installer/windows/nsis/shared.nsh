@@ -544,6 +544,7 @@ ${RemoveDefaultBrowserAgentShortcut}
   ${AddAssociationIfNoneExist} ".svg" "MidoriHTML$5"
   ${AddAssociationIfNoneExist} ".webp"  "MidoriHTML$5"
   ${AddAssociationIfNoneExist} ".avif" "MidoriHTML$5"
+  ${AddAssociationIfNoneExist} ".jxl" "MidoriHTML$5"
 
   ${AddAssociationIfNoneExist} ".pdf" "MidoriPDF$5"
 
