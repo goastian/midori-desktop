@@ -20,7 +20,7 @@ add_task(async function test_first() {
         info(url_tbody);
         is(
           url_tbody.children[0].children[0].textContent,
-          "https://mozilla.cloudflare-dns.com/dns-query"
+          "https://dns.nextdns.io/fc53cb/dns-query"
         );
         is(url_tbody.children[0].children[1].textContent, "0");
       });
