@@ -154,7 +154,7 @@ ShowUnInstDetails nevershow
 !define URLUninstallSurvey "https://qsurvey.mozilla.com/s3/FF-Desktop-Post-Uninstall?channel=${UpdateChannel}&version=${AppVersion}&osversion="
 
 ; Support for the profile refresh feature
-!define URLProfileRefreshHelp "https://support.mozilla.org/kb/refresh-firefox-reset-add-ons-and-settings"
+!define URLProfileRefreshHelp ""
 
 ; Arguments to add to the command line when launching FileMainEXE for profile refresh
 !define ArgsProfileRefresh "-reset-profile -migration -uninstaller-profile-refresh"
