@@ -210,7 +210,14 @@
    }
 
    #tabbrowser-tabs[positionpinnedtabs] > #tabbrowser-arrowscrollbox > .tabbrowser-tab[pinned] {
-    min-width: -moz-available !important;
+    position: inherit !important;
+    display: block !important;
+    margin-inline-start: 0 !important;
+  }
+
+  .tab-content[align] {
+  padding: 0 !important;
+  padding-left: 5px !important;
   }
 
   .tab-icon-stack[pinned="true"] {
