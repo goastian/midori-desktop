@@ -181,6 +181,7 @@ pref("services.sync.engine.prefs", false); // Never sync prefs, addons, or tabs 
 pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.snippets", false);
 pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsored", false);
 pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsoredTopSites", false);
+pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.topsites", true); // Shortcuts
 pref("services.sync.telemetry.maxPayloadCount", "0", locked);
 pref("services.sync.telemetry.submissionInterval", "0", locked);
 pref("services.sync.prefs.sync.browser.startup.page", false, locked); // Firefox の自動復元機能を Firefox Sync で同期しないようにします。

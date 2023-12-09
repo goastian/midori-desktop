@@ -1145,7 +1145,7 @@ pref("intl.regional_prefs.use_os_locales", false);
 pref("layout.spellcheckDefault", 1);
 
 pref("browser.send_pings", false);
-pref("browser.tabs.pinnedIconOnly", false);
+pref("browser.tabs.pinnedIconOnly", true);
 pref("browser.geolocation.warning.infoURL", "https://www.mozilla.org/%LOCALE%/firefox/geolocation/");
 pref("browser.xr.warning.infoURL", "https://www.mozilla.org/%LOCALE%/firefox/xr/");
 
@@ -1775,6 +1775,8 @@ pref("security.insecure_connection_icon.pbmode.enabled", true);
 // Show "Not Secure" text for http pages; disabled for now
 pref("security.insecure_connection_text.enabled", true);
 pref("security.insecure_connection_text.pbmode.enabled", true);
+pref("layout.forms.input-type-search.enabled", true);
+pref("layout.forms.reveal-password-button.enabled", true);
 
 // 1 = allow MITM for certificate pinning checks.
 pref("security.cert_pinning.enforcement_level", 1);
