@@ -435,8 +435,8 @@ pref("browser.urlbar.suggest.weather", true);
 pref("browser.urlbar.suggest.bestmatch", true, sticky);
 
 pref("browser.newtabpage.activity-stream.section.highlights.rows", 2);
-pref("browser.newtabpage.activity-stream.showSponsored", true, locked);
-pref("browser.newtabpage.activity-stream.showSponsoredTopSites", true, locked);
+pref("browser.newtabpage.activity-stream.feeds.topsites", true); // Shortcuts
+pref("browser.newtabpage.activity-stream.feeds.snippets", false); // [DEFAULT]
 
 /////////////////////////Privacy//////////////////
 pref("network.dns.disablePrefetch", true);
@@ -2868,9 +2868,11 @@ pref("browser.pdfjs.feature-tour", "{\"screen\":\"\",\"complete\":false}");
 
 // Enables cookie banner handling in Nightly in Private Browsing Mode. See
 // StaticPrefList.yaml for a description of the prefs.
-#ifdef NIGHTLY_BUILD
-  pref("cookiebanners.service.mode.privateBrowsing", 1);
-#endif
+
+pref("cookiebanners.service.mode", 2);
+pref("cookiebanners.service.mode.privateBrowsing", 2);
+pref("cookiebanners.service.enableGlobalRules", true);
+
 
 #if defined(EARLY_BETA_OR_EARLIER)
   // Enables the cookie banner desktop UI.
