@@ -74,7 +74,7 @@ Var PostSigningData
 ; are a member of the Administrators group.
 !define NONADMIN_ELEVATE
 
-!define AbortSurveyURL ""
+!define AbortSurveyURL "http://www.kampyle.com/feedback_form/ff-feedback-form.php?site_code=8166124&form_id=12116&url="
 
 ; Other included files may depend upon these includes!
 ; The following includes are provided by NSIS.
@@ -918,7 +918,7 @@ Section "-InstallEndCleanup"
   ; When we're using the GUI, .onGUIEnd sends the ping, but of course that isn't
   ; invoked when we're running silently.
   ${If} ${Silent}
-    ;Call SendPing
+    Call SendPing
   ${EndIf}
 SectionEnd
 
@@ -2069,5 +2069,5 @@ FunctionEnd
 
 Function .onGUIEnd
   ${OnEndCommon}
-  ;Call SendPing
+  Call SendPing
 FunctionEnd
