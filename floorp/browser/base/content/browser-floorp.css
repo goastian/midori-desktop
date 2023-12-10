@@ -67,8 +67,12 @@
 
 }
 
+#sidebar-select-box:-moz-lwtheme {
+  background-color: var(--lwt-accent-color-inactive, var(--toolbar-bgcolor));
+}
+
 #sidebar-select-box {
-  background: var(--toolbar-bgcolor);
+  background: color(--toolbar-bgcolor);
   background-image: var(--lwt-additional-images);
   background-repeat: no-repeat, no-repeat, no-repeat;
   background-position: center;
@@ -370,6 +374,14 @@ min-width: 0px !important;
  :root[privatebrowsingmode] #fxa-toolbar-menu-button:not([disabled="true"]):is([open], [checked], :hover:active) > .toolbarbutton-badge-stack {
   background-color: inherit !important;
   filter: brightness(50%);
+}
+
+#statusBar:-moz-lwtheme {
+  background-color: var(--lwt-accent-color-inactive, var(--toolbar-bgcolor));
+}
+
+#statusBar {
+  background-color: var(--toolbar-bgcolor);
 }
 
 #private-browsing-indicator-with-label {
