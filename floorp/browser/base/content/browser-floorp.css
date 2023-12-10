@@ -36,6 +36,7 @@
   align-items: flex-start;
   flex-direction: column;
   justify-content: space-between;
+  color: var(--toolbar-color);
 }
 
 #browser {
