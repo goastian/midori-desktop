@@ -25,7 +25,8 @@ function setBrowserDesign() {
     LeptonUIMultitab: `@import url(chrome://browser/skin/lepton/photonChrome-multitab.css?${updateNumber});
                        @import url(chrome://browser/skin/lepton/photonContent-multitab.css?${updateNumber});`,
     fluentUI: `@import url(chrome://browser/skin/fluentUI/fluentUI.css);`,
-    gnomeUI: `@import url(chrome://browser/skin/gnomeUI/gnomeUI.css);`,
+    gnomeUI: `@import url(chrome://browser/skin/gnomeUI/gnomeUI.css);
+    `,
     FluerialUI: `@import url(chrome://browser/skin/floorplegacy/test_legacy.css?${updateNumber});`,
     FluerialUIMultitab: `@import url(chrome://browser/skin/floorplegacy/test_legacy.css?${updateNumber}); @import url(chrome://browser/skin/floorplegacy/test_legacy_multitab.css);`,
   };

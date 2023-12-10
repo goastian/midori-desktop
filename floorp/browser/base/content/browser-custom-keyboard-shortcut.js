@@ -131,4 +131,12 @@ const buildShortCutkeyFunctions = {
   },
 };
 
+
+let customActionsFunctions = {
+  evalCustomeActionWithNum(num) {
+    let action = Services.prefs.getStringPref(`floorp.custom.shortcutkeysAndActions.customAction${num}`);
+    Function(action)();
+  }
+}
+
 buildShortCutkeyFunctions.init();

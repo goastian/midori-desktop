@@ -541,3 +541,13 @@ toolbar #workspace-button:not([disabled="true"], [checked], [open], :active):hov
 #select-floorp__tst {
   display: none;
 }
+
+@media (min-resolution: 1.1dppx){
+  toolbar[brighttext] .webextension-browser-action {
+    list-style-image: var(--webextension-toolbar-image-2x-light, inherit) !important;
+  }
+ }
+ 
+ #new-tab-button > .toolbarbutton-icon {
+   width: 22px !important;
+ }

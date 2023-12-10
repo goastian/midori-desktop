@@ -153,6 +153,13 @@ export const keyboradShortcutActions = {
     // Workspace actions
     openNextWorkspace: ["workspaceFunctions.manageWorkspaceFunctions.changeWorkspaceToBeforeNext();", "open-next-workspace", "workspace-action"],
     openPreviousWorkspace: ["workspaceFunctions.manageWorkspaceFunctions.changeWorkspaceToAfterNext();", "open-previous-workspace", "workspace-action"],
+
+    // Custom actions
+    customAction1: ["customActionsFunctions.evalCustomeActionWithNum(1)", "custom-action-1", "custom-action"],
+    customAction2: ["customActionsFunctions.evalCustomeActionWithNum(2)", "custom-action-2", "custom-action"],
+    customAction3: ["customActionsFunctions.evalCustomeActionWithNum(3)", "custom-action-3", "custom-action"],
+    customAction4: ["customActionsFunctions.evalCustomeActionWithNum(4)", "custom-action-4", "custom-action"],
+    customAction5: ["customActionsFunctions.evalCustomeActionWithNum(5)", "custom-action-5", "custom-action"]
 }
 
 export const modifiersList = {

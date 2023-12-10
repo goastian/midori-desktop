@@ -153,6 +153,11 @@ pref("floorp.titlebar.favicon.color", false);
 pref("floorp.custom.shortcutkeysAndActions", "[]");
 pref("floorp.custom.shortcutkeysAndActions.enabled", true);
 pref("floorp.custom.shortcutkeysAndActions.remove.fx.actions", false);
+pref("floorp.custom.shortcutkeysAndActions.customAction1", "");
+pref("floorp.custom.shortcutkeysAndActions.customAction2", "");
+pref("floorp.custom.shortcutkeysAndActions.customAction3", "");
+pref("floorp.custom.shortcutkeysAndActions.customAction4", "");
+pref("floorp.custom.shortcutkeysAndActions.customAction5", "");
 
 // Profile Manager
 pref("floorp.browser.profile-manager.enabled", true);
