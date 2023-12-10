@@ -86,39 +86,35 @@ function hideStatusbar() {
   statuspanel_label.removeAttribute("style");
 }
 
-{
-  let checked = Services.prefs.getBoolPref("browser.display.statusbar", false);
-  document
-    .getElementById("toggle_statusBar")
-    .setAttribute("checked", String(checked));
+const toggleStatusBar = () => {
+  const checked = Services.prefs.getBoolPref("browser.display.statusbar", false);
+  const toggleElement = document.getElementById("toggle_statusBar");
+  toggleElement.setAttribute("checked", String(checked));
+
+  const showOrHide = checked ? showStatusbar : hideStatusbar;
+  showOrHide();
+};
+
+const handlePrefChange = () => {
+  const checked = Services.prefs.getBoolPref("browser.display.statusbar", false);
+  const toggleElement = document.getElementById("toggle_statusBar");
+  toggleElement.setAttribute("checked", String(checked));
   if (checked) {
     showStatusbar();
   } else {
     hideStatusbar();
   }
-  Services.prefs.addObserver("browser.display.statusbar", function () {
-    let checked = Services.prefs.getBoolPref(
-      "browser.display.statusbar",
-      false
-    );
-    document
-      .getElementById("toggle_statusBar")
-      .setAttribute("checked", String(checked));
-    if (checked) {
-      showStatusbar();
-    } else {
-      hideStatusbar();
-    }
-  });
+};
 
-  let statuspanel = document.getElementById("statuspanel");
-  let statusText = document.getElementById("status-text");
+const observeStatusbar = () => {
+  const statuspanel = document.getElementById("statuspanel");
+  const statusText = document.getElementById("status-text");
   let observer;
-  let onPrefChanged = function () {
+  const onPrefChanged = () => {
     observer?.disconnect();
     statusText.style.visibility = "";
     if (Services.prefs.getBoolPref("browser.display.statusbar", false)) {
-      observer = new MutationObserver(function (mutationsList, observer) {
+      observer = new MutationObserver((mutationsList, observer) => {
         if (statuspanel.getAttribute("inactive") === "true") {
           statusText.style.visibility = "hidden";
         } else {
@@ -130,4 +126,8 @@ function hideStatusbar() {
   };
   Services.prefs.addObserver("browser.display.statusbar", onPrefChanged);
   onPrefChanged();
-}
+};
+
+toggleStatusBar();
+Services.prefs.addObserver("browser.display.statusbar", handlePrefChange);
+observeStatusbar();
