@@ -30,6 +30,23 @@
      background-size: cover;
    }
 
+   #tabbrowser-tabs:-moz-lwtheme {
+    color: var(--lwt-text-color, var(--toolbar-color));
+    background-color: var(var(--toolbar-bgcolor), --tab-selected-bgcolor);
+    background-image: linear-gradient(
+      var(--lwt-selected-tab-background-color), 
+      var(--toolbar-bgcolor),
+      var(--lwt-selected-tab-background-color, transparent)),
+      linear-gradient(var(--toolbar-bgcolor), 
+      var(--toolbar-bgcolor)),
+      var(--lwt-header-image, none
+    );
+  }
+
+  .tabbrowser-tab:-moz-lwtheme[selected="true"] {
+    color: var(var(--toolbar-color) --lwt-tab-text);
+  }
+
    #toolbar-items-verticaltabs {
      order: 0 !important;
      width: -moz-available;
