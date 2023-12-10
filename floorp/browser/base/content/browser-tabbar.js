@@ -169,7 +169,7 @@ const tabbarDisplayStyleFunctions = {
       "nav-bar-customization-target"
     );
 
-    if (workspaceButton == null) {
+    if (!workspaceButton) {
       console.error("Workspace button not found");
       return;
     }
@@ -179,7 +179,7 @@ const tabbarDisplayStyleFunctions = {
 
   moveToDefaultSpace() {
     let workspaceButton = document.getElementById("workspace-button");
-    if (workspaceButton == null) {
+    if (!workspaceButton) {
       console.error("Workspace button not found");
       return;
     }
