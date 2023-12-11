@@ -144,6 +144,12 @@ UICustomPrefHandler("floorp.navbar.bottom", function (event) {
     document
       .getElementById("fullscreen-and-pointerlock-wrapper")
       .after(document.getElementById("nav-bar"));
+      // eslint-disable-next-line no-undef
+    SessionStore.promiseInitialized.then(() => {
+      document
+      .querySelector(".urlbarView")
+      .after(document.getElementById("urlbar-input-container"));
+    });
   } else {
     document.getElementById("floorp-navvarcss")?.remove();
     if (event.reason === "changed") {
@@ -152,6 +158,9 @@ UICustomPrefHandler("floorp.navbar.bottom", function (event) {
       document
         .getElementById("navigator-toolbox")
         .appendChild(document.getElementById("nav-bar"));
+        document
+        .querySelector(".urlbarView")
+        .before(document.getElementById("urlbar-input-container"));
 
       if (
         !Services.prefs.getBoolPref("floorp.bookmarks.fakestatus.mode", false)
