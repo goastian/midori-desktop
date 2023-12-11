@@ -100,7 +100,7 @@ function findMostFrequentValue(counts) {
     }
   }
 
-  return parseInt(mostFrequentValue);
+  return Number(mostFrequentValue);
 }
 
 function setFaviconColorToTitlebar() {
