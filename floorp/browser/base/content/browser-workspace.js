@@ -996,6 +996,30 @@ const workspaceFunctions = {
       return settings[targetWorkspaceNumber][workspaceName].icon;
     },
 
+    getIconNameByWorkspaceName(workspaceName) {
+      const settings = JSON.parse(
+        Services.prefs.getStringPref(
+          WorkspaceUtils.workspacesPreferences.WORKSPACE_INFO_PREF
+        )
+      );
+
+      const targetWorkspaceNumber =
+        workspaceFunctions.manageWorkspaceFunctions.checkWorkspaceInfoExist(
+          workspaceName
+        );
+      if (
+        targetWorkspaceNumber === false ||
+        settings[targetWorkspaceNumber][workspaceName].icon == "" ||
+        settings[targetWorkspaceNumber][workspaceName].icon == undefined
+      ) {
+        return null;
+      }
+      let iconURL = settings[targetWorkspaceNumber][workspaceName].icon;
+      let removeSVG = iconURL.replace("chrome://browser/skin/workspace-icons/", "");
+      let result = removeSVG.replace(".svg", "");
+      return result;
+    },
+
     deleteIcon(workspaceName) {
       const settings = JSON.parse(
         Services.prefs.getStringPref(
@@ -1017,8 +1041,14 @@ const workspaceFunctions = {
     },
 
     setWorkspaceFromPrompt(label) {
+      let iconName = workspaceFunctions.iconFunctions.getIconNameByWorkspaceName(
+        label
+      );
+      let containerNumber = workspaceFunctions.containerFunctions.getWorkspaceUserContextId(
+        label
+      );
       let parentWindow = Services.wm.getMostRecentWindow("navigator:browser");
-      let object = { workspaceName: label };
+      let object = { workspaceName: label, iconName, containerNumber };
       if (
         parentWindow?.document.documentURI ==
         "chrome://browser/content/hiddenWindowMac.xhtml"

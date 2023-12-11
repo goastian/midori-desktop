@@ -42,11 +42,6 @@ function setTitle() {
 
         workspaceSelect.appendChild(element);
     }
-    if(window.arguments != undefined) {
-      workspaceNameLabel.value = window.arguments[0].workspaceName;
-    } else {
-      workspaceNameLabel.value = WorkspaceUtils.defaultWorkspaceName;
-    }
 
     //icon
     const iconSelect = document.getElementById("workspacesIconSelectPopup");
@@ -61,12 +56,17 @@ function setTitle() {
 
       iconSelect.appendChild(element);
     }
-    iconNameLabel.value = "fingerprint";
 
     // container
     const containerSelect = document.getElementById("workspacesContainerSelectPopup");
     const containerNameLabel = document.getElementById("containerName");
     const currentContainers = ContextualIdentityService.getPublicIdentities();
+
+    const noContainer = window.MozXULElement.parseXULToFragment(`
+    <menuitem data-l10n-id="floorp-no-workspace-conatiner" value="0"></menuitem>
+  `);
+  containerSelect.appendChild(noContainer);
+  containerNameLabel.value = "0";
 
     for (let container of currentContainers) {
       const element = window.MozXULElement.parseXULToFragment(`
@@ -81,11 +81,15 @@ function setTitle() {
       containerSelect.appendChild(element);
     }
 
-    const noContainer = window.MozXULElement.parseXULToFragment(`
-      <menuitem label="No Container" value="0"></menuitem>
-    `);
-    containerSelect.appendChild(noContainer);
-    containerNameLabel.value = "0";
+    if(window.arguments != undefined) {
+      workspaceNameLabel.value = window.arguments[0].workspaceName;
+      iconNameLabel.value = window.arguments[0].iconName ? window.arguments[0].iconName : "fingerprint";
+      containerNameLabel.value = window.arguments[0].containerNumber ? window.arguments[0].containerNumber : "0";
+    } else {
+      workspaceNameLabel.value = WorkspaceUtils.defaultWorkspaceName;
+      iconNameLabel.value = "fingerprint";
+      containerNameLabel.value = "0";
+    }
 
     document.addEventListener("dialogaccept", setPref);
   }  
