@@ -74,6 +74,9 @@ const buildShortCutkeyFunctions = {
       return;
     }
 
+    // Remove " " from modifiers.
+    modifiers = modifiers.replace(/ /g, "");
+
     let keyElement = window.MozXULElement.parseXULToFragment(`
             <key id="${name}" class="floorpCustomShortcutKey"
                  modifiers="${modifiers}"
