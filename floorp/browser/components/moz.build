@@ -12,6 +12,7 @@ DIRS += [
     "notes",
     "welcome",
     "tabsleep",
+    "tabStacks",
 ]
 
 EXTRA_JS_MODULES += [

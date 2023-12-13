@@ -127,6 +127,10 @@ pref("floorp.browser.tabs.openNewTabPosition", -1);
 //ネイティブ実装垂直タブ
 pref("floorp.browser.native.verticaltabs.enabled", false);
 pref("floorp.verticaltab.hover.enabled", false);
+pref("floorp.browser.tabs.verticaltab.right", false);
+
+// Tab Stack
+pref("floorp.browser.tabStack.enabled", true);
 
 // Chrome 形式のダウンローダー
 pref("floorp.browser.native.downloadbar.enabled", false);
@@ -149,6 +153,12 @@ pref("floorp.browser.workspaces.disabledBySystem", true);
 //タブバーの背景色
 pref("floorp.titlebar.favicon.color", false);
 
+pref("browser.ssb.enabled", true);
+
+
+// Tab Stack
+pref("floorp.browser.tabstacks.enabled", true);
+
 // カスタムショートカットキー
 pref("floorp.custom.shortcutkeysAndActions", "[]");
 pref("floorp.custom.shortcutkeysAndActions.enabled", true);
@@ -169,6 +179,8 @@ pref("floorp.newtab.overrides.newtaburl", "");
 pref("floorp.portable.isUpdate", false);
 
 pref("floorp.privateContainer.enabled", false);
+
+pref("browser.firefox-view.view-count", 1);
 
 /*----------------------------------------------------------------------------------------------------------------------------------*/
 
