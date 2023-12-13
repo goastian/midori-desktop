@@ -25,7 +25,7 @@
 -mozilla-vpn-brand-name = Mozilla VPN
 -profiler-brand-name = Firefox Profiler
 -translations-brand-name = Firefox Translations
--focus-brand-name = Firefox Focus
+-focus-brand-name = Midori Mobile
 -relay-brand-name = Firefox Relay
 -relay-brand-short-name = Relay
 
