@@ -14,6 +14,7 @@ browser.jar:
   content/browser/browser-favicon-color.js      (content/browser-favicon-color.js)
   content/browser/browser-statusbar.js          (content/browser-statusbar.js)
   content/browser/browser-tabbar.js             (content/browser-tabbar.js)
+  content/browser/browser-tab-stacks.js         (content/browser-tab-stacks.js)
   content/browser/browser-preferences.js        (content/browser-preferences.js)
   content/browser/browser-private-container.js  (content/browser-private-container.js)
   content/browser/browser-command.js            (content/browser-command.js)
