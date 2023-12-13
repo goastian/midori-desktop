@@ -521,15 +521,10 @@ class TopSitesFeed {
           "image_url": "https://astian.org/wp-content/uploads/2023/11/expedia.png",
           "image_size": 200,
         },
-      ];
+      ]
 
-
-  // ...
-
-for (let i = 0; i < sponsorsList.length; i++) {
-  let site = sponsorsList[i];
+for (let site of sponsorsList) {
   let hostname = shortURL(site);
-
   let link = {
     isDefault: true,
     url: site.url,
