@@ -7,7 +7,6 @@
 DIRS += [
     "floorp-actions",
     "official-site-ua",
-    "midori-sync",
     "webpanel-ua",
     "multirow-tabs",
 ]
