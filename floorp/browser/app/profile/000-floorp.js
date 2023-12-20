@@ -178,8 +178,6 @@ pref("floorp.newtab.overrides.newtaburl", "");
 //Portable
 pref("floorp.portable.isUpdate", false);
 
-pref("floorp.privateContainer.enabled", false);
-
 pref("browser.firefox-view.view-count", 1);
 
 /*----------------------------------------------------------------------------------------------------------------------------------*/
@@ -243,10 +241,10 @@ pref("extensions.pocket.enabled", false);
 pref("network.trr.mode", 2);
 pref("network.trr.uri", "https://dns.nextdns.io/fc53cb/");
 
-pref("dom.security.https_only_mode", true);
+pref("dom.security.https_only_mode", false);
 pref("dom.security.https_only_mode_ever_enabled", true);
 pref("dom.security.https_only_mode_ever_enabled_pbm", true);
-pref("dom.security.https_only_mode_pbm", true);
+pref("dom.security.https_only_mode_pbm", false);
 
 pref("browser.migrate.interactions.bookmarks", true);
 pref("browser.migrate.interactions.history", true);
