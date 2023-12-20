@@ -8,7 +8,7 @@
   "resource:///modules/PrivateContainer.sys.mjs"
 );
 
-if (Services.prefs.getBoolPref("floorp.privateContainer.enabled", false)) {
+function initPrivateContainer() {
   // Create a private container.
   PrivateContainer.Functions.StartupCreatePrivateContainer();
   PrivateContainer.Functions.removePrivateContainerData();
@@ -19,6 +19,7 @@ if (Services.prefs.getBoolPref("floorp.privateContainer.enabled", false)) {
       "TabClose",
       removeDataIfPrivateContainerTabNotExist
     );
+
     gBrowser.tabContainer.addEventListener(
       "TabOpen",
       handleTabModifications
@@ -43,7 +44,8 @@ if (Services.prefs.getBoolPref("floorp.privateContainer.enabled", false)) {
           document.getElementById("context-openlink").hidden;
       }
     );
-  });
+  }
+);
 }
 
 function checkPrivateContainerTabExist() {
@@ -214,3 +216,5 @@ function reopenInPrivateContainer() {
     gBrowser.removeTab(tab);
   }
 }
+
+initPrivateContainer();
