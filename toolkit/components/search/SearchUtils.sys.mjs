@@ -200,14 +200,14 @@ export var SearchUtils = {
   // however this needs more definition on the "vertical" search terms, and the
   // effects before we enable it.
   GENERAL_SEARCH_ENGINE_IDS: new Set([
-    "google@search.mozilla.org",
-    "astiango@search.mozilla.org",
-    "ddg@search.mozilla.org",
-    "bing@search.mozilla.org",
-    "baidu@search.mozilla.org",
-    "ecosia@search.mozilla.org",
-    "qwant@search.mozilla.org",
-    "yandex@search.mozilla.org",
+    "google@search.astian.org",
+    "astiango@search.astian.org",
+    "ddg@search.astian.org",
+    "bing@search.astian.org",
+    "baidu@search.astian.org",
+    "ecosia@search.astian.org",
+    "qwant@search.astian.org",
+    "yandex@search.astian.org",
   ]),
 
   /**
