@@ -1,10 +1,10 @@
 {
   "name": "Qwant",
   "manifest_version": 2,
-  "version": "1.2",
-  "applications": {
+  "version": "1.1",
+  "browser_specific_settings": {
     "gecko": {
-      "id": "qwant@search.mozilla.org"
+      "id": "qwant@search.astian.org"
     }
   },
   "hidden": true,
@@ -16,9 +16,10 @@
   ],
   "chrome_settings_overrides": {
     "search_provider": {
+      "keyword": "@q",
       "name": "Qwant",
       "search_url": "https://www.qwant.com/",
-      "search_url_get_params": "client=brz-moz&q={searchTerms}",
+      "search_url_get_params": "q={searchTerms}",
       "suggest_url": "https://api.qwant.com/api/suggest/",
       "suggest_url_get_params": "client=opensearch&q={searchTerms}",
       "search_form": "https://www.qwant.com/"
