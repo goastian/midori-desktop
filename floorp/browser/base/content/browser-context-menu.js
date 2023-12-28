@@ -43,6 +43,40 @@ function contextMenuObserverFunc() {
   }
 }
 
+window.SessionStore.promiseInitialized.then(() => {
+  const contentAreaContextMenu = document.getElementById(
+    "contentAreaContextMenu"
+  );
+
+  contentAreaContextMenu.addEventListener("popupshowing", function (event) {
+    let menuSeparators = document.querySelectorAll(
+      "#contentAreaContextMenu > menuseparator"
+    );
+
+    let screenShot = document.getElementById("context-take-screenshot");
+    if (!screenShot.hidden) {
+      screenShot.nextSibling.hidden = false;
+    }
+
+    if (!document.getElementById("context-take-screenshot").hidden) {
+      document.getElementById("context-sep-pdfjs-selectall").hidden = false;
+    }
+
+    window.setTimeout(() => {
+      for (let i = 0; i < menuSeparators.length; i++) {
+        if (
+          menuSeparators[i].nextSibling.hidden &&
+          menuSeparators[i].previousSibling.hidden &&
+          menuSeparators[i].id != "context-sep-navigation" &&
+          menuSeparators[i].id != "context-sep-pdfjs-selectall"
+        ) {
+          menuSeparators[i].hidden = true;
+        }
+      }
+    }, 0);
+  });
+});
+
 /********************* Share mode *********************************/
 
 let beforeElem = document.getElementById("menu_openFirefoxView");
