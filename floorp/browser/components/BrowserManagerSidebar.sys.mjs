@@ -31,17 +31,10 @@ export let BrowserManagerSidebar = {
             "url":"about:downloads",
             "l10n":`download-sidebar`,
             "defaultWidth":415
-        },
-        //notes is available in midori for v11.0.0.
-        "floorp//notes":{
-          "url":"chrome://browser/content/notes/notes-bms.html",
-          "l10n":`notes-sidebar`,
-          "defaultWidth":550,
-          "enabled": true
         }
     },
 
-    DEFAULT_WEBPANEL:["https://cloud.astian.org","https://translate.google.com"],
+    DEFAULT_WEBPANEL:["https://cloud.astian.org","https://astian.org/community", "https://calendar.astian.org"],
     prefsUpdate(){
         let defaultPref = {data:{},index:[]}
         for(let elem in this.STATIC_SIDEBAR_DATA){
