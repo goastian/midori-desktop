@@ -85,10 +85,6 @@ window.addEventListener("pageshow", async function() {
       setOverrideUA();
   });
 
-  document.getElementById("backUpNotesOption").addEventListener("click", function () {
-    window.location.href = "about:preferences#notes";
-  });
-
   document.getElementById("userjsOptionsButton").addEventListener("click", function () {
     window.location.href = "about:preferences#userjs";
   });

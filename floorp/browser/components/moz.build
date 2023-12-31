@@ -9,7 +9,6 @@ DIRS += [
     "search",
     "preferences",
     "profile-manager",
-    "notes",
     "welcome",
     "tabsleep",
     "tabStacks",
