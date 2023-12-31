@@ -58,26 +58,6 @@ const gWorkspacesPane = {
       gotoPref("general")
     });
 
-    const needreboot = document.getElementsByClassName("needreboot");
-    for (let i = 0; i < needreboot.length; i++) {
-      needreboot[i].addEventListener("click", () => {
-        if (!Services.prefs.getBoolPref("floorp.enable.auto.restart", false)) {
-          (async () => {
-            let userConfirm = await confirmRestartPrompt(null)
-            if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
-              Services.startup.quit(
-                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
-              );
-            }
-          })()
-        } else {
-          window.setTimeout(() => {
-            Services.startup.quit(Services.startup.eAttemptQuit | Services.startup.eRestart);
-          }, 500);
-        }
-      });
-    }
-
     document.getElementById("manageWorkspace-button").addEventListener("command", () => {
       gSubDialog.open(
         "chrome://browser/content/preferences/dialogs/manageWorkspace.xhtml",

@@ -5264,6 +5264,20 @@ var SessionStoreInternal = {
       ) {
         aWindow.SidebarUI.showInitially(aSidebar);
       }
+
+      let { WorkspacesWindowUuidService } = ChromeUtils.importESModule(
+        "resource:///modules/WorkspacesService.sys.mjs"
+      );
+
+      // workspaces Window Id
+      if (aWindowId) {
+        console.log("SessionStore: restoring window with id " + aWindowId);
+        aWindow.gWorkspaces._windowId = aWindowId;
+      } else {
+        aWindow.gWorkspaces._windowId = WorkspacesWindowUuidService.getGeneratedUuid();
+      }
+      aWindow.gWorkspaces.init();
+      
       // since resizing/moving a window brings it to the foreground,
       // we might want to re-focus the last focused window
       if (this.windowToFocus) {

@@ -34,7 +34,7 @@ export let BrowserManagerSidebar = {
         }
     },
 
-    DEFAULT_WEBPANEL:["https://www.deepl.com/translator", "https://cloud.astian.org", "https://calendar.astian.org", "https://notes.astian.org"],
+    DEFAULT_WEBPANEL:["https://www.deepl.com/translator", "https://cloud.astian.org", "https://calendar.astian.org", "https://notes.astian.org", "contact@astian.org"],
     prefsUpdate(){
         let defaultPref = {data:{},index:[]}
         for(let elem in this.STATIC_SIDEBAR_DATA){
