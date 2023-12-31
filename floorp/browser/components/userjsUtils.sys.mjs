@@ -26,10 +26,10 @@ export const EXPORTED_SYMBOLS = ["userjsUtils"];
  */
 export const userJsList = {
   BetterfoxDefault: ["https://raw.githubusercontent.com/yokoffing/Betterfox/esr115/user.js"],
-  Securefox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/esr115/Securefox.js"],
-  Fastfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/esr115/Fastfox.js"],
-  Peskyfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/esr115/Peskyfox.js"],
-  Smoothfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/esr115/Smoothfox.js"],
+  Securefox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/120/Securefox.js"],
+  Fastfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/120/Fastfox.js"],
+  Peskyfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/120/Peskyfox.js"],
+  Smoothfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/120/Smoothfox.js"],
 };
 
 
