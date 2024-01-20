@@ -9,7 +9,7 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://gitlab.com/midori-web/midori-desktop">
+  <a href="https://github.com/goastian/midori-desktop">
     <img src="https://astian.org/wp-content/uploads/2023/09/Midori-Claro-ImagoTipo-300x84.png" alt="Logo" width="300" height="84">
   </a>
 
@@ -67,7 +67,7 @@ Midori Browser is available for Windows, macOS, and Linux. You can install it by
 
 ### 📥 Download & 📦 Install
 
-You can download the latest version of Midori Browser from the official website: [Astian.org](https://astian.org/midori-browser/download) or from the [Gitlab Releases](https://gitlab.com/midori-web/midori-desktop/-/releases) page.
+You can download the latest version of Midori Browser from the official website: [Astian.org](https://astian.org/midori-browser/download) or from the [Github Releases](https://github.com/goastian/midori-desktop/releases) page.
 
 Linux (Debian, xUbuntu, Mint)
 sudo wget -O /etc/apt/trusted.gpg.d/midori-archive-keyring.gpg http://repo.astian.org/midori-archive-keyring.gpg && echo "deb http://repo.astian.org midori main" | sudo tee /etc/apt/sources.list.d/midori.list
@@ -111,11 +111,11 @@ You can contribute through a donation on our website. We recommend that you firs
 
 ### 🧰 Writing Code
 
-See [Development](https://gitlab.com/midori-web/midori-desktop/-/wikis/home)
+See [Development](https://github.com/goastian/midori-desktop/wiki)
 
 ### 📝 Translating
 
-- We want to support as many languages as possible. If you want to translate Midori Browser, please clone the [l10n-central](https://gitlab.com/midori-web/l10n-central) repository.
+- We want to support as many languages as possible. If you want to translate Midori Browser, please clone the [l10n-central](https://github.com/goastian/l10n-central/) repository.
 
 - English is the main language. If you want to translate Midori Browser, please translate from English (en-US)
 
@@ -123,4 +123,4 @@ See [Development](https://gitlab.com/midori-web/midori-desktop/-/wikis/home)
 
 ### 🐛 Reporting Bugs
 
-- If you find a bug, please report it to the [Issues](https://gitlab.com/midori-web/midori-desktop/-/issues) page or using [Official Support Site](https://astian.org/community/midori-browser).
+- If you find a bug, please report it to the [Issues](https://github.com/goastian/midori-desktop/issues) page or using [Official Support Site](https://astian.org/community/midori-browser).
