@@ -2287,8 +2287,8 @@ export class SearchService {
     }
 
     const engines = [
-      { webExtension: { id: "ddg@search.astian.org",       locale: "default"}, default: "yes"},
-      { webExtension: { id: "bing@search.astian.org",      locale: "default"}},
+      { webExtension: { id: "bing@search.astian.org",      locale: "default"}, default: "yes"},
+      { webExtension: { id: "ddg@search.astian.org",       locale: "default"}},
       { webExtension: { id: "astiango@search.astian.org",  locale: "default"}},
       { webExtension: { id: "ecosia@search.astian.org",    locale: "default"}},
       { webExtension: { id: "google@search.astian.org",    locale: "default"}},
