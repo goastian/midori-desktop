@@ -543,6 +543,9 @@ workspace-select-container = Select Container Tab
 workspace-customize = 
  .title = Customize Workspace
 
+floorp-no-workspace-conatiner =
+  .label = No Container
+
 workspace-icon-briefcase =
  .label = Job
 workspace-icon-cart =
@@ -945,7 +948,7 @@ sharemode-menuitem =
 
 welcome-login-to-firefox-account = Sign in to your Firefox Account
 welcome-to-floorp = Welcome to { -brand-short-name }!
-welcome-discribe-floorp = { -brand-short-name } is a feature-rich flexible browser that supports various environments and is based on Firefox.
+welcome-discribe-floorp = { -brand-short-name } is a fast and secure lightweight browser committed to user privacy and security.
 welcome-start-setup = Ready to jump in?
 welcome-skip-to-start-browsing = Skip to Start Browsing
 welcome-select-preferences-template = Select a template
@@ -1160,3 +1163,9 @@ floorp-toggle-private-container =
   .accesskey = P
 open-in_private-container =
   .label = Open in Newtab with Private Container
+
+## about:telemetry
+telemetry-page-subtitle = Midori Browser does not collect telemetry about your installation - any telemetry modules are disabled when the browser is built. What you do in your browser is only known by you.
+telemetry-privacy-policy = Privacy Policy
+
+

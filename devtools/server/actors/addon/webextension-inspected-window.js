@@ -103,6 +103,50 @@ function logAccessDeniedWarning(window, callerInfo, extensionPolicy) {
   Services.console.logMessage(error);
 }
 
+function extensionAllowedToInspectPrincipal(extensionPolicy, principal) {
+  if (principal.isNullPrincipal) {
+    // data: and sandboxed documents.
+    //
+    // Rather than returning true unconditionally, we go through additional
+    // checks to prevent execution in sandboxed documents created by principals
+    // that extensions cannot access otherwise.
+    principal = principal.precursorPrincipal;
+    if (!principal) {
+      // Top-level about:blank, etc.
+      return true;
+    }
+  }
+  if (!principal.isContentPrincipal) {
+    return false;
+  }
+  const principalURI = principal.URI;
+  if (principalURI.schemeIs("https") || principalURI.schemeIs("http")) {
+    if (WebExtensionPolicy.isRestrictedURI(principalURI)) {
+      return false;
+    }
+    if (extensionPolicy.quarantinedFromURI(principalURI)) {
+      return false;
+    }
+    // Common case: http(s) allowed.
+    return true;
+  }
+
+  if (principalURI.schemeIs("moz-extension")) {
+    // Ordinarily, we don't allow extensions to execute arbitrary code in
+    // their own context. The devtools.inspectedWindow.eval API is a special
+    // case - this can only be used through the devtools_page feature, which
+    // requires the user to open the developer tools first. If an extension
+    // really wants to debug itself, we let it do so.
+    return extensionPolicy.id === principal.addonId;
+  }
+
+  if (principalURI.schemeIs("file")) {
+    return true;
+  }
+
+  return false;
+}
+
 class CustomizedReload {
   constructor(params) {
     this.docShell = params.targetActor.window.docShell;

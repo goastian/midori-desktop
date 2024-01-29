@@ -122,7 +122,9 @@ class Translator {
    * @return an already addrefed GradientStops for our DrawTarget type
    */
   virtual already_AddRefed<GradientStops> GetOrCreateGradientStops(
-      GradientStop* aRawStops, uint32_t aNumStops, ExtendMode aExtendMode) {
+      DrawTarget* aDrawTarget, GradientStop* aRawStops, uint32_t aNumStops,
+      ExtendMode aExtendMode) {
+    return aDrawTarget->CreateGradientStops(aRawStops, aNumStops, aExtendMode);
     return GetReferenceDrawTarget()->CreateGradientStops(aRawStops, aNumStops,
                                                          aExtendMode);
   }

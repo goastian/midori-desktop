@@ -19,7 +19,8 @@
 
 /* This matches the <tree> height from dialog.css */
 richlistbox {
-  height: 15em;
+  min-height: 15em;
+  contain: size;
 }
 
 richlistbox,
