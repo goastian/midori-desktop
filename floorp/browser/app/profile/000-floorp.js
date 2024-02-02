@@ -127,7 +127,7 @@ pref("floorp.browser.tabs.openNewTabPosition", -1);
 //ネイティブ実装垂直タブ
 pref("floorp.browser.native.verticaltabs.enabled", false);
 pref("floorp.verticaltab.hover.enabled", false);
-pref("floorp.browser.tabs.verticaltab.right", false);
+pref("floorp.browser.tabs.verticaltab.right", true);
 
 // Tab Stack
 pref("floorp.browser.tabStack.enabled", true);
@@ -379,7 +379,7 @@ pref("userChrome.rounding.square_tab",           true);
 // pref("userChrome.compatibility.dynamic_separator",    true); // Need dynamic_separator
 
 // pref("userChrome.compatibility.os.linux_non_native_titlebar_button", true);
-// pref("userChrome.compatibility.os.windows_maximized", true);
+pref("userChrome.compatibility.os.windows_maximized", true);
 // pref("userChrome.compatibility.os.win11",             true);
 
 // == Theme Custom Settings ====================================================
