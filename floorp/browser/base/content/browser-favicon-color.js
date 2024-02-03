@@ -147,17 +147,9 @@ function setFaviconColorToTitlebar() {
 
 function enableFaviconColorToTitlebar() {
   setFaviconColorToTitlebar();
-  gBrowser.tabContainer.addEventListener(
-    "TabSelect",
-    setFaviconColorToTitlebar
-  );
-  gBrowser.tabContainer.addEventListener("TabMove", setFaviconColorToTitlebar);
-  gBrowser.tabContainer.addEventListener(
-    "TabAttrModified",
-    setFaviconColorToTitlebar
-  );
-  gBrowser.tabContainer.addEventListener("TabClose", setFaviconColorToTitlebar);
-  gBrowser.tabContainer.addEventListener("TabOpen", setFaviconColorToTitlebar);
+  document.addEventListener("floorpOnLocationChangeEvent", function () {
+    setFaviconColorToTitlebar();
+  });
 }
 
 function disableFaviconColorToTitlebar() {
@@ -166,26 +158,9 @@ function disableFaviconColorToTitlebar() {
     elems[i].remove();
   }
 
-  gBrowser.tabContainer.removeEventListener(
-    "TabSelect",
-    setFaviconColorToTitlebar
-  );
-  gBrowser.tabContainer.removeEventListener(
-    "TabMove",
-    setFaviconColorToTitlebar
-  );
-  gBrowser.tabContainer.removeEventListener(
-    "TabAttrModified",
-    setFaviconColorToTitlebar
-  );
-  gBrowser.tabContainer.removeEventListener(
-    "TabClose",
-    setFaviconColorToTitlebar
-  );
-  gBrowser.tabContainer.removeEventListener(
-    "TabOpen",
-    setFaviconColorToTitlebar
-  );
+  document.removeEventListener("floorpOnLocationChangeEvent", function () {
+    setFaviconColorToTitlebar();
+  });
 }
 
 if (Services.prefs.getBoolPref("floorp.titlebar.favicon.color", true)) {
