@@ -6,7 +6,6 @@
 # © 2023 Midori Projects & Contributors
 
 #! SELF HOST DOES NOT SUPPORTED
-#TODO! buildjet config not implemented
 #TODO: separate Publish to other workflow
 
 #? On linux x86_64 build, pgo build is enabled on default.
@@ -33,15 +32,6 @@ on:
       mar:
         type: boolean
         default: false
-      #? If you want to ALWAYS build with buildjet, do default to true
-      buildjet:
-        type: boolean
-        default: false
-      lightning-build:
-        description: enable lightning build
-        type: boolean
-        default: false
-      #? buildjet cache also is, but idk how to use on sccache
       MOZ_BUILD_DATE:
         type: string
         default: ""
@@ -63,7 +53,7 @@ on:
 
 jobs:
   linux-build:
-    runs-on: ${{fromJson('["ubuntu-latest","buildjet-16vcpu-ubuntu-2204"]')[inputs.buildjet]}}
+    runs-on: ubuntu-latest
     outputs:
       mar_name: ${{steps.gen-mar.outputs.MAR_NAME}}
       mar_size: ${{steps.gen-mar.outputs.MAR_SIZE}}
@@ -74,20 +64,12 @@ jobs:
       with:
         submodules: 'recursive'
 
-    - name: Clone l10n-central 🧬
-      uses: actions/checkout@v3
-      with:
-        repository: goastian/l10n-central
-        path: l10n-central
-
     - name: Change PPA mirror servers
       run: |
         sudo perl -p -i -e 's%(deb(?:-src|)\s+)https?://(?!archive\.canonical\.com|security\.ubuntu\.com)[^\s]+%$1http://archive.ubuntu.com/ubuntu/%' /etc/apt/sources.list
         sudo apt update
-
-    #! ON UBUNTU RUNNER
+  
     - name: Setup Disk & Swap Space 💿
-      if: ${{ !inputs.buildjet }}
       run: |
         chmod +x .github/workflows/src/disk_swap_for_github_runner.sh
         .github/workflows/src/disk_swap_for_github_runner.sh
@@ -125,7 +107,6 @@ jobs:
         disable_updater = os.environ["GHA_disable_updater"] == "true"
         aarch64 = os.environ["GHA_aarch64"] == "true"
         beta= os.environ["GHA_beta"] == "true"
-        lightning_build = os.environ["GHA_lightning_build"] == "true"
         MOZ_BUILD_DATE= os.environ["GHA_MOZ_BUILD_DATE"]
 
         os.system("sudo apt update")
@@ -140,13 +121,8 @@ jobs:
 
         if beta:
           mozconfig.append('ac_add_options --with-branding=browser/branding/beta')
-        elif lightning_build:
-          mozconfig.append('ac_add_options --with-branding=browser/branding/lightning')
         else:
           mozconfig.append('ac_add_options --with-branding=browser/branding/official')
-
-        if lightning_build:
-          mozconfig.append('ac_add_options --enable-lightning-build')
 
         if disable_updater:
           mozconfig.append('ac_add_options --disable-updater')
@@ -181,40 +157,34 @@ jobs:
         GHA_disable_updater: ${{inputs.disable-updater}}
         GHA_aarch64: ${{inputs.aarch64}}
         GHA_beta: ${{inputs.beta}}
-        GHA_lightning_build: ${{inputs.lightning-build}}
         GHA_MOZ_BUILD_DATE: ${{inputs.MOZ_BUILD_DATE}}
       shell: python3 {0}
 
     - name: Change update url if beta
       if: inputs.beta
       run: |
-        sed -i 's|https://@MOZ_APPUPDATE_HOST@/browser/%DISPLAY_VERSION%/%OS%/%ARCH%/update.xml|https://@MOZ_APPUPDATE_HOST@/${{ github.repository }}/releases/download/beta/LINUX-x86_64.xml |g' ./build/application.ini.in
+        sed -i 's|https://@MOZ_APPUPDATE_HOST@/browser/%DISPLAY_VERSION%/%OS%/%ARCH%/update.xml|https://@MOZ_APPUPDATE_HOST@/browser/beta/%OS%/%ARCH%/update.xml |g' ./build/application.ini.in
 
     #On Package, if not copies, error occur
     - name: Copy l10n files if beta
       if: inputs.beta
       run: |
-          for dir in $(ls -l $PWD/l10n-central/l10n-central | grep ^d | awk '{print $9}'); do
-            mkdir -p $PWD/l10n-central/l10n-central/$dir/browser/branding/beta
-            cp ./browser/branding/beta/locales/en-US/brand.dtd $PWD/l10n-central/l10n-central/$dir/browser/branding/beta/brand.dtd
-            cp ./browser/branding/beta/locales/en-US/brand.ftl $PWD/l10n-central/l10n-central/$dir/browser/branding/beta/brand.ftl
-            cp ./browser/branding/beta/locales/en-US/brand.properties $PWD/l10n-central/l10n-central/$dir/browser/branding/beta/brand.properties
+          for dir in $(ls -l $PWD/floorp/browser/locales/l10n-central | grep ^d | awk '{print $9}'); do
+            mkdir -p $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta
+            cp ./browser/branding/beta/locales/en-US/brand.dtd $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.dtd
+            cp ./browser/branding/beta/locales/en-US/brand.ftl $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.ftl
+            cp ./browser/branding/beta/locales/en-US/brand.properties $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.properties
           done
-          
-    - name: Copy l10n files if lightning
-      if : inputs.lightning-build
+
+    - name: Change Release Note for Japanese
+      if: inputs.release-note-url-ja
       run: |
-          for dir in $(ls -l $PWD/l10n-central/l10n-central | grep ^d | awk '{print $9}'); do
-            mkdir -p $PWD/l10n-central/l10n-central/$dir/browser/branding/lightning
-            cp ./browser/branding/lightning/locales/en-US/brand.dtd $PWD/l10n-central/l10n-central/$dir/browser/branding/lightning/brand.dtd
-            cp ./browser/branding/lightning/locales/en-US/brand.ftl $PWD/l10n-central/l10n-central/$dir/browser/branding/lightning/brand.ftl
-            cp ./browser/branding/lightning/locales/en-US/brand.properties $PWD/l10n-central/l10n-central/$dir/browser/branding/lightning/brand.properties
-          done
+
+        echo "$(cat ./browser/branding/official/pref/firefox-branding.js)"
 
     - name: Change Release Note URL
       if: inputs.release-note-url
       run: |
-        sed -i 's|https://astian.org/midori-en/|${{inputs.release-note-url}}|g' ./browser/branding/official/pref/firefox-branding.js
         echo "$(cat ./browser/branding/official/pref/firefox-branding.js)"
 
     - name: Build 🔨
@@ -251,7 +221,7 @@ jobs:
       run: |
         rm -fr ./third_party/rust
         rm -fr ./third_party/libwebrtc
-
+        
     - name: Package 1 - mach 🎁
       run: |
         if [[ -n $GHA_MOZ_BUILD_DATE ]];then
@@ -259,7 +229,7 @@ jobs:
         fi
         ./mach package
 
-        ./mach package-multi-locale --locales ar cs da de el en-US en-GB es-ES es-MX fr hu id it ja ko lt nl nn-NO pl pt-BR pt-PT ru sv-SE th tr vi zh-CN zh-TW
+        ./mach package-multi-locale --locales ar cs da de el en-US en-GB es-ES fr hu id it ja ko lt nl nn-NO pl pt-BR pt-PT ru sv-SE th tr vi zh-CN zh-TW
       env:
         GHA_MOZ_BUILD_DATE: ${{inputs.MOZ_BUILD_DATE}}
 
