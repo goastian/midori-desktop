@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2020 Benjamin Peterson
+# Copyright (c) 2010-2019 Benjamin Peterson
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -29,7 +29,7 @@ import sys
 import types
 
 __author__ = "Benjamin Peterson <benjamin@python.org>"
-__version__ = "1.16.0"
+__version__ = "1.13.0"
 
 
 # Useful for very coarse version differentiation.
@@ -70,11 +70,6 @@ else:
             # 64-bit
             MAXSIZE = int((1 << 63) - 1)
         del X
-
-if PY34:
-    from importlib.util import spec_from_loader
-else:
-    spec_from_loader = None
 
 
 def _add_doc(func, doc):
@@ -191,11 +186,6 @@ class _SixMetaPathImporter(object):
             return self
         return None
 
-    def find_spec(self, fullname, path, target=None):
-        if fullname in self.known_modules:
-            return spec_from_loader(fullname, self)
-        return None
-
     def __get_module(self, fullname):
         try:
             return self.known_modules[fullname]
@@ -233,12 +223,6 @@ class _SixMetaPathImporter(object):
         return None
     get_source = get_code  # same as get_code
 
-    def create_module(self, spec):
-        return self.load_module(spec.name)
-
-    def exec_module(self, module):
-        pass
-
 _importer = _SixMetaPathImporter(__name__)
 
 
@@ -275,7 +259,7 @@ _moved_attributes = [
     MovedModule("copyreg", "copy_reg"),
     MovedModule("dbm_gnu", "gdbm", "dbm.gnu"),
     MovedModule("dbm_ndbm", "dbm", "dbm.ndbm"),
-    MovedModule("_dummy_thread", "dummy_thread", "_dummy_thread" if sys.version_info < (3, 9) else "_thread"),
+    MovedModule("_dummy_thread", "dummy_thread", "_dummy_thread"),
     MovedModule("http_cookiejar", "cookielib", "http.cookiejar"),
     MovedModule("http_cookies", "Cookie", "http.cookies"),
     MovedModule("html_entities", "htmlentitydefs", "html.entities"),
@@ -660,11 +644,9 @@ if PY3:
     if sys.version_info[1] <= 1:
         _assertRaisesRegex = "assertRaisesRegexp"
         _assertRegex = "assertRegexpMatches"
-        _assertNotRegex = "assertNotRegexpMatches"
     else:
         _assertRaisesRegex = "assertRaisesRegex"
         _assertRegex = "assertRegex"
-        _assertNotRegex = "assertNotRegex"
 else:
     def b(s):
         return s
@@ -686,7 +668,6 @@ else:
     _assertCountEqual = "assertItemsEqual"
     _assertRaisesRegex = "assertRaisesRegexp"
     _assertRegex = "assertRegexpMatches"
-    _assertNotRegex = "assertNotRegexpMatches"
 _add_doc(b, """Byte literal""")
 _add_doc(u, """Text literal""")
 
@@ -701,10 +682,6 @@ def assertRaisesRegex(self, *args, **kwargs):
 
 def assertRegex(self, *args, **kwargs):
     return getattr(self, _assertRegex)(*args, **kwargs)
-
-
-def assertNotRegex(self, *args, **kwargs):
-    return getattr(self, _assertNotRegex)(*args, **kwargs)
 
 
 if PY3:
@@ -742,7 +719,16 @@ else:
 """)
 
 
-if sys.version_info[:2] > (3,):
+if sys.version_info[:2] == (3, 2):
+    exec_("""def raise_from(value, from_value):
+    try:
+        if from_value is None:
+            raise value
+        raise value from from_value
+    finally:
+        value = None
+""")
+elif sys.version_info[:2] > (3, 2):
     exec_("""def raise_from(value, from_value):
     try:
         raise value from from_value
@@ -822,33 +808,13 @@ if sys.version_info[:2] < (3, 3):
 _add_doc(reraise, """Reraise an exception.""")
 
 if sys.version_info[0:2] < (3, 4):
-    # This does exactly the same what the :func:`py3:functools.update_wrapper`
-    # function does on Python versions after 3.2. It sets the ``__wrapped__``
-    # attribute on ``wrapper`` object and it doesn't raise an error if any of
-    # the attributes mentioned in ``assigned`` and ``updated`` are missing on
-    # ``wrapped`` object.
-    def _update_wrapper(wrapper, wrapped,
-                        assigned=functools.WRAPPER_ASSIGNMENTS,
-                        updated=functools.WRAPPER_UPDATES):
-        for attr in assigned:
-            try:
-                value = getattr(wrapped, attr)
-            except AttributeError:
-                continue
-            else:
-                setattr(wrapper, attr, value)
-        for attr in updated:
-            getattr(wrapper, attr).update(getattr(wrapped, attr, {}))
-        wrapper.__wrapped__ = wrapped
-        return wrapper
-    _update_wrapper.__doc__ = functools.update_wrapper.__doc__
-
     def wraps(wrapped, assigned=functools.WRAPPER_ASSIGNMENTS,
               updated=functools.WRAPPER_UPDATES):
-        return functools.partial(_update_wrapper, wrapped=wrapped,
-                                 assigned=assigned, updated=updated)
-    wraps.__doc__ = functools.wraps.__doc__
-
+        def wrapper(f):
+            f = functools.wraps(wrapped, assigned, updated)(f)
+            f.__wrapped__ = wrapped
+            return f
+        return wrapper
 else:
     wraps = functools.wraps
 
@@ -906,11 +872,12 @@ def ensure_binary(s, encoding='utf-8', errors='strict'):
       - `str` -> encoded to `bytes`
       - `bytes` -> `bytes`
     """
-    if isinstance(s, binary_type):
-        return s
     if isinstance(s, text_type):
         return s.encode(encoding, errors)
-    raise TypeError("not expecting type '%s'" % type(s))
+    elif isinstance(s, binary_type):
+        return s
+    else:
+        raise TypeError("not expecting type '%s'" % type(s))
 
 
 def ensure_str(s, encoding='utf-8', errors='strict'):
@@ -924,15 +891,12 @@ def ensure_str(s, encoding='utf-8', errors='strict'):
       - `str` -> `str`
       - `bytes` -> decoded to `str`
     """
-    # Optimization: Fast return for the common case.
-    if type(s) is str:
-        return s
-    if PY2 and isinstance(s, text_type):
-        return s.encode(encoding, errors)
-    elif PY3 and isinstance(s, binary_type):
-        return s.decode(encoding, errors)
-    elif not isinstance(s, (text_type, binary_type)):
+    if not isinstance(s, (text_type, binary_type)):
         raise TypeError("not expecting type '%s'" % type(s))
+    if PY2 and isinstance(s, text_type):
+        s = s.encode(encoding, errors)
+    elif PY3 and isinstance(s, binary_type):
+        s = s.decode(encoding, errors)
     return s
 
 
@@ -955,9 +919,10 @@ def ensure_text(s, encoding='utf-8', errors='strict'):
         raise TypeError("not expecting type '%s'" % type(s))
 
 
+
 def python_2_unicode_compatible(klass):
     """
-    A class decorator that defines __unicode__ and __str__ methods under Python 2.
+    A decorator that defines __unicode__ and __str__ methods under Python 2.
     Under Python 3 it does nothing.
 
     To support Python 2 and 3 with a single code base, define a __str__ method
