@@ -3092,20 +3092,14 @@ void nsLayoutUtils::PaintFrame(gfxContext* aRenderingContext, nsIFrame* aFrame,
   MOZ_ASSERT(builder && list && metrics);
 
   nsAutoString uri;
-  if (MOZ_LOG_TEST(GetLoggerByProcess(), LogLevel::Info) ||
-      MOZ_UNLIKELY(gfxUtils::DumpDisplayList()) ||
-      MOZ_UNLIKELY(gfxEnv::MOZ_DUMP_PAINT())) {
-    if (Document* doc = presContext->Document()) {
-      Unused << doc->GetDocumentURI(uri);
-    }
-  }
+  Document* doc = presContext->Document();
+  MOZ_ASSERT(doc);
+  Unused << doc->GetDocumentURI(uri);
 
   nsAutoString frameName, displayRootName;
 #ifdef DEBUG_FRAME_DUMP
-  if (MOZ_LOG_TEST(GetLoggerByProcess(), LogLevel::Info)) {
-    aFrame->GetFrameName(frameName);
-    displayRoot->GetFrameName(displayRootName);
-  }
+  aFrame->GetFrameName(frameName);
+  displayRoot->GetFrameName(displayRootName);
 #endif
 
   DL_LOGI("PaintFrame: %p (%s), DisplayRoot: %p (%s), Builder: %p, URI: %s",

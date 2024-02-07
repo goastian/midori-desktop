@@ -9,7 +9,6 @@
 #include "nsStreamUtils.h"
 #include "gfxColor.h"
 #include "mozilla/CheckedInt.h"
-#include "mozilla/UniquePtrExtensions.h"
 
 extern "C" {
 #include "jpeglib.h"
@@ -149,15 +148,6 @@ nsJPEGEncoder::InitFromData(const uint8_t* aData,
     }
   }
 
-  UniquePtr<uint8_t[]> rowptr;
-  if (aInputFormat == INPUT_FORMAT_RGBA ||
-      aInputFormat == INPUT_FORMAT_HOSTARGB) {
-    rowptr = MakeUniqueFallible<uint8_t[]>(aWidth * 3);
-    if (NS_WARN_IF(!rowptr)) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-  }
-
   jpeg_compress_struct cinfo;
 
   // We set up the normal JPEG error routines, then override error_exit.
@@ -206,14 +196,14 @@ nsJPEGEncoder::InitFromData(const uint8_t* aData,
       jpeg_write_scanlines(&cinfo, const_cast<uint8_t**>(&row), 1);
     }
   } else if (aInputFormat == INPUT_FORMAT_RGBA) {
-    MOZ_ASSERT(rowptr);
+    UniquePtr<uint8_t[]> rowptr = MakeUnique<uint8_t[]>(aWidth * 3);
     uint8_t* row = rowptr.get();
     while (cinfo.next_scanline < cinfo.image_height) {
       ConvertRGBARow(&aData[cinfo.next_scanline * aStride], row, aWidth);
       jpeg_write_scanlines(&cinfo, &row, 1);
     }
   } else if (aInputFormat == INPUT_FORMAT_HOSTARGB) {
-    MOZ_ASSERT(rowptr);
+    UniquePtr<uint8_t[]> rowptr = MakeUnique<uint8_t[]>(aWidth * 3);
     uint8_t* row = rowptr.get();
     while (cinfo.next_scanline < cinfo.image_height) {
       ConvertHostARGBRow(&aData[cinfo.next_scanline * aStride], row, aWidth);

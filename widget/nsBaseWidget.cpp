@@ -2218,10 +2218,8 @@ nsresult nsBaseWidget::AsyncEnableDragDrop(bool aEnable) {
 }
 
 void nsBaseWidget::SwipeFinished() {
-  if (mSwipeTracker) {
   mSwipeTracker->Destroy();
   mSwipeTracker = nullptr;
-  }
 }
 
 void nsBaseWidget::ReportSwipeStarted(uint64_t aInputBlockId,

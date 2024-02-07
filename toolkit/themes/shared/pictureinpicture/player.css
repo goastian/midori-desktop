@@ -629,8 +629,8 @@ input:checked + .slider::before {
   }
 
   .end-controls {
-    grid-template-columns: 1fr 2fr 1fr 1fr;
-    grid-template-areas: "audio audio-scrubber closedcaption fullscreen";
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-areas: "audio closedcaption fullscreen";
   }
 }
 

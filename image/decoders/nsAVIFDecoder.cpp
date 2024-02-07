@@ -19,7 +19,6 @@
 
 #include "mozilla/Telemetry.h"
 #include "mozilla/TelemetryComms.h"
-#include "mozilla/UniquePtrExtensions.h"
 
 using namespace mozilla::gfx;
 
@@ -681,7 +680,7 @@ bool OwnedAOMImage::CloneFrom(aom_image_t* aImage, bool aIsAlpha) {
 
   // If aImage is alpha plane. The data is located in Y channel.
   if (aIsAlpha) {
-    mBuffer = MakeUniqueFallible<uint8_t[]>(yBufSize);
+    mBuffer = MakeUnique<uint8_t[]>(yBufSize);
     if (!mBuffer) {
       return false;
     }
@@ -703,7 +702,7 @@ bool OwnedAOMImage::CloneFrom(aom_image_t* aImage, bool aIsAlpha) {
   int crHeight = aom_img_plane_height(aImage, AOM_PLANE_V);
   size_t crBufSize = crStride * crHeight;
 
-  mBuffer = MakeUniqueFallible<uint8_t[]>(yBufSize + cbBufSize + crBufSize);
+  mBuffer = MakeUnique<uint8_t[]>(yBufSize + cbBufSize + crBufSize);
   if (!mBuffer) {
     return false;
   }
@@ -1729,8 +1728,8 @@ nsAVIFDecoder::DecodeResult nsAVIFDecoder::DoDecodeInternal(
     return AsVariant(NonDecoderResult::SizeOverflow);
   }
 
-  UniquePtr<uint8_t[]> rgbBuf =
-      MakeUniqueFallible<uint8_t[]>(rgbBufLength.value());
+  UniquePtr<uint8_t[]> rgbBuf = MakeUnique<uint8_t[]>(rgbBufLength.value());
+  const uint8_t* endOfRgbBuf = {rgbBuf.get() + rgbBufLength.value()};
 
   if (!rgbBuf) {
     MOZ_LOG(sAVIFLog, LogLevel::Debug,
@@ -1793,7 +1792,6 @@ nsAVIFDecoder::DecodeResult nsAVIFDecoder::DoDecodeInternal(
   }
 
   MOZ_LOG(sAVIFLog, LogLevel::Debug, ("[this=%p] writing to surface", this));
-  const uint8_t* endOfRgbBuf = {rgbBuf.get() + rgbBufLength.value()};
   WriteState writeBufferResult = WriteState::NEED_MORE_DATA;
   for (uint8_t* rowPtr = rgbBuf.get(); rowPtr < endOfRgbBuf;
        rowPtr += rgbStride.value()) {

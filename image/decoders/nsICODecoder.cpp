@@ -15,7 +15,6 @@
 #include "RasterImage.h"
 #include "mozilla/EndianUtils.h"
 #include "mozilla/gfx/Swizzle.h"
-#include "mozilla/UniquePtrExtensions.h"
 
 using namespace mozilla::gfx;
 
@@ -491,11 +490,7 @@ LexerTransition<ICOState> nsICODecoder::PrepareForMask() {
     MOZ_ASSERT(bmpDecoder->GetImageDataLength() ==
                mDownscaler->TargetSize().width *
                    mDownscaler->TargetSize().height * sizeof(uint32_t));
-    mMaskBuffer =
-        MakeUniqueFallible<uint8_t[]>(bmpDecoder->GetImageDataLength());
-    if (NS_WARN_IF(!mMaskBuffer)) {
-      return Transition::TerminateFailure();
-    }
+    mMaskBuffer = MakeUnique<uint8_t[]>(bmpDecoder->GetImageDataLength());
     nsresult rv = mDownscaler->BeginFrame(mDirEntry->mSize.ToUnknownSize(),
                                           Nothing(), mMaskBuffer.get(),
                                           /* aHasAlpha = */ true,

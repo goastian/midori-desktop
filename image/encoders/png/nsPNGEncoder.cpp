@@ -10,7 +10,6 @@
 #include "nsString.h"
 #include "prprf.h"
 #include "mozilla/CheckedInt.h"
-#include "mozilla/UniquePtrExtensions.h"
 
 using namespace mozilla;
 
@@ -279,10 +278,7 @@ nsPNGEncoder::AddImageFrame(const uint8_t* aData,
   if (aInputFormat == INPUT_FORMAT_HOSTARGB) {
     // PNG requires RGBA with post-multiplied alpha, so we need to
     // convert
-    UniquePtr<uint8_t[]> row = MakeUniqueFallible<uint8_t[]>(aWidth * 4);
-    if (NS_WARN_IF(!row)) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
+    UniquePtr<uint8_t[]> row = MakeUnique<uint8_t[]>(aWidth * 4);
     for (uint32_t y = 0; y < aHeight; y++) {
       ConvertHostARGBRow(&aData[y * aStride], row.get(), aWidth,
                          useTransparency);
@@ -290,10 +286,7 @@ nsPNGEncoder::AddImageFrame(const uint8_t* aData,
     }
   } else if (aInputFormat == INPUT_FORMAT_RGBA && !useTransparency) {
     // RBGA, but we need to strip the alpha
-    UniquePtr<uint8_t[]> row = MakeUniqueFallible<uint8_t[]>(aWidth * 4);
-    if (NS_WARN_IF(!row)) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
+    UniquePtr<uint8_t[]> row = MakeUnique<uint8_t[]>(aWidth * 4);
     for (uint32_t y = 0; y < aHeight; y++) {
       StripAlpha(&aData[y * aStride], row.get(), aWidth);
       png_write_row(mPNG, row.get());

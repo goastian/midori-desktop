@@ -4240,7 +4240,7 @@ static bool CloneIsLegal(ContentParent* aCp, CanonicalBrowsingContext& aSource,
     return false;
   }
 
-  auto* targetEmbedder = aTarget.GetParentWindowContext();
+  auto* targetEmbedder = aSource.GetParentWindowContext();
   if (NS_WARN_IF(!targetEmbedder) ||
       NS_WARN_IF(targetEmbedder->GetContentParent() != aCp)) {
     return false;
