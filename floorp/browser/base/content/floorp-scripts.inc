@@ -20,6 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-favicon-color.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-UI-custom.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-manager-sidebar.js", this);
+    Services.scriptloader.loadSubScript("chrome://browser/content/browser-tabbar.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-tab-stacks.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-toolbar-features.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-statusbar.js", this);
@@ -32,8 +33,6 @@ document.addEventListener("DOMContentLoaded", () => {
     SessionStore.promiseInitialized.then(() => {
             Services.scriptloader.loadSubScript("chrome://browser/content/browser-UI-customizing-menu.js", this);
             Services.scriptloader.loadSubScript("chrome://browser/content/browser-verticaltabs.js", this);
-            Services.scriptloader.loadSubScript("chrome://browser/content/browser-tabbar.js", this);
-            Services.scriptloader.loadSubScript("chrome://browser/content/browser-flex-order.js", this);
     });
 }, { once: true });
 </script>

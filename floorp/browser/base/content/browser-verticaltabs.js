@@ -36,11 +36,15 @@ function checkBrowserIsStartup() {
 
 function setVerticalTabs() {
   if (Services.prefs.getIntPref("floorp.tabbar.style") == 2) {
+    console.log("Vertical tab bar enabled");
     Services.prefs.setBoolPref("floorp.browser.tabs.verticaltab", true);
+    window.setTimeout(() => {
 
       // Re-implement the vertical tab bar v2. This is a temporary solution cannot close tab correctly.
       // Vertical tab bar has to position at the  first of child the "browser" elem.
       document.getElementById("browser").prepend(document.getElementById("TabsToolbar"));
+
+      changeXULElementTagName("TabsToolbar", "vbox")
 
       document.getElementById('tabbrowser-arrowscrollbox').setAttribute('orient', 'vertical')
       document.getElementById('tabbrowser-tabs').setAttribute('orient', 'vertical')
@@ -53,6 +57,7 @@ function setVerticalTabs() {
       document.getElementById("TabsToolbar").removeAttribute('flex')
       document.getElementById("TabsToolbar").removeAttribute('hidden')
       document.getElementById("TabsToolbar").style.width = "350px"
+    }, 500);
 
     checkBrowserIsStartup();
 
@@ -94,6 +99,7 @@ function setVerticalTabs() {
     document.getElementById("TabsToolbar").setAttribute('flex', '1')
     // Reset the resize value, or else the tabs will end up squished
     document.getElementById("TabsToolbar").style.width = ''
+    Services.prefs.setBoolPref("floorp.browser.tabs.verticaltab", false);
     */
 
     Services.prefs.setBoolPref("floorp.browser.tabs.verticaltab", false);
@@ -108,5 +114,4 @@ Services.prefs.addObserver("floorp.tabbar.style", function () {
   } else {
     Services.prefs.setIntPref(tabbarContents.tabbarDisplayStylePref, 0);
   }
-  setVerticalTabs();
 });

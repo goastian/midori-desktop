@@ -88,15 +88,10 @@ vertical-tabbar =
 native-tabbar-tip = Sidebar add-ons and in-built sidebars cannot be used at the same time as Vertical Tabs as this leverages the Firefox sidebar.
 
 native-vertical-tab-show-right =
- .label = Show Vertical Tab Bar on the left side of the window
+ .label = Show Vertical Tab Bar on the right side of the window
 
 hover-vertical-tab =
  .label = Collapse Vertical Tab Bar
-
-floorp-show-vertical-tab-newtab-button =
-  .label = Show the "Open a new tab" button inside Vertical Tab Bar
-floorp-show-vertical-tab-scrollbar =
-  .label = Show scrollbar on Vertical Tab Bar
 
 TST = Tree Style Tab
 about-TST = Tree Style Tab is a popular add-on that allows you to display tabs in a tree structure. Midori 10 has a built-in this add-on. Please install the add-on restore Midori 10's built-in Tree Style Tab.

@@ -15,6 +15,7 @@
 #TabsToolbar {
   background-color: -moz-Dialog;
   max-width: 350px;
+  overflow-x: hidden;
   transition :min-width 150ms ease-in-out, max-width 150ms ease-in-out;
 }
 
@@ -83,10 +84,6 @@
   display: none;
 }
 
-.titlebar-spacer {
-  display: none !important;
-}
-
 #new-tab-button:hover, #TabsToolbar-customization-target > .toolbarbutton-1:hover {
   background: var(--toolbarbutton-hover-background);
 }
@@ -95,28 +92,10 @@
   background: var(--toolbarbutton-active-background);
 }
 
-#new-tab-button > .toolbarbutton-icon, #TabsToolbar-customization-target > .toolbarbutton-1 > .toolbarbutton-icon,
-#TabsToolbar-customization-target > .toolbarbutton-1 > .toolbarbutton-badge-stack {
-  background: none !important;
-  background-color: unset !important;
-  box-shadow: none !important;
-}
-
-#new-tab-button > .toolbarbutton-text, #TabsToolbar-customization-target > .toolbarbutton-1 > .toolbarbutton-text {
-  background: none !important;
-  background-color: unset !important;
-  display: inherit !important;
-}
-
 #tabbrowser-tabs {
   border-inline-start: none;
   margin-inline-start: 0;
   padding-inline-start: 0;
-  border-bottom: solid var(--toolbarseparator-color) 2px;
-  border-top: solid var(--toolbarseparator-color) 2px;
-  margin-bottom: 5px;
-  margin-left: 3px;
-  margin-right: 3px;
 }
 
 .tabbrowser-tab[first-visible-unpinned-tab] {
@@ -138,21 +117,4 @@
 #verticaltab-splitter {
   background: var(--toolbar-bgcolor);
   width: 8px;
-}
-
-#tabbrowser-arrowscrollbox::part(scrollbutton-up) {
-  display: none;
-}
-
-:root[customizing] #browser {
-  visibility: inherit !important;
-  max-height: 300px !important;
-}
-
-#TabsToolbar-customization-target > toolbarpaletteitem:not([notransition])[place="panel"], toolbarpaletteitem:not([notransition])[place="toolbar"] {
-  transition: max-width 150ms ease-in-out, min-width 150ms ease-in-out;
-}
-
-:root[customizing] #TabsToolbar .toolbarbutton-1 > .toolbarbutton-text {
-  display: inherit !important;
 }
