@@ -6,33 +6,31 @@
 //import utils
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-const UICustomPrefHandler = function (pref, callback) {
-  let prefValue = Services.prefs.getBoolPref(pref, false);
-  try {
-    callback({
-      pref,
-      prefValue,
-      reason: "init",
-    });
-  } catch (e) {
-    console.error(e);
-  }
-  Services.prefs.addObserver(pref, function () {
-    let prefValue = Services.prefs.getBoolPref(pref, false);
+const observePreference = function (prefName, callback) {
+  let prefValue = Services.prefs.getBoolPref(prefName, false);
+
+  const notifyCallback = (reason) => {
     try {
       callback({
-        pref,
+        pref: prefName,
         prefValue,
-        reason: "changed",
+        reason,
       });
     } catch (e) {
       console.error(e);
     }
+  };
+
+  notifyCallback("init");
+
+  Services.prefs.addObserver(prefName, () => {
+    prefValue = Services.prefs.getBoolPref(prefName, false);
+    notifyCallback("changed");
   });
 };
 
 // prefs
-UICustomPrefHandler("floorp.material.effect.enable", function (event) {
+observePreference("floorp.material.effect.enable", function (event) {
   if (event.prefValue) {
     let Tag = document.createElement("style");
     Tag.innerText = `@import url(chrome://browser/skin/options/micaforeveryone.css)`;
@@ -43,7 +41,7 @@ UICustomPrefHandler("floorp.material.effect.enable", function (event) {
   }
 });
 
-UICustomPrefHandler(
+observePreference(
   "floorp.Tree-type.verticaltab.optimization",
   function (event) {
     if (event.prefValue) {
@@ -57,7 +55,7 @@ UICustomPrefHandler(
   }
 );
 
-UICustomPrefHandler("floorp.optimized.msbutton.ope", function (event) {
+observePreference("floorp.optimized.msbutton.ope", function (event) {
   if (event.prefValue) {
     let Tag = document.createElement("style");
     Tag.innerText = `@import url(chrome://browser/skin/options/msbutton.css)`;
@@ -68,7 +66,7 @@ UICustomPrefHandler("floorp.optimized.msbutton.ope", function (event) {
   }
 });
 
-UICustomPrefHandler("floorp.bookmarks.bar.focus.mode", function (event) {
+observePreference("floorp.bookmarks.bar.focus.mode", function (event) {
   if (event.prefValue) {
     let Tag = document.createElement("style");
     Tag.innerText = `@import url(chrome://browser/skin/options/bookmarkbar_autohide.css)`;
@@ -79,7 +77,7 @@ UICustomPrefHandler("floorp.bookmarks.bar.focus.mode", function (event) {
   }
 });
 
-UICustomPrefHandler("floorp.bookmarks.fakestatus.mode", function (event) {
+observePreference("floorp.bookmarks.fakestatus.mode", function (event) {
   if (event.prefValue) {
     setTimeout(
       function () {
@@ -102,7 +100,7 @@ UICustomPrefHandler("floorp.bookmarks.fakestatus.mode", function (event) {
   }
 });
 
-UICustomPrefHandler("floorp.search.top.mode", function (event) {
+observePreference("floorp.search.top.mode", function (event) {
   if (event.prefValue) {
     let Tag = document.createElement("style");
     Tag.innerText = `@import url(chrome://browser/skin/options/move_page_inside_searchbar.css)`;
@@ -113,7 +111,7 @@ UICustomPrefHandler("floorp.search.top.mode", function (event) {
   }
 });
 
-UICustomPrefHandler("floorp.legacy.dlui.enable", function (event) {
+observePreference("floorp.legacy.dlui.enable", function (event) {
   if (event.prefValue) {
     let Tag = document.createElement("style");
     Tag.innerText = `@import url(chrome://browser/skin/options/browser-custum-dlmgr.css)`;
@@ -124,7 +122,7 @@ UICustomPrefHandler("floorp.legacy.dlui.enable", function (event) {
   }
 });
 
-UICustomPrefHandler("floorp.downloading.red.color", function (event) {
+observePreference("floorp.downloading.red.color", function (event) {
   if (event.prefValue) {
     let Tag = document.createElement("style");
     Tag.innerText = `@import url(chrome://browser/skin/options/downloading-redcolor.css`;
@@ -135,7 +133,7 @@ UICustomPrefHandler("floorp.downloading.red.color", function (event) {
   }
 });
 
-UICustomPrefHandler("floorp.navbar.bottom", function (event) {
+observePreference("floorp.navbar.bottom", function (event) {
   if (event.prefValue) {
     var Tag = document.createElement("style");
     Tag.setAttribute("id", "floorp-navvarcss");
@@ -173,7 +171,7 @@ UICustomPrefHandler("floorp.navbar.bottom", function (event) {
   }
 });
 
-UICustomPrefHandler("floorp.disable.fullscreen.notification", function (event) {
+observePreference("floorp.disable.fullscreen.notification", function (event) {
   if (event.prefValue) {
     var Tag = document.createElement("style");
     Tag.innerText = `@import url(chrome://browser/skin/options/disableFullScreenNotification.css)`;
@@ -184,7 +182,7 @@ UICustomPrefHandler("floorp.disable.fullscreen.notification", function (event) {
   }
 });
 
-UICustomPrefHandler("floorp.delete.browser.border", function (event) {
+observePreference("floorp.delete.browser.border", function (event) {
   if (event.prefValue) {
     var Tag = document.createElement("style");
     Tag.innerText = `@import url(chrome://browser/skin/options/delete-border.css)`;
@@ -194,6 +192,17 @@ UICustomPrefHandler("floorp.delete.browser.border", function (event) {
     document.getElementById("floorp-DB")?.remove();
   }
 });
+
+observePreference("floorp.hide.unifiedExtensionsButtton", function (event) {
+  if (event.prefValue) {
+    let Tag = document.createElement("style");
+    Tag.innerText = `#unified-extensions-button {display: none !important;}`;
+    Tag.id = "floorp-hide-unified-extensions-button";
+    document.head.appendChild(Tag);
+  } else {
+    document.getElementById("floorp-hide-unified-extensions-button")?.remove();
+  }
+ });
 
 /*------------------------------------------- sidebar -------------------------------------------*/
 
@@ -211,7 +220,7 @@ if (!Services.prefs.getBoolPref("floorp.browser.sidebar.enable", false)) {
 
 /*------------------------------------------- verticaltab -------------------------------------------*/
 
-UICustomPrefHandler("floorp.verticaltab.hover.enabled", function (event) {
+observePreference("floorp.verticaltab.hover.enabled", function (event) {
   if (Services.prefs.getIntPref("floorp.tabbar.style", false) != 2) {
     return;
   }
