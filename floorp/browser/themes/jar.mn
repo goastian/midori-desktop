@@ -122,6 +122,7 @@ browser.jar:
   skin/classic/browser/lepton/new-tab-photon.svg                            (designs/lepton/icons/new-tab-photon.svg)
   skin/classic/browser/lepton/new-tab-skip-forward-photon.svg               (designs/lepton/icons/new-tab-skip-forward-photon.svg)
   skin/classic/browser/lepton/new-tab.svg                                   (designs/lepton/icons/new-tab.svg)
+  skin/classic/browser/lepton/link-square.svg                               (designs/lepton/icons/link-square.svg)
   skin/classic/browser/lepton/notebook-subsection.svg                       (designs/lepton/icons/notebook-subsection.svg)
   skin/classic/browser/lepton/no-search-results.svg                         (designs/lepton/icons/no-search-results.svg)
   skin/classic/browser/lepton/password-hide.svg                             (designs/lepton/icons/password-hide.svg)
