@@ -98,7 +98,7 @@ const gCSKPane = {
 
             if (CSKIsExist) {
               const keyboradShortcutObj = utils.getInfoFunctions.getActionKey(action);
-              const key = keyboradShortcutObj.key
+              const key = keyboradShortcutObj.key;
               const modifiers = keyboradShortcutObj.modifiers ? keyboradShortcutObj.modifiers : undefined;
               let changedActions = Services.prefs.getStringPref(CustomKeyboardShortcutUtils.SHORTCUT_KEY_CHANGED_ARRAY_PREF, "");
               let changedActionsArray = changedActions.split(",");
@@ -135,10 +135,7 @@ const gCSKPane = {
                 );
               } else {
                 const descriptionItem = document.querySelector(`.csks-box-item-description[value="${action}"]`);
-                // Remove the "VK_" prefix
-                if (result.startsWith("VK_")) {
-                  result = result.slice(3);
-                }
+                let result = key ? key : keyboradShortcutObj.keyCode;
                 document.l10n.setAttributes(
                   descriptionItem,
                   "CSK-keyborad-shortcut-info-with-keycode",
