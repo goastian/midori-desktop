@@ -78,11 +78,15 @@ const bmsController = {
       }
     },
     setFlexOrder: () => {
+      let verticaltabEnabled = Services.prefs.getIntPref("floorp.tabbar.style") == 2;
       const fxSidebarPosition = "sidebar.position_start";
       const floorpSidebarPosition = "floorp.browser.sidebar.right";
       let fxSidebarPositionPref = Services.prefs.getBoolPref(fxSidebarPosition);
       let floorpSidebarPositionPref = Services.prefs.getBoolPref(
         floorpSidebarPosition
+      );
+      let verticaltabPositionPref = Services.prefs.getBoolPref(
+        "floorp.browser.tabs.verticaltab.right"
       );
       let fxSidebar = document.getElementById("sidebar-box");
       let fxSidebarSplitter = document.getElementById("sidebar-splitter");
@@ -90,55 +94,171 @@ const bmsController = {
       let floorpSidebarSplitter = document.getElementById("sidebar-splitter2");
       let floorpSidebarSelectBox =
         document.getElementById("sidebar-select-box");
+      let verticaltabbar = document.getElementById("TabsToolbar");
+      let verticaltabbarSplitter = document.getElementById(
+          "verticaltab-splitter"
+      );
       let browserBox = document.getElementById("appcontent");
 
       // floorpSidebarSelectBox has to always be the window's last child
+      // Vetical tab bar has to always be the window's first child.
+      // Fx's sidebar has to always be between the vertical tab bar and the midori's sidebar.
       // Seeking opinions on whether we should nest.
+      if (!verticaltabEnabled) {
+        if (
+          fxSidebarPositionPref === true &&
+          floorpSidebarPositionPref === true
+        ) {
+          //Firefox's sidebar position: left, Floorp's sidebar position: right
+          fxSidebar.style.order = "0";
+          fxSidebarSplitter.style.order = "1";
+          browserBox.style.order = "2";
+          floorpSidebarSplitter.style.order = "3";
+          floorpSidebar.style.order = "4";
+          floorpSidebarSelectBox.style.order = "5";
+        } else if (
+          fxSidebarPositionPref === true &&
+          floorpSidebarPositionPref === false
+        ) {
+          //Firefox's sidebar position: left, Floorp's sidebar position: left
+          floorpSidebarSelectBox.style.order = "0";
+          floorpSidebar.style.order = "1";
+          floorpSidebarSplitter.style.order = "2";
+          fxSidebar.style.order = "3";
+          fxSidebarSplitter.style.order = "4";
+          browserBox.style.order = "5";
+        } else if (
+          fxSidebarPositionPref === false &&
+          floorpSidebarPositionPref === true
+        ) {
+          //Firefox's sidebar position: right, Floorp's sidebar position: right
+          browserBox.style.order = "0";
+          fxSidebarSplitter.style.order = "1";
+          fxSidebar.style.order = "2";
+          floorpSidebarSplitter.style.order = "3";
+          floorpSidebar.style.order = "4";
+          floorpSidebarSelectBox.style.order = "5";
+        } else if (
+          fxSidebarPositionPref === false &&
+          floorpSidebarPositionPref === false
+        ) {
+          //Firefox's sidebar position: right, Floorp's sidebar position: left
+          floorpSidebarSelectBox.style.order = "0";
+          floorpSidebar.style.order = "1";
+          floorpSidebarSplitter.style.order = "2";
+          browserBox.style.order = "3";
+          fxSidebarSplitter.style.order = "4";
+          fxSidebar.style.order = "5";
+        }
+      } else if (verticaltabPositionPref && verticaltabEnabled) {
+        if (
+          fxSidebarPositionPref === true &&
+          floorpSidebarPositionPref === true
+        ) {
+          //Firefox's sidebar position: left, Floorp's sidebar position: right | Vertical tab bar position: left
+          fxSidebar.style.order = "0";
+          fxSidebarSplitter.style.order = "1";
+          browserBox.style.order = "2";
+          verticaltabbarSplitter.style.order = "3";
+          verticaltabbar.style.order = "4";
+          floorpSidebarSplitter.style.order = "5";
+          floorpSidebar.style.order = "6";
+          floorpSidebarSelectBox.style.order = "7";
+        } else if (
+          fxSidebarPositionPref === true &&
+          floorpSidebarPositionPref === false
+        ) {
+          //Firefox's sidebar position: left, Floorp's sidebar position: left | Vertical tab bar position: left
+          floorpSidebarSelectBox.style.order = "0";
+          floorpSidebar.style.order = "1";
+          floorpSidebarSplitter.style.order = "2";
+          fxSidebar.style.order = "3";
+          fxSidebarSplitter.style.order = "4";
+          verticaltabbar.style.order = "5";
+          verticaltabbarSplitter.style.order = "6";
+          browserBox.style.order = "7";
+        } else if (
+          fxSidebarPositionPref === false &&
+          floorpSidebarPositionPref === true
+        ) {
+          //Firefox's sidebar position: right, Floorp's sidebar position: right | Vertical tab bar position: left
+          verticaltabbar.style.order = "0";
+          verticaltabbarSplitter.style.order = "1";
+          browserBox.style.order = "2";
+          fxSidebarSplitter.style.order = "3";
+          fxSidebar.style.order = "4";
+          floorpSidebarSplitter.style.order = "5";
+          floorpSidebar.style.order = "6";
+          floorpSidebarSelectBox.style.order = "7";
+      } else if (
+        fxSidebarPositionPref === false &&
+        floorpSidebarPositionPref === false
+      ) {
+        //Firefox's sidebar position: right, Floorp's sidebar position: left | Vertical tab bar position: left
+        floorpSidebarSelectBox.style.order = "0";
+        floorpSidebar.style.order = "1";
+        floorpSidebarSplitter.style.order = "2";
+        fxSidebarSplitter.style.order = "3";
+        fxSidebar.style.order = "4";
+        browserBox.style.order = "5";
+        verticaltabbarSplitter.style.order = "6";
+        verticaltabbar.style.order = "7";
+      }
+     } else if (!verticaltabPositionPref && verticaltabEnabled) {
       if (
         fxSidebarPositionPref === true &&
         floorpSidebarPositionPref === true
       ) {
-        //Firefox's sidebar position: left, Floorp's sidebar position: right
+        //Firefox's sidebar position: left, Midori's sidebar position: right
         fxSidebar.style.order = "0";
         fxSidebarSplitter.style.order = "1";
         browserBox.style.order = "2";
-        floorpSidebarSplitter.style.order = "3";
-        floorpSidebar.style.order = "4";
-        floorpSidebarSelectBox.style.order = "5";
+        verticaltabbarSplitter.style.order = "3";
+        verticaltabbar.style.order = "4";
+        floorpSidebarSplitter.style.order = "5";
+        floorpSidebar.style.order = "6";
+        floorpSidebarSelectBox.style.order = "7";
       } else if (
         fxSidebarPositionPref === true &&
         floorpSidebarPositionPref === false
       ) {
-        //Firefox's sidebar position: left, Floorp's sidebar position: left
+        //Firefox's sidebar position: left, Midori's sidebar position: left | Vertical tab bar position: right
         floorpSidebarSelectBox.style.order = "0";
         floorpSidebar.style.order = "1";
         floorpSidebarSplitter.style.order = "2";
         fxSidebar.style.order = "3";
         fxSidebarSplitter.style.order = "4";
         browserBox.style.order = "5";
+        verticaltabbar.style.order = "6";
+        verticaltabbarSplitter.style.order = "7";
       } else if (
         fxSidebarPositionPref === false &&
         floorpSidebarPositionPref === true
       ) {
-        //Firefox's sidebar position: right, Floorp's sidebar position: right
+        // Firefox's sidebar position: right, Midori's sidebar position: right | Vertical tab bar position: right
         browserBox.style.order = "0";
-        fxSidebarSplitter.style.order = "1";
-        fxSidebar.style.order = "2";
-        floorpSidebarSplitter.style.order = "3";
-        floorpSidebar.style.order = "4";
-        floorpSidebarSelectBox.style.order = "5";
-      } else if (
-        fxSidebarPositionPref === false &&
-        floorpSidebarPositionPref === false
-      ) {
-        //Firefox's sidebar position: right, Floorp's sidebar position: left
+        verticaltabbarSplitter.style.order = "1";
+        verticaltabbar.style.order = "2";
+        fxSidebarSplitter.style.order = "3";
+        fxSidebar.style.order = "4";
+        floorpSidebarSplitter.style.order = "5";
+        floorpSidebar.style.order = "6";
+        floorpSidebarSelectBox.style.order = "7";
+     } else if (
+       fxSidebarPositionPref === false &&
+       floorpSidebarPositionPref === false
+     ) {
+        //Firefox's sidebar position: right, Midori's sidebar position: left | Vertical tab bar position: right
         floorpSidebarSelectBox.style.order = "0";
         floorpSidebar.style.order = "1";
         floorpSidebarSplitter.style.order = "2";
         browserBox.style.order = "3";
-        fxSidebarSplitter.style.order = "4";
-        fxSidebar.style.order = "5";
+        verticaltabbarSplitter.style.order = "4";
+        verticaltabbar.style.order = "5";
+        fxSidebarSplitter.style.order = "6";
+        fxSidebar.style.order = "7";
       }
+    }
     },
     selectSidebarItem: event => {
       let custom_url_id = event.target.id.replace("select-", "");
@@ -813,12 +933,17 @@ const bmsController = {
   // Floorp pref: true = right, false = left
   const fxSidebarPosition = "sidebar.position_start";
   const floorpSidebarPosition = "floorp.browser.sidebar.right";
+  const verticaltabPosition = "floorp.browser.tabs.verticaltab.right";
   Services.prefs.addObserver(
     fxSidebarPosition,
     bmsController.eventFunctions.setFlexOrder
   );
   Services.prefs.addObserver(
     floorpSidebarPosition,
+    bmsController.eventFunctions.setFlexOrder
+  );
+  Services.prefs.addObserver(
+    verticaltabPosition,
     bmsController.eventFunctions.setFlexOrder
   );
   // Run function when browser start.

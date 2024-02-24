@@ -493,7 +493,7 @@ browser.jar:
   skin/classic/browser/lepton/toolbox.svg                                   (designs/lepton/icons/toolbox.svg)
   skin/classic/browser/lepton/mail-inbox-all.svg                            (designs/lepton/icons/mail-inbox-all.svg)
   skin/classic/browser/addons.svg                                           (icons/addons.svg)
-
+  skin/classic/browser/lepton/dismiss-filled.svg                            (designs/lepton/icons/dismiss-filled.svg)
 # template icons
   skin/classic/browser/icons/welcome-image-first-option.png         (icons/welcome-image-first-option.png)
   skin/classic/browser/icons/welcome-image-second-option.png        (icons/welcome-image-second-option.png)

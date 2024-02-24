@@ -27,12 +27,12 @@ document.addEventListener("DOMContentLoaded", () => {
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-preferences.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-pinned-tabs-title.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-chromeCSS.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-verticaltabs.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-workspace.js", this);
 
 // If script need more delay, use the following code.
     SessionStore.promiseInitialized.then(() => {
             Services.scriptloader.loadSubScript("chrome://browser/content/browser-UI-customizing-menu.js", this);
+            Services.scriptloader.loadSubScript("chrome://browser/content/browser-verticaltabs.js", this);
     });
 }, { once: true });
 </script>

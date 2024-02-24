@@ -20,6 +20,7 @@ Preferences.addAll([
   { id: "floorp.verticaltab.hover.enabled", type: "bool" },
   { id: "floorp.titlebar.favicon.color", type: "bool" },
   { id: "floorp.Tree-type.verticaltab.optimization", type: "bool" },
+  { id: "floorp.browser.tabs.verticaltab.right", type: "bool" },
 ])
 var gDesign = {
   _pane: null,
