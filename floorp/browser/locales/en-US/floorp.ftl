@@ -87,6 +87,9 @@ vertical-tabbar =
  .label = Vertical Tab Bar (experimental)
 native-tabbar-tip = Sidebar add-ons and in-built sidebars cannot be used at the same time as Vertical Tabs as this leverages the Firefox sidebar.
 
+native-vertical-tab-show-right =
+ .label = Show Vertical Tab Bar on the right side of the window
+
 hover-vertical-tab =
  .label = Collapse Vertical Tab Bar
 
