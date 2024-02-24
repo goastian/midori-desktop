@@ -4,65 +4,74 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
-
-function setWorkspaceLabel() {
-  const workspaceButton = document.getElementById("workspace-button");
-  const customizeTarget = document.getElementById(
-    "nav-bar-customization-target"
-  );
-
-  if (!workspaceButton) {
-    console.info("Workspace button not found");
-    return;
-  }
-
-  customizeTarget.before(workspaceButton);
-}
-
-function checkBrowserIsStartup() {
-  const browserWindows = Services.wm.getEnumerator("navigator:browser");
-
-  while (browserWindows.hasMoreElements()) {
-    if (browserWindows.getNext() !== window) {
-      return;
-    }
-  }
-
-  SessionStore.promiseInitialized.then(() => {
-    window.setTimeout(setWorkspaceLabel, 1500);
-    window.setTimeout(setWorkspaceLabel, 3000);
-  });
-}
-
 function setVerticalTabs() {
   if (Services.prefs.getIntPref("floorp.tabbar.style") == 2) {
-    console.log("Vertical tab bar enabled");
     Services.prefs.setBoolPref("floorp.browser.tabs.verticaltab", true);
     window.setTimeout(() => {
+      const verticalTabs = document.querySelector(".toolbar-items");
+      verticalTabs.id = "toolbar-items-verticaltabs";
 
-      // Re-implement the vertical tab bar v2. This is a temporary solution cannot close tab correctly.
-      // Vertical tab bar has to position at the  first of child the "browser" elem.
-      document.getElementById("browser").prepend(document.getElementById("TabsToolbar"));
+      const sidebarBox = document.getElementById("sidebar-box");
+      //sidebarBox.style.setProperty("overflow-y", "scroll", "important")
 
-      changeXULElementTagName("TabsToolbar", "vbox")
-
-      document.getElementById('tabbrowser-arrowscrollbox').setAttribute('orient', 'vertical')
-      document.getElementById('tabbrowser-tabs').setAttribute('orient', 'vertical')
-      document.getElementById('TabsToolbar').setAttribute('multibar', 'true')
-
+      //init vertical tabs
+      sidebarBox.insertBefore(verticalTabs, sidebarBox.firstChild);
+      const tabBrowserArrowScrollBox = document.getElementById(
+        "tabbrowser-arrowscrollbox"
+      );
+      verticalTabs.setAttribute("align", "start");
+      tabBrowserArrowScrollBox.setAttribute("orient", "vertical");
+      tabBrowserArrowScrollBox.removeAttribute("overflowing");
+      tabBrowserArrowScrollBox.removeAttribute("scrolledtostart");
+      tabBrowserArrowScrollBox.disabled = true;
       document
-        .getElementsByClassName('toolbar-items')[0]
-        .setAttribute('align', 'start')
+        .getElementById("tabbrowser-tabs")
+        .setAttribute("orient", "vertical");
+      tabBrowserArrowScrollBox.shadowRoot
+        .querySelector(`[part="scrollbox"]`)
+        .setAttribute("orient", "vertical");
 
-      document.getElementById("TabsToolbar").removeAttribute('flex')
-      document.getElementById("TabsToolbar").removeAttribute('hidden')
-      document.getElementById("TabsToolbar").style.width = "350px"
+      //move menubar
+      document
+        .getElementById("titlebar")
+        .before(document.getElementById("toolbar-menubar"));
+      if (sidebarBox.getAttribute("hidden") === "true") {
+        SidebarUI.toggle();
+      }
     }, 500);
 
+    function checkBrowserIsStartup() {
+      const browserWindows = Services.wm.getEnumerator("navigator:browser");
+
+      while (browserWindows.hasMoreElements()) {
+        if (browserWindows.getNext() !== window) {
+          return;
+        }
+      }
+
+      SessionStore.promiseInitialized.then(() => {
+        window.setTimeout(setWorkspaceLabel, 1500);
+        window.setTimeout(setWorkspaceLabel, 3000);
+      });
+    }
     checkBrowserIsStartup();
 
+    function setWorkspaceLabel() {
+      const workspaceButton = document.getElementById("workspace-button");
+      const customizeTarget = document.getElementById(
+        "nav-bar-customization-target"
+      );
+
+      if (!workspaceButton) {
+        console.info("Workspace button not found");
+        return;
+      }
+
+      customizeTarget.before(workspaceButton);
+    }
+
     //toolbar modification
-    let Tag = document.createElement("style");
+    var Tag = document.createElement("style");
     Tag.id = "verticalTabsStyle";
     Tag.textContent = `@import url("chrome://browser/content/browser-verticaltabs.css");`;
     document.head.appendChild(Tag);
@@ -81,32 +90,65 @@ function setVerticalTabs() {
     //add context menu
     let target = document.getElementById("TabsToolbar-customization-target");
     target.setAttribute("context", "toolbar-context-menu");
-
-    //splitter
-    document.getElementById("verticaltab-splitter").removeAttribute("hidden");
-
   } else {
-
-    // TODO: Re-implement the vertical tab bar. This code is not working.
-    /*
-    document.getElementById("titlebar").prepend(document.getElementById("TabsToolbar"));
-    document.getElementById('tabbrowser-arrowscrollbox').setAttribute('orient', 'horizontal')
-    document.getElementById('tabbrowser-tabs').setAttribute('orient', 'horizontal')
-    document
-      .querySelector('#TabsToolbar .toolbar-items')
-      ?.setAttribute('align', 'end')
-    changeXULElementTagName('TabsToolbar', "toolbar")
-    document.getElementById("TabsToolbar").setAttribute('flex', '1')
-    // Reset the resize value, or else the tabs will end up squished
-    document.getElementById("TabsToolbar").style.width = ''
     Services.prefs.setBoolPref("floorp.browser.tabs.verticaltab", false);
-    */
+    document.querySelector("#verticalTabsStyle")?.remove();
+    let verticalTabs = document.querySelector("#toolbar-items-verticaltabs");
+    if (verticalTabs != null) {
+      document
+        .querySelector("#TabsToolbar")
+        .insertBefore(
+          verticalTabs,
+          document.querySelectorAll(`#TabsToolbar > .titlebar-spacer`)[1]
+        );
+      let tabBrowserArrowScrollBox = document.getElementById(
+        "tabbrowser-arrowscrollbox"
+      );
+      let tabsBase = document.querySelector("#tabbrowser-tabs");
+      verticalTabs.setAttribute("align", "end");
+      verticalTabs.removeAttribute("id");
+      tabBrowserArrowScrollBox.setAttribute("orient", "horizontal");
+      tabsBase.setAttribute("orient", "horizontal");
+      let tabsToolBar = document.querySelector("#tabbrowser-tabs");
+      tabsToolBar.style.removeProperty("--tab-overflow-pinned-tabs-width");
+      tabsToolBar.removeAttribute("positionpinnedtabs");
 
-    Services.prefs.setBoolPref("floorp.browser.tabs.verticaltab", false);
+      window.setTimeout(() => {
+        if (tabBrowserArrowScrollBox.getAttribute("overflowing") != "true") {
+          tabsBase.removeAttribute("overflow");
+        }
+        tabsToolBar.removeAttribute("positionpinnedtabs");
+        for (let elem of document.querySelectorAll(
+          `#tabbrowser-arrowscrollbox > tab[style*="margin-inline-start"]`
+        )) {
+          elem.style.removeProperty("margin-inline-start");
+        }
+      }, 1000);
+      tabBrowserArrowScrollBox.setAttribute("scrolledtostart", "true");
+      tabBrowserArrowScrollBox.removeAttribute("disabled");
+      //sidebarBox.style.removeProperty("overflow-y")
+
+      //move workspace button
+      function moveToDefaultSpace() {
+        const workspaceButton = document.getElementById("workspace-button");
+        if (!workspaceButton) {
+          console.error("Workspace button not found");
+          return;
+        }
+        document.querySelector(".toolbar-items").before(workspaceButton);
+      }
+      moveToDefaultSpace();
+
+      document.getElementById("floorp-vthover")?.remove();
+
+      //remove context menu
+      let target = document.getElementById("TabsToolbar-customization-target");
+      target.removeAttribute("context");
+    }
   }
 }
-
 setVerticalTabs();
+Services.prefs.addObserver("floorp.tabbar.style", setVerticalTabs);
 
 Services.prefs.addObserver("floorp.tabbar.style", function () {
   if (Services.prefs.getIntPref("floorp.tabbar.style") == 2) {

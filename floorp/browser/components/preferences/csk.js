@@ -20,6 +20,26 @@ const gCSKPane = {
    // const l10n = new Localization(["browser/floorp.ftl"], true);
    this._pane = document.getElementById("panCSK");
 
+    const needreboot = document.getElementsByClassName("needreboot");
+    for (let i = 0; i < needreboot.length; i++) {
+      needreboot[i].addEventListener("click", function () {
+        if (!Services.prefs.getBoolPref("floorp.enable.auto.restart", false)) {
+          (async () => {
+            let userConfirm = await confirmRestartPrompt(null)
+            if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
+              Services.startup.quit(
+                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
+              );
+            }
+          })()
+        } else {
+          window.setTimeout(function () {
+            Services.startup.quit(Services.startup.eAttemptQuit | Services.startup.eRestart);
+          }, 500);
+        }
+      });
+    }
+
     const utils = CustomKeyboardShortcutUtils.keyboradShortcutFunctions;
     const restoreDefaultButton = document.getElementById("reset-CSK-button");
 
@@ -98,7 +118,7 @@ const gCSKPane = {
 
             if (CSKIsExist) {
               const keyboradShortcutObj = utils.getInfoFunctions.getActionKey(action);
-              const key = keyboradShortcutObj.key
+              const key = keyboradShortcutObj.key;
               const modifiers = keyboradShortcutObj.modifiers ? keyboradShortcutObj.modifiers : undefined;
               let changedActions = Services.prefs.getStringPref(CustomKeyboardShortcutUtils.SHORTCUT_KEY_CHANGED_ARRAY_PREF, "");
               let changedActionsArray = changedActions.split(",");
@@ -135,10 +155,7 @@ const gCSKPane = {
                 );
               } else {
                 const descriptionItem = document.querySelector(`.csks-box-item-description[value="${action}"]`);
-                // Remove the "VK_" prefix
-                if (result.startsWith("VK_")) {
-                  result = result.slice(3);
-                }
+                let result = key ? key : keyboradShortcutObj.keyCode;
                 document.l10n.setAttributes(
                   descriptionItem,
                   "CSK-keyborad-shortcut-info-with-keycode",

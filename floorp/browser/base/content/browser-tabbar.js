@@ -314,8 +314,28 @@ document.addEventListener(
         const tabToolbarItems = document.querySelector(
           "#TabsToolbar > .toolbar-items"
         );
+        const tabsToolbar = document.getElementById(
+          "TabsToolbar-customization-target"
+        );
+        const tabbrowserTabs = document.getElementById("tabbrowser-tabs");
 
         tabToolbarItems.style.visibility = "hidden";
+
+        window.setTimeout(() => {
+          new Promise(() => {
+            tabsToolbar.setAttribute("flex", "");
+            tabbrowserTabs.setAttribute(
+              "style",
+              "-moz-box-flex: unset !important;"
+            );
+
+            setTimeout(() => {
+              tabsToolbar.setAttribute("flex", "1");
+              tabbrowserTabs.style.removeProperty("-moz-box-flex");
+              tabToolbarItems.style.visibility = "";
+            }, 0);
+          });
+        }, 1000);
       }
     };
     Services.prefs.addObserver("floorp.tabbar.style", applyMultitab);

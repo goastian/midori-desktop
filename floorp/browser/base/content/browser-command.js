@@ -15,21 +15,6 @@ function OpenChromeDirectory() {
   new nsLocalFile(profileDir).reveal();
 }
 
-function changeXULElementTagName(oldElementId, newTagName) {
-  const oldElement = document.getElementById(oldElementId);
-  const newElement = document.createElement(newTagName);
-
-  const attrs = oldElement.attributes;
-  for (let i = 0; i < attrs.length; i++) {
-    newElement.setAttribute(attrs[i].name, attrs[i].value);
-  }
-
-  while (oldElement.firstChild) {
-    newElement.appendChild(oldElement.firstChild);
-  }
-  oldElement.parentNode.replaceChild(newElement, oldElement);
-}
-
 function restartbrowser() {
   Services.obs.notifyObservers(null, "startupcache-invalidate");
 
