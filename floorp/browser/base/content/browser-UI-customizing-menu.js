@@ -39,9 +39,7 @@ let gFloorpCustomizeMode = {
             let customizationContainer = document.getElementById("nav-bar");
             let observer = new MutationObserver(function(mutations) {
               mutations.forEach(function(mutation) {
-                console.log("MutationObserver");
                   if (mutation.target.getAttribute("customizing") == "true") {
-                    console.log("Inject to customize mode area.");
                     gFloorpCustomizeMode.addElemToCustomizeModeArea(elem, enabled, targetId, type, retry + 1);
                     observer.disconnect();                    
                   }
