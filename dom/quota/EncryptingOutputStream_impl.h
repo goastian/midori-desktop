@@ -207,6 +207,31 @@ nsresult EncryptingOutputStream<CipherStrategy>::FlushToBaseStream() {
     return NS_OK;
   }
 
+  if (mNextByte < mEncryptedBlock->MaxPayloadLength()) {
+    if (!mRandomGenerator) {
+      mRandomGenerator =
+          do_GetService("@mozilla.org/security/random-generator;1");
+      if (NS_WARN_IF(!mRandomGenerator)) {
+        return NS_ERROR_FAILURE;
+      }
+    }
+
+    const auto payload = mEncryptedBlock->MutablePayload();
+
+    const auto unusedPayload = payload.From(mNextByte);
+
+    uint8_t* buffer;
+    nsresult rv =
+        mRandomGenerator->GenerateRandomBytes(unusedPayload.Length(), &buffer);
+    if (NS_WARN_IF(NS_FAILED(rv)) || !buffer) {
+      return rv;
+    }
+
+    memcpy(unusedPayload.Elements(), buffer, unusedPayload.Length());
+
+    free(buffer);
+  }
+
   // XXX The compressing stream implementation this was based on wrote a stream
   // identifier, containing e.g. the block size. Should we do something like
   // that as well? At the moment, we don't need it, but maybe this were
