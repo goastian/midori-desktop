@@ -18,6 +18,8 @@
 #include "nsDebug.h"
 #include "nsError.h"
 #include "nsIAsyncOutputStream.h"
+#include "nsIRandomGenerator.h"
+#include "nsServiceManagerUtils.h"
 
 namespace mozilla::dom::quota {
 template <typename CipherStrategy>
