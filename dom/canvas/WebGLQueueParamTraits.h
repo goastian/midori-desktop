@@ -125,6 +125,12 @@ struct QueueParamTraits<RawBuffer<T>> {
     if (!status) return status;
     if (!elemCount) return status;
 
+    const auto& begin = in.begin();
+    const bool hasData = static_cast<bool>(begin);
+    status = view.WriteParam(hasData);
+    if (!status) return status;
+    if (!hasData) return status;
+
     status = view.WriteFromRange(in.Data());
 
     return status;
@@ -137,6 +143,15 @@ struct QueueParamTraits<RawBuffer<T>> {
     if (!status) return status;
     if (!elemCount) {
       *out = {};
+      return true;
+    }
+
+    uint8_t hasData = 0;
+    status = view.ReadParam(&hasData);
+    if (!status) return status;
+    if (!hasData) {
+      auto temp = RawBuffer<T>{elemCount};
+      *out = std::move(temp);
       return true;
     }
 

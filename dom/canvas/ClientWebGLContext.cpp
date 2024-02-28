@@ -3394,7 +3394,8 @@ void ClientWebGLContext::BufferData(GLenum target, WebGLsizeiptr rawSize,
     return;
   }
 
-  Run<RPROC(BufferData_SizeOnly)>(target, *size, usage);
+  const auto data = RawBuffer<>{*size};
+  Run<RPROC(BufferData)>(target, data, usage);
 }
 
 void ClientWebGLContext::BufferData(
