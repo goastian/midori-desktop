@@ -3394,8 +3394,7 @@ void ClientWebGLContext::BufferData(GLenum target, WebGLsizeiptr rawSize,
     return;
   }
 
-  const auto data = RawBuffer<>{*size};
-  Run<RPROC(BufferData)>(target, data, usage);
+  Run<RPROC(BufferData_SizeOnly)>(target, *size, usage);
 }
 
 void ClientWebGLContext::BufferData(
@@ -3429,9 +3428,11 @@ void ClientWebGLContext::RawBufferData(GLenum target, const uint8_t* srcBytes,
                                        size_t srcLen, GLenum usage) {
   const FuncScope funcScope(*this, "bufferData");
 
-  const auto srcBuffer =
-      srcBytes ? RawBuffer<>({srcBytes, srcLen}) : RawBuffer<>(srcLen);
-  Run<RPROC(BufferData)>(target, srcBuffer, usage);
+  if (srcBytes) {
+    Run<RPROC(BufferData)>(target, RawBuffer<>({srcBytes, srcLen}), usage);
+  } else {
+    Run<RPROC(BufferData_SizeOnly)>(target, srcLen, usage);
+  }
 }
 
 ////
