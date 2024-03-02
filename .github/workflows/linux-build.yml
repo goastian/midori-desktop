@@ -110,9 +110,7 @@ jobs:
         MOZ_BUILD_DATE= os.environ["GHA_MOZ_BUILD_DATE"]
 
         os.system("sudo apt update")
-        os.system("sudo apt install xvfb")
-        os.system("sudo apt install libasound2-dev")
-        os.system("sudo apt-get install libasound2-dev")
+        os.system("sudo apt install xvfb libasound2-dev pkg-config")
 
         shutil.copyfile("./.github/workflows/src/linux/shared/mozconfig_linux_base","./mozconfig")
         # os.system("cp ./.github/workflows/src/linux/shared/mozconfig_linux_base ./mozconfig")
