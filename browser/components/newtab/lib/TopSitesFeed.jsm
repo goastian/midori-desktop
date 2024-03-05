@@ -509,9 +509,9 @@ class TopSitesFeed {
         },
         {
           "id": 2,
-          "name": "Trip",
-          "url": "https://www.dpbolvw.net/click-101047946-11947208",
-          "image_url": "https://astian.org/wp-content/uploads/2024/02/trip.webp",
+          "name": "Expedia",
+          "url": "https://expedia.com/affiliate/1CRR7L7",
+          "image_url": "https://astian.org/wp-content/uploads/2023/11/expedia.png",
           "image_size": 200,
         },
         {

@@ -534,10 +534,7 @@ void WebRenderLayerManager::MakeSnapshotIfRequired(LayoutDeviceIntSize aSize) {
     return;
   }
 
-  // The other side knows our ContentParentId and WebRenderBridgeChild will
-  // ignore the one provided here in favour of what WebRenderBridgeParent
-  // already has.
-  texture->InitIPDLActor(WrBridge(), dom::ContentParentId());
+  texture->InitIPDLActor(WrBridge());
   if (!texture->GetIPDLActor()) {
     return;
   }

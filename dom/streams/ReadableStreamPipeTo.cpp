@@ -607,7 +607,7 @@ void PipeToPump::OnReadFulfilled(JSContext* aCx, JS::Handle<JS::Value> aChunk,
   // matches other engines' behavior. See
   // https://github.com/whatwg/streams/issues/1243.
   RefPtr<Promise> promise =
-      Promise::CreateInfallible(xpc::CurrentNativeGlobal(aCx));
+      Promise::CreateInfallible(mWriter->GetParentObject());
   promise->MaybeResolveWithUndefined();
   auto result = promise->ThenWithCycleCollectedArgsJS(
       [](JSContext* aCx, JS::Handle<JS::Value>, ErrorResult& aRv,

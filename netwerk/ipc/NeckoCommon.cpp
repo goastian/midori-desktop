@@ -14,26 +14,28 @@
 
 namespace mozilla::net {
 
-nsresult ForwardStreamListenerFunctions(nsTArray<StreamListenerFunction> aCalls,
-                                        nsIStreamListener* aParent) {
+nsresult ForwardStreamListenerFunctions(
+    nsTArray<StreamListenerFunction>& aCalls, nsIStreamListener* aParent) {
   nsresult rv = NS_OK;
   for (auto& variant : aCalls) {
     variant.match(
-        [&](OnStartRequestParams& aParams) {
+        [&](const OnStartRequestParams& aParams) {
           rv = aParent->OnStartRequest(aParams.request);
           if (NS_FAILED(rv)) {
             aParams.request->Cancel(rv);
           }
         },
-        [&](OnDataAvailableParams& aParams) {
+        [&](const OnDataAvailableParams& aParams) {
           // Don't deliver OnDataAvailable if we've
           // already failed.
           if (NS_FAILED(rv)) {
             return;
           }
           nsCOMPtr<nsIInputStream> stringStream;
-          rv = NS_NewCStringInputStream(getter_AddRefs(stringStream),
-                                        std::move(aParams.data));
+          rv = NS_NewByteInputStream(
+              getter_AddRefs(stringStream),
+              Span<const char>(aParams.data.get(), aParams.count),
+              NS_ASSIGNMENT_DEPEND);
           if (NS_SUCCEEDED(rv)) {
             rv = aParent->OnDataAvailable(aParams.request, stringStream,
                                           aParams.offset, aParams.count);
@@ -42,7 +44,7 @@ nsresult ForwardStreamListenerFunctions(nsTArray<StreamListenerFunction> aCalls,
             aParams.request->Cancel(rv);
           }
         },
-        [&](OnStopRequestParams& aParams) {
+        [&](const OnStopRequestParams& aParams) {
           if (NS_SUCCEEDED(rv)) {
             aParent->OnStopRequest(aParams.request, aParams.status);
           } else {
@@ -50,7 +52,7 @@ nsresult ForwardStreamListenerFunctions(nsTArray<StreamListenerFunction> aCalls,
           }
           rv = NS_OK;
         },
-        [&](OnAfterLastPartParams& aParams) {
+        [&](const OnAfterLastPartParams& aParams) {
           nsCOMPtr<nsIMultiPartChannelListener> multiListener =
               do_QueryInterface(aParent);
           if (multiListener) {

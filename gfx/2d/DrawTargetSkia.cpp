@@ -474,9 +474,7 @@ static void SetPaintPattern(SkPaint& aPaint, const Pattern& aPattern,
       const LinearGradientPattern& pat =
           static_cast<const LinearGradientPattern&>(aPattern);
       GradientStopsSkia* stops =
-          pat.mStops && pat.mStops->GetBackendType() == BackendType::SKIA
-              ? static_cast<GradientStopsSkia*>(pat.mStops.get())
-              : nullptr;
+          static_cast<GradientStopsSkia*>(pat.mStops.get());
       if (!stops || stops->mCount < 2 || !pat.mBegin.IsFinite() ||
           !pat.mEnd.IsFinite() || pat.mBegin == pat.mEnd) {
         aPaint.setColor(SK_ColorTRANSPARENT);
@@ -508,9 +506,7 @@ static void SetPaintPattern(SkPaint& aPaint, const Pattern& aPattern,
       const RadialGradientPattern& pat =
           static_cast<const RadialGradientPattern&>(aPattern);
       GradientStopsSkia* stops =
-          pat.mStops && pat.mStops->GetBackendType() == BackendType::SKIA
-              ? static_cast<GradientStopsSkia*>(pat.mStops.get())
-              : nullptr;
+          static_cast<GradientStopsSkia*>(pat.mStops.get());
       if (!stops || stops->mCount < 2 || !pat.mCenter1.IsFinite() ||
           !std::isfinite(pat.mRadius1) || !pat.mCenter2.IsFinite() ||
           !std::isfinite(pat.mRadius2) ||
@@ -545,9 +541,7 @@ static void SetPaintPattern(SkPaint& aPaint, const Pattern& aPattern,
       const ConicGradientPattern& pat =
           static_cast<const ConicGradientPattern&>(aPattern);
       GradientStopsSkia* stops =
-          pat.mStops && pat.mStops->GetBackendType() == BackendType::SKIA
-              ? static_cast<GradientStopsSkia*>(pat.mStops.get())
-              : nullptr;
+          static_cast<GradientStopsSkia*>(pat.mStops.get());
       if (!stops || stops->mCount < 2 || !pat.mCenter.IsFinite() ||
           !std::isfinite(pat.mAngle)) {
         aPaint.setColor(SK_ColorTRANSPARENT);
@@ -753,9 +747,6 @@ DrawTargetType DrawTargetSkia::GetType() const {
 void DrawTargetSkia::DrawFilter(FilterNode* aNode, const Rect& aSourceRect,
                                 const Point& aDestPoint,
                                 const DrawOptions& aOptions) {
-  if (!aNode || aNode->GetBackendType() != FILTER_BACKEND_SOFTWARE) {
-    return;
-  }
   FilterNodeSoftware* filter = static_cast<FilterNodeSoftware*>(aNode);
   filter->Draw(this, aSourceRect, aDestPoint, aOptions);
 }

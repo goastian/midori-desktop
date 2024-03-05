@@ -10961,7 +10961,7 @@ bool nsContentUtils::IsURIInList(nsIURI* aURI, const nsCString& aList) {
       if (startIndexOfNextLevel <= 0) {
         break;
       }
-      host.ReplaceLiteral(0, startIndexOfNextLevel, "*");
+      host = "*"_ns + nsDependentCSubstring(host, startIndexOfNextLevel);
     }
   }
 

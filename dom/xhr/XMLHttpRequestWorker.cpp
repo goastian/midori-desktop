@@ -104,7 +104,7 @@ class Proxy final : public nsIDOMEventListener {
   bool mMozSystem;
 
   // Only touched on the main thread.
-  RefPtr<XMLHttpRequestMainThread> mXHR;void Teardown(bool aSendUnpin);
+  RefPtr<XMLHttpRequestMainThread> mXHR;
   RefPtr<XMLHttpRequestUpload> mXHRUpload;
   nsCOMPtr<nsIEventTarget> mSyncLoopTarget;
   nsCOMPtr<nsIEventTarget> mSyncEventResponseTarget;

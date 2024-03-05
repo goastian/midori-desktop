@@ -42,7 +42,7 @@ Midori Browser is available for Windows, macOS, and Linux. You can install it by
 
 - Windows 10 or later. (Windows 7 and 8 are not supported)
 
-- x86_64 CPU architecture. AArch64 is supported for Linux & Windows.
+- x86_64 CPU architecture. AArch64 is not supported.
 
 - Midori provides "exe" installer & "Winget" install.
 

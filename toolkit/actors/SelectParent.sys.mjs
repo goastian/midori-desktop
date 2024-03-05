@@ -385,7 +385,6 @@ export var SelectParentHelper = {
         break;
 
       case "fullscreen":
-        case "FullscreenWarningOnScreen":
         if (this._currentMenulist) {
           this._currentMenulist.menupopup.hidePopup();
         }
@@ -445,7 +444,6 @@ export var SelectParentHelper = {
     popup.ownerGlobal.addEventListener("mouseup", this, true);
     popup.ownerGlobal.addEventListener("keydown", this, true);
     popup.ownerGlobal.addEventListener("fullscreen", this, true);
-    popup.ownerGlobal.addEventListener("FullscreenWarningOnScreen", this, true);
   },
 
   _unregisterListeners(popup) {
@@ -456,11 +454,6 @@ export var SelectParentHelper = {
     popup.ownerGlobal.removeEventListener("mouseup", this, true);
     popup.ownerGlobal.removeEventListener("keydown", this, true);
     popup.ownerGlobal.removeEventListener("fullscreen", this, true);
-    popup.ownerGlobal.removeEventListener(
-      "FullscreenWarningOnScreen",
-      this,
-      true
-    );
   },
 
   /**

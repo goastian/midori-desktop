@@ -5,6 +5,7 @@
 import argparse
 import errno
 import hashlib
+import imp
 import os
 import sys
 
@@ -20,7 +21,9 @@ manifest = None
 
 def do_delayed_imports(wpt_dir):
     global manifest
-    load_source("localpaths", os.path.join(wpt_dir, "tests", "tools", "localpaths.py"))
+    imp.load_source(
+        "localpaths", os.path.join(wpt_dir, "tests", "tools", "localpaths.py")
+    )
     sys.path.insert(0, os.path.join(wpt_dir, "tools", "manifest"))
     import manifest
 

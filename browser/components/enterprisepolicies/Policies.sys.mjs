@@ -1695,7 +1695,6 @@ export var Policies = {
     onBeforeAddons(manager, param) {
       let allowedPrefixes = [
         "accessibility.",
-        "alerts.",
         "app.update.",
         "browser.",
         "datareporting.policy.",
@@ -1794,9 +1793,7 @@ export var Policies = {
             Services.prefs.unlockPref(preference);
           }
           try {
-            let prefType =
-              param[preference].Type || typeof param[preference].Value;
-            switch (prefType) {
+            switch (typeof param[preference].Value) {
               case "boolean":
                 prefBranch.setBoolPref(preference, param[preference].Value);
                 break;
@@ -1806,9 +1803,14 @@ export var Policies = {
                   throw new Error(`Non-integer value for ${preference}`);
                 }
 
-                // Because pdfjs prefs are set async, we can't check the
-                // default pref branch to see if they are int or bool, so we
-                // have to get their type from PdfJsDefaultPreferences.
+                // This is ugly, but necessary. On Windows GPO and macOS
+                // configs, booleans are converted to 0/1. In the previous
+                // Preferences implementation, the schema took care of
+                // automatically converting these values to booleans.
+                // Since we allow arbitrary prefs now, we have to do
+                // something different. See bug 1666836.
+                // Even uglier, because pdfjs prefs are set async, we need
+                // to get their type from PdfJsDefaultPreferences.
                 if (preference.startsWith("pdfjs.")) {
                   let preferenceTail = preference.replace("pdfjs.", "");
                   if (
@@ -1823,21 +1825,7 @@ export var Policies = {
                       !!param[preference].Value
                     );
                   }
-                  break;
-                }
-
-                // This is ugly, but necessary. On Windows GPO and macOS
-                // configs, booleans are converted to 0/1. In the previous
-                // Preferences implementation, the schema took care of
-                // automatically converting these values to booleans.
-                // Since we allow arbitrary prefs now, we have to do
-                // something different. See bug 1666836, 1668374, and 1872267.
-
-                // We only set something as int if it was explicit in policy,
-                // the same type as the default pref, or NOT 0/1. Otherwise
-                // we set it as bool.
-                if (
-                  param[preference].Type == "number" ||
+                } else if (
                   prefBranch.getPrefType(preference) == prefBranch.PREF_INT ||
                   ![0, 1].includes(param[preference].Value)
                 ) {

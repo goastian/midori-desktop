@@ -22,7 +22,7 @@
 !define OFFICIAL
 !define URLStubDownloadX86 "https://github.com/goastian/midori-desktop/releases/latest/download/midori-win32.installer.exe"
 !define URLStubDownloadAMD64 "https://github.com/goastian/midori-desktop/releases/latest/download/midori-win64.installer.exe"
-!define URLStubDownloadAArch64 "https://github.com/goastian/midori-desktop/releases/latest/download/midori-win64-aarch64.installer.exe"
+!define URLStubDownloadAArch64 ""
 !define URLManualDownload ""
 !define URLSystemRequirements "https://astian.org/community/midori-browser/midori-system-requirements/"
 !define Channel "release"

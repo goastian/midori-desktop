@@ -84,19 +84,9 @@ VideoBridgeParent* VideoBridgeParent::GetSingleton(
   }
 }
 
-TextureHost* VideoBridgeParent::LookupTexture(
-    const dom::ContentParentId& aContentId, uint64_t aSerial) {
+TextureHost* VideoBridgeParent::LookupTexture(uint64_t aSerial) {
   MOZ_DIAGNOSTIC_ASSERT(CompositorThread() &&
                         CompositorThread()->IsOnCurrentThread());
-  auto* actor = mTextureMap[aSerial];
-  if (NS_WARN_IF(!actor)) {
-    return nullptr;
-  }
-
-  if (NS_WARN_IF(aContentId != TextureHost::GetTextureContentId(actor))) {
-    return nullptr;
-  }
-
   return TextureHost::AsTextureHost(mTextureMap[aSerial]);
 }
 
@@ -156,10 +146,10 @@ void VideoBridgeParent::ReleaseCompositorThread() {
 PTextureParent* VideoBridgeParent::AllocPTextureParent(
     const SurfaceDescriptor& aSharedData, ReadLockDescriptor& aReadLock,
     const LayersBackend& aLayersBackend, const TextureFlags& aFlags,
-    const dom::ContentParentId& aContentId, const uint64_t& aSerial) {
-  PTextureParent* parent = TextureHost::CreateIPDLActor(
-      this, aSharedData, std::move(aReadLock), aLayersBackend, aFlags,
-      aContentId, aSerial, Nothing());
+    const uint64_t& aSerial) {
+  PTextureParent* parent =
+      TextureHost::CreateIPDLActor(this, aSharedData, std::move(aReadLock),
+                                   aLayersBackend, aFlags, aSerial, Nothing());
 
   if (!parent) {
     return nullptr;

@@ -16,10 +16,12 @@ uint64_t GfxDriverInfo::allDriverVersions = ~(uint64_t(0));
 
 GfxDeviceFamily*
     GfxDriverInfo::sDeviceFamilies[static_cast<size_t>(DeviceFamily::Max)];
-nsString*
+nsAString*
     GfxDriverInfo::sWindowProtocol[static_cast<size_t>(WindowProtocol::Max)];
-nsString* GfxDriverInfo::sDeviceVendors[static_cast<size_t>(DeviceVendor::Max)];
-nsString* GfxDriverInfo::sDriverVendors[static_cast<size_t>(DriverVendor::Max)];
+nsAString*
+    GfxDriverInfo::sDeviceVendors[static_cast<size_t>(DeviceVendor::Max)];
+nsAString*
+    GfxDriverInfo::sDriverVendors[static_cast<size_t>(DriverVendor::Max)];
 
 GfxDriverInfo::GfxDriverInfo()
     : mOperatingSystem(OperatingSystem::Unknown),

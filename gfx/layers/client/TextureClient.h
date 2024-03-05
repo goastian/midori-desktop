@@ -18,7 +18,6 @@
 #include "mozilla/Attributes.h"  // for override
 #include "mozilla/DebugOnly.h"
 #include "mozilla/RefPtr.h"  // for RefPtr, RefCounted
-#include "mozilla/dom/ipc/IdType.h"
 #include "mozilla/gfx/2D.h"  // for DrawTarget
 #include "mozilla/gfx/CriticalSection.h"
 #include "mozilla/gfx/Point.h"  // for IntSize
@@ -555,8 +554,7 @@ class TextureClient : public AtomicRefCountedWithFinalize<TextureClient> {
    * Should be called only once per TextureClient.
    * The TextureClient must not be locked when calling this method.
    */
-  bool InitIPDLActor(KnowsCompositor* aKnowsCompositor,
-                     const dom::ContentParentId& aContentId);
+  bool InitIPDLActor(KnowsCompositor* aKnowsCompositor);
 
   /**
    * Return a pointer to the IPDLActor.

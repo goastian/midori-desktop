@@ -1756,7 +1756,7 @@ border-bottom: 1.1px solid var(--toolbar-bgcolor);
   padding: var(--uc-toolbarbutton-inner-padding) !important;
 }
 
-#TabsToolbar .toolbarbutton-1>.toolbarbutton-icon:not(.workspace-item-icon>image) {
+#TabsToolbar .toolbarbutton-1>.toolbarbutton-icon {
   width: calc(2 * var(--uc-toolbarbutton-inner-padding) + 16px) !important;
   height: calc(2 * var(--uc-toolbarbutton-inner-padding) + 16px) !important;
 }

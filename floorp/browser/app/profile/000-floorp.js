@@ -297,6 +297,7 @@ pref("trailhead.firstrun.branches", "", locked);
 pref("extensions.webcompat-reporter.enabled", false);
 
 pref("browser.startup.page", 3);//自動復元
+pref("browser.tabs.closeWindowWithLastTab", false);//最後のタブを閉じてもブラウザが閉じないように
 
 // https://developer.mozilla.org/docs/Web/API/Navigator/share
 #ifdef XP_WIN

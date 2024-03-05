@@ -1690,8 +1690,7 @@ void DrawTargetD2D1::FinalizeDrawing(CompositionOp aOp,
     const ConicGradientPattern* pat =
         static_cast<const ConicGradientPattern*>(&aPattern);
 
-    if (!pat->mStops ||
-        pat->mStops->GetBackendType() != BackendType::DIRECT2D) {
+    if (!pat->mStops) {
       // Draw nothing because of no color stops
       return;
     }
@@ -1735,7 +1734,7 @@ void DrawTargetD2D1::FinalizeDrawing(CompositionOp aOp,
     return;
   }
 
-  if (!pat->mStops || pat->mStops->GetBackendType() != BackendType::DIRECT2D) {
+  if (!pat->mStops) {
     // Draw nothing because of no color stops
     return;
   }
@@ -2078,8 +2077,9 @@ already_AddRefed<ID2D1Brush> DrawTargetD2D1::CreateBrushForPattern(
     const LinearGradientPattern* pat =
         static_cast<const LinearGradientPattern*>(&aPattern);
 
-    if (!pat->mStops ||
-        pat->mStops->GetBackendType() != BackendType::DIRECT2D) {
+    GradientStopsD2D* stops = static_cast<GradientStopsD2D*>(pat->mStops.get());
+
+    if (!stops) {
       gfxDebug() << "No stops specified for gradient pattern.";
       return CreateTransparentBlackBrush();
     }
@@ -2087,8 +2087,6 @@ already_AddRefed<ID2D1Brush> DrawTargetD2D1::CreateBrushForPattern(
     if (pat->mBegin == pat->mEnd) {
       return CreateTransparentBlackBrush();
     }
-
-    GradientStopsD2D* stops = static_cast<GradientStopsD2D*>(pat->mStops.get());
 
     mDC->CreateLinearGradientBrush(
         D2D1::LinearGradientBrushProperties(D2DPoint(pat->mBegin),
@@ -2108,8 +2106,9 @@ already_AddRefed<ID2D1Brush> DrawTargetD2D1::CreateBrushForPattern(
     const RadialGradientPattern* pat =
         static_cast<const RadialGradientPattern*>(&aPattern);
 
-     if (!pat->mStops ||
-        pat->mStops->GetBackendType() != BackendType::DIRECT2D) {
+    GradientStopsD2D* stops = static_cast<GradientStopsD2D*>(pat->mStops.get());
+
+    if (!stops) {
       gfxDebug() << "No stops specified for gradient pattern.";
       return CreateTransparentBlackBrush();
     }
@@ -2117,8 +2116,6 @@ already_AddRefed<ID2D1Brush> DrawTargetD2D1::CreateBrushForPattern(
     if (pat->mCenter1 == pat->mCenter2 && pat->mRadius1 == pat->mRadius2) {
       return CreateTransparentBlackBrush();
     }
-
-    GradientStopsD2D* stops = static_cast<GradientStopsD2D*>(pat->mStops.get());
 
     // This will not be a complex radial gradient brush.
     mDC->CreateRadialGradientBrush(

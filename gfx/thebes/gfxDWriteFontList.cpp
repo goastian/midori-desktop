@@ -554,7 +554,7 @@ nsresult gfxDWriteFontEntry::ReadCMAP(FontInfoData* aFontInfoData) {
     gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
     fontlist::FontList* sharedFontList = pfl->SharedFontList();
     if (!IsUserFont() && mShmemFace) {
-      mShmemFace->SetCharacterMap(sharedFontList, charmap, mShmemFamily);
+      mShmemFace->SetCharacterMap(sharedFontList, charmap);  // async
       if (TrySetShmemCharacterMap()) {
         setCharMap = false;
       }
@@ -674,13 +674,11 @@ gfxFont* gfxDWriteFontEntry::CreateFontInstance(
     switch (StaticPrefs::gfx_font_rendering_directwrite_bold_simulation()) {
       case 0:  // never use the DWrite simulation
         break;
-      case 1:  // use DWrite simulation for installed fonts except COLR fonts,
-               // but not webfonts
-        useBoldSim =
-            !mIsDataUserFont && !HasFontTable(TRUETYPE_TAG('C', 'O', 'L', 'R'));
+      case 1:  // use DWrite simulation for installed fonts but not webfonts
+        useBoldSim = !mIsDataUserFont;
         break;
-      default:  // always use DWrite bold simulation, except for COLR fonts
-        useBoldSim = !HasFontTable(TRUETYPE_TAG('C', 'O', 'L', 'R'));
+      default:  // always use DWrite bold simulation
+        useBoldSim = true;
         break;
     }
   }

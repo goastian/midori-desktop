@@ -29,7 +29,6 @@ from mach.decorators import (
     SettingsProvider,
     SubCommand,
 )
-from mozfile import load_source
 from voluptuous import All, Boolean, Required, Schema
 
 import mozbuild.settings  # noqa need @SettingsProvider hook to execute
@@ -1100,9 +1099,11 @@ def android_gtest(
 
     # run gtest via remotegtests.py
     exit_code = 0
+    import imp
 
     path = os.path.join("testing", "gtest", "remotegtests.py")
-    load_source("remotegtests", path)
+    with open(path, "r") as fh:
+        imp.load_module("remotegtests", fh, path, (".py", "r", imp.PY_SOURCE))
     import remotegtests
 
     tester = remotegtests.RemoteGTests()

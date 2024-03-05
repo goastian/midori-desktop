@@ -181,10 +181,8 @@ mozilla::ipc::IPCResult RDDParent::RecvInitProfiler(
 }
 
 mozilla::ipc::IPCResult RDDParent::RecvNewContentRemoteDecoderManager(
-    Endpoint<PRemoteDecoderManagerParent>&& aEndpoint,
-    const ContentParentId& aParentId) {
-  if (!RemoteDecoderManagerParent::CreateForContent(std::move(aEndpoint),
-                                                    aParentId)) {
+    Endpoint<PRemoteDecoderManagerParent>&& aEndpoint) {
+  if (!RemoteDecoderManagerParent::CreateForContent(std::move(aEndpoint))) {
     return IPC_FAIL_NO_REASON(this);
   }
   return IPC_OK();

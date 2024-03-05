@@ -132,9 +132,6 @@ export class PromptParent extends JSWindowActorParent {
 
     switch (message.name) {
       case "Prompt:Open":
-        if (!this.windowContext.isActiveInTab) {
-          return undefined;
-        }
         if (
           (args.modalType === Ci.nsIPrompt.MODAL_TYPE_CONTENT &&
             !lazy.contentPromptSubDialog) ||

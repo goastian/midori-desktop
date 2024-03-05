@@ -183,9 +183,8 @@ void DrawTarget::StrokeGlyphs(ScaledFont* aFont, const GlyphBuffer& aBuffer,
                               const Pattern& aPattern,
                               const StrokeOptions& aStrokeOptions,
                               const DrawOptions& aOptions) {
-  if (RefPtr<Path> path = aFont->GetPathForGlyphs(aBuffer, this)) {
-    Stroke(path, aPattern, aStrokeOptions, aOptions);
-  }
+  RefPtr<Path> path = aFont->GetPathForGlyphs(aBuffer, this);
+  Stroke(path, aPattern, aStrokeOptions, aOptions);
 }
 
 already_AddRefed<SourceSurface> DrawTarget::IntoLuminanceSource(

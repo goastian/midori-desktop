@@ -47,16 +47,14 @@ CompositorManagerParent::CreateSameProcess() {
   // The child is responsible for setting up the IPC channel in the same
   // process case because if we open from the child perspective, we can do it
   // on the main thread and complete before we return the manager handles.
-  RefPtr<CompositorManagerParent> parent =
-      new CompositorManagerParent(dom::ContentParentId());
+  RefPtr<CompositorManagerParent> parent = new CompositorManagerParent();
   parent->SetOtherProcessId(base::GetCurrentProcId());
   return parent.forget();
 }
 
 /* static */
 bool CompositorManagerParent::Create(
-    Endpoint<PCompositorManagerParent>&& aEndpoint,
-    dom::ContentParentId aChildId, bool aIsRoot) {
+    Endpoint<PCompositorManagerParent>&& aEndpoint, bool aIsRoot) {
   MOZ_ASSERT(NS_IsMainThread());
 
   // We are creating a manager for the another process, inside the GPU process
@@ -67,8 +65,7 @@ bool CompositorManagerParent::Create(
     return false;
   }
 
-  RefPtr<CompositorManagerParent> bridge =
-      new CompositorManagerParent(aChildId);
+  RefPtr<CompositorManagerParent> bridge = new CompositorManagerParent();
 
   RefPtr<Runnable> runnable =
       NewRunnableMethod<Endpoint<PCompositorManagerParent>&&, bool>(
@@ -118,10 +115,8 @@ CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
   return bridge.forget();
 }
 
-CompositorManagerParent::CompositorManagerParent(
-    dom::ContentParentId aContentId)
-    : mContentId(aContentId),
-      mCompositorThreadHolder(CompositorThreadHolder::GetSingleton()) {}
+CompositorManagerParent::CompositorManagerParent()
+    : mCompositorThreadHolder(CompositorThreadHolder::GetSingleton()) {}
 
 CompositorManagerParent::~CompositorManagerParent() = default;
 

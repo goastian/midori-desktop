@@ -71,8 +71,7 @@ namespace layers {
  */
 class TextureParent : public ParentActor<PTextureParent> {
  public:
-  TextureParent(HostIPCAllocator* aAllocator,
-                const dom::ContentParentId& aContentId, uint64_t aSerial,
+  TextureParent(HostIPCAllocator* aAllocator, uint64_t aSerial,
                 const wr::MaybeExternalImageId& aExternalImageId);
 
   virtual ~TextureParent();
@@ -90,13 +89,10 @@ class TextureParent : public ParentActor<PTextureParent> {
 
   void Destroy() override;
 
-  const dom::ContentParentId& GetContentId() const { return mContentId; }
-
   uint64_t GetSerial() const { return mSerial; }
 
   HostIPCAllocator* mSurfaceAllocator;
   RefPtr<TextureHost> mTextureHost;
-  dom::ContentParentId mContentId;
   // mSerial is unique in TextureClient's process.
   const uint64_t mSerial;
   wr::MaybeExternalImageId mExternalImageId;
@@ -120,10 +116,10 @@ static bool WrapWithWebRenderTextureHost(ISurfaceAllocator* aDeallocator,
 PTextureParent* TextureHost::CreateIPDLActor(
     HostIPCAllocator* aAllocator, const SurfaceDescriptor& aSharedData,
     ReadLockDescriptor&& aReadLock, LayersBackend aLayersBackend,
-    TextureFlags aFlags, const dom::ContentParentId& aContentId,
-    uint64_t aSerial, const wr::MaybeExternalImageId& aExternalImageId) {
+    TextureFlags aFlags, uint64_t aSerial,
+    const wr::MaybeExternalImageId& aExternalImageId) {
   TextureParent* actor =
-      new TextureParent(aAllocator, aContentId, aSerial, aExternalImageId);
+      new TextureParent(aAllocator, aSerial, aExternalImageId);
   if (!actor->Init(aSharedData, std::move(aReadLock), aLayersBackend, aFlags)) {
     actor->ActorDestroy(ipc::IProtocol::ActorDestroyReason::FailedConstructor);
     delete actor;
@@ -157,14 +153,6 @@ uint64_t TextureHost::GetTextureSerial(PTextureParent* actor) {
     return UINT64_MAX;
   }
   return static_cast<TextureParent*>(actor)->mSerial;
-}
-
-// static
-dom::ContentParentId TextureHost::GetTextureContentId(PTextureParent* actor) {
-  if (!actor) {
-    return dom::ContentParentId();
-  }
-  return static_cast<TextureParent*>(actor)->mContentId;
 }
 
 PTextureParent* TextureHost::GetIPDLActor() { return mActor; }
@@ -350,8 +338,7 @@ already_AddRefed<TextureHost> CreateBackendIndependentTextureHost(
       MOZ_ASSERT(aDesc.get_SurfaceDescriptorGPUVideo().type() ==
                  SurfaceDescriptorGPUVideo::TSurfaceDescriptorRemoteDecoder);
       result = GPUVideoTextureHost::CreateFromDescriptor(
-          aDeallocator->GetContentId(), aFlags,
-          aDesc.get_SurfaceDescriptorGPUVideo());
+          aFlags, aDesc.get_SurfaceDescriptorGPUVideo());
       break;
     }
     default: {
@@ -777,11 +764,9 @@ size_t MemoryTextureHost::GetBufferSize() {
 }
 
 TextureParent::TextureParent(HostIPCAllocator* aSurfaceAllocator,
-                             const dom::ContentParentId& aContentId,
                              uint64_t aSerial,
                              const wr::MaybeExternalImageId& aExternalImageId)
     : mSurfaceAllocator(aSurfaceAllocator),
-      mContentId(aContentId),
       mSerial(aSerial),
       mExternalImageId(aExternalImageId) {
   MOZ_COUNT_CTOR(TextureParent);

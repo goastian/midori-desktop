@@ -78,17 +78,8 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 void NotificationController::Shutdown() {
   if (mObservingState != eNotObservingRefresh &&
       mPresShell->RemoveRefreshObserver(this, FlushType::Display)) {
-      // Note, this was our last chance to unregister, since we're about to
-      // clear mPresShell further down in this function.
     mObservingState = eNotObservingRefresh;
   }
-
-  MOZ_RELEASE_ASSERT(mObservingState == eNotObservingRefresh,
-                     "Must unregister before being destroyed (and we just "
-                     "passed our last change to unregister)");
-  // Immediately null out mPresShell, to prevent us from being registered as a
-  // refresh observer again.
-  mPresShell = nullptr;
 
   // Shutdown handling child documents.
   int32_t childDocCount = mHangingChildDocuments.Length();
@@ -443,11 +434,9 @@ void NotificationController::ScheduleContentInsertion(
 }
 
 void NotificationController::ScheduleProcessing() {
-  // If notification flush isn't planned yet, start notification flush
+  // If notification flush isn't planed yet start notification flush
   // asynchronously (after style and layout).
-  // Note: the mPresShell null-check might be unnecessary; it's just to prevent
-  // a null-deref here, if we somehow get called after we've been shut down.
-  if (mObservingState == eNotObservingRefresh && mPresShell) {
+  if (mObservingState == eNotObservingRefresh) {
     if (mPresShell->AddRefreshObserver(this, FlushType::Display,
                                        "Accessibility notifications")) {
       mObservingState = eRefreshObserving;

@@ -357,10 +357,12 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   base::SharedMemoryHandle ShareShmBlockToProcess(uint32_t aIndex,
                                                   base::ProcessId aPid);
 
-  void SetCharacterMap(uint32_t aGeneration, uint32_t aFamilyIndex, bool aAlias,
-                       uint32_t aFaceIndex, const gfxSparseBitSet& aMap);
+  void SetCharacterMap(uint32_t aGeneration,
+                       const mozilla::fontlist::Pointer& aFacePtr,
+                       const gfxSparseBitSet& aMap);
 
-  void SetupFamilyCharMap(uint32_t aGeneration, uint32_t aIndex, bool aAlias);
+  void SetupFamilyCharMap(uint32_t aGeneration,
+                          const mozilla::fontlist::Pointer& aFamilyPtr);
 
   // Start the async cmap loading process, if not already under way, from the
   // given family index. (For use in any process that needs font lookups.)

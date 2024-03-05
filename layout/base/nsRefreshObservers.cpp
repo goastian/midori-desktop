@@ -14,35 +14,29 @@ ManagedPostRefreshObserver::ManagedPostRefreshObserver(nsPresContext* aPc,
     : mPresContext(aPc), mAction(std::move(aAction)) {}
 
 ManagedPostRefreshObserver::ManagedPostRefreshObserver(nsPresContext* aPc)
-    : mPresContext(aPc) {
-  MOZ_ASSERT(mPresContext, "Can't observe without a nsPresContext");
-}
+    : mPresContext(aPc) {}
 
 ManagedPostRefreshObserver::~ManagedPostRefreshObserver() = default;
 
 void ManagedPostRefreshObserver::Cancel() {
   // Caller holds a strong reference, so no need to reference stuff from here.
-  if (mAction) {
-    mAction(true);
-  }
+  mAction(true);
   mAction = nullptr;
   mPresContext = nullptr;
 }
 
 void ManagedPostRefreshObserver::DidRefresh() {
   RefPtr<ManagedPostRefreshObserver> thisObject = this;
-  auto action = std::move(mAction);
-  Unregister unregister = action(false);
 
+  Unregister unregister = mAction(false);
   if (unregister == Unregister::Yes) {
     if (RefPtr<nsPresContext> pc = std::move(mPresContext)) {
-      // We have to null-check mPresContext here because in theory, mAction
-      // could've ended up in `Cancel` being called, which would clear
-      // mPresContext. In that case, we're already unregistered so no need to
-      // do anything.
+      // In theory mAction could've ended up in `Cancel` being called. In which
+      // case we're already unregistered so no need to do anything.
+      mAction = nullptr;
       pc->UnregisterManagedPostRefreshObserver(this);
     } else {
-    mAction = std::move(action);
+      MOZ_DIAGNOSTIC_ASSERT(!mAction);
     }
   }
 }
