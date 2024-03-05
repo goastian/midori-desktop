@@ -132,6 +132,7 @@ struct QueueParamTraits<RawBuffer<T>> {
     if (!hasData) return status;
 
     status = view.WriteFromRange(in.Data());
+
     return status;
   }
 

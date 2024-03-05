@@ -84,6 +84,7 @@ CGLContextObj GLContextCGL::GetCGLContext() const {
 
 bool GLContextCGL::MakeCurrentImpl() const {
   if (mContext) {
+    GLContext::ResetTLSCurrentContext();
     [mContext makeCurrentContext];
     MOZ_ASSERT(IsCurrentImpl());
     // Use non-blocking swap in "ASAP mode".

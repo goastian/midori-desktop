@@ -12,7 +12,6 @@ author: Jordan Lund
 
 import copy
 import glob
-import imp
 import json
 import multiprocessing
 import os
@@ -1170,7 +1169,7 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
                     ref_formatter = imp.load_source(
                         "ReftestFormatter",
                         os.path.abspath(
-                            os.path.join(dirs["abs_reftest_dir"], "output.py")
+                            ref_formatter = load_source(
                         ),
                     )
                     parser.formatter = ref_formatter.ReftestFormatter()

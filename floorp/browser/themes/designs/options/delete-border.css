@@ -7,6 +7,11 @@
     border-radius: 15px;
   }
 
+  #statuspanel {
+    border: none !important;
+
+  }
+
   .webpanels {
     border-radius: 10px !important;
     clip-path: inset(0px 0px 0px round 10px 0) !important;

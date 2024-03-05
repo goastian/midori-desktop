@@ -200,12 +200,6 @@ class FontList {
    */
   Pointer Alloc(uint32_t aSize);
 
-  /**
-   * Convert a native pointer to a shared-memory Pointer record that can be
-   * passed between processes.
-   */
-  Pointer ToSharedPointer(const void* aPtr);
-
   uint32_t GetGeneration() { return GetHeader().mGeneration; }
 
   /**
@@ -347,8 +341,10 @@ class FontList {
   /**
    * Used by child processes to ensure all the blocks are registered.
    * Returns false on failure.
+   * Pass aMustLock=true to take the gfxPlatformFontList lock during the
+   * update (not required when calling from the constructor).
    */
-  [[nodiscard]] bool UpdateShmBlocks();
+  [[nodiscard]] bool UpdateShmBlocks(bool aMustLock);
 
   /**
    * This makes a *sync* IPC call to get a shared block from the parent.

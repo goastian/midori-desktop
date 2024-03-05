@@ -393,7 +393,7 @@ MARKUPMAP(
         // A <tr> within a row isn't valid.
         return nullptr;
       }
-            const nsRoleMapEntry* roleMapEntry = aria::GetRoleMap(aElement);
+      const nsRoleMapEntry* roleMapEntry = aria::GetRoleMap(aElement);
       if (roleMapEntry && roleMapEntry->role != roles::NOTHING &&
           roleMapEntry->role != roles::ROW) {
         // There is a valid ARIA role which isn't "row". Don't treat this as an

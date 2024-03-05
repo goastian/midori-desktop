@@ -30,3 +30,7 @@
 :root[inFullscreen]:not([macOSNativeFullscreen]) :is(#nav-bar) {
   display: none !important;
 }
+
+#TabsToolbar {
+  z-index: 0 !important;
+}
