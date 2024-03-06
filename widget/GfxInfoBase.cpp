@@ -30,6 +30,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPrefs_gfx.h"
 #include "mozilla/gfx/2D.h"
+#include "mozilla/gfx/BuildConstants.h"
 #include "mozilla/gfx/GPUProcessManager.h"
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/gfx/gfxVars.h"
@@ -265,6 +266,9 @@ static const char* GetPrefNameForFeature(int32_t aFeature) {
       break;
     case nsIGfxInfo::FEATURE_AV1_HW_DECODE:
       name = BLOCKLIST_PREF_BRANCH "av1.hw-decode";
+      break;
+    case nsIGfxInfo::FEATURE_WEBGL_USE_HARDWARE:
+      name = BLOCKLIST_PREF_BRANCH "webgl-use-hardware";
       break;
     default:
       MOZ_ASSERT_UNREACHABLE("Unexpected nsIGfxInfo feature?!");
