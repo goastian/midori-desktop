@@ -34,7 +34,7 @@ class WebTaskSchedulerWorker final : public WebTaskScheduler {
  public:
   explicit WebTaskSchedulerWorker(WorkerPrivate* aWorkerPrivate);
 
-void Disconnect() override;
+  void Disconnect() override;
 
  private:
   ~WebTaskSchedulerWorker() = default;

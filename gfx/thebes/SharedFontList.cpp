@@ -168,11 +168,7 @@ class SetCharMapRunnable : public mozilla::Runnable {
 void Face::SetCharacterMap(FontList* aList, gfxCharacterMap* aCharMap,
                            const Family* aFamily) {
   if (!XRE_IsParentProcess()) {
-    Maybe<std::pair<uint32_t, bool>> familyIndex = aFamily->FindIndex(aList);
-    if (!familyIndex) {
-      NS_WARNING("Family index not found! Ignoring SetCharacterMap");
-      return;
-    }
+    std::pair<uint32_t, bool> familyIndex = aFamily->FindIndex(aList);
     const auto* faces = aFamily->Faces(aList);
     uint32_t faceIndex = 0;
     while (faceIndex < aFamily->NumFaces()) {
@@ -181,17 +177,14 @@ void Face::SetCharacterMap(FontList* aList, gfxCharacterMap* aCharMap,
       }
       ++faceIndex;
     }
-    if (faceIndex >= aFamily->NumFaces()) {
-      NS_WARNING("Face not found in family! Ignoring SetCharacterMap");
-      return;
-    }
+    MOZ_RELEASE_ASSERT(faceIndex < aFamily->NumFaces(), "Face ptr not found!");
     if (NS_IsMainThread()) {
       dom::ContentChild::GetSingleton()->SendSetCharacterMap(
-          aList->GetGeneration(), familyIndex->first, familyIndex->second,
+          aList->GetGeneration(), familyIndex.first, familyIndex.second,
           faceIndex, *aCharMap);
     } else {
       NS_DispatchToMainThread(new SetCharMapRunnable(
-          aList->GetGeneration(), familyIndex.value(), faceIndex, aCharMap));
+          aList->GetGeneration(), familyIndex, faceIndex, aCharMap));
     }
     return;
   }
@@ -636,20 +629,16 @@ void Family::SetupFamilyCharMap(FontList* aList) {
   if (!XRE_IsParentProcess()) {
     // |this| could be a Family record in either the Families() or Aliases()
     // arrays; FindIndex will map it back to its index and which array.
-    Maybe<std::pair<uint32_t, bool>> index = FindIndex(aList);
-    if (!index) {
-      NS_WARNING("Family index not found! Ignoring SetupFamilyCharMap");
-      return;
-    }
+    std::pair<uint32_t, bool> index = FindIndex(aList);
     if (NS_IsMainThread()) {
       dom::ContentChild::GetSingleton()->SendSetupFamilyCharMap(
-          aList->GetGeneration(), index->first, index->second);
+          aList->GetGeneration(), index.first, index.second);
       return;
     }
     NS_DispatchToMainThread(NS_NewRunnableFunction(
         "SetupFamilyCharMap callback",
-        [gen = aList->GetGeneration(), idx = index->first,
-         alias = index->second] {
+        [gen = aList->GetGeneration(), idx = index.first,
+         alias = index.second] {
           dom::ContentChild::GetSingleton()->SendSetupFamilyCharMap(gen, idx,
                                                                     alias);
         }));
@@ -696,13 +685,13 @@ void Family::SetupFamilyCharMap(FontList* aList) {
   }
 }
 
-Maybe<std::pair<uint32_t, bool>> Family::FindIndex(FontList* aList) const {
+std::pair<uint32_t, bool> Family::FindIndex(FontList* aList) const {
   const auto* start = aList->Families();
   const auto* end = start + aList->NumFamilies();
   if (this >= start && this < end) {
     uint32_t index = this - start;
     MOZ_RELEASE_ASSERT(start + index == this, "misaligned Family ptr!");
-    return Some(std::pair(index, false));
+    return std::pair(index, false);
   }
 
   start = aList->AliasFamilies();
@@ -710,10 +699,10 @@ Maybe<std::pair<uint32_t, bool>> Family::FindIndex(FontList* aList) const {
   if (this >= start && this < end) {
     uint32_t index = this - start;
     MOZ_RELEASE_ASSERT(start + index == this, "misaligned AliasFamily ptr!");
-    return Some(std::pair(index, true));
+    return std::pair(index, true);
   }
 
-  return Nothing();
+  MOZ_CRASH("invalid font-list Family ptr!");
 }
 
 FontList::FontList(uint32_t aGeneration) {

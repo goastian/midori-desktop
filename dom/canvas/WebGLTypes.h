@@ -840,7 +840,6 @@ struct VertAttribPointerCalculated final {
 }  // namespace webgl
 
 // TODO: s/RawBuffer/Span/
-
 template <typename T = uint8_t>
 class RawBuffer final {
   const T* mBegin = nullptr;

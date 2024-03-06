@@ -1063,7 +1063,7 @@ class nsGenericHTMLFormElement : public nsGenericHTMLElement {
                     nsIPrincipal* aMaybeScriptedPrincipal,
                     bool aNotify) override;
 
-    virtual void BeforeSetForm(mozilla::dom::HTMLFormElement* aForm,
+  virtual void BeforeSetForm(mozilla::dom::HTMLFormElement* aForm,
                              bool aBindToTree) {}
 
   virtual void AfterClearForm(bool aUnbindOrDelete) {}

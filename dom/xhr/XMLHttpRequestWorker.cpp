@@ -104,7 +104,7 @@ class Proxy final : public nsIDOMEventListener {
   bool mMozSystem;
 
   // Only touched on the main thread.
-  RefPtr<XMLHttpRequestMainThread> mXHR;void Teardown(bool aSendUnpin);
+  RefPtr<XMLHttpRequestMainThread> mXHR;
   RefPtr<XMLHttpRequestUpload> mXHRUpload;
   nsCOMPtr<nsIEventTarget> mSyncLoopTarget;
   nsCOMPtr<nsIEventTarget> mSyncEventResponseTarget;
@@ -387,7 +387,7 @@ class LoadStartDetectionRunnable final : public Runnable,
   };
 
  public:
-    explicit LoadStartDetectionRunnable(Proxy* aProxy)
+  explicit LoadStartDetectionRunnable(Proxy* aProxy)
       : Runnable("dom::LoadStartDetectionRunnable"),
         mWorkerPrivate(aProxy->mWorkerPrivate),
         mProxy(aProxy),
@@ -790,7 +790,6 @@ void Proxy::Teardown() {
     }
 
     if (mOutstandingSendCount) {
-
       if (mSyncLoopTarget) {
         // We have an unclosed sync loop.  Fix that now.
         RefPtr<MainThreadStopSyncLoopRunnable> runnable =

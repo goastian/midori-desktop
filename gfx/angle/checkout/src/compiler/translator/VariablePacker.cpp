@@ -239,7 +239,7 @@ bool VariablePacker::checkExpandedVariablesWithinPackingLimits(
             break;
         }
         topNonFullRow_ += GetVariablePackingRows(variable);
-    if (topNonFullRow_ > maxRows_)
+        if (topNonFullRow_ > maxRows_)
         {
             return false;
         }
@@ -254,6 +254,7 @@ bool VariablePacker::checkExpandedVariablesWithinPackingLimits(
         {
             break;
         }
+
         num3ColumnRows += GetVariablePackingRows(variable);
         if (topNonFullRow_ + num3ColumnRows > maxRows_)
         {

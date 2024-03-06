@@ -62,11 +62,11 @@ bool WebTaskSchedulerWorker::DispatchEventLoopRunnable() {
       new WebTaskWorkerRunnable(mWorkerPrivate, this);
   return runnable->Dispatch();
 }
+
 void WebTaskSchedulerWorker::Disconnect() {
   if (mWorkerPrivate) {
     mWorkerPrivate = nullptr;
   }
   WebTaskScheduler::Disconnect();
 }
-
 }  // namespace mozilla::dom

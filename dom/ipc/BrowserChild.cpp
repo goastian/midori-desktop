@@ -2508,7 +2508,9 @@ mozilla::ipc::IPCResult BrowserChild::RecvRenderLayers(
     }
   }
 
-  mRenderLayers = aEnabled;
+  // Floorp Injections
+  bool splitViewIsEnabled = Preferences::GetBool("floorp.browser.splitView.working", false);
+  mRenderLayers = splitViewIsEnabled ? true : aEnabled;
 
   if (aEnabled && IsVisible()) {
     // This request is a no-op.
@@ -3783,7 +3785,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(BrowserChildMessageManager)
   NS_INTERFACE_MAP_ENTRY(nsIMessageSender)
-  NS_INTERFACE_MAP_ENTRY(ContentFrameMessageManager)
+  NS_INTERFACE_MAP_ENTRY_CONCRETE(ContentFrameMessageManager)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 

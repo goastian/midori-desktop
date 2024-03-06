@@ -123,8 +123,8 @@ struct QueueParamTraits<RawBuffer<T>> {
     const auto& elemCount = in.size();
     auto status = view.WriteParam(elemCount);
     if (!status) return status;
-    if (!elemCount) return status;
 
+    if (!elemCount) return status;
     status = view.WriteFromRange(in.Data());
 
     return status;
@@ -135,6 +135,7 @@ struct QueueParamTraits<RawBuffer<T>> {
     size_t elemCount = 0;
     auto status = view.ReadParam(&elemCount);
     if (!status) return status;
+
     if (!elemCount) {
       *out = {};
       return true;

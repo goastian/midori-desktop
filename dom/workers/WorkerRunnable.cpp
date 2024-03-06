@@ -225,7 +225,7 @@ WorkerRunnable::Run() {
   bool targetIsWorkerThread = mBehavior == WorkerThreadModifyBusyCount ||
                               mBehavior == WorkerThreadUnchangedBusyCount;
 
-if (targetIsWorkerThread) {
+  if (targetIsWorkerThread) {
     // On a worker thread, a WorkerRunnable should only run when there is an
     // underlying WorkerThreadPrimaryRunnable active, which means we should
     // find a CycleCollectedJSContext.

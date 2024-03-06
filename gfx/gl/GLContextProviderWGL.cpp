@@ -302,6 +302,7 @@ GLContextWGL::~GLContextWGL() {
 
 bool GLContextWGL::MakeCurrentImpl() const {
   GLContext::ResetTLSCurrentContext();
+
   const bool succeeded = sWGLLib.mSymbols.fMakeCurrent(mDC, mContext);
   NS_ASSERTION(succeeded, "Failed to make GL context current!");
   return succeeded;

@@ -2108,7 +2108,7 @@ already_AddRefed<ID2D1Brush> DrawTargetD2D1::CreateBrushForPattern(
     const RadialGradientPattern* pat =
         static_cast<const RadialGradientPattern*>(&aPattern);
 
-     if (!pat->mStops ||
+    if (!pat->mStops ||
         pat->mStops->GetBackendType() != BackendType::DIRECT2D) {
       gfxDebug() << "No stops specified for gradient pattern.";
       return CreateTransparentBlackBrush();

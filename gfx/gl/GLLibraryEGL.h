@@ -264,7 +264,6 @@ class GLLibraryEGL final {
     const bool CHECK_CONTEXT_OWNERSHIP = true;
     if (CHECK_CONTEXT_OWNERSHIP) {
       const MutexAutoLock lock(mMutex);
-
       const auto tid = PlatformThread::CurrentId();
       const auto prevCtx = fGetCurrentContext();
 

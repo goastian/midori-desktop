@@ -25,6 +25,7 @@
 
 class nsIInputStream;
 class nsIRandomGenerator;
+
 namespace mozilla::dom::quota {
 class EncryptingOutputStreamBase : public nsIOutputStream {
  public:
