@@ -3,59 +3,57 @@
   "description": "Microsoft Bing",
   "manifest_version": 2,
   "version": "1.3",
-  "browser_specific_settings": {
+  "applications": {
     "gecko": {
-      "id": "bing@search.astian.org"
+      "id": "bing@search.mozilla.org"
     }
   },
   "hidden": true,
   "icons": {
     "16": "favicon.ico"
   },
-  "web_accessible_resources": [
-    "favicon.ico"
-  ],
+  "web_accessible_resources": ["favicon.ico"],
   "chrome_settings_overrides": {
     "search_provider": {
-      "keyword": "@b",
+      "keyword": "@bing",
       "name": "Bing",
       "search_url": "https://www.bing.com/search",
-      "search_form": "https://www.bing.com/search?form=MIDOR1&PC=SIE117&PTAG=SYS1000000&q={searchTerms}",
-      "search_url_get_params": "PC=SIE117&PTAG=SYS1000000&q={searchTerms}",
+      "search_form": "https://www.bing.com/search?pc=MOZI&q={searchTerms}",
+      "search_url_get_params": "pc=MOZI&q={searchTerms}",
       "params": [
         {
           "name": "form",
           "condition": "purpose",
           "purpose": "contextmenu",
-          "value": "MIDOR1"
+          "value": "MOZCON"
         },
         {
           "name": "form",
           "condition": "purpose",
           "purpose": "searchbar",
-          "value": "MIDOR1"
+          "value": "MOZSBR"
         },
         {
           "name": "form",
           "condition": "purpose",
           "purpose": "homepage",
-          "value": "MIDOR1"
+          "value": "MOZSPG"
         },
         {
           "name": "form",
           "condition": "purpose",
           "purpose": "keyword",
-          "value": "MIDOR1"
+          "value": "MOZLBR"
         },
         {
           "name": "form",
           "condition": "purpose",
           "purpose": "newtab",
-          "value": "MIDOR1"
+          "value": "MOZTSB"
         }
       ],
       "suggest_url": "https://www.bing.com/osjson.aspx",
-      "suggest_url_get_params": "query={searchTerms}&form=MIDORI&language={moz:locale}"
+      "suggest_url_get_params": "query={searchTerms}&form=OSDJAS&language={moz:locale}"
     }
   }
 }
