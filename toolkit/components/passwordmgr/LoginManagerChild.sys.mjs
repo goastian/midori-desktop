@@ -1824,7 +1824,9 @@ export class LoginManagerChild extends JSWindowActorChild {
     if (!event.isTrusted) {
       return;
     }
+
     this.setupProgressListener(window);
+
     const isPrimaryPasswordSet = this.#getIsPrimaryPasswordSet();
     let document = event.target.ownerDocument;
 

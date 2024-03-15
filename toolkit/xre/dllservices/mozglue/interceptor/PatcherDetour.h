@@ -1730,7 +1730,6 @@ class WindowsDllDetourPatcher final
     if (!target.Commit()) {
       *aOutTramp = nullptr;
     }
-
   }
 };
 

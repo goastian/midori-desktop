@@ -1713,6 +1713,7 @@ export var Policies = {
         "network.",
         "pdfjs.",
         "places.",
+        "pref.",
         "print.",
         "signon.",
         "spellchecker.",
@@ -1727,6 +1728,8 @@ export var Policies = {
       const allowedSecurityPrefs = [
         "security.block_fileuri_script_with_wrong_mime",
         "security.default_personal_cert",
+        "security.disable_button.openCertManager",
+        "security.disable_button.openDeviceManager",
         "security.insecure_connection_text.enabled",
         "security.insecure_connection_text.pbmode.enabled",
         "security.mixed_content.block_active_content",
@@ -1872,6 +1875,12 @@ export var Policies = {
       } else {
         manager.disallowFeature("createMasterPassword");
       }
+    },
+  },
+
+  PrintingEnabled: {
+    onBeforeUIStartup(manager, param) {
+      setAndLockPref("print.enabled", param);
     },
   },
 

@@ -190,7 +190,7 @@ linux64-custom-car:
     worker:
         docker-image: {in-tree: custom-car-linux}
         max-run-time: 16200
-        run-on-projects: []
+    run-on-projects: []
     run:
         script: build-custom-car-linux.sh
         arguments: [

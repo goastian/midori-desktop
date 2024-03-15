@@ -500,7 +500,7 @@ Section "Uninstall"
   ${un.RegCleanFileHandler}  ".webp"  "MidoriHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".avif"  "MidoriHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".jxl"   "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".pdf"   "MidoriPDF-$AppUserModelID"
+${un.RegCleanFileHandler}  ".pdf"   "MidoriPDF-$AppUserModelID"
 
   SetShellVarContext all  ; Set SHCTX to HKLM
   ${un.GetSecondInstallPath} "Software\Astian" $R9

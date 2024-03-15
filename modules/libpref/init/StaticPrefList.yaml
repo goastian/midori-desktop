@@ -1099,7 +1099,7 @@
 #   9 = maximal compression
 - name: browser.cache.jsbc_compression_level
   type: RelaxedAtomicUint32
-  value: 3
+  value: 0
   mirror: always
 
 # Whether tooltips are enabled.
@@ -1923,7 +1923,7 @@
 # See bugzilla bug 72138 for more info.
 - name: content.notify.interval
   type: int32_t
-  value: 100000
+  value: 120000
   mirror: always
 
 # Do we notify based on time?
@@ -2517,7 +2517,7 @@
 # Whether the scheduler interface will be exposed
 - name: dom.enable_web_task_scheduling
   type: RelaxedAtomicBool
-  value: true
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # If this is true, it's allowed to fire "cut", "copy" and "paste" events.
@@ -5753,12 +5753,12 @@
 
 - name: gfx.canvas.accelerated.cache-items
   type: RelaxedAtomicUint32
-  value: 4096
+  value: 2048
   mirror: always
 
 - name: gfx.canvas.accelerated.cache-size
   type: RelaxedAtomicUint32
-  value: 512
+  value: 256
   mirror: always
 
 - name: gfx.canvas.accelerated.reserve-empty-cache
@@ -5992,7 +5992,7 @@
 # Size in megabytes
 - name: gfx.content.skia-font-cache-size
   type: int32_t
-  value: 20
+  value: 5
   mirror: once
 
 - name: gfx.device-reset.limit
@@ -7052,7 +7052,7 @@
 # Chunk size for calls to the image decoders.
 - name: image.mem.decode_bytes_at_a_time
   type: uint32_t
-  value: 32768
+  value: 16384
   mirror: once
 
 # Discards inactive image frames and re-decodes them on demand from
@@ -8665,7 +8665,7 @@
 # Is support for CSS masonry layout enabled?
 - name: layout.css.grid-template-masonry-value.enabled
   type: RelaxedAtomicBool
-  value: true
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
   rust: true
 
@@ -8680,7 +8680,7 @@
 # Is support for :has() enabled?
 - name: layout.css.has-selector.enabled
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
   rust: true
 
@@ -9061,6 +9061,11 @@
 - name: layout.cursor.block.max-size
   type: uint32_t
   value: 32
+  mirror: always
+
+- name: layout.cursor.disable-for-popups
+  type: bool
+  value: true
   mirror: always
 
 - name: layout.display-list.build-twice
@@ -11691,7 +11696,7 @@
 # Enables the predictive service.
 - name: network.predictor.enabled
   type: bool
-  value: false
+  value: true
   mirror: always
 
 # Set true to allow resolving proxy for localhost
@@ -11932,7 +11937,7 @@
 
 - name: network.dns.max_high_priority_threads
   type: RelaxedAtomicUint32
-  value: 8
+  value: 5
   mirror: always
 
 - name: network.dns.max_any_priority_threads
@@ -12029,7 +12034,7 @@
 # Capacity of the above cache, in kilobytes.
 - name: network.ssl_tokens_cache_capacity
   type: RelaxedAtomicUint32
-  value: 10240
+  value: 2048
   mirror: always
 
 # How many records we store per entry

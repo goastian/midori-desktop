@@ -1731,7 +1731,6 @@ nsAVIFDecoder::DecodeResult nsAVIFDecoder::DoDecodeInternal(
 
   UniquePtr<uint8_t[]> rgbBuf =
       MakeUniqueFallible<uint8_t[]>(rgbBufLength.value());
-
   if (!rgbBuf) {
     MOZ_LOG(sAVIFLog, LogLevel::Debug,
             ("[this=%p] allocation of %u-byte rgbBuf failed", this,

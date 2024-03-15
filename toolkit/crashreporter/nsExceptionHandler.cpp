@@ -1536,18 +1536,16 @@ bool MinidumpCallback(
     // We launch the crash reporter client/dialog only if we've been explicitly
     // asked to report crashes and if we weren't already trying to unset the
     // exception handler (which is indicated by isSafeToDump being false).
-
 #if defined(MOZ_WIDGET_ANDROID)  // Android
     returnValue =
         LaunchCrashHandlerService(crashReporterPath.c_str(), minidumpPath);
 #else  // Windows, Mac, Linux, etc...
-  returnValue = LaunchProgram(crashReporterPath.c_str(), minidumpPath);
+    returnValue = LaunchProgram(crashReporterPath.c_str(), minidumpPath);
 #endif
   }
 
 #ifdef XP_WIN
   TerminateProcess(GetCurrentProcess(), 1);
-#  endif
 #endif
 
   return returnValue;

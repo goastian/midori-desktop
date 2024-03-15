@@ -12140,8 +12140,6 @@ class TopSiteLink extends (external_React_default()).PureComponent {
     }, link.isPinned && /*#__PURE__*/external_React_default().createElement("div", {
       className: "icon icon-pin-small"
     }), title || /*#__PURE__*/external_React_default().createElement("br", null), /*#__PURE__*/external_React_default().createElement("span", {
-      className: "sponsored-label",
-      "data-l10n-id": "newtab-topsite-sponsored"
     })))), children, impressionStats));
   }
 
@@ -14757,6 +14755,8 @@ const Search_Search = (0,external_ReactRedux_namespaceObject.connect)(state => (
 
 const imgLength = 100;
 function Background(props) {
+  var _props$pref;
+
   if (props.className == "random_image") {
     let [imgSrc, setImgSrc] = (0,external_React_namespaceObject.useState)({
       "url": `chrome://browser/skin/newtabbg-${Math.floor(Math.random() * imgLength)}.webp`
@@ -14777,20 +14777,20 @@ function Background(props) {
         "--background-url": `url(${imgSrc.url})`
       }
     }));
-  } else if (props.className == "selected_folder" && props.imageList != undefined) {
+  } else if (props.className == "selected_folder" && (_props$pref = props.pref) !== null && _props$pref !== void 0 && _props$pref.backgroundPaths) {
+    const imageList = props.pref.backgroundPaths;
     let [fileImgSrc, setFileImgSrc] = (0,external_React_namespaceObject.useState)({
-      "url": props.imageList.urls.length != 0 ? props.imageList.urls[Math.floor(Math.random() * props.imageList.urls.length)] : ""
+      "url": imageList.urls.length != 0 ? imageList.urls[Math.floor(Math.random() * imageList.urls.length)] : ""
     });
 
-    if (props.imageList.urls.length != 0) {
-      var _props$pref, _props$pref2;
+    if (imageList.urls.length != 0) {
+      var _props$pref2, _props$pref3;
 
-      if (props.imageList.urls.indexOf(fileImgSrc.url) == -1 || ((_props$pref = props.pref["floorpBackgroundPathsVal_" + fileImgSrc.url]) === null || _props$pref === void 0 ? void 0 : _props$pref.data) === null) {
-        fileImgSrc.url = props.imageList.urls.length != 0 ? props.imageList.urls[Math.floor(Math.random() * props.imageList.urls.length)] : "";
+      if (imageList.urls.indexOf(fileImgSrc.url) == -1 || ((_props$pref2 = props.pref["floorpBackgroundPathsVal_" + fileImgSrc.url]) === null || _props$pref2 === void 0 ? void 0 : _props$pref2.data) === null) {
+        fileImgSrc.url = imageList.urls.length != 0 ? imageList.urls[Math.floor(Math.random() * imageList.urls.length)] : "";
         setFileImgSrc({
           "url": fileImgSrc.url
         });
-        if ("blobData" in fileImgSrc) delete fileImgSrc.blobData;
       }
 
       if ("data" in fileImgSrc) {
@@ -14803,10 +14803,51 @@ function Background(props) {
             "--background-url": `url(${fileImgSrc.data})`
           }
         }));
-      } else if (((_props$pref2 = props.pref["floorpBackgroundPathsVal_" + fileImgSrc.url]) === null || _props$pref2 === void 0 ? void 0 : _props$pref2.data) != undefined) {
+      } else if ((_props$pref3 = props.pref["floorpBackgroundPathsVal_" + fileImgSrc.url]) !== null && _props$pref3 !== void 0 && _props$pref3.data) {
         setImgData(props.pref["floorpBackgroundPathsVal_" + fileImgSrc.url].data, fileImgSrc.url, props.pref["floorpBackgroundPathsVal_" + fileImgSrc.url].type, setFileImgSrc);
       } else {
         props.getImg(fileImgSrc.url);
+      }
+
+      return /*#__PURE__*/external_React_default().createElement("div", {
+        id: "background_back",
+        className: props.className
+      }, /*#__PURE__*/external_React_default().createElement("div", {
+        id: "background",
+        style: {
+          "--background-url": `url(${fileImgSrc.data})`
+        }
+      }));
+    } else if (fileImgSrc.url != "") {
+      setFileImgSrc({
+        "url": ""
+      });
+    }
+  } else if (props.className == "selected_image" && props.pref.oneImageData) {
+    const imgData = props.pref.oneImageData;
+    let [fileImgSrc, setFileImgSrc] = (0,external_React_namespaceObject.useState)({
+      "url": imgData.url ?? ""
+    });
+    console.log(fileImgSrc);
+
+    if (imgData.url) {
+      if (imgData.url != fileImgSrc.url) {
+        fileImgSrc.url = imgData.url;
+        setFileImgSrc({
+          "url": imgData.url
+        });
+      } else if (fileImgSrc.data) {
+        return /*#__PURE__*/external_React_default().createElement("div", {
+          id: "background_back",
+          className: props.className
+        }, /*#__PURE__*/external_React_default().createElement("div", {
+          id: "background",
+          style: {
+            "--background-url": `url(${fileImgSrc.data ?? ""})`
+          }
+        }));
+      } else if (imgData.data) {
+        setImgData(imgData.data, imgData.url, imgData.extension, setFileImgSrc);
       }
 
       return /*#__PURE__*/external_React_default().createElement("div", {
@@ -15069,6 +15110,10 @@ class BaseContent extends (external_React_default()).PureComponent {
         Background_ClassName = "selected_folder";
         break;
 
+      case 4:
+        Background_ClassName = "selected_image";
+        break;
+
       default:
         Background_ClassName = "not_background";
         break;
@@ -15078,7 +15123,6 @@ class BaseContent extends (external_React_default()).PureComponent {
       className: prefs["floorp.newtab.backdrop.blur.disable"] ? "" : "floorp-backdrop-blur-enable"
     }, /*#__PURE__*/external_React_default().createElement(Background, {
       className: Background_ClassName,
-      imageList: prefs["backgroundPaths"],
       getImg: this.getImageSend.bind(this),
       pref: prefs
     }), /*#__PURE__*/external_React_default().createElement(CustomizeMenu, {
@@ -15114,23 +15158,14 @@ class BaseContent extends (external_React_default()).PureComponent {
     })) : /*#__PURE__*/external_React_default().createElement(Sections_Sections, null)), /*#__PURE__*/external_React_default().createElement(ConfirmDialog, null))), /*#__PURE__*/external_React_default().createElement("div", {
       id: "floorp"
     }, /*#__PURE__*/external_React_default().createElement("a", {
-      class: "releasenote",
-      href: "https://astian.org/community",
-      target: "_blank"
+      className: prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote",
+      href: "https://support.ablaze.one"
     }, "Support"), /*#__PURE__*/external_React_default().createElement("br", null), /*#__PURE__*/external_React_default().createElement("br", null), /*#__PURE__*/external_React_default().createElement("a", {
-      class: "releasenote",
-      href: "https://astian.org/midori-en",
-      target: "_blank"
+      className: prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote",
+      href: "https://blog.ablaze.one/category/ablaze/ablaze-project/floorp"
     }, "Release Note")), /*#__PURE__*/external_React_default().createElement("a", {
+      className: prefs["floorp.newtab.imagecredit.hide"] ? "floorp-imagecred-hidden" : "imagecred",
       href: "https://unsplash.com/",
-      style: {
-        position: "fixed",
-        bottom: "1em",
-        left: "1em",
-        fontSize: "16px",
-        color: "#ffffff"
-      },
-      target: "_blank",
       id: "unsplash"
     }, "Unsplash"));
   }

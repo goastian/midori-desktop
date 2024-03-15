@@ -1,11 +1,11 @@
 {
-  "hashFunction": "sha512",
+"hashFunction": "sha512",
   "name": "OpenH264-2.3.2",
   "schema_version": 1000,
   "vendors": {
     "gmp-gmpopenh264": {
       "platforms": {
-        "Darwin_aarch64-gcc3": {
+                "Darwin_aarch64-gcc3": {
           "fileUrl": "http://ciscobinary.openh264.org/openh264-macosx64-aarch64-31c4d2e4a037526fd30d4e5c39f60885986cf865.zip",
           "filesize": 477938,
           "hashValue": "391efb184373d533713a9e99a9e63c3bbaf614e8d8bdfdd84d4d5e53b9a737e75032187309dd00e58b58bb1033ab68d199f994744f6add57dd08f5fbb654d2f3"

@@ -18,7 +18,6 @@ const ICON_ATTRIBUTE_SHOWING = "showing";
 const ICON_ANCHOR_ATTRIBUTE = "popupnotificationanchor";
 
 const PREF_SECURITY_DELAY = "security.notification_enable_delay";
-
 const FULLSCREEN_TRANSITION_TIME_SHOWN_OFFSET_MS = 2000;
 
 // Enumerated values for the POPUP_NOTIFICATION_STATS telemetry histogram.

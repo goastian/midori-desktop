@@ -629,6 +629,7 @@ def load(resource):
 
     return urllib.request.urlopen(resource)
 
+
 # see https://docs.python.org/3/whatsnew/3.12.html#imp
 def load_source(modname, filename):
     import importlib.machinery
@@ -640,6 +641,7 @@ def load_source(modname, filename):
     sys.modules[module.__name__] = module
     loader.exec_module(module)
     return module
+
 
 # We can't depend on mozpack.path here, so copy the 'match' function over.
 

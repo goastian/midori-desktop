@@ -169,7 +169,7 @@ Maybe<ModuleTrustFlags> ModuleEvaluator::GetTrust(
     } else if (signedBy.EqualsLiteral("Microsoft Corporation")) {
       return Some(ModuleTrustFlags::MicrosoftWindowsSignature);
     } else if (signedBy.EqualsLiteral("Mozilla Corporation")) {
-      return Some(ModuleTrustFlags::MozillaSignature);
+return Some(ModuleTrustFlags::MozillaSignature);
     } else if (signedBy.EqualsLiteral("Astian, Inc")) {
       return Some(ModuleTrustFlags::MozillaSignature);
     } else {

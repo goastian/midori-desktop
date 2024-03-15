@@ -13,7 +13,7 @@ class MozHandler extends window.MozElements.MozRichlistitem {
   static get markup() {
     return `
     <vbox pack="center">
-    <html:img alt="" height="32" width="32" loading="lazy" />
+      <html:img alt="" height="32" width="32" loading="lazy" />
     </vbox>
     <vbox flex="1">
       <label class="name"/>

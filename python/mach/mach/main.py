@@ -17,6 +17,7 @@ import uuid
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Dict, List, Union
+
 from mozfile import load_source
 
 from .base import (

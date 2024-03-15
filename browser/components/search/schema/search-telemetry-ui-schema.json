@@ -2,6 +2,7 @@
   "ui:order": [
     "telemetryId",
     "searchPageRegexp",
+    "queryParamNames",
     "queryParamName",
     "codeParamName",
     "taggedCodes",
@@ -13,6 +14,7 @@
     "adServerAttributes",
     "components",
     "nonAdsLinkRegexps",
-    "shoppingTab"
+    "shoppingTab",
+    "domainExtraction"
   ]
 }

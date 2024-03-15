@@ -579,6 +579,16 @@ XPCOMUtils.defineLazyPreferenceGetter(
 
 XPCOMUtils.defineLazyPreferenceGetter(
   this,
+  "gPrintEnabled",
+  "print.enabled",
+  false,
+  (aPref, aOldVal, aNewVal) => {
+    updatePrintCommands(aNewVal);
+  }
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
   "gScreenshotsComponentEnabled",
   "screenshots.browser.component.enabled",
   false,
@@ -808,6 +818,19 @@ function UpdateBackForwardCommands(aWebNavigation) {
     } else {
       forwardCommand.setAttribute("disabled", true);
     }
+  }
+}
+
+function updatePrintCommands(enabled) {
+  var printCommand = document.getElementById("cmd_print");
+  var printPreviewCommand = document.getElementById("cmd_printPreviewToggle");
+
+  if (enabled) {
+    printCommand.removeAttribute("disabled");
+    printPreviewCommand.removeAttribute("disabled");
+  } else {
+    printCommand.setAttribute("disabled", "true");
+    printPreviewCommand.setAttribute("disabled", "true");
   }
 }
 
@@ -1614,10 +1637,7 @@ var gBrowserInit = {
       let type = CustomizableUI.getAreaType(area);
       if (type == CustomizableUI.TYPE_TOOLBAR) {
         let node = document.getElementById(area);
-        // Make sure we don't error out if a node hasn't been included with an overlay yet.
-        if (node) {
-          CustomizableUI.registerToolbarNode(node);
-        }
+        CustomizableUI.registerToolbarNode(node);
       }
     }
     BrowserSearch.initPlaceHolder();
@@ -1638,6 +1658,8 @@ var gBrowserInit = {
     });
 
     updateFxaToolbarMenu(gFxaToolbarEnabled, true);
+
+    updatePrintCommands(gPrintEnabled);
 
     gUnifiedExtensions.init();
 
@@ -2358,6 +2380,71 @@ var gBrowserInit = {
       //                      window (for this case, all other arguments are
       //                      ignored).
       let uri = window.arguments?.[0];
+
+      /*** Floorp Injections *********************************************************************************************/
+
+      if (uri) {
+        try {
+          // If the URI has "?FloorpEnableSSBWindow=true" at the end, The window will be opened as a SSB window.
+          if (uri.endsWith("?FloorpEnableSSBWindow=true")) {
+            let parseSsbArgs = uri.split(",");
+            let id = parseSsbArgs[1];
+
+            // Replace start uri
+            uri = parseSsbArgs[0];
+
+            document.documentElement.setAttribute(
+              "FloorpEnableSSBWindow",
+              "true"
+            );
+
+            document.documentElement.setAttribute(
+              "FloorpSSBId",
+              id
+            );
+
+            // Add SSB Window or Tab Attribute
+            // This attribute is used to make do not restore the window or tab when the browser is restarted.
+            window.floorpSsbWindow = true;
+
+            SessionStore.promiseInitialized.then(() => {
+              // Load SSB Support Script & CSS
+              gBrowser.tabs.forEach(tab => {
+                tab.setAttribute("floorpSSB", "true");
+              });
+              window.gBrowser.floorpSsbWindow = true;
+              Services.scriptloader.loadSubScript(
+                "chrome://browser/content/browser-ssb-support.js",
+               this
+              );
+            });
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      const SsbPrefName = "browser.ssb.startup";
+      let needSsbOpenWindow = Services.prefs.prefHasUserValue(SsbPrefName);
+      if (needSsbOpenWindow) {
+        let id = Services.prefs.getStringPref(SsbPrefName);
+        var { SiteSpecificBrowserIdUtils } = ChromeUtils.import(
+          "resource:///modules/SiteSpecificBrowserIdUtils.jsm"
+        );
+
+        try {
+          window.setTimeout(() => {
+            SiteSpecificBrowserIdUtils.runSsbById(id);
+            Services.prefs.clearUserPref(SsbPrefName);
+            window.minimize();
+          }, 2000);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      /******************************************************************************************************************/
+
       if (!uri || window.XULElement.isInstance(uri)) {
         return null;
       }
@@ -5225,6 +5312,8 @@ var XULBrowserWindow = {
    *   nsIWebProgressListener.onLocationChange; see bug 1478348.
    */
   onLocationChange(aWebProgress, aRequest, aLocationURI, aFlags, aIsSimulated) {
+    // Floorp Injections
+    window.gFloorpOnLocationChange.onLocationChange(aWebProgress, aRequest, aLocationURI, aFlags, aIsSimulated);
     var location = aLocationURI ? aLocationURI.spec : "";
 
     UpdateBackForwardCommands(gBrowser.webNavigation);

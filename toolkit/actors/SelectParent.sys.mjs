@@ -385,7 +385,7 @@ export var SelectParentHelper = {
         break;
 
       case "fullscreen":
-        case "FullscreenWarningOnScreen":
+      case "FullscreenWarningOnScreen":
         if (this._currentMenulist) {
           this._currentMenulist.menupopup.hidePopup();
         }

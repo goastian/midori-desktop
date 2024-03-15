@@ -1103,6 +1103,7 @@ def android_gtest(
 
     path = os.path.join("testing", "gtest", "remotegtests.py")
     load_source("remotegtests", path)
+
     import remotegtests
 
     tester = remotegtests.RemoteGTests()

@@ -57,11 +57,6 @@ toolbar[brighttext]:not(:-moz-lwtheme) {
   position: relative;
 }
 
-#browser-bottombox {
-  /* opaque for layers optimization */
-  background-color: -moz-Dialog;
-}
-
 /* Bookmark menus */
 menu.bookmark-item,
 menuitem.bookmark-item {
@@ -143,6 +138,7 @@ menuitem.bookmark-item {
 
 #TabsToolbar {
   min-height: 0;
+  background-color: ActiveCaption !important;
 }
 
 #titlebar {

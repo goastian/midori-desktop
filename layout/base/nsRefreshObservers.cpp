@@ -6,6 +6,7 @@
 
 #include "nsRefreshObservers.h"
 #include "nsPresContext.h"
+#include "mozilla/Likely.h"
 
 namespace mozilla {
 
@@ -30,6 +31,10 @@ void ManagedPostRefreshObserver::Cancel() {
 }
 
 void ManagedPostRefreshObserver::DidRefresh() {
+  if (MOZ_UNLIKELY(!mAction)) {
+    return;
+  }
+
   RefPtr<ManagedPostRefreshObserver> thisObject = this;
   auto action = std::move(mAction);
   Unregister unregister = action(false);
@@ -41,9 +46,9 @@ void ManagedPostRefreshObserver::DidRefresh() {
       // mPresContext. In that case, we're already unregistered so no need to
       // do anything.
       pc->UnregisterManagedPostRefreshObserver(this);
-    } else {
-    mAction = std::move(action);
     }
+  } else {
+    mAction = std::move(action);
   }
 }
 

@@ -299,6 +299,7 @@ gboolean nsDeviceContextSpecGTK::PrinterEnumerator(GtkPrinter* aPrinter,
       NS_DispatchToCurrentThread(
           NewRunnableMethod("nsDeviceContextSpecGTK::StartPrintJob", spec,
                             &nsDeviceContextSpecGTK::StartPrintJob));
+
       // We're already done, but we need to let the enumeration run its course,
       // to avoid a GTK bug. So we record that we've found a match and
       // then return FALSE.

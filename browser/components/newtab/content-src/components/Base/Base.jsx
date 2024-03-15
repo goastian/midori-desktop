@@ -230,6 +230,9 @@ export class BaseContent extends React.PureComponent {
           case 3:
             Background_ClassName = "selected_folder"
             break;
+            case 4:
+              Background_ClassName = "selected_image"
+              break;
         default:
           Background_ClassName = "not_background"
           break;
@@ -237,7 +240,7 @@ export class BaseContent extends React.PureComponent {
 
     return (
       <div className={prefs["floorp.newtab.backdrop.blur.disable"] ? "" : "floorp-backdrop-blur-enable"}>
-        <Background className={Background_ClassName} imageList={prefs["backgroundPaths"]} getImg={this.getImageSend.bind(this)} pref={prefs} />
+        <Background className={Background_ClassName}  getImg={this.getImageSend.bind(this)} pref={prefs} />
         <CustomizeMenu
           onClose={this.closeCustomizationMenu}
           onOpen={this.openCustomizationMenu}
@@ -284,11 +287,10 @@ export class BaseContent extends React.PureComponent {
         </div>
         <div id="floorp">
           {/* TODO: use css instead this br tag */}
-          <a class="releasenote" href="https://astian.org/community" target="_blank">Support</a><br /><br />
-          <a class="releasenote" href="https://astian.org/midori-en" target="_blank">Release Note</a>
+          <a className={prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote"} href="https://support.ablaze.one">Support</a><br /><br />
+          <a className={prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote"} href="https://blog.ablaze.one/category/ablaze/ablaze-project/floorp">Release Note</a>
         </div>
-        {/* TODO: move to _Base.scss */}
-        <a  href="https://unsplash.com/" style={{position: "fixed", bottom: "1em", left: "1em", fontSize: "16px",  color: "#ffffff"}} target="_blank" id="unsplash">Unsplash</a>
+        <a className={prefs["floorp.newtab.imagecredit.hide"] ? "floorp-imagecred-hidden" : "imagecred" } href="https://unsplash.com/" id="unsplash">Unsplash</a>
       </div>
     );
   }

@@ -20,7 +20,6 @@ localpaths = load_source("localpaths", os.path.abspath(os.path.join(here, os.par
 from ci.tc.github_checks_output import get_gh_checks_outputter  # type: ignore
 from wpt.markdown import markdown_adjust, table  # type: ignore
 
-
 # If a test takes more than (FLAKY_THRESHOLD*timeout) and does not consistently
 # time out, it is considered slow (potentially flaky).
 FLAKY_THRESHOLD = 0.8

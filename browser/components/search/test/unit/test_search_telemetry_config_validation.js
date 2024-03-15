@@ -43,6 +43,7 @@ function disallowAdditionalProperties(section) {
     info("Skipping additional properties validation.");
     return;
   }
+
   if (section.type == "object") {
     section.additionalProperties = false;
   }
@@ -58,16 +59,6 @@ add_task(async function test_search_config_validates_to_schema() {
     PathUtils.join(do_get_cwd().path, "search-telemetry-schema.json")
   );
   disallowAdditionalProperties(schema);
-
-  // TODO: Bug 1836156. `extraPageRegexps` is being removed so we do not want
-  // to add it to the schema. Add it here so that the test can pass until it
-  // is removed.
-  schema.properties.extraPageRegexps = {
-    type: "array",
-    items: {
-      type: "string",
-    },
-  };
 
   let data = await RemoteSettings(TELEMETRY_SETTINGS_KEY).get();
 

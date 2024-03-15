@@ -1749,6 +1749,7 @@ Function GetDownloadURL
   ${If} $ArchToInstall == ${ARCH_AMD64}
     StrCpy $0 "${URLStubDownloadAMD64}${URLStubDownloadAppend}"
   ${ElseIf} $ArchToInstall == ${ARCH_AARCH64}
+  
   ${Else}
     StrCpy $0 "${URLStubDownloadX86}${URLStubDownloadAppend}"
   ${EndIf}

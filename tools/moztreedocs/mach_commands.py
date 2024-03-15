@@ -364,7 +364,6 @@ def toggle_no_autodoc():
 
 @memoize
 def _read_project_properties():
-
     path = os.path.normpath(manager().conf_py_path)
     conf = load_source("doc_conf", path)
 

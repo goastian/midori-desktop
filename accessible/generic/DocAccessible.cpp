@@ -2165,6 +2165,7 @@ void DocAccessible::ContentRemoved(nsIContent* aContentNode) {
   if (!mRemovedNodes.EnsureInserted(aContentNode)) {
     return;
   }
+
   // If child node is not accessible then look for its accessible children.
   LocalAccessible* acc = GetAccessible(aContentNode);
   if (acc) {

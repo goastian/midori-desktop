@@ -1,6 +1,7 @@
 import os
 
 from wptserve.utils import isomorphic_decode
+
 from tools.wpt.utils import load_source
 
 here = os.path.dirname(isomorphic_decode(__file__))

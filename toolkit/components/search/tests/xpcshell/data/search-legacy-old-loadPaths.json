@@ -20,6 +20,12 @@
       "_metaData": { "order": 3 }
     },
     {
+      "id": "astiango@search.mozilla.orgdefault",
+      "_name": "AstianGO",
+      "_isAppProvided": true,
+      "_metaData": { "order": 3 }
+    },
+    {
       "id": "ddg@search.mozilla.orgdefault",
       "_name": "DuckDuckGo",
       "_isAppProvided": true,

@@ -29,6 +29,7 @@
 #include "nsNetUtil.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtrExtensions.h"
+
 #include <Cocoa/Cocoa.h>
 
 using namespace mozilla;

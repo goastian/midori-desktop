@@ -11,6 +11,7 @@ import sys
 import manifestdownload
 import six
 from mach.util import get_state_dir
+from mozfile import load_source
 from mozlog.structured import commandline
 from six.moves import configparser
 from wptrunner import wptcommandline
