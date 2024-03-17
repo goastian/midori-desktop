@@ -4,26 +4,34 @@ var dispver;
 
 async function getua() {
   var defaultua = navigator.userAgent;
-  var replua = defaultua.substring(defaultua.indexOf('Firefox/'));
-  return browser.BrowserInfo.getDisplayVersion()
-  .then(data => {
+  var replua = defaultua.substring(defaultua.indexOf("Firefox/"));
+  return browser.BrowserInfo.getDisplayVersion().then((data) => {
     var dispve = data;
     dispver = dispve.replace(/ /g, "-");
-    ua = defaultua.replace(replua, "Midori/"+dispver);
+    ua = defaultua.replace(replua, "Midori/" + dispver);
     console.log(ua);
     return ua;
-  })
+  });
 }
 async function rewriteUserAgentHeader(e) {
-  var ua = await getua()
+  var ua = await getua();
   for (var header of e.requestHeaders) {
     if (header.name.toLowerCase() === "user-agent") {
       header.value = ua;
     }
   }
-  return {requestHeaders: e.requestHeaders};
+  return { requestHeaders: e.requestHeaders };
 }
 
-browser.webRequest.onBeforeSendHeaders.addListener(rewriteUserAgentHeader,
-                                          {urls: ["https://astian.org/*","https://astian.org/midori-en/*", "https://astian.org/midori-browser/*", "https://astian.org/community/", "https://ss1.xrea.com/menkuri.s270.xrea.com/*"]},
-                                          ["blocking", "requestHeaders"]);
+browser.webRequest.onBeforeSendHeaders.addListener(
+  rewriteUserAgentHeader,
+  {
+    urls: [
+      "https://astian.org/*",
+      "https://astian.org/midori-browser/*",
+      "https://astian.org/midori-browser/*",
+      "https://community.astian.org/",
+    ],
+  },
+  ["blocking", "requestHeaders"],
+);
