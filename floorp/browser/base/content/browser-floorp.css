@@ -48,7 +48,7 @@
 }
 
 #sidebar-select-box {
-  background: color(--toolbar-bgcolor);
+  background-color: var(--toolbar-bgcolor);
   background-image: var(--lwt-additional-images);
   background-repeat: no-repeat, no-repeat, no-repeat;
   background-position: center;
@@ -251,6 +251,11 @@
   list-style-image: url("chrome://browser/skin/settings.svg");
 }
 
+#sidebar-hide-icon{
+  list-style-image: url("chrome://browser/skin/bms-hide.svg");
+  display: none !important;
+}
+
 #passwords-icon{
   list-style-image: url("chrome://browser/skin/login.svg");
 }
@@ -274,7 +279,7 @@
   display: none;
 }
 
-:root[invisibleBMS] #sidebar2-box{
+:root[invisibleBMS] #sidebar2-box {
   max-width: 0px !important;
   min-width: 0px !important;
   border: unset !important;
@@ -391,8 +396,8 @@ toolbar #workspace-button:not([disabled="true"], [checked], [open], :active):hov
 }
 
 #workspace-menu {
-  width: 250px;
   margin-left: 5px;
+  width: 300px;
 }
 
 .workspace-item > .toolbarbutton-icon {
@@ -446,8 +451,16 @@ toolbar #workspace-button:not([disabled="true"], [checked], [open], :active):hov
 }
 
 .workspace-item {
-  width: 80%;
+  width: 100%;
   min-height: 35px;
+}
+
+#workspaces-migation-menuitem-text {
+  font-size: 13px;
+  margin-inline-start: 10px;
+  margin-inline-end: 10px;
+  padding: 10px;
+  margin-bottom: 0px !important;
 }
 
 #addNewWorkspaceButton {
@@ -502,7 +515,7 @@ toolbar #workspace-button:not([disabled="true"], [checked], [open], :active):hov
   border: none !important;
 }
 
-.tabbrowser-tab[label="Floorp View"] {
+.tabbrowser-tab[label="Midori View"] {
   display: none;
 }
 
@@ -519,12 +532,213 @@ toolbar #workspace-button:not([disabled="true"], [checked], [open], :active):hov
   display: none;
 }
 
+#qrcode-img-vbox > * {
+  border-radius: 10px;
+  margin: 10px;
+}
+
+#QRCodeGeneratePageAction-image {
+  list-style-image: url("chrome://browser/skin/floorp-share.svg");
+}
+
 @media (min-resolution: 1.1dppx){
-  toolbar[brighttext] .webextension-browser-action {
-    list-style-image: var(--webextension-toolbar-image-2x-light, inherit) !important;
-  }
+ toolbar[brighttext] .webextension-browser-action {
+   list-style-image: var(--webextension-toolbar-image-2x-light, inherit) !important;
  }
- 
- #new-tab-button > .toolbarbutton-icon {
-   width: 22px !important;
- }
+}
+
+/* Progressive Web Apps */
+
+#ssb-box {
+  min-width: 350px;
+}
+
+#ssb-content-description {
+  color: var(--menu-disabled-color) !important;
+}
+
+#ssb-content-hbox {
+  display: flex;
+}
+
+#ssb-content-icon {
+  width: 32px !important;
+  height: 32px !important;
+}
+
+#ssb-content-icon-vbox {
+  margin: 30px 20px;
+  flex: 1;
+}
+
+#ssb-app-install-button {
+  appearance: none;
+  border: 0;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-weight: 600;
+  min-width: 0;
+  margin-inline: 8px 0;
+  margin-bottom: 0;
+  color: var(--button-primary-color);
+  background-color: var(--button-primary-bgcolor);
+  margin-left: auto;
+  margin-right: 5px;
+}
+
+#ssb-app-install-button:hover {
+  background-color: var(--button-primary-hover-bgcolor);
+}
+
+#ssb-app-install-button:hover:active {
+  background-color: var(--button-primary-active-bgcolor);
+}
+
+#ssb-app-cancel-button {
+  appearance: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--button-color, inherit);
+  background-color: var(--button-bgcolor, color-mix(in srgb, currentColor 13%, transparent));
+  padding: 8px 16px;
+  font-weight: 600;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+#ssb-app-cancel-button:hover {
+  background-color: var(--button-hover-bgcolor, color-mix(in srgb, currentColor 17%, transparent));
+}
+
+#ssb-app-cancel-button:active {
+  background-color: var(--button-active-bgcolor, color-mix(in srgb, currentColor 30%, transparent));
+}
+
+#ssb-button-hbox {
+  margin-top: 15px;
+  height: 35px;
+  margin-bottom: 5px;
+}
+
+.ssb-app-info-button > .toolbarbutton-icon {
+  width: 20px;
+}
+
+#ssb-installing-vbox {
+  min-width: 70px;
+  flex: 2;
+}
+
+#ssb-content-label-vbox {
+  flex: 6;
+}
+
+#ssb-installing-icon {
+  margin: auto;
+}
+
+#ssbPageAction-image {
+  list-style-image: url("chrome://browser/skin/lepton/pwa-install.svg");
+}
+
+#ssbPageAction-image[open-ssb="true"] {
+  list-style-image: url("chrome://browser/skin/lepton/pwa-launch.svg");
+}
+
+#run-ssb-contextmenu {
+  --menuitem-image: url("chrome://browser/skin/lepton/pwa-launch.svg");
+}
+
+#uninstall-ssb-contextmenu {
+  --menuitem-image: url("chrome://browser/skin/lepton/pwa-remove.svg");
+}
+
+#workspacesToolbar {
+  width: 100% !important;
+}
+#workspacesPopupContent {
+  background: inherit !important;
+  overflow: scroll;
+  max-height: 300px;
+  width: 300px;
+  padding: 0px 5px;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+}
+#workspacesToolbar {
+  background: inherit !important;
+}
+.workspaceButton label,
+.workspaceButton image {
+  margin: auto !important;
+  display: inherit !important;
+  background-color: unset !important;
+  color: var(--tab-text-color) !important;
+}
+.workspaceButton[selected="true"] {
+  background-color: color-mix(in srgb, currentColor 20%, transparent) !important;
+  box-shadow: 0 0 4px rgba(0,0,0,.4);
+}
+.workspaceButton {
+  list-style-image: url("chrome://branding/content/icon32.png");
+  border-radius: var(--tab-border-radius);
+  margin-right: 5px !important;
+  width: -moz-available;
+  min-height: 40px;
+}
+#workspacesManageWorkspacesButton {
+  list-style-image: url("chrome://browser/skin/settings.svg");
+}
+#workspaces-toolbar-button {
+  list-style-image: url("chrome://browser/skin/workspace-floorp.png");
+  border-radius: 0px !important;
+}
+#workspaces-toolbar-button:hover {
+  background-color: var(--toolbarbutton-hover-background) !important;
+}
+#workspaces-toolbar-button[open="true"],
+#workspaces-toolbar-button:hover:active {
+  background-color: var(--toolbarbutton-active-background) !important;
+}
+#workspaces-toolbar-button[showlabel="true"] > label {
+  display: inherit !important;
+}
+
+toolbarpaletteitem #workspaces-toolbar-button[showlabel="true"] > label {
+  display: none !important;
+}
+
+toolbarpaletteitem #workspaces-toolbar-button > label {
+  display: none !important;
+}
+#workspaces-toolbar-button > * {
+  background-color: unset !important;
+  background-image: unset !important;
+  background: unset !important;
+}
+.workspaceSeparator {
+  margin: 5px 0px !important;
+  width: -moz-available;
+}
+#workspacesCreateNewWorkspaceButton {
+  list-style-image: url(chrome://global/skin/icons/plus.svg);
+  width: -moz-available;
+  border-radius: var(--tab-border-radius);
+}
+#workspacesCreateNewWorkspaceButton:hover {
+  background-color: var(--toolbarbutton-hover-background) !important;
+}
+#workspacesCreateNewWorkspaceButton:hover:active {
+  background-color: var(--toolbarbutton-active-background) !important;
+}
+#workspacesCreateNewWorkspaceButton > * {
+  background-color: unset !important;
+  background-image: unset !important;
+  background: unset !important;
+}
+#workspacesCreateNewWorkspaceButton > label {
+  display: inherit;
+}
+#workspacesPopupSeparator {
+  margin: 10px 0px !important;
+}

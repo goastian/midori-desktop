@@ -4,11 +4,11 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 var { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
+  "resource://gre/modules/AppConstants.jsm",
 );
 
 let userjsUtils = ChromeUtils.importESModule(
-  "resource:///modules/userjsUtils.sys.mjs"
+  "resource:///modules/userjsUtils.sys.mjs",
 );
 
 let l10n = new Localization(["browser/floorp.ftl"], true);
@@ -27,6 +27,32 @@ const gUserjsPane = {
         gotoPref("general");
       });
 
+    const needreboot = document.getElementsByClassName("needreboot");
+    for (let i = 0; i < needreboot.length; i++) {
+      if (needreboot[i].getAttribute("rebootELIsSet") == "true") {
+        continue;
+      }
+      needreboot[i].setAttribute("rebootELIsSet", "true");
+      needreboot[i].addEventListener("click", function () {
+        if (!Services.prefs.getBoolPref("floorp.enable.auto.restart", false)) {
+          (async () => {
+            let userConfirm = await confirmRestartPrompt(null);
+            if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
+              Services.startup.quit(
+                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart,
+              );
+            }
+          })();
+        } else {
+          window.setTimeout(function () {
+            Services.startup.quit(
+              Services.startup.eAttemptQuit | Services.startup.eRestart,
+            );
+          }, 500);
+        }
+      });
+    }
+
     let buttons = document.getElementsByClassName("apply-userjs-button");
     for (let button of buttons) {
       button.addEventListener("click", async function (event) {
@@ -41,20 +67,22 @@ const gUserjsPane = {
           null,
           l10n.formatValueSync("userjs-prompt"),
           `${l10n.formatValueSync(
-            "apply-userjs-attention"
+            "apply-userjs-attention",
           )}\n${l10n.formatValueSync("apply-userjs-attention2")}`,
           flags,
           "",
           null,
           "",
           null,
-          check
+          check,
         );
         if (result == 0) {
           if (!url) {
             await userjsUtils.userjsUtilsFunctions.resetPreferencesWithUserJsContents();
             window.setTimeout(async function () {
-              try{FileUtils.getFile("ProfD", ["user.js"]).remove(false);} catch(e) {};
+              try {
+                FileUtils.getFile("ProfD", ["user.js"]).remove(false);
+              } catch (e) {}
               Services.prefs.clearUserPref("floorp.user.js.customize");
               Services.obs.notifyObservers([], "floorp-restart-browser");
             }, 3000);

@@ -12,6 +12,7 @@ browser.jar:
    content/browser/preferences/design.js
    content/browser/preferences/userjs.js
    content/browser/preferences/workspaces.js
+   content/browser/preferences/ssb.js
 
 browser.jar:
 % skin browser classic/1.0 %skin/classic/browser/

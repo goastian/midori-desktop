@@ -31,7 +31,7 @@ function extractColorsFromBase64Image(base64Image) {
         0,
         0,
         canvas.width,
-        canvas.height
+        canvas.height,
       ).data;
       const colors = [];
       let totalRed = 0;
@@ -105,12 +105,12 @@ function findMostFrequentValue(counts) {
 
 function setFaviconColorToTitlebar() {
   const base64Image = document.querySelector(
-    '.tab-icon-image[selected="true"]'
+    '.tab-icon-image[selected="true"]',
   )?.src;
   const base64ImageWithoutHeader = base64Image?.split(",")[1];
 
   extractColorsFromBase64Image(base64ImageWithoutHeader)
-    .then(result => {
+    .then((result) => {
       let elems = document.querySelectorAll(".floorp-toolbar-bgcolor");
       for (let i = 0; i < elems.length; i++) {
         elems[i].remove();
@@ -137,7 +137,7 @@ function setFaviconColorToTitlebar() {
       elem.className = "floorp-toolbar-bgcolor";
       document.head.appendChild(elem);
     })
-    .catch(error => {
+    .catch((error) => {
       let elems = document.querySelectorAll(".floorp-toolbar-bgcolor");
       for (let i = 0; i < elems.length; i++) {
         elems[i].remove();
@@ -147,6 +147,7 @@ function setFaviconColorToTitlebar() {
 
 function enableFaviconColorToTitlebar() {
   setFaviconColorToTitlebar();
+
   document.addEventListener("floorpOnLocationChangeEvent", function () {
     setFaviconColorToTitlebar();
   });

@@ -14,7 +14,7 @@ function addContextBox(
   insert,
   runFunction,
   checkID,
-  checkedFunction
+  checkedFunction,
 ) {
   const contextMenu = document.createXULElement("menuitem");
   contextMenu.setAttribute("data-l10n-id", l10n);
@@ -22,11 +22,11 @@ function addContextBox(
   contextMenu.setAttribute("oncommand", runFunction);
 
   const contentAreaContextMenu = document.getElementById(
-    "contentAreaContextMenu"
+    "contentAreaContextMenu",
   );
   contentAreaContextMenu.insertBefore(
     contextMenu,
-    document.getElementById(insert)
+    document.getElementById(insert),
   );
 
   contextMenuObserver.observe(document.getElementById(checkID), {
@@ -45,12 +45,12 @@ function contextMenuObserverFunc() {
 
 window.SessionStore.promiseInitialized.then(() => {
   const contentAreaContextMenu = document.getElementById(
-    "contentAreaContextMenu"
+    "contentAreaContextMenu",
   );
 
   contentAreaContextMenu.addEventListener("popupshowing", function (event) {
     let menuSeparators = document.querySelectorAll(
-      "#contentAreaContextMenu > menuseparator"
+      "#contentAreaContextMenu > menuseparator",
     );
 
     let screenShot = document.getElementById("context-take-screenshot");
@@ -76,7 +76,6 @@ window.SessionStore.promiseInitialized.then(() => {
     }, 0);
   });
 });
-
 /********************* Share mode *********************************/
 
 let beforeElem = document.getElementById("menu_openFirefoxView");
