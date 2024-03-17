@@ -12,7 +12,6 @@ DIRS += [
     "ssb",
     "welcome",
     "tabsleep",
-    "tabStacks",
 ]
 
 EXTRA_JS_MODULES += [
