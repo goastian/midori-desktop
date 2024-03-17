@@ -7,12 +7,10 @@
 /* global ExtensionAPI, ExtensionCommon, Services, XPCOMUtils */
 
 const { WebRequest } = ChromeUtils.import(
-  "resource://gre/modules/WebRequest.jsm"
+  "resource://gre/modules/WebRequest.jsm",
 );
 
-const { Services } = ChromeUtils.import(
-  "resource://gre/modules/Services.jsm"
-);
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 this.webRequestExt = class extends ExtensionAPI {
   getAPI(context) {
@@ -24,24 +22,30 @@ this.webRequestExt = class extends ExtensionAPI {
           context,
           register: (fire) => {
             function listener(e) {
-              if (typeof e.browserElement !== "undefined" &&
-                  e.browserElement.id.startsWith("webpanel")) {
-                if (e.browserElement.getAttribute("changeuseragent") == "true") {
+              if (
+                typeof e.browserElement !== "undefined" &&
+                e.browserElement.id.startsWith("webpanel")
+              ) {
+                if (
+                  e.browserElement.getAttribute("changeuseragent") == "true"
+                ) {
                   return fire.async(e.requestId);
                 }
               }
+
+              if (
+                e.bmsUseragent === true
+              ) {
+                return fire.async(e.requestId);
+              }
             }
-            WebRequest.onBeforeRequest.addListener(
-              listener,
-              null,
-              ["blocking"]
-            );
+            WebRequest.onBeforeRequest.addListener(listener, null, [
+              "blocking",
+            ]);
             return () => {
-              WebRequest.onBeforeRequest.removeListener(
-                listener,
-                null,
-                ["blocking"]
-              );
+              WebRequest.onBeforeRequest.removeListener(listener, null, [
+                "blocking",
+              ]);
             };
           },
         }).api(),
