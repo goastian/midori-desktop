@@ -13,7 +13,7 @@
 !define CompanyName           "Astian"
 !define URLInfoAbout          "https://astian.org"
 !define URLUpdateInfo         "https://www.mozilla.org/firefox/${AppVersion}/releasenotes"
-!define HelpLink              "https://astian.org/community"
+!define HelpLink              "https://community.astian.org"
 
 ; The OFFICIAL define is a workaround to support different urls for Release and
 ; Beta since they share the same branding when building with other branches that
