@@ -5,7 +5,7 @@
 {
   let apply = () => {
     const showPinnedTabsTitleCSS = document.getElementById(
-      "showPinnedTabsTitle-css"
+      "showPinnedTabsTitle-css",
     );
     if (showPinnedTabsTitleCSS) {
       showPinnedTabsTitleCSS.remove();
@@ -13,7 +13,7 @@
 
     const enabled = Services.prefs.getBoolPref(
       "floorp.tabs.showPinnedTabsTitle",
-      false
+      false,
     );
     if (enabled) {
       const tabMinWidth = Services.prefs.getIntPref("browser.tabs.tabMinWidth");
