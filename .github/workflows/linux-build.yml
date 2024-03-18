@@ -59,7 +59,7 @@ jobs:
       mar_size: ${{steps.gen-mar.outputs.MAR_SIZE}}
     steps:
 
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       name: Clone 🧬
       with:
         submodules: 'recursive'
@@ -68,7 +68,7 @@ jobs:
       run: |
         sudo perl -p -i -e 's%(deb(?:-src|)\s+)https?://(?!archive\.canonical\.com|security\.ubuntu\.com)[^\s]+%$1http://archive.ubuntu.com/ubuntu/%' /etc/apt/sources.list
         sudo apt update
-  
+
     - name: Setup Disk & Swap Space 💿
       run: |
         chmod +x .github/workflows/src/disk_swap_for_github_runner.sh
@@ -92,7 +92,7 @@ jobs:
         GHA_aarch64: ${{inputs.aarch64}}
 
     - name: Configure sccache
-      uses: actions/github-script@v6
+      uses: actions/github-script@v7
       with:
         script: |
           core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
@@ -110,7 +110,7 @@ jobs:
         MOZ_BUILD_DATE= os.environ["GHA_MOZ_BUILD_DATE"]
 
         os.system("sudo apt update")
-        os.system("sudo apt install xvfb libasound2-dev pkg-config")
+        os.system("sudo apt install xvfb")
 
         shutil.copyfile("./.github/workflows/src/linux/shared/mozconfig_linux_base","./mozconfig")
         # os.system("cp ./.github/workflows/src/linux/shared/mozconfig_linux_base ./mozconfig")
@@ -169,22 +169,23 @@ jobs:
     - name: Copy l10n files if beta
       if: inputs.beta
       run: |
-          for dir in $(ls -l $PWD/floorp/browser/locales/l10n-central | grep ^d | awk '{print $9}'); do
-            mkdir -p $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta
-            cp ./browser/branding/beta/locales/en-US/brand.dtd $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.dtd
-            cp ./browser/branding/beta/locales/en-US/brand.ftl $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.ftl
-            cp ./browser/branding/beta/locales/en-US/brand.properties $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.properties
+          for dir in $(find "$PWD/floorp/browser/locales/l10n-central" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | grep -v 'assets'); do
+            mkdir -p "$PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta"
+            cp ./browser/branding/beta/locales/en-US/brand.dtd "$PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.dtd"
+            cp ./browser/branding/beta/locales/en-US/brand.ftl "$PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.ftl"
+            cp ./browser/branding/beta/locales/en-US/brand.properties "$PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.properties"
           done
 
     - name: Change Release Note for Japanese
       if: inputs.release-note-url-ja
       run: |
-
+        sed -i 's|http://astian.org/midori-en/|${{inputs.release-note-url-ja}}|g' ./browser/branding/official/pref/firefox-branding.js
         echo "$(cat ./browser/branding/official/pref/firefox-branding.js)"
 
     - name: Change Release Note URL
       if: inputs.release-note-url
       run: |
+        sed -i 's|http://astian.org/midori-en/|${{inputs.release-note-url}}|g' ./browser/branding/official/pref/firefox-branding.js
         echo "$(cat ./browser/branding/official/pref/firefox-branding.js)"
 
     - name: Build 🔨
@@ -221,7 +222,7 @@ jobs:
       run: |
         rm -fr ./third_party/rust
         rm -fr ./third_party/libwebrtc
-        
+
     - name: Package 1 - mach 🎁
       run: |
         if [[ -n $GHA_MOZ_BUILD_DATE ]];then
@@ -229,7 +230,7 @@ jobs:
         fi
         ./mach package
 
-        ./mach package-multi-locale --locales ar cs da de el en-US en-GB es-ES fr hu id it ja ko lt nl nn-NO pl pt-BR pt-PT ru sv-SE th tr vi zh-CN zh-TW
+        ./mach package-multi-locale --locales ar cs da de el en-US en-GB es-ES fr hu id it ja ko lt nl nn-NO pl pt-BR pt-PT ru sv-SE th tr uk vi zh-CN zh-TW
       env:
         GHA_MOZ_BUILD_DATE: ${{inputs.MOZ_BUILD_DATE}}
 
@@ -268,7 +269,7 @@ jobs:
 
           echo "MAR_NAME=LINUX-aarch64.mar" >> $GITHUB_OUTPUT
           echo "MAR_SIZE=$(stat -c "%s" ~/output/LINUX-aarch64.mar)" >> $GITHUB_OUTPUT
-  
+
         else
 
           touch "obj-x86_64-pc-linux-gnu/dist/midori/precomplete"
@@ -288,7 +289,7 @@ jobs:
 
     #PUBLISH START
     - name: Publish🎁
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: midori-linux-${{fromJson('["x64","aarch64"]')[inputs.aarch64]}}
         path: ~/output
