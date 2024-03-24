@@ -13,7 +13,9 @@
   "icons": {
     "16": "favicon.png"
   },
-  "web_accessible_resources": ["favicon.png"],
+  "web_accessible_resources": [
+    "favicon.png"
+  ],
   "chrome_settings_overrides": {
     "search_provider": {
       "name": "__MSG_extensionName__",
