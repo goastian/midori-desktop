@@ -74,6 +74,10 @@ jobs:
       with:
         submodules: 'recursive'
 
+    - name: Clone Submodules 🧬
+      run: |
+        git submodule update --init --recursive
+
     - name: Clone l10n-central 🧬
       uses: actions/checkout@v3
       with:
