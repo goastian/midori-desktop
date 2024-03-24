@@ -233,9 +233,7 @@ function setMultirowTabMaxHeight() {
     "floorp.browser.tabbar.multirow.max.row"
   );
 
-  const tabHeight = document.querySelector(
-    ".tabbrowser-tab:not([hidden='true'])"
-  ).clientHeight;
+  const tabHeight = document.querySelector(".tabbrowser-tab:not([hidden='true'])").clientHeight;
 
   if (
     isMultiRowTabEnabled &&
