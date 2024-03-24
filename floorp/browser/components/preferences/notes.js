@@ -46,21 +46,6 @@ function coventToDateAndTime(timestamp) {
   return dateStr + " " + timeStr;
 }
 
-function getAllBackupedNotes() {
-  const filePath = PathUtils.join(
-    Services.dirsvc.get(
-      "ProfD", Ci.nsIFile).path,
-    "floorp_notes_backup.json"
-  );
-  const content = IOUtils.readUTF8(filePath).then(
-    content => {
-      content = content.slice(0, -1) + "}}";
-      return JSON.parse(content);
-    }
-  );
-  return content;
-}
-
 async function restoreNote(timestamp) {
   let l10n = new Localization(["browser/floorp.ftl"], true);
   const prompts = Services.prompt;
