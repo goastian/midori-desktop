@@ -3205,8 +3205,7 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
   AutoTArray<uint32_t, 3> namespaces;
 
   if (!gpm->CreateContentBridges(OtherPid(), &compositor, &imageBridge,
-                                 &vrBridge, &videoManager, mChildID,
-                                 &namespaces)) {
+                                 &vrBridge, &videoManager, &namespaces)) {
     // This can fail if we've already started shutting down the compositor
     // thread. See Bug 1562763 comment 8.
     MOZ_ASSERT(AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdown));
@@ -3386,8 +3385,7 @@ void ContentParent::OnCompositorUnexpectedShutdown() {
   AutoTArray<uint32_t, 3> namespaces;
 
   if (!gpm->CreateContentBridges(OtherPid(), &compositor, &imageBridge,
-                                 &vrBridge, &videoManager, mChildID,
-                                 &namespaces)) {
+                                 &vrBridge, &videoManager, &namespaces)) {
     MOZ_ASSERT(AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdown));
     return;
   }
@@ -4242,7 +4240,7 @@ static bool CloneIsLegal(ContentParent* aCp, CanonicalBrowsingContext& aSource,
     return false;
   }
 
-  auto* targetEmbedder = aTarget.GetParentWindowContext();
+  auto* targetEmbedder = aSource.GetParentWindowContext();
   if (NS_WARN_IF(!targetEmbedder) ||
       NS_WARN_IF(targetEmbedder->GetContentParent() != aCp)) {
     return false;
@@ -5981,13 +5979,11 @@ mozilla::ipc::IPCResult ContentParent::RecvInitializeFamily(
 }
 
 mozilla::ipc::IPCResult ContentParent::RecvSetCharacterMap(
-    const uint32_t& aGeneration, const uint32_t& aFamilyIndex,
-    const bool& aAlias, const uint32_t& aFaceIndex,
+    const uint32_t& aGeneration, const mozilla::fontlist::Pointer& aFacePtr,
     const gfxSparseBitSet& aMap) {
   auto* fontList = gfxPlatformFontList::PlatformFontList();
   MOZ_RELEASE_ASSERT(fontList, "gfxPlatformFontList not initialized?");
-  fontList->SetCharacterMap(aGeneration, aFamilyIndex, aAlias, aFaceIndex,
-                            aMap);
+  fontList->SetCharacterMap(aGeneration, aFacePtr, aMap);
   return IPC_OK();
 }
 
@@ -6000,10 +5996,10 @@ mozilla::ipc::IPCResult ContentParent::RecvInitOtherFamilyNames(
 }
 
 mozilla::ipc::IPCResult ContentParent::RecvSetupFamilyCharMap(
-    const uint32_t& aGeneration, const uint32_t& aIndex, const bool& aAlias) {
+    const uint32_t& aGeneration, const mozilla::fontlist::Pointer& aFamilyPtr) {
   auto* fontList = gfxPlatformFontList::PlatformFontList();
   MOZ_RELEASE_ASSERT(fontList, "gfxPlatformFontList not initialized?");
-  fontList->SetupFamilyCharMap(aGeneration, aIndex, aAlias);
+  fontList->SetupFamilyCharMap(aGeneration, aFamilyPtr);
   return IPC_OK();
 }
 

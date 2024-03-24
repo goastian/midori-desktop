@@ -2,24 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-
-/* Toolbars***************************************************************/
-
-toolbar {
-  display: none !important;
+#TabsToolbar {
+   display: none !important;
 }
 
-#titlebar {
-  display: none !important;
+#PanelUI-menu-button {
+   display: none !important;
 }
 
-/* Toolbar buttons *****************************************************/
-
-#fxa-toolbar-menu-button {
-  display: none !important;
+#PersonalToolbar {
+   display: none !important;
 }
-
-/* Back, Forward, Stop, Reload buttons should be shown *********************************/
 
 #back-button {
   display: inherit;
@@ -33,16 +26,14 @@ toolbar {
   display: inherit;
 }
 
-/* Context menu ********************************************************/
-
-#context-take-screenshot {
+#titlebar {
   display: none !important;
 }
 
-#context-viewsource {
+#statusBar {
   display: none !important;
 }
 
-#context-sep-screenshots {
-  display: none !important;
+#urlbar-container {
+    display: none !important;
 }

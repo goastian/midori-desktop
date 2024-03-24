@@ -15,6 +15,17 @@
 //Floorpアップデートの最新版である旨の通知を許可
 pref("enable.floorp.updater.latest", false);
 pref("enable.floorp.update", true);
+#ifdef XP_MACOSX
+pref("update.id.floorp", "stable");
+#endif
+
+#ifdef XP_WIN
+pref("update.id.floorp", "windows");
+#endif
+
+#ifdef XP_LINUX
+pref("update.id.floorp", "linux");
+#endif
 
 // userAgent
 pref("floorp.browser.UserAgent", 0);
@@ -40,6 +51,9 @@ pref("floorp.tabscroll.wrap",false);
 
 pref("floorp.enable.auto.restart", false);
 
+pref("floorp.browser.rest.mode", false);// 休止モード
+
+
 pref("browser.disable.nt.image.gb", false);// 画像を表示しない
 
 pref("floorp.enable.dualtheme", false); //デュアルテーマの有効・無効 
@@ -53,11 +67,8 @@ pref("browser.newtabpage.activity-stream.improvesearch.handoffToAwesomebar", fal
 //新しいタブの背景の設定
 pref("browser.newtabpage.activity-stream.floorp.background.type", 1);
 pref("browser.newtabpage.activity-stream.floorp.background.images.folder", "");
-pref("browser.newtabpage.activity-stream.floorp.background.image.path", "");
 pref("browser.newtabpage.activity-stream.floorp.background.images.extensions", "png,jpg,jpeg,webp,gif,svg,tiff,tif,bmp,avif,jxl");
 pref("browser.newtabpage.activity-stream.floorp.newtab.backdrop.blur.disable",false);
-pref("browser.newtabpage.activity-stream.floorp.newtab.releasenote.hide",false);
-pref("browser.newtabpage.activity-stream.floorp.newtab.imagecredit.hide",false);
 
 pref("floorp.multitab.bottommode", false);
 
@@ -71,6 +82,7 @@ pref("floorp.browser.sidebar.enable", true);// サイドバーを表示
 pref("floorp.browser.sidebar2.data", '{"data":{},"index":[]}');
 pref("floorp.extensions.webextensions.sidebar-action", '{"data":{}}');
 pref("floorp.browser.sidebar2.addons.enabled", false);
+pref("floorp.browser.sidebar2.start.url", "");
 pref("floorp.browser.sidebar2.hide.to.unload.panel.enabled", false);
 
 pref("floorp.browser.sidebar2.global.webpanel.width", 400);
@@ -86,17 +98,28 @@ pref("extensions.systemAddon.update.url", "https://update.astian.org/systemAddon
 // 言語設定をシステムに合わせる
 pref("intl.locale.requested", "");
 
-pref("app.feedback.baseURL", "https://community.astian.org");
+pref("app.feedback.baseURL", "https://astian.org/community/");
 
 // 多段タブ
 pref("floorp.tabbar.style",0);
 pref("floorp.browser.tabs.verticaltab", false);
-pref("floorp.verticaltab.show.newtab.button" , false);
 pref("floorp.enable.multitab", false);
 pref("floorp.browser.tabbar.multirow.max.enabled", true);
 pref("floorp.browser.tabbar.multirow.newtab-inside.enabled", false);
 pref("floorp.browser.tabbar.multirow.max.row", 3);
 
+pref("floorp.display.toolbarbutton.label", false);
+
+// 1つ目はタイトル、2つ目は内容
+
+// Midori Notes
+pref("floorp.browser.note.memos", "");
+pref("floorp.browser.note.memos.using", -1);
+pref("services.sync.prefs.sync.floorp.browser.note.memos", false);
+pref("floorp.browser.note.enabled", false);
+
+//Clock
+pref("floorp.browser.clock.enabled", false);
 
 //新規タブの開く位置
 pref("floorp.browser.tabs.openNewTabPosition", -1);
@@ -104,9 +127,10 @@ pref("floorp.browser.tabs.openNewTabPosition", -1);
 //ネイティブ実装垂直タブ
 pref("floorp.browser.native.verticaltabs.enabled", false);
 pref("floorp.verticaltab.hover.enabled", false);
-pref("floorp.browser.tabs.verticaltab.right", true);
-pref("floorp.browser.tabs.verticaltab.temporary.disabled", false);
-pref("floorp.browser.tabs.verticaltab.width", 200);
+pref("floorp.browser.tabs.verticaltab.right", false);
+
+// Tab Stack
+pref("floorp.browser.tabStack.enabled", true);
 
 // Chrome 形式のダウンローダー
 pref("floorp.browser.native.downloadbar.enabled", false);
@@ -115,9 +139,12 @@ pref("floorp.browser.native.downloadbar.enabled", false);
 pref("floorp.browser.workspace.tabs.state", "[]");
 pref("floorp.browser.workspace.current", "");
 pref("floorp.browser.workspace.all", "");
-pref("floorp.browser.workspace.tab.enabled", true);
+pref("floorp.browser.workspace.tab.enabled",false);
+pref("floorp.browser.workspace.closePopupAfterClick", false);
 pref("floorp.browser.workspace.info", "[]");
-pref("floorp.browser.workspace.changeWorkspaceWithDefaultKey", true);
+pref("floorp.browser.workspace.changeWorkspaceWithDefaultKey", false);
+pref("floorp.browser.workspace.manageOnBMS", false);
+pref("floorp.browser.workspace.showWorkspaceName", true);
 pref("floorp.browser.workspace.backuped", false);
 pref("floorp.browser.workspace.container.userContextId", 0);
 //temp
@@ -126,12 +153,16 @@ pref("floorp.browser.workspaces.disabledBySystem", true);
 //タブバーの背景色
 pref("floorp.titlebar.favicon.color", false);
 
+pref("browser.ssb.enabled", true);
+
+
+// Tab Stack
+pref("floorp.browser.tabstacks.enabled", true);
+
 // カスタムショートカットキー
-pref("floorp.custom.shortcutkeysAndActions", '[{"actionName":"toggleBMS","key":"","keyCode":"VK_F2","modifiers":""}]');
+pref("floorp.custom.shortcutkeysAndActions", "[]");
 pref("floorp.custom.shortcutkeysAndActions.enabled", true);
 pref("floorp.custom.shortcutkeysAndActions.remove.fx.actions", false);
-
-// カスタムアクション用
 pref("floorp.custom.shortcutkeysAndActions.customAction1", "");
 pref("floorp.custom.shortcutkeysAndActions.customAction2", "");
 pref("floorp.custom.shortcutkeysAndActions.customAction3", "");
@@ -144,27 +175,12 @@ pref("floorp.browser.profile-manager.enabled", true);
 // [実験] 新しいタブのオーバーライド
 pref("floorp.newtab.overrides.newtaburl", "");
 
-// Split View
-pref("floorp.browser.splitView.working", false);
+//Portable
+pref("floorp.portable.isUpdate", false);
 
-// user.js
-pref("floorp.user.js.customize", "");
+pref("floorp.privateContainer.enabled", false);
 
-// Web apps support
-#ifdef XP_WIN
-pref("floorp.browser.ssb.enabled", true);
-#else
-pref("floorp.browser.ssb.enabled", false);
-#endif
-
-// Workspace
-pref("floorp.browser.workspaces.enabled", true);
-pref("floorp.browser.workspace.manageOnBMS", false);
-pref("floorp.browser.workspace.closePopupAfterClick", false);
-pref("floorp.browser.workspace.showWorkspaceName", true);
-
-// Extension
-pref("floorp.extensions.allowPrivateBrowsingByDefault.is.enabled", false);
+pref("browser.firefox-view.view-count", 1);
 
 /*----------------------------------------------------------------------------------------------------------------------------------*/
 
@@ -179,9 +195,10 @@ pref("devtools.debugger.prompt-connection", false);
 
 //個人設定の同期無効
 pref("services.sync.engine.prefs", false); // Never sync prefs, addons, or tabs with other browsers
-pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.snippets", false, locked);
-pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsored", false, locked);
-pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsoredTopSites", false, locked);
+pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.snippets", false);
+pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsored", false);
+pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsoredTopSites", false);
+pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.topsites", true); // Shortcuts
 pref("services.sync.telemetry.maxPayloadCount", "0", locked);
 pref("services.sync.telemetry.submissionInterval", "0", locked);
 pref("services.sync.prefs.sync.browser.startup.page", false, locked); // Firefox の自動復元機能を Firefox Sync で同期しないようにします。
@@ -189,6 +206,7 @@ pref("services.sync.prefs.sync.browser.tabs.warnOnClose", false, locked); //た�
 
 // 同期を有効にする
 pref("services.sync.prefs.sync.floorp.browser.sidebar.right", true);// サイドバーの右側を表示
+pref("services.sync.prefs.sync.floorp.browser.sidebar2.data", true);// サイドバーのデータ
 pref("services.sync.prefs.sync.floorp.optimized.verticaltab", true); //ツリー型垂直タブ等に最適化。8.7.2 からフォーカスした際の動作は別に
 pref("services.sync.prefs.sync.floorp.browser.user.interface", true);// Floorp 10 系以降のインターフェーステーマ設定
 
@@ -225,10 +243,10 @@ pref("extensions.pocket.enabled", false);
 pref("network.trr.mode", 2);
 pref("network.trr.uri", "https://dns.nextdns.io/fc53cb/");
 
-pref("dom.security.https_only_mode", false);
+pref("dom.security.https_only_mode", true);
 pref("dom.security.https_only_mode_ever_enabled", true);
 pref("dom.security.https_only_mode_ever_enabled_pbm", true);
-pref("dom.security.https_only_mode_pbm", false);
+pref("dom.security.https_only_mode_pbm", true);
 
 pref("browser.migrate.interactions.bookmarks", true);
 pref("browser.migrate.interactions.history", true);
@@ -273,12 +291,14 @@ pref("browser.urlbar.trimURLs", false);
 
 //プライバシー機能をオンにし、テレメトリー採取を無効化します。
 pref("privacy.trackingprotection.origin_telemetry.enabled", false, locked);
+pref("privacy.resistFingerprinting.block_mozAddonManager", true); // This is set so that UA overrides work on AMO.
 pref("privacy.userContext.enabled", true);
 pref("privacy.userContext.ui.enabled", true);
 pref("trailhead.firstrun.branches", "", locked);
 pref("extensions.webcompat-reporter.enabled", false);
 
 pref("browser.startup.page", 3);//自動復元
+pref("browser.tabs.closeWindowWithLastTab", false);//最後のタブを閉じてもブラウザが閉じないように
 
 // https://developer.mozilla.org/docs/Web/API/Navigator/share
 #ifdef XP_WIN
@@ -286,8 +306,10 @@ pref("dom.webshare.enabled", true);
 #endif
 
 // 開発者ツールの位置を「右」に変更
-pref("devtools.toolbox.host", "right");
+pref("devtools.toolbox.host", "bottom");
 
+// user.js
+pref("floorp.user.js.customize", "");
 /*-----------------------------------------------------------------------------------all.js の設定-----------------------------------------------------------------------------------*/
 
 pref("extensions.htmlaboutaddons.recommendations.enabled", false, locked);
@@ -299,14 +321,23 @@ pref("toolkit.legacyUserProfileCustomizations.script", false);
 //Floorp
 
 // 1 = photon, 2 = lepton, 3 = proton fix
-pref("floorp.lepton.interface", 2);
+pref("floorp.lepton.interface", 3);
 
 // ** Theme Default Options ****************************************************
 // userchrome.css usercontent.css activate
 pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
 
+// Proton Enabled #127 || Removed at 97 #328 (Maintained for compatibility with ESR)
+pref("browser.proton.enabled", true);
+
 // Fill SVG Color
 pref("svg.context-properties.content.enabled", true);
+
+// CSS Color Mix - 88 Above
+pref("layout.css.color-mix.enabled", true);
+
+// CSS Blur Filter - 88 Above
+pref("layout.css.backdrop-filter.enabled", true);
 
 // Restore Compact Mode - 89 Above
 pref("browser.compactmode.show", true);
@@ -327,8 +358,8 @@ pref("layout.css.has-selector.enabled", true);
 pref("userChrome.tab.connect_to_window",          true); // Original, Photon
 pref("userChrome.tab.color_like_toolbar",         true); // Original, Photon
 
-pref("userChrome.tab.lepton_like_padding",        true); // Original
-pref("userChrome.tab.photon_like_padding",       false); // Photon
+pref("userChrome.tab.lepton_like_padding",        false); // Original
+pref("userChrome.tab.photon_like_padding",       true); // Photon
 
 pref("userChrome.tab.dynamic_separator",          true); // Original, Proton
 pref("userChrome.tab.static_separator",          false); // Photon
@@ -348,7 +379,7 @@ pref("userChrome.tab.bottom_rounded_corner",      true);
 
 // Photon Only
 pref("userChrome.tab.photon_like_contextline",   false);
-pref("userChrome.rounding.square_tab",           false);
+pref("userChrome.rounding.square_tab",           true);
 
 // == Theme Compatibility Settings =============================================
 // pref("userChrome.compatibility.accent_color",         true); // Firefox v103 Below
@@ -505,7 +536,7 @@ pref("userChrome.rounding.square_tab",           false);
 // pref("userContent.player.ui.twoline",                  true);
 
 // pref("userContent.newTab.hidden_logo",                 true);
-// pref("userContent.newTab.background_image",            true); // Need wallpaper image to `userContent.css`. :root { --uc-newTab-wallpaper: url("../icons/background_image.png"); }
+// pref("userContent.newTab.background_image",            true); // Need wallpaper image --uc-newTab-wallpaper: url("../icons/background_image.png");
 
 // pref("userContent.page.proton_color.dark_blue_accent", true);
 // pref("userContent.page.proton_color.system_accent",    true);
@@ -516,7 +547,6 @@ pref("userChrome.rounding.square_tab",           false);
 // -- User Chrome --------------------------------------------------------------
 pref("userChrome.compatibility.theme",       true);
 pref("userChrome.compatibility.os",          true);
-pref("userChrome.compatibility.os.windows_maximized",          true);
 
 pref("userChrome.theme.built_in_contrast",   true);
 pref("userChrome.theme.system_default",      true);
@@ -550,7 +580,7 @@ pref("userChrome.tab.close_button_at_hover", true);
 pref("userChrome.tab.sound_hide_label",      true);
 pref("userChrome.tab.sound_with_favicons",   true);
 pref("userChrome.tab.pip",                   true);
-pref("userChrome.tab.container",             true);
+pref("userChrome.tab.container",             false);
 pref("userChrome.tab.crashed",               true);
 
 pref("userChrome.fullscreen.overlap",        true);
@@ -585,11 +615,6 @@ pref("userContent.page.proton",           true); // Need proton_color
 // ** Useful Options ***********************************************************
 // Integrated calculator at urlbar
 pref("browser.urlbar.suggest.calculator", true);
-
-// Disable ads
-
-pref("browser.vpn_promo.enabled", false);
-pref("browser.contentblocking.report.show_mobile_app", false);
 
 // Integrated unit convertor at urlbar
 // pref("browser.urlbar.unitConversion.enabled", true);

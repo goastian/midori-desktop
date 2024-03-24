@@ -82,9 +82,7 @@ class CacheLoadHandler final : public PromiseNativeHandler,
 
   CacheLoadHandler(ThreadSafeWorkerRef* aWorkerRef,
                    ThreadSafeRequestHandle* aRequestHandle,
-                   bool aIsWorkerScript,
-                   bool aOnlyExistingCachedResourcesAllowed,
-                   WorkerScriptLoader* aLoader);
+                   bool aIsWorkerScript, WorkerScriptLoader* aLoader);
 
   void Fail(nsresult aRv);
 
@@ -112,7 +110,7 @@ class CacheLoadHandler final : public PromiseNativeHandler,
   RefPtr<ThreadSafeWorkerRef> mWorkerRef;
   const bool mIsWorkerScript;
   bool mFailed;
-  bool mOnlyExistingCachedResourcesAllowed;
+  const ServiceWorkerState mState;
   nsCOMPtr<nsIInputStreamPump> mPump;
   nsCOMPtr<nsIURI> mBaseURI;
   mozilla::dom::ChannelInfo mChannelInfo;

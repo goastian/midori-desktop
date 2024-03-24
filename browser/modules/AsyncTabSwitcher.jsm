@@ -41,11 +41,6 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "browser.tabs.remote.tabCacheSize"
 );
 
-// Floorp Injections
-function floorpSplitViewIsEnabled() {
-  return Services.prefs.getBoolPref("floorp.browser.splitView.working", false);
-}
-
 /**
  * The tab switcher is responsible for asynchronously switching
  * tabs in e10s. It waits until the new tab is ready (i.e., the
@@ -286,7 +281,7 @@ class AsyncTabSwitcher {
         browser.docShellIsActive = true;
       }
 
-      if (remoteTab && !floorpSplitViewIsEnabled()) {
+      if (remoteTab) {
         browser.renderLayers = true;
         remoteTab.priorityHint = true;
       } else {
@@ -297,7 +292,7 @@ class AsyncTabSwitcher {
       // Setting the docShell to be inactive will also cause it
       // to stop rendering layers.
       browser.docShellIsActive = false;
-      if (remoteTab && !floorpSplitViewIsEnabled()) {
+      if (remoteTab) {
         remoteTab.priorityHint = false;
       } else {
         this.onLayersCleared(browser);
@@ -369,7 +364,7 @@ class AsyncTabSwitcher {
     // constructing BrowserChild's, layer trees, etc, by showing a blank
     // tab instead and focusing it immediately.
     let shouldBeBlank = false;
-    if (requestedBrowser.isRemoteBrowser && !floorpSplitViewIsEnabled()) {
+    if (requestedBrowser.isRemoteBrowser) {
       // If a tab is remote and the window is not minimized, we can show a
       // blank tab instead of a spinner in the following cases:
       //
@@ -404,7 +399,7 @@ class AsyncTabSwitcher {
       }
     }
 
-    if (requestedBrowser.isRemoteBrowser && !floorpSplitViewIsEnabled()) {
+    if (requestedBrowser.isRemoteBrowser) {
       this.addLogFlag("isRemote");
     }
 
@@ -485,11 +480,7 @@ class AsyncTabSwitcher {
           }
 
           this.tabbrowser._adjustFocusAfterTabSwitch(showTab);
-
-          // Floorp Injections
-          this.window.gURLBar?.afterTabSwitchFocusChange();
-          // End Floorp Injections
-
+          this.window.gURLBar.afterTabSwitchFocusChange();
           this.maybeActivateDocShell(this.requestedTab);
         }
       }
@@ -834,7 +825,7 @@ class AsyncTabSwitcher {
     this.logState(
       `onRemotenessChange(${tab._tPos}, ${tab.linkedBrowser.isRemoteBrowser})`
     );
-    if (!tab.linkedBrowser.isRemoteBrowser && !floorpSplitViewIsEnabled()) {
+    if (!tab.linkedBrowser.isRemoteBrowser) {
       if (this.getTabState(tab) == this.STATE_LOADING) {
         this.onLayersReady(tab.linkedBrowser);
       } else if (this.getTabState(tab) == this.STATE_UNLOADING) {
@@ -1027,8 +1018,7 @@ class AsyncTabSwitcher {
     if (
       lazy.gTabCacheSize > 1 &&
       tab.linkedBrowser.isRemoteBrowser &&
-      tab.linkedBrowser.currentURI.spec != "about:blank" &&
-      !floorpSplitViewIsEnabled()
+      tab.linkedBrowser.currentURI.spec != "about:blank"
     ) {
       let tabIndex = this.tabLayerCache.indexOf(tab);
 

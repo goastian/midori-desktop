@@ -145,8 +145,6 @@ class WindowGlobalParent final : public WindowContext,
 
   bool IsCurrentGlobal();
 
-  bool IsActiveInTab();
-
   bool IsProcessRoot();
 
   uint32_t ContentBlockingEvents();

@@ -295,6 +295,11 @@ class TelemetryHandler {
           r => new RegExp(r)
         );
       }
+      if (provider.extraPageRegexps) {
+        newProvider.extraPageRegexps = provider.extraPageRegexps.map(
+          r => new RegExp(r)
+        );
+      }
 
       newProvider.nonAdsLinkRegexps = provider.nonAdsLinkRegexps?.length
         ? provider.nonAdsLinkRegexps.map(r => new RegExp(r))

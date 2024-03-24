@@ -36,7 +36,6 @@ class nsPIDOMWindowInner;
 
 namespace mozilla {
 class DOMEventTargetHelper;
-class GlobalTeardownObserver;
 template <typename V, typename E>
 class Result;
 enum class StorageAccess;
@@ -72,8 +71,8 @@ class nsIGlobalObject : public nsISupports,
   nsTArray<nsCString> mHostObjectURIs;
 
   // Raw pointers to bound DETH objects.  These are added by
-  // AddGlobalTeardownObserver().
-  mozilla::LinkedList<mozilla::GlobalTeardownObserver> mGlobalTeardownObservers;
+  // AddEventTargetObject().
+  mozilla::LinkedList<mozilla::DOMEventTargetHelper> mEventTargetObjects;
 
   bool mIsDying;
   bool mIsScriptForbidden;
@@ -153,18 +152,18 @@ class nsIGlobalObject : public nsISupports,
   void UnlinkObjectsInGlobal();
   void TraverseObjectsInGlobal(nsCycleCollectionTraversalCallback& aCb);
 
-  // GlobalTeardownObservers must register themselves on the global when they
+  // DETH objects must register themselves on the global when they
   // bind to it in order to get the DisconnectFromOwner() method
-  // called correctly.  RemoveGlobalTeardownObserver() must be called
-  // before the GlobalTeardownObserver is destroyed.
-  void AddGlobalTeardownObserver(mozilla::GlobalTeardownObserver* aObject);
-  void RemoveGlobalTeardownObserver(mozilla::GlobalTeardownObserver* aObject);
+  // called correctly.  RemoveEventTargetObject() must be called
+  // before the DETH object is destroyed.
+  void AddEventTargetObject(mozilla::DOMEventTargetHelper* aObject);
+  void RemoveEventTargetObject(mozilla::DOMEventTargetHelper* aObject);
 
-  // Iterate the registered GlobalTeardownObservers and call the given function
+  // Iterate the registered DETH objects and call the given function
   // for each one.
-  void ForEachGlobalTeardownObserver(
-      const std::function<void(mozilla::GlobalTeardownObserver*,
-                               bool* aDoneOut)>& aFunc) const;
+  void ForEachEventTargetObject(
+      const std::function<void(mozilla::DOMEventTargetHelper*, bool* aDoneOut)>&
+          aFunc) const;
 
   virtual bool IsInSyncOperation() { return false; }
 
@@ -283,7 +282,7 @@ class nsIGlobalObject : public nsISupports,
   void StartForbiddingScript() { mIsScriptForbidden = true; }
   void StopForbiddingScript() { mIsScriptForbidden = false; }
 
-  void DisconnectGlobalTeardownObservers();
+  void DisconnectEventTargetObjects();
 
   size_t ShallowSizeOfExcludingThis(mozilla::MallocSizeOf aSizeOf) const;
 

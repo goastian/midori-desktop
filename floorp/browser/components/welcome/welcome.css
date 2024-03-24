@@ -79,7 +79,7 @@ body {
     width: fit-content;
     border: 1px solid rgba(170, 170, 170, 0.6);
     border-radius: 10px;
-    min-width: 750px;
+    min-width: 550px;
     max-width: 550px;
     padding: 100px;
 }
@@ -130,22 +130,16 @@ body {
 }
 
 .second-option-icons {
-    height: 60px;
-    margin-bottom: 3px;
+    height: 25px;
 }
 
 #second-template-options-flex-box {
     display: flex;
-    justify-content: center;
-    align-items: center; 
 }
 
 .second-template-option {
     margin: 30px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
+    flex: 1;
 }
 
 .second-template-option-text {
@@ -153,7 +147,7 @@ body {
 }
 
 .second-template-option-description {
-    margin-bottom: 20px;
+    height: 130px;
 }
 
 #second-select-button {

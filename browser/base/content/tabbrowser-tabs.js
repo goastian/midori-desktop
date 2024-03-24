@@ -519,10 +519,10 @@
       // dragend such that the mouse appears to have the same position
       // relative to the corner of the dragged tab.
 
-      const verticalEnabled = Services.prefs.getIntPref("floorp.tabbar.style") == 2;
+      const VertitalEnabled = Services.prefs.getIntPref("floorp.tabbar.style") == 2;
       //replace clientX/Y with screenX/Y to fix dragging tabs between windows
       function getClientElementPosition(ele) {
-        if(!verticalEnabled) {
+        if(!VertitalEnabled) {
           return ele.getBoundingClientRect().left;
         } 
         return ele.getBoundingClientRect().top;
@@ -648,17 +648,17 @@
       } else {
         let newIndex = this._getDropIndex(event);
         let children = this.allTabs;
-        const verticalEnabled = Services.prefs.getIntPref("floorp.tabbar.style") == 2;
+        const VertitalEnabled = Services.prefs.getIntPref("floorp.tabbar.style") == 2;
         if (newIndex == children.length) {
           let tabRect = this._getVisibleTabs().at(-1).getBoundingClientRect();
-          if (RTL_UI && !verticalEnabled) {
+          if (RTL_UI && !VertitalEnabled) {
             newMargin = rect.right - tabRect.left;
           } else {
             newMargin = tabRect.right - rect.left;
           }
         } else {
           let tabRect = children[newIndex].getBoundingClientRect();
-          if (RTL_UI && !verticalEnabled) {
+          if (RTL_UI && !VertitalEnabled) {
             newMargin = rect.right - tabRect.right;
           } else {
             newMargin = tabRect.left - rect.left;
@@ -902,30 +902,16 @@
       var eX = event.screenX;
       var eY = event.screenY;
       var wX = window.screenX;
-      var wY = window.screenY;
-      let rect = window.windowUtils.getBoundsWithoutFlushing(
-        this.arrowScrollbox
-      );
-      const verticalEnabled = Services.prefs.getIntPref("floorp.tabbar.style") == 2;
-      if(verticalEnabled) {
-        // check if the drop point is vertically within the window
-        if (eY > wY && eY < wY + window.outerHeight) {
-          // also avoid detaching if the the tab was dropped too close to
-          // the tabbar (half a tab)
-          let detachTabThresholdX = wX + rect.left + 1.5 * rect.width;
-          if (eX < detachTabThresholdX && eX > wX) {
-            return;
-          }
-        }
-      } else {
-        // check if the drop point is horizontally within the window
-        if (eX > wX && eX < wX + window.outerWidth) {
-          // also avoid detaching if the the tab was dropped too close to
-          // the tabbar (half a tab)
-          let detachTabThresholdY = wY + rect.top + 1.5 * rect.height;
-          if (eY < detachTabThresholdY && eY > wY) {
-            return;
-          }
+      // check if the drop point is horizontally within the window
+      if (eX > wX && eX < wX + window.outerWidth) {
+        // also avoid detaching if the the tab was dropped too close to
+        // the tabbar (half a tab)
+        let rect = window.windowUtils.getBoundsWithoutFlushing(
+          this.arrowScrollbox
+        );
+        let detachTabThresholdY = window.screenY + rect.top + 1.5 * rect.height;
+        if (eY < detachTabThresholdY && eY > window.screenY) {
+          return;
         }
       }
 
@@ -1535,13 +1521,13 @@
         }
       }
 
-      const verticalEnabled = Services.prefs.getIntPref("floorp.tabbar.style") == 2;
+      const VertitalEnabled = Services.prefs.getIntPref("floorp.tabbar.style") == 2;
 
       // horizontal tabs & vertical tabs have different animation properties
-      const animLastScreen = verticalEnabled ? "animLastScreenY" : "animLastScreenX";
-      const screen = verticalEnabled ? "screenY" : "screenX";
-      const screenOrientation = verticalEnabled ? "height" : "width";
-      const translate = verticalEnabled ? "translateY" : "translateX";
+      const animLastScreen = VertitalEnabled ? "animLastScreenY" : "animLastScreenX";
+      const screen = VertitalEnabled ? "screenY" : "screenX";
+      const screenOrientation = VertitalEnabled ? "height" : "width";
+      const translate = VertitalEnabled ? "translateY" : "translateX";
 
       if (!(animLastScreen in draggedTab._dragData)) {
         draggedTab._dragData[animLastScreen] = draggedTab._dragData[screen];
@@ -1562,7 +1548,7 @@
         pinned ? numPinned : undefined
       );
 
-      if (RTL_UI && !verticalEnabled) {
+      if (RTL_UI && !VertitalEnabled) {
         tabs.reverse();
         // Copy moving tabs array to avoid infinite reversing.
         movingTabs = [...movingTabs].reverse();

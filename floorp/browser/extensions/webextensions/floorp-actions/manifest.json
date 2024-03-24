@@ -1,20 +1,22 @@
 {
   "manifest_version": 2,
-  "name": "Floorp Actions",
-  "description": "Controls Floorp future from Gesturefy",
+  "name": "Midori Actions",
+  "description": "Controls Midori future from Gesturefy",
   "version": "1.0",
-  "homepage_url": "https://floorp.app",
+  "homepage_url": "https://astian.org/midori-browser",
   "background": {
-    "scripts": ["background.js"]
+    "scripts": [
+      "background.js"
+    ]
   },
   "experiment_apis": {
     "aboutConfigPrefs": {
-      "schema": "API/aboutConfigPrefs.json",
-      "parent": {
-        "scopes": ["addon_parent"],
-        "script": "API/aboutConfigPrefs.js",
-        "paths": [["aboutConfigPrefs"]]
-      }
+        "schema": "API/aboutConfigPrefs.json",
+        "parent": {
+            "scopes": ["addon_parent"],
+            "script": "API/aboutConfigPrefs.js",
+            "paths": [["aboutConfigPrefs"]]
+        }
     },
     "floorpActions": {
       "schema": "API/floorpActions.json",
@@ -25,8 +27,8 @@
       }
     }
   },
-  "applications": {
-    "gecko": {
+   "applications": {
+     "gecko": {
       "id": "floorp-actions@floorp.ablaze.one"
     }
   }

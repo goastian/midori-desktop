@@ -161,14 +161,8 @@ const BrowserWindowTracker = {
    */
   getTopWindow(options = {}) {
     for (let win of _trackedWindows) {
-
-      // Floorp Injections
-      var { FloorpServices } = ChromeUtils.importESModule("resource:///modules/FloorpServices.sys.mjs");
-      let isFloorpSpecialWindow = FloorpServices.wm.IsFloorpSpecialWindow(win);
-      // End Floorp Injections
-
       if (
-        !win.closed && !isFloorpSpecialWindow &&
+        !win.closed &&
         (options.allowPopups || win.toolbar.visible) &&
         (!("private" in options) ||
           lazy.PrivateBrowsingUtils.permanentPrivateBrowsing ||

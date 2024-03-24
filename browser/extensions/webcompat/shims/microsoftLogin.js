@@ -14,9 +14,7 @@ console.warn(
 function init() {
   const observer = new MutationObserver(() => {
     document.body
-      .querySelectorAll(
-        `iframe:is([id^='msalRenewFrame'], [src^="https://login.microsoftonline.com"])[sandbox]`
-      )
+      .querySelectorAll("iframe[id^='msalRenewFrame'][sandbox]")
       .forEach(frame => {
         frame.sandbox.add(SANDBOX_ATTR);
       });

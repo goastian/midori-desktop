@@ -7,27 +7,23 @@
 export const EXPORTED_SYMBOLS = ["WorkspaceUtils"];
 
 export const workspacesPreferences = {
-  WORKSPACE_TAB_ENABLED_PREF: "floorp.browser.workspace.tab.enabled",
-  WORKSPACE_CURRENT_PREF: "floorp.browser.workspace.current",
-  WORKSPACE_ALL_PREF: "floorp.browser.workspace.all",
-  WORKSPACE_TABS_PREF: "floorp.browser.workspace.tabs.state",
-  WORKSPACES_MANAGE_ON_BMS_PREF: "floorp.browser.workspace.manageOnBMS",
-  WORKSPACE_SHOW_WORKSPACE_NAME_PREF:
-    "floorp.browser.workspace.showWorkspaceName",
-  WORKSPACES_CLOSE_POPUP_AFTER_CLICK_PREF:
-    "floorp.browser.workspace.closePopupAfterClick",
-  WORKSPACE_INFO_PREF: "floorp.browser.workspace.info",
-  WORKSPACE_BACKUPED_PREF: "floorp.browser.workspace.backuped",
-  WORKSPACE_CHANGE_WORKSPACE_WITH_DEFAULT_KEY_PREF:
-    "floorp.browser.workspace.changeWorkspaceWithDefaultKey",
-  WORKSPACE_CONTAINER_USERCONTEXTID_PREF:
-    "floorp.browser.workspace.container.userContextId",
+    WORKSPACE_TAB_ENABLED_PREF: "floorp.browser.workspace.tab.enabled",
+    WORKSPACE_CURRENT_PREF: "floorp.browser.workspace.current",
+    WORKSPACE_ALL_PREF: "floorp.browser.workspace.all",
+    WORKSPACE_TABS_PREF: "floorp.browser.workspace.tabs.state",
+    WORKSPACE_MANAGE_ON_BMS_PREF: "floorp.browser.workspace.manageOnBMS",
+    WORKSPACE_SHOW_WORKSPACE_NAME_PREF: "floorp.browser.workspace.showWorkspaceName",
+    WORKSPACE_CLOSE_POPUP_AFTER_CLICK_PREF: "floorp.browser.workspace.closePopupAfterClick",
+    WORKSPACE_INFO_PREF: "floorp.browser.workspace.info",
+    WORKSPACE_BACKUPED_PREF: "floorp.browser.workspace.backuped",
+    WORKSPACE_CHANGE_WORKSPACE_WITH_DEFAULT_KEY_PREF: "floorp.browser.workspace.changeWorkspaceWithDefaultKey",
+    WORKSPACE_CONTAINER_USERCONTEXTID_PREF: "floorp.browser.workspace.container.userContextId",
 };
 
 export function getDefaultWorkspace() {
-  return Services.prefs
-    .getStringPref(workspacesPreferences.WORKSPACE_ALL_PREF)
-    .split(",")[0];
+  return Services.prefs.getStringPref(
+    workspacesPreferences.WORKSPACE_ALL_PREF
+  ).split(",")[0];
 }
 
 export const CONTAINER_ICONS = new Set([

@@ -4,28 +4,31 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { PrivateContainer } = ChromeUtils.importESModule(
-  "resource:///modules/PrivateContainer.sys.mjs",
+ const { PrivateContainer } = ChromeUtils.importESModule(
+  "resource:///modules/PrivateContainer.sys.mjs"
 );
 
-function initPrivateContainer() {
+if (Services.prefs.getBoolPref("floorp.privateContainer.enabled", false)) {
   // Create a private container.
   PrivateContainer.Functions.StartupCreatePrivateContainer();
   PrivateContainer.Functions.removePrivateContainerData();
 
   SessionStore.promiseInitialized.then(() => {
+
     gBrowser.tabContainer.addEventListener(
       "TabClose",
-      removeDataIfPrivateContainerTabNotExist,
+      removeDataIfPrivateContainerTabNotExist
     );
-
-    gBrowser.tabContainer.addEventListener("TabOpen", handleTabModifications);
+    gBrowser.tabContainer.addEventListener(
+      "TabOpen",
+      handleTabModifications
+    );
 
     // Add a tab context menu to reopen in private container.
     let beforeElem = document.getElementById("context_selectAllTabs");
     let menuitemElem = window.MozXULElement.parseXULToFragment(`
-        <menuitem id="context_toggleToPrivateContainer" data-l10n-id="floorp-toggle-private-container" accesskey="D" oncommand="reopenInPrivateContainer(event);"/>
-      `);
+      <menuitem id="context_toggleToPrivateContainer" data-l10n-id="floorp-toggle-private-container" accesskey="D" oncommand="reopenInPrivateContainer(event);"/>
+    `);
     beforeElem.before(menuitemElem);
 
     // add URL link a context menu to open in private container.
@@ -38,7 +41,7 @@ function initPrivateContainer() {
       function () {
         document.getElementById("open_in_private_container").hidden =
           document.getElementById("context-openlink").hidden;
-      },
+      }
     );
   });
 }
@@ -119,7 +122,7 @@ function handleTabModifications() {
 function openWithPrivateContainer(url) {
   let relatedToCurrent = false; //"relatedToCurrent" decide where to open the new tab. Default work as last tab (right side). Floorp use this.
   let _OPEN_NEW_TAB_POSITION_PREF = Services.prefs.getIntPref(
-    "floorp.browser.tabs.openNewTabPosition",
+    "floorp.browser.tabs.openNewTabPosition"
   );
   switch (_OPEN_NEW_TAB_POSITION_PREF) {
     case 0:
@@ -131,25 +134,23 @@ function openWithPrivateContainer(url) {
       relatedToCurrent = true;
       break;
   }
-  let privateContainerUserContextID =
-    PrivateContainer.Functions.getPrivateContainerUserContextId();
-  Services.obs.notifyObservers(
-    {
-      wrappedJSObject: new Promise((resolve) => {
-        openTrustedLinkIn(url, "tab", {
-          relatedToCurrent,
-          resolveOnNewTabCreated: resolve,
-          userContextId: privateContainerUserContextID,
-        });
-      }),
-    },
-    "browser-open-newtab-start",
-  );
+  let privateContainerUserContextID = PrivateContainer.Functions.getPrivateContainerUserContextId();
+    Services.obs.notifyObservers(
+      {
+        wrappedJSObject: new Promise(resolve => {
+          openTrustedLinkIn(url, "tab", {
+            relatedToCurrent,
+            resolveOnNewTabCreated: resolve,
+            userContextId: privateContainerUserContextID
+          });
+        }),
+      },
+      "browser-open-newtab-start"
+    );
 }
 
 function reopenInPrivateContainer() {
-  let userContextId =
-    PrivateContainer.Functions.getPrivateContainerUserContextId();
+  let userContextId = PrivateContainer.Functions.getPrivateContainerUserContextId();
   let reopenedTabs = TabContextMenu.contextTab.multiselected
     ? gBrowser.selectedTabs
     : [TabContextMenu.contextTab];
@@ -169,7 +170,7 @@ function reopenInPrivateContainer() {
       let tabState = JSON.parse(SessionStore.getTabState(tab));
       try {
         triggeringPrincipal = E10SUtils.deserializePrincipal(
-          tabState.triggeringPrincipal_base64,
+          tabState.triggeringPrincipal_base64
         );
       } catch (ex) {
         continue;
@@ -180,15 +181,14 @@ function reopenInPrivateContainer() {
       // Ensure that we have a null principal if we couldn't
       // deserialize it (for lazy tab browsers) ...
       // This won't always work however is safe to use.
-      triggeringPrincipal = Services.scriptSecurityManager.createNullPrincipal({
-        userContextId,
-      });
+      triggeringPrincipal =
+        Services.scriptSecurityManager.createNullPrincipal({ userContextId });
     } else if (triggeringPrincipal.isContentPrincipal) {
       triggeringPrincipal = Services.scriptSecurityManager.principalWithOA(
         triggeringPrincipal,
         {
           userContextId,
-        },
+        }
       );
     }
 
@@ -214,5 +214,3 @@ function reopenInPrivateContainer() {
     gBrowser.removeTab(tab);
   }
 }
-
-initPrivateContainer();

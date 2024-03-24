@@ -384,6 +384,10 @@ export class TopSiteLink extends React.PureComponent {
               <span dir="auto">
                 {link.isPinned && <div className="icon icon-pin-small" />}
                 {title || <br />}
+                <span
+                  className="sponsored-label"
+                  data-l10n-id="newtab-topsite-sponsored"
+                />
               </span>
             </div>
           </a>

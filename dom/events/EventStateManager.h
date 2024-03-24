@@ -1152,9 +1152,10 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   StyleCursorKind mLockCursor;
   bool mLastFrameConsumedSetCursor;
 
-  // Last mouse event screen point (in device pixel) when mouse was locked, used
-  // to restore mouse position after unlocking.
-  static LayoutDeviceIntPoint sPreLockScreenPoint;
+  // Last mouse event mRefPoint (the offset from the widget's origin in
+  // device pixels) when mouse was locked, used to restore mouse position
+  // after unlocking.
+  static LayoutDeviceIntPoint sPreLockPoint;
 
   // Stores the mRefPoint of the last synthetic mouse move we dispatched
   // to re-center the mouse when we were pointer locked. If this is (-1,-1) it
@@ -1239,7 +1240,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   MOZ_CAN_RUN_SCRIPT_BOUNDARY void FireContextClick();
 
   MOZ_CAN_RUN_SCRIPT static void SetPointerLock(nsIWidget* aWidget,
-                                                nsPresContext* aPresContext);
+                                                nsIContent* aElement);
   static void sClickHoldCallback(nsITimer* aTimer, void* aESM);
 };
 

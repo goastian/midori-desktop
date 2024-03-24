@@ -29,7 +29,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
 class PrefsFeed {
   constructor(prefMap) {
     this.imagesDataPath = {urls:[]};
-    this.oneImageData = {url:"",data:"",extension:"",notExist:false};
     this.fetchedImages = {}
     this._prefMap = prefMap;
     this._prefs = new Prefs();
@@ -54,7 +53,7 @@ class PrefsFeed {
           data: { name, value },
         })
       );
-      if (name == "floorp.background.type" && (value == 3 || value == 4)){
+      if (name == "floorp.background.type" && value == 3){
         this.getImage()
       }
     }
@@ -209,8 +208,6 @@ class PrefsFeed {
     );
     this._setIntPref(values, "floorp.background.type", 0);
     this._setBoolPref(values, "floorp.newtab.backdrop.blur.disable", false);
-    this._setBoolPref(values, "floorp.newtab.releasenote.hide", false);
-    this._setBoolPref(values, "floorp.newtab.imagecredit.hide", false);
     this._setBoolPref(values, "discoverystream.isCollectionDismissible", false);
     this._setBoolPref(values, "discoverystream.hardcoded-basic-layout", false);
     this._setBoolPref(values, "discoverystream.personalization.enabled", false);
@@ -236,7 +233,6 @@ class PrefsFeed {
     );
     Services.prefs.addObserver("browser.newtabpage.activity-stream.floorp.background.images.folder", this.getImage.bind(this))
     Services.prefs.addObserver("browser.newtabpage.activity-stream.floorp.background.images.extensions", this.getImage.bind(this))
-    Services.prefs.addObserver("browser.newtabpage.activity-stream.floorp.background.image.path", this.getImage.bind(this))
     Services.obs.addObserver(this.getImage.bind(this), "floorp-newtab-background-update");
     this.getImage()
   }
@@ -249,7 +245,7 @@ class PrefsFeed {
         let imagesPath = await IOUtils.getChildren(tPath)
         let str = new RegExp(`\\.(${Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.images.extensions", "").split(",").join("|").toLowerCase()})+$`)
         this.imagesDataPath = {urls:[]}
-
+        
         this.store.dispatch(
           ac.BroadcastToContent({
             type: at.PREF_CHANGED,
@@ -273,39 +269,6 @@ class PrefsFeed {
           })
         );
 
-      }
-    }else if(Services.prefs.getIntPref("browser.newtabpage.activity-stream.floorp.background.type") == 4){
-      const tmpPath = Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.image.path") || PathUtils.join(Services.dirsvc.get("ProfD", Ci.nsIFile).path, "newtabImages","wallpaper.png")
-      const fetchPath = Services.io.newFileURI(FileUtils.File(tmpPath)).asciiSpec
-      if(tmpPath != this.oneImageData.url){
-        this.oneImageData = {"url":tmpPath,data:"","extension":"",notExist:false}
-      }
-      this.store.dispatch(
-        ac.BroadcastToContent({
-          type: at.PREF_CHANGED,
-          data: { name: "oneImageData", value: this.oneImageData},
-        })
-      );
-      if(!this.oneImageData.data && !this.oneImageData.notExist)
-      {
-        if(await IOUtils.exists(tmpPath)){
-          let blobData = await (await fetch(fetchPath)).blob()
-          this.oneImageData.extension = blobData.type
-          let promise = new Promise(resolve => {
-            const fr = new FileReader()
-            fr.onload = e => resolve(e.target.result)
-            fr.readAsArrayBuffer(blobData)
-          })
-          this.oneImageData.data  = await promise.catch(() => null)
-          this.store.dispatch(
-            ac.BroadcastToContent({
-              type: at.PREF_CHANGED,
-              data: { name: "oneImageData", value: this.oneImageData },
-            })
-          );
-        }else{
-          this.oneImageData.notExist = true
-        }
       }
     }
   }

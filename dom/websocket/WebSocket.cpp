@@ -2504,14 +2504,13 @@ void WebSocket::Close(const Optional<uint16_t>& aCode,
     return;
   }
 
-  RefPtr<WebSocketImpl> impl = mImpl;
   if (readyState == CONNECTING) {
-    impl->FailConnection(closeCode, closeReason);
+    mImpl->FailConnection(closeCode, closeReason);
     return;
   }
 
   MOZ_ASSERT(readyState == OPEN);
-  impl->CloseConnection(closeCode, closeReason);
+  mImpl->CloseConnection(closeCode, closeReason);
 }
 
 //-----------------------------------------------------------------------------

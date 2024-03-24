@@ -6,5 +6,5 @@
 export const EXPORTED_SYMBOLS = ["EscapeShell"];
 
 export function EscapeShell(text) {
-  return `'${text.replaceAll("'", "'\\''")}'`;
+    return `'${text.replaceAll("'", "'\\''")}'`;
 }

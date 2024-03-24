@@ -824,16 +824,15 @@ WorkerGlobalScope::GetServiceWorkerRegistration(
     const ServiceWorkerRegistrationDescriptor& aDescriptor) const {
   AssertIsOnWorkerThread();
   RefPtr<ServiceWorkerRegistration> ref;
-  ForEachGlobalTeardownObserver(
-      [&](GlobalTeardownObserver* aObserver, bool* aDoneOut) {
-        RefPtr<ServiceWorkerRegistration> swr = do_QueryObject(aObserver);
-        if (!swr || !swr->MatchesDescriptor(aDescriptor)) {
-          return;
-        }
+  ForEachEventTargetObject([&](DOMEventTargetHelper* aTarget, bool* aDoneOut) {
+    RefPtr<ServiceWorkerRegistration> swr = do_QueryObject(aTarget);
+    if (!swr || !swr->MatchesDescriptor(aDescriptor)) {
+      return;
+    }
 
-        ref = std::move(swr);
-        *aDoneOut = true;
-      });
+    ref = std::move(swr);
+    *aDoneOut = true;
+  });
   return ref;
 }
 

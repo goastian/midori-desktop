@@ -14,7 +14,13 @@
   "icons": {
     "128": "img/icon.png"
   },
-  "permissions": ["idle", "management", "storage", "tabs", "theme"],
+  "permissions": [
+    "idle",
+    "management",
+    "storage",
+    "tabs",
+    "theme"
+  ],
   "options_ui": {
     "page": "options/options.html",
     "browser_style": true
@@ -24,12 +30,12 @@
   },
   "experiment_apis": {
     "aboutConfigPrefs": {
-      "schema": "updateAPIs/aboutConfigPrefs.json",
-      "parent": {
-        "scopes": ["addon_parent"],
-        "script": "updateAPIs/aboutConfigPrefs.js",
-        "paths": [["aboutConfigPrefs"]]
-      }
+        "schema": "updateAPIs/aboutConfigPrefs.json",
+        "parent": {
+            "scopes": ["addon_parent"],
+            "script": "updateAPIs/aboutConfigPrefs.js",
+            "paths": [["aboutConfigPrefs"]]
+        }
     },
     "stylesheet": {
       "schema": "stylesheet-api-experiment/schema.json",

@@ -57,7 +57,7 @@ function templateHTML(options) {
 <html>
   <head>
     <meta charset="utf-8">
-        <meta name="color-scheme" content="light dark">
+    <meta name="color-scheme" content="light dark">
     <title data-l10n-id="newtab-page-title"></title>
     <link
       rel="icon"
@@ -75,7 +75,7 @@ function templateHTML(options) {
       rel="stylesheet"
       href="chrome://activity-stream/content/css/activity-stream.css"
     />
-<!-- Matomo -->
+    <!-- Matomo -->
 <script nonce="938479237498237">
   var _paq = window._paq = window._paq || [];
   /* tracker methods like "setCustomDimension" should be called before "trackPageView" */

@@ -7,7 +7,7 @@
 /* global ExtensionAPI, ExtensionCommon, Services, XPCOMUtils */
 
 const { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm",
+  "resource://gre/modules/AppConstants.jsm"
 );
 
 this.BrowserInfo = class extends ExtensionAPI {

@@ -28,8 +28,6 @@ Preferences.addAll([
   { id: "browser.newtabpage.enabled", type: "bool" },
   { id: "browser.newtabpage.activity-stream.floorp.background.type", type: "int" },
   { id: "browser.newtabpage.activity-stream.floorp.newtab.backdrop.blur.disable", type: "bool" },
-  { id: "browser.newtabpage.activity-stream.floorp.newtab.releasenote.hide", type: "bool" },
-  { id: "browser.newtabpage.activity-stream.floorp.newtab.imagecredit.hide", type: "bool" },
 ]);
 
 const HOMEPAGE_OVERRIDE_KEY = "homepage_override";
@@ -694,8 +692,6 @@ var gHomePane = {
     this.imagesFolderInputSet()
     Services.prefs.addObserver("browser.newtabpage.activity-stream.floorp.background.images.folder",this.imagesFolderInputSet.bind(this))
     Services.prefs.addObserver("browser.newtabpage.activity-stream.floorp.background.images.extensions",this.imagesFolderInputSet.bind(this))
-    this.imagePathInputSet()
-    Services.prefs.addObserver("browser.newtabpage.activity-stream.floorp.background.image.path",this.imagePathInputSet.bind(this))
     document
     .getElementById("openImagesFolder")
     .addEventListener("command", ()=>{
@@ -713,18 +709,18 @@ var gHomePane = {
     .getElementById("resetFolder")
     .addEventListener("command", (()=>{
       Services.prefs.clearUserPref("browser.newtabpage.activity-stream.floorp.background.images.folder")
-    }))
+    }).bind(this))
 
     document
     .getElementById("resetExtensions")
     .addEventListener("command", (()=>{
       Services.prefs.clearUserPref("browser.newtabpage.activity-stream.floorp.background.images.extensions")
-    }))
+    }).bind(this))
     document
     .getElementById("saveExtensions")
     .addEventListener("command", (()=>{
       Services.prefs.setStringPref("browser.newtabpage.activity-stream.floorp.background.images.extensions",document.querySelector("#pictureExtensions").value)
-    }))
+    }).bind(this))
 
     document
     .getElementById("chooseImagesFolder")
@@ -733,7 +729,7 @@ var gHomePane = {
         { id: "newtab-background-folder-choose" },
       ]);
       let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
-
+  
       fp.init(window, title, Ci.nsIFilePicker.modeGetFolder);
       fp.appendFilters(Ci.nsIFilePicker.filterAll);
       fp.displayDirectory = FileUtils.File(PathUtils.join(Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.images.folder","") || PathUtils.join(Services.dirsvc.get("ProfD", Ci.nsIFile).path, "newtabImages"),"a").slice( 0, -1 ))
@@ -742,28 +738,7 @@ var gHomePane = {
         return;
       }
       Services.prefs.setStringPref("browser.newtabpage.activity-stream.floorp.background.images.folder",fp.file.path)
-    }))
-
-    document
-    .getElementById("chooseImagePath")
-    .addEventListener("command", (async ()=>{
-      let [title] = await document.l10n.formatValues([
-        { id: "newtab-background-image-choose" },
-      ]);
-      let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
-
-      fp.init(window, title, Ci.nsIFilePicker.modeOpen);
-      fp.appendFilters(Ci.nsIFilePicker.filterAll);
-      const imgPath = Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.image.path","")
-      if(imgPath){
-        fp.displayDirectory =FileUtils.File(PathUtils.parent(imgPath))
-      }
-      let result = await new Promise(resolve => fp.open(resolve));
-      if (result != Ci.nsIFilePicker.returnOK) {
-        return;
-      }
-      Services.prefs.setStringPref("browser.newtabpage.activity-stream.floorp.background.image.path",fp.file.path)
-    }))
+    }).bind(this))
     window.addEventListener("focus", this._updateUseCurrentButton.bind(this));
 
     // Extension/override-related events
@@ -782,16 +757,8 @@ var gHomePane = {
       // Only set this if the pref has changed, otherwise the pref change will trigger other listeners to repeat.
       if (newtabEnabledPref !== newValue) {
         Services.prefs.setIntPref("browser.newtabpage.activity-stream.floorp.background.type", newValue);
-        for(const elem of document.querySelectorAll(`[displayBackgroundType]`)){
-          if(elem.getAttribute(`displayBackgroundType`) == Services.prefs.getIntPref(
-            "browser.newtabpage.activity-stream.floorp.background.type",
-            0
-          )){
-            elem.style.display = ""
-          }else{
-            elem.style.display = "none"
-          }
-        }
+        if(newValue != 3)  document.querySelector("body").style.setProperty('--background-folder-display', "none")
+        else document.querySelector("body").style.removeProperty('--background-folder-display')
       }
   },
 
@@ -803,16 +770,8 @@ var gHomePane = {
       );
       if (newtabEnabledPref !== menulist.value) {
         menulist.value = newtabEnabledPref;
-        for(const elem of document.querySelectorAll(`[displayBackgroundType]`)){
-          if(elem.getAttribute(`displayBackgroundType`) == Services.prefs.getIntPref(
-            "browser.newtabpage.activity-stream.floorp.background.type",
-            0
-          )){
-            elem.style.display = ""
-          }else{
-            elem.style.display = "none"
-          }
-        }
+        if(newtabEnabledPref != 3) document.querySelector("body").style.setProperty('--background-folder-display', "none")
+        else document.querySelector("body").style.removeProperty('--background-folder-display')
       }
   },
 
@@ -821,12 +780,6 @@ var gHomePane = {
     document.querySelector("#pictureFolder").value = folderPath
     document.querySelector("#pictureFolder").style.backgroundImage = `url(moz-icon://${Services.io.newFileURI(FileUtils.File(folderPath)).asciiSpec})`
     document.querySelector("#pictureExtensions").value = Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.images.extensions","")
-  },
-
-  imagePathInputSet(){
-    let folderPath = Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.image.path") || PathUtils.join(Services.dirsvc.get("ProfD", Ci.nsIFile).path, "newtabImages","wallpaper.png")
-    document.querySelector("#picturePath").value = folderPath
-    document.querySelector("#picturePath").style.backgroundImage = `url(moz-icon://${Services.io.newFileURI(FileUtils.File(folderPath)).asciiSpec})`
   }
 
 };

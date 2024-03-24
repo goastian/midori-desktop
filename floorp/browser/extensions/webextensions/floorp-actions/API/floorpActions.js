@@ -9,7 +9,7 @@
 this.floorpActions = class extends ExtensionAPI {
   getAPI(context) {
     const EventManager = ExtensionCommon.EventManager;
-
+    
     return {
       floorpActions: {
         async _getCurrentWindow() {
@@ -29,30 +29,20 @@ this.floorpActions = class extends ExtensionAPI {
         },
         async openBrowserManagerSidebar() {
           let window = await this._getCurrentWindow();
-          if (
-            window.document
-              .getElementById("sidebar-splitter2")
-              .getAttribute("hidden") == "true" &&
-            window.gBrowserManagerSidebar.currentPanel != null
-          ) {
-            window.gBrowserManagerSidebar.controllFunctions.changeVisibilityOfWebPanel();
+          if (window.document.getElementById("sidebar-splitter2").getAttribute("hidden") == "true" && window.bmsController.nowPage != null) {
+            window.bmsController.controllFunctions.changeVisibleWenpanel();
           }
         },
         async closeBrowserManagerSidebar() {
           let window = await this._getCurrentWindow();
-          if (
-            window.document
-              .getElementById("sidebar-splitter2")
-              .getAttribute("hidden") == "false" &&
-            window.gBrowserManagerSidebar.currentPanel != null
-          ) {
-            window.gBrowserManagerSidebar.controllFunctions.changeVisibilityOfWebPanel();
+          if (window.document.getElementById("sidebar-splitter2").getAttribute("hidden") == "false" && window.bmsController.nowPage != null) {
+            window.bmsController.controllFunctions.changeVisibleWenpanel();
           }
         },
         async changeBrowserManagerSidebarVisibility() {
           let window = await this._getCurrentWindow();
-          if (window.gBrowserManagerSidebar.currentPanel != null) {
-            window.gBrowserManagerSidebar.controllFunctions.changeVisibilityOfWebPanel();
+          if(window.bmsController.nowPage != null){
+            window.bmsController.controllFunctions.changeVisibleWenpanel();
           }
         },
         async showStatusbar() {
@@ -62,10 +52,7 @@ this.floorpActions = class extends ExtensionAPI {
           Services.prefs.setBoolPref("browser.display.statusbar", false);
         },
         async toggleStatusbar() {
-          let pref = Services.prefs.getBoolPref(
-            "browser.display.statusbar",
-            false,
-          );
+          let pref = Services.prefs.getBoolPref("browser.display.statusbar", false);
           Services.prefs.setBoolPref("browser.display.statusbar", !pref);
         },
       },

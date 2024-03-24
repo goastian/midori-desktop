@@ -5,18 +5,18 @@
 "use strict";
 
 const { XPCOMUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/XPCOMUtils.sys.mjs",
+  "resource://gre/modules/XPCOMUtils.sys.mjs"
 );
 
 let FxAccounts = ChromeUtils.importESModule(
-  "resource://gre/modules/FxAccounts.sys.mjs",
+  "resource://gre/modules/FxAccounts.sys.mjs"
 ).getFxAccountsSingleton();
 
 XPCOMUtils.defineLazyServiceGetter(
   this,
   "ProfileService",
   "@mozilla.org/toolkit/profile-service;1",
-  "nsIToolkitProfileService",
+  "nsIToolkitProfileService"
 );
 
 async function buildFxAccountsInfo() {
@@ -72,7 +72,7 @@ async function addAnotherDeviceToSync() {
   let uid = info.uid;
   let email = info.email;
   window.open(
-    `https://accounts.firefox.com/connect_another_device?context=fx_desktop_v3&entrypoint=preferences&service=sync&uid=${uid}&email=${email}`,
+    `https://accounts.firefox.com/connect_another_device?context=fx_desktop_v3&entrypoint=preferences&service=sync&uid=${uid}&email=${email}`
   );
 }
 
@@ -103,7 +103,7 @@ async function flush() {
       button,
       null,
       null,
-      {},
+      {}
     );
     if (result == 1) {
       restart(false);
@@ -209,7 +209,7 @@ function display(profileData) {
 
   createItem(
     "profiles-is-default",
-    profileData.isDefault ? "profiles-yes" : "profiles-no",
+    profileData.isDefault ? "profiles-yes" : "profiles-no"
   );
 
   createItem("profiles-rootdir", profileData.profile.rootDir, true);
@@ -223,7 +223,7 @@ function display(profileData) {
     runButton.className = "run";
     document.l10n.setAttributes(
       runButton,
-      "floorp-open-profile-with-new-instance",
+      "floorp-open-profile-with-new-instance"
     );
     runButton.onclick = function () {
       openProfile(profileData.profile);
@@ -245,7 +245,7 @@ function createProfileWizard() {
     "",
     "centerscreen,chrome,modal,titlebar",
     ProfileService,
-    { CreateProfile },
+    { CreateProfile }
   );
 }
 
@@ -304,7 +304,7 @@ async function removeProfile(profile) {
       null,
       deleteStr,
       null,
-      { value: 0 },
+      { value: 0 }
     );
     if (buttonPressed == 1) {
       return;
@@ -377,12 +377,12 @@ function openProfile(profile) {
 
 function restart(safeMode) {
   let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"].createInstance(
-    Ci.nsISupportsPRBool,
+    Ci.nsISupportsPRBool
   );
   Services.obs.notifyObservers(
     cancelQuit,
     "quit-application-requested",
-    "restart",
+    "restart"
   );
 
   if (cancelQuit.data) {
@@ -413,5 +413,5 @@ window.addEventListener(
       rebuildProfileList();
     }
   },
-  { once: true },
+  { once: true }
 );

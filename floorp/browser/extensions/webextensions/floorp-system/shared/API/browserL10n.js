@@ -6,8 +6,9 @@
 
 /* global ExtensionAPI, ExtensionCommon, Services, XPCOMUtils */
 
+
 const jsmScope = ChromeUtils.import(
-  "resource://devtools/shared/loader/Loader.jsm",
+  "resource://devtools/shared/loader/Loader.jsm"
 );
 
 const { Localization } = Cu.getGlobalForObject(jsmScope);
@@ -17,7 +18,7 @@ this.browserL10n = class extends ExtensionAPI {
     return {
       browserL10n: {
         async getFloorpL10nValues(id) {
-          let floorpLocalization = await new Localization(id.file);
+          let floorpLocalization = await new Localization(id.file)
           let value = await floorpLocalization.formatValues(id.text);
           return value;
         },

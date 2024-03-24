@@ -1825,8 +1825,7 @@ var CustomizableUIInternal = {
   },
 
   buildWidget(aDocument, aWidget) {
-    // Floorp Injections
-    if (!aDocument.documentURI.startsWith(kExpectedWindowURL)) {
+    if (aDocument.documentURI != kExpectedWindowURL) {
       throw new Error("buildWidget was called for a non-browser window!");
     }
     if (typeof aWidget == "string") {

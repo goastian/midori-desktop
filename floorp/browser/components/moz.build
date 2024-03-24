@@ -9,9 +9,10 @@ DIRS += [
     "search",
     "preferences",
     "profile-manager",
-    "ssb",
+    "notes",
     "welcome",
     "tabsleep",
+    "tabStacks",
 ]
 
 EXTRA_JS_MODULES += [
@@ -20,16 +21,10 @@ EXTRA_JS_MODULES += [
     "DesktopFileParser.sys.mjs",
     "EscapeShell.sys.mjs",
     "FloorpActors.sys.mjs",
-    "FloorpServices.sys.mjs",
     "FloorpStartup.sys.mjs",
     "OpenLinkInExternal.sys.mjs",
     "PortableUpdate.sys.mjs",
     "PrivateContainer.sys.mjs",
     "userjsUtils.sys.mjs",
-]
-
-DEFINES["TOPOBJDIR"] = TOPOBJDIR
-
-EXTRA_PP_JS_MODULES += [
-    "FloorpAppConstants.sys.mjs",
+    "WorkspaceUtils.sys.mjs",
 ]

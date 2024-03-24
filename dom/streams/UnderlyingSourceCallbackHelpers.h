@@ -7,7 +7,6 @@
 #ifndef mozilla_dom_UnderlyingSourceCallbackHelpers_h
 #define mozilla_dom_UnderlyingSourceCallbackHelpers_h
 
-#include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/HoldDropJSObjects.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/UnderlyingSourceBinding.h"
@@ -170,21 +169,17 @@ class InputToReadableStreamAlgorithms;
 // causing a Worker to assert with globalScopeAlive.  By isolating
 // ourselves from the inputstream, we can safely be CC'd if needed and
 // will inform the inputstream to shut down.
-class InputStreamHolder final : public nsIInputStreamCallback,
-                                public GlobalTeardownObserver {
+class InputStreamHolder final : public nsIInputStreamCallback {
  public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIINPUTSTREAMCALLBACK
 
-  InputStreamHolder(nsIGlobalObject* aGlobal,
-                    InputToReadableStreamAlgorithms* aCallback,
+  InputStreamHolder(InputToReadableStreamAlgorithms* aCallback,
                     nsIAsyncInputStream* aInput);
 
   void Init(JSContext* aCx);
 
-  void DisconnectFromOwner() override;
-
-  // Used by global teardown
+  // Used by Worker shutdown
   void Shutdown();
 
   // These just proxy the calls to the nsIAsyncInputStream
@@ -207,20 +202,8 @@ class InputStreamHolder final : public nsIInputStreamCallback,
   RefPtr<StrongWorkerRef> mAsyncWaitWorkerRef;
   RefPtr<StrongWorkerRef> mWorkerRef;
   nsCOMPtr<nsIAsyncInputStream> mInput;
-
-  // To ensure the underlying source sticks around during an ongoing read
-  // operation. mAlgorithms is not cycle collected on purpose, and this holder
-  // is responsible to keep the underlying source algorithms until
-  // nsIAsyncInputStream responds.
-  //
-  // This is done because otherwise the whole stream objects may be cycle
-  // collected, including the promises created from read(), as our JS engine may
-  // throw unsettled promises away for optimization. See bug 1849860.
-  RefPtr<InputToReadableStreamAlgorithms> mAsyncWaitAlgorithms;
 };
 
-// Using this class means you are also passing the lifetime control of your
-// nsIAsyncInputStream, as it will be closed when this class tears down.
 class InputToReadableStreamAlgorithms final
     : public UnderlyingSourceAlgorithmsWrapper,
       public nsIInputStreamCallback,
@@ -231,7 +214,12 @@ class InputToReadableStreamAlgorithms final
                                            UnderlyingSourceAlgorithmsWrapper)
 
   InputToReadableStreamAlgorithms(JSContext* aCx, nsIAsyncInputStream* aInput,
-                                  ReadableStream* aStream);
+                                  ReadableStream* aStream)
+      : mOwningEventTarget(GetCurrentSerialEventTarget()),
+        mInput(new InputStreamHolder(this, aInput)),
+        mStream(aStream) {
+    mInput->Init(aCx);
+  }
 
   // Streams algorithms
 

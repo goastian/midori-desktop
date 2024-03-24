@@ -110,11 +110,6 @@ bool IsImageExtractionAllowed(dom::Document* aDocument, JSContext* aCx,
     return true;
   }
 
-  // Allow chrome: and resource: (this especially includes PDF.js)
-  if (subjectPrincipal.SchemeIs("chrome") || subjectPrincipal.SchemeIs("resource")) {
-    return true;
-  }
-
   // Allow extension principals.
   auto* principal = BasePrincipal::Cast(&subjectPrincipal);
   if (principal->AddonPolicy() || principal->ContentScriptAddonPolicy()) {
@@ -128,6 +123,13 @@ bool IsImageExtractionAllowed(dom::Document* aDocument, JSContext* aCx,
 
   // Allow local files to extract canvas data.
   if (docURI->SchemeIs("file")) {
+    return true;
+  }
+
+  // Don't show canvas prompt for PDF.js
+  JS::AutoFilename scriptFile;
+  if (JS::DescribeScriptedCaller(aCx, &scriptFile) && scriptFile.get() &&
+      strcmp(scriptFile.get(), "resource://pdf.js/build/pdf.js") == 0) {
     return true;
   }
 

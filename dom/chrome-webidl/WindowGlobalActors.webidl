@@ -58,11 +58,6 @@ interface WindowGlobalParent : WindowContext {
 
   readonly attribute boolean isCurrentGlobal;
 
-  // This should return true if the window is currently visible in its tab.
-  // (A more technically accurate name would be something like
-  // "isActiveInRootNavigable".)
-  readonly attribute boolean isActiveInTab;
-
   readonly attribute unsigned long long outerWindowId;
   readonly attribute unsigned long long contentParentId;
 

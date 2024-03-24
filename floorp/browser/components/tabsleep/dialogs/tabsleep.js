@@ -2,19 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { Services } = ChromeUtils.import(
+  "resource://gre/modules/Services.jsm"
+);
 
 let gTabSleepManager = {
   onLoad() {
-    document.getElementById("timeoutMinutes").value = Services.prefs.getIntPref(
-      "floorp.tabsleep.tabTimeoutMinutes",
-      undefined,
-    );
+    document.getElementById("timeoutMinutes").value =
+      Services.prefs.getIntPref("floorp.tabsleep.tabTimeoutMinutes", undefined);
 
-    document.getElementById("excludeHosts").value = Services.prefs
-      .getStringPref("floorp.tabsleep.excludeHosts", "")
+    document.getElementById("excludeHosts").value =
+      Services.prefs.getStringPref("floorp.tabsleep.excludeHosts", "")
       .split(",")
-      .map((host) => host.trim())
+      .map(host => host.trim())
       .join("\n");
 
     let params = window.arguments[0] || {};
@@ -33,7 +33,7 @@ let gTabSleepManager = {
 
     Services.prefs.setIntPref(
       "floorp.tabsleep.tabTimeoutMinutes",
-      Number(timeoutMinutes),
+      Number(timeoutMinutes)
     );
 
     Services.prefs.setStringPref(
@@ -42,8 +42,8 @@ let gTabSleepManager = {
         .replace("\r\n", "\n")
         .replace("\r", "\n")
         .split("\n")
-        .map((host) => host.trim())
-        .join(","),
+        .map(host => host.trim())
+        .join(",")
     );
   },
 };

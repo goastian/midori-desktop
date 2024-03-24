@@ -3548,10 +3548,7 @@ void BrowserParent::SetRenderLayers(bool aEnabled) {
     return;
   }
 
-
-  // Floorp Injections
-  bool splitViewIsEnabled = Preferences::GetBool("floorp.browser.splitView.working", false);
-  mRenderLayers = splitViewIsEnabled ? true : aEnabled;
+  mRenderLayers = aEnabled;
 
   SetRenderLayersInternal(aEnabled);
 }

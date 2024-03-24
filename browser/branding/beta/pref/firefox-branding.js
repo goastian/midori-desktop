@@ -4,7 +4,7 @@
 
 // This file contains branding-specific prefs.
 
-pref("startup.homepage_override_url", "https://astian.org/category/midori-en/");
+pref("startup.homepage_override_url", "https://astian.org/midori-en/");
 pref("startup.homepage_welcome_url", "about:setup | https://astian.org/midori-browser/");
 pref("startup.homepage_welcome_url.additional", "https://astian.org/astian-privacy-policies//");
 // Interval: Time between checks for a new version (in seconds)
@@ -17,9 +17,9 @@ pref("app.update.promptWaitTime", 691200);
 // update" link supplied in the "An update is available" page of the update
 // wizard.
 pref("app.update.url.manual", "https://astian.org/midori-browser");
-pref("app.update.url.details", "https://astian.org/category/midori-en/");
-pref("app.releaseNotesURL", "https://astian.org/category/midori-en/");
-pref("app.releaseNotesURL.aboutDialog", "https://astian.org/category/midori-en/");
+pref("app.update.url.details", "https://astian.org/midori-en/");
+pref("app.releaseNotesURL", "https://astian.org/midori-en/");
+pref("app.releaseNotesURL.aboutDialog", "https://astian.org/midori-en/");
 
 // The number of days a binary is permitted to be old
 // without checking for an update.  This assumes that

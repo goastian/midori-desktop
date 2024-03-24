@@ -97,7 +97,7 @@
               preference="browser.taskbar.previews.enable"/>
 #endif
 
-    <hbox align="center" class="hide-if-lightning-build">
+    <hbox align="center">
       <checkbox data-l10n-id="enable-tab-sleep"
                id="tab-sleep" preference="floorp.tabsleep.enabled"/>
       <spacer flex="1"/>
@@ -114,16 +114,26 @@
     <checkbox  data-l10n-id="enable-tab-scroll-reverse"
                id="tabscrollReverse" preference="floorp.tabscroll.reverse"/>
 
-    <checkbox  data-l10n-id="enable-tab-scroll-wrap" class="hide-if-lightning-build"
+    <checkbox  data-l10n-id="enable-tab-scroll-wrap"
                id="tabscrollWrap" preference="floorp.tabscroll.wrap"/>
+
+    <hbox>
+      <checkbox data-l10n-id="enable-floorp-workspace" id="floorpWorkspace" preference="floorp.browser.workspace.tab.enabled"/> 
+      <spacer flex="1"/> 
+      <button id="floorpWorkspaceSettings"
+              is="highlightable-button"
+              class="accessory-button"
+              data-l10n-id="floorp-workspace-settings-button"/>
+    </hbox>
+    <description class="indent tip-caption" data-l10n-id="workspace-warring"/>
 
     <checkbox  data-l10n-id="enable-double-click-block"
                id="doubleClickClose" preference="browser.tabs.closeTabByDblclick"/>
 
-    <checkbox  data-l10n-id="enable-show-pinned-tabs-title" class="hide-if-lightning-build"
+    <checkbox  data-l10n-id="enable-show-pinned-tabs-title"
                id="showPinnedTabsTitle" preference="floorp.tabs.showPinnedTabsTitle"/>
 
-    <hbox class="hide-if-lightning-build">
+    <hbox>
       <description flex="1" data-l10n-id="tab-width"/>
       <html:input type="number" min="50" value="0" id="tabWidthValue"/>
     </hbox>
@@ -162,13 +172,25 @@
     </vbox>
 </groupbox>
 
-<groupbox data-category="paneGeneral" hidden="true" class="hide-if-lightning-build">
+<groupbox data-category="paneGeneral" hidden="true">
     <html:h2 data-l10n-id="preferences-tabs-newtab-position"/>
     <radiogroup id="openNewTabPosition" preference="floorp.browser.tabs.openNewTabPosition">
     <radio  value="-1"  data-l10n-id="open-new-tab-use-default"/>
      <radio value="0" data-l10n-id="open-new-tab-at-the-end"/>
      <radio value="1" data-l10n-id="open-new-tab-next-to-current"/>
     </radiogroup>
+</groupbox>
+
+<groupbox data-category="paneGeneral" hidden="true">
+  <html:h2 id="notes-preferences" data-l10n-id="floorp-notes"/>
+  <checkbox preference="services.sync.prefs.sync.floorp.browser.note.memos"
+            id="enable-notes-sync" data-l10n-id="enable-notes-sync" class="needreboot"/>
+  <description flex="1" class="indent tip-caption" data-l10n-id="notes-sync-description"/>
+  <hbox>
+    <description flex="1" data-l10n-id="notes-backup-option"/>
+    <button  data-l10n-id="backup-option-button" is="highlightable-button"
+             class="accessory-button" id="backUpNotesOption"/>
+  </hbox>
 </groupbox>
 
 <!-- Languages -->
@@ -264,7 +286,7 @@
     </vbox>
   </vbox>
 
-  <vbox id="TWS-box" class="TWS ContentBlockBox hide-if-lightning-build">
+  <vbox id="TWS-box" class="TWS ContentBlockBox">
     <html:h3 class="TWS addonRecommend-header" data-l10n-id="TWS"/>
     <hbox class="addonRecommend-box">
       <image id="TWSImg" class="addonRecommend-img" style="background-image: url('https://addons.mozilla.org/user-media/addon_icons/2623/2623538-64.png');"/>
@@ -630,13 +652,13 @@
 
 #if defined(XP_WIN) || defined(XP_LINUX)
  <hbox id="openInExternalCategory"
-      class="subcategory hide-if-lightning-build"
+      class="subcategory"
       hidden="true"
       data-category="paneGeneral">
    <html:h1 data-l10n-id="openInExternal-title"/>
  </hbox>
 
- <groupbox id="openInExternalGroup" class="hide-if-lightning-build" data-category="paneGeneral" hidden="true">
+ <groupbox id="openInExternalGroup" data-category="paneGeneral" hidden="true">
     <checkbox preference="floorp.openLinkInExternal.enabled" data-l10n-id="open-link-in-external-enabled-option" class="needreboot"/>
     <hbox>
       <description flex="1" data-l10n-id="open-link-in-external-select-browser-option"/>
@@ -704,21 +726,23 @@
           support-page="media-keyboard-control"
     />
   </hbox>
-  <checkbox preference="floorp.search.top.mode" class="hide-if-lightning-build"
-              id="searchbartop" data-l10n-id="search-positon-top"/>
+  <checkbox preference="floorp.search.top.mode"
+              id="searchbartop" data-l10n-id="Search-positon-top"/>
 
-  <checkbox preference="floorp.enable.auto.restart" class="hide-if-lightning-build"
+  <checkbox preference="floorp.enable.auto.restart"
               id="autorestart" data-l10n-id="allow-auto-restart" />
   <hbox>
-   <checkbox preference="toolkit.legacyUserProfileCustomizations.script" 
+   <checkbox preference="toolkit.legacyUserProfileCustomizations.script"
              id ="legacytoolkit" data-l10n-id="enable-userscript" class="needreboot"/>
     <label class="learnMore" is="text-link" href="https://astian.org/midori-en"
             data-l10n-id="do-not-track-learn-more"/>
   </hbox>
-  <description class="indent tip-caption" data-l10n-id="about-userscript"/>
+  <description class="indent tip-caption" data-l10n-id="about-legacy-components"/>
 
   <checkbox id="disableExtensionCheckCompatibility" data-l10n-id="disable-extension-check-compatibility-option"/>
-  <checkbox preference="floorp.disable.fullscreen.notification" class="hide-if-lightning-build"
+  <checkbox preference="floorp.browser.rest.mode"
+             id="restmode" data-l10n-id="browser-rest-mode"/>
+  <checkbox preference="floorp.disable.fullscreen.notification"
              id="disable-fullscreen-notify" data-l10n-id="disable-fullscreen-notification"/>
   <hbox align="center" data-subcategory="cfraddons">
     <checkbox id="cfrRecommendations"
@@ -755,8 +779,8 @@
   </hbox>
 </groupbox>
 
-<groupbox id="uaGroup" data-category="paneGeneral" data-subcategory="userAgent" hidden="true" class="hide-if-lightning-build">
-  <label><html:h2 data-l10n-id="userAgent-preference"/></label>
+<groupbox id="uaGroup" data-category="paneGeneral" data-subcategory="userAgent" hidden="true">
+  <label><html:h2 data-l10n-id="UserAgent-preference"/></label>
    <radiogroup id="floorpUAs" preference="floorp.browser.UserAgent">
      <radio value="0" data-l10n-id="default-useragent-mode"/>
      <radio value="1" data-l10n-id="windows-chrome-useragent-mode"/>

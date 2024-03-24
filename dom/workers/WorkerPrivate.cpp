@@ -3770,9 +3770,7 @@ void WorkerPrivate::ScheduleDeletion(WorkerRanOrNot aRanOrNot) {
   if (WorkerRan == aRanOrNot) {
     nsIThread* currentThread = NS_GetCurrentThread();
     MOZ_ASSERT(currentThread);
-    // On the worker thread WorkerRunnable will refuse to run if not nested
-    // on top of a WorkerThreadPrimaryRunnable.
-    Unused << NS_WARN_IF(NS_HasPendingEvents(currentThread));
+    MOZ_ASSERT(!NS_HasPendingEvents(currentThread));
   }
 #endif
 
@@ -3945,7 +3943,7 @@ void WorkerPrivate::ClearMainEventQueue(WorkerRanOrNot aRanOrNot) {
     // It's appropriate to disconnect event targets at the point that it's no
     // longer possible for new tasks to be dispatched at the global, and this is
     // that point.
-    globalScope->DisconnectGlobalTeardownObservers();
+    globalScope->DisconnectEventTargetObjects();
 
     globalScope->WorkerPrivateSaysForbidScript();
   }

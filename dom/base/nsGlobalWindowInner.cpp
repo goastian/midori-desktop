@@ -1226,7 +1226,7 @@ void nsGlobalWindowInner::FreeInnerObjects() {
   // that the Promises can resolve.
   CallDocumentFlushedResolvers(/* aUntilExhaustion = */ true);
 
-  DisconnectGlobalTeardownObservers();
+  DisconnectEventTargetObjects();
 
 #ifdef MOZ_WIDGET_ANDROID
   DisableOrientationChangeListener();
@@ -6043,16 +6043,15 @@ RefPtr<ServiceWorker> nsGlobalWindowInner::GetOrCreateServiceWorker(
     const ServiceWorkerDescriptor& aDescriptor) {
   MOZ_ASSERT(NS_IsMainThread());
   RefPtr<ServiceWorker> ref;
-  ForEachGlobalTeardownObserver(
-      [&](GlobalTeardownObserver* aObserver, bool* aDoneOut) {
-        RefPtr<ServiceWorker> sw = do_QueryObject(aObserver);
-        if (!sw || !sw->Descriptor().Matches(aDescriptor)) {
-          return;
-        }
+  ForEachEventTargetObject([&](DOMEventTargetHelper* aTarget, bool* aDoneOut) {
+    RefPtr<ServiceWorker> sw = do_QueryObject(aTarget);
+    if (!sw || !sw->Descriptor().Matches(aDescriptor)) {
+      return;
+    }
 
-        ref = std::move(sw);
-        *aDoneOut = true;
-      });
+    ref = std::move(sw);
+    *aDoneOut = true;
+  });
 
   if (!ref) {
     ref = ServiceWorker::Create(this, aDescriptor);
@@ -6067,16 +6066,15 @@ nsGlobalWindowInner::GetServiceWorkerRegistration(
     const {
   MOZ_ASSERT(NS_IsMainThread());
   RefPtr<ServiceWorkerRegistration> ref;
-  ForEachGlobalTeardownObserver(
-      [&](GlobalTeardownObserver* aObserver, bool* aDoneOut) {
-        RefPtr<ServiceWorkerRegistration> swr = do_QueryObject(aObserver);
-        if (!swr || !swr->MatchesDescriptor(aDescriptor)) {
-          return;
-        }
+  ForEachEventTargetObject([&](DOMEventTargetHelper* aTarget, bool* aDoneOut) {
+    RefPtr<ServiceWorkerRegistration> swr = do_QueryObject(aTarget);
+    if (!swr || !swr->MatchesDescriptor(aDescriptor)) {
+      return;
+    }
 
-        ref = std::move(swr);
-        *aDoneOut = true;
-      });
+    ref = std::move(swr);
+    *aDoneOut = true;
+  });
   return ref;
 }
 
@@ -6181,19 +6179,6 @@ nsIPrincipal* nsGlobalWindowInner::GetTopLevelAntiTrackingPrincipal() {
 
 nsIPrincipal* nsGlobalWindowInner::GetClientPrincipal() {
   return mClientSource ? mClientSource->GetPrincipal() : nullptr;
-}
-
-bool nsGlobalWindowInner::IsInFullScreenTransition() {
-  if (!mIsChrome) {
-    return false;
-  }
-
-  nsGlobalWindowOuter* outerWindow = GetOuterWindowInternal();
-  if (!outerWindow) {
-    return false;
-  }
-
-  return outerWindow->mIsInFullScreenTransition;
 }
 
 //*****************************************************************************
@@ -6823,17 +6808,14 @@ void nsGlobalWindowInner::AddSizeOfIncludingThis(
         mNavigator->SizeOfIncludingThis(aWindowSizes.mState.mMallocSizeOf);
   }
 
-  ForEachGlobalTeardownObserver([&](GlobalTeardownObserver* et,
-                                    bool* aDoneOut) {
+  ForEachEventTargetObject([&](DOMEventTargetHelper* et, bool* aDoneOut) {
     if (nsCOMPtr<nsISizeOfEventTarget> iSizeOf = do_QueryObject(et)) {
       aWindowSizes.mDOMSizes.mDOMEventTargetsSize +=
           iSizeOf->SizeOfEventTargetIncludingThis(
               aWindowSizes.mState.mMallocSizeOf);
     }
-    if (nsCOMPtr<DOMEventTargetHelper> helper = do_QueryObject(et)) {
-      if (EventListenerManager* elm = helper->GetExistingListenerManager()) {
-        aWindowSizes.mDOMEventListenersCount += elm->ListenerCount();
-      }
+    if (EventListenerManager* elm = et->GetExistingListenerManager()) {
+      aWindowSizes.mDOMEventListenersCount += elm->ListenerCount();
     }
     ++aWindowSizes.mDOMEventTargetsCount;
   });

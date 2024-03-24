@@ -348,9 +348,7 @@ void EventQueue::ProcessEventQueue() {
     AccEvent* event = events[idx];
     uint32_t eventType = event->mEventType;
     LocalAccessible* target = event->GetAccessible();
-    if (!target || target->IsDefunct()) {
-      continue;
-    }
+    if (!target || target->IsDefunct()) continue;
 
     // Collect select changes
     if (IPCAccessibilityActive()) {
@@ -415,9 +413,7 @@ void EventQueue::ProcessEventQueue() {
 
     nsEventShell::FireEvent(event);
 
-    if (!mDocument) {
-      return;
-    }
+    if (!mDocument) return;
   }
 
   if (mDocument && IPCAccessibilityActive() &&

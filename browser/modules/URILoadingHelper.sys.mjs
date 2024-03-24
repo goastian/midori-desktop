@@ -557,18 +557,6 @@ export const URILoadingHelper = {
           !loadInBackground &&
           w.isBlankPageURL(url) &&
           !lazy.AboutNewTab.willNotifyUser;
-        
-        // Floorp Injection
-        var { FloorpServices } = ChromeUtils.importESModule("resource:///modules/FloorpServices.sys.mjs");
-        let IsWindowFloorpSpecial = FloorpServices.wm.IsFloorpSpecialWindow(w);
-        if (
-          Services.prefs.getBoolPref("floorp.browser.sidebar2.addons.enabled") &&
-          IsWindowFloorpSpecial
-        ) {
-          if (FloorpServices.wm.getRecentWindowExcludeFloorpSpecialWindows()) {
-            w = FloorpServices.wm.getRecentWindowExcludeFloorpSpecialWindows();
-          }
-        }
 
         let tabUsedForLoad = w.gBrowser.addTab(url, {
           referrerInfo: params.referrerInfo,
@@ -592,11 +580,6 @@ export const URILoadingHelper = {
           globalHistoryOptions,
         });
         targetBrowser = tabUsedForLoad.linkedBrowser;
-
-        if(!Services.prefs.getBoolPref("browser.tabs.loadInBackground")) {
-          w.gBrowser.selectedTab = tabUsedForLoad;
-        }
-        // End Floorp Injection
 
         resolveOnNewTabCreated?.(targetBrowser);
         resolveOnContentBrowserCreated?.(targetBrowser);

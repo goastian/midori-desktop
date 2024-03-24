@@ -154,10 +154,9 @@ already_AddRefed<Promise> UnderlyingSourceAlgorithmsWrapper::CancelCallback(
 
 NS_IMPL_ISUPPORTS(InputStreamHolder, nsIInputStreamCallback)
 
-InputStreamHolder::InputStreamHolder(nsIGlobalObject* aGlobal,
-                                     InputToReadableStreamAlgorithms* aCallback,
+InputStreamHolder::InputStreamHolder(InputToReadableStreamAlgorithms* aCallback,
                                      nsIAsyncInputStream* aInput)
-    : GlobalTeardownObserver(aGlobal), mCallback(aCallback), mInput(aInput) {}
+    : mCallback(aCallback), mInput(aInput) {}
 
 void InputStreamHolder::Init(JSContext* aCx) {
   if (!NS_IsMainThread()) {
@@ -170,8 +169,9 @@ void InputStreamHolder::Init(JSContext* aCx) {
     // Note, this will create a ref-cycle between the holder and the stream.
     // The cycle is broken when the stream is closed or the worker begins
     // shutting down.
-    mWorkerRef = StrongWorkerRef::Create(workerPrivate, "InputStreamHolder",
-                                         [self = RefPtr{this}]() {});
+    mWorkerRef =
+        StrongWorkerRef::Create(workerPrivate, "InputStreamHolder",
+                                [self = RefPtr{this}]() { self->Shutdown(); });
     if (NS_WARN_IF(!mWorkerRef)) {
       return;
     }
@@ -180,26 +180,13 @@ void InputStreamHolder::Init(JSContext* aCx) {
 
 InputStreamHolder::~InputStreamHolder() = default;
 
-void InputStreamHolder::DisconnectFromOwner() {
-  Shutdown();
-  GlobalTeardownObserver::DisconnectFromOwner();
-}
-
 void InputStreamHolder::Shutdown() {
-  if (mInput) {
-    mInput->Close();
+  if (mWorkerRef) {
+    mInput->CloseWithStatus(NS_BASE_STREAM_CLOSED);
+    mWorkerRef = nullptr;
+    // If we have an AsyncWait running, we'll get a callback and clear
+    // the mAsyncWaitWorkerRef
   }
-  // NOTE(krosylight): Dropping mAsyncWaitAlgorithms here means letting cycle
-  // collection happen on the underlying source, which can cause a dangling
-  // read promise that never resolves. Doing so shouldn't be a problem at
-  // shutdown phase.
-  // Note that this is currently primarily for Fetch which does not explicitly
-  // close its streams at shutdown. (i.e. to prevent memory leak for cases e.g
-  // WPT /fetch/api/basic/stream-response.any.html)
-  mAsyncWaitAlgorithms = nullptr;
-  // If we have an AsyncWait running, we'll get a callback and clear
-  // the mAsyncWaitWorkerRef
-  mWorkerRef = nullptr;
 }
 
 nsresult InputStreamHolder::AsyncWait(uint32_t aFlags, uint32_t aRequestedCount,
@@ -207,7 +194,6 @@ nsresult InputStreamHolder::AsyncWait(uint32_t aFlags, uint32_t aRequestedCount,
   nsresult rv = mInput->AsyncWait(this, aFlags, aRequestedCount, aEventTarget);
   if (NS_SUCCEEDED(rv)) {
     mAsyncWaitWorkerRef = mWorkerRef;
-    mAsyncWaitAlgorithms = mCallback;
   }
   return rv;
 }
@@ -215,7 +201,6 @@ nsresult InputStreamHolder::AsyncWait(uint32_t aFlags, uint32_t aRequestedCount,
 NS_IMETHODIMP InputStreamHolder::OnInputStreamReady(
     nsIAsyncInputStream* aStream) {
   mAsyncWaitWorkerRef = nullptr;
-  mAsyncWaitAlgorithms = nullptr;
   // We may get called back after ::Shutdown()
   if (mCallback) {
     return mCallback->OnInputStreamReady(aStream);
@@ -229,14 +214,6 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(InputToReadableStreamAlgorithms,
 NS_IMPL_CYCLE_COLLECTION_WEAK_PTR_INHERITED(InputToReadableStreamAlgorithms,
                                             UnderlyingSourceAlgorithmsWrapper,
                                             mPullPromise, mStream)
-
-InputToReadableStreamAlgorithms::InputToReadableStreamAlgorithms(
-    JSContext* aCx, nsIAsyncInputStream* aInput, ReadableStream* aStream)
-    : mOwningEventTarget(GetCurrentSerialEventTarget()),
-      mInput(new InputStreamHolder(aStream->GetParentObject(), this, aInput)),
-      mStream(aStream) {
-  mInput->Init(aCx);
-}
 
 already_AddRefed<Promise> InputToReadableStreamAlgorithms::PullCallbackImpl(
     JSContext* aCx, ReadableStreamController& aController, ErrorResult& aRv) {

@@ -1131,10 +1131,6 @@
             "Status": {
               "type": "string",
               "enum": ["default", "locked", "user", "clear"]
-            },
-            "Type": {
-              "type": "string",
-              "enum": ["number", "boolean", "string"]
             }
           }
         }
@@ -1142,10 +1138,6 @@
     },
 
     "PrimaryPassword": {
-      "type": "boolean"
-    },
-
-    "PrintingEnabled": {
       "type": "boolean"
     },
 

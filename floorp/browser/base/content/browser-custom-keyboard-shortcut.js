@@ -5,32 +5,27 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 const CustomKeyboardShortcutUtils = ChromeUtils.importESModule(
-  "resource:///modules/CustomKeyboardShortcutUtils.sys.mjs",
+  "resource:///modules/CustomKeyboardShortcutUtils.sys.mjs"
 );
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const keyboradShortcutConfig = JSON.parse(
   Services.prefs.getStringPref(
     CustomKeyboardShortcutUtils.SHORTCUT_KEY_AND_ACTION_PREF,
-    "",
-  ),
+    ""
+  )
 );
 
 const buildShortCutkeyFunctions = {
   init() {
-    let IsBMSWindow = window.location.toString().split("?")[1];
-    if (IsBMSWindow) {
-        return;
-    }
-
     Services.prefs.clearUserPref(
-      CustomKeyboardShortcutUtils.SHORTCUT_KEY_CHANGED_ARRAY_PREF,
+      CustomKeyboardShortcutUtils.SHORTCUT_KEY_CHANGED_ARRAY_PREF
     );
 
     if (
       Services.prefs.getBoolPref(
         CustomKeyboardShortcutUtils.SHORTCUT_KEY_DISABLE_FX_DEFAULT_SCKEY_PREF,
-        false,
+        false
       )
     ) {
       SessionStore.promiseInitialized.then(() => {
@@ -42,8 +37,8 @@ const buildShortCutkeyFunctions = {
     const keyboradShortcutConfig = JSON.parse(
       Services.prefs.getStringPref(
         CustomKeyboardShortcutUtils.SHORTCUT_KEY_AND_ACTION_PREF,
-        "",
-      ),
+        ""
+      )
     );
 
     if (
@@ -64,7 +59,7 @@ const buildShortCutkeyFunctions = {
           name,
           key,
           keyCode,
-          modifiers,
+          modifiers
         );
       } else {
         console.error("Invalid shortcut key config: " + shortcutObj);
@@ -76,8 +71,6 @@ const buildShortCutkeyFunctions = {
     let functionCode =
       CustomKeyboardShortcutUtils.keyboradShortcutActions[name][0];
     if (!functionCode) {
-      // Remove invalid shortcut key config.
-      CustomKeyboardShortcutUtils.removeKeyboradShortcutByActionName(name);
       return;
     }
 
@@ -114,7 +107,7 @@ const buildShortCutkeyFunctions = {
     let keyElems = document.querySelector("#mainKeyset").childNodes;
     for (let keyElem of keyElems) {
       if (!keyElem.classList.contains("floorpCustomShortcutKey")) {
-        keyElem.setAttribute("disabled", true);
+        keyElem.setAttribute("disabled", "true");
       }
     }
   },
@@ -122,14 +115,14 @@ const buildShortCutkeyFunctions = {
   disableAllCustomKeyShortcutElemets() {
     let keyElems = document.querySelectorAll(".floorpCustomShortcutKey");
     for (let keyElem of keyElems) {
-      keyElem.remove();
+      keyElem.disabled = true;
     }
   },
 
   enableAllCustomKeyShortcutElemets() {
     let keyElems = document.querySelectorAll(".floorpCustomShortcutKey");
     for (let keyElem of keyElems) {
-      keyElem.removeAttribute("disabled");
+      keyElem.disabled = false;
     }
   },
 
@@ -141,13 +134,12 @@ const buildShortCutkeyFunctions = {
   },
 };
 
+
 let customActionsFunctions = {
   evalCustomeActionWithNum(num) {
-    let action = Services.prefs.getStringPref(
-      `floorp.custom.shortcutkeysAndActions.customAction${num}`,
-    );
+    let action = Services.prefs.getStringPref(`floorp.custom.shortcutkeysAndActions.customAction${num}`);
     Function(action)();
-  },
-};
+  }
+}
 
 buildShortCutkeyFunctions.init();

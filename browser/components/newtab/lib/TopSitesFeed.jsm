@@ -94,7 +94,7 @@ const ROWS_PREF = "topSitesRows";
 const SHOW_SPONSORED_PREF = "showSponsoredTopSites";
 // The default total number of sponsored top sites to fetch from Contile
 // and Pocket.
-const MAX_NUM_SPONSORED = 8;
+const MAX_NUM_SPONSORED = 2;
 // Nimbus variable for the total number of sponsored top sites including
 // both Contile and Pocket sources.
 // The default will be `MAX_NUM_SPONSORED` if this variable is unspecified.
@@ -490,91 +490,63 @@ class TopSitesFeed {
     );
     let hasContileTiles = false;
     if (contileEnabled) {
-      let sponsoredPosition = 1;
+      let sponsoredPosition = 0;
 
       let sponsorsList = [
         {
           "id": 0,
-          "name": "Flights",
-          "url": "https://skyscanner.pxf.io/c/5319441/1789305/13416",
-          "image_url": "https://astian.org/wp-content/uploads/2024/03/skyscannerf.webp",
-          "image_size": 200,
-        },
-        {
-          "id": 1,
           "name": "Amazon",
           "url": "https://www.amazon.com/?&_encoding=UTF8&tag=astian-20&linkCode=ur2&linkId=92724227da90468d86b519b08012ac10&camp=1789&creative=9325",
           "image_url": "https://astian.org/wp-content/uploads/2023/11/amazon1.png",
           "image_size": 200,
         },
         {
-          "id": 2,
-          "name": "Hotels",
-          "url": "https://skyscanner.pxf.io/c/5319441/1263984/13416",
-          "image_url": "https://astian.org/wp-content/uploads/2024/03/skyscannerh.webp",
-          "image_size": 200,
-        },
-        {
-          "id": 3,
+          "id": 1,
           "name": "Ebay",
           "url": "https://ebay.us/gW9r3z",
           "image_url": "https://astian.org/wp-content/uploads/2023/11/ebay.png",
           "image_size": 200,
         },
         {
-          "id": 4,
-          "name": "Trip",
-          "url": "https://www.trip.com/?Allianceid=4479273&SID=57814702&trip_sub1=astian-midori&trip_sub3=D180532",
-          "image_url": "https://astian.org/wp-content/uploads/2024/02/trip.webp",
-          "image_size": 200,
-        },
-        {
-          "id": 5,
-          "name": "Aliexpress",
-          "url": "https://s.click.aliexpress.com/e/_Dlf1B1R",
-          "image_url": "https://astian.org/wp-content/uploads/2023/11/aliexpress.png",
-          "image_size": 200,
-        },
-        {
-          "id": 6,
+          "id": 2,
           "name": "Expedia",
-          "url": "https://expedia.com/affiliate/m3DUjV0",
+          "url": "https://expedia.com/affiliate/1CRR7L7",
           "image_url": "https://astian.org/wp-content/uploads/2023/11/expedia.png",
           "image_size": 200,
         },
         {
-          "id": 7,
-          "name": "DigitalOcean",
-          "url": "digitalocean.pxf.io/EK6EQX",
-          "image_url": "https://astian.org/wp-content/uploads/2024/03/digitalocean.webp",
+          "id": 3,
+          "name": "Eneba",
+          "url": "https://www.eneba.com/?af_id=Astian",
+          "image_url": "https://astian.org/wp-content/uploads/2023/11/expedia.png",
           "image_size": 200,
         },
       ]
 
-      for (let site of sponsorsList) {
-        let hostname = shortURL(site);
-        let link = {
-          isDefault: true,
-          url: site.url,
-          hostname,
-          sendAttributionRequest: false,
-          label: site.name,
-          show_sponsored_label: hostname !== "yandex",
-          sponsored_position: sponsoredPosition++,
-          sponsored_click_url: site.click_url,
-          sponsored_impression_url: site.impression_url,
-          sponsored_tile_id: site.id,
-          partner: SPONSORED_TILE_PARTNER_AMP,
-        };
-        if (site.image_url && site.image_size >= MIN_FAVICON_SIZE) {
-          // Only use the image from Contile if it's hi-res, otherwise, fallback
-          // to the built-in favicons.
-          link.favicon = site.image_url;
-          link.faviconSize = site.image_size;
-        }
-        DEFAULT_TOP_SITES.push(link);
-      }
-      hasContileTiles = sponsoredPosition > 1;
+for (let site of sponsorsList) {
+  let hostname = shortURL(site);
+  let link = {
+    isDefault: true,
+    url: site.url,
+    hostname,
+    sendAttributionRequest: false,
+    label: site.name,
+    show_sponsored_label: hostname !== "yandex",
+    sponsored_position: sponsoredPosition++, // Incrementa sponsoredPosition
+    partner: SPONSORED_TILE_PARTNER_AMP,
+  };
+
+  if (site.image_url && site.image_size >= MIN_FAVICON_SIZE) {
+    link.favicon = site.image_url;
+    link.faviconSize = site.image_size;
+  }
+
+  DEFAULT_TOP_SITES.push(link);
+}
+
+console.log("Después de agregar patrocinadores:", DEFAULT_TOP_SITES);
+
+      hasContileTiles = sponsoredPosition > 0;
     }
 
     // Read defaults from remote settings.

@@ -106,8 +106,7 @@ void BrowserHost::UpdateEffects(EffectsInfo aEffects) {
 /* attribute boolean renderLayers; */
 NS_IMETHODIMP
 BrowserHost::GetRenderLayers(bool* aRenderLayers) {
-  // Floorp Injections
-  if (!mRoot && !Preferences::GetBool("floorp.browser.splitView.working", false)) {
+  if (!mRoot) {
     *aRenderLayers = false;
     return NS_OK;
   }

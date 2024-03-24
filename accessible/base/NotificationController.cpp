@@ -41,11 +41,7 @@ NotificationController::NotificationController(DocAccessible* aDocument,
 
 NotificationController::~NotificationController() {
   NS_ASSERTION(!mDocument, "Controller wasn't shutdown properly!");
-  if (mDocument) {
-    Shutdown();
-  }
-  MOZ_RELEASE_ASSERT(mObservingState == eNotObservingRefresh,
-                     "Must unregister before being destroyed");
+  if (mDocument) Shutdown();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,9 +53,7 @@ NS_IMPL_CYCLE_COLLECTING_NATIVE_RELEASE(NotificationController)
 NS_IMPL_CYCLE_COLLECTION_CLASS(NotificationController)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(NotificationController)
-  if (tmp->mDocument) {
-    tmp->Shutdown();
-  }
+  if (tmp->mDocument) tmp->Shutdown();
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(NotificationController)
@@ -84,16 +78,8 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 void NotificationController::Shutdown() {
   if (mObservingState != eNotObservingRefresh &&
       mPresShell->RemoveRefreshObserver(this, FlushType::Display)) {
-    // Note, this was our last chance to unregister, since we're about to
-    // clear mPresShell further down in this function.
     mObservingState = eNotObservingRefresh;
   }
-  MOZ_RELEASE_ASSERT(mObservingState == eNotObservingRefresh,
-                     "Must unregister before being destroyed (and we just "
-                     "passed our last change to unregister)");
-  // Immediately null out mPresShell, to prevent us from being registered as a
-  // refresh observer again.
-  mPresShell = nullptr;
 
   // Shutdown handling child documents.
   int32_t childDocCount = mHangingChildDocuments.Length();
@@ -106,6 +92,7 @@ void NotificationController::Shutdown() {
   mHangingChildDocuments.Clear();
 
   mDocument = nullptr;
+  mPresShell = nullptr;
 
   mTextHash.Clear();
   mContentInsertions.Clear();
@@ -447,11 +434,9 @@ void NotificationController::ScheduleContentInsertion(
 }
 
 void NotificationController::ScheduleProcessing() {
-  // If notification flush isn't planned yet, start notification flush
+  // If notification flush isn't planed yet start notification flush
   // asynchronously (after style and layout).
-  // Note: the mPresShell null-check might be unnecessary; it's just to prevent
-  // a null-deref here, if we somehow get called after we've been shut down.
-  if (mObservingState == eNotObservingRefresh && mPresShell) {
+  if (mObservingState == eNotObservingRefresh) {
     if (mPresShell->AddRefreshObserver(this, FlushType::Display,
                                        "Accessibility notifications")) {
       mObservingState = eRefreshObserving;
@@ -671,17 +656,12 @@ void NotificationController::WillRefresh(mozilla::TimeStamp aTime) {
 
   AUTO_PROFILER_LABEL("NotificationController::WillRefresh", A11Y);
 
-  // If mDocument is null, the document accessible that this notification
-  // controller was created for is now shut down. This means we've lost our
-  // ability to unregister ourselves, which is bad. (However, it also shouldn't
-  // be logically possible for us to get here with a null mDocument; the only
-  // thing that clears that pointer is our Shutdown() method, which first
-  // unregisters and fatally asserts if that fails).
-  MOZ_RELEASE_ASSERT(
+  // If the document accessible that notification collector was created for is
+  // now shut down, don't process notifications anymore.
+  NS_ASSERTION(
       mDocument,
       "The document was shut down while refresh observer is attached!");
-
-  if (ipc::ProcessChild::ExpectingShutdown()) {
+  if (!mDocument || ipc::ProcessChild::ExpectingShutdown()) {
     return;
   }
 
@@ -855,9 +835,7 @@ void NotificationController::WillRefresh(mozilla::TimeStamp aTime) {
   nsTArray<RefPtr<DocAccessible>> newChildDocs;
   for (uint32_t idx = 0; idx < hangingDocCnt; idx++) {
     DocAccessible* childDoc = mHangingChildDocuments[idx];
-    if (childDoc->IsDefunct()) {
-      continue;
-    }
+    if (childDoc->IsDefunct()) continue;
 
     if (IPCAccessibilityActive() && !mDocument->IPCDoc()) {
       childDoc->Shutdown();
@@ -896,16 +874,12 @@ void NotificationController::WillRefresh(mozilla::TimeStamp aTime) {
     uint32_t childDocCnt = mDocument->ChildDocumentCount(), childDocIdx = 0;
     for (; childDocIdx < childDocCnt; childDocIdx++) {
       DocAccessible* childDoc = mDocument->GetChildDocumentAt(childDocIdx);
-      if (!childDoc->HasLoadState(DocAccessible::eCompletelyLoaded)) {
-        break;
-      }
+      if (!childDoc->HasLoadState(DocAccessible::eCompletelyLoaded)) break;
     }
 
     if (childDocIdx == childDocCnt) {
       mDocument->ProcessLoad();
-      if (!mDocument) {
-        return;
-      }
+      if (!mDocument) return;
     }
   }
 
@@ -935,9 +909,7 @@ void NotificationController::WillRefresh(mozilla::TimeStamp aTime) {
   uint32_t notificationCount = notifications.Length();
   for (uint32_t idx = 0; idx < notificationCount; idx++) {
     notifications[idx]->Process();
-    if (!mDocument) {
-      return;
-    }
+    if (!mDocument) return;
   }
 
   if (ipc::ProcessChild::ExpectingShutdown()) {
@@ -974,7 +946,7 @@ void NotificationController::WillRefresh(mozilla::TimeStamp aTime) {
   }
 
   if (mDocument) {
-    mDocument->ClearMutationData();
+    mDocument->ClearMovedAccessibles();
   }
 
   if (ipc::ProcessChild::ExpectingShutdown()) {
@@ -1019,19 +991,8 @@ void NotificationController::WillRefresh(mozilla::TimeStamp aTime) {
     }
   }
 
-  if (!mDocument) {
-    // A null mDocument means we've gotten a Shutdown() call (presumably via
-    // some script that we triggered above), and that means we're done here.
-    // Note: in this case, it's important that don't modify mObservingState;
-    // Shutdown() will have *unregistered* us as a refresh observer, and we
-    // don't want to mistakenly overwrite mObservingState and fool ourselves
-    // into thinking we've re-registered when we really haven't!
-    MOZ_ASSERT(mObservingState == eNotObservingRefresh,
-               "We've been shutdown, which means we should've been "
-               "unregistered as a refresh observer");
-    return;
-  }
   mObservingState = eRefreshObserving;
+  if (!mDocument) return;
 
   // Stop further processing if there are no new notifications of any kind or
   // events and document load is processed.

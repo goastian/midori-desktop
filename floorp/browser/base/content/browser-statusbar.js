@@ -11,7 +11,7 @@ const toolbarElem = window.MozXULElement.parseXULToFragment(
              class="browser-toolbar customization-target" mode="icons" context="toolbar-context-menu" accesskey="A">
              <hbox id="status-text" align="center" flex="1" class="statusbar-padding"/>
     </toolbar>
-    `,
+    `
 );
 
 //If the status bar is hidden, we need to add this CSS
@@ -34,7 +34,9 @@ document.getElementById("navigator-toolbox").appendChild(toolbarElem);
 CustomizableUI.registerArea("statusBar", {
   type: CustomizableUI.TYPE_TOOLBAR,
   defaultPlacements: [
+    "toolbarItemClock",
     "screenshot-button",
+    "zoom-controls",
     "fullscreen-button",
   ],
 });
@@ -50,7 +52,7 @@ contextMenu.setAttribute("type", "checkbox");
 contextMenu.id = "toggle_statusBar";
 contextMenu.setAttribute(
   "checked",
-  Services.prefs.getBoolPref("browser.display.statusbar"),
+  Services.prefs.getBoolPref("browser.display.statusbar")
 );
 contextMenu.setAttribute("oncommand", "changeStatusbarVisibility();");
 document.getElementById("toolbarItemsMenuSeparator").after(contextMenu);
@@ -85,10 +87,7 @@ function hideStatusbar() {
 }
 
 const toggleStatusBar = () => {
-  const checked = Services.prefs.getBoolPref(
-    "browser.display.statusbar",
-    false,
-  );
+  const checked = Services.prefs.getBoolPref("browser.display.statusbar", false);
   const toggleElement = document.getElementById("toggle_statusBar");
   toggleElement.setAttribute("checked", String(checked));
 
@@ -97,13 +96,9 @@ const toggleStatusBar = () => {
 };
 
 const handlePrefChange = () => {
-  const checked = Services.prefs.getBoolPref(
-    "browser.display.statusbar",
-    false,
-  );
+  const checked = Services.prefs.getBoolPref("browser.display.statusbar", false);
   const toggleElement = document.getElementById("toggle_statusBar");
   toggleElement.setAttribute("checked", String(checked));
-
   if (checked) {
     showStatusbar();
   } else {
@@ -115,11 +110,9 @@ const observeStatusbar = () => {
   const statuspanel = document.getElementById("statuspanel");
   const statusText = document.getElementById("status-text");
   let observer;
-
   const onPrefChanged = () => {
     observer?.disconnect();
     statusText.style.visibility = "";
-
     if (Services.prefs.getBoolPref("browser.display.statusbar", false)) {
       observer = new MutationObserver((mutationsList, observer) => {
         if (statuspanel.getAttribute("inactive") === "true") {
@@ -128,11 +121,9 @@ const observeStatusbar = () => {
           statusText.style.visibility = "";
         }
       });
-
       observer.observe(statuspanel, { attributes: true });
     }
   };
-
   Services.prefs.addObserver("browser.display.statusbar", onPrefChanged);
   onPrefChanged();
 };

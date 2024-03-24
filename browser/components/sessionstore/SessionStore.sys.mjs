@@ -581,18 +581,6 @@ export var SessionStore = {
           aState.selectedWindow--;
         }
       }
-
-      // Floorp injections
-      // Remove SSB window state.
-      // SSB windows should be not restored, so we don't need to keep their state.
-      for (let j = 0; j < win.tabs.length; j++) {
-        if (win.tabs[j].floorpSSB || win.tabs[j].floorpWebPanel) {
-          win.tabs.splice(j, 1);
-          if (aState.selectedWindow > i) {
-            aState.selectedWindow--;
-          }
-        }
-      }
     }
   },
 
@@ -915,25 +903,6 @@ var SessionStoreInternal = {
               restoreAsCrashed = false;
             }
           }
-          
-          // Floorp injections
-          if (
-            state.windows[0] == undefined
-          ) {
-            let lastSessionWindows = state._closedWindows;
-            let closedTime = lastSessionWindows[0].closedAt;
-            for (let i = 0; i < lastSessionWindows.length; i++) {
-              let closedWindow = state._closedWindows[i];
-              let closedWindowTime = closedWindow.closedAt;
-              // If the last closed window is closed in +-100, we will restore it
-              if (closedWindowTime > closedTime - 100 && closedWindowTime < closedTime + 100) {
-                state.windows.push(closedWindow);
-                // Remove the closed window from the closed windows
-                state._closedWindows.splice(i, 1);
-              }
-            }            
-          }
-          // End of floorp injections
 
           // If we didn't use about:sessionrestore, record that:
           if (!restoreAsCrashed) {
@@ -970,7 +939,6 @@ var SessionStoreInternal = {
         state?.windows?.forEach(win => delete win._maybeDontRestoreTabs);
         state?._closedWindows?.forEach(win => delete win._maybeDontRestoreTabs);
       } catch (ex) {
-        console.error(ex);
         this._log.error("The session file is invalid: " + ex);
       }
     }
@@ -1940,14 +1908,6 @@ var SessionStoreInternal = {
    */
   onClose: function ssi_onClose(aWindow) {
     let completionPromise = Promise.resolve();
-
-    // Floorp Injections
-    if (
-      aWindow.document.documentElement.getAttribute("FloorpEnableSSBWindow") ==
-      "true" || aWindow.floorpWebPanelWindow
-    ) {
-      return completionPromise;
-    }
     // this window was about to be restored - conserve its original data, if any
     let isFullyLoaded = this._isWindowLoaded(aWindow);
     if (!isFullyLoaded) {
@@ -4079,19 +4039,6 @@ var SessionStoreInternal = {
       winData.sizemodeBeforeMinimized = winData.sizemode;
     }
 
-    // Floorp Injections
-    let windowUuid = aWindow.gWorkspaces._windowId;
-    if (windowUuid) {
-      winData.windowUuid = windowUuid;
-    } else {
-      delete winData.windowUuid;
-    }
-
-    let floorpWebPanelWindow = aWindow.floorpWebPanelWindow;
-    winData.floorpWebPanelWindow = !!floorpWebPanelWindow;
-
-    // Floorp Injections end
-
     var hidden = WINDOW_HIDEABLE_FEATURES.filter(function (aItem) {
       return aWindow[aItem] && !aWindow[aItem].visible;
     });
@@ -4790,10 +4737,6 @@ var SessionStoreInternal = {
       return;
     }
 
-    if (tabData.floorpDisableHistory) {
-      return;
-    }
-
     let loadArguments = options.loadArguments;
     let window = tab.ownerGlobal;
     let tabbrowser = window.gBrowser;
@@ -5141,8 +5084,7 @@ var SessionStoreInternal = {
         "screenY" in aWinData ? +aWinData.screenY : NaN,
         aWinData.sizemode || "",
         aWinData.sizemodeBeforeMinimized || "",
-        aWinData.sidebar || "",
-        aWinData.windowUuid || ""
+        aWinData.sidebar || ""
       );
     }, 0);
   },
@@ -5172,8 +5114,7 @@ var SessionStoreInternal = {
     aTop,
     aSizeMode,
     aSizeModeBeforeMinimized,
-    aSidebar,
-    aWindowId
+    aSidebar
   ) {
     var win = aWindow;
     var _this = this;
@@ -5323,18 +5264,6 @@ var SessionStoreInternal = {
       ) {
         aWindow.SidebarUI.showInitially(aSidebar);
       }
-
-      let { WorkspacesWindowUuidService } = ChromeUtils.importESModule(
-        "resource:///modules/WorkspacesService.sys.mjs"
-      );
-
-      // workspaces Window Id
-      if (aWindowId) {
-        aWindow.gWorkspaces._windowId = aWindowId;
-      } else {
-        aWindow.gWorkspaces._windowId = WorkspacesWindowUuidService.getGeneratedUuid();
-      }
-
       // since resizing/moving a window brings it to the foreground,
       // we might want to re-focus the last focused window
       if (this.windowToFocus) {

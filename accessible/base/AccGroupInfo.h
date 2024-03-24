@@ -39,7 +39,7 @@ class AccGroupInfo {
    * Return a direct or logical parent of the accessible that this group info is
    * created for.
    */
-  Accessible* ConceptualParent() const;
+  Accessible* ConceptualParent() const { return mParent; }
 
   /**
    * Update group information.
@@ -90,7 +90,7 @@ class AccGroupInfo {
 
   uint32_t mPosInSet;
   uint32_t mSetSize;
-  uint64_t mParentId;
+  Accessible* mParent;
   const Accessible* mItem;
   a11y::role mRole;
 };

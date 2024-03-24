@@ -4,7 +4,7 @@
 
 "use strict";
 
-/* global ExtensionAPI, ExtensionCommon, Services */
+/* global ExtensionAPI, ExtensionCommon, Services, XPCOMUtils */
 
 this.aboutConfigPrefs = class extends ExtensionAPI {
   getAPI(context) {

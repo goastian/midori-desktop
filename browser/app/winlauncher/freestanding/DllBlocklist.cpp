@@ -465,7 +465,6 @@ MOZ_NEVER_INLINE NTSTATUS AfterMapViewOfExecutableSection(
   if (::RtlCompareUnicodeString(&k32Name, &leafOnStack, TRUE) == 0) {
     blockAction = BlockAction::Allow;
   } else {
-    auto noSharedSectionReset{SharedSection::AutoNoReset()};
     k32Exports = gSharedSection.GetKernel32Exports();
     // Small optimization: Since loading a dependent module does not involve
     // LdrLoadDll, we know isInjectedDependent is false if we hold a top frame.
@@ -577,7 +576,7 @@ NTSTATUS NTAPI patched_NtMapViewOfSection(
     SIZE_T aCommitSize, PLARGE_INTEGER aSectionOffset, PSIZE_T aViewSize,
     SECTION_INHERIT aInheritDisposition, ULONG aAllocationType,
     ULONG aProtectionFlags) {
-  // Save off the values currently in the out-pointers for later restoration if
+      // Save off the values currently in the out-pointers for later restoration if
   // we decide not to permit this mapping.
   auto const rollback =
       [
@@ -594,7 +593,6 @@ NTSTATUS NTAPI patched_NtMapViewOfSection(
         if (aSectionOffset) *aSectionOffset = sectionOffset;
         if (aViewSize) *aViewSize = viewSize;
       };
-
   // We always map first, then we check for additional info after.
   NTSTATUS stubStatus = stub_NtMapViewOfSection(
       aSection, aProcess, aBaseAddress, aZeroBits, aCommitSize, aSectionOffset,

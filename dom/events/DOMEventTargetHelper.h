@@ -9,7 +9,6 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/EventTarget.h"
-#include "mozilla/GlobalTeardownObserver.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/RefPtr.h"
 #include "nsAtom.h"
@@ -49,7 +48,7 @@ enum class CallerType : uint32_t;
   }
 
 class DOMEventTargetHelper : public dom::EventTarget,
-                             public GlobalTeardownObserver {
+                             public LinkedListElement<DOMEventTargetHelper> {
  public:
   DOMEventTargetHelper();
   explicit DOMEventTargetHelper(nsPIDOMWindowInner* aWindow);
@@ -57,8 +56,7 @@ class DOMEventTargetHelper : public dom::EventTarget,
   explicit DOMEventTargetHelper(DOMEventTargetHelper* aOther);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_SKIPPABLE_WRAPPERCACHE_CLASS_AMBIGUOUS(
-      DOMEventTargetHelper, dom::EventTarget)
+  NS_DECL_CYCLE_COLLECTION_SKIPPABLE_WRAPPERCACHE_CLASS(DOMEventTargetHelper)
 
   virtual EventListenerManager* GetExistingListenerManager() const override;
   virtual EventListenerManager* GetOrCreateListenerManager() override;
@@ -77,8 +75,12 @@ class DOMEventTargetHelper : public dom::EventTarget,
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_DOMEVENTTARGETHELPER_IID)
 
-  nsIGlobalObject* GetOwnerGlobal() const override {
-    return GlobalTeardownObserver::GetOwnerGlobal();
+  void GetParentObject(nsIScriptGlobalObject** aParentObject) {
+    if (mParentObject) {
+      CallQueryInterface(mParentObject, aParentObject);
+    } else {
+      *aParentObject = nullptr;
+    }
   }
 
   static DOMEventTargetHelper* FromSupports(nsISupports* aSupports) {
@@ -105,6 +107,19 @@ class DOMEventTargetHelper : public dom::EventTarget,
     return nsPIDOMWindowOuter::GetFromCurrentInner(GetOwner());
   }
 
+  // A global permanently becomes invalid when DisconnectEventTargetObjects() is
+  // called.  Normally this means:
+  // - For the main thread, when nsGlobalWindowInner::FreeInnerObjects is
+  //   called.
+  // - For a worker thread, when clearing the main event queue.  (Which we do
+  //   slightly later than when the spec notionally calls for it to be done.)
+  //
+  // A global may also become temporarily invalid when:
+  // - For the main thread, if the window is no longer the WindowProxy's current
+  //   inner window due to being placed in the bfcache.
+  nsresult CheckCurrentGlobalCorrectness() const;
+
+  nsPIDOMWindowInner* GetOwner() const { return mOwnerWindow; }
   // Like GetOwner, but only returns non-null if the window being returned is
   // current (in the "current document" sense of the HTML spec).
   nsPIDOMWindowInner* GetWindowIfCurrent() const;
@@ -112,8 +127,10 @@ class DOMEventTargetHelper : public dom::EventTarget,
   // the current document of its browsing context.  Will return null otherwise.
   mozilla::dom::Document* GetDocumentIfCurrent() const;
 
-  void DisconnectFromOwner() override;
+  virtual void DisconnectFromOwner();
   using EventTarget::GetParentObject;
+  nsIGlobalObject* GetOwnerGlobal() const final { return mParentObject; }
+  bool HasOrHasHadOwner() { return mHasOrHasHadOwnerWindow; }
 
   virtual void EventListenerAdded(nsAtom* aType) override;
 
@@ -145,10 +162,21 @@ class DOMEventTargetHelper : public dom::EventTarget,
 
   void IgnoreKeepAliveIfHasListenersFor(nsAtom* aType);
 
+  void BindToOwner(nsIGlobalObject* aOwner);
+
  private:
+  // The parent global object.  The global will clear this when
+  // it is destroyed by calling DisconnectFromOwner().
+  nsIGlobalObject* MOZ_NON_OWNING_REF mParentObject;
+  // mParentObject pre QI-ed and cached (inner window)
+  // (it is needed for off main thread access)
+  // It is obtained in BindToOwner and reset in DisconnectFromOwner.
+  nsPIDOMWindowInner* MOZ_NON_OWNING_REF mOwnerWindow;
+  bool mHasOrHasHadOwnerWindow;
+
   nsTArray<RefPtr<nsAtom>> mKeepingAliveTypes;
 
-  bool mIsKeptAlive = false;
+  bool mIsKeptAlive;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(DOMEventTargetHelper, NS_DOMEVENTTARGETHELPER_IID)

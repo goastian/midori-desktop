@@ -78,9 +78,7 @@ this.aboutConfigPrefs = class extends ExtensionAPI {
               case 0:
                 return undefined;
               case 32:
-                return Services.prefs
-                  .getDefaultBranch(null)
-                  .getStringPref(name);
+                return Services.prefs.getDefaultBranch(null).getStringPref(name);
               case 64:
                 return Services.prefs.getDefaultBranch(null).getIntPref(name);
               case 128:
@@ -109,17 +107,13 @@ this.aboutConfigPrefs = class extends ExtensionAPI {
           return Services.prefs.getDefaultBranch(null).setCharPref(name, value);
         },
         async setDefaultStringPref(name, value) {
-          return Services.prefs
-            .getDefaultBranch(null)
-            .setStringPref(name, value);
+          return Services.prefs.getDefaultBranch(null).setStringPref(name, value);
         },
         async setDefaultIntPref(name, value) {
           return Services.prefs.getDefaultBranch(null).setIntPref(name, value);
         },
         async setDefaultFloatPref(name, value) {
-          return Services.prefs
-            .getDefaultBranch(null)
-            .setFloatPref(name, value);
+          return Services.prefs.getDefaultBranch(null).setFloatPref(name, value);
         },
         async setDefaultBoolPref(name, value) {
           return Services.prefs.getDefaultBranch(null).setBoolPref(name, value);

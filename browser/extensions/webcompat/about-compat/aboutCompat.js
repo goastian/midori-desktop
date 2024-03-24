@@ -75,10 +75,8 @@ Promise.all([
   redraw();
 });
 
-async function onMessageFromAddon(msg) {
+function onMessageFromAddon(msg) {
   const alsoShowHidden = location.hash === "#all";
-
-  await DOMContentLoadedPromise;
 
   if ("interventionsChanged" in msg) {
     redrawTable($("#interventions"), msg.interventionsChanged, alsoShowHidden);

@@ -180,6 +180,7 @@ webext-storage = { git = "https://github.com/mozilla/application-services", rev 
 # add unmerged mime types
 mime_guess = { path = "third_party/rust/mime_guess" }
 
+
 # Patch mio 0.6 to use winapi 0.3 and miow 0.3, getting rid of winapi 0.2.
 # There is not going to be new version of mio 0.6, mio now being >= 0.7.11.
 [patch.crates-io.mio]

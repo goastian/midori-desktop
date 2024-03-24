@@ -7,7 +7,7 @@
 /* global ExtensionAPI, ExtensionCommon, Services, XPCOMUtils */
 
 const { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm",
+  "resource://gre/modules/AppConstants.jsm"
 );
 
 this.BrowserInfo = class extends ExtensionAPI {
@@ -20,10 +20,16 @@ this.BrowserInfo = class extends ExtensionAPI {
           return AppConstants.MOZ_APP_VERSION_DISPLAY;
         },
         async getAppExecutablePath() {
-          return Services.dirsvc.get("XREExeF", Ci.nsIFile).path;
+          return Services.dirsvc.get(
+            "XREExeF",
+            Ci.nsIFile
+          ).path;
         },
         async getAppExecutableDirPath() {
-          return Services.dirsvc.get("XREExeF", Ci.nsIFile).parent.path;
+          return Services.dirsvc.get(
+            "XREExeF",
+            Ci.nsIFile
+          ).parent.path;
         },
       },
     };

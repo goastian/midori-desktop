@@ -818,7 +818,7 @@ void BlobURLProtocolHandler::Traverse(
 
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(
       aCallback, "BlobURLProtocolHandler mozilla::dom::DataInfo.mMediaSource");
-  aCallback.NoteXPCOMChild(static_cast<EventTarget*>(res->mMediaSource));
+  aCallback.NoteXPCOMChild(res->mMediaSource);
 }
 
 NS_IMPL_ISUPPORTS(BlobURLProtocolHandler, nsIProtocolHandler,

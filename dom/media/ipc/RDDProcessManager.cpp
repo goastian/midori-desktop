@@ -192,20 +192,19 @@ RefPtr<GenericNonExclusivePromise> RDDProcessManager::LaunchRDDProcess() {
 }
 
 auto RDDProcessManager::EnsureRDDProcessAndCreateBridge(
-    base::ProcessId aOtherProcess, dom::ContentParentId aParentId)
-    -> RefPtr<EnsureRDDPromise> {
+    base::ProcessId aOtherProcess) -> RefPtr<EnsureRDDPromise> {
   return InvokeAsync(
       GetMainThreadSerialEventTarget(), __func__,
-      [aOtherProcess, aParentId, this]() -> RefPtr<EnsureRDDPromise> {
+      [aOtherProcess, this]() -> RefPtr<EnsureRDDPromise> {
         return LaunchRDDProcess()->Then(
             GetMainThreadSerialEventTarget(), __func__,
-            [aOtherProcess, aParentId, this]() {
+            [aOtherProcess, this]() {
               if (IsShutdown()) {
                 return EnsureRDDPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE,
                                                          __func__);
               }
               ipc::Endpoint<PRemoteDecoderManagerChild> endpoint;
-              if (!CreateContentBridge(aOtherProcess, aParentId, &endpoint)) {
+              if (!CreateContentBridge(aOtherProcess, &endpoint)) {
                 return EnsureRDDPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE,
                                                          __func__);
               }
@@ -276,7 +275,7 @@ void RDDProcessManager::DestroyProcess() {
 }
 
 bool RDDProcessManager::CreateContentBridge(
-    base::ProcessId aOtherProcess, dom::ContentParentId aParentId,
+    base::ProcessId aOtherProcess,
     ipc::Endpoint<PRemoteDecoderManagerChild>* aOutRemoteDecoderManager) {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -297,8 +296,7 @@ bool RDDProcessManager::CreateContentBridge(
     return false;
   }
 
-  mRDDChild->SendNewContentRemoteDecoderManager(std::move(parentPipe),
-                                                aParentId);
+  mRDDChild->SendNewContentRemoteDecoderManager(std::move(parentPipe));
 
   *aOutRemoteDecoderManager = std::move(childPipe);
   return true;

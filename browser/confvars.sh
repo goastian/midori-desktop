@@ -5,7 +5,6 @@
 
 MOZ_APP_VENDOR=Mozilla
 
-
 BROWSER_CHROME_URL=chrome://browser/content/browser.xhtml
 
 # MOZ_APP_DISPLAYNAME will be set by branding/configure.sh

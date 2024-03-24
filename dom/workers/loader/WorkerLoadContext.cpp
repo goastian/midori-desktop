@@ -13,14 +13,11 @@ namespace dom {
 
 WorkerLoadContext::WorkerLoadContext(
     Kind aKind, const Maybe<ClientInfo>& aClientInfo,
-    workerinternals::loader::WorkerScriptLoader* aScriptLoader,
-    bool aOnlyExistingCachedResourcesAllowed)
+    workerinternals::loader::WorkerScriptLoader* aScriptLoader)
     : JS::loader::LoadContextBase(JS::loader::ContextKind::Worker),
       mKind(aKind),
       mClientInfo(aClientInfo),
-      mScriptLoader(aScriptLoader),
-      mOnlyExistingCachedResourcesAllowed(
-          aOnlyExistingCachedResourcesAllowed){};
+      mScriptLoader(aScriptLoader){};
 
 ThreadSafeRequestHandle::ThreadSafeRequestHandle(
     JS::loader::ScriptLoadRequest* aRequest, nsISerialEventTarget* aSyncTarget)

@@ -22,7 +22,7 @@
     "@storybook/addon-links": "^6.4.8",
     "@storybook/builder-webpack5": "^6.4.8",
     "@storybook/manager-webpack5": "^6.4.8",
-    "@storybook/web-components": "^6.4.8",
+    "@storybook/web-components": "^7.5.2",
     "babel-loader": "^8.2.3"
   }
 }
