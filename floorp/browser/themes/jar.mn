@@ -106,7 +106,6 @@ browser.jar:
   skin/classic/browser/lepton/copy-select.svg                               (designs/lepton/icons/copy-select.svg)
   skin/classic/browser/lepton/dashboard.svg                                 (designs/lepton/icons/dashboard.svg)
   skin/classic/browser/lepton/developer.svg                                 (designs/lepton/icons/developer.svg)
-  skin/classic/browser/lepton/dismiss-filled.svg                            (designs/lepton/icons/dismiss-filled.svg)
   skin/classic/browser/lepton/document-css.svg                              (designs/lepton/icons/document-css.svg)
   skin/classic/browser/lepton/document-endnote.svg                          (designs/lepton/icons/document-endnote.svg)
   skin/classic/browser/lepton/document-landscape-split-hint.svg             (designs/lepton/icons/document-landscape-split-hint.svg)
