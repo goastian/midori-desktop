@@ -266,10 +266,7 @@ const PROFILE_DIR = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
           const editor = Services.prefs.getStringPref(
             "view_source.editor.path"
           );
-          var path =
-            AppConstants.platform == "win"
-              ? convertUTF8ToShiftJIS(aFile)
-              : convertShiftJISToUTF8(aFile);
+          var path = AppConstants.platform == "win" ? convertUTF8ToShiftJIS(aFile) : convertShiftJISToUTF8(aFile);
           var app = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
           app.initWithPath(editor);
           var process = Cc["@mozilla.org/process/util;1"].createInstance(
