@@ -703,14 +703,6 @@ void nsBaseWidget::MoveToWorkspace(const nsAString& workspaceID) {
 
 void nsBaseWidget::SetCursor(const Cursor& aCursor) { mCursor = aCursor; }
 
-void nsBaseWidget::SetCustomCursorAllowed(bool aIsAllowed) {
-  if (aIsAllowed != mCustomCursorAllowed) {
-    mCustomCursorAllowed = aIsAllowed;
-    mUpdateCursor = true;
-    SetCursor(mCursor);
-  }
-}
-
 //-------------------------------------------------------------------------
 //
 // Window transparency methods
@@ -2226,10 +2218,8 @@ nsresult nsBaseWidget::AsyncEnableDragDrop(bool aEnable) {
 }
 
 void nsBaseWidget::SwipeFinished() {
-  if (mSwipeTracker) {
-    mSwipeTracker->Destroy();
-    mSwipeTracker = nullptr;
-  }
+  mSwipeTracker->Destroy();
+  mSwipeTracker = nullptr;
 }
 
 void nsBaseWidget::ReportSwipeStarted(uint64_t aInputBlockId,

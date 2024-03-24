@@ -513,12 +513,18 @@ already_AddRefed<gfx::SourceSurface> CanvasTranslator::LookupExternalSurface(
 }
 
 already_AddRefed<gfx::GradientStops> CanvasTranslator::GetOrCreateGradientStops(
-    gfx::DrawTarget* aDrawTarget, gfx::GradientStop* aRawStops,
-    uint32_t aNumStops, gfx::ExtendMode aExtendMode) {
-  MOZ_ASSERT(aDrawTarget);
+    gfx::GradientStop* aRawStops, uint32_t aNumStops,
+    gfx::ExtendMode aExtendMode) {
   nsTArray<gfx::GradientStop> rawStopArray(aRawStops, aNumStops);
+  RefPtr<DrawTarget> drawTarget = GetReferenceDrawTarget();
+  if (!drawTarget) {
+    // We might end up with a null reference draw target due to a device
+    // failure, just return false so that we can recover.
+    return nullptr;
+  }
+
   return gfx::gfxGradientCache::GetOrCreateGradientStops(
-      aDrawTarget, rawStopArray, aExtendMode);
+      drawTarget, rawStopArray, aExtendMode);
 }
 
 gfx::DataSourceSurface* CanvasTranslator::LookupDataSurface(

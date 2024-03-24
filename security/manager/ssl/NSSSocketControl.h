@@ -220,7 +220,7 @@ class NSSSocketControl final : public CommonSocketControl {
 
   void SetSharedOwningReference(mozilla::psm::SharedSSLState* ref);
 
-  nsresult SetResumptionTokenFromExternalCache(PRFileDesc* fd);
+  nsresult SetResumptionTokenFromExternalCache();
 
   void SetPreliminaryHandshakeInfo(const SSLChannelInfo& channelInfo,
                                    const SSLCipherSuiteInfo& cipherInfo);

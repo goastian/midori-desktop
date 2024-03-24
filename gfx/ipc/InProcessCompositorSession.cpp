@@ -61,10 +61,7 @@ RefPtr<InProcessCompositorSession> InProcessCompositorSession::Create(
 }
 
 void InProcessCompositorSession::NotifySessionLost() {
-  // Hold a reference to mWidget since NotifyCompositorSessionLost may
-  // release the last reference mid-execution.
-  RefPtr<nsBaseWidget> widget(mWidget);
-  widget->NotifyCompositorSessionLost(this);
+  mWidget->NotifyCompositorSessionLost(this);
 }
 
 CompositorBridgeParent* InProcessCompositorSession::GetInProcessBridge() const {

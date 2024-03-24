@@ -6,7 +6,6 @@
 #ifndef _include_ipc_glue_UtilityProcessManager_h_
 #define _include_ipc_glue_UtilityProcessManager_h_
 #include "mozilla/MozPromise.h"
-#include "mozilla/dom/ipc/IdType.h"
 #include "mozilla/ipc/UtilityProcessHost.h"
 #include "mozilla/EnumeratedArray.h"
 #include "mozilla/ProcInfo.h"
@@ -57,8 +56,7 @@ class UtilityProcessManager final : public UtilityProcessHost::Listener {
                                                   SandboxingKind aSandbox);
 
   RefPtr<StartRemoteDecodingUtilityPromise> StartProcessForRemoteMediaDecoding(
-      base::ProcessId aOtherProcess, dom::ContentParentId aChildId,
-      SandboxingKind aSandbox);
+      base::ProcessId aOtherProcess, SandboxingKind aSandbox);
 
   RefPtr<JSOraclePromise> StartJSOracle(mozilla::dom::JSOracleParent* aParent);
 

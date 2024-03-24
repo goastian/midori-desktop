@@ -856,13 +856,6 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         nsIGfxInfo::FEATURE_WEBRENDER, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
         DRIVER_COMPARISON_IGNORED, V(0, 0, 0, 0),
         "FEATURE_FAILURE_WEBRENDER_MESA_VM", "");
-    // Disable hardware mesa drivers in virtual machines due to instability.
-    APPEND_TO_DRIVER_BLOCKLIST_EXT(
-        OperatingSystem::Linux, ScreenSizeStatus::All, BatteryStatus::All,
-        WindowProtocol::All, DriverVendor::MesaVM, DeviceFamily::All,
-        nsIGfxInfo::FEATURE_WEBGL_USE_HARDWARE,
-        nsIGfxInfo::FEATURE_BLOCKED_DEVICE, DRIVER_COMPARISON_IGNORED,
-        V(0, 0, 0, 0), "FEATURE_FAILURE_WEBGL_MESA_VM", "");
 
     ////////////////////////////////////
     // FEATURE_WEBRENDER_COMPOSITOR
@@ -1102,14 +1095,15 @@ nsresult GfxInfo::GetFeatureStatusImpl(
 
   GetData();
 
+  if (aFeature == nsIGfxInfo::FEATURE_BACKDROP_FILTER) {
+    *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
+    return NS_OK;
+  }
+
   if (mGlxTestError) {
-    // If glxtest failed, block most features by default.
-    if (OnlyAllowFeatureOnKnownConfig(aFeature)) {
-      *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
-      aFailureId = "FEATURE_FAILURE_GLXTEST_FAILED";
-    } else {
-      *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
-    }
+    // If glxtest failed, block all features by default.
+    *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+    aFailureId = "FEATURE_FAILURE_GLXTEST_FAILED";
     return NS_OK;
   }
 
@@ -1117,12 +1111,8 @@ nsresult GfxInfo::GetFeatureStatusImpl(
     // We're on OpenGL 1. In most cases that indicates really old hardware.
     // We better block them, rather than rely on them to fail gracefully,
     // because they don't! see bug 696636
-    if (OnlyAllowFeatureOnKnownConfig(aFeature)) {
-      *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
-      aFailureId = "FEATURE_FAILURE_OPENGL_1";
-    } else {
-      *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
-    }
+    *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+    aFailureId = "FEATURE_FAILURE_OPENGL_1";
     return NS_OK;
   }
 

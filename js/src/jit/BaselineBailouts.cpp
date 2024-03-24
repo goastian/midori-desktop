@@ -125,8 +125,6 @@ class MOZ_STACK_CLASS BaselineStackBuilder {
 
   BailoutKind bailoutKind_;
 
-  bool canUseTrialInlinedICScripts_ = true;
-
   // The baseline frames we will reconstruct on the heap are not
   // rooted, so GC must be suppressed.
   gc::AutoSuppressGC suppress_;
@@ -488,8 +486,7 @@ void BaselineStackBuilder::setNextCallee(
     JSFunction* nextCallee, TrialInliningState trialInliningState) {
   nextCallee_ = nextCallee;
 
-  if (trialInliningState == TrialInliningState::Inlined &&
-      canUseTrialInlinedICScripts_) {
+  if (trialInliningState == TrialInliningState::Inlined) {
     // Update icScript_ to point to the icScript of nextCallee
     const uint32_t pcOff = script_->pcToOffset(pc_);
     icScript_ = icScript_->findInlinedChild(pcOff);
@@ -499,9 +496,6 @@ void BaselineStackBuilder::setNextCallee(
     // inlined ICScript available, but we also could not if we transitioned
     // to TrialInliningState::Failure after being monomorphic inlined.
     icScript_ = nextCallee->nonLazyScript()->jitScript()->icScript();
-    if (trialInliningState != TrialInliningState::MonomorphicInlined) {
-      canUseTrialInlinedICScripts_ = false;
-    }
   }
 }
 

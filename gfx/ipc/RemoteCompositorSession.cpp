@@ -46,13 +46,10 @@ RemoteCompositorSession::~RemoteCompositorSession() {
 }
 
 void RemoteCompositorSession::NotifySessionLost() {
-  // Hold a reference to mWidget since NotifyCompositorSessionLost may
-  // release the last reference mid-execution.
-  RefPtr<nsBaseWidget> widget(mWidget);
   // Re-entrancy should be impossible: when we are being notified of a lost
   // session, we have by definition not shut down yet. We will shutdown, but
   // then will be removed from the notification list.
-  widget->NotifyCompositorSessionLost(this);
+  mWidget->NotifyCompositorSessionLost(this);
 }
 
 CompositorBridgeParent* RemoteCompositorSession::GetInProcessBridge() const {

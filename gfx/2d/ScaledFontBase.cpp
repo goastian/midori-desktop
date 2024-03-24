@@ -127,11 +127,7 @@ already_AddRefed<Path> ScaledFontBase::GetPathForGlyphs(
   }
 #ifdef USE_CAIRO
   if (aTarget->GetBackendType() == BackendType::CAIRO) {
-    auto* cairoScaledFont = GetCairoScaledFont();
-    if (!cairoScaledFont) {
-      MOZ_ASSERT_UNREACHABLE("Invalid scaled font");
-      return nullptr;
-    }
+    MOZ_ASSERT(mScaledFont);
 
     DrawTarget* dt = const_cast<DrawTarget*>(aTarget);
     cairo_t* ctx = static_cast<cairo_t*>(
@@ -145,7 +141,7 @@ already_AddRefed<Path> ScaledFontBase::GetPathForGlyphs(
       cairo_set_matrix(ctx, &mat);
     }
 
-    cairo_set_scaled_font(ctx, cairoScaledFont);
+    cairo_set_scaled_font(ctx, mScaledFont);
 
     // Convert our GlyphBuffer into an array of Cairo glyphs.
     std::vector<cairo_glyph_t> glyphs(aBuffer.mNumGlyphs);
@@ -185,11 +181,7 @@ void ScaledFontBase::CopyGlyphsToBuilder(const GlyphBuffer& aBuffer,
   }
 #ifdef USE_CAIRO
   if (backendType == BackendType::CAIRO) {
-    auto* cairoScaledFont = GetCairoScaledFont();
-    if (!cairoScaledFont) {
-      MOZ_ASSERT_UNREACHABLE("Invalid scaled font");
-      return;
-    }
+    MOZ_ASSERT(mScaledFont);
 
     PathBuilderCairo* builder = static_cast<PathBuilderCairo*>(aBuilder);
     cairo_t* ctx = cairo_create(DrawTargetCairo::GetDummySurface());
@@ -208,7 +200,7 @@ void ScaledFontBase::CopyGlyphsToBuilder(const GlyphBuffer& aBuffer,
       glyphs[i].y = aBuffer.mGlyphs[i].mPosition.y;
     }
 
-    cairo_set_scaled_font(ctx, cairoScaledFont);
+    cairo_set_scaled_font(ctx, mScaledFont);
     cairo_glyph_path(ctx, &glyphs[0], aBuffer.mNumGlyphs);
 
     RefPtr<PathCairo> cairoPath = new PathCairo(ctx);

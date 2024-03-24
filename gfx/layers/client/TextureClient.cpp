@@ -1023,8 +1023,8 @@ bool TextureClient::InitIPDLActor(CompositableForwarder* aForwarder) {
 
   PTextureChild* actor = aForwarder->GetTextureForwarder()->CreateTexture(
       desc, std::move(readLockDescriptor),
-      aForwarder->GetCompositorBackendType(), GetFlags(),
-      dom::ContentParentId(), mSerial, mExternalImageId);
+      aForwarder->GetCompositorBackendType(), GetFlags(), mSerial,
+      mExternalImageId);
 
   if (!actor) {
     gfxCriticalNote << static_cast<int32_t>(desc.type()) << ", "
@@ -1049,8 +1049,7 @@ bool TextureClient::InitIPDLActor(CompositableForwarder* aForwarder) {
   return mActor->IPCOpen();
 }
 
-bool TextureClient::InitIPDLActor(KnowsCompositor* aKnowsCompositor,
-                                  const dom::ContentParentId& aContentId) {
+bool TextureClient::InitIPDLActor(KnowsCompositor* aKnowsCompositor) {
   MOZ_ASSERT(aKnowsCompositor &&
              aKnowsCompositor->GetTextureForwarder()->GetThread() ==
                  mAllocator->GetThread());
@@ -1093,7 +1092,7 @@ bool TextureClient::InitIPDLActor(KnowsCompositor* aKnowsCompositor,
   PTextureChild* actor =
       fwd->CreateTexture(desc, std::move(readLockDescriptor),
                          aKnowsCompositor->GetCompositorBackendType(),
-                         GetFlags(), aContentId, mSerial, mExternalImageId);
+                         GetFlags(), mSerial, mExternalImageId);
   if (!actor) {
     gfxCriticalNote << static_cast<int32_t>(desc.type()) << ", "
                     << static_cast<int32_t>(

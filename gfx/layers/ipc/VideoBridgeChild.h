@@ -32,7 +32,6 @@ class VideoBridgeChild final : public PVideoBridgeChild,
                                     ReadLockDescriptor& aReadLock,
                                     const LayersBackend& aLayersBackend,
                                     const TextureFlags& aFlags,
-                                    const dom::ContentParentId& aContentId,
                                     const uint64_t& aSerial);
   bool DeallocPTextureChild(PTextureChild* actor);
 
@@ -46,8 +45,7 @@ class VideoBridgeChild final : public PVideoBridgeChild,
   // TextureForwarder
   PTextureChild* CreateTexture(
       const SurfaceDescriptor& aSharedData, ReadLockDescriptor&& aReadLock,
-      LayersBackend aLayersBackend, TextureFlags aFlags,
-      const dom::ContentParentId& aContentId, uint64_t aSerial,
+      LayersBackend aLayersBackend, TextureFlags aFlags, uint64_t aSerial,
       wr::MaybeExternalImageId& aExternalImageId) override;
 
   // ClientIPCAllocator

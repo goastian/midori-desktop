@@ -3014,8 +3014,7 @@ void gfxPlatformFontList::InitializeFamily(uint32_t aGeneration,
 }
 
 void gfxPlatformFontList::SetCharacterMap(uint32_t aGeneration,
-                                          uint32_t aFamilyIndex, bool aAlias,
-                                          uint32_t aFaceIndex,
+                                          const fontlist::Pointer& aFacePtr,
                                           const gfxSparseBitSet& aMap) {
   MOZ_ASSERT(XRE_IsParentProcess());
   auto list = SharedFontList();
@@ -3029,35 +3028,14 @@ void gfxPlatformFontList::SetCharacterMap(uint32_t aGeneration,
   if (AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownConfirmed)) {
     return;
   }
-
-  const fontlist::Family* family;
-  if (aAlias) {
-    if (aFamilyIndex >= list->NumAliases()) {
-      MOZ_ASSERT(false, "AliasFamily index out of range");
-      return;
-    }
-    family = list->AliasFamilies() + aFamilyIndex;
-  } else {
-    if (aFamilyIndex >= list->NumFamilies()) {
-      MOZ_ASSERT(false, "Family index out of range");
-      return;
-    }
-    family = list->Families() + aFamilyIndex;
-  }
-
-  if (aFaceIndex >= family->NumFaces()) {
-    MOZ_ASSERT(false, "Face index out of range");
-    return;
-  }
-
-  if (auto* face =
-          family->Faces(list)[aFaceIndex].ToPtr<fontlist::Face>(list)) {
+  auto* face = aFacePtr.ToPtr<fontlist::Face>(list);
+  if (face) {
     face->mCharacterMap = GetShmemCharMap(&aMap);
   }
 }
 
-void gfxPlatformFontList::SetupFamilyCharMap(uint32_t aGeneration,
-                                             uint32_t aIndex, bool aAlias) {
+void gfxPlatformFontList::SetupFamilyCharMap(
+    uint32_t aGeneration, const fontlist::Pointer& aFamilyPtr) {
   MOZ_ASSERT(XRE_IsParentProcess());
   auto list = SharedFontList();
   MOZ_ASSERT(list);
@@ -3071,20 +3049,46 @@ void gfxPlatformFontList::SetupFamilyCharMap(uint32_t aGeneration,
     return;
   }
 
-  if (aAlias) {
-    if (aIndex >= list->NumAliases()) {
-      MOZ_ASSERT(false, "AliasFamily index out of range");
-      return;
-    }
-    list->AliasFamilies()[aIndex].SetupFamilyCharMap(list);
+  // aFamilyPtr was passed from a content process which may not be trusted,
+  // so we cannot assume it is valid or safe to use. If the Pointer value is
+  // bad, we must not crash or do anything bad, just bail out.
+  // (In general, if the child process was trying to use an invalid pointer it
+  // should have hit the MOZ_DIAGNOSTIC_ASSERT in FontList::ToSharedPointer
+  // rather than passing a null or bad pointer to the parent.)
+
+  auto* family = aFamilyPtr.ToPtr<fontlist::Family>(list);
+  if (!family) {
+    // Unable to resolve to a native pointer (or it was null).
+    NS_WARNING("unexpected null Family pointer");
     return;
   }
 
-  if (aIndex >= list->NumFamilies()) {
-    MOZ_ASSERT(false, "Family index out of range");
+  // Validate the pointer before trying to use it: check that it points to a
+  // correctly-aligned offset within the Families() or AliasFamilies() array.
+  // We just assert (in debug builds only) on failure, and return safely.
+  // A misaligned pointer here would indicate a buggy (or compromised) child
+  // process, but crashing the parent would be unnecessary and does not yield
+  // any useful insight.
+  if (family >= list->Families() &&
+      family < list->Families() + list->NumFamilies()) {
+    size_t offset = (char*)family - (char*)list->Families();
+    if (offset % sizeof(fontlist::Family) != 0) {
+      MOZ_ASSERT(false, "misaligned Family pointer");
+      return;
+    }
+  } else if (family >= list->AliasFamilies() &&
+             family < list->AliasFamilies() + list->NumAliases()) {
+    size_t offset = (char*)family - (char*)list->AliasFamilies();
+    if (offset % sizeof(fontlist::Family) != 0) {
+      MOZ_ASSERT(false, "misaligned Family pointer");
+      return;
+    }
+  } else {
+    MOZ_ASSERT(false, "not a valid Family or AliasFamily pointer");
     return;
   }
-  list->Families()[aIndex].SetupFamilyCharMap(list);
+
+  family->SetupFamilyCharMap(list);
 }
 
 bool gfxPlatformFontList::InitOtherFamilyNames(uint32_t aGeneration,

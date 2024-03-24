@@ -563,13 +563,10 @@ extern bool ToJSValue(JSContext* cx, const void* src, FieldType type,
                       MutableHandleValue dst,
                       CoercionLevel level = CoercionLevel::Spec);
 template <typename Debug = NoDebug>
-extern bool ToJSValueMayGC(FieldType type);
-template <typename Debug = NoDebug>
 extern bool ToJSValue(JSContext* cx, const void* src, ValType type,
                       MutableHandleValue dst,
                       CoercionLevel level = CoercionLevel::Spec);
-template <typename Debug = NoDebug>
-extern bool ToJSValueMayGC(ValType type);
+
 }  // namespace wasm
 
 template <>

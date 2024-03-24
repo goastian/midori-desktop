@@ -1,7 +1,7 @@
 
-.PHONY: build dist
+.PHONY: default build buildext force forceext install installext test testext dist clean
 
-PYTHON=/usr/bin/python3
+PYTHON=/usr/bin/python
 TEST=
 PARAMETERS=
 
@@ -42,10 +42,3 @@ windist:
 
 clean:
 	${PYTHON} setup.py --with-libyaml clean -a
-	rm -fr \
-	    dist/ \
-	    lib/PyYAML.egg-info/ \
-	    lib/yaml/__pycache__/ \
-	    tests/lib/__pycache__/ \
-	    yaml/_yaml.c \
-

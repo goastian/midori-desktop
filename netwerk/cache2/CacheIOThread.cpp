@@ -380,7 +380,6 @@ void CacheIOThread::ThreadFunc() {
     if (threadInternal) threadInternal->SetObserver(this);
 
     mXPCOMThread = xpcomThread.forget().take();
-    nsCOMPtr<nsIThread> thread = NS_GetCurrentThread();
 
     lock.NotifyAll();
 
@@ -401,6 +400,7 @@ void CacheIOThread::ThreadFunc() {
         bool processedEvent;
         nsresult rv;
         do {
+          nsIThread* thread = mXPCOMThread;
           rv = thread->ProcessNextEvent(false, &processedEvent);
 
           ++mEventCounter;

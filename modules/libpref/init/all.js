@@ -1186,17 +1186,17 @@ pref("network.http.response.timeout", 300);
 #ifdef ANDROID
   pref("network.http.max-connections", 40);
 #else
-  pref("network.http.max-connections", 1800);
+  pref("network.http.max-connections", 900);
 #endif
 
 // If NOT connecting via a proxy, then
 // a new connection will only be attempted if the number of active persistent
 // connections to the server is less then max-persistent-connections-per-server.
-pref("network.http.max-persistent-connections-per-server", 10);
+pref("network.http.max-persistent-connections-per-server", 6);
 
 // Number of connections that we can open beyond the standard parallelism limit defined
 // by max-persistent-connections-per-server/-proxy to handle urgent-start marked requests
-pref("network.http.max-urgent-start-excessive-connections-per-host", 5);
+pref("network.http.max-urgent-start-excessive-connections-per-host", 3);
 
 // If connecting via a proxy, then a
 // new connection will only be attempted if the number of active persistent
@@ -1297,7 +1297,7 @@ pref("network.http.originextension", true);
 
 pref("network.http.diagnostics", false);
 
-pref("network.http.pacing.requests.enabled", false);
+pref("network.http.pacing.requests.enabled", true);
 pref("network.http.pacing.requests.min-parallelism", 6);
 pref("network.http.pacing.requests.hz", 80);
 pref("network.http.pacing.requests.burst", 10);
@@ -1450,7 +1450,7 @@ pref("network.dns.disableIPv6", false);
 pref("network.dnsCacheEntries", 400);
 
 // In the absence of OS TTLs, the DNS cache TTL value
-pref("network.dnsCacheExpiration", 3600);
+pref("network.dnsCacheExpiration", 60);
 
 // Get TTL; not supported on all platforms; nop on the unsupported ones.
 pref("network.dns.get-ttl", true);
@@ -1464,7 +1464,7 @@ pref("network.dns.native-is-localhost", false);
 pref("network.dnsCacheExpirationGracePeriod", 60);
 
 // This preference can be used to turn off DNS prefetch.
-pref("network.dns.disablePrefetch", true);
+pref("network.dns.disablePrefetch", false);
 
 // This preference controls whether .onion hostnames are
 // rejected before being given to DNS. RFC 7686
@@ -1487,7 +1487,7 @@ pref("network.dns.resolver-thread-extra-idle-time-seconds", 60);
 
 // enables the prefetch service (i.e., prefetching of <link rel="next"> and
 // <link rel="prefetch"> URLs).
-pref("network.prefetch-next", false);
+pref("network.prefetch-next", true);
 
 // The following prefs pertain to the negotiate-auth extension (see bug 17578),
 // which provides transparent Kerberos or NTLM authentication using the SPNEGO
@@ -3355,7 +3355,7 @@ pref("extensions.webextensions.default-content-security-policy.v3", "script-src 
 
 
 pref("network.buffer.cache.count", 24);
-pref("network.buffer.cache.size",  262144);
+pref("network.buffer.cache.size",  32768);
 
 // Web Notification
 pref("dom.webnotifications.requireinteraction.count", 3);

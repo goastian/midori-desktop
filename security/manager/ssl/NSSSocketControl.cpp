@@ -321,7 +321,7 @@ nsresult NSSSocketControl::ActivateSSL() {
 
   mHandshakePending = true;
 
-  return SetResumptionTokenFromExternalCache(mFd);
+  return SetResumptionTokenFromExternalCache();
 }
 
 nsresult NSSSocketControl::GetFileDescPtr(PRFileDesc** aFilePtr) {
@@ -508,6 +508,7 @@ PRStatus NSSSocketControl::CloseSocketAndDestroy() {
   if (status != PR_SUCCESS) return status;
 
   popped->identity = PR_INVALID_IO_LAYER;
+  NS_RELEASE_THIS();
   popped->dtor(popped);
 
   return PR_SUCCESS;
@@ -623,15 +624,15 @@ NSSSocketControl::GetPeerId(nsACString& aResult) {
   return NS_OK;
 }
 
-nsresult NSSSocketControl::SetResumptionTokenFromExternalCache(PRFileDesc* fd) {
+nsresult NSSSocketControl::SetResumptionTokenFromExternalCache() {
   COMMON_SOCKET_CONTROL_ASSERT_ON_OWNING_THREAD();
-  if (!fd) {
-    return NS_ERROR_INVALID_ARG;
+  if (!mFd) {
+    return NS_ERROR_FAILURE;
   }
 
   // If SSL_NO_CACHE option was set, we must not use the cache
   PRIntn val;
-  if (SSL_OptionGet(fd, SSL_NO_CACHE, &val) != SECSuccess) {
+  if (SSL_OptionGet(mFd, SSL_NO_CACHE, &val) != SECSuccess) {
     return NS_ERROR_FAILURE;
   }
 
@@ -658,7 +659,7 @@ nsresult NSSSocketControl::SetResumptionTokenFromExternalCache(PRFileDesc* fd) {
     return rv;
   }
 
-  SECStatus srv = SSL_SetResumptionToken(fd, token.Elements(), token.Length());
+  SECStatus srv = SSL_SetResumptionToken(mFd, token.Elements(), token.Length());
   if (srv == SECFailure) {
     PRErrorCode error = PR_GetError();
     mozilla::net::SSLTokensCache::Remove(peerId, tokenId);

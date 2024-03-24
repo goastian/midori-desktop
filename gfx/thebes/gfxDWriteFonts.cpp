@@ -96,15 +96,11 @@ gfxDWriteFont::gfxDWriteFont(const RefPtr<UnscaledFontDWrite>& aUnscaledFont,
       case 0:  // never use the DWrite simulation
         mApplySyntheticBold = true;
         break;
-      case 1:  // use DWrite simulation for installed fonts except COLR fonts,
-               // but not webfonts
-        mApplySyntheticBold =
-            aFontEntry->mIsDataUserFont ||
-            aFontEntry->HasFontTable(TRUETYPE_TAG('C', 'O', 'L', 'R'));
+      case 1:  // use DWrite simulation for installed fonts but not webfonts
+        mApplySyntheticBold = aFontEntry->mIsDataUserFont;
         break;
-      default:  // always use DWrite bold simulation, except for COLR fonts
-        mApplySyntheticBold =
-            aFontEntry->HasFontTable(TRUETYPE_TAG('C', 'O', 'L', 'R'));
+      default:  // always use DWrite bold simulation
+        // the flag is initialized to false in gfxFont
         break;
     }
   }

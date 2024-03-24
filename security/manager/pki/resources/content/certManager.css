@@ -11,11 +11,6 @@
   contain: inline-size;
 }
 
-treecol {
-  flex: 1 auto;
-  width: 0; /* Don't let intrinsic sizes affect our minimum size. */
-}
-
 #certmanager {
   /* This prevents horizontal scrollbars due to <tree> and non-XUL layout
    * interactions */
@@ -24,8 +19,7 @@ treecol {
 
 /* This matches the <tree> height from dialog.css */
 richlistbox {
-  min-height: 15em;
-  contain: size;
+  height: 15em;
 }
 
 richlistbox,

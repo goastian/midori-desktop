@@ -2072,7 +2072,6 @@ nsLocalFile::GetNativeTarget(nsACString& aResult) {
     if (NS_FAILED(rv)) {
       break;
     }
-
     target = newTarget;
   }
 

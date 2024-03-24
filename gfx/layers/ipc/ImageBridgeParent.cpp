@@ -62,10 +62,8 @@ void ImageBridgeParent::Setup() {
 }
 
 ImageBridgeParent::ImageBridgeParent(nsISerialEventTarget* aThread,
-                                     ProcessId aChildProcessId,
-                                     dom::ContentParentId aContentId)
+                                     ProcessId aChildProcessId)
     : mThread(aThread),
-      mContentId(aContentId),
       mClosed(false),
       mCompositorThreadHolder(CompositorThreadHolder::GetSingleton()) {
   MOZ_ASSERT(NS_IsMainThread());
@@ -78,7 +76,7 @@ ImageBridgeParent::~ImageBridgeParent() = default;
 ImageBridgeParent* ImageBridgeParent::CreateSameProcess() {
   base::ProcessId pid = base::GetCurrentProcId();
   RefPtr<ImageBridgeParent> parent =
-      new ImageBridgeParent(CompositorThread(), pid, dom::ContentParentId());
+      new ImageBridgeParent(CompositorThread(), pid);
 
   {
     MonitorAutoLock lock(*sImageBridgesLock);
@@ -100,8 +98,8 @@ bool ImageBridgeParent::CreateForGPUProcess(
     return false;
   }
 
-  RefPtr<ImageBridgeParent> parent = new ImageBridgeParent(
-      compositorThread, aEndpoint.OtherPid(), dom::ContentParentId());
+  RefPtr<ImageBridgeParent> parent =
+      new ImageBridgeParent(compositorThread, aEndpoint.OtherPid());
 
   compositorThread->Dispatch(NewRunnableMethod<Endpoint<PImageBridgeParent>&&>(
       "layers::ImageBridgeParent::Bind", parent, &ImageBridgeParent::Bind,
@@ -217,14 +215,14 @@ mozilla::ipc::IPCResult ImageBridgeParent::RecvUpdate(
 
 /* static */
 bool ImageBridgeParent::CreateForContent(
-    Endpoint<PImageBridgeParent>&& aEndpoint, dom::ContentParentId aContentId) {
+    Endpoint<PImageBridgeParent>&& aEndpoint) {
   nsCOMPtr<nsISerialEventTarget> compositorThread = CompositorThread();
   if (!compositorThread) {
     return false;
   }
 
   RefPtr<ImageBridgeParent> bridge =
-      new ImageBridgeParent(compositorThread, aEndpoint.OtherPid(), aContentId);
+      new ImageBridgeParent(compositorThread, aEndpoint.OtherPid());
   compositorThread->Dispatch(NewRunnableMethod<Endpoint<PImageBridgeParent>&&>(
       "layers::ImageBridgeParent::Bind", bridge, &ImageBridgeParent::Bind,
       std::move(aEndpoint)));
@@ -294,8 +292,8 @@ PTextureParent* ImageBridgeParent::AllocPTextureParent(
     const LayersBackend& aLayersBackend, const TextureFlags& aFlags,
     const uint64_t& aSerial, const wr::MaybeExternalImageId& aExternalImageId) {
   return TextureHost::CreateIPDLActor(this, aSharedData, std::move(aReadLock),
-                                      aLayersBackend, aFlags, mContentId,
-                                      aSerial, aExternalImageId);
+                                      aLayersBackend, aFlags, aSerial,
+                                      aExternalImageId);
 }
 
 bool ImageBridgeParent::DeallocPTextureParent(PTextureParent* actor) {

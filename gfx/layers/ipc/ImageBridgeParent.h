@@ -12,7 +12,6 @@
 #include "CompositableTransactionParent.h"
 #include "mozilla/Assertions.h"  // for MOZ_ASSERT_HELPER2
 #include "mozilla/Attributes.h"  // for override
-#include "mozilla/dom/ipc/IdType.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/ipc/SharedMemory.h"  // for SharedMemory, etc
 #include "mozilla/layers/CompositorThread.h"
@@ -40,8 +39,7 @@ class ImageBridgeParent final : public PImageBridgeParent,
   typedef nsTArray<OpDestroy> OpDestroyArray;
 
  protected:
-  ImageBridgeParent(nsISerialEventTarget* aThread, ProcessId aChildProcessId,
-                    dom::ContentParentId aContentId);
+  ImageBridgeParent(nsISerialEventTarget* aThread, ProcessId aChildProcessId);
 
  public:
   NS_IMETHOD_(MozExternalRefCountType) AddRef() override {
@@ -58,8 +56,7 @@ class ImageBridgeParent final : public PImageBridgeParent,
 
   static ImageBridgeParent* CreateSameProcess();
   static bool CreateForGPUProcess(Endpoint<PImageBridgeParent>&& aEndpoint);
-  static bool CreateForContent(Endpoint<PImageBridgeParent>&& aEndpoint,
-                               dom::ContentParentId aContentId);
+  static bool CreateForContent(Endpoint<PImageBridgeParent>&& aEndpoint);
   static void Shutdown();
 
   IShmemAllocator* AsShmemAllocator() override { return this; }
@@ -74,7 +71,6 @@ class ImageBridgeParent final : public PImageBridgeParent,
                      uint64_t aTransactionId) override;
 
   base::ProcessId GetChildProcessId() override { return OtherPid(); }
-  dom::ContentParentId GetContentId() override { return mContentId; }
 
   // PImageBridge
   mozilla::ipc::IPCResult RecvUpdate(EditArray&& aEdits,
@@ -131,8 +127,6 @@ class ImageBridgeParent final : public PImageBridgeParent,
 
   void DeferredDestroy();
   nsCOMPtr<nsISerialEventTarget> mThread;
-
-  dom::ContentParentId mContentId;
 
   bool mClosed;
 

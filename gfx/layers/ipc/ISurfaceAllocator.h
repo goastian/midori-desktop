@@ -10,7 +10,6 @@
 #include <stddef.h>  // for size_t
 #include <stdint.h>  // for uint32_t
 #include "gfxTypes.h"
-#include "mozilla/dom/ipc/IdType.h"
 #include "mozilla/gfx/Point.h"         // for IntSize
 #include "mozilla/ipc/SharedMemory.h"  // for SharedMemory, etc
 #include "mozilla/RefPtr.h"
@@ -101,8 +100,6 @@ class ISurfaceAllocator {
   virtual bool UsesImageBridge() const { return false; }
 
   virtual bool UsesWebRenderBridge() const { return false; }
-
-  virtual dom::ContentParentId GetContentId() { return dom::ContentParentId(); }
 
  protected:
   void Finalize() {}

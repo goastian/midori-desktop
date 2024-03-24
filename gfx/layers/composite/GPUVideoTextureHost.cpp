@@ -17,11 +17,8 @@ namespace mozilla {
 namespace layers {
 
 GPUVideoTextureHost::GPUVideoTextureHost(
-    const dom::ContentParentId& aContentId, TextureFlags aFlags,
-    const SurfaceDescriptorGPUVideo& aDescriptor)
-    : TextureHost(TextureHostType::Unknown, aFlags),
-      mContentId(aContentId),
-      mDescriptor(aDescriptor) {
+    TextureFlags aFlags, const SurfaceDescriptorGPUVideo& aDescriptor)
+    : TextureHost(TextureHostType::Unknown, aFlags), mDescriptor(aDescriptor) {
   MOZ_COUNT_CTOR(GPUVideoTextureHost);
 }
 
@@ -30,9 +27,8 @@ GPUVideoTextureHost::~GPUVideoTextureHost() {
 }
 
 GPUVideoTextureHost* GPUVideoTextureHost::CreateFromDescriptor(
-    const dom::ContentParentId& aContentId, TextureFlags aFlags,
-    const SurfaceDescriptorGPUVideo& aDescriptor) {
-  return new GPUVideoTextureHost(aContentId, aFlags, aDescriptor);
+    TextureFlags aFlags, const SurfaceDescriptorGPUVideo& aDescriptor) {
+  return new GPUVideoTextureHost(aFlags, aDescriptor);
 }
 
 TextureHost* GPUVideoTextureHost::EnsureWrappedTextureHost() {
@@ -48,8 +44,7 @@ TextureHost* GPUVideoTextureHost::EnsureWrappedTextureHost() {
     // crashes.
     return nullptr;
   }
-
-  mWrappedTextureHost = parent->LookupTexture(mContentId, sd.handle());
+  mWrappedTextureHost = parent->LookupTexture(sd.handle());
 
   if (!mWrappedTextureHost) {
     // The TextureHost hasn't been registered yet. This is due to a race

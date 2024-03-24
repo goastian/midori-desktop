@@ -989,11 +989,8 @@ nsresult nsHttpConnection::OnHeadersAvailable(nsAHttpTransaction* trans,
     case HttpConnectionState::SETTING_UP_TUNNEL: {
       nsHttpTransaction* trans = mTransaction->QueryHttpTransaction();
       // Distinguish SETTING_UP_TUNNEL for proxy or websocket via proxy
-      // See bug 1848013. Do not call HandleTunnelResponse for a tunnel
-      // connection created for WebSocket.
       if (trans && trans->IsWebsocketUpgrade() &&
-          (trans->GetProxyConnectResponseCode() == 200 ||
-           (mForWebSocket && mInSpdyTunnel))) {
+          trans->GetProxyConnectResponseCode() == 200) {
         HandleWebSocketResponse(requestHead, responseHead, responseStatus);
       } else {
         HandleTunnelResponse(responseStatus, reset);
@@ -1897,23 +1894,6 @@ nsresult nsHttpConnection::MakeConnectString(nsAHttpTransaction* trans,
     request->SetRequestURI(requestURI);
 
     request->SetHTTPS(trans->RequestHead()->IsHTTPS());
-
-    nsAutoCString val;
-    if (NS_SUCCEEDED(trans->RequestHead()->GetHeader(
-            nsHttp::Sec_WebSocket_Extensions, val))) {
-      rv = request->SetHeader(nsHttp::Sec_WebSocket_Extensions, val);
-      MOZ_ASSERT(NS_SUCCEEDED(rv));
-    }
-    if (NS_SUCCEEDED(trans->RequestHead()->GetHeader(
-            nsHttp::Sec_WebSocket_Protocol, val))) {
-      rv = request->SetHeader(nsHttp::Sec_WebSocket_Protocol, val);
-      MOZ_ASSERT(NS_SUCCEEDED(rv));
-    }
-    if (NS_SUCCEEDED(trans->RequestHead()->GetHeader(
-            nsHttp::Sec_WebSocket_Version, val))) {
-      rv = request->SetHeader(nsHttp::Sec_WebSocket_Version, val);
-      MOZ_ASSERT(NS_SUCCEEDED(rv));
-    }
   } else {
     request->SetRequestURI(result);
   }
@@ -1954,8 +1934,8 @@ nsresult nsHttpConnection::MakeConnectString(nsAHttpTransaction* trans,
   request->Flatten(result, false);
 
   if (LOG1_ENABLED()) {
-    LOG(("nsHttpConnection::MakeConnectString for transaction=%p h2ws=%d[",
-         trans->QueryHttpTransaction(), h2ws));
+    LOG(("nsHttpConnection::MakeConnectString for transaction=%p [",
+         trans->QueryHttpTransaction()));
     LogHeaders(result.BeginReading());
     LOG(("]"));
   }
@@ -2542,8 +2522,7 @@ nsresult nsHttpConnection::SetupProxyConnectStream() {
 
   nsAutoCString buf;
   nsHttpRequestHead request;
-  nsresult rv = MakeConnectString(mTransaction, &request, buf,
-                                  mForWebSocket && mInSpdyTunnel,
+  nsresult rv = MakeConnectString(mTransaction, &request, buf, false,
                                   mTransactionCaps & NS_HTTP_USE_RFP);
   if (NS_FAILED(rv)) {
     return rv;

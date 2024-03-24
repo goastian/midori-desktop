@@ -641,11 +641,7 @@ void GlyphObserver::NotifyGlyphsChanged() {
 
 int32_t nsTextFrame::GetContentEnd() const {
   nsTextFrame* next = GetNextContinuation();
-  // In case of allocation failure when setting/modifying the textfragment,
-  // it's possible our text might be missing. So we check the fragment length,
-  // in addition to the offset of the next continuation (if any).
-  int32_t fragLen = TextFragment()->GetLength();
-  return next ? std::min(fragLen, next->GetContentOffset()) : fragLen;
+  return next ? next->GetContentOffset() : TextFragment()->GetLength();
 }
 
 struct FlowLengthProperty {
@@ -1041,10 +1037,9 @@ class BuildTextRunsScanner {
     // was no previous text frame on this line.
     nsIFrame* mAncestorControllingInitialBreak;
 
-    int32_t GetContentEnd() const {
-      int32_t fragLen = mStartFrame->TextFragment()->GetLength();
-      return mEndFrame ? std::min(fragLen, mEndFrame->GetContentOffset())
-                       : fragLen;
+    int32_t GetContentEnd() {
+      return mEndFrame ? mEndFrame->GetContentOffset()
+                       : mStartFrame->TextFragment()->GetLength();
     }
   };
 
@@ -10003,7 +9998,10 @@ void nsTextFrame::ToCString(nsCString& aBuf) const {
     return;
   }
 
-  const uint32_t fragLength = AssertedCast<uint32_t>(GetContentEnd());
+  // Limit the length to fragment length in case the text has not been reflowed.
+  const uint32_t fragLength =
+      std::min(frag->GetLength(), AssertedCast<uint32_t>(GetContentEnd()));
+
   uint32_t fragOffset = AssertedCast<uint32_t>(GetContentOffset());
 
   while (fragOffset < fragLength) {

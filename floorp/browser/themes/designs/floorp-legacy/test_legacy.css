@@ -1390,7 +1390,7 @@ border-bottom: 1.1px solid var(--toolbar-bgcolor);
   box-shadow: none !important;
 }
 
-#navigator-toolbox .toolbarbutton-1:not(#workspaces-toolbar-button) > :-moz-any(.toolbarbutton-icon, .toolbarbutton-badge-stack):not(.workspace-item-icon image) {
+#navigator-toolbox .toolbarbutton-1:not(#workspace-button) > :-moz-any(.toolbarbutton-icon, .toolbarbutton-badge-stack):not(#workspace-icon image) {
   width: calc(2 * var(--toolbarbutton-inner-padding) + 16px) !important;
   height: calc(2 * var(--toolbarbutton-inner-padding) + 16px) !important;
 }
@@ -1399,11 +1399,11 @@ border-bottom: 1.1px solid var(--toolbar-bgcolor);
   white-space: nowrap;
 }
 
-:is(#navigator-toolbox>#PersonalToolbar .toolbarbutton-1:not(#workspaces-toolbar-button)>.toolbarbutton-icon,
-#navigator-toolbox .toolbarbutton-1:not(#workspaces-toolbar-button) > :-moz-any(.toolbarbutton-icon, .toolbarbutton-badge-stack),
+:is(#navigator-toolbox>#PersonalToolbar .toolbarbutton-1:not(#workspace-button)>.toolbarbutton-icon,
+#navigator-toolbox .toolbarbutton-1:not(#workspace-button) > :-moz-any(.toolbarbutton-icon, .toolbarbutton-badge-stack),
 /* no ::part workaround - may have side effects */
 #scrollbutton-up[part="scrollbutton-up"]:not(.menupopup-scrollbutton)>.toolbarbutton-icon,
-#scrollbutton-down[part="scrollbutton-down"]:not(.menupopup-scrollbutton)>.toolbarbutton-icon):not(#workspaces-toolbar-button .workspace-item-icon image) {
+#scrollbutton-down[part="scrollbutton-down"]:not(.menupopup-scrollbutton)>.toolbarbutton-icon):not(#workspace-button #workspace-icon image) {
   background: 0 !important;
   padding: 6px !important;
   width: auto !important;
@@ -1756,7 +1756,7 @@ border-bottom: 1.1px solid var(--toolbar-bgcolor);
   padding: var(--uc-toolbarbutton-inner-padding) !important;
 }
 
-#TabsToolbar .toolbarbutton-1>.toolbarbutton-icon:not(.workspace-item-icon>image) {
+#TabsToolbar .toolbarbutton-1>.toolbarbutton-icon {
   width: calc(2 * var(--uc-toolbarbutton-inner-padding) + 16px) !important;
   height: calc(2 * var(--uc-toolbarbutton-inner-padding) + 16px) !important;
 }
@@ -3474,7 +3474,7 @@ richlistitem[originaltype="loginsFooter"] .ac-site-icon {
 }
 
 /* fix workspace icon */
-#workspaces-toolbar-button > .toolbarbutton-icon[class], .workspaceButton > .toolbarbutton-icon[class] {
+#workspace-button > .toolbarbutton-icon[class] {
   max-width: calc(2 * var(--toolbarbutton-inner-padding) + 16px) !important;
   max-height: calc(2 * var(--toolbarbutton-inner-padding) + 16px) !important;
   width: 20px !important;

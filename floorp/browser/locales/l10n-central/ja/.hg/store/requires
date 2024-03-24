@@ -1,7 +1,0 @@
-dotencode
-fncache
-generaldelta
-revlog-compression-zstd
-revlogv1
-sparserevlog
-store

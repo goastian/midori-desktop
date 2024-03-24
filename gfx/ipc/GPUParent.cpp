@@ -410,8 +410,7 @@ mozilla::ipc::IPCResult GPUParent::RecvInitSandboxTesting(
 
 mozilla::ipc::IPCResult GPUParent::RecvInitCompositorManager(
     Endpoint<PCompositorManagerParent>&& aEndpoint) {
-  CompositorManagerParent::Create(std::move(aEndpoint), ContentParentId(),
-                                  /* aIsRoot */ true);
+  CompositorManagerParent::Create(std::move(aEndpoint), /* aIsRoot */ true);
   return IPC_OK();
 }
 
@@ -541,34 +540,30 @@ mozilla::ipc::IPCResult GPUParent::RecvSimulateDeviceReset() {
 }
 
 mozilla::ipc::IPCResult GPUParent::RecvNewContentCompositorManager(
-    Endpoint<PCompositorManagerParent>&& aEndpoint,
-    const ContentParentId& aChildId) {
-  CompositorManagerParent::Create(std::move(aEndpoint), aChildId,
-                                  /* aIsRoot */ false);
+    Endpoint<PCompositorManagerParent>&& aEndpoint) {
+  CompositorManagerParent::Create(std::move(aEndpoint), /* aIsRoot */ false);
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult GPUParent::RecvNewContentImageBridge(
-    Endpoint<PImageBridgeParent>&& aEndpoint, const ContentParentId& aChildId) {
-  if (!ImageBridgeParent::CreateForContent(std::move(aEndpoint), aChildId)) {
+    Endpoint<PImageBridgeParent>&& aEndpoint) {
+  if (!ImageBridgeParent::CreateForContent(std::move(aEndpoint))) {
     return IPC_FAIL_NO_REASON(this);
   }
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult GPUParent::RecvNewContentVRManager(
-    Endpoint<PVRManagerParent>&& aEndpoint, const ContentParentId& aChildId) {
-  if (!VRManagerParent::CreateForContent(std::move(aEndpoint), aChildId)) {
+    Endpoint<PVRManagerParent>&& aEndpoint) {
+  if (!VRManagerParent::CreateForContent(std::move(aEndpoint))) {
     return IPC_FAIL_NO_REASON(this);
   }
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult GPUParent::RecvNewContentRemoteDecoderManager(
-    Endpoint<PRemoteDecoderManagerParent>&& aEndpoint,
-    const ContentParentId& aChildId) {
-  if (!RemoteDecoderManagerParent::CreateForContent(std::move(aEndpoint),
-                                                    aChildId)) {
+    Endpoint<PRemoteDecoderManagerParent>&& aEndpoint) {
+  if (!RemoteDecoderManagerParent::CreateForContent(std::move(aEndpoint))) {
     return IPC_FAIL_NO_REASON(this);
   }
   return IPC_OK();

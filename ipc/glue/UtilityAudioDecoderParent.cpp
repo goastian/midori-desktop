@@ -118,11 +118,9 @@ void UtilityAudioDecoderParent::Start(
 
 mozilla::ipc::IPCResult
 UtilityAudioDecoderParent::RecvNewContentRemoteDecoderManager(
-    Endpoint<PRemoteDecoderManagerParent>&& aEndpoint,
-    const ContentParentId& aParentId) {
+    Endpoint<PRemoteDecoderManagerParent>&& aEndpoint) {
   MOZ_ASSERT(NS_IsMainThread());
-  if (!RemoteDecoderManagerParent::CreateForContent(std::move(aEndpoint),
-                                                    aParentId)) {
+  if (!RemoteDecoderManagerParent::CreateForContent(std::move(aEndpoint))) {
     return IPC_FAIL_NO_REASON(this);
   }
   return IPC_OK();

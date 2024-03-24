@@ -97,8 +97,7 @@ class CompositorBridgeChild final : public PCompositorBridgeChild,
       nsTArray<AsyncParentMessageData>&& aMessages);
   PTextureChild* CreateTexture(
       const SurfaceDescriptor& aSharedData, ReadLockDescriptor&& aReadLock,
-      LayersBackend aLayersBackend, TextureFlags aFlags,
-      const dom::ContentParentId& aContentId, uint64_t aSerial,
+      LayersBackend aLayersBackend, TextureFlags aFlags, uint64_t aSerial,
       wr::MaybeExternalImageId& aExternalImageId) override;
 
   already_AddRefed<CanvasChild> GetCanvasChild() final;
