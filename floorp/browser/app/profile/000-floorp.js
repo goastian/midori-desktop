@@ -230,9 +230,6 @@ pref("svg.context-properties.content.enabled", true, locked);
 pref("image.avif.enabled", true, locked);
 pref("image.jxl.enabled", true, locked);
 
-// Add-On のブラックリストをFloorpが参照する際の情報漏洩削減
-pref("extensions.blocklist.url", "https://blocklist.addons.mozilla.org/blocklist/3/%APP_ID%/%APP_VERSION%/");
-
 //ブラックリストの参照の有効化
 pref("extensions.blocklist.enabled", true);
 pref("services.blocklist.update_enabled",	true);
