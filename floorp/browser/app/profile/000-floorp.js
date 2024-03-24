@@ -170,7 +170,7 @@ pref("floorp.custom.shortcutkeysAndActions.customAction4", "");
 pref("floorp.custom.shortcutkeysAndActions.customAction5", "");
 
 // Profile Manager
-pref("floorp.browser.profile-manager.enabled", true);
+pref("floorp.browser.profile-manager.enabled", false);
 
 // [実験] 新しいタブのオーバーライド
 pref("floorp.newtab.overrides.newtaburl", "");
