@@ -218,10 +218,9 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneLepton", gLeptonPane);
-  register_module("paneNotes", gNotesPane);
+  register_module("paneUserjs", gUserjsPane);
   register_module("paneBSB", gBSBPane);
   register_module("paneDownloads", gDownloads);
-  register_module("paneUserjs", gUserjsPane);
   register_module("paneWorkspaces", gWorkspacesPane);
   register_module("paneCSK", gCSKPane);
   register_module("paneContainers", gContainersPane);
