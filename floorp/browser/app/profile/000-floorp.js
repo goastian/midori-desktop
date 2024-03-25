@@ -127,7 +127,7 @@ pref("floorp.browser.tabs.openNewTabPosition", -1);
 //ネイティブ実装垂直タブ
 pref("floorp.browser.native.verticaltabs.enabled", false);
 pref("floorp.verticaltab.hover.enabled", false);
-pref("floorp.browser.tabs.verticaltab.right", false);
+pref("floorp.browser.tabs.verticaltab.right", true);
 
 // Tab Stack
 pref("floorp.browser.tabStack.enabled", true);
@@ -170,7 +170,7 @@ pref("floorp.custom.shortcutkeysAndActions.customAction4", "");
 pref("floorp.custom.shortcutkeysAndActions.customAction5", "");
 
 // Profile Manager
-pref("floorp.browser.profile-manager.enabled", false);
+pref("floorp.browser.profile-manager.enabled", true);
 
 // [実験] 新しいタブのオーバーライド
 pref("floorp.newtab.overrides.newtaburl", "");
@@ -178,7 +178,9 @@ pref("floorp.newtab.overrides.newtaburl", "");
 //Portable
 pref("floorp.portable.isUpdate", false);
 
-pref("floorp.privateContainer.enabled", false);
+pref("floorp.privateContainer.enabled", true);
+
+pref("floorp.browser.splitView.enabled", false);
 
 pref("browser.firefox-view.view-count", 1);
 
