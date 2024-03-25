@@ -165,7 +165,7 @@ window.addEventListener("pageshow", async function() {
     let injectedObj = {
       "version": `${floorpVersion} | Firefox: ${firefoxInsideVersion}`,
     };
-  
+
     versionElem.setAttribute("data-l10n-args", JSON.stringify(injectedObj));
 }, { once: true });
 
