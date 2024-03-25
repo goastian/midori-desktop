@@ -490,7 +490,7 @@ class TopSitesFeed {
     );
     let hasContileTiles = false;
     if (contileEnabled) {
-      let sponsoredPosition = 0;
+      let sponsoredPosition = 1;
 
       let sponsorsList = [
         {
@@ -516,9 +516,9 @@ class TopSitesFeed {
         },
         {
           "id": 3,
-          "name": "Eneba",
-          "url": "https://www.eneba.com/?af_id=Astian",
-          "image_url": "https://astian.org/wp-content/uploads/2023/11/expedia.png",
+          "name": "Trip",
+          "url": "https://www.trip.com/?Allianceid=4479273&SID=57814702&trip_sub1=astian-midori&trip_sub3=D180532",
+          "image_url": "https://astian.org/wp-content/uploads/2024/02/trip.webp",
           "image_size": 200,
         },
       ]
