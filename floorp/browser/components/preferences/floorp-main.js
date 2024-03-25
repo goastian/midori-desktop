@@ -155,7 +155,18 @@ window.addEventListener("pageshow", async function() {
       document.getElementById("floorpPortableUpdateAuto").removeAttribute("hidden");
       document.getElementById("floorpPortableUpdateHeader").removeAttribute("hidden");
   }
+
+    // Version Injections
+    let versionElem = document.getElementById("updateAppInfo");
+    let versionElemL10nArgs = JSON.parse(versionElem.getAttribute("data-l10n-args"));
+    let floorpVersion = versionElemL10nArgs.version;
+    let firefoxInsideVersion = Services.appinfo.version;
   
+    let injectedObj = {
+      "version": `${floorpVersion} | Firefox: ${firefoxInsideVersion}`,
+    };
+  
+    versionElem.setAttribute("data-l10n-args", JSON.stringify(injectedObj));
 }, { once: true });
 
 // Optimize for portable version
