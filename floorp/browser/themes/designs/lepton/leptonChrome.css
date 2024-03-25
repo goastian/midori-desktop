@@ -1,6 +1,6 @@
 @charset "UTF-8";
-@namespace xul "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-@namespace html "http://www.w3.org/1999/xhtml";
+@namespace xul url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+@namespace html url("http://www.w3.org/1999/xhtml");
 /** Default Theme - Contrast **************************************************/
 @supports -moz-bool-pref("userChrome.theme.built_in_contrast") {
   /*= Lightmode - Color darker =================================================*/
@@ -58,13 +58,6 @@
   #allTabsMenu-allTabsView .subviewbutton.subviewbutton-nav:not([shortcut]) {
     padding-inline-end: var(--arrowpanel-menuitem-padding-inline) !important;
   }
-  /*= Icon Fill Color ==========================================================*/
-  :root:-moz-lwtheme {
-    /* Auto create --lwt-toolbarbutton-icon-fill-attention, fix for nightly default theme
-         Default Color: rgb(0,97,224) -> rgb(0, 120, 215) for more light
-       */
-    --lwt-toolbarbutton-icon-fill-attention: var(--button-primary-bgcolor, rgb(0, 120, 215));
-  }
   /*= First visible tab margin at maximized #332 ===============================*/
   :root[tabsintitlebar="true"][sizemode="maximized"] #TabsToolbar {
     margin-left: -1px;
@@ -77,16 +70,19 @@
   /*= Remove Tab Border ========================================================*/
   @supports -moz-bool-pref("userChrome.tab.connect_to_window") {
     /* TARGET: original, photon */
-    #TabsToolbar[brighttext]
-      #tabbrowser-tabs:not([noshadowfortests])
-      .tabbrowser-tab:is([visuallyselected="true"], [multiselected])
-      > .tab-stack
-      > .tab-background:-moz-lwtheme,
     #TabsToolbar:not([brighttext])
       #tabbrowser-tabs:not([noshadowfortests])
-      .tabbrowser-tab:is([visuallyselected="true"], [multiselected])
+      .tabbrowser-tab:is([visuallyselected], [multiselected])
       > .tab-stack
       > .tab-background {
+      /* Nightly 96:  1px solid var(--tab-line-color, rgba(128,128,142,0.9)); */
+      border: unset !important;
+    }
+    #TabsToolbar[brighttext]
+      #tabbrowser-tabs:not([noshadowfortests])
+      .tabbrowser-tab:is([visuallyselected], [multiselected])
+      > .tab-stack
+      > .tab-background:-moz-lwtheme {
       /* Nightly 96:  1px solid var(--tab-line-color, rgba(128,128,142,0.9)); */
       border: unset !important;
     }
@@ -161,6 +157,10 @@
       margin-inline-start: 0 !important;
     }
   }
+  /*= Menubar rounding #814 ====================================================*/
+  #main-menubar {
+    --panel-border-radius: var(--arrowpanel-border-radius);
+  }
 }
 /*= OS - Compatibility =======================================================*/
 @supports -moz-bool-pref("userChrome.compatibility.os") {
@@ -176,7 +176,7 @@
   @media (-moz-os-version: windows-win10) and (-moz-windows-accent-color-in-titlebar),
     (-moz-platform: windows-win10) and (-moz-windows-accent-color-in-titlebar) {
     :root[sizemode="normal"][tabsintitlebar] #navigator-toolbox {
-      border-top-color: AccentColor !important;
+      border-top-color: ActiveBorder !important;
     }
     @supports -moz-bool-pref("userChrome.compatibility.accent_color") {
       :root[sizemode="normal"][tabsintitlebar] #navigator-toolbox {
@@ -344,20 +344,20 @@
   @media (-moz-gtk-csd-available) and (-moz-toolbar-prefers-color-scheme: light),
     (-moz-gtk-csd-available) and (prefers-color-scheme: light) {
     /* Because of
-      #TabsToolbar:not([brighttext]) #tabbrowser-tabs:not([noshadowfortests]) .tabbrowser-tab:is([visuallyselected=true], [multiselected]) > .tab-stack > .tab-background {
+      #TabsToolbar:not([brighttext]) #tabbrowser-tabs:not([noshadowfortests]) .tabbrowser-tab:is([visuallyselected], [multiselected]) > .tab-stack > .tab-background {
         border: 1px solid var(--tab-line-color, rgba(128,128,142,0.9));
         box-shadow: 0 0 4px rgba(128,128,142,0.5);
       }
      */
     #tabbrowser-tabs:not([noshadowfortests])
-      .tabbrowser-tab:is([visuallyselected="true"], [multiselected])
+      .tabbrowser-tab:is([visuallyselected], [multiselected])
       > .tab-stack
       > .tab-background:not(:-moz-lwtheme) {
       box-shadow: 0 0 4px rgba(128, 128, 142, 0.5) !important;
     }
     #TabsToolbar:not([brighttext])
       #tabbrowser-tabs:not([noshadowfortests])
-      .tabbrowser-tab:is([visuallyselected="true"], [multiselected])
+      .tabbrowser-tab:is([visuallyselected], [multiselected])
       > .tab-stack
       > .tab-background:not(:-moz-lwtheme) {
       box-shadow: 0 0 1px var(--tab-line-color, rgba(128, 128, 142, 0.9)), 0 0 4px rgba(128, 128, 142, 0.5) !important;
@@ -485,17 +485,14 @@
       --background-color: rgb(229, 229, 235);
       --toolbarseparator-color: transparent;
     }
-    #TabsToolbar:not(:-moz-lwtheme)
-      .tabbrowser-tab
-      > .tab-stack
-      > .tab-background:not([selected="true"], [multiselected]) {
+    #TabsToolbar:not(:-moz-lwtheme) .tabbrowser-tab > .tab-stack > .tab-background:not([selected], [multiselected]) {
       color: var(--background-color);
       background-color: color-mix(in srgb, currentColor 60%, transparent);
     }
     #TabsToolbar:not(:-moz-lwtheme)
       .tabbrowser-tab:hover
       > .tab-stack
-      > .tab-background:not([selected="true"], [multiselected]) {
+      > .tab-background:not([selected], [multiselected]) {
       background-color: color-mix(
         in srgb,
         currentColor 85%,
@@ -728,7 +725,7 @@
       --error-text-color: var(--win-error-color) !important;
       --input-error-border-color: var(--win-error-color) !important;
       /* Others */
-      --tab-line-color: Highlight !important;
+      --tab-line-color: AccentColor !important;
       --tab-selected-bgcolor: unset !important;
       --tabs-border-color: transparent !important;
       --checkbox-checked-border-color: transparent !important;
@@ -738,6 +735,12 @@
       --arrowpanel-dimmed-even-further: color-mix(in srgb, currentColor 27%, transparent) !important;
       --download-progress-flare-color: rgba(255, 255, 255, 0.75) !important;
       --panelview-toolbarbutton-focus-box-shadow: inset 0 0 0 2px var(--focus-outline-color) !important;
+    }
+    @supports -moz-bool-pref("userChrome.compatibility.accent_color") {
+      :root:not(:-moz-lwtheme),
+      :root[lwt-default-theme-in-dark-mode] {
+        --tab-line-color: Highlight !important;
+      }
     }
   }
   @media (-moz-os-version: windows-win10), (-moz-platform: windows-win10) {
@@ -1206,13 +1209,13 @@
         > #tabbrowser-arrowscrollbox
         > .tabbrowser-tab
         > .tab-stack
-        > .tab-background[selected="true"],
+        > .tab-background[selected],
       :root[style*="--lwt-accent-color: rgb(28, 27, 34); --lwt-text-color: rgba(251, 251, 254);"][lwt-default-theme-in-dark-mode]
         #tabbrowser-tabs:not([movingtab])
         > #tabbrowser-arrowscrollbox
         > .tabbrowser-tab
         > .tab-stack
-        > .tab-background[selected="true"] {
+        > .tab-background[selected] {
         background: color-mix(in srgb, rgb(255, 255, 255) 15%, -moz-dialog) !important;
       }
     }
@@ -2166,7 +2169,7 @@
     --input-color: var(--arrowpanel-color, FieldText);
   }
   /*== Sidebar - Field Color ===================================================*/
-  html[lwt-sidebar] body {
+  html[lwt-sidebar]:not(#main-window) body {
     background-color: var(--lwt-sidebar-background-color, Field) !important;
     color: var(--lwt-sidebar-text-color, FieldText) !important;
   }
@@ -2457,11 +2460,11 @@
     #TabsToolbar {
       --toolbarseparator-color: transparent;
     }
-    #TabsToolbar .tabbrowser-tab > .tab-stack > .tab-background:not([selected="true"], [multiselected]) {
+    #TabsToolbar .tabbrowser-tab > .tab-stack > .tab-background:not([selected], [multiselected]) {
       background-color: var(--uc-frame-element-background);
     }
     #TabsToolbar #firefox-view-button:hover:not([open]) > .toolbarbutton-icon,
-    #TabsToolbar .tabbrowser-tab:hover > .tab-stack > .tab-background:not([selected="true"], [multiselected]) {
+    #TabsToolbar .tabbrowser-tab:hover > .tab-stack > .tab-background:not([selected], [multiselected]) {
       background-color: var(
         --toolbarbutton-hover-background
       ) !important; /* Original: color-mix(in srgb, currentColor 11%, transparent) */
@@ -3228,6 +3231,11 @@
       color: var(--in-content-button-text-color) !important; /* SelectedItemText */
       background-color: var(--in-content-button-background-active) !important; /* #C1D2EE; */
     }
+    @supports -moz-bool-pref("layout.css.osx-font-smoothing.enabled") {
+      #viewGroup > radio {
+        height: auto !important;
+      }
+    }
     #generalTab {
       --viewgroup-image: url(chrome://global/skin/icons/page-portrait.svg);
     }
@@ -3808,7 +3816,13 @@
     /* Sidebar */
     .sidebar-panel[lwt-sidebar] #search-box:hover,
     body[lwt-sidebar] xul|search-textbox.tabsFilter:hover {
-      border-color: var(--lwt-sidebar-highlight-background-color, Highlight) !important;
+      border-color: var(--lwt-sidebar-highlight-background-color, AccentColor) !important;
+    }
+    @supports -moz-bool-pref("userChrome.compatibility.accent_color") {
+      .sidebar-panel[lwt-sidebar] #search-box:hover,
+      body[lwt-sidebar] xul|search-textbox.tabsFilter:hover {
+        border-color: var(--lwt-sidebar-highlight-background-color, Highlight) !important;
+      }
     }
     .sidebar-panel:not([lwt-sidebar]) #search-box:hover,
     body:not([lwt-sidebar]) xul|search-textbox.tabsFilter:hover {
@@ -4055,6 +4069,10 @@
 }
 /** Rounding ******************************************************************/
 /** Rounding ******************************************************************/
+.unified-extensions-item-menu-button.subviewbutton {
+  border-radius: var(--arrowpanel-menuitem-border-radius) !important;
+}
+
 @supports -moz-bool-pref("userChrome.rounding.square_tab") {
   :root {
     --tab-border-radius: 0 !important; /* Original: 4px */
@@ -4362,13 +4380,13 @@
   }
   @supports not -moz-bool-pref("userChrome.tab.photon_like_padding") {
     @supports -moz-bool-pref("userChrome.tab.lepton_like_padding") {
-      .tabbrowser-tab[pinned] {
+      #TabsToolbar:not([multibar]) .tabbrowser-tab[pinned] {
         padding-inline: 1px !important;
       }
-      .tabbrowser-tab:not([pinned]):not(:first-of-type) {
+      #TabsToolbar:not([multibar]) .tabbrowser-tab:not([pinned]):not(:first-of-type) {
         margin-inline: -1px !important;
       }
-      .tabbrowser-tab:not([pinned]):first-of-type {
+      #TabsToolbar:not([multibar]) .tabbrowser-tab:not([pinned]):first-of-type {
         margin-inline-end: -1px !important;
       }
     }
@@ -4594,6 +4612,20 @@
     :root:not([uidensity="compact"]) #urlbar-container,
     :root:not([uidensity="compact"]) #search-container {
       padding-block: 2px !important;
+    }
+    :root:not([uidensity="compact"]) #urlbar,
+    :root:not([uidensity="compact"]) #searchbar {
+      min-height: calc(var(--urlbar-min-height) - 2px) !important;
+    }
+    :root:not([uidensity="compact"]) #urlbar[breakout] {
+      height: calc(var(--urlbar-height) - 2px) !important;
+    }
+    :root:not([uidensity="compact"]) #urlbar[breakout][breakout-extend],
+    :root:not([uidensity="compact"]) #urlbar[breakout][breakout-extend-disabled][open] {
+      height: auto !important;
+    }
+    :root[uidensity="touch"] #urlbar[breakout] {
+      top: calc((var(--urlbar-toolbar-height) - var(--urlbar-height)) / 2 + 1px) !important;
     }
     /* spread menu */
     :root:not([uidensity]) .urlbarView-row {
@@ -4879,7 +4911,12 @@
     }
   }
   .unified-extensions-item-menu-button.subviewbutton {
-    padding: 8px !important; /* Original: var(--arrowpanel-menuitem-padding-inline) */
+    padding: 0 !important; /* Original: calc(var(--arrowpanel-menuitem-margin-inline) - 1px) var(--arrowpanel-menuitem-margin-inline) */
+  }
+  @supports -moz-bool-pref("userChrome.panel.full_width_padding") {
+    .unified-extensions-item-menu-button.subviewbutton {
+      --arrowpanel-menuitem-padding-inline: var(--arrowpanel-menuitem-padding-block);
+    }
   }
   :root[uidensity="compact"] :is(.unified-extensions-item, .unified-extensions-item-action-button) {
     padding-block: 0 !important;
@@ -7066,11 +7103,15 @@
     --tab-selected-bgcolor: unset !important; /* Original: rgb(255,255,255); */
     --tab-selected-bgimage: unset !important; /* Above FF v101 */
   }
+  #TabsToolbar #firefox-view-button[open] > .toolbarbutton-icon,
+  .tab-background:is([selected], [multiselected]) {
+    background-color: var(--tab-selected-bgcolor, var(--toolbar-bgcolor)) !important;
+  }
   #tabbrowser-tabs:not([movingtab])
     > #tabbrowser-arrowscrollbox
     > .tabbrowser-tab
     > .tab-stack
-    > .tab-background[selected="true"]:-moz-lwtheme {
+    > .tab-background[selected]:-moz-lwtheme {
     /* Original: linear-gradient(var(--lwt-selected-tab-background-color, transparent), var(--lwt-selected-tab-background-color, transparent)), linear-gradient(var(--toolbar-bgcolor), var(--toolbar-bgcolor)), var(--lwt-header-image, none)
     */
     background-image: linear-gradient(transparent, transparent),
@@ -7082,7 +7123,7 @@
       > #tabbrowser-arrowscrollbox
       > .tabbrowser-tab
       > .tab-stack
-      > .tab-background[selected="true"]:-moz-lwtheme {
+      > .tab-background[selected]:-moz-lwtheme {
       background-image: linear-gradient(transparent, transparent),
         linear-gradient(var(--toolbar-bgcolor), var(--toolbar-bgcolor)), var(--lwt-additional-images, none) !important;
       background-repeat: repeat-x, repeat-x, var(--lwt-background-tiling) !important;
@@ -7132,7 +7173,7 @@
       outline: 1px solid color-mix(in srgb, var(--focus-outline-color, currentColor) 40%, transparent);
       outline-offset: -1px;
     }
-    .tab-background[multiselected="true"][selected="true"] {
+    .tab-background[multiselected="true"][selected] {
       outline-width: 2px;
       outline-offset: -2px;
     }
@@ -7168,7 +7209,7 @@
     )
     #TabsToolbar[brighttext]
     #tabbrowser-tabs:not([noshadowfortests])
-    .tabbrowser-tab[visuallyselected="true"]:not(:focus),
+    .tabbrowser-tab[visuallyselected]:not(:focus),
   :root:is(
       [lwtheme-mozlightdark],
       [style*="--lwt-accent-color: rgb(28, 27, 34); --lwt-text-color: rgba(251, 251, 254);"]
@@ -7186,7 +7227,7 @@
     )
     #TabsToolbar:not([brighttext])
     #tabbrowser-tabs:not([noshadowfortests])
-    .tabbrowser-tab:is([visuallyselected="true"], [multiselected])
+    .tabbrowser-tab:is([visuallyselected], [multiselected])
     > .tab-stack
     > .tab-background:-moz-lwtheme {
     --uc-tab-shadow-color: var(--uc-tab-shadow-color-bundle);
@@ -7199,7 +7240,7 @@
     )
     #TabsToolbar[brighttext]
     #tabbrowser-tabs:not([noshadowfortests])
-    .tabbrowser-tab:is([visuallyselected="true"], [multiselected])
+    .tabbrowser-tab:is([visuallyselected], [multiselected])
     > .tab-stack
     > .tab-background:-moz-lwtheme {
     filter: drop-shadow(-1px 0px 0px var(--uc-tab-shadow-color, transparent))
@@ -7561,14 +7602,22 @@
 @supports -moz-bool-pref("userChrome.tab.photon_like_contextline") or -moz-bool-pref("userChrome.tab.static_separator") or -moz-bool-pref(
     "userChrome.tab.bar_separator"
   ) {
-  :root[lwtheme-mozlightdark] #tabbrowser-tabs,
-  :root[style*="--lwt-accent-color: rgb(240, 240, 244); --lwt-text-color: rgba(21, 20, 26);"],
-  :root[style*="--lwt-accent-color: rgb(28, 27, 34); --lwt-text-color: rgba(251, 251, 254);"] {
-    --tab-line-color: rgb(10, 132, 255) !important;
+  @supports -moz-bool-pref("userChrome.tab.blue_accent") {
+    :root,
+    #tabbrowser-tabs {
+      --tab-line-color: rgb(10, 132, 255) !important;
+    }
   }
-  @media (-moz-gtk-csd-available) {
-    :root:not(:-moz-lwtheme) #tabbrowser-tabs {
-      --tab-line-color: Highlight !important; /* -moz-accent-color */
+  @supports not -moz-bool-pref("userChrome.tab.blue_accent") {
+    @media (-moz-gtk-csd-available) {
+      :root:not(:-moz-lwtheme) #tabbrowser-tabs {
+        --tab-line-color: AccentColor !important; /* -moz-accent-color */
+      }
+      @supports -moz-bool-pref("userChrome.compatibility.accent_color") {
+        :root:not(:-moz-lwtheme) #tabbrowser-tabs {
+          --tab-line-color: Highlight !important; /* -moz-accent-color */
+        }
+      }
     }
   }
 }
@@ -7621,7 +7670,7 @@
   /* Remove side's background color border */
   #TabsToolbar[brighttext]
     #tabbrowser-tabs:not([noshadowfortests])
-    .tabbrowser-tab:is([visuallyselected="true"], [multiselected])
+    .tabbrowser-tab:is([visuallyselected], [multiselected])
     > .tab-stack
     > .tab-background:-moz-lwtheme {
     --tabs-border-color: rgba(0, 0, 0, 0.3) !important;
@@ -7629,7 +7678,7 @@
   }
   #TabsToolbar:not([brighttext])
     #tabbrowser-tabs:not([noshadowfortests])
-    .tabbrowser-tab:is([visuallyselected="true"], [multiselected])
+    .tabbrowser-tab:is([visuallyselected], [multiselected])
     > .tab-stack
     > .tab-background {
     box-shadow: 0 0 1px var(--tabs-border-color), 0 0 4px rgba(128, 128, 142, 0.5) !important; /* Original: 0 0 1px var(--tab-line-color, rgba(128,128,142,0.9)), 0 0 4px rgba(128,128,142,0.5) */
@@ -8093,7 +8142,7 @@
   }
   /* Fix tab overlap #678 */
   @supports -moz-bool-pref("userChrome.tab.bottom_rounded_corner") {
-    tab:where([visuallyselected="true"]) {
+    tab:where([visuallyselected]) {
       z-index: 1;
     }
   }
@@ -8142,14 +8191,14 @@
     --tab-label-mask-size: 30%;
   }
   #tabbrowser-tabs[closebuttons="activetab"]
-    .tabbrowser-tab:is([visuallyselected="true"], [multiselected="true"])
+    .tabbrowser-tab:is([visuallyselected], [multiselected="true"])
     .tab-label-container {
     --tab-label-mask-size: 25%;
   }
-  .tabbrowser-tab[visuallyselected="true"]:not([labelendaligned]):hover .tab-label-container,
+  .tabbrowser-tab[visuallyselected]:not([labelendaligned]):hover .tab-label-container,
   #tabbrowser-tabs:not([closebuttons="activetab"])
     > #tabbrowser-arrowscrollbox
-    > .tabbrowser-tab:not([visuallyselected="true"], [labelendaligned]):hover
+    > .tabbrowser-tab:not([visuallyselected], [labelendaligned]):hover
     .tab-label-container {
     --tab-label-mask-size: 0.9em; /* Original: 1em */
   }
@@ -8161,7 +8210,7 @@
     > .tabbrowser-tab:not([pinned])
     > .tab-stack
     > .tab-content
-    > .tab-close-button:not([selected="true"]) {
+    > .tab-close-button:not([selected]) {
     display: inline-flex !important;
     display: -moz-inline-box !important;
   }
@@ -8601,7 +8650,7 @@
     }
     @supports -moz-bool-pref("userChrome.tab.container.on_top") {
       #tabbrowser-tabs {
-        --uc-container-position-y: calc(50% - var(--uc-container-position-y-default));
+        --uc-container-position-y: calc(var(--uc-container-position-y-bottom) * -1);
       }
     }
     :root[uidensity="compact"] #tabbrowser-tabs {
@@ -8652,10 +8701,8 @@
         opacity: 0;
       }
       /* Pinned Tab - Titlechanged Indicator override */
-      .tabbrowser-tab:is([image], [pinned])[usercontextid]
-        > .tab-stack
-        > .tab-content[attention]:not([selected="true"]),
-      .tabbrowser-tab[usercontextid] > .tab-stack > .tab-content[pinned][titlechanged]:not([selected="true"]) {
+      .tabbrowser-tab:is([image], [pinned])[usercontextid] > .tab-stack > .tab-content[attention]:not([selected]),
+      .tabbrowser-tab[usercontextid] > .tab-stack > .tab-content[pinned][titlechanged]:not([selected]) {
         /* Original: radial-gradient(circle, var(--attention-icon-color), var(--attention-icon-color) 2px, transparent 2px); */
         --dotted-identity-image: radial-gradient(
           circle,
@@ -8666,34 +8713,34 @@
         background-image: var(--dotted-identity-image), var(--dotted-identity-image), var(--dotted-identity-image) !important;
         background-position-x: var(--uc-titlechanged-container-position-x) !important;
       }
-      .tabbrowser-tab:is([image], [pinned]) > .tab-stack > .tab-content[attention]:not([selected="true"]),
-      .tabbrowser-tab > .tab-stack > .tab-content[pinned][titlechanged]:not([selected="true"]) {
+      .tabbrowser-tab:is([image], [pinned]) > .tab-stack > .tab-content[attention]:not([selected]),
+      .tabbrowser-tab > .tab-stack > .tab-content[pinned][titlechanged]:not([selected]) {
         /* Original: center bottom calc(6.5px + var(--tabs-navbar-shadow-size)); */
         background-position-y: top var(--uc-container-position-y) !important;
       }
       /* Pinned Tab - Titlechanged & soundplaying */
       .tabbrowser-tab:is([image], [pinned])[usercontextid]:is([soundplaying], [muted], [activemedia-blocked])
         > .tab-stack
-        > .tab-content[attention]:not([selected="true"]),
+        > .tab-content[attention]:not([selected]),
       .tabbrowser-tab[usercontextid]:is([soundplaying], [muted], [activemedia-blocked])
         > .tab-stack
-        > .tab-content[pinned][titlechanged]:not([selected="true"]) {
+        > .tab-content[pinned][titlechanged]:not([selected]) {
         --uc-titlechanged-container-position-x: calc(32% - 1px), calc(50% - 1px), calc(70% - 1px);
       }
       :root[uidensity="compact"]
         .tabbrowser-tab:is([image], [pinned])[usercontextid]:is([soundplaying], [muted], [activemedia-blocked])
         > .tab-stack
-        > .tab-content[attention]:not([selected="true"]),
+        > .tab-content[attention]:not([selected]),
       :root[uidensity="compact"]
         .tabbrowser-tab[usercontextid]:is([soundplaying], [muted], [activemedia-blocked])
         > .tab-stack
-        > .tab-content[pinned][titlechanged]:not([selected="true"]) {
+        > .tab-content[pinned][titlechanged]:not([selected]) {
         --uc-titlechanged-container-position-x: calc(30% - 1px), calc(50% - 1px), calc(70% - 1px);
       }
     }
     @supports -moz-bool-pref("userChrome.tab.container.on_top") {
-      .tabbrowser-tab:is([image], [pinned]) > .tab-stack > .tab-content[attention]:not([selected="true"]),
-      .tabbrowser-tab > .tab-stack > .tab-content[pinned][titlechanged]:not([selected="true"]) {
+      .tabbrowser-tab:is([image], [pinned]) > .tab-stack > .tab-content[attention]:not([selected]),
+      .tabbrowser-tab > .tab-stack > .tab-content[pinned][titlechanged]:not([selected]) {
         /* Original: center bottom calc(6.5px + var(--tabs-navbar-shadow-size)); */
         background-position-y: top var(--uc-container-position-y-bottom) !important;
       }
@@ -8840,6 +8887,7 @@
     --uc-multirow-bookmark-rows: 3;
     --uc-multirow-bookmark-row-margin: 2px;
     max-height: none !important;
+    height: unset !important;
   }
   #PlacesToolbar > hbox {
     display: block;
@@ -8853,7 +8901,7 @@
     max-height: calc(
       var(--uc-multirow-bookmark-rows) *
         (
-          var(--uc-bm-height, calc(20px + 2 * var(--bookmark-block-padding, 4px))) + 2 *
+          var(--uc-bm-height, calc(20px + var(--bookmark-block-padding, 4px))) + 2 *
             var(--uc-multirow-bookmark-row-margin)
         )
     ) !important;
@@ -9681,10 +9729,10 @@
     counter-increment: tab-counts;
   }
   .tabbrowser-tab:not([hidden="true"])[pinned="true"] .tab-label-container::before {
-    content: " " counter(tab-counts);
+    content: " " counter(tab-counts);
   }
   .tabbrowser-tab:not([hidden="true"]):not([pinned="true"]) .tab-label-container::before {
-    content: counter(tab-counts) ": ";
+    content: counter(tab-counts) ": ";
   }
   .tabbrowser-tab:not([hidden="true"]) .tab-label-container {
     display: grid;
@@ -9889,9 +9937,11 @@
 /** Centered ******************************************************************/
 /*= Centered - Tab ===========================================================*/
 @supports -moz-bool-pref("userChrome.centered.tab") {
-  .tabbrowser-tab[selected]:not(:hover) .tab-label-container:not([textoverflow]),
-  .tabbrowser-tab:not(:hover, [pinned]) .tab-label-container:not([textoverflow]) {
-    margin-inline-end: 5px;
+  @supports -moz-bool-pref("userChrome.centered.tab.label") {
+    .tabbrowser-tab[selected]:not(:hover) .tab-label-container:not([textoverflow]),
+    .tabbrowser-tab:not(:hover, [pinned]) .tab-label-container:not([textoverflow]) {
+      margin-inline-end: 5px;
+    }
   }
   @supports -moz-bool-pref("userChrome.tab.close_button_at_hover") {
     #tabbrowser-tabs[closebuttons="activetab"]
@@ -9908,9 +9958,17 @@
   }
   @supports not -moz-bool-pref("userChrome.centered.tab.label") {
     .tab-icon-stack {
-      flex: 1;
-      -moz-box-flex: 1;
-      justify-content: end;
+      margin-inline-start: auto;
+    }
+    .tab-label-container {
+      max-width: min-content;
+      margin-inline-end: auto;
+    }
+    @supports -moz-bool-pref("userChrome.tab.close_button_at_hover") {
+      .tabbrowser-tab:not(:hover, [pinned]) > .tab-stack > .tab-content > .tab-close-button {
+        padding-inline-start: 6px !important; /* Original: 0px */
+        width: 24px !important; /* Original: 17px */
+      }
     }
   }
   @supports -moz-bool-pref("userChrome.centered.tab.label") {
@@ -10621,7 +10679,7 @@
           var(--uc-autohide-sidebar-delay) !important;
       }
       #sidebar-box:is(:hover, :focus-within),
-      #siebar-box:has(#sidebar-switcher-target.active) {
+      #sidebar-box:has(#sidebar-switcher-target.active) {
         transition: margin-inline-start var(--uc-autohide-sidebar-speed) var(--animation-easing-function),
           opacity var(--uc-autohide-sidebar-speed) ease-in-out,
           box-shadow var(--uc-autohide-sidebar-speed) var(--animation-easing-function) var(--uc-autohide-sidebar-speed),
@@ -10629,8 +10687,8 @@
       }
       #sidebar-box:is(:hover, :focus-within) > #sidebar-header,
       #sidebar-box:is(:hover, :focus-within) > #sidebar,
-      #siebar-box:has(#sidebar-switcher-target.active) > #sidebar-header,
-      #siebar-box:has(#sidebar-switcher-target.active) > #sidebar {
+      #sidebar-box:has(#sidebar-switcher-target.active) > #sidebar-header,
+      #sidebar-box:has(#sidebar-switcher-target.active) > #sidebar {
         transition-delay: 0ms !important;
       }
       :root[inFullscreen="true"] #sidebar-box {
@@ -10886,6 +10944,49 @@
 }
 /** Icons *********************************************************************/
 @supports not -moz-bool-pref("userChrome.icon.disabled") {
+  /** Icons - List **************************************************************/
+  :root {
+    --uc-folder-icon: url("chrome://global/skin/icons/folder.svg");
+    --uc-tab-icon: url("chrome://browser/skin/lepton/tab.svg");
+    --uc-tab-copy-icon: url("chrome://browser/skin/lepton/tab-copy.svg");
+    --uc-tab-unload-icon: url("chrome://browser/skin/lepton/tab-unload.svg");
+    --uc-tab-multiple-icon: url("chrome://browser/skin/lepton/tab-desktop-multiple.svg");
+    --uc-new-tab-icon: url("chrome://browser/skin/lepton/new-tab.svg");
+    --uc-new-tab-forward-icon: url("chrome://browser/skin/lepton/new-tab-forward.svg");
+    --uc-new-tab-skip-forward-icon: url("chrome://browser/skin/lepton/new-tab-skip-forward.svg");
+    --uc-new-tab-multiple-icon: url("chrome://browser/skin/lepton/new-tab-multiple.svg");
+    --uc-sidebar-icon: url("chrome://browser/skin/sidebars.svg");
+    --uc-sidebar-icon-reverse: url("chrome://browser/skin/sidebars-right.svg");
+  }
+  @supports -moz-bool-pref("userChrome.icon.library") {
+    :root {
+      --uc-folder-icon: url("chrome://browser/skin/lepton/folder.svg");
+    }
+  }
+  @supports -moz-bool-pref("userChrome.tab.connect_to_window") {
+    :root {
+      --uc-tab-icon: url("chrome://browser/skin/lepton/tab-photon.svg");
+      --uc-tab-copy-icon: url("chrome://browser/skin/lepton/tab-copy-photon.svg");
+      --uc-tab-unload-icon: url("chrome://browser/skin/lepton/tab-unload-photon.svg");
+      --uc-tab-multiple-icon: url("chrome://browser/skin/lepton/tab-multiple.svg");
+      --uc-new-tab-icon: url("chrome://browser/skin/lepton/new-tab-photon.svg");
+      --uc-new-tab-forward-icon: url("chrome://browser/skin/lepton/new-tab-forward-photon.svg");
+      --uc-new-tab-skip-forward-icon: url("chrome://browser/skin/lepton/new-tab-skip-forward-photon.svg");
+    }
+  }
+  @supports selector(:has(a)) {
+    :root:has(#sidebar-box[positionend="true"]) {
+      --uc-sidebar-icon: url("chrome://browser/skin/sidebars-right.svg");
+      --uc-sidebar-icon-reverse: url("chrome://browser/skin/sidebars.svg");
+    }
+  }
+  #TabsToolbar #new-tab-button {
+    --uc-new-tab-icon: url(chrome://global/skin/icons/plus.svg);
+  }
+  .urlbarView-row[source="tabs"] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-favicon,
+  #urlbar-engine-one-off-item-tabs {
+    list-style-image: var(--uc-tab-icon) !important;
+  }
   /** Library - Icons Replace ***************************************************/
   @supports -moz-bool-pref("userChrome.icon.library") {
     /*= Standard Folder - More Visible ===========================================*/
@@ -10897,7 +10998,7 @@
     #editBMPanel_folderMenuList:not([selectedGuid="toolbar_____"], [selectedGuid="menu________"]),
     #editBMPanel_folderMenuList .folder-icon:not([id]),
     .downloadIconShow > .button-box > .button-icon {
-      list-style-image: url("chrome://browser/skin/lepton/folder.svg") !important;
+      list-style-image: var(--uc-folder-icon) !important;
     }
     /* Standard Folder - Open */
     :-moz-any(#PlacesToolbar, #BMB_bookmarksPopup, #bookmarksMenu)
@@ -10947,8 +11048,9 @@
     }
     /* Tag */
     :-moz-any(#placesList, #placeContent) treechildren::-moz-tree-image(title, query, tagContainer),
-    :-moz-any(#placesList, #placeContent) treechildren::-moz-tree-image(query, OrganizerQuery_tags_______v) {
-      list-style-image: url("chrome://browser/skin/places/tag.svg") !important;
+    :-moz-any(#placesList, #placeContent) treechildren::-moz-tree-image(query, OrganizerQuery_tags_______v),
+    .bookmark-item[query][tagContainer] {
+      list-style-image: url("chrome://browser/skin/lepton/tag.svg") !important;
     }
     /* Bookmark */
     :-moz-any(#placesList, #placeContent) treechildren::-moz-tree-image(query, OrganizerQuery_allbms_____v) {
@@ -10958,8 +11060,15 @@
     #BMB_bookmarksPopup #BMB_bookmarksToolbar,
     #bookmarksMenuPopup #bookmarksToolbarFolderMenu,
     :-moz-any(#bookmarks-view, #editBMPanel_folderTree, #placesList, #placeContent)
-      treechildren::-moz-tree-image(container, queryFolder_toolbar_____) {
-      list-style-image: url("chrome://browser/skin/places/bookmarksToolbar.svg") !important;
+      treechildren::-moz-tree-image(container, queryFolder_toolbar_____),
+    #editBMPanel_folderMenuList[selectedGuid="toolbar_____"],
+    #editBMPanel_toolbarFolderItem,
+    #bookmarksToolbarFolderMenu,
+    #BMB_bookmarksToolbar,
+    #panelMenu_bookmarksToolbar,
+    #bookmarks-toolbar-button,
+    #bookmarks-toolbar-placeholder {
+      list-style-image: url("chrome://browser/skin/lepton/bookmarks-toolbar-alt.svg") !important;
     }
     /* Bookmark Menu */
     :-moz-any(#bookmarks-view, #editBMPanel_folderTree, #placesList, #placeContent)
@@ -10996,7 +11105,7 @@
     #bookmarksMenuPopup #bookmarksToolbarFolderMenu[open="true"],
     :-moz-any(#bookmarks-view, #editBMPanel_folderTree, #placesList, #placeContent)
       treechildren::-moz-tree-image(container, open, queryFolder_toolbar_____) {
-      list-style-image: url("chrome://browser/skin/lepton/bookmarksToolbar-open.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/bookmarksToolbar-open-alt.svg") !important;
     }
     /* Bookmark Menu */
     :-moz-any(#bookmarks-view, #editBMPanel_folderTree, #placesList, #placeContent)
@@ -11052,16 +11161,6 @@
     }
   }
   /** Panel - Icons *************************************************************/
-  :root {
-    --uc-sidebar-icon: url("chrome://browser/skin/sidebars.svg");
-    --uc-sidebar-icon-reverse: url("chrome://browser/skin/sidebars-right.svg");
-  }
-  @supports selector(:has(a)) {
-    :root:has(#sidebar-box[positionend="true"]) {
-      --uc-sidebar-icon: url("chrome://browser/skin/sidebars-right.svg");
-      --uc-sidebar-icon-reverse: url("chrome://browser/skin/sidebars.svg");
-    }
-  }
   @supports -moz-bool-pref("userChrome.icon.panel") {
     /*= Padding ==================================================================*/
     :root {
@@ -11185,9 +11284,12 @@
       background-size: 16px !important;
       background-image: var(--avatar-image-url) !important;
     }
+    #new-tab-button {
+      list-style-image: var(--uc-new-tab-icon) !important;
+    }
     @supports -moz-bool-pref("userChrome.icon.panel_full") or -moz-bool-pref("userChrome.icon.panel_photon") {
       #appMenu-new-tab-button2 {
-        list-style-image: url("chrome://browser/skin/new-tab.svg");
+        list-style-image: var(--uc-new-tab-icon);
       }
     }
     @supports -moz-bool-pref("userChrome.icon.panel_photon") {
@@ -11265,12 +11367,42 @@
     #save-page-button {
       list-style-image: url("chrome://browser/skin/lepton/toolbarButton-download.svg") !important;
     }
+    #open-file-button {
+      list-style-image: url("chrome://browser/skin/lepton/toolbarButton-upload.svg") !important;
+    }
+    #cut-button {
+      list-style-image: url("chrome://browser/skin/lepton/edit-cut.svg") !important;
+    }
+    #copy-button {
+      list-style-image: url("chrome://browser/skin/lepton/edit-copy.svg") !important;
+    }
+    #paste-button {
+      list-style-image: url("chrome://browser/skin/lepton/edit-paste.svg") !important;
+    }
+    #characterencoding-button {
+      list-style-image: url("chrome://browser/skin/lepton/characterEncoding.svg") !important;
+    }
+    #screenshot-button {
+      list-style-image: url("chrome://browser/skin/lepton/screenshot-1.svg") !important;
+    }
+    #email-link-button {
+      list-style-image: url("chrome://browser/skin/lepton/mail.svg") !important;
+    }
+    #panic-button {
+      list-style-image: url("chrome://browser/skin/lepton/forget.svg") !important;
+    }
+    #profiler-button-button > .toolbarbutton-icon {
+      list-style-image: url("chrome://browser/skin/lepton/performance.svg") !important;
+    }
+    #developer-button {
+      list-style-image: url("chrome://browser/skin/lepton/wrench-filled.svg") !important;
+    }
     #appMenu-settings-button {
       list-style-image: url("chrome://global/skin/icons/settings.svg");
     }
     @supports -moz-bool-pref("userChrome.icon.panel_full") {
       #appMenu-more-button2 {
-        list-style-image: url("chrome://browser/skin/ion.svg");
+        list-style-image: url("chrome://browser/skin/lepton/ion.svg");
       }
     }
     @supports -moz-bool-pref("userChrome.icon.panel_full") or -moz-bool-pref("userChrome.icon.panel_photon") {
@@ -11388,14 +11520,14 @@
       list-style-image: url("chrome://global/skin/icons/search-glass.svg");
     }
     #panelMenu_viewBookmarksToolbar {
-      list-style-image: url("chrome://browser/skin/bookmarks-toolbar.svg");
+      list-style-image: url("chrome://browser/skin/lepton/bookmarks-toolbar-alt.svg");
     }
     #panelMenu_showAllBookmarks {
       list-style-image: url("chrome://browser/skin/bookmark-star-on-tray.svg");
     }
     /*= Panel - History ==========================================================*/
     #appMenuRecentlyClosedTabs {
-      list-style-image: url("chrome://browser/skin/tab.svg");
+      list-style-image: var(--uc-tab-icon);
     }
     #appMenuRecentlyClosedWindows {
       list-style-image: url("chrome://browser/skin/window.svg");
@@ -11408,7 +11540,7 @@
       list-style-image: url("chrome://browser/skin/lepton/restore-session.svg");
     }
     #appMenuClearRecentHistory {
-      list-style-image: url("chrome://browser/skin/forget.svg");
+      list-style-image: url("chrome://browser/skin/lepton/forget.svg");
     }
     #PanelUI-historyMore {
       list-style-image: url("chrome://browser/skin/history.svg");
@@ -11489,6 +11621,7 @@
     #appMenu_troubleShooting {
       list-style-image: url("chrome://global/skin/icons/more.svg");
     }
+    #appMenu-report-broken-site-button,
     #appMenu_help_reportSiteIssue {
       list-style-image: url("chrome://global/skin/icons/lightbulb.svg");
     }
@@ -11554,7 +11687,7 @@
       --menuitem-image: url("chrome://browser/skin/bookmark-star-on-tray.svg");
     }
     #BMB_bookmarksToolbar {
-      --menuitem-image: url("chrome://browser/skin/bookmarks-toolbar.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/bookmarks-toolbar-alt.svg");
     }
     @supports -moz-bool-pref("layout.css.osx-font-smoothing.enabled") {
       #BMB_bookmarksShowAllTop {
@@ -11892,6 +12025,9 @@
         padding-inline-start: var(--menu-background-padding-default) !important;
         margin-left: 0 !important;
       }
+      .menupopup-arrowscrollbox {
+        padding-inline: 0 !important; /* Original: padding: var(--panel-padding); --panel-padding-block: 4px; */
+      }
     }
     @media (-moz-os-version: windows-win7),
       (-moz-os-version: windows-win8),
@@ -11963,6 +12099,9 @@
           #context_openANewTab.tabmix-newtab-menu-icon {
             padding-inline-start: var(--menu-background-padding-default) !important;
             margin-left: 0 !important;
+          }
+          .menupopup-arrowscrollbox {
+            padding-inline: 0 !important; /* Original: padding: var(--panel-padding); --panel-padding-block: 4px; */
           }
         }
       }
@@ -12318,7 +12457,7 @@
       #treestyletab_piro_sakura_ne_jp-menuitem-_context_newTab,
       #tabcenter-reborn_ariasuni-menuitem-_newTabContextMenuOpenAlternatePosition,
       #sidebartabs_asamuzak_jp-menuitem-_newTab {
-        --menuitem-image: url("chrome://browser/skin/new-tab.svg");
+        --menuitem-image: var(--uc-new-tab-icon);
       }
       #tabcenter-reborn_ariasuni-menuitem-_newTabContextMenuOpenInWindow {
         --menuitem-image: url("chrome://browser/skin/window.svg");
@@ -12370,10 +12509,10 @@
       #treestyletab_piro_sakura_ne_jp-menuitem-_context_duplicateTab,
       #tabcenter-reborn_ariasuni-menuitem-_contextMenuDuplicateTab,
       #sidebartabs_asamuzak_jp-menuitem-_dupeTab {
-        --menuitem-image: url("chrome://browser/skin/lepton/tab-copy.svg");
+        --menuitem-image: var(--uc-tab-copy-icon);
       }
       #tabcenter-reborn_ariasuni-menuitem-_contextMenuUnloadTab {
-        --menuitem-image: url("chrome://browser/skin/lepton/tab-unload.svg");
+        --menuitem-image: var(--uc-tab-unload-icon);
       }
       #context_bookmarkTab,
       #context_bookmarkSelectedTabs,
@@ -12416,7 +12555,7 @@
       #treestyletab_piro_sakura_ne_jp-menuitem-_context_selectAllTabs,
       #treestyletab_piro_sakura_ne_jp-menuitem-_noContextTab\:context_selectAllTabs,
       #sidebartabs_asamuzak_jp-menuitem-_selectAllTabs {
-        --menuitem-image: url("chrome://browser/skin/lepton/tab-multiple.svg");
+        --menuitem-image: var(--uc-tab-multiple-icon);
       }
       #context_closeTab,
       #treestyletab_piro_sakura_ne_jp-menuitem-_context_closeTab,
@@ -12474,7 +12613,7 @@
         --menuitem-image: url("chrome://browser/skin/lepton/drawer-arrow-download.svg");
       }
       #toolbar-context-openANewTab {
-        --menuitem-image: url("chrome://browser/skin/new-tab.svg");
+        --menuitem-image: var(--uc-new-tab-icon);
       }
       #toolbar-context-reloadSelectedTab,
       #toolbar-context-reloadSelectedTabs {
@@ -12485,7 +12624,7 @@
         --menuitem-image: url("chrome://browser/skin/bookmark.svg");
       }
       #toolbar-context-selectAllTabs {
-        --menuitem-image: url("chrome://browser/skin/lepton/tab-multiple.svg");
+        --menuitem-image: var(--uc-tab-multiple-icon);
       }
       #toolbar-context-undoCloseTab {
         --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
@@ -12496,7 +12635,7 @@
       }
       #toggle_PersonalToolbar {
         /* Also placeContext */
-        --menuitem-image: url("chrome://browser/skin/bookmarks-toolbar.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/bookmarks-toolbar-alt.svg");
       }
       menuitem.viewCustomizeToolbar {
         --menuitem-image: url("chrome://browser/skin/customize.svg");
@@ -12590,11 +12729,9 @@
       #context-openlinkincurrent {
         --menuitem-image: url("chrome://browser/skin/lepton/link-square.svg");
       }
-      #context-openlinkincontainertab {
-        --menuitem-image: url("chrome://browser/skin/new-tab.svg");
-      }
+      #context-openlinkincontainertab,
       #context-openlinkintab {
-        --menuitem-image: url("chrome://browser/skin/new-tab.svg");
+        --menuitem-image: var(--uc-new-tab-icon);
       }
       #context-openlinkinusercontext-menu {
         --menuitem-image: url("chrome://browser/skin/lepton/container-openin-16.svg");
@@ -12615,10 +12752,16 @@
         --menuitem-image: url("chrome://browser/skin/lepton/pocket-outline.svg");
       }
       #context-copyemail {
-        --menuitem-image: url("chrome://browser/skin/mail.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/mail.svg");
+      }
+      #context-copyphone {
+        --menuitem-image: url("chrome://browser/skin/lepton/device-phone.svg");
       }
       #context-copylink {
         --menuitem-image: url("chrome://browser/skin/lepton/link.svg");
+      }
+      #context-stripOnShareLink {
+        --menuitem-image: url("chrome://browser/skin/lepton/link-no-tracking.svg");
       }
       #context-sendlinktodevice {
         --menuitem-image: url("chrome://browser/skin/lepton/send-to-device.svg");
@@ -12690,7 +12833,7 @@
       #context-sendimage,
       #context-sendvideo,
       #context-sendaudio {
-        --menuitem-image: url("chrome://browser/skin/mail.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/mail.svg");
       }
       #context-viewimageinfo {
         --menuitem-image: url("chrome://global/skin/icons/info.svg");
@@ -12722,30 +12865,40 @@
       #fill-login-generated-password {
         --menuitem-image: url("chrome://browser/skin/login.svg");
       }
+      #use-relay-mask {
+        --menuitem-image: url("chrome://browser/skin/lepton/relay-logo.svg");
+      }
       #manage-saved-logins {
         --menuitem-image: url("chrome://browser/skin/lepton/key-multiple.svg");
       }
-      #context-undo {
+      #context-undo,
+      #context-pdfjs-undo {
         --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
-        #context-redo {
+        #context-redo,
+        #context-pdfjs-redo {
           --menuitem-image: url("chrome://browser/skin/lepton/redo.svg");
         }
       }
-      #context-cut {
-        --menuitem-image: url("chrome://browser/skin/edit-cut.svg");
+      #context-cut,
+      #context-pdfjs-cut {
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
-      #context-copy {
+      #context-copy,
+      #context-pdfjs-copy {
         --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
-      #context-paste {
-        --menuitem-image: url("chrome://browser/skin/edit-paste.svg");
+      #context-paste,
+      #context-pdfjs-paste {
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
-      #context-delete {
+      #context-delete,
+      #context-pdfjs-delete {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
       }
-      #context-selectall {
+      #context-selectall,
+      #context-pdfjs-selectall {
         --menuitem-image: url("chrome://browser/skin/lepton/select-all-on.svg");
       }
       #context-reveal-password {
@@ -12755,7 +12908,7 @@
         --menuitem-image: url("chrome://global/skin/icons/print.svg");
       }
       #context-take-screenshot {
-        --menuitem-image: url("chrome://browser/skin/screenshot.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/screenshot-1.svg");
       }
       #context-keywordfield {
         --menuitem-image: url("chrome://browser/skin/bookmark.svg");
@@ -12788,7 +12941,7 @@
         --menuitem-image: url("chrome://browser/skin/lepton/document-search.svg");
       }
       #context-inspect-a11y {
-        --menuitem-image: url("chrome://devtools/skin/images/tool-accessibility.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/tool-accessibility.svg");
       }
       #context-inspect {
         --menuitem-image: url("chrome://browser/skin/lepton/command-pick.svg");
@@ -12818,7 +12971,7 @@
         --menuitem-image: url("chrome://browser/skin/lepton/eye-show.svg");
       }
       #context-openframeintab {
-        --menuitem-image: url("chrome://browser/skin/new-tab.svg");
+        --menuitem-image: var(--uc-new-tab-icon);
       }
       #context-openframe {
         --menuitem-image: url("chrome://browser/skin/window.svg");
@@ -12836,7 +12989,7 @@
         --menuitem-image: url("chrome://global/skin/icons/print.svg");
       }
       #context-take-frame-screenshot {
-        --menuitem-image: url("chrome://browser/skin/screenshot.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/screenshot-1.svg");
       }
       #context-viewframesource {
         --menuitem-image: url("chrome://browser/skin/lepton/document-search.svg");
@@ -12849,19 +13002,19 @@
         --menuitem-image: url("chrome://browser/skin/lepton/timer10.svg");
       }
       #tm-linkWithhistory {
-        --menuitem-image: url("chrome://browser/skin/lepton/new-tab-skip-forward.svg");
+        --menuitem-image: var(--uc-new-tab-skip-forward-icon);
       }
       #tm-openAllLinks {
-        --menuitem-image: url("chrome://browser/skin/lepton/new-tab-multiple.svg");
+        --menuitem-image: var(--uc-new-tab-multiple-icon);
       }
       #tm-openinverselink {
-        --menuitem-image: url("chrome://browser/skin/lepton/new-tab-forward.svg");
+        --menuitem-image: var(--uc-new-tab-forward-icon);
       }
       #tm-content-closetab {
         --menuitem-image: url("chrome://browser/skin/lepton/dismiss-filled.svg");
       }
       #tm-duplicateTabContext {
-        --menuitem-image: url("chrome://browser/skin/lepton/tab-copy.svg");
+        --menuitem-image: var(--uc-tab-copy-icon);
       }
       #tm-duplicateinWinContext {
         --menuitem-image: url("chrome://browser/skin/lepton/tab-desktop-multiple-bottom.svg");
@@ -12906,12 +13059,7 @@
         --menuitem-image: url("chrome://browser/skin/lepton/fluid.svg");
       }
       .downloadShowMenuItem {
-        --menuitem-image: url("chrome://global/skin/icons/folder.svg");
-      }
-      @supports -moz-bool-pref("userChrome.icon.library") {
-        .downloadShowMenuItem {
-          --menuitem-image: url("chrome://browser/skin/lepton/folder.svg");
-        }
+        --menuitem-image: var(--uc-folder-icon);
       }
       #downloadsContextMenu > menuitem.downloadOpenReferrerMenuItem,
       #downloadsContextMenu > menuitem[command="downloadsCmd_openReferrer"] {
@@ -12942,7 +13090,7 @@
       #placesContext_open\:newtab,
       #placesContext_openContainer\:tabs,
       #placesContext_openLinks\:tabs {
-        --menuitem-image: url("chrome://browser/skin/new-tab.svg");
+        --menuitem-image: var(--uc-new-tab-icon);
       }
       #placesContext_open\:newcontainertab {
         --menuitem-image: url("chrome://browser/skin/lepton/container-openin-16.svg");
@@ -12971,32 +13119,26 @@
         --menuitem-image: url("chrome://browser/skin/lepton/text-sort-ascending.svg");
       }
       #placesContext_cut {
-        --menuitem-image: url("chrome://browser/skin/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       #placesContext_copy {
         --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
       #placesContext_paste_group {
-        --menuitem-image: url("chrome://browser/skin/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       #placesContext_new\:bookmark {
         --menuitem-image: url("chrome://browser/skin/bookmark.svg");
       }
       #placesContext_showInFolder,
       #placesContext_new\:folder {
-        --menuitem-image: url("chrome://global/skin/icons/folder.svg");
-      }
-      @supports -moz-bool-pref("userChrome.icon.library") {
-        #placesContext_showInFolder,
-        #placesContext_new\:folder {
-          --menuitem-image: url("chrome://browser/skin/lepton/folder.svg");
-        }
+        --menuitem-image: var(--uc-folder-icon);
       }
       #placesContext_new\:separator {
         --menuitem-image: url("chrome://browser/skin/lepton/vertical-line.svg");
       }
       #placesContext_paste {
-        --menuitem-image: url("chrome://browser/skin/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       #placesContext_createBookmark {
         --menuitem-image: url("chrome://browser/skin/bookmark.svg");
@@ -13083,7 +13225,7 @@
         --menuitem-image: url("chrome://browser/skin/lepton/link-square.svg");
       }
       #syncedTabsOpenSelectedInTab {
-        --menuitem-image: url("chrome://browser/skin/new-tab.svg");
+        --menuitem-image: var(--uc-new-tab-icon);
       }
       #syncedTabsOpenSelectedInWindow {
         --menuitem-image: url("chrome://browser/skin/window.svg");
@@ -13111,13 +13253,13 @@
         --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
       }
       #SyncedTabsSidebarTabsFilterContext > menuitem[cmd="cmd_cut"] {
-        --menuitem-image: url("chrome://browser/skin/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       #SyncedTabsSidebarTabsFilterContext > menuitem[cmd="cmd_copy"] {
         --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
       #SyncedTabsSidebarTabsFilterContext > menuitem[cmd="cmd_paste"] {
-        --menuitem-image: url("chrome://browser/skin/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       #SyncedTabsSidebarTabsFilterContext > menuitem[cmd="cmd_delete"] {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
@@ -13138,13 +13280,18 @@
         }
       }
       #urlbar-input-container .textbox-contextmenu menuitem[cmd="cmd_cut"] {
-        --menuitem-image: url("chrome://browser/skin/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       #urlbar-input-container .textbox-contextmenu menuitem[cmd="cmd_copy"] {
         --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
+      @supports -moz-bool-pref("userChrome.icon.menu.full") {
+        #strip-on-share {
+          --menuitem-image: url("chrome://browser/skin/lepton/link-no-tracking.svg");
+        }
+      }
       #urlbar-input-container .textbox-contextmenu menuitem[cmd="cmd_paste"] {
-        --menuitem-image: url("chrome://browser/skin/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #paste-and-go {
@@ -13168,13 +13315,13 @@
         }
       }
       .textbox-contextmenu > menuitem[data-l10n-id="text-action-cut"] {
-        --menuitem-image: url("chrome://browser/skin/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       .textbox-contextmenu > menuitem[data-l10n-id="text-action-copy"] {
         --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
       .textbox-contextmenu > menuitem[data-l10n-id="text-action-paste"] {
-        --menuitem-image: url("chrome://browser/skin/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       .textbox-contextmenu > menuitem[data-l10n-id="text-action-delete"] {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
@@ -13189,23 +13336,23 @@
         }
       }
       menuitem.searchbar-clear-history {
-        --menuitem-image: url("chrome://browser/skin/forget.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/forget.svg");
       }
       /*= context_sendTabToDevicePopupMenu =========================================*/
       .sync-menuitem.sendtab-target[clientType="phone"] {
-        --menuitem-image: url("chrome://browser/skin/device-phone.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/device-phone.svg");
       }
       .sync-menuitem.sendtab-target[clientType="tablet"] {
-        --menuitem-image: url("chrome://browser/skin/device-tablet.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/device-tablet.svg");
       }
       .sync-menuitem.sendtab-target[clientType="desktop"] {
-        --menuitem-image: url("chrome://browser/skin/device-desktop.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/device-desktop.svg");
       }
       .sync-menuitem.sendtab-target[clientType="tv"] {
-        --menuitem-image: url("chrome://browser/skin/device-tv.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/device-tv.svg");
       }
       .sync-menuitem.sendtab-target[clientType="vr"] {
-        --menuitem-image: url("chrome://browser/skin/device-vr.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/device-vr.svg");
       }
       .sync-menuitem.sendtab-target[clientType=""] {
         --menuitem-image: url("chrome://browser/skin/lepton/send-to-device.svg");
@@ -13265,7 +13412,7 @@
       /** Global Menu ***************************************************************/
       /*= menu_FilePopup ===========================================================*/
       #menu_newNavigatorTab {
-        --menuitem-image: url("chrome://browser/skin/new-tab.svg");
+        --menuitem-image: var(--uc-new-tab-icon);
       }
       #menu_newUserContext {
         --menuitem-image: url("chrome://browser/skin/lepton/container-openin-16.svg");
@@ -13283,7 +13430,7 @@
         --menuitem-image: url("chrome://browser/skin/lepton/toolbarButton-download.svg");
       }
       #menu_sendLink {
-        --menuitem-image: url("chrome://browser/skin/mail.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/mail.svg");
       }
       menu.share-tab-url-item {
         --menuitem-image: url("chrome://browser/skin/share.svg");
@@ -13315,13 +13462,13 @@
         }
       }
       #menu_cut {
-        --menuitem-image: url("chrome://browser/skin/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       #menu_copy {
         --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
       #menu_paste {
-        --menuitem-image: url("chrome://browser/skin/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       #menu_delete {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
@@ -13349,7 +13496,7 @@
         --menuitem-image: url("chrome://browser/skin/lepton/document-css.svg");
       }
       #repair-text-encoding {
-        --menuitem-image: url("chrome://browser/skin/characterEncoding.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/characterEncoding.svg");
       }
       #enterFullScreenItem {
         --menuitem-image: url("chrome://browser/skin/fullscreen.svg");
@@ -13365,7 +13512,7 @@
         --menuitem-image: url("chrome://browser/skin/reader-mode.svg");
       }
       #menu_showAllTabs {
-        --menuitem-image: url("chrome://browser/skin/lepton/tab.svg");
+        --menuitem-image: var(--uc-tab-icon);
       }
       #documentDirection-swap {
         --menuitem-image: url("chrome://browser/skin/lepton/text-direction-horizontal-ltr.svg");
@@ -13404,7 +13551,7 @@
         --menuitem-image: url("chrome://browser/skin/history.svg");
       }
       #sanitizeItem {
-        --menuitem-image: url("chrome://browser/skin/forget.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/forget.svg");
       }
       #sync-tabs-menuitem {
         --menuitem-image: url("chrome://browser/skin/sync.svg");
@@ -13419,7 +13566,7 @@
         --menuitem-image: url("chrome://global/skin/icons/search-glass.svg");
       }
       #historyUndoMenu {
-        --menuitem-image: url("chrome://browser/skin/tab.svg");
+        --menuitem-image: var(--uc-tab-icon);
       }
       #historyUndoWindowMenu {
         --menuitem-image: url("chrome://browser/skin/window.svg");
@@ -13513,6 +13660,9 @@
       #menu_openHelp {
         --menuitem-image: url("chrome://global/skin/icons/help.svg");
       }
+      #help_reportBrokenSite {
+        --menuitem-image: url("chrome://global/skin/icons/lightbulb.svg");
+      }
       #feedbackPage {
         --menuitem-image: url("chrome://browser/skin/lepton/send.svg");
       }
@@ -13544,12 +13694,7 @@
         --menuitem-image: url("chrome://browser/skin/bookmark.svg");
       }
       #newfolder {
-        --menuitem-image: url("chrome://global/skin/icons/folder.svg");
-      }
-      @supports -moz-bool-pref("userChrome.icon.library") {
-        #newfolder {
-          --menuitem-image: url("chrome://browser/skin/lepton/folder.svg");
-        }
+        --menuitem-image: var(--uc-folder-icon);
       }
       #newseparator {
         --menuitem-image: url("chrome://browser/skin/lepton/vertical-line.svg");
@@ -13563,13 +13708,13 @@
         }
       }
       #orgCut {
-        --menuitem-image: url("chrome://browser/skin/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       #orgCopy {
         --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
       #orgPaste {
-        --menuitem-image: url("chrome://browser/skin/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       #orgDelete {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
@@ -13649,12 +13794,27 @@
     }
   }
   /*= Floorp Browser ===========================================================*/
+  #ssbPageAction-image {
+    list-style-image: url("chrome://browser/skin/lepton/pwa-install.svg");
+  }
+  #ssbPageAction-image[open-ssb="true"] {
+    list-style-image: url("chrome://browser/skin/lepton/pwa-launch.svg");
+  }
   @supports -moz-bool-pref("userChrome.icon.panel") {
     #rebootappmenu {
       list-style-image: url("chrome://browser/skin/lepton/refresh-cw.svg");
     }
     #openprofiledir {
-      list-style-image: url("chrome://browser/skin/lepton/folder.svg");
+      list-style-image: var(--uc-folder-icon);
+    }
+    #appMenu-ssb-button {
+      list-style-image: url("chrome://browser/skin/lepton/pwa-manage.svg");
+    }
+    #appMenu-install-or-open-ssb-current-page-button {
+      list-style-image: url("chrome://browser/skin/lepton/pwa-install.svg");
+    }
+    #appMenu-install-or-open-ssb-current-page-button[open-ssb="true"] {
+      list-style-image: url("chrome://browser/skin/lepton/pwa-launch.svg");
     }
   }
   @supports -moz-bool-pref("userChrome.icon.menu") {
@@ -13674,13 +13834,17 @@
       --menuitem-image: url("chrome://global/skin/icons/edit.svg");
     }
     #usercssloader-submenupopup > menuitem[data-l10n-id="open-css-folder"] {
-      --menuitem-image: url("chrome://browser/skin/lepton/folder.svg");
+      --menuitem-image: var(--uc-folder-icon);
     }
     #usercssloader-submenupopup > menuitem[data-l10n-id="edit-userChromeCss-editor"] {
       --menuitem-image: url("chrome://browser/skin/window.svg");
     }
     #usercssloader-submenupopup > menuitem[data-l10n-id="edit-userContentCss-editor"] {
       --menuitem-image: url("chrome://global/skin/icons/page-portrait.svg");
+    }
+    #context_toggleToPrivateContainer,
+    #open_in_private_container {
+      --menuitem-image: url("chrome://browser/skin/lepton/private-favicon.svg");
     }
     #toggle_statusBar {
       --menuitem-image: url("chrome://browser/skin/lepton/pulse-square.svg");
@@ -13690,22 +13854,20 @@
       stroke: transparent !important;
     }
     #unloadWebpanelMenu {
-      --menuitem-image: url("chrome://browser/skin/lepton/tab-unload.svg");
+      --menuitem-image: var(--uc-tab-unload-icon);
     }
     #changeUAWebpanelMenu {
-      --menuitem-image: url("chrome://devtools/skin/images/command-responsivemode.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/command-responsivemode.svg");
       fill-opacity: 0;
     }
     #deleteWebpanelMenu {
       --menuitem-image: url("chrome://global/skin/icons/delete.svg");
     }
-    
-    /* Temporary Lepton Injection*/
-    #context_toggleToPrivateContainer {
-      --menuitem-image: url("chrome://browser/skin/lepton/private-favicon.svg");      
+    #run-ssb-contextmenu {
+      --menuitem-image: url("chrome://browser/skin/lepton/pwa-launch.svg");
     }
-    #open_in_private_container {
-      --menuitem-image: url("chrome://browser/skin/lepton/private-favicon.svg");
+    #uninstall-ssb-contextmenu {
+      --menuitem-image: url("chrome://browser/skin/lepton/pwa-remove.svg");
     }
   }
 }
