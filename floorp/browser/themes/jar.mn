@@ -450,6 +450,7 @@ browser.jar:
   skin/classic/browser/spinner-progress.svg                    (icons/spinner-progress.svg)
   skin/classic/browser/arrow-back-1x.svg                       (icons/arrow-back-1x.svg)
   skin/classic/browser/addons.svg                              (icons/addons.svg)
+  skin/classic/browser/lepton/dismiss-filled.svg               (designs/lepton/icons/dismiss-filled.svg)
   skin/classic/browser/profile-inactive.svg                    (icons/profile-inactive.svg)
   skin/classic/browser/paste.svg                               (icons/paste.svg)
   skin/classic/browser/menu-update.svg                         (icons/menu-update.svg)
