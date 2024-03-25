@@ -87,6 +87,9 @@ vertical-tabbar =
  .label = Vertical Tab Bar (experimental)
 native-tabbar-tip = Sidebar add-ons and in-built sidebars cannot be used at the same time as Vertical Tabs as this leverages the Firefox sidebar.
 
+native-vertical-tab-show-right =
+ .label = Show Vertical Tab Bar on the right side of the window
+
 hover-vertical-tab =
  .label = Collapse Vertical Tab Bar
 
@@ -542,6 +545,9 @@ workspace-select-container = Select Container Tab
  .label = Select Container Tab
 workspace-customize = 
  .title = Customize Workspace
+
+ floorp-no-workspace-conatiner =
+  .label = No Container
 
 workspace-icon-briefcase =
  .label = Job
@@ -1160,3 +1166,6 @@ floorp-toggle-private-container =
   .accesskey = P
 open-in_private-container =
   .label = Open in Newtab with Private Container
+
+floorp-split-view-menu =
+ .label = Split tab view
