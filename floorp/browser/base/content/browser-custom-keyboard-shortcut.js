@@ -115,14 +115,14 @@ const buildShortCutkeyFunctions = {
   disableAllCustomKeyShortcutElemets() {
     let keyElems = document.querySelectorAll(".floorpCustomShortcutKey");
     for (let keyElem of keyElems) {
-      keyElem.disabled = true;
+      keyElem.remove();
     }
   },
 
   enableAllCustomKeyShortcutElemets() {
     let keyElems = document.querySelectorAll(".floorpCustomShortcutKey");
     for (let keyElem of keyElems) {
-      keyElem.disabled = false;
+      keyElem.removeAttribute("disabled")
     }
   },
 
