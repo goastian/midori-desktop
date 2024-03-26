@@ -4,9 +4,9 @@
 
 // This file contains branding-specific prefs.
 
-pref("startup.homepage_override_url", "https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/");
-pref("startup.homepage_welcome_url", "about:setup | https://blog.ablaze.one/3225/2023-06-22/");
-pref("startup.homepage_welcome_url.additional", "https://docs.ablaze.one/floorp_privacy_policy/");
+pref("startup.homepage_override_url", "https://astian.org/midori-en/");
+pref("startup.homepage_welcome_url", "about:setup | https://astian.org/midori-en/");
+pref("startup.homepage_welcome_url.additional", "https://astian.org/astian-privacy-policies//");
 // Interval: Time between checks for a new version (in seconds)
 pref("app.update.interval", 43200); // 12 hours
 // Give the user x seconds to react before showing the big UI. default=192 hours
@@ -19,13 +19,13 @@ pref("app.update.promptWaitTime", 691200);
 #if MOZ_UPDATE_CHANNEL == beta
   pref("app.update.url.manual", "https://www.mozilla.org/%LOCALE%/firefox/beta");
   pref("app.update.url.details", "https://www.mozilla.org/%LOCALE%/firefox/beta/notes");
-  pref("app.releaseNotesURL", "https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/");
-  pref("app.releaseNotesURL.aboutDialog", "https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/");
+  pref("app.releaseNotesURL", "https://astian.org/midori-en/");
+  pref("app.releaseNotesURL.aboutDialog", "https://astian.org/midori-en/");
 #else
   pref("app.update.url.manual", "https://www.mozilla.org/%LOCALE%/firefox/");
   pref("app.update.url.details", "https://www.mozilla.org/%LOCALE%/firefox/notes");
-  pref("app.releaseNotesURL", "https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/");
-  pref("app.releaseNotesURL.aboutDialog", "https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/");
+  pref("app.releaseNotesURL", "https://astian.org/midori-en/");
+  pref("app.releaseNotesURL.aboutDialog", "https://astian.org/midori-en/");
 #endif
 
 // The number of days a binary is permitted to be old
