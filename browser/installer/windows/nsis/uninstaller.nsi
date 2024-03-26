@@ -154,7 +154,7 @@ ShowUnInstDetails nevershow
 !define URLUninstallSurvey "https://qsurvey.mozilla.com/s3/FF-Desktop-Post-Uninstall?channel=${UpdateChannel}&version=${AppVersion}&osversion="
 
 ; Support for the profile refresh feature
-!define URLProfileRefreshHelp ""
+!define URLProfileRefreshHelp "https://support.mozilla.org/kb/refresh-firefox-reset-add-ons-and-settings"
 
 ; Arguments to add to the command line when launching FileMainEXE for profile refresh
 !define ArgsProfileRefresh "-reset-profile -migration -uninstaller-profile-refresh"
@@ -499,7 +499,6 @@ Section "Uninstall"
   ${un.RegCleanFileHandler}  ".svg"   "MidoriHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".webp"  "MidoriHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".avif"  "MidoriHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".jxl"   "MidoriHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".pdf"   "MidoriPDF-$AppUserModelID"
 
   SetShellVarContext all  ; Set SHCTX to HKLM

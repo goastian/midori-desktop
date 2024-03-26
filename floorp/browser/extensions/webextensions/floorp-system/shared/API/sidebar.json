@@ -7,8 +7,7 @@
         "name": "getExtensionsInSidebar",
         "type": "function",
         "description": "Get extensions in sidebar",
-        "parameters": [
-        ],
+        "parameters": [],
         "async": true
       }
     ]

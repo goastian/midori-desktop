@@ -14756,8 +14756,21 @@ const Search_Search = (0,external_ReactRedux_namespaceObject.connect)(state => (
 ;// CONCATENATED MODULE: ./content-src/components/Background/Background.jsx
 
 const imgLength = 100;
+
+function setImgData(data, url, type, result) {
+  let blobURL = URL.createObjectURL(new Blob([data], {
+    type
+  }));
+  result({
+    "url": url,
+    "data": blobURL
+  });
+}
+
 function Background(props) {
-  if (props.className == "random_image") {
+  var _props$pref;
+
+  if (props.className === "random_image") {
     let [imgSrc, setImgSrc] = (0,external_React_namespaceObject.useState)({
       "url": `chrome://browser/skin/newtabbg-${Math.floor(Math.random() * imgLength)}.webp`
     });
@@ -14777,20 +14790,20 @@ function Background(props) {
         "--background-url": `url(${imgSrc.url})`
       }
     }));
-  } else if (props.className == "selected_folder" && props.imageList != undefined) {
+  } else if (props.className === "selected_folder" && (_props$pref = props.pref) !== null && _props$pref !== void 0 && _props$pref.backgroundPaths) {
+    const imageList = props.pref.backgroundPaths;
     let [fileImgSrc, setFileImgSrc] = (0,external_React_namespaceObject.useState)({
-      "url": props.imageList.urls.length != 0 ? props.imageList.urls[Math.floor(Math.random() * props.imageList.urls.length)] : ""
+      "url": imageList.urls.length ? imageList.urls[Math.floor(Math.random() * imageList.urls.length)] : ""
     });
 
-    if (props.imageList.urls.length != 0) {
-      var _props$pref, _props$pref2;
+    if (imageList.urls.length) {
+      var _props$pref$, _props$pref$2;
 
-      if (props.imageList.urls.indexOf(fileImgSrc.url) == -1 || ((_props$pref = props.pref["floorpBackgroundPathsVal_" + fileImgSrc.url]) === null || _props$pref === void 0 ? void 0 : _props$pref.data) === null) {
-        fileImgSrc.url = props.imageList.urls.length != 0 ? props.imageList.urls[Math.floor(Math.random() * props.imageList.urls.length)] : "";
+      if (imageList.urls.includes(fileImgSrc.url) || ((_props$pref$ = props.pref[`floorpBackgroundPathsVal_${fileImgSrc.url}`]) === null || _props$pref$ === void 0 ? void 0 : _props$pref$.data) === null) {
+        fileImgSrc.url = imageList.urls.length ? imageList.urls[Math.floor(Math.random() * imageList.urls.length)] : "";
         setFileImgSrc({
           "url": fileImgSrc.url
         });
-        if ("blobData" in fileImgSrc) delete fileImgSrc.blobData;
       }
 
       if ("data" in fileImgSrc) {
@@ -14803,8 +14816,8 @@ function Background(props) {
             "--background-url": `url(${fileImgSrc.data})`
           }
         }));
-      } else if (((_props$pref2 = props.pref["floorpBackgroundPathsVal_" + fileImgSrc.url]) === null || _props$pref2 === void 0 ? void 0 : _props$pref2.data) != undefined) {
-        setImgData(props.pref["floorpBackgroundPathsVal_" + fileImgSrc.url].data, fileImgSrc.url, props.pref["floorpBackgroundPathsVal_" + fileImgSrc.url].type, setFileImgSrc);
+      } else if ((_props$pref$2 = props.pref[`floorpBackgroundPathsVal_${fileImgSrc.url}`]) !== null && _props$pref$2 !== void 0 && _props$pref$2.data) {
+        setImgData(props.pref[`floorpBackgroundPathsVal_${fileImgSrc.url}`].data, fileImgSrc.url, props.pref[`floorpBackgroundPathsVal_${fileImgSrc.url}`].type, setFileImgSrc);
       } else {
         props.getImg(fileImgSrc.url);
       }
@@ -14818,7 +14831,47 @@ function Background(props) {
           "--background-url": `url(${fileImgSrc.data})`
         }
       }));
-    } else if (fileImgSrc.url != "") {
+    } else if (fileImgSrc.url !== "") {
+      setFileImgSrc({
+        "url": ""
+      });
+    }
+  } else if (props.className === "selected_image" && props.pref.oneImageData) {
+    const imgData = props.pref.oneImageData;
+    let [fileImgSrc, setFileImgSrc] = (0,external_React_namespaceObject.useState)({
+      "url": imgData.url ?? ""
+    });
+
+    if (imgData.url) {
+      if (imgData.url !== fileImgSrc.url) {
+        fileImgSrc.url = imgData.url;
+        setFileImgSrc({
+          "url": imgData.url
+        });
+      } else if (fileImgSrc.data) {
+        return /*#__PURE__*/external_React_default().createElement("div", {
+          id: "background_back",
+          className: props.className
+        }, /*#__PURE__*/external_React_default().createElement("div", {
+          id: "background",
+          style: {
+            "--background-url": `url(${fileImgSrc.data ?? ""})`
+          }
+        }));
+      } else if (imgData.data) {
+        setImgData(imgData.data, imgData.url, imgData.extension, setFileImgSrc);
+      }
+
+      return /*#__PURE__*/external_React_default().createElement("div", {
+        id: "background_back",
+        className: props.className
+      }, /*#__PURE__*/external_React_default().createElement("div", {
+        id: "background",
+        style: {
+          "--background-url": `url(${fileImgSrc.data})`
+        }
+      }));
+    } else if (fileImgSrc.url !== "") {
       setFileImgSrc({
         "url": ""
       });
@@ -14831,16 +14884,6 @@ function Background(props) {
   }, /*#__PURE__*/external_React_default().createElement("div", {
     id: "background"
   }));
-}
-
-async function setImgData(data, url, type, result) {
-  let blobURL = URL.createObjectURL(new Blob([data], {
-    type: type
-  }));
-  result({
-    "url": url,
-    "data": blobURL
-  });
 }
 ;// CONCATENATED MODULE: ./content-src/components/Base/Base.jsx
 function Base_extends() { Base_extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; return Base_extends.apply(this, arguments); }
@@ -15069,6 +15112,10 @@ class BaseContent extends (external_React_default()).PureComponent {
         Background_ClassName = "selected_folder";
         break;
 
+      case 4:
+        Background_ClassName = "selected_image";
+        break;
+
       default:
         Background_ClassName = "not_background";
         break;
@@ -15078,7 +15125,6 @@ class BaseContent extends (external_React_default()).PureComponent {
       className: prefs["floorp.newtab.backdrop.blur.disable"] ? "" : "floorp-backdrop-blur-enable"
     }, /*#__PURE__*/external_React_default().createElement(Background, {
       className: Background_ClassName,
-      imageList: prefs["backgroundPaths"],
       getImg: this.getImageSend.bind(this),
       pref: prefs
     }), /*#__PURE__*/external_React_default().createElement(CustomizeMenu, {
@@ -15114,23 +15160,14 @@ class BaseContent extends (external_React_default()).PureComponent {
     })) : /*#__PURE__*/external_React_default().createElement(Sections_Sections, null)), /*#__PURE__*/external_React_default().createElement(ConfirmDialog, null))), /*#__PURE__*/external_React_default().createElement("div", {
       id: "floorp"
     }, /*#__PURE__*/external_React_default().createElement("a", {
-      class: "releasenote",
-      href: "https://astian.org/community",
-      target: "_blank"
+      className: prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote",
+      href: "https://community.astian.org"
     }, "Support"), /*#__PURE__*/external_React_default().createElement("br", null), /*#__PURE__*/external_React_default().createElement("br", null), /*#__PURE__*/external_React_default().createElement("a", {
-      class: "releasenote",
-      href: "https://astian.org/midori-en",
-      target: "_blank"
+      className: prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote",
+      href: "https://astian.org/midori-en"
     }, "Release Note")), /*#__PURE__*/external_React_default().createElement("a", {
+      className: prefs["floorp.newtab.imagecredit.hide"] ? "floorp-imagecred-hidden" : "imagecred",
       href: "https://unsplash.com/",
-      style: {
-        position: "fixed",
-        bottom: "1em",
-        left: "1em",
-        fontSize: "16px",
-        color: "#ffffff"
-      },
-      target: "_blank",
       id: "unsplash"
     }, "Unsplash"));
   }

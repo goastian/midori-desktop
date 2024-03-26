@@ -132,3 +132,66 @@ URL: https://github.com/Floorp-Projects/Floorp/commit/ff13fc3e8e0a64028bbea0c565
 changed: "Connect Floorp Core to Gecko of Firefox."
 
 URL: https://github.com/Floorp-Projects/Floorp/commit/32b43fa707b60d668841012cfcab7247de07d103
+
+
+---
+
+14. browser\components\BrowserContentHandler.sys.mjs
+
+**Feature: "Release Note (Upgrade Floorp)"**
+
+changed: "Insert release note codes. If lang start with "ja", open spesific URL for Japanese users."
+
+URL: https://github.com/Floorp-Projects/Floorp/commit/91a52b0d8c24dc37318e621d97925c93c523ccfd
+
+15. browser\components\newtab\lib\TopSitesFeed.jsm | browser\components\newtab\data\content\tippytop\top_sites.json
+
+**Feature: "Newtab"**
+
+changed: "Replace Firefox's newtab sponsors to Floorp's newtab sponsors."
+
+URL: https://github.com/Floorp-Projects/Floorp/commit/80f761b0e9fe7b9ab9383f9f590b822a841c2428
+
+---
+
+16. browser/modules/AsyncTabSwitcher.jsm | dom/ipc/BrowserChild.cpp & BrowserHost.cpp & dom/ipc/BrowserParent.cpp
+
+**Feature: "Split View"**
+
+changed: "Insert split view codes."
+
+URL: https://github.com/Floorp-Projects/Floorp/commit/595e139fe7f51a58481939788668adb947396425
+
+
+---
+
+17. browser/base/content/browser-tabsintitlebar.js | browser/base/content/browser.js
+
+**Feature: "Site Specific Browser"**
+
+changed: "Insert Site Specific Browser codes."
+
+URL: https://github.com/Floorp-Projects/Floorp/commit/c3041c9aebd207d42e8da75ea298cecd7c573196
+
+---
+
+18. browser/app/moz.build
+
+**Feature: "Branding"**
+
+changed: "Replace PDF Document icon to Floorp's PDF Document icon."
+
+URL:
+
+---
+
+19. browser/base/content/browser.js
+
+**Feature: "onLocationChange"**
+
+changed: "Insert onLocationChange codes."
+Line: 5312
+
+URL: [Searchfox](https://searchfox.org/mozilla-central/source/browser/base/content/browser.js#5312)
+
+---

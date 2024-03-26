@@ -776,7 +776,7 @@ LayoutDeviceIntRect HyperTextAccessible::GetCaretRect(nsIWidget** aWidget) {
 
 void HyperTextAccessible::GetSelectionDOMRanges(SelectionType aSelectionType,
                                                 nsTArray<nsRange*>* aRanges) {
-    if (IsDoc() && !AsDoc()->HasLoadState(DocAccessible::eTreeConstructed)) {
+  if (IsDoc() && !AsDoc()->HasLoadState(DocAccessible::eTreeConstructed)) {
     // Rarely, a client query can be handled after a DocAccessible is created
     // but before the initial tree is constructed, since DoInitialUpdate happens
     // during a refresh tick. In that case, there might be a DOM selection, but

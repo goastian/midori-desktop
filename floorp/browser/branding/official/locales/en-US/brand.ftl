@@ -23,5 +23,5 @@
 # This brand name can be used in messages where the product name needs to
 # remain unchanged across different versions (Nightly, Beta, etc.).
 -brand-product-name = Midori
--vendor-short-name = Astian, Inc
-trademarkInfo = Midori and the Midori's logos are trademarks of the Astian, Inc.
+-vendor-short-name = Astian
+trademarkInfo = Midori and the Midori logos are trademarks of the Astian, Inc.

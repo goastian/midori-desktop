@@ -16,12 +16,12 @@
 ## For further details, consult:
 ## https://mozilla-l10n.github.io/styleguides/mozilla_general/#brands-copyright-and-trademark
 
--brand-shorter-name = Midori Dev
--brand-short-name = Midori Dev
--brand-shortcut-name = Midori Dev
--brand-full-name = Midori Dev
+-brand-shorter-name = Floorp Dev
+-brand-short-name = Floorp Dev
+-brand-shortcut-name = Floorp Dev
+-brand-full-name = Floorp Dev
 # This brand name can be used in messages where the product name needs to
 # remain unchanged across different versions (Nightly, Beta, etc.).
--brand-product-name = Midori Dev
--vendor-short-name = Astian
-trademarkInfo = Midori Dev and the Midori logos are trademarks of the Astian, Inc.
+-brand-product-name = Floorp Dev
+-vendor-short-name = Ablaze
+trademarkInfo = Floorp Dev and the Floorp logos are trademarks of the Ablaze.

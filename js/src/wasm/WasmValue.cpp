@@ -353,7 +353,6 @@ template bool wasm::ToJSValue<DebugCodegenVal>(JSContext* cx, const void* src,
                                                FieldType type,
                                                MutableHandleValue dst,
                                                CoercionLevel level);
-
 template bool wasm::ToJSValueMayGC<NoDebug>(FieldType type);
 template bool wasm::ToJSValueMayGC<DebugCodegenVal>(FieldType type);
 
@@ -373,7 +372,6 @@ template bool wasm::ToJSValue<DebugCodegenVal>(JSContext* cx, const void* src,
                                                ValType type,
                                                MutableHandleValue dst,
                                                CoercionLevel level);
-
 template bool wasm::ToJSValueMayGC<NoDebug>(ValType type);
 template bool wasm::ToJSValueMayGC<DebugCodegenVal>(ValType type);
 

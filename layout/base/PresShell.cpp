@@ -2480,7 +2480,7 @@ PresShell::CompleteMove(bool aForward, bool aExtend) {
 // end implementations nsISelectionController
 
 nsIFrame* PresShell::GetRootScrollFrame() const {
-    if (!mFrameConstructor) {
+  if (!mFrameConstructor) {
     return nullptr;
   }
   nsIFrame* rootFrame = mFrameConstructor->GetRootFrame();

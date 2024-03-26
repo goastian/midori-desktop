@@ -8,12 +8,12 @@
 
 # BrandFullNameInternal is used for some registry and file system values
 # instead of BrandFullName and typically should not be modified.
-!define BrandFullNameInternal "Midori Dev"
-!define BrandFullName         "Midori Dev"
-!define CompanyName           "Astian"
-!define URLInfoAbout          "https://astian.org"
+!define BrandFullNameInternal "Floorp Dev"
+!define BrandFullName         "Floorp Dev"
+!define CompanyName           "Ablaze"
+!define URLInfoAbout          "https://Ablaze.one"
 !define URLUpdateInfo         "https://www.mozilla.org/firefox/${AppVersion}/releasenotes"
-!define HelpLink              "https://community.astian.org"
+!define HelpLink              "https://support.ablaze.one"
 
 ; The OFFICIAL define is a workaround to support different urls for Release and
 ; Beta since they share the same branding when building with other branches that

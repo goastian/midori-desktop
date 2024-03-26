@@ -11,25 +11,25 @@
 
 !define BrandFullNameInternal "Midori Browser"
 !define BrandFullName         "Midori Browser"
-!define CompanyName           "Astian, Inc"
+!define CompanyName           "Astian"
 !define URLInfoAbout          "https://astian.org"
 !define URLUpdateInfo         "https://astian.org/midori-en"
-!define HelpLink              "https://astian.org/community"
+!define HelpLink              "https://community.astian.org"
 
 ; The OFFICIAL define is a workaround to support different urls for Release and
 ; Beta since they share the same branding when building with other branches that
 ; set the update channel to beta.
 !define OFFICIAL
-!define URLStubDownloadX86 "https://github.com/goastian/midori-desktop/releases/latest/download/midori-win32.installer.exe"
+!define URLStubDownloadX86 ""
 !define URLStubDownloadAMD64 "https://github.com/goastian/midori-desktop/releases/latest/download/midori-win64.installer.exe"
-!define URLStubDownloadAArch64 "https://github.com/goastian/midori-desktop/releases/latest/download/midori-win64-aarch64.installer.exe"
+!define URLStubDownloadAArch64 ""
 !define URLManualDownload ""
-!define URLSystemRequirements "https://astian.org/community/midori-browser/midori-system-requirements/"
+!define URLSystemRequirements "https://www.mozilla.org/firefox/system-requirements/"
 !define Channel "release"
 
 # The installer's certificate name and issuer expected by the stub installer
-!define CertNameDownload   "Open Source Developer, Astian, Inc"
-!define CertIssuerDownload "DigiCert SHA2 Assured ID Code Signing CA"
+!define CertNameDownload   "Open Source Developer, Ryosuke Asano"
+!define CertIssuerDownload "Certum Code Signing 2021 CA"
 
 # Dialog units are used so the UI displays correctly with the system's DPI
 # settings. These are tweaked to look good with the en-US strings; ideally

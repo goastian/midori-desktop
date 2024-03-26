@@ -5,10 +5,12 @@
 
 // change the text of the install button on addons.mozilla.org
 
-
 function changeInstallButtonText() {
-  let targetElem = document.querySelector(".AMInstallButton-button")
+  let targetElem = document.querySelector(".AMInstallButton-button");
   if (targetElem) {
-    targetElem.textContent = targetElem.textContent.replace("Firefox", "Midori")
+    targetElem.textContent = targetElem.textContent.replace(
+      "Firefox",
+      "Floorp",
+    );
   }
 }

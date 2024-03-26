@@ -1,0 +1,51 @@
+{
+  "plugins": ["mozilla", "@typescript-eslint", "import"],
+  "overrides": [
+    {
+      "files": ["browser/base/content/**/*.mjs"],
+      "env": {
+        "browser": true
+        //"mozilla/browser-window": true
+      }
+    },
+    {
+      "files": ["browser/**/*.mjs", "browser/**/*.ts"],
+
+      "rules": {
+        "jsdoc/newline-after-description": "off",
+        "no-undef": "error",
+        "no-shadow": "off",
+        "@typescript-eslint/no-shadow": "error",
+        "prefer-const": "error"
+      }
+    }
+  ],
+  "root": true,
+  "parserOptions": {
+    "project": "./tsconfig.json",
+    "ecmaVersion": "latest",
+    "sourceType": "module",
+    "tsconfigRootDir": "./"
+    //"createDefaultProgram": true
+  },
+
+  "rules": {
+    "import/no-unresolved": "error"
+  },
+
+  "settings": {
+    "import/resolver": {
+      "typescript": { "alwaysTryTypes": true, "project": "./tsconfig.json" }
+    }
+  },
+  "parser": "@typescript-eslint/parser",
+  "extends": [
+    "plugin:mozilla/recommended",
+    "eslint:recommended",
+    "plugin:mozilla/recommended",
+    "plugin:@typescript-eslint/recommended",
+    //"plugin:@typescript-eslint/recommended-requiring-type-checking",
+    "plugin:import/typescript"
+  ],
+  "plugin": ["mozilla", "import"]
+}

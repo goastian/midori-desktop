@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 const CustomKeyboardShortcutUtils = ChromeUtils.importESModule(
-  "resource:///modules/CustomKeyboardShortcutUtils.sys.mjs"
+  "resource://floorp/modules/CustomKeyboardShortcutUtils.sys.mjs"
 );
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
@@ -71,6 +71,8 @@ const buildShortCutkeyFunctions = {
     let functionCode =
       CustomKeyboardShortcutUtils.keyboradShortcutActions[name][0];
     if (!functionCode) {
+      // Remove invalid shortcut key config.
+      CustomKeyboardShortcutUtils.removeKeyboradShortcutByActionName(name);
       return;
     }
 
@@ -107,7 +109,7 @@ const buildShortCutkeyFunctions = {
     let keyElems = document.querySelector("#mainKeyset").childNodes;
     for (let keyElem of keyElems) {
       if (!keyElem.classList.contains("floorpCustomShortcutKey")) {
-        keyElem.setAttribute("disabled", "true");
+        keyElem.setAttribute("disabled", true);
       }
     }
   },
@@ -122,7 +124,7 @@ const buildShortCutkeyFunctions = {
   enableAllCustomKeyShortcutElemets() {
     let keyElems = document.querySelectorAll(".floorpCustomShortcutKey");
     for (let keyElem of keyElems) {
-      keyElem.removeAttribute("disabled")
+      keyElem.removeAttribute("disabled");
     }
   },
 
@@ -134,12 +136,13 @@ const buildShortCutkeyFunctions = {
   },
 };
 
-
 let customActionsFunctions = {
   evalCustomeActionWithNum(num) {
-    let action = Services.prefs.getStringPref(`floorp.custom.shortcutkeysAndActions.customAction${num}`);
+    let action = Services.prefs.getStringPref(
+      `floorp.custom.shortcutkeysAndActions.customAction${num}`
+    );
     Function(action)();
-  }
-}
+  },
+};
 
 buildShortCutkeyFunctions.init();

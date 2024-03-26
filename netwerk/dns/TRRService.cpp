@@ -45,12 +45,13 @@ static Atomic<TRRService*> sTRRServicePtr;
 static Atomic<size_t, Relaxed> sDomainIndex(0);
 static Atomic<size_t, Relaxed> sCurrentTRRModeIndex(0);
 
-constexpr nsLiteralCString kTRRDomains[3][6] = {
+constexpr nsLiteralCString kTRRDomains[3][7] = {
     // clang-format off
     {
     // When mode is 0, the provider key has no postfix.
     "(other)"_ns,
-    "fc53cb.dns.nextdns.io"_ns,
+    "mozilla.cloudflare-dns.com"_ns,
+    "firefox.dns.nextdns.io"_ns,
     "private.canadianshield.cira.ca"_ns,
     "doh.xfinity.com"_ns,  // Steered clients
     "dns.shaw.ca"_ns, // Steered clients
@@ -58,7 +59,8 @@ constexpr nsLiteralCString kTRRDomains[3][6] = {
     },
     {
     "(other)_2"_ns,
-    "fc53cb.dns.nextdns.io.io_2"_ns,
+    "mozilla.cloudflare-dns.com_2"_ns,
+    "firefox.dns.nextdns.io_2"_ns,
     "private.canadianshield.cira.ca_2"_ns,
     "doh.xfinity.com_2"_ns,  // Steered clients
     "dns.shaw.ca_2"_ns, // Steered clients
@@ -66,7 +68,8 @@ constexpr nsLiteralCString kTRRDomains[3][6] = {
     },
     {
     "(other)_3"_ns,
-    "fc53cb.dns.nextdns.io.io_3"_ns,
+    "mozilla.cloudflare-dns.com_3"_ns,
+    "firefox.dns.nextdns.io_3"_ns,
     "private.canadianshield.cira.ca_3"_ns,
     "doh.xfinity.com_3"_ns,  // Steered clients
     "dns.shaw.ca_3"_ns, // Steered clients

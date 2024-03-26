@@ -777,14 +777,14 @@ def cleanup_pending_crash_reports():
     """
     if mozinfo.isWin:
         location = os.path.expanduser(
-            "~\\AppData\\Roaming\\Astian\\Midori\\Crash Reports"
+            "~\\AppData\\Roaming\\Ablaze\\Floorp\\Crash Reports"
         )
     elif mozinfo.isMac:
         location = os.path.expanduser(
-            "~/Library/Application Support/midori/Crash Reports"
+            "~/Library/Application Support/floorp/Crash Reports"
         )
     else:
-        location = os.path.expanduser("~/.astian/midori/Crash Reports")
+        location = os.path.expanduser("~/.ablaze/floorp/Crash Reports")
     logger = get_logger()
     if os.path.exists(location):
         try:

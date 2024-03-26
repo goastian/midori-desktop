@@ -8,7 +8,7 @@ var { AppConstants } = ChromeUtils.import(
 );
 
 let userjsUtils = ChromeUtils.importESModule(
-  "resource:///modules/userjsUtils.sys.mjs"
+  "resource://floorp/modules/userjsUtils.sys.mjs"
 );
 
 let l10n = new Localization(["browser/floorp.ftl"], true);
@@ -26,6 +26,32 @@ const gUserjsPane = {
       .addEventListener("command", function () {
         gotoPref("general");
       });
+
+    const needreboot = document.getElementsByClassName("needreboot");
+    for (let i = 0; i < needreboot.length; i++) {
+      if (needreboot[i].getAttribute("rebootELIsSet") == "true") {
+        continue;
+      }
+      needreboot[i].setAttribute("rebootELIsSet", "true");
+      needreboot[i].addEventListener("click", function () {
+        if (!Services.prefs.getBoolPref("floorp.enable.auto.restart", false)) {
+          (async () => {
+            let userConfirm = await confirmRestartPrompt(null);
+            if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
+              Services.startup.quit(
+                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
+              );
+            }
+          })();
+        } else {
+          window.setTimeout(function () {
+            Services.startup.quit(
+              Services.startup.eAttemptQuit | Services.startup.eRestart
+            );
+          }, 500);
+        }
+      });
+    }
 
     let buttons = document.getElementsByClassName("apply-userjs-button");
     for (let button of buttons) {
@@ -54,7 +80,9 @@ const gUserjsPane = {
           if (!url) {
             await userjsUtils.userjsUtilsFunctions.resetPreferencesWithUserJsContents();
             window.setTimeout(async function () {
-              try{FileUtils.getFile("ProfD", ["user.js"]).remove(false);} catch(e) {};
+              try {
+                FileUtils.getFile("ProfD", ["user.js"]).remove(false);
+              } catch (e) {}
               Services.prefs.clearUserPref("floorp.user.js.customize");
               Services.obs.notifyObservers([], "floorp-restart-browser");
             }, 3000);

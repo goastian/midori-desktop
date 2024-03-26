@@ -24,4 +24,4 @@
 # remain unchanged across different versions (Nightly, Beta, etc.).
 -brand-product-name = Midori
 -vendor-short-name = Astian
-trademarkInfo = Astian and the Midori logos are trademarks of the Astian, Inc.
+trademarkInfo = Astian and the Midori logos are trademarks of the Astian.

@@ -41,8 +41,12 @@ static double WSSDistance(const Face* aFace, const gfxFontStyle& aStyle) {
 
 void* Pointer::ToPtr(FontList* aFontList,
                      size_t aSize) const MOZ_NO_THREAD_SAFETY_ANALYSIS {
+  // On failure, we'll return null; callers need to handle this appropriately
+  // (e.g. via fallback).
+  void* result = nullptr;
+
   if (IsNull()) {
-    return nullptr;
+    return result;
   }
 
   // Ensure the list doesn't get replaced out from under us. Font-list rebuild
@@ -53,9 +57,6 @@ void* Pointer::ToPtr(FontList* aFontList,
     gfxPlatformFontList::PlatformFontList()->Lock();
   }
 
-  // On failure, we'll return null; callers need to handle this appropriately
-  // (e.g. via fallback).
-  void* result = nullptr;
   uint32_t blockIndex = Block();
 
   // If the Pointer refers to a block we have not yet mapped in this process,
@@ -63,8 +64,13 @@ void* Pointer::ToPtr(FontList* aFontList,
   // our mBlocks list.
   auto& blocks = aFontList->mBlocks;
   if (blockIndex >= blocks.Length()) {
-    if (XRE_IsParentProcess()) {
+    if (MOZ_UNLIKELY(XRE_IsParentProcess())) {
       // Shouldn't happen! A content process tried to pass a bad Pointer?
+      goto cleanup;
+    }
+    // If we're not on the main thread, we can't do the IPC involved in
+    // UpdateShmBlocks; just let the lookup fail for now.
+    if (!isMainThread) {
       goto cleanup;
     }
     // UpdateShmBlocks can fail, if the parent has replaced the font list with
@@ -73,9 +79,8 @@ void* Pointer::ToPtr(FontList* aFontList,
     // about to receive a notification of the new font list anyhow, at which
     // point it will flush its caches and reflow everything, so the temporary
     // failure of this font will be forgotten.
-    // We also return null if we're not on the main thread, as we cannot safely
-    // do the IPC messaging needed here.
-    if (!isMainThread || !aFontList->UpdateShmBlocks()) {
+    // UpdateShmBlocks will take the platform font-list lock during the update.
+    if (MOZ_UNLIKELY(!aFontList->UpdateShmBlocks(true))) {
       goto cleanup;
     }
     MOZ_ASSERT(blockIndex < blocks.Length(), "failure in UpdateShmBlocks?");
@@ -85,7 +90,7 @@ void* Pointer::ToPtr(FontList* aFontList,
     // In at least some cases, however, this can occur transiently while the
     // font list is being rebuilt by the parent; content will then be notified
     // that the list has changed, and should refresh everything successfully.
-    if (blockIndex >= blocks.Length()) {
+    if (MOZ_UNLIKELY(blockIndex >= blocks.Length())) {
       goto cleanup;
     }
   }
@@ -93,7 +98,7 @@ void* Pointer::ToPtr(FontList* aFontList,
   {
     // Don't create a pointer that's outside what the block has allocated!
     const auto& block = blocks[blockIndex];
-    if (Offset() + aSize <= block->Allocated()) {
+    if (MOZ_LIKELY(Offset() + aSize <= block->Allocated())) {
       result = static_cast<char*>(block->Memory()) + Offset();
     }
   }
@@ -133,11 +138,13 @@ Family::Family(FontList* aList, const InitData& aData)
 
 class SetCharMapRunnable : public mozilla::Runnable {
  public:
-  SetCharMapRunnable(uint32_t aListGeneration, Pointer aFacePtr,
-                     gfxCharacterMap* aCharMap)
+  SetCharMapRunnable(uint32_t aListGeneration,
+                     std::pair<uint32_t, bool> aFamilyIndex,
+                     uint32_t aFaceIndex, gfxCharacterMap* aCharMap)
       : Runnable("SetCharMapRunnable"),
         mListGeneration(aListGeneration),
-        mFacePtr(aFacePtr),
+        mFamilyIndex(aFamilyIndex),
+        mFaceIndex(aFaceIndex),
         mCharMap(aCharMap) {}
 
   NS_IMETHOD Run() override {
@@ -145,26 +152,39 @@ class SetCharMapRunnable : public mozilla::Runnable {
     if (!list || list->GetGeneration() != mListGeneration) {
       return NS_OK;
     }
-    dom::ContentChild::GetSingleton()->SendSetCharacterMap(mListGeneration,
-                                                           mFacePtr, *mCharMap);
+    dom::ContentChild::GetSingleton()->SendSetCharacterMap(
+        mListGeneration, mFamilyIndex.first, mFamilyIndex.second, mFaceIndex,
+        *mCharMap);
     return NS_OK;
   }
 
  private:
   uint32_t mListGeneration;
-  Pointer mFacePtr;
+  std::pair<uint32_t, bool> mFamilyIndex;
+  uint32_t mFaceIndex;
   RefPtr<gfxCharacterMap> mCharMap;
 };
 
-void Face::SetCharacterMap(FontList* aList, gfxCharacterMap* aCharMap) {
+void Face::SetCharacterMap(FontList* aList, gfxCharacterMap* aCharMap,
+                           const Family* aFamily) {
   if (!XRE_IsParentProcess()) {
-    Pointer ptr = aList->ToSharedPointer(this);
+    std::pair<uint32_t, bool> familyIndex = aFamily->FindIndex(aList);
+    const auto* faces = aFamily->Faces(aList);
+    uint32_t faceIndex = 0;
+    while (faceIndex < aFamily->NumFaces()) {
+      if (faces[faceIndex].ToPtr<Face>(aList) == this) {
+        break;
+      }
+      ++faceIndex;
+    }
+    MOZ_RELEASE_ASSERT(faceIndex < aFamily->NumFaces(), "Face ptr not found!");
     if (NS_IsMainThread()) {
       dom::ContentChild::GetSingleton()->SendSetCharacterMap(
-          aList->GetGeneration(), ptr, *aCharMap);
+          aList->GetGeneration(), familyIndex.first, familyIndex.second,
+          faceIndex, *aCharMap);
     } else {
-      NS_DispatchToMainThread(
-          new SetCharMapRunnable(aList->GetGeneration(), ptr, aCharMap));
+      NS_DispatchToMainThread(new SetCharMapRunnable(
+          aList->GetGeneration(), familyIndex, faceIndex, aCharMap));
     }
     return;
   }
@@ -235,7 +255,7 @@ void Family::AddFaces(FontList* aList, const nsTArray<Face::InitData>& aFaces) {
       (void)new (face) Face(aList, *initData);
       facePtrs[i] = fp;
       if (initData->mCharMap) {
-        face->SetCharacterMap(aList, initData->mCharMap);
+        face->SetCharacterMap(aList, initData->mCharMap, this);
       }
     }
   }
@@ -608,16 +628,19 @@ void Family::SetupFamilyCharMap(FontList* aList) {
   }
   if (!XRE_IsParentProcess()) {
     // |this| could be a Family record in either the Families() or Aliases()
-    // arrays
+    // arrays; FindIndex will map it back to its index and which array.
+    std::pair<uint32_t, bool> index = FindIndex(aList);
     if (NS_IsMainThread()) {
       dom::ContentChild::GetSingleton()->SendSetupFamilyCharMap(
-          aList->GetGeneration(), aList->ToSharedPointer(this));
+          aList->GetGeneration(), index.first, index.second);
       return;
     }
     NS_DispatchToMainThread(NS_NewRunnableFunction(
         "SetupFamilyCharMap callback",
-        [gen = aList->GetGeneration(), ptr = aList->ToSharedPointer(this)] {
-          dom::ContentChild::GetSingleton()->SendSetupFamilyCharMap(gen, ptr);
+        [gen = aList->GetGeneration(), idx = index.first,
+         alias = index.second] {
+          dom::ContentChild::GetSingleton()->SendSetupFamilyCharMap(gen, idx,
+                                                                    alias);
         }));
     return;
   }
@@ -660,6 +683,26 @@ void Family::SetupFamilyCharMap(FontList* aList) {
     // If all [usable] faces had the same cmap, we can just share it.
     mCharacterMap = firstMapShmPointer;
   }
+}
+
+std::pair<uint32_t, bool> Family::FindIndex(FontList* aList) const {
+  const auto* start = aList->Families();
+  const auto* end = start + aList->NumFamilies();
+  if (this >= start && this < end) {
+    uint32_t index = this - start;
+    MOZ_RELEASE_ASSERT(start + index == this, "misaligned Family ptr!");
+    return std::pair(index, false);
+  }
+
+  start = aList->AliasFamilies();
+  end = start + aList->NumAliases();
+  if (this >= start && this < end) {
+    uint32_t index = this - start;
+    MOZ_RELEASE_ASSERT(start + index == this, "misaligned AliasFamily ptr!");
+    return std::pair(index, true);
+  }
+
+  MOZ_CRASH("invalid font-list Family ptr!");
 }
 
 FontList::FontList(uint32_t aGeneration) {
@@ -708,7 +751,7 @@ FontList::FontList(uint32_t aGeneration) {
     blocks.Clear();
     // Update in case of any changes since the initial message was sent.
     for (unsigned retryCount = 0; retryCount < 3; ++retryCount) {
-      if (UpdateShmBlocks()) {
+      if (UpdateShmBlocks(false)) {
         return;
       }
       // The only reason for UpdateShmBlocks to fail is if the parent recreated
@@ -864,16 +907,26 @@ FontList::ShmBlock* FontList::GetBlockFromParent(uint32_t aIndex) {
   return new ShmBlock(std::move(newShm));
 }
 
-bool FontList::UpdateShmBlocks() {
+// We don't take the lock when called from the constructor, so disable thread-
+// safety analysis here.
+bool FontList::UpdateShmBlocks(bool aMustLock) MOZ_NO_THREAD_SAFETY_ANALYSIS {
   MOZ_ASSERT(!XRE_IsParentProcess());
+  if (aMustLock) {
+    gfxPlatformFontList::PlatformFontList()->Lock();
+  }
+  bool result = true;
   while (!mBlocks.Length() || mBlocks.Length() < GetHeader().mBlockCount) {
     ShmBlock* newBlock = GetBlockFromParent(mBlocks.Length());
     if (!newBlock) {
-      return false;
+      result = false;
+      break;
     }
     mBlocks.AppendElement(newBlock);
   }
-  return true;
+  if (aMustLock) {
+    gfxPlatformFontList::PlatformFontList()->Unlock();
+  }
+  return result;
 }
 
 void FontList::ShareBlocksToProcess(nsTArray<base::SharedMemoryHandle>* aBlocks,
@@ -1305,19 +1358,6 @@ void FontList::SearchForLocalFace(const nsACString& aName, Family** aFamily,
       }
     }
   }
-}
-
-Pointer FontList::ToSharedPointer(const void* aPtr) {
-  const char* p = (const char*)aPtr;
-  const uint32_t blockCount = mBlocks.Length();
-  for (uint32_t i = 0; i < blockCount; ++i) {
-    const char* blockAddr = (const char*)mBlocks[i]->Memory();
-    if (p >= blockAddr && p < blockAddr + SHM_BLOCK_SIZE) {
-      return Pointer(i, p - blockAddr);
-    }
-  }
-  MOZ_DIAGNOSTIC_ASSERT(false, "invalid shared-memory pointer");
-  return Pointer::Null();
 }
 
 size_t FontList::SizeOfIncludingThis(

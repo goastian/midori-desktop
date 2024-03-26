@@ -15,38 +15,70 @@ Preferences.addAll([
   { id: "floorp.delete.browser.border", type: "bool" },
   { id: "floorp.chrome.theme.mode", type: "int" },
   { id: "floorp.tabbar.style", type: "int" },
-  { id: "floorp.browser.tabbar.multirow.max.enabled", type: "bool"},
-  { id: "floorp.browser.tabbar.multirow.newtab-inside.enabled", type: "bool"},
-  { id: "floorp.verticaltab.hover.enabled", type: "bool" },
+  { id: "floorp.browser.tabbar.multirow.max.enabled", type: "bool" },
+  { id: "floorp.browser.tabbar.multirow.newtab-inside.enabled", type: "bool" },
   { id: "floorp.titlebar.favicon.color", type: "bool" },
   { id: "floorp.Tree-type.verticaltab.optimization", type: "bool" },
-])
+  { id: "floorp.browser.tabs.verticaltab.right", type: "bool" },
+  { id: "floorp.verticaltab.hover.enabled", type: "bool" },
+  { id: "floorp.verticaltab.show.newtab.button", type: "bool" },
+]);
 var gDesign = {
   _pane: null,
   init() {
+    const needreboot = document.getElementsByClassName("needreboot");
+    for (let i = 0; i < needreboot.length; i++) {
+      if (needreboot[i].getAttribute("rebootELIsSet") == "true") {
+        continue;
+      }
+      needreboot[i].setAttribute("rebootELIsSet", "true");
+      needreboot[i].addEventListener("click", function () {
+        if (!Services.prefs.getBoolPref("floorp.enable.auto.restart", false)) {
+          (async () => {
+            let userConfirm = await confirmRestartPrompt(null);
+            if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
+              Services.startup.quit(
+                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart,
+              );
+            }
+          })();
+        } else {
+          window.setTimeout(function () {
+            Services.startup.quit(
+              Services.startup.eAttemptQuit | Services.startup.eRestart,
+            );
+          }, 500);
+        }
+      });
+    }
+
     this._pane = document.getElementById("paneDesign");
-    document.getElementById("leptonButton").addEventListener("click", function () {
-      window.location.href = "about:preferences#lepton";
-    });
+    document
+      .getElementById("leptonButton")
+      .addEventListener("click", function () {
+        window.location.href = "about:preferences#lepton";
+      });
 
     let disableMultirowPref = () => {
-      let elems = document.getElementsByClassName("multiRowTabs")
+      let elems = document.getElementsByClassName("multiRowTabs");
       for (let i = 0; i < elems.length; i++) {
-        elems[i].disabled = Services.prefs.getIntPref("floorp.tabbar.style", 0) != 1;
+        elems[i].disabled =
+          Services.prefs.getIntPref("floorp.tabbar.style", 0) != 1;
       }
-      elems = document.getElementsByClassName("verticalTabs")
+      elems = document.getElementsByClassName("verticalTabs");
       for (let i = 0; i < elems.length; i++) {
-        elems[i].disabled = Services.prefs.getIntPref("floorp.tabbar.style", 0) != 2;
+        elems[i].disabled =
+          Services.prefs.getIntPref("floorp.tabbar.style", 0) != 2;
       }
-    }
-    disableMultirowPref()
-    Services.prefs.addObserver("floorp.tabbar.style",disableMultirowPref);
+    };
+    disableMultirowPref();
+    Services.prefs.addObserver("floorp.tabbar.style", disableMultirowPref);
 
     {
       let prefName = "floorp.browser.tabbar.multirow.max.row";
       let elem = document.getElementById("MultirowValue");
       elem.value = Services.prefs.getIntPref(prefName, undefined);
-      elem.addEventListener('change', function () {
+      elem.addEventListener("change", function () {
         Services.prefs.setIntPref(prefName, Number(elem.value));
       });
       Services.prefs.addObserver(prefName, function () {
@@ -54,14 +86,16 @@ var gDesign = {
       });
     }
 
-    document.getElementById("leptonButton").addEventListener("click", function () {
-      window.location.href = "about:preferences#lepton";
-    });
+    document
+      .getElementById("leptonButton")
+      .addEventListener("click", function () {
+        window.location.href = "about:preferences#lepton";
+      });
 
     document
-        .getElementById("colors")
-        .addEventListener("command", gMainPane.configureColors.bind(gMainPane));
-        AppearanceChooser.init();
+      .getElementById("colors")
+      .addEventListener("command", gMainPane.configureColors.bind(gMainPane));
+    AppearanceChooser.init();
   },
 };
 
@@ -75,7 +109,9 @@ const TSTStatus = async (addonID, className) => {
         display: none !important;
       }
       `;
-    document.getElementsByTagName("head")[0].insertAdjacentElement("beforeend", addontag);
+    document
+      .getElementsByTagName("head")[0]
+      .insertAdjacentElement("beforeend", addontag);
   }
 };
 

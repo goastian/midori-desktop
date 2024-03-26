@@ -521,6 +521,10 @@ browser.jar:
   skin/classic/browser/design-images/floorp-fluerial-dark.jpg               (design-images/floorp-fluerial-dark.jpg)
   skin/classic/browser/design-images/floorp-fluerial-white.jpg              (design-images/floorp-fluerial-white.jpg)
 
+# Floorp Notes
+  skin/classic/browser/notes.png                                          (icons/notes.png)
+  skin/classic/browser/notes-bms.svg                                      (icons/notes-bms.svg)
+
 # Workspace
   skin/classic/browser/workspace-floorp.png                               (icons/workspace-floorp.png)
   skin/classic/browser/workspace-menu-check.svg                           (icons/menu-check.svg)

@@ -148,7 +148,8 @@ function needHomepageOverride(prefb) {
 
   if (buildID != savedBuildID) {
     prefb.setCharPref("browser.startup.homepage_override.buildID", buildID);
-    return OVERRIDE_NEW_BUILD_ID;
+    // Floorp Injections
+    return OVERRIDE_NEW_MSTONE;
   }
 
   return OVERRIDE_NONE;
@@ -698,9 +699,18 @@ nsBrowserContentHandler.prototype = {
             willRestoreSession =
               lazy.SessionStartup.isAutomaticRestoreEnabled();
 
+            // Floorp Injections
+            // If "Services.locale.requestedLocale" is start with "ja" We will show Japanese version of Release Notes
             overridePage = Services.urlFormatter.formatURLPref(
               "startup.homepage_override_url"
             );
+
+            if (Services.locale.requestedLocale.startsWith("ja")) {
+              overridePage = Services.urlFormatter.formatURLPref(
+                "floorp.startup.homepage_override_url.ja"
+              );
+            }
+
             let update = lazy.UpdateManager.readyUpdate;
             if (
               update &&
@@ -1014,7 +1024,6 @@ function maybeRecordToHandleTelemetry(uri, isLaunch) {
       ".xhtml",
       ".svg",
       ".webp",
-      ".jxl",
     ]);
     if (registeredExtensions.has(extension)) {
       Services.telemetry.keyedScalarAdd(scalar, extension, 1);

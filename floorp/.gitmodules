@@ -1,0 +1,3 @@
+[submodule "browser/locales/l10n-central"]
+	path = browser/locales/l10n-central
+	url = https://github.com/Floorp-Projects/Unified-l10n-central

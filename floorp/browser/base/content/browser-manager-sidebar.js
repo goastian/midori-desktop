@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 let { BrowserManagerSidebar } = ChromeUtils.importESModule(
-  "resource:///modules/BrowserManagerSidebar.sys.mjs"
+  "resource://floorp/modules/BrowserManagerSidebar.sys.mjs"
 );
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 /*---------------------------------------------------------------- browser manager sidebar ----------------------------------------------------------------*/
@@ -75,69 +75,6 @@ const bmsController = {
             data.id.replace("BSB-", "")
           );
           break;
-      }
-    },
-    setFlexOrder: () => {
-      const fxSidebarPosition = "sidebar.position_start";
-      const floorpSidebarPosition = "floorp.browser.sidebar.right";
-      let fxSidebarPositionPref = Services.prefs.getBoolPref(fxSidebarPosition);
-      let floorpSidebarPositionPref = Services.prefs.getBoolPref(
-        floorpSidebarPosition
-      );
-      let fxSidebar = document.getElementById("sidebar-box");
-      let fxSidebarSplitter = document.getElementById("sidebar-splitter");
-      let floorpSidebar = document.getElementById("sidebar2-box");
-      let floorpSidebarSplitter = document.getElementById("sidebar-splitter2");
-      let floorpSidebarSelectBox =
-        document.getElementById("sidebar-select-box");
-      let browserBox = document.getElementById("appcontent");
-
-      // floorpSidebarSelectBox has to always be the window's last child
-      // Seeking opinions on whether we should nest.
-      if (
-        fxSidebarPositionPref === true &&
-        floorpSidebarPositionPref === true
-      ) {
-        //Firefox's sidebar position: left, Floorp's sidebar position: right
-        fxSidebar.style.order = "0";
-        fxSidebarSplitter.style.order = "1";
-        browserBox.style.order = "2";
-        floorpSidebarSplitter.style.order = "3";
-        floorpSidebar.style.order = "4";
-        floorpSidebarSelectBox.style.order = "5";
-      } else if (
-        fxSidebarPositionPref === true &&
-        floorpSidebarPositionPref === false
-      ) {
-        //Firefox's sidebar position: left, Floorp's sidebar position: left
-        floorpSidebarSelectBox.style.order = "0";
-        floorpSidebar.style.order = "1";
-        floorpSidebarSplitter.style.order = "2";
-        fxSidebar.style.order = "3";
-        fxSidebarSplitter.style.order = "4";
-        browserBox.style.order = "5";
-      } else if (
-        fxSidebarPositionPref === false &&
-        floorpSidebarPositionPref === true
-      ) {
-        //Firefox's sidebar position: right, Floorp's sidebar position: right
-        browserBox.style.order = "0";
-        fxSidebarSplitter.style.order = "1";
-        fxSidebar.style.order = "2";
-        floorpSidebarSplitter.style.order = "3";
-        floorpSidebar.style.order = "4";
-        floorpSidebarSelectBox.style.order = "5";
-      } else if (
-        fxSidebarPositionPref === false &&
-        floorpSidebarPositionPref === false
-      ) {
-        //Firefox's sidebar position: right, Floorp's sidebar position: left
-        floorpSidebarSelectBox.style.order = "0";
-        floorpSidebar.style.order = "1";
-        floorpSidebarSplitter.style.order = "2";
-        browserBox.style.order = "3";
-        fxSidebarSplitter.style.order = "4";
-        fxSidebar.style.order = "5";
       }
     },
     selectSidebarItem: event => {
@@ -476,7 +413,9 @@ const bmsController = {
         let webpanelElem = window.MozXULElement.parseXULToFragment(`
               <browser 
                 id="webpanel${webpanel_id}"
-                class="webpanels ${isFloorp ? "isFloorp" : "isWeb"} ${webpanelURL.slice(0, 9) == "extension" ? "isExtension" : ""}"
+                class="webpanels ${isFloorp ? "isFloorp" : "isWeb"} ${
+                  webpanelURL.slice(0, 9) == "extension" ? "isExtension" : ""
+                }"
                 flex="1"
                 xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
                 disablehistory="true"
@@ -487,15 +426,22 @@ const bmsController = {
                 messagemanagergroup="browsers"
                 autocompletepopup="PopupAutoComplete"
                 initialBrowsingContextGroupId="40"
-              ${isWeb ? `
-                usercontextid="${(typeof wibpanel_usercontext) == "number" ? String(wibpanel_usercontext) : "0"}"
+              ${
+                isWeb
+                  ? `
+                usercontextid="${
+                  typeof wibpanel_usercontext == "number"
+                    ? String(wibpanel_usercontext)
+                    : "0"
+                }"
                 changeuseragent="${webpanel_userAgent ? "true" : "false"}"
                 webextension-view-type="sidebar"
                 type="content"
                 remote="true"
                 maychangeremoteness="true"
                 context=""
-                ` : ""
+                `
+                  : ""
               }
                />
                 `);
@@ -806,25 +752,6 @@ const bmsController = {
     bmsController.controllFunctions.changeVisibleWenpanel();
   }
   window.bmsController = bmsController;
-
-  // Override Firefox's sidebar position & Floorp sidebar position.
-  // Listen to "sidebarcommand" event.
-  // Firefox pref: true = left, false = right
-  // Floorp pref: true = right, false = left
-  const fxSidebarPosition = "sidebar.position_start";
-  const floorpSidebarPosition = "floorp.browser.sidebar.right";
-  Services.prefs.addObserver(
-    fxSidebarPosition,
-    bmsController.eventFunctions.setFlexOrder
-  );
-  Services.prefs.addObserver(
-    floorpSidebarPosition,
-    bmsController.eventFunctions.setFlexOrder
-  );
-  // Run function when browser start.
-  SessionStore.promiseInitialized.then(() => {
-    bmsController.eventFunctions.setFlexOrder();
-  });
 
   if (Services.prefs.getBoolPref("floorp.browser.sidebar2.addons.enabled")) {
     // Browser Manager Sidebar embedded check

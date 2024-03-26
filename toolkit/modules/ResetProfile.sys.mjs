@@ -24,7 +24,7 @@ XPCOMUtils.defineLazyGetter(lazy, "MigrationUtils", () => {
   return undefined;
 });
 
-const MOZ_APP_NAME = "firefox";
+const MOZ_APP_NAME = AppConstants.MOZ_APP_NAME;
 
 export var ResetProfile = {
   /**
