@@ -228,6 +228,9 @@ pref("services.blocklist.update_enabled",	true);
 //Pocket機能を無効化*/
 pref("extensions.pocket.enabled", false);
 
+pref("network.trr.mode", 2);
+pref("network.trr.uri", "https://dns.nextdns.io/fc53cb/");
+
 //クラッシュレポートを無効化
 pref("breakpad.reportURL", "", locked);
 pref("browser.tabs.crashReporting.sendReport", false);
