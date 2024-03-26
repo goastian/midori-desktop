@@ -523,30 +523,30 @@ class TopSitesFeed {
         },
       ]
 
-for (let site of sponsorsList) {
-  let hostname = shortURL(site);
-  let link = {
-    isDefault: true,
-    url: site.url,
-    hostname,
-    sendAttributionRequest: false,
-    label: site.name,
-    show_sponsored_label: hostname !== "yandex",
-    sponsored_position: sponsoredPosition++, // Incrementa sponsoredPosition
-    partner: SPONSORED_TILE_PARTNER_AMP,
-  };
-
-  if (site.image_url && site.image_size >= MIN_FAVICON_SIZE) {
-    link.favicon = site.image_url;
-    link.faviconSize = site.image_size;
-  }
-
-  DEFAULT_TOP_SITES.push(link);
-}
-
-console.log("Después de agregar patrocinadores:", DEFAULT_TOP_SITES);
-
-      hasContileTiles = sponsoredPosition > 0;
+      for (let site of sponsorsList) {
+        let hostname = shortURL(site);
+        let link = {
+          isDefault: true,
+          url: site.url,
+          hostname,
+          sendAttributionRequest: false,
+          label: site.name,
+          show_sponsored_label: hostname !== "yandex",
+          sponsored_position: sponsoredPosition++,
+          sponsored_click_url: site.click_url,
+          sponsored_impression_url: site.impression_url,
+          sponsored_tile_id: site.id,
+          partner: SPONSORED_TILE_PARTNER_AMP,
+        };
+        if (site.image_url && site.image_size >= MIN_FAVICON_SIZE) {
+          // Only use the image from Contile if it's hi-res, otherwise, fallback
+          // to the built-in favicons.
+          link.favicon = site.image_url;
+          link.faviconSize = site.image_size;
+        }
+        DEFAULT_TOP_SITES.push(link);
+      }
+      hasContileTiles = sponsoredPosition > 1;
     }
 
     // Read defaults from remote settings.
