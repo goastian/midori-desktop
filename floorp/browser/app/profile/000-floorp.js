@@ -80,12 +80,12 @@ pref("floorp.openLinkInExternal.enabled", false);
 pref("floorp.openLinkInExternal.browserId", "");
 
 // システムアドオンのアップデート確認先
-pref("extensions.systemAddon.update.url", "https://floorp-update.ablaze.one/systemAddon/xml/%DISPLAY_VERSION%/%OS%/update.xml");
+pref("extensions.systemAddon.update.url", "https://update.astian.org/systemAddon/xml/%DISPLAY_VERSION%/%OS%/update.xml");
 
 // 言語設定をシステムに合わせる
 pref("intl.locale.requested", "");
 
-pref("app.feedback.baseURL", "https://support.ablaze.one/");
+pref("app.feedback.baseURL", "https://community.astian.org/");
 
 // 多段タブ
 pref("floorp.tabbar.style",0);
