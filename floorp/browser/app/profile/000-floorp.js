@@ -62,7 +62,7 @@ pref("floorp.multitab.bottommode", false);
 pref("browser.display.statusbar", false);
 
 
-pref("floorp.browser.sidebar.right", true);// サイドバーの右側を表示
+pref("floorp.browser.sidebar.right", false);// サイドバーの右側を表示
 pref("floorp.browser.sidebar.enable", true);// サイドバーを表示
 
 // url:URL width:幅 userAgent:userAgent usercontext:コンテナタブ
@@ -113,7 +113,7 @@ pref("floorp.browser.tabs.openNewTabPosition", -1);
 //ネイティブ実装垂直タブ
 pref("floorp.browser.native.verticaltabs.enabled", false);
 pref("floorp.verticaltab.hover.enabled", false);
-pref("floorp.browser.tabs.verticaltab.right", false);
+pref("floorp.browser.tabs.verticaltab.right", true);
 pref("floorp.browser.tabs.verticaltab.temporary.disabled", false);
 pref("floorp.browser.tabs.verticaltab.width", 200);
 
