@@ -33,7 +33,7 @@ export let BrowserManagerSidebar = {
       url: "chrome://browser/content/notes/notes-bms.html",
       l10n: `notes-sidebar`,
       defaultWidth: 550,
-      enabled: true,
+      enabled: false,
     },
   },
 
