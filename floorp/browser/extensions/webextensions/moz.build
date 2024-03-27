@@ -6,9 +6,10 @@
 
 DIRS += [
     "floorp-actions",
-    "multirow-tabs",
     "official-site-ua",
+    "safe-midori",
     "webpanel-ua",
+    "multirow-tabs",
 ]
 
 DIRS += ["floorp-system/shared"]
