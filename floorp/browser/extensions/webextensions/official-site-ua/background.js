@@ -27,10 +27,9 @@ browser.webRequest.onBeforeSendHeaders.addListener(
   rewriteUserAgentHeader,
   {
     urls: [
-      "https://ablaze.one/*",
-      "https://floorp.ablaze.one/*",
-      "https://floorp.app/*",
-      "https://support.ablaze.one/",
+      "https://astian.org/*",
+      "https://astian.org/midori-browser/*",
+      "https://community.astian.org/",
       "https://ss1.xrea.com/menkuri.s270.xrea.com/*",
     ],
   },
