@@ -21,7 +21,7 @@ on:
 #----------------------------------------- JOBS -----------------------------------------#
 jobs:
   get-display-version:
-  ## only run this job if the repository owner is goastian . This is to prevent forks from running this job.
+    ## only run this job if the repository owner is goastian . This is to prevent forks from running this job.
     if: github.repository_owner == 'goastian' || github.event_name != 'schedule'
     runs-on: ubuntu-latest
     outputs:
@@ -63,58 +63,22 @@ jobs:
 
 #? Original branding of the code is official
 #? It seems in PGO build, branding is not important in NOT deploying binary
-  build-win-x86_64-profgen:
+  Part1-win-x86_64-build-with-profgen-zstd:
     uses: ./.github/workflows/windows-build.yml
     with:
       profgen: true
       aarch64: false
       zstd: true
 
-  win-x86_64-gen-profdata-and-jarlog:
-    needs: build-win-x86_64-profgen
-    runs-on: windows-2022
+  Part2-win-x86_64-gen-profdata-and-jarlog:
+    needs: Part1-win-x86_64-build-with-profgen-zstd
+    uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
+    with:
+     browser-artifact-name: midori-windows-x86_64-build-with-profgen-zstd
+     arch: x86_64
 
-    steps:
-    - uses: actions/download-artifact@v3
-      name: Download artifact 📥
-      with:
-        name: midori-windows-x86_64-build-with-profgen-zstd
-        path: C:\artifact
-
-    - name:  Unpack artifact
-      run: |
-        cd C:\artifact
-        zstd -d midori-*.tar.zst
-        7z x midori-*.tar
-
-    - uses: actions/checkout@v3
-      name: Clone 🧬
-
-    - name: Setup 🪛
-      run: |
-        (New-Object System.Net.WebClient).DownloadFile("https://ftp.mozilla.org/pub/mozilla/libraries/win32/MozillaBuildSetup-Latest.exe","C:\MozillaBuildSetup-Latest.exe")
-        C:\MozillaBuildSetup-Latest.exe /S | out-null
-
-    - name: Generate 🔄
-      run: |
-        $workspace_dir = [regex]::replace($env:GITHUB_WORKSPACE, "^([A-Z]):", { "/" + $args.value.Substring(0, 1).toLower() }) -replace "\\","/"
-
-        echo "cd $workspace_dir" '' >> mozilla-build-run.sh
-        echo 'export PATH=/c/mozilla-build/msys2/usr/bin:$PATH' '' >> mozilla-build-run.sh
-        echo './mach --no-interactive bootstrap --application-choice browser' '' >> mozilla-build-run.sh
-        echo 'LLVM_PROFDATA=/c/Users/runneradmin/.mozbuild/clang/bin/llvm-profdata.exe JARLOG_FILE=en-US.log ./mach python build/pgo/profileserver.py --binary /c/artifact/midori/midori.exe' '' >> mozilla-build-run.sh
-        C:\mozilla-build\start-shell.bat $workspace_dir\mozilla-build-run.sh
-
-    - name: Publish 🎁
-      uses: actions/upload-artifact@v3
-      with:
-        name: midori-windows-x86_64-profdata-and-jarlog
-        path: |
-          merged.profdata
-          en-US.log
-
-  build-win-x86_64-with-profdata-and-jarlog:
-    needs: [win-x86_64-gen-profdata-and-jarlog,get-buildid]
+  Part3-win-x86_64-build-with-profdata-and-jarlog:
+    needs: [Part2-win-x86_64-gen-profdata-and-jarlog ,get-buildid]
     uses: ./.github/workflows/windows-build.yml
     with:
       aarch64: false
@@ -124,8 +88,8 @@ jobs:
       out_artifact_name: please-use-this-midori-windows-x86_64-package-build-with-profdata-and-jarlog
       MOZ_BUILD_DATE: ${{needs.get-buildid.outputs.buildids}}
 
-  win-x86_64-gen-update-xml:
-    needs: [get-display-version, get-buildid, get-inside-version,build-win-x86_64-with-profdata-and-jarlog]
+  Part4-win-x86_64-gen-update-xml:
+    needs: [get-display-version, get-buildid, get-inside-version,Part3-win-x86_64-build-with-profdata-and-jarlog]
     runs-on: ubuntu-latest
     steps:
     - name: generate update XML file
@@ -152,8 +116,8 @@ jobs:
         INSDVER: ${{needs.get-inside-version.outputs.inside-version}}
         BUILDID: ${{needs.get-buildid.outputs.buildids}}
         GHREPO: ${{github.repository}}
-        MAR_NAME: ${{needs.build-win-x86_64-with-profdata-and-jarlog.outputs.mar_name}}
-        MAR_SIZE: ${{needs.build-win-x86_64-with-profdata-and-jarlog.outputs.mar_size}}
+        MAR_NAME: ${{needs.Part3-win-x86_64-build-with-profdata-and-jarlog.outputs.mar_name}}
+        MAR_SIZE: ${{needs.Part3-win-x86_64-build-with-profdata-and-jarlog.outputs.mar_size}}
 
     - name: Publish 🎁
       uses: actions/upload-artifact@v3
@@ -163,7 +127,7 @@ jobs:
           WINNT-x86_64.xml
 
 #----------------------------------------- LINUX -----------------------------------------#
-  build-linux-x86_64-PGO:
+  Part1-build-linux-x86_64-PGO:
     uses: ./.github/workflows/linux-build.yml
     needs: [get-buildid]
     with:
@@ -172,9 +136,9 @@ jobs:
       mar: true
       MOZ_BUILD_DATE: ${{needs.get-buildid.outputs.buildids}}
 
-  linux-x86_64-gen-update-xml:
+  Part2-linux-x86_64-gen-update-xml:
     runs-on: 'ubuntu-latest'
-    needs: [build-linux-x86_64-PGO,get-display-version,get-inside-version,get-buildid]
+    needs: [Part1-build-linux-x86_64-PGO, get-display-version, get-inside-version, get-buildid]
     steps:
       - name: generate update XML file
         run: |
@@ -200,8 +164,8 @@ jobs:
           INSDVER: ${{needs.get-inside-version.outputs.inside-version}}
           BUILDID: ${{needs.get-buildid.outputs.buildids}}
           GHREPO: ${{github.repository}}
-          MAR_NAME: ${{needs.build-linux-x86_64-PGO.outputs.mar_name}}
-          MAR_SIZE: ${{needs.build-linux-x86_64-PGO.outputs.mar_size}}
+          MAR_NAME: ${{needs.Part1-build-linux-x86_64-PGO.outputs.mar_name}}
+          MAR_SIZE: ${{needs.Part1-build-linux-x86_64-PGO.outputs.mar_size}}
       - name: Publish 🎁
         uses: actions/upload-artifact@v3
         with:
@@ -211,93 +175,20 @@ jobs:
 
 #----------------------------------------- macOS -----------------------------------------#
 
-  build-mac-universal-profgen:
+  Part1-macOS-Universal-build-with-profgen:
     uses: ./.github/workflows/macOS-Universal.yml
     with:
       profgen: true
     secrets:
       MACOS_CROSS_TOOLS_KEY: ${{ secrets.MACOS_CROSS_TOOLS_KEY }}
 
-  mac-universal-gen-profdata-and-jarlog:
-    needs: [build-mac-universal-profgen]
-    runs-on: ${{ matrix.runs-on }}
-    strategy:
-      matrix:
-        # GitHub doesn't support M1 macs yet, so we need to use a self-hosted runner.
-        runs-on: [macos-latest, self-hosted]
-        # macos-latest is x86_64, self-hosted is arm64
+  Part2-macOS-Universal-gen-profdata-and-jarlog:
+    uses: ./.github/workflows/macOS-generate-profile-data-and-jarlog.yml
+    needs: Part1-macOS-Universal-build-with-profgen
 
-    steps:
-      - name: Init
-        run: |
-          export RUNNER_USERDIR=`echo ~`
-          echo "RUNNER_USERDIR=$RUNNER_USERDIR" >> $GITHUB_ENV
-          mkdir -p ~/downloads/artifacts
-
-      - name: Clean up (Self-hosted only)
-        if: ${{ matrix.runs-on == 'self-hosted' }}
-        run: |
-          rm -rf ~/downloads/artifacts
-          rm -rf ./midori
-
-      - uses: actions/checkout@v3
-        name: Clone 🧬
-
-      - name: Check Arch type
-        shell: bash
-        run: |
-          if [[ $GHA_BUILD_MACHINE != 'macos-latest' ]]; then
-            export ARCH_TYPE=`echo "aarch64"`
-            echo "ARCH_TYPE=$ARCH_TYPE" >> $GITHUB_ENV
-          else
-            export ARCH_TYPE=`echo "x86_64"`
-            echo "ARCH_TYPE=$ARCH_TYPE" >> $GITHUB_ENV
-          fi
-        env:
-          GHA_BUILD_MACHINE: ${{ matrix.runs-on }}
-
-      - uses: actions/download-artifact@v3
-        id: download-artifacts-mac-enable-profgen
-        name: Download artifact 📥
-        with:
-          name: midori-mac-${{ env.ARCH_TYPE }}-build-with-profgen 
-          path: ~/downloads/artifacts
-
-      - name: setup environment 🌲
-        run: |
-          echo -e "ac_add_options --enable-bootstrap" >> mozconfig
-
-          echo 'mozconfig: **********************'
-          cat ./mozconfig
-          echo '*********************************'
-
-          brew install gnu-tar
-          export PATH=/usr/local/opt/gnu-tar/libexec/gnubin:$PATH
-          ./mach --no-interactive bootstrap --application-choice browser
-
-      - name: Extract artifact 📂
-        run: |
-          mkdir -p ./midori
-          cp ${{ steps.download-artifacts-mac-enable-profgen.outputs.download-path }}/${ARCH_TYPE}-apple-darwin-output.tar.xz ./
-          tar xf ${ARCH_TYPE}-apple-darwin-output.tar.xz
-          
-      - name: Generate Profdata 📊
-        run: |
-          LLVM_PROFDATA=$RUNNER_USERDIR/.mozbuild/clang/bin/llvm-profdata JARLOG_FILE=en-US.log ./mach python build/pgo/profileserver.py --binary ./obj-${ARCH_TYPE}-apple-darwin/dist/midori/Midori.app/Contents/MacOS/midori
-        env:
-          GHA_BUILD_MACHINE: ${{ matrix.runs-on }}
-      
-      - name: Publish 🎁
-        uses: actions/upload-artifact@v3
-        with:
-          name: midori-${{ env.ARCH_TYPE }}-apple-darwin-profdata-and-jarlog
-          path: |
-            merged.profdata
-            en-US.log
-
-  build-mac-universal-with-profdata:
+  Part3-macOS-Universal-build-with-profdata-and-jarlog:
     uses: ./.github/workflows/macOS-Universal.yml
-    needs: [get-buildid, mac-universal-gen-profdata-and-jarlog]
+    needs: [get-buildid, Part2-macOS-Universal-gen-profdata-and-jarlog]
     with:
       build-with-profdata-and-jarlog: true
       beta: true
@@ -305,9 +196,9 @@ jobs:
     secrets:
       MACOS_CROSS_TOOLS_KEY: ${{ secrets.MACOS_CROSS_TOOLS_KEY }}
 
-  create-mac-universal-artifact:
+  Part4-macOS-Universal-package-and-sign:
     uses: ./.github/workflows/macOS-integration.yml
-    needs: [get-buildid, get-display-version, get-inside-version, build-mac-universal-with-profdata]
+    needs: [get-buildid, get-display-version, get-inside-version, Part3-macOS-Universal-build-with-profdata-and-jarlog]
     with:
       beta: true
       mar: true
@@ -326,7 +217,7 @@ jobs:
 
 ##################################################################### Deployments #######################################################################################################
   Deployments:
-    needs: [get-display-version, get-buildid, get-inside-version, linux-x86_64-gen-update-xml, win-x86_64-gen-update-xml, create-mac-universal-artifact]
+    needs: [get-display-version, get-buildid, get-inside-version, Part2-linux-x86_64-gen-update-xml, Part4-win-x86_64-gen-update-xml, Part4-macOS-Universal-package-and-sign]
     runs-on: ubuntu-latest
     steps:
 
@@ -380,6 +271,11 @@ jobs:
         find . -print | sed -e "s;[^/]*/;|____;g;s;____|; |;g"
         echo "****************************************************************************************************"
 
+    - name: Rename Linux tar.bz2 file 📝
+      run: |
+        cd ~/downloads/artifacts/linux-x64
+        mv midori-*.linux-x86_64.tar.bz2 midori-linux-x86_64.tar.bz2
+
     - name: Deploy to GitHub Releases 🚀
       id: create_release
       uses: "softprops/action-gh-release@v1"
@@ -388,10 +284,9 @@ jobs:
           /home/runner/downloads/artifacts/linux-x64/LINUX-x86_64.mar
           /home/runner/downloads/artifacts/windows-x64/WINNT-x86_64.mar
           /home/runner/downloads/artifacts/macOS-x64/DARWIN-Universal.mar
-          /home/runner/downloads/artifacts/linux-x64/midori-*.linux-x86_64.tar.bz2
+          /home/runner/downloads/artifacts/linux-x64/midori-linux-x86_64.tar.bz2
           /home/runner/downloads/artifacts/windows-x64/midori-win64.installer.exe
-          /home/runner/downloads/artifacts/windows-x64/midori-*.en-US.win64.zip
-          /home/runner/downloads/artifacts/macOS-x64/midori-macOS-universal.dmg
+          /home/runner/downloads/artifacts/macOS-x64/midori-daylight-macOS-universal.dmg
           /home/runner/downloads/artifacts/windows-x64/WINNT-x86_64.xml
           /home/runner/downloads/artifacts/linux-x64/LINUX-x86_64.xml
           /home/runner/downloads/artifacts/macOS-x64/DARWIN-Universal.xml
@@ -405,5 +300,20 @@ jobs:
         draft: false
         prerelease: true
         token: ${{ github.token }}
-    env:
-      GITHUB_REPOSITORY: ${{ github.repository }}
+      env:
+       GITHUB_REPOSITORY: ${{ github.repository }}
+
+    - name: Upload update.xml file to Ablaze server 📤
+      run: |
+        curl -X POST \
+          -H "Authorization: token ${{ secrets.PAT }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/goastian/midori-updates/actions/workflows/update-beta-updatexml-files.yml/dispatches" \
+          -d '{
+            "ref": "main",
+            "inputs": {
+              "win-x86_64-update-xml": "https://github.com/goastian/midori-desktop/releases/download/beta/WINNT-x86_64.xml",
+              "linux-x86_64-update-xml": "https://github.com/goastian/midori-desktop/releases/download/beta/LINUX-x86_64.xml",
+              "macOS-Universal-update-xml": "https://github.com/goastian/midori-desktop/releases/download/beta/DARWIN-Universal.xml"
+            }
+          }'
