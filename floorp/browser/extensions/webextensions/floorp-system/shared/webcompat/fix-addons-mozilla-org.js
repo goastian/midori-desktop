@@ -10,7 +10,7 @@ function changeInstallButtonText() {
   if (targetElem) {
     targetElem.textContent = targetElem.textContent.replace(
       "Firefox",
-      "Floorp",
+      "Midori",
     );
   }
 }
