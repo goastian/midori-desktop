@@ -510,7 +510,7 @@ toolbar #workspace-button:not([disabled="true"], [checked], [open], :active):hov
   border: none !important;
 }
 
-.tabbrowser-tab[label="Floorp View"] {
+.tabbrowser-tab[label="Midori View"] {
   display: none;
 }
 
