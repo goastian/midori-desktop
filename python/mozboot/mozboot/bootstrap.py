@@ -61,7 +61,7 @@ Your choice: """
 
 APPLICATIONS = OrderedDict(
     [
-        ("Floorp for Desktop", "browser"),
+        ("Midori for Desktop", "browser"),
     ]
 )
 
