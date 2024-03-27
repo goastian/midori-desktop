@@ -1,13 +1,12 @@
-ac_add_options --with-app-name=midori
-ac_add_options --with-app-basename=Midori
-ac_add_options --with-branding=browser/branding/official
+ac_add_options --with-app-name=floorp
+ac_add_options --with-app-basename=Floorp
 
 ac_add_options --with-mozilla-api-keyfile="$PWD/floorp/apis/api-mozilla-key"
 ac_add_options --with-google-location-service-api-keyfile="$PWD/floorp/apis/api-google-location-service-key"
 ac_add_options --with-google-safebrowsing-api-keyfile="$PWD/floorp/apis/api-google-safe-browsing-key"
 
+ac_add_options --with-l10n-base="$PWD/floorp/browser/locales/l10n-central"
 
-ac_add_options --with-l10n-base="$PWD/l10n-central/l10n-central"
 ac_add_options --disable-crashreporter
 ac_add_options --enable-proxy-bypass-protection
 ac_add_options --enable-unverified-updates
@@ -21,20 +20,20 @@ ac_add_options --enable-updater
 
 ac_add_options RUSTC_OPT_LEVEL=3
 
-MOZ_REQUIRE_SIGNING=
-MOZ_DATA_REPORTING=
-MOZ_TELEMETRY_REPORTING=
+ac_add_options MOZ_REQUIRE_SIGNING=
+ac_add_options MOZ_DATA_REPORTING=
+ac_add_options MOZ_TELEMETRY_REPORTING=
 
-export CROSS_SYSROOT=/home/runner/cross-tools/macOS-SDK
-export MACOS_SDK_DIR=/home/runner/cross-tools/macOS-SDK
-export CC=/home/runner/cross-tools/clang/bin/clang
-export CXX=/home/runner/cross-tools/clang/bin/clang++
-export DSYMUTIL=/home/runner/cross-tools/clang/bin/dsymutil
-export MKFSHFS=/home/runner/cross-tools/hfsplus/newfs_hfs
-export DMG_TOOL=/home/runner/cross-tools/dmg/dmg
-export HFS_TOOL=/home/runner/cross-tools/dmg/hfsplus
-export HOST_CXXFLAGS=-g
-export HOST_CFLAGS=-g
-export HOST_LDFLAGS=-g
+ac_add_options CROSS_SYSROOT=/home/runner/cross-tools/macOS-SDK
+ac_add_options MACOS_SDK_DIR=/home/runner/cross-tools/macOS-SDK
+ac_add_options CC=/home/runner/cross-tools/clang/bin/clang
+ac_add_options CXX=/home/runner/cross-tools/clang/bin/clang++
+ac_add_options DSYMUTIL=/home/runner/cross-tools/clang/bin/dsymutil
+ac_add_options MKFSHFS=/home/runner/cross-tools/hfsplus/newfs_hfs
+ac_add_options DMG_TOOL=/home/runner/cross-tools/dmg/dmg
+ac_add_options HFS_TOOL=/home/runner/cross-tools/dmg/hfsplus
+ac_add_options HOST_CXXFLAGS=-g
+ac_add_options HOST_CFLAGS=-g
+ac_add_options HOST_LDFLAGS=-g
 
-export MOZ_LTO=cross
+ac_add_options MOZ_LTO=cross
