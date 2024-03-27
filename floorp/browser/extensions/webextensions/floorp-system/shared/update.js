@@ -4,7 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 (async () => {
-  const API_END_POINT = "https://floorp-update.ablaze.one/browser/latest.json";
+  const API_END_POINT = "https://update.astian.org/latest.json";
   const l10nData = await browser.browserL10n.getFloorpL10nValues({
     file: ["browser/floorp.ftl", "branding/brand.ftl"],
     text: [
