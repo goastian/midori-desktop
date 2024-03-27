@@ -28,6 +28,13 @@ export let BrowserManagerSidebar = {
       l10n: `download-sidebar`,
       defaultWidth: 415,
     },
+    //notes is available in floorp for v11.0.0.
+    "floorp//notes": {
+      url: "chrome://browser/content/notes/notes-bms.html",
+      l10n: `notes-sidebar`,
+      defaultWidth: 550,
+      enabled: true,
+    },
   },
 
   DEFAULT_WEBPANEL: ["https://www.deepl.com/translator","https://cloud.astian.org", "https://calendar.astian.org", "https://contacts.astian.org", "https://notes.astian.org"],
