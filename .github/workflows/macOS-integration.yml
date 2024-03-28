@@ -6,7 +6,6 @@
 # © 2023 Midori Projects & Contributors
 
 #! SELF HOST DOES NOT SUPPORTED
-#TODO! buildjet config not implemented
 #TODO: separate Publish to other workflow
 
 on:
@@ -89,10 +88,9 @@ jobs:
     steps:
         - name: Clone 📥
           uses: actions/checkout@v3
-
           with:
             submodules: 'recursive'
-
+    
         - name: download M1 build artifact 📥
           uses: actions/download-artifact@v3
           with:
@@ -113,6 +111,10 @@ jobs:
             tar -xf ./midori-aarch64-apple-darwin-with-pgo.tar.gz
             tar -xf ./midori-x86_64-apple-darwin-with-pgo.tar.gz
 
+        - uses: actions/setup-python@v4
+          with:
+            python-version: '3.11' 
+
         - name: Create environment 🌲
           shell: bash
           run: |
@@ -128,16 +130,22 @@ jobs:
             echo '*********************************'
 
             echo "****************************************************************************************************"
-            echo "midori.app folder structure: x86_64-apple-darwin"
+            echo "folder structure: x86_64-apple-darwin"
             ls -l ./obj-x86_64-apple-darwin/dist/
             echo "****************************************************************************************************"
-            echo "midori.app folder structure: aarch64-apple-darwin"
+            echo "folder structure: aarch64-apple-darwin"
             ls -l ./obj-aarch64-apple-darwin/dist/
             echo "****************************************************************************************************"
             
         - name: Integration 🗃
           run: |
-              ./mach python ./toolkit/mozapps/installer/unify.py ./obj-x86_64-apple-darwin/dist/Midori/Midori.app ./obj-aarch64-apple-darwin/dist/Midori/Midori.app
+            if [ ${{ inputs.beta }} == 'true' ]; then
+              export APP_NAME="Midori Daylight"
+            else
+              export APP_NAME="Midori"
+            fi
+
+            ./mach python "./toolkit/mozapps/installer/unify.py" "./obj-x86_64-apple-darwin/dist/midori/${APP_NAME}.app" "./obj-aarch64-apple-darwin/dist/midori/${APP_NAME}.app"
 
         - name: import APPLE DEVELOPER ID CERTIFICATE for .app 🔑
           uses: apple-actions/import-codesign-certs@v2
@@ -147,30 +155,50 @@ jobs:
 
         - name: Sign to .app 🖋️
           run: |
+            if [ ${{ inputs.beta }} == true ]; then
+              export APP_NAME="Midori Daylight.app"
+            else
+              export APP_NAME="Midori.app"
+            fi
+
             chmod +x ./midori/build/codesign/mac/codesign.bash
             ./midori/build/codesign/mac/codesign.bash \
-              -a ./obj-x86_64-apple-darwin/dist/midori/Midori.app \
+              -a "./obj-x86_64-apple-darwin/dist/midori/${APP_NAME}" \
               -i "${{ secrets.macOS_AppleDeveloperId }}" \
-              -b ./midori/build/codesign/mac/browser.developer.entitlements.xml \
-              -p ./midori/build/codesign/mac/plugin-container.developer.entitlements.xml
-
-        - name: Check Certificates 💳
-          run: |
-            echo "Sign Complete ! ****************************************" 
-            pkgutil --check-signature ./obj-x86_64-apple-darwin/dist/midori/Midori.app
+              -b "./midori/build/codesign/mac/browser.developer.entitlements.xml" \
+              -p "./midori/build/codesign/mac/plugin-container.developer.entitlements.xml"
+          env: 
+            GHA_beta: ${{ inputs.beta }}
 
         - name: Create DMG 📦
           run: |
-            ./mach python -m mozbuild.action.make_dmg ./obj-x86_64-apple-darwin/dist/Midori midori-macOS-universal-temp.dmg
-            unzip ./.github/base.zip
+            if [ ${{ inputs.beta }} == true ]; then
+              export APP_NAME="Midori Daylight"
+              export INSTALLER_NAME="Midori-Daylight"
+            else
+              export APP_NAME="Midori"
+              export INSTALLER_NAME="Midori"
+            fi
+
+            ./mach python -m mozbuild.action.make_dmg ./obj-x86_64-apple-darwin/dist/midori midori-macOS-universal-temp.dmg
+            unzip "./.github/dmg-${INSTALLER_NAME}-base.zip"
             hdiutil attach ./midori-macOS-universal-temp.dmg
             hdiutil attach ./base.dmg
-            cp -r /Volumes/Midori/Midori.app /Volumes/Midori\ Installer/
+
+            cp -r "/Volumes/${APP_NAME}/${APP_NAME}.app" /Volumes/Midori\ Installer/
             hdiutil detach /Volumes/Midori\ Installer/
-            hdiutil convert ./base.dmg -format UDZO -imagekey zlib-level=9 -o midori-macOS-universal.dmg 
+            hdiutil convert ./base.dmg -format UDZO -imagekey zlib-level=9 -o midori-macOS-universal.dmg
+          env: 
+            GHA_beta: ${{ inputs.beta }}
 
         - name: Sign to .dmg 🖋️
           run: |
+            if [ ${{ inputs.beta }} == true ]; then
+              export INSTALLER_NAME="midori-daylight"
+            else
+              export INSTALLER_NAME="midori"
+            fi
+
             codesign -s "${{ secrets.macOS_AppleDeveloperId }}" midori-macOS-universal.dmg
       
             xcrun notarytool submit "midori-macOS-universal.dmg" \
@@ -180,25 +208,33 @@ jobs:
                 --wait
       
             mkdir -p ./output
-            mv ./midori-macOS-universal.dmg ./output/midori-macOS-universal.dmg
+            mv ./midori-macOS-universal.dmg ./output/${INSTALLER_NAME}-macOS-universal.dmg
 
         - name: Create MAR artifact 📦
           run: |
+           if [ ${{ inputs.beta }} == true ]; then
+             export APP_NAME="Midori Daylight.app"
+           else
+             export APP_NAME="Midori.app"
+           fi
+
            brew install tree
            chmod +x ./midori/build/bin/mac/mar
            chmod +x ./tools/update-packaging/make_full_update.sh
            touch "obj-x86_64-apple-darwin/dist/midori/precomplete"
-           MAR="midori/build/bin/mac/mar" MOZ_PRODUCT_VERSION=${{ inputs.display_version }} MAR_CHANNEL_ID=release tools/update-packaging/make_full_update.sh ./output/DARWIN-Universal.mar "obj-x86_64-apple-darwin/dist/midori/Midori.app"
+           MAR="midori/build/bin/mac/mar" MOZ_PRODUCT_VERSION=${{ inputs.display_version }} MAR_CHANNEL_ID=release tools/update-packaging/make_full_update.sh ./output/DARWIN-Universal.mar "obj-x86_64-apple-darwin/dist/midori/${APP_NAME}"
 
            export MACOS_MAR_SIZE=`stat -f%z ./output/DARWIN-Universal.mar`
            echo "MACOS_MAR_SIZE=$MACOS_MAR_SIZE" >> $GITHUB_ENV
-        
+          env: 
+            GHA_beta: ${{ inputs.beta }}
+ 
         - name: Create Update XML for "BETA" Build 🚩
           if : ${{ inputs.beta }} == 'true'
           run: |
            echo '<?xml version="1.0" encoding="UTF-8"?>
              <updates>
-              <update type="minor" displayVersion="${{ inputs.display_version }}" appVersion="${{ inputs.inside_version }}" platformVersion="${{ inputs.inside_version }}" buildID="${{ inputs.MOZ_BUILD_DATE }}" detailsURL="https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/">
+              <update type="minor" displayVersion="${{ inputs.display_version }}" appVersion="${{ inputs.inside_version }}" platformVersion="${{ inputs.inside_version }}" buildID="${{ inputs.MOZ_BUILD_DATE }}" detailsURL="https://astian.org/midori-en/">
               <patch type="complete" URL="https://github.com/${{ github.repository }}/releases/download/beta/DARWIN-Universal.mar" size="${{ env.MACOS_MAR_SIZE }}" />
              </update>
            </updates>' > DARWIN-Universal.xml
@@ -208,12 +244,12 @@ jobs:
         - name: make name of publish archive
           shell: node {0}
           run: |
-           const fs = require('fs');
-           let name = process.env.GHA_out_artifact_name ? process.env.GHA_out_artifact_name : process.env.GHA_default_name
-           fs.appendFileSync(process.env.GITHUB_ENV, `ARTIFACT_NAME=${name}`);
+            const fs = require('fs');
+            let name = process.env.GHA_out_artifact_name ? process.env.GHA_out_artifact_name : process.env.GHA_default_name
+            fs.appendFileSync(process.env.GITHUB_ENV, `ARTIFACT_NAME=${name}`);
           env:
-            GHA_out_artifact_name: ${{inputs.out_artifact_name}}
-            GHA_default_name: Universal-Artifact
+             GHA_out_artifact_name : ${{inputs.out_artifact_name}}
+             GHA_default_name: Universal-Artifact
 
         - name: Publish 🎁
           uses: actions/upload-artifact@v3
