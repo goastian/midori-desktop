@@ -31,12 +31,11 @@ on:
       MOZ_BUILD_DATE:
         type: string
         default: ""
-      #? If you want to ALWAYS build with buildjet, do default to true
-      buildjet:
-        type: boolean
-        default: false
-      #? buildjet cache also is, but idk how to use on sccache
       release-note-url:
+        type: string
+        required: false
+        default: ""
+      release-note-url-ja:
         type: string
         required: false
         default: ""
@@ -61,18 +60,13 @@ on:
       MOZ_BUILD_DATE:
         type: string
         default: ""
-      #? If you want to ALWAYS build with buildjet, do default to true
-      buildjet:
-        type: boolean
-        default: false
-      #? buildjet cache also is, but idk how to use on sccache
 
 jobs:
   mac-build:
     runs-on: ${{ matrix.runs-on }}
     strategy:
       matrix:
-        runs-on: ${{ fromJson('[["ubuntu-latest"], ["buildjet-16vcpu-ubuntu-2204"]]')[inputs.buildjet] }}
+        runs-on: ["ubuntu-latest"]
         arch: [x86_64, aarch64]
     steps:
     - name: Use Node.js
@@ -100,20 +94,10 @@ jobs:
 
     - uses: actions/checkout@v3
       name: Clone 🧬
-    
-    - name: Clone Submodules 🧬
-      run: |
-        git submodule update --init --recursive
-
-    - name: Clone l10n-central 🧬
-      uses: actions/checkout@v3
       with:
-        repository: goastian/l10n-central
-        path: l10n-central
+        submodules: 'recursive'
 
-    #! ON UBUNTU RUNNER
     - name: Setup Disk & Swap Space 💿
-      if: matrix.runs-on != 'buildjet-16vcpu-ubuntu-2204'
       run: |
         chmod +x .github/workflows/src/disk_swap_for_github_runner.sh
         .github/workflows/src/disk_swap_for_github_runner.sh
@@ -167,8 +151,11 @@ jobs:
           export MOZ_BUILD_DATE=$GHA_MOZ_BUILD_DATE
         fi
 
-        echo 'ac_add_options --with-branding=browser/branding/official' >> mozconfig
-        echo 'ac_add_options --with-l10n-base=$PWD/l10n-central/l10n-central' >> mozconfig
+        if [[ $GHA_beta == 'true' ]];then
+          echo 'ac_add_options --with-branding=browser/branding/beta' >> mozconfig
+        else
+          echo 'ac_add_options --with-branding=browser/branding/official' >> mozconfig
+        fi
 
         if [[ $GHA_profgen == 'true' ]]; then
           echo 'ac_add_options --enable-profile-generate=cross' >> mozconfig
@@ -193,6 +180,7 @@ jobs:
         GHA_profgen: ${{inputs.profgen}}
         GHA_profdata_jarlog_artifact_name : ${{inputs.build-with-profdata-and-jarlog}}
         GHA_MOZ_BUILD_DATE: ${{inputs.MOZ_BUILD_DATE}}
+        GHA_beta: ${{inputs.beta}}
 
     - name: setup Rust 🦀
       run: |
@@ -210,23 +198,23 @@ jobs:
     - name: Change update url if beta
       if: inputs.beta
       run: |
-        sed -i 's|https://@MOZ_APPUPDATE_HOST@/browser/%DISPLAY_VERSION%/%OS%/%ARCH%/update.xml|https://@MOZ_APPUPDATE_HOST@/${{github.repository}}/releases/download/beta/WINNT-x86_64.xml |g' ./build/application.ini.in
+        sed -i 's|https://@MOZ_APPUPDATE_HOST@/browser/%DISPLAY_VERSION%/%OS%/%ARCH%/update.xml|https://@MOZ_APPUPDATE_HOST@/browser/beta/%OS%/%ARCH%/update.xml |g' ./build/application.ini.in
 
     #On Package, if not copies, error occur
     - name: Copy l10n files if beta
       if: inputs.beta
       run: |
-          for dir in $(ls -l $PWD/l10n-central/l10n-central | grep ^d | awk '{print $9}'); do
-            mkdir -p $PWD/l10n-central/l10n-central/$dir/browser/branding/beta
-            cp ./browser/branding/beta/locales/en-US/brand.dtd $PWD/l10n-central/l10n-central/$dir/browser/branding/beta/brand.dtd
-            cp ./browser/branding/beta/locales/en-US/brand.ftl $PWD/l10n-central/l10n-central/$dir/browser/branding/beta/brand.ftl
-            cp ./browser/branding/beta/locales/en-US/brand.properties $PWD/l10n-central/l10n-central/$dir/browser/branding/beta/brand.properties
+          for dir in $(ls -l $PWD/floorp/browser/locales/l10n-central | grep ^d | awk '{print $9}'); do
+            mkdir -p $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta
+            cp ./browser/branding/beta/locales/en-US/brand.dtd $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.dtd
+            cp ./browser/branding/beta/locales/en-US/brand.ftl $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.ftl
+            cp ./browser/branding/beta/locales/en-US/brand.properties $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.properties
           done
 
     - name: Change Release Note URL
       if: inputs.release-note-url
       run: |
-        sed -i 's|https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/|${{inputs.release-note-url}}|g' ./browser/branding/official/pref/firefox-branding.js
+        sed -i 's|https://astian.org/midori-en/|${{inputs.release-note-url}}|g' ./browser/branding/official/pref/firefox-branding.js
         echo "$(cat ./browser/branding/official/pref/firefox-branding.js)"
 
     - name: Build 🔨
@@ -258,7 +246,7 @@ jobs:
         fi
         ./mach package
 
-        ./mach package-multi-locale --locales ar cs da de el en-US en-GB es-ES es-MX fr hu id it ja-JP-mac ko lt nl nn-NO pl pt-BR pt-PT ru sv-SE th tr vi zh-CN zh-TW
+        ./mach package-multi-locale --locales ar cs da de el en-US en-GB es-ES fr hu id it ja-JP-mac ko lt nl nn-NO pl pt-BR pt-PT ru sv-SE th tr uk vi zh-CN zh-TW
 
       env:
         GHA_MOZ_BUILD_DATE: ${{inputs.MOZ_BUILD_DATE}}
