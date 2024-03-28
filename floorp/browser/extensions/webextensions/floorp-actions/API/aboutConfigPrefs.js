@@ -9,7 +9,7 @@
 this.aboutConfigPrefs = class extends ExtensionAPI {
   getAPI(context) {
     const EventManager = ExtensionCommon.EventManager;
-    
+
     return {
       aboutConfigPrefs: {
         onPrefChange: new EventManager({
@@ -28,7 +28,7 @@ this.aboutConfigPrefs = class extends ExtensionAPI {
         }).api(),
         async getBranch(branchName) {
           const branch = `${branchName}.`;
-          return Services.prefs.getChildList(branch).map(pref => {
+          return Services.prefs.getChildList(branch).map((pref) => {
             const name = pref.replace(branch, "");
             return { name, value: Services.prefs.getBoolPref(pref) };
           });

@@ -247,6 +247,7 @@ serp:
         description: >
           Type of components on a SERP. Possible values are:
           `ad_carousel`,
+          `ad_image_row`,
           `ad_link`,
           `ad_sidebar`,
           `ad_sitelink`,

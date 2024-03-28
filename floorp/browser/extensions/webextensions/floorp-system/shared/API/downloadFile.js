@@ -17,7 +17,7 @@ this.downloadFile = class extends ExtensionAPI {
         async download(url, path) {
           let data = await new Promise((resolve, reject) => {
             fetch(url)
-              .then(res => {
+              .then((res) => {
                 if (res.status !== 200) throw `${res.status} ${res.statusText}`;
                 return res.arrayBuffer();
               })

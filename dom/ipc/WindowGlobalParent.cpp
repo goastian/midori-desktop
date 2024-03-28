@@ -65,6 +65,7 @@
 #include "SessionStoreFunctions.h"
 #include "nsIXPConnect.h"
 #include "nsImportModule.h"
+#include "nsIXULRuntime.h"
 
 #include "mozilla/dom/PBackgroundSessionStorageCache.h"
 
@@ -600,7 +601,29 @@ already_AddRefed<JSActor> WindowGlobalParent::InitJSActor(
 }
 
 bool WindowGlobalParent::IsCurrentGlobal() {
+  if (mozilla::SessionHistoryInParent() && BrowsingContext() &&
+      BrowsingContext()->IsInBFCache()) {
+    return false;
+  }
+
   return CanSend() && BrowsingContext()->GetCurrentWindowGlobal() == this;
+}
+
+bool WindowGlobalParent::IsActiveInTab() {
+  if (!CanSend()) {
+    return false;
+  }
+
+  CanonicalBrowsingContext* bc = BrowsingContext();
+  if (!bc || bc->GetCurrentWindowGlobal() != this) {
+    return false;
+  }
+
+  // We check the top BC so we don't need to worry about getting a stale value.
+  // That may not be necessary.
+  MOZ_ASSERT(bc->Top()->IsInBFCache() == bc->IsInBFCache(),
+             "BFCache bit out of sync?");
+  return bc->AncestorsAreCurrent() && !bc->Top()->IsInBFCache();
 }
 
 namespace {

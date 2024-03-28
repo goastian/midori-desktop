@@ -21,14 +21,6 @@ FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"] += [
     "webcompat_useragent.js",
 ]
 
-FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["_locales"]["ja"] += [
-    "_locales/ja/messages.json",
-]
-
-FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["_locales"]["en"] += [
-    "_locales/en/messages.json",
-]
-
 FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["API"] += [
     "API/aboutConfigPrefs.js",
     "API/aboutConfigPrefs.json",
@@ -49,10 +41,14 @@ FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["API"] += [
 FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["icons"] += [
     "icons/failed.png",
     "icons/floorp.png",
-    "icons/icon.png",
     "icons/LICENSE",
     "icons/link-48-last.png",
     "icons/link-48.png",
+]
+
+FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["gesturefy"] += [
+    "gesturefy/background.js",
+    "gesturefy/gesturefy.js",
 ]
 
 FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["webcompat"] += [

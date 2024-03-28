@@ -471,23 +471,23 @@ let testVariations = [
     expectedModePref: 5,
     expectedDisabledHeuristics: true,
   },
-  // Test selecting non-default, non-custom TRR provider, MidoriDNS.
+  // Test selecting non-default, non-custom TRR provider, NextDNS.
   {
-    name: "Select MidoriDNS as TRR provider",
+    name: "Select NextDNS as TRR provider",
     [TRR_MODE_PREF]: 2,
     selectResolver: SECOND_RESOLVER_VALUE,
     expectedFinalUriPref: SECOND_RESOLVER_VALUE,
   },
-  // Test selecting non-default, non-custom TRR provider, MidoriDNS,
+  // Test selecting non-default, non-custom TRR provider, NextDNS,
   // with DoH not enabled. The provider selection should stick.
   {
-    name: "Select MidoriDNS as TRR provider in mode 0",
+    name: "Select NextDNS as TRR provider in mode 0",
     [TRR_MODE_PREF]: 0,
     selectResolver: SECOND_RESOLVER_VALUE,
     expectedFinalUriPref: SECOND_RESOLVER_VALUE,
   },
   {
-    name: "return to default from MidoriDNS",
+    name: "return to default from NextDNS",
     [TRR_MODE_PREF]: 2,
     [TRR_URI_PREF]: SECOND_RESOLVER_VALUE,
     expectedResolverListValue: SECOND_RESOLVER_VALUE,

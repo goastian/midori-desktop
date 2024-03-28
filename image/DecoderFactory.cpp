@@ -237,8 +237,7 @@ nsresult DecoderFactory::CreateAnimationDecoder(
   bool validDecoderType = (aType == DecoderType::GIF ||
                            aType == DecoderType::PNG ||
                            aType == DecoderType::WEBP ||
-                           aType == DecoderType::AVIF ||
-                           aType == DecoderType::JXL);
+                           aType == DecoderType::AVIF);
 #ifdef MOZ_JXL
   validDecoderType = validDecoderType || aType == DecoderType::JXL;
 #endif
@@ -300,8 +299,7 @@ already_AddRefed<Decoder> DecoderFactory::CloneAnimationDecoder(
   bool validDecoderType = (type == DecoderType::GIF ||
                            type == DecoderType::PNG ||
                            type == DecoderType::WEBP ||
-                           type == DecoderType::AVIF ||
-                           type == DecoderType::JXL);
+                           type == DecoderType::AVIF);
 #ifdef MOZ_JXL
   validDecoderType = validDecoderType || type == DecoderType::JXL;
 #endif

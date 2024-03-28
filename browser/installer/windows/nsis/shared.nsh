@@ -544,7 +544,6 @@ ${RemoveDefaultBrowserAgentShortcut}
   ${AddAssociationIfNoneExist} ".svg" "MidoriHTML$5"
   ${AddAssociationIfNoneExist} ".webp"  "MidoriHTML$5"
   ${AddAssociationIfNoneExist} ".avif" "MidoriHTML$5"
-  ${AddAssociationIfNoneExist} ".jxl" "MidoriHTML$5"
 
   ${AddAssociationIfNoneExist} ".pdf" "MidoriPDF$5"
 
@@ -1489,6 +1488,7 @@ ${RemoveDefaultBrowserAgentShortcut}
   Push "crashreporter.exe"
   Push "default-browser-agent.exe"
   Push "minidump-analyzer.exe"
+  Push "pingsender.exe"
   Push "updater.exe"
   Push "mozwer.dll"
   Push "${FileMainEXE}"

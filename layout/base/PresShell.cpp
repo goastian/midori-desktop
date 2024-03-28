@@ -2480,7 +2480,7 @@ PresShell::CompleteMove(bool aForward, bool aExtend) {
 // end implementations nsISelectionController
 
 nsIFrame* PresShell::GetRootScrollFrame() const {
-    if (!mFrameConstructor) {
+  if (!mFrameConstructor) {
     return nullptr;
   }
   nsIFrame* rootFrame = mFrameConstructor->GetRootFrame();
@@ -10388,12 +10388,12 @@ bool PresShell::VerifyIncrementalReflow() {
   if (!ok) {
     nsString stra;
     static int num = 0;
-    stra.AppendLiteral("C:\\ablaze\\mozilla\\debug\\filea");
+    stra.AppendLiteral("C:\\astian\\mozilla\\debug\\filea");
     stra.AppendInt(num);
     stra.AppendLiteral(".png");
     gfxUtils::WriteAsPNG(presShell, stra);
     nsString strb;
-    strb.AppendLiteral("C:\\ablaze\\mozilla\\debug\\fileb");
+    strb.AppendLiteral("C:\\astian\\mozilla\\debug\\fileb");
     strb.AppendInt(num);
     strb.AppendLiteral(".png");
     gfxUtils::WriteAsPNG(presShell, strb);

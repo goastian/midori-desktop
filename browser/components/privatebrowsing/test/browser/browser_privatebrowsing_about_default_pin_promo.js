@@ -75,7 +75,7 @@ add_task(async function test_pin_promo_mr2022_holdback() {
 
     Assert.equal(
       promoButtonText,
-      "Download Midori Browser",
+      "Download Firefox Focus",
       "Pin Promo not shown for holdback user"
     );
   });

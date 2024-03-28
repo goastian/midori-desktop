@@ -24,4 +24,4 @@
 # remain unchanged across different versions (Nightly, Beta, etc.).
 -brand-product-name = Midori Dev
 -vendor-short-name = Astian
-trademarkInfo = Midori Dev and the Midori logos are trademarks of the Astian, Inc.
+trademarkInfo = Midori Dev and the Midori logos are trademarks of the Astian.

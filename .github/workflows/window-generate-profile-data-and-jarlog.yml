@@ -31,8 +31,8 @@ on:
           default: 'x86_64'
           type: string
 jobs:
-  Generate-Profile-data-and-jarlog:
-    runs-on: Generate-Profile-data-and-jarlog
+   Generate-Profile-data-and-jarlog:
+    runs-on: windows-latest
     steps:
         - uses: actions/download-artifact@v3
           name: Download artifact 📥
@@ -45,17 +45,21 @@ jobs:
             cd C:\artifact
             zstd -d midori-*.tar.zst
             7z x midori-*.tar
+
         - uses: actions/checkout@v3
           name: Clone 🧬
           with:
-            submodules: 'recursive'
-
+            submodules: 'recursive'    
+        
         - name: Setup 🪛
           run: |
             (New-Object System.Net.WebClient).DownloadFile("https://ftp.mozilla.org/pub/mozilla/libraries/win32/MozillaBuildSetup-Latest.exe","C:\MozillaBuildSetup-Latest.exe")
             C:\MozillaBuildSetup-Latest.exe /S | out-null
+
         - name: Generate 🔄
           run: |
+            $Env:USE_MINTTY = "0"
+
             $workspace_dir = [regex]::replace($env:GITHUB_WORKSPACE, "^([A-Z]):", { "/" + $args.value.Substring(0, 1).toLower() }) -replace "\\","/"
       
             echo "cd $workspace_dir" '' >> mozilla-build-run.sh

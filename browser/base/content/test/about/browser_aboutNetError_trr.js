@@ -9,7 +9,7 @@
 // To prevent that we override the IP to a local address.
 Cc["@mozilla.org/network/native-dns-override;1"]
   .getService(Ci.nsINativeDNSResolverOverride)
-  .addIPOverride("fc53cb.dns.nextdns.io", "127.0.0.1");
+  .addIPOverride("mozilla.cloudflare-dns.com", "127.0.0.1");
 
 let oldProxyType = Services.prefs.getIntPref("network.proxy.type");
 function resetPrefs() {

@@ -17,15 +17,14 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
-      buildjet:
-        description: 'Buildjet'
-        type: boolean
-        required: true
-        default: true
       release-note-url:
         description: 'Release Note URL'
         type: string
         required: true
+        default: 'https://astian.org/midori-en/'
+      release-note-url-ja:
+        type: string
+        required: false
         default: 'https://astian.org/midori-en/'
 
 #----------------------------------------- JOBS -----------------------------------------#
@@ -78,11 +77,10 @@ jobs:
       profgen: true
       aarch64: false
       zstd: true
-      buildjet: ${{ inputs.buildjet }}
 
   Part2-win-x86_64-gen-profdata-and-jarlog:
     needs: Part1-win-x86_64-build-with-profgen-zstd
-uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
+    uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
     with:
       browser-artifact-name: midori-windows-x86_64-build-with-profgen-zstd
       arch: x86_64
@@ -92,9 +90,7 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
     uses: ./.github/workflows/windows-build.yml
     with:
       aarch64: false
-      mar: true
       beta: false
-      buildjet: ${{ inputs.buildjet }}
       profdata_jarlog_artifact_name: "midori-windows-x86_64-profdata-and-jarlog"
       out_artifact_name: please-use-this-midori-windows-x86_64-package-build-with-profdata-and-jarlog
       MOZ_BUILD_DATE: ${{needs.get-buildid.outputs.buildids}}
@@ -102,36 +98,30 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
 
 ################################################################ ↑ Windows x86_64 Build ###################################################################################
 
-  Part1-win-x86-build-with-profgen-zstd:
-    uses: ./.github/workflows/windows-build.yml
-    with:
-      profgen: true
-      aarch64: false
-      build32bit: true
-      zstd: true
-      buildjet: ${{ inputs.buildjet }}
-
-  Part2-win-x86-gen-profdata-and-jarlog:
-    needs: Part1-win-x86-build-with-profgen-zstd
-    uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
-    with:
-      browser-artifact-name: midori-windows-x86-build-with-profgen-zstd
-      arch: x86
-
-  Part3-win-x86-build-with-profdata-and-jarlog:
-    needs: [Part2-win-x86-gen-profdata-and-jarlog, get-buildid]
+  Part1-win-x86-build-with-profdata-and-jarlog:
+    needs: [get-buildid]
     uses: ./.github/workflows/windows-build.yml
     with:
       aarch64: false
       build32bit: true
       beta: false
-      buildjet: ${{ inputs.buildjet }}
-      profdata_jarlog_artifact_name: "midori-windows-x86-profdata-and-jarlog"
       out_artifact_name: please-use-this-midori-windows-x86-package-build-with-profdata-and-jarlog
       MOZ_BUILD_DATE: ${{needs.get-buildid.outputs.buildids}}
       release-note-url: ${{ inputs.release-note-url }}
+      release-note-url-ja: ${{ inputs.release-note-url-ja }}
 
 ################################################################ ↑ Windows x86 Build ####################################################################################
+
+  Part1-linux-x86_64-build-with-PGO:
+    uses: ./.github/workflows/linux-build.yml
+    needs: [get-buildid]
+    with:
+      aarch64: false
+      beta: false
+      mar: true
+      MOZ_BUILD_DATE: ${{needs.get-buildid.outputs.buildids}}
+      release-note-url: ${{ inputs.release-note-url }}
+      release-note-url-ja: ${{ inputs.release-note-url-ja }}
 
 ################################################################ ↑ Linux x86_64 Build ####################################################################################
   Part1-linux-aarch64-build:
@@ -141,9 +131,9 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
       aarch64: true
       beta: false
       mar: true
-      buildjet: ${{ inputs.buildjet }}
       MOZ_BUILD_DATE: ${{needs.get-buildid.outputs.buildids}}
       release-note-url: ${{ inputs.release-note-url }}
+      release-note-url-ja: ${{ inputs.release-note-url-ja }}
 
 ################################################ ↑ Linux AArch64 Build ################################################
 
@@ -153,92 +143,17 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
     uses: ./.github/workflows/macOS-Universal.yml
     with:
       profgen: true
-      buildjet: ${{ inputs.buildjet }}
     secrets:
       MACOS_CROSS_TOOLS_KEY: ${{ secrets.MACOS_CROSS_TOOLS_KEY }}
 
   Part2-macOS-Universal-gen-profdata-and-jarlog:
     needs: Part1-macOS-Universal-build-with-profgen
-    runs-on: ${{ matrix.runs-on }}
-    strategy:
-      matrix:
-        # GitHub doesn't support M1 macs yet, so we need to use a self-hosted runner.
-        runs-on: [macos-latest, self-hosted]
-        # macos-latest is x86_64, self-hosted is arm64
-
-    steps:
-      - name: Init
-        run: |
-          export RUNNER_USERDIR=`echo ~`
-          echo "RUNNER_USERDIR=$RUNNER_USERDIR" >> $GITHUB_ENV
-          mkdir -p ~/downloads/artifacts
-
-      - name: Clean up (Self-hosted only)
-        if: ${{ matrix.runs-on == 'self-hosted' }}
-        run: |
-          rm -rf ~/downloads/artifacts
-          rm -rf ./midori
-
-      - uses: actions/checkout@v3
-        name: Clone 🧬
-
-      - name: Check Arch type
-        shell: bash
-        run: |
-          if [[ $GHA_BUILD_MACHINE != 'macos-latest' ]]; then
-            export ARCH_TYPE=`echo "aarch64"`
-            echo "ARCH_TYPE=$ARCH_TYPE" >> $GITHUB_ENV
-          else
-            export ARCH_TYPE=`echo "x86_64"`
-            echo "ARCH_TYPE=$ARCH_TYPE" >> $GITHUB_ENV
-          fi
-        env:
-          GHA_BUILD_MACHINE: ${{ matrix.runs-on }}
-
-      - uses: actions/download-artifact@v3
-        id: download-artifacts-mac-enable-profgen
-        name: Download artifact 📥
-        with:
-          name: midori-mac-${{ env.ARCH_TYPE }}-build-with-profgen 
-          path: ~/downloads/artifacts
-
-      - name: setup environment 🌲
-        run: |
-          echo -e "ac_add_options --enable-bootstrap" >> mozconfig
-
-          echo 'mozconfig: **********************'
-          cat ./mozconfig
-          echo '*********************************'
-
-          brew install gnu-tar
-          export PATH=/usr/local/opt/gnu-tar/libexec/gnubin:$PATH
-          ./mach --no-interactive bootstrap --application-choice browser
-
-      - name: Extract artifact 📂
-        run: |
-          mkdir -p ./midori
-          cp ${{ steps.download-artifacts-mac-enable-profgen.outputs.download-path }}/${ARCH_TYPE}-apple-darwin-output.tar.xz ./
-          tar xf ${ARCH_TYPE}-apple-darwin-output.tar.xz
-          
-      - name: Generate Profdata 📊
-        run: |
-          LLVM_PROFDATA=$RUNNER_USERDIR/.mozbuild/clang/bin/llvm-profdata JARLOG_FILE=en-US.log ./mach python build/pgo/profileserver.py --binary ./obj-${ARCH_TYPE}-apple-darwin/dist/midori/Midori.app/Contents/MacOS/midori
-        env:
-          GHA_BUILD_MACHINE: ${{ matrix.runs-on }}
-      
-      - name: Publish 🎁
-        uses: actions/upload-artifact@v3
-        with:
-          name: midori-${{ env.ARCH_TYPE }}-apple-darwin-profdata-and-jarlog
-          path: |
-            merged.profdata
-            en-US.log
-
+    uses: ./.github/workflows/macOS-generate-profile-data-and-jarlog.yml
+  
   Part3-macOS-Universal-build-with-profdata-and-jarlog:
     uses: ./.github/workflows/macOS-Universal.yml
     needs: [get-buildid,  Part2-macOS-Universal-gen-profdata-and-jarlog]
     with:
-      buildjet: ${{ inputs.buildjet }}
       build-with-profdata-and-jarlog: true
       beta: false
       MOZ_BUILD_DATE: ${{needs.get-buildid.outputs.buildids}}
@@ -268,7 +183,7 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
 ####################################################################### macOS Universal #######################################################################
 
   Deploy-to-installer:
-    needs: [Part1-linux-x86_64-build-with-PGO, Part1-linux-aarch64-build, Part4-macOS-Universal-package-and-sign, Part3-win-x86_64-build-with-profdata-and-jarlog, Part3-win-x86-build-with-profdata-and-jarlog, get-display-version]
+    needs: [Part1-linux-x86_64-build-with-PGO, Part1-linux-aarch64-build, Part4-macOS-Universal-package-and-sign, Part3-win-x86_64-build-with-profdata-and-jarlog, get-display-version]
     runs-on: ubuntu-latest
     environment: 
       name: Deploy-to-installer-release
@@ -327,7 +242,7 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
         find . -print | sed -e "s;[^/]*/;|____;g;s;____|; |;g"
         echo "****************************************************************************************************"
 
-    - name: Deploy to GitHub Releases 🚀
+    - name: Deploy to GitHub Releases for Stable Version 🚀
       id: create_release
       uses: "softprops/action-gh-release@v1"
       with:
@@ -342,8 +257,8 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
           /home/runner/downloads/artifacts/macOS-x64/midori-macOS-universal.dmg
         tag_name: "v${{ needs.get-display-version.outputs.display-version }}"
         name: "v${{ needs.get-display-version.outputs.display-version }}"
-        draft: false
-        prerelease: true
+        draft: true
+        prerelease: false
         token: ${{ secrets.GITHUB_TOKEN }}
       env:
         GITHUB_REPOSITORY: ${{ github.repository }}
@@ -355,14 +270,14 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
       name: Deploy-to-updater-release
 
     steps:
-    - name: Run GitHub Actions for Release x86_64 Linux MAR "Midori-Projects/Midori-Update" 🚀
+    - name: Run GitHub Actions for Release x86_64 Linux MAR "goastian/midori-update" 🚀
       run: |
         echo "Preparing to run GitHub Actions for Release x86_64 Windows MAR, waiting for 30 seconds"
         sleep 60
         curl -X POST \
           -H "Authorization: token ${{ secrets.PAT }}" \
           -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/Floorp-Projects/Floorp-Updates/actions/workflows/deliver-updates-to-floorp-browser.yml/dispatches" \
+          "https://api.github.com/repos/goastian/midori-update/actions/workflows/deliver-updates-to-midori-browser.yml/dispatches" \
           -d '{
             "ref": "main",
             "inputs": {
@@ -372,14 +287,14 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
             }
           }'
 
-    - name: Run GitHub Actions for Release aarch64 Linux MAR "Floorp-Projects/Floorp-Update" 🚀
+    - name: Run GitHub Actions for Release aarch64 Linux MAR "goastian/midori-update" 🚀
       run: |
         echo "Preparing to run GitHub Actions for Release x86_64 Windows MAR, waiting for 30 seconds"
         sleep 60
         curl -X POST \
           -H "Authorization: token ${{ secrets.PAT }}" \
           -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/Floorp-Projects/Floorp-Updates/actions/workflows/deliver-updates-to-floorp-browser.yml/dispatches" \
+          "https://api.github.com/repos/goastian/midori-update/actions/workflows/deliver-updates-to-midori-browser.yml/dispatches" \
           -d '{
             "ref": "main",
             "inputs": {
@@ -390,14 +305,14 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
             }
           }'
 
-    - name: Run GitHub Actions for Release x86_64 Darwin MAR "Floorp-Projects/Floorp-Update" 🚀
+    - name: Run GitHub Actions for Release x86_64 Darwin MAR "goastian/midori-update" 🚀
       run: |
         echo "Preparing to run GitHub Actions for Release x86_64 Windows MAR, waiting for 30 seconds"
         sleep 60
         curl -X POST \
           -H "Authorization: token ${{ secrets.PAT }}" \
           -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/Floorp-Projects/Floorp-Updates/actions/workflows/deliver-updates-to-floorp-browser.yml/dispatches" \
+          "https://api.github.com/repos/goastian/midori-update/actions/workflows/deliver-updates-to-midori-browser.yml/dispatches" \
           -d '{
             "ref": "main",
             "inputs": {
@@ -410,14 +325,14 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
             }
           }'
 
-    - name: Run GitHub Actions for Release aarch64 Darwin MAR "Floorp-Projects/Floorp-Update" 🚀
+    - name: Run GitHub Actions for Release aarch64 Darwin MAR "goastian/midori-update" 🚀
       run: |
         echo "Preparing to run GitHub Actions for Release x86_64 Windows MAR, waiting for 30 seconds"
         sleep 60
         curl -X POST \
           -H "Authorization: token ${{ secrets.PAT }}" \
           -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/Floorp-Projects/Floorp-Updates/actions/workflows/deliver-updates-to-floorp-browser.yml/dispatches" \
+          "https://api.github.com/repos/goastian/midori-update/actions/workflows/deliver-updates-to-midori-browser.yml/dispatches" \
           -d '{
             "ref": "main",
             "inputs": {
@@ -431,20 +346,38 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
             }
           }'
 
-    - name: Run GitHub Actions for Release x86_64 Windows MAR "Floorp-Projects/Floorp-Update" 🚀
+    - name: Run GitHub Actions for Release x86_64 Windows MAR "goastian/midori-update" 🚀
       run: |
         echo "Preparing to run GitHub Actions for Release x86_64 Windows MAR, waiting for 30 seconds"
         sleep 60
         curl -X POST \
           -H "Authorization: token ${{ secrets.PAT }}" \
           -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/Floorp-Projects/Floorp-Updates/actions/workflows/deliver-updates-to-floorp-browser.yml/dispatches" \
+          "https://api.github.com/repos/goastian/midori-update/actions/workflows/deliver-updates-to-midori-browser.yml/dispatches" \
           -d '{
             "ref": "main",
             "inputs": {
               "mar-url": "https://github.com/${{ github.repository }}/releases/download/v${{ needs.get-display-version.outputs.display-version }}/WINNT-x86_64.mar",
               "os": "WINNT",
               "arch": "x86_64",
+              "release-note-url": "${{ inputs.release-note-url }}"
+            }
+          }'
+
+    - name: Run GitHub Actions for Release x86 Windows MAR "goastian/midori-update" 🚀
+      run: |
+        echo "Preparing to run GitHub Actions for Release x86 Windows MAR, waiting for 30 seconds"
+        sleep 60
+        curl -X POST \
+          -H "Authorization: token ${{ secrets.PAT }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/goastian/midori-updates/actions/workflows/deliver-updates-to-midori-browser.yml/dispatches" \
+          -d '{
+            "ref": "main",
+            "inputs": {
+              "mar-url": "https://github.com/${{ github.repository }}/releases/download/v${{ needs.get-display-version.outputs.display-version }}/WINNT-x86.mar",
+              "os": "WINNT",
+              "arch": "x86",
               "release-note-url": "${{ inputs.release-note-url }}"
             }
           }'
@@ -459,7 +392,7 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
             "ref": "ESR115",
             "inputs": {
               "ppa": "true",
-              "tarball-url-x86-64": "https://github.com/${{ github.repository }}/releases/download/v${{ needs.get-display-version.outputs.display-version }}/floorp-${{ needs.get-display-version.outputs.display-version }}.linux-x86_64.tar.bz2"
+              "tarball-url-x86-64": "https://github.com/${{ github.repository }}/releases/download/v${{ needs.get-display-version.outputs.display-version }}/midori-${{ needs.get-display-version.outputs.display-version }}.linux-x86_64.tar.bz2"
             }
           }'
 
@@ -473,6 +406,6 @@ uses: ./.github/workflows/window-generate-profile-data-and-jarlog.yml
             "ref": "ESR115",
             "inputs": {
               "ppa": "false",
-              "tarball-url-x86-64": "https://github.com/${{ github.repository }}/releases/download/v${{ needs.get-display-version.outputs.display-version }}/floorp-${{ needs.get-display-version.outputs.display-version }}.linux-x86_64.tar.bz2"
+              "tarball-url-x86-64": "https://github.com/${{ github.repository }}/releases/download/v${{ needs.get-display-version.outputs.display-version }}/midori-${{ needs.get-display-version.outputs.display-version }}.linux-x86_64.tar.bz2"
             }
           }'

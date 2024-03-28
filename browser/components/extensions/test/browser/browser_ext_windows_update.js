@@ -92,7 +92,6 @@ add_task(async function testWindowUpdate() {
             );
           }
         }
-
         if (otherChecks) {
           for (let key of Object.keys(otherChecks)) {
             browser.test.assertEq(

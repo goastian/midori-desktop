@@ -4,4 +4,4 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 [localization] @AB_CD@.jar:
-  browser/floorp.ftl                             (en-US/floorp.ftl)
+  browser/floorp.ftl                             (l10n-central/en-US/floorp.ftl)

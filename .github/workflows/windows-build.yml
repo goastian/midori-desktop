@@ -6,7 +6,6 @@
 # © 2023 Midori Projects & Contributors
 
 #! SELF HOST DOES NOT SUPPORTED
-#TODO! buildjet config not implemented
 #TODO: separate Publish to other workflow
 
 #! aarch64 PGO can maybe not comportable with pgo
@@ -51,12 +50,11 @@ on:
       MOZ_BUILD_DATE:
         type: string
         default: ""
-      #? If you want to ALWAYS build with buildjet, do default to true
-      buildjet:
-        type: boolean
-        default: false
-      #? buildjet cache also is, but idk how to use on sccache
       release-note-url:
+        type: string
+        required: false
+        default: ""
+      release-note-url-ja:
         type: string
         required: false
         default: ""
@@ -66,10 +64,9 @@ on:
       mar_size:
         value: ${{jobs.win-build.outputs.mar_size}}
 
-
 jobs:
   win-build:
-    runs-on: ${{fromJson('["ubuntu-latest","buildjet-16vcpu-ubuntu-2204"]')[inputs.buildjet]}}
+    runs-on: ubuntu-latest
     outputs:
       mar_name: ${{steps.gen-mar.outputs.MAR_NAME}}
       mar_size: ${{steps.gen-mar.outputs.MAR_SIZE}}
@@ -118,20 +115,10 @@ jobs:
 
     - uses: actions/checkout@v3
       name: Clone 🧬
-
-    - name: Clone Submodules 🧬
-      run: |
-        git submodule update --init --recursive
-
-    - name: Clone l10n-central 🧬
-      uses: actions/checkout@v3
       with:
-        repository: goastian/l10n-central
-        path: l10n-central
+        submodules: 'recursive'
 
-    #! ON UBUNTU RUNNER
     - name: Setup Disk & Swap Space 💿
-      if: ${{!inputs.buildjet}}
       run: |
         chmod +x .github/workflows/src/disk_swap_for_github_runner.sh
         .github/workflows/src/disk_swap_for_github_runner.sh
@@ -156,7 +143,7 @@ jobs:
         
         if [[ $GHA_aarch64 == 'true' ]]; then
           cp ./.github/workflows/src/windows/aarch64/mozconfig_win_aarch64_pgo_base mozconfig
-          elif [[ $GHA_32bit == 'true' ]]; then
+        elif [[ $GHA_32bit == 'true' ]]; then
           cp ./.github/workflows/src/windows/x86/mozconfig_win_x86_pgo_base mozconfig
         else
           cp ./.github/workflows/src/windows/x86_64/mozconfig_win_x86_64_pgo_base mozconfig
@@ -166,13 +153,13 @@ jobs:
           export MOZ_BUILD_DATE=$GHA_MOZ_BUILD_DATE
         fi
 
-        if [[ $GHA_beta != 'true' ]];then
-          echo 'ac_add_options --with-branding=browser/branding/official' >> mozconfig
-        else
+        if [[ $GHA_beta == 'true' ]];then
           echo 'ac_add_options --with-branding=browser/branding/beta' >> mozconfig
+        else
+          echo 'ac_add_options --with-branding=browser/branding/official' >> mozconfig
         fi
 
-        echo 'ac_add_options --with-l10n-base=$PWD/l10n-central/l10n-central' >> mozconfig
+        echo 'ac_add_options --with-l10n-base=$PWD/floorp/browser/locales/l10n-central' >> mozconfig
 
         if [[ $GHA_profgen == 'true' ]]; then
           echo 'ac_add_options --enable-profile-generate=cross' >> mozconfig
@@ -234,23 +221,23 @@ jobs:
     - name: Change update url if beta
       if: inputs.beta
       run: |
-        sed -i 's|https://@MOZ_APPUPDATE_HOST@/browser/%DISPLAY_VERSION%/%OS%/%ARCH%/update.xml|https://@MOZ_APPUPDATE_HOST@/${{github.repository}}/releases/download/beta/WINNT-x86_64.xml |g' ./build/application.ini.in
-
+       sed -i 's|https://@MOZ_APPUPDATE_HOST@/browser/%DISPLAY_VERSION%/%OS%/%ARCH%/update.xml|https://@MOZ_APPUPDATE_HOST@/browser/beta/%OS%/%ARCH%/update.xml |g' ./build/application.ini.in
+  
     #On Package, if not copies, error occur
     - name: Copy l10n files if beta
       if: inputs.beta
       run: |
-          for dir in $(ls -l $PWD/l10n-central/l10n-central | grep ^d | awk '{print $9}'); do
-            mkdir -p $PWD/l10n-central/l10n-central/$dir/browser/branding/beta
-            cp ./browser/branding/beta/locales/en-US/brand.dtd $PWD/l10n-central/l10n-central/$dir/browser/branding/beta/brand.dtd
-            cp ./browser/branding/beta/locales/en-US/brand.ftl $PWD/l10n-central/l10n-central/$dir/browser/branding/beta/brand.ftl
-            cp ./browser/branding/beta/locales/en-US/brand.properties $PWD/l10n-central/l10n-central/$dir/browser/branding/beta/brand.properties
+          for dir in $(ls -l $PWD/floorp/browser/locales/l10n-central | grep ^d | awk '{print $9}'); do
+            mkdir -p $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta
+            cp ./browser/branding/beta/locales/en-US/brand.dtd $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.dtd
+            cp ./browser/branding/beta/locales/en-US/brand.ftl $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.ftl
+            cp ./browser/branding/beta/locales/en-US/brand.properties $PWD/floorp/browser/locales/l10n-central/$dir/browser/branding/beta/brand.properties
           done
 
     - name: Change Release Note URL
       if: inputs.release-note-url
       run: |
-        sed -i 's|https://blog.ablaze.one/category/ablaze/ablaze-project/floorp/|${{inputs.release-note-url}}|g' ./browser/branding/official/pref/firefox-branding.js
+        sed -i 's|https://astian.org/midori-en/|${{inputs.release-note-url}}|g' ./browser/branding/official/pref/firefox-branding.js
         echo "$(cat ./browser/branding/official/pref/firefox-branding.js)"
 
     - name: Build 🔨
@@ -283,13 +270,12 @@ jobs:
         fi
         ./mach package
 
-        ./mach package-multi-locale --locales ar cs da de el en-US en-GB es-ES es-MX fr hu id it ja ko lt nl nn-NO pl pt-BR pt-PT ru sv-SE th tr vi zh-CN zh-TW
+        ./mach package-multi-locale --locales ar cs da de el en-US en-GB es-ES fr hu id it ja ko lt nl nn-NO pl pt-BR pt-PT ru sv-SE th tr uk vi zh-CN zh-TW
 
       env:
         GHA_MOZ_BUILD_DATE: ${{inputs.MOZ_BUILD_DATE}}
 
     - name: Copy 📂
-
       run: |
         mkdir ~/output
         if [[ $GHA_aarch64 == 'true' ]];then
@@ -305,11 +291,10 @@ jobs:
 
         if [[ $GHA_zstd != 'true' ]];then
           cp obj-${arch}-pc-windows-msvc/dist/install/sea/midori-*.en-US.${arch_inst}.installer-stub.exe ~/output/midori-stub.installer.exe
-          cp obj-${arch}-pc-windows-msvc/dist/floorp-*.en-US.${arch_inst}.zip ~/output/
-          cp obj-${arch}-pc-windows-msvc/dist/install/sea/midori-*.en-US.${arch_inst}.installer.exe ~/output/midori-${arch_inst}.installer.exe
+          cp obj-${arch}-pc-windows-msvc/dist/midori-*.en-US.${arch_inst}.zip ~/output/
           cp obj-${arch}-pc-windows-msvc/dist/install/sea/midori-*.en-US.${arch_inst}.installer.exe ~/output/midori-${arch_inst}.installer.exe
         else
-          tar -I "zstd -T4 -10" --remove-files -cvf ~/output/midori-$(cat browser/config/version.txt).en-us.${arch_inst}.tar.zst midori
+          cp obj-${arch}-pc-windows-msvc/dist/midori-*.en-US.${arch_inst}.zip ~/output/
           7z x ~/output/midori-*.en-US.${arch_inst}.zip
           tar -I "zstd -T4 -10" --remove-files -cvf ~/output/midori-$(cat browser/config/version.txt).en-us.${arch_inst}.tar.zst midori
           rm ~/output/midori-*.en-US.${arch_inst}.zip
@@ -333,6 +318,7 @@ jobs:
         else
           arch="x86_64"
         fi
+
         touch "obj-${arch}-pc-windows-msvc/dist/midori/precomplete"
         MAR="obj-${arch}-pc-windows-msvc/dist/host/bin/mar" \
         MOZ_PRODUCT_VERSION=$(cat browser/config/version_display.txt) \

@@ -227,7 +227,7 @@ bool Instance::callImport(JSContext* cx, uint32_t funcImportIndex,
 
   MOZ_ASSERT(argTypes.lengthWithStackResults() == argc);
   Maybe<char*> stackResultPointer;
-    size_t lastBoxIndexPlusOne = 0;
+  size_t lastBoxIndexPlusOne = 0;
   {
     JS::AutoAssertNoGC nogc;
     for (size_t i = 0; i < argc; i++) {

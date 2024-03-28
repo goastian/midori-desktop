@@ -6,7 +6,7 @@
 
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 var { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
+  "resource://gre/modules/AppConstants.jsm",
 );
 
 function setBrowserDesign() {
@@ -16,46 +16,56 @@ function setBrowserDesign() {
   }
 
   const floorpInterfaceNum = Services.prefs.getIntPref(
-    "floorp.browser.user.interface"
+    "floorp.browser.user.interface",
   );
   const updateNumber = new Date().getTime();
   const themeCSS = {
-    ProtonfixUI: `@import url(chrome://browser/skin/protonfix/protonfix.css?${updateNumber});`,
     LeptonUI: `@import url(chrome://browser/skin/lepton/leptonChrome.css?${updateNumber}); @import url(chrome://browser/skin/lepton/leptonContent.css?${updateNumber});`,
-    LeptonUIMultitab: `@import url(chrome://browser/skin/lepton/photonChrome-multitab.css?${updateNumber});
-                       @import url(chrome://browser/skin/lepton/photonContent-multitab.css?${updateNumber});`,
     fluentUI: `@import url(chrome://browser/skin/fluentUI/fluentUI.css);`,
-    gnomeUI: `@import url(chrome://browser/skin/gnomeUI/gnomeUI.css);
-              `,
+    gnomeUI: `@import url(chrome://browser/skin/gnomeUI/gnomeUI.css);`,
     FluerialUI: `@import url(chrome://browser/skin/floorplegacy/test_legacy.css?${updateNumber});`,
     FluerialUIMultitab: `@import url(chrome://browser/skin/floorplegacy/test_legacy.css?${updateNumber}); @import url(chrome://browser/skin/floorplegacy/test_legacy_multitab.css);`,
+
+    // Vertical Tabs CSS Injection
+    LeptonVerticalTabs: `@import url(chrome://browser/skin/lepton/leptonVerticalTabs.css);`,
+    fluentVerticalTabs: `@import url(chrome://browser/skin/fluentUI/fluentVerticalTabs.css);`,
+    gnomeVerticalTabs: `@import url(chrome://browser/skin/gnomeUI/gnomeVerticalTabs.css);`,
+    FluerialVerticalTabs: `@import url(chrome://browser/skin/floorplegacy/test_legacy_verticalTabs.css?${updateNumber});`,
   };
 
   const tag = document.createElement("style");
   tag.setAttribute("id", "browserdesgin");
   const enableMultitab = Services.prefs.getIntPref("floorp.tabbar.style") == 1;
+  const enableVerticalTabs =
+    Services.prefs.getIntPref("floorp.browser.tabbar.settings") == 2;
 
   switch (floorpInterfaceNum) {
     case 1:
       break;
     case 3:
-      tag.innerText = enableMultitab
-        ? themeCSS.LeptonUIMultitab
+      tag.innerText = enableVerticalTabs
+        ? themeCSS.LeptonUI + themeCSS.LeptonVerticalTabs
         : themeCSS.LeptonUI;
       break;
     case 5:
       if (AppConstants.platform !== "linux") {
-        tag.innerText = themeCSS.fluentUI;
+        tag.innerText = enableVerticalTabs
+          ? themeCSS.fluentUI + themeCSS.fluentVerticalTabs
+          : themeCSS.fluentUI;
       }
       break;
     case 6:
       if (AppConstants.platform == "linux") {
-        tag.innerText = themeCSS.gnomeUI;
+        tag.innerText = enableVerticalTabs
+          ? themeCSS.gnomeUI + themeCSS.gnomeVerticalTabs
+          : themeCSS.gnomeUI;
       }
       break;
     case 8:
       tag.innerText = enableMultitab
         ? themeCSS.FluerialUIMultitab
+        : enableVerticalTabs
+        ? themeCSS.FluerialUI + themeCSS.FluerialVerticalTabs
         : themeCSS.FluerialUI;
       break;
   }
@@ -77,34 +87,25 @@ function setBrowserDesign() {
 
   if (floorpInterfaceNum == 3) {
     loadStyleSheetWithNsStyleSheetService(
-      "chrome://browser/skin/lepton/leptonContent.css"
+      "chrome://browser/skin/lepton/leptonContent.css",
     );
   } else {
     unloadStyleSheetWithNsStyleSheetService(
-      "chrome://browser/skin/lepton/leptonContent.css"
+      "chrome://browser/skin/lepton/leptonContent.css",
     );
   }
 }
 
-document.addEventListener(
-  "DOMContentLoaded",
-  () => {
-    setBrowserDesign();
-    Services.prefs.addObserver(
-      "floorp.browser.user.interface",
-      setBrowserDesign
-    );
-    Services.prefs.addObserver(
-      "floorp.fluerial.roundVerticalTabs",
-      setBrowserDesign
-    );
-    Services.obs.addObserver(setBrowserDesign, "update-photon-pref");
-    Services.obs.addObserver(setPhotonUI, "set-photon-ui");
-    Services.obs.addObserver(setLeptonUI, "set-lepton-ui");
-    Services.obs.addObserver(setProtonFixUI, "set-protonfix-ui");
-  },
-  { once: true }
+setBrowserDesign();
+Services.prefs.addObserver("floorp.browser.user.interface", setBrowserDesign);
+Services.prefs.addObserver(
+  "floorp.fluerial.roundVerticalTabs",
+  setBrowserDesign,
 );
+Services.obs.addObserver(setBrowserDesign, "update-photon-pref");
+Services.obs.addObserver(setPhotonUI, "set-photon-ui");
+Services.obs.addObserver(setLeptonUI, "set-lepton-ui");
+Services.obs.addObserver(setProtonFixUI, "set-protonfix-ui");
 
 function setPhotonUI() {
   Services.prefs.setIntPref("floorp.lepton.interface", 1);
@@ -118,7 +119,7 @@ function setPhotonUI() {
   Services.prefs.setBoolPref("userChrome.tab.static_separator", true);
   Services.prefs.setBoolPref(
     "userChrome.tab.static_separator.selected_accent",
-    false
+    false,
   );
   Services.prefs.setBoolPref("userChrome.tab.bar_separator", false);
 
@@ -130,7 +131,7 @@ function setPhotonUI() {
   Services.prefs.setBoolPref("userChrome.icon.panel_photon", true);
 
   Services.prefs.setBoolPref("userChrome.tab.box_shadow", false);
-  Services.prefs.setBoolPref("userChrome.tab.bottom_rounded_corner", true);
+  Services.prefs.setBoolPref("userChrome.tab.bottom_rounded_corner", false);
 
   Services.prefs.setBoolPref("userChrome.tab.photon_like_contextline", true);
   Services.prefs.setBoolPref("userChrome.rounding.square_tab", true);
@@ -149,7 +150,7 @@ function setLeptonUI() {
   Services.prefs.setBoolPref("userChrome.tab.static_separator", false);
   Services.prefs.setBoolPref(
     "userChrome.tab.static_separator.selected_accent",
-    false
+    false,
   );
   Services.prefs.setBoolPref("userChrome.tab.bar_separator", false);
 
@@ -164,7 +165,7 @@ function setLeptonUI() {
   Services.prefs.setBoolPref("userChrome.tab.bottom_rounded_corner", true);
 
   Services.prefs.setBoolPref("userChrome.tab.photon_like_contextline", false);
-  Services.prefs.setBoolPref("userChrome.rounding.square_tab", true);
+  Services.prefs.setBoolPref("userChrome.rounding.square_tab", false);
   setBrowserDesign();
 }
 
@@ -181,7 +182,7 @@ function setProtonFixUI() {
   Services.prefs.setBoolPref("userChrome.tab.static_separator", false);
   Services.prefs.setBoolPref(
     "userChrome.tab.static_separator.selected_accent",
-    false
+    false,
   );
   Services.prefs.setBoolPref("userChrome.tab.bar_separator", false);
 
@@ -193,10 +194,10 @@ function setProtonFixUI() {
   Services.prefs.setBoolPref("userChrome.icon.panel_photon", false);
 
   Services.prefs.setBoolPref("userChrome.tab.box_shadow", false);
-  Services.prefs.setBoolPref("userChrome.tab.bottom_rounded_corner", true);
+  Services.prefs.setBoolPref("userChrome.tab.bottom_rounded_corner", false);
 
   Services.prefs.setBoolPref("userChrome.tab.photon_like_contextline", false);
-  Services.prefs.setBoolPref("userChrome.rounding.square_tab", true);
+  Services.prefs.setBoolPref("userChrome.rounding.square_tab", false);
 
   setBrowserDesign();
 }

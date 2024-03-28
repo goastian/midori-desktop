@@ -130,8 +130,8 @@ codesign --force -o runtime --verbose --sign "$IDENTITY" --deep \
 # Sign floorp main exectuable
 codesign --force -o runtime --verbose --sign "$IDENTITY" --deep \
 --entitlements ${BROWSER_ENTITLEMENTS_FILE} \
-"${BUNDLE}"/Contents/MacOS/midori-bin \
-"${BUNDLE}"/Contents/MacOS/midori
+"${BUNDLE}"/Contents/MacOS/floorp-bin \
+"${BUNDLE}"/Contents/MacOS/floorp
 
 # Sign Library/LaunchServices
 codesign --force -o runtime --verbose --sign "$IDENTITY" --deep \

@@ -4,7 +4,7 @@
       "uri": "https://dns.nextdns.io/fc53cb/",
       "UIName": "MidoriDNS",
       "schema": 1621819183640,
-      "autoDefault": true,
+      "autoDefault": false,
       "canonicalName": "",
       "id": "nextdns-global",
       "last_modified": 1621943542621

@@ -4,6 +4,7 @@
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
+  AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
   TELEMETRY_SETTINGS_KEY: "resource:///modules/SearchSERPTelemetry.sys.mjs",
   JsonSchema: "resource://gre/modules/JsonSchema.sys.mjs",
@@ -32,6 +33,17 @@ function isObject(value) {
  *   The section to check to see if an additionalProperties flag should be added.
  */
 function disallowAdditionalProperties(section) {
+  // It is generally acceptable for new properties to be added to the
+  // configuration as older builds will ignore them.
+  //
+  // As a result, we only check for new properties on nightly builds, and this
+  // avoids us having to uplift schema changes. This also helps preserve the
+  // schemas as documentation of "what was supported in this version".
+  if (!AppConstants.NIGHTLY_BUILD) {
+    info("Skipping additional properties validation.");
+    return;
+  }
+
   if (section.type == "object") {
     section.additionalProperties = false;
   }
@@ -47,16 +59,6 @@ add_task(async function test_search_config_validates_to_schema() {
     PathUtils.join(do_get_cwd().path, "search-telemetry-schema.json")
   );
   disallowAdditionalProperties(schema);
-
-  // TODO: Bug 1836156. `extraPageRegexps` is being removed so we do not want
-  // to add it to the schema. Add it here so that the test can pass until it
-  // is removed.
-  schema.properties.extraPageRegexps = {
-    type: "array",
-    items: {
-      type: "string",
-    },
-  };
 
   let data = await RemoteSettings(TELEMETRY_SETTINGS_KEY).get();
 

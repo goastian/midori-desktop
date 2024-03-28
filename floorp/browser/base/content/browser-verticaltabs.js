@@ -3,157 +3,282 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
-function setVerticalTabs() {
-  if (Services.prefs.getIntPref("floorp.tabbar.style") == 2) {
+
+const VERTICAL_TABS_WIDTH_PREF = "floorp.browser.tabs.verticaltab.width";
+
+var gFloorpVerticalTabBar = {
+  _initialized: false,
+  _widthObserver: null,
+
+  get enabled() {
+    return Services.prefs.getBoolPref("floorp.browser.tabs.verticaltab", false);
+  },
+
+  get hoverModeEnabled() {
+    return Services.prefs.getBoolPref(
+      "floorp.verticaltab.hover.enabled",
+      false,
+    );
+  },
+
+  get tabsToolbar() {
+    return document.getElementById("TabsToolbar");
+  },
+
+  get titlebarContainer() {
+    return document.getElementById("titlebar");
+  },
+
+  get browserBox() {
+    return document.getElementById("browser");
+  },
+
+  get arrowscrollbox() {
+    return document.getElementById("tabbrowser-arrowscrollbox");
+  },
+
+  get tabbrowserTabs() {
+    return document.getElementById("tabbrowser-tabs");
+  },
+
+  get toolbarModificationStyle() {
+    return document.getElementById("verticalTabsStyle");
+  },
+
+  get hoverStyleElem() {
+    return document.getElementById("floorp-vthover");
+  },
+
+  get splitter() {
+    return document.getElementById("verticaltab-splitter");
+  },
+
+  init() {
+    if (this._initialized) {
+      return;
+    }
+
+    // Global
+    window.gFloorpVerticalTabBar = this;
+
+    Services.prefs.addObserver("floorp.tabbar.style", function () {
+      if (Services.prefs.getIntPref("floorp.tabbar.style") == 2) {
+        Services.prefs.setIntPref(tabbarContents.tabbarDisplayStylePref, 2);
+      } else {
+        Services.prefs.setIntPref(tabbarContents.tabbarDisplayStylePref, 0);
+      }
+      gFloorpVerticalTabBar.setVerticalTabs();
+    });
+
+    this.setVerticalTabs();
+    this._initialized = true;
+  },
+
+  enableVerticalTabBar() {
+    // pref
     Services.prefs.setBoolPref("floorp.browser.tabs.verticaltab", true);
-    window.setTimeout(() => {
-      const verticalTabs = document.querySelector(".toolbar-items");
-      verticalTabs.id = "toolbar-items-verticaltabs";
+    Services.prefs.setIntPref("floorp.browser.tabbar.settings", 2);
 
-      const sidebarBox = document.getElementById("sidebar-box");
-      //sidebarBox.style.setProperty("overflow-y", "scroll", "important")
+    // Move Tab Bar
+    this.browserBox?.prepend(this.tabsToolbar || "");
 
-      //init vertical tabs
-      sidebarBox.insertBefore(verticalTabs, sidebarBox.firstChild);
-      const tabBrowserArrowScrollBox = document.getElementById(
-        "tabbrowser-arrowscrollbox"
-      );
-      verticalTabs.setAttribute("align", "start");
-      tabBrowserArrowScrollBox.setAttribute("orient", "vertical");
-      tabBrowserArrowScrollBox.removeAttribute("overflowing");
-      tabBrowserArrowScrollBox.removeAttribute("scrolledtostart");
-      tabBrowserArrowScrollBox.disabled = true;
-      document
-        .getElementById("tabbrowser-tabs")
-        .setAttribute("orient", "vertical");
-      tabBrowserArrowScrollBox.shadowRoot
-        .querySelector(`[part="scrollbox"]`)
-        .setAttribute("orient", "vertical");
+    // Replace orientation
+    this.arrowScrollbox = document.getElementById("tabbrowser-arrowscrollbox");
+    this.tabBrowserTabs = document.getElementById("tabbrowser-tabs");
+    this.arrowScrollbox?.setAttribute("orient", "vertical");
+    this.tabBrowserTabs?.setAttribute("orient", "vertical");
 
-      //move menubar
-      document
-        .getElementById("titlebar")
-        .before(document.getElementById("toolbar-menubar"));
-      if (sidebarBox.getAttribute("hidden") === "true") {
-        SidebarUI.toggle();
-      }
-    }, 500);
+    // Lepton Integration
+    this.tabsToolbar?.setAttribute("multibar", "true");
 
-    function checkBrowserIsStartup() {
-      const browserWindows = Services.wm.getEnumerator("navigator:browser");
+    document
+      .querySelector("#TabsToolbar .toolbar-items")
+      ?.setAttribute("align", "start");
 
-      while (browserWindows.hasMoreElements()) {
-        if (browserWindows.getNext() !== window) {
-          return;
-        }
-      }
-
-      SessionStore.promiseInitialized.then(() => {
-        window.setTimeout(setWorkspaceLabel, 1500);
-        window.setTimeout(setWorkspaceLabel, 3000);
-      });
-    }
-    checkBrowserIsStartup();
-
-    function setWorkspaceLabel() {
-      const workspaceButton = document.getElementById("workspace-button");
-      const customizeTarget = document.getElementById(
-        "nav-bar-customization-target"
-      );
-
-      if (!workspaceButton) {
-        console.info("Workspace button not found");
-        return;
-      }
-
-      customizeTarget.before(workspaceButton);
-    }
+    this.tabsToolbar?.removeAttribute("flex");
 
     //toolbar modification
-    var Tag = document.createElement("style");
+    let Tag = document.createElement("style");
     Tag.id = "verticalTabsStyle";
     Tag.textContent = `@import url("chrome://browser/content/browser-verticaltabs.css");`;
     document.head.appendChild(Tag);
 
-    Services.prefs.setIntPref("floorp.browser.tabbar.settings", 2);
-
-    if (
-      document.getElementById("floorp-vthover") == null &&
-      Services.prefs.getBoolPref("floorp.verticaltab.hover.enabled")
-    ) {
-      Tag = document.createElement("style");
-      Tag.innerText = `@import url(chrome://browser/skin/options/native-verticaltab-hover.css)`;
-      Tag.setAttribute("id", "floorp-vthover");
-      document.head.appendChild(Tag);
-    }
-    //add context menu
-    let target = document.getElementById("TabsToolbar-customization-target");
-    target.setAttribute("context", "toolbar-context-menu");
-  } else {
-    Services.prefs.setBoolPref("floorp.browser.tabs.verticaltab", false);
-    document.querySelector("#verticalTabsStyle")?.remove();
-    let verticalTabs = document.querySelector("#toolbar-items-verticaltabs");
-    if (verticalTabs != null) {
-      document
-        .querySelector("#TabsToolbar")
-        .insertBefore(
-          verticalTabs,
-          document.querySelectorAll(`#TabsToolbar > .titlebar-spacer`)[1]
-        );
-      let tabBrowserArrowScrollBox = document.getElementById(
-        "tabbrowser-arrowscrollbox"
-      );
-      let tabsBase = document.querySelector("#tabbrowser-tabs");
-      verticalTabs.setAttribute("align", "end");
-      verticalTabs.removeAttribute("id");
-      tabBrowserArrowScrollBox.setAttribute("orient", "horizontal");
-      tabsBase.setAttribute("orient", "horizontal");
-      let tabsToolBar = document.querySelector("#tabbrowser-tabs");
-      tabsToolBar.style.removeProperty("--tab-overflow-pinned-tabs-width");
-      tabsToolBar.removeAttribute("positionpinnedtabs");
-
+    // Hover effect CSS check
+    if (this.hoverStyleElem == null && this.hoverModeEnabled) {
       window.setTimeout(() => {
-        if (tabBrowserArrowScrollBox.getAttribute("overflowing") != "true") {
-          tabsBase.removeAttribute("overflow");
-        }
-        tabsToolBar.removeAttribute("positionpinnedtabs");
-        for (let elem of document.querySelectorAll(
-          `#tabbrowser-arrowscrollbox > tab[style*="margin-inline-start"]`
-        )) {
-          elem.style.removeProperty("margin-inline-start");
-        }
+        Tag = document.createElement("style");
+        Tag.innerText = `@import url(chrome://browser/skin/options/native-verticaltab-hover.css)`;
+        Tag.setAttribute("id", "floorp-vthover");
+        document.head.appendChild(Tag);
       }, 1000);
-      tabBrowserArrowScrollBox.setAttribute("scrolledtostart", "true");
-      tabBrowserArrowScrollBox.removeAttribute("disabled");
-      //sidebarBox.style.removeProperty("overflow-y")
-
-      //move workspace button
-      function moveToDefaultSpace() {
-        const workspaceButton = document.getElementById("workspace-button");
-        if (!workspaceButton) {
-          console.error("Workspace button not found");
-          return;
-        }
-        document.querySelector(".toolbar-items").before(workspaceButton);
-      }
-      moveToDefaultSpace();
-
-      document.getElementById("floorp-vthover")?.remove();
-
-      //remove context menu
-      let target = document.getElementById("TabsToolbar-customization-target");
-      target.removeAttribute("context");
     }
-  }
-}
-setVerticalTabs();
-Services.prefs.addObserver("floorp.tabbar.style", setVerticalTabs);
 
-Services.prefs.addObserver("floorp.tabbar.style", function () {
-  if (Services.prefs.getIntPref("floorp.tabbar.style") == 2) {
-    Services.prefs.setIntPref(tabbarContents.tabbarDisplayStylePref, 2);
-  } else {
-    Services.prefs.setIntPref(tabbarContents.tabbarDisplayStylePref, 0);
-  }
-});
+    //splitter
+    this.splitter.removeAttribute("hidden");
+
+    // TabsToolbar hidden
+    this.tabsToolbar?.removeAttribute("hidden");
+
+    // Change Scroll elem tag
+    this.changeXULElementTagName(
+      this.arrowscrollbox.shadowRoot.querySelector(
+        "scrollbox[part='scrollbox']",
+      ),
+      "vbox",
+    );
+
+    // Width observer
+    this._widthObserver = new MutationObserver(this.mutationObserverCallback);
+
+    if (this.tabsToolbar) {
+      this._widthObserver.observe(this.tabsToolbar, {
+        attributes: true,
+      });
+    }
+
+    document
+      .getElementById("TabsToolbar")
+      ?.setAttribute(
+        "width",
+        Services.prefs.getIntPref(VERTICAL_TABS_WIDTH_PREF, 200),
+      );
+
+    if (this.tabsToolbar) {
+      document.getElementById("TabsToolbar").style.width =
+        `${Services.prefs.getIntPref(VERTICAL_TABS_WIDTH_PREF, 200)}px`;
+    }
+
+    // Observer
+    this.toggleCustomizeModeVerticaltabStyle();
+  },
+
+  disableVerticalTabBar() {
+    if (!this._initialized) {
+      return;
+    }
+    Services.prefs.setBoolPref("floorp.browser.tabs.verticaltab", false);
+    Services.prefs.setIntPref("floorp.browser.tabbar.settings", 0);
+
+    this.titlebarContainer?.prepend(this.tabsToolbar || "");
+
+    this.arrowScrollbox?.setAttribute("orient", "horizontal");
+    this.tabBrowserTabs?.setAttribute("orient", "horizontal");
+
+    document
+      .querySelector("#TabsToolbar .toolbar-items")
+      ?.setAttribute("align", "end");
+
+    this.tabsToolbar?.setAttribute("flex", "1");
+
+    //toolbar modification
+    this.toolbarModificationStyle?.remove();
+
+    // Hover effect CSS
+    this.hoverStyleElem?.remove();
+
+    // Splitter
+    this.splitter?.setAttribute("hidden", "true");
+
+    // Change Scroll elem tag
+    this.changeXULElementTagName(
+      this.arrowscrollbox.shadowRoot.querySelector("vbox[part='scrollbox']"),
+      "scrollbox",
+    );
+
+    // Observer
+    if (this._widthObserver) {
+      this._widthObserver.disconnect();
+      this._widthObserver = null;
+    }
+  },
+
+  setVerticalTabs() {
+    if (Services.prefs.getIntPref("floorp.tabbar.style") == 2) {
+      this.enableVerticalTabBar();
+    } else {
+      this.disableVerticalTabBar();
+    }
+  },
+
+  // Functions
+  changeXULElementTagName(oldElement, newTagName) {
+    const newElement = document.createElement(newTagName);
+
+    if (!oldElement) {
+      return;
+    }
+
+    const attrs = oldElement.attributes;
+    for (let i = 0; i < attrs.length; i++) {
+      newElement.setAttribute(attrs[i].name, attrs[i].value);
+    }
+
+    while (oldElement.firstChild) {
+      newElement.appendChild(oldElement.firstChild);
+    }
+    oldElement.parentNode.replaceChild(newElement, oldElement);
+  },
+
+  mutationObserverCallback(mutations) {
+    for (const mutation of mutations) {
+      if (mutation.type === "attributes" && mutation.attributeName == "width") {
+        Services.prefs.setIntPref(
+          VERTICAL_TABS_WIDTH_PREF,
+          parseInt(mutation.target.style.width),
+        );
+      }
+    }
+  },
+
+  toggleCustomizeModeVerticaltabStyle() {
+    let customizationContainer = document.getElementById("nav-bar");
+    let arrowscrollbox = document.getElementById("tabbrowser-arrowscrollbox");
+    let observer = new MutationObserver(function (mutations) {
+      mutations.forEach(function (mutation) {
+        if (mutation.target.getAttribute("customizing") == "true") {
+          Services.prefs.setBoolPref(
+            "floorp.browser.tabs.verticaltab.temporary.disabled",
+            true,
+          );
+          Services.prefs.setIntPref("floorp.tabbar.style", 0);
+          Services.prefs.setIntPref(tabbarContents.tabbarDisplayStylePref, 0);
+          arrowscrollbox.hidden = true;
+        } else {
+          Services.prefs.setBoolPref(
+            "floorp.browser.tabs.verticaltab.temporary.disabled",
+            false,
+          );
+          Services.prefs.setIntPref("floorp.tabbar.style", 2);
+          Services.prefs.setIntPref(tabbarContents.tabbarDisplayStylePref, 2);
+          arrowscrollbox.hidden = false;
+        }
+      });
+    });
+    let config = { attributes: true };
+    observer.observe(customizationContainer, config);
+
+    Services.prefs.addObserver("floorp.tabbar.style", function () {
+      if (
+        Services.prefs.getIntPref("floorp.tabbar.style") != 2 &&
+        !Services.prefs.getBoolPref(
+          "floorp.browser.tabs.verticaltab.temporary.disabled",
+        )
+      ) {
+        observer.disconnect();
+      } else if (
+        Services.prefs.getIntPref("floorp.tabbar.style") == 2 &&
+        Services.prefs.getBoolPref(
+          "floorp.browser.tabs.verticaltab.temporary.disabled",
+        )
+      ) {
+        observer.observe(customizationContainer, config);
+      }
+    });
+  },
+};
+
+window.setTimeout(() => {
+  gFloorpVerticalTabBar.init();
+}, 1000);

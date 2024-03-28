@@ -1,0 +1,38 @@
+{
+  "name": "floorp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "gen": "pnpm run:xpidl2dts && pnpm format:xpidl2dts",
+    "format": "biome format browser --write",
+    "run:xpidl2dts": "cd ./tools && tsx run-xpidl2dts.ts & cd ..",
+    "format:xpidl2dts": "prettier --write @types/firefox/**/*.d.ts --ignore-path \"\"",
+    "dev": "tsx scripts/copyFiles.ts && tsx scripts/mach_run.ts",
+    "dev:mach": "tsx scripts/mach_build_faster.ts && tsx scripts/mach_run.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MPL-2.0",
+  "devDependencies": {
+    "@babel/eslint-parser": "^7.23.3",
+    "@biomejs/biome": "1.5.2",
+    "@types/node": "^20.11.7",
+    "@typescript-eslint/eslint-plugin": "^6.16.0",
+    "@typescript-eslint/parser": "^6.16.0",
+    "eslint": "^8.56.0",
+    "eslint-import-resolver-typescript": "^3.6.1",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-mozilla": "^3.3.2",
+    "execa": "^8.0.1",
+    "fast-glob": "^3.3.2",
+    "prettier": "^3.1.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "typescript-transform-paths": "^3.4.6",
+    "xpidl2dts": "file:tools\\xpidl2dts@0.2.0"
+  },
+  "type": "module",
+  "private": true
+}

@@ -7,14 +7,10 @@
   },
   "applications": {
     "gecko": {
-    "id": "webpanel-ua@floorp.ablaze.one"
-		}
+      "id": "webpanel-ua@floorp.ablaze.one"
+    }
   },
-  "permissions": [
-    "webRequest",
-    "webRequestBlocking",
-    "<all_urls>"
-  ],
+  "permissions": ["webRequest", "webRequestBlocking", "<all_urls>"],
   "background": {
     "scripts": ["background.js"]
   },
@@ -22,9 +18,7 @@
     "webRequestExt": {
       "schema": "APIs/webRequestExt.json",
       "parent": {
-        "scopes": [
-          "addon_parent"
-        ],
+        "scopes": ["addon_parent"],
         "script": "APIs/webRequestExt.js",
         "paths": [["webRequestExt"]]
       }

@@ -1,0 +1,6 @@
+# Floorp's exclusion list
+# userChrome.js
+browser/extensions/userChromejs/*
+browser/components/calendar/*
+
+@types/firefox/*

@@ -787,6 +787,18 @@ let JSWINDOWACTORS = {
 
   // The older translations feature backed by external services.
   // This is being replaced by a newer ML-backed translation service. See Bug 971044.
+  // Floorp Injections
+  SiteSpecificBrowser: {
+    parent: {
+      esModuleURI: "resource:///actors/SiteSpecificBrowserParent.sys.mjs",
+    },
+    child: {
+      esModuleURI: "resource:///actors/SiteSpecificBrowserChild.sys.mjs",
+    },
+
+    allFrames: true,
+  },
+
   Translation: {
     parent: {
       moduleURI: "resource:///modules/translation/TranslationParent.jsm",

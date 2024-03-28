@@ -3352,7 +3352,10 @@ void nsWindow::SetCursor(const Cursor& aCursor) {
 
   // Try to set the cursor image first, and fall back to the numeric cursor.
   bool fromImage = true;
-  GdkCursor* newCursor = GetCursorForImage(aCursor, GdkCeiledScaleFactor());
+  GdkCursor* newCursor = nullptr;
+  if (mCustomCursorAllowed) {
+    newCursor = GetCursorForImage(aCursor, GdkCeiledScaleFactor());
+  }
   if (!newCursor) {
     fromImage = false;
     newCursor = get_gtk_cursor(aCursor.mDefaultCursor);
@@ -6575,6 +6578,14 @@ void nsWindow::ResumeCompositorFlickering() {
   }
 
   MozClearHandleID(mCompositorPauseTimeoutID, g_source_remove);
+
+  // mCompositorWidgetDelegate can be deleted during timeout.
+  // In such case just flip compositor back to enabled and let
+  // SetCompositorWidgetDelegate() or Map event resume it.
+  if (!mCompositorWidgetDelegate) {
+    mCompositorState = COMPOSITOR_ENABLED;
+    return;
+  }
 
   ResumeCompositorImpl();
 }
