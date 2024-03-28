@@ -161,7 +161,7 @@ pref("floorp.user.js.customize", "");
 
 // Web apps support
 #ifdef XP_WIN
-pref("floorp.browser.ssb.enabled", true);
+pref("floorp.browser.ssb.enabled", false);
 #else
 pref("floorp.browser.ssb.enabled", false);
 #endif
