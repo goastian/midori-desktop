@@ -3,11 +3,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
+ var { AppConstants } = ChromeUtils.import(
+  "resource://gre/modules/AppConstants.jsm",
 );
 const CustomKeyboardShortcutUtils = ChromeUtils.importESModule(
-  "resource://floorp/modules/CustomKeyboardShortcutUtils.sys.mjs"
+  "resource:///modules/CustomKeyboardShortcutUtils.sys.mjs",
 );
 
 XPCOMUtils.defineLazyGetter(this, "L10n", () => {
@@ -38,14 +38,14 @@ const gCSKPane = {
             let userConfirm = await confirmRestartPrompt(null);
             if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
               Services.startup.quit(
-                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
+                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart,
               );
             }
           })();
         } else {
           window.setTimeout(function () {
             Services.startup.quit(
-              Services.startup.eAttemptQuit | Services.startup.eRestart
+              Services.startup.eAttemptQuit | Services.startup.eRestart,
             );
           }, 500);
         }
@@ -58,7 +58,7 @@ const gCSKPane = {
     async function restoreDefault() {
       let l10n = new Localization(
         ["browser/floorp.ftl", "branding/brand.ftl"],
-        true
+        true,
       );
       const prompts = Services.prompt;
       const check = {
@@ -76,7 +76,7 @@ const gCSKPane = {
         null,
         "",
         null,
-        check
+        check,
       );
       if (result == 0) {
         utils.preferencesFunctions.removeAllKeyboradShortcut();
@@ -86,7 +86,7 @@ const gCSKPane = {
     let rebootButton = document.getElementById("reboot-browser-CSK-button");
     function reboot() {
       Services.startup.quit(
-        Services.startup.eAttemptQuit | Services.startup.eRestart
+        Services.startup.eAttemptQuit | Services.startup.eRestart,
       );
     }
 
@@ -108,21 +108,21 @@ const gCSKPane = {
         null,
         "",
         null,
-        check
+        check,
       );
       if (result == 0) {
         utils.preferencesFunctions.removeKeyboradShortcutByActionName(
-          actionName
+          actionName,
         );
 
         const removeButton = document.querySelector(
-          `.csks-remove-button[value="${actionName}"]`
+          `.csks-remove-button[value="${actionName}"]`,
         );
         const button = document.querySelector(
-          `.csks-button[value="${actionName}"]`
+          `.csks-button[value="${actionName}"]`,
         );
         const descriptionItem = document.querySelector(
-          `.csks-box-item-description[value="${actionName}"]`
+          `.csks-box-item-description[value="${actionName}"]`,
         );
         button.removeAttribute("disabled");
         removeButton.setAttribute("hidden", "true");
@@ -146,7 +146,7 @@ const gCSKPane = {
         const box = window.MozXULElement.parseXULToFragment(`
           <vbox class="csks-content-box" id="${type}">
             <html:h2 class="csks-box-title" data-l10n-id="${utils.getInfoFunctions.getTypeLocalization(
-              type
+              type,
             )}"></html:h2>
           </vbox>
         `);
@@ -178,36 +178,36 @@ const gCSKPane = {
                 : undefined;
               let changedActions = Services.prefs.getStringPref(
                 CustomKeyboardShortcutUtils.SHORTCUT_KEY_CHANGED_ARRAY_PREF,
-                ""
+                "",
               );
               let changedActionsArray = changedActions.split(",");
 
               // Disable button if the keyborad shortcut is exist
               const button = document.querySelector(
-                `.csks-button[value="${action}"]`
+                `.csks-button[value="${action}"]`,
               );
               button.setAttribute("disabled", "true");
 
               // Add keyborad shortcut info
               const boxItem = document.querySelector(
-                `.csks-box-item[id="${action}"]`
+                `.csks-box-item[id="${action}"]`,
               );
-              const keyboradShortcutInfo = window.MozXULElement
-                .parseXULToFragment(`
+              const keyboradShortcutInfo =
+                window.MozXULElement.parseXULToFragment(`
                 <description value="${action}" class="indent tip-caption csks-box-item-description">
                 </description>
               `);
               boxItem.after(keyboradShortcutInfo);
 
               if (changedActionsArray.includes(action)) {
-                let showChangedKeyElement = window.MozXULElement
-                  .parseXULToFragment(`
+                let showChangedKeyElement =
+                  window.MozXULElement.parseXULToFragment(`
                   <description class="indent tip-caption csks-box-item-description" data-l10n-id="CSK-keyborad-shortcut-is-changed">
                   </description>
                 `);
 
                 const descriptionItem = document.querySelector(
-                  `.csks-box-item-label[value="${action}"]`
+                  `.csks-box-item-label[value="${action}"]`,
                 );
                 descriptionItem.after(showChangedKeyElement);
               }
@@ -215,16 +215,16 @@ const gCSKPane = {
               // add l10n
               if (modifiers && key) {
                 const descriptionItem = document.querySelector(
-                  `.csks-box-item-description[value="${action}"]`
+                  `.csks-box-item-description[value="${action}"]`,
                 );
                 document.l10n.setAttributes(
                   descriptionItem,
                   "CSK-keyborad-shortcut-info",
-                  { key, modifiers }
+                  { key, modifiers },
                 );
               } else {
                 const descriptionItem = document.querySelector(
-                  `.csks-box-item-description[value="${action}"]`
+                  `.csks-box-item-description[value="${action}"]`,
                 );
                 let result = key ? key : keyboradShortcutObj.keyCode;
                 // Remove the "VK_" prefix
@@ -234,13 +234,13 @@ const gCSKPane = {
                 document.l10n.setAttributes(
                   descriptionItem,
                   "CSK-keyborad-shortcut-info-with-keycode",
-                  { key: result }
+                  { key: result },
                 );
               }
 
               // Add remove button event listener
               const removeButton = document.querySelector(
-                `.csks-remove-button[value="${action}"]`
+                `.csks-remove-button[value="${action}"]`,
               );
               removeButton.addEventListener("click", function () {
                 removeShortcutKey(action);
@@ -248,11 +248,11 @@ const gCSKPane = {
             } else {
               // add event listener
               const button = document.querySelector(
-                `.csks-button[value="${action}"]`
+                `.csks-button[value="${action}"]`,
               );
               button.addEventListener("click", function () {
                 CustomKeyboardShortcutUtils.keyboradShortcutFunctions.openDialog(
-                  action
+                  action,
                 );
               });
             }
@@ -266,7 +266,7 @@ const gCSKPane = {
       CustomKeyboardShortcutUtils.SHORTCUT_KEY_AND_ACTION_PREF,
       function () {
         location.reload();
-      }
+      },
     );
   },
 };

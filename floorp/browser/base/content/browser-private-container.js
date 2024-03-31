@@ -4,8 +4,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { PrivateContainer } = ChromeUtils.importESModule(
-  "resource://floorp/modules/PrivateContainer.sys.mjs"
+ const { PrivateContainer } = ChromeUtils.importESModule(
+  "resource:///modules/PrivateContainer.sys.mjs",
 );
 
 function initPrivateContainer() {
@@ -16,7 +16,7 @@ function initPrivateContainer() {
   SessionStore.promiseInitialized.then(() => {
     gBrowser.tabContainer.addEventListener(
       "TabClose",
-      removeDataIfPrivateContainerTabNotExist
+      removeDataIfPrivateContainerTabNotExist,
     );
 
     gBrowser.tabContainer.addEventListener("TabOpen", handleTabModifications);
@@ -38,7 +38,7 @@ function initPrivateContainer() {
       function () {
         document.getElementById("open_in_private_container").hidden =
           document.getElementById("context-openlink").hidden;
-      }
+      },
     );
   });
 }
@@ -119,7 +119,7 @@ function handleTabModifications() {
 function openWithPrivateContainer(url) {
   let relatedToCurrent = false; //"relatedToCurrent" decide where to open the new tab. Default work as last tab (right side). Floorp use this.
   let _OPEN_NEW_TAB_POSITION_PREF = Services.prefs.getIntPref(
-    "floorp.browser.tabs.openNewTabPosition"
+    "floorp.browser.tabs.openNewTabPosition",
   );
   switch (_OPEN_NEW_TAB_POSITION_PREF) {
     case 0:
@@ -135,7 +135,7 @@ function openWithPrivateContainer(url) {
     PrivateContainer.Functions.getPrivateContainerUserContextId();
   Services.obs.notifyObservers(
     {
-      wrappedJSObject: new Promise(resolve => {
+      wrappedJSObject: new Promise((resolve) => {
         openTrustedLinkIn(url, "tab", {
           relatedToCurrent,
           resolveOnNewTabCreated: resolve,
@@ -143,7 +143,7 @@ function openWithPrivateContainer(url) {
         });
       }),
     },
-    "browser-open-newtab-start"
+    "browser-open-newtab-start",
   );
 }
 
@@ -169,7 +169,7 @@ function reopenInPrivateContainer() {
       let tabState = JSON.parse(SessionStore.getTabState(tab));
       try {
         triggeringPrincipal = E10SUtils.deserializePrincipal(
-          tabState.triggeringPrincipal_base64
+          tabState.triggeringPrincipal_base64,
         );
       } catch (ex) {
         continue;
@@ -188,7 +188,7 @@ function reopenInPrivateContainer() {
         triggeringPrincipal,
         {
           userContextId,
-        }
+        },
       );
     }
 

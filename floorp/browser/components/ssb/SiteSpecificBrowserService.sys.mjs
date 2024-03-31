@@ -8,6 +8,13 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
+export const EXPORTED_SYMBOLS = [
+  "SiteSpecificBrowserService",
+  "SiteSpecificBrowserBase",
+  "SiteSpecificBrowser",
+  "SSBCommandLineHandler",
+];
+
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   ManifestObtainer: "resource://gre/modules/ManifestObtainer.sys.mjs",

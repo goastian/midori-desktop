@@ -3,11 +3,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+ export const EXPORTED_SYMBOLS = [
+  "WorkspacesService",
+  "workspacesPreferences",
+  "WorkspacesGroupService",
+  "WorkspacesWindowUuidService",
+  "workspaceIcons",
+  "getWorkspaceIconUrl",
+];
+
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   WorkspacesWindowIdUtils:
-    "resource://floorp/modules/WorkspacesWindowIdUtils.sys.mjs",
-  WorkspacesDataSaver: "resource://floorp/modules/WorkspacesDataSaver.sys.mjs",
+  "resource:///modules/WorkspacesWindowIdUtils.sys.mjs",
+  WorkspacesDataSaver: "resource:///modules/WorkspacesDataSaver.sys.mjs",
 });
 
 function generateUuid() {

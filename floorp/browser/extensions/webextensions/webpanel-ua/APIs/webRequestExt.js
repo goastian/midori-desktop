@@ -32,6 +32,11 @@ this.webRequestExt = class extends ExtensionAPI {
                   return fire.async(e.requestId);
                 }
               }
+              if (
+                e.bmsUseragent === true
+              ) {
+                return fire.async(e.requestId);
+              }
             }
             WebRequest.onBeforeRequest.addListener(listener, null, [
               "blocking",

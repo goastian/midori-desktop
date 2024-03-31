@@ -4,11 +4,11 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 var { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
+  "resource://gre/modules/AppConstants.jsm",
 );
 
 let userjsUtils = ChromeUtils.importESModule(
-  "resource://floorp/modules/userjsUtils.sys.mjs"
+  "resource:///modules/userjsUtils.sys.mjs",
 );
 
 let l10n = new Localization(["browser/floorp.ftl"], true);
@@ -39,14 +39,14 @@ const gUserjsPane = {
             let userConfirm = await confirmRestartPrompt(null);
             if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
               Services.startup.quit(
-                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
+                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart,
               );
             }
           })();
         } else {
           window.setTimeout(function () {
             Services.startup.quit(
-              Services.startup.eAttemptQuit | Services.startup.eRestart
+              Services.startup.eAttemptQuit | Services.startup.eRestart,
             );
           }, 500);
         }
@@ -67,14 +67,14 @@ const gUserjsPane = {
           null,
           l10n.formatValueSync("userjs-prompt"),
           `${l10n.formatValueSync(
-            "apply-userjs-attention"
+            "apply-userjs-attention",
           )}\n${l10n.formatValueSync("apply-userjs-attention2")}`,
           flags,
           "",
           null,
           "",
           null,
-          check
+          check,
         );
         if (result == 0) {
           if (!url) {

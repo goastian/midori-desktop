@@ -4,6 +4,8 @@
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
+export const EXPORTED_SYMBOLS = ["SiteSpecificBrowserIdUtils"];
+
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const lazy = {};

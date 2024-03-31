@@ -8,7 +8,7 @@ async function getua() {
   return browser.BrowserInfo.getDisplayVersion().then((data) => {
     var dispve = data;
     dispver = dispve.replace(/ /g, "-");
-    ua = defaultua.replace(replua, "Floorp/" + dispver);
+    ua = defaultua.replace(replua, "Midori/" + dispver);
     console.log(ua);
     return ua;
   });

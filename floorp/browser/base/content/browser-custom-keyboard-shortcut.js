@@ -5,27 +5,27 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 const CustomKeyboardShortcutUtils = ChromeUtils.importESModule(
-  "resource://floorp/modules/CustomKeyboardShortcutUtils.sys.mjs"
+  "resource:///modules/CustomKeyboardShortcutUtils.sys.mjs",
 );
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const keyboradShortcutConfig = JSON.parse(
   Services.prefs.getStringPref(
     CustomKeyboardShortcutUtils.SHORTCUT_KEY_AND_ACTION_PREF,
-    ""
-  )
+    "",
+  ),
 );
 
 const buildShortCutkeyFunctions = {
   init() {
     Services.prefs.clearUserPref(
-      CustomKeyboardShortcutUtils.SHORTCUT_KEY_CHANGED_ARRAY_PREF
+      CustomKeyboardShortcutUtils.SHORTCUT_KEY_CHANGED_ARRAY_PREF,
     );
 
     if (
       Services.prefs.getBoolPref(
         CustomKeyboardShortcutUtils.SHORTCUT_KEY_DISABLE_FX_DEFAULT_SCKEY_PREF,
-        false
+        false,
       )
     ) {
       SessionStore.promiseInitialized.then(() => {
@@ -37,8 +37,8 @@ const buildShortCutkeyFunctions = {
     const keyboradShortcutConfig = JSON.parse(
       Services.prefs.getStringPref(
         CustomKeyboardShortcutUtils.SHORTCUT_KEY_AND_ACTION_PREF,
-        ""
-      )
+        "",
+      ),
     );
 
     if (
@@ -59,7 +59,7 @@ const buildShortCutkeyFunctions = {
           name,
           key,
           keyCode,
-          modifiers
+          modifiers,
         );
       } else {
         console.error("Invalid shortcut key config: " + shortcutObj);
@@ -139,7 +139,7 @@ const buildShortCutkeyFunctions = {
 let customActionsFunctions = {
   evalCustomeActionWithNum(num) {
     let action = Services.prefs.getStringPref(
-      `floorp.custom.shortcutkeysAndActions.customAction${num}`
+      `floorp.custom.shortcutkeysAndActions.customAction${num}`,
     );
     Function(action)();
   },

@@ -6,6 +6,8 @@
 import { setTimeout } from "resource://gre/modules/Timer.sys.mjs";
 import { FileUtils } from "resource://gre/modules/FileUtils.sys.mjs";
 
+export const EXPORTED_SYMBOLS = ["userjsUtils"];
+
 /**
  * An object containing a list of user.js scripts with their corresponding URLs.
  *

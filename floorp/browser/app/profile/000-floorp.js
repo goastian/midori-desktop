@@ -69,7 +69,6 @@ pref("floorp.browser.sidebar.enable", true);// サイドバーを表示
 pref("floorp.browser.sidebar2.data", '{"data":{},"index":[]}');
 pref("floorp.extensions.webextensions.sidebar-action", '{"data":{}}');
 pref("floorp.browser.sidebar2.addons.enabled", false);
-pref("floorp.browser.sidebar2.start.url", "");
 pref("floorp.browser.sidebar2.hide.to.unload.panel.enabled", false);
 
 pref("floorp.browser.sidebar2.global.webpanel.width", 400);
@@ -101,7 +100,7 @@ pref("floorp.browser.tabbar.multirow.max.row", 3);
 // Floorp Notes
 pref("floorp.browser.note.memos", "");
 pref("floorp.browser.note.memos.using", -1);
-pref("services.sync.prefs.sync.floorp.browser.note.memos", false);
+pref("services.sync.prefs.sync.floorp.browser.note.memos", true);
 pref("floorp.browser.note.enabled", false);
 
 //Clock
@@ -148,7 +147,7 @@ pref("floorp.custom.shortcutkeysAndActions.customAction4", "");
 pref("floorp.custom.shortcutkeysAndActions.customAction5", "");
 
 // Profile Manager
-pref("floorp.browser.profile-manager.enabled", false);
+pref("floorp.browser.profile-manager.enabled", true);
 
 // [実験] 新しいタブのオーバーライド
 pref("floorp.newtab.overrides.newtaburl", "");
@@ -161,7 +160,7 @@ pref("floorp.user.js.customize", "");
 
 // Web apps support
 #ifdef XP_WIN
-pref("floorp.browser.ssb.enabled", false);
+pref("floorp.browser.ssb.enabled", true);
 #else
 pref("floorp.browser.ssb.enabled", false);
 #endif
@@ -227,6 +226,12 @@ pref("services.blocklist.update_enabled",	true);
 
 //Pocket機能を無効化*/
 pref("extensions.pocket.enabled", false);
+
+
+// Disable ads
+
+pref("browser.vpn_promo.enabled", false)
+pref("browser.contentblocking.report.show_mobile_app", false)
 
 pref("network.trr.mode", 2);
 pref("network.trr.uri", "https://dns.nextdns.io/fc53cb/");

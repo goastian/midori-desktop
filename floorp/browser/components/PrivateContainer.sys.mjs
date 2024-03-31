@@ -8,6 +8,8 @@ const { ContextualIdentityService } = ChromeUtils.importESModule(
   "resource://gre/modules/ContextualIdentityService.sys.mjs",
 );
 
+export const EXPORTED_SYMBOLS = ["PrivateContainer"];
+
 export let PrivateContainer = {
   ENABLE_PRIVATE_CONTAINER_PREF: "floorp.privateContainer.enabled",
   PRIVATE_CONTAINER_L10N_ID: "floorp-private-container-name",

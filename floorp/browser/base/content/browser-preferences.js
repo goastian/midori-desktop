@@ -6,7 +6,7 @@
 // I glared at the source code for about 3 hours, but for some reason I decided to use the server because it would be unclear because of the Floorp interface settings. God forgive me
 
 const BROWSER_CHROME_SYSTEM_COLOR = Services.prefs.getIntPref(
-  "floorp.chrome.theme.mode"
+  "floorp.chrome.theme.mode",
 );
 
 switch (BROWSER_CHROME_SYSTEM_COLOR) {
@@ -23,7 +23,7 @@ switch (BROWSER_CHROME_SYSTEM_COLOR) {
 
 Services.prefs.addObserver("floorp.chrome.theme.mode", () => {
   const BROWSER_CHROME_SYSTEM_COLOR = Services.prefs.getIntPref(
-    "floorp.chrome.theme.mode"
+    "floorp.chrome.theme.mode",
   );
   switch (BROWSER_CHROME_SYSTEM_COLOR) {
     case 1:
@@ -48,7 +48,7 @@ Services.prefs.addObserver("floorp.chrome.theme.mode", () => {
 */
 Services.scriptloader.loadSubScript(
   "chrome://browser/content/ua_data.js",
-  this
+  this,
 );
 const BROWSER_SETED_USERAGENT_PREF = "floorp.browser.UserAgent";
 const GENERAL_USERAGENT_OVERRIDE_PREF = "general.useragent.override";
@@ -61,43 +61,43 @@ const GENERAL_USERAGENT_OVERRIDE_PREF = "general.useragent.override";
       case 1:
         Services.prefs.setStringPref(
           GENERAL_USERAGENT_OVERRIDE_PREF,
-          CHROME_STABLE_UA.win
+          CHROME_STABLE_UA.win,
         );
         break;
       case 2:
         Services.prefs.setStringPref(
           GENERAL_USERAGENT_OVERRIDE_PREF,
-          CHROME_STABLE_UA.mac
+          CHROME_STABLE_UA.mac,
         );
         break;
       case 3:
         Services.prefs.setStringPref(
           GENERAL_USERAGENT_OVERRIDE_PREF,
-          CHROME_STABLE_UA.linux
+          CHROME_STABLE_UA.linux,
         );
         break;
       case 4:
         Services.prefs.setStringPref(
           GENERAL_USERAGENT_OVERRIDE_PREF,
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 16_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/110.0.5481.83 Mobile/15E148 Safari/604.1"
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 16_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/110.0.5481.83 Mobile/15E148 Safari/604.1",
         );
         break;
       case 5:
         Services.prefs.setStringPref(
           GENERAL_USERAGENT_OVERRIDE_PREF,
-          Services.prefs.getCharPref("floorp.general.useragent.override")
+          Services.prefs.getCharPref("floorp.general.useragent.override"),
         );
     }
   };
 
   let BROWSER_SETED_USERAGENT = Services.prefs.getIntPref(
-    BROWSER_SETED_USERAGENT_PREF
+    BROWSER_SETED_USERAGENT_PREF,
   );
   setUserAgent(BROWSER_SETED_USERAGENT);
 
   Services.prefs.addObserver(BROWSER_SETED_USERAGENT_PREF, function () {
     let BROWSER_SETED_USERAGENT = Services.prefs.getIntPref(
-      BROWSER_SETED_USERAGENT_PREF
+      BROWSER_SETED_USERAGENT_PREF,
     );
     setUserAgent(BROWSER_SETED_USERAGENT);
   });
@@ -120,21 +120,21 @@ const backupFloorpNotes = async () => {
     IOUtils.exists(
       PathUtils.join(
         Services.dirsvc.get("ProfD", Ci.nsIFile).path,
-        "floorp_notes_backup.json"
-      )
-    ).then(data => {
+        "floorp_notes_backup.json",
+      ),
+    ).then((data) => {
       if (!data) {
         let backupFilePath = PathUtils.join(
           Services.dirsvc.get("ProfD", Ci.nsIFile).path,
-          "floorp_notes_backup.json"
+          "floorp_notes_backup.json",
         );
         IOUtils.writeUTF8(backupFilePath, `{"data":{${jsonToStr},`);
       } else {
         let backupFilePath = PathUtils.join(
           Services.dirsvc.get("ProfD", Ci.nsIFile).path,
-          "floorp_notes_backup.json"
+          "floorp_notes_backup.json",
         );
-        IOUtils.readUTF8(backupFilePath).then(content => {
+        IOUtils.readUTF8(backupFilePath).then((content) => {
           let appText = `${content}${jsonToStr},`;
           IOUtils.writeUTF8(backupFilePath, appText);
         });
@@ -150,9 +150,9 @@ if (!Services.prefs.prefHasUserValue(FLOORP_NOTES_PREF)) {
 function getAllBackupedNotes() {
   const filePath = PathUtils.join(
     Services.dirsvc.get("ProfD", Ci.nsIFile).path,
-    "floorp_notes_backup.json"
+    "floorp_notes_backup.json",
   );
-  const content = IOUtils.readUTF8(filePath).then(content => {
+  const content = IOUtils.readUTF8(filePath).then((content) => {
     content = content.slice(0, -1) + "}}";
     return JSON.parse(content);
   });
@@ -160,7 +160,7 @@ function getAllBackupedNotes() {
 }
 
 //Backup Limit is 10.
-getAllBackupedNotes().then(content => {
+getAllBackupedNotes().then((content) => {
   const backupLimit = 10;
   const dataKeys = Object.keys(content.data);
 
@@ -168,14 +168,14 @@ getAllBackupedNotes().then(content => {
     const sortedKeys = dataKeys.sort((a, b) => b - a);
     const deleteKeys = sortedKeys.slice(backupLimit);
 
-    deleteKeys.forEach(key => {
+    deleteKeys.forEach((key) => {
       delete content.data[key];
     });
 
     let jsonToStr = JSON.stringify(content).slice(0, -2) + ",";
     const filePath = PathUtils.join(
       Services.dirsvc.get("ProfD", Ci.nsIFile).path,
-      "floorp_notes_backup.json"
+      "floorp_notes_backup.json",
     );
     IOUtils.writeUTF8(filePath, jsonToStr);
   }
@@ -188,7 +188,7 @@ const FLOORP_USERJS_PREF = "floorp.browser.userjs";
 
 async function applyUserJSCustomize() {
   let userjsUtils = ChromeUtils.importESModule(
-    "resource://floorp/modules/userjsUtils.sys.mjs"
+    "resource:///modules/userjsUtils.sys.mjs",
   );
   const pref = Services.prefs.getStringPref("floorp.user.js.customize", "");
 
@@ -202,8 +202,8 @@ async function applyUserJSCustomize() {
     } catch (e) {}
 
     fetch(url)
-      .then(response => response.text())
-      .then(async data => {
+      .then((response) => response.text())
+      .then(async (data) => {
         const encoder = new TextEncoder("UTF-8");
         const writeData = encoder.encode(data);
 

@@ -7,7 +7,7 @@
 
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 let CustomKeyboardShortcutUtils = ChromeUtils.importESModule(
-  "resource://floorp/modules/CustomKeyboardShortcutUtils.sys.mjs"
+  "resource:///modules/CustomKeyboardShortcutUtils.sys.mjs",
 );
 
 XPCOMUtils.defineLazyGetter(this, "L10n", () => {
@@ -17,8 +17,8 @@ XPCOMUtils.defineLazyGetter(this, "L10n", () => {
 const keyboradShortcutConfig = JSON.parse(
   Services.prefs.getStringPref(
     CustomKeyboardShortcutUtils.SHORTCUT_KEY_AND_ACTION_PREF,
-    ""
-  )
+    "",
+  ),
 );
 
 const allActions =
@@ -39,7 +39,7 @@ function onLoad() {
     const action = allActions[i];
     const element = window.MozXULElement.parseXULToFragment(`
         <menuitem data-l10n-id="${CustomKeyboardShortcutUtils.keyboradShortcutFunctions.getInfoFunctions.getFluentLocalization(
-          action
+          action,
         )}" value="${action}"></menuitem>
       `);
     actionsPopup.appendChild(element);
@@ -54,7 +54,7 @@ function onLoad() {
   const keyListInput = document.getElementById("keyList");
   const l10n = new Localization(["browser/floorp.ftl"], true);
   keyListInput.placeholder = l10n.formatValueSync(
-    "shortcutkey-customize-key-list-placeholder"
+    "shortcutkey-customize-key-list-placeholder",
   );
 
   document.getElementById("startButton").addEventListener("click", () => {
@@ -191,15 +191,15 @@ function separateKeyAndModifiers(keyList) {
 function setPref() {
   const shortcutKeyName = document.getElementById("selectedActionName").value;
   const keyListInput = separateKeyAndModifiers(
-    document.getElementById("keyList").value.split(", ")
+    document.getElementById("keyList").value.split(", "),
   );
 
   let keyCodeResult =
     CustomKeyboardShortcutUtils.keyboradShortcutFunctions.keyCodesListFunctions.conversionToXULKeyCode(
-      keyListInput[1]
+      keyListInput[1],
     )
       ? CustomKeyboardShortcutUtils.keyboradShortcutFunctions.keyCodesListFunctions.conversionToXULKeyCode(
-          keyListInput[1]
+          keyListInput[1],
         )
       : "";
   let modifiersResult = "";
@@ -218,7 +218,7 @@ function setPref() {
 
   let changedActions = Services.prefs.getStringPref(
     CustomKeyboardShortcutUtils.SHORTCUT_KEY_CHANGED_ARRAY_PREF,
-    ""
+    "",
   );
 
   if (changedActions.length) {
@@ -232,7 +232,7 @@ function setPref() {
 
     Services.prefs.setStringPref(
       CustomKeyboardShortcutUtils.SHORTCUT_KEY_CHANGED_ARRAY_PREF,
-      changedActions.join(",")
+      changedActions.join(","),
     );
   }
 
@@ -240,6 +240,6 @@ function setPref() {
     shortcutKeyName,
     keyListInput[0].toLowerCase(),
     keyCodeResult,
-    modifiersResult
+    modifiersResult,
   );
 }

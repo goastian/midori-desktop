@@ -6,9 +6,10 @@
 <script type="text/javascript">
 // "FloorpAppConstants" has build information.
 var { FloorpAppConstants } = ChromeUtils.importESModule(
-    "resource://floorp/modules/FloorpAppConstants.sys.mjs"
+    "resource:///modules/FloorpAppConstants.sys.mjs"
 );
 
+Services.scriptloader.loadSubScript("chrome://browser/content/browser-manager-sidebar.js", this);
 Services.scriptloader.loadSubScript("chrome://browser/content/browser-workspaces.js", this);
 Services.scriptloader.loadSubScript("chrome://browser/content/browser-command.js", this);
 Services.scriptloader.loadSubScript("chrome://browser/content/browser-overrides.js", this);
@@ -17,7 +18,6 @@ Services.scriptloader.loadSubScript("chrome://browser/content/browser-rest-mode.
 // This function is called when the floorp browser window is loaded. needs Delay.
 document.addEventListener("DOMContentLoaded", () => {
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-context-menu.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-manager-sidebar.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-preferences.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-pageActions-floorp.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-private-container.js", this);

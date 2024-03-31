@@ -40,34 +40,6 @@ if (Services.prefs.getStringPref(newtabOverrideURL, "") != "") {
   AboutNewTab.newTabURL = newTabURL;
 }
 
-// Override close window function.
-// https://searchfox.org/mozilla-esr115/source/browser/base/content/browser.js#3004
-
-BrowserTryToCloseWindow = function (event) {
-  let { setTimeout } = ChromeUtils.importESModule(
-    "resource://gre/modules/Timer.sys.mjs"
-  );
-  if (WindowIsClosing(event)) {
-    if (
-      Services.prefs.getBoolPref("floorp.browser.sidebar2.addons.enabled", true)
-    ) {
-      document
-        .querySelectorAll(
-          `.webpanels[src='chrome://browser/content/browser.xhtml']`
-        )
-        .forEach(function (e) {
-          e.remove();
-        });
-      setTimeout(function () {
-        console.info("BMS add-on is enabled. delay closing window.");
-        window.close();
-      }, 500);
-    } else {
-      window.close();
-    }
-  } // WindowIsClosing does all the necessary checks
-};
-
 // Override the create "browser" element function. Use for "Private Container".
 // https://searchfox.org/mozilla-central/source/browser/base/content/tabbrowser.js#2052
 SessionStore.promiseInitialized.then(() => {
@@ -83,7 +55,7 @@ SessionStore.promiseInitialized.then(() => {
     initiallyActive,
   } = {}) {
     const { PrivateContainer } = ChromeUtils.importESModule(
-      "resource://floorp/modules/PrivateContainer.sys.mjs"
+      "resource:///modules/PrivateContainer.sys.mjs",
     );
 
     let b = document.createXULElement("browser");
@@ -107,7 +79,7 @@ SessionStore.promiseInitialized.then(() => {
     if (!Services.appinfo.sessionHistoryInParent) {
       b.prepareToChangeRemoteness = () =>
         SessionStore.prepareToChangeRemoteness(b);
-      b.afterChangeRemoteness = switchId => {
+      b.afterChangeRemoteness = (switchId) => {
         let tab = this.getTabForBrowser(b);
         SessionStore.finishTabRemotenessChange(tab, switchId);
         return true;
@@ -167,7 +139,7 @@ SessionStore.promiseInitialized.then(() => {
     if (initialBrowsingContextGroupId) {
       b.setAttribute(
         "initialBrowsingContextGroupId",
-        initialBrowsingContextGroupId
+        initialBrowsingContextGroupId,
       );
     }
 

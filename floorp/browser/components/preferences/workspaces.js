@@ -6,7 +6,7 @@
 /* import-globals-from preferences.js */
 
 var { workspacesPreferences } = ChromeUtils.importESModule(
-  "resource://floorp/modules/WorkspacesService.sys.mjs"
+  "resource:///modules/WorkspacesService.sys.mjs",
 );
 
 XPCOMUtils.defineLazyGetter(this, "L10n", () => {
@@ -51,14 +51,14 @@ const gWorkspacesPane = {
             let userConfirm = await confirmRestartPrompt(null);
             if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
               Services.startup.quit(
-                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
+                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart,
               );
             }
           })();
         } else {
           window.setTimeout(function () {
             Services.startup.quit(
-              Services.startup.eAttemptQuit | Services.startup.eRestart
+              Services.startup.eAttemptQuit | Services.startup.eRestart,
             );
           }, 500);
         }
