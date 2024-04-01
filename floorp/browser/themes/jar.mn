@@ -34,6 +34,9 @@ browser.jar:
 # Undo Closed Tab
   skin/classic/browser/undo-closed-tab.svg                                (icons/undo-closed-tab.svg)
 
+# bms
+  skin/classic/browser/bms-hide.svg                                       (icons/bms-hide.svg)
+
 # Lepton
   skin/classic/browser/lepton/leptonChrome.css                              (designs/lepton/leptonChrome.css)
   skin/classic/browser/lepton/leptonContent.css                             (designs/lepton/leptonContent.css)

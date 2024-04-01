@@ -33,11 +33,6 @@ const gWorkspacesPane = {
   _pane: null,
   init() {
     this._pane = document.getElementById("paneWorkspaces");
-    document
-      .getElementById("backtogeneral-workspaces")
-      .addEventListener("command", () => {
-        gotoPref("general");
-      });
 
     const needreboot = document.getElementsByClassName("needreboot");
     for (let i = 0; i < needreboot.length; i++) {

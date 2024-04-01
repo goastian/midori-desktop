@@ -17,9 +17,7 @@ const gNotesPane = {
     this._pane = document.getElementById("paneNotes");
     document
       .getElementById("backtogeneral__")
-      .addEventListener("command", function () {
-        gotoPref("general");
-      });
+      .addEventListener("command", () => { gotoPref("general"); });
 
     const needreboot = document.getElementsByClassName("needreboot");
     for (let i = 0; i < needreboot.length; i++) {

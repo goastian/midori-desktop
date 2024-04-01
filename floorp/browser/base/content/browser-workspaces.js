@@ -4,53 +4,54 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
  var { WorkspacesMigratorUtils } = ChromeUtils.importESModule(
-  "resource:///modules/WorkspacesMigratorUtils.sys.mjs",
+  "resource:///modules/WorkspacesMigratorUtils.sys.mjs"
 );
 
 var { WorkspacesService } = ChromeUtils.importESModule(
-  "resource:///modules/WorkspacesService.sys.mjs",
+  "resource:///modules/WorkspacesService.sys.mjs"
 );
 
 var { getWorkspaceIconUrl } = ChromeUtils.importESModule(
-  "resource:///modules/WorkspacesService.sys.mjs",
+  "resource:///modules/WorkspacesService.sys.mjs"
 );
 
 var { workspacesPreferences } = ChromeUtils.importESModule(
-  "resource:///modules/WorkspacesService.sys.mjs",
+  "resource:///modules/WorkspacesService.sys.mjs"
 );
 
 var { WorkspacesWindowUuidService } = ChromeUtils.importESModule(
-  "resource:///modules/WorkspacesService.sys.mjs",
+  "resource:///modules/WorkspacesService.sys.mjs"
 );
 
 var { WorkspacesIdUtils } = ChromeUtils.importESModule(
-  "resource:///modules/WorkspacesIdUtils.sys.mjs",
+  "resource:///modules/WorkspacesIdUtils.sys.mjs"
 );
 
 var { WorkspacesElementService } = ChromeUtils.importESModule(
-  "resource:///modules/WorkspacesElementService.sys.mjs",
+  "resource:///modules/WorkspacesElementService.sys.mjs"
 );
 
 var { WorkspacesWindowIdUtils } = ChromeUtils.importESModule(
-  "resource:///modules/WorkspacesWindowIdUtils.sys.mjs",
+  "resource:///modules/WorkspacesWindowIdUtils.sys.mjs"
 );
 
 var { WorkspacesDataSaver } = ChromeUtils.importESModule(
-  "resource:///modules/WorkspacesDataSaver.sys.mjs",
+  "resource:///modules/WorkspacesDataSaver.sys.mjs"
 );
 
 var { XPCOMUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/XPCOMUtils.sys.mjs",
+  "resource://gre/modules/XPCOMUtils.sys.mjs"
 );
 
 XPCOMUtils.defineLazyScriptGetter(
   this,
   "gWorkspacesWindowUtils",
-  "chrome://browser/content/browser-workspaces.js",
+  "chrome://browser/content/browser-workspaces.js"
 );
 
 // global variable
 var gBrowser = window.gBrowser;
+var TabContextMenu = window.TabContextMenu;
 
 var gWorkspaces = {
   _initialized: false,
@@ -99,7 +100,7 @@ var gWorkspaces = {
   get l10n() {
     const l10n = new Localization(
       ["browser/floorp.ftl", "branding/brand.ftl"],
-      true,
+      true
     );
     return l10n;
   },
@@ -124,7 +125,7 @@ var gWorkspaces = {
       let workspaceBlockElementFragment =
         window.MozXULElement.parseXULToFragment(workspaceBlockElement);
       gWorkspaces.workspacesPopupContent.appendChild(
-        workspaceBlockElementFragment,
+        workspaceBlockElementFragment
       );
     }
 
@@ -135,7 +136,7 @@ var gWorkspaces = {
     }
 
     await this.updateToolbarButtonAndPopupContentIconAndLabel(
-      await this.getCurrentWorkspaceId(),
+      await this.getCurrentWorkspaceId()
     );
 
     // Against XSS
@@ -147,7 +148,7 @@ var gWorkspaces = {
     for (let workspaceId in workspacesData) {
       let workspace = workspacesData[workspaceId];
       let workspaceToolbarButton = document.getElementById(
-        `workspace-${workspaceId}`,
+        `workspace-${workspaceId}`
       );
       if (workspaceToolbarButton) {
         workspaceToolbarButton.setAttribute("label", workspace.name);
@@ -158,7 +159,7 @@ var gWorkspaces = {
   async addToolbarWorkspaceButtonToAppend(workspaceId) {
     let toolbarWorkspaceButton = await this.getWorkspaceBlockElement(
       workspaceId,
-      this._workspaceManageOnBMSMode,
+      this._workspaceManageOnBMSMode
     );
     let toolbarWorkspaceButtonFragment =
       window.MozXULElement.parseXULToFragment(toolbarWorkspaceButton);
@@ -176,7 +177,7 @@ var gWorkspaces = {
 
   async changeToolbarSelectedWorkspaceView(workspaceId) {
     let selectedWorkspaceToolbarButton = document.querySelector(
-      `.workspaceButton[selected="true"]`,
+      `.workspaceButton[selected="true"]`
     );
 
     if (selectedWorkspaceToolbarButton) {
@@ -184,7 +185,7 @@ var gWorkspaces = {
     }
 
     let workspaceToolbarButton = document.getElementById(
-      `workspace-${workspaceId}`,
+      `workspace-${workspaceId}`
     );
 
     if (workspaceToolbarButton) {
@@ -199,7 +200,7 @@ var gWorkspaces = {
     if (this.workspacesToolbarButton) {
       this.workspacesToolbarButton.setAttribute("label", workspace.name);
       this.workspacesToolbarButton.style.listStyleImage = `url(${getWorkspaceIconUrl(
-        workspace.icon,
+        workspace.icon
       )})`;
     }
 
@@ -254,7 +255,7 @@ var gWorkspaces = {
   get workspaceEnabled() {
     return Services.prefs.getBoolPref(
       workspacesPreferences.WORKSPACES_ENABLED_PREF,
-      false,
+      false
     );
   },
 
@@ -278,14 +279,14 @@ var gWorkspaces = {
       let id = await WorkspacesWindowIdUtils.getDefaultWorkspaceId(windowId);
       let workspace = await WorkspacesIdUtils.getWorkspaceByIdAndWindowId(
         id,
-        windowId,
+        windowId
       );
       return workspace;
     }
 
     let workspace = await WorkspacesIdUtils.getWorkspaceByIdAndWindowId(
       workspaceId,
-      windowId,
+      windowId
     );
     return workspace;
   },
@@ -310,7 +311,7 @@ var gWorkspaces = {
     let windowId = this.getCurrentWindowId();
     let workspacesData =
       await WorkspacesWindowIdUtils.getWindowWorkspacesDataWithoutPreferences(
-        windowId,
+        windowId
       );
     return workspacesData;
   },
@@ -328,7 +329,7 @@ var gWorkspaces = {
       await WorkspacesWindowIdUtils.getDefaultWorkspaceId(windowId);
     let defaultWorkspace = await WorkspacesIdUtils.getWorkspaceByIdAndWindowId(
       defaultWorkspaceId,
-      windowId,
+      windowId
     );
     return defaultWorkspace;
   },
@@ -344,7 +345,7 @@ var gWorkspaces = {
     let windowId = this.getCurrentWindowId();
     let result = await WorkspacesElementService.getAllWorkspacesBlockElements(
       windowId,
-      this._workspaceManageOnBMSMode,
+      this._workspaceManageOnBMSMode
     );
     return result;
   },
@@ -354,7 +355,7 @@ var gWorkspaces = {
     let result = await WorkspacesElementService.getWorkspaceBlockElement(
       workspaceId,
       windowId,
-      this._workspaceManageOnBMSMode,
+      this._workspaceManageOnBMSMode
     );
     return result;
   },
@@ -363,7 +364,7 @@ var gWorkspaces = {
     let windowId = this.getCurrentWindowId();
     let result = await WorkspacesIdUtils.getWorkspaceByIdAndWindowId(
       workspaceId,
-      windowId,
+      windowId
     );
     return result;
   },
@@ -387,7 +388,7 @@ var gWorkspaces = {
     let windowId = this.getCurrentWindowId();
     await WorkspacesDataSaver.saveWorkspacesDataWithoutOverwritingPreferences(
       workspacesData,
-      windowId,
+      windowId
     );
   },
 
@@ -415,7 +416,7 @@ var gWorkspaces = {
   async removeTabFromWorkspace(workspaceId, tab) {
     let workspacesData = await this.getCurrentWorkspacesData();
     let index = workspacesData[workspaceId].tabs.indexOf(
-      tab.getAttribute(this.workspacesTabAttributionId),
+      tab.getAttribute(this.workspacesTabAttributionId)
     );
     workspacesData[workspaceId].tabs.splice(index, 1);
     await this.saveWorkspacesData(workspacesData);
@@ -438,12 +439,12 @@ var gWorkspaces = {
     let createdWorkspaceId = await WorkspacesService.createWorkspace(
       name,
       windowId,
-      defaultWorkspace,
+      defaultWorkspace
     );
     this.changeWorkspace(
       createdWorkspaceId,
       defaultWorkspace ? 1 : 2,
-      addNewTab,
+      addNewTab
     );
   },
 
@@ -451,7 +452,7 @@ var gWorkspaces = {
     await this.createWorkspace(
       this.l10n.formatValueSync("workspace-new-default-name"),
       false,
-      true,
+      true
     );
   },
 
@@ -462,7 +463,7 @@ var gWorkspaces = {
     this.removeWorkspaceTabs(workspaceId);
     if (workspaceId == currentWorkspaceId) {
       this.changeWorkspace(
-        await WorkspacesWindowIdUtils.getDefaultWorkspaceId(windowId),
+        await WorkspacesWindowIdUtils.getDefaultWorkspaceId(windowId)
       );
     }
     this.rebuildWorkspacesToolbar();
@@ -513,7 +514,7 @@ var gWorkspaces = {
     // Change Workspace
     let willChangeWorkspaceLastShowTab =
       document.querySelector(
-        `[${WorkspacesService.workspaceLastShowId}="${workspaceId}"]`,
+        `[${WorkspacesService.workspaceLastShowId}="${workspaceId}"]`
       ) || null;
 
     if (willChangeWorkspaceLastShowTab) {
@@ -528,7 +529,7 @@ var gWorkspaces = {
     // Close workspace popup check
     if (
       Services.prefs.getBoolPref(
-        workspacesPreferences.WORKSPACES_CLOSE_POPUP_AFTER_CLICK_PREF,
+        workspacesPreferences.WORKSPACES_CLOSE_POPUP_AFTER_CLICK_PREF
       )
     ) {
       gWorkspaces.workspacesToolbarButton.click();
@@ -576,12 +577,10 @@ var gWorkspaces = {
         } else {
           this.changeWorkspace(allWorkspacesId[0]);
         }
+      } else if (previousValue) {
+        this.changeWorkspace(previousValue);
       } else {
-        if (previousValue) {
-          this.changeWorkspace(previousValue);
-        } else {
-          this.changeWorkspace(allWorkspacesId[allWorkspacesId.length - 1]);
-        }
+        this.changeWorkspace(allWorkspacesId[allWorkspacesId.length - 1]);
       }
     }
   },
@@ -590,7 +589,7 @@ var gWorkspaces = {
     let windowId = this.getCurrentWindowId();
     let result = await WorkspacesIdUtils.workspaceIdExists(
       workspaceId,
-      windowId,
+      windowId
     );
     return result;
   },
@@ -705,15 +704,13 @@ var gWorkspaces = {
 
   switchToAnotherWorkspaceTab(workspaceId) {
     let workspaceTabs = document.querySelectorAll(
-      `[${this.workspacesTabAttributionId}="${workspaceId}"]`,
+      `[${this.workspacesTabAttributionId}="${workspaceId}"]`
     );
 
-    if (workspaceTabs.length == 0) {
+    if (!workspaceTabs.length) {
       let tab = this.createTabForWorkspace(workspaceId);
       this.moveTabToWorkspace(workspaceId, tab);
       gBrowser.selectedTab = tab;
-
-      return;
     } else {
       gBrowser.selectedTab = workspaceTabs[0];
     }
@@ -731,7 +728,7 @@ var gWorkspaces = {
       this.l10n.formatValueSync("rename-workspace-prompt-text"),
       input,
       null,
-      { value: 0 },
+      { value: 0 }
     );
 
     if (result) {
@@ -756,7 +753,7 @@ var gWorkspaces = {
     if (parentWindow?.gDialogBox) {
       parentWindow.gDialogBox.open(
         "chrome://browser/content/preferences/dialogs/manageWorkspace.xhtml",
-        object,
+        object
       );
     } else {
       Services.ww.openWindow(
@@ -764,7 +761,7 @@ var gWorkspaces = {
         "chrome://browser/content/preferences/dialogs/manageWorkspace.xhtml",
         null,
         "chrome,titlebar,dialog,centerscreen,modal",
-        object,
+        object
       );
     }
   },
@@ -774,7 +771,7 @@ var gWorkspaces = {
     let windowId = this.getCurrentWindowId();
     let icon = await WorkspacesIdUtils.getWorkspaceIconByIdAndWindowId(
       workspaceId,
-      windowId,
+      windowId
     );
     return icon;
   },
@@ -790,7 +787,7 @@ var gWorkspaces = {
     let userContextId =
       await WorkspacesIdUtils.getWorkspaceContainerUserContextId(
         workspaceId,
-        windowId,
+        windowId
       );
     return userContextId;
   },
@@ -800,21 +797,21 @@ var gWorkspaces = {
     await WorkspacesService.setWorkspaceContainerUserContextId(
       workspaceId,
       userContextId,
-      windowId,
+      windowId
     );
   },
 
   async setWorkspaceContainerUserContextIdAndIcon(
     workspaceId,
     userContextId,
-    icon,
+    icon
   ) {
     let windowId = this.getCurrentWindowId();
     await WorkspacesService.setWorkspaceContainerUserContextIdAndIcon(
       workspaceId,
       userContextId,
       icon,
-      windowId,
+      windowId
     );
 
     this.updateToolbarButtonAndPopupContentIconAndLabel(workspaceId);
@@ -864,18 +861,18 @@ var gWorkspaces = {
         currentWorkspaceId
     ) {
       let lastShowWorkspaceTabs = document.querySelectorAll(
-        `[${WorkspacesService.workspaceLastShowId}="${currentWorkspaceId}"]`,
+        `[${WorkspacesService.workspaceLastShowId}="${currentWorkspaceId}"]`
       );
 
       for (let lastShowWorkspaceTab of lastShowWorkspaceTabs) {
         lastShowWorkspaceTab.removeAttribute(
-          WorkspacesService.workspaceLastShowId,
+          WorkspacesService.workspaceLastShowId
         );
       }
 
       selectedTab.setAttribute(
         WorkspacesService.workspaceLastShowId,
-        currentWorkspaceId,
+        currentWorkspaceId
       );
     }
 
@@ -906,14 +903,14 @@ var gWorkspaces = {
 
     // Save Workspaces data
     await gWorkspaces.saveWorkspacesDataWithoutOverwritingPreferences(
-      workspacesData,
+      workspacesData
     );
 
     // Workspace toolbar button label visibility
     try {
       if (
         Services.prefs.getBoolPref(
-          workspacesPreferences.WORKSPACE_SHOW_WORKSPACE_NAME_PREF,
+          workspacesPreferences.WORKSPACE_SHOW_WORKSPACE_NAME_PREF
         )
       ) {
         gWorkspaces.workspacesToolbarButton?.setAttribute("showlabel", true);
@@ -949,7 +946,7 @@ var gWorkspaces = {
     // Check Workspaces Need migrate from Legacy Workspaces
     await WorkspacesMigratorUtils.importDataFromLegacyWorkspaces(
       gBrowser.tabs,
-      this.getCurrentWindowId(),
+      this.getCurrentWindowId()
     );
 
     if (
@@ -960,7 +957,7 @@ var gWorkspaces = {
       await gWorkspaces.createWorkspace(
         this.l10n.formatValueSync("workspace-default-name"),
         true,
-        false,
+        false
       );
 
       // Set default Workspace
@@ -1008,10 +1005,10 @@ var gWorkspaces = {
       let where = "tab";
       let currentWorkspaceContextId =
         await gWorkspaces.getWorkspaceContainerUserContextId(
-          await gWorkspaces.getCurrentWorkspaceId(),
+          await gWorkspaces.getCurrentWorkspaceId()
         );
       let _OPEN_NEW_TAB_POSITION_PREF = Services.prefs.getIntPref(
-        "floorp.browser.tabs.openNewTabPosition",
+        "floorp.browser.tabs.openNewTabPosition"
       );
 
       switch (_OPEN_NEW_TAB_POSITION_PREF) {
@@ -1054,7 +1051,7 @@ var gWorkspaces = {
       //         the New Tab page.
       Services.obs.notifyObservers(
         {
-          wrappedJSObject: new Promise((resolve) => {
+          wrappedJSObject: new Promise(resolve => {
             // eslint-disable-next-line no-undef
             openTrustedLinkIn(url, where, {
               relatedToCurrent,
@@ -1065,7 +1062,7 @@ var gWorkspaces = {
             });
           }),
         },
-        "browser-open-newtab-start",
+        "browser-open-newtab-start"
       );
     };
   },
@@ -1081,7 +1078,7 @@ var gWorkspaces = {
     async createWorkspacesContextMenuItems(event) {
       //delete already exsist items
       let menuElem = document.getElementById(
-        "workspaces-toolbar-item-context-menu",
+        "workspaces-toolbar-item-context-menu"
       );
       while (menuElem.firstChild) {
         menuElem.firstChild.remove();
@@ -1089,11 +1086,11 @@ var gWorkspaces = {
 
       let contextWorkspaceId = event.explicitOriginalTarget.id.replace(
         "workspace-",
-        "",
+        ""
       );
       let defaultWorkspaceId =
         await WorkspacesWindowIdUtils.getDefaultWorkspaceId(
-          gWorkspaces.getCurrentWindowId(),
+          gWorkspaces.getCurrentWindowId()
         );
       let isDefaultWorkspace = contextWorkspaceId == defaultWorkspaceId;
 
@@ -1106,7 +1103,7 @@ var gWorkspaces = {
           <menuitem data-l10n-id="manage-this-workspaces" oncommand="gWorkspaces.manageWorkspaceFromDialog('${contextWorkspaceId}')"></menuitem>
         `);
       let parentElem = document.getElementById(
-        "workspaces-toolbar-item-context-menu",
+        "workspaces-toolbar-item-context-menu"
       );
       parentElem.appendChild(menuItem);
     },
@@ -1133,7 +1130,7 @@ var gWorkspaces = {
       let allWorkspacesId = await gWorkspaces.getAllWorkspacesId();
       for (let workspaceId of allWorkspacesId) {
         let tabWorkspaceId = gWorkspaces.getWorkspaceIdFromAttribute(
-          TabContextMenu.contextTab,
+          TabContextMenu.contextTab
         );
 
         if (tabWorkspaceId == workspaceId) {
@@ -1160,8 +1157,8 @@ var gWorkspaces = {
   },
 };
 
-window.SessionStore.promiseInitialized.then(() => {
+window.SessionStore.promiseAllWindowsRestored.then(() => {
   window.setTimeout(() => {
     gWorkspaces.init();
-  }, 1000);
+  }, 0);
 });

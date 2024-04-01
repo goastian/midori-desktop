@@ -146,17 +146,22 @@ export const keyboradShortcutActions = {
     changeWorkspaceToNext: ["gWorkspaces.changeWorkspaceToNextOrBeforeWorkspace(true)", "open-next-workspace", "workspaces-action"],
 
     // BMS actions
-    toggleBMS: ["bmsController.controllFunctions.changeVisibleWenpanel()", "show-bsm", "bms-action"],
-    showPanel1: ["bmsController.eventFunctions.contextMenu.showWithNumber(0)", "show-panel-1", "bms-action"],
-    showPanel2: ["bmsController.eventFunctions.contextMenu.showWithNumber(1)", "show-panel-2", "bms-action"],
-    showPanel3: ["bmsController.eventFunctions.contextMenu.showWithNumber(2)", "show-panel-3", "bms-action"],
-    showPanel4: ["bmsController.eventFunctions.contextMenu.showWithNumber(3)", "show-panel-4", "bms-action"],
-    showPanel5: ["bmsController.eventFunctions.contextMenu.showWithNumber(4)", "show-panel-5", "bms-action"],
-    showPanel6: ["bmsController.eventFunctions.contextMenu.showWithNumber(5)", "show-panel-6", "bms-action"],
-    showPanel7: ["bmsController.eventFunctions.contextMenu.showWithNumber(6)", "show-panel-7", "bms-action"],
-    showPanel8: ["bmsController.eventFunctions.contextMenu.showWithNumber(7)", "show-panel-8", "bms-action"],
-    showPanel9: ["bmsController.eventFunctions.contextMenu.showWithNumber(8)", "show-panel-9", "bms-action"],
-    showPanel10: ["bmsController.eventFunctions.contextMenu.showWithNumber(9)", "show-panel-10", "bms-action"],
+    toggleBMS: ["gBrowserManagerSidebar.controllFunctions.toggleBMSShortcut()", "show-bsm", "bms-action"],
+    showPanel1: ["gBrowserManagerSidebar.contextMenu.showWithNumber(0)", "show-panel-1", "bms-action"],
+    showPanel2: ["gBrowserManagerSidebar.contextMenu.showWithNumber(1)", "show-panel-2", "bms-action"],
+    showPanel3: ["gBrowserManagerSidebar.contextMenu.showWithNumber(2)", "show-panel-3", "bms-action"],
+    showPanel4: ["gBrowserManagerSidebar.contextMenu.showWithNumber(3)", "show-panel-4", "bms-action"],
+    showPanel5: ["gBrowserManagerSidebar.contextMenu.showWithNumber(4)", "show-panel-5", "bms-action"],
+    showPanel6: ["gBrowserManagerSidebar.contextMenu.showWithNumber(5)", "show-panel-6", "bms-action"],
+    showPanel7: ["gBrowserManagerSidebar.contextMenu.showWithNumber(6)", "show-panel-7", "bms-action"],
+    showPanel8: ["gBrowserManagerSidebar.contextMenu.showWithNumber(7)", "show-panel-8", "bms-action"],
+    showPanel9: ["gBrowserManagerSidebar.contextMenu.showWithNumber(8)", "show-panel-9", "bms-action"],
+    showPanel10: ["gBrowserManagerSidebar.contextMenu.showWithNumber(9)", "show-panel-10", "bms-action"],
+
+        // Split View actions
+        openSplitViewOnLeft: ["gSplitView.Functions.setSplitView(gBrowser.selectedTab, 'left')", "open-split-view-on-left", "split-view-action"],
+        openSplitViewOnRight: ["gSplitView.Functions.setSplitView(gBrowser.selectedTab, 'right')", "open-split-view-on-right", "split-view-action"],
+        closeSplitView: ["gSplitView.Functions.removeSplitView()", "close-split-view", "split-view-action"],
 
     // Custom actions
     customAction1: ["customActionsFunctions.evalCustomeActionWithNum(1)", "custom-action-1", "custom-action"],

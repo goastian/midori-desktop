@@ -34,9 +34,7 @@ document.getElementById("navigator-toolbox").appendChild(toolbarElem);
 CustomizableUI.registerArea("statusBar", {
   type: CustomizableUI.TYPE_TOOLBAR,
   defaultPlacements: [
-    "toolbarItemClock",
     "screenshot-button",
-    "zoom-controls",
     "fullscreen-button",
   ],
 });

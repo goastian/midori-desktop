@@ -189,14 +189,15 @@ function setPref() {
   let userAgent = document.querySelector("#userAgentCheck").checked;
   let width = Number(document.querySelector("#widthBox").value);
 
-  if (url.length === 0) {
-    return;
-  }
+  console.log("page: ", page, "url: ", url, "container: ", container, "userAgent: ", userAgent, "width: ", width);
 
   let dataObject = {};
   if (page != 0) {
     dataObject.url = document.querySelector("#pageSelect").value;
   } else {
+    if (url.length === 0) {
+      return;
+    }  
     dataObject.url = encodeObjectURL(url);
     if (container != 0) {
       dataObject.usercontext = container;

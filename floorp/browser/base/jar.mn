@@ -35,5 +35,6 @@ browser.jar:
   content/browser/browser-ssb-manager.js        (content/browser-ssb-manager.js)
   content/browser/browser-context-menu.js       (content/browser-context-menu.js)
   content/browser/browser-bms-window.css        (content/browser-bms-window.css)
+  content/browser/browser-bms-window.js         (content/browser-bms-window.js)
   content/browser/BMS-extension-needs-white-bg.txt  (sidebar-extension/BMS-extension-needs-white-bg.txt)
   content/browser/ua_data.js                    (content/ua_data.js)

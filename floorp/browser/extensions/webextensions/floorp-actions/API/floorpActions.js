@@ -33,9 +33,9 @@ this.floorpActions = class extends ExtensionAPI {
             window.document
               .getElementById("sidebar-splitter2")
               .getAttribute("hidden") == "true" &&
-            window.bmsController.nowPage != null
+            window.gBrowserManagerSidebar.currentPanel != null
           ) {
-            window.bmsController.controllFunctions.changeVisibleWenpanel();
+            window.gBrowserManagerSidebar.controllFunctions.changeVisibilityOfWebPanel();
           }
         },
         async closeBrowserManagerSidebar() {
@@ -44,15 +44,15 @@ this.floorpActions = class extends ExtensionAPI {
             window.document
               .getElementById("sidebar-splitter2")
               .getAttribute("hidden") == "false" &&
-            window.bmsController.nowPage != null
+            window.gBrowserManagerSidebar.currentPanel != null
           ) {
-            window.bmsController.controllFunctions.changeVisibleWenpanel();
+            window.gBrowserManagerSidebar.controllFunctions.changeVisibilityOfWebPanel();
           }
         },
         async changeBrowserManagerSidebarVisibility() {
           let window = await this._getCurrentWindow();
-          if (window.bmsController.nowPage != null) {
-            window.bmsController.controllFunctions.changeVisibleWenpanel();
+          if (window.gBrowserManagerSidebar.currentPanel != null) {
+            window.gBrowserManagerSidebar.controllFunctions.changeVisibilityOfWebPanel();
           }
         },
         async showStatusbar() {

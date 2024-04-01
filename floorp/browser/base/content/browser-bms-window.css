@@ -5,60 +5,44 @@
 
 /* Toolbars***************************************************************/
 
-#TabsToolbar {
-  display: none !important;
-}
-
-#PanelUI-menu-button {
-  display: none !important;
-}
-
-#PersonalToolbar {
+toolbar {
   display: none !important;
 }
 
 #titlebar {
- display: none !important;
-}
-
-#statusBar {
- display: none !important;
-}
-
-#urlbar-container {
-   display: none !important;
+  display: none !important;
 }
 
 /* Toolbar buttons *****************************************************/
 
 #fxa-toolbar-menu-button {
- display: none !important;
+  display: none !important;
 }
 
 /* Back, Forward, Stop, Reload buttons should be shown *********************************/
 
 #back-button {
- display: inherit;
+  display: inherit;
 }
 
 #forward-button {
- display: inherit;
+  display: inherit;
 }
 
 #stop-reload-button {
- display: inherit;
+  display: inherit;
 }
 
 /* Context menu ********************************************************/
 
 #context-take-screenshot {
- display: none !important;
+  display: none !important;
 }
 
 #context-viewsource {
- display: none !important;
+  display: none !important;
 }
 
 #context-sep-screenshots {
- display: none !important;
+  display: none !important;
 }

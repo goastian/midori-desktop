@@ -251,6 +251,11 @@
   list-style-image: url("chrome://browser/skin/settings.svg");
 }
 
+#sidebar-hide-icon{
+  list-style-image: url("chrome://browser/skin/bms-hide.svg");
+  display: none !important;
+}
+
 #passwords-icon{
   list-style-image: url("chrome://browser/skin/login.svg");
 }

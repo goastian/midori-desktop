@@ -52,8 +52,7 @@ FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["gesturefy"] += [
 ]
 
 FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["webcompat"] += [
-    "webcompat/fix-addons-mozilla-org.css",
-    "webcompat/fix-addons-mozilla-org.js",
+    "webcompat/bug-894-twitter-com.css",
 ]
 
 with Files("**"):

@@ -31,11 +31,26 @@
   transition: all 200ms !important;
   transition-delay: 0.2s !important;
   z-index: 100 !important;
-  background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color));
-  background-image: var(--lwt-additional-images);
   background-repeat: no-repeat;
   background-position: center;
   background-size: cover;
+}
+
+@media (-moz-platform: windows-win10) and (-moz-platform: macos) {
+  #TabsToolbar {
+    background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color)) !important;
+    background-image: var(--lwt-additional-images) !important;
+  }
+}
+
+@media (-moz-platform: linux) {
+  #TabsToolbar {
+    background-color: var(--lwt-accent-color) !important;
+    background-image: var(--lwt-additional-images) !important;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+  }
 }
 
 #TabsToolbar:not(:hover) #tabbrowser-tabs[closebuttons="activetab"] .tabbrowser-tab .tab-content[class] > .tab-close-button[class] {
@@ -61,7 +76,7 @@
   transition-delay: 0.2s !important;
 }
 
-#sidebar-box .tabbrowser-tab{
+#sidebar-box .tabbrowser-tab {
   margin-right: 1px !important;
   margin-left: 1px !important;
 }

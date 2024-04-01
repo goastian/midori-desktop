@@ -23,6 +23,7 @@ Preferences.addAll([
   { id: "floorp.browser.restore.sidebar.panel", type: "bool" },
   { id: "floorp.browser.sidebar.useIconProvider", type: "string" },
   { id: "floorp.browser.sidebar2.hide.to.unload.panel.enabled", type: "bool" },
+  { id: "floorp.browser.sidebar2.addons.enabled", type: "bool" },
 ]);
 
 var gBSBPane = {
@@ -112,6 +113,32 @@ var gBSBPane = {
     );
     this._list = document.getElementById("BSBView");
     this._pane = document.getElementById("paneBSB");
+
+    const needreboot = document.getElementsByClassName("needreboot");
+    for (let i = 0; i < needreboot.length; i++) {
+      if (needreboot[i].getAttribute("rebootELIsSet") == "true") {
+        continue;
+      }
+      needreboot[i].setAttribute("rebootELIsSet", "true");
+      needreboot[i].addEventListener("click", function () {
+        if (!Services.prefs.getBoolPref("floorp.enable.auto.restart", false)) {
+          (async () => {
+            let userConfirm = await confirmRestartPrompt(null);
+            if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
+              Services.startup.quit(
+                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart,
+              );
+            }
+          })();
+        } else {
+          window.setTimeout(function () {
+            Services.startup.quit(
+              Services.startup.eAttemptQuit | Services.startup.eRestart,
+            );
+          }, 500);
+        }
+      });
+    }
 
     {
       let prefName = "floorp.browser.sidebar2.global.webpanel.width";

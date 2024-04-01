@@ -1,34 +1,23 @@
 {
   const FLOORP_WEBCOMPAT_ENABLED_PREF = "floorp.webcompat.enabled";
 
-  const WEBCOMPATS_INJECT = [
-    /*
-        {
-            "matches": ["*://*.youtube.com/*"],
-            "js": [
-                { file: "webcompat/fix-youtube-comment.js" }
-            ],
-            "platforms": ["win"], // "mac", "win", "android", "cros", "linux", "openbsd", "fuchsia"
-        }
-        */
-    // Test for AMO
-    // {
-    //     "matches": ["*://addons.mozilla.org/*/firefox/*"],
-    //     "js": [
-    //         { file: "webcompat/fix-addons-mozilla-org.js" }
-    //     ],
-    //     "css": [
-    //         { file: "webcompat/fix-addons-mozilla-org.css" }
-    //     ],
-    //     "platforms": ["win", "mac", "linux", "android"]
-    // },
+  const WEBCOMPATS_INJECTIONS = [
+    {
+     /*bugs: https://github.com/Floorp-Projects/Floorp/issues/894"
+      description: "Twitter (X)'s direct messages doesn't work on Firefox/Floorp if user uses Meiryo font.*/
+      "matches": ["*://twitter.com/*"],
+      "css": [
+        { file: "webcompat/bug-894-twitter-com.css" }
+      ],
+      "platforms": ["win", "mac", "linux", "android"]
+    },
   ];
 
   let REGISTED_CONTENT_SCRIPTS = [];
 
   let regist_webcompat_contentScripts = async function () {
     let platform = (await browser.runtime.getPlatformInfo()).os;
-    for (let WEBCOMPAT_INJECT of WEBCOMPATS_INJECT) {
+    for (let WEBCOMPAT_INJECT of WEBCOMPATS_INJECTIONS) {
       if (WEBCOMPAT_INJECT.platforms.includes(platform)) {
         let WEBCOMPAT_INJECT_cloned = Object.assign({}, WEBCOMPAT_INJECT);
         delete WEBCOMPAT_INJECT_cloned.platforms;

@@ -35,11 +35,11 @@
        url: "chrome://browser/content/notes/notes-bms.html",
        l10n: `notes-sidebar`,
        defaultWidth: 550,
-       enabled: true,
+       enabled: false,
      },
    },
  
-   DEFAULT_WEBPANEL: ["https://translate.google.com", "https://misskey.io"],
+   DEFAULT_WEBPANEL: ["https://www.deepl.com/translator","https://cloud.astian.org", "https://calendar.astian.org", "https://contacts.astian.org", "https://notes.astian.org"],
    prefsUpdate() {
      let defaultPref = { data: {}, index: [] };
      for (let elem in this.STATIC_SIDEBAR_DATA) {
@@ -99,14 +99,12 @@
            )}`;
            break;
          case "duckduckgo":
-           icon_url = `https://external-content.duckduckgo.com/ip3/${
-             new URL(sbar_url).hostname
-           }.ico`;
+           icon_url = `https://external-content.duckduckgo.com/ip3/${new URL(sbar_url).hostname
+             }.ico`;
            break;
          case "yandex":
-           icon_url = `https://favicon.yandex.net/favicon/v2/${
-             new URL(sbar_url).origin
-           }`;
+           icon_url = `https://favicon.yandex.net/favicon/v2/${new URL(sbar_url).origin
+             }`;
            break;
          case "hatena":
            icon_url = `https://cdn-ak.favicon.st-hatena.com/?url=${encodeURIComponent(
@@ -148,8 +146,29 @@
              elem.style.setProperty("--BMSIcon", `url(${icon_data_url})`);
            }
          })
-         .catch((reject) => {
-           elem.style.removeProperty("--BMSIcon");
+         .catch(reject => {
+           const origin = new URL(sbar_url).origin;
+           const iconExtensions = ['ico', 'png', 'jpg', 'jpeg'];
+         
+           const fetchIcon = async (extension) => {
+             const iconUrl = `${origin}/favicon.${extension}`;
+             const response = await fetch(iconUrl);
+             if (response.ok && elem.style.getPropertyValue("--BMSIcon") != iconUrl) {
+               elem.style.setProperty("--BMSIcon", `url(${iconUrl})`);
+               return true;
+             }
+             return false;
+           };
+         
+           const fetchIcons = iconExtensions.map(fetchIcon);
+         
+           Promise.allSettled(fetchIcons)
+             .then(results => {
+               const iconFound = results.some(result => result.status === 'fulfilled' && result.value);
+               if (!iconFound) {
+                 elem.style.removeProperty("--BMSIcon");
+               }
+             });
          });
      } else if (sbar_url.startsWith("moz-extension://")) {
        let addon_id = new URL(sbar_url).hostname;
@@ -164,7 +183,7 @@
  
            let addon_icon_path =
              addon_manifest.icons[
-               Math.max(...Object.keys(addon_manifest.icons))
+             Math.max(...Object.keys(addon_manifest.icons))
              ];
            if (addon_icon_path === undefined) {
              throw new Error("Icon not found." + addon_manifest.icons);
@@ -262,3 +281,148 @@
    },
  };
  
+ export const BrowserManagerSidebarPanelWindowUtils = {
+   getWindowByWebpanelId(webpanelId, parentWindow) {
+     let webpanelBrowserId = "webpanel" + webpanelId;
+     let webpanelBrowser = parentWindow.document.getElementById(webpanelBrowserId);
+ 
+     if (!webpanelBrowser) {
+       return null;
+     }
+ 
+     return webpanelBrowser.browsingContext.associatedWindow;
+   },
+ 
+   toggleMutePanel(window, webpanelId, isParentWindow) {
+     let targetPanelWindow = null;
+ 
+     if (isParentWindow) {
+       targetPanelWindow = this.getWindowByWebpanelId(webpanelId, window);
+     } else {
+       targetPanelWindow = window;
+     }
+ 
+     if (!targetPanelWindow) {
+       return;
+     }
+ 
+     let tab = targetPanelWindow.gBrowser.selectedTab;
+     let audioMuted = tab.linkedBrowser.audioMuted;
+ 
+     if (audioMuted) {
+       tab.linkedBrowser.unmute();
+     } else {
+       tab.linkedBrowser.mute();
+     }
+   },
+ 
+   reloadPanel(window, webpanelId, isParentWindow) {
+     let targetPanelWindow = null;
+ 
+     if (isParentWindow) {
+       targetPanelWindow = this.getWindowByWebpanelId(webpanelId, window);
+     } else {
+       targetPanelWindow = window;
+     }
+ 
+     if (!targetPanelWindow) {
+       return;
+     }
+ 
+     let tab = targetPanelWindow.gBrowser.selectedTab;
+     tab.linkedBrowser.reload();
+   },
+ 
+   goForwardPanel(window, webpanelId, isParentWindow) {
+     let targetPanelWindow = null;
+ 
+     if (isParentWindow) {
+       targetPanelWindow = this.getWindowByWebpanelId(webpanelId, window);
+     } else {
+       targetPanelWindow = window;
+     }
+ 
+     if (!targetPanelWindow) {
+       return;
+     }
+ 
+     let tab = targetPanelWindow.gBrowser.selectedTab;
+     tab.linkedBrowser.goForward();
+   },
+ 
+   goBackPanel(window, webpanelId, isParentWindow) {
+     let targetPanelWindow = null;
+ 
+     if (isParentWindow) {
+       targetPanelWindow = this.getWindowByWebpanelId(webpanelId, window);
+     } else {
+       targetPanelWindow = window;
+     }
+ 
+     if (!targetPanelWindow) {
+       return;
+     }
+ 
+     let tab = targetPanelWindow.gBrowser.selectedTab;
+     tab.linkedBrowser.goBack();
+   },
+ 
+   goIndexPagePanel(window, webpanelId, isParentWindow) {
+     let targetPanelWindow = null;
+ 
+     if (isParentWindow) {
+       targetPanelWindow = this.getWindowByWebpanelId(webpanelId, window);
+     } else {
+       targetPanelWindow = window;
+     }
+ 
+     if (!targetPanelWindow) {
+       return;
+     }
+ 
+     let uri = targetPanelWindow.bmsLoadedURI;
+     targetPanelWindow.gBrowser.loadURI(Services.io.newURI(uri), {
+       triggeringPrincipal:
+         Services.scriptSecurityManager.getSystemPrincipal(),
+     });
+   },
+ 
+   reopenInSelectContainer(window, webpanelId, userContextId, isParentWindow) {
+     let targetPanelWindow = null;
+ 
+     if (isParentWindow) {
+       targetPanelWindow = this.getWindowByWebpanelId(webpanelId, window);
+     } else {
+       targetPanelWindow = window;
+     }
+ 
+     if (!targetPanelWindow) {
+       return;
+     }
+ 
+     let reopenedTabs = targetPanelWindow.gBrowser.tabs;
+     let arry = window.location.toString().split("?");
+     let loadURL = arry[1];
+ 
+     for (let tab of reopenedTabs) {
+       if (tab.getAttribute("usercontextid") == userContextId) {
+         continue;
+       }
+ 
+       let newTab = targetPanelWindow.gBrowser.addTab(loadURL, {
+         userContextId,
+         triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
+       });
+ 
+       targetPanelWindow.gBrowser.moveTabTo(newTab, tab._tPos);
+       targetPanelWindow.gBrowser.removeTab(tab);
+       targetPanelWindow.gBrowser.selectedTab = newTab;
+ 
+       targetPanelWindow.gBrowser.addTab("about:blank", {
+         userContextId,
+         triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
+         inBackground: true,
+       });
+     }
+   }
+ };

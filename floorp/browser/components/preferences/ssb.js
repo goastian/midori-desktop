@@ -70,11 +70,6 @@ const gSsbPane = {
 
   async init() {
     this._pane = document.getElementById("paneSsb");
-    document
-      .getElementById("backtogeneral-ssb")
-      .addEventListener("command", () => {
-        gotoPref("general");
-      });
 
     const needreboot = document.getElementsByClassName("needreboot");
     for (let i = 0; i < needreboot.length; i++) {
