@@ -71,9 +71,9 @@ pref("floorp.extensions.webextensions.sidebar-action", '{"data":{}}');
 pref("floorp.browser.sidebar2.addons.enabled", false);
 pref("floorp.browser.sidebar2.hide.to.unload.panel.enabled", false);
 
-pref("floorp.browser.sidebar2.global.webpanel.width", 400);
+pref("floorp.browser.sidebar2.global.webpanel.width", 450);
 
-pref("floorp.tabsleep.enabled", false);
+pref("floorp.tabsleep.enabled", true);
 pref("floorp.webcompat.enabled", true);
 pref("floorp.openLinkInExternal.enabled", false);
 pref("floorp.openLinkInExternal.browserId", "");
@@ -100,7 +100,7 @@ pref("floorp.browser.tabbar.multirow.max.row", 3);
 // Floorp Notes
 pref("floorp.browser.note.memos", "");
 pref("floorp.browser.note.memos.using", -1);
-pref("services.sync.prefs.sync.floorp.browser.note.memos", true);
+pref("services.sync.prefs.sync.floorp.browser.note.memos", false);
 pref("floorp.browser.note.enabled", false);
 
 //Clock
@@ -147,7 +147,7 @@ pref("floorp.custom.shortcutkeysAndActions.customAction4", "");
 pref("floorp.custom.shortcutkeysAndActions.customAction5", "");
 
 // Profile Manager
-pref("floorp.browser.profile-manager.enabled", true);
+pref("floorp.browser.profile-manager.enabled", false);
 
 // [実験] 新しいタブのオーバーライド
 pref("floorp.newtab.overrides.newtaburl", "");
