@@ -6,7 +6,7 @@
 import { setTimeout } from "resource://gre/modules/Timer.sys.mjs";
 import { FileUtils } from "resource://gre/modules/FileUtils.sys.mjs";
 
-export const EXPORTED_SYMBOLS = ["userjsUtils"];
+export const EXPORTED_SYMBOLS = ["UserjsUtils"];
 
 /**
  * An object containing a list of user.js scripts with their corresponding URLs.
@@ -25,17 +25,17 @@ export const EXPORTED_SYMBOLS = ["userjsUtils"];
  * @type {UserJsList}
  */
 export const userJsList = {
-  BetterfoxDefault: ["https://raw.githubusercontent.com/yokoffing/Betterfox/115.0/user.js"],
-  Securefox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/115.0/Securefox.js"],
-  Fastfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/115.0/Fastfox.js"],
-  Peskyfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/115.0/Peskyfox.js"],
-  Smoothfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/115.0/Smoothfox.js"]
+  BetterfoxDefault: ["https://raw.githubusercontent.com/yokoffing/Betterfox/main/user.js"],
+  Securefox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/main/Securefox.js"],
+  Fastfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/main/Fastfox.js"],
+  Peskyfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/main/Peskyfox.js"],
+  Smoothfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/main/Smoothfox.js"]
 };
 
 const PROFILE_DIR = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
 const userjs = PathUtils.join(PROFILE_DIR, "user.js");
 
-export const userjsUtilsFunctions = {
+export const UserjsUtilsFunctions = {
   userJsNameList() {
     let list = [];
     for (let name in userJsList) {
@@ -75,7 +75,7 @@ export const userjsUtilsFunctions = {
 
   async setUserJSWithName(name) {
     const url = userJsList[name][0];
-    await userjsUtilsFunctions.setUserJSWithURL(url);
+    await UserjsUtilsFunctions.setUserJSWithURL(url);
   },
 
   /**

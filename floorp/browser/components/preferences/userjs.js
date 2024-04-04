@@ -7,8 +7,8 @@ var { AppConstants } = ChromeUtils.import(
   "resource://gre/modules/AppConstants.jsm",
 );
 
-let userjsUtils = ChromeUtils.importESModule(
-  "resource:///modules/userjsUtils.sys.mjs",
+let UserjsUtils = ChromeUtils.importESModule(
+  "resource:///modules/UserjsUtils.sys.mjs",
 );
 
 let l10n = new Localization(["browser/floorp.ftl"], true);
@@ -78,7 +78,7 @@ const gUserjsPane = {
         );
         if (result == 0) {
           if (!url) {
-            await userjsUtils.userjsUtilsFunctions.resetPreferencesWithUserJsContents();
+            await UserjsUtils.UserjsUtilsFunctions.resetPreferencesWithUserJsContents();
             window.setTimeout(async function () {
               try {
                 FileUtils.getFile("ProfD", ["user.js"]).remove(false);
@@ -87,9 +87,9 @@ const gUserjsPane = {
               Services.obs.notifyObservers([], "floorp-restart-browser");
             }, 3000);
           } else {
-            await userjsUtils.userjsUtilsFunctions.resetPreferencesWithUserJsContents();
+            await UserjsUtils.UserjsUtilsFunctions.resetPreferencesWithUserJsContents();
             window.setTimeout(async function () {
-              await userjsUtils.userjsUtilsFunctions.setUserJSWithURL(url);
+              await UserjsUtils.UserjsUtilsFunctions.setUserJSWithURL(url);
               Services.prefs.setStringPref("floorp.user.js.customize", id);
             }, 3000);
           }
