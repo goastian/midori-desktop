@@ -605,6 +605,7 @@ var gBrowserManagerSidebar = {
       let webpanelURL = webpandata.url;
       const webpanel_usercontext = webpandata.usercontext ?? 0;
       const webpanel_userAgent = webpandata.userAgent ?? false;
+      let isExtension = webpanelURL.slice(0, 9) == "extension";
       let isWeb = true;
       let isFloorp = false;
       gBrowserManagerSidebar.controllFunctions.setSidebarWidth(webpanel_id);
@@ -683,7 +684,8 @@ var gBrowserManagerSidebar = {
           Services.prefs.getBoolPref(
             "floorp.browser.sidebar2.addons.enabled"
           ) &&
-          !isFloorp
+          !isFloorp &&
+          !isExtension
         ) {
           webpanelElem.firstChild.setAttribute(
             "src",

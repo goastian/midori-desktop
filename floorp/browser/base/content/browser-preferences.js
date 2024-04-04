@@ -187,13 +187,13 @@ getAllBackupedNotes().then((content) => {
 const FLOORP_USERJS_PREF = "floorp.browser.userjs";
 
 async function applyUserJSCustomize() {
-  let userjsUtils = ChromeUtils.importESModule(
-    "resource:///modules/userjsUtils.sys.mjs",
+  let UserjsUtils = ChromeUtils.importESModule(
+    "resource:///modules/UserjsUtils.sys.mjs",
   );
   const pref = Services.prefs.getStringPref("floorp.user.js.customize", "");
 
   if (pref != "") {
-    let url = userjsUtils.userJsList[pref][0];
+    let url = UserjsUtils.userJsList[pref][0];
     const PROFILE_DIR = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
     const userjs = PathUtils.join(PROFILE_DIR, "user.js");
 

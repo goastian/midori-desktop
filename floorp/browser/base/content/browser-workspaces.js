@@ -938,6 +938,14 @@ var gWorkspaces = {
       return;
     }
 
+    if (Services.prefs.getBoolPref(workspacesPreferences.WORKSPACES_ENABLED_PREF)) {
+      let isWebpanelWindow = window.location.toString().split("?")[1];
+      let isSsWindow = window.floorpSsbWindow
+      if (isWebpanelWindow || isSsWindow) {
+        return;
+      }
+    }
+
     if (!this.workspaceEnabled) {
       return;
     }
