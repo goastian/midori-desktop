@@ -24,6 +24,7 @@ EXTRA_JS_MODULES += [
     "EscapeShell.sys.mjs",
     "FloorpActors.sys.mjs",
     "FloorpStartup.sys.mjs",
+    "FloorpServices.sys.mjs",
     "OpenLinkInExternal.sys.mjs",
     "PortableUpdate.sys.mjs",
     "PrivateContainer.sys.mjs",

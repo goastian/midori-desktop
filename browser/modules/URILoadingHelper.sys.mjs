@@ -558,6 +558,14 @@ export const URILoadingHelper = {
           w.isBlankPageURL(url) &&
           !lazy.AboutNewTab.willNotifyUser;
 
+                // Floorp Injection
+        if (Services.prefs.getBoolPref("floorp.browser.sidebar2.addons.enabled")) {
+          var { FloorpServices } = ChromeUtils.importESModule("resource:///modules/FloorpServices.sys.mjs");
+          if (FloorpServices.wm.getRecentWindowExcludeFloorpSpecialWindows()) {
+            w = FloorpServices.wm.getRecentWindowExcludeFloorpSpecialWindows();
+          }
+        }
+
         let tabUsedForLoad = w.gBrowser.addTab(url, {
           referrerInfo: params.referrerInfo,
           charset,
@@ -580,6 +588,9 @@ export const URILoadingHelper = {
           globalHistoryOptions,
         });
         targetBrowser = tabUsedForLoad.linkedBrowser;
+
+        w.gBrowser.selectedTab = tabUsedForLoad;
+        // End Floorp Injection
 
         resolveOnNewTabCreated?.(targetBrowser);
         resolveOnContentBrowserCreated?.(targetBrowser);

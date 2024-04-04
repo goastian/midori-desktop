@@ -959,11 +959,9 @@ function handURIToExistingBrowser(
     // Floorp Injections
   if (location == 3 || location == 0) {
   if (Services.prefs.getBoolPref("floorp.browser.sidebar2.addons.enabled")) {
-    let wins = Services.wm.getEnumerator("navigator:browser");
-    for (let win of wins) {
-      if (win.floorpSsbWindow || win.floorpWebPanel) {
-        continue;
-      }
+    var { FloorpServices } = ChromeUtils.importESModule("resource:///modules/FloorpServices.sys.mjs");
+    let win = FloorpServices.wm.getRecentWindowExcludeFloorpSpecialWindows();
+    if (win) {
 
       let browser = win.gBrowser;
       let tab = browser.addTab(uri.spec, {
@@ -971,6 +969,7 @@ function handURIToExistingBrowser(
       });
 
       win.gBrowser.selectedTab = tab;
+      win.focus();
       return;
         }
       }
