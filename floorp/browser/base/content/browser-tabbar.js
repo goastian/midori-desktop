@@ -66,9 +66,9 @@ const tabbarDisplayStyleFunctions = {
             display: none !important;
           }
           #titlebar {
-            display: inherit !important;
+            display: inherit;
             appearance: none !important;
-            padding-top: 10px !important;
+            padding-top: 10px;
           }
           #TabsToolbar #workspace-button[label] > .toolbarbutton-icon,
           #TabsToolbar #firefox-view-button[flex] > .toolbarbutton-icon {
