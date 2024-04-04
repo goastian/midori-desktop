@@ -83,7 +83,7 @@ MinidumpGenerator::MinidumpGenerator()
       cpu_type_(DynamicImages::GetNativeCPUType()),
       dyldImageLoadAddress_(NULL),
       dyldSlide_(0),
-      dyldPath_(),
+      dyldPath_(nullptr),
       task_context_(NULL),
       dynamic_images_(NULL),
       memory_blocks_(&allocator_) {
@@ -105,7 +105,7 @@ MinidumpGenerator::MinidumpGenerator(mach_port_t crashing_task,
       cpu_type_(DynamicImages::GetNativeCPUType()),
       dyldImageLoadAddress_(NULL),
       dyldSlide_(0),
-      dyldPath_(),
+      dyldPath_(nullptr),
       task_context_(NULL),
       dynamic_images_(NULL),
       memory_blocks_(&allocator_) {
