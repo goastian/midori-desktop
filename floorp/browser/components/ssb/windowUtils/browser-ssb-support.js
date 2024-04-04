@@ -97,6 +97,7 @@ let gSsbSupport = {
     gBrowser.tabs.forEach((tab) => {
       tab.setAttribute("floorpSSB", "true");
     });
+    window.floorpSsbWindow = true;
 
     this._initialized = true;
   },
