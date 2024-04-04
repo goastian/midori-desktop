@@ -48,9 +48,9 @@ jobs:
         export DEBWORK=$WORKDIR/midori-$DISPVER
         mkdir -p $DEBWORK/usr/lib/
         cd $DEBWORK/usr/lib/
-        mkdir -p midori-addons/distribution/extensions
-        mkdir midori-addons/extensions
-        mkdir midori-addons/plugins
+        mkdir -p midori/distribution/extensions
+        mkdir midori/extensions
+        mkdir midori/plugins
         cp /home/runner/artifact/*.tar.bz2 $WORKDIR/midori-$DISPVER.en-US.linux-x86_64.tar.bz2
         tar -xjvf $WORKDIR/midori-$DISPVER.en-US.linux-x86_64.tar.bz2
         cd ..
