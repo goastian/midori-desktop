@@ -858,7 +858,7 @@ var gWorkspaces = {
       selectedTab &&
       !selectedTab.hasAttribute(WorkspacesService.workspaceLastShowId) &&
       selectedTab.getAttribute(WorkspacesService.workspacesTabAttributionId) ==
-        currentWorkspaceId
+      currentWorkspaceId
     ) {
       let lastShowWorkspaceTabs = document.querySelectorAll(
         `[${WorkspacesService.workspaceLastShowId}="${currentWorkspaceId}"]`
@@ -921,6 +921,13 @@ var gWorkspaces = {
       gWorkspaces._currentWorkspaceId = currentWorkspaceId;
     } catch (e) {
       console.log(e);
+    }
+    // check popuppanel has child element
+    if (
+      gWorkspaces._popuppanelNotFound ||
+      gWorkspaces.workspacesPopupContent.childElementCount == 0
+    ) {
+      gWorkspaces.rebuildWorkspacesToolbar();
     }
   },
 
@@ -1097,9 +1104,8 @@ var gWorkspaces = {
       //create context menu
       let menuItem = window.MozXULElement.parseXULToFragment(`
           <menuitem data-l10n-id="rename-this-workspace" accesskey="R" oncommand="gWorkspaces.renameWorkspaceWithCreatePrompt('${contextWorkspaceId}')"></menuitem>
-          <menuitem data-l10n-id="delete-this-workspace" accesskey="D" ${
-            isDefaultWorkspace ? 'disabled="true"' : ""
-          } oncommand="gWorkspaces.deleteWorkspace('${contextWorkspaceId}')"></menuitem>
+          <menuitem data-l10n-id="delete-this-workspace" accesskey="D" ${isDefaultWorkspace ? 'disabled="true"' : ""
+        } oncommand="gWorkspaces.deleteWorkspace('${contextWorkspaceId}')"></menuitem>
           <menuitem data-l10n-id="manage-this-workspaces" oncommand="gWorkspaces.manageWorkspaceFromDialog('${contextWorkspaceId}')"></menuitem>
         `);
       let parentElem = document.getElementById(
@@ -1157,8 +1163,10 @@ var gWorkspaces = {
   },
 };
 
-window.SessionStore.promiseAllWindowsRestored.then(() => {
-  window.setTimeout(() => {
-    gWorkspaces.init();
-  }, 0);
-});
+document.addEventListener("DOMContentLoaded", () => {
+  window.SessionStore.promiseInitialized.then(() => {
+    window.setTimeout(() => {
+      gWorkspaces.init();
+    }, 1000);
+  });
+}, { once: true });
