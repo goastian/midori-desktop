@@ -818,7 +818,7 @@ var gWorkspaces = {
   },
 
   /* Visibility Service */
-  async checkAllTabsForVisibility() {
+  async checkAllTabsForVisibility(initialized = false) {
     // BMS Sidebar mode
     if (
       !this._workspaceManageOnBMSMode &&
@@ -924,8 +924,9 @@ var gWorkspaces = {
     }
     // check popuppanel has child element
     if (
-      gWorkspaces._popuppanelNotFound ||
-      gWorkspaces.workspacesPopupContent.childElementCount == 0
+      gWorkspaces._popuppanelNotFound &&
+      gWorkspaces.workspacesPopupContent.childElementCount == 0 &&
+      !initialized
     ) {
       gWorkspaces.rebuildWorkspacesToolbar();
     }
@@ -972,14 +973,6 @@ var gWorkspaces = {
       await gWorkspaces.setSelectWorkspace(workspaceId);
     }
 
-    async function onLocationChange() {
-      await gWorkspaces.checkAllTabsForVisibility();
-    }
-
-    document.addEventListener("floorpOnLocationChangeEvent", function () {
-      onLocationChange();
-    });
-
     // Add injection CSS
     let styleElemInjectToToolbar = document.createElement("style");
     styleElemInjectToToolbar.id = "workspacesInjectionCSS";
@@ -992,13 +985,21 @@ var gWorkspaces = {
 
     // Set current Workspace Id
     this._currentWorkspaceId = await this.getCurrentWorkspaceId();
-    this.checkAllTabsForVisibility();
+    this.checkAllTabsForVisibility(true);
 
     // set selected Workspace
     this.changeToolbarSelectedWorkspaceView(this._currentWorkspaceId);
 
     // Create Context Menu
     this.contextMenu.createWorkspacesTabContextMenuItems();
+
+    async function onLocationChange() {
+      await gWorkspaces.checkAllTabsForVisibility();
+    }
+
+    document.addEventListener("floorpOnLocationChangeEvent", function () {
+      onLocationChange();
+    });
 
     // Override the default newtab opening position in tabbar.
     //copy from browser.js (./browser/base/content/browser.js)
