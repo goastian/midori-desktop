@@ -3354,8 +3354,8 @@ pref("extensions.webextensions.default-content-security-policy", "script-src 'se
 pref("extensions.webextensions.default-content-security-policy.v3", "script-src 'self'; upgrade-insecure-requests;");
 
 
-pref("network.buffer.cache.count", 24);
-pref("network.buffer.cache.size",  32768);
+pref("network.buffer.cache.count", 128);
+pref("network.buffer.cache.size",  262144);
 
 // Web Notification
 pref("dom.webnotifications.requireinteraction.count", 3);
