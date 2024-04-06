@@ -238,7 +238,7 @@ nsresult DecoderFactory::CreateAnimationDecoder(
                            aType == DecoderType::PNG ||
                            aType == DecoderType::WEBP ||
                            aType == DecoderType::AVIF);
-#ifdef MOZ_JXL
+                           #ifdef MOZ_JXL
   validDecoderType = validDecoderType || aType == DecoderType::JXL;
 #endif
 

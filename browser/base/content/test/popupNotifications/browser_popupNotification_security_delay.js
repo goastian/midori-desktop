@@ -560,4 +560,3 @@
        info("Full screen transition end");
      });
    });
-   
