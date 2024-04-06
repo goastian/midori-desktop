@@ -497,7 +497,7 @@ class TopSitesFeed {
           "id": 0,
           "name": "Flights",
           "url": "https://skyscanner.pxf.io/c/5319441/1789305/13416",
-          "image_url": "https://astian.org/wp-content/uploads/2024/03/skyscannerf.webp",
+          "image_url": "https://astian.org/wp-content/uploads/2024/04/sky.png",
           "image_size": 200,
         },
         {
