@@ -17,6 +17,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   WorkspacesWindowIdUtils:
   "resource:///modules/WorkspacesWindowIdUtils.sys.mjs",
   WorkspacesDataSaver: "resource:///modules/WorkspacesDataSaver.sys.mjs",
+  PrivateContainer: "resource:///modules/PrivateContainer.sys.mjs",
 });
 
 function generateUuid() {
@@ -166,6 +167,13 @@ export const WorkspacesService = {
     let workspacesData =
       await lazy.WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
     workspacesData[workspaceId].icon = icon;
+    workspacesData[workspaceId].isPrivateContainerWorkspace = false;
+
+    // Check selected container is private container
+    let privateContainerId = lazy.PrivateContainer.Functions.getPrivateContainerUserContextId();
+    if (privateContainerId && userContextId == privateContainerId) {
+      workspacesData[workspaceId].isPrivateContainerWorkspace = true;
+    }
     await lazy.WorkspacesDataSaver.saveWorkspacesData(workspacesData, windowId);
   },
 

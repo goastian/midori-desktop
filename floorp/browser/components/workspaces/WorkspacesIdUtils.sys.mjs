@@ -12,6 +12,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   WorkspacesWindowIdUtils:
   "resource:///modules/WorkspacesWindowIdUtils.sys.mjs",
   WorkspacesDataSaver: "resource:///modules/WorkspacesDataSaver.sys.mjs",
+  PrivateContainer: "resource:///modules/PrivateContainer.sys.mjs",
 });
 
 export const WorkspacesIdUtils = {
@@ -32,6 +33,19 @@ export const WorkspacesIdUtils = {
       workspaceId,
       windowId,
     );
+
+    if (!workspace.userContextId) {
+      return 0;
+    }
+
+    /* If the workspace is a private container workspace, we need to get the
+       userContextId from the private container. Private Container doesn't
+       has fixed userContextId. */
+    if (workspace.isPrivateContainerWorkspace) {
+      return lazy.PrivateContainer.Functions.getPrivateContainerUserContextId();
+    }
+
+    
     return workspace.userContextId;
   },
 
