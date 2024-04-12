@@ -15,8 +15,6 @@ var { ContextualIdentityService } = ChromeUtils.importESModule(
   "resource://gre/modules/ContextualIdentityService.sys.mjs"
 );
 
-var gBrowser = window.gBrowser;
-
 var gBrowserManagerSidebar = {
   _initialized: false,
   currentPanel: null,
