@@ -689,6 +689,9 @@ toolbar #workspace-button:not([disabled="true"], [checked], [open], :active):hov
 #workspacesManageWorkspacesButton {
   list-style-image: url("chrome://browser/skin/settings.svg");
 }
+#workspacesManageWorkspacesButton > .toolbarbutton-text[flex] {
+  display: none !important;
+}
 #workspaces-toolbar-button {
   list-style-image: url("chrome://browser/skin/workspace-floorp.png");
   border-radius: 0px !important;

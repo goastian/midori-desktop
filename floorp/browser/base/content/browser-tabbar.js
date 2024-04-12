@@ -68,7 +68,6 @@ const tabbarDisplayStyleFunctions = {
           #titlebar {
             display: inherit;
             appearance: none !important;
-            padding-top: 10px;
           }
           :root[sizemode="fullscreen"] #titlebar[id] {
             flex-basis: auto;
@@ -82,6 +81,9 @@ const tabbarDisplayStyleFunctions = {
             margin-inline-start: 7px !important;
           }
         `;
+
+        enablePadding()
+
         document.querySelector("head").appendChild(tabbarContents.modifyCSS);
         tabbarDisplayStyleFunctions.setWorkspaceLabelToNavbar();
         tabbarContents.tabbarElement.setAttribute(
@@ -149,7 +151,7 @@ const tabbarDisplayStyleFunctions = {
           "3",
         );
         // set margin to the top of urlbar container & allow moving the window
-        document.getElementById("urlbar-container").style.marginTop = "10px";
+        document.getElementById("urlbar-container").style.marginTop = "5px";
         break;
     }
   },
@@ -223,6 +225,11 @@ SessionStore.promiseInitialized.then(() => {
 });
 
 //-------------------------------------------------------------------------Multirow-tabs----------------------------------------------------------------------------
+
+function enablePadding(){
+  const isPaddingTopEnabled = Services.prefs.getBoolPref("floorp.verticaltab.paddingtop.enabled", false)
+  document.getElementById("titlebar").style.padding = isPaddingTopEnabled ? "5px" : "0px"
+}
 
 function setMultirowTabMaxHeight() {
   const arrowscrollbox = document.querySelector("#tabbrowser-arrowscrollbox");
@@ -301,6 +308,10 @@ document.addEventListener(
       "floorp.browser.tabbar.multirow.max.enabled",
       setMultirowTabMaxHeight,
     );
+    Services.prefs.addObserver(
+      "floorp.verticaltab.paddingtop.enabled",
+      enablePadding,
+    )
     Services.prefs.addObserver(
       "floorp.browser.tabbar.multirow.newtab-inside.enabled",
       setNewTabInTabs,
