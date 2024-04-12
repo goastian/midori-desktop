@@ -849,7 +849,6 @@ var gWorkspaces = {
 
     // Get Current Workspace & Workspace Id
     let currentWorkspaceId = await gWorkspaces.getCurrentWorkspaceId();
-    let workspacesData = await gWorkspaces.getCurrentWorkspacesData();
     let workspacesCount = await gWorkspaces.getCurrentWorkspacesCount();
 
     // Last Show Workspace Attribute
@@ -900,11 +899,6 @@ var gWorkspaces = {
         }
       }
     }
-
-    // Save Workspaces data
-    await gWorkspaces.saveWorkspacesDataWithoutOverwritingPreferences(
-      workspacesData
-    );
 
     // Workspace toolbar button label visibility
     try {
