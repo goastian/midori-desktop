@@ -11,6 +11,7 @@
  var gFloorpVerticalTabBar = {
    _initialized: false,
    _widthObserver: null,
+   _listenerAdded: false,
  
    get enabled() {
      return Services.prefs.getBoolPref("floorp.browser.tabs.verticaltab", false);
@@ -171,12 +172,15 @@
       "data-lazy-l10n-id",
       "close-tabs-to-the-end-on-vertical-tab-bar",
     );
+
+    // fix cannot use middle click to open new tab
+    if (!this._listenerAdded) {
+      this.arrowscrollbox?.addEventListener("click", (event) => this.mouseMiddleClickEventListener(event));
+      this._listenerAdded = true;
+    }
    },
  
    disableVerticalTabBar() {
-     if (!this._initialized) {
-       return;
-     }
      Services.prefs.setBoolPref("floorp.browser.tabs.verticaltab", false);
      Services.prefs.setIntPref("floorp.browser.tabbar.settings", 0);
  
@@ -305,6 +309,12 @@
        }
      });
    },
+   mouseMiddleClickEventListener(event) {
+    if (event.button != 1 || event.target != this.arrowscrollbox) {
+      return;
+    }
+    gBrowser.handleNewTabMiddleClick(this.arrowscrollbox, event)
+  },
  };
  
  window.setTimeout(() => {
