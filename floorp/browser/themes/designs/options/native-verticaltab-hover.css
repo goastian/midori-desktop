@@ -31,9 +31,9 @@
   transition: all 200ms !important;
   transition-delay: 0.2s !important;
   z-index: 100 !important;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: cover;
+  background-repeat: no-repeat !important;
+  background-position: center center !important;
+  background-size: cover !important;
 }
 
 @media (-moz-platform: windows-win10) and (-moz-platform: macos) {
@@ -41,6 +41,11 @@
     background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color)) !important;
     background-image: var(--lwt-additional-images) !important;
   }
+
+  #TabsToolbar[id]:not(:-moz-lwtheme) {
+    background-color: ActiveCaption !important;
+  }
+  
 }
 
 @media (-moz-platform: linux) {
