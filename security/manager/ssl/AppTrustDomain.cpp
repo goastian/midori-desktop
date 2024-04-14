@@ -33,6 +33,7 @@
 #include "addons-public.inc"
 #include "addons-public-intermediate.inc"
 #include "addons-stage.inc"
+#include "addons-stage-intermediate.inc"
 // Content signature root certificates
 #include "content-signature-dev.inc"
 #include "content-signature-local.inc"
