@@ -1107,7 +1107,7 @@ int XRE_XPCShellMain(int argc, char** argv, char** envp,
   // global settings are configured before anything can interfere.
   mscom::ProcessRuntime mscom;
 
-  ifdef MOZ_SANDBOX
+#  ifdef MOZ_SANDBOX
   nsAutoString binDirPath;
 #  endif
 #endif
