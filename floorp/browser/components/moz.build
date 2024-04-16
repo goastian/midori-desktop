@@ -10,7 +10,6 @@ DIRS += [
     "preferences",
     "profile-manager",
     "ssb",
-    "notes",
     "welcome",
     "tabsleep",
     "workspaces",

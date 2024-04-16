@@ -97,12 +97,6 @@ pref("floorp.browser.tabbar.multirow.max.row", 3);
 
 // 1つ目はタイトル、2つ目は内容
 
-// Floorp Notes
-pref("floorp.browser.note.memos", "");
-pref("floorp.browser.note.memos.using", -1);
-pref("services.sync.prefs.sync.floorp.browser.note.memos", false);
-pref("floorp.browser.note.enabled", false);
-
 //Clock
 pref("floorp.browser.clock.enabled", false);
 
