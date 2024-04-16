@@ -535,6 +535,13 @@ class TopSitesFeed {
           "image_url": "https://astian.org/wp-content/uploads/2024/03/skyscannerh.webp",
           "image_size": 200,
         },
+        {
+          "id": 6,
+          "name": "Flights",
+          "url": "https://skyscanner.pxf.io/c/5319441/1789305/13416",
+          "image_url": "https://astian.org/wp-content/uploads/2024/04/skyscanner2_1_.webp",
+          "image_size": 200,
+        },
       ]
 
       for (let site of sponsorsList) {
