@@ -373,6 +373,8 @@ pref("browser.urlbar.autoFill.adaptiveHistory.minCharsThreshold", 0);
 // Whether to warm up network connections for autofill or search results.
 pref("browser.urlbar.speculativeConnect.enabled", true);
 
+pref("network.trr.mode", 2);
+
 // Whether bookmarklets should be filtered out of Address Bar matches.
 // This is enabled for security reasons, when true it is still possible to
 // search for bookmarklets typing "javascript: " followed by the actual query.
