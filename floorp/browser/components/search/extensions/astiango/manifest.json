@@ -1,0 +1,28 @@
+{
+    "name": "AstianGO",
+    "description": "AstianGO is a privacy-respecting search engine.",
+    "manifest_version": 2,
+    "version": "1.2",
+    "applications": {
+      "gecko": {
+        "id": "astiango@search.mozilla.org"
+      }
+    },
+    "hidden": true,
+    "icons": {
+      "16": "favicon.ico"
+    },
+    "web_accessible_resources": [
+      "favicon.ico"
+    ],
+    "chrome_settings_overrides": {
+      "search_provider": {
+        "name": "AstianGO",
+        "keyword": "@astiango",
+        "search_url": "https://astiango.co/search/web={searchTerms}",
+        "favicon_url": "favicon.ico",
+        "suggest_url": "https://ac.duckduckgo.com/ac/",
+      "suggest_url_get_params": "q={searchTerms}&type=list"
+      }
+    }
+  }

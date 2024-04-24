@@ -1,0 +1,19 @@
+{
+    "manifest_version": 2,
+    "name": "Midori Safe",
+    "version": "1.0",
+    "description": "Extension for own safe browsing services",
+    "permissions": [
+      "storage",
+      "tabs",
+      "webNavigation"
+    ],
+    "background": {
+      "scripts": ["background.js"]
+    },
+    "applications": {
+        "gecko": {
+         "id": "midori-safe@astian.org"
+       }
+     }
+  }
