@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { XPCOMUtils } = ChromeUtils.importESModule(
+ var { XPCOMUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/XPCOMUtils.sys.mjs"
 );
 var { AppConstants } = ChromeUtils.importESModule(
@@ -2406,15 +2406,18 @@ var gBrowserInit = {
             // Add SSB Window or Tab Attribute
             // This attribute is used to make do not restore the window or tab when the browser is restarted.
             window.gBrowser.floorpSsbWindow = true;
-
-            // Load SSB Support Script & CSS
+            window.floorpSsbWindow = true;
             gBrowser.tabs.forEach(tab => {
               tab.setAttribute("floorpSSB", "true");
             });
-            Services.scriptloader.loadSubScript(
-              "chrome://browser/content/browser-ssb-support.js",
-              this
-            );
+
+            SessionStore.promiseInitialized.then(() => {
+              // Load SSB Support Script & CSS
+              Services.scriptloader.loadSubScript(
+                "chrome://browser/content/browser-ssb-support.js",
+               this
+              );
+            });
           }
         } catch (e) {
           console.error(e);
