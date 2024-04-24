@@ -95,11 +95,6 @@ pref("floorp.browser.tabbar.multirow.max.enabled", true);
 pref("floorp.browser.tabbar.multirow.newtab-inside.enabled", false);
 pref("floorp.browser.tabbar.multirow.max.row", 3);
 
-// 1つ目はタイトル、2つ目は内容
-
-//Clock
-pref("floorp.browser.clock.enabled", false);
-
 //新規タブの開く位置
 pref("floorp.browser.tabs.openNewTabPosition", -1);
 
@@ -164,6 +159,9 @@ pref("floorp.browser.workspaces.enabled", true);
 pref("floorp.browser.workspace.manageOnBMS", false);
 pref("floorp.browser.workspace.closePopupAfterClick", false);
 pref("floorp.browser.workspace.showWorkspaceName", true);
+
+// Extension
+pref("floorp.extensions.allowPrivateBrowsingByDefault.is.enabled", false);
 
 /*----------------------------------------------------------------------------------------------------------------------------------*/
 
