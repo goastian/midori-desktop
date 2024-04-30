@@ -199,9 +199,7 @@
        // We are going to simulate the timer timing out, so we do not want it to
        // *actually* time out.
        heartbeat.endTimerIfPresent("surveyEndTimer");
-       const notice = await heartbeat.noticePromise;
-       await notice.updateComplete;
- 
+
        const telemetrySentPromise = new Promise(resolve => {
          heartbeat.eventEmitter.once("TelemetrySent", payload =>
            resolve(payload)
