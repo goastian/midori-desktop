@@ -434,10 +434,6 @@ export var SessionStore = {
     SessionStoreInternal.deleteCustomGlobalValue(aKey);
   },
 
-  persistTabAttribute: function ss_persistTabAttribute(aName) {
-    SessionStoreInternal.persistTabAttribute(aName);
-  },
-
   restoreLastSession: function ss_restoreLastSession() {
     SessionStoreInternal.restoreLastSession();
   },
@@ -882,7 +878,7 @@ var SessionStoreInternal = {
           LastSession.setState(state.lastSessionState);
 
           let restoreAsCrashed = ss.willRestoreAsCrashed();
-          if (restoreAsCrashed || /*Floorp Injections*/ !state.windows[0] /*End Floorp Injections*/) {
+          if (restoreAsCrashed) {
             this._recentCrashes =
               ((state.session && state.session.recentCrashes) || 0) + 1;
 
@@ -935,7 +931,7 @@ var SessionStoreInternal = {
                   }
                 }
               }
-                    // End of floorp injections
+          // End of floorp injections
 
           // If we didn't use about:sessionrestore, record that:
           if (!restoreAsCrashed) {
@@ -3648,12 +3644,6 @@ var SessionStoreInternal = {
     this.saveStateDelayed();
   },
 
-  persistTabAttribute: function ssi_persistTabAttribute(aName) {
-    if (lazy.TabAttributes.persist(aName)) {
-      this.saveStateDelayed();
-    }
-  },
-
   /**
    * Undoes the closing of a tab or window which corresponds
    * to the closedId passed in.
@@ -4827,13 +4817,6 @@ var SessionStoreInternal = {
 
     if (tabData.lastAccessed) {
       tab.updateLastAccessed(tabData.lastAccessed);
-    }
-
-    if ("attributes" in tabData) {
-      // Ensure that we persist tab attributes restored from previous sessions.
-      Object.keys(tabData.attributes).forEach(a =>
-        lazy.TabAttributes.persist(a)
-      );
     }
 
     if (!tabData.entries) {
