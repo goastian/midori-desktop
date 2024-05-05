@@ -62,7 +62,6 @@ jobs:
     - uses: actions/checkout@v4
       name: Clone 🧬
       with:
-        token: ${{ secrets.PAT }}
         submodules: 'recursive'
 
     - name: Change PPA mirror servers
