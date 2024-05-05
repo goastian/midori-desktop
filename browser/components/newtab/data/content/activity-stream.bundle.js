@@ -15161,7 +15161,7 @@ class BaseContent extends (external_React_default()).PureComponent {
       id: "floorp"
     }, /*#__PURE__*/external_React_default().createElement("a", {
       className: prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote",
-      href: "https://community.astian.org"
+      href: "https://t.me/midoriweb"
     }, "Support"), /*#__PURE__*/external_React_default().createElement("br", null), /*#__PURE__*/external_React_default().createElement("br", null), /*#__PURE__*/external_React_default().createElement("a", {
       className: prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote",
       href: "https://astian.org/midori-en"

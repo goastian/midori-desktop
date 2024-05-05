@@ -29,7 +29,7 @@ browser.webRequest.onBeforeSendHeaders.addListener(
     urls: [
       "https://astian.org/*",
       "https://astian.org/midori-browser/*",
-      "https://community.astian.org/",
+      "https://t.me/midoriweb",
       "https://ss1.xrea.com/menkuri.s270.xrea.com/*",
     ],
   },

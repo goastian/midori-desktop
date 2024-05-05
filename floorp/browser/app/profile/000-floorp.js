@@ -84,7 +84,7 @@ pref("extensions.systemAddon.update.url", "https://update.astian.org/systemAddon
 // 言語設定をシステムに合わせる
 pref("intl.locale.requested", "");
 
-pref("app.feedback.baseURL", "https://community.astian.org/");
+pref("app.feedback.baseURL", "https://t.me/midoriweb");
 
 // 多段タブ
 pref("floorp.tabbar.style",0);
