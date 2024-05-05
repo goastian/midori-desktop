@@ -41,10 +41,6 @@ on:
       release-note-url-ja:
         type: string
         required: false
-    secrets:
-      PAT:
-        description: "Personal Access Token for checkout"
-        required: true
     outputs:
       mar_name:
         value: ${{jobs.linux-build.outputs.mar_name}}
