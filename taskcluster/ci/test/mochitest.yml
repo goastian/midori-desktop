@@ -130,7 +130,7 @@ mochitest-plain:
             default: 5
     instance-size:
         by-test-platform:
-            linux.*64-tsan-qr/opt: xlarge  # runs out of memory using 8GB
+            linux.*64-tsan-qr/opt: xlarge-noscratch  # runs out of memory using 8GB
             default: default
     max-run-time: 5400
     allow-software-gl-layers: false
@@ -293,7 +293,7 @@ mochitest-browser-chrome:
     # Bug 1281241: migrating to m3.large instances
     instance-size:
         by-test-platform:
-            linux.*64-tsan-qr/opt: xlarge  # runs out of memory using 8GB
+            linux.*64-tsan-qr/opt: xlarge-noscratch  # runs out of memory using 8GB
             default: default
     allow-software-gl-layers: false
 
@@ -421,7 +421,7 @@ mochitest-chrome:
         chunked: true
     instance-size:
         by-test-platform:
-            linux.*64-tsan-qr/opt: xlarge  # runs out of memory otherwise using 8GB
+            linux.*64-tsan-qr/opt: xlarge-noscratch  # runs out of memory otherwise using 8GB
             default: default
 
 mochitest-devtools-chrome:
@@ -607,7 +607,7 @@ mochitest-chrome-gpu:
                     - --mochitest-suite=mochitest-chrome-gpu
     instance-size:
         by-test-platform:
-            linux.*64-tsan-qr/opt: xlarge  # runs out of memory using 8GB of memory
+            linux.*64-tsan-qr/opt: xlarge-noscratch  # runs out of memory using 8GB
             default: default
 
 mochitest-media:
