@@ -24,5 +24,3 @@ jobs:
     uses: ./.github/workflows/linux-build.yml
     with:
       aarch64: ${{inputs.aarch64}}
-    secrets:
-        PAT: ${{ secrets.PAT }}
