@@ -16,9 +16,6 @@
       "@third_party/*": ["./third_party/*"],
       "chrome://browser/content/*": ["./browser/base/content/*"],
       "resource:///modules/*": ["./browser/components/*"],
-      "chrome://floorp/content/third_party/qr-code-styling.js": [
-        "./third_party/qr-code-styling@1.5.0/qr-code-styling.js"
-      ]
     },
     "lib": ["ES2023", "dom"],
     "plugins": [
