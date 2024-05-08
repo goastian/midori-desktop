@@ -18,6 +18,10 @@ const keyboradShortcutConfig = JSON.parse(
 
 const buildShortCutkeyFunctions = {
   init() {
+    let IsBMSWindow = window.location.toString().split("?")[1];
+    if (IsBMSWindow) {
+        return;
+    }
     Services.prefs.clearUserPref(
       CustomKeyboardShortcutUtils.SHORTCUT_KEY_CHANGED_ARRAY_PREF,
     );

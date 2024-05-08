@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-{
+ {
   // start private scope for gBrowser
   /**
    * A set of known icons to use for internal pages. These are hardcoded so we can
@@ -3162,13 +3162,19 @@
           continue;
         }
 
-        let { WorkspacesService } = ChromeUtils.importESModule(
-          "resource:///modules/WorkspacesService.sys.mjs"
+
+        let floorpWorkspaceId, floorpLastShowWorkspaceId, floorpWorkspace, floorpSSB;
+
+        var { FloorpAppConstants } = ChromeUtils.importESModule(
+          "resource:///modules/FloorpAppConstants.sys.mjs"
         );
-        let floorpWorkspaceId = tabData.floorpWorkspaceId;
-        let floorpLastShowWorkspaceId = tabData.floorpLastShowWorkspaceId;
-        let floorpWorkspace = tabData.floorpWorkspace ? tabData.floorpWorkspace : Services.prefs.getStringPref("floorp.browser.workspace.all").split(",")[0];
-        let floorpSSB = tabData.floorpSSB;
+ 
+        if (FloorpAppConstants.MIDORI_COMPONENTS_ENABLED) {
+          floorpWorkspaceId = tabData.floorpWorkspaceId;
+          floorpLastShowWorkspaceId = tabData.floorpLastShowWorkspaceId;
+          floorpWorkspace = tabData.floorpWorkspace ? tabData.floorpWorkspace : Services.prefs.getStringPref("floorp.browser.workspace.all").split(",")[0];
+          floorpSSB = tabData.floorpSSB;
+        }
 
         if (floorpSSB) {
           window.close();
@@ -3185,12 +3191,18 @@
           tab = this.selectedTab;
           tab.setAttribute("floorpWorkspace", floorpWorkspace);
 
-          if (floorpWorkspaceId) {
-            tab.setAttribute(WorkspacesService.workspacesTabAttributionId, floorpWorkspaceId);
-          }
+          if (FloorpAppConstants.MIDORI_COMPONENTS_ENABLED) {
+            let { WorkspacesService } = ChromeUtils.importESModule(
+              "resource:///modules/WorkspacesService.sys.mjs"
+            );      
 
-          if (floorpLastShowWorkspaceId) {
-            tab.setAttribute(WorkspacesService.workspaceLastShowId, floorpLastShowWorkspaceId);
+            if (floorpWorkspaceId) {
+              tab.setAttribute(WorkspacesService.workspacesTabAttributionId, floorpWorkspaceId);
+            }
+  
+            if (floorpLastShowWorkspaceId) {
+              tab.setAttribute(WorkspacesService.workspaceLastShowId, floorpLastShowWorkspaceId);
+            }
           }
 
           if (floorpSSB) {
@@ -3248,12 +3260,18 @@
 
           tab.setAttribute("floorpWorkspace", floorpWorkspace);
 
-          if (floorpWorkspaceId) {
-            tab.setAttribute(WorkspacesService.workspacesTabAttributionId, floorpWorkspaceId);
-          }
+          if (FloorpAppConstants.MIDORI_COMPONENTS_ENABLED) {
+            let { WorkspacesService } = ChromeUtils.importESModule(
+              "resource:///modules/WorkspacesService.sys.mjs"
+            );      
 
-          if (floorpLastShowWorkspaceId) {
-            tab.setAttribute(WorkspacesService.workspaceLastShowId, floorpLastShowWorkspaceId);
+            if (floorpWorkspaceId) {
+              tab.setAttribute(WorkspacesService.workspacesTabAttributionId, floorpWorkspaceId);
+            }
+  
+            if (floorpLastShowWorkspaceId) {
+              tab.setAttribute(WorkspacesService.workspaceLastShowId, floorpLastShowWorkspaceId);
+            }
           }
 
           if (select) {
