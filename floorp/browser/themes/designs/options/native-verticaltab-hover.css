@@ -52,9 +52,13 @@
   #TabsToolbar {
     background-color: var(--lwt-accent-color) !important;
     background-image: var(--lwt-additional-images) !important;
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: cover;
+    background-repeat: no-repeat !important;
+    background-position: center center !important;
+    background-size: cover !important;
+  }
+
+  #TabsToolbar[id]:not(:-moz-lwtheme) {
+    background-color: ActiveCaption !important;
   }
 }
 
