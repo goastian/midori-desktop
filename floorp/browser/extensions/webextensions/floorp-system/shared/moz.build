@@ -52,6 +52,7 @@ FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["gesturefy"] += [
 ]
 
 FINAL_TARGET_FILES.features["floorp-system@floorp.ablaze.one"]["webcompat"] += [
+    "webcompat/bug-1004-youtube-com.js",
     "webcompat/bug-894-twitter-com.css",
 ]
 

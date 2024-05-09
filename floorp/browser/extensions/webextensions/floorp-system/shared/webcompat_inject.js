@@ -1,4 +1,9 @@
-{
+/* eslint-disable no-undef */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+ {
   const FLOORP_WEBCOMPAT_ENABLED_PREF = "floorp.webcompat.enabled";
 
   const WEBCOMPATS_INJECTIONS = [
@@ -8,6 +13,15 @@
       "matches": ["*://twitter.com/*"],
       "css": [
         { file: "webcompat/bug-894-twitter-com.css" }
+      ],
+      "platforms": ["win", "mac", "linux", "android"]
+    },
+
+
+    {
+      "matches": ["*://www.youtube.com/*", "*://www.mauflix.xyx*"],
+      "js": [
+        { file: "webcompat/bug-1004-youtube-com.js" }
       ],
       "platforms": ["win", "mac", "linux", "android"]
     },
