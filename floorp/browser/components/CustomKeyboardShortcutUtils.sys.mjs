@@ -96,7 +96,7 @@ export const keyboradShortcutActions = {
 
     // Tools actions
     openMigrationWizard: ["MigrationUtils.showMigrationWizard(window, { entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.FILE_MENU })", "open-migration-wizard", "tools-action"],
-    quitFromApplication: ["goQuitApplication()", "quit-from-application", "tools-action"],
+    quitFromApplication: ["Services.startup.quit(Ci.nsIAppStartup.eForceQuit);", "quit-from-application", "tools-action"],
     enterIntoCustomizeMode: ["gCustomizeMode.enter()", "enter-into-customize-mode", "tools-action"],
     enterIntoOfflineMode: ["BrowserOffline.toggleOfflineStatus()", "enter-into-offline-mode", "tools-action"],
     openScreenCapture: ["ScreenshotsUtils.notify(window, 'shortcut')", "open-screen-capture", "tools-action"],
@@ -105,10 +105,10 @@ export const keyboradShortcutActions = {
     showPIP: ["PictureInPicture.onCommand()", "show-pip", "pip-action"],
 
     // Bookmark actions
-    bookmarkThisPage: ["gContextMenu.bookmarkThisPage()", "bookmark-this-page", "bookmark-action"],
+    bookmarkThisPage: ["BrowserPageActions.doCommandForAction(PageActions.actionForID('bookmark'), event, this);", "bookmark-this-page", "bookmark-action"],
     openBookmarksSidebar: ["toggleSidebar('viewBookmarksSidebar')", "open-bookmarks-sidebar", "bookmark-action"],
     openBookmarkAddTool: ["PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueCurrentPages)", "open-bookmark-add-tool", "bookmark-action"],
-    openBookmarksManager: ["PlacesCommandHook.showPlacesOrganizer('UnfiledBookmarks')", "open-bookmarks-manager", "bookmark-action"],
+    openBookmarksManager: ["SidebarUI.toggle('viewBookmarksSidebar');", "open-bookmarks-manager", "bookmark-action"],
     toggleBookmarkToolbar: ["BookmarkingUI.toggleBookmarksToolbar('bookmark-tools')", "toggle-bookmark-toolbar", "bookmark-action"],
 
     // Open Page actions
