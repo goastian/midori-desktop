@@ -59,6 +59,8 @@ function onLoad() {
 
   document.getElementById("startButton").addEventListener("click", () => {
     if (!isTracking) {
+      const shortcutKeyName = document.getElementById("selectedActionName");
+      shortcutKeyName.disabled = true;
       document.getElementById("keyList").value = "";
       isTracking = true;
       pressedKeys.length = 0;
@@ -68,6 +70,8 @@ function onLoad() {
 
   document.getElementById("endButton").addEventListener("click", () => {
     if (isTracking) {
+      const shortcutKeyName = document.getElementById("selectedActionName");
+      shortcutKeyName.disabled = false;
       isTracking = false;
       document.removeEventListener("keydown", handleKeyDown);
     }
