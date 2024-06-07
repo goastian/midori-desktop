@@ -102,7 +102,7 @@ export const keyboradShortcutActions = {
     openScreenCapture: ["ScreenshotsUtils.notify(window, 'shortcut')", "open-screen-capture", "tools-action"],
 
     // PIP actions
-    showPIP: ["PictureInPicture.onCommand()", "show-pip", "pip-action"],
+    showPIP: ["floorpCustomCSKActions.PictureInPicture.togglePictureInPicture(event)", "show-pip", "pip-action"],
 
     // Bookmark actions
     bookmarkThisPage: ["BrowserPageActions.doCommandForAction(PageActions.actionForID('bookmark'), event, this);", "bookmark-this-page", "bookmark-action"],

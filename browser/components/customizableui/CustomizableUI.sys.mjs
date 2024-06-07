@@ -1158,7 +1158,12 @@ var CustomizableUIInternal = {
         if (widget) {
           widget.currentArea = aArea;
         }
-        this.insertWidgetBefore(node, currentNode, container, aArea);
+        if (node.getAttribute("data-extensionid") === "firefox@ghostery.com") {
+          const container = window.document.getElementById("urlbar-input-container");
+          container.insertAdjacentElement('afterbegin', node);
+            } else {
+              this.insertWidgetBefore(node, currentNode, container, aArea);
+            }
         if (gResetting) {
           this.notifyListeners("onWidgetReset", node, container);
         } else if (gUndoResetting) {
@@ -1589,6 +1594,13 @@ var CustomizableUIInternal = {
     if (isNew) {
       this.ensureButtonContextMenu(widgetNode, aAreaNode);
     }
+
+    if (widgetNode.getAttribute("data-extensionid") === "astiango@search.mozilla.org") {
+         const container = window.document.getElementById("urlbar-input-container");
+         container.insertAdjacentElement('afterbegin', widgetNode);
+        return;
+      }
+      
 
     let [insertionContainer, nextNode] = this.findInsertionPoints(
       widgetNode,
