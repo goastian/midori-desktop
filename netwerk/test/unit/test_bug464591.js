@@ -24,7 +24,7 @@ let prefData = [
   },
   {
     name: "network.IDN_show_punycode",
-    newVal: false,
+    newVal: true,
   },
 ];
 

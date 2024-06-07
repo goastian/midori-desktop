@@ -68,7 +68,7 @@ user_pref("media.openUnsupportedTypeWithExternalApp", false);
 // gigabytes).
 user_pref("places.history.enabled", false);
 user_pref("privacy.trackingprotection.annotate_channels", false);
-user_pref("privacy.trackingprotection.enabled", false);
+user_pref("privacy.trackingprotection.enabled", true);
 user_pref("privacy.trackingprotection.pbmode.enabled", false);
 // Disable all recommended Remote Protocol preferences for Gecko tests.
 // The prefs recommended by Remote Protocol are typically geared towards

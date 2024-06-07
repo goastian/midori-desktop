@@ -155,9 +155,9 @@ add_setup(async function () {
         "mochitest5-track-simple",
       ],
       ["urlclassifier.features.emailtracking.allowlistTables", ""],
-      ["privacy.trackingprotection.enabled", false],
+      ["privacy.trackingprotection.enabled", true],
       ["privacy.trackingprotection.annotate_channels", false],
-      ["privacy.trackingprotection.cryptomining.enabled", false],
+      ["privacy.trackingprotection.cryptomining.enabled", true],
       ["privacy.trackingprotection.emailtracking.enabled", true],
       [
         "privacy.trackingprotection.emailtracking.data_collection.enabled",

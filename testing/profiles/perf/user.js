@@ -73,7 +73,7 @@ user_pref("media.peerconnection.enabled", true);
 user_pref("places.database.lastMaintenance", 2147483647);
 user_pref("privacy.reduceTimerPrecision", false); // Bug 1445243 - reduces precision of tests
 user_pref("privacy.trackingprotection.annotate_channels", false);
-user_pref("privacy.trackingprotection.enabled", false);
+user_pref("privacy.trackingprotection.enabled", true);
 user_pref("privacy.trackingprotection.introURL", "http://127.0.0.1/trackingprotection/tour");
 user_pref("privacy.trackingprotection.pbmode.enabled", false);
 user_pref("security.enable_java", false);

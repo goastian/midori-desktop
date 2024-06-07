@@ -11691,7 +11691,7 @@
 # generate them from punycode.
 - name: network.IDN_show_punycode
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 # If set to true, IOService.offline depends on IOService.connectivity.
@@ -13125,7 +13125,7 @@
 # Enforce tracking protection in all modes.
 - name: privacy.trackingprotection.enabled
   type: bool
-  value: false
+  value: true
   mirror: always
 
 # Enforce tracking protection in Private Browsing mode.
