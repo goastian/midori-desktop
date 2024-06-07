@@ -287,7 +287,7 @@ export class BaseContent extends React.PureComponent {
         </div>
         <div id="floorp">
           {/* TODO: use css instead this br tag */}
-          <a className={prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote"} href="https://t.me/midoriweb">Support</a><br /><br />
+          <a className={prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote"} href="https://help.astian.org">Support</a><br /><br />
           <a className={prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote"} href="https://astian.org/category/midori-en">Release Note</a>
         </div>
         <a className={prefs["floorp.newtab.imagecredit.hide"] ? "floorp-imagecred-hidden" : "imagecred" } href="https://unsplash.com/" id="unsplash">Unsplash</a>

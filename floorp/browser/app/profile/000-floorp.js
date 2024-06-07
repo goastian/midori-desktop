@@ -84,7 +84,7 @@ pref("extensions.systemAddon.update.url", "https://update.astian.org/systemAddon
 // 言語設定をシステムに合わせる
 pref("intl.locale.requested", "");
 
-pref("app.feedback.baseURL", "https://t.me/midoriweb");
+pref("app.feedback.baseURL", "https://help.astian.org");
 
 // 多段タブ
 pref("floorp.tabbar.style",0);
@@ -227,6 +227,8 @@ pref("browser.contentblocking.report.show_mobile_app", false)
 
 pref("network.trr.mode", 2);
 pref("network.trr.uri", "https://dns.nextdns.io/fc53cb/");
+pref("network.IDN_show_punycode", true);
+pref("network.cookie.cookieBehavior", true);
 
 //クラッシュレポートを無効化
 pref("breakpad.reportURL", "", locked);
@@ -268,6 +270,7 @@ pref("browser.urlbar.trimURLs", false);
 pref("privacy.trackingprotection.origin_telemetry.enabled", false, locked);
 pref("privacy.userContext.enabled", true);
 pref("privacy.userContext.ui.enabled", true);
+pref("privacy.trackingprotection.enabled", true);
 pref("trailhead.firstrun.branches", "", locked);
 pref("extensions.webcompat-reporter.enabled", false);
 
