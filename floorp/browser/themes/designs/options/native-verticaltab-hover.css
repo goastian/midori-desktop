@@ -48,6 +48,16 @@
   
 }
 
+@media (-moz-platform: macos) {
+  #TabsToolbar {
+    margin-right: 20px;
+  }
+
+  #appcontent {
+    margin-left: -20px;
+  }
+}
+
 @media (-moz-platform: linux) {
   #TabsToolbar {
     background-color: var(--lwt-accent-color) !important;
