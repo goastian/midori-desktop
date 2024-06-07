@@ -70,6 +70,9 @@ var gBmsWindow = {
         this.mainWindow.setAttribute("BMS-webpanelid", webPanelId);
         window.bmsLoadedURI = loadURL;
 
+        // Remove "navigator:browser" from window-main attribute
+        this.mainWindow.setAttribute("windowtype", "navigator:webpanel");
+
 
         // Tab modifications
         gBrowser.loadURI(Services.io.newURI(loadURL), {
