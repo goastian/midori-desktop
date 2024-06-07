@@ -2288,12 +2288,10 @@ export class SearchService {
 
     const engines = [
       { webExtension: { id: "astiango@search.mozilla.org",  locale: "default"}, default: "yes"},
-      { webExtension: { id: "ddg@search.mozilla.org",       locale: "default"}},
+      { webExtension: { id: "qwant@search.mozilla.org",       locale: "default"}},
       { webExtension: { id: "bing@search.mozilla.org",      locale: "default"}},
       { webExtension: { id: "astiango@search.mozilla.org",  locale: "default"}},
       { webExtension: { id: "google@search.mozilla.org",    locale: "default"}},
-      { webExtension: { id: "startpage@search.mozilla.org", locale: "default"}},
-      { webExtension: { id: "you.com@search.mozilla.org",   locale: "default"}},
     ];
 
     const privateDefault = (
