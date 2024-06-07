@@ -39,7 +39,7 @@ var gBmsWindow = {
             return;
         }
 
-        let loadURL = new URL(window.location.href).searchParams.get("url");
+        let loadURL = window.location.toString().split("?")[1];
         if (!loadURL) {
             return;
         }
