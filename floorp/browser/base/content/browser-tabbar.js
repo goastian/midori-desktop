@@ -270,35 +270,15 @@ function removeMultirowTabMaxHeight() {
   scrollbox.removeAttribute("style");
 }
 
-function setNewTabInTabs() {
-  const newTabButton = document.querySelector("#new-tab-button");
-  const tabsNewTabButton = document.querySelector("#tabs-newtab-button");
-
-  if (
-    Services.prefs.getBoolPref(
-      "floorp.browser.tabbar.multirow.newtab-inside.enabled",
-    )
-  ) {
-    newTabButton.style.display = "none";
-    tabsNewTabButton.style.display = "initial";
-  } else {
-    newTabButton.style.display = "";
-    tabsNewTabButton.style.display = "";
-  }
-}
-
 document.addEventListener(
   "DOMContentLoaded",
   () => {
-    window.setTimeout(() => {
-      setNewTabInTabs();
-      if (
-        Services.prefs.getIntPref("floorp.tabbar.style") == 1 ||
-        Services.prefs.getIntPref("floorp.tabbar.style") == 2
-      ) {
-        setMultirowTabMaxHeight();
-      }
-    }, 3000);
+    if (
+      Services.prefs.getIntPref("floorp.tabbar.style") == 1 ||
+      Services.prefs.getIntPref("floorp.tabbar.style") == 2
+    ) {
+      setMultirowTabMaxHeight();
+    }
 
     Services.prefs.addObserver(
       "floorp.browser.tabbar.multirow.max.row",
@@ -312,17 +292,13 @@ document.addEventListener(
       "floorp.verticaltab.paddingtop.enabled",
       enablePadding,
     )
-    Services.prefs.addObserver(
-      "floorp.browser.tabbar.multirow.newtab-inside.enabled",
-      setNewTabInTabs,
-    );
 
     let applyMultitab = () => {
       const tabbarStyle = Services.prefs.getIntPref("floorp.tabbar.style");
 
       if (tabbarStyle == 1 || tabbarStyle == 2) {
         setBrowserDesign();
-        setTimeout(setMultirowTabMaxHeight, 3000);
+        setMultirowTabMaxHeight();
       } else {
         removeMultirowTabMaxHeight();
         setBrowserDesign();
