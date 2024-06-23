@@ -777,7 +777,6 @@ auto DocumentLoadListener::Open(nsDocShellLoadState* aLoadState,
     if (cos && aUrgentStart) {
       cos->AddClassFlags(nsIClassOfService::UrgentStart);
     }
-  }
 
     // ClientChannelHelper below needs us to have finalized the principal for
     // the channel because it will request that StoragePrincipalHelper mint us a
@@ -796,6 +795,7 @@ auto DocumentLoadListener::Open(nsDocShellLoadState* aLoadState,
     // caveat is that the RFPRandomKey may be spuriously regenerated for
     // top-level documents.
     AntiTrackingUtils::UpdateAntiTrackingInfoForChannel(httpChannel);
+  }
 
   // Setup a ClientChannelHelper to watch for redirects, and copy
   // across any serviceworker related data between channels as needed.
