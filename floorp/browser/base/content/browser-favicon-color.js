@@ -120,17 +120,28 @@ function setFaviconColorToTitlebar() {
       let textColor =
         result.averageColor - 0x222222 > 0xffffff / 2 ? "#000000" : "#ffffff";
       let CSS = `
-        #navigator-toolbox:not(:-moz-lwtheme), #navigator-toolbox:-moz-lwtheme {
-          background-color: ${result.averageColor} !important;
+        :root {
+            --floorp-tab-panel-bg-color: ${result.averageColor};
+            --floorp-tab-panel-fg-color: ${textColor};
+            
+            --floorp-navigator-toolbox-bg-color: var(--floorp-tab-panel-bg-color);
+            --floorp-tab-label-fg-color: var(--floorp-tab-panel-fg-color);
+            --floorp-tabs-icons-fg-color: var(--floorp-tab-panel-fg-color);
+        }
+      
+        #browser #TabsToolbar,
+        #navigator-toolbox:not(:-moz-lwtheme),
+        #navigator-toolbox:-moz-lwtheme {
+          background-color: var(--floorp-navigator-toolbox-bg-color) !important;
         }
 
         .tab-label:not([selected="true"]) {
-          color: ${textColor} !important;
+          color: var(--floorp-tab-label-fg-color) !important;
         }
 
         .tab-icon-stack > * , #TabsToolbar-customization-target > *, #tabs-newtab-button, .titlebar-color > * {
-          color: ${textColor} !important;
-          fill: ${textColor} !important;
+          color: var(--floorp-tabs-icons-fg-color) !important;
+          fill: var(--floorp-tabs-icons-fg-color) !important;
         }
       `;
       elem.textContent = CSS;
