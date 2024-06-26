@@ -3,10 +3,11 @@
     margin-bottom: -28px;
     opacity: 0 !important;
     transition: all 125ms !important;
+    z-index: 1 !important;
  }
-#navigator-toolbox:hover > #PersonalToolbar {
+ 
+ #navigator-toolbox:hover > #PersonalToolbar {
     transition: all 200ms !important;
     transition-delay: 0.2s !important;
     opacity: 1 !important;
-    z-index: 2 !important;
- }
+ } 
