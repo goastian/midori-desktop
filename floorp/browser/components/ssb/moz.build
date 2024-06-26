@@ -32,3 +32,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
     EXTRA_JS_MODULES.ssb += [
         "WindowsSupport.sys.mjs",
     ]
+if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+    EXTRA_JS_MODULES.ssb += [
+        "LinuxSupport.sys.mjs",
+    ]

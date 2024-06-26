@@ -30,6 +30,12 @@ if (AppConstants.platform == "win") {
   });
 }
 
+if (AppConstants.platform == "linux") {
+  ChromeUtils.defineESModuleGetters(lazy, {
+    LinuxSupport: "resource:///modules/ssb/LinuxSupport.sys.mjs",
+  });
+}
+
 function uuid() {
   return Services.uuid.generateUUID().toString();
 }
@@ -516,6 +522,10 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
       await lazy.WindowsSupport.install(this);
     }
 
+    if (AppConstants.platform == "linux") {
+      await lazy.LinuxSupport.install(this);
+    }
+
     Services.obs.notifyObservers(
       null,
       "site-specific-browser-install",
@@ -638,7 +648,7 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
 
 export const SiteSpecificBrowserService = {
   get useOSIntegration() {
-    if (Services.appinfo.OS != "WINNT") {
+    if (Services.appinfo.OS != "WINNT" && Services.appinfo.OS != "LINUX") {
       return false;
     }
 
