@@ -59,17 +59,25 @@ export const WorkspacesService = {
    * @param {boolean} [defaultWorkspace=false] - Whether the workspace is the default workspace.
    * @returns {Promise<string>} A promise that resolves with the ID of the created workspace.
    */
-  async createWorkspace(name, windowId, defaultWorkspace) {
+  async createWorkspace(name, windowId, defaultWorkspace, icon, setSelected) {
     let workspacesData =
       await lazy.WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
     let workspaceId = generateUuid();
 
-    workspacesData[workspaceId] = {
+    let workspaceData = {
       name,
       tabs: [],
       defaultWorkspace: defaultWorkspace || false,
       id: workspaceId,
+      icon,
     };
+    workspacesData[workspaceId] = workspaceData;
+    if (setSelected) {
+      workspacesData.preferences = {
+        selectedWorkspaceId: workspaceId,
+      };
+    }
+
     await lazy.WorkspacesDataSaver.saveWorkspacesData(workspacesData, windowId);
     return workspaceId;
   },
