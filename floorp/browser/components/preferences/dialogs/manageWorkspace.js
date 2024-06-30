@@ -63,7 +63,7 @@ async function onLoad() {
   const currentContainers = ContextualIdentityService.getPublicIdentities();
 
   const noContainer = window.MozXULElement.parseXULToFragment(`
-      <menuitem data-l10n-id="floorp-no-workspace-conatiner" value="0"></menuitem>
+      <menuitem data-l10n-id="floorp-no-workspace-container" value="0"></menuitem>
     `);
   containerSelect.appendChild(noContainer);
   containerNameLabel.value = "0";
