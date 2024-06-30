@@ -332,7 +332,12 @@
        if (nativeTab.getAttribute("busy") === "true") {
          continue;
        }
- 
+       if (
+        nativeTab.hasAttribute("splitView") &&
+        nativeTab.getAttribute("splitView") === "true"
+      ) {
+        continue;
+      }
        try {
          if (
            excludeHosts.includes(nativeTab.linkedBrowser.documentURI.hostPort)
