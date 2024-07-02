@@ -112,9 +112,23 @@ var gBmsWindow = {
        @import url("chrome://browser/content/browser-bms-window.css");
      `;
         document.head.appendChild(BMSSyleElement);
-    },
-};
 
+        let setZoomLebelInterval = window.setInterval(() => {
+            if (window.closed) {
+                window.clearInterval(setZoomLebelInterval);
+                return;
+            }
+
+            gBmsWindow.setZoomLevel();
+        }, 100);
+    },
+    setZoomLevel() {
+        let zoomLevel = gBmsWindow.webapnelData.zoomLevel;
+        if (zoomLevel) {
+            window.ZoomManager.zoom = zoomLevel;
+        }
+    }
+};
 if (Services.prefs.getBoolPref("floorp.browser.sidebar2.addons.enabled")) {
     gBmsWindow.init();
 }
