@@ -9,7 +9,7 @@
  
  export var FloorpServices = {
      wm: {
-         getRecentWindowExcludeFloorpSpecialWindows() {
+          getMainWindowExcludeFloorpSpecialWindows(options = {}) {
              // If there is a suggested window provided by Firefox, we'll use it.
              let suggestedWindow = Services.wm.getMostRecentWindow("navigator:browser");
              if (suggestedWindow) {
