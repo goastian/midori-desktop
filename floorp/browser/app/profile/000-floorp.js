@@ -70,6 +70,7 @@ pref("floorp.browser.sidebar2.data", '{"data":{},"index":[]}');
 pref("floorp.extensions.webextensions.sidebar-action", '{"data":{}}');
 pref("floorp.browser.sidebar2.addons.enabled", true);
 pref("floorp.browser.sidebar2.hide.to.unload.panel.enabled", true);
+pref("floorp.browser.sidebar2.addons.enabled", false, locked);
 
 pref("floorp.browser.sidebar2.global.webpanel.width", 450);
 
@@ -104,6 +105,7 @@ pref("floorp.verticaltab.hover.enabled", false);
 pref("floorp.browser.tabs.verticaltab.right", true);
 pref("floorp.browser.tabs.verticaltab.temporary.disabled", false);
 pref("floorp.browser.tabs.verticaltab.width", 200);
+pref("floorp.verticaltab.paddingtop.enabled", false);
 
 // Chrome 形式のダウンローダー
 pref("floorp.browser.native.downloadbar.enabled", false);
@@ -601,6 +603,7 @@ pref("browser.urlbar.suggest.calculator", true);
 
 pref("browser.vpn_promo.enabled", false);
 pref("browser.contentblocking.report.show_mobile_app", false);
+pref("browser.promo.focus.enabled", false);
 
 // Integrated unit convertor at urlbar
 // pref("browser.urlbar.unitConversion.enabled", true);
