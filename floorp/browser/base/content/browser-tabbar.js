@@ -292,6 +292,10 @@ document.addEventListener(
       "floorp.verticaltab.paddingtop.enabled",
       enablePadding,
     )
+    Services.prefs.addObserver(
+      "floorp.browser.tabbar.multirow.newtab-inside.enabled",
+      setNewTabInTabs,
+    );
 
     let applyMultitab = () => {
       const tabbarStyle = Services.prefs.getIntPref("floorp.tabbar.style");

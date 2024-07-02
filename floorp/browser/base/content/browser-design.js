@@ -201,3 +201,12 @@ function setProtonFixUI() {
 
   setBrowserDesign();
 }
+
+// Toolbar
+function hideUserInterface (){
+  let elements = document.getElementsByClassName("browser-toolbar");
+
+  for (let i = 0; i < elements.length; i++) {
+      elements[i].style.display = elements[i].style.display ? '' : 'none';
+  }
+}
