@@ -2415,7 +2415,7 @@ var gBrowserInit = {
               window.gBrowser.floorpSsbWindow = true;
               Services.scriptloader.loadSubScript(
                 "chrome://browser/content/browser-ssb-support.js",
-               this
+                this
               );
             });
           }
