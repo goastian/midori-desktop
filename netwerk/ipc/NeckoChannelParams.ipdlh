@@ -248,8 +248,6 @@ struct ParentLoadInfoForwarderArgs
 
   CookieJarSettingsArgs? cookieJarSettings;
 
-  teFeaturePolicyInfo? containerFeaturePolicyInfo;
-
   FeaturePolicyInfo? containerFeaturePolicyInfo;
 
   uint32_t requestBlockingReason;
