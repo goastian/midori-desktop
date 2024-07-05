@@ -250,6 +250,8 @@ struct ParentLoadInfoForwarderArgs
 
   teFeaturePolicyInfo? containerFeaturePolicyInfo;
 
+  FeaturePolicyInfo? containerFeaturePolicyInfo;
+
   uint32_t requestBlockingReason;
 
   StoragePermissionState storagePermission;
