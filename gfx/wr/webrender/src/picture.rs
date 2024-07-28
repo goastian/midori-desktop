@@ -4727,6 +4727,7 @@ impl PicturePrimitive {
                         tile.local_dirty_rect = tile.local_dirty_rect
                             .intersection(&tile.current_descriptor.local_valid_rect)
                             .unwrap_or_else(PictureRect::zero);
+                            .unwrap_or_else(|| { tile.is_valid = true; PictureRect::zero() });
 
                         surface_local_dirty_rect = surface_local_dirty_rect.union(&tile.local_dirty_rect);
 
