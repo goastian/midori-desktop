@@ -120,7 +120,6 @@ jobs:
       name: Clone 🧬
       with:
         submodules: 'recursive'
-        token: ${{ secrets.PAT }}
 
     - name: Setup Disk & Swap Space 💿
       run: |
