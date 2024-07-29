@@ -6,7 +6,7 @@
         "DisableAppUpdate": false ,
         "Extensions": {
             "Install": [
-               "https://addons.mozilla.org/firefox/downloads/latest/astian-privacy-protect/latest.xpi"
+               ""
             ]
         }
     }
