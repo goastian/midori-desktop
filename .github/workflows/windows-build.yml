@@ -299,6 +299,7 @@ jobs:
         fi
 
         if [[ $GHA_zstd != 'true' ]];then
+          cp obj-${arch}-pc-windows-msvc/dist/install/sea/midori-*.en-US.${arch_inst}.installer-stub.exe ~/output/midori-stub.installer.exe
           cp obj-${arch}-pc-windows-msvc/dist/midori-*.en-US.${arch_inst}.zip ~/output/
           cp obj-${arch}-pc-windows-msvc/dist/install/sea/midori-*.en-US.${arch_inst}.installer.exe ~/output/midori-${arch_inst}.installer.exe
         else
