@@ -1,0 +1,42 @@
+/*-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+:root {
+    --uc-toolbarbutton-inner-padding: 8px;
+}
+
+.tab-icon-image {
+    margin-left: 3px;
+}
+
+#firefox-view-button > .toolbarbutton-icon {
+    scale: 1 !important;
+}
+
+#TabsToolbar-customization-target #firefox-view-button {
+    max-width: 100% !important;
+}
+#TabsToolbar-customization-target > .toolbarbutton-1 .toolbarbutton-icon {
+    margin-left: 3px !important;
+}
+
+#TabsToolbar-customization-target.customization-target #tabbrowser-tabs #tabbrowser-arrowscrollbox .tabbrowser-tab .tab-stack .tab-content .tab-icon-stack image.tab-icon-overlay:not([soundplaying]) {
+    display: none !important;
+}
+
+#TabsToolbar-customization-target.customization-target #tabbrowser-tabs #tabbrowser-arrowscrollbox .tabbrowser-tab .tab-stack .tab-content .tab-icon-stack .tab-icon-image[src="chrome://global/skin/icons/settings.svg"] {
+    padding-left: 0 !important;
+}
+
+#TabsToolbar-customization-target > .toolbarbutton-1 > .toolbarbutton-badge-stack {
+    padding-left: 0px !important;
+}
+#TabsToolbar-customization-target.customization-target #alltabs-button.toolbarbutton-1.chromeclass-toolbar-additional label.toolbarbutton-text {
+    padding-left: 4px !important;
+}
+
+#TabsToolbar-customization-target .tab-icon-overlay:is([soundplaying]) {
+    margin-inline: 10px !important;
+    top: -5.5px !important;
+}
