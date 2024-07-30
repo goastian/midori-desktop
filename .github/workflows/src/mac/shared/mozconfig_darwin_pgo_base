@@ -20,20 +20,20 @@ ac_add_options --enable-updater
 
 ac_add_options RUSTC_OPT_LEVEL=3
 
-ac_add_options MOZ_REQUIRE_SIGNING=
-ac_add_options MOZ_DATA_REPORTING=
-ac_add_options MOZ_TELEMETRY_REPORTING=
+MOZ_REQUIRE_SIGNING=
+MOZ_DATA_REPORTING=
+MOZ_TELEMETRY_REPORTING=
 
-ac_add_options CROSS_SYSROOT=/home/runner/cross-tools/macOS-SDK
-ac_add_options MACOS_SDK_DIR=/home/runner/cross-tools/macOS-SDK
-ac_add_options CC=/home/runner/cross-tools/clang/bin/clang
-ac_add_options CXX=/home/runner/cross-tools/clang/bin/clang++
-ac_add_options DSYMUTIL=/home/runner/cross-tools/clang/bin/dsymutil
-ac_add_options MKFSHFS=/home/runner/cross-tools/hfsplus/newfs_hfs
-ac_add_options DMG_TOOL=/home/runner/cross-tools/dmg/dmg
-ac_add_options HFS_TOOL=/home/runner/cross-tools/dmg/hfsplus
-ac_add_options HOST_CXXFLAGS=-g
-ac_add_options HOST_CFLAGS=-g
-ac_add_options HOST_LDFLAGS=-g
+export CROSS_SYSROOT=/home/runner/cross-tools/macOS-SDK
+export MACOS_SDK_DIR=/home/runner/cross-tools/macOS-SDK
+export CC=/home/runner/cross-tools/clang/bin/clang
+export CXX=/home/runner/cross-tools/clang/bin/clang++
+export DSYMUTIL=/home/runner/cross-tools/clang/bin/dsymutil
+export MKFSHFS=/home/runner/cross-tools/hfsplus/newfs_hfs
+export DMG_TOOL=/home/runner/cross-tools/dmg/dmg
+export HFS_TOOL=/home/runner/cross-tools/dmg/hfsplus
+export HOST_CXXFLAGS=-g
+export HOST_CFLAGS=-g
+export HOST_LDFLAGS=-g
 
-ac_add_options MOZ_LTO=cross
+export MOZ_LTO=cross
