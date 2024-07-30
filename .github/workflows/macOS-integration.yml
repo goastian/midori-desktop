@@ -54,6 +54,9 @@ on:
         macOS_AppleAccountAppSpecificPassword:
             description: "macOS AppleAccountAppSpecificPassword"
             required: true
+        PAT:
+            description: "Personal Access Token"
+            required: false
 
   workflow_dispatch:
     inputs:
@@ -83,22 +86,22 @@ on:
         default: ""
 
 jobs:
-   Integration:
+  Integration:
     runs-on: macos-latest
     steps:
         - name: Clone 📥
-          uses: actions/checkout@v3
+          uses: actions/checkout@v4
           with:
             submodules: 'recursive'
-    
+
         - name: download M1 build artifact 📥
-          uses: actions/download-artifact@v3
+          uses: actions/download-artifact@v4
           with:
             name: ${{ inputs.aarch64_artifact_name }}
             path: ./
-    
+
         - name: download Intel build artifact 📥
-          uses: actions/download-artifact@v3
+          uses: actions/download-artifact@v4
           with:
             name: ${{ inputs.x86_64_artifact_name }}
             path: ./
@@ -111,7 +114,7 @@ jobs:
             tar -xf ./midori-aarch64-apple-darwin-with-pgo.tar.gz
             tar -xf ./midori-x86_64-apple-darwin-with-pgo.tar.gz
 
-        - uses: actions/setup-python@v4
+        - uses: actions/setup-python@v5
           with:
             python-version: '3.11' 
 
@@ -120,7 +123,7 @@ jobs:
           run: |
             ./mach --no-interactive bootstrap --application-choice browser
             echo -e "ac_add_options --enable-bootstrap" >> mozconfig
-      
+
             echo 'mozconfig: **********************'
             cat ./mozconfig
             echo '*********************************'
@@ -136,7 +139,7 @@ jobs:
             echo "folder structure: aarch64-apple-darwin"
             ls -l ./obj-aarch64-apple-darwin/dist/
             echo "****************************************************************************************************"
-            
+
         - name: Integration 🗃
           run: |
             if [ ${{ inputs.beta }} == 'true' ]; then
@@ -148,10 +151,10 @@ jobs:
             ./mach python "./toolkit/mozapps/installer/unify.py" "./obj-x86_64-apple-darwin/dist/midori/${APP_NAME}.app" "./obj-aarch64-apple-darwin/dist/midori/${APP_NAME}.app"
 
         - name: import APPLE DEVELOPER ID CERTIFICATE for .app 🔑
-          uses: apple-actions/import-codesign-certs@v2
+          uses: apple-actions/import-codesign-certs@v3
           with:
-           p12-file-base64: ${{ secrets.macOS_CERTIFICATES_P12_For_App_BASE64 }}
-           p12-password: ${{ secrets.macOS_CERTIFICATES_P12_PASSWORD }}
+            p12-file-base64: ${{ secrets.macOS_CERTIFICATES_P12_For_App_BASE64 }}
+            p12-password: ${{ secrets.macOS_CERTIFICATES_P12_PASSWORD }}
 
         - name: Sign to .app 🖋️
           run: |
@@ -206,7 +209,7 @@ jobs:
                 --team-id "${{ secrets.macOS_AppleTeamId }}" \
                 --password "${{ secrets.macOS_AppleAccountAppSpecificPassword }}" \
                 --wait
-      
+
             mkdir -p ./output
             mv ./midori-macOS-universal.dmg ./output/${INSTALLER_NAME}-macOS-universal.dmg
 
@@ -228,7 +231,7 @@ jobs:
            echo "MACOS_MAR_SIZE=$MACOS_MAR_SIZE" >> $GITHUB_ENV
           env: 
             GHA_beta: ${{ inputs.beta }}
- 
+
         - name: Create Update XML for "BETA" Build 🚩
           if : ${{ inputs.beta }} == 'true'
           run: |
@@ -248,13 +251,13 @@ jobs:
             let name = process.env.GHA_out_artifact_name ? process.env.GHA_out_artifact_name : process.env.GHA_default_name
             fs.appendFileSync(process.env.GITHUB_ENV, `ARTIFACT_NAME=${name}`);
           env:
-             GHA_out_artifact_name : ${{inputs.out_artifact_name}}
-             GHA_default_name: Universal-Artifact
+            GHA_out_artifact_name : ${{inputs.out_artifact_name}}
+            GHA_default_name: Universal-Artifact
 
         - name: Publish 🎁
-          uses: actions/upload-artifact@v3
+          uses: actions/upload-artifact@v4
           with:
             name: ${{ env.ARTIFACT_NAME }}
             if-no-files-found: ignore
             path: |
-             ./output/
+              ./output/
