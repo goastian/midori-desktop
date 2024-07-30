@@ -254,7 +254,7 @@
 #endif
 
 ; [Floorp Files]
-@RESPATH@/chrome/floorp.manifest
+@RESPATH@/chrome/midori.manifest
 @RESPATH@/chrome/floorp/*
 @RESPATH@/browser/@PREF_DIR@/000-floorp.js
 
