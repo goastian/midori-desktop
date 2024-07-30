@@ -14,7 +14,7 @@
 /*shared*/
 :root {
   --default-verticaltab-width: 45px;
-  --hoverd-verticaltab-width: 20em;
+  --hovered-verticaltab-width: 20em;
 }
 
 :root[uidensity=compact]{
@@ -30,7 +30,7 @@
   width: var(--default-verticaltab-width) !important;
   transition: all 200ms !important;
   transition-delay: 0.2s !important;
-  z-index: 100 !important;
+  z-index: 1 !important;
   background-repeat: no-repeat !important;
   background-position: center center !important;
   background-size: cover !important;
@@ -41,30 +41,12 @@
     background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color)) !important;
     background-image: var(--lwt-additional-images) !important;
   }
-
-  #TabsToolbar[id]:not(:-moz-lwtheme) {
-    background-color: ActiveCaption !important;
-  }
-  
-}
-
-@media (-moz-platform: macos) {
-  #TabsToolbar {
-    margin-right: 20px;
-  }
-
-  #appcontent {
-    margin-left: -20px;
-  }
 }
 
 @media (-moz-platform: linux) {
-  #TabsToolbar {
+  #TabsToolbar:-moz-lwtheme {
     background-color: var(--lwt-accent-color) !important;
     background-image: var(--lwt-additional-images) !important;
-    background-repeat: no-repeat !important;
-    background-position: center center !important;
-    background-size: cover !important;
   }
 
   #TabsToolbar[id]:not(:-moz-lwtheme) {
@@ -110,12 +92,12 @@
 
 /*left*/
 #TabsToolbar:not([positionend="true"]):hover {
-  margin-right: calc((var(--hoverd-verticaltab-width) - var(--default-verticaltab-width) + 10px) * -1) !important;
+  margin-right: calc((var(--hovered-verticaltab-width) - var(--default-verticaltab-width) + 10px) * -1) !important;
 }
 
 /*right*/
 #TabsToolbar[positionend="true"]:hover {
-  margin-left: calc((var(--hoverd-verticaltab-width) - var(--default-verticaltab-width) + 10px) * -1) !important;
+  margin-left: calc((var(--hovered-verticaltab-width) - var(--default-verticaltab-width) + 10px) * -1) !important;
 }
   
 /* if tab doesn't have an icon, make sure it still has tab icon */
