@@ -16,8 +16,7 @@ class TDiagnostics;
 
 // Returns true if the given shader does not violate certain
 // implementation-defined limits on the size of variables' types.
-bool ValidateTypeSizeLimitations(const ShBuiltInResources&,
-                                 TIntermNode *root,
+bool ValidateTypeSizeLimitations(TIntermNode *root,
                                  TSymbolTable *symbolTable,
                                  TDiagnostics *diagnostics);
 

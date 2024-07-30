@@ -2048,7 +2048,7 @@ bool MinidumpGenerator::WriteBootargsStream(
   int rv = sysctlbyname("kern.bootargs", NULL, &size, NULL, 0);
   if ((rv != 0) || (size == 0))
     size = 1;
-  
+
   wasteful_vector<uint8_t> bootargs(&this->allocator_, size);
   bootargs.resize(size, 0);
 

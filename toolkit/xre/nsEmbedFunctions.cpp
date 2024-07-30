@@ -387,7 +387,6 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
     CrashReporter::FileHandle crashTimeAnnotationFile =
         CrashReporter::kInvalidFileHandle;
 #if defined(XP_WIN)
-
     const char* const crashTimeAnnotationArg = aArgv[--aArgc];
     crashTimeAnnotationFile = reinterpret_cast<CrashReporter::FileHandle>(
         std::stoul(std::string(crashTimeAnnotationArg)));

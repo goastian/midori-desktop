@@ -721,7 +721,7 @@ bool TCompiler::checkAndSimplifyAST(TIntermBlock *root,
         return false;
     }
 
-    if (shouldLimitTypeSizes() && !ValidateTypeSizeLimitations(mResources, root, &mSymbolTable, &mDiagnostics))
+    if (shouldLimitTypeSizes() && !ValidateTypeSizeLimitations(root, &mSymbolTable, &mDiagnostics))
     {
         return false;
     }

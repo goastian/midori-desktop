@@ -78,7 +78,7 @@ add_task(async function test() {
   // an existing non-blank tab outside of tests, however this may be a latent
   // bug if we ever try to do that in the future.
   let principal = Services.scriptSecurityManager.createNullPrincipal({});
-  tab.linkedBrowser.createAboutBlankDocumentViewer(principal, principal);
+  tab.linkedBrowser.createAboutBlankContentViewer(principal, principal);
 
   // Prepare a pending tab waiting to be restored.
   let promise = promiseTabRestoring(tab);

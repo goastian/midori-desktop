@@ -284,7 +284,7 @@ var PointerLock = {
   get isActive() {
     return this._isActive;
   },
-  
+
   entered(originNoSuffix) {
     this._isActive = true;
     Services.obs.notifyObservers(null, "pointer-lock-entered");

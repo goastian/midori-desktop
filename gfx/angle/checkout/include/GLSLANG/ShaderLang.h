@@ -666,10 +666,6 @@ struct ShBuiltInResources
     int MaxPixelLocalStoragePlanes;
     int MaxColorAttachmentsWithActivePixelLocalStorage;
     int MaxCombinedDrawBuffersAndPixelLocalStoragePlanes;
-
-    // Variable size limits for webgl-mode validation.
-    size_t MaxVariableSizeInBytes;
-    size_t MaxPrivateVariableSizeInBytes;
 };
 
 //

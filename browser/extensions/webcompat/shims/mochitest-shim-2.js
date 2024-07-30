@@ -7,8 +7,7 @@
 /* globals browser */
 
 if (!window.testPromise) {
-  const originalUrl =
-    "http://example.com/browser/browser/extensions/webcompat/tests/browser/shims_test_2.js";
+  const originalUrl = document.currentScript.src;
 
   const shimId = "MochitestShim2";
 

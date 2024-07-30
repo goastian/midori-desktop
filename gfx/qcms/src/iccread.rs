@@ -61,7 +61,9 @@ pub struct Profile {
     pub(crate) mAB: Option<Box<lutmABType>>,
     pub(crate) mBA: Option<Box<lutmABType>>,
     pub(crate) chromaticAdaption: Option<Matrix>,
-    pub(crate) precache_output: Option<Arc<PrecacheOuput>>,
+    pub(crate) output_table_r: Option<Arc<PrecacheOuput>>,
+    pub(crate) output_table_g: Option<Arc<PrecacheOuput>>,
+    pub(crate) output_table_b: Option<Arc<PrecacheOuput>>,
     is_srgb: bool,
 }
 

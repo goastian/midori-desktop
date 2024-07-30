@@ -37,7 +37,7 @@ bool FuzzyEqualsCoordinate(CSSCoord aValue1, CSSCoord aValue2) {
 Axis::Axis(AsyncPanZoomController* aAsyncPanZoomController)
     : mPos(0),
       mVelocity(0.0f, "Axis::mVelocity"),
-      mAxisLocked(false, "Axis::mAxisLocked"),
+      mAxisLocked(false),
       mAsyncPanZoomController(aAsyncPanZoomController),
       mOverscroll(0),
       mMSDModel(0.0, 0.0, 0.0, StaticPrefs::apz_overscroll_spring_stiffness(),
@@ -68,11 +68,10 @@ void Axis::UpdateWithTouchAtDevicePoint(ParentLayerCoord aPos,
            mPos.value);
   if (Maybe<float> newVelocity =
           mVelocityTracker->AddPosition(aPos, aTimestamp)) {
-    bool axisLocked = IsAxisLocked();
-    DoSetVelocity(axisLocked ? 0 : *newVelocity);
+    DoSetVelocity(mAxisLocked ? 0 : *newVelocity);
     AXIS_LOG("%p|%s velocity from tracker is %f%s\n", mAsyncPanZoomController,
              Name(), *newVelocity,
-             axisLocked ? ", but we are axis locked" : "");
+             mAxisLocked ? ", but we are axis locked" : "");
   }
 }
 
@@ -80,14 +79,14 @@ void Axis::StartTouch(ParentLayerCoord aPos, TimeStamp aTimestamp) {
   mStartPos = aPos;
   mPos = aPos;
   mVelocityTracker->StartTracking(aPos, aTimestamp);
-  SetAxisLocked(false);
+  mAxisLocked = false;
 }
 
 bool Axis::AdjustDisplacement(ParentLayerCoord aDisplacement,
                               ParentLayerCoord& aDisplacementOut,
                               ParentLayerCoord& aOverscrollAmountOut,
                               bool aForceOverscroll /* = false */) {
-  if (IsAxisLocked()) {
+  if (mAxisLocked) {
     aOverscrollAmountOut = 0;
     aDisplacementOut = 0;
     return false;
@@ -304,8 +303,7 @@ void Axis::EndTouch(TimeStamp aTimestamp, ClearAxisLock aClearAxisLock) {
   // no-longer-relevant value of mVelocity. Also if the axis is locked then
   // just reset the velocity to 0 since we don't need any velocity to carry
   // into the fling.
-  auto axisLocked = mAxisLocked.Lock();
-  if (axisLocked.ref()) {
+  if (mAxisLocked) {
     DoSetVelocity(0);
   } else if (Maybe<float> velocity =
                  mVelocityTracker->ComputeVelocity(aTimestamp)) {
@@ -314,7 +312,7 @@ void Axis::EndTouch(TimeStamp aTimestamp, ClearAxisLock aClearAxisLock) {
     DoSetVelocity(0);
   }
   if (aClearAxisLock == ClearAxisLock::Yes) {
-    axisLocked.ref() = false;
+    mAxisLocked = false;
   }
   AXIS_LOG("%p|%s ending touch, computed velocity %f\n",
            mAsyncPanZoomController, Name(), DoGetVelocity());
@@ -375,7 +373,7 @@ CSSCoord Axis::ClampOriginToScrollableRect(CSSCoord aOrigin) const {
   return result / zoom;
 }
 
-bool Axis::CanScrollNow() const { return !IsAxisLocked() && CanScroll(); }
+bool Axis::CanScrollNow() const { return !mAxisLocked && CanScroll(); }
 
 ParentLayerCoord Axis::DisplacementWillOverscrollAmount(
     ParentLayerCoord aDisplacement) const {
@@ -431,17 +429,9 @@ CSSCoord Axis::ScaleWillOverscrollAmount(float aScale, CSSCoord aFocus) const {
   return 0;
 }
 
-bool Axis::IsAxisLocked() const {
-  auto axisLocked = mAxisLocked.Lock();
-  return axisLocked.ref();
-}
+bool Axis::IsAxisLocked() const { return mAxisLocked; }
 
-void Axis::SetAxisLocked(bool aAxisLocked) {
-  auto axisLocked = mAxisLocked.Lock();
-  axisLocked.ref() = aAxisLocked;
-}
-
-float Axis::GetVelocity() const { return IsAxisLocked() ? 0 : DoGetVelocity(); }
+float Axis::GetVelocity() const { return mAxisLocked ? 0 : DoGetVelocity(); }
 
 void Axis::SetVelocity(float aVelocity) {
   AXIS_LOG("%p|%s direct-setting velocity to %f\n", mAsyncPanZoomController,

@@ -174,7 +174,7 @@ this.downloads = class extends ExtensionAPIPersistent {
       downloads: {
         download(options) {
           // the validation checks should be kept in sync with the toolkit implementation
-          let { filename } = options;
+          const { filename } = options;
           if (filename != null) {
             if (!filename.length) {
               return Promise.reject({ message: "filename must not be empty" });
@@ -185,9 +185,6 @@ this.downloads = class extends ExtensionAPIPersistent {
                 message: "filename must not be an absolute path",
               });
             }
-
-            // % is not permitted but relatively common.
-            filename = filename.replaceAll("%", "_");
 
             const pathComponents = PathUtils.splitRelative(filename, {
               allowEmpty: true,

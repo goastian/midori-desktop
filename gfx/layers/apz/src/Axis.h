@@ -244,6 +244,8 @@ class Axis {
    */
   CSSCoord ClampOriginToScrollableRect(CSSCoord aOrigin) const;
 
+  void SetAxisLocked(bool aAxisLocked) { mAxisLocked = aAxisLocked; }
+
   /**
    * Gets the raw velocity of this axis at this moment.
    */
@@ -294,12 +296,6 @@ class Axis {
    * Returns true if movement on this axis is locked.
    */
   bool IsAxisLocked() const;
-
-  /**
-   * Set whether or not the axis is locked.
-   */
-  void SetAxisLocked(bool aAxisLocked);
-
 
   ParentLayerCoord GetOrigin() const;
   ParentLayerCoord GetCompositionLength() const;
@@ -363,8 +359,7 @@ class Axis {
   // protected by a mutex.
   // Units: ParentLayerCoords per millisecond
   mutable DataMutex<float> mVelocity;
-  // Whether movement on this axis is locked.
-  mutable DataMutex<bool> mAxisLocked;
+  bool mAxisLocked;  // Whether movement on this axis is locked.
   AsyncPanZoomController* mAsyncPanZoomController;
 
   // The amount by which we are overscrolled; see GetOverscroll().

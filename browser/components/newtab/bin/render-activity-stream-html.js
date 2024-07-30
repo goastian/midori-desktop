@@ -57,7 +57,7 @@ function templateHTML(options) {
 <html>
   <head>
     <meta charset="utf-8">
-        <meta name="color-scheme" content="light dark">
+    <meta name="color-scheme" content="light dark">
     <title data-l10n-id="newtab-page-title"></title>
     <link
       rel="icon"

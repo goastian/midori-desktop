@@ -58,7 +58,7 @@ class FontFaceImpl final {
 
 #ifdef DEBUG
     bool HasUserFontSet(gfxUserFontSet* aFontSet) const {
-      AutoWriteLock lock(mLock);
+      AutoReadLock lock(mLock);
       return mFontSet == aFontSet;
     }
 #endif

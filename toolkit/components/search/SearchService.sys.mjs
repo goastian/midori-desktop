@@ -2294,6 +2294,10 @@ export class SearchService {
       { webExtension: { id: "google@search.mozilla.org",    locale: "default"}},
     ];
 
+    if (Services.prefs.getBoolPref("floorp.browser.floorpSearch.enabled")) {
+      engines.push({ webExtension: { id: "floorp@search.mozilla.org", locale: "default"}})
+    }
+
     const privateDefault = (
       { webExtension:{ id:"astiango@search.mozilla.org", locale:"default"}, defaultPrivate:"yes"}
     );
@@ -3052,7 +3056,9 @@ export class SearchService {
       }
     }
 
-    if (sendSubmissionURL) {
+    // Floorp Injections
+    if (sendSubmissionURL && !engine.name == "AstianGO Search") {
+    // End Floorp Injections
       let uri = engine.searchURLWithNoTerms;
       uri = uri
         .mutate()

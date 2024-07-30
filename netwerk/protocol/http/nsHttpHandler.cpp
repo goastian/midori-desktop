@@ -414,7 +414,7 @@ nsresult nsHttpHandler::Init() {
   }
 
   mMisc.AssignLiteral("rv:");
-  bool isFirefox = mAppName.EqualsLiteral("Midori");
+  bool isFirefox = mAppName.EqualsLiteral("Firefox");
   uint32_t forceVersion =
       mozilla::StaticPrefs::network_http_useragent_forceRVOnly();
   if (forceVersion && (isFirefox || mCompatFirefoxEnabled)) {
@@ -820,7 +820,7 @@ void nsHttpHandler::BuildUserAgent() {
   mUserAgent += '/';
   mUserAgent += mProductSub;
 
-  bool isFirefox = mAppName.EqualsLiteral("Midori");
+  bool isFirefox = mAppName.EqualsLiteral("Firefox");
   if (isFirefox || mCompatFirefoxEnabled) {
     // "Firefox/x.y" (compatibility) app token
     mUserAgent += ' ';

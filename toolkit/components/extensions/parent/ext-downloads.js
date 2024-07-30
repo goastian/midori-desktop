@@ -103,8 +103,6 @@ const FILTER_IMAGES_EXTENSIONS = [
   "psd",
   "raw",
   "webp",
-  "avif",
-  "jxl",
 ];
 
 const FILTER_XML_EXTENSIONS = ["xml"];
@@ -684,9 +682,6 @@ this.downloads = class extends ExtensionAPIPersistent {
             if (PathUtils.isAbsolute(filename)) {
               throw new ExtensionError("filename must not be an absolute path");
             }
-
-            // % is not permitted but relatively common.
-            filename = filename.replaceAll("%", "_");
 
             const pathComponents = PathUtils.splitRelative(filename, {
               allowEmpty: true,

@@ -22,7 +22,6 @@
 #include "vm/JitActivation.h"  // js::jit::JitActivation
 #include "vm/JSContext.h"
 #include "vm/StringType.h"
-#include "wasm/WasmStubs.h"
 
 #include "jit/MacroAssembler-inl.h"
 
@@ -371,7 +370,16 @@ void MacroAssemblerCompat::handleFailureWithHandlerTail(Label* profilerExitTail,
 
   // Found a wasm catch handler, restore state and jump to it.
   bind(&wasmCatch);
-  wasm::GenerateJumpToCatchHandler(asMasm(), PseudoStackPointer, r0, r1);
+  loadPtr(Address(PseudoStackPointer, ResumeFromException::offsetOfTarget()),
+          r0);
+  loadPtr(
+      Address(PseudoStackPointer, ResumeFromException::offsetOfFramePointer()),
+      r29);
+  loadPtr(
+      Address(PseudoStackPointer, ResumeFromException::offsetOfStackPointer()),
+      PseudoStackPointer);
+  syncStackPtr();
+  Br(x0);
 
   MOZ_ASSERT(GetStackPointer64().Is(PseudoStackPointer64));
 }

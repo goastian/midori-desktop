@@ -12,7 +12,7 @@
 <?xml-stylesheet href="chrome://browser/skin/preferences/search.css"?>
 <?xml-stylesheet href="chrome://browser/skin/preferences/containers.css"?>
 <?xml-stylesheet href="chrome://browser/skin/preferences/privacy.css"?>
-<?xml-stylesheet href="chrome://browser/skin/preferences/preferences-floorp.css"?>
+<?xml-stylesheet href="chrome://floorp/skin/preferences/preferences-floorp.css"?>
 
 <!DOCTYPE html>
 
@@ -68,6 +68,7 @@
   <script type="module" src="chrome://global/content/elements/moz-support-link.mjs"/>
   <script src="chrome://browser/content/migration/migration-wizard.mjs" type="module"></script>
   <script type="module" src="chrome://global/content/elements/moz-toggle.mjs"/>
+  <script type="module" src="chrome://nora/content/csk.js"></script>
 </head>
 
 <html:body xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
@@ -136,16 +137,6 @@
           <image class="category-icon"/>
           <label class="category-name" flex="1" data-l10n-id="files-and-applications-title"></label>  
           </richlistitem>
-          <richlistitem id="category-CSK"
-                      class="category"
-                      value="paneCSK"
-                      helpTopic="prefs-CSK"
-                      data-l10n-id="category-CSK"
-                      data-l10n-attrs="tooltiptext"
-                      align="center">
-          <image class="category-icon"/>
-          <label class="category-name" flex="1" data-l10n-id="category-CSK-title"></label>
-        </richlistitem>
         <richlistitem id="category-ssb"
                       class="category"
                       value="paneSsb"
@@ -200,6 +191,12 @@
                       class="category"
                       value="paneLepton"
                       helpTopic="prefs-lepton"
+                      style="display:none;"/>
+
+        <richlistitem id="category-notes"
+                      class="category"
+                      value="paneNotes"
+                      helpTopic="prefs-notes"
                       style="display:none;"/>
 
         <richlistitem id="category-userjs"
@@ -293,13 +290,15 @@
 #include privacy.inc.xhtml
 
 #include ../../../floorp/browser/components/preferences/downloads.inc.xhtml
-#include ../../../floorp/browser/components/preferences/bsb.inc.xhtml
-#include ../../../floorp/browser/components/preferences/workspaces.inc.xhtml
+#include ../../../floorp/browser/components/preferences/notes.inc.xhtml
 #include ../../../floorp/browser/components/preferences/ssb.inc.xhtml
+#include ../../../floorp/browser/components/preferences/bsb.inc.xhtml
 #include ../../../floorp/browser/components/preferences/userjs.inc.xhtml
 #include ../../../floorp/browser/components/preferences/design.inc.xhtml
-#include ../../../floorp/browser/components/preferences/csk.inc.xhtml
 #include ../../../floorp/browser/components/preferences/lepton.inc.xhtml
+
+#include ../../../floorp/browser/components/preferences/csk.inc.xhtml
+#include ../../../floorp/browser/components/preferences/workspaces.inc.xhtml
 
 #include containers.inc.xhtml
 #include sync.inc.xhtml

@@ -21,7 +21,7 @@
 !endif
 
 # These defines should match application.ini settings
-!define AppName               "Midori"
+!define AppName               "Floorp"
 !define AppVersion            "@APP_VERSION@"
 !define GREVersion            @MOZILLA_VERSION@
 !define AB_CD                 "@AB_CD@"
@@ -30,11 +30,11 @@
 !define PrivateBrowsingEXE    "private_browsing.exe"
 !define MainWindowClass       "FloorpWindowClass"
 !define DialogWindowClass     "FloorpDialogClass"
-!define DDEApplication        "Midori"
-!define AppRegName            "Midori"
+!define DDEApplication        "Floorp"
+!define AppRegName            "Floorp"
 !define ToastAumidPrefix      "@MOZ_TOAST_APP_NAME@Toast-"
 
-!define BrandProductName      "Midori"
+!define BrandProductName      "Floorp"
 !ifndef DEV_EDITION
 !define BrandShortName        "@MOZ_APP_DISPLAYNAME@"
 !endif

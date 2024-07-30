@@ -81,7 +81,27 @@ class GCLocProviderPriv final : public nsIGeolocationProvider,
 
   GCLocProviderPriv();
 
+  void UpdateLastPosition();
+
  private:
+  class LocationTimerCallback final : public nsITimerCallback, public nsINamed {
+   public:
+    NS_DECL_ISUPPORTS
+    NS_DECL_NSITIMERCALLBACK
+
+    explicit LocationTimerCallback(GCLocProviderPriv* aParent)
+        : mParent(aParent) {}
+
+    NS_IMETHOD GetName(nsACString& aName) override {
+      aName.AssignLiteral("GCLocProvider::LocationTimerCallback");
+      return NS_OK;
+    }
+
+   private:
+    ~LocationTimerCallback() = default;
+    WeakPtr<GCLocProviderPriv> mParent;
+  };
+
   enum class Accuracy { Unset, Low, High };
   // States:
   //   Uninit: The default / initial state, with no client proxy yet.
@@ -212,6 +232,7 @@ class GCLocProviderPriv final : public nsIGeolocationProvider,
   MOZ_CAN_RUN_SCRIPT static void GCManagerOwnerNotify(GObject* aObject,
                                                       GParamSpec* aPSpec,
                                                       gpointer aUserData);
+
   static void GCClientSignal(GDBusProxy* aProxy, gchar* aSenderName,
                              gchar* aSignalName, GVariant* aParameters,
                              gpointer aUserData);
@@ -221,13 +242,8 @@ class GCLocProviderPriv final : public nsIGeolocationProvider,
   static void ConnectLocationResponse(GObject* aObject, GAsyncResult* aResult,
                                       gpointer aUserData);
 
-  void StartLastPositionTimer();
-  void StopPositionTimer();
-  void UpdateLastPosition();
-
-  void StartMLSFallbackTimerIfNeeded();
-  void StopMLSFallbackTimer();
-  void MLSFallbackTimerFired();
+  void SetLocationTimer();
+  void StopLocationTimer();
 
   bool InDBusCall();
   bool InDBusStoppingCall();
@@ -250,43 +266,9 @@ class GCLocProviderPriv final : public nsIGeolocationProvider,
   nsCOMPtr<nsIGeolocationUpdate> mCallback;
   ClientState mClientState = ClientState::Uninit;
   RefPtr<nsIDOMGeoPosition> mLastPosition;
-  RefPtr<nsITimer> mLastPositionTimer;
-  RefPtr<nsITimer> mMLSFallbackTimer;
+  RefPtr<nsITimer> mLocationTimer;
   RefPtr<MLSFallback> mMLSFallback;
 };
-
-class GCLocWeakCallback final : public nsITimerCallback, public nsINamed {
-  using Method = void (GCLocProviderPriv::*)();
-
- public:
-  NS_DECL_ISUPPORTS
-  NS_DECL_NSITIMERCALLBACK
-
-  explicit GCLocWeakCallback(GCLocProviderPriv* aParent, const char* aName,
-                             Method aMethod)
-      : mParent(aParent), mName(aName), mMethod(aMethod) {}
-
-  NS_IMETHOD GetName(nsACString& aName) override {
-    aName = mName;
-    return NS_OK;
-  }
-
- private:
-  ~GCLocWeakCallback() = default;
-  WeakPtr<GCLocProviderPriv> mParent;
-  const char* mName = nullptr;
-  Method mMethod = nullptr;
-};
-
-NS_IMPL_ISUPPORTS(GCLocWeakCallback, nsITimerCallback, nsINamed)
-
-NS_IMETHODIMP
-GCLocWeakCallback::Notify(nsITimer* aTimer) {
-  if (RefPtr parent = mParent.get()) {
-    (parent->*mMethod)();
-  }
-  return NS_OK;
-}
 
 //
 // GCLocProviderPriv
@@ -328,8 +310,7 @@ void GCLocProviderPriv::Update(nsIDOMGeoPosition* aPosition) {
 
 void GCLocProviderPriv::UpdateLastPosition() {
   MOZ_DIAGNOSTIC_ASSERT(mLastPosition, "No last position to update");
-  StopPositionTimer();
-  StopMLSFallbackTimer();
+  StopLocationTimer();
   Update(mLastPosition);
 }
 
@@ -400,9 +381,9 @@ void GCLocProviderPriv::GetClientResponse(GDBusProxy* aProxy,
   RefPtr<GVariant> variant = dont_AddRef(
       g_dbus_proxy_call_finish(aProxy, aResult, getter_Transfers(error)));
   if (!variant) {
-    GCL_LOG(Error, "Failed to get client: %s\n", error->message);
     // if cancelled |self| might no longer be there
     if (!g_error_matches(error.get(), G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+      GCL_LOG(Error, "Failed to get client: %s\n", error->message);
       RefPtr self = static_cast<GCLocProviderPriv*>(aUserData);
       self->DBusProxyError(error.get(), true);
     }
@@ -621,9 +602,6 @@ void GCLocProviderPriv::StartClientResponse(GDBusProxy* aProxy,
   MOZ_DIAGNOSTIC_ASSERT(self->mClientState == ClientState::Starting,
                         "Client in a wrong state");
   GCLP_SETSTATE(self, Started);
-  // If we're started, and we don't get any location update in a reasonable
-  // amount of time, we fallback to MLS.
-  self->StartMLSFallbackTimerIfNeeded();
   self->MaybeRestartForAccuracy();
 }
 
@@ -711,9 +689,6 @@ void GCLocProviderPriv::GCClientSignal(GDBusProxy* aProxy, gchar* aSenderName,
                                        gchar* aSignalName,
                                        GVariant* aParameters,
                                        gpointer aUserData) {
-  GCL_LOG(Info, "%s: %s (%s)\n", __PRETTY_FUNCTION__, aSignalName,
-          GUniquePtr<gchar>(g_variant_print(aParameters, TRUE)).get());
-
   if (g_strcmp0(aSignalName, "LocationUpdated")) {
     return;
   }
@@ -827,63 +802,23 @@ void GCLocProviderPriv::ConnectLocationResponse(GObject* aObject,
   self->UpdateLastPosition();
 }
 
-void GCLocProviderPriv::StartLastPositionTimer() {
+void GCLocProviderPriv::SetLocationTimer() {
   MOZ_DIAGNOSTIC_ASSERT(mLastPosition, "no last position to report");
 
-  StopPositionTimer();
+  StopLocationTimer();
 
-  RefPtr timerCallback = new GCLocWeakCallback(
-      this, "UpdateLastPosition", &GCLocProviderPriv::UpdateLastPosition);
-  NS_NewTimerWithCallback(getter_AddRefs(mLastPositionTimer), timerCallback,
-                          1000, nsITimer::TYPE_ONE_SHOT);
+  RefPtr<LocationTimerCallback> timerCallback = new LocationTimerCallback(this);
+  NS_NewTimerWithCallback(getter_AddRefs(mLocationTimer), timerCallback, 1000,
+                          nsITimer::TYPE_ONE_SHOT);
 }
 
-void GCLocProviderPriv::StopPositionTimer() {
-  if (!mLastPositionTimer) {
+void GCLocProviderPriv::StopLocationTimer() {
+  if (!mLocationTimer) {
     return;
   }
 
-  mLastPositionTimer->Cancel();
-  mLastPositionTimer = nullptr;
-}
-
-void GCLocProviderPriv::StartMLSFallbackTimerIfNeeded() {
-  StopMLSFallbackTimer();
-  if (mLastPosition) {
-    // If we already have a location we're good.
-    return;
-  }
-
-  uint32_t delay = StaticPrefs::geo_provider_geoclue_mls_fallback_timeout_ms();
-  if (!delay) {
-    return;
-  }
-
-  RefPtr timerCallback = new GCLocWeakCallback(
-      this, "MLSFallbackTimerFired", &GCLocProviderPriv::MLSFallbackTimerFired);
-  NS_NewTimerWithCallback(getter_AddRefs(mMLSFallbackTimer), timerCallback,
-                          delay, nsITimer::TYPE_ONE_SHOT);
-}
-
-void GCLocProviderPriv::StopMLSFallbackTimer() {
-  if (!mMLSFallbackTimer) {
-    return;
-  }
-  mMLSFallbackTimer->Cancel();
-  mMLSFallbackTimer = nullptr;
-}
-
-void GCLocProviderPriv::MLSFallbackTimerFired() {
-  mMLSFallbackTimer = nullptr;
-
-  if (mMLSFallback || mLastPosition || mClientState != ClientState::Started) {
-    return;
-  }
-
-  GCL_LOG(Info,
-          "Didn't get a location in a reasonable amount of time, trying to "
-          "fall back to MLS");
-  FallbackToMLS();
+  mLocationTimer->Cancel();
+  mLocationTimer = nullptr;
 }
 
 // Did we made some D-Bus call and are still waiting for its response?
@@ -926,8 +861,7 @@ void GCLocProviderPriv::DoShutdown(bool aDeleteClient, bool aDeleteManager) {
       "deleting manager proxy requires deleting client one, too");
 
   // Invalidate the cached last position
-  StopPositionTimer();
-  StopMLSFallbackTimer();
+  StopLocationTimer();
   mLastPosition = nullptr;
 
   /*
@@ -1021,10 +955,10 @@ void GCLocProviderPriv::WatchStart() {
   if (mClientState == ClientState::Idle) {
     StartClient();
   } else if (mClientState == ClientState::Started) {
-    if (mLastPosition && !mLastPositionTimer) {
+    if (mLastPosition && !mLocationTimer) {
       GCL_LOG(Verbose,
-              "Will report the existing position if new one doesn't come up\n");
-      StartLastPositionTimer();
+              "Will report the existing location if new one doesn't come up\n");
+      SetLocationTimer();
     }
   } else if (mClientState == ClientState::SettingAccuracy) {
     GCLP_SETSTATE(this, SettingAccuracyForStart);
@@ -1078,6 +1012,19 @@ GCLocProviderPriv::SetHighAccuracy(bool aHigh) {
 
   mAccuracyWanted = aHigh ? Accuracy::High : Accuracy::Low;
   MaybeRestartForAccuracy();
+
+  return NS_OK;
+}
+
+NS_IMPL_ISUPPORTS(GCLocProviderPriv::LocationTimerCallback, nsITimerCallback,
+                  nsINamed)
+
+NS_IMETHODIMP
+GCLocProviderPriv::LocationTimerCallback::Notify(nsITimer* aTimer) {
+  if (mParent) {
+    RefPtr<GCLocProviderPriv> parent(mParent);
+    parent->UpdateLastPosition();
+  }
 
   return NS_OK;
 }

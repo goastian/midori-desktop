@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
- import {
+import {
   cancelIdleCallback,
   clearTimeout,
   requestIdleCallback,
@@ -256,7 +256,7 @@ var SessionSaverInternal = {
 
     for (let i = state.windows.length - 1; i >= 0; i--) {
       let win = state.windows[i];
-      if (win.isWebpanelWindow) {
+      if (win.floorpWebPanelWindow) {
         state.windows.splice(i, 1);
 
         if (state.selectedWindow >= i) {
@@ -265,7 +265,7 @@ var SessionSaverInternal = {
       } else {
         for (let tab of win.tabs) {
           let ssbEnabled = tab.floorpSSB === "true";
-          let webpanelTab = tab.floorpWebpanelTab;
+          let webpanelTab = tab.floorpWebPanel;
           if (ssbEnabled || webpanelTab) {
             state.windows.splice(i, 1);
           }

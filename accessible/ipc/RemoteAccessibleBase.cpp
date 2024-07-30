@@ -1698,7 +1698,7 @@ void RemoteAccessibleBase<Derived>::ActionNameAt(uint8_t aIndex,
         if (action) {
           action->ToString(aName);
         } else if (hasActionAncestor) {
-          aName.AssignLiteral("clickAncestor");
+          aName.AssignLiteral("click ancestor");
         } else if (mCachedFields->HasAttribute(nsGkAtoms::longdesc)) {
           aName.AssignLiteral("showlongdesc");
         }

@@ -30,22 +30,22 @@ unsafe extern "C" fn qcms_transform_data_template_lut_sse2<F: Format>(
     let igtbl_b: *const f32 = (*transform).input_gamma_table_b.as_ref().unwrap().as_ptr();
     /* deref *transform now to avoid it in loop */
     let otdata_r: *const u8 = (*transform)
-        .precache_output
+        .output_table_r
         .as_deref()
         .unwrap()
-        .lut_r
+        .data
         .as_ptr();
     let otdata_g: *const u8 = (*transform)
-        .precache_output
+        .output_table_g
         .as_deref()
         .unwrap()
-        .lut_g
+        .data
         .as_ptr();
     let otdata_b: *const u8 = (*transform)
-        .precache_output
+        .output_table_b
         .as_deref()
         .unwrap()
-        .lut_b
+        .data
         .as_ptr();
     /* input matrix values never change */
     let mat0: __m128 = _mm_load_ps((*mat.offset(0isize)).as_ptr());

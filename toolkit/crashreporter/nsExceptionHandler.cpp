@@ -3603,6 +3603,7 @@ bool FinalizeOrphanedMinidump(uint32_t aChildPid, GeckoProcessType aType,
 // Function invoked by the WER runtime exception handler running in an
 // external process. This function isn't used anywhere inside Gecko directly
 // but rather invoked via CreateRemoteThread() in the main process.
+
 // Store this global in a section called mozwerpt where we can find it by just
 // looking at the program headers.
 #  pragma section("mozwerpt", read, executable, shared)

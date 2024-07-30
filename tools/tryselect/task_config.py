@@ -114,7 +114,6 @@ class Pernosco(TryConfig):
         return super().add_arguments(group)
 
     def try_config(self, pernosco, **kwargs):
-        pernosco = pernosco or os.environ.get("MOZ_USE_PERNOSCO")
         if pernosco is None:
             return
 
@@ -162,7 +161,7 @@ class Pernosco(TryConfig):
             "env": {
                 "PERNOSCO": str(int(pernosco)),
             }
-        },
+        }
 
     def validate(self, **kwargs):
         if kwargs["try_config"].get("use-artifact-builds"):

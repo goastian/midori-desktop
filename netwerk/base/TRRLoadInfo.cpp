@@ -690,13 +690,6 @@ already_AddRefed<nsIContentSecurityPolicy> TRRLoadInfo::GetCspToInherit() {
   return nullptr;
 }
 
-Maybe<FeaturePolicyInfo> TRRLoadInfo::GetContainerFeaturePolicyInfo() {
-  return Nothing();
-}
-
-void TRRLoadInfo::SetContainerFeaturePolicyInfo(
-    const FeaturePolicyInfo& aContainerFeaturePolicyInfo) {}
-
 NS_IMETHODIMP
 TRRLoadInfo::GetHttpsOnlyStatus(uint32_t* aHttpsOnlyStatus) {
   return NS_ERROR_NOT_IMPLEMENTED;

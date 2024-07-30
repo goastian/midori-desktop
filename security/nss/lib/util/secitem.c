@@ -238,20 +238,35 @@ SECITEM_ArenaDupItem(PLArenaPool *arena, const SECItem *from)
     SECItem *to;
 
     if (from == NULL) {
-        return NULL;
+        return (NULL);
     }
 
-    to = SECITEM_AllocItem(arena, NULL, from->len);
+    if (arena != NULL) {
+        to = (SECItem *)PORT_ArenaAlloc(arena, sizeof(SECItem));
+    } else {
+        to = (SECItem *)PORT_Alloc(sizeof(SECItem));
+    }
     if (to == NULL) {
-        return NULL;
+        return (NULL);
     }
 
+    if (arena != NULL) {
+        to->data = (unsigned char *)PORT_ArenaAlloc(arena, from->len);
+    } else {
+        to->data = (unsigned char *)PORT_Alloc(from->len);
+    }
+    if (to->data == NULL) {
+        PORT_Free(to);
+        return (NULL);
+    }
+
+    to->len = from->len;
     to->type = from->type;
     if (to->len) {
         PORT_Memcpy(to->data, from->data, to->len);
     }
 
-    return to;
+    return (to);
 }
 
 SECStatus

@@ -76,7 +76,7 @@ class SandboxBroker : public AbstractSandboxBroker {
  public:
   SandboxBroker();
 
-    static void Initialize(sandbox::BrokerServices* aBrokerServices,
+  static void Initialize(sandbox::BrokerServices* aBrokerServices,
                          const nsAString& aBinDir);
 
   void Shutdown() override {}

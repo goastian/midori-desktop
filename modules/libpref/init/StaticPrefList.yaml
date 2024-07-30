@@ -5663,13 +5663,6 @@
   type: bool
   value: true
   mirror: always
-
-# Time in milliseconds after which geoclue will try to fallback to MLS if no
-# location is received after successful start.
-- name: geo.provider.geoclue.mls_fallback_timeout_ms
-  type: uint32_t
-  value: 5000
-  mirror: always
 #endif
 
 #---------------------------------------------------------------------------
@@ -11698,7 +11691,7 @@
 # generate them from punycode.
 - name: network.IDN_show_punycode
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
 
 # If set to true, IOService.offline depends on IOService.connectivity.
@@ -13132,7 +13125,7 @@
 # Enforce tracking protection in all modes.
 - name: privacy.trackingprotection.enabled
   type: bool
-  value: true
+  value: false
   mirror: always
 
 # Enforce tracking protection in Private Browsing mode.
@@ -13218,7 +13211,7 @@
 # false - Do not send header to indicate opting-in
 - name: privacy.globalprivacycontrol.enabled
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
 
 # Controls whether or not GPC signals are sent. Meant to act as a third option
@@ -13226,7 +13219,7 @@
 # the Sec-GPC HTTP header.
 - name: privacy.globalprivacycontrol.functionality.enabled
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
 
 # Lower the priority of network loads for resources on the tracking protection
@@ -15148,16 +15141,6 @@
 #else
   value: true
 #endif
-  mirror: always
-
-- name: webgl.glsl.max_var_size_in_kibytes
-  type: RelaxedAtomicInt32
-  value: -1 # -1 => default for platform, 0 => no limit, >0 => max valid size
-  mirror: always
-
-- name: webgl.glsl.max_private_var_size_in_bytes
-  type: RelaxedAtomicInt32
-  value: -1 # -1 => default for platform, 0 => no limit, >0 => max valid size
   mirror: always
 
 - name: webgl.lose-context-on-memory-pressure

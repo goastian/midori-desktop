@@ -9,3 +9,4 @@ diff --git a/gfx/cairo/cairo/src/cairo-cff-subset.c b/gfx/cairo/cairo/src/cairo-
 +    font = calloc (1, sizeof (cairo_cff_font_t));
      if (unlikely (font == NULL))
  	return _cairo_error (CAIRO_STATUS_NO_MEMORY);
+

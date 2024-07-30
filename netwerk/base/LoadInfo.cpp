@@ -14,14 +14,13 @@
 #include "mozilla/dom/ClientIPCTypes.h"
 #include "mozilla/dom/ClientSource.h"
 #include "mozilla/dom/ContentChild.h"
-#include "mozilla/dom/DOMTypes.h"
 #include "mozilla/dom/Performance.h"
 #include "mozilla/dom/PerformanceStorage.h"
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "mozilla/dom/BrowsingContext.h"
-#include "mozilla/dom/nsHTTPSOnlyUtils.h"
 #include "mozilla/dom/WindowGlobalParent.h"
+#include "mozilla/dom/nsHTTPSOnlyUtils.h"
 #include "mozilla/net/CookieJarSettings.h"
 #include "mozilla/NullPrincipal.h"
 #include "mozilla/StaticPrefs_network.h"
@@ -574,7 +573,6 @@ LoadInfo::LoadInfo(const LoadInfo& rhs)
       mChannelCreationOriginalURI(rhs.mChannelCreationOriginalURI),
       mCookieJarSettings(rhs.mCookieJarSettings),
       mCspToInherit(rhs.mCspToInherit),
-      mContainerFeaturePolicyInfo(rhs.mContainerFeaturePolicyInfo),
       mTriggeringRemoteType(rhs.mTriggeringRemoteType),
       mSandboxedNullPrincipalID(rhs.mSandboxedNullPrincipalID),
       mClientInfo(rhs.mClientInfo),
@@ -2261,15 +2259,6 @@ already_AddRefed<nsIContentSecurityPolicy> LoadInfo::GetPreloadCsp() {
 already_AddRefed<nsIContentSecurityPolicy> LoadInfo::GetCspToInherit() {
   nsCOMPtr<nsIContentSecurityPolicy> cspToInherit = mCspToInherit;
   return cspToInherit.forget();
-}
-
-Maybe<FeaturePolicyInfo> LoadInfo::GetContainerFeaturePolicyInfo() {
-  return mContainerFeaturePolicyInfo;
-}
-
-void LoadInfo::SetContainerFeaturePolicyInfo(
-    const FeaturePolicyInfo& aContainerFeaturePolicyInfo) {
-  mContainerFeaturePolicyInfo = Some(aContainerFeaturePolicyInfo);
 }
 
 nsIInterceptionInfo* LoadInfo::InterceptionInfo() { return mInterceptionInfo; }

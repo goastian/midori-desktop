@@ -477,14 +477,11 @@ void nsThread::InitCommon() {
   {
 #if defined(XP_LINUX)
     pthread_attr_t attr;
-    int res = pthread_attr_init(&attr);
-    MOZ_RELEASE_ASSERT(!res);
-    res = pthread_getattr_np(pthread_self(), &attr);
-    MOZ_RELEASE_ASSERT(!res);
+    pthread_attr_init(&attr);
+    pthread_getattr_np(pthread_self(), &attr);
 
     size_t stackSize;
-    res = pthread_attr_getstack(&attr, &mStackBase, &stackSize);
-    MOZ_RELEASE_ASSERT(!res);
+    pthread_attr_getstack(&attr, &mStackBase, &stackSize);
 
     // Glibc prior to 2.27 reports the stack size and base including the guard
     // region, so we need to compensate for it to get accurate accounting.
@@ -502,8 +499,7 @@ void nsThread::InitCommon() {
     });
     if (sAdjustForGuardSize) {
       size_t guardSize;
-      res = pthread_attr_getguardsize(&attr, &guardSize);
-      MOZ_RELEASE_ASSERT(!res);
+      pthread_attr_getguardsize(&attr, &guardSize);
 
       // Note: This assumes that the stack grows down, as is the case on all of
       // our tier 1 platforms. On platforms where the stack grows up, the
@@ -530,8 +526,7 @@ void nsThread::InitCommon() {
     // consumption of our allocated stacks.
     madvise(mStackBase, stackSize, MADV_NOHUGEPAGE);
 
-    res = pthread_attr_destroy(&attr);
-    MOZ_RELEASE_ASSERT(!res);
+    pthread_attr_destroy(&attr);
 #elif defined(XP_WIN)
     static const StaticDynamicallyLinkedFunctionPtr<
         GetCurrentThreadStackLimitsFn>
