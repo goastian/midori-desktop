@@ -14,7 +14,7 @@ export async function generateJarManifest(bundle: object) {
   }
   console.log("generate end jar.mn");
 
-  return `floorp.jar:\n% content nora %nora/ contentaccessible=yes\n ${Array.from(
+  return `midori.jar:\n% content nora %nora/ contentaccessible=yes\n ${Array.from(
     new Set(arr),
   )
     .map((v) => `nora/${v} (${v})`)

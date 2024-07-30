@@ -1,6 +1,6 @@
 
-floorp.jar:
-% resource floorp %resource/
+midori.jar:
+% resource midori %resource/
 
   resource/WorkspacesService.mjs
   resource/WorkspacesWindowIdUtils.mjs

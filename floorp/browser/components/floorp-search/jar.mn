@@ -1,6 +1,6 @@
 
-floorp.jar:
-% content floorp %content/ contentaccessible=yes
+midori.jar:
+% content midori %content/ contentaccessible=yes
    content/floorp-search/search-result.js              (content/search-result.js)
    content/floorp-search/search-result.css             (content/search-result.css)
    content/floorp-search/search-result.html            (content/search-result.html)
