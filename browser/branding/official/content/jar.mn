@@ -7,9 +7,6 @@ browser.jar:
   content/branding/about.png
   content/branding/about-logo.png
   content/branding/about-logo.svg
-  content/branding/private.svg
-  content/branding/search.svg
-  content/branding/about-private.svg
   content/branding/about-logo@2x.png
   content/branding/about-wordmark.svg
   content/branding/about-logo-private.png
@@ -21,7 +18,6 @@ browser.jar:
   content/branding/icon64.png                    (../default64.png)
   content/branding/icon128.png                   (../default128.png)
   content/branding/aboutDialog.css
-  content/branding/aboutPrivateBrowsing.css
   content/branding/floorp-background.png
   content/branding/floorp-pb-toolbar-icon.ico    (../pbmode.ico)
 
