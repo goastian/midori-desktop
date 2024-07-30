@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # Please write our copyright if you use this file.
-# © 2023 Midori Projects & Contributors
+# © 2023 Floorp Projects & Contributors
 
 name: Auto Label for Issues
 
@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Label new issue or discussion
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             const issueNumber = context.payload.issue.number;
