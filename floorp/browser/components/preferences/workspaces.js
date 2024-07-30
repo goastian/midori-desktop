@@ -6,7 +6,7 @@
 /* import-globals-from preferences.js */
 
 var { workspacesPreferences } = ChromeUtils.importESModule(
-  "resource:///modules/WorkspacesService.sys.mjs",
+  "resource://floorp/WorkspacesService.mjs",
 );
 
 XPCOMUtils.defineLazyGetter(this, "L10n", () => {

@@ -6,11 +6,11 @@
 /* import-globals-from preferences.js */
 
 var { SiteSpecificBrowserExternalFileService } = ChromeUtils.importESModule(
-  "resource:///modules/SiteSpecificBrowserExternalFileService.sys.mjs"
+  "chrome://floorp/content/modules/ssb/SiteSpecificBrowserExternalFileService.mjs"
 );
 
 var { SiteSpecificBrowserIdUtils } = ChromeUtils.importESModule(
-  "resource:///modules/SiteSpecificBrowserIdUtils.sys.mjs"
+  "chrome://floorp/content/modules/ssb/SiteSpecificBrowserIdUtils.mjs"
 );
 
 XPCOMUtils.defineLazyGetter(this, "L10n", () => {

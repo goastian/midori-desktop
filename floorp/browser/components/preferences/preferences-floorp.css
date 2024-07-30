@@ -15,7 +15,7 @@
 }
 
 .profiles-icon {
-  list-style-image: url("chrome://browser/skin/lepton/mail-inbox-all.svg");
+  list-style-image: url("chrome://floorp/skin/designs/lepton/mail-inbox-all.svg");
 }
 
 #leptonButton {
@@ -38,8 +38,8 @@
   list-style-image: url("chrome://browser/skin/downloads/downloads.svg") !important;
 }
 
-#category-CSK>.category-icon {
-  list-style-image: url("chrome://browser/skin/lepton/select-all-on.svg") !important;
+#category-csk >.category-icon {
+  list-style-image: url("chrome://floorp/skin/designs/lepton/select-all-on.svg") !important;
 }
 
 #category-workspaces>.category-icon {
@@ -47,7 +47,7 @@
 }
 
 #category-ssb>.category-icon {
-  list-style-image: url("chrome://browser/skin/lepton/pwa-manage.svg") !important;
+  list-style-image: url("chrome://floorp/skin/designs/lepton/pwa-manage.svg") !important;
 }
 
 #communityDesc {
@@ -180,16 +180,6 @@
   }
 }
 
-#fluerialUI {
-  display: block;
-  margin: 0 auto;
-  border: 1px solid var(--in-content-box-border-color);
-  border-radius: 4px;
-  box-shadow: 0 0 2px 0 rgba(0, 0, 0, 0.2);
-  transform: scaleX(1);
-  content: url("chrome://browser/skin/floorplegacy/material.svg");
-}
-
 #proton-fix {
   display: block;
   margin: 0 auto;
@@ -207,7 +197,7 @@
   border-radius: 4px;
   box-shadow: 0 0 2px 0 rgba(0, 0, 0, 0.2);
   transform: scaleX(1);
-  content: url("chrome://browser/skin/lepton/photon.svg");
+  content: url("chrome://floorp/skin/designs/lepton/photon.svg");
 }
 
 #sub-preference {
@@ -463,8 +453,7 @@ dropmarker {
   border-bottom: 1px solid var(--sidebar-border-color) !important;
 }
 
-.sticky-container::before {
-  content: "Preferences";
+.preferences-text {
   font-size: 24px;
   font-weight: 600;
   position: absolute !important;

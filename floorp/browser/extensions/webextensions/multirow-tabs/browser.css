@@ -85,7 +85,7 @@
 /********** Titlebar **********/
 
 :root[tabsintitlebar] #titlebar .titlebar-buttonbox-container {
-    /* Give users an option to hide the min/max/close buttions */
+    /* Give users an option to hide the min/max/close buttons */
     display: var(--paxmod-titlebar-display);
 }
 

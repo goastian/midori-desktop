@@ -32,6 +32,7 @@ this.webRequestExt = class extends ExtensionAPI {
                   return fire.async(e.requestId);
                 }
               }
+
               if (
                 e.bmsUseragent === true
               ) {

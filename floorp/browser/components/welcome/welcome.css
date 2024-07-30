@@ -120,7 +120,7 @@ body {
     margin-top: 30px;
 }
 
-#first-discribe-floorp-text {
+#first-describe-floorp-text {
     width: 100%;
     font-weight: 400;
     font-size: 20px;
@@ -200,7 +200,7 @@ body {
   font-size: 10px; line-height: 14px; display: flex;
 }
 
-#floorp-desgin-description {
+#floorp-design-description {
     position: inherit;
     text-align: center;
     max-width: 100%;
@@ -220,7 +220,7 @@ body {
     flex-direction: column;
 }
 
-#import-data-discribe-floorp-text {
+#import-data-describe-floorp-text {
     width: 100%;
     font-weight: 400;
     font-size: 20px;

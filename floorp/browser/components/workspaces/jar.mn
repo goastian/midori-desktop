@@ -1,0 +1,6 @@
+
+floorp.jar:
+% resource floorp %resource/
+
+  resource/WorkspacesService.mjs
+  resource/WorkspacesWindowIdUtils.mjs

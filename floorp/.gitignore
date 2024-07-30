@@ -2,3 +2,4 @@
 !.vscode/extensions.json
 /@types/firefox/**/*
 /node_modules/
+/nora/node_modules/

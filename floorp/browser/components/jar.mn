@@ -1,0 +1,20 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+floorp.jar:
+% resource floorp %resource/
+  resource/DesktopFileParser.sys.mjs
+  resource/EscapeShell.sys.mjs
+  resource/FloorpActors.sys.mjs
+  resource/FloorpServices.sys.mjs
+  resource/OpenLinkInExternal.sys.mjs
+  resource/PortableUpdate.sys.mjs
+  resource/UserjsUtils.sys.mjs
+  resource/FloorpStartup.sys.mjs
+* resource/FloorpAppConstants.sys.mjs
+
+  resource/tabsleep/TabSleep.sys.mjs (tabsleep/TabSleep.sys.mjs)
+
+  resource/ssb/SiteSpecificBrowserChild.sys.mjs   (ssb/SiteSpecificBrowserChild.sys.mjs)
+  resource/ssb/SiteSpecificBrowserParent.sys.mjs  (ssb/SiteSpecificBrowserParent.sys.mjs)

@@ -6,7 +6,7 @@
 
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const { workspaceIcons } = ChromeUtils.importESModule(
-  "resource:///modules/WorkspacesService.sys.mjs",
+  "resource://floorp/WorkspacesService.mjs",
 );
 const { ContextualIdentityService } = ChromeUtils.importESModule(
   "resource://gre/modules/ContextualIdentityService.sys.mjs",
@@ -48,7 +48,7 @@ async function onLoad() {
   for (let icon of workspaceIcons) {
     const element = window.MozXULElement.parseXULToFragment(`
         <menuitem data-l10n-id="workspace-icon-${icon}" value="${icon}"
-                  style="list-style-image: url(chrome://browser/skin/workspace-icons/${icon}.svg);"
+                  style="list-style-image: url(chrome://floorp/skin/workspace-icons/${icon}.svg);"
         />
     `);
 

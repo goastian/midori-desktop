@@ -4,7 +4,7 @@
 
 <!-- More From Mozilla panel -->
 
-<script src="chrome://browser/content/preferences/design.js" />
+<script src="chrome://floorp/content/preferences/design.js" />
 <html:template id="template-paneDesign">
   <hbox id="designCategory" class="subcategory" hidden="true" data-category="paneDesign">
     <html:h1 style="-moz-box-flex: 1;" data-l10n-id="design-header" />
@@ -73,6 +73,7 @@
       <checkbox preference="floorp.browser.tabs.verticaltab.right" id="nativeVerticalTab" data-l10n-id="native-vertical-tab-show-right" />
       <checkbox preference="floorp.verticaltab.hover.enabled" id="hoverVerticalTab" data-l10n-id="hover-vertical-tab" class="verticalTabs needreboot" />
       <checkbox preference="floorp.verticaltab.show.newtab.button" id="verticalTabNewTabButton" data-l10n-id="floorp-show-vertical-tab-newtab-button" class="verticalTabs" />
+      <checkbox preference="floorp.verticaltab.paddingtop.enabled" id="verticalTabPadding" data-l10n-id="native-vertical-tab-show-padding" class="verticalTabs" />
     </radiogroup>
 
     <vbox class="TST ContentBlockBox">
@@ -215,7 +216,7 @@
     #ifdef XP_WIN
     <hbox align="center">
       <checkbox preference="floorp.material.effect.enable" id="micaforeveryone" data-l10n-id="material-effect" />
-      <label class="learnMore" is="text-link" href="https://help.astian.org"
+      <label class="learnMore" is="text-link" href="https://support.ablaze.one/articles/floorp/mica-for-everyone"
         data-l10n-id="do-not-track-learn-more"></label>
     </hbox>
     #endif

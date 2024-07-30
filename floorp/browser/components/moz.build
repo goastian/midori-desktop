@@ -4,33 +4,20 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+JAR_MANIFESTS += ["jar.mn"]
+
 DIRS += [
     "about",
+    "floorp-search",
     "search",
     "preferences",
     "profile-manager",
     "ssb",
+    "notes",
     "welcome",
-    "tabsleep",
     "workspaces",
-]
-
-EXTRA_JS_MODULES += [
-    "BrowserManagerSidebar.sys.mjs",
-    "CustomKeyboardShortcutUtils.sys.mjs",
-    "DesktopFileParser.sys.mjs",
-    "EscapeShell.sys.mjs",
-    "FloorpActors.sys.mjs",
-    "FloorpServices.sys.mjs",
-    "FloorpStartup.sys.mjs",
-    "OpenLinkInExternal.sys.mjs",
-    "PortableUpdate.sys.mjs",
-    "PrivateContainer.sys.mjs",
-    "UserjsUtils.sys.mjs",
+    "tabsleep",
 ]
 
 DEFINES["TOPOBJDIR"] = TOPOBJDIR
 
-EXTRA_PP_JS_MODULES += [
-    "FloorpAppConstants.sys.mjs",
-]
