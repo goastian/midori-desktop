@@ -18,6 +18,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 if (AppConstants.platform == "win") {
   ChromeUtils.defineESModuleGetters(lazy, {
     WindowsSupport: "resource:///modules/ssb/WindowsSupport.sys.mjs",
+    LinuxSupport: "resource:///modules/ssb/LinuxSupport.sys.mjs",
   });
 }
 
@@ -67,6 +68,10 @@ export let SiteSpecificBrowserIdUtils = {
 
     if (AppConstants.platform == "win") {
       await lazy.WindowsSupport.uninstall(ssb);
+    }
+
+    if (AppConstants.platform == "linux") {
+      await lazy.LinuxSupport.uninstall(ssb);
     }
 
     // Remve the SSB from ssb.json

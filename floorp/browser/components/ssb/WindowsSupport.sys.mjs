@@ -33,7 +33,7 @@ const taskbar = Cc["@mozilla.org/windows-taskbar;1"].getService(
   Ci.nsIWinTaskbar,
 );
 
-const File = Components.Constructor(
+const nsIFile = Components.Constructor(
   "@mozilla.org/file/local;1",
   Ci.nsIFile,
   "initWithPath",
@@ -60,7 +60,7 @@ export const WindowsSupport = {
       ignoreExisting: true,
     });
 
-    let iconFile = new File(PathUtils.join(dir, "icon.ico"));
+    let iconFile = new nsIFile(PathUtils.join(dir, "icon.ico"));
 
     // We should be embedding multiple icon sizes, but the current icon encoder
     // does not support this. For now just embed a sensible size.
@@ -118,10 +118,10 @@ export const WindowsSupport = {
    * Sets the window icon based on the available icons.
    *
    * @param {SiteSpecificBrowser} ssb the SSB.
-   * @param {DOMWindow} window the window showing the SSB.
+   * @param {DOMWindow} aWindow the window showing the SSB.
    */
-  async applyOSIntegration(ssb, window) {
-    taskbar.setGroupIdForWindow(window, buildGroupId(ssb.id));
+  async applyOSIntegration(ssb, aWindow) {
+    taskbar.setGroupIdForWindow(aWindow, buildGroupId(ssb.id));
     const getIcon = async (size) => {
       let icon = await SiteSpecificBrowserIdUtils.getIconBySSBId(ssb.id, size);
       if (!icon) {
@@ -149,7 +149,7 @@ export const WindowsSupport = {
     ]);
 
     if (icons[0] || icons[1]) {
-      uiUtils.setWindowIcon(window, icons[0], icons[1]);
+      uiUtils.setWindowIcon(aWindow, icons[0], icons[1]);
     }
   },
 };
