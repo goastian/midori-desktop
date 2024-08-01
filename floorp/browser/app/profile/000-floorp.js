@@ -281,6 +281,21 @@ pref("dom.webshare.enabled", true);
 // 開発者ツールの位置を「右」に変更
 pref("devtools.toolbox.host", "right");
 
+// Smooth Scroll by Betterfox
+pref("apz.overscroll.enabled", true);
+pref("general.smoothScroll", true);
+pref("general.smoothScroll.msdPhysics.enabled", true);
+pref("general.smoothScroll.currentVelocityWeighting", "0.15");
+pref("general.smoothScroll.stopDecelerationWeighting", "0.6");
+pref("mousewheel.min_line_scroll_amount", 10);
+pref("general.smoothScroll.mouseWheel.durationMinMS", 80);
+pref("general.smoothScroll.msdPhysics.continuousMotionMaxDeltaMS", 12);
+pref("general.smoothScroll.msdPhysics.motionBeginSpringConstant", 600);
+pref("general.smoothScroll.msdPhysics.regularSpringConstant", 650);
+pref("general.smoothScroll.msdPhysics.slowdownMinDeltaMS", 25);
+pref("general.smoothScroll.msdPhysics.slowdownSpringConstant", 250);
+pref("mousewheel.default.delta_multiplier_y", 300);
+
 /*-----------------------------------------------------------------------------------all.js の設定-----------------------------------------------------------------------------------*/
 
 pref("extensions.htmlaboutaddons.recommendations.enabled", false, locked);
