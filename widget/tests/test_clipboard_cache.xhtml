@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/css" href="chrome://global/skin"?>
+<?xml-stylesheet type="text/css" href="chrome://mochikit/content/tests/SimpleTest/test.css"?>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=1812543
+-->
+<window title="Mozilla Bug 1812543"
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+<script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
+<script type="application/javascript" src="clipboard_helper.js"/>
+
+<!-- test results are displayed in the html:body -->
+<body xmlns="http://www.w3.org/1999/xhtml">
+<p id="display"></p>
+<div id="content" style="display: none"></div>
+<pre id="test"></pre>
+</body>
+
+<!-- test code goes here -->
+<script class="testbody" type="application/javascript">
+<![CDATA[
+
+let supportOtherClipboardTypes = false;
+clipboardTypes.forEach(function(type) {
+  if (clipboard.kGlobalClipboard != type && clipboard.isClipboardTypeSupported(type)) {
+    supportOtherClipboardTypes = true;
+    add_task(function test_clipboard_hasDataMatchingFlavors() {
+      info(`Test write data to clipboard type ${type}`);
+
+      // Write text/plain data to main clipboard.
+      writeRandomStringToClipboard("text/plain", clipboard.kGlobalClipboard);
+      ok(clipboard.hasDataMatchingFlavors(["text/plain"], clipboard.kGlobalClipboard),
+         "Should have text/plain flavor");
+      ok(!clipboard.hasDataMatchingFlavors(["text/html"], clipboard.kGlobalClipboard),
+         "Should not have text/html flavor");
+
+      // Write text/html data to other clipboard.
+      writeRandomStringToClipboard("text/html", type);
+      ok(clipboard.hasDataMatchingFlavors(["text/plain"], clipboard.kGlobalClipboard),
+         "Should have text/plain flavor");
+      ok(!clipboard.hasDataMatchingFlavors(["text/html"], clipboard.kGlobalClipboard),
+         "Should not have text/html flavor");
+
+      // Clean clipboard data.
+      cleanupAllClipboard();
+    });
+  }
+});
+
+if (!supportOtherClipboardTypes) {
+  ok(true, "Don't support other clipboard types, skip tests");
+}
+
+]]>
+</script>
+</window>
