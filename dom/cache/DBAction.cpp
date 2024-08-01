@@ -14,6 +14,7 @@
 #include "mozilla/dom/quota/PersistenceType.h"
 #include "mozilla/dom/quota/ResultExtensions.h"
 #include "mozilla/net/nsFileProtocolHandler.h"
+#include "mozilla/AppShutdown.h"
 #include "mozIStorageConnection.h"
 #include "mozIStorageService.h"
 #include "mozStorageCID.h"
