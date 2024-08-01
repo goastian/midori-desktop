@@ -74,18 +74,6 @@ SessionStore.promiseInitialized.then(() => {
     // doesn't keep the window alive.
     b.permanentKey = new (Cu.getGlobalForObject(Services).Object)();
 
-    // Ensure that SessionStore has flushed any session history state from the
-    // content process before we this browser's remoteness.
-    if (!Services.appinfo.sessionHistoryInParent) {
-      b.prepareToChangeRemoteness = () =>
-        SessionStore.prepareToChangeRemoteness(b);
-      b.afterChangeRemoteness = (switchId) => {
-        let tab = this.getTabForBrowser(b);
-        SessionStore.finishTabRemotenessChange(tab, switchId);
-        return true;
-      };
-    }
-
     const defaultBrowserAttributes = {
       contextmenu: "contentAreaContextMenu",
       message: "true",
