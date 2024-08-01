@@ -4,9 +4,6 @@ const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
-const { SiteSpecificBrowserService } = ChromeUtils.import(
-  "resource:///modules/SiteSpecificBrowserService.jsm"
-);
 
 const { SiteSpecificBrowserIdUtils } = ChromeUtils.import(
   "resource:///modules/SiteSpecificBrowserIdUtils.jsm"
@@ -16,6 +13,12 @@ const lazy = {};
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   ImageTools: "resource:///modules/ssb/ImageTools.jsm",
 });
+
+const File = Components.Constructor(
+    "@mozilla.org/file/local;1",
+    Ci.nsIFile,
+    "initWithPath",
+  );
 
 export const LinuxSupport = {
   /**
@@ -32,7 +35,7 @@ export const LinuxSupport = {
     });
 
     //TODO: fix icon generation
-    let iconFile = new File([""], PathUtils.join(dir, "icon.ico"));
+    let iconFile = new File(PathUtils.join(dir, "icon.ico"));
     let icon = await SiteSpecificBrowserIdUtils.getIconBySSBId(ssb.id, 128);
     if (icon) {
       let { container } = await lazy.ImageTools.loadImage(
