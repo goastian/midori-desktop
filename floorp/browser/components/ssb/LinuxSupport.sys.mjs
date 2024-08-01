@@ -24,9 +24,6 @@ export const LinuxSupport = {
    * @param {SiteSpecificBrowser} ssb the SSB to install.
    */
   async install(ssb) {
-    if (!SiteSpecificBrowserService.useOSIntegration) {
-      return;
-    }
 
     let dir = PathUtils.join(PathUtils.profileDir, "ssb", ssb.id);
     await IOUtils.makeDirectory(dir, {
@@ -34,7 +31,8 @@ export const LinuxSupport = {
       ignoreExisting: true,
     });
 
-    let iconFile = new File(PathUtils.join(dir, "icon.ico"));
+    //TODO: fix icon generation
+    let iconFile = new File([""], PathUtils.join(dir, "icon.ico"));
     let icon = await SiteSpecificBrowserIdUtils.getIconBySSBId(ssb.id, 128);
     if (icon) {
       let { container } = await lazy.ImageTools.loadImage(
@@ -58,7 +56,7 @@ export const LinuxSupport = {
 Type=Application
 Terminal=false
 Name=${ssb.name}
-Exec=/usr/bin/midori --profile "${PathUtils.profileDir}" --ssb "${ssb.id}"
+Exec=/usr/bin/midori --profile "${PathUtils.profileDir}" --start-ssb "${ssb.id}"
 Icon=${iconFile.path}`
       )
     );
