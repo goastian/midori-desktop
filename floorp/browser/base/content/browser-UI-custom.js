@@ -3,10 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-//import utils
-var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
-
-const observePreference = function (prefName, callback) {
+ export const observePreference = function (prefName, callback) {
   let prefValue = Services.prefs.getBoolPref(prefName, false);
 
   const notifyCallback = (reason) => {
@@ -87,7 +84,7 @@ observePreference("floorp.bookmarks.fakestatus.mode", function (event) {
     eventListener = document.addEventListener(
       "floorpOnLocationChangeEvent",
       function () {
-        let currentUrl = gFloorpOnLocationChange.locationURI.spec;
+        let currentUrl = window.gFloorpOnLocationChange.locationURI.spec;
         let pref = Services.prefs.getStringPref(
           "browser.toolbars.bookmarks.visibility",
           "always",
@@ -157,7 +154,7 @@ observePreference("floorp.downloading.red.color", function (event) {
 
 observePreference("floorp.navbar.bottom", function (event) {
   if (event.prefValue) {
-    var Tag = document.createElement("style");
+    const Tag = document.createElement("style");
     Tag.setAttribute("id", "floorp-navvarcss");
     Tag.innerText = `@import url(chrome://browser/skin/options/navbar-botttom.css)`;
     document.head.appendChild(Tag);
@@ -252,7 +249,7 @@ observePreference("floorp.browser.tabbar.multirow.newtab-inside.enabled", functi
     document.head.appendChild(Tag);
   } else {
     document.getElementById("floorp-newtabbuttoninmultirowtabbbar")?.remove();
-    var Tag = document.createElement("style");
+    const Tag = document.createElement("style");
     Tag.innerText = `@import url(chrome://browser/skin/options/multirowtab-show-newtab-button-at-end.css)`;
     Tag.setAttribute("id", "floorp-newtabbuttonatendofmultirowtabbar");
     document.head.appendChild(Tag);
