@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
@@ -115,11 +116,18 @@ export const ImageTools = {
   },
 
   saveIcon(container, width, height, target) {
+    let format;
+    if (AppConstants.platform == "win") {
+      format = "image/vnd.microsoft.icon";
+    } 
+    if (AppConstants.platform == "linux") {
+      format = "image/png";
+    }
     return new Promise((resolve, reject) => {
       let output = lazy.FileUtils.openFileOutputStream(target);
       let stream = lazy.ImgTools.encodeScaledImage(
         container,
-        "image/vnd.microsoft.icon",
+        format,
         width,
         height,
         "",

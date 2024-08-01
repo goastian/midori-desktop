@@ -1,7 +1,7 @@
 export const EXPORTED_SYMBOLS = ["LinuxSupport"];
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.jsm"
-import { SiteSpecificBrowserIdUtils } from "resource:///modules/SiteSpecificBrowserIdUtils.jsm"
+import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.jsm";
+import { SiteSpecificBrowserIdUtils } from "resource:///modules/SiteSpecificBrowserIdUtils.jsm";
 
 const lazy = {};
 XPCOMUtils.defineLazyModuleGetters(lazy, {
@@ -23,7 +23,7 @@ export const LinuxSupport = {
    */
   async install(ssb) {
 
-    let iconDir = "~/.local/share/icons/Floorp_Web_Apps";
+    let iconDir = "~/.local/share/icons/Midori_Web_Apps";
     await IOUtils.makeDirectory(iconDir, {
       from: "~/.local/share/icons",
       ignoreExisting: true,
