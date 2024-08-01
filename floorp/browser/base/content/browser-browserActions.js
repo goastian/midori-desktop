@@ -7,9 +7,6 @@
 const { CustomizableUI } = ChromeUtils.importESModule(
   "resource:///modules/CustomizableUI.sys.mjs"
 );
-const { SessionStore } = ChromeUtils.import(
-  "resource:///modules/sessionstore/SessionStore.jsm"
-);
 
 async function UCTFirst() {
   const widgetId = "undo-closed-tab";
