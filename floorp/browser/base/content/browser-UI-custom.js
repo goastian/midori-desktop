@@ -238,6 +238,27 @@ observePreference(
   },
 );
 
+/*------------------------------------------- multirowtab -------------------------------------------*/
+
+observePreference("floorp.browser.tabbar.multirow.newtab-inside.enabled", function(event) {
+  if (Services.prefs.getIntPref("floorp.tabbar.style", false) != 1) {
+    return;
+  }
+  if (event.prefValue) {
+    document.getElementById("floorp-newtabbuttonatendofmultirowtabbar")?.remove();
+    var Tag = document.createElement("style");
+    Tag.innerText = `@import url(chrome://browser/skin/options/multirowtab-show-newtab-button-in-tabbar.css)`;
+    Tag.setAttribute("id", "floorp-newtabbuttoninmultirowtabbbar");
+    document.head.appendChild(Tag);
+  } else {
+    document.getElementById("floorp-newtabbuttoninmultirowtabbbar")?.remove();
+    var Tag = document.createElement("style");
+    Tag.innerText = `@import url(chrome://browser/skin/options/multirowtab-show-newtab-button-at-end.css)`;
+    Tag.setAttribute("id", "floorp-newtabbuttonatendofmultirowtabbar");
+    document.head.appendChild(Tag);
+  }
+})
+
 /*------------------------------------------- verticaltab -------------------------------------------*/
 
 observePreference("floorp.verticaltab.show.newtab.button", function (event) {

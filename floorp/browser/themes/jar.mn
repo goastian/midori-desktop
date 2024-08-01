@@ -30,6 +30,8 @@ browser.jar:
   skin/classic/browser/options/verticaltab-show-newtab-button-in-tabbar.css (designs/options/verticaltab-show-newtab-button-in-tabbar.css)
   skin/classic/browser/options/sharemode.css                              (designs/options/sharemode.css)
   skin/classic/browser/options/STG-like-floorp-workspaces.css             (designs/options/STG-like-floorp-workspaces.css)
+  skin/classic/browser/options/multirowtab-show-newtab-button-in-tabbar.css (designs/options/multirowtab-show-newtab-button-in-tabbar.css)
+  skin/classic/browser/options/multirowtab-show-newtab-button-at-end.css  (designs/options/multirowtab-show-newtab-button-at-end.css)
 
 # Undo Closed Tab
   skin/classic/browser/undo-closed-tab.svg                                (icons/undo-closed-tab.svg)
