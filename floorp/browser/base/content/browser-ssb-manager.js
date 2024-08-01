@@ -335,6 +335,14 @@ const gSsbChromeManager = {
 
   eventListeners: {
     async onCurrentTabChangedOrLoaded() {
+    // This is needed to handle the case when the user opens a new tab in the same window.
+    const interval = window.setInterval(() => {
+      gSsbSupport.eventListeners.onCurrentTabChangedOrLoaded();
+        } , 2000);
+      
+      window.setTimeout(() => {
+        interval.clearInterval();
+    }, 10000);
       // set image to the install button
       let currentPageCanBeInstalled =
         await gSsbChromeManager.functions.checkCurrentPageCanBeInstalled();
