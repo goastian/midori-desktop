@@ -238,20 +238,6 @@ observePreference(
   },
 );
 
-/*------------------------------------------- sidebar -------------------------------------------*/
-
-if (!Services.prefs.getBoolPref("floorp.browser.sidebar.enable", false)) {
-  var Tag = document.createElement("style");
-  Tag.textContent = `
-  #sidebar-button2,
-  #wrapper-sidebar-button2,
-  .browser-sidebar2,
-  #sidebar-select-box {
-    display: none !important;
-  }`;
-  document.head.appendChild(Tag);
-}
-
 /*------------------------------------------- verticaltab -------------------------------------------*/
 
 observePreference("floorp.verticaltab.show.newtab.button", function (event) {
