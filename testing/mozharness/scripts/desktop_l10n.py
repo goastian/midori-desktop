@@ -87,6 +87,8 @@ class DesktopSingleLocale(LocalesMixin, AutomationMixin, VCSMixin, BaseScript):
                 "locales_dir": "browser/locales",
                 "log_name": "single_locale",
                 "hg_l10n_base": "https://hg.mozilla.org/l10n-central",
+                # If set, takes precedence over `hg_l10n_base`
+                "git_repository": "",
             },
         }
 
@@ -95,7 +97,7 @@ class DesktopSingleLocale(LocalesMixin, AutomationMixin, VCSMixin, BaseScript):
             self,
             config_options=self.config_options,
             require_config_file=require_config_file,
-            **buildscript_kwargs
+            **buildscript_kwargs,
         )
 
         self.bootstrap_env = None
