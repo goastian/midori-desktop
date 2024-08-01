@@ -457,9 +457,7 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
     }
 
     if (!uri.schemeIs("https")) {
-      throw new Error(
-        "Site specific browsers can only be opened for secure sites."
-      );
+      return null;
     }
 
     return new SiteSpecificBrowser(uuid(), manifestForURI(uri));
