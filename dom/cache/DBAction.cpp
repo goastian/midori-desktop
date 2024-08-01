@@ -58,7 +58,7 @@ DBAction::DBAction(Mode aMode) : mMode(aMode) {}
 
 DBAction::~DBAction() = default;
 
-void DBAction::RunOnTarget(
+if (IsCanceled() || AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownQM)) {
     SafeRefPtr<Resolver> aResolver,
     const Maybe<CacheDirectoryMetadata>& aDirectoryMetadata,
     Data* aOptionalData) {
