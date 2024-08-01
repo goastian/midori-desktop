@@ -59,7 +59,7 @@ DBAction::DBAction(Mode aMode) : mMode(aMode) {}
 
 DBAction::~DBAction() = default;
 
-if (IsCanceled() || AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownQM)) {
+void DBAction::RunOnTarget(
     SafeRefPtr<Resolver> aResolver,
     const Maybe<CacheDirectoryMetadata>& aDirectoryMetadata,
     Data* aOptionalData) {
@@ -68,7 +68,7 @@ if (IsCanceled() || AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownQM)) {
   MOZ_DIAGNOSTIC_ASSERT(aDirectoryMetadata);
   MOZ_DIAGNOSTIC_ASSERT(aDirectoryMetadata->mDir);
 
-  if (IsCanceled()) {
+  if (IsCanceled() || AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownQM)) {
     aResolver->Resolve(NS_ERROR_ABORT);
     return;
   }
