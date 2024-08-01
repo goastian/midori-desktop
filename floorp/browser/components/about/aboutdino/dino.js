@@ -1316,7 +1316,7 @@
    * @param {Obstacle.type} type
    * @param {Object} spritePos Obstacle position in sprite.
    * @param {Object} dimensions
-   * @param {number} gapCoefficient Multiplier in determining the gap.
+   * @param {number} gapCoefficient Mutipler in determining the gap.
    * @param {number} speed
    * @param {number} opt_xOffset
    */
@@ -1482,7 +1482,7 @@
 
       /**
        * Calculate a random gap size.
-       * - Minimum gap gets wider as speed increases
+       * - Minimum gap gets wider as speed increses
        * @param {number} gapCoefficient
        * @param {number} speed
        * @return {number} The gap size.
@@ -2600,7 +2600,7 @@
     },
 
     /**
-     * Update the x position of an individual piece of the line.
+     * Update the x position of an indivdual piece of the line.
      * @param {number} pos Line position.
      * @param {number} increment
      */

@@ -39,7 +39,7 @@ flex: 2;
 }
 
 .run {
-background-image: url("chrome://floorp/skin/designs/lepton/container-openin-16.svg");
+background-image: url("chrome://browser/skin/lepton/container-openin-16.svg");
 background-repeat: no-repeat;
 background-position: 5px;
 -moz-context-properties: fill;

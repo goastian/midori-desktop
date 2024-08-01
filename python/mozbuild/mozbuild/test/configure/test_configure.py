@@ -312,9 +312,7 @@ class TestConfigure(unittest.TestCase):
             sandbox,
         )
 
-        with self.assertRaises(Exception) as e:
-            sandbox["foo"]()
-        self.assertEqual(str(e.exception), "Importing __builtin__ is forbidden")
+        self.assertIs(sandbox["foo"](), six.moves.builtins)
 
         exec_(
             textwrap.dedent(
@@ -332,7 +330,7 @@ class TestConfigure(unittest.TestCase):
         self.assertEqual(f.name, os.devnull)
         f.close()
 
-        # This used to unlock the sandbox
+        # This unlocks the sandbox
         exec_(
             textwrap.dedent(
                 """
@@ -345,9 +343,7 @@ class TestConfigure(unittest.TestCase):
             sandbox,
         )
 
-        with self.assertRaises(Exception) as e:
-            sandbox["foo"]()
-        self.assertEqual(str(e.exception), "Importing __builtin__ is forbidden")
+        self.assertIs(sandbox["foo"](), sys)
 
         exec_(
             textwrap.dedent(

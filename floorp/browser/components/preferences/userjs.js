@@ -1,17 +1,18 @@
+/* eslint-disable no-undef */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { UserjsUtilsFunctions } = ChromeUtils.importESModule(
-  "resource://floorp/UserjsUtils.sys.mjs"
+var { AppConstants } = ChromeUtils.import(
+  "resource://gre/modules/AppConstants.jsm",
 );
-var { FileUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/FileUtils.sys.mjs"
+
+let UserjsUtils = ChromeUtils.importESModule(
+  "resource:///modules/UserjsUtils.sys.mjs",
 );
 
 let l10n = new Localization(["browser/floorp.ftl"], true);
 
-// eslint-disable-next-line no-undef
 XPCOMUtils.defineLazyGetter(this, "L10n", () => {
   return new Localization(["branding/brand.ftl", "browser/floorp"]);
 });
@@ -23,7 +24,6 @@ const gUserjsPane = {
     document
       .getElementById("backtogeneral___")
       .addEventListener("command", function () {
-        // eslint-disable-next-line no-undef
         gotoPref("general");
       });
 
@@ -36,19 +36,17 @@ const gUserjsPane = {
       needreboot[i].addEventListener("click", function () {
         if (!Services.prefs.getBoolPref("floorp.enable.auto.restart", false)) {
           (async () => {
-            // eslint-disable-next-line no-undef
             let userConfirm = await confirmRestartPrompt(null);
-            // eslint-disable-next-line no-undef
             if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
               Services.startup.quit(
-                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
+                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart,
               );
             }
           })();
         } else {
           window.setTimeout(function () {
             Services.startup.quit(
-              Services.startup.eAttemptQuit | Services.startup.eRestart
+              Services.startup.eAttemptQuit | Services.startup.eRestart,
             );
           }, 500);
         }
@@ -69,31 +67,29 @@ const gUserjsPane = {
           null,
           l10n.formatValueSync("userjs-prompt"),
           `${l10n.formatValueSync(
-            "apply-userjs-attention"
+            "apply-userjs-attention",
           )}\n${l10n.formatValueSync("apply-userjs-attention2")}`,
           flags,
           "",
           null,
           "",
           null,
-          check
+          check,
         );
         if (result == 0) {
           if (!url) {
-            await UserjsUtilsFunctions.resetPreferencesWithUserJsContents();
+            await UserjsUtils.UserjsUtilsFunctions.resetPreferencesWithUserJsContents();
             window.setTimeout(async function () {
               try {
                 FileUtils.getFile("ProfD", ["user.js"]).remove(false);
               } catch (e) {}
               Services.prefs.clearUserPref("floorp.user.js.customize");
-              Services.startup.quit(
-                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
-              );
+              Services.obs.notifyObservers([], "floorp-restart-browser");
             }, 3000);
           } else {
-            await UserjsUtilsFunctions.resetPreferencesWithUserJsContents();
+            await UserjsUtils.UserjsUtilsFunctions.resetPreferencesWithUserJsContents();
             window.setTimeout(async function () {
-              await UserjsUtilsFunctions.setUserJSWithURL(url);
+              await UserjsUtils.UserjsUtilsFunctions.setUserJSWithURL(url);
               Services.prefs.setStringPref("floorp.user.js.customize", id);
             }, 3000);
           }

@@ -632,15 +632,6 @@ class Manager::CacheMatchAction final : public Manager::BaseAction {
                     BodyOpen(aDirectoryMetadata, *aDBDir, mResponse.mBodyId));
     }
 
-    // If we entered shutdown on the main thread while we were doing IO,
-    // bail out now.
-    if (AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownQM)) {
-      if (stream) {
-        stream->Close();
-      }
-      return NS_ERROR_ABORT;
-    }
-
     mStreamList->Add(mResponse.mBodyId, std::move(stream));
 
     return NS_OK;
@@ -701,15 +692,6 @@ class Manager::CacheMatchAllAction final : public Manager::BaseAction {
       if (mArgs.openMode() == OpenMode::Eager) {
         QM_TRY_UNWRAP(stream, BodyOpen(aDirectoryMetadata, *aDBDir,
                                        mSavedResponses[i].mBodyId));
-      }
-
-      // If we entered shutdown on the main thread while we were doing IO,
-      // bail out now.
-      if (AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownQM)) {
-        if (stream) {
-          stream->Close();
-        }
-        return NS_ERROR_ABORT;
       }
 
       mStreamList->Add(mSavedResponses[i].mBodyId, std::move(stream));
@@ -1233,15 +1215,6 @@ class Manager::CacheKeysAction final : public Manager::BaseAction {
                                        mSavedRequests[i].mBodyId));
       }
 
-      // If we entered shutdown on the main thread while we were doing IO,
-      // bail out now.
-      if (AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownQM)) {
-        if (stream) {
-          stream->Close();
-        }
-        return NS_ERROR_ABORT;
-      }
-
       mStreamList->Add(mSavedRequests[i].mBodyId, std::move(stream));
     }
 
@@ -1305,15 +1278,6 @@ class Manager::StorageMatchAction final : public Manager::BaseAction {
     if (mArgs.openMode() == OpenMode::Eager) {
       QM_TRY_UNWRAP(stream, BodyOpen(aDirectoryMetadata, *aDBDir,
                                      mSavedResponse.mBodyId));
-    }
-
-    // If we entered shutdown on the main thread while we were doing IO,
-    // bail out now.
-    if (AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownQM)) {
-      if (stream) {
-        stream->Close();
-      }
-      return NS_ERROR_ABORT;
     }
 
     mStreamList->Add(mSavedResponse.mBodyId, std::move(stream));

@@ -2,25 +2,23 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-midori.jar:
-% content midori %content/ contentaccessible=yes
-   content/preferences/floorp-main.js
-   content/preferences/floorp-privacy.js
-   content/preferences/lepton.js
-   content/preferences/bsb.js
-   content/preferences/csk.js
-   content/preferences/downloads.js
-   content/preferences/design.js
-   content/preferences/notes.js
-   content/preferences/userjs.js
-   content/preferences/workspaces.js
-   content/preferences/ssb.js
+browser.jar:
+   content/browser/preferences/floorp-main.js
+   content/browser/preferences/floorp-privacy.js
+   content/browser/preferences/lepton.js
+   content/browser/preferences/bsb.js
+   content/browser/preferences/csk.js
+   content/browser/preferences/downloads.js
+   content/browser/preferences/design.js
+   content/browser/preferences/userjs.js
+   content/browser/preferences/workspaces.js
+   content/browser/preferences/ssb.js
 
-midori.jar:
-% skin midori classic/1.0 %skin/classic/
-   skin/classic/preferences/preferences-floorp.css
-   skin/classic/lepton.png                                     (imgs/lepton.png)
-   skin/classic/photon.png                                     (imgs/photon.png)
-   skin/classic/protonfix.svg                                  (imgs/protonfix.svg)
-   skin/classic/tabbarasurlbar.png                             (imgs/tabbarasurlbar.png)
-   skin/classic/tabbar-as-titlebar.png                         (imgs/tabbar-as-titlebar.png)
+browser.jar:
+% skin browser classic/1.0 %skin/classic/browser/
+   skin/classic/browser/preferences/preferences-floorp.css
+   skin/classic/browser/lepton.png　　　　　　　　　　　　　　　　　　　 (imgs/lepton.png)
+   skin/classic/browser/photon.png  　　　　　　　　　　　　　　　　　   (imgs/photon.png)
+   skin/classic/browser/protonfix.svg  　　　　　　　　　　             (imgs/protonfix.svg)
+   skin/classic/browser/tabbarasurlbar.png                             (imgs/tabbarasurlbar.png)
+   skin/classic/browser/tabbar-as-titlebar.png                         (imgs/tabbar-as-titlebar.png)

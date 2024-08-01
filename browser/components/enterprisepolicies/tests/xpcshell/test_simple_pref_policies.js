@@ -1022,20 +1022,19 @@ const POLICIES_TESTS = [
     },
   },
 
-  // POLICY: AutofillAddressEnabled, AutofillCreditCardEnabled
+    // POLICY: AutofillAddressEnabled, AutofillCreditCardEnabled
 
-  {
-    policies: {
-      AutofillAddressEnabled: false,
-      AutofillCreditCardEnabled: false,
+    {
+      policies: {
+        AutofillAddressEnabled: false,
+        AutofillCreditCardEnabled: false,
+      },
+      lockedPrefs: {
+        "extensions.formautofill.addresses.enabled": false,
+        "extensions.formautofill.creditCards.enabled": false,
+      },
     },
-    lockedPrefs: {
-      "extensions.formautofill.addresses.enabled": false,
-      "extensions.formautofill.creditCards.enabled": false,
-    },
-  },
-
-  // POLICY: Proxy - locking if no values are set
+     // POLICY: Proxy - locking if no values are set
   {
     policies: {
       Proxy: {

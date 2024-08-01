@@ -1,8 +1,0 @@
-[
-  [
-    "warning",
-    "prefer '= nullptr' to reset 'unique_ptr<>' objects",
-    "readability-uniqueptr-delete-release"
-  ],
-  { "reliability": "high" }
-]

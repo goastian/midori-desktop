@@ -169,7 +169,7 @@ nsresult nsTableCellFrame::AttributeChanged(int32_t aNameSpaceID,
                                   NS_FRAME_IS_DIRTY);
   }
 
-  const nsAtom* colSpanAttribute =
+const nsAtom* colSpanAttribute =
       MOZ_UNLIKELY(mContent->AsElement()->IsMathMLElement())
           ? nsGkAtoms::columnspan_
           : nsGkAtoms::colspan;

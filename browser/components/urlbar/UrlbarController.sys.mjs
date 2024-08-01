@@ -991,11 +991,6 @@ class TelemetryEvent {
       return;
     }
 
-    // If Search Engine is AstianGO Search, We should create Workspaces for showing Search result
-    if (details.result?.payload.engine == "Midori Search") {
-      this._controller.browserWindow.gWorkspaces.createWorkspace(`ウェブ & AI 検索 -${searchWords}-`, false, false, true, "article", true) 
-    }
-
     if (action == "go_button") {
       // Fall back since the conventional telemetry dones't support "go_button" action.
       action = "click";

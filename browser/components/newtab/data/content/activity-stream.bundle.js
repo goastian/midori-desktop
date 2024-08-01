@@ -14761,12 +14761,12 @@ function Background(props) {
 
   if (props.className == "random_image") {
     let [imgSrc, setImgSrc] = (0,external_React_namespaceObject.useState)({
-      "url": `chrome://floorp/skin/newtabbg/newtabbg-${Math.floor(Math.random() * imgLength)}.webp`
+      "url": `chrome://browser/skin/newtabbg-${Math.floor(Math.random() * imgLength)}.webp`
     });
 
-    if (!imgSrc.url.startsWith("chrome://floorp/skin/newtabbg/newtabbg-")) {
+    if (!imgSrc.url.startsWith("chrome://browser/skin/newtabbg-")) {
       setImgSrc({
-        "url": `chrome://floorp/skin/newtabbg/newtabbg-${Math.floor(Math.random() * imgLength)}.webp`
+        "url": `chrome://browser/skin/newtabbg-${Math.floor(Math.random() * imgLength)}.webp`
       });
     }
 
@@ -15161,7 +15161,7 @@ class BaseContent extends (external_React_default()).PureComponent {
       id: "floorp"
     }, /*#__PURE__*/external_React_default().createElement("a", {
       className: prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote",
-      href: "https://help.astian.org"
+      href: "https://t.me/midoriweb"
     }, "Support"), /*#__PURE__*/external_React_default().createElement("br", null), /*#__PURE__*/external_React_default().createElement("br", null), /*#__PURE__*/external_React_default().createElement("a", {
       className: prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote",
       href: "https://astian.org/midori-en"

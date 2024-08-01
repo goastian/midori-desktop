@@ -914,7 +914,7 @@ static void TraceThisAndArguments(JSTracer* trc, const JSJitFrameIter& frame,
   // Trace |this|.
   TraceRoot(trc, argv, "ion-thisv");
 
-  // Trace arguments. Note + 1 for thisv.
+    // Trace arguments. Note + 1 for thisv.
   for (size_t i = firstArg; i < numArgs; i++) {
     TraceRoot(trc, &argv[i + 1], "ion-argv");
   }

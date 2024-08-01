@@ -296,9 +296,9 @@ add_task(async function test_slow_subframe_load() {
  * Ensure that document wireframes can be persisted when they're enabled.
  */
 add_task(async function test_wireframes() {
-  // Wireframes only works when Fission is enabled.
-  if (!Services.appinfo.fissionAutostart) {
-    ok(true, "Skipping test_wireframes when Fission is not enabled.");
+    // Wireframes only works when Fission is enabled.
+    if (!Services.appinfo.fissionAutostart) {
+      ok(true, "Skipping test_wireframes when Fission is not enabled.");
     return;
   }
 

@@ -1423,6 +1423,7 @@ nsresult Http2Session::RecvHeaders(Http2Session* self) {
     LOG(("Http2Session %p header exceeds the limit\n", self));
     return self->SessionError(PROTOCOL_ERROR);
   }
+
   if (!self->mInputFrameDataStream) {
     // Cannot find stream. We can continue the session, but we need to
     // uncompress the header block to maintain the correct compression context

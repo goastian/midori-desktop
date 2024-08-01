@@ -163,7 +163,7 @@ class nsHTTPSOnlyUtils {
                                            nsIURI* aOtherURI,
                                            nsILoadInfo* aLoadInfo);
 
-  /**
+/**
    * Determines which HTTPS-Only status flags should get propagated to
    * sub-resources or sub-documents. As sub-resources and sub-documents are
    * exempt when the top-level document is exempt, we need to copy the "exempt"

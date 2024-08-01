@@ -98,19 +98,24 @@ var TabStateInternal = {
       tabData.muteReason = tab.muteReason;
     }
 
+
     /*****Floorp Injections*****/
+
+    // Workspaces
+    tabData.floorpWorkspace = tab.getAttribute("floorpWorkspace");
+    if (!tabData.floorpWorkspace) {
+      tabData.floorpWorkspace = Services.prefs.getStringPref("floorp.browser.workspace.all").split(",")[0];
+    }
+
     let { WorkspacesService } = ChromeUtils.importESModule(
-      "resource://floorp/WorkspacesService.mjs"
+      "resource:///modules/WorkspacesService.sys.mjs"
     );
 
+    // Workspaces
     // WorkspaceId
-    tabData.floorpWorkspaceId = tab.getAttribute(
-      WorkspacesService.workspacesTabAttributionId
-    );
+    tabData.floorpWorkspaceId = tab.getAttribute(WorkspacesService.workspacesTabAttributionId);
     // lastShowWorkspaceId
-    tabData.floorpLastShowWorkspaceId = tab.getAttribute(
-      WorkspacesService.workspaceLastShowId
-    );
+    tabData.floorpLastShowWorkspaceId = tab.getAttribute(WorkspacesService.workspaceLastShowId);
 
     // Private Container
     tabData.floorpDisableHistory = tab.getAttribute("floorp-disablehistory");

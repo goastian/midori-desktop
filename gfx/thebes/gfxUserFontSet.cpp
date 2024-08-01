@@ -787,7 +787,7 @@ bool gfxUserFontEntry::LoadPlatformFont(uint32_t aSrcIndex,
 }
 
 void gfxUserFontEntry::Load() {
-  if (mUserFontLoadState != STATUS_NOT_LOADED) {
+    if (mUserFontLoadState != STATUS_NOT_LOADED) {
     return;
   }
   if (dom::IsCurrentThreadRunningWorker()) {

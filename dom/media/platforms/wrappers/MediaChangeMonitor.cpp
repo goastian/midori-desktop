@@ -690,7 +690,7 @@ bool MediaChangeMonitor::IsHardwareAccelerated(
 }
 
 void MediaChangeMonitor::SetSeekThreshold(const media::TimeUnit& aTime) {
-  GetCurrentSerialEventTarget()->Dispatch(NS_NewRunnableFunction(
+    GetCurrentSerialEventTarget()->Dispatch(NS_NewRunnableFunction(
       "MediaChangeMonitor::SetSeekThreshold",
       [self = RefPtr<MediaChangeMonitor>(this), time = aTime, this] {
         // During the shutdown.

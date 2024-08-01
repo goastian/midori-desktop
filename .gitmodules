@@ -1,3 +1,3 @@
-[submodule "floorp/browser/locales/l10n-central"]
-	path = floorp/browser/locales/l10n-central
+[submodule "l10n-central"]
+	path = l10n-central
 	url = https://github.com/goastian/l10n-central

@@ -3,11 +3,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { AppConstants } = ChromeUtils.import(
+ var { AppConstants } = ChromeUtils.import(
   "resource://gre/modules/AppConstants.jsm",
 );
 const CustomKeyboardShortcutUtils = ChromeUtils.importESModule(
-  "chrome://floorp/content/modules/csk/CustomKeyboardShortcutUtils.mjs",
+  "resource:///modules/CustomKeyboardShortcutUtils.sys.mjs",
 );
 
 XPCOMUtils.defineLazyGetter(this, "L10n", () => {

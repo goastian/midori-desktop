@@ -519,14 +519,11 @@ URIFixup.prototype = {
       responseType = "application/x-moz-keywordsearch";
     }
     let submission = engine.getSubmission(keyword, responseType, "keyword");
-   // Floorp Injections 
     if (
-      (!submission ||
+      !submission ||
       // For security reasons (avoid redirecting to file, data, or other unsafe
       // protocols) we only allow fixup to http/https search engines.
-      !submission.uri.scheme.startsWith("http")) &&
-      !engine.name == "Floorp Search"
-   // End Floorp Injections
+      !submission.uri.scheme.startsWith("http")
     ) {
       throw new Components.Exception(
         "Invalid search submission uri",

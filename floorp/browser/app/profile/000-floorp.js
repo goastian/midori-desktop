@@ -56,8 +56,6 @@ pref("browser.newtabpage.activity-stream.floorp.background.images.folder", "");
 pref("browser.newtabpage.activity-stream.floorp.background.image.path", "");
 pref("browser.newtabpage.activity-stream.floorp.background.images.extensions", "png,jpg,jpeg,webp,gif,svg,tiff,tif,bmp,avif,jxl");
 pref("browser.newtabpage.activity-stream.floorp.newtab.backdrop.blur.disable",false);
-pref("browser.newtabpage.activity-stream.floorp.newtab.releasenote.hide",false);
-pref("browser.newtabpage.activity-stream.floorp.newtab.imagecredit.hide",false);
 
 pref("floorp.multitab.bottommode", false);
 
@@ -70,9 +68,10 @@ pref("floorp.browser.sidebar.enable", true);// サイドバーを表示
 // url:URL width:幅 userAgent:userAgent usercontext:コンテナタブ
 pref("floorp.browser.sidebar2.data", '{"data":{},"index":[]}');
 pref("floorp.extensions.webextensions.sidebar-action", '{"data":{}}');
-pref("floorp.browser.sidebar2.hide.to.unload.panel.enabled", false);
+pref("floorp.browser.sidebar2.addons.enabled", true);
+pref("floorp.browser.sidebar2.hide.to.unload.panel.enabled", true);
 
-pref("floorp.browser.sidebar2.global.webpanel.width", 400);
+pref("floorp.browser.sidebar2.global.webpanel.width", 450);
 
 pref("floorp.tabsleep.enabled", true);
 pref("floorp.webcompat.enabled", true);
@@ -85,7 +84,7 @@ pref("extensions.systemAddon.update.url", "https://update.astian.org/systemAddon
 // 言語設定をシステムに合わせる
 pref("intl.locale.requested", "");
 
-pref("app.feedback.baseURL", "https://help.astian.org");
+pref("app.feedback.baseURL", "https://t.me/midoriweb");
 
 // 多段タブ
 pref("floorp.tabbar.style",0);
@@ -105,7 +104,6 @@ pref("floorp.verticaltab.hover.enabled", false);
 pref("floorp.browser.tabs.verticaltab.right", true);
 pref("floorp.browser.tabs.verticaltab.temporary.disabled", false);
 pref("floorp.browser.tabs.verticaltab.width", 200);
-pref("floorp.verticaltab.paddingtop.enabled", false);
 
 // Chrome 形式のダウンローダー
 pref("floorp.browser.native.downloadbar.enabled", false);
@@ -126,7 +124,7 @@ pref("floorp.browser.workspaces.disabledBySystem", true);
 pref("floorp.titlebar.favicon.color", false);
 
 // カスタムショートカットキー
-pref("floorp.custom.shortcutkeysAndActions", '[{"actionName":"togglePanel","key":"","keyCode":"VK_F2","modifiers":""}]');
+pref("floorp.custom.shortcutkeysAndActions", '[{"actionName":"toggleBMS","key":"","keyCode":"VK_F2","modifiers":""}]');
 pref("floorp.custom.shortcutkeysAndActions.enabled", true);
 pref("floorp.custom.shortcutkeysAndActions.remove.fx.actions", false);
 
@@ -145,7 +143,6 @@ pref("floorp.newtab.overrides.newtaburl", "");
 
 // Split View
 pref("floorp.browser.splitView.working", false);
-pref("floorp.browser.splitView.width", 0);
 
 // user.js
 pref("floorp.user.js.customize", "");
@@ -165,9 +162,6 @@ pref("floorp.browser.workspace.showWorkspaceName", true);
 
 // Extension
 pref("floorp.extensions.allowPrivateBrowsingByDefault.is.enabled", false);
-
-// AstianGO Search
-pref("floorp.browser.floorpSearch.enabled", false);
 
 /*----------------------------------------------------------------------------------------------------------------------------------*/
 
@@ -233,8 +227,6 @@ pref("browser.contentblocking.report.show_mobile_app", false)
 
 pref("network.trr.mode", 2);
 pref("network.trr.uri", "https://dns.nextdns.io/fc53cb/");
-pref("network.IDN_show_punycode", true);
-pref("network.cookie.cookieBehavior", true);
 
 //クラッシュレポートを無効化
 pref("breakpad.reportURL", "", locked);
@@ -276,7 +268,6 @@ pref("browser.urlbar.trimURLs", false);
 pref("privacy.trackingprotection.origin_telemetry.enabled", false, locked);
 pref("privacy.userContext.enabled", true);
 pref("privacy.userContext.ui.enabled", true);
-pref("privacy.trackingprotection.enabled", true);
 pref("trailhead.firstrun.branches", "", locked);
 pref("extensions.webcompat-reporter.enabled", false);
 
@@ -289,26 +280,6 @@ pref("dom.webshare.enabled", true);
 
 // 開発者ツールの位置を「右」に変更
 pref("devtools.toolbox.host", "right");
-
-
-// Smooth Scroll by Betterfox
-#ifdef XP_MACOSX
-// macOS version should not change the value
-#else
-pref("apz.overscroll.enabled", true);
-pref("general.smoothScroll", true);
-pref("general.smoothScroll.msdPhysics.enabled", true);
-pref("general.smoothScroll.currentVelocityWeighting", "0.15");
-pref("general.smoothScroll.stopDecelerationWeighting", "0.6");
-pref("mousewheel.min_line_scroll_amount", 10);
-pref("general.smoothScroll.mouseWheel.durationMinMS", 80);
-pref("general.smoothScroll.msdPhysics.continuousMotionMaxDeltaMS", 12);
-pref("general.smoothScroll.msdPhysics.motionBeginSpringConstant", 600);
-pref("general.smoothScroll.msdPhysics.regularSpringConstant", 650);
-pref("general.smoothScroll.msdPhysics.slowdownMinDeltaMS", 25);
-pref("general.smoothScroll.msdPhysics.slowdownSpringConstant", 250);
-pref("mousewheel.default.delta_multiplier_y", 300);
-#endif
 
 /*-----------------------------------------------------------------------------------all.js の設定-----------------------------------------------------------------------------------*/
 
@@ -607,11 +578,11 @@ pref("userContent.page.proton",           true); // Need proton_color
 // Integrated calculator at urlbar
 pref("browser.urlbar.suggest.calculator", true);
 
+
 // Disable ads
 
 pref("browser.vpn_promo.enabled", false);
 pref("browser.contentblocking.report.show_mobile_app", false);
-pref("browser.promo.focus.enabled", false);
 
 // Integrated unit convertor at urlbar
 // pref("browser.urlbar.unitConversion.enabled", true);

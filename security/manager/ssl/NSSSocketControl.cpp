@@ -382,12 +382,13 @@ void NSSSocketControl::SetCertVerificationResult(PRErrorCode errorCode) {
                           AssertedCast<uint32_t>(mPlaintextBytesRead));
   }
 
-  MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
           ("[%p] SetCertVerificationResult to AfterCertVerification, "
            "mTlsHandshakeCallback=%p",
            (void*)mFd, mTlsHandshakeCallback.get()));
 
   mCertVerificationState = AfterCertVerification;
+
   if (mTlsHandshakeCallback) {
     Unused << mTlsHandshakeCallback->CertVerificationDone();
   }

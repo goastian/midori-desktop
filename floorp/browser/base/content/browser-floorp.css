@@ -198,7 +198,7 @@
 }
 
 #sidebar2-keeppanelwidth {
-    list-style-image: url("chrome://floorp/skin/designs/lepton/screenshot.svg");
+    list-style-image: url("chrome://browser/skin/lepton/screenshot.svg");
 }
 
 #sidebar2-close {
@@ -216,7 +216,7 @@
 }
 
 [data-l10n-id="show-browser-manager-sidebar"] {
-  --BMSIcon: url("chrome://floorp/skin/designs/lepton/toolbox.svg");
+  --BMSIcon: url("chrome://browser/skin/lepton/toolbox.svg");
 }
 
 [data-l10n-id="show-bookmark-sidebar"]{
@@ -240,7 +240,7 @@
 }
 
 [data-l10n-id="show-notes-sidebar"] {
-  --BMSIcon: url("chrome://floorp/skin/icons/notes-bms.svg");
+  --BMSIcon: url("chrome://browser/skin/notes-bms.svg");
 }
 
 #select-CustomURL{
@@ -248,7 +248,7 @@
 }
 
 #preferences-icon{
-  list-style-image: url("chrome://floorp/skin/settings.svg");
+  list-style-image: url("chrome://browser/skin/settings.svg");
 }
 
 #sidebar-hide-icon{
@@ -265,7 +265,7 @@
 }
 
 #add-button{
-  list-style-image: url("chrome://floorp/skin/designs/fluerialUI/newtab.svg");
+  list-style-image: url("chrome://browser/skin/floorplegacy/newtab.svg");
 }
 
 .sidepanel-icon{
@@ -279,14 +279,14 @@
   display: none;
 }
 
-:root[invisibleBMS] .browser-sidebar2 {
+:root[invisibleBMS] #sidebar2-box {
   max-width: 0px !important;
   min-width: 0px !important;
   border: unset !important;
 }
 
 #bsb-context-add, #bsb-context-link-add {
-  --menuitem-image: url("chrome://floorp/skin/designs/lepton/movetowindow-16.svg");
+  --menuitem-image: url("chrome://browser/skin/lepton/movetowindow-16.svg");
 }
 
 #undo-closed-tab {
@@ -294,7 +294,7 @@
 }
 
 #sidebar-reverse-position-toolbar {
-  list-style-image: url("chrome://floorp/skin/icons/verticaltab.svg");
+  list-style-image: url("chrome://browser/skin/verticaltab.svg");
 }
 
 :root[lwt-default-theme-in-dark-mode="true"] #tabbrowser-tabpanels, :root[style*="--lwt-accent-color: rgb(28, 27, 34)"] #tabbrowser-tabpanels[flex] {
@@ -326,16 +326,13 @@
   max-height: 25px;
 }
 
- :root[privatebrowsingmode] .private-text {
+ :root[privatebrowsingmode] #fxa-toolbar-menu-button::before {
+  content: "Private" !important;
   display: -moz-box !important;
   font-size: 12px !important;
   font-weight: bold;
   margin: auto;
-  padding-right: 10px !important;
-}
-
-:root:not([privatebrowsingmode]) .private-text {
-  display: none !important;
+  padding-left: 10px !important;
 }
 
  :root[privatebrowsingmode] #fxa-avatar-image {
@@ -373,6 +370,128 @@
   display: none !important;
 }
 
+#workspace-button > .toolbarbutton-text {
+  display: inherit;
+  font-weight: bold;
+  font-size: 13px;
+  border-radius: 0px var(--tab-border-radius) var(--tab-border-radius) 0px !important;
+}
+
+#workspace-button > .toolbarbutton-icon {
+  border-radius: var(--tab-border-radius) 0px 0px var(--tab-border-radius) !important;
+  scale: 1.3;
+}
+toolbar #workspace-button:not([disabled="true"]):is([open], [checked], :hover:active) > .toolbarbutton-icon,
+toolbar #workspace-button:not([disabled="true"], [checked], [open], :active):hover > .toolbarbutton-icon,
+toolbar #workspace-button:not([disabled="true"]):is([open], [checked], :hover:active) > .toolbarbutton-text,
+toolbar #workspace-button:not([disabled="true"], [checked], [open], :active):hover > .toolbarbutton-text
+{
+  background: none !important;
+  background-color: unset !important;
+}
+
+#workspace-button[open="true"] {
+  background: var(--toolbarbutton-active-background);
+  border-radius: var(--tab-border-radius);
+}
+
+#workspace-menu {
+  margin-left: 5px;
+  width: 300px;
+}
+
+.workspace-item > .toolbarbutton-icon {
+  height: 35px !important;
+  width: 35px !important;
+  display: block;
+  visibility: hidden;
+  background: none !important;
+}
+
+.workspace-item > .toolbarbutton-text {
+  display: inherit;
+  font-weight: bold;
+  margin-top: auto;
+  background: none !important;
+  margin-bottom: auto;
+  font-size: larger;
+}
+
+#workspace-delete {
+  width: 20%;
+}
+
+.workspace-item {
+  border-radius: 5px;
+  margin-right: 3px !important;
+  list-style-image: url("chrome://browser/skin/workspace-menu-check.svg");
+}
+
+.workspace-item-box {
+  margin: 5px;
+}
+
+.workspace-item:hover {
+  background: var(--toolbarbutton-hover-background);
+}
+
+.workspace-item:hover:active {
+  background: var(--toolbarbutton-active-background);
+}
+
+.workspace-item > .toolbarbutton-text:hover{
+  background: none !important;
+  background-color: unset !important;
+}
+
+
+.workspace-item-box > .toolbarbutton-text {
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.workspace-item {
+  width: 100%;
+  min-height: 35px;
+}
+
+#workspaces-migation-menuitem-text {
+  font-size: 13px;
+  margin-inline-start: 10px;
+  margin-inline-end: 10px;
+  padding: 10px;
+  margin-bottom: 0px !important;
+}
+
+#addNewWorkspaceButton {
+  height: 30px !important;
+  margin: 5px;
+}
+
+#addNewWorkspaceButton > .toolbarbutton-text {
+  font-size: larger;
+}
+
+#workspace-delete > .toolbarbutton-icon {
+  list-style-image: url("chrome://browser/skin/lepton/dismiss-filled.svg");
+}
+
+#workspace-button{
+  transition:all 0.2s ease !important;
+  appearance:none !important;
+  border-right: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+}
+#workspace-button:hover{
+  color:inherit;
+  background-color: color-mix(in srgb, currentColor 11%, transparent) !important;
+}
+
+:root[inDOMFullscreen] :is(#workspace-button),
+:root[inFullscreen]:not([macOSNativeFullscreen]) :is(#workspace-button),
+*|*:root[chromehidden~="toolbar"] #workspace-button {
+  display: none;
+}
+
 #customizableui-special-spring1 , #customizableui-special-spring2,
 #wrapper-customizableui-special-spring1 , #wrapper-customizableui-special-spring2
 {
@@ -396,7 +515,7 @@
   border: none !important;
 }
 
-.tabbrowser-tab[label="Floorp View"] {
+.tabbrowser-tab[label="Midori View"] {
   display: none;
 }
 
@@ -419,7 +538,7 @@
 }
 
 #QRCodeGeneratePageAction-image {
-  list-style-image: url("chrome://floorp/skin/icons/floorp-share.svg");
+  list-style-image: url("chrome://browser/skin/floorp-share.svg");
 }
 
 @media (min-resolution: 1.1dppx){
@@ -519,19 +638,19 @@
 }
 
 #ssbPageAction-image {
-  list-style-image: url("chrome://floorp/skin/designs/lepton/pwa-install.svg");
+  list-style-image: url("chrome://browser/skin/lepton/pwa-install.svg");
 }
 
 #ssbPageAction-image[open-ssb="true"] {
-  list-style-image: url("chrome://floorp/skin/designs/lepton/pwa-launch.svg");
+  list-style-image: url("chrome://browser/skin/lepton/pwa-launch.svg");
 }
 
 #run-ssb-contextmenu {
-  --menuitem-image: url("chrome://floorp/skin/designs/lepton/pwa-launch.svg");
+  --menuitem-image: url("chrome://browser/skin/lepton/pwa-launch.svg");
 }
 
 #uninstall-ssb-contextmenu {
-  --menuitem-image: url("chrome://floorp/skin/designs/lepton/pwa-remove.svg");
+  --menuitem-image: url("chrome://browser/skin/lepton/pwa-remove.svg");
 }
 
 #workspacesToolbar {
@@ -568,13 +687,13 @@
   min-height: 40px;
 }
 #workspacesManageWorkspacesButton {
-  list-style-image: url("chrome://floorp/skin/settings.svg");
+  list-style-image: url("chrome://browser/skin/settings.svg");
 }
 #workspacesManageWorkspacesButton > .toolbarbutton-text[flex] {
   display: none !important;
 }
 #workspaces-toolbar-button {
-  list-style-image: url("chrome://floorp/skin/icons/workspace-floorp.png");
+  list-style-image: url("chrome://browser/skin/workspace-floorp.png");
   border-radius: 0px !important;
 }
 #workspaces-toolbar-button:hover {
@@ -596,9 +715,9 @@ toolbarpaletteitem #workspaces-toolbar-button > label {
   display: none !important;
 }
 #workspaces-toolbar-button > * {
-  background: unset !important;
   background-color: unset !important;
   background-image: unset !important;
+  background: unset !important;
 }
 .workspaceSeparator {
   margin: 5px 0px !important;
@@ -616,9 +735,9 @@ toolbarpaletteitem #workspaces-toolbar-button > label {
   background-color: var(--toolbarbutton-active-background) !important;
 }
 #workspacesCreateNewWorkspaceButton > * {
-  background: unset !important;
   background-color: unset !important;
   background-image: unset !important;
+  background: unset !important;
 }
 #workspacesCreateNewWorkspaceButton > label {
   display: inherit;

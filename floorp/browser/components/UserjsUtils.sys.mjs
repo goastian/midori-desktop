@@ -63,9 +63,7 @@ export const UserjsUtilsFunctions = {
         const writeData = encoder.encode(data);
 
         await IOUtils.write(userjs, writeData);
-        Services.startup.quit(
-          Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
-        );
+        Services.obs.notifyObservers([], "floorp-restart-browser");
       });
   },
 

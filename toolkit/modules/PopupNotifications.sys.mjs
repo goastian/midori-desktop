@@ -363,11 +363,11 @@ PopupNotifications.prototype = {
   },
 
   observe(subject, topic) {
-    // These observers apply to all windows.
-    if (
-      topic == "fullscreen-transition-start" ||
-      topic == "pointer-lock-entered"
-    ) {
+        // These observers apply to all windows.
+        if (
+          topic == "fullscreen-transition-start" ||
+          topic == "pointer-lock-entered"
+        ) {
       // Extend security delay if the panel is open.
       if (this.isPanelOpen) {
         let notification = this.panel.firstChild?.notification;
@@ -1941,12 +1941,12 @@ PopupNotifications.prototype = {
     if (type == "buttoncommand" || type == "secondarybuttoncommand") {
       // TODO: Bug 1892756.
       if (
-        Services.focus.activeWindow != this.window ||
-        notificationEl.matches(":-moz-window-inactive")
+          Services.focus.activeWindow != this.window ||
+          notificationEl.matches(":-moz-window-inactive")
       ) {
         Services.console.logStringMessage(
           "PopupNotifications._onButtonEvent: " +
-            "Button click happened before the window was focused / active"
+          "Button click happened before the window was focused / active"
         );
         this.window.focus();
         return;

@@ -265,8 +265,8 @@ this.backgroundPage = class extends ExtensionAPI {
     extension.backgroundState = BACKGROUND_STATE.STARTING;
 
     this.isWorker =
-      !!manifest.background.service_worker &&
-      WebExtensionPolicy.backgroundServiceWorkerEnabled;
+    !!manifest.background.service_worker &&
+    WebExtensionPolicy.backgroundServiceWorkerEnabled;
 
     let BackgroundClass = this.isWorker ? BackgroundWorker : BackgroundPage;
 

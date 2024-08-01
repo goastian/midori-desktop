@@ -1382,7 +1382,7 @@
       -moz-context-properties: fill, fill-opacity !important;
       fill: currentColor !important;
       fill-opacity: var(--menu-icon-opacity) !important;
-      list-style-image: url("chrome://floorp/skin/designs/lepton/menu-check.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/menu-check.svg") !important;
       width: 16px !important;
       margin-inline-end: 8px !important;
     }
@@ -2588,7 +2588,7 @@
 /*= Proton Theme Mode ========================================================*/
 @supports -moz-bool-pref("userChrome.theme.proton_chrome") {
   /*= Proton Commons ===========================================================*/
-  @-moz-document url("chrome://global/content/commonDialog.xhtml"), url("chrome://pippki/content/editcacert.xhtml"), url("chrome://pippki/content/deletecert.xhtml"), url("chrome://pippki/content/exceptionDialog.xhtml"), url("chrome://mozapps/content/downloads/unknownContentType.xhtml"), url("chrome://global/content/appPicker.xhtml"), url("chrome://floorp/content/pageinfo/pageInfo.xhtml")
+  @-moz-document url("chrome://global/content/commonDialog.xhtml"), url("chrome://pippki/content/editcacert.xhtml"), url("chrome://pippki/content/deletecert.xhtml"), url("chrome://pippki/content/exceptionDialog.xhtml"), url("chrome://mozapps/content/downloads/unknownContentType.xhtml"), url("chrome://global/content/appPicker.xhtml"), url("chrome://browser/content/pageinfo/pageInfo.xhtml")
   {
     /*- Overwrite --------------------------------------------------------------*/
     @media (-moz-toolbar-prefers-color-scheme: dark), (prefers-color-scheme: dark) {
@@ -3199,7 +3199,7 @@
     }
   }
   /*= Page Info ================================================================*/
-  @-moz-document url("chrome://floorp/content/pageinfo/pageInfo.xhtml")
+  @-moz-document url("chrome://browser/content/pageinfo/pageInfo.xhtml")
   {
     :root {
       --in-content-border-color: color-mix(in srgb, currentColor 41%, transparent) !important;
@@ -3776,7 +3776,7 @@
 /*= Panel UI Arrow ===========================================================*/
 @supports -moz-bool-pref("userChrome.decoration.panel_arrow") {
   #appMenu-popup {
-    background-image: url("chrome://floorp/skin/designs/lepton/panelarrow-vertical.svg");
+    background-image: url("chrome://browser/skin/lepton/panelarrow-vertical.svg");
     background-repeat: no-repeat;
     background-position-x: right 10px;
     background-position-y: top;
@@ -3789,7 +3789,7 @@
     padding-top: 4px;
   }
   #appMenu-popup[side="bottom"] {
-    background-image: url("chrome://floorp/skin/designs/lepton/panelarrow-vertical-reverse.svg");
+    background-image: url("chrome://browser/skin/lepton/panelarrow-vertical-reverse.svg");
     background-position-y: bottom;
     margin-bottom: -8px !important; /* Original: -4px */
     padding-bottom: 4px;
@@ -4016,7 +4016,7 @@
       /* Don't use `to`: Depending on density */
     }
     /*- Expand - Synced Tabs ---------------------------------------------------*/
-    @-moz-document url("chrome://floorp/content/syncedtabs/sidebar.xhtml")
+    @-moz-document url("chrome://browser/content/syncedtabs/sidebar.xhtml")
     {
       .item-tabs-list {
         transition: transform 0.2s ease-out, opacity 0.2s ease-out;
@@ -4035,7 +4035,7 @@
       }
     }
     /*- Arrow - Synced Tabs ----------------------------------------------------*/
-    @-moz-document url("chrome://floorp/content/syncedtabs/sidebar.xhtml")
+    @-moz-document url("chrome://browser/content/syncedtabs/sidebar.xhtml")
     {
       /* treechildren::-moz-tree-twisty: Can't apply */
       #template-container .item.client .item-twisty-container {
@@ -7258,8 +7258,8 @@
               --uc-tab-corner-rounding: 3px; /* 10px looks about like chromium - 17px looks close to Australis tabs */
               --uc-tab-corner-padding: 0px;
               --uc-tab-corner-position: calc(var(--uc-tab-corner-padding) - var(--uc-tab-corner-rounding));
-              --uc-tab-corner-left-side-svg: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left.svg");
-              --uc-tab-corner-right-side-svg: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right.svg");
+              --uc-tab-corner-left-side-svg: url("chrome://browser/skin/lepton/tab-bottom-corner-left.svg");
+              --uc-tab-corner-right-side-svg: url("chrome://browser/skin/lepton/tab-bottom-corner-right.svg");
             }
             :root:not([customizing="true"]) .tabbrowser-tab .tab-background::before,
             :root:not([customizing="true"]) .tabbrowser-tab .tab-background::after {
@@ -7411,53 +7411,53 @@
     }
     @supports -moz-bool-pref("userChrome.tab.bottom_rounded_corner.wave") {
       #TabsToolbar {
-        --uc-tab-corner-left-side-svg: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-wave.svg");
-        --uc-tab-corner-left-side-clipPath: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-wave.svg#svgClipPath");
-        --uc-tab-corner-right-side-svg: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-wave.svg");
-        --uc-tab-corner-right-side-clipPath: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-wave.svg#svgClipPath");
-        --uc-tab-corner-left-side-svg-clipped: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-wave-clipped.svg");
-        --uc-tab-corner-right-side-svg-clipped: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-wave-clipped.svg");
+        --uc-tab-corner-left-side-svg: url("chrome://browser/skin/lepton/tab-bottom-corner-left-wave.svg");
+        --uc-tab-corner-left-side-clipPath: url("chrome://browser/skin/lepton/tab-bottom-corner-left-wave.svg#svgClipPath");
+        --uc-tab-corner-right-side-svg: url("chrome://browser/skin/lepton/tab-bottom-corner-right-wave.svg");
+        --uc-tab-corner-right-side-clipPath: url("chrome://browser/skin/lepton/tab-bottom-corner-right-wave.svg#svgClipPath");
+        --uc-tab-corner-left-side-svg-clipped: url("chrome://browser/skin/lepton/tab-bottom-corner-left-wave-clipped.svg");
+        --uc-tab-corner-right-side-svg-clipped: url("chrome://browser/skin/lepton/tab-bottom-corner-right-wave-clipped.svg");
       }
     }
     @supports -moz-bool-pref("userChrome.tab.bottom_rounded_corner.australis") {
       #TabsToolbar {
-        --uc-tab-corner-left-side-svg: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-australis.svg");
-        --uc-tab-corner-left-side-clipPath: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-australis.svg#svgClipPath");
-        --uc-tab-corner-right-side-svg: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-australis.svg");
-        --uc-tab-corner-right-side-clipPath: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-australis.svg#svgClipPath");
-        --uc-tab-corner-left-side-svg-clipped: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-australis-clipped.svg");
-        --uc-tab-corner-right-side-svg-clipped: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-australis-cilpped.svg");
+        --uc-tab-corner-left-side-svg: url("chrome://browser/skin/lepton/tab-bottom-corner-left-australis.svg");
+        --uc-tab-corner-left-side-clipPath: url("chrome://browser/skin/lepton/tab-bottom-corner-left-australis.svg#svgClipPath");
+        --uc-tab-corner-right-side-svg: url("chrome://browser/skin/lepton/tab-bottom-corner-right-australis.svg");
+        --uc-tab-corner-right-side-clipPath: url("chrome://browser/skin/lepton/tab-bottom-corner-right-australis.svg#svgClipPath");
+        --uc-tab-corner-left-side-svg-clipped: url("chrome://browser/skin/lepton/tab-bottom-corner-left-australis-clipped.svg");
+        --uc-tab-corner-right-side-svg-clipped: url("chrome://browser/skin/lepton/tab-bottom-corner-right-australis-cilpped.svg");
       }
     }
     @supports -moz-bool-pref("userChrome.tab.bottom_rounded_corner.chrome") {
       #TabsToolbar {
-        --uc-tab-corner-left-side-svg: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-chrome.svg");
-        --uc-tab-corner-left-side-clipPath: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-chrome.svg#svgClipPath");
-        --uc-tab-corner-right-side-svg: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-chrome.svg");
-        --uc-tab-corner-right-side-clipPath: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-chrome.svg#svgClipPath");
-        --uc-tab-corner-left-side-svg-clipped: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-chrome-clipped.svg");
-        --uc-tab-corner-right-side-svg-clipped: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-chrome-clipped.svg");
+        --uc-tab-corner-left-side-svg: url("chrome://browser/skin/lepton/tab-bottom-corner-left-chrome.svg");
+        --uc-tab-corner-left-side-clipPath: url("chrome://browser/skin/lepton/tab-bottom-corner-left-chrome.svg#svgClipPath");
+        --uc-tab-corner-right-side-svg: url("chrome://browser/skin/lepton/tab-bottom-corner-right-chrome.svg");
+        --uc-tab-corner-right-side-clipPath: url("chrome://browser/skin/lepton/tab-bottom-corner-right-chrome.svg#svgClipPath");
+        --uc-tab-corner-left-side-svg-clipped: url("chrome://browser/skin/lepton/tab-bottom-corner-left-chrome-clipped.svg");
+        --uc-tab-corner-right-side-svg-clipped: url("chrome://browser/skin/lepton/tab-bottom-corner-right-chrome-clipped.svg");
         --uc-tab-corner-size: 16px;
       }
     }
     @supports -moz-bool-pref("userChrome.tab.bottom_rounded_corner.chrome_legacy") {
       #TabsToolbar {
-        --uc-tab-corner-left-side-svg: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-chromeLegacy.svg");
-        --uc-tab-corner-left-side-clipPath: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-chromeLegacy.svg#svgClipPath");
-        --uc-tab-corner-right-side-svg: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-chromeLegacy.svg");
-        --uc-tab-corner-right-side-clipPath: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-chromeLegacy.svg#svgClipPath");
-        --uc-tab-corner-left-side-svg-clipped: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-chromeLegacy-clipped.svg");
-        --uc-tab-corner-right-side-svg-clipped: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-chromeLegacy-clipped.svg");
+        --uc-tab-corner-left-side-svg: url("chrome://browser/skin/lepton/tab-bottom-corner-left-chromeLegacy.svg");
+        --uc-tab-corner-left-side-clipPath: url("chrome://browser/skin/lepton/tab-bottom-corner-left-chromeLegacy.svg#svgClipPath");
+        --uc-tab-corner-right-side-svg: url("chrome://browser/skin/lepton/tab-bottom-corner-right-chromeLegacy.svg");
+        --uc-tab-corner-right-side-clipPath: url("chrome://browser/skin/lepton/tab-bottom-corner-right-chromeLegacy.svg#svgClipPath");
+        --uc-tab-corner-left-side-svg-clipped: url("chrome://browser/skin/lepton/tab-bottom-corner-left-chromeLegacy-clipped.svg");
+        --uc-tab-corner-right-side-svg-clipped: url("chrome://browser/skin/lepton/tab-bottom-corner-right-chromeLegacy-clipped.svg");
       }
     }
     @supports -moz-bool-pref("userChrome.tab.bottom_rounded_corner.edge") {
       #TabsToolbar {
-        --uc-tab-corner-left-side-svg: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-edge.svg");
-        --uc-tab-corner-left-side-clipPath: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-edge.svg#svgClipPath");
-        --uc-tab-corner-right-side-svg: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-edge.svg");
-        --uc-tab-corner-right-side-clipPath: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-edge.svg#svgClipPath");
-        --uc-tab-corner-left-side-svg-clipped: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-left-edge-clipped.svg");
-        --uc-tab-corner-right-side-svg-clipped: url("chrome://floorp/skin/designs/lepton/tab-bottom-corner-right-edge-clipped.svg");
+        --uc-tab-corner-left-side-svg: url("chrome://browser/skin/lepton/tab-bottom-corner-left-edge.svg");
+        --uc-tab-corner-left-side-clipPath: url("chrome://browser/skin/lepton/tab-bottom-corner-left-edge.svg#svgClipPath");
+        --uc-tab-corner-right-side-svg: url("chrome://browser/skin/lepton/tab-bottom-corner-right-edge.svg");
+        --uc-tab-corner-right-side-clipPath: url("chrome://browser/skin/lepton/tab-bottom-corner-right-edge.svg#svgClipPath");
+        --uc-tab-corner-left-side-svg-clipped: url("chrome://browser/skin/lepton/tab-bottom-corner-left-edge-clipped.svg");
+        --uc-tab-corner-right-side-svg-clipped: url("chrome://browser/skin/lepton/tab-bottom-corner-right-edge-clipped.svg");
         --uc-tab-corner-size: 14px;
       }
     }
@@ -8257,7 +8257,7 @@
   }
   /* Closed Button's icon thicker */
   .tabbrowser-tab .tab-content > .close-icon {
-    list-style-image: url("chrome://floorp/skin/designs/lepton/dismiss-filled.svg") !important;
+    list-style-image: url("chrome://browser/skin/lepton/dismiss-filled.svg") !important;
   }
   /* Closed Button's icon larger */
   .tab-close-button {
@@ -8754,7 +8754,7 @@
   }
 }
 /** Nav Bar UI ****************************************************************/
-/*= Nav Bar - Navbar combined with sidebar===================================*/
+/*= Nav Bar - Navbar comabine with sidebar===================================*/
 @supports -moz-bool-pref("userChrome.navbar.as_sidebar") {
   :root {
     --uc-navbar-margin-block: var(--toolbarbutton-inner-padding);
@@ -8861,13 +8861,13 @@
     right: 0;
   }
   :root[customizing="true"] #customization-container {
-    --uc-customization-container-margin: var(--uc-navbar-height-default);
+    --uc-customization-conatiner-margin: var(--uc-navbar-height-default);
     width: calc(100% - var(--uc-sidebar-activate-width));
-    height: calc(100% - var(--uc-customization-container-margin));
+    height: calc(100% - var(--uc-customization-conatiner-margin));
   }
   @supports -moz-bool-pref("userChrome.hidden.tabbar") {
     :root[customizing="true"] #customization-container {
-      --uc-customization-container-margin: calc(var(--uc-navbar-height-default) - var(--uc-tabbar-height-default));
+      --uc-customization-conatiner-margin: calc(var(--uc-navbar-height-default) - var(--uc-tabbar-height-default));
     }
   }
   :root[customizing="true"]:has(#sidebar-box:not([positionend="true"])) #customization-container {
@@ -10947,31 +10947,31 @@
   /** Icons - List **************************************************************/
   :root {
     --uc-folder-icon: url("chrome://global/skin/icons/folder.svg");
-    --uc-tab-icon: url("chrome://floorp/skin/designs/lepton/tab.svg");
-    --uc-tab-copy-icon: url("chrome://floorp/skin/designs/lepton/tab-copy.svg");
-    --uc-tab-unload-icon: url("chrome://floorp/skin/designs/lepton/tab-unload.svg");
-    --uc-tab-multiple-icon: url("chrome://floorp/skin/designs/lepton/tab-desktop-multiple.svg");
-    --uc-new-tab-icon: url("chrome://floorp/skin/designs/lepton/new-tab.svg");
-    --uc-new-tab-forward-icon: url("chrome://floorp/skin/designs/lepton/new-tab-forward.svg");
-    --uc-new-tab-skip-forward-icon: url("chrome://floorp/skin/designs/lepton/new-tab-skip-forward.svg");
-    --uc-new-tab-multiple-icon: url("chrome://floorp/skin/designs/lepton/new-tab-multiple.svg");
+    --uc-tab-icon: url("chrome://browser/skin/lepton/tab.svg");
+    --uc-tab-copy-icon: url("chrome://browser/skin/lepton/tab-copy.svg");
+    --uc-tab-unload-icon: url("chrome://browser/skin/lepton/tab-unload.svg");
+    --uc-tab-multiple-icon: url("chrome://browser/skin/lepton/tab-desktop-multiple.svg");
+    --uc-new-tab-icon: url("chrome://browser/skin/lepton/new-tab.svg");
+    --uc-new-tab-forward-icon: url("chrome://browser/skin/lepton/new-tab-forward.svg");
+    --uc-new-tab-skip-forward-icon: url("chrome://browser/skin/lepton/new-tab-skip-forward.svg");
+    --uc-new-tab-multiple-icon: url("chrome://browser/skin/lepton/new-tab-multiple.svg");
     --uc-sidebar-icon: url("chrome://browser/skin/sidebars.svg");
     --uc-sidebar-icon-reverse: url("chrome://browser/skin/sidebars-right.svg");
   }
   @supports -moz-bool-pref("userChrome.icon.library") {
     :root {
-      --uc-folder-icon: url("chrome://floorp/skin/designs/lepton/folder.svg");
+      --uc-folder-icon: url("chrome://browser/skin/lepton/folder.svg");
     }
   }
   @supports -moz-bool-pref("userChrome.tab.connect_to_window") {
     :root {
-      --uc-tab-icon: url("chrome://floorp/skin/designs/lepton/tab-photon.svg");
-      --uc-tab-copy-icon: url("chrome://floorp/skin/designs/lepton/tab-copy-photon.svg");
-      --uc-tab-unload-icon: url("chrome://floorp/skin/designs/lepton/tab-unload-photon.svg");
-      --uc-tab-multiple-icon: url("chrome://floorp/skin/designs/lepton/tab-multiple.svg");
-      --uc-new-tab-icon: url("chrome://floorp/skin/designs/lepton/new-tab-photon.svg");
-      --uc-new-tab-forward-icon: url("chrome://floorp/skin/designs/lepton/new-tab-forward-photon.svg");
-      --uc-new-tab-skip-forward-icon: url("chrome://floorp/skin/designs/lepton/new-tab-skip-forward-photon.svg");
+      --uc-tab-icon: url("chrome://browser/skin/lepton/tab-photon.svg");
+      --uc-tab-copy-icon: url("chrome://browser/skin/lepton/tab-copy-photon.svg");
+      --uc-tab-unload-icon: url("chrome://browser/skin/lepton/tab-unload-photon.svg");
+      --uc-tab-multiple-icon: url("chrome://browser/skin/lepton/tab-multiple.svg");
+      --uc-new-tab-icon: url("chrome://browser/skin/lepton/new-tab-photon.svg");
+      --uc-new-tab-forward-icon: url("chrome://browser/skin/lepton/new-tab-forward-photon.svg");
+      --uc-new-tab-skip-forward-icon: url("chrome://browser/skin/lepton/new-tab-skip-forward-photon.svg");
     }
   }
   @supports selector(:has(a)) {
@@ -11005,7 +11005,7 @@
       .bookmark-item[container="true"]:not([query="true"], [tagContainer], [dayContainer])[open="true"],
     :-moz-any(#bookmarks-view, #historyTree, #editBMPanel_folderTree, #placesList, #placeContent)
       treechildren::-moz-tree-image(title, container, open) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/folder-open.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/folder-open.svg") !important;
     }
     /*= Other Folder - Inbox Icon ================================================*/
     /* on Menus */
@@ -11018,7 +11018,7 @@
       treechildren::-moz-tree-image(container, queryFolder_unfiled_____),
     #editBMPanel_unfiledRootItem,
     #editBMPanel_folderMenuList[selectedGuid="unfiled_____"] {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/mail-inbox-all.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/mail-inbox-all.svg") !important;
     }
     /* Other Folder - Open */
     #PlacesToolbar #OtherBookmarks[open="true"],
@@ -11028,7 +11028,7 @@
       treechildren::-moz-tree-image(container, open, OrganizerQuery_UnfiledBookmarks),
     :-moz-any(#bookmarks-view, #editBMPanel_folderTree, #placesList, #placeContent)
       treechildren::-moz-tree-image(container, open, queryFolder_unfiled_____) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/mail-inbox.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/mail-inbox.svg") !important;
     }
     /*= Default Icon - Override ===================================================*/
     /* https://github.com/mozilla/gecko-dev/blob/master/browser/themes/shared/places/tree-icons.css */
@@ -11050,7 +11050,7 @@
     :-moz-any(#placesList, #placeContent) treechildren::-moz-tree-image(title, query, tagContainer),
     :-moz-any(#placesList, #placeContent) treechildren::-moz-tree-image(query, OrganizerQuery_tags_______v),
     .bookmark-item[query][tagContainer] {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/tag.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/tag.svg") !important;
     }
     /* Bookmark */
     :-moz-any(#placesList, #placeContent) treechildren::-moz-tree-image(query, OrganizerQuery_allbms_____v) {
@@ -11068,7 +11068,7 @@
     #panelMenu_bookmarksToolbar,
     #bookmarks-toolbar-button,
     #bookmarks-toolbar-placeholder {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/bookmarks-toolbar-alt.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/bookmarks-toolbar-alt.svg") !important;
     }
     /* Bookmark Menu */
     :-moz-any(#bookmarks-view, #editBMPanel_folderTree, #placesList, #placeContent)
@@ -11087,14 +11087,14 @@
     :-moz-any(#historyTree, #placesList, #placeContent) treechildren::-moz-tree-image(title, query, open, dayContainer),
     :-moz-any(#historyTree, #placesList, #placeContent)
       treechildren::-moz-tree-image(query, open, OrganizerQuery_history____v) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/history-reverse.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/history-reverse.svg") !important;
     }
     /* Tag */
     :-moz-any(#PlacesToolbar, #BMB_bookmarksPopup, #bookmarksMenu)
       .bookmark-item[container="true"][tagContainer="true"][open="true"],
     :-moz-any(#placesList, #placeContent) treechildren::-moz-tree-image(title, query, open, tagContainer),
     :-moz-any(#placesList, #placeContent) treechildren::-moz-tree-image(query, open, OrganizerQuery_tags_______v) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/tag-open.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/tag-open.svg") !important;
     }
     /* Bookmark */
     :-moz-any(#placesList, #placeContent) treechildren::-moz-tree-image(query, open, OrganizerQuery_allbms_____v) {
@@ -11105,12 +11105,12 @@
     #bookmarksMenuPopup #bookmarksToolbarFolderMenu[open="true"],
     :-moz-any(#bookmarks-view, #editBMPanel_folderTree, #placesList, #placeContent)
       treechildren::-moz-tree-image(container, open, queryFolder_toolbar_____) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/bookmarksToolbar-open-alt.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/bookmarksToolbar-open-alt.svg") !important;
     }
     /* Bookmark Menu */
     :-moz-any(#bookmarks-view, #editBMPanel_folderTree, #placesList, #placeContent)
       treechildren::-moz-tree-image(container, open, queryFolder_menu________) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/bookmarksMenu-open.svg") !important; /* or bookmarksMenu-open2.svg" */
+      list-style-image: url("chrome://browser/skin/lepton/bookmarksMenu-open.svg") !important; /* or bookmarksMenu-open2.svg" */
     }
     @-moz-document url("chrome://browser/content/places/places.xhtml")
     {
@@ -11130,10 +11130,10 @@
           list-style-image: url("chrome://global/skin/icons/settings.svg") !important;
         }
         #viewMenu {
-          list-style-image: url("chrome://floorp/skin/designs/lepton/sort.svg") !important;
+          list-style-image: url("chrome://browser/skin/lepton/sort.svg") !important;
         }
         #maintenanceButton {
-          list-style-image: url("chrome://floorp/skin/designs/lepton/import-export.svg") !important;
+          list-style-image: url("chrome://browser/skin/lepton/import-export.svg") !important;
         }
         #clearDownloadsButton {
           list-style-image: url("chrome://global/skin/icons/delete.svg") !important;
@@ -11267,7 +11267,7 @@
       -moz-box-ordinal-group: 0 !important;
     }
     #appMenu-proton-update-banner::before {
-      content: url("chrome://floorp/skin/designs/lepton/whatsnew.svg");
+      content: url("chrome://browser/skin/lepton/whatsnew.svg");
     }
     #appMenu-fxa-status2::before {
       /* Don't exist img tag */
@@ -11351,7 +11351,7 @@
     }
     @supports -moz-bool-pref("userChrome.icon.panel_full") {
       #appMenu-save-file-button2 {
-        list-style-image: url("chrome://floorp/skin/designs/lepton/toolbarButton-download.svg");
+        list-style-image: url("chrome://browser/skin/lepton/toolbarButton-download.svg");
       }
       #appMenu-find-button2 {
         list-style-image: url("chrome://global/skin/icons/search-glass.svg");
@@ -11361,48 +11361,48 @@
       }
       #appMenu-zoom-controls2::before,
       #appMenu-zoom-controls::before {
-        content: url("chrome://floorp/skin/designs/lepton/screenshot.svg");
+        content: url("chrome://browser/skin/lepton/screenshot.svg");
       }
     }
     #save-page-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/toolbarButton-download.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/toolbarButton-download.svg") !important;
     }
     #open-file-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/toolbarButton-upload.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/toolbarButton-upload.svg") !important;
     }
     #cut-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/edit-cut.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/edit-cut.svg") !important;
     }
     #copy-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/edit-copy.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/edit-copy.svg") !important;
     }
     #paste-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/edit-paste.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/edit-paste.svg") !important;
     }
     #characterencoding-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/characterEncoding.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/characterEncoding.svg") !important;
     }
     #screenshot-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/screenshot-1.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/screenshot-1.svg") !important;
     }
     #email-link-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/mail.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/mail.svg") !important;
     }
     #panic-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/forget.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/forget.svg") !important;
     }
     #profiler-button-button > .toolbarbutton-icon {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/performance.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/performance.svg") !important;
     }
     #developer-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/wrench-filled.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/wrench-filled.svg") !important;
     }
     #appMenu-settings-button {
       list-style-image: url("chrome://global/skin/icons/settings.svg");
     }
     @supports -moz-bool-pref("userChrome.icon.panel_full") {
       #appMenu-more-button2 {
-        list-style-image: url("chrome://floorp/skin/designs/lepton/ion.svg");
+        list-style-image: url("chrome://browser/skin/lepton/ion.svg");
       }
     }
     @supports -moz-bool-pref("userChrome.icon.panel_full") or -moz-bool-pref("userChrome.icon.panel_photon") {
@@ -11410,7 +11410,7 @@
         list-style-image: url("chrome://global/skin/icons/help.svg");
       }
       #appMenu-quit-button2 {
-        list-style-image: url("chrome://floorp/skin/designs/lepton/quit.svg");
+        list-style-image: url("chrome://browser/skin/lepton/quit.svg");
       }
     }
     /*= Panel - Account ==========================================================*/
@@ -11453,16 +11453,16 @@
       list-style-image: url("chrome://browser/skin/sync.svg");
     }
     #PanelUI-fxa-menu-connect-device-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/add-device.svg");
+      list-style-image: url("chrome://browser/skin/lepton/add-device.svg");
     }
     #PanelUI-fxa-menu-sendtab-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/send-to-device.svg");
+      list-style-image: url("chrome://browser/skin/lepton/send-to-device.svg");
     }
     #PanelUI-fxa-menu-sync-prefs-button {
       list-style-image: url("chrome://global/skin/icons/settings.svg");
     }
     #PanelUI-fxa-menu-account-signout-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/sign-out.svg");
+      list-style-image: url("chrome://browser/skin/lepton/sign-out.svg");
     }
     #PanelUI-remotetabs-view-managedevices::before {
       /* Box */
@@ -11503,7 +11503,7 @@
     }
     .pageAction-sendToDevice-device.subviewbutton.sync-menuitem.sendtab-target[clientType=""],
     .sendToDevice-device.subviewbutton.sync-menuitem.sendtab-target[clientType=""] {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/send-to-device.svg");
+      list-style-image: url("chrome://browser/skin/lepton/send-to-device.svg");
     }
     .pageAction-sendToDevice-device.subviewbutton.sync-menuitem.sendtab-target:not([clientType]),
     .sendToDevice-device.subviewbutton.sync-menuitem.sendtab-target:not([clientType]) {
@@ -11520,7 +11520,7 @@
       list-style-image: url("chrome://global/skin/icons/search-glass.svg");
     }
     #panelMenu_viewBookmarksToolbar {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/bookmarks-toolbar-alt.svg");
+      list-style-image: url("chrome://browser/skin/lepton/bookmarks-toolbar-alt.svg");
     }
     #panelMenu_showAllBookmarks {
       list-style-image: url("chrome://browser/skin/bookmark-star-on-tray.svg");
@@ -11537,19 +11537,19 @@
     }
     #appMenuRestoreSession,
     #appMenu-restoreSession {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/restore-session.svg");
+      list-style-image: url("chrome://browser/skin/lepton/restore-session.svg");
     }
     #appMenuClearRecentHistory {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/forget.svg");
+      list-style-image: url("chrome://browser/skin/lepton/forget.svg");
     }
     #PanelUI-historyMore {
       list-style-image: url("chrome://browser/skin/history.svg");
     }
     #appMenu-library-recentlyClosedTabs {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/movetowindow-16.svg");
+      list-style-image: url("chrome://browser/skin/lepton/movetowindow-16.svg");
     }
     #appMenu-library-recentlyClosedWindows {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/restore-session.svg");
+      list-style-image: url("chrome://browser/skin/lepton/restore-session.svg");
     }
     /*= Panel - More tools =======================================================*/
     #appmenu-moreTools-button {
@@ -11558,27 +11558,27 @@
     /* Web Developer Tools */
     #appmenu-developer-tools-view .subviewbutton:nth-child(1),
     #PanelUI-developer-tools-view .subviewbutton:nth-child(1) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/developer.svg");
+      list-style-image: url("chrome://browser/skin/lepton/developer.svg");
     }
     /* Task Manager */
     #appmenu-developer-tools-view .subviewbutton:nth-child(2),
     #PanelUI-developer-tools-view .subviewbutton:nth-child(2) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/performance.svg");
+      list-style-image: url("chrome://browser/skin/lepton/performance.svg");
     }
     /* Remote Debugging - Edge bug.svg */
     #appmenu-developer-tools-view .subviewbutton:nth-child(3),
     #PanelUI-developer-tools-view .subviewbutton:nth-child(3) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/bug.svg");
+      list-style-image: url("chrome://browser/skin/lepton/bug.svg");
     }
     /* Browser Toolbox - Edge webdeveloper.svg */
     #appmenu-developer-tools-view .subviewbutton:nth-child(4),
     #PanelUI-developer-tools-view .subviewbutton:nth-child(4) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/window-dev-tools.svg");
+      list-style-image: url("chrome://browser/skin/lepton/window-dev-tools.svg");
     }
     /* Browser Content Toolbox */
     #appmenu-developer-tools-view .subviewbutton:nth-child(5),
     #PanelUI-developer-tools-view .subviewbutton:nth-child(5) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/command-frames.svg");
+      list-style-image: url("chrome://browser/skin/lepton/command-frames.svg");
     }
     /* Browser Console */
     #appmenu-developer-tools-view .subviewbutton:nth-last-child(5),
@@ -11588,7 +11588,7 @@
     /* Responsive Design Mode */
     #appmenu-developer-tools-view .subviewbutton:nth-last-child(4),
     #PanelUI-developer-tools-view .subviewbutton:nth-last-child(4) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/command-responsivemode.svg");
+      list-style-image: url("chrome://browser/skin/lepton/command-responsivemode.svg");
     }
     /* Eyedropper */
     #appmenu-developer-tools-view .subviewbutton:nth-last-child(3),
@@ -11598,7 +11598,7 @@
     /* Page Source - Edge file-search.svg */
     #appmenu-developer-tools-view .subviewbutton:nth-last-child(2),
     #PanelUI-developer-tools-view .subviewbutton:nth-last-child(2) {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/document-search.svg");
+      list-style-image: url("chrome://browser/skin/lepton/document-search.svg");
     }
     /* Extensions for Devel */
     #appmenu-developer-tools-view .subviewbutton:nth-last-child(1),
@@ -11613,7 +11613,7 @@
       list-style-image: url("chrome://global/skin/icons/help.svg");
     }
     #appMenu_feedbackPage {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/send.svg");
+      list-style-image: url("chrome://browser/skin/lepton/send.svg");
     }
     #appMenu_helpSafeMode {
       list-style-image: url("chrome://devtools/skin/images/debugging-workers.svg");
@@ -11629,7 +11629,7 @@
       list-style-image: url("chrome://global/skin/icons/warning.svg");
     }
     #appMenu_helpSwitchDevice {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/add-device.svg");
+      list-style-image: url("chrome://browser/skin/lepton/add-device.svg");
     }
     #appMenu_aboutName {
       list-style-image: url("chrome://global/skin/icons/info.svg");
@@ -11658,16 +11658,16 @@
     }
     /*= Tabbar - All Tab Menu ====================================================*/
     #allTabsMenu-undoCloseTab {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/undo.svg");
+      list-style-image: url("chrome://browser/skin/lepton/undo.svg");
     }
     #allTabsMenu-searchTabs {
       list-style-image: url("chrome://global/skin/icons/search-glass.svg");
     }
     #allTabsMenu-containerTabsButton {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/container-openin-16.svg");
+      list-style-image: url("chrome://browser/skin/lepton/container-openin-16.svg");
     }
     #allTabsMenu-hiddenTabsButton {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/eye-hide.svg");
+      list-style-image: url("chrome://browser/skin/lepton/eye-hide.svg");
     }
     #allTabsMenu-containerTabsView .subviewbutton:last-child {
       list-style-image: url("chrome://global/skin/icons/settings.svg");
@@ -11687,7 +11687,7 @@
       --menuitem-image: url("chrome://browser/skin/bookmark-star-on-tray.svg");
     }
     #BMB_bookmarksToolbar {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/bookmarks-toolbar-alt.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/bookmarks-toolbar-alt.svg");
     }
     @supports -moz-bool-pref("layout.css.osx-font-smoothing.enabled") {
       #BMB_bookmarksShowAllTop {
@@ -11700,10 +11700,10 @@
     }
     /* BMB_bookmarksToolbarPopup */
     #BMB_viewBookmarksToolbar[data-l10n-args='{"isVisible":true}'] {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-hide.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/eye-hide.svg");
     }
     #BMB_viewBookmarksToolbar[data-l10n-args='{"isVisible":false}'] {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-show.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/eye-show.svg");
     }
     /*= protections-popup ========================================================*/
     #protections-popup-settings-button > .protections-popup-settings-icon,
@@ -11718,7 +11718,7 @@
     }
     #protections-popup-show-report-button > .protections-popup-show-report-icon {
       /* chrome://browser/skin/controlcenter/dashboard.svg */
-      list-style-image: url("chrome://floorp/skin/designs/lepton/dashboard.svg");
+      list-style-image: url("chrome://browser/skin/lepton/dashboard.svg");
     }
     /*= identity-popup ===========================================================*/
     #identity-popup-clear-sitedata-button,
@@ -11729,7 +11729,7 @@
       margin-inline-start: 32px !important; /* Original: 10px */
     }
     #identity-popup-clear-sitedata-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/broom.svg");
+      list-style-image: url("chrome://browser/skin/lepton/broom.svg");
     }
     /*= sidebarMenu-popup ========================================================*/
     #identity-popup-more-info.subviewbutton {
@@ -11751,10 +11751,10 @@
       --menuitem-image: url("chrome://browser/skin/history.svg");
     }
     #sidebar-switcher-tabs.subviewbutton {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/synced-tabs.svg");
+      list-style-image: url("chrome://browser/skin/lepton/synced-tabs.svg");
     }
     #sidebar-switcher-tabs:is(menuitem) {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/synced-tabs.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/synced-tabs.svg");
     }
     #sidebar-reverse-position.subviewbutton {
       list-style-image: var(--uc-sidebar-icon-reverse);
@@ -11777,11 +11777,11 @@
     .sync-engine-tabs.sync-engine-image,
     #sidebar-box[sidebarcommand="viewTabsSidebar"] > #sidebar-header > #sidebar-switcher-target > #sidebar-icon,
     #sync-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/synced-tabs.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/synced-tabs.svg") !important;
     }
     /*= Tab Mix Plus =============================================================*/
     #allTabsMenu_sortTabsButton {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/text-sort-ascending.svg");
+      list-style-image: url("chrome://browser/skin/lepton/text-sort-ascending.svg");
     }
   }
   /** Menu - Icons Layout *******************************************************/
@@ -11863,7 +11863,7 @@
       :not(menu, #ContentSelectDropdown)
         > menupopup:not(.in-menulist)
         > menu:not(.menu-iconic, .in-menulist, [checked="true"]) {
-        list-style-image: var(--menuitem-image, url("chrome://floorp/skin/designs/lepton/blank.svg")) !important;
+        list-style-image: var(--menuitem-image, url("chrome://browser/skin/lepton/blank.svg")) !important;
       }
     }
     /* Padding */
@@ -12349,7 +12349,7 @@
             #usercssloader-menupopup
           )
           menu:not(.menu-iconic) {
-          list-style-image: var(--menuitem-image, url("chrome://floorp/skin/designs/lepton/blank.svg")) !important;
+          list-style-image: var(--menuitem-image, url("chrome://browser/skin/lepton/blank.svg")) !important;
         }
       }
     }
@@ -12473,7 +12473,7 @@
       #tabcenter-reborn_ariasuni-menuitem-_contextMenuReloadTab,
       #sidebartabs_asamuzak_jp-menuitem-_reloadTab,
       #sidebartabs_asamuzak_jp-menuitem-_reloadAllTabs {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/reload.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/reload.svg");
       }
       #context_toggleMuteTab,
       #context_toggleMuteSelectedTabs,
@@ -12495,14 +12495,14 @@
       #treestyletab_piro_sakura_ne_jp-menuitem-_context_pinTab,
       #tabcenter-reborn_ariasuni-menuitem-_contextMenuPinTab,
       #sidebartabs_asamuzak_jp-menuitem-_pinTab {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/pin-tab.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/pin-tab.svg");
       }
       #context_unpinTab,
       #context_unpinSelectedTabs,
       #treestyletab_piro_sakura_ne_jp-menuitem-_context_unpinTab,
       #tabcenter-reborn_ariasuni-menuitem-_contextMenuPinTab[label="Unpin Tab"],
       #sidebartabs_asamuzak_jp-menuitem-_pinTab[label="Unpin Tab"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/unpin-tab.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/unpin-tab.svg");
       }
       #context_duplicateTab,
       #context_duplicateTabs,
@@ -12527,21 +12527,21 @@
       #treestyletab_piro_sakura_ne_jp-menuitem-_context_moveTab,
       #tabcenter-reborn_ariasuni-menuitem-_contextMenuMoveTab,
       #sidebartabs_asamuzak_jp-menuitem-_moveTab {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/arrow-swap.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/arrow-swap.svg");
       }
       #context_sendTabToDevice,
       #treestyletab_piro_sakura_ne_jp-menuitem-_context_sendTabsToDevice {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/send-to-device.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/send-to-device.svg");
       }
       #context_sendTabToDevice:is([disabled="true"]) + #context_shareTabURL,
       #context_sendTabToDevice:is([disabled="true"]) + menuitem.share-tab-url-item {
         /* At windows */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/share.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/share.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #context_shareTabURL,
         menuitem.share-tab-url-item {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/share.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/share.svg");
         }
       }
       #context_reopenInContainer,
@@ -12549,7 +12549,7 @@
       #tabcenter-reborn_ariasuni-menuitem-_contextMenuOpenInContextualTab,
       #sidebartabs_asamuzak_jp-menuitem-_openNewTabInContainer,
       #sidebartabs_asamuzak_jp-menuitem-_reopenTabInContainer {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/container-openin-16.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/container-openin-16.svg");
       }
       #context_selectAllTabs,
       #treestyletab_piro_sakura_ne_jp-menuitem-_context_selectAllTabs,
@@ -12569,7 +12569,7 @@
         #treestyletab_piro_sakura_ne_jp-menuitem-_context_closeMultipleTabs,
         #tabcenter-reborn_ariasuni-menuitem-_contextMenuCloseTabs,
         #sidebartabs_asamuzak_jp-menuitem-_closeMultipleTabs {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/filter-dismiss.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/filter-dismiss.svg");
         }
       }
       #context_undoCloseTab,
@@ -12577,12 +12577,12 @@
       #treestyletab_piro_sakura_ne_jp-menuitem-_noContextTab\:context_undoCloseTab,
       #tabcenter-reborn_ariasuni-menuitem-_contextMenuUndoCloseTab,
       #sidebartabs_asamuzak_jp-menuitem-_undoCloseTab {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/undo.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
       }
       /*= new-tab-button-popup =====================================================*/
       #new-tab-button-popup > menuitem[command="Browser:NewUserContextTab"],
       .new-tab-popup > menuitem[command="Browser:NewUserContextTab"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/container-openin-16.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/container-openin-16.svg");
       }
       #new-tab-button-popup > menuitem[command="Browser:OpenAboutContainers"],
       .new-tab-popup > menuitem[command="Browser:OpenAboutContainers"] {
@@ -12596,28 +12596,28 @@
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
       }
       .customize-context-reportExtension {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/send.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/send.svg");
       }
       .customize-context-moveToPanel {
         --menuitem-image: url("chrome://browser/skin/pin-12.svg");
       }
       #toolbar-context-autohide-downloads-button {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-tracking-off.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eye-tracking-off.svg");
       }
       .customize-context-removeFromToolbar {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
       }
       #toolbar-context-always-open-downloads-panel {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/drawer-arrow-download.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/drawer-arrow-download.svg");
       }
       #toolbar-context-openANewTab {
         --menuitem-image: var(--uc-new-tab-icon);
       }
       #toolbar-context-reloadSelectedTab,
       #toolbar-context-reloadSelectedTabs {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/reload.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/reload.svg");
       }
       #toolbar-context-bookmarkSelectedTab,
       #toolbar-context-bookmarkSelectedTabs {
@@ -12627,22 +12627,22 @@
         --menuitem-image: var(--uc-tab-multiple-icon);
       }
       #toolbar-context-undoCloseTab {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/undo.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
       }
       #toggle_toolbar-menubar {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/calendar-agenda.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/calendar-agenda.svg");
       }
       #toggle_PersonalToolbar {
         /* Also placeContext */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/bookmarks-toolbar-alt.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/bookmarks-toolbar-alt.svg");
       }
       menuitem.viewCustomizeToolbar {
         --menuitem-image: url("chrome://browser/skin/customize.svg");
       }
       .fullscreen-context-autohide {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-tracking-off.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eye-tracking-off.svg");
       }
       #toolbar-context-menu > menuitem[data-l10n-id="full-screen-exit"] {
         --menuitem-image: url("chrome://browser/skin/fullscreen-exit.svg");
@@ -12658,83 +12658,83 @@
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #tm-duplicateinWin {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/tab-desktop-multiple-bottom.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/tab-desktop-multiple-bottom.svg");
         }
         #tm-mergeWindowsTab {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/merge.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/merge.svg");
         }
       }
       #tm-renameTab {
         --menuitem-image: url("chrome://global/skin/icons/edit.svg");
       }
       #tm-copyTabUrl {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/link.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/link.svg");
       }
       #tm-autoreloadTab_menu {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/timer10.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/timer10.svg");
       }
       #context_reloadTabOptions {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/reload.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/reload.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #context_reloadTabOptions {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/filter-reload.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/filter-reload.svg");
         }
       }
       @supports not -moz-bool-pref("userChrome.icon.menu.full") {
         #context_reloadTabOptions + #context_reloadTab {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/blank.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/blank.svg");
         }
       }
       #tm-docShell {
         --menuitem-image: url("chrome://browser/skin/permissions.svg");
       }
       #tm-freezeTab {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/weather-snowflake.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/weather-snowflake.svg");
       }
       #tm-protectTab {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/shield-task.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/shield-task.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #tm-lockTab {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/lock-closed.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/lock-closed.svg");
         }
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #context_bookmarkAllTabs {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/bookmark-multiple.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/bookmark-multiple.svg");
         }
       }
       /*= contentAreaContextMenu ===================================================*/
       #context-viewsource-goToLine {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/text-number-format.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/text-number-format.svg");
       }
       #context-viewsource-wrapLongLines {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/arrow-sort-down-lines.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/arrow-sort-down-lines.svg");
       }
       #context-viewsource-highlightSyntax {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/highlight.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/highlight.svg");
       }
       #spell-no-suggestions {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/text-proofing-tools.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/text-proofing-tools.svg");
       }
       #spell-add-to-dictionary {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/book-add.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/book-add.svg");
       }
       #spell-undo-add-to-dictionary {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/undo.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
       }
       #context-openlinkincurrent {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/link-square.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/link-square.svg");
       }
       #context-openlinkincontainertab,
       #context-openlinkintab {
         --menuitem-image: var(--uc-new-tab-icon);
       }
       #context-openlinkinusercontext-menu {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/container-openin-16.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/container-openin-16.svg");
       }
       #context-openlink {
         --menuitem-image: url("chrome://browser/skin/window.svg");
@@ -12746,25 +12746,25 @@
         --menuitem-image: url("chrome://browser/skin/bookmark.svg");
       }
       #context-savelink {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/toolbarButton-download.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/toolbarButton-download.svg");
       }
       #context-savelinktopocket {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/pocket-outline.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/pocket-outline.svg");
       }
       #context-copyemail {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/mail.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/mail.svg");
       }
       #context-copyphone {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/device-phone.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/device-phone.svg");
       }
       #context-copylink {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/link.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/link.svg");
       }
       #context-stripOnShareLink {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/link-no-tracking.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/link-no-tracking.svg");
       }
       #context-sendlinktodevice {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/send-to-device.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/send-to-device.svg");
       }
       #context-media-play {
         --menuitem-image: url("chrome://global/skin/media/play-fill.svg");
@@ -12779,11 +12779,11 @@
         --menuitem-image: url("chrome://global/skin/media/audio.svg");
       }
       #context-media-playbackrate {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/time-picker.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/time-picker.svg");
       }
       #context-media-loop {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/arrow-repeat-all.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/arrow-repeat-all.svg");
       }
       #context-leave-dom-fullscreen {
         --menuitem-image: url("chrome://global/skin/media/fullscreenExitButton.svg");
@@ -12792,57 +12792,57 @@
         --menuitem-image: url("chrome://global/skin/media/fullscreenEnterButton.svg");
       }
       #context-media-hidecontrols {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-hide.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eye-hide.svg");
       }
       #context-media-showcontrols {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-show.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eye-show.svg");
       }
       #context-viewvideo {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/video.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/video.svg");
       }
       #context-video-pictureinpicture {
         /* checkbox */
         --menuitem-image: url("chrome://global/skin/media/picture-in-picture-open.svg");
       }
       #context-reloadimage {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/image-arrow-counterclockwise.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/image-arrow-counterclockwise.svg");
       }
       #context-viewimage {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/image-add.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/image-add.svg");
       }
       #context-saveimage {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/image.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/image.svg");
       }
       #context-video-saveimage {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/video-snapshot.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/video-snapshot.svg");
       }
       #context-savevideo {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/video.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/video.svg");
       }
       #context-saveaudio {
         --menuitem-image: url("chrome://global/skin/media/audio.svg");
       }
       #context-copyimage-contents {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/image-copy.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/image-copy.svg");
       }
       #context-copyimage,
       #context-copyvideourl,
       #context-copyaudiourl {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/link.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/link.svg");
       }
       #context-sendimage,
       #context-sendvideo,
       #context-sendaudio {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/mail.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/mail.svg");
       }
       #context-viewimageinfo {
         --menuitem-image: url("chrome://global/skin/icons/info.svg");
       }
       #context-viewimagedesc {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/image-alt-text.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/image-alt-text.svg");
       }
       #context-setDesktopBackground {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/resize-image.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/resize-image.svg");
       }
       #context-ctp-play {
         --menuitem-image: url("chrome://global/skin/icons/plugin.svg");
@@ -12851,47 +12851,47 @@
         --menuitem-image: url("chrome://global/skin/icons/plugin-blocked.svg");
       }
       #context-savepage {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/toolbarButton-download.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/toolbarButton-download.svg");
       }
       #context-pocket {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/pocket-outline.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/pocket-outline.svg");
       }
       #context-sendpagetodevice {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/send-to-device.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/send-to-device.svg");
       }
       #fill-login {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/password.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/password.svg");
       }
       #fill-login-generated-password {
         --menuitem-image: url("chrome://browser/skin/login.svg");
       }
       #use-relay-mask {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/relay-logo.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/relay-logo.svg");
       }
       #manage-saved-logins {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/key-multiple.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/key-multiple.svg");
       }
       #context-undo,
       #context-pdfjs-undo {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/undo.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #context-redo,
         #context-pdfjs-redo {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/redo.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/redo.svg");
         }
       }
       #context-cut,
       #context-pdfjs-cut {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       #context-copy,
       #context-pdfjs-copy {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-copy.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
       #context-paste,
       #context-pdfjs-paste {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       #context-delete,
       #context-pdfjs-delete {
@@ -12899,16 +12899,16 @@
       }
       #context-selectall,
       #context-pdfjs-selectall {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/select-all-on.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/select-all-on.svg");
       }
       #context-reveal-password {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-show.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eye-show.svg");
       }
       #context-print-selection {
         --menuitem-image: url("chrome://global/skin/icons/print.svg");
       }
       #context-take-screenshot {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/screenshot-1.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/screenshot-1.svg");
       }
       #context-keywordfield {
         --menuitem-image: url("chrome://browser/skin/bookmark.svg");
@@ -12918,33 +12918,33 @@
         --menuitem-image: url("chrome://global/skin/icons/search-glass.svg");
       }
       #frame {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/command-frames.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/command-frames.svg");
       }
       #spell-check-enabled {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/text-proofing-tools.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/text-proofing-tools.svg");
       }
       #spell-add-dictionaries-main {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/book-add.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/book-add.svg");
       }
       #spell-dictionaries {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/book.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/book.svg");
       }
       #context-bidi-text-direction-toggle {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/text-direction-horizontal-ltr.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/text-direction-horizontal-ltr.svg");
       }
       #context-bidi-page-direction-toggle {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/document-landscape-split-hint.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/document-landscape-split-hint.svg");
       }
       #context-viewpartialsource-selection,
       #context-viewsource {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/document-search.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/document-search.svg");
       }
       #context-inspect-a11y {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/tool-accessibility.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/tool-accessibility.svg");
       }
       #context-inspect {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/command-pick.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/command-pick.svg");
       }
       #context-media-eme-learnmore {
         /* iconic */
@@ -12957,7 +12957,7 @@
           --menuitem-image: url("chrome://browser/skin/forward.svg");
         }
         #context-reload {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/reload.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/reload.svg");
         }
         #context-stop {
           --menuitem-image: url("chrome://global/skin/icons/close.svg");
@@ -12968,7 +12968,7 @@
       }
       /*= main-context-menu-frame ==================================================*/
       #context-showonlythisframe {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-show.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eye-show.svg");
       }
       #context-openframeintab {
         --menuitem-image: var(--uc-new-tab-icon);
@@ -12977,29 +12977,29 @@
         --menuitem-image: url("chrome://browser/skin/window.svg");
       }
       #context-reloadframe {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/reload.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/reload.svg");
       }
       #context-bookmarkframe {
         --menuitem-image: url("chrome://browser/skin/bookmark.svg");
       }
       #context-saveframe {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/toolbarButton-download.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/toolbarButton-download.svg");
       }
       #context-printframe {
         --menuitem-image: url("chrome://global/skin/icons/print.svg");
       }
       #context-take-frame-screenshot {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/screenshot-1.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/screenshot-1.svg");
       }
       #context-viewframesource {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/document-search.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/document-search.svg");
       }
       #context-viewframeinfo {
         --menuitem-image: url("chrome://global/skin/icons/info.svg");
       }
       /*= Tab Mix Plus =============================================================*/
       #tm-autoreload_menu {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/timer10.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/timer10.svg");
       }
       #tm-linkWithhistory {
         --menuitem-image: var(--uc-new-tab-skip-forward-icon);
@@ -13011,31 +13011,31 @@
         --menuitem-image: var(--uc-new-tab-forward-icon);
       }
       #tm-content-closetab {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/dismiss-filled.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/dismiss-filled.svg");
       }
       #tm-duplicateTabContext {
         --menuitem-image: var(--uc-tab-copy-icon);
       }
       #tm-duplicateinWinContext {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/tab-desktop-multiple-bottom.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/tab-desktop-multiple-bottom.svg");
       }
       #tm-detachTabContext {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/convert-range.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/convert-range.svg");
       }
       #tm-mergeWindows {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/merge.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/merge.svg");
       }
       #tm-content-freezeTab {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/weather-snowflake.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/weather-snowflake.svg");
       }
       #tm-content-protectTab {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/shield-task.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/shield-task.svg");
       }
       #tm-content-lockTab {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/lock-closed.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/lock-closed.svg");
       }
       #tm-content-undoCloseTab {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/undo.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
       }
       /*= downloadsContextMenu =====================================================*/
       .downloadPauseMenuItem {
@@ -13045,47 +13045,47 @@
         --menuitem-image: url("chrome://global/skin/media/play-fill.svg");
       }
       .downloadUnblockMenuItem {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/checkmark-circle.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/checkmark-circle.svg");
       }
       .downloadUseSystemDefaultMenuItem {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/toolbarButton-upload.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/toolbarButton-upload.svg");
       }
       .downloadAlwaysUseSystemDefaultMenuItem {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/folder-globe.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/folder-globe.svg");
       }
       .downloadAlwaysOpenSimilarFilesMenuItem {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/fluid.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/fluid.svg");
       }
       .downloadShowMenuItem {
         --menuitem-image: var(--uc-folder-icon);
       }
       #downloadsContextMenu > menuitem.downloadOpenReferrerMenuItem,
       #downloadsContextMenu > menuitem[command="downloadsCmd_openReferrer"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/link-square.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/link-square.svg");
       }
       #downloadsContextMenu > menuitem.downloadCopyLocationMenuItem,
       #downloadsContextMenu > menuitem[command="downloadsCmd_copyLocation"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/link.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/link.svg");
       }
       .downloadDeleteFileMenuItem {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
       }
       .downloadRemoveFromHistoryMenuItem {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eraser.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eraser.svg");
       }
       #downloadsContextMenu > menuitem[command="downloadsCmd_clearList"],
       #downloadsContextMenu > menuitem[command="downloadsCmd_clearDownloads"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/broom.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/broom.svg");
       }
       /*= placeContext =============================================================*/
       #placesContext_open {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/link-square.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/link-square.svg");
       }
       #placesContext_openBookmarkContainer\:tabs,
       #placesContext_openBookmarkLinks\:tabs {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/movetowindow-16.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/movetowindow-16.svg");
       }
       #placesContext_open\:newtab,
       #placesContext_openContainer\:tabs,
@@ -13093,7 +13093,7 @@
         --menuitem-image: var(--uc-new-tab-icon);
       }
       #placesContext_open\:newcontainertab {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/container-openin-16.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/container-openin-16.svg");
       }
       #placesContext_open\:newwindow {
         --menuitem-image: url("chrome://browser/skin/window.svg");
@@ -13113,19 +13113,19 @@
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
       }
       #placesContext_deleteHost {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-hide.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eye-hide.svg");
       }
       #placesContext_sortBy\:name {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/text-sort-ascending.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/text-sort-ascending.svg");
       }
       #placesContext_cut {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       #placesContext_copy {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-copy.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
       #placesContext_paste_group {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       #placesContext_new\:bookmark {
         --menuitem-image: url("chrome://browser/skin/bookmark.svg");
@@ -13135,23 +13135,23 @@
         --menuitem-image: var(--uc-folder-icon);
       }
       #placesContext_new\:separator {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/vertical-line.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/vertical-line.svg");
       }
       #placesContext_paste {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       #placesContext_createBookmark {
         --menuitem-image: url("chrome://browser/skin/bookmark.svg");
       }
       #show-other-bookmarks_PersonalToolbar {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/star-line-horizontal.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/star-line-horizontal.svg");
       }
       #placesContext_showAllBookmarks {
         --menuitem-image: url("chrome://browser/skin/bookmark-star-on-tray.svg");
       }
       .openintabs-menuitem {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/movetowindow-16.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/movetowindow-16.svg");
       }
       /*= Notification =============================================================*/
       #doNotDisturbMenuItem {
@@ -13176,19 +13176,19 @@
       }
       menuitem[data-l10n-id="popup-show-popup-menuitem"] {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-show.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eye-show.svg");
       }
       /*= autohide-context =========================================================*/
       #autohide-context > menuitem[data-l10n-id="full-screen-autohide"] {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-tracking-off.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eye-tracking-off.svg");
       }
       #autohide-context > menuitem[data-l10n-id="full-screen-exit"] {
         --menuitem-image: url("chrome://browser/skin/fullscreen-exit.svg");
       }
       /*= pictureInPictureToggleContextMenu ========================================*/
       #pictureInPictureToggleContextMenu > menuitem[oncommand="PictureInPicture.hideToggle();"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-hide.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eye-hide.svg");
       }
       /*= pageActionContextMenu ====================================================*/
       .pageActionContextMenuItem.extensionPinned.extensionUnpinned.manageExtensionItem {
@@ -13199,7 +13199,7 @@
       }
       /*= customizationPanelItemContextMenu ========================================*/
       #customizationPanelItemContextMenuUnpin {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/unpin-tab.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/unpin-tab.svg");
       }
       .customize-context-removeFromPanel {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
@@ -13218,11 +13218,11 @@
       /*= downloads-button-autohide-panel ==========================================*/
       #downloads-button-autohide-checkbox {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-tracking-off.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eye-tracking-off.svg");
       }
       /*= SyncedTabsSidebarContext =================================================*/
       #syncedTabsOpenSelected {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/link-square.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/link-square.svg");
       }
       #syncedTabsOpenSelectedInTab {
         --menuitem-image: var(--uc-new-tab-icon);
@@ -13237,10 +13237,10 @@
         --menuitem-image: url("chrome://browser/skin/bookmark.svg");
       }
       #syncedTabsCopySelected {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/link.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/link.svg");
       }
       #syncedTabsOpenAllInTabs {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/movetowindow-16.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/movetowindow-16.svg");
       }
       #syncedTabsManageDevices {
         --menuitem-image: url("chrome://global/skin/icons/settings.svg");
@@ -13250,112 +13250,112 @@
       }
       /*= SyncedTabsSidebarTabsFilterContext =======================================*/
       #SyncedTabsSidebarTabsFilterContext > menuitem[cmd="cmd_undo"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/undo.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
       }
       #SyncedTabsSidebarTabsFilterContext > menuitem[cmd="cmd_cut"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       #SyncedTabsSidebarTabsFilterContext > menuitem[cmd="cmd_copy"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-copy.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
       #SyncedTabsSidebarTabsFilterContext > menuitem[cmd="cmd_paste"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       #SyncedTabsSidebarTabsFilterContext > menuitem[cmd="cmd_delete"] {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
       }
       #SyncedTabsSidebarTabsFilterContext > menuitem[cmd="cmd_selectAll"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/select-all-on.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/select-all-on.svg");
       }
       #syncedTabsRefreshFilter {
         --menuitem-image: url("chrome://browser/skin/sync.svg");
       }
       /*= urlbar-input-container ===================================================*/
       #urlbar-input-container .textbox-contextmenu menuitem[cmd="cmd_undo"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/undo.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #urlbar-input-container .textbox-contextmenu menuitem[cmd="cmd_redo"] {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/redo.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/redo.svg");
         }
       }
       #urlbar-input-container .textbox-contextmenu menuitem[cmd="cmd_cut"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       #urlbar-input-container .textbox-contextmenu menuitem[cmd="cmd_copy"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-copy.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #strip-on-share {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/link-no-tracking.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/link-no-tracking.svg");
         }
       }
       #urlbar-input-container .textbox-contextmenu menuitem[cmd="cmd_paste"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #paste-and-go {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-paste-go.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/edit-paste-go.svg");
         }
       }
       #urlbar-input-container .textbox-contextmenu menuitem[cmd="cmd_delete"] {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
       }
       #urlbar-input-container .textbox-contextmenu menuitem[cmd="cmd_selectAll"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/select-all-on.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/select-all-on.svg");
       }
       /*= textbox-contextmenu ======================================================*/
       /* Browser's Searchbar, Library's Searchbar, Page Info */
       .textbox-contextmenu > menuitem[data-l10n-id="text-action-undo"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/undo.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         .textbox-contextmenu > menuitem[data-l10n-id="text-action-redo"] {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/redo.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/redo.svg");
         }
       }
       .textbox-contextmenu > menuitem[data-l10n-id="text-action-cut"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       .textbox-contextmenu > menuitem[data-l10n-id="text-action-copy"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-copy.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
       .textbox-contextmenu > menuitem[data-l10n-id="text-action-paste"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       .textbox-contextmenu > menuitem[data-l10n-id="text-action-delete"] {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
       }
       .textbox-contextmenu > menuitem[data-l10n-id="text-action-select-all"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/select-all-on.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/select-all-on.svg");
       }
       /* Only searchbar */
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         menuitem.searchbar-paste-and-search {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-paste-search.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/edit-paste-search.svg");
         }
       }
       menuitem.searchbar-clear-history {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/forget.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/forget.svg");
       }
       /*= context_sendTabToDevicePopupMenu =========================================*/
       .sync-menuitem.sendtab-target[clientType="phone"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/device-phone.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/device-phone.svg");
       }
       .sync-menuitem.sendtab-target[clientType="tablet"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/device-tablet.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/device-tablet.svg");
       }
       .sync-menuitem.sendtab-target[clientType="desktop"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/device-desktop.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/device-desktop.svg");
       }
       .sync-menuitem.sendtab-target[clientType="tv"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/device-tv.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/device-tv.svg");
       }
       .sync-menuitem.sendtab-target[clientType="vr"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/device-vr.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/device-vr.svg");
       }
       .sync-menuitem.sendtab-target[clientType=""] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/send-to-device.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/send-to-device.svg");
       }
       .sync-menuitem.sendtab-target:not([clientType]) {
         --menuitem-image: url("chrome://global/skin/icons/settings.svg");
@@ -13365,7 +13365,7 @@
       }
       /*= unified-extensions-context-menu ==========================================*/
       .unified-extensions-context-menu-pin-to-toolbar {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/pin-tab.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/pin-tab.svg");
       }
       .unified-extensions-context-menu-manage-extension {
         --menuitem-image: url("chrome://global/skin/icons/settings.svg");
@@ -13374,7 +13374,7 @@
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
       }
       .unified-extensions-context-menu-report-extension {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/send.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/send.svg");
       }
       /*= urlbarView-result-menu ===================================================*/
       .urlbarView-result-menuitem[data-command="dismiss"] {
@@ -13387,13 +13387,13 @@
     @supports -moz-bool-pref("userChrome.icon.global_menubar") {
       /*= main-menubar =============================================================*/
       #file-menu {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/mail-inbox-all.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/mail-inbox-all.svg");
       }
       #edit-menu {
         --menuitem-image: url("chrome://global/skin/icons/edit.svg");
       }
       #view-menu {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/content-view.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/content-view.svg");
       }
       #history-menu {
         --menuitem-image: url("chrome://browser/skin/history.svg");
@@ -13402,7 +13402,7 @@
         --menuitem-image: url("chrome://browser/skin/bookmark.svg");
       }
       #tools-menu {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/toolbox.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/toolbox.svg");
       }
       #helpMenu {
         --menuitem-image: url("chrome://global/skin/icons/help.svg");
@@ -13415,7 +13415,7 @@
         --menuitem-image: var(--uc-new-tab-icon);
       }
       #menu_newUserContext {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/container-openin-16.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/container-openin-16.svg");
       }
       #menu_newNavigator {
         --menuitem-image: url("chrome://browser/skin/window.svg");
@@ -13424,13 +13424,13 @@
         --menuitem-image: url("chrome://browser/skin/privateBrowsing.svg");
       }
       #menu_openFile {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/toolbarButton-upload.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/toolbarButton-upload.svg");
       }
       #menu_savePage {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/toolbarButton-download.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/toolbarButton-download.svg");
       }
       #menu_sendLink {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/mail.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/mail.svg");
       }
       menu.share-tab-url-item {
         --menuitem-image: url("chrome://browser/skin/share.svg");
@@ -13443,10 +13443,10 @@
       }
       #goOfflineMenuitem {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/plug-disconnected.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/plug-disconnected.svg");
       }
       #menu_FileQuitItem {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/quit.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/quit.svg");
       }
       /* Mange Containers */
       #menu_newUserContext menupopup menuitem:last-child {
@@ -13454,27 +13454,27 @@
       }
       /*= menu_EditPopup ===========================================================*/
       #menu_undo {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/undo.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #menu_redo {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/redo.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/redo.svg");
         }
       }
       #menu_cut {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       #menu_copy {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-copy.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
       #menu_paste {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       #menu_delete {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
       }
       #menu_selectAll {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/select-all-on.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/select-all-on.svg");
       }
       #menu_find {
         --menuitem-image: url("chrome://global/skin/icons/search-glass.svg");
@@ -13484,19 +13484,19 @@
       }
       /*= menu_viewPopup ===========================================================*/
       #viewToolbarsMenu {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/toolbar.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/toolbar.svg");
       }
       #viewSidebarMenuMenu {
         --menuitem-image: var(--uc-sidebar-icon);
       }
       #viewFullZoomMenu {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/screenshot.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/screenshot.svg");
       }
       #pageStyleMenu {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/document-css.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/document-css.svg");
       }
       #repair-text-encoding {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/characterEncoding.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/characterEncoding.svg");
       }
       #enterFullScreenItem {
         --menuitem-image: url("chrome://browser/skin/fullscreen.svg");
@@ -13515,7 +13515,7 @@
         --menuitem-image: var(--uc-tab-icon);
       }
       #documentDirection-swap {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/text-direction-horizontal-ltr.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/text-direction-horizontal-ltr.svg");
       }
       /* view-menu-popup sub menu */
       #menu_customizeToolbars {
@@ -13529,7 +13529,7 @@
         --menuitem-image: url("chrome://browser/skin/history.svg");
       }
       #menu_tabsSidebar {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/synced-tabs.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/synced-tabs.svg");
       }
       /* viewFullZoomMenu sub menu */
       #menu_zoomEnlarge {
@@ -13541,26 +13541,26 @@
         stroke: transparent !important;
       }
       #menu_zoomReset {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/resize.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/resize.svg");
       }
       #toggle_zoom {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/screenshot.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/screenshot.svg");
       }
       /*= goPopup ==================================================================*/
       #menu_showAllHistory {
         --menuitem-image: url("chrome://browser/skin/history.svg");
       }
       #sanitizeItem {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/forget.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/forget.svg");
       }
       #sync-tabs-menuitem {
         --menuitem-image: url("chrome://browser/skin/sync.svg");
       }
       #historyRestoreLastSession {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/restore-session.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/restore-session.svg");
       }
       #hiddenTabsMenu {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/eye-hide.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/eye-hide.svg");
       }
       #menu_searchHistory {
         --menuitem-image: url("chrome://global/skin/icons/search-glass.svg");
@@ -13573,10 +13573,10 @@
       }
       /* sub menu */
       #historyUndoPopup .restoreallitem {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/movetowindow-16.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/movetowindow-16.svg");
       }
       #historyUndoWindowPopup .restoreallitem {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/restore-session.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/restore-session.svg");
       }
       /*= bookmarksMenuPopup =======================================================*/
       #bookmarksShowAll {
@@ -13610,51 +13610,51 @@
       }
       #webDeveloperMenu,
       #browserToolsMenu {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/developer.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/developer.svg");
       }
       #menu_pageInfo {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/document-endnote.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/document-endnote.svg");
       }
       /* menuWebDeveloperPopup sub menu */
       #menu_devToolbox {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/developer.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/developer.svg");
       }
       #menu_taskManager {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/performance.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/performance.svg");
       }
       #menu_devtools_remotedebugging {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/bug.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/bug.svg");
       }
       #menu_browserToolbox {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/window-dev-tools.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/window-dev-tools.svg");
       }
       #menu_browserContentToolbox {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/command-frames.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/command-frames.svg");
       }
       #menu_browserConsole {
         --menuitem-image: url("chrome://devtools/skin/images/command-console.svg");
       }
       #menu_responsiveUI {
         /* checkbox */
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/command-responsivemode.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/command-responsivemode.svg");
       }
       #menu_eyedropper {
         /* checkbox */
         --menuitem-image: url("chrome://devtools/skin/images/command-eyedropper.svg");
       }
       #menu_pageSource {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/document-search.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/document-search.svg");
       }
       #extensionsForDevelopers {
         --menuitem-image: url("chrome://devtools/skin/images/debugging-addons.svg");
       }
       /*= windowPopup ==============================================================*/
       #windowPopup > menuitem[command="minimizeWindow"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/arrow-between-down.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/arrow-between-down.svg");
       }
       #windowPopup > menuitem[command="zoomWindow"] {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/auto-fit-width.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/auto-fit-width.svg");
       }
       /*= menu_HelpPopup ===========================================================*/
       #menu_openHelp {
@@ -13664,7 +13664,7 @@
         --menuitem-image: url("chrome://global/skin/icons/lightbulb.svg");
       }
       #feedbackPage {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/send.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/send.svg");
       }
       #helpSafeMode {
         --menuitem-image: url("chrome://devtools/skin/images/debugging-workers.svg");
@@ -13679,10 +13679,10 @@
         --menuitem-image: url("chrome://global/skin/icons/warning.svg");
       }
       #menu_HelpPopup_reportPhishingErrortoolmenu {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/checkmark-circle.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/checkmark-circle.svg");
       }
       #helpSwitchDevice {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/add-device.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/add-device.svg");
       }
       #aboutName {
         --menuitem-image: url("chrome://global/skin/icons/info.svg");
@@ -13697,30 +13697,30 @@
         --menuitem-image: var(--uc-folder-icon);
       }
       #newseparator {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/vertical-line.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/vertical-line.svg");
       }
       #orgUndo {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/undo.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/undo.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #orgRedo {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/redo.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/redo.svg");
         }
       }
       #orgCut {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-cut.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-cut.svg");
       }
       #orgCopy {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-copy.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-copy.svg");
       }
       #orgPaste {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/edit-paste.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/edit-paste.svg");
       }
       #orgDelete {
         --menuitem-image: url("chrome://global/skin/icons/delete.svg");
       }
       #orgSelectAll {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/select-all-on.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/select-all-on.svg");
       }
       #orgClose {
         --menuitem-image: url("chrome://global/skin/icons/close.svg");
@@ -13730,22 +13730,22 @@
         --menuitem-image: url("chrome://global/skin/icons/columnpicker.svg");
       }
       #viewSort {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/text-sort-ascending.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/text-sort-ascending.svg");
       }
       /*= maintenanceButtonPopup ===================================================*/
       #backupBookmarks {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/datastore.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/datastore.svg");
       }
       @supports -moz-bool-pref("userChrome.icon.menu.full") {
         #fileRestoreMenu {
-          --menuitem-image: url("chrome://floorp/skin/designs/lepton/datarestore.svg");
+          --menuitem-image: url("chrome://browser/skin/lepton/datarestore.svg");
         }
       }
       #fileImport {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/toolbarButton-download.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/toolbarButton-download.svg");
       }
       #fileExport {
-        --menuitem-image: url("chrome://floorp/skin/designs/lepton/toolbarButton-upload.svg");
+        --menuitem-image: url("chrome://browser/skin/lepton/toolbarButton-upload.svg");
       }
       #browserImport {
         --menuitem-image: url("chrome://browser/skin/import.svg");
@@ -13756,18 +13756,18 @@
   /*= Waterfox =================================================================*/
   @supports -moz-bool-pref("userChrome.icon.panel") {
     #appMenu-restart-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/refresh-cw.svg") !important;
+      list-style-image: url("chrome://browser/skin/lepton/refresh-cw.svg") !important;
     }
   }
   @supports -moz-bool-pref("userChrome.icon.menu") {
     #menu_FileRestartItem {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/refresh-cw.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/refresh-cw.svg");
     }
     #toggle_status-dummybar {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/pulse-square.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/pulse-square.svg");
     }
     menuitem.privatetab-icon {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/private-favicon.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/private-favicon.svg");
     }
   }
   /*= Tor Browser ==============================================================*/
@@ -13795,26 +13795,26 @@
   }
   /*= Floorp Browser ===========================================================*/
   #ssbPageAction-image {
-    list-style-image: url("chrome://floorp/skin/designs/lepton/pwa-install.svg");
+    list-style-image: url("chrome://browser/skin/lepton/pwa-install.svg");
   }
   #ssbPageAction-image[open-ssb="true"] {
-    list-style-image: url("chrome://floorp/skin/designs/lepton/pwa-launch.svg");
+    list-style-image: url("chrome://browser/skin/lepton/pwa-launch.svg");
   }
   @supports -moz-bool-pref("userChrome.icon.panel") {
     #rebootappmenu {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/refresh-cw.svg");
+      list-style-image: url("chrome://browser/skin/lepton/refresh-cw.svg");
     }
     #openprofiledir {
       list-style-image: var(--uc-folder-icon);
     }
     #appMenu-ssb-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/pwa-manage.svg");
+      list-style-image: url("chrome://browser/skin/lepton/pwa-manage.svg");
     }
     #appMenu-install-or-open-ssb-current-page-button {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/pwa-install.svg");
+      list-style-image: url("chrome://browser/skin/lepton/pwa-install.svg");
     }
     #appMenu-install-or-open-ssb-current-page-button[open-ssb="true"] {
-      list-style-image: url("chrome://floorp/skin/designs/lepton/pwa-launch.svg");
+      list-style-image: url("chrome://browser/skin/lepton/pwa-launch.svg");
     }
   }
   @supports -moz-bool-pref("userChrome.icon.menu") {
@@ -13822,10 +13822,10 @@
       --menuitem-image: url("chrome://branding/content/about-logo-private.png");
     }
     #usercssloader-menu {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/developer.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/developer.svg");
     }
     #usercssloader-menupopup > menu[data-l10n-id="css-menu"] {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/document-css.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/document-css.svg");
     }
     #usercssloader-submenupopup > menuitem[data-l10n-id="rebuild-css"] {
       --menuitem-image: url("chrome://global/skin/icons/reload.svg");
@@ -13844,10 +13844,10 @@
     }
     #context_toggleToPrivateContainer,
     #open_in_private_container {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/private-favicon.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/private-favicon.svg");
     }
     #toggle_statusBar {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/pulse-square.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/pulse-square.svg");
     }
     #muteMenu {
       --menuitem-image: url("chrome://browser/skin/tabbrowser/tab-audio-muted-small.svg");
@@ -13857,17 +13857,17 @@
       --menuitem-image: var(--uc-tab-unload-icon);
     }
     #changeUAWebpanelMenu {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/command-responsivemode.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/command-responsivemode.svg");
       fill-opacity: 0;
     }
     #deleteWebpanelMenu {
       --menuitem-image: url("chrome://global/skin/icons/delete.svg");
     }
     #run-ssb-contextmenu {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/pwa-launch.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/pwa-launch.svg");
     }
     #uninstall-ssb-contextmenu {
-      --menuitem-image: url("chrome://floorp/skin/designs/lepton/pwa-remove.svg");
+      --menuitem-image: url("chrome://browser/skin/lepton/pwa-remove.svg");
     }
   }
 }

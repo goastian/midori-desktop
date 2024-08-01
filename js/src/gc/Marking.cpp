@@ -1307,20 +1307,9 @@ bool GCMarker::doMarking(SliceBudget& budget, ShouldReportMarkTime reportTime) {
   return true;
 }
 
-class MOZ_RAII gc::AutoUpdateMarkStackRanges {
-  GCMarker& marker_;
-
- public:
-  explicit AutoUpdateMarkStackRanges(GCMarker& marker) : marker_(marker) {
-    marker_.updateRangesAtStartOfSlice();
-  }
-  ~AutoUpdateMarkStackRanges() { marker_.updateRangesAtEndOfSlice(); }
-};
-
 template <uint32_t opts, MarkColor color>
 bool GCMarker::markOneColor(SliceBudget& budget) {
   AutoSetMarkColor setColor(*this, color);
-  AutoUpdateMarkStackRanges updateRanges(*this);
 
   while (processMarkStackTop<opts>(budget)) {
     if (stack.isEmpty()) {
@@ -1332,8 +1321,6 @@ bool GCMarker::markOneColor(SliceBudget& budget) {
 }
 
 bool GCMarker::markCurrentColorInParallel(SliceBudget& budget) {
-  AutoUpdateMarkStackRanges updateRanges(*this);
-
   ParallelMarker::AtomicCount& waitingTaskCount =
       parallelMarker_->waitingTaskCountRef();
 
@@ -1352,26 +1339,6 @@ bool GCMarker::markCurrentColorInParallel(SliceBudget& budget) {
 
   return false;
 }
-
-#ifdef DEBUG
-bool GCMarker::markOneObjectForTest(JSObject* obj) {
-  MOZ_ASSERT(obj->zone()->isGCMarking());
-  MOZ_ASSERT(!obj->isMarked(markColor()));
-
-  size_t oldPosition = stack.position();
-  markAndTraverse<NormalMarkingOptions>(obj);
-  if (stack.position() == oldPosition) {
-    return false;
-  }
-
-  AutoUpdateMarkStackRanges updateRanges(*this);
-
-  SliceBudget unlimited = SliceBudget::unlimited();
-  processMarkStackTop<NormalMarkingOptions>(unlimited);
-
-  return true;
-}
-#endif
 
 static inline void CheckForCompartmentMismatch(JSObject* obj, JSObject* obj2) {
 #ifdef DEBUG
@@ -1399,47 +1366,6 @@ static inline size_t NumUsedDynamicSlots(NativeObject* obj) {
   return nslots - nfixed;
 }
 
-void GCMarker::updateRangesAtStartOfSlice() {
-  for (MarkStackIter iter(stack); !iter.done(); iter.next()) {
-    if (iter.isSlotsOrElementsRange()) {
-      MarkStack::SlotsOrElementsRange& range = iter.slotsOrElementsRange();
-      JSObject* obj = range.ptr().asRangeObject();
-      if (!obj->is<NativeObject>()) {
-        range.setEmpty();
-      } else if (range.kind() == SlotsOrElementsKind::Elements) {
-        NativeObject* obj = &range.ptr().asRangeObject()->as<NativeObject>();
-        size_t index = range.start();
-        size_t numShifted = obj->getElementsHeader()->numShiftedElements();
-        index -= std::min(numShifted, index);
-        range.setStart(index);
-      }
-    }
-  }
-
-#ifdef DEBUG
-  MOZ_ASSERT(!stack.elementsRangesAreValid);
-  stack.elementsRangesAreValid = true;
-#endif
-}
-
-void GCMarker::updateRangesAtEndOfSlice() {
-  for (MarkStackIter iter(stack); !iter.done(); iter.next()) {
-    if (iter.isSlotsOrElementsRange()) {
-      MarkStack::SlotsOrElementsRange& range = iter.slotsOrElementsRange();
-      if (range.kind() == SlotsOrElementsKind::Elements) {
-        NativeObject* obj = &range.ptr().asRangeObject()->as<NativeObject>();
-        size_t numShifted = obj->getElementsHeader()->numShiftedElements();
-        range.setStart(range.start() + numShifted);
-      }
-    }
-  }
-
-#ifdef DEBUG
-  MOZ_ASSERT(stack.elementsRangesAreValid);
-  stack.elementsRangesAreValid = false;
-#endif
-}
-
 template <uint32_t opts>
 inline bool GCMarker::processMarkStackTop(SliceBudget& budget) {
   /*
@@ -1453,7 +1379,6 @@ inline bool GCMarker::processMarkStackTop(SliceBudget& budget) {
    */
 
   MOZ_ASSERT(!stack.isEmpty());
-  MOZ_ASSERT(stack.elementsRangesAreValid);
   MOZ_ASSERT_IF(markColor() == MarkColor::Gray, !hasBlackEntries());
 
   JSObject* obj;             // The object being scanned.
@@ -1484,7 +1409,12 @@ inline bool GCMarker::processMarkStackTop(SliceBudget& budget) {
 
       case SlotsOrElementsKind::Elements: {
         base = nobj->getDenseElements();
-        end = nobj->getDenseInitializedLength();
+
+        // Account for shifted elements.
+        size_t numShifted = nobj->getElementsHeader()->numShiftedElements();
+        size_t initlen = nobj->getDenseInitializedLength();
+        index = std::max(index, numShifted) - numShifted;
+        end = initlen;
         break;
       }
 
@@ -1660,16 +1590,16 @@ struct MapTypeToMarkStackTag<BaseScript*> {
   static const auto value = MarkStack::ScriptTag;
 };
 
+#ifdef DEBUG
 static inline bool TagIsRangeTag(MarkStack::Tag tag) {
   return tag == MarkStack::SlotsOrElementsRangeTag;
 }
+#endif
 
 inline MarkStack::TaggedPtr::TaggedPtr(Tag tag, Cell* ptr)
     : bits(tag | uintptr_t(ptr)) {
   assertValid();
 }
-
-inline uintptr_t MarkStack::TaggedPtr::asBits() const { return bits; }
 
 inline uintptr_t MarkStack::TaggedPtr::tagUnchecked() const {
   return bits & TagMask;
@@ -1729,17 +1659,6 @@ inline SlotsOrElementsKind MarkStack::SlotsOrElementsRange::kind() const {
 
 inline size_t MarkStack::SlotsOrElementsRange::start() const {
   return startAndKind_ >> StartShift;
-}
-
-inline void MarkStack::SlotsOrElementsRange::setStart(size_t newStart) {
-  startAndKind_ = (newStart << StartShift) | uintptr_t(kind());
-  MOZ_ASSERT(start() == newStart);
-}
-
-inline void MarkStack::SlotsOrElementsRange::setEmpty() {
-  TaggedPtr entry = TaggedPtr(ObjectTag, ptr().asRangeObject());
-  ptr_ = entry;
-  startAndKind_ = entry.asBits();
 }
 
 inline MarkStack::TaggedPtr MarkStack::SlotsOrElementsRange::ptr() const {
@@ -2010,45 +1929,6 @@ inline void MarkStack::poisonUnused() {
 size_t MarkStack::sizeOfExcludingThis(
     mozilla::MallocSizeOf mallocSizeOf) const {
   return stack().sizeOfExcludingThis(mallocSizeOf);
-}
-
-MarkStackIter::MarkStackIter(MarkStack& stack)
-    : stack_(stack), pos_(stack.position()) {}
-
-inline size_t MarkStackIter::position() const { return pos_; }
-
-inline bool MarkStackIter::done() const { return position() == 0; }
-
-inline void MarkStackIter::next() {
-  if (isSlotsOrElementsRange()) {
-    MOZ_ASSERT(position() >= ValueRangeWords);
-    pos_ -= ValueRangeWords;
-    return;
-  }
-
-  MOZ_ASSERT(!done());
-  pos_--;
-}
-
-inline bool MarkStackIter::isSlotsOrElementsRange() const {
-  return TagIsRangeTag(peekTag());
-}
-
-inline MarkStack::Tag MarkStackIter::peekTag() const { return peekPtr().tag(); }
-
-inline MarkStack::TaggedPtr MarkStackIter::peekPtr() const {
-  MOZ_ASSERT(!done());
-  return stack_.stack()[pos_ - 1];
-}
-
-inline MarkStack::SlotsOrElementsRange& MarkStackIter::slotsOrElementsRange() {
-  MOZ_ASSERT(TagIsRangeTag(peekTag()));
-  MOZ_ASSERT(position() >= ValueRangeWords);
-
-  MarkStack::TaggedPtr* ptr = &stack_.stack()[pos_ - ValueRangeWords];
-  auto& range = *reinterpret_cast<MarkStack::SlotsOrElementsRange*>(ptr);
-  range.assertValid();
-  return range;
 }
 
 /*** GCMarker ***************************************************************/
@@ -2364,7 +2244,6 @@ void GCRuntime::processDelayedMarkingList(MarkColor color) {
   // were added.
 
   AutoSetMarkColor setColor(marker(), color);
-  AutoUpdateMarkStackRanges updateRanges(marker());
 
   do {
     delayedMarkingWorkAdded = false;

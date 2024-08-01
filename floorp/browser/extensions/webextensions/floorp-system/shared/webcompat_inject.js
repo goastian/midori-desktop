@@ -3,13 +3,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-{
+ {
   const FLOORP_WEBCOMPAT_ENABLED_PREF = "floorp.webcompat.enabled";
 
   const WEBCOMPATS_INJECTIONS = [
     {
-      /*description: "Twitter (X)'s direct messages doesn't work on Firefox/Floorp if user uses Meiryo font.*/
-      "matches": ["*://twitter.com/*", "*://x.com/*"],
+     /*bugs: https://github.com/Floorp-Projects/Floorp/issues/894"
+      description: "Twitter (X)'s direct messages doesn't work on Firefox/Floorp if user uses Meiryo font.*/
+      "matches": ["*://twitter.com/*"],
       "css": [
         { file: "webcompat/bug-894-twitter-com.css" }
       ],
@@ -18,8 +19,7 @@
 
 
     {
-      /*description: "YouTube is hanging on Firefox/Midori if YouTube uses VP9 codec.*/
-      "matches": ["*://www.youtube.com/*"],
+      "matches": ["*://www.youtube.com/*", "*://www.mauflix.xyx*"],
       "js": [
         { file: "webcompat/bug-1004-youtube-com.js" }
       ],

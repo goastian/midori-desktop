@@ -1241,7 +1241,7 @@ void HttpChannelChild::DoNotifyListener(bool aUseEventQueue) {
   }
   StoreOnStartRequestCalled(true);
 
-  if (aUseEventQueue) {
+    if (aUseEventQueue) {
     mEventQ->RunOrEnqueue(new NeckoTargetChannelFunctionEvent(
         this, [self = UnsafePtr<HttpChannelChild>(this)] {
           self->ContinueDoNotifyListener();

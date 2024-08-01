@@ -396,8 +396,7 @@ function initPage() {
       });
       longDesc = null;
 
-      document.getElementById("openInNewWindowContainer").hidden =
-        RPMGetBoolPref("security.xfocsp.hideOpenInNewWindow");
+      document.getElementById("openInNewWindowContainer").hidden = false;
 
       const openInNewWindowButton = document.getElementById(
         "openInNewWindowButton"

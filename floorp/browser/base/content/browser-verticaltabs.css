@@ -5,28 +5,28 @@
  */
 
 .toolbar-items {
-  height: 100% !important;
+  height: 100%;
 }
 
 #TabsToolbar {
-  max-width: 350px !important;
-  min-width: 150px !important;
-  transition :min-width 150ms ease-out, max-width 150ms ease-out !important;
-  overflow: hidden !important;
+  max-width: 350px;
+  min-width: 150px;
+  transition :min-width 150ms ease-out, max-width 150ms ease-out;
+  overflow: hidden;
 }
 
 #TabsToolbar:-moz-lwtheme {
-  background-image: var(--lwt-additional-images) !important;
-  background-repeat: no-repeat !important;
-  background-position: center !important;
-  background-size: cover !important;
-  background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color)) !important;
+  background-image: var(--lwt-additional-images);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color));
 }
 
 .tabbrowser-tab {
-  max-width: unset !important;
-  width: 100% !important;
-  min-height: unset !important;
+  max-width: unset;
+  width: 100%;
+  min-height: unset;
   height: 40px !important;
   max-height: 40px !important;
   margin: 0 !important;
@@ -46,36 +46,36 @@
 }
 
 #TabsToolbar-customization-target {
-  height: 100% !important;
-  max-height: 100% !important;
-  min-height: 100% !important;
-  flex-direction: column !important;
+  height: 100%;
+  max-height: 100%;
+  min-height: 100%;
+  flex-direction: column;
 }
 
 #TabsToolbar-customization-target > .toolbarbutton-1  {
   display: inherit !important;
   appearance: inherit !important;
-  border-radius: 5px !important;
-  height: 25px !important;
-  margin: 5px !important;
+  border-radius: 5px;
+  height: 25px;
+  margin: 5px;
   padding: 0 !important;
-  justify-content: flex-start!important;
+  justify-content: flex-start;
 }
 
 #TabsToolbar-customization-target > .toolbarbutton-1:hover {
-  background: var(--toolbarbutton-hover-background) !important;
-  color: inherit !important;
+  background: var(--toolbarbutton-hover-background);
+  color: inherit;
 }
 
 #TabsToolbar-customization-target > .toolbarbutton-1:active {
-  background: var(--toolbarbutton-active-background) !important;
-  color: inherit !important;
+  background: var(--toolbarbutton-active-background);
+  color: inherit;
 }
 
-/* Firefox View compatibility. Use "open" instead of open="true" */
+/* Firefox View compatibity. Use "open" instead of open="true" */
 #TabsToolbar-customization-target > .toolbarbutton-1[open] {
-  background-color: var(--toolbarbutton-active-background) !important;
-  color: inherit !important;
+  background-color: var(--toolbarbutton-active-background);
+  color: inherit;
 }
 
 #TabsToolbar-customization-target > .toolbarbutton-1 > .toolbarbutton-icon {
@@ -88,7 +88,7 @@
   background: none !important;
   background-color: unset !important;
   box-shadow: none !important;
-  padding: inherit !important;
+  padding: inherit;
 }
 
 #TabsToolbar-customization-target > .toolbarbutton-1 > .toolbarbutton-text {
@@ -99,11 +99,11 @@
 }
 
 .tab-label-container[pinned="true"]::after {
-  content: "Pinned" !important;
-  font-size: 8.5px !important;
-  margin-top: -3px !important;
-  color: var(--panel-description-color) !important;
-  font-weight: bold !important;
+  content: "Pinned";
+  font-size: 8.5px;
+  margin-top: -3px;
+  color: var(--panel-description-color);
+  font-weight: bold;
 }
 
 #TabsToolbar .toolbarbutton-1 > .toolbarbutton-text {
@@ -111,7 +111,7 @@
 }
 
 #tabbrowser-arrowscrollbox::part(scrollbutton-up), #tabbrowser-arrowscrollbox::part(scrollbutton-down) {
-  display: none !important;
+  display: none;
 }
 
 #TabsToolbar .toolbarbutton-icon {
@@ -123,7 +123,7 @@
 #tabbrowser-tabs {
   border-inline-start: none !important;
   padding-inline-start: 0 !important;
-  border-bottom: solid var(--toolbarseparator-color) 0.1px !important;
+  border-bottom: solid var(--toolbarseparator-color) 0.1px;
   padding-bottom: 0 !important;
   margin: 5px !important;
   margin-left: 2px !important;
@@ -167,7 +167,7 @@
 }
 
 #verticaltab-splitter {
-  background: var(--toolbar-bgcolor) !important;
+  background: var(--toolbar-bgcolor);
 }
 
 
@@ -180,23 +180,8 @@
 :is(:root[inDOMFullscreen],
 :root[inFullscreen]:not([macOSNativeFullscreen]),
 *|*:root[chromehidden~="toolbar"])
-#TabsToolbar,
-:is(:root[inDOMFullscreen],
-:root[inFullscreen]:not([macOSNativeFullscreen]),
-*|*:root[chromehidden~="toolbar"])
-#verticaltab-splitter {
-  display: none !important;
-  transition: opacity 0.3s ease-in-out !important;
+#TabsToolbar {
+  display: none;
+  transition: opacity 0.3s ease-in-out;
 }
 
-.tab-stack[class]::before ,#tabs-newtab-button[id]::before {
-  content: "";
-  display: inherit !important;
-  position: absolute;
-  top: 50%;
-  width: 1px;
-  height: 20px;
-  opacity: 0;
-  background-color: unset !important;
-  transform: translateX(var(--tab-separator-position-x)) translateY(var(--tab-separator-position-y));
-}

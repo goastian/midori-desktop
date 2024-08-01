@@ -1937,39 +1937,6 @@ static void FillArgumentArrayForJitExit(MacroAssembler& masm, Register instance,
   GenPrintf(DebugChannel::Import, masm, "\n");
 }
 
-static bool AddStackCheckForImportFunctionEntry(jit::MacroAssembler& masm,
-                                                unsigned reserve,
-                                                const FuncType& funcType,
-                                                StackMaps* stackMaps) {
-  std::pair<CodeOffset, uint32_t> pair =
-      masm.wasmReserveStackChecked(reserve, BytecodeOffset(0));
-
-  // Attempt to create stack maps for masm.wasmReserveStackChecked.
-  ArgTypeVector argTypes(funcType);
-  RegisterOffsets trapExitLayout;
-  size_t trapExitLayoutNumWords;
-  GenerateTrapExitRegisterOffsets(&trapExitLayout, &trapExitLayoutNumWords);
-  CodeOffset trapInsnOffset = pair.first;
-  size_t nBytesReservedBeforeTrap = pair.second;
-  size_t nInboundStackArgBytes = StackArgAreaSizeUnaligned(argTypes);
-  wasm::StackMap* stackMap = nullptr;
-  if (!CreateStackMapForFunctionEntryTrap(
-          argTypes, trapExitLayout, trapExitLayoutNumWords,
-          nBytesReservedBeforeTrap, nInboundStackArgBytes, &stackMap)) {
-    return false;
-  }
-
-  // In debug builds, we'll always have a stack map, even if there are no
-  // refs to track.
-  MOZ_ASSERT(stackMap);
-  if (stackMap &&
-      !stackMaps->add((uint8_t*)(uintptr_t)trapInsnOffset.offset(), stackMap)) {
-    stackMap->destroy();
-    return false;
-  }
-  return true;
-}
-
 // Generate a wrapper function with the standard intra-wasm call ABI which
 // simply calls an import. This wrapper function allows any import to be treated
 // like a normal wasm function for the purposes of exports and table calls. In
@@ -1981,7 +1948,7 @@ static bool GenerateImportFunction(jit::MacroAssembler& masm,
                                    const FuncImport& fi,
                                    const FuncType& funcType,
                                    CallIndirectId callIndirectId,
-                                   FuncOffsets* offsets, StackMaps* stackMaps) {
+                                   FuncOffsets* offsets) {
   AutoCreatedBy acb(masm, "wasm::GenerateImportFunction");
 
   AssertExpectedSP(masm);
@@ -1994,12 +1961,7 @@ static bool GenerateImportFunction(jit::MacroAssembler& masm,
       WasmStackAlignment,
       sizeof(Frame),  // pushed by prologue
       StackArgBytesForWasmABI(funcType) + sizeOfInstanceSlot);
-
-  if (!AddStackCheckForImportFunctionEntry(masm, framePushed, funcType,
-                                           stackMaps)) {
-    return false;
-  }
-
+  masm.wasmReserveStackChecked(framePushed, BytecodeOffset(0));
   MOZ_ASSERT(masm.framePushed() == framePushed);
 
   masm.storePtr(InstanceReg, Address(masm.getStackPointer(),
@@ -2063,8 +2025,7 @@ bool wasm::GenerateImportFunctions(const ModuleEnvironment& env,
     CallIndirectId callIndirectId = CallIndirectId::forFunc(env, funcIndex);
 
     FuncOffsets offsets;
-    if (!GenerateImportFunction(masm, fi, funcType, callIndirectId, &offsets,
-                                &code->stackMaps)) {
+    if (!GenerateImportFunction(masm, fi, funcType, callIndirectId, &offsets)) {
       return false;
     }
     if (!code->codeRanges.emplaceBack(funcIndex, /* bytecodeOffset = */ 0,

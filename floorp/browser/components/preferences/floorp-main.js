@@ -97,12 +97,6 @@ window.addEventListener(
     });
 
     document
-      .getElementById("backUpNotesOption")
-      .addEventListener("click", function () {
-        window.location.href = "about:preferences#notes";
-      });
-
-    document
       .getElementById("userjsOptionsButton")
       .addEventListener("click", function () {
         window.location.href = "about:preferences#userjs";
@@ -112,7 +106,7 @@ window.addEventListener(
       .getElementById("TabSleepSettings")
       .addEventListener("click", function () {
         gSubDialog.open(
-          "chrome://floorp/content/preferences/dialogs/tabsleep.xhtml",
+          "chrome://browser/content/preferences/dialogs/tabsleep.xhtml",
           undefined,
           undefined,
         );

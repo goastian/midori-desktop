@@ -351,6 +351,7 @@ void FontFaceImpl::DoLoad() {
   if (!CreateUserFontEntry()) {
     return;
   }
+
   mUserFontEntry->Load();
 }
 
@@ -676,7 +677,7 @@ bool FontFaceImpl::IsInFontFaceSet(FontFaceSetImpl* aFontFaceSet) const {
 void FontFaceImpl::AddFontFaceSet(FontFaceSetImpl* aFontFaceSet) {
   MOZ_ASSERT(!IsInFontFaceSet(aFontFaceSet));
 
-  auto doAddFontFaceSet = [&]() {
+    auto doAddFontFaceSet = [&]() {
     if (mFontFaceSet == aFontFaceSet) {
       mInFontFaceSet = true;
     } else {
@@ -702,6 +703,7 @@ void FontFaceImpl::RemoveFontFaceSet(FontFaceSetImpl* aFontFaceSet) {
       mOtherFontFaceSets.RemoveElement(aFontFaceSet);
     }
   };
+
 
   if (mUserFontEntry) {
     AutoWriteLock lock(mUserFontEntry->Lock());
@@ -841,13 +843,13 @@ void FontFaceImpl::Entry::FindFontFaceOwners(nsTHashSet<FontFace*>& aOwners) {
 }
 
 void FontFaceImpl::Entry::AddFontFace(FontFaceImpl* aFontFace) {
-  AutoWriteLock lock(mLock);
+  AutoReadLock lock(mLock);
   mFontFaces.AppendElement(aFontFace);
   CheckUserFontSetLocked();
 }
 
 void FontFaceImpl::Entry::RemoveFontFace(FontFaceImpl* aFontFace) {
-  AutoWriteLock lock(mLock);
+  AutoReadLock lock(mLock);
   mFontFaces.RemoveElement(aFontFace);
   CheckUserFontSetLocked();
 }

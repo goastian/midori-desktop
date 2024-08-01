@@ -7,7 +7,7 @@
 
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 let CustomKeyboardShortcutUtils = ChromeUtils.importESModule(
-  "chrome://floorp/content/modules/csk/CustomKeyboardShortcutUtils.mjs",
+  "resource:///modules/CustomKeyboardShortcutUtils.sys.mjs",
 );
 
 XPCOMUtils.defineLazyGetter(this, "L10n", () => {

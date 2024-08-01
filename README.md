@@ -88,7 +88,7 @@ sudo wget -O /etc/apt/trusted.gpg.d/midori-archive-keyring.gpg http://repo.astia
 
 ### 📧 Contact
 
-- [Official Support Site](https://help.astian.org)
+- [Official Support Site](https://astian.org/community)
 
 - [Official Astian Twitter](https://twitter.com/grupoastian)
 

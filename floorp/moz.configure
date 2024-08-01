@@ -4,13 +4,15 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# It is disabled by default. To enable it, use the --enable-private-components
-# This option nerver used. Due to Re-Open-sourced from "Source Available"
-option(
-    "--enable-private-components",
-    default=False,
-    help="Nothing to do. Do not use this option",
-)
+## Add Floorp build options
 
-set_config("FLOORP_OFFICIAL_COMPONENTS_ENABLED", True, when="--enable-private-components")
-set_define("FLOORP_OFFICIAL_COMPONENTS_ENABLED", True, when="--enable-private-components")
+# Example of adding a new option
+
+# option(
+#     "--enable-lightning-build",
+#     default=False,
+#     help="Enable Lightning build: Remove some components & features",
+#  )
+
+#  set_config("FLOORP_LIGHTNING_BUILD", True, when="--enable-lightning-build")
+#  set_define("FLOORP_LIGHTNING_BUILD", True, when="--enable-lightning-build")

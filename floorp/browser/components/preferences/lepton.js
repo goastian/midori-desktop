@@ -14,7 +14,7 @@ XPCOMUtils.defineLazyGetter(this, "L10n", () => {
 });
 
 Preferences.addAll([
-  //select lepton mode ( 1 = photon, 2 = lepton, 3 = protonfix )
+  //select lepton mode ( Obsert the below 1 or 2 Mode will Select Lepton or Photon )
   { id: "floorp.lepton.interface", type: "int" },
 
   //auto hide

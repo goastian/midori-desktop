@@ -13211,7 +13211,7 @@
 # false - Do not send header to indicate opting-in
 - name: privacy.globalprivacycontrol.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 # Controls whether or not GPC signals are sent. Meant to act as a third option
@@ -13219,7 +13219,7 @@
 # the Sec-GPC HTTP header.
 - name: privacy.globalprivacycontrol.functionality.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 # Lower the priority of network loads for resources on the tracking protection

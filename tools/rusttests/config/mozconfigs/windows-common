@@ -1,2 +1,0 @@
-. "$topsrcdir/build/mozconfig.win-common"
-. "$topsrcdir/tools/rusttests/config/mozconfigs/common"

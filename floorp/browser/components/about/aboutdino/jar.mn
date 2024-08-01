@@ -2,11 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-midori.jar:
-% content midori %content/ contentaccessible=yes
+browser.jar:
+% skin browser classic/1.0 %skin/classic/browser/
 
-  content/dino/dino.js
-  content/dino/index.css
-  content/dino/dino.html
-  content/dino/100-offline-sprite.png
-  content/dino/200-offline-sprite.png
+  skin/classic/browser/dino.js                                 (dino.js)
+  skin/classic/browser/index.css                               (index.css)
+  skin/classic/browser/dino.html                               (dino.html)
+  skin/classic/browser/100-offline-sprite.png                  (100-offline-sprite.png)
+  skin/classic/browser/200-offline-sprite.png                  (200-offline-sprite.png)

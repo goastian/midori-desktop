@@ -24,21 +24,24 @@ class nsTransportEventSinkProxy : public nsITransportEventSink {
   nsTransportEventSinkProxy(nsITransportEventSink* sink, nsIEventTarget* target)
       : mSink(sink),
         mTarget(target),
-        mLock("nsTransportEventSinkProxy.mLock") {}
+        mLock("nsTransportEventSinkProxy.mLock"),
+        mLastEvent(nullptr) {
+    NS_ADDREF(mSink);
+  }
 
  private:
   virtual ~nsTransportEventSinkProxy() {
     // our reference to mSink could be the last, so be sure to release
     // it on the target thread.  otherwise, we could get into trouble.
     NS_ProxyRelease("nsTransportEventSinkProxy::mSink", mTarget,
-                    mSink.forget());
+                    dont_AddRef(mSink));
   }
 
  public:
-  nsCOMPtr<nsITransportEventSink> mSink;
+  nsITransportEventSink* mSink;
   nsCOMPtr<nsIEventTarget> mTarget;
   Mutex mLock MOZ_UNANNOTATED;
-  RefPtr<nsTransportStatusEvent> mLastEvent;
+  nsTransportStatusEvent* mLastEvent;
 };
 
 class nsTransportStatusEvent : public Runnable {
@@ -66,14 +69,11 @@ class nsTransportStatusEvent : public Runnable {
     // if not coalescing all, then last event may not equal self!
     {
       MutexAutoLock lock(mProxy->mLock);
-      if (mProxy->mLastEvent == this) {
-        mProxy->mLastEvent = nullptr;
-      }
+      if (mProxy->mLastEvent == this) mProxy->mLastEvent = nullptr;
     }
 
     mProxy->mSink->OnTransportStatus(mTransport, mStatus, mProgress,
                                      mProgressMax);
-    mProxy = nullptr;
     return NS_OK;
   }
 
