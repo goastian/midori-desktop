@@ -68,9 +68,6 @@ Icon=${iconFile.path}`
    * @param {SiteSpecificBrowser} ssb the SSB to uninstall.
    */
   async uninstall(ssb) {
-    if (!SiteSpecificBrowserService.useOSIntegration) {
-      return;
-    }
 
     try {
       let applicationDir = "~/.local/share/applications";
@@ -78,7 +75,7 @@ Icon=${iconFile.path}`
         applicationDir,
         `midori-${ssb.name}-${ssb.id}.desktop`
       );
-      await IOUtils.removeFile(desktopFile);
+      await IOUtils.remove(desktopFile);
     } catch (e) {
       console.error(e);
     }
