@@ -933,10 +933,10 @@ void LoadInfoToParentLoadInfoForwarder(
       aLoadInfo->GetServiceWorkerTaintingSynthesized(),
       aLoadInfo->GetDocumentHasUserInteracted(),
       aLoadInfo->GetAllowListFutureDocumentsCreatedFromThisRedirectChain(),
-      cookieJarSettingsArgs, aLoadInfo->GetRequestBlockingReason(),
-      aLoadInfo->GetStoragePermission(), aLoadInfo->GetIsMetaRefresh(),
-      isThirdPartyContextToTopWindow, aLoadInfo->GetIsInThirdPartyContext(),
-      unstrippedURI);
+      cookieJarSettingsArgs, aLoadInfo->GetContainerFeaturePolicyInfo(),
+      aLoadInfo->GetRequestBlockingReason(), aLoadInfo->GetStoragePermission(),
+      aLoadInfo->GetIsMetaRefresh(), isThirdPartyContextToTopWindow,
+      aLoadInfo->GetIsInThirdPartyContext(), unstrippedURI);
 }
 
 nsresult MergeParentLoadInfoForwarder(
