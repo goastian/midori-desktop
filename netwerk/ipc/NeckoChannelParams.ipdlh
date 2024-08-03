@@ -15,6 +15,7 @@ include DOMTypes;
 include ProtocolTypes;
 
 include "mozilla/dom/FetchIPCTypes.h";
+include "mozilla/dom/FeaturePolicyUtils.h";
 include "mozilla/dom/PropertyBagUtils.h";
 include "mozilla/dom/ReferrerInfoUtils.h";
 include "mozilla/ipc/URIUtils.h";
