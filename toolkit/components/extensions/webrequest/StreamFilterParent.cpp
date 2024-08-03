@@ -119,14 +119,9 @@ auto StreamFilterParent::Create(dom::ContentParent* aContentParent,
 
   auto& webreq = WebRequestService::GetSingleton();
 
-  RefPtr<extensions::WebExtensionPolicy> addonPolicy =
-      ExtensionPolicyService::GetSingleton().GetByID(aAddonId);
-
-  if (!addonPolicy) {
-    return ChildEndpointPromise::CreateAndReject(false, __func__);
-  }
+  RefPtr<nsAtom> addonId = NS_Atomize(aAddonId);
   nsCOMPtr<nsITraceableChannel> channel =
-      webreq.GetTraceableChannel(aChannelId, *addonPolicy, aContentParent);
+      webreq.GetTraceableChannel(aChannelId, addonId, aContentParent);
 
   RefPtr<mozilla::net::nsHttpChannel> chan = do_QueryObject(channel);
   if (!chan) {
@@ -135,10 +130,15 @@ auto StreamFilterParent::Create(dom::ContentParent* aContentParent,
 
   nsCOMPtr<nsIChannel> genChan(do_QueryInterface(channel));
   if (!StaticPrefs::extensions_filterResponseServiceWorkerScript_disabled() &&
-      ChannelWrapper::IsServiceWorkerScript(genChan) &&
-      !addonPolicy->HasPermission(
-          nsGkAtoms::webRequestFilterResponse_serviceWorkerScript)) {
-    return ChildEndpointPromise::CreateAndReject(false, __func__);
+      ChannelWrapper::IsServiceWorkerScript(genChan)) {
+    RefPtr<extensions::WebExtensionPolicy> addonPolicy =
+        ExtensionPolicyService::GetSingleton().GetByID(aAddonId);
+
+    if (!addonPolicy ||
+        !addonPolicy->HasPermission(
+            nsGkAtoms::webRequestFilterResponse_serviceWorkerScript)) {
+      return ChildEndpointPromise::CreateAndReject(false, __func__);
+    }
   }
 
   // Disable alt-data for extension stream listeners.
