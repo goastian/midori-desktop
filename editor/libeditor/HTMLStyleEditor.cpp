@@ -2200,17 +2200,15 @@ HTMLEditor::SplitAncestorStyledInlineElementsAt(
               element->GetParsedAttr(aStyle.mAttribute);
           if (attrValue) {
             if (aStyle.mAttribute == nsGkAtoms::size) {
-              if (attrValue->Type() == nsAttrValue::eInteger &&
-                  nsContentUtils::ParseLegacyFontSize(
+              if (nsContentUtils::ParseLegacyFontSize(
                       aStyle.AsInlineStyleAndValue().mAttributeValue) ==
-                      attrValue->GetIntegerValue()) {
+                  attrValue->GetIntegerValue()) {
                 continue;
               }
             } else if (aStyle.mAttribute == nsGkAtoms::color) {
               nsAttrValue newValue;
               nscolor oldColor, newColor;
-              if (attrValue->Type() == nsAttrValue::eColor &&
-                  attrValue->GetColorValue(oldColor) &&
+              if (attrValue->GetColorValue(oldColor) &&
                   newValue.ParseColor(
                       aStyle.AsInlineStyleAndValue().mAttributeValue) &&
                   newValue.GetColorValue(newColor) && oldColor == newColor) {
@@ -3678,7 +3676,7 @@ nsresult HTMLEditor::RemoveInlinePropertiesAsSubAction(
       // cases.
       FlushAndStopTrackingAndShrinkSelectionRange();
     }  // for-loop of selectionRanges
-  }  // for-loop of styles
+  }    // for-loop of styles
 
   MOZ_ASSERT(!selectionRanges.HasSavedRanges());
   nsresult rv = selectionRanges.ApplyTo(SelectionRef());
