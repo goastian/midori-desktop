@@ -18,7 +18,7 @@ add_task(async function test_getSecurityInfo() {
       permissions: [
         "webRequest",
         "webRequestBlocking",
-        "*://example.org/*"
+        "<all_urls>"
       ],
     },
     async background() {
@@ -92,6 +92,7 @@ add_task(async function test_getSecurityInfo() {
   await extension.unload();
 });
 
+<<<<<<< HEAD
 add_task(async function test_getSecurityInfo_without_permission() {
   const extension = ExtensionTestUtils.loadExtension({
     temporarilyInstalled: true, // Needed for granted_host_permissions
@@ -148,6 +149,8 @@ add_task(async function test_getSecurityInfo_without_permission() {
   await extension.unload();
 });
 
+=======
+>>>>>>> parent of 46a6b702a9 ( Bug 1909298 - Test webRequest.getSecurityInfo() without permission r=…)
 </script>
 
 </body>
