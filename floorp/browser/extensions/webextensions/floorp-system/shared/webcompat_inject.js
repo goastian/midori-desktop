@@ -19,7 +19,7 @@
 
 
     {
-      "matches": ["*://www.youtube.com/*", "*://www.mauflix.xyx*"],
+      "matches": ["*://www.youtube.com/*"],
       "js": [
         { file: "webcompat/bug-1004-youtube-com.js" }
       ],
