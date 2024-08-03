@@ -538,15 +538,18 @@ static bool HasCatchableException(JitActivation* activation, JSContext* cx,
   return false;
 }
 
-// Unwind the activation in response to a thrown exception. This function is
-// responsible for notifying the debugger of each unwound frame.
+// Unwind the entire activation in response to a thrown exception. This function
+// is responsible for notifying the debugger of each unwound frame. The return
+// value is the new stack address which the calling stub will set to the sp
+// register before executing a return instruction.
 //
-// This function will look for try-catch handlers and, if not trapping or
-// throwing an uncatchable exception, will write the handler info in |*rfe|.
+// This function will also look for try-catch handlers and, if not trapping or
+// throwing an uncatchable exception, will write the handler info in the return
+// argument and return true.
 //
-// If no try-catch handler is found, initialize |*rfe| for a return to the entry
-// frame that called into Wasm.
-void wasm::HandleThrow(JSContext* cx, WasmFrameIter& iter,
+// Returns false if a handler isn't found or shouldn't be used (e.g., traps).
+
+bool wasm::HandleThrow(JSContext* cx, WasmFrameIter& iter,
                        jit::ResumeFromException* rfe) {
   // WasmFrameIter iterates down wasm frames in the activation starting at
   // JitActivation::wasmExitFP(). Calling WasmFrameIter::startUnwinding pops
@@ -612,7 +615,7 @@ void wasm::HandleThrow(JSContext* cx, WasmFrameIter& iter,
           activation->finishWasmTrap();
         }
 
-        return;
+        return true;
       }
     }
 
@@ -658,6 +661,7 @@ void wasm::HandleThrow(JSContext* cx, WasmFrameIter& iter,
   rfe->stackPointer = (uint8_t*)iter.unwoundAddressOfReturnAddress();
   rfe->instance = (Instance*)FailInstanceReg;
   rfe->target = nullptr;
+  return false;
 }
 
 static void* WasmHandleThrow(jit::ResumeFromException* rfe) {
