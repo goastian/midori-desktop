@@ -16,6 +16,7 @@
 #include "vm/JitActivation.h"  // js::jit::JitActivation
 #include "vm/JSContext.h"
 #include "vm/StringType.h"
+#include "wasm/WasmStubs.h"
 
 #include "jit/MacroAssembler-inl.h"
 
@@ -559,10 +560,7 @@ void MacroAssemblerX64::handleFailureWithHandlerTail(Label* profilerExitTail,
   // If we found a catch handler, this must be a baseline frame. Restore state
   // and jump to the catch block.
   bind(&catch_);
-  loadPtr(Address(rsp, ResumeFromException::offsetOfTarget()), rax);
-  loadPtr(Address(rsp, ResumeFromException::offsetOfFramePointer()), rbp);
-  loadPtr(Address(rsp, ResumeFromException::offsetOfStackPointer()), rsp);
-  jmp(Operand(rax));
+  wasm::GenerateJumpToCatchHandler(asMasm(), rsp, rax, rbx);
 
   // If we found a finally block, this must be a baseline frame. Push two
   // values expected by the finally block: the exception and BooleanValue(true).

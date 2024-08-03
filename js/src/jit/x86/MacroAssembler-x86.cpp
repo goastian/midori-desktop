@@ -563,10 +563,7 @@ void MacroAssemblerX86::handleFailureWithHandlerTail(Label* profilerExitTail,
   // If we found a catch handler, this must be a baseline frame. Restore state
   // and jump to the catch block.
   bind(&catch_);
-  loadPtr(Address(esp, ResumeFromException::offsetOfTarget()), eax);
-  loadPtr(Address(esp, ResumeFromException::offsetOfFramePointer()), ebp);
-  loadPtr(Address(esp, ResumeFromException::offsetOfStackPointer()), esp);
-  jmp(Operand(eax));
+  wasm::GenerateJumpToCatchHandler(asMasm(), esp, eax, ebx);
 
   // If we found a finally block, this must be a baseline frame. Push two
   // values expected by the finally block: the exception and BooleanValue(true).
