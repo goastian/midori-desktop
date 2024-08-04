@@ -227,8 +227,6 @@
    setVerticalTabs() {
      if (Services.prefs.getIntPref("floorp.tabbar.style") == 2) {
        this.enableVerticalTabBar();
-     } else {
-       this.disableVerticalTabBar();
      }
    },
  

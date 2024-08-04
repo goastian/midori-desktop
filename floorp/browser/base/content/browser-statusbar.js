@@ -101,8 +101,8 @@ const gFloorpStatusBar = {
     const toggleElement = document.getElementById("toggle_statusBar");
     toggleElement.setAttribute("checked", String(checked));
 
-    const showOrHide = checked ? this.showStatusbar : this.hideStatusbar;
-    showOrHide();
+    // show/hide statusbar
+    checked ? gFloorpStatusBar.showStatusbar() : gFloorpStatusBar.hideStatusbar();
   },
 
   handlePrefChange() {
