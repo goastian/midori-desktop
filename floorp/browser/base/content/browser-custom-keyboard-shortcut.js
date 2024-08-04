@@ -32,7 +32,7 @@ const buildShortCutkeyFunctions = {
         false,
       )
     ) {
-      SessionStore.promiseInitialized.then(() => {
+      window.SessionStore.promiseInitialized.then(() => {
         buildShortCutkeyFunctions.disableAllCustomKeyShortcut();
         console.info("Remove already exist shortcut keys");
       });
@@ -150,3 +150,21 @@ let customActionsFunctions = {
 };
 
 buildShortCutkeyFunctions.init();
+
+/** 
+ * Midori's custom functions used for CSK
+ * If you need add actions for CSK, you can add it here.
+ */
+
+const floorpCustomCSKActions = {
+  PictureInPicture: {
+    // PictureInPicture.onCommand only works if browser is focused.
+    // So, we need to focus the browser window after calling PictureInPicture.onCommand.
+    togglePictureInPicture(event) {
+      window.PictureInPicture.onCommand(event);
+      window.setTimeout(() => {
+        window.focus();
+      }, 500);
+    }
+  }
+}
