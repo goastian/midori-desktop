@@ -22,7 +22,6 @@ document.addEventListener("DOMContentLoaded", () => {
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-preferences.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-pageActions-floorp.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-private-container.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-statusbar.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-custom-keyboard-shortcut.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-downloadbar.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-favicon-color.js", this);
@@ -36,6 +35,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     //Lightning Build
     SessionStore.promiseInitialized.then(() => {
+        Services.scriptloader.loadSubScript("chrome://browser/content/browser-statusbar.js", this);
         Services.scriptloader.loadSubScript("chrome://browser/content/browser-onlocation-change.js", this);
         Services.scriptloader.loadSubScript("chrome://browser/content/browser-UI-customizing-menu.js", this);
         Services.scriptloader.loadSubScript("chrome://browser/content/browser-tabbar.js", this);
