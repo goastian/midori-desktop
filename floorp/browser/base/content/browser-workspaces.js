@@ -932,14 +932,6 @@ var gWorkspaces = {
       return;
     }
 
-    // Add toolbar popup for context menu
-    gFloorpContextMenu.addToolbarContentMenuPopupSet(
-    `<popupset>
-    <menupopup id="workspaces-toolbar-item-context-menu" onpopupshowing="gWorkspaces.contextMenu.createWorkspacesContextMenuItems(event);" />
-    </popupset>
-          `
-    );
-
     if (Services.prefs.getBoolPref(workspacesPreferences.WORKSPACES_ENABLED_PREF)) {
       let isWebpanelWindow = window.location.toString().split("?")[1];
       let isSsWindow = window.floorpSsbWindow
