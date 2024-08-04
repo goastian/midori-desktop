@@ -8,7 +8,7 @@
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   WorkspacesExternalFileService:
-  "resource:///modules/WorkspacesExternalFileService.sys.mjs",
+    "resource:///modules/WorkspacesExternalFileService.sys.mjs",
 });
 
 export const WorkspacesWindowIdUtils = {

@@ -1,11 +1,6 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+import { WorkspacesWindowIdUtils } from "resource:///modules/WorkspacesWindowIdUtils.sys.mjs";
 
- import { WorkspacesWindowIdUtils } from "resource:///modules/WorkspacesWindowIdUtils.sys.mjs";
-
- export const EXPORTED_SYMBOLS = ["WorkspacesElementService"];
+export const EXPORTED_SYMBOLS = ["WorkspacesElementService"];
 
 export const WorkspacesElementService = {
   panelElement: `<panel id="workspacesToolbarButtonPanel" type="arrow" position="bottom top">

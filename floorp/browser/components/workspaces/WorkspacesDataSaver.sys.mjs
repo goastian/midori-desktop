@@ -59,7 +59,11 @@ export const WorkspacesDataSaver = {
    */
   async saveWorkspaceData(workspaceData, windowId) {
     let json = await IOUtils.readJSON(this._workspacesStoreFile);
-    json.windows[windowId].workspaces[workspaceData.id] = workspaceData;
+    if (!json.windows[windowId]) {
+      json.windows[windowId] = {};
+    }
+
+    json.windows[windowId][workspaceData.id] = workspaceData;
 
     await IOUtils.writeJSON(this._workspacesStoreFile, json);
   },

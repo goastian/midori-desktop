@@ -1,16 +1,13 @@
-/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
- export const EXPORTED_SYMBOLS = ["WorkspacesIdUtils"];
+export const EXPORTED_SYMBOLS = ["WorkspacesIdUtils"];
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   WorkspacesExternalFileService:
-  "resource:///modules/WorkspacesExternalFileService.sys.mjs",
+    "resource:///modules/WorkspacesExternalFileService.sys.mjs",
   WorkspacesWindowIdUtils:
-  "resource:///modules/WorkspacesWindowIdUtils.sys.mjs",
+    "resource:///modules/WorkspacesWindowIdUtils.sys.mjs",
   WorkspacesDataSaver: "resource:///modules/WorkspacesDataSaver.sys.mjs",
   PrivateContainer: "resource:///modules/PrivateContainer.sys.mjs",
 });
@@ -45,7 +42,6 @@ export const WorkspacesIdUtils = {
       return lazy.PrivateContainer.Functions.getPrivateContainerUserContextId();
     }
 
-    
     return workspace.userContextId;
   },
 
