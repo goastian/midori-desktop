@@ -80,6 +80,7 @@ export const keyboradShortcutActions = {
     zoomIn: ["FullZoom.enlarge()", "zoom-in", "visible-action"],
     zoomOut: ["FullZoom.reduce()", "zoom-out", "visible-action"],
     resetZoom: ["FullZoom.reset()", "reset-zoom", "visible-action"],
+    hideInterface: [`hideUserInterface()`, "hide-user-interface", "visible-action"],
 
     // History actions
     back: ["BrowserBack()", "back", "history-action"],
