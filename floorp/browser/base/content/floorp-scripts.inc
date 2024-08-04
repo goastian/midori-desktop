@@ -24,13 +24,9 @@ document.addEventListener("DOMContentLoaded", () => {
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-private-container.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-statusbar.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-custom-keyboard-shortcut.js", this);
-    import("chrome://browser/content/browser-downloadbar.mjs").then(({ gFloorpLegacyStyleDownloadBar }) => {
-        window.gFloorpLegacyStyleDownloadBar = gFloorpLegacyStyleDownloadBar
-    });
+    Services.scriptloader.loadSubScript("chrome://browser/content/browser-downloadbar.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-favicon-color.js", this);
-    import("chrome://browser/content/browser-UI-custom.mjs").then(({ observePreference }) => {
-        window.observePreference = observePreference
-    });
+    Services.scriptloader.loadSubScript("chrome://browser/content/browser-UI-custom.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-splitView.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-browserActions.js", this);
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-pinned-tabs-title.js", this);
