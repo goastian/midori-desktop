@@ -842,11 +842,6 @@ var gWorkspaces = {
       this.rebuildWorkspacesToolbar();
     }
 
-    // Get Current Window Id
-    let windowId = gWorkspaces.getCurrentWindowId();
-    // Remove all tab infomation from json
-    await WorkspacesIdUtils.removeWindowTabsDataById(windowId);
-
     // Get Current Workspace & Workspace Id
     let currentWorkspaceId = await gWorkspaces.getCurrentWorkspaceId();
     let workspacesCount = await gWorkspaces.getCurrentWorkspacesCount();
