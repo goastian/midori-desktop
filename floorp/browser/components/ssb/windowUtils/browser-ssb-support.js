@@ -47,6 +47,10 @@ let gSsbSupport = {
     return document.getElementById("identity-box");
   },
 
+  get mainWindow() {
+    return document.getElementById("main-window");
+  },
+
   get disableToolbar() {
     return Services.prefs.getBoolPref(
       "floorp.browser.ssb.toolbars.disabled",
@@ -79,6 +83,12 @@ let gSsbSupport = {
   },
 
   async init() {
+    if (this._initialized) {
+      return;
+    }
+
+    // Remove "navigator:browser" from window-main attribute
+    this.mainWindow.setAttribute("windowtype", "navigator:ssb-window");
     let styleElement = document.createElement("style");
     styleElement.id = "ssb-support";
     styleElement.textContent = `@import url("chrome://browser/content/browser-ssb-support.css");`;
