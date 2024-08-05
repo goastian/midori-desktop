@@ -908,6 +908,9 @@ var gBrowserManagerSidebar = {
     },
 
     toggleBMSShortcut() {
+      if (!Services.prefs.getBoolPref("floorp.browser.sidebar.enable")) {
+        return;
+      }
       if (gBrowserManagerSidebar.currentPanel == null) {
         gBrowserManagerSidebar.currentPanel = gBrowserManagerSidebar.BROWSER_SIDEBAR_DATA.index[0];
         gBrowserManagerSidebar.controllFunctions.visibleWebpanel();
