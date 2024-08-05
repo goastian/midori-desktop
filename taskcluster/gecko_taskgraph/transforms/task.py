@@ -1854,6 +1854,16 @@ def set_task_and_artifact_expiry(config, jobs):
     These values are read from ci/config.yml
     """
     now = datetime.datetime.utcnow()
+    if cap:
+        for policy, expires in config.graph_config["expiration-policy"]["by-project"][
+            "try"
+        ].items():
+            if fromNow(expires, now) > cap_from_now:
+                raise Exception(
+                    f'expiration-policy "{policy}" is larger than {cap} '
+                    f'for {config.params["project"]}'
+                )
+
     for job in jobs:
         expires = get_expiration(config, job.get("expiration-policy", "default"))
         job_expiry = job.setdefault("expires-after", expires)
