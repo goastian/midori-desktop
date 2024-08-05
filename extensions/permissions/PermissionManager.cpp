@@ -3744,12 +3744,6 @@ PermissionManager::CommonPrepareToTestPermission(
   if (!aDefaultPermissionIsValid && HasDefaultPref(aType)) {
     Unused << mDefaultPrefBranch->GetIntPref(PromiseFlatCString(aType).get(),
                                              &defaultPermission);
-
-  if (defaultPermission < 0 ||
-        defaultPermission > nsIPermissionManager::MAX_VALID_ACTION) {
-      defaultPermission = nsIPermissionManager::UNKNOWN_ACTION;
-  }
-
   }
 
   // Set the default.
