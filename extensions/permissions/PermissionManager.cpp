@@ -2081,24 +2081,6 @@ PermissionManager::RemoveAllSince(int64_t aSince) {
   return RemoveAllModifiedSince(aSince);
 }
 
-NS_IMETHODIMP
-PermissionManager::RemoveAllExceptTypes(
-    const nsTArray<nsCString>& aTypeExceptions) {
-  ENSURE_NOT_CHILD_PROCESS;
-
-  // Need to make sure read is done before we get the type index. Type indexes
-  // are populated from DB.
-  EnsureReadCompleted();
-
-  if (aTypeExceptions.IsEmpty()) {
-    return RemoveAllInternal(true);
-  }
-
-  return RemovePermissionEntries([&](const PermissionEntry& aPermEntry) {
-    return !aTypeExceptions.Contains(mTypeArray[aPermEntry.mType]);
-  });
-}
-
 template <class T>
 nsresult PermissionManager::RemovePermissionEntries(T aCondition) {
   EnsureReadCompleted();

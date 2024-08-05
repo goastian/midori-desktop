@@ -197,10 +197,7 @@ class PermissionManager final : public nsIPermissionManager,
       nsIURI* aURI, const OriginAttributes* aOriginAttributes,
       const nsACString& aType, uint32_t* aPermission);
 
-  nsresult RemovePermissionsWithAttributes(
-      OriginAttributesPattern& aPattern,
-      const nsTArray<nsCString>& aTypeInclusions = {},
-      const nsTArray<nsCString>& aTypeExceptions = {});
+  nsresult RemovePermissionsWithAttributes(OriginAttributesPattern& aAttrs);
 
   /**
    * See `nsIPermissionManager::GetPermissionsWithKey` for more info on
