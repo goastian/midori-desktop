@@ -444,7 +444,8 @@ browser.jar:
   skin/classic/browser/home-m.svg                              (icons/home-m.svg)
   skin/classic/browser/sync-m.svg                              (icons/sync-m.svg)
   skin/classic/browser/security-m.svg                          (icons/security-m.svg)
-  skin/classic/browser/floorp.png                              (icons/floorp.png)
+  skin/classic/browser/midori.png                              (icons/midori.png)
+  skin/classic/browser/midori.svg                              (icons/midori.svg)
   skin/classic/browser/default.png                             (icons/default.png)
   skin/classic/browser/notdefault.png                          (icons/notdefault.png)
   skin/classic/browser/circle.svg                              (icons/circle.svg)
@@ -525,10 +526,6 @@ browser.jar:
   skin/classic/browser/design-images/firefox-proton-white.jpg               (design-images/firefox-proton-white.jpg)
   skin/classic/browser/design-images/floorp-fluerial-dark.jpg               (design-images/floorp-fluerial-dark.jpg)
   skin/classic/browser/design-images/floorp-fluerial-white.jpg              (design-images/floorp-fluerial-white.jpg)
-
-# Floorp Notes
-  skin/classic/browser/notes.png                                          (icons/notes.png)
-  skin/classic/browser/notes-bms.svg                                      (icons/notes-bms.svg)
 
 # Workspace
   skin/classic/browser/workspace-floorp.png                               (icons/workspace-floorp.png)
