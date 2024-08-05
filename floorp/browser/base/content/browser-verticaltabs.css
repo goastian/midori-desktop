@@ -180,7 +180,11 @@
 :is(:root[inDOMFullscreen],
 :root[inFullscreen]:not([macOSNativeFullscreen]),
 *|*:root[chromehidden~="toolbar"])
-#TabsToolbar {
+#TabsToolbar,
+:is(:root[inDOMFullscreen],
+:root[inFullscreen]:not([macOSNativeFullscreen]),
+*|*:root[chromehidden~="toolbar"])
+#verticaltab-splitter {
   display: none;
   transition: opacity 0.3s ease-in-out;
 }
