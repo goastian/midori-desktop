@@ -107,7 +107,6 @@ export const keyboradShortcutActions = {
 
     // Bookmark actions
     bookmarkThisPage: ["BrowserPageActions.doCommandForAction(PageActions.actionForID('bookmark'), event, this);", "bookmark-this-page", "bookmark-action"],
-    openBookmarksSidebar: ["toggleSidebar('viewBookmarksSidebar')", "open-bookmarks-sidebar", "bookmark-action"],
     openBookmarkAddTool: ["PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueCurrentPages)", "open-bookmark-add-tool", "bookmark-action"],
     openBookmarksManager: ["SidebarUI.toggle('viewBookmarksSidebar');", "open-bookmarks-manager", "bookmark-action"],
     toggleBookmarkToolbar: ["BookmarkingUI.toggleBookmarksToolbar('bookmark-tools')", "toggle-bookmark-toolbar", "bookmark-action"],
