@@ -598,6 +598,7 @@ pref("browser.urlbar.suggest.calculator", true);
 
 pref("browser.vpn_promo.enabled", false);
 pref("browser.contentblocking.report.show_mobile_app", false);
+pref("browser.promo.focus.enabled", false);
 
 // Integrated unit convertor at urlbar
 // pref("browser.urlbar.unitConversion.enabled", true);
