@@ -311,6 +311,9 @@ var gBrowserManagerSidebar = {
   // Browser Manager Sidebar's webpanel selected vbox's context menu
   contextMenu: {
     show(event) {
+      if (!event.explicitOriginalTarget.classList.contains("sidepanel-icon")) {
+        return;
+      }
       gBrowserManagerSidebar.clickedWebpanel = event.explicitOriginalTarget.id;
       gBrowserManagerSidebar.webpanel = gBrowserManagerSidebar.getWebpanelIdBySelectedButtonId(
         gBrowserManagerSidebar.clickedWebpanel
@@ -320,7 +323,21 @@ var gBrowserManagerSidebar = {
       let needLoadedWebpanel =
         document.getElementsByClassName("needLoadedWebpanel");
       for (let i = 0; i < needLoadedWebpanel.length; i++) {
-        needLoadedWebpanel[i].disabled = gBrowserManagerSidebar.contextWebpanel == null;
+        needLoadedWebpanel[i].disabled = false;
+        if (
+          gBrowserManagerSidebar.contextWebpanel == null
+        ) {
+          needLoadedWebpanel[i].disabled = true;
+        } else if (
+          needLoadedWebpanel[i].classList.contains(
+            "needRunningExtensionsPanel"
+        ) &&
+          !gBrowserManagerSidebar.contextWebpanel.src.startsWith(
+            "chrome://browser/content/browser.xhtml"
+          )
+        ) {
+          needLoadedWebpanel[i].disabled = true;
+        }
       }
     },
 
@@ -334,6 +351,33 @@ var gBrowserManagerSidebar = {
         gBrowserManagerSidebar.getWebpanelObjectById(
           gBrowserManagerSidebar.clickedWebpanel
         )
+      );
+    },
+
+    zoomIn() {
+      let webPanelId = gBrowserManagerSidebar.contextWebpanel.id.replace("webpanel", "");
+      BrowserManagerSidebarPanelWindowUtils.zoomInPanel(
+        window,
+        webPanelId,
+        true
+      );
+    },
+
+    zoomOut() {
+      let webPanelId = gBrowserManagerSidebar.contextWebpanel.id.replace("webpanel", "");
+      BrowserManagerSidebarPanelWindowUtils.zoomOutPanel(
+        window,
+        webPanelId,
+        true
+      );
+    },
+
+    resetZoom() {
+      let webPanelId = gBrowserManagerSidebar.contextWebpanel.id.replace("webpanel", "");
+      BrowserManagerSidebarPanelWindowUtils.resetZoomPanel(
+        window,
+        webPanelId,
+        true
       );
     },
 
