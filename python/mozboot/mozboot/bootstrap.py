@@ -108,6 +108,7 @@ Would you like to run a few configuration steps to ensure Git is
 optimally configured?"""
 
 DEBIAN_DISTROS = (
+    "sparky",
     "debian",
     "ubuntu",
     "linuxmint",
