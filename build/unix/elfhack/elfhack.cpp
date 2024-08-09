@@ -59,9 +59,6 @@ class ElfRelHack_Section : public ElfSection {
 
   void serialize(std::ofstream& file, unsigned char ei_class,
                  unsigned char ei_data) {
-    if (bitmap) {
-      relr.push_back((bitmap << 1) | 1);
-    }
     for (std::vector<Elf64_Addr>::iterator i = relr.begin(); i != relr.end();
          ++i) {
       Elf_Addr out;
@@ -104,7 +101,7 @@ class ElfRelHack_Section : public ElfSection {
       bitmap |= 1ULL << ((offset - block_start) / shdr.sh_entsize);
       break;
     }
-    shdr.sh_size = (relr.size() + (bitmap ? 1 : 0)) * shdr.sh_entsize;
+    shdr.sh_size = relr.size() * shdr.sh_entsize;
   }
 
  private:
@@ -184,12 +181,10 @@ class ElfRelHackCode_Section : public ElfSection {
 
     // If the original init function is located too far away, we're going to
     // need to use a trampoline. See comment in inject.c.
-    // Theoretically, we should check for (init - instr) > boundary, where
-    // boundary is the platform-dependent limit, and instr is the virtual
-    // address of the instruction that calls the original init, but we don't
-    // have it at this point, so punt to just init.
-    if ((init > 0xffffff && parent.getMachine() == EM_ARM) ||
-        (init > 0x07ffffff && parent.getMachine() == EM_AARCH64)) {
+    // Theoretically, we should check for (init - instr) > 0xffffff, where instr
+    // is the virtual address of the instruction that calls the original init,
+    // but we don't have it at this point, so punt to just init.
+    if (init > 0xffffff && parent.getMachine() == EM_ARM) {
       Elf_SymValue* trampoline = symtab->lookup("init_trampoline");
       if (!trampoline) {
         throw std::runtime_error(
@@ -472,10 +467,8 @@ class ElfRelHackCode_Section : public ElfSection {
       if (symtab->syms[ELF64_R_SYM(r->r_info)].value.getSection() == nullptr) {
         if (strcmp(name, "relhack") == 0) {
           addr = relhack_section.getAddr();
-        } else if (strcmp(name, "relhack_end") == 0) {
-          addr = relhack_section.getAddr() + relhack_section.getSize();
-        } else if (strcmp(name, "__ehdr_start") == 0) {
-          // TODO: change this ugly hack to something better
+        } else if (strcmp(name, "elf_header") == 0) {
+          // TODO: change this ungly hack to something better
           ElfSection* ehdr = parent.getSection(1)->getPrevious()->getPrevious();
           addr = ehdr->getAddr();
         } else if (strcmp(name, "original_init") == 0) {
@@ -521,9 +514,6 @@ class ElfRelHackCode_Section : public ElfSection {
         case REL(ARM, GOTPC):
         case REL(ARM, REL32):
         case REL(AARCH64, PREL32):
-        case REL(AARCH64,
-                 PREL64):  // In theory PREL64 should have its own relocation
-                           // function, but in practice it doesn't matter.
           apply_relocation<pc32_relocation>(the_code, buf, &*r, addr);
           break;
         case REL(ARM, CALL):
@@ -1023,6 +1013,8 @@ int do_relocation_section(Elf* elf, unsigned int rel_type,
       relhack->push_back(i->r_offset);
     }
   }
+  // Last entry must be a nullptr
+  relhack->push_back(0);
 
   if (init_array) {
     // Some linkers create a DT_INIT_ARRAY section that, for all purposes,

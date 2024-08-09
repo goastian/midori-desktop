@@ -7,37 +7,25 @@
 DIST_INSTALL = False
 DIRS += ["inject"]
 
-if CONFIG["RELRHACK"]:
-    HOST_SOURCES += [
-        "relrhack.cpp",
-    ]
-
-    HostProgram(CONFIG["RELRHACK_LINKER"])
-
-    HOST_OS_LIBS += CONFIG["RELRHACK_LIBS"]
-
-    if CONFIG["MOZ_STDCXX_COMPAT"]:
-        HOST_DEFINES["MOZ_STDCXX_COMPAT"] = True
-else:
-    HOST_SOURCES += [
-        "elf.cpp",
-        "elfhack.cpp",
-    ]
-
-    HostProgram("elfhack")
-
-    if not CONFIG["CROSS_COMPILE"]:
-        SOURCES += [
-            "dummy.c",
-        ]
-        SOURCES["dummy.c"].flags += ["-fno-lto"]
-
+if not CONFIG["CROSS_COMPILE"]:
     SOURCES += [
-        "test-array.c",
-        "test-ctors.c",
+        "dummy.c",
     ]
-    SOURCES["test-array.c"].flags += ["-fno-lto"]
-    SOURCES["test-ctors.c"].flags += ["-fno-lto"]
+    SOURCES["dummy.c"].flags += ["-fno-lto"]
+
+SOURCES += [
+    "test-array.c",
+    "test-ctors.c",
+]
+SOURCES["test-array.c"].flags += ["-fno-lto"]
+SOURCES["test-ctors.c"].flags += ["-fno-lto"]
+
+HOST_SOURCES += [
+    "elf.cpp",
+    "elfhack.cpp",
+]
+
+HostProgram("elfhack")
 
 NO_PGO = True
 

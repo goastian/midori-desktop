@@ -10,14 +10,6 @@ llvm_profdata = check_prog(
     "LLVM_PROFDATA", ["llvm-profdata"], allow_missing=True, paths=clang_search_path
 )
 
-
-@depends_if(llvm_profdata)
-@checking("whether llvm-profdata supports 'order' subcommand")
-def llvm_profdata_order(profdata):
-    retcode, _, _ = get_cmd_output(profdata, "order", "--help")
-    return retcode == 0
-
-
 option(
     "--enable-profile-generate",
     env="MOZ_PROFILE_GENERATE",
@@ -50,8 +42,7 @@ option(
 
 option(
     "--with-pgo-profile-path",
-    help="Path to the directory with unmerged profile data to use during the build"
-    ", or to a merged profdata file",
+    help="Path to the directory with unmerged profile data to use during the build",
     nargs=1,
 )
 
@@ -88,47 +79,9 @@ def pgo_profile_path(path, pgo_use, profdata, build_env):
 set_config("PGO_PROFILE_PATH", pgo_profile_path)
 
 
-@depends(
-    "--enable-profile-use",
-    pgo_profile_path,
-    llvm_profdata,
-    llvm_profdata_order,
-    build_environment,
-)
-def orderfile_path(profile_use, path, profdata, profdata_order, build_env):
-    if not profile_use:
-        return None
-
-    if not profdata_order:
-        return None
-
-    topobjdir = build_env.topobjdir
-
-    orderfile = os.path.join(topobjdir, "orderfile.txt")
-    check_cmd_output(profdata, "order", path, "-o", orderfile)
-    return orderfile
-
-
-pgo_temporal = c_compiler.try_compile(
-    flags=["-fprofile-generate", "-mllvm", "-pgo-temporal-instrumentation"],
-    check_msg="whether the C compiler supports temporal instrumentation",
-    when="--enable-profile-generate",
-)
-
-
-@depends(
-    c_compiler,
-    select_linker,
-    target,
-    pgo_profile_path,
-    orderfile_path,
-    target_is_windows,
-    pgo_temporal,
-)
+@depends(c_compiler, pgo_profile_path, target_is_windows)
 @imports("multiprocessing")
-def pgo_flags(
-    compiler, linker, target, profdata, orderfile, target_is_windows, pgo_temporal
-):
+def pgo_flags(compiler, profdata, target_is_windows):
     if compiler.type == "gcc":
         return namespace(
             gen_cflags=["-fprofile-generate"],
@@ -145,30 +98,7 @@ def pgo_flags(
         else:
             gen_ldflags = ["-fprofile-generate"]
 
-        use_ldflags = []
-        if orderfile:
-            if compiler.type == "clang-cl":
-                use_ldflags += [
-                    "-ORDER:@" + orderfile,
-                    "/ignore:4037",  # Disable warn missing order symbol
-                ]
-            elif linker.KIND == "ld64" or (linker.KIND == "lld" and target.os == "OSX"):
-                use_ldflags += ["-Wl,-order_file", orderfile]
-            elif linker.KIND == "lld":
-                use_ldflags += [
-                    "-Wl,--symbol-ordering-file",
-                    orderfile,
-                    "-Wl,--no-warn-symbol-ordering",
-                ]
-
-        if use_ldflags:
-            log.info("Activating PGO-based orderfile")
-
         gen_cflags = [prefix + "-fprofile-generate"]
-
-        if pgo_temporal:
-            gen_cflags += ["-mllvm", "-pgo-temporal-instrumentation"]
-
         if target_is_windows:
             # native llvm-profdata.exe on Windows can't read profile data
             # if name compression is enabled (which cross-compiling enables
@@ -184,7 +114,7 @@ def pgo_flags(
                 # come in via -Wbackend-plugin, so disable those too.
                 "-Wno-error=backend-plugin",
             ],
-            use_ldflags=use_ldflags,
+            use_ldflags=[],
         )
 
 
@@ -257,8 +187,6 @@ imply_option("MOZ_LD64_KNOWN_GOOD", depends_if("MOZ_AUTOMATION")(lambda _: True)
     target,
     "--enable-profile-generate",
     pass_manager.enabled,
-    "--enable-profile-use",
-    "MOZ_AUTOMATION",
 )
 @imports("multiprocessing")
 def lto(
@@ -269,8 +197,6 @@ def lto(
     target,
     instrumented_build,
     pass_manager,
-    pgo_build,
-    moz_automation,
 ):
     cflags = []
     ldflags = []
@@ -284,22 +210,11 @@ def lto(
     if "full" in values and "thin" in values:
         die("incompatible --enable-lto choices 'full' and 'thin'")
 
-    # If a value was given to --enable-lto, use that.  Otherwise, make the lto
-    # mode explicit, using full with gcc, and full or thin with clang depending
-    # on the performance benefit.
-    # Defaulting to full LTO is costly in terms of compilation time, so we only
-    # default to it if MOZ_AUTOMATION and PGO are on, and for some platforms.
-    # Based on speedometer3 scores, full lto + pgo is beneficial for Linux and
-    # Windows for x86_64 targets.
+    # If a value was given to --enable-lto, use that.
+    # Otherwise, make the lto mode explicit, using
+    # thin with clang/clang-cl and full with gcc.
     if values == () or values == ("cross",):
         if c_compiler.type == "gcc":
-            values += ("full",)
-        elif (
-            pgo_build
-            and moz_automation
-            and target.os in ("WINNT", "GNU")
-            and target.cpu == "x86_64"
-        ):
             values += ("full",)
         else:
             values += ("thin",)
@@ -319,6 +234,7 @@ def lto(
 
     if (
         target.kernel == "Darwin"
+        and target.os == "OSX"
         and "cross" in values
         and select_linker.KIND == "ld64"
         and not ld64_known_good
@@ -394,7 +310,7 @@ def lto(
     # (For hot functions, PGO will put a multiplier on this limit.)
     if target.os == "WINNT":
         ldflags.append("-mllvm:-import-instr-limit=10")
-    elif target.kernel == "Darwin":
+    elif target.os == "OSX":
         ldflags.append("-Wl,-mllvm,-import-instr-limit=10")
     elif c_compiler.type == "clang":
         ldflags.append("-Wl,-plugin-opt=-import-instr-limit=10")
@@ -408,7 +324,7 @@ def lto(
                 ldflags.append("-opt:ltonewpassmanager")
             if c_compiler.version >= "12.0.0":
                 ldflags.append("-mllvm:-import-hot-multiplier=30")
-        elif target.kernel == "Darwin":
+        elif target.os == "OSX":
             ldflags.append("-Wl,-mllvm,-import-hot-multiplier=30")
         else:
             if c_compiler.version < "13.0.0":

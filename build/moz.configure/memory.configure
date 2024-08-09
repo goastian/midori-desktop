@@ -25,14 +25,6 @@ set_define("MOZ_MEMORY", True, when="--enable-jemalloc")
 add_old_configure_assignment("MOZ_MEMORY", True, when="--enable-jemalloc")
 
 
-@depends("--enable-jemalloc", moz_debug, win32_redist_dir)
-def check_redist(jemalloc, debug, win32_redist_dir):
-    if not jemalloc and not win32_redist_dir and not debug:
-        log.warning(
-            "When not building jemalloc, you need to build with --with-redist or set WIN32_REDIST_DIR."
-        )
-
-
 @depends(milestone, build_project)
 def replace_malloc_default(milestone, build_project):
     if build_project == "memory":
@@ -66,34 +58,28 @@ set_config("MOZ_REPLACE_MALLOC_STATIC", replace_malloc_static)
 # PHC (Probabilistic Heap Checker)
 # ==============================================================
 
-
 # In general, it only makes sense for PHC to run on the platforms that have a
 # crash reporter.
 @depends(
-    build_project,
     milestone,
     target,
+    replace_malloc_default,
+    "--enable-replace-malloc",
     when="--enable-jemalloc",
 )
-def phc_default(build_project, milestone, target):
-    if build_project == "js":
+def phc_default(milestone, target, replace_malloc_default, replace_malloc):
+    if not replace_malloc_default or (
+        replace_malloc.origin != "default" and not replace_malloc
+    ):
         return False
-
-    # PHC has a performance bottleneck on aarch64 (Bug 1874022) it's okay
-    # for nightly but not for release yet.  To support unified builds on
-    # MacOS the x86_64 and aarch64 builds must match, so we disable PHC for
-    # x86_64 on MacOS late beta and release.
-    cpu_support = ("x86_64",)
-    if milestone.is_early_beta_or_earlier:
-        cpu_support = ("x86_64", "aarch64")
-    elif target.os == "OSX":
-        cpu_support = ()
-
+    # Nightly or early beta only because PHC has a non-negligible performance cost.
+    if not milestone.is_early_beta_or_earlier:
+        return False
     # Both Linux32 and Win32 have frequent crashes when stack tracing (for
     # unclear reasons), so PHC is enabled only on 64-bit only in both cases.
-    return (target.cpu in cpu_support) and (
-        (target.os == "GNU" and target.kernel == "Linux")
-        or (target.kernel == "WINNT")
+    return (
+        (target.os == "GNU" and target.kernel == "Linux" and target.bitness == 64)
+        or (target.kernel == "WINNT" and target.bitness == 64)
         or (target.os == "OSX")
     )
 
@@ -104,73 +90,16 @@ option(
     default=phc_default,
     when="--enable-jemalloc",
     help="{Enable|Disable} PHC (Probabilistic Memory Checker). "
-    "Also enables frame pointers when needed",
+    "Also enables replace-malloc and frame pointers",
 )
+imply_option("--enable-replace-malloc", True, when="--enable-phc")
+imply_option("--enable-frame-pointers", True, when="--enable-phc")
+
 
 set_config("MOZ_PHC", True, when="--enable-phc")
-
-
-# PHC parses stacks using frame pointers on these systems.
-@depends("--enable-phc", target, have_unwind, when="--enable-jemalloc")
-def phc_implies_frame_pointers(phc, target, have_unwind):
-    if not phc:
-        return False
-
-    # This should be kept in sync with the ifdefs in memory/build/PHC.cpp
-    # that control stack walking.
-    # This is true for the first two options in PHC.cpp
-    if (target.os == "WINNT" and target.cpu == "x86") or target.kernel == "Darwin":
-        return True
-
-    # This should match the #defines in mozglue/misc/StackWalk.cpp
-    if (target.cpu in ("x86", "ppc")) and (target.kernel in ("Darwin", "Linux")):
-        return not have_unwind
-
-    return False
-
-
-imply_option("--enable-frame-pointers", True, when=phc_implies_frame_pointers)
-
 
 with only_when(depends(target.os)(lambda os: os != "WINNT")):
     set_define("HAVE_STRNDUP", check_symbol("strndup"))
     set_define("HAVE_POSIX_MEMALIGN", check_symbol("posix_memalign"))
     set_define("HAVE_MEMALIGN", check_symbol("memalign"))
-
-    have_malloc_usable_size = check_symbol("malloc_usable_size")
-    set_define("HAVE_MALLOC_USABLE_SIZE", have_malloc_usable_size)
-
-
-@template
-def check_malloc_header():
-    found_header = dependable(None)
-    malloc_headers = ("malloc.h", "malloc_np.h", "malloc/malloc.h", "sys/malloc.h")
-    for malloc_h in malloc_headers:
-        have_malloc_h = check_header(malloc_h, when=~found_header)
-        found_header = depends(have_malloc_h, found_header)(
-            lambda h, f: malloc_h if h else f
-        )
-    return found_header
-
-
-malloc_h = check_malloc_header()
-have_malloc_h = depends(malloc_h)(lambda h: h == "malloc.h")
-
-set_define("MALLOC_H", depends_if(malloc_h)(lambda h: f"<{h}>"))
-
-usable_size_constness = c_compiler.try_compile(
-    includes=depends(malloc_h)(lambda h: [h, "stddef.h"]),
-    body="""
-        extern size_t malloc_usable_size(const void *ptr);
-        return malloc_usable_size(0);
-        """,
-    check_msg="whether malloc_usable_size definition can use const argument",
-    when=have_malloc_usable_size,
-)
-
-set_define(
-    "MALLOC_USABLE_SIZE_CONST_PTR",
-    depends(usable_size_constness, have_malloc_h)(
-        lambda u, h: "const" if (u or not h) else ""
-    ),
-)
+    set_define("HAVE_MALLOC_USABLE_SIZE", check_symbol("malloc_usable_size"))

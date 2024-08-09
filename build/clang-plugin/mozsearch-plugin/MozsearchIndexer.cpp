@@ -35,7 +35,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "BindingOperations.h"
 #include "FileOperations.h"
 #include "StringOperations.h"
 #include "from-clangd/HeuristicResolver.h"
@@ -122,21 +121,6 @@ static bool isValidIdentifier(std::string Input) {
   return true;
 }
 
-template <size_t N>
-static bool stringStartsWith(const std::string& Input,
-                             const char (&Prefix)[N]) {
-  return Input.length() > N - 1 && memcmp(Input.c_str(), Prefix, N - 1) == 0;
-}
-
-static bool isASCII(const std::string& Input) {
-  for (char C : Input) {
-    if (C & 0x80) {
-      return false;
-    }
-  }
-  return true;
-}
-
 struct RAIITracer {
   RAIITracer(const char *log) : mLog(log) {
     printf("<%s>\n", mLog);
@@ -152,14 +136,6 @@ struct RAIITracer {
 #define TRACEFUNC RAIITracer tracer(__FUNCTION__);
 
 class IndexConsumer;
-
-bool isPure(FunctionDecl* D) {
-#if CLANG_VERSION_MAJOR >= 18
-  return D->isPureVirtual();
-#else
-  return D->isPure();
-#endif
-}
 
 // For each C++ file seen by the analysis (.cpp or .h), we track a
 // FileInfo. This object tracks whether the file is "interesting" (i.e., whether
@@ -214,12 +190,7 @@ public:
 #endif
                                   StringRef SearchPath,
                                   StringRef RelativePath,
-#if CLANG_VERSION_MAJOR >= 19
-                                  const Module *SuggestedModule,
-                                  bool ModuleImported,
-#else
                                   const Module *Imported,
-#endif
                                   SrcMgr::CharacteristicKind FileType) override;
 
   virtual void MacroDefined(const Token &Tok,
@@ -501,10 +472,6 @@ private:
     return Filename;
   }
 
-  std::string mangleURL(std::string Url) {
-    return mangleFile(Url, FileType::Source);
-  }
-
   std::string mangleQualifiedName(std::string Name) {
     std::replace(Name.begin(), Name.end(), ' ', '_');
     return Name;
@@ -512,12 +479,6 @@ private:
 
   std::string getMangledName(clang::MangleContext *Ctx,
                              const clang::NamedDecl *Decl) {
-    // Main functions will tend to collide because they inherently have similar
-    // signatures, so let's provide a custom location-based signature.
-    if (isa<FunctionDecl>(Decl) && cast<FunctionDecl>(Decl)->isMain()) {
-      return std::string("MF_") + mangleLocation(Decl->getLocation());
-    }
-
     if (isa<FunctionDecl>(Decl) && cast<FunctionDecl>(Decl)->isExternC()) {
       return cast<FunctionDecl>(Decl)->getNameAsString();
     }
@@ -558,20 +519,14 @@ private:
         return std::string("V_") + mangleLocation(Decl->getLocation()) +
                std::string("_") + hash(std::string(Decl->getName()));
       }
-    } else if (isa<TagDecl>(Decl) || isa<ObjCInterfaceDecl>(Decl)) {
+    } else if (isa<TagDecl>(Decl) || isa<TypedefNameDecl>(Decl) ||
+               isa<ObjCInterfaceDecl>(Decl)) {
       if (!Decl->getIdentifier()) {
         // Anonymous.
         return std::string("T_") + mangleLocation(Decl->getLocation());
       }
 
       return std::string("T_") + mangleQualifiedName(getQualifiedName(Decl));
-    } else if (isa<TypedefNameDecl>(Decl)) {
-      if (!Decl->getIdentifier()) {
-        // Anonymous.
-        return std::string("TA_") + mangleLocation(Decl->getLocation());
-      }
-
-      return std::string("TA_") + mangleQualifiedName(getQualifiedName(Decl));
     } else if (isa<NamespaceDecl>(Decl) || isa<NamespaceAliasDecl>(Decl)) {
       if (!Decl->getIdentifier()) {
         // Anonymous.
@@ -1099,21 +1054,9 @@ public:
 
     J.attribute("sizeBytes", Layout.getSize().getQuantity());
 
-    emitBindingAttributes(J, *decl);
-
     auto cxxDecl = dyn_cast<CXXRecordDecl>(decl);
 
     if (cxxDecl) {
-      if (Layout.hasOwnVFPtr()) {
-        // Encode the size of virtual function table pointer
-        // instead of just true/false, for 2 reasons:
-        //  * having the size here is easier for the consumer
-        //  * the size string 4/8 is shorter than true/false in the analysis
-        //    file
-        const QualType ptrType = C.getUIntPtrType();
-        J.attribute("ownVFPtrBytes", C.getTypeSizeInChars(ptrType).getQuantity());
-      }
-
       J.attributeBegin("supers");
       J.arrayBegin();
       for (const CXXBaseSpecifier &Base : cxxDecl->bases()) {
@@ -1121,15 +1064,8 @@ public:
 
         J.objectBegin();
 
+        J.attribute("pretty", getQualifiedName(BaseDecl));
         J.attribute("sym", getMangledName(CurMangleContext, BaseDecl));
-
-        if (Base.isVirtual()) {
-          CharUnits superOffsetBytes = Layout.getVBaseClassOffset(BaseDecl);
-          J.attribute("offsetBytes", superOffsetBytes.getQuantity());
-        } else {
-          CharUnits superOffsetBytes = Layout.getBaseClassOffset(BaseDecl);
-          J.attribute("offsetBytes", superOffsetBytes.getQuantity());
-        }
 
         J.attributeBegin("props");
         J.arrayBegin();
@@ -1202,18 +1138,9 @@ public:
       J.attribute("pretty", getQualifiedName(&Field));
       J.attribute("sym", getMangledName(CurMangleContext, &Field));
       QualType FieldType = Field.getType();
+      J.attribute("type", FieldType.getAsString());
       QualType CanonicalFieldType = FieldType.getCanonicalType();
-      J.attribute("type", CanonicalFieldType.getAsString());
       const TagDecl *tagDecl = CanonicalFieldType->getAsTagDecl();
-      if (!tagDecl) {
-        // Try again piercing any pointers/references involved.  Note that our
-        // typesym semantics are dubious-ish and right now crossref just does
-        // some parsing of "type" itself until we improve this rep.
-        CanonicalFieldType = CanonicalFieldType->getPointeeType();
-        if (!CanonicalFieldType.isNull()) {
-          tagDecl = CanonicalFieldType->getAsTagDecl();
-        }
-      }
       if (tagDecl) {
         J.attribute("typesym", getMangledName(CurMangleContext, tagDecl));
       }
@@ -1271,40 +1198,6 @@ public:
     J.attribute("pretty", getQualifiedName(decl));
     J.attribute("sym", getMangledName(CurMangleContext, decl));
 
-    emitBindingAttributes(J, *decl);
-
-    J.attributeBegin("args");
-    J.arrayBegin();
-
-    for (auto param : decl->parameters()) {
-      J.objectBegin();
-
-      J.attribute("name", param->getName());
-      QualType ArgType = param->getOriginalType();
-      J.attribute("type", ArgType.getAsString());
-
-      QualType CanonicalArgType = ArgType.getCanonicalType();
-      const TagDecl *canonDecl = CanonicalArgType->getAsTagDecl();
-      if (!canonDecl) {
-        // Try again piercing any pointers/references involved.  Note that our
-        // typesym semantics are dubious-ish and right now crossref just does
-        // some parsing of "type" itself until we improve this rep.
-        CanonicalArgType = CanonicalArgType->getPointeeType();
-        if (!CanonicalArgType.isNull()) {
-          canonDecl = CanonicalArgType->getAsTagDecl();
-        }
-      }
-      if (canonDecl) {
-        J.attribute("typesym", getMangledName(CurMangleContext, canonDecl));
-      }
-
-      J.objectEnd();
-    }
-
-    J.arrayEnd();
-    J.attributeEnd();
-
-
     auto cxxDecl = dyn_cast<CXXMethodDecl>(decl);
 
     if (cxxDecl) {
@@ -1326,6 +1219,7 @@ public:
         // I think our pre-emptive dereferencing/avoidance of templates may
         // protect us from this, but it needs more investigation.
 
+        J.attribute("pretty", getQualifiedName(MethodDecl));
         J.attribute("sym", getMangledName(CurMangleContext, MethodDecl));
 
         J.objectEnd();
@@ -1424,42 +1318,6 @@ public:
     F->Output.push_back(std::move(ros.str()));
   }
 
-  /**
-   * Emit structured info for a variable if it is a static class member.
-   */
-  void emitStructuredInfo(SourceLocation Loc, const VarDecl *decl) {
-    const auto *parentDecl = dyn_cast_or_null<RecordDecl>(decl->getDeclContext());
-
-    std::string json_str;
-    llvm::raw_string_ostream ros(json_str);
-    llvm::json::OStream J(ros);
-    // Start the top-level object.
-    J.objectBegin();
-
-    unsigned StartOffset = SM.getFileOffset(Loc);
-    unsigned EndOffset =
-        StartOffset + Lexer::MeasureTokenLength(Loc, SM, CI.getLangOpts());
-    J.attribute("loc", locationToString(Loc, EndOffset - StartOffset));
-    J.attribute("structured", 1);
-    J.attribute("pretty", getQualifiedName(decl));
-    J.attribute("sym", getMangledName(CurMangleContext, decl));
-    J.attribute("kind", "field");
-
-    if (parentDecl) {
-      J.attribute("parentsym", getMangledName(CurMangleContext, parentDecl));
-    }
-
-    emitBindingAttributes(J, *decl);
-
-    // End the top-level object.
-    J.objectEnd();
-
-    FileInfo *F = getFileInfo(Loc);
-    // we want a newline.
-    ros << '\n';
-    F->Output.push_back(std::move(ros.str()));
-  }
-
   // XXX Type annotating.
   // QualType is the type class.  It has helpers like TagDecl via getAsTagDecl.
   // ValueDecl exposes a getType() method.
@@ -1480,8 +1338,7 @@ public:
                        QualType MaybeType = QualType(),
                        Context TokenContext = Context(), int Flags = 0,
                        SourceRange PeekRange = SourceRange(),
-                       SourceRange NestingRange = SourceRange(),
-                       std::vector<SourceRange> *ArgRanges = nullptr) {
+                       SourceRange NestingRange = SourceRange()) {
     SourceLocation Loc = LocRange.getBegin();
     if (!shouldVisit(Loc)) {
       return;
@@ -1533,21 +1390,6 @@ public:
         }
       }
 
-      if (ArgRanges) {
-        J.attributeBegin("argRanges");
-        J.arrayBegin();
-
-        for (auto range : *ArgRanges) {
-          std::string ArgRangeStr = fullRangeToString(range);
-          if (!ArgRangeStr.empty()) {
-            J.value(ArgRangeStr);
-          }
-        }
-
-        J.arrayEnd();
-        J.attributeEnd();
-      }
-
       // End the top-level object.
       J.objectEnd();
       // we want a newline.
@@ -1587,15 +1429,6 @@ public:
       J.attribute("type", MaybeType.getAsString());
       QualType canonical = MaybeType.getCanonicalType();
       const TagDecl *decl = canonical->getAsTagDecl();
-      if (!decl) {
-        // Try again piercing any pointers/references involved.  Note that our
-        // typesym semantics are dubious-ish and right now crossref just does
-        // some parsing of "type" itself until we improve this rep.
-        canonical = canonical->getPointeeType();
-        if (!canonical.isNull()) {
-          decl = canonical->getAsTagDecl();
-        }
-      }
       if (decl) {
         std::string Mangled = getMangledName(CurMangleContext, decl);
         J.attribute("typesym", Mangled);
@@ -1611,21 +1444,6 @@ public:
 
     if (Flags & NoCrossref) {
       J.attribute("no_crossref", 1);
-    }
-
-    if (ArgRanges) {
-      J.attributeBegin("argRanges");
-      J.arrayBegin();
-
-      for (auto range : *ArgRanges) {
-          std::string ArgRangeStr = fullRangeToString(range);
-          if (!ArgRangeStr.empty()) {
-            J.value(ArgRangeStr);
-          }
-      }
-
-      J.arrayEnd();
-      J.attributeEnd();
     }
 
     // End the top-level object.
@@ -1798,14 +1616,13 @@ public:
     // The nesting range identifies the left brace and right brace, which
     // heavily depends on the AST node type.
     SourceRange NestingRange;
-    QualType qtype = QualType();
     if (FunctionDecl *D2 = dyn_cast<FunctionDecl>(D)) {
       if (D2->isTemplateInstantiation()) {
         wasTemplate = true;
         D = D2->getTemplateInstantiationPattern();
       }
       // We treat pure virtual declarations as definitions.
-      Kind = (D2->isThisDeclarationADefinition() || isPure(D2)) ? "def" : "decl";
+      Kind = (D2->isThisDeclarationADefinition() || D2->isPure()) ? "def" : "decl";
       PrettyKind = "function";
       PeekRange = getFunctionPeekRange(D2);
 
@@ -1837,11 +1654,10 @@ public:
       } else {
         PeekRange = SourceRange();
       }
-    } else if (TypedefNameDecl *D2 = dyn_cast<TypedefNameDecl>(D)) {
-      Kind = "alias";
+    } else if (isa<TypedefNameDecl>(D)) {
+      Kind = "def";
       PrettyKind = "type";
       PeekRange = SourceRange(Loc, Loc);
-      qtype = D2->getUnderlyingType();
     } else if (VarDecl *D2 = dyn_cast<VarDecl>(D)) {
       if (D2->isLocalVarDeclOrParm()) {
         Flags = NoCrossref;
@@ -1872,6 +1688,7 @@ public:
       return true;
     }
 
+    QualType qtype = QualType();
     if (ValueDecl *D2 = dyn_cast<ValueDecl>(D)) {
       qtype = D2->getType();
     }
@@ -1929,40 +1746,23 @@ public:
           // we can better evaluate what is useful.
           !D2->isDependentType() &&
           !TemplateStack) {
-        if (auto *D3 = dyn_cast<CXXRecordDecl>(D2)) {
-          findBindingToJavaClass(*AstContext, *D3);
-          findBoundAsJavaClasses(*AstContext, *D3);
-        }
         emitStructuredInfo(Loc, D2);
       }
     }
     if (FunctionDecl *D2 = dyn_cast<FunctionDecl>(D)) {
-      if ((D2->isThisDeclarationADefinition() || isPure(D2)) &&
+      if ((D2->isThisDeclarationADefinition() || D2->isPure()) &&
           // a clause at the top should have generalized and set wasTemplate so
           // it shouldn't be the case that isTemplateInstantiation() is true.
           !D2->isTemplateInstantiation() &&
           !wasTemplate &&
           !D2->isFunctionTemplateSpecialization() &&
           !TemplateStack) {
-        if (auto *D3 = dyn_cast<CXXMethodDecl>(D2)) {
-          findBindingToJavaMember(*AstContext, *D3);
-        } else {
-          findBindingToJavaFunction(*AstContext, *D2);
-        }
         emitStructuredInfo(Loc, D2);
       }
     }
     if (FieldDecl *D2 = dyn_cast<FieldDecl>(D)) {
       if (!D2->isTemplated() &&
           !TemplateStack) {
-        emitStructuredInfo(Loc, D2);
-      }
-    }
-    if (VarDecl *D2 = dyn_cast<VarDecl>(D)) {
-      if (!D2->isTemplated() &&
-          !TemplateStack &&
-          isa<CXXRecordDecl>(D2->getDeclContext())) {
-        findBindingToJavaConstant(*AstContext, *D2);
         emitStructuredInfo(Loc, D2);
       }
     }
@@ -2032,14 +1832,8 @@ public:
       return true;
     }
 
-    std::vector<SourceRange> argRanges;
-    for (auto argExpr : E->arguments()) {
-      argRanges.push_back(argExpr->getSourceRange());
-    }
-
     visitIdentifier("use", "function", getQualifiedName(NamedCallee), Loc, Mangled,
-                    E->getCallReturnType(*AstContext), getContext(Loc), Flags,
-                    SourceRange(), SourceRange(), &argRanges);
+                    E->getCallReturnType(*AstContext), getContext(Loc), Flags);
 
     return true;
   }
@@ -2287,35 +2081,6 @@ public:
     return true;
   }
 
-  bool VisitStringLiteral(StringLiteral *E) {
-    if (E->getCharByteWidth() != 1) {
-      return true;
-    }
-
-    StringRef sref = E->getString();
-    std::string s = sref.str();
-
-    if (!stringStartsWith(s, "chrome://") &&
-        !stringStartsWith(s, "resource://")) {
-      return true;
-    }
-
-    if (!isASCII(s)) {
-      return true;
-    }
-
-    SourceLocation Loc = E->getStrTokenLoc(0);
-    normalizeLocation(&Loc);
-
-    std::string symbol = std::string("URL_") + mangleURL(s);
-
-    visitIdentifier("use", "file", StringRef(s), Loc, symbol,
-                    QualType(), Context(),
-                    NotIdentifierToken | LocRangeEndValid);
-
-    return true;
-  }
-
   void enterSourceFile(SourceLocation Loc) {
     normalizeLocation(&Loc);
     FileInfo* newFile = getFileInfo(Loc);
@@ -2420,12 +2185,7 @@ void PreprocessorHook::InclusionDirective(SourceLocation HashLoc,
 #endif
                                           StringRef SearchPath,
                                           StringRef RelativePath,
-#if CLANG_VERSION_MAJOR >= 19
-                                          const Module *SuggestedModule,
-                                          bool ModuleImported,
-#else
                                           const Module *Imported,
-#endif
                                           SrcMgr::CharacteristicKind FileType) {
 #if CLANG_VERSION_MAJOR >= 15
   if (!File) {

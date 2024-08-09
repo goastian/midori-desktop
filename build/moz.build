@@ -25,14 +25,14 @@ if CONFIG["RUSTC"]:
     DIRS += ["rust/mozbuild"]
 
 CRAMTEST_MANIFESTS += [
-    "tests/cram/cram.toml",
+    "tests/cram/cram.ini",
 ]
 
 DEFINES["ACCEPTED_MAR_CHANNEL_IDS"] = CONFIG["ACCEPTED_MAR_CHANNEL_IDS"]
 
 if CONFIG["MOZ_BUILD_APP"] == "browser":
     PYTHON_UNITTEST_MANIFESTS += [
-        "compare-mozconfig/python.toml",
+        "compare-mozconfig/python.ini",
     ]
 
 if CONFIG["ENABLE_TESTS"] or CONFIG["MOZ_DMD"]:
@@ -107,10 +107,7 @@ if CONFIG["MOZ_APP_BASENAME"]:
     )
 
     FINAL_TARGET_FILES += ["!application.ini"]
-    if (
-        CONFIG["MOZ_WIDGET_TOOLKIT"] not in ("android", "cocoa")
-        and CONFIG["MOZ_UPDATER"]
-    ):
+    if CONFIG["MOZ_WIDGET_TOOLKIT"] != "android" and CONFIG["MOZ_UPDATER"]:
         FINAL_TARGET_PP_FILES += ["update-settings.ini"]
 
     GeneratedFile(

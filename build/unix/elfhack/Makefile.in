@@ -6,7 +6,6 @@
 include $(topsrcdir)/config/rules.mk
 
 ifdef COMPILE_ENVIRONMENT
-ifndef RELRHACK
 test-array$(DLL_SUFFIX) test-ctors$(DLL_SUFFIX): %$(DLL_SUFFIX): %.$(OBJ_SUFFIX) elfhack
 	$(MKSHLIB) $(LDFLAGS) $< -nostartfiles
 	@echo ===
@@ -16,7 +15,7 @@ test-array$(DLL_SUFFIX) test-ctors$(DLL_SUFFIX): %$(DLL_SUFFIX): %.$(OBJ_SUFFIX)
 	@echo === Use --disable-elf-hack until this is fixed.
 	@echo ===
 	# Fail if the library doesn't have $(DT_TYPE) .dynamic info
-	$(READELF) -d $@ | grep '\b$(DT_TYPE)\b'
+	$(READELF) -d $@ | grep '($(DT_TYPE))'
 	@rm -f $@.bak
 	$(CURDIR)/elfhack -b -f $@
 	# Fail if the backup file doesn't exist
@@ -41,6 +40,5 @@ libs:: dummy
 	LD_PRELOAD=$(CURDIR)/test-array$(DLL_SUFFIX) $(CURDIR)/dummy
 	LD_PRELOAD=$(CURDIR)/test-ctors$(DLL_SUFFIX) $(CURDIR)/dummy
 
-endif
 endif
 endif

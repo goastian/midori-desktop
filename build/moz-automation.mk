@@ -12,7 +12,7 @@ ifdef CROSS_COMPILE
 # Narrow the definition of cross compilation to not include win32 builds
 # on win64 and linux32 builds on linux64.
 ifeq ($(HOST_OS_ARCH),$(OS_TARGET))
-ifneq (,$(filter x86%,$(TARGET_CPU)))
+ifneq (,$(filter x86%,$(CPU_ARCH)))
 FUZZY_CROSS_COMPILE =
 else
 FUZZY_CROSS_COMPILE = 1
@@ -29,7 +29,9 @@ MOZ_AUTOMATION_CHECK := 0
 endif
 
 ifneq (,$(filter automation/%,$(MAKECMDGOALS)))
-ifneq (4.0,$(firstword $(sort 4.0 $(MAKE_VERSION))))
+ifeq (4.0,$(firstword $(sort 4.0 $(MAKE_VERSION))))
+MAKEFLAGS += --output-sync=target
+else
 .NOTPARALLEL:
 endif
 endif
@@ -73,15 +75,15 @@ endif
 MOZ_AUTOMATION_TIERS := $(foreach sym,$(moz_automation_symbols),$(if $(filter 1,$($(sym))),$(tier_$(sym))))
 
 # Dependencies between automation build steps
-automation/uploadsymbols: automation/buildsymbols
+automation-start/uploadsymbols: automation/buildsymbols
 
-automation/upload: automation/package
-automation/upload: automation/package-tests
-automation/upload: automation/buildsymbols
-automation/upload: automation/package-generated-sources
+automation-start/upload: automation/package
+automation-start/upload: automation/package-tests
+automation-start/upload: automation/buildsymbols
+automation-start/upload: automation/package-generated-sources
 
 # Run the check tier after everything else.
-automation/check: $(addprefix automation/,$(filter-out check,$(MOZ_AUTOMATION_TIERS)))
+automation-start/check: $(addprefix automation/,$(filter-out check,$(MOZ_AUTOMATION_TIERS)))
 
 automation/build: $(addprefix automation/,$(MOZ_AUTOMATION_TIERS))
 	@echo Automation steps completed.
@@ -96,9 +98,13 @@ AUTOMATION_EXTRA_CMDLINE-check = --keep-going
 # case because it is a prerequisite of automation/upload.
 define automation_commands
 @+$(PYTHON3) $(topsrcdir)/config/run-and-prefix.py $1 $(MAKE) $1 $(AUTOMATION_EXTRA_CMDLINE-$1)
+$(call BUILDSTATUS,TIER_FINISH $1)
 endef
 
-automation/%:
-	$(if $(filter $*,$(filter-out $(ALL_TIERS),$(MOZ_AUTOMATION_TIERS))),$(call BUILDSTATUS,TIER_START $*))
+# The tier start message is in a separate target so make doesn't buffer it
+# until the step completes with output syncing enabled.
+automation-start/%:
+	$(if $(filter $*,$(MOZ_AUTOMATION_TIERS)),$(call BUILDSTATUS,TIER_START $*))
+
+automation/%: automation-start/%
 	$(if $(filter $*,$(MOZ_AUTOMATION_TIERS)),$(call automation_commands,$*))
-	$(if $(filter $*,$(filter-out $(ALL_TIERS),$(MOZ_AUTOMATION_TIERS))),$(call BUILDSTATUS,TIER_FINISH $*))

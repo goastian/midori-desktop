@@ -7,6 +7,7 @@ import subprocess
 
 import buildconfig
 import mozpack.path as mozpath
+import six
 import toml
 
 
@@ -28,11 +29,11 @@ def _run_process(args):
     env["CARGO"] = str(buildconfig.substs["CARGO"])
     env["RUSTC"] = str(buildconfig.substs["RUSTC"])
 
-    p = subprocess.Popen(
-        args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8"
-    )
+    p = subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     stdout, stderr = p.communicate()
+    stdout = six.ensure_text(stdout)
+    stderr = six.ensure_text(stderr)
     if p.returncode != 0:
         print(stdout)
         print(stderr)
@@ -40,30 +41,23 @@ def _run_process(args):
 
 
 def generate_metadata(output, cargo_config):
-    args = [
-        buildconfig.substs["CARGO"],
-        "metadata",
-        "--all-features",
-        "--format-version",
-        "1",
-        "--manifest-path",
-        CARGO_TOML,
-    ]
-
-    # The Spidermonkey library can be built from a package tarball outside the
-    # tree, so we want to let Cargo create lock files in this case. When built
-    # within a tree, the Rust dependencies have been vendored in so Cargo won't
-    # touch the lock file.
-    if not buildconfig.substs.get("JS_STANDALONE"):
-        args.append("--frozen")
-
-    stdout, returncode = _run_process(args)
+    stdout, returncode = _run_process(
+        [
+            buildconfig.substs["CARGO"],
+            "metadata",
+            "--frozen",
+            "--all-features",
+            "--format-version",
+            "1",
+            "--manifest-path",
+            CARGO_TOML,
+        ]
+    )
 
     if returncode != 0:
         return returncode
 
-    if stdout:
-        output.write(stdout)
+    output.write(stdout)
 
     # This is not quite accurate, but cbindgen only cares about a subset of the
     # data which, when changed, causes these files to change.
@@ -88,8 +82,7 @@ def generate(output, metadata_path, cbindgen_crate_path, *in_tree_dependencies):
     if returncode != 0:
         return returncode
 
-    if stdout:
-        output.write(stdout)
+    output.write(stdout)
 
     deps = set()
     deps.add(CARGO_LOCK)

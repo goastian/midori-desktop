@@ -11,33 +11,32 @@ their contents are ignored in favour of the actual stdlib.
 For firefox's purposes, these patches still work fine, and are necessary
 to make -Zbuild-std work in a vendored environment.
 
-diff --git a/src/bootstrap/src/core/build_steps/dist.rs b/src/bootstrap/src/core/build_steps/dist.rs
-index 012d64e5344..aedb53358ef 100644
---- a/src/bootstrap/src/core/build_steps/dist.rs
-+++ b/src/bootstrap/src/core/build_steps/dist.rs
-@@ -927,6 +927,31 @@ fn run(self, builder: &Builder<'_>) -> GeneratedTarball {
-             builder.copy_link(&builder.src.join(file), &dst_src.join(file));
+diff --git a/src/bootstrap/dist.rs b/src/bootstrap/dist.rs
+index 3cb0eccd324..a3b8154c024 100644
+--- a/src/bootstrap/dist.rs
++++ b/src/bootstrap/dist.rs
+@@ -905,6 +905,30 @@ fn run(self, builder: &Builder<'_>) -> GeneratedTarball {
+             builder.copy(&builder.src.join(file), &dst_src.join(file));
          }
  
-+        // libsysroot includes std and everything else, so vendoring it
++        // libtest includes std and everything else, so vendoring it
 +        // creates exactly what's needed for `cargo -Zbuild-std` or any
 +        // other analysis of the stdlib's source. Cargo also needs help
-+        // finding the lock, so we copy it to libsysroot temporarily.
++        // finding the lock, so we copy it to libtest temporarily.
 +        //
 +        // Note that this requires std to only have one version of each
 +        // crate. e.g. two versions of getopts won't be patchable.
-+        let dst_libsysroot = dst_src.join("library/sysroot");
++        let dst_libtest = dst_src.join("library/test");
 +        let dst_vendor = dst_src.join("vendor");
 +        let root_lock = dst_src.join("Cargo.lock");
-+        let temp_lock = dst_libsysroot.join("Cargo.lock");
++        let temp_lock = dst_libtest.join("Cargo.lock");
 +
 +        // `cargo vendor` will delete everything from the lockfile that
-+        // isn't used by libsysroot, so we need to not use any links!
++        // isn't used by libtest, so we need to not use any links!
 +        builder.really_copy(&root_lock, &temp_lock);
 +
 +        let mut cmd = Command::new(&builder.initial_cargo);
-+        cmd.arg("vendor").arg(dst_vendor).current_dir(&dst_libsysroot);
-+        cmd.env("RUSTC_BOOTSTRAP", "1");
++        cmd.arg("vendor").arg(dst_vendor).current_dir(&dst_libtest);
 +        builder.info("Dist src");
 +        let _time = timeit(builder);
 +        builder.run(&mut cmd);
@@ -47,11 +46,11 @@ index 012d64e5344..aedb53358ef 100644
          tarball.generate()
      }
  }
-diff --git a/src/bootstrap/src/lib.rs b/src/bootstrap/src/lib.rs
-index 5ed6b357e20..ad617948c4b 100644
---- a/src/bootstrap/src/lib.rs
-+++ b/src/bootstrap/src/lib.rs
-@@ -1649,6 +1649,27 @@ fn read_stamp_file(&self, stamp: &Path) -> Vec<(PathBuf, DependencyType)> {
+diff --git a/src/bootstrap/lib.rs b/src/bootstrap/lib.rs
+index 3ed53452309..1fc0d887748 100644
+--- a/src/bootstrap/lib.rs
++++ b/src/bootstrap/lib.rs
+@@ -1437,6 +1437,27 @@ fn read_stamp_file(&self, stamp: &Path) -> Vec<(PathBuf, DependencyType)> {
          paths
      }
  
@@ -61,7 +60,7 @@ index 5ed6b357e20..ad617948c4b 100644
 +        if self.config.dry_run() {
 +            return;
 +        }
-+        self.verbose_than(1, || println!("Copy {:?} to {:?}", src, dst));
++        self.verbose_than(1, &format!("Copy {:?} to {:?}", src, dst));
 +        if src == dst {
 +            return;
 +        }
@@ -76,6 +75,6 @@ index 5ed6b357e20..ad617948c4b 100644
 +        t!(filetime::set_file_times(dst, atime, mtime));
 +    }
 +
-     /// Links a file from `src` to `dst`.
-     /// Attempts to use hard links if possible, falling back to copying.
-     /// You can neither rely on this being a copy nor it being a link,
+     /// Copies a file from `src` to `dst`
+     pub fn copy(&self, src: &Path, dst: &Path) {
+         self.copy_internal(src, dst, false);

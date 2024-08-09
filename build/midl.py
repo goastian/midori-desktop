@@ -67,7 +67,7 @@ def preprocess(base, input, flags):
     import re
     from collections import deque
 
-    IMPORT_RE = re.compile(r'import\s*"([^"]+)";')
+    IMPORT_RE = re.compile('import\s*"([^"]+)";')
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-I", action="append")

@@ -1,8 +1,8 @@
 .. _defining_xpcom_components:
 
-=========================
-Defining XPCOM Components
-=========================
+=========================================
+Defining XPCOM C++-implemented Components
+=========================================
 
 This document explains how to write a :code:`components.conf` file. For
 documentation on the idl format see :ref:`XPIDL`. For a tutorial on writing
@@ -121,16 +121,11 @@ Class definitions may have the following properties:
 
   This property is incompatible with ``legacy_constructor``.
 
-``esModule`` (optional)
-  If provided, must be the URL of a
-  `JavaScript module <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules>`_
-  which contains a JavaScript implementation of the component.
-  The ``constructor`` property must contain the name of an exported
-  function which can be constructed to create a new instance of the component.
-
-
-``jsm`` (deprecated, optional)
-  Do not use. Use ``esModule`` instead.
+``jsm`` (optional)
+  If provided, must be the URL of a JavaScript module which contains a
+  JavaScript implementation of the component. The ``constructor`` property
+  must contain the name of an exported function which can be constructed to
+  create a new instance of the component.
 
 ``legacy_constructor`` (optional)
   This property is deprecated, and should not be used in new code.
@@ -234,7 +229,7 @@ file:
 
 ``Foo.h``
 
-.. code-block:: cpp
+.. code-block:: c++
 
     class Foo final : public nsISupports {
      public:
@@ -243,7 +238,7 @@ file:
 
 ``Foo.cpp``
 
-.. code-block:: cpp
+.. code-block:: c++
 
     already_AddRefed<Foo> Foo::GetSingleton() {
       // ...
@@ -262,7 +257,7 @@ using a template specialization on an incomplete type:
 
 ``Foo.cpp``
 
-.. code-block:: cpp
+.. code-block:: c++
 
     NS_IMPL_COMPONENT_FACTORY(Foo) {
       return do_AddRef(new Foo()).downcast<nsISupports>();

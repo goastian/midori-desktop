@@ -16,19 +16,19 @@ Naming Convention
 The build system does not enforce file naming for test manifest files.
 However, the following convention is used.
 
-mochitest.toml
+mochitest.ini
    For the *plain* flavor of mochitests.
 
-chrome.toml
+chrome.ini
    For the *chrome* flavor of mochitests.
 
-browser.toml
+browser.ini
    For the *browser chrome* flavor of mochitests.
 
-a11y.toml
+a11y.ini
    For the *a11y* flavor of mochitests.
 
-xpcshell.toml
+xpcshell.ini
    For *xpcshell* tests.
 
 .. _manifestparser_manifests:
@@ -36,28 +36,25 @@ xpcshell.toml
 ManifestParser Manifests
 ==========================
 
-ManifestParser manifests are essentially toml files that conform to a basic
+ManifestParser manifests are essentially ini files that conform to a basic
 set of assumptions.
 
 The :doc:`reference documentation </mozbase/manifestparser>`
 for manifestparser manifests describes the basic format of test manifests.
 
-In summary, manifests are toml files with section names describing test files::
+In summary, manifests are ini files with section names describing test files::
 
-    ["test_foo.js"]
-    ["test_bar.js"]
+    [test_foo.js]
+    [test_bar.js]
 
 Keys under sections can hold metadata about each test::
 
-    ["test_foo.js"]
-    skip-if = ["os == 'win'"]
-    ["test_foo.js"]
-    skip-if = ["os == 'linux' && debug"]
-    ["test_baz.js"]
-    fail-if = [
-      "os == 'mac'",
-      "os == 'android'",
-    ]
+    [test_foo.js]
+    skip-if = os == "win"
+    [test_foo.js]
+    skip-if = os == "linux" && debug
+    [test_baz.js]
+    fail-if = os == "mac" || os == "android"
 
 There is a special **DEFAULT** section whose keys/metadata apply to all
 sections/tests::
@@ -65,7 +62,7 @@ sections/tests::
     [DEFAULT]
     property = value
 
-    ["test_foo.js"]
+    [test_foo.js]
 
 In the above example, **test_foo.js** inherits the metadata **property = value**
 from the **DEFAULT** section.
@@ -108,10 +105,10 @@ support-files
    in its own **support-files** entry. These use a syntax where paths
    starting with ``!/`` will indicate the beginning of the path to a
    shared support file starting from the root of the srcdir. For example,
-   if a manifest at ``dom/base/test/mochitest.toml`` has a support file,
+   if a manifest at ``dom/base/test/mochitest.ini`` has a support file,
    ``dom/base/test/server-script.sjs``, and a mochitest in
    ``dom/workers/test`` depends on that support file, the test manifest
-   at ``dom/workers/test/mochitest.toml`` must include
+   at ``dom/workers/test/mochitest.ini`` must include
    ``!/dom/base/test/server-script.sjs`` in its **support-files** entry.
 
 generated-files
@@ -134,7 +131,7 @@ dupe-manifest
    Record that this manifest duplicates another manifest.
 
    The common scenario is two manifest files will include a shared
-   manifest file via the ``["include:file"]`` special section. The build
+   manifest file via the ``[include:file]`` special section. The build
    system enforces that each test file is only provided by a single
    manifest. Having this key present bypasses that check.
 
@@ -150,11 +147,10 @@ skip-if
 
    .. parsed-literal::
 
-      ["test_foo.js"]
-      skip-if = [
-          "os == 'mac' && fission",  # bug 123 - fails on fission
-          "os == 'windows' && debug",  # bug 456 - hits an assertion
-      ]
+      [test_foo.js]
+      skip-if =
+          os == "mac" && fission  # bug 123 - fails on fission
+          os == "windows" && debug  # bug 456 - hits an assertion
 
 fail-if
    Expect test failure if the specified condition is true.

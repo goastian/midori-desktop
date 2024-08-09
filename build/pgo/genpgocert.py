@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+from distutils.spawn import find_executable
 
 import mozinfo
 from mozbuild.base import BinaryNotFoundException, MozbuildObject
@@ -20,9 +21,9 @@ from mozfile import NamedTemporaryFile, TemporaryDirectory
 from mozprofile.permissions import ServerLocations
 
 dbFiles = [
-    re.compile(r"^cert[0-9]+\.db$"),
-    re.compile(r"^key[0-9]+\.db$"),
-    re.compile(r"^secmod\.db$"),
+    re.compile("^cert[0-9]+\.db$"),
+    re.compile("^key[0-9]+\.db$"),
+    re.compile("^secmod\.db$"),
 ]
 
 
@@ -77,7 +78,7 @@ def writeCertspecForServerLocations(fd):
         i for i in iter(locations) if i.scheme == "https" and "nocert" not in i.options
     ]:
         customCertOption = False
-        customCertRE = re.compile(r"^cert=(?:\w+)")
+        customCertRE = re.compile("^cert=(?:\w+)")
         for _ in [i for i in loc.options if customCertRE.match(i)]:
             customCertOption = True
             break
@@ -102,7 +103,7 @@ def constructCertDatabase(build, srcDir):
     except BinaryNotFoundException as e:
         print("{}\n\n{}\n".format(e, e.help()))
         return 1
-    openssl = shutil.which("openssl")
+    openssl = find_executable("openssl")
     pycert = os.path.join(build.topsrcdir, "security", "manager", "tools", "pycert.py")
     pykey = os.path.join(build.topsrcdir, "security", "manager", "tools", "pykey.py")
 

@@ -222,8 +222,7 @@
    fun:_dl_catch_exception
    fun:_dl_catch_error
    fun:_dlerror_run
-   ...
-   fun:dlopen@@GLIBC_*
+   fun:dlopen@@GLIBC_2.2.5
    ...
 }
 {
@@ -256,26 +255,6 @@
     fun:_Z8XRE_mainiPPcRKN7mozilla15BootstrapConfigE
     fun:do_main
     fun:main
-}
-{
-    gtk3/X11 leaks x11 child GdkWindow internals (Bug 1864382)
-    Memcheck:Leak
-    match-leak-kinds: definite
-    ...
-    fun:g_object_new
-    fun:_gdk_x11_display_create_window_impl
-    fun:gdk_window_ensure_native
-    fun:gdk_x11_window_get_xid
-    fun:GetX11Window
-    ...
-    fun:gtk_widget_map
-    fun:gtk_window_map
-    ...
-    fun:gtk_widget_map
-    fun:gtk_window_show
-    ...
-    fun:gtk_widget_show
-    ...
 }
 
 ###################################
@@ -1017,7 +996,6 @@
    match-leak-kinds: definite
    fun:malloc
    fun:moz_xmalloc
-   fun:operator new
    fun:_ZN13nsDynamicAtom6Create*
    fun:_ZN11nsAtomTable7Atomize*
    fun:_ZN21nsLanguageAtomService14LookupLanguage*
@@ -1050,26 +1028,9 @@
    match-leak-kinds: definite
    fun:malloc
    fun:moz_xmalloc
-   fun:operator new
    fun:_ZN13nsDynamicAtom6CreateERK12nsTSubstringIDsEj*
    fun:_ZN11nsAtomTable7AtomizeERK12nsTSubstringIDsE*
    fun:_ZN11nsAttrValue9ParseAtomERK12nsTSubstringIDsE*
    ...
    fun:_ZN7mozilla3dom7Element7SetAttrEiP6nsAtomS3_RK12nsTSubstringIDsEP12nsIPrincipalb
-}
-
-{
-   False positive from new optimizations in rustc 1.73
-   Memcheck:Cond
-   ...
-   fun:drop_in_place<hashbrown::raw::RawIntoIter<(webrender_api::image::ImageFormat, (webrender::texture_pack::guillotine::GuillotineAllocator, alloc::vec::Vec<webrender::renderer::upload::BatchUploadBuffer, alloc::alloc::Global>)), alloc::alloc::Global>>
-   ...
-   fun:upload_to_texture_cache
-}
-
-{
-   False positive from new optimizations in rustc 1.78
-   Memcheck:Cond
-   fun:drop_in_place<core::option::Option<cssparser::cow_rc_str::CowRcStr>>
-   fun:_ZN5style6values9specified5color5Color14parse_internal*
 }

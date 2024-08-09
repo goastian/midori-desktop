@@ -41,6 +41,7 @@ integrated development environment (IDE)
 .. toctree::
    :maxdepth: 1
 
+   androideclipse
    cppeclipse
    visualstudio
 
@@ -54,13 +55,3 @@ Mozilla build system.
    :maxdepth: 1
 
    mozbuild/index
-
-Snap Package
-============
-
-`Snap <https://snapcraft.io/docs>`_ is a packaging format
-
-.. toctree::
-   :maxdepth: 1
-
-   snap
