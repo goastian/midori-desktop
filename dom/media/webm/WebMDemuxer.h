@@ -94,9 +94,9 @@ class WebMDemuxer : public MediaDataDemuxer,
   explicit WebMDemuxer(MediaResource* aResource);
   // Indicate if the WebMDemuxer is to be used with MediaSource. In which
   // case the demuxer will stop reads to the last known complete block.
-WebMDemuxer(
-    MediaResource* aResource, bool aIsMediaSource,
-    Maybe<media::TimeUnit> aFrameEndTimeBeforeRecreateDemuxer = Nothing());
+  WebMDemuxer(
+      MediaResource* aResource, bool aIsMediaSource,
+      Maybe<media::TimeUnit> aFrameEndTimeBeforeRecreateDemuxer = Nothing());
 
   RefPtr<InitPromise> Init() override;
 

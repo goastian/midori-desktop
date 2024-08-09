@@ -77,7 +77,6 @@ void SpeculativeTransaction::Close(nsresult aReason) {
   if (aReason == NS_BASE_STREAM_CLOSED) {
     aReason = NS_OK;
   }
-
   if (mCloseCallback) {
     mCloseCallback(mTriedToWrite && NS_SUCCEEDED(aReason));
     mCloseCallback = nullptr;

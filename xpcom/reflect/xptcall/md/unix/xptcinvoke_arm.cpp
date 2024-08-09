@@ -164,7 +164,7 @@ NS_InvokeByIndex(nsISupports* that, uint32_t methodIndex,
   vtable = *reinterpret_cast<vtable_func **>(that);
   func = vtable[methodIndex];
 
-  /* !!! IMPORTANT !!!
+/* !!! IMPORTANT !!!
  * In the case of paramCount = 0 (and also some other cases in practice but
  * the compiler doesn't know about them), the stack_space is not initialized.
  * Reading the stack_space is technically undefined behavior, but practically,

@@ -1028,6 +1028,11 @@ nsresult MergeParentLoadInfoForwarder(
   rv = aLoadInfo->SetUnstrippedURI(aForwarderArgs.unstrippedURI());
   NS_ENSURE_SUCCESS(rv, rv);
 
+  if (aForwarderArgs.containerFeaturePolicyInfo()) {
+    aLoadInfo->SetContainerFeaturePolicyInfo(
+        *aForwarderArgs.containerFeaturePolicyInfo());
+  }
+
   return NS_OK;
 }
 

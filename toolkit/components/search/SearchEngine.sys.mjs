@@ -391,7 +391,7 @@ export class EngineURL {
           Cr.NS_ERROR_FAILURE
         );
     }
-
+    
     this.templateHost = templateURI.host;
   }
 

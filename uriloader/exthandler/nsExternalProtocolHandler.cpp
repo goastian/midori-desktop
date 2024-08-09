@@ -149,7 +149,7 @@ nsresult nsExtProtocolChannel::OpenURL() {
   nsCOMPtr<nsIExternalProtocolService> extProtService(
       do_GetService(NS_EXTERNALPROTOCOLSERVICE_CONTRACTID));
 
-    auto cleanup = mozilla::MakeScopeExit([&] {
+  auto cleanup = mozilla::MakeScopeExit([&] {
     mCallbacks = nullptr;
     mListener = nullptr;
   });
@@ -192,6 +192,7 @@ nsresult nsExtProtocolChannel::OpenURL() {
           }));
     }
   }
+
   return rv;
 }
 

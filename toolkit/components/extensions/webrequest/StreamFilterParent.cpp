@@ -125,6 +125,7 @@ auto StreamFilterParent::Create(dom::ContentParent* aContentParent,
   if (!addonPolicy) {
     return ChildEndpointPromise::CreateAndReject(false, __func__);
   }
+
   nsCOMPtr<nsITraceableChannel> channel =
       webreq.GetTraceableChannel(aChannelId, *addonPolicy, aContentParent);
 

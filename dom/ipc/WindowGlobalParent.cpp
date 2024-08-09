@@ -165,7 +165,6 @@ void WindowGlobalParent::Init() {
   if (!BrowsingContext()->IsDiscarded()) {
     MOZ_ALWAYS_SUCCEEDS(
         BrowsingContext()->SetCurrentInnerWindowId(InnerWindowId()));
-
   }
 
   if (BrowsingContext()->IsTopContent()) {

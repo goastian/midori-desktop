@@ -8,6 +8,7 @@
 
 This script manages Desktop repacks for nightly builds.
 """
+
 import glob
 import os
 import shlex
@@ -88,7 +89,7 @@ class DesktopSingleLocale(LocalesMixin, AutomationMixin, VCSMixin, BaseScript):
                 "log_name": "single_locale",
                 "hg_l10n_base": "https://hg.mozilla.org/l10n-central",
                 # If set, takes precedence over `hg_l10n_base`
-                "git_repository": "",
+                "git_repository": "https://github.com/mozilla-l10n/firefox-l10n",
             },
         }
 

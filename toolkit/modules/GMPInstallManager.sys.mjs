@@ -358,6 +358,7 @@ GMPInstallManager.prototype = {
     }
 
     let url = await this._getURL();
+    let trustedContentSignatureRoot = this._getContentSignatureRootForURL(url);
 
     log.info(
       `Fetching product addon list url=${url}, allowNonBuiltIn=${allowNonBuiltIn}, certs=${certs}, checkContentSignature=${checkContentSignature}, trustedContentSignatureRoot=${trustedContentSignatureRoot}`

@@ -1,6 +1,6 @@
-.. _mozilla_projects_nss_nss_3_90_3_release_notes:
+.. _mozilla_projects_nss_nss_3_90_4_release_notes:
 
-NSS 3.90.3 release notes
+NSS 3.90.4 release notes
 ========================
 
 `Introduction <#introduction>`__
@@ -8,7 +8,7 @@ NSS 3.90.3 release notes
 
 .. container::
 
-   Network Security Services (NSS) 3.90.3 was released on *27th June 2024**.
+   Network Security Services (NSS) 3.90.4 was released on *24th July 2024**.
 
 
 `Distribution Information <#distribution_information>`__
@@ -16,34 +16,30 @@ NSS 3.90.3 release notes
 
 .. container::
 
-   The HG tag is NSS_3_90_3_RTM. NSS 3.90.3 requires NSPR 4.35 or newer.
+   The HG tag is NSS_3_90_4_RTM. NSS 3.90.4 requires NSPR 4.35 or newer.
 
-   NSS 3.90.3 source distributions are available on ftp.mozilla.org for secure HTTPS download:
+   NSS 3.90.4 source distributions are available on ftp.mozilla.org for secure HTTPS download:
 
    -  Source tarballs:
-      https://ftp.mozilla.org/pub/mozilla.org/security/nss/releases/NSS_3_90_3_RTM/src/
+      https://ftp.mozilla.org/pub/mozilla.org/security/nss/releases/NSS_3_90_4_RTM/src/
 
    Other releases are available :ref:`mozilla_projects_nss_releases`.
 
-.. _changes_in_nss_3.90.3:
+.. _changes_in_nss_3.90.4:
 
-`Changes in NSS 3.90.3 <#changes_in_nss_3.90.3>`__
+`Changes in NSS 3.90.4 <#changes_in_nss_3.90.4>`__
 --------------------------------------------------
 
 .. container::
 
-   - Bug 1901080 - GLOBALTRUST 2020: Set Distrust After for TLS and S/MIME.
-   - Bug 1748105 - clean up escape handling.
-   - Bug 1895032 - remove redundant AllocItem implementation. r=nss-reviewers,rrelyea
-   - Bug 1836925 - Disable ASM support for Curve25519.
-   - Bug 1836781 - Disable ASM support for Curve25519 for all but X86_64.
+   - Bug 1905691 - ChaChaXor to return after the function
 
 `Compatibility <#compatibility>`__
 ----------------------------------
 
 .. container::
 
-   NSS 3.90.3 shared libraries are backwards-compatible with all older NSS 3.x shared
+   NSS 3.90.4 shared libraries are backwards-compatible with all older NSS 3.x shared
    libraries. A program linked with older NSS 3.x shared libraries will work with
    this new version of the shared libraries without recompiling or
    relinking. Furthermore, applications that restrict their use of NSS APIs to the

@@ -891,6 +891,7 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
 
             # All Linux systems need module-null-sink to be loaded, otherwise
             # media tests fail.
+
             self.run_command("pactl load-module module-null-sink")
             modules = self.get_output_from_command("pactl list modules short")
             if not [l for l in modules.splitlines() if "module-x11" in l]:

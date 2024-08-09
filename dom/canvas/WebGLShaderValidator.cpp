@@ -191,7 +191,7 @@ std::unique_ptr<webgl::ShaderValidator> WebGLContext::CreateShaderValidator(
 #endif
   }
 
-    // -
+  // -
 
   resources.MaxVariableSizeInBytes = [&]() -> size_t {
     const auto kibytes = StaticPrefs::webgl_glsl_max_var_size_in_kibytes();

@@ -1315,7 +1315,6 @@ void JSObject::swap(JSContext* cx, HandleObject a, HandleObject b,
       a->as<ProxyObject>().setInlineValueArray();
     }
   } else {
-
     // When the objects have different sizes, they will have different numbers
     // of fixed slots before and after the swap, so the slots for native objects
     // will need to be rearranged. Remember the original values from the

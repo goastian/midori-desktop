@@ -549,7 +549,7 @@ string GetProgramPath(const string& exename) {
     pos = path.rfind(UI_DIR_SEPARATOR, pos - 1);
   }
 
-  path.erase(pos + 1);path.append("../../../");
+  path.erase(pos + 1);
 #endif  // XP_MACOSX
   path.append(exename + BIN_SUFFIX);
 

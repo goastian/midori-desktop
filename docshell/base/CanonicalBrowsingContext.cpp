@@ -3038,7 +3038,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(CanonicalBrowsingContext,
   if (tmp->mSessionHistory) {
     tmp->mSessionHistory->SetBrowsingContext(nullptr);
   }
-NS_IMPL_CYCLE_COLLECTION_UNLINK(mSessionHistory, mCurrentBrowserParent,
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mSessionHistory, mCurrentBrowserParent,
                                   mWebProgress,
                                   mSessionStoreSessionStorageUpdateTimer)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
