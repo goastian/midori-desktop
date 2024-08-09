@@ -4,11 +4,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+
 # Updater
 # ==============================================================
-@depends(build_project)
-def updater_default(build_project):
-    return build_project != "mobile/android"
+@depends(build_project, target)
+def updater_default(build_project, target):
+    return build_project != "mobile/android" and target.os != "iOS"
 
 
 option(
@@ -53,6 +54,29 @@ set_config(
     True,
     depends_if("--enable-unverified-updates")(lambda _: True),
 )
+
+# Use NSS for MAR signatures even on platforms where system libraries are
+# supported (currently Windows and macOS).
+# ==============================================================
+
+can_toggle_nss_mar = target_is_windows | target_is_osx
+
+option(
+    "--enable-nss-mar",
+    when=can_toggle_nss_mar,
+    help="Enable using NSS to check MAR signatures instead of system crypto.",
+)
+
+
+@depends(
+    depends("--enable-nss-mar", when=can_toggle_nss_mar)(lambda x: x),
+    can_toggle_nss_mar,
+)
+def enable_nss_mar(enabled, can_toggle_nss_mar):
+    return enabled or not can_toggle_nss_mar
+
+
+set_config("MOZ_USE_NSS_FOR_MAR", True, when=enable_nss_mar)
 
 # Maintenance service (Windows only)
 # ==============================================================
@@ -159,7 +183,10 @@ set_config("MOZ_DEFAULT_BROWSER_AGENT", default_agent_flag)
 # ==============================================================================
 @depends(target, build_project)
 def notification_server_default(target, build_project):
-    return target.os == "WINNT" and build_project == "browser"
+    return target.os == "WINNT" and build_project in (
+        "browser",
+        "comm/mail",
+    )
 
 
 option(

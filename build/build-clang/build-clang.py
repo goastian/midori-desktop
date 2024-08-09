@@ -218,11 +218,11 @@ def build_one_stage(
             "-DCMAKE_CXX_COMPILER=%s" % slashify_path(cxx[0]),
             "-DCMAKE_ASM_COMPILER=%s" % slashify_path(asm[0]),
             "-DCMAKE_AR=%s" % slashify_path(ar),
-            "-DCMAKE_C_FLAGS=%s" % " ".join(cc[1:]),
-            "-DCMAKE_CXX_FLAGS=%s" % " ".join(cxx[1:]),
-            "-DCMAKE_ASM_FLAGS=%s" % " ".join(asm[1:]),
-            "-DCMAKE_EXE_LINKER_FLAGS=%s" % " ".join(ldflags),
-            "-DCMAKE_SHARED_LINKER_FLAGS=%s" % " ".join(ldflags),
+            "-DCMAKE_C_FLAGS_INIT=%s" % " ".join(cc[1:]),
+            "-DCMAKE_CXX_FLAGS_INIT=%s" % " ".join(cxx[1:]),
+            "-DCMAKE_ASM_FLAGS_INIT=%s" % " ".join(asm[1:]),
+            "-DCMAKE_EXE_LINKER_FLAGS_INIT=%s" % " ".join(ldflags),
+            "-DCMAKE_SHARED_LINKER_FLAGS_INIT=%s" % " ".join(ldflags),
             "-DCMAKE_BUILD_TYPE=%s" % build_type,
             "-DCMAKE_INSTALL_PREFIX=%s" % inst_dir,
             "-DLLVM_TARGETS_TO_BUILD=%s" % machine_targets,
@@ -251,10 +251,7 @@ def build_one_stage(
 
         cmake_args.append("-DLLVM_ENABLE_PROJECTS=%s" % ";".join(projects))
 
-        # There is no libxml2 on Windows except if we build one ourselves.
-        # libxml2 is only necessary for llvm-mt, but Windows can just use the
-        # native MT tool.
-        if not is_windows(target) and is_final_stage:
+        if is_final_stage:
             cmake_args += ["-DLLVM_ENABLE_LIBXML2=FORCE_ON"]
         if is_linux(target) and is_final_stage:
             sysroot = os.path.join(os.environ.get("MOZ_FETCHES_DIR", ""), "sysroot")
@@ -268,7 +265,7 @@ def build_one_stage(
             cmake_args += ["-DLLVM_ENABLE_TERMINFO=OFF"]
         if is_windows(target):
             cmake_args.insert(-1, "-DLLVM_EXPORT_SYMBOLS_FOR_PLUGINS=ON")
-            cmake_args.insert(-1, "-DLLVM_USE_CRT_RELEASE=MT")
+            cmake_args.insert(-1, "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded")
             if is_cross_compile(target):
                 cmake_args += [
                     f"-DCMAKE_TOOLCHAIN_FILE={src_dir}/cmake/platforms/WinMsvc.cmake",
@@ -276,6 +273,13 @@ def build_one_stage(
                     f"-DHOST_ARCH={target[: -len('-pc-windows-msvc')]}",
                     f"-DLLVM_WINSYSROOT={os.environ['VSINSTALLDIR']}",
                     "-DLLVM_DISABLE_ASSEMBLY_FILES=ON",
+                ]
+            if is_final_stage:
+                fetches = os.environ["MOZ_FETCHES_DIR"]
+                cmake_args += [
+                    "-DLIBXML2_DEFINITIONS=-DLIBXML_STATIC",
+                    f"-DLIBXML2_INCLUDE_DIR={fetches}/libxml2/include/libxml2",
+                    f"-DLIBXML2_LIBRARIES={fetches}/libxml2/lib/libxml2s.lib",
                 ]
         else:
             # libllvm as a shared library is not supported on Windows
@@ -442,7 +446,7 @@ def prune_final_dir_for_clang_tidy(final_dir, target):
         if is_darwin(target) and name in ["libLLVM.dylib", "libclang-cpp.dylib"]:
             continue
         if is_linux(target) and (
-            fnmatch.fnmatch(name, "libLLVM*.so")
+            fnmatch.fnmatch(name, "libLLVM*.so*")
             or fnmatch.fnmatch(name, "libclang-cpp.so*")
         ):
             continue

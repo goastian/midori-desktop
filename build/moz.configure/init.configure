@@ -172,7 +172,7 @@ def virtualenv_python3():
     return namespace(
         # sys.executable is currently not updated for in-process activations. However,
         # sys.prefix is, so we can calculate the python executable's path from there.
-        path=normsep(PythonVirtualenv(realpath(sys.prefix)).python_path),
+        path=normalize_path(PythonVirtualenv(realpath(sys.prefix)).python_path),
         str_version=".".join(str(i) for i in sys.version_info[0:3]),
     )
 
@@ -525,6 +525,16 @@ def split_triplet(triplet, allow_wasi=False):
     elif os.startswith("darwin"):
         canonical_kernel = "Darwin"
         canonical_os = "OSX"
+    elif os.startswith("ios"):
+        canonical_kernel = "Darwin"
+        canonical_os = "iOS"
+        # old-configure does plenty of tests against $target and $target_os
+        # and expects darwin for iOS, so make it happy.
+        sub_configure_alias = sub_configure_alias[: -len(os)] + "darwin"
+        # rust knows ios-sim, clang knows ios-simulator. We only take the
+        # former as --target, but we need to make clang happy.
+        if os == "ios-sim":
+            os = "ios-simulator"
     elif os.startswith("dragonfly"):
         canonical_os = canonical_kernel = "DragonFly"
     elif os.startswith("freebsd"):
@@ -603,7 +613,7 @@ def split_triplet(triplet, allow_wasi=False):
     # prefixes. We need to be more specific about the LLVM target on Mac
     # so cross-language LTO will work correctly.
 
-    if os.startswith("darwin"):
+    if os.startswith(("darwin", "ios")):
         toolchain = "%s-apple-%s" % (cpu, os)
     else:
         toolchain = "%s-%s" % (cpu, os)
@@ -647,12 +657,13 @@ def help_host_target(help, host, target):
 
 def config_sub(shell, triplet):
     config_sub = os.path.join(os.path.dirname(__file__), "..", "autoconf", "config.sub")
-    # Config.sub doesn't like the *-windows-msvc/*-windows-gnu triplets, so
+    # Config.sub doesn't like the *-windows-msvc/*-windows-gnu/*-ios-sim triplets, so
     # munge those before and after calling config.sub.
     suffix = None
     munging = {
         "-windows-msvc": "-mingw32",
         "-windows-gnu": "-mingw32",
+        "-ios-sim": "-ios",
     }
     for check_suffix, replacement in munging.items():
         if triplet.endswith(check_suffix):
@@ -728,13 +739,13 @@ def real_target(value, host, shell, project, application):
         project = project[0]
     if not value:
         if project == "mobile/android":
-            if host.raw_os == "mingw32":
-                log.warning(
-                    "Building Firefox for Android on Windows is not fully "
-                    "supported. See https://bugzilla.mozilla.org/show_bug.cgi?"
-                    "id=1169873 for details."
-                )
-            return split_triplet("arm-unknown-linux-androideabi")
+            target_cpu, target_system = {
+                "aarch64": ("aarch64", "android"),
+                "x86_64": ("x86_64", "android"),
+            }.get(host.cpu, ("arm", "androideabi"))
+            return split_triplet(f"{target_cpu}-unknown-linux-{target_system}")
+        if project == "mobile/ios":
+            return split_triplet("aarch64-apple-ios")
         return host
     # If --target was only given a cpu arch, expand it with the
     # non-cpu part of the host. For mobile/android, expand it with
@@ -745,6 +756,8 @@ def real_target(value, host, shell, project, application):
             rest = "unknown-linux-android"
             if target.startswith("arm"):
                 rest += "eabi"
+        elif project == "mobile/ios":
+            rest = "apple-ios"
         else:
             cpu, rest = host.alias.split("-", 1)
         target = "-".join((target, rest))
@@ -816,8 +829,8 @@ def target_variables(target):
         os_arch = target.kernel
 
     return namespace(
-        OS_TARGET=os_target,
-        OS_ARCH=os_arch,
+        OS_TARGET=str(os_target),
+        OS_ARCH=str(os_arch),
         INTEL_ARCHITECTURE=target.cpu in ("x86", "x86_64") or None,
     )
 
@@ -826,12 +839,14 @@ set_config("OS_TARGET", target_variables.OS_TARGET)
 add_old_configure_assignment("OS_TARGET", target_variables.OS_TARGET)
 set_config("OS_ARCH", target_variables.OS_ARCH)
 add_old_configure_assignment("OS_ARCH", target_variables.OS_ARCH)
-set_config("CPU_ARCH", target.cpu)
-add_old_configure_assignment("CPU_ARCH", target.cpu)
+obsolete_config("CPU_ARCH", replacement="TARGET_CPU")
 set_config("INTEL_ARCHITECTURE", target_variables.INTEL_ARCHITECTURE)
-set_config("TARGET_CPU", target.raw_cpu)
+set_config("TARGET_CPU", target.cpu)
+add_old_configure_assignment("TARGET_CPU", target.cpu)
+set_config("TARGET_RAW_CPU", target.raw_cpu)
 set_config("TARGET_OS", target.os)
 set_config("TARGET_RAW_OS", target.raw_os)
+set_config("TARGET_KERNEL", target.kernel)
 set_config("TARGET_ENDIANNESS", target.endianness)
 
 
@@ -900,6 +915,15 @@ def host_is_osx(host):
 
 
 set_define("XP_MACOSX", target_is_osx)
+
+
+@depends(target)
+def target_is_ios(target):
+    if target.kernel == "Darwin" and target.os == "iOS":
+        return True
+
+
+set_define("XP_IOS", target_is_ios)
 
 
 @depends(target)
@@ -1181,6 +1205,7 @@ set_config("MOZ_APP_VERSION", milestone.app_version)
 set_config("MOZ_APP_VERSION_DISPLAY", milestone.app_version_display)
 add_old_configure_assignment("MOZ_APP_VERSION", milestone.app_version)
 
+add_old_configure_assignment("NIGHTLY_BUILD", milestone.is_nightly)
 
 # The app update channel is 'default' when not supplied. The value is used in
 # the application's confvars.sh (and is made available to a project specific
@@ -1238,42 +1263,25 @@ def prefer_mozillabuild_path(mozillabuild_bin_paths):
     return mozillabuild_bin_paths + os.environ["PATH"].split(os.pathsep)
 
 
-# A template providing a shorthand for setting a variable. The created
-# option will only be settable with imply_option.
-# It is expected that a project-specific moz.configure will call imply_option
-# to set a value other than the default.
-# If required, the set_as_define and set_for_old_configure arguments
-# will additionally cause the variable to be set using set_define and
-# add_old_configure_assignment. util.configure would be an appropriate place for
-# this, but it uses add_old_configure_assignment, which is defined in this file.
-@template
-def project_flag(env=None, set_for_old_configure=False, set_as_define=False, **kwargs):
-
-    if not env:
-        configure_error("A project_flag must be passed a variable name to set.")
-
-    opt = option(env=env, possible_origins=("implied",), **kwargs)
-
-    @depends(opt.option)
-    def option_implementation(value):
-        if value:
-            if len(value):
-                return value
-            return bool(value)
-
-    set_config(env, option_implementation)
-    if set_as_define:
-        set_define(env, option_implementation)
-    if set_for_old_configure:
-        add_old_configure_assignment(env, option_implementation)
-
-
 # milestone.is_nightly corresponds to cases NIGHTLY_BUILD is set.
 
 
 @depends(milestone)
 def enabled_in_nightly(milestone):
     return milestone.is_nightly
+
+
+# Check if we need the 32-bit Linux SSE2 error dialog
+# ===================================================
+option(
+    env="MOZ_LINUX_32_SSE2_STARTUP_ERROR",
+    help="Add code to perform startup checks to warn if SSE2 is not available",
+    default=depends("MOZ_AUTOMATION")(lambda x: bool(x)),
+    when=target_is_unix & depends(target)(lambda target: target.cpu == "x86"),
+)
+set_config(
+    "MOZ_LINUX_32_SSE2_STARTUP_ERROR", True, when="MOZ_LINUX_32_SSE2_STARTUP_ERROR"
+)
 
 
 # Branding
@@ -1305,3 +1313,31 @@ set_config(
     moz_app_basename,
     when=depends(build_project)(lambda p: p != "js"),
 )
+
+
+@depends("MOZILLABUILD", when=host_is_windows)
+@checking("for MozillaBuild directory")
+@imports("os")
+def mozillabuild_dir(mozillabuild):
+    if mozillabuild and os.path.exists(mozillabuild[0]):
+        return mozillabuild[0]
+
+
+@depends_if(mozillabuild_dir)
+@checking("for MozillaBuild version")
+@imports(_from="__builtin__", _import="Exception")
+@imports(_from="__builtin__", _import="open")
+def mozillabuild_version(mozillabuild_dir):
+    try:
+        with open(os.path.join(mozillabuild_dir, "VERSION"), "r") as fh:
+            return Version(fh.readline().strip())
+    except Exception as e:
+        die(e)
+
+
+@depends_if(mozillabuild_version)
+def valid_mozillabuild_version(mozillabuild_version):
+    if mozillabuild_version < Version("4.0"):
+        die(
+            f"Please upgrade MozillaBuild. You can find a recent version at: https://wiki.mozilla.org/MozillaBuild"
+        )

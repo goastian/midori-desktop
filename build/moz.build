@@ -25,14 +25,14 @@ if CONFIG["RUSTC"]:
     DIRS += ["rust/mozbuild"]
 
 CRAMTEST_MANIFESTS += [
-    "tests/cram/cram.ini",
+    "tests/cram/cram.toml",
 ]
 
 DEFINES["ACCEPTED_MAR_CHANNEL_IDS"] = CONFIG["ACCEPTED_MAR_CHANNEL_IDS"]
 
 if CONFIG["MOZ_BUILD_APP"] == "browser":
     PYTHON_UNITTEST_MANIFESTS += [
-        "compare-mozconfig/python.ini",
+        "compare-mozconfig/python.toml",
     ]
 
 if CONFIG["ENABLE_TESTS"] or CONFIG["MOZ_DMD"]:
@@ -91,7 +91,7 @@ if CONFIG["MOZ_APP_BASENAME"]:
         if CONFIG[var]:
             appini_defines[var] = True
 
-    appini_defines["MOZ_APPUPDATE_HOST"] = "update.astian.org"
+    appini_defines["MOZ_APPUPDATE_HOST"] = "floorp-update.ablaze.one"
     if CONFIG["MOZ_APPUPDATE_HOST"]:
         appini_defines["MOZ_APPUPDATE_HOST"] = CONFIG["MOZ_APPUPDATE_HOST"]
 
@@ -107,7 +107,10 @@ if CONFIG["MOZ_APP_BASENAME"]:
     )
 
     FINAL_TARGET_FILES += ["!application.ini"]
-    if CONFIG["MOZ_WIDGET_TOOLKIT"] != "android" and CONFIG["MOZ_UPDATER"]:
+    if (
+        CONFIG["MOZ_WIDGET_TOOLKIT"] not in ("android", "cocoa")
+        and CONFIG["MOZ_UPDATER"]
+    ):
         FINAL_TARGET_PP_FILES += ["update-settings.ini"]
 
     GeneratedFile(
