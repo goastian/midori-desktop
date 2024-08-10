@@ -5663,7 +5663,6 @@
   type: bool
   value: true
   mirror: always
-#endif
 
 # Time in milliseconds after which geoclue will try to fallback to MLS if no
 # location is received after successful start.
@@ -5671,6 +5670,7 @@
   type: uint32_t
   value: 5000
   mirror: always
+#endif
 
 #---------------------------------------------------------------------------
 # Prefs starting with "gfx."
@@ -13218,7 +13218,7 @@
 # false - Do not send header to indicate opting-in
 - name: privacy.globalprivacycontrol.enabled
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
 
 # Controls whether or not GPC signals are sent. Meant to act as a third option
@@ -13226,7 +13226,7 @@
 # the Sec-GPC HTTP header.
 - name: privacy.globalprivacycontrol.functionality.enabled
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
 
 # Lower the priority of network loads for resources on the tracking protection
