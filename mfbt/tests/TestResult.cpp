@@ -4,8 +4,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include <stdint.h>
 #include <string.h>
 #include "mozilla/ResultVariant.h"
+#include "mozilla/Try.h"
 #include "mozilla/UniquePtr.h"
 
 using mozilla::Err;
@@ -655,6 +657,245 @@ static void UniquePtrTest() {
   }
 }
 
+struct ZeroIsUnusedStructForPointer {
+  int x = 1;
+};
+enum class ZeroIsUnusedEnum1 : uint8_t {
+  V1 = 1,
+  V2 = 2,
+};
+enum class ZeroIsUnusedEnum2 : uint16_t {
+  V1 = 1,
+  V2 = 2,
+};
+enum class ZeroIsUnusedEnum4 : uint32_t {
+  V1 = 1,
+  V2 = 2,
+};
+enum class ZeroIsUnusedEnum8 : uint64_t {
+  V1 = 1,
+  V2 = 2,
+};
+struct EmptyErrorStruct {};
+
+template <>
+struct mozilla::detail::UnusedZero<ZeroIsUnusedStructForPointer*> {
+  static const bool value = true;
+};
+template <>
+struct mozilla::detail::UnusedZero<ZeroIsUnusedEnum1> {
+  static const bool value = true;
+};
+template <>
+struct mozilla::detail::UnusedZero<ZeroIsUnusedEnum2> {
+  static const bool value = true;
+};
+template <>
+struct mozilla::detail::UnusedZero<ZeroIsUnusedEnum4> {
+  static const bool value = true;
+};
+template <>
+struct mozilla::detail::UnusedZero<ZeroIsUnusedEnum8> {
+  static const bool value = true;
+};
+
+static void ZeroIsEmptyErrorTest() {
+  {
+    ZeroIsUnusedStructForPointer s;
+
+    using V = ZeroIsUnusedStructForPointer*;
+
+    mozilla::Result<V, EmptyErrorStruct> result(&s);
+    MOZ_RELEASE_ASSERT(sizeof(result) == sizeof(V));
+
+    MOZ_RELEASE_ASSERT(result.isOk());
+    MOZ_RELEASE_ASSERT(result.inspect() == &s);
+  }
+
+  {
+    using V = ZeroIsUnusedStructForPointer*;
+
+    mozilla::Result<V, EmptyErrorStruct> result(Err(EmptyErrorStruct{}));
+
+    MOZ_RELEASE_ASSERT(result.isErr());
+    MOZ_RELEASE_ASSERT(*reinterpret_cast<V*>(&result) == nullptr);
+  }
+
+  {
+    ZeroIsUnusedEnum1 e = ZeroIsUnusedEnum1::V1;
+
+    using V = ZeroIsUnusedEnum1;
+
+    mozilla::Result<V, EmptyErrorStruct> result(e);
+    MOZ_RELEASE_ASSERT(sizeof(result) == sizeof(V));
+
+    MOZ_RELEASE_ASSERT(result.isOk());
+    MOZ_RELEASE_ASSERT(result.inspect() == e);
+  }
+
+  {
+    using V = ZeroIsUnusedEnum1;
+
+    mozilla::Result<V, EmptyErrorStruct> result(Err(EmptyErrorStruct()));
+
+    MOZ_RELEASE_ASSERT(result.isErr());
+    MOZ_RELEASE_ASSERT(*reinterpret_cast<uint8_t*>(&result) == 0);
+  }
+
+  {
+    ZeroIsUnusedEnum2 e = ZeroIsUnusedEnum2::V1;
+
+    using V = ZeroIsUnusedEnum2;
+
+    mozilla::Result<V, EmptyErrorStruct> result(e);
+    MOZ_RELEASE_ASSERT(sizeof(result) == sizeof(V));
+
+    MOZ_RELEASE_ASSERT(result.isOk());
+    MOZ_RELEASE_ASSERT(result.inspect() == e);
+  }
+
+  {
+    using V = ZeroIsUnusedEnum2;
+
+    mozilla::Result<V, EmptyErrorStruct> result(Err(EmptyErrorStruct()));
+
+    MOZ_RELEASE_ASSERT(result.isErr());
+    MOZ_RELEASE_ASSERT(*reinterpret_cast<uint16_t*>(&result) == 0);
+  }
+
+  {
+    ZeroIsUnusedEnum4 e = ZeroIsUnusedEnum4::V1;
+
+    using V = ZeroIsUnusedEnum4;
+
+    mozilla::Result<V, EmptyErrorStruct> result(e);
+    MOZ_RELEASE_ASSERT(sizeof(result) == sizeof(V));
+
+    MOZ_RELEASE_ASSERT(result.isOk());
+    MOZ_RELEASE_ASSERT(result.inspect() == e);
+  }
+
+  {
+    using V = ZeroIsUnusedEnum4;
+
+    mozilla::Result<V, EmptyErrorStruct> result(Err(EmptyErrorStruct()));
+
+    MOZ_RELEASE_ASSERT(result.isErr());
+    MOZ_RELEASE_ASSERT(*reinterpret_cast<uint32_t*>(&result) == 0);
+  }
+
+  {
+    ZeroIsUnusedEnum8 e = ZeroIsUnusedEnum8::V1;
+
+    using V = ZeroIsUnusedEnum8;
+
+    mozilla::Result<V, EmptyErrorStruct> result(e);
+    MOZ_RELEASE_ASSERT(sizeof(result) == sizeof(V));
+
+    MOZ_RELEASE_ASSERT(result.isOk());
+    MOZ_RELEASE_ASSERT(result.inspect() == e);
+  }
+
+  {
+    using V = ZeroIsUnusedEnum8;
+
+    mozilla::Result<V, EmptyErrorStruct> result(Err(EmptyErrorStruct()));
+
+    MOZ_RELEASE_ASSERT(result.isErr());
+    MOZ_RELEASE_ASSERT(*reinterpret_cast<uint64_t*>(&result) == 0);
+  }
+}
+
+class Foo {};
+
+class C1 {};
+class C2 : public C1 {};
+
+class E1 {};
+class E2 : public E1 {};
+
+void UpcastTest() {
+  {
+    C2 c2;
+
+    mozilla::Result<C2*, Failed> result(&c2);
+    mozilla::Result<C1*, Failed> copied(std::move(result));
+
+    MOZ_RELEASE_ASSERT(copied.inspect() == &c2);
+  }
+
+  {
+    E2 e2;
+
+    mozilla::Result<Foo, E2*> result(Err(&e2));
+    mozilla::Result<Foo, E1*> copied(std::move(result));
+
+    MOZ_RELEASE_ASSERT(copied.inspectErr() == &e2);
+  }
+
+  {
+    C2 c2;
+
+    mozilla::Result<C2*, E2*> result(&c2);
+    mozilla::Result<C1*, E1*> copied(std::move(result));
+
+    MOZ_RELEASE_ASSERT(copied.inspect() == &c2);
+  }
+
+  {
+    E2 e2;
+
+    mozilla::Result<C2*, E2*> result(Err(&e2));
+    mozilla::Result<C1*, E1*> copied(std::move(result));
+
+    MOZ_RELEASE_ASSERT(copied.inspectErr() == &e2);
+  }
+}
+
+void EqualityTest() {
+  {
+    Result<int, bool> result(1);
+    Result<int, bool> other(1);
+
+    MOZ_RELEASE_ASSERT(result == other);
+  }
+
+  {
+    Result<int, bool> result(true);
+    Result<int, bool> other(true);
+
+    MOZ_RELEASE_ASSERT(result == other);
+  }
+
+  {
+    Result<int, bool> result(1);
+    Result<int, bool> other(2);
+
+    MOZ_RELEASE_ASSERT(result != other);
+  }
+
+  {
+    Result<int, bool> result(true);
+    Result<int, bool> other(false);
+
+    MOZ_RELEASE_ASSERT(result != other);
+  }
+
+  {
+    Result<int, bool> result(0);
+    Result<int, bool> other(false);
+
+    MOZ_RELEASE_ASSERT(result != other);
+  }
+
+  {
+    Result<int, unsigned int> result(1);
+    Result<int, unsigned int> other(1u);
+
+    MOZ_RELEASE_ASSERT(result != other);
+  }
+}
+
 /* * */
 
 int main() {
@@ -667,5 +908,8 @@ int main() {
   OrElseTest();
   AndThenTest();
   UniquePtrTest();
+  ZeroIsEmptyErrorTest();
+  UpcastTest();
+  EqualityTest();
   return 0;
 }

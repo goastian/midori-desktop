@@ -6,6 +6,7 @@
 
 #include <stddef.h>
 
+#include <memory>  // For unique_ptr
 #include <type_traits>
 #include <utility>
 
@@ -20,13 +21,10 @@ using mozilla::UniqueFreePtr;
 using mozilla::UniquePtr;
 using mozilla::Vector;
 
-#define CHECK(c)                               \
-  do {                                         \
-    bool cond = !!(c);                         \
-    MOZ_ASSERT(cond, "Failed assertion: " #c); \
-    if (!cond) {                               \
-      return false;                            \
-    }                                          \
+#define CHECK(c)                                  \
+  do {                                            \
+    bool cond = !!(c);                            \
+    MOZ_RELEASE_ASSERT(cond, "Test failed: " #c); \
   } while (false)
 
 typedef UniquePtr<int> NewInt;
@@ -544,6 +542,36 @@ static bool TestVoid() {
   return true;
 }
 
+static bool TestTempPtrToSetter() {
+  static int sFooRefcount = 0;
+  struct Foo {
+    Foo() { sFooRefcount += 1; }
+
+    ~Foo() { sFooRefcount -= 1; }
+  };
+
+  const auto AllocByOutvar = [](Foo** out) -> bool {
+    *out = new Foo;
+    return true;
+  };
+
+  {
+    UniquePtr<Foo> f;
+    (void)AllocByOutvar(mozilla::TempPtrToSetter(&f));
+    CHECK(sFooRefcount == 1);
+  }
+  CHECK(sFooRefcount == 0);
+
+  {
+    std::unique_ptr<Foo> f;
+    (void)AllocByOutvar(mozilla::TempPtrToSetter(&f));
+    CHECK(sFooRefcount == 1);
+  }
+  CHECK(sFooRefcount == 0);
+
+  return true;
+}
+
 int main() {
   TestDeleterType();
 
@@ -569,6 +597,9 @@ int main() {
     return 1;
   }
   if (!TestVoid()) {
+    return 1;
+  }
+  if (!TestTempPtrToSetter()) {
     return 1;
   }
   return 0;
