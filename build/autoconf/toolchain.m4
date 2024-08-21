@@ -35,31 +35,6 @@ if test "$CC_TYPE" = "clang-cl"; then
 fi
 ])
 
-AC_DEFUN([MOZ_TOOL_VARIABLES],
-[
-GNU_CC=
-GNU_CXX=
-if test "$CC_TYPE" = "gcc"; then
-    GNU_CC=1
-    GNU_CXX=1
-fi
-
-CLANG_CC=
-CLANG_CXX=
-CLANG_CL=
-if test "$CC_TYPE" = "clang"; then
-    GNU_CC=1
-    GNU_CXX=1
-    CLANG_CC=1
-    CLANG_CXX=1
-fi
-if test "$CC_TYPE" = "clang-cl"; then
-    CLANG_CL=1
-fi
-
-AC_SUBST(CLANG_CXX)
-AC_SUBST(CLANG_CL)
-])
 
 AC_DEFUN([MOZ_CROSS_COMPILER],
 [
@@ -80,38 +55,4 @@ AC_PROG_CC
 AC_PROG_CXX
 
 PATH=$_SAVE_PATH
-])
-
-AC_DEFUN([MOZ_CXX11],
-[
-dnl Updates to the test below should be duplicated further below for the
-dnl cross-compiling case.
-AC_LANG_CPLUSPLUS
-if test "$GNU_CXX"; then
-    AC_CACHE_CHECK([whether 64-bits std::atomic requires -latomic],
-        ac_cv_needs_atomic,
-        AC_TRY_LINK(
-            [#include <cstdint>
-             #include <atomic>],
-            [ std::atomic<uint64_t> foo; foo = 1; ],
-            ac_cv_needs_atomic=no,
-            _SAVE_LIBS="$LIBS"
-            LIBS="$LIBS -latomic"
-            AC_TRY_LINK(
-                [#include <cstdint>
-                 #include <atomic>],
-                [ std::atomic<uint64_t> foo; foo = 1; ],
-                ac_cv_needs_atomic=yes,
-                ac_cv_needs_atomic="do not know; assuming no")
-            LIBS="$_SAVE_LIBS"
-        )
-    )
-    if test "$ac_cv_needs_atomic" = yes; then
-      MOZ_NEEDS_LIBATOMIC=1
-    else
-      MOZ_NEEDS_LIBATOMIC=
-    fi
-    AC_SUBST(MOZ_NEEDS_LIBATOMIC)
-fi
-AC_LANG_C
 ])

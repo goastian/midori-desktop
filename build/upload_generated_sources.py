@@ -12,6 +12,7 @@ import sys
 import tarfile
 import time
 from contextlib import contextmanager
+from queue import Queue
 from threading import Event, Thread
 
 import requests
@@ -20,7 +21,6 @@ from mozbuild.generated_sources import (
     get_s3_region_and_bucket,
 )
 from requests.packages.urllib3.util.retry import Retry
-from six.moves.queue import Queue
 
 # Arbitrary, should probably measure this.
 NUM_WORKER_THREADS = 10
@@ -147,7 +147,7 @@ def do_work(artifact, region, bucket):
     while q.unfinished_tasks:
         if event.wait(0.1):
             log.error("Worker thread encountered exception, exiting...")
-            break
+            sys.exit(1)
 
 
 def main(argv):

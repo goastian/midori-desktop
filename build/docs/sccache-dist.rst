@@ -5,7 +5,12 @@ Distributed sccache (sccache-dist)
 ==================================
 
 `sccache <https://github.com/mozilla/sccache>`_ is a ccache-like tool written in
-Rust by Mozilla.
+Rust by Mozilla and many contributors.
+
+sccache-dist, its distributed variant, elevates this functionality by enabling
+the distribution and caching of Rust compilations across multiple machines.
+Please consider using sccache-dist when you have several machines
+compiling Firefox on the same network.
 
 The steps for setting up your machine as an sccache-dist server are detailed below.
 
@@ -63,7 +68,7 @@ must read::
   will contain the version of ``rustc`` used by automation builds, which may
   lag behind stable for a few days after Rust releases, which is specified by
   the task definition in
-  `this file <https://hg.mozilla.org/mozilla-central/file/tip/taskcluster/ci/toolchain/dist-toolchains.yml>`_.
+  `this file <https://hg.mozilla.org/mozilla-central/file/tip/taskcluster/kinds/toolchain/dist-toolchains.yml>`_.
   For instance, to specify 1.37.0 rather than the current stable, run
   ``rustup toolchain add 1.37.0`` and point to
   ``/path/to/home/.rustup/toolchains/1.37.0-x86_64-apple-darwin/bin/rustc`` in your
@@ -115,7 +120,7 @@ must read::
     export HOST_CXXFLAGS="--target=x86_64-apple-darwin16.0.0"
 
     # Specify the macOS SDK to use
-    ac_add_options --with-macos-sdk=/path/to/MacOSX-SDKs/MacOSX10.12.sdk
+    ac_add_options --with-macos-sdk=/path/to/MacOSX-SDKs/MacOSX13.3.sdk
 
   You can get the right macOS SDK by downloading an old version of XCode from
   `developer.apple.com <https://developer.apple.com>`_ and unpacking the SDK

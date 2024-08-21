@@ -45,7 +45,6 @@ def valgrind_test(command_context, suppressions):
     from mozprofile.permissions import ServerLocations
     from mozrunner import FirefoxRunner
     from mozrunner.utils import findInPath
-    from six import string_types
     from valgrind.output_handler import OutputHandler
 
     build_dir = os.path.join(command_context.topsrcdir, "build")
@@ -75,7 +74,7 @@ def valgrind_test(command_context, suppressions):
             "server": "%s:%d" % httpd.httpd.server_address,
         }
         for k, v in prefs.items():
-            if isinstance(v, string_types):
+            if isinstance(v, str):
                 v = v.format(**interpolation)
             prefs[k] = Preferences.cast(v)
 
@@ -99,6 +98,7 @@ def valgrind_test(command_context, suppressions):
 
         env = os.environ.copy()
         env["G_SLICE"] = "always-malloc"
+        env["MOZ_FORCE_DISABLE_E10S"] = "1"
         env["MOZ_CC_RUN_DURING_SHUTDOWN"] = "1"
         env["MOZ_CRASHREPORTER_NO_REPORT"] = "1"
         env["MOZ_DISABLE_NONLOCAL_CONNECTIONS"] = "1"
@@ -158,7 +158,7 @@ def valgrind_test(command_context, suppressions):
                     valgrind_args.append("--suppressions=" + supps_file2)
 
         exitcode = None
-        timeout = 2400
+        timeout = 3600
         binary_not_found_exception = None
         try:
             runner = FirefoxRunner(
