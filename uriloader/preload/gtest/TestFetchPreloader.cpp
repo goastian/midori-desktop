@@ -11,6 +11,7 @@
 #include "nsNetUtil.h"
 #include "nsIChannel.h"
 #include "nsIStreamListener.h"
+#include "nsISupportsPriority.h"
 #include "nsThreadUtils.h"
 #include "nsStringStream.h"
 
@@ -189,7 +190,8 @@ class FakePreloader : public mozilla::FetchPreloader {
       nsIChannel** aChannel, nsIURI* aURI, const mozilla::CORSMode aCORSMode,
       const mozilla::dom::ReferrerPolicy& aReferrerPolicy,
       mozilla::dom::Document* aDocument, nsILoadGroup* aLoadGroup,
-      nsIInterfaceRequestor* aCallbacks, uint64_t aHttpChannelId) override {
+      nsIInterfaceRequestor* aCallbacks, uint64_t aHttpChannelId,
+      int32_t aSupportsPriorityValue) override {
     mDrivingChannel.forget(aChannel);
     return NS_OK;
   }
@@ -265,6 +267,8 @@ void Await() {
       }));
 }
 
+// WinBase.h defines this.
+#undef Yield
 void Yield() { eventInProgress = false; }
 
 }  // namespace
@@ -283,11 +287,11 @@ TEST(TestFetchPreloader, CacheNoneBeforeConsume)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   RefPtr<FakeListener> listener = new FakeListener();
   EXPECT_NS_SUCCEEDED(preloader->AsyncConsume(listener));
@@ -321,11 +325,11 @@ TEST(TestFetchPreloader, CacheStartBeforeConsume)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
 
@@ -361,11 +365,11 @@ TEST(TestFetchPreloader, CachePartOfDataBeforeConsume)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -401,11 +405,11 @@ TEST(TestFetchPreloader, CacheAllDataBeforeConsume)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -441,11 +445,11 @@ TEST(TestFetchPreloader, CacheAllBeforeConsume)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -480,11 +484,11 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeWithChannelError)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -519,11 +523,11 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeWithChannelCancel)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -562,11 +566,11 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeThrowFromOnStartRequest)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -602,11 +606,11 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeThrowFromOnDataAvailable)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -642,11 +646,11 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeThrowFromOnStopRequest)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -684,11 +688,11 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeCancelInOnStartRequest)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -727,11 +731,11 @@ TEST(TestFetchPreloader, CacheAllBeforeConsumeCancelInOnDataAvailable)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -771,11 +775,11 @@ TEST(TestFetchPreloader, CachePartlyBeforeConsumeCancelInOnDataAvailable)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -812,11 +816,11 @@ TEST(TestFetchPreloader, CachePartlyBeforeConsumeCancelInOnStartRequestAndRace)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -861,11 +865,11 @@ TEST(TestFetchPreloader, CachePartlyBeforeConsumeCancelInOnDataAvailableAndRace)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));
@@ -910,11 +914,11 @@ TEST(TestFetchPreloader, CachePartlyBeforeConsumeThrowFromOnStartRequestAndRace)
   RefPtr<FakeChannel> channel = new FakeChannel();
   RefPtr<FakePreloader> preloader = new FakePreloader(channel);
   RefPtr<mozilla::dom::Document> doc;
-  NS_NewXMLDocument(getter_AddRefs(doc));
+  NS_NewXMLDocument(getter_AddRefs(doc), nullptr, nullptr);
 
-  EXPECT_TRUE(NS_SUCCEEDED(
-      preloader->OpenChannel(key, uri, mozilla::CORS_NONE,
-                             mozilla::dom::ReferrerPolicy::_empty, doc, 0)));
+  EXPECT_TRUE(NS_SUCCEEDED(preloader->OpenChannel(
+      key, uri, mozilla::CORS_NONE, mozilla::dom::ReferrerPolicy::_empty, doc,
+      0, nsISupportsPriority::PRIORITY_NORMAL)));
 
   EXPECT_NS_SUCCEEDED(channel->Start());
   EXPECT_NS_SUCCEEDED(channel->Data("one"_ns));

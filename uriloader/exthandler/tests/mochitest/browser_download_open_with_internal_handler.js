@@ -23,7 +23,7 @@ const HandlerSvc = Cc["@mozilla.org/uriloader/handler-service;1"].getService(
 );
 
 let MockFilePicker = SpecialPowers.MockFilePicker;
-MockFilePicker.init(window);
+MockFilePicker.init(window.browsingContext);
 
 function waitForAcceptButtonToGetEnabled(doc) {
   let dialog = doc.querySelector("#unknownContentType");
@@ -35,9 +35,6 @@ function waitForAcceptButtonToGetEnabled(doc) {
 }
 
 async function waitForPdfJS(browser, url) {
-  await SpecialPowers.pushPrefEnv({
-    set: [["pdfjs.eventBusDispatchToDOM", true]],
-  });
   // Runs tests after all "load" event handlers have fired off
   let loadPromise = BrowserTestUtils.waitForContentEvent(
     browser,
@@ -46,7 +43,7 @@ async function waitForPdfJS(browser, url) {
     null,
     true
   );
-  BrowserTestUtils.loadURIString(browser, url);
+  BrowserTestUtils.startLoadingURIString(browser, url);
   return loadPromise;
 }
 
@@ -179,7 +176,10 @@ add_task(async function test_check_open_with_internal_handler() {
 
     let subdialogPromise = BrowserTestUtils.domWindowOpenedAndLoaded();
     // Current tab has file: URI and TEST_PATH is http uri, so uri will be different
-    BrowserTestUtils.loadURIString(newTab.linkedBrowser, TEST_PATH + file);
+    BrowserTestUtils.startLoadingURIString(
+      newTab.linkedBrowser,
+      TEST_PATH + file
+    );
     let subDialogWindow = await subdialogPromise;
     let subDoc = subDialogWindow.document;
 
@@ -487,10 +487,6 @@ add_task(async function test_check_open_with_external_then_internal() {
  */
 add_task(
   async function test_internal_handler_hidden_with_viewable_internally_type() {
-    await SpecialPowers.pushPrefEnv({
-      set: [["image.webp.enabled", true]],
-    });
-
     const mimeInfosToRestore = alwaysAskForHandlingTypes({
       "binary/octet-stream": "xml",
       "image/webp": "webp",

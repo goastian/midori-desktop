@@ -204,6 +204,20 @@ nsDocumentOpenInfo::OnDataAvailable(nsIRequest* request, nsIInputStream* inStr,
   return rv;
 }
 
+NS_IMETHODIMP
+nsDocumentOpenInfo::OnDataFinished(nsresult aStatus) {
+  if (!m_targetStreamListener) {
+    return NS_ERROR_FAILURE;
+  }
+  nsCOMPtr<nsIThreadRetargetableStreamListener> retargetableListener =
+      do_QueryInterface(m_targetStreamListener);
+  if (retargetableListener) {
+    return retargetableListener->OnDataFinished(aStatus);
+  }
+
+  return NS_OK;
+}
+
 NS_IMETHODIMP nsDocumentOpenInfo::OnStopRequest(nsIRequest* request,
                                                 nsresult aStatus) {
   LOG(("[0x%p] nsDocumentOpenInfo::OnStopRequest", this));
@@ -260,12 +274,19 @@ nsresult nsDocumentOpenInfo::DispatchContent(nsIRequest* request) {
   // could happen because the Content-Disposition header is set so, or, in the
   // future, because the user has specified external handling for the MIME
   // type.
+  //
+  // If we're not going to be able to retarget to an external handler, ignore
+  // content-disposition, and unconditionally try to display the content.
+  // This is used for object/embed tags, which expect to display subresources
+  // marked with an attachment disposition.
   bool forceExternalHandling = false;
-  uint32_t disposition;
-  rv = aChannel->GetContentDisposition(&disposition);
+  if (!(mFlags & nsIURILoader::DONT_RETARGET)) {
+    uint32_t disposition;
+    rv = aChannel->GetContentDisposition(&disposition);
 
-  if (NS_SUCCEEDED(rv) && disposition == nsIChannel::DISPOSITION_ATTACHMENT) {
-    forceExternalHandling = true;
+    if (NS_SUCCEEDED(rv) && disposition == nsIChannel::DISPOSITION_ATTACHMENT) {
+      forceExternalHandling = true;
+    }
   }
 
   LOG(("  forceExternalHandling: %s", forceExternalHandling ? "yes" : "no"));
@@ -414,26 +435,26 @@ nsresult nsDocumentOpenInfo::DispatchContent(nsIRequest* request) {
   NS_ASSERTION(!m_targetStreamListener,
                "If we found a listener, why are we not using it?");
 
-  if (mFlags & nsIURILoader::DONT_RETARGET) {
-    LOG(
-        ("  External handling forced or (listener not interested and no "
-         "stream converter exists), and retargeting disallowed -> aborting"));
-    return NS_ERROR_WONT_HANDLE_CONTENT;
-  }
-
   // Before dispatching to the external helper app service, check for an HTTP
   // error page.  If we got one, we don't want to handle it with a helper app,
   // really.
-  // The WPT a-download-click-404.html requires us to silently handle this
-  // without displaying an error page, so we just return early here.
-  // See bug 1604308 for discussion around what the ideal behaviour is.
   nsCOMPtr<nsIHttpChannel> httpChannel(do_QueryInterface(request));
   if (httpChannel) {
     bool requestSucceeded;
     rv = httpChannel->GetRequestSucceeded(&requestSucceeded);
     if (NS_FAILED(rv) || !requestSucceeded) {
-      return NS_OK;
+      LOG(
+          ("  Returning NS_ERROR_FILE_NOT_FOUND from "
+           "nsDocumentOpenInfo::DispatchContent due to failed HTTP response"));
+      return NS_ERROR_FILE_NOT_FOUND;
     }
+  }
+
+  if (mFlags & nsIURILoader::DONT_RETARGET) {
+    LOG(
+        ("  External handling forced or (listener not interested and no "
+         "stream converter exists), and retargeting disallowed -> aborting"));
+    return NS_ERROR_WONT_HANDLE_CONTENT;
   }
 
   // Fifth step:

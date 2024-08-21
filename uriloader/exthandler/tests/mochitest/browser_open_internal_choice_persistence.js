@@ -66,7 +66,7 @@ function ensureMIMEState({ preferredAction, alwaysAskBeforeHandling }) {
 }
 
 function waitDelay(delay) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     /* eslint-disable mozilla/no-arbitrary-setTimeout */
     window.setTimeout(resolve, delay);
   });
@@ -178,7 +178,7 @@ add_task(
       const { expectTab, expectLaunch, description, expectUCT } = testCase;
 
       let oldLaunchFile = DownloadIntegration.launchFile;
-      let fileLaunched = PromiseUtils.defer();
+      let fileLaunched = Promise.withResolvers();
       DownloadIntegration.launchFile = () => {
         ok(
           expectLaunch,

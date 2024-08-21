@@ -223,6 +223,17 @@ interface nsIWebProgressListener : nsISupports
 
   const unsigned long STATE_IDENTITY_EV_TOPLEVEL    = 0x00100000;
 
+  /***
+   * Associated state flag
+   *
+   * This flag is used to if a page is inheriting its security context.
+   *
+   * STATE_IDENTITY_ASSOCIATED
+   *   This document doesn't have an identity of its own, and instead
+   *   uses its predecessor's identity.
+   */
+   const unsigned long STATE_IDENTITY_ASSOCIATED    = 0x00200000;
+
   /**
     * Broken state flags
     *
@@ -340,6 +351,17 @@ interface nsIWebProgressListener : nsISupports
    *
    * STATE_LOADED_EMAILTRACKING_LEVEL_2_CONTENT
    *   EmailTracking content from the Disconnect level 2 has been loaded.
+   *
+   * STATE_ALLOWED_CANVAS_FINGERPRINTING
+   *   A potential attempt to fingerprint using the canvas API was observed.
+   *
+   * STATE_ALLOWED_FONT_FINGERPRINTING
+   *   A potential attempt to fingerprint by checking the exposed fonts
+   *   was observed.
+   *
+   * STATE_BLOCKED_SUSPICIOUS_FINGERPRINTING
+   *   Suspicious fingerprinting activity has been blocked by the fingerprinting
+   *   protection.
    */
   const unsigned long STATE_BLOCKED_TRACKING_CONTENT             = 0x00001000;
   const unsigned long STATE_LOADED_LEVEL_1_TRACKING_CONTENT      = 0x00002000;
@@ -367,18 +389,25 @@ interface nsIWebProgressListener : nsISupports
   const unsigned long STATE_BLOCKED_EMAILTRACKING_CONTENT        = 0x00400000;
   const unsigned long STATE_LOADED_EMAILTRACKING_LEVEL_1_CONTENT = 0x00800000;
   const unsigned long STATE_LOADED_EMAILTRACKING_LEVEL_2_CONTENT = 0x00000100;
+  const unsigned long STATE_ALLOWED_CANVAS_FINGERPRINTING        = 0x02000000;
+  const unsigned long STATE_ALLOWED_FONT_FINGERPRINTING          = 0x04000000;
+  const unsigned long STATE_BLOCKED_SUSPICIOUS_FINGERPRINTING    = 0x00000004;
 
   /**
-   * Flag for HTTPS-Only Mode upgrades
+   * Flags for HTTPS-Only and HTTPS-First Mode upgrades
    *
    * STATE_HTTPS_ONLY_MODE_UPGRADED
    *   When a request has been upgraded by HTTPS-Only Mode
    *
    * STATE_HTTPS_ONLY_MODE_UPGRADE_FAILED
    *   When an upgraded request failed.
+   *
+   * STATE_HTTPS_ONLY_MODE_UPGRADED_FIRST
+   *   When a request has been upgraded by HTTPS-First Mode
    */
   const unsigned long STATE_HTTPS_ONLY_MODE_UPGRADED        = 0x00400000;
   const unsigned long STATE_HTTPS_ONLY_MODE_UPGRADE_FAILED  = 0x00800000;
+  const unsigned long STATE_HTTPS_ONLY_MODE_UPGRADED_FIRST  = 0x08000000;
 
   /**
    * Notification indicating the state has changed for one of the requests

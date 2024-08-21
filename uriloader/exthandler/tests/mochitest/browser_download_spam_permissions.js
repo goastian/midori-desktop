@@ -18,7 +18,7 @@ const TEST_PATH = getRootDirectory(gTestPath).replace(
 const AUTOMATIC_DOWNLOAD_TOPIC = "blocked-automatic-download";
 
 var MockFilePicker = SpecialPowers.MockFilePicker;
-MockFilePicker.init(window);
+MockFilePicker.init(window.browsingContext);
 registerCleanupFunction(() => MockFilePicker.cleanup());
 
 let gTempDownloadDir;
@@ -140,7 +140,7 @@ async function savelink() {
   await popupShown;
 
   await new Promise(resolve => {
-    MockFilePicker.showCallback = function (fp) {
+    MockFilePicker.showCallback = function () {
       resolve();
       let file = gTempDownloadDir.clone();
       file.append("file_with__funny_name.png");

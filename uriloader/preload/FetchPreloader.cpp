@@ -7,6 +7,7 @@
 
 #include "FetchPreloader.h"
 
+#include "mozilla/Assertions.h"
 #include "mozilla/CORSMode.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/dom/Document.h"
@@ -22,6 +23,7 @@
 #include "nsIClassOfService.h"
 #include "nsIHttpChannel.h"
 #include "nsIHttpChannelInternal.h"
+#include "nsISupportsPriority.h"
 #include "nsITimedChannel.h"
 #include "nsNetUtil.h"
 #include "nsStringStream.h"
@@ -41,7 +43,8 @@ nsresult FetchPreloader::OpenChannel(const PreloadHashKey& aKey, nsIURI* aURI,
                                      const CORSMode aCORSMode,
                                      const dom::ReferrerPolicy& aReferrerPolicy,
                                      dom::Document* aDocument,
-                                     uint64_t aEarlyHintPreloaderId) {
+                                     uint64_t aEarlyHintPreloaderId,
+                                     int32_t aSupportsPriorityValue) {
   nsresult rv;
   nsCOMPtr<nsIChannel> channel;
 
@@ -66,7 +69,8 @@ nsresult FetchPreloader::OpenChannel(const PreloadHashKey& aKey, nsIURI* aURI,
   }
 
   rv = CreateChannel(getter_AddRefs(channel), aURI, aCORSMode, aReferrerPolicy,
-                     aDocument, loadGroup, prompter, aEarlyHintPreloaderId);
+                     aDocument, loadGroup, prompter, aEarlyHintPreloaderId,
+                     aSupportsPriorityValue);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Doing this now so that we have the channel and tainting set on it properly
@@ -77,7 +81,7 @@ nsresult FetchPreloader::OpenChannel(const PreloadHashKey& aKey, nsIURI* aURI,
     return rv;
   }
 
-  PrioritizeAsPreload(channel);
+  FetchPreloader::PrioritizeAsPreload(channel);
   AddLoadBackgroundFlag(channel);
 
   NotifyOpen(aKey, channel, aDocument, true);
@@ -97,7 +101,7 @@ nsresult FetchPreloader::CreateChannel(
     nsIChannel** aChannel, nsIURI* aURI, const CORSMode aCORSMode,
     const dom::ReferrerPolicy& aReferrerPolicy, dom::Document* aDocument,
     nsILoadGroup* aLoadGroup, nsIInterfaceRequestor* aCallbacks,
-    uint64_t aEarlyHintPreloaderId) {
+    uint64_t aEarlyHintPreloaderId, int32_t aSupportsPriorityValue) {
   nsresult rv;
 
   nsSecurityFlags securityFlags =
@@ -113,6 +117,8 @@ nsresult FetchPreloader::CreateChannel(
   if (NS_FAILED(rv)) {
     return rv;
   }
+
+  AdjustPriority(channel, aSupportsPriorityValue);
 
   if (nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(channel)) {
     nsCOMPtr<nsIReferrerInfo> referrerInfo = new dom::ReferrerInfo(
@@ -133,6 +139,15 @@ nsresult FetchPreloader::CreateChannel(
   return NS_OK;
 }
 
+// static
+void FetchPreloader::AdjustPriority(nsIChannel* aChannel,
+                                    int32_t aSupportsPriorityValue) {
+  if (nsCOMPtr<nsISupportsPriority> supportsPriority{
+          do_QueryInterface(aChannel)}) {
+    supportsPriority->SetPriority(aSupportsPriorityValue);
+  }
+}
+
 nsresult FetchPreloader::CheckContentPolicy(nsIURI* aURI,
                                             dom::Document* aDocument) {
   if (!aDocument) {
@@ -144,9 +159,8 @@ nsresult FetchPreloader::CheckContentPolicy(nsIURI* aURI,
       nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK, mContentPolicyType);
 
   int16_t shouldLoad = nsIContentPolicy::ACCEPT;
-  nsresult rv =
-      NS_CheckContentLoadPolicy(aURI, secCheckLoadInfo, ""_ns, &shouldLoad,
-                                nsContentUtils::GetContentPolicy());
+  nsresult rv = NS_CheckContentLoadPolicy(aURI, secCheckLoadInfo, &shouldLoad,
+                                          nsContentUtils::GetContentPolicy());
   if (NS_SUCCEEDED(rv) && NS_CP_ACCEPTED(shouldLoad)) {
     return NS_OK;
   }
@@ -184,8 +198,6 @@ void FetchPreloader::PrioritizeAsPreload(nsIChannel* aChannel) {
     cos->AddClassFlags(nsIClassOfService::Unblocked);
   }
 }
-
-void FetchPreloader::PrioritizeAsPreload() { PrioritizeAsPreload(Channel()); }
 
 // nsIRequestObserver + nsIStreamListener
 
