@@ -226,6 +226,12 @@ bool net_IsValidIPv4Addr(const nsACString& aAddr);
  */
 bool net_IsValidIPv6Addr(const nsACString& aAddr);
 
+/**
+ * Returns the default status text for a given HTTP status code (useful if HTTP2
+ * does not provide one, for instance).
+ */
+bool net_GetDefaultStatusTextForCode(uint16_t aCode, nsACString& aOutText);
+
 namespace mozilla {
 /**
  * A class for handling form-urlencoded query strings.
@@ -245,25 +251,26 @@ class URLParams final {
    * \param aInput the query string to parse
    * \param aParamHandler the parameter handler as desribed above
    * \tparam ParamHandler a function type compatible with signature
-   * bool(nsString, nsString)
+   * bool(nsCString, nsCString)
    *
    * \return false if the parameter handler returned false for any parameter,
    * true otherwise
    */
   template <typename ParamHandler>
-  static bool Parse(const nsACString& aInput, ParamHandler aParamHandler) {
+  static bool Parse(const nsACString& aInput, bool aShouldDecode,
+                    ParamHandler aParamHandler) {
     const char* start = aInput.BeginReading();
     const char* const end = aInput.EndReading();
 
     while (start != end) {
-      nsAutoString decodedName;
-      nsAutoString decodedValue;
+      nsAutoCString name;
+      nsAutoCString value;
 
-      if (!ParseNextInternal(start, end, &decodedName, &decodedValue)) {
+      if (!ParseNextInternal(start, end, aShouldDecode, &name, &value)) {
         continue;
       }
 
-      if (!aParamHandler(std::move(decodedName), std::move(decodedValue))) {
+      if (!aParamHandler(std::move(name), std::move(value))) {
         return false;
       }
     }
@@ -283,8 +290,8 @@ class URLParams final {
    * there is no match \return true iff there was a parameter with with name
    * \paramref aName
    */
-  static bool Extract(const nsACString& aInput, const nsAString& aName,
-                      nsAString& aValue);
+  static bool Extract(const nsACString& aInput, const nsACString& aName,
+                      nsACString& aValue);
 
   /**
    * \brief Resets the state of this instance and parses a new query string.
@@ -299,11 +306,12 @@ class URLParams final {
    * \param[out] aValue will be assigned the result of the serialization
    * \param aEncode If this is true, the serialization will encode the string.
    */
-  void Serialize(nsAString& aValue, bool aEncode) const;
+  void Serialize(nsACString& aValue, bool aEncode) const;
 
-  void Get(const nsAString& aName, nsString& aRetval);
+  static void SerializeString(const nsACString& aInput, nsACString& aValue);
+  void Get(const nsACString& aName, nsACString& aRetval);
 
-  void GetAll(const nsAString& aName, nsTArray<nsString>& aRetval);
+  void GetAll(const nsACString& aName, nsTArray<nsCString>& aRetval);
 
   /**
    * \brief Sets the value of a given parameter.
@@ -312,31 +320,32 @@ class URLParams final {
    * replaced, and all further parameters of the name are deleted. Otherwise,
    * the behaviour is the same as \ref Append.
    */
-  void Set(const nsAString& aName, const nsAString& aValue);
+  void Set(const nsACString& aName, const nsACString& aValue);
 
-  void Append(const nsAString& aName, const nsAString& aValue);
+  void Append(const nsACString& aName, const nsACString& aValue);
 
-  bool Has(const nsAString& aName);
+  bool Has(const nsACString& aName);
 
-  bool Has(const nsAString& aName, const nsAString& aValue);
+  bool Has(const nsACString& aName, const nsACString& aValue);
 
   /**
    * \brief Deletes all parameters with the given name.
    */
-  void Delete(const nsAString& aName);
+  void Delete(const nsACString& aName);
 
-  void Delete(const nsAString& aName, const nsAString& aValue);
+  void Delete(const nsACString& aName, const nsACString& aValue);
 
   void DeleteAll() { mParams.Clear(); }
 
   uint32_t Length() const { return mParams.Length(); }
 
-  const nsAString& GetKeyAtIndex(uint32_t aIndex) const {
+  static void DecodeString(const nsACString& aInput, nsACString& aOutput);
+  const nsACString& GetKeyAtIndex(uint32_t aIndex) const {
     MOZ_ASSERT(aIndex < mParams.Length());
     return mParams[aIndex].mKey;
   }
 
-  const nsAString& GetValueAtIndex(uint32_t aIndex) const {
+  const nsACString& GetValueAtIndex(uint32_t aIndex) const {
     MOZ_ASSERT(aIndex < mParams.Length());
     return mParams[aIndex].mValue;
   }
@@ -348,15 +357,13 @@ class URLParams final {
   void Sort();
 
  private:
-  static void DecodeString(const nsACString& aInput, nsAString& aOutput);
-  static void ConvertString(const nsACString& aInput, nsAString& aOutput);
   static bool ParseNextInternal(const char*& aStart, const char* aEnd,
-                                nsAString* aOutDecodedName,
-                                nsAString* aOutDecodedValue);
+                                bool aShouldDecode, nsACString* aOutputName,
+                                nsACString* aOutputValue);
 
   struct Param {
-    nsString mKey;
-    nsString mValue;
+    nsCString mKey;
+    nsCString mValue;
   };
 
   nsTArray<Param> mParams;

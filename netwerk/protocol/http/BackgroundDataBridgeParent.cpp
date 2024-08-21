@@ -10,7 +10,7 @@ namespace mozilla {
 namespace net {
 
 BackgroundDataBridgeParent::BackgroundDataBridgeParent(uint64_t aChannelID)
-    : mChannelID(aChannelID), mBackgroundThread(NS_GetCurrentThread()) {
+    : mChannelID(aChannelID), mBackgroundThread(GetCurrentSerialEventTarget()) {
   if (SocketProcessChild* child = SocketProcessChild::GetSingleton()) {
     child->AddDataBridgeToMap(aChannelID, this);
   }
@@ -22,9 +22,9 @@ void BackgroundDataBridgeParent::ActorDestroy(ActorDestroyReason aWhy) {
   }
 }
 
-already_AddRefed<nsIThread> BackgroundDataBridgeParent::GetBackgroundThread() {
-  nsCOMPtr<nsIThread> thread = mBackgroundThread;
-  return thread.forget();
+already_AddRefed<nsISerialEventTarget>
+BackgroundDataBridgeParent::GetBackgroundThread() {
+  return do_AddRef(mBackgroundThread);
 }
 
 void BackgroundDataBridgeParent::Destroy() {
@@ -33,7 +33,7 @@ void BackgroundDataBridgeParent::Destroy() {
       NS_NewRunnableFunction("BackgroundDataBridgeParent::Destroy",
                              [self]() {
                                if (self->CanSend()) {
-                                 Unused << self->Send__delete__(self);
+                                 self->Close();
                                }
                              }),
       NS_DISPATCH_NORMAL));
@@ -42,18 +42,20 @@ void BackgroundDataBridgeParent::Destroy() {
 void BackgroundDataBridgeParent::OnStopRequest(
     nsresult aStatus, const ResourceTimingStructArgs& aTiming,
     const TimeStamp& aLastActiveTabOptHit,
-    const nsHttpHeaderArray& aResponseTrailers) {
+    const nsHttpHeaderArray& aResponseTrailers,
+    const TimeStamp& aOnStopRequestStart) {
   RefPtr<BackgroundDataBridgeParent> self = this;
   MOZ_ALWAYS_SUCCEEDS(mBackgroundThread->Dispatch(
-      NS_NewRunnableFunction(
-          "BackgroundDataBridgeParent::OnStopRequest",
-          [self, aStatus, aTiming, aLastActiveTabOptHit, aResponseTrailers]() {
-            if (self->CanSend()) {
-              Unused << self->SendOnStopRequest(
-                  aStatus, aTiming, aLastActiveTabOptHit, aResponseTrailers);
-              Unused << self->Send__delete__(self);
-            }
-          }),
+      NS_NewRunnableFunction("BackgroundDataBridgeParent::OnStopRequest",
+                             [self, aStatus, aTiming, aLastActiveTabOptHit,
+                              aResponseTrailers, aOnStopRequestStart]() {
+                               if (self->CanSend()) {
+                                 Unused << self->SendOnStopRequest(
+                                     aStatus, aTiming, aLastActiveTabOptHit,
+                                     aResponseTrailers, aOnStopRequestStart);
+                                 self->Close();
+                               }
+                             }),
       NS_DISPATCH_NORMAL));
 }
 

@@ -49,7 +49,7 @@ add_task(async function testStoreIPHint() {
   Services.prefs.setIntPref("network.trr.mode", 3);
   Services.prefs.setCharPref(
     "network.trr.uri",
-    `https://foo.example.com:${trrServer.port}/dns-query`
+    `https://foo.example.com:${trrServer.port()}/dns-query`
   );
 
   await trrServer.registerDoHAnswers("test.IPHint.com", "HTTPS", {
@@ -117,9 +117,9 @@ add_task(async function testStoreIPHint() {
     "got correct answer"
   );
 
-  async function verifyAnswer(flags, expectedAddresses) {
+  async function verifyAnswer(domain, flags, expectedAddresses) {
     // eslint-disable-next-line no-shadow
-    let { inRecord } = await new TRRDNSListener("test.IPHint.com", {
+    let { inRecord } = await new TRRDNSListener(domain, {
       flags,
       expectedSuccess: false,
     });
@@ -133,7 +133,7 @@ add_task(async function testStoreIPHint() {
     Assert.equal(inRecord.ttl, 999);
   }
 
-  await verifyAnswer(Ci.nsIDNSService.RESOLVE_IP_HINT, [
+  await verifyAnswer("test.IPHint.com", Ci.nsIDNSService.RESOLVE_IP_HINT, [
     "1.2.3.4",
     "5.6.7.8",
     "::1",
@@ -141,11 +141,52 @@ add_task(async function testStoreIPHint() {
   ]);
 
   await verifyAnswer(
+    "test.IPHint.com",
     Ci.nsIDNSService.RESOLVE_IP_HINT | Ci.nsIDNSService.RESOLVE_DISABLE_IPV4,
     ["::1", "fe80::794f:6d2c:3d5e:7836"]
   );
 
   await verifyAnswer(
+    "test.IPHint.com",
+    Ci.nsIDNSService.RESOLVE_IP_HINT | Ci.nsIDNSService.RESOLVE_DISABLE_IPV6,
+    ["1.2.3.4", "5.6.7.8"]
+  );
+
+  info("checking that IPv6 hints are ignored when disableIPv6 is true");
+  Services.prefs.setBoolPref("network.dns.disableIPv6", true);
+  await trrServer.registerDoHAnswers("testv6.IPHint.com", "HTTPS", {
+    answers: [
+      {
+        name: "testv6.IPHint.com",
+        ttl: 999,
+        type: "HTTPS",
+        flush: false,
+        data: {
+          priority: 1,
+          name: "testv6.IPHint.com",
+          values: [
+            { key: "alpn", value: ["h2", "h3"] },
+            { key: "port", value: 8888 },
+            { key: "ipv4hint", value: ["1.2.3.4", "5.6.7.8"] },
+            { key: "ipv6hint", value: ["::1", "fe80::794f:6d2c:3d5e:7836"] },
+          ],
+        },
+      },
+    ],
+  });
+
+  ({ inRecord } = await new TRRDNSListener("testv6.IPHint.com", {
+    type: Ci.nsIDNSService.RESOLVE_TYPE_HTTPSSVC,
+  }));
+  Services.prefs.setBoolPref("network.dns.disableIPv6", false);
+
+  await verifyAnswer("testv6.IPHint.com", Ci.nsIDNSService.RESOLVE_IP_HINT, [
+    "1.2.3.4",
+    "5.6.7.8",
+  ]);
+
+  await verifyAnswer(
+    "testv6.IPHint.com",
     Ci.nsIDNSService.RESOLVE_IP_HINT | Ci.nsIDNSService.RESOLVE_DISABLE_IPV6,
     ["1.2.3.4", "5.6.7.8"]
   );
@@ -167,8 +208,6 @@ function channelOpenPromise(chan, flags) {
     function finish(req, buffer) {
       resolve([req, buffer]);
     }
-    let internal = chan.QueryInterface(Ci.nsIHttpChannelInternal);
-    internal.setWaitForHTTPSSVCRecord();
     chan.asyncOpen(new ChannelListener(finish, null, flags));
   });
 }
@@ -221,7 +260,7 @@ add_task(async function testIPHintWithFreshDNS() {
   Services.prefs.setIntPref("network.trr.mode", 3);
   Services.prefs.setCharPref(
     "network.trr.uri",
-    `https://foo.example.com:${trrServer.port}/dns-query`
+    `https://foo.example.com:${trrServer.port()}/dns-query`
   );
   // To make sure NS_HTTP_REFRESH_DNS not be cleared.
   Services.prefs.setBoolPref("network.dns.disablePrefetch", true);
@@ -275,7 +314,7 @@ add_task(async function testIPHintWithFreshDNS() {
   );
 
   let chan = makeChan(`https://test.iphint.org/server-timing`);
-  chan.loadFlags |= Ci.nsIRequest.LOAD_BYPASS_CACHE;
+  chan.loadFlags |= Ci.nsIRequest.LOAD_FRESH_CONNECTION;
   let [req] = await channelOpenPromise(
     chan,
     CL_EXPECT_FAILURE | CL_ALLOW_UNKNOWN_CL
@@ -296,7 +335,7 @@ add_task(async function testIPHintWithFreshDNS() {
   });
 
   chan = makeChan(`https://test.iphint.org/server-timing`);
-  chan.loadFlags |= Ci.nsIRequest.LOAD_BYPASS_CACHE;
+  chan.loadFlags |= Ci.nsIRequest.LOAD_FRESH_CONNECTION;
   [req] = await channelOpenPromise(chan);
   Assert.equal(req.protocolVersion, "h2");
   let internal = req.QueryInterface(Ci.nsIHttpChannelInternal);

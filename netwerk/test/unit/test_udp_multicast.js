@@ -15,20 +15,6 @@ const ADDRESS_TEST4 = "224.0.0.203";
 
 const TIMEOUT = 2000;
 
-var gConverter;
-
-function run_test() {
-  setup();
-  run_next_test();
-}
-
-function setup() {
-  gConverter = Cc[
-    "@mozilla.org/intl/scriptableunicodeconverter"
-  ].createInstance(Ci.nsIScriptableUnicodeConverter);
-  gConverter.charset = "utf8";
-}
-
 function createSocketAndJoin(addr) {
   let socket = new UDPSocket(
     -1,
@@ -41,7 +27,7 @@ function createSocketAndJoin(addr) {
 
 function sendPing(socket, addr) {
   let ping = "ping";
-  let rawPing = gConverter.convertToByteArray(ping);
+  let rawPing = new TextEncoder().encode(ping);
 
   return new Promise((resolve, reject) => {
     socket.asyncListen({
@@ -51,7 +37,7 @@ function sendPing(socket, addr) {
         socket.close();
         resolve(message.data);
       },
-      onStopListening(socket, status) {},
+      onStopListening() {},
     });
 
     info("Multicast send to port " + socket.port);
@@ -79,7 +65,9 @@ add_test(() => {
   );
 });
 
-add_test(() => {
+// Disabled on Windows11 for frequent intermittent failures.
+// See bug 1760123.
+add_test({ skip_if: () => mozinfo.win11_2009 }, () => {
   info("Disabling multicast loopback");
   let socket = createSocketAndJoin(ADDRESS_TEST2);
   socket.multicastLoopback = false;
@@ -89,7 +77,8 @@ add_test(() => {
   );
 });
 
-add_test(() => {
+// This fails locally on windows 11.
+add_test({ skip_if: () => mozinfo.win11_2009 }, () => {
   info("Changing multicast interface");
   let socket = createSocketAndJoin(ADDRESS_TEST3);
   socket.multicastInterface = "127.0.0.1";

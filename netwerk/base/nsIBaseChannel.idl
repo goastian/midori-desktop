@@ -1,0 +1,63 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+%{C++
+#include "mozilla/dom/MimeType.h"
+#include "mozilla/net/ContentRange.h"
+%}
+
+/**
+ * The nsIBaseChannel interface allows C++ code to query the interface
+ * of channels safely to gain access to content range functionality.
+ * This allows subclasses to optionally handle range-requests on their
+ * types using fetch/XMLHttpRequest even if they are not accessed via
+ * HTTP and therefore normally do not have support for headers.
+ */
+
+native ContentRangeRef(RefPtr<mozilla::net::ContentRange>);
+native MimeTypeRef(RefPtr<TMimeType<char>>);
+
+[uuid(036d5cd7-9a53-40e3-9c72-c2ffaa15aa2b)]
+interface nsIBaseChannel : nsISupports {
+
+  /**
+   * Used by fetch and XMLHttpRequest to get only the range specified in the
+   * Range request header (if given) for the response body (e.g, for blob URLs)
+   */
+  attribute ContentRangeRef contentRange;
+
+  /**
+   * Used by fetch and XMLHttpRequest to get the standards-compliant value they
+   * should set for the Content-Type header on response (if nullptr, they will
+   * use Firefox-specific values from nsIChannel::GetContentType and GetCharset).
+   */
+  attribute MimeTypeRef fullMimeType;
+
+%{C++
+  RefPtr<mozilla::net::ContentRange> ContentRange() {
+    RefPtr<mozilla::net::ContentRange> range;
+    mozilla::Unused << GetContentRange(&range);
+    return range;
+  }
+
+  bool SetContentRangeFromHeader(const nsACString& aHeader, uint64_t aSize) {
+    RefPtr<mozilla::net::ContentRange> range =
+      new mozilla::net::ContentRange(aHeader, aSize);
+    if (!range->IsValid()) {
+      return false;
+    }
+    SetContentRange(range);
+    return true;
+  }
+
+  RefPtr<CMimeType> FullMimeType() {
+    RefPtr<CMimeType> type;
+    mozilla::Unused << GetFullMimeType(&type);
+    return type;
+  }
+%}
+
+};

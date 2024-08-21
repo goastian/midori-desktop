@@ -9,7 +9,9 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 const reason = "testing";
 
 function inChildProcess() {
@@ -25,7 +27,7 @@ var ReferrerInfo = Components.Constructor(
 var observer = {
   QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
 
-  observe(subject, topic, data) {
+  observe(subject) {
     subject = subject.QueryInterface(Ci.nsIRequest);
     subject.cancelWithReason(Cr.NS_BINDING_ABORTED, reason);
 
@@ -81,7 +83,7 @@ let cancelDuringOnStartListener = {
     do_throw("Should not get any data!");
   },
 
-  onStopRequest: function test_onStopR(request, status) {
+  onStopRequest: function test_onStopR() {
     this.resolved();
   },
 };
@@ -90,7 +92,7 @@ var cancelDuringOnDataListener = {
   data: "",
   channel: null,
   receivedSomeData: null,
-  onStartRequest: function test_onStartR(request, ctx) {
+  onStartRequest: function test_onStartR(request) {
     Assert.equal(request.status, Cr.NS_OK);
   },
 
@@ -104,7 +106,7 @@ var cancelDuringOnDataListener = {
     }
   },
 
-  onStopRequest: function test_onStopR(request, ctx, status) {
+  onStopRequest: function test_onStopR(request) {
     Assert.ok(this.data.includes("a"), `data: ${this.data}`);
     Assert.equal(request.status, Cr.NS_BINDING_ABORTED);
     this.resolved();
@@ -193,7 +195,7 @@ add_task(async function test_cancel_during_onData() {
 var cancelAfterOnStopListener = {
   data: "",
   channel: null,
-  onStartRequest: function test_onStartR(request, ctx) {
+  onStartRequest: function test_onStartR(request) {
     Assert.equal(request.status, Cr.NS_OK);
   },
 
@@ -202,7 +204,7 @@ var cancelAfterOnStopListener = {
     this.data += string;
   },
 
-  onStopRequest: function test_onStopR(request, status) {
+  onStopRequest: function test_onStopR(request) {
     info("onStopRequest");
     Assert.equal(request.status, Cr.NS_OK);
     this.resolved();
@@ -231,7 +233,7 @@ add_task(async function test_cancel_after_onStop() {
 // PATHS
 
 // /failtest
-function failtest(metadata, response) {
+function failtest() {
   do_throw("This should not be reached");
 }
 
@@ -246,8 +248,8 @@ function cancel_middle(metadata, response) {
     cancelDuringOnDataListener.receivedSomeData = resolve;
   });
   p.then(() => {
-    let str1 = "b".repeat(128 * 1024);
-    response.write(str1, str1.length);
+    let str2 = "b".repeat(128 * 1024);
+    response.write(str2, str2.length);
     response.finish();
   });
 }

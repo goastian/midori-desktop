@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 trr_test_setup();
 let httpServerIPv4 = new HttpServer();
 let httpServerIPv6 = new HttpServer();
@@ -11,16 +13,16 @@ let CC_IPV4 = "example_cc_ipv4.com";
 let CC_IPV6 = "example_cc_ipv6.com";
 Services.prefs.clearUserPref("network.dns.native-is-localhost");
 
-XPCOMUtils.defineLazyGetter(this, "URL_CC_IPV4", function () {
+ChromeUtils.defineLazyGetter(this, "URL_CC_IPV4", function () {
   return `http://${CC_IPV4}:${httpServerIPv4.identity.primaryPort}${testpath}`;
 });
-XPCOMUtils.defineLazyGetter(this, "URL_CC_IPV6", function () {
+ChromeUtils.defineLazyGetter(this, "URL_CC_IPV6", function () {
   return `http://${CC_IPV6}:${httpServerIPv6.identity.primaryPort}${testpath}`;
 });
-XPCOMUtils.defineLazyGetter(this, "URL6a", function () {
+ChromeUtils.defineLazyGetter(this, "URL6a", function () {
   return `http://example6a.com:${httpServerIPv6.identity.primaryPort}${testpath}`;
 });
-XPCOMUtils.defineLazyGetter(this, "URL6b", function () {
+ChromeUtils.defineLazyGetter(this, "URL6b", function () {
   return `http://example6b.com:${httpServerIPv6.identity.primaryPort}${testpath}`;
 });
 
@@ -81,7 +83,7 @@ add_task(async function test_setup() {
   Services.prefs.setIntPref("network.trr.mode", 3);
   Services.prefs.setCharPref(
     "network.trr.uri",
-    `https://foo.example.com:${trrServer.port}/dns-query`
+    `https://foo.example.com:${trrServer.port()}/dns-query`
   );
 
   await registerDoHAnswers(true, true);
@@ -140,8 +142,8 @@ StatusCounter.prototype = {
     return this.QueryInterface(iid);
   },
 
-  onProgress(request, progress, progressMax) {},
-  onStatus(request, status, statusArg) {
+  onProgress() {},
+  onStatus(request, status) {
     this._statusCount[status] = 1 + (this._statusCount[status] || 0);
   },
 };
@@ -152,7 +154,7 @@ let HttpListener = function (finish, succeeded) {
 };
 
 HttpListener.prototype = {
-  onStartRequest: function testOnStartRequest(request) {},
+  onStartRequest: function testOnStartRequest() {},
 
   onDataAvailable: function testOnDataAvailable(request, stream, off, cnt) {
     read_stream(stream, cnt);
@@ -165,7 +167,7 @@ HttpListener.prototype = {
 };
 
 function promiseObserverNotification(aTopic, matchFunc) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     Services.obs.addObserver(function observe(subject, topic, data) {
       let matches = typeof matchFunc != "function" || matchFunc(subject, data);
       if (!matches) {

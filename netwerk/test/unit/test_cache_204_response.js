@@ -13,7 +13,9 @@ Test if 204 response is cached.
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 function test_handler(metadata, response) {
   response.setHeader("Content-Type", "text/html", false);
@@ -33,7 +35,11 @@ async function get_response(channel, fromCache) {
   return new Promise(resolve => {
     channel.asyncOpen(
       new ChannelListener((request, buffer, ctx, isFromCache) => {
-        ok(fromCache == isFromCache, `got response from cache = ${fromCache}`);
+        Assert.equal(
+          fromCache,
+          isFromCache,
+          `got response from cache = ${fromCache}`
+        );
         resolve();
       })
     );

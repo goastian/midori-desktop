@@ -1,10 +1,10 @@
-HTTP server for unit tests
+HTTP Server for Unit Tests
 ==========================
 
 This page describes the JavaScript implementation of an
 HTTP server located in ``netwerk/test/httpserver/``.
 
-Server functionality
+Server Functionality
 ~~~~~~~~~~~~~~~~~~~~
 
 Here are some of the things you can do with the server:
@@ -23,7 +23,7 @@ Here are some of the things you can do with the server:
 This functionality should be more than enough for you to use it with any
 test which requires HTTP-provided behavior.
 
-Where you can use it
+Where You Can Use It
 ~~~~~~~~~~~~~~~~~~~~
 
 The server is written primarily for use from ``xpcshell``-based
@@ -33,7 +33,7 @@ Mochitest framework also uses it to serve its tests, and
 can optionally use it when their behavior is dependent upon specific
 HTTP header values.
 
-Ways you might use it
+Ways You Might Use It
 ~~~~~~~~~~~~~~~~~~~~~
 
 -  application update testing
@@ -52,7 +52,7 @@ Ways you might use it
    many purposes like : file/data storage, social sharing and so on
 -  download testing
 
-Using the server
+Using the Server
 ~~~~~~~~~~~~~~~~
 
 The best and first place you should look for documentation is
@@ -63,19 +63,19 @@ less-comprehensive server
 `README <https://searchfox.org/mozilla-central/source/netwerk/test/httpserver/README>`__,
 although the IDL should usually be sufficient.
 
-Running the server
+Running the Server
 ^^^^^^^^^^^^^^^^^^
 
 From test suites, the server should be importable as a testing-only JS
 module:
 
-.. code:: javascript
+.. code:: JavaScript
 
    ChromeUtils.import("resource://testing-common/httpd.js");
 
 Once you've done that, you can create a new server as follows:
 
-.. code:: javascript
+.. code:: JavaScript
 
    let server = new HttpServer(); // Or nsHttpServer() if you don't use ChromeUtils.import.
 
@@ -90,21 +90,21 @@ Once you've done that, you can create a new server as follows:
 You can also pass in a numeric port argument to the ``start()`` method,
 but we strongly suggest you don't do it. Using a dynamic port allow us
 to run your test in parallel with other tests which reduces wait times
-and makes everybody happy.  If you really have to use a hardcoded port,
+and makes everybody happy. If you really have to use a hardcoded port,
 you will have to annotate your test in the xpcshell manifest file with
 ``run-sequentially = REASON``.
 However, this should only be used as the last possible option.
 
 .. note::
 
-   Note: You **must** make sure to stop the server (the last line above)
+   You **must** make sure to stop the server (the last line above)
    before your test completes. Failure to do so will result in the
    "XPConnect is being called on a scope without a Components property"
    assertion, which will cause your test to fail in debug builds, and
    you'll make people running tests grumbly because you've broken the
    tests.
 
-Debugging errors
+Debugging Errors
 ^^^^^^^^^^^^^^^^
 
 The server's default error pages don't give much information, partly
@@ -120,7 +120,7 @@ determine why problems exist from that output. ``DEBUG`` is ``false`` by
 default because the information printed with it set to ``true``
 unnecessarily obscures tinderbox output.
 
-Header modification for files
+Header Modification for Files
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The server supports modifying the headers of the files (not request
@@ -128,7 +128,7 @@ handlers) it serves. To modify the headers for a file, create a sibling
 file with the first file's name followed by ``^headers^``. Here's an
 example of how such a file might look:
 
-.. code::
+.. code:: text
 
    HTTP 404 I want a cool HTTP description!
    Content-Type: text/plain
@@ -138,7 +138,7 @@ standard HTTP format. Any line ending style is accepted, and the file
 may optionally end with a single newline character, to play nice with
 Unix text tools like ``diff`` and ``hg``.
 
-Hidden files
+Hidden Files
 ^^^^^^^^^^^^
 
 Any file which ends with a single ``^`` is inaccessible when querying
@@ -153,7 +153,7 @@ modification for files into the file system without making those files
 accessible to clients; it remains to be seen whether and how hidden-file
 capabilities will otherwise be used.
 
-SJS: server-side scripts
+SJS: Server-Side Scripts
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 Support for server-side scripts is provided through the SJS mechanism.
@@ -164,7 +164,7 @@ will generate. That function acts exactly like the ``handle`` function
 on the ``nsIHttpRequestHandler`` interface. First, tell the server what
 extension you're using:
 
-.. code:: javascript
+.. code:: JavaScript
 
    const SJS_EXTENSION = "cgi";
    server.registerContentType(SJS_EXTENSION, "sjs");
@@ -172,7 +172,7 @@ extension you're using:
 Now just create an SJS with the extension ``cgi`` and write whatever you
 want. For example:
 
-.. code:: javascript
+.. code:: JavaScript
 
    function handleRequest(request, response)
    {
@@ -189,7 +189,7 @@ Please refer to the `IDL
 documentation <https://searchfox.org/mozilla-central/source/netwerk/test/httpserver/nsIHttpServer.idl>`
 for more details.
 
-Storing information across requests
+Storing Information Across Requests
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 HTTP is basically a stateless protocol, and the httpd.js server API is
@@ -201,7 +201,7 @@ every time processing occurs. To support stateful SJS behavior, the
 following functions have been added to the global scope in which a SJS
 handler executes, providing a simple key-value state storage mechanism:
 
-.. code::
+.. code:: JavaScript
 
    /*
     * v : T means v is of type T
@@ -247,7 +247,7 @@ request handler needs to store information from a first request of it
 for use in processing a second request of it — say, for example, if you
 wanted to implement a request handler implementing a counter:
 
-.. code:: javascript
+.. code:: JavaScript
 
    /**
     * Generates a response whose body is "0", "1", "2", and so on. each time a
@@ -271,7 +271,7 @@ without state accidentally bleeding between unrelated handlers.
 
 .. note::
 
-   **Note:** State saved by this method is specific to the HTTP path,
+   State saved by this method is specific to the HTTP path,
    excluding query string and hash reference. ``/counter``,
    ``/counter?foo``, and ``/counter?bar#baz`` all share the same state
    for the purposes of these methods. (Indeed, non-shared state would be
@@ -280,7 +280,7 @@ without state accidentally bleeding between unrelated handlers.
 
 .. note::
 
-   **Note:** The predefined ``__LOCATION__`` state
+   The predefined ``__LOCATION__`` state
    contains the native path of the SJS file itself. You can pass the
    result directly to the ``nsILocalFile.initWithPath()``. Example:
    ``thisSJSfile.initWithPath(getState('__LOCATION__'));``
@@ -323,7 +323,7 @@ when a particular event occurs.
 single string argument and returns the object or ``null`` directly. In
 SJS, however, the process to return the value is slightly different:
 
-.. code:: javascript
+.. code:: JavaScript
 
    function handleRequest(request, response)
    {
@@ -350,7 +350,7 @@ object values when called within the sandbox. However, such functions
 can accept and call callback functions, so we simply use a callback
 function here to return the object value associated with the key.
 
-Advanced dynamic response creation
+Advanced Dynamic Response Creation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The default behavior of request handlers is to fully construct the
@@ -366,7 +366,7 @@ that the response will be written and finished by the handler. Here's an
 example of an SJS file which writes some data, waits five seconds, and
 then writes some more data and finishes the response:
 
-.. code:: javascript
+.. code:: JavaScript
 
    var timer = null;
 
@@ -396,7 +396,7 @@ Full documentation for ``processAsync()`` and its interactions with
 other methods may, as always, be found in
 ``netwerk/test/httpserver/nsIHttpServer.idl``.
 
-Manual, arbitrary response creation
+Manual, Arbitrary Response Creation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The standard mode of response creation is fully synchronous and is
@@ -423,7 +423,7 @@ through httpd.js would throw an exception) and which has a header that
 spans multiple lines (httpd.js responses otherwise generate only
 single-line headers):
 
-.. code:: javascript
+.. code:: JavaScript
 
    function handleRequest(request, response)
    {
@@ -449,7 +449,7 @@ Full documentation for ``seizePower()`` and its interactions with other
 methods may, as always, be found in
 ``netwerk/test/httpserver/nsIHttpServer.idl``.
 
-Example uses of the server
+Example Uses of the Server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Shorter examples (for tests which only do one test):
@@ -469,7 +469,7 @@ Longer tests (where you'd need to do multiple async server requests):
 Examples of modifying HTTP headers in files may be found at
 ``netwerk/test/httpserver/test/data/cern_meta/``.
 
-Future directions
+Future Directions
 ~~~~~~~~~~~~~~~~~
 
 The server, while very functional, is not yet complete. There are a

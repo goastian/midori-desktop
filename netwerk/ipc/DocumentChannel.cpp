@@ -67,14 +67,15 @@ NS_INTERFACE_MAP_END
 DocumentChannel::DocumentChannel(nsDocShellLoadState* aLoadState,
                                  net::LoadInfo* aLoadInfo,
                                  nsLoadFlags aLoadFlags, uint32_t aCacheKey,
-                                 bool aUriModified, bool aIsXFOError)
+                                 bool aUriModified,
+                                 bool aIsEmbeddingBlockedError)
     : mLoadState(aLoadState),
       mCacheKey(aCacheKey),
       mLoadFlags(aLoadFlags),
       mURI(aLoadState->URI()),
       mLoadInfo(aLoadInfo),
       mUriModified(aUriModified),
-      mIsXFOError(aIsXFOError) {
+      mIsEmbeddingBlockedError(aIsEmbeddingBlockedError) {
   LOG(("DocumentChannel ctor [this=%p, uri=%s]", this,
        aLoadState->URI()->GetSpecOrDefault().get()));
   RefPtr<nsHttpHandler> handler = nsHttpHandler::GetInstance();
@@ -171,15 +172,16 @@ bool DocumentChannel::CanUseDocumentChannel(nsIURI* aURI) {
 already_AddRefed<DocumentChannel> DocumentChannel::CreateForDocument(
     nsDocShellLoadState* aLoadState, class LoadInfo* aLoadInfo,
     nsLoadFlags aLoadFlags, nsIInterfaceRequestor* aNotificationCallbacks,
-    uint32_t aCacheKey, bool aUriModified, bool aIsXFOError) {
+    uint32_t aCacheKey, bool aUriModified, bool aIsEmbeddingBlockedError) {
   RefPtr<DocumentChannel> channel;
   if (XRE_IsContentProcess()) {
-    channel = new DocumentChannelChild(aLoadState, aLoadInfo, aLoadFlags,
-                                       aCacheKey, aUriModified, aIsXFOError);
-  } else {
     channel =
-        new ParentProcessDocumentChannel(aLoadState, aLoadInfo, aLoadFlags,
-                                         aCacheKey, aUriModified, aIsXFOError);
+        new DocumentChannelChild(aLoadState, aLoadInfo, aLoadFlags, aCacheKey,
+                                 aUriModified, aIsEmbeddingBlockedError);
+  } else {
+    channel = new ParentProcessDocumentChannel(
+        aLoadState, aLoadInfo, aLoadFlags, aCacheKey, aUriModified,
+        aIsEmbeddingBlockedError);
   }
   channel->SetNotificationCallbacks(aNotificationCallbacks);
   return channel.forget();
@@ -306,7 +308,11 @@ NS_IMETHODIMP DocumentChannel::SetLoadFlags(nsLoadFlags aLoadFlags) {
     return NS_OK;
   }
 
-  MOZ_CRASH("DocumentChannel::SetLoadFlags: Don't set flags after creation");
+  MOZ_CRASH_UNSAFE_PRINTF(
+      "DocumentChannel::SetLoadFlags: Don't set flags after creation "
+      "(differing flags %x != %x)",
+      (mLoadFlags ^ aLoadFlags) & mLoadFlags,
+      (mLoadFlags ^ aLoadFlags) & aLoadFlags);
 }
 
 NS_IMETHODIMP DocumentChannel::GetOriginalURI(nsIURI** aOriginalURI) {

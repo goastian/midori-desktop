@@ -3,7 +3,9 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 class ObliviousHttpTestRequest {
   constructor(method, uri, headers, content) {
@@ -52,6 +54,15 @@ add_task(async function test_oblivious_http() {
         { "X-Teapot": "teapot" },
         "I'm a teapot"
       )
+    ),
+    new ObliviousHttpTestCase(
+      new ObliviousHttpTestRequest(
+        "GET",
+        NetUtil.newURI("http://example.test/404"),
+        { "X-Some-Header": "header value", "X-Some-Other-Header": "25" },
+        ""
+      ),
+      undefined // 404 relay
     ),
   ];
 
@@ -121,6 +132,11 @@ async function run_one_testcase(testcase) {
   let relayURI = NetUtil.newURI(
     `http://localhost:${httpServer.identity.primaryPort}/`
   );
+  if (!testcase.response) {
+    relayURI = NetUtil.newURI(
+      `http://localhost:${httpServer.identity.primaryPort}/404`
+    );
+  }
   let obliviousHttpChannel = ohttpService
     .newChannel(relayURI, testcase.request.uri, ohttpServer.encodedConfig)
     .QueryInterface(Ci.nsIHttpChannel);
@@ -151,26 +167,40 @@ async function run_one_testcase(testcase) {
       false
     );
   }
-  let response = await new Promise((resolve, reject) => {
-    NetUtil.asyncFetch(obliviousHttpChannel, function (inputStream, result) {
+  let response = await new Promise(resolve => {
+    NetUtil.asyncFetch(obliviousHttpChannel, function (inputStream) {
       let scriptableInputStream = Cc[
         "@mozilla.org/scriptableinputstream;1"
       ].createInstance(Ci.nsIScriptableInputStream);
       scriptableInputStream.init(inputStream);
+      try {
+        // If decoding failed just return undefined.
+        inputStream.available();
+      } catch (e) {
+        resolve(undefined);
+        return;
+      }
       let responseBody = scriptableInputStream.readBytes(
         inputStream.available()
       );
       resolve(responseBody);
     });
   });
-  equal(response, testcase.response.content);
-  for (let headerName of Object.keys(testcase.response.headers)) {
-    equal(
-      obliviousHttpChannel.getResponseHeader(headerName),
-      testcase.response.headers[headerName]
-    );
+  if (testcase.response) {
+    equal(response, testcase.response.content);
+    for (let headerName of Object.keys(testcase.response.headers)) {
+      equal(
+        obliviousHttpChannel.getResponseHeader(headerName),
+        testcase.response.headers[headerName]
+      );
+    }
+  } else {
+    let relayChannel = obliviousHttpChannel.QueryInterface(
+      Ci.nsIObliviousHttpChannel
+    ).relayChannel;
+    equal(relayChannel.responseStatus, 404);
   }
-  await new Promise((resolve, reject) => {
+  await new Promise(resolve => {
     httpServer.stop(resolve);
   });
 }

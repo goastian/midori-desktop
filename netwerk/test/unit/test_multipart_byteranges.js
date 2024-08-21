@@ -1,10 +1,12 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserver = null;
 
-XPCOMUtils.defineLazyGetter(this, "uri", function () {
+ChromeUtils.defineLazyGetter(this, "uri", function () {
   return "http://localhost:" + httpserver.identity.primaryPort + "/multipart";
 });
 
@@ -98,7 +100,7 @@ var multipartListener = {
     "nsIRequestObserver",
   ]),
 
-  onStartRequest(request) {
+  onStartRequest() {
     this._buffer = "";
   },
 
@@ -111,7 +113,7 @@ var multipartListener = {
     }
   },
 
-  onStopRequest(request, status) {
+  onStopRequest(request) {
     try {
       responseHandler(request, this._buffer);
     } catch (ex) {

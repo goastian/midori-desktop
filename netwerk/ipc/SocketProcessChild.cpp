@@ -18,8 +18,6 @@
 #include "mozilla/FOGIPC.h"
 #include "mozilla/glean/GleanMetrics.h"
 #include "mozilla/ipc/CrashReporterClient.h"
-#include "mozilla/ipc/BackgroundChild.h"
-#include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/ipc/ProcessChild.h"
 #include "mozilla/net/AltSvcTransactionChild.h"
 #include "mozilla/net/BackgroundDataBridgeParent.h"
@@ -27,10 +25,12 @@
 #include "mozilla/net/DNSRequestParent.h"
 #include "mozilla/net/NativeDNSResolverOverrideChild.h"
 #include "mozilla/net/ProxyAutoConfigChild.h"
+#include "mozilla/net/SocketProcessBackgroundChild.h"
 #include "mozilla/net/TRRServiceChild.h"
 #include "mozilla/ipc/ProcessUtils.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/RemoteLazyInputStreamChild.h"
+#include "mozilla/StaticPrefs_javascript.h"
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/Telemetry.h"
 #include "NetworkConnectivityService.h"
@@ -47,6 +47,7 @@
 #include "SocketProcessBridgeParent.h"
 #include "jsapi.h"
 #include "js/Initialization.h"
+#include "js/Prefs.h"
 #include "XPCSelfHostedShmem.h"
 
 #if defined(XP_WIN)
@@ -105,6 +106,46 @@ void CGSShutdownServerConnections();
 };
 #endif
 
+void SocketProcessChild::InitSocketBackground() {
+  Endpoint<PSocketProcessBackgroundParent> parentEndpoint;
+  Endpoint<PSocketProcessBackgroundChild> childEndpoint;
+  if (NS_WARN_IF(NS_FAILED(PSocketProcessBackground::CreateEndpoints(
+          &parentEndpoint, &childEndpoint)))) {
+    return;
+  }
+
+  SocketProcessBackgroundChild::Create(std::move(childEndpoint));
+
+  Unused << SendInitSocketBackground(std::move(parentEndpoint));
+}
+
+namespace {
+
+class NetTeardownObserver final : public nsIObserver {
+ public:
+  NetTeardownObserver() = default;
+
+  NS_DECL_ISUPPORTS
+  NS_DECL_NSIOBSERVER
+
+ private:
+  ~NetTeardownObserver() = default;
+};
+
+NS_IMPL_ISUPPORTS(NetTeardownObserver, nsIObserver)
+
+NS_IMETHODIMP
+NetTeardownObserver::Observe(nsISupports* aSubject, const char* aTopic,
+                             const char16_t* aData) {
+  if (SocketProcessChild* child = SocketProcessChild::GetSingleton()) {
+    child->CloseIPCClientCertsActor();
+  }
+
+  return NS_OK;
+}
+
+}  // namespace
+
 bool SocketProcessChild::Init(mozilla::ipc::UntypedEndpoint&& aEndpoint,
                               const char* aParentBuildID) {
   if (NS_WARN_IF(NS_FAILED(nsThreadManager::get().Init()))) {
@@ -130,8 +171,7 @@ bool SocketProcessChild::Init(mozilla::ipc::UntypedEndpoint&& aEndpoint,
     return false;
   }
 
-  BackgroundChild::Startup();
-  BackgroundChild::InitSocketStarter(this);
+  InitSocketBackground();
 
   SetThisProcessName("Socket Process");
 #if defined(XP_MACOSX)
@@ -154,13 +194,23 @@ bool SocketProcessChild::Init(mozilla::ipc::UntypedEndpoint&& aEndpoint,
   }
 
   // Initialize DNS Service here, since it needs to be done in main thread.
-  nsCOMPtr<nsIDNSService> dns =
-      do_GetService("@mozilla.org/network/dns-service;1", &rv);
+  mozilla::components::DNS::Service(&rv);
   if (NS_FAILED(rv)) {
     return false;
   }
 
   if (!EnsureNSSInitializedChromeOrContent()) {
+    return false;
+  }
+
+  nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
+  if (obs) {
+    nsCOMPtr<nsIObserver> observer = new NetTeardownObserver();
+    Unused << obs->AddObserver(observer, "profile-change-net-teardown", false);
+  }
+
+  mSocketThread = mozilla::components::SocketTransport::Service();
+  if (!mSocketThread) {
     return false;
   }
 
@@ -170,7 +220,10 @@ bool SocketProcessChild::Init(mozilla::ipc::UntypedEndpoint&& aEndpoint,
 void SocketProcessChild::ActorDestroy(ActorDestroyReason aWhy) {
   LOG(("SocketProcessChild::ActorDestroy\n"));
 
-  mShuttingDown = true;
+  {
+    MutexAutoLock lock(mMutex);
+    mShuttingDown = true;
+  }
 
   if (AbnormalShutdown == aWhy) {
     NS_WARNING("Shutting down Socket process early due to a crash!");
@@ -193,8 +246,10 @@ void SocketProcessChild::ActorDestroy(ActorDestroyReason aWhy) {
 void SocketProcessChild::CleanUp() {
   LOG(("SocketProcessChild::CleanUp\n"));
 
+  SocketProcessBackgroundChild::Shutdown();
+
   for (const auto& parent : mSocketProcessBridgeParentMap.Values()) {
-    if (!parent->Closed()) {
+    if (parent->CanSend()) {
       parent->Close();
     }
   }
@@ -384,8 +439,9 @@ mozilla::ipc::IPCResult SocketProcessChild::RecvUpdateDeviceModelId(
 mozilla::ipc::IPCResult
 SocketProcessChild::RecvOnHttpActivityDistributorActivated(
     const bool& aIsActivated) {
-  if (nsCOMPtr<nsIHttpActivityObserver> distributor =
-          components::HttpActivityDistributor::Service()) {
+  nsCOMPtr<nsIHttpActivityObserver> distributor;
+  distributor = mozilla::components::HttpActivityDistributor::Service();
+  if (distributor) {
     distributor->SetIsActive(aIsActivated);
   }
   return IPC_OK();
@@ -394,8 +450,8 @@ SocketProcessChild::RecvOnHttpActivityDistributorActivated(
 mozilla::ipc::IPCResult
 SocketProcessChild::RecvOnHttpActivityDistributorObserveProxyResponse(
     const bool& aIsEnabled) {
-  nsCOMPtr<nsIHttpActivityDistributor> distributor =
-      do_GetService("@mozilla.org/network/http-activity-distributor;1");
+  nsCOMPtr<nsIHttpActivityDistributor> distributor;
+  distributor = mozilla::components::HttpActivityDistributor::Service();
   if (distributor) {
     Unused << distributor->SetObserveProxyResponse(aIsEnabled);
   }
@@ -405,8 +461,8 @@ SocketProcessChild::RecvOnHttpActivityDistributorObserveProxyResponse(
 mozilla::ipc::IPCResult
 SocketProcessChild::RecvOnHttpActivityDistributorObserveConnection(
     const bool& aIsEnabled) {
-  nsCOMPtr<nsIHttpActivityDistributor> distributor =
-      do_GetService("@mozilla.org/network/http-activity-distributor;1");
+  nsCOMPtr<nsIHttpActivityDistributor> distributor;
+  distributor = mozilla::components::HttpActivityDistributor::Service();
   if (distributor) {
     Unused << distributor->SetObserveConnection(aIsEnabled);
   }
@@ -456,13 +512,11 @@ mozilla::ipc::IPCResult SocketProcessChild::RecvPDNSRequestConstructor(
 
 void SocketProcessChild::AddDataBridgeToMap(
     uint64_t aChannelId, BackgroundDataBridgeParent* aActor) {
-  ipc::AssertIsOnBackgroundThread();
   MutexAutoLock lock(mMutex);
   mBackgroundDataBridgeMap.InsertOrUpdate(aChannelId, RefPtr{aActor});
 }
 
 void SocketProcessChild::RemoveDataBridgeFromMap(uint64_t aChannelId) {
-  ipc::AssertIsOnBackgroundThread();
   MutexAutoLock lock(mMutex);
   mBackgroundDataBridgeMap.Remove(aChannelId);
 }
@@ -587,8 +641,8 @@ mozilla::ipc::IPCResult SocketProcessChild::RecvGetSocketData(
 mozilla::ipc::IPCResult SocketProcessChild::RecvGetDNSCacheEntries(
     GetDNSCacheEntriesResolver&& aResolve) {
   nsresult rv = NS_OK;
-  nsCOMPtr<nsIDNSService> dns =
-      do_GetService("@mozilla.org/network/dns-service;1", &rv);
+  nsCOMPtr<nsIDNSService> dns;
+  dns = mozilla::components::DNS::Service(&rv);
   if (NS_FAILED(rv)) {
     aResolve(nsTArray<DNSCacheEntries>());
     return IPC_OK();
@@ -642,6 +696,9 @@ mozilla::ipc::IPCResult SocketProcessChild::RecvInitProxyAutoConfigChild(
   // For parsing PAC.
   if (!sInitializedJS) {
     JS::DisableJitBackend();
+
+    // Set all JS::Prefs.
+    SET_JS_PREFS_FROM_BROWSER_PREFS;
 
     const char* jsInitFailureReason = JS_InitWithFailureDiagnostic();
     if (jsInitFailureReason) {
@@ -710,6 +767,67 @@ SocketProcessChild::RecvUnblockUntrustedModulesThread() {
   return IPC_OK();
 }
 #endif  // defined(XP_WIN)
+
+bool SocketProcessChild::IsShuttingDown() {
+  MutexAutoLock lock(mMutex);
+  return mShuttingDown;
+}
+
+void SocketProcessChild::CloseIPCClientCertsActor() {
+  LOG(("SocketProcessChild::CloseIPCClientCertsActor"));
+  MOZ_ASSERT(NS_IsMainThread());
+
+  mSocketThread->Dispatch(NS_NewRunnableFunction(
+      "CloseIPCClientCertsActor", [self = RefPtr{this}]() {
+        LOG(("CloseIPCClientCertsActor"));
+        if (self->mIPCClientCertsChild) {
+          self->mIPCClientCertsChild->Close();
+          self->mIPCClientCertsChild = nullptr;
+        }
+      }));
+}
+
+already_AddRefed<psm::IPCClientCertsChild>
+SocketProcessChild::GetIPCClientCertsActor() {
+  LOG(("SocketProcessChild::GetIPCClientCertsActor"));
+  // Only socket thread can access the mIPCClientCertsChild.
+  if (!OnSocketThread()) {
+    return nullptr;
+  }
+
+  {
+    MutexAutoLock lock(mMutex);
+    if (mShuttingDown) {
+      return nullptr;
+    }
+  }
+
+  if (mIPCClientCertsChild) {
+    RefPtr<psm::IPCClientCertsChild> actorChild = mIPCClientCertsChild;
+    return actorChild.forget();
+  }
+
+  ipc::Endpoint<psm::PIPCClientCertsParent> parentEndpoint;
+  ipc::Endpoint<psm::PIPCClientCertsChild> childEndpoint;
+  psm::PIPCClientCerts::CreateEndpoints(&parentEndpoint, &childEndpoint);
+
+  if (NS_FAILED(SocketProcessBackgroundChild::WithActor(
+          "SendInitIPCClientCerts",
+          [endpoint = std::move(parentEndpoint)](
+              SocketProcessBackgroundChild* aActor) mutable {
+            Unused << aActor->SendInitIPCClientCerts(std::move(endpoint));
+          }))) {
+    return nullptr;
+  }
+
+  RefPtr<psm::IPCClientCertsChild> actor = new psm::IPCClientCertsChild();
+  if (!childEndpoint.Bind(actor)) {
+    return nullptr;
+  }
+
+  mIPCClientCertsChild = actor;
+  return actor.forget();
+}
 
 }  // namespace net
 }  // namespace mozilla

@@ -130,10 +130,10 @@ class Http3Session final : public nsAHttpTransaction, public nsAHttpConnection {
   Http3Session();
   nsresult Init(const nsHttpConnectionInfo* aConnInfo, nsINetAddr* selfAddr,
                 nsINetAddr* peerAddr, HttpConnectionUDP* udpConn,
-                uint32_t controlFlags, nsIInterfaceRequestor* callbacks);
+                uint32_t aProviderFlags, nsIInterfaceRequestor* callbacks);
 
   bool IsConnected() const { return mState == CONNECTED; }
-  bool CanSandData() const {
+  bool CanSendData() const {
     return (mState == CONNECTED) || (mState == ZERORTT);
   }
   bool IsClosing() const { return (mState == CLOSING || mState == CLOSED); }
@@ -215,6 +215,8 @@ class Http3Session final : public nsAHttpTransaction, public nsAHttpConnection {
 
   uint64_t MaxDatagramSize(uint64_t aSessionId);
 
+  void SetSendOrder(Http3StreamBase* aStream, Maybe<int64_t> aSendOrder);
+
   void CloseWebTransportConn();
 
  private:
@@ -278,6 +280,7 @@ class Http3Session final : public nsAHttpTransaction, public nsAHttpConnection {
       mStreamTransactionHash;
 
   nsRefPtrDeque<Http3StreamBase> mReadyForWrite;
+
   nsTArray<RefPtr<Http3StreamBase>> mSlowConsumersReadyForRead;
   nsRefPtrDeque<Http3StreamBase> mQueuedStreams;
 
@@ -372,6 +375,10 @@ class Http3Session final : public nsAHttpTransaction, public nsAHttpConnection {
   bool mHasWebTransportSession = false;
   // When true, we don't add this connection info into the Http/3 excluded list.
   bool mDontExclude = false;
+  // The lifetime of the UDP socket is managed by the HttpConnectionUDP. This
+  // is only used in Http3Session::ProcessOutput. Using raw pointer here to
+  // improve performance.
+  nsIUDPSocket* mSocket;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(Http3Session, NS_HTTP3SESSION_IID);

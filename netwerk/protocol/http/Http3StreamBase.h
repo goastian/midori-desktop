@@ -52,15 +52,21 @@ class Http3StreamBase : public SupportsWeakPtr, public ARefBase {
   virtual bool RecvdReset() const { return mResetRecv; }
   virtual void SetRecvdReset() { mResetRecv = true; }
 
+  void SetInTxQueue(bool aValue) { mInTxQueue = aValue; }
+  bool IsInTxQueue() const { return mInTxQueue; }
+
  protected:
   ~Http3StreamBase();
 
   uint64_t mStreamId{UINT64_MAX};
+  int64_t mSendOrder{0};
+  bool mSendOrderIsSet{false};
   RefPtr<nsAHttpTransaction> mTransaction;
   RefPtr<Http3Session> mSession;
   bool mQueued{false};
   bool mFin{false};
   bool mResetRecv{false};
+  bool mInTxQueue{false};
 };
 
 }  // namespace mozilla::net

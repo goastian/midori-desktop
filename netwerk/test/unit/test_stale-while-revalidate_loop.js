@@ -16,10 +16,10 @@ function make_channel(url) {
   }).QueryInterface(Ci.nsIHttpChannel);
 }
 
-async function get_response(channel, fromCache) {
+async function get_response(channel) {
   return new Promise(resolve => {
     channel.asyncOpen(
-      new ChannelListener((request, buffer, ctx, isFromCache) => {
+      new ChannelListener((request, buffer) => {
         resolve(buffer);
       })
     );
@@ -37,7 +37,7 @@ add_task(async function () {
   addCertFromFile(certdb, "http2-ca.pem", "CTu,u,u");
 
   let response = await get_response(make_channel(URI), false);
-  ok(response == "1", "got response ver 1");
+  Assert.equal(response, "1", "got response ver 1");
   response = await get_response(make_channel(URI), false);
-  ok(response == "1", "got response ver 1");
+  Assert.equal(response, "1", "got response ver 1");
 });

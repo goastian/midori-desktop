@@ -11,7 +11,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIProtocolProxyService"
 );
 
-XPCOMUtils.defineLazyGetter(this, "systemSettings", function () {
+ChromeUtils.defineLazyGetter(this, "systemSettings", function () {
   return {
     QueryInterface: ChromeUtils.generateQI(["nsISystemProxySettings"]),
 
@@ -55,9 +55,9 @@ async function TestProxyType(chan, flags) {
     Ci.nsIProtocolProxyService.PROXYCONFIG_SYSTEM
   );
 
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     gProxyService.asyncResolve(chan, flags, {
-      onProxyAvailable(req, uri, pi, status) {
+      onProxyAvailable(req, uri, pi) {
         resolve(pi);
       },
     });

@@ -3,7 +3,6 @@
 var h2Port;
 var prefs;
 var http2pref;
-var extpref;
 var loadGroup;
 
 function run_test() {
@@ -16,10 +15,8 @@ function run_test() {
   prefs = Services.prefs;
 
   http2pref = prefs.getBoolPref("network.http.http2.enabled");
-  extpref = prefs.getBoolPref("network.http.originextension");
 
   prefs.setBoolPref("network.http.http2.enabled", true);
-  prefs.setBoolPref("network.http.originextension", true);
   prefs.setCharPref(
     "network.dns.localDomains",
     "foo.example.com, alt1.example.com"
@@ -37,7 +34,6 @@ function run_test() {
 
 function resetPrefs() {
   prefs.setBoolPref("network.http.http2.enabled", http2pref);
-  prefs.setBoolPref("network.http.originextension", extpref);
   prefs.clearUserPref("network.dns.localDomains");
 }
 
@@ -94,7 +90,7 @@ FailListener.prototype = {
   onDataAvailable: function testOnDataAvailable(request, stream, off, cnt) {
     read_stream(stream, cnt);
   },
-  onStopRequest: function testOnStopRequest(request, status) {
+  onStopRequest: function testOnStopRequest(request) {
     Assert.ok(!Components.isSuccessCode(request.status));
     nextTest();
     do_test_finished();
@@ -293,7 +289,7 @@ Http2PushApiListener.prototype = {
     read_stream(stream, cnt);
   },
 
-  onStopRequest: function test_onStopR(request, status) {
+  onStopRequest: function test_onStopR(request) {
     dump("push api onstop " + request.originalURI.spec + "\n");
     Assert.ok(this.fooOK);
     Assert.ok(this.alt1OK);

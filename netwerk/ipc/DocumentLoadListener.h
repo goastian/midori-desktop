@@ -163,7 +163,7 @@ class DocumentLoadListener : public nsIInterfaceRequestor,
       nsDocShellLoadState* aLoadState, uint32_t aCacheKey,
       const Maybe<uint64_t>& aChannelId, const TimeStamp& aAsyncOpenTime,
       nsDOMNavigationTiming* aTiming, Maybe<dom::ClientInfo>&& aInfo,
-      Maybe<bool> aUriModified, Maybe<bool> aIsXFOError,
+      Maybe<bool> aUriModified, Maybe<bool> aIsEmbeddingBlockedError,
       dom::ContentParent* aContentParent, nsresult* aRv);
 
   RefPtr<OpenPromise> OpenObject(
@@ -292,7 +292,7 @@ class DocumentLoadListener : public nsIInterfaceRequestor,
   // in the content process into the RedirectToRealChannelArgs struct.
   void SerializeRedirectData(RedirectToRealChannelArgs& aArgs,
                              bool aIsCrossProcess, uint32_t aRedirectFlags,
-                             uint32_t aLoadFlags, dom::ContentParent* aParent,
+                             uint32_t aLoadFlags,
                              nsTArray<EarlyHintConnectArgs>&& aEarlyHints,
                              uint32_t aEarlyHintLinkType) const;
 
@@ -300,6 +300,7 @@ class DocumentLoadListener : public nsIInterfaceRequestor,
   uint32_t GetLoadType() const { return mLoadStateLoadType; }
   bool IsDownload() const { return mIsDownload; }
   bool IsLoadingJSURI() const { return mIsLoadingJSURI; }
+  nsDOMNavigationTiming* GetTiming() { return mTiming; }
 
   mozilla::dom::LoadingSessionHistoryInfo* GetLoadingSessionHistoryInfo() {
     return mLoadingSessionHistoryInfo.get();
@@ -602,7 +603,7 @@ class DocumentLoadListener : public nsIInterfaceRequestor,
   RefPtr<dom::ContentParent> mContentParent;
 
   void RejectOpenPromise(nsresult aStatus, nsresult aLoadGroupStatus,
-                         bool aContinueNavigating, const char* aLocation) {
+                         bool aContinueNavigating, StaticString aLocation) {
     // It is possible for mOpenPromise to not be set if AsyncOpen failed and
     // the DocumentChannel got canceled.
     if (!mOpenPromiseResolved && mOpenPromise) {
@@ -616,6 +617,8 @@ class DocumentLoadListener : public nsIInterfaceRequestor,
   bool mOpenPromiseResolved = false;
 
   const bool mIsDocumentLoad;
+
+  RefPtr<HTTPSFirstDowngradeData> mHTTPSFirstDowngradeData;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(DocumentLoadListener, DOCUMENT_LOAD_LISTENER_IID)

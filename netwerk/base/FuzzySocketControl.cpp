@@ -124,6 +124,12 @@ NS_IMETHODIMP
 FuzzySocketControl::StartTLS() { return NS_OK; }
 
 NS_IMETHODIMP
+FuzzySocketControl::AsyncStartTLS(JSContext* aCx,
+                                  mozilla::dom::Promise** aPromise) {
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 FuzzySocketControl::SetNPNList(nsTArray<nsCString>& protocolArray) {
   return NS_OK;
 }
@@ -180,6 +186,13 @@ FuzzySocketControl::AsyncGetSecurityInfo(JSContext* aCx,
 }
 
 NS_IMETHODIMP FuzzySocketControl::Claim() { return NS_OK; }
+
+NS_IMETHODIMP FuzzySocketControl::SetBrowserId(uint64_t) { return NS_OK; }
+
+NS_IMETHODIMP FuzzySocketControl::GetBrowserId(uint64_t*) {
+  MOZ_CRASH("Unused");
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
 
 }  // namespace net
 }  // namespace mozilla

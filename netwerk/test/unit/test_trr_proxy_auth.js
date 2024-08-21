@@ -11,7 +11,6 @@
 
 function setup() {
   trr_test_setup();
-  Services.prefs.setBoolPref("network.trr.fetch_off_main_thread", true);
 }
 
 setup();
@@ -34,7 +33,7 @@ AuthPrompt.prototype = {
     return true;
   },
 
-  asyncPromptAuth: function ap_async(chan, cb, ctx, lvl, info) {
+  asyncPromptAuth: function ap_async() {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 };
@@ -72,7 +71,7 @@ add_task(async function test_trr_proxy_auth() {
   Services.prefs.setIntPref("network.trr.mode", 3);
   Services.prefs.setCharPref(
     "network.trr.uri",
-    `https://foo.example.com:${trrServer.port}/dns-query`
+    `https://foo.example.com:${trrServer.port()}/dns-query`
   );
 
   await trrServer.registerDoHAnswers("test.proxy.com", "A", {
@@ -99,14 +98,14 @@ add_task(async function test_trr_proxy_auth() {
   let authTriggered = false;
   let observer = {
     QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
-    observe(aSubject, aTopic, aData) {
+    observe(aSubject, aTopic) {
       if (aTopic == "http-on-examine-response") {
         Services.obs.removeObserver(observer, "http-on-examine-response");
         let channel = aSubject.QueryInterface(Ci.nsIChannel);
         channel.notificationCallbacks = new Requestor();
         if (
           channel.URI.spec.startsWith(
-            `https://foo.example.com:${trrServer.port}/dns-query`
+            `https://foo.example.com:${trrServer.port()}/dns-query`
           )
         ) {
           authTriggered = true;

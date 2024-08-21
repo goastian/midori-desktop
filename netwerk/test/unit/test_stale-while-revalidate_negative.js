@@ -18,7 +18,9 @@ request past the reval window.
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 let max_age;
 let version;
@@ -47,7 +49,11 @@ async function get_response(channel, fromCache) {
   return new Promise(resolve => {
     channel.asyncOpen(
       new ChannelListener((request, buffer, ctx, isFromCache) => {
-        ok(fromCache == isFromCache, `got response from cache = ${fromCache}`);
+        Assert.equal(
+          fromCache,
+          isFromCache,
+          `got response from cache = ${fromCache}`
+        );
         resolve(buffer);
       })
     );
@@ -78,13 +84,13 @@ add_task(async function () {
   version = 1;
   max_age = 1;
   response = await get_response(make_channel(URI), false);
-  ok(response == generate_response(1), "got response ver 1");
+  Assert.equal(response, generate_response(1), "got response ver 1");
 
   await sleep(max_age + 1 /* stale window */ + 1 /* to expire the window */);
 
   version = 2;
   response = await get_response(make_channel(URI), false);
-  ok(response == generate_response(2), "got response ver 2");
+  Assert.equal(response, generate_response(2), "got response ver 2");
 
   await stop_server(httpserver);
 });

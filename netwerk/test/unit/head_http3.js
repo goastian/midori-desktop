@@ -4,11 +4,25 @@
 
 /* import-globals-from head_channels.js */
 /* import-globals-from head_cookies.js */
+/* import-globals-from head_servers.js */
 
-async function http3_setup_tests(http3version) {
-  let h3Port = Services.env.get("MOZHTTP3_PORT");
+async function http3_setup_tests(http3version, reload) {
+  let h3Port;
+  if (reload) {
+    let h3ServerPath = Services.env.get("MOZ_HTTP3_SERVER_PATH");
+    let h3DBPath = Services.env.get("MOZ_HTTP3_CERT_DB_PATH");
+    let server = new HTTP3Server();
+    h3Port = await server.start(h3ServerPath, h3DBPath);
+    registerCleanupFunction(async () => {
+      await server.stop();
+    });
+  } else {
+    h3Port = Services.env.get("MOZHTTP3_PORT");
+  }
+
   Assert.notEqual(h3Port, null);
   Assert.notEqual(h3Port, "");
+
   let h3Route = "foo.example.com:" + h3Port;
   do_get_profile();
 
@@ -44,13 +58,13 @@ CheckHttp3Listener.prototype = {
   expectedRoute: "",
   http3version: "",
 
-  onStartRequest: function testOnStartRequest(request) {},
+  onStartRequest: function testOnStartRequest() {},
 
   onDataAvailable: function testOnDataAvailable(request, stream, off, cnt) {
     read_stream(stream, cnt);
   },
 
-  onStopRequest: function testOnStopRequest(request, status) {
+  onStopRequest: function testOnStopRequest(request) {
     let routed = "NA";
     try {
       routed = request.getRequestHeader("Alt-Used");

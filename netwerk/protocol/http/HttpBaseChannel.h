@@ -184,6 +184,8 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD DoApplyContentConversions(nsIStreamListener* aNextListener,
                                        nsIStreamListener** aNewNextListener,
                                        nsISupports* aCtxt) override;
+  NS_IMETHOD SetHasContentDecompressed(bool value) override;
+  NS_IMETHOD GetHasContentDecompressed(bool* value) override;
 
   // HttpBaseChannel::nsIHttpChannel
   NS_IMETHOD GetRequestMethod(nsACString& aMethod) override;
@@ -226,6 +228,8 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD GetRequestSucceeded(bool* aValue) override;
   NS_IMETHOD RedirectTo(nsIURI* newURI) override;
   NS_IMETHOD UpgradeToSecure() override;
+  NS_IMETHOD GetRequestObserversCalled(bool* aCalled) override;
+  NS_IMETHOD SetRequestObserversCalled(bool aCalled) override;
   NS_IMETHOD GetRequestContextID(uint64_t* aRCID) override;
   NS_IMETHOD GetTransferSize(uint64_t* aTransferSize) override;
   NS_IMETHOD GetRequestSize(uint64_t* aRequestSize) override;
@@ -317,7 +321,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD GetProxyURI(nsIURI** proxyURI) override;
   virtual void SetCorsPreflightParameters(
       const nsTArray<nsCString>& unsafeHeaders,
-      bool aShouldStripRequestBodyHeader) override;
+      bool aShouldStripRequestBodyHeader, bool aShouldStripAuthHeader) override;
   virtual void SetAltDataForChild(bool aIsForChild) override;
   virtual void DisableAltDataCache() override {
     StoreDisableAltDataCache(true);
@@ -352,13 +356,14 @@ class HttpBaseChannel : public nsHashPropertyBag,
                          nsIHttpUpgradeListener* aListener) override;
   void DoDiagnosticAssertWhenOnStopNotCalledOnDestroy() override;
 
-  NS_IMETHOD SetWaitForHTTPSSVCRecord() override;
-
   NS_IMETHOD SetEarlyHintPreloaderId(uint64_t aEarlyHintPreloaderId) override;
   NS_IMETHOD GetEarlyHintPreloaderId(uint64_t* aEarlyHintPreloaderId) override;
 
   NS_IMETHOD SetEarlyHintLinkType(uint32_t aEarlyHintLinkType) override;
   NS_IMETHOD GetEarlyHintLinkType(uint32_t* aEarlyHintLinkType) override;
+
+  NS_IMETHOD SetIsUserAgentHeaderModified(bool value) override;
+  NS_IMETHOD GetIsUserAgentHeaderModified(bool* value) override;
 
   NS_IMETHOD SetClassicScriptHintCharset(
       const nsAString& aClassicScriptHintCharset) override;
@@ -534,7 +539,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
     Maybe<nsCString> contentType;
     Maybe<nsCString> contentLength;
 
-    dom::ReplacementChannelConfigInit Serialize(dom::ContentParent* aParent);
+    dom::ReplacementChannelConfigInit Serialize();
   };
 
   enum class ReplacementReason {
@@ -568,6 +573,16 @@ class HttpBaseChannel : public nsHashPropertyBag,
   }
   bool CachedOpaqueResponseBlockingPref() const {
     return mCachedOpaqueResponseBlockingPref;
+  }
+
+  TimeStamp GetOnStartRequestStartTime() const {
+    return mOnStartRequestStartTime;
+  }
+  TimeStamp GetDataAvailableStartTime() const {
+    return mOnDataAvailableStartTime;
+  }
+  TimeStamp GetOnStopRequestStartTime() const {
+    return mOnStopRequestStartTime;
   }
 
  protected:
@@ -636,7 +651,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   static void CallTypeSniffers(void* aClosure, const uint8_t* aData,
                                uint32_t aCount);
 
-  nsresult CheckRedirectLimit(uint32_t aRedirectFlags) const;
+  nsresult CheckRedirectLimit(nsIURI* aNewURI, uint32_t aRedirectFlags) const;
 
   bool MaybeWaitForUploadStreamNormalization(nsIStreamListener* aListener,
                                              nsISupports* aContext);
@@ -675,6 +690,9 @@ class HttpBaseChannel : public nsHashPropertyBag,
   void SetChannelBlockedByOpaqueResponse();
   bool Http3Allowed() const;
 
+  virtual void ExplicitSetUploadStreamLength(uint64_t aContentLength,
+                                             bool aSetContentLengthHeader);
+
   friend class OpaqueResponseBlocker;
   friend class PrivateBrowsingChannel<HttpBaseChannel>;
   friend class InterceptFailedOnStop;
@@ -705,9 +723,6 @@ class HttpBaseChannel : public nsHashPropertyBag,
  private:
   // Proxy release all members above on main thread.
   void ReleaseMainThreadOnlyReferences();
-
-  void ExplicitSetUploadStreamLength(uint64_t aContentLength,
-                                     bool aSetContentLengthHeader);
 
   void MaybeResumeAsyncOpen();
 
@@ -776,13 +791,15 @@ class HttpBaseChannel : public nsHashPropertyBag,
   TimeStamp mAsyncOpenTime;
   TimeStamp mCacheReadStart;
   TimeStamp mCacheReadEnd;
-  TimeStamp mTransactionPendingTime;
   TimeStamp mLaunchServiceWorkerStart;
   TimeStamp mLaunchServiceWorkerEnd;
   TimeStamp mDispatchFetchEventStart;
   TimeStamp mDispatchFetchEventEnd;
   TimeStamp mHandleFetchEventStart;
   TimeStamp mHandleFetchEventEnd;
+  TimeStamp mOnStartRequestStartTime;
+  TimeStamp mOnDataAvailableStartTime;
+  TimeStamp mOnStopRequestStartTime;
   // copied from the transaction before we null out mTransaction
   // so that the timing can still be queried from OnStopRequest
   TimingStruct mTransactionTimings;
@@ -814,6 +831,10 @@ class HttpBaseChannel : public nsHashPropertyBag,
   Atomic<bool, ReleaseAcquire> mCanceled;
   Atomic<uint32_t, ReleaseAcquire> mFirstPartyClassificationFlags;
   Atomic<uint32_t, ReleaseAcquire> mThirdPartyClassificationFlags;
+
+  // mutex to guard members accessed during OnDataFinished in
+  // HttpChannelChild.cpp
+  Mutex mOnDataFinishedMutex{"HttpChannelChild::OnDataFinishedMutex"};
 
   UniquePtr<ProfileChunkedBuffer> mSource;
 
@@ -938,7 +959,11 @@ class HttpBaseChannel : public nsHashPropertyBag,
 
     // Indicate whether the response of this channel is coming from
     // socket process.
-    (uint32_t, LoadedBySocketProcess, 1)
+    (uint32_t, LoadedBySocketProcess, 1),
+
+    // Indicates whether the user-agent header has been modifed since the channel
+    // was created.
+    (uint32_t, IsUserAgentHeaderModified, 1)
   ))
   // clang-format on
 
@@ -987,6 +1012,11 @@ class HttpBaseChannel : public nsHashPropertyBag,
   bool mChannelBlockedByOpaqueResponse;
 
   bool mDummyChannelForImageCache;
+
+  bool mHasContentDecompressed;
+
+  // A flag that should be false if render-blocking is not stated
+  bool mRenderBlocking;
 
   // clang-format off
   MOZ_ATOMIC_BITFIELDS(mAtomicBitfields3, 8, (

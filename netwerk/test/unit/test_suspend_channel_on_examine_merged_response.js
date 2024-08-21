@@ -7,7 +7,9 @@
 // Note that this test is developed based on test_bug482601.js.
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserv = null;
 var test_nr = 0;
@@ -18,7 +20,7 @@ var channelResumed = false;
 var observer = {
   QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     if (
       topic === "http-on-examine-merged-response" &&
       subject instanceof Ci.nsIHttpChannel
@@ -37,7 +39,7 @@ var observer = {
 };
 
 var listener = {
-  onStartRequest(request) {
+  onStartRequest() {
     buffer = "";
   },
 
@@ -104,7 +106,6 @@ function storeCache(aCacheEntry, aResponseHeads, aContent) {
     );
   }
   oStream.close();
-  aCacheEntry.close();
 }
 
 function test_partial() {

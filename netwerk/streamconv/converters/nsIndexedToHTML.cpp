@@ -5,9 +5,11 @@
 
 #include "nsIndexedToHTML.h"
 
+#include "mozilla/Components.h"
 #include "mozilla/Encoding.h"
 #include "mozilla/intl/AppDateTimeFormat.h"
 #include "mozilla/intl/LocaleService.h"
+#include "nsIThreadRetargetableStreamListener.h"
 #include "nsNetUtil.h"
 #include "netCore.h"
 #include "nsStringStream.h"
@@ -31,7 +33,8 @@ using mozilla::intl::LocaleService;
 using namespace mozilla;
 
 NS_IMPL_ISUPPORTS(nsIndexedToHTML, nsIDirIndexListener, nsIStreamConverter,
-                  nsIRequestObserver, nsIStreamListener)
+                  nsIThreadRetargetableStreamListener, nsIRequestObserver,
+                  nsIStreamListener)
 
 static void AppendNonAsciiToNCR(const nsAString& in, nsCString& out) {
   nsAString::const_iterator start, end;
@@ -65,8 +68,8 @@ nsresult nsIndexedToHTML::Init(nsIStreamListener* aListener) {
 
   mListener = aListener;
 
-  nsCOMPtr<nsIStringBundleService> sbs =
-      do_GetService(NS_STRINGBUNDLE_CONTRACTID, &rv);
+  nsCOMPtr<nsIStringBundleService> sbs;
+  sbs = mozilla::components::StringBundle::Service(&rv);
   if (NS_FAILED(rv)) return rv;
   rv = sbs->CreateBundle(NECKO_MSGS_URL, getter_AddRefs(mBundle));
 
@@ -92,6 +95,11 @@ nsIndexedToHTML::AsyncConvertData(const char* aFromType, const char* aToType,
 NS_IMETHODIMP
 nsIndexedToHTML::GetConvertedType(const nsACString& aFromType,
                                   nsIChannel* aChannel, nsACString& aToType) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+nsIndexedToHTML::MaybeRetarget(nsIRequest* request) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -469,7 +477,7 @@ nsresult nsIndexedToHTML::DoOnStartRequest(nsIRequest* request,
   // otherwise we end up linking to file:///foo/dirfile
 
   if (!mTextToSubURI) {
-    mTextToSubURI = do_GetService(NS_ITEXTTOSUBURI_CONTRACTID, &rv);
+    mTextToSubURI = mozilla::components::TextToSubURI::Service(&rv);
     if (NS_FAILED(rv)) return rv;
   }
 
@@ -615,6 +623,18 @@ nsIndexedToHTML::OnDataAvailable(nsIRequest* aRequest, nsIInputStream* aInput,
   return mParser->OnDataAvailable(aRequest, aInput, aOffset, aCount);
 }
 
+NS_IMETHODIMP
+nsIndexedToHTML::OnDataFinished(nsresult aStatus) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+nsIndexedToHTML::CheckListenerChain() {
+  // nsIndexedToHTML does not support OnDataAvailable to run OMT. This class
+  // should only pass-through OnDataFinished notification.
+  return NS_ERROR_NO_INTERFACE;
+}
+
 static nsresult FormatTime(
     const mozilla::intl::DateTimeFormat::StyleBag& aStyleBag,
     const PRTime aPrTime, nsAString& aStringOut) {
@@ -622,7 +642,8 @@ static nsresult FormatTime(
   // instead of local time zone name (e.g. CEST).
   // To avoid this case when ResistFingerprinting is disabled, use
   // |FormatPRTime| to show exact time zone name.
-  if (!nsContentUtils::ShouldResistFingerprinting()) {
+  if (!nsContentUtils::ShouldResistFingerprinting(true,
+                                                  RFPTarget::JSDateTimeUTC)) {
     return mozilla::intl::AppDateTimeFormat::Format(aStyleBag, aPrTime,
                                                     aStringOut);
   }
@@ -794,22 +815,6 @@ nsIndexedToHTML::OnIndexAvailable(nsIRequest* aRequest, nsIDirIndex* aIndex) {
   }
 
   pushBuffer.AppendLiteral("</td>\n</tr>");
-
-  return SendToListener(aRequest, pushBuffer);
-}
-
-NS_IMETHODIMP
-nsIndexedToHTML::OnInformationAvailable(nsIRequest* aRequest,
-                                        const nsAString& aInfo) {
-  nsAutoCString pushBuffer;
-  nsAutoCString escapedUtf8;
-  nsAppendEscapedHTML(NS_ConvertUTF16toUTF8(aInfo), escapedUtf8);
-  pushBuffer.AppendLiteral("<tr>\n <td>");
-  // escaped is provided in Unicode, so write hex NCRs as necessary
-  // to prevent the HTML parser from applying a character set.
-  AppendNonAsciiToNCR(NS_ConvertUTF8toUTF16(escapedUtf8), pushBuffer);
-  pushBuffer.AppendLiteral(
-      "</td>\n <td></td>\n <td></td>\n <td></td>\n</tr>\n");
 
   return SendToListener(aRequest, pushBuffer);
 }

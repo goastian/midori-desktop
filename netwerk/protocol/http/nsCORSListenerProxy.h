@@ -41,8 +41,7 @@ enum class UpdateType {
   InternalOrHSTSRedirect
 };
 
-class nsCORSListenerProxy final : public nsIStreamListener,
-                                  public nsIInterfaceRequestor,
+class nsCORSListenerProxy final : public nsIInterfaceRequestor,
                                   public nsIChannelEventSink,
                                   public nsIThreadRetargetableStreamListener {
  public:
@@ -93,10 +92,12 @@ class nsCORSListenerProxy final : public nsIStreamListener,
 
   [[nodiscard]] nsresult UpdateChannel(nsIChannel* aChannel,
                                        DataURIHandling aAllowDataURI,
-                                       UpdateType aUpdateType);
+                                       UpdateType aUpdateType,
+                                       bool aStripAuthHeader);
   [[nodiscard]] nsresult CheckRequestApproved(nsIRequest* aRequest);
   [[nodiscard]] nsresult CheckPreflightNeeded(nsIChannel* aChannel,
-                                              UpdateType aUpdateType);
+                                              UpdateType aUpdateType,
+                                              bool aStripAuthHeader);
 
   nsCOMPtr<nsIStreamListener> mOuterListener;
   // The principal that originally kicked off the request

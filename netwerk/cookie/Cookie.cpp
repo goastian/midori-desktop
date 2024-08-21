@@ -100,8 +100,8 @@ already_AddRefed<Cookie> Cookie::CreateValidated(
   if (cookie->mData.creationTime() > currentTimeInUsec) {
     uint64_t diffInSeconds =
         (cookie->mData.creationTime() - currentTimeInUsec) / PR_USEC_PER_SEC;
-    mozilla::glean::networking::cookie_creation_fixup_diff.AccumulateSamples(
-        {diffInSeconds});
+    mozilla::glean::networking::cookie_creation_fixup_diff
+        .AccumulateSingleSample(diffInSeconds);
     glean::networking::cookie_timestamp_fixed_count.Get("creationTime"_ns)
         .Add(1);
 
@@ -112,8 +112,8 @@ already_AddRefed<Cookie> Cookie::CreateValidated(
   if (cookie->mData.lastAccessed() > currentTimeInUsec) {
     uint64_t diffInSeconds =
         (cookie->mData.lastAccessed() - currentTimeInUsec) / PR_USEC_PER_SEC;
-    mozilla::glean::networking::cookie_access_fixup_diff.AccumulateSamples(
-        {diffInSeconds});
+    mozilla::glean::networking::cookie_access_fixup_diff.AccumulateSingleSample(
+        diffInSeconds);
     glean::networking::cookie_timestamp_fixed_count.Get("lastAccessed"_ns)
         .Add(1);
 
@@ -185,6 +185,10 @@ NS_IMETHODIMP Cookie::GetIsHttpOnly(bool* aHttpOnly) {
   *aHttpOnly = IsHttpOnly();
   return NS_OK;
 }
+NS_IMETHODIMP Cookie::GetIsPartitioned(bool* aPartitioned) {
+  *aPartitioned = IsPartitioned();
+  return NS_OK;
+}
 NS_IMETHODIMP Cookie::GetCreationTime(int64_t* aCreation) {
   *aCreation = CreationTime();
   return NS_OK;
@@ -212,6 +216,10 @@ Cookie::GetOriginAttributes(JSContext* aCx, JS::MutableHandle<JS::Value> aVal) {
     return NS_ERROR_FAILURE;
   }
   return NS_OK;
+}
+
+const OriginAttributes& Cookie::OriginAttributesNative() {
+  return mOriginAttributes;
 }
 
 const Cookie& Cookie::AsCookie() { return *this; }

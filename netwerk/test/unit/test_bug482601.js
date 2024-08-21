@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserv = null;
 var test_nr = 0;
@@ -11,7 +13,7 @@ var buffer = "";
 var observer = {
   QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     if (observers_called.length) {
       observers_called += ",";
     }
@@ -21,7 +23,7 @@ var observer = {
 };
 
 var listener = {
-  onStartRequest(request) {
+  onStartRequest() {
     buffer = "";
   },
 
@@ -103,7 +105,6 @@ function storeCache(aCacheEntry, aResponseHeads, aContent) {
     );
   }
   oStream.close();
-  aCacheEntry.close();
 }
 
 function test_nocache() {
@@ -257,6 +258,6 @@ function bug482601_cached(metadata, response) {
 }
 
 // /bug482601/only_from_cache
-function bug482601_only_from_cache(metadata, response) {
+function bug482601_only_from_cache() {
   do_throw("This should not be reached");
 }

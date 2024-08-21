@@ -22,7 +22,9 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var server = new HttpServer();
 server.start(-1);
@@ -97,11 +99,11 @@ function HttpResponseListener(id) {
 }
 
 HttpResponseListener.prototype = {
-  onStartRequest(request) {},
+  onStartRequest() {},
 
-  onDataAvailable(request, stream, off, cnt) {},
+  onDataAvailable() {},
 
-  onStopRequest(request, status) {
+  onStopRequest() {
     log("STOP id=" + this.id);
     do_test_finished();
   },

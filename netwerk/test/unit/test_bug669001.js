@@ -1,11 +1,13 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpServer = null;
 var path = "/bug699001";
 
-XPCOMUtils.defineLazyGetter(this, "URI", function () {
+ChromeUtils.defineLazyGetter(this, "URI", function () {
   return "http://localhost:" + httpServer.identity.primaryPort + path;
 });
 
@@ -26,13 +28,13 @@ var fetched;
 var tests = [
   {
     prepare() {},
-    test(response) {
+    test() {
       Assert.ok(fetched);
     },
   },
   {
     prepare() {},
-    test(response) {
+    test() {
       Assert.ok(!fetched);
     },
   },
@@ -40,13 +42,13 @@ var tests = [
     prepare() {
       setUA("A different User Agent");
     },
-    test(response) {
+    test() {
       Assert.ok(fetched);
     },
   },
   {
     prepare() {},
-    test(response) {
+    test() {
       Assert.ok(!fetched);
     },
   },
@@ -54,13 +56,13 @@ var tests = [
     prepare() {
       setUA("And another User Agent");
     },
-    test(response) {
+    test() {
       Assert.ok(fetched);
     },
   },
   {
     prepare() {},
-    test(response) {
+    test() {
       Assert.ok(!fetched);
     },
   },

@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 /*
  * This xpcshell test checks whether we detect infinite HTTP redirect loops.
@@ -23,7 +25,7 @@ var relativeLoopURI = "http://localhost:" + PORT + relativeLoopPath;
 var emptyLoopPath = "/empty/";
 var emptyLoopURI = "http://localhost:" + PORT + emptyLoopPath;
 
-function make_channel(url, callback, ctx) {
+function make_channel(url) {
   return NetUtil.newChannel({ uri: url, loadUsingSystemPrincipal: true });
 }
 
@@ -53,7 +55,7 @@ function emptyLoopHandler(metadata, response) {
   response.finish();
 }
 
-function testFullLoop(request, buffer) {
+function testFullLoop(request) {
   Assert.equal(request.status, Cr.NS_ERROR_REDIRECT_LOOP);
 
   var chan = make_channel(relativeLoopURI);
@@ -62,14 +64,14 @@ function testFullLoop(request, buffer) {
   );
 }
 
-function testRelativeLoop(request, buffer) {
+function testRelativeLoop(request) {
   Assert.equal(request.status, Cr.NS_ERROR_REDIRECT_LOOP);
 
   var chan = make_channel(emptyLoopURI);
   chan.asyncOpen(new ChannelListener(testEmptyLoop, null, CL_EXPECT_FAILURE));
 }
 
-function testEmptyLoop(request, buffer) {
+function testEmptyLoop(request) {
   Assert.equal(request.status, Cr.NS_ERROR_REDIRECT_LOOP);
 
   httpServer.stop(do_test_finished);

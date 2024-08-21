@@ -23,9 +23,11 @@ var lastTest = 4; // set to test of interest when debugging
 
 // Note: sets Cc and Ci variables
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpserver.identity.primaryPort;
 });
 
@@ -92,7 +94,7 @@ function handler1(metadata, response) {
 }
 
 // eslint-disable-next-line no-unused-vars
-function completeTest1(request, data, ctx) {
+function completeTest1(request) {
   try {
     var chan = request.QueryInterface(Ci.nsIChannel);
     Assert.equal(chan.contentDisposition, chan.DISPOSITION_ATTACHMENT);
@@ -116,7 +118,7 @@ function handler2(metadata, response) {
 }
 
 // eslint-disable-next-line no-unused-vars
-function completeTest2(request, data, ctx) {
+function completeTest2(request) {
   try {
     var chan = request.QueryInterface(Ci.nsIChannel);
     Assert.equal(chan.contentDisposition, chan.DISPOSITION_ATTACHMENT);
@@ -141,7 +143,7 @@ function handler3(metadata, response) {
 }
 
 // eslint-disable-next-line no-unused-vars
-function completeTest3(request, data, ctx) {
+function completeTest3(request) {
   try {
     var chan = request.QueryInterface(Ci.nsIChannel);
     Assert.equal(chan.contentDisposition, chan.DISPOSITION_ATTACHMENT);
@@ -167,7 +169,7 @@ function handler4(metadata, response) {
 }
 
 // eslint-disable-next-line no-unused-vars
-function completeTest4(request, data, ctx) {
+function completeTest4(request) {
   try {
     var chan = request.QueryInterface(Ci.nsIChannel);
     Assert.equal(chan.contentDisposition, chan.DISPOSITION_INLINE);

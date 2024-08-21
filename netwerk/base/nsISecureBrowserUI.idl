@@ -12,10 +12,6 @@ interface nsITransportSecurityInfo;
 interface nsISecureBrowserUI : nsISupports
 {
     readonly attribute unsigned long state;
-    readonly attribute bool isSecureContext;
+    readonly attribute boolean isSecureContext;
     readonly attribute nsITransportSecurityInfo secInfo;
 };
-
-%{C++
-#define NS_SECURE_BROWSER_UI_CONTRACTID "@mozilla.org/secure_browser_ui;1"
-%}

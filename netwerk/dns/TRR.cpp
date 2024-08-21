@@ -43,6 +43,7 @@
 #include "mozilla/UniquePtr.h"
 // Put DNSLogging.h at the end to avoid LOG being overwritten by other headers.
 #include "DNSLogging.h"
+#include "mozilla/glean/GleanMetrics.h"
 
 namespace mozilla {
 namespace net {
@@ -150,6 +151,7 @@ nsresult TRR::CreateQueryURI(nsIURI** aOutURI) {
 
   nsresult rv = NS_NewURI(getter_AddRefs(dnsURI), uri);
   if (NS_FAILED(rv)) {
+    RecordReason(TRRSkippedReason::TRR_BAD_URL);
     return rv;
   }
 
@@ -614,6 +616,7 @@ TRR::OnPush(nsIHttpChannel* associated, nsIHttpChannel* pushed) {
   }
 
   RefPtr<TRR> trr = new TRR(mHostResolver, mPB);
+  trr->SetPurpose(mPurpose);
   return trr->ReceivePush(pushed, mRec);
 }
 
@@ -626,7 +629,7 @@ TRR::OnStartRequest(nsIRequest* aRequest) {
 
   if (NS_FAILED(status)) {
     if (NS_IsOffline()) {
-      RecordReason(TRRSkippedReason::TRR_IS_OFFLINE);
+      RecordReason(TRRSkippedReason::TRR_BROWSER_IS_OFFLINE);
     }
 
     switch (status) {
@@ -634,7 +637,7 @@ TRR::OnStartRequest(nsIRequest* aRequest) {
         RecordReason(TRRSkippedReason::TRR_CHANNEL_DNS_FAIL);
         break;
       case NS_ERROR_OFFLINE:
-        RecordReason(TRRSkippedReason::TRR_IS_OFFLINE);
+        RecordReason(TRRSkippedReason::TRR_BROWSER_IS_OFFLINE);
         break;
       case NS_ERROR_NET_RESET:
         RecordReason(TRRSkippedReason::TRR_NET_RESET);
@@ -667,8 +670,16 @@ void TRR::SaveAdditionalRecords(
   }
   nsresult rv;
   for (const auto& recordEntry : aRecords) {
-    if (recordEntry.GetData() && recordEntry.GetData()->mAddresses.IsEmpty()) {
+    if (!recordEntry.GetData() || recordEntry.GetData()->mAddresses.IsEmpty()) {
       // no point in adding empty records.
+      continue;
+    }
+    // If IPv6 is disabled don't add anything else than IPv4.
+    if (StaticPrefs::network_dns_disableIPv6() &&
+        std::find_if(recordEntry.GetData()->mAddresses.begin(),
+                     recordEntry.GetData()->mAddresses.end(),
+                     [](const NetAddr& addr) { return !addr.IsIPAddrV4(); }) !=
+            recordEntry.GetData()->mAddresses.end()) {
       continue;
     }
     RefPtr<nsHostRecord> hostRecord;
@@ -707,6 +718,12 @@ void TRR::StoreIPHintAsDNSRecord(const struct SVCB& aSVCBRecord) {
        aSVCBRecord.mSvcDomainName.get()));
   CopyableTArray<NetAddr> addresses;
   aSVCBRecord.GetIPHints(addresses);
+
+  if (StaticPrefs::network_dns_disableIPv6()) {
+    addresses.RemoveElementsBy(
+        [](const NetAddr& addr) { return !addr.IsIPAddrV4(); });
+  }
+
   if (addresses.IsEmpty()) {
     return;
   }
@@ -766,12 +783,15 @@ nsresult TRR::ReturnData(nsIChannel* aChannel) {
     if (!mHostResolver) {
       return NS_ERROR_FAILURE;
     }
+    RecordReason(TRRSkippedReason::TRR_OK);
     (void)mHostResolver->CompleteLookup(mRec, NS_OK, ai, mPB, mOriginSuffix,
                                         mTRRSkippedReason, this);
     mHostResolver = nullptr;
     mRec = nullptr;
   } else {
-    (void)mHostResolver->CompleteLookupByType(mRec, NS_OK, mResult, mTTL, mPB);
+    RecordReason(TRRSkippedReason::TRR_OK);
+    (void)mHostResolver->CompleteLookupByType(mRec, NS_OK, mResult,
+                                              mTRRSkippedReason, mTTL, mPB);
   }
   return NS_OK;
 }
@@ -786,7 +806,8 @@ nsresult TRR::FailData(nsresult error) {
 
   if (mType == TRRTYPE_TXT || mType == TRRTYPE_HTTPSSVC) {
     TypeRecordResultType empty(Nothing{});
-    (void)mHostResolver->CompleteLookupByType(mRec, error, empty, 0, mPB);
+    (void)mHostResolver->CompleteLookupByType(mRec, error, empty,
+                                              mTRRSkippedReason, 0, mPB);
   } else {
     // create and populate an TRR AddrInfo instance to pass on to signal that
     // this comes from TRR
@@ -881,6 +902,7 @@ nsresult TRR::FollowCname(nsIChannel* aChannel) {
        mCnameLoop));
   RefPtr<TRR> trr =
       new TRR(mHostResolver, mRec, mCname, mType, mCnameLoop, mPB);
+  trr->SetPurpose(mPurpose);
   if (!TRRService::Get()) {
     return NS_ERROR_FAILURE;
   }
@@ -902,7 +924,9 @@ nsresult TRR::On200Response(nsIChannel* aChannel) {
     HandleDecodeError(rv);
     return rv;
   }
-  SaveAdditionalRecords(additionalRecords);
+  if (StaticPrefs::network_trr_add_additional_records()) {
+    SaveAdditionalRecords(additionalRecords);
+  }
 
   if (mResult.is<TypeRecordHTTPSSVC>()) {
     auto& results = mResult.as<TypeRecordHTTPSSVC>();
@@ -987,6 +1011,13 @@ TRR::OnStopRequest(nsIRequest* aRequest, nsresult aStatusCode) {
   channel.swap(mChannel);
 
   mChannelStatus = aStatusCode;
+  if (NS_SUCCEEDED(aStatusCode)) {
+    nsCString label = "regular"_ns;
+    if (mPB) {
+      label = "private"_ns;
+    }
+    mozilla::glean::networking::trr_request_count.Get(label).Add(1);
+  }
 
   {
     // Cancel the timer since we don't need it anymore.

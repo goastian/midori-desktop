@@ -18,6 +18,7 @@ XPIDL_SOURCES += [
     "nsIAuthPromptCallback.idl",
     "nsIAuthPromptProvider.idl",
     "nsIBackgroundFileSaver.idl",
+    "nsIBaseChannel.idl",
     "nsIBufferedStreams.idl",
     "nsIByteRangeRequest.idl",
     "nsICacheInfoChannel.idl",
@@ -157,11 +158,11 @@ EXPORTS.mozilla += [
 EXPORTS.mozilla.net += [
     "CacheInfoIPCTypes.h",
     "CaptivePortalService.h",
+    "ContentRange.h",
     "Dashboard.h",
     "DashboardTypes.h",
     "DefaultURI.h",
     "InterceptionInfo.h",
-    "IOActivityMonitor.h",
     "MemoryDownloader.h",
     "NetworkConnectivityService.h",
     "Predictor.h",
@@ -178,11 +179,11 @@ UNIFIED_SOURCES += [
     "ArrayBufferInputStream.cpp",
     "BackgroundFileSaver.cpp",
     "CaptivePortalService.cpp",
+    "ContentRange.cpp",
     "Dashboard.cpp",
     "DefaultURI.cpp",
     "EventTokenBucket.cpp",
     "InterceptionInfo.cpp",
-    "IOActivityMonitor.cpp",
     "LoadContextInfo.cpp",
     "LoadInfo.cpp",
     "MemoryDownloader.cpp",
@@ -283,23 +284,6 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
 else:
     SOURCES += [
         "nsURLHelperUnix.cpp",
-    ]
-
-# nsINetworkInfoService support.
-if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
-    SOURCES += [
-        "NetworkInfoServiceWindows.cpp",
-        "nsNetworkInfoService.cpp",
-    ]
-elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
-    SOURCES += [
-        "NetworkInfoServiceCocoa.cpp",
-        "nsNetworkInfoService.cpp",
-    ]
-elif CONFIG["OS_ARCH"] == "Linux":
-    SOURCES += [
-        "NetworkInfoServiceLinux.cpp",
-        "nsNetworkInfoService.cpp",
     ]
 
 EXTRA_JS_MODULES += [

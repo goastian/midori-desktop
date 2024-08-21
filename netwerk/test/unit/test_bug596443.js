@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpProtocolHandler = Cc[
   "@mozilla.org/network/protocol;1?name=http"
@@ -37,13 +39,13 @@ Listener.prototype = {
     "nsIRequestObserver",
   ]),
 
-  onStartRequest(request) {
+  onStartRequest() {
     this._buffer = "";
   },
   onDataAvailable(request, stream, offset, count) {
     this._buffer = this._buffer.concat(read_stream(stream, count));
   },
-  onStopRequest(request, status) {
+  onStopRequest() {
     Assert.equal(this._buffer, this._response);
     if (--expectedOnStopRequests == 0) {
       do_timeout(10, function () {

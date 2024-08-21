@@ -42,13 +42,12 @@ class TRRService : public TRRServiceBase,
 
   bool OnWritingThread() const override { return NS_IsMainThread(); }
 
-  nsresult Init();
+  nsresult Init(bool aNativeHTTPSQueryEnabled);
   nsresult Start();
   bool Enabled(nsIRequest::TRRMode aRequestMode = nsIRequest::TRR_DEFAULT_MODE);
   bool IsConfirmed() { return mConfirmation.State() == CONFIRM_OK; }
   uint32_t ConfirmationState() { return mConfirmation.State(); }
 
-  bool DisableIPv6() { return mDisableIPv6; }
   void GetURI(nsACString& result) override;
   nsresult GetCredentials(nsCString& result);
   uint32_t GetRequestTimeout();
@@ -60,7 +59,8 @@ class TRRService : public TRRServiceBase,
                               TRR* aTrrRequest) override;
   LookupStatus CompleteLookupByType(nsHostRecord*, nsresult,
                                     mozilla::net::TypeRecordResultType&,
-                                    uint32_t, bool pb) override;
+                                    TRRSkippedReason, uint32_t,
+                                    bool pb) override;
   void AddToBlocklist(const nsACString& host, const nsACString& originSuffix,
                       bool privateBrowsing, bool aParentsToo);
   bool IsTemporarilyBlocked(const nsACString& aHost,
@@ -147,7 +147,6 @@ class TRRService : public TRRServiceBase,
 
   Atomic<bool, Relaxed> mCaptiveIsPassed{
       false};  // set when captive portal check is passed
-  Atomic<bool, Relaxed> mDisableIPv6;  // don't even try
   Atomic<bool, Relaxed> mShutdown{false};
   Atomic<bool, Relaxed> mDontUseTRRThread{false};
 

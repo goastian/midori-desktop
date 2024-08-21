@@ -34,7 +34,7 @@ add_task(async function test_empty() {
         "nsIRequestObserver",
       ]),
 
-      onStartRequest(request) {},
+      onStartRequest() {},
       onDataAvailable(request, stream, offset, count) {
         try {
           this._buffer = this._buffer.concat(read_stream(stream, count));
@@ -44,8 +44,8 @@ add_task(async function test_empty() {
         }
       },
 
-      onStopRequest(request, status) {
-        resolve([status, this._buffer]);
+      onStopRequest(request, status1) {
+        resolve([status1, this._buffer]);
       },
     };
     let conv = streamConv.asyncConvertData(

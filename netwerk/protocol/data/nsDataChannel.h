@@ -19,6 +19,9 @@ class nsDataChannel : public nsBaseChannel {
  protected:
   [[nodiscard]] virtual nsresult OpenContentStream(
       bool async, nsIInputStream** result, nsIChannel** channel) override;
+
+ private:
+  nsresult MaybeSendDataChannelOpenNotification();
 };
 
 #endif /* nsDataChannel_h___ */

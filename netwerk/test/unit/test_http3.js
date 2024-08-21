@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 // Generate a post with known pre-calculated md5 sum.
 function generateContent(size) {
@@ -281,7 +283,7 @@ MultipleListener.prototype = {
     read_stream(stream, cnt);
   },
 
-  onStopRequest: function testOnStopRequest(request, status) {
+  onStopRequest: function testOnStopRequest(request) {
     let routed = "";
     try {
       routed = request.getRequestHeader("Alt-Used");

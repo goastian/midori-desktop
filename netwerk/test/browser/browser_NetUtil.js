@@ -9,7 +9,7 @@ function test() {
 
   // We overload this test to include verifying that httpd.js is
   // importable as a testing-only JS module.
-  ChromeUtils.import("resource://testing-common/httpd.js");
+  ChromeUtils.importESModule("resource://testing-common/httpd.sys.mjs");
 
   nextTest();
 }
@@ -107,5 +107,5 @@ WindowListener.prototype = {
       { once: true }
     );
   },
-  onCloseWindow(aXULWindow) {},
+  onCloseWindow() {},
 };

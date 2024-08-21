@@ -103,7 +103,6 @@
 
 #if defined(XP_MACOSX)
 #  include <CoreServices/CoreServices.h>
-#  include "nsCocoaFeatures.h"
 #endif
 
 //-----------------------------------------------------------------------------
@@ -145,8 +144,8 @@ static nsCString GetDeviceModelId() {
   // Assumed to be running on the main thread
   // We need the device property in either case
   nsAutoCString deviceModelId;
-  nsCOMPtr<nsIPropertyBag2> infoService =
-      do_GetService("@mozilla.org/system-info;1");
+  nsCOMPtr<nsIPropertyBag2> infoService;
+  infoService = mozilla::components::SystemInfo::Service();
   MOZ_ASSERT(infoService, "Could not find a system info service");
   nsAutoString androidDevice;
   nsresult rv = infoService->GetPropertyAsAString(u"device"_ns, androidDevice);
@@ -217,21 +216,33 @@ static nsCString ImageAcceptHeader() {
     mimeTypes.Append("image/jxl,");
   }
 
-  if (mozilla::StaticPrefs::image_webp_enabled()) {
-    mimeTypes.Append("image/webp,");
-  }
+  mimeTypes.Append("image/webp,");
 
-  mimeTypes.Append("*/*");
+  // Default value as specified by fetch standard
+  // https://fetch.spec.whatwg.org/commit-snapshots/8dd73dbecfefdbef8f432164fb3a5b9785f7f520/#ref-for-header-list-contains%E2%91%A7
+  mimeTypes.Append("image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5");
 
   return mimeTypes;
 }
 
-static nsCString DocumentAcceptHeader(const nsCString& aImageAcceptHeader) {
-  nsPrintfCString mimeTypes(
-      "text/html,application/xhtml+xml,application/xml;q=0.9,%s;q=0.8",
-      aImageAcceptHeader.get());
+static nsCString DocumentAcceptHeader() {
+  // https://fetch.spec.whatwg.org/#document-accept-header-value
+  // The value specified by the fetch standard is
+  // `text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8`
+  // but we also insert all of the image formats before */*
+  nsCString mimeTypes("text/html,application/xhtml+xml,application/xml;q=0.9,");
 
-  return std::move(mimeTypes);
+  if (mozilla::StaticPrefs::image_avif_enabled()) {
+    mimeTypes.Append("image/avif,");
+  }
+
+  if (mozilla::StaticPrefs::image_jxl_enabled()) {
+    mimeTypes.Append("image/jxl,");
+  }
+
+  mimeTypes.Append("image/webp,image/png,image/svg+xml,*/*;q=0.8");
+
+  return mimeTypes;
 }
 
 nsHttpHandler::nsHttpHandler()
@@ -240,12 +251,11 @@ nsHttpHandler::nsHttpHandler()
           PR_SecondsToInterval(StaticPrefs::network_http_http2_timeout())),
       mResponseTimeout(PR_SecondsToInterval(300)),
       mImageAcceptHeader(ImageAcceptHeader()),
-      mDocumentAcceptHeader(DocumentAcceptHeader(ImageAcceptHeader())),
+      mDocumentAcceptHeader(DocumentAcceptHeader()),
       mLastUniqueID(NowInSeconds()),
       mDebugObservations(false),
       mEnableAltSvc(false),
       mEnableAltSvcOE(false),
-      mEnableOriginExtension(false),
       mSpdyPingThreshold(PR_SecondsToInterval(
           StaticPrefs::network_http_http2_ping_threshold())),
       mSpdyPingTimeout(PR_SecondsToInterval(
@@ -256,9 +266,11 @@ nsHttpHandler::nsHttpHandler()
 
   MOZ_ASSERT(!gHttpHandler, "HTTP handler already created!");
 
-  nsCOMPtr<nsIXULRuntime> runtime = do_GetService("@mozilla.org/xre/runtime;1");
+  nsCOMPtr<nsIXULRuntime> runtime;
+  runtime = mozilla::components::XULRuntime::Service();
   if (runtime) {
     runtime->GetProcessID(&mProcessId);
+    runtime->GetUniqueProcessID(&mUniqueProcessId);
   }
 }
 
@@ -297,28 +309,8 @@ static const char* gCallbackPrefs[] = {
     "image.http.accept",
     "image.avif.enabled",
     "image.jxl.enabled",
-    "image.webp.enabled",
     nullptr,
 };
-
-static void GetFirefoxVersionForUserAgent(nsACString& aVersion) {
-  // If the "network.http.useragent.forceVersion" pref has a non-zero value,
-  // then override the User-Agent string's Firefox version. The value 0 means
-  // use the default Firefox version. If enterprise users rely on sites that
-  // aren't compatible with Firefox version 100's three-digit version number,
-  // enterprise admins can set this pref to a known-good version (like 99) in an
-  // enterprise policy file.
-  uint32_t forceVersion =
-      mozilla::StaticPrefs::network_http_useragent_forceVersion();
-  if (forceVersion == 0) {
-    // Use the default Firefox version.
-    aVersion.AssignLiteral(MOZILLA_UAVERSION);
-  } else {
-    // Use the pref's version.
-    aVersion.AppendInt(forceVersion);
-    aVersion.AppendLiteral(".0");
-  }
-}
 
 nsresult nsHttpHandler::Init() {
   nsresult rv;
@@ -337,7 +329,8 @@ nsresult nsHttpHandler::Init() {
   rv = nsHttp::CreateAtomTable();
   if (NS_FAILED(rv)) return rv;
 
-  nsCOMPtr<nsIIOService> service = do_GetService(NS_IOSERVICE_CONTRACTID, &rv);
+  nsCOMPtr<nsIIOService> service;
+  service = mozilla::components::IO::Service(&rv);
   if (NS_FAILED(rv)) {
     NS_WARNING("unable to continue without io service");
     return rv;
@@ -362,26 +355,30 @@ nsresult nsHttpHandler::Init() {
     Telemetry::ScalarSet(Telemetry::ScalarID::NETWORKING_HTTPS_RR_PREFS_USAGE,
                          static_cast<uint32_t>(usageOfHTTPSRRPrefs.to_ulong()));
     mActivityDistributor = components::HttpActivityDistributor::Service();
+
+    auto initQLogDir = [&]() {
+      if (!StaticPrefs::network_http_http3_enable_qlog()) {
+        return EmptyCString();
+      }
+
+      nsCOMPtr<nsIFile> qlogDir;
+      nsresult rv =
+          NS_GetSpecialDirectory(NS_OS_TEMP_DIR, getter_AddRefs(qlogDir));
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return EmptyCString();
+      }
+
+      nsAutoCString dirName("qlog_");
+      dirName.AppendInt(mProcessId);
+      rv = qlogDir->AppendNative(dirName);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return EmptyCString();
+      }
+
+      return qlogDir->HumanReadablePath();
+    };
+    mHttp3QlogDir = initQLogDir();
   }
-
-  auto initQLogDir = [&]() {
-    nsCOMPtr<nsIFile> qlogDir;
-    nsresult rv =
-        NS_GetSpecialDirectory(NS_OS_TEMP_DIR, getter_AddRefs(qlogDir));
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return EmptyCString();
-    }
-
-    nsAutoCString dirName("qlog_");
-    dirName.AppendInt(mProcessId);
-    rv = qlogDir->AppendNative(dirName);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return EmptyCString();
-    }
-
-    return qlogDir->HumanReadablePath();
-  };
-  mHttp3QlogDir = initQLogDir();
 
   // monitor some preference changes
   Preferences::RegisterPrefixCallbacks(nsHttpHandler::PrefsChanged,
@@ -391,14 +388,10 @@ nsresult nsHttpHandler::Init() {
   Telemetry::ScalarSet(Telemetry::ScalarID::NETWORKING_HTTP3_ENABLED,
                        StaticPrefs::network_http_http3_enable());
 
-  nsAutoCString uaVersion;
-  GetFirefoxVersionForUserAgent(uaVersion);
+  mCompatFirefox.AssignLiteral("Firefox/" MOZILLA_UAVERSION);
 
-  mCompatFirefox.AssignLiteral("Firefox/");
-  mCompatFirefox.Append(uaVersion);
-
-  nsCOMPtr<nsIXULAppInfo> appInfo =
-      do_GetService("@mozilla.org/xre/app-info;1");
+  nsCOMPtr<nsIXULAppInfo> appInfo;
+  appInfo = mozilla::components::XULRuntime::Service();
 
   mAppName.AssignLiteral(MOZ_APP_UA_NAME);
   if (mAppName.Length() == 0 && appInfo) {
@@ -413,15 +406,7 @@ nsresult nsHttpHandler::Init() {
     mAppVersion.AssignLiteral(MOZ_APP_UA_VERSION);
   }
 
-  mMisc.AssignLiteral("rv:");
-  bool isFirefox = mAppName.EqualsLiteral("Firefox");
-  uint32_t forceVersion =
-      mozilla::StaticPrefs::network_http_useragent_forceRVOnly();
-  if (forceVersion && (isFirefox || mCompatFirefoxEnabled)) {
-    mMisc.Append(nsPrintfCString("%u.0", forceVersion));
-  } else {
-    mMisc.Append(uaVersion);
-  }
+  mMisc.AssignLiteral("rv:" MOZILLA_UAVERSION);
 
   // Generate the spoofed User Agent for fingerprinting resistance.
   nsRFPService::GetSpoofedUserAgent(mSpoofedUserAgent, true);
@@ -437,7 +422,7 @@ nsresult nsHttpHandler::Init() {
   mRequestContextService = RequestContextService::GetOrCreate();
 
 #if defined(ANDROID)
-  mProductSub.Assign(uaVersion);
+  mProductSub.AssignLiteral(MOZILLA_UAVERSION);
 #else
   mProductSub.AssignLiteral(LEGACY_UA_GECKO_TRAIL);
 #endif
@@ -547,7 +532,7 @@ nsresult nsHttpHandler::InitConnectionMgr() {
     mConnMgr = new HttpConnectionMgrParent();
     RefPtr<nsHttpHandler> self = this;
     auto task = [self]() {
-      HttpConnectionMgrParent* parent =
+      RefPtr<HttpConnectionMgrParent> parent =
           self->mConnMgr->AsHttpConnectionMgrParent();
       Unused << SocketProcessParent::GetSingleton()
                     ->SendPHttpConnectionMgrConstructor(
@@ -684,8 +669,8 @@ bool nsHttpHandler::IsAcceptableEncoding(const char* enc, bool isSecure) {
 
 nsISiteSecurityService* nsHttpHandler::GetSSService() {
   if (!mSSService) {
-    nsCOMPtr<nsISiteSecurityService> service =
-        do_GetService(NS_SSSERVICE_CONTRACTID);
+    nsCOMPtr<nsISiteSecurityService> service;
+    service = mozilla::components::SiteSecurity::Service();
     mSSService = new nsMainThreadPtrHolder<nsISiteSecurityService>(
         "nsHttpHandler::mSSService", service);
   }
@@ -710,7 +695,8 @@ nsresult nsHttpHandler::GetIOService(nsIIOService** result) {
 }
 
 void nsHttpHandler::NotifyObservers(nsIChannel* chan, const char* event) {
-  LOG(("nsHttpHandler::NotifyObservers [chan=%p event=\"%s\"]\n", chan, event));
+  LOG(("nsHttpHandler::NotifyObservers [this=%p chan=%p event=\"%s\"]\n", this,
+       chan, event));
   nsCOMPtr<nsIObserverService> obsService = services::GetObserverService();
   if (obsService) obsService->NotifyObservers(chan, event, nullptr);
 }
@@ -744,6 +730,60 @@ nsresult nsHttpHandler::AsyncOnChannelRedirect(
 nsresult nsHttpHandler::GenerateHostPort(const nsCString& host, int32_t port,
                                          nsACString& hostLine) {
   return NS_GenerateHostPort(host, port, hostLine);
+}
+
+// static
+uint8_t nsHttpHandler::UrgencyFromCoSFlags(uint32_t cos,
+                                           int32_t aSupportsPriority) {
+  uint8_t urgency;
+  if (cos & nsIClassOfService::UrgentStart) {
+    // coming from an user interaction => response should be the highest
+    // priority
+    urgency = 1;
+  } else if (cos & nsIClassOfService::Leader) {
+    // main html document normal priority
+    urgency = 2;
+  } else if (cos & nsIClassOfService::Unblocked) {
+    urgency = 3;
+  } else if (cos & nsIClassOfService::Follower) {
+    urgency = 4;
+  } else if (cos & nsIClassOfService::Speculative) {
+    urgency = 6;
+  } else if (cos & nsIClassOfService::Background) {
+    // background tasks can be deprioritzed to the lowest priority
+    urgency = 6;
+  } else if (cos & nsIClassOfService::Tail) {
+    urgency = 6;
+  } else {
+    // all others get a lower priority than the main html document
+    urgency = 4;
+  }
+
+  int8_t adjustment = 0;
+  if (mozilla::StaticPrefs::network_fetchpriority_adjust_urgency()) {
+    if (aSupportsPriority <= nsISupportsPriority::PRIORITY_HIGHEST) {
+      adjustment = -2;
+    } else if (aSupportsPriority <= nsISupportsPriority::PRIORITY_HIGH) {
+      adjustment = -1;
+    } else if (aSupportsPriority >= nsISupportsPriority::PRIORITY_LOWEST) {
+      adjustment = 2;
+    } else if (aSupportsPriority >= nsISupportsPriority::PRIORITY_LOW) {
+      adjustment = 1;
+    }
+  }
+
+  auto adjustUrgency = [](uint8_t u, int8_t a) -> uint8_t {
+    int16_t result = static_cast<int16_t>(u) + a;
+    if (result <= 0) {
+      return 0;
+    }
+    if (result >= 6) {
+      return 6;
+    }
+    return result;
+  };
+
+  return adjustUrgency(urgency, adjustment);
 }
 
 //-----------------------------------------------------------------------------
@@ -836,7 +876,13 @@ void nsHttpHandler::BuildUserAgent() {
 }
 
 #ifdef XP_WIN
-#  define OSCPU_WINDOWS "Windows NT %ld.%ld"
+// Hardcode the reported Windows version to 10.0. This way, Microsoft doesn't
+// get to change Web compat-sensitive values without our veto. The compat-
+// sensitivity keeps going up as 10.0 stays as the current value for longer
+// and longer. If the system-reported version ever changes, we'll be able to
+// take our time to evaluate the Web compat impact instead of having to
+// scramble to react like happened with macOS changing from 10.x to 11.x.
+#  define OSCPU_WINDOWS "Windows NT 10.0"
 #  define OSCPU_WIN64 OSCPU_WINDOWS "; Win64; x64"
 #endif
 
@@ -872,23 +918,33 @@ void nsHttpHandler::InitUserAgentComponents() {
 #endif
 
 #ifdef ANDROID
-  nsCOMPtr<nsIPropertyBag2> infoService =
-      do_GetService("@mozilla.org/system-info;1");
+  nsCOMPtr<nsIPropertyBag2> infoService;
+  infoService = mozilla::components::SystemInfo::Service();
   MOZ_ASSERT(infoService, "Could not find a system info service");
   nsresult rv;
+
   // Add the Android version number to the Fennec platform identifier.
   nsAutoString androidVersion;
   rv = infoService->GetPropertyAsAString(u"release_version"_ns, androidVersion);
-  if (NS_SUCCEEDED(rv)) {
-    mPlatform += " ";
-    // If the 2nd character is a ".", we know the major version is a single
-    // digit. If we're running on a version below 4 we pretend to be on
-    // Android KitKat (4.4) to work around scripts sniffing for low versions.
-    if (androidVersion[1] == 46 && androidVersion[0] < 52) {
-      mPlatform += "4.4";
-    } else {
-      mPlatform += NS_LossyConvertUTF16toASCII(androidVersion);
-    }
+  MOZ_ASSERT_IF(
+      NS_SUCCEEDED(rv),
+      // Like version "9"
+      (androidVersion.Length() == 1 && std::isdigit(androidVersion[0])) ||
+          // Or like version "8.1", "10", or "12.1"
+          (androidVersion.Length() >= 2 && std::isdigit(androidVersion[0]) &&
+           (androidVersion[1] == u'.' || std::isdigit(androidVersion[1]))));
+
+  // Spoof version "Android 10" for Android OS versions < 10 to reduce their
+  // fingerprintable user information. For Android OS versions >= 10, report
+  // the real OS version because some enterprise websites only want to permit
+  // clients with recent OS version (like bug 1876742). Two leading digits
+  // in the version string means the version number is >= 10.
+  mPlatform += " ";
+  if (NS_SUCCEEDED(rv) && androidVersion.Length() >= 2 &&
+      std::isdigit(androidVersion[0]) && std::isdigit(androidVersion[1])) {
+    mPlatform += NS_LossyConvertUTF16toASCII(androidVersion);
+  } else {
+    mPlatform.AppendLiteral("10");
   }
 
   // Add the `Mobile` or `TV` token when running on device.
@@ -907,69 +963,59 @@ void nsHttpHandler::InitUserAgentComponents() {
 
   // Gather OS/CPU.
 #if defined(XP_WIN)
-  OSVERSIONINFO info = {sizeof(OSVERSIONINFO)};
-  if (!GetVersionEx(&info) || info.dwMajorVersion >= 10) {
-    // Cap the reported Windows version to 10.0. This way, Microsoft doesn't
-    // get to change Web compat-sensitive values without our veto. The
-    // compat-sensitivity keeps going up as 10.0 stays as the current value
-    // for longer and longer. If the system-reported version ever changes,
-    // we'll be able to take our time to evaluate the Web compat impact
-    // instead of having to scramble to react like happened with macOS
-    // changing from 10.x to 11.x.
-    info.dwMajorVersion = 10;
-    info.dwMinorVersion = 0;
-  }
 
-  const char* format;
 #  if defined _M_X64 || defined _M_AMD64
-  format = OSCPU_WIN64;
+  mOscpu.AssignLiteral(OSCPU_WIN64);
 #  elif defined(_ARM64_)
   // Report ARM64 Windows 11+ as x86_64 and Windows 10 as x86. Windows 11+
   // supports x86_64 emulation, but Windows 10 only supports x86 emulation.
-  format = IsWin11OrLater() ? OSCPU_WIN64 : OSCPU_WINDOWS;
+  if (IsWin11OrLater()) {
+    mOscpu.AssignLiteral(OSCPU_WIN64);
+  } else {
+    mOscpu.AssignLiteral(OSCPU_WINDOWS);
+  }
 #  else
   BOOL isWow64 = FALSE;
   if (!IsWow64Process(GetCurrentProcess(), &isWow64)) {
     isWow64 = FALSE;
   }
-  format = isWow64 ? OSCPU_WIN64 : OSCPU_WINDOWS;
+  if (isWow64) {
+    mOscpu.AssignLiteral(OSCPU_WIN64);
+  } else {
+    mOscpu.AssignLiteral(OSCPU_WINDOWS);
+  }
 #  endif
 
-  SmprintfPointer buf =
-      mozilla::Smprintf(format, info.dwMajorVersion, info.dwMinorVersion);
-  if (buf) {
-    mOscpu = buf.get();
-  }
 #elif defined(XP_MACOSX)
-  SInt32 majorVersion = nsCocoaFeatures::macOSVersionMajor();
-  SInt32 minorVersion = nsCocoaFeatures::macOSVersionMinor();
-
-  // Cap the reported macOS version at 10.15 (like Safari) to avoid breaking
-  // sites that assume the UA's macOS version always begins with "10.".
-  int uaVersion = (majorVersion >= 11 || minorVersion > 15) ? 15 : minorVersion;
-
-  // Always return an "Intel" UA string, even on ARM64 macOS like Safari does.
-  mOscpu = nsPrintfCString("Intel Mac OS X 10.%d", uaVersion);
+  mOscpu.AssignLiteral("Intel Mac OS X 10.15");
 #elif defined(XP_UNIX)
-  struct utsname name {};
-  int ret = uname(&name);
-  if (ret >= 0) {
-    nsAutoCString buf;
-    buf = (char*)name.sysname;
-    buf += ' ';
+  if (mozilla::StaticPrefs::network_http_useragent_freezeCpu()) {
+#  ifdef ANDROID
+    mOscpu.AssignLiteral("Linux armv81");
+#  else
+    mOscpu.AssignLiteral("Linux x86_64");
+#  endif
+  } else {
+    struct utsname name {};
+    int ret = uname(&name);
+    if (ret >= 0) {
+      nsAutoCString buf;
+      buf = (char*)name.sysname;
+      buf += ' ';
 
 #  ifdef AIX
-    // AIX uname returns machine specific info in the uname.machine
-    // field and does not return the cpu type like other platforms.
-    // We use the AIX version and release numbers instead.
-    buf += (char*)name.version;
-    buf += '.';
-    buf += (char*)name.release;
+      // AIX uname returns machine specific info in the uname.machine
+      // field and does not return the cpu type like other platforms.
+      // We use the AIX version and release numbers instead.
+      buf += (char*)name.version;
+      buf += '.';
+      buf += (char*)name.release;
 #  else
-    buf += (char*)name.machine;
+      buf += (char*)name.machine;
 #  endif
 
-    mOscpu.Assign(buf);
+      mOscpu.Assign(buf);
+    }
   }
 #endif
 
@@ -1365,11 +1411,6 @@ void nsHttpHandler::PrefsChanged(const char* pref) {
     if (NS_SUCCEEDED(rv)) mEnableAltSvcOE = cVar;
   }
 
-  if (PREF_CHANGED(HTTP_PREF("originextension"))) {
-    rv = Preferences::GetBool(HTTP_PREF("originextension"), &cVar);
-    if (NS_SUCCEEDED(rv)) mEnableOriginExtension = cVar;
-  }
-
   if (PREF_CHANGED(HTTP_PREF("http2.push-allowance"))) {
     mSpdyPushAllowance = static_cast<uint32_t>(
         clamped(StaticPrefs::network_http_http2_push_allowance(), 1024,
@@ -1717,9 +1758,9 @@ void nsHttpHandler::PrefsChanged(const char* pref) {
     }
   }
 
-  const bool imageAcceptPrefChanged =
-      PREF_CHANGED("image.http.accept") || PREF_CHANGED("image.avif.enabled") ||
-      PREF_CHANGED("image.jxl.enabled") || PREF_CHANGED("image.webp.enabled");
+  const bool imageAcceptPrefChanged = PREF_CHANGED("image.http.accept") ||
+                                      PREF_CHANGED("image.avif.enabled") ||
+                                      PREF_CHANGED("image.jxl.enabled");
 
   if (imageAcceptPrefChanged) {
     nsAutoCString userSetImageAcceptHeader;
@@ -1751,7 +1792,7 @@ void nsHttpHandler::PrefsChanged(const char* pref) {
     }
 
     if (userSetDocumentAcceptHeader.IsEmpty()) {
-      mDocumentAcceptHeader.Assign(DocumentAcceptHeader(mImageAcceptHeader));
+      mDocumentAcceptHeader.Assign(DocumentAcceptHeader());
     } else {
       mDocumentAcceptHeader.Assign(userSetDocumentAcceptHeader);
     }
@@ -2134,18 +2175,15 @@ nsHttpHandler::Observe(nsISupports* subject, const char* topic,
       mAltSvcCache->ClearAltServiceMappings();
     }
   } else if (!strcmp(topic, NS_NETWORK_LINK_TOPIC)) {
-    nsAutoCString converted = NS_ConvertUTF16toUTF8(data);
-    if (!strcmp(converted.get(), NS_NETWORK_LINK_DATA_CHANGED)) {
-      if (mConnMgr) {
-        rv = mConnMgr->PruneDeadConnections();
-        if (NS_FAILED(rv)) {
-          LOG(("    PruneDeadConnections failed (%08x)\n",
-               static_cast<uint32_t>(rv)));
-        }
-        rv = mConnMgr->VerifyTraffic();
-        if (NS_FAILED(rv)) {
-          LOG(("    VerifyTraffic failed (%08x)\n", static_cast<uint32_t>(rv)));
-        }
+    if (mConnMgr) {
+      rv = mConnMgr->PruneDeadConnections();
+      if (NS_FAILED(rv)) {
+        LOG(("    PruneDeadConnections failed (%08x)\n",
+             static_cast<uint32_t>(rv)));
+      }
+      rv = mConnMgr->VerifyTraffic();
+      if (NS_FAILED(rv)) {
+        LOG(("    VerifyTraffic failed (%08x)\n", static_cast<uint32_t>(rv)));
       }
     }
   } else if (!strcmp(topic, "application-background")) {
@@ -2222,12 +2260,8 @@ nsresult nsHttpHandler::SpeculativeConnectInternal(
     originAttributes = std::move(aOriginAttributes.ref());
   } else if (aPrincipal) {
     originAttributes = aPrincipal->OriginAttributesRef();
-    StoragePrincipalHelper::UpdateOriginAttributesForNetworkState(
-        aURI, originAttributes);
   } else if (loadContext) {
     loadContext->GetOriginAttributes(originAttributes);
-    StoragePrincipalHelper::UpdateOriginAttributesForNetworkState(
-        aURI, originAttributes);
   }
 
   nsCOMPtr<nsIURI> clone;
@@ -2238,6 +2272,15 @@ nsresult nsHttpHandler::SpeculativeConnectInternal(
       // (NOTE: We better make sure |clone| stays alive until the end
       // of the function now, since our aURI arg now points to it!)
     }
+  }
+
+  if (!aOriginAttributes) {
+    // We must update the originAttributes with the network state first party
+    // domain **after** we upgrade aURI to https.
+    // Otherwise the speculative connection will be keyed by a http URL
+    // and end up not being used.
+    StoragePrincipalHelper::UpdateOriginAttributesForNetworkState(
+        aURI, originAttributes);
   }
 
   nsAutoCString scheme;
@@ -2482,11 +2525,10 @@ void nsHttpHandler::ShutdownConnectionManager() {
 nsresult nsHttpHandler::NewChannelId(uint64_t& channelId) {
   channelId =
       // channelId is sometimes passed to JavaScript code (e.g. devtools),
-      // and since on Linux PID_MAX_LIMIT is 2^22 we cannot
-      // shift PID more than 31 bits left. Otherwise resulting values
-      // will be exceed safe JavaScript integer range.
-      ((static_cast<uint64_t>(mProcessId) << 31) & 0xFFFFFFFF80000000LL) |
-      mNextChannelId++;
+      // values should not exceed safe JavaScript integer range (2^53 – 1).
+      // Since the uniqueProcessId starts at 0, this should be safe to use
+      // unless we create more than 2^22 processes.
+      ((mUniqueProcessId << 31) & 0xFFFFFFFF80000000LL) | mNextChannelId++;
   return NS_OK;
 }
 
@@ -2761,17 +2803,16 @@ void nsHttpHandler::MaybeAddAltSvcForTesting(
   }
 }
 
-bool nsHttpHandler::UseHTTPSRRAsAltSvcEnabled() const {
-  return StaticPrefs::network_dns_use_https_rr_as_altsvc();
-}
-
 bool nsHttpHandler::EchConfigEnabled(bool aIsHttp3) const {
+  if (mParentalControlEnabled) {
+    return false;
+  }
+
   if (!aIsHttp3) {
     return StaticPrefs::network_dns_echconfig_enabled();
   }
 
-  return StaticPrefs::network_dns_echconfig_enabled() &&
-         StaticPrefs::network_dns_http3_echconfig_enabled();
+  return StaticPrefs::network_dns_http3_echconfig_enabled();
 }
 
 bool nsHttpHandler::FallbackToOriginIfConfigsAreECHAndAllFailed() const {

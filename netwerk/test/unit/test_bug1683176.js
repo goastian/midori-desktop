@@ -10,9 +10,11 @@
 let prefs;
 let httpserv;
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpserv.identity.primaryPort;
 });
 
@@ -64,7 +66,7 @@ function channelOpenPromise(chan) {
     let topic = "http-on-transaction-suspended-authentication";
     let observer = {
       QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
-      observe(aSubject, aTopic, aData) {
+      observe(aSubject, aTopic) {
         if (aTopic == topic) {
           Services.obs.removeObserver(observer, topic);
           let channel = aSubject.QueryInterface(Ci.nsIChannel);

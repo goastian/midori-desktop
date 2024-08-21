@@ -258,7 +258,8 @@ void nsNotifyAddrListener::calculateNetworkId(void) {
       mNetworkId.Truncate();
     }
     Telemetry::Accumulate(Telemetry::NETWORK_ID2, 0);
-    LOG(("calculateNetworkId: no network ID Base64Encode error %X", rv));
+    LOG(("calculateNetworkId: no network ID Base64Encode error %X",
+         uint32_t(rv)));
     return;
   }
 
@@ -599,7 +600,7 @@ nsNotifyAddrListener::CheckAdaptersAddresses(void) {
       list.StripWhitespace();
       for (const nsACString& suffix : list.Split(',')) {
         LOG(("  appending DNS suffix from registry: %s\n",
-             suffix.BeginReading()));
+             PromiseFlatCString(suffix).get()));
         if (!suffix.IsEmpty()) {
           dnsSuffixList.AppendElement(suffix);
         }

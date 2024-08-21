@@ -19,6 +19,14 @@ function makeChan(uri) {
   return chan;
 }
 
+add_setup(async function setup() {
+  // See Bug 1878505
+  Services.prefs.setIntPref("network.http.speculative-parallel-limit", 0);
+  registerCleanupFunction(async () => {
+    Services.prefs.clearUserPref("network.http.speculative-parallel-limit");
+  });
+});
+
 add_task(async function test_cancel_after_asyncOpen() {
   let certdb = Cc["@mozilla.org/security/x509certdb;1"].getService(
     Ci.nsIX509CertDB
@@ -123,8 +131,8 @@ add_task(async function test_cancel_after_connect_http2proxy() {
           return this.QueryInterface(iid);
         },
 
-        onProgress(request, progress, progressMax) {},
-        onStatus(request, status, statusArg) {
+        onProgress() {},
+        onStatus(request, status) {
           info(`status = ${status}`);
           // XXX(valentin): Is this the best status to be cancelling?
           if (status == NS_NET_STATUS_WAITING_FOR) {
@@ -347,7 +355,7 @@ add_task(async function test_cancel_during_response() {
             // Check that we never get more than 1000 bytes.
             Assert.equal(progress, 1000);
           },
-          onStatus(request, status, statusArg) {
+          onStatus(request, status) {
             if (status == NS_NET_STATUS_RECEIVING_FROM) {
               info("cancelling when receiving request");
               chan.cancel(Cr.NS_ERROR_ABORT);

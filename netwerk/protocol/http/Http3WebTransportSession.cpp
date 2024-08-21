@@ -321,7 +321,7 @@ nsresult Http3WebTransportSession::OnWriteSegment(char* buf, uint32_t count,
 void Http3WebTransportSession::Close(nsresult aResult) {
   LOG(("Http3WebTransportSession::Close %p", this));
   if (mListener) {
-    mListener->OnSessionClosed(0, ""_ns);
+    mListener->OnSessionClosed(NS_SUCCEEDED(aResult), 0, ""_ns);
     mListener = nullptr;
   }
   if (mTransaction) {
@@ -331,18 +331,20 @@ void Http3WebTransportSession::Close(nsresult aResult) {
   mRecvState = RECV_DONE;
   mSendState = SEND_DONE;
 
-  mSession->CloseWebTransportConn();
-  mSession = nullptr;
+  if (mSession) {
+    mSession->CloseWebTransportConn();
+    mSession = nullptr;
+  }
 }
 
-void Http3WebTransportSession::OnSessionClosed(uint32_t aStatus,
+void Http3WebTransportSession::OnSessionClosed(bool aCleanly, uint32_t aStatus,
                                                const nsACString& aReason) {
   if (mTransaction) {
     mTransaction->Close(NS_BASE_STREAM_CLOSED);
     mTransaction = nullptr;
   }
   if (mListener) {
-    mListener->OnSessionClosed(aStatus, aReason);
+    mListener->OnSessionClosed(aCleanly, aStatus, aReason);
     mListener = nullptr;
   }
   mRecvState = RECV_DONE;
@@ -445,7 +447,10 @@ Http3WebTransportSession::OnIncomingWebTransportStream(
     return nullptr;
   }
 
-  mListener->OnIncomingStreamAvailableInternal(stream);
+  if (nsCOMPtr<WebTransportSessionEventListenerInternal> listener =
+          do_QueryInterface(mListener)) {
+    listener->OnIncomingStreamAvailableInternal(stream);
+  }
   return stream.forget();
 }
 
@@ -468,7 +473,10 @@ void Http3WebTransportSession::OnDatagramReceived(nsTArray<uint8_t>&& aData) {
     return;
   }
 
-  mListener->OnDatagramReceivedInternal(std::move(aData));
+  if (nsCOMPtr<WebTransportSessionEventListenerInternal> listener =
+          do_QueryInterface(mListener)) {
+    listener->OnDatagramReceivedInternal(std::move(aData));
+  }
 }
 
 void Http3WebTransportSession::GetMaxDatagramSize() {

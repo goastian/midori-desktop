@@ -15,7 +15,9 @@ Test that a response to HEAD method should not have a body.
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 const responseContent = "response body";
 
@@ -41,7 +43,11 @@ async function get_response(channel, fromCache) {
   return new Promise(resolve => {
     channel.asyncOpen(
       new ChannelListener((request, buffer, ctx, isFromCache) => {
-        ok(fromCache == isFromCache, `got response from cache = ${fromCache}`);
+        Assert.equal(
+          fromCache,
+          isFromCache,
+          `got response from cache = ${fromCache}`
+        );
         resolve(buffer);
       })
     );
@@ -64,13 +70,13 @@ add_task(async function () {
   let response;
 
   response = await get_response(make_channel(URI, "GET"), false);
-  ok(response === responseContent, "got response body");
+  Assert.strictEqual(response, responseContent, "got response body");
 
   response = await get_response(make_channel(URI, "GET"), true);
-  ok(response === responseContent, "got response body from cache");
+  Assert.strictEqual(response, responseContent, "got response body from cache");
 
   response = await get_response(make_channel(URI, "HEAD"), false);
-  ok(response === "", "should have empty body");
+  Assert.strictEqual(response, "", "should have empty body");
 
   await stop_server(httpserver);
 });

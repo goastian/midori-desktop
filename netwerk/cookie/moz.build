@@ -12,6 +12,7 @@ XPIDL_SOURCES += [
     "nsICookie.idl",
     "nsICookieJarSettings.idl",
     "nsICookieManager.idl",
+    "nsICookieNotification.idl",
     "nsICookiePermission.idl",
     "nsICookieService.idl",
 ]
@@ -23,6 +24,7 @@ EXPORTS.mozilla.net = [
     "Cookie.h",
     "CookieJarSettings.h",
     "CookieKey.h",
+    "CookieNotification.h",
     "CookiePersistentStorage.h",
     "CookiePrivateStorage.h",
     "CookieService.h",
@@ -35,6 +37,7 @@ UNIFIED_SOURCES += [
     "CookieCommons.cpp",
     "CookieJarSettings.cpp",
     "CookieLogging.cpp",
+    "CookieNotification.cpp",
     "CookiePersistentStorage.cpp",
     "CookiePrivateStorage.cpp",
     "CookieService.cpp",
@@ -43,15 +46,15 @@ UNIFIED_SOURCES += [
     "CookieStorage.cpp",
 ]
 XPCSHELL_TESTS_MANIFESTS += [
-    "test/unit/xpcshell.ini",
+    "test/unit/xpcshell.toml",
 ]
 
 BROWSER_CHROME_MANIFESTS += [
-    "test/browser/browser.ini",
+    "test/browser/browser.toml",
 ]
 
 MOCHITEST_MANIFESTS += [
-    "test/mochitest/mochitest.ini",
+    "test/mochitest/mochitest.toml",
 ]
 
 IPDL_SOURCES = [

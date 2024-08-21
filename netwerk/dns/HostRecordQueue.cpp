@@ -166,10 +166,14 @@ void HostRecordQueue::MoveToAnotherPendingQ(nsHostRecord* aRec,
   }
 
   aRec->remove();
+  // We just removed from pending queue. Insert record will
+  // increment this value again.
+  mPendingCount--;
+
   InsertRecord(aRec, aFlags, aProofOfLock);
 }
 
-already_AddRefed<AddrHostRecord> HostRecordQueue::Dequeue(
+already_AddRefed<nsHostRecord> HostRecordQueue::Dequeue(
     bool aHighQOnly, const MutexAutoLock& aProofOfLock) {
   RefPtr<nsHostRecord> rec;
   if (!mHighQ.isEmpty()) {
@@ -181,13 +185,10 @@ already_AddRefed<AddrHostRecord> HostRecordQueue::Dequeue(
   }
 
   if (rec) {
-    MOZ_ASSERT(rec->IsAddrRecord());
     mPendingCount--;
-    RefPtr<AddrHostRecord> addrRec = do_QueryObject(rec);
-    return addrRec.forget();
   }
 
-  return nullptr;
+  return rec.forget();
 }
 
 void HostRecordQueue::ClearAll(

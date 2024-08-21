@@ -1,7 +1,9 @@
 // Test nsIThrottledInputChannel interface.
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 function test_handler(metadata, response) {
   const originalBody = "the response";
@@ -54,7 +56,11 @@ function run_test() {
   let startTime = Date.now();
   channel.asyncOpen(
     new ChannelListener(() => {
-      ok(Date.now() - startTime > 1000, "request took more than one second");
+      Assert.greater(
+        Date.now() - startTime,
+        1000,
+        "request took more than one second"
+      );
 
       httpserver.stop(do_test_finished);
     })

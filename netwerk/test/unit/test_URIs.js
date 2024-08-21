@@ -14,6 +14,8 @@
 // http://greenbytes.de/tech/webdav/rfc3986.html#rfc.section.5.4
 // http://greenbytes.de/tech/tc/uris/
 
+Services.prefs.setBoolPref("network.url.useDefaultURI", true);
+
 // TEST DATA
 // ---------
 var gTests = [
@@ -177,8 +179,8 @@ var gTests = [
   {
     spec: "gopher://mozilla.org/",
     scheme: "gopher",
-    prePath: "gopher:",
-    pathQueryRef: "//mozilla.org/",
+    prePath: "gopher://mozilla.org",
+    pathQueryRef: "/",
     ref: "",
     nsIURL: false,
     nsINestedURI: false,
@@ -493,10 +495,15 @@ function do_test_uri_basic(aTest) {
   do_check_property(aTest, URI, "password");
   do_check_property(aTest, URI, "host");
   do_check_property(aTest, URI, "specIgnoringRef");
-  if ("hasRef" in aTest) {
-    do_info("testing hasref: " + aTest.hasRef + " vs " + URI.hasRef);
-    Assert.equal(aTest.hasRef, URI.hasRef);
-  }
+
+  do_info("testing hasRef");
+  Assert.equal(URI.hasRef, !!aTest.ref, "URI.hasRef is correct");
+  do_info("testing hasUserPass");
+  Assert.equal(
+    URI.hasUserPass,
+    !!aTest.username || !!aTest.password,
+    "URI.hasUserPass is correct"
+  );
 }
 
 // Test that a given URI parses correctly when we add a given ref to the end
@@ -611,7 +618,7 @@ function do_test_uri_with_hash_suffix(aTest, aSuffix) {
     do_check_property(aTest, testURI, "pathQueryRef", function (aStr) {
       return aStr + aSuffix;
     });
-    do_check_property(aTest, testURI, "ref", function (aStr) {
+    do_check_property(aTest, testURI, "ref", function () {
       return aSuffix.substr(1);
     });
   }
@@ -951,10 +958,39 @@ add_task(function test_jarURI_serialization() {
 });
 
 add_task(async function round_trip_invalid_ace_label() {
-  let uri = Services.io.newURI("http://xn--xn--d--fg4n-5y45d/");
-  Assert.equal(uri.spec, "http://xn--xn--d--fg4n-5y45d/");
+  // This is well-formed punycode, but an invalid ACE label due to hyphens in
+  // positions 3 & 4 and trailing hyphen. (Punycode-decode yields "xn--d淾-")
+  let uri = Services.io.newURI("http://xn--xn--d--fg4n/");
+  Assert.equal(uri.spec, "http://xn--xn--d--fg4n/");
 
+  // Entirely invalid punycode will throw a MALFORMED error.
   Assert.throws(() => {
     uri = Services.io.newURI("http://a.b.c.XN--pokxncvks");
   }, /NS_ERROR_MALFORMED_URI/);
+});
+
+add_task(async function test_bug1875119() {
+  let uri1 = Services.io.newURI("file:///path");
+  let uri2 = Services.io.newURI("resource://test/bla");
+  // type of uri2 is still SubstitutingURL which overrides the implementation of EnsureFile,
+  // but it's scheme is now file.
+  // See https://bugzilla.mozilla.org/show_bug.cgi?id=1876483 to disallow this
+  uri2 = uri2.mutate().setSpec("file:///path2").finalize();
+  Assert.throws(
+    () => uri1.equals(uri2),
+    /(NS_NOINTERFACE)|(NS_ERROR_FILE_UNRECOGNIZED_PATH)/,
+    "uri2 is in an invalid state and should throw"
+  );
+});
+
+add_task(async function test_bug1843717() {
+  // Make sure file path normalization on windows
+  // doesn't affect the hash of the URL.
+  let base = Services.io.newURI("file:///abc\\def/");
+  let uri = Services.io.newURI("foo\\bar#x\\y", null, base);
+  Assert.equal(uri.spec, "file:///abc/def/foo/bar#x\\y");
+  uri = Services.io.newURI("foo\\bar#xy", null, base);
+  Assert.equal(uri.spec, "file:///abc/def/foo/bar#xy");
+  uri = Services.io.newURI("foo\\bar#", null, base);
+  Assert.equal(uri.spec, "file:///abc/def/foo/bar#");
 });

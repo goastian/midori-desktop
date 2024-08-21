@@ -5,6 +5,7 @@
 
 #include "nsMultiMixedConv.h"
 #include "nsIHttpChannel.h"
+#include "nsIThreadRetargetableStreamListener.h"
 #include "nsNetCID.h"
 #include "nsMimeTypes.h"
 #include "nsIStringStream.h"
@@ -19,6 +20,7 @@
 #include "nsIURI.h"
 #include "nsHttpHeaderArray.h"
 #include "mozilla/AutoRestore.h"
+#include "mozilla/Components.h"
 #include "mozilla/Tokenizer.h"
 #include "nsComponentManagerUtils.h"
 #include "mozilla/StaticPrefs_network.h"
@@ -403,7 +405,7 @@ nsPartChannel::GetBaseChannel(nsIChannel** aReturn) {
 
 // nsISupports implementation
 NS_IMPL_ISUPPORTS(nsMultiMixedConv, nsIStreamConverter, nsIStreamListener,
-                  nsIRequestObserver)
+                  nsIThreadRetargetableStreamListener, nsIRequestObserver)
 
 // nsIStreamConverter implementation
 
@@ -438,6 +440,11 @@ nsMultiMixedConv::AsyncConvertData(const char* aFromType, const char* aToType,
 NS_IMETHODIMP
 nsMultiMixedConv::GetConvertedType(const nsACString& aFromType,
                                    nsIChannel* aChannel, nsACString& aToType) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+nsMultiMixedConv::MaybeRetarget(nsIRequest* request) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -553,6 +560,12 @@ nsMultiMixedConv::OnDataAvailable(nsIRequest* request, nsIInputStream* inStr,
 
   return NS_FAILED(rv_send) ? rv_send : rv_feed;
 }
+
+NS_IMETHODIMP
+nsMultiMixedConv::OnDataFinished(nsresult aStatus) { return NS_OK; }
+
+NS_IMETHODIMP
+nsMultiMixedConv::CheckListenerChain() { return NS_ERROR_NOT_IMPLEMENTED; }
 
 NS_IMETHODIMP
 nsMultiMixedConv::OnStopRequest(nsIRequest* request, nsresult aStatus) {
@@ -800,8 +813,8 @@ nsresult nsMultiMixedConv::SendStart() {
   nsCOMPtr<nsIStreamListener> partListener(mFinalListener);
   if (mContentType.IsEmpty()) {
     mContentType.AssignLiteral(UNKNOWN_CONTENT_TYPE);
-    nsCOMPtr<nsIStreamConverterService> serv =
-        do_GetService(NS_STREAMCONVERTERSERVICE_CONTRACTID, &rv);
+    nsCOMPtr<nsIStreamConverterService> serv;
+    serv = mozilla::components::StreamConverter::Service(&rv);
     if (NS_SUCCEEDED(rv)) {
       nsCOMPtr<nsIStreamListener> converter;
       rv = serv->AsyncConvertData(UNKNOWN_CONTENT_TYPE, "*/*", mFinalListener,

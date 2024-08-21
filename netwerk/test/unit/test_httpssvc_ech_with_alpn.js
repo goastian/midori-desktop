@@ -75,8 +75,6 @@ function channelOpenPromise(chan, flags) {
     certOverrideService.setDisableAllSecurityChecksAndLetAttackersInterceptMyData(
       true
     );
-    let internal = chan.QueryInterface(Ci.nsIHttpChannelInternal);
-    internal.setWaitForHTTPSSVCRecord();
     chan.asyncOpen(new ChannelListener(finish, null, flags));
   });
 }
@@ -155,7 +153,7 @@ async function testWrapper(alpnAdvertisement) {
 
   Services.prefs.setCharPref(
     "network.trr.uri",
-    `https://foo.example.com:${trrServer.port}/dns-query`
+    `https://foo.example.com:${trrServer.port()}/dns-query`
   );
 
   // Only the last record is valid to use.

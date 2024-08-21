@@ -38,6 +38,12 @@ easier to analyze.
    exact same format as the MOZ_LOG environment variable (see below).
    Generally the default list is OK, unless a Mozilla developer has told
    you to modify it.
+
+   * For cookie issues, use presets ``Cookies``
+   * For WebSocket issues, use presets ``WebSockets``
+   * For HTTP/3 or QUIC issues, use presets ``HTTP/3``
+   * For other networking issues, use presets ``Networking``
+
 #. Click on Start Logging.
 #. Reproduce the bug (i.e. go to the web site that is broken for you and
    make the bug happen in the browser)
@@ -54,6 +60,12 @@ easier to analyze.
    all the logs to be uploaded--ask the developer if you're not sure.
 #. Pat yourself on the back--a job well done!  Thanks for helping us
    debug Firefox.
+
+.. note::
+
+   **Note:** The log may include sensitive data such as URLs and cookies.
+   To protect your privacy, we kindly request you to send the log file or
+   the profiler link directly and confidentially to necko@mozilla.com.
 
 Logging HTTP activity by manually setting environment variables
 ---------------------------------------------------------------
@@ -132,14 +144,14 @@ running on Linux.
 #. When the problem has been reproduced, exit Firefox and look for the
    generated log files, which you can find at ``/tmp/log.txt``.
 
-Mac OS X
-~~~~~~~~
+macOS
+~~~~~
 
-These instructions show how to log HTTP traffic in Firefox on Mac OS X.
+These instructions show how to log HTTP traffic in Firefox on macOS.
 
 #. Quit Firefox is if it's currently running, by using the Quit option
    in the File menu. Keep in mind that simply closing all windows does
-   **not** quit Firefox on Mac OS X (this is standard practice for Mac
+   **not** quit Firefox on macOS (this is standard practice for Mac
    applications).
 
 #. Run the Terminal application, which is located in the Utilities
@@ -153,7 +165,7 @@ These instructions show how to log HTTP traffic in Firefox on Mac OS X.
       export MOZ_LOG=timestamp,rotate:200,nsHttp:5,cache2:5,nsSocketTransport:5,nsHostResolver:5
       export MOZ_LOG_FILE=~/Desktop/log.txt
       cd /Applications/Firefox.app/Contents/MacOS
-      ./firefox-bin
+      ./firefox
 
    (The instructions assume that you've installed Firefox directly into
    your startup disk's Applications folder. If you've put it elsewhere,
@@ -299,6 +311,15 @@ For example:
 .. note::
 
    ``./mach try fuzzy --env "MOZ_LOG=nsHttp:5,SSLTokensCache:5"``
+
+How to enable QUIC logging
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The steps to enable QUIC logging (`QLOG <https://datatracker.ietf.org/doc/draft-ietf-quic-qlog-main-schema/>`__) are:
+
+#. Go to ``about:config``,  search for ``network.http.http3.enable_qlog`` and set it to true.
+#. Restart Firefox.
+#. QLOG files will be saved in the ``qlog_$PID`` directory located within your system's temporary directory.
+#. To visualize the QLOG data, visit https://qvis.quictools.info/. You can upload the QLOG files there to see the visual representation of the flows.
 
 See also
 --------

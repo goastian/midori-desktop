@@ -6,9 +6,11 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpserver.identity.primaryPort;
 });
 
@@ -27,7 +29,7 @@ AuthPrompt.prototype = {
     return true;
   },
 
-  asyncPromptAuth: function ap_async(chan, cb, ctx, lvl, info) {
+  asyncPromptAuth: function ap_async() {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 };
@@ -68,7 +70,7 @@ function makeChan(url, loadingUrl) {
 function TestListener(resolve) {
   this.resolve = resolve;
 }
-TestListener.prototype.onStartRequest = function (request, context) {
+TestListener.prototype.onStartRequest = function (request) {
   // Need to do the instanceof to allow request.responseStatus
   // to be read.
   if (!(request instanceof Ci.nsIHttpChannel)) {
@@ -77,7 +79,7 @@ TestListener.prototype.onStartRequest = function (request, context) {
 
   Assert.equal(expectedResponse, request.responseStatus, "HTTP Status code");
 };
-TestListener.prototype.onStopRequest = function (request, context, status) {
+TestListener.prototype.onStopRequest = function () {
   Assert.equal(expectedRequests, requestsMade, "Number of requests made ");
   Assert.equal(
     exptTypeOneCount,
@@ -177,7 +179,6 @@ function failedAuth(metadata, response) {
     case 2:
       // Proxy - Expecting a type 3 Authenticate message from the client
       // Respond with a 407 to indicate invalid credentials
-      //
       authorization = metadata.getHeader("Proxy-Authorization");
       authPrefix = authorization.substring(0, NTLM_PREFIX_LEN);
       Assert.equal(NTLM_TYPE3_PREFIX, authPrefix, "Expecting a Type 3 message");
@@ -220,9 +221,12 @@ function connectionReset(metadata, response) {
       authPrefix = authorization.substring(0, NTLM_PREFIX_LEN);
       Assert.equal(NTLM_TYPE3_PREFIX, authPrefix, "Expecting a Type 3 message");
       ntlmTypeTwoCount++;
-      response.seizePower();
-      response.bodyOutPutStream.close();
-      response.finish();
+      try {
+        response.seizePower();
+        response.finish();
+      } catch (e) {
+        Assert.ok(false, "unexpected exception" + e);
+      }
       break;
     default:
       // Should not get any further requests on this channel
@@ -233,31 +237,32 @@ function connectionReset(metadata, response) {
 }
 
 //
-// Reset the connection after a nogotiate message has been received
+// Reset the connection after a negotiate message has been received
 //
 function connectionReset02(metadata, response) {
+  var connectionNumber = httpserver.connectionNumber;
   switch (requestsMade) {
     case 0:
-      // Proxy - First request to the Proxy resppond with a 407 to start auth
+      // Proxy - First request to the Proxy respond with a 407 to start auth
       response.setStatusLine(metadata.httpVersion, 407, "Unauthorized");
       response.setHeader("Proxy-Authenticate", "NTLM", false);
+      Assert.equal(connectionNumber, httpserver.connectionNumber);
       break;
     case 1:
+    // eslint-disable-next-line no-fallthrough
+    default:
       // Proxy - Expecting a type 1 negotiate message from the client
+      Assert.equal(connectionNumber, httpserver.connectionNumber);
       var authorization = metadata.getHeader("Proxy-Authorization");
       var authPrefix = authorization.substring(0, NTLM_PREFIX_LEN);
       Assert.equal(NTLM_TYPE1_PREFIX, authPrefix, "Expecting a Type 1 message");
       ntlmTypeOneCount++;
-      response.setStatusLine(metadata.httpVersion, 407, "Unauthorized");
-      response.setHeader("Proxy-Authenticate", PROXY_CHALLENGE, false);
-      response.finish();
-      response.seizePower();
-      response.bodyOutPutStream.close();
-      break;
-    default:
-      // Should not get any further requests on this channel
-      dump("ERROR: NTLM Proxy Authentication, connection should not be reused");
-      Assert.ok(false);
+      try {
+        response.seizePower();
+        response.finish();
+      } catch (e) {
+        Assert.ok(false, "unexpected exception" + e);
+      }
   }
   requestsMade++;
 }
@@ -322,40 +327,82 @@ function setupTest(path, handler, requests, response, clearCache) {
   });
 }
 
+let ntlmTypeOneCount = 0; // The number of NTLM type one messages received
+let exptTypeOneCount = 0; // The number of NTLM type one messages that should be received
+let ntlmTypeTwoCount = 0; // The number of NTLM type two messages received
+let exptTypeTwoCount = 0; // The number of NTLM type two messages that should received
+
 // Happy code path
-// Succesful proxy auth.
-add_task(async function test_happy_path() {
+// Successful proxy auth.
+async function test_happy_path() {
   dump("RUNNING TEST: test_happy_path");
   await setupTest("/auth", successfulAuth, 3, 200, 1);
-});
+}
 
 // Failed proxy authentication
-add_task(async function test_failed_auth() {
+async function test_failed_auth() {
   dump("RUNNING TEST:failed auth ");
   await setupTest("/auth", failedAuth, 4, 407, 1);
-});
+}
 
-var ntlmTypeOneCount = 0; // The number of NTLM type one messages received
-var exptTypeOneCount = 0; // The number of NTLM type one messages that should be received
-
-var ntlmTypeTwoCount = 0; // The number of NTLM type two messages received
-var exptTypeTwoCount = 0; // The number of NTLM type two messages that should received
 // Test connection reset, after successful auth
-add_task(async function test_connection_reset() {
+async function test_connection_reset() {
   dump("RUNNING TEST:connection reset ");
   ntlmTypeOneCount = 0;
   ntlmTypeTwoCount = 0;
   exptTypeOneCount = 1;
   exptTypeTwoCount = 1;
-  await setupTest("/auth", connectionReset, 2, 500, 1);
-});
+  await setupTest("/auth", connectionReset, 3, 500, 1);
+}
 
 // Test connection reset after sending a negotiate.
-add_task(async function test_connection_reset02() {
+// Client should retry request using the same connection
+async function test_connection_reset02() {
   dump("RUNNING TEST:connection reset ");
   ntlmTypeOneCount = 0;
   ntlmTypeTwoCount = 0;
-  exptTypeOneCount = 1;
+  let maxRetryAttempt = 5;
+  exptTypeOneCount = maxRetryAttempt;
   exptTypeTwoCount = 0;
-  await setupTest("/auth", connectionReset02, 1, 500, 1);
-});
+
+  Services.prefs.setIntPref(
+    "network.http.request.max-attempts",
+    maxRetryAttempt
+  );
+
+  await setupTest("/auth", connectionReset02, maxRetryAttempt + 1, 500, 1);
+}
+
+add_task(
+  { pref_set: [["network.auth.use_redirect_for_retries", false]] },
+  test_happy_path
+);
+add_task(
+  { pref_set: [["network.auth.use_redirect_for_retries", false]] },
+  test_failed_auth
+);
+add_task(
+  { pref_set: [["network.auth.use_redirect_for_retries", false]] },
+  test_connection_reset
+);
+add_task(
+  { pref_set: [["network.auth.use_redirect_for_retries", false]] },
+  test_connection_reset02
+);
+
+add_task(
+  { pref_set: [["network.auth.use_redirect_for_retries", true]] },
+  test_happy_path
+);
+add_task(
+  { pref_set: [["network.auth.use_redirect_for_retries", true]] },
+  test_failed_auth
+);
+add_task(
+  { pref_set: [["network.auth.use_redirect_for_retries", true]] },
+  test_connection_reset
+);
+add_task(
+  { pref_set: [["network.auth.use_redirect_for_retries", true]] },
+  test_connection_reset02
+);

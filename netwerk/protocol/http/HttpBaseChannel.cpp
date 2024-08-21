@@ -24,6 +24,7 @@
 #include "mozilla/ConsoleReportCollector.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/InputStreamLengthHelper.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/NullPrincipal.h"
 #include "mozilla/PermissionManager.h"
 #include "mozilla/Components.h"
@@ -55,6 +56,7 @@
 #include "nsContentUtils.h"
 #include "nsDebug.h"
 #include "nsEscape.h"
+#include "nsGlobalWindowInner.h"
 #include "nsGlobalWindowOuter.h"
 #include "nsHttpChannel.h"
 #include "nsHTTPCompressConv.h"
@@ -116,31 +118,32 @@ namespace net {
 
 static bool IsHeaderBlacklistedForRedirectCopy(nsHttpAtom const& aHeader) {
   // IMPORTANT: keep this list ASCII-code sorted
-  static nsHttpAtom const* blackList[] = {&nsHttp::Accept,
-                                          &nsHttp::Accept_Encoding,
-                                          &nsHttp::Accept_Language,
-                                          &nsHttp::Alternate_Service_Used,
-                                          &nsHttp::Authentication,
-                                          &nsHttp::Authorization,
-                                          &nsHttp::Connection,
-                                          &nsHttp::Content_Length,
-                                          &nsHttp::Cookie,
-                                          &nsHttp::Host,
-                                          &nsHttp::If,
-                                          &nsHttp::If_Match,
-                                          &nsHttp::If_Modified_Since,
-                                          &nsHttp::If_None_Match,
-                                          &nsHttp::If_None_Match_Any,
-                                          &nsHttp::If_Range,
-                                          &nsHttp::If_Unmodified_Since,
-                                          &nsHttp::Proxy_Authenticate,
-                                          &nsHttp::Proxy_Authorization,
-                                          &nsHttp::Range,
-                                          &nsHttp::TE,
-                                          &nsHttp::Transfer_Encoding,
-                                          &nsHttp::Upgrade,
-                                          &nsHttp::User_Agent,
-                                          &nsHttp::WWW_Authenticate};
+  static nsHttpAtomLiteral const* blackList[] = {
+      &nsHttp::Accept,
+      &nsHttp::Accept_Encoding,
+      &nsHttp::Accept_Language,
+      &nsHttp::Alternate_Service_Used,
+      &nsHttp::Authentication,
+      &nsHttp::Authorization,
+      &nsHttp::Connection,
+      &nsHttp::Content_Length,
+      &nsHttp::Cookie,
+      &nsHttp::Host,
+      &nsHttp::If,
+      &nsHttp::If_Match,
+      &nsHttp::If_Modified_Since,
+      &nsHttp::If_None_Match,
+      &nsHttp::If_None_Match_Any,
+      &nsHttp::If_Range,
+      &nsHttp::If_Unmodified_Since,
+      &nsHttp::Proxy_Authenticate,
+      &nsHttp::Proxy_Authorization,
+      &nsHttp::Range,
+      &nsHttp::TE,
+      &nsHttp::Transfer_Encoding,
+      &nsHttp::Upgrade,
+      &nsHttp::User_Agent,
+      &nsHttp::WWW_Authenticate};
 
   class HttpAtomComparator {
     nsHttpAtom const& mTarget;
@@ -148,6 +151,12 @@ static bool IsHeaderBlacklistedForRedirectCopy(nsHttpAtom const& aHeader) {
    public:
     explicit HttpAtomComparator(nsHttpAtom const& aTarget) : mTarget(aTarget) {}
     int operator()(nsHttpAtom const* aVal) const {
+      if (mTarget == *aVal) {
+        return 0;
+      }
+      return strcmp(mTarget.get(), aVal->get());
+    }
+    int operator()(nsHttpAtomLiteral const* aVal) const {
       if (mTarget == *aVal) {
         return 0;
       }
@@ -236,7 +245,9 @@ HttpBaseChannel::HttpBaseChannel()
       mCachedOpaqueResponseBlockingPref(
           StaticPrefs::browser_opaqueResponseBlocking()),
       mChannelBlockedByOpaqueResponse(false),
-      mDummyChannelForImageCache(false) {
+      mDummyChannelForImageCache(false),
+      mHasContentDecompressed(false),
+      mRenderBlocking(false) {
   StoreApplyConversion(true);
   StoreAllowSTS(true);
   StoreTracingEnabled(true);
@@ -248,6 +259,7 @@ HttpBaseChannel::HttpBaseChannel()
   StoreAllRedirectsSameOrigin(true);
   StoreAllRedirectsPassTimingAllowCheck(true);
   StoreUpgradableToSecure(true);
+  StoreIsUserAgentHeaderModified(false);
 
   this->mSelfAddr.inet = {};
   this->mPeerAddr.inet = {};
@@ -396,7 +408,8 @@ nsresult HttpBaseChannel::Init(nsIURI* aURI, uint32_t aCaps,
 
   rv = gHttpHandler->AddStandardRequestHeaders(
       &mRequestHead, isHTTPS, aContentPolicyType,
-      nsContentUtils::ShouldResistFingerprinting(this));
+      nsContentUtils::ShouldResistFingerprinting(this,
+                                                 RFPTarget::HttpUserAgent));
   if (NS_FAILED(rv)) return rv;
 
   nsAutoCString type;
@@ -1307,8 +1320,6 @@ void HttpBaseChannel::ExplicitSetUploadStreamLength(
     return;
   }
 
-  // SetRequestHeader propagates headers to chrome if HttpChannelChild
-  MOZ_ASSERT(!LoadWasOpened());
   nsAutoCString contentLengthStr;
   contentLengthStr.AppendInt(aContentLength);
   SetRequestHeader(header, contentLengthStr, false);
@@ -1390,7 +1401,7 @@ nsresult HttpBaseChannel::DoApplyContentConversions(
 // channels cannot effectively be used in two contexts (specifically this one
 // and a peek context for sniffing)
 //
-class InterceptFailedOnStop : public nsIStreamListener {
+class InterceptFailedOnStop : public nsIThreadRetargetableStreamListener {
   virtual ~InterceptFailedOnStop() = default;
   nsCOMPtr<nsIStreamListener> mNext;
   HttpBaseChannel* mChannel;
@@ -1399,6 +1410,7 @@ class InterceptFailedOnStop : public nsIStreamListener {
   InterceptFailedOnStop(nsIStreamListener* arg, HttpBaseChannel* chan)
       : mNext(arg), mChannel(chan) {}
   NS_DECL_THREADSAFE_ISUPPORTS
+  NS_DECL_NSITHREADRETARGETABLESTREAMLISTENER
 
   NS_IMETHOD OnStartRequest(nsIRequest* aRequest) override {
     return mNext->OnStartRequest(aRequest);
@@ -1420,7 +1432,37 @@ class InterceptFailedOnStop : public nsIStreamListener {
   }
 };
 
-NS_IMPL_ISUPPORTS(InterceptFailedOnStop, nsIStreamListener, nsIRequestObserver)
+NS_IMPL_ADDREF(InterceptFailedOnStop)
+NS_IMPL_RELEASE(InterceptFailedOnStop)
+
+NS_INTERFACE_MAP_BEGIN(InterceptFailedOnStop)
+  NS_INTERFACE_MAP_ENTRY(nsIStreamListener)
+  NS_INTERFACE_MAP_ENTRY(nsIRequestObserver)
+  NS_INTERFACE_MAP_ENTRY(nsIThreadRetargetableStreamListener)
+  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIRequestObserver)
+NS_INTERFACE_MAP_END
+
+NS_IMETHODIMP
+InterceptFailedOnStop::CheckListenerChain() {
+  nsCOMPtr<nsIThreadRetargetableStreamListener> listener =
+      do_QueryInterface(mNext);
+  if (!listener) {
+    return NS_ERROR_NO_INTERFACE;
+  }
+
+  return listener->CheckListenerChain();
+}
+
+NS_IMETHODIMP
+InterceptFailedOnStop::OnDataFinished(nsresult aStatus) {
+  nsCOMPtr<nsIThreadRetargetableStreamListener> listener =
+      do_QueryInterface(mNext);
+  if (listener) {
+    return listener->OnDataFinished(aStatus);
+  }
+
+  return NS_OK;
+}
 
 NS_IMETHODIMP
 HttpBaseChannel::DoApplyContentConversions(nsIStreamListener* aNextListener,
@@ -1496,6 +1538,8 @@ HttpBaseChannel::DoApplyContentConversions(nsIStreamListener* aNextListener,
           mode = 2;
         } else if (from.EqualsLiteral("br")) {
           mode = 3;
+        } else if (from.EqualsLiteral("zstd")) {
+          mode = 4;
         }
         Telemetry::Accumulate(Telemetry::HTTP_CONTENT_ENCODING, mode);
       }
@@ -1596,6 +1640,14 @@ HttpBaseChannel::nsContentEncodings::GetNext(nsACString& aNextEncoding) {
     encoding.BeginReading(start);
     if (CaseInsensitiveFindInReadable("br"_ns, start, end)) {
       aNextEncoding.AssignLiteral(APPLICATION_BROTLI);
+      haveType = true;
+    }
+  }
+
+  if (!haveType) {
+    encoding.BeginReading(start);
+    if (CaseInsensitiveFindInReadable("zstd"_ns, start, end)) {
+      aNextEncoding.AssignLiteral(APPLICATION_ZSTD);
       haveType = true;
     }
   }
@@ -1757,6 +1809,7 @@ HttpBaseChannel::GetThirdPartyClassificationFlags(uint32_t* aFlags) {
 
 NS_IMETHODIMP
 HttpBaseChannel::GetTransferSize(uint64_t* aTransferSize) {
+  MutexAutoLock lock(mOnDataFinishedMutex);
   *aTransferSize = mTransferSize;
   return NS_OK;
 }
@@ -1775,6 +1828,7 @@ HttpBaseChannel::GetDecodedBodySize(uint64_t* aDecodedBodySize) {
 
 NS_IMETHODIMP
 HttpBaseChannel::GetEncodedBodySize(uint64_t* aEncodedBodySize) {
+  MutexAutoLock lock(mOnDataFinishedMutex);
   *aEncodedBodySize = mEncodedBodySize;
   return NS_OK;
 }
@@ -1931,6 +1985,11 @@ HttpBaseChannel::SetRequestHeader(const nsACString& aHeader,
     return NS_ERROR_INVALID_ARG;
   }
 
+  // Mark that the User-Agent header has been modified.
+  if (nsHttp::ResolveAtom(aHeader) == nsHttp::User_Agent) {
+    StoreIsUserAgentHeaderModified(true);
+  }
+
   return mRequestHead.SetHeader(aHeader, flatValue, aMerge);
 }
 
@@ -1962,6 +2021,11 @@ HttpBaseChannel::SetEmptyRequestHeader(const nsACString& aHeader) {
   // close to whats allowed in RFC 2616.
   if (!nsHttp::IsValidToken(flatHeader)) {
     return NS_ERROR_INVALID_ARG;
+  }
+
+  // Mark that the User-Agent header has been modified.
+  if (nsHttp::ResolveAtom(aHeader) == nsHttp::User_Agent) {
+    StoreIsUserAgentHeaderModified(true);
   }
 
   return mRequestHead.SetEmptyHeader(aHeader);
@@ -2080,6 +2144,19 @@ HttpBaseChannel::SetIsOCSP(bool value) {
 }
 
 NS_IMETHODIMP
+HttpBaseChannel::GetIsUserAgentHeaderModified(bool* value) {
+  NS_ENSURE_ARG_POINTER(value);
+  *value = LoadIsUserAgentHeaderModified();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::SetIsUserAgentHeaderModified(bool value) {
+  StoreIsUserAgentHeaderModified(value);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 HttpBaseChannel::GetRedirectionLimit(uint32_t* value) {
   NS_ENSURE_ARG_POINTER(value);
   *value = mRedirectionLimit;
@@ -2158,7 +2235,14 @@ HttpBaseChannel::GetResponseStatus(uint32_t* aValue) {
 NS_IMETHODIMP
 HttpBaseChannel::GetResponseStatusText(nsACString& aValue) {
   if (!mResponseHead) return NS_ERROR_NOT_AVAILABLE;
-  mResponseHead->StatusText(aValue);
+  nsAutoCString version;
+  // https://fetch.spec.whatwg.org :
+  // Responses over an HTTP/2 connection will always have the empty byte
+  // sequence as status message as HTTP/2 does not support them.
+  if (NS_WARN_IF(NS_FAILED(GetProtocolVersion(version))) ||
+      !version.EqualsLiteral("h2")) {
+    mResponseHead->StatusText(aValue);
+  }
   return NS_OK;
 }
 
@@ -2209,6 +2293,19 @@ HttpBaseChannel::UpgradeToSecure() {
   NS_ENSURE_TRUE(LoadUpgradableToSecure(), NS_ERROR_NOT_AVAILABLE);
 
   StoreUpgradeToSecure(true);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::GetRequestObserversCalled(bool* aCalled) {
+  NS_ENSURE_ARG_POINTER(aCalled);
+  *aCalled = LoadRequestObserversCalled();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::SetRequestObserversCalled(bool aCalled) {
+  StoreRequestObserversCalled(aCalled);
   return NS_OK;
 }
 
@@ -2348,7 +2445,6 @@ HttpBaseChannel::GetDocumentURI(nsIURI** aDocumentURI) {
 NS_IMETHODIMP
 HttpBaseChannel::SetDocumentURI(nsIURI* aDocumentURI) {
   ENSURE_CALLED_BEFORE_CONNECT();
-
   mDocumentURI = aDocumentURI;
   return NS_OK;
 }
@@ -3883,7 +3979,6 @@ HttpBaseChannel::GetRequestMode(RequestMode* aMode) {
 
 NS_IMETHODIMP
 HttpBaseChannel::SetRequestMode(RequestMode aMode) {
-  MOZ_ASSERT(aMode != RequestMode::EndGuard_);
   mRequestMode = aMode;
   return NS_OK;
 }
@@ -4394,6 +4489,9 @@ void HttpBaseChannel::DoNotifyListener() {
   // as not-pending.
   StoreIsPending(false);
 
+  // notify "http-on-before-stop-request" observers
+  gHttpHandler->OnBeforeStopRequest(this);
+
   if (mListener && !LoadOnStopRequestCalled()) {
     nsCOMPtr<nsIStreamListener> listener = mListener;
     StoreOnStopRequestCalled(true);
@@ -4401,7 +4499,7 @@ void HttpBaseChannel::DoNotifyListener() {
   }
   StoreOnStopRequestCalled(true);
 
-  // notify "http-on-stop-connect" observers
+  // notify "http-on-stop-request" observers
   gHttpHandler->OnStopRequest(this);
 
   // This channel has finished its job, potentially release any tail-blocked
@@ -4455,7 +4553,7 @@ void HttpBaseChannel::AddCookiesToRequest() {
 
   // If we are in the child process, we want the parent seeing any
   // cookie headers that might have been set by SetRequestHeader()
-  SetRequestHeader(nsDependentCString(nsHttp::Cookie), cookie, false);
+  SetRequestHeader(nsHttp::Cookie.val(), cookie, false);
 }
 
 /* static */
@@ -4541,14 +4639,25 @@ HttpBaseChannel::CloneReplacementChannelConfig(bool aPreserveMethod,
             dom::ReferrerInfo::ReferrerPolicyFromHeaderString(tRPHeaderValue);
       }
 
-      if (referrerPolicy != dom::ReferrerPolicy::_empty) {
-        // We may reuse computed referrer in redirect, so if referrerPolicy
-        // changes, we must not use the old computed value, and have to compute
-        // again.
-        nsCOMPtr<nsIReferrerInfo> referrerInfo =
-            dom::ReferrerInfo::CreateFromOtherAndPolicyOverride(mReferrerInfo,
-                                                                referrerPolicy);
-        config.referrerInfo = referrerInfo;
+      // In case we are here because an upgrade happened through mixed content
+      // upgrading, CSP upgrade-insecure-requests, HTTPS-Only or HTTPS-First, we
+      // have to recalculate the referrer based on the original referrer to
+      // account for the different scheme. This does NOT apply to HSTS.
+      // See Bug 1857894 and order of https://fetch.spec.whatwg.org/#main-fetch.
+      // Otherwise, if we have a new referrer policy, we want to recalculate the
+      // referrer based on the old computed referrer (Bug 1678545).
+      bool wasNonHSTSUpgrade =
+          (aRedirectFlags & nsIChannelEventSink::REDIRECT_STS_UPGRADE) &&
+          (!mLoadInfo->GetHstsStatus());
+      if (wasNonHSTSUpgrade) {
+        nsCOMPtr<nsIURI> referrer = mReferrerInfo->GetOriginalReferrer();
+        config.referrerInfo =
+            new dom::ReferrerInfo(referrer, mReferrerInfo->ReferrerPolicy(),
+                                  mReferrerInfo->GetSendReferrer());
+      } else if (referrerPolicy != dom::ReferrerPolicy::_empty) {
+        nsCOMPtr<nsIURI> referrer = mReferrerInfo->GetComputedReferrer();
+        config.referrerInfo = new dom::ReferrerInfo(
+            referrer, referrerPolicy, mReferrerInfo->GetSendReferrer());
       } else {
         config.referrerInfo = mReferrerInfo;
       }
@@ -4817,8 +4926,7 @@ HttpBaseChannel::ReplacementChannelConfig::ReplacementChannelConfig(
 }
 
 dom::ReplacementChannelConfigInit
-HttpBaseChannel::ReplacementChannelConfig::Serialize(
-    dom::ContentParent* aParent) {
+HttpBaseChannel::ReplacementChannelConfig::Serialize() {
   dom::ReplacementChannelConfigInit config;
   config.redirectFlags() = redirectFlags;
   config.classOfService() = classOfService;
@@ -4917,7 +5025,7 @@ nsresult HttpBaseChannel::SetupReplacementChannel(nsIURI* newURI,
     httpInternal->SetLastRedirectFlags(redirectFlags);
 
     if (LoadRequireCORSPreflight()) {
-      httpInternal->SetCorsPreflightParameters(mUnsafeHeaders, false);
+      httpInternal->SetCorsPreflightParameters(mUnsafeHeaders, false, false);
     }
   }
 
@@ -4946,6 +5054,13 @@ nsresult HttpBaseChannel::SetupReplacementChannel(nsIURI* newURI,
       rv = httpChannel->SetRequestHeader("User-Agent"_ns, oldUserAgent, false);
       MOZ_ASSERT(NS_SUCCEEDED(rv));
     }
+  }
+
+  // convery the IsUserAgentHeaderModified value.
+  if (httpInternal) {
+    rv = httpInternal->SetIsUserAgentHeaderModified(
+        LoadIsUserAgentHeaderModified());
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
   }
 
   // share the request context - see bug 1236650
@@ -5076,14 +5191,12 @@ nsresult HttpBaseChannel::SetupReplacementChannel(nsIURI* newURI,
   // we need to strip Authentication headers for cross-origin requests
   // Ref: https://fetch.spec.whatwg.org/#http-redirect-fetch
   nsAutoCString authHeader;
-  if (StaticPrefs::network_http_redirect_stripAuthHeader() &&
-      NS_SUCCEEDED(
-          httpChannel->GetRequestHeader("Authorization"_ns, authHeader))) {
-    if (NS_ShouldRemoveAuthHeaderOnRedirect(static_cast<nsIChannel*>(this),
-                                            newChannel, redirectFlags)) {
-      rv = httpChannel->SetRequestHeader("Authorization"_ns, ""_ns, false);
-      MOZ_ASSERT(NS_SUCCEEDED(rv));
-    }
+  if (NS_SUCCEEDED(
+          httpChannel->GetRequestHeader("Authorization"_ns, authHeader)) &&
+      NS_ShouldRemoveAuthHeaderOnRedirect(static_cast<nsIChannel*>(this),
+                                          newChannel, redirectFlags)) {
+    rv = httpChannel->SetRequestHeader("Authorization"_ns, ""_ns, false);
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
   }
 
   return NS_OK;
@@ -5356,7 +5469,8 @@ HttpBaseChannel::TimingAllowCheck(nsIPrincipal* aOrigin, bool* _retval) {
                                                 serializedOrigin, mLoadInfo);
 
   // All redirects are same origin
-  if (sameOrigin && !serializedOrigin.IsEmpty()) {
+  if (sameOrigin && (!serializedOrigin.IsEmpty() &&
+                     !serializedOrigin.EqualsLiteral("null"))) {
     *_retval = true;
     return NS_OK;
   }
@@ -5539,7 +5653,7 @@ HttpBaseChannel::GetCacheReadEnd(TimeStamp* _retval) {
 
 NS_IMETHODIMP
 HttpBaseChannel::GetTransactionPending(TimeStamp* _retval) {
-  *_retval = mTransactionPendingTime;
+  *_retval = mTransactionTimings.transactionPending;
   return NS_OK;
 }
 
@@ -5643,7 +5757,7 @@ void HttpBaseChannel::MaybeReportTimingData() {
       return;
     }
 
-    Maybe<LoadInfoArgs> loadInfoArgs;
+    LoadInfoArgs loadInfoArgs;
     mozilla::ipc::LoadInfoToLoadInfoArgs(mLoadInfo, &loadInfoArgs);
     child->SendReportFrameTimingData(loadInfoArgs, entryName, initiatorType,
                                      std::move(performanceTimingData));
@@ -5783,17 +5897,20 @@ void HttpBaseChannel::EnsureBrowserId() {
 
 void HttpBaseChannel::SetCorsPreflightParameters(
     const nsTArray<nsCString>& aUnsafeHeaders,
-    bool aShouldStripRequestBodyHeader) {
+    bool aShouldStripRequestBodyHeader, bool aShouldStripAuthHeader) {
   MOZ_RELEASE_ASSERT(!LoadRequestObserversCalled());
 
   StoreRequireCORSPreflight(true);
   mUnsafeHeaders = aUnsafeHeaders.Clone();
-  if (aShouldStripRequestBodyHeader) {
+  if (aShouldStripRequestBodyHeader || aShouldStripAuthHeader) {
     mUnsafeHeaders.RemoveElementsBy([&](const nsCString& aHeader) {
-      return aHeader.LowerCaseEqualsASCII("content-type") ||
-             aHeader.LowerCaseEqualsASCII("content-encoding") ||
-             aHeader.LowerCaseEqualsASCII("content-language") ||
-             aHeader.LowerCaseEqualsASCII("content-location");
+      return (aShouldStripRequestBodyHeader &&
+              (aHeader.LowerCaseEqualsASCII("content-type") ||
+               aHeader.LowerCaseEqualsASCII("content-encoding") ||
+               aHeader.LowerCaseEqualsASCII("content-language") ||
+               aHeader.LowerCaseEqualsASCII("content-location"))) ||
+             (aShouldStripAuthHeader &&
+              aHeader.LowerCaseEqualsASCII("authorization"));
     });
   }
 }
@@ -5852,8 +5969,15 @@ HttpBaseChannel::SetNavigationStartTimeStamp(TimeStamp aTimeStamp) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-nsresult HttpBaseChannel::CheckRedirectLimit(uint32_t aRedirectFlags) const {
+nsresult HttpBaseChannel::CheckRedirectLimit(nsIURI* aNewURI,
+                                             uint32_t aRedirectFlags) const {
   if (aRedirectFlags & nsIChannelEventSink::REDIRECT_INTERNAL) {
+    // for internal redirect due to auth retry we do not have any limit
+    // as we might restrict the number of times a user might retry
+    // authentication
+    if (aRedirectFlags & nsIChannelEventSink::REDIRECT_AUTH_RETRY) {
+      return NS_OK;
+    }
     // Some platform features, like Service Workers, depend on internal
     // redirects.  We should allow some number of internal redirects above
     // and beyond the normal redirect limit so these features continue
@@ -5880,14 +6004,38 @@ nsresult HttpBaseChannel::CheckRedirectLimit(uint32_t aRedirectFlags) const {
   // https and the page answers with a redirect (meta, 302, win.location, ...)
   // then this method can break the cycle which causes the https-only exception
   // page to appear. Note that https-first mode breaks upgrade downgrade endless
-  // loops within ShouldUpgradeHTTPSFirstRequest because https-first does not
+  // loops within ShouldUpgradeHttpsFirstRequest because https-first does not
   // display an exception page but needs a soft fallback/downgrade.
   if (nsHTTPSOnlyUtils::IsUpgradeDowngradeEndlessLoop(
-          mURI, mLoadInfo,
+          mURI, aNewURI, mLoadInfo,
           {nsHTTPSOnlyUtils::UpgradeDowngradeEndlessLoopOptions::
                EnforceForHTTPSOnlyMode})) {
+    // Mark that we didn't upgrade to https due to loop detection in https-only
+    // mode to show https-only error page. We know that we are in https-only
+    // mode, because we passed `EnforceForHTTPSOnlyMode` to
+    // `IsUpgradeDowngradeEndlessLoop`. In other words we upgrade the request
+    // with https-only mode, but then immediately cancel the request.
+    uint32_t httpsOnlyStatus = mLoadInfo->GetHttpsOnlyStatus();
+    if (httpsOnlyStatus & nsILoadInfo::HTTPS_ONLY_UNINITIALIZED) {
+      httpsOnlyStatus ^= nsILoadInfo::HTTPS_ONLY_UNINITIALIZED;
+      httpsOnlyStatus |=
+          nsILoadInfo::HTTPS_ONLY_UPGRADED_LISTENER_NOT_REGISTERED;
+      mLoadInfo->SetHttpsOnlyStatus(httpsOnlyStatus);
+    }
+
     LOG(("upgrade downgrade redirect loop!\n"));
     return NS_ERROR_REDIRECT_LOOP;
+  }
+  // in case of http-first mode we want to add an exception to disable the
+  // upgrade behavior if we have upgrade-downgrade loop to break the loop and
+  // load the http request next
+  if (mozilla::StaticPrefs::
+          dom_security_https_first_add_exception_on_failiure() &&
+      nsHTTPSOnlyUtils::IsUpgradeDowngradeEndlessLoop(
+          mURI, aNewURI, mLoadInfo,
+          {nsHTTPSOnlyUtils::UpgradeDowngradeEndlessLoopOptions::
+               EnforceForHTTPSFirstMode})) {
+    nsHTTPSOnlyUtils::AddHTTPSFirstExceptionForSession(mURI, mLoadInfo);
   }
 
   return NS_OK;
@@ -6153,11 +6301,6 @@ void HttpBaseChannel::MaybeFlushConsoleReports() {
 
 void HttpBaseChannel::DoDiagnosticAssertWhenOnStopNotCalledOnDestroy() {}
 
-NS_IMETHODIMP HttpBaseChannel::SetWaitForHTTPSSVCRecord() {
-  mCaps |= NS_HTTP_FORCE_WAIT_HTTP_RR;
-  return NS_OK;
-}
-
 bool HttpBaseChannel::Http3Allowed() const {
   bool isDirectOrNoProxy =
       mProxyInfo ? static_cast<nsProxyInfo*>(mProxyInfo.get())->IsDirect()
@@ -6236,9 +6379,127 @@ HttpBaseChannel::GetIsProxyUsed(bool* aIsProxyUsed) {
   return NS_OK;
 }
 
+static void CollectORBBlockTelemetry(
+    const OpaqueResponseBlockedTelemetryReason aTelemetryReason,
+    ExtContentPolicy aPolicy) {
+  Telemetry::LABELS_ORB_BLOCK_REASON label{
+      static_cast<uint32_t>(aTelemetryReason)};
+  Telemetry::AccumulateCategorical(label);
+
+  switch (aPolicy) {
+    case ExtContentPolicy::TYPE_INVALID:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::INVALID);
+      break;
+    case ExtContentPolicy::TYPE_OTHER:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::OTHER);
+      break;
+    case ExtContentPolicy::TYPE_FETCH:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::BLOCKED_FETCH);
+      break;
+    case ExtContentPolicy::TYPE_SCRIPT:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::SCRIPT);
+      break;
+    case ExtContentPolicy::TYPE_IMAGE:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::IMAGE);
+      break;
+    case ExtContentPolicy::TYPE_STYLESHEET:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::STYLESHEET);
+      break;
+    case ExtContentPolicy::TYPE_XMLHTTPREQUEST:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::XMLHTTPREQUEST);
+      break;
+    case ExtContentPolicy::TYPE_DTD:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::DTD);
+      break;
+    case ExtContentPolicy::TYPE_FONT:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::FONT);
+      break;
+    case ExtContentPolicy::TYPE_MEDIA:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::MEDIA);
+      break;
+    case ExtContentPolicy::TYPE_CSP_REPORT:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::CSP_REPORT);
+      break;
+    case ExtContentPolicy::TYPE_XSLT:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::XSLT);
+      break;
+    case ExtContentPolicy::TYPE_IMAGESET:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::IMAGESET);
+      break;
+    case ExtContentPolicy::TYPE_WEB_MANIFEST:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::WEB_MANIFEST);
+      break;
+    case ExtContentPolicy::TYPE_SPECULATIVE:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::SPECULATIVE);
+      break;
+    case ExtContentPolicy::TYPE_UA_FONT:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::UA_FONT);
+      break;
+    case ExtContentPolicy::TYPE_PROXIED_WEBRTC_MEDIA:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::PROXIED_WEBRTC_MEDIA);
+      break;
+    case ExtContentPolicy::TYPE_PING:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::PING);
+      break;
+    case ExtContentPolicy::TYPE_BEACON:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::BEACON);
+      break;
+    case ExtContentPolicy::TYPE_WEB_TRANSPORT:
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::WEB_TRANSPORT);
+      break;
+    case ExtContentPolicy::TYPE_WEB_IDENTITY:
+      // Don't bother extending the telemetry for this.
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::OTHER);
+      break;
+    case ExtContentPolicy::TYPE_DOCUMENT:
+    case ExtContentPolicy::TYPE_SUBDOCUMENT:
+    case ExtContentPolicy::TYPE_OBJECT:
+    case ExtContentPolicy::TYPE_OBJECT_SUBREQUEST:
+    case ExtContentPolicy::TYPE_WEBSOCKET:
+    case ExtContentPolicy::TYPE_SAVEAS_DOWNLOAD:
+      MOZ_ASSERT_UNREACHABLE("Shouldn't block this type");
+      // DOCUMENT, SUBDOCUMENT, OBJECT, OBJECT_SUBREQUEST,
+      // WEBSOCKET and SAVEAS_DOWNLOAD are excluded from ORB
+      Telemetry::AccumulateCategorical(
+          Telemetry::LABELS_ORB_BLOCK_INITIATOR::EXCLUDED);
+      break;
+      // Do not add default: so that compilers can catch the missing case.
+  }
+}
+
 void HttpBaseChannel::LogORBError(
     const nsAString& aReason,
     const OpaqueResponseBlockedTelemetryReason aTelemetryReason) {
+  auto policy = mLoadInfo->GetExternalContentPolicyType();
+  CollectORBBlockTelemetry(aTelemetryReason, policy);
+
+  // Blocking `ExtContentPolicy::TYPE_BEACON` isn't web observable, so keep
+  // quiet in the console about blocking it.
+  if (policy == ExtContentPolicy::TYPE_BEACON) {
+    return;
+  }
+
   RefPtr<dom::Document> doc;
   mLoadInfo->GetLoadingDocument(getter_AddRefs(doc));
 
@@ -6262,33 +6523,6 @@ void HttpBaseChannel::LogORBError(
   nsContentUtils::ReportToConsole(nsIScriptError::warningFlag, "ORB"_ns, doc,
                                   nsContentUtils::eNECKO_PROPERTIES,
                                   "ResourceBlockedORB", params);
-
-  Telemetry::LABELS_ORB_BLOCK_REASON label{
-      static_cast<uint32_t>(aTelemetryReason)};
-  Telemetry::AccumulateCategorical(label);
-
-  switch (mLoadInfo->GetExternalContentPolicyType()) {
-    case ExtContentPolicy::TYPE_FETCH:
-      Telemetry::AccumulateCategorical(
-          Telemetry::LABELS_ORB_BLOCK_INITIATOR::BLOCKED_FETCH);
-      break;
-    case ExtContentPolicy::TYPE_IMAGE:
-      Telemetry::AccumulateCategorical(
-          Telemetry::LABELS_ORB_BLOCK_INITIATOR::IMAGE);
-      break;
-    case ExtContentPolicy::TYPE_SCRIPT:
-      Telemetry::AccumulateCategorical(
-          Telemetry::LABELS_ORB_BLOCK_INITIATOR::SCRIPT);
-      break;
-    case ExtContentPolicy::TYPE_MEDIA:
-      Telemetry::AccumulateCategorical(
-          Telemetry::LABELS_ORB_BLOCK_INITIATOR::MEDIA);
-      break;
-    default:
-      Telemetry::AccumulateCategorical(
-          Telemetry::LABELS_ORB_BLOCK_INITIATOR::OTHER);
-      break;
-  }
 }
 
 NS_IMETHODIMP HttpBaseChannel::SetEarlyHintLinkType(
@@ -6300,6 +6534,31 @@ NS_IMETHODIMP HttpBaseChannel::SetEarlyHintLinkType(
 NS_IMETHODIMP HttpBaseChannel::GetEarlyHintLinkType(
     uint32_t* aEarlyHintLinkType) {
   *aEarlyHintLinkType = mEarlyHintLinkType;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::SetHasContentDecompressed(bool aValue) {
+  LOG(("HttpBaseChannel::SetHasContentDecompressed [this=%p value=%d]\n", this,
+       aValue));
+  mHasContentDecompressed = aValue;
+  return NS_OK;
+}
+NS_IMETHODIMP
+HttpBaseChannel::GetHasContentDecompressed(bool* value) {
+  *value = mHasContentDecompressed;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::SetRenderBlocking(bool aRenderBlocking) {
+  mRenderBlocking = aRenderBlocking;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::GetRenderBlocking(bool* aRenderBlocking) {
+  *aRenderBlocking = mRenderBlocking;
   return NS_OK;
 }
 

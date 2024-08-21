@@ -1,6 +1,6 @@
-# Captive portal detection
+# Captive Portal Detection
 
-## What are captive portals?
+## What are Captive Portals?
 A captive portal is what we call a network that requires your action before it allows you to connect to the Internet. This action could be to log in using a username and password, or just to accept the network's terms and conditions.
 
 There are many different ways in which captive portal network might attempt to direct you to the captive portal page.
@@ -26,7 +26,7 @@ The [CaptivePortalService](https://searchfox.org/mozilla-central/source/netwerk/
     - A captive portal was detected, and internet connectivity is not currently available.
     - A [captive portal notification bar](https://searchfox.org/mozilla-central/source/browser/base/content/browser-captivePortal.js) might be displayed to the user.
 
-The Captive portal service uses [CaptiveDetect.sys.mjs](https://searchfox.org/mozilla-central/source/toolkit/components/captivedetect/CaptiveDetect.jsm) to perform the checks, which in turn uses XMLHttpRequest.
+The Captive portal service uses [CaptiveDetect.sys.mjs](https://searchfox.org/mozilla-central/source/toolkit/components/captivedetect/CaptiveDetect.sys.mjs) to perform the checks, which in turn uses XMLHttpRequest.
 This request needs to be exempted from HTTPS upgrades, DNS over HTTPS, and many new browser features in order to function as expected.
 
 ```{note}
@@ -60,21 +60,9 @@ pref("captivedetect.maxWaitingTime", 5000);
 pref("captivedetect.pollingTime", 3000);
 // Number of times to retry the captive portal check if there is an error or timeout.
 pref("captivedetect.maxRetryCount", 5);
-
 ```
 
+## Connectivity checking
 
-# Connectivity checking
-We use a mechanism similar to captive portal checking to verify if the browser has internet connectivity. The [NetworkConnectivityService](https://searchfox.org/mozilla-central/source/netwerk/base/NetworkConnectivityService.h) will periodically connect to the same URL we use for captive portal detection, but will restrict its preferences to either IPv4 or IPv6. Based on which responses succeed, we can infer if Firefox has IPv4 and/or IPv6 connectivity. We also perform DNS queries to check if the system has a IPv4/IPv6 capable DNS resolver.
-
-## Preferences
-
-```js
-
-pref("network.connectivity-service.enabled", true);
-pref("network.connectivity-service.DNSv4.domain", "example.org");
-pref("network.connectivity-service.DNSv6.domain", "example.org");
-pref("network.connectivity-service.IPv4.url", "http://detectportal.firefox.com/success.txt?ipv4");
-pref("network.connectivity-service.IPv6.url", "http://detectportal.firefox.com/success.txt?ipv6");
-
-```
+The connectivity checker might use some of the captive portal URLs.
+Refer [this](connectivity_checking.md) page for more details.

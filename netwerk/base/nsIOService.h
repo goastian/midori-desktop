@@ -28,8 +28,6 @@
 #include "nsWeakReference.h"
 #include "nsNetCID.h"
 
-#define NS_N(x) (sizeof(x) / sizeof(*(x)))
-
 // We don't want to expose this observer topic.
 // Intended internal use only for remoting offline/inline events.
 // See Bug 552829
@@ -145,6 +143,9 @@ class nsIOService final : public nsIIOService,
 
   static bool TooManySocketProcessCrash();
   static void IncreaseSocketProcessCrashCount();
+#ifdef MOZ_WIDGET_ANDROID
+  static bool ShouldAddAdditionalSearchHeaders(nsIURI* aURI, bool* val);
+#endif
 
  private:
   // These shouldn't be called directly:

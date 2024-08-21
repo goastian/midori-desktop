@@ -21,8 +21,13 @@
 
 class nsAttrValue;
 class nsICookieJarSettings;
+class nsILoadContext;
 class nsIPrincipal;
 class nsIReferrerInfo;
+
+namespace mozilla::dom {
+class CanonicalBrowsingContext;
+}
 
 namespace mozilla::net {
 
@@ -88,7 +93,10 @@ class EarlyHintPreloader final : public nsIStreamListener,
       OngoingEarlyHints* aOngoingEarlyHints, const LinkHeader& aHeader,
       nsIURI* aBaseURI, nsIPrincipal* aPrincipal,
       nsICookieJarSettings* aCookieJarSettings,
-      const nsACString& aReferrerPolicy, const nsACString& aCSPHeader);
+      const nsACString& aReferrerPolicy, const nsACString& aCSPHeader,
+      uint64_t aBrowsingContextID,
+      dom::CanonicalBrowsingContext* aLoadingBrowsingContext,
+      bool aIsModulepreload);
 
   // register Channel to EarlyHintRegistrar. Returns true and sets connect args
   // if successful
@@ -120,18 +128,18 @@ class EarlyHintPreloader final : public nsIStreamListener,
   static Maybe<PreloadHashKey> GenerateHashKey(ASDestination aAs, nsIURI* aURI,
                                                nsIPrincipal* aPrincipal,
                                                CORSMode corsMode,
-                                               const nsAString& aType);
+                                               bool aIsModulepreload);
 
   static nsSecurityFlags ComputeSecurityFlags(CORSMode aCORSMode,
-                                              ASDestination aAs,
-                                              bool aIsModule);
+                                              ASDestination aAs);
 
   // call to start the preload
   nsresult OpenChannel(nsIURI* aURI, nsIPrincipal* aPrincipal,
                        nsSecurityFlags aSecurityFlags,
                        nsContentPolicyType aContentPolicyType,
                        nsIReferrerInfo* aReferrerInfo,
-                       nsICookieJarSettings* aCookieJarSettings);
+                       nsICookieJarSettings* aCookieJarSettings,
+                       uint64_t aBrowsingContextID);
   void PriorizeAsPreload();
   void SetLinkHeader(const LinkHeader& aLinkHeader);
 
@@ -163,6 +171,10 @@ class EarlyHintPreloader final : public nsIStreamListener,
 
   RefPtr<ParentChannelListener> mParentListener;
   nsCOMPtr<nsITimer> mTimer;
+
+  // Hold the load context to provide data to web extension and anti tracking.
+  // See Bug 1836289 and Bug 1875268
+  nsCOMPtr<nsILoadContext> mLoadContext;
 
  private:
   // IMPORTANT: when adding new values, always add them to the end, otherwise

@@ -1,10 +1,12 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserver = null;
 
-function make_channel(url, callback, ctx) {
+function make_channel(url) {
   return NetUtil.newChannel({ uri: url, loadUsingSystemPrincipal: true });
 }
 
@@ -50,9 +52,9 @@ Canceler.prototype = {
     "nsIRequestObserver",
   ]),
 
-  onStartRequest(request) {},
+  onStartRequest() {},
 
-  onDataAvailable(request, stream, offset, count) {
+  onDataAvailable(request) {
     request.QueryInterface(Ci.nsIChannel).cancel(Cr.NS_BINDING_ABORTED);
   },
 

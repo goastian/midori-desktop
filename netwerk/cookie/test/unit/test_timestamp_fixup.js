@@ -62,8 +62,8 @@ add_task(async function test_timestamp_fixup() {
 
   if (AppConstants.platform != "android") {
     Services.fog.initializeFOG();
-    Services.fog.testResetFOG();
   }
+  Services.fog.testResetFOG();
 
   // Now start the cookie service, and then check the fields in the table.
   // Get sessionCookies to wait for the initialization in cookie thread
@@ -71,14 +71,7 @@ add_task(async function test_timestamp_fixup() {
     Math.floor(Services.cookies.cookies[0].creationTime / 1000),
     now
   );
-  Assert.equal(conn.schemaVersion, 12);
-
-  // Testing telemetry is disabled until we can fix
-  // Bug 1752139 - Support `TestResetFOG` on Android
-  if (AppConstants.platform == "android") {
-    conn.close();
-    return;
-  }
+  Assert.equal(conn.schemaVersion, 13);
 
   Assert.equal(
     await Glean.networking.cookieTimestampFixedCount.creationTime.testGetValue(),

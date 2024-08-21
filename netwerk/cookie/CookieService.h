@@ -70,6 +70,7 @@ class CookieService final : public nsICookieService,
                            CookieStruct& aCookieData, bool aRequireHostMatch,
                            CookieStatus aStatus, nsCString& aCookieHeader,
                            bool aFromHttp, bool aIsForeignAndNotAddon,
+                           bool aPartitionedOnly, bool aIsInPrivateBrowsing,
                            nsIConsoleReportCollector* aCRC, bool& aSetCookie);
   static CookieStatus CheckPrefs(
       nsIConsoleReportCollector* aCRC, nsICookieJarSettings* aCookieJarSettings,
@@ -87,8 +88,8 @@ class CookieService final : public nsICookieService,
                         bool aIsSameSiteForeign, bool aHadCrossSiteRedirects,
                         bool aHttpBound,
                         bool aAllowSecureCookiesToInsecureOrigin,
-                        const OriginAttributes& aOriginAttrs,
-                        nsTArray<Cookie*>& aCookieList);
+                        const nsTArray<OriginAttributes>& aOriginAttrsList,
+                        nsTArray<RefPtr<Cookie>>& aCookieList);
 
   /**
    * This method is a helper that allows calling nsICookieManager::Remove()
@@ -99,8 +100,8 @@ class CookieService final : public nsICookieService,
 
   bool SetCookiesFromIPC(const nsACString& aBaseDomain,
                          const OriginAttributes& aAttrs, nsIURI* aHostURI,
-                         bool aFromHttp,
-                         const nsTArray<CookieStruct>& aCookies);
+                         bool aFromHttp, const nsTArray<CookieStruct>& aCookies,
+                         dom::BrowsingContext* aBrowsingContext);
 
  protected:
   virtual ~CookieService();
@@ -123,7 +124,6 @@ class CookieService final : public nsICookieService,
   static bool CheckDomain(CookieStruct& aCookieData, nsIURI* aHostURI,
                           const nsACString& aBaseDomain,
                           bool aRequireHostMatch);
-  static bool CheckHiddenPrefix(CookieStruct& aCookieData);
   static bool CheckPath(CookieStruct& aCookieData,
                         nsIConsoleReportCollector* aCRC, nsIURI* aHostURI);
   static bool CheckPrefixes(CookieStruct& aCookieData, bool aSecureRequest);

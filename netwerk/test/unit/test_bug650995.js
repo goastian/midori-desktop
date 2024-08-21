@@ -5,7 +5,9 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 do_get_profile();
 
@@ -156,7 +158,7 @@ function TestCacheEntrySize(
       channel.asyncOpen(new ChannelListener(ctx.testAndTriggerNext, ctx));
     });
   };
-  this.testAndTriggerNext = function (request, data, ctx) {
+  this.testAndTriggerNext = function (request, data) {
     Assert.equal(secondExpectedReply, data);
     executeSoon(nextTest);
   };

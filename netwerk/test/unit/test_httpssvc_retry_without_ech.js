@@ -61,8 +61,6 @@ function channelOpenPromise(chan, flags) {
     certOverrideService.setDisableAllSecurityChecksAndLetAttackersInterceptMyData(
       false
     );
-    let internal = chan.QueryInterface(Ci.nsIHttpChannelInternal);
-    internal.setWaitForHTTPSSVCRecord();
     chan.asyncOpen(new ChannelListener(finish, null, flags));
   });
 }
@@ -76,7 +74,7 @@ add_task(async function testRetryWithoutECH() {
   Services.prefs.setIntPref("network.trr.mode", 3);
   Services.prefs.setCharPref(
     "network.trr.uri",
-    `https://foo.example.com:${trrServer.port}/dns-query`
+    `https://foo.example.com:${trrServer.port()}/dns-query`
   );
   Services.prefs.setBoolPref(
     "network.dns.echconfig.fallback_to_origin_when_all_failed",

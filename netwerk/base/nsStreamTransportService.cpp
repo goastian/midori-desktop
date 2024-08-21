@@ -17,6 +17,7 @@
 #include "nsITransport.h"
 #include "nsIObserverService.h"
 #include "nsThreadPool.h"
+#include "mozilla/Components.h"
 #include "mozilla/Services.h"
 
 namespace mozilla {
@@ -91,8 +92,8 @@ nsInputStreamTransport::OpenInputStream(uint32_t flags, uint32_t segsize,
   NS_ENSURE_TRUE(!mInProgress, NS_ERROR_IN_PROGRESS);
 
   nsresult rv;
-  nsCOMPtr<nsIEventTarget> target =
-      do_GetService(NS_STREAMTRANSPORTSERVICE_CONTRACTID, &rv);
+  nsCOMPtr<nsIEventTarget> target;
+  target = mozilla::components::StreamTransport::Service(&rv);
   if (NS_FAILED(rv)) return rv;
 
   // XXX if the caller requests an unbuffered stream, then perhaps
@@ -259,10 +260,11 @@ nsresult nsStreamTransportService::Init() {
 
   // Configure the pool
   mPool->SetName("StreamTrans"_ns);
+  // TODO: Make these settings configurable.
   mPool->SetThreadLimit(25);
-  mPool->SetIdleThreadLimit(5);
-  mPool->SetIdleThreadTimeoutRegressive(true);
-  mPool->SetIdleThreadTimeout(PR_SecondsToInterval(30));
+  mPool->SetIdleThreadLimit(4);
+  mPool->SetIdleThreadMaximumTimeout(30 * 1000);
+  mPool->SetIdleThreadGraceTimeout(500);
   MOZ_POP_THREAD_SAFETY
 
   nsCOMPtr<nsIObserverService> obsSvc = mozilla::services::GetObserverService();
@@ -367,62 +369,6 @@ nsStreamTransportService::Observe(nsISupports* subject, const char* topic,
     }
   }
   return NS_OK;
-}
-
-class AvailableEvent final : public Runnable {
- public:
-  AvailableEvent(nsIInputStream* stream, nsIInputAvailableCallback* callback)
-      : Runnable("net::AvailableEvent"),
-        mStream(stream),
-        mCallback(callback),
-        mDoingCallback(false),
-        mSize(0),
-        mResultForCallback(NS_OK) {
-    mCallbackTarget = GetCurrentSerialEventTarget();
-  }
-
-  NS_IMETHOD Run() override {
-    if (mDoingCallback) {
-      // pong
-      mCallback->OnInputAvailableComplete(mSize, mResultForCallback);
-      mCallback = nullptr;
-    } else {
-      // ping
-      mResultForCallback = mStream->Available(&mSize);
-      mStream = nullptr;
-      mDoingCallback = true;
-
-      nsCOMPtr<nsIRunnable> event(this);  // overly cute
-      mCallbackTarget->Dispatch(event.forget(), NS_DISPATCH_NORMAL);
-      mCallbackTarget = nullptr;
-    }
-    return NS_OK;
-  }
-
- private:
-  virtual ~AvailableEvent() = default;
-
-  nsCOMPtr<nsIInputStream> mStream;
-  nsCOMPtr<nsIInputAvailableCallback> mCallback;
-  nsCOMPtr<nsIEventTarget> mCallbackTarget;
-  bool mDoingCallback;
-  uint64_t mSize;
-  nsresult mResultForCallback;
-};
-
-NS_IMETHODIMP
-nsStreamTransportService::InputAvailable(nsIInputStream* stream,
-                                         nsIInputAvailableCallback* callback) {
-  nsCOMPtr<nsIThreadPool> pool;
-  {
-    mozilla::MutexAutoLock lock(mShutdownLock);
-    if (mIsShutdown) {
-      return NS_ERROR_NOT_INITIALIZED;
-    }
-    pool = mPool;
-  }
-  nsCOMPtr<nsIRunnable> event = new AvailableEvent(stream, callback);
-  return pool->Dispatch(event.forget(), NS_DISPATCH_NORMAL);
 }
 
 }  // namespace net

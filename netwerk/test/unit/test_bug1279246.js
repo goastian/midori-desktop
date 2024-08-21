@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserver = new HttpServer();
 var pass = 0;
@@ -43,7 +45,7 @@ Listener.prototype = {
     }
   },
 
-  onStopRequest(request, status) {
+  onStopRequest() {
     if (pass == 0) {
       Assert.equal(this._buffer.length, responseLen);
       pass++;

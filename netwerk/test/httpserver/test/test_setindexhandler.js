@@ -18,11 +18,11 @@ function run_test() {
   runHttpTests(tests, testComplete(srv));
 }
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + srv.identity.primaryPort + "/";
 });
 
-XPCOMUtils.defineLazyGetter(this, "tests", function () {
+ChromeUtils.defineLazyGetter(this, "tests", function () {
   return [
     new Test(URL, init, startCustomIndexHandler, stopCustomIndexHandler),
     new Test(URL, init, startDefaultIndexHandler, stopDefaultIndexHandler),
@@ -44,7 +44,7 @@ function stopCustomIndexHandler(ch, status, data) {
 function startDefaultIndexHandler(ch) {
   Assert.equal(ch.responseStatus, 200);
 }
-function stopDefaultIndexHandler(ch, status, data) {
+function stopDefaultIndexHandler(ch, status) {
   Assert.ok(Components.isSuccessCode(status));
 }
 

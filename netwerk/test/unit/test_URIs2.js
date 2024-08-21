@@ -134,6 +134,7 @@ var gTests = [
     ref: "", // fix
     specIgnoringRef: "http://a/b/c/g?y",
     hasRef: false,
+    hasQuery: true,
     nsIURL: true,
     nsINestedURI: false,
   },
@@ -460,6 +461,7 @@ var gTests = [
     scheme: "https",
     prePath: "https://www3.example2.com",
     pathQueryRef: "/bar",
+    hasQuery: false,
     ref: "",
     nsIURL: true,
     nsINestedURI: false,
@@ -637,6 +639,10 @@ function do_test_uri_basic(aTest) {
     do_info("testing hasref: " + aTest.hasRef + " vs " + URI.hasRef);
     Assert.equal(aTest.hasRef, URI.hasRef);
   }
+  if ("hasQuery" in aTest) {
+    do_info("testing hasQuery: " + aTest.hasQuery + " vs " + URI.hasQuery);
+    Assert.equal(aTest.hasQuery, URI.hasQuery);
+  }
 }
 
 // Test that a given URI parses correctly when we add a given ref to the end
@@ -730,7 +736,7 @@ function do_test_uri_with_hash_suffix(aTest, aSuffix) {
     do_check_property(aTest, testURI, "pathQueryRef", function (aStr) {
       return aStr + aSuffix;
     });
-    do_check_property(aTest, testURI, "ref", function (aStr) {
+    do_check_property(aTest, testURI, "ref", function () {
       return aSuffix.substr(1);
     });
   }

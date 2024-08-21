@@ -32,7 +32,6 @@
 static const char kOpenCaptivePortalLoginEvent[] = "captive-portal-login";
 static const char kClearPrivateData[] = "clear-private-data";
 static const char kPurge[] = "browser:purge-session-history";
-static const char kDisableIpv6Pref[] = "network.dns.disableIPv6";
 
 #define TRR_PREF_PREFIX "network.trr."
 #define TRR_PREF(x) TRR_PREF_PREFIX x
@@ -171,7 +170,7 @@ static void EventTelemetryPrefChanged(const char* aPref, void* aData) {
       StaticPrefs::network_trr_confirmation_telemetry_enabled());
 }
 
-nsresult TRRService::Init() {
+nsresult TRRService::Init(bool aNativeHTTPSQueryEnabled) {
   MOZ_ASSERT(NS_IsMainThread(), "wrong thread");
   if (mInitialized) {
     return NS_OK;
@@ -184,13 +183,13 @@ nsresult TRRService::Init() {
   GetPrefBranch(getter_AddRefs(prefBranch));
   if (prefBranch) {
     prefBranch->AddObserver(TRR_PREF_PREFIX, this, true);
-    prefBranch->AddObserver(kDisableIpv6Pref, this, true);
     prefBranch->AddObserver(kRolloutURIPref, this, true);
     prefBranch->AddObserver(kRolloutModePref, this, true);
   }
 
   sTRRServicePtr = this;
 
+  mNativeHTTPSQueryEnabled = aNativeHTTPSQueryEnabled;
   ReadPrefs(nullptr);
   mConfirmation.HandleEvent(ConfirmationEvent::Init);
 
@@ -408,12 +407,6 @@ nsresult TRRService::ReadPrefs(const char* name) {
     Preferences::GetCString(TRR_PREF("bootstrapAddr"), mBootstrapAddr);
     clearEntireCache = true;
   }
-  if (!name || !strcmp(name, kDisableIpv6Pref)) {
-    bool tmp;
-    if (NS_SUCCEEDED(Preferences::GetBool(kDisableIpv6Pref, &tmp))) {
-      mDisableIPv6 = tmp;
-    }
-  }
   if (!name || !strcmp(name, TRR_PREF("excluded-domains")) ||
       !strcmp(name, TRR_PREF("builtin-excluded-domains"))) {
     MutexSingleWriterAutoLock lock(mLock);
@@ -539,8 +532,7 @@ nsresult TRRService::DispatchTRRRequestInternal(TRR* aTrrRequest,
 }
 
 already_AddRefed<nsIThread> TRRService::MainThreadOrTRRThread(bool aWithLock) {
-  if (!StaticPrefs::network_trr_fetch_off_main_thread() ||
-      XRE_IsSocketProcess() || mDontUseTRRThread) {
+  if (XRE_IsSocketProcess() || mDontUseTRRThread) {
     return do_GetMainThread();
   }
 
@@ -1029,7 +1021,9 @@ bool TRRService::IsExcludedFromTRR_unlocked(const nsACString& aHost) {
       return true;
     }
     if (mDNSSuffixDomains.Contains(subdomain)) {
-      LOG(("Subdomain [%s] of host [%s] Is Excluded From TRR via pref\n",
+      LOG(
+          ("Subdomain [%s] of host [%s] Is Excluded From TRR via DNSSuffix "
+           "domains\n",
            subdomain.BeginReading(), aHost.BeginReading()));
       return true;
     }
@@ -1386,7 +1380,7 @@ AHostResolver::LookupStatus TRRService::CompleteLookup(
 
 AHostResolver::LookupStatus TRRService::CompleteLookupByType(
     nsHostRecord*, nsresult, mozilla::net::TypeRecordResultType& aResult,
-    uint32_t aTtl, bool aPb) {
+    mozilla::net::TRRSkippedReason aReason, uint32_t aTtl, bool aPb) {
   return LOOKUP_OK;
 }
 

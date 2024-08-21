@@ -8,8 +8,8 @@
 /* eslint-env mozilla/simpletest */
 /* global ContentTaskUtils, content */
 
-const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+import { NetUtil } from "resource://gre/modules/NetUtil.sys.mjs";
+
 const info = console.log;
 
 export var HTTPS_EXAMPLE_ORG = "https://example.org";
@@ -113,7 +113,7 @@ export async function triggerSetCookieFromHttpPrivate(uri, cookie) {
 // observer/listener function that will be run on the content processes
 // listens and checks for the expected cookies
 export function checkExpectedCookies(expected, browserName) {
-  const COOKIE_FILTER_TEST_MESSAGE = "cookie-content-filter-test";
+  const COOKIE_FILTER_TEST_MESSAGE = "content-added-cookie";
   const COOKIE_FILTER_TEST_CLEANUP = "cookie-content-filter-cleanup";
 
   // Counting the expected number of tests is vital to the integrity of these

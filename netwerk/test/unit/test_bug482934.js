@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var response_code;
 var response_body;
@@ -89,7 +91,7 @@ add_test(() => {
 
   var ch = make_channel(resource_url);
   ch.asyncOpen(
-    new ChannelListener(function (aRequest, aData) {
+    new ChannelListener(function (aRequest) {
       syncWithCacheIOThread(() => {
         Assert.ok(hit_server);
         Assert.equal(
@@ -115,7 +117,7 @@ add_test(() => {
 
   var ch = make_channel(resource_url);
   ch.asyncOpen(
-    new ChannelListener(function (aRequest, aData) {
+    new ChannelListener(function (aRequest) {
       syncWithCacheIOThread(() => {
         Assert.ok(hit_server);
         Assert.equal(
@@ -168,7 +170,7 @@ add_test(() => {
   response_time = "Sat, 3 Jan 2009 00:00:00 GMT";
   var ch = make_channel(resource_url);
   ch.asyncOpen(
-    new ChannelListener(function (aRequest, aData) {
+    new ChannelListener(function (aRequest) {
       syncWithCacheIOThread(() => {
         Assert.ok(hit_server);
         Assert.equal(

@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 /*
  * Test whether we fail bad URIs in HTTP redirect as CORRUPTED_CONTENT.
@@ -9,13 +11,13 @@ const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
 var httpServer = null;
 
 var BadRedirectPath = "/BadRedirect";
-XPCOMUtils.defineLazyGetter(this, "BadRedirectURI", function () {
+ChromeUtils.defineLazyGetter(this, "BadRedirectURI", function () {
   return (
     "http://localhost:" + httpServer.identity.primaryPort + BadRedirectPath
   );
 });
 
-function make_channel(url, callback, ctx) {
+function make_channel(url) {
   return NetUtil.newChannel({ uri: url, loadUsingSystemPrincipal: true });
 }
 
@@ -25,7 +27,7 @@ function BadRedirectHandler(metadata, response) {
   response.setHeader("Location", "http://localhost:4444>BadRedirect", false);
 }
 
-function checkFailed(request, buffer) {
+function checkFailed(request) {
   Assert.equal(request.status, Cr.NS_ERROR_CORRUPTED_CONTENT);
 
   httpServer.stop(do_test_finished);

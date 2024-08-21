@@ -2,9 +2,11 @@
 // notifying http-on-modify-request and http-on-before-connect observers.
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpserv.identity.primaryPort;
 });
 
@@ -20,7 +22,7 @@ AuthPrompt.prototype = {
 
   QueryInterface: ChromeUtils.generateQI(["nsIAuthPrompt"]),
 
-  prompt: function ap1_prompt(title, text, realm, save, defaultText, result) {
+  prompt: function ap1_prompt() {
     do_throw("unexpected prompt call");
   },
 
@@ -40,7 +42,7 @@ AuthPrompt.prototype = {
     return true;
   },
 
-  promptPassword: function promptPW(title, text, realm, save, pwd) {
+  promptPassword: function promptPW() {
     do_throw("unexpected promptPassword call");
   },
 };
@@ -62,7 +64,7 @@ requestListenerObserver.prototype = {
   resumeOnModifyRequest: false,
   QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     if (
       topic === "http-on-before-connect" &&
       subject instanceof Ci.nsIHttpChannel

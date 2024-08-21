@@ -243,9 +243,9 @@ let testCases = [
   // Han + U+30FB + Han
   ["xn--vek160nb2ay85atj0b.jp", "\u65e5\u672c\u30fb\u91ce\u7403.jp", kSafe],
   // Latin + U+30FB + Latin
-  ["xn--abcdef-k64e.jp", "abc\u30fbdef.jp", kUnsafe, "DISABLED"],
+  ["xn--abcdef-k64e.jp", "abc\u30fbdef.jp", kUnsafe],
   // U+30FB + Latin
-  ["xn--abc-os4b.jp", "\u30fbabc.jp", kUnsafe, "DISABLED"],
+  ["xn--abc-os4b.jp", "\u30fbabc.jp", kUnsafe],
 
   // U+30FD (ヽ) is allowed only after Katakana.
   // Katakana + U+30FD
@@ -416,7 +416,7 @@ let testCases = [
   // þħĸŧƅ.com
   ["xn--vda6f3b2kpf.com", "\u00fe\u0127\u0138\u0167\u0185.com", kUnsafe],
   // þhktb.com
-  ["xn--hktb-9ra.com", "\u00fehktb.com", kUnsafe, "DISABLED"],
+  ["xn--hktb-9ra.com", "\u00fehktb.com", kUnsafe],
   // pħktb.com
   ["xn--pktb-5xa.com", "p\u0127ktb.com", kUnsafe, "DISABLED"],
   // phĸtb.com
@@ -708,9 +708,9 @@ let testCases = [
 
   // Block single/double-quote-like characters.
   // U+02BB (ʻ)
-  ["xn--ab-8nb.com", "a\u02bbb.com", kUnsafe, "DISABLED"],
+  ["xn--ab-8nb.com", "a\u02bbb.com", kUnsafe],
   // U+02BC (ʼ)
-  ["xn--ab-cob.com", "a\u02bcb.com", kUnsafe, "DISABLED"],
+  ["xn--ab-cob.com", "a\u02bcb.com", kUnsafe],
   // U+144A: Not allowed to mix with scripts other than Canadian Syllabics.
   ["xn--ab-jom.com", "a\u144ab.com", kUnsafe],
   ["xn--xcec9s.com", "\u1401\u144a\u1402.com", kUnsafe],
@@ -876,8 +876,8 @@ let testCases = [
   ["xn--ceba.com", "\u05d7\u05d7.com", kUnsafe, "DISABLED"],
 
   // U+00FE (þ) and U+00F0 (ð) are only allowed under the .is TLD.
-  ["xn--acdef-wva.com", "a\u00fecdef.com", kUnsafe, "DISABLED"],
-  ["xn--mnpqr-jta.com", "mn\u00f0pqr.com", kUnsafe, "DISABLED"],
+  ["xn--acdef-wva.com", "a\u00fecdef.com", kUnsafe],
+  ["xn--mnpqr-jta.com", "mn\u00f0pqr.com", kUnsafe],
   ["xn--acdef-wva.is", "a\u00fecdef.is", kSafe],
   ["xn--mnpqr-jta.is", "mn\u00f0pqr.is", kSafe],
 
@@ -886,13 +886,13 @@ let testCases = [
   ["xn--xample-vyc.az", "\u0259xample.az", kSafe],
 
   // U+00B7 is only allowed on Catalan domains between two l's.
-  ["xn--googlecom-5pa.com", "google\u00b7com.com", kUnsafe, "DISABLED"],
-  ["xn--ll-0ea.com", "l\u00b7l.com", kUnsafe, "DISABLED"],
+  ["xn--googlecom-5pa.com", "google\u00b7com.com", kUnsafe],
+  ["xn--ll-0ea.com", "l\u00b7l.com", kUnsafe],
   ["xn--ll-0ea.cat", "l\u00b7l.cat", kSafe],
-  ["xn--al-0ea.cat", "a\u00b7l.cat", kUnsafe, "DISABLED"],
-  ["xn--la-0ea.cat", "l\u00b7a.cat", kUnsafe, "DISABLED"],
-  ["xn--l-fda.cat", "\u00b7l.cat", kUnsafe, "DISABLED"],
-  ["xn--l-gda.cat", "l\u00b7.cat", kUnsafe, "DISABLED"],
+  ["xn--al-0ea.cat", "a\u00b7l.cat", kUnsafe],
+  ["xn--la-0ea.cat", "l\u00b7a.cat", kUnsafe],
+  ["xn--l-fda.cat", "\u00b7l.cat", kUnsafe],
+  ["xn--l-gda.cat", "l\u00b7.cat", kUnsafe],
 
   ["xn--googlecom-gk6n.com", "google\u4e28com.com", kUnsafe, "DISABLED"],
   ["xn--googlecom-0y6n.com", "google\u4e5bcom.com", kUnsafe, "DISABLED"],
@@ -1049,4 +1049,10 @@ add_task(async function test_chrome_spoofs() {
       );
     }
   }
+});
+
+add_task(async function test_interpuncts_fqdn() {
+  let isAscii = {};
+  let result = idnService.convertToDisplayIDN("xn--ll-0ea.cat.", isAscii);
+  Assert.equal(result, "l\u00b7l.cat.");
 });

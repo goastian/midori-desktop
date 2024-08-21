@@ -32,13 +32,14 @@
 #endif
 
 #include "SerializedLoadContext.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "nsIOService.h"
 #include "nsINetworkPredictor.h"
 #include "nsINetworkPredictorVerifier.h"
 #include "nsINetworkLinkService.h"
 #include "nsQueryObject.h"
 #include "mozilla/ipc/URIUtils.h"
+#include "mozilla/Components.h"
 #include "nsNetUtil.h"
 #include "SimpleChannel.h"
 
@@ -176,15 +177,8 @@ bool NeckoChild::DeallocPWebSocketChild(PWebSocketChild* child) {
 
 PWebSocketEventListenerChild* NeckoChild::AllocPWebSocketEventListenerChild(
     const uint64_t& aInnerWindowID) {
-  nsCOMPtr<nsISerialEventTarget> target;
-  if (nsGlobalWindowInner* win =
-          nsGlobalWindowInner::GetInnerWindowWithId(aInnerWindowID)) {
-    target = win->EventTargetFor(TaskCategory::Other);
-  }
-
-  RefPtr<WebSocketEventListenerChild> c =
-      new WebSocketEventListenerChild(aInnerWindowID, target);
-
+  RefPtr<WebSocketEventListenerChild> c = new WebSocketEventListenerChild(
+      aInnerWindowID, GetMainThreadSerialEventTarget());
   return c.forget().take();
 }
 
@@ -270,8 +264,8 @@ mozilla::ipc::IPCResult NeckoChild::RecvPredOnPredictPrefetch(
 
   // Get the current predictor
   nsresult rv = NS_OK;
-  nsCOMPtr<nsINetworkPredictorVerifier> predictor =
-      do_GetService("@mozilla.org/network/predictor;1", &rv);
+  nsCOMPtr<nsINetworkPredictorVerifier> predictor;
+  predictor = mozilla::components::Predictor::Service(&rv);
   NS_ENSURE_SUCCESS(rv, IPC_FAIL_NO_REASON(this));
 
   predictor->OnPredictPrefetch(aURI, aHttpStatus);
@@ -287,8 +281,8 @@ mozilla::ipc::IPCResult NeckoChild::RecvPredOnPredictPreconnect(nsIURI* aURI) {
   }
   // Get the current predictor
   nsresult rv = NS_OK;
-  nsCOMPtr<nsINetworkPredictorVerifier> predictor =
-      do_GetService("@mozilla.org/network/predictor;1", &rv);
+  nsCOMPtr<nsINetworkPredictorVerifier> predictor;
+  predictor = mozilla::components::Predictor::Service(&rv);
   NS_ENSURE_SUCCESS(rv, IPC_FAIL_NO_REASON(this));
 
   predictor->OnPredictPreconnect(aURI);
@@ -304,8 +298,8 @@ mozilla::ipc::IPCResult NeckoChild::RecvPredOnPredictDNS(nsIURI* aURI) {
   }
   // Get the current predictor
   nsresult rv = NS_OK;
-  nsCOMPtr<nsINetworkPredictorVerifier> predictor =
-      do_GetService("@mozilla.org/network/predictor;1", &rv);
+  nsCOMPtr<nsINetworkPredictorVerifier> predictor;
+  predictor = mozilla::components::Predictor::Service(&rv);
   NS_ENSURE_SUCCESS(rv, IPC_FAIL_NO_REASON(this));
 
   predictor->OnPredictDNS(aURI);

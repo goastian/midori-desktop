@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 const VALUE_HDR_NAME = "X-HTTP-VALUE-HEADER";
 const VARY_HDR_NAME = "X-HTTP-VARY-HEADER";
@@ -8,7 +10,7 @@ const CACHECTRL_HDR_NAME = "X-CACHE-CONTROL-HEADER";
 
 var httpserver = null;
 
-function make_channel(flags, vary, value) {
+function make_channel() {
   var chan = NetUtil.newChannel({
     uri: "http://localhost:" + httpserver.identity.primaryPort + "/bug633743",
     loadUsingSystemPrincipal: true,
@@ -37,13 +39,13 @@ Test.prototype = {
     "nsIRequestObserver",
   ]),
 
-  onStartRequest(request) {},
+  onStartRequest() {},
 
   onDataAvailable(request, stream, offset, count) {
     this._buffer = this._buffer.concat(read_stream(stream, count));
   },
 
-  onStopRequest(request, status) {
+  onStopRequest() {
     Assert.equal(this._buffer, this._expectVal);
     do_timeout(0, run_next_test);
   },

@@ -1,4 +1,4 @@
-# URL parsers
+# URL Parsers
 
 ```{warning}
 In order to ensure thread safety it is important that all of the objects and interfaces of URI objects are immutable.
@@ -36,7 +36,7 @@ While we could simply pass strings around and leave it to the final consumer to 
 - [nsISensitiveInfoHiddenURI](https://searchfox.org/mozilla-central/source/netwerk/base/nsISensitiveInfoHiddenURI.idl)
     - Objects that implement this interface will have a `getSensitiveInfoHiddenSpec()` method that returns the spec of the URI with sensitive info (such as the password) replaced by the `*` symbol.
 
-### Diagram of interfaces
+### Diagram of Interfaces
 ```{mermaid}
 classDiagram
 nsISupports <-- nsIURI
@@ -58,7 +58,7 @@ To change a URI the consumer must call `nsIURI.mutate()` which returns a `nsIMut
     - This interface contains a series of setters that can be used to mutate and/or construct a `nsIURI`
 
 
-### Additional interfaces
+### Additional Interfaces
 
 - [nsISerializable](https://searchfox.org/mozilla-central/source/xpcom/ds/nsISerializable.idl)
     - Allows us to serialize and deserialize URL objects into strings for persistent storage (such as session restore).
@@ -67,7 +67,7 @@ To change a URI the consumer must call `nsIURI.mutate()` which returns a `nsIMut
 - [nsStandardURL](https://searchfox.org/mozilla-central/source/netwerk/base/nsStandardURL.h)
 - [SubstitutingURL](https://searchfox.org/mozilla-central/source/netwerk/protocol/res/SubstitutingURL.h)
     - overrides nsStandardURL::GetFile to provide nsIFile resolution.
-    - This allows us to map URLs such as `resource://gre/actors/RemotePageChild.jsm` to the actual file on the disk.
+    - This allows us to map URLs such as `resource://gre/actors/RemotePageChild.sys.mjs` to the actual file on the disk.
 - [nsMozIconURI](https://searchfox.org/mozilla-central/source/image/decoders/icon/nsIconURI.h)
     - Used to represent icon URLs
 - [nsSimpleURI](https://searchfox.org/mozilla-central/source/netwerk/base/nsSimpleURI.h)
@@ -89,7 +89,7 @@ To change a URI the consumer must call `nsIURI.mutate()` which returns a `nsIMut
 - [nsJARURI](https://searchfox.org/mozilla-central/source/modules/libjar/nsJARURI.h)
     - Used to represent resources inside of JAR files.
 
-### Diagram of implementations
+### Diagram of Implementations
 
 ```{mermaid}
 classDiagram
@@ -111,7 +111,7 @@ nsINestedURI o-- nsJARURI
 nsIJARURI o-- nsJARURI
 ```
 
-## Class and interface diagram
+## Class and Interface Diagram
 
 ```{mermaid}
 classDiagram

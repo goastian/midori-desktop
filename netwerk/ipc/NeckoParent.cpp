@@ -7,6 +7,7 @@
 
 #include "nsHttp.h"
 #include "mozilla/BasePrincipal.h"
+#include "mozilla/Components.h"
 #include "mozilla/ContentPrincipal.h"
 #include "mozilla/ipc/IPCStreamUtils.h"
 #include "mozilla/net/ExtensionProtocolHandler.h"
@@ -93,14 +94,9 @@ static PBOverrideStatus PBOverrideStatusFromLoadContext(
 }
 
 static already_AddRefed<nsIPrincipal> GetRequestingPrincipal(
-    const Maybe<LoadInfoArgs>& aOptionalLoadInfoArgs) {
-  if (aOptionalLoadInfoArgs.isNothing()) {
-    return nullptr;
-  }
-
-  const LoadInfoArgs& loadInfoArgs = aOptionalLoadInfoArgs.ref();
+    const LoadInfoArgs& aLoadInfoArgs) {
   const Maybe<PrincipalInfo>& optionalPrincipalInfo =
-      loadInfoArgs.requestingPrincipalInfo();
+      aLoadInfoArgs.requestingPrincipalInfo();
 
   if (optionalPrincipalInfo.isNothing()) {
     return nullptr;
@@ -128,7 +124,7 @@ const char* NeckoParent::GetValidatedOriginAttributes(
   if (!aSerialized.IsNotNull()) {
     // If serialized is null, we cannot validate anything. We have to assume
     // that this requests comes from a SystemPrincipal.
-    aAttrs = OriginAttributes(false);
+    aAttrs = OriginAttributes();
   } else {
     aAttrs = aSerialized.mOriginAttributes;
   }
@@ -577,8 +573,8 @@ mozilla::ipc::IPCResult NeckoParent::RecvPredPredict(
     const OriginAttributes& aOriginAttributes, const bool& hasVerifier) {
   // Get the current predictor
   nsresult rv = NS_OK;
-  nsCOMPtr<nsINetworkPredictor> predictor =
-      do_GetService("@mozilla.org/network/predictor;1", &rv);
+  nsCOMPtr<nsINetworkPredictor> predictor;
+  predictor = mozilla::components::Predictor::Service(&rv);
   NS_ENSURE_SUCCESS(rv, IPC_OK());
 
   nsCOMPtr<nsINetworkPredictorVerifier> verifier;
@@ -595,8 +591,8 @@ mozilla::ipc::IPCResult NeckoParent::RecvPredLearn(
     const OriginAttributes& aOriginAttributes) {
   // Get the current predictor
   nsresult rv = NS_OK;
-  nsCOMPtr<nsINetworkPredictor> predictor =
-      do_GetService("@mozilla.org/network/predictor;1", &rv);
+  nsCOMPtr<nsINetworkPredictor> predictor;
+  predictor = mozilla::components::Predictor::Service(&rv);
   NS_ENSURE_SUCCESS(rv, IPC_OK());
 
   predictor->LearnNative(aTargetURI, aSourceURI, aReason, aOriginAttributes);
@@ -606,8 +602,8 @@ mozilla::ipc::IPCResult NeckoParent::RecvPredLearn(
 mozilla::ipc::IPCResult NeckoParent::RecvPredReset() {
   // Get the current predictor
   nsresult rv = NS_OK;
-  nsCOMPtr<nsINetworkPredictor> predictor =
-      do_GetService("@mozilla.org/network/predictor;1", &rv);
+  nsCOMPtr<nsINetworkPredictor> predictor;
+  predictor = mozilla::components::Predictor::Service(&rv);
   NS_ENSURE_SUCCESS(rv, IPC_OK());
 
   predictor->Reset();
@@ -794,7 +790,7 @@ mozilla::ipc::IPCResult NeckoParent::RecvEnsureHSTSData(
 }
 
 mozilla::ipc::IPCResult NeckoParent::RecvGetPageThumbStream(
-    nsIURI* aURI, const Maybe<LoadInfoArgs>& aLoadInfoArgs,
+    nsIURI* aURI, const LoadInfoArgs& aLoadInfoArgs,
     GetPageThumbStreamResolver&& aResolver) {
   // Only the privileged about content process is allowed to access
   // things over the moz-page-thumb protocol. Any other content process
@@ -839,7 +835,7 @@ mozilla::ipc::IPCResult NeckoParent::RecvGetPageThumbStream(
 }
 
 mozilla::ipc::IPCResult NeckoParent::RecvGetPageIconStream(
-    nsIURI* aURI, const Maybe<LoadInfoArgs>& aLoadInfoArgs,
+    nsIURI* aURI, const LoadInfoArgs& aLoadInfoArgs,
     GetPageIconStreamResolver&& aResolver) {
 #ifdef MOZ_PLACES
   const nsACString& remoteType =
@@ -853,10 +849,6 @@ mozilla::ipc::IPCResult NeckoParent::RecvGetPageIconStream(
   // likely-compromised content process.
   if (remoteType != PRIVILEGEDABOUT_REMOTE_TYPE) {
     return IPC_FAIL(this, "Wrong process type");
-  }
-
-  if (aLoadInfoArgs.isNothing()) {
-    return IPC_FAIL(this, "Page-icon request must include loadInfo");
   }
 
   nsCOMPtr<nsILoadInfo> loadInfo;

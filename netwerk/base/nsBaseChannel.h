@@ -6,13 +6,16 @@
 #ifndef nsBaseChannel_h__
 #define nsBaseChannel_h__
 
+#include "mozilla/dom/MimeType.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/net/ContentRange.h"
 #include "mozilla/net/NeckoTargetHolder.h"
 #include "mozilla/net/PrivateBrowsingChannel.h"
 #include "nsHashPropertyBag.h"
 #include "nsIAsyncVerifyRedirectCallback.h"
+#include "nsIBaseChannel.h"
 #include "nsIChannel.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsILoadGroup.h"
@@ -46,6 +49,7 @@ class nsICancelable;
 
 class nsBaseChannel
     : public nsHashPropertyBag,
+      public nsIBaseChannel,
       public nsIChannel,
       public nsIThreadRetargetableRequest,
       public nsIInterfaceRequestor,
@@ -53,12 +57,12 @@ class nsBaseChannel
       public nsIAsyncVerifyRedirectCallback,
       public mozilla::net::PrivateBrowsingChannel<nsBaseChannel>,
       public mozilla::net::NeckoTargetHolder,
-      protected nsIStreamListener,
       protected nsIThreadRetargetableStreamListener {
  public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIREQUEST
   NS_DECL_NSICHANNEL
+  NS_DECL_NSIBASECHANNEL
   NS_DECL_NSIINTERFACEREQUESTOR
   NS_DECL_NSITRANSPORTEVENTSINK
   NS_DECL_NSIASYNCVERIFYREDIRECTCALLBACK
@@ -288,6 +292,8 @@ class nsBaseChannel
   bool mWaitingOnAsyncRedirect{false};
   bool mOpenRedirectChannel{false};
   uint32_t mRedirectFlags{0};
+  RefPtr<mozilla::net::ContentRange> mContentRange;
+  RefPtr<CMimeType> mFullMimeType;
 
  protected:
   nsCString mContentType;

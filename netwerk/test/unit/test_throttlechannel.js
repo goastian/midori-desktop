@@ -1,7 +1,9 @@
 // Test nsIThrottledInputChannel interface.
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 function test_handler(metadata, response) {
   const originalBody = "the response";
@@ -36,7 +38,11 @@ function run_test() {
 
   channel.asyncOpen(
     new ChannelListener(() => {
-      ok(tq.bytesProcessed() > 0, "throttled queue processed some bytes");
+      Assert.greater(
+        tq.bytesProcessed(),
+        0,
+        "throttled queue processed some bytes"
+      );
 
       httpserver.stop(do_test_finished);
     })

@@ -56,7 +56,7 @@ interface nsIHttpUpgradeListener : nsISupports
 
     [must_use] void onUpgradeFailed(in nsresult aErrorCode);
 
-    void onWebSocketConnectionAvailable(in WebSocketConnectionBase aConnection);
+    [noscript] void onWebSocketConnectionAvailable(in WebSocketConnectionBase aConnection);
 };
 
 /**
@@ -105,7 +105,7 @@ interface nsIHttpChannelInternal : nsISupports
      * Returns true in case this channel is used for auth;
      * (the response header includes 'www-authenticate').
      */
-    [noscript, must_use] readonly attribute bool isAuthChannel;
+    [noscript, must_use] readonly attribute boolean isAuthChannel;
 
     /**
      * This flag is set to force relevant cookies to be sent with this load
@@ -315,9 +315,10 @@ interface nsIHttpChannelInternal : nsISupports
 
     /**
      * An opaque flags for non-standard behavior of the TLS system.
-     * It is unlikely this will need to be set outside of telemetry studies
-     * relating to the TLS implementation.
+     * It is unlikely this will need to be set outside of tests or telemetry
+     * studies relating to the TLS implementation.
      */
+    const unsigned long TLS_FLAG_CONFIGURE_AS_RETRY = (1 << 16);
     [must_use] attribute unsigned long tlsFlags;
 
     [must_use] readonly attribute PRTime lastModifiedTime;
@@ -381,7 +382,8 @@ interface nsIHttpChannelInternal : nsISupports
      */
     [noscript, notxpcom, nostdcall]
     void setCorsPreflightParameters(in CStringArrayRef unsafeHeaders,
-                                    in boolean shouldStripRequestBodyHeader);
+                                    in boolean shouldStripRequestBodyHeader,
+                                    in boolean shouldStripAuthHeader);
 
     [noscript, notxpcom, nostdcall]
     void setAltDataForChild(in boolean aIsForChild);
@@ -457,19 +459,13 @@ interface nsIHttpChannelInternal : nsISupports
         in nsILoadInfo_CrossOriginOpenerPolicy aInitiatorPolicy);
 
     [noscript]
-    bool hasCrossOriginOpenerPolicyMismatch();
+    boolean hasCrossOriginOpenerPolicyMismatch();
 
     [noscript]
     nsILoadInfo_CrossOriginEmbedderPolicy getResponseEmbedderPolicy(in boolean aIsOriginTrialCoepCredentiallessEnabled);
 
     [noscript, notxpcom, nostdcall]
     void DoDiagnosticAssertWhenOnStopNotCalledOnDestroy();
-
-    /**
-     * If this is called, this channel's transaction will not be dispatched
-     * until the HTTPSSVC record is available.
-     */
-    [must_use] void setWaitForHTTPSSVCRecord();
 
     /**
      * This attribute indicates if the channel has support for HTTP3
@@ -510,4 +506,13 @@ interface nsIHttpChannelInternal : nsISupports
      * 103 response.
      */
     [must_use] attribute unsigned long earlyHintLinkType;
+
+    /**
+     * Indicates whether the User-Agent request header has been modified since
+     * the channel was created. This value will be used to decide if we need to
+     * recalculate the User-Agent header for fingerprinting protection. We won't
+     * recalculate the User-Agent header if it has been modified to preserve the
+     * overridden header value.
+     */
+    [must_use] attribute boolean isUserAgentHeaderModified;
 };

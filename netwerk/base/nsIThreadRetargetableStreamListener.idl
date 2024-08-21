@@ -5,15 +5,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsISupports.idl"
-
+#include "nsIStreamListener.idl"
 /**
  * nsIThreadRetargetableStreamListener
  *
  * To be used by classes which implement nsIStreamListener and whose
  * OnDataAvailable callback may be retargeted for delivery off the main thread.
  */
-[uuid(fb2304b8-f82f-4433-af68-d874a2ebbdc1)]
-interface nsIThreadRetargetableStreamListener : nsISupports
+[scriptable, uuid(fb2304b8-f82f-4433-af68-d874a2ebbdc1)]
+interface nsIThreadRetargetableStreamListener : nsIStreamListener
 {
   /**
    * Checks this listener and any next listeners it may have to verify that
@@ -29,4 +29,21 @@ interface nsIThreadRetargetableStreamListener : nsISupports
    * fails.
    */
   void checkListenerChain();
+
+  /**
+   * Used for notifying listeners about data stop.
+   * After this notification, the listeners could potentially start processing
+   * the data. Note that onDataFinished can be called on or off the main thread.
+   * It is the responsibility of the listeners to handle this correctly.
+   *
+   * The ChannelEventQueue implementation ensures that the OnDataFinished is
+   * run on the ODA target thread after the last OnDataAvailable is executed on
+   * the ODA target thread and before OnStopRequest is called.
+   * Hence, the following order is guaranteed for the listeners, even with ODA/ODF running off MainThread.
+   * 1. OnStartRequest
+   * 2. OnDataAvailable
+   * 3. OnDataFinished
+   * 4. OnStopRequest
+   */
+  void onDataFinished(in nsresult aStatusCode);
 };

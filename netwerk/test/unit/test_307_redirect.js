@@ -1,16 +1,18 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpserver.identity.primaryPort;
 });
 
-XPCOMUtils.defineLazyGetter(this, "uri", function () {
+ChromeUtils.defineLazyGetter(this, "uri", function () {
   return URL + "/redirect";
 });
 
-XPCOMUtils.defineLazyGetter(this, "noRedirectURI", function () {
+ChromeUtils.defineLazyGetter(this, "noRedirectURI", function () {
   return URL + "/content";
 });
 

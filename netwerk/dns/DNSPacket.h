@@ -7,12 +7,12 @@
 
 #include "mozilla/Maybe.h"
 #include "mozilla/Result.h"
-#include "pk11pub.h"
-#include "ScopedNSSTypes.h"
 #include "nsClassHashtable.h"
 #include "nsIDNSService.h"
 #include "DNS.h"
 #include "DNSByTypeRecord.h"
+
+#include <functional>
 
 namespace mozilla {
 namespace net {
@@ -36,19 +36,12 @@ enum TrrType {
   TRRTYPE_HTTPSSVC = nsIDNSService::RESOLVE_TYPE_HTTPSSVC,  // 65
 };
 
-enum class DNSPacketStatus : uint8_t {
-  Unknown = 0,
-  Success,
-  KeyNotAvailable,
-  KeyNotUsable,
-  EncodeError,
-  EncryptError,
-  DecodeError,
-  DecryptError,
-};
-
 class DNSPacket {
  public:
+  // Never accept larger DOH responses than this as that would indicate
+  // something is wrong. Typical ones are much smaller.
+  static const unsigned int MAX_SIZE = 3200;
+
   DNSPacket() = default;
   virtual ~DNSPacket() = default;
 
@@ -72,37 +65,37 @@ class DNSPacket {
       nsClassHashtable<nsCStringHashKey, DOHresp>& aAdditionalRecords,
       uint32_t& aTTL);
 
-  DNSPacketStatus PacketStatus() const { return mStatus; }
   void SetOriginHost(const Maybe<nsCString>& aHost) { mOriginHost = aHost; }
 
- protected:
-  // Never accept larger DOH responses than this as that would indicate
-  // something is wrong. Typical ones are much smaller.
-  static const unsigned int MAX_SIZE = 3200;
+  nsresult FillBuffer(std::function<int(unsigned char response[MAX_SIZE])>&&);
 
+  static nsresult ParseHTTPS(uint16_t aRDLen, struct SVCB& aParsed,
+                             unsigned int aIndex, const unsigned char* aBuffer,
+                             unsigned int aBodySize,
+                             const nsACString& aOriginHost);
+  void SetNativePacket(bool aNative) { mNativePacket = aNative; }
+
+ protected:
   nsresult PassQName(unsigned int& index, const unsigned char* aBuffer);
-  nsresult GetQname(nsACString& aQname, unsigned int& aIndex,
-                    const unsigned char* aBuffer);
-  nsresult ParseSvcParam(unsigned int svcbIndex, uint16_t key,
-                         SvcFieldValue& field, uint16_t length,
-                         const unsigned char* aBuffer);
+  static nsresult GetQname(nsACString& aQname, unsigned int& aIndex,
+                           const unsigned char* aBuffer,
+                           unsigned int aBodySize);
+  static nsresult ParseSvcParam(unsigned int svcbIndex, uint16_t key,
+                                SvcFieldValue& field, uint16_t length,
+                                const unsigned char* aBuffer);
   nsresult DecodeInternal(
       nsCString& aHost, enum TrrType aType, nsCString& aCname,
       bool aAllowRFC1918, DOHresp& aResp, TypeRecordResultType& aTypeResult,
       nsClassHashtable<nsCStringHashKey, DOHresp>& aAdditionalRecords,
       uint32_t& aTTL, const unsigned char* aBuffer, uint32_t aLen);
 
-  void SetDNSPacketStatus(DNSPacketStatus aStatus) {
-    if (mStatus == DNSPacketStatus::Unknown ||
-        mStatus == DNSPacketStatus::Success) {
-      mStatus = aStatus;
-    }
-  }
-
   // The response buffer.
   unsigned char mResponse[MAX_SIZE]{};
   unsigned int mBodySize = 0;
-  DNSPacketStatus mStatus = DNSPacketStatus::Unknown;
+  // True when decoding a DNS packet received from OS. Decoding will
+  // not panic if packet ID is not zero.
+  bool mNativePacket = false;
+  nsresult mStatus = NS_OK;
   Maybe<nsCString> mOriginHost;
 };
 

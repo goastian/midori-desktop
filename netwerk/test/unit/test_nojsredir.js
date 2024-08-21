@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserver = new HttpServer();
 var index = 0;
@@ -31,7 +33,7 @@ function startIter() {
   );
 }
 
-function completeIter(request, data, ctx) {
+function completeIter(request, data) {
   Assert.ok(data.length == tests[index].datalen);
   if (++index < tests.length) {
     startIter();

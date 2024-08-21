@@ -177,6 +177,11 @@ class nsHostRecord : public mozilla::LinkedListElement<RefPtr<nsHostRecord>>,
 
   virtual void OnCompleteLookup() {}
 
+  virtual void ResolveComplete() = 0;
+
+  // true if pending and on the queue (not yet given to getaddrinfo())
+  bool onQueue() { return LoadNative() && isInList(); }
+
   // When the record began being valid. Used mainly for bookkeeping.
   mozilla::TimeStamp mValidStart;
 
@@ -187,6 +192,8 @@ class nsHostRecord : public mozilla::LinkedListElement<RefPtr<nsHostRecord>>,
   // If a record is in its grace period (and not expired), it will be used
   // but a request to refresh it will be made.
   mozilla::TimeStamp mGraceStart;
+
+  mozilla::TimeDuration mTrrDuration;
 
   mozilla::Atomic<uint32_t, mozilla::Relaxed> mTtl{0};
 
@@ -224,6 +231,23 @@ class nsHostRecord : public mozilla::LinkedListElement<RefPtr<nsHostRecord>>,
 
   // Whether this is resolved by native resolver successfully or not.
   bool mNativeSuccess = false;
+
+  // When the lookups of this record started and their durations
+  mozilla::TimeStamp mNativeStart;
+  mozilla::TimeDuration mNativeDuration;
+
+  // clang-format off
+  MOZ_ATOMIC_BITFIELDS(mAtomicBitfields, 8, (
+    // true if this record is being resolved "natively", which means that
+    // it is either on the pending queue or owned by one of the worker threads.
+    (uint16_t, Native, 1),
+    (uint16_t, NativeUsed, 1),
+    // true if off queue and contributing to mActiveAnyThreadCount
+    (uint16_t, UsingAnyThread, 1),
+    (uint16_t, GetTtl, 1),
+    (uint16_t, ResolveAgain, 1)
+  ))
+  // clang-format on
 };
 
 // b020e996-f6ab-45e5-9bf5-1da71dd0053a
@@ -297,12 +321,8 @@ class AddrHostRecord final : public nsHostRecord {
   // Saves the skip reason of a first-attempt TRR lookup and clears
   // it to prepare for a retry attempt.
   void NotifyRetryingTrr();
-  void ResolveComplete();
 
   static DnsPriority GetPriority(nsIDNSService::DNSFlags aFlags);
-
-  // true if pending and on the queue (not yet given to getaddrinfo())
-  bool onQueue() { return LoadNative() && isInList(); }
 
   virtual void Reset() override {
     nsHostRecord::Reset();
@@ -316,26 +336,10 @@ class AddrHostRecord final : public nsHostRecord {
     StoreNative(false);
   }
 
-  // When the lookups of this record started and their durations
-  mozilla::TimeStamp mNativeStart;
-  mozilla::TimeDuration mTrrDuration;
-  mozilla::TimeDuration mNativeDuration;
+  void ResolveComplete() override;
 
   // TRR was used on this record
   mozilla::Atomic<DNSResolverType> mResolverType{DNSResolverType::Native};
-
-  // clang-format off
-  MOZ_ATOMIC_BITFIELDS(mAtomicBitfields, 8, (
-    // true if this record is being resolved "natively", which means that
-    // it is either on the pending queue or owned by one of the worker threads.
-    (uint16_t, Native, 1),
-    (uint16_t, NativeUsed, 1),
-    // true if off queue and contributing to mActiveAnyThreadCount
-    (uint16_t, UsingAnyThread, 1),
-    (uint16_t, GetTtl, 1),
-    (uint16_t, ResolveAgain, 1)
-  ))
-  // clang-format on
 
   // The number of times ReportUnusable() has been called in the record's
   // lifetime.
@@ -385,13 +389,12 @@ class TypeHostRecord final : public nsHostRecord,
       nsIDNSService::DNSFlags queryFlags) const override;
   bool RefreshForNegativeResponse() const override;
 
+  void ResolveComplete() override;
+
   mozilla::net::TypeRecordResultType mResults = AsVariant(mozilla::Nothing());
   mozilla::Mutex mResultsLock MOZ_UNANNOTATED{"TypeHostRecord.mResultsLock"};
 
   mozilla::Maybe<nsCString> mOriginHost;
-
-  // When the lookups of this record started (for telemetry).
-  mozilla::TimeStamp mStart;
   bool mAllRecordsExcluded = false;
 };
 

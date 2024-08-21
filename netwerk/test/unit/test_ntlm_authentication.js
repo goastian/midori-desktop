@@ -3,17 +3,19 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 // Turn off the authentication dialog blocking for this test.
 var prefs = Services.prefs;
 prefs.setIntPref("network.auth.subresource-http-auth-allow", 2);
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpserv.identity.primaryPort;
 });
 
-XPCOMUtils.defineLazyGetter(this, "PORT", function () {
+ChromeUtils.defineLazyGetter(this, "PORT", function () {
   return httpserv.identity.primaryPort;
 });
 
@@ -37,7 +39,7 @@ AuthPrompt1.prototype = {
 
   QueryInterface: ChromeUtils.generateQI(["nsIAuthPrompt"]),
 
-  prompt: function ap1_prompt(title, text, realm, save, defaultText, result) {
+  prompt: function ap1_prompt() {
     do_throw("unexpected prompt call");
   },
 
@@ -93,7 +95,7 @@ AuthPrompt1.prototype = {
     return true;
   },
 
-  promptPassword: function ap1_promptPW(title, text, realm, save, pwd) {
+  promptPassword: function ap1_promptPW() {
     do_throw("unexpected promptPassword call");
   },
 };
@@ -116,7 +118,7 @@ AuthPrompt2.prototype = {
     return true;
   },
 
-  asyncPromptAuth: function ap2_async(chan, cb, ctx, lvl, info) {
+  asyncPromptAuth: function ap2_async() {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 };
@@ -174,7 +176,7 @@ RealmTestRequestor.prototype = {
     return false;
   },
 
-  asyncPromptAuth: function realmtest_async(chan, cb, ctx, lvl, info) {
+  asyncPromptAuth: function realmtest_async() {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 };
@@ -258,7 +260,7 @@ add_task(async function test_ntlm() {
   chan.notificationCallbacks = new Requestor(FLAG_RETURN_FALSE, 2);
   let [req, buf] = await new Promise(resolve => {
     chan.asyncOpen(
-      new ChannelListener((req, buf) => resolve([req, buf]), null)
+      new ChannelListener((req1, buf1) => resolve([req1, buf1]), null)
     );
   });
   Assert.ok(buf);

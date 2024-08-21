@@ -31,10 +31,10 @@ EarlyHintsService::EarlyHintsService()
 // allow faster compile times
 EarlyHintsService::~EarlyHintsService() = default;
 
-void EarlyHintsService::EarlyHint(const nsACString& aLinkHeader,
-                                  nsIURI* aBaseURI, nsIChannel* aChannel,
-                                  const nsACString& aReferrerPolicy,
-                                  const nsACString& aCSPHeader) {
+void EarlyHintsService::EarlyHint(
+    const nsACString& aLinkHeader, nsIURI* aBaseURI, nsIChannel* aChannel,
+    const nsACString& aReferrerPolicy, const nsACString& aCSPHeader,
+    dom::CanonicalBrowsingContext* aLoadingBrowsingContext) {
   mEarlyHintsCount++;
   if (mFirstEarlyHint.isNothing()) {
     mFirstEarlyHint.emplace(TimeStamp::NowLoRes());
@@ -100,7 +100,14 @@ void EarlyHintsService::EarlyHint(const nsACString& aLinkHeader,
       mLinkType |= dom::LinkStyle::ePRELOAD;
       EarlyHintPreloader::MaybeCreateAndInsertPreload(
           mOngoingEarlyHints, linkHeader, aBaseURI, principal,
-          cookieJarSettings, aReferrerPolicy, aCSPHeader);
+          cookieJarSettings, aReferrerPolicy, aCSPHeader,
+          loadInfo->GetBrowsingContextID(), aLoadingBrowsingContext, false);
+    } else if (linkHeader.mRel.LowerCaseEqualsLiteral("modulepreload")) {
+      mLinkType |= dom::LinkStyle::eMODULE_PRELOAD;
+      EarlyHintPreloader::MaybeCreateAndInsertPreload(
+          mOngoingEarlyHints, linkHeader, aBaseURI, principal,
+          cookieJarSettings, aReferrerPolicy, aCSPHeader,
+          loadInfo->GetBrowsingContextID(), aLoadingBrowsingContext, true);
     }
   }
 }

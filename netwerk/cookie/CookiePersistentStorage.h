@@ -41,7 +41,7 @@ class CookiePersistentStorage final : public CookieStorage {
       const nsACString& aHost, const nsACString& aBaseDomain,
       const OriginAttributesPattern& aPattern) override;
 
-  void StaleCookies(const nsTArray<Cookie*>& aCookieList,
+  void StaleCookies(const nsTArray<RefPtr<Cookie>>& aCookieList,
                     int64_t aCurrentTimeInUsec) override;
 
   void Close() override;
@@ -72,12 +72,12 @@ class CookiePersistentStorage final : public CookieStorage {
  protected:
   const char* NotificationTopic() const override { return "cookie-changed"; }
 
-  void NotifyChangedInternal(nsISupports* aSubject, const char16_t* aData,
-                             bool aOldCOokieIsSession) override;
+  void NotifyChangedInternal(nsICookieNotification* aNotification,
+                             bool aOldCookieIsSession) override;
 
   void RemoveAllInternal() override;
 
-  void RemoveCookieFromDB(const CookieListIter& aIter) override;
+  void RemoveCookieFromDB(const Cookie& aCookie) override;
 
   void StoreCookie(const nsACString& aBaseDomain,
                    const OriginAttributes& aOriginAttributes,
@@ -89,7 +89,7 @@ class CookiePersistentStorage final : public CookieStorage {
   static void UpdateCookieInList(Cookie* aCookie, int64_t aLastAccessed,
                                  mozIStorageBindingParamsArray* aParamsArray);
 
-  void PrepareCookieRemoval(const CookieListIter& aIter,
+  void PrepareCookieRemoval(const Cookie& aCookie,
                             mozIStorageBindingParamsArray* aParamsArray);
 
   void InitDBConn();
@@ -108,6 +108,8 @@ class CookiePersistentStorage final : public CookieStorage {
   already_AddRefed<nsIArray> PurgeCookies(int64_t aCurrentTimeInUsec,
                                           uint16_t aMaxNumberOfCookies,
                                           int64_t aCookiePurgeAge) override;
+
+  void CollectCookieJarSizeData() override;
 
   void DeleteFromDB(mozIStorageBindingParamsArray* aParamsArray);
 

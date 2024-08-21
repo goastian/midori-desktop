@@ -4,7 +4,9 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 const SERVER_PORT = 8080;
 const baseURL = "http://localhost:" + SERVER_PORT + "/";
@@ -15,9 +17,9 @@ for (let i = 0; i < 10000; i++) {
 }
 
 var listener = {
-  onStartRequest(request) {},
+  onStartRequest() {},
 
-  onDataAvailable(request, stream) {},
+  onDataAvailable() {},
 
   onStopRequest(request, status) {
     Assert.equal(status, Cr.NS_OK);

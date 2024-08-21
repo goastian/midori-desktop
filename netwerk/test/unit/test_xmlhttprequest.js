@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserver = new HttpServer();
 var testpath = "/simple";
@@ -40,7 +42,7 @@ function run_test() {
 
   // Test async XHR sending
   let async = createXHR(true);
-  async.addEventListener("readystatechange", function (event) {
+  async.addEventListener("readystatechange", function () {
     if (checkResults(async)) {
       httpserver.stop(do_test_finished);
     }

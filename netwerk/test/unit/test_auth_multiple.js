@@ -3,7 +3,9 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 // Turn off the authentication dialog blocking for this test.
 var prefs = Services.prefs;
@@ -16,7 +18,7 @@ function URL(domain, path = "") {
   return `http://${domain}:${httpserv.identity.primaryPort}/${path}`;
 }
 
-XPCOMUtils.defineLazyGetter(this, "PORT", function () {
+ChromeUtils.defineLazyGetter(this, "PORT", function () {
   return httpserv.identity.primaryPort;
 });
 
@@ -40,7 +42,7 @@ AuthPrompt1.prototype = {
 
   QueryInterface: ChromeUtils.generateQI(["nsIAuthPrompt"]),
 
-  prompt: function ap1_prompt(title, text, realm, save, defaultText, result) {
+  prompt: function ap1_prompt() {
     do_throw("unexpected prompt call");
   },
 
@@ -92,7 +94,7 @@ AuthPrompt1.prototype = {
     return true;
   },
 
-  promptPassword: function ap1_promptPW(title, text, realm, save, pwd) {
+  promptPassword: function ap1_promptPW() {
     do_throw("unexpected promptPassword call");
   },
 };
@@ -115,7 +117,7 @@ AuthPrompt2.prototype = {
     return true;
   },
 
-  asyncPromptAuth: function ap2_async(chan, cb, ctx, lvl, info) {
+  asyncPromptAuth: function ap2_async() {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 };
@@ -173,7 +175,7 @@ RealmTestRequestor.prototype = {
     return false;
   },
 
-  asyncPromptAuth: function realmtest_async(chan, cb, ctx, lvl, info) {
+  asyncPromptAuth: function realmtest_async() {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 };
@@ -394,55 +396,16 @@ add_task(async function test_ntlm_first() {
   chan.notificationCallbacks = new Requestor(FLAG_RETURN_FALSE, 2);
   let [req, buf] = await new Promise(resolve => {
     chan.asyncOpen(
-      new ChannelListener((req, buf) => resolve([req, buf]), null)
+      new ChannelListener((request, buffer) => resolve([request, buffer]), null)
     );
   });
   Assert.equal(buf, "OK");
   Assert.equal(req.QueryInterface(Ci.nsIHttpChannel).responseStatus, 200);
 });
 
-add_task(async function test_basic_first() {
-  Services.prefs.setBoolPref(
-    "network.auth.choose_most_secure_challenge",
-    false
-  );
-  challenges = [`Basic realm="secret"`, "NTLM", digestChallenge];
-  httpserv.identity.add("http", "basic.com", httpserv.identity.primaryPort);
-  let chan = makeChan(URL("basic.com", "/path"));
-
-  chan.notificationCallbacks = new Requestor(FLAG_RETURN_FALSE, 2);
-  let [req, buf] = await new Promise(resolve => {
-    chan.asyncOpen(
-      new ChannelListener((req, buf) => resolve([req, buf]), null)
-    );
-  });
-  Assert.equal(buf, "success");
-  Assert.equal(req.QueryInterface(Ci.nsIHttpChannel).responseStatus, 200);
-});
-
-add_task(async function test_digest_first() {
-  Services.prefs.setBoolPref(
-    "network.auth.choose_most_secure_challenge",
-    false
-  );
-  challenges = [digestChallenge, `Basic realm="secret"`, "NTLM"];
-  httpserv.identity.add("http", "digest.com", httpserv.identity.primaryPort);
-  let chan = makeChan(URL("digest.com", "/path"));
-
-  chan.notificationCallbacks = new Requestor(FLAG_RETURN_FALSE, 2);
-  let [req, buf] = await new Promise(resolve => {
-    chan.asyncOpen(
-      new ChannelListener((req, buf) => resolve([req, buf]), null)
-    );
-  });
-  Assert.equal(req.QueryInterface(Ci.nsIHttpChannel).responseStatus, 200);
-  Assert.equal(buf, "digest");
-});
-
 add_task(async function test_choose_most_secure() {
-  // When the pref is true, we rank the challenges by how secure they are.
+  // By default, we rank the challenges by how secure they are.
   // In this case, NTLM should be the most secure.
-  Services.prefs.setBoolPref("network.auth.choose_most_secure_challenge", true);
   challenges = [digestChallenge, `Basic realm="secret"`, "NTLM"];
   httpserv.identity.add(
     "http",
@@ -454,7 +417,7 @@ add_task(async function test_choose_most_secure() {
   chan.notificationCallbacks = new Requestor(FLAG_RETURN_FALSE, 2);
   let [req, buf] = await new Promise(resolve => {
     chan.asyncOpen(
-      new ChannelListener((req, buf) => resolve([req, buf]), null)
+      new ChannelListener((request, buffer) => resolve([request, buffer]), null)
     );
   });
   Assert.equal(req.QueryInterface(Ci.nsIHttpChannel).responseStatus, 200);

@@ -7,6 +7,7 @@
 #include "ExtensionProtocolHandler.h"
 
 #include "mozilla/BinarySearch.h"
+#include "mozilla/Components.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/Promise-inl.h"
@@ -19,6 +20,7 @@
 #include "mozilla/Omnijar.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/ResultExtensions.h"
+#include "mozilla/Try.h"
 
 #include "FileDescriptorFile.h"
 #include "LoadInfo.h"
@@ -133,11 +135,7 @@ class ExtensionStreamGetter final : public nsICancelable {
   }
 
   void SetupEventTarget() {
-    mMainThreadEventTarget = nsContentUtils::GetEventTargetByLoadInfo(
-        mLoadInfo, TaskCategory::Other);
-    if (!mMainThreadEventTarget) {
-      mMainThreadEventTarget = GetMainThreadSerialEventTarget();
-    }
+    mMainThreadEventTarget = GetMainThreadSerialEventTarget();
   }
 
   // Get an input stream or file descriptor from the parent asynchronously.
@@ -189,15 +187,16 @@ class ExtensionJARFileOpener final : public nsISupports {
     MOZ_ASSERT(winFile);
     if (NS_SUCCEEDED(rv)) {
       rv = winFile->OpenNSPRFileDescShareDelete(PR_RDONLY, 0,
-                                                &prFileDesc.rwget());
+                                                getter_Transfers(prFileDesc));
     }
 #else
-    nsresult rv = mFile->OpenNSPRFileDesc(PR_RDONLY, 0, &prFileDesc.rwget());
+    nsresult rv =
+        mFile->OpenNSPRFileDesc(PR_RDONLY, 0, getter_Transfers(prFileDesc));
 #endif /* XP_WIN */
 
     if (NS_SUCCEEDED(rv)) {
       mFD = FileDescriptor(FileDescriptor::PlatformHandleType(
-          PR_FileDesc2NativeHandle(prFileDesc)));
+          PR_FileDesc2NativeHandle(prFileDesc.get())));
     }
 
     nsCOMPtr<nsIRunnable> event =
@@ -553,8 +552,8 @@ nsresult ExtensionProtocolHandler::SubstituteChannel(nsIURI* aURI,
                                    nsIChannel* channel,
                                    nsIChannel* origChannel) -> nsresult {
       nsresult rv;
-      nsCOMPtr<nsIStreamConverterService> convService =
-          do_GetService(NS_STREAMCONVERTERSERVICE_CONTRACTID, &rv);
+      nsCOMPtr<nsIStreamConverterService> convService;
+      convService = mozilla::components::StreamConverter::Service(&rv);
       MOZ_TRY(rv);
 
       nsCOMPtr<nsIURI> uri;

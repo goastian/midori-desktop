@@ -1,13 +1,15 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var server;
 const BUGID = "331825";
 
 function TestListener() {}
-TestListener.prototype.onStartRequest = function (request) {};
-TestListener.prototype.onStopRequest = function (request, status) {
+TestListener.prototype.onStartRequest = function () {};
+TestListener.prototype.onStopRequest = function (request) {
   var channel = request.QueryInterface(Ci.nsIHttpChannel);
   Assert.equal(channel.responseStatus, 304);
 

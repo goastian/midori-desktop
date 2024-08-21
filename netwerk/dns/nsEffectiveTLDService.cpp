@@ -9,10 +9,12 @@
 // http://wiki.mozilla.org/Gecko:Effective_TLD_Service
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/Components.h"
 #include "mozilla/HashFunctions.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/TextUtils.h"
+#include "mozilla/Try.h"
 
 #include "MainThreadUtils.h"
 #include "nsContentUtils.h"
@@ -44,7 +46,7 @@ NS_IMPL_ISUPPORTS(nsEffectiveTLDService, nsIEffectiveTLDService,
 static nsEffectiveTLDService* gService = nullptr;
 
 nsEffectiveTLDService::nsEffectiveTLDService()
-    : mIDNService(), mGraphLock("nsEffectiveTLDService::mGraph") {
+    : mGraphLock("nsEffectiveTLDService::mGraph") {
   mGraph.emplace(etld_dafsa::kDafsa);
 }
 
@@ -58,7 +60,7 @@ nsresult nsEffectiveTLDService::Init() {
   }
 
   nsresult rv;
-  mIDNService = do_GetService(NS_IDNSERVICE_CONTRACTID, &rv);
+  mIDNService = mozilla::components::IDN::Service(&rv);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -73,7 +75,7 @@ NS_IMETHODIMP nsEffectiveTLDService::Observe(nsISupports* aSubject,
                                              const char* aTopic,
                                              const char16_t* aData) {
   /**
-   * Signal sent from netwerk/dns/PublicSuffixList.jsm
+   * Signal sent from netwerk/dns/PublicSuffixList.sys.mjs
    * aSubject is the nsIFile object for dafsa.bin
    * aData is the absolute path to the dafsa.bin file (not used)
    */
@@ -115,8 +117,8 @@ nsEffectiveTLDService* nsEffectiveTLDService::GetInstance() {
   if (gService) {
     return gService;
   }
-  nsCOMPtr<nsIEffectiveTLDService> tldService =
-      do_GetService(NS_EFFECTIVETLDSERVICE_CONTRACTID);
+  nsCOMPtr<nsIEffectiveTLDService> tldService;
+  tldService = mozilla::components::EffectiveTLD::Service();
   if (!tldService) {
     return nullptr;
   }

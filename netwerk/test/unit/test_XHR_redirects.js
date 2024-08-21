@@ -5,7 +5,9 @@
 // in xpcshell, we get an error for prompts, and the request fails.
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 const { Preferences } = ChromeUtils.importESModule(
   "resource://gre/modules/Preferences.sys.mjs"
 );
@@ -17,10 +19,10 @@ var sRedirectPromptPref;
 const BUGID = "676059";
 const OTHERBUGID = "696849";
 
-XPCOMUtils.defineLazyGetter(this, "pSame", function () {
+ChromeUtils.defineLazyGetter(this, "pSame", function () {
   return sSame.identity.primaryPort;
 });
-XPCOMUtils.defineLazyGetter(this, "pOther", function () {
+ChromeUtils.defineLazyGetter(this, "pOther", function () {
   return sOther.identity.primaryPort;
 });
 

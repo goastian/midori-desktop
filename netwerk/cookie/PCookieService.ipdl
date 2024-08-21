@@ -38,22 +38,22 @@ parent:
                                         bool fromHttp,
                                         CookieStruct[] cookies);
 
-  async PrepareCookieList(nullable nsIURI host,
-                          bool isForeign,
-                          bool isThirdPartyTrackingResource,
-                          bool isThirdPartySocialTrackingResource,
-                          bool firstPartyStorageAccessPermissionGranted,
-                          uint32_t rejectedReason,
-                          bool isSafeTopLevelNav,
-                          bool isSameSiteForeign,
-                          bool hadCrossSiteRedirects,
-                          OriginAttributes attrs);
+  async GetCookieList(nullable nsIURI host,
+                        bool isForeign,
+                        bool isThirdPartyTrackingResource,
+                        bool isThirdPartySocialTrackingResource,
+                        bool firstPartyStorageAccessPermissionGranted,
+                        uint32_t rejectedReason,
+                        bool isSafeTopLevelNav,
+                        bool isSameSiteForeign,
+                        bool hadCrossSiteRedirects,
+                        OriginAttributes[] attrsList)
+                        returns (CookieStructTable[] cookies);
 
   async __delete__();
 
 child:
-  async TrackCookiesLoad(CookieStruct[] cookiesList,
-                         OriginAttributes attrs);
+  async TrackCookiesLoad(CookieStructTable[] cookiesListTable);
 
   async RemoveCookie(CookieStruct cookie,
                      OriginAttributes attrs);

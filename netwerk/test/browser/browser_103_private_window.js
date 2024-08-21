@@ -35,7 +35,7 @@ async function test_early_hints_load_url(usePrivateWin) {
   let observed = {};
   let observer = {
     QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
-    observe(aSubject, aTopic, aData) {
+    observe(aSubject, aTopic) {
       if (aTopic == "http-on-opening-request") {
         let channel = aSubject.QueryInterface(Ci.nsIHttpChannel);
         if (channel.URI.spec === expectedUrl) {
@@ -55,7 +55,7 @@ async function test_early_hints_load_url(usePrivateWin) {
 
   const browser = win.gBrowser.selectedTab.linkedBrowser;
   let loaded = BrowserTestUtils.browserLoaded(browser, false, requestUrl);
-  BrowserTestUtils.loadURIString(browser, requestUrl);
+  BrowserTestUtils.startLoadingURIString(browser, requestUrl);
   await loaded;
 
   Assert.equal(observed.actrualUrl, expectedUrl);

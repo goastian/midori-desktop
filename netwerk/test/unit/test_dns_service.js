@@ -89,8 +89,6 @@ add_task(
     domain = "a".repeat(254);
     overrideService.addIPOverride(domain, "1.2.3.4");
 
-    Services.prefs.setBoolPref("network.dns.limit_253_chars", true);
-
     if (mozinfo.socketprocess_networking) {
       // When using the socket process, the call fails asynchronously.
       Services.dns.asyncResolve(
@@ -102,8 +100,8 @@ add_task(
         mainThread,
         defaultOriginAttributes
       );
-      let [, , inStatus] = await listener;
-      Assert.equal(inStatus, Cr.NS_ERROR_UNKNOWN_HOST);
+      let [, , inStatus1] = await listener;
+      Assert.equal(inStatus1, Cr.NS_ERROR_UNKNOWN_HOST);
     } else {
       Assert.throws(
         () => {
@@ -121,12 +119,25 @@ add_task(
         "Should throw for large domains"
       );
     }
+  }
+);
 
-    listener = new Listener();
-    domain = "a".repeat(254);
-    Services.prefs.setBoolPref("network.dns.limit_253_chars", false);
+add_task(
+  {
+    skip_if: () =>
+      Services.appinfo.processType != Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT,
+  },
+  async function test_sort_family() {
+    Services.prefs.setBoolPref("network.dns.preferIPv6", true);
+    overrideService.clearOverrides();
+    overrideService.addIPOverride("example.com", "1.2.3.4");
+    overrideService.addIPOverride("example.com", "3.4.5.6");
+    overrideService.addIPOverride("example.com", "::1");
+    overrideService.addIPOverride("example.com", "::2");
+
+    let listener = new Listener();
     Services.dns.asyncResolve(
-      domain,
+      "example.com",
       Ci.nsIDNSService.RESOLVE_TYPE_DEFAULT,
       Ci.nsIDNSService.RESOLVE_CANONICAL_NAME,
       null, // resolverInfo
@@ -134,10 +145,12 @@ add_task(
       mainThread,
       defaultOriginAttributes
     );
-    [, , inStatus] = await listener;
-    Assert.equal(inStatus, Cr.NS_OK);
 
-    Services.prefs.clearUserPref("network.dns.limit_253_chars");
-    overrideService.clearOverrides();
+    let [, inRecord] = await listener;
+    inRecord.QueryInterface(Ci.nsIDNSAddrRecord);
+    Assert.equal(inRecord.getNextAddrAsString(), "::1");
+    Assert.equal(inRecord.getNextAddrAsString(), "::2");
+    Assert.equal(inRecord.getNextAddrAsString(), "1.2.3.4");
+    Assert.equal(inRecord.getNextAddrAsString(), "3.4.5.6");
   }
 );

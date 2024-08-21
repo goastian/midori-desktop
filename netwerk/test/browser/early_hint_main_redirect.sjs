@@ -1,8 +1,5 @@
 "use strict";
 
-// In an SJS file we need to get the setTimeout bits ourselves, despite
-// what eslint might think applies for browser tests.
-// eslint-disable-next-line mozilla/no-redeclare-with-import-autofix
 let { setTimeout } = ChromeUtils.importESModule(
   "resource://gre/modules/Timer.sys.mjs"
 );
@@ -20,7 +17,6 @@ async function handleRequest(request, response) {
   response.setHeader("Cache-Control", "max-age=604800", false);
 
   let content = "";
-  Cu.importGlobalProperties(["URLSearchParams"]);
   let qs = new URLSearchParams(request.queryString);
   let asset = qs.get("as");
 

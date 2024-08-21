@@ -10,6 +10,8 @@
 #include "nsReadableUtils.h"
 #include "nsCRT.h"
 #include "nsServiceManagerUtils.h"
+#include "nsString.h"
+#include "nsStringFwd.h"
 #include "nsUnicharUtils.h"
 #include "nsUnicodeProperties.h"
 #include "harfbuzz/hb.h"
@@ -197,15 +199,19 @@ nsresult nsIDNService::IDNA2008StringPrep(const nsAString& input,
     return NS_OK;
   }
 
-  bool hasError = flag == eStringPrepForDNS
-                      ? info.HasErrors() && !info.HasInvalidHyphen()
-                      : info.HasErrors();
-
-  if (hasError) {
-    if (flag == eStringPrepForDNS) {
-      output.Truncate();
+  if (flag == eStringPrepForDNS) {
+    // We ignore errors if the result is empty, or if the errors were just
+    // invalid hyphens (not punycode-decoding failure or invalid chars).
+    if (!output.IsEmpty()) {
+      if (info.HasErrorsIgnoringInvalidHyphen()) {
+        output.Truncate();
+        rv = NS_ERROR_MALFORMED_URI;
+      }
     }
-    rv = NS_ERROR_MALFORMED_URI;
+  } else {
+    if (info.HasErrors()) {
+      rv = NS_ERROR_MALFORMED_URI;
+    }
   }
 
   return rv;
@@ -282,12 +288,35 @@ nsresult nsIDNService::ACEtoUTF8(const nsACString& input, nsACString& _retval,
   input.EndReading(end);
   _retval.Truncate();
 
+  if (input.IsEmpty()) {
+    return NS_OK;
+  }
+
+  nsAutoCString tld;
+  nsCString::const_iterator it = end, tldEnd = end;
+  --it;
+  if (it != start && *it == (char16_t)'.') {
+    // This is an FQDN (ends in .)
+    // Skip this dot to extract the TLD
+    tldEnd = it;
+    --it;
+  }
+  // Find last . and compute TLD
+  while (it != start) {
+    if (*it == (char16_t)'.') {
+      ++it;
+      tld.Assign(Substring(it, tldEnd));
+      break;
+    }
+    --it;
+  }
+
   // loop and decode nodes
   while (start != end) {
     len++;
     if (*start++ == '.') {
       nsDependentCSubstring origLabel(input, offset, len - 1);
-      if (NS_FAILED(decodeACE(origLabel, decodedBuf, flag))) {
+      if (NS_FAILED(decodeACE(origLabel, decodedBuf, flag, tld))) {
         // If decoding failed, use the original input sequence
         // for this label.
         _retval.Append(origLabel);
@@ -303,7 +332,7 @@ nsresult nsIDNService::ACEtoUTF8(const nsACString& input, nsACString& _retval,
   // decode the last node
   if (len) {
     nsDependentCSubstring origLabel(input, offset, len);
-    if (NS_FAILED(decodeACE(origLabel, decodedBuf, flag))) {
+    if (NS_FAILED(decodeACE(origLabel, decodedBuf, flag, tld))) {
       _retval.Append(origLabel);
     } else {
       _retval.Append(decodedBuf);
@@ -339,8 +368,7 @@ NS_IMETHODIMP nsIDNService::IsACE(const nsACString& input, bool* _retval) {
   return NS_OK;
 }
 
-NS_IMETHODIMP nsIDNService::Normalize(const nsACString& input,
-                                      nsACString& output) {
+nsresult nsIDNService::Normalize(const nsACString& input, nsACString& output) {
   // protect against bogus input
   NS_ENSURE_TRUE(IsUtf8(input), NS_ERROR_UNEXPECTED);
 
@@ -558,7 +586,7 @@ nsresult nsIDNService::stringPrepAndACE(const nsAString& in, nsACString& out,
     return NS_OK;
   }
 
-  if (flag == eStringPrepForUI && NS_SUCCEEDED(rv) && isLabelSafe(in)) {
+  if (flag == eStringPrepForUI && NS_SUCCEEDED(rv) && isLabelSafe(in, u""_ns)) {
     CopyUTF16toUTF8(strPrep, out);
     return NS_OK;
   }
@@ -594,7 +622,7 @@ void nsIDNService::normalizeFullStops(nsAString& s) {
 }
 
 nsresult nsIDNService::decodeACE(const nsACString& in, nsACString& out,
-                                 stringPrepFlag flag) {
+                                 stringPrepFlag flag, const nsACString& aTLD) {
   bool isAce;
   IsACE(in, &isAce);
   if (!isAce) {
@@ -606,7 +634,9 @@ nsresult nsIDNService::decodeACE(const nsACString& in, nsACString& out,
   nsresult result = IDNA2008ToUnicode(in, utf16);
   NS_ENSURE_SUCCESS(result, result);
 
-  if (flag != eStringPrepForUI || isLabelSafe(utf16)) {
+  NS_ConvertUTF8toUTF16 tld(aTLD);
+
+  if (flag != eStringPrepForUI || isLabelSafe(utf16, tld)) {
     CopyUTF16toUTF8(utf16, out);
   } else {
     out.Assign(in);
@@ -648,17 +678,21 @@ enum ScriptCombo : int32_t {
 
 }  // namespace mozilla::net
 
-bool nsIDNService::isLabelSafe(const nsAString& label) {
-  AutoReadLock lock(mLock);
+bool nsIDNService::isLabelSafe(const nsAString& label, const nsAString& tld) {
+  restrictionProfile profile{eASCIIOnlyProfile};
+  {
+    AutoReadLock lock(mLock);
 
-  if (!isOnlySafeChars(PromiseFlatString(label), mIDNBlocklist)) {
-    return false;
-  }
+    if (!isOnlySafeChars(PromiseFlatString(label), mIDNBlocklist)) {
+      return false;
+    }
 
-  // We should never get here if the label is ASCII
-  NS_ASSERTION(!IsAscii(label), "ASCII label in IDN checking");
-  if (mRestrictionProfile == eASCIIOnlyProfile) {
-    return false;
+    // We should never get here if the label is ASCII
+    NS_ASSERTION(!IsAscii(label), "ASCII label in IDN checking");
+    if (mRestrictionProfile == eASCIIOnlyProfile) {
+      return false;
+    }
+    profile = mRestrictionProfile;
   }
 
   nsAString::const_iterator current, end;
@@ -693,7 +727,7 @@ bool nsIDNService::isLabelSafe(const nsAString& label) {
     Script script = UnicodeProperties::GetScriptCode(ch);
     if (script != Script::COMMON && script != Script::INHERITED &&
         script != lastScript) {
-      if (illegalScriptCombo(script, savedScript)) {
+      if (illegalScriptCombo(profile, script, savedScript)) {
         return false;
       }
     }
@@ -704,8 +738,36 @@ bool nsIDNService::isLabelSafe(const nsAString& label) {
       return false;
     }
 
+    Script nextScript = Script::INVALID;
+    if (current != end) {
+      nextScript = UnicodeProperties::GetScriptCode(*current);
+    }
+
+    if (ch == 0x30FB &&
+        (lastScript == Script::LATIN || nextScript == Script::LATIN)) {
+      return false;
+    }
+
     if (ch == 0x307 &&
         (previousChar == 'i' || previousChar == 'j' || previousChar == 'l')) {
+      return false;
+    }
+
+    // U+00B7 is only allowed on Catalan domains between two l's.
+    if (ch == 0xB7 && (!tld.EqualsLiteral("cat") || previousChar != 'l' ||
+                       current == end || *current != 'l')) {
+      return false;
+    }
+
+    // Disallow Icelandic confusables for domains outside Icelandic and Faroese
+    // ccTLD (.is, .fo)
+    if ((ch == 0xFE || ch == 0xF0) && !tld.EqualsLiteral("is") &&
+        !tld.EqualsLiteral("fo")) {
+      return false;
+    }
+
+    // Block single/double-quote-like characters.
+    if (ch == 0x2BB || ch == 0x2BC) {
       return false;
     }
 
@@ -830,7 +892,8 @@ static const ScriptCombo scriptComboTable[13][9] = {
     /* KORE */ {FAIL, FAIL, FAIL, KORE, KORE, FAIL, FAIL, KORE, FAIL},
     /* HNLT */ {CHNA, FAIL, FAIL, KORE, HNLT, JPAN, JPAN, HNLT, FAIL}};
 
-bool nsIDNService::illegalScriptCombo(Script script, ScriptCombo& savedScript) {
+bool nsIDNService::illegalScriptCombo(restrictionProfile profile, Script script,
+                                      ScriptCombo& savedScript) {
   if (savedScript == ScriptCombo::UNSET) {
     savedScript = findScriptIndex(script);
     return false;
@@ -845,7 +908,6 @@ bool nsIDNService::illegalScriptCombo(Script script, ScriptCombo& savedScript) {
    * In the Moderately Restrictive profile Latin mixed with any other
    *  single script is allowed.
    */
-  return ((savedScript == OTHR &&
-           mRestrictionProfile == eHighlyRestrictiveProfile) ||
+  return ((savedScript == OTHR && profile == eHighlyRestrictiveProfile) ||
           savedScript == FAIL);
 }

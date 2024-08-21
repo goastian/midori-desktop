@@ -18,7 +18,13 @@ NS_IMETHODIMP
 nsStreamListenerWrapper::OnAfterLastPart(nsresult aStatus) {
   if (nsCOMPtr<nsIMultiPartChannelListener> listener =
           do_QueryInterface(mListener)) {
-    return listener->OnAfterLastPart(aStatus);
+    nsresult rv = NS_OK;
+    if (nsCOMPtr<nsIMultiPartChannelListener> listener =
+            do_QueryInterface(mListener)) {
+      rv = listener->OnAfterLastPart(aStatus);
+    }
+    mListener = nullptr;
+    return rv;
   }
   return NS_OK;
 }
@@ -35,5 +41,15 @@ nsStreamListenerWrapper::CheckListenerChain() {
   return rv;
 }
 
+NS_IMETHODIMP
+nsStreamListenerWrapper::OnDataFinished(nsresult aStatus) {
+  nsCOMPtr<nsIThreadRetargetableStreamListener> retargetableListener =
+      do_QueryInterface(mListener);
+  if (retargetableListener) {
+    return retargetableListener->OnDataFinished(aStatus);
+  }
+
+  return NS_OK;
+}
 }  // namespace net
 }  // namespace mozilla

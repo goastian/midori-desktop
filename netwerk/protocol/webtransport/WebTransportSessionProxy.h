@@ -119,16 +119,21 @@ namespace mozilla::net {
 
 class WebTransportStreamCallbackWrapper;
 
-class WebTransportSessionProxy final : public nsIWebTransport,
-                                       public WebTransportSessionEventListener,
-                                       public nsIStreamListener,
-                                       public nsIChannelEventSink,
-                                       public nsIRedirectResultListener,
-                                       public nsIInterfaceRequestor {
+class WebTransportSessionProxy final
+    : public nsIWebTransport,
+      public WebTransportSessionEventListener,
+      public WebTransportSessionEventListenerInternal,
+      public WebTransportConnectionSettings,
+      public nsIStreamListener,
+      public nsIChannelEventSink,
+      public nsIRedirectResultListener,
+      public nsIInterfaceRequestor {
  public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIWEBTRANSPORT
   NS_DECL_WEBTRANSPORTSESSIONEVENTLISTENER
+  NS_DECL_WEBTRANSPORTSESSIONEVENTLISTENERINTERNAL
+  NS_DECL_WEBTRANSPORTCONNECTIONSETTINGS
   NS_DECL_NSIREQUESTOBSERVER
   NS_DECL_NSISTREAMLISTENER
   NS_DECL_NSICHANNELEVENTSINK
@@ -178,6 +183,7 @@ class WebTransportSessionProxy final : public nsIWebTransport,
   uint64_t mSessionId MOZ_GUARDED_BY(mMutex) = UINT64_MAX;
   uint32_t mCloseStatus MOZ_GUARDED_BY(mMutex) = 0;
   nsCString mReason MOZ_GUARDED_BY(mMutex);
+  bool mCleanly MOZ_GUARDED_BY(mMutex) = false;
   bool mStopRequestCalled MOZ_GUARDED_BY(mMutex) = false;
   // This is used to store events happened before OnSessionReady.
   // Note that these events will be dispatched to the socket thread.
@@ -185,6 +191,8 @@ class WebTransportSessionProxy final : public nsIWebTransport,
   nsTArray<std::function<void(nsresult)>> mPendingCreateStreamEvents
       MOZ_GUARDED_BY(mMutex);
   nsCOMPtr<nsIEventTarget> mTarget MOZ_GUARDED_BY(mMutex);
+  nsTArray<RefPtr<nsIWebTransportHash>> mServerCertHashes;
+  bool mDedicatedConnection;  // for WebTranport
 };
 
 }  // namespace mozilla::net

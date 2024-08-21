@@ -10,6 +10,7 @@
 #include "HttpChannelParent.h"
 #include "MainThreadUtils.h"
 #include "NeckoCommon.h"
+#include "gfxPlatform.h"
 #include "mozilla/CORSMode.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/nsCSPContext.h"
@@ -24,7 +25,6 @@
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/Telemetry.h"
 #include "nsAttrValue.h"
-#include "nsAttrValueInlines.h"
 #include "nsCOMPtr.h"
 #include "nsContentPolicyUtils.h"
 #include "nsContentSecurityManager.h"
@@ -36,6 +36,7 @@
 #include "nsIContentSecurityPolicy.h"
 #include "nsIHttpChannel.h"
 #include "nsIInputStream.h"
+#include "nsILoadContext.h"
 #include "nsILoadInfo.h"
 #include "nsIParentChannel.h"
 #include "nsIReferrerInfo.h"
@@ -43,10 +44,9 @@
 #include "nsIURI.h"
 #include "nsNetUtil.h"
 #include "nsQueryObject.h"
-#include "nsStreamUtils.h"
-#include "nsStringStream.h"
 #include "ParentChannelListener.h"
 #include "nsIChannel.h"
+#include "nsInterfaceRequestorAgg.h"
 
 //
 // To enable logging (see mozilla/Logging.h for full details):
@@ -130,15 +130,18 @@ EarlyHintPreloader::~EarlyHintPreloader() {
 /* static */
 Maybe<PreloadHashKey> EarlyHintPreloader::GenerateHashKey(
     ASDestination aAs, nsIURI* aURI, nsIPrincipal* aPrincipal,
-    CORSMode aCorsMode, const nsAString& aType) {
+    CORSMode aCorsMode, bool aIsModulepreload) {
+  if (aIsModulepreload) {
+    return Some(PreloadHashKey::CreateAsScript(
+        aURI, aCorsMode, JS::loader::ScriptKind::eModule));
+  }
   if (aAs == ASDestination::DESTINATION_FONT && aCorsMode != CORS_NONE) {
     return Some(PreloadHashKey::CreateAsFont(aURI, aCorsMode));
   }
   if (aAs == ASDestination::DESTINATION_IMAGE) {
     return Some(PreloadHashKey::CreateAsImage(aURI, aPrincipal, aCorsMode));
   }
-  if (aAs == ASDestination::DESTINATION_SCRIPT &&
-      !aType.LowerCaseEqualsASCII("module")) {
+  if (aAs == ASDestination::DESTINATION_SCRIPT) {
     return Some(PreloadHashKey::CreateAsScript(
         aURI, aCorsMode, JS::loader::ScriptKind::eClassic));
   }
@@ -155,8 +158,7 @@ Maybe<PreloadHashKey> EarlyHintPreloader::GenerateHashKey(
 
 /* static */
 nsSecurityFlags EarlyHintPreloader::ComputeSecurityFlags(CORSMode aCORSMode,
-                                                         ASDestination aAs,
-                                                         bool aIsModule) {
+                                                         ASDestination aAs) {
   if (aAs == ASDestination::DESTINATION_FONT) {
     return nsContentSecurityManager::ComputeSecurityFlags(
         CORSMode::CORS_NONE,
@@ -169,12 +171,6 @@ nsSecurityFlags EarlyHintPreloader::ComputeSecurityFlags(CORSMode aCORSMode,
            nsILoadInfo::SEC_ALLOW_CHROME;
   }
   if (aAs == ASDestination::DESTINATION_SCRIPT) {
-    if (aIsModule) {
-      return nsContentSecurityManager::ComputeSecurityFlags(
-                 aCORSMode, nsContentSecurityManager::CORSSecurityMapping::
-                                REQUIRE_CORS_CHECKS) |
-             nsILoadInfo::SEC_ALLOW_CHROME;
-    }
     return nsContentSecurityManager::ComputeSecurityFlags(
                aCORSMode, nsContentSecurityManager::CORSSecurityMapping::
                               CORS_NONE_MAPS_TO_DISABLED_CORS_CHECKS) |
@@ -203,21 +199,28 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
     OngoingEarlyHints* aOngoingEarlyHints, const LinkHeader& aLinkHeader,
     nsIURI* aBaseURI, nsIPrincipal* aPrincipal,
     nsICookieJarSettings* aCookieJarSettings,
-    const nsACString& aResponseReferrerPolicy, const nsACString& aCSPHeader) {
+    const nsACString& aResponseReferrerPolicy, const nsACString& aCSPHeader,
+    uint64_t aBrowsingContextID,
+    dom::CanonicalBrowsingContext* aLoadingBrowsingContext,
+    bool aIsModulepreload) {
   nsAttrValue as;
   ParseAsValue(aLinkHeader.mAs, as);
 
   ASDestination destination = static_cast<ASDestination>(as.GetEnumValue());
   CollectResourcesTypeTelemetry(destination);
 
-  if (!StaticPrefs::network_early_hints_enabled() ||
-      !StaticPrefs::network_preload()) {
+  if (!StaticPrefs::network_early_hints_enabled()) {
     return;
   }
 
-  if (as.GetEnumValue() == ASDestination::DESTINATION_INVALID) {
+  if (destination == ASDestination::DESTINATION_INVALID && !aIsModulepreload) {
     // return early when it's definitly not an asset type we preload
     // would be caught later as well, e.g. when creating the PreloadHashKey
+    return;
+  }
+
+  if (destination == ASDestination::DESTINATION_FONT &&
+      !gfxPlatform::GetPlatform()->DownloadableFontsEnabled()) {
     return;
   }
 
@@ -240,8 +243,7 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
   CORSMode corsMode = dom::Element::StringToCORSMode(aLinkHeader.mCrossOrigin);
 
   Maybe<PreloadHashKey> hashKey =
-      GenerateHashKey(static_cast<ASDestination>(as.GetEnumValue()), uri,
-                      aPrincipal, corsMode, aLinkHeader.mType);
+      GenerateHashKey(destination, uri, aPrincipal, corsMode, aIsModulepreload);
   if (!hashKey) {
     return;
   }
@@ -250,7 +252,12 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
     return;
   }
 
-  nsContentPolicyType contentPolicyType = AsValueToContentPolicy(as);
+  nsContentPolicyType contentPolicyType =
+      aIsModulepreload ? (IsScriptLikeOrInvalid(aLinkHeader.mAs)
+                              ? nsContentPolicyType::TYPE_SCRIPT
+                              : nsContentPolicyType::TYPE_INVALID)
+                       : AsValueToContentPolicy(as);
+
   if (contentPolicyType == nsContentPolicyType::TYPE_INVALID) {
     return;
   }
@@ -282,9 +289,27 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
 
   RefPtr<EarlyHintPreloader> earlyHintPreloader = new EarlyHintPreloader();
 
-  nsSecurityFlags securityFlags = EarlyHintPreloader::ComputeSecurityFlags(
-      corsMode, static_cast<ASDestination>(as.GetEnumValue()),
-      aLinkHeader.mType.LowerCaseEqualsASCII("module"));
+  earlyHintPreloader->mLoadContext = aLoadingBrowsingContext;
+
+  // Security flags for modulepreload's request mode are computed here directly
+  // until full support for worker destinations can be added.
+  //
+  // Implements "To fetch a single module script,"
+  // Step 9. If destination is "worker", "sharedworker", or "serviceworker",
+  //         and the top-level module fetch flag is set, then set request's
+  //         mode to "same-origin".
+  nsSecurityFlags securityFlags =
+      aIsModulepreload
+          ? ((aLinkHeader.mAs.LowerCaseEqualsASCII("worker") ||
+              aLinkHeader.mAs.LowerCaseEqualsASCII("sharedworker") ||
+              aLinkHeader.mAs.LowerCaseEqualsASCII("serviceworker"))
+                 ? nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_IS_BLOCKED
+                 : nsILoadInfo::SEC_REQUIRE_CORS_INHERITS_SEC_CONTEXT) |
+                (corsMode == CORS_USE_CREDENTIALS
+                     ? nsILoadInfo::SEC_COOKIES_INCLUDE
+                     : nsILoadInfo::SEC_COOKIES_SAME_ORIGIN) |
+                nsILoadInfo::SEC_ALLOW_CHROME
+          : EarlyHintPreloader::ComputeSecurityFlags(corsMode, destination);
 
   // Verify that the resource should be loaded.
   // This isn't the ideal way to test the resource against the CSP.
@@ -305,7 +330,7 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
     // directives to it
     nsCOMPtr<nsIContentSecurityPolicy> csp = new nsCSPContext();
     nsresult rv = csp->SetRequestContextWithPrincipal(
-        aPrincipal, aBaseURI, u""_ns, 0 /* aInnerWindowId */);
+        aPrincipal, aBaseURI, ""_ns, 0 /* aInnerWindowId */);
     NS_ENSURE_SUCCESS_VOID(rv);
     rv = CSP_AppendCSPFromHeader(csp, NS_ConvertUTF8toUTF16(aCSPHeader),
                                  false /* report only */);
@@ -345,9 +370,8 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
   }
 
   int16_t shouldLoad = nsIContentPolicy::ACCEPT;
-  nsresult rv =
-      NS_CheckContentLoadPolicy(uri, secCheckLoadInfo, ""_ns, &shouldLoad,
-                                nsContentUtils::GetContentPolicy());
+  nsresult rv = NS_CheckContentLoadPolicy(uri, secCheckLoadInfo, &shouldLoad,
+                                          nsContentUtils::GetContentPolicy());
 
   if (NS_FAILED(rv) || NS_CP_REJECTED(shouldLoad)) {
     return;
@@ -355,7 +379,7 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
 
   NS_ENSURE_SUCCESS_VOID(earlyHintPreloader->OpenChannel(
       uri, aPrincipal, securityFlags, contentPolicyType, referrerInfo,
-      aCookieJarSettings));
+      aCookieJarSettings, aBrowsingContextID));
 
   earlyHintPreloader->SetLinkHeader(aLinkHeader);
 
@@ -367,7 +391,7 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
 nsresult EarlyHintPreloader::OpenChannel(
     nsIURI* aURI, nsIPrincipal* aPrincipal, nsSecurityFlags aSecurityFlags,
     nsContentPolicyType aContentPolicyType, nsIReferrerInfo* aReferrerInfo,
-    nsICookieJarSettings* aCookieJarSettings) {
+    nsICookieJarSettings* aCookieJarSettings, uint64_t aBrowsingContextID) {
   MOZ_ASSERT(aContentPolicyType == nsContentPolicyType::TYPE_IMAGE ||
              aContentPolicyType ==
                  nsContentPolicyType::TYPE_INTERNAL_FETCH_PRELOAD ||
@@ -406,9 +430,22 @@ nsresult EarlyHintPreloader::OpenChannel(
   PriorizeAsPreload();
 
   rv = mChannel->AsyncOpen(mParentListener);
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_FAILED(rv)) {
+    mParentListener = nullptr;
+    return rv;
+  }
 
   SetState(ePreloaderOpened);
+
+  // Setting the BrowsingContextID here to let Early Hint requests show up in
+  // devtools. Normally that would automatically happen if we would pass the
+  // nsILoadGroup in ns_NewChannel above, but the nsILoadGroup is inaccessible
+  // here in the ParentProcess. The nsILoadGroup only exists in ContentProcess
+  // as part of the document and nsDocShell. It is also not yet determined which
+  // ContentProcess this load belongs to.
+  nsCOMPtr<nsILoadInfo> loadInfo = mChannel->LoadInfo();
+  static_cast<LoadInfo*>(loadInfo.get())
+      ->UpdateBrowsingContextID(aBrowsingContextID);
 
   return NS_OK;
 }
@@ -778,6 +815,12 @@ EarlyHintPreloader::GetInterface(const nsIID& aIID, void** aResult) {
   if (aIID.Equals(NS_GET_IID(nsIRedirectResultListener))) {
     NS_ADDREF_THIS();
     *aResult = static_cast<nsIRedirectResultListener*>(this);
+    return NS_OK;
+  }
+
+  if (aIID.Equals(NS_GET_IID(nsILoadContext)) && mLoadContext != nullptr) {
+    nsCOMPtr<nsILoadContext> loadContext = mLoadContext;
+    loadContext.forget(aResult);
     return NS_OK;
   }
 

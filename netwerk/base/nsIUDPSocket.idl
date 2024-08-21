@@ -31,7 +31,7 @@ native NetAddr(mozilla::net::NetAddr);
  *
  * An interface to a UDP socket that can accept incoming connections.
  */
-[scriptable, uuid(d423bf4e-4499-40cf-bc03-153e2bf206d1)]
+[scriptable, builtinclass, uuid(d423bf4e-4499-40cf-bc03-153e2bf206d1)]
 interface nsIUDPSocket : nsISupports
 {
     /**
@@ -116,7 +116,7 @@ interface nsIUDPSocket : nsISupports
      * If it is used off the socket thread there is a risk of triggering a bug
      * in OS thatcan cause a crash.
      */
-    void syncListen(in nsIUDPSocketSyncListener aListener);
+    [noscript] void syncListen(in nsIUDPSocketSyncListener aListener);
 
     /**
      * connect
@@ -126,7 +126,7 @@ interface nsIUDPSocket : nsISupports
      * @param aRemoteAddr
      *        The remote address to connect to
      */
-     void connect([const] in NetAddrPtr aAddr);
+    [noscript] void connect([const] in NetAddrPtr aAddr);
 
     /**
      * Returns the local address of this UDP socket
@@ -194,7 +194,8 @@ interface nsIUDPSocket : nsISupports
      * @return number of bytes written. (0 or length of data)
      */
     [noscript] unsigned long sendWithAddress([const] in NetAddrPtr addr,
-                                             in Array<uint8_t> data);
+                                             [array, size_is(length), const] in uint8_t data,
+                                             in unsigned long length);
 
     /**
      * sendBinaryStream
@@ -216,8 +217,8 @@ interface nsIUDPSocket : nsISupports
      * @param addr The remote host address.
      * @param stream The input stream to be sent. This must be a buffered stream implementation.
      */
-    void sendBinaryStreamWithAddress([const] in NetAddrPtr addr,
-                                     in nsIInputStream stream);
+    [noscript] void sendBinaryStreamWithAddress([const] in NetAddrPtr addr,
+                                                in nsIInputStream stream);
 
     /**
      * joinMulticast

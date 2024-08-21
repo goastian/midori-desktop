@@ -41,6 +41,7 @@
 #include "nsThreadUtils.h"
 #include "WebTransportSessionProxy.h"
 #include "mozilla/AppShutdown.h"
+#include "mozilla/Components.h"
 #include "mozilla/LoadInfo.h"
 #include "mozilla/net/NeckoCommon.h"
 #include "mozilla/Services.h"
@@ -67,6 +68,13 @@
 #include "ssl.h"
 #include "StaticComponents.h"
 
+#ifdef MOZ_WIDGET_ANDROID
+#  include <regex>
+#  include "AndroidBridge.h"
+#  include "mozilla/java/GeckoAppShellWrappers.h"
+#  include "mozilla/jni/Utils.h"
+#endif
+
 namespace mozilla {
 namespace net {
 
@@ -87,8 +95,7 @@ using mozilla::dom::ServiceWorkerDescriptor;
 #define WEBRTC_PREF_PREFIX "media.peerconnection."
 #define NETWORK_DNS_PREF "network.dns."
 #define FORCE_EXTERNAL_PREF_PREFIX "network.protocol-handler.external."
-
-#define MAX_RECURSION_COUNT 50
+#define SIMPLE_URI_SCHEMES_PREF "network.url.simple_uri_schemes"
 
 nsIOService* gIOService;
 static bool gHasWarnedUploadChannel2;
@@ -173,6 +180,7 @@ int16_t gBadPortList[] = {
     2049,   // nfs
     3659,   // apple-sasl
     4045,   // lockd
+    4160,   // sieve
     5060,   // sip
     5061,   // sips
     6000,   // x11
@@ -182,6 +190,7 @@ int16_t gBadPortList[] = {
     6667,   // irc (default)
     6668,   // irc (alternate)
     6669,   // irc (alternate)
+    6679,   // osaut
     6697,   // irc+tls
     10080,  // amanda
     0,      // Sentinel value: This MUST be zero
@@ -213,6 +222,7 @@ static const char* gCallbackPrefs[] = {
     NECKO_BUFFER_CACHE_SIZE_PREF,
     NETWORK_CAPTIVE_PORTAL_PREF,
     FORCE_EXTERNAL_PREF_PREFIX,
+    SIMPLE_URI_SCHEMES_PREF,
     nullptr,
 };
 
@@ -223,7 +233,6 @@ static const char* gCallbackPrefsForSocketProcess[] = {
     "network.trr.",
     "doh-rollout.",
     "network.dns.disableIPv6",
-    "network.dns.skipTRR-when-parental-control-enabled",
     "network.offline-mirrors-connectivity",
     "network.disable-localhost-when-offline",
     "network.proxy.parse_pac_on_socket_process",
@@ -384,6 +393,39 @@ nsIOService::~nsIOService() {
   }
 }
 
+#ifdef MOZ_WIDGET_ANDROID
+bool nsIOService::ShouldAddAdditionalSearchHeaders(nsIURI* aURI,
+                                                   bool* aHeaderVal) {
+  if (!(mozilla::AndroidBridge::Bridge())) {
+    return false;
+  }
+
+  if (!aURI->SchemeIs("https")) {
+    return false;
+  }
+
+  // We need to improve below logic for matching google domains
+  // See Bug 1894642
+  // Is URI same as google ^https://www\\.google\\..+
+  nsAutoCString host;
+  aURI->GetHost(host);
+  LOG(("nsIOService::ShouldAddAdditionalSearchHeaders() checking host %s\n",
+       PromiseFlatCString(host).get()));
+
+  std::regex pattern("^www\\.google\\..+");
+  if (std::regex_match(host.get(), pattern)) {
+    LOG(("Google domain detected for host %s\n",
+         PromiseFlatCString(host).get()));
+    static bool ramAboveThreshold =
+        java::GeckoAppShell::IsDeviceRamThresholdOkay();
+    *aHeaderVal = ramAboveThreshold;
+    return true;
+  }
+
+  return false;
+}
+#endif
+
 // static
 void nsIOService::OnTLSPrefChange(const char* aPref, void* aSelf) {
   MOZ_ASSERT(IsSocketProcessChild());
@@ -411,9 +453,9 @@ nsresult nsIOService::InitializeCaptivePortalService() {
     return NS_OK;
   }
 
-  mCaptivePortalService = do_GetService(NS_CAPTIVEPORTAL_CID);
+  mCaptivePortalService = mozilla::components::CaptivePortal::Service();
   if (mCaptivePortalService) {
-    return static_cast<CaptivePortalService*>(mCaptivePortalService.get())
+    static_cast<CaptivePortalService*>(mCaptivePortalService.get())
         ->Initialize();
   }
 
@@ -436,7 +478,7 @@ nsresult nsIOService::InitializeSocketTransportService() {
 
   if (!mSocketTransportService) {
     mSocketTransportService =
-        do_GetService(NS_SOCKETTRANSPORTSERVICE_CONTRACTID, &rv);
+        mozilla::components::SocketTransport::Service(&rv);
     if (NS_FAILED(rv)) {
       NS_WARNING("failed to get socket transport service");
     }
@@ -483,7 +525,7 @@ nsresult nsIOService::InitializeProtocolProxyService() {
 
   if (XRE_IsParentProcess()) {
     // for early-initialization
-    Unused << do_GetService(NS_PROTOCOLPROXYSERVICE_CONTRACTID, &rv);
+    Unused << mozilla::components::ProtocolProxy::Service(&rv);
   }
 
   return rv;
@@ -812,8 +854,8 @@ nsresult nsIOService::AsyncOnChannelRedirect(
   // This is silly. I wish there was a simpler way to get at the global
   // reference of the contentSecurityManager. But it lives in the XPCOM
   // service registry.
-  nsCOMPtr<nsIChannelEventSink> sink =
-      do_GetService(NS_CONTENTSECURITYMANAGER_CONTRACTID);
+  nsCOMPtr<nsIChannelEventSink> sink;
+  sink = mozilla::components::ContentSecurityManager::Service();
   if (sink) {
     nsresult rv =
         helper->DelegateOnChannelRedirect(sink, oldChan, newChan, flags);
@@ -966,6 +1008,13 @@ nsIOService::HostnameIsSharedIPAddress(nsIURI* aURI, bool* aResult) {
 }
 
 NS_IMETHODIMP
+nsIOService::IsValidHostname(const nsACString& inHostname, bool* aResult) {
+  *aResult = net_IsValidHostName(inHostname);
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsIOService::GetProtocolFlags(const char* scheme, uint32_t* flags) {
   NS_ENSURE_ARG_POINTER(scheme);
 
@@ -995,15 +1044,6 @@ nsIOService::GetDefaultPort(const char* scheme, int32_t* defaultPort) {
   return NS_OK;
 }
 
-class AutoIncrement {
- public:
-  explicit AutoIncrement(uint32_t* var) : mVar(var) { ++*var; }
-  ~AutoIncrement() { --*mVar; }
-
- private:
-  uint32_t* mVar;
-};
-
 nsresult nsIOService::NewURI(const nsACString& aSpec, const char* aCharset,
                              nsIURI* aBaseURI, nsIURI** result) {
   return NS_NewURI(result, aSpec, aCharset, aBaseURI);
@@ -1029,10 +1069,8 @@ nsIOService::NewFileURI(nsIFile* file, nsIURI** result) {
 already_AddRefed<nsIURI> nsIOService::CreateExposableURI(nsIURI* aURI) {
   MOZ_ASSERT(aURI, "Must have a URI");
   nsCOMPtr<nsIURI> uri = aURI;
-
-  nsAutoCString userPass;
-  uri->GetUserPass(userPass);
-  if (!userPass.IsEmpty()) {
+  bool hasUserPass;
+  if (NS_SUCCEEDED(aURI->GetHasUserPass(&hasUserPass)) && hasUserPass) {
     DebugOnly<nsresult> rv = NS_MutateURI(uri).SetUserPass(""_ns).Finalize(uri);
     MOZ_ASSERT(NS_SUCCEEDED(rv) && uri, "Mutating URI should never fail");
   }
@@ -1153,8 +1191,8 @@ nsresult nsIOService::NewChannelFromURIWithProxyFlagsInternal(
   if (!gHasWarnedUploadChannel2 && scheme.EqualsLiteral("http")) {
     nsCOMPtr<nsIUploadChannel2> uploadChannel2 = do_QueryInterface(channel);
     if (!uploadChannel2) {
-      nsCOMPtr<nsIConsoleService> consoleService =
-          do_GetService(NS_CONSOLESERVICE_CONTRACTID);
+      nsCOMPtr<nsIConsoleService> consoleService;
+      consoleService = mozilla::components::Console::Service();
       if (consoleService) {
         consoleService->LogStringMessage(
             u"Http channel implementation "
@@ -1534,6 +1572,15 @@ void nsIOService::PrefsChanged(const char* pref) {
     }
     AutoWriteLock lock(mLock);
     mForceExternalSchemes = std::move(forceExternalSchemes);
+  }
+
+  if (!pref || strncmp(pref, SIMPLE_URI_SCHEMES_PREF,
+                       strlen(SIMPLE_URI_SCHEMES_PREF)) == 0) {
+    LOG((
+        "simple_uri_schemes pref change observed, updating the scheme list\n"));
+    nsAutoCString schemeList;
+    Preferences::GetCString(SIMPLE_URI_SCHEMES_PREF, schemeList);
+    mozilla::net::ParseSimpleURISchemes(schemeList);
   }
 }
 
@@ -2005,8 +2052,8 @@ nsresult nsIOService::SpeculativeConnectInternal(
   // speculative connect should not be performed because the potential
   // reward is slim with tcp peers closely located to the browser.
   nsresult rv;
-  nsCOMPtr<nsIProtocolProxyService> pps =
-      do_GetService(NS_PROTOCOLPROXYSERVICE_CONTRACTID, &rv);
+  nsCOMPtr<nsIProtocolProxyService> pps;
+  pps = mozilla::components::ProtocolProxy::Service(&rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIPrincipal> loadingPrincipal = aPrincipal;

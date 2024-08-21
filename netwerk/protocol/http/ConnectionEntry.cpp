@@ -124,6 +124,7 @@ void ConnectionEntry::DisallowHttp2() {
 
   // Can't coalesce if we're not using spdy
   mCoalescingKeys.Clear();
+  mAddresses.Clear();
 }
 
 void ConnectionEntry::DontReuseHttp3Conn() {
@@ -137,6 +138,7 @@ void ConnectionEntry::DontReuseHttp3Conn() {
 
   // Can't coalesce if we're not using http3
   mCoalescingKeys.Clear();
+  mAddresses.Clear();
 }
 
 void ConnectionEntry::RecordIPFamilyPreference(uint16_t family) {
@@ -426,6 +428,16 @@ nsresult ConnectionEntry::RemoveActiveConnection(HttpConnectionBase* conn) {
   return NS_OK;
 }
 
+nsresult ConnectionEntry::RemovePendingConnection(HttpConnectionBase* conn) {
+  MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+
+  if (!mPendingConns.RemoveElement(conn)) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  return NS_OK;
+}
+
 void ConnectionEntry::ClosePersistentConnections() {
   LOG(("ConnectionEntry::ClosePersistentConnections [ci=%s]\n",
        mConnInfo->HashKey().get()));
@@ -437,6 +449,7 @@ void ConnectionEntry::ClosePersistentConnections() {
   }
 
   mCoalescingKeys.Clear();
+  mAddresses.Clear();
 }
 
 uint32_t ConnectionEntry::PruneDeadConnections() {
@@ -476,13 +489,36 @@ uint32_t ConnectionEntry::PruneDeadConnections() {
 
 void ConnectionEntry::VerifyTraffic() {
   if (!mConnInfo->IsHttp3()) {
-    // Iterate over all active connections and check them.
-    for (uint32_t index = 0; index < mActiveConns.Length(); ++index) {
-      RefPtr<nsHttpConnection> conn = do_QueryObject(mActiveConns[index]);
+    for (uint32_t index = 0; index < mPendingConns.Length(); ++index) {
+      RefPtr<nsHttpConnection> conn = do_QueryObject(mPendingConns[index]);
       if (conn) {
         conn->CheckForTraffic(true);
       }
     }
+
+    uint32_t numConns = mActiveConns.Length();
+    if (numConns) {
+      // Walk the list backwards to allow us to remove entries easily.
+      for (int index = numConns - 1; index >= 0; index--) {
+        RefPtr<nsHttpConnection> conn = do_QueryObject(mActiveConns[index]);
+        if (conn) {
+          conn->CheckForTraffic(true);
+          if (conn->EverUsedSpdy() &&
+              StaticPrefs::
+                  network_http_http2_move_to_pending_list_after_network_change()) {
+            mActiveConns.RemoveElementAt(index);
+            gHttpHandler->ConnMgr()->DecrementActiveConnCount(conn);
+            mPendingConns.AppendElement(conn);
+            // After DontReuse(), the connection will be closed after the last
+            // transition is done.
+            conn->DontReuse();
+            LOG(("Move active connection to pending list [conn=%p]\n",
+                 conn.get()));
+          }
+        }
+      }
+    }
+
     // Iterate the idle connections and unmark them for traffic checks.
     for (uint32_t index = 0; index < mIdleConns.Length(); ++index) {
       RefPtr<nsHttpConnection> conn = do_QueryObject(mIdleConns[index]);
@@ -544,6 +580,8 @@ void ConnectionEntry::MakeAllDontReuseExcept(HttpConnectionBase* conn) {
            "because new "
            "spdy connection (%p) takes precedence\n",
            otherConn, conn));
+      otherConn->SetCloseReason(
+          ConnectionCloseReason::CLOSE_EXISTING_CONN_FOR_COALESCING);
       otherConn->DontReuse();
     }
   }
@@ -686,6 +724,18 @@ void ConnectionEntry::CloseAllActiveConnsWithNullTransactcion(
            liveTransaction, activeConn.get()));
       activeConn->CloseTransaction(liveTransaction, aCloseCode);
     }
+  }
+}
+
+void ConnectionEntry::ClosePendingConnections() {
+  while (mPendingConns.Length()) {
+    RefPtr<HttpConnectionBase> conn(mPendingConns[0]);
+    mPendingConns.RemoveElementAt(0);
+
+    // Since HttpConnectionBase::Close doesn't break the bond with
+    // the connection's transaction, we must explicitely tell it
+    // to close its transaction and not just self.
+    conn->CloseTransaction(conn->Transaction(), NS_ERROR_ABORT, true);
   }
 }
 
@@ -925,18 +975,16 @@ bool ConnectionEntry::MaybeProcessCoalescingKeys(nsIDNSAddrRecord* dnsRecord,
     return false;
   }
 
-  nsTArray<NetAddr> addressSet;
-  nsresult rv = dnsRecord->GetAddresses(addressSet);
-
-  if (NS_FAILED(rv) || addressSet.IsEmpty()) {
+  nsresult rv = dnsRecord->GetAddresses(mAddresses);
+  if (NS_FAILED(rv) || mAddresses.IsEmpty()) {
     return false;
   }
 
-  for (uint32_t i = 0; i < addressSet.Length(); ++i) {
-    if ((addressSet[i].raw.family == AF_INET && addressSet[i].inet.ip == 0) ||
-        (addressSet[i].raw.family == AF_INET6 &&
-         addressSet[i].inet6.ip.u64[0] == 0 &&
-         addressSet[i].inet6.ip.u64[1] == 0)) {
+  for (uint32_t i = 0; i < mAddresses.Length(); ++i) {
+    if ((mAddresses[i].raw.family == AF_INET && mAddresses[i].inet.ip == 0) ||
+        (mAddresses[i].raw.family == AF_INET6 &&
+         mAddresses[i].inet6.ip.u64[0] == 0 &&
+         mAddresses[i].inet6.ip.u64[1] == 0)) {
       // Bug 1680249 - Don't create the coalescing key if the ip address is
       // `0.0.0.0` or `::`.
       LOG(
@@ -947,7 +995,7 @@ bool ConnectionEntry::MaybeProcessCoalescingKeys(nsIDNSAddrRecord* dnsRecord,
     }
     nsCString* newKey = mCoalescingKeys.AppendElement(nsCString());
     newKey->SetLength(kIPv6CStrBufSize + 26);
-    addressSet[i].ToStringBuffer(newKey->BeginWriting(), kIPv6CStrBufSize);
+    mAddresses[i].ToStringBuffer(newKey->BeginWriting(), kIPv6CStrBufSize);
     newKey->SetLength(strlen(newKey->BeginReading()));
     if (mConnInfo->GetAnonymous()) {
       newKey->AppendLiteral("~A:");
@@ -1052,6 +1100,17 @@ void ConnectionEntry::SetRetryDifferentIPFamilyForHttp3(uint16_t aIPFamily) {
   LOG(("  %p prefer ipv4=%d, ipv6=%d", this, (bool)mPreferIPv4,
        (bool)mPreferIPv6));
   MOZ_DIAGNOSTIC_ASSERT(mPreferIPv4 ^ mPreferIPv6);
+}
+
+void ConnectionEntry::SetServerCertHashes(
+    nsTArray<RefPtr<nsIWebTransportHash>>&& aHashes) {
+  mServerCertHashes = std::move(aHashes);
+}
+
+const nsTArray<RefPtr<nsIWebTransportHash>>&
+ConnectionEntry::GetServerCertHashes() {
+  MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+  return mServerCertHashes;
 }
 
 }  // namespace net

@@ -250,6 +250,11 @@ interface nsIURI : nsISupports
      */
     readonly attribute boolean hasRef;
 
+    /**
+     * Returns if there is user and pass in the URI.
+     */
+    readonly attribute boolean hasUserPass;
+
     /************************************************************************
      * Additional attributes added for .query support:
      */
@@ -270,6 +275,11 @@ interface nsIURI : nsISupports
      * Some characters may be escaped.
      */
     readonly attribute AUTF8String query;
+
+    /**
+     * Returns if there is a query portion (the part after the "?") of the URI.
+     */
+    readonly attribute boolean hasQuery;
 
     /**
      * If the URI has a punycode encoded hostname, this will hold the UTF8

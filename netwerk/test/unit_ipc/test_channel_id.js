@@ -1,4 +1,6 @@
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 /*
  * Test that when doing HTTP requests, the nsIHttpChannel is detected in
@@ -45,7 +47,7 @@ let parentChannelsDone = new Promise(resolve => {
   };
 });
 
-function observer(subject, topic, data) {
+function observer(subject) {
   let channel = subject.QueryInterface(Ci.nsIHttpChannel);
 
   let uri = channel.URI.spec;

@@ -164,6 +164,11 @@ CacheIOThread::CacheIOThread() {
 }
 
 CacheIOThread::~CacheIOThread() {
+  {
+    MonitorAutoLock lock(mMonitor);
+    MOZ_RELEASE_ASSERT(mShutdown);
+  }
+
   if (mXPCOMThread) {
     nsIThread* thread = mXPCOMThread;
     thread->Release();
@@ -193,6 +198,9 @@ nsresult CacheIOThread::Init() {
       PR_CreateThread(PR_USER_THREAD, ThreadFunc, this, PR_PRIORITY_NORMAL,
                       PR_GLOBAL_THREAD, PR_JOINABLE_THREAD, 128 * 1024);
   if (!mThread) {
+    // Treat this thread as already shutdown.
+    MonitorAutoLock lock(mMonitor);
+    mShutdown = true;
     return NS_ERROR_FAILURE;
   }
 
@@ -373,8 +381,7 @@ void CacheIOThread::ThreadFunc() {
     auto queue =
         MakeRefPtr<ThreadEventQueue>(MakeUnique<mozilla::EventQueue>());
     nsCOMPtr<nsIThread> xpcomThread =
-        nsThreadManager::get().CreateCurrentThread(queue,
-                                                   nsThread::NOT_MAIN_THREAD);
+        nsThreadManager::get().CreateCurrentThread(queue);
 
     threadInternal = do_QueryInterface(xpcomThread);
     if (threadInternal) threadInternal->SetObserver(this);

@@ -444,8 +444,7 @@ void WebSocketChannelChild::OnServerClose(const uint16_t& aCode,
 }
 
 void WebSocketChannelChild::SetupNeckoTarget() {
-  mNeckoTarget = nsContentUtils::GetEventTargetByLoadInfo(
-      mLoadInfo, TaskCategory::Network);
+  mNeckoTarget = GetMainThreadSerialEventTarget();
 }
 
 NS_IMETHODIMP
@@ -494,7 +493,7 @@ WebSocketChannelChild::AsyncOpenNative(
   AddIPDLReference();
 
   nsCOMPtr<nsIURI> uri;
-  Maybe<LoadInfoArgs> loadInfoArgs;
+  LoadInfoArgs loadInfoArgs;
   Maybe<NotNull<PTransportProviderChild*>> transportProvider;
 
   if (!mIsServerSide) {
@@ -515,8 +514,10 @@ WebSocketChannelChild::AsyncOpenNative(
   // This must be called before sending constructor message.
   SetupNeckoTarget();
 
-  gNeckoChild->SendPWebSocketConstructor(
-      this, browserChild, IPC::SerializedLoadContext(this), mSerial);
+  if (!gNeckoChild->SendPWebSocketConstructor(
+          this, browserChild, IPC::SerializedLoadContext(this), mSerial)) {
+    return NS_ERROR_UNEXPECTED;
+  }
   if (!SendAsyncOpen(uri, aOrigin, aOriginAttributes, aInnerWindowID, mProtocol,
                      mEncrypted, mPingInterval, mClientSetPingInterval,
                      mPingResponseTimeout, mClientSetPingTimeout, loadInfoArgs,

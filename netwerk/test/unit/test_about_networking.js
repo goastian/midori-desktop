@@ -5,7 +5,9 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 const gDashboard = Cc["@mozilla.org/network/dashboard;1"].getService(
   Ci.nsIDashboard
@@ -70,7 +72,7 @@ add_test(function test_sockets() {
     null
   );
   let listener = {
-    onTransportStatus(aTransport, aStatus, aProgress, aProgressMax) {
+    onTransportStatus(aTransport, aStatus) {
       if (aStatus == Ci.nsISocketTransport.STATUS_CONNECTED_TO) {
         gDashboard.requestSockets(function (data) {
           gServerSocket.close();

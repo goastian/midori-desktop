@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 /*
 - get 302 with Cache-control: no-store
@@ -13,17 +15,17 @@ var httpserver = null;
 // Need to randomize, because apparently no one clears our cache
 var randomPath1 = "/redirect-no-store/" + Math.random();
 
-XPCOMUtils.defineLazyGetter(this, "randomURI1", function () {
+ChromeUtils.defineLazyGetter(this, "randomURI1", function () {
   return "http://localhost:" + httpserver.identity.primaryPort + randomPath1;
 });
 
 var randomPath2 = "/redirect-expires-past/" + Math.random();
 
-XPCOMUtils.defineLazyGetter(this, "randomURI2", function () {
+ChromeUtils.defineLazyGetter(this, "randomURI2", function () {
   return "http://localhost:" + httpserver.identity.primaryPort + randomPath2;
 });
 
-function make_channel(url, callback, ctx) {
+function make_channel(url) {
   return NetUtil.newChannel({ uri: url, loadUsingSystemPrincipal: true });
 }
 
@@ -83,8 +85,8 @@ function check_response(
       // Do the request again and check the server handler is called appropriately
       var chan = make_channel(path);
       chan.asyncOpen(
-        new ChannelListener(function (request, buffer) {
-          Assert.equal(buffer, responseBody);
+        new ChannelListener(function (request1, buffer1) {
+          Assert.equal(buffer1, responseBody);
 
           if (expectedExpiration) {
             // Handler had to be called second time

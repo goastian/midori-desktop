@@ -51,8 +51,6 @@ function channelOpenPromise(chan) {
     function finish(req, buffer) {
       resolve([req, buffer]);
     }
-    let internal = chan.QueryInterface(Ci.nsIHttpChannelInternal);
-    internal.setWaitForHTTPSSVCRecord();
     chan.asyncOpen(new ChannelListener(finish, null, CL_ALLOW_UNKNOWN_CL));
   });
 }
@@ -182,7 +180,7 @@ add_task(async function testFallback() {
   Services.prefs.setIntPref("network.trr.mode", 3);
   Services.prefs.setCharPref(
     "network.trr.uri",
-    `https://foo.example.com:${trrServer.port}/dns-query`
+    `https://foo.example.com:${trrServer.port()}/dns-query`
   );
 
   await trrServer.registerDoHAnswers("test.fallback.com", "A", {

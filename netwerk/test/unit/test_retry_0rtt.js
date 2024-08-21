@@ -4,12 +4,14 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 var httpServer = null;
 
 let handlerCallbacks = {};
 
-function listenHandler(metadata, response) {
+function listenHandler(metadata) {
   info(metadata.path);
   handlerCallbacks[metadata.path] = (handlerCallbacks[metadata.path] || 0) + 1;
 }
@@ -46,6 +48,12 @@ add_setup(
     );
     let nssComponent = Cc["@mozilla.org/psm;1"].getService(Ci.nsINSSComponent);
     await nssComponent.asyncClearSSLExternalAndInternalSessionCache();
+
+    // See Bug 1878505
+    Services.prefs.setIntPref("network.http.speculative-parallel-limit", 0);
+    registerCleanupFunction(async () => {
+      Services.prefs.clearUserPref("network.http.speculative-parallel-limit");
+    });
   }
 );
 
@@ -81,7 +89,7 @@ add_task(
     var retryDomains = [
       "0rtt-alert-bad-mac.example.com",
       "0rtt-alert-protocol-version.example.com",
-      //"0rtt-alert-unexpected.example.com", // TODO(bug 1753204): uncomment this
+      "0rtt-alert-unexpected.example.com",
     ];
 
     Services.prefs.setCharPref("network.dns.localDomains", retryDomains);

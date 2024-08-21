@@ -247,6 +247,16 @@ NS_IMETHODIMP
 NullHttpChannel::UpgradeToSecure() { return NS_ERROR_NOT_IMPLEMENTED; }
 
 NS_IMETHODIMP
+NullHttpChannel::GetRequestObserversCalled(bool* aCalled) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::SetRequestObserversCalled(bool aCalled) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
 NullHttpChannel::GetRequestContextID(uint64_t* _retval) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -818,6 +828,16 @@ NS_IMETHODIMP NullHttpChannel::SetDocumentCharacterSet(
 
 NS_IMETHODIMP NullHttpChannel::GetDocumentCharacterSet(
     nsAString& aDocumentCharacterSet) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::SetRenderBlocking(bool aRenderBlocking) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::GetRenderBlocking(bool* aRenderBlocking) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 

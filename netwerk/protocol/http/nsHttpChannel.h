@@ -63,7 +63,6 @@ using DNSPromise = MozPromise<nsCOMPtr<nsIDNSRecord>, nsresult, false>;
 
 class nsHttpChannel final : public HttpBaseChannel,
                             public HttpAsyncAborter<nsHttpChannel>,
-                            public nsIStreamListener,
                             public nsICachingChannel,
                             public nsICacheEntryOpenCallback,
                             public nsITransportEventSink,
@@ -336,7 +335,10 @@ class nsHttpChannel final : public HttpBaseChannel,
   void OnHTTPSRRAvailable(nsIDNSHTTPSSVCRecord* aRecord);
   [[nodiscard]] nsresult Connect();
   void SpeculativeConnect();
-  [[nodiscard]] nsresult SetupTransaction();
+  [[nodiscard]] nsresult SetupChannelForTransaction();
+  [[nodiscard]] nsresult InitTransaction();
+  [[nodiscard]] nsresult DispatchTransaction(
+      HttpTransactionShell* aTransWithStickyConn);
   [[nodiscard]] nsresult CallOnStartRequest();
   [[nodiscard]] nsresult ProcessResponse();
   void AsyncContinueProcessResponse();
@@ -386,7 +388,6 @@ class nsHttpChannel final : public HttpBaseChannel,
   // proxy specific methods
   [[nodiscard]] nsresult ProxyFailover();
   [[nodiscard]] nsresult AsyncDoReplaceWithProxy(nsIProxyInfo*);
-  [[nodiscard]] nsresult ContinueDoReplaceWithProxy(nsresult);
   [[nodiscard]] nsresult ResolveProxy();
 
   // cache specific methods
@@ -400,7 +401,7 @@ class nsHttpChannel final : public HttpBaseChannel,
   [[nodiscard]] nsresult UpdateExpirationTime();
   [[nodiscard]] nsresult CheckPartial(nsICacheEntry* aEntry, int64_t* aSize,
                                       int64_t* aContentLength);
-  [[nodiscard]] nsresult ReadFromCache(bool alreadyMarkedValid);
+  [[nodiscard]] nsresult ReadFromCache(void);
   void CloseCacheEntry(bool doomOnFailure);
   [[nodiscard]] nsresult InitCacheEntry();
   void UpdateInhibitPersistentCachingFlag();
@@ -409,9 +410,6 @@ class nsHttpChannel final : public HttpBaseChannel,
   [[nodiscard]] nsresult InstallCacheListener(int64_t offset = 0);
   void MaybeInvalidateCacheEntryForSubsequentGet();
   void AsyncOnExamineCachedResponse();
-
-  // Handle the bogus Content-Encoding Apache sometimes sends
-  void ClearBogusContentEncodingIfNeeded();
 
   // byte range request specific methods
   [[nodiscard]] nsresult ProcessPartialContent(
@@ -531,6 +529,9 @@ class nsHttpChannel final : public HttpBaseChannel,
   // resolve in firing a ServiceWorker FetchEvent.
   [[nodiscard]] nsresult RedirectToInterceptedChannel();
 
+  // Start an internal redirect to a new channel for auth retry
+  [[nodiscard]] nsresult RedirectToNewChannelForAuthRetry();
+
   // Determines and sets content type in the cache entry. It's called when
   // writing a new entry. The content type is used in cache internally only.
   void SetCachedContentType();
@@ -568,11 +569,14 @@ class nsHttpChannel final : public HttpBaseChannel,
   // This method can only be called on the main thread.
   void PerformBackgroundCacheRevalidationNow();
 
+  void SetPriorityHeader();
+
  private:
   nsCOMPtr<nsICancelable> mProxyRequest;
 
   nsCOMPtr<nsIRequest> mTransactionPump;
   RefPtr<HttpTransactionShell> mTransaction;
+  RefPtr<HttpTransactionShell> mTransactionSticky;
 
   uint64_t mLogicalOffset{0};
 
@@ -613,7 +617,7 @@ class nsHttpChannel final : public HttpBaseChannel,
 
   // Total time the channel spent suspended. This value is reported to
   // telemetry in nsHttpChannel::OnStartRequest().
-  uint32_t mSuspendTotalTime{0};
+  TimeDuration mSuspendTotalTime{0};
 
   friend class AutoRedirectVetoNotifier;
   friend class HttpAsyncAborter<nsHttpChannel>;
@@ -703,7 +707,8 @@ class nsHttpChannel final : public HttpBaseChannel,
     // Only set to true when we receive an HTTPSSVC record before the
     // transaction is created.
     (uint32_t, HTTPSSVCTelemetryReported, 1),
-    (uint32_t, EchConfigUsed, 1)
+    (uint32_t, EchConfigUsed, 1),
+    (uint32_t, AuthRedirectedChannel, 1)
   ))
   // clang-format on
 
@@ -797,7 +802,11 @@ class nsHttpChannel final : public HttpBaseChannel,
   nsresult TriggerNetwork();
   void CancelNetworkRequest(nsresult aStatus);
 
+  nsresult LogConsoleError(const char* aTag);
+
   void SetHTTPSSVCRecord(already_AddRefed<nsIDNSHTTPSSVCRecord>&& aRecord);
+
+  void RecordOnStartTelemetry(nsresult aStatus, bool aIsNavigation);
 
   // Timer used to delay the network request, or to trigger the network
   // request if retrieving the cache entry takes too long.

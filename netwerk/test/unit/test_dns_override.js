@@ -48,6 +48,14 @@ Listener.prototype.QueryInterface = ChromeUtils.generateQI(["nsIDNSListener"]);
 const DOMAIN = "example.org";
 const OTHER = "example.com";
 
+add_setup(async function setup() {
+  trr_test_setup();
+
+  registerCleanupFunction(async () => {
+    trr_clear_prefs();
+  });
+});
+
 add_task(async function test_bad_IPs() {
   Assert.throws(
     () => override.addIPOverride(DOMAIN, DOMAIN),
@@ -320,3 +328,211 @@ add_task(async function test_nxdomain() {
   let [, , inStatus] = await listener;
   equal(inStatus, Cr.NS_ERROR_UNKNOWN_HOST);
 });
+
+function makeChan(url) {
+  let chan = NetUtil.newChannel({
+    uri: url,
+    loadUsingSystemPrincipal: true,
+    contentPolicyType: Ci.nsIContentPolicy.TYPE_DOCUMENT,
+  }).QueryInterface(Ci.nsIHttpChannel);
+  return chan;
+}
+
+function channelOpenPromise(chan, flags) {
+  return new Promise(resolve => {
+    function finish(req, buffer) {
+      resolve([req, buffer]);
+    }
+    chan.asyncOpen(new ChannelListener(finish, null, flags));
+  });
+}
+
+function hexToUint8Array(hex) {
+  return new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+}
+
+add_task(
+  {
+    skip_if: () =>
+      mozinfo.os == "win" ||
+      mozinfo.os == "android" ||
+      mozinfo.socketprocess_networking,
+  },
+  async function test_https_record_override() {
+    let trrServer = new TRRServer();
+    await trrServer.start();
+    registerCleanupFunction(async () => {
+      await trrServer.stop();
+    });
+
+    await trrServer.registerDoHAnswers("service.com", "HTTPS", {
+      answers: [
+        {
+          name: "service.com",
+          ttl: 55,
+          type: "HTTPS",
+          flush: false,
+          data: {
+            priority: 1,
+            name: ".",
+            values: [
+              { key: "alpn", value: ["h2", "h3"] },
+              { key: "no-default-alpn" },
+              { key: "port", value: 8888 },
+              { key: "ipv4hint", value: "1.2.3.4" },
+              { key: "echconfig", value: "123..." },
+              { key: "ipv6hint", value: "::1" },
+              { key: "odoh", value: "456..." },
+            ],
+          },
+        },
+        {
+          name: "service.com",
+          ttl: 55,
+          type: "HTTPS",
+          flush: false,
+          data: {
+            priority: 2,
+            name: "test.com",
+            values: [
+              { key: "alpn", value: "h2" },
+              { key: "ipv4hint", value: ["1.2.3.4", "5.6.7.8"] },
+              { key: "echconfig", value: "abc..." },
+              { key: "ipv6hint", value: ["::1", "fe80::794f:6d2c:3d5e:7836"] },
+              { key: "odoh", value: "def..." },
+            ],
+          },
+        },
+      ],
+    });
+
+    let chan = makeChan(
+      `https://foo.example.com:${trrServer.port()}/dnsAnswer?host=service.com&type=HTTPS`
+    );
+    let [, buf] = await channelOpenPromise(chan);
+    let rawBuffer = hexToUint8Array(buf);
+
+    override.addHTTPSRecordOverride("service.com", rawBuffer, rawBuffer.length);
+
+    Services.prefs.setBoolPref("network.dns.native_https_query", true);
+    registerCleanupFunction(async () => {
+      Services.prefs.clearUserPref("network.dns.native_https_query");
+      Services.prefs.clearUserPref("network.trr.excluded-domains");
+    });
+
+    let listener = new Listener();
+    Services.dns.asyncResolve(
+      "service.com",
+      Ci.nsIDNSService.RESOLVE_TYPE_HTTPSSVC,
+      0,
+      null,
+      listener,
+      mainThread,
+      defaultOriginAttributes
+    );
+
+    let [, inRecord, inStatus] = await listener;
+    equal(inStatus, Cr.NS_OK);
+    let answer = inRecord.QueryInterface(Ci.nsIDNSHTTPSSVCRecord).records;
+    equal(answer[0].priority, 1);
+    equal(answer[0].name, "service.com");
+    Assert.deepEqual(
+      answer[0].values[0].QueryInterface(Ci.nsISVCParamAlpn).alpn,
+      ["h2", "h3"],
+      "got correct answer"
+    );
+    Assert.ok(
+      answer[0].values[1].QueryInterface(Ci.nsISVCParamNoDefaultAlpn),
+      "got correct answer"
+    );
+    Assert.equal(
+      answer[0].values[2].QueryInterface(Ci.nsISVCParamPort).port,
+      8888,
+      "got correct answer"
+    );
+    Assert.equal(
+      answer[0].values[3].QueryInterface(Ci.nsISVCParamIPv4Hint).ipv4Hint[0]
+        .address,
+      "1.2.3.4",
+      "got correct answer"
+    );
+    Assert.equal(
+      answer[0].values[4].QueryInterface(Ci.nsISVCParamEchConfig).echconfig,
+      "123...",
+      "got correct answer"
+    );
+    Assert.equal(
+      answer[0].values[5].QueryInterface(Ci.nsISVCParamIPv6Hint).ipv6Hint[0]
+        .address,
+      "::1",
+      "got correct answer"
+    );
+    Assert.equal(
+      answer[0].values[6].QueryInterface(Ci.nsISVCParamODoHConfig).ODoHConfig,
+      "456...",
+      "got correct answer"
+    );
+
+    Assert.equal(answer[1].priority, 2);
+    Assert.equal(answer[1].name, "test.com");
+    Assert.equal(answer[1].values.length, 5);
+    Assert.deepEqual(
+      answer[1].values[0].QueryInterface(Ci.nsISVCParamAlpn).alpn,
+      ["h2"],
+      "got correct answer"
+    );
+    Assert.equal(
+      answer[1].values[1].QueryInterface(Ci.nsISVCParamIPv4Hint).ipv4Hint[0]
+        .address,
+      "1.2.3.4",
+      "got correct answer"
+    );
+    Assert.equal(
+      answer[1].values[1].QueryInterface(Ci.nsISVCParamIPv4Hint).ipv4Hint[1]
+        .address,
+      "5.6.7.8",
+      "got correct answer"
+    );
+    Assert.equal(
+      answer[1].values[2].QueryInterface(Ci.nsISVCParamEchConfig).echconfig,
+      "abc...",
+      "got correct answer"
+    );
+    Assert.equal(
+      answer[1].values[3].QueryInterface(Ci.nsISVCParamIPv6Hint).ipv6Hint[0]
+        .address,
+      "::1",
+      "got correct answer"
+    );
+    Assert.equal(
+      answer[1].values[3].QueryInterface(Ci.nsISVCParamIPv6Hint).ipv6Hint[1]
+        .address,
+      "fe80::794f:6d2c:3d5e:7836",
+      "got correct answer"
+    );
+    Assert.equal(
+      answer[1].values[4].QueryInterface(Ci.nsISVCParamODoHConfig).ODoHConfig,
+      "def...",
+      "got correct answer"
+    );
+
+    // Adding "service.com" into excluded-domains should fail
+    // native HTTPS query.
+    Services.prefs.setCharPref("network.trr.excluded-domains", "service.com");
+    listener = new Listener();
+    try {
+      Services.dns.asyncResolve(
+        "service.com",
+        Ci.nsIDNSService.RESOLVE_TYPE_HTTPSSVC,
+        0,
+        null,
+        listener,
+        mainThread,
+        defaultOriginAttributes
+      );
+      Assert.ok(false, "asyncResolve should fail");
+    } catch (e) {
+      Assert.equal(e.result, Cr.NS_ERROR_UNKNOWN_HOST);
+    }
+  }
+);

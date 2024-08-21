@@ -10,11 +10,13 @@
 "use strict";
 
 let ip = "[::1]";
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return `http://${ip}:${httpserver.identity.primaryPort}/`;
 });
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 let httpserver = new HttpServer();
 

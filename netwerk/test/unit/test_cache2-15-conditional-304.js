@@ -9,7 +9,7 @@ function run_test() {
     "disk",
     Ci.nsICacheStorage.OPEN_NORMALLY,
     null,
-    new OpenCallback(NEW, "31m", "31d", function (entry) {
+    new OpenCallback(NEW, "31m", "31d", function () {
       // Open normally but wait for validation from the server
       asyncOpenCacheEntry(
         "http://304/",
@@ -31,7 +31,7 @@ function run_test() {
         "disk",
         Ci.nsICacheStorage.OPEN_NORMALLY,
         null,
-        new OpenCallback(NORMAL, "31m", "31d", function (entry) {
+        new OpenCallback(NORMAL, "31m", "31d", function () {
           mc.fired();
         })
       );
@@ -40,7 +40,7 @@ function run_test() {
         "disk",
         Ci.nsICacheStorage.OPEN_NORMALLY,
         null,
-        new OpenCallback(NORMAL, "31m", "31d", function (entry) {
+        new OpenCallback(NORMAL, "31m", "31d", function () {
           mc.fired();
         })
       );
@@ -49,7 +49,7 @@ function run_test() {
         "disk",
         Ci.nsICacheStorage.OPEN_NORMALLY,
         null,
-        new OpenCallback(NORMAL, "31m", "31d", function (entry) {
+        new OpenCallback(NORMAL, "31m", "31d", function () {
           mc.fired();
         })
       );

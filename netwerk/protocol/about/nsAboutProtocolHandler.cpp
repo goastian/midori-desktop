@@ -21,6 +21,7 @@
 #include "nsIChannel.h"
 #include "nsIScriptError.h"
 #include "nsIClassInfoImpl.h"
+#include "DefaultURI.h"
 
 #include "mozilla/ipc/URIUtils.h"
 
@@ -28,14 +29,6 @@ namespace mozilla {
 namespace net {
 
 static NS_DEFINE_CID(kNestedAboutURICID, NS_NESTEDABOUTURI_CID);
-
-static bool IsSafeForUntrustedContent(nsIAboutModule* aModule, nsIURI* aURI) {
-  uint32_t flags;
-  nsresult rv = aModule->GetURIFlags(aURI, &flags);
-  NS_ENSURE_SUCCESS(rv, false);
-
-  return (flags & nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT) != 0;
-}
 
 static bool IsSafeToLinkForUntrustedContent(nsIURI* aURI) {
   nsAutoCString path;
@@ -144,6 +137,16 @@ nsresult nsAboutProtocolHandler::CreateNewURI(const nsACString& aSpec,
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
+  // use DefaultURI to check for validity when we have possible hostnames
+  // since nsSimpleURI doesn't know about hostnames
+  auto pos = aSpec.Find("about:/");
+  if (pos != kNotFound) {
+    rv = NS_MutateURI(new mozilla::net::DefaultURI::Mutator())
+             .SetSpec(aSpec)
+             .Finalize(url);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
   url.swap(*aResult);
   return NS_OK;
 }
@@ -158,71 +161,93 @@ nsAboutProtocolHandler::NewChannel(nsIURI* uri, nsILoadInfo* aLoadInfo,
   nsresult rv = NS_GetAboutModule(uri, getter_AddRefs(aboutMod));
 
   nsAutoCString path;
-  nsresult rv2 = NS_GetAboutModuleName(uri, path);
-  if (NS_SUCCEEDED(rv2) && path.EqualsLiteral("srcdoc")) {
+  if (NS_SUCCEEDED(NS_GetAboutModuleName(uri, path)) &&
+      path.EqualsLiteral("srcdoc")) {
     // about:srcdoc is meant to be unresolvable, yet is included in the
     // about lookup tables so that it can pass security checks when used in
     // a srcdoc iframe.  To ensure that it stays unresolvable, we pretend
     // that it doesn't exist.
-    rv = NS_ERROR_FACTORY_NOT_REGISTERED;
+    return NS_ERROR_MALFORMED_URI;
   }
 
-  if (NS_SUCCEEDED(rv)) {
-    // The standard return case:
-    rv = aboutMod->NewChannel(uri, aLoadInfo, result);
-    if (NS_SUCCEEDED(rv)) {
-      // Not all implementations of nsIAboutModule::NewChannel()
-      // set the LoadInfo on the newly created channel yet, as
-      // an interim solution we set the LoadInfo here if not
-      // available on the channel. Bug 1087720
-      nsCOMPtr<nsILoadInfo> loadInfo = (*result)->LoadInfo();
-      if (aLoadInfo != loadInfo) {
-        NS_ASSERTION(false,
-                     "nsIAboutModule->newChannel(aURI, aLoadInfo) needs to "
-                     "set LoadInfo");
-        AutoTArray<nsString, 2> params = {
-            u"nsIAboutModule->newChannel(aURI)"_ns,
-            u"nsIAboutModule->newChannel(aURI, aLoadInfo)"_ns};
-        nsContentUtils::ReportToConsole(
-            nsIScriptError::warningFlag, "Security by Default"_ns,
-            nullptr,  // aDocument
-            nsContentUtils::eNECKO_PROPERTIES, "APIDeprecationWarning", params);
-        (*result)->SetLoadInfo(aLoadInfo);
-      }
-
-      // If this URI is safe for untrusted content, enforce that its
-      // principal be based on the channel's originalURI by setting the
-      // owner to null.
-      // Note: this relies on aboutMod's newChannel implementation
-      // having set the proper originalURI, which probably isn't ideal.
-      if (IsSafeForUntrustedContent(aboutMod, uri)) {
-        (*result)->SetOwner(nullptr);
-      }
-
-      RefPtr<nsNestedAboutURI> aboutURI;
-      nsresult rv2 =
-          uri->QueryInterface(kNestedAboutURICID, getter_AddRefs(aboutURI));
-      if (NS_SUCCEEDED(rv2) && aboutURI->GetBaseURI()) {
-        nsCOMPtr<nsIWritablePropertyBag2> writableBag =
-            do_QueryInterface(*result);
-        if (writableBag) {
-          writableBag->SetPropertyAsInterface(u"baseURI"_ns,
-                                              aboutURI->GetBaseURI());
-        }
-      }
+  if (NS_FAILED(rv)) {
+    if (rv == NS_ERROR_FACTORY_NOT_REGISTERED) {
+      // This looks like an about: we don't know about.  Convert
+      // this to an invalid URI error.
+      return NS_ERROR_MALFORMED_URI;
     }
+
     return rv;
   }
 
-  // mumble...
-
-  if (rv == NS_ERROR_FACTORY_NOT_REGISTERED) {
-    // This looks like an about: we don't know about.  Convert
-    // this to an invalid URI error.
-    rv = NS_ERROR_MALFORMED_URI;
+  uint32_t flags = 0;
+  if (NS_FAILED(aboutMod->GetURIFlags(uri, &flags))) {
+    return NS_ERROR_FAILURE;
   }
 
-  return rv;
+  bool safeForUntrustedContent =
+      (flags & nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT) != 0;
+
+  MOZ_DIAGNOSTIC_ASSERT(
+      safeForUntrustedContent ||
+          (flags & (nsIAboutModule::URI_CAN_LOAD_IN_CHILD |
+                    nsIAboutModule::URI_MUST_LOAD_IN_CHILD)) == 0,
+      "Only unprivileged content should be loaded in child processes. (Did "
+      "you forget to add URI_SAFE_FOR_UNTRUSTED_CONTENT to your about: "
+      "page?)");
+
+  // The standard return case:
+  rv = aboutMod->NewChannel(uri, aLoadInfo, result);
+  if (NS_FAILED(rv)) {
+    if (rv == NS_ERROR_FACTORY_NOT_REGISTERED) {
+      // This looks like an about: we don't know about.  Convert
+      // this to an invalid URI error.
+      return NS_ERROR_MALFORMED_URI;
+    }
+
+    return rv;
+  }
+
+  // Not all implementations of nsIAboutModule::NewChannel()
+  // set the LoadInfo on the newly created channel yet, as
+  // an interim solution we set the LoadInfo here if not
+  // available on the channel. Bug 1087720
+  nsCOMPtr<nsILoadInfo> loadInfo = (*result)->LoadInfo();
+  if (aLoadInfo != loadInfo) {
+    NS_ASSERTION(false,
+                 "nsIAboutModule->newChannel(aURI, aLoadInfo) needs to "
+                 "set LoadInfo");
+    AutoTArray<nsString, 2> params = {
+        u"nsIAboutModule->newChannel(aURI)"_ns,
+        u"nsIAboutModule->newChannel(aURI, aLoadInfo)"_ns};
+    nsContentUtils::ReportToConsole(
+        nsIScriptError::warningFlag, "Security by Default"_ns,
+        nullptr,  // aDocument
+        nsContentUtils::eNECKO_PROPERTIES, "APIDeprecationWarning", params);
+    (*result)->SetLoadInfo(aLoadInfo);
+  }
+
+  // If this URI is safe for untrusted content, enforce that its
+  // principal be based on the channel's originalURI by setting the
+  // owner to null.
+  // Note: this relies on aboutMod's newChannel implementation
+  // having set the proper originalURI, which probably isn't ideal.
+  if (safeForUntrustedContent) {
+    (*result)->SetOwner(nullptr);
+  }
+
+  RefPtr<nsNestedAboutURI> aboutURI;
+  if (NS_SUCCEEDED(
+          uri->QueryInterface(kNestedAboutURICID, getter_AddRefs(aboutURI))) &&
+      aboutURI->GetBaseURI()) {
+    nsCOMPtr<nsIWritablePropertyBag2> writableBag = do_QueryInterface(*result);
+    if (writableBag) {
+      writableBag->SetPropertyAsInterface(u"baseURI"_ns,
+                                          aboutURI->GetBaseURI());
+    }
+  }
+
+  return NS_OK;
 }
 
 NS_IMETHODIMP

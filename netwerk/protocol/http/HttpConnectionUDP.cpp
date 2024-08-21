@@ -24,6 +24,7 @@
 #include "nsHttpHandler.h"
 #include "Http3Session.h"
 #include "nsComponentManagerUtils.h"
+#include "nsIHttpChannelInternal.h"
 #include "nsISocketProvider.h"
 #include "nsNetAddr.h"
 #include "nsINetAddr.h"
@@ -67,6 +68,7 @@ nsresult HttpConnectionUDP::Init(nsHttpConnectionInfo* info,
     // SetSecurityCallbacks.
     mCallbacks = new nsMainThreadPtrHolder<nsIInterfaceRequestor>(
         "HttpConnectionUDP::mCallbacks", callbacks, false);
+    SetCloseReason(ToCloseReason(mErrorBeforeConnect));
     return mErrorBeforeConnect;
   }
 
@@ -128,26 +130,31 @@ nsresult HttpConnectionUDP::Init(nsHttpConnectionInfo* info,
     return rv;
   }
 
-  uint32_t controlFlags = 0;
+  uint32_t providerFlags = 0;
   if (caps & NS_HTTP_LOAD_ANONYMOUS) {
-    controlFlags |= nsISocketProvider::ANONYMOUS_CONNECT;
+    providerFlags |= nsISocketProvider::ANONYMOUS_CONNECT;
   }
   if (mConnInfo->GetPrivate()) {
-    controlFlags |= nsISocketProvider::NO_PERMANENT_STORAGE;
+    providerFlags |= nsISocketProvider::NO_PERMANENT_STORAGE;
   }
   if (((caps & NS_HTTP_BE_CONSERVATIVE) || mConnInfo->GetBeConservative()) &&
       gHttpHandler->ConnMgr()->BeConservativeIfProxied(
           mConnInfo->ProxyInfo())) {
-    controlFlags |= nsISocketProvider::BE_CONSERVATIVE;
+    providerFlags |= nsISocketProvider::BE_CONSERVATIVE;
+  }
+  if ((caps & NS_HTTP_IS_RETRY) ||
+      (mConnInfo->GetTlsFlags() &
+       nsIHttpChannelInternal::TLS_FLAG_CONFIGURE_AS_RETRY)) {
+    providerFlags |= nsISocketProvider::IS_RETRY;
   }
 
   if (mResolvedByTRR) {
-    controlFlags |= nsISocketProvider::USED_PRIVATE_DNS;
+    providerFlags |= nsISocketProvider::USED_PRIVATE_DNS;
   }
 
   mPeerAddr = new nsNetAddr(&peerAddr);
   mHttp3Session = new Http3Session();
-  rv = mHttp3Session->Init(mConnInfo, mSelfAddr, mPeerAddr, this, controlFlags,
+  rv = mHttp3Session->Init(mConnInfo, mSelfAddr, mPeerAddr, this, providerFlags,
                            callbacks);
   if (NS_FAILED(rv)) {
     LOG(
@@ -160,6 +167,7 @@ nsresult HttpConnectionUDP::Init(nsHttpConnectionInfo* info,
     return rv;
   }
 
+  ChangeConnectionState(ConnectionState::INITED);
   // See explanation for non-strictness of this operation in
   // SetSecurityCallbacks.
   mCallbacks = new nsMainThreadPtrHolder<nsIInterfaceRequestor>(
@@ -185,6 +193,7 @@ nsresult HttpConnectionUDP::Activate(nsAHttpTransaction* trans, uint32_t caps,
         caps));
 
   if (!mExperienced && !trans->IsNullTransaction()) {
+    mHasFirstHttpTransaction = true;
     // For QUIC we have HttpConnecitonUDP before the actual connection
     // has been establish so wait for TLS handshake to be finished before
     // we mark the connection 'experienced'.
@@ -222,6 +231,11 @@ nsresult HttpConnectionUDP::Activate(nsAHttpTransaction* trans, uint32_t caps,
     return NS_ERROR_FAILURE;
   }
 
+  if (mHasFirstHttpTransaction && mExperienced) {
+    mHasFirstHttpTransaction = false;
+    mExperienceState |= ConnectionExperienceState::Experienced;
+  }
+
   Unused << ResumeSend();
   return NS_OK;
 }
@@ -231,6 +245,11 @@ void HttpConnectionUDP::Close(nsresult reason, bool aIsShutdown) {
        static_cast<uint32_t>(reason)));
 
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+
+  if (mConnectionState != ConnectionState::CLOSED) {
+    RecordConnectionCloseTelemetry(reason);
+    ChangeConnectionState(ConnectionState::CLOSED);
+  }
 
   if (mForceSendTimer) {
     mForceSendTimer->Cancel();
@@ -536,6 +555,14 @@ NS_INTERFACE_MAP_BEGIN(HttpConnectionUDP)
   NS_INTERFACE_MAP_ENTRY(HttpConnectionBase)
   NS_INTERFACE_MAP_ENTRY_CONCRETE(HttpConnectionUDP)
 NS_INTERFACE_MAP_END
+
+void HttpConnectionUDP::NotifyDataRead() {
+  mExperienceState |= ConnectionExperienceState::First_Response_Received;
+}
+
+void HttpConnectionUDP::NotifyDataWrite() {
+  mExperienceState |= ConnectionExperienceState::First_Request_Sent;
+}
 
 // called on the socket transport thread
 nsresult HttpConnectionUDP::RecvData() {

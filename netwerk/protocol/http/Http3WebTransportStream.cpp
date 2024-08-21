@@ -357,6 +357,9 @@ nsresult Http3WebTransportStream::ReadSegments() {
         nsresult rv2 = OnReadSegment("", 0, &wasted);
         LOG3(("  OnReadSegment returned 0x%08" PRIx32,
               static_cast<uint32_t>(rv2)));
+        if (mSendState != WAITING_DATA) {
+          break;
+        }
       }
         [[fallthrough]];
       case WAITING_DATA:
@@ -524,6 +527,10 @@ nsresult Http3WebTransportStream::WriteSegments() {
       if (rv == NS_BASE_STREAM_WOULD_BLOCK) {
         rv = NS_OK;
       }
+      if (rv == NS_BASE_STREAM_CLOSED) {
+        mReceiveStreamPipeOut->Close();
+        rv = NS_OK;
+      }
       again = false;
     } else if (NS_FAILED(mSocketInCondition)) {
       if (mSocketInCondition != NS_BASE_STREAM_WOULD_BLOCK) {
@@ -655,6 +662,10 @@ void Http3WebTransportStream::SendStopSending(uint8_t aErrorCode) {
   mSession->StreamStopSending(this, *mStopSendingError);
   // StreamHasDataToWrite needs to be called to trigger ProcessOutput.
   mSession->StreamHasDataToWrite(this);
+}
+
+void Http3WebTransportStream::SetSendOrder(Maybe<int64_t> aSendOrder) {
+  mSession->SetSendOrder(this, aSendOrder);
 }
 
 }  // namespace mozilla::net

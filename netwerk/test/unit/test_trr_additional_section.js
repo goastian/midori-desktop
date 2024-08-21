@@ -32,10 +32,10 @@ registerCleanupFunction(async () => {
 });
 add_task(async function setup_server() {
   await trrServer.start();
-  dump(`port = ${trrServer.port}\n`);
-  let chan = makeChan(`https://localhost:${trrServer.port}/test?bla=some`);
+  dump(`port = ${trrServer.port()}\n`);
+  let chan = makeChan(`https://localhost:${trrServer.port()}/test?bla=some`);
   let [, resp] = await channelOpenPromise(chan);
-  equal(resp, "<h1> 404 Path not found: /test?bla=some</h1>");
+  equal(resp, "<h1> 404 Path not found: /test</h1>");
 });
 
 add_task(async function test_parse_additional_section() {
@@ -43,7 +43,7 @@ add_task(async function test_parse_additional_section() {
   Services.prefs.setIntPref("network.trr.mode", 3);
   Services.prefs.setCharPref(
     "network.trr.uri",
-    `https://foo.example.com:${trrServer.port}/dns-query`
+    `https://foo.example.com:${trrServer.port()}/dns-query`
   );
 
   await trrServer.registerDoHAnswers("something.foo", "A", {
@@ -306,7 +306,7 @@ add_task(async function test_additional_cached_record_override() {
   Services.prefs.setIntPref("network.trr.mode", 2);
   Services.prefs.setCharPref(
     "network.trr.uri",
-    `https://foo.example.com:${trrServer.port}/dns-query`
+    `https://foo.example.com:${trrServer.port()}/dns-query`
   );
 
   await new TRRDNSListener("else.foo", { expectedAnswer: "127.0.0.1" });
@@ -334,4 +334,47 @@ add_task(async function test_additional_cached_record_override() {
 
   await new TRRDNSListener("something.foo", { expectedAnswer: "1.2.3.4" });
   await new TRRDNSListener("else.foo", { expectedAnswer: "2.3.4.5" });
+});
+
+add_task(async function test_ipv6_disabled() {
+  Services.prefs.setBoolPref("network.dns.disableIPv6", true);
+  await trrServer.registerDoHAnswers("ipv6.foo", "A", {
+    answers: [
+      {
+        name: "ipv6.foo",
+        ttl: 55,
+        type: "A",
+        flush: false,
+        data: "1.2.3.4",
+      },
+    ],
+    additionals: [
+      {
+        name: "sub.ipv6.foo",
+        ttl: 55,
+        type: "AAAA",
+        flush: false,
+        data: "::1:2:3:4",
+      },
+    ],
+  });
+
+  await new TRRDNSListener("ipv6.foo", { expectedAnswer: "1.2.3.4" });
+  await new TRRDNSListener("sub.ipv6.foo", { expectedSuccess: false });
+
+  await trrServer.registerDoHAnswers("direct.ipv6.foo", "AAAA", {
+    answers: [
+      {
+        name: "direct.ipv6.foo",
+        ttl: 55,
+        type: "AAAA",
+        flush: false,
+        data: "2001::a:b:c:d",
+      },
+    ],
+  });
+
+  await new TRRDNSListener("direct.ipv6.foo", { expectedSuccess: false });
+
+  Services.prefs.setBoolPref("network.dns.disableIPv6", false);
 });

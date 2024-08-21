@@ -223,6 +223,17 @@ NS_IMETHODIMP WebTransportStreamProxy::GetStreamId(uint64_t* aId) {
   return NS_OK;
 }
 
+NS_IMETHODIMP WebTransportStreamProxy::SetSendOrder(Maybe<int64_t> aSendOrder) {
+  if (!OnSocketThread()) {
+    return gSocketTransportService->Dispatch(NS_NewRunnableFunction(
+        "SetSendOrder", [stream = mWebTransportStream, aSendOrder]() {
+          stream->SetSendOrder(aSendOrder);
+        }));
+  }
+  mWebTransportStream->SetSendOrder(aSendOrder);
+  return NS_OK;
+}
+
 //------------------------------------------------------------------------------
 // WebTransportStreamProxy::AsyncInputStreamWrapper
 //------------------------------------------------------------------------------
@@ -285,6 +296,9 @@ NS_IMETHODIMP WebTransportStreamProxy::AsyncInputStreamWrapper::ReadSegments(
   LOG(("WebTransportStreamProxy::AsyncInputStreamWrapper::ReadSegments %p",
        this));
   nsresult rv = mStream->ReadSegments(aWriter, aClosure, aCount, aResult);
+  if (*aResult > 0) {
+    LOG(("   Read %u bytes", *aResult));
+  }
   MaybeCloseStream();
   return rv;
 }
@@ -330,6 +344,10 @@ WebTransportStreamProxy::AsyncOutputStreamWrapper::StreamStatus() {
 
 NS_IMETHODIMP WebTransportStreamProxy::AsyncOutputStreamWrapper::Write(
     const char* aBuf, uint32_t aCount, uint32_t* aResult) {
+  LOG(
+      ("WebTransportStreamProxy::AsyncOutputStreamWrapper::Write %p %u bytes, "
+       "first byte %c",
+       this, aCount, aBuf[0]));
   return mStream->Write(aBuf, aCount, aResult);
 }
 

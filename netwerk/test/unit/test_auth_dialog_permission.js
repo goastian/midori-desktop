@@ -8,7 +8,9 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var prefs = Services.prefs;
 
@@ -47,7 +49,7 @@ var httpserv = new HttpServer();
 httpserv.registerPathHandler("/auth", authHandler);
 httpserv.start(-1);
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpserv.identity.primaryPort;
 });
 
@@ -61,7 +63,7 @@ AuthPrompt.prototype = {
 
   QueryInterface: ChromeUtils.generateQI(["nsIAuthPrompt"]),
 
-  prompt(title, text, realm, save, defaultText, result) {
+  prompt() {
     do_throw("unexpected prompt call");
   },
 
@@ -73,7 +75,7 @@ AuthPrompt.prototype = {
     return true;
   },
 
-  promptPassword(title, text, realm, save, pwd) {
+  promptPassword() {
     do_throw("unexpected promptPassword call");
   },
 };
@@ -157,7 +159,7 @@ Test.prototype = {
     throw Components.Exception("", Cr.NS_ERROR_ABORT);
   },
 
-  onDataAvailable(request, stream, offset, count) {
+  onDataAvailable() {
     do_throw("Should not get any data!");
   },
 

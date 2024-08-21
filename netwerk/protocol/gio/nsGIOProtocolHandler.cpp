@@ -286,21 +286,10 @@ nsresult nsGIOInputStream::DoOpenDirectory() {
   mDirList = g_list_sort(mDirList, FileInfoComparator);
   mDirListPtr = mDirList;
 
-  // Write base URL (make sure it ends with a '/')
-  mDirBuf.AppendLiteral("300: ");
-  mDirBuf.Append(mSpec);
-  if (mSpec.get()[mSpec.Length() - 1] != '/') {
-    mDirBuf.Append('/');
-  }
-  mDirBuf.Append('\n');
-
   // Write column names
   mDirBuf.AppendLiteral(
       "200: filename content-length last-modified file-type\n");
 
-  // Write charset (assume UTF-8)
-  // XXX is this correct?
-  mDirBuf.AppendLiteral("301: UTF-8\n");
   SetContentTypeOfChannel(APPLICATION_HTTP_INDEX_FORMAT);
   return NS_OK;
 }
@@ -890,12 +879,7 @@ void nsGIOProtocolHandler::InitSupportedProtocolsPref(nsIPrefBranch* prefs) {
     prefValue.StripWhitespace();
     ToLowerCase(prefValue);
   } else {
-    prefValue.AssignLiteral(
-#ifdef MOZ_PROXY_BYPASS_PROTECTION
-        ""  // use none
-#else
-        "sftp:"  // use defaults (comma separated list)
-#endif
+    prefValue.AssignLiteral(""  // use none by default
     );
   }
   LOG(("gio: supported protocols \"%s\"\n", prefValue.get()));

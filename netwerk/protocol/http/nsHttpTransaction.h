@@ -107,26 +107,26 @@ class nsHttpTransaction final : public nsAHttpTransaction,
 
   void PrintDiagnostics(nsCString& log);
 
-  // Sets mPendingTime to the current time stamp or to a null time stamp (if now
-  // is false)
+  // Sets mTimings.transactionPending to the current time stamp or to a null
+  // time stamp (if now is false)
   void SetPendingTime(bool now = true) {
     mozilla::MutexAutoLock lock(mLock);
-    if (!now && !mPendingTime.IsNull()) {
+    if (!now && !mTimings.transactionPending.IsNull()) {
       // Remember how long it took. We will use this value to record
       // TRANSACTION_WAIT_TIME_HTTP2_SUP_HTTP3 telemetry, but we need to wait
       // for the response headers.
-      mPendingDurationTime = TimeStamp::Now() - mPendingTime;
+      mPendingDurationTime = TimeStamp::Now() - mTimings.transactionPending;
     }
     // Note that the transaction could be added in to a pending queue multiple
     // times (when the transaction is restarted or moved to a new conn entry due
     // to HTTPS RR), so we should only set the pending time once.
-    if (mPendingTime.IsNull()) {
-      mPendingTime = now ? TimeStamp::Now() : TimeStamp();
+    if (mTimings.transactionPending.IsNull()) {
+      mTimings.transactionPending = now ? TimeStamp::Now() : TimeStamp();
     }
   }
   TimeStamp GetPendingTime() override {
     mozilla::MutexAutoLock lock(mLock);
-    return mPendingTime;
+    return mTimings.transactionPending;
   }
 
   // overload of nsAHttpTransaction::RequestContext()
@@ -137,6 +137,9 @@ class nsHttpTransaction final : public nsAHttpTransaction,
   void DisableSpdy() override;
   void DisableHttp2ForProxy() override;
   void DoNotRemoveAltSvc() override { mDoNotRemoveAltSvc = true; }
+  void DoNotResetIPFamilyPreference() override {
+    mDoNotResetIPFamilyPreference = true;
+  }
   void DisableHttp3(bool aAllowRetryHTTPSRR) override;
 
   nsHttpTransaction* QueryHttpTransaction() override { return this; }
@@ -192,6 +195,10 @@ class nsHttpTransaction final : public nsAHttpTransaction,
   void GetHashKeyOfConnectionEntry(nsACString& aResult);
 
   bool IsForWebTransport() { return mIsForWebTransport; }
+
+  nsAutoCString GetUrl() { return mUrl; }
+
+  uint64_t ChannelId() { return mChannelId; }
 
  private:
   friend class DeleteHttpTransaction;
@@ -296,6 +303,7 @@ class nsHttpTransaction final : public nsAHttpTransaction,
     TRANSACTION_RESTART_HTTP3_FAST_FALLBACK,
     TRANSACTION_RESTART_OTHERS,
     TRANSACTION_RESTART_PROTOCOL_VERSION_ALERT,
+    TRANSACTION_RESTART_POSSIBLE_0RTT_ERROR
   };
   void SetRestartReason(TRANSACTION_RESTART_REASON aReason);
 
@@ -457,6 +465,7 @@ class nsHttpTransaction final : public nsAHttpTransaction,
   bool mDeferredSendProgress{false};
   bool mWaitingOnPipeOut{false};
   bool mDoNotRemoveAltSvc{false};
+  bool mDoNotResetIPFamilyPreference{false};
   bool mIsHttp2Websocket{false};
 
   // mClosed           := transaction has been explicitly closed
@@ -477,7 +486,6 @@ class nsHttpTransaction final : public nsAHttpTransaction,
   Atomic<bool> mRestarted{false};
 
   // The time when the transaction was submitted to the Connection Manager
-  TimeStamp mPendingTime;
   TimeDuration mPendingDurationTime;
 
   uint64_t mBrowserId{0};
@@ -589,6 +597,8 @@ class nsHttpTransaction final : public nsAHttpTransaction,
   nsCString mHashKeyOfConnectionEntry;
 
   nsCOMPtr<WebTransportSessionEventListener> mWebTransportSessionEventListener;
+
+  nsAutoCString mUrl;
 };
 
 }  // namespace mozilla::net

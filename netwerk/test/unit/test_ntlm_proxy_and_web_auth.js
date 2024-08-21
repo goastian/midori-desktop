@@ -7,9 +7,11 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpserver.identity.primaryPort;
 });
 
@@ -28,7 +30,7 @@ AuthPrompt.prototype = {
     return true;
   },
 
-  asyncPromptAuth: function ap_async(chan, cb, ctx, lvl, info) {
+  asyncPromptAuth: function ap_async() {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 };
@@ -69,7 +71,7 @@ function makeChan(url, loadingUrl) {
 function TestListener(resolve) {
   this.resolve = resolve;
 }
-TestListener.prototype.onStartRequest = function (request, context) {
+TestListener.prototype.onStartRequest = function (request) {
   // Need to do the instanceof to allow request.responseStatus
   // to be read.
   if (!(request instanceof Ci.nsIHttpChannel)) {
@@ -78,7 +80,7 @@ TestListener.prototype.onStartRequest = function (request, context) {
 
   Assert.equal(expectedResponse, request.responseStatus, "HTTP Status code");
 };
-TestListener.prototype.onStopRequest = function (request, context, status) {
+TestListener.prototype.onStopRequest = function () {
   Assert.equal(expectedRequests, requestsMade, "Number of requests made ");
 
   this.resolve();

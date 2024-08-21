@@ -11,7 +11,9 @@
    We run these steps for TRR mode 2 and 3, and with fetchOffMainThread = true/false
 */
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 const { MockRegistrar } = ChromeUtils.importESModule(
   "resource://testing-common/MockRegistrar.sys.mjs"
 );
@@ -28,7 +30,7 @@ function FindProxyForURL(url, host) {
   return "DIRECT";
 }
 
-XPCOMUtils.defineLazyGetter(this, "systemSettings", function () {
+ChromeUtils.defineLazyGetter(this, "systemSettings", function () {
   return {
     QueryInterface: ChromeUtils.generateQI(["nsISystemProxySettings"]),
 
@@ -36,7 +38,7 @@ XPCOMUtils.defineLazyGetter(this, "systemSettings", function () {
     PACURI: `data:application/x-ns-proxy-autoconfig;charset=utf-8,${encodeURIComponent(
       FindProxyForURL.toString()
     )}`,
-    getProxyForURI(aURI) {
+    getProxyForURI() {
       throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
     },
   };
@@ -107,12 +109,8 @@ async function do_test_pac_dnsResolve() {
 
   trr_test_setup();
 
-  async function test_with(DOMAIN, trrMode, fetchOffMainThread) {
+  async function test_with(DOMAIN, trrMode) {
     Services.prefs.setIntPref("network.trr.mode", trrMode); // TRR first
-    Services.prefs.setBoolPref(
-      "network.trr.fetch_off_main_thread",
-      fetchOffMainThread
-    );
     override.addIPOverride(DOMAIN, "127.0.0.1");
 
     chan = NetUtil.newChannel({
@@ -124,10 +122,8 @@ async function do_test_pac_dnsResolve() {
     await override.clearHostOverride(DOMAIN);
   }
 
-  await test_with("test1.com", 2, true);
-  await test_with("test2.com", 3, true);
-  await test_with("test3.com", 2, false);
-  await test_with("test4.com", 3, false);
+  await test_with("test1.com", 2);
+  await test_with("test2.com", 3);
   await httpserv.stop();
 }
 

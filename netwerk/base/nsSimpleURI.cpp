@@ -264,6 +264,12 @@ nsSimpleURI::GetHasRef(bool* result) {
   return NS_OK;
 }
 
+NS_IMETHODIMP
+nsSimpleURI::GetHasUserPass(bool* result) {
+  *result = false;
+  return NS_OK;
+}
+
 nsresult nsSimpleURI::SetSpecInternal(const nsACString& aSpec,
                                       bool aStripWhitespace) {
   if (StaticPrefs::network_url_max_length() &&
@@ -347,7 +353,7 @@ nsSimpleURI::GetHostPort(nsACString& result) {
   return NS_ERROR_FAILURE;
 }
 
-nsresult nsSimpleURI::SetHostPort(const nsACString& result) {
+nsresult nsSimpleURI::SetHostPort(const nsACString& aValue) {
   return NS_ERROR_FAILURE;
 }
 
@@ -702,6 +708,12 @@ nsSimpleURI::GetQuery(nsACString& aQuery) {
   } else {
     aQuery = mQuery;
   }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsSimpleURI::GetHasQuery(bool* result) {
+  *result = mIsQueryValid;
   return NS_OK;
 }
 

@@ -15,6 +15,7 @@
 #include "NSSErrorsService.h"
 #include "base/basictypes.h"
 #include "mozilla/Components.h"
+#include "mozilla/glean/GleanMetrics.h"
 #include "mozilla/net/SSLTokensCache.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Tokenizer.h"
@@ -178,7 +179,10 @@ nsHttpTransaction::~nsHttpTransaction() {
   }
 
   // Force the callbacks and connection to be released right now
-  mCallbacks = nullptr;
+  {
+    MutexAutoLock lock(mLock);
+    mCallbacks = nullptr;
+  }
 
   mEarlyHintObserver = nullptr;
 
@@ -212,6 +216,13 @@ nsresult nsHttpTransaction::Init(
   nsresult rv;
 
   LOG1(("nsHttpTransaction::Init [this=%p caps=%x]\n", this, caps));
+
+  if (AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownConfirmed)) {
+    LOG(
+        ("nsHttpTransaction aborting init because of app"
+         "shutdown"));
+    return NS_ERROR_ILLEGAL_DURING_SHUTDOWN;
+  }
 
   MOZ_ASSERT(cinfo);
   MOZ_ASSERT(requestHead);
@@ -358,14 +369,13 @@ nsresult nsHttpTransaction::Init(
   }
 
   bool forceUseHTTPSRR = StaticPrefs::network_dns_force_use_https_rr();
-  if ((gHttpHandler->UseHTTPSRRAsAltSvcEnabled() &&
+  if ((StaticPrefs::network_dns_use_https_rr_as_altsvc() &&
        !(mCaps & NS_HTTP_DISALLOW_HTTPS_RR)) ||
       forceUseHTTPSRR) {
     nsCOMPtr<nsIEventTarget> target;
     Unused << gHttpHandler->GetSocketThreadTarget(getter_AddRefs(target));
     if (target) {
-      if (StaticPrefs::network_dns_force_waiting_https_rr() ||
-          StaticPrefs::network_dns_echconfig_enabled() || forceUseHTTPSRR) {
+      if (forceUseHTTPSRR) {
         mCaps |= NS_HTTP_FORCE_WAIT_HTTP_RR;
       }
 
@@ -387,11 +397,16 @@ nsresult nsHttpTransaction::Init(
   }
 
   RefPtr<nsHttpChannel> httpChannel = do_QueryObject(eventsink);
-  RefPtr<WebTransportSessionEventListener> listener =
-      httpChannel ? httpChannel->GetWebTransportSessionEventListener()
-                  : nullptr;
-  if (listener) {
-    mWebTransportSessionEventListener = std::move(listener);
+  if (httpChannel) {
+    RefPtr<WebTransportSessionEventListener> listener =
+        httpChannel->GetWebTransportSessionEventListener();
+    if (listener) {
+      mWebTransportSessionEventListener = std::move(listener);
+    }
+    nsCOMPtr<nsIURI> uri;
+    if (NS_SUCCEEDED(httpChannel->GetURI(getter_AddRefs(uri)))) {
+      mUrl = uri->GetSpecOrDefault();
+    }
   }
 
   return NS_OK;
@@ -1330,7 +1345,7 @@ bool nsHttpTransaction::ShouldRestartOn0RttError(nsresult reason) {
        "mEarlyDataWasAvailable=%d error=%" PRIx32 "]\n",
        this, mEarlyDataWasAvailable, static_cast<uint32_t>(reason)));
   return StaticPrefs::network_http_early_data_disable_on_error() &&
-         mEarlyDataWasAvailable && SecurityErrorThatMayNeedRestart(reason);
+         mEarlyDataWasAvailable && PossibleZeroRTTRetryError(reason);
 }
 
 static void MaybeRemoveSSLToken(nsITransportSecurityInfo* aSecurityInfo) {
@@ -1414,8 +1429,13 @@ void nsHttpTransaction::Close(nsresult reason) {
   }
   mConnected = false;
 
+  // When mDoNotRemoveAltSvc is true, this means we want to keep the AltSvc in
+  // in the conncetion info. In this case, let's not apply HTTPS RR retry logic
+  // to make sure this transaction can be restarted with the same conncetion
+  // info.
   bool shouldRestartTransactionForHTTPSRR =
-      mOrigConnInfo && AllowedErrorForHTTPSRRFallback(reason);
+      mOrigConnInfo && AllowedErrorForHTTPSRRFallback(reason) &&
+      !mDoNotRemoveAltSvc;
 
   //
   // if the connection was reset or closed before we wrote any part of the
@@ -1492,7 +1512,7 @@ void nsHttpTransaction::Close(nsresult reason) {
 
     if (reason ==
             psm::GetXPCOMFromNSSError(SSL_ERROR_DOWNGRADE_WITH_EARLY_DATA) ||
-        reason == psm::GetXPCOMFromNSSError(SSL_ERROR_PROTOCOL_VERSION_ALERT) ||
+        PossibleZeroRTTRetryError(reason) ||
         (!mReceivedData && ((mRequestHead && mRequestHead->IsSafeMethod()) ||
                             !reallySentData || connReused)) ||
         shouldRestartTransactionForHTTPSRR) {
@@ -1533,9 +1553,8 @@ void nsHttpTransaction::Close(nsresult reason) {
       } else if (reason == psm::GetXPCOMFromNSSError(
                                SSL_ERROR_DOWNGRADE_WITH_EARLY_DATA)) {
         SetRestartReason(TRANSACTION_RESTART_DOWNGRADE_WITH_EARLY_DATA);
-      } else if (reason ==
-                 psm::GetXPCOMFromNSSError(SSL_ERROR_PROTOCOL_VERSION_ALERT)) {
-        SetRestartReason(TRANSACTION_RESTART_PROTOCOL_VERSION_ALERT);
+      } else if (PossibleZeroRTTRetryError(reason)) {
+        SetRestartReason(TRANSACTION_RESTART_POSSIBLE_0RTT_ERROR);
       }
       // if restarting fails, then we must proceed to close the pipe,
       // which will notify the channel that the transaction failed.
@@ -1655,6 +1674,34 @@ void nsHttpTransaction::Close(nsresult reason) {
     const TimingStruct timings = Timings();
     if (timings.responseEnd.IsNull() && !timings.responseStart.IsNull()) {
       SetResponseEnd(TimeStamp::Now());
+    }
+
+    // Accumulate download throughput telemetry
+    const int64_t TELEMETRY_DOWNLOAD_SIZE_GREATER_THAN_10MB =
+        (int64_t)10 * (int64_t)(1 << 20);
+    if ((mContentRead > TELEMETRY_DOWNLOAD_SIZE_GREATER_THAN_10MB) &&
+        !timings.requestStart.IsNull() && !timings.responseEnd.IsNull()) {
+      TimeDuration elapsed = timings.responseEnd - timings.requestStart;
+      double megabits = static_cast<double>(mContentRead) * 8.0 / 1000000.0;
+      uint32_t mpbs = static_cast<uint32_t>(megabits / elapsed.ToSeconds());
+
+      switch (mHttpVersion) {
+        case HttpVersion::v1_0:
+        case HttpVersion::v1_1:
+          glean::networking::http_1_download_throughput.AccumulateSingleSample(
+              mpbs);
+          break;
+        case HttpVersion::v2_0:
+          glean::networking::http_2_download_throughput.AccumulateSingleSample(
+              mpbs);
+          break;
+        case HttpVersion::v3_0:
+          glean::networking::http_3_download_throughput.AccumulateSingleSample(
+              mpbs);
+          break;
+        default:
+          break;
+      }
     }
   }
 
@@ -1821,9 +1868,11 @@ nsresult nsHttpTransaction::Restart() {
   // Use TRANSACTION_RESTART_OTHERS as a catch-all.
   SetRestartReason(TRANSACTION_RESTART_OTHERS);
 
-  // Reset the IP family preferences, so the new connection can try to use
-  // another IPv4 or IPv6 address.
-  gHttpHandler->ConnMgr()->ResetIPFamilyPreference(mConnInfo);
+  if (!mDoNotResetIPFamilyPreference) {
+    // Reset the IP family preferences, so the new connection can try to use
+    // another IPv4 or IPv6 address.
+    gHttpHandler->ConnMgr()->ResetIPFamilyPreference(mConnInfo);
+  }
 
   return gHttpHandler->InitiateTransaction(this, mPriority);
 }
@@ -1932,8 +1981,10 @@ nsresult nsHttpTransaction::ParseLine(nsACString& line) {
   nsresult rv = NS_OK;
 
   if (!mHaveStatusLine) {
-    mResponseHead->ParseStatusLine(line);
-    mHaveStatusLine = true;
+    rv = mResponseHead->ParseStatusLine(line);
+    if (NS_SUCCEEDED(rv)) {
+      mHaveStatusLine = true;
+    }
     // XXX this should probably never happen
     if (mResponseHead->Version() == HttpVersion::v0_9) mHaveAllHeaders = true;
   } else {
@@ -2057,7 +2108,9 @@ nsresult nsHttpTransaction::ParseHead(char* buf, uint32_t count,
         // Treat any 0.9 style response of a put as a failure.
         if (mRequestHead->IsPut()) return NS_ERROR_ABORT;
 
-        mResponseHead->ParseStatusLine(""_ns);
+        if (NS_FAILED(mResponseHead->ParseStatusLine(""_ns))) {
+          return NS_ERROR_FAILURE;
+        }
         mHaveStatusLine = true;
         mHaveAllHeaders = true;
         return NS_OK;
@@ -2149,8 +2202,9 @@ bool nsHttpTransaction::HandleWebTransportResponse(uint16_t aStatus) {
     webTransportListener = mWebTransportSessionEventListener;
     mWebTransportSessionEventListener = nullptr;
   }
-  if (webTransportListener) {
-    webTransportListener->OnSessionReadyInternal(wtSession);
+  if (nsCOMPtr<WebTransportSessionEventListenerInternal> listener =
+          do_QueryInterface(webTransportListener)) {
+    listener->OnSessionReadyInternal(wtSession);
     wtSession->SetWebTransportSessionEventListener(webTransportListener);
   }
 
@@ -3240,7 +3294,9 @@ nsresult nsHttpTransaction::OnHTTPSRRAvailable(
 
   RefPtr<nsHttpConnectionInfo> newInfo =
       mConnInfo->CloneAndAdoptHTTPSSVCRecord(svcbRecord);
-  bool needFastFallback = newInfo->IsHttp3();
+  // Don't fallback until we support WebTransport over HTTP/2.
+  // TODO: implement fallback in bug 1874102.
+  bool needFastFallback = newInfo->IsHttp3() && !newInfo->GetWebTransport();
   bool foundInPendingQ = gHttpHandler->ConnMgr()->RemoveTransFromConnEntry(
       this, mHashKeyOfConnectionEntry);
 
@@ -3392,7 +3448,12 @@ void nsHttpTransaction::OnHttp3BackupTimer() {
     }
   };
 
-  CreateBackupConnection(mBackupConnInfo, mCallbacks, mCaps,
+  nsCOMPtr<nsIInterfaceRequestor> callbacks;
+  {
+    MutexAutoLock lock(mLock);
+    callbacks = mCallbacks;
+  }
+  CreateBackupConnection(mBackupConnInfo, callbacks, mCaps,
                          std::move(callback));
 }
 
@@ -3427,7 +3488,12 @@ void nsHttpTransaction::OnFastFallbackTimer() {
     self->OnBackupConnectionReady(true);
   };
 
-  CreateBackupConnection(mBackupConnInfo, mCallbacks, mCaps,
+  nsCOMPtr<nsIInterfaceRequestor> callbacks;
+  {
+    MutexAutoLock lock(mLock);
+    callbacks = mCallbacks;
+  }
+  CreateBackupConnection(mBackupConnInfo, callbacks, mCaps,
                          std::move(callback));
 }
 
@@ -3501,6 +3567,10 @@ void nsHttpTransaction::CollectTelemetryForUploads() {
     return;
   }
 
+  // We will briefly continue to collect HTTP_UPLOAD_BANDWIDTH_MBPS
+  // (a keyed histogram) while live experiments depend on it.
+  // Once complete, we can remove and use the glean probes,
+  // http_1/2/3_upload_throughput.
   nsAutoCString protocolVersion(nsHttp::GetProtocolVersion(mHttpVersion));
   TimeDuration sendTime = mTimings.responseStart - mTimings.requestStart;
   double megabits = static_cast<double>(mRequestSize) * 8.0 / 1000000.0;
@@ -3508,20 +3578,49 @@ void nsHttpTransaction::CollectTelemetryForUploads() {
   Telemetry::Accumulate(Telemetry::HTTP_UPLOAD_BANDWIDTH_MBPS, protocolVersion,
                         mpbs);
 
-  if ((mHttpVersion == HttpVersion::v3_0) || mSupportsHTTP3) {
-    nsAutoCString key((mHttpVersion == HttpVersion::v3_0) ? "uses_http3"
-                                                          : "supports_http3");
-    auto hist = Telemetry::HTTP3_UPLOAD_TIME_10M_100M;
-    if (mRequestSize <= TELEMETRY_REQUEST_SIZE_50M) {
-      key.Append("_10_50"_ns);
-    } else if (mRequestSize <= TELEMETRY_REQUEST_SIZE_100M) {
-      key.Append("_50_100"_ns);
-    } else {
-      hist = Telemetry::HTTP3_UPLOAD_TIME_GT_100M;
-    }
-
-    Telemetry::AccumulateTimeDelta(hist, key, mTimings.requestStart,
-                                   mTimings.responseStart);
+  switch (mHttpVersion) {
+    case HttpVersion::v1_0:
+    case HttpVersion::v1_1:
+      glean::networking::http_1_upload_throughput.AccumulateSingleSample(mpbs);
+      if (mRequestSize <= TELEMETRY_REQUEST_SIZE_50M) {
+        glean::networking::http_1_upload_throughput_10_50
+            .AccumulateSingleSample(mpbs);
+      } else if (mRequestSize <= TELEMETRY_REQUEST_SIZE_100M) {
+        glean::networking::http_1_upload_throughput_50_100
+            .AccumulateSingleSample(mpbs);
+      } else {
+        glean::networking::http_1_upload_throughput_100.AccumulateSingleSample(
+            mpbs);
+      }
+      break;
+    case HttpVersion::v2_0:
+      glean::networking::http_2_upload_throughput.AccumulateSingleSample(mpbs);
+      if (mRequestSize <= TELEMETRY_REQUEST_SIZE_50M) {
+        glean::networking::http_2_upload_throughput_10_50
+            .AccumulateSingleSample(mpbs);
+      } else if (mRequestSize <= TELEMETRY_REQUEST_SIZE_100M) {
+        glean::networking::http_2_upload_throughput_50_100
+            .AccumulateSingleSample(mpbs);
+      } else {
+        glean::networking::http_2_upload_throughput_100.AccumulateSingleSample(
+            mpbs);
+      }
+      break;
+    case HttpVersion::v3_0:
+      glean::networking::http_3_upload_throughput.AccumulateSingleSample(mpbs);
+      if (mRequestSize <= TELEMETRY_REQUEST_SIZE_50M) {
+        glean::networking::http_3_upload_throughput_10_50
+            .AccumulateSingleSample(mpbs);
+      } else if (mRequestSize <= TELEMETRY_REQUEST_SIZE_100M) {
+        glean::networking::http_3_upload_throughput_50_100
+            .AccumulateSingleSample(mpbs);
+      } else {
+        glean::networking::http_3_upload_throughput_100.AccumulateSingleSample(
+            mpbs);
+      }
+      break;
+    default:
+      break;
   }
 }
 

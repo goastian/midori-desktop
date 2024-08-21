@@ -1,8 +1,10 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpserver.identity.primaryPort;
 });
 
@@ -137,7 +139,7 @@ function serverHandler(metadata, response) {
   }
 }
 
-function checkRequest(request, data, context) {
+function checkRequest() {
   Assert.equal(last, httpbody.length * LOOPS);
   Assert.equal(max, httpbody.length * LOOPS);
 }

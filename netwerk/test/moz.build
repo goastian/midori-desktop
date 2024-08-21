@@ -4,18 +4,22 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-TEST_DIRS += ["httpserver", "gtest", "http3server"]
+TEST_DIRS += ["httpserver"]
+
+if CONFIG["ENABLE_TESTS"]:
+    TEST_DIRS += ["http3server", "gtest"]
 
 BROWSER_CHROME_MANIFESTS += [
-    "browser/browser.ini",
-    "useragent/browser_nonsnap.ini",
-    "useragent/browser_snap.ini",
+    "browser/browser.toml",
+    "useragent/browser_nonsnap.toml",
+    "useragent/browser_snap.toml",
 ]
-MOCHITEST_MANIFESTS += ["mochitests/mochitest.ini"]
+MOCHITEST_MANIFESTS += ["mochitests/mochitest.toml"]
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "unit/xpcshell.ini",
-    "unit_ipc/xpcshell.ini",
+    "unit/node_execute/xpcshell.toml",
+    "unit/xpcshell.toml",
+    "unit_ipc/xpcshell.toml",
 ]
 
 TESTING_JS_MODULES += [
@@ -24,11 +28,9 @@ TESTING_JS_MODULES += [
     "unit/test_http3_prio_helpers.js",
 ]
 
-PERFTESTS_MANIFESTS += ["perf/perftest.ini", "unit/perftest.ini"]
+PERFTESTS_MANIFESTS += ["perf/perftest.toml", "unit/perftest.toml"]
 
-MARIONETTE_UNIT_MANIFESTS += [
-    "marionette/manifest.ini",
-]
+MARIONETTE_MANIFESTS += ["marionette/manifest.toml"]
 
 if CONFIG["FUZZING_INTERFACES"]:
     TEST_DIRS += ["fuzz"]

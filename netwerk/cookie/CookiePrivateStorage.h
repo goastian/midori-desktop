@@ -17,12 +17,12 @@ class CookiePrivateStorage final : public CookieStorage {
  public:
   static already_AddRefed<CookiePrivateStorage> Create();
 
-  void StaleCookies(const nsTArray<Cookie*>& aCookieList,
+  void StaleCookies(const nsTArray<RefPtr<Cookie>>& aCookieList,
                     int64_t aCurrentTimeInUsec) override;
 
-  void Close() override{};
+  void Close() override {};
 
-  void EnsureInitialized() override{};
+  void EnsureInitialized() override {};
 
   nsresult RunInTransaction(nsICookieTransactionCallback* aCallback) override {
     // It might make sense for this to be a no-op, or to return
@@ -36,12 +36,12 @@ class CookiePrivateStorage final : public CookieStorage {
     return "private-cookie-changed";
   }
 
-  void NotifyChangedInternal(nsISupports* aSubject, const char16_t* aData,
+  void NotifyChangedInternal(nsICookieNotification* aNotification,
                              bool aOldCookieIsSession) override {}
 
   void RemoveAllInternal() override {}
 
-  void RemoveCookieFromDB(const CookieListIter& aIter) override {}
+  void RemoveCookieFromDB(const Cookie& aCookie) override {}
 
   already_AddRefed<nsIArray> PurgeCookies(int64_t aCurrentTimeInUsec,
                                           uint16_t aMaxNumberOfCookies,
@@ -50,6 +50,9 @@ class CookiePrivateStorage final : public CookieStorage {
   void StoreCookie(const nsACString& aBaseDomain,
                    const OriginAttributes& aOriginAttributes,
                    Cookie* aCookie) override {}
+
+ private:
+  void CollectCookieJarSizeData() override {};
 };
 
 }  // namespace net

@@ -65,6 +65,7 @@ struct CookieJarSettingsArgs
   nsString partitionKey;
   bool hasFingerprintingRandomizationKey;
   uint8_t[] fingerprintingRandomizationKey;
+  uint64_t topLevelWindowContextId;
 };
 
 //-----------------------------------------------------------------------------
@@ -109,6 +110,8 @@ struct LoadInfoArgs
   uint32_t                    securityFlags;
   uint32_t                    sandboxFlags;
   uint32_t                    triggeringSandboxFlags;
+  uint64_t                    triggeringWindowId;
+  bool                        triggeringStorageAccess;
   nsContentPolicyType         contentPolicyType;
   uint32_t                    tainting;
   bool                        blockAllMixedContent;
@@ -133,6 +136,7 @@ struct LoadInfoArgs
   RedirectHistoryEntryInfo[]  redirectChainIncludingInternalRedirects;
   RedirectHistoryEntryInfo[]  redirectChain;
   bool                        hasInjectedCookieForCookieBannerHandling;
+  bool                        wasSchemelessInput;
 
   /**
    * ClientInfo structure representing the window or worker that triggered
@@ -166,6 +170,7 @@ struct LoadInfoArgs
   bool allowListFutureDocumentsCreatedFromThisRedirectChain;
   bool needForCheckingAntiTrackingHeuristic;
   nsString                    cspNonce;
+  nsString                    integrityMetadata;
   bool                        skipContentSniffing;
   uint32_t                    httpsOnlyStatus;
   bool                        hstsStatus;
@@ -181,6 +186,7 @@ struct LoadInfoArgs
   uint32_t                    requestBlockingReason;
   CSPInfo?                    cspToInheritInfo;
   StoragePermissionState      storagePermission;
+  uint64_t?                   overriddenFingerprintingSettings;
   bool                        isMetaRefresh;
   CrossOriginEmbedderPolicy   loadingEmbedderPolicy;
   bool                        originTrialCoepCredentiallessEnabledForTopLevel;
@@ -239,6 +245,12 @@ struct ParentLoadInfoForwarderArgs
   // Sandbox Flags of the Document that triggered the load
   uint32_t triggeringSandboxFlags;
 
+  // Window ID and UsingStorageAccess of the Document that triggered the load.
+  // Used by the Storage Access API to determine if SubDocument loads should
+  // be partitioned or not.
+  uint64_t triggeringWindowId;
+  bool triggeringStorageAccess;
+
   // We must also note that the tainting value was explicitly set
   // by the service worker.
   bool serviceWorkerTaintingSynthesized;
@@ -253,6 +265,8 @@ struct ParentLoadInfoForwarderArgs
   uint32_t requestBlockingReason;
 
   StoragePermissionState storagePermission;
+
+  uint64_t? overriddenFingerprintingSettings;
 
   bool isMetaRefresh;
 
@@ -331,7 +345,7 @@ struct HttpChannelOpenArgs
   nsCString                   contentTypeHint;
   nsString                    integrityMetadata;
   IPCStream?                  uploadStream;
-  LoadInfoArgs?               loadInfo;
+  LoadInfoArgs                loadInfo;
   uint32_t                    loadFlags;
   uint32_t                    thirdPartyFlags;
   uint32_t                    tlsFlags;
@@ -356,6 +370,7 @@ struct HttpChannelOpenArgs
   uint8_t                     redirectionLimit;
   nsString                    classicScriptHintCharset;
   nsString                    documentCharacterSet;
+  bool                        isUserAgentHeaderModified;
 };
 
 struct HttpChannelConnectArgs
@@ -410,6 +425,7 @@ struct HttpConnectionInfoCloneArgs
   nsCString topWindowOrigin;
   bool isHttp3;
   bool webTransport;
+  uint64_t webTransportId;
   bool hasIPHintAddress;
   nsCString echConfig;
   ProxyInfoCloneArgs[] proxyInfo;
@@ -438,14 +454,21 @@ struct CookieStruct
   bool      isHttpOnly;
   bool      isSession;
   bool      isSecure;
+  bool      isPartitioned;
   int32_t   sameSite;
   int32_t   rawSameSite;
   uint8_t   schemeMap;
 };
 
+struct CookieStructTable
+{
+  OriginAttributes attrs;
+  CookieStruct[] cookies;
+};
+
 struct DocumentCreationArgs {
   bool uriModified;
-  bool isXFOError;
+  bool isEmbeddingBlockedError;
 };
 
 struct ObjectCreationArgs {
@@ -481,7 +504,7 @@ struct RedirectToRealChannelArgs {
   nullable nsIURI uri;
   uint32_t newLoadFlags;
   ReplacementChannelConfigInit? init;
-  LoadInfoArgs? loadInfo;
+  LoadInfoArgs loadInfo;
   uint64_t channelId;
   nullable nsIURI originalURI;
   uint32_t redirectMode;
@@ -512,6 +535,7 @@ struct TimingStructArgs {
   TimeStamp requestStart;
   TimeStamp responseStart;
   TimeStamp responseEnd;
+  TimeStamp transactionPending;
 };
 
 struct ResourceTimingStructArgs {
@@ -529,7 +553,6 @@ struct ResourceTimingStructArgs {
   TimeStamp redirectEnd;
   uint64_t transferSize;
   uint64_t encodedBodySize;
-  nsCString protocolVersion;
 
   // Not actually part of resource timing, but not part of the transaction
   // timings either. These need to be passed to HttpChannelChild along with
@@ -588,7 +611,7 @@ struct GIOChannelOpenArgs
   uint64_t                  startPos;
   nsCString                 entityID;
   IPCStream?                uploadStream;
-  LoadInfoArgs?             loadInfo;
+  LoadInfoArgs              loadInfo;
   uint32_t                  loadFlags;
 };
 

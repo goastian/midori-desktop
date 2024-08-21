@@ -2,9 +2,11 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpserv.identity.primaryPort;
 });
 
@@ -24,12 +26,7 @@ var eventsink = {
     return this.QueryInterface(iid);
   },
 
-  asyncOnChannelRedirect: function eventsink_onredir(
-    oldChan,
-    newChan,
-    flags,
-    callback
-  ) {
+  asyncOnChannelRedirect: function eventsink_onredir() {
     // veto
     this.called = true;
     throw Components.Exception("", Cr.NS_BINDING_ABORTED);
@@ -87,7 +84,7 @@ var listener = {
     do_throw("Should not get any data!");
   },
 
-  onStopRequest: function test_onStopR(request, status) {
+  onStopRequest: function test_onStopR() {
     if (this._iteration <= 2) {
       run_test_continued();
     } else {

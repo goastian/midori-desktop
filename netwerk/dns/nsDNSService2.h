@@ -83,6 +83,8 @@ class nsDNSService final : public mozilla::net::DNSServiceBase,
   nsresult PreprocessHostname(bool aLocalDomain, const nsACString& aInput,
                               nsIIDNService* aIDN, nsACString& aACE);
 
+  bool IsLocalDomain(const nsACString& aHostname) const;
+
   nsresult AsyncResolveInternal(
       const nsACString& aHostname, uint16_t type, nsIDNSService::DNSFlags flags,
       nsIDNSAdditionalInfo* aInfo, nsIDNSListener* aListener,
@@ -116,7 +118,6 @@ class nsDNSService final : public mozilla::net::DNSServiceBase,
   // a per-domain basis and work around broken DNS servers. See bug 68796.
   nsCString mIPv4OnlyDomains;
   nsCString mForceResolve;
-  bool mDisableIPv6 = false;
   bool mBlockDotOnion = false;
   bool mNotifyResolution = false;
   bool mOfflineLocalhost = false;

@@ -308,22 +308,7 @@ sofree(struct socket *so)
 void
 soabort(struct socket *so)
 {
-#if defined(INET6)
-	struct sctp_inpcb *inp;
-#endif
-
-#if defined(INET6)
-	inp = (struct sctp_inpcb *)so->so_pcb;
-	if (inp->sctp_flags & SCTP_PCB_FLAGS_BOUND_V6) {
-		sctp6_abort(so);
-	} else {
-#if defined(INET)
-		sctp_abort(so);
-#endif
-	}
-#elif defined(INET)
 	sctp_abort(so);
-#endif
 	ACCEPT_LOCK();
 	SOCK_LOCK(so);
 	sofree(so);
@@ -3494,6 +3479,7 @@ USRSCTP_SYSCTL_SET_DEF(sctp_steady_step, SCTPCTL_RTTVAR_STEADYS)
 USRSCTP_SYSCTL_SET_DEF(sctp_use_dccc_ecn, SCTPCTL_RTTVAR_DCCCECN)
 USRSCTP_SYSCTL_SET_DEF(sctp_buffer_splitting, SCTPCTL_BUFFER_SPLITTING)
 USRSCTP_SYSCTL_SET_DEF(sctp_initial_cwnd, SCTPCTL_INITIAL_CWND)
+USRSCTP_SYSCTL_SET_DEF(sctp_ootb_with_zero_cksum, SCTPCTL_OOTB_WITH_ZERO_CKSUM)
 #ifdef SCTP_DEBUG
 USRSCTP_SYSCTL_SET_DEF(sctp_debug_on, SCTPCTL_DEBUG)
 #endif
@@ -3576,6 +3562,7 @@ USRSCTP_SYSCTL_GET_DEF(sctp_steady_step)
 USRSCTP_SYSCTL_GET_DEF(sctp_use_dccc_ecn)
 USRSCTP_SYSCTL_GET_DEF(sctp_buffer_splitting)
 USRSCTP_SYSCTL_GET_DEF(sctp_initial_cwnd)
+USRSCTP_SYSCTL_GET_DEF(sctp_ootb_with_zero_cksum)
 #ifdef SCTP_DEBUG
 USRSCTP_SYSCTL_GET_DEF(sctp_debug_on)
 #endif

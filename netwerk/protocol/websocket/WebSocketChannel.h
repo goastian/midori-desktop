@@ -229,6 +229,7 @@ class WebSocketChannel : public BaseWebSocketChannel,
   // then to IP address (unless we're leaving DNS resolution to a proxy server)
   // MainThread only
   nsCString mAddress;
+  nsCString mPath;
   int32_t mPort;  // WS server port
   // Secondary key for the connection queue. Used by nsWSAdmissionManager.
   nsCString mOriginSuffix;  // MainThread only
@@ -281,7 +282,6 @@ class WebSocketChannel : public BaseWebSocketChannel,
   // following members are accessed only on the main thread
   uint32_t mGotUpgradeOK : 1;
   uint32_t mRecvdHttpUpgradeTransport : 1;
-  uint32_t mAutoFollowRedirects : 1;
   uint32_t mAllowPMCE : 1;
   uint32_t : 0;  // ensure these aren't mixed with the next set
 

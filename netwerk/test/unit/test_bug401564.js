@@ -1,7 +1,9 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserver = null;
 const noRedirectURI = "/content";
@@ -12,12 +14,12 @@ function redirectHandler(metadata, response) {
   response.setHeader("Location", noRedirectURI, false);
 }
 
-function contentHandler(metadata, response) {
+function contentHandler(metadata) {
   Assert.equal(metadata.getHeader("Accept"), acceptType);
   httpserver.stop(do_test_finished);
 }
 
-function dummyHandler(request, buffer) {}
+function dummyHandler() {}
 
 function run_test() {
   httpserver = new HttpServer();

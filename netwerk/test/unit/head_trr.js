@@ -7,13 +7,9 @@
 /* import-globals-from head_cache.js */
 /* import-globals-from head_cookies.js */
 /* import-globals-from head_channels.js */
+/* import-globals-from head_servers.js */
 
 /* globals require, __dirname, global, Buffer, process */
-
-const { NodeServer } = ChromeUtils.import("resource://testing-common/httpd.js");
-const { AppConstants } = ChromeUtils.importESModule(
-  "resource://gre/modules/AppConstants.sys.mjs"
-);
 
 /// Sets the TRR related prefs and adds the certificate we use for the HTTP2
 /// server.
@@ -86,7 +82,6 @@ function trr_clear_prefs() {
   Services.prefs.clearUserPref("network.trr.excluded-domains");
   Services.prefs.clearUserPref("network.trr.builtin-excluded-domains");
   Services.prefs.clearUserPref("network.trr.clear-cache-on-pref-change");
-  Services.prefs.clearUserPref("network.trr.fetch_off_main_thread");
   Services.prefs.clearUserPref("captivedetect.canonicalURL");
 
   Services.prefs.clearUserPref("network.http.http2.enabled");
@@ -150,7 +145,7 @@ class TRRDNSListener {
         this.additionalInfo,
         this,
         currentThread,
-        {} // defaultOriginAttributes
+        this.options.originAttributes || {} // defaultOriginAttributes
       );
       Assert.ok(!this.options.expectEarlyFail, "asyncResolve ok");
     } catch (e) {
@@ -245,88 +240,42 @@ class TRRDNSListener {
   }
 }
 
-/// Implements a basic HTTP2 server
-class TRRServerCode {
-  static async startServer(port) {
-    const fs = require("fs");
-    const options = {
-      key: fs.readFileSync(__dirname + "/http2-cert.key"),
-      cert: fs.readFileSync(__dirname + "/http2-cert.pem"),
-    };
-
-    const url = require("url");
-    global.path_handlers = {};
-    global.handler = (req, resp) => {
-      const path = req.headers[global.http2.constants.HTTP2_HEADER_PATH];
-      let u = url.parse(req.url, true);
-      let handler = global.path_handlers[u.pathname];
-      if (handler) {
-        handler(req, resp, u);
-        return;
-      }
-
-      // Didn't find a handler for this path.
-      let response = `<h1> 404 Path not found: ${path}</h1>`;
-      resp.setHeader("Content-Type", "text/html");
-      resp.setHeader("Content-Length", response.length);
-      resp.writeHead(404);
-      resp.end(response);
-    };
-
-    // key: string "name/type"
-    // value: array [answer1, answer2]
-    global.dns_query_answers = {};
-
-    // key: domain
-    // value: a map containing {key: type, value: number of requests}
-    global.dns_query_counts = {};
-
-    global.http2 = require("http2");
-    global.server = global.http2.createSecureServer(options, global.handler);
-
-    await global.server.listen(port);
-
-    global.dnsPacket = require(`${__dirname}/../dns-packet`);
-    global.ip = require(`${__dirname}/../node_ip`);
-
-    let serverPort = global.server.address().port;
-
-    if (process.env.MOZ_ANDROID_DATA_DIR) {
-      // When creating a server on Android we must make sure that the port
-      // is forwarded from the host machine to the emulator.
-      let adb_path = "adb";
-      if (process.env.MOZ_FETCHES_DIR) {
-        adb_path = `${process.env.MOZ_FETCHES_DIR}/android-sdk-linux/platform-tools/adb`;
-      }
-
-      await new Promise(resolve => {
-        const { exec } = require("child_process");
-        exec(
-          `${adb_path} reverse tcp:${serverPort} tcp:${serverPort}`,
-          (error, stdout, stderr) => {
-            if (error) {
-              console.log(`error: ${error.message}`);
-              return;
-            }
-            if (stderr) {
-              console.log(`stderr: ${stderr}`);
-            }
-            // console.log(`stdout: ${stdout}`);
-            resolve();
-          }
-        );
-      });
-    }
-
-    return serverPort;
+// This is for reteriiving the raw bytes from a DNS answer.
+function answerHandler(req, resp) {
+  let searchParams = new URL(req.url, "http://example.com").searchParams;
+  console.log("req.searchParams:" + searchParams);
+  if (!searchParams.get("host")) {
+    resp.writeHead(400);
+    resp.end("Missing search parameter");
+    return;
   }
 
-  static getRequestCount(domain, type) {
-    if (!global.dns_query_counts[domain]) {
-      return 0;
-    }
-    return global.dns_query_counts[domain][type] || 0;
+  function processRequest(req1, resp1) {
+    let domain = searchParams.get("host");
+    let type = searchParams.get("type");
+    let response = global.dns_query_answers[`${domain}/${type}`] || {};
+    let buf = global.dnsPacket.encode({
+      type: "response",
+      id: 0,
+      flags: 0,
+      questions: [],
+      answers: response.answers || [],
+      additionals: response.additionals || [],
+    });
+    let writeResponse = (resp2, buf2) => {
+      try {
+        let data = buf2.toString("hex");
+        resp2.setHeader("Content-Length", data.length);
+        resp2.writeHead(200, { "Content-Type": "plain/text" });
+        resp2.write(data);
+        resp2.end("");
+      } catch (e) {}
+    };
+
+    writeResponse(resp1, buf, response);
   }
+
+  processRequest(req, resp);
 }
 
 /// This is the default handler for /dns-query
@@ -359,7 +308,7 @@ function trrQueryHandler(req, resp, url) {
     resp.end("Unexpected method");
   }
 
-  function processRequest(req, resp, payload) {
+  function processRequest(req1, resp1, payload) {
     let dnsQuery = global.dnsPacket.decode(payload);
     let domain = dnsQuery.questions[0].name;
     let type = dnsQuery.questions[0].type;
@@ -385,24 +334,24 @@ function trrQueryHandler(req, resp, url) {
       additionals: response.additionals || [],
     });
 
-    let writeResponse = (resp, buf, context) => {
+    let writeResponse = (resp2, buf2, context) => {
       try {
         if (context.error) {
           // If the error is a valid HTTP response number just write it out.
           if (context.error < 600) {
-            resp.writeHead(context.error);
-            resp.end("Intentional error");
+            resp2.writeHead(context.error);
+            resp2.end("Intentional error");
             return;
           }
 
           // Bigger error means force close the session
-          req.stream.session.close();
+          req1.stream.session.close();
           return;
         }
-        resp.setHeader("Content-Length", buf.length);
-        resp.writeHead(200, { "Content-Type": "application/dns-message" });
-        resp.write(buf);
-        resp.end("");
+        resp2.setHeader("Content-Length", buf2.length);
+        resp2.writeHead(200, { "Content-Type": "application/dns-message" });
+        resp2.write(buf2);
+        resp2.end("");
       } catch (e) {}
     };
 
@@ -415,48 +364,45 @@ function trrQueryHandler(req, resp, url) {
           writeResponse(arg[0], arg[1], arg[2]);
         },
         response.delay,
-        [resp, buf, response]
+        [resp1, buf, response]
       );
       return;
     }
 
-    writeResponse(resp, buf, response);
+    writeResponse(resp1, buf, response);
   }
 }
 
+function getRequestCount(domain, type) {
+  if (!global.dns_query_counts[domain]) {
+    return 0;
+  }
+  return global.dns_query_counts[domain][type] || 0;
+}
+
 // A convenient wrapper around NodeServer
-class TRRServer {
+class TRRServer extends NodeHTTP2Server {
   /// Starts the server
   /// @port - default 0
   ///    when provided, will attempt to listen on that port.
   async start(port = 0) {
-    this.processId = await NodeServer.fork();
+    await super.start(port);
+    await this.execute(`( () => {
+      // key: string "name/type"
+      // value: array [answer1, answer2]
+      global.dns_query_answers = {};
 
-    await this.execute(TRRServerCode);
-    this.port = await this.execute(`TRRServerCode.startServer(${port})`);
+      // key: domain
+      // value: a map containing {key: type, value: number of requests}
+      global.dns_query_counts = {};
+
+      global.dnsPacket = require(\`\${__dirname}/../dns-packet\`);
+      global.ip = require(\`\${__dirname}/../node_ip\`);
+      global.http2 = require("http2");
+    })()`);
     await this.registerPathHandler("/dns-query", trrQueryHandler);
-  }
-
-  /// Executes a command in the context of the node server
-  async execute(command) {
-    return NodeServer.execute(this.processId, command);
-  }
-
-  /// Stops the server
-  async stop() {
-    if (this.processId) {
-      await NodeServer.kill(this.processId);
-      this.processId = undefined;
-    }
-  }
-
-  /// @path : string - the path on the server that we're handling. ex: /path
-  /// @handler : function(req, resp, url) - function that processes request and
-  ///     emits a response.
-  async registerPathHandler(path, handler) {
-    return this.execute(
-      `global.path_handlers["${path}"] = ${handler.toString()}`
-    );
+    await this.registerPathHandler("/dnsAnswer", answerHandler);
+    await this.execute(getRequestCount);
   }
 
   /// @name : string - name we're providing answers for. eg: foo.example.com
@@ -482,9 +428,7 @@ class TRRServer {
   }
 
   async requestCount(domain, type) {
-    return this.execute(
-      `TRRServerCode.getRequestCount("${domain}", "${type}")`
-    );
+    return this.execute(`getRequestCount("${domain}", "${type}")`);
   }
 }
 
@@ -515,21 +459,16 @@ class TRRProxyCode {
     });
   }
 
-  static proxySessionCount() {
-    if (!global.proxy) {
-      return 0;
-    }
-    return global.proxy.proxy_session_count;
+  static proxyRequestCount() {
+    return global.proxy_stream_count;
   }
 
   static setupProxy() {
     if (!global.proxy) {
       throw new Error("proxy is null");
     }
-    global.proxy.proxy_session_count = 0;
-    global.proxy.on("session", () => {
-      ++global.proxy.proxy_session_count;
-    });
+
+    global.proxy_stream_count = 0;
 
     // We need to track active connections so we can forcefully close keep-alive
     // connections when shutting down the proxy.
@@ -555,7 +494,7 @@ class TRRProxyCode {
         stream.end();
         return;
       }
-
+      global.proxy_stream_count++;
       const net = require("net");
       const socket = net.connect(global.endServerPort, "127.0.0.1", () => {
         try {
@@ -585,7 +524,6 @@ class TRRProxy {
     await this.execute(TRRProxyCode);
     this.port = await this.execute(`TRRProxyCode.startServer(${port})`);
     Assert.notEqual(this.port, null);
-    this.initial_session_count = 0;
   }
 
   // Executes a command in the context of the node server
@@ -601,11 +539,11 @@ class TRRProxy {
     }
   }
 
-  async proxy_session_counter() {
+  async request_count() {
     let data = await NodeServer.execute(
       this.processId,
-      `TRRProxyCode.proxySessionCount()`
+      `TRRProxyCode.proxyRequestCount()`
     );
-    return parseInt(data) - this.initial_session_count;
+    return parseInt(data);
   }
 }

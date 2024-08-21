@@ -33,20 +33,20 @@ add_task(async function setup() {
     await trrServer.stop();
   });
   await trrServer.start();
-  dump(`port = ${trrServer.port}\n`);
-  let chan = makeChan(`https://localhost:${trrServer.port}/test?bla=some`);
+  dump(`port = ${trrServer.port()}\n`);
+  let chan = makeChan(`https://localhost:${trrServer.port()}/test?bla=some`);
   let [, resp] = await channelOpenPromise(chan);
-  equal(resp, "<h1> 404 Path not found: /test?bla=some</h1>");
+  equal(resp, "<h1> 404 Path not found: /test</h1>");
 
   Services.dns.clearCache(true);
   Services.prefs.setIntPref("network.trr.mode", 2);
   Services.prefs.setCharPref(
     "network.trr.uri",
-    `https://foo.example.com:${trrServer.port}/dns-query`
+    `https://foo.example.com:${trrServer.port()}/dns-query`
   );
 });
 
-add_task(async function test_extended_error_bogus() {
+add_task(async function test_extended_error_1() {
   await trrServer.registerDoHAnswers("something.foo", "A", {
     answers: [
       {
@@ -71,7 +71,7 @@ add_task(async function test_extended_error_bogus() {
         options: [
           {
             code: "EDNS_ERROR",
-            extended_error: 6, // DNSSEC_BOGUS
+            extended_error: 17, // Filtered
             text: "DNSSec bogus",
           },
         ],

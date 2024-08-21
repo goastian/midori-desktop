@@ -13,9 +13,11 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpServer.identity.primaryPort + "/content";
 });
 
@@ -101,7 +103,7 @@ function openAltChannel() {
 
 var altDataListener = {
   buffer: "",
-  onStartRequest(request) {},
+  onStartRequest() {},
   onDataAvailable(request, stream, offset, count) {
     let string = NetUtil.readInputStreamToString(stream, count);
     this.buffer += string;
@@ -118,7 +120,7 @@ var altDataListener = {
       os.close();
     }
   },
-  onStopRequest(request, status) {
+  onStopRequest(request) {
     var cc = request.QueryInterface(Ci.nsICacheInfoChannel);
     Assert.equal(cc.alternativeDataType, altContentType);
     Assert.equal(this.buffer.length, altContent.length);
@@ -141,12 +143,12 @@ function openAltChannelWithOriginalContent() {
 
 var originalListener = {
   buffer: "",
-  onStartRequest(request) {},
+  onStartRequest() {},
   onDataAvailable(request, stream, offset, count) {
     let string = NetUtil.readInputStreamToString(stream, count);
     this.buffer += string;
   },
-  onStopRequest(request, status) {
+  onStopRequest(request) {
     var cc = request.QueryInterface(Ci.nsICacheInfoChannel);
     Assert.equal(cc.alternativeDataType, altContentType);
     Assert.equal(this.buffer.length, responseContent.length);

@@ -1,9 +1,11 @@
 "use strict";
 // https://bugzilla.mozilla.org/show_bug.cgi?id=761228
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpServer.identity.primaryPort;
 });
 
@@ -11,7 +13,7 @@ var httpServer = null;
 const testFileName = "test_customConditionalRequest_304";
 const basePath = "/" + testFileName + "/";
 
-XPCOMUtils.defineLazyGetter(this, "baseURI", function () {
+ChromeUtils.defineLazyGetter(this, "baseURI", function () {
   return URL + basePath;
 });
 
@@ -46,7 +48,7 @@ function run_test() {
   run_next_test();
 }
 
-function consume304(request, buffer) {
+function consume304(request) {
   request.QueryInterface(Ci.nsIHttpChannel);
   Assert.equal(request.responseStatus, 304);
   Assert.equal(request.getResponseHeader("Returned-From-Handler"), "1");
@@ -76,7 +78,6 @@ add_test(function test_304_stored_in_cache() {
         "HTTP/1.1 304 Not Modified\r\n" + "\r\n"
       );
       cacheEntry.metaDataReady();
-      cacheEntry.close();
 
       var chan = make_channel(baseURI + existingCached304);
 

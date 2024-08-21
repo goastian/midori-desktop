@@ -8,6 +8,7 @@
 #include "HttpLog.h"
 
 #include "mozilla/BasePrincipal.h"
+#include "mozilla/Components.h"
 #include "mozilla/StoragePrincipalHelper.h"
 #include "mozilla/Tokenizer.h"
 #include "MockHttpAuth.h"
@@ -271,8 +272,8 @@ nsHttpChannelAuthProvider::CheckForSuperfluousAuth() {
   if (!ConfirmAuth("SuperfluousAuth", true)) {
     // calling cancel here sets our mStatus and aborts the HTTP
     // transaction, which prevents OnDataAvailable events.
-    Unused << mAuthChannel->Cancel(NS_ERROR_ABORT);
-    return NS_ERROR_ABORT;
+    Unused << mAuthChannel->Cancel(NS_ERROR_SUPERFLUOS_AUTH);
+    return NS_ERROR_SUPERFLUOS_AUTH;
   }
   return NS_OK;
 }
@@ -501,9 +502,7 @@ class MOZ_STACK_CLASS ChallengeParser final : Tokenizer {
         if (!result.IsEmpty()) {
           return Some(result);
         }
-      } else if (t.Equals(Token::Char(',')) && !inQuote &&
-                 StaticPrefs::
-                     network_auth_allow_multiple_challenges_same_line()) {
+      } else if (t.Equals(Token::Char(',')) && !inQuote) {
         // Sometimes we get multiple challenges separated by a comma.
         // This is not great, as it's slightly ambiguous. We check if something
         // is a new challenge by matching agains <param_name> =
@@ -621,8 +620,16 @@ nsresult nsHttpChannelAuthProvider::GetCredentials(
     cc.AppendElement(ac);
   }
 
-  cc.StableSort([](const AuthChallenge& lhs, const AuthChallenge& rhs) {
-    if (StaticPrefs::network_auth_choose_most_secure_challenge()) {
+  // Returns true if an authorization is in progress
+  auto authInProgress = [&]() -> bool {
+    return proxyAuth ? mProxyAuthContinuationState : mAuthContinuationState;
+  };
+
+  // We shouldn't sort if authorization is already in progress
+  // otherwise we might end up picking the wrong one. See bug 1805666
+  if (!authInProgress() ||
+      StaticPrefs::network_auth_sort_challenge_in_progress()) {
+    cc.StableSort([](const AuthChallenge& lhs, const AuthChallenge& rhs) {
       // Different auth types
       if (lhs.rank != rhs.rank) {
         return lhs.rank < rhs.rank ? 1 : -1;
@@ -633,19 +640,15 @@ nsresult nsHttpChannelAuthProvider::GetCredentials(
       if (lhs.rank != ChallengeRank::Digest) {
         return 0;
       }
-    } else {
+
       // Non-digest challenges should not be reordered when the pref is off.
       if (lhs.algorithm == 0 || rhs.algorithm == 0) {
         return 0;
       }
-    }
 
-    // Same algorithm.
-    if (lhs.algorithm == rhs.algorithm) {
-      return 0;
-    }
-    return lhs.algorithm < rhs.algorithm ? 1 : -1;
-  });
+      return lhs.algorithm < rhs.algorithm ? 1 : -1;
+    });
+  }
 
   nsCOMPtr<nsIHttpAuthenticator> auth;
   nsCString authType;  // force heap allocation to enable string sharing since
@@ -1212,82 +1215,38 @@ void nsHttpChannelAuthProvider::GetIdentityFromURI(uint32_t authFlags,
   LOG(("nsHttpChannelAuthProvider::GetIdentityFromURI [this=%p channel=%p]\n",
        this, mAuthChannel));
 
+  bool hasUserPass;
+  if (NS_FAILED(mURI->GetHasUserPass(&hasUserPass)) || !hasUserPass) {
+    return;
+  }
+
   nsAutoString userBuf;
   nsAutoString passBuf;
 
   // XXX i18n
   nsAutoCString buf;
-  mURI->GetUsername(buf);
-  if (!buf.IsEmpty()) {
-    NS_UnescapeURL(buf);
-    CopyUTF8toUTF16(buf, userBuf);
-    mURI->GetPassword(buf);
-    if (!buf.IsEmpty()) {
-      NS_UnescapeURL(buf);
-      CopyUTF8toUTF16(buf, passBuf);
-    }
+  nsresult rv = mURI->GetUsername(buf);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+  NS_UnescapeURL(buf);
+  CopyUTF8toUTF16(buf, userBuf);
+
+  rv = mURI->GetPassword(buf);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+  NS_UnescapeURL(buf);
+  CopyUTF8toUTF16(buf, passBuf);
+
+  nsDependentSubstring user(userBuf, 0);
+  nsDependentSubstring domain(u""_ns, 0);
+
+  if (authFlags & nsIHttpAuthenticator::IDENTITY_INCLUDES_DOMAIN) {
+    ParseUserDomain(userBuf, user, domain);
   }
 
-  if (!userBuf.IsEmpty()) {
-    nsDependentSubstring user(userBuf, 0);
-    nsDependentSubstring domain(u""_ns, 0);
-
-    if (authFlags & nsIHttpAuthenticator::IDENTITY_INCLUDES_DOMAIN) {
-      ParseUserDomain(userBuf, user, domain);
-    }
-
-    ident = nsHttpAuthIdentity(domain, user, passBuf);
-  }
-}
-
-static void OldParseRealm(const nsACString& aChallenge, nsACString& realm) {
-  //
-  // From RFC2617 section 1.2, the realm value is defined as such:
-  //
-  //    realm       = "realm" "=" realm-value
-  //    realm-value = quoted-string
-  //
-  // but, we'll accept anything after the the "=" up to the first space, or
-  // end-of-line, if the string is not quoted.
-  //
-
-  const nsCString& flat = PromiseFlatCString(aChallenge);
-  const char* challenge = flat.get();
-
-  const char* p = nsCRT::strcasestr(challenge, "realm=");
-  if (p) {
-    bool has_quote = false;
-    p += 6;
-    if (*p == '"') {
-      has_quote = true;
-      p++;
-    }
-
-    const char* end;
-    if (has_quote) {
-      end = p;
-      while (*end) {
-        if (*end == '\\') {
-          // escaped character, store that one instead if not zero
-          if (!*++end) break;
-        } else if (*end == '\"') {
-          // end of string
-          break;
-        }
-
-        realm.Append(*end);
-        ++end;
-      }
-    } else {
-      // realm given without quotes
-      end = strchr(p, ' ');
-      if (end) {
-        realm.Assign(p, end - p);
-      } else {
-        realm.Assign(p);
-      }
-    }
-  }
+  ident = nsHttpAuthIdentity(domain, user, passBuf);
 }
 
 void nsHttpChannelAuthProvider::ParseRealm(const nsACString& aChallenge,
@@ -1301,11 +1260,6 @@ void nsHttpChannelAuthProvider::ParseRealm(const nsACString& aChallenge,
   // but, we'll accept anything after the the "=" up to the first space, or
   // end-of-line, if the string is not quoted.
   //
-
-  if (!StaticPrefs::network_auth_use_new_parse_realm()) {
-    OldParseRealm(aChallenge, realm);
-    return;
-  }
 
   Tokenizer t(aChallenge);
 
@@ -1737,8 +1691,8 @@ bool nsHttpChannelAuthProvider::ConfirmAuth(const char* bundleKey,
   // assume the user said ok.  this is done to keep things working in
   // embedded builds, where the string bundle might not be present, etc.
 
-  nsCOMPtr<nsIStringBundleService> bundleService =
-      do_GetService(NS_STRINGBUNDLE_CONTRACTID);
+  nsCOMPtr<nsIStringBundleService> bundleService;
+  bundleService = mozilla::components::StringBundle::Service();
   if (!bundleService) return true;
 
   nsCOMPtr<nsIStringBundle> bundle;

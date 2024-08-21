@@ -8,7 +8,7 @@
  * Tests that the object-state-preservation mechanism works correctly.
  */
 
-XPCOMUtils.defineLazyGetter(this, "PATH", function () {
+ChromeUtils.defineLazyGetter(this, "PATH", function () {
   return "http://localhost:" + srv.identity.primaryPort + "/object-state.sjs";
 });
 
@@ -56,7 +56,7 @@ function run_test() {
  */
 
 var initialStarted = false;
-function initialStart(ch) {
+function initialStart() {
   dumpn("*** initialStart");
 
   if (initialStarted) {
@@ -106,7 +106,7 @@ function initialStop(ch, status, data) {
 }
 
 var intermediateStarted = false;
-function intermediateStart(ch) {
+function intermediateStart() {
   dumpn("*** intermediateStart");
 
   Assert.notEqual(srv.getObjectState("object-state-test"), null);
@@ -152,7 +152,7 @@ function intermediateStop(ch, status, data) {
 }
 
 var triggerStarted = false;
-function triggerStart(ch) {
+function triggerStart() {
   dumpn("*** triggerStart");
 
   if (!initialStarted) {

@@ -1,0 +1,48 @@
+[DEFAULT]
+
+support-files = [
+  "file_empty.html",
+  "file_empty.js",
+  "head.js"
+]
+
+["browser_broadcastChannel.js"]
+
+["browser_cookie_chips.js"]
+support-files = ["chips.sjs"]
+
+["browser_cookie_insecure_overwrites_secure.js"]
+
+["browser_cookie_purge_sync.js"]
+
+["browser_cookies.js"]
+support-files = ["server.sjs"]
+
+["browser_cookies_ipv6.js"]
+
+["browser_cookies_serviceWorker.js"]
+support-files = ["cookies.sjs", "serviceWorker.js"]
+
+["browser_domCache.js"]
+
+["browser_indexedDB.js"]
+
+["browser_originattributes.js"]
+
+["browser_oversize.js"]
+support-files = ["oversize.sjs"]
+
+["browser_partitionedConsole.js"]
+support-files = ["partitioned.sjs"]
+
+["browser_partitioned_telemetry.js"]
+support-files = ["partitioned.sjs"]
+
+["browser_sameSiteConsole.js"]
+support-files = ["sameSite.sjs"]
+
+["browser_serviceWorker.js"]
+
+["browser_sharedWorker.js"]
+
+["browser_storage.js"]

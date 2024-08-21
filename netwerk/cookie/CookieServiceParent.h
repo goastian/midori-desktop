@@ -51,6 +51,11 @@ class CookieServiceParent : public PCookieServiceParent {
   void UpdateCookieInContentList(nsIURI* aHostURI,
                                  const OriginAttributes& aOriginAttrs);
 
+  mozilla::ipc::IPCResult SetCookies(
+      const nsCString& aBaseDomain, const OriginAttributes& aOriginAttributes,
+      nsIURI* aHost, bool aFromHttp, const nsTArray<CookieStruct>& aCookies,
+      dom::BrowsingContext* aBrowsingContext = nullptr);
+
  protected:
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
@@ -58,18 +63,19 @@ class CookieServiceParent : public PCookieServiceParent {
       const nsCString& aBaseDomain, const OriginAttributes& aOriginAttributes,
       nsIURI* aHost, bool aFromHttp, const nsTArray<CookieStruct>& aCookies);
 
-  mozilla::ipc::IPCResult RecvPrepareCookieList(
+  mozilla::ipc::IPCResult RecvGetCookieList(
       nsIURI* aHost, const bool& aIsForeign,
       const bool& aIsThirdPartyTrackingResource,
       const bool& aIsThirdPartySocialTrackingResource,
       const bool& aStorageAccessPermissionGranted,
       const uint32_t& aRejectedReason, const bool& aIsSafeTopLevelNav,
       const bool& aIsSameSiteForeign, const bool& aHadCrossSiteRedirects,
-      const OriginAttributes& aAttrs);
+      nsTArray<OriginAttributes>&& aAttrsList,
+      GetCookieListResolver&& aResolve);
 
-  static void SerializeCookieList(const nsTArray<Cookie*>& aFoundCookieList,
-                                  nsTArray<CookieStruct>& aCookiesList,
-                                  nsIURI* aHostURI);
+  static void SerializeCookieListTable(
+      const nsTArray<RefPtr<Cookie>>& aFoundCookieList,
+      nsTArray<CookieStructTable>& aCookiesListTable, nsIURI* aHostURI);
 
   nsCOMPtr<nsIEffectiveTLDService> mTLDService;
   RefPtr<CookieService> mCookieService;

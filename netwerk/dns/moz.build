@@ -28,7 +28,7 @@ EXTRA_JS_MODULES["netwerk-dns"] += [
     "PublicSuffixList.sys.mjs",
 ]
 
-XPCSHELL_TESTS_MANIFESTS += ["tests/unit/xpcshell.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["tests/unit/xpcshell.toml"]
 
 EXPORTS += [
     "nsEffectiveTLDService.h",
@@ -58,6 +58,16 @@ SOURCES += [
     "GetAddrInfo.cpp",  # Undefines UNICODE
     "nsEffectiveTLDService.cpp",  # Excluded from UNIFIED_SOURCES due to special build flags.
 ]
+
+if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
+    SOURCES += ["PlatformDNSWin.cpp"]
+elif CONFIG["OS_TARGET"] == "Linux" or CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
+    SOURCES += ["PlatformDNSUnix.cpp"]
+    OS_LIBS += ["resolv"]
+elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
+    SOURCES += ["PlatformDNSAndroid.cpp"]
+else:
+    DEFINES["MOZ_NO_HTTPS_IMPL"] = 1
 
 UNIFIED_SOURCES += [
     "ChildDNSService.cpp",

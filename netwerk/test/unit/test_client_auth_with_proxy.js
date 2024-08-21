@@ -41,7 +41,7 @@ class SecurityObserver {
     this.output = output;
   }
 
-  onHandshakeDone(socket, status) {
+  onHandshakeDone() {
     info("TLS handshake done");
 
     let output = this.output;
@@ -107,29 +107,20 @@ function startServer(cert) {
 }
 
 // Replace the UI dialog that prompts the user to pick a client certificate.
-const gClientAuthDialogs = {
-  chooseCertificate(
-    hostname,
-    port,
-    organization,
-    issuerOrg,
-    certList,
-    selectedIndex,
-    rememberClientAuthCertificate
-  ) {
-    return true;
+const clientAuthDialogService = {
+  chooseCertificate(hostname, certArray, loadContext, callback) {
+    callback.certificateChosen(certArray[0], false);
   },
-
-  QueryInterface: ChromeUtils.generateQI(["nsIClientAuthDialogs"]),
+  QueryInterface: ChromeUtils.generateQI(["nsIClientAuthDialogService"]),
 };
 
 let server;
 add_setup(async function setup() {
   do_get_profile();
 
-  let clientAuthDialogsCID = MockRegistrar.register(
-    "@mozilla.org/nsClientAuthDialogs;1",
-    gClientAuthDialogs
+  let clientAuthDialogServiceCID = MockRegistrar.register(
+    "@mozilla.org/security/ClientAuthDialogService;1",
+    clientAuthDialogService
   );
 
   let cert = getTestServerCertificate();
@@ -145,7 +136,7 @@ add_setup(async function setup() {
   );
 
   registerCleanupFunction(async function () {
-    MockRegistrar.unregister(clientAuthDialogsCID);
+    MockRegistrar.unregister(clientAuthDialogServiceCID);
     certOverrideService.clearValidityOverride("localhost", server.port, {});
     server.close();
   });

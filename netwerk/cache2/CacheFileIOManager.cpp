@@ -34,6 +34,7 @@
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Preferences.h"
 #include "nsNetUtil.h"
+#include "mozilla/glean/GleanMetrics.h"
 
 #ifdef MOZ_BACKGROUNDTASKS
 #  include "mozilla/BackgroundTasksRunner.h"
@@ -1418,6 +1419,69 @@ nsresult CacheFileIOManager::OnDelayedStartupFinished() {
                                                         kPurgeExtension);
                              }),
       nsIEventTarget::DISPATCH_NORMAL);
+}
+
+// static
+nsresult CacheFileIOManager::OnIdleDaily() {
+  // In case the background task process fails for some reason (bug 1848542)
+  // We will remove the directories in the main process on a daily idle.
+  if (!CacheObserver::ClearCacheOnShutdown()) {
+    return NS_OK;
+  }
+  if (!StaticPrefs::network_cache_shutdown_purge_in_background_task()) {
+    return NS_OK;
+  }
+
+  RefPtr<CacheFileIOManager> ioMan = gInstance;
+  nsCOMPtr<nsIFile> parentDir;
+  nsresult rv = ioMan->mCacheDirectory->GetParent(getter_AddRefs(parentDir));
+  if (NS_FAILED(rv) || !parentDir) {
+    return NS_OK;
+  }
+
+  NS_DispatchBackgroundTask(
+      NS_NewRunnableFunction(
+          "CacheFileIOManager::CheckLeftoverFolders",
+          [dir = std::move(parentDir)] {
+            nsCOMPtr<nsIDirectoryEnumerator> directories;
+            nsresult rv = dir->GetDirectoryEntries(getter_AddRefs(directories));
+            if (NS_FAILED(rv)) {
+              return;
+            }
+            bool hasMoreElements = false;
+            while (
+                NS_SUCCEEDED(directories->HasMoreElements(&hasMoreElements)) &&
+                hasMoreElements) {
+              nsCOMPtr<nsIFile> subdir;
+              rv = directories->GetNextFile(getter_AddRefs(subdir));
+              if (NS_FAILED(rv) || !subdir) {
+                break;
+              }
+              nsAutoCString leafName;
+              rv = subdir->GetNativeLeafName(leafName);
+              if (NS_FAILED(rv)) {
+                continue;
+              }
+              if (leafName.Find(kPurgeExtension) != kNotFound) {
+                mozilla::glean::networking::residual_cache_folder_count.Add(1);
+                rv = subdir->Remove(true);
+                if (NS_SUCCEEDED(rv)) {
+                  mozilla::glean::networking::residual_cache_folder_removal
+                      .Get("success"_ns)
+                      .Add(1);
+                } else {
+                  mozilla::glean::networking::residual_cache_folder_removal
+                      .Get("failure"_ns)
+                      .Add(1);
+                }
+              }
+            }
+
+            return;
+          }),
+      NS_DISPATCH_EVENT_MAY_BLOCK);
+
+  return NS_OK;
 }
 
 // static
@@ -4033,18 +4097,6 @@ nsresult CacheFileIOManager::OpenNSPRHandle(CacheFileHandle* aHandle,
             ("CacheFileIOManager::OpenNSPRHandle() - Successfully evicted entry"
              " with hash %08x%08x%08x%08x%08x. %s to create the new file.",
              LOGSHA1(&hash), NS_SUCCEEDED(rv) ? "Succeeded" : "Failed"));
-
-        // Report the full size only once per session
-        static bool sSizeReported = false;
-        if (!sSizeReported) {
-          uint32_t cacheUsage;
-          if (NS_SUCCEEDED(CacheIndex::GetCacheSize(&cacheUsage))) {
-            cacheUsage >>= 10;
-            Telemetry::Accumulate(Telemetry::NETWORK_CACHE_SIZE_FULL_FAT,
-                                  cacheUsage);
-            sSizeReported = true;
-          }
-        }
       } else {
         LOG(
             ("CacheFileIOManager::OpenNSPRHandle() - Couldn't evict an existing"

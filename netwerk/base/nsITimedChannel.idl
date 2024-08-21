@@ -25,7 +25,7 @@ interface nsIServerTiming : nsISupports {
 [ref] native nsServerTimingArrayRef(nsTArray<nsCOMPtr<nsIServerTiming>>);
 
 // All properties return zero if the value is not available
-[scriptable, uuid(ca63784d-959c-4c3a-9a59-234a2a520de0)]
+[scriptable, builtinclass, uuid(ca63784d-959c-4c3a-9a59-234a2a520de0)]
 interface nsITimedChannel : nsISupports {
   // Set this attribute to true to enable collection of timing data.
   // channelCreationTime will be available even with this attribute set to
@@ -86,6 +86,10 @@ interface nsITimedChannel : nsISupports {
   }
   %}
 
+  // Whether this request is render-blocking:
+  // https://w3c.github.io/resource-timing/#dom-renderblockingstatustype
+  [noscript] attribute boolean renderBlocking;
+
   // The following are only set if the document is (partially) read from the
   // cache
   [noscript] readonly attribute TimeStamp cacheReadStart;
@@ -124,5 +128,5 @@ interface nsITimedChannel : nsISupports {
   [noscript] attribute boolean reportResourceTiming;
 
   readonly attribute nsIArray serverTiming;
-  nsServerTimingArrayRef getNativeServerTiming();
+  [noscript] nsServerTimingArrayRef getNativeServerTiming();
 };

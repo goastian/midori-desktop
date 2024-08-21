@@ -7,6 +7,9 @@
 // HttpLog.h should generally be included first
 #include "HttpLog.h"
 
+#include "mozilla/dom/MimeType.h"
+#include "mozilla/StaticPrefs_network.h"
+#include "mozilla/TextUtils.h"
 #include "mozilla/Unused.h"
 #include "nsHttpResponseHead.h"
 #include "nsIHttpHeaderVisitor.h"
@@ -144,7 +147,7 @@ nsresult nsHttpResponseHead::SetHeader(const nsACString& hdr,
   }
 
   nsHttpAtom atom = nsHttp::ResolveAtom(hdr);
-  if (!atom) {
+  if (!atom.get()) {
     NS_WARNING("failed to resolve atom");
     return NS_ERROR_NOT_AVAILABLE;
   }
@@ -347,206 +350,21 @@ void nsHttpResponseHead::AssignDefaultStatusText() {
   // In particular, HTTP/2 does not use reason phrases at all so they need to
   // always be injected.
 
-  switch (mStatus) {
-      // start with the most common
-    case 200:
-      mStatusText.AssignLiteral("OK");
-      break;
-    case 404:
-      mStatusText.AssignLiteral("Not Found");
-      break;
-    case 301:
-      mStatusText.AssignLiteral("Moved Permanently");
-      break;
-    case 304:
-      mStatusText.AssignLiteral("Not Modified");
-      break;
-    case 307:
-      mStatusText.AssignLiteral("Temporary Redirect");
-      break;
-    case 500:
-      mStatusText.AssignLiteral("Internal Server Error");
-      break;
-
-      // also well known
-    case 100:
-      mStatusText.AssignLiteral("Continue");
-      break;
-    case 101:
-      mStatusText.AssignLiteral("Switching Protocols");
-      break;
-    case 201:
-      mStatusText.AssignLiteral("Created");
-      break;
-    case 202:
-      mStatusText.AssignLiteral("Accepted");
-      break;
-    case 203:
-      mStatusText.AssignLiteral("Non Authoritative");
-      break;
-    case 204:
-      mStatusText.AssignLiteral("No Content");
-      break;
-    case 205:
-      mStatusText.AssignLiteral("Reset Content");
-      break;
-    case 206:
-      mStatusText.AssignLiteral("Partial Content");
-      break;
-    case 207:
-      mStatusText.AssignLiteral("Multi-Status");
-      break;
-    case 208:
-      mStatusText.AssignLiteral("Already Reported");
-      break;
-    case 300:
-      mStatusText.AssignLiteral("Multiple Choices");
-      break;
-    case 302:
-      mStatusText.AssignLiteral("Found");
-      break;
-    case 303:
-      mStatusText.AssignLiteral("See Other");
-      break;
-    case 305:
-      mStatusText.AssignLiteral("Use Proxy");
-      break;
-    case 308:
-      mStatusText.AssignLiteral("Permanent Redirect");
-      break;
-    case 400:
-      mStatusText.AssignLiteral("Bad Request");
-      break;
-    case 401:
-      mStatusText.AssignLiteral("Unauthorized");
-      break;
-    case 402:
-      mStatusText.AssignLiteral("Payment Required");
-      break;
-    case 403:
-      mStatusText.AssignLiteral("Forbidden");
-      break;
-    case 405:
-      mStatusText.AssignLiteral("Method Not Allowed");
-      break;
-    case 406:
-      mStatusText.AssignLiteral("Not Acceptable");
-      break;
-    case 407:
-      mStatusText.AssignLiteral("Proxy Authentication Required");
-      break;
-    case 408:
-      mStatusText.AssignLiteral("Request Timeout");
-      break;
-    case 409:
-      mStatusText.AssignLiteral("Conflict");
-      break;
-    case 410:
-      mStatusText.AssignLiteral("Gone");
-      break;
-    case 411:
-      mStatusText.AssignLiteral("Length Required");
-      break;
-    case 412:
-      mStatusText.AssignLiteral("Precondition Failed");
-      break;
-    case 413:
-      mStatusText.AssignLiteral("Request Entity Too Large");
-      break;
-    case 414:
-      mStatusText.AssignLiteral("Request URI Too Long");
-      break;
-    case 415:
-      mStatusText.AssignLiteral("Unsupported Media Type");
-      break;
-    case 416:
-      mStatusText.AssignLiteral("Requested Range Not Satisfiable");
-      break;
-    case 417:
-      mStatusText.AssignLiteral("Expectation Failed");
-      break;
-    case 418:
-      mStatusText.AssignLiteral("I'm a teapot");
-      break;
-    case 421:
-      mStatusText.AssignLiteral("Misdirected Request");
-      break;
-    case 422:
-      mStatusText.AssignLiteral("Unprocessable Entity");
-      break;
-    case 423:
-      mStatusText.AssignLiteral("Locked");
-      break;
-    case 424:
-      mStatusText.AssignLiteral("Failed Dependency");
-      break;
-    case 425:
-      mStatusText.AssignLiteral("Too Early");
-      break;
-    case 426:
-      mStatusText.AssignLiteral("Upgrade Required");
-      break;
-    case 428:
-      mStatusText.AssignLiteral("Precondition Required");
-      break;
-    case 429:
-      mStatusText.AssignLiteral("Too Many Requests");
-      break;
-    case 431:
-      mStatusText.AssignLiteral("Request Header Fields Too Large");
-      break;
-    case 451:
-      mStatusText.AssignLiteral("Unavailable For Legal Reasons");
-      break;
-    case 501:
-      mStatusText.AssignLiteral("Not Implemented");
-      break;
-    case 502:
-      mStatusText.AssignLiteral("Bad Gateway");
-      break;
-    case 503:
-      mStatusText.AssignLiteral("Service Unavailable");
-      break;
-    case 504:
-      mStatusText.AssignLiteral("Gateway Timeout");
-      break;
-    case 505:
-      mStatusText.AssignLiteral("HTTP Version Unsupported");
-      break;
-    case 506:
-      mStatusText.AssignLiteral("Variant Also Negotiates");
-      break;
-    case 507:
-      mStatusText.AssignLiteral("Insufficient Storage ");
-      break;
-    case 508:
-      mStatusText.AssignLiteral("Loop Detected");
-      break;
-    case 510:
-      mStatusText.AssignLiteral("Not Extended");
-      break;
-    case 511:
-      mStatusText.AssignLiteral("Network Authentication Required");
-      break;
-    default:
-      mStatusText.AssignLiteral("No Reason Phrase");
-      break;
-  }
+  net_GetDefaultStatusTextForCode(mStatus, mStatusText);
 }
 
-void nsHttpResponseHead::ParseStatusLine(const nsACString& line) {
+nsresult nsHttpResponseHead::ParseStatusLine(const nsACString& line) {
   RecursiveMutexAutoLock monitor(mRecursiveMutex);
-  ParseStatusLine_locked(line);
+  return ParseStatusLine_locked(line);
 }
 
-void nsHttpResponseHead::ParseStatusLine_locked(const nsACString& line) {
+nsresult nsHttpResponseHead::ParseStatusLine_locked(const nsACString& line) {
   //
   // Parse Status-Line:: HTTP-Version SP Status-Code SP Reason-Phrase CRLF
   //
 
   const char* start = line.BeginReading();
   const char* end = line.EndReading();
-  const char* p = start;
 
   // HTTP-Version
   ParseVersion(start);
@@ -556,9 +374,38 @@ void nsHttpResponseHead::ParseStatusLine_locked(const nsACString& line) {
   if ((mVersion == HttpVersion::v0_9) || (index == -1)) {
     mStatus = 200;
     AssignDefaultStatusText();
+  } else if (StaticPrefs::network_http_strict_response_status_line_parsing()) {
+    // Status-Code: all ASCII digits after any whitespace
+    const char* p = start + index + 1;
+    while (p < end && NS_IsHTTPWhitespace(*p)) ++p;
+    if (p == end || !mozilla::IsAsciiDigit(*p)) {
+      return NS_ERROR_PARSING_HTTP_STATUS_LINE;
+    }
+    const char* codeStart = p;
+    while (p < end && mozilla::IsAsciiDigit(*p)) ++p;
+
+    // Only accept 3 digits (including all leading zeros)
+    // Also if next char isn't whitespace, fail (ie, code is 0x2)
+    if (p - codeStart > 3 || (p < end && !NS_IsHTTPWhitespace(*p))) {
+      return NS_ERROR_PARSING_HTTP_STATUS_LINE;
+    }
+
+    // At this point the code is between 0 and 999 inclusive
+    nsDependentCSubstring strCode(codeStart, p - codeStart);
+    nsresult rv;
+    mStatus = strCode.ToInteger(&rv);
+    if (NS_FAILED(rv)) {
+      return NS_ERROR_PARSING_HTTP_STATUS_LINE;
+    }
+
+    // Reason-Phrase: whatever remains after any whitespace (even empty)
+    while (p < end && NS_IsHTTPWhitespace(*p)) ++p;
+    if (p != end) {
+      mStatusText = nsDependentCSubstring(p, end - p);
+    }
   } else {
     // Status-Code
-    p += index + 1;
+    const char* p = start + index + 1;
     mStatus = (uint16_t)atoi(p);
     if (mStatus == 0) {
       LOG(("mal-formed response status; assuming status = 200\n"));
@@ -577,6 +424,7 @@ void nsHttpResponseHead::ParseStatusLine_locked(const nsACString& line) {
 
   LOG1(("Have status line [version=%u status=%u statusText=%s]\n",
         unsigned(mVersion), unsigned(mStatus), mStatusText.get()));
+  return NS_OK;
 }
 
 nsresult nsHttpResponseHead::ParseHeaderLine(const nsACString& line) {
@@ -594,6 +442,14 @@ nsresult nsHttpResponseHead::ParseHeaderLine_locked(
           line, &hdr, &headerNameOriginal, &val))) {
     return NS_OK;
   }
+
+  // reject the header if there are 0x00 bytes in the value.
+  // (see https://github.com/httpwg/http-core/issues/215 for details).
+  if (StaticPrefs::network_http_reject_NULs_in_response_header_values() &&
+      val.FindChar('\0') >= 0) {
+    return NS_ERROR_DOM_INVALID_HEADER_VALUE;
+  }
+
   nsresult rv;
   if (originalFromNetHeaders) {
     rv = mHeaders.SetHeaderFromNet(hdr, headerNameOriginal, val, true);
@@ -620,9 +476,14 @@ nsresult nsHttpResponseHead::ParseHeaderLine_locked(
     }
 
   } else if (hdr == nsHttp::Content_Type) {
-    LOG(("ParseContentType [type=%s]\n", val.get()));
-    bool dummy;
-    net_ParseContentType(val, mContentType, mContentCharset, &dummy);
+    if (StaticPrefs::network_standard_content_type_parsing_response_headers() &&
+        CMimeType::Parse(val, mContentType, mContentCharset)) {
+    } else {
+      bool dummy;
+      net_ParseContentType(val, mContentType, mContentCharset, &dummy);
+    }
+    LOG(("ParseContentType [input=%s, type=%s, charset=%s]\n", val.get(),
+         mContentType.get(), mContentCharset.get()));
   } else if (hdr == nsHttp::Cache_Control) {
     ParseCacheControl(val.get());
   } else if (hdr == nsHttp::Pragma) {

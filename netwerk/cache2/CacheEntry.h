@@ -5,6 +5,7 @@
 #ifndef CacheEntry__h__
 #define CacheEntry__h__
 
+#include "mozilla/LinkedList.h"
 #include "nsICacheEntry.h"
 #include "CacheFile.h"
 
@@ -42,7 +43,10 @@ class CacheStorage;
 class CacheOutputCloseListener;
 class CacheEntryHandle;
 
-class CacheEntry final : public nsIRunnable, public CacheFileListener {
+class CacheEntry final : public nsIRunnable,
+                         public CacheFileListener,
+                         // Used by CacheStorageService::MemoryPool
+                         public LinkedListElement<RefPtr<CacheEntry>> {
  public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIRUNNABLE
@@ -99,10 +103,6 @@ class CacheEntry final : public nsIRunnable, public CacheFileListener {
   nsresult OpenAlternativeInputStream(const nsACString& type,
                                       nsIInputStream** _retval);
   nsresult GetLoadContextInfo(nsILoadContextInfo** aInfo);
-  nsresult Close(void);
-  nsresult MarkValid(void);
-  nsresult MaybeMarkValid(void);
-  nsresult HasWriteAccess(bool aWriteAllowed, bool* aWriteAccess);
 
  public:
   uint32_t GetMetadataMemoryConsumption();
@@ -541,12 +541,6 @@ class CacheEntryHandle final : public nsICacheEntry {
   NS_IMETHOD GetLoadContextInfo(
       nsILoadContextInfo** aLoadContextInfo) override {
     return mEntry->GetLoadContextInfo(aLoadContextInfo);
-  }
-  NS_IMETHOD Close(void) override { return mEntry->Close(); }
-  NS_IMETHOD MarkValid(void) override { return mEntry->MarkValid(); }
-  NS_IMETHOD MaybeMarkValid(void) override { return mEntry->MaybeMarkValid(); }
-  NS_IMETHOD HasWriteAccess(bool aWriteAllowed, bool* _retval) override {
-    return mEntry->HasWriteAccess(aWriteAllowed, _retval);
   }
 
   // Specific implementation:

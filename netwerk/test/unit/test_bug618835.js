@@ -13,7 +13,9 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserv;
 
@@ -27,8 +29,8 @@ function setupChannel(path) {
 // Verify that Content-Location-URI has been loaded once, load post_target
 function InitialListener() {}
 InitialListener.prototype = {
-  onStartRequest(request) {},
-  onStopRequest(request, status) {
+  onStartRequest() {},
+  onStopRequest() {
     Assert.equal(1, numberOfCLHandlerCalls);
     executeSoon(function () {
       var channel = setupChannel(
@@ -43,8 +45,8 @@ InitialListener.prototype = {
 // Verify that Location-URI has been loaded once, reload post_target
 function RedirectingListener() {}
 RedirectingListener.prototype = {
-  onStartRequest(request) {},
-  onStopRequest(request, status) {
+  onStartRequest() {},
+  onStopRequest() {
     Assert.equal(1, numberOfHandlerCalls);
     executeSoon(function () {
       var channel = setupChannel(
@@ -60,8 +62,8 @@ RedirectingListener.prototype = {
 // reload Content-Location-URI
 function VerifyingListener() {}
 VerifyingListener.prototype = {
-  onStartRequest(request) {},
-  onStopRequest(request, status) {
+  onStartRequest() {},
+  onStopRequest() {
     Assert.equal(2, numberOfHandlerCalls);
     var channel = setupChannel(
       "http://localhost:" + httpserv.identity.primaryPort + "/cl"
@@ -74,8 +76,8 @@ VerifyingListener.prototype = {
 // stop test
 function FinalListener() {}
 FinalListener.prototype = {
-  onStartRequest(request) {},
-  onStopRequest(request, status) {
+  onStartRequest() {},
+  onStopRequest() {
     Assert.equal(2, numberOfCLHandlerCalls);
     httpserv.stop(do_test_finished);
   },

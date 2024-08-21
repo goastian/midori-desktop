@@ -8,7 +8,7 @@
  * Tests for correct behavior of asynchronous responses.
  */
 
-XPCOMUtils.defineLazyGetter(this, "PREPATH", function () {
+ChromeUtils.defineLazyGetter(this, "PREPATH", function () {
   return "http://localhost:" + srv.identity.primaryPort;
 });
 
@@ -28,7 +28,7 @@ function run_test() {
  * BEGIN TESTS *
  ***************/
 
-XPCOMUtils.defineLazyGetter(this, "tests", function () {
+ChromeUtils.defineLazyGetter(this, "tests", function () {
   return [
     new Test(PREPATH + "/handleSync", null, start_handleSync, null),
     new Test(
@@ -181,7 +181,7 @@ handlers["/handleAsync2"] = handleAsync2;
 
 var startTime_handleAsync2;
 
-function init_handleAsync2(ch) {
+function init_handleAsync2() {
   var now = (startTime_handleAsync2 = Date.now());
   dumpn("*** init_HandleAsync2: start time " + now);
 }
@@ -255,7 +255,7 @@ function handleAsyncOrdering(request, response) {
     // Use gThreadManager here because it's expedient, *not* because it's
     // intended for public use!  If you do this in client code, expect me to
     // knowingly break your code by changing the variable name.  :-P
-    gThreadManager.dispatchToMainThread(writeData);
+    Services.tm.dispatchToMainThread(writeData);
   }
   step();
   response.processAsync();

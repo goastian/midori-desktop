@@ -23,6 +23,7 @@
 #include "CacheObserver.h"
 #include "MainThreadUtils.h"
 #include "RequestContextService.h"
+#include "mozilla/glean/GleanMetrics.h"
 #include "mozilla/StoragePrincipalHelper.h"
 #include "mozilla/Unused.h"
 #include "mozilla/net/NeckoCommon.h"
@@ -102,7 +103,7 @@ nsLoadGroup::~nsLoadGroup() {
 
   if (mRequestContext && !mExternalRequestContext) {
     mRequestContextService->RemoveRequestContext(mRequestContext->GetID());
-    if (IsNeckoChild() && gNeckoChild) {
+    if (IsNeckoChild() && gNeckoChild && gNeckoChild->CanSend()) {
       gNeckoChild->SendRemoveRequestContext(mRequestContext->GetID());
     }
   }
@@ -946,6 +947,33 @@ void nsLoadGroup::TelemetryReportChannel(nsITimedChannel* aTimedChannel,
         responseEnd);                                                          \
   }
 
+  // Glean instrumentation of metrics previously collected via Geckoview
+  // Streaming.
+  if (aDefaultRequest) {
+    if (!cacheReadStart.IsNull() && !cacheReadEnd.IsNull()) {
+      mozilla::glean::network::first_from_cache.AccumulateRawDuration(
+          cacheReadStart - asyncOpen);
+    }
+    if (!connectEnd.IsNull()) {
+      if (!connectStart.IsNull()) {
+        mozilla::glean::network::tcp_connection.AccumulateRawDuration(
+            connectEnd - connectStart);
+      }
+      if (!secureConnectionStart.IsNull()) {
+        mozilla::glean::network::tls_handshake.AccumulateRawDuration(
+            connectEnd - secureConnectionStart);
+      }
+    }
+    if (!domainLookupStart.IsNull()) {
+      mozilla::glean::network::dns_start.AccumulateRawDuration(
+          domainLookupStart - asyncOpen);
+      if (!domainLookupEnd.IsNull()) {
+        mozilla::glean::network::dns_end.AccumulateRawDuration(
+            domainLookupEnd - domainLookupStart);
+      }
+    }
+  }
+
   if (aDefaultRequest) {
     HTTP_REQUEST_HISTOGRAMS(PAGE)
   } else {
@@ -993,12 +1021,24 @@ void nsLoadGroup::TelemetryReportChannel(nsITimedChannel* aTimedChannel,
   if (httpChannel && NS_SUCCEEDED(httpChannel->GetHasHTTPSRR(&hasHTTPSRR)) &&
       cacheReadStart.IsNull() && cacheReadEnd.IsNull() &&
       !requestStart.IsNull()) {
-    nsCString key = (hasHTTPSRR) ? ((aDefaultRequest) ? "uses_https_rr_page"_ns
-                                                      : "uses_https_rr_sub"_ns)
-                                 : ((aDefaultRequest) ? "no_https_rr_page"_ns
-                                                      : "no_https_rr_sub"_ns);
-    Telemetry::AccumulateTimeDelta(Telemetry::HTTPS_RR_OPEN_TO_FIRST_SENT, key,
-                                   asyncOpen, requestStart);
+    TimeDuration elapsed = requestStart - asyncOpen;
+    if (hasHTTPSRR) {
+      if (aDefaultRequest) {
+        glean::networking::http_channel_page_open_to_first_sent_https_rr
+            .AccumulateRawDuration(elapsed);
+      } else {
+        glean::networking::http_channel_sub_open_to_first_sent_https_rr
+            .AccumulateRawDuration(elapsed);
+      }
+    } else {
+      if (aDefaultRequest) {
+        glean::networking::http_channel_page_open_to_first_sent
+            .AccumulateRawDuration(elapsed);
+      } else {
+        glean::networking::http_channel_sub_open_to_first_sent
+            .AccumulateRawDuration(elapsed);
+      }
+    }
   }
 
 #undef HTTP_REQUEST_HISTOGRAMS

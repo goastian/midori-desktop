@@ -4,7 +4,9 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserver = new HttpServer();
 httpserver.start(-1);
@@ -193,8 +195,16 @@ function* testSteps() {
     .test_triggerDelayedOpenCacheEntry();
   yield undefined;
   equal(gResponseCounter, 7);
-  equal(g200Counter, 3, "check number of 200 responses");
-  equal(g304Counter, 4, "check number of 304 responses");
+  equal(
+    g200Counter,
+    3,
+    `check number of 200 responses | 200: ${g200Counter}, 304: ${g304Counter}`
+  );
+  equal(
+    g304Counter,
+    4,
+    `check number of 304 responses | 200: ${g200Counter}, 304: ${g304Counter}`
+  );
 
   // Load the cached handler so we don't need to revalidate
   channel = make_channel("http://localhost:" + PORT + "/rcwn_cached");

@@ -496,7 +496,7 @@ nsresult TRRServiceChannel::ContinueOnBeforeConnect() {
 
   if (LoadIsTRRServiceChannel()) {
     mCaps |= NS_HTTP_LARGE_KEEPALIVE;
-    mCaps |= NS_HTTP_DISALLOW_HTTPS_RR;
+    DisallowHTTPSRR(mCaps);
   }
 
   mCaps |= NS_HTTP_TRR_FLAGS_FROM_MODE(nsIRequest::GetTRRMode());
@@ -1165,7 +1165,7 @@ nsresult TRRServiceChannel::SetupReplacementChannel(nsIURI* aNewURI,
     return rv;
   }
 
-  rv = CheckRedirectLimit(aRedirectFlags);
+  rv = CheckRedirectLimit(aNewURI, aRedirectFlags);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aNewChannel);

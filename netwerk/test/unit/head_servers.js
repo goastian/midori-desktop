@@ -7,7 +7,13 @@
 /* import-globals-from head_cache.js */
 /* import-globals-from head_cookies.js */
 /* import-globals-from head_channels.js */
-/* import-globals-from head_trr.js */
+
+const { NodeServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
+const { AppConstants } = ChromeUtils.importESModule(
+  "resource://gre/modules/AppConstants.sys.mjs"
+);
 
 /* globals require, __dirname, global, Buffer, process */
 
@@ -31,13 +37,13 @@ class BaseNodeHTTPServerCode {
 
 class ADB {
   static async stopForwarding(port) {
-    // return this.forwardPort(port, true);
+    return this.forwardPort(port, true);
   }
 
   static async forwardPort(port, remove = false) {
     if (!process.env.MOZ_ANDROID_DATA_DIR) {
       // Not android, or we don't know how to do the forwarding
-      return;
+      return true;
     }
     // When creating a server on Android we must make sure that the port
     // is forwarded from the host machine to the emulator.
@@ -49,22 +55,56 @@ class ADB {
     let command = `${adb_path} reverse tcp:${port} tcp:${port}`;
     if (remove) {
       command = `${adb_path} reverse --remove tcp:${port}`;
+      return true;
     }
 
-    await new Promise(resolve => {
-      const { exec } = require("child_process");
-      exec(command, (error, stdout, stderr) => {
-        if (error) {
-          console.log(`error: ${error.message}`);
-          return;
-        }
-        if (stderr) {
-          console.log(`stderr: ${stderr}`);
-        }
-        // console.log(`stdout: ${stdout}`);
-        resolve();
+    try {
+      await new Promise((resolve, reject) => {
+        const { exec } = require("child_process");
+        exec(command, (error, stdout, stderr) => {
+          if (error) {
+            console.log(`error: ${error.message}`);
+            reject(error);
+          } else if (stderr) {
+            console.log(`stderr: ${stderr}`);
+            reject(stderr);
+          } else {
+            // console.log(`stdout: ${stdout}`);
+            resolve();
+          }
+        });
       });
-    });
+    } catch (error) {
+      console.log(`Command failed: ${error}`);
+      return false;
+    }
+
+    return true;
+  }
+
+  static async listenAndForwardPort(server, port) {
+    let retryCount = 0;
+    const maxRetries = 10;
+
+    while (retryCount < maxRetries) {
+      await server.listen(port);
+      let serverPort = server.address().port;
+      let res = await ADB.forwardPort(serverPort);
+
+      if (res) {
+        return serverPort;
+      }
+
+      retryCount++;
+      console.log(
+        `Port forwarding failed. Retrying (${retryCount}/${maxRetries})...`
+      );
+      server.close();
+      // eslint-disable-next-line no-undef
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    return -1;
   }
 }
 
@@ -116,9 +156,7 @@ class NodeHTTPServerCode extends BaseNodeHTTPServerCode {
     const http = require("http");
     global.server = http.createServer(BaseNodeHTTPServerCode.globalHandler);
 
-    await global.server.listen(port);
-    let serverPort = global.server.address().port;
-    await ADB.forwardPort(serverPort);
+    let serverPort = await ADB.listenAndForwardPort(global.server, port);
     return serverPort;
   }
 }
@@ -155,9 +193,7 @@ class NodeHTTPSServerCode extends BaseNodeHTTPServerCode {
       BaseNodeHTTPServerCode.globalHandler
     );
 
-    await global.server.listen(port);
-    let serverPort = global.server.address().port;
-    await ADB.forwardPort(serverPort);
+    let serverPort = await ADB.listenAndForwardPort(global.server, port);
     return serverPort;
   }
 }
@@ -194,10 +230,17 @@ class NodeHTTP2ServerCode extends BaseNodeHTTPServerCode {
       BaseNodeHTTPServerCode.globalHandler
     );
 
-    await global.server.listen(port);
-    let serverPort = global.server.address().port;
-    await ADB.forwardPort(serverPort);
+    global.sessionCount = 0;
+    global.server.on("session", () => {
+      global.sessionCount++;
+    });
+
+    let serverPort = await ADB.listenAndForwardPort(global.server, port);
     return serverPort;
+  }
+
+  static sessionCount() {
+    return global.sessionCount;
   }
 }
 
@@ -215,6 +258,11 @@ class NodeHTTP2Server extends BaseNodeServer {
     await this.execute(ADB);
     this._port = await this.execute(`NodeHTTP2ServerCode.startServer(${port})`);
     await this.execute(`global.path_handlers = {};`);
+  }
+
+  async sessionCount() {
+    let count = this.execute(`NodeHTTP2ServerCode.sessionCount()`);
+    return count;
   }
 }
 
@@ -279,21 +327,31 @@ class BaseProxyCode {
     // Connect to an origin server
     const { port, hostname } = new URL(`https://${req.url}`);
     const serverSocket = net
-      .connect(port || 443, hostname, () => {
-        clientSocket.write(
-          "HTTP/1.1 200 Connection Established\r\n" +
-            "Proxy-agent: Node.js-Proxy\r\n" +
-            "\r\n"
-        );
-        serverSocket.write(head);
-        serverSocket.pipe(clientSocket);
-        clientSocket.pipe(serverSocket);
-      })
+      .connect(
+        {
+          port: port || 443,
+          host: hostname,
+          family: 4, // Specifies to use IPv4
+        },
+        () => {
+          clientSocket.write(
+            "HTTP/1.1 200 Connection Established\r\n" +
+              "Proxy-agent: Node.js-Proxy\r\n" +
+              "\r\n"
+          );
+          serverSocket.write(head);
+          serverSocket.pipe(clientSocket);
+          clientSocket.pipe(serverSocket);
+        }
+      )
       .on("error", e => {
+        console.log("error" + e);
         // The socket will error out when we kill the connection
         // just ignore it.
       });
+
     clientSocket.on("error", e => {
+      console.log("client error" + e);
       // Sometimes we got ECONNRESET error on windows platform.
       // Ignore it for now.
     });
@@ -370,9 +428,7 @@ class HTTPProxyCode {
     global.proxy = http.createServer(BaseProxyCode.proxyHandler);
     global.proxy.on("connect", BaseProxyCode.onConnect);
 
-    await global.proxy.listen(port);
-    let proxyPort = global.proxy.address().port;
-    await ADB.forwardPort(proxyPort);
+    let proxyPort = await ADB.listenAndForwardPort(global.proxy, port);
     return proxyPort;
   }
 }
@@ -408,9 +464,7 @@ class HTTPSProxyCode {
     global.proxy = https.createServer(options, BaseProxyCode.proxyHandler);
     global.proxy.on("connect", BaseProxyCode.onConnect);
 
-    await global.proxy.listen(port);
-    let proxyPort = global.proxy.address().port;
-    await ADB.forwardPort(proxyPort);
+    let proxyPort = await ADB.listenAndForwardPort(global.proxy, port);
     return proxyPort;
   }
 }
@@ -447,9 +501,7 @@ class HTTP2ProxyCode {
     global.socketCounts = {};
     this.setupProxy(auth);
 
-    await global.proxy.listen(port);
-    let proxyPort = global.proxy.address().port;
-    await ADB.forwardPort(proxyPort);
+    let proxyPort = await ADB.listenAndForwardPort(global.proxy, port);
     return proxyPort;
   }
 
@@ -648,10 +700,7 @@ class NodeWebSocketServerCode extends BaseNodeHTTPServerCode {
       );
     });
 
-    await global.server.listen(port);
-    let serverPort = global.server.address().port;
-    await ADB.forwardPort(serverPort);
-
+    let serverPort = await ADB.listenAndForwardPort(global.server, port);
     return serverPort;
   }
 }
@@ -720,10 +769,7 @@ class NodeWebSocketHttp2ServerCode extends BaseNodeHTTPServerCode {
       }
     });
 
-    await global.h2Server.listen(port);
-    let serverPort = global.h2Server.address().port;
-    await ADB.forwardPort(serverPort);
-
+    let serverPort = await ADB.listenAndForwardPort(global.h2Server, port);
     return serverPort;
   }
 }
@@ -812,22 +858,22 @@ class WebSocketConnection {
     ]);
   }
 
-  onAcknowledge(aContext, aSize) {}
+  onAcknowledge() {}
   onBinaryMessageAvailable(aContext, aMsg) {
     this._messages.push(aMsg);
     this._msgCallback();
   }
-  onMessageAvailable(aContext, aMsg) {}
-  onServerClose(aContext, aCode, aReason) {}
-  onWebSocketListenerStart(aContext) {}
-  onStart(aContext) {
+  onMessageAvailable() {}
+  onServerClose() {}
+  onWebSocketListenerStart() {}
+  onStart() {
     this._openCallback();
   }
   onStop(aContext, aStatusCode) {
     this._stopCallback({ status: aStatusCode });
     this._ws = null;
   }
-  onProxyAvailable(req, chan, proxyInfo, status) {
+  onProxyAvailable(req, chan, proxyInfo) {
     if (proxyInfo) {
       this._proxyAvailCallback({ type: proxyInfo.type });
     } else {
@@ -885,5 +931,52 @@ class WebSocketConnection {
     let messages = this._messages;
     this._messages = [];
     return messages;
+  }
+}
+
+class HTTP3Server {
+  protocol() {
+    return "h3";
+  }
+  origin() {
+    return `${this.protocol()}://localhost:${this.port()}`;
+  }
+  port() {
+    return this._port;
+  }
+  domain() {
+    return `localhost`;
+  }
+
+  /// Stops the server
+  async stop() {
+    if (this.processId) {
+      await NodeServer.kill(this.processId);
+      this.processId = undefined;
+    }
+  }
+
+  async start(path, dbPath) {
+    let result = await NodeServer.sendCommand(
+      "",
+      `/forkH3Server?path=${path}&dbPath=${dbPath}`
+    );
+    this.processId = result.id;
+
+    /* eslint-disable no-control-regex */
+    const regex =
+      /HTTP3 server listening on ports (\d+), (\d+), (\d+), (\d+) and (\d+). EchConfig is @([\x00-\x7F]+)@/;
+
+    // Execute the regex on the input string
+    let match = regex.exec(result.output);
+
+    if (match) {
+      // Extract the ports as an array of numbers
+      let ports = match.slice(1, 6).map(Number);
+      this._port = ports[0];
+      return ports[0];
+    }
+
+    return -1;
   }
 }

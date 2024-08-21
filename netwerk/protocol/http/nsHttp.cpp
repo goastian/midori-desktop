@@ -42,13 +42,6 @@ const nsCString kHttp3Versions[] = {"h3-29"_ns, "h3-30"_ns, "h3-31"_ns,
 constexpr uint64_t kWebTransportErrorCodeStart = 0x52e4a40fa8db;
 constexpr uint64_t kWebTransportErrorCodeEnd = 0x52e4a40fa9e2;
 
-// define storage for all atoms
-namespace nsHttp {
-#define HTTP_ATOM(_name, _value) nsHttpAtom _name(nsLiteralCString{_value});
-#include "nsHttpAtomList.h"
-#undef HTTP_ATOM
-}  // namespace nsHttp
-
 // find out how many atoms we have
 #define HTTP_ATOM(_name, _value) Unused_##_name,
 enum {
@@ -73,7 +66,7 @@ nsresult CreateAtomTable(
     return NS_ERROR_ILLEGAL_DURING_SHUTDOWN;
   }
   // fill the table with our known atoms
-  const nsHttpAtom* atoms[] = {
+  const nsHttpAtomLiteral* atoms[] = {
 #define HTTP_ATOM(_name, _value) &(_name),
 #include "nsHttpAtomList.h"
 #undef HTTP_ATOM
@@ -105,9 +98,8 @@ void DestroyAtomTable() {
 
 // this function may be called from multiple threads
 nsHttpAtom ResolveAtom(const nsACString& str) {
-  nsHttpAtom atom;
   if (str.IsEmpty()) {
-    return atom;
+    return {};
   }
 
   auto atomTable = sAtomTable.Lock();
@@ -115,29 +107,28 @@ nsHttpAtom ResolveAtom(const nsACString& str) {
   if (atomTable.ref().IsEmpty()) {
     if (sTableDestroyed) {
       NS_WARNING("ResolveAtom called during shutdown");
-      return atom;
+      return {};
     }
 
     NS_WARNING("ResolveAtom called before CreateAtomTable");
     if (NS_FAILED(CreateAtomTable(atomTable.ref()))) {
-      return atom;
+      return {};
     }
   }
 
   // Check if we already have an entry in the table
   auto* entry = atomTable.ref().GetEntry(str);
   if (entry) {
-    atom._val = entry->GetKey();
-    return atom;
+    return nsHttpAtom(entry->GetKey());
   }
 
   LOG(("Putting %s header into atom table", nsPromiseFlatCString(str).get()));
   // Put the string in the table. If it works create the atom.
   entry = atomTable.ref().PutEntry(str, fallible);
   if (entry) {
-    atom._val = entry->GetKey();
+    return nsHttpAtom(entry->GetKey());
   }
-  return atom;
+  return {};
 }
 
 //
@@ -1026,13 +1017,15 @@ SupportedAlpnRank IsAlpnSupported(const nsACString& aAlpn) {
   return SupportedAlpnRank::NOT_SUPPORTED;
 }
 
-// On some security error when 0RTT is used we want to restart transactions
-// without 0RTT. Some firewalls do not behave well with 0RTT and cause this
-// errors.
-bool SecurityErrorThatMayNeedRestart(nsresult aReason) {
+// NSS Errors which *may* have been triggered by the use of 0-RTT in the
+// presence of badly behaving middleboxes. We may re-attempt the connection
+// without early data.
+bool PossibleZeroRTTRetryError(nsresult aReason) {
   return (aReason ==
           psm::GetXPCOMFromNSSError(SSL_ERROR_PROTOCOL_VERSION_ALERT)) ||
-         (aReason == psm::GetXPCOMFromNSSError(SSL_ERROR_BAD_MAC_ALERT));
+         (aReason == psm::GetXPCOMFromNSSError(SSL_ERROR_BAD_MAC_ALERT)) ||
+         (aReason ==
+          psm::GetXPCOMFromNSSError(SSL_ERROR_HANDSHAKE_UNEXPECTED_ALERT));
 }
 
 nsresult MakeOriginURL(const nsACString& origin, nsCOMPtr<nsIURI>& url) {
@@ -1119,6 +1112,56 @@ uint8_t Http3ErrorToWebTransportError(uint64_t aErrorCode) {
   }
 
   return 0;
+}
+
+ConnectionCloseReason ToCloseReason(nsresult aErrorCode) {
+  if (NS_SUCCEEDED(aErrorCode)) {
+    return ConnectionCloseReason::OK;
+  }
+
+  if (aErrorCode == NS_ERROR_UNKNOWN_HOST) {
+    return ConnectionCloseReason::DNS_ERROR;
+  }
+  if (aErrorCode == NS_ERROR_NET_RESET) {
+    return ConnectionCloseReason::NET_RESET;
+  }
+  if (aErrorCode == NS_ERROR_CONNECTION_REFUSED) {
+    return ConnectionCloseReason::NET_REFUSED;
+  }
+  if (aErrorCode == NS_ERROR_SOCKET_ADDRESS_NOT_SUPPORTED) {
+    return ConnectionCloseReason::SOCKET_ADDRESS_NOT_SUPPORTED;
+  }
+  if (aErrorCode == NS_ERROR_NET_TIMEOUT) {
+    return ConnectionCloseReason::NET_TIMEOUT;
+  }
+  if (aErrorCode == NS_ERROR_OUT_OF_MEMORY) {
+    return ConnectionCloseReason::OUT_OF_MEMORY;
+  }
+  if (aErrorCode == NS_ERROR_SOCKET_ADDRESS_IN_USE) {
+    return ConnectionCloseReason::SOCKET_ADDRESS_IN_USE;
+  }
+  if (aErrorCode == NS_BINDING_ABORTED) {
+    return ConnectionCloseReason::BINDING_ABORTED;
+  }
+  if (aErrorCode == NS_BINDING_REDIRECTED) {
+    return ConnectionCloseReason::BINDING_REDIRECTED;
+  }
+  if (aErrorCode == NS_ERROR_ABORT) {
+    return ConnectionCloseReason::ERROR_ABORT;
+  }
+
+  int32_t code = -1 * NS_ERROR_GET_CODE(aErrorCode);
+  if (mozilla::psm::IsNSSErrorCode(code)) {
+    return ConnectionCloseReason::SECURITY_ERROR;
+  }
+
+  return ConnectionCloseReason::OTHER_NET_ERROR;
+}
+
+void DisallowHTTPSRR(uint32_t& aCaps) {
+  // NS_HTTP_DISALLOW_HTTPS_RR should take precedence than
+  // NS_HTTP_FORCE_WAIT_HTTP_RR.
+  aCaps = (aCaps | NS_HTTP_DISALLOW_HTTPS_RR) & ~NS_HTTP_FORCE_WAIT_HTTP_RR;
 }
 
 }  // namespace net

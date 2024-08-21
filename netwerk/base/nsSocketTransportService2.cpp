@@ -5,7 +5,6 @@
 
 #include "nsSocketTransportService2.h"
 
-#include "IOActivityMonitor.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/ChaosMode.h"
 #include "mozilla/IntegerPrintfMacros.h"
@@ -35,6 +34,8 @@
 
 namespace mozilla {
 namespace net {
+
+#define SOCKET_THREAD_LONGTASK_MS 3
 
 LazyLogModule gSocketTransportLog("nsSocketTransport");
 LazyLogModule gUDPSocketLog("UDPSocket");
@@ -402,17 +403,10 @@ nsSocketTransportService::AttachSocket(PRFileDesc* fd,
 // call CanAttachSocket and check the result before creating a socket.
 
 bool nsSocketTransportService::CanAttachSocket() {
-  static bool reported900FDLimit = false;
-
   MOZ_ASSERT(!mShuttingDown);
   uint32_t total = mActiveList.Length() + mIdleList.Length();
   bool rv = total < gMaxCount;
 
-  if (Telemetry::CanRecordPrereleaseData() &&
-      (((total >= 900) || !rv) && !reported900FDLimit)) {
-    reported900FDLimit = true;
-    Telemetry::Accumulate(Telemetry::NETWORK_SESSION_AT_900FD, true);
-  }
   MOZ_ASSERT(mInitialized);
   return rv;
 }
@@ -644,7 +638,7 @@ int32_t nsSocketTransportService::Poll(TimeDuration* pollDuration,
   SOCKET_LOG(("    timeout = %i milliseconds\n",
               PR_IntervalToMilliseconds(pollTimeout)));
 
-  int32_t rv;
+  int32_t n;
   {
 #ifdef MOZ_GECKO_PROFILER
     TimeStamp startTime = TimeStamp::Now();
@@ -655,7 +649,7 @@ int32_t nsSocketTransportService::Poll(TimeDuration* pollDuration,
     }
 #endif
 
-    rv = PR_Poll(firstPollEntry, pollCount, pollTimeout);
+    n = PR_Poll(firstPollEntry, pollCount, pollTimeout);
 
 #ifdef MOZ_GECKO_PROFILER
     if (pollTimeout != PR_INTERVAL_NO_WAIT) {
@@ -684,7 +678,7 @@ int32_t nsSocketTransportService::Poll(TimeDuration* pollDuration,
   SOCKET_LOG(("    ...returned after %i milliseconds\n",
               PR_IntervalToMilliseconds(PR_IntervalNow() - ts)));
 
-  return rv;
+  return n;
 }
 
 //-----------------------------------------------------------------------------
@@ -749,15 +743,19 @@ nsSocketTransportService::Init() {
 
   if (!XRE_IsContentProcess() ||
       StaticPrefs::network_allow_raw_sockets_in_content_processes_AtStartup()) {
-    nsresult rv = NS_NewNamedThread("Socket Thread", getter_AddRefs(thread),
-                                    this, {.stackSize = GetThreadStackSize()});
+    // Since we Poll, we can't use normal LongTask support in Main Process
+    nsresult rv = NS_NewNamedThread(
+        "Socket Thread", getter_AddRefs(thread), this,
+        {GetThreadStackSize(), false, false, Some(SOCKET_THREAD_LONGTASK_MS)});
     NS_ENSURE_SUCCESS(rv, rv);
   } else {
     // In the child process, we just want a regular nsThread with no socket
     // polling. So we don't want to run the nsSocketTransportService runnable on
     // it.
     nsresult rv =
-        NS_NewNamedThread("Socket Thread", getter_AddRefs(thread), nullptr);
+        NS_NewNamedThread("Socket Thread", getter_AddRefs(thread), nullptr,
+                          {nsIThreadManager::DEFAULT_STACK_SIZE, false, false,
+                           Some(SOCKET_THREAD_LONGTASK_MS)});
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Set up some of the state that nsSocketTransportService::Run would set.
@@ -785,7 +783,6 @@ nsSocketTransportService::Init() {
   // socket process. We have to make sure the topics registered below are also
   // registered in nsIObserver::Init().
   if (obsSvc) {
-    obsSvc->AddObserver(this, "profile-initial-state", false);
     obsSvc->AddObserver(this, "last-pb-context-exited", false);
     obsSvc->AddObserver(this, NS_WIDGET_SLEEP_OBSERVER_TOPIC, true);
     obsSvc->AddObserver(this, NS_WIDGET_WAKE_OBSERVER_TOPIC, true);
@@ -861,7 +858,6 @@ nsresult nsSocketTransportService::ShutdownThread() {
 
   nsCOMPtr<nsIObserverService> obsSvc = services::GetObserverService();
   if (obsSvc) {
-    obsSvc->RemoveObserver(this, "profile-initial-state");
     obsSvc->RemoveObserver(this, "last-pb-context-exited");
     obsSvc->RemoveObserver(this, NS_WIDGET_SLEEP_OBSERVER_TOPIC);
     obsSvc->RemoveObserver(this, NS_WIDGET_WAKE_OBSERVER_TOPIC);
@@ -873,8 +869,6 @@ nsresult nsSocketTransportService::ShutdownThread() {
     mAfterWakeUpTimer->Cancel();
     mAfterWakeUpTimer = nullptr;
   }
-
-  IOActivityMonitor::Shutdown();
 
   mInitialized = false;
   mShuttingDown = false;
@@ -1358,13 +1352,6 @@ nsresult nsSocketTransportService::DoPollIteration(TimeDuration* pollDuration) {
   SOCKET_LOG(("  calling PR_Poll [active=%zu idle=%zu]\n", mActiveList.Length(),
               mIdleList.Length()));
 
-#if defined(XP_WIN)
-  // 30 active connections is the historic limit before firefox 7's 256. A few
-  //  windows systems have troubles with the higher limit, so actively probe a
-  // limit the first time we exceed 30.
-  if ((mActiveList.Length() > 30) && !mProbedMaxCount) ProbeMaxCount();
-#endif
-
   // Measures seconds spent while blocked on PR_Poll
   int32_t n = 0;
   *pollDuration = nullptr;
@@ -1381,6 +1368,13 @@ nsresult nsSocketTransportService::DoPollIteration(TimeDuration* pollDuration) {
   }
 
   now = PR_IntervalNow();
+#ifdef MOZ_GECKO_PROFILER
+  TimeStamp startTime;
+  bool profiling = profiler_thread_is_being_profiled_for_markers();
+  if (profiling) {
+    startTime = TimeStamp::Now();
+  }
+#endif
 
   if (n < 0) {
     SOCKET_LOG(("  PR_Poll error [%d] os error [%d]\n", PR_GetError(),
@@ -1437,6 +1431,36 @@ nsresult nsSocketTransportService::DoPollIteration(TimeDuration* pollDuration) {
       }
     }
   }
+#ifdef MOZ_GECKO_PROFILER
+  if (profiling) {
+    TimeStamp endTime = TimeStamp::Now();
+    if ((endTime - startTime).ToMilliseconds() >= SOCKET_THREAD_LONGTASK_MS) {
+      struct LongTaskMarker {
+        static constexpr Span<const char> MarkerTypeName() {
+          return MakeStringSpan("SocketThreadLongTask");
+        }
+        static void StreamJSONMarkerData(
+            baseprofiler::SpliceableJSONWriter& aWriter) {
+          aWriter.StringProperty("category", "LongTask");
+        }
+        static MarkerSchema MarkerTypeDisplay() {
+          using MS = MarkerSchema;
+          MS schema{MS::Location::MarkerChart, MS::Location::MarkerTable};
+          schema.AddKeyLabelFormatSearchable("category", "Type",
+                                             MS::Format::String,
+                                             MS::Searchable::Searchable);
+          return schema;
+        }
+      };
+
+      profiler_add_marker(ProfilerString8View("LongTaskSocketProcessing"),
+                          geckoprofiler::category::OTHER,
+                          MarkerTiming::Interval(startTime, endTime),
+                          LongTaskMarker{});
+    }
+  }
+
+#endif
 
   return NS_OK;
 }
@@ -1583,13 +1607,6 @@ nsSocketTransportService::Observe(nsISupports* subject, const char* topic,
                                   const char16_t* data) {
   SOCKET_LOG(("nsSocketTransportService::Observe topic=%s", topic));
 
-  if (!strcmp(topic, "profile-initial-state")) {
-    if (!Preferences::GetBool(IO_ACTIVITY_ENABLED_PREF, false)) {
-      return NS_OK;
-    }
-    return net::IOActivityMonitor::Init();
-  }
-
   if (!strcmp(topic, "last-pb-context-exited")) {
     nsCOMPtr<nsIRunnable> ev = NewRunnableMethod(
         "net::nsSocketTransportService::ClosePrivateConnections", this,
@@ -1661,68 +1678,6 @@ nsSocketTransportService::GetSendBufferSize(int32_t* value) {
 #elif defined(XP_UNIX) && !defined(AIX) && !defined(NEXTSTEP) && !defined(QNX)
 #  include <sys/resource.h>
 #endif
-
-// Right now the only need to do this is on windows.
-#if defined(XP_WIN)
-void nsSocketTransportService::ProbeMaxCount() {
-  MOZ_ASSERT(OnSocketThread(), "not on socket thread");
-
-  if (mProbedMaxCount) {
-    return;
-  }
-  mProbedMaxCount = true;
-
-  // Allocate and test a PR_Poll up to the gMaxCount number of unconnected
-  // sockets. See bug 692260 - windows should be able to handle 1000 sockets
-  // in select() without a problem, but LSPs have been known to balk at lower
-  // numbers. (64 in the bug).
-
-  // Allocate
-  struct PRPollDesc pfd[SOCKET_LIMIT_TARGET];
-  uint32_t numAllocated = 0;
-
-  for (uint32_t index = 0; index < gMaxCount; ++index) {
-    pfd[index].in_flags = PR_POLL_READ | PR_POLL_WRITE | PR_POLL_EXCEPT;
-    pfd[index].out_flags = 0;
-    pfd[index].fd = PR_OpenTCPSocket(PR_AF_INET);
-    if (!pfd[index].fd) {
-      SOCKET_LOG(("Socket Limit Test index %d failed\n", index));
-      if (index < SOCKET_LIMIT_MIN)
-        gMaxCount = SOCKET_LIMIT_MIN;
-      else
-        gMaxCount = index;
-      break;
-    }
-    ++numAllocated;
-  }
-
-  // Test
-  static_assert(SOCKET_LIMIT_MIN >= 32U, "Minimum Socket Limit is >= 32");
-  while (gMaxCount <= numAllocated) {
-    int32_t rv = PR_Poll(pfd, gMaxCount, PR_MillisecondsToInterval(0));
-
-    SOCKET_LOG(("Socket Limit Test poll() size=%d rv=%d\n", gMaxCount, rv));
-
-    if (rv >= 0) break;
-
-    SOCKET_LOG(("Socket Limit Test poll confirmationSize=%d rv=%d error=%d\n",
-                gMaxCount, rv, PR_GetError()));
-
-    gMaxCount -= 32;
-    if (gMaxCount <= SOCKET_LIMIT_MIN) {
-      gMaxCount = SOCKET_LIMIT_MIN;
-      break;
-    }
-  }
-
-  // Free
-  for (uint32_t index = 0; index < numAllocated; ++index)
-    if (pfd[index].fd) PR_Close(pfd[index].fd);
-
-  Telemetry::Accumulate(Telemetry::NETWORK_PROBE_MAXCOUNT, gMaxCount);
-  SOCKET_LOG(("Socket Limit Test max was confirmed at %d\n", gMaxCount));
-}
-#endif  // windows
 
 PRStatus nsSocketTransportService::DiscoverMaxCount() {
   gMaxCount = SOCKET_LIMIT_MIN;
@@ -1864,8 +1819,8 @@ void nsSocketTransportService::StartPollWatchdog() {
         // Poll can hang sometimes. If we are in shutdown, we are going to start
         // a watchdog. If we do not exit poll within REPAIR_POLLABLE_EVENT_TIME
         // signal a pollable event again.
-        MOZ_ASSERT(gIOService->IsNetTearingDown());
-        if (self->mPolling && !self->mPollRepairTimer) {
+        if (gIOService->IsNetTearingDown() && self->mPolling &&
+            !self->mPollRepairTimer) {
           NS_NewTimerWithObserver(getter_AddRefs(self->mPollRepairTimer), self,
                                   REPAIR_POLLABLE_EVENT_TIME,
                                   nsITimer::TYPE_REPEATING_SLACK);

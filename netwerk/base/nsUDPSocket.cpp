@@ -3,7 +3,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "Predictor.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/Components.h"
 #include "mozilla/EndianUtils.h"
 #include "mozilla/dom/TypedArray.h"
 #include "mozilla/HoldDropJSObjects.h"
@@ -21,7 +23,6 @@
 #include "prio.h"
 #include "nsNetAddr.h"
 #include "nsNetSegmentUtils.h"
-#include "IOActivityMonitor.h"
 #include "nsServiceManagerUtils.h"
 #include "nsStreamUtils.h"
 #include "prerror.h"
@@ -32,6 +33,7 @@
 #include "nsIPipe.h"
 #include "nsWrapperCacheInlines.h"
 #include "HttpConnectionUDP.h"
+#include "mozilla/ProfilerBandwidthCounter.h"
 #include "mozilla/StaticPrefs_network.h"
 
 #if defined(FUZZING)
@@ -60,8 +62,8 @@ static nsresult ResolveHost(const nsACString& host,
                             nsIDNSListener* listener) {
   nsresult rv;
 
-  nsCOMPtr<nsIDNSService> dns =
-      do_GetService("@mozilla.org/network/dns-service;1", &rv);
+  nsCOMPtr<nsIDNSService> dns;
+  dns = mozilla::components::DNS::Service(&rv);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -223,8 +225,11 @@ nsUDPMessage::GetOutputStream(nsIOutputStream** aOutputStream) {
 NS_IMETHODIMP
 nsUDPMessage::GetRawData(JSContext* cx, JS::MutableHandle<JS::Value> aRawData) {
   if (!mJsobj) {
-    mJsobj =
-        dom::Uint8Array::Create(cx, nullptr, mData.Length(), mData.Elements());
+    ErrorResult error;
+    mJsobj = dom::Uint8Array::Create(cx, nullptr, mData, error);
+    if (error.Failed()) {
+      return error.StealNSResult();
+    }
     HoldJSObjects(this);
   }
   aRawData.setObject(*mJsobj);
@@ -242,8 +247,7 @@ nsUDPSocket::nsUDPSocket() {
   // constructed yet.  the STS constructor sets gSocketTransportService.
   if (!gSocketTransportService) {
     // This call can fail if we're offline, for example.
-    nsCOMPtr<nsISocketTransportService> sts =
-        do_GetService(NS_SOCKETTRANSPORTSERVICE_CONTRACTID);
+    mozilla::components::SocketTransport::Service();
   }
 
   mSts = gSocketTransportService;
@@ -251,7 +255,10 @@ nsUDPSocket::nsUDPSocket() {
 
 nsUDPSocket::~nsUDPSocket() { CloseSocket(); }
 
-void nsUDPSocket::AddOutputBytes(uint64_t aBytes) { mByteWriteCount += aBytes; }
+void nsUDPSocket::AddOutputBytes(int32_t aBytes) {
+  mByteWriteCount += aBytes;
+  profiler_count_bandwidth_written_bytes(aBytes);
+}
 
 void nsUDPSocket::OnMsgClose() {
   UDPSOCKET_LOG(("nsUDPSocket::OnMsgClose [this=%p]\n", this));
@@ -422,6 +429,7 @@ void nsUDPSocket::OnSocketReady(PRFileDesc* fd, int16_t outFlags) {
     return;
   }
   mByteReadCount += count;
+  profiler_count_bandwidth_read_bytes(count);
 
   FallibleTArray<uint8_t> data;
   if (!data.AppendElements(buff, count, fallible)) {
@@ -630,9 +638,6 @@ nsUDPSocket::InitWithAddress(const NetAddr* aAddr, nsIPrincipal* aPrincipal,
   }
 
   PRNetAddrToNetAddr(&addr, &mAddr);
-
-  // create proxy via IOActivityMonitor
-  IOActivityMonitor::MonitorSocket(mFD);
 
   // wait until AsyncListen is called before polling the socket for
   // client connections.
@@ -1004,7 +1009,8 @@ PendingSend::OnLookupComplete(nsICancelable* request, nsIDNSRecord* aRecord,
   NetAddr addr;
   if (NS_SUCCEEDED(rec->GetNextAddr(mPort, &addr))) {
     uint32_t count;
-    nsresult rv = mSocket->SendWithAddress(&addr, mData, &count);
+    nsresult rv = mSocket->SendWithAddress(&addr, mData.Elements(),
+                                           mData.Length(), &count);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -1069,7 +1075,7 @@ class SendRequestRunnable : public Runnable {
 NS_IMETHODIMP
 SendRequestRunnable::Run() {
   uint32_t count;
-  mSocket->SendWithAddress(&mAddr, mData, &count);
+  mSocket->SendWithAddress(&mAddr, mData.Elements(), mData.Length(), &count);
   return NS_OK;
 }
 
@@ -1137,13 +1143,12 @@ nsUDPSocket::SendWithAddr(nsINetAddr* aAddr, const nsTArray<uint8_t>& aData,
 
   NetAddr netAddr;
   aAddr->GetNetAddr(&netAddr);
-  return SendWithAddress(&netAddr, aData, _retval);
+  return SendWithAddress(&netAddr, aData.Elements(), aData.Length(), _retval);
 }
 
 NS_IMETHODIMP
-nsUDPSocket::SendWithAddress(const NetAddr* aAddr,
-                             const nsTArray<uint8_t>& aData,
-                             uint32_t* _retval) {
+nsUDPSocket::SendWithAddress(const NetAddr* aAddr, const uint8_t* aData,
+                             uint32_t aLength, uint32_t* _retval) {
   NS_ENSURE_ARG(aAddr);
   NS_ENSURE_ARG_POINTER(_retval);
 
@@ -1167,8 +1172,7 @@ nsUDPSocket::SendWithAddress(const NetAddr* aAddr,
       return NS_ERROR_FAILURE;
     }
     int32_t count =
-        PR_SendTo(mFD, aData.Elements(), sizeof(uint8_t) * aData.Length(), 0,
-                  &prAddr, PR_INTERVAL_NO_WAIT);
+        PR_SendTo(mFD, aData, aLength, 0, &prAddr, PR_INTERVAL_NO_WAIT);
     if (count < 0) {
       PRErrorCode code = PR_GetError();
       return ErrorAccordingToNSPR(code);
@@ -1177,7 +1181,7 @@ nsUDPSocket::SendWithAddress(const NetAddr* aAddr,
     *_retval = count;
   } else {
     FallibleTArray<uint8_t> fallibleArray;
-    if (!fallibleArray.InsertElementsAt(0, aData, fallible)) {
+    if (!fallibleArray.AppendElements(aData, aLength, fallible)) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
 
@@ -1185,7 +1189,7 @@ nsUDPSocket::SendWithAddress(const NetAddr* aAddr,
         new SendRequestRunnable(this, *aAddr, std::move(fallibleArray)),
         NS_DISPATCH_NORMAL);
     NS_ENSURE_SUCCESS(rv, rv);
-    *_retval = aData.Length();
+    *_retval = aLength;
   }
   return NS_OK;
 }
@@ -1229,6 +1233,7 @@ nsUDPSocket::RecvWithAddr(NetAddr* addr, nsTArray<uint8_t>& aData) {
     return NS_OK;
   }
   mByteReadCount += count;
+  profiler_count_bandwidth_read_bytes(count);
   PRNetAddrToNetAddr(&prAddr, addr);
 
   if (!aData.AppendElements(buff, count, fallible)) {

@@ -83,7 +83,7 @@ add_task(async function test_slow_upload() {
         let { req, buff } = await new Promise(resolve => {
           chan.asyncOpen(
             new ChannelListener(
-              (req, buff) => resolve({ req, buff }),
+              (req1, buff1) => resolve({ req: req1, buff: buff1 }),
               null,
               CL_ALLOW_UNKNOWN_CL
             )
@@ -91,7 +91,7 @@ add_task(async function test_slow_upload() {
         });
         equal(req.status, Cr.NS_OK);
         equal(req.QueryInterface(Ci.nsIHttpChannel).responseStatus, 200);
-        ok(buff == CONTENT, "Content must match");
+        Assert.equal(buff, CONTENT, "Content must match");
         ok(!!req.QueryInterface(Ci.nsIProxiedChannel).proxyInfo);
         greater(
           await server.execute(`global.data_count`),

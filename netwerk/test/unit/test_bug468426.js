@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserver = new HttpServer();
 var index = 0;
@@ -56,7 +58,7 @@ function triggerNextTest() {
   channel.asyncOpen(new ChannelListener(checkValueAndTrigger, null));
 }
 
-function checkValueAndTrigger(request, data, ctx) {
+function checkValueAndTrigger(request, data) {
   Assert.equal(tests[index].expected, data);
 
   if (index < tests.length - 1) {

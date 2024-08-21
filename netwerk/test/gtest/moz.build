@@ -8,18 +8,22 @@ UNIFIED_SOURCES += [
     "TestBase64Stream.cpp",
     "TestBind.cpp",
     "TestBufferedInputStream.cpp",
+    "TestCacheControlParser.cpp",
     "TestCommon.cpp",
     "TestCookie.cpp",
     "TestDNSPacket.cpp",
     "TestHeaders.cpp",
+    "TestHttpAtom.cpp",
     "TestHttpAuthUtils.cpp",
     "TestHttpChannel.cpp",
     "TestHttpResponseHead.cpp",
+    "TestIDNA.cpp",
     "TestInputStreamTransport.cpp",
     "TestIsValidIp.cpp",
     "TestLinkHeader.cpp",
     "TestMIMEInputStream.cpp",
     "TestMozURL.cpp",
+    "TestPACMan.cpp",
     "TestProtocolProxyService.cpp",
     "TestReadStreamToString.cpp",
     "TestServerTimingHeader.cpp",
@@ -27,26 +31,17 @@ UNIFIED_SOURCES += [
     "TestSSLTokensCache.cpp",
     "TestStandardURL.cpp",
     "TestUDPSocket.cpp",
+    "TestURIMutator.cpp",
 ]
 
 if CONFIG["OS_TARGET"] == "WINNT":
     UNIFIED_SOURCES += [
         "TestNamedPipeService.cpp",
+        "TestNetworkLinkIdHashingWindows.cpp",
     ]
-
-# skip the test on windows10-aarch64
-if not (CONFIG["OS_TARGET"] == "WINNT" and CONFIG["CPU_ARCH"] == "aarch64"):
-    UNIFIED_SOURCES += [
-        "TestPACMan.cpp",
-        "TestURIMutator.cpp",
-    ]
-
-# run the test on windows only
-if CONFIG["OS_TARGET"] == "WINNT":
-    UNIFIED_SOURCES += ["TestNetworkLinkIdHashingWindows.cpp"]
 
 # run the test on mac only
-if CONFIG["OS_TARGET"] == "Darwin":
+if CONFIG["TARGET_OS"] == "OSX":
     UNIFIED_SOURCES += ["TestNetworkLinkIdHashingDarwin.cpp"]
 
 TEST_HARNESS_FILES.gtest += [
@@ -60,6 +55,7 @@ USE_LIBS += [
 LOCAL_INCLUDES += [
     "/netwerk/base",
     "/netwerk/cookie",
+    "/netwerk/protocol/http",
     "/toolkit/components/jsoncpp/include",
     "/xpcom/tests/gtest",
 ]
@@ -69,7 +65,7 @@ if CONFIG["OS_TARGET"] == "WINNT":
     LOCAL_INCLUDES += ["/netwerk/system/win32"]
 
 # mac includes only
-if CONFIG["OS_TARGET"] == "Darwin":
+if CONFIG["TARGET_OS"] == "OSX":
     LOCAL_INCLUDES += ["/netwerk/system/mac"]
 
 include("/ipc/chromium/chromium-config.mozbuild")

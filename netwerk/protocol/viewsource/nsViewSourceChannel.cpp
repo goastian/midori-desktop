@@ -995,6 +995,18 @@ nsViewSourceChannel::UpgradeToSecure() {
 }
 
 NS_IMETHODIMP
+nsViewSourceChannel::GetRequestObserversCalled(bool* aCalled) {
+  return !mHttpChannel ? NS_ERROR_NULL_POINTER
+                       : mHttpChannel->GetRequestObserversCalled(aCalled);
+}
+
+NS_IMETHODIMP
+nsViewSourceChannel::SetRequestObserversCalled(bool aCalled) {
+  return !mHttpChannel ? NS_ERROR_NULL_POINTER
+                       : mHttpChannel->SetRequestObserversCalled(aCalled);
+}
+
+NS_IMETHODIMP
 nsViewSourceChannel::GetRequestContextID(uint64_t* _retval) {
   return !mHttpChannel ? NS_ERROR_NULL_POINTER
                        : mHttpChannel->GetRequestContextID(_retval);
@@ -1048,9 +1060,9 @@ NS_IMETHODIMP nsViewSourceChannel::GetDocumentCharacterSet(
 // Have to manually forward SetCorsPreflightParameters since it's [notxpcom]
 void nsViewSourceChannel::SetCorsPreflightParameters(
     const nsTArray<nsCString>& aUnsafeHeaders,
-    bool aShouldStripRequestBodyHeader) {
+    bool aShouldStripRequestBodyHeader, bool aShouldStripAuthHeader) {
   mHttpChannelInternal->SetCorsPreflightParameters(
-      aUnsafeHeaders, aShouldStripRequestBodyHeader);
+      aUnsafeHeaders, aShouldStripRequestBodyHeader, aShouldStripAuthHeader);
 }
 
 void nsViewSourceChannel::SetAltDataForChild(bool aIsForChild) {

@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 XPCOMUtils.defineLazyServiceGetter(
   this,
   "gProxyService",
@@ -34,7 +36,7 @@ registerCleanupFunction(async () => {
 });
 
 async function getProxyInfo() {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     let uri = Services.io.newURI("http://www.mozilla.org/");
     gProxyService.asyncResolve(uri, 0, {
       onProxyAvailable(_req, _uri, pi, _status) {

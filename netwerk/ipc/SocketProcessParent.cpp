@@ -16,10 +16,10 @@
 #include "mozilla/FOGIPC.h"
 #include "mozilla/net/DNSRequestParent.h"
 #include "mozilla/net/ProxyConfigLookupParent.h"
+#include "mozilla/net/SocketProcessBackgroundParent.h"
 #include "mozilla/RemoteLazyInputStreamParent.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TelemetryIPC.h"
-#include "nsIAppStartup.h"
 #include "nsIConsoleService.h"
 #include "nsIHttpActivityObserver.h"
 #include "nsIObserverService.h"
@@ -88,16 +88,7 @@ void SocketProcessParent::ActorDestroy(ActorDestroyReason aWhy) {
 
   if (aWhy == AbnormalShutdown) {
     GenerateCrashReport(OtherPid());
-
-    if (PR_GetEnv("MOZ_CRASHREPORTER_SHUTDOWN")) {
-      printf_stderr("Shutting down due to socket process crash.\n");
-      nsCOMPtr<nsIAppStartup> appService =
-          do_GetService("@mozilla.org/toolkit/app-startup;1");
-      if (appService) {
-        bool userAllowedQuit = true;
-        appService->Quit(nsIAppStartup::eForceQuit, 1, &userAllowedQuit);
-      }
-    }
+    MaybeTerminateProcess();
   }
 
   if (mHost) {
@@ -247,13 +238,25 @@ mozilla::ipc::IPCResult SocketProcessParent::RecvObserveHttpActivity(
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult SocketProcessParent::RecvInitBackground(
-    Endpoint<PBackgroundStarterParent>&& aEndpoint) {
-  LOG(("SocketProcessParent::RecvInitBackground\n"));
-  if (!ipc::BackgroundParent::AllocStarter(nullptr, std::move(aEndpoint))) {
-    return IPC_FAIL(this, "BackgroundParent::Alloc failed");
+mozilla::ipc::IPCResult SocketProcessParent::RecvInitSocketBackground(
+    Endpoint<PSocketProcessBackgroundParent>&& aEndpoint) {
+  if (!aEndpoint.IsValid()) {
+    return IPC_FAIL(this, "Invalid endpoint");
   }
 
+  nsCOMPtr<nsISerialEventTarget> transportQueue;
+  if (NS_FAILED(NS_CreateBackgroundTaskQueue("SocketBackgroundParentQueue",
+                                             getter_AddRefs(transportQueue)))) {
+    return IPC_FAIL(this, "NS_CreateBackgroundTaskQueue failed");
+  }
+
+  transportQueue->Dispatch(
+      NS_NewRunnableFunction("BindSocketBackgroundParent",
+                             [endpoint = std::move(aEndpoint)]() mutable {
+                               RefPtr<SocketProcessBackgroundParent> parent =
+                                   new SocketProcessBackgroundParent();
+                               endpoint.Bind(parent);
+                             }));
   return IPC_OK();
 }
 

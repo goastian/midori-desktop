@@ -294,10 +294,28 @@ int32_t NS_GetDefaultPort(const char* scheme,
                           nsIIOService* ioService = nullptr);
 
 /**
- * This function is a helper function to apply the ToAscii conversion
- * to a string
+ * The UTS #46 ToASCII operation as parametrized by the WHATWG URL Standard.
+ *
+ * Use this function to prepare a host name for network protocols.
  */
-bool NS_StringToACE(const nsACString& idn, nsACString& result);
+nsresult NS_DomainToASCII(const nsACString& aHost, nsACString& aASCII);
+
+/**
+ * The UTS #46 ToUnicode operation as parametrized by the WHATWG URL Standard,
+ * except potentially misleading labels are treated according to ToASCII
+ * instead.
+ *
+ * Use this function to prepare a host name for display to the user.
+ */
+nsresult NS_DomainToDisplay(const nsACString& aHost, nsACString& aDisplay);
+
+/**
+ * The UTS #46 ToUnicode operation as parametrized by the WHATWG URL Standard.
+ *
+ * It's most likely incorrect to call this function, and `NS_DomainToDisplay`
+ * should typically be called instead.
+ */
+nsresult NS_DomainToUnicode(const nsACString& aHost, nsACString& aUnicode);
 
 /**
  * This function is a helper function to get a protocol's default port if the
@@ -903,6 +921,30 @@ bool NS_IsValidHTTPToken(const nsACString& aToken);
  */
 void NS_TrimHTTPWhitespace(const nsACString& aSource, nsACString& aDest);
 
+template <typename Char>
+constexpr bool NS_IsHTTPTokenPoint(Char aChar) {
+  using UnsignedChar = typename mozilla::detail::MakeUnsignedChar<Char>::Type;
+  auto c = static_cast<UnsignedChar>(aChar);
+  return c == '!' || c == '#' || c == '$' || c == '%' || c == '&' ||
+         c == '\'' || c == '*' || c == '+' || c == '-' || c == '.' ||
+         c == '^' || c == '_' || c == '`' || c == '|' || c == '~' ||
+         mozilla::IsAsciiAlphanumeric(c);
+}
+
+template <typename Char>
+constexpr bool NS_IsHTTPQuotedStringTokenPoint(Char aChar) {
+  using UnsignedChar = typename mozilla::detail::MakeUnsignedChar<Char>::Type;
+  auto c = static_cast<UnsignedChar>(aChar);
+  return c == 0x9 || (c >= ' ' && c <= '~') || mozilla::IsNonAsciiLatin1(c);
+}
+
+template <typename Char>
+constexpr bool NS_IsHTTPWhitespace(Char aChar) {
+  using UnsignedChar = typename mozilla::detail::MakeUnsignedChar<Char>::Type;
+  auto c = static_cast<UnsignedChar>(aChar);
+  return c == 0x9 || c == 0xA || c == 0xD || c == 0x20;
+}
+
 /**
  * Return true if the given request must be upgraded to HTTPS.
  * If |aResultCallback| is provided and the storage is not ready to read, the
@@ -992,10 +1034,17 @@ bool SchemeIsViewSource(nsIURI* aURI);
 bool SchemeIsResource(nsIURI* aURI);
 bool SchemeIsFTP(nsIURI* aURI);
 
+// Helper functions for SetProtocol methods to follow
+// step 2.1 in https://url.spec.whatwg.org/#scheme-state
+bool SchemeIsSpecial(const nsACString&);
+bool IsSchemeChangePermitted(nsIURI*, const nsACString&);
+already_AddRefed<nsIURI> TryChangeProtocol(nsIURI*, const nsACString&);
+
 struct LinkHeader {
   nsString mHref;
   nsString mRel;
   nsString mTitle;
+  nsString mNonce;
   nsString mIntegrity;
   nsString mSrcset;
   nsString mSizes;
@@ -1005,6 +1054,7 @@ struct LinkHeader {
   nsString mCrossOrigin;
   nsString mReferrerPolicy;
   nsString mAs;
+  nsString mFetchPriority;
 
   LinkHeader();
   void Reset();
@@ -1012,8 +1062,13 @@ struct LinkHeader {
   nsresult NewResolveHref(nsIURI** aOutURI, nsIURI* aBaseURI) const;
 
   bool operator==(const LinkHeader& rhs) const;
+
+  void MaybeUpdateAttribute(const nsAString& aAttribute,
+                            const char16_t* aValue);
 };
 
+// Implements roughly step 2 to 4 of
+// <https://httpwg.org/specs/rfc8288.html#parse-set>.
 nsTArray<LinkHeader> ParseLinkHeader(const nsAString& aLinkData);
 
 enum ASDestination : uint8_t {
@@ -1061,6 +1116,8 @@ nsresult HasRootDomain(const nsACString& aInput, const nsACString& aHost,
 void CheckForBrokenChromeURL(nsILoadInfo* aLoadInfo, nsIURI* aURI);
 
 bool IsCoepCredentiallessEnabled(bool aIsOriginTrialCoepCredentiallessEnabled);
+
+void ParseSimpleURISchemes(const nsACString& schemeList);
 
 }  // namespace net
 }  // namespace mozilla

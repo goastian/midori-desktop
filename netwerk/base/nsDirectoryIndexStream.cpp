@@ -18,7 +18,6 @@
 #include "mozilla/Logging.h"
 #include "prtime.h"
 #include "nsIFile.h"
-#include "nsURLHelper.h"
 #include "nsNativeCharsetUtils.h"
 
 // NOTE: This runs on the _file transport_ thread.
@@ -35,7 +34,7 @@ nsDirectoryIndexStream::nsDirectoryIndexStream() {
   MOZ_LOG(gLog, LogLevel::Debug, ("nsDirectoryIndexStream[%p]: created", this));
 }
 
-static int compare(nsIFile* aElement1, nsIFile* aElement2, void* aData) {
+static int compare(nsIFile* aElement1, nsIFile* aElement2) {
   if (!NS_IsNativeUTF8()) {
     // don't check for errors, because we can't report them anyway
     nsAutoString name1, name2;
@@ -93,14 +92,7 @@ nsresult nsDirectoryIndexStream::Init(nsIFile* aDir) {
     mArray.AppendObject(file);  // addrefs
   }
 
-  mArray.Sort(compare, nullptr);
-
-  mBuf.AppendLiteral("300: ");
-  nsAutoCString url;
-  rv = net_GetURLSpecFromFile(aDir, url);
-  if (NS_FAILED(rv)) return rv;
-  mBuf.Append(url);
-  mBuf.Append('\n');
+  mArray.Sort(compare);
 
   mBuf.AppendLiteral("200: filename content-length last-modified file-type\n");
 

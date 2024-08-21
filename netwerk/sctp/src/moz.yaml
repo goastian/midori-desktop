@@ -10,8 +10,8 @@ origin:
 
   url: https://github.com/sctplab/usrsctp/blob/master/Manual.md
 
-  release: f9f95023816b61a2f257d2fb77658dceaea7213f (2023-03-18T22:38:54Z).
-  revision: f9f95023816b61a2f257d2fb77658dceaea7213f
+  release: 2952e9324299c5729ba9f03a87924f787868e494 (2023-11-05T13:52:04Z).
+  revision: 2952e9324299c5729ba9f03a87924f787868e494
 
   license: BSD-3-Clause
 
@@ -53,3 +53,11 @@ vendoring:
   patches:
     - win32-rands.patch
     - win32-free.patch
+
+updatebot:
+  maintainer-phab: "#webrtc-reviewers"
+  maintainer-bz: rjesup@jesup.org
+  tasks:
+    - type: vendoring
+      enabled: true
+      frequency: release
