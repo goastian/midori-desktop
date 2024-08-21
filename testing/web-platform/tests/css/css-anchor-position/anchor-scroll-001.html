@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<title>Basic of anchor-scroll: anchored elements should be "pinned" to the anchor when anchor is scrolled</title>
+<title>Basic of anchor positioned scrolling: anchored elements should be "pinned" to the anchor when anchor is scrolled</title>
 <link rel="author" href="mailto:xiaochengh@chromium.org">
 <link rel="help" href="https://drafts.csswg.org/css-anchor-1/">
 <link rel="match" href="reference/anchor-scroll-ref.html">
@@ -38,17 +38,17 @@ body {
 #inner-anchored {
   color: green;
   position: absolute;
-  left: anchor(--anchor left);
-  bottom: anchor(--anchor top);
-  anchor-scroll: --anchor;
+  left: anchor(left);
+  bottom: anchor(top);
+  position-anchor: --anchor;
 }
 
 #outer-anchored {
   color: yellow;
   position: absolute;
-  left: anchor(--anchor left);
-  top: anchor(--anchor bottom);
-  anchor-scroll: --anchor;
+  left: anchor(left);
+  top: anchor(bottom);
+  position-anchor: --anchor;
 }
 </style>
 
