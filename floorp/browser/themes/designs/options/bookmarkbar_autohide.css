@@ -1,6 +1,6 @@
 #PersonalToolbar {
    position: relative !important;
-   margin-bottom: -28px;
+   margin-bottom: var(--bookmark-bar-height);
    opacity: 0 !important;
    transition: all 125ms !important;
    z-index: 1 !important;
@@ -10,4 +10,5 @@
    transition: all 200ms !important;
    transition-delay: 0.2s !important;
    opacity: 1 !important;
+   z-index: 2 !important;
 }

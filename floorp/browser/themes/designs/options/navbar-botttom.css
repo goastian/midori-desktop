@@ -31,6 +31,7 @@
   display: none !important;
 }
 
+/** Fix for https://github.com/Floorp-Projects/Floorp/issues/889 **/
 #TabsToolbar {
   z-index: 0 !important;
 }
