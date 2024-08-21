@@ -3,163 +3,163 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
- var { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm",
+var { AppConstants } = ChromeUtils.import(
+	"resource://gre/modules/AppConstants.jsm",
 );
 const CustomKeyboardShortcutUtils = ChromeUtils.importESModule(
-  "resource:///modules/CustomKeyboardShortcutUtils.sys.mjs",
+	"chrome://floorp/content/modules/csk/CustomKeyboardShortcutUtils.mjs",
 );
 
-XPCOMUtils.defineLazyGetter(this, "L10n", () => {
-  return new Localization(["branding/brand.ftl", "browser/floorp"]);
+ChromeUtils.defineLazyGetter(this, "L10n", () => {
+	return new Localization(["branding/brand.ftl", "browser/floorp"]);
 });
 
 Preferences.addAll([
-  {
-    id: "floorp.custom.shortcutkeysAndActions.remove.fx.actions",
-    type: "bool",
-  },
+	{
+		id: "floorp.custom.shortcutkeysAndActions.remove.fx.actions",
+		type: "bool",
+	},
 ]);
 
 const gCSKPane = {
-  _pane: null,
-  init() {
-    this._pane = document.getElementById("panCSK");
+	_pane: null,
+	init() {
+		this._pane = document.getElementById("panCSK");
 
-    const needreboot = document.getElementsByClassName("needreboot");
-    for (let i = 0; i < needreboot.length; i++) {
-      if (needreboot[i].getAttribute("rebootELIsSet") == "true") {
-        continue;
-      }
-      needreboot[i].setAttribute("rebootELIsSet", "true");
-      needreboot[i].addEventListener("click", function () {
-        if (!Services.prefs.getBoolPref("floorp.enable.auto.restart", false)) {
-          (async () => {
-            let userConfirm = await confirmRestartPrompt(null);
-            if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
-              Services.startup.quit(
-                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart,
-              );
-            }
-          })();
-        } else {
-          window.setTimeout(function () {
-            Services.startup.quit(
-              Services.startup.eAttemptQuit | Services.startup.eRestart,
-            );
-          }, 500);
-        }
-      });
-    }
+		const needreboot = document.getElementsByClassName("needreboot");
+		for (let i = 0; i < needreboot.length; i++) {
+			if (needreboot[i].getAttribute("rebootELIsSet") == "true") {
+				continue;
+			}
+			needreboot[i].setAttribute("rebootELIsSet", "true");
+			needreboot[i].addEventListener("click", () => {
+				if (!Services.prefs.getBoolPref("floorp.enable.auto.restart", false)) {
+					(async () => {
+						const userConfirm = await confirmRestartPrompt(null);
+						if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
+							Services.startup.quit(
+								Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart,
+							);
+						}
+					})();
+				} else {
+					window.setTimeout(() => {
+						Services.startup.quit(
+							Services.startup.eAttemptQuit | Services.startup.eRestart,
+						);
+					}, 500);
+				}
+			});
+		}
 
-    const utils = CustomKeyboardShortcutUtils.keyboradShortcutFunctions;
-    const restoreDefaultButton = document.getElementById("reset-CSK-button");
+		const utils = CustomKeyboardShortcutUtils.keyboradShortcutFunctions;
+		const restoreDefaultButton = document.getElementById("reset-CSK-button");
 
-    async function restoreDefault() {
-      let l10n = new Localization(
-        ["browser/floorp.ftl", "branding/brand.ftl"],
-        true,
-      );
-      const prompts = Services.prompt;
-      const check = {
-        value: false,
-      };
-      const flags =
-        prompts.BUTTON_POS_0 * prompts.BUTTON_TITLE_OK +
-        prompts.BUTTON_POS_1 * prompts.BUTTON_TITLE_CANCEL;
-      let result = prompts.confirmEx(
-        null,
-        l10n.formatValueSync("CSK-restore-default"),
-        l10n.formatValueSync("CSK-restore-default-description"),
-        flags,
-        "",
-        null,
-        "",
-        null,
-        check,
-      );
-      if (result == 0) {
-        utils.preferencesFunctions.removeAllKeyboradShortcut();
-      }
-    }
+		async function restoreDefault() {
+			const l10n = new Localization(
+				["browser/floorp.ftl", "branding/brand.ftl"],
+				true,
+			);
+			const prompts = Services.prompt;
+			const check = {
+				value: false,
+			};
+			const flags =
+				prompts.BUTTON_POS_0 * prompts.BUTTON_TITLE_OK +
+				prompts.BUTTON_POS_1 * prompts.BUTTON_TITLE_CANCEL;
+			const result = prompts.confirmEx(
+				null,
+				l10n.formatValueSync("CSK-restore-default"),
+				l10n.formatValueSync("CSK-restore-default-description"),
+				flags,
+				"",
+				null,
+				"",
+				null,
+				check,
+			);
+			if (result == 0) {
+				utils.preferencesFunctions.removeAllKeyboradShortcut();
+			}
+		}
 
-    let rebootButton = document.getElementById("reboot-browser-CSK-button");
-    function reboot() {
-      Services.startup.quit(
-        Services.startup.eAttemptQuit | Services.startup.eRestart,
-      );
-    }
+		const rebootButton = document.getElementById("reboot-browser-CSK-button");
+		function reboot() {
+			Services.startup.quit(
+				Services.startup.eAttemptQuit | Services.startup.eRestart,
+			);
+		}
 
-    async function removeShortcutKey(actionName) {
-      let l10n = new Localization(["browser/floorp.ftl"], true);
-      const prompts = Services.prompt;
-      const check = {
-        value: false,
-      };
-      const flags =
-        prompts.BUTTON_POS_0 * prompts.BUTTON_TITLE_OK +
-        prompts.BUTTON_POS_1 * prompts.BUTTON_TITLE_CANCEL;
-      let result = prompts.confirmEx(
-        null,
-        l10n.formatValueSync("CSK-remove-shortcutkey"),
-        l10n.formatValueSync("CSK-remove-shortcutkey-description"),
-        flags,
-        "",
-        null,
-        "",
-        null,
-        check,
-      );
-      if (result == 0) {
-        utils.preferencesFunctions.removeKeyboradShortcutByActionName(
-          actionName,
-        );
+		async function removeShortcutKey(actionName) {
+			const l10n = new Localization(["browser/floorp.ftl"], true);
+			const prompts = Services.prompt;
+			const check = {
+				value: false,
+			};
+			const flags =
+				prompts.BUTTON_POS_0 * prompts.BUTTON_TITLE_OK +
+				prompts.BUTTON_POS_1 * prompts.BUTTON_TITLE_CANCEL;
+			const result = prompts.confirmEx(
+				null,
+				l10n.formatValueSync("CSK-remove-shortcutkey"),
+				l10n.formatValueSync("CSK-remove-shortcutkey-description"),
+				flags,
+				"",
+				null,
+				"",
+				null,
+				check,
+			);
+			if (result == 0) {
+				utils.preferencesFunctions.removeKeyboradShortcutByActionName(
+					actionName,
+				);
 
-        const removeButton = document.querySelector(
-          `.csks-remove-button[value="${actionName}"]`,
-        );
-        const button = document.querySelector(
-          `.csks-button[value="${actionName}"]`,
-        );
-        const descriptionItem = document.querySelector(
-          `.csks-box-item-description[value="${actionName}"]`,
-        );
-        button.removeAttribute("disabled");
-        removeButton.setAttribute("hidden", "true");
-        descriptionItem?.remove();
-        location.reload();
-      }
-    }
+				const removeButton = document.querySelector(
+					`.csks-remove-button[value="${actionName}"]`,
+				);
+				const button = document.querySelector(
+					`.csks-button[value="${actionName}"]`,
+				);
+				const descriptionItem = document.querySelector(
+					`.csks-box-item-description[value="${actionName}"]`,
+				);
+				button.removeAttribute("disabled");
+				removeButton.setAttribute("hidden", "true");
+				descriptionItem?.remove();
+				location.reload();
+			}
+		}
 
-    restoreDefaultButton.addEventListener("click", restoreDefault);
-    rebootButton.addEventListener("click", reboot);
+		restoreDefaultButton.addEventListener("click", restoreDefault);
+		rebootButton.addEventListener("click", reboot);
 
-    const allActionType = utils.getInfoFunctions.getAllActionType();
+		const allActionType = utils.getInfoFunctions.getAllActionType();
 
-    function buildCustomShortcutkeyPreferences() {
-      const shortcutkeyPreferences = document.getElementById("csks-box");
-      for (let i = 0; i < allActionType.length; i++) {
-        const type = allActionType[i];
-        const actions =
-          utils.getInfoFunctions.getkeyboradShortcutActionsByType(type);
+		function buildCustomShortcutkeyPreferences() {
+			const shortcutkeyPreferences = document.getElementById("csks-box");
+			for (let i = 0; i < allActionType.length; i++) {
+				const type = allActionType[i];
+				const actions =
+					utils.getInfoFunctions.getkeyboradShortcutActionsByType(type);
 
-        const box = window.MozXULElement.parseXULToFragment(`
+				const box = window.MozXULElement.parseXULToFragment(`
           <vbox class="csks-content-box" id="${type}">
             <html:h2 class="csks-box-title" data-l10n-id="${utils.getInfoFunctions.getTypeLocalization(
-              type,
-            )}"></html:h2>
+							type,
+						)}"></html:h2>
           </vbox>
         `);
-        shortcutkeyPreferences.appendChild(box);
+				shortcutkeyPreferences.appendChild(box);
 
-        for (actionName of actions) {
-          (async function (action) {
-            const actionL10nId =
-              utils.getInfoFunctions.getFluentLocalization(action);
-            const parentBox = document.getElementById(`${type}`);
-            const CSKIsExist = utils.getInfoFunctions.actionIsExsit(action);
+				for (actionName of actions) {
+					(async (action) => {
+						const actionL10nId =
+							utils.getInfoFunctions.getFluentLocalization(action);
+						const parentBox = document.getElementById(`${type}`);
+						const CSKIsExist = utils.getInfoFunctions.actionIsExsit(action);
 
-            const boxItem = window.MozXULElement.parseXULToFragment(`
+						const boxItem = window.MozXULElement.parseXULToFragment(`
               <hbox class="csks-box-item" id="${action}">
                 <label class="csks-box-item-label" value="${action}" data-l10n-id="${actionL10nId}"/>
                 <spacer flex="1"/> 
@@ -167,106 +167,106 @@ const gCSKPane = {
                 <button class="csks-button" value="${action}" data-l10n-id="customize-Action"/>
               </hbox>
             `);
-            parentBox.appendChild(boxItem);
+						parentBox.appendChild(boxItem);
 
-            if (CSKIsExist) {
-              const keyboradShortcutObj =
-                utils.getInfoFunctions.getActionKey(action);
-              const key = keyboradShortcutObj.key;
-              const modifiers = keyboradShortcutObj.modifiers
-                ? keyboradShortcutObj.modifiers
-                : undefined;
-              let changedActions = Services.prefs.getStringPref(
-                CustomKeyboardShortcutUtils.SHORTCUT_KEY_CHANGED_ARRAY_PREF,
-                "",
-              );
-              let changedActionsArray = changedActions.split(",");
+						if (CSKIsExist) {
+							const keyboradShortcutObj =
+								utils.getInfoFunctions.getActionKey(action);
+							const key = keyboradShortcutObj.key;
+							const modifiers = keyboradShortcutObj.modifiers
+								? keyboradShortcutObj.modifiers
+								: undefined;
+							const changedActions = Services.prefs.getStringPref(
+								CustomKeyboardShortcutUtils.SHORTCUT_KEY_CHANGED_ARRAY_PREF,
+								"",
+							);
+							const changedActionsArray = changedActions.split(",");
 
-              // Disable button if the keyborad shortcut is exist
-              const button = document.querySelector(
-                `.csks-button[value="${action}"]`,
-              );
-              button.setAttribute("disabled", "true");
+							// Disable button if the keyborad shortcut is exist
+							const button = document.querySelector(
+								`.csks-button[value="${action}"]`,
+							);
+							button.setAttribute("disabled", "true");
 
-              // Add keyborad shortcut info
-              const boxItem = document.querySelector(
-                `.csks-box-item[id="${action}"]`,
-              );
-              const keyboradShortcutInfo =
-                window.MozXULElement.parseXULToFragment(`
+							// Add keyborad shortcut info
+							const boxItem = document.querySelector(
+								`.csks-box-item[id="${action}"]`,
+							);
+							const keyboradShortcutInfo =
+								window.MozXULElement.parseXULToFragment(`
                 <description value="${action}" class="indent tip-caption csks-box-item-description">
                 </description>
               `);
-              boxItem.after(keyboradShortcutInfo);
+							boxItem.after(keyboradShortcutInfo);
 
-              if (changedActionsArray.includes(action)) {
-                let showChangedKeyElement =
-                  window.MozXULElement.parseXULToFragment(`
+							if (changedActionsArray.includes(action)) {
+								const showChangedKeyElement =
+									window.MozXULElement.parseXULToFragment(`
                   <description class="indent tip-caption csks-box-item-description" data-l10n-id="CSK-keyborad-shortcut-is-changed">
                   </description>
                 `);
 
-                const descriptionItem = document.querySelector(
-                  `.csks-box-item-label[value="${action}"]`,
-                );
-                descriptionItem.after(showChangedKeyElement);
-              }
+								const descriptionItem = document.querySelector(
+									`.csks-box-item-label[value="${action}"]`,
+								);
+								descriptionItem.after(showChangedKeyElement);
+							}
 
-              // add l10n
-              if (modifiers && key) {
-                const descriptionItem = document.querySelector(
-                  `.csks-box-item-description[value="${action}"]`,
-                );
-                document.l10n.setAttributes(
-                  descriptionItem,
-                  "CSK-keyborad-shortcut-info",
-                  { key, modifiers },
-                );
-              } else {
-                const descriptionItem = document.querySelector(
-                  `.csks-box-item-description[value="${action}"]`,
-                );
-                let result = key ? key : keyboradShortcutObj.keyCode;
-                // Remove the "VK_" prefix
-                if (result.startsWith("VK_")) {
-                  result = result.slice(3);
-                }
-                document.l10n.setAttributes(
-                  descriptionItem,
-                  "CSK-keyborad-shortcut-info-with-keycode",
-                  { key: result },
-                );
-              }
+							// add l10n
+							if (modifiers && key) {
+								const descriptionItem = document.querySelector(
+									`.csks-box-item-description[value="${action}"]`,
+								);
+								document.l10n.setAttributes(
+									descriptionItem,
+									"CSK-keyborad-shortcut-info",
+									{ key, modifiers },
+								);
+							} else {
+								const descriptionItem = document.querySelector(
+									`.csks-box-item-description[value="${action}"]`,
+								);
+								let result = key ? key : keyboradShortcutObj.keyCode;
+								// Remove the "VK_" prefix
+								if (result.startsWith("VK_")) {
+									result = result.slice(3);
+								}
+								document.l10n.setAttributes(
+									descriptionItem,
+									"CSK-keyborad-shortcut-info-with-keycode",
+									{ key: result },
+								);
+							}
 
-              // Add remove button event listener
-              const removeButton = document.querySelector(
-                `.csks-remove-button[value="${action}"]`,
-              );
-              removeButton.addEventListener("click", function () {
-                removeShortcutKey(action);
-              });
-            } else {
-              // add event listener
-              const button = document.querySelector(
-                `.csks-button[value="${action}"]`,
-              );
-              button.addEventListener("click", function () {
-                CustomKeyboardShortcutUtils.keyboradShortcutFunctions.openDialog(
-                  action,
-                );
-              });
-            }
-          })(actionName);
-        }
-      }
-    }
-    buildCustomShortcutkeyPreferences();
+							// Add remove button event listener
+							const removeButton = document.querySelector(
+								`.csks-remove-button[value="${action}"]`,
+							);
+							removeButton.addEventListener("click", () => {
+								removeShortcutKey(action);
+							});
+						} else {
+							// add event listener
+							const button = document.querySelector(
+								`.csks-button[value="${action}"]`,
+							);
+							button.addEventListener("click", () => {
+								CustomKeyboardShortcutUtils.keyboradShortcutFunctions.openDialog(
+									action,
+								);
+							});
+						}
+					})(actionName);
+				}
+			}
+		}
+		buildCustomShortcutkeyPreferences();
 
-    Services.prefs.addObserver(
-      CustomKeyboardShortcutUtils.SHORTCUT_KEY_AND_ACTION_PREF,
-      function () {
-        location.reload();
-      },
-    );
-  },
+		Services.prefs.addObserver(
+			CustomKeyboardShortcutUtils.SHORTCUT_KEY_AND_ACTION_PREF,
+			() => {
+				location.reload();
+			},
+		);
+	},
 };

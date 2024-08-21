@@ -11,7 +11,6 @@ Preferences.addAll([
   { id: "floorp.bookmarks.fakestatus.mode", type: "bool" },
   { id: "floorp.navbar.bottom", type: "bool" },
   { id: "floorp.enable.dualtheme", type: "bool" },
-  { id: "floorp.material.effect.enable", type: "bool" },
   { id: "floorp.delete.browser.border", type: "bool" },
   { id: "floorp.chrome.theme.mode", type: "int" },
   { id: "floorp.tabbar.style", type: "int" },
@@ -20,6 +19,7 @@ Preferences.addAll([
   { id: "floorp.titlebar.favicon.color", type: "bool" },
   { id: "floorp.Tree-type.verticaltab.optimization", type: "bool" },
   { id: "floorp.browser.tabs.verticaltab.right", type: "bool" },
+  { id: "floorp.verticaltab.paddingtop.enabled", type: "bool" },
   { id: "floorp.verticaltab.hover.enabled", type: "bool" },
   { id: "floorp.verticaltab.show.newtab.button", type: "bool" },
 ]);
@@ -32,20 +32,20 @@ var gDesign = {
         continue;
       }
       needreboot[i].setAttribute("rebootELIsSet", "true");
-      needreboot[i].addEventListener("click", function () {
+      needreboot[i].addEventListener("click", () => {
         if (!Services.prefs.getBoolPref("floorp.enable.auto.restart", false)) {
           (async () => {
-            let userConfirm = await confirmRestartPrompt(null);
+            const userConfirm = await confirmRestartPrompt(null);
             if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
               Services.startup.quit(
-                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart,
+                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
               );
             }
           })();
         } else {
-          window.setTimeout(function () {
+          window.setTimeout(() => {
             Services.startup.quit(
-              Services.startup.eAttemptQuit | Services.startup.eRestart,
+              Services.startup.eAttemptQuit | Services.startup.eRestart
             );
           }, 500);
         }
@@ -53,13 +53,11 @@ var gDesign = {
     }
 
     this._pane = document.getElementById("paneDesign");
-    document
-      .getElementById("leptonButton")
-      .addEventListener("click", function () {
-        window.location.href = "about:preferences#lepton";
-      });
+    document.getElementById("leptonButton").addEventListener("click", () => {
+      window.location.href = "about:preferences#lepton";
+    });
 
-    let disableMultirowPref = () => {
+    const disableMultirowPref = () => {
       let elems = document.getElementsByClassName("multiRowTabs");
       for (let i = 0; i < elems.length; i++) {
         elems[i].disabled =
@@ -75,22 +73,20 @@ var gDesign = {
     Services.prefs.addObserver("floorp.tabbar.style", disableMultirowPref);
 
     {
-      let prefName = "floorp.browser.tabbar.multirow.max.row";
-      let elem = document.getElementById("MultirowValue");
+      const prefName = "floorp.browser.tabbar.multirow.max.row";
+      const elem = document.getElementById("MultirowValue");
       elem.value = Services.prefs.getIntPref(prefName, undefined);
-      elem.addEventListener("change", function () {
+      elem.addEventListener("change", () => {
         Services.prefs.setIntPref(prefName, Number(elem.value));
       });
-      Services.prefs.addObserver(prefName, function () {
+      Services.prefs.addObserver(prefName, () => {
         elem.value = Services.prefs.getIntPref(prefName, undefined);
       });
     }
 
-    document
-      .getElementById("leptonButton")
-      .addEventListener("click", function () {
-        window.location.href = "about:preferences#lepton";
-      });
+    document.getElementById("leptonButton").addEventListener("click", () => {
+      window.location.href = "about:preferences#lepton";
+    });
 
     document
       .getElementById("colors")

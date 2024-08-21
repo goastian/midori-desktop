@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 Preferences.addAll([
-  { id: "privacy.resistFingerprinting", type: "bool" },
   {
     id: "privacy.resistFingerprinting.autoDeclineNoUserInputCanvasPrompts",
     type: "bool",

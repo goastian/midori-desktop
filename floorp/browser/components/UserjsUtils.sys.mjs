@@ -25,11 +25,21 @@ export const EXPORTED_SYMBOLS = ["UserjsUtils"];
  * @type {UserJsList}
  */
 export const userJsList = {
-  BetterfoxDefault: ["https://raw.githubusercontent.com/yokoffing/Betterfox/main/user.js"],
-  Securefox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/main/Securefox.js"],
-  Fastfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/main/Fastfox.js"],
-  Peskyfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/main/Peskyfox.js"],
-  Smoothfox: ["https://raw.githubusercontent.com/yokoffing/Betterfox/main/Smoothfox.js"]
+  BetterfoxDefault: [
+    "https://raw.githubusercontent.com/yokoffing/Betterfox/main/user.js",
+  ],
+  Securefox: [
+    "https://raw.githubusercontent.com/yokoffing/Betterfox/main/Securefox.js",
+  ],
+  Fastfox: [
+    "https://raw.githubusercontent.com/yokoffing/Betterfox/main/Fastfox.js",
+  ],
+  Peskyfox: [
+    "https://raw.githubusercontent.com/yokoffing/Betterfox/main/Peskyfox.js",
+  ],
+  Smoothfox: [
+    "https://raw.githubusercontent.com/yokoffing/Betterfox/main/Smoothfox.js",
+  ],
 };
 
 const PROFILE_DIR = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
@@ -55,15 +65,17 @@ export const UserjsUtilsFunctions = {
       userjs.remove(false);
     } catch (e) {}
     fetch(url)
-      .then((response) => response.text())
-      .then(async (data) => {
+      .then(response => response.text())
+      .then(async data => {
         const PROFILE_DIR = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
         const userjs = PathUtils.join(PROFILE_DIR, "user.js");
         const encoder = new TextEncoder("UTF-8");
         const writeData = encoder.encode(data);
 
         await IOUtils.write(userjs, writeData);
-        Services.obs.notifyObservers([], "floorp-restart-browser");
+        Services.startup.quit(
+          Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
+        );
       });
   },
 
@@ -85,10 +97,13 @@ export const UserjsUtilsFunctions = {
    * @returns {Promise<void>}
    */
   async resetPreferencesWithUserJsContents() {
-    const FileUtilsPath = FileUtils.getFile("ProfD", ["user.js"]);
+    const FileUtilsPath = PathUtils.join(
+      Services.dirsvc.get("ProfD", Ci.nsIFile).path,
+      "user.js"
+    );
     const PROFILE_DIR = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
 
-    if (!FileUtilsPath.exists()) {
+    if (!(await IOUtils.exists(FileUtilsPath))) {
       console.warn("user.js does not exist");
       const path = PathUtils.join(PROFILE_DIR, "user.js");
       const encoder = new TextEncoder("UTF-8");
@@ -106,7 +121,7 @@ export const UserjsUtilsFunctions = {
     while ((match = prefPattern.exec(inputStream)) !== null) {
       if (!match[0].startsWith("//")) {
         const settingName = match[1];
-        await new Promise((resolve) => {
+        await new Promise(resolve => {
           setTimeout(() => {
             Services.prefs.clearUserPref(settingName);
             console.info("resetting " + settingName);

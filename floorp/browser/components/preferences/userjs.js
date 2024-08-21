@@ -1,19 +1,18 @@
-/* eslint-disable no-undef */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-var { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm",
+var { UserjsUtilsFunctions } = ChromeUtils.importESModule(
+  "resource://floorp/UserjsUtils.sys.mjs"
+);
+var { FileUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/FileUtils.sys.mjs"
 );
 
-let UserjsUtils = ChromeUtils.importESModule(
-  "resource:///modules/UserjsUtils.sys.mjs",
-);
+const l10n = new Localization(["browser/floorp.ftl"], true);
 
-let l10n = new Localization(["browser/floorp.ftl"], true);
-
-XPCOMUtils.defineLazyGetter(this, "L10n", () => {
+// eslint-disable-next-line no-undef
+ChromeUtils.defineLazyGetter(this, "L10n", () => {
   return new Localization(["branding/brand.ftl", "browser/floorp"]);
 });
 
@@ -23,7 +22,8 @@ const gUserjsPane = {
     this._pane = document.getElementById("paneUserjs");
     document
       .getElementById("backtogeneral___")
-      .addEventListener("command", function () {
+      .addEventListener("command", () => {
+        // eslint-disable-next-line no-undef
         gotoPref("general");
       });
 
@@ -33,63 +33,72 @@ const gUserjsPane = {
         continue;
       }
       needreboot[i].setAttribute("rebootELIsSet", "true");
-      needreboot[i].addEventListener("click", function () {
+      needreboot[i].addEventListener("click", () => {
         if (!Services.prefs.getBoolPref("floorp.enable.auto.restart", false)) {
           (async () => {
-            let userConfirm = await confirmRestartPrompt(null);
+            // eslint-disable-next-line no-undef
+            const userConfirm = await confirmRestartPrompt(null);
+            // eslint-disable-next-line no-undef
             if (userConfirm == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
               Services.startup.quit(
-                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart,
+                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
               );
             }
           })();
         } else {
-          window.setTimeout(function () {
+          window.setTimeout(() => {
             Services.startup.quit(
-              Services.startup.eAttemptQuit | Services.startup.eRestart,
+              Services.startup.eAttemptQuit | Services.startup.eRestart
             );
           }, 500);
         }
       });
     }
 
-    let buttons = document.getElementsByClassName("apply-userjs-button");
-    for (let button of buttons) {
-      button.addEventListener("click", async function (event) {
-        let url = event.target.getAttribute("data-url");
-        let id = event.target.getAttribute("id");
+    const buttons = document.getElementsByClassName("apply-userjs-button");
+    for (const button of buttons) {
+      button.addEventListener("click", async event => {
+        const url = event.target.getAttribute("data-url");
+        const id = event.target.getAttribute("id");
         const prompts = Services.prompt;
         const check = { value: false };
         const flags =
           prompts.BUTTON_POS_0 * prompts.BUTTON_TITLE_OK +
           prompts.BUTTON_POS_1 * prompts.BUTTON_TITLE_CANCEL;
-        let result = prompts.confirmEx(
+        const result = prompts.confirmEx(
           null,
           l10n.formatValueSync("userjs-prompt"),
           `${l10n.formatValueSync(
-            "apply-userjs-attention",
+            "apply-userjs-attention"
           )}\n${l10n.formatValueSync("apply-userjs-attention2")}`,
           flags,
           "",
           null,
           "",
           null,
-          check,
+          check
         );
         if (result == 0) {
           if (!url) {
-            await UserjsUtils.UserjsUtilsFunctions.resetPreferencesWithUserJsContents();
-            window.setTimeout(async function () {
+            await UserjsUtilsFunctions.resetPreferencesWithUserJsContents();
+            window.setTimeout(async () => {
               try {
-                FileUtils.getFile("ProfD", ["user.js"]).remove(false);
+                const PROFILE_DIR = Services.dirsvc.get(
+                  "ProfD",
+                  Ci.nsIFile
+                ).path;
+                const path = PathUtils.join(PROFILE_DIR, "user.js");
+                IOUtils.remove(path);
               } catch (e) {}
               Services.prefs.clearUserPref("floorp.user.js.customize");
-              Services.obs.notifyObservers([], "floorp-restart-browser");
+              Services.startup.quit(
+                Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
+              );
             }, 3000);
           } else {
-            await UserjsUtils.UserjsUtilsFunctions.resetPreferencesWithUserJsContents();
-            window.setTimeout(async function () {
-              await UserjsUtils.UserjsUtilsFunctions.setUserJSWithURL(url);
+            await UserjsUtilsFunctions.resetPreferencesWithUserJsContents();
+            window.setTimeout(async () => {
+              await UserjsUtilsFunctions.setUserJSWithURL(url);
               Services.prefs.setStringPref("floorp.user.js.customize", id);
             }, 3000);
           }

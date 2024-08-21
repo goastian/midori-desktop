@@ -4,7 +4,7 @@
 
 <!-- More From Mozilla panel -->
 
-<script src="chrome://browser/content/preferences/design.js" />
+<script src="chrome://floorp/content/preferences/design.js" />
 <html:template id="template-paneDesign">
   <hbox id="designCategory" class="subcategory" hidden="true" data-category="paneDesign">
     <html:h1 style="-moz-box-flex: 1;" data-l10n-id="design-header" />
@@ -34,28 +34,13 @@
       <label>
         <div id="fluerialUI"></div>
       </label>
-
-      <div id="Windows-only">
-        <radio value="5" class="themes" data-l10n-id="floorp-fluentUI" />
-        <label>
-          <div id="fluentui"></div>
-        </label>
-      </div>
-
-      <div id="Linux-only">
-        <!--only linux-->
-        <radio value="6" class="themes" data-l10n-id="floorp-gnomeUI" />
-        <label>
-          <div id="gnomeUI"></div>
-        </label>
-      </div>
     </radiogroup>
   </groupbox>
 
   <groupbox data-category="paneDesign" id="tabbarStyleGroup" hidden="true">
 
     <html:h2 data-l10n-id="tabbar-style-preference" />
-    <description class="indent tip-caption" data-l10n-id="workspace-warning" />
+    <description class="indent tip-caption" id="workspace-warning" data-l10n-id="workspace-warning" />
     <radiogroup preference="floorp.tabbar.style">
       <radio value="0" data-l10n-id="horizontal-tabbar" class="needreboot"/>
 
@@ -73,6 +58,7 @@
       <checkbox preference="floorp.browser.tabs.verticaltab.right" id="nativeVerticalTab" data-l10n-id="native-vertical-tab-show-right" />
       <checkbox preference="floorp.verticaltab.hover.enabled" id="hoverVerticalTab" data-l10n-id="hover-vertical-tab" class="verticalTabs needreboot" />
       <checkbox preference="floorp.verticaltab.show.newtab.button" id="verticalTabNewTabButton" data-l10n-id="floorp-show-vertical-tab-newtab-button" class="verticalTabs" />
+      <checkbox preference="floorp.verticaltab.paddingtop.enabled" id="verticalTabPadding" data-l10n-id="native-vertical-tab-show-padding" class="verticalTabs" />
     </radiogroup>
 
     <vbox class="TST ContentBlockBox">
@@ -211,14 +197,6 @@
       <label class="learnMore" is="text-link" href="https://blog.ablaze.one/2449/2022-10-10/"
         data-l10n-id="do-not-track-learn-more"></label>
     </hbox>
-
-    #ifdef XP_WIN
-    <hbox align="center">
-      <checkbox preference="floorp.material.effect.enable" id="micaforeveryone" data-l10n-id="material-effect" />
-      <label class="learnMore" is="text-link" href="https://t.me/midoriweb"
-        data-l10n-id="do-not-track-learn-more"></label>
-    </hbox>
-    #endif
     <checkbox preference="floorp.delete.browser.border" data-l10n-id="delete-border-and-roundup-option" />
   </groupbox>
 </html:template>

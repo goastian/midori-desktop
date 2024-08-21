@@ -4,36 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-DIRS += [
-    "windowUtils",
-]
-
 
 XPCOM_MANIFESTS += [
     "components.conf",
 ]
-
-EXTRA_JS_MODULES += [
-    "SiteSpecificBrowserExternalFileService.sys.mjs",
-    "SiteSpecificBrowserIdUtils.sys.mjs",
-    "SiteSpecificBrowserService.sys.mjs",
-]
-
-EXTRA_JS_MODULES.ssb += [
-    "ImageTools.sys.mjs",
-]
-
-FINAL_TARGET_FILES.actors += [
-    "actors/SiteSpecificBrowserChild.sys.mjs",
-    "actors/SiteSpecificBrowserParent.sys.mjs",
-]
-
-if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
-    EXTRA_JS_MODULES.ssb += [
-        "WindowsSupport.sys.mjs",
-    ]
-
-if CONFIG["MOZ_WIDGET_TOOLKIT"] == "linux":
-    EXTRA_JS_MODULES.ssb += [
-        "LinuxSupport.sys.mjs",
-    ]
