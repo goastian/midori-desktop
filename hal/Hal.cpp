@@ -64,6 +64,7 @@ void AssertMainThread() { MOZ_ASSERT(NS_IsMainThread()); }
 bool InSandbox() { return GeckoProcessType_Content == XRE_GetProcessType(); }
 
 bool WindowIsActive(nsPIDOMWindowInner* aWindow) {
+  NS_ENSURE_TRUE(aWindow, false);
   dom::Document* document = aWindow->GetDoc();
   NS_ENSURE_TRUE(document, false);
   return !document->Hidden();
@@ -351,17 +352,10 @@ void NotifyNetworkChange(const NetworkInformation& aInfo) {
 MOZ_IMPL_HAL_OBSERVER(WakeLock)
 
 void ModifyWakeLock(const nsAString& aTopic, WakeLockControl aLockAdjust,
-                    WakeLockControl aHiddenAdjust,
-                    uint64_t aProcessID /* = CONTENT_PROCESS_ID_UNKNOWN */) {
+                    WakeLockControl aHiddenAdjust) {
   AssertMainThread();
 
-  if (aProcessID == CONTENT_PROCESS_ID_UNKNOWN) {
-    aProcessID = InSandbox() ? ContentChild::GetSingleton()->GetID()
-                             : CONTENT_PROCESS_ID_MAIN;
-  }
-
-  PROXY_IF_SANDBOXED(
-      ModifyWakeLock(aTopic, aLockAdjust, aHiddenAdjust, aProcessID));
+  PROXY_IF_SANDBOXED(ModifyWakeLock(aTopic, aLockAdjust, aHiddenAdjust));
 }
 
 void GetWakeLockInfo(const nsAString& aTopic,
@@ -415,6 +409,16 @@ const char* ProcessPriorityToString(ProcessPriority aPriority) {
       MOZ_ASSERT(false);
       return "???";
   }
+}
+
+UniquePtr<hal::PerformanceHintSession> CreatePerformanceHintSession(
+    const nsTArray<PlatformThreadHandle>& aThreads,
+    mozilla::TimeDuration aTargetWorkDuration) {
+  return hal_impl::CreatePerformanceHintSession(aThreads, aTargetWorkDuration);
+}
+
+const Maybe<hal::HeterogeneousCpuInfo>& GetHeterogeneousCpuInfo() {
+  return hal_impl::GetHeterogeneousCpuInfo();
 }
 
 void Init() {

@@ -7,6 +7,7 @@
 #ifndef mozilla_Hal_h
 #define mozilla_Hal_h
 
+#include "base/platform_thread.h"
 #include "nsTArray.h"
 #include "mozilla/hal_sandbox/PHal.h"
 #include "mozilla/HalScreenConfiguration.h"
@@ -182,24 +183,14 @@ void DisableWakeLockNotifications();
 MOZ_DEFINE_HAL_OBSERVER(WakeLock);
 
 /**
- * Adjust a wake lock's counts on behalf of a given process.
- *
- * In most cases, you shouldn't need to pass the aProcessID argument; the
- * default of CONTENT_PROCESS_ID_UNKNOWN is probably what you want.
+ * Adjust a wake lock's counts for the current process.
  *
  * @param aTopic        lock topic
  * @param aLockAdjust   to increase or decrease active locks
  * @param aHiddenAdjust to increase or decrease hidden locks
- * @param aProcessID    indicates which process we're modifying the wake lock
- *                      on behalf of.  It is interpreted as
- *
- *                      CONTENT_PROCESS_ID_UNKNOWN: The current process
- *                      CONTENT_PROCESS_ID_MAIN: The root process
- *                      X: The process with ContentChild::GetID() == X
  */
 void ModifyWakeLock(const nsAString& aTopic, hal::WakeLockControl aLockAdjust,
-                    hal::WakeLockControl aHiddenAdjust,
-                    uint64_t aProcessID = hal::CONTENT_PROCESS_ID_UNKNOWN);
+                    hal::WakeLockControl aHiddenAdjust);
 
 /**
  * Query the wake lock numbers of aTopic.
@@ -235,6 +226,29 @@ void UnlockScreenOrientation();
  * ignore this call entirely.
  */
 void SetProcessPriority(int aPid, hal::ProcessPriority aPriority);
+
+/**
+ * Creates a PerformanceHintSession.
+ *
+ * A PerformanceHintSession represents a workload shared by a group of threads
+ * that should be completed in a target duration each cycle.
+ *
+ * Each cycle, the actual work duration should be reported using
+ * PerformanceHintSession::ReportActualWorkDuration(). The system can then
+ * adjust the scheduling accordingly in order to achieve the target.
+ */
+UniquePtr<hal::PerformanceHintSession> CreatePerformanceHintSession(
+    const nsTArray<PlatformThreadHandle>& aThreads,
+    mozilla::TimeDuration aTargetWorkDuration);
+
+/**
+ * Returns information categorizing the CPUs on the system by performance class.
+ *
+ * Returns Nothing if we are unable to calculate the required information.
+ *
+ * See the definition of hal::HeterogeneousCpuInfo for more details.
+ */
+const Maybe<hal::HeterogeneousCpuInfo>& GetHeterogeneousCpuInfo();
 
 }  // namespace MOZ_HAL_NAMESPACE
 }  // namespace mozilla
