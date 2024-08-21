@@ -3,14 +3,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
- {
+{
   const FLOORP_WEBCOMPAT_ENABLED_PREF = "floorp.webcompat.enabled";
 
   const WEBCOMPATS_INJECTIONS = [
     {
      /*bugs: https://github.com/Floorp-Projects/Floorp/issues/894"
       description: "Twitter (X)'s direct messages doesn't work on Firefox/Floorp if user uses Meiryo font.*/
-      "matches": ["*://twitter.com/*"],
+      "matches": ["*://twitter.com/*", "*://x.com/*"],
       "css": [
         { file: "webcompat/bug-894-twitter-com.css" }
       ],

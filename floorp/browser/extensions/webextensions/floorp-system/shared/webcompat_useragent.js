@@ -1,3 +1,4 @@
+
 {
   const FLOORP_WEBCOMPAT_ENABLED_PREF = "floorp.webcompat.enabled";
 

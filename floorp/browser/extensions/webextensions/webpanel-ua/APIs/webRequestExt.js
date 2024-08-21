@@ -1,16 +1,8 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-"use strict";
-
 /* global ExtensionAPI, ExtensionCommon, Services, XPCOMUtils */
 
-const { WebRequest } = ChromeUtils.import(
-  "resource://gre/modules/WebRequest.jsm",
+const { WebRequest } = ChromeUtils.importESModule(
+  "resource://gre/modules/WebRequest.sys.mjs"
 );
-
-const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 this.webRequestExt = class extends ExtensionAPI {
   getAPI(context) {
@@ -20,23 +12,12 @@ this.webRequestExt = class extends ExtensionAPI {
       webRequestExt: {
         onBeforeRequest_webpanel_requestId: new EventManager({
           context,
-          register: (fire) => {
+          register: fire => {
             function listener(e) {
-              if (
-                typeof e.browserElement !== "undefined" &&
-                e.browserElement.id.startsWith("webpanel")
-              ) {
-                if (
-                  e.browserElement.getAttribute("changeuseragent") == "true"
-                ) {
-                  return fire.async(e.requestId);
-                }
-              }
-              if (
-                e.bmsUseragent === true
-              ) {
+              if (e.bmsUseragent === true) {
                 return fire.async(e.requestId);
               }
+              return fire.async(null);
             }
             WebRequest.onBeforeRequest.addListener(listener, null, [
               "blocking",

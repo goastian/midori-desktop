@@ -8,7 +8,7 @@ https://github.com/xiaoxiaoflood/firefox-scripts
 
 copyright xiaoxiaoflood
 
-LICESNE MPL2.0
+LICENSE MPL2.0
 
 browser/base/content/userChromejs/chromecss.uc.js & sidebarautohide.uc.js
 
