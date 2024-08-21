@@ -10,10 +10,14 @@ EXPORTS += [
     "mozmemory.h",
     "mozmemory_utils.h",
     "mozmemory_wrap.h",
+    "PHC.h",
 ]
 
 LIBRARY_DEFINES["MOZ_HAS_MOZGLUE"] = True
 DEFINES["MOZ_MEMORY_IMPL"] = True
+
+if CONFIG["MOZ_BUILD_APP"] == "memory":
+    DEFINES["IMPL_MFBT"] = True
 
 if CONFIG["MOZ_REPLACE_MALLOC"]:
     EXPORTS += [
@@ -23,11 +27,16 @@ if CONFIG["MOZ_REPLACE_MALLOC"]:
 
 if CONFIG["MOZ_PHC"]:
     DEFINES["MOZ_PHC"] = True
+    UNIFIED_SOURCES += [
+        "FdPrintf.cpp",
+        # PHC.cpp is #included in mozjemalloc.cpp
+    ]
 
 if CONFIG["MOZ_MEMORY"]:
     UNIFIED_SOURCES += [
         "mozjemalloc.cpp",
         "mozmemory_wrap.cpp",
+        "Mutex.cpp",
     ]
 else:
     UNIFIED_SOURCES += [
@@ -38,7 +47,6 @@ if CONFIG["OS_TARGET"] == "Darwin" and (
     CONFIG["MOZ_REPLACE_MALLOC"] or CONFIG["MOZ_MEMORY"]
 ):
     SOURCES += [
-        "Mutex.cpp",
         "zone.c",
     ]
 

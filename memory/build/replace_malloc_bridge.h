@@ -48,6 +48,12 @@ struct ReplaceMallocBridge;
 
 #include "mozilla/Types.h"
 
+#ifdef _WIN32
+typedef void* platform_handle_t;
+#else
+typedef int platform_handle_t;
+#endif
+
 MOZ_BEGIN_EXTERN_C
 
 #ifndef REPLACE_MALLOC_IMPL
@@ -116,30 +122,22 @@ struct DMDFuncs;
 }  // namespace dmd
 
 namespace phc {
+
 class AddrInfo;
 
-struct MemoryUsage {
-  // The amount of memory used for PHC metadata, eg information about each
-  // allocation including stacks.
-  size_t mMetadataBytes = 0;
-
-  // The amount of memory lost due to rounding allocation sizes up to the
-  // nearest page.  AKA internal fragmentation.
-  size_t mFragmentationBytes = 0;
-};
 }  // namespace phc
 
 // Callbacks to register debug file handles for Poison IO interpose.
 // See Mozilla(|Un)RegisterDebugHandle in xpcom/build/PoisonIOInterposer.h
 struct DebugFdRegistry {
-  virtual void RegisterHandle(intptr_t aFd);
+  virtual void RegisterHandle(platform_handle_t aFd);
 
-  virtual void UnRegisterHandle(intptr_t aFd);
+  virtual void UnRegisterHandle(platform_handle_t aFd);
 };
 }  // namespace mozilla
 
 struct ReplaceMallocBridge {
-  ReplaceMallocBridge() : mVersion(5) {}
+  ReplaceMallocBridge() : mVersion(6) {}
 
   // This method was added in version 1 of the bridge.
   virtual mozilla::dmd::DMDFuncs* GetDMDFuncs() { return nullptr; }
@@ -168,32 +166,6 @@ struct ReplaceMallocBridge {
       const malloc_hook_table_t* aHookTable) {
     return nullptr;
   }
-
-  // If this is a PHC-handled address, return true, and if an AddrInfo is
-  // provided, fill in all of its fields. Otherwise, return false and leave
-  // AddrInfo unchanged.
-  // This method was added in version 4 of the bridge.
-  virtual bool IsPHCAllocation(const void*, mozilla::phc::AddrInfo*) {
-    return false;
-  }
-
-  // Disable PHC allocations on the current thread. Only useful for tests. Note
-  // that PHC deallocations will still occur as needed.
-  // This method was added in version 4 of the bridge.
-  virtual void DisablePHCOnCurrentThread() {}
-
-  // Re-enable PHC allocations on the current thread. Only useful for tests.
-  // This method was added in version 4 of the bridge.
-  virtual void ReenablePHCOnCurrentThread() {}
-
-  // Test whether PHC allocations are enabled on the current thread. Only
-  // useful for tests.
-  // This method was added in version 4 of the bridge.
-  virtual bool IsPHCEnabledOnCurrentThread() { return false; }
-
-  // Return PHC memory usage information by filling in the supplied structure.
-  // This method was added in version 5 of the bridge.
-  virtual void PHCMemoryUsage(mozilla::phc::MemoryUsage& aMemoryUsage) {}
 
 #  ifndef REPLACE_MALLOC_IMPL
   // Returns the replace-malloc bridge if its version is at least the
@@ -237,37 +209,6 @@ struct ReplaceMalloc {
     auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 3);
     return singleton ? singleton->RegisterHook(aName, aTable, aHookTable)
                      : nullptr;
-  }
-
-  static bool IsPHCAllocation(const void* aPtr, mozilla::phc::AddrInfo* aOut) {
-    auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 4);
-    return singleton ? singleton->IsPHCAllocation(aPtr, aOut) : false;
-  }
-
-  static void DisablePHCOnCurrentThread() {
-    auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 4);
-    if (singleton) {
-      singleton->DisablePHCOnCurrentThread();
-    }
-  }
-
-  static void ReenablePHCOnCurrentThread() {
-    auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 4);
-    if (singleton) {
-      singleton->ReenablePHCOnCurrentThread();
-    }
-  }
-
-  static bool IsPHCEnabledOnCurrentThread() {
-    auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 4);
-    return singleton ? singleton->IsPHCEnabledOnCurrentThread() : false;
-  }
-
-  static void PHCMemoryUsage(mozilla::phc::MemoryUsage& aMemoryUsage) {
-    auto singleton = ReplaceMallocBridge::Get(/* minimumVersion */ 5);
-    if (singleton) {
-      singleton->PHCMemoryUsage(aMemoryUsage);
-    }
   }
 };
 #  endif

@@ -7,6 +7,8 @@
 #ifndef mozjemalloc_h
 #define mozjemalloc_h
 
+#include <errno.h>
+
 #include "mozjemalloc_types.h"
 #include "mozilla/MacroArgs.h"
 
@@ -31,29 +33,116 @@
 
 #ifdef MOZ_MEMORY
 
-// Generic interface exposing the whole public allocator API
-// This facilitates the implementation of things like replace-malloc.
+size_t GetKernelPageSize();
+
+// Implement the set of alignment functions in terms of memalign.
+template <void* (*memalign)(size_t, size_t)>
+struct AlignedAllocator {
+  static inline int posix_memalign(void** aMemPtr, size_t aAlignment,
+                                   size_t aSize) {
+    void* result;
+
+    // alignment must be a power of two and a multiple of sizeof(void*)
+    if (((aAlignment - 1) & aAlignment) != 0 || aAlignment < sizeof(void*)) {
+      return EINVAL;
+    }
+
+    // The 0-->1 size promotion is done in the memalign() call below
+    result = memalign(aAlignment, aSize);
+
+    if (!result) {
+      return ENOMEM;
+    }
+
+    *aMemPtr = result;
+    return 0;
+  }
+
+  static inline void* aligned_alloc(size_t aAlignment, size_t aSize) {
+    if (aSize % aAlignment) {
+      return nullptr;
+    }
+    return memalign(aAlignment, aSize);
+  }
+
+  static inline void* valloc(size_t aSize) {
+    return memalign(GetKernelPageSize(), aSize);
+  }
+};
+
+// These classes each implement the same interface.  Writing out the
+// interface for each one rather than using inheritance makes things more
+// explicit.
+//
 // Note: compilers are expected to be able to optimize out `this`.
-template <typename T>
-struct Allocator : public T {
+
+// The MozJemalloc allocator
+struct MozJemalloc {
 #  define MALLOC_DECL(name, return_type, ...) \
-    static return_type name(__VA_ARGS__);
+    static inline return_type name(__VA_ARGS__);
 #  include "malloc_decls.h"
 };
 
-// The MozJemalloc allocator
-struct MozJemallocBase {};
-typedef Allocator<MozJemallocBase> MozJemalloc;
+#  ifdef MOZ_PHC
+struct MozJemallocPHC : public MozJemalloc {
+#    define MALLOC_DECL(name, return_type, ...) \
+      static return_type name(__VA_ARGS__);
+#    define MALLOC_FUNCS MALLOC_FUNCS_MALLOC_BASE
+#    include "malloc_decls.h"
+
+  static inline int posix_memalign(void** aMemPtr, size_t aAlignment,
+                                   size_t aSize) {
+    return AlignedAllocator<memalign>::posix_memalign(aMemPtr, aAlignment,
+                                                      aSize);
+  }
+
+  static inline void* aligned_alloc(size_t aAlignment, size_t aSize) {
+    return AlignedAllocator<memalign>::aligned_alloc(aAlignment, aSize);
+  }
+
+  static inline void* valloc(size_t aSize) {
+    return AlignedAllocator<memalign>::valloc(aSize);
+  }
+
+  static size_t malloc_usable_size(usable_ptr_t);
+
+  static void jemalloc_stats_internal(jemalloc_stats_t*, jemalloc_bin_stats_t*);
+
+  static void jemalloc_ptr_info(const void*, jemalloc_ptr_info_t*);
+
+#    define MALLOC_DECL(name, return_type, ...) \
+      static return_type name(__VA_ARGS__);
+#    define MALLOC_FUNCS MALLOC_FUNCS_ARENA_ALLOC
+#    include "malloc_decls.h"
+};
+#  endif
 
 #  ifdef MOZ_REPLACE_MALLOC
 // The replace-malloc allocator
-struct ReplaceMallocBase {};
-typedef Allocator<ReplaceMallocBase> ReplaceMalloc;
-
-typedef ReplaceMalloc DefaultMalloc;
-#  else
-typedef MozJemalloc DefaultMalloc;
+struct ReplaceMalloc {
+#    define MALLOC_DECL(name, return_type, ...) \
+      static return_type name(__VA_ARGS__);
+#    include "malloc_decls.h"
+};
 #  endif
+
+#  ifdef MOZ_PHC
+using CanonicalMalloc = MozJemallocPHC;
+#  else
+using CanonicalMalloc = MozJemalloc;
+#  endif
+
+#  ifdef MOZ_REPLACE_MALLOC
+using DefaultMalloc = ReplaceMalloc;
+#  else
+using DefaultMalloc = CanonicalMalloc;
+#  endif
+
+// Poison - write "poison" to cells upon deallocation.
+constexpr uint8_t kAllocPoison = 0xe5;
+
+// Junk - write this junk value to freshly allocated cells.
+constexpr uint8_t kAllocJunk = 0xe4;
 
 #endif  // MOZ_MEMORY
 

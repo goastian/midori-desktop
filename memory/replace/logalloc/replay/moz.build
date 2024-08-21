@@ -67,13 +67,8 @@ if CONFIG["MOZ_BUILD_APP"] == "memory" or CONFIG["MOZ_REPLACE_MALLOC_STATIC"]:
         "/mozglue/misc/Printf.cpp",
     ]
 
-if not CONFIG["MOZ_REPLACE_MALLOC_STATIC"]:
-    SOURCES += [
-        "../FdPrintf.cpp",
-    ]
-
 LOCAL_INCLUDES += [
-    "..",
+    "/memory/build",
 ]
 
 # Link replace-malloc and the default allocator.
@@ -84,8 +79,9 @@ USE_LIBS += [
 # The memory library defines this, so it's needed here too.
 DEFINES["IMPL_MFBT"] = True
 
-if CONFIG["MOZ_NEEDS_LIBATOMIC"]:
-    OS_LIBS += ["atomic"]
+OS_LIBS += CONFIG["LIBATOMIC_LIBS"]
+
+OS_LIBS += CONFIG["DL_LIBS"]
 
 DisableStlWrapping()
 

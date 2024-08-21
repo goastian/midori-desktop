@@ -4,22 +4,23 @@
 
 #include "Mutex.h"
 
-#if defined(XP_DARWIN)
+#include <errno.h>
 
-// static
-bool Mutex::SpinInKernelSpace() {
-#  ifdef __aarch64__
-  return true;
-#  else
-  if (__builtin_available(macOS 10.15, *)) {
-    return true;
+#include "mozilla/Assertions.h"
+
+bool Mutex::TryLock() {
+#if defined(XP_WIN)
+  return !!TryEnterCriticalSection(&mMutex);
+#elif defined(XP_DARWIN)
+  return os_unfair_lock_trylock(&mMutex);
+#else
+  switch (pthread_mutex_trylock(&mMutex)) {
+    case 0:
+      return true;
+    case EBUSY:
+      return false;
+    default:
+      MOZ_CRASH("pthread_mutex_trylock error.");
   }
-
-  return false;
-#  endif
+#endif
 }
-
-// static
-const bool Mutex::gSpinInKernelSpace = SpinInKernelSpace();
-
-#endif  // defined(XP_DARWIN)

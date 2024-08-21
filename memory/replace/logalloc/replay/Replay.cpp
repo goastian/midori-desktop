@@ -458,7 +458,7 @@ class Distribution {
     mTotalRequests++;
   }
 
-  void printDist(intptr_t std_err) {
+  void printDist(platform_handle_t std_err) {
     MOZ_ASSERT(mMaxSize);
 
     // The translation to turn a slot index into a memory request size.
@@ -533,7 +533,7 @@ class SMapsReader : private FdReader {
     return Some(SMapsReader(FdReader(fd, true)));
   }
 
-  Maybe<MemoryMap> readMap(intptr_t aStdErr) {
+  Maybe<MemoryMap> readMap(platform_handle_t aStdErr) {
     // This is not very tolerant of format changes because things like
     // parseNumber will crash if they get a bad value.  TODO: make this
     // soft-fail.
@@ -615,7 +615,7 @@ class Replay {
   Replay() {
 #ifdef _WIN32
     // See comment in FdPrintf.h as to why native win32 handles are used.
-    mStdErr = reinterpret_cast<intptr_t>(GetStdHandle(STD_ERROR_HANDLE));
+    mStdErr = GetStdHandle(STD_ERROR_HANDLE);
 #else
     mStdErr = fileno(stderr);
 #endif
@@ -829,7 +829,7 @@ class Replay {
 
     // This formula corresponds to the calculation of wasted (from committed and
     // the other parameters) within jemalloc_stats()
-    size_t committed = stats.allocated + stats.waste + stats.page_cache +
+    size_t committed = stats.allocated + stats.waste + stats.pages_dirty +
                        stats.bookkeeping + stats.bin_unused;
 
     FdPrintf(mStdErr, "\n");
@@ -845,7 +845,9 @@ class Replay {
 #endif
     FdPrintf(mStdErr, "allocated:        %9zu\n", stats.allocated);
     FdPrintf(mStdErr, "waste:            %9zu\n", stats.waste);
-    FdPrintf(mStdErr, "dirty:            %9zu\n", stats.page_cache);
+    FdPrintf(mStdErr, "dirty:            %9zu\n", stats.pages_dirty);
+    FdPrintf(mStdErr, "fresh:            %9zu\n", stats.pages_fresh);
+    FdPrintf(mStdErr, "madvised:         %9zu\n", stats.pages_madvised);
     FdPrintf(mStdErr, "bookkeep:         %9zu\n", stats.bookkeeping);
     FdPrintf(mStdErr, "bin-unused:       %9zu\n", stats.bin_unused);
     FdPrintf(mStdErr, "quantum-max:      %9zu\n", stats.quantum_max);
@@ -1042,7 +1044,7 @@ class Replay {
     }
   }
 
-  intptr_t mStdErr;
+  platform_handle_t mStdErr;
   size_t mOps = 0;
 
   // The number of slots that have been used. It is used to iterate over slots

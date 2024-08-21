@@ -150,6 +150,7 @@
 #include "mozilla/DoublyLinkedList.h"
 #include "mozilla/HelperMacros.h"
 #include "mozilla/Likely.h"
+#include "mozilla/Literals.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/RandomNum.h"
 // Note: MozTaggedAnonymousMmap() could call an LD_PRELOADed mmap
@@ -162,6 +163,7 @@
 #include "mozilla/fallible.h"
 #include "rb.h"
 #include "Mutex.h"
+#include "PHC.h"
 #include "Utils.h"
 
 #if defined(XP_WIN)
@@ -191,9 +193,6 @@ using namespace mozilla;
 // track which pages have been MADV_FREE'd.  You can then call
 // jemalloc_purge_freed_pages(), which will force the OS to release those
 // MADV_FREE'd pages, making the process's RSS reflect its true memory usage.
-//
-// The jemalloc_purge_freed_pages definition in memory/build/mozmemory.h needs
-// to be adjusted if MALLOC_DOUBLE_PURGE is ever enabled on Linux.
 
 #ifdef XP_DARWIN
 #  define MALLOC_DOUBLE_PURGE
@@ -283,7 +282,7 @@ static inline void* _mmap(void* addr, size_t length, int prot, int flags,
   return (void*)syscall(SYS_mmap, &args);
 #    else
 #      if defined(ANDROID) && defined(__aarch64__) && defined(SYS_mmap2)
-// Android NDK defines SYS_mmap2 for AArch64 despite it not supporting mmap2.
+  // Android NDK defines SYS_mmap2 for AArch64 despite it not supporting mmap2.
 #        undef SYS_mmap2
 #      endif
 #      ifdef SYS_mmap2
@@ -315,13 +314,14 @@ struct arena_chunk_map_t {
   // Run address (or size) and various flags are stored together.  The bit
   // layout looks like (assuming 32-bit system):
   //
-  //   ???????? ???????? ????---- -mckdzla
+  //   ???????? ???????? ????---- fmckdzla
   //
   // ? : Unallocated: Run address for first/last pages, unset for internal
   //                  pages.
   //     Small: Run address.
   //     Large: Run size for first page, unset for trailing pages.
   // - : Unused.
+  // f : Fresh memory?
   // m : MADV_FREE/MADV_DONTNEED'ed?
   // c : decommitted?
   // k : key?
@@ -354,25 +354,49 @@ struct arena_chunk_map_t {
   //     -------- -------- -------- ------la
   size_t bits;
 
-// Note that CHUNK_MAP_DECOMMITTED's meaning varies depending on whether
-// MALLOC_DECOMMIT and MALLOC_DOUBLE_PURGE are defined.
+// A page can be in one of several states.
 //
-// If MALLOC_DECOMMIT is defined, a page which is CHUNK_MAP_DECOMMITTED must be
-// re-committed with pages_commit() before it may be touched.  If
-// MALLOC_DECOMMIT is defined, MALLOC_DOUBLE_PURGE may not be defined.
+// CHUNK_MAP_ALLOCATED marks allocated pages, the only other bit that can be
+// combined is CHUNK_MAP_LARGE.
 //
-// If neither MALLOC_DECOMMIT nor MALLOC_DOUBLE_PURGE is defined, pages which
-// are madvised (with either MADV_DONTNEED or MADV_FREE) are marked with
-// CHUNK_MAP_MADVISED.
+// CHUNK_MAP_LARGE may be combined with CHUNK_MAP_ALLOCATED to show that the
+// allocation is a "large" allocation (see SizeClass), rather than a run of
+// small allocations.  The interpretation of the gPageSizeMask bits depends onj
+// this bit, see the description above.
 //
-// Otherwise, if MALLOC_DECOMMIT is not defined and MALLOC_DOUBLE_PURGE is
-// defined, then a page which is madvised is marked as CHUNK_MAP_MADVISED.
-// When it's finally freed with jemalloc_purge_freed_pages, the page is marked
-// as CHUNK_MAP_DECOMMITTED.
+// CHUNK_MAP_DIRTY is used to mark pages that were allocated and are now freed.
+// They may contain their previous contents (or poison).  CHUNK_MAP_DIRTY, when
+// set, must be the only set bit.
+//
+// CHUNK_MAP_MADVISED marks pages which are madvised (with either MADV_DONTNEED
+// or MADV_FREE).  This is only valid if MALLOC_DECOMMIT is not defined.  When
+// set, it must be the only bit set.
+//
+// CHUNK_MAP_DECOMMITTED is used if CHUNK_MAP_DECOMMITTED is defined.  Unused
+// dirty pages may be decommitted and marked as CHUNK_MAP_DECOMMITTED.  They
+// must be re-committed with pages_commit() before they can be touched.
+//
+// CHUNK_MAP_FRESH is set on pages that have never been used before (the chunk
+// is newly allocated or they were decommitted and have now been recommitted.
+// CHUNK_MAP_FRESH is also used for "double purged" pages meaning that they were
+// madvised and later were unmapped and remapped to force them out of the
+// program's resident set.  This is enabled when MALLOC_DOUBLE_PURGE is defined
+// (eg on MacOS).
+//
+// CHUNK_MAP_ZEROED is set on pages that are known to contain zeros.
+//
+// CHUNK_MAP_DIRTY, _DECOMMITED _MADVISED and _FRESH are always mutually
+// exclusive.
+//
+// CHUNK_MAP_KEY is never used on real pages, only on lookup keys.
+//
+#define CHUNK_MAP_FRESH ((size_t)0x80U)
 #define CHUNK_MAP_MADVISED ((size_t)0x40U)
 #define CHUNK_MAP_DECOMMITTED ((size_t)0x20U)
 #define CHUNK_MAP_MADVISED_OR_DECOMMITTED \
   (CHUNK_MAP_MADVISED | CHUNK_MAP_DECOMMITTED)
+#define CHUNK_MAP_FRESH_MADVISED_OR_DECOMMITTED \
+  (CHUNK_MAP_FRESH | CHUNK_MAP_MADVISED | CHUNK_MAP_DECOMMITTED)
 #define CHUNK_MAP_KEY ((size_t)0x10U)
 #define CHUNK_MAP_DIRTY ((size_t)0x08U)
 #define CHUNK_MAP_ZEROED ((size_t)0x04U)
@@ -411,7 +435,13 @@ struct arena_chunk_t {
 // Maximum size of L1 cache line.  This is used to avoid cache line aliasing,
 // so over-estimates are okay (up to a point), but under-estimates will
 // negatively affect performance.
-static const size_t kCacheLineSize = 64;
+static const size_t kCacheLineSize =
+#if defined(XP_DARWIN) && defined(__aarch64__)
+    128
+#else
+    64
+#endif
+    ;
 
 // Our size classes are inclusive ranges of memory sizes.  By describing the
 // minimums and how memory is allocated in each range the maximums can be
@@ -639,7 +669,7 @@ static void* base_alloc(size_t aSize);
 // threads are created.
 static bool malloc_initialized;
 #else
-static Atomic<bool, SequentiallyConsistent> malloc_initialized;
+static Atomic<bool, MemoryOrdering::ReleaseAcquire> malloc_initialized;
 #endif
 
 static StaticMutex gInitLock MOZ_UNANNOTATED = {STATIC_MUTEX_INIT};
@@ -651,7 +681,7 @@ struct arena_stats_t {
   // Number of bytes currently mapped.
   size_t mapped;
 
-  // Current number of committed pages.
+  // Current number of committed pages (non madvised/decommitted)
   size_t committed;
 
   // Per-size-category statistics.
@@ -1086,8 +1116,10 @@ struct arena_t {
   // and it keeps the value it had after the destructor.
   arena_id_t mId;
 
-  // All operations on this arena require that lock be locked.
-  Mutex mLock MOZ_UNANNOTATED;
+  // All operations on this arena require that lock be locked.  The MaybeMutex
+  // class well elude locking if the arena is accessed from a single thread
+  // only.
+  MaybeMutex mLock MOZ_UNANNOTATED;
 
   arena_stats_t mStats;
 
@@ -1135,6 +1167,11 @@ struct arena_t {
   // memory is mapped for each arena.
   size_t mNumDirty;
 
+  // The current number of pages that are available without a system call (but
+  // probably a page fault).
+  size_t mNumMAdvised;
+  size_t mNumFresh;
+
   // Maximum value allowed for mNumDirty.
   size_t mMaxDirty;
 
@@ -1178,7 +1215,7 @@ struct arena_t {
   ~arena_t();
 
  private:
-  void InitChunk(arena_chunk_t* aChunk, bool aZeroed);
+  void InitChunk(arena_chunk_t* aChunk, size_t aMinCommittedPages);
 
   // This may return a chunk that should be destroyed with chunk_dealloc outside
   // of the arena lock.  It is not the same chunk as was passed in (since that
@@ -1242,10 +1279,19 @@ struct arena_t {
 
   size_t EffectiveMaxDirty();
 
+#ifdef MALLOC_DECOMMIT
+  // During a commit operation (for aReqPages) we have the opportunity of
+  // commiting at most aRemPages additional pages.  How many should we commit to
+  // amortise system calls?
+  size_t ExtraCommitPages(size_t aReqPages, size_t aRemainingPages);
+#endif
+
   // Passing one means purging all.
   void Purge(size_t aMaxDirty);
 
   void HardPurge();
+
+  bool IsMainThreadOnly() const { return !mLock.LockIsEnabled(); }
 
   void* operator new(size_t aCount) = delete;
 
@@ -1276,6 +1322,7 @@ class ArenaCollection {
   bool Init() {
     mArenas.Init();
     mPrivateArenas.Init();
+    mMainThreadArenas.Init();
     arena_params_t params;
     // The main arena allows more dirty pages than the default for other arenas.
     params.mMaxDirty = opt_dirty_max;
@@ -1290,9 +1337,11 @@ class ArenaCollection {
 
   void DisposeArena(arena_t* aArena) {
     MutexAutoLock lock(mLock);
-    MOZ_RELEASE_ASSERT(mPrivateArenas.Search(aArena),
-                       "Can only dispose of private arenas");
-    mPrivateArenas.Remove(aArena);
+    Tree& tree =
+        aArena->IsMainThreadOnly() ? mMainThreadArenas : mPrivateArenas;
+
+    MOZ_RELEASE_ASSERT(tree.Search(aArena), "Arena not in tree");
+    tree.Remove(aArena);
     delete aArena;
   }
 
@@ -1304,8 +1353,11 @@ class ArenaCollection {
   using Tree = RedBlackTree<arena_t, ArenaTreeTrait>;
 
   struct Iterator : Tree::Iterator {
-    explicit Iterator(Tree* aTree, Tree* aSecondTree)
-        : Tree::Iterator(aTree), mNextTree(aSecondTree) {}
+    explicit Iterator(Tree* aTree, Tree* aSecondTree,
+                      Tree* aThirdTree = nullptr)
+        : Tree::Iterator(aTree),
+          mSecondTree(aSecondTree),
+          mThirdTree(aThirdTree) {}
 
     Item<Iterator> begin() {
       return Item<Iterator>(this, *Tree::Iterator::begin());
@@ -1315,31 +1367,74 @@ class ArenaCollection {
 
     arena_t* Next() {
       arena_t* result = Tree::Iterator::Next();
-      if (!result && mNextTree) {
-        new (this) Iterator(mNextTree, nullptr);
+      if (!result && mSecondTree) {
+        new (this) Iterator(mSecondTree, mThirdTree);
         result = *Tree::Iterator::begin();
       }
       return result;
     }
 
    private:
-    Tree* mNextTree;
+    Tree* mSecondTree;
+    Tree* mThirdTree;
   };
 
-  Iterator iter() { return Iterator(&mArenas, &mPrivateArenas); }
+  Iterator iter() {
+    if (IsOnMainThreadWeak()) {
+      return Iterator(&mArenas, &mPrivateArenas, &mMainThreadArenas);
+    }
+    return Iterator(&mArenas, &mPrivateArenas);
+  }
 
   inline arena_t* GetDefault() { return mDefaultArena; }
 
   Mutex mLock MOZ_UNANNOTATED;
 
+  // We're running on the main thread which is set by a call to SetMainThread().
+  bool IsOnMainThread() const {
+    return mMainThreadId.isSome() && mMainThreadId.value() == GetThreadId();
+  }
+
+  // We're running on the main thread or SetMainThread() has never been called.
+  bool IsOnMainThreadWeak() const {
+    return mMainThreadId.isNothing() || IsOnMainThread();
+  }
+
+  // After a fork set the new thread ID in the child.
+  void PostForkFixMainThread() {
+    if (mMainThreadId.isSome()) {
+      // Only if the main thread has been defined.
+      mMainThreadId = Some(GetThreadId());
+    }
+  }
+
+  void SetMainThread() {
+    MutexAutoLock lock(mLock);
+    MOZ_ASSERT(mMainThreadId.isNothing());
+    mMainThreadId = Some(GetThreadId());
+  }
+
  private:
-  inline arena_t* GetByIdInternal(arena_id_t aArenaId, bool aIsPrivate);
+  const static arena_id_t MAIN_THREAD_ARENA_BIT = 0x1;
+
+  inline arena_t* GetByIdInternal(Tree& aTree, arena_id_t aArenaId);
+
+  arena_id_t MakeRandArenaId(bool aIsMainThreadOnly) const;
+  static bool ArenaIdIsMainThreadOnly(arena_id_t aArenaId) {
+    return aArenaId & MAIN_THREAD_ARENA_BIT;
+  }
 
   arena_t* mDefaultArena;
   arena_id_t mLastPublicArenaId;
+
+  // Accessing mArenas and mPrivateArenas can only be done while holding mLock.
+  // Since mMainThreadArenas can only be used from the main thread, it can be
+  // accessed without a lock which is why it is a seperate tree.
   Tree mArenas;
   Tree mPrivateArenas;
-  Atomic<int32_t> mDefaultMaxDirtyPageModifier;
+  Tree mMainThreadArenas;
+  Atomic<int32_t, MemoryOrdering::Relaxed> mDefaultMaxDirtyPageModifier;
+  Maybe<ThreadId> mMainThreadId;
 };
 
 static ArenaCollection gArenas;
@@ -1404,31 +1499,45 @@ static detail::ThreadLocal<arena_t*, detail::ThreadLocalKeyStorage>
 
 // *****************************
 // Runtime configuration options.
-//
-// Junk - write "junk" to freshly allocated cells.
-// Poison - write "poison" to cells upon deallocation.
-
-const uint8_t kAllocJunk = 0xe4;
-const uint8_t kAllocPoison = 0xe5;
 
 #ifdef MALLOC_RUNTIME_CONFIG
-static bool opt_junk = true;
-static bool opt_poison = true;
-static bool opt_zero = false;
+#  define MALLOC_RUNTIME_VAR static
 #else
-static const bool opt_junk = false;
-static const bool opt_poison = true;
-static const bool opt_zero = false;
+#  define MALLOC_RUNTIME_VAR static const
 #endif
+
+enum PoisonType {
+  NONE,
+  SOME,
+  ALL,
+};
+
+MALLOC_RUNTIME_VAR bool opt_junk = false;
+MALLOC_RUNTIME_VAR bool opt_zero = false;
+
+#ifdef EARLY_BETA_OR_EARLIER
+MALLOC_RUNTIME_VAR PoisonType opt_poison = ALL;
+#else
+MALLOC_RUNTIME_VAR PoisonType opt_poison = SOME;
+#endif
+
+// Keep this larger than and ideally a multiple of kCacheLineSize;
+MALLOC_RUNTIME_VAR size_t opt_poison_size = 256;
+#ifndef MALLOC_RUNTIME_CONFIG
+static_assert(opt_poison_size >= kCacheLineSize);
+static_assert((opt_poison_size % kCacheLineSize) == 0);
+#endif
+
 static bool opt_randomize_small = true;
 
 // ***************************************************************************
 // Begin forward declarations.
 
-static void* chunk_alloc(size_t aSize, size_t aAlignment, bool aBase,
-                         bool* aZeroed = nullptr);
+static void* chunk_alloc(size_t aSize, size_t aAlignment, bool aBase);
 static void chunk_dealloc(void* aChunk, size_t aSize, ChunkType aType);
-static void chunk_ensure_zero(void* aPtr, size_t aSize, bool aZeroed);
+#ifdef MOZ_DEBUG
+static void chunk_assert_zero(void* aPtr, size_t aSize);
+#endif
 static void huge_dalloc(void* aPtr, arena_t* aArena);
 static bool malloc_init_hard();
 
@@ -1451,10 +1560,9 @@ FORK_HOOK void _malloc_postfork_child(void);
 // initialization.
 // Returns whether the allocator was successfully initialized.
 static inline bool malloc_init() {
-  if (malloc_initialized == false) {
+  if (!malloc_initialized) {
     return malloc_init_hard();
   }
-
   return true;
 }
 
@@ -1497,9 +1605,19 @@ static inline size_t GetChunkOffsetForPtr(const void* aPtr) {
 static inline const char* _getprogname(void) { return "<jemalloc>"; }
 
 static inline void MaybePoison(void* aPtr, size_t aSize) {
-  if (opt_poison) {
-    memset(aPtr, kAllocPoison, aSize);
+  size_t size;
+  switch (opt_poison) {
+    case NONE:
+      return;
+    case SOME:
+      size = std::min(aSize, opt_poison_size);
+      break;
+    case ALL:
+      size = aSize;
+      break;
   }
+  MOZ_ASSERT(size != 0 && size <= aSize);
+  memset(aPtr, kAllocPoison, size);
 }
 
 // Fill the given range of memory with zeroes or junk depending on opt_junk and
@@ -1554,7 +1672,8 @@ static inline StallSpecs GetStallSpecs() {
 // and retry rather than returning immediately, in hopes that the page file is
 // about to be expanded by Windows.
 //
-// Ref: https://docs.microsoft.com/en-us/troubleshoot/windows-client/performance/slow-page-file-growth-memory-allocation-errors
+// Ref:
+// https://docs.microsoft.com/en-us/troubleshoot/windows-client/performance/slow-page-file-growth-memory-allocation-errors
 [[nodiscard]] void* MozVirtualAlloc(LPVOID lpAddress, SIZE_T dwSize,
                                     DWORD flAllocationType, DWORD flProtect) {
   DWORD const lastError = ::GetLastError();
@@ -2028,11 +2147,11 @@ bool AddressRadixTree<Bits>::Set(void* aKey, void* aValue) {
 
 // Return the offset between a and the nearest aligned address at or below a.
 #define ALIGNMENT_ADDR2OFFSET(a, alignment) \
-  ((size_t)((uintptr_t)(a) & ((alignment)-1)))
+  ((size_t)((uintptr_t)(a) & ((alignment) - 1)))
 
 // Return the smallest alignment multiple that is >= s.
 #define ALIGNMENT_CEILING(s, alignment) \
-  (((s) + ((alignment)-1)) & (~((alignment)-1)))
+  (((s) + ((alignment) - 1)) & (~((alignment) - 1)))
 
 static void* pages_trim(void* addr, size_t alloc_size, size_t leadsize,
                         size_t size) {
@@ -2130,7 +2249,7 @@ static bool pages_purge(void* addr, size_t length, bool force_zero) {
   return true;
 }
 
-static void* chunk_recycle(size_t aSize, size_t aAlignment, bool* aZeroed) {
+static void* chunk_recycle(size_t aSize, size_t aAlignment) {
   extent_node_t key;
 
   size_t alloc_size = aSize + aAlignment - kChunkSize;
@@ -2151,10 +2270,11 @@ static void* chunk_recycle(size_t aSize, size_t aAlignment, bool* aZeroed) {
   MOZ_ASSERT(node->mSize >= leadsize + aSize);
   size_t trailsize = node->mSize - leadsize - aSize;
   void* ret = (void*)((uintptr_t)node->mAddr + leadsize);
-  ChunkType chunk_type = node->mChunkType;
-  if (aZeroed) {
-    *aZeroed = (chunk_type == ZEROED_CHUNK);
-  }
+
+  // All recycled chunks are zeroed (because they're purged) before being
+  // recycled.
+  MOZ_ASSERT(node->mChunkType == ZEROED_CHUNK);
+
   // Remove node from the tree.
   gChunksBySize.Remove(node);
   gChunksByAddress.Remove(node);
@@ -2176,14 +2296,14 @@ static void* chunk_recycle(size_t aSize, size_t aAlignment, bool* aZeroed) {
       chunks_mtx.Unlock();
       node = ExtentAlloc::alloc();
       if (!node) {
-        chunk_dealloc(ret, aSize, chunk_type);
+        chunk_dealloc(ret, aSize, ZEROED_CHUNK);
         return nullptr;
       }
       chunks_mtx.Lock();
     }
     node->mAddr = (void*)((uintptr_t)(ret) + aSize);
     node->mSize = trailsize;
-    node->mChunkType = chunk_type;
+    node->mChunkType = ZEROED_CHUNK;
     gChunksBySize.Insert(node);
     gChunksByAddress.Insert(node);
     node = nullptr;
@@ -2198,10 +2318,6 @@ static void* chunk_recycle(size_t aSize, size_t aAlignment, bool* aZeroed) {
   }
   if (!pages_commit(ret, aSize)) {
     return nullptr;
-  }
-  // pages_commit is guaranteed to zero the chunk.
-  if (aZeroed) {
-    *aZeroed = true;
   }
 
   return ret;
@@ -2223,8 +2339,7 @@ static void* chunk_recycle(size_t aSize, size_t aAlignment, bool* aZeroed) {
 // `zeroed` is an outvalue that returns whether the allocated memory is
 // guaranteed to be full of zeroes. It can be omitted when the caller doesn't
 // care about the result.
-static void* chunk_alloc(size_t aSize, size_t aAlignment, bool aBase,
-                         bool* aZeroed) {
+static void* chunk_alloc(size_t aSize, size_t aAlignment, bool aBase) {
   void* ret = nullptr;
 
   MOZ_ASSERT(aSize != 0);
@@ -2235,13 +2350,10 @@ static void* chunk_alloc(size_t aSize, size_t aAlignment, bool aBase,
   // Base allocations can't be fulfilled by recycling because of
   // possible deadlock or infinite recursion.
   if (CAN_RECYCLE(aSize) && !aBase) {
-    ret = chunk_recycle(aSize, aAlignment, aZeroed);
+    ret = chunk_recycle(aSize, aAlignment);
   }
   if (!ret) {
     ret = chunk_alloc_mmap(aSize, aAlignment);
-    if (aZeroed) {
-      *aZeroed = true;
-    }
   }
   if (ret && !aBase) {
     if (!gChunkRTree.Set(ret, ret)) {
@@ -2254,21 +2366,16 @@ static void* chunk_alloc(size_t aSize, size_t aAlignment, bool aBase,
   return ret;
 }
 
-static void chunk_ensure_zero(void* aPtr, size_t aSize, bool aZeroed) {
-  if (aZeroed == false) {
-    memset(aPtr, 0, aSize);
-  }
 #ifdef MOZ_DEBUG
-  else {
-    size_t i;
-    size_t* p = (size_t*)(uintptr_t)aPtr;
+static void chunk_assert_zero(void* aPtr, size_t aSize) {
+  size_t i;
+  size_t* p = (size_t*)(uintptr_t)aPtr;
 
-    for (i = 0; i < aSize / sizeof(size_t); i++) {
-      MOZ_ASSERT(p[i] == 0);
-    }
+  for (i = 0; i < aSize / sizeof(size_t); i++) {
+    MOZ_ASSERT(p[i] == 0);
   }
-#endif
 }
+#endif
 
 static void chunk_record(void* aChunk, size_t aSize, ChunkType aType) {
   extent_node_t key;
@@ -2396,7 +2503,6 @@ static inline arena_t* thread_local_arena(bool enabled) {
   return arena;
 }
 
-template <>
 inline void MozJemalloc::jemalloc_thread_local_arena(bool aEnabled) {
   if (malloc_init()) {
     thread_local_arena(aEnabled);
@@ -2417,6 +2523,8 @@ static inline arena_t* choose_arena(size_t size) {
   } else {
     // Check TLS to see if our thread has requested a pinned arena.
     ret = thread_arena.get();
+    // If ret is non-null, it must not be in the first page.
+    MOZ_DIAGNOSTIC_ASSERT_IF(ret, (size_t)ret >= gPageSize);
     if (!ret) {
       // Nothing in TLS. Pin this thread to the default arena.
       ret = thread_local_arena(false);
@@ -2527,57 +2635,71 @@ static inline void arena_run_reg_dalloc(arena_run_t* run, arena_bin_t* bin,
 
 bool arena_t::SplitRun(arena_run_t* aRun, size_t aSize, bool aLarge,
                        bool aZero) {
-  arena_chunk_t* chunk;
-  size_t old_ndirty, run_ind, total_pages, need_pages, rem_pages, i;
-
-  chunk = GetChunkForPtr(aRun);
-  old_ndirty = chunk->ndirty;
-  run_ind = (unsigned)((uintptr_t(aRun) - uintptr_t(chunk)) >> gPageSize2Pow);
-  total_pages = (chunk->map[run_ind].bits & ~gPageSizeMask) >> gPageSize2Pow;
-  need_pages = (aSize >> gPageSize2Pow);
+  arena_chunk_t* chunk = GetChunkForPtr(aRun);
+  size_t old_ndirty = chunk->ndirty;
+  size_t run_ind =
+      (unsigned)((uintptr_t(aRun) - uintptr_t(chunk)) >> gPageSize2Pow);
+  size_t total_pages =
+      (chunk->map[run_ind].bits & ~gPageSizeMask) >> gPageSize2Pow;
+  size_t need_pages = (aSize >> gPageSize2Pow);
   MOZ_ASSERT(need_pages > 0);
   MOZ_ASSERT(need_pages <= total_pages);
-  rem_pages = total_pages - need_pages;
+  size_t rem_pages = total_pages - need_pages;
 
-  for (i = 0; i < need_pages; i++) {
+#ifdef MALLOC_DECOMMIT
+  size_t i = 0;
+  while (i < need_pages) {
     // Commit decommitted pages if necessary.  If a decommitted
     // page is encountered, commit all needed adjacent decommitted
     // pages in one operation, in order to reduce system call
     // overhead.
-    if (chunk->map[run_ind + i].bits & CHUNK_MAP_MADVISED_OR_DECOMMITTED) {
-      size_t j;
-
+    if (chunk->map[run_ind + i].bits & CHUNK_MAP_DECOMMITTED) {
       // Advance i+j to just past the index of the last page
-      // to commit.  Clear CHUNK_MAP_DECOMMITTED and
-      // CHUNK_MAP_MADVISED along the way.
-      for (j = 0; i + j < need_pages && (chunk->map[run_ind + i + j].bits &
-                                         CHUNK_MAP_MADVISED_OR_DECOMMITTED);
+      // to commit.  Clear CHUNK_MAP_DECOMMITTED along the way.
+      size_t j;
+      for (j = 0; i + j < need_pages &&
+                  (chunk->map[run_ind + i + j].bits & CHUNK_MAP_DECOMMITTED);
            j++) {
-        // DECOMMITTED and MADVISED are mutually exclusive.
-        MOZ_ASSERT(!(chunk->map[run_ind + i + j].bits & CHUNK_MAP_DECOMMITTED &&
-                     chunk->map[run_ind + i + j].bits & CHUNK_MAP_MADVISED));
-
-        chunk->map[run_ind + i + j].bits &= ~CHUNK_MAP_MADVISED_OR_DECOMMITTED;
+        // DECOMMITTED, MADVISED and FRESH are mutually exclusive.
+        MOZ_ASSERT((chunk->map[run_ind + i + j].bits &
+                    (CHUNK_MAP_FRESH | CHUNK_MAP_MADVISED)) == 0);
       }
 
-#ifdef MALLOC_DECOMMIT
-      bool committed = pages_commit(
-          (void*)(uintptr_t(chunk) + ((run_ind + i) << gPageSize2Pow)),
-          j << gPageSize2Pow);
+      // Consider committing more pages to amortise calls to VirtualAlloc.
+      // This only makes sense at the edge of our run hence the if condition
+      // here.
+      if (i + j == need_pages) {
+        size_t extra_commit = ExtraCommitPages(j, rem_pages);
+        for (; i + j < need_pages + extra_commit &&
+               (chunk->map[run_ind + i + j].bits &
+                CHUNK_MAP_MADVISED_OR_DECOMMITTED);
+             j++) {
+          MOZ_ASSERT((chunk->map[run_ind + i + j].bits &
+                      (CHUNK_MAP_FRESH | CHUNK_MAP_MADVISED)) == 0);
+        }
+      }
+
+      if (!pages_commit(
+              (void*)(uintptr_t(chunk) + ((run_ind + i) << gPageSize2Pow)),
+              j << gPageSize2Pow)) {
+        return false;
+      }
+
       // pages_commit zeroes pages, so mark them as such if it succeeded.
       // That's checked further below to avoid manually zeroing the pages.
       for (size_t k = 0; k < j; k++) {
-        chunk->map[run_ind + i + k].bits |=
-            committed ? CHUNK_MAP_ZEROED : CHUNK_MAP_DECOMMITTED;
+        chunk->map[run_ind + i + k].bits =
+            (chunk->map[run_ind + i + k].bits & ~CHUNK_MAP_DECOMMITTED) |
+            CHUNK_MAP_ZEROED | CHUNK_MAP_FRESH;
       }
-      if (!committed) {
-        return false;
-      }
-#endif
 
-      mStats.committed += j;
+      mNumFresh += j;
+      i += j;
+    } else {
+      i++;
     }
   }
+#endif
 
   mRunsAvail.Remove(&chunk->map[run_ind]);
 
@@ -2592,7 +2714,7 @@ bool arena_t::SplitRun(arena_run_t* aRun, size_t aSize, bool aLarge,
     mRunsAvail.Insert(&chunk->map[run_ind + need_pages]);
   }
 
-  for (i = 0; i < need_pages; i++) {
+  for (size_t i = 0; i < need_pages; i++) {
     // Zero if necessary.
     if (aZero) {
       if ((chunk->map[run_ind + i].bits & CHUNK_MAP_ZEROED) == 0) {
@@ -2607,9 +2729,21 @@ bool arena_t::SplitRun(arena_run_t* aRun, size_t aSize, bool aLarge,
       chunk->ndirty--;
       mNumDirty--;
       // CHUNK_MAP_DIRTY is cleared below.
+    } else if (chunk->map[run_ind + i].bits & CHUNK_MAP_MADVISED) {
+      mStats.committed++;
+      mNumMAdvised--;
     }
 
-    // Initialize the chunk map.
+    if (chunk->map[run_ind + i].bits & CHUNK_MAP_FRESH) {
+      mStats.committed++;
+      mNumFresh--;
+    }
+
+    // This bit has already been cleared
+    MOZ_ASSERT(!(chunk->map[run_ind + i].bits & CHUNK_MAP_DECOMMITTED));
+
+    // Initialize the chunk map.  This clears the dirty, zeroed and madvised
+    // bits, decommitted is cleared above.
     if (aLarge) {
       chunk->map[run_ind + i].bits = CHUNK_MAP_LARGE | CHUNK_MAP_ALLOCATED;
     } else {
@@ -2631,21 +2765,7 @@ bool arena_t::SplitRun(arena_run_t* aRun, size_t aSize, bool aLarge,
   return true;
 }
 
-void arena_t::InitChunk(arena_chunk_t* aChunk, bool aZeroed) {
-  size_t i;
-  // WARNING: The following relies on !aZeroed meaning "used to be an arena
-  // chunk".
-  // When the chunk we're initializating as an arena chunk is zeroed, we
-  // mark all runs are decommitted and zeroed.
-  // When it is not, which we can assume means it's a recycled arena chunk,
-  // all it can contain is an arena chunk header (which we're overwriting),
-  // and zeroed or poisoned memory (because a recycled arena chunk will
-  // have been emptied before being recycled). In that case, we can get
-  // away with reusing the chunk as-is, marking all runs as madvised.
-
-  size_t flags =
-      aZeroed ? CHUNK_MAP_DECOMMITTED | CHUNK_MAP_ZEROED : CHUNK_MAP_MADVISED;
-
+void arena_t::InitChunk(arena_chunk_t* aChunk, size_t aMinCommittedPages) {
   mStats.mapped += kChunkSize;
 
   aChunk->arena = this;
@@ -2653,44 +2773,63 @@ void arena_t::InitChunk(arena_chunk_t* aChunk, bool aZeroed) {
   // Claim that no pages are in use, since the header is merely overhead.
   aChunk->ndirty = 0;
 
-  // Initialize the map to contain one maximal free untouched run.
-  arena_run_t* run = (arena_run_t*)(uintptr_t(aChunk) +
-                                    (gChunkHeaderNumPages << gPageSize2Pow));
+  // Setup the chunk's pages in two phases.  First we mark which pages are
+  // committed & decommitted and perform the decommit.  Then we update the map
+  // to create the runs.
 
   // Clear the bits for the real header pages.
+  size_t i;
   for (i = 0; i < gChunkHeaderNumPages - 1; i++) {
     aChunk->map[i].bits = 0;
   }
-  // Mark the leading guard page (last header page) as decommitted.
+  mStats.committed += gChunkHeaderNumPages - 1;
+
+  // Decommit the last header page (=leading page) as a guard.
+  pages_decommit((void*)(uintptr_t(aChunk) + (i << gPageSize2Pow)), gPageSize);
   aChunk->map[i++].bits = CHUNK_MAP_DECOMMITTED;
 
-  // Mark the area usable for runs as available, note size at start and end
-  aChunk->map[i++].bits = gMaxLargeClass | flags;
-  for (; i < gChunkNumPages - 2; i++) {
-    aChunk->map[i].bits = flags;
-  }
-  aChunk->map[gChunkNumPages - 2].bits = gMaxLargeClass | flags;
-
-  // Mark the trailing guard page as decommitted.
-  aChunk->map[gChunkNumPages - 1].bits = CHUNK_MAP_DECOMMITTED;
-
+  // If MALLOC_DECOMMIT is enabled then commit only the pages we're about to
+  // use.  Otherwise commit all of them.
 #ifdef MALLOC_DECOMMIT
-  // Start out decommitted, in order to force a closer correspondence
-  // between dirty pages and committed untouched pages. This includes
-  // leading and trailing guard pages.
-  pages_decommit((void*)(uintptr_t(run) - gPageSize),
-                 gMaxLargeClass + 2 * gPageSize);
+  size_t n_fresh_pages =
+      aMinCommittedPages +
+      ExtraCommitPages(
+          aMinCommittedPages,
+          gChunkNumPages - gChunkHeaderNumPages - aMinCommittedPages - 1);
 #else
-  // Decommit the last header page (=leading page) as a guard.
-  pages_decommit((void*)(uintptr_t(run) - gPageSize), gPageSize);
-  // Decommit the last page as a guard.
-  pages_decommit((void*)(uintptr_t(aChunk) + kChunkSize - gPageSize),
-                 gPageSize);
+  size_t n_fresh_pages = gChunkNumPages - 1 - gChunkHeaderNumPages;
 #endif
 
-  mStats.committed += gChunkHeaderNumPages;
+  // The committed pages are marked as Fresh.  Our caller, SplitRun will update
+  // this when it uses them.
+  for (size_t j = 0; j < n_fresh_pages; j++) {
+    aChunk->map[i + j].bits = CHUNK_MAP_ZEROED | CHUNK_MAP_FRESH;
+  }
+  i += n_fresh_pages;
+  mNumFresh += n_fresh_pages;
 
-  // Insert the run into the tree of available runs.
+#ifndef MALLOC_DECOMMIT
+  // If MALLOC_DECOMMIT isn't defined then all the pages are fresh and setup in
+  // the loop above.
+  MOZ_ASSERT(i == gChunkNumPages - 1);
+#endif
+
+  // If MALLOC_DECOMMIT is defined, then this will decommit the remainder of the
+  // chunk plus the last page which is a guard page, if it is not defined it
+  // will only decommit the guard page.
+  pages_decommit((void*)(uintptr_t(aChunk) + (i << gPageSize2Pow)),
+                 (gChunkNumPages - i) << gPageSize2Pow);
+  for (; i < gChunkNumPages; i++) {
+    aChunk->map[i].bits = CHUNK_MAP_DECOMMITTED;
+  }
+
+  // aMinCommittedPages will create a valid run.
+  MOZ_ASSERT(aMinCommittedPages > 0);
+  MOZ_ASSERT(aMinCommittedPages <= gChunkNumPages - gChunkHeaderNumPages - 1);
+
+  // Create the run.
+  aChunk->map[gChunkHeaderNumPages].bits |= gMaxLargeClass;
+  aChunk->map[gChunkNumPages - 2].bits |= gMaxLargeClass;
   mRunsAvail.Insert(&aChunk->map[gChunkHeaderNumPages]);
 
 #ifdef MALLOC_DOUBLE_PURGE
@@ -2706,6 +2845,25 @@ arena_chunk_t* arena_t::DeallocChunk(arena_chunk_t* aChunk) {
       mStats.committed -= mSpare->ndirty;
     }
 
+    // Count the number of madvised/fresh pages and update the stats.
+    size_t madvised = 0;
+    size_t fresh = 0;
+    for (size_t i = gChunkHeaderNumPages; i < gChunkNumPages - 1; i++) {
+      // There must not be any pages that are not fresh, madvised, decommitted
+      // or dirty.
+      MOZ_ASSERT(mSpare->map[i].bits &
+                 (CHUNK_MAP_FRESH_MADVISED_OR_DECOMMITTED | CHUNK_MAP_DIRTY));
+
+      if (mSpare->map[i].bits & CHUNK_MAP_MADVISED) {
+        madvised++;
+      } else if (mSpare->map[i].bits & CHUNK_MAP_FRESH) {
+        fresh++;
+      }
+    }
+
+    mNumMAdvised -= madvised;
+    mNumFresh -= fresh;
+
 #ifdef MALLOC_DOUBLE_PURGE
     if (mChunksMAdvised.ElementProbablyInList(mSpare)) {
       mChunksMAdvised.remove(mSpare);
@@ -2713,7 +2871,7 @@ arena_chunk_t* arena_t::DeallocChunk(arena_chunk_t* aChunk) {
 #endif
 
     mStats.mapped -= kChunkSize;
-    mStats.committed -= gChunkHeaderNumPages;
+    mStats.committed -= gChunkHeaderNumPages - 1;
   }
 
   // Remove run from the tree of available runs, so that the arena does not use
@@ -2754,14 +2912,13 @@ arena_run_t* arena_t::AllocRun(size_t aSize, bool aLarge, bool aZero) {
   } else {
     // No usable runs.  Create a new chunk from which to allocate
     // the run.
-    bool zeroed;
     arena_chunk_t* chunk =
-        (arena_chunk_t*)chunk_alloc(kChunkSize, kChunkSize, false, &zeroed);
+        (arena_chunk_t*)chunk_alloc(kChunkSize, kChunkSize, false);
     if (!chunk) {
       return nullptr;
     }
 
-    InitChunk(chunk, zeroed);
+    InitChunk(chunk, aSize >> gPageSize2Pow);
     run = (arena_run_t*)(uintptr_t(chunk) +
                          (gChunkHeaderNumPages << gPageSize2Pow));
   }
@@ -2781,6 +2938,90 @@ size_t arena_t::EffectiveMaxDirty() {
 
   return modifier >= 0 ? mMaxDirty << modifier : mMaxDirty >> -modifier;
 }
+
+#ifdef MALLOC_DECOMMIT
+
+size_t arena_t::ExtraCommitPages(size_t aReqPages, size_t aRemainingPages) {
+  const int32_t modifier = gArenas.DefaultMaxDirtyPageModifier();
+  if (modifier < 0) {
+    return 0;
+  }
+
+  // The maximum size of the page cache
+  const size_t max_page_cache = EffectiveMaxDirty();
+
+  // The current size of the page cache, note that we use mNumFresh +
+  // mNumMAdvised here but Purge() does not.
+  const size_t page_cache = mNumDirty + mNumFresh + mNumMAdvised;
+
+  if (page_cache > max_page_cache) {
+    // We're already exceeding our dirty page count even though we're trying
+    // to allocate.  This can happen due to fragmentation.  Don't commit
+    // excess memory since we're probably here due to a larger allocation and
+    // small amounts of memory are certainly available in the page cache.
+    return 0;
+  }
+  if (modifier > 0) {
+    // If modifier is > 0 then we want to keep all the pages we can, but don't
+    // exceed the size of the page cache.  The subtraction cannot underflow
+    // because of the condition above.
+    return std::min(aRemainingPages, max_page_cache - page_cache);
+  }
+
+  // The rest is arbitrary and involves a some assumptions.  I've broken it down
+  // into simple expressions to document them more clearly.
+
+  // Assumption 1: a quarter of EffectiveMaxDirty() is a sensible "minimum
+  // target" for the dirty page cache.  Likewise 3 quarters is a sensible
+  // "maximum target".  Note that for the maximum we avoid using the whole page
+  // cache now so that a free that follows this allocation doesn't immeidatly
+  // call Purge (churning memory).
+  const size_t min = max_page_cache / 4;
+  const size_t max = 3 * max_page_cache / 4;
+
+  // Assumption 2: Committing 32 pages at a time is sufficient to amortise
+  // VirtualAlloc costs.
+  size_t amortisation_threshold = 32;
+
+  // extra_pages is the number of additional pages needed to meet
+  // amortisation_threshold.
+  size_t extra_pages = aReqPages < amortisation_threshold
+                           ? amortisation_threshold - aReqPages
+                           : 0;
+
+  // If committing extra_pages isn't enough to hit the minimum target then
+  // increase it.
+  if (page_cache + extra_pages < min) {
+    extra_pages = min - page_cache;
+  } else if (page_cache + extra_pages > max) {
+    // If committing extra_pages would exceed our maximum target then it may
+    // still be useful to allocate extra pages.  One of the reasons this can
+    // happen could be fragmentation of the cache,
+
+    // Therefore reduce the amortisation threshold so that we might allocate
+    // some extra pages but avoid exceeding the dirty page cache.
+    amortisation_threshold /= 2;
+    extra_pages = std::min(aReqPages < amortisation_threshold
+                               ? amortisation_threshold - aReqPages
+                               : 0,
+                           max_page_cache - page_cache);
+  }
+
+  // Cap extra_pages to aRemainingPages and adjust aRemainingPages.  We will
+  // commit at least this many extra pages.
+  extra_pages = std::min(extra_pages, aRemainingPages);
+
+  // Finally if commiting a small number of additional pages now can prevent
+  // a small commit later then try to commit a little more now, provided we
+  // don't exceed max_page_cache.
+  if ((aRemainingPages - extra_pages) < amortisation_threshold / 2 &&
+      (page_cache + aRemainingPages) < max_page_cache) {
+    return aRemainingPages;
+  }
+
+  return extra_pages;
+}
+#endif
 
 void arena_t::Purge(size_t aMaxDirty) {
   arena_chunk_t* chunk;
@@ -2817,16 +3058,16 @@ void arena_t::Purge(size_t aMaxDirty) {
 #else
         const size_t free_operation = CHUNK_MAP_MADVISED;
 #endif
-        MOZ_ASSERT((chunk->map[i].bits & CHUNK_MAP_MADVISED_OR_DECOMMITTED) ==
-                   0);
+        MOZ_ASSERT((chunk->map[i].bits &
+                    CHUNK_MAP_FRESH_MADVISED_OR_DECOMMITTED) == 0);
         chunk->map[i].bits ^= free_operation | CHUNK_MAP_DIRTY;
         // Find adjacent dirty run(s).
         for (npages = 1; i > gChunkHeaderNumPages &&
                          (chunk->map[i - 1].bits & CHUNK_MAP_DIRTY);
              npages++) {
           i--;
-          MOZ_ASSERT((chunk->map[i].bits & CHUNK_MAP_MADVISED_OR_DECOMMITTED) ==
-                     0);
+          MOZ_ASSERT((chunk->map[i].bits &
+                      CHUNK_MAP_FRESH_MADVISED_OR_DECOMMITTED) == 0);
           chunk->map[i].bits ^= free_operation | CHUNK_MAP_DIRTY;
         }
         chunk->ndirty -= npages;
@@ -2835,10 +3076,7 @@ void arena_t::Purge(size_t aMaxDirty) {
 #ifdef MALLOC_DECOMMIT
         pages_decommit((void*)(uintptr_t(chunk) + (i << gPageSize2Pow)),
                        (npages << gPageSize2Pow));
-#endif
-        mStats.committed -= npages;
-
-#ifndef MALLOC_DECOMMIT
+#else
 #  ifdef XP_SOLARIS
         posix_madvise((void*)(uintptr_t(chunk) + (i << gPageSize2Pow)),
                       (npages << gPageSize2Pow), MADV_FREE);
@@ -2846,10 +3084,13 @@ void arena_t::Purge(size_t aMaxDirty) {
         madvise((void*)(uintptr_t(chunk) + (i << gPageSize2Pow)),
                 (npages << gPageSize2Pow), MADV_FREE);
 #  endif
+        mNumMAdvised += npages;
 #  ifdef MALLOC_DOUBLE_PURGE
         madvised = true;
 #  endif
 #endif
+        mStats.committed -= npages;
+
         if (mNumDirty <= (aMaxDirty >> 1)) {
           break;
         }
@@ -3213,7 +3454,7 @@ void* arena_t::MallocSmall(size_t aSize, bool aZero) {
     }
     MOZ_ASSERT(!mRandomizeSmallAllocations || mPRNG);
 
-    MutexAutoLock lock(mLock);
+    MaybeMutexAutoLock lock(mLock);
     run = bin->mCurrentRun;
     if (MOZ_UNLIKELY(!run || run->mNumFree == 0)) {
       run = bin->mCurrentRun = GetNonFullBinRun(bin);
@@ -3249,7 +3490,7 @@ void* arena_t::MallocLarge(size_t aSize, bool aZero) {
   aSize = PAGE_CEILING(aSize);
 
   {
-    MutexAutoLock lock(mLock);
+    MaybeMutexAutoLock lock(mLock);
     ret = AllocRun(aSize, true, aZero);
     if (!ret) {
       return nullptr;
@@ -3287,7 +3528,7 @@ void* arena_t::PallocLarge(size_t aAlignment, size_t aSize, size_t aAllocSize) {
   MOZ_ASSERT((aAlignment & gPageSizeMask) == 0);
 
   {
-    MutexAutoLock lock(mLock);
+    MaybeMutexAutoLock lock(mLock);
     ret = AllocRun(aAllocSize, true, false);
     if (!ret) {
       return nullptr;
@@ -3413,7 +3654,7 @@ class AllocInfo {
   template <bool Validate = false>
   static inline AllocInfo Get(const void* aPtr) {
     // If the allocator is not initialized, the pointer can't belong to it.
-    if (Validate && malloc_initialized == false) {
+    if (Validate && !malloc_initialized) {
       return AllocInfo();
     }
 
@@ -3515,7 +3756,6 @@ class AllocInfo {
   };
 };
 
-template <>
 inline void MozJemalloc::jemalloc_ptr_info(const void* aPtr,
                                            jemalloc_ptr_info_t* aInfo) {
   arena_chunk_t* chunk = GetChunkForPtr(aPtr);
@@ -3743,10 +3983,12 @@ static inline void arena_dalloc(void* aPtr, size_t aOffset, arena_t* aArena) {
   arena_chunk_t* chunk_dealloc_delay = nullptr;
 
   {
-    MutexAutoLock lock(arena->mLock);
+    MaybeMutexAutoLock lock(arena->mLock);
     arena_chunk_map_t* mapelm = &chunk->map[pageind];
-    MOZ_RELEASE_ASSERT((mapelm->bits & CHUNK_MAP_DECOMMITTED) == 0,
-                       "Freeing in decommitted page.");
+    MOZ_RELEASE_ASSERT(
+        (mapelm->bits &
+         (CHUNK_MAP_FRESH_MADVISED_OR_DECOMMITTED | CHUNK_MAP_ZEROED)) == 0,
+        "Freeing in a page with bad bits.");
     MOZ_RELEASE_ASSERT((mapelm->bits & CHUNK_MAP_ALLOCATED) != 0,
                        "Double-free?");
     if ((mapelm->bits & CHUNK_MAP_LARGE) == 0) {
@@ -3782,7 +4024,7 @@ void arena_t::RallocShrinkLarge(arena_chunk_t* aChunk, void* aPtr, size_t aSize,
 
   // Shrink the run, and make trailing pages available for other
   // allocations.
-  MutexAutoLock lock(mLock);
+  MaybeMutexAutoLock lock(mLock);
   TrimRunTail(aChunk, (arena_run_t*)aPtr, aOldSize, aSize, true);
   mStats.allocated_large -= aOldSize - aSize;
 }
@@ -3793,7 +4035,7 @@ bool arena_t::RallocGrowLarge(arena_chunk_t* aChunk, void* aPtr, size_t aSize,
   size_t pageind = (uintptr_t(aPtr) - uintptr_t(aChunk)) >> gPageSize2Pow;
   size_t npages = aOldSize >> gPageSize2Pow;
 
-  MutexAutoLock lock(mLock);
+  MaybeMutexAutoLock lock(mLock);
   MOZ_DIAGNOSTIC_ASSERT(aOldSize ==
                         (aChunk->map[pageind].bits & ~gPageSizeMask));
 
@@ -3892,8 +4134,6 @@ void arena_t::operator delete(void* aPtr) {
 arena_t::arena_t(arena_params_t* aParams, bool aIsPrivate) {
   unsigned i;
 
-  MOZ_RELEASE_ASSERT(mLock.Init());
-
   memset(&mLink, 0, sizeof(mLink));
   memset(&mStats, 0, sizeof(arena_stats_t));
   mId = 0;
@@ -3906,9 +4146,10 @@ arena_t::arena_t(arena_params_t* aParams, bool aIsPrivate) {
   mSpare = nullptr;
 
   mRandomizeSmallAllocations = opt_randomize_small;
+  MaybeMutex::DoLock doLock = MaybeMutex::MUST_LOCK;
   if (aParams) {
-    uint32_t flags = aParams->mFlags & ARENA_FLAG_RANDOMIZE_SMALL_MASK;
-    switch (flags) {
+    uint32_t randFlags = aParams->mFlags & ARENA_FLAG_RANDOMIZE_SMALL_MASK;
+    switch (randFlags) {
       case ARENA_FLAG_RANDOMIZE_SMALL_ENABLED:
         mRandomizeSmallAllocations = true;
         break;
@@ -3920,6 +4161,23 @@ arena_t::arena_t(arena_params_t* aParams, bool aIsPrivate) {
         break;
     }
 
+    uint32_t threadFlags = aParams->mFlags & ARENA_FLAG_THREAD_MASK;
+    if (threadFlags == ARENA_FLAG_THREAD_MAIN_THREAD_ONLY) {
+      // At the moment we require that any ARENA_FLAG_THREAD_MAIN_THREAD_ONLY
+      // arenas are created and therefore always accessed by the main thread.
+      // This is for two reasons:
+      //  * it allows jemalloc_stats to read their statistics (we also require
+      //    that jemalloc_stats is only used on the main thread).
+      //  * Only main-thread or threadsafe arenas can be guanteed to be in a
+      //    consistent state after a fork() from the main thread.  If fork()
+      //    occurs off-thread then the new child process cannot use these arenas
+      //    (new children should usually exec() or exit() since other data may
+      //    also be inconsistent).
+      MOZ_ASSERT(gArenas.IsOnMainThread());
+      MOZ_ASSERT(aIsPrivate);
+      doLock = MaybeMutex::AVOID_LOCK_UNSAFE;
+    }
+
     mMaxDirtyIncreaseOverride = aParams->mMaxDirtyIncreaseOverride;
     mMaxDirtyDecreaseOverride = aParams->mMaxDirtyDecreaseOverride;
   } else {
@@ -3927,11 +4185,15 @@ arena_t::arena_t(arena_params_t* aParams, bool aIsPrivate) {
     mMaxDirtyDecreaseOverride = 0;
   }
 
+  MOZ_RELEASE_ASSERT(mLock.Init(doLock));
+
   mPRNG = nullptr;
 
   mIsPrivate = aIsPrivate;
 
   mNumDirty = 0;
+  mNumFresh = 0;
+  mNumMAdvised = 0;
   // The default maximum amount of dirty pages allowed on arenas is a fraction
   // of opt_dirty_max.
   mMaxDirty = (aParams && aParams->mMaxDirty) ? aParams->mMaxDirty
@@ -3961,7 +4223,7 @@ arena_t::arena_t(arena_params_t* aParams, bool aIsPrivate) {
 
 arena_t::~arena_t() {
   size_t i;
-  MutexAutoLock lock(mLock);
+  MaybeMutexAutoLock lock(mLock);
   MOZ_RELEASE_ASSERT(!mLink.Left() && !mLink.Right(),
                      "Arena is still registered");
   MOZ_RELEASE_ASSERT(!mStats.allocated_small && !mStats.allocated_large,
@@ -4012,27 +4274,39 @@ arena_t* ArenaCollection::CreateArena(bool aIsPrivate,
   // new arena. If an attacker manages to get control of the process, this
   // should make it more difficult for them to "guess" the ID of a memory
   // arena, stopping them from getting data they may want
+  Tree& tree = (ret->IsMainThreadOnly()) ? mMainThreadArenas : mPrivateArenas;
+  arena_id_t arena_id;
+  do {
+    arena_id = MakeRandArenaId(ret->IsMainThreadOnly());
+    // Keep looping until we ensure that the random number we just generated
+    // isn't already in use by another active arena
+  } while (GetByIdInternal(tree, arena_id));
 
-  while (true) {
+  ret->mId = arena_id;
+  tree.Insert(ret);
+  return ret;
+}
+
+arena_id_t ArenaCollection::MakeRandArenaId(bool aIsMainThreadOnly) const {
+  uint64_t rand;
+  do {
     mozilla::Maybe<uint64_t> maybeRandomId = mozilla::RandomUint64();
     MOZ_RELEASE_ASSERT(maybeRandomId.isSome());
 
+    rand = maybeRandomId.value();
+
+    // Set or clear the least significant bit depending on if this is a
+    // main-thread-only arena.  We use this in GetById.
+    if (aIsMainThreadOnly) {
+      rand = rand | MAIN_THREAD_ARENA_BIT;
+    } else {
+      rand = rand & ~MAIN_THREAD_ARENA_BIT;
+    }
+
     // Avoid 0 as an arena Id. We use 0 for disposed arenas.
-    if (!maybeRandomId.value()) {
-      continue;
-    }
+  } while (rand == 0);
 
-    // Keep looping until we ensure that the random number we just generated
-    // isn't already in use by another active arena
-    arena_t* existingArena =
-        GetByIdInternal(maybeRandomId.value(), true /*aIsPrivate*/);
-
-    if (!existingArena) {
-      ret->mId = static_cast<arena_id_t>(maybeRandomId.value());
-      mPrivateArenas.Insert(ret);
-      return ret;
-    }
-  }
+  return arena_id_t(rand);
 }
 
 // End arena.
@@ -4048,7 +4322,6 @@ void* arena_t::PallocHuge(size_t aSize, size_t aAlignment, bool aZero) {
   size_t csize;
   size_t psize;
   extent_node_t* node;
-  bool zeroed;
 
   // We're going to configure guard pages in the region between the
   // page-aligned size and the chunk-aligned size, so if those are the same
@@ -4066,17 +4339,17 @@ void* arena_t::PallocHuge(size_t aSize, size_t aAlignment, bool aZero) {
   }
 
   // Allocate one or more contiguous chunks for this request.
-  ret = chunk_alloc(csize, aAlignment, false, &zeroed);
+  ret = chunk_alloc(csize, aAlignment, false);
   if (!ret) {
     ExtentAlloc::dealloc(node);
     return nullptr;
   }
   psize = PAGE_CEILING(aSize);
+#ifdef MOZ_DEBUG
   if (aZero) {
-    // We will decommit anything past psize so there is no need to zero
-    // further.
-    chunk_ensure_zero(ret, psize, zeroed);
+    chunk_assert_zero(ret, psize);
   }
+#endif
 
   // Insert node into huge.
   node->mAddr = ret;
@@ -4222,7 +4495,7 @@ static void huge_dalloc(void* aPtr, arena_t* aArena) {
   ExtentAlloc::dealloc(node);
 }
 
-static size_t GetKernelPageSize() {
+size_t GetKernelPageSize() {
   static size_t kernel_page_size = ([]() {
 #ifdef XP_WIN
     SYSTEM_INFO info;
@@ -4255,106 +4528,109 @@ static bool malloc_init_hard() {
   }
 
   // Get page size and number of CPUs
-  const size_t result = GetKernelPageSize();
+  const size_t page_size = GetKernelPageSize();
   // We assume that the page size is a power of 2.
-  MOZ_ASSERT(((result - 1) & result) == 0);
+  MOZ_ASSERT(IsPowerOfTwo(page_size));
 #ifdef MALLOC_STATIC_PAGESIZE
-  if (gPageSize % result) {
+  if (gPageSize % page_size) {
     _malloc_message(
         _getprogname(),
         "Compile-time page size does not divide the runtime one.\n");
     MOZ_CRASH();
   }
 #else
-  gRealPageSize = gPageSize = result;
+  gRealPageSize = gPageSize = page_size;
 #endif
 
   // Get runtime configuration.
   if ((opts = getenv("MALLOC_OPTIONS"))) {
     for (i = 0; opts[i] != '\0'; i++) {
-      unsigned j, nreps;
-      bool nseen;
+      // All options are single letters, some take a *prefix* numeric argument.
 
-      // Parse repetition count, if any.
-      for (nreps = 0, nseen = false;; i++, nseen = true) {
-        switch (opts[i]) {
-          case '0':
-          case '1':
-          case '2':
-          case '3':
-          case '4':
-          case '5':
-          case '6':
-          case '7':
-          case '8':
-          case '9':
-            nreps *= 10;
-            nreps += opts[i] - '0';
-            break;
-          default:
-            goto MALLOC_OUT;
-        }
-      }
-    MALLOC_OUT:
-      if (nseen == false) {
-        nreps = 1;
+      // Parse the argument.
+      unsigned prefix_arg = 0;
+      while (opts[i] >= '0' && opts[i] <= '9') {
+        prefix_arg *= 10;
+        prefix_arg += opts[i] - '0';
+        i++;
       }
 
-      for (j = 0; j < nreps; j++) {
-        switch (opts[i]) {
-          case 'f':
-            opt_dirty_max >>= 1;
-            break;
-          case 'F':
-            if (opt_dirty_max == 0) {
-              opt_dirty_max = 1;
-            } else if ((opt_dirty_max << 1) != 0) {
-              opt_dirty_max <<= 1;
-            }
-            break;
+      switch (opts[i]) {
+        case 'f':
+          opt_dirty_max >>= prefix_arg ? prefix_arg : 1;
+          break;
+        case 'F':
+          prefix_arg = prefix_arg ? prefix_arg : 1;
+          if (opt_dirty_max == 0) {
+            opt_dirty_max = 1;
+            prefix_arg--;
+          }
+          opt_dirty_max <<= prefix_arg;
+          if (opt_dirty_max == 0) {
+            // If the shift above overflowed all the bits then clamp the result
+            // instead.  If we started with DIRTY_MAX_DEFAULT then this will
+            // always be a power of two so choose the maximum power of two that
+            // fits in a size_t.
+            opt_dirty_max = size_t(1) << (sizeof(size_t) * CHAR_BIT - 1);
+          }
+          break;
 #ifdef MALLOC_RUNTIME_CONFIG
-          case 'j':
-            opt_junk = false;
-            break;
-          case 'J':
-            opt_junk = true;
-            break;
-          case 'q':
-            opt_poison = false;
-            break;
-          case 'Q':
-            opt_poison = true;
-            break;
-          case 'z':
-            opt_zero = false;
-            break;
-          case 'Z':
-            opt_zero = true;
-            break;
+        case 'j':
+          opt_junk = false;
+          break;
+        case 'J':
+          opt_junk = true;
+          break;
+        case 'q':
+          // The argument selects how much poisoning to do.
+          opt_poison = NONE;
+          break;
+        case 'Q':
+          if (opts[i + 1] == 'Q') {
+            // Maximum poisoning.
+            i++;
+            opt_poison = ALL;
+          } else {
+            opt_poison = SOME;
+            opt_poison_size = kCacheLineSize * prefix_arg;
+          }
+          break;
+        case 'z':
+          opt_zero = false;
+          break;
+        case 'Z':
+          opt_zero = true;
+          break;
 #  ifndef MALLOC_STATIC_PAGESIZE
-          case 'P':
-            if (gPageSize < 64_KiB) {
-              gPageSize <<= 1;
-            }
-            break;
+        case 'P':
+          MOZ_ASSERT(gPageSize >= 4_KiB);
+          MOZ_ASSERT(gPageSize <= 64_KiB);
+          prefix_arg = prefix_arg ? prefix_arg : 1;
+          gPageSize <<= prefix_arg;
+          // We know that if the shift causes gPageSize to be zero then it's
+          // because it shifted all the bits off.  We didn't start with zero.
+          // Therefore if gPageSize is out of bounds we set it to 64KiB.
+          if (gPageSize < 4_KiB || gPageSize > 64_KiB) {
+            gPageSize = 64_KiB;
+          }
+          break;
 #  endif
 #endif
-          case 'r':
-            opt_randomize_small = false;
-            break;
-          case 'R':
-            opt_randomize_small = true;
-            break;
-          default: {
-            char cbuf[2];
+        case 'r':
+          opt_randomize_small = false;
+          break;
+        case 'R':
+          opt_randomize_small = true;
+          break;
+        default: {
+          char cbuf[2];
 
-            cbuf[0] = opts[i];
-            cbuf[1] = '\0';
-            _malloc_message(_getprogname(),
-                            ": (malloc) Unsupported character "
-                            "in malloc options: '",
-                            cbuf, "'\n");
-          }
+          cbuf[0] = opts[i];
+          cbuf[1] = '\0';
+          _malloc_message(_getprogname(),
+                          ": (malloc) Unsupported character "
+                          "in malloc options: '",
+                          cbuf, "'\n");
         }
       }
     }
@@ -4434,7 +4710,6 @@ struct BaseAllocator {
 };
 
 #define MALLOC_DECL(name, return_type, ...)                  \
-  template <>                                                \
   inline return_type MozJemalloc::name(                      \
       ARGS_HELPER(TYPED_ARGS, ##__VA_ARGS__)) {              \
     BaseAllocator allocator(nullptr);                        \
@@ -4455,6 +4730,8 @@ inline void* BaseAllocator::malloc(size_t aSize) {
   if (aSize == 0) {
     aSize = 1;
   }
+  // If mArena is non-null, it must not be in the first page.
+  MOZ_DIAGNOSTIC_ASSERT_IF(mArena, (size_t)mArena >= gPageSize);
   arena = mArena ? mArena : choose_arena(aSize);
   ret = arena->Malloc(aSize, /* aZero = */ false);
 
@@ -4551,52 +4828,15 @@ inline void BaseAllocator::free(void* aPtr) {
   }
 }
 
-template <void* (*memalign)(size_t, size_t)>
-struct AlignedAllocator {
-  static inline int posix_memalign(void** aMemPtr, size_t aAlignment,
-                                   size_t aSize) {
-    void* result;
-
-    // alignment must be a power of two and a multiple of sizeof(void*)
-    if (((aAlignment - 1) & aAlignment) != 0 || aAlignment < sizeof(void*)) {
-      return EINVAL;
-    }
-
-    // The 0-->1 size promotion is done in the memalign() call below
-    result = memalign(aAlignment, aSize);
-
-    if (!result) {
-      return ENOMEM;
-    }
-
-    *aMemPtr = result;
-    return 0;
-  }
-
-  static inline void* aligned_alloc(size_t aAlignment, size_t aSize) {
-    if (aSize % aAlignment) {
-      return nullptr;
-    }
-    return memalign(aAlignment, aSize);
-  }
-
-  static inline void* valloc(size_t aSize) {
-    return memalign(GetKernelPageSize(), aSize);
-  }
-};
-
-template <>
 inline int MozJemalloc::posix_memalign(void** aMemPtr, size_t aAlignment,
                                        size_t aSize) {
   return AlignedAllocator<memalign>::posix_memalign(aMemPtr, aAlignment, aSize);
 }
 
-template <>
 inline void* MozJemalloc::aligned_alloc(size_t aAlignment, size_t aSize) {
   return AlignedAllocator<memalign>::aligned_alloc(aAlignment, aSize);
 }
 
-template <>
 inline void* MozJemalloc::valloc(size_t aSize) {
   return AlignedAllocator<memalign>::valloc(aSize);
 }
@@ -4606,7 +4846,6 @@ inline void* MozJemalloc::valloc(size_t aSize) {
 // Begin non-standard functions.
 
 // This was added by Mozilla for use by SQLite.
-template <>
 inline size_t MozJemalloc::malloc_good_size(size_t aSize) {
   if (aSize <= gMaxLargeClass) {
     // Small or large
@@ -4621,12 +4860,10 @@ inline size_t MozJemalloc::malloc_good_size(size_t aSize) {
   return aSize;
 }
 
-template <>
 inline size_t MozJemalloc::malloc_usable_size(usable_ptr_t aPtr) {
   return AllocInfo::GetValidated(aPtr).Size();
 }
 
-template <>
 inline void MozJemalloc::jemalloc_stats_internal(
     jemalloc_stats_t* aStats, jemalloc_bin_stats_t* aBinStats) {
   size_t non_arena_mapped, chunk_header_size;
@@ -4660,7 +4897,9 @@ inline void MozJemalloc::jemalloc_stats_internal(
   aStats->mapped = 0;
   aStats->allocated = 0;
   aStats->waste = 0;
-  aStats->page_cache = 0;
+  aStats->pages_dirty = 0;
+  aStats->pages_fresh = 0;
+  aStats->pages_madvised = 0;
   aStats->bookkeeping = 0;
   aStats->bin_unused = 0;
 
@@ -4683,16 +4922,24 @@ inline void MozJemalloc::jemalloc_stats_internal(
   }
 
   gArenas.mLock.Lock();
+
+  // Stats can only read complete information if its run on the main thread.
+  MOZ_ASSERT(gArenas.IsOnMainThreadWeak());
+
   // Iterate over arenas.
   for (auto arena : gArenas.iter()) {
-    size_t arena_mapped, arena_allocated, arena_committed, arena_dirty, j,
-        arena_unused, arena_headers;
+    // Cannot safely read stats for this arena and therefore stats would be
+    // incomplete.
+    MOZ_ASSERT(arena->mLock.SafeOnThisThread());
+
+    size_t arena_mapped, arena_allocated, arena_committed, arena_dirty,
+        arena_fresh, arena_madvised, j, arena_unused, arena_headers;
 
     arena_headers = 0;
     arena_unused = 0;
 
     {
-      MutexAutoLock lock(arena->mLock);
+      MaybeMutexAutoLock lock(arena->mLock);
 
       arena_mapped = arena->mStats.mapped;
 
@@ -4703,6 +4950,8 @@ inline void MozJemalloc::jemalloc_stats_internal(
           arena->mStats.allocated_small + arena->mStats.allocated_large;
 
       arena_dirty = arena->mNumDirty << gPageSize2Pow;
+      arena_fresh = arena->mNumFresh << gPageSize2Pow;
+      arena_madvised = arena->mNumMAdvised << gPageSize2Pow;
 
       for (j = 0; j < NUM_SMALL_CLASSES; j++) {
         arena_bin_t* bin = &arena->mBins[j];
@@ -4741,11 +4990,15 @@ inline void MozJemalloc::jemalloc_stats_internal(
 
     aStats->mapped += arena_mapped;
     aStats->allocated += arena_allocated;
-    aStats->page_cache += arena_dirty;
+    aStats->pages_dirty += arena_dirty;
+    aStats->pages_fresh += arena_fresh;
+    aStats->pages_madvised += arena_madvised;
     // "waste" is committed memory that is neither dirty nor
     // allocated.  If you change this definition please update
     // memory/replace/logalloc/replay/Replay.cpp's jemalloc_stats calculation of
     // committed.
+    MOZ_ASSERT(arena_committed >=
+               (arena_allocated + arena_dirty + arena_unused + arena_headers));
     aStats->waste += arena_committed - arena_allocated - arena_dirty -
                      arena_unused - arena_headers;
     aStats->bin_unused += arena_unused;
@@ -4756,7 +5009,7 @@ inline void MozJemalloc::jemalloc_stats_internal(
 
   // Account for arena chunk headers in bookkeeping rather than waste.
   chunk_header_size =
-      ((aStats->mapped / aStats->chunksize) * gChunkHeaderNumPages)
+      ((aStats->mapped / aStats->chunksize) * (gChunkHeaderNumPages - 1))
       << gPageSize2Pow;
 
   aStats->mapped += non_arena_mapped;
@@ -4764,18 +5017,23 @@ inline void MozJemalloc::jemalloc_stats_internal(
   aStats->waste -= chunk_header_size;
 
   MOZ_ASSERT(aStats->mapped >= aStats->allocated + aStats->waste +
-                                   aStats->page_cache + aStats->bookkeeping);
+                                   aStats->pages_dirty + aStats->bookkeeping);
 }
 
-template <>
 inline size_t MozJemalloc::jemalloc_stats_num_bins() {
   return NUM_SMALL_CLASSES;
+}
+
+inline void MozJemalloc::jemalloc_set_main_thread() {
+  MOZ_ASSERT(malloc_initialized);
+  gArenas.SetMainThread();
 }
 
 #ifdef MALLOC_DOUBLE_PURGE
 
 // Explicitly remove all of this chunk's MADV_FREE'd pages from memory.
-static void hard_purge_chunk(arena_chunk_t* aChunk) {
+static size_t hard_purge_chunk(arena_chunk_t* aChunk) {
+  size_t total_npages = 0;
   // See similar logic in arena_t::Purge().
   for (size_t i = gChunkHeaderNumPages; i < gChunkNumPages; i++) {
     // Find all adjacent pages with CHUNK_MAP_MADVISED set.
@@ -4783,11 +5041,11 @@ static void hard_purge_chunk(arena_chunk_t* aChunk) {
     for (npages = 0; aChunk->map[i + npages].bits & CHUNK_MAP_MADVISED &&
                      i + npages < gChunkNumPages;
          npages++) {
-      // Turn off the chunk's MADV_FREED bit and turn on its
-      // DECOMMITTED bit.
-      MOZ_DIAGNOSTIC_ASSERT(
-          !(aChunk->map[i + npages].bits & CHUNK_MAP_DECOMMITTED));
-      aChunk->map[i + npages].bits ^= CHUNK_MAP_MADVISED_OR_DECOMMITTED;
+      // Turn off the page's CHUNK_MAP_MADVISED bit and turn on its
+      // CHUNK_MAP_FRESH bit.
+      MOZ_DIAGNOSTIC_ASSERT(!(aChunk->map[i + npages].bits &
+                              (CHUNK_MAP_FRESH | CHUNK_MAP_DECOMMITTED)));
+      aChunk->map[i + npages].bits ^= (CHUNK_MAP_MADVISED | CHUNK_MAP_FRESH);
     }
 
     // We could use mincore to find out which pages are actually
@@ -4798,24 +5056,29 @@ static void hard_purge_chunk(arena_chunk_t* aChunk) {
       Unused << pages_commit(((char*)aChunk) + (i << gPageSize2Pow),
                              npages << gPageSize2Pow);
     }
+    total_npages += npages;
     i += npages;
   }
+
+  return total_npages;
 }
 
 // Explicitly remove all of this arena's MADV_FREE'd pages from memory.
 void arena_t::HardPurge() {
-  MutexAutoLock lock(mLock);
+  MaybeMutexAutoLock lock(mLock);
 
   while (!mChunksMAdvised.isEmpty()) {
     arena_chunk_t* chunk = mChunksMAdvised.popFront();
-    hard_purge_chunk(chunk);
+    size_t npages = hard_purge_chunk(chunk);
+    mNumMAdvised -= npages;
+    mNumFresh += npages;
   }
 }
 
-template <>
 inline void MozJemalloc::jemalloc_purge_freed_pages() {
   if (malloc_initialized) {
     MutexAutoLock lock(gArenas.mLock);
+    MOZ_ASSERT(gArenas.IsOnMainThreadWeak());
     for (auto arena : gArenas.iter()) {
       arena->HardPurge();
     }
@@ -4824,31 +5087,30 @@ inline void MozJemalloc::jemalloc_purge_freed_pages() {
 
 #else  // !defined MALLOC_DOUBLE_PURGE
 
-template <>
 inline void MozJemalloc::jemalloc_purge_freed_pages() {
   // Do nothing.
 }
 
 #endif  // defined MALLOC_DOUBLE_PURGE
 
-template <>
 inline void MozJemalloc::jemalloc_free_dirty_pages(void) {
   if (malloc_initialized) {
     MutexAutoLock lock(gArenas.mLock);
+    MOZ_ASSERT(gArenas.IsOnMainThreadWeak());
     for (auto arena : gArenas.iter()) {
-      MutexAutoLock arena_lock(arena->mLock);
+      MaybeMutexAutoLock arena_lock(arena->mLock);
       arena->Purge(1);
     }
   }
 }
 
-inline arena_t* ArenaCollection::GetByIdInternal(arena_id_t aArenaId,
-                                                 bool aIsPrivate) {
+inline arena_t* ArenaCollection::GetByIdInternal(Tree& aTree,
+                                                 arena_id_t aArenaId) {
   // Use AlignedStorage2 to avoid running the arena_t constructor, while
   // we only need it as a placeholder for mId.
   mozilla::AlignedStorage2<arena_t> key;
   key.addr()->mId = aArenaId;
-  return (aIsPrivate ? mPrivateArenas : mArenas).Search(key.addr());
+  return aTree.Search(key.addr());
 }
 
 inline arena_t* ArenaCollection::GetById(arena_id_t aArenaId, bool aIsPrivate) {
@@ -4856,13 +5118,25 @@ inline arena_t* ArenaCollection::GetById(arena_id_t aArenaId, bool aIsPrivate) {
     return nullptr;
   }
 
+  Tree* tree = nullptr;
+  if (aIsPrivate) {
+    if (ArenaIdIsMainThreadOnly(aArenaId)) {
+      // Main thread only arena.  Do the lookup here without taking the lock.
+      arena_t* result = GetByIdInternal(mMainThreadArenas, aArenaId);
+      MOZ_RELEASE_ASSERT(result);
+      return result;
+    }
+    tree = &mPrivateArenas;
+  } else {
+    tree = &mArenas;
+  }
+
   MutexAutoLock lock(mLock);
-  arena_t* result = GetByIdInternal(aArenaId, aIsPrivate);
+  arena_t* result = GetByIdInternal(*tree, aArenaId);
   MOZ_RELEASE_ASSERT(result);
   return result;
 }
 
-template <>
 inline arena_id_t MozJemalloc::moz_create_arena_with_params(
     arena_params_t* aParams) {
   if (malloc_init()) {
@@ -4872,20 +5146,17 @@ inline arena_id_t MozJemalloc::moz_create_arena_with_params(
   return 0;
 }
 
-template <>
 inline void MozJemalloc::moz_dispose_arena(arena_id_t aArenaId) {
   arena_t* arena = gArenas.GetById(aArenaId, /* IsPrivate = */ true);
   MOZ_RELEASE_ASSERT(arena);
   gArenas.DisposeArena(arena);
 }
 
-template <>
 inline void MozJemalloc::moz_set_max_dirty_page_modifier(int32_t aModifier) {
   gArenas.SetDefaultMaxDirtyPageModifier(aModifier);
 }
 
 #define MALLOC_DECL(name, return_type, ...)                          \
-  template <>                                                        \
   inline return_type MozJemalloc::moz_arena_##name(                  \
       arena_id_t aArenaId, ARGS_HELPER(TYPED_ARGS, ##__VA_ARGS__)) { \
     BaseAllocator allocator(                                         \
@@ -4902,13 +5173,23 @@ inline void MozJemalloc::moz_set_max_dirty_page_modifier(int32_t aModifier) {
 // of malloc during fork().  These functions are only called if the program is
 // running in threaded mode, so there is no need to check whether the program
 // is threaded here.
+//
+// Note that the only way to keep the main-thread-only arenas in a consistent
+// state for the child is if fork is called from the main thread only.  Or the
+// child must not use them, eg it should call exec().  We attempt to prevent the
+// child for accessing these arenas by refusing to re-initialise them.
+static pthread_t gForkingThread;
+
 FORK_HOOK
 void _malloc_prefork(void) MOZ_NO_THREAD_SAFETY_ANALYSIS {
   // Acquire all mutexes in a safe order.
   gArenas.mLock.Lock();
+  gForkingThread = pthread_self();
 
   for (auto arena : gArenas.iter()) {
-    arena->mLock.Lock();
+    if (arena->mLock.LockIsEnabled()) {
+      arena->mLock.Lock();
+    }
   }
 
   base_mtx.Lock();
@@ -4924,7 +5205,9 @@ void _malloc_postfork_parent(void) MOZ_NO_THREAD_SAFETY_ANALYSIS {
   base_mtx.Unlock();
 
   for (auto arena : gArenas.iter()) {
-    arena->mLock.Unlock();
+    if (arena->mLock.LockIsEnabled()) {
+      arena->mLock.Unlock();
+    }
   }
 
   gArenas.mLock.Unlock();
@@ -4938,9 +5221,10 @@ void _malloc_postfork_child(void) {
   base_mtx.Init();
 
   for (auto arena : gArenas.iter()) {
-    arena->mLock.Init();
+    arena->mLock.Reinit(gForkingThread);
   }
 
+  gArenas.PostForkFixMainThread();
   gArenas.mLock.Init();
 }
 #endif  // XP_WIN
@@ -4967,7 +5251,7 @@ void _malloc_postfork_child(void) {
 
 #  include "replace_malloc.h"
 
-#  define MALLOC_DECL(name, return_type, ...) MozJemalloc::name,
+#  define MALLOC_DECL(name, return_type, ...) CanonicalMalloc::name,
 
 // The default malloc table, i.e. plain allocations. It never changes. It's
 // used by init(), and not used after that.
@@ -5039,9 +5323,9 @@ static void replace_malloc_init_funcs(malloc_table_t*);
 extern "C" void logalloc_init(malloc_table_t*, ReplaceMallocBridge**);
 
 extern "C" void dmd_init(malloc_table_t*, ReplaceMallocBridge**);
-
-extern "C" void phc_init(malloc_table_t*, ReplaceMallocBridge**);
 #  endif
+
+void phc_init(malloc_table_t*, ReplaceMallocBridge**);
 
 bool Equals(const malloc_table_t& aTable1, const malloc_table_t& aTable2) {
   return memcmp(&aTable1, &aTable2, sizeof(malloc_table_t)) == 0;
@@ -5077,11 +5361,6 @@ static void init() {
 #    ifdef MOZ_DMD
   if (Equals(tempTable, gDefaultMallocTable)) {
     dmd_init(&tempTable, &gReplaceMallocBridge);
-  }
-#    endif
-#    ifdef MOZ_PHC
-  if (Equals(tempTable, gDefaultMallocTable)) {
-    phc_init(&tempTable, &gReplaceMallocBridge);
   }
 #    endif
 #  endif
@@ -5143,7 +5422,6 @@ MOZ_JEMALLOC_API void jemalloc_replace_dynamic(
 }
 
 #  define MALLOC_DECL(name, return_type, ...)                           \
-    template <>                                                         \
     inline return_type ReplaceMalloc::name(                             \
         ARGS_HELPER(TYPED_ARGS, ##__VA_ARGS__)) {                       \
       if (MOZ_UNLIKELY(!gMallocTablePtr)) {                             \
@@ -5166,30 +5444,30 @@ MOZ_JEMALLOC_API struct ReplaceMallocBridge* get_bridge(void) {
 // replace_valloc, and default implementations will be automatically derived
 // from replace_memalign.
 static void replace_malloc_init_funcs(malloc_table_t* table) {
-  if (table->posix_memalign == MozJemalloc::posix_memalign &&
-      table->memalign != MozJemalloc::memalign) {
+  if (table->posix_memalign == CanonicalMalloc::posix_memalign &&
+      table->memalign != CanonicalMalloc::memalign) {
     table->posix_memalign =
         AlignedAllocator<ReplaceMalloc::memalign>::posix_memalign;
   }
-  if (table->aligned_alloc == MozJemalloc::aligned_alloc &&
-      table->memalign != MozJemalloc::memalign) {
+  if (table->aligned_alloc == CanonicalMalloc::aligned_alloc &&
+      table->memalign != CanonicalMalloc::memalign) {
     table->aligned_alloc =
         AlignedAllocator<ReplaceMalloc::memalign>::aligned_alloc;
   }
-  if (table->valloc == MozJemalloc::valloc &&
-      table->memalign != MozJemalloc::memalign) {
+  if (table->valloc == CanonicalMalloc::valloc &&
+      table->memalign != CanonicalMalloc::memalign) {
     table->valloc = AlignedAllocator<ReplaceMalloc::memalign>::valloc;
   }
   if (table->moz_create_arena_with_params ==
-          MozJemalloc::moz_create_arena_with_params &&
-      table->malloc != MozJemalloc::malloc) {
+          CanonicalMalloc::moz_create_arena_with_params &&
+      table->malloc != CanonicalMalloc::malloc) {
 #  define MALLOC_DECL(name, ...) \
     table->name = DummyArenaAllocator<ReplaceMalloc>::name;
 #  define MALLOC_FUNCS MALLOC_FUNCS_ARENA_BASE
 #  include "malloc_decls.h"
   }
-  if (table->moz_arena_malloc == MozJemalloc::moz_arena_malloc &&
-      table->malloc != MozJemalloc::malloc) {
+  if (table->moz_arena_malloc == CanonicalMalloc::moz_arena_malloc &&
+      table->malloc != CanonicalMalloc::malloc) {
 #  define MALLOC_DECL(name, ...) \
     table->name = DummyArenaAllocator<ReplaceMalloc>::name;
 #  define MALLOC_FUNCS MALLOC_FUNCS_ARENA_ALLOC
@@ -5243,7 +5521,7 @@ static void replace_malloc_init_funcs(malloc_table_t* table) {
 #include "malloc_decls.h"
 // ***************************************************************************
 
-#ifdef HAVE_DLOPEN
+#ifdef HAVE_DLFCN_H
 #  include <dlfcn.h>
 #endif
 
@@ -5308,4 +5586,9 @@ MOZ_EXPORT void* _expand(void* aPtr, size_t newsize) {
 MOZ_EXPORT size_t _msize(void* aPtr) {
   return DefaultMalloc::malloc_usable_size(aPtr);
 }
+#endif
+
+#ifdef MOZ_PHC
+// Compile PHC and mozjemalloc together so that PHC can inline mozjemalloc.
+#  include "PHC.cpp"
 #endif
