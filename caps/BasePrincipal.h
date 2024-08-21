@@ -27,11 +27,10 @@ class nsIChannel;
 class nsIReferrerInfo;
 class nsISupports;
 class nsIURI;
-namespace Json {
-class Value;
-}
 
 namespace mozilla {
+
+class JSONWriter;
 
 namespace dom {
 enum class ReferrerPolicy : uint8_t;
@@ -91,6 +90,15 @@ class BasePrincipal : public nsJSPrincipals {
     eKindMax = eSystemPrincipal
   };
 
+  static constexpr char NullPrincipalKey = '0';
+  static_assert(eNullPrincipal == 0);
+  static constexpr char ContentPrincipalKey = '1';
+  static_assert(eContentPrincipal == 1);
+  static constexpr char ExpandedPrincipalKey = '2';
+  static_assert(eExpandedPrincipal == 2);
+  static constexpr char SystemPrincipalKey = '3';
+  static_assert(eSystemPrincipal == 3);
+
   template <typename T>
   bool Is() const {
     return mKind == T::Kind();
@@ -110,7 +118,7 @@ class BasePrincipal : public nsJSPrincipals {
                 DocumentDomainConsideration aConsideration);
 
   NS_IMETHOD GetOrigin(nsACString& aOrigin) final;
-  NS_IMETHOD GetAsciiOrigin(nsACString& aOrigin) override;
+  NS_IMETHOD GetWebExposedOriginSerialization(nsACString& aOrigin) override;
   NS_IMETHOD GetOriginNoSuffix(nsACString& aOrigin) final;
   NS_IMETHOD Equals(nsIPrincipal* other, bool* _retval) final;
   NS_IMETHOD EqualsConsideringDomain(nsIPrincipal* other, bool* _retval) final;
@@ -155,8 +163,6 @@ class BasePrincipal : public nsJSPrincipals {
   NS_IMETHOD GetIsIpAddress(bool* aIsIpAddress) override;
   NS_IMETHOD GetIsLocalIpAddress(bool* aIsIpAddress) override;
   NS_IMETHOD GetIsOnion(bool* aIsOnion) override;
-  NS_IMETHOD GetIsInIsolatedMozBrowserElement(
-      bool* aIsInIsolatedMozBrowserElement) final;
   NS_IMETHOD GetUserContextId(uint32_t* aUserContextId) final;
   NS_IMETHOD GetPrivateBrowsingId(uint32_t* aPrivateBrowsingId) final;
   NS_IMETHOD GetSiteOrigin(nsACString& aSiteOrigin) final;
@@ -189,13 +195,14 @@ class BasePrincipal : public nsJSPrincipals {
   NS_IMETHOD GetPrecursorPrincipal(nsIPrincipal** aPrecursor) override;
 
   nsresult ToJSON(nsACString& aJSON);
-  nsresult ToJSON(Json::Value& aObject);
+  nsresult ToJSON(JSONWriter& aWriter);
+  nsresult WriteJSONProperties(JSONWriter& aWriter);
 
   static already_AddRefed<BasePrincipal> FromJSON(const nsACString& aJSON);
-  static already_AddRefed<BasePrincipal> FromJSON(const Json::Value& aJSON);
-  // Method populates a passed Json::Value with serializable fields
-  // which represent all of the fields to deserialize the principal
-  virtual nsresult PopulateJSONObject(Json::Value& aObject);
+
+  // Method to write serializable fields which represent all of the fields to
+  // deserialize the principal.
+  virtual nsresult WriteJSONInnerProperties(JSONWriter& aWriter);
 
   virtual bool AddonHasPermission(const nsAtom* aPerm);
 
@@ -240,9 +247,6 @@ class BasePrincipal : public nsJSPrincipals {
   uint32_t UserContextId() const { return mOriginAttributes.mUserContextId; }
   uint32_t PrivateBrowsingId() const {
     return mOriginAttributes.mPrivateBrowsingId;
-  }
-  bool IsInIsolatedMozBrowserElement() const {
-    return mOriginAttributes.mInIsolatedMozBrowser;
   }
 
   PrincipalKind Kind() const { return mKind; }
@@ -344,20 +348,26 @@ class BasePrincipal : public nsJSPrincipals {
   };
 
  private:
-  static const char* JSONEnumKeyStrings[4];
+  static constexpr Span<const char> JSONEnumKeyStrings[4] = {
+      MakeStringSpan("0"),
+      MakeStringSpan("1"),
+      MakeStringSpan("2"),
+      MakeStringSpan("3"),
+  };
 
-  static void SetJSONValue(Json::Value& aObject, const char* aKey,
-                           const nsCString& aValue);
+  static void WriteJSONProperty(JSONWriter& aWriter,
+                                const Span<const char>& aKey,
+                                const nsCString& aValue);
 
  protected:
   template <size_t EnumValue>
-  static inline constexpr const char* JSONEnumKeyString() {
+  static inline constexpr const Span<const char>& JSONEnumKeyString() {
     static_assert(EnumValue < ArrayLength(JSONEnumKeyStrings));
     return JSONEnumKeyStrings[EnumValue];
   }
   template <size_t EnumValue>
-  static void SetJSONValue(Json::Value& aObject, const nsCString& aValue) {
-    SetJSONValue(aObject, JSONEnumKeyString<EnumValue>(), aValue);
+  static void WriteJSONProperty(JSONWriter& aWriter, const nsCString& aValue) {
+    WriteJSONProperty(aWriter, JSONEnumKeyString<EnumValue>(), aValue);
   }
 
  private:

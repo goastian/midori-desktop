@@ -27,7 +27,8 @@
 #include "pratom.h"
 #include "nsIObjectInputStream.h"
 
-#include "json/json.h"
+#include "js/JSON.h"
+#include "NullPrincipalJSONHandler.h"
 
 using namespace mozilla;
 
@@ -236,56 +237,19 @@ NullPrincipal::Deserializer::Read(nsIObjectInputStream* aStream) {
   return NS_OK;
 }
 
-nsresult NullPrincipal::PopulateJSONObject(Json::Value& aObject) {
+nsresult NullPrincipal::WriteJSONInnerProperties(JSONWriter& aWriter) {
   nsAutoCString principalURI;
   nsresult rv = mURI->GetSpec(principalURI);
   NS_ENSURE_SUCCESS(rv, rv);
-  SetJSONValue<eSpec>(aObject, principalURI);
+  WriteJSONProperty<eSpec>(aWriter, principalURI);
 
   nsAutoCString suffix;
   OriginAttributesRef().CreateSuffix(suffix);
   if (suffix.Length() > 0) {
-    SetJSONValue<eSuffix>(aObject, suffix);
+    WriteJSONProperty<eSuffix>(aWriter, suffix);
   }
 
   return NS_OK;
-}
-
-already_AddRefed<BasePrincipal> NullPrincipal::FromProperties(
-    nsTArray<NullPrincipal::KeyVal>& aFields) {
-  MOZ_ASSERT(aFields.Length() == eMax + 1, "Must have all the keys");
-  nsresult rv;
-  nsCOMPtr<nsIURI> uri;
-  OriginAttributes attrs;
-
-  // The odd structure here is to make the code to not compile
-  // if all the switch enum cases haven't been codified
-  for (const auto& field : aFields) {
-    switch (field.key) {
-      case NullPrincipal::eSpec:
-        if (!field.valueWasSerialized) {
-          MOZ_ASSERT(false,
-                     "Null principals require a spec URI in serialized JSON");
-          return nullptr;
-        }
-        rv = NS_NewURI(getter_AddRefs(uri), field.value);
-        NS_ENSURE_SUCCESS(rv, nullptr);
-        break;
-      case NullPrincipal::eSuffix:
-        bool ok = attrs.PopulateFromSuffix(field.value);
-        if (!ok) {
-          return nullptr;
-        }
-        break;
-    }
-  }
-
-  if (!uri) {
-    MOZ_ASSERT(false, "No URI deserialized");
-    return nullptr;
-  }
-
-  return NullPrincipal::Create(attrs, uri);
 }
 
 NS_IMETHODIMP
@@ -330,4 +294,108 @@ NullPrincipal::GetPrecursorPrincipal(nsIPrincipal** aPrincipal) {
   }
   contentPrincipal.forget(aPrincipal);
   return NS_OK;
+}
+
+bool NullPrincipalJSONHandler::startObject() {
+  switch (mState) {
+    case State::Init:
+      mState = State::StartObject;
+      break;
+    default:
+      NS_WARNING("Unexpected object value");
+      mState = State::Error;
+      return false;
+  }
+
+  return true;
+}
+
+bool NullPrincipalJSONHandler::propertyName(const JS::Latin1Char* name,
+                                            size_t length) {
+  switch (mState) {
+    case State::StartObject:
+    case State::AfterPropertyValue: {
+      if (length != 1) {
+        NS_WARNING(
+            nsPrintfCString("Unexpected property name length: %zu", length)
+                .get());
+        mState = State::Error;
+        return false;
+      }
+
+      char key = char(name[0]);
+      switch (key) {
+        case NullPrincipal::SpecKey:
+          mState = State::SpecKey;
+          break;
+        case NullPrincipal::SuffixKey:
+          mState = State::SuffixKey;
+          break;
+        default:
+          NS_WARNING(
+              nsPrintfCString("Unexpected property name: '%c'", key).get());
+          mState = State::Error;
+          return false;
+      }
+      break;
+    }
+    default:
+      NS_WARNING("Unexpected property name");
+      mState = State::Error;
+      return false;
+  }
+
+  return true;
+}
+
+bool NullPrincipalJSONHandler::endObject() {
+  switch (mState) {
+    case State::AfterPropertyValue:
+      MOZ_ASSERT(mUri);
+
+      mPrincipal = NullPrincipal::Create(mAttrs, mUri);
+      MOZ_ASSERT(mPrincipal);
+
+      mState = State::EndObject;
+      break;
+    default:
+      NS_WARNING("Unexpected end of object");
+      mState = State::Error;
+      return false;
+  }
+
+  return true;
+}
+
+bool NullPrincipalJSONHandler::stringValue(const JS::Latin1Char* str,
+                                           size_t length) {
+  switch (mState) {
+    case State::SpecKey: {
+      nsDependentCSubstring spec(reinterpret_cast<const char*>(str), length);
+      nsresult rv = NS_NewURI(getter_AddRefs(mUri), spec);
+      if (NS_FAILED(rv)) {
+        mState = State::Error;
+        return false;
+      }
+
+      mState = State::AfterPropertyValue;
+      break;
+    }
+    case State::SuffixKey: {
+      nsDependentCSubstring attrs(reinterpret_cast<const char*>(str), length);
+      if (!mAttrs.PopulateFromSuffix(attrs)) {
+        mState = State::Error;
+        return false;
+      }
+
+      mState = State::AfterPropertyValue;
+      break;
+    }
+    default:
+      NS_WARNING("Unexpected string value");
+      mState = State::Error;
+      return false;
+  }
+
+  return true;
 }

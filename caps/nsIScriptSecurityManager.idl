@@ -157,7 +157,7 @@ interface nsIScriptSecurityManager : nsISupports
      * prefs to be allowed to use file:// URIs.
      * @param aUri the URI to be tested
      */
-    bool inFileURIAllowlist(in nsIURI aUri);
+    boolean inFileURIAllowlist(in nsIURI aUri);
 
     ///////////////// Principals ///////////////////////
 
@@ -288,6 +288,10 @@ interface nsIScriptSecurityManager : nsISupports
 
     const unsigned long DEFAULT_USER_CONTEXT_ID = 0;
 
+    /**
+     * The constant the indicates when mPrivateBrowsingId is _not_ in PBM.
+     * In other words, zero indicates Normal Browsing, and non-zero indicates PBM
+     */
     const unsigned long DEFAULT_PRIVATE_BROWSING_ID = 0;
 
     /**
@@ -327,7 +331,7 @@ interface nsIScriptSecurityManager : nsISupports
      * of javascript.enabled. Otherwise, it returns the same value, but taking
      * the various blocklist/allowlist exceptions into account.
      */
-    bool policyAllowsScript(in nsIURI aDomain);
+    boolean policyAllowsScript(in nsIURI aDomain);
 };
 
 %{C++

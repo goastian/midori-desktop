@@ -15,11 +15,9 @@
 #include "mozilla/Mutex.h"
 #include "mozilla/extensions/WebExtensionPolicy.h"
 
-namespace Json {
-class Value;
-}
-
 namespace mozilla {
+
+class JSONWriter;
 
 class ContentPrincipal final : public BasePrincipal {
  public:
@@ -49,7 +47,8 @@ class ContentPrincipal final : public BasePrincipal {
 
   RefPtr<extensions::WebExtensionPolicyCore> AddonPolicyCore();
 
-  virtual nsresult PopulateJSONObject(Json::Value& aObject) override;
+  virtual nsresult WriteJSONInnerProperties(JSONWriter& aWriter) override;
+
   // Serializable keys are the valid enum fields the serialization supports
   enum SerializableKeys : uint8_t {
     eURI = 0,
@@ -57,10 +56,13 @@ class ContentPrincipal final : public BasePrincipal {
     eSuffix,
     eMax = eSuffix
   };
-  typedef mozilla::BasePrincipal::KeyValT<SerializableKeys> KeyVal;
 
-  static already_AddRefed<BasePrincipal> FromProperties(
-      nsTArray<ContentPrincipal::KeyVal>& aFields);
+  static constexpr char URIKey = '0';
+  static_assert(eURI == 0);
+  static constexpr char DomainKey = '1';
+  static_assert(eDomain == 1);
+  static constexpr char SuffixKey = '2';
+  static_assert(eSuffix == 2);
 
   class Deserializer : public BasePrincipal::Deserializer {
    public:

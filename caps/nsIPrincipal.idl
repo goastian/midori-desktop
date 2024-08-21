@@ -72,7 +72,7 @@ interface nsIPrincipal : nsISupports
      * May be called from any thread.
      */
 
-    boolean equalsForPermission(in nsIPrincipal other, in bool aExactHost);
+    boolean equalsForPermission(in nsIPrincipal other, in boolean aExactHost);
 
     /**
      * Like equals, but takes document.domain changes into account.
@@ -271,12 +271,19 @@ interface nsIPrincipal : nsISupports
     readonly attribute ACString origin;
 
     /**
-     * Returns an ASCII compatible representation
-     * of the principals Origin
+     * Returns an ASCII compatible serialization of the principal's origin, as
+     * specified by the whatwg HTML specification. If the principal does not
+     * have a host, the origin will be "null".
+     *
+     * https://html.spec.whatwg.org/multipage/browsers.html#ascii-serialisation-of-an-origin
+     *
+     * Note that this is different from `origin`, does not contain
+     * gecko-specific metadata like origin attributes, and should not be used
+     * for permissions or security checks.
      *
      * May be called from any thread.
      */
-    [noscript] readonly attribute ACString asciiOrigin;
+    [noscript] readonly attribute ACString webExposedOriginSerialization;
 
     /**
      * Returns the "host:port" portion of the
@@ -417,7 +424,7 @@ interface nsIPrincipal : nsISupports
      *
      * May be called from any thread.
      */
-    bool allowsRelaxStrictFileOriginPolicy(in nsIURI aURI);
+    boolean allowsRelaxStrictFileOriginPolicy(in nsIURI aURI);
 
 
     /*
@@ -426,7 +433,7 @@ interface nsIPrincipal : nsISupports
      * May be called from any thread.
      */
     [noscript]
-    ACString getPrefLightCacheKey(in nsIURI aURI ,in bool aWithCredentials,
+    ACString getPrefLightCacheKey(in nsIURI aURI ,in boolean aWithCredentials,
                                   in const_OriginAttributes aOriginAttributes);
 
 
@@ -437,7 +444,7 @@ interface nsIPrincipal : nsISupports
      *
      * NOTE: Main-Thread Only.
      */
-    bool hasFirstpartyStorageAccess(in mozIDOMWindow aWindow, out uint32_t rejectedReason);
+    boolean hasFirstpartyStorageAccess(in mozIDOMWindow aWindow, out uint32_t rejectedReason);
 
 
     /*
@@ -491,7 +498,7 @@ interface nsIPrincipal : nsISupports
      *
      * May be called from any thread.
      */
-    nsIReferrerInfo createReferrerInfo(in ReferrerPolicy aReferrerPolicy);
+    [noscript] nsIReferrerInfo createReferrerInfo(in ReferrerPolicy aReferrerPolicy);
 
     /**
      * The base part of |origin| without the concatenation with |originSuffix|.
@@ -578,17 +585,6 @@ interface nsIPrincipal : nsISupports
      * May be called from any thread.
      */
     [infallible] readonly attribute unsigned long privateBrowsingId;
-
-    /**
-     * Returns true iff the principal is inside an isolated mozbrowser element.
-     * <xul:browser> is not considered to be a mozbrowser element.
-     * <iframe mozbrowser noisolation> does not count as isolated since
-     * isolation is disabled.  Isolation can only be disabled if the
-     * containing document is chrome.
-     *
-     * May be called from any thread.
-     */
-    [infallible] readonly attribute boolean isInIsolatedMozBrowserElement;
 
     /**
      * Returns true iff this is a null principal (corresponding to an

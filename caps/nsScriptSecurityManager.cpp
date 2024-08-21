@@ -71,6 +71,7 @@
 #include "nsContentUtils.h"
 #include "nsJSUtils.h"
 #include "nsILoadInfo.h"
+#include "js/ColumnNumber.h"  // JS::ColumnNumberOneOrigin
 
 // This should be probably defined on some other place... but I couldn't find it
 #define WEBAPPS_PERM_NAME "webapps-manage"
@@ -222,6 +223,18 @@ bool nsScriptSecurityManager::SecurityCompareURIs(nsIURI* aSourceURI,
 // nsNetUtil.h.
 uint32_t nsScriptSecurityManager::SecurityHashURI(nsIURI* aURI) {
   return NS_SecurityHashURI(aURI);
+}
+
+bool nsScriptSecurityManager::IsHttpOrHttpsAndCrossOrigin(nsIURI* aUriA,
+                                                          nsIURI* aUriB) {
+  if (!aUriA || (!net::SchemeIsHTTP(aUriA) && !net::SchemeIsHTTPS(aUriA)) ||
+      !aUriB || (!net::SchemeIsHTTP(aUriB) && !net::SchemeIsHTTPS(aUriB))) {
+    return false;
+  }
+  if (!SecurityCompareURIs(aUriA, aUriB)) {
+    return true;
+  }
+  return false;
 }
 
 /*
@@ -531,8 +544,8 @@ bool nsScriptSecurityManager::ContentSecurityPolicyPermitsJSAction(
   if (reportViolation) {
     JS::AutoFilename scriptFilename;
     nsAutoString fileName;
-    unsigned lineNum = 0;
-    unsigned columnNum = 0;
+    uint32_t lineNum = 0;
+    JS::ColumnNumberOneOrigin columnNum;
     if (JS::DescribeScriptedCaller(cx, &scriptFilename, &lineNum, &columnNum)) {
       if (const char* file = scriptFilename.get()) {
         CopyUTF8toUTF16(nsDependentCString(file), fileName);
@@ -554,7 +567,7 @@ bool nsScriptSecurityManager::ContentSecurityPolicyPermitsJSAction(
     csp->LogViolationDetails(violationType,
                              nullptr,  // triggering element
                              cspEventListener, fileName, scriptSample, lineNum,
-                             columnNum, u""_ns, u""_ns);
+                             columnNum.oneOriginValue(), u""_ns, u""_ns);
   }
 
   return evalOK;

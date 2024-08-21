@@ -17,10 +17,6 @@ class OriginAttributes : public dom::OriginAttributesDictionary {
  public:
   OriginAttributes() = default;
 
-  explicit OriginAttributes(bool aInIsolatedMozBrowser) {
-    mInIsolatedMozBrowser = aInIsolatedMozBrowser;
-  }
-
   explicit OriginAttributes(const OriginAttributesDictionary& aOther)
       : OriginAttributesDictionary(aOther) {}
 
@@ -31,9 +27,9 @@ class OriginAttributes : public dom::OriginAttributesDictionary {
   void SetFirstPartyDomain(const bool aIsTopLevelDocument,
                            const nsAString& aDomain, bool aForced = false);
 
-  void SetPartitionKey(nsIURI* aURI);
-  void SetPartitionKey(const nsACString& aDomain);
-  void SetPartitionKey(const nsAString& aDomain);
+  void SetPartitionKey(nsIURI* aURI, bool aForeignByAncestorContext);
+  void SetPartitionKey(const nsACString& aOther);
+  void SetPartitionKey(const nsAString& aOther);
 
   enum {
     STRIP_FIRST_PARTY_DOMAIN = 0x01,
@@ -74,8 +70,7 @@ class OriginAttributes : public dom::OriginAttributesDictionary {
   }
 
   [[nodiscard]] bool EqualsIgnoringFPD(const OriginAttributes& aOther) const {
-    return mInIsolatedMozBrowser == aOther.mInIsolatedMozBrowser &&
-           mUserContextId == aOther.mUserContextId &&
+    return mUserContextId == aOther.mUserContextId &&
            mPrivateBrowsingId == aOther.mPrivateBrowsingId &&
            mGeckoViewSessionContextId == aOther.mGeckoViewSessionContextId;
   }
@@ -134,13 +129,13 @@ class OriginAttributes : public dom::OriginAttributesDictionary {
   // different than 0.
   static bool IsPrivateBrowsing(const nsACString& aOrigin);
 
-  // Parse a partitionKey of the format "(<scheme>,<baseDomain>,[port])" into
-  // its components.
-  // Returns false if the partitionKey cannot be parsed because the format is
-  // invalid.
+  // Parse a partitionKey of the format
+  // "(<scheme>,<baseDomain>,[port],[ancestorbit])" into its components. Returns
+  // false if the partitionKey cannot be parsed because the format is invalid.
   static bool ParsePartitionKey(const nsAString& aPartitionKey,
                                 nsAString& outScheme, nsAString& outBaseDomain,
-                                int32_t& outPort);
+                                int32_t& outPort,
+                                bool& outForeignByAncestorContext);
 };
 
 class OriginAttributesPattern : public dom::OriginAttributesPatternDictionary {
@@ -159,11 +154,6 @@ class OriginAttributesPattern : public dom::OriginAttributesPatternDictionary {
 
   // Performs a match of |aAttrs| against this pattern.
   bool Matches(const OriginAttributes& aAttrs) const {
-    if (mInIsolatedMozBrowser.WasPassed() &&
-        mInIsolatedMozBrowser.Value() != aAttrs.mInIsolatedMozBrowser) {
-      return false;
-    }
-
     if (mUserContextId.WasPassed() &&
         mUserContextId.Value() != aAttrs.mUserContextId) {
       return false;
@@ -203,8 +193,9 @@ class OriginAttributesPattern : public dom::OriginAttributesPatternDictionary {
         nsString scheme;
         nsString baseDomain;
         int32_t port;
+        bool ancestor;
         bool success = OriginAttributes::ParsePartitionKey(
-            aAttrs.mPartitionKey, scheme, baseDomain, port);
+            aAttrs.mPartitionKey, scheme, baseDomain, port, ancestor);
         if (!success) {
           return false;
         }
@@ -220,6 +211,10 @@ class OriginAttributesPattern : public dom::OriginAttributesPatternDictionary {
         if (pkPattern.mPort.WasPassed() && pkPattern.mPort.Value() != port) {
           return false;
         }
+        if (pkPattern.mForeignByAncestorContext.WasPassed() &&
+            pkPattern.mForeignByAncestorContext.Value() != ancestor) {
+          return false;
+        }
       }
     }
 
@@ -227,12 +222,6 @@ class OriginAttributesPattern : public dom::OriginAttributesPatternDictionary {
   }
 
   bool Overlaps(const OriginAttributesPattern& aOther) const {
-    if (mInIsolatedMozBrowser.WasPassed() &&
-        aOther.mInIsolatedMozBrowser.WasPassed() &&
-        mInIsolatedMozBrowser.Value() != aOther.mInIsolatedMozBrowser.Value()) {
-      return false;
-    }
-
     if (mUserContextId.WasPassed() && aOther.mUserContextId.WasPassed() &&
         mUserContextId.Value() != aOther.mUserContextId.Value()) {
       return false;
@@ -276,6 +265,12 @@ class OriginAttributesPattern : public dom::OriginAttributesPatternDictionary {
       }
       if (self.mPort.WasPassed() && other.mPort.WasPassed() &&
           self.mPort.Value() != other.mPort.Value()) {
+        return false;
+      }
+      if (self.mForeignByAncestorContext.WasPassed() &&
+          other.mForeignByAncestorContext.WasPassed() &&
+          self.mForeignByAncestorContext.Value() !=
+              other.mForeignByAncestorContext.Value()) {
         return false;
       }
     }
