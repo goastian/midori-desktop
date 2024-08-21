@@ -10,7 +10,7 @@ async function setup() {
   waitForExplicitFinish();
 }
 
-function checkSecFetchUser(subject, topic, data) {
+function checkSecFetchUser(subject) {
   let channel = subject.QueryInterface(Ci.nsIHttpChannel);
   if (!channel.URI.spec.startsWith("https://example.com/")) {
     return;
@@ -50,7 +50,7 @@ async function testNavigations() {
 
   // Load initial site
   let loaded = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
-  BrowserTestUtils.loadURIString(gBrowser, REQUEST_URL + "?test1");
+  BrowserTestUtils.startLoadingURIString(gBrowser, REQUEST_URL + "?test1");
   await loaded;
 
   // Load another site
@@ -154,7 +154,11 @@ async function testNavigations() {
   });
   await loaded;
 
-  ok(gTestCounter === 7, "testing that all five actions have been tested.");
+  Assert.strictEqual(
+    gTestCounter,
+    7,
+    "testing that all five actions have been tested."
+  );
 
   Services.obs.removeObserver(checkSecFetchUser, "http-on-stop-request");
 }

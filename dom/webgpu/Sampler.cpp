@@ -15,18 +15,28 @@ GPU_IMPL_CYCLE_COLLECTION(Sampler, mParent)
 GPU_IMPL_JS_WRAP(Sampler)
 
 Sampler::Sampler(Device* const aParent, RawId aId)
-    : ChildOf(aParent), mId(aId) {}
+    : ChildOf(aParent), mId(aId) {
+  MOZ_RELEASE_ASSERT(aId);
+}
 
 Sampler::~Sampler() { Cleanup(); }
 
 void Sampler::Cleanup() {
-  if (mValid && mParent) {
-    mValid = false;
-    auto bridge = mParent->GetBridge();
-    if (bridge && bridge->IsOpen()) {
-      bridge->SendSamplerDestroy(mId);
-    }
+  if (!mValid) {
+    return;
   }
+
+  mValid = false;
+  auto bridge = mParent->GetBridge();
+  if (!bridge) {
+    return;
+  }
+
+  if (bridge->CanSend()) {
+    bridge->SendSamplerDrop(mId);
+  }
+
+  wgpu_client_free_sampler_id(bridge->GetClient(), mId);
 }
 
 }  // namespace mozilla::webgpu

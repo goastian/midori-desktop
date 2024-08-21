@@ -13,8 +13,7 @@
  */
 
 // http://www.whatwg.org/specs/web-apps/current-work/#the-embed-element
-[NeedResolve,
- Exposed=Window]
+[Exposed=Window]
 interface HTMLEmbedElement : HTMLElement {
   [HTMLConstructor] constructor();
 
@@ -42,6 +41,5 @@ partial interface HTMLEmbedElement {
   Document? getSVGDocument();
 };
 
-HTMLEmbedElement includes MozImageLoadingContent;
 HTMLEmbedElement includes MozFrameLoaderOwner;
 HTMLEmbedElement includes MozObjectLoadingContent;

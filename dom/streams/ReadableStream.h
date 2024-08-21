@@ -23,6 +23,7 @@
 namespace mozilla::dom {
 
 class Promise;
+class ReadableStreamBYOBRequest;
 class ReadableStreamDefaultReader;
 class ReadableStreamGenericReader;
 struct ReadableStreamGetReaderOptions;
@@ -169,6 +170,11 @@ class ReadableStream : public nsISupports, public nsWrapperCache {
                                         JS::Handle<JS::Value> aChunk,
                                         ErrorResult& aRv);
 
+  // https://streams.spec.whatwg.org/#readablestream-current-byob-request-view
+  void GetCurrentBYOBRequestView(JSContext* aCx,
+                                 JS::MutableHandle<JSObject*> aView,
+                                 ErrorResult& aRv);
+
   // The following algorithms can be used on arbitrary ReadableStream instances,
   // including ones that are created by web developers. They can all fail in
   // various operation-specific ways, and these failures should be handled by
@@ -192,6 +198,10 @@ class ReadableStream : public nsISupports, public nsWrapperCache {
   Constructor(const GlobalObject& aGlobal,
               const Optional<JS::Handle<JSObject*>>& aUnderlyingSource,
               const QueuingStrategy& aStrategy, ErrorResult& aRv);
+
+  MOZ_CAN_RUN_SCRIPT static already_AddRefed<ReadableStream> From(
+      const GlobalObject& aGlobal, JS::Handle<JS::Value> asyncIterable,
+      ErrorResult& aRv);
 
   bool Locked() const;
 

@@ -9,7 +9,8 @@
 
 namespace mozilla::dom {
 
-NS_IMPL_CYCLE_COLLECTION_INHERITED(RTCDtlsTransport, DOMEventTargetHelper)
+NS_IMPL_CYCLE_COLLECTION_INHERITED(RTCDtlsTransport, DOMEventTargetHelper,
+                                   mIceTransport)
 
 NS_IMPL_ADDREF_INHERITED(RTCDtlsTransport, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(RTCDtlsTransport, DOMEventTargetHelper)
@@ -19,43 +20,46 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(RTCDtlsTransport)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 RTCDtlsTransport::RTCDtlsTransport(nsPIDOMWindowInner* aWindow)
-    : DOMEventTargetHelper(aWindow), mState(RTCDtlsTransportState::New) {}
+    : DOMEventTargetHelper(aWindow),
+      mState(RTCDtlsTransportState::New),
+      mIceTransport(new RTCIceTransport(aWindow)) {}
 
 JSObject* RTCDtlsTransport::WrapObject(JSContext* aCx,
                                        JS::Handle<JSObject*> aGivenProto) {
   return RTCDtlsTransport_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-void RTCDtlsTransport::UpdateState(TransportLayer::State aState) {
+void RTCDtlsTransport::UpdateStateNoEvent(TransportLayer::State aState) {
   if (mState == RTCDtlsTransportState::Closed) {
     return;
   }
 
-  RTCDtlsTransportState newState = mState;
   switch (aState) {
     case TransportLayer::TS_NONE:
       break;
     case TransportLayer::TS_INIT:
       break;
     case TransportLayer::TS_CONNECTING:
-      newState = RTCDtlsTransportState::Connecting;
+      mState = RTCDtlsTransportState::Connecting;
       break;
     case TransportLayer::TS_OPEN:
-      newState = RTCDtlsTransportState::Connected;
+      mState = RTCDtlsTransportState::Connected;
       break;
     case TransportLayer::TS_CLOSED:
-      newState = RTCDtlsTransportState::Closed;
+      mState = RTCDtlsTransportState::Closed;
       break;
     case TransportLayer::TS_ERROR:
-      newState = RTCDtlsTransportState::Failed;
+      mState = RTCDtlsTransportState::Failed;
       break;
   }
+}
 
-  if (newState == mState) {
+void RTCDtlsTransport::UpdateState(TransportLayer::State aState) {
+  RTCDtlsTransportState oldState = mState;
+  UpdateStateNoEvent(aState);
+  if (oldState == mState) {
     return;
   }
-
-  mState = newState;
 
   EventInit init;
   init.mBubbles = false;

@@ -21,6 +21,7 @@
 #include "nsIRequest.h"
 #include "nsISupportsImpl.h"
 #include "nsIWeakReferenceUtils.h"
+#include "nsRFPService.h"
 #include "nsTArray.h"
 
 class nsIChannel;
@@ -141,11 +142,12 @@ struct WorkerLoadInfoData {
   bool mWatchedByDevTools;
   StorageAccess mStorageAccess;
   bool mUseRegularPrincipal;
-  bool mHasStorageAccessPermissionGranted;
+  bool mUsingStorageAccess;
   bool mServiceWorkersTestingInWindow;
   bool mShouldResistFingerprinting;
+  Maybe<RFPTarget> mOverriddenFingerprintingSettings;
   OriginAttributes mOriginAttributes;
-  bool mIsThirdPartyContextToTopWindow;
+  bool mIsThirdPartyContext;
 
   enum {
     eNotSet,

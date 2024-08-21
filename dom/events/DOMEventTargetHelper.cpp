@@ -145,8 +145,8 @@ bool DOMEventTargetHelper::ComputeDefaultWantsUntrusted(ErrorResult& aRv) {
 bool DOMEventTargetHelper::DispatchEvent(Event& aEvent, CallerType aCallerType,
                                          ErrorResult& aRv) {
   nsEventStatus status = nsEventStatus_eIgnore;
-  nsresult rv = EventDispatcher::DispatchDOMEvent(
-      static_cast<EventTarget*>(this), nullptr, &aEvent, nullptr, &status);
+  nsresult rv = EventDispatcher::DispatchDOMEvent(this, nullptr, &aEvent,
+                                                  nullptr, &status);
   bool retval = !aEvent.DefaultPrevented(aCallerType);
   if (NS_FAILED(rv)) {
     aRv.Throw(rv);

@@ -10,6 +10,7 @@
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/DocumentInlines.h"
 #include "nsContentUtils.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsIPrintSettings.h"
 
 namespace mozilla::dom {
@@ -19,23 +20,25 @@ class AutoPrintEventDispatcher {
   // RecvCloneDocumentTreeIntoSelf.
   static void CollectInProcessSubdocuments(
       Document& aDoc, nsTArray<nsCOMPtr<Document>>& aDocs) {
-    auto recurse = [&aDocs](Document& aSubDoc) {
+    aDoc.EnumerateSubDocuments([&aDocs](Document& aSubDoc) {
       aDocs.AppendElement(&aSubDoc);
       CollectInProcessSubdocuments(aSubDoc, aDocs);
       return CallState::Continue;
-    };
-    aDoc.EnumerateSubDocuments(recurse);
+    });
   }
 
   MOZ_CAN_RUN_SCRIPT void DispatchEvent(bool aBefore) {
     for (auto& doc : mDocuments) {
       nsContentUtils::DispatchTrustedEvent(
-          doc, doc->GetWindow(), aBefore ? u"beforeprint"_ns : u"afterprint"_ns,
-          CanBubble::eNo, Cancelable::eNo, nullptr);
+          doc, nsGlobalWindowOuter::Cast(doc->GetWindow()),
+          aBefore ? u"beforeprint"_ns : u"afterprint"_ns, CanBubble::eNo,
+          Cancelable::eNo, nullptr);
       if (RefPtr<nsPresContext> presContext = doc->GetPresContext()) {
         presContext->EmulateMedium(aBefore ? nsGkAtoms::print : nullptr);
         // Ensure media query listeners fire.
-        doc->FlushPendingNotifications(FlushType::Style);
+        // FIXME(emilio): This is hacky, at best, but is required for compat
+        // with some pages, see bug 774398.
+        doc->EvaluateMediaQueriesAndReportChanges(/* aRecurse = */ false);
       }
     }
   }

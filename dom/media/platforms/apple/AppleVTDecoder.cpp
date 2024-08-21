@@ -7,7 +7,7 @@
 #include "AppleVTDecoder.h"
 
 #include <CoreVideo/CVPixelBufferIOSurface.h>
-#include <IOSurface/IOSurface.h>
+#include <IOSurface/IOSurfaceRef.h>
 #include <limits>
 
 #include "AppleDecoderModule.h"
@@ -18,14 +18,13 @@
 #include "MacIOSurfaceImage.h"
 #include "MediaData.h"
 #include "VPXDecoder.h"
+#include "AOMDecoder.h"
 #include "VideoUtils.h"
 #include "gfxMacUtils.h"
-#include "gfxPlatform.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Logging.h"
 #include "mozilla/TaskQueue.h"
 #include "mozilla/gfx/gfxVars.h"
-#include "nsThreadUtils.h"
 
 #define LOG(...) DDMOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, __VA_ARGS__)
 #define LOGEX(_this, ...) \
@@ -37,7 +36,7 @@ using namespace layers;
 
 AppleVTDecoder::AppleVTDecoder(const VideoInfo& aConfig,
                                layers::ImageContainer* aImageContainer,
-                               CreateDecoderParams::OptionSet aOptions,
+                               const CreateDecoderParams::OptionSet& aOptions,
                                layers::KnowsCompositor* aKnowsCompositor,
                                Maybe<TrackingId> aTrackingId)
     : mExtraData(aConfig.mExtraData),
@@ -57,6 +56,7 @@ AppleVTDecoder::AppleVTDecoder(const VideoInfo& aConfig,
       mColorDepth(aConfig.mColorDepth),
       mStreamType(MP4Decoder::IsH264(aConfig.mMimeType)  ? StreamType::H264
                   : VPXDecoder::IsVP9(aConfig.mMimeType) ? StreamType::VP9
+                  : AOMDecoder::IsAV1(aConfig.mMimeType) ? StreamType::AV1
                                                          : StreamType::Unknown),
       mTaskQueue(TaskQueue::Create(
           GetMediaThreadPool(MediaThreadType::PLATFORM_DECODER),
@@ -91,7 +91,10 @@ AppleVTDecoder::AppleVTDecoder(const VideoInfo& aConfig,
   MOZ_ASSERT(mStreamType != StreamType::Unknown);
   // TODO: Verify aConfig.mime_type.
   LOG("Creating AppleVTDecoder for %dx%d %s video", mDisplayWidth,
-      mDisplayHeight, mStreamType == StreamType::H264 ? "H.264" : "VP9");
+      mDisplayHeight,
+      mStreamType == StreamType::H264  ? "H.264"
+      : mStreamType == StreamType::VP9 ? "VP9"
+                                       : "AV1");
 }
 
 AppleVTDecoder::~AppleVTDecoder() { MOZ_COUNT_DTOR(AppleVTDecoder); }
@@ -178,6 +181,9 @@ void AppleVTDecoder::ProcessDecode(MediaRawData* aSample) {
         break;
       case StreamType::VP9:
         flag |= MediaInfoFlag::VIDEO_VP9;
+        break;
+      case StreamType::AV1:
+        flag |= MediaInfoFlag::VIDEO_AV1;
         break;
       default:
         break;
@@ -336,7 +342,8 @@ static void PlatformCallback(void* decompressionOutputRefCon,
     NS_WARNING("VideoToolbox decoder returned an error");
     decoder->OnDecodeError(status);
     return;
-  } else if (!image) {
+  }
+  if (!image) {
     NS_WARNING("VideoToolbox decoder returned no data");
   } else if (flags & kVTDecodeInfo_FrameDropped) {
     NS_WARNING("  ...frame tagged as dropped...");
@@ -378,6 +385,8 @@ nsCString AppleVTDecoder::GetCodecName() const {
       return "h264"_ns;
     case StreamType::VP9:
       return "vp9"_ns;
+    case StreamType::AV1:
+      return "av1"_ns;
     default:
       return "unknown"_ns;
   }
@@ -476,15 +485,17 @@ void AppleVTDecoder::OutputFrame(CVPixelBufferRef aImage,
     gfx::IntRect visible = gfx::IntRect(0, 0, mPictureWidth, mPictureHeight);
 
     // Copy the image data into our own format.
-    data = VideoData::CreateAndCopyData(
-        info, mImageContainer, aFrameRef.byte_offset,
-        aFrameRef.composition_timestamp, aFrameRef.duration, buffer,
-        aFrameRef.is_sync_point, aFrameRef.decode_timestamp, visible,
-        mKnowsCompositor);
+    Result<already_AddRefed<VideoData>, MediaResult> result =
+        VideoData::CreateAndCopyData(
+            info, mImageContainer, aFrameRef.byte_offset,
+            aFrameRef.composition_timestamp, aFrameRef.duration, buffer,
+            aFrameRef.is_sync_point, aFrameRef.decode_timestamp, visible,
+            mKnowsCompositor);
+    // TODO: Reject mPromise below with result's error return.
+    data = result.unwrapOr(nullptr);
     // Unlock the returned image data.
     CVPixelBufferUnlockBaseAddress(aImage, kCVPixelBufferLock_ReadOnly);
   } else {
-#ifndef MOZ_WIDGET_UIKIT
     // Set pixel buffer properties on aImage before we extract its surface.
     // This ensures that we can use defined enums to set values instead
     // of later setting magic CFSTR values on the surface itself.
@@ -533,9 +544,6 @@ void AppleVTDecoder::OutputFrame(CVPixelBufferRef aImage,
         info.mDisplay, aFrameRef.byte_offset, aFrameRef.composition_timestamp,
         aFrameRef.duration, image.forget(), aFrameRef.is_sync_point,
         aFrameRef.decode_timestamp);
-#else
-    MOZ_ASSERT_UNREACHABLE("No MacIOSurface on iOS");
-#endif
   }
 
   if (!data) {
@@ -567,6 +575,8 @@ void AppleVTDecoder::OutputFrame(CVPixelBufferRef aImage,
         aStage.SetColorDepth(mColorDepth);
         aStage.SetYUVColorSpace(mColorSpace);
         aStage.SetColorRange(mColorRange);
+        aStage.SetStartTimeAndEndTime(data->mTime.ToMicroseconds(),
+                                      data->GetEndTime().ToMicroseconds());
       });
 
   // Frames come out in DTS order but we need to output them
@@ -600,13 +610,18 @@ MediaResult AppleVTDecoder::InitializeSession() {
   OSStatus rv;
 
   AutoCFRelease<CFDictionaryRef> extensions = CreateDecoderExtensions();
+  CMVideoCodecType streamType;
+  if (mStreamType == StreamType::H264) {
+    streamType = kCMVideoCodecType_H264;
+  } else if (mStreamType == StreamType::VP9) {
+    streamType = CMVideoCodecType(AppleDecoderModule::kCMVideoCodecType_VP9);
+  } else {
+    streamType = kCMVideoCodecType_AV1;
+  }
 
   rv = CMVideoFormatDescriptionCreate(
-      kCFAllocatorDefault,
-      mStreamType == StreamType::H264
-          ? kCMVideoCodecType_H264
-          : CMVideoCodecType(AppleDecoderModule::kCMVideoCodecType_VP9),
-      mPictureWidth, mPictureHeight, extensions, &mFormat);
+      kCFAllocatorDefault, streamType, AssertedCast<int32_t>(mPictureWidth),
+      AssertedCast<int32_t>(mPictureHeight), extensions, &mFormat);
   if (rv != noErr) {
     return MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
                        RESULT_DETAIL("Couldn't create format description!"));
@@ -627,6 +642,7 @@ MediaResult AppleVTDecoder::InitializeSession() {
                                    &cb, &mSession);
 
   if (rv != noErr) {
+    LOG("AppleVTDecoder: VTDecompressionSessionCreate failed: %d", rv);
     return MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
                        RESULT_DETAIL("Couldn't create decompression session!"));
   }
@@ -652,11 +668,15 @@ MediaResult AppleVTDecoder::InitializeSession() {
 }
 
 CFDictionaryRef AppleVTDecoder::CreateDecoderExtensions() {
-  AutoCFRelease<CFDataRef> data = CFDataCreate(
-      kCFAllocatorDefault, mExtraData->Elements(), mExtraData->Length());
+  AutoCFRelease<CFDataRef> data =
+      CFDataCreate(kCFAllocatorDefault, mExtraData->Elements(),
+                   AssertedCast<CFIndex>(mExtraData->Length()));
 
   const void* atomsKey[1];
-  atomsKey[0] = mStreamType == StreamType::H264 ? CFSTR("avcC") : CFSTR("vpcC");
+  atomsKey[0] = mStreamType == StreamType::H264  ? CFSTR("avcC")
+                : mStreamType == StreamType::VP9 ? CFSTR("vpcC")
+                                                 : CFSTR("av1C");
+  ;
   const void* atomsValue[] = {data};
   static_assert(ArrayLength(atomsKey) == ArrayLength(atomsValue),
                 "Non matching keys/values array size");
@@ -715,7 +735,6 @@ CFDictionaryRef AppleVTDecoder::CreateOutputConfiguration() {
         &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
   }
 
-#ifndef MOZ_WIDGET_UIKIT
   // Output format type:
 
   bool is10Bit = (gfx::BitDepthForColorDepth(mColorDepth) == 10);
@@ -750,9 +769,6 @@ CFDictionaryRef AppleVTDecoder::CreateOutputConfiguration() {
   return CFDictionaryCreate(
       kCFAllocatorDefault, outputKeys, outputValues, ArrayLength(outputKeys),
       &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-#else
-  MOZ_ASSERT_UNREACHABLE("No MacIOSurface on iOS");
-#endif
 }
 
 }  // namespace mozilla

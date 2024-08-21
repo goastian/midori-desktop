@@ -17,6 +17,7 @@
 #include "mozilla/dom/MessageEventBinding.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/ToJSValue.h"
+#include "mozilla/dom/TypedArray.h"
 #include "mozilla/dom/Blob.h"
 
 #include "nsError.h"
@@ -102,7 +103,7 @@ nsresult nsDOMDataChannel::Init(nsPIDOMWindowInner* aDOMWindow) {
   rv = CheckCurrentGlobalCorrectness();
   NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = nsContentUtils::GetUTFOrigin(principal, mOrigin);
+  rv = nsContentUtils::GetWebExposedOriginSerialization(principal, mOrigin);
   DC_DEBUG(("%s: origin = %s\n", __FUNCTION__,
             NS_LossyConvertUTF16toASCII(mOrigin).get()));
   return rv;
@@ -128,7 +129,8 @@ mozilla::dom::Nullable<uint16_t> nsDOMDataChannel::GetId() const {
 
 // XXX should be GetType()?  Open question for the spec
 bool nsDOMDataChannel::Reliable() const {
-  return mDataChannel->GetType() == mozilla::DataChannelConnection::RELIABLE;
+  return mDataChannel->GetType() ==
+         mozilla::DataChannelReliabilityPolicy::Reliable;
 }
 
 mozilla::dom::Nullable<uint16_t> nsDOMDataChannel::GetMaxPacketLifeTime()
@@ -172,16 +174,25 @@ void nsDOMDataChannel::Close() {
 
 // All of the following is copy/pasted from WebSocket.cpp.
 void nsDOMDataChannel::Send(const nsAString& aData, ErrorResult& aRv) {
+  if (!CheckReadyState(aRv)) {
+    return;
+  }
+
   nsAutoCString msgString;
   if (!AppendUTF16toUTF8(aData, msgString, mozilla::fallible_t())) {
     aRv.Throw(NS_ERROR_FILE_TOO_BIG);
     return;
   }
-  Send(nullptr, &msgString, false, aRv);
+
+  mDataChannel->SendMsg(msgString, aRv);
 }
 
 void nsDOMDataChannel::Send(Blob& aData, ErrorResult& aRv) {
   MOZ_ASSERT(NS_IsMainThread(), "Not running on main thread");
+
+  if (!CheckReadyState(aRv)) {
+    return;
+  }
 
   nsCOMPtr<nsIInputStream> msgStream;
   aData.CreateInputStream(getter_AddRefs(msgStream), aRv);
@@ -199,80 +210,63 @@ void nsDOMDataChannel::Send(Blob& aData, ErrorResult& aRv) {
     return;
   }
 
-  Send(&aData, nullptr, true, aRv);
+  mDataChannel->SendBinaryBlob(aData, aRv);
 }
 
 void nsDOMDataChannel::Send(const ArrayBuffer& aData, ErrorResult& aRv) {
   MOZ_ASSERT(NS_IsMainThread(), "Not running on main thread");
 
-  aData.ComputeState();
+  if (!CheckReadyState(aRv)) {
+    return;
+  }
 
-  static_assert(sizeof(*aData.Data()) == 1, "byte-sized data required");
-
-  uint32_t len = aData.Length();
-  char* data = reinterpret_cast<char*>(aData.Data());
-
-  nsDependentCSubstring msgString;
-  if (!msgString.Assign(data, len, mozilla::fallible_t())) {
+  nsCString msgString;
+  if (!aData.AppendDataTo(msgString)) {
     aRv.Throw(NS_ERROR_FILE_TOO_BIG);
     return;
   }
 
-  Send(nullptr, &msgString, true, aRv);
+  mDataChannel->SendBinaryMsg(msgString, aRv);
 }
 
 void nsDOMDataChannel::Send(const ArrayBufferView& aData, ErrorResult& aRv) {
   MOZ_ASSERT(NS_IsMainThread(), "Not running on main thread");
 
-  aData.ComputeState();
+  if (!CheckReadyState(aRv)) {
+    return;
+  }
 
-  static_assert(sizeof(*aData.Data()) == 1, "byte-sized data required");
-
-  uint32_t len = aData.Length();
-  char* data = reinterpret_cast<char*>(aData.Data());
-
-  nsDependentCSubstring msgString;
-  if (!msgString.Assign(data, len, mozilla::fallible_t())) {
+  nsCString msgString;
+  if (!aData.AppendDataTo(msgString)) {
     aRv.Throw(NS_ERROR_FILE_TOO_BIG);
     return;
   }
 
-  Send(nullptr, &msgString, true, aRv);
+  mDataChannel->SendBinaryMsg(msgString, aRv);
 }
 
-void nsDOMDataChannel::Send(mozilla::dom::Blob* aMsgBlob,
-                            const nsACString* aMsgString, bool aIsBinary,
-                            mozilla::ErrorResult& aRv) {
+bool nsDOMDataChannel::CheckReadyState(ErrorResult& aRv) {
   MOZ_ASSERT(NS_IsMainThread());
-  uint16_t state = mozilla::DataChannel::CLOSED;
+  DataChannelState state = DataChannelState::Closed;
   if (!mSentClose) {
     state = mDataChannel->GetReadyState();
   }
 
   // In reality, the DataChannel protocol allows this, but we want it to
   // look like WebSockets
-  if (state == mozilla::DataChannel::CONNECTING) {
+  if (state == DataChannelState::Connecting) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
-    return;
+    return false;
   }
 
-  if (state == mozilla::DataChannel::CLOSING ||
-      state == mozilla::DataChannel::CLOSED) {
-    return;
+  if (state == DataChannelState::Closing || state == DataChannelState::Closed) {
+    return false;
   }
 
-  MOZ_ASSERT(state == mozilla::DataChannel::OPEN,
+  MOZ_ASSERT(state == DataChannelState::Open,
              "Unknown state in nsDOMDataChannel::Send");
 
-  if (aMsgBlob) {
-    mDataChannel->SendBinaryBlob(*aMsgBlob, aRv);
-  } else {
-    if (aIsBinary) {
-      mDataChannel->SendBinaryMsg(*aMsgString, aRv);
-    } else {
-      mDataChannel->SendMsg(*aMsgString, aRv);
-    }
-  }
+  return true;
 }
 
 nsresult nsDOMDataChannel::DoOnMessageAvailable(const nsACString& aData,
@@ -309,9 +303,9 @@ nsresult nsDOMDataChannel::DoOnMessageAvailable(const nsACString& aData,
         return NS_ERROR_FAILURE;
       }
     } else if (mBinaryType == DC_BINARY_TYPE_ARRAYBUFFER) {
-      JS::Rooted<JSObject*> arrayBuf(cx);
-      rv = nsContentUtils::CreateArrayBuffer(cx, aData, arrayBuf.address());
-      NS_ENSURE_SUCCESS(rv, rv);
+      ErrorResult error;
+      JS::Rooted<JSObject*> arrayBuf(cx, ArrayBuffer::Create(cx, aData, error));
+      ENSURE_SUCCESS(error, error.StealNSResult());
       jsData.setObject(*arrayBuf);
     } else {
       MOZ_CRASH("Unknown binary type!");
@@ -431,10 +425,10 @@ void nsDOMDataChannel::UpdateMustKeepAlive() {
   }
 
   bool shouldKeepAlive = false;
-  uint16_t readyState = mDataChannel->GetReadyState();
+  DataChannelState readyState = mDataChannel->GetReadyState();
 
   switch (readyState) {
-    case DataChannel::CONNECTING: {
+    case DataChannelState::Connecting: {
       if (mListenerManager &&
           (mListenerManager->HasListenersFor(nsGkAtoms::onopen) ||
            mListenerManager->HasListenersFor(nsGkAtoms::onmessage) ||
@@ -445,8 +439,8 @@ void nsDOMDataChannel::UpdateMustKeepAlive() {
       }
     } break;
 
-    case DataChannel::OPEN:
-    case DataChannel::CLOSING: {
+    case DataChannelState::Open:
+    case DataChannelState::Closing: {
       if (mDataChannel->GetBufferedAmount() != 0 ||
           (mListenerManager &&
            (mListenerManager->HasListenersFor(nsGkAtoms::onmessage) ||
@@ -457,7 +451,7 @@ void nsDOMDataChannel::UpdateMustKeepAlive() {
       }
     } break;
 
-    case DataChannel::CLOSED: {
+    case DataChannelState::Closed: {
       shouldKeepAlive = false;
     }
   }

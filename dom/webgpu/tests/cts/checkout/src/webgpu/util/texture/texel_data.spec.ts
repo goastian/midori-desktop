@@ -6,7 +6,7 @@ import {
   kEncodableTextureFormats,
   kTextureFormatInfo,
   EncodableTextureFormat,
-} from '../../capability_info.js';
+} from '../../format_info.js';
 import { GPUTest } from '../../gpu_test.js';
 
 import {
@@ -138,11 +138,8 @@ g.test('unorm_texel_data_in_shader')
     u
       .combine('format', kEncodableTextureFormats)
       .filter(({ format }) => {
-        return (
-          kTextureFormatInfo[format].copyDst &&
-          kTextureFormatInfo[format].color &&
-          getSingleDataType(format) === 'unorm'
-        );
+        const info = kTextureFormatInfo[format];
+        return !!info.color && info.color.copyDst && getSingleDataType(format) === 'unorm';
       })
       .beginSubcases()
       .expand('componentData', ({ format }) => {
@@ -163,6 +160,9 @@ g.test('unorm_texel_data_in_shader')
         ];
       })
   )
+  .beforeAllSubcases(t => {
+    t.skipIfTextureFormatNotSupported(t.params.format);
+  })
   .fn(doTest);
 
 g.test('snorm_texel_data_in_shader')
@@ -170,11 +170,8 @@ g.test('snorm_texel_data_in_shader')
     u
       .combine('format', kEncodableTextureFormats)
       .filter(({ format }) => {
-        return (
-          kTextureFormatInfo[format].copyDst &&
-          kTextureFormatInfo[format].color &&
-          getSingleDataType(format) === 'snorm'
-        );
+        const info = kTextureFormatInfo[format];
+        return !!info.color && info.color.copyDst && getSingleDataType(format) === 'snorm';
       })
       .beginSubcases()
       .expand('componentData', ({ format }) => {
@@ -205,11 +202,8 @@ g.test('uint_texel_data_in_shader')
     u
       .combine('format', kEncodableTextureFormats)
       .filter(({ format }) => {
-        return (
-          kTextureFormatInfo[format].copyDst &&
-          kTextureFormatInfo[format].color &&
-          getSingleDataType(format) === 'uint'
-        );
+        const info = kTextureFormatInfo[format];
+        return !!info.color && info.color.copyDst && getSingleDataType(format) === 'uint';
       })
       .beginSubcases()
       .expand('componentData', ({ format }) => {
@@ -237,11 +231,8 @@ g.test('sint_texel_data_in_shader')
     u
       .combine('format', kEncodableTextureFormats)
       .filter(({ format }) => {
-        return (
-          kTextureFormatInfo[format].copyDst &&
-          kTextureFormatInfo[format].color &&
-          getSingleDataType(format) === 'sint'
-        );
+        const info = kTextureFormatInfo[format];
+        return !!info.color && info.color.copyDst && getSingleDataType(format) === 'sint';
       })
       .beginSubcases()
       .expand('componentData', ({ format }) => {
@@ -275,11 +266,8 @@ TODO: Test NaN, Infinity, -Infinity [1]`
     u
       .combine('format', kEncodableTextureFormats)
       .filter(({ format }) => {
-        return (
-          kTextureFormatInfo[format].copyDst &&
-          kTextureFormatInfo[format].color &&
-          getSingleDataType(format) === 'float'
-        );
+        const info = kTextureFormatInfo[format];
+        return !!info.color && info.color.copyDst && getSingleDataType(format) === 'float';
       })
       .beginSubcases()
       .expand('componentData', ({ format }) => {
@@ -309,17 +297,16 @@ TODO: Test NaN, Infinity, -Infinity [1]`
 g.test('ufloat_texel_data_in_shader')
   .desc(
     `
-TODO: Test NaN, Infinity [1]`
+Note: this uses values that are representable by both rg11b10ufloat and rgb9e5ufloat.
+
+TODO: Test NaN, Infinity`
   )
   .params(u =>
     u
       .combine('format', kEncodableTextureFormats)
       .filter(({ format }) => {
-        return (
-          kTextureFormatInfo[format].copyDst &&
-          kTextureFormatInfo[format].color &&
-          getSingleDataType(format) === 'ufloat'
-        );
+        const info = kTextureFormatInfo[format];
+        return !!info.color && info.color.copyDst && getSingleDataType(format) === 'ufloat';
       })
       .beginSubcases()
       .expand('componentData', ({ format }) => {
@@ -327,21 +314,19 @@ TODO: Test NaN, Infinity [1]`
           // Test extrema
           makeParam(format, () => 0),
 
-          // [2]: Test NaN, Infinity
-
           // Test some values
-          makeParam(format, () => 0.119140625),
-          makeParam(format, () => 1.40625),
-          makeParam(format, () => 24896),
+          makeParam(format, () => 128),
+          makeParam(format, () => 1984),
+          makeParam(format, () => 3968),
 
           // Test scattered mixed values
           makeParam(format, (bitLength, i) => {
-            return [24896, 1.40625, 0.119140625, 0.23095703125][i];
+            return [128, 1984, 3968][i];
           }),
 
           // Test mixed values that are close in magnitude.
           makeParam(format, (bitLength, i) => {
-            return [0.1337890625, 0.17919921875, 0.119140625, 0.125][i];
+            return [0.05859375, 0.03125, 0.03515625][i];
           }),
         ];
       })

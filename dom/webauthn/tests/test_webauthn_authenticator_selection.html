@@ -15,6 +15,10 @@
   <script class="testbody" type="text/javascript">
     "use strict";
 
+    add_task(async () => {
+      await addVirtualAuthenticator();
+    });
+
     function arrivingHereIsGood(aResult) {
       ok(true, "Good result! Received a: " + aResult);
     }
@@ -34,8 +38,8 @@
     // Start a new MakeCredential() request.
     function requestMakeCredential(authenticatorSelection) {
       let publicKey = {
-        rp: {id: document.domain, name: "none", icon: "none"},
-        user: {id: new Uint8Array(), name: "none", icon: "none", displayName: "none"},
+        rp: {id: document.domain, name: "none"},
+        user: {id: new Uint8Array(), name: "none", displayName: "none"},
         challenge: crypto.getRandomValues(new Uint8Array(16)),
         timeout: 5000, // the minimum timeout is actually 15 seconds
         pubKeyCredParams: [{type: "public-key", alg: cose_alg_ECDSA_w_SHA256}],
@@ -81,8 +85,18 @@
         .then(arrivingHereIsGood)
         .catch(arrivingHereIsBad);
 
+      // Require a resident key.
+      await requestMakeCredential({requireResidentKey: true})
+        .then(arrivingHereIsGood)
+        .catch(arrivingHereIsBad);
+
       // Don't require a resident key.
       await requestMakeCredential({requireResidentKey: false})
+        .then(arrivingHereIsGood)
+        .catch(arrivingHereIsBad);
+
+      // Require user verification.
+      await requestMakeCredential({userVerification: "required"})
         .then(arrivingHereIsGood)
         .catch(arrivingHereIsBad);
 
@@ -104,6 +118,11 @@
         .then(arrivingHereIsGood)
         .catch(arrivingHereIsBad);
 
+      // Require user verification.
+      await requestGetAssertion("required")
+        .then(arrivingHereIsGood)
+        .catch(arrivingHereIsBad);
+
       // Prefer user verification.
       await requestGetAssertion("preferred")
         .then(arrivingHereIsGood)
@@ -121,24 +140,11 @@
       await requestMakeCredential({authenticatorAttachment: "platform"})
         .then(arrivingHereIsBad)
         .catch(expectNotAllowedError);
-
-      // Require a resident key.
-      await requestMakeCredential({requireResidentKey: true})
-        .then(arrivingHereIsBad)
-        .catch(expectNotAllowedError);
-
-      // Require user verification.
-      await requestMakeCredential({userVerification: "required"})
-        .then(arrivingHereIsBad)
-        .catch(expectNotAllowedError);
     });
 
     // Test failure cases for get assertion.
     add_task(async function test_get_assertion_failures() {
-      // Require user verification.
-      await requestGetAssertion("required")
-        .then(arrivingHereIsBad)
-        .catch(expectNotAllowedError);
+      // No failures currently tested
     });
   </script>
 

@@ -13,6 +13,7 @@ interface RTCRtpReceiver {
   readonly attribute MediaStreamTrack   track;
   readonly attribute RTCDtlsTransport?  transport;
   static RTCRtpCapabilities? getCapabilities(DOMString kind);
+  RTCRtpReceiveParameters getParameters();
   sequence<RTCRtpContributingSource>    getContributingSources();
   sequence<RTCRtpSynchronizationSource> getSynchronizationSources();
   [NewObject]
@@ -31,4 +32,10 @@ interface RTCRtpReceiver {
 partial interface RTCRtpReceiver {
   [Throws]
   attribute DOMHighResTimeStamp? jitterBufferTarget;
+};
+
+// https://w3c.github.io/webrtc-encoded-transform/#specification
+partial interface RTCRtpReceiver {
+  [SetterThrows,
+   Pref="media.peerconnection.scripttransform.enabled"] attribute RTCRtpTransform? transform;
 };

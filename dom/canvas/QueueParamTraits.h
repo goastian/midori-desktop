@@ -98,6 +98,10 @@ template <>
 struct BytesAlwaysValidT<webgl::UniformDataVal> {
   static constexpr bool value = true;
 };
+template <>
+struct BytesAlwaysValidT<const webgl::UniformDataVal> {
+  static constexpr bool value = true;
+};
 
 // -
 
@@ -258,15 +262,6 @@ struct QueueParamTraits<bool> {
 // ---------------------------------------------------------------
 
 template <class T>
-Maybe<T> AsValidEnum(const std::underlying_type_t<T> raw_val) {
-  const auto raw_enum = T{raw_val};  // This is the risk we prevent!
-  if (!IsEnumCase(raw_enum)) return {};
-  return Some(raw_enum);
-}
-
-// -
-
-template <class T>
 struct QueueParamTraits_IsEnumCase {
   template <typename ProducerView>
   static bool Write(ProducerView& aProducerView, const T& aArg) {
@@ -350,13 +345,13 @@ struct EnumSerializer {
   static bool Read(ConsumerView<U>& aConsumerView, ParamType* aResult) {
     DataType value;
     if (!aConsumerView.ReadParam(&value)) {
-      CrashReporter::AnnotateCrashReport(
-          CrashReporter::Annotation::IPCReadErrorReason, "Bad iter"_ns);
+      CrashReporter::RecordAnnotationCString(
+          CrashReporter::Annotation::IPCReadErrorReason, "Bad iter");
       return false;
     }
     if (!EnumValidator::IsLegalValue(static_cast<DataType>(value))) {
-      CrashReporter::AnnotateCrashReport(
-          CrashReporter::Annotation::IPCReadErrorReason, "Illegal value"_ns);
+      CrashReporter::RecordAnnotationCString(
+          CrashReporter::Annotation::IPCReadErrorReason, "Illegal value");
       return false;
     }
 

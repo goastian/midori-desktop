@@ -25,7 +25,12 @@ class CacheStreamControlParent final : public PCacheStreamControlParent,
   CacheStreamControlParent();
 
   void SetStreamList(SafeRefPtr<StreamList> aStreamList);
+
+  // Will close all streams. May synchronously free our this, see
+  // inherited StreamControl::CloseAllReadStreams.
   void CloseAll();
+
+  // Implicitly called when the last stream goes away.
   void Shutdown();
 
   // StreamControl methods
@@ -38,6 +43,8 @@ class CacheStreamControlParent final : public PCacheStreamControlParent,
                           InputStreamResolver&& aResolver) override;
 
   void AssertWillDelete();
+
+  void LostIPCCleanup(SafeRefPtr<StreamList> aStreamList);
 
  private:
   ~CacheStreamControlParent();

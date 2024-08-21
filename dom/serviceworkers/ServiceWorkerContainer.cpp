@@ -318,8 +318,7 @@ already_AddRefed<Promise> ServiceWorkerContainer::Register(
 
   // Check content policy.
   int16_t decision = nsIContentPolicy::ACCEPT;
-  rv = NS_CheckContentLoadPolicy(scriptURI, secCheckLoadInfo,
-                                 "application/javascript"_ns, &decision);
+  rv = NS_CheckContentLoadPolicy(scriptURI, secCheckLoadInfo, &decision);
   if (NS_FAILED(rv)) {
     aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
     return nullptr;
@@ -747,13 +746,9 @@ nsIGlobalObject* ServiceWorkerContainer::GetGlobalIfValid(
 
 void ServiceWorkerContainer::EnqueueReceivedMessageDispatch(
     RefPtr<ReceivedMessage> aMessage) {
-  if (nsPIDOMWindowInner* const window = GetOwner()) {
-    if (auto* const target = window->EventTargetFor(TaskCategory::Other)) {
-      target->Dispatch(NewRunnableMethod<RefPtr<ReceivedMessage>>(
-          "ServiceWorkerContainer::DispatchMessage", this,
-          &ServiceWorkerContainer::DispatchMessage, std::move(aMessage)));
-    }
-  }
+  NS_DispatchToMainThread(NewRunnableMethod<RefPtr<ReceivedMessage>>(
+      "ServiceWorkerContainer::DispatchMessage", this,
+      &ServiceWorkerContainer::DispatchMessage, std::move(aMessage)));
 }
 
 template <typename F>

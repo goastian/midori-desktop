@@ -8,6 +8,7 @@
 #define mozilla_dom_HTMLVideoElement_h
 
 #include "mozilla/Attributes.h"
+#include "mozilla/ErrorResult.h"
 #include "mozilla/dom/HTMLMediaElement.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "Units.h"
@@ -52,7 +53,7 @@ class HTMLVideoElement final : public HTMLMediaElement {
 
   nsresult Clone(NodeInfo*, nsINode** aResult) const override;
 
-  void UnbindFromTree(bool aNullParent = true) override;
+  void UnbindFromTree(UnbindContext&) override;
 
   mozilla::Maybe<mozilla::CSSIntSize> GetVideoSize() const;
 
@@ -85,9 +86,7 @@ class HTMLVideoElement final : public HTMLMediaElement {
 
   uint32_t VideoHeight();
 
-  VideoInfo::Rotation RotationDegrees() const {
-    return mMediaInfo.mVideo.mRotation;
-  }
+  VideoRotation RotationDegrees() const { return mMediaInfo.mVideo.mRotation; }
 
   bool HasAlpha() const { return mMediaInfo.mVideo.HasAlpha(); }
 
@@ -112,14 +111,6 @@ class HTMLVideoElement final : public HTMLMediaElement {
 
   already_AddRefed<VideoPlaybackQuality> GetVideoPlaybackQuality();
 
-  bool MozOrientationLockEnabled() const {
-    return StaticPrefs::media_videocontrols_lock_video_orientation();
-  }
-
-  bool MozIsOrientationLocked() const { return mIsOrientationLocked; }
-
-  void SetMozIsOrientationLocked(bool aLock) { mIsOrientationLocked = aLock; }
-
   already_AddRefed<Promise> CloneElementVisually(HTMLVideoElement& aTarget,
                                                  ErrorResult& rv);
 
@@ -133,6 +124,14 @@ class HTMLVideoElement final : public HTMLMediaElement {
   void OnSecondaryVideoOutputFirstFrameRendered();
 
   void OnVisibilityChange(Visibility aNewVisibility) override;
+
+  bool DisablePictureInPicture() const {
+    return GetBoolAttr(nsGkAtoms::disablepictureinpicture);
+  }
+
+  void SetDisablePictureInPicture(bool aValue, ErrorResult& aError) {
+    SetHTMLBoolAttr(nsGkAtoms::disablepictureinpicture, aValue, aError);
+  }
 
  protected:
   virtual ~HTMLVideoElement();
@@ -156,8 +155,6 @@ class HTMLVideoElement final : public HTMLMediaElement {
   gfx::IntSize GetVideoIntrinsicDimensions();
 
   RefPtr<WakeLock> mScreenWakeLock;
-
-  bool mIsOrientationLocked;
 
   WatchManager<HTMLVideoElement> mVideoWatchManager;
 
@@ -191,8 +188,7 @@ class HTMLVideoElement final : public HTMLMediaElement {
   // SetVisualCloneTarget() instead.
   RefPtr<HTMLVideoElement> mVisualCloneSource;
 
-  static void MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
-                                    MappedDeclarations&);
+  static void MapAttributesIntoRule(MappedDeclarationsBuilder&);
 
   static bool IsVideoStatsEnabled();
   double TotalPlayTime() const;

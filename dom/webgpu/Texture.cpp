@@ -18,74 +18,17 @@ namespace mozilla::webgpu {
 GPU_IMPL_CYCLE_COLLECTION(Texture, mParent)
 GPU_IMPL_JS_WRAP(Texture)
 
-static Maybe<uint8_t> GetBytesPerBlock(dom::GPUTextureFormat format) {
-  switch (format) {
-    case dom::GPUTextureFormat::R8unorm:
-    case dom::GPUTextureFormat::R8snorm:
-    case dom::GPUTextureFormat::R8uint:
-    case dom::GPUTextureFormat::R8sint:
-      return Some<uint8_t>(1u);
-    case dom::GPUTextureFormat::R16uint:
-    case dom::GPUTextureFormat::R16sint:
-    case dom::GPUTextureFormat::R16float:
-    case dom::GPUTextureFormat::Rg8unorm:
-    case dom::GPUTextureFormat::Rg8snorm:
-    case dom::GPUTextureFormat::Rg8uint:
-    case dom::GPUTextureFormat::Rg8sint:
-      return Some<uint8_t>(2u);
-    case dom::GPUTextureFormat::R32uint:
-    case dom::GPUTextureFormat::R32sint:
-    case dom::GPUTextureFormat::R32float:
-    case dom::GPUTextureFormat::Rg16uint:
-    case dom::GPUTextureFormat::Rg16sint:
-    case dom::GPUTextureFormat::Rg16float:
-    case dom::GPUTextureFormat::Rgba8unorm:
-    case dom::GPUTextureFormat::Rgba8unorm_srgb:
-    case dom::GPUTextureFormat::Rgba8snorm:
-    case dom::GPUTextureFormat::Rgba8uint:
-    case dom::GPUTextureFormat::Rgba8sint:
-    case dom::GPUTextureFormat::Bgra8unorm:
-    case dom::GPUTextureFormat::Bgra8unorm_srgb:
-    case dom::GPUTextureFormat::Rgb9e5ufloat:
-    case dom::GPUTextureFormat::Rgb10a2unorm:
-    case dom::GPUTextureFormat::Rg11b10float:
-      return Some<uint8_t>(4u);
-    case dom::GPUTextureFormat::Rg32uint:
-    case dom::GPUTextureFormat::Rg32sint:
-    case dom::GPUTextureFormat::Rg32float:
-    case dom::GPUTextureFormat::Rgba16uint:
-    case dom::GPUTextureFormat::Rgba16sint:
-    case dom::GPUTextureFormat::Rgba16float:
-      return Some<uint8_t>(8u);
-    case dom::GPUTextureFormat::Rgba32uint:
-    case dom::GPUTextureFormat::Rgba32sint:
-    case dom::GPUTextureFormat::Rgba32float:
-      return Some<uint8_t>(16u);
-    case dom::GPUTextureFormat::Depth32float:
-      return Some<uint8_t>(4u);
-    case dom::GPUTextureFormat::Bc1_rgba_unorm:
-    case dom::GPUTextureFormat::Bc1_rgba_unorm_srgb:
-    case dom::GPUTextureFormat::Bc4_r_unorm:
-    case dom::GPUTextureFormat::Bc4_r_snorm:
-      return Some<uint8_t>(8u);
-    case dom::GPUTextureFormat::Bc2_rgba_unorm:
-    case dom::GPUTextureFormat::Bc2_rgba_unorm_srgb:
-    case dom::GPUTextureFormat::Bc3_rgba_unorm:
-    case dom::GPUTextureFormat::Bc3_rgba_unorm_srgb:
-    case dom::GPUTextureFormat::Bc5_rg_unorm:
-    case dom::GPUTextureFormat::Bc5_rg_snorm:
-    case dom::GPUTextureFormat::Bc6h_rgb_ufloat:
-    case dom::GPUTextureFormat::Bc6h_rgb_float:
-    case dom::GPUTextureFormat::Bc7_rgba_unorm:
-    case dom::GPUTextureFormat::Bc7_rgba_unorm_srgb:
-      return Some<uint8_t>(16u);
-    case dom::GPUTextureFormat::Depth24plus:
-    case dom::GPUTextureFormat::Depth24plus_stencil8:
-    case dom::GPUTextureFormat::Depth32float_stencil8:
-    case dom::GPUTextureFormat::EndGuard_:
-      return Nothing();
+static Maybe<uint8_t> GetBytesPerBlockSingleAspect(
+    dom::GPUTextureFormat aFormat) {
+  auto format = ConvertTextureFormat(aFormat);
+  uint32_t bytes = ffi::wgpu_texture_format_block_size_single_aspect(format);
+  if (bytes == 0) {
+    // The above function returns zero if the texture has multiple aspects like
+    // depth and stencil.
+    return Nothing();
   }
-  return Nothing();
+
+  return Some((uint8_t)bytes);
 }
 
 Texture::Texture(Device* const aParent, RawId aId,
@@ -93,31 +36,75 @@ Texture::Texture(Device* const aParent, RawId aId,
     : ChildOf(aParent),
       mId(aId),
       mFormat(aDesc.mFormat),
-      mBytesPerBlock(GetBytesPerBlock(aDesc.mFormat)),
+      mBytesPerBlock(GetBytesPerBlockSingleAspect(aDesc.mFormat)),
       mSize(ConvertExtent(aDesc.mSize)),
       mMipLevelCount(aDesc.mMipLevelCount),
       mSampleCount(aDesc.mSampleCount),
       mDimension(aDesc.mDimension),
-      mUsage(aDesc.mUsage) {}
-
-Texture::~Texture() { Cleanup(); }
+      mUsage(aDesc.mUsage) {
+  MOZ_RELEASE_ASSERT(aId);
+}
 
 void Texture::Cleanup() {
-  if (mValid && mParent) {
-    mValid = false;
-    auto bridge = mParent->GetBridge();
-    if (bridge && bridge->IsOpen()) {
-      bridge->SendTextureDestroy(mId);
-    }
+  if (!mValid) {
+    return;
   }
+  mValid = false;
+
+  auto bridge = mParent->GetBridge();
+  if (!bridge) {
+    return;
+  }
+
+  if (bridge->CanSend()) {
+    bridge->SendTextureDrop(mId);
+  }
+
+  wgpu_client_free_texture_id(bridge->GetClient(), mId);
 }
+
+Texture::~Texture() { Cleanup(); }
 
 already_AddRefed<TextureView> Texture::CreateView(
     const dom::GPUTextureViewDescriptor& aDesc) {
   auto bridge = mParent->GetBridge();
-  RawId id = 0;
-  if (bridge->IsOpen()) {
-    id = bridge->TextureCreateView(mId, mParent->mId, aDesc);
+
+  ffi::WGPUTextureViewDescriptor desc = {};
+
+  webgpu::StringHelper label(aDesc.mLabel);
+  desc.label = label.Get();
+
+  ffi::WGPUTextureFormat format = {ffi::WGPUTextureFormat_Sentinel};
+  if (aDesc.mFormat.WasPassed()) {
+    format = ConvertTextureFormat(aDesc.mFormat.Value());
+    desc.format = &format;
+  }
+  ffi::WGPUTextureViewDimension dimension =
+      ffi::WGPUTextureViewDimension_Sentinel;
+  if (aDesc.mDimension.WasPassed()) {
+    dimension = ffi::WGPUTextureViewDimension(aDesc.mDimension.Value());
+    desc.dimension = &dimension;
+  }
+
+  // Ideally we'd just do something like "aDesc.mMipLevelCount.ptrOr(nullptr)"
+  // but dom::Optional does not seem to have very many nice things.
+  uint32_t mipCount =
+      aDesc.mMipLevelCount.WasPassed() ? aDesc.mMipLevelCount.Value() : 0;
+  uint32_t layerCount =
+      aDesc.mArrayLayerCount.WasPassed() ? aDesc.mArrayLayerCount.Value() : 0;
+
+  desc.aspect = ffi::WGPUTextureAspect(aDesc.mAspect);
+  desc.base_mip_level = aDesc.mBaseMipLevel;
+  desc.mip_level_count = aDesc.mMipLevelCount.WasPassed() ? &mipCount : nullptr;
+  desc.base_array_layer = aDesc.mBaseArrayLayer;
+  desc.array_layer_count =
+      aDesc.mArrayLayerCount.WasPassed() ? &layerCount : nullptr;
+
+  ipc::ByteBuf bb;
+  RawId id = ffi::wgpu_client_create_texture_view(bridge->GetClient(), mId,
+                                                  &desc, ToFFI(&bb));
+  if (bridge->CanSend()) {
+    bridge->SendTextureAction(mId, mParent->mId, std::move(bb));
   }
 
   RefPtr<TextureView> view = new TextureView(this, id);
@@ -125,8 +112,10 @@ already_AddRefed<TextureView> Texture::CreateView(
 }
 
 void Texture::Destroy() {
-  // TODO: we don't have to implement it right now, but it's used by the
-  // examples
+  auto bridge = mParent->GetBridge();
+  if (bridge && bridge->CanSend()) {
+    bridge->SendTextureDestroy(mId, mParent->GetId());
+  }
 }
 
 }  // namespace mozilla::webgpu

@@ -85,7 +85,8 @@ class MediaDecoderStateMachineBase {
   RefPtr<ShutdownPromise> BeginShutdown();
 
   // Seeks to the decoder to aTarget asynchronously.
-  RefPtr<MediaDecoder::SeekPromise> InvokeSeek(const SeekTarget& aTarget);
+  virtual RefPtr<MediaDecoder::SeekPromise> InvokeSeek(
+      const SeekTarget& aTarget);
 
   virtual size_t SizeOfVideoQueue() const = 0;
   virtual size_t SizeOfAudioQueue() const = 0;
@@ -93,6 +94,15 @@ class MediaDecoderStateMachineBase {
   // Sets the video decode mode. Used by the suspend-video-decoder feature.
   virtual void SetVideoDecodeMode(VideoDecodeMode aMode) = 0;
 
+  // Set new sink device.  ExternalEngineStateMachine will reject the returned
+  // promise with NS_ERROR_ABORT to indicate that the action is not supported.
+  // MediaDecoderStateMachine will resolve the promise when the previous
+  // device is no longer in use and an attempt to open the new device
+  // completes (successfully or not) or is deemed unnecessary because the
+  // device is not required for output at this time.  MediaDecoderStateMachine
+  // will always consider the switch in underlying output device successful
+  // and continue attempting to open the new device even if opening initially
+  // fails.
   virtual RefPtr<GenericPromise> InvokeSetSink(
       const RefPtr<AudioDeviceInfo>& aSink) = 0;
   virtual void InvokeSuspendMediaSink() = 0;
@@ -160,6 +170,8 @@ class MediaDecoderStateMachineBase {
 
   virtual bool IsCDMProxySupported(CDMProxy* aProxy) = 0;
 
+  virtual bool IsExternalEngineStateMachine() const { return false; }
+
  protected:
   virtual ~MediaDecoderStateMachineBase() = default;
 
@@ -186,7 +198,7 @@ class MediaDecoderStateMachineBase {
 
   virtual RefPtr<MediaDecoder::SeekPromise> Seek(const SeekTarget& aTarget) = 0;
 
-  void DecodeError(const MediaResult& aError);
+  virtual void DecodeError(const MediaResult& aError);
 
   // Functions used by assertions to ensure we're calling things
   // on the appropriate threads.

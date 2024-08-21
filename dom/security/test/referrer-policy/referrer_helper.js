@@ -61,7 +61,7 @@ function checkIndividualResults(aTestname, aExpectedReferrer, aName) {
     );
     advance();
   };
-  var onerror = xhr => {
+  var onerror = () => {
     ok(false, "Can't get results from the counter server.");
     SimpleTest.finish();
   };
@@ -69,7 +69,7 @@ function checkIndividualResults(aTestname, aExpectedReferrer, aName) {
 }
 
 function resetState() {
-  doXHR(RESET_STATE, advance, function (xhr) {
+  doXHR(RESET_STATE, advance, function () {
     ok(false, "error in reset state");
     SimpleTest.finish();
   });
@@ -79,10 +79,6 @@ function resetState() {
  * testing if referrer header is sent correctly
  */
 var tests = (function* () {
-  yield SpecialPowers.pushPrefEnv(
-    { set: [["network.preload", true]] },
-    advance
-  );
   yield SpecialPowers.pushPrefEnv(
     { set: [["security.mixed_content.block_active_content", false]] },
     advance

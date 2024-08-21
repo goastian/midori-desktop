@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/StaticRange.h"
 #include "mozilla/dom/StaticRangeBinding.h"
+#include "nsContentUtils.h"
 #include "nsINode.h"
 
 namespace mozilla::dom {
@@ -46,8 +47,8 @@ template void StaticRange::DoSetRange(const RawRangeBoundary& aStartBoundary,
 
 nsTArray<RefPtr<StaticRange>>* StaticRange::sCachedRanges = nullptr;
 
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_ADDREF(StaticRange)
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_RELEASE_WITH_INTERRUPTABLE_LAST_RELEASE(
+NS_IMPL_CYCLE_COLLECTING_ADDREF(StaticRange)
+NS_IMPL_CYCLE_COLLECTING_RELEASE_WITH_INTERRUPTABLE_LAST_RELEASE(
     StaticRange, DoSetRange(RawRangeBoundary(), RawRangeBoundary(), nullptr),
     AbstractRange::MaybeCacheToReuse(*this))
 
@@ -94,6 +95,22 @@ StaticRange::~StaticRange() {
   DoSetRange(RawRangeBoundary(), RawRangeBoundary(), nullptr);
 }
 
+bool StaticRange::IsValid() const {
+  if (!mStart.IsSetAndValid() || !mEnd.IsSetAndValid()) {
+    return false;
+  }
+
+  MOZ_ASSERT(mAreStartAndEndInSameTree ==
+             (RangeUtils::ComputeRootNode(mStart.Container()) ==
+              RangeUtils::ComputeRootNode(mEnd.Container())));
+  if (!mAreStartAndEndInSameTree) {
+    return false;
+  }
+
+  const Maybe<int32_t> pointOrder = nsContentUtils::ComparePoints(mStart, mEnd);
+  return pointOrder.isSome() && *pointOrder <= 0;
+}
+
 template <typename SPT, typename SRT, typename EPT, typename ERT>
 void StaticRange::DoSetRange(const RangeBoundaryBase<SPT, SRT>& aStartBoundary,
                              const RangeBoundaryBase<EPT, ERT>& aEndBoundary,
@@ -109,6 +126,9 @@ void StaticRange::DoSetRange(const RangeBoundaryBase<SPT, SRT>& aStartBoundary,
   if (checkCommonAncestor) {
     UpdateCommonAncestorIfNecessary();
   }
+
+  mAreStartAndEndInSameTree = RangeUtils::ComputeRootNode(mStart.Container()) ==
+                              RangeUtils::ComputeRootNode(mEnd.Container());
 }
 
 /* static */

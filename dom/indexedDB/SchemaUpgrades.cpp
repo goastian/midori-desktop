@@ -42,7 +42,6 @@
 #include "mozilla/RefPtr.h"
 #include "mozilla/SchedulerGroup.h"
 #include "mozilla/Span.h"
-#include "mozilla/TaskCategory.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/indexedDB/IDBResult.h"
@@ -2755,8 +2754,7 @@ class DeserializeUpgradeValueHelper final : public Runnable {
     MonitorAutoLock lock(mMonitor);
 
     RefPtr<Runnable> self = this;
-    const nsresult rv =
-        SchedulerGroup::Dispatch(TaskCategory::Other, self.forget());
+    const nsresult rv = SchedulerGroup::Dispatch(self.forget());
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -2863,8 +2861,10 @@ nsresult UpgradeFileIdsFunction::Init(nsIFile* aFMDirectory,
   // purpose is to store file ids without adding more complexity or code
   // duplication.
   auto fileManager = MakeSafeRefPtr<DatabaseFileManager>(
-      PERSISTENCE_TYPE_INVALID, quota::OriginMetadata{}, u""_ns, ""_ns, false,
-      false);
+      PERSISTENCE_TYPE_INVALID, quota::OriginMetadata{},
+      /* aDatabaseName */ u""_ns, /* aDatabaseID */ ""_ns,
+      /* aDatabaseFilePath */ u""_ns, /* aEnforcingQuota */ false,
+      /* aIsInPrivateBrowsingMode */ false);
 
   nsresult rv = fileManager->Init(aFMDirectory, aConnection);
   if (NS_WARN_IF(NS_FAILED(rv))) {

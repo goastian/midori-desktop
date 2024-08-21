@@ -4,11 +4,66 @@
 import argparse
 import importlib
 import re
-import subprocess
 import sys
 
 sys.path.insert(0, "./dom/media/webrtc/third_party_build")
 vendor_libwebrtc = importlib.import_module("vendor-libwebrtc")
+
+from run_operations import run_git
+
+
+def filter_git_changes(github_path, commit_sha, diff_filter):
+    command = [
+        "git",
+        "show",
+        "--oneline",
+        "--name-status",
+        "--pretty=format:",
+        None if not diff_filter else "--diff-filter={}".format(diff_filter),
+        commit_sha,
+    ]
+    # strip possible empty elements from command list
+    command = " ".join([x for x in command if x is not None])
+
+    # Get the list of changes in the upstream commit.
+    stdout_lines = run_git(command, github_path)
+
+    changed_files = [line.strip() for line in stdout_lines]
+    changed_files = [line for line in changed_files if line != ""]
+
+    # Fetch the list of excludes and includes used in the vendoring script.
+    exclude_file_list = vendor_libwebrtc.get_excluded_files()
+    exclude_dir_list = vendor_libwebrtc.get_excluded_dirs()
+    include_list = vendor_libwebrtc.get_included_path_overrides()
+
+    # First, search for changes in files that are specifically included.
+    # Do this first, because some of these files might be filtered out
+    # by the exclude list.
+    regex_includes = "|".join(["^.\t{}$".format(i) for i in include_list])
+    included_files = [
+        path for path in changed_files if re.findall(regex_includes, path)
+    ]
+
+    # Convert the directory exclude list to a regex string and filter
+    # out the excluded directory paths (note the lack of trailing '$'
+    # in the regex).
+    regex_excludes = "|".join(
+        ["^(M|A|D|R\\d\\d\\d)\t{}".format(i) for i in exclude_dir_list]
+    )
+    files_not_excluded = [
+        path for path in changed_files if not re.findall(regex_excludes, path)
+    ]
+
+    # Convert the file exclude list to a regex string and filter out the
+    # excluded file paths.  The trailing '$' in the regex ensures that
+    # we can exclude, for example, '.vpython' and not '.vpython3'.
+    regex_excludes = "|".join(["^.\t{}$".format(i) for i in exclude_file_list])
+    files_not_excluded = [
+        path for path in files_not_excluded if not re.findall(regex_excludes, path)
+    ]
+
+    return included_files + files_not_excluded
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -20,53 +75,13 @@ if __name__ == "__main__":
         help="path to libwebrtc repo",
     )
     parser.add_argument("--commit-sha", required=True, help="sha of commit to examine")
-    parser.add_argument("--diff-filter", choices=("A", "D", "R"))
+    parser.add_argument(
+        "--diff-filter",
+        choices=("A", "D", "R"),
+        help="filter for adds (A), deletes (D), or renames (R)",
+    )
     args = parser.parse_args()
 
-    command = [
-        "git",
-        "show",
-        "--oneline",
-        "--name-status",
-        "--pretty=format:",
-        None if not args.diff_filter else "--diff-filter={}".format(args.diff_filter),
-        args.commit_sha,
-    ]
-    # strip possible empty elements from command list
-    command = [x for x in command if x is not None]
-
-    # Get the list of changes in the upstream commit.
-    res = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        cwd=args.repo_path,
-    )
-    if res.returncode != 0:
-        sys.exit("error: {}".format(res.stderr.strip()))
-
-    changed_files = [line.strip() for line in res.stdout.strip().split("\n")]
-    changed_files = [line for line in changed_files if line != ""]
-
-    # Fetch the list of excludes and includes used in the vendoring script.
-    exclude_list = vendor_libwebrtc.get_excluded_paths()
-    include_list = vendor_libwebrtc.get_included_path_overrides()
-
-    # First, search for changes in files that are specifically included.
-    # Do this first, because some of these files might be filtered out
-    # by the exclude list.
-    regex_includes = "|".join(["^.\t{}".format(i) for i in include_list])
-    included_files = [
-        path for path in changed_files if re.findall(regex_includes, path)
-    ]
-
-    # Convert the exclude list to a regex string.
-    regex_excludes = "|".join(["^.\t{}".format(i) for i in exclude_list])
-
-    # Filter out the excluded files/paths.
-    files_not_excluded = [
-        path for path in changed_files if not re.findall(regex_excludes, path)
-    ]
-
-    for path in included_files + files_not_excluded:
+    paths = filter_git_changes(args.repo_path, args.commit_sha, args.diff_filter)
+    for path in paths:
         print(path)

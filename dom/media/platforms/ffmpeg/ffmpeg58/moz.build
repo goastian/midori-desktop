@@ -6,9 +6,13 @@
 
 UNIFIED_SOURCES += [
     '../FFmpegAudioDecoder.cpp',
+    '../FFmpegAudioEncoder.cpp',
     '../FFmpegDataDecoder.cpp',
+    "../FFmpegDataEncoder.cpp",
     '../FFmpegDecoderModule.cpp',
+    '../FFmpegEncoderModule.cpp',
     '../FFmpegVideoDecoder.cpp',
+    '../FFmpegVideoEncoder.cpp',
 ]
 LOCAL_INCLUDES += [
     '..',
@@ -26,14 +30,18 @@ if CONFIG['CC_TYPE'] == 'gcc':
   CXXFLAGS += [
     '-Wno-attributes',
   ]
-if CONFIG['MOZ_WAYLAND']:
+if CONFIG['MOZ_WIDGET_GTK']:
   CXXFLAGS += CONFIG['MOZ_GTK3_CFLAGS']
 if CONFIG['MOZ_ENABLE_VAAPI'] or CONFIG['MOZ_ENABLE_V4L2']:
   UNIFIED_SOURCES += ['../FFmpegVideoFramePool.cpp']
   LOCAL_INCLUDES += ['/third_party/drm/drm/include/libdrm/']
   USE_LIBS += ['mozva']
-  DEFINES['MOZ_WAYLAND_USE_HWDECODE'] = 1
+  DEFINES['MOZ_USE_HWDECODE'] = 1
 
 include("/ipc/chromium/chromium-config.mozbuild")
+
+LOCAL_INCLUDES += [
+  "/media/libyuv/libyuv/include",
+]
 
 FINAL_LIBRARY = 'xul'

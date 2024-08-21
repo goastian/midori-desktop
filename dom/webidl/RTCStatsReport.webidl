@@ -127,6 +127,7 @@ dictionary RTCOutboundRtpStreamStats : RTCSentRtpStreamStats {
   unsigned long long totalEncodedBytesTarget;
   unsigned long frameWidth;
   unsigned long frameHeight;
+  double framesPerSecond;
   unsigned long framesSent;
   unsigned long hugeFramesSent;
   double totalEncodeTime;
@@ -140,6 +141,13 @@ dictionary RTCRemoteOutboundRtpStreamStats : RTCSentRtpStreamStats {
 dictionary RTCMediaSourceStats : RTCStats {
   required DOMString trackIdentifier;
   required DOMString kind;
+};
+
+dictionary RTCVideoSourceStats : RTCMediaSourceStats {
+  unsigned long   width;
+  unsigned long   height;
+  unsigned long   frames;
+  double          framesPerSecond;
 };
 
 dictionary RTCPeerConnectionStats : RTCStats {
@@ -190,13 +198,6 @@ dictionary RTCIceCandidatePairStats : RTCStats {
   boolean selected;
   [ChromeOnly]
   unsigned long componentId; // moz
-};
-
-enum RTCIceCandidateType {
-  "host",
-  "srflx",
-  "prflx",
-  "relay"
 };
 
 dictionary RTCIceCandidateStats : RTCStats {
@@ -266,6 +267,7 @@ dictionary RTCStatsCollection {
   sequence<RTCRemoteInboundRtpStreamStats>  remoteInboundRtpStreamStats = [];
   sequence<RTCRemoteOutboundRtpStreamStats> remoteOutboundRtpStreamStats = [];
   sequence<RTCMediaSourceStats>             mediaSourceStats = [];
+  sequence<RTCVideoSourceStats>             videoSourceStats = [];
   sequence<RTCPeerConnectionStats>          peerConnectionStats = [];
   sequence<RTCRTPContributingSourceStats>   rtpContributingSourceStats = [];
   sequence<RTCIceCandidatePairStats>        iceCandidatePairStats = [];

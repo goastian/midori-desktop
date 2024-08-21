@@ -13,12 +13,13 @@
 #include "nsContentUtils.h"
 #include "nsNetUtil.h"
 #include "nsThreadUtils.h"
+#include "mozilla/dom/Document.h"
 
 namespace mozilla::dom {
 
 /* static */
 void URLMainThread::CreateObjectURL(const GlobalObject& aGlobal, Blob& aBlob,
-                                    nsAString& aResult, ErrorResult& aRv) {
+                                    nsACString& aResult, ErrorResult& aRv) {
   MOZ_ASSERT(NS_IsMainThread());
 
   nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
@@ -27,23 +28,31 @@ void URLMainThread::CreateObjectURL(const GlobalObject& aGlobal, Blob& aBlob,
     return;
   }
 
+  nsAutoString partKey;
+  if (nsCOMPtr<nsPIDOMWindowInner> owner = do_QueryInterface(global)) {
+    if (Document* doc = owner->GetExtantDoc()) {
+      nsCOMPtr<nsICookieJarSettings> cookieJarSettings =
+          doc->CookieJarSettings();
+
+      cookieJarSettings->GetPartitionKey(partKey);
+    }
+  }
+
   nsCOMPtr<nsIPrincipal> principal =
       nsContentUtils::ObjectPrincipal(aGlobal.Get());
 
-  nsAutoCString url;
-  aRv = BlobURLProtocolHandler::AddDataEntry(aBlob.Impl(), principal,
-                                             global->GetAgentClusterId(), url);
+  aRv = BlobURLProtocolHandler::AddDataEntry(
+      aBlob.Impl(), principal, NS_ConvertUTF16toUTF8(partKey), aResult);
   if (NS_WARN_IF(aRv.Failed())) {
     return;
   }
 
-  global->RegisterHostObjectURI(url);
-  CopyASCIItoUTF16(url, aResult);
+  global->RegisterHostObjectURI(aResult);
 }
 
 /* static */
 void URLMainThread::CreateObjectURL(const GlobalObject& aGlobal,
-                                    MediaSource& aSource, nsAString& aResult,
+                                    MediaSource& aSource, nsACString& aResult,
                                     ErrorResult& aRv) {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -53,28 +62,36 @@ void URLMainThread::CreateObjectURL(const GlobalObject& aGlobal,
     return;
   }
 
+  nsAutoString partKey;
+  if (nsCOMPtr<nsPIDOMWindowInner> owner = do_QueryInterface(global)) {
+    if (Document* doc = owner->GetExtantDoc()) {
+      nsCOMPtr<nsICookieJarSettings> cookieJarSettings =
+          doc->CookieJarSettings();
+
+      cookieJarSettings->GetPartitionKey(partKey);
+    }
+  }
+
   nsCOMPtr<nsIPrincipal> principal =
       nsContentUtils::ObjectPrincipal(aGlobal.Get());
 
-  nsAutoCString url;
-  aRv = BlobURLProtocolHandler::AddDataEntry(&aSource, principal,
-                                             global->GetAgentClusterId(), url);
+  aRv = BlobURLProtocolHandler::AddDataEntry(
+      &aSource, principal, NS_ConvertUTF16toUTF8(partKey), aResult);
   if (NS_WARN_IF(aRv.Failed())) {
     return;
   }
 
   nsCOMPtr<nsIRunnable> revocation = NS_NewRunnableFunction(
-      "dom::URLMainThread::CreateObjectURL",
-      [url] { BlobURLProtocolHandler::RemoveDataEntry(url); });
+      "dom::URLMainThread::CreateObjectURL", [result = nsCString(aResult)] {
+        BlobURLProtocolHandler::RemoveDataEntry(result);
+      });
 
   nsContentUtils::RunInStableState(revocation.forget());
-
-  CopyASCIItoUTF16(url, aResult);
 }
 
 /* static */
 void URLMainThread::RevokeObjectURL(const GlobalObject& aGlobal,
-                                    const nsAString& aURL, ErrorResult& aRv) {
+                                    const nsACString& aURL, ErrorResult& aRv) {
   MOZ_ASSERT(NS_IsMainThread());
   nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
   if (!global) {
@@ -82,21 +99,28 @@ void URLMainThread::RevokeObjectURL(const GlobalObject& aGlobal,
     return;
   }
 
-  NS_LossyConvertUTF16toASCII asciiurl(aURL);
+  nsAutoString partKey;
+  if (nsCOMPtr<nsPIDOMWindowInner> owner = do_QueryInterface(global)) {
+    if (Document* doc = owner->GetExtantDoc()) {
+      nsCOMPtr<nsICookieJarSettings> cookieJarSettings =
+          doc->CookieJarSettings();
+
+      cookieJarSettings->GetPartitionKey(partKey);
+    }
+  }
 
   if (BlobURLProtocolHandler::RemoveDataEntry(
-          asciiurl, nsContentUtils::ObjectPrincipal(aGlobal.Get()),
-          global->GetAgentClusterId())) {
-    global->UnregisterHostObjectURI(asciiurl);
+          aURL, nsContentUtils::ObjectPrincipal(aGlobal.Get()),
+          NS_ConvertUTF16toUTF8(partKey))) {
+    global->UnregisterHostObjectURI(aURL);
   }
 }
 
 /* static */
 bool URLMainThread::IsValidObjectURL(const GlobalObject& aGlobal,
-                                     const nsAString& aURL, ErrorResult& aRv) {
+                                     const nsACString& aURL, ErrorResult& aRv) {
   MOZ_ASSERT(NS_IsMainThread());
-  NS_LossyConvertUTF16toASCII asciiurl(aURL);
-  return BlobURLProtocolHandler::HasDataEntry(asciiurl);
+  return BlobURLProtocolHandler::HasDataEntry(aURL);
 }
 
 }  // namespace mozilla::dom

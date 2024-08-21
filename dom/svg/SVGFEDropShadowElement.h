@@ -17,7 +17,7 @@ nsresult NS_NewSVGFEDropShadowElement(
 
 namespace mozilla::dom {
 
-using SVGFEDropShadowElementBase = SVGFE;
+using SVGFEDropShadowElementBase = SVGFilterPrimitiveElement;
 
 class SVGFEDropShadowElement final : public SVGFEDropShadowElementBase {
   friend nsresult(::NS_NewSVGFEDropShadowElement(
@@ -41,6 +41,10 @@ class SVGFEDropShadowElement final : public SVGFEDropShadowElementBase {
   SVGAnimatedString& GetResultImageName() override {
     return mStringAttributes[RESULT];
   }
+
+  bool OutputIsTainted(const nsTArray<bool>& aInputsAreTainted,
+                       nsIPrincipal* aReferencePrincipal) override;
+
   void GetSourceImageNames(nsTArray<SVGStringInfo>& aSources) override;
 
   // nsIContent interface

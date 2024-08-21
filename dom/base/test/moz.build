@@ -5,22 +5,22 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "unit/xpcshell.ini",
-    "unit_ipc/xpcshell.ini",
+    "unit/xpcshell.toml",
+    "unit_ipc/xpcshell.toml",
 ]
 
 MOCHITEST_MANIFESTS += [
-    "mochitest.ini",
+    "mochitest.toml",
 ]
 
 MOCHITEST_CHROME_MANIFESTS += [
-    "chrome.ini",
-    "chrome/chrome.ini",
+    "chrome.toml",
+    "chrome/chrome.toml",
 ]
 
 BROWSER_CHROME_MANIFESTS += [
-    "browser.ini",
-    "fmm/browser.ini",
+    "browser.toml",
+    "fmm/browser.toml",
 ]
 
 TEST_DIRS += [

@@ -10,6 +10,7 @@
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Fetch.h"
 #include "mozilla/dom/Request.h"
+#include "mozilla/dom/RequestBinding.h"
 #include "mozilla/dom/Response.h"
 #include "mozilla/dom/RootedDictionary.h"
 #include "mozilla/dom/ScriptLoader.h"
@@ -28,6 +29,7 @@
 #include "xpcpublic.h"
 
 using JS::loader::ModuleLoadRequest;
+using JS::loader::ParserMetadata;
 using JS::loader::ScriptFetchOptions;
 using mozilla::dom::loader::WorkletModuleLoader;
 
@@ -91,11 +93,14 @@ NS_IMETHODIMP StartModuleLoadRunnable::RunOnWorkletThread() {
 
   // To fetch a worklet/module worker script graph:
   // https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-worklet/module-worker-script-graph
-  // Step 1. Let options be a script fetch options. And referrer policy is the
-  // empty string.
-  ReferrerPolicy referrerPolicy = ReferrerPolicy::_empty;
+  // Step 1. Let options be a script fetch options whose cryptographic nonce is
+  // the empty string, integrity metadata is the empty string, parser metadata
+  // is "not-parser-inserted", credentials mode is credentials mode, referrer
+  // policy is the empty string, and fetch priority is "auto".
   RefPtr<ScriptFetchOptions> fetchOptions = new ScriptFetchOptions(
-      CORSMode::CORS_NONE, referrerPolicy, /*triggeringPrincipal*/ nullptr);
+      CORSMode::CORS_NONE, /* aNonce = */ u""_ns, RequestPriority::Auto,
+      ParserMetadata::NotParserInserted,
+      /*triggeringPrincipal*/ nullptr);
 
   WorkletModuleLoader* moduleLoader =
       static_cast<WorkletModuleLoader*>(globalScope->GetModuleLoader());
@@ -109,13 +114,14 @@ NS_IMETHODIMP StartModuleLoadRunnable::RunOnWorkletThread() {
 
   // Part of Step 2. This sets the Top-level flag to true
   RefPtr<ModuleLoadRequest> request = new ModuleLoadRequest(
-      mURI, fetchOptions, SRIMetadata(), mReferrer, loadContext,
-      true,  /* is top level */
-      false, /* is dynamic import */
+      mURI, ReferrerPolicy::_empty, fetchOptions, SRIMetadata(), mReferrer,
+      loadContext, true, /* is top level */
+      false,             /* is dynamic import */
       moduleLoader, ModuleLoadRequest::NewVisitedSetForTopLevelImport(mURI),
       nullptr);
 
   request->mURL = request->mURI->GetSpecOrDefault();
+  request->NoCacheEntryFound();
 
   return request->StartModuleLoad();
 }
@@ -203,7 +209,7 @@ NS_IMETHODIMP FetchCompleteRunnable::RunOnWorkletThread() {
   MOZ_ASSERT(request);
 
   // Set the Source type to "text" for decoding.
-  request->SetTextSource();
+  request->SetTextSource(request->mLoadContext.get());
 
   nsresult rv;
   if (mScriptBuffer) {
@@ -452,11 +458,8 @@ nsresult WorkletFetchHandler::StartFetch(JSContext* aCx, nsIURI* aURI,
     return NS_ERROR_FAILURE;
   }
 
-  RequestOrUSVString requestInput;
-
-  nsAutoString url;
-  CopyUTF8toUTF16(spec, url);
-  requestInput.SetAsUSVString().ShareOrDependUpon(url);
+  RequestOrUTF8String requestInput;
+  requestInput.SetAsUTF8String().ShareOrDependUpon(spec);
 
   RootedDictionary<RequestInit> requestInit(aCx);
   requestInit.mCredentials.Construct(mCredentials);
@@ -466,30 +469,33 @@ nsresult WorkletFetchHandler::StartFetch(JSContext* aCx, nsIURI* aURI,
   requestInit.mMode.Construct(RequestMode::Cors);
 
   if (aReferrer) {
-    nsAutoString referrer;
-    res = aReferrer->GetSpec(spec);
+    res = aReferrer->GetSpec(requestInit.mReferrer.Construct());
     if (NS_WARN_IF(NS_FAILED(res))) {
       return NS_ERROR_FAILURE;
     }
-
-    CopyUTF8toUTF16(spec, referrer);
-    requestInit.mReferrer.Construct(referrer);
   }
 
   nsCOMPtr<nsIGlobalObject> global =
       do_QueryInterface(mWorklet->GetParentObject());
   MOZ_ASSERT(global);
 
+  // Note: added to infer a default credentials mode in the Request setup,
+  // but we always pass an explicit credentials value in requestInit, so
+  // this has no effect right now. Bug 1887862 covers fixing worklets to behave
+  // the same as "normal" fetch calls.
+  nsIPrincipal* p = global->PrincipalOrNull();
+  CallerType callerType = (p && p->IsSystemPrincipal() ? CallerType::System
+                                                       : CallerType::NonSystem);
   IgnoredErrorResult rv;
-  SafeRefPtr<Request> request =
-      Request::Constructor(global, aCx, requestInput, requestInit, rv);
+  SafeRefPtr<Request> request = Request::Constructor(
+      global, aCx, requestInput, requestInit, callerType, rv);
   if (rv.Failed()) {
     return NS_ERROR_FAILURE;
   }
 
   request->OverrideContentPolicyType(mWorklet->Impl()->ContentPolicyType());
 
-  RequestOrUSVString finalRequestInput;
+  RequestOrUTF8String finalRequestInput;
   finalRequestInput.SetAsRequest() = request.unsafeGetRawPtr();
 
   RefPtr<Promise> fetchPromise = FetchRequest(

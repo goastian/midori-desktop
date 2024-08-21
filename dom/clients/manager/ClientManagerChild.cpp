@@ -28,16 +28,6 @@ void ClientManagerChild::ActorDestroy(ActorDestroyReason aReason) {
   }
 }
 
-PClientHandleChild* ClientManagerChild::AllocPClientHandleChild(
-    const IPCClientInfo& aClientInfo) {
-  return new ClientHandleChild();
-}
-
-bool ClientManagerChild::DeallocPClientHandleChild(PClientHandleChild* aActor) {
-  delete aActor;
-  return true;
-}
-
 PClientManagerOpChild* ClientManagerChild::AllocPClientManagerOpChild(
     const ClientOpConstructorArgs& aArgs) {
   MOZ_ASSERT_UNREACHABLE(
@@ -70,19 +60,9 @@ mozilla::ipc::IPCResult ClientManagerChild::RecvPClientNavigateOpConstructor(
   return IPC_OK();
 }
 
-PClientSourceChild* ClientManagerChild::AllocPClientSourceChild(
-    const ClientSourceConstructorArgs& aArgs) {
-  return new ClientSourceChild(aArgs);
-}
-
-bool ClientManagerChild::DeallocPClientSourceChild(PClientSourceChild* aActor) {
-  delete aActor;
-  return true;
-}
-
 // static
-ClientManagerChild* ClientManagerChild::Create() {
-  ClientManagerChild* actor = new ClientManagerChild();
+already_AddRefed<ClientManagerChild> ClientManagerChild::Create() {
+  RefPtr<ClientManagerChild> actor = new ClientManagerChild();
 
   if (!NS_IsMainThread()) {
     WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
@@ -96,16 +76,17 @@ ClientManagerChild* ClientManagerChild::Create() {
         [helper] { helper->Actor()->MaybeStartTeardown(); });
 
     if (NS_WARN_IF(!actor->mIPCWorkerRef)) {
-      delete actor;
       return nullptr;
     }
   }
 
-  return actor;
+  return actor.forget();
 }
 
 ClientManagerChild::ClientManagerChild()
     : mManager(nullptr), mTeardownStarted(false) {}
+
+ClientManagerChild::~ClientManagerChild() = default;
 
 void ClientManagerChild::SetOwner(ClientThing<ClientManagerChild>* aThing) {
   MOZ_DIAGNOSTIC_ASSERT(aThing);

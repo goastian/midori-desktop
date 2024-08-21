@@ -58,7 +58,7 @@ template <typename T>
 static nsresult EnumerateCDMStorageDir(const nsACString& aDir, T&& aDirIter) {
   RefPtr<GeckoMediaPluginServiceParent> service =
       GeckoMediaPluginServiceParent::GetSingleton();
-  MOZ_ASSERT(service);
+  MOZ_RELEASE_ASSERT(service);
 
   // $profileDir/gmp/$platform/
   nsCOMPtr<nsIFile> path;
@@ -94,7 +94,7 @@ class GMPShutdownObserver : public nsIRunnable, public nsIObserver {
   NS_DECL_THREADSAFE_ISUPPORTS
 
   NS_IMETHOD Run() override {
-    MOZ_ASSERT(NS_IsMainThread());
+    MOZ_RELEASE_ASSERT(NS_IsMainThread());
     nsCOMPtr<nsIObserverService> observerService =
         mozilla::services::GetObserverService();
     EXPECT_TRUE(observerService);
@@ -133,7 +133,7 @@ class NotifyObserversTask : public Runnable {
   explicit NotifyObserversTask(const char* aTopic)
       : mozilla::Runnable("NotifyObserversTask"), mTopic(aTopic) {}
   NS_IMETHOD Run() override {
-    MOZ_ASSERT(NS_IsMainThread());
+    MOZ_RELEASE_ASSERT(NS_IsMainThread());
     nsCOMPtr<nsIObserverService> observerService =
         mozilla::services::GetObserverService();
     if (observerService) {
@@ -153,7 +153,7 @@ class ClearCDMStorageTask : public nsIRunnable, public nsIObserver {
   NS_DECL_THREADSAFE_ISUPPORTS
 
   NS_IMETHOD Run() override {
-    MOZ_ASSERT(NS_IsMainThread());
+    MOZ_RELEASE_ASSERT(NS_IsMainThread());
     nsCOMPtr<nsIObserverService> observerService =
         mozilla::services::GetObserverService();
     EXPECT_TRUE(observerService);
@@ -194,7 +194,7 @@ static void ClearCDMStorage(already_AddRefed<nsIRunnable> aContinuation,
                             nsIThread* aTarget, PRTime aSince = -1) {
   RefPtr<ClearCDMStorageTask> task(
       new ClearCDMStorageTask(std::move(aContinuation), aTarget, aSince));
-  SchedulerGroup::Dispatch(TaskCategory::Other, task.forget());
+  SchedulerGroup::Dispatch(task.forget());
 }
 
 static void SimulatePBModeExit() {
@@ -272,7 +272,7 @@ static nsCString GetNodeId(const nsAString& aOrigin,
 static bool IsCDMStorageIsEmpty() {
   RefPtr<GeckoMediaPluginServiceParent> service =
       GeckoMediaPluginServiceParent::GetSingleton();
-  MOZ_ASSERT(service);
+  MOZ_RELEASE_ASSERT(service);
   nsCOMPtr<nsIFile> storage;
   nsresult rv = service->GetStorageDir(getter_AddRefs(storage));
   EXPECT_NS_SUCCEEDED(rv);
@@ -286,14 +286,14 @@ static bool IsCDMStorageIsEmpty() {
 static void AssertIsOnGMPThread() {
   RefPtr<GeckoMediaPluginService> service =
       GeckoMediaPluginService::GetGeckoMediaPluginService();
-  MOZ_ASSERT(service);
+  MOZ_RELEASE_ASSERT(service);
   nsCOMPtr<nsIThread> thread;
   service->GetThread(getter_AddRefs(thread));
-  MOZ_ASSERT(thread);
+  MOZ_RELEASE_ASSERT(thread);
   nsCOMPtr<nsIThread> currentThread;
-  DebugOnly<nsresult> rv = NS_GetCurrentThread(getter_AddRefs(currentThread));
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
-  MOZ_ASSERT(currentThread == thread);
+  nsresult rv = NS_GetCurrentThread(getter_AddRefs(currentThread));
+  MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
+  MOZ_RELEASE_ASSERT(currentThread == thread);
 }
 
 class CDMStorageTest {
@@ -504,11 +504,9 @@ class CDMStorageTest {
     // Collect nodeIds that are expected to remain for later comparison.
     EnumerateCDMStorageDir("id"_ns, NodeIdCollector(siteInfo.get()));
     // Invoke "Forget this site" on the main thread.
-    SchedulerGroup::Dispatch(
-        TaskCategory::Other,
-        NewRunnableMethod<UniquePtr<NodeInfo>&&>(
-            "CDMStorageTest::TestForgetThisSite_Forget", this,
-            &CDMStorageTest::TestForgetThisSite_Forget, std::move(siteInfo)));
+    SchedulerGroup::Dispatch(NewRunnableMethod<UniquePtr<NodeInfo>&&>(
+        "CDMStorageTest::TestForgetThisSite_Forget", this,
+        &CDMStorageTest::TestForgetThisSite_Forget, std::move(siteInfo)));
   }
 
   void TestForgetThisSite_Forget(UniquePtr<NodeInfo>&& aSiteInfo) {
@@ -669,12 +667,9 @@ class CDMStorageTest {
     // Collect nodeIds that are expected to remain for later comparison.
     EnumerateCDMStorageDir("id"_ns, BaseDomainNodeIdCollector(siteInfo.get()));
     // Invoke "ForgetThisBaseDomain" on the main thread.
-    SchedulerGroup::Dispatch(
-        TaskCategory::Other,
-        NewRunnableMethod<UniquePtr<BaseDomainNodeInfo>&&>(
-            "CDMStorageTest::TestForgetThisBaseDomain_Forget", this,
-            &CDMStorageTest::TestForgetThisBaseDomain_Forget,
-            std::move(siteInfo)));
+    SchedulerGroup::Dispatch(NewRunnableMethod<UniquePtr<BaseDomainNodeInfo>&&>(
+        "CDMStorageTest::TestForgetThisBaseDomain_Forget", this,
+        &CDMStorageTest::TestForgetThisBaseDomain_Forget, std::move(siteInfo)));
   }
 
   void TestForgetThisBaseDomain_Forget(
@@ -1054,8 +1049,8 @@ class CDMStorageTest {
 
     constexpr auto data = "Just_some_arbitrary_data."_ns;
 
-    MOZ_ASSERT(longRecordName.Length() < GMP_MAX_RECORD_NAME_SIZE);
-    MOZ_ASSERT(longRecordName.Length() > 260);  // Windows MAX_PATH
+    MOZ_RELEASE_ASSERT(longRecordName.Length() < GMP_MAX_RECORD_NAME_SIZE);
+    MOZ_RELEASE_ASSERT(longRecordName.Length() > 260);  // Windows MAX_PATH
 
     nsCString response("stored ");
     response.Append(longRecordName);
@@ -1093,7 +1088,7 @@ class CDMStorageTest {
         NewRunnableMethod("CDMStorageTest::Shutdown", this,
                           &CDMStorageTest::Shutdown),
         std::move(aContinuation), mNodeId));
-    SchedulerGroup::Dispatch(TaskCategory::Other, task.forget());
+    SchedulerGroup::Dispatch(task.forget());
   }
 
   void Shutdown() {
@@ -1111,7 +1106,7 @@ class CDMStorageTest {
     Shutdown();
     nsCOMPtr<nsIRunnable> task = NewRunnableMethod(
         "CDMStorageTest::Dummy", this, &CDMStorageTest::Dummy);
-    SchedulerGroup::Dispatch(TaskCategory::Other, task.forget());
+    SchedulerGroup::Dispatch(task.forget());
   }
 
   void SessionMessage(const nsACString& aSessionId, uint32_t aMessageType,

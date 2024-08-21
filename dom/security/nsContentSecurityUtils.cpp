@@ -495,7 +495,7 @@ FilenameTypeAndDetails nsContentSecurityUtils::FilenameToFilenameType(
   return FilenameTypeAndDetails(kOther, Nothing());
 }
 
-#ifdef NIGHTLY_BUILD
+#if defined(EARLY_BETA_OR_EARLIER)
 // Crash String must be safe from a telemetry point of view.
 // This will be ensured when this function is used.
 void PossiblyCrash(const char* aPrefSuffix, const char* aUnsafeCrashString,
@@ -614,7 +614,7 @@ bool nsContentSecurityUtils::IsEvalAllowed(JSContext* cx,
       // The profiler's symbolication code uses a wasm module to extract symbols
       // from the binary files result of local builds.
       // See bug 1777479
-      "resource://devtools/client/performance-new/shared/symbolication.jsm.js"_ns,
+      "resource://devtools/client/performance-new/shared/symbolication.sys.mjs"_ns,
 
       // The Browser Toolbox/Console
       "debugger"_ns,
@@ -687,7 +687,7 @@ bool nsContentSecurityUtils::IsEvalAllowed(JSContext* cx,
   // Check the allowlist for the provided filename. getFilename is a helper
   // function
   nsAutoCString fileName;
-  uint32_t lineNumber = 0, columnNumber = 0;
+  uint32_t lineNumber = 0, columnNumber = 1;
   nsJSUtils::GetCallingLocation(cx, fileName, &lineNumber, &columnNumber);
   if (fileName.IsEmpty()) {
     fileName = "unknown-file"_ns;
@@ -807,6 +807,27 @@ void nsContentSecurityUtils::NotifyEvalUsage(bool aIsSystemPrincipal,
   console->LogMessage(error);
 }
 
+// If we detect that one of the relevant prefs has been changed, reset
+// sJSHacksChecked to cause us to re-evaluate all the pref values.
+// This will stop us from crashing because a user enabled one of these
+// prefs during a session and then triggered the JavaScript load mitigation
+// (which can cause a crash).
+class JSHackPrefObserver final {
+ public:
+  JSHackPrefObserver() = default;
+  static void PrefChanged(const char* aPref, void* aData);
+
+ protected:
+  ~JSHackPrefObserver() = default;
+};
+
+// static
+void JSHackPrefObserver::PrefChanged(const char* aPref, void* aData) {
+  sJSHacksChecked = false;
+}
+
+static bool sJSHackObserverAdded = false;
+
 /* static */
 void nsContentSecurityUtils::DetectJsHacks() {
   // We can only perform the check of this preference on the Main Thread
@@ -827,6 +848,16 @@ void nsContentSecurityUtils::DetectJsHacks() {
   if (MOZ_LIKELY(sJSHacksChecked || sJSHacksPresent)) {
     return;
   }
+
+  static const char* kObservedPrefs[] = {
+      "xpinstall.signatures.required", "general.config.filename",
+      "autoadmin.global_config_url", "autoadmin.failover_to_cached", nullptr};
+  if (MOZ_UNLIKELY(!sJSHackObserverAdded)) {
+    Preferences::RegisterCallbacks(JSHackPrefObserver::PrefChanged,
+                                   kObservedPrefs);
+    sJSHackObserverAdded = true;
+  }
+
   nsresult rv;
   sJSHacksChecked = true;
 
@@ -847,39 +878,62 @@ void nsContentSecurityUtils::DetectJsHacks() {
     return;
   }
 
-  // This preference is a file used for autoconfiguration of Firefox
-  // by administrators. It has also been (ab)used by the userChromeJS
-  // project to run legacy-style 'extensions', some of which use eval,
-  // all of which run in the System Principal context.
-  nsAutoString jsConfigPref;
-  rv = Preferences::GetString("general.config.filename", jsConfigPref,
-                              PrefValueKind::Default);
-  if (!NS_FAILED(rv) && !jsConfigPref.IsEmpty()) {
-    sJSHacksPresent = true;
-    return;
-  }
-  rv = Preferences::GetString("general.config.filename", jsConfigPref,
-                              PrefValueKind::User);
-  if (!NS_FAILED(rv) && !jsConfigPref.IsEmpty()) {
-    sJSHacksPresent = true;
-    return;
-  }
+  // The content process code is probably safe to use for both, but
+  // this hack detection and related efforts has been very fragile so
+  // I'm being extra conservative.
+  if (XRE_IsParentProcess()) {
+    // This preference is a file used for autoconfiguration of Firefox
+    // by administrators. It has also been (ab)used by the userChromeJS
+    // project to run legacy-style 'extensions', some of which use eval,
+    // all of which run in the System Principal context.
+    nsAutoString jsConfigPref;
+    rv = Preferences::GetString("general.config.filename", jsConfigPref,
+                                PrefValueKind::Default);
+    if (!NS_FAILED(rv) && !jsConfigPref.IsEmpty()) {
+      sJSHacksPresent = true;
+      return;
+    }
+    rv = Preferences::GetString("general.config.filename", jsConfigPref,
+                                PrefValueKind::User);
+    if (!NS_FAILED(rv) && !jsConfigPref.IsEmpty()) {
+      sJSHacksPresent = true;
+      return;
+    }
 
-  // These preferences are for autoconfiguration of Firefox by admins.
-  // The first will load a file over the network; the second will
-  // fall back to a local file if the network is unavailable
-  nsAutoString configUrlPref;
-  rv = Preferences::GetString("autoadmin.global_config_url", configUrlPref,
-                              PrefValueKind::Default);
-  if (!NS_FAILED(rv) && !configUrlPref.IsEmpty()) {
-    sJSHacksPresent = true;
-    return;
-  }
-  rv = Preferences::GetString("autoadmin.global_config_url", configUrlPref,
-                              PrefValueKind::User);
-  if (!NS_FAILED(rv) && !configUrlPref.IsEmpty()) {
-    sJSHacksPresent = true;
-    return;
+    // These preferences are for autoconfiguration of Firefox by admins.
+    // The first will load a file over the network; the second will
+    // fall back to a local file if the network is unavailable
+    nsAutoString configUrlPref;
+    rv = Preferences::GetString("autoadmin.global_config_url", configUrlPref,
+                                PrefValueKind::Default);
+    if (!NS_FAILED(rv) && !configUrlPref.IsEmpty()) {
+      sJSHacksPresent = true;
+      return;
+    }
+    rv = Preferences::GetString("autoadmin.global_config_url", configUrlPref,
+                                PrefValueKind::User);
+    if (!NS_FAILED(rv) && !configUrlPref.IsEmpty()) {
+      sJSHacksPresent = true;
+      return;
+    }
+
+  } else {
+    if (Preferences::HasDefaultValue("general.config.filename")) {
+      sJSHacksPresent = true;
+      return;
+    }
+    if (Preferences::HasUserValue("general.config.filename")) {
+      sJSHacksPresent = true;
+      return;
+    }
+    if (Preferences::HasDefaultValue("autoadmin.global_config_url")) {
+      sJSHacksPresent = true;
+      return;
+    }
+    if (Preferences::HasUserValue("autoadmin.global_config_url")) {
+      sJSHacksPresent = true;
+      return;
+    }
   }
 
   bool failOverToCache;
@@ -1011,7 +1065,7 @@ nsresult CheckCSPFrameAncestorPolicy(nsIChannel* aChannel,
   csp->SuppressParserLogMessages();
 
   nsCOMPtr<nsIURI> selfURI;
-  nsAutoString referrerSpec;
+  nsAutoCString referrerSpec;
   if (httpChannel) {
     aChannel->GetURI(getter_AddRefs(selfURI));
     nsCOMPtr<nsIReferrerInfo> referrerInfo = httpChannel->GetReferrerInfo();
@@ -1098,7 +1152,7 @@ void EnforceXFrameOptionsCheck(nsIChannel* aChannel,
                         u""_ns,  // no sourcefile
                         u""_ns,  // no scriptsample
                         0,       // no linenumber
-                        0,       // no columnnumber
+                        1,       // no columnnumber
                         nsIScriptError::warningFlag,
                         "IgnoringSrcBecauseOfDirective"_ns, innerWindowID,
                         privateWindow);
@@ -1134,6 +1188,64 @@ bool nsContentSecurityUtils::CheckCSPFrameAncestorAndXFO(nsIChannel* aChannel) {
 
   return FramingChecker::CheckFrameOptions(aChannel, csp,
                                            isFrameOptionsIgnored);
+}
+
+// https://w3c.github.io/webappsec-csp/#is-element-nonceable
+/* static */
+nsString nsContentSecurityUtils::GetIsElementNonceableNonce(
+    const Element& aElement) {
+  // Step 1. If element does not have an attribute named "nonce", return "Not
+  // Nonceable".
+  nsString nonce;
+  if (nsString* cspNonce =
+          static_cast<nsString*>(aElement.GetProperty(nsGkAtoms::nonce))) {
+    nonce = *cspNonce;
+  }
+  if (nonce.IsEmpty()) {
+    return nonce;
+  }
+
+  // Step 2. If element is a script element, then for each attribute of
+  // element’s attribute list:
+  if (nsCOMPtr<nsIScriptElement> script =
+          do_QueryInterface(const_cast<Element*>(&aElement))) {
+    auto containsScriptOrStyle = [](const nsAString& aStr) {
+      return aStr.LowerCaseFindASCII("<script") != kNotFound ||
+             aStr.LowerCaseFindASCII("<style") != kNotFound;
+    };
+
+    nsString value;
+    uint32_t i = 0;
+    while (BorrowedAttrInfo info = aElement.GetAttrInfoAt(i++)) {
+      // Step 2.1. If attribute’s name contains an ASCII case-insensitive match
+      // for "<script" or "<style", return "Not Nonceable".
+      const nsAttrName* name = info.mName;
+      if (nsAtom* prefix = name->GetPrefix()) {
+        if (containsScriptOrStyle(nsDependentAtomString(prefix))) {
+          return EmptyString();
+        }
+      }
+      if (containsScriptOrStyle(nsDependentAtomString(name->LocalName()))) {
+        return EmptyString();
+      }
+
+      // Step 2.2. If attribute’s value contains an ASCII case-insensitive match
+      // for "<script" or "<style", return "Not Nonceable".
+      info.mValue->ToString(value);
+      if (containsScriptOrStyle(value)) {
+        return EmptyString();
+      }
+    }
+  }
+
+  // Step 3. If element had a duplicate-attribute parse error during
+  // tokenization, return "Not Nonceable".
+  if (aElement.HasFlag(ELEMENT_PARSER_HAD_DUPLICATE_ATTR_ERROR)) {
+    return EmptyString();
+  }
+
+  // Step 4. Return "Nonceable".
+  return nonce;
 }
 
 #if defined(DEBUG)
@@ -1220,19 +1332,20 @@ void nsContentSecurityUtils::AssertAboutPageHasCSP(Document* aDocument) {
   // This allowlist contains about: pages that are permanently allowed to
   // render without a CSP applied.
   static nsLiteralCString sAllowedAboutPagesWithNoCSP[] = {
-    // about:blank is a special about page -> no CSP
-    "about:blank"_ns,
-    // about:srcdoc is a special about page -> no CSP
-    "about:srcdoc"_ns,
-    // about:sync-log displays plain text only -> no CSP
-    "about:sync-log"_ns,
-    // about:logo just displays the firefox logo -> no CSP
-    "about:logo"_ns,
-    // about:sync is a special mozilla-signed developer addon with low usage ->
-    // no CSP
-    "about:sync"_ns,
+      // about:blank is a special about page -> no CSP
+      "about:blank"_ns,
+      // about:srcdoc is a special about page -> no CSP
+      "about:srcdoc"_ns,
+      // about:sync-log displays plain text only -> no CSP
+      "about:sync-log"_ns,
+      // about:logo just displays the firefox logo -> no CSP
+      "about:logo"_ns,
+      // about:sync is a special mozilla-signed developer addon with low usage
+      // ->
+      // no CSP
+      "about:sync"_ns,
 #  if defined(ANDROID)
-    "about:config"_ns,
+      "about:config"_ns,
 #  endif
   };
 
@@ -1251,17 +1364,20 @@ void nsContentSecurityUtils::AssertAboutPageHasCSP(Document* aDocument) {
              "about: page must contain a CSP denying object-src");
 
   // preferences and downloads allow legacy inline scripts through hash src.
-  MOZ_ASSERT(!foundScriptSrc ||
-                 StringBeginsWith(aboutSpec, "about:preferences"_ns) ||
-                 StringBeginsWith(aboutSpec, "about:downloads"_ns) ||
-                 StringBeginsWith(aboutSpec, "about:newtab"_ns) ||
-                 StringBeginsWith(aboutSpec, "about:logins"_ns) ||
-                 StringBeginsWith(aboutSpec, "about:compat"_ns) ||
-                 StringBeginsWith(aboutSpec, "about:welcome"_ns) ||
-                 StringBeginsWith(aboutSpec, "about:profiling"_ns) ||
-                 StringBeginsWith(aboutSpec, "about:studies"_ns) ||
-                 StringBeginsWith(aboutSpec, "about:home"_ns),
-             "about: page must not contain a CSP including script-src");
+  MOZ_ASSERT(
+      !foundScriptSrc || StringBeginsWith(aboutSpec, "about:preferences"_ns) ||
+          StringBeginsWith(aboutSpec, "about:settings"_ns) ||
+          StringBeginsWith(aboutSpec, "about:downloads"_ns) ||
+          StringBeginsWith(aboutSpec, "about:fingerprintingprotection"_ns) ||
+          StringBeginsWith(aboutSpec, "about:asrouter"_ns) ||
+          StringBeginsWith(aboutSpec, "about:newtab"_ns) ||
+          StringBeginsWith(aboutSpec, "about:logins"_ns) ||
+          StringBeginsWith(aboutSpec, "about:compat"_ns) ||
+          StringBeginsWith(aboutSpec, "about:welcome"_ns) ||
+          StringBeginsWith(aboutSpec, "about:profiling"_ns) ||
+          StringBeginsWith(aboutSpec, "about:studies"_ns) ||
+          StringBeginsWith(aboutSpec, "about:home"_ns),
+      "about: page must not contain a CSP including script-src");
 
   MOZ_ASSERT(!foundWorkerSrc,
              "about: page must not contain a CSP including worker-src");
@@ -1270,6 +1386,7 @@ void nsContentSecurityUtils::AssertAboutPageHasCSP(Document* aDocument) {
   // remote web resources
   MOZ_ASSERT(!foundWebScheme ||
                  StringBeginsWith(aboutSpec, "about:preferences"_ns) ||
+                 StringBeginsWith(aboutSpec, "about:settings"_ns) ||
                  StringBeginsWith(aboutSpec, "about:addons"_ns) ||
                  StringBeginsWith(aboutSpec, "about:newtab"_ns) ||
                  StringBeginsWith(aboutSpec, "about:debugging"_ns) ||
@@ -1298,6 +1415,7 @@ void nsContentSecurityUtils::AssertAboutPageHasCSP(Document* aDocument) {
       // Bug 1579160: Remove 'unsafe-inline' from style-src within
       // about:preferences
       "about:preferences"_ns,
+      "about:settings"_ns,
       // Bug 1571346: Remove 'unsafe-inline' from style-src within about:addons
       "about:addons"_ns,
       // Bug 1584485: Remove 'unsafe-inline' from style-src within:
@@ -1440,7 +1558,7 @@ bool nsContentSecurityUtils::ValidateScriptFilename(JSContext* cx,
       // and this is the most reasonable. See 1727770
       u"about:downloads"_ns,
       // We think this is the same problem as about:downloads
-      u"about:preferences"_ns,
+      u"about:preferences"_ns, u"about:settings"_ns,
       // Browser console will give a filename of 'debugger' See 1763943
       // Sometimes it's 'debugger eager eval code', other times just 'debugger
       // eval code'
@@ -1487,7 +1605,7 @@ bool nsContentSecurityUtils::ValidateScriptFilename(JSContext* cx,
           : "(None)",
       "Blocking a script load %s from file %s");
   MOZ_CRASH_UNSAFE_PRINTF("%s", crashString.get());
-#elif defined(NIGHTLY_BUILD)
+#elif defined(EARLY_BETA_OR_EARLIER)
   // Cause a crash (if we've never crashed before and we can ensure we won't do
   // it again.)
   // The details in the second arg, passed to UNSAFE_PRINTF, are also included
@@ -1563,12 +1681,15 @@ long nsContentSecurityUtils::ClassifyDownload(
       loadingPrincipal, loadInfo->TriggeringPrincipal(), nullptr,
       nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK,
       nsIContentPolicy::TYPE_FETCH);
+  // Disable HTTPS-Only checks for that loadinfo. This is required because
+  // otherwise nsMixedContentBlocker::ShouldLoad would assume that the request
+  // is safe, because HTTPS-Only is handling it.
+  secCheckLoadInfo->SetHttpsOnlyStatus(nsILoadInfo::HTTPS_ONLY_EXEMPT);
 
   int16_t decission = nsIContentPolicy::ACCEPT;
   nsMixedContentBlocker::ShouldLoad(false,  //  aHadInsecureImageRedirect
                                     contentLocation,   //  aContentLocation,
                                     secCheckLoadInfo,  //  aLoadinfo
-                                    aMimeTypeGuess,    //  aMimeGuess,
                                     false,             //  aReportError
                                     &decission         // aDecision
   );
@@ -1588,10 +1709,6 @@ long nsContentSecurityUtils::ClassifyDownload(
     return nsITransfer::DOWNLOAD_ACCEPTABLE;
   }
 
-  if (!StaticPrefs::dom_block_download_in_sandboxed_iframes()) {
-    return nsITransfer::DOWNLOAD_ACCEPTABLE;
-  }
-
   uint32_t triggeringFlags = loadInfo->GetTriggeringSandboxFlags();
   uint32_t currentflags = loadInfo->GetSandboxFlags();
 
@@ -1603,6 +1720,5 @@ long nsContentSecurityUtils::ClassifyDownload(
     }
     return nsITransfer::DOWNLOAD_FORBIDDEN;
   }
-
   return nsITransfer::DOWNLOAD_ACCEPTABLE;
 }

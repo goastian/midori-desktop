@@ -8,13 +8,16 @@
 #define mozilla_VideoEngine_h
 
 #include "MediaEngine.h"
+#include "video_engine/video_capture_factory.h"
 #include "VideoFrameUtils.h"
 #include "mozilla/media/MediaUtils.h"
-#include "modules/video_capture/video_capture_impl.h"
-#include "modules/video_capture/video_capture_defines.h"
-#include "modules/video_capture/video_capture_factory.h"
+#include "modules/video_capture/video_capture.h"
 #include <memory>
 #include <functional>
+
+namespace webrtc {
+class DesktopCaptureImpl;
+}
 
 namespace mozilla::camera {
 
@@ -61,11 +64,13 @@ class VideoEngine {
   NS_INLINE_DECL_REFCOUNTING(VideoEngine)
 
   static already_AddRefed<VideoEngine> Create(
-      const CaptureDeviceType& aCaptureDeviceType);
+      const CaptureDeviceType& aCaptureDeviceType,
+      RefPtr<VideoCaptureFactory> aVideoCaptureFactory);
 #if defined(ANDROID)
   static int SetAndroidObjects();
 #endif
-  // Returns a non-negative capture identifier or -1 on failure.
+  /** Returns a non-negative capture identifier or -1 on failure.
+   */
   int32_t CreateVideoCapture(const char* aDeviceUniqueIdUTF8);
 
   int ReleaseVideoCapture(const int32_t aId);
@@ -85,16 +90,25 @@ class VideoEngine {
   std::shared_ptr<webrtc::VideoCaptureModule::DeviceInfo>
   GetOrCreateVideoCaptureDeviceInfo();
 
+  /**
+   * Destroys existing DeviceInfo.
+   *  The DeviceInfo will be recreated the next time it is needed.
+   */
+  void ClearVideoCaptureDeviceInfo();
+
   class CaptureEntry {
    public:
     CaptureEntry(int32_t aCapnum,
-                 rtc::scoped_refptr<webrtc::VideoCaptureModule> aCapture);
+                 rtc::scoped_refptr<webrtc::VideoCaptureModule> aCapture,
+                 webrtc::DesktopCaptureImpl* aDesktopImpl);
     int32_t Capnum() const;
     rtc::scoped_refptr<webrtc::VideoCaptureModule> VideoCapture();
+    mozilla::MediaEventSource<void>* CaptureEndedEvent();
 
    private:
     int32_t mCapnum;
     rtc::scoped_refptr<webrtc::VideoCaptureModule> mVideoCaptureModule;
+    webrtc::DesktopCaptureImpl* mDesktopImpl = nullptr;
     friend class VideoEngine;
   };
 
@@ -103,9 +117,11 @@ class VideoEngine {
                  const std::function<void(CaptureEntry& entry)>&& fn);
 
  private:
-  explicit VideoEngine(const CaptureDeviceType& aCaptureDeviceType);
+  VideoEngine(const CaptureDeviceType& aCaptureDeviceType,
+              RefPtr<VideoCaptureFactory> aVideoCaptureFactory);
   int32_t mId;
   const CaptureDeviceInfo mCaptureDevInfo;
+  RefPtr<VideoCaptureFactory> mVideoCaptureFactory;
   std::shared_ptr<webrtc::VideoCaptureModule::DeviceInfo> mDeviceInfo;
   std::map<int32_t, CaptureEntry> mCaps;
   std::map<int32_t, int32_t> mIdMap;

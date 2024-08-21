@@ -32,7 +32,7 @@ class HTMLOptionElement final : public nsGenericHTMLElement {
 
   using mozilla::dom::Element::GetText;
 
-  bool Selected() const { return mIsSelected; }
+  bool Selected() const { return State().HasState(ElementState::CHECKED); }
   void SetSelected(bool aValue);
 
   void SetSelectedChanged(bool aValue) { mSelectedChanged = aValue; }
@@ -62,10 +62,7 @@ class HTMLOptionElement final : public nsGenericHTMLElement {
   void UpdateDisabledState(bool aNotify);
 
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  void UnbindFromTree(bool aNullParent = true) override;
-
-  // nsIContent
-  ElementState IntrinsicState() const override;
+  void UnbindFromTree(UnbindContext&) override;
 
   nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
@@ -80,14 +77,13 @@ class HTMLOptionElement final : public nsGenericHTMLElement {
   HTMLFormElement* GetForm();
 
   void GetRenderedLabel(nsAString& aLabel) {
-    if (!GetAttr(kNameSpaceID_None, nsGkAtoms::label, aLabel) ||
-        aLabel.IsEmpty()) {
+    if (!GetAttr(nsGkAtoms::label, aLabel) || aLabel.IsEmpty()) {
       GetText(aLabel);
     }
   }
 
   void GetLabel(nsAString& aLabel) {
-    if (!GetAttr(kNameSpaceID_None, nsGkAtoms::label, aLabel)) {
+    if (!GetAttr(nsGkAtoms::label, aLabel)) {
       GetText(aLabel);
     }
   }
@@ -95,15 +91,13 @@ class HTMLOptionElement final : public nsGenericHTMLElement {
     SetHTMLAttr(nsGkAtoms::label, aLabel, aError);
   }
 
-  bool DefaultSelected() const {
-    return HasAttr(kNameSpaceID_None, nsGkAtoms::selected);
-  }
+  bool DefaultSelected() const { return HasAttr(nsGkAtoms::selected); }
   void SetDefaultSelected(bool aValue, ErrorResult& aRv) {
     SetHTMLBoolAttr(nsGkAtoms::selected, aValue, aRv);
   }
 
   void GetValue(nsAString& aValue) {
-    if (!GetAttr(kNameSpaceID_None, nsGkAtoms::value, aValue)) {
+    if (!GetAttr(nsGkAtoms::value, aValue)) {
       GetText(aValue);
     }
   }
@@ -128,12 +122,11 @@ class HTMLOptionElement final : public nsGenericHTMLElement {
    */
   HTMLSelectElement* GetSelect();
 
-  bool mSelectedChanged;
-  bool mIsSelected;
+  bool mSelectedChanged = false;
 
   // True only while we're under the SetOptionsSelectedByIndex call when our
   // "selected" attribute is changing and mSelectedChanged is false.
-  bool mIsInSetDefaultSelected;
+  bool mIsInSetDefaultSelected = false;
 };
 
 }  // namespace mozilla::dom

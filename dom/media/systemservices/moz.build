@@ -9,12 +9,12 @@ if CONFIG["MOZ_WEBRTC"]:
     EXPORTS += [
         "CamerasChild.h",
         "CamerasParent.h",
-        "VideoEngine.h",
         "VideoFrameUtils.h",
     ]
     UNIFIED_SOURCES += [
         "CamerasChild.cpp",
         "CamerasParent.cpp",
+        "video_engine/video_capture_factory.cc",
         "VideoEngine.cpp",
         "VideoFrameUtils.cpp",
     ]
@@ -56,6 +56,11 @@ if CONFIG["MOZ_WEBRTC"]:
             "video_engine/tab_capturer.cc",
         ]
 
+    if "WEBRTC_USE_PIPEWIRE" in DEFINES:
+        UNIFIED_SOURCES += [
+            "video_engine/placeholder_device_info.cc",
+        ]
+        CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
 
 if CONFIG["OS_TARGET"] == "Android":
     DEFINES["WEBRTC_ANDROID"] = True
@@ -98,10 +103,6 @@ IPDL_SOURCES += [
     "PCameras.ipdl",
     "PMedia.ipdl",
     "PMediaSystemResourceManager.ipdl",
-]
-# /dom/base needed for nsGlobalWindow.h in MediaChild.cpp
-LOCAL_INCLUDES += [
-    "/dom/base",
 ]
 
 include("/ipc/chromium/chromium-config.mozbuild")

@@ -17,7 +17,7 @@ class WebGLMethodDispatcher
     : public EmptyMethodDispatcher<WebGLMethodDispatcher> {};
 
 template <typename MethodT, MethodT Method>
-size_t IdByMethod() = delete;
+size_t IdByMethod();
 
 #define DEFINE_METHOD_DISPATCHER(_ID, _METHOD)                  \
   template <>                                                   \
@@ -93,6 +93,7 @@ DEFINE_ASYNC(HostWebGLContext::ProvokingVertex)
 DEFINE_ASYNC(HostWebGLContext::Present)
 DEFINE_ASYNC(HostWebGLContext::SampleCoverage)
 DEFINE_ASYNC(HostWebGLContext::Scissor)
+DEFINE_ASYNC(HostWebGLContext::SetDrawingBufferColorSpace)
 DEFINE_ASYNC(HostWebGLContext::ShaderSource)
 DEFINE_ASYNC(HostWebGLContext::StencilFuncSeparate)
 DEFINE_ASYNC(HostWebGLContext::StencilMaskSeparate)

@@ -4,7 +4,8 @@ depth ranges as well.
 `;
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
-import { kDepthStencilFormats, kTextureFormatInfo } from '../../../capability_info.js';
+import { assert } from '../../../../common/util/util.js';
+import { kDepthStencilFormats, kTextureFormatInfo } from '../../../format_info.js';
 import { GPUTest } from '../../../gpu_test.js';
 import {
   checkElementsBetween,
@@ -36,7 +37,7 @@ have unexpected values then get drawn to the color buffer, which is later checke
   .params(u =>
     u //
       .combine('format', kDepthStencilFormats)
-      .filter(p => kTextureFormatInfo[p.format].depth)
+      .filter(p => !!kTextureFormatInfo[p.format].depth)
       .combine('unclippedDepth', [undefined, false, true])
       .combine('writeDepth', [false, true])
       .combine('multisampled', [false, true])
@@ -52,6 +53,7 @@ have unexpected values then get drawn to the color buffer, which is later checke
   .fn(async t => {
     const { format, unclippedDepth, writeDepth, multisampled } = t.params;
     const info = kTextureFormatInfo[format];
+    assert(!!info.depth);
 
     /** Number of depth values to test for both vertex output and frag_depth output. */
     const kNumDepthValues = 8;
@@ -177,7 +179,7 @@ have unexpected values then get drawn to the color buffer, which is later checke
         topology: 'point-list',
         unclippedDepth,
       },
-      depthStencil: { format, depthWriteEnabled: true },
+      depthStencil: { format, depthWriteEnabled: true, depthCompare: 'always' },
       multisample: multisampled ? { count: 4 } : undefined,
       fragment: {
         module,
@@ -222,16 +224,16 @@ have unexpected values then get drawn to the color buffer, which is later checke
       : undefined;
 
     const dsActual =
-      !multisampled && info.bytesPerBlock
+      !multisampled && info.depth.bytes
         ? t.device.createBuffer({
-            size: kNumTestPoints * info.bytesPerBlock,
+            size: kNumTestPoints * info.depth.bytes,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
           })
         : undefined;
     const dsExpected =
-      !multisampled && info.bytesPerBlock
+      !multisampled && info.depth.bytes
         ? t.device.createBuffer({
-            size: kNumTestPoints * info.bytesPerBlock,
+            size: kNumTestPoints * info.depth.bytes,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
           })
         : undefined;
@@ -270,7 +272,9 @@ have unexpected values then get drawn to the color buffer, which is later checke
       pass.end();
     }
     if (dsActual) {
-      enc.copyTextureToBuffer({ texture: dsTexture }, { buffer: dsActual }, [kNumTestPoints]);
+      enc.copyTextureToBuffer({ texture: dsTexture, aspect: 'depth-only' }, { buffer: dsActual }, [
+        kNumTestPoints,
+      ]);
     }
     {
       const clearValue = [0, 0, 0, 0]; // Will see this color if the check passed.
@@ -302,7 +306,11 @@ have unexpected values then get drawn to the color buffer, which is later checke
     }
     enc.copyTextureToBuffer({ texture: checkTexture }, { buffer: checkBuffer }, [kNumTestPoints]);
     if (dsExpected) {
-      enc.copyTextureToBuffer({ texture: dsTexture }, { buffer: dsExpected }, [kNumTestPoints]);
+      enc.copyTextureToBuffer(
+        { texture: dsTexture, aspect: 'depth-only' },
+        { buffer: dsExpected },
+        [kNumTestPoints]
+      );
     }
     t.device.queue.submit([enc.finish()]);
 
@@ -314,7 +322,7 @@ have unexpected values then get drawn to the color buffer, which is later checke
 
     const kCheckPassedValue = 0;
     const predicatePrinter: CheckElementsSupplementalTableRows = [
-      { leftHeader: 'expected ==', getValueForCell: index => kCheckPassedValue },
+      { leftHeader: 'expected ==', getValueForCell: _index => kCheckPassedValue },
     ];
     if (dsActual && dsExpected && format === 'depth32float') {
       await Promise.all([dsActual.mapAsync(GPUMapMode.READ), dsExpected.mapAsync(GPUMapMode.READ)]);
@@ -328,7 +336,7 @@ have unexpected values then get drawn to the color buffer, which is later checke
     t.expectGPUBufferValuesPassCheck(
       checkBuffer,
       a =>
-        checkElementsPassPredicate(a, (index, value) => value === kCheckPassedValue, {
+        checkElementsPassPredicate(a, (_index, value) => value === kCheckPassedValue, {
           predicatePrinter,
         }),
       { type: Uint8Array, typedLength: kNumTestPoints, method: 'map' }
@@ -352,7 +360,7 @@ to be empty.`
   .params(u =>
     u //
       .combine('format', kDepthStencilFormats)
-      .filter(p => kTextureFormatInfo[p.format].depth)
+      .filter(p => !!kTextureFormatInfo[p.format].depth)
       .combine('unclippedDepth', [false, true])
       .combine('multisampled', [false, true])
   )
@@ -364,7 +372,7 @@ to be empty.`
       info.feature,
     ]);
   })
-  .fn(async t => {
+  .fn(t => {
     const { format, unclippedDepth, multisampled } = t.params;
     const info = kTextureFormatInfo[format];
 
@@ -426,7 +434,7 @@ to be empty.`
       layout: 'auto',
       vertex: { module, entryPoint: 'vmain' },
       primitive: { topology: 'point-list' },
-      depthStencil: { format, depthWriteEnabled: true },
+      depthStencil: { format, depthWriteEnabled: true, depthCompare: 'always' },
       multisample: multisampled ? { count: 4 } : undefined,
       fragment: { module, entryPoint: 'finit', targets: [] },
     });
@@ -440,7 +448,7 @@ to be empty.`
         topology: 'point-list',
         unclippedDepth,
       },
-      depthStencil: { format, depthCompare: 'not-equal' },
+      depthStencil: { format, depthCompare: 'not-equal', depthWriteEnabled: false },
       multisample: multisampled ? { count: 4 } : undefined,
       fragment: { module, entryPoint: 'ftest', targets: [{ format: 'r8unorm' }] },
     });

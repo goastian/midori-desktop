@@ -98,6 +98,7 @@ function testSimple() {
   }
 
   ok(false, "Shouldn't go here.");
+  return Promise.reject();
 }
 
 function sendRequsetAndCheckUrgentStart(aEventToTest) {
@@ -256,8 +257,13 @@ function endCheck() {
   return Promise.resolve();
 }
 
-function runTest() {
-  return SpecialPowers.pushPrefEnv({"set": [["network.http.rcwn.enabled", false]]})
+function runTest() {// Disable mixed-content upgrading as this test is expecting an HTTP load
+  return SpecialPowers.pushPrefEnv(
+    {"set": [
+      ["security.mixed_content.upgrade_display_content", false],
+      ["network.http.rcwn.enabled", false],
+    ]}
+    )
     .then(executeTest)
     .then(endCheck)
     .catch(aError => ok(false, "Some test failed with error " + aError))

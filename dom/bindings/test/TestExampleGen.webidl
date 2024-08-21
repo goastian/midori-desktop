@@ -495,7 +495,10 @@ interface TestExampleInterface {
   //undefined passUnionWithInterfaces((TestInterface or TestExternalInterface) arg);
   //undefined passUnionWithInterfacesAndNullable((TestInterface? or TestExternalInterface) arg);
   //undefined passUnionWithSequence((sequence<object> or long) arg);
-  undefined passUnionWithArrayBuffer((ArrayBuffer or long) arg);
+  undefined passUnionWithArrayBuffer((UTF8String or ArrayBuffer) arg);
+  undefined passUnionWithArrayBufferOrNull((UTF8String or ArrayBuffer?) arg);
+  undefined passUnionWithTypedArrays((ArrayBufferView or ArrayBuffer) arg);
+  undefined passUnionWithTypedArraysOrNull((ArrayBufferView or ArrayBuffer?) arg);
   undefined passUnionWithString((DOMString or object) arg);
   // Using an enum in a union.  Note that we use some enum not declared in our
   // binding file, because UnionTypes.h will need to include the binding header
@@ -867,7 +870,10 @@ interface TestExampleInterface {
   undefined passUnionArrayBuffer((DOMString or ArrayBuffer) foo);
   undefined passUnionAllowSharedArrayBuffer((DOMString or [AllowShared] ArrayBuffer) foo);
 
-  // If you add things here, add them to TestCodeGen and TestJSImplGen as well
+  // If you add things here, add them to TestExampleGen. If they need to be
+  // supported in JS-implemented WebIDL then you need to add them to
+  // TestJSImplGen as well, if they are not supported in JS-implemented WebIDL
+  // then the codegen should throw for that specific case.
 };
 
 [Exposed=Window]

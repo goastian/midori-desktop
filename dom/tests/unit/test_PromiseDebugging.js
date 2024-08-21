@@ -1,8 +1,7 @@
 function run_test() {
-  // Hack around Promise.jsm being stuck on my global
   Assert.equal(false, PromiseDebugging === undefined);
   var res;
-  var p = new Promise(function (resolve, reject) {
+  var p = new Promise(function (resolve) {
     res = resolve;
   });
   var state = PromiseDebugging.getState(p);

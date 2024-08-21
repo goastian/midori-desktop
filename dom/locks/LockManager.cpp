@@ -20,7 +20,7 @@
 
 namespace mozilla::dom {
 
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(LockManager, mOwner, mActor)
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(LockManager, mOwner)
 NS_IMPL_CYCLE_COLLECTING_ADDREF(LockManager)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(LockManager)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(LockManager)
@@ -36,34 +36,45 @@ JSObject* LockManager::WrapObject(JSContext* aCx,
 LockManager::LockManager(nsIGlobalObject* aGlobal) : mOwner(aGlobal) {
   Maybe<ClientInfo> clientInfo = aGlobal->GetClientInfo();
   if (!clientInfo) {
+    // Pass the nonworking object and let request()/query() throw.
     return;
   }
 
-  const mozilla::ipc::PrincipalInfo& principalInfo =
-      clientInfo->PrincipalInfo();
-
-  if (principalInfo.type() !=
-      mozilla::ipc::PrincipalInfo::TContentPrincipalInfo) {
+  nsCOMPtr<nsIPrincipal> principal =
+      clientInfo->GetPrincipal().unwrapOr(nullptr);
+  if (!principal || !principal->GetIsContentPrincipal()) {
+    // Same, the methods will throw instead of the constructor.
     return;
   }
 
   mozilla::ipc::PBackgroundChild* backgroundActor =
       mozilla::ipc::BackgroundChild::GetOrCreateForCurrentThread();
   mActor = new locks::LockManagerChild(aGlobal);
-  backgroundActor->SendPLockManagerConstructor(mActor, principalInfo,
-                                               clientInfo->Id());
+
+  if (!backgroundActor->SendPLockManagerConstructor(
+          mActor, WrapNotNull(principal), clientInfo->Id())) {
+    // Failed to construct the actor. Pass the nonworking object and let the
+    // methods throw.
+    mActor = nullptr;
+    return;
+  }
+}
+
+already_AddRefed<LockManager> LockManager::Create(nsIGlobalObject& aGlobal) {
+  RefPtr<LockManager> manager = new LockManager(&aGlobal);
 
   if (!NS_IsMainThread()) {
-    mWorkerRef = WeakWorkerRef::Create(GetCurrentThreadWorkerPrivate(),
-                                       [self = RefPtr(this)]() {
-                                         // Others may grab a strong reference
-                                         // and block immediate destruction.
-                                         // Shutdown early as we don't have to
-                                         // wait for them.
-                                         self->Shutdown();
-                                         self->mWorkerRef = nullptr;
-                                       });
+    // Grabbing WorkerRef may fail and that will cause the methods throw later.
+    manager->mWorkerRef =
+        WeakWorkerRef::Create(GetCurrentThreadWorkerPrivate(), [manager]() {
+          // Others may grab a strong reference and block immediate destruction.
+          // Shutdown early as we don't have to wait for them.
+          manager->Shutdown();
+          manager->mWorkerRef = nullptr;
+        });
   }
+
+  return manager.forget();
 }
 
 static bool ValidateRequestArguments(const nsAString& name,
@@ -133,10 +144,16 @@ already_AddRefed<Promise> LockManager::Request(const nsAString& aName,
     return nullptr;
   }
 
-  if (mOwner->GetStorageAccess() <= StorageAccess::eDeny) {
+  const StorageAccess access = mOwner->GetStorageAccess();
+  bool allowed =
+      access > StorageAccess::eDeny ||
+      (StaticPrefs::
+           privacy_partition_always_partition_third_party_non_cookie_storage() &&
+       ShouldPartitionStorage(access));
+  if (!allowed) {
     // Step 4: If origin is an opaque origin, then return a promise rejected
     // with a "SecurityError" DOMException.
-    // But per https://wicg.github.io/web-locks/#lock-managers this really means
+    // But per https://w3c.github.io/web-locks/#lock-managers this really means
     // whether it has storage access.
     aRv.ThrowSecurityError("request() is not allowed in this context");
     return nullptr;
@@ -145,6 +162,11 @@ already_AddRefed<Promise> LockManager::Request(const nsAString& aName,
   if (!mActor) {
     aRv.ThrowNotSupportedError(
         "Web Locks API is not enabled for this kind of document");
+    return nullptr;
+  }
+
+  if (!NS_IsMainThread() && !mWorkerRef) {
+    aRv.ThrowInvalidStateError("request() is not allowed at this point");
     return nullptr;
   }
 
@@ -176,6 +198,11 @@ already_AddRefed<Promise> LockManager::Query(ErrorResult& aRv) {
   if (!mActor) {
     aRv.ThrowNotSupportedError(
         "Web Locks API is not enabled for this kind of document");
+    return nullptr;
+  }
+
+  if (!NS_IsMainThread() && !mWorkerRef) {
+    aRv.ThrowInvalidStateError("query() is not allowed at this point");
     return nullptr;
   }
 

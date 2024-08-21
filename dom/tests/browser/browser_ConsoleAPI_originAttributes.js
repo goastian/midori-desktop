@@ -86,7 +86,7 @@ function test() {
 
   let chromeWebNav = Services.appShell.createWindowlessBrowser(true);
   let docShell = chromeWebNav.docShell;
-  docShell.createAboutBlankContentViewer(principal, principal);
+  docShell.createAboutBlankDocumentViewer(principal, principal);
 
   info("fake webextension docShell created");
 
@@ -99,7 +99,7 @@ function test() {
     ConsoleObserver.uninit();
   });
 
-  let window = docShell.contentViewer.DOMDocument.defaultView;
+  let window = docShell.docViewer.DOMDocument.defaultView;
   window.eval(`console.log("${EXPECTED_CONSOLE_MESSAGE_CONTENT}");`);
   chromeWebNav.close();
   chromeWebNav = null;

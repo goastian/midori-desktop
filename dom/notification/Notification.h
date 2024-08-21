@@ -11,13 +11,12 @@
 #include "mozilla/UniquePtr.h"
 #include "mozilla/dom/NotificationBinding.h"
 #include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/quota/QuotaCommon.h"
 
 #include "nsIObserver.h"
 #include "nsISupports.h"
 
 #include "nsCycleCollectionParticipant.h"
-#include "nsHashKeys.h"
-#include "nsTHashtable.h"
 #include "nsWeakReference.h"
 
 class nsIPrincipal;
@@ -121,11 +120,11 @@ class Notification : public DOMEventTargetHelper,
    * 2) The default binding requires main thread for parsing the JSON from the
    *    string behavior.
    */
-  static already_AddRefed<Notification> ConstructFromFields(
+  static Result<already_AddRefed<Notification>, QMResult> ConstructFromFields(
       nsIGlobalObject* aGlobal, const nsAString& aID, const nsAString& aTitle,
       const nsAString& aDir, const nsAString& aLang, const nsAString& aBody,
       const nsAString& aTag, const nsAString& aIcon, const nsAString& aData,
-      const nsAString& aServiceWorkerRegistrationScope, ErrorResult& aRv);
+      const nsAString& aServiceWorkerRegistrationScope);
 
   void GetID(nsAString& aRetval) { aRetval = mID; }
 
@@ -194,7 +193,7 @@ class Notification : public DOMEventTargetHelper,
   void InitFromJSVal(JSContext* aCx, JS::Handle<JS::Value> aData,
                      ErrorResult& aRv);
 
-  void InitFromBase64(const nsAString& aData, ErrorResult& aRv);
+  Result<Ok, QMResult> InitFromBase64(const nsAString& aData);
 
   void AssertIsOnTargetThread() const { MOZ_ASSERT(IsTargetThread()); }
 
@@ -246,34 +245,14 @@ class Notification : public DOMEventTargetHelper,
       nsIGlobalObject* aGlobal, const nsAString& aID, const nsAString& aTitle,
       const NotificationOptions& aOptions, ErrorResult& aRv);
 
-  nsresult Init();
+  // Triggers CloseInternal for non-persistent notifications if window goes away
+  nsresult MaybeObserveWindowFrozenOrDestroyed();
   bool IsInPrivateBrowsing();
   void ShowInternal();
   void CloseInternal(bool aContextClosed = false);
 
   static NotificationPermission GetPermissionInternal(
       nsPIDOMWindowInner* aWindow, ErrorResult& rv);
-
-  static const nsString DirectionToString(NotificationDirection aDirection) {
-    switch (aDirection) {
-      case NotificationDirection::Ltr:
-        return u"ltr"_ns;
-      case NotificationDirection::Rtl:
-        return u"rtl"_ns;
-      default:
-        return u"auto"_ns;
-    }
-  }
-
-  static NotificationDirection StringToDirection(const nsAString& aDirection) {
-    if (aDirection.EqualsLiteral("ltr")) {
-      return NotificationDirection::Ltr;
-    }
-    if (aDirection.EqualsLiteral("rtl")) {
-      return NotificationDirection::Rtl;
-    }
-    return NotificationDirection::Auto;
-  }
 
   static nsresult GetOrigin(nsIPrincipal* aPrincipal, nsString& aOrigin);
 

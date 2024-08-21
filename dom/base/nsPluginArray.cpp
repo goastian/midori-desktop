@@ -12,7 +12,6 @@
 
 #include "nsMimeTypeArray.h"
 #include "nsPIDOMWindow.h"
-#include "nsGlobalWindowInner.h"
 #include "nsContentUtils.h"
 
 using namespace mozilla;
@@ -98,10 +97,7 @@ void nsPluginArray::GetSupportedNames(nsTArray<nsString>& aRetval) {
   }
 }
 
-bool nsPluginArray::ForceNoPlugins() {
-  return StaticPrefs::pdfjs_disabled() &&
-         !nsGlobalWindowInner::Cast(mWindow)->ShouldResistFingerprinting();
-}
+bool nsPluginArray::ForceNoPlugins() { return StaticPrefs::pdfjs_disabled(); }
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsPluginArray)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsPluginArray)

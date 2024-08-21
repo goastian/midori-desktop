@@ -15,9 +15,6 @@ namespace mozilla {
 /* static */
 WebrtcVideoEncoder* MediaDataCodec::CreateEncoder(
     const webrtc::SdpVideoFormat& aFormat) {
-  if (!StaticPrefs::media_webrtc_platformencoder()) {
-    return nullptr;
-  }
   if (!WebrtcMediaDataEncoder::CanCreate(
           webrtc::PayloadStringToCodecType(aFormat.name))) {
     return nullptr;
@@ -60,7 +57,7 @@ WebrtcVideoDecoder* MediaDataCodec::CreateDecoder(
       return nullptr;
   }
   RefPtr<PDMFactory> pdm = new PDMFactory();
-  if (pdm->SupportsMimeType(codec) == media::DecodeSupport::Unsupported) {
+  if (pdm->SupportsMimeType(codec).isEmpty()) {
     return nullptr;
   }
 

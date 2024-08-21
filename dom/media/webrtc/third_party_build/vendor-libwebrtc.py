@@ -14,7 +14,6 @@ import requests
 
 THIRDPARTY_USED_IN_FIREFOX = [
     "abseil-cpp",
-    "google_benchmark",
     "pffft",
     "rnnoise",
 ]
@@ -22,12 +21,12 @@ THIRDPARTY_USED_IN_FIREFOX = [
 LIBWEBRTC_DIR = os.path.normpath("third_party/libwebrtc")
 
 
-def get_excluded_paths():
+# Files in this list are excluded.
+def get_excluded_files():
     return [
         ".clang-format",
         ".git-blame-ignore-revs",
         ".gitignore",
-        ".vpython",
         "CODE_OF_CONDUCT.md",
         "ENG_REVIEW_OWNERS",
         "PRESUBMIT.py",
@@ -39,6 +38,14 @@ def get_excluded_paths():
         "presubmit_test.py",
         "presubmit_test_mocks.py",
         "pylintrc",
+    ]
+
+
+# Directories in this list are excluded.  Directories are handled
+# separately from files so that script 'filter_git_changes.py' can use
+# different regex handling for directory paths.
+def get_excluded_dirs():
+    return [
         # Only the camera code under sdk/android/api/org/webrtc is used, so
         # we remove sdk/android and add back the specific files we want.
         "sdk/android",
@@ -46,7 +53,7 @@ def get_excluded_paths():
 
 
 # Paths in this list are included even if their parent directory is
-# excluded in get_excluded_paths()
+# excluded in get_excluded_dirs()
 def get_included_path_overrides():
     return [
         "sdk/android/src/java/org/webrtc/NativeLibrary.java",
@@ -93,6 +100,7 @@ def get_included_path_overrides():
         "sdk/android/src/java/org/webrtc/VideoEncoderWrapper.java",
         "sdk/android/src/java/org/webrtc/NV21Buffer.java",
         "sdk/android/api/org/webrtc/RendererCommon.java",
+        "sdk/android/api/org/webrtc/RenderSynchronizer.java",
         "sdk/android/api/org/webrtc/YuvHelper.java",
         "sdk/android/api/org/webrtc/LibvpxVp9Encoder.java",
         "sdk/android/api/org/webrtc/Metrics.java",
@@ -108,12 +116,12 @@ def get_included_path_overrides():
         "sdk/android/api/org/webrtc/DataChannel.java",
         "sdk/android/api/org/webrtc/audio/JavaAudioDeviceModule.java",
         "sdk/android/api/org/webrtc/audio/AudioDeviceModule.java",
-        "sdk/android/api/org/webrtc/audio/LegacyAudioDeviceModule.java",
         "sdk/android/api/org/webrtc/SessionDescription.java",
         "sdk/android/api/org/webrtc/GlUtil.java",
         "sdk/android/api/org/webrtc/VideoSource.java",
         "sdk/android/api/org/webrtc/AudioTrack.java",
         "sdk/android/api/org/webrtc/EglRenderer.java",
+        "sdk/android/api/org/webrtc/EglThread.java",
         "sdk/android/api/org/webrtc/VideoEncoder.java",
         "sdk/android/api/org/webrtc/VideoCapturer.java",
         "sdk/android/api/org/webrtc/SoftwareVideoDecoderFactory.java",
@@ -302,7 +310,7 @@ def unpack(target):
             except NotADirectoryError:
                 pass
 
-        unused_libwebrtc_in_firefox = get_excluded_paths()
+        unused_libwebrtc_in_firefox = get_excluded_files() + get_excluded_dirs()
         forced_used_in_firefox = get_included_path_overrides()
 
         # adjust target_path if GitHub packaging is involved
@@ -365,12 +373,16 @@ def unpack(target):
                     os.path.join(LIBWEBRTC_DIR, "build", path),
                 )
     elif target == "third_party":
-        try:
-            shutil.rmtree(os.path.join(LIBWEBRTC_DIR, "third_party"))
-        except FileNotFoundError:
-            pass
-        except NotADirectoryError:
-            pass
+        # Only delete the THIRDPARTY_USED_IN_FIREFOX paths from
+        # LIBWEBRTC_DIR/third_party to avoid deleting directories that
+        # we use to trampoline to libraries already in mozilla's tree.
+        for path in THIRDPARTY_USED_IN_FIREFOX:
+            try:
+                shutil.rmtree(os.path.join(LIBWEBRTC_DIR, "third_party", path))
+            except FileNotFoundError:
+                pass
+            except NotADirectoryError:
+                pass
 
         if os.path.exists(os.path.join(target_path, THIRDPARTY_USED_IN_FIREFOX[0])):
             for path in THIRDPARTY_USED_IN_FIREFOX:

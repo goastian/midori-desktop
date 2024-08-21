@@ -7,7 +7,9 @@
 #ifndef mozilla_dom_ClonedErrorHolder_h
 #define mozilla_dom_ClonedErrorHolder_h
 
+#include "mozilla/dom/NonRefcountedDOMObject.h"
 #include "nsISupportsImpl.h"
+#include "js/ColumnNumber.h"  // JS::ColumnNumberOneOrigin
 #include "js/ErrorReport.h"
 #include "js/TypeDecls.h"
 #include "mozilla/dom/BindingDeclarations.h"
@@ -22,16 +24,15 @@ class ErrorResult;
 
 namespace dom {
 
-class ClonedErrorHolder final {
-  NS_INLINE_DECL_REFCOUNTING(ClonedErrorHolder)
-
+class ClonedErrorHolder final : public NonRefcountedDOMObject {
  public:
-  static already_AddRefed<ClonedErrorHolder> Constructor(
-      const GlobalObject& aGlobal, JS::Handle<JSObject*> aError,
-      ErrorResult& aRv);
+  static UniquePtr<ClonedErrorHolder> Constructor(const GlobalObject& aGlobal,
+                                                  JS::Handle<JSObject*> aError,
+                                                  ErrorResult& aRv);
 
-  static already_AddRefed<ClonedErrorHolder> Create(
-      JSContext* aCx, JS::Handle<JSObject*> aError, ErrorResult& aRv);
+  static UniquePtr<ClonedErrorHolder> Create(JSContext* aCx,
+                                             JS::Handle<JSObject*> aError,
+                                             ErrorResult& aRv);
 
   enum class Type : uint8_t {
     Uninitialized,
@@ -56,7 +57,6 @@ class ClonedErrorHolder final {
 
  private:
   ClonedErrorHolder();
-  ~ClonedErrorHolder() = default;
 
   void Init(JSContext* aCx, JS::Handle<JSObject*> aError, ErrorResult& aRv);
 
@@ -82,10 +82,10 @@ class ClonedErrorHolder final {
   nsCString mFilename;    // JSError only
   nsCString mSourceLine;  // JSError only
 
-  uint32_t mLineNumber = 0;   // JSError only
-  uint32_t mColumn = 0;       // JSError only
-  uint32_t mTokenOffset = 0;  // JSError only
-  uint32_t mErrorNumber = 0;  // JSError only
+  uint32_t mLineNumber = 0;           // JSError only
+  JS::ColumnNumberOneOrigin mColumn;  // JSError only
+  uint32_t mTokenOffset = 0;          // JSError only
+  uint32_t mErrorNumber = 0;          // JSError only
 
   Type mType = Type::Uninitialized;
 

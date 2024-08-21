@@ -1,8 +1,9 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-Cu.importGlobalProperties(["fetch"]);
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 const BinaryInputStream = Components.Constructor(
   "@mozilla.org/binaryinputstream;1",
@@ -215,7 +216,7 @@ add_test(function test_getTestFailedConnect() {
   do_test_pending();
   // try a server that's not there
   fetch("http://localhost:4/should/fail")
-    .then(response => {
+    .then(() => {
       do_throw("Request should not succeed");
     })
     .catch(err => {
@@ -229,7 +230,7 @@ add_test(function test_mozError() {
   do_test_pending();
   // try a server that's not there
   fetch("http://localhost:4/should/fail", { mozErrors: true })
-    .then(response => {
+    .then(() => {
       do_throw("Request should not succeed");
     })
     .catch(err => {
@@ -244,7 +245,7 @@ add_test(function test_request_mozError() {
   // try a server that's not there
   const r = new Request("http://localhost:4/should/fail", { mozErrors: true });
   fetch(r)
-    .then(response => {
+    .then(() => {
       do_throw("Request should not succeed");
     })
     .catch(err => {

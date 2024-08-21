@@ -6,6 +6,8 @@
 #ifndef GMPUtils_h_
 #define GMPUtils_h_
 
+#include "gmp-errors.h"
+#include "MediaResult.h"
 #include "mozilla/AbstractThread.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtr.h"
@@ -17,6 +19,7 @@
 #define CHROMIUM_CDM_API_BACKWARD_COMPAT "chromium-cdm9-host4"
 #define CHROMIUM_CDM_API "chromium-cdm10-host4"
 
+class GMPVideoEncodedFrame;
 class nsIFile;
 class nsIDirectoryEnumerator;
 
@@ -70,6 +73,8 @@ bool ReadIntoString(nsIFile* aFile, nsCString& aOutDst, size_t aMaxLength);
 
 bool HaveGMPFor(const nsACString& aAPI, const nsTArray<nsCString>& aTags);
 
+bool IsOnGMPThread();
+
 void LogToConsole(const nsAString& aMsg);
 
 already_AddRefed<nsISerialEventTarget> GetGMPThread();
@@ -77,6 +82,10 @@ already_AddRefed<nsISerialEventTarget> GetGMPThread();
 // Returns the number of bytes required to store an aWidth x aHeight image in
 // I420 format, padded so that the width and height are multiples of 16.
 size_t I420FrameBufferSizePadded(int32_t aWidth, int32_t aHeight);
+
+bool AdjustOpenH264NALUSequence(GMPVideoEncodedFrame* aEncodedFrame);
+
+MediaResult ToMediaResult(GMPErr aErr, const nsACString& aMessage);
 
 }  // namespace mozilla
 

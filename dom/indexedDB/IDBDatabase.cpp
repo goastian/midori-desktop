@@ -20,6 +20,7 @@
 #include "MainThreadUtils.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/Services.h"
+#include "mozilla/dom/IDBTransactionBinding.h"
 #include "mozilla/storage.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/dom/BindingDeclarations.h"
@@ -187,8 +188,7 @@ RefPtr<IDBDatabase> IDBDatabase::Create(IDBOpenDBRequest* aRequest,
       new IDBDatabase(aRequest, aFactory.clonePtr(), aActor, std::move(aSpec));
 
   if (NS_IsMainThread()) {
-    nsCOMPtr<nsPIDOMWindowInner> window =
-        do_QueryInterface(aFactory->GetParentObject());
+    nsCOMPtr<nsPIDOMWindowInner> window = aFactory->GetOwner();
     if (window) {
       uint64_t windowId = window->WindowID();
 
@@ -475,7 +475,8 @@ void IDBDatabase::DeleteObjectStore(const nsAString& aName, ErrorResult& aRv) {
 
 RefPtr<IDBTransaction> IDBDatabase::Transaction(
     JSContext* aCx, const StringOrStringSequence& aStoreNames,
-    IDBTransactionMode aMode, ErrorResult& aRv) {
+    IDBTransactionMode aMode, const IDBTransactionOptions& aOptions,
+    ErrorResult& aRv) {
   AssertIsOnOwningThread();
 
   if ((aMode == IDBTransactionMode::Readwriteflush ||
@@ -599,8 +600,26 @@ RefPtr<IDBTransaction> IDBDatabase::Transaction(
       MOZ_CRASH("Unknown mode!");
   }
 
+  auto durability = IDBTransaction::Durability::Default;
+  if (aOptions.IsAnyMemberPresent()) {
+    switch (aOptions.mDurability) {
+      case mozilla::dom::IDBTransactionDurability::Default:
+        durability = IDBTransaction::Durability::Default;
+        break;
+      case mozilla::dom::IDBTransactionDurability::Strict:
+        durability = IDBTransaction::Durability::Strict;
+        break;
+      case mozilla::dom::IDBTransactionDurability::Relaxed:
+        durability = IDBTransaction::Durability::Relaxed;
+        break;
+
+      default:
+        MOZ_CRASH("Unknown durability hint!");
+    }
+  }
+
   SafeRefPtr<IDBTransaction> transaction =
-      IDBTransaction::Create(aCx, this, sortedStoreNames, mode);
+      IDBTransaction::Create(aCx, this, sortedStoreNames, mode, durability);
   if (NS_WARN_IF(!transaction)) {
     IDB_REPORT_INTERNAL_ERR();
     MOZ_ASSERT(!NS_IsMainThread(),
@@ -609,7 +628,7 @@ RefPtr<IDBTransaction> IDBDatabase::Transaction(
     return nullptr;
   }
 
-  BackgroundTransactionChild* actor =
+  RefPtr<BackgroundTransactionChild> actor =
       new BackgroundTransactionChild(transaction.clonePtr());
 
   IDB_LOG_MARK_CHILD_TRANSACTION(
@@ -617,8 +636,12 @@ RefPtr<IDBTransaction> IDBDatabase::Transaction(
       transaction->LoggingSerialNumber(), IDB_LOG_STRINGIFY(this),
       IDB_LOG_STRINGIFY(*transaction));
 
-  MOZ_ALWAYS_TRUE(mBackgroundActor->SendPBackgroundIDBTransactionConstructor(
-      actor, sortedStoreNames, mode));
+  if (!mBackgroundActor->SendPBackgroundIDBTransactionConstructor(
+          actor, sortedStoreNames, mode, durability)) {
+    IDB_REPORT_INTERNAL_ERR();
+    aRv.ThrowUnknownError("Failed to create IndexedDB transaction");
+    return nullptr;
+  }
 
   transaction->SetBackgroundActor(actor);
 

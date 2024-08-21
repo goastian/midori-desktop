@@ -21,7 +21,7 @@ runNetworkTest(async () => {
     ["media.getusermedia.microphone.stop_on_disable.enabled", true],
     ["media.getusermedia.microphone.stop_on_disable.delay_ms", 0],
     // Always use fake tracks since we depend on video to be somewhat green and
-    // audio to have a large 1000Hz component (or 440Hz if using fake devices).
+    // audio to have a large 1000Hz component.
     ['media.audio_loopback_dev', ''],
     ['media.video_loopback_dev', ''],
     ['media.navigator.streams.fake', true]);
@@ -53,11 +53,17 @@ runNetworkTest(async () => {
       // We're regarding black as disabled here, and we're setting the alpha
       // channel of the pixel to 255 to disregard alpha when testing.
       const checkVideoEnabled = video => h.waitForPixel(video,
-        px => (px[3] = 255, h.isPixelNot(px, h.black, threshold)),
+        px => {
+          px[3] = 255;
+          return h.isPixelNot(px, h.black, threshold);
+        },
         { offsetX, offsetY }
       );
       const checkVideoDisabled = video => h.waitForPixel(video,
-        px => (px[3] = 255, h.isPixel(px, h.black, threshold)),
+        px => {
+          px[3] = 255;
+          return h.isPixel(px, h.black, threshold);
+        },
         { offsetX, offsetY }
       );
 

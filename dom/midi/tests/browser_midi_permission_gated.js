@@ -22,7 +22,9 @@ const l10n = new Localization(
   true
 );
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 ChromeUtils.defineESModuleGetters(this, {
   AddonTestUtils: "resource://testing-common/AddonTestUtils.sys.mjs",
 });
@@ -69,6 +71,7 @@ add_task(async function testRequestMIDIAccess() {
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, EXAMPLE_COM_URL);
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
   const testPageHost = gBrowser.selectedTab.linkedBrowser.documentURI.host;
+  Services.fog.testResetFOG();
 
   info("Check that midi-sysex isn't set");
   ok(
@@ -408,11 +411,18 @@ add_task(async function testRequestMIDIAccess() {
     "requestMIDIAccess was rejected without user prompt"
   );
   let denyIntervalElapsed = performance.now() - denyIntervalStart;
-  ok(
-    denyIntervalElapsed >= 3000,
+  Assert.greaterOrEqual(
+    denyIntervalElapsed,
+    3000,
     `Rejection should be delayed by a randomized interval no less than 3 seconds (got ${
       denyIntervalElapsed / 1000
     } seconds)`
+  );
+
+  Assert.deepEqual(
+    [{ suspicious_site: "example.com" }],
+    AddonTestUtils.getAMGleanEvents("reportSuspiciousSite"),
+    "Expected Glean event recorded."
   );
 
   // Invoking getAMTelemetryEvents resets the mocked event array, and we want
@@ -769,7 +779,7 @@ async function waitForNotification(notificationId) {
   let observerPromise;
   if (notificationId !== "addon-webext-permissions") {
     observerPromise = new Promise(resolve => {
-      Services.obs.addObserver(function observer(aSubject, aTopic, aData) {
+      Services.obs.addObserver(function observer(aSubject, aTopic) {
         // Ignore the progress notification unless that is the notification we want
         if (
           notificationId != PROGRESS_NOTIFICATION &&

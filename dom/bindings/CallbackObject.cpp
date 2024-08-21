@@ -15,7 +15,7 @@
 #include "xpcprivate.h"
 #include "WorkerPrivate.h"
 #include "nsContentUtils.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "WorkerScope.h"
 #include "jsapi.h"
 #include "js/ContextOptions.h"
@@ -29,7 +29,7 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(CallbackObject)
 NS_INTERFACE_MAP_END
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(CallbackObject)
-NS_IMPL_CYCLE_COLLECTING_RELEASE(CallbackObject)
+NS_IMPL_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE(CallbackObject, Reset())
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(CallbackObject)
 
@@ -157,7 +157,8 @@ void CallbackObject::GetDescription(nsACString& aOutString) {
     return;
   }
 
-  JS::Rooted<JSString*> displayId(cx, JS_GetFunctionDisplayId(rootedFunction));
+  JS::Rooted<JSString*> displayId(
+      cx, JS_GetMaybePartialFunctionDisplayId(rootedFunction));
   if (displayId) {
     nsAutoJSString funcNameStr;
     if (funcNameStr.init(cx, displayId)) {

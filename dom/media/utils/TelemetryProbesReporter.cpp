@@ -7,11 +7,13 @@
 #include <cmath>
 
 #include "FrameStatistics.h"
+#include "MediaCodecsSupport.h"
 #include "VideoUtils.h"
 #include "mozilla/EMEUtils.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/StaticPrefs_media.h"
+#include "mozilla/glean/GleanMetrics.h"
 #include "nsThreadUtils.h"
 
 namespace mozilla {
@@ -291,6 +293,77 @@ void TelemetryProbesReporter::OnDecodeResumed() {
   mOwner->DispatchAsyncTestingEvent(u"mozvideodecodesuspendedpaused"_ns);
 }
 
+void TelemetryProbesReporter::OntFirstFrameLoaded(
+    const double aLoadedFirstFrameTime, const double aLoadedMetadataTime,
+    const double aTotalWaitingDataTime, const double aTotalBufferingTime,
+    const FirstFrameLoadedFlagSet aFlags, const MediaInfo& aInfo) {
+  MOZ_ASSERT(aInfo.HasVideo());
+  nsCString resolution;
+  DetermineResolutionForTelemetry(aInfo, resolution);
+
+  const bool isMSE = aFlags.contains(FirstFrameLoadedFlag::IsMSE);
+  const bool isExternalEngineStateMachine =
+      aFlags.contains(FirstFrameLoadedFlag::IsExternalEngineStateMachine);
+
+  glean::media_playback::FirstFrameLoadedExtra extraData;
+  extraData.firstFrameLoadedTime = Some(aLoadedFirstFrameTime);
+  extraData.metadataLoadedTime = Some(aLoadedMetadataTime);
+  extraData.totalWaitingDataTime = Some(aTotalWaitingDataTime);
+  extraData.bufferingTime = Some(aTotalBufferingTime);
+  if (!isMSE && !isExternalEngineStateMachine) {
+    extraData.playbackType = Some("Non-MSE playback"_ns);
+  } else if (isMSE && !isExternalEngineStateMachine) {
+    extraData.playbackType = !mOwner->IsEncrypted() ? Some("MSE playback"_ns)
+                                                    : Some("EME playback"_ns);
+  } else if (!isMSE && isExternalEngineStateMachine) {
+    extraData.playbackType = Some("Non-MSE media-engine playback"_ns);
+  } else if (isMSE && isExternalEngineStateMachine) {
+    extraData.playbackType = !mOwner->IsEncrypted()
+                                 ? Some("MSE media-engine playback"_ns)
+                                 : Some("EME media-engine playback"_ns);
+  } else {
+    extraData.playbackType = Some("ERROR TYPE"_ns);
+    MOZ_ASSERT(false, "Unexpected playback type!");
+  }
+  extraData.videoCodec = Some(aInfo.mVideo.mMimeType);
+  extraData.resolution = Some(resolution);
+  if (const auto keySystem = mOwner->GetKeySystem()) {
+    extraData.keySystem = Some(NS_ConvertUTF16toUTF8(*keySystem));
+  }
+  if (aFlags.contains(FirstFrameLoadedFlag::IsHardwareDecoding)) {
+    extraData.isHardwareDecoding = Some(true);
+  }
+
+#ifdef MOZ_WIDGET_ANDROID
+  if (aFlags.contains(FirstFrameLoadedFlag::IsHLS)) {
+    extraData.hlsDecoder = Some(true);
+  }
+#endif
+
+  if (MOZ_LOG_TEST(gTelemetryProbesReporterLog, LogLevel::Debug)) {
+    nsPrintfCString logMessage{
+        "Media_Playabck First_Frame_Loaded event, time(ms)=["
+        "full:%f, loading-meta:%f, waiting-data:%f, buffering:%f], "
+        "playback-type=%s, "
+        "videoCodec=%s, resolution=%s, hardware=%d",
+        aLoadedFirstFrameTime,
+        aLoadedMetadataTime,
+        aTotalWaitingDataTime,
+        aTotalBufferingTime,
+        extraData.playbackType->get(),
+        extraData.videoCodec->get(),
+        extraData.resolution->get(),
+        aFlags.contains(FirstFrameLoadedFlag::IsHardwareDecoding)};
+    if (const auto keySystem = mOwner->GetKeySystem()) {
+      logMessage.Append(nsPrintfCString{
+          ", keySystem=%s", NS_ConvertUTF16toUTF8(*keySystem).get()});
+    }
+    LOG("%s", logMessage.get());
+  }
+  glean::media_playback::first_frame_loaded.Record(Some(extraData));
+  mOwner->DispatchAsyncTestingEvent(u"mozfirstframeloadedprobe"_ns);
+}
+
 void TelemetryProbesReporter::OnShutdown() {
   AssertOnMainThreadAndNotShutdown();
   LOG("Shutdown");
@@ -418,6 +491,7 @@ void TelemetryProbesReporter::ReportResultForVideo() {
                           SECONDS_TO_MS(totalVideoPlayTimeS));
   }
 
+  // TODO: deprecate the old probes.
   // Report result for video using CDM
   auto keySystem = mOwner->GetKeySystem();
   if (keySystem) {
@@ -435,22 +509,8 @@ void TelemetryProbesReporter::ReportResultForVideo() {
 
   // Keyed by audio+video or video alone, and by a resolution range.
   const MediaInfo& info = mOwner->GetMediaInfo();
-  nsCString key(info.HasAudio() ? "AV," : "V,");
-  static const struct {
-    int32_t mH;
-    const char* mRes;
-  } sResolutions[] = {{240, "0<h<=240"},     {480, "240<h<=480"},
-                      {576, "480<h<=576"},   {720, "576<h<=720"},
-                      {1080, "720<h<=1080"}, {2160, "1080<h<=2160"}};
-  const char* resolution = "h>2160";
-  int32_t height = info.mVideo.mImage.height;
-  for (const auto& res : sResolutions) {
-    if (height <= res.mH) {
-      resolution = res.mRes;
-      break;
-    }
-  }
-  key.AppendASCII(resolution);
+  nsCString key;
+  DetermineResolutionForTelemetry(info, key);
 
   auto visiblePlayTimeS = totalVideoPlayTimeS - invisiblePlayTimeS;
   LOG("VIDEO_VISIBLE_PLAY_TIME = %f, keys: '%s' and 'All'", visiblePlayTimeS,
@@ -481,6 +541,69 @@ void TelemetryProbesReporter::ReportResultForVideo() {
       videoDecodeSuspendPercentage, key.get());
 
   ReportResultForVideoFrameStatistics(totalVideoPlayTimeS, key);
+#ifdef MOZ_WMF_CDM
+  if (mOwner->IsUsingWMFCDM()) {
+    ReportResultForMFCDMPlaybackIfNeeded(totalVideoPlayTimeS, key);
+  }
+#endif
+  if (keySystem) {
+    ReportPlaytimeForKeySystem(*keySystem, totalVideoPlayTimeS,
+                               info.mVideo.mMimeType, key);
+  }
+}
+
+#ifdef MOZ_WMF_CDM
+void TelemetryProbesReporter::ReportResultForMFCDMPlaybackIfNeeded(
+    double aTotalPlayTimeS, const nsCString& aResolution) {
+  const auto keySystem = mOwner->GetKeySystem();
+  if (!keySystem) {
+    NS_WARNING("Can not find key system to report telemetry for MFCDM!!");
+    return;
+  }
+  glean::mfcdm::EmePlaybackExtra extraData;
+  extraData.keySystem = Some(NS_ConvertUTF16toUTF8(*keySystem));
+  extraData.videoCodec = Some(mOwner->GetMediaInfo().mVideo.mMimeType);
+  extraData.resolution = Some(aResolution);
+  extraData.playedTime = Some(aTotalPlayTimeS);
+
+  Maybe<uint64_t> renderedFrames;
+  Maybe<uint64_t> droppedFrames;
+  if (auto* stats = mOwner->GetFrameStatistics()) {
+    renderedFrames = Some(stats->GetPresentedFrames());
+    droppedFrames = Some(stats->GetDroppedFrames());
+    extraData.renderedFrames = Some(*renderedFrames);
+    extraData.droppedFrames = Some(*droppedFrames);
+  }
+  if (MOZ_LOG_TEST(gTelemetryProbesReporterLog, LogLevel::Debug)) {
+    nsPrintfCString logMessage{
+        "MFCDM EME_Playback event, keySystem=%s, videoCodec=%s, resolution=%s, "
+        "playedTime=%s",
+        NS_ConvertUTF16toUTF8(*keySystem).get(),
+        mOwner->GetMediaInfo().mVideo.mMimeType.get(), aResolution.get(),
+        std::to_string(aTotalPlayTimeS).c_str()};
+    if (renderedFrames) {
+      logMessage.Append(
+          nsPrintfCString{", renderedFrames=%" PRIu64, *renderedFrames});
+    }
+    if (droppedFrames) {
+      logMessage.Append(
+          nsPrintfCString{", droppedFrames=%" PRIu64, *droppedFrames});
+    }
+    LOG("%s", logMessage.get());
+  }
+  glean::mfcdm::eme_playback.Record(Some(extraData));
+}
+#endif
+
+void TelemetryProbesReporter::ReportPlaytimeForKeySystem(
+    const nsAString& aKeySystem, const double aTotalPlayTimeS,
+    const nsCString& aCodec, const nsCString& aResolution) {
+  glean::mediadrm::EmePlaybackExtra extra = {
+      .keySystem = Some(NS_ConvertUTF16toUTF8(aKeySystem)),
+      .playedTime = Some(aTotalPlayTimeS),
+      .resolution = Some(aResolution),
+      .videoCodec = Some(aCodec)};
+  glean::mediadrm::eme_playback.Record(Some(extra));
 }
 
 void TelemetryProbesReporter::ReportResultForAudio() {
@@ -583,7 +706,7 @@ void TelemetryProbesReporter::ReportResultForVideoFrameStatistics(
     // keyframe. Report '0' if we have played for longer than the video-
     // decode-suspend delay (showing recovery would be difficult).
     const uint32_t suspendDelay_ms =
-        StaticPrefs::media_suspend_bkgnd_video_delay_ms();
+        StaticPrefs::media_suspend_background_video_delay_ms();
     if (uint32_t(aTotalPlayTimeS * 1000.0) > suspendDelay_ms) {
       Telemetry::Accumulate(Telemetry::VIDEO_INTER_KEYFRAME_MAX_MS, key, 0);
       Telemetry::Accumulate(Telemetry::VIDEO_INTER_KEYFRAME_MAX_MS, "All"_ns,
@@ -667,6 +790,33 @@ double TelemetryProbesReporter::GetMutedPlayTimeInSeconds() const {
 
 double TelemetryProbesReporter::GetAudiblePlayTimeInSeconds() const {
   return GetTotalAudioPlayTimeInSeconds() - GetInaudiblePlayTimeInSeconds();
+}
+
+/*  static */
+void TelemetryProbesReporter::ReportDeviceMediaCodecSupported(
+    const media::MediaCodecsSupported& aSupported) {
+  static bool sReported = false;
+  if (sReported) {
+    return;
+  }
+  MOZ_ASSERT(ContainHardwareCodecsSupported(aSupported));
+  sReported = true;
+
+  glean::media_playback::device_hardware_decoder_support.Get("h264"_ns).Set(
+      aSupported.contains(
+          mozilla::media::MediaCodecsSupport::H264HardwareDecode));
+  glean::media_playback::device_hardware_decoder_support.Get("vp8"_ns).Set(
+      aSupported.contains(
+          mozilla::media::MediaCodecsSupport::VP8HardwareDecode));
+  glean::media_playback::device_hardware_decoder_support.Get("vp9"_ns).Set(
+      aSupported.contains(
+          mozilla::media::MediaCodecsSupport::VP9HardwareDecode));
+  glean::media_playback::device_hardware_decoder_support.Get("av1"_ns).Set(
+      aSupported.contains(
+          mozilla::media::MediaCodecsSupport::AV1HardwareDecode));
+  glean::media_playback::device_hardware_decoder_support.Get("hevc"_ns).Set(
+      aSupported.contains(
+          mozilla::media::MediaCodecsSupport::HEVCHardwareDecode));
 }
 
 #undef LOG

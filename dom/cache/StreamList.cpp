@@ -85,6 +85,12 @@ void StreamList::Add(const nsID& aId, nsCOMPtr<nsIInputStream>&& aStream) {
   // All streams should be added on IO thread before we set the stream
   // control on the owning IPC thread.
   MOZ_DIAGNOSTIC_ASSERT(!mStreamControl);
+
+  // Removal of the stream will be triggered when the stream is closed,
+  // which happens only once, so let's ensure nobody adds us twice.
+  MOZ_ASSERT_DEBUG_OR_FUZZING(
+      std::find_if(mList.begin(), mList.end(), MatchById(aId)) == mList.end());
+
   mList.EmplaceBack(aId, std::move(aStream));
 }
 
@@ -92,6 +98,9 @@ already_AddRefed<nsIInputStream> StreamList::Extract(const nsID& aId) {
   NS_ASSERT_OWNINGTHREAD(StreamList);
 
   const auto it = std::find_if(mList.begin(), mList.end(), MatchById(aId));
+
+  // Note that if the stream has not been opened with OpenMode::Eager we will
+  // find it nullptr here and it will have to be opened by the consumer.
 
   return it != mList.end() ? it->mStream.forget() : nullptr;
 }
@@ -101,6 +110,7 @@ void StreamList::NoteClosed(const nsID& aId) {
 
   const auto it = std::find_if(mList.begin(), mList.end(), MatchById(aId));
   if (it != mList.end()) {
+    MOZ_ASSERT(!it->mStream, "We expect to find mStream already extracted.");
     mList.RemoveElementAt(it);
     mManager->ReleaseBodyId(aId);
   }
@@ -124,14 +134,22 @@ void StreamList::NoteClosedAll() {
 
 void StreamList::CloseAll() {
   NS_ASSERT_OWNINGTHREAD(StreamList);
-  if (mStreamControl) {
-    auto* streamControl = std::exchange(mStreamControl, nullptr);
 
-    streamControl->CloseAll();
-
-    mStreamControl = std::exchange(streamControl, nullptr);
-
-    mStreamControl->Shutdown();
+  if (mStreamControl && mStreamControl->CanSend()) {
+    // CloseAll will kick off everything needed for shutdown.
+    // mStreamControl may go away immediately or async.
+    mStreamControl->CloseAll();
+  } else {
+    // We cannot interact with the child, let's just clear our lists of
+    // streams to unblock shutdown.
+    if (NS_WARN_IF(mStreamControl)) {
+      // TODO: Check if this case is actually possible. We might see a late
+      // delivery of the CSCP::ActorDestroy? What would that mean for CanSend?
+      mStreamControl->LostIPCCleanup(SafeRefPtrFromThis());
+      mStreamControl = nullptr;
+    } else {
+      NoteClosedAll();
+    }
   }
 }
 
@@ -143,6 +161,31 @@ void StreamList::Cancel() {
 bool StreamList::MatchesCacheId(CacheId aCacheId) const {
   NS_ASSERT_OWNINGTHREAD(StreamList);
   return aCacheId == mCacheId;
+}
+
+void StreamList::DoStringify(nsACString& aData) {
+  aData.Append("StreamList "_ns + kStringifyStartInstance +
+               //
+               "List:"_ns +
+               IntToCString(static_cast<uint64_t>(mList.Length())) +
+               kStringifyDelimiter +
+               //
+               "Activated:"_ns + IntToCString(mActivated) + ")"_ns +
+               kStringifyDelimiter +
+               //
+               "Manager:"_ns + IntToCString(static_cast<bool>(mManager)));
+  if (mManager) {
+    aData.Append(" "_ns);
+    mManager->Stringify(aData);
+  }
+  aData.Append(kStringifyDelimiter +
+               //
+               "Context:"_ns + IntToCString(static_cast<bool>(mContext)));
+  if (mContext) {
+    aData.Append(" "_ns);
+    mContext->Stringify(aData);
+  }
+  aData.Append(kStringifyEndInstance);
 }
 
 StreamList::~StreamList() {

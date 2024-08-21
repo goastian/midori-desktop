@@ -18,7 +18,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=415498
 
   <pre id="test">
   <script class="testbody" type="application/javascript"><![CDATA[
-    const {BrowserTestUtils} = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+    const {BrowserTestUtils} = ChromeUtils.importESModule(
+      "resource://testing-common/BrowserTestUtils.sys.mjs"
+    );
 
     /** Test for Bug 415498 **/
     SimpleTest.waitForExplicitFinish();
@@ -35,7 +37,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=415498
                  getService(Ci.nsIConsoleService);
 
       gConsoleListener = {
-        observe: function(aObject) {
+        observe(aObject) {
           gMessages.push(aObject);
         }
       };
@@ -59,11 +61,11 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=415498
       var browser = $("browser");
       browser.addEventListener("load", function() {
         setTimeout(nextTest, 0)
-      }, false);
+      });
 
       // 1) This document uses addEventListener to register a method throwing an exception
       var chromeDir = getRootDirectory(window.location.href);
-      BrowserTestUtils.loadURIString(browser, chromeDir + "bug415498-doc1.html");
+      BrowserTestUtils.startLoadingURIString(browser, chromeDir + "bug415498-doc1.html");
       yield undefined;
 
       ok(verifyErrorReceived("HierarchyRequestError"),
@@ -72,7 +74,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=415498
 
       // 2) This document sets window.onload to register a method throwing an exception
       var chromeDir = getRootDirectory(window.location.href);
-      BrowserTestUtils.loadURIString(browser, chromeDir + "bug415498-doc2.html");
+      BrowserTestUtils.startLoadingURIString(browser, chromeDir + "bug415498-doc2.html");
       yield undefined;
 
       ok(verifyErrorReceived("HierarchyRequestError"),

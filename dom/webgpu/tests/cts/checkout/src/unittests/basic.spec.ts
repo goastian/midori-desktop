@@ -8,9 +8,9 @@ import { UnitTest } from './unit_test.js';
 
 export const g = makeTestGroup(UnitTest);
 
-g.test('test,sync').fn(t => {});
+g.test('test,sync').fn(_t => {});
 
-g.test('test,async').fn(async t => {});
+g.test('test,async').fn(async _t => {});
 
 g.test('test_with_params,sync')
   .paramsSimple([{}])
@@ -20,7 +20,7 @@ g.test('test_with_params,sync')
 
 g.test('test_with_params,async')
   .paramsSimple([{}])
-  .fn(async t => {
+  .fn(t => {
     t.debug(JSON.stringify(t.params));
   });
 

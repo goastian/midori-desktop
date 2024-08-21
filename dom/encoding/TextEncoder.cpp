@@ -15,11 +15,10 @@ namespace mozilla::dom {
 void TextEncoder::Encode(JSContext* aCx, JS::Handle<JSObject*> aObj,
                          const nsACString& aUtf8String,
                          JS::MutableHandle<JSObject*> aRetval,
-                         OOMReporter& aRv) {
+                         ErrorResult& aRv) {
   JSAutoRealm ar(aCx, aObj);
-  JSObject* outView = Uint8Array::Create(aCx, aUtf8String);
-  if (!outView) {
-    aRv.ReportOOM();
+  JSObject* outView = Uint8Array::Create(aCx, aUtf8String, aRv);
+  if (aRv.Failed()) {
     return;
   }
 
@@ -30,17 +29,21 @@ void TextEncoder::EncodeInto(JSContext* aCx, JS::Handle<JSString*> aSrc,
                              const Uint8Array& aDst,
                              TextEncoderEncodeIntoResult& aResult,
                              OOMReporter& aError) {
-  aDst.ComputeState();
-  size_t read;
-  size_t written;
-  auto maybe = JS_EncodeStringToUTF8BufferPartial(
-      aCx, aSrc, AsWritableChars(Span(aDst.Data(), aDst.Length())));
+  DebugOnly<size_t> dstLength = 0;
+  auto maybe = aDst.ProcessData(
+      [&](const Span<uint8_t>& aData, JS::AutoCheckCannotGC&&) {
+        dstLength = aData.Length();
+        return JS_EncodeStringToUTF8BufferPartial(aCx, aSrc,
+                                                  AsWritableChars(aData));
+      });
   if (!maybe) {
     aError.ReportOOM();
     return;
   }
+  size_t read;
+  size_t written;
   std::tie(read, written) = *maybe;
-  MOZ_ASSERT(written <= aDst.Length());
+  MOZ_ASSERT(written <= dstLength);
   aResult.mRead.Construct() = read;
   aResult.mWritten.Construct() = written;
 }

@@ -63,18 +63,11 @@ function checkFinished() {
   if (seenTests == TOTAL_TESTS) {
     window.examiner.remove();
     SimpleTest.finish();
-    return;
   }
 }
 
 SimpleTest.waitForExplicitFinish();
-
-SpecialPowers.pushPrefEnv(
-  {'set':[["network.preload", true]]},
-  function() {
-    document.getElementById("testframe").src = "file_link_rel_preload.html";
-  });
-
+document.getElementById("testframe").src = "file_link_rel_preload.html";
 </script>
 </body>
 </html>

@@ -8,6 +8,7 @@
 
 #include "AnnexB.h"
 #include "H264.h"
+#include "H265.h"
 #include "GeckoProfiler.h"
 #include "ImageContainer.h"
 #include "MP4Decoder.h"
@@ -120,7 +121,7 @@ class H264ChangeMonitor : public MediaChangeMonitor::CodecChangeMonitor {
     aSample->mTrackInfo = mTrackInfo;
 
     if (aConversion == MediaDataDecoder::ConversionRequired::kNeedAnnexB) {
-      auto res = AnnexB::ConvertSampleToAnnexB(aSample, aNeedKeyFrame);
+      auto res = AnnexB::ConvertAVCCSampleToAnnexB(aSample, aNeedKeyFrame);
       if (res.isErr()) {
         return MediaResult(res.unwrapErr(),
                            RESULT_DETAIL("ConvertSampleToAnnexB"));
@@ -166,6 +167,134 @@ class H264ChangeMonitor : public MediaChangeMonitor::CodecChangeMonitor {
   bool mGotSPS = false;
   RefPtr<TrackInfoSharedPtr> mTrackInfo;
   RefPtr<MediaByteBuffer> mPreviousExtraData;
+};
+
+class HEVCChangeMonitor : public MediaChangeMonitor::CodecChangeMonitor {
+ public:
+  explicit HEVCChangeMonitor(const VideoInfo& aInfo) : mCurrentConfig(aInfo) {
+    const bool canBeInstantiated = CanBeInstantiated();
+    if (canBeInstantiated) {
+      UpdateConfigFromExtraData(aInfo.mExtraData);
+    }
+    LOG("created HEVCChangeMonitor, CanBeInstantiated=%d", canBeInstantiated);
+  }
+
+  bool CanBeInstantiated() const override {
+    auto rv = HVCCConfig::Parse(mCurrentConfig.mExtraData);
+    if (rv.isErr()) {
+      return false;
+    }
+    return rv.unwrap().HasSPS();
+  }
+
+  MediaResult CheckForChange(MediaRawData* aSample) override {
+    // To be usable we need to convert the sample to 4 bytes NAL size HVCC.
+    if (auto rv = AnnexB::ConvertSampleToHVCC(aSample); rv.isErr()) {
+      // We need HVCC content to be able to later parse the SPS.
+      // This is a no-op if the data is already HVCC.
+      nsPrintfCString msg("Failed to convert to HVCC");
+      LOG("%s", msg.get());
+      return MediaResult(rv.unwrapErr(), msg);
+    }
+
+    if (!AnnexB::IsHVCC(aSample)) {
+      nsPrintfCString msg("Invalid HVCC content");
+      LOG("%s", msg.get());
+      return MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR, msg);
+    }
+
+    RefPtr<MediaByteBuffer> extraData =
+        aSample->mKeyframe || !mGotSPS ? H265::ExtractHVCCExtraData(aSample)
+                                       : nullptr;
+    // Sample doesn't contain any SPS and we already have SPS, do nothing.
+    auto curConfig = HVCCConfig::Parse(mCurrentConfig.mExtraData);
+    if ((!extraData || extraData->IsEmpty()) && curConfig.unwrap().HasSPS()) {
+      return NS_OK;
+    }
+
+    auto newConfig = HVCCConfig::Parse(extraData);
+    // Ignore a corrupted extradata.
+    if (newConfig.isErr()) {
+      LOG("Ignore corrupted extradata");
+      return NS_OK;
+    }
+
+    if (!newConfig.unwrap().HasSPS() && !curConfig.unwrap().HasSPS()) {
+      // We don't have inband data and the original config didn't contain a SPS.
+      // We can't decode this content.
+      LOG("No sps found, waiting for initialization");
+      return NS_ERROR_NOT_INITIALIZED;
+    }
+
+    mGotSPS = true;
+    if (H265::CompareExtraData(extraData, mCurrentConfig.mExtraData)) {
+      return NS_OK;
+    }
+    UpdateConfigFromExtraData(extraData);
+
+    nsPrintfCString msg(
+        "HEVCChangeMonitor::CheckForChange has detected a change in the stream "
+        "and will request a new decoder");
+    LOG("%s", msg.get());
+    PROFILER_MARKER_TEXT("HEVC Stream Change", MEDIA_PLAYBACK, {}, msg);
+    return NS_ERROR_DOM_MEDIA_NEED_NEW_DECODER;
+  }
+
+  const TrackInfo& Config() const override { return mCurrentConfig; }
+
+  MediaResult PrepareSample(MediaDataDecoder::ConversionRequired aConversion,
+                            MediaRawData* aSample,
+                            bool aNeedKeyFrame) override {
+    MOZ_DIAGNOSTIC_ASSERT(aConversion ==
+                          MediaDataDecoder::ConversionRequired::kNeedAnnexB);
+
+    aSample->mExtraData = mCurrentConfig.mExtraData;
+    aSample->mTrackInfo = mTrackInfo;
+
+    if (AnnexB::IsHVCC(aSample)) {
+      auto res = AnnexB::ConvertHVCCSampleToAnnexB(aSample, aNeedKeyFrame);
+      if (res.isErr()) {
+        return MediaResult(res.unwrapErr(),
+                           RESULT_DETAIL("ConvertSampleToAnnexB"));
+      }
+    }
+    return NS_OK;
+  }
+
+  bool IsHardwareAccelerated(nsACString& aFailureReason) const override {
+    // We only support HEVC via hardware decoding.
+    return true;
+  }
+
+ private:
+  void UpdateConfigFromExtraData(MediaByteBuffer* aExtraData) {
+    if (auto rv = H265::DecodeSPSFromHVCCExtraData(aExtraData); rv.isOk()) {
+      const auto sps = rv.unwrap();
+      mCurrentConfig.mImage.width = sps.GetImageSize().Width();
+      mCurrentConfig.mImage.height = sps.GetImageSize().Height();
+      mCurrentConfig.mDisplay.width = sps.GetDisplaySize().Width();
+      mCurrentConfig.mDisplay.height = sps.GetDisplaySize().Height();
+      mCurrentConfig.mColorDepth = sps.ColorDepth();
+      mCurrentConfig.mColorSpace = Some(sps.ColorSpace());
+      mCurrentConfig.mColorPrimaries = gfxUtils::CicpToColorPrimaries(
+          static_cast<gfx::CICP::ColourPrimaries>(sps.ColorPrimaries()),
+          gMediaDecoderLog);
+      mCurrentConfig.mTransferFunction = gfxUtils::CicpToTransferFunction(
+          static_cast<gfx::CICP::TransferCharacteristics>(
+              sps.TransferFunction()));
+      mCurrentConfig.mColorRange = sps.IsFullColorRange()
+                                       ? gfx::ColorRange::FULL
+                                       : gfx::ColorRange::LIMITED;
+    }
+    MOZ_ASSERT(HVCCConfig::Parse(aExtraData).isOk());
+    mCurrentConfig.mExtraData = aExtraData;
+    mTrackInfo = new TrackInfoSharedPtr(mCurrentConfig, mStreamID++);
+  }
+
+  VideoInfo mCurrentConfig;
+  uint32_t mStreamID = 0;
+  bool mGotSPS = false;
+  RefPtr<TrackInfoSharedPtr> mTrackInfo;
 };
 
 // Gets the pixel aspect ratio from the decoded video size and the rendered
@@ -263,9 +392,10 @@ class VPXChangeMonitor : public MediaChangeMonitor::CodecChangeMonitor {
         info.mDisplay.Width(), info.mDisplay.Height(),
         info.mDisplayAndImageDifferent ? "specified" : "unspecified");
 
+    bool imageSizeEmpty = mCurrentConfig.mImage.IsEmpty();
     mInfo = Some(info);
     mCurrentConfig.mImage = info.mImage;
-    if (info.mDisplayAndImageDifferent) {
+    if (imageSizeEmpty || info.mDisplayAndImageDifferent) {
       // If the flag to change the display size is set in the sequence, we
       // set our original values to begin rescaling according to the new values.
       mCurrentConfig.mDisplay = info.mDisplay;
@@ -469,6 +599,8 @@ RefPtr<PlatformDecoderModule::CreateDecoderPromise> MediaChangeMonitor::Create(
   } else if (AOMDecoder::IsAV1(currentConfig.mMimeType)) {
     changeMonitor = MakeUnique<AV1ChangeMonitor>(currentConfig);
 #endif
+  } else if (MP4Decoder::IsHEVC(currentConfig.mMimeType)) {
+    changeMonitor = MakeUnique<HEVCChangeMonitor>(currentConfig);
   } else {
     MOZ_ASSERT(MP4Decoder::IsH264(currentConfig.mMimeType));
     changeMonitor = MakeUnique<H264ChangeMonitor>(
@@ -668,6 +800,7 @@ RefPtr<ShutdownPromise> MediaChangeMonitor::ShutdownDecoder() {
   AssertOnThread();
   mConversionRequired.reset();
   if (mDecoder) {
+    MutexAutoLock lock(mMutex);
     RefPtr<MediaDataDecoder> decoder = std::move(mDecoder);
     return decoder->Shutdown();
   }
@@ -685,7 +818,7 @@ bool MediaChangeMonitor::IsHardwareAccelerated(
   // Which will always be.
   return true;
 #else
-  return MediaDataDecoder::IsHardwareAccelerated(aFailureReason);
+  return mChangeMonitor->IsHardwareAccelerated(aFailureReason);
 #endif
 }
 
@@ -715,6 +848,7 @@ MediaChangeMonitor::CreateDecoder() {
           ->Then(
               GetCurrentSerialEventTarget(), __func__,
               [self = RefPtr{this}, this](RefPtr<MediaDataDecoder>&& aDecoder) {
+                MutexAutoLock lock(mMutex);
                 mDecoder = std::move(aDecoder);
                 DDLINKCHILD("decoder", mDecoder.get());
                 return CreateDecoderPromise::CreateAndResolve(true, __func__);
@@ -961,6 +1095,11 @@ void MediaChangeMonitor::FlushThenShutdownDecoder(
             mDecodePromise.Reject(aError, __func__);
           })
       ->Track(mFlushRequest);
+}
+
+MediaDataDecoder* MediaChangeMonitor::GetDecoderOnNonOwnerThread() const {
+  MutexAutoLock lock(mMutex);
+  return mDecoder;
 }
 
 #undef LOG

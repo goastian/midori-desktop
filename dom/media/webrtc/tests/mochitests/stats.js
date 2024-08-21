@@ -96,6 +96,7 @@ const statsExpectedByType = {
       "pliCount",
       "frameWidth",
       "frameHeight",
+      "framesPerSecond",
       "framesSent",
       "hugeFramesSent",
       "totalEncodeTime",
@@ -166,11 +167,9 @@ const statsExpectedByType = {
       "droppedSamplesEvents",
       "totalCaptureDelay",
       "totalSamplesCaptured",
-      "width",
-      "height",
-      "frames",
-      "framesPerSecond",
     ],
+    localAudioOnly: [],
+    localVideoOnly: ["frames", "framesPerSecond", "width", "height"],
     optional: [],
     deprecated: [],
   },
@@ -275,8 +274,8 @@ const statsExpectedByType = {
   certificate: { skip: true },
 };
 
-["in", "out"].forEach(pre => {
-  let s = statsExpectedByType[pre + "bound-rtp"];
+["inbound-rtp", "outbound-rtp", "media-source"].forEach(type => {
+  let s = statsExpectedByType[type];
   s.optional = [...s.optional, ...s.localVideoOnly, ...s.localAudioOnly];
 });
 
@@ -496,7 +495,7 @@ function pedanticChecks(report) {
         // qpSum
         if (stat.qpSum !== undefined) {
           ok(
-            stat.qpSum > 0,
+            stat.qpSum >= 0,
             `${stat.type}.qpSum is at least 0 ` +
               `${stat.kind} test. value=${stat.qpSum}`
           );
@@ -587,7 +586,7 @@ function pedanticChecks(report) {
       let avgJitterBufferDelay =
         stat.jitterBufferDelay / stat.jitterBufferEmittedCount;
       ok(
-        avgJitterBufferDelay > 0.01 && avgJitterBufferDelay < 10,
+        avgJitterBufferDelay > 0 && avgJitterBufferDelay < 10,
         `${stat.type}.jitterBufferDelay is a sane number for a short ` +
           `${stat.kind} test. value=${stat.jitterBufferDelay}/${stat.jitterBufferEmittedCount}=${avgJitterBufferDelay}`
       );
@@ -745,7 +744,7 @@ function pedanticChecks(report) {
         ok(
           stat.frameWidth > 0 && stat.frameWidth < 100000,
           `${stat.type}.frameWidth is a sane number for a short ` +
-            `${stat.kind} test. value=${stat.framesSent}`
+            `${stat.kind} test. value=${stat.frameWidth}`
         );
 
         // frameHeight
@@ -974,6 +973,13 @@ function pedanticChecks(report) {
             `${stat.kind} test. value=${stat.frameHeight}`
         );
 
+        // framesPerSecond
+        ok(
+          stat.framesPerSecond >= 0 && stat.framesPerSecond < 60,
+          `${stat.type}.framesPerSecond is a sane number for a short ` +
+            `${stat.kind} test. value=${stat.framesPerSecond}`
+        );
+
         // framesSent
         ok(
           stat.framesSent >= 0 && stat.framesSent < 100000,
@@ -1052,6 +1058,51 @@ function pedanticChecks(report) {
       // kind
       is(typeof stat.kind, "string");
       ok(stat.kind == "audio" || stat.kind == "video");
+      if (stat.inner.kind == "video") {
+        expectations.localVideoOnly.forEach(field => {
+          ok(
+            stat.inner[field] !== undefined,
+            `${stat.type} has field ` +
+              `${field} when kind is video and isRemote is false`
+          );
+        });
+
+        // frames
+        ok(
+          stat.frames >= 0 && stat.frames < 100000,
+          `${stat.type}.frames is a sane number for a short ` +
+            `${stat.kind} test. value=${stat.frames}`
+        );
+
+        // framesPerSecond
+        ok(
+          stat.framesPerSecond >= 0 && stat.framesPerSecond < 100,
+          `${stat.type}.framesPerSecond is a sane number for a short ` +
+            `${stat.kind} test. value=${stat.framesPerSecond}`
+        );
+
+        // width
+        ok(
+          stat.width >= 0 && stat.width < 1000000,
+          `${stat.type}.width is a sane number for a ` +
+            `${stat.kind} test. value=${stat.width}`
+        );
+
+        // height
+        ok(
+          stat.height >= 0 && stat.height < 1000000,
+          `${stat.type}.height is a sane number for a ` +
+            `${stat.kind} test. value=${stat.height}`
+        );
+      } else {
+        expectations.localVideoOnly.forEach(field => {
+          ok(
+            stat[field] === undefined,
+            `${stat.type} does not have field ` +
+              `${field} when kind is not 'video'`
+          );
+        });
+      }
     } else if (stat.type == "codec") {
       //
       // Required fields
@@ -1070,8 +1121,11 @@ function pedanticChecks(report) {
           break;
         case "video/H264":
           ok(
-            stat.payloadType == 97 || stat.payloadType == 126,
-            `codec.payloadType for H264 was ${stat.payloadType}, exp. 97 or 126`
+            stat.payloadType == 97 ||
+              stat.payloadType == 126 ||
+              stat.payloadType == 103 ||
+              stat.payloadType == 105,
+            `codec.payloadType for H264 was ${stat.payloadType}, exp. 97, 126, 103, or 105`
           );
           break;
         default:
@@ -1294,16 +1348,16 @@ function pedanticChecks(report) {
 
         // bytesSent
         ok(
-          stat.bytesSent > 1000,
-          `${stat.type}.bytesSent is a sane number (>1,000) for a short ` +
-            `${stat.kind} test. value=${stat.bytesSent}`
+          stat.bytesSent > 100,
+          `${stat.type}.bytesSent is a sane number (>100) if media is flowing. ` +
+            `value=${stat.bytesSent}`
         );
 
         // bytesReceived
         ok(
-          stat.bytesReceived > 500,
-          `${stat.type}.bytesReceived is a sane number (>500) for a short ` +
-            `${stat.kind} test. value=${stat.bytesReceived}`
+          stat.bytesReceived > 100,
+          `${stat.type}.bytesReceived is a sane number (>100) if media is flowing. ` +
+            `value=${stat.bytesReceived}`
         );
 
         // lastPacketSentTimestamp

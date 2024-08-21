@@ -13,6 +13,7 @@
 #include "mozilla/dom/Promise.h"
 #include "mozilla/gfx/CanvasManagerChild.h"
 #include "mozilla/gfx/gfxVars.h"
+#include "mozilla/StaticPrefs_dom.h"
 
 #include <optional>
 #include <string_view>
@@ -23,6 +24,18 @@ GPU_IMPL_CYCLE_COLLECTION(Instance, mOwner)
 
 static inline nsDependentCString ToCString(const std::string_view s) {
   return {s.data(), s.length()};
+}
+
+/* static */ bool Instance::PrefEnabled(JSContext* aCx, JSObject* aObj) {
+  if (!StaticPrefs::dom_webgpu_enabled()) {
+    return false;
+  }
+
+  if (NS_IsMainThread()) {
+    return true;
+  }
+
+  return StaticPrefs::dom_webgpu_workers_enabled();
 }
 
 /*static*/
@@ -77,7 +90,7 @@ already_AddRefed<dom::Promise> Instance::RequestAdapter(
   auto* const canvasManager = gfx::CanvasManagerChild::Get();
   if (!canvasManager) {
     promise->MaybeRejectWithInvalidStateError(
-        "Failed to create CanavasManagerChild");
+        "Failed to create CanvasManagerChild");
     return promise.forget();
   }
 

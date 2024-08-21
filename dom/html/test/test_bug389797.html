@@ -50,15 +50,11 @@ function HTML_TAG(aTagName, aImplClass) {
 }
 
 const objectIfaces = [
-    "imgINotificationObserver", "nsIRequestObserver", "nsIStreamListener",
-    "nsIObjectLoadingContent", "nsIChannelEventSink"
-  ];
-
-var objectIfaces2 = [];
-for (var iface of objectIfaces) {
-  objectIfaces2.push(iface);
-}
-objectIfaces2.push("nsIImageLoadingContent");
+  "nsIRequestObserver",
+  "nsIStreamListener",
+  "nsIObjectLoadingContent",
+  "nsIChannelEventSink",
+];
 
 /* List copy/pasted from nsHTMLTagList.h, with the second field modified to the
    correct classinfo (instead of the impl class) in the following cases:
@@ -119,7 +115,6 @@ HTML_TAG("figure", "")
 HTML_TAG("font", "Font");
 HTML_TAG("footer", "")
 HTML_TAG("form", "Form");
-HTML_TAG("frame", "Frame", [ "nsIDOMMozBrowserFrame" ]);
 HTML_TAG("frameset", "FrameSet");
 HTML_TAG("h1", "Heading");
 HTML_TAG("h2", "Heading");
@@ -133,7 +128,6 @@ HTML_TAG("hgroup", "")
 HTML_TAG("hr", "HR");
 HTML_TAG("html", "Html");
 HTML_TAG("i", "");
-HTML_TAG("iframe", "IFrame", [ "nsIDOMMozBrowserFrame" ]);
 HTML_TAG("image", "");
 HTML_TAG("img", "Image", [ "nsIImageLoadingContent" ], []);
 HTML_TAG("input", "Input", [], [ "imgINotificationObserver",
@@ -159,8 +153,7 @@ HTML_TAG("nobr", "");
 HTML_TAG("noembed", "");
 HTML_TAG("noframes", "");
 HTML_TAG("noscript", "");
-HTML_TAG("object", "Object", [],
-                             objectIfaces.concat([ "nsIImageLoadingContent" ]));
+HTML_TAG("object", "Object", [], objectIfaces);
 HTML_TAG("ol", "OList");
 HTML_TAG("optgroup", "OptGroup");
 HTML_TAG("option", "Option");
@@ -176,7 +169,7 @@ HTML_TAG("rtc", "");
 HTML_TAG("ruby", "");
 HTML_TAG("s", "");
 HTML_TAG("samp", "");
-HTML_TAG("script", "Script", [ "nsIScriptLoaderObserver" ], []);
+HTML_TAG("script", "Script");
 HTML_TAG("section", "")
 HTML_TAG("select", "Select");
 HTML_TAG("small", "");

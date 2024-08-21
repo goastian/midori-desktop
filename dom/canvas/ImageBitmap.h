@@ -8,6 +8,7 @@
 #define mozilla_dom_ImageBitmap_h
 
 #include "mozilla/Attributes.h"
+#include "mozilla/SurfaceFromElementResult.h"
 #include "mozilla/dom/ImageBitmapBinding.h"
 #include "mozilla/dom/ImageBitmapSource.h"
 #include "mozilla/dom/TypedArray.h"
@@ -46,16 +47,18 @@ class CanvasRenderingContext2D;
 class CreateImageBitmapFromBlob;
 class CreateImageBitmapFromBlobTask;
 class CreateImageBitmapFromBlobWorkerTask;
+class ImageBitmapShutdownObserver;
 class File;
 class HTMLCanvasElement;
 class HTMLImageElement;
 class HTMLVideoElement;
-class ImageBitmapShutdownObserver;
 class ImageData;
 class ImageUtils;
 class Promise;
 class PostMessageEvent;  // For StructuredClone between windows.
 class SVGImageElement;
+class VideoFrame;
+class SendShutdownToWorkerThread;
 
 struct ImageBitmapCloneData final {
   RefPtr<gfx::DataSourceSurface> mSurface;
@@ -91,6 +94,8 @@ class ImageBitmap final : public nsISupports, public nsWrapperCache {
   uint32_t Height() const { return mPictureRect.Height(); }
 
   void Close();
+
+  SurfaceFromElementResult SurfaceFrom(uint32_t aSurfaceFlags);
 
   /*
    * The PrepareForDrawTarget() might return null if the mPictureRect does not
@@ -138,6 +143,7 @@ class ImageBitmap final : public nsISupports, public nsWrapperCache {
   friend CreateImageBitmapFromBlob;
   friend CreateImageBitmapFromBlobTask;
   friend CreateImageBitmapFromBlobWorkerTask;
+  friend ImageBitmapShutdownObserver;
 
   size_t GetAllocatedSize() const;
 
@@ -219,6 +225,11 @@ class ImageBitmap final : public nsISupports, public nsWrapperCache {
       const Maybe<gfx::IntRect>& aCropRect, const ImageBitmapOptions& aOptions,
       ErrorResult& aRv);
 
+  static already_AddRefed<ImageBitmap> CreateInternal(
+      nsIGlobalObject* aGlobal, VideoFrame& aVideoFrame,
+      const Maybe<gfx::IntRect>& aCropRect, const ImageBitmapOptions& aOptions,
+      ErrorResult& aRv);
+
   nsCOMPtr<nsIGlobalObject> mParent;
 
   /*
@@ -253,7 +264,7 @@ class ImageBitmap final : public nsISupports, public nsWrapperCache {
 
   gfxAlphaType mAlphaType;
 
-  RefPtr<ImageBitmapShutdownObserver> mShutdownObserver;
+  RefPtr<SendShutdownToWorkerThread> mShutdownRunnable;
 
   /*
    * Whether this object allocated allocated and owns the image data.

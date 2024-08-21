@@ -8,13 +8,15 @@
 #define __FFmpegRuntimeLinker_h__
 
 #include "PlatformDecoderModule.h"
+#include "PlatformEncoderModule.h"
 
 namespace mozilla {
 
 class FFmpegRuntimeLinker {
  public:
   static bool Init();
-  static already_AddRefed<PlatformDecoderModule> Create();
+  static already_AddRefed<PlatformDecoderModule> CreateDecoder();
+  static already_AddRefed<PlatformEncoderModule> CreateEncoder();
   enum LinkStatus {
     LinkStatus_INIT = 0,   // Never been linked.
     LinkStatus_SUCCEEDED,  // Found a usable library.

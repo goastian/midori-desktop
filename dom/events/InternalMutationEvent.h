@@ -18,15 +18,18 @@ class InternalMutationEvent : public WidgetEvent {
  public:
   virtual InternalMutationEvent* AsMutationEvent() override { return this; }
 
-  InternalMutationEvent(bool aIsTrusted, EventMessage aMessage)
-      : WidgetEvent(aIsTrusted, aMessage, eMutationEventClass), mAttrChange(0) {
+  InternalMutationEvent(bool aIsTrusted, EventMessage aMessage,
+                        const WidgetEventTime* aTime = nullptr)
+      : WidgetEvent(aIsTrusted, aMessage, eMutationEventClass, aTime),
+        mAttrChange(0) {
     mFlags.mCancelable = false;
   }
 
   virtual WidgetEvent* Duplicate() const override {
     MOZ_ASSERT(mClass == eMutationEventClass,
                "Duplicate() must be overridden by sub class");
-    InternalMutationEvent* result = new InternalMutationEvent(false, mMessage);
+    InternalMutationEvent* result =
+        new InternalMutationEvent(false, mMessage, this);
     result->AssignMutationEventData(*this, true);
     result->mFlags = mFlags;
     return result;
@@ -60,6 +63,14 @@ class InternalMutationEvent : public WidgetEvent {
 #define NS_EVENT_BITS_MUTATION_NODEINSERTEDINTODOCUMENT 0x10
 #define NS_EVENT_BITS_MUTATION_ATTRMODIFIED 0x20
 #define NS_EVENT_BITS_MUTATION_CHARACTERDATAMODIFIED 0x40
+
+#define NS_EVENT_BITS_MUTATION_ALL                                            \
+  (NS_EVENT_BITS_MUTATION_SUBTREEMODIFIED |                                   \
+   NS_EVENT_BITS_MUTATION_NODEINSERTED | NS_EVENT_BITS_MUTATION_NODEREMOVED | \
+   NS_EVENT_BITS_MUTATION_NODEREMOVEDFROMDOCUMENT |                           \
+   NS_EVENT_BITS_MUTATION_NODEINSERTEDINTODOCUMENT |                          \
+   NS_EVENT_BITS_MUTATION_ATTRMODIFIED |                                      \
+   NS_EVENT_BITS_MUTATION_CHARACTERDATAMODIFIED)
 
 }  // namespace mozilla
 

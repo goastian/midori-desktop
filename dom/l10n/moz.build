@@ -23,13 +23,14 @@ UNIFIED_SOURCES += [
 
 LOCAL_INCLUDES += [
     "/dom/base",
+    "/toolkit/components/jsoncpp/include",
 ]
 
 FINAL_LIBRARY = "xul"
 
-MOCHITEST_MANIFESTS += ["tests/mochitest/mochitest.ini"]
-MOCHITEST_CHROME_MANIFESTS += ["tests/mochitest/chrome.ini"]
-BROWSER_CHROME_MANIFESTS += ["tests/mochitest/browser.ini"]
+MOCHITEST_MANIFESTS += ["tests/mochitest/mochitest.toml"]
+MOCHITEST_CHROME_MANIFESTS += ["tests/mochitest/chrome.toml"]
+BROWSER_CHROME_MANIFESTS += ["tests/mochitest/browser.toml"]
 
 if CONFIG["ENABLE_TESTS"]:
     DIRS += ["tests/gtest"]

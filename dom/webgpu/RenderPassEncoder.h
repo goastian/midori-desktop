@@ -6,7 +6,6 @@
 #ifndef GPU_RenderPassEncoder_H_
 #define GPU_RenderPassEncoder_H_
 
-#include "mozilla/Scoped.h"
 #include "mozilla/dom/TypedArray.h"
 #include "ObjectModel.h"
 
@@ -25,7 +24,7 @@ class AutoSequence;
 }  // namespace dom
 namespace webgpu {
 namespace ffi {
-struct WGPURenderPass;
+struct WGPURecordedRenderPass;
 }  // namespace ffi
 
 class BindGroup;
@@ -35,10 +34,8 @@ class RenderBundle;
 class RenderPipeline;
 class TextureView;
 
-struct ScopedFfiRenderTraits {
-  using type = ffi::WGPURenderPass*;
-  static type empty();
-  static void release(type raw);
+struct ffiWGPURenderPassDeleter {
+  void operator()(ffi::WGPURecordedRenderPass*);
 };
 
 class RenderPassEncoder final : public ObjectBase,
@@ -52,9 +49,9 @@ class RenderPassEncoder final : public ObjectBase,
 
  protected:
   virtual ~RenderPassEncoder();
-  void Cleanup() {}
+  void Cleanup();
 
-  Scoped<ScopedFfiRenderTraits> mPass;
+  std::unique_ptr<ffi::WGPURecordedRenderPass, ffiWGPURenderPassDeleter> mPass;
   // keep all the used objects alive while the pass is recorded
   nsTArray<RefPtr<const BindGroup>> mUsedBindGroups;
   nsTArray<RefPtr<const Buffer>> mUsedBuffers;
@@ -95,7 +92,7 @@ class RenderPassEncoder final : public ObjectBase,
   void ExecuteBundles(
       const dom::Sequence<OwningNonNull<RenderBundle>>& aBundles);
 
-  void End(ErrorResult& aRv);
+  void End();
 };
 
 }  // namespace webgpu

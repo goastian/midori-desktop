@@ -5,10 +5,7 @@ const testVideoId = "video";
 
 add_task(async function setupTestingPref() {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["media.mediacontrol.testingevents.enabled", true],
-      ["dom.media.mediasession.enabled", true],
-    ],
+    set: [["media.mediacontrol.testingevents.enabled", true]],
   });
 });
 
@@ -57,13 +54,18 @@ async function PerformSeekTo(tab, seekDetails) {
     (seekDetails, Id) => {
       const { seekTime, fastSeek } = seekDetails;
       content.navigator.mediaSession.setActionHandler("seekto", details => {
-        ok(details.seekTime != undefined, "Seektime must be presented");
+        Assert.notEqual(
+          details.seekTime,
+          undefined,
+          "Seektime must be presented"
+        );
         is(seekTime, details.seekTime, "Get correct seektime");
         if (fastSeek) {
           is(fastSeek, details.fastSeek, "Get correct fastSeek");
         } else {
-          ok(
-            details.fastSeek === undefined,
+          Assert.strictEqual(
+            details.fastSeek,
+            undefined,
             "Details should not contain fastSeek"
           );
         }

@@ -224,10 +224,8 @@ void IncomingDatagramStreamAlgorithms::ReturnDatagram(JSContext* aCx,
   UniquePtr<DatagramEntry> entry = mDatagrams->mIncomingDatagramsQueue.Pop();
 
   // Pull Step 6: Let chunk be a new Uint8Array object representing bytes.
-  JSObject* outView = Uint8Array::Create(aCx, entry->mBuffer.Length(),
-                                         entry->mBuffer.Elements());
-  if (!outView) {
-    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+  JSObject* outView = Uint8Array::Create(aCx, entry->mBuffer, aRv);
+  if (aRv.Failed()) {
     return;
   }
   JS::Rooted<JSObject*> chunk(aCx, outView);
@@ -260,7 +258,7 @@ NS_IMPL_ADDREF_INHERITED(OutgoingDatagramStreamAlgorithms,
 NS_IMPL_RELEASE_INHERITED(OutgoingDatagramStreamAlgorithms,
                           UnderlyingSinkAlgorithmsWrapper)
 
-already_AddRefed<Promise> OutgoingDatagramStreamAlgorithms::WriteCallback(
+already_AddRefed<Promise> OutgoingDatagramStreamAlgorithms::WriteCallbackImpl(
     JSContext* aCx, JS::Handle<JS::Value> aChunk,
     WritableStreamDefaultController& aController, ErrorResult& aError) {
   // https://w3c.github.io/webtransport/#writedatagrams
@@ -271,27 +269,16 @@ already_AddRefed<Promise> OutgoingDatagramStreamAlgorithms::WriteCallback(
   // rejected with a TypeError. { BufferSource == ArrayBuffer/ArrayBufferView }
   ArrayBufferViewOrArrayBuffer arrayBuffer;
   if (!arrayBuffer.Init(aCx, aChunk)) {
-    return Promise::CreateRejectedWithTypeError(
-        mDatagrams->GetParentObject(),
-        "Wrong type for Datagram stream write"_ns, aError);
+    JS_ClearPendingException(aCx);
+    aError.ThrowTypeError("Wrong type for Datagram stream write"_ns);
+    return nullptr;
   }
 
   // Step 3: Let datagrams be transport.[[Datagrams]].
   // (mDatagrams is transport.[[Datagrams]])
 
-  // This is a duplicate of dom/encoding/TextDecoderStream.cpp#51-69
-  // PeterV will deal with that when he lands his patch for TypedArrays
-  auto data = [&arrayBuffer]() {
-    if (arrayBuffer.IsArrayBuffer()) {
-      const ArrayBuffer& buffer = arrayBuffer.GetAsArrayBuffer();
-      buffer.ComputeState();
-      return Span{buffer.Data(), buffer.Length()};
-    }
-    MOZ_ASSERT(arrayBuffer.IsArrayBufferView());
-    const ArrayBufferView& buffer = arrayBuffer.GetAsArrayBufferView();
-    buffer.ComputeState();
-    return Span{buffer.Data(), buffer.Length()};
-  }();
+  nsTArray<uint8_t> data;
+  Unused << AppendTypedArrayDataTo(arrayBuffer, data);
 
   // Step 4: If datagrams.[[OutgoingMaxDatagramSize]] is less than data’s
   // [[ByteLength]], return a promise resolved with undefined.
@@ -309,10 +296,9 @@ already_AddRefed<Promise> OutgoingDatagramStreamAlgorithms::WriteCallback(
     // We pass along the datagram to the parent immediately.
     // The OutgoingDatagramsQueue lives there, and steps 6-9 generally are
     // implemented there
-    nsTArray<uint8_t> array(data);
-    LOG(("Sending Datagram, size = %zu", array.Length()));
+    LOG(("Sending Datagram, size = %zu", data.Length()));
     mChild->SendOutgoingDatagram(
-        array, now,
+        std::move(data), now,
         [promise](nsresult&&) {
           // XXX result
           LOG(("Datagram was sent"));
@@ -331,7 +317,7 @@ already_AddRefed<Promise> OutgoingDatagramStreamAlgorithms::WriteCallback(
     // We should be guaranteed that we don't get called again until the
     // promise is resolved.
     MOZ_ASSERT(mWaitConnect == nullptr);
-    mWaitConnect.reset(new DatagramEntry(data, now));
+    mWaitConnect.reset(new DatagramEntry(std::move(data), now));
     mWaitConnectPromise = promise;
   }
 

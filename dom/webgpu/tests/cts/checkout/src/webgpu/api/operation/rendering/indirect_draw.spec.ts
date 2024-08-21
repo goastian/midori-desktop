@@ -7,7 +7,7 @@ import {
   kDrawIndirectParametersSize,
   kDrawIndexedIndirectParametersSize,
 } from '../../../capability_info.js';
-import { GPUTest } from '../../../gpu_test.js';
+import { GPUTest, TextureTestMixin } from '../../../gpu_test.js';
 
 const filled = new Uint8Array([0, 255, 0, 255]);
 const notFilled = new Uint8Array([0, 0, 0, 0]);
@@ -17,10 +17,9 @@ const kRenderTargetFormat = 'rgba8unorm';
 class F extends GPUTest {
   MakeIndexBuffer(): GPUBuffer {
     return this.makeBufferWithContents(
-      /* prettier-ignore */
-      new Uint32Array([
-        0,  1,  2, // The bottom left triangle
-        1,  2,  3, // The top right triangle
+      /* prettier-ignore */ new Uint32Array([
+        0, 1, 2, // The bottom left triangle
+        1, 2, 3, // The top right triangle
       ]),
       GPUBufferUsage.INDEX
     );
@@ -125,7 +124,7 @@ class F extends GPUTest {
   }
 }
 
-export const g = makeTestGroup(F);
+export const g = makeTestGroup(TextureTestMixin(F));
 
 g.test('basics')
   .desc(
@@ -234,18 +233,10 @@ Params:
     renderPass.end();
     t.queue.submit([commandEncoder.finish()]);
 
-    // The bottom left area is filled
-    t.expectSinglePixelIn2DTexture(
-      renderTarget,
-      kRenderTargetFormat,
-      { x: 0, y: 1 },
-      { exp: filled }
-    );
-    // The top right area is not filled
-    t.expectSinglePixelIn2DTexture(
-      renderTarget,
-      kRenderTargetFormat,
-      { x: 1, y: 0 },
-      { exp: notFilled }
-    );
+    t.expectSinglePixelComparisonsAreOkInTexture({ texture: renderTarget }, [
+      // The bottom left area is filled
+      { coord: { x: 0, y: 1 }, exp: filled },
+      // The top right area is not filled
+      { coord: { x: 1, y: 0 }, exp: notFilled },
+    ]);
   });

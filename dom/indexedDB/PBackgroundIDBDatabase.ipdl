@@ -19,11 +19,14 @@ using struct mozilla::null_t from "mozilla/ipc/IPCCore.h";
 using mozilla::dom::IDBTransaction::Mode
   from "mozilla/dom/IDBTransaction.h";
 
+using mozilla::dom::IDBTransaction::Durability
+  from "mozilla/dom/IDBTransaction.h";
+
 namespace mozilla {
 namespace dom {
 namespace indexedDB {
 
-[ManualDealloc, ChildImpl="indexedDB::BackgroundDatabaseChild", ParentImpl=virtual]
+[ChildImpl="indexedDB::BackgroundDatabaseChild", ParentImpl=virtual]
 sync protocol PBackgroundIDBDatabase
 {
   manager PBackgroundIDBFactory;
@@ -41,7 +44,7 @@ parent:
 
   async PBackgroundIDBDatabaseFile(IPCBlob blob);
 
-  async PBackgroundIDBTransaction(nsString[] objectStoreNames, Mode mode);
+  async PBackgroundIDBTransaction(nsString[] objectStoreNames, Mode mode, Durability durability);
 
 child:
   async __delete__();

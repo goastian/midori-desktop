@@ -12,8 +12,11 @@
 namespace mozilla::dom {
 
 class WebAuthnManager;
+class CredentialChosenCallback;
 
 class CredentialsContainer final : public nsISupports, public nsWrapperCache {
+  friend CredentialChosenCallback;
+
  public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_WRAPPERCACHE_CLASS(CredentialsContainer)
@@ -21,6 +24,8 @@ class CredentialsContainer final : public nsISupports, public nsWrapperCache {
   explicit CredentialsContainer(nsPIDOMWindowInner* aParent);
 
   nsPIDOMWindowInner* GetParentObject() const { return mParent; }
+
+  already_AddRefed<WebAuthnManager> GetWebAuthnManager();
 
   virtual JSObject* WrapObject(JSContext* aCx,
                                JS::Handle<JSObject*> aGivenProto) override;

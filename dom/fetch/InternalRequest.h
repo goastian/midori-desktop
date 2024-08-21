@@ -92,7 +92,8 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
                   RequestCache aCacheMode, RequestMode aMode,
                   RequestRedirect aRequestRedirect,
                   RequestCredentials aRequestCredentials,
-                  const nsAString& aReferrer, ReferrerPolicy aReferrerPolicy,
+                  const nsACString& aReferrer, ReferrerPolicy aReferrerPolicy,
+                  RequestPriority aPriority,
                   nsContentPolicyType aContentPolicyType,
                   const nsAString& aIntegrity);
 
@@ -158,9 +159,9 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
   void GetURLListWithoutFragment(nsTArray<nsCString>& aURLList) {
     aURLList.Assign(mURLList);
   }
-  void GetReferrer(nsAString& aReferrer) const { aReferrer.Assign(mReferrer); }
+  void GetReferrer(nsACString& aReferrer) const { aReferrer.Assign(mReferrer); }
 
-  void SetReferrer(const nsAString& aReferrer) {
+  void SetReferrer(const nsACString& aReferrer) {
 #ifdef DEBUG
     bool validReferrer = false;
     if (aReferrer.IsEmpty() ||
@@ -178,10 +179,9 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
         uint32_t pathPos;
         int32_t pathLen;
 
-        NS_ConvertUTF16toUTF8 ref(aReferrer);
-        nsresult rv =
-            parser->ParseURL(ref.get(), ref.Length(), &schemePos, &schemeLen,
-                             &authorityPos, &authorityLen, &pathPos, &pathLen);
+        nsresult rv = parser->ParseURL(
+            aReferrer.BeginReading(), aReferrer.Length(), &schemePos,
+            &schemeLen, &authorityPos, &authorityLen, &pathPos, &pathLen);
         if (NS_FAILED(rv)) {
           NS_WARNING("Invalid referrer URL!");
         } else if (schemeLen < 0 || authorityLen < 0) {
@@ -250,11 +250,21 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
     mRedirectMode = aRedirectMode;
   }
 
+  RequestPriority GetPriorityMode() const { return mPriorityMode; }
+
+  void SetPriorityMode(RequestPriority aPriorityMode) {
+    mPriorityMode = aPriorityMode;
+  }
+
   const nsString& GetIntegrity() const { return mIntegrity; }
 
   void SetIntegrity(const nsAString& aIntegrity) {
     mIntegrity.Assign(aIntegrity);
   }
+
+  bool GetKeepalive() const { return mKeepalive; }
+
+  void SetKeepalive(const bool aKeepalive) { mKeepalive = aKeepalive; }
 
   bool MozErrors() const { return mMozErrors; }
 
@@ -433,7 +443,7 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
   // Empty string: no-referrer
   // "about:client": client (default)
   // URL: an URL
-  nsString mReferrer;
+  nsCString mReferrer;
   ReferrerPolicy mReferrerPolicy;
 
   // This will be used for request created from Window or Worker contexts
@@ -445,7 +455,9 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
   LoadTainting mResponseTainting = LoadTainting::Basic;
   RequestCache mCacheMode;
   RequestRedirect mRedirectMode;
+  RequestPriority mPriorityMode = RequestPriority::Auto;
   nsString mIntegrity;
+  bool mKeepalive = false;
   bool mMozErrors = false;
   nsCString mFragment;
   bool mSkipServiceWorker = false;

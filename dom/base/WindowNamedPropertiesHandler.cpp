@@ -10,7 +10,8 @@
 #include "mozilla/dom/WindowBinding.h"
 #include "mozilla/dom/WindowProxyHolder.h"
 #include "nsContentUtils.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsHTMLDocument.h"
 #include "nsJSUtils.h"
 #include "xpcprivate.h"
@@ -244,11 +245,9 @@ static const DOMIfaceAndProtoJSClass WindowNamedPropertiesClass = {
     PROXY_CLASS_DEF("WindowProperties", JSCLASS_IS_DOMIFACEANDPROTOJSCLASS |
                                             JSCLASS_HAS_RESERVED_SLOTS(1)),
     eNamedPropertiesObject,
-    false,
     prototypes::id::_ID_Count,
     0,
     &sEmptyNativePropertyHooks,
-    "[object WindowProperties]",
     EventTarget_Binding::GetProtoObject};
 
 // static

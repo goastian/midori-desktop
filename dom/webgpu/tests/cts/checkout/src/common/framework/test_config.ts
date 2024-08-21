@@ -1,7 +1,18 @@
 export type TestConfig = {
+  /**
+   * Enable debug-level logs (normally logged via `Fixture.debug()`).
+   */
+  enableDebugLogs: boolean;
+
   maxSubcasesInFlight: number;
   testHeartbeatCallback: () => void;
   noRaceWithRejectOnTimeout: boolean;
+
+  /**
+   * Logger for debug messages from the test framework
+   * (that can't be captured in the logs of a test).
+   */
+  frameworkDebugLog?: (msg: string) => void;
 
   /**
    * Controls the emission of loops in constant-evaluation shaders under
@@ -10,11 +21,30 @@ export type TestConfig = {
    * MSL compiler is extremely slow to compile with loops rolled.
    */
   unrollConstEvalLoops: boolean;
+
+  /**
+   * Whether or not we're running in compatibility mode.
+   */
+  compatibility: boolean;
+
+  /**
+   * Whether or not to request a fallback adapter.
+   */
+  forceFallbackAdapter: boolean;
+
+  /**
+   * Whether to enable the `logToWebSocket` function used for out-of-band test logging.
+   */
+  logToWebSocket: boolean;
 };
 
 export const globalTestConfig: TestConfig = {
+  enableDebugLogs: false,
   maxSubcasesInFlight: 500,
   testHeartbeatCallback: () => {},
   noRaceWithRejectOnTimeout: false,
   unrollConstEvalLoops: false,
+  compatibility: false,
+  forceFallbackAdapter: false,
+  logToWebSocket: false,
 };

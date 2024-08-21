@@ -152,11 +152,11 @@ export class ValidationTest extends GPUTest {
   }
 
   /** Return an arbitrarily-configured GPUTexture with the `STORAGE_BINDING` usage. */
-  getStorageTexture(): GPUTexture {
+  getStorageTexture(format: GPUTextureFormat): GPUTexture {
     return this.trackForCleanup(
       this.device.createTexture({
         size: { width: 16, height: 16, depthOrArrayLayers: 1 },
-        format: 'rgba8unorm',
+        format,
         usage: GPUTextureUsage.STORAGE_BINDING,
       })
     );
@@ -220,8 +220,10 @@ export class ValidationTest extends GPUTest {
         return this.getSampledTexture(1).createView();
       case 'sampledTexMS':
         return this.getSampledTexture(4).createView();
-      case 'storageTex':
-        return this.getStorageTexture().createView();
+      case 'readonlyStorageTex':
+      case 'writeonlyStorageTex':
+      case 'readwriteStorageTex':
+        return this.getStorageTexture('r32float').createView();
     }
   }
 
@@ -255,10 +257,10 @@ export class ValidationTest extends GPUTest {
   }
 
   /** Return an arbitrarily-configured GPUTexture with the `STORAGE` usage from mismatched device. */
-  getDeviceMismatchedStorageTexture(): GPUTexture {
+  getDeviceMismatchedStorageTexture(format: GPUTextureFormat): GPUTexture {
     return this.getDeviceMismatchedTexture({
       size: { width: 4, height: 4, depthOrArrayLayers: 1 },
-      format: 'rgba8unorm',
+      format,
       usage: GPUTextureUsage.STORAGE_BINDING,
     });
   }
@@ -289,8 +291,10 @@ export class ValidationTest extends GPUTest {
         return this.getDeviceMismatchedSampledTexture(1).createView();
       case 'sampledTexMS':
         return this.getDeviceMismatchedSampledTexture(4).createView();
-      case 'storageTex':
-        return this.getDeviceMismatchedStorageTexture().createView();
+      case 'readonlyStorageTex':
+      case 'writeonlyStorageTex':
+      case 'readwriteStorageTex':
+        return this.getDeviceMismatchedStorageTexture('r32float').createView();
     }
   }
 
@@ -317,7 +321,8 @@ export class ValidationTest extends GPUTest {
 
   /** Return a GPURenderPipeline with default options and no-op vertex and fragment shaders. */
   createNoOpRenderPipeline(
-    layout: GPUPipelineLayout | GPUAutoLayoutMode = 'auto'
+    layout: GPUPipelineLayout | GPUAutoLayoutMode = 'auto',
+    colorFormat: GPUTextureFormat = 'rgba8unorm'
   ): GPURenderPipeline {
     return this.device.createRenderPipeline({
       layout,
@@ -332,7 +337,7 @@ export class ValidationTest extends GPUTest {
           code: this.getNoOpShaderCode('FRAGMENT'),
         }),
         entryPoint: 'main',
-        targets: [{ format: 'rgba8unorm', writeMask: 0 }],
+        targets: [{ format: colorFormat, writeMask: 0 }],
       },
       primitive: { topology: 'triangle-list' },
     });
@@ -399,7 +404,7 @@ export class ValidationTest extends GPUTest {
     isAsync: boolean,
     _success: boolean,
     descriptor: GPURenderPipelineDescriptor,
-    errorTypeName: 'OperationError' | 'TypeError' = 'OperationError'
+    errorTypeName: 'GPUPipelineError' | 'TypeError' = 'GPUPipelineError'
   ) {
     if (isAsync) {
       if (_success) {
@@ -408,7 +413,7 @@ export class ValidationTest extends GPUTest {
         this.shouldReject(errorTypeName, this.device.createRenderPipelineAsync(descriptor));
       }
     } else {
-      if (errorTypeName === 'OperationError') {
+      if (errorTypeName === 'GPUPipelineError') {
         this.expectValidationError(() => {
           this.device.createRenderPipeline(descriptor);
         }, !_success);
@@ -425,7 +430,7 @@ export class ValidationTest extends GPUTest {
     isAsync: boolean,
     _success: boolean,
     descriptor: GPUComputePipelineDescriptor,
-    errorTypeName: 'OperationError' | 'TypeError' = 'OperationError'
+    errorTypeName: 'GPUPipelineError' | 'TypeError' = 'GPUPipelineError'
   ) {
     if (isAsync) {
       if (_success) {
@@ -434,7 +439,7 @@ export class ValidationTest extends GPUTest {
         this.shouldReject(errorTypeName, this.device.createComputePipelineAsync(descriptor));
       }
     } else {
-      if (errorTypeName === 'OperationError') {
+      if (errorTypeName === 'GPUPipelineError') {
         this.expectValidationError(() => {
           this.device.createComputePipeline(descriptor);
         }, !_success);

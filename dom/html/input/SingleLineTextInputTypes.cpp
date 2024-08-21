@@ -21,8 +21,7 @@ using namespace mozilla;
 using namespace mozilla::dom;
 
 bool SingleLineTextInputTypeBase::IsMutable() const {
-  return !mInputElement->IsDisabled() &&
-         !mInputElement->HasAttr(kNameSpaceID_None, nsGkAtoms::readonly);
+  return !mInputElement->IsDisabledOrReadOnly();
 }
 
 bool SingleLineTextInputTypeBase::IsTooLong() const {
@@ -69,7 +68,7 @@ Maybe<bool> SingleLineTextInputTypeBase::HasPatternMismatch() const {
   }
 
   nsAutoString pattern;
-  if (!mInputElement->GetAttr(kNameSpaceID_None, nsGkAtoms::pattern, pattern)) {
+  if (!mInputElement->GetAttr(nsGkAtoms::pattern, pattern)) {
     return Some(false);
   }
 
@@ -82,8 +81,8 @@ Maybe<bool> SingleLineTextInputTypeBase::HasPatternMismatch() const {
 
   Document* doc = mInputElement->OwnerDoc();
   Maybe<bool> result = nsContentUtils::IsPatternMatching(
-      value, pattern, doc,
-      mInputElement->HasAttr(kNameSpaceID_None, nsGkAtoms::multiple));
+      value, std::move(pattern), doc,
+      mInputElement->HasAttr(nsGkAtoms::multiple));
   return result ? Some(!*result) : Nothing();
 }
 
@@ -131,7 +130,7 @@ bool EmailInputType::HasTypeMismatch() const {
     return false;
   }
 
-  return mInputElement->HasAttr(kNameSpaceID_None, nsGkAtoms::multiple)
+  return mInputElement->HasAttr(nsGkAtoms::multiple)
              ? !IsValidEmailAddressList(value)
              : !IsValidEmailAddress(value);
 }

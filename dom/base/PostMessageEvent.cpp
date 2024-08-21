@@ -69,7 +69,8 @@ MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHODIMP PostMessageEvent::Run() {
 
   RefPtr<nsGlobalWindowInner> targetWindow;
   if (mTargetWindow->IsClosedOrClosing() ||
-      !(targetWindow = mTargetWindow->GetCurrentInnerWindowInternal()) ||
+      !(targetWindow = nsGlobalWindowInner::Cast(
+            mTargetWindow->GetCurrentInnerWindow())) ||
       targetWindow->IsDying())
     return NS_OK;
 
@@ -120,9 +121,11 @@ MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHODIMP PostMessageEvent::Run() {
           "Target and source should have the same userContextId attribute.");
 
       nsAutoString providedOrigin, targetOrigin;
-      nsresult rv = nsContentUtils::GetUTFOrigin(targetPrin, targetOrigin);
+      nsresult rv = nsContentUtils::GetWebExposedOriginSerialization(
+          targetPrin, targetOrigin);
       NS_ENSURE_SUCCESS(rv, rv);
-      rv = nsContentUtils::GetUTFOrigin(mProvidedPrincipal, providedOrigin);
+      rv = nsContentUtils::GetWebExposedOriginSerialization(mProvidedPrincipal,
+                                                            providedOrigin);
       NS_ENSURE_SUCCESS(rv, rv);
 
       nsAutoString errorText;
@@ -250,57 +253,37 @@ void PostMessageEvent::Dispatch(nsGlobalWindowInner* aTargetWindow,
   WidgetEvent* internalEvent = aEvent->WidgetEventPtr();
 
   nsEventStatus status = nsEventStatus_eIgnore;
-  // TODO: Bug 1506441
-  EventDispatcher::Dispatch(MOZ_KnownLive(ToSupports(aTargetWindow)),
-                            presContext, internalEvent, aEvent, &status);
+  EventDispatcher::Dispatch(aTargetWindow, presContext, internalEvent, aEvent,
+                            &status);
+}
+
+static nsresult MaybeThrottle(nsGlobalWindowOuter* aTargetWindow,
+                              PostMessageEvent* aEvent) {
+  BrowsingContext* bc = aTargetWindow->GetBrowsingContext();
+  if (!bc) {
+    return NS_ERROR_FAILURE;
+  }
+  bc = bc->Top();
+  if (!bc->IsLoading()) {
+    return NS_ERROR_FAILURE;
+  }
+  if (nsContentUtils::IsPDFJS(aTargetWindow->GetPrincipal())) {
+    // pdf.js is known to block the load event on a worker's postMessage event.
+    // Avoid throttling postMessage for pdf.js to avoid pathological wait times,
+    // see bug 1840762.
+    return NS_ERROR_FAILURE;
+  }
+  if (!StaticPrefs::dom_separate_event_queue_for_post_message_enabled()) {
+    return NS_ERROR_FAILURE;
+  }
+  return bc->Group()->QueuePostMessageEvent(aEvent);
 }
 
 void PostMessageEvent::DispatchToTargetThread(ErrorResult& aError) {
-  nsCOMPtr<nsIRunnable> event = this;
-
-  if (StaticPrefs::dom_separate_event_queue_for_post_message_enabled() &&
-      !DocGroup::TryToLoadIframesInBackground()) {
-    BrowsingContext* bc = mTargetWindow->GetBrowsingContext();
-    bc = bc ? bc->Top() : nullptr;
-    if (bc && bc->IsLoading()) {
-      // As long as the top level is loading, we can dispatch events to the
-      // queue because the queue will be flushed eventually
-      aError = bc->Group()->QueuePostMessageEvent(event.forget());
-      return;
-    }
+  if (NS_SUCCEEDED(MaybeThrottle(mTargetWindow, this))) {
+    return;
   }
-
-  // XXX Loading iframes in background isn't enabled by default and doesn't
-  //     work with Fission at the moment.
-  if (DocGroup::TryToLoadIframesInBackground()) {
-    RefPtr<nsIDocShell> docShell = mTargetWindow->GetDocShell();
-    RefPtr<nsDocShell> dShell = nsDocShell::Cast(docShell);
-
-    // PostMessage that are added to the BrowsingContextGroup are the ones that
-    // can be flushed when the top level document is loaded.
-    // TreadAsBackgroundLoad DocShells are treated specially.
-    if (dShell) {
-      if (!dShell->TreatAsBackgroundLoad()) {
-        BrowsingContext* bc = mTargetWindow->GetBrowsingContext();
-        bc = bc ? bc->Top() : nullptr;
-        if (bc && bc->IsLoading()) {
-          // As long as the top level is loading, we can dispatch events to the
-          // queue because the queue will be flushed eventually
-          aError = bc->Group()->QueuePostMessageEvent(event.forget());
-          return;
-        }
-      } else if (mTargetWindow->GetExtantDoc() &&
-                 mTargetWindow->GetExtantDoc()->GetReadyStateEnum() <
-                     Document::READYSTATE_COMPLETE) {
-        mozilla::dom::DocGroup* docGroup = mTargetWindow->GetDocGroup();
-        aError = docGroup->QueueIframePostMessages(event.forget(),
-                                                   dShell->GetOuterWindowID());
-        return;
-      }
-    }
-  }
-
-  aError = mTargetWindow->Dispatch(TaskCategory::Other, event.forget());
+  aError = mTargetWindow->Dispatch(do_AddRef(this));
 }
 
 }  // namespace mozilla::dom

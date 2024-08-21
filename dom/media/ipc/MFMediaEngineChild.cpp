@@ -6,7 +6,6 @@
 
 #include "MFMediaEngineUtils.h"
 #include "RemoteDecoderManagerChild.h"
-#include "mozilla/WindowsVersion.h"
 
 #ifdef MOZ_WMF_CDM
 #  include "WMFCDMProxy.h"
@@ -48,26 +47,22 @@ MFMediaEngineChild::MFMediaEngineChild(MFMediaEngineWrapper* aOwner,
 }
 
 RefPtr<GenericNonExclusivePromise> MFMediaEngineChild::Init(
-    bool aShouldPreload) {
+    const MediaInfo& aInfo, bool aShouldPreload) {
   if (!mManagerThread) {
     return GenericNonExclusivePromise::CreateAndReject(NS_ERROR_FAILURE,
                                                        __func__);
   }
 
-  if (!IsWin10OrLater()) {
-    CLOG("Only support MF media engine playback on Windows 10+");
-    return GenericNonExclusivePromise::CreateAndReject(NS_ERROR_FAILURE,
-                                                       __func__);
-  }
+  CLOG("Init, hasAudio=%d, hasVideo=%d, encrypted=%d", aInfo.HasAudio(),
+       aInfo.HasVideo(), aInfo.IsEncrypted());
 
-  CLOG("Init");
   MOZ_ASSERT(mMediaEngineId == 0);
   RefPtr<MFMediaEngineChild> self = this;
   RemoteDecoderManagerChild::LaunchUtilityProcessIfNeeded(
       RemoteDecodeIn::UtilityProcess_MFMediaEngineCDM)
       ->Then(
           mManagerThread, __func__,
-          [self, this, aShouldPreload](bool) {
+          [self, this, aShouldPreload, info = aInfo](bool) {
             RefPtr<RemoteDecoderManagerChild> manager =
                 RemoteDecoderManagerChild::GetSingleton(
                     RemoteDecodeIn::UtilityProcess_MFMediaEngineCDM);
@@ -79,8 +74,13 @@ RefPtr<GenericNonExclusivePromise> MFMediaEngineChild::Init(
 
             mIPDLSelfRef = this;
             Unused << manager->SendPMFMediaEngineConstructor(this);
-            MediaEngineInfoIPDL info(aShouldPreload);
-            SendInitMediaEngine(info)
+
+            MediaInfoIPDL mediaInfo(
+                info.HasAudio() ? Some(info.mAudio) : Nothing(),
+                info.HasVideo() ? Some(info.mVideo) : Nothing());
+
+            MediaEngineInfoIPDL initInfo(mediaInfo, aShouldPreload);
+            SendInitMediaEngine(initInfo)
                 ->Then(
                     mManagerThread, __func__,
                     [self, this](uint64_t aId) {
@@ -109,7 +109,7 @@ RefPtr<GenericNonExclusivePromise> MFMediaEngineChild::Init(
           },
           [self, this](nsresult aResult) {
             CLOG("SendInitMediaEngine Failed");
-            self->mInitPromiseHolder.Reject(NS_ERROR_FAILURE, __func__);
+            self->mInitPromiseHolder.RejectIfExists(NS_ERROR_FAILURE, __func__);
           });
   return mInitPromiseHolder.Ensure(__func__);
 }
@@ -203,6 +203,12 @@ mozilla::ipc::IPCResult MFMediaEngineChild::RecvUpdateStatisticData(
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult MFMediaEngineChild::RecvNotifyResizing(
+    uint32_t aWidth, uint32_t aHeight) {
+  mOwner->NotifyResizing(aWidth, aHeight);
+  return IPC_OK();
+}
+
 uint64_t MFMediaEngineChild::GetUpdatedRenderedFrames(
     const StatisticData& aData) {
   return mAccumulatedPresentedFramesFromPrevEngine
@@ -257,9 +263,9 @@ MFMediaEngineWrapper::MFMediaEngineWrapper(ExternalEngineStateMachine* aOwner,
       mCurrentTimeInSecond(0.0) {}
 
 RefPtr<GenericNonExclusivePromise> MFMediaEngineWrapper::Init(
-    bool aShouldPreload) {
+    const MediaInfo& aInfo, bool aShouldPreload) {
   WLOG("Init");
-  return mEngine->Init(aShouldPreload);
+  return mEngine->Init(aInfo, aShouldPreload);
 }
 
 MFMediaEngineWrapper::~MFMediaEngineWrapper() { mEngine->OwnerDestroyed(); }
@@ -336,18 +342,6 @@ void MFMediaEngineWrapper::NotifyEndOfStream(TrackInfo::TrackType aType) {
       [engine = mEngine, aType] { engine->SendNotifyEndOfStream(aType); }));
 }
 
-void MFMediaEngineWrapper::SetMediaInfo(const MediaInfo& aInfo) {
-  WLOG("SetMediaInfo, hasAudio=%d, hasVideo=%d, encrypted=%d", aInfo.HasAudio(),
-       aInfo.HasVideo(), aInfo.IsEncrypted());
-  MOZ_ASSERT(IsInited());
-  Unused << ManagerThread()->Dispatch(NS_NewRunnableFunction(
-      "MFMediaEngineWrapper::SetMediaInfo", [engine = mEngine, aInfo] {
-        MediaInfoIPDL info(aInfo.HasAudio() ? Some(aInfo.mAudio) : Nothing(),
-                           aInfo.HasVideo() ? Some(aInfo.mVideo) : Nothing());
-        engine->SendNotifyMediaInfo(info);
-      }));
-}
-
 bool MFMediaEngineWrapper::SetCDMProxy(CDMProxy* aProxy) {
 #ifdef MOZ_WMF_CDM
   WMFCDMProxy* proxy = aProxy->AsWMFCDMProxy();
@@ -390,5 +384,14 @@ void MFMediaEngineWrapper::NotifyError(const MediaResult& aError) {
   WLOG("Received error: %s", aError.Description().get());
   mOwner->NotifyError(aError);
 }
+
+void MFMediaEngineWrapper::NotifyResizing(uint32_t aWidth, uint32_t aHeight) {
+  WLOG("Video resizing, new size [%u,%u]", aWidth, aHeight);
+  mOwner->NotifyResizing(aWidth, aHeight);
+}
+
+#undef CLOG
+#undef WLOG
+#undef WLOGV
 
 }  // namespace mozilla

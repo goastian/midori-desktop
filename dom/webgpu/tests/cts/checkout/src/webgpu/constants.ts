@@ -1,7 +1,7 @@
 // Note: Types ensure every field is specified.
 
 /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
-function checkType<T>(x: T) {}
+function checkType<T>(_: T) {}
 
 const BufferUsage = {
   MAP_READ: 0x0001,
@@ -60,3 +60,8 @@ export const GPUConst = {
 
 export const kMaxUnsignedLongValue = 4294967295;
 export const kMaxUnsignedLongLongValue = Number.MAX_SAFE_INTEGER;
+
+export const kInterpolationSampling = ['center', 'centroid', 'sample'] as const;
+export const kInterpolationType = ['perspective', 'linear', 'flat'] as const;
+export type InterpolationType = (typeof kInterpolationType)[number];
+export type InterpolationSampling = (typeof kInterpolationSampling)[number];

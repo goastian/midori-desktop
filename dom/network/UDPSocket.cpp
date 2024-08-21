@@ -341,16 +341,14 @@ bool UDPSocket::Send(const StringOrBlobOrArrayBufferOrArrayBufferView& aData,
     if (aData.IsString()) {
       NS_ConvertUTF16toUTF8 data(aData.GetAsString());
       aRv = strStream->SetData(data.BeginReading(), data.Length());
-    } else if (aData.IsArrayBuffer()) {
-      const ArrayBuffer& data = aData.GetAsArrayBuffer();
-      data.ComputeState();
-      aRv = strStream->SetData(reinterpret_cast<const char*>(data.Data()),
-                               data.Length());
     } else {
-      const ArrayBufferView& data = aData.GetAsArrayBufferView();
-      data.ComputeState();
-      aRv = strStream->SetData(reinterpret_cast<const char*>(data.Data()),
-                               data.Length());
+      Vector<char> data;
+      if (!AppendTypedArrayDataTo(aData, data)) {
+        aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+        return false;
+      }
+      size_t length = data.length();
+      aRv = strStream->AdoptData(data.extractOrCopyRawBuffer(), length);
     }
 
     if (NS_WARN_IF(aRv.Failed())) {
@@ -580,11 +578,11 @@ nsresult UDPSocket::DispatchReceivedData(const nsACString& aRemoteAddress,
   JSContext* cx = jsapi.cx();
 
   // Copy packet data to ArrayBuffer
-  JS::Rooted<JSObject*> arrayBuf(
-      cx, ArrayBuffer::Create(cx, aData.Length(), aData.Elements()));
+  ErrorResult error;
+  JS::Rooted<JSObject*> arrayBuf(cx, ArrayBuffer::Create(cx, aData, error));
 
-  if (NS_WARN_IF(!arrayBuf)) {
-    return NS_ERROR_FAILURE;
+  if (NS_WARN_IF(error.Failed())) {
+    return error.StealNSResult();
   }
 
   JS::Rooted<JS::Value> jsData(cx, JS::ObjectValue(*arrayBuf));
@@ -605,7 +603,7 @@ nsresult UDPSocket::DispatchReceivedData(const nsACString& aRemoteAddress,
   udpEvent->SetTrusted(true);
 
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
-      new AsyncEventDispatcher(this, udpEvent);
+      new AsyncEventDispatcher(this, udpEvent.forget());
 
   return asyncDispatcher->PostDOMEvent();
 }

@@ -204,8 +204,7 @@ bool MediaDecodeTask::Init() {
   RefPtr<BufferMediaResource> resource =
       new BufferMediaResource(static_cast<uint8_t*>(mBuffer), mLength);
 
-  mMainThread = mDecodeJob.mContext->GetOwnerGlobal()->AbstractMainThreadFor(
-      TaskCategory::Other);
+  mMainThread = AbstractThread::MainThread();
 
   mPSupervisorTaskQueue =
       TaskQueue::Create(GetMediaThreadPool(MediaThreadType::SUPERVISOR),
@@ -265,8 +264,7 @@ void MediaDecodeTask::OnInitDemuxerCompleted() {
     UniquePtr<TrackInfo> audioInfo = mTrackDemuxer->GetInfo();
     // We actively ignore audio tracks that we know we can't play.
     if (audioInfo && audioInfo->IsValid() &&
-        platform->SupportsMimeType(audioInfo->mMimeType) !=
-            media::DecodeSupport::Unsupported) {
+        !platform->SupportsMimeType(audioInfo->mMimeType).isEmpty()) {
       mMediaInfo.mAudio = *audioInfo->GetAsAudioInfo();
     }
   }

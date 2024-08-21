@@ -10,7 +10,6 @@
 #include "mozilla/dom/AutoEntryScript.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/DocumentL10nBinding.h"
-#include "mozilla/Telemetry.h"
 
 using namespace mozilla;
 using namespace mozilla::intl;
@@ -34,8 +33,6 @@ NS_IMPL_RELEASE_INHERITED(DocumentL10n, DOMLocalization)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(DocumentL10n)
 NS_INTERFACE_MAP_END_INHERITING(DOMLocalization)
-
-bool DocumentL10n::mIsFirstBrowserWindow = true;
 
 /* static */
 RefPtr<DocumentL10n> DocumentL10n::Create(Document* aDocument, bool aSync) {
@@ -96,8 +93,15 @@ class L10nReadyHandler final : public PromiseNativeHandler {
      * rejection" warning, which is noisy and not-actionable.
      *
      * So instead, we just resolve and report errors.
+     *
+     * However, in automated tests we do reject so that errors with missing
+     * messages and resources can be caught.
      */
-    mPromise->MaybeResolveWithUndefined();
+    if (xpc::IsInAutomation()) {
+      mPromise->MaybeRejectWithClone(aCx, aValue);
+    } else {
+      mPromise->MaybeResolveWithUndefined();
+    }
   }
 
  private:
@@ -127,8 +131,6 @@ void DocumentL10n::TriggerInitialTranslation() {
     InitialTranslationCompleted(false);
     return;
   }
-
-  mInitialTranslationStart = mozilla::TimeStamp::Now();
 
   AutoAllowLegacyScriptExecution exemption;
 
@@ -269,41 +271,6 @@ already_AddRefed<Promise> DocumentL10n::TranslateDocument(ErrorResult& aRv) {
   return promise.forget();
 }
 
-void DocumentL10n::MaybeRecordTelemetry() {
-  mozilla::TimeStamp initialTranslationEnd = mozilla::TimeStamp::Now();
-
-  nsAutoString documentURI;
-  ErrorResult rv;
-  rv = mDocument->GetDocumentURI(documentURI);
-  if (rv.Failed()) {
-    return;
-  }
-
-  nsCString key;
-
-  if (documentURI.Find(u"chrome://browser/content/browser.xhtml") == 0) {
-    if (mIsFirstBrowserWindow) {
-      key = "browser_first_window";
-      mIsFirstBrowserWindow = false;
-    } else {
-      key = "browser_new_window";
-    }
-  } else if (documentURI.Find(u"about:home") == 0) {
-    key = "about:home";
-  } else if (documentURI.Find(u"about:newtab") == 0) {
-    key = "about:newtab";
-  } else if (documentURI.Find(u"about:preferences") == 0) {
-    key = "about:preferences";
-  } else {
-    return;
-  }
-
-  mozilla::TimeDuration totalTime(initialTranslationEnd -
-                                  mInitialTranslationStart);
-  Accumulate(Telemetry::L10N_DOCUMENT_INITIAL_TRANSLATION_TIME_US, key,
-             totalTime.ToMicroseconds());
-}
-
 void DocumentL10n::InitialTranslationCompleted(bool aL10nCached) {
   if (mState >= DocumentL10nState::Ready) {
     return;
@@ -315,8 +282,6 @@ void DocumentL10n::InitialTranslationCompleted(bool aL10nCached) {
   }
 
   mState = DocumentL10nState::Ready;
-
-  MaybeRecordTelemetry();
 
   RefPtr<Document> doc = mDocument;
   doc->InitialTranslationCompleted(aL10nCached);

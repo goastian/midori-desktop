@@ -5,19 +5,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/dom/JSValidatorChild.h"
-#include "js/JSON.h"
 #include "mozilla/dom/JSOracleChild.h"
 
 #include "mozilla/Encoding.h"
 #include "mozilla/dom/ScriptDecoding.h"
 #include "mozilla/ipc/Endpoint.h"
 
-#include "js/experimental/JSStencil.h"
-#include "js/SourceText.h"
-#include "js/Exception.h"
-#include "js/GlobalObject.h"
 #include "js/CompileOptions.h"
-#include "js/RealmOptions.h"
+#include "js/JSON.h"
+#include "js/SourceText.h"
+#include "js/experimental/CompileScript.h"
+#include "js/experimental/JSStencil.h"
+#include "xpcpublic.h"
 
 using namespace mozilla::dom;
 using Encoding = mozilla::Encoding;
@@ -180,47 +179,50 @@ JSValidatorChild::GetUTF8EncodedContent(
 
 JSValidatorChild::ValidatorResult JSValidatorChild::ShouldAllowJS(
     const mozilla::Span<const char>& aSpan) const {
-  MOZ_ASSERT(!aSpan.IsEmpty());
-
-  MOZ_DIAGNOSTIC_ASSERT(IsUtf8(aSpan));
-
-  JSContext* cx = JSOracleChild::JSContext();
-  if (!cx) {
+  // It's possible that the data we get is not valid UTF-8, so aSpan
+  // ends empty here. We should treat it as a failure because this
+  // is not valid JS.
+  if (aSpan.IsEmpty()) {
     return ValidatorResult::Failure;
   }
 
-  JS::Rooted<JSObject*> global(cx, JSOracleChild::JSObject());
-  if (!global) {
+  MOZ_DIAGNOSTIC_ASSERT(IsUtf8(aSpan));
+
+  JS::FrontendContext* fc = JSOracleChild::JSFrontendContext();
+  if (!fc) {
     return ValidatorResult::Failure;
   }
 
   JS::SourceText<Utf8Unit> srcBuf;
-  if (!srcBuf.init(cx, aSpan.Elements(), aSpan.Length(),
+  if (!srcBuf.init(fc, aSpan.Elements(), aSpan.Length(),
                    JS::SourceOwnership::Borrowed)) {
-    JS_ClearPendingException(cx);
+    JS::ClearFrontendErrors(fc);
     return ValidatorResult::Failure;
   }
 
-  JSAutoRealm ar(cx, global);
-
   // Parse to JavaScript
+  JS::PrefableCompileOptions prefableOptions;
+  xpc::SetPrefableCompileOptions(prefableOptions);
+  // For the syntax validation purpose, asm.js doesn't need to be enabled.
+  prefableOptions.setAsmJSOption(JS::AsmJSOption::DisabledByAsmJSPref);
+
+  JS::CompileOptions options(prefableOptions);
   RefPtr<JS::Stencil> stencil =
-      CompileGlobalScriptToStencil(cx, JS::CompileOptions(cx), srcBuf);
+      JS::CompileGlobalScriptToStencil(fc, options, srcBuf);
 
   if (!stencil) {
-    JS_ClearPendingException(cx);
+    JS::ClearFrontendErrors(fc);
     return ValidatorResult::Other;
   }
 
   MOZ_ASSERT(!aSpan.IsEmpty());
 
   // Parse to JSON
-  JS::Rooted<JS::Value> json(cx);
   if (IsAscii(aSpan)) {
     // Ascii is a subset of Latin1, and JS_ParseJSON can take Latin1 directly
-    if (JS_ParseJSON(cx,
-                     reinterpret_cast<const JS::Latin1Char*>(aSpan.Elements()),
-                     aSpan.Length(), &json)) {
+    if (JS::IsValidJSON(
+            reinterpret_cast<const JS::Latin1Char*>(aSpan.Elements()),
+            aSpan.Length())) {
       return ValidatorResult::JSON;
     }
   } else {
@@ -233,15 +235,12 @@ JSValidatorChild::ValidatorResult JSValidatorChild::ShouldAllowJS(
       return ValidatorResult::Failure;
     }
 
-    if (JS_ParseJSON(cx, decoded.BeginReading(), decoded.Length(), &json)) {
+    if (JS::IsValidJSON(decoded.BeginReading(), decoded.Length())) {
       return ValidatorResult::JSON;
     }
   }
 
   // Since the JSON parsing failed, we confirmed the file is Javascript and not
   // JSON.
-  if (JS_IsExceptionPending(cx)) {
-    JS_ClearPendingException(cx);
-  }
   return ValidatorResult::JavaScript;
 }

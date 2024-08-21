@@ -32,19 +32,20 @@ namespace {
 
 class MultiTcpSocketTest : public MtransportTest {
  public:
-  MultiTcpSocketTest()
-      : MtransportTest(), socks(3, nullptr), readable(false), ice_ctx_() {}
+  MultiTcpSocketTest() : socks(3, nullptr), readable(false) {}
 
   void SetUp() {
     MtransportTest::SetUp();
 
+    test_utils_->SyncDispatchToSTS(
+        WrapRunnable(this, &MultiTcpSocketTest::SetUp_s));
+  }
+
+  void SetUp_s() {
     NrIceCtx::InitializeGlobals(NrIceCtx::GlobalConfig());
     ice_ctx_ = NrIceCtx::Create("stun");
-
-    test_utils_->SyncDispatchToSTS(
-        WrapRunnableNM(&TestStunTcpServer::GetInstance, AF_INET));
-    test_utils_->SyncDispatchToSTS(
-        WrapRunnableNM(&TestStunTcpServer::GetInstance, AF_INET6));
+    TestStunTcpServer::GetInstance(AF_INET);
+    TestStunTcpServer::GetInstance(AF_INET6);
   }
 
   void TearDown() {

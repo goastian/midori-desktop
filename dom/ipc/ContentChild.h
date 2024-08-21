@@ -10,9 +10,11 @@
 #include "mozilla/Atomics.h"
 #include "mozilla/dom/BlobImpl.h"
 #include "mozilla/dom/GetFilesHelper.h"
+#include "mozilla/dom/UserActivation.h"
 #include "mozilla/dom/PContentChild.h"
 #include "mozilla/dom/ProcessActor.h"
 #include "mozilla/dom/RemoteType.h"
+#include "mozilla/Hal.h"
 #include "mozilla/ipc/InputStreamUtils.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/StaticPtr.h"
@@ -28,6 +30,10 @@
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
 #  include "nsIFile.h"
+#endif
+
+#if defined(MOZ_SANDBOX) && defined(MOZ_DEBUG) && defined(ENABLE_TESTS)
+#  include "mozilla/PSandboxTestingChild.h"
 #endif
 
 struct ChromePackage;
@@ -101,7 +107,8 @@ class ContentChild final : public PContentChild,
   MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult ProvideWindowCommon(
       NotNull<BrowserChild*> aTabOpener, nsIOpenWindowInfo* aOpenWindowInfo,
       uint32_t aChromeFlags, bool aCalledFromJS, nsIURI* aURI,
-      const nsAString& aName, const nsACString& aFeatures, bool aForceNoOpener,
+      const nsAString& aName, const nsACString& aFeatures,
+      const UserActivation::Modifiers& aModifiers, bool aForceNoOpener,
       bool aForceNoReferrer, bool aIsPopupRequested,
       nsDocShellLoadState* aLoadState, bool* aWindowIsNew,
       BrowsingContext** aReturn);
@@ -145,7 +152,7 @@ class ContentChild final : public PContentChild,
 
   static void AppendProcessId(nsACString& aName);
 
-  static void UpdateCookieStatus(nsIChannel* aChannel);
+  static RefPtr<GenericPromise> UpdateCookieStatus(nsIChannel* aChannel);
 
   mozilla::ipc::IPCResult RecvInitGMPService(
       Endpoint<PGMPServiceChild>&& aGMPService);
@@ -165,8 +172,6 @@ class ContentChild final : public PContentChild,
       Endpoint<PVRManagerChild>&& aVRBridge,
       Endpoint<PRemoteDecoderManagerChild>&& aVideoManager,
       nsTArray<uint32_t>&& namespaces);
-
-  mozilla::ipc::IPCResult RecvRequestPerformanceMetrics(const nsID& aID);
 
   mozilla::ipc::IPCResult RecvReinitRendering(
       Endpoint<PCompositorManagerChild>&& aCompositor,
@@ -198,19 +203,15 @@ class ContentChild final : public PContentChild,
       PCycleCollectWithLogsChild* aChild, const bool& aDumpAllTraces,
       const FileDescriptor& aGCLog, const FileDescriptor& aCCLog) override;
 
-  PWebBrowserPersistDocumentChild* AllocPWebBrowserPersistDocumentChild(
+  already_AddRefed<PWebBrowserPersistDocumentChild>
+  AllocPWebBrowserPersistDocumentChild(
       PBrowserChild* aBrowser, const MaybeDiscarded<BrowsingContext>& aContext);
 
   virtual mozilla::ipc::IPCResult RecvPWebBrowserPersistDocumentConstructor(
       PWebBrowserPersistDocumentChild* aActor, PBrowserChild* aBrowser,
       const MaybeDiscarded<BrowsingContext>& aContext) override;
 
-  bool DeallocPWebBrowserPersistDocumentChild(
-      PWebBrowserPersistDocumentChild* aActor);
-
-  PTestShellChild* AllocPTestShellChild();
-
-  bool DeallocPTestShellChild(PTestShellChild*);
+  already_AddRefed<PTestShellChild> AllocPTestShellChild();
 
   virtual mozilla::ipc::IPCResult RecvPTestShellConstructor(
       PTestShellChild*) override;
@@ -235,11 +236,6 @@ class ContentChild final : public PContentChild,
   bool DeallocPBenchmarkStorageChild(PBenchmarkStorageChild* aActor);
 
   mozilla::ipc::IPCResult RecvNotifyEmptyHTTPCache();
-
-#ifdef MOZ_WEBSPEECH
-  PSpeechSynthesisChild* AllocPSpeechSynthesisChild();
-  bool DeallocPSpeechSynthesisChild(PSpeechSynthesisChild* aActor);
-#endif
 
   mozilla::ipc::IPCResult RecvRegisterChrome(
       nsTArray<ChromePackage>&& packages,
@@ -416,6 +412,10 @@ class ContentChild final : public PContentChild,
       const MaybeDiscarded<WindowContext>& aSourceTopWindowContext,
       nsTArray<IPCTransferableData>&& aTransferables, const uint32_t& aAction);
 
+  mozilla::ipc::IPCResult RecvUpdateDragSession(
+      nsTArray<IPCTransferableData>&& aTransferables,
+      EventMessage aEventMessage);
+
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   mozilla::ipc::IPCResult RecvEndDragSession(
       const bool& aDoneDrag, const bool& aUserCancelled,
@@ -494,7 +494,7 @@ class ContentChild final : public PContentChild,
 
   mozilla::ipc::IPCResult RecvBlobURLRegistration(
       const nsCString& aURI, const IPCBlob& aBlob, nsIPrincipal* aPrincipal,
-      const Maybe<nsID>& aAgentClusterId);
+      const nsCString& aPartitionKey);
 
   mozilla::ipc::IPCResult RecvBlobURLUnregistration(const nsCString& aURI);
 
@@ -557,10 +557,6 @@ class ContentChild final : public PContentChild,
   PURLClassifierLocalChild* AllocPURLClassifierLocalChild(
       nsIURI* aUri, Span<const IPCURLClassifierFeature> aFeatures);
   bool DeallocPURLClassifierLocalChild(PURLClassifierLocalChild* aActor);
-
-  PLoginReputationChild* AllocPLoginReputationChild(nsIURI* aUri);
-
-  bool DeallocPLoginReputationChild(PLoginReputationChild* aActor);
 
   PSessionStorageObserverChild* AllocPSessionStorageObserverChild();
 
@@ -665,7 +661,8 @@ class ContentChild final : public PContentChild,
       uint64_t aActionId);
   MOZ_CAN_RUN_SCRIPT_BOUNDARY mozilla::ipc::IPCResult RecvAdjustWindowFocus(
       const MaybeDiscarded<BrowsingContext>& aContext, bool aIsVisible,
-      uint64_t aActionId);
+      uint64_t aActionId, bool aShouldClearFocus,
+      const MaybeDiscarded<BrowsingContext>& aAncestorBrowsingContextToFocus);
   MOZ_CAN_RUN_SCRIPT_BOUNDARY mozilla::ipc::IPCResult RecvClearFocus(
       const MaybeDiscarded<BrowsingContext>& aContext);
   mozilla::ipc::IPCResult RecvSetFocusedBrowsingContext(
@@ -727,9 +724,8 @@ class ContentChild final : public PContentChild,
       const uint64_t& aInnerWindowId, const bool& aFromChromeContext);
 
   mozilla::ipc::IPCResult RecvReportFrameTimingData(
-      const mozilla::Maybe<LoadInfoArgs>& loadInfoArgs,
-      const nsString& entryName, const nsString& initiatorType,
-      UniquePtr<PerformanceTimingData>&& aData);
+      const LoadInfoArgs& loadInfoArgs, const nsString& entryName,
+      const nsString& initiatorType, UniquePtr<PerformanceTimingData>&& aData);
 
   mozilla::ipc::IPCResult RecvLoadURI(
       const MaybeDiscarded<BrowsingContext>& aContext,
@@ -783,9 +779,6 @@ class ContentChild final : public PContentChild,
       const MaybeDiscarded<BrowsingContext>& aStartingAt,
       DispatchBeforeUnloadToSubtreeResolver&& aResolver);
 
-  mozilla::ipc::IPCResult RecvDecoderSupportedMimeTypes(
-      nsTArray<nsCString>&& aSupportedTypes);
-
   mozilla::ipc::IPCResult RecvInitNextGenLocalStorageEnabled(
       const bool& aEnabled);
 
@@ -795,6 +788,18 @@ class ContentChild final : public PContentChild,
       const DispatchBeforeUnloadToSubtreeResolver& aResolver);
 
   hal::ProcessPriority GetProcessPriority() const { return mProcessPriority; }
+
+  hal::PerformanceHintSession* PerformanceHintSession() const {
+    return mPerformanceHintSession.get();
+  }
+
+  // Returns the target work duration for the PerformanceHintSession, based on
+  // the refresh interval. Estimate that we want the tick to complete in at most
+  // half of the refresh period. This is fairly arbitrary and can be tweaked
+  // later.
+  static TimeDuration GetPerformanceHintTarget(TimeDuration aRefreshInterval) {
+    return aRefreshInterval / int64_t(2);
+  }
 
  private:
   void AddProfileToProcessName(const nsACString& aProfile);
@@ -811,6 +816,8 @@ class ContentChild final : public PContentChild,
   virtual PContentChild::Result OnMessageReceived(
       const Message& aMsg, UniquePtr<Message>& aReply) override;
 #endif
+
+  void ConfigureThreadPerformanceHints(const hal::ProcessPriority& aPriority);
 
   nsTArray<mozilla::UniquePtr<AlertObserver>> mAlertObservers;
   RefPtr<ConsoleListener> mConsoleListener;
@@ -882,6 +889,11 @@ class ContentChild final : public PContentChild,
   uint64_t mBrowsingContextFieldEpoch = 0;
 
   hal::ProcessPriority mProcessPriority = hal::PROCESS_PRIORITY_UNKNOWN;
+
+  // Session created when the process priority is FOREGROUND to ensure high
+  // priority scheduling of important threads. (Currently main thread and style
+  // threads.) The work duration is reported by the RefreshDriverTimer.
+  UniquePtr<hal::PerformanceHintSession> mPerformanceHintSession;
 };
 
 inline nsISupports* ToSupports(mozilla::dom::ContentChild* aContentChild) {

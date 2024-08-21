@@ -16,11 +16,11 @@
 #include "mozilla/dom/FragmentOrElement.h"
 #include "DOMIntersectionObserver.h"
 #include "mozilla/AsyncEventDispatcher.h"
-#include "mozilla/DeclarationBlock.h"
 #include "mozilla/EffectSet.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/ElementAnimationData.h"
+#include "mozilla/DeclarationBlock.h"
 #include "mozilla/HTMLEditor.h"
 #include "mozilla/mozInlineSpellChecker.h"
 #include "mozilla/PresShell.h"
@@ -29,39 +29,32 @@
 #include "mozilla/TouchEvents.h"
 #include "mozilla/URLExtraData.h"
 #include "mozilla/dom/Attr.h"
+#include "mozilla/dom/RadioGroupContainer.h"
+#include "mozilla/dom/UnbindContext.h"
 #include "nsDOMAttributeMap.h"
 #include "nsAtom.h"
 #include "mozilla/dom/NodeInfo.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/ScriptLoader.h"
-#include "mozilla/dom/TouchEvent.h"
 #include "mozilla/dom/CustomElementRegistry.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/DocumentInlines.h"
 #include "nsIControllers.h"
 #include "nsIDocumentEncoder.h"
 #include "nsFocusManager.h"
-#include "nsIScriptGlobalObject.h"
 #include "nsNetUtil.h"
 #include "nsIFrame.h"
 #include "nsIAnonymousContentCreator.h"
 #include "nsPresContext.h"
-#include "nsStyleConsts.h"
 #include "nsString.h"
-#include "nsUnicharUtils.h"
-#include "nsDOMCID.h"
 #include "nsDOMCSSAttrDeclaration.h"
 #include "nsNameSpaceManager.h"
 #include "nsContentList.h"
 #include "nsDOMTokenList.h"
 #include "nsError.h"
-#include "nsDOMString.h"
 #include "nsXULElement.h"
 #include "mozilla/InternalMutationEvent.h"
 #include "mozilla/MouseEvents.h"
-#include "nsAttrValueOrString.h"
-#include "nsQueryObject.h"
-#include "nsFrameSelection.h"
 #ifdef DEBUG
 #  include "nsRange.h"
 #endif
@@ -72,7 +65,6 @@
 #include "nsGkAtoms.h"
 #include "nsContentUtils.h"
 #include "nsTextFragment.h"
-#include "nsContentCID.h"
 #include "nsWindowSizes.h"
 
 #include "nsIWidget.h"
@@ -81,12 +73,9 @@
 #include "nsGenericHTMLElement.h"
 #include "nsContentCreatorFunctions.h"
 #include "nsView.h"
-#include "nsViewManager.h"
-#include "nsIScrollableFrame.h"
 #include "ChildIterator.h"
-#include "nsTextNode.h"
 #include "mozilla/dom/NodeListBinding.h"
-
+#include "mozilla/dom/MutationObservers.h"
 #include "nsCCUncollectableMarker.h"
 
 #include "mozAutoDocUpdate.h"
@@ -96,27 +85,25 @@
 #include "nsWrapperCacheInlines.h"
 #include "nsCycleCollector.h"
 #include "xpcpublic.h"
-#include "mozilla/Telemetry.h"
-
-#include "mozilla/CORSMode.h"
 
 #include "mozilla/dom/ShadowRoot.h"
 #include "mozilla/dom/HTMLSlotElement.h"
 #include "mozilla/dom/HTMLTemplateElement.h"
 #include "mozilla/dom/SVGUseElement.h"
 
-#include "nsStyledElement.h"
 #include "nsIContentInlines.h"
 #include "nsChildContentList.h"
 #include "mozilla/BloomFilter.h"
 
 #include "NodeUbiReporting.h"
 
+#ifdef ACCESSIBILITY
+#  include "nsAccessibilityService.h"
+#endif
+
 using namespace mozilla;
 using namespace mozilla::dom;
 
-int32_t nsIContent::sTabFocusModel = eTabFocus_any;
-bool nsIContent::sTabFocusModelAppliesToXUL = false;
 uint64_t nsMutationGuard::sGeneration = 0;
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsIContent)
@@ -143,12 +130,13 @@ NS_INTERFACE_MAP_BEGIN(nsIContent)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_ADDREF(nsIContent)
+NS_IMPL_CYCLE_COLLECTING_ADDREF(nsIContent)
 
 NS_IMPL_DOMARENA_DESTROY(nsIContent)
 
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE_AND_DESTROY(
-    nsIContent, LastRelease(), Destroy())
+NS_IMPL_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE_AND_DESTROY(nsIContent,
+                                                               LastRelease(),
+                                                               Destroy())
 
 nsIContent* nsIContent::FindFirstNonChromeOnlyAccessContent() const {
   // This handles also nested native anonymous content.
@@ -161,6 +149,11 @@ nsIContent* nsIContent::FindFirstNonChromeOnlyAccessContent() const {
     }
   }
   return nullptr;
+}
+
+void nsIContent::UnbindFromTree() {
+  UnbindContext context(*this);
+  UnbindFromTree(context);
 }
 
 // https://dom.spec.whatwg.org/#dom-slotable-assignedslot
@@ -553,8 +546,7 @@ size_t nsIContent::nsExtendedContentSlots::SizeOfExcludingThis(
   return 0;
 }
 
-FragmentOrElement::nsDOMSlots::nsDOMSlots()
-    : nsIContent::nsContentSlots(), mDataset(nullptr) {
+FragmentOrElement::nsDOMSlots::nsDOMSlots() : mDataset(nullptr) {
   MOZ_COUNT_CTOR(nsDOMSlots);
 }
 
@@ -654,6 +646,7 @@ void FragmentOrElement::nsExtendedDOMSlots::UnlinkExtendedSlots(
     aContent.ClearMayHaveAnimations();
   }
   mExplicitlySetAttrElements.Clear();
+  mRadioGroupContainer = nullptr;
 }
 
 void FragmentOrElement::nsExtendedDOMSlots::TraverseExtendedSlots(
@@ -677,6 +670,9 @@ void FragmentOrElement::nsExtendedDOMSlots::TraverseExtendedSlots(
   }
   if (mAnimations) {
     mAnimations->Traverse(aCb);
+  }
+  if (mRadioGroupContainer) {
+    RadioGroupContainer::Traverse(mRadioGroupContainer.get(), aCb);
   }
 }
 
@@ -710,6 +706,10 @@ size_t FragmentOrElement::nsExtendedDOMSlots::SizeOfExcludingThis(
 
   if (mCustomElementData) {
     n += mCustomElementData->SizeOfIncludingThis(aMallocSizeOf);
+  }
+
+  if (mRadioGroupContainer) {
+    n += mRadioGroupContainer->SizeOfIncludingThis(aMallocSizeOf);
   }
 
   return n;
@@ -753,7 +753,7 @@ void nsIContent::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
 
   // Don't propagate mouseover and mouseout events when mouse is moving
   // inside chrome access only content.
-  bool isAnonForEvents = IsRootOfChromeAccessOnlySubtree();
+  const bool isAnonForEvents = IsRootOfChromeAccessOnlySubtree();
   aVisitor.mRootOfClosedTree = isAnonForEvents;
   if ((aVisitor.mEvent->mMessage == eMouseOver ||
        aVisitor.mEvent->mMessage == eMouseOut ||
@@ -765,7 +765,7 @@ void nsIContent::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
       // a shadow root to a shadow root host.
       ((this == aVisitor.mEvent->mOriginalTarget && !ChromeOnlyAccess()) ||
        isAnonForEvents)) {
-    nsCOMPtr<nsIContent> relatedTarget = nsIContent::FromEventTargetOrNull(
+    nsIContent* relatedTarget = nsIContent::FromEventTargetOrNull(
         aVisitor.mEvent->AsMouseEvent()->mRelatedTarget);
     if (relatedTarget && relatedTarget->OwnerDoc() == OwnerDoc()) {
       // If current target is anonymous for events or we know that related
@@ -793,9 +793,8 @@ void nsIContent::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
             }
             if (anonOwner == anonOwnerRelated) {
 #ifdef DEBUG_smaug
-              nsCOMPtr<nsIContent> originalTarget =
-                  nsIContent::FromEventTargetOrNull(
-                      aVisitor.mEvent->mOriginalTarget);
+              nsIContent* originalTarget = nsIContent::FromEventTargetOrNull(
+                  aVisitor.mEvent->mOriginalTarget);
               nsAutoString ot, ct, rt;
               if (originalTarget) {
                 originalTarget->NodeInfo()->NameAtom()->ToString(ot);
@@ -840,23 +839,29 @@ void nsIContent::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
   HTMLSlotElement* slot = GetAssignedSlot();
   nsIContent* parent = slot ? slot : GetParent();
 
-  // Event may need to be retargeted if this is the root of a native
-  // anonymous content subtree or event is dispatched somewhere inside XBL.
+  // Event may need to be retargeted if this is the root of a native anonymous
+  // content subtree.
   if (isAnonForEvents) {
 #ifdef DEBUG
     // If a DOM event is explicitly dispatched using node.dispatchEvent(), then
     // all the events are allowed even in the native anonymous content..
-    nsCOMPtr<nsIContent> t =
+    nsIContent* t =
         nsIContent::FromEventTargetOrNull(aVisitor.mEvent->mOriginalTarget);
     NS_ASSERTION(!t || !t->ChromeOnlyAccess() ||
                      aVisitor.mEvent->mClass != eMutationEventClass ||
                      aVisitor.mDOMEvent,
                  "Mutation event dispatched in native anonymous content!?!");
 #endif
+    if (aVisitor.mEvent->mClass == eTransitionEventClass ||
+        aVisitor.mEvent->mClass == eAnimationEventClass) {
+      // Event should not propagate to non-anon content.
+      aVisitor.SetParentTarget(nullptr, false);
+      return;
+    }
     aVisitor.mEventTargetAtParent = parent;
   } else if (parent && aVisitor.mOriginalTargetIsInAnon) {
-    nsCOMPtr<nsIContent> content(
-        nsIContent::FromEventTargetOrNull(aVisitor.mEvent->mTarget));
+    nsIContent* content =
+        nsIContent::FromEventTargetOrNull(aVisitor.mEvent->mTarget);
     if (content &&
         content->GetClosestNativeAnonymousSubtreeRootParentOrHost() == parent) {
       aVisitor.mEventTargetAtParent = parent;
@@ -1014,18 +1019,22 @@ void nsIContent::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
   }
 }
 
-bool nsIContent::IsFocusable(int32_t* aTabIndex, bool aWithMouse) {
-  bool focusable = IsFocusableInternal(aTabIndex, aWithMouse);
-  // Ensure that the return value and aTabIndex are consistent in the case
-  // we're in userfocusignored context.
-  if (focusable || (aTabIndex && *aTabIndex != -1)) {
-    return focusable;
+Element* nsIContent::GetAutofocusDelegate(IsFocusableFlags aFlags) const {
+  for (nsINode* node = GetFirstChild(); node; node = node->GetNextNode(this)) {
+    auto* descendant = Element::FromNode(*node);
+    if (!descendant || !descendant->GetBoolAttr(nsGkAtoms::autofocus)) {
+      continue;
+    }
+
+    nsIFrame* frame = descendant->GetPrimaryFrame();
+    if (frame && frame->IsFocusable(aFlags)) {
+      return descendant;
+    }
   }
-  return false;
+  return nullptr;
 }
 
-Element* nsIContent::GetFocusDelegate(bool aWithMouse,
-                                      bool aAutofocusOnly) const {
+Element* nsIContent::GetFocusDelegate(IsFocusableFlags aFlags) const {
   const nsIContent* whereToLook = this;
   if (ShadowRoot* root = GetShadowRoot()) {
     if (!root->DelegatesFocus()) {
@@ -1036,9 +1045,14 @@ Element* nsIContent::GetFocusDelegate(bool aWithMouse,
     whereToLook = root;
   }
 
-  auto IsFocusable = [&](Element* aElement) {
+  auto IsFocusable = [&](Element* aElement) -> Focusable {
     nsIFrame* frame = aElement->GetPrimaryFrame();
-    return frame && frame->IsFocusable(aWithMouse);
+
+    if (!frame) {
+      return {};
+    }
+
+    return frame->IsFocusable(aFlags);
   };
 
   Element* potentialFocus = nullptr;
@@ -1051,18 +1065,25 @@ Element* nsIContent::GetFocusDelegate(bool aWithMouse,
 
     const bool autofocus = el->GetBoolAttr(nsGkAtoms::autofocus);
 
-    if (aAutofocusOnly && !autofocus) {
-      continue;
-    }
     if (autofocus) {
       if (IsFocusable(el)) {
         // Found an autofocus candidate.
         return el;
       }
-    } else if (!potentialFocus && IsFocusable(el)) {
-      // This element could be the one if we can't find an
-      // autofocus candidate which has the precedence.
-      potentialFocus = el;
+    } else if (!potentialFocus) {
+      if (Focusable focusable = IsFocusable(el)) {
+        if (IsHTMLElement(nsGkAtoms::dialog)) {
+          if (focusable.mTabIndex >= 0) {
+            // If focusTarget is a dialog element and descendant is sequentially
+            // focusable, then set focusableArea to descendant.
+            potentialFocus = el;
+          }
+        } else {
+          // This element could be the one if we can't find an
+          // autofocus candidate which has the precedence.
+          potentialFocus = el;
+        }
+      }
     }
 
     if (!autofocus && potentialFocus) {
@@ -1073,7 +1094,7 @@ Element* nsIContent::GetFocusDelegate(bool aWithMouse,
 
     if (auto* shadow = el->GetShadowRoot()) {
       if (shadow->DelegatesFocus()) {
-        if (Element* delegatedFocus = shadow->GetFocusDelegate(aWithMouse)) {
+        if (Element* delegatedFocus = shadow->GetFocusDelegate(aFlags)) {
           if (autofocus) {
             // This element has autofocus and we found an focus delegates
             // in its descendants, so use the focus delegates
@@ -1090,51 +1111,14 @@ Element* nsIContent::GetFocusDelegate(bool aWithMouse,
   return potentialFocus;
 }
 
-bool nsIContent::IsFocusableInternal(int32_t* aTabIndex, bool aWithMouse) {
-  if (aTabIndex) {
-    *aTabIndex = -1;  // Default, not tabbable
-  }
-  return false;
+Focusable nsIContent::IsFocusableWithoutStyle(IsFocusableFlags) {
+  // Default, not tabbable
+  return {};
 }
 
 void nsIContent::SetAssignedSlot(HTMLSlotElement* aSlot) {
   MOZ_ASSERT(aSlot || GetExistingExtendedContentSlots());
   ExtendedContentSlots()->mAssignedSlot = aSlot;
-}
-
-static Maybe<uint32_t> DoComputeFlatTreeIndexOf(FlattenedChildIterator& aIter,
-                                                const nsINode* aPossibleChild) {
-  if (aPossibleChild->GetFlattenedTreeParentNode() != aIter.Parent()) {
-    return Nothing();
-  }
-
-  uint32_t index = 0u;
-  for (nsIContent* child = aIter.GetNextChild(); child;
-       child = aIter.GetNextChild()) {
-    if (child == aPossibleChild) {
-      return Some(index);
-    }
-
-    ++index;
-  }
-
-  return Nothing();
-}
-
-Maybe<uint32_t> nsIContent::ComputeFlatTreeIndexOf(
-    const nsINode* aPossibleChild) const {
-  if (!aPossibleChild) {
-    return Nothing();
-  }
-
-  FlattenedChildIterator iter(this);
-  if (!iter.ShadowDOMInvolved()) {
-    auto index = ComputeIndexOf(aPossibleChild);
-    MOZ_ASSERT(DoComputeFlatTreeIndexOf(iter, aPossibleChild) == index);
-    return index;
-  }
-
-  return DoComputeFlatTreeIndexOf(iter, aPossibleChild);
 }
 
 #ifdef MOZ_DOM_LIST
@@ -1151,7 +1135,22 @@ void FragmentOrElement::GetTextContentInternal(nsAString& aTextContent,
 void FragmentOrElement::SetTextContentInternal(const nsAString& aTextContent,
                                                nsIPrincipal* aSubjectPrincipal,
                                                ErrorResult& aError) {
-  aError = nsContentUtils::SetNodeTextContent(this, aTextContent, false);
+  bool tryReuse = false;
+  if (!aTextContent.IsEmpty()) {
+    if (nsIContent* firstChild = GetFirstChild()) {
+      tryReuse = firstChild->NodeType() == TEXT_NODE &&
+                 !firstChild->GetNextSibling() &&
+                 firstChild->OwnedOnlyByTheDOMAndFrameTrees() &&
+#ifdef ACCESSIBILITY
+                 !GetAccService() &&
+#endif
+                 !OwnerDoc()->MayHaveDOMMutationObservers() &&
+                 !nsContentUtils::HasMutationListeners(
+                     OwnerDoc(), NS_EVENT_BITS_MUTATION_ALL);
+    }
+  }
+
+  aError = nsContentUtils::SetNodeTextContent(this, aTextContent, tryReuse);
 }
 
 void FragmentOrElement::DestroyContent() {
@@ -1324,14 +1323,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(FragmentOrElement)
     if (tmp->IsElement()) {
       Element* elem = tmp->AsElement();
       elem->UnlinkIntersectionObservers();
-    }
-
-    if (tmp->IsHTMLElement() || tmp->IsSVGElement()) {
-      nsStaticAtom* const* props =
-          Element::HTMLSVGPropertiesToTraverseAndUnlink();
-      for (uint32_t i = 0; props[i]; ++i) {
-        tmp->RemoveProperty(props[i]);
-      }
     }
   }
 
@@ -1803,15 +1794,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(FragmentOrElement)
         }
       }
     }
-    if (tmp->IsHTMLElement() || tmp->IsSVGElement()) {
-      nsStaticAtom* const* props =
-          Element::HTMLSVGPropertiesToTraverseAndUnlink();
-      for (uint32_t i = 0; props[i]; ++i) {
-        nsISupports* property =
-            static_cast<nsISupports*>(tmp->GetProperty(props[i]));
-        cb.NoteXPCOMChild(property);
-      }
-    }
   }
   if (tmp->IsElement()) {
     Element* element = tmp->AsElement();
@@ -1887,7 +1869,8 @@ void FragmentOrElement::GetMarkup(bool aIncludeSelf, nsAString& aMarkup) {
 
   Document* doc = OwnerDoc();
   if (IsInHTMLDocument()) {
-    nsContentUtils::SerializeNodeToMarkup(this, !aIncludeSelf, aMarkup);
+    nsContentUtils::SerializeNodeToMarkup(this, !aIncludeSelf, aMarkup, false,
+                                          {});
     return;
   }
 
@@ -2017,6 +2000,7 @@ void FragmentOrElement::SetInnerHTMLInternal(const nsAString& aInnerHTML,
   }
 
   if (doc->IsHTMLDocument()) {
+    doc->SuspendDOMNotifications();
     nsAtom* contextLocalName = parseContext->NodeInfo()->NameAtom();
     int32_t contextNameSpaceID = parseContext->GetNameSpaceID();
 
@@ -2024,6 +2008,10 @@ void FragmentOrElement::SetInnerHTMLInternal(const nsAString& aInnerHTML,
     aError = nsContentUtils::ParseFragmentHTML(
         aInnerHTML, target, contextLocalName, contextNameSpaceID,
         doc->GetCompatibilityMode() == eCompatibility_NavQuirks, true);
+    doc->ResumeDOMNotifications();
+    if (target->GetFirstChild()) {
+      MutationObservers::NotifyContentAppended(target, target->GetFirstChild());
+    }
     mb.NodesAdded();
     // HTML5 parser has notified, but not fired mutation events.
     nsContentUtils::FireMutationEventsForDirectParsing(doc, target,

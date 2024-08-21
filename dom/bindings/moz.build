@@ -184,7 +184,7 @@ with Files("mozwebidlcodegen/**.py"):
 
 
 PYTHON_UNITTEST_MANIFESTS += [
-    "mozwebidlcodegen/test/python.ini",
+    "mozwebidlcodegen/test/python.toml",
 ]
 
 if CONFIG["CC_TYPE"] == "gcc":
@@ -197,8 +197,5 @@ if CONFIG["COMPILE_ENVIRONMENT"]:
         "CSS2Properties.webidl",
         script="GenerateCSS2PropertiesWebIDL.py",
         entry_point="generate",
-        inputs=[
-            "/dom/webidl/CSS2Properties.webidl.in",
-            "!/layout/style/ServoCSSPropList.py",
-        ],
+        inputs=["!/layout/style/ServoCSSPropList.py"],
     )

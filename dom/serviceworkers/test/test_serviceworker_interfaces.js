@@ -1,3 +1,5 @@
+/* eslint-disable mozilla/no-comparison-or-assignment-inside-ok */
+
 // This is a list of all interfaces that are exposed to workers.
 // Please only add things to this list with great care and proper review
 // from the associated module peers.
@@ -38,6 +40,7 @@ let wasmGlobalInterfaces = [
   { name: "Function", insecureContext: true, nightly: true },
   { name: "Exception", insecureContext: true },
   { name: "Tag", insecureContext: true },
+  { name: "JSTag", insecureContext: true, earlyBetaOrEarlier: true },
   { name: "compile", insecureContext: true },
   { name: "compileStreaming", insecureContext: true },
   { name: "instantiate", insecureContext: true },
@@ -172,8 +175,6 @@ let interfaceNamesInGlobalScope = [
   "DOMRect",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "DOMRectReadOnly",
-  // IMPORTANT: Do not change this list without review from a DOM peer!
-  "DOMRequest",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "DOMStringList",
   // IMPORTANT: Do not change this list without review from a DOM peer!

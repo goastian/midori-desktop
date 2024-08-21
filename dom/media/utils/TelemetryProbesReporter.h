@@ -5,9 +5,11 @@
 #ifndef DOM_TelemetryProbesReporter_H_
 #define DOM_TelemetryProbesReporter_H_
 
+#include "MediaCodecsSupport.h"
 #include "MediaInfo.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/AwakeTimeStamp.h"
+#include "mozilla/EnumSet.h"
 #include "AudioChannelService.h"
 #include "nsISupportsImpl.h"
 
@@ -21,6 +23,9 @@ class TelemetryProbesReporterOwner {
   virtual FrameStatistics* GetFrameStatistics() const = 0;
   virtual bool IsEncrypted() const = 0;
   virtual void DispatchAsyncTestingEvent(const nsAString& aName) = 0;
+#ifdef MOZ_WMF_CDM
+  virtual bool IsUsingWMFCDM() const = 0;
+#endif
 };
 
 enum class MediaContent : uint8_t {
@@ -52,6 +57,9 @@ class TelemetryProbesReporter final {
 
   using AudibleState = dom::AudioChannelService::AudibleState;
 
+  static void ReportDeviceMediaCodecSupported(
+      const media::MediaCodecsSupported& aSupported);
+
   // State transitions
   void OnPlay(Visibility aVisibility, MediaContent aContent, bool aIsMuted);
   void OnPause(Visibility aVisibility);
@@ -63,6 +71,20 @@ class TelemetryProbesReporter final {
   void OnMutedChanged(bool aMuted);
   void OnDecodeSuspended();
   void OnDecodeResumed();
+
+  enum class FirstFrameLoadedFlag {
+    IsMSE,
+    IsExternalEngineStateMachine,
+    IsHLS,
+    IsHardwareDecoding,
+  };
+  using FirstFrameLoadedFlagSet = EnumSet<FirstFrameLoadedFlag, uint8_t>;
+  void OntFirstFrameLoaded(const double aLoadedFirstFrameTime,
+                           const double aLoadedMetadataTime,
+                           const double aTotalWaitingDataTime,
+                           const double aTotalBufferingTime,
+                           const FirstFrameLoadedFlagSet aFlags,
+                           const MediaInfo& aInfo);
 
   double GetTotalVideoPlayTimeInSeconds() const;
   double GetTotalVideoHDRPlayTimeInSeconds() const;
@@ -91,7 +113,14 @@ class TelemetryProbesReporter final {
   void ReportResultForAudio();
   void ReportResultForVideoFrameStatistics(double aTotalPlayTimeS,
                                            const nsCString& key);
-
+#ifdef MOZ_WMF_CDM
+  void ReportResultForMFCDMPlaybackIfNeeded(double aTotalPlayTimeS,
+                                            const nsCString& aResolution);
+#endif
+  void ReportPlaytimeForKeySystem(const nsAString& aKeySystem,
+                                  const double aTotalPlayTimeS,
+                                  const nsCString& aCodec,
+                                  const nsCString& aResolution);
   // Helper class to measure times for playback telemetry stats
   class TimeDurationAccumulator {
    public:

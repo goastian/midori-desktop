@@ -66,7 +66,6 @@ function setupTestPreferences() {
       ["media.autoplay.default", SpecialPowers.Ci.nsIAutoplay.BLOCKED],
       ["media.autoplay.blocking_policy", 0],
       ["media.autoplay.block-event.enabled", true],
-      ["media.autoplay.block-webaudio", true],
     ],
   });
 }
@@ -101,7 +100,7 @@ async function testPlayWithoutUserGesture() {
     window.gBrowser,
     "about:blank"
   );
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, VIDEO_PAGE);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, VIDEO_PAGE);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 
   async function checkAutoplayKeyword() {
@@ -145,7 +144,7 @@ async function testPlayWithUserGesture(gesture) {
     window.gBrowser,
     "about:blank"
   );
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, VIDEO_PAGE);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, VIDEO_PAGE);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 
   info("- simulate user gesture -");
@@ -217,7 +216,7 @@ function resumeWithExpectedSuccess() {
   let ac = content.ac;
   ac.resumePromises.push(ac.resume());
   return Promise.all(ac.resumePromises).then(() => {
-    ok(ac.state == "running", "audio context starts running");
+    Assert.equal(ac.state, "running", "audio context starts running");
   });
 }
 

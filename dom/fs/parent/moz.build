@@ -14,7 +14,9 @@ EXPORTS.mozilla.dom += [
     "FileSystemAccessHandleParent.h",
     "FileSystemManagerParent.h",
     "FileSystemManagerParentFactory.h",
+    "FileSystemParentTypes.h",
     "FileSystemQuotaClient.h",
+    "FileSystemQuotaClientFactory.h",
     "FileSystemWritableFileStreamParent.h",
 ]
 
@@ -24,12 +26,15 @@ UNIFIED_SOURCES += [
     "FileSystemAccessHandleParent.cpp",
     "FileSystemContentTypeGuess.cpp",
     "FileSystemHashSource.cpp",
+    "FileSystemHashStorageFunction.cpp",
     "FileSystemManagerParent.cpp",
     "FileSystemManagerParentFactory.cpp",
     "FileSystemQuotaClient.cpp",
+    "FileSystemQuotaClientFactory.cpp",
     "FileSystemStreamCallbacks.cpp",
     "FileSystemWritableFileStreamParent.cpp",
     "ResultStatement.cpp",
+    "StartedTransaction.cpp",
 ]
 
 LOCAL_INCLUDES += [

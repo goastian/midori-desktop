@@ -7,3 +7,5 @@ These linked pages contain design documents for the Workers & Storage implementa
    :maxdepth: 1
 
    CodeStyle
+   PerformanceTesting
+   WorkerLifeCycleAndWorkerRefs

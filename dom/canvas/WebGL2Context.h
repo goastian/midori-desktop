@@ -25,7 +25,7 @@ class WebGL2Context final : public WebGLContext {
   friend class WebGLContext;
 
  public:
-  WebGL2Context(HostWebGLContext& host, const webgl::InitContextDesc& desc)
+  WebGL2Context(HostWebGLContext* host, const webgl::InitContextDesc& desc)
       : WebGLContext(host, desc) {}
 
   virtual bool IsWebGL2() const override { return true; }
@@ -47,9 +47,9 @@ class WebGL2Context final : public WebGLContext {
                        GLbitfield mask, GLenum filter);
 
   void InvalidateFramebuffer(GLenum target,
-                             const Range<const GLenum>& attachments);
+                             const Span<const GLenum>& attachments);
   void InvalidateSubFramebuffer(GLenum target,
-                                const Range<const GLenum>& attachments, GLint x,
+                                const Span<const GLenum>& attachments, GLint x,
                                 GLint y, GLsizei width, GLsizei height);
   void ReadBuffer(GLenum mode);
 
@@ -104,12 +104,8 @@ class WebGL2Context final : public WebGLContext {
   // -------------------------------------------------------------------------
   // Sync objects - WebGL2ContextSync.cpp
 
-  const GLuint64 kMaxClientWaitSyncTimeoutNS =
-      1000 * 1000 * 1000;  // 1000ms in ns.
-
   RefPtr<WebGLSync> FenceSync(GLenum condition, GLbitfield flags);
-  GLenum ClientWaitSync(const WebGLSync& sync, GLbitfield flags,
-                        GLuint64 timeout);
+  GLenum ClientWaitSync(WebGLSync& sync, GLbitfield flags, GLuint64 timeout);
 
   // -------------------------------------------------------------------------
   // Transform Feedback - WebGL2ContextTransformFeedback.cpp

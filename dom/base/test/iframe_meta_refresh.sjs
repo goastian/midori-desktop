@@ -36,7 +36,6 @@ function createContent(refresh) {
 }
 
 function handleRequest(request, response) {
-  Components.utils.importGlobalProperties(["URLSearchParams"]);
   let query = new URLSearchParams(request.queryString);
 
   let action = query.get("action");
@@ -88,5 +87,4 @@ function handleRequest(request, response) {
   }
 
   setSharedState(SHARED_KEY, JSON.stringify(state));
-  return;
 }

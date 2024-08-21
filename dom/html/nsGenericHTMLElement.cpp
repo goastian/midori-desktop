@@ -4,47 +4,39 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/ArrayUtils.h"
-#include "mozilla/DeclarationBlock.h"
 #include "mozilla/EditorBase.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/HTMLEditor.h"
+#include "mozilla/FocusModel.h"
 #include "mozilla/IMEContentObserver.h"
 #include "mozilla/IMEStateManager.h"
-#include "mozilla/MappedDeclarations.h"
+#include "mozilla/MappedDeclarationsBuilder.h"
 #include "mozilla/Maybe.h"
-#include "mozilla/Likely.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/TextEvents.h"
-#include "mozilla/StaticPrefs_html5.h"
-#include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/StaticPrefs_accessibility.h"
-
+#include "mozilla/dom/FetchPriority.h"
+#include "mozilla/dom/FormData.h"
 #include "nscore.h"
 #include "nsGenericHTMLElement.h"
-#include "nsAttrValueInlines.h"
 #include "nsCOMPtr.h"
 #include "nsAtom.h"
 #include "nsQueryObject.h"
-#include "nsIContentInlines.h"
 #include "mozilla/dom/BindContext.h"
 #include "mozilla/dom/Document.h"
-#include "nsMappedAttributes.h"
-#include "nsHTMLStyleSheet.h"
+#include "mozilla/dom/UnbindContext.h"
 #include "nsPIDOMWindow.h"
-#include "nsEscape.h"
 #include "nsIFrameInlines.h"
-#include "nsIScrollableFrame.h"
 #include "nsView.h"
 #include "nsViewManager.h"
 #include "nsIWidget.h"
 #include "nsRange.h"
 #include "nsPresContext.h"
-#include "nsNameSpaceManager.h"
 #include "nsError.h"
 #include "nsIPrincipal.h"
 #include "nsContainerFrame.h"
@@ -59,7 +51,6 @@
 #include "mozilla/dom/DirectionalityUtils.h"
 #include "mozilla/dom/DocumentOrShadowRoot.h"
 #include "nsString.h"
-#include "nsUnicharUtils.h"
 #include "nsGkAtoms.h"
 #include "nsDOMCSSDeclaration.h"
 #include "nsITextControlFrame.h"
@@ -67,15 +58,11 @@
 #include "mozilla/dom/HTMLFormElement.h"
 #include "nsFocusManager.h"
 
-#include "mozilla/InternalMutationEvent.h"
 #include "nsDOMStringMap.h"
 #include "nsDOMString.h"
 
 #include "nsLayoutUtils.h"
-#include "mozAutoDocUpdate.h"
-#include "nsHtml5Module.h"
 #include "mozilla/dom/DocumentInlines.h"
-#include "mozilla/dom/ElementInlines.h"
 #include "HTMLFieldSetElement.h"
 #include "nsTextNode.h"
 #include "HTMLBRElement.h"
@@ -83,20 +70,19 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/FromParser.h"
 #include "mozilla/dom/Link.h"
-#include "mozilla/BloomFilter.h"
 #include "mozilla/dom/ScriptLoader.h"
 
-#include "nsVariant.h"
 #include "nsDOMTokenList.h"
 #include "nsThreadUtils.h"
-#include "nsTextFragment.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/dom/ToggleEvent.h"
 #include "mozilla/dom/TouchEvent.h"
+#include "mozilla/dom/InputEvent.h"
+#include "mozilla/dom/InvokeEvent.h"
 #include "mozilla/ErrorResult.h"
 #include "nsHTMLDocument.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "mozilla/dom/HTMLBodyElement.h"
 #include "imgIContainer.h"
 #include "nsComputedDOMStyle.h"
@@ -184,7 +170,11 @@ nsresult nsGenericHTMLElement::CopyInnerTo(Element* aDst) {
 }
 
 static const nsAttrValue::EnumTable kDirTable[] = {
-    {"ltr", eDir_LTR}, {"rtl", eDir_RTL}, {"auto", eDir_Auto}, {nullptr, 0}};
+    {"ltr", Directionality::Ltr},
+    {"rtl", Directionality::Rtl},
+    {"auto", Directionality::Auto},
+    {nullptr, 0},
+};
 
 namespace {
 // See <https://html.spec.whatwg.org/#the-popover-attribute>.
@@ -204,6 +194,52 @@ static const nsAttrValue::EnumTable kPopoverTable[] = {
 static const nsAttrValue::EnumTable* kPopoverTableInvalidValueDefault =
     &kPopoverTable[2];
 }  // namespace
+
+void nsGenericHTMLElement::GetFetchPriority(nsAString& aFetchPriority) const {
+  // <https://html.spec.whatwg.org/multipage/urls-and-fetching.html#fetch-priority-attributes>.
+  GetEnumAttr(nsGkAtoms::fetchpriority, kFetchPriorityAttributeValueAuto,
+              aFetchPriority);
+}
+
+/* static */
+FetchPriority nsGenericHTMLElement::ToFetchPriority(const nsAString& aValue) {
+  nsAttrValue attrValue;
+  ParseFetchPriority(aValue, attrValue);
+  MOZ_ASSERT(attrValue.Type() == nsAttrValue::eEnum);
+  return FetchPriority(attrValue.GetEnumValue());
+}
+
+namespace {
+// <https://html.spec.whatwg.org/multipage/urls-and-fetching.html#fetch-priority-attributes>.
+static const nsAttrValue::EnumTable kFetchPriorityEnumTable[] = {
+    {kFetchPriorityAttributeValueHigh, FetchPriority::High},
+    {kFetchPriorityAttributeValueLow, FetchPriority::Low},
+    {kFetchPriorityAttributeValueAuto, FetchPriority::Auto},
+    {nullptr, 0}};
+
+// <https://html.spec.whatwg.org/multipage/urls-and-fetching.html#fetch-priority-attributes>.
+static const nsAttrValue::EnumTable*
+    kFetchPriorityEnumTableInvalidValueDefault = &kFetchPriorityEnumTable[2];
+}  // namespace
+
+FetchPriority nsGenericHTMLElement::GetFetchPriority() const {
+  const nsAttrValue* fetchpriorityAttribute =
+      GetParsedAttr(nsGkAtoms::fetchpriority);
+  if (fetchpriorityAttribute) {
+    MOZ_ASSERT(fetchpriorityAttribute->Type() == nsAttrValue::eEnum);
+    return FetchPriority(fetchpriorityAttribute->GetEnumValue());
+  }
+
+  return FetchPriority::Auto;
+}
+
+/* static */
+void nsGenericHTMLElement::ParseFetchPriority(const nsAString& aValue,
+                                              nsAttrValue& aResult) {
+  aResult.ParseEnumValue(aValue, kFetchPriorityEnumTable,
+                         false /* aCaseSensitive */,
+                         kFetchPriorityEnumTableInvalidValueDefault);
+}
 
 void nsGenericHTMLElement::AddToNameTable(nsAtom* aName) {
   MOZ_ASSERT(HasName(), "Node doesn't have name?");
@@ -235,7 +271,7 @@ static bool IsOffsetParent(nsIFrame* aFrame) {
   LayoutFrameType frameType = aFrame->Type();
 
   if (frameType == LayoutFrameType::TableCell ||
-      frameType == LayoutFrameType::Table) {
+      frameType == LayoutFrameType::TableWrapper) {
     // Per the IDL for Element, only td, th, and table are acceptable
     // offsetParents apart from body or positioned elements; we need to check
     // the content type as well as the frame type so we ignore anonymous tables
@@ -250,7 +286,7 @@ static bool IsOffsetParent(nsIFrame* aFrame) {
 
 struct OffsetResult {
   Element* mParent = nullptr;
-  CSSIntRect mRect;
+  nsRect mRect;
 };
 
 static OffsetResult GetUnretargetedOffsetsFor(const Element& aElement) {
@@ -267,6 +303,7 @@ static OffsetResult GetUnretargetedOffsetsFor(const Element& aElement) {
   nsIContent* offsetParent = nullptr;
   Element* docElement = aElement.GetComposedDoc()->GetRootElement();
   nsIContent* content = frame->GetContent();
+  const auto effectiveZoom = frame->Style()->EffectiveZoom();
 
   if (content &&
       (content->IsHTMLElement(nsGkAtoms::body) || content == docElement)) {
@@ -281,6 +318,13 @@ static OffsetResult GetUnretargetedOffsetsFor(const Element& aElement) {
 
       // Stop at the first ancestor that is positioned.
       if (parent->IsAbsPosContainingBlock()) {
+        offsetParent = content;
+        break;
+      }
+
+      // WebKit-ism: offsetParent stops at zoom changes.
+      // See https://github.com/w3c/csswg-drafts/issues/10252
+      if (effectiveZoom != parent->Style()->EffectiveZoom()) {
         offsetParent = content;
         break;
       }
@@ -334,8 +378,7 @@ static OffsetResult GetUnretargetedOffsetsFor(const Element& aElement) {
   // we only care about the size. We just have to use something non-null.
   nsRect rcFrame = nsLayoutUtils::GetAllInFlowRectsUnion(frame, frame);
   rcFrame.MoveTo(origin);
-  return {Element::FromNodeOrNull(offsetParent),
-          CSSIntRect::FromAppUnitsRounded(rcFrame)};
+  return {Element::FromNodeOrNull(offsetParent), rcFrame};
 }
 
 static bool ShouldBeRetargeted(const Element& aReferenceElement,
@@ -357,20 +400,22 @@ static bool ShouldBeRetargeted(const Element& aReferenceElement,
 Element* nsGenericHTMLElement::GetOffsetRect(CSSIntRect& aRect) {
   aRect = CSSIntRect();
 
-  if (!GetPrimaryFrame(FlushType::Layout)) {
+  nsIFrame* frame = GetPrimaryFrame(FlushType::Layout);
+  if (!frame) {
     return nullptr;
   }
 
   OffsetResult thisResult = GetUnretargetedOffsetsFor(*this);
-  aRect = thisResult.mRect;
-
+  nsRect rect = thisResult.mRect;
   Element* parent = thisResult.mParent;
   while (parent && ShouldBeRetargeted(*this, *parent)) {
     OffsetResult result = GetUnretargetedOffsetsFor(*parent);
-    aRect += result.mRect.TopLeft();
+    rect += result.mRect.TopLeft();
     parent = result.mParent;
   }
 
+  aRect = CSSIntRect::FromAppUnitsRounded(
+      frame->Style()->EffectiveZoom().Unzoom(rect));
   return parent;
 }
 
@@ -435,27 +480,11 @@ void nsGenericHTMLElement::UpdateEditableState(bool aNotify) {
   // XXX Should we do this only when in a document?
   ContentEditableTristate value = GetContentEditableValue();
   if (value != eInherit) {
-    DoSetEditableFlag(!!value, aNotify);
+    SetEditableFlag(!!value);
+    UpdateReadOnlyState(aNotify);
     return;
   }
-
   nsStyledElement::UpdateEditableState(aNotify);
-}
-
-ElementState nsGenericHTMLElement::IntrinsicState() const {
-  ElementState state = nsGenericHTMLElementBase::IntrinsicState();
-
-  if (GetDirectionality() == eDir_RTL) {
-    state |= ElementState::RTL;
-    state &= ~ElementState::LTR;
-  } else {  // at least for HTML, directionality is exclusively LTR or RTL
-    NS_ASSERTION(GetDirectionality() == eDir_LTR,
-                 "HTML element's directionality must be either RTL or LTR");
-    state |= ElementState::LTR;
-    state &= ~ElementState::RTL;
-  }
-
-  return state;
 }
 
 nsresult nsGenericHTMLElement::BindToTree(BindContext& aContext,
@@ -504,7 +533,7 @@ nsresult nsGenericHTMLElement::BindToTree(BindContext& aContext,
   return rv;
 }
 
-void nsGenericHTMLElement::UnbindFromTree(bool aNullParent) {
+void nsGenericHTMLElement::UnbindFromTree(UnbindContext& aContext) {
   if (IsInComposedDoc()) {
     // https://html.spec.whatwg.org/#dom-trees:hide-popover-algorithm
     // If removedNode's popover attribute is not in the no popover state, then
@@ -519,13 +548,12 @@ void nsGenericHTMLElement::UnbindFromTree(bool aNullParent) {
   RemoveFromNameTable();
 
   if (GetContentEditableValue() == eTrue) {
-    Document* doc = GetComposedDoc();
-    if (doc) {
+    if (Document* doc = GetComposedDoc()) {
       doc->ChangeContentEditableCount(this, -1);
     }
   }
 
-  nsStyledElement::UnbindFromTree(aNullParent);
+  nsStyledElement::UnbindFromTree(aContext);
 
   // Invalidate .labels list. It will be repopulated when used the next time.
   nsExtendedDOMSlots* slots = GetExistingExtendedDOMSlots();
@@ -536,8 +564,7 @@ void nsGenericHTMLElement::UnbindFromTree(bool aNullParent) {
 
 HTMLFormElement* nsGenericHTMLElement::FindAncestorForm(
     HTMLFormElement* aCurrentForm) {
-  NS_ASSERTION(!HasAttr(kNameSpaceID_None, nsGkAtoms::form) ||
-                   IsHTMLElement(nsGkAtoms::img),
+  NS_ASSERTION(!HasAttr(nsGkAtoms::form) || IsHTMLElement(nsGkAtoms::img),
                "FindAncestorForm should not be called if @form is set!");
   if (IsInNativeAnonymousSubtree()) {
     return nullptr;
@@ -628,7 +655,6 @@ already_AddRefed<nsIURI> nsGenericHTMLElement::GetHrefURIForAnchors() const {
   // We use the nsAttrValue's copy of the URI string to avoid copying.
   nsCOMPtr<nsIURI> uri;
   GetURIAttr(nsGkAtoms::href, nullptr, getter_AddRefs(uri));
-
   return uri.forget();
 }
 
@@ -687,47 +713,54 @@ constexpr PopoverAttributeState ToPopoverAttributeState(
 }  // namespace
 
 void nsGenericHTMLElement::AfterSetPopoverAttr() {
-  const nsAttrValue* newValue = GetParsedAttr(nsGkAtoms::popover);
-
-  const PopoverAttributeState newState = [&newValue]() {
-    if (newValue) {
-      MOZ_ASSERT(newValue->Type() == nsAttrValue::eEnum);
+  auto mapPopoverState = [](const nsAttrValue* value) -> PopoverAttributeState {
+    if (value) {
+      MOZ_ASSERT(value->Type() == nsAttrValue::eEnum);
       const auto popoverAttributeKeyword =
-          static_cast<PopoverAttributeKeyword>(newValue->GetEnumValue());
+          static_cast<PopoverAttributeKeyword>(value->GetEnumValue());
       return ToPopoverAttributeState(popoverAttributeKeyword);
     }
 
     // The missing value default is the no popover state, see
     // <https://html.spec.whatwg.org/multipage/popover.html#attr-popover>.
     return PopoverAttributeState::None;
-  }();
+  };
+
+  PopoverAttributeState newState =
+      mapPopoverState(GetParsedAttr(nsGkAtoms::popover));
 
   const PopoverAttributeState oldState = GetPopoverAttributeState();
 
   if (newState != oldState) {
-    EnsurePopoverData().SetPopoverAttributeState(newState);
+    PopoverPseudoStateUpdate(false, true);
 
-    HidePopoverInternal(/* aFocusPreviousElement = */ true,
-                        /* aFireEvents = */ true, IgnoreErrors());
+    if (IsPopoverOpen()) {
+      HidePopoverInternal(/* aFocusPreviousElement = */ true,
+                          /* aFireEvents = */ true, IgnoreErrors());
+      // Event handlers could have removed the popover attribute, or changed
+      // its value.
+      // https://github.com/whatwg/html/issues/9034
+      newState = mapPopoverState(GetParsedAttr(nsGkAtoms::popover));
+    }
 
-    // In case `HidePopoverInternal` changed the state, keep the corresponding
-    // changes and don't overwrite anything here.
-    if (newState == GetPopoverAttributeState()) {
-      if (newState == PopoverAttributeState::None) {
-        // `HidePopoverInternal` above didn't remove the element from the top
-        // layer, because in that call, the element's popover attribute state
-        // was already `None`. Revisit this, when the spec is corrected
-        // (bug 1835811).
-        OwnerDoc()->RemovePopoverFromTopLayer(*this);
-
-        ClearPopoverData();
-        RemoveStates(ElementState::POPOVER_OPEN);
-      } else {
-        // TODO: what if `HidePopoverInternal` called `ShowPopup()`?
-        PopoverPseudoStateUpdate(false, true);
-      }
+    if (newState == PopoverAttributeState::None) {
+      ClearPopoverData();
+      RemoveStates(ElementState::POPOVER_OPEN);
+    } else {
+      // TODO: what if `HidePopoverInternal` called `ShowPopup()`?
+      EnsurePopoverData().SetPopoverAttributeState(newState);
     }
   }
+}
+
+void nsGenericHTMLElement::OnAttrSetButNotChanged(
+    int32_t aNamespaceID, nsAtom* aName, const nsAttrValueOrString& aValue,
+    bool aNotify) {
+  if (aNamespaceID == kNameSpaceID_None && aName == nsGkAtoms::popovertarget) {
+    ClearExplicitlySetAttrElement(aName);
+  }
+  return nsGenericHTMLElementBase::OnAttrSetButNotChanged(aNamespaceID, aName,
+                                                          aValue, aNotify);
 }
 
 void nsGenericHTMLElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
@@ -747,29 +780,28 @@ void nsGenericHTMLElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
       nsContentUtils::AddScriptRunner(
           NewRunnableMethod("nsGenericHTMLElement::AfterSetPopoverAttr", this,
                             &nsGenericHTMLElement::AfterSetPopoverAttr));
+    } else if (aName == nsGkAtoms::popovertarget) {
+      ClearExplicitlySetAttrElement(aName);
     } else if (aName == nsGkAtoms::dir) {
-      Directionality dir = eDir_LTR;
+      auto dir = Directionality::Ltr;
       // A boolean tracking whether we need to recompute our directionality.
       // This needs to happen after we update our internal "dir" attribute
       // state but before we call SetDirectionalityOnDescendants.
       bool recomputeDirectionality = false;
-      // We don't want to have to keep getting the "dir" attribute in
-      // IntrinsicState, so we manually recompute our dir-related event states
-      // here and send the relevant update notifications.
       ElementState dirStates;
       if (aValue && aValue->Type() == nsAttrValue::eEnum) {
         SetHasValidDir();
         dirStates |= ElementState::HAS_DIR_ATTR;
-        Directionality dirValue = (Directionality)aValue->GetEnumValue();
-        if (dirValue == eDir_Auto) {
+        auto dirValue = Directionality(aValue->GetEnumValue());
+        if (dirValue == Directionality::Auto) {
           dirStates |= ElementState::HAS_DIR_ATTR_LIKE_AUTO;
         } else {
           dir = dirValue;
           SetDirectionality(dir, aNotify);
-          if (dirValue == eDir_LTR) {
+          if (dirValue == Directionality::Ltr) {
             dirStates |= ElementState::HAS_DIR_ATTR_LTR;
           } else {
-            MOZ_ASSERT(dirValue == eDir_RTL);
+            MOZ_ASSERT(dirValue == Directionality::Rtl);
             dirStates |= ElementState::HAS_DIR_ATTR_RTL;
           }
         }
@@ -788,7 +820,9 @@ void nsGenericHTMLElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
       // Now figure out what's changed about our dir states.
       ElementState oldDirStates = State() & ElementState::DIR_ATTR_STATES;
       ElementState changedStates = dirStates ^ oldDirStates;
-      ToggleStates(changedStates, aNotify);
+      if (!changedStates.IsEmpty()) {
+        ToggleStates(changedStates, aNotify);
+      }
       if (recomputeDirectionality) {
         dir = RecomputeDirectionality(this, aNotify);
       }
@@ -809,8 +843,7 @@ void nsGenericHTMLElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
         SetFlags(NODE_HAS_ACCESSKEY);
         RegUnRegAccessKey(true);
       }
-    } else if (aName == nsGkAtoms::inert &&
-               StaticPrefs::html5_inert_enabled()) {
+    } else if (aName == nsGkAtoms::inert) {
       if (aValue) {
         AddStates(ElementState::INERT);
       } else {
@@ -828,28 +861,23 @@ void nsGenericHTMLElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
           AddToNameTable(aValue->GetAtomValue());
         }
       }
-    } else if ((aName == nsGkAtoms::inputmode &&
-                StaticPrefs::dom_forms_inputmode()) ||
-               (aName == nsGkAtoms::enterkeyhint &&
-                StaticPrefs::dom_forms_enterkeyhint())) {
-      nsPIDOMWindowOuter* window = OwnerDoc()->GetWindow();
-      if (window && window->GetFocusedElement() == this) {
-        if (IMEContentObserver* observer =
-                IMEStateManager::GetActiveContentObserver()) {
-          if (const nsPresContext* presContext =
-                  GetPresContext(eForComposedDoc)) {
-            if (observer->IsManaging(*presContext, this)) {
-              if (RefPtr<EditorBase> editor =
-                      nsContentUtils::GetActiveEditor(window)) {
-                IMEState newState;
-                editor->GetPreferredIMEState(&newState);
-                OwningNonNull<nsGenericHTMLElement> kungFuDeathGrip(*this);
-                IMEStateManager::UpdateIMEState(
-                    newState, kungFuDeathGrip, *editor,
-                    {IMEStateManager::UpdateIMEStateOption::ForceUpdate,
-                     IMEStateManager::UpdateIMEStateOption::
-                         DontCommitComposition});
-              }
+    } else if (aName == nsGkAtoms::inputmode ||
+               aName == nsGkAtoms::enterkeyhint) {
+      if (nsFocusManager::GetFocusedElementStatic() == this) {
+        if (const nsPresContext* presContext =
+                GetPresContext(eForComposedDoc)) {
+          IMEContentObserver* observer =
+              IMEStateManager::GetActiveContentObserver();
+          if (observer && observer->IsObserving(*presContext, this)) {
+            if (RefPtr<EditorBase> editorBase = GetEditorWithoutCreation()) {
+              IMEState newState;
+              editorBase->GetPreferredIMEState(&newState);
+              OwningNonNull<nsGenericHTMLElement> kungFuDeathGrip(*this);
+              IMEStateManager::UpdateIMEState(
+                  newState, kungFuDeathGrip, *editorBase,
+                  {IMEStateManager::UpdateIMEStateOption::ForceUpdate,
+                   IMEStateManager::UpdateIMEStateOption::
+                       DontCommitComposition});
             }
           }
         }
@@ -1194,9 +1222,11 @@ bool nsGenericHTMLElement::ParseAlignValue(const nsAString& aString,
 //----------------------------------------
 
 static const nsAttrValue::EnumTable kTableHAlignTable[] = {
-    {"left", StyleTextAlign::Left},       {"right", StyleTextAlign::Right},
-    {"center", StyleTextAlign::Center},   {"char", StyleTextAlign::Char},
-    {"justify", StyleTextAlign::Justify}, {nullptr, 0}};
+    {"left", StyleTextAlign::Left},
+    {"right", StyleTextAlign::Right},
+    {"center", StyleTextAlign::Center},
+    {"justify", StyleTextAlign::Justify},
+    {nullptr, 0}};
 
 bool nsGenericHTMLElement::ParseTableHAlignValue(const nsAString& aString,
                                                  nsAttrValue& aResult) {
@@ -1210,7 +1240,6 @@ static const nsAttrValue::EnumTable kTableCellHAlignTable[] = {
     {"left", StyleTextAlign::MozLeft},
     {"right", StyleTextAlign::MozRight},
     {"center", StyleTextAlign::MozCenter},
-    {"char", StyleTextAlign::Char},
     {"justify", StyleTextAlign::Justify},
     {"middle", StyleTextAlign::MozCenter},
     {"absmiddle", StyleTextAlign::Center},
@@ -1249,25 +1278,24 @@ bool nsGenericHTMLElement::ParseImageAttribute(nsAtom* aAttribute,
 bool nsGenericHTMLElement::ParseReferrerAttribute(const nsAString& aString,
                                                   nsAttrValue& aResult) {
   using mozilla::dom::ReferrerInfo;
+  // This is a bit sketchy, we assume GetEnumString(…).get() points to a static
+  // buffer, relying on the fact that GetEnumString(…) returns a literal string.
   static const nsAttrValue::EnumTable kReferrerPolicyTable[] = {
-      {ReferrerInfo::ReferrerPolicyToString(ReferrerPolicy::No_referrer),
+      {GetEnumString(ReferrerPolicy::No_referrer).get(),
        static_cast<int16_t>(ReferrerPolicy::No_referrer)},
-      {ReferrerInfo::ReferrerPolicyToString(ReferrerPolicy::Origin),
+      {GetEnumString(ReferrerPolicy::Origin).get(),
        static_cast<int16_t>(ReferrerPolicy::Origin)},
-      {ReferrerInfo::ReferrerPolicyToString(
-           ReferrerPolicy::Origin_when_cross_origin),
+      {GetEnumString(ReferrerPolicy::Origin_when_cross_origin).get(),
        static_cast<int16_t>(ReferrerPolicy::Origin_when_cross_origin)},
-      {ReferrerInfo::ReferrerPolicyToString(
-           ReferrerPolicy::No_referrer_when_downgrade),
+      {GetEnumString(ReferrerPolicy::No_referrer_when_downgrade).get(),
        static_cast<int16_t>(ReferrerPolicy::No_referrer_when_downgrade)},
-      {ReferrerInfo::ReferrerPolicyToString(ReferrerPolicy::Unsafe_url),
+      {GetEnumString(ReferrerPolicy::Unsafe_url).get(),
        static_cast<int16_t>(ReferrerPolicy::Unsafe_url)},
-      {ReferrerInfo::ReferrerPolicyToString(ReferrerPolicy::Strict_origin),
+      {GetEnumString(ReferrerPolicy::Strict_origin).get(),
        static_cast<int16_t>(ReferrerPolicy::Strict_origin)},
-      {ReferrerInfo::ReferrerPolicyToString(ReferrerPolicy::Same_origin),
+      {GetEnumString(ReferrerPolicy::Same_origin).get(),
        static_cast<int16_t>(ReferrerPolicy::Same_origin)},
-      {ReferrerInfo::ReferrerPolicyToString(
-           ReferrerPolicy::Strict_origin_when_cross_origin),
+      {GetEnumString(ReferrerPolicy::Strict_origin_when_cross_origin).get(),
        static_cast<int16_t>(ReferrerPolicy::Strict_origin_when_cross_origin)},
       {nullptr, ReferrerPolicy::_empty}};
   return aResult.ParseEnumValue(aString, kReferrerPolicyTable, false);
@@ -1283,26 +1311,25 @@ bool nsGenericHTMLElement::ParseScrollingValue(const nsAString& aString,
   return aResult.ParseEnumValue(aString, kScrollingTable, false);
 }
 
-static inline void MapLangAttributeInto(const nsMappedAttributes* aAttributes,
-                                        MappedDeclarations& aDecls) {
-  const nsAttrValue* langValue = aAttributes->GetAttr(nsGkAtoms::lang);
+static inline void MapLangAttributeInto(MappedDeclarationsBuilder& aBuilder) {
+  const nsAttrValue* langValue = aBuilder.GetAttr(nsGkAtoms::lang);
   if (!langValue) {
     return;
   }
   MOZ_ASSERT(langValue->Type() == nsAttrValue::eAtom);
-  aDecls.SetIdentAtomValueIfUnset(eCSSProperty__x_lang,
-                                  langValue->GetAtomValue());
-  if (!aDecls.PropertyIsSet(eCSSProperty_text_emphasis_position)) {
+  aBuilder.SetIdentAtomValueIfUnset(eCSSProperty__x_lang,
+                                    langValue->GetAtomValue());
+  if (!aBuilder.PropertyIsSet(eCSSProperty_text_emphasis_position)) {
     const nsAtom* lang = langValue->GetAtomValue();
     if (nsStyleUtil::MatchesLanguagePrefix(lang, u"zh")) {
-      aDecls.SetKeywordValue(eCSSProperty_text_emphasis_position,
-                             StyleTextEmphasisPosition::UNDER.bits);
+      aBuilder.SetKeywordValue(eCSSProperty_text_emphasis_position,
+                               StyleTextEmphasisPosition::UNDER._0);
     } else if (nsStyleUtil::MatchesLanguagePrefix(lang, u"ja") ||
                nsStyleUtil::MatchesLanguagePrefix(lang, u"mn")) {
       // This branch is currently no part of the spec.
       // See bug 1040668 comment 69 and comment 75.
-      aDecls.SetKeywordValue(eCSSProperty_text_emphasis_position,
-                             StyleTextEmphasisPosition::OVER.bits);
+      aBuilder.SetKeywordValue(eCSSProperty_text_emphasis_position,
+                               StyleTextEmphasisPosition::OVER._0);
     }
   }
 }
@@ -1311,31 +1338,30 @@ static inline void MapLangAttributeInto(const nsMappedAttributes* aAttributes,
  * Handle attributes common to all html elements
  */
 void nsGenericHTMLElement::MapCommonAttributesIntoExceptHidden(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  if (!aDecls.PropertyIsSet(eCSSProperty__moz_user_modify)) {
-    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::contenteditable);
+    MappedDeclarationsBuilder& aBuilder) {
+  if (!aBuilder.PropertyIsSet(eCSSProperty__moz_user_modify)) {
+    const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::contenteditable);
     if (value) {
       if (value->Equals(nsGkAtoms::_empty, eCaseMatters) ||
           value->Equals(nsGkAtoms::_true, eIgnoreCase)) {
-        aDecls.SetKeywordValue(eCSSProperty__moz_user_modify,
-                               StyleUserModify::ReadWrite);
+        aBuilder.SetKeywordValue(eCSSProperty__moz_user_modify,
+                                 StyleUserModify::ReadWrite);
       } else if (value->Equals(nsGkAtoms::_false, eIgnoreCase)) {
-        aDecls.SetKeywordValue(eCSSProperty__moz_user_modify,
-                               StyleUserModify::ReadOnly);
+        aBuilder.SetKeywordValue(eCSSProperty__moz_user_modify,
+                                 StyleUserModify::ReadOnly);
       }
     }
   }
 
-  MapLangAttributeInto(aAttributes, aDecls);
+  MapLangAttributeInto(aBuilder);
 }
 
 void nsGenericHTMLElement::MapCommonAttributesInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  MapCommonAttributesIntoExceptHidden(aAttributes, aDecls);
-
-  if (!aDecls.PropertyIsSet(eCSSProperty_display)) {
-    if (aAttributes->IndexOfAttr(nsGkAtoms::hidden) >= 0) {
-      aDecls.SetKeywordValue(eCSSProperty_display, StyleDisplay::None);
+    MappedDeclarationsBuilder& aBuilder) {
+  MapCommonAttributesIntoExceptHidden(aBuilder);
+  if (!aBuilder.PropertyIsSet(eCSSProperty_display)) {
+    if (aBuilder.GetAttr(nsGkAtoms::hidden)) {
+      aBuilder.SetKeywordValue(eCSSProperty_display, StyleDisplay::None._0);
     }
   }
 }
@@ -1381,24 +1407,24 @@ const Element::MappedAttributeEntry
         {nsGkAtoms::bgcolor}, {nullptr}};
 
 void nsGenericHTMLElement::MapImageAlignAttributeInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::align);
+    MappedDeclarationsBuilder& aBuilder) {
+  const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::align);
   if (value && value->Type() == nsAttrValue::eEnum) {
     int32_t align = value->GetEnumValue();
-    if (!aDecls.PropertyIsSet(eCSSProperty_float)) {
+    if (!aBuilder.PropertyIsSet(eCSSProperty_float)) {
       if (align == uint8_t(StyleTextAlign::Left)) {
-        aDecls.SetKeywordValue(eCSSProperty_float, StyleFloat::Left);
+        aBuilder.SetKeywordValue(eCSSProperty_float, StyleFloat::Left);
       } else if (align == uint8_t(StyleTextAlign::Right)) {
-        aDecls.SetKeywordValue(eCSSProperty_float, StyleFloat::Right);
+        aBuilder.SetKeywordValue(eCSSProperty_float, StyleFloat::Right);
       }
     }
-    if (!aDecls.PropertyIsSet(eCSSProperty_vertical_align)) {
+    if (!aBuilder.PropertyIsSet(eCSSProperty_vertical_align)) {
       switch (align) {
         case uint8_t(StyleTextAlign::Left):
         case uint8_t(StyleTextAlign::Right):
           break;
         default:
-          aDecls.SetKeywordValue(eCSSProperty_vertical_align, align);
+          aBuilder.SetKeywordValue(eCSSProperty_vertical_align, align);
           break;
       }
     }
@@ -1406,78 +1432,74 @@ void nsGenericHTMLElement::MapImageAlignAttributeInto(
 }
 
 void nsGenericHTMLElement::MapDivAlignAttributeInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  if (!aDecls.PropertyIsSet(eCSSProperty_text_align)) {
+    MappedDeclarationsBuilder& aBuilder) {
+  if (!aBuilder.PropertyIsSet(eCSSProperty_text_align)) {
     // align: enum
-    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::align);
+    const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::align);
     if (value && value->Type() == nsAttrValue::eEnum)
-      aDecls.SetKeywordValue(eCSSProperty_text_align, value->GetEnumValue());
+      aBuilder.SetKeywordValue(eCSSProperty_text_align, value->GetEnumValue());
   }
 }
 
 void nsGenericHTMLElement::MapVAlignAttributeInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  if (!aDecls.PropertyIsSet(eCSSProperty_vertical_align)) {
+    MappedDeclarationsBuilder& aBuilder) {
+  if (!aBuilder.PropertyIsSet(eCSSProperty_vertical_align)) {
     // align: enum
-    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::valign);
+    const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::valign);
     if (value && value->Type() == nsAttrValue::eEnum)
-      aDecls.SetKeywordValue(eCSSProperty_vertical_align,
-                             value->GetEnumValue());
+      aBuilder.SetKeywordValue(eCSSProperty_vertical_align,
+                               value->GetEnumValue());
   }
 }
 
-static void MapDimensionAttributeInto(MappedDeclarations& aDecls,
-                                      nsCSSPropertyID aProp,
-                                      const nsAttrValue& aValue) {
-  MOZ_ASSERT(!aDecls.PropertyIsSet(aProp),
+void nsGenericHTMLElement::MapDimensionAttributeInto(
+    MappedDeclarationsBuilder& aBuilder, nsCSSPropertyID aProp,
+    const nsAttrValue& aValue) {
+  MOZ_ASSERT(!aBuilder.PropertyIsSet(aProp),
              "Why mapping the same property twice?");
   if (aValue.Type() == nsAttrValue::eInteger) {
-    return aDecls.SetPixelValue(aProp, aValue.GetIntegerValue());
+    return aBuilder.SetPixelValue(aProp, aValue.GetIntegerValue());
   }
   if (aValue.Type() == nsAttrValue::ePercent) {
-    return aDecls.SetPercentValue(aProp, aValue.GetPercentValue());
+    return aBuilder.SetPercentValue(aProp, aValue.GetPercentValue());
   }
   if (aValue.Type() == nsAttrValue::eDoubleValue) {
-    return aDecls.SetPixelValue(aProp, aValue.GetDoubleValue());
+    return aBuilder.SetPixelValue(aProp, aValue.GetDoubleValue());
   }
 }
 
 void nsGenericHTMLElement::MapImageMarginAttributeInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  const nsAttrValue* value;
-
+    MappedDeclarationsBuilder& aBuilder) {
   // hspace: value
-  value = aAttributes->GetAttr(nsGkAtoms::hspace);
-  if (value) {
-    MapDimensionAttributeInto(aDecls, eCSSProperty_margin_left, *value);
-    MapDimensionAttributeInto(aDecls, eCSSProperty_margin_right, *value);
+  if (const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::hspace)) {
+    MapDimensionAttributeInto(aBuilder, eCSSProperty_margin_left, *value);
+    MapDimensionAttributeInto(aBuilder, eCSSProperty_margin_right, *value);
   }
 
   // vspace: value
-  value = aAttributes->GetAttr(nsGkAtoms::vspace);
-  if (value) {
-    MapDimensionAttributeInto(aDecls, eCSSProperty_margin_top, *value);
-    MapDimensionAttributeInto(aDecls, eCSSProperty_margin_bottom, *value);
+  if (const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::vspace)) {
+    MapDimensionAttributeInto(aBuilder, eCSSProperty_margin_top, *value);
+    MapDimensionAttributeInto(aBuilder, eCSSProperty_margin_bottom, *value);
   }
 }
 
 void nsGenericHTMLElement::MapWidthAttributeInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  if (const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::width)) {
-    MapDimensionAttributeInto(aDecls, eCSSProperty_width, *value);
+    MappedDeclarationsBuilder& aBuilder) {
+  if (const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::width)) {
+    MapDimensionAttributeInto(aBuilder, eCSSProperty_width, *value);
   }
 }
 
 void nsGenericHTMLElement::MapHeightAttributeInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  if (const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::height)) {
-    MapDimensionAttributeInto(aDecls, eCSSProperty_height, *value);
+    MappedDeclarationsBuilder& aBuilder) {
+  if (const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::height)) {
+    MapDimensionAttributeInto(aBuilder, eCSSProperty_height, *value);
   }
 }
 
-static void DoMapAspectRatio(const nsAttrValue& aWidth,
-                             const nsAttrValue& aHeight,
-                             MappedDeclarations& aDecls) {
+void nsGenericHTMLElement::DoMapAspectRatio(
+    const nsAttrValue& aWidth, const nsAttrValue& aHeight,
+    MappedDeclarationsBuilder& aBuilder) {
   Maybe<double> w;
   if (aWidth.Type() == nsAttrValue::eInteger) {
     w.emplace(aWidth.GetIntegerValue());
@@ -1493,126 +1515,88 @@ static void DoMapAspectRatio(const nsAttrValue& aWidth,
   }
 
   if (w && h) {
-    aDecls.SetAspectRatio(*w, *h);
+    aBuilder.SetAspectRatio(*w, *h);
   }
 }
 
 void nsGenericHTMLElement::MapImageSizeAttributesInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls,
-    MapAspectRatio aMapAspectRatio) {
-  auto* width = aAttributes->GetAttr(nsGkAtoms::width);
-  auto* height = aAttributes->GetAttr(nsGkAtoms::height);
+    MappedDeclarationsBuilder& aBuilder, MapAspectRatio aMapAspectRatio) {
+  auto* width = aBuilder.GetAttr(nsGkAtoms::width);
+  auto* height = aBuilder.GetAttr(nsGkAtoms::height);
   if (width) {
-    MapDimensionAttributeInto(aDecls, eCSSProperty_width, *width);
+    MapDimensionAttributeInto(aBuilder, eCSSProperty_width, *width);
   }
   if (height) {
-    MapDimensionAttributeInto(aDecls, eCSSProperty_height, *height);
+    MapDimensionAttributeInto(aBuilder, eCSSProperty_height, *height);
   }
   if (aMapAspectRatio == MapAspectRatio::Yes && width && height) {
-    DoMapAspectRatio(*width, *height, aDecls);
-  }
-}
-
-void nsGenericHTMLElement::MapPictureSourceSizeAttributesInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  const auto* width = aAttributes->GetAttr(nsGkAtoms::width);
-  const auto* height = aAttributes->GetAttr(nsGkAtoms::height);
-  if (!width && !height) {
-    return;
-  }
-
-  // We should set the missing property values with auto value to make sure it
-  // overrides the declaraion created by the presentation attributes of
-  // HTMLImageElement. This can make sure we compute the ratio-dependent axis
-  // size properly by the natural aspect-ratio of the image.
-  //
-  // Note: The spec doesn't specify this, so we follow the implementation in
-  // other browsers.
-  // Spec issue: https://github.com/whatwg/html/issues/8178.
-  if (width) {
-    MapDimensionAttributeInto(aDecls, eCSSProperty_width, *width);
-  } else {
-    aDecls.SetAutoValue(eCSSProperty_width);
-  }
-
-  if (height) {
-    MapDimensionAttributeInto(aDecls, eCSSProperty_height, *height);
-  } else {
-    aDecls.SetAutoValue(eCSSProperty_height);
-  }
-
-  if (width && height) {
-    DoMapAspectRatio(*width, *height, aDecls);
-  } else {
-    aDecls.SetAutoValue(eCSSProperty_aspect_ratio);
+    DoMapAspectRatio(*width, *height, aBuilder);
   }
 }
 
 void nsGenericHTMLElement::MapAspectRatioInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  auto* width = aAttributes->GetAttr(nsGkAtoms::width);
-  auto* height = aAttributes->GetAttr(nsGkAtoms::height);
+    MappedDeclarationsBuilder& aBuilder) {
+  auto* width = aBuilder.GetAttr(nsGkAtoms::width);
+  auto* height = aBuilder.GetAttr(nsGkAtoms::height);
   if (width && height) {
-    DoMapAspectRatio(*width, *height, aDecls);
+    DoMapAspectRatio(*width, *height, aBuilder);
   }
 }
 
 void nsGenericHTMLElement::MapImageBorderAttributeInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
+    MappedDeclarationsBuilder& aBuilder) {
   // border: pixels
-  const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::border);
+  const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::border);
   if (!value) return;
 
   nscoord val = 0;
   if (value->Type() == nsAttrValue::eInteger) val = value->GetIntegerValue();
 
-  aDecls.SetPixelValueIfUnset(eCSSProperty_border_top_width, (float)val);
-  aDecls.SetPixelValueIfUnset(eCSSProperty_border_right_width, (float)val);
-  aDecls.SetPixelValueIfUnset(eCSSProperty_border_bottom_width, (float)val);
-  aDecls.SetPixelValueIfUnset(eCSSProperty_border_left_width, (float)val);
+  aBuilder.SetPixelValueIfUnset(eCSSProperty_border_top_width, (float)val);
+  aBuilder.SetPixelValueIfUnset(eCSSProperty_border_right_width, (float)val);
+  aBuilder.SetPixelValueIfUnset(eCSSProperty_border_bottom_width, (float)val);
+  aBuilder.SetPixelValueIfUnset(eCSSProperty_border_left_width, (float)val);
 
-  aDecls.SetKeywordValueIfUnset(eCSSProperty_border_top_style,
-                                StyleBorderStyle::Solid);
-  aDecls.SetKeywordValueIfUnset(eCSSProperty_border_right_style,
-                                StyleBorderStyle::Solid);
-  aDecls.SetKeywordValueIfUnset(eCSSProperty_border_bottom_style,
-                                StyleBorderStyle::Solid);
-  aDecls.SetKeywordValueIfUnset(eCSSProperty_border_left_style,
-                                StyleBorderStyle::Solid);
+  aBuilder.SetKeywordValueIfUnset(eCSSProperty_border_top_style,
+                                  StyleBorderStyle::Solid);
+  aBuilder.SetKeywordValueIfUnset(eCSSProperty_border_right_style,
+                                  StyleBorderStyle::Solid);
+  aBuilder.SetKeywordValueIfUnset(eCSSProperty_border_bottom_style,
+                                  StyleBorderStyle::Solid);
+  aBuilder.SetKeywordValueIfUnset(eCSSProperty_border_left_style,
+                                  StyleBorderStyle::Solid);
 
-  aDecls.SetCurrentColorIfUnset(eCSSProperty_border_top_color);
-  aDecls.SetCurrentColorIfUnset(eCSSProperty_border_right_color);
-  aDecls.SetCurrentColorIfUnset(eCSSProperty_border_bottom_color);
-  aDecls.SetCurrentColorIfUnset(eCSSProperty_border_left_color);
+  aBuilder.SetCurrentColorIfUnset(eCSSProperty_border_top_color);
+  aBuilder.SetCurrentColorIfUnset(eCSSProperty_border_right_color);
+  aBuilder.SetCurrentColorIfUnset(eCSSProperty_border_bottom_color);
+  aBuilder.SetCurrentColorIfUnset(eCSSProperty_border_left_color);
 }
 
 void nsGenericHTMLElement::MapBackgroundInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  if (!aDecls.PropertyIsSet(eCSSProperty_background_image)) {
+    MappedDeclarationsBuilder& aBuilder) {
+  if (!aBuilder.PropertyIsSet(eCSSProperty_background_image)) {
     // background
-    nsAttrValue* value =
-        const_cast<nsAttrValue*>(aAttributes->GetAttr(nsGkAtoms::background));
-    if (value) {
-      aDecls.SetBackgroundImage(*value);
+    if (const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::background)) {
+      aBuilder.SetBackgroundImage(*value);
     }
   }
 }
 
-void nsGenericHTMLElement::MapBGColorInto(const nsMappedAttributes* aAttributes,
-                                          MappedDeclarations& aDecls) {
-  if (!aDecls.PropertyIsSet(eCSSProperty_background_color)) {
-    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::bgcolor);
-    nscolor color;
-    if (value && value->GetColorValue(color)) {
-      aDecls.SetColorValue(eCSSProperty_background_color, color);
-    }
+void nsGenericHTMLElement::MapBGColorInto(MappedDeclarationsBuilder& aBuilder) {
+  if (aBuilder.PropertyIsSet(eCSSProperty_background_color)) {
+    return;
+  }
+  const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::bgcolor);
+  nscolor color;
+  if (value && value->GetColorValue(color)) {
+    aBuilder.SetColorValue(eCSSProperty_background_color, color);
   }
 }
 
 void nsGenericHTMLElement::MapBackgroundAttributesInto(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  MapBackgroundInto(aAttributes, aDecls);
-  MapBGColorInto(aAttributes, aDecls);
+    MappedDeclarationsBuilder& aBuilder) {
+  MapBackgroundInto(aBuilder);
+  MapBGColorInto(aBuilder);
 }
 
 //----------------------------------------------------------------------
@@ -1686,42 +1670,58 @@ uint32_t nsGenericHTMLElement::GetDimensionAttrAsUnsignedInt(
 void nsGenericHTMLElement::GetURIAttr(nsAtom* aAttr, nsAtom* aBaseAttr,
                                       nsAString& aResult) const {
   nsCOMPtr<nsIURI> uri;
-  bool hadAttr = GetURIAttr(aAttr, aBaseAttr, getter_AddRefs(uri));
-  if (!hadAttr) {
+  const nsAttrValue* attr = GetURIAttr(aAttr, aBaseAttr, getter_AddRefs(uri));
+  if (!attr) {
     aResult.Truncate();
     return;
   }
-
   if (!uri) {
     // Just return the attr value
-    GetAttr(kNameSpaceID_None, aAttr, aResult);
+    attr->ToString(aResult);
     return;
   }
-
   nsAutoCString spec;
   uri->GetSpec(spec);
   CopyUTF8toUTF16(spec, aResult);
 }
 
-bool nsGenericHTMLElement::GetURIAttr(nsAtom* aAttr, nsAtom* aBaseAttr,
-                                      nsIURI** aURI) const {
+void nsGenericHTMLElement::GetURIAttr(nsAtom* aAttr, nsAtom* aBaseAttr,
+                                      nsACString& aResult) const {
+  nsCOMPtr<nsIURI> uri;
+  const nsAttrValue* attr = GetURIAttr(aAttr, aBaseAttr, getter_AddRefs(uri));
+  if (!attr) {
+    aResult.Truncate();
+    return;
+  }
+  if (!uri) {
+    // Just return the attr value
+    nsAutoString value;
+    attr->ToString(value);
+    CopyUTF16toUTF8(value, aResult);
+    return;
+  }
+  uri->GetSpec(aResult);
+}
+
+const nsAttrValue* nsGenericHTMLElement::GetURIAttr(nsAtom* aAttr,
+                                                    nsAtom* aBaseAttr,
+                                                    nsIURI** aURI) const {
   *aURI = nullptr;
 
   const nsAttrValue* attr = mAttrs.GetAttr(aAttr);
   if (!attr) {
-    return false;
+    return nullptr;
   }
 
   nsCOMPtr<nsIURI> baseURI = GetBaseURI();
-
   if (aBaseAttr) {
     nsAutoString baseAttrValue;
-    if (GetAttr(kNameSpaceID_None, aBaseAttr, baseAttrValue)) {
+    if (GetAttr(aBaseAttr, baseAttrValue)) {
       nsCOMPtr<nsIURI> baseAttrURI;
       nsresult rv = nsContentUtils::NewURIWithDocumentCharset(
           getter_AddRefs(baseAttrURI), baseAttrValue, OwnerDoc(), baseURI);
       if (NS_FAILED(rv)) {
-        return true;
+        return attr;
       }
       baseURI.swap(baseAttrURI);
     }
@@ -1731,7 +1731,7 @@ bool nsGenericHTMLElement::GetURIAttr(nsAtom* aAttr, nsAtom* aBaseAttr,
   // return true, and *aURI will be null.
   nsContentUtils::NewURIWithDocumentCharset(aURI, attr->GetStringValue(),
                                             OwnerDoc(), baseURI);
-  return true;
+  return attr;
 }
 
 bool nsGenericHTMLElement::IsLabelable() const {
@@ -1767,8 +1767,8 @@ bool nsGenericHTMLElement::LegacyTouchAPIEnabled(JSContext* aCx,
 }
 
 bool nsGenericHTMLElement::IsFormControlDefaultFocusable(
-    bool aWithMouse) const {
-  if (!aWithMouse) {
+    IsFocusableFlags aFlags) const {
+  if (!(aFlags & IsFocusableFlags::WithMouse)) {
     return true;
   }
   switch (StaticPrefs::accessibility_mouse_focuses_formcontrol()) {
@@ -1786,9 +1786,9 @@ bool nsGenericHTMLElement::IsFormControlDefaultFocusable(
 nsGenericHTMLFormElement::nsGenericHTMLFormElement(
     already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
     : nsGenericHTMLElement(std::move(aNodeInfo)) {
-  // We should add the ElementState::ENABLED bit here as needed, but
-  // that depends on our type, which is not initialized yet.  So we
-  // have to do this in subclasses.
+  // We should add the ElementState::ENABLED bit here as needed, but that
+  // depends on our type, which is not initialized yet.  So we have to do this
+  // in subclasses. Same for a couple other bits.
 }
 
 void nsGenericHTMLFormElement::ClearForm(bool aRemoveFromForm,
@@ -1822,7 +1822,6 @@ void nsGenericHTMLFormElement::ClearForm(bool aRemoveFromForm,
   UnsetFlags(ADDED_TO_FORM);
   SetFormInternal(nullptr, false);
   AfterClearForm(aUnbindOrDelete);
-  UpdateState(true);
 }
 
 nsresult nsGenericHTMLFormElement::BindToTree(BindContext& aContext,
@@ -1836,38 +1835,33 @@ nsresult nsGenericHTMLFormElement::BindToTree(BindContext& aContext,
     // corresponding id. If @form isn't set, the element *has* to have a parent,
     // otherwise it wouldn't be possible to find a form ancestor. We should not
     // call UpdateFormOwner if none of these conditions are fulfilled.
-    if (HasAttr(kNameSpaceID_None, nsGkAtoms::form) ? IsInComposedDoc()
-                                                    : aParent.IsContent()) {
+    if (HasAttr(nsGkAtoms::form) ? IsInComposedDoc() : aParent.IsContent()) {
       UpdateFormOwner(true, nullptr);
     }
   }
 
   // Set parent fieldset which should be used for the disabled state.
   UpdateFieldSet(false);
-
   return NS_OK;
 }
 
-void nsGenericHTMLFormElement::UnbindFromTree(bool aNullParent) {
+void nsGenericHTMLFormElement::UnbindFromTree(UnbindContext& aContext) {
+  // Save state before doing anything else.
+  SaveState();
+
   if (IsFormAssociatedElement()) {
     if (HTMLFormElement* form = GetFormInternal()) {
       // Might need to unset form
-      if (aNullParent) {
+      if (aContext.IsUnbindRoot(this)) {
         // No more parent means no more form
         ClearForm(true, true);
       } else {
         // Recheck whether we should still have an form.
-        if (HasAttr(kNameSpaceID_None, nsGkAtoms::form) ||
-            !FindAncestorForm(form)) {
+        if (HasAttr(nsGkAtoms::form) || !FindAncestorForm(form)) {
           ClearForm(true, true);
         } else {
           UnsetFlags(MAYBE_ORPHAN_FORM_ELEMENT);
         }
-      }
-
-      if (!GetFormInternal()) {
-        // Our novalidate state might have changed
-        UpdateState(false);
       }
     }
 
@@ -1879,7 +1873,7 @@ void nsGenericHTMLFormElement::UnbindFromTree(bool aNullParent) {
     }
   }
 
-  nsGenericHTMLElement::UnbindFromTree(aNullParent);
+  nsGenericHTMLElement::UnbindFromTree(aContext);
 
   // The element might not have a fieldset anymore.
   UpdateFieldSet(false);
@@ -1896,7 +1890,7 @@ void nsGenericHTMLFormElement::BeforeSetAttr(int32_t aNameSpaceID,
     // remove the control from the hashtable as needed
 
     if (form && (aName == nsGkAtoms::name || aName == nsGkAtoms::id)) {
-      GetAttr(kNameSpaceID_None, aName, tmp);
+      GetAttr(aName, tmp);
 
       if (!tmp.IsEmpty()) {
         form->RemoveElementFromTable(this, tmp);
@@ -1904,13 +1898,13 @@ void nsGenericHTMLFormElement::BeforeSetAttr(int32_t aNameSpaceID,
     }
 
     if (form && aName == nsGkAtoms::type) {
-      GetAttr(kNameSpaceID_None, nsGkAtoms::name, tmp);
+      GetAttr(nsGkAtoms::name, tmp);
 
       if (!tmp.IsEmpty()) {
         form->RemoveElementFromTable(this, tmp);
       }
 
-      GetAttr(kNameSpaceID_None, nsGkAtoms::id, tmp);
+      GetAttr(nsGkAtoms::id, tmp);
 
       if (!tmp.IsEmpty()) {
         form->RemoveElementFromTable(this, tmp);
@@ -1954,13 +1948,13 @@ void nsGenericHTMLFormElement::AfterSetAttr(
     if (form && aName == nsGkAtoms::type) {
       nsAutoString tmp;
 
-      GetAttr(kNameSpaceID_None, nsGkAtoms::name, tmp);
+      GetAttr(nsGkAtoms::name, tmp);
 
       if (!tmp.IsEmpty()) {
         form->AddElementToTable(this, tmp);
       }
 
-      GetAttr(kNameSpaceID_None, nsGkAtoms::id, tmp);
+      GetAttr(nsGkAtoms::id, tmp);
 
       if (!tmp.IsEmpty()) {
         form->AddElementToTable(this, tmp);
@@ -2002,7 +1996,7 @@ Element* nsGenericHTMLFormElement::AddFormIdObserver() {
 
   nsAutoString formId;
   DocumentOrShadowRoot* docOrShadow = GetUncomposedDocOrConnectedShadowRoot();
-  GetAttr(kNameSpaceID_None, nsGkAtoms::form, formId);
+  GetAttr(nsGkAtoms::form, formId);
   NS_ASSERTION(!formId.IsEmpty(),
                "@form value should not be the empty string!");
   RefPtr<nsAtom> atom = NS_Atomize(formId);
@@ -2019,7 +2013,7 @@ void nsGenericHTMLFormElement::RemoveFormIdObserver() {
   }
 
   nsAutoString formId;
-  GetAttr(kNameSpaceID_None, nsGkAtoms::form, formId);
+  GetAttr(nsGkAtoms::form, formId);
   NS_ASSERTION(!formId.IsEmpty(),
                "@form value should not be the empty string!");
   RefPtr<nsAtom> atom = NS_Atomize(formId);
@@ -2117,20 +2111,17 @@ void nsGenericHTMLFormElement::UpdateFormOwner(bool aBindToTree,
   MOZ_ASSERT(!aBindToTree || !aFormIdElement,
              "aFormIdElement shouldn't be set if aBindToTree is true!");
 
-  bool needStateUpdate = false;
+  HTMLFormElement* form = GetFormInternal();
   if (!aBindToTree) {
-    HTMLFormElement* form = GetFormInternal();
-    needStateUpdate = form && form->IsDefaultSubmitElement(this);
     ClearForm(true, false);
+    form = nullptr;
   }
 
-  // We have to get form again since the above ClearForm() call might update the
-  // form value.
-  HTMLFormElement* oldForm = GetFormInternal();
-  if (!oldForm) {
+  HTMLFormElement* oldForm = form;
+  if (!form) {
     // If @form is set, we have to use that to find the form.
     nsAutoString formId;
-    if (GetAttr(kNameSpaceID_None, nsGkAtoms::form, formId)) {
+    if (GetAttr(nsGkAtoms::form, formId)) {
       if (!formId.IsEmpty()) {
         Element* element = nullptr;
 
@@ -2148,7 +2139,8 @@ void nsGenericHTMLFormElement::UpdateFormOwner(bool aBindToTree,
 
         if (element && element->IsHTMLElement(nsGkAtoms::form) &&
             nsContentUtils::IsInSameAnonymousTree(this, element)) {
-          SetFormInternal(static_cast<HTMLFormElement*>(element), aBindToTree);
+          form = static_cast<HTMLFormElement*>(element);
+          SetFormInternal(form, aBindToTree);
         }
       }
     } else {
@@ -2158,16 +2150,16 @@ void nsGenericHTMLFormElement::UpdateFormOwner(bool aBindToTree,
       // it to the right value.  Also note that even if being bound here didn't
       // change our parent, we still need to search, since our parent chain
       // probably changed _somewhere_.
-      SetFormInternal(FindAncestorForm(), aBindToTree);
+      form = FindAncestorForm();
+      SetFormInternal(form, aBindToTree);
     }
   }
 
-  HTMLFormElement* form = GetFormInternal();
   if (form && !HasFlag(ADDED_TO_FORM)) {
     // Now we need to add ourselves to the form
     nsAutoString nameVal, idVal;
-    GetAttr(kNameSpaceID_None, nsGkAtoms::name, nameVal);
-    GetAttr(kNameSpaceID_None, nsGkAtoms::id, idVal);
+    GetAttr(nsGkAtoms::name, nameVal);
+    GetAttr(nsGkAtoms::id, idVal);
 
     SetFlags(ADDED_TO_FORM);
 
@@ -2181,10 +2173,6 @@ void nsGenericHTMLFormElement::UpdateFormOwner(bool aBindToTree,
     if (!idVal.IsEmpty()) {
       form->AddElementToTable(this, idVal);
     }
-  }
-
-  if (form != oldForm || needStateUpdate) {
-    UpdateState(true);
   }
 }
 
@@ -2245,21 +2233,49 @@ void nsGenericHTMLFormElement::UpdateDisabledState(bool aNotify) {
 
   if (!changedStates.IsEmpty()) {
     ToggleStates(changedStates, aNotify);
-    if (DoesReadOnlyApply()) {
+    if (DoesReadWriteApply()) {
       // :disabled influences :read-only / :read-write.
-      UpdateState(aNotify);
+      UpdateReadOnlyState(aNotify);
     }
   }
+}
+
+bool nsGenericHTMLFormElement::IsReadOnlyInternal() const {
+  if (DoesReadWriteApply()) {
+    return IsDisabled() || GetBoolAttr(nsGkAtoms::readonly);
+  }
+  return nsGenericHTMLElement::IsReadOnlyInternal();
 }
 
 void nsGenericHTMLFormElement::FieldSetDisabledChanged(bool aNotify) {
   UpdateDisabledState(aNotify);
 }
 
+void nsGenericHTMLFormElement::SaveSubtreeState() {
+  SaveState();
+
+  nsGenericHTMLElement::SaveSubtreeState();
+}
+
 //----------------------------------------------------------------------
 
 void nsGenericHTMLElement::Click(CallerType aCallerType) {
-  if (IsDisabled() || HandlingClick()) {
+  if (HandlingClick()) {
+    return;
+  }
+
+  // There are two notions of disabled.
+  // "disabled":
+  // https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#attr-fe-disabled
+  // "actually disabled":
+  // https://html.spec.whatwg.org/multipage/semantics-other.html#concept-element-disabled
+  // click() reads the former but IsDisabled() is for the latter. <fieldset> is
+  // included only in the latter, so we exclude it here.
+  // XXX(krosylight): What about <optgroup>? And should we add a separate method
+  // for this?
+  if (IsDisabled() &&
+      !(mNodeInfo->Equals(nsGkAtoms::fieldset) &&
+        StaticPrefs::dom_forms_fieldset_disable_only_descendants_enabled())) {
     return;
   }
 
@@ -2268,7 +2284,20 @@ void nsGenericHTMLElement::Click(CallerType aCallerType) {
 
   RefPtr<nsPresContext> context;
   if (doc) {
-    context = doc->GetPresContext();
+    PresShell* presShell = doc->GetPresShell();
+    if (!presShell) {
+      // We need the nsPresContext for dispatching the click event. In some
+      // rare cases we need to flush notifications to force creation of the
+      // nsPresContext here (for example when a script calls button.click()
+      // from script early during page load). We only flush the notifications
+      // if the PresShell hasn't been created yet, to limit the performance
+      // impact.
+      doc->FlushPendingNotifications(FlushType::EnsurePresShellInitAndFrames);
+      presShell = doc->GetPresShell();
+    }
+    if (presShell) {
+      context = presShell->GetPresContext();
+    }
   }
 
   SetHandlingClick();
@@ -2279,13 +2308,16 @@ void nsGenericHTMLElement::Click(CallerType aCallerType) {
   event.mFlags.mIsPositionless = true;
   event.mInputSource = MouseEvent_Binding::MOZ_SOURCE_UNKNOWN;
 
-  EventDispatcher::Dispatch(static_cast<nsIContent*>(this), context, &event);
+  EventDispatcher::Dispatch(this, context, &event);
 
   ClearHandlingClick();
 }
 
-bool nsGenericHTMLElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
+bool nsGenericHTMLElement::IsHTMLFocusable(IsFocusableFlags aFlags,
+                                           bool* aIsFocusable,
                                            int32_t* aTabIndex) {
+  MOZ_ASSERT(aIsFocusable);
+  MOZ_ASSERT(aTabIndex);
   if (ShadowRoot* root = GetShadowRoot()) {
     if (root->DelegatesFocus()) {
       *aIsFocusable = false;
@@ -2293,24 +2325,18 @@ bool nsGenericHTMLElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
     }
   }
 
-  Document* doc = GetComposedDoc();
-  if (!doc || IsInDesignMode()) {
+  if (!IsInComposedDoc() || IsInDesignMode()) {
     // In designMode documents we only allow focusing the document.
-    if (aTabIndex) {
-      *aTabIndex = -1;
-    }
-
+    *aTabIndex = -1;
     *aIsFocusable = false;
-
     return true;
   }
 
-  int32_t tabIndex = TabIndex();
+  *aTabIndex = TabIndex();
   bool disabled = false;
   bool disallowOverridingFocusability = true;
   Maybe<int32_t> attrVal = GetTabIndexAttrValue();
-
-  if (IsEditableRoot()) {
+  if (IsEditingHost()) {
     // Editable roots should always be focusable.
     disallowOverridingFocusability = true;
 
@@ -2319,7 +2345,7 @@ bool nsGenericHTMLElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
     if (attrVal.isNothing()) {
       // The default value for tabindex should be 0 for editable
       // contentEditable roots.
-      tabIndex = 0;
+      *aTabIndex = 0;
     }
   } else {
     disallowOverridingFocusability = false;
@@ -2327,18 +2353,13 @@ bool nsGenericHTMLElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
     // Just check for disabled attribute on form controls
     disabled = IsDisabled();
     if (disabled) {
-      tabIndex = -1;
+      *aTabIndex = -1;
     }
   }
 
-  if (aTabIndex) {
-    *aTabIndex = tabIndex;
-  }
-
   // If a tabindex is specified at all, or the default tabindex is 0, we're
-  // focusable
-  *aIsFocusable = (tabIndex >= 0 || (!disabled && attrVal.isSome()));
-
+  // focusable.
+  *aIsFocusable = (*aTabIndex >= 0 || (!disabled && attrVal.isSome()));
   return disallowOverridingFocusability;
 }
 
@@ -2442,9 +2463,7 @@ nsresult nsGenericHTMLElement::DispatchSimulatedClick(
                          WidgetMouseEvent::eReal);
   event.mInputSource = MouseEvent_Binding::MOZ_SOURCE_KEYBOARD;
   event.mFlags.mIsPositionless = true;
-  // TODO: Bug 1506441
-  return EventDispatcher::Dispatch(MOZ_KnownLive(ToSupports(aElement)),
-                                   aPresContext, &event);
+  return EventDispatcher::Dispatch(aElement, aPresContext, &event);
 }
 
 already_AddRefed<EditorBase> nsGenericHTMLElement::GetAssociatedEditor() {
@@ -2472,24 +2491,6 @@ void nsGenericHTMLElement::SyncEditorsOnSubtree(nsIContent* content) {
   }
 }
 
-bool nsGenericHTMLElement::IsEditableRoot() const {
-  if (!IsInComposedDoc()) {
-    return false;
-  }
-
-  if (IsInDesignMode()) {
-    return false;
-  }
-
-  if (GetContentEditableValue() != eTrue) {
-    return false;
-  }
-
-  nsIContent* parent = GetParent();
-
-  return !parent || !parent->HasFlag(NODE_IS_EDITABLE);
-}
-
 static void MakeContentDescendantsEditable(nsIContent* aContent) {
   // If aContent is not an element, we just need to update its
   // internal editable state and don't need to notify anyone about
@@ -2507,8 +2508,7 @@ static void MakeContentDescendantsEditable(nsIContent* aContent) {
   for (nsIContent* child = aContent->GetFirstChild(); child;
        child = child->GetNextSibling()) {
     if (!child->IsElement() ||
-        !child->AsElement()->HasAttr(kNameSpaceID_None,
-                                     nsGkAtoms::contenteditable)) {
+        !child->AsElement()->HasAttr(nsGkAtoms::contenteditable)) {
       MakeContentDescendantsEditable(child);
     }
   }
@@ -2574,12 +2574,6 @@ nsINode* nsGenericHTMLFormControlElement::GetScopeChainParent() const {
   return mForm ? mForm : nsGenericHTMLElement::GetScopeChainParent();
 }
 
-void nsGenericHTMLFormControlElement::SaveSubtreeState() {
-  SaveState();
-
-  nsGenericHTMLFormElement::SaveSubtreeState();
-}
-
 nsIContent::IMEState nsGenericHTMLFormControlElement::GetDesiredIMEState() {
   TextEditor* textEditor = GetTextEditorInternal();
   if (!textEditor) {
@@ -2591,12 +2585,6 @@ nsIContent::IMEState nsGenericHTMLFormControlElement::GetDesiredIMEState() {
     return nsGenericHTMLFormElement::GetDesiredIMEState();
   }
   return state;
-}
-
-void nsGenericHTMLFormControlElement::UnbindFromTree(bool aNullParent) {
-  // Save state before doing anything
-  SaveState();
-  nsGenericHTMLFormElement::UnbindFromTree(aNullParent);
 }
 
 void nsGenericHTMLFormControlElement::GetAutocapitalize(
@@ -2612,15 +2600,15 @@ void nsGenericHTMLFormControlElement::GetAutocapitalize(
   }
 }
 
-bool nsGenericHTMLFormControlElement::IsHTMLFocusable(bool aWithMouse,
+bool nsGenericHTMLFormControlElement::IsHTMLFocusable(IsFocusableFlags aFlags,
                                                       bool* aIsFocusable,
                                                       int32_t* aTabIndex) {
-  if (nsGenericHTMLFormElement::IsHTMLFocusable(aWithMouse, aIsFocusable,
+  if (nsGenericHTMLFormElement::IsHTMLFocusable(aFlags, aIsFocusable,
                                                 aTabIndex)) {
     return true;
   }
 
-  *aIsFocusable = *aIsFocusable && IsFormControlDefaultFocusable(aWithMouse);
+  *aIsFocusable = *aIsFocusable && IsFormControlDefaultFocusable(aFlags);
   return false;
 }
 
@@ -2681,30 +2669,6 @@ void nsGenericHTMLFormControlElement::ClearForm(bool aRemoveFromForm,
   nsGenericHTMLFormElement::ClearForm(aRemoveFromForm, aUnbindOrDelete);
 }
 
-ElementState nsGenericHTMLFormControlElement::IntrinsicState() const {
-  // If you add attribute-dependent states here, you need to add them to
-  // AfterSetAttr too.  And add them to AfterSetAttr for all subclasses that
-  // implement IntrinsicState() and are affected by that attribute.
-  ElementState state = nsGenericHTMLFormElement::IntrinsicState();
-
-  if (mForm && mForm->IsDefaultSubmitElement(this)) {
-    NS_ASSERTION(IsSubmitControl(),
-                 "Default submit element that isn't a submit control.");
-    // We are the default submit element (:default)
-    state |= ElementState::DEFAULT;
-  }
-
-  // Make the text controls read-write
-  if (!state.HasState(ElementState::READWRITE) && DoesReadOnlyApply()) {
-    if (!GetBoolAttr(nsGkAtoms::readonly) && !IsDisabled()) {
-      state |= ElementState::READWRITE;
-      state &= ~ElementState::READONLY;
-    }
-  }
-
-  return state;
-}
-
 bool nsGenericHTMLFormControlElement::IsLabelable() const {
   auto type = ControlType();
   return (IsInputElement(type) && type != FormControlType::InputHidden) ||
@@ -2718,7 +2682,7 @@ bool nsGenericHTMLFormControlElement::CanBeDisabled() const {
   return type != FormControlType::Object && type != FormControlType::Output;
 }
 
-bool nsGenericHTMLFormControlElement::DoesReadOnlyApply() const {
+bool nsGenericHTMLFormControlElement::DoesReadWriteApply() const {
   auto type = ControlType();
   if (!IsInputElement(type) && type != FormControlType::Textarea) {
     return false;
@@ -2752,7 +2716,7 @@ bool nsGenericHTMLFormControlElement::DoesReadOnlyApply() const {
     case FormControlType::InputDatetimeLocal:
       return true;
     default:
-      MOZ_ASSERT_UNREACHABLE("Unexpected input type in DoesReadOnlyApply()");
+      MOZ_ASSERT_UNREACHABLE("Unexpected input type in DoesReadWriteApply()");
       return true;
 #else   // DEBUG
     default:
@@ -2824,6 +2788,46 @@ bool nsGenericHTMLFormControlElement::IsAutocapitalizeInheriting() const {
          type == FormControlType::Select || type == FormControlType::Textarea;
 }
 
+nsresult nsGenericHTMLFormControlElement::SubmitDirnameDir(
+    FormData* aFormData) {
+  // Submit dirname=dir if element has non-empty dirname attribute
+  if (HasAttr(nsGkAtoms::dirname)) {
+    nsAutoString dirname;
+    GetAttr(nsGkAtoms::dirname, dirname);
+    if (!dirname.IsEmpty()) {
+      const Directionality dir = GetDirectionality();
+      MOZ_ASSERT(dir == Directionality::Ltr || dir == Directionality::Rtl,
+                 "The directionality of an element is either ltr or rtl");
+      return aFormData->AddNameValuePair(
+          dirname, dir == Directionality::Ltr ? u"ltr"_ns : u"rtl"_ns);
+    }
+  }
+  return NS_OK;
+}
+
+void nsGenericHTMLFormControlElement::GetFormAutofillState(
+    nsAString& aState) const {
+  if (State().HasState(ElementState::AUTOFILL_PREVIEW)) {
+    aState.AssignLiteral("preview");
+  } else if (State().HasState(ElementState::AUTOFILL)) {
+    aState.AssignLiteral("autofill");
+  } else {
+    aState.Truncate();
+  }
+}
+
+void nsGenericHTMLFormControlElement::SetFormAutofillState(
+    const nsAString& aState) {
+  if (aState.EqualsLiteral("autofill")) {
+    RemoveStates(ElementState::AUTOFILL_PREVIEW);
+    AddStates(ElementState::AUTOFILL);
+  } else if (aState.EqualsLiteral("preview")) {
+    AddStates(ElementState::AUTOFILL | ElementState::AUTOFILL_PREVIEW);
+  } else {
+    RemoveStates(ElementState::AUTOFILL | ElementState::AUTOFILL_PREVIEW);
+  }
+}
+
 //----------------------------------------------------------------------
 
 static const nsAttrValue::EnumTable kPopoverTargetActionTable[] = {
@@ -2849,15 +2853,27 @@ nsGenericHTMLFormControlElementWithState::
 bool nsGenericHTMLFormControlElementWithState::ParseAttribute(
     int32_t aNamespaceID, nsAtom* aAttribute, const nsAString& aValue,
     nsIPrincipal* aMaybeScriptedPrincipal, nsAttrValue& aResult) {
-  if (aNamespaceID == kNameSpaceID_None &&
-      StaticPrefs::dom_element_popover_enabled()) {
-    if (aAttribute == nsGkAtoms::popovertargetaction) {
-      return aResult.ParseEnumValue(aValue, kPopoverTargetActionTable, false,
-                                    kPopoverTargetActionDefault);
+  if (aNamespaceID == kNameSpaceID_None) {
+    if (StaticPrefs::dom_element_popover_enabled()) {
+      if (aAttribute == nsGkAtoms::popovertargetaction) {
+        return aResult.ParseEnumValue(aValue, kPopoverTargetActionTable, false,
+                                      kPopoverTargetActionDefault);
+      }
+      if (aAttribute == nsGkAtoms::popovertarget) {
+        aResult.ParseAtom(aValue);
+        return true;
+      }
     }
-    if (aAttribute == nsGkAtoms::popovertarget) {
-      aResult.ParseAtom(aValue);
-      return true;
+
+    if (StaticPrefs::dom_element_invokers_enabled()) {
+      if (aAttribute == nsGkAtoms::invokeaction) {
+        aResult.ParseAtom(aValue);
+        return true;
+      }
+      if (aAttribute == nsGkAtoms::invoketarget) {
+        aResult.ParseAtom(aValue);
+        return true;
+      }
     }
   }
 
@@ -2881,23 +2897,162 @@ void nsGenericHTMLFormControlElementWithState::HandlePopoverTargetAction() {
     return;
   }
 
-  const nsAttrValue* value = GetParsedAttr(nsGkAtoms::popovertargetaction);
-  if (!value) {
+  auto action = PopoverTargetAction::Toggle;
+  if (const nsAttrValue* value =
+          GetParsedAttr(nsGkAtoms::popovertargetaction)) {
+    MOZ_ASSERT(value->Type() == nsAttrValue::eEnum);
+    action = static_cast<PopoverTargetAction>(value->GetEnumValue());
+  }
+
+  bool canHide = action == PopoverTargetAction::Hide ||
+                 action == PopoverTargetAction::Toggle;
+  bool shouldHide = canHide && target->IsPopoverOpen();
+  bool canShow = action == PopoverTargetAction::Show ||
+                 action == PopoverTargetAction::Toggle;
+  bool shouldShow = canShow && !target->IsPopoverOpen();
+
+  if (shouldHide) {
+    target->HidePopover(IgnoreErrors());
+  } else if (shouldShow) {
+    target->ShowPopoverInternal(this, IgnoreErrors());
+  }
+}
+
+void nsGenericHTMLFormControlElementWithState::GetInvokeAction(
+    nsAString& aValue) const {
+  const nsAttrValue* attr = GetParsedAttr(nsGkAtoms::invokeaction);
+  if (attr) {
+    attr->GetAtomValue()->ToString(aValue);
+  }
+}
+
+InvokeAction nsGenericHTMLFormControlElementWithState::GetInvokeAction(
+    nsAtom* aAtom) const {
+  if (aAtom == nsGkAtoms::_empty) {
+    return InvokeAction::Auto;
+  }
+  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::showpopover)) {
+    return InvokeAction::ShowPopover;
+  }
+  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::hidepopover)) {
+    return InvokeAction::HidePopover;
+  }
+  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::togglepopover)) {
+    return InvokeAction::TogglePopover;
+  }
+  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::showmodal)) {
+    return InvokeAction::ShowModal;
+  }
+  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::toggle)) {
+    return InvokeAction::Toggle;
+  }
+  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::close)) {
+    return InvokeAction::Close;
+  }
+  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::open)) {
+    return InvokeAction::Open;
+  }
+  if (nsContentUtils::ContainsChar(aAtom, '-')) {
+    return InvokeAction::Custom;
+  }
+  return InvokeAction::Invalid;
+}
+
+mozilla::dom::Element*
+nsGenericHTMLFormControlElementWithState::GetInvokeTargetElement() const {
+  if (StaticPrefs::dom_element_invokers_enabled()) {
+    return GetAttrAssociatedElement(nsGkAtoms::invoketarget);
+  }
+  return nullptr;
+}
+
+void nsGenericHTMLFormControlElementWithState::SetInvokeTargetElement(
+    mozilla::dom::Element* aElement) {
+  ExplicitlySetAttrElement(nsGkAtoms::invoketarget, aElement);
+}
+
+void nsGenericHTMLFormControlElementWithState::HandleInvokeTargetAction() {
+  RefPtr<Element> invokee = GetInvokeTargetElement();
+
+  if (!invokee) {
     return;
   }
 
-  auto action = static_cast<PopoverTargetAction>(value->GetEnumValue());
-  bool canHide = action == PopoverTargetAction::Hide ||
-                 action == PopoverTargetAction::Toggle;
-  bool canShow = action == PopoverTargetAction::Show ||
-                 action == PopoverTargetAction::Toggle;
+  // 1. Let action be element's invokeaction attribute.
+  const nsAttrValue* attr = GetParsedAttr(nsGkAtoms::invokeaction);
 
-  if (canHide && target->IsPopoverOpen()) {
-    target->HidePopover(IgnoreErrors());
-  } else if (canShow && !target->IsPopoverOpen()) {
-    target->GetPopoverData()->SetInvoker(this);
-    target->ShowPopover(IgnoreErrors());
+  nsAtom* actionRaw = attr ? attr->GetAtomValue() : nsGkAtoms::_empty;
+  InvokeAction action = GetInvokeAction(actionRaw);
+
+  // 5.3. Otherwise, if the result of running invokee's corresponding is valid
+  // invoke action steps given action is not true, then return.
+  if (action != InvokeAction::Custom && !invokee->IsValidInvokeAction(action)) {
+    return;
   }
+
+  // 6. Let continue be the result of firing an event named invoke at invokee,
+  // using InvokeEvent, with its action attribute initialized to action's value,
+  // its invoker attribute initialized to element, and its cancelable and
+  // composed attributes initialized to true.
+  InvokeEventInit init;
+  actionRaw->ToString(init.mAction);
+  init.mInvoker = this;
+  init.mCancelable = true;
+  init.mComposed = true;
+  RefPtr<Event> event = InvokeEvent::Constructor(this, u"invoke"_ns, init);
+  event->SetTrusted(true);
+  event->SetTarget(invokee);
+
+  EventDispatcher::DispatchDOMEvent(invokee, nullptr, event, nullptr, nullptr);
+
+  // 7. If continue is false, then return.
+  // 8. If isCustom is true, then return.
+  if (action == InvokeAction::Custom || event->DefaultPrevented()) {
+    return;
+  }
+
+  invokee->HandleInvokeInternal(this, action, IgnoreErrors());
+}
+
+bool nsGenericHTMLElement::IsValidInvokeAction(InvokeAction aAction) const {
+  return Element::IsValidInvokeAction(aAction) ||
+         aAction == InvokeAction::ShowPopover ||
+         aAction == InvokeAction::TogglePopover ||
+         aAction == InvokeAction::HidePopover;
+}
+
+MOZ_CAN_RUN_SCRIPT bool nsGenericHTMLElement::HandleInvokeInternal(
+    Element* aInvoker, InvokeAction aAction, ErrorResult& aRv) {
+  if (Element::HandleInvokeInternal(aInvoker, aAction, aRv)) {
+    return true;
+  }
+
+  // If the element is a `popover` then we may want to handle the
+  // invokeaction...
+  auto popoverState = GetPopoverAttributeState();
+  if (popoverState == PopoverAttributeState::None) {
+    return false;
+  }
+
+  const bool canShow = aAction == InvokeAction::Auto ||
+                       aAction == InvokeAction::TogglePopover ||
+                       aAction == InvokeAction::ShowPopover;
+  const bool canHide = aAction == InvokeAction::Auto ||
+                       aAction == InvokeAction::TogglePopover ||
+                       aAction == InvokeAction::HidePopover;
+
+  if (canShow && !IsPopoverOpen()) {
+    ShowPopoverInternal(aInvoker, aRv);
+    return true;
+  }
+
+  if (canHide && IsPopoverOpen()) {
+    HidePopoverInternal(/* aFocusPreviousElement = */ true,
+                        /* aFireEvents = */ true, IgnoreErrors());
+    return true;
+  }
+
+  return false;
 }
 
 void nsGenericHTMLFormControlElementWithState::GenerateStateKey() {
@@ -2946,7 +3101,7 @@ PresState* nsGenericHTMLFormControlElementWithState::GetPrimaryPresState() {
 }
 
 already_AddRefed<nsILayoutHistoryState>
-nsGenericHTMLFormControlElementWithState::GetLayoutHistory(bool aRead) {
+nsGenericHTMLFormElement::GetLayoutHistory(bool aRead) {
   nsCOMPtr<Document> doc = GetUncomposedDoc();
   if (!doc) {
     return nullptr;
@@ -3009,8 +3164,7 @@ void nsGenericHTMLFormControlElementWithState::GetFormAction(nsString& aValue) {
     return;
   }
 
-  if (!GetAttr(kNameSpaceID_None, nsGkAtoms::formaction, aValue) ||
-      aValue.IsEmpty()) {
+  if (!GetAttr(nsGkAtoms::formaction, aValue) || aValue.IsEmpty()) {
     Document* document = OwnerDoc();
     nsIURI* docURI = document->GetDocumentURI();
     if (docURI) {
@@ -3236,17 +3390,12 @@ bool nsGenericHTMLElement::PopoverOpen() const {
 bool nsGenericHTMLElement::CheckPopoverValidity(
     PopoverVisibilityState aExpectedState, Document* aExpectedDocument,
     ErrorResult& aRv) {
-  const PopoverData* data = GetPopoverData();
-  if (!data ||
-      data->GetPopoverAttributeState() == PopoverAttributeState::None) {
-    MOZ_ASSERT(!HasAttr(nsGkAtoms::popover));
+  if (GetPopoverAttributeState() == PopoverAttributeState::None) {
     aRv.ThrowNotSupportedError("Element is in the no popover state");
     return false;
   }
 
-  MOZ_ASSERT(HasAttr(nsGkAtoms::popover));
-
-  if (data->GetPopoverVisibilityState() != aExpectedState) {
+  if (GetPopoverData()->GetPopoverVisibilityState() != aExpectedState) {
     return false;
   }
 
@@ -3260,9 +3409,11 @@ bool nsGenericHTMLElement::CheckPopoverValidity(
     return false;
   }
 
-  if (IsHTMLElement(nsGkAtoms::dialog) && HasAttr(nsGkAtoms::open)) {
-    aRv.ThrowInvalidStateError("Element is an open <dialog> element");
-    return false;
+  if (auto* dialog = HTMLDialogElement::FromNode(this)) {
+    if (dialog->IsInTopLayer()) {
+      aRv.ThrowInvalidStateError("Element is a modal <dialog> element");
+      return false;
+    }
   }
 
   if (State().HasState(ElementState::FULLSCREEN)) {
@@ -3279,14 +3430,21 @@ PopoverAttributeState nsGenericHTMLElement::GetPopoverAttributeState() const {
 }
 
 void nsGenericHTMLElement::PopoverPseudoStateUpdate(bool aOpen, bool aNotify) {
-  ElementState newPopoverState;
-  if (aOpen) {
-    newPopoverState = ElementState::POPOVER_OPEN;
-  }
+  SetStates(ElementState::POPOVER_OPEN, aOpen, aNotify);
+}
 
-  ElementState oldPopoverState = State() & ElementState::POPOVER_OPEN;
-  ElementState changedState = newPopoverState ^ oldPopoverState;
-  ToggleStates(changedState, aNotify);
+already_AddRefed<ToggleEvent> nsGenericHTMLElement::CreateToggleEvent(
+    const nsAString& aEventType, const nsAString& aOldState,
+    const nsAString& aNewState, Cancelable aCancelable) {
+  ToggleEventInit init;
+  init.mBubbles = false;
+  init.mOldState = aOldState;
+  init.mNewState = aNewState;
+  init.mCancelable = aCancelable == Cancelable::eYes;
+  RefPtr<ToggleEvent> event = ToggleEvent::Constructor(this, aEventType, init);
+  event->SetTrusted(true);
+  event->SetTarget(this);
+  return event.forget();
 }
 
 bool nsGenericHTMLElement::FireToggleEvent(PopoverVisibilityState aOldState,
@@ -3295,23 +3453,13 @@ bool nsGenericHTMLElement::FireToggleEvent(PopoverVisibilityState aOldState,
   auto stringForState = [](PopoverVisibilityState state) {
     return state == PopoverVisibilityState::Hidden ? u"closed"_ns : u"open"_ns;
   };
-
-  ToggleEventInit init;
-  init.mBubbles = false;
-  init.mOldState = stringForState(aOldState);
-  init.mNewState = stringForState(aNewState);
-  if (aType == u"beforetoggle"_ns &&
-      aNewState == PopoverVisibilityState::Showing) {
-    init.mCancelable = true;
-  } else {
-    init.mCancelable = false;
-  }
-  RefPtr<ToggleEvent> event = ToggleEvent::Constructor(this, aType, init);
-  event->SetTrusted(true);
-  event->SetTarget(this);
-
-  EventDispatcher::DispatchDOMEvent(MOZ_KnownLive(ToSupports(this)), nullptr,
-                                    event, nullptr, nullptr);
+  const auto cancelable = aType == u"beforetoggle"_ns &&
+                                  aNewState == PopoverVisibilityState::Showing
+                              ? Cancelable::eYes
+                              : Cancelable::eNo;
+  RefPtr event = CreateToggleEvent(aType, stringForState(aOldState),
+                                   stringForState(aNewState), cancelable);
+  EventDispatcher::DispatchDOMEvent(this, nullptr, event, nullptr, nullptr);
   return event->DefaultPrevented();
 }
 
@@ -3328,8 +3476,7 @@ void nsGenericHTMLElement::QueuePopoverEventTask(
   auto task =
       MakeRefPtr<PopoverToggleEventTask>(do_GetWeakReference(this), aOldState);
   data->SetToggleEventTask(task);
-
-  OwnerDoc()->Dispatch(TaskCategory::UI, task.forget());
+  OwnerDoc()->Dispatch(task.forget());
 }
 
 void nsGenericHTMLElement::RunPopoverToggleEventTask(
@@ -3351,11 +3498,25 @@ void nsGenericHTMLElement::RunPopoverToggleEventTask(
 
 // https://html.spec.whatwg.org/#dom-showpopover
 void nsGenericHTMLElement::ShowPopover(ErrorResult& aRv) {
+  return ShowPopoverInternal(nullptr, aRv);
+}
+void nsGenericHTMLElement::ShowPopoverInternal(Element* aInvoker,
+                                               ErrorResult& aRv) {
   if (!CheckPopoverValidity(PopoverVisibilityState::Hidden, nullptr, aRv)) {
     return;
   }
   RefPtr<Document> document = OwnerDoc();
+
+  MOZ_ASSERT(!GetPopoverData() || !GetPopoverData()->GetInvoker());
   MOZ_ASSERT(!OwnerDoc()->TopLayerContains(*this));
+
+  bool wasShowingOrHiding = GetPopoverData()->IsShowingOrHiding();
+  GetPopoverData()->SetIsShowingOrHiding(true);
+  auto cleanupShowingFlag = MakeScopeExit([&]() {
+    if (auto* popoverData = GetPopoverData()) {
+      popoverData->SetIsShowingOrHiding(wasShowingOrHiding);
+    }
+  });
 
   // Fire beforetoggle event and re-check popover validity.
   if (FireToggleEvent(PopoverVisibilityState::Hidden,
@@ -3369,11 +3530,19 @@ void nsGenericHTMLElement::ShowPopover(ErrorResult& aRv) {
   bool shouldRestoreFocus = false;
   nsWeakPtr originallyFocusedElement;
   if (IsAutoPopover()) {
-    RefPtr<nsINode> ancestor = GetTopmostPopoverAncestor();
+    auto originalState = GetPopoverAttributeState();
+    RefPtr<nsINode> ancestor = GetTopmostPopoverAncestor(aInvoker, true);
     if (!ancestor) {
       ancestor = document;
     }
-    document->HideAllPopoversUntil(*ancestor, false, true);
+    document->HideAllPopoversUntil(*ancestor, false,
+                                   /* aFireEvents = */ !wasShowingOrHiding);
+    if (GetPopoverAttributeState() != originalState) {
+      aRv.ThrowInvalidStateError(
+          "The value of the popover attribute was changed while hiding the "
+          "popover.");
+      return;
+    }
 
     // TODO: Handle if document changes, see
     // https://github.com/whatwg/html/issues/9177
@@ -3395,7 +3564,12 @@ void nsGenericHTMLElement::ShowPopover(ErrorResult& aRv) {
   document->AddPopoverToTopLayer(*this);
 
   PopoverPseudoStateUpdate(true, true);
-  GetPopoverData()->SetPopoverVisibilityState(PopoverVisibilityState::Showing);
+
+  {
+    auto* popoverData = GetPopoverData();
+    popoverData->SetPopoverVisibilityState(PopoverVisibilityState::Showing);
+    popoverData->SetInvoker(aInvoker);
+  }
 
   // Run the popover focusing steps given element.
   FocusPopover();
@@ -3443,20 +3617,35 @@ void nsGenericHTMLElement::FocusPreviousElementAfterHidingPopover() {
     return;
   }
 
-  // Run the focusing steps for previouslyFocusedElement
-  FocusOptions options;
-  options.mPreventScroll = true;
-  control->Focus(options, CallerType::NonSystem, IgnoreErrors());
+  // Step 14.2 at
+  // https://html.spec.whatwg.org/multipage/popover.html#hide-popover-algorithm
+  // If focusPreviousElement is true and document's focused area of the
+  // document's DOM anchor is a shadow-including inclusive descendant of
+  // element, then run the focusing steps for previouslyFocusedElement;
+  nsIContent* currentFocus = OwnerDoc()->GetUnretargetedFocusedContent();
+  if (currentFocus &&
+      currentFocus->IsShadowIncludingInclusiveDescendantOf(this)) {
+    FocusOptions options;
+    options.mPreventScroll = true;
+    control->Focus(options, CallerType::NonSystem, IgnoreErrors());
+  }
 }
 
 // https://html.spec.whatwg.org/multipage/popover.html#dom-togglepopover
-void nsGenericHTMLElement::TogglePopover(const Optional<bool>& aForce,
+bool nsGenericHTMLElement::TogglePopover(const Optional<bool>& aForce,
                                          ErrorResult& aRv) {
   if (PopoverOpen() && (!aForce.WasPassed() || !aForce.Value())) {
     HidePopover(aRv);
   } else if (!aForce.WasPassed() || aForce.Value()) {
     ShowPopover(aRv);
+  } else {
+    CheckPopoverValidity(GetPopoverData()
+                             ? GetPopoverData()->GetPopoverVisibilityState()
+                             : PopoverVisibilityState::Showing,
+                         nullptr, aRv);
   }
+
+  return PopoverOpen();
 }
 
 // https://html.spec.whatwg.org/multipage/popover.html#popover-focusing-steps
@@ -3469,25 +3658,22 @@ void nsGenericHTMLElement::FocusPopover() {
     doc->FlushPendingNotifications(FlushType::Frames);
   }
 
-  // This diverges from the spec a bit,
-  // see https://github.com/whatwg/html/pull/8998
-  RefPtr<Element> control =
-      GetBoolAttr(nsGkAtoms::autofocus)
-          ? this
-          : GetFocusDelegate(false /* aWithMouse */, true /* aAutofocusOnly */);
+  RefPtr<Element> control = GetBoolAttr(nsGkAtoms::autofocus)
+                                ? this
+                                : GetAutofocusDelegate(IsFocusableFlags(0));
   if (!control) {
     return;
   }
-  FocusCandidate(*control, false /* aClearUpFocus */);
+  FocusCandidate(control, false /* aClearUpFocus */);
 }
 
-void nsGenericHTMLElement::FocusCandidate(Element& aControl,
+void nsGenericHTMLElement::FocusCandidate(Element* aControl,
                                           bool aClearUpFocus) {
   // 1) Run the focusing steps given control.
   IgnoredErrorResult rv;
-  nsIFrame* frame = aControl.GetPrimaryFrame();
-  if (frame && frame->IsFocusable()) {
-    aControl.Focus(FocusOptions(), CallerType::NonSystem, rv);
+  if (RefPtr<Element> elementToFocus = nsFocusManager::GetTheFocusableArea(
+          aControl, nsFocusManager::ProgrammaticFocusFlags(FocusOptions()))) {
+    elementToFocus->Focus(FocusOptions(), CallerType::NonSystem, rv);
     if (rv.Failed()) {
       return;
     }
@@ -3503,7 +3689,7 @@ void nsGenericHTMLElement::FocusCandidate(Element& aControl,
   // browsing context's top-level browsing context.
   // 3) If control's node document's origin is not the same as the origin of
   // topDocument, then return.
-  BrowsingContext* bc = aControl.OwnerDoc()->GetBrowsingContext();
+  BrowsingContext* bc = aControl->OwnerDoc()->GetBrowsingContext();
   if (bc && bc->IsInProcess() && bc->SameOriginWithTop()) {
     if (nsCOMPtr<nsIDocShell> docShell = bc->Top()->GetDocShell()) {
       if (Document* topDocument = docShell->GetExtantDocument()) {

@@ -15,6 +15,7 @@
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/UniquePtr.h"
 #include "nsCycleCollectionParticipant.h"
 
 struct JSContext;
@@ -22,7 +23,7 @@ struct JSContext;
 namespace mozilla {
 class CancelableRunnable;
 class ErrorResult;
-enum class RFPTarget : unsigned;
+enum class RFPTarget : uint64_t;
 
 namespace gfx {
 class SourceSurface;
@@ -78,6 +79,8 @@ class OffscreenCanvas final : public DOMEventTargetHelper,
                   layers::TextureType aTextureType,
                   already_AddRefed<OffscreenCanvasDisplayHelper> aDisplay);
 
+  void Destroy();
+
   nsIGlobalObject* GetParentObject() const { return GetOwnerGlobal(); }
 
   virtual JSObject* WrapObject(JSContext* aCx,
@@ -108,6 +111,8 @@ class OffscreenCanvas final : public DOMEventTargetHelper,
                                    JS::Handle<JS::Value> aParams,
                                    ErrorResult& aRv);
 
+  Maybe<uint64_t> GetWindowID();
+
   nsICanvasRenderingContextInternal* GetContext() const {
     return mCurrentContext;
   }
@@ -124,7 +129,7 @@ class OffscreenCanvas final : public DOMEventTargetHelper,
   // on worker thread.
   static bool PrefEnabledOnWorkerThread(JSContext* aCx, JSObject* aObj);
 
-  OffscreenCanvasCloneData* ToCloneData();
+  UniquePtr<OffscreenCanvasCloneData> ToCloneData(JSContext* aCx);
 
   void UpdateDisplayData(const OffscreenCanvasDisplayData& aData);
 
@@ -149,6 +154,8 @@ class OffscreenCanvas final : public DOMEventTargetHelper,
 
   bool MayNeuter() const { return !mNeutered && !mCurrentContext; }
 
+  void SetSize(const nsIntSize& aSize, ErrorResult& aRv);
+
   nsIPrincipal* GetExpandedReader() const { return mExpandedReader; }
 
   void SetWriteOnly(RefPtr<nsIPrincipal>&& aExpandedReader);
@@ -161,7 +168,7 @@ class OffscreenCanvas final : public DOMEventTargetHelper,
   bool IsWriteOnly() const { return mIsWriteOnly; }
 
   // Determines if the caller should be able to read the content.
-  bool CallerCanRead(nsIPrincipal* aPrincipal) const;
+  bool CallerCanRead(nsIPrincipal& aPrincipal) const;
 
   layers::LayersBackend GetCompositorBackendType() const {
     return mCompositorBackendType;

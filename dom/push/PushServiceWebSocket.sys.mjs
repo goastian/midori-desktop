@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { PushDB } from "resource://gre/modules/PushDB.sys.mjs";
 import { PushRecord } from "resource://gre/modules/PushRecord.sys.mjs";
 import { PushCrypto } from "resource://gre/modules/PushCrypto.sys.mjs";
@@ -11,13 +9,9 @@ import { PushCrypto } from "resource://gre/modules/PushCrypto.sys.mjs";
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
   pushBroadcastService: "resource://gre/modules/PushBroadcastService.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "ObjectUtils",
-  "resource://gre/modules/ObjectUtils.jsm"
-);
 
 const kPUSHWSDB_DB_NAME = "pushapi";
 const kPUSHWSDB_DB_VERSION = 5; // Change this if the IndexedDB format changes
@@ -49,7 +43,7 @@ const kDELIVERY_REASON_TO_CODE = {
 
 const prefs = Services.prefs.getBranch("dom.push.");
 
-XPCOMUtils.defineLazyGetter(lazy, "console", () => {
+ChromeUtils.defineLazyGetter(lazy, "console", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -86,11 +80,11 @@ PushWebSocketListener.prototype = {
     this._pushService._wsOnStop(context, statusCode);
   },
 
-  onAcknowledge(context, size) {
+  onAcknowledge() {
     // EMPTY
   },
 
-  onBinaryMessageAvailable(context, message) {
+  onBinaryMessageAvailable() {
     // EMPTY
   },
 
@@ -977,7 +971,7 @@ export var PushServiceWebSocket = {
     // Otherwise, we're still setting up. If we don't have a request queue,
     // make one now.
     if (!this._notifyRequestQueue) {
-      let promise = new Promise((resolve, reject) => {
+      let promise = new Promise(resolve => {
         this._notifyRequestQueue = resolve;
       });
       this._enqueue(_ => promise);
@@ -1043,7 +1037,7 @@ export var PushServiceWebSocket = {
   },
 
   // begin Push protocol handshake
-  _wsOnStart(context) {
+  _wsOnStart() {
     lazy.console.debug("wsOnStart()");
 
     if (this._currentState != STATE_WAITING_FOR_WS_START) {

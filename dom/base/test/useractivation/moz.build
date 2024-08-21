@@ -5,5 +5,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 MOCHITEST_MANIFESTS += [
-    "mochitest.ini",
+    "mochitest.toml",
+]
+
+MOCHITEST_CHROME_MANIFESTS += [
+    "chrome.toml",
 ]

@@ -5,10 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "HTMLFrameSetElement.h"
+#include "mozilla/Try.h"
 #include "mozilla/dom/HTMLFrameSetElementBinding.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/EventHandlerBinding.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "mozilla/UniquePtrExtensions.h"
 
 NS_IMPL_NS_NEW_HTML_ELEMENT(FrameSet)

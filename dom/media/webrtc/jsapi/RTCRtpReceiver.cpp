@@ -3,32 +3,82 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "RTCRtpReceiver.h"
+
+#include <stdint.h>
+
+#include <vector>
+#include <string>
+#include <set>
+
+#include "call/call.h"
+#include "call/audio_receive_stream.h"
+#include "call/video_receive_stream.h"
+#include "api/rtp_parameters.h"
+#include "api/units/timestamp.h"
+#include "api/units/time_delta.h"
+#include "system_wrappers/include/clock.h"
+#include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
+
+#include "RTCRtpTransceiver.h"
 #include "PeerConnectionImpl.h"
+#include "RTCStatsReport.h"
+#include "mozilla/dom/RTCRtpReceiverBinding.h"
+#include "mozilla/dom/RTCRtpSourcesBinding.h"
+#include "mozilla/dom/RTCStatsReportBinding.h"
+#include "jsep/JsepTransceiver.h"
+#include "libwebrtcglue/MediaConduitControl.h"
+#include "libwebrtcglue/MediaConduitInterface.h"
+#include "transportbridge/MediaPipeline.h"
+#include "sdp/SdpEnum.h"
+#include "sdp/SdpAttribute.h"
+#include "MediaTransportHandler.h"
+#include "RemoteTrackSource.h"
+
 #include "mozilla/dom/RTCRtpCapabilitiesBinding.h"
-#include "transport/logging.h"
 #include "mozilla/dom/MediaStreamTrack.h"
 #include "mozilla/dom/Promise.h"
+#include "mozilla/dom/Nullable.h"
+#include "mozilla/dom/Document.h"
+#include "mozilla/dom/AudioStreamTrack.h"
+#include "mozilla/dom/VideoStreamTrack.h"
+#include "mozilla/dom/RTCRtpScriptTransform.h"
+
 #include "nsPIDOMWindow.h"
 #include "PrincipalHandle.h"
 #include "nsIPrincipal.h"
-#include "mozilla/dom/Document.h"
-#include "mozilla/NullPrincipal.h"
 #include "MediaTrackGraph.h"
-#include "RemoteTrackSource.h"
-#include "libwebrtcglue/RtpRtcpConfig.h"
-#include "nsString.h"
-#include "mozilla/dom/AudioStreamTrack.h"
-#include "mozilla/dom/VideoStreamTrack.h"
-#include "MediaTransportHandler.h"
-#include "jsep/JsepTransceiver.h"
-#include "mozilla/dom/RTCRtpReceiverBinding.h"
-#include "mozilla/dom/RTCRtpSourcesBinding.h"
-#include "RTCStatsReport.h"
+#include "nsStringFwd.h"
+#include "MediaSegment.h"
+#include "nsLiteralString.h"
+#include "nsTArray.h"
+#include "nsDOMNavigationTiming.h"
+#include "MainThreadUtils.h"
+#include "ErrorList.h"
+#include "nsWrapperCache.h"
+#include "nsISupports.h"
+#include "nsCOMPtr.h"
+#include "nsIScriptObjectPrincipal.h"
+#include "nsCycleCollectionParticipant.h"
+#include "nsDebug.h"
+#include "nsThreadUtils.h"
+#include "PerformanceRecorder.h"
+
+#include "mozilla/NullPrincipal.h"
 #include "mozilla/Preferences.h"
-#include "PeerConnectionCtx.h"
-#include "RTCRtpTransceiver.h"
-#include "libwebrtcglue/AudioConduit.h"
-#include "call/call.h"
+#include "mozilla/StateMirroring.h"
+#include "mozilla/Logging.h"
+#include "mozilla/RefPtr.h"
+#include "mozilla/AbstractThread.h"
+#include "mozilla/StateWatching.h"
+#include "mozilla/Maybe.h"
+#include "mozilla/Assertions.h"
+#include "mozilla/AlreadyAddRefed.h"
+#include "mozilla/MozPromise.h"
+#include "mozilla/UniquePtr.h"
+#include "mozilla/fallible.h"
+#include "mozilla/mozalloc_oom.h"
+#include "mozilla/ErrorResult.h"
+#include "js/RootingAPI.h"
 
 namespace mozilla::dom {
 
@@ -36,12 +86,12 @@ LazyLogModule gReceiverLog("RTCRtpReceiver");
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE_CLASS(RTCRtpReceiver)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(RTCRtpReceiver)
-  // We do not do anything here, we wait for BreakCycles to be called
+  tmp->Unlink();
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(RTCRtpReceiver)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindow, mPc, mTransceiver, mTrack,
-                                    mTrackSource)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindow, mPc, mTransceiver, mTransform,
+                                    mTrack, mTrackSource)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(RTCRtpReceiver)
@@ -89,7 +139,8 @@ RTCRtpReceiver::RTCRtpReceiver(
       INIT_CANONICAL(mAudioCodecs, std::vector<AudioCodecConfig>()),
       INIT_CANONICAL(mVideoCodecs, std::vector<VideoCodecConfig>()),
       INIT_CANONICAL(mVideoRtpRtcpConfig, Nothing()),
-      INIT_CANONICAL(mReceiving, false) {
+      INIT_CANONICAL(mReceiving, false),
+      INIT_CANONICAL(mFrameTransformerProxy, nullptr) {
   PrincipalHandle principalHandle = GetPrincipalHandle(aWindow, aPrivacy);
   const bool isAudio = aConduit->type() == MediaSessionConduit::AUDIO;
 
@@ -136,6 +187,8 @@ RTCRtpReceiver::RTCRtpReceiver(
 
   mWatchManager.Watch(mReceiveTrackMute,
                       &RTCRtpReceiver::UpdateReceiveTrackMute);
+
+  mParameters.mCodecs.Construct();
 }
 
 #undef INIT_CANONICAL
@@ -158,6 +211,10 @@ void RTCRtpReceiver::GetCapabilities(
     const GlobalObject&, const nsAString& aKind,
     Nullable<dom::RTCRtpCapabilities>& aResult) {
   PeerConnectionImpl::GetCapabilities(aKind, aResult, sdp::Direction::kRecv);
+}
+
+void RTCRtpReceiver::GetParameters(RTCRtpReceiveParameters& aParameters) const {
+  aParameters = mParameters;
 }
 
 already_AddRefed<Promise> RTCRtpReceiver::GetStats(ErrorResult& aError) {
@@ -291,7 +348,7 @@ nsTArray<RefPtr<RTCStatsPromise>> RTCRtpReceiver::GetStatsInternal(
                 return;
               }
 
-              if (!audioStats->last_packet_received_timestamp_ms) {
+              if (!audioStats->last_packet_received.has_value()) {
                 // By spec: "The lifetime of all RTP monitored objects starts
                 // when the RTP stream is first used: When the first RTP packet
                 // is sent or received on the SSRC it represents"
@@ -327,9 +384,10 @@ nsTArray<RefPtr<RTCStatsPromise>> RTCRtpReceiver::GetStatsInternal(
               constructCommonInboundRtpStats(local);
               local.mJitter.Construct(audioStats->jitter_ms / 1000.0);
               local.mPacketsLost.Construct(audioStats->packets_lost);
-              local.mPacketsReceived.Construct(audioStats->packets_rcvd);
+              local.mPacketsReceived.Construct(audioStats->packets_received);
               local.mPacketsDiscarded.Construct(audioStats->packets_discarded);
-              local.mBytesReceived.Construct(audioStats->payload_bytes_rcvd);
+              local.mBytesReceived.Construct(
+                  audioStats->payload_bytes_received);
               // Always missing from libwebrtc stats
               // if (audioStats->estimated_playout_ntp_timestamp_ms) {
               //   local.mEstimatedPlayoutTimestamp.Construct(
@@ -348,17 +406,17 @@ nsTArray<RefPtr<RTCStatsPromise>> RTCRtpReceiver::GetStatsInternal(
               local.mConcealedSamples.Construct(audioStats->concealed_samples);
               local.mSilentConcealedSamples.Construct(
                   audioStats->silent_concealed_samples);
-              if (audioStats->last_packet_received_timestamp_ms) {
+              if (audioStats->last_packet_received.has_value()) {
                 local.mLastPacketReceivedTimestamp.Construct(
                     RTCStatsTimestamp::FromNtp(
                         aConduit->GetTimestampMaker(),
                         webrtc::Timestamp::Millis(
-                            *audioStats->last_packet_received_timestamp_ms) +
+                            audioStats->last_packet_received->ms()) +
                             webrtc::TimeDelta::Seconds(webrtc::kNtpJan1970))
                         .ToDom());
               }
               local.mHeaderBytesReceived.Construct(
-                  audioStats->header_and_padding_bytes_rcvd);
+                  audioStats->header_and_padding_bytes_received);
               local.mFecPacketsReceived.Construct(
                   audioStats->fec_packets_received);
               local.mFecPacketsDiscarded.Construct(
@@ -392,7 +450,7 @@ nsTArray<RefPtr<RTCStatsPromise>> RTCRtpReceiver::GetStatsInternal(
                 return;
               }
 
-              if (!videoStats->rtp_stats.last_packet_received_timestamp_ms) {
+              if (!videoStats->rtp_stats.last_packet_received.has_value()) {
                 // By spec: "The lifetime of all RTP monitored objects starts
                 // when the RTP stream is first used: When the first RTP packet
                 // is sent or received on the SSRC it represents"
@@ -458,7 +516,7 @@ nsTArray<RefPtr<RTCStatsPromise>> RTCRtpReceiver::GetStatsInternal(
                   videoStats->frame_counts.key_frames +
                   videoStats->frame_counts.delta_frames);
               local.mJitterBufferDelay.Construct(
-                  videoStats->jitter_buffer_delay_seconds);
+                  videoStats->jitter_buffer_delay.seconds<double>());
               local.mJitterBufferEmittedCount.Construct(
                   videoStats->jitter_buffer_emitted_count);
 
@@ -471,13 +529,12 @@ nsTArray<RefPtr<RTCStatsPromise>> RTCRtpReceiver::GetStatsInternal(
                   videoStats->total_inter_frame_delay);
               local.mTotalSquaredInterFrameDelay.Construct(
                   videoStats->total_squared_inter_frame_delay);
-              if (videoStats->rtp_stats.last_packet_received_timestamp_ms) {
+              if (videoStats->rtp_stats.last_packet_received.has_value()) {
                 local.mLastPacketReceivedTimestamp.Construct(
                     RTCStatsTimestamp::FromNtp(
                         aConduit->GetTimestampMaker(),
                         webrtc::Timestamp::Millis(
-                            *videoStats->rtp_stats
-                                 .last_packet_received_timestamp_ms) +
+                            videoStats->rtp_stats.last_packet_received->ms()) +
                             webrtc::TimeDelta::Seconds(webrtc::kNtpJan1970))
                         .ToDom());
               }
@@ -605,6 +662,9 @@ void RTCRtpReceiver::Shutdown() {
   mRtcpByeListener.DisconnectIfExists();
   mRtcpTimeoutListener.DisconnectIfExists();
   mUnmuteListener.DisconnectIfExists();
+  if (mTransform) {
+    mTransform->GetProxy().SetReceiver(nullptr);
+  }
 }
 
 void RTCRtpReceiver::BreakCycles() {
@@ -612,6 +672,12 @@ void RTCRtpReceiver::BreakCycles() {
   mPc = nullptr;
   mTrack = nullptr;
   mTrackSource = nullptr;
+}
+
+void RTCRtpReceiver::Unlink() {
+  if (mTransceiver) {
+    mTransceiver->Unlink();
+  }
 }
 
 void RTCRtpReceiver::UpdateTransport() {
@@ -649,9 +715,9 @@ void RTCRtpReceiver::UpdateTransport() {
     // Add unique payload types as a last-ditch fallback
     auto uniquePts = GetJsepTransceiver()
                          .mRecvTrack.GetNegotiatedDetails()
-                         ->GetUniquePayloadTypes();
+                         ->GetUniqueReceivePayloadTypes();
     for (unsigned char& uniquePt : uniquePts) {
-      filter->AddUniquePT(uniquePt);
+      filter->AddUniqueReceivePT(uniquePt);
     }
   }
 
@@ -796,8 +862,10 @@ void RTCRtpReceiver::UpdateAudioConduit() {
 }
 
 void RTCRtpReceiver::Stop() {
-  MOZ_ASSERT(mTransceiver->Stopped());
+  MOZ_ASSERT(mTransceiver->Stopped() || mTransceiver->Stopping());
   mReceiving = false;
+  GetMainThreadSerialEventTarget()->Dispatch(NS_NewRunnableFunction(
+      __func__, [trackSource = mTrackSource] { trackSource->ForceEnded(); }));
 }
 
 bool RTCRtpReceiver::HasTrack(const dom::MediaStreamTrack* aTrack) const {
@@ -807,6 +875,29 @@ bool RTCRtpReceiver::HasTrack(const dom::MediaStreamTrack* aTrack) const {
 void RTCRtpReceiver::SyncFromJsep(const JsepTransceiver& aJsepTransceiver) {
   if (!mPipeline) {
     return;
+  }
+
+  if (GetJsepTransceiver().mRecvTrack.GetNegotiatedDetails()) {
+    const auto& details(
+        *GetJsepTransceiver().mRecvTrack.GetNegotiatedDetails());
+    mParameters.mCodecs.Reset();
+    mParameters.mCodecs.Construct();
+    if (details.GetEncodingCount()) {
+      for (const auto& jsepCodec : details.GetEncoding(0).GetCodecs()) {
+        RTCRtpCodecParameters codec;
+        RTCRtpTransceiver::ToDomRtpCodecParameters(*jsepCodec, &codec);
+        Unused << mParameters.mCodecs.Value().AppendElement(codec, fallible);
+        if (jsepCodec->Type() == SdpMediaSection::kVideo) {
+          const JsepVideoCodecDescription& videoJsepCodec =
+              static_cast<JsepVideoCodecDescription&>(*jsepCodec);
+          if (videoJsepCodec.mRtxEnabled) {
+            RTCRtpCodecParameters rtx;
+            RTCRtpTransceiver::ToDomRtpCodecParametersRtx(videoJsepCodec, &rtx);
+            Unused << mParameters.mCodecs.Value().AppendElement(rtx, fallible);
+          }
+        }
+      }
+    }
   }
 
   // Spec says we set [[Receptive]] to true on sLD(sendrecv/recvonly), and to
@@ -822,7 +913,13 @@ void RTCRtpReceiver::SyncFromJsep(const JsepTransceiver& aJsepTransceiver) {
   }
 }
 
-void RTCRtpReceiver::SyncToJsep(JsepTransceiver& aJsepTransceiver) const {}
+void RTCRtpReceiver::SyncToJsep(JsepTransceiver& aJsepTransceiver) const {
+  if (!mTransceiver->GetPreferredCodecs().empty()) {
+    aJsepTransceiver.mRecvTrack.PopulateCodecs(
+        mTransceiver->GetPreferredCodecs(),
+        mTransceiver->GetPreferredCodecsInUse());
+  }
+}
 
 void RTCRtpReceiver::UpdateStreams(StreamAssociationChanges* aChanges) {
   // We don't sort and use set_difference, because we need to report the
@@ -935,6 +1032,48 @@ JsepTransceiver& RTCRtpReceiver::GetJsepTransceiver() {
 const JsepTransceiver& RTCRtpReceiver::GetJsepTransceiver() const {
   MOZ_ASSERT(mTransceiver);
   return mTransceiver->GetJsepTransceiver();
+}
+
+void RTCRtpReceiver::SetTransform(RTCRtpScriptTransform* aTransform,
+                                  ErrorResult& aError) {
+  if (aTransform == mTransform.get()) {
+    // Ok... smile and nod
+    // TODO: Depending on spec, this might throw
+    // https://github.com/w3c/webrtc-encoded-transform/issues/189
+    return;
+  }
+
+  if (aTransform && aTransform->IsClaimed()) {
+    aError.ThrowInvalidStateError("transform has already been used elsewhere");
+    return;
+  }
+
+  if (aTransform) {
+    mFrameTransformerProxy = &aTransform->GetProxy();
+  } else {
+    mFrameTransformerProxy = nullptr;
+  }
+
+  if (mTransform) {
+    mTransform->GetProxy().SetReceiver(nullptr);
+  }
+
+  mTransform = const_cast<RTCRtpScriptTransform*>(aTransform);
+
+  if (mTransform) {
+    mTransform->GetProxy().SetReceiver(this);
+    mTransform->SetClaimed();
+  }
+}
+
+void RTCRtpReceiver::RequestKeyFrame() {
+  if (!mTransform || !mPipeline) {
+    return;
+  }
+
+  mPipeline->mConduit->AsVideoSessionConduit().apply([&](const auto& conduit) {
+    conduit->RequestKeyFrame(&mTransform->GetProxy());
+  });
 }
 
 }  // namespace mozilla::dom

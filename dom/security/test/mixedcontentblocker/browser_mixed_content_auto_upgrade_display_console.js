@@ -18,11 +18,14 @@ add_task(async function () {
 
   // Enable HTTPS-Only Mode and register console-listener
   await SpecialPowers.pushPrefEnv({
-    set: [["security.mixed_content.upgrade_display_content", true]],
+    set: [
+      ["security.mixed_content.upgrade_display_content", true],
+      ["security.mixed_content.upgrade_display_content.image", true],
+    ],
   });
   Services.console.registerListener(on_auto_upgrade_message);
 
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, kTestURI);
+  BrowserTestUtils.startLoadingURIString(gBrowser.selectedBrowser, kTestURI);
 
   await BrowserTestUtils.waitForCondition(() => seenAutoUpgradeMessage);
 

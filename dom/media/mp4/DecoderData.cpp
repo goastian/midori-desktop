@@ -13,8 +13,6 @@
 #include "MP4Metadata.h"
 #include "mozilla/Logging.h"
 
-// OpusDecoder header is really needed only by MP4 in rust
-#include "OpusDecoder.h"
 #include "mp4parse.h"
 
 #define LOG(...) \
@@ -172,14 +170,13 @@ MediaResult MP4AudioInfo::Update(const Mp4parseTrackInfo* aTrack,
         mp4ParseSampleCodecSpecific.length >= 12) {
       uint16_t preskip = mozilla::LittleEndian::readUint16(
           mp4ParseSampleCodecSpecific.data + 10);
-      opusCodecSpecificData.mContainerCodecDelayMicroSeconds =
-          mozilla::FramesToUsecs(preskip, 48000).value();
+      opusCodecSpecificData.mContainerCodecDelayFrames = preskip;
       LOG("Opus stream in MP4 container, %" PRId64
           " microseconds of encoder delay (%" PRIu16 ").",
-          opusCodecSpecificData.mContainerCodecDelayMicroSeconds, preskip);
+          opusCodecSpecificData.mContainerCodecDelayFrames, preskip);
     } else {
       // This file will error later as it will be rejected by the opus decoder.
-      opusCodecSpecificData.mContainerCodecDelayMicroSeconds = 0;
+      opusCodecSpecificData.mContainerCodecDelayFrames = 0;
     }
     opusCodecSpecificData.mHeadersBinaryBlob->AppendElements(
         mp4ParseSampleCodecSpecific.data, mp4ParseSampleCodecSpecific.length);
@@ -327,6 +324,8 @@ MediaResult MP4VideoInfo::Update(const Mp4parseTrackInfo* track,
     mMimeType = "video/av1"_ns;
   } else if (codecType == MP4PARSE_CODEC_MP4V) {
     mMimeType = "video/mp4v-es"_ns;
+  } else if (codecType == MP4PARSE_CODEC_HEVC) {
+    mMimeType = "video/hevc"_ns;
   }
   mTrackId = track->track_id;
   if (track->duration > TimeUnit::MaxTicks()) {

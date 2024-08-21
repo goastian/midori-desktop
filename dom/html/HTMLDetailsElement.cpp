@@ -46,13 +46,22 @@ void HTMLDetailsElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
     bool wasOpen = !!aOldValue;
     bool isOpen = !!aValue;
     if (wasOpen != isOpen) {
+      auto stringForState = [](bool aOpen) {
+        return aOpen ? u"open"_ns : u"closed"_ns;
+      };
+      nsAutoString oldState;
       if (mToggleEventDispatcher) {
+        oldState.Truncate();
+        static_cast<ToggleEvent*>(mToggleEventDispatcher->mEvent.get())
+            ->GetOldState(oldState);
         mToggleEventDispatcher->Cancel();
+      } else {
+        oldState.Assign(stringForState(wasOpen));
       }
-      // According to the html spec, a 'toggle' event is a simple event which
-      // does not bubble.
+      RefPtr<ToggleEvent> toggleEvent = CreateToggleEvent(
+          u"toggle"_ns, oldState, stringForState(isOpen), Cancelable::eNo);
       mToggleEventDispatcher =
-          new AsyncEventDispatcher(this, u"toggle"_ns, CanBubble::eNo);
+          new AsyncEventDispatcher(this, toggleEvent.forget());
       mToggleEventDispatcher->PostDOMEvent();
     }
   }
@@ -105,8 +114,9 @@ void HTMLDetailsElement::SetupShadowTree() {
     }
 
     nsAutoString defaultSummaryText;
-    nsContentUtils::GetLocalizedString(nsContentUtils::eFORMS_PROPERTIES,
-                                       "DefaultSummary", defaultSummaryText);
+    nsContentUtils::GetMaybeLocalizedString(nsContentUtils::eFORMS_PROPERTIES,
+                                            "DefaultSummary", OwnerDoc(),
+                                            defaultSummaryText);
     RefPtr<nsTextNode> description = new (nim) nsTextNode(nim);
     description->SetText(defaultSummaryText, kNotify);
     summary->AppendChildTo(description, kNotify, IgnoreErrors());
@@ -132,6 +142,37 @@ void HTMLDetailsElement::AsyncEventRunning(AsyncEventDispatcher* aEvent) {
 JSObject* HTMLDetailsElement::WrapNode(JSContext* aCx,
                                        JS::Handle<JSObject*> aGivenProto) {
   return HTMLDetailsElement_Binding::Wrap(aCx, this, aGivenProto);
+}
+
+bool HTMLDetailsElement::IsValidInvokeAction(InvokeAction aAction) const {
+  return nsGenericHTMLElement::IsValidInvokeAction(aAction) ||
+         aAction == InvokeAction::Toggle || aAction == InvokeAction::Close ||
+         aAction == InvokeAction::Open;
+}
+
+bool HTMLDetailsElement::HandleInvokeInternal(Element* aInvoker,
+                                              InvokeAction aAction,
+                                              ErrorResult& aRv) {
+  if (nsGenericHTMLElement::HandleInvokeInternal(aInvoker, aAction, aRv)) {
+    return true;
+  }
+
+  if (aAction == InvokeAction::Auto || aAction == InvokeAction::Toggle) {
+    ToggleOpen();
+    return true;
+  } else if (aAction == InvokeAction::Close) {
+    if (Open()) {
+      SetOpen(false, IgnoreErrors());
+    }
+    return true;
+  } else if (aAction == InvokeAction::Open) {
+    if (!Open()) {
+      SetOpen(true, IgnoreErrors());
+    }
+    return true;
+  }
+
+  return false;
 }
 
 }  // namespace mozilla::dom

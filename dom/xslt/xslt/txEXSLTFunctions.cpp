@@ -23,7 +23,6 @@
 #include "nsImportModule.h"
 #include "nsPrintfCString.h"
 #include "nsComponentManagerUtils.h"
-#include "nsContentCID.h"
 #include "nsContentCreatorFunctions.h"
 #include "nsIContent.h"
 #include "txMozillaXMLOutput.h"
@@ -189,8 +188,8 @@ struct txEXSLTFunctionDescriptor {
   int32_t mNamespaceID;
 };
 
-static EnumeratedArray<txEXSLTType, txEXSLTType::_LIMIT,
-                       txEXSLTFunctionDescriptor>
+static EnumeratedArray<txEXSLTType, txEXSLTFunctionDescriptor,
+                       size_t(txEXSLTType::_LIMIT)>
     descriptTable;
 
 class txEXSLTFunctionCall : public FunctionCall {

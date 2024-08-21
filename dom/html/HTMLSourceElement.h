@@ -35,7 +35,7 @@ class HTMLSourceElement final : public nsGenericHTMLElement {
   // child source element.
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
 
-  void UnbindFromTree(bool aNullParent) override;
+  void UnbindFromTree(UnbindContext&) override;
 
   // If this element's media attr matches for its owner document.  Returns true
   // if no media attr was set.
@@ -103,7 +103,7 @@ class HTMLSourceElement final : public nsGenericHTMLElement {
     SetUnsignedIntAttr(nsGkAtoms::height, aHeight, 0, aRv);
   }
 
-  const nsMappedAttributes* GetAttributesMappedForImage() const {
+  const StyleLockedDeclarationBlock* GetAttributesMappedForImage() const {
     return mMappedAttributesForImage;
   }
 
@@ -149,7 +149,7 @@ class HTMLSourceElement final : public nsGenericHTMLElement {
 
   // The mapped attributes to HTMLImageElement if we are associated with a
   // <picture> with a valid <img>.
-  RefPtr<nsMappedAttributes> mMappedAttributesForImage;
+  RefPtr<StyleLockedDeclarationBlock> mMappedAttributesForImage;
 };
 
 }  // namespace mozilla::dom

@@ -13,6 +13,7 @@
 #include "mozilla/dom/quota/Client.h"
 #include "mozilla/dom/quota/CommonMetadata.h"
 #include "mozilla/dom/quota/PersistenceType.h"
+#include "mozilla/dom/quota/UsageInfo.h"
 #include "mozilla/OriginAttributes.h"
 
 namespace IPC {
@@ -63,7 +64,6 @@ struct ParamTraits<mozilla::OriginAttributesPattern> {
 
   static void Write(MessageWriter* aWriter, const paramType& aParam) {
     WriteParam(aWriter, aParam.mFirstPartyDomain);
-    WriteParam(aWriter, aParam.mInIsolatedMozBrowser);
     WriteParam(aWriter, aParam.mPrivateBrowsingId);
     WriteParam(aWriter, aParam.mUserContextId);
     WriteParam(aWriter, aParam.mGeckoViewSessionContextId);
@@ -71,10 +71,73 @@ struct ParamTraits<mozilla::OriginAttributesPattern> {
 
   static bool Read(MessageReader* aReader, paramType* aResult) {
     return ReadParam(aReader, &aResult->mFirstPartyDomain) &&
-           ReadParam(aReader, &aResult->mInIsolatedMozBrowser) &&
            ReadParam(aReader, &aResult->mPrivateBrowsingId) &&
            ReadParam(aReader, &aResult->mUserContextId) &&
            ReadParam(aReader, &aResult->mGeckoViewSessionContextId);
+  }
+};
+
+template <>
+struct ParamTraits<mozilla::dom::quota::DatabaseUsageType> {
+  using ParamType = mozilla::dom::quota::DatabaseUsageType;
+
+  static void Write(MessageWriter* aWriter, const ParamType& aParam) {
+    WriteParam(aWriter, aParam.GetValue());
+  }
+
+  static bool Read(MessageReader* aReader, ParamType* aResult) {
+    mozilla::Maybe<uint64_t> value;
+    if (!ReadParam(aReader, &value)) {
+      return false;
+    }
+
+    *aResult += ParamType(value);
+    return true;
+  }
+};
+
+template <>
+struct ParamTraits<mozilla::dom::quota::FileUsageType> {
+  using ParamType = mozilla::dom::quota::FileUsageType;
+
+  static void Write(MessageWriter* aWriter, const ParamType& aParam) {
+    WriteParam(aWriter, aParam.GetValue());
+  }
+
+  static bool Read(MessageReader* aReader, ParamType* aResult) {
+    mozilla::Maybe<uint64_t> value;
+    if (!ReadParam(aReader, &value)) {
+      return false;
+    }
+
+    *aResult += ParamType(value);
+    return true;
+  }
+};
+
+template <>
+struct ParamTraits<mozilla::dom::quota::UsageInfo> {
+  using ParamType = mozilla::dom::quota::UsageInfo;
+
+  static void Write(MessageWriter* aWriter, const ParamType& aParam) {
+    WriteParam(aWriter, aParam.DatabaseUsage());
+    WriteParam(aWriter, aParam.FileUsage());
+  }
+
+  static bool Read(MessageReader* aReader, ParamType* aResult) {
+    mozilla::Maybe<uint64_t> databaseUsage;
+    if (!ReadParam(aReader, &databaseUsage)) {
+      return false;
+    }
+
+    mozilla::Maybe<uint64_t> fileUsage;
+    if (!ReadParam(aReader, &fileUsage)) {
+      return false;
+    }
+
+    *aResult += mozilla::dom::quota::DatabaseUsageType(databaseUsage);
+    *aResult += mozilla::dom::quota::FileUsageType(fileUsage);
+    return true;
   }
 };
 

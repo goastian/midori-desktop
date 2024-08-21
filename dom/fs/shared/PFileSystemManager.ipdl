@@ -242,11 +242,12 @@ struct FileSystemRenameEntryRequest
 union FileSystemMoveEntryResponse
 {
   nsresult;
-  void_t;
+  EntryId;
 };
 
 }  // namespace fs
 
+[ChildProc=anydom]
 async protocol PFileSystemManager
 {
   manages PFileSystemAccessHandle;

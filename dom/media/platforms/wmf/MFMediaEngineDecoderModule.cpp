@@ -6,8 +6,11 @@
 
 #include "MFTDecoder.h"
 #include "VideoUtils.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/MFMediaEngineParent.h"
 #include "mozilla/MFMediaEngineUtils.h"
+#include "mozilla/RemoteDecoderManagerChild.h"
+#include "mozilla/RemoteDecoderModule.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/WindowsVersion.h"
 #include "mozilla/mscom/EnsureMTA.h"
@@ -31,9 +34,9 @@ already_AddRefed<PlatformDecoderModule> MFMediaEngineDecoderModule::Create() {
 
 /* static */
 bool MFMediaEngineDecoderModule::SupportsConfig(const TrackInfo& aConfig) {
-  RefPtr<MFMediaEngineDecoderModule> module = new MFMediaEngineDecoderModule();
-  return module->SupportInternal(SupportDecoderParams(aConfig), nullptr) !=
-         media::DecodeSupport::Unsupported;
+  RefPtr<PlatformDecoderModule> module = RemoteDecoderModule::Create(
+      RemoteDecodeIn::UtilityProcess_MFMediaEngineCDM);
+  return !module->Supports(SupportDecoderParams(aConfig), nullptr).isEmpty();
 }
 
 already_AddRefed<MediaDataDecoder>
@@ -80,7 +83,7 @@ media::DecodeSupportSet MFMediaEngineDecoderModule::SupportsMimeType(
     const nsACString& aMimeType, DecoderDoctorDiagnostics* aDiagnostics) const {
   UniquePtr<TrackInfo> trackInfo = CreateTrackInfoWithMIMEType(aMimeType);
   if (!trackInfo) {
-    return media::DecodeSupport::Unsupported;
+    return media::DecodeSupportSet{};
   }
   return SupportInternal(SupportDecoderParams(*trackInfo), aDiagnostics);
 }
@@ -88,9 +91,6 @@ media::DecodeSupportSet MFMediaEngineDecoderModule::SupportsMimeType(
 media::DecodeSupportSet MFMediaEngineDecoderModule::Supports(
     const SupportDecoderParams& aParams,
     DecoderDoctorDiagnostics* aDiagnostics) const {
-  if (!aParams.mMediaEngineId) {
-    return media::DecodeSupport::Unsupported;
-  }
   return SupportInternal(aParams, aDiagnostics);
 }
 
@@ -98,7 +98,12 @@ media::DecodeSupportSet MFMediaEngineDecoderModule::SupportInternal(
     const SupportDecoderParams& aParams,
     DecoderDoctorDiagnostics* aDiagnostics) const {
   if (!StaticPrefs::media_wmf_media_engine_enabled()) {
-    return media::DecodeSupport::Unsupported;
+    return media::DecodeSupportSet{};
+  }
+  // Only support hardware decoding.
+  if (!gfx::gfxVars::CanUseHardwareVideoDecoding() &&
+      !StaticPrefs::media_wmf_media_engine_bypass_gfx_blocklist()) {
+    return media::DecodeSupportSet{};
   }
   bool supports = false;
   WMFStreamType type = GetStreamTypeFromMimeType(aParams.MimeType());
@@ -108,8 +113,11 @@ media::DecodeSupportSet MFMediaEngineDecoderModule::SupportInternal(
   MOZ_LOG(sPDMLog, LogLevel::Debug,
           ("MFMediaEngine decoder %s requested type '%s'",
            supports ? "supports" : "rejects", aParams.MimeType().get()));
-  return supports ? media::DecodeSupport::SoftwareDecode
-                  : media::DecodeSupport::Unsupported;
+  if (!supports) {
+    return media::DecodeSupportSet{};
+  }
+  return StreamTypeIsVideo(type) ? media::DecodeSupport::HardwareDecode
+                                 : media::DecodeSupport::SoftwareDecode;
 }
 
 static bool CreateMFTDecoderOnMTA(const WMFStreamType& aType) {
@@ -142,7 +150,7 @@ static bool CreateMFTDecoderOnMTA(const WMFStreamType& aType) {
     case WMFStreamType::VP8:
     case WMFStreamType::VP9: {
       static const uint32_t VPX_USABLE_BUILD = 16287;
-      if (IsWindowsBuildOrLater(VPX_USABLE_BUILD)) {
+      if (IsWindows10BuildOrLater(VPX_USABLE_BUILD)) {
         result = SUCCEEDED(decoder->Create(CLSID_CMSVPXDecMFT));
       }
       break;
@@ -153,6 +161,13 @@ static bool CreateMFTDecoderOnMTA(const WMFStreamType& aType) {
                                          MFVideoFormat_AV1, GUID_NULL));
       break;
 #endif
+    case WMFStreamType::HEVC:
+      if (StaticPrefs::media_wmf_hevc_enabled()) {
+        result =
+            SUCCEEDED(decoder->Create(MFT_CATEGORY_VIDEO_DECODER,
+                                      MFVideoFormat_HEVC, MFVideoFormat_NV12));
+      }
+      break;
     default:
       MOZ_ASSERT_UNREACHABLE("Unexpected type");
   }

@@ -84,7 +84,7 @@ class MFMediaEngineStream
   // Return the type of the track, the result should be either audio or video.
   virtual TrackInfo::TrackType TrackType() = 0;
 
-  RefPtr<MediaDataDecoder::FlushPromise> Flush();
+  virtual RefPtr<MediaDataDecoder::FlushPromise> Flush();
 
   MediaEventProducer<TrackInfo::TrackType>& EndedEvent() { return mEndedEvent; }
 
@@ -93,7 +93,7 @@ class MFMediaEngineStream
 
   virtual MFMediaEngineVideoStream* AsVideoStream() { return nullptr; }
 
-  RefPtr<MediaDataDecoder::DecodePromise> OutputData(
+  virtual RefPtr<MediaDataDecoder::DecodePromise> OutputData(
       RefPtr<MediaRawData> aSample);
 
   virtual RefPtr<MediaDataDecoder::DecodePromise> Drain();
@@ -133,10 +133,12 @@ class MFMediaEngineStream
   // should uses `mRawDataQueueForGeneratingOutput` to generate output.
   virtual already_AddRefed<MediaData> OutputDataInternal() = 0;
 
-  void SendRequestSampleEvent(bool aIsEnough);
+  virtual void SendRequestSampleEvent(bool aIsEnough);
 
   HRESULT AddEncryptAttributes(IMFSample* aSample,
                                const CryptoSample& aCryptoConfig);
+
+  void NotifyEndEvent();
 
   void AssertOnTaskQueue() const;
   void AssertOnMFThreadPool() const;

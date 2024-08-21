@@ -16,7 +16,6 @@
 #include "mozilla/ServoBindings.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
-#include "nsIRadioGroupContainer.h"
 #include "nsStubMutationObserver.h"
 #include "nsTHashtable.h"
 
@@ -40,10 +39,12 @@ class CSSImportRule;
 class Element;
 class HTMLInputElement;
 
-class ShadowRoot final : public DocumentFragment,
-                         public DocumentOrShadowRoot,
-                         public nsIRadioGroupContainer {
+class ShadowRoot final : public DocumentFragment, public DocumentOrShadowRoot {
   friend class DocumentOrShadowRoot;
+
+  using Declarative = Element::ShadowRootDeclarative;
+  using IsClonable = Element::ShadowRootClonable;
+  using IsSerializable = Element::ShadowRootSerializable;
 
  public:
   NS_IMPL_FROMNODE_HELPER(ShadowRoot, IsShadowRoot());
@@ -53,7 +54,8 @@ class ShadowRoot final : public DocumentFragment,
 
   ShadowRoot(Element* aElement, ShadowRootMode aMode,
              Element::DelegatesFocus aDelegatesFocus,
-             SlotAssignmentMode aSlotAssignment,
+             SlotAssignmentMode aSlotAssignment, IsClonable aClonable,
+             IsSerializable aIsSerializable, Declarative aDeclarative,
              already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 
   void AddSizeOfExcludingThis(nsWindowSizes&, size_t* aNodeSize) const final;
@@ -80,7 +82,9 @@ class ShadowRoot final : public DocumentFragment,
     return mDelegatesFocus == Element::DelegatesFocus::Yes;
   }
   SlotAssignmentMode SlotAssignment() const { return mSlotAssignment; }
+  bool Clonable() const { return mIsClonable == IsClonable::Yes; }
   bool IsClosed() const { return mMode == ShadowRootMode::Closed; }
+  bool Serializable() const { return mIsSerializable == IsSerializable::Yes; }
 
   void RemoveSheetFromStyles(StyleSheet&);
   void RuleAdded(StyleSheet&, css::Rule&);
@@ -234,46 +238,18 @@ class ShadowRoot final : public DocumentFragment,
 
   void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
-  // nsIRadioGroupContainer
-  NS_IMETHOD WalkRadioGroup(const nsAString& aName,
-                            nsIRadioVisitor* aVisitor) override {
-    return DocumentOrShadowRoot::WalkRadioGroup(aName, aVisitor);
+  bool IsDeclarative() const { return mIsDeclarative == Declarative::Yes; }
+  void SetIsDeclarative(Declarative aIsDeclarative) {
+    mIsDeclarative = aIsDeclarative;
   }
-  void SetCurrentRadioButton(const nsAString& aName,
-                             HTMLInputElement* aRadio) override {
-    DocumentOrShadowRoot::SetCurrentRadioButton(aName, aRadio);
+  void SetIsDeclarative(bool aIsDeclarative) {
+    mIsDeclarative = aIsDeclarative ? Declarative::Yes : Declarative::No;
   }
-  HTMLInputElement* GetCurrentRadioButton(const nsAString& aName) override {
-    return DocumentOrShadowRoot::GetCurrentRadioButton(aName);
-  }
-  NS_IMETHOD
-  GetNextRadioButton(const nsAString& aName, const bool aPrevious,
-                     HTMLInputElement* aFocusedRadio,
-                     HTMLInputElement** aRadioOut) override {
-    return DocumentOrShadowRoot::GetNextRadioButton(aName, aPrevious,
-                                                    aFocusedRadio, aRadioOut);
-  }
-  void AddToRadioGroup(const nsAString& aName,
-                       HTMLInputElement* aRadio) override {
-    DocumentOrShadowRoot::AddToRadioGroup(aName, aRadio);
-  }
-  void RemoveFromRadioGroup(const nsAString& aName,
-                            HTMLInputElement* aRadio) override {
-    DocumentOrShadowRoot::RemoveFromRadioGroup(aName, aRadio);
-  }
-  uint32_t GetRequiredRadioCount(const nsAString& aName) const override {
-    return DocumentOrShadowRoot::GetRequiredRadioCount(aName);
-  }
-  void RadioRequiredWillChange(const nsAString& aName,
-                               bool aRequiredAdded) override {
-    DocumentOrShadowRoot::RadioRequiredWillChange(aName, aRequiredAdded);
-  }
-  bool GetValueMissingState(const nsAString& aName) const override {
-    return DocumentOrShadowRoot::GetValueMissingState(aName);
-  }
-  void SetValueMissingState(const nsAString& aName, bool aValue) override {
-    return DocumentOrShadowRoot::SetValueMissingState(aName, aValue);
-  }
+
+  MOZ_CAN_RUN_SCRIPT
+  void SetHTMLUnsafe(const nsAString& aHTML);
+
+  void GetHTML(const GetHTMLOptions& aOptions, nsAString& aResult);
 
  protected:
   // FIXME(emilio): This will need to become more fine-grained.
@@ -281,17 +257,16 @@ class ShadowRoot final : public DocumentFragment,
 
   virtual ~ShadowRoot();
 
-  const ShadowRootMode mMode;
-
-  Element::DelegatesFocus mDelegatesFocus;
-
-  const SlotAssignmentMode mSlotAssignment;
+  // Make sure that the first field is pointer-aligned so it doesn't get packed
+  // in the base class' padding, since otherwise rust-bindgen can't generate
+  // correct bindings for it, see
+  // https://github.com/rust-lang/rust-bindgen/issues/380
 
   // The computed data from the style sheets.
   UniquePtr<StyleAuthorStyles> mServoStyles;
   UniquePtr<mozilla::ServoStyleRuleMap> mStyleRuleMap;
 
-  using SlotArray = TreeOrderedArray<HTMLSlotElement>;
+  using SlotArray = TreeOrderedArray<HTMLSlotElement*>;
   // Map from name of slot to an array of all slots in the shadow DOM with with
   // the given name. The slots are stored as a weak pointer because the elements
   // are in the shadow tree and should be kept alive by its parent.
@@ -301,11 +276,26 @@ class ShadowRoot final : public DocumentFragment,
   // tree.
   nsTArray<const Element*> mParts;
 
+  const ShadowRootMode mMode;
+
+  Element::DelegatesFocus mDelegatesFocus;
+
+  const SlotAssignmentMode mSlotAssignment;
+
   // Whether this is the <details> internal shadow tree.
   bool mIsDetailsShadowTree : 1;
 
   // https://dom.spec.whatwg.org/#shadowroot-available-to-element-internals
   bool mIsAvailableToElementInternals : 1;
+
+  // https://dom.spec.whatwg.org/#shadowroot-declarative
+  Declarative mIsDeclarative;
+
+  // https://dom.spec.whatwg.org/#shadowroot-clonable
+  const IsClonable mIsClonable;
+
+  // https://dom.spec.whatwg.org/#shadowroot-serializable
+  const IsSerializable mIsSerializable;
 
   nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 };

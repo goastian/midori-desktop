@@ -10,6 +10,7 @@
 #include <cmath>
 #include <limits>
 #include <type_traits>
+#include "fdlibm.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/Logging.h"
 #include "MediaSegment.h"
@@ -19,17 +20,12 @@ typedef struct SpeexResamplerState_ SpeexResamplerState;
 
 namespace mozilla {
 
-class AudioNodeTrack;
-
 extern LazyLogModule gWebAudioAPILog;
 #define WEB_AUDIO_API_LOG(...) \
   MOZ_LOG(gWebAudioAPILog, LogLevel::Debug, (__VA_ARGS__))
 
-namespace dom {
+namespace dom::WebAudioUtils {
 
-struct AudioTimelineEvent;
-
-namespace WebAudioUtils {
 // 32 is the minimum required by the spec for createBuffer() and
 // createScriptProcessor() and matches what is used by Blink.  The limit
 // protects against large memory allocations.
@@ -43,37 +39,18 @@ inline bool FuzzyEqual(float v1, float v2) { return fabsf(v1 - v2) < 1e-7f; }
 inline bool FuzzyEqual(double v1, double v2) { return fabs(v1 - v2) < 1e-7; }
 
 /**
- * Converts an AudioTimelineEvent's floating point time values to tick values
- * with respect to a destination AudioNodeTrack.
- *
- * This needs to be called for each AudioTimelineEvent that gets sent to an
- * AudioNodeEngine, on the engine side where the AudioTimlineEvent is
- * received.  This means that such engines need to be aware of their
- * destination tracks as well.
- */
-void ConvertAudioTimelineEventToTicks(AudioTimelineEvent& aEvent,
-                                      AudioNodeTrack* aDest);
-
-/**
  * Converts a linear value to decibels.  Returns aMinDecibels if the linear
  * value is 0.
  */
 inline float ConvertLinearToDecibels(float aLinearValue, float aMinDecibels) {
-  return aLinearValue ? 20.0f * std::log10(aLinearValue) : aMinDecibels;
+  return aLinearValue ? 20.0f * fdlibm_log10f(aLinearValue) : aMinDecibels;
 }
 
 /**
  * Converts a decibel value to a linear value.
  */
 inline float ConvertDecibelsToLinear(float aDecibels) {
-  return std::pow(10.0f, 0.05f * aDecibels);
-}
-
-/**
- * Converts a decibel to a linear value.
- */
-inline float ConvertDecibelToLinear(float aDecibel) {
-  return std::pow(10.0f, 0.05f * aDecibel);
+  return fdlibm_powf(10.0f, 0.05f * aDecibels);
 }
 
 inline void FixNaN(double& aDouble) {
@@ -84,7 +61,7 @@ inline void FixNaN(double& aDouble) {
 
 inline double DiscreteTimeConstantForSampleRate(double timeConstant,
                                                 double sampleRate) {
-  return 1.0 - std::exp(-1.0 / (sampleRate * timeConstant));
+  return 1.0 - fdlibm_exp(-1.0 / (sampleRate * timeConstant));
 }
 
 inline bool IsTimeValid(double aTime) {
@@ -201,9 +178,7 @@ int SpeexResamplerProcess(SpeexResamplerState* aResampler, uint32_t aChannel,
 
 void LogToDeveloperConsole(uint64_t aWindowID, const char* aKey);
 
-}  // namespace WebAudioUtils
-
-}  // namespace dom
+}  // namespace dom::WebAudioUtils
 }  // namespace mozilla
 
 #endif

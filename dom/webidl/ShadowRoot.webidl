@@ -19,15 +19,18 @@ enum ShadowRootMode {
 enum SlotAssignmentMode { "manual", "named" };
 
 // https://dom.spec.whatwg.org/#shadowroot
-[Exposed=Window]
+[Exposed=Window,
+ InstrumentedProps=(pictureInPictureElement)]
 interface ShadowRoot : DocumentFragment
 {
   // Shadow DOM v1
   readonly attribute ShadowRootMode mode;
-  [Pref="dom.shadowdom.delegatesFocus.enabled"]
   readonly attribute boolean delegatesFocus;
-  [Pref="dom.shadowdom.slot.assign.enabled"]
   readonly attribute SlotAssignmentMode slotAssignment;
+  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
+  readonly attribute boolean clonable;
+  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
+  readonly attribute boolean serializable;
   readonly attribute Element host;
   attribute EventHandler onslotchange;
 
@@ -55,6 +58,14 @@ interface ShadowRoot : DocumentFragment
   undefined setIsUAWidget();
   [ChromeOnly]
   boolean isUAWidget();
+};
+
+partial interface ShadowRoot {
+  // https://html.spec.whatwg.org/#dom-shadowroot-sethtmlunsafe
+  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
+  undefined setHTMLUnsafe(DOMString html);
+  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
+  DOMString getHTML(optional GetHTMLOptions options = {});
 };
 
 ShadowRoot includes DocumentOrShadowRoot;

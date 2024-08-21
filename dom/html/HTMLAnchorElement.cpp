@@ -14,7 +14,7 @@
 #include "nsCOMPtr.h"
 #include "nsContentUtils.h"
 #include "nsGkAtoms.h"
-#include "nsAttrValueOrString.h"
+#include "mozilla/FocusModel.h"
 #include "mozilla/dom/Document.h"
 #include "nsPresContext.h"
 #include "nsIURI.h"
@@ -29,7 +29,7 @@ HTMLAnchorElement::~HTMLAnchorElement() {
 }
 
 bool HTMLAnchorElement::IsInteractiveHTMLContent() const {
-  return HasAttr(kNameSpaceID_None, nsGkAtoms::href) ||
+  return HasAttr(nsGkAtoms::href) ||
          nsGenericHTMLElement::IsInteractiveHTMLContent();
 }
 
@@ -51,7 +51,7 @@ int32_t HTMLAnchorElement::TabIndexDefault() { return 0; }
 bool HTMLAnchorElement::Draggable() const {
   // links can be dragged as long as there is an href and the
   // draggable attribute isn't false
-  if (!HasAttr(kNameSpaceID_None, nsGkAtoms::href)) {
+  if (!HasAttr(nsGkAtoms::href)) {
     // no href, so just use the same behavior as other elements
     return nsGenericHTMLElement::Draggable();
   }
@@ -62,43 +62,40 @@ bool HTMLAnchorElement::Draggable() const {
 
 nsresult HTMLAnchorElement::BindToTree(BindContext& aContext,
                                        nsINode& aParent) {
-  Link::ResetLinkState(false, Link::ElementHasHref());
-
   nsresult rv = nsGenericHTMLElement::BindToTree(aContext, aParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // Prefetch links
-  if (IsInComposedDoc()) {
-    aContext.OwnerDoc().RegisterPendingLinkUpdate(this);
-    TryDNSPrefetch(*this);
-  }
+  Link::BindToTree(aContext);
 
+  // Prefetch links
+  MaybeTryDNSPrefetch();
   return rv;
 }
 
-void HTMLAnchorElement::UnbindFromTree(bool aNullParent) {
+void HTMLAnchorElement::UnbindFromTree(UnbindContext& aContext) {
   // Cancel any DNS prefetches
   // Note: Must come before ResetLinkState.  If called after, it will recreate
   // mCachedURI based on data that is invalid - due to a call to Link::GetURI()
   // via GetURIForDNSPrefetch().
   CancelDNSPrefetch(*this);
 
-  // Without removing the link state we risk a dangling pointer
-  // in the mStyledLinks hashtable
-  Link::ResetLinkState(false, Link::ElementHasHref());
+  nsGenericHTMLElement::UnbindFromTree(aContext);
 
-  nsGenericHTMLElement::UnbindFromTree(aNullParent);
+  // Without removing the link state we risk a dangling pointer in the
+  // mStyledLinks hashtable
+  Link::UnbindFromTree();
 }
 
-bool HTMLAnchorElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
+bool HTMLAnchorElement::IsHTMLFocusable(IsFocusableFlags aFlags,
+                                        bool* aIsFocusable,
                                         int32_t* aTabIndex) {
-  if (nsGenericHTMLElement::IsHTMLFocusable(aWithMouse, aIsFocusable,
-                                            aTabIndex)) {
+  if (nsGenericHTMLElement::IsHTMLFocusable(aFlags, aIsFocusable, aTabIndex)) {
     return true;
   }
 
   // cannot focus links if there is no link handler
   if (!OwnerDoc()->LinkHandlingEnabled()) {
+    *aTabIndex = -1;
     *aIsFocusable = false;
     return false;
   }
@@ -106,12 +103,8 @@ bool HTMLAnchorElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
   // Links that are in an editable region should never be focusable, even if
   // they are in a contenteditable="false" region.
   if (nsContentUtils::IsNodeInEditableRegion(this)) {
-    if (aTabIndex) {
-      *aTabIndex = -1;
-    }
-
+    *aTabIndex = -1;
     *aIsFocusable = false;
-
     return true;
   }
 
@@ -120,22 +113,16 @@ bool HTMLAnchorElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
     if (!IsLink()) {
       // Not tabbable or focusable without href (bug 17605), unless
       // forced to be via presence of nonnegative tabindex attribute
-      if (aTabIndex) {
-        *aTabIndex = -1;
-      }
-
+      *aTabIndex = -1;
       *aIsFocusable = false;
-
       return false;
     }
   }
 
-  if (aTabIndex && (sTabFocusModel & eTabFocus_linksMask) == 0) {
+  if (!FocusModel::IsTabFocusable(TabFocusableType::Links)) {
     *aTabIndex = -1;
   }
-
   *aIsFocusable = true;
-
   return false;
 }
 
@@ -147,22 +134,23 @@ nsresult HTMLAnchorElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
   return PostHandleEventForAnchors(aVisitor);
 }
 
-void HTMLAnchorElement::GetLinkTarget(nsAString& aTarget) {
-  GetAttr(kNameSpaceID_None, nsGkAtoms::target, aTarget);
+void HTMLAnchorElement::GetLinkTargetImpl(nsAString& aTarget) {
+  GetAttr(nsGkAtoms::target, aTarget);
   if (aTarget.IsEmpty()) {
     GetBaseTarget(aTarget);
   }
 }
 
 void HTMLAnchorElement::GetTarget(nsAString& aValue) const {
-  if (!GetAttr(kNameSpaceID_None, nsGkAtoms::target, aValue)) {
+  if (!GetAttr(nsGkAtoms::target, aValue)) {
     GetBaseTarget(aValue);
   }
 }
 
 nsDOMTokenList* HTMLAnchorElement::RelList() {
   if (!mRelList) {
-    mRelList = new nsDOMTokenList(this, nsGkAtoms::rel, sSupportedRelValues);
+    mRelList =
+        new nsDOMTokenList(this, nsGkAtoms::rel, sAnchorAndFormRelValues);
   }
   return mRelList;
 }
@@ -203,8 +191,8 @@ void HTMLAnchorElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
   if (aNamespaceID == kNameSpaceID_None) {
     if (aName == nsGkAtoms::href) {
       Link::ResetLinkState(aNotify, !!aValue);
-      if (aValue && IsInComposedDoc()) {
-        TryDNSPrefetch(*this);
+      if (aValue) {
+        MaybeTryDNSPrefetch();
       }
     }
   }
@@ -213,14 +201,28 @@ void HTMLAnchorElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
       aNamespaceID, aName, aValue, aOldValue, aSubjectPrincipal, aNotify);
 }
 
-ElementState HTMLAnchorElement::IntrinsicState() const {
-  return Link::LinkState() | nsGenericHTMLElement::IntrinsicState();
-}
-
 void HTMLAnchorElement::AddSizeOfExcludingThis(nsWindowSizes& aSizes,
                                                size_t* aNodeSize) const {
   nsGenericHTMLElement::AddSizeOfExcludingThis(aSizes, aNodeSize);
   *aNodeSize += Link::SizeOfExcludingThis(aSizes.mState);
+}
+
+void HTMLAnchorElement::MaybeTryDNSPrefetch() {
+  if (IsInComposedDoc()) {
+    nsIURI* docURI = OwnerDoc()->GetDocumentURI();
+    if (!docURI) {
+      return;
+    }
+
+    bool docIsHttps = docURI->SchemeIs("https");
+    if ((docIsHttps &&
+         StaticPrefs::dom_prefetch_dns_for_anchor_https_document()) ||
+        (!docIsHttps &&
+         StaticPrefs::dom_prefetch_dns_for_anchor_http_document())) {
+      TryDNSPrefetch(
+          *this, HTMLDNSPrefetch::PrefetchSource::AnchorSpeculativePrefetch);
+    }
+  }
 }
 
 }  // namespace mozilla::dom

@@ -136,7 +136,7 @@ CreateSpeechRecognitionService(nsPIDOMWindowInner* aWindow,
 NS_IMPL_CYCLE_COLLECTION_WEAK_PTR_INHERITED(SpeechRecognition,
                                             DOMEventTargetHelper, mStream,
                                             mTrack, mRecognitionService,
-                                            mSpeechGrammarList)
+                                            mSpeechGrammarList, mListener)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(SpeechRecognition)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
@@ -144,6 +144,16 @@ NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 NS_IMPL_ADDREF_INHERITED(SpeechRecognition, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(SpeechRecognition, DOMEventTargetHelper)
+
+NS_IMPL_CYCLE_COLLECTION_INHERITED(SpeechRecognition::TrackListener,
+                                   DOMMediaStream::TrackListener,
+                                   mSpeechRecognition)
+NS_IMPL_ADDREF_INHERITED(SpeechRecognition::TrackListener,
+                         DOMMediaStream::TrackListener)
+NS_IMPL_RELEASE_INHERITED(SpeechRecognition::TrackListener,
+                          DOMMediaStream::TrackListener)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(SpeechRecognition::TrackListener)
+NS_INTERFACE_MAP_END_INHERITING(DOMMediaStream::TrackListener)
 
 SpeechRecognition::SpeechRecognition(nsPIDOMWindowInner* aOwnerWindow)
     : DOMEventTargetHelper(aOwnerWindow),
@@ -437,12 +447,13 @@ uint32_t SpeechRecognition::ProcessAudioSegment(AudioSegment* aSegment,
   // we need to call the nsISpeechRecognitionService::ProcessAudioSegment
   // in a separate thread so that any eventual encoding or pre-processing
   // of the audio does not block the main thread
-  nsresult rv = mEncodeTaskQueue->Dispatch(
-      NewRunnableMethod<StoreCopyPassByPtr<AudioSegment>, TrackRate>(
-          "nsISpeechRecognitionService::ProcessAudioSegment",
-          mRecognitionService,
-          &nsISpeechRecognitionService::ProcessAudioSegment,
-          std::move(*aSegment), aTrackRate));
+  nsresult rv = mEncodeTaskQueue->Dispatch(NS_NewRunnableFunction(
+      "nsISpeechRecognitionService::ProcessAudioSegment",
+      [=, service = mRecognitionService,
+       segment = std::move(*aSegment)]() mutable {
+        service->ProcessAudioSegment(&segment, aTrackRate);
+      }));
+
   MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
   Unused << rv;
   return samples;
@@ -471,8 +482,9 @@ void SpeechRecognition::Reset() {
 
   ++mStreamGeneration;
   if (mStream) {
-    mStream->UnregisterTrackListener(this);
+    mStream->UnregisterTrackListener(mListener);
     mStream = nullptr;
+    mListener = nullptr;
   }
   mTrack = nullptr;
   mTrackIsOwned = false;
@@ -618,7 +630,7 @@ SpeechRecognition::StartRecording(RefPtr<AudioStreamTrack>& aTrack) {
   mTrack = aTrack;
   MOZ_ASSERT(!mTrack->Ended());
 
-  mSpeechListener = new SpeechTrackListener(this);
+  mSpeechListener = SpeechTrackListener::Create(this);
   mTrack->AddListener(mSpeechListener);
 
   nsString blockerName;
@@ -641,7 +653,8 @@ RefPtr<GenericNonExclusivePromise> SpeechRecognition::StopRecording() {
     if (mStream) {
       // Ensure we don't start recording because a track became available
       // before we get reset.
-      mStream->UnregisterTrackListener(this);
+      mStream->UnregisterTrackListener(mListener);
+      mListener = nullptr;
     }
     return GenericNonExclusivePromise::CreateAndResolve(true, __func__);
   }
@@ -800,10 +813,13 @@ void SpeechRecognition::Start(const Optional<NonNull<DOMMediaStream>>& aStream,
   MediaStreamConstraints constraints;
   constraints.mAudio.SetAsBoolean() = true;
 
+  MOZ_ASSERT(!mListener);
+  mListener = new TrackListener(this);
+
   if (aStream.WasPassed()) {
     mStream = &aStream.Value();
     mTrackIsOwned = false;
-    mStream->RegisterTrackListener(this);
+    mStream->RegisterTrackListener(mListener);
     nsTArray<RefPtr<AudioStreamTrack>> tracks;
     mStream->GetAudioTracks(tracks);
     for (const RefPtr<AudioStreamTrack>& track : tracks) {
@@ -838,7 +854,7 @@ void SpeechRecognition::Start(const Optional<NonNull<DOMMediaStream>>& aStream,
                 return;
               }
               mStream = std::move(aStream);
-              mStream->RegisterTrackListener(this);
+              mStream->RegisterTrackListener(mListener);
               for (const RefPtr<AudioStreamTrack>& track : tracks) {
                 if (!track->Ended()) {
                   NotifyTrackAdded(track);

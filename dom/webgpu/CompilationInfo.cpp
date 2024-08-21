@@ -10,17 +10,29 @@
 
 namespace mozilla::webgpu {
 
-GPU_IMPL_CYCLE_COLLECTION(CompilationInfo, mParent)
+GPU_IMPL_CYCLE_COLLECTION(CompilationInfo, mParent, mMessages)
 GPU_IMPL_JS_WRAP(CompilationInfo)
 
-CompilationInfo::CompilationInfo(ShaderModule* const aParent)
-    : ChildOf(aParent) {}
+CompilationInfo::CompilationInfo(Device* const aParent) : ChildOf(aParent) {}
 
 void CompilationInfo::SetMessages(
     nsTArray<mozilla::webgpu::WebGPUCompilationMessage>& aMessages) {
   for (auto& msg : aMessages) {
+    auto messageType = dom::GPUCompilationMessageType::Error;
+    switch (msg.messageType) {
+      case WebGPUCompilationMessageType::Error:
+        messageType = dom::GPUCompilationMessageType::Error;
+        break;
+      case WebGPUCompilationMessageType::Warning:
+        messageType = dom::GPUCompilationMessageType::Warning;
+        break;
+      case WebGPUCompilationMessageType::Info:
+        messageType = dom::GPUCompilationMessageType::Info;
+        break;
+    }
     mMessages.AppendElement(MakeAndAddRef<mozilla::webgpu::CompilationMessage>(
-        this, msg.lineNum, msg.linePos, msg.offset, std::move(msg.message)));
+        mParent, messageType, msg.lineNum, msg.linePos, msg.offset, msg.length,
+        std::move(msg.message)));
   }
 }
 

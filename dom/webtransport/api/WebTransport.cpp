@@ -214,12 +214,31 @@ void WebTransport::Init(const GlobalObject& aGlobal, const nsAString& aURL,
   // it exists, and null otherwise.
   // Step 8: If dedicated is false and serverCertificateHashes is non-null,
   // then throw a TypeError.
+  nsTArray<mozilla::ipc::WebTransportHash> aServerCertHashes;
   if (aOptions.mServerCertificateHashes.WasPassed()) {
-    // XXX bug 1806693
-    aError.ThrowNotSupportedError("No support for serverCertificateHashes yet");
-    // XXX if dedicated is false and serverCertificateHashes is non-null, then
-    // throw a TypeError. Also should enforce in parent
-    return;
+    if (!dedicated) {
+      aError.ThrowNotSupportedError(
+          "serverCertificateHashes not supported for non-dedicated "
+          "connections");
+      return;
+    }
+    for (const auto& hash : aOptions.mServerCertificateHashes.Value()) {
+      if (!hash.mAlgorithm.WasPassed() || !hash.mValue.WasPassed()) continue;
+
+      if (hash.mAlgorithm.Value() != u"sha-256") {
+        LOG(("Algorithms other than SHA-256 are not supported"));
+        continue;
+      }
+
+      nsTArray<uint8_t> data;
+      if (!AppendTypedArrayDataTo(hash.mValue.Value(), data)) {
+        aError.Throw(NS_ERROR_OUT_OF_MEMORY);
+        return;
+      }
+
+      nsCString alg = NS_ConvertUTF16toUTF8(hash.mAlgorithm.Value());
+      aServerCertHashes.EmplaceBack(alg, data);
+    }
   }
   // Step 9: Let requireUnreliable be options's requireUnreliable.
   bool requireUnreliable = aOptions.mRequireUnreliable;
@@ -278,11 +297,8 @@ void WebTransport::Init(const GlobalObject& aGlobal, const nsAString& aURL,
     if (!childEndpoint.Bind(child)) {
       return;
     }
-  } else {
-    if (!childEndpoint.Bind(child,
-                            mGlobal->EventTargetFor(TaskCategory::Other))) {
-      return;
-    }
+  } else if (!childEndpoint.Bind(child, mGlobal->SerialEventTarget())) {
+    return;
   }
 
   mState = WebTransportState::CONNECTING;
@@ -345,11 +361,10 @@ void WebTransport::Init(const GlobalObject& aGlobal, const nsAString& aURL,
   // https://w3c.github.io/webtransport/#webtransport-constructor Spec 5.2
   mChild = child;
   backgroundChild
-      ->SendCreateWebTransportParent(aURL, principal, ipcClientInfo, dedicated,
-                                     requireUnreliable,
-                                     (uint32_t)congestionControl,
-                                     // XXX serverCertHashes,
-                                     std::move(parentEndpoint))
+      ->SendCreateWebTransportParent(
+          aURL, principal, ipcClientInfo, dedicated, requireUnreliable,
+          (uint32_t)congestionControl, std::move(aServerCertHashes),
+          std::move(parentEndpoint))
       ->Then(GetCurrentSerialEventTarget(), __func__,
              [self = RefPtr{this}](
                  PBackgroundChild::CreateWebTransportParentPromise::
@@ -430,8 +445,10 @@ void WebTransport::RejectWaitingConnection(nsresult aRv) {
   // these steps.
   if (mState == WebTransportState::CLOSED ||
       mState == WebTransportState::FAILED) {
-    mChild->Shutdown(true);
-    mChild = nullptr;
+    if (mChild) {
+      mChild->Shutdown(true);
+      mChild = nullptr;
+    }
     // Cleanup should have been called, which means Ready has been
     // rejected and pulls resolved
     return;
@@ -665,7 +682,7 @@ already_AddRefed<Promise> WebTransport::CreateBidirectionalStream(
   // pair
   mChild->SendCreateBidirectionalStream(
       sendOrder,
-      [self = RefPtr{this}, promise](
+      [self = RefPtr{this}, sendOrder, promise](
           BidirectionalStreamResponse&& aPipes) MOZ_CAN_RUN_SCRIPT_BOUNDARY {
         LOG(("CreateBidirectionalStream response"));
         if (BidirectionalStreamResponse::Tnsresult == aPipes.type()) {
@@ -691,7 +708,7 @@ already_AddRefed<Promise> WebTransport::CreateBidirectionalStream(
             WebTransportBidirectionalStream::Create(
                 self, self->mGlobal, id,
                 aPipes.get_BidirectionalStream().inStream(),
-                aPipes.get_BidirectionalStream().outStream(), error);
+                aPipes.get_BidirectionalStream().outStream(), sendOrder, error);
         LOG(("Returning a bidirectionalStream"));
         promise->MaybeResolve(newStream);
       },
@@ -736,7 +753,8 @@ already_AddRefed<Promise> WebTransport::CreateUnidirectionalStream(
   // Ask the parent to create the stream and send us the DataPipeSender
   mChild->SendCreateUnidirectionalStream(
       sendOrder,
-      [self = RefPtr{this}, promise](UnidirectionalStreamResponse&& aResponse)
+      [self = RefPtr{this}, sendOrder,
+       promise](UnidirectionalStreamResponse&& aResponse)
           MOZ_CAN_RUN_SCRIPT_BOUNDARY {
             LOG(("CreateUnidirectionalStream response"));
             if (UnidirectionalStreamResponse::Tnsresult == aResponse.type()) {
@@ -767,7 +785,8 @@ already_AddRefed<Promise> WebTransport::CreateUnidirectionalStream(
             RefPtr<WebTransportSendStream> writableStream =
                 WebTransportSendStream::Create(
                     self, self->mGlobal, id,
-                    aResponse.get_UnidirectionalStream().outStream(), error);
+                    aResponse.get_UnidirectionalStream().outStream(), sendOrder,
+                    error);
             if (!writableStream) {
               promise->MaybeReject(std::move(error));
               return;
@@ -873,6 +892,11 @@ void WebTransport::Cleanup(WebTransportError* aError,
   NotifyToWindow(false);
 }
 
+void WebTransport::SendSetSendOrder(uint64_t aStreamId,
+                                    Maybe<int64_t> aSendOrder) {
+  mChild->SendSetSendOrder(aStreamId, aSendOrder);
+}
+
 void WebTransport::NotifyBFCacheOnMainThread(nsPIDOMWindowInner* aInner,
                                              bool aCreated) {
   AssertIsOnMainThread();
@@ -926,7 +950,7 @@ class BFCacheNotifyWTRunnable final : public WorkerProxyToMainThreadRunnable {
 
 void WebTransport::NotifyToWindow(bool aCreated) const {
   if (NS_IsMainThread()) {
-    NotifyBFCacheOnMainThread(GetParentObject()->AsInnerWindow(), aCreated);
+    NotifyBFCacheOnMainThread(GetParentObject()->GetAsInnerWindow(), aCreated);
     return;
   }
 

@@ -26,7 +26,7 @@ namespace {
 
 class TimerTest : public MtransportTest {
  public:
-  TimerTest() : MtransportTest(), handle_(nullptr), fired_(false) {}
+  TimerTest() : handle_(nullptr), fired_(false) {}
   virtual ~TimerTest() = default;
 
   int ArmTimer(int timeout) {
@@ -86,7 +86,7 @@ class TimerTest : public MtransportTest {
   }
 
   static void cb(NR_SOCKET r, int how, void* arg) {
-    std::cerr << "Timer fired " << std::endl;
+    std::cerr << "Timer fired\n";
 
     TimerTest* t = static_cast<TimerTest*>(arg);
 
@@ -95,7 +95,7 @@ class TimerTest : public MtransportTest {
 
  protected:
   void* handle_;
-  bool fired_;
+  std::atomic<bool> fired_;
 };
 }  // namespace
 

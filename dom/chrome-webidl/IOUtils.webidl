@@ -39,7 +39,8 @@ namespace IOUtils {
   Promise<Uint8Array> read(DOMString path, optional ReadOptions opts = {});
   /**
    * Reads the UTF-8 text file located at |path| and returns the decoded
-   * contents as a |DOMString|.
+   * contents as a |DOMString|. If a UTF-8 byte order marker (BOM) is
+   * present, it will be stripped from the returned string.
    *
    * NB: The maximum file size that can be read is UINT32_MAX.
    *
@@ -416,7 +417,7 @@ partial namespace IOUtils {
    * but it would use u16-based strings, so it would basically be a separate
    * copy of the bindings.)
    *
-   * This interface was added for use by `Subprocess.sys.jsm`; other would-be
+   * This interface was added for use by `Subprocess.sys.mjs`; other would-be
    * callers may want to just use Subprocess instead of calling this directly.
    *
    * @param argv The command to run and its arguments.
@@ -694,7 +695,7 @@ dictionary FileInfo {
 /**
  * The supported hash algorithms for |IOUtils.hashFile|.
  */
-enum HashAlgorithm { "sha1", "sha256", "sha384", "sha512" };
+enum HashAlgorithm { "sha256", "sha384", "sha512" };
 
 #ifdef XP_WIN
 /**

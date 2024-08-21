@@ -32,27 +32,27 @@ with Files("test/crossorigin/*webgl*"):
 # * Adjust failure errata for webgl-conf.
 
 MOCHITEST_MANIFESTS += [
-    "test/crash/mochitest.ini",
-    "test/crossorigin/mochitest.ini",
-    "test/mochitest.ini",
-    "test/webgl-conf/generated-mochitest.ini",
-    "test/webgl-mochitest/mochitest.ini",
+    "test/crash/mochitest.toml",
+    "test/crossorigin/mochitest.toml",
+    "test/mochitest.toml",
+    "test/webgl-conf/generated-mochitest.toml",
+    "test/webgl-mochitest/mochitest.toml",
 ]
 
-MOCHITEST_CHROME_MANIFESTS += ["test/chrome/chrome.ini"]
+MOCHITEST_CHROME_MANIFESTS += ["test/chrome/chrome.toml"]
 
 EXPORTS += [
     "nsICanvasRenderingContextInternal.h",
 ]
 
 EXPORTS.mozilla.dom += [
-    "BasicRenderingContext2D.h",
     "CanvasGradient.h",
     "CanvasPath.h",
     "CanvasPattern.h",
     "CanvasRenderingContext2D.h",
     "CanvasRenderingContextHelper.h",
     "CanvasUtils.h",
+    "DmdStdContainers.h",
     "GeneratePlaceholderCanvasData.h",
     "ImageBitmap.h",
     "ImageBitmapRenderingContext.h",
@@ -213,7 +213,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
 LOCAL_INCLUDES += CONFIG["SKIA_INCLUDES"]
 
 if CONFIG["CC_TYPE"] in ("clang", "clang-cl"):
-    CXXFLAGS += ["-Werror=implicit-int-conversion"]
+    CXXFLAGS += ["-Werror=implicit-int-conversion", "-Wno-shorten-64-to-32"]
     CXXFLAGS += ["-Werror=switch"]
 
 if CONFIG["CC_TYPE"] == "gcc":

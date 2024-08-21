@@ -51,9 +51,9 @@ class AudioSink : private AudioStream::DataSource {
                                  const RefPtr<AudioDeviceInfo>& aAudioDevice,
                                  InitializationType aInitializationType);
 
-  // Start audio playback.
-  nsresult Start(const media::TimeUnit& aStartTime,
-                 MozPromiseHolder<MediaSink::EndedPromise>& aEndedPromise);
+  // Start audio playback.  aStartTime is compared with MediaData::mTime to
+  // identify the first audio frame to be played.
+  RefPtr<MediaSink::EndedPromise> Start(const media::TimeUnit& aStartTime);
 
   /*
    * All public functions are not thread-safe.
@@ -69,10 +69,8 @@ class AudioSink : private AudioStream::DataSource {
   // The duration of the buffered frames.
   media::TimeUnit UnplayedDuration() const;
 
-  // Shut down the AudioSink's resources. If an AudioStream existed, return the
-  // ended promise it had, if it's shutting down-mid stream becaues it's muting.
-  Maybe<MozPromiseHolder<MediaSink::EndedPromise>> Shutdown(
-      ShutdownCause aShutdownCause = ShutdownCause::Regular);
+  // Shut down the AudioSink's resources.
+  void ShutDown();
 
   void SetVolume(double aVolume);
   void SetStreamName(const nsAString& aStreamName);
@@ -93,8 +91,6 @@ class AudioSink : private AudioStream::DataSource {
   void UpdateStartTime(const media::TimeUnit& aStartTime) {
     mStartTime = aStartTime;
   }
-
-  void EnableTreatAudioUnderrunAsSilence(bool aEnabled);
 
  private:
   // Interface of AudioStream::DataSource.
@@ -119,9 +115,9 @@ class AudioSink : private AudioStream::DataSource {
   // The audio stream resource. Used on the task queue of MDSM only.
   RefPtr<AudioStream> mAudioStream;
 
-  // The presentation time of the first audio frame that was played.
+  // The media data time of the first audio frame that was played.
   // We can add this to the audio stream position to determine
-  // the current audio time.
+  // the current audio data time.
   media::TimeUnit mStartTime;
 
   // Keep the last good position returned from the audio stream. Used to ensure
@@ -177,10 +173,6 @@ class AudioSink : private AudioStream::DataSource {
   Atomic<bool> mProcessedQueueFinished;
   MediaQueue<AudioData>& mAudioQueue;
   const float mProcessedQueueThresholdMS;
-
-  // True if we'd like to treat underrun as silent frames. But that can only be
-  // applied in the special situation for seamless looping.
-  bool mTreatUnderrunAsSilence = false;
 };
 
 }  // namespace mozilla

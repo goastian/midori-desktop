@@ -21,14 +21,10 @@ class ClientManagerChild final : public PClientManagerChild {
   bool mTeardownStarted;
 
   ClientManagerChild();
+  ~ClientManagerChild();
 
   // PClientManagerChild interface
   void ActorDestroy(ActorDestroyReason aReason) override;
-
-  PClientHandleChild* AllocPClientHandleChild(
-      const IPCClientInfo& aClientInfo) override;
-
-  bool DeallocPClientHandleChild(PClientHandleChild* aActor) override;
 
   PClientManagerOpChild* AllocPClientManagerOpChild(
       const ClientOpConstructorArgs& aArgs) override;
@@ -44,13 +40,10 @@ class ClientManagerChild final : public PClientManagerChild {
       PClientNavigateOpChild* aActor,
       const ClientNavigateOpConstructorArgs& aArgs) override;
 
-  PClientSourceChild* AllocPClientSourceChild(
-      const ClientSourceConstructorArgs& aArgs) override;
-
-  bool DeallocPClientSourceChild(PClientSourceChild* aActor) override;
-
  public:
-  static ClientManagerChild* Create();
+  NS_INLINE_DECL_REFCOUNTING(ClientManagerChild, override)
+
+  static already_AddRefed<ClientManagerChild> Create();
 
   void SetOwner(ClientThing<ClientManagerChild>* aThing);
 

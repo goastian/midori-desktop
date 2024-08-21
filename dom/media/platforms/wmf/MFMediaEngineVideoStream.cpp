@@ -49,7 +49,7 @@ void MFMediaEngineVideoStream::SetKnowsCompositor(
        this]() {
         mKnowsCompositor = knowCompositor;
         LOG("Set SetKnowsCompositor=%p", mKnowsCompositor.get());
-        ResolvePendingDrainPromiseIfNeeded();
+        ResolvePendingPromisesIfNeeded();
       }));
 }
 
@@ -74,7 +74,7 @@ void MFMediaEngineVideoStream::SetDCompSurfaceHandle(HANDLE aDCompSurfaceHandle,
           }
         }
         LOG("Set DCompSurfaceHandle, handle=%p", mDCompSurfaceHandle);
-        ResolvePendingDrainPromiseIfNeeded();
+        ResolvePendingPromisesIfNeeded();
       }));
 }
 
@@ -125,21 +125,20 @@ HRESULT MFMediaEngineVideoStream::CreateMediaType(const TrackInfo& aInfo,
                                       sizeof(area)));
 
   // https://docs.microsoft.com/en-us/windows/win32/api/mfapi/ne-mfapi-mfvideorotationformat
-  static const auto ToMFVideoRotationFormat =
-      [](VideoInfo::Rotation aRotation) {
-        using Rotation = VideoInfo::Rotation;
-        switch (aRotation) {
-          case Rotation::kDegree_0:
-            return MFVideoRotationFormat_0;
-          case Rotation::kDegree_90:
-            return MFVideoRotationFormat_90;
-          case Rotation::kDegree_180:
-            return MFVideoRotationFormat_180;
-          default:
-            MOZ_ASSERT(aRotation == Rotation::kDegree_270);
-            return MFVideoRotationFormat_270;
-        }
-      };
+  static const auto ToMFVideoRotationFormat = [](VideoRotation aRotation) {
+    using Rotation = VideoRotation;
+    switch (aRotation) {
+      case Rotation::kDegree_0:
+        return MFVideoRotationFormat_0;
+      case Rotation::kDegree_90:
+        return MFVideoRotationFormat_90;
+      case Rotation::kDegree_180:
+        return MFVideoRotationFormat_180;
+      default:
+        MOZ_ASSERT(aRotation == Rotation::kDegree_270);
+        return MFVideoRotationFormat_270;
+    }
+  };
   const auto rotation = ToMFVideoRotationFormat(videoInfo.mRotation);
   RETURN_IF_FAILED(mediaType->SetUINT32(MF_MT_VIDEO_ROTATION, rotation));
 
@@ -210,7 +209,7 @@ HRESULT MFMediaEngineVideoStream::CreateMediaType(const TrackInfo& aInfo,
 bool MFMediaEngineVideoStream::HasEnoughRawData() const {
   // If more than this much raw video is queued, we'll hold off request more
   // video.
-  return mRawDataQueueForFeedingEngine.Duration() >=
+  return mRawDataQueueForFeedingEngine.PreciseDuration() >=
          StaticPrefs::media_wmf_media_engine_raw_data_threshold_video();
 }
 
@@ -241,6 +240,32 @@ bool MFMediaEngineVideoStream::IsDCompImageReady() {
   return true;
 }
 
+RefPtr<MediaDataDecoder::DecodePromise> MFMediaEngineVideoStream::OutputData(
+    RefPtr<MediaRawData> aSample) {
+  if (IsShutdown()) {
+    return MediaDataDecoder::DecodePromise::CreateAndReject(
+        MediaResult(NS_ERROR_FAILURE,
+                    RESULT_DETAIL("MFMediaEngineStream is shutdown")),
+        __func__);
+  }
+  AssertOnTaskQueue();
+  NotifyNewData(aSample);
+  MediaDataDecoder::DecodedData outputs;
+  if (RefPtr<MediaData> outputData = OutputDataInternal()) {
+    outputs.AppendElement(outputData);
+    LOGV("Output data [%" PRId64 ",%" PRId64 "]",
+         outputData->mTime.ToMicroseconds(),
+         outputData->GetEndTime().ToMicroseconds());
+  }
+  if (ShouldDelayVideoDecodeBeforeDcompReady()) {
+    LOG("Dcomp isn't ready and we already have enough video data. We will send "
+        "them back together at one when Dcomp is ready");
+    return mVideoDecodeBeforeDcompPromise.Ensure(__func__);
+  }
+  return MediaDataDecoder::DecodePromise::CreateAndResolve(std::move(outputs),
+                                                           __func__);
+}
+
 already_AddRefed<MediaData> MFMediaEngineVideoStream::OutputDataInternal() {
   AssertOnTaskQueue();
   if (mRawDataQueueForGeneratingOutput.GetSize() == 0 || !IsDCompImageReady()) {
@@ -262,33 +287,68 @@ RefPtr<MediaDataDecoder::DecodePromise> MFMediaEngineVideoStream::Drain() {
   MediaDataDecoder::DecodedData outputs;
   if (!IsDCompImageReady()) {
     LOGV("Waiting for dcomp image for draining");
+    // A workaround for a special case where we have sent all input data to the
+    // media engine, and waiting for an output. Sometime media engine would
+    // never return the first frame to us, unless we notify it the end event,
+    // which happens on the case where the video only contains one frame. If we
+    // don't send end event to the media engine, the drain promise would be
+    // pending forever.
+    if (!mSampleRequestTokens.empty() &&
+        mRawDataQueueForFeedingEngine.GetSize() == 0) {
+      NotifyEndEvent();
+    }
     return mPendingDrainPromise.Ensure(__func__);
   }
   return MFMediaEngineStream::Drain();
 }
 
-void MFMediaEngineVideoStream::ResolvePendingDrainPromiseIfNeeded() {
+RefPtr<MediaDataDecoder::FlushPromise> MFMediaEngineVideoStream::Flush() {
   AssertOnTaskQueue();
-  if (mPendingDrainPromise.IsEmpty()) {
-    return;
-  }
+  auto promise = MFMediaEngineStream::Flush();
+  mPendingDrainPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
+  mVideoDecodeBeforeDcompPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED,
+                                                __func__);
+  return promise;
+}
+
+void MFMediaEngineVideoStream::ResolvePendingPromisesIfNeeded() {
+  AssertOnTaskQueue();
   if (!IsDCompImageReady()) {
     return;
   }
-  MediaDataDecoder::DecodedData outputs;
-  while (RefPtr<MediaData> outputData = OutputDataInternal()) {
-    outputs.AppendElement(outputData);
-    LOGV("Output data [%" PRId64 ",%" PRId64 "]",
-         outputData->mTime.ToMicroseconds(),
-         outputData->GetEndTime().ToMicroseconds());
+
+  // Resolve decoding promise first, then drain promise
+  if (!mVideoDecodeBeforeDcompPromise.IsEmpty()) {
+    MediaDataDecoder::DecodedData outputs;
+    while (RefPtr<MediaData> outputData = OutputDataInternal()) {
+      outputs.AppendElement(outputData);
+      LOGV("Output data [%" PRId64 ",%" PRId64 "]",
+           outputData->mTime.ToMicroseconds(),
+           outputData->GetEndTime().ToMicroseconds());
+    }
+    mVideoDecodeBeforeDcompPromise.Resolve(std::move(outputs), __func__);
+    LOG("Resolved video decode before Dcomp promise");
   }
-  mPendingDrainPromise.Resolve(std::move(outputs), __func__);
-  LOG("Resolved pending drain promise");
+
+  // This drain promise could return no data, if all data has been processed in
+  // the decoding promise.
+  if (!mPendingDrainPromise.IsEmpty()) {
+    MediaDataDecoder::DecodedData outputs;
+    while (RefPtr<MediaData> outputData = OutputDataInternal()) {
+      outputs.AppendElement(outputData);
+      LOGV("Output data [%" PRId64 ",%" PRId64 "]",
+           outputData->mTime.ToMicroseconds(),
+           outputData->GetEndTime().ToMicroseconds());
+    }
+    mPendingDrainPromise.Resolve(std::move(outputs), __func__);
+    LOG("Resolved pending drain promise");
+  }
 }
 
 MediaDataDecoder::ConversionRequired MFMediaEngineVideoStream::NeedsConversion()
     const {
-  return mStreamType == WMFStreamType::H264
+  return mStreamType == WMFStreamType::H264 ||
+                 mStreamType == WMFStreamType::HEVC
              ? MediaDataDecoder::ConversionRequired::kNeedAnnexB
              : MediaDataDecoder::ConversionRequired::kNeedNone;
 }
@@ -311,13 +371,14 @@ void MFMediaEngineVideoStream::SetConfig(const TrackInfo& aConfig) {
 
 void MFMediaEngineVideoStream::UpdateConfig(const VideoInfo& aInfo) {
   AssertOnTaskQueue();
-  // Disable explicit format change event for H264 to allow switching to the
-  // new stream without a full re-create, which will be much faster. This is
+  // Disable explicit format change event for H264/HEVC to allow switching to
+  // the new stream without a full re-create, which will be much faster. This is
   // also due to the fact that the MFT decoder can handle some format changes
   // without a format change event. For format changes that the MFT decoder
   // cannot support (e.g. codec change), the playback will fail later with
   // MF_E_INVALIDMEDIATYPE (0xC00D36B4).
-  if (mStreamType == WMFStreamType::H264) {
+  if (mStreamType == WMFStreamType::H264 ||
+      mStreamType == WMFStreamType::HEVC) {
     return;
   }
 
@@ -335,6 +396,20 @@ void MFMediaEngineVideoStream::UpdateConfig(const VideoInfo& aInfo) {
 void MFMediaEngineVideoStream::ShutdownCleanUpOnTaskQueue() {
   AssertOnTaskQueue();
   mPendingDrainPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
+  mVideoDecodeBeforeDcompPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED,
+                                                __func__);
+}
+
+void MFMediaEngineVideoStream::SendRequestSampleEvent(bool aIsEnough) {
+  AssertOnTaskQueue();
+  MFMediaEngineStream::SendRequestSampleEvent(aIsEnough);
+  // We need more data to be sent in, we should resolve the promise to allow
+  // more input data to be sent.
+  if (!aIsEnough && !mVideoDecodeBeforeDcompPromise.IsEmpty()) {
+    LOG("Resolved pending input promise to allow more input be sent in");
+    mVideoDecodeBeforeDcompPromise.Resolve(MediaDataDecoder::DecodedData{},
+                                           __func__);
+  }
 }
 
 bool MFMediaEngineVideoStream::IsEnded() const {
@@ -351,6 +426,10 @@ bool MFMediaEngineVideoStream::IsEnded() const {
 
 bool MFMediaEngineVideoStream::IsEncrypted() const { return mIsEncrypted; }
 
+bool MFMediaEngineVideoStream::ShouldDelayVideoDecodeBeforeDcompReady() {
+  return HasEnoughRawData() && !IsDCompImageReady();
+}
+
 nsCString MFMediaEngineVideoStream::GetCodecName() const {
   switch (mStreamType) {
     case WMFStreamType::H264:
@@ -361,6 +440,8 @@ nsCString MFMediaEngineVideoStream::GetCodecName() const {
       return "vp9"_ns;
     case WMFStreamType::AV1:
       return "av1"_ns;
+    case WMFStreamType::HEVC:
+      return "hevc"_ns;
     default:
       return "unknown"_ns;
   };

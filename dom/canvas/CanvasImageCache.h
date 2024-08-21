@@ -6,7 +6,9 @@
 #ifndef CANVASIMAGECACHE_H_
 #define CANVASIMAGECACHE_H_
 
+#include "mozilla/Maybe.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/gfx/Rect.h"
 #include "nsSize.h"
 
 namespace mozilla {
@@ -37,7 +39,8 @@ class CanvasImageCache {
                               dom::CanvasRenderingContext2D* aContext,
                               gfx::DrawTarget* aTarget, SourceSurface* aSource,
                               const gfx::IntSize& aSize,
-                              const gfx::IntSize& aIntrinsicSize);
+                              const gfx::IntSize& aIntrinsicSize,
+                              const Maybe<gfx::IntRect>& aCropRect);
 
   /**
    * Notify that aContext is being destroyed.
@@ -59,7 +62,8 @@ class CanvasImageCache {
                                      dom::CanvasRenderingContext2D* aContext,
                                      gfx::DrawTarget* aTarget,
                                      gfx::IntSize* aSizeOut,
-                                     gfx::IntSize* aIntrinsicSizeOut);
+                                     gfx::IntSize* aIntrinsicSizeOut,
+                                     Maybe<gfx::IntRect>* aCropRectOut);
 };
 
 }  // namespace mozilla

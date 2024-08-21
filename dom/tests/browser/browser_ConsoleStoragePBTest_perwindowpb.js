@@ -33,7 +33,7 @@ function test() {
   function doTest(aIsPrivateMode, aWindow, aCallback) {
     BrowserTestUtils.browserLoaded(aWindow.gBrowser.selectedBrowser).then(
       () => {
-        function observe(aSubject) {
+        function observe() {
           afterEvents = ConsoleAPIStorage.getEvents(innerID);
           is(
             beforeEvents.length == afterEvents.length - 1,
@@ -61,7 +61,10 @@ function test() {
     storageShouldOccur = true;
     innerID = getInnerWindowId(aWindow);
     beforeEvents = ConsoleAPIStorage.getEvents(innerID);
-    BrowserTestUtils.loadURIString(aWindow.gBrowser.selectedBrowser, testURI);
+    BrowserTestUtils.startLoadingURIString(
+      aWindow.gBrowser.selectedBrowser,
+      testURI
+    );
   }
 
   function testOnWindow(aOptions, aCallback) {

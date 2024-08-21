@@ -357,6 +357,11 @@ class JsepAudioCodecDescription : public JsepCodecDescription {
       opusParams.maxFrameSizeMs = mMaxFrameSizeMs;
       opusParams.useCbr = mCbrEnabled;
       aFmtp.reset(opusParams.Clone());
+    } else if (mName == "telephone-event") {
+      if (!aFmtp) {
+        // We only use the default right now
+        aFmtp.reset(new SdpFmtpAttributeList::TelephoneEventParameters);
+      }
     }
   };
 
@@ -422,7 +427,7 @@ class JsepVideoCodecDescription : public JsepCodecDescription {
     auto codec = MakeUnique<JsepVideoCodecDescription>("97", "H264", 90000);
     codec->mPacketizationMode = 0;
     // Defaults for mandatory params
-    codec->mProfileLevelId = 0x42E00D;
+    codec->mProfileLevelId = 0x42E01F;
     if (aUseRtx) {
       codec->EnableRtx("98");
     }
@@ -434,9 +439,33 @@ class JsepVideoCodecDescription : public JsepCodecDescription {
     auto codec = MakeUnique<JsepVideoCodecDescription>("126", "H264", 90000);
     codec->mPacketizationMode = 1;
     // Defaults for mandatory params
-    codec->mProfileLevelId = 0x42E00D;
+    codec->mProfileLevelId = 0x42E01F;
     if (aUseRtx) {
       codec->EnableRtx("127");
+    }
+    return codec;
+  }
+
+  static UniquePtr<JsepVideoCodecDescription> CreateDefaultH264Baseline_0(
+      bool aUseRtx) {
+    auto codec = MakeUnique<JsepVideoCodecDescription>("103", "H264", 90000);
+    codec->mPacketizationMode = 0;
+    // Defaults for mandatory params
+    codec->mProfileLevelId = 0x42001F;
+    if (aUseRtx) {
+      codec->EnableRtx("104");
+    }
+    return codec;
+  }
+
+  static UniquePtr<JsepVideoCodecDescription> CreateDefaultH264Baseline_1(
+      bool aUseRtx) {
+    auto codec = MakeUnique<JsepVideoCodecDescription>("105", "H264", 90000);
+    codec->mPacketizationMode = 1;
+    // Defaults for mandatory params
+    codec->mProfileLevelId = 0x42001F;
+    if (aUseRtx) {
+      codec->EnableRtx("106");
     }
     return codec;
   }
@@ -450,11 +479,13 @@ class JsepVideoCodecDescription : public JsepCodecDescription {
   }
 
   static UniquePtr<JsepVideoCodecDescription> CreateDefaultRed() {
-    return MakeUnique<JsepVideoCodecDescription>(
+    auto codec = MakeUnique<JsepVideoCodecDescription>(
         "122",  // payload type
         "red",  // codec name
         90000   // clock rate (match other video codecs)
     );
+    codec->EnableRtx("119");
+    return codec;
   }
 
   void ApplyConfigToFmtp(
@@ -538,7 +569,8 @@ class JsepVideoCodecDescription : public JsepCodecDescription {
   }
 
   virtual void EnableFec(std::string redPayloadType,
-                         std::string ulpfecPayloadType) {
+                         std::string ulpfecPayloadType,
+                         std::string redRtxPayloadType) {
     // Enabling FEC for video works a little differently than enabling
     // REMB or TMMBR.  Support for FEC is indicated by the presence of
     // particular codes (red and ulpfec) instead of using rtcpfb
@@ -547,15 +579,17 @@ class JsepVideoCodecDescription : public JsepCodecDescription {
 
     // Ensure we have valid payload types. This returns zero on failure, which
     // is a valid payload type.
-    uint16_t redPt, ulpfecPt;
+    uint16_t redPt, ulpfecPt, redRtxPt;
     if (!SdpHelper::GetPtAsInt(redPayloadType, &redPt) ||
-        !SdpHelper::GetPtAsInt(ulpfecPayloadType, &ulpfecPt)) {
+        !SdpHelper::GetPtAsInt(ulpfecPayloadType, &ulpfecPt) ||
+        !SdpHelper::GetPtAsInt(redRtxPayloadType, &redRtxPt)) {
       return;
     }
 
     mFECEnabled = true;
     mREDPayloadType = redPayloadType;
     mULPFECPayloadType = ulpfecPayloadType;
+    mREDRTXPayloadType = redRtxPayloadType;
   }
 
   virtual void EnableTransportCC() {
@@ -585,11 +619,6 @@ class JsepVideoCodecDescription : public JsepCodecDescription {
       ApplyConfigToFmtp(h264Params);
 
       msection.SetFmtp(SdpFmtpAttributeList::Fmtp(mDefaultPt, *h264Params));
-    } else if (mName == "red" && !mRedundantEncodings.empty()) {
-      SdpFmtpAttributeList::RedParameters redParams(
-          GetRedParameters(mDefaultPt, msection));
-      redParams.encodings = mRedundantEncodings;
-      msection.SetFmtp(SdpFmtpAttributeList::Fmtp(mDefaultPt, redParams));
     } else if (mName == "VP8" || mName == "VP9") {
       if (mDirection == sdp::kRecv) {
         // VP8 and VP9 share the same SDP parameters thus far
@@ -796,10 +825,6 @@ class JsepVideoCodecDescription : public JsepCodecDescription {
       } else {
         // TODO(bug 1143709): max-recv-level support
       }
-    } else if (mName == "red") {
-      SdpFmtpAttributeList::RedParameters redParams(
-          GetRedParameters(mDefaultPt, remoteMsection));
-      mRedundantEncodings = redParams.encodings;
     } else if (mName == "VP8" || mName == "VP9") {
       if (mDirection == sdp::kSend) {
         SdpFmtpAttributeList::VP8Parameters vp8Params(
@@ -1035,19 +1060,6 @@ class JsepVideoCodecDescription : public JsepCodecDescription {
     return false;
   }
 
-  virtual void UpdateRedundantEncodings(
-      const std::vector<UniquePtr<JsepCodecDescription>>& codecs) {
-    for (const auto& codec : codecs) {
-      if (codec->Type() == type && codec->mEnabled && codec->mName != "red") {
-        uint16_t pt;
-        if (!SdpHelper::GetPtAsInt(codec->mDefaultPt, &pt)) {
-          continue;
-        }
-        mRedundantEncodings.push_back(pt);
-      }
-    }
-  }
-
   void EnsureNoDuplicatePayloadTypes(std::set<std::string>& aUsedPts) override {
     JsepCodecDescription::EnsureNoDuplicatePayloadTypes(aUsedPts);
     if (mFECEnabled) {
@@ -1071,9 +1083,9 @@ class JsepVideoCodecDescription : public JsepCodecDescription {
   bool mTransportCCEnabled;
   bool mRtxEnabled;
   std::string mREDPayloadType;
+  std::string mREDRTXPayloadType;
   std::string mULPFECPayloadType;
   std::string mRtxPayloadType;
-  std::vector<uint8_t> mRedundantEncodings;
 
   // H264-specific stuff
   uint32_t mProfileLevelId;
@@ -1182,7 +1194,7 @@ class JsepApplicationCodecDescription : public JsepCodecDescription {
   }
 
   void ApplyConfigToFmtp(
-      UniquePtr<SdpFmtpAttributeList::Parameters>& aFmtp) const override{};
+      UniquePtr<SdpFmtpAttributeList::Parameters>& aFmtp) const override {};
 
   uint16_t mLocalPort;
   uint32_t mLocalMaxMessageSize;

@@ -53,6 +53,11 @@ class HTMLButtonElement final : public nsGenericHTMLFormControlElementWithState,
   void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   nsresult PostHandleEvent(EventChainPostVisitor& aVisitor) override;
+  void LegacyPreActivationBehavior(EventChainVisitor& aVisitor) override;
+  MOZ_CAN_RUN_SCRIPT
+  void ActivationBehavior(EventChainPostVisitor& aVisitor) override;
+  void LegacyCanceledActivationBehavior(
+      EventChainPostVisitor& aVisitor) override;
 
   // nsINode
   nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
@@ -60,12 +65,11 @@ class HTMLButtonElement final : public nsGenericHTMLFormControlElementWithState,
 
   // nsIContent
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  void UnbindFromTree(bool aNullParent = true) override;
+  void UnbindFromTree(UnbindContext&) override;
   void DoneCreatingElement() override;
 
   void UpdateBarredFromConstraintValidation();
-  // Element
-  ElementState IntrinsicState() const override;
+  void UpdateValidityElementStates(bool aNotify);
   /**
    * Called when an attribute is about to be changed
    */
@@ -83,7 +87,7 @@ class HTMLButtonElement final : public nsGenericHTMLFormControlElementWithState,
                       nsAttrValue& aResult) override;
 
   // nsGenericHTMLElement
-  bool IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
+  bool IsHTMLFocusable(IsFocusableFlags, bool* aIsFocusable,
                        int32_t* aTabIndex) override;
   bool IsDisabledForEvents(WidgetEvent* aEvent) override;
 

@@ -6,15 +6,17 @@
 
 TEST_DIRS += ["gtest"]
 
-BROWSER_CHROME_MANIFESTS += ["browser/browser.ini"]
+BROWSER_CHROME_MANIFESTS += ["browser/browser.toml"]
 
-MOCHITEST_MANIFESTS += ["mochitest/mochitest.ini"]
+MARIONETTE_MANIFESTS += ["marionette/manifest.toml"]
+
+MOCHITEST_MANIFESTS += ["mochitest/mochitest.toml"]
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "xpcshell/caching/xpcshell.ini",
-    "xpcshell/telemetry/xpcshell.ini",
-    "xpcshell/upgrades/xpcshell.ini",
-    "xpcshell/xpcshell.ini",
+    "xpcshell/caching/xpcshell.toml",
+    "xpcshell/telemetry/xpcshell.toml",
+    "xpcshell/upgrades/xpcshell.toml",
+    "xpcshell/xpcshell.toml",
 ]
 
 TEST_HARNESS_FILES.testing.mochitest.browser.dom.quota.test.common += [
@@ -38,12 +40,12 @@ TEST_HARNESS_FILES.testing.mochitest.tests.dom.quota.test.common += [
 ]
 
 TEST_HARNESS_FILES.testing.mochitest.tests.dom.quota.test.modules += [
-    "modules/content/Assert.js",
-    "modules/content/ModuleLoader.js",
-    "modules/content/StorageUtils.js",
-    "modules/content/Utils.js",
-    "modules/content/UtilsParent.js",
-    "modules/content/WorkerDriver.js",
+    "modules/content/Assert.mjs",
+    "modules/content/ModuleLoader.mjs",
+    "modules/content/StorageUtils.mjs",
+    "modules/content/Utils.mjs",
+    "modules/content/UtilsParent.mjs",
+    "modules/content/WorkerDriver.mjs",
 ]
 
 TEST_HARNESS_FILES.testing.mochitest.tests.dom.quota.test.modules.worker += [
@@ -80,5 +82,5 @@ TESTING_JS_MODULES.dom.quota.test.modules.worker += [
     "modules/system/worker/head.js",
     "modules/system/worker/ModuleLoader.js",
     "modules/system/worker/Utils.js",
-    "modules/system/worker/UtilsChild.js",
+    "modules/system/worker/UtilsChild.mjs",
 ]

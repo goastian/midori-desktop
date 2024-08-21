@@ -14,14 +14,119 @@
 interface PublicKeyCredential : Credential {
     [SameObject, Throws] readonly attribute ArrayBuffer      rawId;
     [SameObject] readonly attribute AuthenticatorResponse    response;
+    readonly attribute DOMString?                            authenticatorAttachment;
     AuthenticationExtensionsClientOutputs getClientExtensionResults();
+    [NewObject] static Promise<boolean> isConditionalMediationAvailable();
+    [Throws, Pref="security.webauthn.enable_json_serialization_methods"] object toJSON();
+};
+
+typedef DOMString Base64URLString;
+
+[GenerateConversionToJS]
+dictionary RegistrationResponseJSON {
+    required Base64URLString id;
+    required Base64URLString rawId;
+    required AuthenticatorAttestationResponseJSON response;
+    DOMString authenticatorAttachment;
+    required AuthenticationExtensionsClientOutputsJSON clientExtensionResults;
+    required DOMString type;
+};
+
+[GenerateConversionToJS]
+dictionary AuthenticatorAttestationResponseJSON {
+    required Base64URLString clientDataJSON;
+    required Base64URLString authenticatorData;
+    required sequence<DOMString> transports;
+    // The publicKey field will be missing if pubKeyCredParams was used to
+    // negotiate a public-key algorithm that the user agent doesn’t
+    // understand. (See section “Easily accessing credential data” for a
+    // list of which algorithms user agents must support.) If using such an
+    // algorithm then the public key must be parsed directly from
+    // attestationObject or authenticatorData.
+    Base64URLString publicKey;
+    required long long publicKeyAlgorithm;
+    // This value contains copies of some of the fields above. See
+    // section “Easily accessing credential data”.
+    required Base64URLString attestationObject;
+};
+
+[GenerateConversionToJS]
+dictionary AuthenticationResponseJSON {
+    required Base64URLString id;
+    required Base64URLString rawId;
+    required AuthenticatorAssertionResponseJSON response;
+    DOMString authenticatorAttachment;
+    required AuthenticationExtensionsClientOutputsJSON clientExtensionResults;
+    required DOMString type;
+};
+
+[GenerateConversionToJS]
+dictionary AuthenticatorAssertionResponseJSON {
+    required Base64URLString clientDataJSON;
+    required Base64URLString authenticatorData;
+    required Base64URLString signature;
+    Base64URLString userHandle;
+    Base64URLString attestationObject;
+};
+
+[GenerateConversionToJS]
+dictionary AuthenticationExtensionsClientOutputsJSON {
 };
 
 [SecureContext]
 partial interface PublicKeyCredential {
     [NewObject] static Promise<boolean> isUserVerifyingPlatformAuthenticatorAvailable();
-    // isExternalCTAP2SecurityKeySupported is non-standard; see Bug 1526023
-    [NewObject] static Promise<boolean> isExternalCTAP2SecurityKeySupported();
+};
+
+[SecureContext]
+partial interface PublicKeyCredential {
+    [Throws, Pref="security.webauthn.enable_json_serialization_methods"] static PublicKeyCredentialCreationOptions parseCreationOptionsFromJSON(PublicKeyCredentialCreationOptionsJSON options);
+};
+
+dictionary PublicKeyCredentialCreationOptionsJSON {
+    required PublicKeyCredentialRpEntity                    rp;
+    required PublicKeyCredentialUserEntityJSON              user;
+    required Base64URLString                                challenge;
+    required sequence<PublicKeyCredentialParameters>        pubKeyCredParams;
+    unsigned long                                           timeout;
+    sequence<PublicKeyCredentialDescriptorJSON>             excludeCredentials = [];
+    AuthenticatorSelectionCriteria                          authenticatorSelection;
+    sequence<DOMString>                                     hints = [];
+    DOMString                                               attestation = "none";
+    sequence<DOMString>                                     attestationFormats = [];
+    AuthenticationExtensionsClientInputsJSON                extensions;
+};
+
+dictionary PublicKeyCredentialUserEntityJSON {
+    required Base64URLString        id;
+    required DOMString              name;
+    required DOMString              displayName;
+};
+
+dictionary PublicKeyCredentialDescriptorJSON {
+    required Base64URLString        id;
+    required DOMString              type;
+    sequence<DOMString>             transports;
+};
+
+dictionary AuthenticationExtensionsClientInputsJSON {
+};
+
+[SecureContext]
+partial interface PublicKeyCredential {
+    [Throws, Pref="security.webauthn.enable_json_serialization_methods"] static PublicKeyCredentialRequestOptions parseRequestOptionsFromJSON(PublicKeyCredentialRequestOptionsJSON options);
+};
+
+dictionary PublicKeyCredentialRequestOptionsJSON {
+    required Base64URLString                                challenge;
+    unsigned long                                           timeout;
+    DOMString                                               rpId;
+    sequence<PublicKeyCredentialDescriptorJSON>             allowCredentials = [];
+    DOMString                                               userVerification = "preferred";
+    sequence<DOMString>                                     hints = [];
+    DOMString                                               attestation = "none";
+    sequence<DOMString>                                     attestationFormats = [];
+    AuthenticationExtensionsClientInputsJSON                extensions;
 };
 
 [SecureContext, Pref="security.webauth.webauthn",
@@ -34,6 +139,10 @@ interface AuthenticatorResponse {
  Exposed=Window]
 interface AuthenticatorAttestationResponse : AuthenticatorResponse {
     [SameObject, Throws] readonly attribute ArrayBuffer attestationObject;
+    sequence<DOMString>                                 getTransports();
+    [Throws] ArrayBuffer                                getAuthenticatorData();
+    [Throws] ArrayBuffer?                               getPublicKey();
+    [Throws] COSEAlgorithmIdentifier                    getPublicKeyAlgorithm();
 };
 
 [SecureContext, Pref="security.webauth.webauthn",
@@ -67,7 +176,6 @@ dictionary PublicKeyCredentialCreationOptions {
 
 dictionary PublicKeyCredentialEntity {
     required DOMString    name;
-    USVString             icon;
 };
 
 dictionary PublicKeyCredentialRpEntity : PublicKeyCredentialEntity {
@@ -96,41 +204,26 @@ dictionary PublicKeyCredentialRequestOptions {
     AuthenticationExtensionsClientInputs extensions = {};
 };
 
-// TODO - Use partial dictionaries when bug 1436329 is fixed.
 dictionary AuthenticationExtensionsClientInputs {
-    // FIDO AppID Extension (appid)
-    // <https://w3c.github.io/webauthn/#sctn-appid-extension>
-    USVString appid;
-
-    // hmac-secret
-    // <https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#sctn-hmac-secret-extension>
-    boolean hmacCreateSecret;
 };
 
-// TODO - Use partial dictionaries when bug 1436329 is fixed.
 dictionary AuthenticationExtensionsClientOutputs {
-    // FIDO AppID Extension (appid)
-    // <https://w3c.github.io/webauthn/#sctn-appid-extension>
-    boolean appid;
-
-    // <https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#sctn-hmac-secret-extension>
-    boolean hmacCreateSecret;
 };
 
 typedef record<DOMString, DOMString> AuthenticationExtensionsAuthenticatorInputs;
 
-[GenerateToJSON]
-dictionary CollectedClientData {
-    required DOMString           type;
-    required DOMString           challenge;
-    required DOMString           origin;
-    TokenBinding                 tokenBinding;
-};
-
-dictionary TokenBinding {
-    required DOMString status;
-    DOMString id;
-};
+// The CollectedClientData dictionary must be serialized using the algorithm
+// from https://w3c.github.io/webauthn/#clientdatajson-serialization. Because
+// CollectedClientData is only consumed by the relying party, and because
+// [GenerateToJSON] does not produce the correct serialization algorithm, the
+// definition below is commented out. Please keep this definition in sync with
+// in AssembleClientData in dom/webauthn/WebAuthnManager.cpp.
+//
+// dictionary CollectedClientData {
+//     required DOMString           type;
+//     required DOMString           challenge;
+//     required DOMString           origin;
+// };
 
 dictionary PublicKeyCredentialDescriptor {
     required DOMString                    type;
@@ -146,16 +239,82 @@ typedef sequence<AAGUID>      AuthenticatorSelectionList;
 
 typedef BufferSource      AAGUID;
 
-/*
-// FIDO AppID Extension (appid)
-// <https://w3c.github.io/webauthn/#sctn-appid-extension>
 partial dictionary AuthenticationExtensionsClientInputs {
     USVString appid;
 };
 
-// FIDO AppID Extension (appid)
-// <https://w3c.github.io/webauthn/#sctn-appid-extension>
 partial dictionary AuthenticationExtensionsClientOutputs {
-  boolean appid;
+    boolean appid;
 };
-*/
+
+// The spec does not define any partial dictionaries that modify
+// AuthenticationExtensionsClientInputsJSON, but this seems to be an error. All changes to
+// AuthenticationExtensionsClientInputs must be accompanied by changes to
+// AuthenticationExtensionsClientInputsJSON for parseCreationOptionsFromJSON and
+// parseRequestOptionsFromJSON to function correctly.
+// (see: https://github.com/w3c/webauthn/issues/1968).
+partial dictionary AuthenticationExtensionsClientInputsJSON {
+    USVString appid;
+};
+
+// We also deviate from the spec by mirroring changes to AuthenticationExtensionsClientOutputs in
+// AuthenticationExtensionsClientOutputsJSON.
+partial dictionary AuthenticationExtensionsClientOutputsJSON {
+    boolean appid;
+};
+
+partial dictionary AuthenticationExtensionsClientInputs {
+    boolean credProps;
+};
+
+partial dictionary AuthenticationExtensionsClientInputsJSON {
+    boolean credProps;
+};
+
+dictionary CredentialPropertiesOutput {
+    boolean rk;
+};
+
+partial dictionary AuthenticationExtensionsClientOutputs {
+    CredentialPropertiesOutput credProps;
+};
+
+partial dictionary AuthenticationExtensionsClientOutputsJSON {
+    CredentialPropertiesOutput credProps;
+};
+
+/*
+ * CTAP2 Extensions
+ * <https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-errata-20220621.html#sctn-defined-extensions>
+ */
+
+// hmac-secret
+// <https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-errata-20220621.html#sctn-hmac-secret-extension>
+// note: we don't support hmac-secret in get(), so we only define the create()
+// inputs and outputs here.
+
+partial dictionary AuthenticationExtensionsClientInputs {
+    boolean hmacCreateSecret;
+};
+
+partial dictionary AuthenticationExtensionsClientOutputs {
+    boolean hmacCreateSecret;
+};
+
+partial dictionary AuthenticationExtensionsClientInputsJSON {
+    boolean hmacCreateSecret;
+};
+
+partial dictionary AuthenticationExtensionsClientOutputsJSON {
+    boolean hmacCreateSecret;
+};
+
+// hmac-secret
+// <https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-errata-20220621.html#sctn-minpinlength-extension>
+partial dictionary AuthenticationExtensionsClientInputs {
+  boolean minPinLength;
+};
+
+partial dictionary AuthenticationExtensionsClientInputsJSON {
+  boolean minPinLength;
+};

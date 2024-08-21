@@ -40,6 +40,7 @@ namespace dom {
 struct BindContext;
 class Document;
 class Element;
+enum class FetchPriority : uint8_t;
 }  // namespace dom
 }  // namespace mozilla
 
@@ -80,6 +81,7 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
   void ForceReload(bool aNotify, mozilla::ErrorResult& aError);
 
   mozilla::dom::Element* FindImageMap();
+  static mozilla::dom::Element* FindImageMap(mozilla::dom::Element*);
 
   /**
    * Toggle whether or not to synchronously decode an image on draw.
@@ -220,7 +222,7 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
 
   // Subclasses are *required* to call BindToTree/UnbindFromTree.
   void BindToTree(mozilla::dom::BindContext&, nsINode& aParent);
-  void UnbindFromTree(bool aNullParent);
+  void UnbindFromTree();
 
   void OnLoadComplete(imgIRequest* aRequest, nsresult aStatus);
   void OnUnlockedDraw();
@@ -234,6 +236,8 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
   // Get ourselves as an nsIContent*.  Not const because some of the callers
   // want a non-const nsIContent.
   virtual nsIContent* AsContent() = 0;
+
+  virtual mozilla::dom::FetchPriority GetFetchPriorityForImage() const;
 
   /**
    * Get width and height of the current request, using given image request if
@@ -554,14 +558,13 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
 
   bool mLoadingEnabled : 1;
 
+ protected:
   /**
    * The state we had the last time we checked whether we needed to notify the
    * document of a state change.  These are maintained by UpdateImageState.
    */
   bool mLoading : 1;
-  bool mBroken : 1;
 
- protected:
   /**
    * A hack to get animations to reset, see bug 594771. On requests
    * that originate from setting .src, we mark them for needing their animation

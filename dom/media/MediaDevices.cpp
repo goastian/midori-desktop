@@ -246,7 +246,7 @@ RefPtr<MediaDeviceSetRefCnt> MediaDevices::FilterExposedDevices(
       !Preferences::GetBool("media.setsinkid.enabled") ||
       !FeaturePolicyUtils::IsFeatureAllowed(doc, u"speaker-selection"_ns);
 
-  if (doc->ShouldResistFingerprinting(RFPTarget::Unknown)) {
+  if (doc->ShouldResistFingerprinting(RFPTarget::MediaDevices)) {
     RefPtr fakeEngine = new MediaEngineFake();
     fakeEngine->EnumerateDevices(MediaSourceEnum::Microphone,
                                  MediaSinkEnum::Other, exposed);
@@ -315,8 +315,6 @@ RefPtr<MediaDeviceSetRefCnt> MediaDevices::FilterExposedDevices(
         }
         haveDefaultOutput = true;
         break;
-      case MediaDeviceKind::EndGuard_:
-        continue;
         // Avoid `default:` so that `-Wswitch` catches missing
         // enumerators at compile time.
     }
@@ -334,8 +332,6 @@ bool MediaDevices::CanExposeInfo(MediaDeviceKind aKind) const {
     case MediaDeviceKind::Audiooutput:
       // Assumes caller has used FilterExposedDevices()
       return true;
-    case MediaDeviceKind::EndGuard_:
-      break;
       // Avoid `default:` so that `-Wswitch` catches missing enumerators at
       // compile time.
   }
@@ -550,7 +546,7 @@ already_AddRefed<Promise> MediaDevices::GetDisplayMedia(
   // for us.
   vc.mMediaSource.Reset();
   vc.mMediaSource.Construct().AssignASCII(
-      dom::MediaSourceEnumValues::GetString(MediaSourceEnum::Screen));
+      dom::GetEnumString(MediaSourceEnum::Screen));
 
   RefPtr<MediaDevices> self(this);
   MediaManager::Get()
@@ -731,7 +727,7 @@ void MediaDevices::OnDeviceChange() {
 
   if (nsContentUtils::ShouldResistFingerprinting(
           "Guarding the more expensive RFP check with a simple one",
-          RFPTarget::Unknown)) {
+          RFPTarget::MediaDevices)) {
     nsCOMPtr<nsPIDOMWindowInner> window = GetOwner();
     auto* wrapper = GetWrapper();
     if (!window && wrapper) {
@@ -743,7 +739,7 @@ void MediaDevices::OnDeviceChange() {
     }
 
     if (nsGlobalWindowInner::Cast(window)->ShouldResistFingerprinting(
-            RFPTarget::Unknown)) {
+            RFPTarget::MediaDevices)) {
       return;
     }
   }
@@ -766,14 +762,8 @@ void MediaDevices::SetupDeviceChangeListener() {
     return;
   }
 
-  nsISerialEventTarget* mainThread =
-      window->EventTargetFor(TaskCategory::Other);
-  if (!mainThread) {
-    return;
-  }
-
   mDeviceChangeListener = MediaManager::Get()->DeviceListChangeEvent().Connect(
-      mainThread, this, &MediaDevices::OnDeviceChange);
+      GetMainThreadSerialEventTarget(), this, &MediaDevices::OnDeviceChange);
   mIsDeviceChangeListenerSetUp = true;
 
   MediaManager::Get()->GetPhysicalDevices()->Then(

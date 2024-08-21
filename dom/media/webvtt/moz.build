@@ -41,9 +41,9 @@ EXTRA_JS_MODULES += [
     "vtt.sys.mjs",
 ]
 
-XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.toml"]
 
-MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.ini"]
+MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.toml"]
 
 REFTEST_MANIFESTS += ["test/reftest/reftest.list"]
 

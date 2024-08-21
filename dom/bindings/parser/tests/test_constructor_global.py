@@ -1,9 +1,12 @@
+import WebIDL
+
+
 def WebIDLTest(parser, harness):
     threw = False
     try:
         parser.parse(
             """
-            [Global, Exposed=TestConstructorGlobal]
+            [Global=TestConstructorGlobal, Exposed=TestConstructorGlobal]
             interface TestConstructorGlobal {
               constructor();
             };
@@ -11,7 +14,7 @@ def WebIDLTest(parser, harness):
         )
 
         parser.finish()
-    except Exception:
+    except WebIDL.WebIDLError:
         threw = True
 
     harness.ok(threw, "Should have thrown.")
@@ -21,14 +24,14 @@ def WebIDLTest(parser, harness):
     try:
         parser.parse(
             """
-            [Global, Exposed=TestLegacyFactoryFunctionGlobal,
+            [Global=TestLegacyFactoryFunctionGlobal, Exposed=TestLegacyFactoryFunctionGlobal,
              LegacyFactoryFunction=FooBar]
             interface TestLegacyFactoryFunctionGlobal {
             };
         """
         )
         parser.finish()
-    except Exception:
+    except WebIDL.WebIDLError:
         threw = True
 
     harness.ok(threw, "Should have thrown.")
@@ -38,14 +41,14 @@ def WebIDLTest(parser, harness):
     try:
         parser.parse(
             """
-            [LegacyFactoryFunction=FooBar, Global,
+            [LegacyFactoryFunction=FooBar, Global=TestLegacyFactoryFunctionGlobal,
              Exposed=TestLegacyFactoryFunctionGlobal]
             interface TestLegacyFactoryFunctionGlobal {
             };
         """
         )
         parser.finish()
-    except Exception:
+    except WebIDL.WebIDLError:
         threw = True
 
     harness.ok(threw, "Should have thrown.")
@@ -55,7 +58,7 @@ def WebIDLTest(parser, harness):
     try:
         parser.parse(
             """
-            [Global, Exposed=TestHTMLConstructorGlobal]
+            [Global=TestHTMLConstructorGlobal, Exposed=TestHTMLConstructorGlobal]
             interface TestHTMLConstructorGlobal {
               [HTMLConstructor] constructor();
             };
@@ -63,7 +66,7 @@ def WebIDLTest(parser, harness):
         )
 
         parser.finish()
-    except Exception:
+    except WebIDL.WebIDLError:
         threw = True
 
     harness.ok(threw, "Should have thrown.")

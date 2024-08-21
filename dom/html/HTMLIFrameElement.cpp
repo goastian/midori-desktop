@@ -4,18 +4,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/dom/DOMIntersectionObserver.h"
 #include "mozilla/dom/HTMLIFrameElement.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/HTMLIFrameElementBinding.h"
 #include "mozilla/dom/FeaturePolicy.h"
-#include "mozilla/MappedDeclarations.h"
+#include "mozilla/MappedDeclarationsBuilder.h"
 #include "mozilla/NullPrincipal.h"
 #include "mozilla/StaticPrefs_dom.h"
-#include "nsMappedAttributes.h"
-#include "nsAttrValueInlines.h"
+#include "nsSubDocumentFrame.h"
 #include "nsError.h"
-#include "nsStyleConsts.h"
 #include "nsContentUtils.h"
 #include "nsSandboxFlags.h"
 #include "nsNetUtil.h"
@@ -101,6 +100,9 @@ bool HTMLIFrameElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
       aResult.ParseAtomArray(aValue);
       return true;
     }
+    if (aAttribute == nsGkAtoms::loading) {
+      return ParseLoadingAttribute(aValue, aResult);
+    }
   }
 
   return nsGenericHTMLFrameElement::ParseAttribute(
@@ -108,25 +110,25 @@ bool HTMLIFrameElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
 }
 
 void HTMLIFrameElement::MapAttributesIntoRule(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
+    MappedDeclarationsBuilder& aBuilder) {
   // frameborder: 0 | 1 (| NO | YES in quirks mode)
   // If frameborder is 0 or No, set border to 0
   // else leave it as the value set in html.css
-  const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::frameborder);
+  const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::frameborder);
   if (value && value->Type() == nsAttrValue::eEnum) {
     auto frameborder = static_cast<FrameBorderProperty>(value->GetEnumValue());
     if (FrameBorderProperty::No == frameborder ||
         FrameBorderProperty::Zero == frameborder) {
-      aDecls.SetPixelValueIfUnset(eCSSProperty_border_top_width, 0.0f);
-      aDecls.SetPixelValueIfUnset(eCSSProperty_border_right_width, 0.0f);
-      aDecls.SetPixelValueIfUnset(eCSSProperty_border_bottom_width, 0.0f);
-      aDecls.SetPixelValueIfUnset(eCSSProperty_border_left_width, 0.0f);
+      aBuilder.SetPixelValueIfUnset(eCSSProperty_border_top_width, 0.0f);
+      aBuilder.SetPixelValueIfUnset(eCSSProperty_border_right_width, 0.0f);
+      aBuilder.SetPixelValueIfUnset(eCSSProperty_border_bottom_width, 0.0f);
+      aBuilder.SetPixelValueIfUnset(eCSSProperty_border_left_width, 0.0f);
     }
   }
 
-  nsGenericHTMLElement::MapImageSizeAttributesInto(aAttributes, aDecls);
-  nsGenericHTMLElement::MapImageAlignAttributeInto(aAttributes, aDecls);
-  nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aDecls);
+  nsGenericHTMLElement::MapImageSizeAttributesInto(aBuilder);
+  nsGenericHTMLElement::MapImageAlignAttributeInto(aBuilder);
+  nsGenericHTMLElement::MapCommonAttributesInto(aBuilder);
 }
 
 NS_IMETHODIMP_(bool)
@@ -160,6 +162,22 @@ void HTMLIFrameElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
   AfterMaybeChangeAttr(aNameSpaceID, aName, aNotify);
 
   if (aNameSpaceID == kNameSpaceID_None) {
+    if (aName == nsGkAtoms::loading) {
+      if (aValue && Loading(aValue->GetEnumValue()) == Loading::Lazy) {
+        SetLazyLoading();
+      } else if (aOldValue &&
+                 Loading(aOldValue->GetEnumValue()) == Loading::Lazy) {
+        StopLazyLoading();
+      }
+    }
+
+    // If lazy loading and src set, set lazy loading again as we are doing a new
+    // load (lazy loading is unset after a load is complete).
+    if ((aName == nsGkAtoms::src || aName == nsGkAtoms::srcdoc) &&
+        LoadingState() == Loading::Lazy) {
+      SetLazyLoading();
+    }
+
     if (aName == nsGkAtoms::sandbox) {
       if (mFrameLoader) {
         // If we have an nsFrameLoader, apply the new sandbox flags.
@@ -176,6 +194,7 @@ void HTMLIFrameElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
       RefreshFeaturePolicy(false /* parse the feature policy attribute */);
     }
   }
+
   return nsGenericHTMLFrameElement::AfterSetAttr(
       aNameSpaceID, aName, aValue, aOldValue, aMaybeScriptedPrincipal, aNotify);
 }
@@ -245,7 +264,7 @@ already_AddRefed<nsIPrincipal>
 HTMLIFrameElement::GetFeaturePolicyDefaultOrigin() const {
   nsCOMPtr<nsIPrincipal> principal;
 
-  if (HasAttr(kNameSpaceID_None, nsGkAtoms::srcdoc)) {
+  if (HasAttr(nsGkAtoms::srcdoc)) {
     principal = NodePrincipal();
     return principal.forget();
   }
@@ -288,6 +307,75 @@ void HTMLIFrameElement::RefreshFeaturePolicy(bool aParseAllowAttribute) {
 
   mFeaturePolicy->InheritPolicy(OwnerDoc()->FeaturePolicy());
   MaybeStoreCrossOriginFeaturePolicy();
+}
+
+void HTMLIFrameElement::UpdateLazyLoadState() {
+  // Store current base URI and referrer policy in the lazy load state.
+  mLazyLoadState.mBaseURI = GetBaseURI();
+  mLazyLoadState.mReferrerPolicy = GetReferrerPolicyAsEnum();
+}
+
+nsresult HTMLIFrameElement::BindToTree(BindContext& aContext,
+                                       nsINode& aParent) {
+  // Update lazy load state on bind to tree again if lazy loading, as the
+  // loading attribute could be set before others.
+  if (mLazyLoading) {
+    UpdateLazyLoadState();
+  }
+
+  return nsGenericHTMLFrameElement::BindToTree(aContext, aParent);
+}
+
+void HTMLIFrameElement::SetLazyLoading() {
+  if (mLazyLoading) {
+    return;
+  }
+
+  if (!StaticPrefs::dom_iframe_lazy_loading_enabled()) {
+    return;
+  }
+
+  // https://html.spec.whatwg.org/multipage/urls-and-fetching.html#will-lazy-load-element-steps
+  // "If scripting is disabled for element, then return false."
+  Document* doc = OwnerDoc();
+  if (!doc->IsScriptEnabled() || doc->IsStaticDocument()) {
+    return;
+  }
+
+  doc->EnsureLazyLoadObserver().Observe(*this);
+  mLazyLoading = true;
+
+  UpdateLazyLoadState();
+}
+
+void HTMLIFrameElement::StopLazyLoading() {
+  if (!mLazyLoading) {
+    return;
+  }
+
+  mLazyLoading = false;
+
+  Document* doc = OwnerDoc();
+  if (auto* obs = doc->GetLazyLoadObserver()) {
+    obs->Unobserve(*this);
+  }
+
+  LoadSrc();
+
+  mLazyLoadState.Clear();
+  if (nsSubDocumentFrame* ourFrame = do_QueryFrame(GetPrimaryFrame())) {
+    ourFrame->ResetFrameLoader(nsSubDocumentFrame::RetainPaintData::No);
+  }
+}
+
+void HTMLIFrameElement::NodeInfoChanged(Document* aOldDoc) {
+  nsGenericHTMLElement::NodeInfoChanged(aOldDoc);
+
+  if (mLazyLoading) {
+    aOldDoc->GetLazyLoadObserver()->Unobserve(*this);
+    mLazyLoading = false;
+    SetLazyLoading();
+  }
 }
 
 }  // namespace mozilla::dom

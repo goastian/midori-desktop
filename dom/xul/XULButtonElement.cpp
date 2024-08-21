@@ -188,17 +188,15 @@ void XULButtonElement::OpenMenuPopup(bool aSelectFirstItem) {
   }
 
   // Open the menu asynchronously.
-  OwnerDoc()->Dispatch(
-      TaskCategory::Other,
-      NS_NewRunnableFunction(
-          "AsyncOpenMenu", [self = RefPtr{this}, aSelectFirstItem] {
-            if (self->GetMenuParent() && !self->IsMenuActive()) {
-              return;
-            }
-            if (nsXULPopupManager* pm = nsXULPopupManager::GetInstance()) {
-              pm->ShowMenu(self, aSelectFirstItem);
-            }
-          }));
+  OwnerDoc()->Dispatch(NS_NewRunnableFunction(
+      "AsyncOpenMenu", [self = RefPtr{this}, aSelectFirstItem] {
+        if (self->GetMenuParent() && !self->IsMenuActive()) {
+          return;
+        }
+        if (nsXULPopupManager* pm = nsXULPopupManager::GetInstance()) {
+          pm->ShowMenu(self, aSelectFirstItem);
+        }
+      }));
 }
 
 void XULButtonElement::CloseMenuPopup(bool aDeselectMenu) {
@@ -316,13 +314,12 @@ void XULButtonElement::StartBlinking() {
             "XULButtonElement::ContinueBlinking");
       },
       this, kBlinkDelay, nsITimer::TYPE_ONE_SHOT,
-      "XULButtonElement::StartBlinking",
-      OwnerDoc()->EventTargetFor(TaskCategory::Other));
+      "XULButtonElement::StartBlinking", GetMainThreadSerialEventTarget());
 }
 
-void XULButtonElement::UnbindFromTree(bool aNullParent) {
+void XULButtonElement::UnbindFromTree(UnbindContext& aContext) {
   StopBlinking();
-  nsXULElement::UnbindFromTree(aNullParent);
+  nsXULElement::UnbindFromTree(aContext);
 }
 
 void XULButtonElement::ExecuteMenu(WidgetEvent& aEvent) {
@@ -528,8 +525,7 @@ void XULButtonElement::PostHandleEventForMenus(
           self->OpenMenuPopup(false);
         },
         this, MenuOpenCloseDelay(), nsITimer::TYPE_ONE_SHOT,
-        "XULButtonElement::OpenMenu",
-        OwnerDoc()->EventTargetFor(TaskCategory::Other));
+        "XULButtonElement::OpenMenu", GetMainThreadSerialEventTarget());
   }
 }
 

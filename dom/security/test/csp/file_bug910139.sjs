@@ -1,18 +1,20 @@
 // Server side js file for bug 910139, see file test_bug910139.html for details.
 
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+const { NetUtil } = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
+);
 
 function loadResponseFromFile(path) {
-  var testHTMLFile = Components.classes["@mozilla.org/file/directory_service;1"]
-    .getService(Components.interfaces.nsIProperties)
-    .get("CurWorkD", Components.interfaces.nsIFile);
+  var testHTMLFile = Cc["@mozilla.org/file/directory_service;1"]
+    .getService(Ci.nsIProperties)
+    .get("CurWorkD", Ci.nsIFile);
   var dirs = path.split("/");
   for (var i = 0; i < dirs.length; i++) {
     testHTMLFile.append(dirs[i]);
   }
-  var testHTMLFileStream = Components.classes[
+  var testHTMLFileStream = Cc[
     "@mozilla.org/network/file-input-stream;1"
-  ].createInstance(Components.interfaces.nsIFileInputStream);
+  ].createInstance(Ci.nsIFileInputStream);
   testHTMLFileStream.init(testHTMLFile, -1, 0, 0);
   var testHTML = NetUtil.readInputStreamToString(
     testHTMLFileStream,

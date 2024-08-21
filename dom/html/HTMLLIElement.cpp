@@ -7,11 +7,9 @@
 #include "mozilla/dom/HTMLLIElement.h"
 #include "mozilla/dom/HTMLLIElementBinding.h"
 
-#include "mozilla/MappedDeclarations.h"
-#include "nsAttrValueInlines.h"
+#include "mozilla/MappedDeclarationsBuilder.h"
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
-#include "nsMappedAttributes.h"
 
 NS_IMPL_NS_NEW_HTML_ELEMENT(LI)
 
@@ -21,16 +19,16 @@ HTMLLIElement::~HTMLLIElement() = default;
 
 NS_IMPL_ELEMENT_CLONE(HTMLLIElement)
 
-// values that are handled case-insensitively
-static const nsAttrValue::EnumTable kUnorderedListItemTypeTable[] = {
+// https://html.spec.whatwg.org/#lists
+const nsAttrValue::EnumTable HTMLLIElement::kULTypeTable[] = {
+    {"none", ListStyle::None},
     {"disc", ListStyle::Disc},
     {"circle", ListStyle::Circle},
-    {"round", ListStyle::Circle},
     {"square", ListStyle::Square},
     {nullptr, 0}};
 
-// values that are handled case-sensitively
-static const nsAttrValue::EnumTable kOrderedListItemTypeTable[] = {
+// https://html.spec.whatwg.org/#lists
+const nsAttrValue::EnumTable HTMLLIElement::kOLTypeTable[] = {
     {"A", ListStyle::UpperAlpha}, {"a", ListStyle::LowerAlpha},
     {"I", ListStyle::UpperRoman}, {"i", ListStyle::LowerRoman},
     {"1", ListStyle::Decimal},    {nullptr, 0}};
@@ -41,8 +39,8 @@ bool HTMLLIElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                                    nsAttrValue& aResult) {
   if (aNamespaceID == kNameSpaceID_None) {
     if (aAttribute == nsGkAtoms::type) {
-      return aResult.ParseEnumValue(aValue, kOrderedListItemTypeTable, true) ||
-             aResult.ParseEnumValue(aValue, kUnorderedListItemTypeTable, false);
+      return aResult.ParseEnumValue(aValue, kOLTypeTable, true) ||
+             aResult.ParseEnumValue(aValue, kULTypeTable, false);
     }
     if (aAttribute == nsGkAtoms::value) {
       return aResult.ParseIntValue(aValue);
@@ -53,25 +51,25 @@ bool HTMLLIElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                                               aMaybeScriptedPrincipal, aResult);
 }
 
-void HTMLLIElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
-                                          MappedDeclarations& aDecls) {
-  if (!aDecls.PropertyIsSet(eCSSProperty_list_style_type)) {
+void HTMLLIElement::MapAttributesIntoRule(MappedDeclarationsBuilder& aBuilder) {
+  if (!aBuilder.PropertyIsSet(eCSSProperty_list_style_type)) {
     // type: enum
-    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::type);
-    if (value && value->Type() == nsAttrValue::eEnum)
-      aDecls.SetKeywordValue(eCSSProperty_list_style_type,
-                             value->GetEnumValue());
-  }
-
-  // Map <li value=INTEGER> to 'counter-set: list-item INTEGER'.
-  const nsAttrValue* attrVal = aAttributes->GetAttr(nsGkAtoms::value);
-  if (attrVal && attrVal->Type() == nsAttrValue::eInteger) {
-    if (!aDecls.PropertyIsSet(eCSSProperty_counter_set)) {
-      aDecls.SetCounterSetListItem(attrVal->GetIntegerValue());
+    const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::type);
+    if (value && value->Type() == nsAttrValue::eEnum) {
+      aBuilder.SetKeywordValue(eCSSProperty_list_style_type,
+                               value->GetEnumValue());
     }
   }
 
-  nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aDecls);
+  // Map <li value=INTEGER> to 'counter-set: list-item INTEGER'.
+  const nsAttrValue* attrVal = aBuilder.GetAttr(nsGkAtoms::value);
+  if (attrVal && attrVal->Type() == nsAttrValue::eInteger) {
+    if (!aBuilder.PropertyIsSet(eCSSProperty_counter_set)) {
+      aBuilder.SetCounterSetListItem(attrVal->GetIntegerValue());
+    }
+  }
+
+  nsGenericHTMLElement::MapCommonAttributesInto(aBuilder);
 }
 
 NS_IMETHODIMP_(bool)

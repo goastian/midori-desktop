@@ -4,6 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsAttrValue.h"
+#include "nsAttrValueOrString.h"
+#include "nsGenericHTMLElement.h"
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
 #include "mozilla/dom/Document.h"
@@ -18,8 +21,11 @@
 #include "nsDOMJSUtils.h"
 #include "nsIScriptError.h"
 #include "nsISupportsImpl.h"
+#include "nsDOMTokenList.h"
+#include "mozilla/dom/FetchPriority.h"
 #include "mozilla/dom/HTMLScriptElement.h"
 #include "mozilla/dom/HTMLScriptElementBinding.h"
+#include "mozilla/Assertions.h"
 #include "mozilla/StaticPrefs_dom.h"
 
 NS_IMPL_NS_NEW_HTML_ELEMENT_CHECK_PARSER(Script)
@@ -42,9 +48,14 @@ HTMLScriptElement::HTMLScriptElement(
 
 HTMLScriptElement::~HTMLScriptElement() = default;
 
-NS_IMPL_ISUPPORTS_INHERITED(HTMLScriptElement, nsGenericHTMLElement,
-                            nsIScriptLoaderObserver, nsIScriptElement,
-                            nsIMutationObserver)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLScriptElement,
+                                             nsGenericHTMLElement,
+                                             nsIScriptLoaderObserver,
+                                             nsIScriptElement,
+                                             nsIMutationObserver)
+
+NS_IMPL_CYCLE_COLLECTION_INHERITED(HTMLScriptElement, nsGenericHTMLElement,
+                                   mBlocking)
 
 nsresult HTMLScriptElement::BindToTree(BindContext& aContext,
                                        nsINode& aParent) {
@@ -70,6 +81,17 @@ bool HTMLScriptElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
 
     if (aAttribute == nsGkAtoms::integrity) {
       aResult.ParseStringOrAtom(aValue);
+      return true;
+    }
+
+    if (aAttribute == nsGkAtoms::fetchpriority) {
+      ParseFetchPriority(aValue, aResult);
+      return true;
+    }
+
+    if (aAttribute == nsGkAtoms::blocking &&
+        StaticPrefs::dom_element_blocking_enabled()) {
+      aResult.ParseAtomArray(aValue);
       return true;
     }
   }
@@ -142,30 +164,6 @@ void HTMLScriptElement::SetText(const nsAString& aValue, ErrorResult& aRv) {
 // variation of this code in SVGScriptElement - check if changes
 // need to be transfered when modifying
 
-bool HTMLScriptElement::GetScriptType(nsAString& aType) {
-  nsAutoString type;
-  if (!GetAttr(kNameSpaceID_None, nsGkAtoms::type, type)) {
-    return false;
-  }
-
-  // ASCII whitespace https://infra.spec.whatwg.org/#ascii-whitespace:
-  // U+0009 TAB, U+000A LF, U+000C FF, U+000D CR, or U+0020 SPACE.
-  static const char kASCIIWhitespace[] = "\t\n\f\r ";
-
-  const bool wasEmptyBeforeTrim = type.IsEmpty();
-  type.Trim(kASCIIWhitespace);
-
-  // If the value before trim was not empty and the value is now empty, do not
-  // trim as we want to retain pure whitespace (by restoring original value)
-  // because we need to treat "" and " " (etc) differently.
-  if (!wasEmptyBeforeTrim && type.IsEmpty()) {
-    return GetAttr(kNameSpaceID_None, nsGkAtoms::type, aType);
-  }
-
-  aType.Assign(type);
-  return true;
-}
-
 void HTMLScriptElement::GetScriptText(nsAString& text) const {
   GetText(text, IgnoreErrors());
 }
@@ -174,39 +172,19 @@ void HTMLScriptElement::GetScriptCharset(nsAString& charset) {
   GetCharset(charset);
 }
 
-void HTMLScriptElement::FreezeExecutionAttrs(Document* aOwnerDoc) {
+void HTMLScriptElement::FreezeExecutionAttrs(const Document* aOwnerDoc) {
   if (mFrozen) {
     return;
   }
 
-  MOZ_ASSERT((mKind != ScriptKind::eModule) &&
-             (mKind != ScriptKind::eImportMap) && !mAsync && !mDefer &&
-             !mExternal);
-
   // Determine whether this is a(n) classic/module/importmap script.
-  nsAutoString type;
-  GetScriptType(type);
-  if (!type.IsEmpty()) {
-    if (aOwnerDoc->ModuleScriptsEnabled() &&
-        type.LowerCaseEqualsASCII("module")) {
-      mKind = ScriptKind::eModule;
-    }
-
-    // https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
-    // Step 11. Otherwise, if the script block's type string is an ASCII
-    // case-insensitive match for the string "importmap", then set el's type to
-    // "importmap".
-    if (aOwnerDoc->ImportMapsEnabled() &&
-        type.LowerCaseEqualsASCII("importmap")) {
-      mKind = ScriptKind::eImportMap;
-    }
-  }
+  DetermineKindFromType(aOwnerDoc);
 
   // variation of this code in SVGScriptElement - check if changes
   // need to be transfered when modifying.  Note that we don't use GetSrc here
   // because it will return the base URL when the attr value is "".
   nsAutoString src;
-  if (GetAttr(kNameSpaceID_None, nsGkAtoms::src, src)) {
+  if (GetAttr(nsGkAtoms::src, src)) {
     // Empty src should be treated as invalid URL.
     if (!src.IsEmpty()) {
       nsContentUtils::NewURIWithDocumentCharset(getter_AddRefs(mUri), src,
@@ -218,7 +196,8 @@ void HTMLScriptElement::FreezeExecutionAttrs(Document* aOwnerDoc) {
         nsContentUtils::ReportToConsole(
             nsIScriptError::warningFlag, "HTML"_ns, OwnerDoc(),
             nsContentUtils::eDOM_PROPERTIES, "ScriptSourceInvalidUri", params,
-            nullptr, u""_ns, GetScriptLineNumber(), GetScriptColumnNumber());
+            nullptr, u""_ns, GetScriptLineNumber(),
+            GetScriptColumnNumber().oneOriginValue());
       }
     } else {
       AutoTArray<nsString, 1> params = {u"src"_ns};
@@ -226,7 +205,8 @@ void HTMLScriptElement::FreezeExecutionAttrs(Document* aOwnerDoc) {
       nsContentUtils::ReportToConsole(
           nsIScriptError::warningFlag, "HTML"_ns, OwnerDoc(),
           nsContentUtils::eDOM_PROPERTIES, "ScriptSourceEmpty", params, nullptr,
-          u""_ns, GetScriptLineNumber(), GetScriptColumnNumber());
+          u""_ns, GetScriptLineNumber(),
+          GetScriptColumnNumber().oneOriginValue());
     }
 
     // At this point mUri will be null for invalid URLs.
@@ -246,12 +226,16 @@ CORSMode HTMLScriptElement::GetCORSMode() const {
   return AttrValueToCORSMode(GetParsedAttr(nsGkAtoms::crossorigin));
 }
 
+FetchPriority HTMLScriptElement::GetFetchPriority() const {
+  return nsGenericHTMLElement::GetFetchPriority();
+}
+
 mozilla::dom::ReferrerPolicy HTMLScriptElement::GetReferrerPolicy() {
   return GetReferrerPolicyAsEnum();
 }
 
 bool HTMLScriptElement::HasScriptContent() {
-  return (mFrozen ? mExternal : HasAttr(kNameSpaceID_None, nsGkAtoms::src)) ||
+  return (mFrozen ? mExternal : HasAttr(nsGkAtoms::src)) ||
          nsContentUtils::HasNonEmptyTextContent(this);
 }
 
@@ -261,8 +245,26 @@ bool HTMLScriptElement::Supports(const GlobalObject& aGlobal,
                                  const nsAString& aType) {
   nsAutoString type(aType);
   return aType.EqualsLiteral("classic") || aType.EqualsLiteral("module") ||
-         (StaticPrefs::dom_importMaps_enabled() &&
-          aType.EqualsLiteral("importmap"));
+
+         aType.EqualsLiteral("importmap");
+}
+
+nsDOMTokenList* HTMLScriptElement::Blocking() {
+  if (!mBlocking) {
+    mBlocking =
+        new nsDOMTokenList(this, nsGkAtoms::blocking, sSupportedBlockingValues);
+  }
+  return mBlocking;
+}
+
+bool HTMLScriptElement::IsPotentiallyRenderBlocking() {
+  return BlockingContainsRender();
+
+  // TODO: handle implicitly potentially render blocking
+  // https://html.spec.whatwg.org/#implicitly-potentially-render-blocking
+  // A script element el is implicitly potentially render-blocking if el's type
+  // is "classic", el is parser-inserted, and el does not have an async or defer
+  // attribute.
 }
 
 }  // namespace mozilla::dom

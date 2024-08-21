@@ -9,6 +9,7 @@
 #include "mozilla/ErrorResult.h"
 #include "nsAString.h"
 #include "nsIContent.h"
+#include "nsContentUtils.h"
 
 namespace mozilla::dom {
 
@@ -56,10 +57,12 @@ bool ConstraintValidation::CheckValidity() {
   return nsIConstraintValidation::CheckValidity(*content);
 }
 
-ConstraintValidation::ConstraintValidation() : nsIConstraintValidation() {}
+ConstraintValidation::ConstraintValidation() = default;
 
 void ConstraintValidation::SetCustomValidity(const nsAString& aError) {
-  mCustomValidity.Assign(aError);
+  nsAutoString error(aError);
+  nsContentUtils::PlatformToDOMLineBreaks(error);
+  mCustomValidity.Assign(error);
   SetValidityState(VALIDITY_STATE_CUSTOM_ERROR, !mCustomValidity.IsEmpty());
 }
 

@@ -11,13 +11,9 @@
 
 namespace mozilla::dom::quota {
 
-class PQuotaParent;
-
 void InitializeQuotaManager();
 
-PQuotaParent* AllocPQuotaParent();
-
-bool DeallocPQuotaParent(PQuotaParent* aActor);
+void InitializeScopedLogExtraInfo();
 
 bool RecvShutdownQuotaManager();
 

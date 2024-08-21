@@ -29,7 +29,7 @@ let assertionChallenge;
 let credentialId;
 
 // Setup test env
-add_task(() => {
+add_task(async () => {
   credentialChallenge = new Uint8Array(16);
   window.crypto.getRandomValues(credentialChallenge);
   assertionChallenge = new Uint8Array(16);
@@ -38,15 +38,15 @@ add_task(() => {
   window.crypto.getRandomValues(credentialId);
   credm = navigator.credentials;
   // Turn off all tokens. This should result in "not allowed" failures
-  return SpecialPowers.pushPrefEnv({"set": [
+  await SpecialPowers.pushPrefEnv({"set": [
     ["security.webauth.webauthn_enable_softtoken", false],
     ["security.webauth.webauthn_enable_usbtoken", false],
   ]});
 });
 
 add_task(async function test_no_token_make_credential() {
-  let rp = {id: document.domain, name: "none", icon: "none"};
-  let user = {id: new Uint8Array(), name: "none", icon: "none", displayName: "none"};
+  let rp = {id: document.domain, name: "none"};
+  let user = {id: new Uint8Array(), name: "none", displayName: "none"};
   let param = {type: "public-key", alg: cose_alg_ECDSA_w_SHA256};
   let makeCredentialOptions = {
     rp, user, challenge: credentialChallenge, pubKeyCredParams: [param]

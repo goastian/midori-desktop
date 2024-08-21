@@ -245,10 +245,10 @@ BrowserHost::TransmitPermissionsForPrincipal(nsIPrincipal* aPrincipal) {
   return GetContentParent()->TransmitPermissionsForPrincipal(aPrincipal);
 }
 
-/* void createAboutBlankContentViewer(in nsIPrincipal aPrincipal, in
+/* void createAboutBlankDocumentViewer(in nsIPrincipal aPrincipal, in
  * nsIPrincipal aPartitionedPrincipal); */
 NS_IMETHODIMP
-BrowserHost::CreateAboutBlankContentViewer(
+BrowserHost::CreateAboutBlankDocumentViewer(
     nsIPrincipal* aPrincipal, nsIPrincipal* aPartitionedPrincipal) {
   if (!mRoot) {
     return NS_OK;
@@ -261,8 +261,8 @@ BrowserHost::CreateAboutBlankContentViewer(
     return rv;
   }
 
-  Unused << mRoot->SendCreateAboutBlankContentViewer(aPrincipal,
-                                                     aPartitionedPrincipal);
+  Unused << mRoot->SendCreateAboutBlankDocumentViewer(aPrincipal,
+                                                      aPartitionedPrincipal);
   return NS_OK;
 }
 
@@ -280,10 +280,8 @@ BrowserHost::MaybeCancelContentJSExecutionFromScript(
   if (!cancelContentJSOptions.Init(aCx, aCancelContentJSOptions)) {
     return NS_ERROR_INVALID_ARG;
   }
-  if (StaticPrefs::dom_ipc_cancel_content_js_when_navigating()) {
-    GetContentParent()->CancelContentJSExecutionIfRunning(
-        mRoot, aNavigationType, cancelContentJSOptions);
-  }
+  GetContentParent()->CancelContentJSExecutionIfRunning(mRoot, aNavigationType,
+                                                        cancelContentJSOptions);
   return NS_OK;
 }
 

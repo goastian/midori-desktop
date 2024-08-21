@@ -546,6 +546,11 @@ interface mixin WebGLRenderingContextBase {
     readonly attribute GLsizei drawingBufferWidth;
     readonly attribute GLsizei drawingBufferHeight;
 
+    /* Upon context creation, drawingBufferColorSpace and unpackColorSpace both
+       default to the value "srgb". */
+    attribute PredefinedColorSpace drawingBufferColorSpace;
+    //attribute PredefinedColorSpace unpackColorSpace;
+
     [WebGLHandlesContextLoss] WebGLContextAttributes? getContextAttributes();
     [WebGLHandlesContextLoss] boolean isContextLost();
 
@@ -770,6 +775,9 @@ interface WebGLRenderingContext {
     [Throws]
     undefined texImage2D(GLenum target, GLint level, GLint internalformat,
                          GLenum format, GLenum type, OffscreenCanvas canvas); // May throw DOMException
+    [Throws]
+    undefined texImage2D(GLenum target, GLint level, GLint internalformat,
+                         GLenum format, GLenum type, VideoFrame videoFrame); // May throw DOMException
 
     // texSubImage2D has WebGL2 overloads.
     [Throws] // Can't actually throw.
@@ -794,6 +802,9 @@ interface WebGLRenderingContext {
     [Throws]
     undefined texSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset,
                             GLenum format, GLenum type, OffscreenCanvas canvas); // May throw DOMException
+    [Throws]
+    undefined texSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset,
+                            GLenum format, GLenum type, VideoFrame videoFrame); // May throw DOMException
 
     // uniform*fv have WebGL2 overloads, or rather extensions, that are not
     // distinguishable from the WebGL1 versions when called with two arguments.

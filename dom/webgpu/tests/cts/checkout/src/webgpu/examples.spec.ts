@@ -22,7 +22,7 @@ import { GPUTest } from './gpu_test.js';
 export const g = makeTestGroup(GPUTest);
 
 // Note: spaces aren't allowed in test names; use underscores.
-g.test('test_name').fn(t => {});
+g.test('test_name').fn(_t => {});
 
 g.test('not_implemented_yet,without_plan').unimplemented();
 g.test('not_implemented_yet,with_plan')
@@ -47,11 +47,11 @@ g.test('basic').fn(t => {
       throw new TypeError();
     },
     // Log message.
-    'function should throw Error'
+    { message: 'function should throw Error' }
   );
 });
 
-g.test('basic,async').fn(async t => {
+g.test('basic,async').fn(t => {
   // shouldReject must be awaited to ensure it can wait for the promise before the test ends.
   t.shouldReject(
     // The expected '.name' of the thrown error.
@@ -59,16 +59,17 @@ g.test('basic,async').fn(async t => {
     // Promise expected to reject.
     Promise.reject(new TypeError()),
     // Log message.
-    'Promise.reject should reject'
+    { message: 'Promise.reject should reject' }
   );
 
-  // Promise can also be an IIFE.
+  // Promise can also be an IIFE (immediately-invoked function expression).
   t.shouldReject(
     'TypeError',
+    // eslint-disable-next-line @typescript-eslint/require-await
     (async () => {
       throw new TypeError();
     })(),
-    'Promise.reject should reject'
+    { message: 'Promise.reject should reject' }
   );
 });
 
@@ -210,7 +211,7 @@ g.test('gpu,async').fn(async t => {
   t.expect(x === undefined);
 });
 
-g.test('gpu,buffers').fn(async t => {
+g.test('gpu,buffers').fn(t => {
   const data = new Uint32Array([0, 1234, 0]);
   const src = t.makeBufferWithContents(data, GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
 
@@ -235,7 +236,7 @@ Tests that a BC format passes validation iff the feature is enabled.`
       t.selectDeviceOrSkipTestCase('texture-compression-bc');
     }
   })
-  .fn(async t => {
+  .fn(t => {
     const { textureCompressionBC } = t.params;
     const shouldError = !textureCompressionBC;
     t.shouldThrow(shouldError ? 'TypeError' : false, () => {
@@ -260,7 +261,7 @@ Tests that an ETC2 format passes validation iff the feature is enabled.`
       t.selectDeviceOrSkipTestCase('texture-compression-etc2' as GPUFeatureName);
     }
   })
-  .fn(async t => {
+  .fn(t => {
     const { textureCompressionETC2 } = t.params;
 
     const shouldError = !textureCompressionETC2;

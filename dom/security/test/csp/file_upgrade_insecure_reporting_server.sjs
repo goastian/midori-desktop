@@ -1,7 +1,9 @@
 // Custom *.sjs specifically for the needs of Bug
 // Bug 1139297 - Implement CSP upgrade-insecure-requests directive
 
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+const { NetUtil } = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
+);
 
 // small red image
 const IMG_BYTES = atob(
@@ -19,16 +21,16 @@ function loadHTMLFromFile(path) {
   // Load the HTML to return in the response from file.
   // Since it's relative to the cwd of the test runner, we start there and
   // append to get to the actual path of the file.
-  var testHTMLFile = Components.classes["@mozilla.org/file/directory_service;1"]
-    .getService(Components.interfaces.nsIProperties)
-    .get("CurWorkD", Components.interfaces.nsIFile);
+  var testHTMLFile = Cc["@mozilla.org/file/directory_service;1"]
+    .getService(Ci.nsIProperties)
+    .get("CurWorkD", Ci.nsIFile);
   var dirs = path.split("/");
   for (var i = 0; i < dirs.length; i++) {
     testHTMLFile.append(dirs[i]);
   }
-  var testHTMLFileStream = Components.classes[
+  var testHTMLFileStream = Cc[
     "@mozilla.org/network/file-input-stream;1"
-  ].createInstance(Components.interfaces.nsIFileInputStream);
+  ].createInstance(Ci.nsIFileInputStream);
   testHTMLFileStream.init(testHTMLFile, -1, 0, 0);
   var testHTML = NetUtil.readInputStreamToString(
     testHTMLFileStream,

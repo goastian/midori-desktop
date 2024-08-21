@@ -14,6 +14,7 @@
 #include "libwebrtcglue/RtpRtcpConfig.h"
 #include "nsTArray.h"
 #include "mozilla/dom/RTCRtpCapabilitiesBinding.h"
+#include "mozilla/dom/RTCRtpParametersBinding.h"
 #include "mozilla/dom/RTCStatsReportBinding.h"
 #include "PerformanceRecorder.h"
 #include "RTCStatsReport.h"
@@ -38,6 +39,7 @@ struct RTCRtpCapabilities;
 struct RTCRtpContributingSource;
 struct RTCRtpSynchronizationSource;
 class RTCRtpTransceiver;
+class RTCRtpScriptTransform;
 
 class RTCRtpReceiver : public nsISupports,
                        public nsWrapperCache,
@@ -62,6 +64,7 @@ class RTCRtpReceiver : public nsISupports,
   RTCDtlsTransport* GetTransport() const;
   static void GetCapabilities(const GlobalObject&, const nsAString& aKind,
                               Nullable<dom::RTCRtpCapabilities>& aResult);
+  void GetParameters(RTCRtpReceiveParameters& aParameters) const;
   already_AddRefed<Promise> GetStats(ErrorResult& aError);
   void GetContributingSources(
       nsTArray<dom::RTCRtpContributingSource>& aSources);
@@ -71,6 +74,10 @@ class RTCRtpReceiver : public nsISupports,
   void MozInsertAudioLevelForContributingSource(
       const uint32_t aSource, const DOMHighResTimeStamp aTimestamp,
       const uint32_t aRtpTimestamp, const bool aHasLevel, const uint8_t aLevel);
+
+  RTCRtpScriptTransform* GetTransform() const { return mTransform; }
+
+  void SetTransform(RTCRtpScriptTransform* aTransform, ErrorResult& aError);
 
   nsPIDOMWindowInner* GetParentObject() const;
   nsTArray<RefPtr<RTCStatsPromise>> GetStatsInternal(
@@ -85,6 +92,7 @@ class RTCRtpReceiver : public nsISupports,
 
   void Shutdown();
   void BreakCycles();
+  void Unlink();
   // Terminal state, reached through stopping RTCRtpTransceiver.
   void Stop();
   bool HasTrack(const dom::MediaStreamTrack* aTrack) const;
@@ -120,6 +128,9 @@ class RTCRtpReceiver : public nsISupports,
   // ALPN negotiation.
   void UpdatePrincipalPrivacy(PrincipalPrivacy aPrivacy);
 
+  // Called by FrameTransformerProxy
+  void RequestKeyFrame();
+
   void OnRtcpBye();
   void OnRtcpTimeout();
 
@@ -128,23 +139,29 @@ class RTCRtpReceiver : public nsISupports,
   void UpdateUnmuteBlockingState();
   void UpdateReceiveTrackMute();
 
-  AbstractCanonical<Ssrc>* CanonicalSsrc() { return &mSsrc; }
-  AbstractCanonical<Ssrc>* CanonicalVideoRtxSsrc() { return &mVideoRtxSsrc; }
-  AbstractCanonical<RtpExtList>* CanonicalLocalRtpExtensions() {
-    return &mLocalRtpExtensions;
+  Canonical<Ssrc>& CanonicalSsrc() { return mSsrc; }
+  Canonical<Ssrc>& CanonicalVideoRtxSsrc() { return mVideoRtxSsrc; }
+  Canonical<RtpExtList>& CanonicalLocalRtpExtensions() {
+    return mLocalRtpExtensions;
   }
 
-  AbstractCanonical<std::vector<AudioCodecConfig>>* CanonicalAudioCodecs() {
-    return &mAudioCodecs;
+  Canonical<std::vector<AudioCodecConfig>>& CanonicalAudioCodecs() {
+    return mAudioCodecs;
   }
 
-  AbstractCanonical<std::vector<VideoCodecConfig>>* CanonicalVideoCodecs() {
-    return &mVideoCodecs;
+  Canonical<std::vector<VideoCodecConfig>>& CanonicalVideoCodecs() {
+    return mVideoCodecs;
   }
-  AbstractCanonical<Maybe<RtpRtcpConfig>>* CanonicalVideoRtpRtcpConfig() {
-    return &mVideoRtpRtcpConfig;
+
+  Canonical<Maybe<RtpRtcpConfig>>& CanonicalVideoRtpRtcpConfig() {
+    return mVideoRtpRtcpConfig;
   }
-  AbstractCanonical<bool>* CanonicalReceiving() override { return &mReceiving; }
+
+  Canonical<bool>& CanonicalReceiving() override { return mReceiving; }
+
+  Canonical<RefPtr<FrameTransformerProxy>>& CanonicalFrameTransformerProxy() {
+    return mFrameTransformerProxy;
+  }
 
  private:
   virtual ~RTCRtpReceiver();
@@ -168,6 +185,7 @@ class RTCRtpReceiver : public nsISupports,
   RefPtr<MediaPipelineReceive> mPipeline;
   RefPtr<MediaTransportHandler> mTransportHandler;
   RefPtr<RTCRtpTransceiver> mTransceiver;
+  RefPtr<RTCRtpScriptTransform> mTransform;
   // This is [[AssociatedRemoteMediaStreams]], basically. We do not keep the
   // streams themselves here, because that would require this object to know
   // where the stream list for the whole RTCPeerConnection lives..
@@ -179,6 +197,8 @@ class RTCRtpReceiver : public nsISupports,
   bool mReceptive = false;
   // This is the [[JitterBufferTarget]] internal slot.
   Maybe<DOMHighResTimeStamp> mJitterBufferTarget;
+  // Houses [[ReceiveCodecs]]
+  RTCRtpReceiveParameters mParameters;
 
   MediaEventListener mRtcpByeListener;
   MediaEventListener mRtcpTimeoutListener;
@@ -191,6 +211,7 @@ class RTCRtpReceiver : public nsISupports,
   Canonical<std::vector<VideoCodecConfig>> mVideoCodecs;
   Canonical<Maybe<RtpRtcpConfig>> mVideoRtpRtcpConfig;
   Canonical<bool> mReceiving;
+  Canonical<RefPtr<FrameTransformerProxy>> mFrameTransformerProxy;
 };
 
 }  // namespace dom

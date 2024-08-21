@@ -8,12 +8,10 @@
 #define nsGenericHTMLFrameElement_h
 
 #include "mozilla/Attributes.h"
-#include "mozilla/dom/nsBrowserElement.h"
 
 #include "nsFrameLoader.h"
 #include "nsFrameLoaderOwner.h"
 #include "nsGenericHTMLElement.h"
-#include "nsIMozBrowserFrame.h"
 
 namespace mozilla {
 class ErrorResult;
@@ -38,39 +36,29 @@ class XULFrameElement;
  * A helper class for frame elements
  */
 class nsGenericHTMLFrameElement : public nsGenericHTMLElement,
-                                  public nsFrameLoaderOwner,
-                                  public mozilla::nsBrowserElement,
-                                  public nsIMozBrowserFrame {
+                                  public nsFrameLoaderOwner {
  public:
   nsGenericHTMLFrameElement(
       already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
       mozilla::dom::FromParser aFromParser)
       : nsGenericHTMLElement(std::move(aNodeInfo)),
-        nsBrowserElement(),
         mSrcLoadHappened(false),
-        mNetworkCreated(aFromParser == mozilla::dom::FROM_PARSER_NETWORK),
-        mBrowserFrameListenersRegistered(false),
-        mReallyIsBrowser(false) {}
+        mNetworkCreated(aFromParser == mozilla::dom::FROM_PARSER_NETWORK) {}
 
   NS_DECL_ISUPPORTS_INHERITED
-
-  NS_DECL_NSIDOMMOZBROWSERFRAME
-  NS_DECL_NSIMOZBROWSERFRAME
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_GENERICHTMLFRAMEELEMENT_IID)
 
   // nsIContent
-  virtual bool IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
-                               int32_t* aTabIndex) override;
-  virtual nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  virtual void UnbindFromTree(bool aNullParent = true) override;
-  virtual void DestroyContent() override;
+  bool IsHTMLFocusable(mozilla::IsFocusableFlags, bool* aIsFocusable,
+                       int32_t* aTabIndex) override;
+  nsresult BindToTree(BindContext&, nsINode& aParent) override;
+  void UnbindFromTree(UnbindContext&) override;
+  void DestroyContent() override;
 
   nsresult CopyInnerTo(mozilla::dom::Element* aDest);
 
-  virtual int32_t TabIndexDefault() override;
-
-  virtual nsIMozBrowserFrame* GetAsMozBrowserFrame() override { return this; }
+  int32_t TabIndexDefault() override;
 
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsGenericHTMLFrameElement,
                                            nsGenericHTMLElement)
@@ -93,11 +81,6 @@ class nsGenericHTMLFrameElement : public nsGenericHTMLElement,
 
   nsIPrincipal* GetSrcTriggeringPrincipal() const {
     return mSrcTriggeringPrincipal;
-  }
-
-  // Needed for nsBrowserElement
-  already_AddRefed<nsFrameLoader> GetFrameLoader() override {
-    return nsFrameLoaderOwner::GetFrameLoader();
   }
 
  protected:
@@ -133,13 +116,17 @@ class nsGenericHTMLFrameElement : public nsGenericHTMLElement,
    */
   bool mNetworkCreated;
 
-  bool mBrowserFrameListenersRegistered;
-  bool mReallyIsBrowser;
-
   // This flag is only used by <iframe>. See HTMLIFrameElement::
   // FullscreenFlag() for details. It is placed here so that we
   // do not bloat any struct.
   bool mFullscreenFlag = false;
+
+  /**
+   * Represents the iframe is deferred loading until this element gets visible.
+   * We just do not load if set and leave specific elements to set it (see
+   * HTMLIFrameElement).
+   */
+  bool mLazyLoading = false;
 
  private:
   void GetManifestURL(nsAString& aOut);

@@ -14,6 +14,10 @@
   <script class="testbody" type="text/javascript">
     "use strict";
 
+    add_task(async () => {
+      await addVirtualAuthenticator();
+    });
+
     function arrivingHereIsGood(aResult) {
       ok(true, "Good result! Received a: " + aResult);
     }
@@ -30,15 +34,16 @@
       ok(aResult.toString().startsWith("InvalidStateError"), "Expecting a InvalidStateError, got " + aResult);
     }
 
-    // Store the credential of the first successful make credential
-    // operation so we can use it to get assertions later.
+    // Store the credential and transports of the first successful make credential
+    // operation so we can use them to get assertions later.
     let gCredential;
+    let gTransports;
 
     // Start a new MakeCredential() request.
     function requestMakeCredential(excludeCredentials) {
       let publicKey = {
-        rp: {id: document.domain, name: "none", icon: "none"},
-        user: {id: new Uint8Array(), name: "none", icon: "none", displayName: "none"},
+        rp: {id: document.domain, name: "none"},
+        user: {id: new Uint8Array(), name: "none", displayName: "none"},
         challenge: crypto.getRandomValues(new Uint8Array(16)),
         timeout: 5000, // the minimum timeout is actually 15 seconds
         pubKeyCredParams: [{type: "public-key", alg: cose_alg_ECDSA_w_SHA256}],
@@ -65,15 +70,25 @@
       // Make a credential.
       await requestMakeCredential([])
          // Save the credential for later.
-        .then(res => gCredential = res.rawId)
+        .then(res => {
+          gCredential = res.rawId;
+          gTransports = res.response.getTransports();
+        })
         .then(arrivingHereIsGood)
         .catch(arrivingHereIsBad);
+
+      // gTransports should be "a sequence of zero or more unique DOMStrings in lexicographical order."
+      for (let i = 0; i < gTransports.length - 1; i++) {
+         if (gTransports[i] >= gTransports[i+1]) {
+           ok(false, "getTransports() should return a sorted list");
+         }
+      }
 
       // Pass a random credential to exclude.
       await requestMakeCredential([{
         type: "public-key",
         id: crypto.getRandomValues(new Uint8Array(16)),
-        transports: ["usb"],
+        transports: gTransports,
       }]).then(arrivingHereIsGood)
          .catch(arrivingHereIsBad);
 
@@ -113,19 +128,19 @@
       await requestGetAssertion([{
         type: "public-key",
         id: gCredential,
-        transports: ["usb"],
+        transports: gTransports,
       }]).then(arrivingHereIsGood)
          .catch(arrivingHereIsBad);
 
-      // Request an assertion for a random credential. The token indicates
-      // consent even though this credential doesn't exist, so expect an
-      // InvalidStateError.
+      // Request an assertion for a random credential. This should be
+      // indistinguishable from the user denying consent for a known
+      // credential, so expect a NotAllowedError.
       await requestGetAssertion([{
         type: "public-key",
         id: crypto.getRandomValues(new Uint8Array(16)),
         transports: ["usb"],
       }]).then(arrivingHereIsBad)
-         .catch(expectInvalidStateError);
+         .catch(expectNotAllowedError);
 
       // Request an assertion for gCredential with transport=nfc.
       // The softoken pretends to support all transports.

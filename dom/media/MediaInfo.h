@@ -37,7 +37,7 @@ class MetadataTag {
   }
 };
 
-typedef nsTHashMap<nsCStringHashKey, nsCString> MetadataTags;
+using MetadataTags = nsTHashMap<nsCStringHashKey, nsCString>;
 
 // Start codec specific data structs. If modifying these remember to also
 // modify the MediaIPCUtils so that any new members are sent across IPC.
@@ -109,10 +109,14 @@ struct FlacCodecSpecificData {
   RefPtr<MediaByteBuffer> mStreamInfoBinaryBlob{new MediaByteBuffer};
 };
 
-struct Mp3CodecSpecificData {
+struct Mp3CodecSpecificData final {
   bool operator==(const Mp3CodecSpecificData& rhs) const {
     return mEncoderDelayFrames == rhs.mEncoderDelayFrames &&
            mEncoderPaddingFrames == rhs.mEncoderPaddingFrames;
+  }
+
+  auto MutTiedFields() {
+    return std::tie(mEncoderDelayFrames, mEncoderPaddingFrames);
   }
 
   // The number of frames that should be skipped from the beginning of the
@@ -128,11 +132,10 @@ struct Mp3CodecSpecificData {
 
 struct OpusCodecSpecificData {
   bool operator==(const OpusCodecSpecificData& rhs) const {
-    return mContainerCodecDelayMicroSeconds ==
-               rhs.mContainerCodecDelayMicroSeconds &&
+    return mContainerCodecDelayFrames == rhs.mContainerCodecDelayFrames &&
            *mHeadersBinaryBlob == *rhs.mHeadersBinaryBlob;
   }
-  // The codec delay (aka pre-skip) in microseconds.
+  // The codec delay (aka pre-skip) in audio frames.
   // See https://tools.ietf.org/html/rfc7845#section-4.2 for more info.
   // This member should store the codec delay parsed from the container file.
   // In some cases (such as the ogg container), this information is derived
@@ -140,7 +143,7 @@ struct OpusCodecSpecificData {
   // separately redundant. However, other containers store the delay in
   // addition to the header blob, in which case we can check this container
   // delay against the header delay to ensure they're consistent.
-  int64_t mContainerCodecDelayMicroSeconds{-1};
+  int64_t mContainerCodecDelayFrames{-1};
 
   // A binary blob of opus header data, specifically the Identification Header.
   // See https://datatracker.ietf.org/doc/html/rfc7845.html#section-5.1
@@ -220,14 +223,6 @@ inline already_AddRefed<MediaByteBuffer> ForceGetAudioCodecSpecificBlob(
 // information as a blob or where a blob is ambiguous.
 inline already_AddRefed<MediaByteBuffer> GetAudioCodecSpecificBlob(
     const AudioCodecSpecificVariant& v) {
-  MOZ_ASSERT(!v.is<NoCodecSpecificData>(),
-             "NoCodecSpecificData shouldn't be used as a blob");
-  MOZ_ASSERT(!v.is<AacCodecSpecificData>(),
-             "AacCodecSpecificData has 2 blobs internally, one should "
-             "explicitly be selected");
-  MOZ_ASSERT(!v.is<Mp3CodecSpecificData>(),
-             "Mp3CodecSpecificData shouldn't be used as a blob");
-
   return ForceGetAudioCodecSpecificBlob(v);
 }
 
@@ -296,6 +291,8 @@ class TrackInfo {
   bool IsText() const { return !!GetAsTextInfo(); }
   TrackType GetType() const { return mType; }
 
+  nsCString ToString() const;
+
   bool virtual IsValid() const = 0;
 
   virtual UniquePtr<TrackInfo> Clone() const = 0;
@@ -328,15 +325,16 @@ class TrackInfo {
 // String version of track type.
 const char* TrackTypeToStr(TrackInfo::TrackType aTrack);
 
+enum class VideoRotation {
+  kDegree_0 = 0,
+  kDegree_90 = 90,
+  kDegree_180 = 180,
+  kDegree_270 = 270,
+};
+
 // Stores info relevant to presenting media frames.
 class VideoInfo : public TrackInfo {
  public:
-  enum Rotation {
-    kDegree_0 = 0,
-    kDegree_90 = 90,
-    kDegree_180 = 180,
-    kDegree_270 = 270,
-  };
   VideoInfo() : VideoInfo(-1, -1) {}
 
   VideoInfo(int32_t aWidth, int32_t aHeight)
@@ -349,7 +347,7 @@ class VideoInfo : public TrackInfo {
         mImage(aSize),
         mCodecSpecificConfig(new MediaByteBuffer),
         mExtraData(new MediaByteBuffer),
-        mRotation(kDegree_0) {}
+        mRotation(VideoRotation::kDegree_0) {}
 
   VideoInfo(const VideoInfo& aOther) : TrackInfo(aOther) {
     if (aOther.mCodecSpecificConfig) {
@@ -426,25 +424,102 @@ class VideoInfo : public TrackInfo {
       return imageRect;
     }
 
-    imageRect.x = (imageRect.x * aWidth) / mImage.width;
-    imageRect.y = (imageRect.y * aHeight) / mImage.height;
-    imageRect.SetWidth(w);
-    imageRect.SetHeight(h);
+    imageRect.x = AssertedCast<int>((imageRect.x * aWidth) / mImage.width);
+    imageRect.y = AssertedCast<int>((imageRect.y * aHeight) / mImage.height);
+    imageRect.SetWidth(AssertedCast<int>(w));
+    imageRect.SetHeight(AssertedCast<int>(h));
     return imageRect;
   }
 
-  Rotation ToSupportedRotation(int32_t aDegree) const {
+  VideoRotation ToSupportedRotation(int32_t aDegree) const {
     switch (aDegree) {
       case 90:
-        return kDegree_90;
+        return VideoRotation::kDegree_90;
       case 180:
-        return kDegree_180;
+        return VideoRotation::kDegree_180;
       case 270:
-        return kDegree_270;
+        return VideoRotation::kDegree_270;
       default:
         NS_WARNING_ASSERTION(aDegree == 0, "Invalid rotation degree, ignored");
-        return kDegree_0;
+        return VideoRotation::kDegree_0;
     }
+  }
+
+  nsString ToString() const {
+    std::array YUVColorSpaceStrings = {"BT601", "BT709", "BT2020", "Identity",
+                                       "Default"};
+
+    std::array ColorDepthStrings = {
+        "COLOR_8",
+        "COLOR_10",
+        "COLOR_12",
+        "COLOR_16",
+    };
+
+    std::array TransferFunctionStrings = {
+        "BT709",
+        "SRGB",
+        "PQ",
+        "HLG",
+    };
+
+    std::array ColorRangeStrings = {
+        "LIMITED",
+        "FULL",
+    };
+
+    std::array ColorPrimariesStrings = {"Display",
+                                        "UNKNOWN"
+                                        "SRGB",
+                                        "DISPLAY_P3",
+                                        "BT601_525",
+                                        "BT709",
+                                        "BT601_625"
+                                        "BT709",
+                                        "BT2020"};
+    nsString rv;
+    rv.AppendLiteral(u"VideoInfo: ");
+    rv.AppendPrintf("display size: %dx%d ", mDisplay.Width(),
+                    mDisplay.Height());
+    rv.AppendPrintf("stereo mode: %d", static_cast<int>(mStereoMode));
+    rv.AppendPrintf("image size: %dx%d ", mImage.Width(), mImage.Height());
+    if (mCodecSpecificConfig) {
+      rv.AppendPrintf("codec specific config: %zu bytes",
+                      mCodecSpecificConfig->Length());
+    }
+    if (mExtraData) {
+      rv.AppendPrintf("extra data: %zu bytes", mExtraData->Length());
+    }
+    rv.AppendPrintf("rotation: %d", static_cast<int>(mRotation));
+    rv.AppendPrintf("colors: %s",
+                    ColorDepthStrings[static_cast<int>(mColorDepth)]);
+    if (mColorSpace) {
+      rv.AppendPrintf(
+          "YUV colorspace: %s ",
+          YUVColorSpaceStrings[static_cast<int>(mColorSpace.value())]);
+    }
+    if (mColorPrimaries) {
+      rv.AppendPrintf(
+          "color primaries: %s ",
+          ColorPrimariesStrings[static_cast<int>(mColorPrimaries.value())]);
+    }
+    if (mTransferFunction) {
+      rv.AppendPrintf(
+          "transfer function %s ",
+          TransferFunctionStrings[static_cast<int>(mTransferFunction.value())]);
+    }
+    rv.AppendPrintf("color range: %s",
+                    ColorRangeStrings[static_cast<int>(mColorRange)]);
+    if (mImageRect) {
+      rv.AppendPrintf("image rect: %dx%d", mImageRect->Width(),
+                      mImageRect->Height());
+    }
+    rv.AppendPrintf("alpha present: %s", mAlphaPresent ? "true" : "false");
+    if (mFrameRate) {
+      rv.AppendPrintf("frame rate: %dHz", mFrameRate.value());
+    }
+
+    return rv;
   }
 
   // Size in pixels at which the video is rendered. This is after it has
@@ -462,7 +537,7 @@ class VideoInfo : public TrackInfo {
 
   // Describing how many degrees video frames should be rotated in clock-wise to
   // get correct view.
-  Rotation mRotation;
+  VideoRotation mRotation;
 
   // Should be 8, 10 or 12. Default value is 8.
   gfx::ColorDepth mColorDepth = gfx::ColorDepth::COLOR_8;
@@ -512,7 +587,7 @@ class AudioInfo : public TrackInfo {
 
   bool operator==(const AudioInfo& rhs) const;
 
-  static const uint32_t MAX_RATE = 640000;
+  static const uint32_t MAX_RATE = 768000;
   static const uint32_t MAX_CHANNEL_COUNT = 256;
 
   bool IsValid() const override {
@@ -523,6 +598,8 @@ class AudioInfo : public TrackInfo {
   AudioInfo* GetAsAudioInfo() override { return this; }
 
   const AudioInfo* GetAsAudioInfo() const override { return this; }
+
+  nsCString ToString() const;
 
   UniquePtr<TrackInfo> Clone() const override {
     return MakeUnique<AudioInfo>(*this);
@@ -543,10 +620,10 @@ class AudioInfo : public TrackInfo {
   uint32_t mBitDepth;
 
   // Codec profile.
-  int8_t mProfile;
+  uint8_t mProfile;
 
   // Extended codec profile.
-  int8_t mExtendedProfile;
+  uint8_t mExtendedProfile;
 
   AudioCodecSpecificVariant mCodecSpecificConfig{NoCodecSpecificData{}};
 };
@@ -566,7 +643,7 @@ class EncryptionInfo {
     // Encryption data.
     CopyableTArray<uint8_t> mInitData;
   };
-  typedef CopyableTArray<InitData> InitDatas;
+  using InitDatas = CopyableTArray<InitData>;
 
   // True if the stream has encryption metadata
   bool IsEncrypted() const { return mEncrypted; }

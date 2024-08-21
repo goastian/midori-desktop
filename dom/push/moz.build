@@ -4,7 +4,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Core", "DOM: Push Notifications")
+    BUG_COMPONENT = ("Core", "DOM: Push Subscriptions")
 
 EXTRA_COMPONENTS += [
     "Push.manifest",
@@ -32,11 +32,11 @@ XPCOM_MANIFESTS += [
 ]
 
 MOCHITEST_MANIFESTS += [
-    "test/mochitest.ini",
+    "test/mochitest.toml",
 ]
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "test/xpcshell/xpcshell.ini",
+    "test/xpcshell/xpcshell.toml",
 ]
 
 EXPORTS.mozilla.dom += [
@@ -44,7 +44,6 @@ EXPORTS.mozilla.dom += [
     "PushNotifier.h",
     "PushSubscription.h",
     "PushSubscriptionOptions.h",
-    "PushUtil.h",
 ]
 
 UNIFIED_SOURCES += [
@@ -52,7 +51,6 @@ UNIFIED_SOURCES += [
     "PushNotifier.cpp",
     "PushSubscription.cpp",
     "PushSubscriptionOptions.cpp",
-    "PushUtil.cpp",
 ]
 
 TEST_DIRS += ["test/xpcshell"]

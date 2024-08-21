@@ -8,9 +8,10 @@
 #define DOM_SVG_SVGLENGTH_H_
 
 #include "nsDebug.h"
-#include "nsMathUtils.h"
-#include "mozilla/FloatingPoint.h"
+#include "mozilla/dom/SVGAnimatedLength.h"
 #include "mozilla/dom/SVGLengthBinding.h"
+
+enum nsCSSUnit : uint32_t;
 
 namespace mozilla {
 
@@ -34,14 +35,9 @@ class SVGElement;
 class SVGLength {
  public:
   SVGLength()
-      : mValue(0.0f),
-        mUnit(dom::SVGLength_Binding::SVG_LENGTHTYPE_UNKNOWN)  // caught by
-                                                               // IsValid()
-  {}
+      : mValue(0.0f), mUnit(dom::SVGLength_Binding::SVG_LENGTHTYPE_UNKNOWN) {}
 
-  SVGLength(float aValue, uint8_t aUnit) : mValue(aValue), mUnit(aUnit) {
-    NS_ASSERTION(IsValid(), "Constructed an invalid length");
-  }
+  SVGLength(float aValue, uint8_t aUnit) : mValue(aValue), mUnit(aUnit) {}
 
   bool operator==(const SVGLength& rhs) const {
     return mValue == rhs.mValue && mUnit == rhs.mUnit;
@@ -57,39 +53,33 @@ class SVGLength {
 
   /**
    * This will usually return a valid, finite number. There is one exception
-   * though - see the comment in SetValueAndUnit().
+   * though. If SVGLengthListSMILType has to convert between unit types and the
+   * unit conversion is undefined, it will end up passing in and setting
+   * numeric_limits<float>::quiet_NaN(). The painting code has to be
+   * able to handle NaN anyway, since conversion to user units may fail in
+   * general.
    */
   float GetValueInCurrentUnits() const { return mValue; }
 
   uint8_t GetUnit() const { return mUnit; }
 
   void SetValueInCurrentUnits(float aValue) {
+    NS_ASSERTION(std::isfinite(aValue), "Set invalid SVGLength");
     mValue = aValue;
-    NS_ASSERTION(IsValid(), "Set invalid SVGLength");
   }
 
   void SetValueAndUnit(float aValue, uint8_t aUnit) {
     mValue = aValue;
     mUnit = aUnit;
-
-    // IsValid() should always be true, with one exception: if
-    // SVGLengthListSMILType has to convert between unit types and the unit
-    // conversion is undefined, it will end up passing in and setting
-    // numeric_limits<float>::quiet_NaN(). Because of that we only check the
-    // unit here, and allow mValue to be invalid. The painting code has to be
-    // able to handle NaN anyway, since conversion to user units may fail in
-    // general.
-
-    NS_ASSERTION(IsValidUnitType(mUnit), "Set invalid SVGLength");
   }
 
   /**
-   * If it's not possible to convert this length's value to user units, then
+   * If it's not possible to convert this length's value to pixels, then
    * this method will return numeric_limits<float>::quiet_NaN().
    */
-  float GetValueInUserUnits(const dom::SVGElement* aElement,
-                            uint8_t aAxis) const {
-    return mValue * GetUserUnitsPerUnit(aElement, aAxis);
+
+  float GetValueInPixels(const dom::SVGElement* aElement, uint8_t aAxis) const {
+    return mValue * GetPixelsPerUnit(dom::SVGElementMetrics(aElement), aAxis);
   }
 
   /**
@@ -101,8 +91,16 @@ class SVGLength {
   float GetValueInSpecifiedUnit(uint8_t aUnit, const dom::SVGElement* aElement,
                                 uint8_t aAxis) const;
 
-  bool IsPercentage() const {
-    return mUnit == dom::SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE;
+  bool IsPercentage() const { return IsPercentageUnit(mUnit); }
+
+  float GetPixelsPerUnitWithZoom(const dom::UserSpaceMetrics& aMetrics,
+                                 uint8_t aAxis) const {
+    return GetPixelsPerUnit(aMetrics, mUnit, aAxis, true);
+  }
+
+  float GetPixelsPerUnit(const dom::UserSpaceMetrics& aMetrics,
+                         uint8_t aAxis) const {
+    return GetPixelsPerUnit(aMetrics, mUnit, aAxis, false);
   }
 
   static bool IsValidUnitType(uint16_t aUnitType) {
@@ -110,45 +108,30 @@ class SVGLength {
            aUnitType <= dom::SVGLength_Binding::SVG_LENGTHTYPE_PC;
   }
 
+  static bool IsPercentageUnit(uint8_t aUnit) {
+    return aUnit == dom::SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE;
+  }
+
+  static bool IsAbsoluteUnit(uint8_t aUnit);
+
+  static bool IsFontRelativeUnit(uint8_t aUnit);
+
+  static float GetAbsUnitsPerAbsUnit(uint8_t aUnits, uint8_t aPerUnit);
+
+  static nsCSSUnit SpecifiedUnitTypeToCSSUnit(uint8_t aSpecifiedUnit);
+
   static void GetUnitString(nsAString& aUnit, uint16_t aUnitType);
 
   static uint16_t GetUnitTypeForString(const nsAString& aUnit);
 
   /**
-   * Returns the number of user units per current unit.
-   *
-   * This method returns numeric_limits<float>::quiet_NaN() if the conversion
-   * factor between the length's current unit and user units is undefined (see
-   * the comments for GetUserUnitsPerInch and GetUserUnitsPerPercent).
+   * Returns the number of pixels per given unit.
    */
-  float GetUserUnitsPerUnit(const dom::SVGElement* aElement,
-                            uint8_t aAxis) const;
+  static float GetPixelsPerUnit(const dom::UserSpaceMetrics& aMetrics,
+                                uint8_t aUnitType, uint8_t aAxis,
+                                bool aApplyZoom);
 
  private:
-#ifdef DEBUG
-  bool IsValid() const {
-    return std::isfinite(mValue) && IsValidUnitType(mUnit);
-  }
-#endif
-
-  /**
-   * The conversion factor between user units (CSS px) and CSS inches is
-   * constant: 96 px per inch.
-   */
-  static float GetUserUnitsPerInch() { return 96.0; }
-
-  /**
-   * The conversion factor between user units and percentage units depends on
-   * aElement being non-null, and on aElement having a viewport element
-   * ancestor with only appropriate SVG elements between aElement and that
-   * ancestor. If that's not the case, then the conversion factor is undefined.
-   *
-   * This function returns a non-negative value if the conversion factor is
-   * defined, otherwise it returns numeric_limits<float>::quiet_NaN().
-   */
-  static float GetUserUnitsPerPercent(const dom::SVGElement* aElement,
-                                      uint8_t aAxis);
-
   float mValue;
   uint8_t mUnit;
 };

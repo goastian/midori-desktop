@@ -3,11 +3,13 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpServer = null;
 
-XPCOMUtils.defineLazyGetter(this, "serverPort", function () {
+ChromeUtils.defineLazyGetter(this, "serverPort", function () {
   return httpServer.identity.primaryPort;
 });
 

@@ -9,6 +9,10 @@ dictionary WebrtcGlobalStatisticsReport {
   sequence<RTCSdpHistoryInternal> sdpHistories = [];
 };
 
+dictionary WebrtcGlobalMediaContext {
+  required boolean hasH264Hardware;
+};
+
 callback WebrtcGlobalStatisticsCallback = undefined (WebrtcGlobalStatisticsReport reports);
 callback WebrtcGlobalStatisticsHistoryPcIdsCallback = undefined (sequence<DOMString> pcIds);
 callback WebrtcGlobalStatisticsHistoryCallback = undefined (WebrtcGlobalStatisticsReport reports);
@@ -30,20 +34,14 @@ namespace WebrtcGlobalInformation {
                                  optional DOMHighResTimeStamp after,
                                  optional DOMHighResTimeStamp sdpAfter);
 
+  WebrtcGlobalMediaContext getMediaContext();
+
   undefined clearAllStats();
 
   [Throws]
   undefined getLogging(DOMString pattern, WebrtcGlobalLoggingCallback callback);
 
   undefined clearLogging();
-
-  // NSPR WebRTC Trace debug level (0 - 65535)
-  //
-  // Notes:
-  // - Setting a non-zero debug level turns on gathering of log for file output.
-  // - Subsequently setting a zero debug level writes that log to disk.
-
-  attribute long debugLevel;
 
   // WebRTC AEC debugging enable
   attribute boolean aecDebug;

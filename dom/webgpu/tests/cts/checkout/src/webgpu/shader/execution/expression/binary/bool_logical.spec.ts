@@ -4,10 +4,10 @@ Execution Tests for the boolean binary logical expression operations
 
 import { makeTestGroup } from '../../../../../common/framework/test_group.js';
 import { GPUTest } from '../../../../gpu_test.js';
-import { bool, TypeBool } from '../../../../util/conversion.js';
+import { bool, Type } from '../../../../util/conversion.js';
 import { allInputSources, run } from '../expression.js';
 
-import { binary } from './binary.js';
+import { binary, compoundBinary } from './binary.js';
 
 export const g = makeTestGroup(GPUTest);
 
@@ -33,7 +33,29 @@ Logical "and". Component-wise when T is a vector. Evaluates both e1 and e2.
       { input: [bool(true), bool(true)], expected: bool(true) },
     ];
 
-    await run(t, binary('&'), [TypeBool, TypeBool], TypeBool, t.params, cases);
+    await run(t, binary('&'), [Type.bool, Type.bool], Type.bool, t.params, cases);
+  });
+
+g.test('and_compound')
+  .specURL('https://www.w3.org/TR/WGSL/#logical-expr')
+  .desc(
+    `
+Expression: e1 &= e2
+Logical "and". Component-wise when T is a vector. Evaluates both e1 and e2.
+`
+  )
+  .params(u =>
+    u.combine('inputSource', allInputSources).combine('vectorize', [undefined, 2, 3, 4] as const)
+  )
+  .fn(async t => {
+    const cases = [
+      { input: [bool(false), bool(false)], expected: bool(false) },
+      { input: [bool(true), bool(false)], expected: bool(false) },
+      { input: [bool(false), bool(true)], expected: bool(false) },
+      { input: [bool(true), bool(true)], expected: bool(true) },
+    ];
+
+    await run(t, compoundBinary('&='), [Type.bool, Type.bool], Type.bool, t.params, cases);
   });
 
 g.test('and_short_circuit')
@@ -53,7 +75,7 @@ short_circuiting "and". Yields true if both e1 and e2 are true; evaluates e2 onl
       { input: [bool(true), bool(true)], expected: bool(true) },
     ];
 
-    await run(t, binary('&&'), [TypeBool, TypeBool], TypeBool, t.params, cases);
+    await run(t, binary('&&'), [Type.bool, Type.bool], Type.bool, t.params, cases);
   });
 
 g.test('or')
@@ -75,7 +97,29 @@ Logical "or". Component-wise when T is a vector. Evaluates both e1 and e2.
       { input: [bool(true), bool(true)], expected: bool(true) },
     ];
 
-    await run(t, binary('|'), [TypeBool, TypeBool], TypeBool, t.params, cases);
+    await run(t, binary('|'), [Type.bool, Type.bool], Type.bool, t.params, cases);
+  });
+
+g.test('or_compound')
+  .specURL('https://www.w3.org/TR/WGSL/#logical-expr')
+  .desc(
+    `
+Expression: e1 |= e2
+Logical "or". Component-wise when T is a vector. Evaluates both e1 and e2.
+`
+  )
+  .params(u =>
+    u.combine('inputSource', allInputSources).combine('vectorize', [undefined, 2, 3, 4] as const)
+  )
+  .fn(async t => {
+    const cases = [
+      { input: [bool(false), bool(false)], expected: bool(false) },
+      { input: [bool(true), bool(false)], expected: bool(true) },
+      { input: [bool(false), bool(true)], expected: bool(true) },
+      { input: [bool(true), bool(true)], expected: bool(true) },
+    ];
+
+    await run(t, compoundBinary('|='), [Type.bool, Type.bool], Type.bool, t.params, cases);
   });
 
 g.test('or_short_circuit')
@@ -95,7 +139,7 @@ short_circuiting "and". Yields true if both e1 and e2 are true; evaluates e2 onl
       { input: [bool(true), bool(true)], expected: bool(true) },
     ];
 
-    await run(t, binary('||'), [TypeBool, TypeBool], TypeBool, t.params, cases);
+    await run(t, binary('||'), [Type.bool, Type.bool], Type.bool, t.params, cases);
   });
 
 g.test('equals')
@@ -117,7 +161,7 @@ Equality. Component-wise when T is a vector.
       { input: [bool(true), bool(true)], expected: bool(true) },
     ];
 
-    await run(t, binary('=='), [TypeBool, TypeBool], TypeBool, t.params, cases);
+    await run(t, binary('=='), [Type.bool, Type.bool], Type.bool, t.params, cases);
   });
 
 g.test('not_equals')
@@ -139,5 +183,5 @@ Equality. Component-wise when T is a vector.
       { input: [bool(true), bool(true)], expected: bool(false) },
     ];
 
-    await run(t, binary('!='), [TypeBool, TypeBool], TypeBool, t.params, cases);
+    await run(t, binary('!='), [Type.bool, Type.bool], Type.bool, t.params, cases);
   });

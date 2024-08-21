@@ -13,7 +13,7 @@
 #include "mozilla/dom/TextTrackRegion.h"
 #include "mozilla/dom/HTMLMediaElement.h"
 #include "mozilla/dom/HTMLTrackElement.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 
 extern mozilla::LazyLogModule gTextTrackLog;
 
@@ -22,20 +22,6 @@ extern mozilla::LazyLogModule gTextTrackLog;
           ("TextTrack=%p, " msg, this, ##__VA_ARGS__))
 
 namespace mozilla::dom {
-
-static const char* ToStateStr(const TextTrackMode aMode) {
-  switch (aMode) {
-    case TextTrackMode::Disabled:
-      return "DISABLED";
-    case TextTrackMode::Hidden:
-      return "HIDDEN";
-    case TextTrackMode::Showing:
-      return "SHOWING";
-    default:
-      MOZ_ASSERT_UNREACHABLE("Invalid state.");
-  }
-  return "Unknown";
-}
 
 static const char* ToReadyStateStr(const TextTrackReadyState aState) {
   switch (aState) {
@@ -49,24 +35,6 @@ static const char* ToReadyStateStr(const TextTrackReadyState aState) {
       return "FailedToLoad";
     default:
       MOZ_ASSERT_UNREACHABLE("Invalid state.");
-  }
-  return "Unknown";
-}
-
-static const char* ToTextTrackKindStr(const TextTrackKind aKind) {
-  switch (aKind) {
-    case TextTrackKind::Subtitles:
-      return "Subtitles";
-    case TextTrackKind::Captions:
-      return "Captions";
-    case TextTrackKind::Descriptions:
-      return "Descriptions";
-    case TextTrackKind::Chapters:
-      return "Chapters";
-    case TextTrackKind::Metadata:
-      return "Metadata";
-    default:
-      MOZ_ASSERT_UNREACHABLE("Invalid kind.");
   }
   return "Unknown";
 }
@@ -129,8 +97,8 @@ void TextTrack::SetMode(TextTrackMode aValue) {
   if (mMode == aValue) {
     return;
   }
-  WEBVTT_LOG("Set mode=%s for track kind %s", ToStateStr(aValue),
-             ToTextTrackKindStr(mKind));
+  WEBVTT_LOG("Set mode=%s for track kind %s", GetEnumString(aValue).get(),
+             GetEnumString(mKind).get());
   mMode = aValue;
 
   HTMLMediaElement* mediaElement = GetMediaElement();
@@ -283,11 +251,9 @@ void TextTrack::DispatchAsyncTrustedEvent(const nsString& aEventName) {
     return;
   }
   RefPtr<TextTrack> self = this;
-  nsGlobalWindowInner::Cast(win)->Dispatch(
-      TaskCategory::Other,
-      NS_NewRunnableFunction(
-          "dom::TextTrack::DispatchAsyncTrustedEvent",
-          [self, aEventName]() { self->DispatchTrustedEvent(aEventName); }));
+  nsGlobalWindowInner::Cast(win)->Dispatch(NS_NewRunnableFunction(
+      "dom::TextTrack::DispatchAsyncTrustedEvent",
+      [self, aEventName]() { self->DispatchTrustedEvent(aEventName); }));
 }
 
 bool TextTrack::IsLoaded() {
@@ -298,7 +264,7 @@ bool TextTrack::IsLoaded() {
   // MediaElement.
   if (mTrackElement) {
     nsAutoString src;
-    if (!(mTrackElement->GetAttr(kNameSpaceID_None, nsGkAtoms::src, src))) {
+    if (!(mTrackElement->GetAttr(nsGkAtoms::src, src))) {
       return true;
     }
   }

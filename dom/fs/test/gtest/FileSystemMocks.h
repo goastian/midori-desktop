@@ -89,14 +89,14 @@ class MockFileSystemRequestHandler : public FileSystemRequestHandler {
 
   MOCK_METHOD(void, MoveEntry,
               (RefPtr<FileSystemManager> & aManager, FileSystemHandle* aHandle,
-               const FileSystemEntryMetadata& aEntry,
+               FileSystemEntryMetadata* const aEntry,
                const FileSystemChildMetadata& aNewEntry,
                RefPtr<Promise> aPromise, ErrorResult& aError),
               (override));
 
   MOCK_METHOD(void, RenameEntry,
               (RefPtr<FileSystemManager> & aManager, FileSystemHandle* aHandle,
-               const FileSystemEntryMetadata& aEntry, const Name& aName,
+               FileSystemEntryMetadata* const aEntry, const Name& aName,
                RefPtr<Promise> aPromise, ErrorResult& aError),
               (override));
 
@@ -127,10 +127,7 @@ class TestPromiseListener : public PromiseNativeHandler,
                             public WaitablePromiseListener {
  public:
   TestPromiseListener()
-      : mIsDone(std::make_shared<bool>(false)),
-        mTimer(),
-        mOnSuccess(),
-        mOnError() {
+      : mIsDone(std::make_shared<bool>(false)), mOnSuccess(), mOnError() {
     ClearDone();
   }
 

@@ -38,18 +38,18 @@ Storage::Storage(nsPIDOMWindowInner* aWindow, nsIPrincipal* aPrincipal,
       mPrincipal(aPrincipal),
       mStoragePrincipal(aStoragePrincipal),
       mPrivateBrowsing(false),
-      mSessionScopedOrLess(false) {
+      mPrivateBrowsingOrLess(false) {
   MOZ_ASSERT(aPrincipal);
 
   if (mPrincipal->IsSystemPrincipal()) {
     mPrivateBrowsing = false;
-    mSessionScopedOrLess = false;
+    mPrivateBrowsingOrLess = false;
   } else if (mWindow) {
     uint32_t rejectedReason = 0;
     StorageAccess access = StorageAllowedForWindow(mWindow, &rejectedReason);
 
     mPrivateBrowsing = access == StorageAccess::ePrivateBrowsing;
-    mSessionScopedOrLess = access <= StorageAccess::eSessionScoped;
+    mPrivateBrowsingOrLess = access <= StorageAccess::ePrivateBrowsing;
   }
 }
 
@@ -149,7 +149,7 @@ void Storage::NotifyChange(Storage* aStorage, nsIPrincipal* aPrincipal,
   if (aImmediateDispatch) {
     Unused << r->Run();
   } else {
-    SchedulerGroup::Dispatch(TaskCategory::Other, r.forget());
+    SchedulerGroup::Dispatch(r.forget());
   }
 }
 

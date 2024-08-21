@@ -39,11 +39,6 @@
 #include "WebGLValidateStrings.h"
 #include <algorithm>
 
-// needed to check if current OS is lower than 10.7
-#if defined(MOZ_WIDGET_COCOA)
-#  include "nsCocoaFeatures.h"
-#endif
-
 #include "mozilla/DebugOnly.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/ImageData.h"
@@ -1066,7 +1061,6 @@ static bool ValidateReadPixelsFormatAndType(
 
   ////
 
-  MOZ_ASSERT(gl->IsCurrent());
   const auto implPI = webgl->ValidImplementationColorReadPI(srcUsage);
   if (pi == implPI) return true;
 
@@ -1286,7 +1280,7 @@ void WebGLContext::StencilOpSeparate(GLenum face, GLenum sfail, GLenum dpfail,
 
 void WebGLContext::UniformData(
     const uint32_t loc, const bool transpose,
-    const Range<const webgl::UniformDataVal>& data) const {
+    const Span<const webgl::UniformDataVal>& data) const {
   const FuncScope funcScope(*this, "uniform setter");
 
   if (!IsWebGL2() && transpose) {
@@ -1312,13 +1306,13 @@ void WebGLContext::UniformData(
 
   // -
 
-  const auto lengthInType = data.length();
+  const auto lengthInType = data.size();
   const auto elemCount = lengthInType / channels;
   if (elemCount > 1 && !validationInfo.isArray) {
     GenerateError(
         LOCAL_GL_INVALID_OPERATION,
         "(uniform %s) `values` length (%u) must exactly match size of %s.",
-        activeInfo.name.c_str(), lengthInType,
+        activeInfo.name.c_str(), (uint32_t)lengthInType,
         EnumString(activeInfo.elemType).c_str());
     return;
   }
@@ -1327,9 +1321,9 @@ void WebGLContext::UniformData(
 
   const auto& samplerInfo = locInfo->samplerInfo;
   if (samplerInfo) {
-    const auto idata = reinterpret_cast<const uint32_t*>(data.begin().get());
+    const auto idata = ReinterpretToSpan<const uint32_t>::From(data);
     const auto maxTexUnits = GLMaxTextureUnits();
-    for (const auto& val : Range<const uint32_t>(idata, elemCount)) {
+    for (const auto& val : idata) {
       if (val >= maxTexUnits) {
         ErrorInvalidValue(
             "This uniform location is a sampler, but %d"
@@ -1343,7 +1337,7 @@ void WebGLContext::UniformData(
   // -
 
   // This is a little galaxy-brain, sorry!
-  const auto ptr = static_cast<const void*>(data.begin().get());
+  const auto ptr = static_cast<const void*>(data.data());
   (*pfn)(*gl, static_cast<GLint>(loc), elemCount, transpose, ptr);
 
   // -
@@ -1351,12 +1345,12 @@ void WebGLContext::UniformData(
   if (samplerInfo) {
     auto& texUnits = samplerInfo->texUnits;
 
-    const auto srcBegin = reinterpret_cast<const uint32_t*>(data.begin().get());
+    const auto srcBegin = reinterpret_cast<const uint32_t*>(data.data());
     auto destIndex = locInfo->indexIntoUniform;
     if (destIndex < texUnits.length()) {
       // Only sample as many indexes as available tex units allow.
       const auto destCount = std::min(elemCount, texUnits.length() - destIndex);
-      for (const auto& val : Range<const uint32_t>(srcBegin, destCount)) {
+      for (const auto& val : Span<const uint32_t>(srcBegin, destCount)) {
         texUnits[destIndex] = AssertedCast<uint8_t>(val);
         destIndex += 1;
       }

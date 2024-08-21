@@ -11,10 +11,13 @@
 #include "AudioSegment.h"
 #include "CubebInputStream.h"
 #include "CubebUtils.h"
+#include "TimeUnits.h"
+#include "mozilla/MozPromise.h"
 #include "mozilla/ProfilerUtils.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/SPSCQueue.h"
 #include "mozilla/SharedThreadPool.h"
+#include "mozilla/Variant.h"
 
 namespace mozilla {
 
@@ -48,15 +51,21 @@ class AudioInputSource : public CubebInputStream::Listener {
   AudioInputSource(RefPtr<EventListener>&& aListener, Id aSourceId,
                    CubebUtils::AudioDeviceID aDeviceId, uint32_t aChannelCount,
                    bool aIsVoice, const PrincipalHandle& aPrincipalHandle,
-                   TrackRate aSourceRate, TrackRate aTargetRate,
-                   uint32_t aBufferMs);
+                   TrackRate aSourceRate, TrackRate aTargetRate);
 
   // The following functions should always be called in the same thread: They
   // are always run on MediaTrackGraph's graph thread.
+  // Sets up mStream.
+  void Init();
   // Starts producing audio data.
   void Start();
   // Stops producing audio data.
   void Stop();
+  // Set the params to be applied in the platform for this source.
+  using SetRequestedProcessingParamsPromise =
+      MozPromise<cubeb_input_processing_params, int, true>;
+  RefPtr<SetRequestedProcessingParamsPromise> SetRequestedProcessingParams(
+      cubeb_input_processing_params aParams);
   // Returns the AudioSegment with aDuration of data inside.
   // The graph thread can change behind the scene, e.g., cubeb stream reinit due
   // to default output device changed). When this happens, we need to notify
@@ -117,9 +126,27 @@ class AudioInputSource : public CubebInputStream::Listener {
   // An input-only cubeb stream operated within mTaskThread.
   UniquePtr<CubebInputStream> mStream;
 
+  // The params configured on the cubeb stream, after filtering away unsupported
+  // params. mTaskThread only.
+  cubeb_input_processing_params mConfiguredProcessingParams =
+      CUBEB_INPUT_PROCESSING_PARAM_NONE;
+
+  struct Empty {};
+
+  struct LatencyChangeData {
+    media::TimeUnit mLatency;
+  };
+
+  struct Data : public Variant<AudioChunk, LatencyChangeData, Empty> {
+    Data() : Variant(AsVariant(Empty())) {}
+    explicit Data(AudioChunk aChunk) : Variant(AsVariant(std::move(aChunk))) {}
+    explicit Data(LatencyChangeData aLatencyChangeData)
+        : Variant(AsVariant(std::move(aLatencyChangeData))) {}
+  };
+
   // A single-producer-single-consumer lock-free queue whose data is produced by
   // the audio callback thread and consumed by AudioInputSource's data reader.
-  SPSCQueue<AudioChunk> mSPSCQueue{30};
+  SPSCQueue<Data> mSPSCQueue{30};
 };
 
 }  // namespace mozilla

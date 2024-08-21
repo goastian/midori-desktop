@@ -11,7 +11,8 @@
  */
 
 // http://www.whatwg.org/specs/web-apps/current-work/#the-button-element
-[Exposed=Window]
+[Exposed=Window,
+ InstrumentedProps=(popoverTargetAction,popoverTargetElement)]
 interface HTMLButtonElement : HTMLElement {
   [HTMLConstructor] constructor();
 
@@ -48,3 +49,5 @@ interface HTMLButtonElement : HTMLElement {
 };
 
 HTMLButtonElement includes PopoverInvokerElement;
+
+HTMLButtonElement includes InvokerElement;

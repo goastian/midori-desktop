@@ -18,21 +18,16 @@
 #include "modules/audio_processing/include/audio_processing.h"
 #include "modules/audio_processing/include/aec_dump.h"
 #include "mozilla/UniquePtr.h"
-#include "mozilla/dom/RTCPeerConnectionBinding.h"
-#include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Telemetry.h"
-#include "mozilla/Types.h"
 #include "mozilla/dom/RTCStatsReportBinding.h"
 #include "nsCRTGlue.h"
 #include "nsIIOService.h"
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
-#include "nsNetCID.h"               // NS_SOCKETTRANSPORTSERVICE_CONTRACTID
 #include "nsServiceManagerUtils.h"  // do_GetService
 #include "PeerConnectionImpl.h"
-#include "prcvar.h"
 #include "transport/runnable_utils.h"
 #include "WebrtcGlobalChild.h"
 #include "WebrtcGlobalInformation.h"
@@ -134,11 +129,12 @@ class DummyAudioProcessing : public AudioProcessing {
   }
   void set_stream_key_pressed(bool) override { MOZ_CRASH("Unexpected call"); }
   bool CreateAndAttachAecDump(absl::string_view, int64_t,
-                              rtc::TaskQueue*) override {
+                              absl::Nonnull<TaskQueueBase*>) override {
     MOZ_CRASH("Unexpected call");
     return false;
   }
-  bool CreateAndAttachAecDump(FILE*, int64_t, rtc::TaskQueue*) override {
+  bool CreateAndAttachAecDump(FILE*, int64_t,
+                              absl::Nonnull<TaskQueueBase*>) override {
     MOZ_CRASH("Unexpected call");
     return false;
   }
@@ -165,7 +161,7 @@ SharedWebrtcState::SharedWebrtcState(
     RefPtr<AbstractThread> aCallWorkerThread,
     webrtc::AudioState::Config&& aAudioStateConfig,
     RefPtr<webrtc::AudioDecoderFactory> aAudioDecoderFactory,
-    UniquePtr<webrtc::WebRtcKeyValueConfig> aTrials)
+    UniquePtr<webrtc::FieldTrialsView> aTrials)
     : mCallWorkerThread(std::move(aCallWorkerThread)),
       mAudioStateConfig(std::move(aAudioStateConfig)),
       mAudioDecoderFactory(std::move(aAudioDecoderFactory)),
@@ -270,7 +266,6 @@ nsresult PeerConnectionCtx::InitializeGlobal() {
     }
   }
 
-  EnableWebRtcLog();
   return NS_OK;
 }
 
@@ -292,8 +287,6 @@ void PeerConnectionCtx::Destroy() {
     instance->Cleanup();
     delete instance;
   }
-
-  StopWebRtcLog();
 }
 
 template <typename T>
@@ -310,6 +303,8 @@ static void RecordCommonRtpTelemetry(const T& list, const T& lastList,
                                 : WEBRTC_VIDEO_QUALITY_OUTBOUND_PACKETLOSS_RATE)
                      : (isAudio ? WEBRTC_AUDIO_QUALITY_INBOUND_PACKETLOSS_RATE
                                 : WEBRTC_VIDEO_QUALITY_INBOUND_PACKETLOSS_RATE);
+        // Because this is an integer and we would like some extra precision
+        // the unit is per mille (1/1000) instead of percent (1/100).
         Accumulate(id, (s.mPacketsLost.Value() * 1000) / total);
       }
     }
@@ -486,7 +481,7 @@ void PeerConnectionCtx::AddPeerConnection(const std::string& aKey,
                            MediaThreadType::WEBRTC_CALL_THREAD)
                        .release());
 
-    UniquePtr<webrtc::WebRtcKeyValueConfig> trials =
+    UniquePtr<webrtc::FieldTrialsView> trials =
         WrapUnique(new NoTrialsConfig());
 
     mSharedWebrtcState = MakeAndAddRef<SharedWebrtcState>(
@@ -529,6 +524,12 @@ void PeerConnectionCtx::ClearClosedStats() {
     }
   }
 }
+
+PeerConnectionCtx::PeerConnectionCtx()
+    : mGMPReady(false),
+      mLogHandle(EnsureWebrtcLogging()),
+      mTransportHandler(
+          MediaTransportHandler::Create(GetMainThreadSerialEventTarget())) {}
 
 nsresult PeerConnectionCtx::Initialize() {
   MOZ_ASSERT(NS_IsMainThread());

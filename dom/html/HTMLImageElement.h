@@ -40,17 +40,17 @@ class HTMLImageElement final : public nsGenericHTMLElement,
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
 
-  virtual bool Draggable() const override;
+  bool Draggable() const override;
 
   ResponsiveImageSelector* GetResponsiveImageSelector() {
     return mResponsiveSelector.get();
   }
 
   // Element
-  virtual bool IsInteractiveHTMLContent() const override;
+  bool IsInteractiveHTMLContent() const override;
 
   // EventTarget
-  virtual void AsyncEventRunning(AsyncEventDispatcher* aEvent) override;
+  void AsyncEventRunning(AsyncEventDispatcher* aEvent) override;
 
   NS_IMPL_FROMNODE_HTML_WITH_TAG(HTMLImageElement, img)
 
@@ -58,29 +58,27 @@ class HTMLImageElement final : public nsGenericHTMLElement,
   CORSMode GetCORSMode() override;
 
   // nsIContent
-  virtual bool ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
-                              const nsAString& aValue,
-                              nsIPrincipal* aMaybeScriptedPrincipal,
-                              nsAttrValue& aResult) override;
-  virtual nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
-                                              int32_t aModType) const override;
+  bool ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
+                      const nsAString& aValue,
+                      nsIPrincipal* aMaybeScriptedPrincipal,
+                      nsAttrValue& aResult) override;
+  nsChangeHint GetAttributeChangeHint(const nsAtom* aAttribute,
+                                      int32_t aModType) const override;
   NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
-  virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction()
-      const override;
+  nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
 
   void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
   nsINode* GetScopeChainParent() const override;
 
-  bool IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
+  bool IsHTMLFocusable(IsFocusableFlags, bool* aIsFocusable,
                        int32_t* aTabIndex) override;
 
-  virtual nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  virtual void UnbindFromTree(bool aNullParent) override;
+  nsresult BindToTree(BindContext&, nsINode& aParent) override;
+  void UnbindFromTree(UnbindContext&) override;
 
-  virtual ElementState IntrinsicState() const override;
-  virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
+  nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
-  virtual void NodeInfoChanged(Document* aOldDoc) override;
+  void NodeInfoChanged(Document* aOldDoc) override;
 
   nsresult CopyInnerTo(HTMLImageElement* aDest);
 
@@ -187,23 +185,15 @@ class HTMLImageElement final : public nsGenericHTMLElement,
   }
   void GetDecoding(nsAString& aValue);
 
-  enum class Loading : uint8_t {
-    Eager,
-    Lazy,
-  };
-
   void SetLoading(const nsAString& aLoading, ErrorResult& aError) {
     SetHTMLAttr(nsGkAtoms::loading, aLoading, aError);
   }
-  void GetLoading(nsAString&) const;
 
   bool IsAwaitingLoadOrLazyLoading() const {
     return mLazyLoading || mPendingImageLoadTask;
   }
 
   bool IsLazyLoading() const { return mLazyLoading; }
-
-  Loading LoadingState() const;
 
   already_AddRefed<Promise> Decode(ErrorResult& aRv);
 
@@ -222,7 +212,7 @@ class HTMLImageElement final : public nsGenericHTMLElement,
   void SetForm(HTMLFormElement* aForm);
   void ClearForm(bool aRemoveFromForm);
 
-  virtual void DestroyContent() override;
+  void DestroyContent() override;
 
   void MediaFeatureValuesChanged();
 
@@ -271,7 +261,9 @@ class HTMLImageElement final : public nsGenericHTMLElement,
 
   // This is used when restyling, for retrieving the extra style from the source
   // element.
-  const nsMappedAttributes* GetMappedAttributesFromSource() const;
+  const StyleLockedDeclarationBlock* GetMappedAttributesFromSource() const;
+
+  FetchPriority GetFetchPriorityForImage() const override;
 
  protected:
   virtual ~HTMLImageElement();
@@ -352,8 +344,7 @@ class HTMLImageElement final : public nsGenericHTMLElement,
       Element* aSourceElement);
 
   MOZ_CAN_RUN_SCRIPT CSSIntPoint GetXY();
-  virtual JSObject* WrapNode(JSContext* aCx,
-                             JS::Handle<JSObject*> aGivenProto) override;
+  JSObject* WrapNode(JSContext*, JS::Handle<JSObject*> aGivenProto) override;
   void UpdateFormOwner();
 
   void BeforeSetAttr(int32_t aNameSpaceID, nsAtom* aName,
@@ -370,18 +361,17 @@ class HTMLImageElement final : public nsGenericHTMLElement,
   // Override for nsImageLoadingContent.
   nsIContent* AsContent() override { return this; }
 
-  // This is a weak reference that this element and the HTMLFormElement
-  // cooperate in maintaining.
-  HTMLFormElement* mForm;
-
   // Created when we're tracking responsive image state
   RefPtr<ResponsiveImageSelector> mResponsiveSelector;
+
+  // This is a weak reference that this element and the HTMLFormElement
+  // cooperate in maintaining.
+  HTMLFormElement* mForm = nullptr;
 
  private:
   bool SourceElementMatches(Element* aSourceElement);
 
-  static void MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
-                                    MappedDeclarations&);
+  static void MapAttributesIntoRule(MappedDeclarationsBuilder&);
   /**
    * This function is called by AfterSetAttr and OnAttrSetButNotChanged.
    * It will not be called if the value is being unset.
@@ -422,16 +412,16 @@ class HTMLImageElement final : public nsGenericHTMLElement,
   // Queue an image load task (via microtask).
   void QueueImageLoadTask(bool aAlwaysLoad);
 
-  bool mInDocResponsiveContent;
-
   RefPtr<ImageLoadTask> mPendingImageLoadTask;
+  nsCOMPtr<nsIURI> mSrcURI;
   nsCOMPtr<nsIPrincipal> mSrcTriggeringPrincipal;
   nsCOMPtr<nsIPrincipal> mSrcsetTriggeringPrincipal;
 
   // Last URL that was attempted to load by this element.
   nsCOMPtr<nsIURI> mLastSelectedSource;
   // Last pixel density that was selected.
-  double mCurrentDensity;
+  double mCurrentDensity = 1.0;
+  bool mInDocResponsiveContent = false;
 };
 
 }  // namespace dom

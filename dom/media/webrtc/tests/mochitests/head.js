@@ -43,10 +43,6 @@ function updateConfigFromFakeAndLoopbackPrefs() {
 updateConfigFromFakeAndLoopbackPrefs();
 
 /**
- *  Global flag to skip LoopbackTone
- */
-let DISABLE_LOOPBACK_TONE = false;
-/**
  * Helper class to setup a sine tone of a given frequency.
  */
 class LoopbackTone {
@@ -224,11 +220,8 @@ AudioStreamAnalyser.prototype = {
    * @returns {integer} the index of the bin in the FFT array.
    */
   binIndexForFrequency(frequency) {
-    return (
-      1 +
-      Math.round(
-        (frequency * this.analyser.fftSize) / this.audioContext.sampleRate
-      )
+    return Math.round(
+      (frequency * this.analyser.fftSize) / this.audioContext.sampleRate
     );
   },
 
@@ -239,7 +232,7 @@ AudioStreamAnalyser.prototype = {
    * @returns {double} the frequency for this bin
    */
   frequencyForBinIndex(index) {
-    return ((index - 1) * this.audioContext.sampleRate) / this.analyser.fftSize;
+    return (index * this.audioContext.sampleRate) / this.analyser.fftSize;
   },
 };
 
@@ -373,23 +366,7 @@ function createMediaElementForTrack(track, idPrefix) {
  *        The constraints for this mozGetUserMedia callback
  */
 function getUserMedia(constraints) {
-  // Tests may have changed the values of prefs, so recheck
-  updateConfigFromFakeAndLoopbackPrefs();
-  if (
-    !WANT_FAKE_AUDIO &&
-    !constraints.fake &&
-    constraints.audio &&
-    !DISABLE_LOOPBACK_TONE
-  ) {
-    // Loopback device is configured, start the default loopback tone
-    if (!DefaultLoopbackTone) {
-      TEST_AUDIO_FREQ = 440;
-      DefaultLoopbackTone = new LoopbackTone(
-        new AudioContext(),
-        TEST_AUDIO_FREQ
-      );
-      DefaultLoopbackTone.start();
-    }
+  if (!constraints.fake && constraints.audio) {
     // Disable input processing mode when it's not explicity enabled.
     // This is to avoid distortion of the loopback tone
     constraints.audio = Object.assign(
@@ -399,14 +376,12 @@ function getUserMedia(constraints) {
       { noiseSuppression: false },
       constraints.audio
     );
-  } else {
-    // Fake device configured, ensure our test freq is correct.
-    TEST_AUDIO_FREQ = 1000;
   }
   info("Call getUserMedia for " + JSON.stringify(constraints));
-  return navigator.mediaDevices
-    .getUserMedia(constraints)
-    .then(stream => (checkMediaStreamTracks(constraints, stream), stream));
+  return navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+    checkMediaStreamTracks(constraints, stream);
+    return stream;
+  });
 }
 
 // These are the promises we use to track that the prerequisites for the test
@@ -431,7 +406,6 @@ function setupEnvironment() {
   var defaultMochitestPrefs = {
     set: [
       ["media.peerconnection.enabled", true],
-      ["media.peerconnection.identity.enabled", true],
       ["media.peerconnection.identity.timeout", 120000],
       ["media.peerconnection.ice.stun_client_maximum_transmits", 14],
       ["media.peerconnection.ice.trickle_grace_period", 30000],
@@ -439,7 +413,7 @@ function setupEnvironment() {
       // If either fake audio or video is desired we enable fake streams.
       // If loopback devices are set they will be chosen instead of fakes in gecko.
       ["media.navigator.streams.fake", WANT_FAKE_AUDIO || WANT_FAKE_VIDEO],
-      ["media.getusermedia.audiocapture.enabled", true],
+      ["media.getusermedia.audio.capture.enabled", true],
       ["media.getusermedia.screensharing.enabled", true],
       ["media.getusermedia.window.focus_source.enabled", false],
       ["media.recorder.audio_node.enabled", true],
@@ -450,6 +424,7 @@ function setupEnvironment() {
       ["media.peerconnection.nat_simulator.block_udp", false],
       ["media.peerconnection.nat_simulator.redirect_address", ""],
       ["media.peerconnection.nat_simulator.redirect_targets", ""],
+      ["media.peerconnection.treat_warnings_as_errors", true],
     ],
   };
 
@@ -464,9 +439,8 @@ function setupEnvironment() {
 
   // Platform codec prefs should be matched because fake H.264 GMP codec doesn't
   // produce/consume real bitstreams. [TODO] remove after bug 1509012 is fixed.
-  const platformEncoderEnabled = SpecialPowers.getBoolPref(
-    "media.webrtc.platformencoder"
-  );
+  const platformEncoderEnabled =
+    SpecialPowers.getIntPref("media.webrtc.encoder_creation_strategy") == 1;
   defaultMochitestPrefs.set.push([
     "media.navigator.mediadatadecoder_h264_enabled",
     platformEncoderEnabled,
@@ -484,15 +458,14 @@ function setupEnvironment() {
 
 // [TODO] remove after bug 1509012 is fixed.
 async function matchPlatformH264CodecPrefs() {
-  const hasHW264 =
-    SpecialPowers.getBoolPref("media.webrtc.platformencoder") &&
-    !SpecialPowers.getBoolPref("media.webrtc.platformencoder.sw_only") &&
+  const hasHW264Enc =
+    SpecialPowers.getIntPref("media.webrtc.encoder_creation_strategy") == 1 &&
     (navigator.userAgent.includes("Android") ||
       navigator.userAgent.includes("Mac OS X"));
 
   await pushPrefs(
-    ["media.webrtc.platformencoder", hasHW264],
-    ["media.navigator.mediadatadecoder_h264_enabled", hasHW264]
+    ["media.webrtc.encoder_creation_strategy", hasHW264Enc ? 1 : 0],
+    ["media.navigator.mediadatadecoder_h264_enabled", hasHW264Enc]
   );
 }
 
@@ -857,7 +830,10 @@ function haveEvents(target, name, count, cancel) {
         (listener = e => --counter < 1 && resolve(e))
       )
     ),
-  ]).then(e => (target.removeEventListener(name, listener), e));
+  ]).then(e => {
+    target.removeEventListener(name, listener);
+    return e;
+  });
 }
 
 /**
@@ -1239,11 +1215,20 @@ CommandChain.prototype = {
   },
 };
 
-function AudioStreamHelper() {
+function AudioStreamFlowingHelper() {
   this._context = new AudioContext();
+  // Tests may have changed the values of prefs, so recheck
+  updateConfigFromFakeAndLoopbackPrefs();
+  if (!WANT_FAKE_AUDIO) {
+    // Loopback device is configured, start the default loopback tone
+    if (!DefaultLoopbackTone) {
+      DefaultLoopbackTone = new LoopbackTone(this._context, TEST_AUDIO_FREQ);
+      DefaultLoopbackTone.start();
+    }
+  }
 }
 
-AudioStreamHelper.prototype = {
+AudioStreamFlowingHelper.prototype = {
   checkAudio(stream, analyser, fun) {
     /*
     analyser.enableDebugCanvas();
@@ -1259,6 +1244,10 @@ AudioStreamHelper.prototype = {
     return this.checkAudio(stream, analyser, array => array[freq] > 200);
   },
 
+  // Use checkAudioNotFlowing() only after checkAudioFlowing() or similar to
+  // know that audio had previously been flowing on the same stream, as
+  // checkAudioNotFlowing() does not wait for the loopback device to return
+  // any audio that it receives.
   checkAudioNotFlowing(stream) {
     var analyser = new AudioStreamAnalyser(this._context, stream);
     var freq = analyser.binIndexForFrequency(TEST_AUDIO_FREQ);

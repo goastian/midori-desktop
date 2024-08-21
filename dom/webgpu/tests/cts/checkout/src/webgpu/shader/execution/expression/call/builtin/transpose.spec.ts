@@ -1,14 +1,18 @@
 export const description = `
 Execution tests for the 'transpose' builtin function
 
-T is AbstractFloat, f32, or f16
+T is abstract-float, f32, or f16
 @const transpose(e: matRxC<T> ) -> matCxR<T>
 Returns the transpose of e.
 `;
 
 import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
 import { GPUTest } from '../../../../../gpu_test.js';
-import { allInputSources } from '../../expression.js';
+import { Type } from '../../../../../util/conversion.js';
+import { allInputSources, onlyConstInputSource, run } from '../../expression.js';
+
+import { abstractFloatBuiltin, builtin } from './builtin.js';
+import { d } from './transpose.cache.js';
 
 export const g = makeTestGroup(GPUTest);
 
@@ -17,11 +21,23 @@ g.test('abstract_float')
   .desc(`abstract float tests`)
   .params(u =>
     u
-      .combine('inputSource', allInputSources)
-      .combine('rows', [2, 3, 4] as const)
+      .combine('inputSource', onlyConstInputSource)
       .combine('cols', [2, 3, 4] as const)
+      .combine('rows', [2, 3, 4] as const)
   )
-  .unimplemented();
+  .fn(async t => {
+    const cols = t.params.cols;
+    const rows = t.params.rows;
+    const cases = await d.get(`abstract_mat${cols}x${rows}_const`);
+    await run(
+      t,
+      abstractFloatBuiltin('transpose'),
+      [Type.mat(cols, rows, Type.abstractFloat)],
+      Type.mat(rows, cols, Type.abstractFloat),
+      t.params,
+      cases
+    );
+  });
 
 g.test('f32')
   .specURL('https://www.w3.org/TR/WGSL/#matrix-builtin-functions')
@@ -29,10 +45,26 @@ g.test('f32')
   .params(u =>
     u
       .combine('inputSource', allInputSources)
-      .combine('rows', [2, 3, 4] as const)
       .combine('cols', [2, 3, 4] as const)
+      .combine('rows', [2, 3, 4] as const)
   )
-  .unimplemented();
+  .fn(async t => {
+    const cols = t.params.cols;
+    const rows = t.params.rows;
+    const cases = await d.get(
+      t.params.inputSource === 'const'
+        ? `f32_mat${cols}x${rows}_const`
+        : `f32_mat${cols}x${rows}_non_const`
+    );
+    await run(
+      t,
+      builtin('transpose'),
+      [Type.mat(cols, rows, Type.f32)],
+      Type.mat(rows, cols, Type.f32),
+      t.params,
+      cases
+    );
+  });
 
 g.test('f16')
   .specURL('https://www.w3.org/TR/WGSL/#matrix-builtin-functions')
@@ -40,7 +72,26 @@ g.test('f16')
   .params(u =>
     u
       .combine('inputSource', allInputSources)
-      .combine('rows', [2, 3, 4] as const)
       .combine('cols', [2, 3, 4] as const)
+      .combine('rows', [2, 3, 4] as const)
   )
-  .unimplemented();
+  .beforeAllSubcases(t => {
+    t.selectDeviceOrSkipTestCase('shader-f16');
+  })
+  .fn(async t => {
+    const cols = t.params.cols;
+    const rows = t.params.rows;
+    const cases = await d.get(
+      t.params.inputSource === 'const'
+        ? `f16_mat${cols}x${rows}_const`
+        : `f16_mat${cols}x${rows}_non_const`
+    );
+    await run(
+      t,
+      builtin('transpose'),
+      [Type.mat(cols, rows, Type.f16)],
+      Type.mat(rows, cols, Type.f16),
+      t.params,
+      cases
+    );
+  });

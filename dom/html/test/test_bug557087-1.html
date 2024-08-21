@@ -15,7 +15,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=557087
 <div id="content">
 </div>
 <pre id="test">
-<script type="application/javascript">
+<script>
 
 /** Test for Bug 557087 **/
 
@@ -102,22 +102,26 @@ function checkClickEvent(aFieldset)
 
   sendMouseEvent({type:'click'}, aFieldset);
   SimpleTest.executeSoon(function() {
-    ok(!clickHandled, "When disabled, fieldset should prevent click events");
+    ok(clickHandled, "When disabled, fieldset should not prevent click events");
     SimpleTest.finish();
   });
 }
 
 SimpleTest.waitForExplicitFinish();
 
-var fieldset = document.createElement("fieldset");
-var content  = document.getElementById('content');
-content.appendChild(fieldset);
+SpecialPowers.pushPrefEnv({
+  set: [["dom.forms.fieldset_disable_only_descendants.enabled", true]]
+}).then(() => {
+  var fieldset = document.createElement("fieldset");
+  var content  = document.getElementById('content');
+  content.appendChild(fieldset);
 
-checkDisabledAttribute(fieldset);
-checkDisabledPseudoClass(fieldset);
-checkEnabledPseudoClass(fieldset);
-checkFocus(fieldset);
-checkClickEvent(fieldset);
+  checkDisabledAttribute(fieldset);
+  checkDisabledPseudoClass(fieldset);
+  checkEnabledPseudoClass(fieldset);
+  checkFocus(fieldset);
+  checkClickEvent(fieldset);
+});
 
 </script>
 </pre>

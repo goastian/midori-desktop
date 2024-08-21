@@ -19,7 +19,6 @@ function setup_test_preference() {
     set: [
       ["media.autoplay.default", SpecialPowers.Ci.nsIAutoplay.BLOCKED],
       ["media.autoplay.blocking_policy", 0],
-      ["media.autoplay.block-webaudio", true],
       ["media.autoplay.block-event.enabled", true],
     ],
   });
@@ -56,10 +55,14 @@ async function checkIfAudioContextIsAllowedToStart(isAllowedToStart) {
   const ac = content.ac;
   if (isAllowedToStart) {
     await ac.allowedToStart;
-    ok(ac.state === "running", `AudioContext is running.`);
+    Assert.strictEqual(ac.state, "running", `AudioContext is running.`);
   } else {
     await ac.notAllowedToStart;
-    ok(ac.state === "suspended", `AudioContext is not started yet.`);
+    Assert.strictEqual(
+      ac.state,
+      "suspended",
+      `AudioContext is not started yet.`
+    );
   }
 }
 

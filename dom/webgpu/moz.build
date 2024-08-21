@@ -8,8 +8,8 @@ with Files("**"):
     BUG_COMPONENT = ("Core", "Graphics: WebGPU")
 
 MOCHITEST_MANIFESTS += [
-    "mochitest/mochitest-no-pref.ini",
-    "mochitest/mochitest.ini",
+    "mochitest/mochitest-no-pref.toml",
+    "mochitest/mochitest.toml",
 ]
 
 DIRS += []
@@ -28,7 +28,10 @@ h_and_cpp = [
     "ComputePipeline",
     "Device",
     "DeviceLostInfo",
+    "Error",
+    "ExternalTexture",
     "Instance",
+    "InternalError",
     "ObjectModel",
     "OutOfMemoryError",
     "PipelineLayout",
@@ -67,8 +70,16 @@ UNIFIED_SOURCES += [
     "ipc/WebGPUParent.cpp",
 ]
 
+if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
+    EXPORTS.mozilla.webgpu += [
+        "ExternalTextureD3D11.h",
+    ]
+    UNIFIED_SOURCES += [
+        "ExternalTextureD3D11.cpp",
+    ]
+
 if CONFIG["CC_TYPE"] in ("clang", "clang-cl"):
-    CXXFLAGS += ["-Werror=implicit-int-conversion"]
+    CXXFLAGS += ["-Werror=implicit-int-conversion", "-Wno-shorten-64-to-32"]
     CXXFLAGS += ["-Werror=switch"]
 
 include("/ipc/chromium/chromium-config.mozbuild")

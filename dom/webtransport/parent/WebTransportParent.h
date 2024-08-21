@@ -16,6 +16,7 @@
 #include "nsISupports.h"
 #include "nsIPrincipal.h"
 #include "nsIWebTransport.h"
+#include "nsIWebTransportStream.h"
 #include "nsTHashMap.h"
 
 namespace mozilla::dom {
@@ -36,12 +37,14 @@ class WebTransportParent : public PWebTransportParent,
               const mozilla::Maybe<IPCClientInfo>& aClientInfo,
               const bool& aDedicated, const bool& aRequireUnreliable,
               const uint32_t& aCongestionControl,
-              // Sequence<WebTransportHash>* aServerCertHashes,
+              nsTArray<WebTransportHash>&& aServerCertHashes,
               Endpoint<PWebTransportParent>&& aParentEndpoint,
               std::function<void(std::tuple<const nsresult&, const uint8_t&>)>&&
                   aResolver);
 
   IPCResult RecvClose(const uint32_t& aCode, const nsACString& aReason);
+
+  IPCResult RecvSetSendOrder(uint64_t aStreamId, Maybe<int64_t> aSendOrder);
 
   IPCResult RecvCreateUnidirectionalStream(
       Maybe<int64_t> aSendOrder,
@@ -75,7 +78,8 @@ class WebTransportParent : public PWebTransportParent,
   virtual ~WebTransportParent();
 
  private:
-  void NotifyRemoteClosed(uint32_t aErrorCode, const nsACString& aReason);
+  void NotifyRemoteClosed(bool aCleanly, uint32_t aErrorCode,
+                          const nsACString& aReason);
 
   using ResolveType = std::tuple<const nsresult&, const uint8_t&>;
   nsCOMPtr<nsISerialEventTarget> mSocketThread;
@@ -92,7 +96,17 @@ class WebTransportParent : public PWebTransportParent,
 
   nsCOMPtr<nsIWebTransport> mWebTransport;
   nsCOMPtr<nsIEventTarget> mOwningEventTarget;
-  nsTHashMap<nsUint64HashKey, OnResetOrStopSendingCallback> mStreamCallbackMap;
+
+  // What we need to be able to lookup by streamId
+  template <typename T>
+  struct StreamHash {
+    OnResetOrStopSendingCallback mCallback;
+    nsCOMPtr<T> mStream;
+  };
+  nsTHashMap<nsUint64HashKey, StreamHash<nsIWebTransportBidirectionalStream>>
+      mBidiStreamCallbackMap;
+  nsTHashMap<nsUint64HashKey, StreamHash<nsIWebTransportSendStream>>
+      mUniStreamCallbackMap;
 };
 
 }  // namespace mozilla::dom

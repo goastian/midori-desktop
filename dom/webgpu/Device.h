@@ -45,6 +45,7 @@ class Promise;
 template <typename T>
 class Sequence;
 class GPUBufferOrGPUTexture;
+enum class GPUDeviceLostReason : uint8_t;
 enum class GPUErrorFilter : uint8_t;
 enum class GPUFeatureName : uint8_t;
 class GPULogCallback;
@@ -89,21 +90,29 @@ class Device final : public DOMEventTargetHelper, public SupportsWeakPtr {
   RefPtr<SupportedFeatures> mFeatures;
   RefPtr<SupportedLimits> mLimits;
 
-  explicit Device(Adapter* const aParent, RawId aId,
-                  UniquePtr<ffi::WGPULimits> aRawLimits);
+  static CheckedInt<uint32_t> BufferStrideWithMask(
+      const gfx::IntSize& aSize, const gfx::SurfaceFormat& aFormat);
+
+  explicit Device(Adapter* const aParent, RawId aId, const ffi::WGPULimits&);
 
   RefPtr<WebGPUChild> GetBridge();
   already_AddRefed<Texture> InitSwapChain(
-      const dom::GPUCanvasConfiguration& aDesc,
-      const layers::RemoteTextureOwnerId aOwnerId, gfx::SurfaceFormat aFormat,
-      gfx::IntSize aDefaultSize);
+      const dom::GPUCanvasConfiguration* const aConfig,
+      const layers::RemoteTextureOwnerId aOwnerId,
+      bool aUseExternalTextureInSwapChain, gfx::SurfaceFormat aFormat,
+      gfx::IntSize aCanvasSize);
   bool CheckNewWarning(const nsACString& aMessage);
 
   void CleanupUnregisteredInParent();
 
-  void GenerateError(const nsCString& aMessage);
+  void GenerateValidationError(const nsCString& aMessage);
+  void TrackBuffer(Buffer* aBuffer);
+  void UntrackBuffer(Buffer* aBuffer);
 
   bool IsLost() const;
+  bool IsBridgeAlive() const;
+
+  RawId GetId() const { return mId; }
 
  private:
   ~Device();
@@ -115,12 +124,14 @@ class Device final : public DOMEventTargetHelper, public SupportsWeakPtr {
   RefPtr<dom::Promise> mLostPromise;
   RefPtr<Queue> mQueue;
   nsTHashSet<nsCString> mKnownWarnings;
+  nsTHashSet<Buffer*> mTrackedBuffers;
 
  public:
   void GetLabel(nsAString& aValue) const;
   void SetLabel(const nsAString& aLabel);
   dom::Promise* GetLost(ErrorResult& aRv);
-  dom::Promise* MaybeGetLost() const { return mLostPromise; }
+  void ResolveLost(Maybe<dom::GPUDeviceLostReason> aReason,
+                   const nsAString& aMessage);
 
   const RefPtr<SupportedFeatures>& Features() const { return mFeatures; }
   const RefPtr<SupportedLimits>& Limits() const { return mLimits; }
@@ -129,8 +140,15 @@ class Device final : public DOMEventTargetHelper, public SupportsWeakPtr {
   already_AddRefed<Buffer> CreateBuffer(const dom::GPUBufferDescriptor& aDesc,
                                         ErrorResult& aRv);
 
+  already_AddRefed<Texture> CreateTextureForSwapChain(
+      const dom::GPUCanvasConfiguration* const aConfig,
+      const gfx::IntSize& aCanvasSize,
+      const layers::RemoteTextureOwnerId aOwnerId);
   already_AddRefed<Texture> CreateTexture(
       const dom::GPUTextureDescriptor& aDesc);
+  already_AddRefed<Texture> CreateTexture(
+      const dom::GPUTextureDescriptor& aDesc,
+      Maybe<layers::RemoteTextureOwnerId> aOwnerId);
   already_AddRefed<Sampler> CreateSampler(
       const dom::GPUSamplerDescriptor& aDesc);
 
@@ -147,7 +165,8 @@ class Device final : public DOMEventTargetHelper, public SupportsWeakPtr {
       const dom::GPUBindGroupDescriptor& aDesc);
 
   MOZ_CAN_RUN_SCRIPT already_AddRefed<ShaderModule> CreateShaderModule(
-      JSContext* aCx, const dom::GPUShaderModuleDescriptor& aDesc);
+      JSContext* aCx, const dom::GPUShaderModuleDescriptor& aDesc,
+      ErrorResult& aRv);
   already_AddRefed<ComputePipeline> CreateComputePipeline(
       const dom::GPUComputePipelineDescriptor& aDesc);
   already_AddRefed<RenderPipeline> CreateRenderPipeline(

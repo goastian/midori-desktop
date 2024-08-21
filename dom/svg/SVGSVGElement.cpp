@@ -193,23 +193,30 @@ float SVGSVGElement::GetCurrentTimeAsFloat() {
 }
 
 void SVGSVGElement::SetCurrentTime(float seconds) {
-  if (mTimedDocumentRoot) {
-    // Make sure the timegraph is up-to-date
-    FlushAnimations();
-    double fMilliseconds = double(seconds) * PR_MSEC_PER_SEC;
-    // Round to nearest whole number before converting, to avoid precision
-    // errors
-    SMILTime lMilliseconds = SVGUtils::ClampToInt64(NS_round(fMilliseconds));
-    mTimedDocumentRoot->SetCurrentTime(lMilliseconds);
-    AnimationNeedsResample();
-    // Trigger synchronous sample now, to:
-    //  - Make sure we get an up-to-date paint after this method
-    //  - re-enable event firing (it got disabled during seeking, and it
-    //  doesn't get re-enabled until the first sample after the seek -- so
-    //  let's make that happen now.)
-    FlushAnimations();
+  if (!mTimedDocumentRoot) {
+    // we're not the outermost <svg> or not bound to a tree, so silently fail
+    return;
   }
-  // else we're not the outermost <svg> or not bound to a tree, so silently fail
+  // Make sure the timegraph is up-to-date
+  if (auto* currentDoc = GetComposedDoc()) {
+    currentDoc->FlushPendingNotifications(FlushType::Style);
+  }
+  if (!mTimedDocumentRoot) {
+    return;
+  }
+  FlushAnimations();
+  double fMilliseconds = double(seconds) * PR_MSEC_PER_SEC;
+  // Round to nearest whole number before converting, to avoid precision
+  // errors
+  SMILTime lMilliseconds = SVGUtils::ClampToInt64(NS_round(fMilliseconds));
+  mTimedDocumentRoot->SetCurrentTime(lMilliseconds);
+  AnimationNeedsResample();
+  // Trigger synchronous sample now, to:
+  //  - Make sure we get an up-to-date paint after this method
+  //  - re-enable event firing (it got disabled during seeking, and it
+  //  doesn't get re-enabled until the first sample after the seek -- so
+  //  let's make that happen now.)
+  FlushAnimations();
 }
 
 void SVGSVGElement::DeselectAll() {
@@ -337,12 +344,12 @@ nsresult SVGSVGElement::BindToTree(BindContext& aContext, nsINode& aParent) {
   return rv;
 }
 
-void SVGSVGElement::UnbindFromTree(bool aNullParent) {
+void SVGSVGElement::UnbindFromTree(UnbindContext& aContext) {
   if (mTimedDocumentRoot) {
     mTimedDocumentRoot->SetParent(nullptr);
   }
 
-  SVGGraphicsElement::UnbindFromTree(aNullParent);
+  SVGGraphicsElement::UnbindFromTree(aContext);
 }
 
 SVGAnimatedTransformList* SVGSVGElement::GetAnimatedTransformList(
@@ -377,31 +384,31 @@ bool SVGSVGElement::IsEventAttributeNameInternal(nsAtom* aName) {
       aName, (EventNameType_SVGGraphic | EventNameType_SVGSVG));
 }
 
+LengthPercentage SVGSVGElement::GetIntrinsicWidthOrHeight(int aAttr) {
+  MOZ_ASSERT(aAttr == ATTR_WIDTH || aAttr == ATTR_HEIGHT);
+
+  if (mLengthAttributes[aAttr].IsPercentage()) {
+    float rawSize = mLengthAttributes[aAttr].GetAnimValInSpecifiedUnits();
+    return LengthPercentage::FromPercentage(rawSize);
+  }
+
+  // Passing |this| as a SVGViewportElement* invokes the variant of GetAnimValue
+  // that uses the passed argument as the context, but that's fine since we
+  // know the length isn't a percentage so the context won't be used (and we
+  // need to pass the element to be able to resolve em/ex units).
+  float rawSize = mLengthAttributes[aAttr].GetAnimValueWithZoom(this);
+  return LengthPercentage::FromPixels(rawSize);
+}
+
 //----------------------------------------------------------------------
 // public helpers:
 
-int32_t SVGSVGElement::GetIntrinsicWidth() {
-  if (mLengthAttributes[ATTR_WIDTH].IsPercentage()) {
-    return -1;
-  }
-  // Passing |this| as a SVGViewportElement* invokes the variant of GetAnimValue
-  // that uses the passed argument as the context, but that's fine since we
-  // know the length isn't a percentage so the context won't be used (and we
-  // need to pass the element to be able to resolve em/ex units).
-  float width = mLengthAttributes[ATTR_WIDTH].GetAnimValue(this);
-  return SVGUtils::ClampToInt(width);
+LengthPercentage SVGSVGElement::GetIntrinsicWidth() {
+  return GetIntrinsicWidthOrHeight(ATTR_WIDTH);
 }
 
-int32_t SVGSVGElement::GetIntrinsicHeight() {
-  if (mLengthAttributes[ATTR_HEIGHT].IsPercentage()) {
-    return -1;
-  }
-  // Passing |this| as a SVGViewportElement* invokes the variant of GetAnimValue
-  // that uses the passed argument as the context, but that's fine since we
-  // know the length isn't a percentage so the context won't be used (and we
-  // need to pass the element to be able to resolve em/ex units).
-  float height = mLengthAttributes[ATTR_HEIGHT].GetAnimValue(this);
-  return SVGUtils::ClampToInt(height);
+LengthPercentage SVGSVGElement::GetIntrinsicHeight() {
+  return GetIntrinsicWidthOrHeight(ATTR_HEIGHT);
 }
 
 void SVGSVGElement::FlushImageTransformInvalidation() {

@@ -46,7 +46,7 @@ http://creativecommons.org/licenses/publicdomain/
     await setupPrefsAndMockSocket(mockSocket);
     await setPushPermission(true);
 
-    var url = "worker.js?" + (Math.random());
+    var url = "worker.js?caller=test_data.html";
     registration = await navigator.serviceWorker.register(url, {scope: "."});
     await waitForActive(registration);
   });
@@ -130,6 +130,7 @@ http://creativecommons.org/licenses/publicdomain/
     );
     isDeeply(new Uint8Array(message.data.arrayBuffer), typedArray,
       "Wrong array buffer message data");
+    isDeeply(message.data.bytes, typedArray, "Wrong bytes message data");
 
     message = await waitForMessage(
       pushSubscription,
@@ -154,7 +155,7 @@ http://creativecommons.org/licenses/publicdomain/
     is(message.data.text, "Hi! \ud83d\udc40", "Wrong text for message with emoji");
     var text = await new Promise((resolve, reject) => {
       var reader = new FileReader();
-      reader.onloadend = event => {
+      reader.onloadend = () => {
         if (reader.error) {
           reject(reader.error);
         } else {

@@ -37,9 +37,9 @@ class StereoPannerNodeEngine final : public AudioNodeEngine {
         mPan(0.f) {}
 
   enum Parameters { PAN };
-  void RecvTimelineEvent(uint32_t aIndex, AudioTimelineEvent& aEvent) override {
+  void RecvTimelineEvent(uint32_t aIndex, AudioParamEvent& aEvent) override {
     MOZ_ASSERT(mDestination);
-    WebAudioUtils::ConvertAudioTimelineEventToTicks(aEvent, mDestination);
+    aEvent.ConvertToTicks(mDestination);
 
     switch (aIndex) {
       case PAN:
@@ -62,8 +62,8 @@ class StereoPannerNodeEngine final : public AudioNodeEngine {
       aPanning += 1;
     }
 
-    aLeftGain = cos(0.5 * M_PI * aPanning);
-    aRightGain = sin(0.5 * M_PI * aPanning);
+    aLeftGain = fdlibm_cos(0.5 * M_PI * aPanning);
+    aRightGain = fdlibm_sin(0.5 * M_PI * aPanning);
   }
 
   void SetToSilentStereoBlock(AudioBlock* aChunk) {

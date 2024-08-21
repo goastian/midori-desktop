@@ -91,8 +91,7 @@ class MediaEngineWebRTCMicrophoneSource : public MediaEngineSource {
   // Current state of the resource for this source.
   MediaEngineSourceState mState;
 
-  // The current preferences that will be forwarded to mAudioProcessingConfig
-  // below.
+  // The current preferences that will be forwarded to mInputProcessing below.
   MediaEnginePrefs mCurrentPrefs;
 
   // The AudioProcessingTrack used to inteface with the MediaTrackGraph. Set in
@@ -101,10 +100,6 @@ class MediaEngineWebRTCMicrophoneSource : public MediaEngineSource {
 
   // See note at the top of this class.
   RefPtr<AudioInputProcessing> mInputProcessing;
-
-  // Copy of the config currently applied to AudioProcessing through
-  // mInputProcessing.
-  webrtc::AudioProcessing::Config mAudioProcessingConfig;
 };
 
 // This class is created on the MediaManager thread, and then exclusively used
@@ -113,85 +108,119 @@ class MediaEngineWebRTCMicrophoneSource : public MediaEngineSource {
 class AudioInputProcessing : public AudioDataListener {
  public:
   explicit AudioInputProcessing(uint32_t aMaxChannelCount);
-  void Process(MediaTrackGraphImpl* aGraph, GraphTime aFrom, GraphTime aTo,
+  void Process(AudioProcessingTrack* aTrack, GraphTime aFrom, GraphTime aTo,
                AudioSegment* aInput, AudioSegment* aOutput);
 
-  void ProcessOutputData(MediaTrackGraphImpl* aGraph, AudioDataValue* aBuffer,
-                         size_t aFrames, TrackRate aRate, uint32_t aChannels);
-  bool IsVoiceInput(MediaTrackGraphImpl* aGraph) const override {
+  void ProcessOutputData(AudioProcessingTrack* aTrack,
+                         const AudioChunk& aChunk);
+  bool IsVoiceInput(MediaTrackGraph* aGraph) const override {
     // If we're passing data directly without AEC or any other process, this
     // means that all voice-processing has been disabled intentionaly. In this
     // case, consider that the device is not used for voice input.
-    return !PassThrough(aGraph);
+    return !IsPassThrough(aGraph) ||
+           mPlatformProcessingSetParams != CUBEB_INPUT_PROCESSING_PARAM_NONE;
   }
 
-  void Start(MediaTrackGraphImpl* aGraph);
-  void Stop(MediaTrackGraphImpl* aGraph);
+  void Start(MediaTrackGraph* aGraph);
+  void Stop(MediaTrackGraph* aGraph);
 
-  void DeviceChanged(MediaTrackGraphImpl* aGraph) override;
+  void DeviceChanged(MediaTrackGraph* aGraph) override;
 
-  uint32_t RequestedInputChannelCount(MediaTrackGraphImpl*) override {
+  uint32_t RequestedInputChannelCount(MediaTrackGraph*) const override {
     return GetRequestedInputChannelCount();
   }
 
-  void Disconnect(MediaTrackGraphImpl* aGraph) override;
+  cubeb_input_processing_params RequestedInputProcessingParams(
+      MediaTrackGraph* aGraph) const override;
 
-  void PacketizeAndProcess(MediaTrackGraphImpl* aGraph,
+  void Disconnect(MediaTrackGraph* aGraph) override;
+
+  void NotifySetRequestedInputProcessingParamsResult(
+      MediaTrackGraph* aGraph, cubeb_input_processing_params aRequestedParams,
+      const Result<cubeb_input_processing_params, int>& aResult) override;
+
+  void PacketizeAndProcess(AudioProcessingTrack* aTrack,
                            const AudioSegment& aSegment);
 
-  void SetPassThrough(MediaTrackGraphImpl* aGraph, bool aPassThrough);
-  uint32_t GetRequestedInputChannelCount();
-  void SetRequestedInputChannelCount(MediaTrackGraphImpl* aGraph,
-                                     CubebUtils::AudioDeviceID aDeviceId,
-                                     uint32_t aRequestedInputChannelCount);
-  // This is true when all processing is disabled, we can skip
-  // packetization, resampling and other processing passes.
-  bool PassThrough(MediaTrackGraphImpl* aGraphImpl) const;
+  uint32_t GetRequestedInputChannelCount() const;
+
+  // This is true when all processing is disabled, in which case we can skip
+  // packetization, resampling and other processing passes. Processing may still
+  // be applied by the platform on the underlying input track.
+  bool IsPassThrough(MediaTrackGraph* aGraph) const;
 
   // This allow changing the APM options, enabling or disabling processing
-  // steps. The config gets applied the next time we're about to process input
+  // steps. The settings get applied the next time we're about to process input
   // data.
-  void ApplyConfig(MediaTrackGraphImpl* aGraph,
-                   const webrtc::AudioProcessing::Config& aConfig);
+  void ApplySettings(MediaTrackGraph* aGraph,
+                     CubebUtils::AudioDeviceID aDeviceID,
+                     const MediaEnginePrefs& aSettings);
+
+  // The config currently applied to the audio processing module.
+  webrtc::AudioProcessing::Config AppliedConfig(MediaTrackGraph* aGraph) const;
 
   void End();
 
-  TrackTime NumBufferedFrames(MediaTrackGraphImpl* aGraph) const;
+  TrackTime NumBufferedFrames(MediaTrackGraph* aGraph) const;
 
   // The packet size contains samples in 10ms. The unit of aRate is hz.
-  constexpr static uint32_t GetPacketSize(TrackRate aRate) {
-    return static_cast<uint32_t>(aRate) / 100u;
+  static uint32_t GetPacketSize(TrackRate aRate) {
+    return webrtc::AudioProcessing::GetFrameSize(aRate);
   }
 
   bool IsEnded() const { return mEnded; }
 
+  // For testing:
+  bool HadAECAndDrift() const { return mHadAECAndDrift; }
+
  private:
   ~AudioInputProcessing() = default;
-  void EnsureAudioProcessing(MediaTrackGraphImpl* aGraph, uint32_t aChannels);
-  void ResetAudioProcessing(MediaTrackGraphImpl* aGraph);
+  webrtc::AudioProcessing::Config ConfigForPrefs(
+      const MediaEnginePrefs& aPrefs) const;
+  void PassThroughChanged(MediaTrackGraph* aGraph);
+  void RequestedInputChannelCountChanged(MediaTrackGraph* aGraph,
+                                         CubebUtils::AudioDeviceID aDeviceId);
+  void EnsurePacketizer(AudioProcessingTrack* aTrack);
+  void EnsureAudioProcessing(AudioProcessingTrack* aTrack);
+  void ResetAudioProcessing(MediaTrackGraph* aGraph);
+  void ApplySettingsInternal(MediaTrackGraph* aGraph,
+                             const MediaEnginePrefs& aSettings);
   PrincipalHandle GetCheckedPrincipal(const AudioSegment& aSegment);
   // This implements the processing algoritm to apply to the input (e.g. a
   // microphone). If all algorithms are disabled, this class in not used. This
   // class only accepts audio chunks of 10ms. It has two inputs and one output:
   // it is fed the speaker data and the microphone data. It outputs processed
   // input data.
-  const UniquePtr<webrtc::AudioProcessing> mAudioProcessing;
+  UniquePtr<webrtc::AudioProcessing> mAudioProcessing;
+  // Whether mAudioProcessing was created for AEC with clock drift.
+  // Meaningful only when mAudioProcessing is non-null;
+  bool mHadAECAndDrift = false;
   // Packetizer to be able to feed 10ms packets to the input side of
   // mAudioProcessing. Not used if the processing is bypassed.
   Maybe<AudioPacketizer<AudioDataValue, float>> mPacketizerInput;
-  // Packetizer to be able to feed 10ms packets to the output side of
-  // mAudioProcessing. Not used if the processing is bypassed.
-  Maybe<AudioPacketizer<AudioDataValue, float>> mPacketizerOutput;
-  // The number of channels asked for by content, after clamping to the range of
-  // legal channel count for this particular device.
-  uint32_t mRequestedInputChannelCount;
-  // mSkipProcessing is true if none of the processing passes are enabled,
-  // because of prefs or constraints. This allows simply copying the audio into
-  // the MTG, skipping resampling and the whole webrtc.org code.
-  bool mSkipProcessing;
-  // Stores the mixed audio output for the reverse-stream of the AEC (the
-  // speaker data).
+  // The current settings from about:config preferences and content-provided
+  // constraints.
+  MediaEnginePrefs mSettings;
+  // When false, RequestedInputProcessingParams() returns no params, resulting
+  // in platform processing getting disabled in the platform.
+  bool mPlatformProcessingEnabled = false;
+  // The latest error notified to us through
+  // NotifySetRequestedInputProcessingParamsResult, or Nothing if the latest
+  // request was successful, or if a request is pending a result.
+  Maybe<int> mPlatformProcessingSetError;
+  // The processing params currently applied in the platform. This allows
+  // adapting the AudioProcessingConfig accordingly.
+  cubeb_input_processing_params mPlatformProcessingSetParams =
+      CUBEB_INPUT_PROCESSING_PARAM_NONE;
+  // Buffer for up to one 10ms packet of planar mixed audio output for the
+  // reverse-stream (speaker data) of mAudioProcessing AEC.
+  // Length is packet size * channel count, regardless of how many frames are
+  // buffered.  Not used if the processing is bypassed.
   AlignedFloatBuffer mOutputBuffer;
+  // Number of channels into which mOutputBuffer is divided.
+  uint32_t mOutputBufferChannelCount = 0;
+  // Number of frames buffered in mOutputBuffer for the reverse stream.
+  uint32_t mOutputBufferFrameCount = 0;
   // Stores the input audio, to be processed by the APM.
   AlignedFloatBuffer mInputBuffer;
   // Stores the deinterleaved microphone audio
@@ -209,6 +238,11 @@ class AudioInputProcessing : public AudioDataListener {
   // When processing is enabled, the number of packets received by this
   // instance, to implement periodic logging.
   uint64_t mPacketCount;
+  // Temporary descriptor for a slice of an AudioChunk parameter passed to
+  // ProcessOutputData().  This is a member rather than on the stack so that
+  // any memory allocated for its mChannelData pointer array is not
+  // reallocated on each iteration.
+  AudioChunk mSubChunk;
   // A storage holding the interleaved audio data converted the AudioSegment.
   // This will be used as an input parameter for PacketizeAndProcess. This
   // should be removed once bug 1729041 is done.
@@ -246,8 +280,7 @@ class AudioProcessingTrack : public DeviceInputConsumerTrack {
   }
   // Pass the graph's mixed audio output to mInputProcessing for processing as
   // the reverse stream.
-  void NotifyOutputData(MediaTrackGraphImpl* aGraph, AudioDataValue* aBuffer,
-                        size_t aFrames, TrackRate aRate, uint32_t aChannels);
+  void NotifyOutputData(MediaTrackGraph* aGraph, const AudioChunk& aChunk);
 
   // Any thread
   AudioProcessingTrack* AsAudioProcessingTrack() override { return this; }

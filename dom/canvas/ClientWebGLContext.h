@@ -7,9 +7,11 @@
 #define CLIENTWEBGLCONTEXT_H_
 
 #include "GLConsts.h"
+#include "js/GCAPI.h"
 #include "mozilla/dom/ImageData.h"
 #include "mozilla/Range.h"
 #include "mozilla/RefCounted.h"
+#include "mozilla/dom/TypedArray.h"
 #include "nsICanvasRenderingContextInternal.h"
 #include "nsWrapperCache.h"
 #include "mozilla/dom/WebGLRenderingContextBinding.h"
@@ -24,6 +26,7 @@
 #include "WebGLCommandQueue.h"
 
 #include <memory>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -33,14 +36,13 @@ namespace mozilla {
 class ClientWebGLExtensionBase;
 class HostWebGLContext;
 
+template <typename MethodT, MethodT Method>
+size_t IdByMethod();
+
 namespace dom {
 class OwningHTMLCanvasElementOrOffscreenCanvas;
 class WebGLChild;
 }  // namespace dom
-
-namespace gfx {
-class DrawTargetWebgl;
-}
 
 namespace webgl {
 class AvailabilityRunnable;
@@ -132,9 +134,6 @@ class ShaderKeepAlive final {
 };
 
 class ContextGenerationInfo final {
- private:
-  ObjectId mLastId = 0;
-
  public:
   webgl::ExtensionBits mEnabledExtensions;
   RefPtr<WebGLProgramJS> mCurrentProgram;
@@ -178,7 +177,7 @@ class ContextGenerationInfo final {
 
   webgl::ProvokingVertex mProvokingVertex = webgl::ProvokingVertex::LastVertex;
 
-  ObjectId NextId() { return mLastId += 1; }
+  mutable Maybe<std::unordered_map<GLenum, bool>> mIsEnabledMap;
 };
 
 // -
@@ -298,12 +297,6 @@ class WebGLFramebufferJS final : public nsWrapperCache, public webgl::ObjectJS {
  private:
   bool mHasBeenBound = false;  // !IsFramebuffer until Bind
   std::unordered_map<GLenum, Attachment> mAttachments;
-  // Holds Some Id if async present is used
-  Maybe<layers::RemoteTextureId> mLastRemoteTextureId;
-  Maybe<layers::RemoteTextureOwnerId> mRemoteTextureOwnerId;
-  // Needs sync IPC to ensure that the remote texture exists in the
-  // RemoteTextureMap.
-  bool mNeedsRemoteTextureSync = true;
 
  public:
   NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(WebGLFramebufferJS)
@@ -497,7 +490,7 @@ class WebGLSyncJS final : public nsWrapperCache,
 
   bool mCanBeAvailable = false;
   uint8_t mNumQueriesBeforeFirstFrameBoundary = 0;
-  bool mSignaled = false;
+  uint8_t mNumQueriesWithoutFlushCommandsBit = 0;
 
  public:
   NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(WebGLSyncJS)
@@ -618,22 +611,47 @@ using Float32ListU = dom::MaybeSharedFloat32ArrayOrUnrestrictedFloatSequence;
 using Int32ListU = dom::MaybeSharedInt32ArrayOrLongSequence;
 using Uint32ListU = dom::MaybeSharedUint32ArrayOrUnsignedLongSequence;
 
-inline Range<const float> MakeRange(const Float32ListU& list) {
-  if (list.IsFloat32Array()) return MakeRangeAbv(list.GetAsFloat32Array());
-
-  return MakeRange(list.GetAsUnrestrictedFloatSequence());
+template <typename Converter, typename T>
+inline bool ConvertSequence(const dom::Sequence<T>& sequence,
+                            Converter&& converter) {
+  // It's ok to GC here, but we need a common parameter list for
+  // Converter with the typed array version.
+  JS::AutoCheckCannotGC nogc;
+  nogc.reset();
+  return std::forward<Converter>(converter)(Span(sequence), std::move(nogc));
 }
 
-inline Range<const int32_t> MakeRange(const Int32ListU& list) {
-  if (list.IsInt32Array()) return MakeRangeAbv(list.GetAsInt32Array());
+template <typename Converter>
+inline bool Convert(const Float32ListU& list, Converter&& converter) {
+  if (list.IsFloat32Array()) {
+    return list.GetAsFloat32Array().ProcessData(
+        std::forward<Converter>(converter));
+  }
 
-  return MakeRange(list.GetAsLongSequence());
+  return ConvertSequence(list.GetAsUnrestrictedFloatSequence(),
+                         std::forward<Converter>(converter));
 }
 
-inline Range<const uint32_t> MakeRange(const Uint32ListU& list) {
-  if (list.IsUint32Array()) return MakeRangeAbv(list.GetAsUint32Array());
+template <typename Converter>
+inline bool Convert(const Int32ListU& list, Converter&& converter) {
+  if (list.IsInt32Array()) {
+    return list.GetAsInt32Array().ProcessData(
+        std::forward<Converter>(converter));
+  }
 
-  return MakeRange(list.GetAsUnsignedLongSequence());
+  return ConvertSequence(list.GetAsLongSequence(),
+                         std::forward<Converter>(converter));
+}
+
+template <typename Converter>
+inline bool Convert(const Uint32ListU& list, Converter&& converter) {
+  if (list.IsUint32Array()) {
+    return list.GetAsUint32Array().ProcessData(
+        std::forward<Converter>(converter));
+  }
+
+  return ConvertSequence(list.GetAsUnsignedLongSequence(),
+                         std::forward<Converter>(converter));
 }
 
 template <typename T>
@@ -642,6 +660,11 @@ inline Range<const uint8_t> MakeByteRange(const T& x) {
   return Range<const uint8_t>(
       reinterpret_cast<const uint8_t*>(typed.begin().get()),
       typed.length() * sizeof(typed[0]));
+}
+
+template <typename T>
+inline Range<const uint8_t> MakeByteRange(const Span<T>& x) {
+  return AsBytes(x);
 }
 
 // -
@@ -698,6 +721,12 @@ struct TexImageSourceAdapter final : public TexImageSource {
     mOut_error = out_error;
   }
 
+  TexImageSourceAdapter(const dom::VideoFrame* videoFrame,
+                        ErrorResult* const out_error) {
+    mVideoFrame = videoFrame;
+    mOut_error = out_error;
+  }
+
   TexImageSourceAdapter(const dom::Element* domElem,
                         ErrorResult* const out_error) {
     mDomElem = domElem;
@@ -714,7 +743,6 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
   friend class webgl::ObjectJS;
   friend class webgl::ProgramKeepAlive;
   friend class webgl::ShaderKeepAlive;
-  friend class gfx::DrawTargetWebgl;
 
   // ----------------------------- Lifetime and DOM ---------------------------
  public:
@@ -750,12 +778,15 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
   mutable GLenum mNextError = 0;
   mutable webgl::LossStatus mLossStatus = webgl::LossStatus::Ready;
   mutable bool mAwaitingRestore = false;
+  mutable webgl::ObjectId mLastId = 0;
+
+ public:
+  webgl::ObjectId NextId() const { return mLastId += 1; }
+
   // Holds Some Id if async present is used
   mutable Maybe<layers::RemoteTextureId> mLastRemoteTextureId;
   mutable Maybe<layers::RemoteTextureOwnerId> mRemoteTextureOwnerId;
-  // Needs sync IPC to ensure that the remote texture exists in the
-  // RemoteTextureMap.
-  bool mNeedsRemoteTextureSync = true;
+  mutable RefPtr<layers::FwdTransactionTracker> mFwdTransactionTracker;
 
   // -
 
@@ -898,11 +929,11 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
   void EnqueueErrorImpl(GLenum errorOrZero, const nsACString&) const;
 
  public:
-  bool ValidateArrayBufferView(const dom::ArrayBufferView& view,
-                               GLuint elemOffset, GLuint elemCountOverride,
-                               const GLenum errorEnum,
-                               uint8_t** const out_bytes,
-                               size_t* const out_byteLen) const;
+  Maybe<Span<uint8_t>> ValidateArrayBufferView(const Span<uint8_t>& bytes,
+                                               size_t elemSize,
+                                               GLuint elemOffset,
+                                               GLuint elemCountOverride,
+                                               const GLenum errorEnum) const;
 
  protected:
   template <typename T>
@@ -1021,6 +1052,20 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
     const FuncScope funcScope(*this, "drawingBufferHeight");
     return AutoAssertCast(DrawingBufferSize().y);
   }
+
+  // -
+
+ private:
+  dom::PredefinedColorSpace mDrawingBufferColorSpace =
+      dom::PredefinedColorSpace::Srgb;
+
+ public:
+  auto DrawingBufferColorSpace() const { return mDrawingBufferColorSpace; }
+
+  void SetDrawingBufferColorSpace(dom::PredefinedColorSpace);
+
+  // -
+
   void GetContextAttributes(dom::Nullable<dom::WebGLContextAttributes>& retval);
 
  private:
@@ -1047,28 +1092,29 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
       const bool webvr = false) override;
   RefPtr<gfx::SourceSurface> GetFrontBufferSnapshot(
       bool requireAlphaPremult = true) override;
+  already_AddRefed<layers::FwdTransactionTracker> UseCompositableForwarder(
+      layers::CompositableForwarder* aForwarder) override;
+  void OnDestroyChild(dom::WebGLChild* aChild);
 
   void ClearVRSwapChain();
 
  private:
   RefPtr<gfx::DataSourceSurface> BackBufferSnapshot();
   [[nodiscard]] bool DoReadPixels(const webgl::ReadPixelsDesc&,
-                                  Range<uint8_t>) const;
-  [[nodiscard]] bool DoReadPixels(const webgl::ReadPixelsDesc&,
-                                  const mozilla::ipc::Shmem&) const;
+                                  Span<uint8_t>) const;
   uvec2 DrawingBufferSize();
 
   // -
 
-  bool mAutoFlushPending = false;
+  mutable bool mAutoFlushPending = false;
 
-  void AutoEnqueueFlush() {
+  void AutoEnqueueFlush() const {
     if (MOZ_LIKELY(mAutoFlushPending)) return;
     mAutoFlushPending = true;
 
-    const auto weak = WeakPtr<ClientWebGLContext>(this);
-    const auto DeferredFlush = [weak]() {
-      const auto strong = RefPtr<ClientWebGLContext>(weak);
+    const auto DeferredFlush = [weak =
+                                    WeakPtr<const ClientWebGLContext>(this)]() {
+      const auto strong = RefPtr<const ClientWebGLContext>(weak);
       if (!strong) return;
       if (!strong->mAutoFlushPending) return;
       strong->mAutoFlushPending = false;
@@ -1079,12 +1125,12 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
     };
 
     already_AddRefed<mozilla::CancelableRunnable> runnable =
-        NS_NewCancelableRunnableFunction("enqueue Event_webglcontextrestored",
+        NS_NewCancelableRunnableFunction("ClientWebGLContext::DeferredFlush",
                                          DeferredFlush);
     NS_DispatchToCurrentThread(std::move(runnable));
   }
 
-  void CancelAutoFlush() { mAutoFlushPending = false; }
+  void CancelAutoFlush() const { mAutoFlushPending = false; }
 
   // -
 
@@ -1109,6 +1155,7 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
   void Disable(GLenum cap) const { SetEnabledI(cap, {}, false); }
   void Enable(GLenum cap) const { SetEnabledI(cap, {}, true); }
   void SetEnabledI(GLenum cap, Maybe<GLuint> i, bool val) const;
+
   bool IsEnabled(GLenum cap) const;
 
  private:
@@ -1297,24 +1344,48 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
   // -
 
  private:
-  void ClearBufferTv(GLenum buffer, GLint drawBuffer, webgl::AttribBaseType,
-                     const Range<const uint8_t>& view, GLuint srcElemOffset);
+  void ClearBufferTv(const GLenum buffer, const GLint drawBuffer,
+                     const webgl::AttribBaseType type,
+                     JS::AutoCheckCannotGC&& nogc,
+                     const Span<const uint8_t>& view,
+                     const GLuint srcElemOffset);
 
  public:
   void ClearBufferfv(GLenum buffer, GLint drawBuffer, const Float32ListU& list,
                      GLuint srcElemOffset) {
-    ClearBufferTv(buffer, drawBuffer, webgl::AttribBaseType::Float,
-                  MakeByteRange(list), srcElemOffset);
+    const FuncScope funcScope(*this, "clearBufferfv");
+    if (!Convert(list, [&](const Span<const float>& aData,
+                           JS::AutoCheckCannotGC&& nogc) {
+          ClearBufferTv(buffer, drawBuffer, webgl::AttribBaseType::Float,
+                        std::move(nogc), AsBytes(aData), srcElemOffset);
+          return true;
+        })) {
+      EnqueueError(LOCAL_GL_INVALID_VALUE, "`values` too small.");
+    }
   }
   void ClearBufferiv(GLenum buffer, GLint drawBuffer, const Int32ListU& list,
                      GLuint srcElemOffset) {
-    ClearBufferTv(buffer, drawBuffer, webgl::AttribBaseType::Int,
-                  MakeByteRange(list), srcElemOffset);
+    const FuncScope funcScope(*this, "clearBufferiv");
+    if (!Convert(list, [&](const Span<const int32_t>& aData,
+                           JS::AutoCheckCannotGC&& nogc) {
+          ClearBufferTv(buffer, drawBuffer, webgl::AttribBaseType::Int,
+                        std::move(nogc), AsBytes(aData), srcElemOffset);
+          return true;
+        })) {
+      EnqueueError(LOCAL_GL_INVALID_VALUE, "`values` too small.");
+    }
   }
   void ClearBufferuiv(GLenum buffer, GLint drawBuffer, const Uint32ListU& list,
                       GLuint srcElemOffset) {
-    ClearBufferTv(buffer, drawBuffer, webgl::AttribBaseType::Uint,
-                  MakeByteRange(list), srcElemOffset);
+    const FuncScope funcScope(*this, "clearBufferuiv");
+    if (!Convert(list, [&](const Span<const uint32_t>& aData,
+                           JS::AutoCheckCannotGC&& nogc) {
+          ClearBufferTv(buffer, drawBuffer, webgl::AttribBaseType::Uint,
+                        std::move(nogc), AsBytes(aData), srcElemOffset);
+          return true;
+        })) {
+      EnqueueError(LOCAL_GL_INVALID_VALUE, "`values` too small.");
+    }
   }
 
   // -
@@ -1341,7 +1412,7 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
 
   void DepthRange(GLclampf zNear, GLclampf zFar);
 
-  void Flush(bool flushGl = true);
+  void Flush(bool flushGl = true) const;
 
   void Finish();
 
@@ -1435,12 +1506,6 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
   void BufferData(GLenum target, const dom::ArrayBufferView& srcData,
                   GLenum usage, GLuint srcElemOffset = 0,
                   GLuint srcElemCountOverride = 0);
-
-  void RawBufferData(GLenum target, const uint8_t* srcBytes, size_t srcLen,
-                     GLenum usage);
-  void RawBufferSubData(GLenum target, WebGLsizeiptr dstByteOffset,
-                        const uint8_t* srcBytes, size_t srcLen,
-                        bool unsynchronized = false);
 
   void BufferSubData(GLenum target, WebGLsizeiptr dstByteOffset,
                      const dom::ArrayBufferView& src, GLuint srcElemOffset = 0,
@@ -1559,9 +1624,6 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
                   GLenum internalFormat, const ivec3& size) const;
 
   // Primitive tex upload functions
-  void RawTexImage(uint32_t level, GLenum respecFormat, uvec3 offset,
-                   const webgl::PackingInfo& pi,
-                   webgl::TexUnpackBlobDesc&&) const;
   void TexImage(uint8_t funcDims, GLenum target, GLint level,
                 GLenum respecFormat, const ivec3& offset,
                 const Maybe<ivec3>& size, GLint border,
@@ -1840,9 +1902,26 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
     return state.mActiveLinkResult.get();
   }
 
+  // Used by callers that have a `nogc` token that ensures that no GC will
+  // happen while `bytes` is alive. Internally, the nogc range will be ended
+  // after `bytes` is used (either successfully but where the data are possibly
+  // sent over IPC which has a tendency to GC, or unsuccesfully in which case
+  // error handling can GC.)
   void UniformData(GLenum funcElemType, const WebGLUniformLocationJS* const loc,
                    bool transpose, const Range<const uint8_t>& bytes,
-                   GLuint elemOffset = 0, GLuint elemCountOverride = 0) const;
+                   JS::AutoCheckCannotGC&& nogc, GLuint elemOffset = 0,
+                   GLuint elemCountOverride = 0) const;
+
+  // Used by callers that are not passing `bytes` that might be GC-controlled.
+  // This will create an artificial and unnecessary nogc region that should
+  // get optimized away to nothing.
+  void UniformData(GLenum funcElemType, const WebGLUniformLocationJS* const loc,
+                   bool transpose, const Range<const uint8_t>& bytes,
+                   GLuint elemOffset = 0, GLuint elemCountOverride = 0) const {
+    JS::AutoCheckCannotGC nogc;
+    UniformData(funcElemType, loc, transpose, bytes, std::move(nogc),
+                elemOffset, elemCountOverride);
+  }
 
   // -
 
@@ -1898,12 +1977,15 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
 
   // -
 
-#define _(NT, TypeListU, TYPE)                                      \
-  void Uniform##NT##v(const WebGLUniformLocationJS* const loc,      \
-                      const TypeListU& list, GLuint elemOffset = 0, \
-                      GLuint elemCountOverride = 0) const {         \
-    UniformData(TYPE, loc, false, MakeByteRange(list), elemOffset,  \
-                elemCountOverride);                                 \
+#define _(NT, TypeListU, TYPE)                                             \
+  void Uniform##NT##v(const WebGLUniformLocationJS* const loc,             \
+                      const TypeListU& list, GLuint elemOffset = 0,        \
+                      GLuint elemCountOverride = 0) const {                \
+    Convert(list, [&](const auto& aData, JS::AutoCheckCannotGC&& nogc) {   \
+      UniformData(TYPE, loc, false, MakeByteRange(aData), std::move(nogc), \
+                  elemOffset, elemCountOverride);                          \
+      return true;                                                         \
+    });                                                                    \
   }
 
   _(1f, Float32ListU, LOCAL_GL_FLOAT)
@@ -1927,8 +2009,12 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
   void UniformMatrix##X##fv(const WebGLUniformLocationJS* loc, bool transpose, \
                             const Float32ListU& list, GLuint elemOffset = 0,   \
                             GLuint elemCountOverride = 0) const {              \
-    UniformData(LOCAL_GL_FLOAT_MAT##X, loc, transpose, MakeByteRange(list),    \
-                elemOffset, elemCountOverride);                                \
+    Convert(list, [&](const Span<const float>& aData,                          \
+                      JS::AutoCheckCannotGC&& nogc) {                          \
+      UniformData(LOCAL_GL_FLOAT_MAT##X, loc, transpose, MakeByteRange(aData), \
+                  std::move(nogc), elemOffset, elemCountOverride);             \
+      return true;                                                             \
+    });                                                                        \
   }
 
   _(2)
@@ -1978,53 +2064,88 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
 
   // -
 
+  template <typename List, typename T, size_t N>
+  bool MakeArrayFromList(const List& list, T (&array)[N]) {
+    bool badLength = false;
+    if (!Convert(list, [&](const auto& aData, JS::AutoCheckCannotGC&&) {
+          static_assert(
+              std::is_same_v<std::remove_const_t<
+                                 std::remove_reference_t<decltype(aData[0])>>,
+                             T>);
+          if (N > aData.Length()) {
+            badLength = true;
+            return false;
+          }
+
+          std::copy_n(aData.begin(), N, array);
+          return true;
+        })) {
+      EnqueueError(
+          LOCAL_GL_INVALID_VALUE,
+          badLength
+              ? nsPrintfCString("Length of `list` must be >=%zu.", N).get()
+              : "Conversion of `list` failed.");
+      return false;
+    }
+    return true;
+  }
+
   void VertexAttrib1fv(const GLuint index, const Float32ListU& list) {
     const FuncScope funcScope(*this, "vertexAttrib1fv");
     if (IsContextLost()) return;
 
-    const auto range = MakeRange(list);
-    if (range.length() < 1) {
-      EnqueueError(LOCAL_GL_INVALID_VALUE, "Length of `list` must be >=1.");
+    float arr[1];
+    if (!MakeArrayFromList(list, arr)) {
       return;
     }
-
-    VertexAttrib1f(index, range[0]);
+    VertexAttrib1f(index, arr[0]);
   }
 
   void VertexAttrib2fv(const GLuint index, const Float32ListU& list) {
     const FuncScope funcScope(*this, "vertexAttrib1fv");
     if (IsContextLost()) return;
 
-    const auto range = MakeRange(list);
-    if (range.length() < 2) {
-      EnqueueError(LOCAL_GL_INVALID_VALUE, "Length of `list` must be >=2.");
+    float arr[2];
+    if (!MakeArrayFromList(list, arr)) {
       return;
     }
-
-    VertexAttrib2f(index, range[0], range[1]);
+    VertexAttrib2f(index, arr[0], arr[1]);
   }
 
   void VertexAttrib3fv(const GLuint index, const Float32ListU& list) {
     const FuncScope funcScope(*this, "vertexAttrib1fv");
     if (IsContextLost()) return;
 
-    const auto range = MakeRange(list);
-    if (range.length() < 3) {
-      EnqueueError(LOCAL_GL_INVALID_VALUE, "Length of `list` must be >=3.");
+    float arr[3];
+    if (!MakeArrayFromList(list, arr)) {
       return;
     }
-
-    VertexAttrib3f(index, range[0], range[1], range[2]);
+    VertexAttrib3f(index, arr[0], arr[1], arr[2]);
   }
 
   void VertexAttrib4fv(GLuint index, const Float32ListU& list) {
-    VertexAttrib4Tv(index, webgl::AttribBaseType::Float, MakeByteRange(list));
+    const FuncScope funcScope(*this, "vertexAttrib4fv");
+    float arr[4];
+    if (!MakeArrayFromList(list, arr)) {
+      return;
+    }
+    VertexAttrib4Tv(index, webgl::AttribBaseType::Float, MakeByteRange(arr));
   }
   void VertexAttribI4iv(GLuint index, const Int32ListU& list) {
-    VertexAttrib4Tv(index, webgl::AttribBaseType::Int, MakeByteRange(list));
+    const FuncScope funcScope(*this, "vertexAttribI4iv");
+    int32_t arr[4];
+    if (!MakeArrayFromList(list, arr)) {
+      return;
+    }
+    VertexAttrib4Tv(index, webgl::AttribBaseType::Int, MakeByteRange(arr));
   }
   void VertexAttribI4uiv(GLuint index, const Uint32ListU& list) {
-    VertexAttrib4Tv(index, webgl::AttribBaseType::Uint, MakeByteRange(list));
+    const FuncScope funcScope(*this, "vertexAttribI4uiv");
+    uint32_t arr[4];
+    if (!MakeArrayFromList(list, arr)) {
+      return;
+    }
+    VertexAttrib4Tv(index, webgl::AttribBaseType::Uint, MakeByteRange(arr));
   }
 
   void VertexAttribI4i(GLuint index, GLint x, GLint y, GLint z, GLint w) {
@@ -2139,6 +2260,13 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
                         JS::MutableHandle<JS::Value> retval) const;
   void WaitSync(const WebGLSyncJS&, GLbitfield flags, GLint64 timeout) const;
 
+  mutable webgl::ObjectId mCompletedSyncId = 0;
+  void OnSyncComplete(webgl::ObjectId id) const {
+    if (mCompletedSyncId < id) {
+      mCompletedSyncId = id;
+    }
+  }
+
   // -------------------------- Transform Feedback ---------------------------
 
   void BindTransformFeedback(GLenum target, WebGLTransformFeedbackJS*);
@@ -2203,17 +2331,48 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
   // The cross-process communication mechanism
   // -------------------------------------------------------------------------
  protected:
-  template <typename ReturnType>
-  friend struct WebGLClientDispatcher;
-
-  template <typename MethodType, MethodType method, typename ReturnType,
-            typename... Args>
-  friend ReturnType RunOn(const ClientWebGLContext& context, Args&&... aArgs);
-
   // If we are running WebGL in this process then call the HostWebGLContext
   // method directly.  Otherwise, dispatch over IPC.
-  template <typename MethodType, MethodType method, typename... Args>
-  void Run(Args&&... aArgs) const;
+  template <typename MethodType, MethodType method, typename... CallerArgs>
+  void Run(const CallerArgs&... args) const {
+    const auto id = IdByMethod<MethodType, method>();
+    auto noNoGc = std::optional<JS::AutoCheckCannotGC>{};
+    Run_WithDestArgTypes_ConstnessHelper(std::move(noNoGc), method, id,
+                                         args...);
+  }
+
+  // Same as above for use when using potentially GC-controlled data. The scope
+  // of `aNoGC` will be ended after the data is no longer needed.
+  template <typename MethodType, MethodType method, typename... CallerArgs>
+  void RunWithGCData(JS::AutoCheckCannotGC&& aNoGC,
+                     const CallerArgs&... aArgs) const {
+    const auto id = IdByMethod<MethodType, method>();
+    auto noGc = std::optional<JS::AutoCheckCannotGC>{std::move(aNoGC)};
+    Run_WithDestArgTypes_ConstnessHelper(std::move(noGc), method, id, aArgs...);
+  }
+
+  // Because we're trying to explicitly pull `DestArgs` via `method`, we have
+  // one overload for mut-methods and one for const-methods.
+  template <typename... DestArgs>
+  void Run_WithDestArgTypes_ConstnessHelper(
+      std::optional<JS::AutoCheckCannotGC>&& noGc,
+      void (HostWebGLContext::*method)(DestArgs...), const size_t id,
+      const std::remove_reference_t<std::remove_const_t<DestArgs>>&... args)
+      const {
+    Run_WithDestArgTypes(std::move(noGc), method, id, args...);
+  }
+  template <typename... DestArgs>
+  void Run_WithDestArgTypes_ConstnessHelper(
+      std::optional<JS::AutoCheckCannotGC>&& noGc,
+      void (HostWebGLContext::*method)(DestArgs...) const, const size_t id,
+      const std::remove_reference_t<std::remove_const_t<DestArgs>>&... args)
+      const {
+    Run_WithDestArgTypes(std::move(noGc), method, id, args...);
+  }
+
+  template <typename MethodT, typename... DestArgs>
+  void Run_WithDestArgTypes(std::optional<JS::AutoCheckCannotGC>&&, MethodT,
+                            const size_t id, const DestArgs&...) const;
 
   // -------------------------------------------------------------------------
   // Helpers for DOM operations, composition, actors, etc

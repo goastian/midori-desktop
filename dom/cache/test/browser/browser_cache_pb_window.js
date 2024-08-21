@@ -2,21 +2,17 @@
 var name = "pb-window-cache";
 
 function testMatch(browser) {
-  return SpecialPowers.spawn(browser, [name], function (name) {
+  return SpecialPowers.spawn(browser, [name], function () {
     return new Promise((resolve, reject) => {
       content.caches
         .match("http://foo.com")
-        .then(function (response) {
-          ok(false, "caches.match() should not return success");
-          reject();
-        })
-        .catch(function (err) {
-          is(
-            "SecurityError",
-            err.name,
-            "caches.match() should throw SecurityError"
-          );
+        .then(function () {
+          ok(true, "caches.match() should be successful");
           resolve();
+        })
+        .catch(function () {
+          ok(false, "caches.match() should not throw error");
+          reject();
         });
     });
   });
@@ -27,17 +23,13 @@ function testHas(browser) {
     return new Promise(function (resolve, reject) {
       content.caches
         .has(name)
-        .then(function (result) {
-          ok(false, "caches.has() should not return success");
-          reject();
-        })
-        .catch(function (err) {
-          is(
-            "SecurityError",
-            err.name,
-            "caches.has() should throw SecurityError"
-          );
+        .then(function () {
+          ok(true, "caches.has() should be successful");
           resolve();
+        })
+        .catch(function () {
+          ok(false, "caches.has() should not throw error");
+          reject();
         });
     });
   });
@@ -48,17 +40,13 @@ function testOpen(browser) {
     return new Promise(function (resolve, reject) {
       content.caches
         .open(name)
-        .then(function (c) {
-          ok(false, "caches.open() should not return success");
-          reject();
-        })
-        .catch(function (err) {
-          is(
-            "SecurityError",
-            err.name,
-            "caches.open() should throw SecurityError"
-          );
+        .then(function () {
+          ok(true, "caches.open() should be successful");
           resolve();
+        })
+        .catch(function () {
+          ok(false, "caches.open() should not throw error");
+          reject();
         });
     });
   });
@@ -69,38 +57,30 @@ function testDelete(browser) {
     return new Promise(function (resolve, reject) {
       content.caches
         .delete(name)
-        .then(function (result) {
-          ok(false, "caches.delete() should not return success");
-          reject();
-        })
-        .catch(function (err) {
-          is(
-            "SecurityError",
-            err.name,
-            "caches.delete() should throw SecurityError"
-          );
+        .then(function () {
+          ok(true, "caches.delete() should be successful");
           resolve();
+        })
+        .catch(function () {
+          ok(false, "caches.delete should not throw error");
+          reject();
         });
     });
   });
 }
 
 function testKeys(browser) {
-  return SpecialPowers.spawn(browser, [name], function (name) {
+  return SpecialPowers.spawn(browser, [name], function () {
     return new Promise(function (resolve, reject) {
       content.caches
         .keys()
-        .then(function (names) {
-          ok(false, "caches.keys() should not return success");
-          reject();
-        })
-        .catch(function (err) {
-          is(
-            "SecurityError",
-            err.name,
-            "caches.keys() should throw SecurityError"
-          );
+        .then(function () {
+          ok(true, "caches.keys() should be successful");
           resolve();
+        })
+        .catch(function () {
+          ok(false, "caches.keys should not throw error");
+          reject();
         });
     });
   });
@@ -127,8 +107,8 @@ function testOpen_worker(browser) {
     content.URL.revokeObjectURL(workerBlobURL);
     return new Promise(function (resolve, reject) {
       worker.addEventListener("message", function (e) {
-        let isGood = e.data === "SecurityError";
-        ok(isGood, "caches.open() should throw SecurityError from worker");
+        let isGood = e.data != "SecurityError";
+        ok(isGood, "caches.open() should be successful from worker");
         isGood ? resolve() : reject();
       });
     });
@@ -139,10 +119,7 @@ function test() {
   let privateWin, privateTab;
   waitForExplicitFinish();
   SpecialPowers.pushPrefEnv({
-    set: [
-      ["dom.caches.enabled", true],
-      ["dom.caches.testing.enabled", true],
-    ],
+    set: [["dom.caches.testing.enabled", true]],
   })
     .then(() => {
       return BrowserTestUtils.openNewBrowserWindow({ private: true });
@@ -152,7 +129,7 @@ function test() {
       privateTab = BrowserTestUtils.addTab(pw.gBrowser, "http://example.com/");
       return BrowserTestUtils.browserLoaded(privateTab.linkedBrowser);
     })
-    .then(tab => {
+    .then(() => {
       return Promise.all([
         testMatch(privateTab.linkedBrowser),
         testHas(privateTab.linkedBrowser),

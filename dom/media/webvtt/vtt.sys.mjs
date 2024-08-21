@@ -27,8 +27,7 @@
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
-XPCOMUtils.defineLazyPreferenceGetter(lazy, "supportPseudo",
-                                      "media.webvtt.pseudo.enabled", false);
+
 XPCOMUtils.defineLazyPreferenceGetter(lazy, "DEBUG_LOG",
                                       "media.webvtt.debug.logging", false);
 
@@ -325,7 +324,6 @@ var NEEDS_PARENT = {
 
 const PARSE_CONTENT_MODE = {
   NORMAL_CUE: "normal_cue",
-  PSUEDO_CUE: "pseudo_cue",
   DOCUMENT_FRAGMENT: "document_fragment",
   REGION_CUE: "region_cue",
 }
@@ -353,15 +351,44 @@ function parseContent(window, input, mode) {
     return consume(m[1] ? m[1] : m[2]);
   }
 
-  // Unescape a string 's'.
-  function unescape1(e) {
-    return ESCAPE[e];
-  }
-  function unescape(s) {
-    let m;
-    while ((m = s.match(/&(amp|lt|gt|lrm|rlm|nbsp);/))) {
-      s = s.replace(m[0], unescape1);
-    }
+  const unescapeHelper = window.document.createElement("div");
+  function unescapeEntities(s) {
+    let match;
+
+    // Decimal numeric character reference
+    s = s.replace(/&#(\d+);?/g, (candidate, number) => {
+      try {
+        const codepoint = parseInt(number);
+        return String.fromCodePoint(codepoint);
+      } catch (_) {
+        return candidate;
+      }
+    });
+
+    // Hexadecimal numeric character reference
+    s = s.replace(/&#x([\dA-Fa-f]+);?/g, (candidate, number) => {
+      try {
+        const codepoint = parseInt(number, 16);
+        return String.fromCodePoint(codepoint);
+      } catch (_) {
+        return candidate;
+      }
+    });
+
+    // Named character references
+    s = s.replace(/&\w[\w\d]*;?/g, candidate => {
+      // The list of entities is huge, so we use innerHTML instead.
+      // We should probably use setHTML instead once that is available (bug 1650370).
+      // Ideally we would be able to use a faster/simpler variant of setHTML (bug 1731215).
+      unescapeHelper.innerHTML = candidate;
+      const unescaped = unescapeHelper.innerText;
+      if (unescaped == candidate) { // not a valid entity
+        return candidate;
+      }
+      return unescaped;
+    });
+    unescapeHelper.innerHTML = "";
+
     return s;
   }
 
@@ -411,10 +438,9 @@ function parseContent(window, input, mode) {
 
   let root;
   switch (mode) {
-    case PARSE_CONTENT_MODE.PSUEDO_CUE:
+    case PARSE_CONTENT_MODE.NORMAL_CUE:
       root = window.document.createElement("span", {pseudo: "::cue"});
       break;
-    case PARSE_CONTENT_MODE.NORMAL_CUE:
     case PARSE_CONTENT_MODE.REGION_CUE:
       root = window.document.createElement("span");
       break;
@@ -435,12 +461,21 @@ function parseContent(window, input, mode) {
   while ((t = nextToken()) !== null) {
     if (t[0] === '<') {
       if (t[1] === "/") {
+        const endTag = t.slice(2, -1);
+        const stackEnd = tagStack.at(-1);
+
         // If the closing tag matches, move back up to the parent node.
-        if (tagStack.length &&
-            tagStack[tagStack.length - 1] === t.substr(2).replace(">", "")) {
+        if (stackEnd == endTag) {
           tagStack.pop();
           current = current.parentNode;
+
+        // If the closing tag is <ruby> and we're at an <rt>, move back up to
+        // the <ruby>'s parent node.
+        } else if (endTag == "ruby" && current.nodeName == "RT") {
+          tagStack.pop();
+          current = current.parentNode.parentNode;
         }
+
         // Otherwise just ignore the end tag.
         continue;
       }
@@ -480,7 +515,7 @@ function parseContent(window, input, mode) {
     }
 
     // Text nodes are leaf nodes.
-    current.appendChild(window.document.createTextNode(unescape(t)));
+    current.appendChild(window.document.createTextNode(unescapeEntities(t)));
   }
 
   return root;
@@ -523,8 +558,7 @@ class CueStyleBox extends StyleBoxBase {
     super();
     this.cue = cue;
     this.div = window.document.createElement("div");
-    this.cueDiv = parseContent(window, cue.text, lazy.supportPseudo ?
-      PARSE_CONTENT_MODE.PSUEDO_CUE : PARSE_CONTENT_MODE.NORMAL_CUE);
+    this.cueDiv = parseContent(window, cue.text, PARSE_CONTENT_MODE.NORMAL_CUE);
     this.div.appendChild(this.cueDiv);
 
     this.containerHeight = containerBox.height;
@@ -534,11 +568,7 @@ class CueStyleBox extends StyleBoxBase {
 
     // As pseudo element won't inherit the parent div's style, so we have to
     // set the font size explicitly.
-    if (lazy.supportPseudo) {
-      this._applyDefaultStylesOnPseudoBackgroundNode();
-    } else {
-      this._applyDefaultStylesOnNonPseudoBackgroundNode();
-    }
+    this._applyDefaultStylesOnBackgroundNode();
     this._applyDefaultStylesOnRootNode();
   }
 
@@ -594,22 +624,13 @@ class CueStyleBox extends StyleBoxBase {
     return containerBox.height * 0.05 + "px";
   }
 
-  _applyDefaultStylesOnPseudoBackgroundNode() {
+  _applyDefaultStylesOnBackgroundNode() {
     // most of the properties have been defined in `::cue` in `html.css`, but
-    // there are some css variables we have to set them dynamically.
+    // there are some css properties we have to set them dynamically.
+    // FIXME(emilio): These are observable by content. Ideally the style
+    // attribute will work like for ::part() and we wouldn't need this.
     this.cueDiv.style.setProperty("--cue-font-size", this.fontSize, "important");
     this.cueDiv.style.setProperty("--cue-writing-mode", this._getCueWritingMode(), "important");
-  }
-
-  _applyDefaultStylesOnNonPseudoBackgroundNode() {
-    // If cue div is not a pseudo element, we should set the default css style
-    // for it, the reason we need to set these attributes to cueDiv is because
-    // if we set background on the root node directly, if would cause filling
-    // too large area for the background color as the size of root node won't
-    // be adjusted by cue size.
-    this.applyStyles({
-      "background-color": "rgba(0, 0, 0, 0.8)",
-    }, this.cueDiv);
   }
 
   // spec https://www.w3.org/TR/webvtt1/#applying-css-properties
@@ -1484,8 +1505,6 @@ WebVTT.Parser.prototype = {
           });
         } catch(e) {
           dump("VTTRegion Error " + e + "\n");
-          let regionPref = Services.prefs.getBoolPref("media.webvtt.regions.enabled");
-          dump("regionPref " + regionPref + "\n");
         }
       }
     }

@@ -7,6 +7,7 @@
 #include "VPXDecoder.h"
 
 #include <algorithm>
+#include <vpx/vpx_image.h>
 
 #include "BitReader.h"
 #include "BitWriter.h"
@@ -22,7 +23,6 @@
 #include "PerformanceRecorder.h"
 #include "prsystem.h"
 #include "VideoUtils.h"
-#include "vpx/vpx_image.h"
 
 #undef LOG
 #define LOG(arg, ...)                                                  \
@@ -226,10 +226,13 @@ RefPtr<MediaDataDecoder::DecodePromise> VPXDecoder::ProcessDecode(
 
     RefPtr<VideoData> v;
     if (!img_alpha) {
-      v = VideoData::CreateAndCopyData(
-          mInfo, mImageContainer, aSample->mOffset, aSample->mTime,
-          aSample->mDuration, b, aSample->mKeyframe, aSample->mTimecode,
-          mInfo.ScaledImageRect(img->d_w, img->d_h), mImageAllocator);
+      Result<already_AddRefed<VideoData>, MediaResult> r =
+          VideoData::CreateAndCopyData(
+              mInfo, mImageContainer, aSample->mOffset, aSample->mTime,
+              aSample->mDuration, b, aSample->mKeyframe, aSample->mTimecode,
+              mInfo.ScaledImageRect(img->d_w, img->d_h), mImageAllocator);
+      // TODO: Reject DecodePromise below with r's error return.
+      v = r.unwrapOr(nullptr);
     } else {
       VideoData::YCbCrBuffer::Plane alpha_plane;
       alpha_plane.mData = img_alpha->planes[0];
@@ -269,6 +272,8 @@ RefPtr<MediaDataDecoder::DecodePromise> VPXDecoder::ProcessDecode(
         aStage.SetYUVColorSpace(b.mYUVColorSpace);
         aStage.SetColorRange(b.mColorRange);
         aStage.SetColorDepth(b.mColorDepth);
+        aStage.SetStartTimeAndEndTime(v->mTime.ToMicroseconds(),
+                                      v->GetEndTime().ToMicroseconds());
       });
     });
 

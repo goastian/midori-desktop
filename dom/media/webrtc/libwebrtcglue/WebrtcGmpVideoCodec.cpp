@@ -8,12 +8,12 @@
 #include <vector>
 
 #include "GMPLog.h"
+#include "GMPUtils.h"
 #include "MainThreadUtils.h"
 #include "VideoConduit.h"
 #include "gmp-video-frame-encoded.h"
 #include "gmp-video-frame-i420.h"
 #include "mozilla/CheckedInt.h"
-#include "mozilla/EndianUtils.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/SyncRunnable.h"
 #include "nsServiceManagerUtils.h"
@@ -102,23 +102,6 @@ static int GmpFrameTypeToWebrtcFrameType(GMPVideoFrameType aIn,
   }
 
   return WEBRTC_VIDEO_CODEC_OK;
-}
-
-static int SizeNumBytes(GMPBufferType aBufferType) {
-  switch (aBufferType) {
-    case GMP_BufferSingle:
-      return 0;
-    case GMP_BufferLength8:
-      return 1;
-    case GMP_BufferLength16:
-      return 2;
-    case GMP_BufferLength24:
-      return 3;
-    case GMP_BufferLength32:
-      return 4;
-    default:
-      MOZ_CRASH("Unexpected buffer type");
-  }
 }
 
 int32_t WebrtcGmpVideoEncoder::InitEncode(
@@ -540,100 +523,24 @@ void WebrtcGmpVideoEncoder::Encoded(
 
   webrtc::VideoFrameType ft;
   GmpFrameTypeToWebrtcFrameType(aEncodedFrame->FrameType(), &ft);
-  uint32_t timestamp = (aEncodedFrame->TimeStamp() * 90ll + 999) / 1000;
+  uint64_t timestamp = (aEncodedFrame->TimeStamp() * 90ll + 999) / 1000;
 
   GMP_LOG_DEBUG("GMP Encoded: %" PRIu64 ", type %d, len %d",
                 aEncodedFrame->TimeStamp(), aEncodedFrame->BufferType(),
                 aEncodedFrame->Size());
 
-  if (!aEncodedFrame->Buffer()) {
-    GMP_LOG_ERROR("GMP plugin returned null buffer");
-    return;
-  }
-
   // Libwebrtc's RtpPacketizerH264 expects a 3- or 4-byte NALU start sequence
   // before the start of the NALU payload. {0,0,1} or {0,0,0,1}. We set this
   // in-place. Any other length of the length field we reject.
-
-  const int sizeNumBytes = SizeNumBytes(aEncodedFrame->BufferType());
-  uint32_t unitOffset = 0;
-  uint32_t unitSize = 0;
-  // Make sure we don't read past the end of the buffer getting the size
-  while (unitOffset + sizeNumBytes < aEncodedFrame->Size()) {
-    uint8_t* unitBuffer = aEncodedFrame->Buffer() + unitOffset;
-    switch (aEncodedFrame->BufferType()) {
-      case GMP_BufferLength24: {
-#if MOZ_LITTLE_ENDIAN()
-        unitSize = (static_cast<uint32_t>(*unitBuffer)) |
-                   (static_cast<uint32_t>(*(unitBuffer + 1)) << 8) |
-                   (static_cast<uint32_t>(*(unitBuffer + 2)) << 16);
-#else
-        unitSize = (static_cast<uint32_t>(*unitBuffer) << 16) |
-                   (static_cast<uint32_t>(*(unitBuffer + 1)) << 8) |
-                   (static_cast<uint32_t>(*(unitBuffer + 2)));
-#endif
-        const uint8_t startSequence[] = {0, 0, 1};
-        if (memcmp(unitBuffer, startSequence, 3) == 0) {
-          // This is a bug in OpenH264 where it misses to convert the NALU start
-          // sequence to the NALU size per the GMP protocol. We mitigate this by
-          // letting it through as this is what libwebrtc already expects and
-          // scans for.
-          unitSize = aEncodedFrame->Size() - 3;
-          break;
-        }
-        memcpy(unitBuffer, startSequence, 3);
-        break;
-      }
-      case GMP_BufferLength32: {
-#if MOZ_LITTLE_ENDIAN()
-        unitSize = LittleEndian::readUint32(unitBuffer);
-#else
-        unitSize = BigEndian::readUint32(unitBuffer);
-#endif
-        const uint8_t startSequence[] = {0, 0, 0, 1};
-        if (memcmp(unitBuffer, startSequence, 4) == 0) {
-          // This is a bug in OpenH264 where it misses to convert the NALU start
-          // sequence to the NALU size per the GMP protocol. We mitigate this by
-          // letting it through as this is what libwebrtc already expects and
-          // scans for.
-          unitSize = aEncodedFrame->Size() - 4;
-          break;
-        }
-        memcpy(unitBuffer, startSequence, 4);
-        break;
-      }
-      default:
-        GMP_LOG_ERROR("GMP plugin returned type we cannot handle (%d)",
-                      aEncodedFrame->BufferType());
-        return;
-    }
-
-    MOZ_ASSERT(unitSize != 0);
-    MOZ_ASSERT(unitOffset + sizeNumBytes + unitSize <= aEncodedFrame->Size());
-    if (unitSize == 0 ||
-        unitOffset + sizeNumBytes + unitSize > aEncodedFrame->Size()) {
-      // XXX Should we kill the plugin for returning extra bytes? Probably
-      GMP_LOG_ERROR(
-          "GMP plugin returned badly formatted encoded data: "
-          "unitOffset=%u, sizeNumBytes=%d, unitSize=%u, size=%u",
-          unitOffset, sizeNumBytes, unitSize, aEncodedFrame->Size());
-      return;
-    }
-
-    unitOffset += sizeNumBytes + unitSize;
-  }
-
-  if (unitOffset != aEncodedFrame->Size()) {
-    // At most 3 bytes can be left over, depending on buffertype
-    GMP_LOG_DEBUG("GMP plugin returned %u extra bytes",
-                  aEncodedFrame->Size() - unitOffset);
+  if (NS_WARN_IF(!AdjustOpenH264NALUSequence(aEncodedFrame))) {
+    return;
   }
 
   webrtc::EncodedImage unit;
   unit.SetEncodedData(webrtc::EncodedImageBuffer::Create(
       aEncodedFrame->Buffer(), aEncodedFrame->Size()));
   unit._frameType = ft;
-  unit.SetTimestamp(timestamp);
+  unit.SetRtpTimestamp(timestamp);
   unit.capture_time_ms_ = capture_time.ms();
   unit._encodedWidth = aEncodedFrame->EncodedWidth();
   unit._encodedHeight = aEncodedFrame->EncodedHeight();
@@ -808,7 +715,7 @@ int32_t WebrtcGmpVideoDecoder::Decode(const webrtc::EncodedImage& aInputImage,
                : MediaInfoFlag::NonKeyFrame);
   flag |= MediaInfoFlag::SoftwareDecoding;
   flag |= MediaInfoFlag::VIDEO_H264;
-  mPerformanceRecorder.Start((aInputImage.Timestamp() * 1000ll) / 90,
+  mPerformanceRecorder.Start((aInputImage.RtpTimestamp() * 1000ll) / 90,
                              "WebrtcGmpVideoDecoder"_ns, mTrackingId, flag);
 
   // This is an ugly solution to asynchronous decoding errors
@@ -882,7 +789,7 @@ void WebrtcGmpVideoDecoder::Decode_g(const RefPtr<WebrtcGmpVideoDecoder>& aThis,
 
   frame->SetEncodedWidth(aDecodeData->mImage._encodedWidth);
   frame->SetEncodedHeight(aDecodeData->mImage._encodedHeight);
-  frame->SetTimeStamp((aDecodeData->mImage.Timestamp() * 1000ll) /
+  frame->SetTimeStamp((aDecodeData->mImage.RtpTimestamp() * 1000ll) /
                       90);  // rounds down
   frame->SetCompleteFrame(
       true);  // upstream no longer deals with incomplete frames

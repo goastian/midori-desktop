@@ -132,6 +132,7 @@ class MOZ_STACK_CLASS EventChainPreVisitor final : public EventChainVisitor {
         mParentIsChromeHandler(false),
         mRelatedTargetRetargetedInCurrentScope(false),
         mIgnoreBecauseOfShadowDOM(false),
+        mWantsActivationBehavior(false),
         mParentTarget(nullptr),
         mEventTargetAtParent(nullptr),
         mRetargetedRelatedTarget(nullptr),
@@ -154,6 +155,7 @@ class MOZ_STACK_CLASS EventChainPreVisitor final : public EventChainVisitor {
     // since it is used during event path creation to indicate whether
     // relatedTarget may need to be retargeted.
     mIgnoreBecauseOfShadowDOM = false;
+    mWantsActivationBehavior = false;
     mParentTarget = nullptr;
     mEventTargetAtParent = nullptr;
     mRetargetedRelatedTarget = nullptr;
@@ -169,12 +171,7 @@ class MOZ_STACK_CLASS EventChainPreVisitor final : public EventChainVisitor {
     }
   }
 
-  void IgnoreCurrentTargetBecauseOfShadowDOMRetargeting() {
-    mCanHandle = false;
-    mIgnoreBecauseOfShadowDOM = true;
-    SetParentTarget(nullptr, false);
-    mEventTargetAtParent = nullptr;
-  }
+  void IgnoreCurrentTargetBecauseOfShadowDOMRetargeting();
 
   /**
    * Member that must be set in GetEventTargetParent by event targets. If set to
@@ -263,6 +260,12 @@ class MOZ_STACK_CLASS EventChainPreVisitor final : public EventChainVisitor {
    */
   bool mIgnoreBecauseOfShadowDOM;
 
+  /*
+   * True if the activation behavior of the current item should run
+   * See activationTarget in https://dom.spec.whatwg.org/#concept-event-dispatch
+   */
+  bool mWantsActivationBehavior;
+
  private:
   /**
    * Parent item in the event target chain.
@@ -329,7 +332,6 @@ class MOZ_STACK_CLASS EventDispatchingCallback {
 class EventDispatcher {
  public:
   /**
-   * aTarget should QI to EventTarget.
    * If the target of aEvent is set before calling this method, the target of
    * aEvent is used as the target (unless there is event
    * retargeting) and the originalTarget of the DOM Event.
@@ -345,8 +347,9 @@ class EventDispatcher {
    * @note Use this method when dispatching a WidgetEvent.
    */
   MOZ_CAN_RUN_SCRIPT static nsresult Dispatch(
-      nsISupports* aTarget, nsPresContext* aPresContext, WidgetEvent* aEvent,
-      dom::Event* aDOMEvent = nullptr, nsEventStatus* aEventStatus = nullptr,
+      dom::EventTarget* aTarget, nsPresContext* aPresContext,
+      WidgetEvent* aEvent, dom::Event* aDOMEvent = nullptr,
+      nsEventStatus* aEventStatus = nullptr,
       EventDispatchingCallback* aCallback = nullptr,
       nsTArray<dom::EventTarget*>* aTargets = nullptr);
 
@@ -359,7 +362,7 @@ class EventDispatcher {
    * @note Use this method when dispatching a dom::Event.
    */
   MOZ_CAN_RUN_SCRIPT static nsresult DispatchDOMEvent(
-      nsISupports* aTarget, WidgetEvent* aEvent, dom::Event* aDOMEvent,
+      dom::EventTarget* aTarget, WidgetEvent* aEvent, dom::Event* aDOMEvent,
       nsPresContext* aPresContext, nsEventStatus* aEventStatus);
 
   /**

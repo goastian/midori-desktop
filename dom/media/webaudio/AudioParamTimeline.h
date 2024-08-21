@@ -13,6 +13,19 @@
 
 namespace mozilla::dom {
 
+struct AudioParamEvent final : public AudioTimelineEvent {
+  AudioParamEvent(Type aType, double aTime, float aValue,
+                  double aTimeConstant = 0.0)
+      : AudioTimelineEvent(aType, aTime, aValue, aTimeConstant) {}
+  AudioParamEvent(Type aType, const nsTArray<float>& aValues, double aStartTime,
+                  double aDuration)
+      : AudioTimelineEvent(aType, aValues, aStartTime, aDuration) {}
+  explicit AudioParamEvent(AudioNodeTrack* aTrack)
+      : AudioTimelineEvent(Track, 0.0, 0.f), mTrack(aTrack) {}
+
+  RefPtr<AudioNodeTrack> mTrack;
+};
+
 // This helper class is used to represent the part of the AudioParam
 // class that gets sent to AudioNodeEngine instances.  In addition to
 // AudioEventTimeline methods, it holds a pointer to an optional
@@ -34,12 +47,15 @@ class AudioParamTimeline : public AudioEventTimeline {
   }
 
   template <class TimeType>
-  float GetValueAtTime(TimeType aTime) {
-    return GetValueAtTime(aTime, 0);
-  }
+  float GetValueAtTime(TimeType aTime);
+
+  // Prefer this method over GetValueAtTime() only if HasSimpleValue() is
+  // known false.
+  float GetComplexValueAtTime(int64_t aTime);
+  float GetComplexValueAtTime(double aTime) = delete;
 
   template <typename TimeType>
-  void InsertEvent(const AudioTimelineEvent& aEvent) {
+  void InsertEvent(const AudioParamEvent& aEvent) {
     if (aEvent.mType == AudioTimelineEvent::Cancel) {
       CancelScheduledValues(aEvent.Time<TimeType>());
       return;
@@ -49,17 +65,11 @@ class AudioParamTimeline : public AudioEventTimeline {
       return;
     }
     if (aEvent.mType == AudioTimelineEvent::SetValue) {
-      AudioEventTimeline::SetValue(aEvent.mValue);
+      AudioEventTimeline::SetValue(aEvent.NominalValue());
       return;
     }
     AudioEventTimeline::InsertEvent<TimeType>(aEvent);
   }
-
-  // Get the value of the AudioParam at time aTime + aCounter.
-  // aCounter here is an offset to aTime if we try to get the value in ticks,
-  // otherwise it should always be zero.  aCounter is meant to be used when
-  template <class TimeType>
-  float GetValueAtTime(TimeType aTime, size_t aCounter);
 
   // Get the values of the AudioParam at time aTime + (0 to aSize).
   // aBuffer must have the correct aSize.
@@ -67,8 +77,9 @@ class AudioParamTimeline : public AudioEventTimeline {
   // otherwise it should always be zero.  aSize is meant to be used when
   // getting the value of an a-rate AudioParam for each tick inside an
   // AudioNodeEngine implementation.
-  template <class TimeType>
-  void GetValuesAtTime(TimeType aTime, float* aBuffer, const size_t aSize);
+  void GetValuesAtTime(int64_t aTime, float* aBuffer, const size_t aSize);
+  void GetValuesAtTime(double aTime, float* aBuffer,
+                       const size_t aSize) = delete;
 
   virtual size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const {
     return mTrack ? mTrack->SizeOfIncludingThis(aMallocSizeOf) : 0;
@@ -87,37 +98,30 @@ class AudioParamTimeline : public AudioEventTimeline {
 };
 
 template <>
-inline float AudioParamTimeline::GetValueAtTime(double aTime, size_t aCounter) {
-  MOZ_ASSERT(!aCounter);
-
+inline float AudioParamTimeline::GetValueAtTime(double aTime) {
   // Getting an AudioParam value on an AudioNode does not consider input from
   // other AudioNodes, which is managed only on the graph thread.
   return BaseClass::GetValueAtTime(aTime);
 }
 
 template <>
-inline float AudioParamTimeline::GetValueAtTime(int64_t aTime,
-                                                size_t aCounter) {
-  MOZ_ASSERT(aCounter < WEBAUDIO_BLOCK_SIZE);
-  MOZ_ASSERT(!aCounter || !HasSimpleValue());
+inline float AudioParamTimeline::GetValueAtTime(int64_t aTime) {
+  // Use GetValuesAtTime() for a-rate parameters.
+  MOZ_ASSERT(aTime % WEBAUDIO_BLOCK_SIZE == 0);
+  if (HasSimpleValue()) {
+    return GetValue();
+  }
+  return GetComplexValueAtTime(aTime);
+}
+
+inline float AudioParamTimeline::GetComplexValueAtTime(int64_t aTime) {
+  MOZ_ASSERT(aTime % WEBAUDIO_BLOCK_SIZE == 0);
 
   // Mix the value of the AudioParam itself with that of the AudioNode inputs.
-  return BaseClass::GetValueAtTime(static_cast<int64_t>(aTime + aCounter)) +
-         (mTrack ? AudioNodeInputValue(aCounter) : 0.0f);
+  return BaseClass::GetValueAtTime(aTime) +
+         (mTrack ? AudioNodeInputValue(0) : 0.0f);
 }
 
-template <>
-inline void AudioParamTimeline::GetValuesAtTime(double aTime, float* aBuffer,
-                                                const size_t aSize) {
-  MOZ_ASSERT(aBuffer);
-  MOZ_ASSERT(aSize == 1);
-
-  // Getting an AudioParam value on an AudioNode does not consider input from
-  // other AudioNodes, which is managed only on the graph thread.
-  *aBuffer = BaseClass::GetValueAtTime(aTime);
-}
-
-template <>
 inline void AudioParamTimeline::GetValuesAtTime(int64_t aTime, float* aBuffer,
                                                 const size_t aSize) {
   MOZ_ASSERT(aBuffer);

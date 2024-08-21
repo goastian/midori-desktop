@@ -64,13 +64,13 @@ already_AddRefed<Highlight> Highlight::Constructor(
 }
 
 void Highlight::AddToHighlightRegistry(HighlightRegistry& aHighlightRegistry,
-                                       const nsAtom& aHighlightName) {
+                                       nsAtom& aHighlightName) {
   mHighlightRegistries.LookupOrInsert(&aHighlightRegistry)
       .Insert(&aHighlightName);
 }
 
 void Highlight::RemoveFromHighlightRegistry(
-    HighlightRegistry& aHighlightRegistry, const nsAtom& aHighlightName) {
+    HighlightRegistry& aHighlightRegistry, nsAtom& aHighlightName) {
   if (auto entry = mHighlightRegistries.Lookup(&aHighlightRegistry)) {
     auto& highlightNames = entry.Data();
     highlightNames.Remove(&aHighlightName);
@@ -81,14 +81,13 @@ void Highlight::RemoveFromHighlightRegistry(
 }
 
 already_AddRefed<Selection> Highlight::CreateHighlightSelection(
-    const nsAtom* aHighlightName, nsFrameSelection* aFrameSelection) const {
+    nsAtom* aHighlightName, nsFrameSelection* aFrameSelection) {
   MOZ_ASSERT(aFrameSelection);
   MOZ_ASSERT(aFrameSelection->GetPresShell());
   RefPtr<Selection> selection =
       MakeRefPtr<Selection>(SelectionType::eHighlight, aFrameSelection);
-  selection->SetHighlightName(aHighlightName);
+  selection->SetHighlightSelectionData({aHighlightName, this});
   AutoFrameSelectionBatcher selectionBatcher(__FUNCTION__);
-  selectionBatcher.AddFrameSelection(aFrameSelection);
   for (const RefPtr<AbstractRange>& range : mRanges) {
     if (range->GetComposedDocOfContainers() ==
         aFrameSelection->GetPresShell()->GetDocument()) {
@@ -102,24 +101,36 @@ already_AddRefed<Selection> Highlight::CreateHighlightSelection(
 }
 
 void Highlight::Add(AbstractRange& aRange, ErrorResult& aRv) {
+  // Manually check if the range `aKey` is already present in this highlight,
+  // because `SetlikeHelpers::Add()` doesn't indicate this.
+  // To keep the setlike and the mirrored array in sync, the range must not
+  // be added to `mRanges` if it was already present.
+  // `SetlikeHelpers::Has()` is much faster in checking this than
+  // `nsTArray<>::Contains()`.
+  if (Highlight_Binding::SetlikeHelpers::Has(this, aRange, aRv) ||
+      aRv.Failed()) {
+    return;
+  }
   Highlight_Binding::SetlikeHelpers::Add(this, aRange, aRv);
   if (aRv.Failed()) {
     return;
   }
-  if (!mRanges.Contains(&aRange)) {
-    mRanges.AppendElement(&aRange);
-    AutoFrameSelectionBatcher selectionBatcher(__FUNCTION__,
-                                               mHighlightRegistries.Count());
-    for (const RefPtr<HighlightRegistry>& registry :
-         mHighlightRegistries.Keys()) {
-      auto frameSelection = registry->GetFrameSelection();
-      selectionBatcher.AddFrameSelection(frameSelection);
-      // since this is run in a context guarded by a selection batcher,
-      // no strong reference is needed to keep `registry` alive.
-      MOZ_KnownLive(registry)->MaybeAddRangeToHighlightSelection(aRange, *this);
-      if (aRv.Failed()) {
-        return;
-      }
+
+  MOZ_ASSERT(!mRanges.Contains(&aRange),
+             "setlike and DOM mirror are not in sync");
+
+  mRanges.AppendElement(&aRange);
+  AutoFrameSelectionBatcher selectionBatcher(__FUNCTION__,
+                                             mHighlightRegistries.Count());
+  for (const RefPtr<HighlightRegistry>& registry :
+       mHighlightRegistries.Keys()) {
+    auto frameSelection = registry->GetFrameSelection();
+    selectionBatcher.AddFrameSelection(frameSelection);
+    // since this is run in a context guarded by a selection batcher,
+    // no strong reference is needed to keep `registry` alive.
+    MOZ_KnownLive(registry)->MaybeAddRangeToHighlightSelection(aRange, *this);
+    if (aRv.Failed()) {
+      return;
     }
   }
 }

@@ -6,8 +6,13 @@
 
 #include "WMFCDMProxy.h"
 
+#include "MediaData.h"
+#include "mozilla/dom/MediaKeysBinding.h"
 #include "mozilla/dom/MediaKeySession.h"
+#include "mozilla/dom/MediaKeySystemAccessBinding.h"
+#include "mozilla/EMEUtils.h"
 #include "mozilla/WMFCDMProxyCallback.h"
+#include "mozilla/WindowsVersion.h"
 #include "WMFCDMImpl.h"
 #include "WMFCDMProxyCallback.h"
 
@@ -76,12 +81,25 @@ void WMFCDMProxy::Init(PromiseId aPromiseId, const nsAString& aOrigin,
 
   mCDM = MakeRefPtr<WMFCDMImpl>(mKeySystem);
   mProxyCallback = new WMFCDMProxyCallback(this);
-  WMFCDMImpl::InitParams params{nsString(aOrigin),
-                                mConfig.mInitDataTypes,
-                                mPersistentStateRequired,
-                                mDistinctiveIdentifierRequired,
-                                false /* TODO : support HW secure */,
-                                mProxyCallback};
+  // SWDRM has a PMP process leakage problem on Windows 10 due to the internal
+  // issue in the media foundation. Microsoft only lands the solution on Windows
+  // 11 and doesn't have plan to port it back to Windows 10. Therefore, for
+  // PlayReady, we need to force to covert SL2000 to SL3000 for our underlying
+  // CDM to avoid that issue. In addition, as we only support L1 for Widevine,
+  // this issue won't happen on it.
+  Maybe<nsString> forcedRobustness =
+      IsPlayReadyKeySystemAndSupported(mKeySystem) && !IsWin11OrLater()
+          ? Some(nsString(u"3000"))
+          : Nothing();
+  WMFCDMImpl::InitParams params{
+      nsString(aOrigin),
+      mConfig.mInitDataTypes,
+      mPersistentStateRequired,
+      mDistinctiveIdentifierRequired,
+      mProxyCallback,
+      GenerateMFCDMMediaCapabilities(mConfig.mAudioCapabilities),
+      GenerateMFCDMMediaCapabilities(mConfig.mVideoCapabilities,
+                                     forcedRobustness)};
   mCDM->Init(params)->Then(
       mMainThread, __func__,
       [self = RefPtr{this}, this, aPromiseId](const bool) {
@@ -93,6 +111,31 @@ void WMFCDMProxy::Init(PromiseId aPromiseId, const nsAString& aOrigin,
             aPromiseId,
             nsLiteralCString("WMFCDMProxy::Init: WMFCDM init error"));
       });
+}
+
+CopyableTArray<MFCDMMediaCapability>
+WMFCDMProxy::GenerateMFCDMMediaCapabilities(
+    const dom::Sequence<dom::MediaKeySystemMediaCapability>& aCapabilities,
+    const Maybe<nsString>& forcedRobustness) {
+  CopyableTArray<MFCDMMediaCapability> outCapabilites;
+  for (const auto& capabilities : aCapabilities) {
+    if (!forcedRobustness) {
+      EME_LOG("WMFCDMProxy::Init %p, robustness=%s", this,
+              NS_ConvertUTF16toUTF8(capabilities.mRobustness).get());
+      outCapabilites.AppendElement(MFCDMMediaCapability{
+          capabilities.mContentType,
+          {StringToCryptoScheme(capabilities.mEncryptionScheme)},
+          capabilities.mRobustness});
+    } else {
+      EME_LOG("WMFCDMProxy::Init %p, force to robustness=%s", this,
+              NS_ConvertUTF16toUTF8(*forcedRobustness).get());
+      outCapabilites.AppendElement(MFCDMMediaCapability{
+          capabilities.mContentType,
+          {StringToCryptoScheme(capabilities.mEncryptionScheme)},
+          *forcedRobustness});
+    }
+  }
+  return outCapabilites;
 }
 
 void WMFCDMProxy::ResolvePromise(PromiseId aId) {
@@ -112,6 +155,28 @@ void WMFCDMProxy::ResolvePromise(PromiseId aId) {
   }
   mMainThread->Dispatch(
       NS_NewRunnableFunction("WMFCDMProxy::ResolvePromise", resolve));
+}
+
+void WMFCDMProxy::ResolvePromiseWithKeyStatus(
+    const PromiseId& aId, const dom::MediaKeyStatus& aStatus) {
+  auto resolve = [self = RefPtr{this}, this, aId, aStatus]() {
+    RETURN_IF_SHUTDOWN();
+    EME_LOG("WMFCDMProxy::ResolvePromiseWithKeyStatus(this=%p, pid=%" PRIu32
+            ", status=%s)",
+            this, aId, dom::GetEnumString(aStatus).get());
+    if (!mKeys.IsNull()) {
+      mKeys->ResolvePromiseWithKeyStatus(aId, aStatus);
+    } else {
+      NS_WARNING("WMFCDMProxy unable to resolve promise!");
+    }
+  };
+
+  if (NS_IsMainThread()) {
+    resolve();
+    return;
+  }
+  mMainThread->Dispatch(NS_NewRunnableFunction(
+      "WMFCDMProxy::ResolvePromiseWithKeyStatus", resolve));
 }
 
 void WMFCDMProxy::RejectPromise(PromiseId aId, ErrorResult&& aException,
@@ -292,6 +357,53 @@ void WMFCDMProxy::OnExpirationChange(const nsAString& aSessionId,
         NS_ConvertUTF16toUTF8(aSessionId).get());
     session->SetExpiration(static_cast<double>(aExpiryTime));
   }
+}
+
+void WMFCDMProxy::SetServerCertificate(PromiseId aPromiseId,
+                                       nsTArray<uint8_t>& aCert) {
+  MOZ_ASSERT(NS_IsMainThread());
+  RETURN_IF_SHUTDOWN();
+  EME_LOG("WMFCDMProxy::SetServerCertificate(this=%p, pid=%" PRIu32 ")", this,
+          aPromiseId);
+  mCDM->SetServerCertificate(aPromiseId, aCert)
+      ->Then(
+          mMainThread, __func__,
+          [self = RefPtr{this}, this, aPromiseId]() {
+            RETURN_IF_SHUTDOWN();
+            ResolvePromise(aPromiseId);
+          },
+          [self = RefPtr{this}, this, aPromiseId]() {
+            RETURN_IF_SHUTDOWN();
+            RejectPromiseWithStateError(
+                aPromiseId,
+                nsLiteralCString("WMFCDMProxy::SetServerCertificate failed!"));
+          });
+}
+
+void WMFCDMProxy::GetStatusForPolicy(PromiseId aPromiseId,
+                                     const dom::HDCPVersion& aMinHdcpVersion) {
+  MOZ_ASSERT(NS_IsMainThread());
+  RETURN_IF_SHUTDOWN();
+  EME_LOG("WMFCDMProxy::GetStatusForPolicy(this=%p, pid=%" PRIu32
+          ", minHDCP=%s)",
+          this, aPromiseId, dom::GetEnumString(aMinHdcpVersion).get());
+  mCDM->GetStatusForPolicy(aPromiseId, aMinHdcpVersion)
+      ->Then(
+          mMainThread, __func__,
+          [self = RefPtr{this}, this, aPromiseId]() {
+            RETURN_IF_SHUTDOWN();
+            ResolvePromiseWithKeyStatus(aPromiseId,
+                                        dom::MediaKeyStatus::Usable);
+          },
+          [self = RefPtr{this}, this, aPromiseId]() {
+            RETURN_IF_SHUTDOWN();
+            ResolvePromiseWithKeyStatus(aPromiseId,
+                                        dom::MediaKeyStatus::Output_restricted);
+          });
+}
+
+bool WMFCDMProxy::IsHardwareDecryptionSupported() const {
+  return mozilla::IsHardwareDecryptionSupported(mConfig);
 }
 
 uint64_t WMFCDMProxy::GetCDMProxyId() const {

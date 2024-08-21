@@ -36,10 +36,6 @@ class nsIPrincipal;
 
 namespace mozilla {
 
-namespace dom {
-class MediaMemoryInfo;
-}
-
 class AbstractThread;
 class DOMMediaStream;
 class DecoderBenchmark;
@@ -211,6 +207,20 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
   // not connected to streams created by captureStreamUntilEnded.
 
   enum class OutputCaptureState { Capture, Halt, None };
+  const char* OutputCaptureStateToStr(OutputCaptureState aState) const {
+    switch (aState) {
+      case OutputCaptureState::Capture:
+        return "Capture";
+      case OutputCaptureState::Halt:
+        return "Halt";
+      case OutputCaptureState::None:
+        return "None";
+      default:
+        MOZ_ASSERT_UNREACHABLE("Not defined state!");
+        return "Not-defined";
+    }
+  }
+
   // Set the output capture state of this decoder.
   // @param aState Capture: Output is captured into output tracks, and
   //                        aDummyTrack must be provided.
@@ -441,6 +451,8 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
   RefPtr<GenericPromise> RequestDebugInfo(dom::MediaDecoderDebugInfo& aInfo);
 
   void GetDebugInfo(dom::MediaDecoderDebugInfo& aInfo);
+
+  virtual bool IsHLSDecoder() const { return false; }
 
  protected:
   virtual ~MediaDecoder();
@@ -747,36 +759,31 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
   Maybe<SeekTarget> mDelayedSeekTarget;
 
  public:
-  AbstractCanonical<double>* CanonicalVolume() { return &mVolume; }
-  AbstractCanonical<bool>* CanonicalPreservesPitch() {
-    return &mPreservesPitch;
+  Canonical<double>& CanonicalVolume() { return mVolume; }
+  Canonical<bool>& CanonicalPreservesPitch() { return mPreservesPitch; }
+  Canonical<bool>& CanonicalLooping() { return mLooping; }
+  Canonical<nsAutoString>& CanonicalStreamName() { return mStreamName; }
+  Canonical<RefPtr<AudioDeviceInfo>>& CanonicalSinkDevice() {
+    return mSinkDevice;
   }
-  AbstractCanonical<bool>* CanonicalLooping() { return &mLooping; }
-  AbstractCanonical<nsAutoString>* CanonicalStreamName() {
-    return &mStreamName;
+  Canonical<RefPtr<VideoFrameContainer>>& CanonicalSecondaryVideoContainer() {
+    return mSecondaryVideoContainer;
   }
-  AbstractCanonical<RefPtr<AudioDeviceInfo>>* CanonicalSinkDevice() {
-    return &mSinkDevice;
+  Canonical<OutputCaptureState>& CanonicalOutputCaptureState() {
+    return mOutputCaptureState;
   }
-  AbstractCanonical<RefPtr<VideoFrameContainer>>*
-  CanonicalSecondaryVideoContainer() {
-    return &mSecondaryVideoContainer;
-  }
-  AbstractCanonical<OutputCaptureState>* CanonicalOutputCaptureState() {
-    return &mOutputCaptureState;
-  }
-  AbstractCanonical<nsMainThreadPtrHandle<SharedDummyTrack>>*
+  Canonical<nsMainThreadPtrHandle<SharedDummyTrack>>&
   CanonicalOutputDummyTrack() {
-    return &mOutputDummyTrack;
+    return mOutputDummyTrack;
   }
-  AbstractCanonical<CopyableTArray<RefPtr<ProcessedMediaTrack>>>*
+  Canonical<CopyableTArray<RefPtr<ProcessedMediaTrack>>>&
   CanonicalOutputTracks() {
-    return &mOutputTracks;
+    return mOutputTracks;
   }
-  AbstractCanonical<PrincipalHandle>* CanonicalOutputPrincipal() {
-    return &mOutputPrincipal;
+  Canonical<PrincipalHandle>& CanonicalOutputPrincipal() {
+    return mOutputPrincipal;
   }
-  AbstractCanonical<PlayState>* CanonicalPlayState() { return &mPlayState; }
+  Canonical<PlayState>& CanonicalPlayState() { return mPlayState; }
 
   void UpdateTelemetryHelperBasedOnPlayState(PlayState aState) const;
 
@@ -824,12 +831,12 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
   // consistent with the previous destroyed one.
   bool mPendingStatusUpdateForNewlyCreatedStateMachine = false;
 #  endif
+
+  // The time of creating the media decoder state machine, it's used to record
+  // the probe for measuring the first video frame loaded time. Reset after
+  // reporting the measurement to avoid a dulpicated report.
+  Maybe<TimeStamp> mMDSMCreationTime;
 };
-
-typedef MozPromise<mozilla::dom::MediaMemoryInfo, nsresult, true>
-    MediaMemoryPromise;
-
-RefPtr<MediaMemoryPromise> GetMediaMemorySizes(dom::Document* aDoc);
 
 }  // namespace mozilla
 

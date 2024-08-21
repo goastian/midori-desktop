@@ -75,32 +75,27 @@ uint32_t SVGPathElement::GetPathSegAtLength(float distance) {
 
 already_AddRefed<DOMSVGPathSegClosePath>
 SVGPathElement::CreateSVGPathSegClosePath() {
-  RefPtr<DOMSVGPathSegClosePath> pathSeg = new DOMSVGPathSegClosePath();
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegClosePath());
 }
 
 already_AddRefed<DOMSVGPathSegMovetoAbs>
 SVGPathElement::CreateSVGPathSegMovetoAbs(float x, float y) {
-  RefPtr<DOMSVGPathSegMovetoAbs> pathSeg = new DOMSVGPathSegMovetoAbs(x, y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegMovetoAbs(x, y));
 }
 
 already_AddRefed<DOMSVGPathSegMovetoRel>
 SVGPathElement::CreateSVGPathSegMovetoRel(float x, float y) {
-  RefPtr<DOMSVGPathSegMovetoRel> pathSeg = new DOMSVGPathSegMovetoRel(x, y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegMovetoRel(x, y));
 }
 
 already_AddRefed<DOMSVGPathSegLinetoAbs>
 SVGPathElement::CreateSVGPathSegLinetoAbs(float x, float y) {
-  RefPtr<DOMSVGPathSegLinetoAbs> pathSeg = new DOMSVGPathSegLinetoAbs(x, y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegLinetoAbs(x, y));
 }
 
 already_AddRefed<DOMSVGPathSegLinetoRel>
 SVGPathElement::CreateSVGPathSegLinetoRel(float x, float y) {
-  RefPtr<DOMSVGPathSegLinetoRel> pathSeg = new DOMSVGPathSegLinetoRel(x, y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegLinetoRel(x, y));
 }
 
 already_AddRefed<DOMSVGPathSegCurvetoCubicAbs>
@@ -109,128 +104,102 @@ SVGPathElement::CreateSVGPathSegCurvetoCubicAbs(float x, float y, float x1,
   // Note that we swap from DOM API argument order to the argument order used
   // in the <path> element's 'd' attribute (i.e. we put the arguments for the
   // end point of the segment last instead of first).
-  RefPtr<DOMSVGPathSegCurvetoCubicAbs> pathSeg =
-      new DOMSVGPathSegCurvetoCubicAbs(x1, y1, x2, y2, x, y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegCurvetoCubicAbs(x1, y1, x2, y2, x, y));
 }
 
 already_AddRefed<DOMSVGPathSegCurvetoCubicRel>
 SVGPathElement::CreateSVGPathSegCurvetoCubicRel(float x, float y, float x1,
                                                 float y1, float x2, float y2) {
   // See comment in CreateSVGPathSegCurvetoCubicAbs
-  RefPtr<DOMSVGPathSegCurvetoCubicRel> pathSeg =
-      new DOMSVGPathSegCurvetoCubicRel(x1, y1, x2, y2, x, y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegCurvetoCubicRel(x1, y1, x2, y2, x, y));
 }
 
 already_AddRefed<DOMSVGPathSegCurvetoQuadraticAbs>
 SVGPathElement::CreateSVGPathSegCurvetoQuadraticAbs(float x, float y, float x1,
                                                     float y1) {
   // See comment in CreateSVGPathSegCurvetoCubicAbs
-  RefPtr<DOMSVGPathSegCurvetoQuadraticAbs> pathSeg =
-      new DOMSVGPathSegCurvetoQuadraticAbs(x1, y1, x, y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegCurvetoQuadraticAbs(x1, y1, x, y));
 }
 
 already_AddRefed<DOMSVGPathSegCurvetoQuadraticRel>
 SVGPathElement::CreateSVGPathSegCurvetoQuadraticRel(float x, float y, float x1,
                                                     float y1) {
   // See comment in CreateSVGPathSegCurvetoCubicAbs
-  RefPtr<DOMSVGPathSegCurvetoQuadraticRel> pathSeg =
-      new DOMSVGPathSegCurvetoQuadraticRel(x1, y1, x, y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegCurvetoQuadraticRel(x1, y1, x, y));
 }
 
 already_AddRefed<DOMSVGPathSegArcAbs> SVGPathElement::CreateSVGPathSegArcAbs(
     float x, float y, float r1, float r2, float angle, bool largeArcFlag,
     bool sweepFlag) {
   // See comment in CreateSVGPathSegCurvetoCubicAbs
-  RefPtr<DOMSVGPathSegArcAbs> pathSeg =
-      new DOMSVGPathSegArcAbs(r1, r2, angle, largeArcFlag, sweepFlag, x, y);
-  return pathSeg.forget();
+  return do_AddRef(
+      new DOMSVGPathSegArcAbs(r1, r2, angle, largeArcFlag, sweepFlag, x, y));
 }
 
 already_AddRefed<DOMSVGPathSegArcRel> SVGPathElement::CreateSVGPathSegArcRel(
     float x, float y, float r1, float r2, float angle, bool largeArcFlag,
     bool sweepFlag) {
   // See comment in CreateSVGPathSegCurvetoCubicAbs
-  RefPtr<DOMSVGPathSegArcRel> pathSeg =
-      new DOMSVGPathSegArcRel(r1, r2, angle, largeArcFlag, sweepFlag, x, y);
-  return pathSeg.forget();
+  return do_AddRef(
+      new DOMSVGPathSegArcRel(r1, r2, angle, largeArcFlag, sweepFlag, x, y));
 }
 
 already_AddRefed<DOMSVGPathSegLinetoHorizontalAbs>
 SVGPathElement::CreateSVGPathSegLinetoHorizontalAbs(float x) {
-  RefPtr<DOMSVGPathSegLinetoHorizontalAbs> pathSeg =
-      new DOMSVGPathSegLinetoHorizontalAbs(x);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegLinetoHorizontalAbs(x));
 }
 
 already_AddRefed<DOMSVGPathSegLinetoHorizontalRel>
 SVGPathElement::CreateSVGPathSegLinetoHorizontalRel(float x) {
-  RefPtr<DOMSVGPathSegLinetoHorizontalRel> pathSeg =
-      new DOMSVGPathSegLinetoHorizontalRel(x);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegLinetoHorizontalRel(x));
 }
 
 already_AddRefed<DOMSVGPathSegLinetoVerticalAbs>
 SVGPathElement::CreateSVGPathSegLinetoVerticalAbs(float y) {
-  RefPtr<DOMSVGPathSegLinetoVerticalAbs> pathSeg =
-      new DOMSVGPathSegLinetoVerticalAbs(y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegLinetoVerticalAbs(y));
 }
 
 already_AddRefed<DOMSVGPathSegLinetoVerticalRel>
 SVGPathElement::CreateSVGPathSegLinetoVerticalRel(float y) {
-  RefPtr<DOMSVGPathSegLinetoVerticalRel> pathSeg =
-      new DOMSVGPathSegLinetoVerticalRel(y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegLinetoVerticalRel(y));
 }
 
 already_AddRefed<DOMSVGPathSegCurvetoCubicSmoothAbs>
 SVGPathElement::CreateSVGPathSegCurvetoCubicSmoothAbs(float x, float y,
                                                       float x2, float y2) {
   // See comment in CreateSVGPathSegCurvetoCubicAbs
-  RefPtr<DOMSVGPathSegCurvetoCubicSmoothAbs> pathSeg =
-      new DOMSVGPathSegCurvetoCubicSmoothAbs(x2, y2, x, y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegCurvetoCubicSmoothAbs(x2, y2, x, y));
 }
 
 already_AddRefed<DOMSVGPathSegCurvetoCubicSmoothRel>
 SVGPathElement::CreateSVGPathSegCurvetoCubicSmoothRel(float x, float y,
                                                       float x2, float y2) {
   // See comment in CreateSVGPathSegCurvetoCubicAbs
-  RefPtr<DOMSVGPathSegCurvetoCubicSmoothRel> pathSeg =
-      new DOMSVGPathSegCurvetoCubicSmoothRel(x2, y2, x, y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegCurvetoCubicSmoothRel(x2, y2, x, y));
 }
 
 already_AddRefed<DOMSVGPathSegCurvetoQuadraticSmoothAbs>
 SVGPathElement::CreateSVGPathSegCurvetoQuadraticSmoothAbs(float x, float y) {
-  RefPtr<DOMSVGPathSegCurvetoQuadraticSmoothAbs> pathSeg =
-      new DOMSVGPathSegCurvetoQuadraticSmoothAbs(x, y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegCurvetoQuadraticSmoothAbs(x, y));
 }
 
 already_AddRefed<DOMSVGPathSegCurvetoQuadraticSmoothRel>
 SVGPathElement::CreateSVGPathSegCurvetoQuadraticSmoothRel(float x, float y) {
-  RefPtr<DOMSVGPathSegCurvetoQuadraticSmoothRel> pathSeg =
-      new DOMSVGPathSegCurvetoQuadraticSmoothRel(x, y);
-  return pathSeg.forget();
+  return do_AddRef(new DOMSVGPathSegCurvetoQuadraticSmoothRel(x, y));
 }
 
 // FIXME: This API is enabled only if dom.svg.pathSeg.enabled is true. This
 // preference is off by default in Bug 1388931, and will be dropped later.
 // So we are not planning to map d property for this API.
 already_AddRefed<DOMSVGPathSegList> SVGPathElement::PathSegList() {
-  return DOMSVGPathSegList::GetDOMWrapper(mD.GetBaseValKey(), this, false);
+  return DOMSVGPathSegList::GetDOMWrapper(mD.GetBaseValKey(), this);
 }
 
 // FIXME: This API is enabled only if dom.svg.pathSeg.enabled is true. This
 // preference is off by default in Bug 1388931, and will be dropped later.
 // So we are not planning to map d property for this API.
 already_AddRefed<DOMSVGPathSegList> SVGPathElement::AnimatedPathSegList() {
-  return DOMSVGPathSegList::GetDOMWrapper(mD.GetAnimValKey(), this, true);
+  return DOMSVGPathSegList::GetDOMWrapper(mD.GetAnimValKey(), this);
 }
 
 //----------------------------------------------------------------------
@@ -370,6 +339,37 @@ bool SVGPathElement::GetDistancesFromOriginToEndsOfVisibleSegments(
 
   return mD.GetAnimValue().GetDistancesFromOriginToEndsOfVisibleSegments(
       aOutput);
+}
+
+// Offset paths (including references to SVG Paths) are closed loops only if the
+// final command in the path list is a closepath command ("z" or "Z"), otherwise
+// they are unclosed intervals.
+// https://drafts.fxtf.org/motion/#path-distance
+bool SVGPathElement::IsClosedLoop() const {
+  bool isClosed = false;
+  auto callback = [&](const ComputedStyle* s) {
+    const nsStyleSVGReset* styleSVGReset = s->StyleSVGReset();
+    if (styleSVGReset->mD.IsPath()) {
+      isClosed = !styleSVGReset->mD.AsPath()._0.IsEmpty() &&
+                 styleSVGReset->mD.AsPath()._0.AsSpan().rbegin()->IsClose();
+    }
+  };
+
+  const bool success = SVGGeometryProperty::DoForComputedStyle(this, callback);
+  if (success) {
+    return isClosed;
+  }
+
+  const SVGPathData& data = mD.GetAnimValue();
+  // FIXME: Bug 1847621, we can cache this value, instead of walking through the
+  // entire path again and again.
+  uint32_t i = 0;
+  uint32_t segType = SVGPathSeg_Binding::PATHSEG_UNKNOWN;
+  while (i < data.Length()) {
+    segType = SVGPathSegUtils::DecodeType(data[i++]);
+    i += SVGPathSegUtils::ArgCountForType(segType);
+  }
+  return segType == SVGPathSeg_Binding::PATHSEG_CLOSEPATH;
 }
 
 /* static */

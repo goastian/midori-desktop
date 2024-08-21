@@ -39,11 +39,11 @@ class SVGScriptElement final : public SVGScriptElementBase,
   NS_DECL_ISUPPORTS_INHERITED
 
   // nsIScriptElement
-  bool GetScriptType(nsAString& type) override;
   void GetScriptText(nsAString& text) const override;
   void GetScriptCharset(nsAString& charset) override;
-  void FreezeExecutionAttrs(Document* aOwnerDoc) override;
+  void FreezeExecutionAttrs(const Document* aOwnerDoc) override;
   CORSMode GetCORSMode() const override;
+  FetchPriority GetFetchPriority() const override;
 
   // ScriptElement
   bool HasScriptContent() override;
@@ -60,6 +60,13 @@ class SVGScriptElement final : public SVGScriptElementBase,
   // WebIDL
   void GetType(nsAString& aType);
   void SetType(const nsAString& aType, ErrorResult& rv);
+  bool Async() { return mForceAsync || GetBoolAttr(nsGkAtoms::async); }
+  void SetAsync(bool aValue) {
+    mForceAsync = false;
+    SetBoolAttr(nsGkAtoms::async, aValue);
+  }
+  bool Defer() { return GetBoolAttr(nsGkAtoms::defer); }
+  void SetDefer(bool aDefer) { SetBoolAttr(nsGkAtoms::defer, aDefer); }
   void GetCrossOrigin(nsAString& aCrossOrigin);
   void SetCrossOrigin(const nsAString& aCrossOrigin, ErrorResult& aError);
   already_AddRefed<DOMSVGAnimatedString> Href();

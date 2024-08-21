@@ -21,6 +21,7 @@
 #include "mozilla/dom/WorkerScope.h"
 #include "mozilla/dom/EventSourceEventService.h"
 #include "mozilla/ScopeExit.h"
+#include "mozilla/Try.h"
 #include "mozilla/UniquePtrExtensions.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIThreadRetargetableStreamListener.h"
@@ -72,7 +73,6 @@ static LazyLogModule gEventSourceLog("EventSource");
   PR_IntervalToMilliseconds(DELAY_INTERVAL_LIMIT)
 
 class EventSourceImpl final : public nsIObserver,
-                              public nsIStreamListener,
                               public nsIChannelEventSink,
                               public nsIInterfaceRequestor,
                               public nsSupportsWeakReference,
@@ -378,7 +378,7 @@ EventSourceImpl::EventSourceImpl(EventSource* aEventSource,
       mIsShutDown(false),
       mSharedData(SharedData{aEventSource}, "EventSourceImpl::mSharedData"),
       mScriptLine(0),
-      mScriptColumn(0),
+      mScriptColumn(1),
       mInnerWindowID(0),
       mCookieJarSettings(aCookieJarSettings),
       mTargetThread(NS_GetCurrentThread()) {
@@ -568,11 +568,19 @@ nsresult EventSourceImpl::ParseURL(const nsAString& aURL) {
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIURI> srcURI;
-  rv = NS_NewURI(getter_AddRefs(srcURI), aURL, nullptr, baseURI);
+  nsCOMPtr<Document> doc =
+      mIsMainThread ? GetEventSource()->GetDocumentIfCurrent() : nullptr;
+  if (doc) {
+    rv = NS_NewURI(getter_AddRefs(srcURI), aURL, doc->GetDocumentCharacterSet(),
+                   baseURI);
+  } else {
+    rv = NS_NewURI(getter_AddRefs(srcURI), aURL, nullptr, baseURI);
+  }
+
   NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_SYNTAX_ERR);
 
   nsAutoString origin;
-  rv = nsContentUtils::GetUTFOrigin(srcURI, origin);
+  rv = nsContentUtils::GetWebExposedOriginSerialization(srcURI, origin);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsAutoCString spec;
@@ -712,8 +720,8 @@ EventSourceImpl::OnStartRequest(nsIRequest* aRequest) {
 
   if (NS_FAILED(status)) {
     // EventSource::OnStopRequest will evaluate if it shall either reestablish
-    // or fail the connection
-    return NS_ERROR_ABORT;
+    // or fail the connection, based on the status.
+    return status;
   }
 
   uint32_t httpStatus;
@@ -849,7 +857,8 @@ EventSourceImpl::OnStopRequest(nsIRequest* aRequest, nsresult aStatusCode) {
       aStatusCode != NS_ERROR_NET_PARTIAL_TRANSFER &&
       aStatusCode != NS_ERROR_NET_TIMEOUT_EXTERNAL &&
       aStatusCode != NS_ERROR_PROXY_CONNECTION_REFUSED &&
-      aStatusCode != NS_ERROR_DNS_LOOKUP_QUEUE_FULL) {
+      aStatusCode != NS_ERROR_DNS_LOOKUP_QUEUE_FULL &&
+      aStatusCode != NS_ERROR_INVALID_CONTENT_ENCODING) {
     DispatchFailConnection();
     return NS_ERROR_ABORT;
   }
@@ -1818,14 +1827,14 @@ nsresult EventSourceImpl::ParseCharacter(char16_t aChr) {
 
 namespace {
 
-class WorkerRunnableDispatcher final : public WorkerRunnable {
+class WorkerRunnableDispatcher final : public WorkerThreadRunnable {
   RefPtr<EventSourceImpl> mEventSourceImpl;
 
  public:
   WorkerRunnableDispatcher(RefPtr<EventSourceImpl>&& aImpl,
                            WorkerPrivate* aWorkerPrivate,
                            already_AddRefed<nsIRunnable> aEvent)
-      : WorkerRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerThreadRunnable("WorkerRunnableDispatcher"),
         mEventSourceImpl(std::move(aImpl)),
         mEvent(std::move(aEvent)) {}
 
@@ -1919,7 +1928,7 @@ EventSourceImpl::Dispatch(already_AddRefed<nsIRunnable> aEvent,
   RefPtr<WorkerRunnableDispatcher> event = new WorkerRunnableDispatcher(
       this, mWorkerRef->Private(), event_ref.forget());
 
-  if (!event->Dispatch()) {
+  if (!event->Dispatch(mWorkerRef->Private())) {
     return NS_ERROR_FAILURE;
   }
   return NS_OK;
@@ -1949,6 +1958,10 @@ EventSourceImpl::CheckListenerChain() {
   MOZ_ASSERT(NS_IsMainThread(), "Should be on the main thread!");
   return NS_OK;
 }
+
+NS_IMETHODIMP
+EventSourceImpl::OnDataFinished(nsresult) { return NS_OK; }
+
 ////////////////////////////////////////////////////////////////////////////////
 // EventSource
 ////////////////////////////////////////////////////////////////////////////////

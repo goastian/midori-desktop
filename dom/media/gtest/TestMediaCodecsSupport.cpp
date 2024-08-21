@@ -9,6 +9,30 @@
 using namespace mozilla;
 using namespace media;
 
+TEST(MediaCodecsSupport, BasicDecodeSupportSet)
+{
+  DecodeSupportSet support{};
+  EXPECT_TRUE(support != DecodeSupport::SoftwareDecode);
+  EXPECT_TRUE(support != DecodeSupport::HardwareDecode);
+  EXPECT_TRUE(!support.contains(DecodeSupport::SoftwareDecode));
+  EXPECT_TRUE(!support.contains(DecodeSupport::HardwareDecode));
+  EXPECT_TRUE(support.isEmpty());
+
+  support += DecodeSupport::SoftwareDecode;
+  EXPECT_TRUE(support == DecodeSupport::SoftwareDecode);
+  EXPECT_TRUE(support != DecodeSupport::HardwareDecode);
+  EXPECT_TRUE(support.contains(DecodeSupport::SoftwareDecode));
+  EXPECT_TRUE(!support.contains(DecodeSupport::HardwareDecode));
+  EXPECT_TRUE(!support.isEmpty());
+
+  support += DecodeSupport::HardwareDecode;
+  EXPECT_TRUE(support != DecodeSupport::SoftwareDecode);
+  EXPECT_TRUE(support != DecodeSupport::HardwareDecode);
+  EXPECT_TRUE(support.contains(DecodeSupport::SoftwareDecode));
+  EXPECT_TRUE(support.contains(DecodeSupport::HardwareDecode));
+  EXPECT_TRUE(!support.isEmpty());
+}
+
 // Test MCSInfo::GetDecodeSupportSet function.
 // This function is used to retrieve SW/HW support information for a
 // given codec from a MediaCodecsSupported EnumSet.
@@ -149,9 +173,67 @@ TEST(MediaCodecsSupport, GetMediaCodecsSupportedString)
   // Add H264 SW/HW support + VP8 Software decode support.
   MCSInfo::AddSupport({MediaCodecsSupport::H264SoftwareDecode,
                        MediaCodecsSupport::H264HardwareDecode,
-                       MediaCodecsSupport::VP8SoftwareDecode});
+                       MediaCodecsSupport::VP8SoftwareDecode,
+                       MediaCodecsSupport::VP9HardwareDecode});
 
   nsCString supportString;
+  nsCString targetString;
   MCSInfo::GetMediaCodecsSupportedString(supportString, MCSInfo::GetSupport());
-  EXPECT_TRUE(supportString.Equals("H264 SW\nH264 HW\nVP8 SW"_ns));
+
+  // MCSInfo should return support text for all possible codecs
+  for (const auto& it : MCSInfo::GetAllCodecDefinitions()) {
+    if (it.codec == MediaCodec::SENTINEL) {
+      break;
+    }
+    nsCString cn(it.commonName);
+    // H264/VP8/VP9 support text should reflect args to MCSInfo::AddSupport
+    if (cn == "H264"_ns) {
+      targetString += "H264 SW HW"_ns;
+    } else if (cn.Equals("VP8"_ns)) {
+      targetString += "VP8 SW"_ns;
+    } else if (cn.Equals("VP9"_ns)) {
+      targetString += "VP9 HW"_ns;
+    } else {
+      targetString += nsCString(it.commonName) + " NONE"_ns;
+    }
+    targetString += "\n"_ns;
+  }
+  // MCSInfo support string should not have a trailing newline
+  if (!targetString.IsEmpty()) {
+    targetString.Truncate(targetString.Length() - 1);
+  }
+  EXPECT_TRUE(supportString.Equals(targetString));
+}
+
+// Test MCSInfo::GetMediaCodecFromMimeType function.
+// This function returns a MediaCodec enum for a given MIME type string.
+TEST(MediaCodecsSupport, GetMediaCodecFromMimeType)
+{
+  std::vector<std::pair<nsCString, MediaCodec>> testPairs = {
+// Video codecs
+#ifdef MOZ_AV1
+      {"video/av1"_ns, MediaCodec::AV1},
+#endif
+      {"video/avc"_ns, MediaCodec::H264},
+      {"video/mp4"_ns, MediaCodec::H264},
+      {"video/theora"_ns, MediaCodec::Theora},
+      {"video/vp8"_ns, MediaCodec::VP8},
+      {"video/vp9"_ns, MediaCodec::VP9},
+      // Audio codecs
+      {"audio/mp4a-latm"_ns, MediaCodec::AAC},
+      {"audio/flac"_ns, MediaCodec::FLAC},
+      {"audio/mpeg"_ns, MediaCodec::MP3},
+      {"audio/opus"_ns, MediaCodec::Opus},
+      {"audio/vorbis"_ns, MediaCodec::Vorbis},
+      {"audio/x-wav"_ns, MediaCodec::Wave},
+      // Non-existant codecs that should fail
+      {"audio/jukebox"_ns, MediaCodec::SENTINEL},
+      {"video/stopmotion"_ns, MediaCodec::SENTINEL},
+      {"漢字"_ns, MediaCodec::SENTINEL},
+      {"/"_ns, MediaCodec::SENTINEL},
+      {""_ns, MediaCodec::SENTINEL},
+  };
+  for (auto& p : testPairs) {
+    EXPECT_TRUE(MCSInfo::GetMediaCodecFromMimeType(p.first) == p.second);
+  }
 }

@@ -24,6 +24,7 @@
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/Nullable.h"
 #include "mozilla/dom/Promise.h"
+#include "mozilla/dom/ReferrerPolicyBinding.h"
 #include "mozilla/dom/WindowProxyHolder.h"
 #include "mozilla/dom/ipc/IdType.h"
 #include "mozilla/layers/LayersTypes.h"
@@ -74,6 +75,16 @@ struct RemotenessOptions;
 struct NavigationIsolationOptions;
 class SessionStoreChild;
 class SessionStoreParent;
+
+struct LazyLoadFrameResumptionState {
+  RefPtr<nsIURI> mBaseURI;
+  ReferrerPolicy mReferrerPolicy = ReferrerPolicy::_empty;
+
+  void Clear() {
+    mBaseURI = nullptr;
+    mReferrerPolicy = ReferrerPolicy::_empty;
+  }
+};
 
 namespace ipc {
 class StructuredCloneData;
@@ -253,12 +264,6 @@ class nsFrameLoader final : public nsStubMutationObserver,
 
   bool IsNetworkCreated() const { return mNetworkCreated; }
 
-  /**
-   * Is this a frame loader for a bona fide <iframe mozbrowser>?
-   * <xul:browser> is not a mozbrowser, so this is false for that case.
-   */
-  bool OwnerIsMozBrowserFrame();
-
   nsIContent* GetParentObject() const;
 
   /**
@@ -358,19 +363,14 @@ class nsFrameLoader final : public nsStubMutationObserver,
    * destroying the nsSubDocumentFrame. If the nsSubdocumentFrame is
    * being reframed we'll restore the detached nsIFrame when it's recreated,
    * otherwise we'll discard the old presentation and set the detached
-   * subdoc nsIFrame to null. aContainerDoc is the document containing the
-   * the subdoc frame. This enables us to detect when the containing
-   * document has changed during reframe, so we can discard the presentation
-   * in that case.
+   * subdoc nsIFrame to null.
    */
-  void SetDetachedSubdocFrame(nsIFrame* aDetachedFrame,
-                              Document* aContainerDoc);
+  void SetDetachedSubdocFrame(nsIFrame* aDetachedFrame);
 
   /**
-   * Retrieves the detached nsIFrame and the document containing the nsIFrame,
-   * as set by SetDetachedSubdocFrame().
+   * Retrieves the detached nsIFrame as set by SetDetachedSubdocFrame().
    */
-  nsIFrame* GetDetachedSubdocFrame(Document** aContainerDoc) const;
+  nsIFrame* GetDetachedSubdocFrame(bool* aOutIsSet = nullptr) const;
 
   /**
    * Applies a new set of sandbox flags. These are merged with the sandbox
@@ -475,9 +475,6 @@ class nsFrameLoader final : public nsStubMutationObserver,
   void AddTreeItemToTreeOwner(nsIDocShellTreeItem* aItem,
                               nsIDocShellTreeOwner* aOwner);
 
-  void InitializeBrowserAPI();
-  void DestroyBrowserFrameScripts();
-
   nsresult GetNewTabContext(mozilla::dom::MutableTabContext* aTabContext,
                             nsIURI* aURI = nullptr);
 
@@ -495,6 +492,9 @@ class nsFrameLoader final : public nsStubMutationObserver,
 
   void RequestFinalTabStateFlush();
 
+  const mozilla::dom::LazyLoadFrameResumptionState&
+  GetLazyLoadFrameResumptionState();
+
   RefPtr<mozilla::dom::BrowsingContext> mPendingBrowsingContext;
   nsCOMPtr<nsIURI> mURIToLoad;
   nsCOMPtr<nsIPrincipal> mTriggeringPrincipal;
@@ -510,12 +510,6 @@ class nsFrameLoader final : public nsStubMutationObserver,
   // Stores the root frame of the subdocument while the subdocument is being
   // reframed. Used to restore the presentation after reframing.
   WeakFrame mDetachedSubdocFrame;
-  // Stores the containing document of the frame corresponding to this
-  // frame loader. This is reference is kept valid while the subframe's
-  // presentation is detached and stored in mDetachedSubdocFrame. This
-  // enables us to detect whether the frame has moved documents during
-  // a reframe, so that we know not to restore the presentation.
-  RefPtr<Document> mContainerDocWhileDetached;
 
   // When performing a process switch, this value is used rather than mURIToLoad
   // to identify the process-switching load which should be resumed in the
@@ -559,6 +553,8 @@ class nsFrameLoader final : public nsStubMutationObserver,
   // but for a different process, after it is destroyed.
   bool mWillChangeProcess : 1;
   bool mObservingOwnerContent : 1;
+  // Whether we had a (possibly dead now) mDetachedSubdocFrame.
+  bool mHadDetachedFrame : 1;
 
   // When an out-of-process nsFrameLoader crashes, an event is fired on the
   // frame. To ensure this is only fired once, this bit is checked.

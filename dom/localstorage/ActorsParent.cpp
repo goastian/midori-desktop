@@ -489,10 +489,8 @@ nsresult SetDefaultPragmas(mozIStorageConnection* aConnection) {
   return NS_OK;
 }
 
-template <typename CorruptedFileHandler>
 Result<nsCOMPtr<mozIStorageConnection>, nsresult> CreateStorageConnection(
-    nsIFile& aDBFile, nsIFile& aUsageFile, const nsACString& aOrigin,
-    CorruptedFileHandler&& aCorruptedFileHandler) {
+    nsIFile& aDBFile, nsIFile& aUsageFile, const nsACString& aOrigin) {
   MOZ_ASSERT(IsOnIOThread() || IsOnGlobalConnectionThread());
 
   // XXX Common logic should be refactored out of this method and
@@ -503,48 +501,10 @@ Result<nsCOMPtr<mozIStorageConnection>, nsresult> CreateStorageConnection(
                                          MOZ_SELECT_OVERLOAD(do_GetService),
                                          MOZ_STORAGE_SERVICE_CONTRACTID));
 
-  // XXX We can't use QM_OR_ELSE_WARN_IF because base-toolchains builds fail
-  // with: error: use of 'tryResult28' before deduction of 'auto'
-  QM_TRY_UNWRAP(
-      auto connection,
-      OrElseIf(
-          // Expression.
-          MOZ_TO_RESULT_INVOKE_MEMBER_TYPED(
-              nsCOMPtr<mozIStorageConnection>, storageService, OpenDatabase,
-              &aDBFile, mozIStorageService::CONNECTION_DEFAULT),
-          // Predicate.
-          IsDatabaseCorruptionError,
-          // Fallback.
-          ([&aUsageFile, &aDBFile, &aCorruptedFileHandler,
-            &storageService](const nsresult rv)
-               -> Result<nsCOMPtr<mozIStorageConnection>, nsresult> {
-            // Remove the usage file first (it might not exist at all due
-            // to corrupted state, which is ignored here).
-
-            // Usually we only use QM_OR_ELSE_LOG_VERBOSE(_IF) with Remove and
-            // NS_ERROR_FILE_NOT_FOUND check, but we're already in the rare case
-            // of corruption here, so the use of QM_OR_ELSE_WARN_IF is ok here.
-            QM_TRY(QM_OR_ELSE_WARN_IF(
-                // Expression.
-                MOZ_TO_RESULT(aUsageFile.Remove(false)),
-                // Predicate.
-                ([](const nsresult rv) {
-                  return rv == NS_ERROR_FILE_NOT_FOUND;
-                }),
-                // Fallback.
-                ErrToDefaultOk<>));
-
-            // Call the corrupted file handler before trying to remove the
-            // database file, which might fail.
-            std::forward<CorruptedFileHandler>(aCorruptedFileHandler)();
-
-            // Nuke the database file.
-            QM_TRY(MOZ_TO_RESULT(aDBFile.Remove(false)));
-
-            QM_TRY_RETURN(MOZ_TO_RESULT_INVOKE_MEMBER_TYPED(
-                nsCOMPtr<mozIStorageConnection>, storageService, OpenDatabase,
-                &aDBFile, mozIStorageService::CONNECTION_DEFAULT));
-          })));
+  QM_TRY_UNWRAP(auto connection, MOZ_TO_RESULT_INVOKE_MEMBER_TYPED(
+                                     nsCOMPtr<mozIStorageConnection>,
+                                     storageService, OpenDatabase, &aDBFile,
+                                     mozIStorageService::CONNECTION_DEFAULT));
 
   QM_TRY(MOZ_TO_RESULT(SetDefaultPragmas(connection)));
 
@@ -580,12 +540,14 @@ Result<nsCOMPtr<mozIStorageConnection>, nsresult> CreateStorageConnection(
 
     bool vacuumNeeded = false;
 
-    mozStorageTransaction transaction(
-        connection, false, mozIStorageConnection::TRANSACTION_IMMEDIATE);
-
-    QM_TRY(MOZ_TO_RESULT(transaction.Start()));
-
     if (newDatabase) {
+      mozStorageTransaction transaction(
+          connection,
+          /* aCommitOnComplete */ false,
+          mozIStorageConnection::TRANSACTION_IMMEDIATE);
+
+      QM_TRY(MOZ_TO_RESULT(transaction.Start()));
+
       QM_TRY(MOZ_TO_RESULT(CreateTables(connection)));
 
 #ifdef DEBUG
@@ -608,12 +570,21 @@ Result<nsCOMPtr<mozIStorageConnection>, nsresult> CreateStorageConnection(
       QM_TRY(MOZ_TO_RESULT(stmt->BindUTF8StringByName("origin"_ns, aOrigin)));
 
       QM_TRY(MOZ_TO_RESULT(stmt->Execute()));
+
+      QM_TRY(MOZ_TO_RESULT(transaction.Commit()));
     } else {
       // This logic needs to change next time we change the schema!
       static_assert(kSQLiteSchemaVersion == int32_t((5 << 4) + 0),
                     "Upgrade function needed due to schema version increase.");
 
       while (schemaVersion != kSQLiteSchemaVersion) {
+        mozStorageTransaction transaction(
+            connection,
+            /* aCommitOnComplete */ false,
+            mozIStorageConnection::TRANSACTION_IMMEDIATE);
+
+        QM_TRY(MOZ_TO_RESULT(transaction.Start()));
+
         if (schemaVersion == MakeSchemaVersion(1, 0)) {
           QM_TRY(MOZ_TO_RESULT(UpgradeSchemaFrom1_0To2_0(connection)));
         } else if (schemaVersion == MakeSchemaVersion(2, 0)) {
@@ -630,14 +601,14 @@ Result<nsCOMPtr<mozIStorageConnection>, nsresult> CreateStorageConnection(
           return Err(NS_ERROR_FAILURE);
         }
 
+        QM_TRY(MOZ_TO_RESULT(transaction.Commit()));
+
         QM_TRY_UNWRAP(schemaVersion, MOZ_TO_RESULT_INVOKE_MEMBER(
                                          connection, GetSchemaVersion));
       }
 
       MOZ_ASSERT(schemaVersion == kSQLiteSchemaVersion);
     }
-
-    QM_TRY(MOZ_TO_RESULT(transaction.Commit()));
 
     if (vacuumNeeded) {
       QM_TRY(MOZ_TO_RESULT(connection->ExecuteSimpleSQL("VACUUM;"_ns)));
@@ -676,6 +647,45 @@ Result<nsCOMPtr<mozIStorageConnection>, nsresult> CreateStorageConnection(
   }
 
   return connection;
+}
+
+template <typename CorruptedFileHandler>
+Result<nsCOMPtr<mozIStorageConnection>, nsresult>
+CreateStorageConnectionWithRecovery(
+    nsIFile& aDBFile, nsIFile& aUsageFile, const nsACString& aOrigin,
+    CorruptedFileHandler&& aCorruptedFileHandler) {
+  QM_TRY_RETURN(QM_OR_ELSE_WARN_IF(
+      // Expression.
+      CreateStorageConnection(aDBFile, aUsageFile, aOrigin),
+      // Predicate.
+      IsDatabaseCorruptionError,
+      // Fallback.
+      ([&aDBFile, &aUsageFile, &aOrigin,
+        &aCorruptedFileHandler](const nsresult rv)
+           -> Result<nsCOMPtr<mozIStorageConnection>, nsresult> {
+        // Remove the usage file first (it might not exist at all due
+        // to corrupted state, which is ignored here).
+
+        // Usually we only use QM_OR_ELSE_LOG_VERBOSE(_IF) with Remove and
+        // NS_ERROR_FILE_NOT_FOUND check, but we're already in the rare case
+        // of corruption here, so the use of QM_OR_ELSE_WARN_IF is ok here.
+        QM_TRY(QM_OR_ELSE_WARN_IF(
+            // Expression.
+            MOZ_TO_RESULT(aUsageFile.Remove(false)),
+            // Predicate.
+            ([](const nsresult rv) { return rv == NS_ERROR_FILE_NOT_FOUND; }),
+            // Fallback.
+            ErrToDefaultOk<>));
+
+        // Call the corrupted file handler before trying to remove the
+        // database file, which might fail.
+        aCorruptedFileHandler();
+
+        // Nuke the database file.
+        QM_TRY(MOZ_TO_RESULT(aDBFile.Remove(false)));
+
+        QM_TRY_RETURN(CreateStorageConnection(aDBFile, aUsageFile, aOrigin));
+      })));
 }
 
 Result<nsCOMPtr<mozIStorageConnection>, nsresult> GetStorageConnection(
@@ -1520,9 +1530,7 @@ class Datastore final
   uint32_t PrivateBrowsingId() const { return mPrivateBrowsingId; }
 
   bool IsPersistent() const {
-    // Private-browsing is forbidden from touching disk, but
-    // StorageAccess::eSessionScoped is allowed to touch disk because
-    // QuotaManager's storage for such origins is wiped at shutdown.
+    // Private-browsing is forbidden from touching disk.
     return mPrivateBrowsingId == 0;
   }
 
@@ -1803,7 +1811,7 @@ class Database final
 
   void Stringify(nsACString& aResult) const;
 
-  NS_INLINE_DECL_REFCOUNTING(mozilla::dom::Database)
+  NS_INLINE_DECL_REFCOUNTING(mozilla::dom::Database, override)
 
  private:
   // Reference counted.
@@ -2174,7 +2182,6 @@ class LSRequestBase : public DatastoreOperationBase,
 
 class PrepareDatastoreOp
     : public LSRequestBase,
-      public OpenDirectoryListener,
       public SupportsCheckedUnsafePtr<CheckIf<DiagnosticAssertEnabled>> {
   class LoadDataOp;
 
@@ -2224,7 +2231,7 @@ class PrepareDatastoreOp
   };
 
   RefPtr<PrepareDatastoreOp> mDelayedOp;
-  RefPtr<DirectoryLock> mPendingDirectoryLock;
+  RefPtr<ClientDirectoryLock> mPendingDirectoryLock;
   RefPtr<DirectoryLock> mDirectoryLock;
   RefPtr<Connection> mConnection;
   RefPtr<Datastore> mDatastore;
@@ -2336,15 +2343,12 @@ class PrepareDatastoreOp
 
   void CleanupMetadata();
 
-  NS_DECL_ISUPPORTS_INHERITED
-
   // IPDL overrides.
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
-  // OpenDirectoryListener overrides.
-  void DirectoryLockAcquired(DirectoryLock* aLock) override;
+  void DirectoryLockAcquired(DirectoryLock* aLock);
 
-  void DirectoryLockFailed() override;
+  void DirectoryLockFailed();
 };
 
 class PrepareDatastoreOp::LoadDataOp final
@@ -2836,9 +2840,6 @@ nsresult LoadArchivedOrigins() {
   QuotaManager* quotaManager = QuotaManager::Get();
   MOZ_ASSERT(quotaManager);
 
-  // Ensure that the webappsstore.sqlite is moved to new place.
-  QM_TRY(MOZ_TO_RESULT(quotaManager->EnsureStorageIsInitialized()));
-
   QM_TRY_INSPECT(const auto& connection, CreateArchiveStorageConnection(
                                              quotaManager->GetStoragePath()));
 
@@ -3187,7 +3188,7 @@ void InitializeLocalStorage() {
 #endif
 }
 
-PBackgroundLSDatabaseParent* AllocPBackgroundLSDatabaseParent(
+already_AddRefed<PBackgroundLSDatabaseParent> AllocPBackgroundLSDatabaseParent(
     const PrincipalInfo& aPrincipalInfo, const uint32_t& aPrivateBrowsingId,
     const uint64_t& aDatastoreId) {
   AssertIsOnBackgroundThread();
@@ -3218,7 +3219,7 @@ PBackgroundLSDatabaseParent* AllocPBackgroundLSDatabaseParent(
                    preparedDatastore->Origin(), aPrivateBrowsingId);
 
   // Transfer ownership to IPDL.
-  return database.forget().take();
+  return database.forget();
 }
 
 bool RecvPBackgroundLSDatabaseConstructor(PBackgroundLSDatabaseParent* aActor,
@@ -3249,16 +3250,6 @@ bool RecvPBackgroundLSDatabaseConstructor(PBackgroundLSDatabaseParent* aActor,
   if (preparedDatastore->IsInvalidated()) {
     database->RequestAllowToClose();
   }
-
-  return true;
-}
-
-bool DeallocPBackgroundLSDatabaseParent(PBackgroundLSDatabaseParent* aActor) {
-  AssertIsOnBackgroundThread();
-  MOZ_ASSERT(aActor);
-
-  // Transfer ownership back from IPDL.
-  RefPtr<Database> actor = dont_AddRef(static_cast<Database*>(aActor));
 
   return true;
 }
@@ -4079,9 +4070,9 @@ nsresult Connection::EnsureStorageConnection() {
     }
   });
 
-  QM_TRY_UNWRAP(storageConnection,
-                CreateStorageConnection(*directoryEntry, *usageFile, Origin(),
-                                        [] { MOZ_ASSERT_UNREACHABLE(); }));
+  QM_TRY_UNWRAP(storageConnection, CreateStorageConnectionWithRecovery(
+                                       *directoryEntry, *usageFile, Origin(),
+                                       [] { MOZ_ASSERT_UNREACHABLE(); }));
 
   MOZ_ASSERT(mQuotaClient);
 
@@ -6841,20 +6832,23 @@ nsresult PrepareDatastoreOp::BeginDatastorePreparationInternal() {
   QuotaManager* quotaManager = QuotaManager::Get();
   MOZ_ASSERT(quotaManager);
 
-  // Open directory
-  mPendingDirectoryLock = quotaManager->CreateDirectoryLock(
-      mOriginMetadata.mPersistenceType, mOriginMetadata,
-      mozilla::dom::quota::Client::LS,
-      /* aExclusive */ false);
-
   mNestedState = NestedState::DirectoryOpenPending;
 
-  {
-    // Pin the directory lock, because Acquire might clear mPendingDirectoryLock
-    // during the Acquire call.
-    RefPtr pinnedDirectoryLock = mPendingDirectoryLock;
-    pinnedDirectoryLock->Acquire(this);
-  }
+  quotaManager
+      ->OpenClientDirectory({mOriginMetadata, mozilla::dom::quota::Client::LS},
+                            SomeRef(mPendingDirectoryLock))
+      ->Then(
+          GetCurrentSerialEventTarget(), __func__,
+          [self = RefPtr(this)](
+              const ClientDirectoryLockPromise::ResolveOrRejectValue& aValue) {
+            self->mPendingDirectoryLock = nullptr;
+
+            if (aValue.IsResolve()) {
+              self->DirectoryLockAcquired(aValue.ResolveValue());
+            } else {
+              self->DirectoryLockFailed();
+            }
+          });
 
   return NS_OK;
 }
@@ -6910,12 +6904,10 @@ nsresult PrepareDatastoreOp::DatabaseWork() {
     QuotaManager* quotaManager = QuotaManager::Get();
     MOZ_ASSERT(quotaManager);
 
-    // This must be called before EnsureTemporaryStorageIsInitialized.
-    QM_TRY(MOZ_TO_RESULT(quotaManager->EnsureStorageIsInitialized()));
-
     // This ensures that usages for existings origin directories are cached in
     // memory.
-    QM_TRY(MOZ_TO_RESULT(quotaManager->EnsureTemporaryStorageIsInitialized()));
+    QM_TRY(MOZ_TO_RESULT(
+        quotaManager->EnsureTemporaryStorageIsInitializedInternal()));
 
     const UsageInfo usageInfo = quotaManager->GetUsageForClient(
         PERSISTENCE_TYPE_DEFAULT, mOriginMetadata,
@@ -7027,7 +7019,7 @@ nsresult PrepareDatastoreOp::DatabaseWork() {
 
     QM_TRY_INSPECT(
         const auto& connection,
-        (CreateStorageConnection(
+        (CreateStorageConnectionWithRecovery(
             *directoryEntry, *usageFile, Origin(), [&quotaObject, this] {
               // This is called when the usage file was removed or we notice
               // that the usage file doesn't exist anymore. Adjust the usage
@@ -7056,9 +7048,9 @@ nsresult PrepareDatastoreOp::DatabaseWork() {
         QM_TRY_INSPECT(const int64_t& newUsage,
                        GetUsage(*connection, mArchivedOriginScope.get()));
 
-        if (!quotaObject->MaybeUpdateSize(newUsage, /* aTruncate */ true)) {
-          return NS_ERROR_FILE_NO_DEVICE_SPACE;
-        }
+        QM_TRY(
+            OkIf(quotaObject->MaybeUpdateSize(newUsage, /* aTruncate */ true)),
+            NS_ERROR_FILE_NO_DEVICE_SPACE);
 
         auto autoUpdateSize = MakeScopeExit([&quotaObject] {
           MOZ_ALWAYS_TRUE(
@@ -7581,8 +7573,6 @@ void PrepareDatastoreOp::CleanupMetadata() {
     gPrepareDatastoreOps = nullptr;
   }
 }
-
-NS_IMPL_ISUPPORTS_INHERITED0(PrepareDatastoreOp, LSRequestBase)
 
 void PrepareDatastoreOp::ActorDestroy(ActorDestroyReason aWhy) {
   AssertIsOnOwningThread();
@@ -8369,8 +8359,8 @@ Result<UsageInfo, nsresult> QuotaClient::InitOrigin(
                    const nsresult) -> Result<UsageInfo, nsresult> {
                 QM_TRY_INSPECT(
                     const auto& connection,
-                    CreateStorageConnection(*file, *usageFile,
-                                            aOriginMetadata.mOrigin, [] {}));
+                    CreateStorageConnectionWithRecovery(
+                        *file, *usageFile, aOriginMetadata.mOrigin, [] {}));
 
                 QM_TRY_INSPECT(const int64_t& usage,
                                GetUsage(*connection,

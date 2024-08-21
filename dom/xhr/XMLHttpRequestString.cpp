@@ -5,14 +5,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "XMLHttpRequestString.h"
+#include "js/String.h"
 #include "nsISupportsImpl.h"
 #include "mozilla/dom/DOMString.h"
 
 namespace mozilla::dom {
 
 class XMLHttpRequestStringBuffer final {
+  friend class XMLHttpRequestStringSnapshot;
   friend class XMLHttpRequestStringWriterHelper;
-  friend class XMLHttpRequestStringSnapshotReaderHelper;
 
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(XMLHttpRequestStringBuffer)
@@ -57,8 +58,7 @@ class XMLHttpRequestStringBuffer final {
 
     // XXX: Bug 1408793 suggests encapsulating the following sequence within
     //      DOMString.
-    nsStringBuffer* buf = nsStringBuffer::FromString(mData);
-    if (buf) {
+    if (StringBuffer* buf = mData.GetStringBuffer()) {
       // We have to use SetStringBuffer, because once we release our mutex mData
       // can get mutated from some other thread while the DOMString is still
       // alive.
@@ -80,8 +80,6 @@ class XMLHttpRequestStringBuffer final {
 
  private:
   ~XMLHttpRequestStringBuffer() = default;
-
-  nsString& UnsafeData() { return mData; }
 
   Mutex mMutex;
 
@@ -159,6 +157,13 @@ bool XMLHttpRequestStringSnapshot::GetAsString(DOMString& aString) const {
   return true;
 }
 
+JSString* XMLHttpRequestStringSnapshot::GetAsJSStringCopy(
+    JSContext* aCx) const {
+  MutexAutoLock lock(mBuffer->mMutex);
+  return JS_NewUCStringCopyN(aCx, mBuffer->mData.BeginReading(),
+                             mBuffer->mData.Length());
+}
+
 // ---------------------------------------------------------------------------
 // XMLHttpRequestStringWriterHelper
 
@@ -175,25 +180,6 @@ uint32_t XMLHttpRequestStringWriterHelper::Length() const {
 mozilla::Result<mozilla::BulkWriteHandle<char16_t>, nsresult>
 XMLHttpRequestStringWriterHelper::BulkWrite(uint32_t aCapacity) {
   return mBuffer->UnsafeBulkWrite(aCapacity);
-}
-
-// ---------------------------------------------------------------------------
-// XMLHttpRequestStringReaderHelper
-
-XMLHttpRequestStringSnapshotReaderHelper::
-    XMLHttpRequestStringSnapshotReaderHelper(
-        XMLHttpRequestStringSnapshot& aSnapshot)
-    : mBuffer(aSnapshot.mBuffer), mLock(aSnapshot.mBuffer->mMutex) {}
-
-XMLHttpRequestStringSnapshotReaderHelper::
-    ~XMLHttpRequestStringSnapshotReaderHelper() = default;
-
-const char16_t* XMLHttpRequestStringSnapshotReaderHelper::Buffer() const {
-  return mBuffer->UnsafeData().BeginReading();
-}
-
-uint32_t XMLHttpRequestStringSnapshotReaderHelper::Length() const {
-  return mBuffer->UnsafeLength();
 }
 
 }  // namespace mozilla::dom

@@ -12,7 +12,6 @@
 #include "mozilla/FunctionRef.h"
 #include "mozilla/dom/AutoEntryScript.h"
 #include "mozilla/dom/ClonedErrorHolder.h"
-#include "mozilla/dom/ClonedErrorHolderBinding.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/DOMExceptionBinding.h"
 #include "mozilla/dom/JSActorManager.h"
@@ -203,12 +202,14 @@ static Maybe<ipc::StructuredCloneData> CaptureJSStack(JSContext* aCx) {
 }
 
 void JSActor::SendAsyncMessage(JSContext* aCx, const nsAString& aMessageName,
-                               JS::Handle<JS::Value> aObj, ErrorResult& aRv) {
+                               JS::Handle<JS::Value> aObj,
+                               JS::Handle<JS::Value> aTransfers,
+                               ErrorResult& aRv) {
   profiler_add_marker("SendAsyncMessage", geckoprofiler::category::IPC, {},
                       JSActorMessageMarker{}, mName, aMessageName);
   Maybe<ipc::StructuredCloneData> data{std::in_place};
-  if (!nsFrameMessageManager::GetParamsForMessage(
-          aCx, aObj, JS::UndefinedHandleValue, *data)) {
+  if (!nsFrameMessageManager::GetParamsForMessage(aCx, aObj, aTransfers,
+                                                  *data)) {
     aRv.ThrowDataCloneError(nsPrintfCString(
         "Failed to serialize message '%s::%s'",
         NS_LossyConvertUTF16toASCII(aMessageName).get(), mName.get()));
@@ -255,10 +256,14 @@ already_AddRefed<Promise> JSActor::SendQuery(JSContext* aCx,
   meta.queryId() = mNextQueryId++;
   meta.kind() = JSActorMessageKind::Query;
 
+  SendRawMessage(meta, std::move(data), CaptureJSStack(aCx), aRv);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
+
   mPendingQueries.InsertOrUpdate(meta.queryId(),
                                  PendingQuery{promise, meta.messageName()});
 
-  SendRawMessage(meta, std::move(data), CaptureJSStack(aCx), aRv);
   return promise.forget();
 }
 
@@ -405,14 +410,9 @@ void JSActor::QueryHandler::RejectedCallback(JSContext* aCx,
   JS::Rooted<JS::Value> value(aCx, aValue);
   if (value.isObject()) {
     JS::Rooted<JSObject*> error(aCx, &value.toObject());
-    if (RefPtr<ClonedErrorHolder> ceh =
+    if (UniquePtr<ClonedErrorHolder> ceh =
             ClonedErrorHolder::Create(aCx, error, IgnoreErrors())) {
-      JS::RootedObject obj(aCx);
-      // Note: We can't use `ToJSValue` here because ClonedErrorHolder isn't
-      // wrapper cached.
-      if (ceh->WrapObject(aCx, nullptr, &obj)) {
-        value.setObject(*obj);
-      } else {
+      if (!ToJSValue(aCx, std::move(ceh), &value)) {
         JS_ClearPendingException(aCx);
       }
     } else {
@@ -441,14 +441,8 @@ void JSActor::QueryHandler::ResolvedCallback(JSContext* aCx,
     return;
   }
 
-  Maybe<ipc::StructuredCloneData> data{std::in_place};
-  data->InitScope(JS::StructuredCloneScope::DifferentProcess);
-
-  IgnoredErrorResult error;
-  data->Write(aCx, aValue, error);
-  if (NS_WARN_IF(error.Failed())) {
-    JS_ClearPendingException(aCx);
-
+  Maybe<ipc::StructuredCloneData> data = TryClone(aCx, aValue);
+  if (!data) {
     nsAutoCString msg;
     msg.Append(mActor->Name());
     msg.Append(':');

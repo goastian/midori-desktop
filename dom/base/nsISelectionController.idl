@@ -41,11 +41,12 @@ interface nsISelectionController : nsISelectionDisplay
    const short SELECTION_FIND                      = 8;
    const short SELECTION_URLSECONDARY              = 9;
    const short SELECTION_URLSTRIKEOUT              = 10;
+   const short SELECTION_TARGET_TEXT               = 11;
    // Custom Highlight API
    // (see https://drafts.csswg.org/css-highlight-api-1/#enumdef-highlighttype)
-   const short SELECTION_HIGHLIGHT                 = 11;
+   const short SELECTION_HIGHLIGHT                 = 12;
    // End of RawSelectionType values.
-   const short NUM_SELECTIONTYPES                  = 12;
+   const short NUM_SELECTIONTYPES                  = 13;
 
    // SelectionRegion values:
    const short SELECTION_ANCHOR_REGION = 0;
@@ -311,18 +312,8 @@ enum class SelectionType : RawSelectionType
   eFind = nsISelectionController::SELECTION_FIND,
   eURLSecondary = nsISelectionController::SELECTION_URLSECONDARY,
   eURLStrikeout = nsISelectionController::SELECTION_URLSTRIKEOUT,
+  eTargetText = nsISelectionController::SELECTION_TARGET_TEXT,
   eHighlight = nsISelectionController::SELECTION_HIGHLIGHT,
-};
-
-// Using anonymous enum to define constants because these constants may be
-// used at defining fixed size array in some header files (e.g.,
-// nsFrameSelection.h).  So, the values needs to be defined here, but we cannot
-// use static/const even with extern since it causes failing to link or
-// initializes them after such headers.
-enum : size_t
-{
-  // kSelectionTypeCount is number of SelectionType.
-  kSelectionTypeCount = nsISelectionController::NUM_SELECTIONTYPES,
 };
 
 // kPresentSelectionTypes is selection types which may be displayed.
@@ -338,11 +329,11 @@ static const SelectionType kPresentSelectionTypes[] = {
   SelectionType::eFind,
   SelectionType::eURLSecondary,
   SelectionType::eURLStrikeout,
+  SelectionType::eTargetText,
   SelectionType::eHighlight,
 };
 
 // Please include mozilla/dom/Selection.h for the following APIs.
-const char* ToChar(SelectionType aSelectionType);
 inline bool IsValidRawSelectionType(RawSelectionType aRawSelectionType);
 inline SelectionType ToSelectionType(RawSelectionType aRawSelectionType);
 inline RawSelectionType ToRawSelectionType(SelectionType aSelectionType);

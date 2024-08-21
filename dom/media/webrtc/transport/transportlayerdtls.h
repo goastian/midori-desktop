@@ -43,7 +43,7 @@ struct Packet;
 class TransportLayerNSPRAdapter {
  public:
   explicit TransportLayerNSPRAdapter(TransportLayer* output)
-      : output_(output), input_(), enabled_(true) {}
+      : output_(output), enabled_(true) {}
 
   void PacketReceived(MediaPacket& packet);
   int32_t Recv(void* buf, int32_t buflen);
@@ -144,7 +144,7 @@ class TransportLayerDtls final : public TransportLayer {
   SECStatus CheckDigest(const DtlsDigest& digest,
                         UniqueCERTCertificate& cert) const;
 
-  void RecordHandshakeCompletionTelemetry(TransportLayer::State endState);
+  void RecordHandshakeCompletionTelemetry(const char* aResult);
   void RecordTlsTelemetry();
 
   static PRBool WriteSrtpXtn(PRFileDesc* fd, SSLHandshakeType message,

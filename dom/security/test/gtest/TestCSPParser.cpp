@@ -93,8 +93,7 @@ nsresult runTest(
 
   // for testing the parser we only need to set a principal which is needed
   // to translate the keyword 'self' into an actual URI.
-  rv =
-      csp->SetRequestContextWithPrincipal(selfURIPrincipal, selfURI, u""_ns, 0);
+  rv = csp->SetRequestContextWithPrincipal(selfURIPrincipal, selfURI, ""_ns, 0);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // append a policy
@@ -150,14 +149,17 @@ nsresult runTestSuite(const PolicyTest* aPolicies, uint32_t aPolicyCount,
                       uint32_t aExpectedPolicyCount) {
   nsresult rv;
   nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
-  bool navigateTo = false;
-  bool wasmUnsafeEval = false;
+
+  // Add prefs you need to set to parse CSP here, see comments for example
+  // bool examplePref = false;
+  bool trustedTypesEnabled = false;
+  constexpr auto kTrustedTypesEnabledPrefName =
+      "dom.security.trusted_types.enabled";
   if (prefs) {
-    prefs->GetBoolPref("security.csp.enableNavigateTo", &navigateTo);
-    prefs->SetBoolPref("security.csp.enableNavigateTo", true);
-    prefs->GetBoolPref("security.csp.wasm-unsafe-eval.enabled",
-                       &wasmUnsafeEval);
-    prefs->SetBoolPref("security.csp.wasm-unsafe-eval.enabled", true);
+    // prefs->GetBoolPref("security.csp.examplePref", &examplePref);
+    // prefs->SetBoolPref("security.csp.examplePref", true);
+    prefs->GetBoolPref(kTrustedTypesEnabledPrefName, &trustedTypesEnabled);
+    prefs->SetBoolPref(kTrustedTypesEnabledPrefName, true);
   }
 
   for (uint32_t i = 0; i < aPolicyCount; i++) {
@@ -167,8 +169,8 @@ nsresult runTestSuite(const PolicyTest* aPolicies, uint32_t aPolicyCount,
   }
 
   if (prefs) {
-    prefs->SetBoolPref("security.csp.enableNavigateTo", navigateTo);
-    prefs->SetBoolPref("security.csp.wasm-unsafe-eval.enabled", wasmUnsafeEval);
+    // prefs->SetBoolPref("security.csp.examplePref", examplePref);
+    prefs->SetBoolPref(kTrustedTypesEnabledPrefName, trustedTypesEnabled);
   }
 
   return NS_OK;
@@ -217,17 +219,18 @@ TEST(CSPParser, Directives)
     { "script-src 'nonce-foo' 'strict-dynamic' 'unsafe-inline' 'report-sample' https:  ",
       "script-src 'nonce-foo' 'strict-dynamic' 'unsafe-inline' 'report-sample' https:" },
     { "default-src 'sha256-siVR8' 'strict-dynamic' 'unsafe-inline' https:  ",
-      "default-src 'sha256-siVR8' 'unsafe-inline' https:" },
+      "default-src 'sha256-siVR8' 'strict-dynamic' 'unsafe-inline' https:" },
     { "worker-src https://example.com",
       "worker-src https://example.com" },
     { "worker-src http://worker.com; frame-src http://frame.com; child-src http://child.com",
       "worker-src http://worker.com; frame-src http://frame.com; child-src http://child.com" },
-    { "navigate-to http://example.com",
-      "navigate-to http://example.com"},
-    { "navigate-to 'unsafe-allow-redirects' http://example.com",
-      "navigate-to 'unsafe-allow-redirects' http://example.com"},
     { "script-src 'unsafe-allow-redirects' http://example.com",
       "script-src http://example.com"},
+    { "require-trusted-types-for 'script'",
+      "require-trusted-types-for 'script'" },
+    { "trusted-types somePolicyName", "trusted-types somePolicyName" },
+    { "trusted-types somePolicyName anotherPolicyName 1 - # = _ / @ . % *",
+      "trusted-types somePolicyName anotherPolicyName 1 - # = _ / @ . % *" },
       // clang-format on
   };
 
@@ -255,6 +258,11 @@ TEST(CSPParser, Keywords)
       "script-src 'wasm-unsafe-eval'" },
     { "img-src 'none'; script-src 'unsafe-eval' 'unsafe-inline'; default-src 'self'",
       "img-src 'none'; script-src 'unsafe-eval' 'unsafe-inline'; default-src 'self'" },
+    { "trusted-types somePolicyName 'allow-duplicates'",
+      "trusted-types somePolicyName 'allow-duplicates'" },
+    { "trusted-types 'none'", "trusted-types 'none'" },
+    { "trusted-types", "trusted-types 'none'" },
+    { "trusted-types *", "trusted-types *" },
       // clang-format on
   };
 
@@ -597,6 +605,7 @@ TEST(CSPParser, BadPolicies)
     { "report-uri http://:foo", ""},
     { "require-sri-for", ""},
     { "require-sri-for style", ""},
+    { "trusted-types $", ""},
       // clang-format on
   };
 

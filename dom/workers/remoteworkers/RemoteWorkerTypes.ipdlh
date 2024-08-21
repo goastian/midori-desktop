@@ -62,7 +62,7 @@ struct RemoteWorkerData
   PrincipalInfo partitionedPrincipalInfo;
 
   bool useRegularPrincipal;
-  bool hasStorageAccessPermissionGranted;
+  bool usingStorageAccess;
 
   CookieJarSettingsArgs cookieJarSettings;
 
@@ -76,9 +76,11 @@ struct RemoteWorkerData
 
   StorageAccess storageAccess;
 
-  bool isThirdPartyContextToTopWindow;
+  bool isThirdPartyContext;
 
   bool shouldResistFingerprinting;
+
+  uint64_t? overriddenFingerprintingSettings;
 
   OriginTrials originTrials;
 
@@ -113,9 +115,14 @@ struct ErrorData {
   ErrorDataNote[] notes;
 };
 
+struct CSPViolation {
+  nsString json;
+};
+
 union ErrorValue {
   nsresult;
   ErrorData;
+  CSPViolation;
   void_t;
 };
 

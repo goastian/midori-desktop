@@ -12,23 +12,27 @@ using GMPPluginType from "GMPNativeTypes.h";
 namespace mozilla {
 namespace gmp {
 
-[NeedsOtherPid, ChildImpl=virtual, ParentImpl=virtual]
-sync protocol PGMPService
+struct GMPLaunchResult {
+  uint32_t pluginId;
+  GMPPluginType pluginType;
+  ProcessId pid;
+  nsCString displayName;
+  Endpoint<PGMPContentParent> endpoint;
+  nsresult result;
+  nsCString errorDescription;
+};
+
+[NeedsOtherPid, ChildImpl=virtual, ParentImpl=virtual, ChildProc=Content]
+async protocol PGMPService
 {
 parent:
-  sync LaunchGMP(NodeIdVariant nodeIdVariant,
-                 nsCString api,
-                 nsCString[] tags,
-                 ProcessId[] alreadyBridgedTo)
-    returns (uint32_t pluginId,
-             GMPPluginType pluginType,
-             ProcessId id,
-             nsCString displayName,
-             Endpoint<PGMPContentParent> endpoint,
-             nsresult aResult,
-             nsCString aErrorDescription);
+  async LaunchGMP(NodeIdVariant nodeIdVariant,
+                  nsCString api,
+                  nsCString[] tags,
+                  ProcessId[] alreadyBridgedTo)
+    returns (GMPLaunchResult aResult);
 
-  sync GetGMPNodeId(nsString origin, nsString topLevelOrigin, nsString gmpName)
+  async GetGMPNodeId(nsString origin, nsString topLevelOrigin, nsString gmpName)
     returns (nsCString id);
 child:
   async BeginShutdown();

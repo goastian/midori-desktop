@@ -56,7 +56,7 @@ static void RemoveDuplicates(const nsAttrValue* aAttr) {
   if (!aAttr || aAttr->Type() != nsAttrValue::eAtomArray) {
     return;
   }
-  aAttr->GetAtomArrayValue()->RemoveDuplicates();
+  const_cast<nsAttrValue*>(aAttr)->RemoveDuplicatesFromAtomArray();
 }
 
 uint32_t nsDOMTokenList::Length() {
@@ -94,7 +94,7 @@ void nsDOMTokenList::GetValue(nsAString& aResult) {
     return;
   }
 
-  mElement->GetAttr(kNameSpaceID_None, mAttrAtom, aResult);
+  mElement->GetAttr(mAttrAtom, aResult);
 }
 
 void nsDOMTokenList::SetValue(const nsAString& aValue, ErrorResult& rv) {

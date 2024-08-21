@@ -40,6 +40,10 @@
 class AudioDeviceInfo;
 class nsIPrefBranch;
 
+#ifdef MOZ_WEBRTC
+class WebrtcLogSinkHandle;
+#endif
+
 namespace mozilla {
 class MediaEngine;
 class MediaEngineSource;
@@ -83,10 +87,16 @@ class MediaDevice final {
    */
   enum class OsPromptable { No, Yes };
 
+  /**
+   * Whether source device is just a placeholder
+   */
+  enum class IsPlaceholder { No, Yes };
+
   MediaDevice(MediaEngine* aEngine, dom::MediaSourceEnum aMediaSource,
               const nsString& aRawName, const nsString& aRawID,
               const nsString& aRawGroupID, IsScary aIsScary,
-              const OsPromptable canRequestOsLevelPrompt);
+              const OsPromptable canRequestOsLevelPrompt,
+              const IsPlaceholder aIsPlaceholder = IsPlaceholder::No);
 
   MediaDevice(MediaEngine* aEngine,
               const RefPtr<AudioDeviceInfo>& aAudioDeviceInfo,
@@ -108,6 +118,7 @@ class MediaDevice final {
   const bool mScary;
   const bool mCanRequestOsLevelPrompt;
   const bool mIsFake;
+  const bool mIsPlaceholder;
   const nsString mType;
   const nsString mRawID;
   const nsString mRawGroupID;
@@ -199,7 +210,6 @@ class MediaManager final : public nsIMediaManagerService,
   // to MainThread from MediaManager thread.
   static MediaManager* Get();
   static MediaManager* GetIfExists();
-  static void StartupInit();
   static void Dispatch(already_AddRefed<Runnable> task);
 
   /**
@@ -210,7 +220,7 @@ class MediaManager final : public nsIMediaManagerService,
    * manager thread.
    */
   template <typename MozPromiseType, typename FunctionType>
-  static RefPtr<MozPromiseType> Dispatch(const char* aName,
+  static RefPtr<MozPromiseType> Dispatch(StaticString aName,
                                          FunctionType&& aFunction);
 
 #ifdef DEBUG
@@ -331,13 +341,54 @@ class MediaManager final : public nsIMediaManagerService,
     ForceFakes,
   };
   using EnumerationFlags = EnumSet<EnumerationFlag>;
-  RefPtr<LocalDeviceSetPromise> EnumerateDevicesImpl(
-      nsPIDOMWindowInner* aWindow, dom::MediaSourceEnum aVideoInputType,
-      dom::MediaSourceEnum aAudioInputType, EnumerationFlags aFlags);
 
-  RefPtr<DeviceSetPromise> EnumerateRawDevices(
+  enum class DeviceType { Real, Fake };
+
+  struct DeviceEnumerationParams {
+    DeviceEnumerationParams(dom::MediaSourceEnum aInputType, DeviceType aType,
+                            nsAutoCString aForcedDeviceName);
+    dom::MediaSourceEnum mInputType;
+    DeviceType mType;
+    nsAutoCString mForcedDeviceName;
+  };
+
+  struct VideoDeviceEnumerationParams : public DeviceEnumerationParams {
+    VideoDeviceEnumerationParams(dom::MediaSourceEnum aInputType,
+                                 DeviceType aType,
+                                 nsAutoCString aForcedDeviceName,
+                                 nsAutoCString aForcedMicrophoneName);
+
+    // The by-pref forced microphone device name, used for groupId correlation
+    // of camera devices.
+    nsAutoCString mForcedMicrophoneName;
+  };
+
+  struct EnumerationParams {
+    EnumerationParams(EnumerationFlags aFlags,
+                      Maybe<VideoDeviceEnumerationParams> aVideo,
+                      Maybe<DeviceEnumerationParams> aAudio);
+    bool HasFakeCams() const;
+    bool HasFakeMics() const;
+    bool RealDeviceRequested() const;
+    dom::MediaSourceEnum VideoInputType() const;
+    dom::MediaSourceEnum AudioInputType() const;
+    EnumerationFlags mFlags;
+    Maybe<VideoDeviceEnumerationParams> mVideo;
+    Maybe<DeviceEnumerationParams> mAudio;
+  };
+
+  static EnumerationParams CreateEnumerationParams(
       dom::MediaSourceEnum aVideoInputType,
       dom::MediaSourceEnum aAudioInputType, EnumerationFlags aFlags);
+
+  RefPtr<LocalDeviceSetPromise> EnumerateDevicesImpl(
+      nsPIDOMWindowInner* aWindow, EnumerationParams aParams);
+
+  RefPtr<DeviceSetPromise> MaybeRequestPermissionAndEnumerateRawDevices(
+      EnumerationParams aParams);
+
+  static RefPtr<MediaDeviceSetRefCnt> EnumerateRawDevices(
+      EnumerationParams aParams);
 
   RefPtr<LocalDeviceSetPromise> SelectSettings(
       const dom::MediaStreamConstraints& aConstraints,
@@ -359,6 +410,7 @@ class MediaManager final : public nsIMediaManagerService,
 
   void RemoveMediaDevicesCallback(uint64_t aWindowID);
   void DeviceListChanged();
+  void EnsureNoPlaceholdersInDeviceCache();
   void InvalidateDeviceCache();
   void HandleDeviceListChanged();
 
@@ -383,6 +435,9 @@ class MediaManager final : public nsIMediaManagerService,
   nsRefPtrHashtable<nsStringHashKey, GetUserMediaTask> mActiveCallbacks;
   nsClassHashtable<nsUint64HashKey, nsTArray<nsString>> mCallIds;
   nsTArray<RefPtr<dom::GetUserMediaRequest>> mPendingGUMRequest;
+#ifdef MOZ_WEBRTC
+  RefPtr<WebrtcLogSinkHandle> mLogHandle;
+#endif
   // non-null if a device enumeration is in progress and was started after the
   // last device-change invalidation
   RefPtr<media::Refcountable<nsTArray<MozPromiseHolder<ConstDeviceSetPromise>>>>

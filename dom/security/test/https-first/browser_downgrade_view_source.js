@@ -14,7 +14,7 @@ const TEST_PATH_HTTPS = getRootDirectory(gTestPath).replace(
 async function runTest(desc, url, expectedURI, excpectedContent) {
   await BrowserTestUtils.withNewTab("about:blank", async function (browser) {
     let loaded = BrowserTestUtils.browserLoaded(browser, false, null, true);
-    BrowserTestUtils.loadURIString(browser, url);
+    BrowserTestUtils.startLoadingURIString(browser, url);
     await loaded;
 
     await SpecialPowers.spawn(
@@ -26,6 +26,11 @@ async function runTest(desc, url, expectedURI, excpectedContent) {
         let loadedContent = content.document.body.textContent;
         is(loadedContent, excpectedContent, desc);
       }
+    );
+
+    await SpecialPowers.removePermission(
+      "https-only-load-insecure",
+      "http://example.com"
     );
   });
 }

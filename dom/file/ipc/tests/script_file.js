@@ -1,10 +1,10 @@
 /* eslint-env mozilla/chrome-script */
 
+// eslint-disable-next-line mozilla/reject-importGlobalProperties
 Cu.importGlobalProperties(["File"]);
 
-addMessageListener("file.open", function (e) {
-  var testFile = Cc["@mozilla.org/file/directory_service;1"]
-    .getService(Ci.nsIDirectoryService)
+addMessageListener("file.open", function () {
+  var testFile = Services.dirsvc
     .QueryInterface(Ci.nsIProperties)
     .get("ProfD", Ci.nsIFile);
   testFile.append("ipc_fileReader_testing");
@@ -29,9 +29,8 @@ addMessageListener("file.open", function (e) {
   });
 });
 
-addMessageListener("emptyfile.open", function (e) {
-  var testFile = Cc["@mozilla.org/file/directory_service;1"]
-    .getService(Ci.nsIDirectoryService)
+addMessageListener("emptyfile.open", function () {
+  var testFile = Services.dirsvc
     .QueryInterface(Ci.nsIProperties)
     .get("ProfD", Ci.nsIFile);
   testFile.append("ipc_fileReader_testing");

@@ -7,6 +7,7 @@
 #include "mozilla/dom/cache/Manager.h"
 
 #include "mozilla/AppShutdown.h"
+#include "mozilla/Assertions.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/StaticMutex.h"
@@ -23,6 +24,7 @@
 #include "mozilla/dom/cache/Types.h"
 #include "mozilla/dom/quota/Client.h"
 #include "mozilla/dom/quota/ClientImpl.h"
+#include "mozilla/dom/quota/StringifyUtils.h"
 #include "mozilla/dom/quota/QuotaManager.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "mozStorageHelper.h"
@@ -30,13 +32,14 @@
 #include "nsID.h"
 #include "nsIFile.h"
 #include "nsIThread.h"
+#include "nsIUUIDGenerator.h"
 #include "nsThreadUtils.h"
 #include "nsTObserverArray.h"
 #include "QuotaClientImpl.h"
+#include "Types.h"
 
 namespace mozilla::dom::cache {
 
-using mozilla::dom::quota::Client;
 using mozilla::dom::quota::CloneFileAndAppend;
 using mozilla::dom::quota::DirectoryLock;
 
@@ -67,6 +70,24 @@ nsresult MaybeUpdatePaddingFile(nsIFile* aBaseDir, mozIStorageConnection* aConn,
   return NS_OK;
 }
 
+Maybe<CipherKey> GetOrCreateCipherKey(NotNull<Context*> aContext,
+                                      const nsID& aBodyId, bool aCreate) {
+  const auto& maybeMetadata = aContext->MaybeCacheDirectoryMetadataRef();
+  MOZ_DIAGNOSTIC_ASSERT(maybeMetadata);
+
+  auto privateOrigin = maybeMetadata->mIsPrivate;
+  if (!privateOrigin) {
+    return Nothing{};
+  }
+
+  nsCString bodyIdStr{aBodyId.ToString().get()};
+
+  auto& cipherKeyManager = aContext->MutableCipherKeyManagerRef();
+
+  return aCreate ? Some(cipherKeyManager.Ensure(bodyIdStr))
+                 : cipherKeyManager.Get(bodyIdStr);
+}
+
 // An Action that is executed when a Context is first created.  It ensures that
 // the directory and database are setup properly.  This lets other actions
 // not worry about these details.
@@ -82,7 +103,7 @@ class SetupAction final : public SyncDBAction {
     QM_TRY(MOZ_TO_RESULT(BodyCreateDir(*aDBDir)));
 
     // executes in its own transaction
-    QM_TRY(MOZ_TO_RESULT(db::CreateOrMigrateSchema(*aConn)));
+    QM_TRY(MOZ_TO_RESULT(db::CreateOrMigrateSchema(*aDBDir, *aConn)));
 
     // If the Context marker file exists, then the last session was
     // not cleanly shutdown.  In these cases sqlite will ensure that
@@ -173,7 +194,8 @@ class DeleteOrphanedBodyAction final : public Action {
 
   void RunOnTarget(SafeRefPtr<Resolver> aResolver,
                    const Maybe<CacheDirectoryMetadata>& aDirectoryMetadata,
-                   Data*) override {
+                   Data*,
+                   const Maybe<CipherKey>& /*aMaybeCipherKey*/) override {
     MOZ_DIAGNOSTIC_ASSERT(aResolver);
     MOZ_DIAGNOSTIC_ASSERT(aDirectoryMetadata);
     MOZ_DIAGNOSTIC_ASSERT(aDirectoryMetadata->mDir);
@@ -366,23 +388,15 @@ class Manager::Factory {
 
     if (sFactory && !sFactory->mManagerList.IsEmpty()) {
       data.Append(
-          "Managers: "_ns +
+          "ManagerList: "_ns +
           IntToCString(static_cast<uint64_t>(sFactory->mManagerList.Length())) +
-          " ("_ns);
+          kStringifyStartSet);
 
       for (const auto& manager : sFactory->mManagerList.NonObservingRange()) {
-        data.Append(quota::AnonymizedOriginString(
-            manager->GetManagerId().QuotaOrigin()));
-
-        data.AppendLiteral(": ");
-
-        data.Append(manager->GetState() == State::Open ? "Open"_ns
-                                                       : "Closing"_ns);
-
-        data.AppendLiteral(", ");
+        manager->Stringify(data);
       }
 
-      data.AppendLiteral(" ) ");
+      data.Append(kStringifyEndSet);
       if (sFactory->mPotentiallyUnreleasedCSCP.Length() > 0) {
         data.Append(
             "There have been CSCP instances whose"
@@ -626,10 +640,15 @@ class Manager::CacheMatchAction final : public Manager::BaseAction {
       return NS_OK;
     }
 
+    const auto& bodyId = mResponse.mBodyId;
+
     nsCOMPtr<nsIInputStream> stream;
     if (mArgs.openMode() == OpenMode::Eager) {
-      QM_TRY_UNWRAP(stream,
-                    BodyOpen(aDirectoryMetadata, *aDBDir, mResponse.mBodyId));
+      QM_TRY_UNWRAP(
+          stream,
+          BodyOpen(aDirectoryMetadata, *aDBDir, bodyId,
+                   GetOrCreateCipherKey(WrapNotNull(mManager->mContext), bodyId,
+                                        /* aCreate */ false)));
     }
 
     // If we entered shutdown on the main thread while we were doing IO,
@@ -697,10 +716,15 @@ class Manager::CacheMatchAllAction final : public Manager::BaseAction {
         continue;
       }
 
+      const auto& bodyId = mSavedResponses[i].mBodyId;
+
       nsCOMPtr<nsIInputStream> stream;
       if (mArgs.openMode() == OpenMode::Eager) {
-        QM_TRY_UNWRAP(stream, BodyOpen(aDirectoryMetadata, *aDBDir,
-                                       mSavedResponses[i].mBodyId));
+        QM_TRY_UNWRAP(stream,
+                      BodyOpen(aDirectoryMetadata, *aDBDir, bodyId,
+                               GetOrCreateCipherKey(
+                                   WrapNotNull(mManager->mContext), bodyId,
+                                   /* aCreate */ false)));
       }
 
       // If we entered shutdown on the main thread while we were doing IO,
@@ -891,7 +915,11 @@ class Manager::CachePutAllAction final : public DBAction {
     const nsresult rv = [this, &trans]() -> nsresult {
       QM_TRY(CollectEachInRange(mList, [this](Entry& e) -> nsresult {
         if (e.mRequestStream) {
-          QM_TRY(MOZ_TO_RESULT(BodyFinalizeWrite(*mDBDir, e.mRequestBodyId)));
+          QM_TRY_UNWRAP(int64_t bodyDiskSize,
+                        BodyFinalizeWrite(*mDBDir, e.mRequestBodyId));
+          e.mRequest.bodyDiskSize() = bodyDiskSize;
+        } else {
+          e.mRequest.bodyDiskSize() = 0;
         }
         if (e.mResponseStream) {
           // Gerenate padding size for opaque response if needed.
@@ -906,7 +934,11 @@ class Manager::CachePutAllAction final : public DBAction {
             mUpdatedPaddingSize += e.mResponse.paddingSize();
           }
 
-          QM_TRY(MOZ_TO_RESULT(BodyFinalizeWrite(*mDBDir, e.mResponseBodyId)));
+          QM_TRY_UNWRAP(int64_t bodyDiskSize,
+                        BodyFinalizeWrite(*mDBDir, e.mResponseBodyId));
+          e.mResponse.bodyDiskSize() = bodyDiskSize;
+        } else {
+          e.mResponse.bodyDiskSize() = 0;
         }
 
         QM_TRY_UNWRAP(
@@ -980,12 +1012,12 @@ class Manager::CachePutAllAction final : public DBAction {
   struct Entry {
     CacheRequest mRequest;
     nsCOMPtr<nsIInputStream> mRequestStream;
-    nsID mRequestBodyId;
+    nsID mRequestBodyId{};
     nsCOMPtr<nsISupports> mRequestCopyContext;
 
     CacheResponse mResponse;
     nsCOMPtr<nsIInputStream> mResponseStream;
-    nsID mResponseBodyId;
+    nsID mResponseBodyId{};
     nsCOMPtr<nsISupports> mResponseCopyContext;
   };
 
@@ -1010,10 +1042,22 @@ class Manager::CachePutAllAction final : public DBAction {
     if (!source) {
       return NS_OK;
     }
+    QM_TRY_INSPECT(const auto& idGen,
+                   MOZ_TO_RESULT_GET_TYPED(nsCOMPtr<nsIUUIDGenerator>,
+                                           MOZ_SELECT_OVERLOAD(do_GetService),
+                                           "@mozilla.org/uuid-generator;1"));
 
-    QM_TRY_INSPECT((const auto& [bodyId, copyContext]),
-                   BodyStartWriteStream(aDirectoryMetadata, *mDBDir, *source,
-                                        this, AsyncCopyCompleteFunc));
+    nsID bodyId{};
+    QM_TRY(MOZ_TO_RESULT(idGen->GenerateUUIDInPlace(&bodyId)));
+
+    Maybe<CipherKey> maybeKey =
+        GetOrCreateCipherKey(WrapNotNull(mManager->mContext), bodyId,
+                             /* aCreate */ true);
+
+    QM_TRY_INSPECT(
+        const auto& copyContext,
+        BodyStartWriteStream(aDirectoryMetadata, *mDBDir, bodyId, maybeKey,
+                             *source, this, AsyncCopyCompleteFunc));
 
     if (aStreamId == RequestStream) {
       aEntry.mRequestBodyId = bodyId;
@@ -1227,10 +1271,15 @@ class Manager::CacheKeysAction final : public Manager::BaseAction {
         continue;
       }
 
+      const auto& bodyId = mSavedRequests[i].mBodyId;
+
       nsCOMPtr<nsIInputStream> stream;
       if (mArgs.openMode() == OpenMode::Eager) {
-        QM_TRY_UNWRAP(stream, BodyOpen(aDirectoryMetadata, *aDBDir,
-                                       mSavedRequests[i].mBodyId));
+        QM_TRY_UNWRAP(stream,
+                      BodyOpen(aDirectoryMetadata, *aDBDir, bodyId,
+                               GetOrCreateCipherKey(
+                                   WrapNotNull(mManager->mContext), bodyId,
+                                   /* aCreate */ false)));
       }
 
       // If we entered shutdown on the main thread while we were doing IO,
@@ -1301,10 +1350,15 @@ class Manager::StorageMatchAction final : public Manager::BaseAction {
       return NS_OK;
     }
 
+    const auto& bodyId = mSavedResponse.mBodyId;
+
     nsCOMPtr<nsIInputStream> stream;
     if (mArgs.openMode() == OpenMode::Eager) {
-      QM_TRY_UNWRAP(stream, BodyOpen(aDirectoryMetadata, *aDBDir,
-                                     mSavedResponse.mBodyId));
+      QM_TRY_UNWRAP(
+          stream,
+          BodyOpen(aDirectoryMetadata, *aDBDir, bodyId,
+                   GetOrCreateCipherKey(WrapNotNull(mManager->mContext), bodyId,
+                                        /* aCreate */ false)));
     }
 
     // If we entered shutdown on the main thread while we were doing IO,
@@ -1538,7 +1592,11 @@ class Manager::OpenStreamAction final : public Manager::BaseAction {
       mozIStorageConnection* aConn) override {
     MOZ_DIAGNOSTIC_ASSERT(aDBDir);
 
-    QM_TRY_UNWRAP(mBodyStream, BodyOpen(aDirectoryMetadata, *aDBDir, mBodyId));
+    QM_TRY_UNWRAP(
+        mBodyStream,
+        BodyOpen(aDirectoryMetadata, *aDBDir, mBodyId,
+                 GetOrCreateCipherKey(WrapNotNull(mManager->mContext), mBodyId,
+                                      /* aCreate */ false)));
 
     return NS_OK;
   }
@@ -2158,6 +2216,25 @@ void Manager::MaybeAllowContextToClose() {
 
     pinnedContext->AllowToClose();
   }
+}
+
+void Manager::DoStringify(nsACString& aData) {
+  aData.Append("Manager "_ns + kStringifyStartInstance +
+               //
+               "Origin:"_ns +
+               quota::AnonymizedOriginString(GetManagerId().QuotaOrigin()) +
+               kStringifyDelimiter +
+               //
+               "State:"_ns + IntToCString(mState) + kStringifyDelimiter);
+
+  aData.AppendLiteral("Context:");
+  if (mContext) {
+    mContext->Stringify(aData);
+  } else {
+    aData.AppendLiteral("0");
+  }
+
+  aData.Append(kStringifyEndInstance);
 }
 
 }  // namespace mozilla::dom::cache

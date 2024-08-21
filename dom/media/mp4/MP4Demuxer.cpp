@@ -13,6 +13,7 @@
 #include "AnnexB.h"
 #include "BufferStream.h"
 #include "H264.h"
+#include "H265.h"
 #include "MP4Decoder.h"
 #include "MP4Metadata.h"
 #include "MoofParser.h"
@@ -77,7 +78,7 @@ class MP4TrackDemuxer : public MediaTrackDemuxer,
   // Queued samples extracted by the demuxer, but not yet returned.
   RefPtr<MediaRawData> mQueuedSample;
   bool mNeedReIndex;
-  enum CodecType { kH264, kVP9, kAAC, kOther } mType = kOther;
+  enum CodecType { kH264, kVP9, kAAC, kHEVC, kOther } mType = kOther;
 };
 
 MP4Demuxer::MP4Demuxer(MediaResource* aResource)
@@ -189,6 +190,8 @@ RefPtr<MP4Demuxer::InitPromise> MP4Demuxer::Init() {
         }
         continue;
       }
+      LOG("Created audio track demuxer for info (%s)",
+          info.Ref()->ToString().get());
       RefPtr<MP4TrackDemuxer> demuxer =
           new MP4TrackDemuxer(mResource, std::move(info.Ref()),
                               *indices.Ref().get(), info.Ref()->mTimeScale);
@@ -227,6 +230,8 @@ RefPtr<MP4Demuxer::InitPromise> MP4Demuxer::Init() {
         }
         continue;
       }
+      LOG("Created video track demuxer for info (%s)",
+          info.Ref()->ToString().get());
       RefPtr<MP4TrackDemuxer> demuxer =
           new MP4TrackDemuxer(mResource, std::move(info.Ref()),
                               *indices.Ref().get(), info.Ref()->mTimeScale);
@@ -341,6 +346,16 @@ MP4TrackDemuxer::MP4TrackDemuxer(MediaResource* aResource,
     mType = kVP9;
   } else if (audioInfo && MP4Decoder::IsAAC(mInfo->mMimeType)) {
     mType = kAAC;
+  } else if (videoInfo && MP4Decoder::IsHEVC(mInfo->mMimeType)) {
+    mType = kHEVC;
+    if (auto rv = H265::DecodeSPSFromHVCCExtraData(videoInfo->mExtraData);
+        rv.isOk()) {
+      const auto sps = rv.unwrap();
+      videoInfo->mImage.width = sps.GetImageSize().Width();
+      videoInfo->mImage.height = sps.GetImageSize().Height();
+      videoInfo->mDisplay.width = sps.GetDisplaySize().Width();
+      videoInfo->mDisplay.height = sps.GetDisplaySize().Height();
+    }
   }
 }
 
@@ -599,7 +614,22 @@ TimeIntervals MP4TrackDemuxer::GetBuffered() {
     return TimeIntervals();
   }
 
-  return mIndex->ConvertByteRangesToTimeRanges(byteRanges);
+  TimeIntervals timeRanges = mIndex->ConvertByteRangesToTimeRanges(byteRanges);
+  if (AudioInfo* info = mInfo->GetAsAudioInfo(); info) {
+    // Trim as in GetNextSample().
+    TimeUnit totalMediaDurationIncludingTrimming =
+        info->mDuration - info->mMediaTime;
+    auto end = TimeUnit::FromInfinity();
+    if (mType == kAAC && totalMediaDurationIncludingTrimming.IsPositive()) {
+      end = info->mDuration;
+    }
+    if (timeRanges.GetStart().IsNegative() || timeRanges.GetEnd() > end) {
+      TimeInterval trimming(TimeUnit::Zero(timeRanges.GetStart()), end);
+      timeRanges = timeRanges.Intersection(trimming);
+    }
+  }
+
+  return timeRanges;
 }
 
 void MP4TrackDemuxer::NotifyDataArrived() { mNeedReIndex = true; }

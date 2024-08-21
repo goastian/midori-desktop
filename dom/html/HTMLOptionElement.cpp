@@ -33,10 +33,7 @@ namespace mozilla::dom {
 
 HTMLOptionElement::HTMLOptionElement(
     already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
-    : nsGenericHTMLElement(std::move(aNodeInfo)),
-      mSelectedChanged(false),
-      mIsSelected(false),
-      mIsInSetDefaultSelected(false) {
+    : nsGenericHTMLElement(std::move(aNodeInfo)) {
   // We start off enabled
   AddStatesSilently(ElementState::ENABLED);
 }
@@ -52,13 +49,7 @@ mozilla::dom::HTMLFormElement* HTMLOptionElement::GetForm() {
 
 void HTMLOptionElement::SetSelectedInternal(bool aValue, bool aNotify) {
   mSelectedChanged = true;
-  mIsSelected = aValue;
-
-  // When mIsInSetDefaultSelected is true, the state change will be handled by
-  // SetAttr/UnsetAttr.
-  if (!mIsInSetDefaultSelected) {
-    UpdateState(aNotify);
-  }
+  SetStates(ElementState::CHECKED, aValue, aNotify);
 }
 
 void HTMLOptionElement::OptGroupDisabledChanged(bool aNotify) {
@@ -66,7 +57,7 @@ void HTMLOptionElement::OptGroupDisabledChanged(bool aNotify) {
 }
 
 void HTMLOptionElement::UpdateDisabledState(bool aNotify) {
-  bool isDisabled = HasAttr(kNameSpaceID_None, nsGkAtoms::disabled);
+  bool isDisabled = HasAttr(nsGkAtoms::disabled);
 
   if (!isDisabled) {
     nsIContent* parent = GetParent();
@@ -156,9 +147,9 @@ void HTMLOptionElement::BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
   // it.
   HTMLSelectElement* selectInt = GetSelect();
   if (!selectInt) {
-    // If option is a child of select, SetOptionsSelectedByIndex will set
-    // mIsSelected if needed.
-    mIsSelected = aValue;
+    // If option is a child of select, SetOptionsSelectedByIndex will set the
+    // selected state if needed.
+    SetStates(ElementState::CHECKED, !!aValue, aNotify);
     return;
   }
 
@@ -187,8 +178,9 @@ void HTMLOptionElement::BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
   // Now reset our members; when we finish the attr set we'll end up with the
   // rigt selected state.
   mIsInSetDefaultSelected = inSetDefaultSelected;
-  // mIsSelected might have been changed by SetOptionsSelectedByIndex.  Possibly
-  // more than once; make sure our mSelectedChanged state is set back correctly.
+  // the selected state might have been changed by SetOptionsSelectedByIndex,
+  // possibly more than once; make sure our mSelectedChanged state is set back
+  // correctly.
   mSelectedChanged = false;
 }
 
@@ -203,13 +195,15 @@ void HTMLOptionElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
     }
 
     if (aName == nsGkAtoms::value && Selected()) {
-      // Since this option is selected, changing value
-      // may have changed missing validity state of the
-      // Select element
-      HTMLSelectElement* select = GetSelect();
-      if (select) {
+      // Since this option is selected, changing value may have changed missing
+      // validity state of the select element
+      if (HTMLSelectElement* select = GetSelect()) {
         select->UpdateValueMissingValidityState();
       }
+    }
+
+    if (aName == nsGkAtoms::selected) {
+      SetStates(ElementState::DEFAULT, !!aValue, aNotify);
     }
   }
 
@@ -239,7 +233,7 @@ void HTMLOptionElement::GetText(nsAString& aText) {
 }
 
 void HTMLOptionElement::SetText(const nsAString& aText, ErrorResult& aRv) {
-  aRv = nsContentUtils::SetNodeTextContent(this, aText, true);
+  aRv = nsContentUtils::SetNodeTextContent(this, aText, false);
 }
 
 nsresult HTMLOptionElement::BindToTree(BindContext& aContext,
@@ -253,23 +247,11 @@ nsresult HTMLOptionElement::BindToTree(BindContext& aContext,
   return NS_OK;
 }
 
-void HTMLOptionElement::UnbindFromTree(bool aNullParent) {
-  nsGenericHTMLElement::UnbindFromTree(aNullParent);
+void HTMLOptionElement::UnbindFromTree(UnbindContext& aContext) {
+  nsGenericHTMLElement::UnbindFromTree(aContext);
 
   // Our previous parent could have been involved in :disabled/:enabled state.
   UpdateDisabledState(false);
-}
-
-ElementState HTMLOptionElement::IntrinsicState() const {
-  ElementState state = nsGenericHTMLElement::IntrinsicState();
-  if (Selected()) {
-    state |= ElementState::CHECKED;
-  }
-  if (DefaultSelected()) {
-    state |= ElementState::DEFAULT;
-  }
-
-  return state;
 }
 
 // Get the select content element that contains this option

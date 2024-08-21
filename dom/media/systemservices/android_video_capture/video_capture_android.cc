@@ -169,6 +169,7 @@ int32_t VideoCaptureAndroid::Init(const char* deviceUniqueIdUTF8) {
   const int nameLength = strlen(deviceUniqueIdUTF8);
   if (nameLength >= kVideoCaptureUniqueNameLength) return -1;
 
+  RTC_DCHECK_RUN_ON(&api_checker_);
   // Store the device name
   RTC_LOG(LS_INFO) << "VideoCaptureAndroid::Init: " << deviceUniqueIdUTF8;
   _deviceUniqueId = new char[nameLength + 1];
@@ -176,12 +177,14 @@ int32_t VideoCaptureAndroid::Init(const char* deviceUniqueIdUTF8) {
 
   AttachThreadScoped ats(g_jvm_capture);
   JNIEnv* env = ats.env();
-  jmethodID ctor = env->GetMethodID(g_java_capturer_class, "<init>",
-                                    "(Ljava/lang/String;)V");
-  assert(ctor);
+  jmethodID factory =
+      env->GetStaticMethodID(g_java_capturer_class, "create",
+                             "(Ljava/lang/String;)"
+                             "Lorg/webrtc/videoengine/VideoCaptureAndroid;");
+  assert(factory);
   jstring j_deviceName = env->NewStringUTF(_deviceUniqueId);
-  _jCapturer = env->NewGlobalRef(
-      env->NewObject(g_java_capturer_class, ctor, j_deviceName));
+  _jCapturer = env->NewGlobalRef(env->CallStaticObjectMethod(
+      g_java_capturer_class, factory, j_deviceName));
   assert(_jCapturer);
   return 0;
 }
@@ -203,6 +206,7 @@ int32_t VideoCaptureAndroid::StartCapture(
   int min_mfps = 0;
   int max_mfps = 0;
   {
+    RTC_DCHECK_RUN_ON(&api_checker_);
     MutexLock lock(&api_lock_);
 
     if (_deviceInfo.GetBestMatchedCapability(_deviceUniqueId, capability,
@@ -229,6 +233,7 @@ int32_t VideoCaptureAndroid::StartCapture(
   bool started = env->CallBooleanMethod(_jCapturer, j_start, width, height,
                                         min_mfps, max_mfps, j_this);
   if (started) {
+    RTC_DCHECK_RUN_ON(&api_checker_);
     MutexLock lock(&api_lock_);
     _requestedCapability = capability;
     _captureStarted = true;
@@ -240,6 +245,7 @@ int32_t VideoCaptureAndroid::StopCapture() {
   AttachThreadScoped ats(g_jvm_capture);
   JNIEnv* env = ats.env();
   {
+    RTC_DCHECK_RUN_ON(&api_checker_);
     MutexLock lock(&api_lock_);
 
     memset(&_requestedCapability, 0, sizeof(_requestedCapability));
@@ -261,6 +267,7 @@ bool VideoCaptureAndroid::CaptureStarted() {
 }
 
 int32_t VideoCaptureAndroid::CaptureSettings(VideoCaptureCapability& settings) {
+  RTC_DCHECK_RUN_ON(&api_checker_);
   MutexLock lock(&api_lock_);
   settings = _requestedCapability;
   return 0;

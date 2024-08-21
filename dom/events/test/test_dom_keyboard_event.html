@@ -129,12 +129,12 @@ function testInitializingUntrustedEvent()
   ];
 
   const kOtherModifierName = [
-    "CapsLock", "NumLock", "ScrollLock", "Symbol", "SymbolLock", "Fn", "FnLock", "OS", "AltGraph"
+    "CapsLock", "NumLock", "ScrollLock", "Symbol", "SymbolLock", "Fn", "FnLock", "AltGraph"
   ];
 
   const kInvalidModifierName = [
     "shift", "control", "alt", "meta", "capslock", "numlock", "scrolllock",
-    "symbollock", "fn", "os", "altgraph", "Invalid", "Shift Control",
+    "symbollock", "fn", "OS", "altgraph", "Invalid", "Shift Control",
     "Win", "Scroll"
   ];
 
@@ -385,13 +385,13 @@ function testEnterKeyPressEvent()
     switch (aEvent.type) {
       case "keydown":
         keydownFired = true;
-        return;
+        break;
       case "keypress":
         keypressFired = true;
-        return;
+        break;
       case "beforeinput":
         beforeinputFired = true;
-        return;
+        break;
     }
   }
 

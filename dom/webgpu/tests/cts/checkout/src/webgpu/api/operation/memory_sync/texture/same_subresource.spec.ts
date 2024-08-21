@@ -8,7 +8,7 @@ Memory Synchronization Tests for Texture: read before write, read after write, a
 
 import { makeTestGroup } from '../../../../../common/framework/test_group.js';
 import { assert, memcpy, unreachable } from '../../../../../common/util/util.js';
-import { EncodableTextureFormat } from '../../../../capability_info.js';
+import { EncodableTextureFormat } from '../../../../format_info.js';
 import { GPUTest } from '../../../../gpu_test.js';
 import { align } from '../../../../util/math.js';
 import { getTextureCopyLayout } from '../../../../util/texture/layout.js';
@@ -56,8 +56,8 @@ const fullscreenQuadWGSL = `
 class TextureSyncTestHelper extends OperationContextHelper {
   private texture: GPUTexture;
 
-  public readonly kTextureSize = [4, 4] as const;
-  public readonly kTextureFormat: EncodableTextureFormat = 'rgba8unorm';
+  public override readonly kTextureSize = [4, 4] as const;
+  public override readonly kTextureFormat: EncodableTextureFormat = 'rgba8unorm';
 
   constructor(
     t: GPUTest,

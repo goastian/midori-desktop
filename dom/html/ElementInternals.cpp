@@ -9,6 +9,7 @@
 #include "mozAutoDocUpdate.h"
 #include "mozilla/dom/CustomElementRegistry.h"
 #include "mozilla/dom/CustomEvent.h"
+#include "mozilla/dom/CustomStateSet.h"
 #include "mozilla/dom/ElementInternalsBinding.h"
 #include "mozilla/dom/FormData.h"
 #include "mozilla/dom/HTMLElement.h"
@@ -21,6 +22,10 @@
 #include "nsDebug.h"
 #include "nsGenericHTMLElement.h"
 
+#ifdef ACCESSIBILITY
+#  include "nsAccessibilityService.h"
+#endif
+
 namespace mozilla::dom {
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE_CLASS(ElementInternals)
@@ -28,13 +33,14 @@ NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE_CLASS(ElementInternals)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(ElementInternals)
   tmp->Unlink();
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mTarget, mSubmissionValue, mState, mValidity,
-                                  mValidationAnchor);
+                                  mValidationAnchor, mCustomStateSet);
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(ElementInternals)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mTarget, mSubmissionValue, mState,
-                                    mValidity, mValidationAnchor);
+                                    mValidity, mValidationAnchor,
+                                    mCustomStateSet);
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(ElementInternals)
@@ -49,7 +55,8 @@ ElementInternals::ElementInternals(HTMLElement* aTarget)
     : nsIFormControl(FormControlType::FormAssociatedCustomElement),
       mTarget(aTarget),
       mForm(nullptr),
-      mFieldSet(nullptr) {}
+      mFieldSet(nullptr),
+      mControlNumber(-1) {}
 
 nsISupports* ElementInternals::GetParentObject() { return ToSupports(mTarget); }
 
@@ -190,7 +197,7 @@ void ElementInternals::SetValidity(
   SetValidityState(VALIDITY_STATE_STEP_MISMATCH, aFlags.mStepMismatch);
   SetValidityState(VALIDITY_STATE_BAD_INPUT, aFlags.mBadInput);
   SetValidityState(VALIDITY_STATE_CUSTOM_ERROR, aFlags.mCustomError);
-  mTarget->UpdateState(true);
+  mTarget->UpdateValidityElementStates(true);
 
   /**
    * 5. Set element's validation message to the empty string if message is not
@@ -304,8 +311,6 @@ bool ElementInternals::ReportValidity(ErrorResult& aRv) {
     return false;
   }
 
-  mTarget->UpdateState(true);
-
   RefPtr<CustomEvent> event =
       NS_NewDOMCustomEvent(mTarget->OwnerDoc(), nullptr, nullptr);
   event->InitCustomEvent(jsapi.cx(), u"MozInvalidForm"_ns,
@@ -341,6 +346,13 @@ nsGenericHTMLElement* ElementInternals::GetValidationAnchor(
     return nullptr;
   }
   return mValidationAnchor;
+}
+
+CustomStateSet* ElementInternals::States() {
+  if (!mCustomStateSet) {
+    mCustomStateSet = new CustomStateSet(mTarget);
+  }
+  return mCustomStateSet;
 }
 
 void ElementInternals::SetForm(HTMLFormElement* aForm) { mForm = aForm; }
@@ -401,9 +413,8 @@ void ElementInternals::UpdateBarredFromConstraintValidation() {
   if (mTarget) {
     MOZ_ASSERT(mTarget->IsFormAssociatedElement());
     SetBarredFromConstraintValidation(
-        mTarget->HasAttr(nsGkAtoms::readonly) ||
-        mTarget->HasFlag(ELEMENT_IS_DATALIST_OR_HAS_DATALIST_ANCESTOR) ||
-        mTarget->IsDisabled());
+        mTarget->IsDisabled() || mTarget->HasAttr(nsGkAtoms::readonly) ||
+        mTarget->HasFlag(ELEMENT_IS_DATALIST_OR_HAS_DATALIST_ANCESTOR));
   }
 }
 
@@ -434,27 +445,93 @@ nsresult ElementInternals::SetAttr(nsAtom* aName, const nsAString& aValue) {
   Document* document = mTarget->GetComposedDoc();
   mozAutoDocUpdate updateBatch(document, true);
 
-  uint8_t modType = mAttrs.HasAttr(kNameSpaceID_None, aName)
-                        ? MutationEvent_Binding::MODIFICATION
-                        : MutationEvent_Binding::ADDITION;
+  uint8_t modType = mAttrs.HasAttr(aName) ? MutationEvent_Binding::MODIFICATION
+                                          : MutationEvent_Binding::ADDITION;
 
   MutationObservers::NotifyARIAAttributeDefaultWillChange(mTarget, aName,
                                                           modType);
 
-  bool attrHadValue;
   nsAttrValue attrValue(aValue);
-  nsresult rs = mAttrs.SetAndSwapAttr(aName, attrValue, &attrHadValue);
+  nsresult rs = NS_OK;
+  if (DOMStringIsNull(aValue)) {
+    auto attrPos = mAttrs.IndexOfAttr(aName);
+    if (attrPos >= 0) {
+      rs = mAttrs.RemoveAttrAt(attrPos, attrValue);
+    }
+  } else {
+    bool attrHadValue = false;
+    rs = mAttrs.SetAndSwapAttr(aName, attrValue, &attrHadValue);
+  }
   nsMutationGuard::DidMutate();
 
   MutationObservers::NotifyARIAAttributeDefaultChanged(mTarget, aName, modType);
-
-  mTarget->UpdateState(true);
 
   return rs;
 }
 
 DocGroup* ElementInternals::GetDocGroup() {
   return mTarget->OwnerDoc()->GetDocGroup();
+}
+
+void ElementInternals::RestoreFormValue(
+    Nullable<OwningFileOrUSVStringOrFormData>&& aValue,
+    Nullable<OwningFileOrUSVStringOrFormData>&& aState) {
+  mSubmissionValue = aValue;
+  mState = aState;
+
+  if (!mState.IsNull()) {
+    LifecycleCallbackArgs args;
+    args.mState = mState;
+    args.mReason = RestoreReason::Restore;
+    nsContentUtils::EnqueueLifecycleCallback(
+        ElementCallbackType::eFormStateRestore, mTarget, args);
+  }
+}
+
+void ElementInternals::InitializeControlNumber() {
+  MOZ_ASSERT(mControlNumber == -1,
+             "FACE control number should only be initialized once!");
+  mControlNumber = mTarget->OwnerDoc()->GetNextControlNumber();
+}
+
+void ElementInternals::SetAttrElement(nsAtom* aAttr, Element* aElement) {
+  // Accessibility requires that no other attribute changes occur between
+  // AttrElementWillChange and AttrElementChanged. Scripts could cause
+  // this, so don't let them run here. We do this even if accessibility isn't
+  // running so that the JS behavior is consistent regardless of accessibility.
+  // Otherwise, JS might be able to use this difference to determine whether
+  // accessibility is running, which would be a privacy concern.
+  nsAutoScriptBlocker scriptBlocker;
+
+#ifdef ACCESSIBILITY
+  // If the target has this attribute defined then it overrides the defaults
+  // defined here in the Internals instance. In that case we don't need to
+  // notify the change to a11y since the attribute hasn't changed, just the
+  // underlying default. We can set accService to null and not notify.
+  nsAccessibilityService* accService =
+      !mTarget->HasAttr(aAttr) ? GetAccService() : nullptr;
+  if (accService) {
+    accService->NotifyAttrElementWillChange(mTarget, aAttr);
+  }
+#endif
+
+  if (aElement) {
+    mAttrElements.InsertOrUpdate(aAttr, do_GetWeakReference(aElement));
+  } else {
+    mAttrElements.Remove(aAttr);
+  }
+
+#ifdef ACCESSIBILITY
+  if (accService) {
+    accService->NotifyAttrElementChanged(mTarget, aAttr);
+  }
+#endif
+}
+
+Element* ElementInternals::GetAttrElement(nsAtom* aAttr) const {
+  nsWeakPtr weakAttrEl = mAttrElements.Get(aAttr);
+  nsCOMPtr<Element> attrEl = do_QueryReferent(weakAttrEl);
+  return attrEl;
 }
 
 }  // namespace mozilla::dom

@@ -49,9 +49,6 @@
 #include "secerr.h"
 #include "sslerr.h"
 
-#define BUFFER_SIZE 65536
-#define NETWORK_STATS_THRESHOLD 65536
-
 using namespace mozilla::dom;
 
 NS_IMPL_CYCLE_COLLECTION(LegacyMozTCPSocket, mGlobal)
@@ -239,12 +236,12 @@ nsresult TCPSocket::Init(nsIProxyInfo* aProxyInfo) {
     obs->AddObserver(this, "profile-change-net-teardown", true);  // weak ref
   }
 
-  if (XRE_GetProcessType() == GeckoProcessType_Content) {
+  if (XRE_IsContentProcess()) {
     mReadyState = TCPReadyState::Connecting;
 
     nsCOMPtr<nsISerialEventTarget> target;
     if (nsCOMPtr<nsIGlobalObject> global = GetOwnerGlobal()) {
-      target = global->EventTargetFor(TaskCategory::Other);
+      target = global->SerialEventTarget();
     }
     mSocketBridgeChild = new TCPSocketChild(mHost, mPort, target);
     mSocketBridgeChild->SendOpen(this, mSsl, mUseArrayBuffers);
@@ -811,27 +808,39 @@ bool TCPSocket::Send(const ArrayBuffer& aData, uint32_t aByteOffset,
 
   nsCOMPtr<nsIArrayBufferInputStream> stream;
 
-  aData.ComputeState();
-  uint32_t byteLength =
-      aByteLength.WasPassed() ? aByteLength.Value() : aData.Length();
+  uint32_t nbytes;
+  auto calculateOffsetAndCount = [&](uint32_t aLength) {
+    uint32_t offset = std::min(aLength, aByteOffset);
+    nbytes = std::min(aLength - aByteOffset,
+                      aByteLength.WasPassed() ? aByteLength.Value() : aLength);
+    return std::pair(offset, nbytes);
+  };
 
   if (mSocketBridgeChild) {
-    nsresult rv = mSocketBridgeChild->SendSend(aData, aByteOffset, byteLength);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      aRv.Throw(rv);
+    nsTArray<uint8_t> arrayBuffer;
+    if (!aData.AppendDataTo(arrayBuffer, calculateOffsetAndCount)) {
+      aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
       return false;
     }
+
+    mSocketBridgeChild->SendSend(std::move(arrayBuffer));
   } else {
-    JS::Rooted<JS::Value> value(RootingCx(), JS::ObjectValue(*aData.Obj()));
+    mozilla::Maybe<mozilla::UniquePtr<uint8_t[]>> arrayBuffer =
+        aData.CreateFromData<mozilla::UniquePtr<uint8_t[]>>(
+            calculateOffsetAndCount);
+    if (arrayBuffer.isNothing()) {
+      aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+      return false;
+    }
 
     stream = do_CreateInstance("@mozilla.org/io/arraybuffer-input-stream;1");
-    nsresult rv = stream->SetData(value, aByteOffset, byteLength);
+    nsresult rv = stream->SetData(arrayBuffer.extract(), nbytes);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       aRv.Throw(rv);
       return false;
     }
   }
-  return Send(stream, byteLength);
+  return Send(stream, nbytes);
 }
 
 bool TCPSocket::Send(nsIInputStream* aStream, uint32_t aByteLength) {

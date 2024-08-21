@@ -32,8 +32,8 @@
      * received by the server (*.sjs) were actually *https* requests.
      */
 
-    const { AppConstants } = SpecialPowers.ChromeUtils.import(
-      "resource://gre/modules/AppConstants.jsm"
+    const { AppConstants } = SpecialPowers.ChromeUtils.importESModule(
+      "resource://gre/modules/AppConstants.sys.mjs"
     );
     const splitRegex = /^(.*)-(.*)$/
     const testConfig = {
@@ -54,7 +54,7 @@
       // returns after the server has received all the expected requests.
       var myXHR = new XMLHttpRequest();
       myXHR.open("GET", "file_upgrade_insecure_server.sjs?queryresult");
-      myXHR.onload = function (e) {
+      myXHR.onload = function () {
         var results = myXHR.responseText.split(",");
         for (var index in results) {
           checkResult(results[index]);

@@ -220,8 +220,7 @@ void ConvertDetailsUpdate(JSContext* aCx, const PaymentDetailsUpdate& aDetails,
 
 void ConvertOptions(const PaymentOptions& aOptions,
                     IPCPaymentOptions& aIPCOption) {
-  NS_ConvertASCIItoUTF16 shippingType(
-      PaymentShippingTypeValues::GetString(aOptions.mShippingType));
+  NS_ConvertASCIItoUTF16 shippingType(GetEnumString(aOptions.mShippingType));
   aIPCOption =
       IPCPaymentOptions(aOptions.mRequestPayerName, aOptions.mRequestPayerEmail,
                         aOptions.mRequestPayerPhone, aOptions.mRequestShipping,
@@ -360,7 +359,10 @@ PaymentRequestChild* PaymentRequestManager::GetPaymentChild(
   aRequest->GetInternalId(requestId);
 
   PaymentRequestChild* paymentChild = new PaymentRequestChild(aRequest);
-  browserChild->SendPPaymentRequestConstructor(paymentChild);
+  if (!browserChild->SendPPaymentRequestConstructor(paymentChild)) {
+    // deleted by Constructor
+    return nullptr;
+  }
 
   return paymentChild;
 }
@@ -545,8 +547,7 @@ void PaymentRequestManager::CompletePayment(PaymentRequest* aRequest,
   if (aTimedOut) {
     completeStatusString.AssignLiteral("timeout");
   } else {
-    completeStatusString.AssignASCII(
-        PaymentCompleteValues::GetString(aComplete));
+    completeStatusString.AssignASCII(GetEnumString(aComplete));
   }
 
   nsAutoString requestId;

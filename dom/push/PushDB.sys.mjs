@@ -3,11 +3,10 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { IndexedDBHelper } from "resource://gre/modules/IndexedDBHelper.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "console", () => {
+ChromeUtils.defineLazyGetter(lazy, "console", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -47,7 +46,7 @@ PushDB.prototype = {
     );
   },
 
-  upgradeSchema(aTransaction, aDb, aOldVersion, aNewVersion) {
+  upgradeSchema(aTransaction, aDb, aOldVersion) {
     if (aOldVersion <= 3) {
       // XXXnsm We haven't shipped Push during this upgrade, so I'm just going to throw old
       // registrations away without even informing the app.
@@ -420,7 +419,7 @@ PushDB.prototype = {
             }
             function putRecord() {
               let req = aStore.put(newRecord);
-              req.onsuccess = aEvent => {
+              req.onsuccess = () => {
                 lazy.console.debug(
                   "update: Update successful",
                   aKeyID,

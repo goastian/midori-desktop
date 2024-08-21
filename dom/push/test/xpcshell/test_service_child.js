@@ -3,8 +3,6 @@
 
 "use strict";
 
-Cu.importGlobalProperties(["crypto"]);
-
 var db;
 
 function done() {
@@ -110,7 +108,7 @@ add_test(function test_subscribeWithKey_success() {
         }
       );
     },
-    error => {
+    () => {
       ok(false, "Error generating app server key");
       done();
     }
@@ -141,7 +139,7 @@ add_test(function test_subscribeWithKey_conflict() {
         }
       );
     },
-    error => {
+    () => {
       ok(false, "Error generating different app server key");
       done();
     }

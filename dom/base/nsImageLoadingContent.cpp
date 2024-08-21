@@ -47,6 +47,7 @@
 #include "mozilla/dom/BindContext.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/FetchPriority.h"
 #include "mozilla/dom/PContent.h"  // For TextRecognitionResult
 #include "mozilla/dom/HTMLImageElement.h"
 #include "mozilla/dom/ImageTextBinding.h"
@@ -55,6 +56,7 @@
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/intl/LocaleService.h"
 #include "mozilla/intl/Locale.h"
+#include "mozilla/dom/LargestContentfulPaint.h"
 #include "mozilla/net/UrlClassifierFeatureFactory.h"
 #include "mozilla/widget/TextRecognition.h"
 
@@ -103,8 +105,6 @@ nsImageLoadingContent::nsImageLoadingContent()
       mRequestGeneration(0),
       mLoadingEnabled(true),
       mLoading(false),
-      // mBroken starts out true, since an image without a URI is broken....
-      mBroken(true),
       mNewRequestsWillNeedAnimationReset(false),
       mUseUrgentStartForChannel(false),
       mLazyLoading(false),
@@ -256,9 +256,11 @@ void nsImageLoadingContent::OnLoadComplete(imgIRequest* aRequest,
     FireEvent(u"error"_ns);
   }
 
-  SVGObserverUtils::InvalidateDirectRenderingObservers(
-      AsContent()->AsElement());
+  Element* element = AsContent()->AsElement();
+  SVGObserverUtils::InvalidateDirectRenderingObservers(element);
   MaybeResolveDecodePromises();
+  LargestContentfulPaint::MaybeProcessImageForElementTiming(mCurrentRequest,
+                                                            element);
 }
 
 void nsImageLoadingContent::OnUnlockedDraw() {
@@ -349,8 +351,7 @@ already_AddRefed<Promise> nsImageLoadingContent::QueueDecodeAsync(
    public:
     QueueDecodeTask(nsImageLoadingContent* aOwner, Promise* aPromise,
                     uint32_t aRequestGeneration)
-        : MicroTaskRunnable(),
-          mOwner(aOwner),
+        : mOwner(aOwner),
           mPromise(aPromise),
           mRequestGeneration(aRequestGeneration) {}
 
@@ -1143,7 +1144,8 @@ nsresult nsImageLoadingContent::LoadImage(nsIURI* aNewURI, bool aForce,
   nsresult rv = nsContentUtils::LoadImage(
       aNewURI, element, aDocument, triggeringPrincipal, 0, referrerInfo, this,
       loadFlags, element->LocalName(), getter_AddRefs(req), policyType,
-      mUseUrgentStartForChannel);
+      mUseUrgentStartForChannel, /* aLinkPreload */ false,
+      /* aEarlyHintPreloaderId */ 0, GetFetchPriorityForImage());
 
   // Reset the flag to avoid loading from XPCOM or somewhere again else without
   // initiated by user interaction.
@@ -1346,19 +1348,6 @@ CSSIntSize nsImageLoadingContent::GetWidthHeightForImage() {
   return size;
 }
 
-ElementState nsImageLoadingContent::ImageState() const {
-  ElementState states;
-
-  if (mBroken) {
-    states |= ElementState::BROKEN;
-  }
-  if (mLoading) {
-    states |= ElementState::LOADING;
-  }
-
-  return states;
-}
-
 void nsImageLoadingContent::UpdateImageState(bool aNotify) {
   if (mStateChangerDepth > 0) {
     // Ignore this call; we'll update our state when the outermost state changer
@@ -1370,9 +1359,12 @@ void nsImageLoadingContent::UpdateImageState(bool aNotify) {
     return;
   }
 
-  nsIContent* thisContent = AsContent();
+  Element* thisElement = AsContent()->AsElement();
 
-  mLoading = mBroken = false;
+  mLoading = false;
+
+  Element::AutoStateChangeNotifier notifier(*thisElement, aNotify);
+  thisElement->RemoveStatesSilently(ElementState::BROKEN);
 
   // If we were blocked, we're broken, so are we if we don't have an image
   // request at all or the image has errored.
@@ -1380,21 +1372,19 @@ void nsImageLoadingContent::UpdateImageState(bool aNotify) {
     if (!mLazyLoading) {
       // In case of non-lazy loading, no current request means error, since we
       // weren't disabled or suppressed
-      mBroken = true;
+      thisElement->AddStatesSilently(ElementState::BROKEN);
       RejectDecodePromises(NS_ERROR_DOM_IMAGE_BROKEN);
     }
   } else {
     uint32_t currentLoadStatus;
     nsresult rv = mCurrentRequest->GetImageStatus(&currentLoadStatus);
     if (NS_FAILED(rv) || (currentLoadStatus & imgIRequest::STATUS_ERROR)) {
-      mBroken = true;
+      thisElement->AddStatesSilently(ElementState::BROKEN);
       RejectDecodePromises(NS_ERROR_DOM_IMAGE_BROKEN);
     } else if (!(currentLoadStatus & imgIRequest::STATUS_SIZE_AVAILABLE)) {
       mLoading = true;
     }
   }
-
-  thisContent->AsElement()->UpdateState(aNotify);
 }
 
 void nsImageLoadingContent::CancelImageRequests(bool aNotify) {
@@ -1651,10 +1641,12 @@ void nsImageLoadingContent::BindToTree(BindContext& aContext,
   }
 }
 
-void nsImageLoadingContent::UnbindFromTree(bool aNullParent) {
+void nsImageLoadingContent::UnbindFromTree() {
   // We may be leaving the document, so if our image is tracked, untrack it.
   nsCOMPtr<Document> doc = GetOurCurrentDoc();
-  if (!doc) return;
+  if (!doc) {
+    return;
+  }
 
   UntrackImage(mCurrentRequest);
   UntrackImage(mPendingRequest);
@@ -1806,11 +1798,12 @@ bool nsImageLoadingContent::ScriptedImageObserver::CancelRequests() {
 }
 
 Element* nsImageLoadingContent::FindImageMap() {
-  nsIContent* thisContent = AsContent();
-  Element* thisElement = thisContent->AsElement();
+  return FindImageMap(AsContent()->AsElement());
+}
 
+/* static */ Element* nsImageLoadingContent::FindImageMap(Element* aElement) {
   nsAutoString useMap;
-  thisElement->GetAttr(kNameSpaceID_None, nsGkAtoms::usemap, useMap);
+  aElement->GetAttr(nsGkAtoms::usemap, useMap);
   if (useMap.IsEmpty()) {
     return nullptr;
   }
@@ -1831,15 +1824,15 @@ Element* nsImageLoadingContent::FindImageMap() {
   }
 
   RefPtr<nsContentList> imageMapList;
-  if (thisElement->IsInUncomposedDoc()) {
+  if (aElement->IsInUncomposedDoc()) {
     // Optimize the common case and use document level image map.
-    imageMapList = thisElement->OwnerDoc()->ImageMapList();
+    imageMapList = aElement->OwnerDoc()->ImageMapList();
   } else {
     // Per HTML spec image map should be searched in the element's scope,
     // so using SubtreeRoot() here.
     // Because this is a temporary list, we don't need to make it live.
     imageMapList =
-        new nsContentList(thisElement->SubtreeRoot(), kNameSpaceID_XHTML,
+        new nsContentList(aElement->SubtreeRoot(), kNameSpaceID_XHTML,
                           nsGkAtoms::map, nsGkAtoms::map, true, /* deep */
                           false /* live */);
   }
@@ -1864,10 +1857,14 @@ nsLoadFlags nsImageLoadingContent::LoadFlags() {
   auto* image = HTMLImageElement::FromNode(AsContent());
   if (image && image->OwnerDoc()->IsScriptEnabled() &&
       !image->OwnerDoc()->IsStaticDocument() &&
-      image->LoadingState() == HTMLImageElement::Loading::Lazy) {
+      image->LoadingState() == Element::Loading::Lazy) {
     // Note that LOAD_BACKGROUND is not about priority of the load, but about
     // whether it blocks the load event (by bypassing the loadgroup).
     return nsIRequest::LOAD_BACKGROUND;
   }
   return nsIRequest::LOAD_NORMAL;
+}
+
+FetchPriority nsImageLoadingContent::GetFetchPriorityForImage() const {
+  return FetchPriority::Auto;
 }

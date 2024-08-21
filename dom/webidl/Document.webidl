@@ -13,6 +13,7 @@
  * https://drafts.csswg.org/cssom/#extensions-to-the-document-interface
  * https://drafts.csswg.org/cssom-view/#extensions-to-the-document-interface
  * https://wicg.github.io/feature-policy/#policy
+ * https://wicg.github.io/scroll-to-text-fragment/#feature-detectability
  */
 
 interface ContentSecurityPolicy;
@@ -38,7 +39,35 @@ dictionary ElementCreationOptions {
 };
 
 /* https://dom.spec.whatwg.org/#interface-document */
-[Exposed=Window]
+[Exposed=Window,
+ InstrumentedProps=(caretRangeFromPoint,
+                    exitPictureInPicture,
+                    featurePolicy,
+                    onbeforecopy,
+                    onbeforecut,
+                    onbeforepaste,
+                    oncancel,
+                    onfreeze,
+                    onmousewheel,
+                    onresume,
+                    onsearch,
+                    onwebkitfullscreenchange,
+                    onwebkitfullscreenerror,
+                    pictureInPictureElement,
+                    pictureInPictureEnabled,
+                    registerElement,
+                    wasDiscarded,
+                    webkitCancelFullScreen,
+                    webkitCurrentFullScreenElement,
+                    webkitExitFullscreen,
+                    webkitFullscreenElement,
+                    webkitFullscreenEnabled,
+                    webkitHidden,
+                    webkitIsFullScreen,
+                    webkitVisibilityState,
+                    xmlEncoding,
+                    xmlStandalone,
+                    xmlVersion)]
 interface Document : Node {
   [Throws]
   constructor();
@@ -70,8 +99,6 @@ interface Document : Node {
   HTMLCollection getElementsByTagNameNS(DOMString? namespace, DOMString localName);
   [Pure]
   HTMLCollection getElementsByClassName(DOMString classNames);
-  [Pure]
-  Element? getElementById(DOMString elementId);
 
   // These DOM methods cannot be accessed by UA Widget scripts
   // because the DOM element reflectors will be in the content scope,
@@ -123,9 +150,12 @@ interface Document : Node {
 
 // https://html.spec.whatwg.org/multipage/dom.html#the-document-object
 partial interface Document {
+  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
+  static Document parseHTMLUnsafe(DOMString html);
+
   [PutForwards=href, LegacyUnforgeable] readonly attribute Location? location;
   [SetterThrows]                           attribute DOMString domain;
-  readonly attribute DOMString referrer;
+  readonly attribute UTF8String referrer;
   [Throws] attribute DOMString cookie;
   readonly attribute DOMString lastModified;
   readonly attribute DOMString readyState;
@@ -356,20 +386,8 @@ partial interface Document {
     readonly attribute Element? scrollingElement;
 };
 
-// http://dev.w3.org/2006/webapi/selectors-api2/#interface-definitions
-partial interface Document {
-  [Throws, Pure]
-  Element?  querySelector(UTF8String selectors);
-  [Throws, Pure]
-  NodeList  querySelectorAll(UTF8String selectors);
-
-  //(Not implemented)Element?  find(DOMString selectors, optional (Element or sequence<Node>)? refNodes);
-  //(Not implemented)NodeList  findAll(DOMString selectors, optional (Element or sequence<Node>)? refNodes);
-};
-
 // https://drafts.csswg.org/web-animations/#extensions-to-the-document-interface
 partial interface Document {
-  [Func="Document::AreWebAnimationsTimelinesEnabled"]
   readonly attribute DocumentTimeline timeline;
 };
 
@@ -440,7 +458,7 @@ partial interface Document {
   [ChromeOnly]
   attribute boolean devToolsAnonymousAndShadowEventsEnabled;
 
-  [ChromeOnly] readonly attribute DOMString contentLanguage;
+  [ChromeOnly, BinaryName="contentLanguageForBindings"] readonly attribute DOMString contentLanguage;
 
   [ChromeOnly] readonly attribute nsILoadGroup? documentLoadGroup;
 
@@ -506,20 +524,14 @@ partial interface Document {
  * Chrome document anonymous content management.
  * This is a Chrome-only API that allows inserting fixed positioned anonymous
  * content on top of the current page displayed in the document.
- * The supplied content is cloned and inserted into the document's CanvasFrame.
- * Note that this only works for HTML documents.
  */
 partial interface Document {
   /**
-   * Deep-clones the provided element and inserts it into the CanvasFrame.
-   * Returns an AnonymousContent instance that can be used to manipulate the
-   * inserted element.
-   *
    * If aForce is true, tries to update layout to be able to insert the element
    * synchronously.
    */
   [ChromeOnly, NewObject, Throws]
-  AnonymousContent insertAnonymousContent(Element aElement, optional boolean aForce = false);
+  AnonymousContent insertAnonymousContent(optional boolean aForce = false);
 
   /**
    * Removes the element inserted into the CanvasFrame given an AnonymousContent
@@ -732,4 +744,15 @@ partial interface Document {
   // context which isn't in bfcache.
   [ChromeOnly]
   boolean isActive();
+};
+
+Document includes NonElementParentNode;
+
+/**
+ * Extension to add the fragmentDirective property.
+ * https://wicg.github.io/scroll-to-text-fragment/#feature-detectability
+ */
+partial interface Document {
+    [Pref="dom.text_fragments.enabled", SameObject]
+    readonly attribute FragmentDirective fragmentDirective;
 };

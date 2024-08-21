@@ -66,7 +66,7 @@ const uint32_t FIXED_FRAMESIZE = 500;
 
 class TestWebMWriter : public WebMWriter {
  public:
-  TestWebMWriter() : WebMWriter() {}
+  TestWebMWriter() = default;
 
   // When we append an I-Frame into WebM muxer, the muxer will treat previous
   // data as "a cluster".
@@ -223,7 +223,7 @@ struct WebMioData {
 };
 
 static int webm_read(void* aBuffer, size_t aLength, void* aUserData) {
-  NS_ASSERTION(aUserData, "aUserData must point to a valid WebMioData");
+  MOZ_RELEASE_ASSERT(aUserData, "aUserData must point to a valid WebMioData");
   WebMioData* ioData = static_cast<WebMioData*>(aUserData);
 
   // Check the read length.
@@ -247,7 +247,7 @@ static int webm_read(void* aBuffer, size_t aLength, void* aUserData) {
 }
 
 static int webm_seek(int64_t aOffset, int aWhence, void* aUserData) {
-  NS_ASSERTION(aUserData, "aUserData must point to a valid WebMioData");
+  MOZ_RELEASE_ASSERT(aUserData, "aUserData must point to a valid WebMioData");
   WebMioData* ioData = static_cast<WebMioData*>(aUserData);
 
   if (Abs(aOffset) > ioData->data.Length()) {
@@ -281,7 +281,7 @@ static int webm_seek(int64_t aOffset, int aWhence, void* aUserData) {
 }
 
 static int64_t webm_tell(void* aUserData) {
-  NS_ASSERTION(aUserData, "aUserData must point to a valid WebMioData");
+  MOZ_RELEASE_ASSERT(aUserData, "aUserData must point to a valid WebMioData");
   WebMioData* ioData = static_cast<WebMioData*>(aUserData);
   return ioData->offset.isValid() ? ioData->offset.value() : -1;
 }

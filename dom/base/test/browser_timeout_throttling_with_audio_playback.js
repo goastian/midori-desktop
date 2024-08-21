@@ -30,12 +30,8 @@ async function runTest(url) {
   let newBrowser = gBrowser.getBrowserForTab(newTab);
 
   // Wait for the UI to indicate that audio is being played back.
-  let promise = BrowserTestUtils.waitForAttribute(
-    "soundplaying",
-    newTab,
-    "true"
-  );
-  BrowserTestUtils.loadURIString(newBrowser, url);
+  let promise = BrowserTestUtils.waitForAttribute("soundplaying", newTab);
+  BrowserTestUtils.startLoadingURIString(newBrowser, url);
   await promise;
 
   // Put the tab in the background.
@@ -54,7 +50,11 @@ async function runTest(url) {
       });
     }
   );
-  ok(timeout <= kMinTimeoutBackground, `Got the correct timeout (${timeout})`);
+  Assert.lessOrEqual(
+    timeout,
+    kMinTimeoutBackground,
+    `Got the correct timeout (${timeout})`
+  );
 
   // All done.
   BrowserTestUtils.removeTab(newTab);

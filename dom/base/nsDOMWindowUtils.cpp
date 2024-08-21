@@ -14,7 +14,7 @@
 #include "nsContentList.h"
 #include "nsError.h"
 #include "nsQueryContentEventResult.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsFocusManager.h"
 #include "nsFrameManager.h"
 #include "nsRefreshDriver.h"
@@ -24,12 +24,13 @@
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/BlobBinding.h"
 #include "mozilla/dom/DocumentInlines.h"
+#include "mozilla/dom/DocumentTimeline.h"
 #include "mozilla/dom/DOMCollectedFramesBinding.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/Touch.h"
 #include "mozilla/dom/UserActivation.h"
 #include "mozilla/EventStateManager.h"
-#include "mozilla/PendingAnimationTracker.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/ServoStyleSet.h"
 #include "mozilla/SharedStyleSheetCache.h"
 #include "mozilla/StaticPrefs_test.h"
@@ -42,8 +43,6 @@
 #include "mozilla/media/MediaUtils.h"
 #include "nsQueryObject.h"
 #include "CubebDeviceEnumerator.h"
-
-#include "nsIScrollableFrame.h"
 
 #include "nsContentUtils.h"
 
@@ -133,6 +132,7 @@
 #include "mozilla/IMEStateManager.h"
 #include "mozilla/IMEContentObserver.h"
 #include "mozilla/WheelHandlingHelper.h"
+#include "mozilla/AnimatedPropertyID.h"
 
 #ifdef XP_WIN
 #  include <direct.h>
@@ -397,7 +397,7 @@ nsDOMWindowUtils::UpdateLayerTree() {
     // (in WebRender it constantly does), thus the reftest harness can't take
     // any snapshot until the throttled animations finished.
     presShell->FlushPendingNotifications(
-        ChangesToFlush(FlushType::Display, false /* flush animations */));
+        ChangesToFlush(FlushType::Layout, false /* flush animations */));
     RefPtr<nsViewManager> vm = presShell->GetViewManager();
     if (nsView* view = vm->GetRootView()) {
       nsAutoScriptBlocker scriptBlocker;
@@ -410,12 +410,12 @@ nsDOMWindowUtils::UpdateLayerTree() {
 }
 
 NS_IMETHODIMP
-nsDOMWindowUtils::GetContentViewerSize(uint32_t* aDisplayWidth,
-                                       uint32_t* aDisplayHeight) {
+nsDOMWindowUtils::GetDocumentViewerSize(uint32_t* aDisplayWidth,
+                                        uint32_t* aDisplayHeight) {
   PresShell* presShell = GetPresShell();
   LayoutDeviceIntSize displaySize;
 
-  if (!presShell || !nsLayoutUtils::GetContentViewerSize(
+  if (!presShell || !nsLayoutUtils::GetDocumentViewerSize(
                         presShell->GetPresContext(), displaySize)) {
     return NS_ERROR_FAILURE;
   }
@@ -602,15 +602,15 @@ NS_IMETHODIMP
 nsDOMWindowUtils::GetScrollbarSizes(Element* aElement,
                                     uint32_t* aOutVerticalScrollbarWidth,
                                     uint32_t* aOutHorizontalScrollbarHeight) {
-  nsIScrollableFrame* scrollFrame =
-      nsLayoutUtils::FindScrollableFrameFor(aElement);
-  if (!scrollFrame) {
+  ScrollContainerFrame* scrollContainerFrame =
+      nsLayoutUtils::FindScrollContainerFrameFor(aElement);
+  if (!scrollContainerFrame) {
     return NS_ERROR_INVALID_ARG;
   }
 
-  CSSIntMargin scrollbarSizes =
-      RoundedToInt(CSSMargin::FromAppUnits(scrollFrame->GetActualScrollbarSizes(
-          nsIScrollableFrame::ScrollbarSizesOptions::
+  CSSIntMargin scrollbarSizes = RoundedToInt(
+      CSSMargin::FromAppUnits(scrollContainerFrame->GetActualScrollbarSizes(
+          ScrollContainerFrame::ScrollbarSizesOptions::
               INCLUDE_VISUAL_VIEWPORT_SCROLLBARS)));
   *aOutVerticalScrollbarWidth = scrollbarSizes.LeftRight();
   *aOutHorizontalScrollbarHeight = scrollbarSizes.TopBottom();
@@ -896,6 +896,7 @@ nsresult nsDOMWindowUtils::SendTouchEventCommon(
     return NS_ERROR_UNEXPECTED;
   }
   WidgetTouchEvent event(true, msg, widget);
+  event.mFlags.mIsSynthesizedForTests = true;
   event.mModifiers = nsContentUtils::GetWidgetModifiers(aModifiers);
 
   nsPresContext* presContext = GetPresContext();
@@ -1722,7 +1723,7 @@ static nsresult getScrollXYAppUnits(const nsWeakPtr& aWindow, bool aFlushLayout,
   }
 
   if (PresShell* presShell = doc->GetPresShell()) {
-    nsIScrollableFrame* sf = presShell->GetRootScrollFrameAsScrollable();
+    ScrollContainerFrame* sf = presShell->GetRootScrollContainerFrame();
     if (sf) {
       aScrollPos = sf->GetScrollPosition();
     }
@@ -2013,10 +2014,10 @@ nsDOMWindowUtils::GetScrollbarSize(bool aFlushLayout, int32_t* aWidth,
   PresShell* presShell = doc->GetPresShell();
   NS_ENSURE_TRUE(presShell, NS_ERROR_NOT_AVAILABLE);
 
-  nsIScrollableFrame* scrollFrame = presShell->GetRootScrollFrameAsScrollable();
-  NS_ENSURE_TRUE(scrollFrame, NS_OK);
+  ScrollContainerFrame* sf = presShell->GetRootScrollContainerFrame();
+  NS_ENSURE_TRUE(sf, NS_OK);
 
-  nsMargin sizes = scrollFrame->GetActualScrollbarSizes();
+  nsMargin sizes = sf->GetActualScrollbarSizes();
   *aWidth = nsPresContext::AppUnitsToIntCSSPixels(sizes.LeftRight());
   *aHeight = nsPresContext::AppUnitsToIntCSSPixels(sizes.TopBottom());
 
@@ -2037,7 +2038,7 @@ nsDOMWindowUtils::GetBoundsWithoutFlushing(Element* aElement,
   if (frame) {
     nsRect r = nsLayoutUtils::GetAllInFlowRectsUnion(
         frame, nsLayoutUtils::GetContainingBlockForClientRect(frame),
-        nsLayoutUtils::RECTS_ACCOUNT_FOR_TRANSFORMS);
+        nsLayoutUtils::GetAllInFlowRectsFlag::AccountForTransforms);
     rect->SetLayoutRect(r);
   }
 
@@ -2063,10 +2064,6 @@ nsDOMWindowUtils::NeedsFlush(int32_t aFlushType, bool* aResult) {
 
     case FLUSH_LAYOUT:
       flushType = FlushType::Layout;
-      break;
-
-    case FLUSH_DISPLAY:
-      flushType = FlushType::Display;
       break;
 
     default:
@@ -2096,7 +2093,7 @@ nsDOMWindowUtils::GetRootBounds(DOMRect** aResult) {
   nsRect bounds(0, 0, 0, 0);
   PresShell* presShell = doc->GetPresShell();
   if (presShell) {
-    nsIScrollableFrame* sf = presShell->GetRootScrollFrameAsScrollable();
+    ScrollContainerFrame* sf = presShell->GetRootScrollContainerFrame();
     if (sf) {
       bounds = sf->GetScrollRange();
       bounds.SetWidth(bounds.Width() + sf->GetScrollPortRect().Width());
@@ -2202,7 +2199,7 @@ nsDOMWindowUtils::GetCanvasBackgroundColor(nsAString& aColor) {
   }
   nscolor color = NS_RGB(255, 255, 255);
   if (PresShell* presShell = GetPresShell()) {
-    color = presShell->ComputeCanvasBackground().mColor;
+    color = presShell->ComputeCanvasBackground().mViewportColor;
   }
   nsStyleUtil::GetSerializedColorValue(color, aColor);
   return NS_OK;
@@ -2575,12 +2572,11 @@ nsDOMWindowUtils::GetVisitedDependentComputedStyle(
   nsAutoCString result;
 
   static_cast<nsComputedDOMStyle*>(decl.get())->SetExposeVisitedStyle(true);
-  nsresult rv =
-      decl->GetPropertyValue(NS_ConvertUTF16toUTF8(aPropertyName), result);
+  decl->GetPropertyValue(NS_ConvertUTF16toUTF8(aPropertyName), result);
   static_cast<nsComputedDOMStyle*>(decl.get())->SetExposeVisitedStyle(false);
 
   CopyUTF8toUTF16(result, aResult);
-  return rv;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -2684,9 +2680,9 @@ NS_IMETHODIMP
 nsDOMWindowUtils::GetCurrentPreferredSampleRate(uint32_t* aRate) {
   nsCOMPtr<Document> doc = GetDocument();
   *aRate = CubebUtils::PreferredSampleRate(
-      doc ? doc->ShouldResistFingerprinting(RFPTarget::Unknown)
-          : nsContentUtils::ShouldResistFingerprinting("Fallback",
-                                                       RFPTarget::Unknown));
+      doc ? doc->ShouldResistFingerprinting(RFPTarget::AudioSampleRate)
+          : nsContentUtils::ShouldResistFingerprinting(
+                "Fallback", RFPTarget::AudioSampleRate));
   return NS_OK;
 }
 
@@ -2712,7 +2708,7 @@ nsDOMWindowUtils::DefaultDevicesRoundTripLatency(Promise** aOutPromise) {
       NS_NewRunnableFunction("DefaultDevicesRoundTripLatency", [p]() {
         double mean, stddev;
         bool success =
-            CubebUtils::EstimatedRoundTripLatencyDefaultDevices(&mean, &stddev);
+            CubebUtils::EstimatedLatencyDefaultDevices(&mean, &stddev);
 
         NS_DispatchToMainThread(NS_NewRunnableFunction(
             "DefaultDevicesRoundTripLatency", [p, success, mean, stddev]() {
@@ -2806,16 +2802,10 @@ nsDOMWindowUtils::AdvanceTimeAndRefresh(int64_t aMilliseconds) {
   // 'ready' promise before continuing. Then we could remove the special
   // handling here and the code path followed when testing would more closely
   // match the code path during regular operation. Filed as bug 1112957.
-  nsCOMPtr<Document> doc = GetDocument();
-  if (doc) {
-    PendingAnimationTracker* tracker = doc->GetPendingAnimationTracker();
-    if (tracker) {
-      tracker->TriggerPendingAnimationsNow();
-    }
-  }
-
   nsPresContext* presContext = GetPresContext();
   if (presContext) {
+    presContext->Document()->Timeline()->TriggerAllPendingAnimationsNow();
+
     RefPtr<nsRefreshDriver> driver = presContext->RefreshDriver();
     driver->AdvanceTimeAndRefresh(aMilliseconds);
 
@@ -2977,28 +2967,23 @@ nsDOMWindowUtils::FlushApzRepaints(bool* aOutResult) {
 NS_IMETHODIMP
 nsDOMWindowUtils::DisableApzForElement(Element* aElement) {
   aElement->SetProperty(nsGkAtoms::apzDisabled, reinterpret_cast<void*>(true));
-  nsIScrollableFrame* sf = nsLayoutUtils::FindScrollableFrameFor(aElement);
-  if (!sf) {
-    return NS_OK;
+  if (ScrollContainerFrame* sf =
+          nsLayoutUtils::FindScrollContainerFrameFor(aElement)) {
+    sf->SchedulePaint();
   }
-  nsIFrame* frame = do_QueryFrame(sf);
-  if (!frame) {
-    return NS_OK;
-  }
-  frame->SchedulePaint();
   return NS_OK;
 }
 
-static nsTArray<nsIScrollableFrame*> CollectScrollableAncestors(
+static nsTArray<ScrollContainerFrame*> CollectScrollableAncestors(
     nsIFrame* aStart) {
-  nsTArray<nsIScrollableFrame*> result;
+  nsTArray<ScrollContainerFrame*> result;
   nsIFrame* frame = aStart;
   while (frame) {
     frame = nsLayoutUtils::GetCrossDocParentFrame(frame);
     if (!frame) {
       break;
     }
-    nsIScrollableFrame* scrollAncestor =
+    ScrollContainerFrame* scrollAncestor =
         nsLayoutUtils::GetAsyncScrollableAncestorFrame(frame);
     if (!scrollAncestor) {
       break;
@@ -3044,31 +3029,6 @@ nsDOMWindowUtils::ZoomToFocusedInput() {
     return NS_OK;
   }
 
-  bool shouldSkip = [&] {
-    nsIFrame* frame = element->GetPrimaryFrame();
-    if (!frame) {
-      return true;
-    }
-
-    // Skip zooming to focused inputs in fixed subtrees, as we'd scroll to the
-    // top unnecessarily, see bug 1627734.
-    //
-    // We could try to teach apz to zoom to a rect only without panning, or
-    // maybe we could give it a rect offsetted by the root scroll position, if
-    // we wanted to do this.
-    for (; frame; frame = nsLayoutUtils::GetCrossDocParentFrame(frame)) {
-      if (frame->PresShell() == presShell) {
-        // Note that we only do this if the frame belongs to `presShell` (that
-        // is, we still zoom in fixed elements in subdocuments, as they're not
-        // fixed to the root content document).
-        return nsLayoutUtils::IsInPositionFixedSubtree(frame);
-      }
-      frame = frame->PresShell()->GetRootFrame();
-    }
-
-    return false;
-  }();
-
   // The content may be inside a scrollable subframe inside a non-scrollable
   // root content document. In this scenario, we want to ensure that the
   // main-thread side knows to scroll the content into view before we get
@@ -3077,10 +3037,6 @@ nsDOMWindowUtils::ZoomToFocusedInput() {
       element, ScrollAxis(WhereToScroll::Nearest, WhenToScroll::IfNotVisible),
       ScrollAxis(WhereToScroll::Nearest, WhenToScroll::IfNotVisible),
       ScrollFlags::ScrollOverflowHidden);
-
-  if (shouldSkip) {
-    return NS_OK;
-  }
 
   RefPtr<Document> document = presShell->GetDocument();
   if (!document) {
@@ -3098,7 +3054,7 @@ nsDOMWindowUtils::ZoomToFocusedInput() {
       layers::TouchActionHelper::GetAllowedTouchBehaviorForFrame(
           element->GetPrimaryFrame());
 
-  uint32_t flags = layers::DISABLE_ZOOM_OUT;
+  uint32_t flags = layers::DISABLE_ZOOM_OUT | layers::ZOOM_TO_FOCUSED_INPUT;
   if (!Preferences::GetBool("formhelper.autozoom") ||
       Preferences::GetBool("formhelper.autozoom.force-disable.test-only",
                            /* aFallback = */ false) ||
@@ -3108,15 +3064,16 @@ nsDOMWindowUtils::ZoomToFocusedInput() {
     flags |= layers::ONLY_ZOOM_TO_DEFAULT_SCALE;
   }
 
-  nsIScrollableFrame* rootScrollFrame =
-      presShell->GetRootScrollFrameAsScrollable();
-  if (!rootScrollFrame) {
+  ScrollContainerFrame* rootScrollContainerFrame =
+      presShell->GetRootScrollContainerFrame();
+  if (!rootScrollContainerFrame) {
     return NS_OK;
   }
 
   CSSRect bounds;
   if (element->IsHTMLElement(nsGkAtoms::input)) {
-    bounds = nsLayoutUtils::GetBoundingContentRect(element, rootScrollFrame);
+    bounds = nsLayoutUtils::GetBoundingContentRect(element,
+                                                   rootScrollContainerFrame);
   } else {
     // When focused elment is content editable or <textarea> element,
     // focused element will have multi-line content.
@@ -3126,13 +3083,15 @@ nsDOMWindowUtils::ZoomToFocusedInput() {
       if (caret && caret->IsVisible()) {
         nsRect rect;
         if (nsIFrame* frame = caret->GetGeometry(&rect)) {
-          bounds = nsLayoutUtils::GetBoundingFrameRect(frame, rootScrollFrame);
+          bounds = nsLayoutUtils::GetBoundingFrameRect(
+              frame, rootScrollContainerFrame);
         }
       }
     }
     if (bounds.IsEmpty()) {
       // Fallback if no caret frame.
-      bounds = nsLayoutUtils::GetBoundingContentRect(element, rootScrollFrame);
+      bounds = nsLayoutUtils::GetBoundingContentRect(element,
+                                                     rootScrollContainerFrame);
     }
   }
 
@@ -3141,10 +3100,11 @@ nsDOMWindowUtils::ZoomToFocusedInput() {
     return NS_OK;
   }
 
-  bounds.Inflate(15.0f, 0.0f);
+  bounds -=
+      CSSPoint::FromAppUnits(rootScrollContainerFrame->GetScrollPosition());
 
   bool waitForRefresh = false;
-  for (nsIScrollableFrame* scrollAncestor :
+  for (ScrollContainerFrame* scrollAncestor :
        CollectScrollableAncestors(element->GetPrimaryFrame())) {
     if (scrollAncestor->HasScrollUpdates()) {
       waitForRefresh = true;
@@ -3181,11 +3141,16 @@ nsDOMWindowUtils::ComputeAnimationDistance(Element* aElement,
                                            double* aResult) {
   NS_ENSURE_ARG_POINTER(aElement);
 
-  nsCSSPropertyID property =
+  nsCSSPropertyID propertyID =
       nsCSSProps::LookupProperty(NS_ConvertUTF16toUTF8(aProperty));
-  if (property == eCSSProperty_UNKNOWN || nsCSSProps::IsShorthand(property)) {
+  if (propertyID == eCSSProperty_UNKNOWN ||
+      nsCSSProps::IsShorthand(propertyID)) {
     return NS_ERROR_ILLEGAL_VALUE;
   }
+
+  AnimatedPropertyID property = propertyID == eCSSPropertyExtra_variable
+                                    ? AnimatedPropertyID(NS_Atomize(aProperty))
+                                    : AnimatedPropertyID(propertyID);
 
   AnimationValue v1 = AnimationValue::FromString(
       property, NS_ConvertUTF16toUTF8(aValue1), aElement);
@@ -3195,7 +3160,7 @@ nsDOMWindowUtils::ComputeAnimationDistance(Element* aElement,
     return NS_ERROR_ILLEGAL_VALUE;
   }
 
-  *aResult = v1.ComputeDistance(property, v2);
+  *aResult = v1.ComputeDistance(v2);
   return NS_OK;
 }
 
@@ -3215,6 +3180,11 @@ nsDOMWindowUtils::GetUnanimatedComputedStyle(Element* aElement,
       nsCSSProps::IsShorthand(propertyID)) {
     return NS_ERROR_INVALID_ARG;
   }
+  AnimatedPropertyID property =
+      propertyID == eCSSPropertyExtra_variable
+          ? AnimatedPropertyID(
+                NS_Atomize(Substring(aProperty, 2, aProperty.Length() - 2)))
+          : AnimatedPropertyID(propertyID);
 
   switch (aFlushType) {
     case FLUSH_NONE:
@@ -3246,7 +3216,7 @@ nsDOMWindowUtils::GetUnanimatedComputedStyle(Element* aElement,
   }
 
   RefPtr<StyleAnimationValue> value =
-      Servo_ComputedValues_ExtractAnimationValue(computedStyle, propertyID)
+      Servo_ComputedValues_ExtractAnimationValue(computedStyle, &property)
           .Consume();
   if (!value) {
     return NS_ERROR_FAILURE;
@@ -3255,7 +3225,7 @@ nsDOMWindowUtils::GetUnanimatedComputedStyle(Element* aElement,
     return NS_ERROR_FAILURE;
   }
   nsAutoCString result;
-  Servo_AnimationValue_Serialize(value, propertyID,
+  Servo_AnimationValue_Serialize(value, &property,
                                  presShell->StyleSet()->RawData(), &result);
   CopyUTF8toUTF16(result, aResult);
   return NS_OK;
@@ -3340,26 +3310,6 @@ nsDOMWindowUtils::CheckAndClearDisplayListState(Element* aElement,
   }
   *aResult = true;
   return NS_OK;
-}
-
-NS_IMETHODIMP
-nsDOMWindowUtils::IsPartOfOpaqueLayer(Element* aElement, bool* aResult) {
-  if (!aElement) {
-    return NS_ERROR_INVALID_ARG;
-  }
-
-  nsIFrame* frame = aElement->GetPrimaryFrame();
-  if (!frame) {
-    return NS_ERROR_FAILURE;
-  }
-
-  return NS_ERROR_FAILURE;
-}
-
-NS_IMETHODIMP
-nsDOMWindowUtils::NumberOfAssignedPaintedLayers(
-    const nsTArray<RefPtr<Element>>& aElements, uint32_t* aResult) {
-  return NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
@@ -3600,21 +3550,22 @@ static void PrepareForFullscreenChange(nsIDocShell* aDocShell,
     rd->ScheduleViewManagerFlush();
   }
   if (!aSize.IsEmpty()) {
-    nsCOMPtr<nsIContentViewer> cv;
-    aDocShell->GetContentViewer(getter_AddRefs(cv));
-    if (cv) {
-      nsIntRect cvBounds;
-      cv->GetBounds(cvBounds);
+    nsCOMPtr<nsIDocumentViewer> viewer;
+    aDocShell->GetDocViewer(getter_AddRefs(viewer));
+    if (viewer) {
+      nsIntRect viewerBounds;
+      viewer->GetBounds(viewerBounds);
       nscoord auPerDev = presShell->GetPresContext()->AppUnitsPerDevPixel();
       if (aOldSize) {
         *aOldSize = LayoutDeviceIntSize::ToAppUnits(
-            LayoutDeviceIntSize::FromUnknownSize(cvBounds.Size()), auPerDev);
+            LayoutDeviceIntSize::FromUnknownSize(viewerBounds.Size()),
+            auPerDev);
       }
       LayoutDeviceIntSize newSize =
           LayoutDeviceIntSize::FromAppUnitsRounded(aSize, auPerDev);
 
-      cvBounds.SizeTo(newSize.width, newSize.height);
-      cv->SetBounds(cvBounds);
+      viewerBounds.SizeTo(newSize.width, newSize.height);
+      viewer->SetBounds(viewerBounds);
     }
   }
 }
@@ -3975,7 +3926,8 @@ nsDOMWindowUtils::GetOMTAStyle(Element* aElement, const nsAString& aProperty,
                aProperty.EqualsLiteral("offset-path") ||
                aProperty.EqualsLiteral("offset-distance") ||
                aProperty.EqualsLiteral("offset-rotate") ||
-               aProperty.EqualsLiteral("offset-anchor")) {
+               aProperty.EqualsLiteral("offset-anchor") ||
+               aProperty.EqualsLiteral("offset-position")) {
       OMTAValue value = GetOMTAValue(frame, DisplayItemType::TYPE_TRANSFORM,
                                      GetWebRenderBridge());
       if (value.type() == OMTAValue::TMatrix4x4) {
@@ -3992,39 +3944,10 @@ nsDOMWindowUtils::GetOMTAStyle(Element* aElement, const nsAString& aProperty,
   }
 
   if (cssValue) {
-    nsString text;
-    ErrorResult rv;
-    cssValue->GetCssText(text, rv);
-    aResult.Assign(text);
-    return rv.StealNSResult();
+    cssValue->GetCssText(aResult);
+    return NS_OK;
   }
   aResult.Truncate();
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsDOMWindowUtils::IsAnimationInPendingTracker(dom::Animation* aAnimation,
-                                              bool* aRetVal) {
-  MOZ_ASSERT(aRetVal);
-
-  if (!aAnimation) {
-    return NS_ERROR_INVALID_ARG;
-  }
-
-  Document* doc = GetDocument();
-  if (!doc) {
-    *aRetVal = false;
-    return NS_OK;
-  }
-
-  PendingAnimationTracker* tracker = doc->GetPendingAnimationTracker();
-  if (!tracker) {
-    *aRetVal = false;
-    return NS_OK;
-  }
-
-  *aRetVal = tracker->IsWaitingToPlay(*aAnimation) ||
-             tracker->IsWaitingToPause(*aAnimation);
   return NS_OK;
 }
 
@@ -4263,6 +4186,17 @@ nsDOMWindowUtils::GetFramesReflowed(uint64_t* aResult) {
 }
 
 NS_IMETHODIMP
+nsDOMWindowUtils::GetAnimationTriggeredRestyles(uint64_t* aResult) {
+  nsPresContext* presContext = GetPresContext();
+  if (!presContext) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  *aResult = presContext->AnimationTriggeredRestylesCount();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsDOMWindowUtils::GetRefreshDriverHasPendingTick(bool* aResult) {
   nsPresContext* presContext = GetPresContext();
   if (!presContext) {
@@ -4388,7 +4322,7 @@ nsDOMWindowUtils::AddManuallyManagedState(Element* aElement,
     return NS_ERROR_INVALID_ARG;
   }
 
-  aElement->AddManuallyManagedStates(state);
+  aElement->AddStates(state);
   return NS_OK;
 }
 
@@ -4404,7 +4338,7 @@ nsDOMWindowUtils::RemoveManuallyManagedState(Element* aElement,
     return NS_ERROR_INVALID_ARG;
   }
 
-  aElement->RemoveManuallyManagedStates(state);
+  aElement->RemoveStates(state);
   return NS_OK;
 }
 
@@ -4425,16 +4359,16 @@ nsDOMWindowUtils::GetDirectionFromText(const nsAString& aString,
   Directionality dir =
       ::GetDirectionFromText(aString.BeginReading(), aString.Length(), nullptr);
   switch (dir) {
-    case eDir_NotSet:
+    case Directionality::Unset:
       *aRetval = nsIDOMWindowUtils::DIRECTION_NOT_SET;
       break;
-    case eDir_RTL:
+    case Directionality::Rtl:
       *aRetval = nsIDOMWindowUtils::DIRECTION_RTL;
       break;
-    case eDir_LTR:
+    case Directionality::Ltr:
       *aRetval = nsIDOMWindowUtils::DIRECTION_LTR;
       break;
-    case eDir_Auto:
+    case Directionality::Auto:
       MOZ_ASSERT_UNREACHABLE(
           "GetDirectionFromText should never return this value");
       return NS_ERROR_FAILURE;

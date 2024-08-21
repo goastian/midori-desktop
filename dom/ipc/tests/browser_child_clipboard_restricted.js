@@ -9,7 +9,7 @@ add_task(async function () {
   );
   let browser = tab.linkedBrowser;
 
-  await SpecialPowers.spawn(browser, [], async function (arg) {
+  await SpecialPowers.spawn(browser, [], async function () {
     const trans = Cc["@mozilla.org/widget/transferable;1"].createInstance(
       Ci.nsITransferable
     );
@@ -48,7 +48,11 @@ add_task(async function () {
     );
     trans.init(null);
     trans.addDataFlavor(flavor);
-    Services.clipboard.getData(trans, Services.clipboard.kGlobalClipboard);
+    Services.clipboard.getData(
+      trans,
+      Services.clipboard.kGlobalClipboard,
+      SpecialPowers.wrap(window).browsingContext.currentWindowContext
+    );
 
     let data = {};
     trans.getTransferData(flavor, data);

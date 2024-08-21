@@ -12,14 +12,14 @@ import {
   TypedArrayBufferView,
   TypedArrayBufferViewConstructor,
 } from '../../common/util/util.js';
+import { Float16Array } from '../../external/petamoriken/float16/float16.js';
 
-import { float16BitsToFloat32 } from './conversion.js';
 import { generatePrettyTable } from './pretty_diff_tables.js';
 
 /** Generate an expected value at `index`, to test for equality with the actual value. */
 export type CheckElementsGenerator = (index: number) => number;
 /** Check whether the actual `value` at `index` is as expected. */
-export type CheckElementsPredicate = (index: number, value: number) => boolean;
+export type CheckElementsPredicate = (index: number, value: number | bigint) => boolean;
 /**
  * Provides a pretty-printing implementation for a particular CheckElementsPredicate.
  * This is an array; each element provides info to print an additional row in the error message.
@@ -29,9 +29,9 @@ export type CheckElementsSupplementalTableRows = Array<{
   leftHeader: string;
   /**
    * Get the value for a cell in the table with element index `index`.
-   * May be a string or a number; a number will be formatted according to the TypedArray type used.
+   * May be a string or numeric (number | bigint); numerics will be formatted according to the TypedArray type used.
    */
-  getValueForCell: (index: number) => number | string;
+  getValueForCell: (index: number) => string | number | bigint;
 }>;
 
 /**
@@ -43,8 +43,32 @@ export function checkElementsEqual(
   expected: TypedArrayBufferView
 ): ErrorWithExtra | undefined {
   assert(actual.constructor === expected.constructor, 'TypedArray type mismatch');
-  assert(actual.length === expected.length, 'size mismatch');
-  return checkElementsEqualGenerated(actual, i => expected[i]);
+  assert(
+    actual.length === expected.length,
+    `length mismatch: expected ${expected.length} got ${actual.length}`
+  );
+
+  let failedElementsFirstMaybe: number | undefined = undefined;
+  /** Sparse array with `true` for elements that failed. */
+  const failedElements: (true | undefined)[] = [];
+  for (let i = 0; i < actual.length; ++i) {
+    if (actual[i] !== expected[i]) {
+      failedElementsFirstMaybe ??= i;
+      failedElements[i] = true;
+    }
+  }
+
+  if (failedElementsFirstMaybe === undefined) {
+    return undefined;
+  }
+
+  const failedElementsFirst = failedElementsFirstMaybe;
+  return failCheckElements({
+    actual,
+    failedElements,
+    failedElementsFirst,
+    predicatePrinter: [{ leftHeader: 'expected ==', getValueForCell: index => expected[index] }],
+  });
 }
 
 /**
@@ -69,42 +93,6 @@ export function checkElementsBetween(
   );
   // If there was an error, extend it with additional extras.
   return error ? new ErrorWithExtra(error, () => ({ expected })) : undefined;
-}
-
-/**
- * Equivalent to {@link checkElementsBetween} but interpret values as float16 and convert to JS number before comparison.
- */
-export function checkElementsFloat16Between(
-  actual: TypedArrayBufferView,
-  expected: readonly [TypedArrayBufferView, TypedArrayBufferView]
-): ErrorWithExtra | undefined {
-  assert(actual.BYTES_PER_ELEMENT === 2, 'bytes per element need to be 2 (16bit)');
-  const actualF32 = new Float32Array(actual.length);
-  actual.forEach((v: number, i: number) => {
-    actualF32[i] = float16BitsToFloat32(v);
-  });
-  const expectedF32 = [new Float32Array(expected[0].length), new Float32Array(expected[1].length)];
-  expected[0].forEach((v: number, i: number) => {
-    expectedF32[0][i] = float16BitsToFloat32(v);
-  });
-  expected[1].forEach((v: number, i: number) => {
-    expectedF32[1][i] = float16BitsToFloat32(v);
-  });
-
-  const error = checkElementsPassPredicate(
-    actualF32,
-    (index, value) =>
-      value >= Math.min(expectedF32[0][index], expectedF32[1][index]) &&
-      value <= Math.max(expectedF32[0][index], expectedF32[1][index]),
-    {
-      predicatePrinter: [
-        { leftHeader: 'between', getValueForCell: index => expectedF32[0][index] },
-        { leftHeader: 'and', getValueForCell: index => expectedF32[1][index] },
-      ],
-    }
-  );
-  // If there was an error, extend it with additional extras.
-  return error ? new ErrorWithExtra(error, () => ({ expectedF32 })) : undefined;
 }
 
 /**
@@ -153,11 +141,29 @@ export function checkElementsEqualGenerated(
   actual: TypedArrayBufferView,
   generator: CheckElementsGenerator
 ): ErrorWithExtra | undefined {
-  const error = checkElementsPassPredicate(actual, (index, value) => value === generator(index), {
+  let failedElementsFirstMaybe: number | undefined = undefined;
+  /** Sparse array with `true` for elements that failed. */
+  const failedElements: (true | undefined)[] = [];
+  for (let i = 0; i < actual.length; ++i) {
+    if (actual[i] !== generator(i)) {
+      failedElementsFirstMaybe ??= i;
+      failedElements[i] = true;
+    }
+  }
+
+  if (failedElementsFirstMaybe === undefined) {
+    return undefined;
+  }
+
+  const failedElementsFirst = failedElementsFirstMaybe;
+  const error = failCheckElements({
+    actual,
+    failedElements,
+    failedElementsFirst,
     predicatePrinter: [{ leftHeader: 'expected ==', getValueForCell: index => generator(index) }],
   });
-  // If there was an error, extend it with additional extras.
-  return error ? new ErrorWithExtra(error, () => ({ generator })) : undefined;
+  // Add more extras to the error.
+  return new ErrorWithExtra(error, () => ({ generator }));
 }
 
 /**
@@ -169,14 +175,10 @@ export function checkElementsPassPredicate(
   predicate: CheckElementsPredicate,
   { predicatePrinter }: { predicatePrinter?: CheckElementsSupplementalTableRows }
 ): ErrorWithExtra | undefined {
-  const size = actual.length;
-  const ctor = actual.constructor as TypedArrayBufferViewConstructor;
-  const printAsFloat = ctor === Float32Array || ctor === Float64Array;
-
   let failedElementsFirstMaybe: number | undefined = undefined;
   /** Sparse array with `true` for elements that failed. */
   const failedElements: (true | undefined)[] = [];
-  for (let i = 0; i < size; ++i) {
+  for (let i = 0; i < actual.length; ++i) {
     if (!predicate(i, actual[i])) {
       failedElementsFirstMaybe ??= i;
       failedElements[i] = true;
@@ -186,7 +188,35 @@ export function checkElementsPassPredicate(
   if (failedElementsFirstMaybe === undefined) {
     return undefined;
   }
+
   const failedElementsFirst = failedElementsFirstMaybe;
+  return failCheckElements({ actual, failedElements, failedElementsFirst, predicatePrinter });
+}
+
+interface CheckElementsFailOpts {
+  actual: TypedArrayBufferView;
+  failedElements: (true | undefined)[];
+  failedElementsFirst: number;
+  predicatePrinter?: CheckElementsSupplementalTableRows;
+}
+
+/**
+ * Implements the failure case of some checkElementsX helpers above. This allows those functions to
+ * implement their checks directly without too many function indirections in between.
+ *
+ * Note: Separating this into its own function significantly speeds up the non-error case in
+ * Chromium (though this may be V8-specific behavior).
+ */
+function failCheckElements({
+  actual,
+  failedElements,
+  failedElementsFirst,
+  predicatePrinter,
+}: CheckElementsFailOpts): ErrorWithExtra {
+  const size = actual.length;
+  const ctor = actual.constructor as TypedArrayBufferViewConstructor;
+  const printAsFloat = ctor === Float16Array || ctor === Float32Array || ctor === Float64Array;
+
   const failedElementsLast = failedElements.length - 1;
 
   // Include one extra non-failed element at the beginning and end (if they exist), for context.
@@ -194,13 +224,17 @@ export function checkElementsPassPredicate(
   const printElementsEnd = Math.min(size, failedElementsLast + 2);
   const printElementsCount = printElementsEnd - printElementsStart;
 
-  const numberToString = printAsFloat
-    ? (n: number) => n.toPrecision(4)
-    : (n: number) => intToPaddedHex(n, { byteLength: ctor.BYTES_PER_ELEMENT });
+  const numericToString = (val: number | bigint): string => {
+    if (typeof val === 'number' && printAsFloat) {
+      return val.toPrecision(4);
+    }
+    return intToPaddedHex(val, { byteLength: ctor.BYTES_PER_ELEMENT });
+  };
+
   const numberPrefix = printAsFloat ? '' : '0x:';
 
   const printActual = actual.subarray(printElementsStart, printElementsEnd);
-  const printExpected: Array<Iterable<string | number>> = [];
+  const printExpected: Array<Iterable<string | number | bigint>> = [];
   if (predicatePrinter) {
     for (const { leftHeader, getValueForCell: cell } of predicatePrinter) {
       printExpected.push(
@@ -219,7 +253,7 @@ export function checkElementsPassPredicate(
 
   const opts = {
     fillToWidth: 120,
-    numberToString,
+    numericToString,
   };
   const msg = `Array had unexpected contents at indices ${failedElementsFirst} through ${failedElementsLast}.
  Starting at index ${printElementsStart}:
@@ -236,10 +270,11 @@ ${generatePrettyTable(opts, [
 // Helper helpers
 
 /** Convert an integral `number` into a hex string, padded to the specified `byteLength`. */
-function intToPaddedHex(number: number, { byteLength }: { byteLength: number }) {
-  assert(Number.isInteger(number), 'number must be integer');
-  let s = Math.abs(number).toString(16);
-  if (byteLength) s = s.padStart(byteLength * 2, '0');
-  if (number < 0) s = '-' + s;
-  return s;
+function intToPaddedHex(val: number | bigint, { byteLength }: { byteLength: number }) {
+  assert(Number.isInteger(val), 'number must be integer');
+  const is_negative = typeof val === 'number' ? val < 0 : val < 0n;
+  let str = (is_negative ? -val : val).toString(16);
+  if (byteLength) str = str.padStart(byteLength * 2, '0');
+  if (is_negative) str = '-' + str;
+  return str;
 }

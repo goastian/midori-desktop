@@ -12,8 +12,10 @@
  Pref="dom.security.credentialmanagement.identity.enabled"]
 interface IdentityCredential : Credential {
  readonly attribute USVString? token;
- [Throws]
- static Promise<undefined> logoutRPs(sequence<IdentityCredentialLogoutRPsRequest> logoutRequests);
+ [Throws, Pref="dom.security.credentialmanagement.identity.lightweight.enabled"]
+ readonly attribute UTF8String origin;
+ [Throws, Pref="dom.security.credentialmanagement.identity.lightweight.enabled"]
+ constructor(IdentityCredentialInit init);
 };
 
 dictionary IdentityCredentialRequestOptions {
@@ -22,10 +24,38 @@ dictionary IdentityCredentialRequestOptions {
 
 [GenerateConversionToJS]
 dictionary IdentityProviderConfig {
- required UTF8String configURL;
- required USVString clientId;
- USVString nonce;
+ UTF8String configURL;
+ UTF8String clientId;
+ UTF8String nonce;
+ [Pref="dom.security.credentialmanagement.identity.lightweight.enabled"]
+ UTF8String origin;
+ [Pref="dom.security.credentialmanagement.identity.lightweight.enabled"]
+ UTF8String loginURL;
+ [Pref="dom.security.credentialmanagement.identity.lightweight.enabled"]
+ UTF8String loginTarget;
+ [Pref="dom.security.credentialmanagement.identity.lightweight.enabled"]
+ UTF8String effectiveQueryURL;
+ [Pref="dom.security.credentialmanagement.identity.lightweight.enabled"]
+ UTF8String data;
 };
+
+// Lightweight only
+
+dictionary IdentityCredentialUserData {
+  required UTF8String name;
+  required UTF8String iconURL;
+  unsigned long long expiresAfter;
+};
+
+dictionary IdentityCredentialInit {
+  required DOMString id;
+  UTF8String token;
+  sequence<UTF8String> effectiveOrigins;
+  UTF8String effectiveQueryURL;
+  IdentityCredentialUserData uiHint;
+};
+
+// Heavyweight only
 
 // https://fedidcg.github.io/FedCM/#dictdef-identityproviderwellknown
 [GenerateInit]
@@ -35,7 +65,7 @@ dictionary IdentityProviderWellKnown {
 
 // https://fedidcg.github.io/FedCM/#dictdef-identityprovidericon
 dictionary IdentityProviderIcon {
-  required USVString url;
+  required UTF8String url;
   unsigned long size;
 };
 
@@ -44,6 +74,7 @@ dictionary IdentityProviderBranding {
   USVString background_color;
   USVString color;
   sequence<IdentityProviderIcon> icons;
+  USVString name;
 };
 
 // https://fedidcg.github.io/FedCM/#dictdef-identityproviderapiconfig
@@ -83,10 +114,4 @@ dictionary IdentityProviderClientMetadata {
 [GenerateInit]
 dictionary IdentityProviderToken {
   required USVString token;
-};
-
-// https://fedidcg.github.io/FedCM/#dictdef-identitycredentiallogoutrpsrequest
-dictionary IdentityCredentialLogoutRPsRequest {
-  required UTF8String url;
-  required UTF8String accountId;
 };

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>Test module import error message</title>
+<script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+<script>
+  SimpleTest.waitForExplicitFinish();
+
+  let count = 0;
+
+  window.onerror = function (event, src, lineno, colno, error) {
+    info("window.onerror: message: " + error.message);
+    info("window.onerror: src: " + src);
+    ok(error instanceof SyntaxError, "Should be a SyntaxError.");
+
+    if (src.match("no_indirect_export.mjs") ||
+        src.match("import_no_export.mjs")) {
+      ok(error.message.match("doesn't provide an export named"));
+    } else if(src.match("export_ambiguous.mjs") ||
+              src.match("import_ambiguous_export_star.mjs") ||
+              src.match("import_ambiguous_export.mjs") ||
+              src.match("import_ambiguous.mjs")) {
+      ok(error.message.match("contains ambiguous star export"));
+    } else if (src.match("import_circular_1.mjs")) {
+      ok(error.message.match("contains circular import"));
+    } else {
+      ok(false, "unknown src " + src);
+    }
+    count++;
+  };
+
+  function testLoaded() {
+    ok(count === 7, "Should have 7 SynaxErrors thrown.");
+    SimpleTest.finish();
+  }
+
+</script>
+
+<script type="module" src="import_no_indirect_export.mjs"></script>
+<script type="module" src="import_ambiguous_indirect_export.mjs"></script>
+<script type="module" src="import_ambiguous_export_star.mjs"></script>
+<script type="module" src="import_ambiguous_export.mjs"></script>
+<script type="module" src="import_no_export.mjs"></script>
+<script type="module" src="import_ambiguous.mjs"></script>
+<script type="module" src="import_circular.mjs"></script>
+<body onload='testLoaded()'></body>

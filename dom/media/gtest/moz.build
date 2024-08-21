@@ -10,6 +10,7 @@ DEFINES["ENABLE_SET_CUBEB_BACKEND"] = True
 DEFINES["VISIBLE_TIMEUNIT_INTERNALS"] = True
 
 LOCAL_INCLUDES += [
+    "/dom/media/driftcontrol",
     "/dom/media/mediasink",
     "/dom/media/systemservices",
     "/dom/media/webrtc",
@@ -21,16 +22,18 @@ LOCAL_INCLUDES += [
 UNIFIED_SOURCES += [
     "MockCubeb.cpp",
     "MockMediaResource.cpp",
+    "TestAudioBuffer.cpp",
     "TestAudioBuffers.cpp",
     "TestAudioCallbackDriver.cpp",
     "TestAudioCompactor.cpp",
     "TestAudioDecoderInputTrack.cpp",
-    "TestAudioDriftCorrection.cpp",
     "TestAudioInputSource.cpp",
     "TestAudioMixer.cpp",
     "TestAudioPacketizer.cpp",
     "TestAudioRingBuffer.cpp",
+    "TestAudioSampleFormat.cpp",
     "TestAudioSegment.cpp",
+    "TestAudioSinkWrapper.cpp",
     "TestAudioTrackEncoder.cpp",
     "TestAudioTrackGraph.cpp",
     "TestBenchmarkStorage.cpp",
@@ -42,7 +45,6 @@ UNIFIED_SOURCES += [
     "TestDecoderBenchmark.cpp",
     "TestDeviceInputTrack.cpp",
     "TestDriftCompensation.cpp",
-    "TestDynamicResampler.cpp",
     "TestGMPUtils.cpp",
     "TestGroupId.cpp",
     "TestIntervalSet.cpp",
@@ -51,6 +53,7 @@ UNIFIED_SOURCES += [
     "TestMediaDataDecoder.cpp",
     "TestMediaDataEncoder.cpp",
     "TestMediaEventSource.cpp",
+    "TestMediaInfo.cpp",
     "TestMediaMIMETypes.cpp",
     "TestMediaQueue.cpp",
     "TestMediaSpan.cpp",
@@ -69,7 +72,6 @@ UNIFIED_SOURCES += [
     "TestVPXDecoding.cpp",
     "TestWebMBuffered.cpp",
     "TestWebMWriter.cpp",
-    "WaitFor.cpp",
     "YUVBufferGenerator.cpp",
 ]
 

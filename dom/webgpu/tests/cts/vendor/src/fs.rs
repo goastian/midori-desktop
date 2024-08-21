@@ -14,6 +14,26 @@ pub(crate) struct FileRoot {
     path: PathBuf,
 }
 
+impl Eq for FileRoot {}
+
+impl PartialEq for FileRoot {
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path
+    }
+}
+
+impl Ord for FileRoot {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.path.cmp(&other.path)
+    }
+}
+
+impl PartialOrd for FileRoot {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl FileRoot {
     pub(crate) fn new<P>(nickname: &'static str, path: P) -> miette::Result<Self>
     where
@@ -152,6 +172,7 @@ impl Display for FileRoot {
     }
 }
 
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct Child<'a> {
     root: &'a FileRoot,
     /// NOTE: This is always an absolute path that is a child of the `root`.
@@ -181,7 +202,7 @@ impl Child<'_> {
     }
 
     #[track_caller]
-    pub(crate) fn child<P>(&self, path: P) -> Child<'_>
+    pub(crate) fn child<P>(&self, path: P) -> Self
     where
         P: AsRef<Path>,
     {
@@ -222,15 +243,6 @@ impl Display for Child<'_> {
             self.relative_path().display()
         )
     }
-}
-
-pub(crate) fn existing_file<P>(path: P) -> P
-where
-    P: AsRef<Path>,
-{
-    let p = path.as_ref();
-    assert!(p.is_file(), "{p:?} does not exist as a file");
-    path
 }
 
 pub(crate) fn copy_dir<P, Q>(source: P, dest: Q) -> miette::Result<()>
@@ -274,6 +286,30 @@ where
             to.as_ref().display()
         )
     })
+}
+
+pub(crate) fn rename<P1, P2>(from: P1, to: P2) -> miette::Result<()>
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+{
+    fs::rename(&from, &to).into_diagnostic().wrap_err_with(|| {
+        format!(
+            "failed to rename {} to {}",
+            from.as_ref().display(),
+            to.as_ref().display()
+        )
+    })
+}
+
+pub(crate) fn try_exists<P>(path: P) -> miette::Result<bool>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+    path.try_exists()
+        .into_diagnostic()
+        .wrap_err_with(|| format!("failed to check if path exists: {}", path.display()))
 }
 
 pub(crate) fn create_dir_all<P>(path: P) -> miette::Result<()>

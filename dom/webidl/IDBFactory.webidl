@@ -27,17 +27,14 @@ interface IDBFactory {
   [NewObject, Throws, NeedsCallerType]
   IDBOpenDBRequest
   open(DOMString name,
-       [EnforceRange] unsigned long long version);
+       optional [EnforceRange] unsigned long long version);
 
   [NewObject, Throws, NeedsCallerType]
   IDBOpenDBRequest
-  open(DOMString name,
-       optional IDBOpenDBOptions options = {});
+  deleteDatabase(DOMString name);
 
-  [NewObject, Throws, NeedsCallerType]
-  IDBOpenDBRequest
-  deleteDatabase(DOMString name,
-                 optional IDBOpenDBOptions options = {});
+  [Throws]
+  Promise<sequence<IDBDatabaseInfo>> databases();
 
   [Throws]
   short
@@ -61,4 +58,9 @@ interface IDBFactory {
   deleteForPrincipal(Principal principal,
                      DOMString name,
                      optional IDBOpenDBOptions options = {});
+};
+
+dictionary IDBDatabaseInfo {
+  DOMString name;
+  unsigned long long version;
 };

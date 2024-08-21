@@ -144,9 +144,7 @@ class MOZ_STACK_CLASS AutoSetCurrentTransaction final {
   AutoSetCurrentTransaction& operator=(AutoSetCurrentTransaction&&) = delete;
 
   explicit AutoSetCurrentTransaction(Maybe<IDBTransaction&> aTransaction)
-      : mTransaction(aTransaction),
-        mPreviousTransaction(),
-        mThreadLocal(nullptr) {
+      : mTransaction(aTransaction), mThreadLocal(nullptr) {
     if (aTransaction) {
       BackgroundChildImpl::ThreadLocal* threadLocal =
           BackgroundChildImpl::GetThreadLocalForCurrentThread();
@@ -809,7 +807,7 @@ bool BackgroundFactoryChild::DeallocPBackgroundIDBFactoryRequestChild(
   return true;
 }
 
-PBackgroundIDBDatabaseChild*
+already_AddRefed<PBackgroundIDBDatabaseChild>
 BackgroundFactoryChild::AllocPBackgroundIDBDatabaseChild(
     const DatabaseSpec& aSpec,
     PBackgroundIDBFactoryRequestChild* aRequest) const {
@@ -818,15 +816,9 @@ BackgroundFactoryChild::AllocPBackgroundIDBDatabaseChild(
   auto* const request = static_cast<BackgroundFactoryRequestChild*>(aRequest);
   MOZ_ASSERT(request);
 
-  return new BackgroundDatabaseChild(aSpec, request);
-}
-
-bool BackgroundFactoryChild::DeallocPBackgroundIDBDatabaseChild(
-    PBackgroundIDBDatabaseChild* aActor) {
-  MOZ_ASSERT(aActor);
-
-  delete static_cast<BackgroundDatabaseChild*>(aActor);
-  return true;
+  RefPtr<BackgroundDatabaseChild> actor =
+      new BackgroundDatabaseChild(aSpec, request);
+  return actor.forget();
 }
 
 mozilla::ipc::IPCResult
@@ -1087,7 +1079,7 @@ bool BackgroundDatabaseChild::EnsureDOMObject() {
   auto& factory =
       static_cast<BackgroundFactoryChild*>(Manager())->GetDOMObject();
 
-  if (!factory.GetParentObject()) {
+  if (!factory.GetOwnerGlobal()) {
     // Already disconnected from global.
 
     // We need to clear mOpenRequestActor here, since that would otherwise be
@@ -1437,7 +1429,7 @@ mozilla::ipc::IPCResult BackgroundTransactionChild::RecvComplete(
 
 PBackgroundIDBRequestChild*
 BackgroundTransactionChild::AllocPBackgroundIDBRequestChild(
-    const RequestParams& aParams) {
+    const int64_t& aRequestId, const RequestParams& aParams) {
   MOZ_CRASH(
       "PBackgroundIDBRequestChild actors should be manually "
       "constructed!");
@@ -1453,7 +1445,7 @@ bool BackgroundTransactionChild::DeallocPBackgroundIDBRequestChild(
 
 PBackgroundIDBCursorChild*
 BackgroundTransactionChild::AllocPBackgroundIDBCursorChild(
-    const OpenCursorParams& aParams) {
+    const int64_t& aRequestId, const OpenCursorParams& aParams) {
   AssertIsOnOwningThread();
 
   MOZ_CRASH("PBackgroundIDBCursorChild actors should be manually constructed!");
@@ -1555,7 +1547,7 @@ mozilla::ipc::IPCResult BackgroundVersionChangeTransactionChild::RecvComplete(
 
 PBackgroundIDBRequestChild*
 BackgroundVersionChangeTransactionChild::AllocPBackgroundIDBRequestChild(
-    const RequestParams& aParams) {
+    const int64_t& aRequestId, const RequestParams& aParams) {
   MOZ_CRASH(
       "PBackgroundIDBRequestChild actors should be manually "
       "constructed!");
@@ -1571,7 +1563,7 @@ bool BackgroundVersionChangeTransactionChild::DeallocPBackgroundIDBRequestChild(
 
 PBackgroundIDBCursorChild*
 BackgroundVersionChangeTransactionChild::AllocPBackgroundIDBCursorChild(
-    const OpenCursorParams& aParams) {
+    const int64_t& aRequestId, const OpenCursorParams& aParams) {
   AssertIsOnOwningThread();
 
   MOZ_CRASH("PBackgroundIDBCursorChild actors should be manually constructed!");
@@ -1700,6 +1692,12 @@ void BackgroundRequestChild::HandleResponse(
     SerializedStructuredCloneReadInfo&& aResponse) {
   AssertIsOnOwningThread();
 
+  if (!mTransaction->Database()->GetOwnerGlobal()) {
+    // Ignore the response, since we have already been disconnected from the
+    // global.
+    return;
+  }
+
   auto cloneReadInfo = DeserializeStructuredCloneReadInfo(
       std::move(aResponse), mTransaction->Database(),
       [this] { return std::move(*GetNextCloneData()); });
@@ -1711,6 +1709,12 @@ void BackgroundRequestChild::HandleResponse(
 void BackgroundRequestChild::HandleResponse(
     nsTArray<SerializedStructuredCloneReadInfo>&& aResponse) {
   AssertIsOnOwningThread();
+
+  if (!mTransaction->Database()->GetOwnerGlobal()) {
+    // Ignore the response, since we have already been disconnected from the
+    // global.
+    return;
+  }
 
   nsTArray<StructuredCloneReadInfoChild> cloneReadInfos;
 
@@ -2207,7 +2211,7 @@ BackgroundCursorChild<CursorType>::SafeRefPtrFromThis() {
 
 template <IDBCursorType CursorType>
 void BackgroundCursorChild<CursorType>::SendContinueInternal(
-    const CursorRequestParams& aParams,
+    const int64_t aRequestId, const CursorRequestParams& aParams,
     const CursorData<CursorType>& aCurrentData) {
   AssertIsOnOwningThread();
   MOZ_ASSERT(mRequest);
@@ -2390,7 +2394,7 @@ void BackgroundCursorChild<CursorType>::SendContinueInternal(
     // handling model disallow this?
   } else {
     MOZ_ALWAYS_TRUE(PBackgroundIDBCursorChild::SendContinue(
-        params, currentKey, currentObjectStoreKey));
+        aRequestId, params, currentKey, currentObjectStoreKey));
   }
 }
 

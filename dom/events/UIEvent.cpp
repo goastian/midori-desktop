@@ -33,9 +33,7 @@ UIEvent::UIEvent(EventTarget* aOwner, nsPresContext* aPresContext,
       mDefaultClientPoint(0, 0),
       mLayerPoint(0, 0),
       mPagePoint(0, 0),
-      mMovementPoint(0, 0),
-      mIsPointerLocked(PointerLockManager::IsLocked()),
-      mLastClientPoint(EventStateManager::sLastClientPoint) {
+      mMovementPoint(0, 0) {
   if (aEvent) {
     mEventIsInternal = false;
   } else {
@@ -246,7 +244,6 @@ static const ModifierPair kPairs[] = {
   { MODIFIER_SHIFT,      NS_DOM_KEYNAME_SHIFT },
   { MODIFIER_SYMBOL,     NS_DOM_KEYNAME_SYMBOL },
   { MODIFIER_SYMBOLLOCK, NS_DOM_KEYNAME_SYMBOLLOCK },
-  { MODIFIER_OS,         NS_DOM_KEYNAME_OS }
     // clang-format on
 };
 
@@ -288,6 +285,29 @@ bool UIEvent::GetModifierStateInternal(const nsAString& aKey) {
   return ((inputEvent->mModifiers & WidgetInputEvent::GetModifier(aKey)) != 0);
 }
 
+static Modifiers ConvertToModifiers(const EventModifierInit& aParam) {
+  Modifiers bits = MODIFIER_NONE;
+
+#define SET_MODIFIER(aName, aValue) bits |= aParam.m##aName ? (aValue) : 0;
+
+  SET_MODIFIER(CtrlKey, MODIFIER_CONTROL)
+  SET_MODIFIER(ShiftKey, MODIFIER_SHIFT)
+  SET_MODIFIER(AltKey, MODIFIER_ALT)
+  SET_MODIFIER(MetaKey, MODIFIER_META)
+  SET_MODIFIER(ModifierAltGraph, MODIFIER_ALTGRAPH)
+  SET_MODIFIER(ModifierCapsLock, MODIFIER_CAPSLOCK)
+  SET_MODIFIER(ModifierFn, MODIFIER_FN)
+  SET_MODIFIER(ModifierFnLock, MODIFIER_FNLOCK)
+  SET_MODIFIER(ModifierNumLock, MODIFIER_NUMLOCK)
+  SET_MODIFIER(ModifierScrollLock, MODIFIER_SCROLLLOCK)
+  SET_MODIFIER(ModifierSymbol, MODIFIER_SYMBOL)
+  SET_MODIFIER(ModifierSymbolLock, MODIFIER_SYMBOLLOCK)
+
+#undef SET_MODIFIER
+
+  return bits;
+}
+
 void UIEvent::InitModifiers(const EventModifierInit& aParam) {
   if (NS_WARN_IF(!mEvent)) {
     return;
@@ -299,28 +319,7 @@ void UIEvent::InitModifiers(const EventModifierInit& aParam) {
     return;
   }
 
-  inputEvent->mModifiers = MODIFIER_NONE;
-
-#define SET_MODIFIER(aName, aValue)   \
-  if (aParam.m##aName) {              \
-    inputEvent->mModifiers |= aValue; \
-  }
-
-  SET_MODIFIER(CtrlKey, MODIFIER_CONTROL)
-  SET_MODIFIER(ShiftKey, MODIFIER_SHIFT)
-  SET_MODIFIER(AltKey, MODIFIER_ALT)
-  SET_MODIFIER(MetaKey, MODIFIER_META)
-  SET_MODIFIER(ModifierAltGraph, MODIFIER_ALTGRAPH)
-  SET_MODIFIER(ModifierCapsLock, MODIFIER_CAPSLOCK)
-  SET_MODIFIER(ModifierFn, MODIFIER_FN)
-  SET_MODIFIER(ModifierFnLock, MODIFIER_FNLOCK)
-  SET_MODIFIER(ModifierNumLock, MODIFIER_NUMLOCK)
-  SET_MODIFIER(ModifierOS, MODIFIER_OS)
-  SET_MODIFIER(ModifierScrollLock, MODIFIER_SCROLLLOCK)
-  SET_MODIFIER(ModifierSymbol, MODIFIER_SYMBOL)
-  SET_MODIFIER(ModifierSymbolLock, MODIFIER_SYMBOLLOCK)
-
-#undef SET_MODIFIER
+  inputEvent->mModifiers = ConvertToModifiers(aParam);
 }
 
 }  // namespace mozilla::dom

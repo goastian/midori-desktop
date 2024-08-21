@@ -28,7 +28,7 @@ function isnot(a, b, msg) {
   Assert.notEqual(a, b, msg);
 }
 
-function todo(condition, name, diag) {
+function todo(condition) {
   todo_check_true(condition);
 }
 
@@ -46,8 +46,6 @@ if (!this.runTest) {
       enableExperimental();
     }
 
-    Cu.importGlobalProperties(["indexedDB"]);
-
     // In order to support converting tests to using async functions from using
     // generator functions, we detect async functions by checking the name of
     // function's constructor.
@@ -58,7 +56,11 @@ if (!this.runTest) {
     if (testSteps.constructor.name === "AsyncFunction") {
       // Do run our existing cleanup function that would normally be called by
       // the generator's call to finishTest().
-      registerCleanupFunction(resetTesting);
+      registerCleanupFunction(function () {
+        if (SpecialPowers.isMainProcess()) {
+          resetTesting();
+        }
+      });
 
       add_task(testSteps);
 
@@ -124,7 +126,7 @@ function expectedErrorHandler(name) {
   };
 }
 
-function expectUncaughtException(expecting) {
+function expectUncaughtException() {
   // This is dummy for xpcshell test.
 }
 
@@ -198,19 +200,19 @@ function compareKeys(k1, k2) {
   return false;
 }
 
-function addPermission(permission, url) {
+function addPermission() {
   throw new Error("addPermission");
 }
 
-function removePermission(permission, url) {
+function removePermission() {
   throw new Error("removePermission");
 }
 
-function allowIndexedDB(url) {
+function allowIndexedDB() {
   throw new Error("allowIndexedDB");
 }
 
-function disallowIndexedDB(url) {
+function disallowIndexedDB() {
   throw new Error("disallowIndexedDB");
 }
 
@@ -242,7 +244,7 @@ function scheduleGC() {
 function setTimeout(fun, timeout) {
   let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   var event = {
-    notify(timer) {
+    notify() {
       fun();
     },
   };
@@ -646,7 +648,7 @@ var SpecialPowers = {
   clearUserPref(prefName) {
     Services.prefs.clearUserPref(prefName);
   },
-  // Copied (and slightly adjusted) from testing/specialpowers/content/SpecialPowersAPI.jsm
+  // Copied (and slightly adjusted) from testing/specialpowers/api.js
   exactGC(callback) {
     let count = 0;
 

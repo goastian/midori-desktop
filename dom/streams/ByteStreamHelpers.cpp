@@ -26,7 +26,8 @@ JSObject* TransferArrayBuffer(JSContext* aCx, JS::Handle<JSObject*> aObject) {
   size_t bufferLength = JS::GetArrayBufferByteLength(aObject);
 
   // Step 2 (Reordered)
-  void* bufferData = JS::StealArrayBufferContents(aCx, aObject);
+  UniquePtr<void, JS::FreePolicy> bufferData{
+      JS::StealArrayBufferContents(aCx, aObject)};
 
   // Step 4.
   if (!JS::DetachArrayBuffer(aCx, aObject)) {
@@ -34,7 +35,8 @@ JSObject* TransferArrayBuffer(JSContext* aCx, JS::Handle<JSObject*> aObject) {
   }
 
   // Step 5.
-  return JS::NewArrayBufferWithContents(aCx, bufferLength, bufferData);
+  return JS::NewArrayBufferWithContents(aCx, bufferLength,
+                                        std::move(bufferData));
 }
 
 // https://streams.spec.whatwg.org/#can-transfer-array-buffer
@@ -53,7 +55,7 @@ bool CanTransferArrayBuffer(JSContext* aCx, JS::Handle<JSObject*> aObject,
   // return false.
   // Step 5. Return true.
   // Note: WASM memories are the only buffers that would qualify
-  // as having an undefined [[ArrayBufferDetachKey]],
+  // as having an [[ArrayBufferDetachKey]] which is not undefined.
   bool hasDefinedArrayBufferDetachKey = false;
   if (!JS::HasDefinedArrayBufferDetachKey(aCx, aObject,
                                           &hasDefinedArrayBufferDetachKey)) {

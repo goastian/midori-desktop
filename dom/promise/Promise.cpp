@@ -40,7 +40,7 @@
 #include "nsContentUtils.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsDebug.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "nsJSEnvironment.h"
 #include "nsJSPrincipals.h"
@@ -211,59 +211,6 @@ already_AddRefed<Promise> Promise::All(
   }
 
   return CreateFromExisting(global, result, aPropagateUserInteraction);
-}
-
-void Promise::Then(JSContext* aCx,
-                   // aCalleeGlobal may not be in the compartment of aCx, when
-                   // called over Xrays.
-                   JS::Handle<JSObject*> aCalleeGlobal,
-                   AnyCallback* aResolveCallback, AnyCallback* aRejectCallback,
-                   JS::MutableHandle<JS::Value> aRetval, ErrorResult& aRv) {
-  NS_ASSERT_OWNINGTHREAD(Promise);
-
-  // Let's hope this does the right thing with Xrays...  Ensure everything is
-  // just in the caller compartment; that ought to do the trick.  In theory we
-  // should consider aCalleeGlobal, but in practice our only caller is
-  // DOMRequest::Then, which is not working with a Promise subclass, so things
-  // should be OK.
-  JS::Rooted<JSObject*> promise(aCx, PromiseObj());
-  if (!promise) {
-    // This promise is no-op, so do nothing.
-    return;
-  }
-
-  if (!JS_WrapObject(aCx, &promise)) {
-    aRv.NoteJSContextException(aCx);
-    return;
-  }
-
-  JS::Rooted<JSObject*> resolveCallback(aCx);
-  if (aResolveCallback) {
-    resolveCallback = aResolveCallback->CallbackOrNull();
-    if (!JS_WrapObject(aCx, &resolveCallback)) {
-      aRv.NoteJSContextException(aCx);
-      return;
-    }
-  }
-
-  JS::Rooted<JSObject*> rejectCallback(aCx);
-  if (aRejectCallback) {
-    rejectCallback = aRejectCallback->CallbackOrNull();
-    if (!JS_WrapObject(aCx, &rejectCallback)) {
-      aRv.NoteJSContextException(aCx);
-      return;
-    }
-  }
-
-  JS::Rooted<JSObject*> retval(aCx);
-  retval = JS::CallOriginalPromiseThen(aCx, promise, resolveCallback,
-                                       rejectCallback);
-  if (!retval) {
-    aRv.NoteJSContextException(aCx);
-    return;
-  }
-
-  aRetval.setObject(*retval);
 }
 
 static void SettlePromise(Promise* aSettlingPromise, Promise* aCallbackPromise,
@@ -732,7 +679,7 @@ void Promise::ReportRejectedPromise(JSContext* aCx,
         event->SerializeStack(aCx, resolutionSite);
       }
     }
-    winForDispatch->Dispatch(mozilla::TaskCategory::Other, event.forget());
+    winForDispatch->Dispatch(event.forget());
   } else {
     NS_DispatchToMainThread(event);
   }
@@ -772,12 +719,11 @@ void Promise::MaybeRejectWithClone(JSContext* aCx,
 
 // A WorkerRunnable to resolve/reject the Promise on the worker thread.
 // Calling thread MUST hold PromiseWorkerProxy's mutex before creating this.
-class PromiseWorkerProxyRunnable : public WorkerRunnable {
+class PromiseWorkerProxyRunnable final : public WorkerThreadRunnable {
  public:
   PromiseWorkerProxyRunnable(PromiseWorkerProxy* aPromiseWorkerProxy,
                              PromiseWorkerProxy::RunCallbackFunc aFunc)
-      : WorkerRunnable(aPromiseWorkerProxy->GetWorkerPrivate(),
-                       WorkerThreadUnchangedBusyCount),
+      : WorkerThreadRunnable("PromiseWorkerProxyRunnable"),
         mPromiseWorkerProxy(aPromiseWorkerProxy),
         mFunc(aFunc) {
     MOZ_ASSERT(NS_IsMainThread());
@@ -788,10 +734,13 @@ class PromiseWorkerProxyRunnable : public WorkerRunnable {
                          WorkerPrivate* aWorkerPrivate) override {
     MOZ_ASSERT(aWorkerPrivate);
     aWorkerPrivate->AssertIsOnWorkerThread();
-    MOZ_ASSERT(aWorkerPrivate == mWorkerPrivate);
 
     MOZ_ASSERT(mPromiseWorkerProxy);
-    RefPtr<Promise> workerPromise = mPromiseWorkerProxy->WorkerPromise();
+    RefPtr<Promise> workerPromise = mPromiseWorkerProxy->GetWorkerPromise();
+    // Once Worker had already started shutdown, workerPromise would be nullptr
+    if (!workerPromise) {
+      return true;
+    }
 
     // Here we convert the buffer to a JS::Value.
     JS::Rooted<JS::Value> value(aCx);
@@ -885,9 +834,8 @@ bool PromiseWorkerProxy::OnWritingThread() const {
   return IsCurrentThreadRunningWorker();
 }
 
-Promise* PromiseWorkerProxy::WorkerPromise() const {
+Promise* PromiseWorkerProxy::GetWorkerPromise() const {
   MOZ_ASSERT(IsCurrentThreadRunningWorker());
-  MOZ_ASSERT(mWorkerPromise);
   return mWorkerPromise;
 }
 
@@ -912,7 +860,7 @@ void PromiseWorkerProxy::RunCallback(JSContext* aCx,
   RefPtr<PromiseWorkerProxyRunnable> runnable =
       new PromiseWorkerProxyRunnable(this, aFunc);
 
-  runnable->Dispatch();
+  runnable->Dispatch(GetWorkerPrivate());
 }
 
 void PromiseWorkerProxy::ResolvedCallback(JSContext* aCx,
@@ -1065,6 +1013,23 @@ already_AddRefed<Promise> Promise::CreateRejectedWithErrorResult(
   }
   returnPromise->MaybeReject(std::move(aRejectionError));
   return returnPromise.forget();
+}
+
+nsresult Promise::TryExtractNSResultFromRejectionValue(
+    JS::Handle<JS::Value> aValue) {
+  if (aValue.isInt32()) {
+    return nsresult(aValue.toInt32());
+  }
+
+  if (aValue.isObject()) {
+    RefPtr<DOMException> domException;
+    UNWRAP_OBJECT(DOMException, aValue, domException);
+    if (domException) {
+      return domException->GetResult();
+    }
+  }
+
+  return NS_ERROR_DOM_NOT_NUMBER_ERR;
 }
 
 }  // namespace mozilla::dom

@@ -7,6 +7,7 @@ import { GPUTest } from '../../../gpu_test.js';
 import {
   MemoryModelTestParams,
   MemoryModelTester,
+  kAccessValueTypes,
   buildTestShader,
   MemoryType,
   TestType,
@@ -42,19 +43,149 @@ const memoryModelTestParams: MemoryModelTestParams = {
   numBehaviors: 2,
 };
 
+// The three kinds of non-atomic accesses tested.
+//  rw: read -> barrier -> write
+//  wr: write -> barrier -> read
+//  ww: write -> barrier -> write
+type AccessPair = 'rw' | 'wr' | 'ww';
+
+// Test the non-atomic memory types.
+const kMemTypes = [
+  MemoryType.NonAtomicStorageClass,
+  MemoryType.NonAtomicWorkgroupClass,
+  MemoryType.NonAtomicTextureClass,
+] as const;
+
 const storageMemoryBarrierStoreLoadTestCode = `
-  test_locations.value[x_0] = 1u;
-  workgroupBarrier();
-  let r0 = test_locations.value[x_1];
+  test_locations.value[x_0] = 1;
+  storageBarrier();
+  let r0 = u32(test_locations.value[x_1]);
+  atomicStore(&results.value[shuffled_workgroup * workgroupXSize + id_1].r0, r0);
+`;
+
+const textureMemoryBarrierStoreLoadTestCode = `
+  textureStore(texture_locations, indexToCoord(x_0), vec4u(1));
+  textureBarrier();
+  let r0 = textureLoad(texture_locations, indexToCoord(x_1)).x;
   atomicStore(&results.value[shuffled_workgroup * workgroupXSize + id_1].r0, r0);
 `;
 
 const workgroupMemoryBarrierStoreLoadTestCode = `
-  wg_test_locations[x_0] = 1u;
+  wg_test_locations[x_0] = 1;
   workgroupBarrier();
-  let r0 = wg_test_locations[x_1];
+  let r0 = u32(wg_test_locations[x_1]);
   atomicStore(&results.value[shuffled_workgroup * workgroupXSize + id_1].r0, r0);
 `;
+
+const workgroupUniformLoadMemoryBarrierStoreLoadTestCode = `
+  wg_test_locations[x_0] = 1;
+  _ = workgroupUniformLoad(&placeholder_wg_var);
+  let r0 = u32(wg_test_locations[x_1]);
+  atomicStore(&results.value[shuffled_workgroup * workgroupXSize + id_1].r0, r0);
+`;
+
+const storageMemoryBarrierLoadStoreTestCode = `
+  let r0 = u32(test_locations.value[x_0]);
+  storageBarrier();
+  test_locations.value[x_1] = 1;
+  atomicStore(&results.value[shuffled_workgroup * workgroupXSize + id_0].r0, r0);
+`;
+
+const textureMemoryBarrierLoadStoreTestCode = `
+  let r0 = textureLoad(texture_locations, indexToCoord(x_0)).x;
+  textureBarrier();
+  textureStore(texture_locations, indexToCoord(x_1), vec4u(1));
+  atomicStore(&results.value[shuffled_workgroup * workgroupXSize + id_0].r0, r0);
+`;
+
+const workgroupMemoryBarrierLoadStoreTestCode = `
+  let r0 = u32(wg_test_locations[x_0]);
+  workgroupBarrier();
+  wg_test_locations[x_1] = 1;
+  atomicStore(&results.value[shuffled_workgroup * workgroupXSize + id_0].r0, r0);
+`;
+
+const workgroupUniformLoadMemoryBarrierLoadStoreTestCode = `
+  let r0 = u32(wg_test_locations[x_0]);
+  _ = workgroupUniformLoad(&placeholder_wg_var);
+  wg_test_locations[x_1] = 1;
+  atomicStore(&results.value[shuffled_workgroup * workgroupXSize + id_0].r0, r0);
+`;
+
+const storageMemoryBarrierStoreStoreTestCode = `
+  test_locations.value[x_0] = 1;
+  storageBarrier();
+  test_locations.value[x_1] = 2;
+`;
+
+const textureMemoryBarrierStoreStoreTestCode = `
+  textureStore(texture_locations, indexToCoord(x_0), vec4u(1));
+  textureBarrier();
+  textureStore(texture_locations, indexToCoord(x_1), vec4u(2));
+  textureBarrier();
+  test_locations.value[x_1] = textureLoad(texture_locations, indexToCoord(x_1)).x;
+`;
+
+const workgroupMemoryBarrierStoreStoreTestCode = `
+  wg_test_locations[x_0] = 1;
+  workgroupBarrier();
+  wg_test_locations[x_1] = 2;
+  workgroupBarrier();
+  test_locations.value[shuffled_workgroup * workgroupXSize * stress_params.mem_stride * 2u + x_1] = wg_test_locations[x_1];
+`;
+
+const workgroupUniformLoadMemoryBarrierStoreStoreTestCode = `
+  wg_test_locations[x_0] = 1;
+  _ = workgroupUniformLoad(&placeholder_wg_var);
+  wg_test_locations[x_1] = 2;
+  _ = workgroupUniformLoad(&placeholder_wg_var);
+  test_locations.value[shuffled_workgroup * workgroupXSize * stress_params.mem_stride * 2u + x_1] = wg_test_locations[x_1];
+`;
+
+function getTestCode(p: {
+  memType: MemoryType;
+  accessPair: AccessPair;
+  normalBarrier: boolean;
+}): string {
+  switch (p.accessPair) {
+    case 'rw': {
+      switch (p.memType) {
+        case MemoryType.NonAtomicStorageClass:
+          return storageMemoryBarrierLoadStoreTestCode;
+        case MemoryType.NonAtomicTextureClass:
+          return textureMemoryBarrierLoadStoreTestCode;
+        default:
+          return p.normalBarrier
+            ? workgroupMemoryBarrierLoadStoreTestCode
+            : workgroupUniformLoadMemoryBarrierLoadStoreTestCode;
+      }
+    }
+    case 'wr': {
+      switch (p.memType) {
+        case MemoryType.NonAtomicStorageClass:
+          return storageMemoryBarrierStoreLoadTestCode;
+        case MemoryType.NonAtomicTextureClass:
+          return textureMemoryBarrierStoreLoadTestCode;
+        default:
+          return p.normalBarrier
+            ? workgroupMemoryBarrierStoreLoadTestCode
+            : workgroupUniformLoadMemoryBarrierStoreLoadTestCode;
+      }
+    }
+    case 'ww': {
+      switch (p.memType) {
+        case MemoryType.NonAtomicStorageClass:
+          return storageMemoryBarrierStoreStoreTestCode;
+        case MemoryType.NonAtomicTextureClass:
+          return textureMemoryBarrierStoreStoreTestCode;
+        default:
+          return p.normalBarrier
+            ? workgroupMemoryBarrierStoreStoreTestCode
+            : workgroupUniformLoadMemoryBarrierStoreStoreTestCode;
+      }
+    }
+  }
+}
 
 g.test('workgroup_barrier_store_load')
   .desc(
@@ -63,14 +194,33 @@ g.test('workgroup_barrier_store_load')
     after the barrier to read a write from an invocation before the barrier.
     `
   )
-  .paramsSimple([
-    { memType: MemoryType.NonAtomicStorageClass, _testCode: storageMemoryBarrierStoreLoadTestCode },
-    {
-      memType: MemoryType.NonAtomicWorkgroupClass,
-      _testCode: workgroupMemoryBarrierStoreLoadTestCode,
-    },
-  ])
+  .params(u =>
+    u
+      .combine('accessValueType', kAccessValueTypes)
+      .combine('memType', kMemTypes)
+      .combine('accessPair', ['wr'] as const)
+      .combine('normalBarrier', [true, false] as const)
+  )
+  .beforeAllSubcases(t => {
+    if (t.params.accessValueType === 'f16') {
+      t.selectDeviceOrSkipTestCase('shader-f16');
+    }
+    t.skipIf(
+      !t.params.normalBarrier && t.params.memType !== MemoryType.NonAtomicWorkgroupClass,
+      'workgroupUniformLoad does not have storage memory semantics'
+    );
+    t.skipIf(
+      t.params.memType === MemoryType.NonAtomicTextureClass && t.params.accessValueType === 'f16',
+      'textures do not support f16 access'
+    );
+  })
   .fn(async t => {
+    t.skipIf(
+      t.params.memType === MemoryType.NonAtomicTextureClass &&
+        !t.hasLanguageFeature('readonly_and_readwrite_storage_textures'),
+      'requires RW storage textures feature'
+    );
+
     const resultCode = `
       if (r0 == 1u) {
         atomicAdd(&test_results.seq, 1u);
@@ -78,11 +228,14 @@ g.test('workgroup_barrier_store_load')
         atomicAdd(&test_results.weak, 1u);
       }
     `;
-    const testShader = buildTestShader(
-      t.params._testCode,
+    let testShader = buildTestShader(
+      getTestCode(t.params),
       t.params.memType,
       TestType.IntraWorkgroup
     );
+    if (!t.params.normalBarrier) {
+      testShader += '\nvar<workgroup> placeholder_wg_var : u32;\n';
+    }
     const resultShader = buildResultShader(
       resultCode,
       TestType.IntraWorkgroup,
@@ -92,24 +245,12 @@ g.test('workgroup_barrier_store_load')
       t,
       memoryModelTestParams,
       testShader,
-      resultShader
+      resultShader,
+      t.params.accessValueType,
+      t.params.memType === MemoryType.NonAtomicTextureClass
     );
     await memModelTester.run(15, 1);
   });
-
-const storageMemoryBarrierLoadStoreTestCode = `
-  let r0 = test_locations.value[x_0];
-  workgroupBarrier();
-  test_locations.value[x_1] = 1u;
-  atomicStore(&results.value[shuffled_workgroup * workgroupXSize + id_0].r0, r0);
-`;
-
-const workgroupMemoryBarrierLoadStoreTestCode = `
-  let r0 = wg_test_locations[x_0];
-  workgroupBarrier();
-  wg_test_locations[x_1] = 1u;
-  atomicStore(&results.value[shuffled_workgroup * workgroupXSize + id_0].r0, r0);
-`;
 
 g.test('workgroup_barrier_load_store')
   .desc(
@@ -118,14 +259,33 @@ g.test('workgroup_barrier_load_store')
     before the barrier to not read the write from an invocation after the barrier.
     `
   )
-  .paramsSimple([
-    { memType: MemoryType.NonAtomicStorageClass, _testCode: storageMemoryBarrierLoadStoreTestCode },
-    {
-      memType: MemoryType.NonAtomicWorkgroupClass,
-      _testCode: workgroupMemoryBarrierLoadStoreTestCode,
-    },
-  ])
+  .params(u =>
+    u
+      .combine('accessValueType', kAccessValueTypes)
+      .combine('memType', kMemTypes)
+      .combine('accessPair', ['rw'] as const)
+      .combine('normalBarrier', [true, false] as const)
+  )
+  .beforeAllSubcases(t => {
+    if (t.params.accessValueType === 'f16') {
+      t.selectDeviceOrSkipTestCase('shader-f16');
+    }
+    t.skipIf(
+      !t.params.normalBarrier && t.params.memType !== MemoryType.NonAtomicWorkgroupClass,
+      'workgroupUniformLoad does not have storage memory semantics'
+    );
+    t.skipIf(
+      t.params.memType === MemoryType.NonAtomicTextureClass && t.params.accessValueType === 'f16',
+      'textures do not support f16 access'
+    );
+  })
   .fn(async t => {
+    t.skipIf(
+      t.params.memType === MemoryType.NonAtomicTextureClass &&
+        !t.hasLanguageFeature('readonly_and_readwrite_storage_textures'),
+      'requires RW storage textures feature'
+    );
+
     const resultCode = `
       if (r0 == 0u) {
         atomicAdd(&test_results.seq, 1u);
@@ -133,11 +293,14 @@ g.test('workgroup_barrier_load_store')
         atomicAdd(&test_results.weak, 1u);
       }
     `;
-    const testShader = buildTestShader(
-      t.params._testCode,
+    let testShader = buildTestShader(
+      getTestCode(t.params),
       t.params.memType,
       TestType.IntraWorkgroup
     );
+    if (!t.params.normalBarrier) {
+      testShader += '\nvar<workgroup> placeholder_wg_var : u32;\n';
+    }
     const resultShader = buildResultShader(
       resultCode,
       TestType.IntraWorkgroup,
@@ -147,24 +310,12 @@ g.test('workgroup_barrier_load_store')
       t,
       memoryModelTestParams,
       testShader,
-      resultShader
+      resultShader,
+      t.params.accessValueType,
+      t.params.memType === MemoryType.NonAtomicTextureClass
     );
     await memModelTester.run(12, 1);
   });
-
-const storageMemoryBarrierStoreStoreTestCode = `
-  test_locations.value[x_0] = 1u;
-  storageBarrier();
-  test_locations.value[x_1] = 2u;
-`;
-
-const workgroupMemoryBarrierStoreStoreTestCode = `
-  wg_test_locations[x_0] = 1u;
-  workgroupBarrier();
-  wg_test_locations[x_1] = 2u;
-  workgroupBarrier();
-  test_locations.value[shuffled_workgroup * workgroupXSize * stress_params.mem_stride * 2u + x_1] = wg_test_locations[x_1];
-`;
 
 g.test('workgroup_barrier_store_store')
   .desc(
@@ -173,17 +324,33 @@ g.test('workgroup_barrier_store_store')
     to be the result of the write after the barrier, not the write before.
     `
   )
-  .paramsSimple([
-    {
-      memType: MemoryType.NonAtomicStorageClass,
-      _testCode: storageMemoryBarrierStoreStoreTestCode,
-    },
-    {
-      memType: MemoryType.NonAtomicWorkgroupClass,
-      _testCode: workgroupMemoryBarrierStoreStoreTestCode,
-    },
-  ])
+  .params(u =>
+    u
+      .combine('accessValueType', kAccessValueTypes)
+      .combine('memType', kMemTypes)
+      .combine('accessPair', ['ww'] as const)
+      .combine('normalBarrier', [true, false] as const)
+  )
+  .beforeAllSubcases(t => {
+    if (t.params.accessValueType === 'f16') {
+      t.selectDeviceOrSkipTestCase('shader-f16');
+    }
+    t.skipIf(
+      !t.params.normalBarrier && t.params.memType !== MemoryType.NonAtomicWorkgroupClass,
+      'workgroupUniformLoad does not have storage memory semantics'
+    );
+    t.skipIf(
+      t.params.memType === MemoryType.NonAtomicTextureClass && t.params.accessValueType === 'f16',
+      'textures do not support f16 access'
+    );
+  })
   .fn(async t => {
+    t.skipIf(
+      t.params.memType === MemoryType.NonAtomicTextureClass &&
+        !t.hasLanguageFeature('readonly_and_readwrite_storage_textures'),
+      'requires RW storage textures feature'
+    );
+
     const resultCode = `
       if (mem_x_0 == 2u) {
         atomicAdd(&test_results.seq, 1u);
@@ -191,11 +358,14 @@ g.test('workgroup_barrier_store_store')
         atomicAdd(&test_results.weak, 1u);
       }
     `;
-    const testShader = buildTestShader(
-      t.params._testCode,
+    let testShader = buildTestShader(
+      getTestCode(t.params),
       t.params.memType,
       TestType.IntraWorkgroup
     );
+    if (!t.params.normalBarrier) {
+      testShader += '\nvar<workgroup> placeholder_wg_var : u32;\n';
+    }
     const resultShader = buildResultShader(
       resultCode,
       TestType.IntraWorkgroup,
@@ -205,7 +375,9 @@ g.test('workgroup_barrier_store_store')
       t,
       memoryModelTestParams,
       testShader,
-      resultShader
+      resultShader,
+      t.params.accessValueType,
+      t.params.memType === MemoryType.NonAtomicTextureClass
     );
     await memModelTester.run(10, 1);
   });

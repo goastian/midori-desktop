@@ -11,6 +11,11 @@
 #include "mozilla/MoveOnlyFunction.h"
 #include "mozilla/RefPtr.h"
 #include "nsISupports.h"
+#include "nsTString.h"
+
+#ifdef DEBUG
+#  include "mozilla/Mutex.h"
+#endif
 
 namespace mozilla::dom {
 
@@ -101,11 +106,36 @@ class WorkerPrivate;
 class StrongWorkerRef;
 class ThreadSafeWorkerRef;
 
+#ifdef DEBUG  // In debug mode, provide a way for clients to annotate WorkerRefs
+#  define SET_WORKERREF_DEBUG_STATUS(workerref, str) \
+    ((workerref)->DebugSetWorkerRefStatus(str))
+#  define GET_WORKERREF_DEBUG_STATUS(workerref) \
+    ((workerref)->DebugGetWorkerRefStatus())
+#else
+#  define SET_WORKERREF_DEBUG_STATUS(workerref, str) (void())
+#  define GET_WORKERREF_DEBUG_STATUS(workerref) (EmptyCString())
+#endif
+
 class WorkerRef {
   friend class WorkerPrivate;
 
  public:
   NS_INLINE_DECL_REFCOUNTING(WorkerRef)
+
+#ifdef DEBUG
+  mutable Mutex mDebugMutex;
+  nsCString mDebugStatus MOZ_GUARDED_BY(mDebugMutex);
+
+  void DebugSetWorkerRefStatus(const nsCString& aStatus) {
+    MutexAutoLock lock(mDebugMutex);
+    mDebugStatus = aStatus;
+  }
+
+  const nsCString DebugGetWorkerRefStatus() const {
+    MutexAutoLock lock(mDebugMutex);
+    return mDebugStatus;
+  }
+#endif
 
  protected:
   WorkerRef(WorkerPrivate* aWorkerPrivate, const char* aName,
@@ -144,6 +174,8 @@ class WeakWorkerRef final : public WorkerRef {
   WorkerPrivate* GetUnsafePrivate() const;
 
  private:
+  friend class ThreadSafeWeakWorkerRef;
+
   explicit WeakWorkerRef(WorkerPrivate* aWorkerPrivate);
   ~WeakWorkerRef();
 
@@ -193,6 +225,10 @@ class ThreadSafeWorkerRef final {
 
   WorkerPrivate* Private() const;
 
+#ifdef DEBUG
+  RefPtr<StrongWorkerRef>& Ref() { return mRef; }
+#endif
+
  private:
   friend class StrongWorkerRef;
 
@@ -209,9 +245,14 @@ class IPCWorkerRef final : public WorkerRef {
 
   WorkerPrivate* Private() const;
 
+  void SetActorCount(uint32_t aCount);
+
  private:
   IPCWorkerRef(WorkerPrivate* aWorkerPrivate, const char* aName);
   ~IPCWorkerRef();
+
+  // The count of background actors which binding with this IPCWorkerRef.
+  uint32_t mActorCount;
 };
 
 // Template class to keep an Actor pointer, as a raw pointer, in a ref-counted

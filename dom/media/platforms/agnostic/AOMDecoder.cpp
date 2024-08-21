@@ -13,8 +13,8 @@
 #include "ImageContainer.h"
 #include "MediaResult.h"
 #include "TimeUnits.h"
-#include "aom/aom_image.h"
-#include "aom/aomdx.h"
+#include <aom/aom_image.h>
+#include <aom/aomdx.h>
 #include "gfx2DGlue.h"
 #include "gfxUtils.h"
 #include "mozilla/PodOperations.h"
@@ -245,19 +245,26 @@ RefPtr<MediaDataDecoder::DecodePromise> AOMDecoder::ProcessDecode(
         break;
     }
 
-    RefPtr<VideoData> v;
-    v = VideoData::CreateAndCopyData(
-        mInfo, mImageContainer, aSample->mOffset, aSample->mTime,
-        aSample->mDuration, b, aSample->mKeyframe, aSample->mTimecode,
-        mInfo.ScaledImageRect(img->d_w, img->d_h), nullptr);
+    Result<already_AddRefed<VideoData>, MediaResult> r =
+        VideoData::CreateAndCopyData(
+            mInfo, mImageContainer, aSample->mOffset, aSample->mTime,
+            aSample->mDuration, b, aSample->mKeyframe, aSample->mTimecode,
+            mInfo.ScaledImageRect(img->d_w, img->d_h), nullptr);
 
-    if (!v) {
-      LOG("Image allocation error source %ux%u display %ux%u picture %ux%u",
+    if (r.isErr()) {
+      MediaResult rs = r.unwrapErr();
+      LOG("VideoData::CreateAndCopyData error (source %ux%u display %ux%u "
+          "picture %ux%u)  - %s: %s",
           img->d_w, img->d_h, mInfo.mDisplay.width, mInfo.mDisplay.height,
-          mInfo.mImage.width, mInfo.mImage.height);
-      return DecodePromise::CreateAndReject(
-          MediaResult(NS_ERROR_OUT_OF_MEMORY, __func__), __func__);
+          mInfo.mImage.width, mInfo.mImage.height, rs.ErrorName().get(),
+          rs.Message().get());
+
+      return DecodePromise::CreateAndReject(std::move(rs), __func__);
     }
+
+    RefPtr<VideoData> v = r.unwrap();
+    MOZ_ASSERT(v);
+
     mPerformanceRecorder.Record(
         aSample->mTimecode.ToMicroseconds(), [&](DecodeStage& aStage) {
           aStage.SetResolution(mInfo.mImage.width, mInfo.mImage.height);
@@ -277,6 +284,8 @@ RefPtr<MediaDataDecoder::DecodePromise> AOMDecoder::ProcessDecode(
           aStage.SetYUVColorSpace(b.mYUVColorSpace);
           aStage.SetColorRange(b.mColorRange);
           aStage.SetColorDepth(b.mColorDepth);
+          aStage.SetStartTimeAndEndTime(v->mTime.ToMicroseconds(),
+                                        v->GetEndTime().ToMicroseconds());
         });
     results.AppendElement(std::move(v));
   }
@@ -761,7 +770,7 @@ already_AddRefed<MediaByteBuffer> AOMDecoder::CreateSequenceHeader(
     // if ( initial_display_delay_present_flag ) {...}
   }
 
-  if (!aInfo.mImage.IsEmpty() <= 0) {
+  if (aInfo.mImage.IsEmpty()) {
     NS_WARNING("Sequence header requires a valid image size");
     return nullptr;
   }

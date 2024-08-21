@@ -15,7 +15,6 @@
 #include "nsITimer.h"
 
 #include "MediaConduitInterface.h"
-#include "common/MediaEngineWrapper.h"
 #include "RtpRtcpConfig.h"
 #include "RunningStat.h"
 #include "transport/runnable_utils.h"
@@ -153,6 +152,8 @@ class WebrtcVideoConduit
   Maybe<Ssrc> GetAssociatedLocalRtxSSRC(Ssrc aSsrc) const override;
   Maybe<Ssrc> GetRemoteSSRC() const override;
 
+  Maybe<VideoSessionConduit::Resolution> GetLastResolution() const override;
+
   // Call thread.
   void UnsetRemoteSSRC(uint32_t aSsrc) override;
 
@@ -194,7 +195,6 @@ class WebrtcVideoConduit
 
   void OnRtpReceived(webrtc::RtpPacketReceived&& aPacket,
                      webrtc::RTPHeader&& aHeader);
-  void OnRtcpReceived(MediaPacket&& aPacket);
 
   void OnRtcpBye() override;
   void OnRtcpTimeout() override;
@@ -216,18 +216,12 @@ class WebrtcVideoConduit
     mReceiverRtpEventListener =
         aEvent.Connect(mCallThread, this, &WebrtcVideoConduit::OnRtpReceived);
   }
-  void ConnectReceiverRtcpEvent(
-      MediaEventSourceExc<MediaPacket>& aEvent) override {
-    mReceiverRtcpEventListener =
-        aEvent.Connect(mCallThread, this, &WebrtcVideoConduit::OnRtcpReceived);
-  }
-  void ConnectSenderRtcpEvent(
-      MediaEventSourceExc<MediaPacket>& aEvent) override {
-    mSenderRtcpEventListener =
-        aEvent.Connect(mCallThread, this, &WebrtcVideoConduit::OnRtcpReceived);
-  }
 
   std::vector<webrtc::RtpSource> GetUpstreamRtpSources() const override;
+
+  void RequestKeyFrame(FrameTransformerProxy* aProxy) override;
+  void GenerateKeyFrame(const Maybe<std::string>& aRid,
+                        FrameTransformerProxy* aProxy) override;
 
  private:
   // Don't allow copying/assigning.
@@ -296,6 +290,8 @@ class WebrtcVideoConduit
     Mirror<std::vector<VideoCodecConfig>> mRecvCodecs;
     Mirror<Maybe<RtpRtcpConfig>> mRecvRtpRtcpConfig;
     Mirror<webrtc::VideoCodecMode> mCodecMode;
+    Mirror<RefPtr<FrameTransformerProxy>> mFrameTransformerProxySend;
+    Mirror<RefPtr<FrameTransformerProxy>> mFrameTransformerProxyRecv;
 
     // For caching mRemoteSsrc and mRemoteRtxSsrc, since another caller may
     // change the remote ssrc in the stream config directly.
@@ -307,6 +303,10 @@ class WebrtcVideoConduit
     // For tracking changes to mRecvCodecs and mRecvRtpRtcpConfig.
     std::vector<VideoCodecConfig> mConfiguredRecvCodecs;
     Maybe<RtpRtcpConfig> mConfiguredRecvRtpRtcpConfig;
+
+    // For change tracking. Callthread only.
+    RefPtr<FrameTransformerProxy> mConfiguredFrameTransformerProxySend;
+    RefPtr<FrameTransformerProxy> mConfiguredFrameTransformerProxyRecv;
 
     Control() = delete;
     explicit Control(const RefPtr<AbstractThread>& aCallThread);
@@ -475,6 +475,10 @@ class WebrtcVideoConduit
   // Protected by mRendererMonitor
   dom::RTCVideoFrameHistoryInternal mReceivedFrameHistory;
 
+  // Written only on the main thread.  Guarded by mMutex, except for
+  // reads on the main thread.
+  std::vector<webrtc::RtpSource> mRtpSources;
+
   // Thread safe
   Atomic<bool> mTransportActive = Atomic<bool>(false);
   MediaEventProducer<void> mRtcpByeEvent;
@@ -485,9 +489,7 @@ class WebrtcVideoConduit
   MediaEventProducerExc<MediaPacket> mReceiverRtcpSendEvent;
 
   // Assigned and revoked on mStsThread. Listeners for receiving packets.
-  MediaEventListener mSenderRtcpEventListener;    // Rtp-transmitting pipeline
-  MediaEventListener mReceiverRtcpEventListener;  // Rtp-receiving pipeline
-  MediaEventListener mReceiverRtpEventListener;   // Rtp-receiving pipeline
+  MediaEventListener mReceiverRtpEventListener;  // Rtp-receiving pipeline
 };
 }  // namespace mozilla
 

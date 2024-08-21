@@ -78,21 +78,31 @@ class CanvasContext final : public nsICanvasRenderingContextInternal,
     return nullptr;
   }
 
+  Maybe<layers::SurfaceDescriptor> GetFrontBuffer(WebGLFramebufferJS*,
+                                                  const bool) override;
+
+  already_AddRefed<layers::FwdTransactionTracker> UseCompositableForwarder(
+      layers::CompositableForwarder* aForwarder) override;
+
+  bool IsOffscreenCanvas() { return !!mOffscreenCanvas; }
+
  public:
   void GetCanvas(dom::OwningHTMLCanvasElementOrOffscreenCanvas&) const;
 
-  void Configure(const dom::GPUCanvasConfiguration& aDesc);
+  void Configure(const dom::GPUCanvasConfiguration& aConfig);
   void Unconfigure();
 
   RefPtr<Texture> GetCurrentTexture(ErrorResult& aRv);
   void MaybeQueueSwapChainPresent();
-  void SwapChainPresent();
+  Maybe<layers::SurfaceDescriptor> SwapChainPresent();
   void ForceNewFrame();
+  void InvalidateCanvasContent();
 
  private:
   gfx::IntSize mCanvasSize;
   std::unique_ptr<dom::GPUCanvasConfiguration> mConfig;
   bool mPendingSwapChainPresent = false;
+  bool mWaitingCanvasRendererInitialized = false;
 
   RefPtr<WebGPUChild> mBridge;
   RefPtr<Texture> mTexture;
@@ -100,6 +110,9 @@ class CanvasContext final : public nsICanvasRenderingContextInternal,
 
   Maybe<layers::RemoteTextureId> mLastRemoteTextureId;
   Maybe<layers::RemoteTextureOwnerId> mRemoteTextureOwnerId;
+  RefPtr<layers::FwdTransactionTracker> mFwdTransactionTracker;
+  bool mUseExternalTextureInSwapChain = false;
+  bool mNewTextureRequested = false;
 };
 
 }  // namespace webgpu

@@ -60,9 +60,7 @@ class SVGImageElement final : public SVGImageElementBase,
                     nsIPrincipal* aSubjectPrincipal, bool aNotify) override;
 
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  void UnbindFromTree(bool aNullParent) override;
-
-  ElementState IntrinsicState() const override;
+  void UnbindFromTree(UnbindContext&) override;
 
   void DestroyContent() override;
 
@@ -104,6 +102,8 @@ class SVGImageElement final : public SVGImageElementBase,
   gfx::Rect GeometryBounds(const gfx::Matrix& aToBoundsSpace);
 
  protected:
+  void DidAnimateAttribute(int32_t aNameSpaceID, nsAtom* aAttribute) override;
+
   nsresult LoadSVGImage(bool aForce, bool aNotify);
   bool ShouldLoadImage() const;
 

@@ -58,8 +58,7 @@ TextTrackCue::TextTrackCue(nsPIDOMWindowInner* aOwnerWindow, double aStartTime,
       mLine(0.0),
       mReset(false, "TextTrackCue::mReset"),
       mHaveStartedWatcher(false),
-      mWatchManager(
-          this, GetOwnerGlobal()->AbstractMainThreadFor(TaskCategory::Other)) {
+      mWatchManager(this, AbstractThread::MainThread()) {
   LOG("create TextTrackCue");
   SetDefaultCueSettings();
   MOZ_ASSERT(aOwnerWindow);
@@ -80,8 +79,7 @@ TextTrackCue::TextTrackCue(nsPIDOMWindowInner* aOwnerWindow, double aStartTime,
       mLine(0.0),
       mReset(false, "TextTrackCue::mReset"),
       mHaveStartedWatcher(false),
-      mWatchManager(
-          this, GetOwnerGlobal()->AbstractMainThreadFor(TaskCategory::Other)) {
+      mWatchManager(this, AbstractThread::MainThread()) {
   LOG("create TextTrackCue");
   SetDefaultCueSettings();
   MOZ_ASSERT(aOwnerWindow);
@@ -221,9 +219,9 @@ PositionAlignSetting TextTrackCue::ComputedPositionAlign() {
 }
 
 bool TextTrackCue::IsTextBaseDirectionLTR() const {
-  // The returned result by `ubidi_getBaseDirection` might be `neutral` if the
-  // text only contains netural charaters. In this case, we would treat its
-  // base direction as LTR.
+  // The result returned by `GetBaseDirection` might be `neutral` if the text
+  // only contains neutral charaters. In this case, we would treat its base
+  // direction as LTR.
   return intl::Bidi::GetBaseDirection(mText) != intl::Bidi::BaseDirection::RTL;
 }
 

@@ -11,7 +11,6 @@
 #include "mozilla/SchedulerGroup.h"
 #include "mozilla/StaticMutex.h"
 #include "mozilla/StaticPtr.h"
-#include "mozilla/TaskCategory.h"
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/PBackgroundChild.h"
 #include "nsXPCOMPrivate.h"
@@ -96,8 +95,7 @@ bool RemoteLazyInputStreamThread::Initialize() {
 
   if (!NS_IsMainThread()) {
     RefPtr<Runnable> runnable = new ThreadInitializeRunnable();
-    nsresult rv =
-        SchedulerGroup::Dispatch(TaskCategory::Other, runnable.forget());
+    nsresult rv = SchedulerGroup::Dispatch(runnable.forget());
     return !NS_WARN_IF(NS_FAILED(rv));
   }
 
@@ -149,11 +147,14 @@ RemoteLazyInputStreamThread::IsOnCurrentThread(bool* aRetval) {
 NS_IMETHODIMP
 RemoteLazyInputStreamThread::Dispatch(already_AddRefed<nsIRunnable> aRunnable,
                                       uint32_t aFlags) {
+  nsCOMPtr<nsIRunnable> runnable(aRunnable);
+
   if (RLISThreadIsInOrBeyondShutdown()) {
+    // nsIEventTarget::Dispatch must leak the runnable if the dispatch fails.
+    Unused << runnable.forget();
+
     return NS_ERROR_ILLEGAL_DURING_SHUTDOWN;
   }
-
-  nsCOMPtr<nsIRunnable> runnable(aRunnable);
 
   StaticMutexAutoLock lock(gRemoteLazyThreadMutex);
 

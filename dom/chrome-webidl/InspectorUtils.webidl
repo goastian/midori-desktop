@@ -17,28 +17,24 @@ namespace InspectorUtils {
   sequence<CSSStyleRule> getCSSStyleRules(
     Element element,
     optional [LegacyNullToEmptyString] DOMString pseudo = "",
-    optional boolean relevantLinkVisited = false);
+    optional boolean relevantLinkVisited = false,
+    optional boolean withStartingStyle = false);
   unsigned long getRuleLine(CSSRule rule);
   unsigned long getRuleColumn(CSSRule rule);
   unsigned long getRelativeRuleLine(CSSRule rule);
+  sequence<unsigned long> getRuleIndex(CSSRule rule);
   boolean hasRulesModifiedByCSSOM(CSSStyleSheet sheet);
-  unsigned long getSelectorCount(CSSStyleRule rule);
-  [Throws] UTF8String getSelectorText(CSSStyleRule rule,
-                                      unsigned long selectorIndex);
-  [Throws] unsigned long long getSpecificity(CSSStyleRule rule,
-                                             unsigned long selectorIndex);
-  [Throws] boolean selectorMatchesElement(
-      Element element,
-      CSSStyleRule rule,
-      unsigned long selectorIndex,
-      optional [LegacyNullToEmptyString] DOMString pseudo = "",
-      optional boolean includeVisitedStyle = false);
-  boolean isInheritedProperty(UTF8String property);
+  // Get a flat list of specific at-rules (including nested ones) of a given stylesheet.
+  // Useful for DevTools (StyleEditor at-rules sidebar) as this is faster than in JS
+  // where we'd have a lot of proxy access overhead building the same list.
+  InspectorStyleSheetRuleCountAndAtRulesResult getStyleSheetRuleCountAndAtRules(CSSStyleSheet sheet);
+  boolean isInheritedProperty(Document document, UTF8String property);
   sequence<DOMString> getCSSPropertyNames(optional PropertyNamesOptions options = {});
   sequence<PropertyPref> getCSSPropertyPrefs();
   [Throws] sequence<DOMString> getCSSValuesForProperty(UTF8String property);
-  DOMString rgbToColorName(octet r, octet g, octet b);
+  UTF8String rgbToColorName(octet r, octet g, octet b);
   InspectorRGBATuple? colorToRGBA(UTF8String colorString, optional Document? doc = null);
+  InspectorColorToResult? colorTo(UTF8String fromColor, UTF8String toColorSpace);
   boolean isValidCSSColor(UTF8String colorString);
   [Throws] sequence<DOMString> getSubpropertiesForCSSProperty(UTF8String property);
   [Throws] boolean cssPropertyIsShorthand(UTF8String property);
@@ -83,9 +79,38 @@ namespace InspectorUtils {
 
   boolean isElementThemed(Element element);
 
+  boolean isUsedColorSchemeDark(Element element);
+
   Element? containingBlockOf(Element element);
 
+  // If the element is styled as display:block, returns an array of numbers giving
+  // the number of lines in each fragment.
+  // Returns null if the element is not a block.
+  [NewObject] sequence<unsigned long>? getBlockLineCounts(Element element);
+
   [NewObject] NodeList getOverflowingChildrenOfElement(Element element);
+  sequence<DOMString> getRegisteredCssHighlights(Document document, optional boolean activeOnly = false);
+  sequence<InspectorCSSPropertyDefinition> getCSSRegisteredProperties(Document document);
+  boolean valueMatchesSyntax(Document document, UTF8String value, UTF8String syntax);
+
+  // Get the first rule body text within initialText
+  // Consider the following example:
+  // p {
+  //  line-height: 2em;
+  //  color: blue;
+  // }
+  // Calling the function with the whole text above would return:
+  // "line-height: 2em; color: blue;"
+  // Returns null when opening curly bracket wasn't found in initialText
+  UTF8String? getRuleBodyText(UTF8String initialText);
+
+  // Returns string where the rule body text at passed line and column in styleSheetText
+  // is replaced by newBodyText.
+  UTF8String? replaceBlockRuleBodyTextInStylesheet(
+    UTF8String styleSheetText,
+    unsigned long line,
+    unsigned long column,
+    UTF8String newBodyText);
 };
 
 dictionary SupportsOptions {
@@ -118,6 +143,12 @@ dictionary InspectorRGBATuple {
   double a = 1;
 };
 
+dictionary InspectorColorToResult {
+  required DOMString color;
+  required sequence<float> components;
+  required boolean adjusted;
+};
+
 // Any update to this enum should probably also update
 // devtools/shared/css/constants.js
 enum InspectorPropertyType {
@@ -148,6 +179,19 @@ dictionary InspectorFontFeature {
   required DOMString tag;
   required DOMString script;
   required DOMString languageSystem;
+};
+
+dictionary InspectorCSSPropertyDefinition {
+  required UTF8String name;
+  required UTF8String syntax;
+  required boolean inherits;
+  required UTF8String? initialValue;
+  required boolean fromJS;
+};
+
+dictionary InspectorStyleSheetRuleCountAndAtRulesResult {
+  required sequence<CSSRule> atRules;
+  required unsigned long ruleCount;
 };
 
 [Func="nsContentUtils::IsCallerChromeOrFuzzingEnabled",
@@ -186,4 +230,54 @@ interface InspectorFontFace {
   readonly attribute DOMString localName; // empty string  if not a src:local(...) rule
   readonly attribute DOMString format; // as per http://www.w3.org/TR/css3-webfonts/#referencing
   readonly attribute DOMString metadata; // XML metadata from WOFF file (if any)
+};
+
+dictionary InspectorCSSToken {
+  // The token type.
+  required UTF8String tokenType;
+
+  // Text associated with the token.
+  required UTF8String text;
+
+  // Value of the token. Might differ from `text`:
+  // - for `Function` tokens, text contains the opening paren, `value` does not (e.g. `var(` vs `var`)
+  // - for `AtKeyword` tokens, text contains the leading `@`, `value` does not (e.g. `@media` vs `media`)
+  // - for `Hash` and `IDHash` tokens, text contains the leading `#`, `value` does not (e.g. `#myid` vs `myid`)
+  // - for `UnquotedUrl` tokens, text contains the `url(` parts, `value` only holds the url (e.g. `url(test.jpg)` vs `test.jpg`)
+  // - for `QuotedString` tokens, text contains the wrapping quotes, `value` does not (e.g. `"hello"` vs `hello`)
+  // - for `Comment` tokens, text contains leading `/*` and trailing `*/`, `value` does not (e.g. `/* yo */` vs ` yo `)
+  required UTF8String? value;
+
+  // Unit for Dimension tokens
+  required UTF8String? unit;
+
+  // Float value for Dimension, Number and Percentage tokens
+  double? number = null;
+};
+
+/**
+ * InspectorCSSParser is an interface to the CSS lexer. It tokenizes an
+ * input stream and returns CSS tokens.
+ */
+[Func="nsContentUtils::IsCallerChromeOrFuzzingEnabled",
+ Exposed=Window]
+interface InspectorCSSParser {
+  constructor(UTF8String text);
+
+  /**
+   * The line number of the most recently returned token.  Line
+   * numbers are 0-based.
+   */
+  readonly attribute unsigned long lineNumber;
+
+  /**
+   * The column number of the most recently returned token.  Column
+   * numbers are 1-based.
+   */
+  readonly attribute unsigned long columnNumber;
+
+  /**
+   * Return the next token, or null at EOF.
+   */
+  InspectorCSSToken? nextToken();
 };

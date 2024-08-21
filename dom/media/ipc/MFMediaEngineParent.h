@@ -52,7 +52,6 @@ class MFMediaEngineParent final : public PMFMediaEngineParent {
   // Methods for PMFMediaEngineParent
   mozilla::ipc::IPCResult RecvInitMediaEngine(
       const MediaEngineInfoIPDL& aInfo, InitMediaEngineResolver&& aResolver);
-  mozilla::ipc::IPCResult RecvNotifyMediaInfo(const MediaInfoIPDL& aInfo);
   mozilla::ipc::IPCResult RecvPlay();
   mozilla::ipc::IPCResult RecvPause();
   mozilla::ipc::IPCResult RecvSeek(double aTargetTimeInSecond);
@@ -69,8 +68,8 @@ class MFMediaEngineParent final : public PMFMediaEngineParent {
   ~MFMediaEngineParent();
 
   void CreateMediaEngine();
+  HRESULT SetMediaInfo(const MediaInfoIPDL& aInfo);
 
-  void InitializeVirtualVideoWindow();
   void InitializeDXGIDeviceManager();
 
   void AssertOnManagerThread() const;
@@ -87,6 +86,9 @@ class MFMediaEngineParent final : public PMFMediaEngineParent {
   void UpdateStatisticsData();
 
   void SetMediaSourceOnEngine();
+
+  Maybe<gfx::IntSize> DetectVideoSizeChange();
+  void NotifyVideoResizing();
 
   // This generates unique id for each MFMediaEngineParent instance, and it
   // would be increased monotonically.
@@ -115,18 +117,11 @@ class MFMediaEngineParent final : public PMFMediaEngineParent {
   MediaEventListener mRequestSampleListener;
   bool mIsCreatedMediaEngine = false;
 
-  // A fake window handle passed to MF-based rendering pipeline for OPM.
-  HWND mVirtualVideoWindow = nullptr;
-
   Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> mDXGIDeviceManager;
 
   // These will be always zero for audio playback.
   DWORD mDisplayWidth = 0;
   DWORD mDisplayHeight = 0;
-
-  // When it's true, the media engine will output decoded video frames to a
-  // shareable dcomp surface.
-  bool mIsEnableDcompMode = false;
 
   float mPlaybackRate = 1.0;
 

@@ -1,5 +1,5 @@
 import { TestParams } from '../../framework/fixture.js';
-import { optionEnabled } from '../../runtime/helper/options.js';
+import { optionWorkerMode } from '../../runtime/helper/options.js';
 import { assert, unreachable } from '../../util/util.js';
 import { Expectation } from '../logging/result.js';
 
@@ -68,8 +68,8 @@ export class TestQueryMultiFile {
  * Immutable (makes copies of constructor args).
  */
 export class TestQueryMultiTest extends TestQueryMultiFile {
-  readonly level: TestQueryLevel = 2;
-  readonly isMultiFile: false = false;
+  override readonly level: TestQueryLevel = 2;
+  override readonly isMultiFile = false as const;
   readonly isMultiTest: boolean = true;
   readonly testPathParts: readonly string[];
 
@@ -79,11 +79,11 @@ export class TestQueryMultiTest extends TestQueryMultiFile {
     this.testPathParts = [...test];
   }
 
-  get depthInLevel() {
+  override get depthInLevel() {
     return this.testPathParts.length;
   }
 
-  protected toStringHelper(): string[] {
+  protected override toStringHelper(): string[] {
     return [
       this.suite,
       this.filePathParts.join(kPathSeparator),
@@ -99,8 +99,8 @@ export class TestQueryMultiTest extends TestQueryMultiFile {
  * (which aren't normally supposed to change; they're marked readonly in TestParams).
  */
 export class TestQueryMultiCase extends TestQueryMultiTest {
-  readonly level: TestQueryLevel = 3;
-  readonly isMultiTest: false = false;
+  override readonly level: TestQueryLevel = 3;
+  override readonly isMultiTest = false as const;
   readonly isMultiCase: boolean = true;
   readonly params: TestParams;
 
@@ -110,11 +110,11 @@ export class TestQueryMultiCase extends TestQueryMultiTest {
     this.params = { ...params };
   }
 
-  get depthInLevel() {
+  override get depthInLevel() {
     return Object.keys(this.params).length;
   }
 
-  protected toStringHelper(): string[] {
+  protected override toStringHelper(): string[] {
     return [
       this.suite,
       this.filePathParts.join(kPathSeparator),
@@ -130,14 +130,14 @@ export class TestQueryMultiCase extends TestQueryMultiTest {
  * Immutable (makes copies of constructor args).
  */
 export class TestQuerySingleCase extends TestQueryMultiCase {
-  readonly level: TestQueryLevel = 4;
-  readonly isMultiCase: false = false;
+  override readonly level: TestQueryLevel = 4;
+  override readonly isMultiCase = false as const;
 
-  get depthInLevel() {
+  override get depthInLevel() {
     return 0;
   }
 
-  protected toStringHelper(): string[] {
+  protected override toStringHelper(): string[] {
     return [
       this.suite,
       this.filePathParts.join(kPathSeparator),
@@ -188,12 +188,12 @@ export function parseExpectationsForTestQuery(
       assert(
         expectationURL.pathname === wptURL.pathname,
         `Invalid expectation path ${expectationURL.pathname}
-Expectation should be of the form path/to/cts.https.html?worker=0&q=suite:test_path:test_name:foo=1;bar=2;...
+Expectation should be of the form path/to/cts.https.html?debug=0&q=suite:test_path:test_name:foo=1;bar=2;...
         `
       );
 
       const params = expectationURL.searchParams;
-      if (optionEnabled('worker', params) !== optionEnabled('worker', wptURL.searchParams)) {
+      if (optionWorkerMode('worker', params) !== optionWorkerMode('worker', wptURL.searchParams)) {
         continue;
       }
 

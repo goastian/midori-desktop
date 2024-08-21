@@ -289,7 +289,7 @@ class WebrtcGmpVideoEncoder : public GMPVideoEncoderCallbackProxy,
   GMPVideoHost* mHost;
   GMPVideoCodec mCodecParams;
   uint32_t mMaxPayloadSize;
-  const webrtc::SdpVideoFormat::Parameters mFormatParams;
+  const webrtc::CodecParameterMap mFormatParams;
   webrtc::CodecSpecificInfo mCodecSpecificInfo;
   webrtc::H264BitstreamParser mH264BitstreamParser;
   // Protects mCallback
@@ -302,7 +302,7 @@ class WebrtcGmpVideoEncoder : public GMPVideoEncoderCallbackProxy,
     int64_t timestamp_us;
   };
   // Map rtp time -> input image data
-  DataMutex<std::map<uint32_t, InputImageData>> mInputImageMap;
+  DataMutex<std::map<uint64_t, InputImageData>> mInputImageMap;
 
   MediaEventProducer<uint64_t> mInitPluginEvent;
   MediaEventProducer<uint64_t> mReleasePluginEvent;

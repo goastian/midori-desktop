@@ -10,6 +10,7 @@
 #include <memory>
 #include <stdarg.h>
 
+#include "Colorspaces.h"
 #include "GLContextTypes.h"
 #include "GLDefs.h"
 #include "GLScreenBuffer.h"
@@ -17,6 +18,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/CheckedInt.h"
+#include "mozilla/dom/ipc/IdType.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
 #include "mozilla/dom/Nullable.h"
@@ -95,6 +97,7 @@ namespace gl {
 class GLScreenBuffer;
 class MozFramebuffer;
 class SharedSurface;
+class Sampler;
 class Texture;
 }  // namespace gl
 
@@ -169,16 +172,6 @@ struct WebGLIntOrFloat {
   }
 };
 
-struct IndexedBufferBinding {
-  RefPtr<WebGLBuffer> mBufferBinding;
-  uint64_t mRangeStart;
-  uint64_t mRangeSize;
-
-  IndexedBufferBinding();
-
-  uint64_t ByteCount() const;
-};
-
 ////////////////////////////////////
 
 namespace webgl {
@@ -193,11 +186,6 @@ class AvailabilityRunnable final : public DiscardableRunnable {
   ~AvailabilityRunnable();
 
   NS_IMETHOD Run() override;
-};
-
-struct BufferAndIndex final {
-  const WebGLBuffer* buffer = nullptr;
-  uint32_t id = -1;
 };
 
 }  // namespace webgl
@@ -305,17 +293,27 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
       StaticPrefs::webgl_max_vert_ids_per_draw();
 
   bool mIsContextLost = false;
-  Atomic<bool> mPendingContextLoss;
+  Atomic<bool> mPendingContextLoss = Atomic<bool>{false};
   webgl::ContextLossReason mPendingContextLossReason =
       webgl::ContextLossReason::None;
-  const uint32_t mMaxPerfWarnings;
+  const uint32_t mMaxPerfWarnings = StaticPrefs::webgl_perf_max_warnings();
   mutable uint64_t mNumPerfWarnings = 0;
-  const uint32_t mMaxAcceptableFBStatusInvals;
+  const uint32_t mMaxAcceptableFBStatusInvals =
+      StaticPrefs::webgl_perf_max_acceptable_fb_status_invals();
   bool mWarnOnce_DepthTexCompareFilterable = true;
 
   uint64_t mNextFenceId = 1;
   uint64_t mCompletedFenceId = 0;
 
+  mutable std::list<WeakPtr<WebGLSync>> mPendingSyncs;
+  mutable RefPtr<nsIRunnable> mPollPendingSyncs_Pending;
+  static constexpr uint32_t kPollPendingSyncs_DelayMs =
+      4;  // Four times a frame.
+ public:
+  void EnsurePollPendingSyncs_Pending() const;
+  void PollPendingSyncs() const;
+
+ protected:
   std::unique_ptr<gl::Texture> mIncompleteTexOverride;
 
  public:
@@ -325,15 +323,17 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   mutable FuncScope* mFuncScope = nullptr;
 
  public:
-  static RefPtr<WebGLContext> Create(HostWebGLContext&,
+  static RefPtr<WebGLContext> Create(HostWebGLContext*,
                                      const webgl::InitContextDesc&,
                                      webgl::InitContextResult* out);
 
  private:
+  webgl::OptionalRenderableFormatBits mOptionalRenderableFormatBits =
+      webgl::OptionalRenderableFormatBits{0};
   void FinishInit();
 
  protected:
-  WebGLContext(HostWebGLContext&, const webgl::InitContextDesc&);
+  WebGLContext(HostWebGLContext*, const webgl::InitContextDesc&);
   virtual ~WebGLContext();
 
   RefPtr<layers::CompositableHost> mCompositableHost;
@@ -465,6 +465,8 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
 
   static const char* ErrorName(GLenum error);
 
+  void JsWarning(const std::string& text) const;
+
   /**
    * Return displayable name for GLenum.
    * This version is like gl::GLenumToStr but with out the GL_ prefix to
@@ -474,6 +476,8 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   static void EnumName(GLenum val, nsCString* out_name);
 
   void DummyReadFramebufferOperation();
+
+  dom::ContentParentId GetContentId() const;
 
   WebGLTexture* GetActiveTex(const GLenum texTarget) const;
 
@@ -507,9 +511,10 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   // may differ subject to available format conversion options. Since this
   // operation uses an explicit copy, it inherently preserves the framebuffer
   // without need to set the preserveDrawingBuffer option.
-  void CopyToSwapChain(
+  bool CopyToSwapChain(
       WebGLFramebuffer*, layers::TextureType,
-      const webgl::SwapChainOptions& options = webgl::SwapChainOptions());
+      const webgl::SwapChainOptions& options = webgl::SwapChainOptions(),
+      layers::RemoteTextureOwnerClient* ownerClient = nullptr);
   // In use cases where a framebuffer is used as an offscreen framebuffer and
   // does not need to be committed to the swap chain, it may still be useful
   // for the implementation to delineate distinct frames, such as when sharing
@@ -532,6 +537,12 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   gl::SwapChain* GetSwapChain(WebGLFramebuffer*, const bool webvr);
   Maybe<layers::SurfaceDescriptor> GetFrontBuffer(WebGLFramebuffer*,
                                                   const bool webvr);
+
+  std::optional<color::ColorProfileDesc> mDisplayProfile;
+
+  void SetDrawingBufferColorSpace(const dom::PredefinedColorSpace val) {
+    mOptions.colorSpace = val;
+  }
 
   void ClearVRSwapChain();
 
@@ -674,7 +685,7 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   //////////////////////////
 
   void UniformData(uint32_t loc, bool transpose,
-                   const Range<const webgl::UniformDataVal>& data) const;
+                   const Span<const webgl::UniformDataVal>& data) const;
 
   ////////////////////////////////////
 
@@ -692,6 +703,8 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
 
   void BufferData(GLenum target, uint64_t dataLen, const uint8_t* data,
                   GLenum usage) const;
+  void UninitializedBufferData_SizeOnly(GLenum target, uint64_t dataLen,
+                                        GLenum usage) const;
   // The unsynchronized flag may allow for better performance when
   // interleaving buffer updates with draw calls. However, care must
   // be taken. This has similar semantics to glMapBufferRange's
@@ -760,8 +773,6 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   virtual Maybe<double> GetParameter(GLenum pname);
   Maybe<std::string> GetString(GLenum pname) const;
 
-  bool IsEnabled(GLenum cap);
-
  private:
   static StaticMutex sLruMutex;
   static std::list<WebGLContext*> sLru MOZ_GUARDED_BY(sLruMutex);
@@ -784,8 +795,7 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   };
   ScissorRect mScissorRect = {};
 
-  bool ValidateCapabilityEnum(GLenum cap);
-  bool* GetStateTrackingSlot(GLenum cap, GLuint i);
+  bool* GetStateTrackingSlot(GLenum cap);
 
   // Allocation debugging variables
   mutable uint64_t mDataAllocGLCallCount = 0;
@@ -973,8 +983,8 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   // -------------------------------------------------------------------------
   // WebGL extensions (implemented in WebGLContextExtensions.cpp)
 
-  EnumeratedArray<WebGLExtensionID, WebGLExtensionID::Max,
-                  std::unique_ptr<WebGLExtensionBase>>
+  EnumeratedArray<WebGLExtensionID, std::unique_ptr<WebGLExtensionBase>,
+                  size_t(WebGLExtensionID::Max)>
       mExtensions;
 
  public:
@@ -1154,6 +1164,10 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   nsTArray<RefPtr<WebGLTexture>> mBound2DArrayTextures;
   nsTArray<RefPtr<WebGLSampler>> mBoundSamplers;
 
+  mutable std::unique_ptr<gl::Sampler> mSamplerLinear;
+
+  GLuint SamplerLinear() const;
+
   void ResolveTexturesForDraw() const;
 
   RefPtr<WebGLProgram> mCurrentProgram;
@@ -1161,7 +1175,7 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
 
   bool ValidateFramebufferTarget(GLenum target) const;
   bool ValidateInvalidateFramebuffer(GLenum target,
-                                     const Range<const GLenum>& attachments,
+                                     const Span<const GLenum>& attachments,
                                      std::vector<GLenum>* const scopedVector,
                                      GLsizei* const out_glNumAttachments,
                                      const GLenum** const out_glAttachments);
@@ -1229,7 +1243,7 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   mutable uint64_t mDrawCallsSinceLastFlush = 0;
 
   mutable uint64_t mWarningCount = 0;
-  const uint64_t mMaxWarnings;
+  const uint64_t mMaxWarnings = StaticPrefs::webgl_max_warnings_per_context();
   bool mAlreadyWarnedAboutFakeVertexAttrib0 = false;
 
   bool ShouldGenerateWarnings() const { return mWarningCount < mMaxWarnings; }
@@ -1241,7 +1255,6 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   bool mNeedsFakeNoAlpha = false;
   bool mNeedsFakeNoDepth = false;
   bool mNeedsFakeNoStencil = false;
-  bool mNeedsFakeNoStencil_UserFBs = false;
 
   bool mDriverDepthTest = false;
   bool mDriverStencilTest = false;
@@ -1251,29 +1264,44 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   bool mNeedsIndexValidation = false;
   bool mBug_DrawArraysInstancedUserAttribFetchAffectedByFirst = false;
 
-  const bool mAllowFBInvalidation;
+  const bool mAllowFBInvalidation = StaticPrefs::webgl_allow_fb_invalidation();
 
   bool Has64BitTimestamps() const;
 
   // --
 
-  const uint8_t mMsaaSamples;
+  const uint8_t mMsaaSamples =
+      static_cast<uint8_t>(StaticPrefs::webgl_msaa_samples());
   mutable uvec2 mRequestedSize;
   mutable UniquePtr<gl::MozFramebuffer> mDefaultFB;
   mutable bool mDefaultFB_IsInvalid = false;
   mutable UniquePtr<gl::MozFramebuffer> mResolvedDefaultFB;
+
+  mutable std::unordered_map<std::tuple<gfx::ColorSpace2, gfx::ColorSpace2>,
+                             std::shared_ptr<gl::Texture>>
+      mLutTexByColorMapping;
 
   gl::SwapChain mSwapChain;
   gl::SwapChain mWebVRSwapChain;
 
   RefPtr<layers::RemoteTextureOwnerClient> mRemoteTextureOwner;
 
-  bool PushRemoteTexture(WebGLFramebuffer*, gl::SwapChain&,
-                         std::shared_ptr<gl::SharedSurface>,
-                         const webgl::SwapChainOptions& options);
+  bool PushRemoteTexture(
+      WebGLFramebuffer*, gl::SwapChain&, std::shared_ptr<gl::SharedSurface>,
+      const webgl::SwapChainOptions& options,
+      layers::RemoteTextureOwnerClient* ownerClient = nullptr);
+
+  void EnsureContextLostRemoteTextureOwner(
+      const webgl::SwapChainOptions& options);
+
+ public:
+  void WaitForTxn(layers::RemoteTextureOwnerId ownerId,
+                  layers::RemoteTextureTxnType txnType,
+                  layers::RemoteTextureTxnId txnId);
 
   // --
 
+ protected:
   bool EnsureDefaultFB();
   bool ValidateAndInitFB(
       const WebGLFramebuffer* fb,
@@ -1291,6 +1319,15 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
       WebGLFramebuffer* const srcAsWebglFb = nullptr,
       const gl::MozFramebuffer* const srcAsMozFb = nullptr,
       bool srcIsBGRA = false) const;
+
+  struct GetDefaultFBForReadDesc {
+    bool endOfFrame = false;
+  };
+  const gl::MozFramebuffer* GetDefaultFBForRead(const GetDefaultFBForReadDesc&);
+  const gl::MozFramebuffer* GetDefaultFBForRead() {
+    return GetDefaultFBForRead({});
+  }
+
   bool BindDefaultFBForRead();
 
   // --

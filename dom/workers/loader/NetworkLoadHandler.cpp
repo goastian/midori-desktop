@@ -164,7 +164,7 @@ nsresult NetworkLoadHandler::DataReceivedFromNetwork(nsIStreamLoader* aLoader,
   Document* parentDoc = mWorkerRef->Private()->GetDocument();
 
   // Set the Source type to "text" for decoding.
-  loadContext->mRequest->SetTextSource();
+  loadContext->mRequest->SetTextSource(loadContext);
 
   // Use the regular ScriptDecoder Decoder for this grunt work! Should be just
   // fine because we're running on the main thread.
@@ -188,7 +188,7 @@ nsresult NetworkLoadHandler::DataReceivedFromNetwork(nsIStreamLoader* aLoader,
   rv = channel->GetOriginalURI(getter_AddRefs(uri));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  channel->GetURI(getter_AddRefs(loadContext->mRequest->mBaseURL));
+  loadContext->mRequest->SetBaseURLFromChannelAndOriginalURI(channel, uri);
 
   // Figure out what we actually loaded.
   nsCOMPtr<nsIURI> finalURI;
@@ -358,10 +358,10 @@ nsresult NetworkLoadHandler::PrepareForRequest(nsIRequest* aRequest) {
   RefPtr<mozilla::dom::Response> response = new mozilla::dom::Response(
       mRequestHandle->GetCacheCreator()->Global(), std::move(ir), nullptr);
 
-  mozilla::dom::RequestOrUSVString request;
+  mozilla::dom::RequestOrUTF8String request;
 
   MOZ_ASSERT(!loadContext->mFullURL.IsEmpty());
-  request.SetAsUSVString().ShareOrDependUpon(loadContext->mFullURL);
+  request.SetAsUTF8String().ShareOrDependUpon(loadContext->mFullURL);
 
   // This JSContext will not end up executing JS code because here there are
   // no ReadableStreams involved.

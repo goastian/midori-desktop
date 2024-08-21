@@ -5,17 +5,22 @@ This test dedicatedly tests validation of GPUFragmentState of createRenderPipeli
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
 import { range } from '../../../../common/util/util.js';
 import {
-  kTextureFormats,
-  kRenderableColorTextureFormats,
-  kTextureFormatInfo,
   kBlendFactors,
   kBlendOperations,
-  kMaxColorAttachments,
+  kMaxColorAttachmentsToTest,
 } from '../../../capability_info.js';
+import {
+  kAllTextureFormats,
+  kRenderableColorTextureFormats,
+  kTextureFormatInfo,
+  computeBytesPerSampleFromFormats,
+  kColorTextureFormats,
+} from '../../../format_info.js';
 import {
   getFragmentShaderCodeWithOutput,
   getPlainTypeInfo,
   kDefaultFragmentShaderCode,
+  kDefaultVertexShaderCode,
 } from '../../../util/shader.js';
 import { kTexelRepresentationInfo } from '../../../util/texture/texel_data.js';
 
@@ -28,7 +33,7 @@ const values = [0, 1, 0, 1];
 g.test('color_target_exists')
   .desc(`Tests creating a complete render pipeline requires at least one color target state.`)
   .params(u => u.combine('isAsync', [false, true]))
-  .fn(async t => {
+  .fn(t => {
     const { isAsync } = t.params;
 
     const goodDescriptor = t.getDescriptor({
@@ -46,37 +51,100 @@ g.test('color_target_exists')
     t.doCreateRenderPipelineTest(isAsync, false, badDescriptor);
   });
 
-g.test('targets_format_renderable')
-  .desc(`Tests that color target state format must have RENDER_ATTACHMENT capability.`)
-  .params(u => u.combine('isAsync', [false, true]).combine('format', kTextureFormats))
+g.test('targets_format_is_color_format')
+  .desc(
+    `Tests that color target state format must be a color format, regardless of how the
+    fragment shader writes to it.`
+  )
+  .params(u =>
+    u
+      // Test all non-color texture formats, plus 'rgba8unorm' as a control case.
+      .combine('format', kAllTextureFormats)
+      .filter(({ format }) => {
+        return format === 'rgba8unorm' || !kTextureFormatInfo[format].color;
+      })
+      .combine('isAsync', [false, true])
+      .beginSubcases()
+      .combine('fragOutType', ['f32', 'u32', 'i32'] as const)
+  )
   .beforeAllSubcases(t => {
     const { format } = t.params;
     const info = kTextureFormatInfo[format];
+    t.skipIfTextureFormatNotSupported(t.params.format);
     t.selectDeviceOrSkipTestCase(info.feature);
   })
-  .fn(async t => {
+  .fn(t => {
+    const { isAsync, format, fragOutType } = t.params;
+
+    const fragmentShaderCode = getFragmentShaderCodeWithOutput([
+      { values, plainType: fragOutType, componentCount: 4 },
+    ]);
+
+    const success = format === 'rgba8unorm' && fragOutType === 'f32';
+    t.doCreateRenderPipelineTest(isAsync, success, {
+      vertex: {
+        module: t.device.createShaderModule({ code: kDefaultVertexShaderCode }),
+        entryPoint: 'main',
+      },
+      fragment: {
+        module: t.device.createShaderModule({ code: fragmentShaderCode }),
+        entryPoint: 'main',
+        targets: [{ format }],
+      },
+      layout: 'auto',
+    });
+  });
+
+g.test('targets_format_renderable')
+  .desc(
+    `Tests that color target state format must have RENDER_ATTACHMENT capability
+    (tests only color formats).`
+  )
+  .params(u =>
+    u //
+      .combine('isAsync', [false, true])
+      .combine('format', kColorTextureFormats)
+  )
+  .beforeAllSubcases(t => {
+    const { format } = t.params;
+    const info = kTextureFormatInfo[format];
+    t.skipIfTextureFormatNotSupported(t.params.format);
+    t.selectDeviceOrSkipTestCase(info.feature);
+  })
+  .fn(t => {
     const { isAsync, format } = t.params;
     const info = kTextureFormatInfo[format];
 
     const descriptor = t.getDescriptor({ targets: [{ format }] });
 
-    t.doCreateRenderPipelineTest(isAsync, info.renderable && info.color, descriptor);
+    t.doCreateRenderPipelineTest(isAsync, !!info.colorRender, descriptor);
   });
 
 g.test('limits,maxColorAttachments')
   .desc(
     `Tests that color state targets length must not be larger than device.limits.maxColorAttachments.`
   )
-  .params(u => u.combine('isAsync', [false, true]).combine('targetsLength', [8, 9]))
-  .fn(async t => {
-    const { isAsync, targetsLength } = t.params;
+  .params(u =>
+    u.combine('isAsync', [false, true]).combine('targetsLengthVariant', [
+      { mult: 1, add: 0 },
+      { mult: 1, add: 1 },
+    ])
+  )
+  .fn(t => {
+    const { isAsync, targetsLengthVariant } = t.params;
+    const targetsLength = t.makeLimitVariant('maxColorAttachments', targetsLengthVariant);
 
     const descriptor = t.getDescriptor({
-      targets: range(targetsLength, i => {
-        // Set writeMask to 0 for attachments without fragment output
-        return { format: 'rg8unorm', writeMask: i === 0 ? 0xf : 0 };
+      targets: range(targetsLength, _i => {
+        return { format: 'rg8unorm', writeMask: 0 };
       }),
       fragmentShaderCode: kDefaultFragmentShaderCode,
+      // add a depth stencil so that we can set writeMask to 0 for all color attachments
+      depthStencil: {
+        format: 'depth24plus',
+        depthWriteEnabled: true,
+        depthCompare: 'always',
+      },
     });
 
     t.doCreateRenderPipelineTest(
@@ -99,13 +167,21 @@ g.test('limits,maxColorAttachmentBytesPerSample,aligned')
       .beginSubcases()
       .combine(
         'attachmentCount',
-        range(kMaxColorAttachments, i => i + 1)
+        range(kMaxColorAttachmentsToTest, i => i + 1)
       )
       .combine('isAsync', [false, true])
   )
-  .fn(async t => {
+  .beforeAllSubcases(t => {
+    t.skipIfTextureFormatNotSupported(t.params.format);
+  })
+  .fn(t => {
     const { format, attachmentCount, isAsync } = t.params;
     const info = kTextureFormatInfo[format];
+
+    t.skipIf(
+      attachmentCount > t.device.limits.maxColorAttachments,
+      `attachmentCount: ${attachmentCount} > maxColorAttachments: ${t.device.limits.maxColorAttachments}`
+    );
 
     const descriptor = t.getDescriptor({
       targets: range(attachmentCount, () => {
@@ -113,8 +189,8 @@ g.test('limits,maxColorAttachmentBytesPerSample,aligned')
       }),
     });
     const shouldError =
-      info.renderTargetPixelByteCost === undefined ||
-      info.renderTargetPixelByteCost * attachmentCount >
+      info.colorRender === undefined ||
+      info.colorRender.byteCost * attachmentCount >
         t.device.limits.maxColorAttachmentBytesPerSample;
 
     t.doCreateRenderPipelineTest(isAsync, !shouldError, descriptor);
@@ -135,31 +211,25 @@ g.test('limits,maxColorAttachmentBytesPerSample,unaligned')
         // become 4 and 4+4+8+16+1 > 32. Re-ordering this so the R8Unorm's are at the end, however
         // is allowed: 4+8+16+1+1 < 32.
         {
-          formats: [
-            'r8unorm',
-            'r32float',
-            'rgba8unorm',
-            'rgba32float',
-            'r8unorm',
-          ] as GPUTextureFormat[],
-          _success: true,
+          formats: ['r8unorm', 'r32float', 'rgba8unorm', 'rgba32float', 'r8unorm'],
         },
         {
-          formats: [
-            'r32float',
-            'rgba8unorm',
-            'rgba32float',
-            'r8unorm',
-            'r8unorm',
-          ] as GPUTextureFormat[],
-          _success: false,
+          formats: ['r32float', 'rgba8unorm', 'rgba32float', 'r8unorm', 'r8unorm'],
         },
-      ])
+      ] as const)
       .beginSubcases()
       .combine('isAsync', [false, true])
   )
-  .fn(async t => {
-    const { formats, _success, isAsync } = t.params;
+  .fn(t => {
+    const { formats, isAsync } = t.params;
+
+    t.skipIf(
+      formats.length > t.device.limits.maxColorAttachments,
+      `numColorAttachments: ${formats.length} > maxColorAttachments: ${t.device.limits.maxColorAttachments}`
+    );
+
+    const success =
+      computeBytesPerSampleFromFormats(formats) <= t.device.limits.maxColorAttachmentBytesPerSample;
 
     const descriptor = t.getDescriptor({
       targets: formats.map(f => {
@@ -167,11 +237,16 @@ g.test('limits,maxColorAttachmentBytesPerSample,unaligned')
       }),
     });
 
-    t.doCreateRenderPipelineTest(isAsync, _success, descriptor);
+    t.doCreateRenderPipelineTest(isAsync, success, descriptor);
   });
 
 g.test('targets_format_filterable')
-  .desc(`Tests that color target state format must be filterable if blend is not undefined.`)
+  .desc(
+    `
+  Tests that color target state format must be filterable if blend is not undefined.
+
+  TODO: info.colorRender.blend now directly says whether the format is blendable. Use that.`
+  )
   .params(u =>
     u
       .combine('isAsync', [false, true])
@@ -182,9 +257,10 @@ g.test('targets_format_filterable')
   .beforeAllSubcases(t => {
     const { format } = t.params;
     const info = kTextureFormatInfo[format];
+    t.skipIfTextureFormatNotSupported(format);
     t.selectDeviceOrSkipTestCase(info.feature);
   })
-  .fn(async t => {
+  .fn(t => {
     const { isAsync, format, hasBlend } = t.params;
     const info = kTextureFormatInfo[format];
 
@@ -197,7 +273,7 @@ g.test('targets_format_filterable')
       ],
     });
 
-    t.doCreateRenderPipelineTest(isAsync, !hasBlend || info.sampleType === 'float', descriptor);
+    t.doCreateRenderPipelineTest(isAsync, !hasBlend || info.color.type === 'float', descriptor);
   });
 
 g.test('targets_blend')
@@ -217,7 +293,7 @@ g.test('targets_blend')
       .combine('dstFactor', kBlendFactors)
       .combine('operation', kBlendOperations)
   )
-  .fn(async t => {
+  .fn(t => {
     const { isAsync, component, srcFactor, dstFactor, operation } = t.params;
 
     const defaultBlendComponent: GPUBlendComponent = {
@@ -255,7 +331,7 @@ g.test('targets_blend')
 g.test('targets_write_mask')
   .desc(`Tests that color target state write mask must be < 16.`)
   .params(u => u.combine('isAsync', [false, true]).combine('writeMask', [0, 0xf, 0x10, 0x80000001]))
-  .fn(async t => {
+  .fn(t => {
     const { isAsync, writeMask } = t.params;
 
     const descriptor = t.getDescriptor({
@@ -296,13 +372,13 @@ g.test('pipeline_output_targets')
   .beforeAllSubcases(t => {
     t.selectDeviceForTextureFormatOrSkipTestCase(t.params.format);
   })
-  .fn(async t => {
+  .fn(t => {
     const { isAsync, format, writeMask, shaderOutput } = t.params;
 
     const descriptor = t.getDescriptor({
       targets: format ? [{ format, writeMask }] : [],
       // To have a dummy depthStencil attachment to avoid having no attachment at all which is invalid
-      depthStencil: { format: 'depth24plus' },
+      depthStencil: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'always' },
       fragmentShaderCode: getFragmentShaderCodeWithOutput(
         shaderOutput
           ? [{ values, plainType: shaderOutput.scalar, componentCount: shaderOutput.count }]
@@ -317,7 +393,7 @@ g.test('pipeline_output_targets')
         // The shader outputs to the color target
         const info = kTextureFormatInfo[format];
         success =
-          shaderOutput.scalar === getPlainTypeInfo(info.sampleType) &&
+          shaderOutput.scalar === getPlainTypeInfo(info.color.type) &&
           shaderOutput.count >= kTexelRepresentationInfo[format].componentOrder.length;
       } else {
         // The shader does not output to the color target
@@ -353,7 +429,7 @@ g.test('pipeline_output_targets,blend')
     const info = kTextureFormatInfo[format];
     t.selectDeviceOrSkipTestCase(info.feature);
   })
-  .fn(async t => {
+  .fn(t => {
     const sampleType = 'float';
     const {
       isAsync,
@@ -385,7 +461,7 @@ g.test('pipeline_output_targets,blend')
       colorSrcFactor?.includes('src-alpha') || colorDstFactor?.includes('src-alpha');
     const meetsExtraBlendingRequirement = !colorBlendReadsSrcAlpha || componentCount === 4;
     const _success =
-      info.sampleType === sampleType &&
+      info.color.type === sampleType &&
       componentCount >= kTexelRepresentationInfo[format].componentOrder.length &&
       meetsExtraBlendingRequirement;
     t.doCreateRenderPipelineTest(isAsync, _success, descriptor);

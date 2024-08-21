@@ -9,19 +9,27 @@
 namespace mozilla::dom::quota {
 
 #ifdef QM_SCOPED_LOG_EXTRA_INFO_ENABLED
-MOZ_THREAD_LOCAL(const nsACString*) ScopedLogExtraInfo::sQueryValue;
-MOZ_THREAD_LOCAL(const nsACString*) ScopedLogExtraInfo::sContextValue;
+MOZ_THREAD_LOCAL(const Tainted<nsCString>*)
+ScopedLogExtraInfo::sQueryValueTainted;
+MOZ_THREAD_LOCAL(const Tainted<nsCString>*)
+ScopedLogExtraInfo::sContextValueTainted;
+MOZ_THREAD_LOCAL(const Tainted<nsCString>*)
+ScopedLogExtraInfo::sStorageOriginValueTainted;
 
 /* static */
 auto ScopedLogExtraInfo::FindSlot(const char* aTag) {
   // XXX For now, don't use a real map but just allow the known tag values.
 
-  if (aTag == kTagQuery) {
-    return &sQueryValue;
+  if (aTag == kTagQueryTainted) {
+    return &sQueryValueTainted;
   }
 
-  if (aTag == kTagContext) {
-    return &sContextValue;
+  if (aTag == kTagContextTainted) {
+    return &sContextValueTainted;
+  }
+
+  if (aTag == kTagStorageOriginTainted) {
+    return &sStorageOriginValueTainted;
   }
 
   MOZ_CRASH("Unknown tag!");
@@ -36,7 +44,7 @@ ScopedLogExtraInfo::~ScopedLogExtraInfo() {
   }
 }
 
-ScopedLogExtraInfo::ScopedLogExtraInfo(ScopedLogExtraInfo&& aOther)
+ScopedLogExtraInfo::ScopedLogExtraInfo(ScopedLogExtraInfo&& aOther) noexcept
     : mTag(aOther.mTag),
       mPreviousValue(aOther.mPreviousValue),
       mCurrentValue(std::move(aOther.mCurrentValue)) {
@@ -51,21 +59,25 @@ ScopedLogExtraInfo::GetExtraInfoMap() {
   // the caller(s).
 
   ScopedLogExtraInfoMap map;
-  if (XRE_IsParentProcess()) {
-    if (sQueryValue.get()) {
-      map.emplace(kTagQuery, sQueryValue.get());
-    }
-
-    if (sContextValue.get()) {
-      map.emplace(kTagContext, sContextValue.get());
-    }
+  if (sQueryValueTainted.get()) {
+    map.emplace(kTagQueryTainted, sQueryValueTainted.get());
   }
+
+  if (sContextValueTainted.get()) {
+    map.emplace(kTagContextTainted, sContextValueTainted.get());
+  }
+
+  if (sStorageOriginValueTainted.get()) {
+    map.emplace(kTagStorageOriginTainted, sStorageOriginValueTainted.get());
+  }
+
   return map;
 }
 
 /* static */ void ScopedLogExtraInfo::Initialize() {
-  MOZ_ALWAYS_TRUE(sQueryValue.init());
-  MOZ_ALWAYS_TRUE(sContextValue.init());
+  MOZ_ALWAYS_TRUE(sQueryValueTainted.init());
+  MOZ_ALWAYS_TRUE(sContextValueTainted.init());
+  MOZ_ALWAYS_TRUE(sStorageOriginValueTainted.init());
 }
 
 void ScopedLogExtraInfo::AddInfo() {

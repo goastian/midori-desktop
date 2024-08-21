@@ -32,25 +32,28 @@ class nsAttributeTextNode final : public nsTextNode,
   NS_DECL_ISUPPORTS_INHERITED
 
   nsAttributeTextNode(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
-                      int32_t aNameSpaceID, nsAtom* aAttrName)
+                      int32_t aNameSpaceID, nsAtom* aAttrName,
+                      nsAtom* aFallback)
       : nsTextNode(std::move(aNodeInfo)),
         mGrandparent(nullptr),
         mNameSpaceID(aNameSpaceID),
-        mAttrName(aAttrName) {
+        mAttrName(aAttrName),
+        mFallback(aFallback) {
     NS_ASSERTION(mNameSpaceID != kNameSpaceID_Unknown, "Must know namespace");
     NS_ASSERTION(mAttrName, "Must have attr name");
   }
 
-  virtual nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  virtual void UnbindFromTree(bool aNullParent = true) override;
+  nsresult BindToTree(BindContext&, nsINode& aParent) override;
+  void UnbindFromTree(UnbindContext&) override;
 
   NS_DECL_NSIMUTATIONOBSERVER_ATTRIBUTECHANGED
   NS_DECL_NSIMUTATIONOBSERVER_NODEWILLBEDESTROYED
 
-  virtual already_AddRefed<CharacterData> CloneDataNode(
+  already_AddRefed<CharacterData> CloneDataNode(
       mozilla::dom::NodeInfo* aNodeInfo, bool aCloneText) const override {
-    RefPtr<nsAttributeTextNode> it = new (aNodeInfo->NodeInfoManager())
-        nsAttributeTextNode(do_AddRef(aNodeInfo), mNameSpaceID, mAttrName);
+    RefPtr<nsAttributeTextNode> it =
+        new (aNodeInfo->NodeInfoManager()) nsAttributeTextNode(
+            do_AddRef(aNodeInfo), mNameSpaceID, mAttrName, mFallback);
     if (aCloneText) {
       it->mText = mText;
     }
@@ -77,6 +80,7 @@ class nsAttributeTextNode final : public nsTextNode,
   // What attribute we're showing
   int32_t mNameSpaceID;
   RefPtr<nsAtom> mAttrName;
+  RefPtr<nsAtom> mFallback;
 };
 
 nsTextNode::~nsTextNode() = default;
@@ -119,10 +123,9 @@ nsresult nsTextNode::BindToTree(BindContext& aContext, nsINode& aParent) {
   return NS_OK;
 }
 
-void nsTextNode::UnbindFromTree(bool aNullParent) {
-  ResetDirectionSetByTextNode(this);
-
-  CharacterData::UnbindFromTree(aNullParent);
+void nsTextNode::UnbindFromTree(UnbindContext& aContext) {
+  CharacterData::UnbindFromTree(aContext);
+  ResetDirectionSetByTextNode(this, aContext);
 }
 
 #ifdef MOZ_DOM_LIST
@@ -166,7 +169,7 @@ void nsTextNode::DumpContent(FILE* out, int32_t aIndent, bool aDumpAll) const {
 
 nsresult NS_NewAttributeContent(nsNodeInfoManager* aNodeInfoManager,
                                 int32_t aNameSpaceID, nsAtom* aAttrName,
-                                nsIContent** aResult) {
+                                nsAtom* aFallback, nsIContent** aResult) {
   MOZ_ASSERT(aNodeInfoManager, "Missing nodeInfoManager");
   MOZ_ASSERT(aAttrName, "Must have an attr name");
   MOZ_ASSERT(aNameSpaceID != kNameSpaceID_Unknown, "Must know namespace");
@@ -176,7 +179,7 @@ nsresult NS_NewAttributeContent(nsNodeInfoManager* aNodeInfoManager,
   RefPtr<mozilla::dom::NodeInfo> ni = aNodeInfoManager->GetTextNodeInfo();
 
   RefPtr<nsAttributeTextNode> textNode = new (aNodeInfoManager)
-      nsAttributeTextNode(ni.forget(), aNameSpaceID, aAttrName);
+      nsAttributeTextNode(ni.forget(), aNameSpaceID, aAttrName, aFallback);
   textNode.forget(aResult);
 
   return NS_OK;
@@ -205,16 +208,16 @@ nsresult nsAttributeTextNode::BindToTree(BindContext& aContext,
   return NS_OK;
 }
 
-void nsAttributeTextNode::UnbindFromTree(bool aNullParent) {
+void nsAttributeTextNode::UnbindFromTree(UnbindContext& aContext) {
   // UnbindFromTree can be called anytime so we have to be safe.
   if (mGrandparent) {
-    // aNullParent might not be true here, but we want to remove the
+    // aContext might not be true here, but we want to remove the
     // mutation observer anyway since we only need it while we're
     // in the document.
     mGrandparent->RemoveMutationObserver(this);
     mGrandparent = nullptr;
   }
-  nsTextNode::UnbindFromTree(aNullParent);
+  nsTextNode::UnbindFromTree(aContext);
 }
 
 void nsAttributeTextNode::AttributeChanged(Element* aElement,
@@ -240,7 +243,12 @@ void nsAttributeTextNode::NodeWillBeDestroyed(nsINode* aNode) {
 void nsAttributeTextNode::UpdateText(bool aNotify) {
   if (mGrandparent) {
     nsAutoString attrValue;
-    mGrandparent->GetAttr(mNameSpaceID, mAttrName, attrValue);
+
+    if (!mGrandparent->GetAttr(mNameSpaceID, mAttrName, attrValue)) {
+      // Attr value does not exist, use fallback instead
+      mFallback->ToString(attrValue);
+    }
+
     SetText(attrValue, aNotify);
   }
 }

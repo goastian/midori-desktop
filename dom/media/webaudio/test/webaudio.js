@@ -1,5 +1,8 @@
 // Helpers for Web Audio tests
 
+// It is expected that the test defines this.
+/* global gTest */
+
 function expectException(func, exceptionCode) {
   var threw = false;
   try {
@@ -39,7 +42,7 @@ function expectRejectedPromise(that, func, exceptionName) {
   ok(promise instanceof Promise, "Expect a Promise");
 
   promise
-    .then(function (res) {
+    .then(function () {
       ok(false, "Promise resolved when it should have been rejected.");
     })
     .catch(function (err) {
@@ -161,6 +164,51 @@ function getEmptyBuffer(context, length) {
     length,
     context.sampleRate
   );
+}
+
+function isChannelSilent(channel) {
+  for (var i = 0; i < channel.length; ++i) {
+    if (channel[i] != 0.0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const HRTFPannersByRate = new Map();
+/**
+ * Return a promise that resolves when PannerNodes with HRTF panningModel in
+ * an AudioContext of the specified sample rate will be ready to produce
+ * non-zero output.  Before the HRIR database is loaded, such PannerNodes
+ * produce zero output.
+ */
+async function promiseHRTFReady(sampleRate) {
+  if (HRTFPannersByRate.has(sampleRate)) {
+    return;
+  }
+
+  const ctx = new AudioContext({ sampleRate });
+  const processor = ctx.createScriptProcessor(4096, 2, 0);
+  const panner = new PannerNode(ctx, { panningModel: "HRTF" });
+  panner.connect(processor);
+  const oscillator = ctx.createOscillator();
+  oscillator.connect(panner);
+  oscillator.start(0);
+
+  await new Promise(r => {
+    processor.onaudioprocess = e => {
+      if (!isChannelSilent(e.inputBuffer.getChannelData(0))) {
+        r();
+      }
+    };
+  });
+
+  ctx.suspend();
+  oscillator.disconnect();
+  panner.disconnect();
+  processor.onaudioprocess = null;
+  // Keep a reference to the panner so that the database is not unloaded.
+  HRTFPannersByRate.set(sampleRate, panner);
 }
 
 /**

@@ -20,7 +20,7 @@ class ReleaseRefControlRunnable final : public WorkerControlRunnable {
  public:
   ReleaseRefControlRunnable(WorkerPrivate* aWorkerPrivate,
                             already_AddRefed<StrongWorkerRef> aRef)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerControlRunnable("ReleaseRefControlRunnable"),
         mRef(std::move(aRef)) {
     MOZ_ASSERT(mRef);
   }
@@ -46,7 +46,11 @@ class ReleaseRefControlRunnable final : public WorkerControlRunnable {
 
 WorkerRef::WorkerRef(WorkerPrivate* aWorkerPrivate, const char* aName,
                      bool aIsPreventingShutdown)
-    : mWorkerPrivate(aWorkerPrivate),
+    :
+#ifdef DEBUG
+      mDebugMutex("WorkerRef"),
+#endif
+      mWorkerPrivate(aWorkerPrivate),
       mName(aName),
       mIsPreventingShutdown(aIsPreventingShutdown),
       mHolding(false) {
@@ -65,6 +69,9 @@ void WorkerRef::ReleaseWorker() {
   if (mHolding) {
     MOZ_ASSERT(mWorkerPrivate);
 
+    if (mIsPreventingShutdown) {
+      mWorkerPrivate->AssertIsNotPotentiallyLastGCCCRunning();
+    }
     mWorkerPrivate->RemoveWorkerRef(this);
     mWorkerPrivate = nullptr;
 
@@ -203,7 +210,7 @@ ThreadSafeWorkerRef::~ThreadSafeWorkerRef() {
     WorkerPrivate* workerPrivate = mRef->mWorkerPrivate;
     RefPtr<ReleaseRefControlRunnable> r =
         new ReleaseRefControlRunnable(workerPrivate, mRef.forget());
-    r->Dispatch();
+    r->Dispatch(workerPrivate);
     return;
   }
 }
@@ -226,20 +233,34 @@ already_AddRefed<IPCWorkerRef> IPCWorkerRef::Create(
   if (!ref->HoldWorker(Canceling)) {
     return nullptr;
   }
-
+  ref->SetActorCount(1);
   ref->mCallback = std::move(aCallback);
 
   return ref.forget();
 }
 
 IPCWorkerRef::IPCWorkerRef(WorkerPrivate* aWorkerPrivate, const char* aName)
-    : WorkerRef(aWorkerPrivate, aName, false) {}
+    : WorkerRef(aWorkerPrivate, aName, false), mActorCount(0) {}
 
-IPCWorkerRef::~IPCWorkerRef() = default;
+IPCWorkerRef::~IPCWorkerRef() {
+  NS_ASSERT_OWNINGTHREAD(IPCWorkerRef);
+  // explicit type convertion to avoid undefined behavior of uint32_t overflow.
+  mWorkerPrivate->AdjustNonblockingCCBackgroundActorCount(
+      (int32_t)-mActorCount);
+  ReleaseWorker();
+};
 
 WorkerPrivate* IPCWorkerRef::Private() const {
   NS_ASSERT_OWNINGTHREAD(IPCWorkerRef);
   return mWorkerPrivate;
+}
+
+void IPCWorkerRef::SetActorCount(uint32_t aCount) {
+  NS_ASSERT_OWNINGTHREAD(IPCWorkerRef);
+  // explicit type convertion to avoid undefined behavior of uint32_t overflow.
+  mWorkerPrivate->AdjustNonblockingCCBackgroundActorCount((int32_t)aCount -
+                                                          (int32_t)mActorCount);
+  mActorCount = aCount;
 }
 
 }  // namespace mozilla::dom

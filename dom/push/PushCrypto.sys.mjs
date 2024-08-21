@@ -2,11 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "gDOMBundle", () =>
+ChromeUtils.defineLazyGetter(lazy, "gDOMBundle", () =>
   Services.strings.createBundle("chrome://global/locale/dom/dom.properties")
 );
 
@@ -379,7 +377,7 @@ class Decoder {
    * @param {BufferSource} ikm The ECDH shared secret.
    * @returns {Array} A `[gcmBits, nonce]` tuple.
    */
-  async deriveKeyAndNonce(ikm) {
+  async deriveKeyAndNonce() {
     throw new Error("Missing `deriveKeyAndNonce` implementation");
   }
 
@@ -410,7 +408,7 @@ class Decoder {
    * @param {Uint8Array} chunk The decrypted block with padding.
    * @returns {Uint8Array} The block with padding removed.
    */
-  unpadChunk(chunk, last) {
+  unpadChunk() {
     throw new Error("Missing `unpadChunk` implementation");
   }
 

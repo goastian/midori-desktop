@@ -46,7 +46,7 @@ void ContentPlaybackController::NotifyContentMediaControlKeyReceiver(
   if (RefPtr<ContentMediaControlKeyReceiver> receiver =
           ContentMediaControlKeyReceiver::Get(mBC)) {
     LOG("Handle '%s' in default behavior for BC %" PRIu64,
-        ToMediaControlKeyStr(aKey), mBC->Id());
+        GetEnumString(aKey).get(), mBC->Id());
     receiver->HandleMediaKey(aKey);
   }
 }
@@ -61,7 +61,7 @@ void ContentPlaybackController::NotifyMediaSession(
     const MediaSessionActionDetails& aDetails) {
   if (RefPtr<MediaSession> session = GetMediaSession()) {
     LOG("Handle '%s' in media session behavior for BC %" PRIu64,
-        ToMediaSessionActionStr(aDetails.mAction), mBC->Id());
+        GetEnumString(aDetails.mAction).get(), mBC->Id());
     MOZ_ASSERT(session->IsActive(), "Notify inactive media session!");
     session->NotifyHandler(aDetails);
   }
@@ -168,8 +168,12 @@ void ContentMediaControlKeyHandler::HandleMediaControlAction(
   if (!aContext->GetDocShell()) {
     return;
   }
+  if (aAction.mKey.isNothing()) {
+    MOZ_ASSERT_UNREACHABLE("Invalid media control key.");
+    return;
+  }
   ContentPlaybackController controller(aContext);
-  switch (aAction.mKey) {
+  switch (aAction.mKey.value()) {
     case MediaControlKey::Focus:
       controller.Focus();
       return;
@@ -178,6 +182,9 @@ void ContentMediaControlKeyHandler::HandleMediaControlAction(
       return;
     case MediaControlKey::Pause:
       controller.Pause();
+      return;
+    case MediaControlKey::Playpause:
+      MOZ_ASSERT_UNREACHABLE("Invalid media control key.");
       return;
     case MediaControlKey::Stop:
       controller.Stop();

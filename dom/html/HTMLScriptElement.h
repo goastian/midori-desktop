@@ -7,9 +7,13 @@
 #ifndef mozilla_dom_HTMLScriptElement_h
 #define mozilla_dom_HTMLScriptElement_h
 
-#include "nsGenericHTMLElement.h"
+#include "mozilla/dom/FetchPriority.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/ScriptElement.h"
+#include "nsGenericHTMLElement.h"
+#include "nsStringFwd.h"
+
+class nsDOMTokenList;
 
 namespace mozilla::dom {
 
@@ -24,17 +28,21 @@ class HTMLScriptElement final : public nsGenericHTMLElement,
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
 
+  // CC
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(HTMLScriptElement,
+                                           nsGenericHTMLElement)
+
   void GetInnerHTML(nsAString& aInnerHTML, OOMReporter& aError) override;
   virtual void SetInnerHTML(const nsAString& aInnerHTML,
                             nsIPrincipal* aSubjectPrincipal,
                             mozilla::ErrorResult& aError) override;
 
   // nsIScriptElement
-  virtual bool GetScriptType(nsAString& type) override;
   virtual void GetScriptText(nsAString& text) const override;
   virtual void GetScriptCharset(nsAString& charset) override;
-  virtual void FreezeExecutionAttrs(Document* aOwnerDoc) override;
+  virtual void FreezeExecutionAttrs(const Document* aOwnerDoc) override;
   virtual CORSMode GetCORSMode() const override;
+  virtual FetchPriority GetFetchPriority() const override;
   virtual mozilla::dom::ReferrerPolicy GetReferrerPolicy() override;
 
   // nsIContent
@@ -129,6 +137,12 @@ class HTMLScriptElement final : public nsGenericHTMLElement,
     GetEnumAttr(nsGkAtoms::referrerpolicy, "", aReferrerPolicy);
   }
 
+  nsDOMTokenList* Blocking();
+  bool IsPotentiallyRenderBlocking() override;
+
+  // Required for the webidl-binding because `GetFetchPriority` is overloaded.
+  using nsGenericHTMLElement::GetFetchPriority;
+
   [[nodiscard]] static bool Supports(const GlobalObject& aGlobal,
                                      const nsAString& aType);
 
@@ -145,6 +159,8 @@ class HTMLScriptElement final : public nsGenericHTMLElement,
 
   // ScriptElement
   virtual bool HasScriptContent() override;
+
+  RefPtr<nsDOMTokenList> mBlocking;
 };
 
 }  // namespace mozilla::dom

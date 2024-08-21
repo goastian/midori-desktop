@@ -43,15 +43,14 @@ interface MouseEvent : UIEvent {
   readonly attribute short          button;
   readonly attribute unsigned short buttons;
   readonly attribute EventTarget?   relatedTarget;
-  [Pref="dom.mouse_event.region.enabled"]
-  readonly attribute DOMString?     region;
 
   // Pointer Lock
   readonly attribute long           movementX;
   readonly attribute long           movementY;
 
   // Deprecated in DOM Level 3:
-undefined initMouseEvent(DOMString typeArg,
+  [Deprecated="InitMouseEvent"]
+  undefined initMouseEvent(DOMString typeArg,
                          optional boolean canBubbleArg = false,
                          optional boolean cancelableArg = false,
                          optional Window? viewArg = null,
@@ -92,7 +91,8 @@ partial interface MouseEvent
 {
   // Finger or touch pressure event value
   // ranges between 0.0 and 1.0
-  [Deprecated="MouseEvent_MozPressure"]
+  // TODO: Remove mozPressure. (bug 1534199)
+  [NeedsCallerType, Deprecated="MouseEvent_MozPressure"]
   readonly attribute float mozPressure;
 
   const unsigned short    MOZ_SOURCE_UNKNOWN    = 0;
@@ -103,8 +103,14 @@ partial interface MouseEvent
   const unsigned short    MOZ_SOURCE_TOUCH      = 5;
   const unsigned short    MOZ_SOURCE_KEYBOARD   = 6;
 
+  [NeedsCallerType, ChromeOnly]
+  readonly attribute unsigned short inputSource;
+
+  [NeedsCallerType, Deprecated="MozInputSource", BinaryName="inputSource"]
   readonly attribute unsigned short mozInputSource;
 
+  // TODO: Remove initNSMouseEvent. (bug 1165213)
+  [Deprecated="InitNSMouseEvent"]
   undefined initNSMouseEvent(DOMString typeArg,
                              optional boolean canBubbleArg = false,
                              optional boolean cancelableArg = false,

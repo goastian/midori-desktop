@@ -1,0 +1,50 @@
+[DEFAULT]
+support-files = [
+  "bug_1865410_module_a.mjs",
+  "bug_1865410_module_b.mjs",
+  "bug_1873417.mjs",
+  "bug_1893164_module_1.mjs",
+  "bug_1893164_module_2.mjs",
+  "bug_1893164_module_3.mjs",
+  "bug_1894631_module_1.mjs",
+  "bug_1894631_module_2.mjs",
+  "bug_1894631_module_3.mjs",
+  "bug_1894631_module_4.mjs",
+  "classic_script.js",
+  "module_chain_1.mjs",
+  "module_chain_2.mjs",
+  "module_importMap_with_external_script_0.mjs",
+  "module_importMap_with_external_script_1.mjs",
+  "module_importMap_with_external_script_2.mjs",
+  "module_importMap_with_external_script_3.mjs",
+  "module_importMap_with_external_script_4.mjs",
+  "module_importMap_with_external_script_5.mjs",
+  "module_importMap_with_external_script_5.mjs^headers^",
+  "module_importMap_with_external_script_6.mjs",
+  "module_importMap_with_external_script_6.mjs^headers^",
+  "module_importMap_with_external_script_7.mjs",
+  "module_importMap_with_nonexisting_module.mjs",
+  "bad/module_2.mjs",
+  "bad/module_3.mjs",
+  "bad/module_4.mjs",
+  "bad/module_7.mjs",
+  "good/module_0.mjs",
+  "good/module_1.mjs",
+  "good/module_2.mjs",
+  "good/module_3.mjs",
+  "good/module_4.mjs",
+  "good/module_7.mjs",
+  "circular_dependency.mjs",
+]
+
+["test_bug_1865410.html"]
+
+["test_bug_1873417.html"]
+
+["test_bug_1893164.html"]
+
+["test_importMap_with_external_script.html"]
+["test_importMap_with_nonexisting_module.html"]
+["test_dynamic_importMap_with_external_script.html"]
+["test_dynamic_importMap_load_completes.html"]
+["test_shared_submodules_with_modulepreload.html"]

@@ -63,15 +63,15 @@
           }
         }
 
-        function listener2(ev) {
+        function listener2() {
           inProgressDoc[description] = false;
         }
-        function listener3(ev) {
+        function listener3() {
           inProgressWin[description] = false;
         }
-        frame.addEventListener("DOMTitleChanged", listener, false);
-        frame.contentDocument.addEventListener("DOMTitleChanged", listener2, false);
-        frame.contentWindow.addEventListener("DOMTitleChanged", listener3, false);
+        frame.addEventListener("DOMTitleChanged", listener);
+        frame.contentDocument.addEventListener("DOMTitleChanged", listener2);
+        frame.contentWindow.addEventListener("DOMTitleChanged", listener3);
 
         op(frame.contentDocument);
       }

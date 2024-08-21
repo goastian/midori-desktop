@@ -13,8 +13,7 @@
  */
 
 // http://www.whatwg.org/specs/web-apps/current-work/#the-object-element
-[NeedResolve,
- Exposed=Window]
+[Exposed=Window]
 interface HTMLObjectElement : HTMLElement {
   [HTMLConstructor] constructor();
 
@@ -86,15 +85,9 @@ interface mixin MozObjectLoadingContent {
   [ChromeOnly]
   const unsigned long TYPE_LOADING     = 0;
   [ChromeOnly]
-  const unsigned long TYPE_IMAGE       = 1;
+  const unsigned long TYPE_DOCUMENT    = 1;
   [ChromeOnly]
   const unsigned long TYPE_FALLBACK    = 2;
-  [ChromeOnly]
-  const unsigned long TYPE_FAKE_PLUGIN = 3;
-  [ChromeOnly]
-  const unsigned long TYPE_DOCUMENT    = 4;
-  [ChromeOnly]
-  const unsigned long TYPE_NULL        = 5;
 
   /**
    * The actual mime type (the one we got back from the network
@@ -111,55 +104,12 @@ interface mixin MozObjectLoadingContent {
   readonly attribute unsigned long displayedType;
 
   /**
-   * Gets the content type that corresponds to the give MIME type.  See the
-   * constants above for the list of possible values.  If nothing else fits,
-   * TYPE_NULL will be returned.
-   */
-  [ChromeOnly]
-  unsigned long getContentTypeForMIMEType(DOMString aMimeType);
-
-
-  [ChromeOnly]
-  sequence<MozPluginParameter> getPluginAttributes();
-
-  [ChromeOnly]
-  sequence<MozPluginParameter> getPluginParameters();
-
-  /**
-   * Forces a re-evaluation and reload of the tag, optionally invalidating its
-   * click-to-play state.  This can be used when the MIME type that provides a
-   * type has changed, for instance, to force the tag to re-evalulate the
-   * handler to use.
-   */
-  [ChromeOnly, Throws]
-  undefined reload(boolean aClearActivation);
-
-  /**
    * The URL of the data/src loaded in the object. This may be null (i.e.
    * an <embed> with no src).
    */
   [ChromeOnly]
   readonly attribute URI? srcURI;
-
-  /**
-   * Disable the use of fake plugins and reload the tag if necessary
-   */
-  [ChromeOnly, Throws]
-  undefined skipFakePlugins();
-
-  [ChromeOnly, Throws, NeedsCallerType]
-  readonly attribute unsigned long runID;
 };
 
-/**
- * Name:Value pair type used for passing parameters to NPAPI or javascript
- * plugins.
- */
-dictionary MozPluginParameter {
-  DOMString name = "";
-  DOMString value = "";
-};
-
-HTMLObjectElement includes MozImageLoadingContent;
 HTMLObjectElement includes MozFrameLoaderOwner;
 HTMLObjectElement includes MozObjectLoadingContent;

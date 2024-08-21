@@ -260,14 +260,9 @@ nsresult SVGImageElement::BindToTree(BindContext& aContext, nsINode& aParent) {
   return rv;
 }
 
-void SVGImageElement::UnbindFromTree(bool aNullParent) {
-  nsImageLoadingContent::UnbindFromTree(aNullParent);
-  SVGImageElementBase::UnbindFromTree(aNullParent);
-}
-
-ElementState SVGImageElement::IntrinsicState() const {
-  return SVGImageElementBase::IntrinsicState() |
-         nsImageLoadingContent::ImageState();
+void SVGImageElement::UnbindFromTree(UnbindContext& aContext) {
+  nsImageLoadingContent::UnbindFromTree();
+  SVGImageElementBase::UnbindFromTree(aContext);
 }
 
 void SVGImageElement::DestroyContent() {
@@ -313,6 +308,23 @@ SVGImageElement::GetAnimatedPreserveAspectRatio() {
 SVGElement::StringAttributesInfo SVGImageElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
                               ArrayLength(sStringInfo));
+}
+
+void SVGImageElement::DidAnimateAttribute(int32_t aNameSpaceID,
+                                          nsAtom* aAttribute) {
+  if ((aNameSpaceID == kNameSpaceID_None ||
+       aNameSpaceID == kNameSpaceID_XLink) &&
+      aAttribute == nsGkAtoms::href) {
+    bool hrefIsSet =
+        mStringAttributes[SVGImageElement::HREF].IsExplicitlySet() ||
+        mStringAttributes[SVGImageElement::XLINK_HREF].IsExplicitlySet();
+    if (hrefIsSet) {
+      LoadSVGImage(true, true);
+    } else {
+      CancelImageRequests(true);
+    }
+  }
+  SVGImageElementBase::DidAnimateAttribute(aNameSpaceID, aAttribute);
 }
 
 }  // namespace mozilla::dom

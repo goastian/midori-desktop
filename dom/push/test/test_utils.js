@@ -4,9 +4,9 @@ const url = SimpleTest.getTestFileURL("mockpushserviceparent.js");
 const chromeScript = SpecialPowers.loadChromeScript(url);
 
 /**
- * Replaces `PushService.jsm` with a mock implementation that handles requests
+ * Replaces `PushService.sys.mjs` with a mock implementation that handles requests
  * from the DOM API. This allows tests to simulate local errors and error
- * reporting, bypassing the `PushService.jsm` machinery.
+ * reporting, bypassing the `PushService.sys.mjs` machinery.
  */
 async function replacePushService(mockService) {
   chromeScript.addMessageListener("service-delivery-error", function (msg) {
@@ -58,7 +58,7 @@ let currentMockSocket = null;
 
 /**
  * Sets up a mock connection for the WebSocket backend. This only replaces
- * the transport layer; `PushService.jsm` still handles DOM API requests,
+ * the transport layer; `PushService.sys.mjs` still handles DOM API requests,
  * observes permission changes, writes to IndexedDB, and notifies service
  * workers of incoming push messages.
  */
@@ -98,7 +98,7 @@ class MockWebSocket {
     this._isActive = false;
   }
 
-  onHello(request) {
+  onHello() {
     this.serverSendMsg(
       JSON.stringify({
         messageType: "hello",
@@ -131,7 +131,7 @@ class MockWebSocket {
     );
   }
 
-  onAck(request) {
+  onAck() {
     // Do nothing.
   }
 
@@ -222,7 +222,7 @@ function setupPrefsAndMockSocket(mockSocket) {
 }
 
 function injectControlledFrame(target = document.body) {
-  return new Promise(function (res, rej) {
+  return new Promise(function (res) {
     var iframe = document.createElement("iframe");
     iframe.src = "/tests/dom/push/test/frame.html";
 
@@ -266,7 +266,7 @@ function waitForActive(swr) {
       resolve(swr);
       return;
     }
-    sw.addEventListener("statechange", function onStateChange(evt) {
+    sw.addEventListener("statechange", function onStateChange() {
       if (sw.state === "activated") {
         sw.removeEventListener("statechange", onStateChange);
         resolve(swr);

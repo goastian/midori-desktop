@@ -45,7 +45,17 @@ class SVGAnimatedTransformList {
 
  public:
   SVGAnimatedTransformList()
-      : mIsAttrSet(false), mCreatedOrRemovedOnLastChange(true) {}
+      : mIsBaseSet(false), mCreatedOrRemovedOnLastChange(true) {}
+
+  SVGAnimatedTransformList& operator=(const SVGAnimatedTransformList& aOther) {
+    mBaseVal = aOther.mBaseVal;
+    if (aOther.mAnimVal) {
+      mAnimVal = MakeUnique<SVGTransformList>(*aOther.mAnimVal);
+    }
+    mIsBaseSet = aOther.mIsBaseSet;
+    mCreatedOrRemovedOnLastChange = aOther.mCreatedOrRemovedOnLastChange;
+    return *this;
+  }
 
   /**
    * Because it's so important that mBaseVal and its DOMSVGTransformList wrapper
@@ -117,7 +127,7 @@ class SVGAnimatedTransformList {
 
   SVGTransformList mBaseVal;
   UniquePtr<SVGTransformList> mAnimVal;
-  bool mIsAttrSet;
+  bool mIsBaseSet;
   // See documentation for accessor.
   bool mCreatedOrRemovedOnLastChange;
 

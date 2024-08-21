@@ -11,6 +11,7 @@
 #include "MFMediaEngineUtils.h"
 #include "GMPUtils.h"  // ToHexString
 #include "mozilla/EMEUtils.h"
+#include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/MediaKeyMessageEventBinding.h"
 #include "mozilla/dom/MediaKeyStatusMapBinding.h"
 #include "nsThreadUtils.h"
@@ -52,10 +53,10 @@ class MFCDMSession::SessionCallbacks final
           Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
           IMFContentDecryptionModuleSessionCallbacks> {
  public:
-  SessionCallbacks() = default;
+  SessionCallbacks() { MOZ_COUNT_CTOR(SessionCallbacks); };
   SessionCallbacks(const SessionCallbacks&) = delete;
   SessionCallbacks& operator=(const SessionCallbacks&) = delete;
-  ~SessionCallbacks() = default;
+  ~SessionCallbacks() { MOZ_COUNT_DTOR(SessionCallbacks); }
 
   HRESULT RuntimeClassInitialize() { return S_OK; }
 
@@ -113,6 +114,8 @@ MFCDMSession::MFCDMSession(IMFContentDecryptionModuleSession* aSession,
   MOZ_ASSERT(aSession);
   MOZ_ASSERT(aCallback);
   MOZ_ASSERT(aManagerThread);
+  MOZ_COUNT_CTOR(MFCDMSession);
+  LOG("MFCDMSession created");
   mKeyMessageListener = aCallback->KeyMessageEvent().Connect(
       mManagerThread, this, &MFCDMSession::OnSessionKeyMessage);
   mKeyChangeListener = aCallback->KeyChangeEvent().Connect(
@@ -120,6 +123,8 @@ MFCDMSession::MFCDMSession(IMFContentDecryptionModuleSession* aSession,
 }
 
 MFCDMSession::~MFCDMSession() {
+  MOZ_COUNT_DTOR(MFCDMSession);
+  LOG("MFCDMSession destroyed");
   // TODO : maybe disconnect them in `Close()`?
   mKeyChangeListener.DisconnectIfExists();
   mKeyMessageListener.DisconnectIfExists();
@@ -240,7 +245,7 @@ void MFCDMSession::OnSessionKeysChange() {
     nsAutoCString keyIdString(ToHexString(keyId));
     LOG("Append keyid-sz=%u, keyid=%s, status=%s", keyStatus.cbKeyId,
         keyIdString.get(),
-        ToMediaKeyStatusStr(ToMediaKeyStatus(keyStatus.eMediaKeyStatus)));
+        dom::GetEnumString(ToMediaKeyStatus(keyStatus.eMediaKeyStatus)).get());
     keyInfos.AppendElement(MFCDMKeyInformation{
         std::move(keyId), ToMediaKeyStatus(keyStatus.eMediaKeyStatus)});
   }
@@ -300,8 +305,7 @@ void MFCDMSession::OnSessionKeyMessage(
       case MF_MEDIAKEYSESSION_MESSAGETYPE_INDIVIDUALIZATION_REQUEST:
         return dom::MediaKeyMessageType::Individualization_request;
       default:
-        MOZ_ASSERT_UNREACHABLE("Unknown session message type");
-        return dom::MediaKeyMessageType::EndGuard_;
+        MOZ_CRASH("Unknown session message type");
     }
   };
   LOG("Notify 'keymessage' for %s", NS_ConvertUTF16toUTF8(*mSessionId).get());

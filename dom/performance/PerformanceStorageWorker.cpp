@@ -39,7 +39,7 @@ class PerformanceEntryAdder final : public WorkerControlRunnable {
   PerformanceEntryAdder(WorkerPrivate* aWorkerPrivate,
                         PerformanceStorageWorker* aStorage,
                         UniquePtr<PerformanceProxyData>&& aData)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerControlRunnable("PerformanceEntryAdder"),
         mStorage(aStorage),
         mData(std::move(aData)) {}
 
@@ -50,7 +50,7 @@ class PerformanceEntryAdder final : public WorkerControlRunnable {
 
   nsresult Cancel() override {
     mStorage->ShutdownOnWorker();
-    return WorkerRunnable::Cancel();
+    return NS_OK;
   }
 
   bool PreDispatch(WorkerPrivate* aWorkerPrivate) override { return true; }
@@ -118,7 +118,7 @@ void PerformanceStorageWorker::AddEntry(nsIHttpChannel* aChannel,
 
   RefPtr<PerformanceEntryAdder> r =
       new PerformanceEntryAdder(workerPrivate, this, std::move(data));
-  Unused << NS_WARN_IF(!r->Dispatch());
+  Unused << NS_WARN_IF(!r->Dispatch(workerPrivate));
 }
 
 void PerformanceStorageWorker::AddEntry(

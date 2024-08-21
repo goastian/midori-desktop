@@ -24,13 +24,14 @@
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/dom/WindowContext.h"
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "nsCOMPtr.h"
 #include "nsDebug.h"
 #include "nsEffectiveTLDService.h"
 #include "nsError.h"
-#include "nsGlobalWindowInner.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsIChannel.h"
 #include "nsIClassifiedChannel.h"
 #include "nsIContentPolicy.h"
@@ -200,9 +201,9 @@ ThirdPartyUtil::IsThirdPartyWindow(mozIDOMWindowProxy* aWindow, nsIURI* aURI,
 
   bool result;
 
-  // Ignore about:blank URIs here since they have no domain and attempting to
-  // compare against them will fail.
-  if (aURI && !NS_IsAboutBlank(aURI)) {
+  // Ignore about:blank and about:srcdoc URIs here since they have no domain
+  // and attempting to compare against them will fail.
+  if (aURI && !NS_IsAboutBlank(aURI) && !NS_IsAboutSrcdoc(aURI)) {
     nsCOMPtr<nsIPrincipal> prin;
     nsresult rv = GetPrincipalFromWindow(aWindow, getter_AddRefs(prin));
     NS_ENSURE_SUCCESS(rv, rv);
@@ -320,10 +321,10 @@ ThirdPartyUtil::IsThirdPartyChannel(nsIChannel* aChannel, nsIURI* aURI,
     }
   }
 
-  // Special consideration must be done for about:blank URIs because those
-  // inherit the principal from the parent context. For them, let's consider the
-  // principal URI.
-  if (NS_IsAboutBlank(channelURI)) {
+  // Special consideration must be done for about:blank and about:srcdoc URIs
+  // because those inherit the principal from the parent context. For them,
+  // let's consider the principal URI.
+  if (NS_IsAboutBlank(channelURI) || NS_IsAboutSrcdoc(channelURI)) {
     nsCOMPtr<nsIPrincipal> principalToInherit =
         loadInfo->FindPrincipalToInherit(aChannel);
     if (!principalToInherit) {
@@ -399,7 +400,9 @@ ThirdPartyUtil::GetTopWindowForChannel(nsIChannel* aChannel,
 // "bbc.co.uk". Only properly-formed URI's are tolerated, though a trailing
 // dot may be present. If aHostURI is an IP address, an alias such as
 // 'localhost', an eTLD such as 'co.uk', or the empty string, aBaseDomain will
-// be the exact host. The result of this function should only be used in exact
+// be the exact host. Blob URIs will incur a lookup for their blob URL entry,
+// and will perform the same construction from their principal's base domain.
+// The result of this function should only be used in exact
 // string comparisons, since substring comparisons will not be valid for the
 // special cases elided above.
 NS_IMETHODIMP
@@ -408,9 +411,26 @@ ThirdPartyUtil::GetBaseDomain(nsIURI* aHostURI, nsACString& aBaseDomain) {
     return NS_ERROR_INVALID_ARG;
   }
 
+  // First, get the base domain from aHostURI. In the common case, this is
+  // direct. For blob URLs we get this from the blob url's entry in the blob url
+  // store.
+  nsresult rv;
+  nsCOMPtr<nsIPrincipal> blobPrincipal;
+  if (aHostURI->SchemeIs("blob")) {
+    if (BlobURLProtocolHandler::GetBlobURLPrincipal(
+            aHostURI, getter_AddRefs(blobPrincipal))) {
+      // If the blob URL is expired, this will be the uuid of a NullPrincipal
+      rv = blobPrincipal->GetBaseDomain(aBaseDomain);
+    } else {
+      // If the blob is expired and no longer has a map entry, we fail
+      rv = nsresult::NS_ERROR_DOM_BAD_URI;
+    }
+  } else {
+    rv = mTLDService->GetBaseDomain(aHostURI, 0, aBaseDomain);
+  }
+
   // Get the base domain. this will fail if the host contains a leading dot,
   // more than one trailing dot, or is otherwise malformed.
-  nsresult rv = mTLDService->GetBaseDomain(aHostURI, 0, aBaseDomain);
   if (rv == NS_ERROR_HOST_IS_IP_ADDRESS ||
       rv == NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS) {
     // aHostURI is either an IP address, an alias such as 'localhost', an eTLD
@@ -418,7 +438,10 @@ ThirdPartyUtil::GetBaseDomain(nsIURI* aHostURI, nsACString& aBaseDomain) {
     // cases.
     rv = aHostURI->GetAsciiHost(aBaseDomain);
   }
-  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
 
   // aHostURI (and thus aBaseDomain) may be the string '.'. If so, fail.
   if (aBaseDomain.Length() == 1 && aBaseDomain.Last() == '.')

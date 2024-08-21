@@ -6,11 +6,11 @@
 
 #include "mozilla/ArrayUtils.h"
 
+#include "ErrorList.h"
 #include "nsCOMPtr.h"
 #include "nsQueryObject.h"
 #include "KeyEventHandler.h"
 #include "nsContentUtils.h"
-#include "nsGlobalWindow.h"
 #include "nsGlobalWindowCommands.h"
 #include "nsIContent.h"
 #include "nsAtom.h"
@@ -58,16 +58,14 @@ const int32_t KeyEventHandler::cShift = (1 << 0);
 const int32_t KeyEventHandler::cAlt = (1 << 1);
 const int32_t KeyEventHandler::cControl = (1 << 2);
 const int32_t KeyEventHandler::cMeta = (1 << 3);
-const int32_t KeyEventHandler::cOS = (1 << 4);
 
 const int32_t KeyEventHandler::cShiftMask = (1 << 5);
 const int32_t KeyEventHandler::cAltMask = (1 << 6);
 const int32_t KeyEventHandler::cControlMask = (1 << 7);
 const int32_t KeyEventHandler::cMetaMask = (1 << 8);
-const int32_t KeyEventHandler::cOSMask = (1 << 9);
 
 const int32_t KeyEventHandler::cAllModifiers =
-    cShiftMask | cAltMask | cControlMask | cMetaMask | cOSMask;
+    cShiftMask | cAltMask | cControlMask | cMetaMask;
 
 KeyEventHandler::KeyEventHandler(dom::Element* aHandlerElement,
                                  ReservedKey aReserved)
@@ -322,7 +320,7 @@ nsresult KeyEventHandler::DispatchXULKeyCommand(dom::Event* aEvent) {
   if (handlerElement->AttrValueIs(kNameSpaceID_None, nsGkAtoms::disabled,
                                   nsGkAtoms::_true, eCaseMatters)) {
     // Don't dispatch command events for disabled keys.
-    return NS_OK;
+    return NS_SUCCESS_DOM_NO_OPERATION;
   }
 
   aEvent->PreventDefault();
@@ -352,9 +350,6 @@ Modifiers KeyEventHandler::GetModifiers() const {
   if (mKeyMask & cMeta) {
     modifiers |= MODIFIER_META;
   }
-  if (mKeyMask & cOS) {
-    modifiers |= MODIFIER_OS;
-  }
   if (mKeyMask & cShift) {
     modifiers |= MODIFIER_SHIFT;
   }
@@ -373,9 +368,6 @@ Modifiers KeyEventHandler::GetModifiersMask() const {
 
   if (mKeyMask & cMetaMask) {
     modifiersMask |= MODIFIER_META;
-  }
-  if (mKeyMask & cOSMask) {
-    modifiersMask |= MODIFIER_OS;
   }
   if (mKeyMask & cShiftMask) {
     modifiersMask |= MODIFIER_SHIFT;
@@ -509,10 +501,8 @@ int32_t KeyEventHandler::GetMatchingKeyCode(const nsAString& aKeyName) {
 int32_t KeyEventHandler::KeyToMask(uint32_t key) {
   switch (key) {
     case dom::KeyboardEvent_Binding::DOM_VK_META:
-      return cMeta | cMetaMask;
-
     case dom::KeyboardEvent_Binding::DOM_VK_WIN:
-      return cOS | cOSMask;
+      return cMeta | cMetaMask;
 
     case dom::KeyboardEvent_Binding::DOM_VK_ALT:
       return cAlt | cAltMask;
@@ -532,8 +522,6 @@ int32_t KeyEventHandler::AccelKeyMask() {
       return KeyToMask(dom::KeyboardEvent_Binding::DOM_VK_CONTROL);
     case MODIFIER_META:
       return KeyToMask(dom::KeyboardEvent_Binding::DOM_VK_META);
-    case MODIFIER_OS:
-      return KeyToMask(dom::KeyboardEvent_Binding::DOM_VK_WIN);
     default:
       MOZ_CRASH("Handle the new result of WidgetInputEvent::AccelModifier()");
       return 0;
@@ -546,7 +534,7 @@ void KeyEventHandler::GetEventType(nsAString& aEvent) {
     aEvent.Truncate();
     return;
   }
-  handlerElement->GetAttr(kNameSpaceID_None, nsGkAtoms::event, aEvent);
+  handlerElement->GetAttr(nsGkAtoms::event, aEvent);
 
   if (aEvent.IsEmpty() && mIsXULKey) {
     // If no type is specified for a XUL <key> element, let's assume that we're
@@ -580,7 +568,7 @@ void KeyEventHandler::ConstructPrototype(dom::Element* aKeyElement,
     }
     mEventName = NS_Atomize(event);
 
-    aKeyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::modifiers, modifiers);
+    aKeyElement->GetAttr(nsGkAtoms::modifiers, modifiers);
   } else {
     mCommand = ToNewUnicode(nsDependentString(aCommand));
     mEventName = NS_Atomize(aEvent);
@@ -592,9 +580,9 @@ void KeyEventHandler::ConstructPrototype(dom::Element* aKeyElement,
   nsAutoString key(aCharCode);
   if (key.IsEmpty()) {
     if (mIsXULKey) {
-      aKeyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::key, key);
+      aKeyElement->GetAttr(nsGkAtoms::key, key);
       if (key.IsEmpty()) {
-        aKeyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::charcode, key);
+        aKeyElement->GetAttr(nsGkAtoms::charcode, key);
       }
     }
   }
@@ -626,7 +614,7 @@ void KeyEventHandler::ConstructPrototype(dom::Element* aKeyElement,
   } else {
     key.Assign(aKeyCode);
     if (mIsXULKey) {
-      aKeyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::keycode, key);
+      aKeyElement->GetAttr(nsGkAtoms::keycode, key);
     }
 
     if (!key.IsEmpty()) {
@@ -651,8 +639,6 @@ void KeyEventHandler::BuildModifiers(nsAString& aModifiers) {
         mKeyMask |= cAlt | cAltMask;
       } else if (strcmp(token, "meta") == 0) {
         mKeyMask |= cMeta | cMetaMask;
-      } else if (strcmp(token, "os") == 0) {
-        mKeyMask |= cOS | cOSMask;
       } else if (strcmp(token, "control") == 0) {
         mKeyMask |= cControl | cControlMask;
       } else if (strcmp(token, "accel") == 0) {
@@ -677,7 +663,7 @@ void KeyEventHandler::ReportKeyConflict(const char16_t* aKey,
   nsCOMPtr<dom::Document> doc = aKeyElement->OwnerDoc();
 
   nsAutoString id;
-  aKeyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::id, id);
+  aKeyElement->GetAttr(nsGkAtoms::id, id);
   AutoTArray<nsString, 3> params;
   params.AppendElement(aKey);
   params.AppendElement(aModifiers);
@@ -693,19 +679,13 @@ bool KeyEventHandler::ModifiersMatchMask(
   WidgetInputEvent* inputEvent = aEvent->WidgetEventPtr()->AsInputEvent();
   NS_ENSURE_TRUE(inputEvent, false);
 
-  if (mKeyMask & cMetaMask) {
+  if ((mKeyMask & cMetaMask) && !aIgnoreModifierState.mMeta) {
     if (inputEvent->IsMeta() != ((mKeyMask & cMeta) != 0)) {
       return false;
     }
   }
 
-  if ((mKeyMask & cOSMask) && !aIgnoreModifierState.mOS) {
-    if (inputEvent->IsOS() != ((mKeyMask & cOS) != 0)) {
-      return false;
-    }
-  }
-
-  if (mKeyMask & cShiftMask && !aIgnoreModifierState.mShift) {
+  if ((mKeyMask & cShiftMask) && !aIgnoreModifierState.mShift) {
     if (inputEvent->IsShift() != ((mKeyMask & cShift) != 0)) {
       return false;
     }

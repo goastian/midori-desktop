@@ -89,6 +89,20 @@ MediaDocumentStreamListener::OnDataAvailable(nsIRequest* request,
 }
 
 NS_IMETHODIMP
+MediaDocumentStreamListener::OnDataFinished(nsresult aStatus) {
+  if (!mNextStream) {
+    return NS_ERROR_FAILURE;
+  }
+  nsCOMPtr<nsIThreadRetargetableStreamListener> retargetable =
+      do_QueryInterface(mNextStream);
+  if (retargetable) {
+    return retargetable->OnDataFinished(aStatus);
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 MediaDocumentStreamListener::CheckListenerChain() {
   nsCOMPtr<nsIThreadRetargetableStreamListener> retargetable =
       do_QueryInterface(mNextStream);
@@ -106,14 +120,14 @@ const char* const MediaDocument::sFormatNames[4] = {
     ""                       // eWithDimAndFile
 };
 
-MediaDocument::MediaDocument()
-    : nsHTMLDocument(), mDidInitialDocumentSetup(false) {
+MediaDocument::MediaDocument() : mDidInitialDocumentSetup(false) {
   mCompatMode = eCompatibility_FullStandards;
 }
 MediaDocument::~MediaDocument() = default;
 
-nsresult MediaDocument::Init() {
-  nsresult rv = nsHTMLDocument::Init();
+nsresult MediaDocument::Init(nsIPrincipal* aPrincipal,
+                             nsIPrincipal* aPartitionedPrincipal) {
+  nsresult rv = nsHTMLDocument::Init(aPrincipal, aPartitionedPrincipal);
   NS_ENSURE_SUCCESS(rv, rv);
 
   mIsSyntheticDocument = true;

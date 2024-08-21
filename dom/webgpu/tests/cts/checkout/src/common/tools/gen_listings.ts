@@ -9,11 +9,10 @@ function usage(rc: number): void {
 
 For each suite in SUITE_DIRS, generate listings and write each listing.js
 into OUT_DIR/{suite}/listing.js. Example:
-  tools/gen_listings out/ src/unittests/ src/webgpu/
+  tools/gen_listings gen/ src/unittests/ src/webgpu/
 
 Options:
   --help          Print this message and exit.
-  --no-validate   Whether to validate test modules while crawling.
 `);
   process.exit(rc);
 }
@@ -23,11 +22,10 @@ if (argv.indexOf('--help') !== -1) {
   usage(0);
 }
 
-let validate = true;
 {
+  // Ignore old argument that is now the default
   const i = argv.indexOf('--no-validate');
   if (i !== -1) {
-    validate = false;
     argv.splice(i, 1);
   }
 }
@@ -40,10 +38,9 @@ const myself = 'src/common/tools/gen_listings.ts';
 
 const outDir = argv[2];
 
-void (async () => {
-  for (const suiteDir of argv.slice(3)) {
-    const listing = await crawl(suiteDir, validate);
-
+for (const suiteDir of argv.slice(3)) {
+  // Run concurrently for each suite (might be a tiny bit more efficient)
+  void crawl(suiteDir).then(listing => {
     const suite = path.basename(suiteDir);
     const outFile = path.normalize(path.join(outDir, `${suite}/listing.js`));
     fs.mkdirSync(path.join(outDir, suite), { recursive: true });
@@ -55,10 +52,5 @@ void (async () => {
 export const listing = ${JSON.stringify(listing, undefined, 2)};
 `
     );
-    try {
-      fs.unlinkSync(outFile + '.map');
-    } catch (ex) {
-      // ignore if file didn't exist
-    }
-  }
-})();
+  });
+}

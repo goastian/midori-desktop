@@ -2,6 +2,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import os
+import time
+
 from marionette_driver import Wait
 from marionette_harness import MarionetteTestCase
 
@@ -13,6 +16,8 @@ from marionette_harness import MarionetteTestCase
  fail if we fail to delete all of the 5,000 1k files we create on disk
  as part of the test.
 """
+QM_TESTING_PREF = "dom.quotaManager.testing"
+
 EXPECTED_CACHEDIR_SIZE_AFTER_CLEANUP = 128 * 1024  # 128KB
 CACHE_ID = "data"
 
@@ -31,10 +36,12 @@ class CachesDeleteCleanupAtShutdownTestCase(MarionetteTestCase):
     def setUp(self):
         super(CachesDeleteCleanupAtShutdownTestCase, self).setUp()
         self.marionette.restart(in_app=False, clean=True)
+        self.marionette.set_pref(QM_TESTING_PREF, True)
 
     def tearDown(self):
         self.marionette.restart(in_app=False, clean=True)
         super(CachesDeleteCleanupAtShutdownTestCase, self).tearDown()
+        self.marionette.set_pref(QM_TESTING_PREF, False)
 
     def getUsage(self):
         return self.marionette.execute_script(
@@ -71,56 +78,62 @@ class CachesDeleteCleanupAtShutdownTestCase(MarionetteTestCase):
             script_args=(CACHE_ID,),
         )
 
+    # asynchronously iterating over body files could be challenging as firefox
+    # might be doing some cleanup while we are iterating over it's morgue dir.
+    # It's expected for this helper to throw FileNotFoundError exception in
+    # such cases.
+    def fallibleCountBodies(self, morgueDir):
+        bodyCount = 0
+        for elem in os.listdir(morgueDir):
+            absPathElem = os.path.join(morgueDir, elem)
+
+            if os.path.isdir(absPathElem):
+                bodyCount += sum(
+                    1
+                    for e in os.listdir(absPathElem)
+                    if os.path.isfile(os.path.join(absPathElem, e))
+                )
+        return bodyCount
+
+    def countBodies(self):
+        profile = self.marionette.instance.profile.profile
+        originDir = (
+            self.marionette.absolute_url("")[:-1].replace(":", "+").replace("/", "+")
+        )
+
+        morgueDir = f"{profile}/storage/default/{originDir}/cache/morgue"
+        print("morgueDir path = ", morgueDir)
+
+        if not os.path.exists(morgueDir):
+            print("morgue directory does not exists.")
+            return -1
+
+        while True:
+            try:
+                return self.fallibleCountBodies(morgueDir)
+            except FileNotFoundError:
+                # we probably just got in the period when firefox was cleaning up.
+                # retry...
+                time.sleep(0.5)
+
     def ensureCleanDirectory(self):
+        orphanedBodiesCount = self.countBodies()
+        return orphanedBodiesCount <= 0
+
+    def isStorageInitialized(self, temporary=False):
         with self.marionette.using_context("chrome"):
-            return self.marionette.execute_script(
+            return self.marionette.execute_async_script(
                 """
-                    let originDir = arguments[0];
-                    const pathDelimiter = "/";
-
-                    function getRelativeFile(relativePath) {
-                        let file =  Services.dirsvc
-                            .get("ProfD", Ci.nsIFile)
-                            .clone();
-
-                        relativePath.split(pathDelimiter).forEach(function(component) {
-                            if (component == "..") {
-                                file = file.parent;
-                            } else {
-                                file.append(component);
-                            }
-                        });
-
-                        return file;
-                    }
-
-                    function getCacheDir() {
-
-                        const storageDirName = "storage";
-                        const defaultPersistenceDirName = "default";
-
-                        return getRelativeFile(
-                            `${storageDirName}/${defaultPersistenceDirName}/${originDir}/cache`
-                        );
-                    }
-
-                    const cacheDir = getCacheDir();
-                    let morgueDir = cacheDir.clone();
-
-                    // morgue directory should be empty
-                    // or atleast directories under morgue should be empty
-                    morgueDir.append("morgue");
-                    for (let dir of morgueDir.directoryEntries) {
-                        for (let file of dir.directoryEntries) {
-                            return false;
-                        }
-                    }
-                    return true;
-                """,
-                script_args=(
-                    self.marionette.absolute_url("")[:-1]
-                    .replace(":", "+")
-                    .replace("/", "+"),
+                    const [resolve] = arguments;
+                    const req = %s;
+                    req.callback = () => {
+                        resolve(req.resultCode == Cr.NS_OK && req.result)
+                    };
+                """
+                % (
+                    "Services.qms.temporaryStorageInitialized()"
+                    if temporary
+                    else "Services.qms.storageInitialized()"
                 ),
                 new_sandbox=False,
             )
@@ -128,22 +141,33 @@ class CachesDeleteCleanupAtShutdownTestCase(MarionetteTestCase):
     def create_and_cleanup_cache(self, ensureCleanCallback, in_app):
         # create 640 cache entries
         self.doCacheWork(640)
+        print("usage after doCacheWork = ", self.getUsage())
 
         self.marionette.restart(in_app=in_app)
         print("restart successful")
 
-        self.marionette.navigate(self.marionette.absolute_url("dom/cacheUsage.html"))
+        self.marionette.navigate(
+            self.marionette.absolute_url("dom/cache/cacheUsage.html")
+        )
         return ensureCleanCallback()
 
+    def afterCleanupClosure(self, usage):
+        print(
+            f"Storage initialized = {self.isStorageInitialized()}, temporary storage initialized = {self.isStorageInitialized(True)}"
+        )
+
+        print(f"Usage = {usage} and number of orphaned bodies = {self.countBodies()}")
+        return usage < EXPECTED_CACHEDIR_SIZE_AFTER_CLEANUP
+
     def test_ensure_cache_cleanup_after_clean_restart(self):
-        self.marionette.navigate(self.marionette.absolute_url("dom/cacheUsage.html"))
+        self.marionette.navigate(
+            self.marionette.absolute_url("dom/cache/cacheUsage.html")
+        )
         beforeUsage = self.getUsage()
 
         def ensureCleanCallback():
-
-            Wait(self.marionette, timeout=60).until(
-                lambda x: (self.getUsage() - beforeUsage)
-                < EXPECTED_CACHEDIR_SIZE_AFTER_CLEANUP,
+            Wait(self.marionette, interval=1, timeout=60).until(
+                lambda _: self.afterCleanupClosure(self.getUsage() - beforeUsage),
                 message="Cache directory is not cleaned up properly",
             )
 
@@ -158,15 +182,22 @@ class CachesDeleteCleanupAtShutdownTestCase(MarionetteTestCase):
             assert False
 
     def test_ensure_cache_cleanup_after_unclean_restart(self):
-        self.marionette.navigate(self.marionette.absolute_url("dom/cacheUsage.html"))
+        self.marionette.navigate(
+            self.marionette.absolute_url("dom/cache/cacheUsage.html")
+        )
+
+        print(f"profile path = {self.marionette.instance.profile.profile}")
+
         beforeUsage = self.getUsage()
 
         def ensureCleanCallback():
-            self.openCache()
+            print(
+                f"ensureCleanCallback, profile path = {self.marionette.instance.profile.profile}"
+            )
 
-            Wait(self.marionette, timeout=60).until(
-                lambda x: (self.getUsage() - beforeUsage)
-                < EXPECTED_CACHEDIR_SIZE_AFTER_CLEANUP,
+            self.openCache()
+            Wait(self.marionette, interval=1, timeout=60).until(
+                lambda _: self.afterCleanupClosure(self.getUsage() - beforeUsage),
                 message="Cache directory is not cleaned up properly",
             )
 

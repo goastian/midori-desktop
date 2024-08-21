@@ -119,12 +119,13 @@ class RequestResolver final : public nsIQuotaCallback {
 };
 
 // This class is used to return promise on worker thread.
-class RequestResolver::FinishWorkerRunnable final : public WorkerRunnable {
+class RequestResolver::FinishWorkerRunnable final
+    : public WorkerThreadRunnable {
   RefPtr<RequestResolver> mResolver;
 
  public:
   explicit FinishWorkerRunnable(RequestResolver* aResolver)
-      : WorkerRunnable(aResolver->mProxy->GetWorkerPrivate()),
+      : WorkerThreadRunnable("RequestResolver::FinishWorkerRunnable"),
         mResolver(aResolver) {
     MOZ_ASSERT(NS_IsMainThread());
     MOZ_ASSERT(aResolver);
@@ -426,9 +427,10 @@ void RequestResolver::ResolveOrReject() {
     promise = mPromise;
   } else {
     MOZ_ASSERT(mProxy);
-
-    promise = mProxy->WorkerPromise();
-
+    promise = mProxy->GetWorkerPromise();
+    if (!promise) {
+      return;
+    }
     // Only clean up for worker case.
     autoCleanup.emplace(mProxy);
   }
@@ -563,7 +565,7 @@ nsresult RequestResolver::Finish() {
     }
 
     RefPtr<FinishWorkerRunnable> runnable = new FinishWorkerRunnable(this);
-    if (NS_WARN_IF(!runnable->Dispatch())) {
+    if (NS_WARN_IF(!runnable->Dispatch(mProxy->GetWorkerPrivate()))) {
       return NS_ERROR_FAILURE;
     }
   }

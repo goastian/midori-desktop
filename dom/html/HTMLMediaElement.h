@@ -66,6 +66,7 @@ struct SharedDummyTrack;
 class VideoFrameContainer;
 class VideoOutput;
 namespace dom {
+class HTMLSourceElement;
 class MediaKeys;
 class TextTrack;
 class TimeRanges;
@@ -195,24 +196,24 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   void NodeInfoChanged(Document* aOldDoc) override;
 
-  virtual bool ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
-                              const nsAString& aValue,
-                              nsIPrincipal* aMaybeScriptedPrincipal,
-                              nsAttrValue& aResult) override;
+  bool ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
+                      const nsAString& aValue,
+                      nsIPrincipal* aMaybeScriptedPrincipal,
+                      nsAttrValue& aResult) override;
 
-  virtual nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  virtual void UnbindFromTree(bool aNullParent = true) override;
-  virtual void DoneCreatingElement() override;
+  nsresult BindToTree(BindContext&, nsINode& aParent) override;
+  void UnbindFromTree(UnbindContext&) override;
+  void DoneCreatingElement() override;
 
-  virtual bool IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
-                               int32_t* aTabIndex) override;
-  virtual int32_t TabIndexDefault() override;
+  bool IsHTMLFocusable(IsFocusableFlags, bool* aIsFocusable,
+                       int32_t* aTabIndex) override;
+  int32_t TabIndexDefault() override;
 
   // Called by the video decoder object, on the main thread,
   // when it has read the metadata containing video dimensions,
   // etc.
-  virtual void MetadataLoaded(const MediaInfo* aInfo,
-                              UniquePtr<const MetadataTags> aTags) final;
+  void MetadataLoaded(const MediaInfo* aInfo,
+                      UniquePtr<const MetadataTags> aTags) final;
 
   // Called by the decoder object, on the main thread,
   // when it has read the first frame of the video or audio.
@@ -553,6 +554,10 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   bool IsEncrypted() const override { return mIsEncrypted; }
 
+#ifdef MOZ_WMF_CDM
+  bool IsUsingWMFCDM() const override;
+#endif
+
   bool Paused() const { return mPaused; }
 
   double DefaultPlaybackRate() const {
@@ -808,10 +813,6 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   already_AddRefed<GMPCrashHelper> CreateGMPCrashHelper() override;
 
-  nsISerialEventTarget* MainThreadEventTarget() {
-    return mMainThreadEventTarget;
-  }
-
   // Set the sink id (of the output device) that the audio will play. If aSinkId
   // is empty the default device will be set.
   already_AddRefed<Promise> SetSinkId(const nsAString& aSinkId,
@@ -1003,6 +1004,9 @@ class HTMLMediaElement : public nsGenericHTMLElement,
    * When aType is CAPTURE_AUDIO, we stop playout of audio and instead route it
    * to the DOMMediaStream. Volume and mute state will be applied to the audio
    * reaching the stream. No video tracks will be captured in this case.
+   *
+   * aGraph may be null if the stream's tracks do not need to use a
+   * specific graph.
    */
   already_AddRefed<DOMMediaStream> CaptureStreamInternal(
       StreamCaptureBehavior aFinishBehavior,
@@ -1125,7 +1129,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
    * during the resource selection algorithm. Stores the return value in
    * mSourceLoadCandidate before returning.
    */
-  Element* GetNextSource();
+  HTMLSourceElement* GetNextSource();
 
   /**
    * Changes mDelayingLoadEvent, and will call BlockOnLoad()/UnblockOnLoad()
@@ -1415,13 +1419,6 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   // At most one of mDecoder and mSrcStream can be non-null.
   RefPtr<MediaDecoder> mDecoder;
 
-  // The DocGroup-specific nsISerialEventTarget of this HTML element on the main
-  // thread.
-  nsCOMPtr<nsISerialEventTarget> mMainThreadEventTarget;
-
-  // The DocGroup-specific AbstractThread::MainThread() of this HTML element.
-  RefPtr<AbstractThread> mAbstractMainThread;
-
   // A reference to the VideoFrameContainer which contains the current frame
   // of video to display.
   RefPtr<VideoFrameContainer> mVideoFrameContainer;
@@ -1458,7 +1455,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   // Holds a reference to the stream connecting this stream to the window
   // capture sink.
-  UniquePtr<MediaStreamWindowCapturer> mStreamWindowCapturer;
+  RefPtr<MediaStreamWindowCapturer> mStreamWindowCapturer;
 
   // Holds references to the DOM wrappers for the MediaStreams that we're
   // writing to.
@@ -1773,7 +1770,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   RefPtr<VideoTrackList> mVideoTrackList;
 
-  UniquePtr<MediaStreamTrackListener> mMediaStreamTrackListener;
+  RefPtr<MediaStreamTrackListener> mMediaStreamTrackListener;
 
   // The principal guarding mVideoFrameContainer access when playing a
   // MediaStream.
@@ -1929,6 +1926,11 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   // Return true if we should queue a 'timeupdate' event runner to main thread.
   bool ShouldQueueTimeupdateAsyncTask(TimeupdateType aType) const;
+
+#ifdef MOZ_WMF_CDM
+  // It's used to record telemetry probe for WMFCDM playback.
+  bool mIsUsingWMFCDM = false;
+#endif
 };
 
 // Check if the context is chrome or has the debugger or tabs permission

@@ -6,7 +6,7 @@
 
 #include "AudioDeviceInfo.h"
 #include "AudioStreamTrack.h"
-#include "MediaTrackGraphImpl.h"
+#include "MediaTrackGraph.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Preferences.h"
 
@@ -22,28 +22,6 @@ namespace mozilla {
 extern LazyLogModule gMediaTrackGraphLog;
 #define LOG(type, msg) MOZ_LOG(gMediaTrackGraphLog, type, msg)
 #define LOG_TEST(type) MOZ_LOG_TEST(gMediaTrackGraphLog, type)
-
-UniquePtr<CrossGraphPort> CrossGraphPort::Connect(
-    const RefPtr<dom::AudioStreamTrack>& aStreamTrack, AudioDeviceInfo* aSink,
-    nsPIDOMWindowInner* aWindow) {
-  MOZ_ASSERT(aSink);
-  MOZ_ASSERT(aStreamTrack);
-  uint32_t defaultRate;
-  aSink->GetDefaultRate(&defaultRate);
-  LOG(LogLevel::Debug,
-      ("CrossGraphPort::Connect: sink id: %p at rate %u, primary rate %d",
-       aSink->DeviceID(), defaultRate, aStreamTrack->Graph()->GraphRate()));
-
-  if (!aSink->DeviceID()) {
-    return nullptr;
-  }
-
-  MediaTrackGraph* newGraph =
-      MediaTrackGraph::GetInstance(MediaTrackGraph::AUDIO_THREAD_DRIVER,
-                                   aWindow, defaultRate, aSink->DeviceID());
-
-  return CrossGraphPort::Connect(aStreamTrack, newGraph);
-}
 
 UniquePtr<CrossGraphPort> CrossGraphPort::Connect(
     const RefPtr<dom::AudioStreamTrack>& aStreamTrack,
@@ -69,27 +47,10 @@ UniquePtr<CrossGraphPort> CrossGraphPort::Connect(
                                        std::move(receiver)));
 }
 
-void CrossGraphPort::AddAudioOutput(void* aKey) {
-  mReceiver->AddAudioOutput(aKey);
-}
-
-void CrossGraphPort::RemoveAudioOutput(void* aKey) {
-  mReceiver->RemoveAudioOutput(aKey);
-}
-
-void CrossGraphPort::SetAudioOutputVolume(void* aKey, float aVolume) {
-  mReceiver->SetAudioOutputVolume(aKey, aVolume);
-}
-
 CrossGraphPort::~CrossGraphPort() {
   mTransmitter->Destroy();
   mReceiver->Destroy();
   mTransmitterPort->Destroy();
-}
-
-RefPtr<GenericPromise> CrossGraphPort::EnsureConnected() {
-  // The primary graph is already working check the partner (receiver's) graph.
-  return mReceiver->Graph()->NotifyWhenDeviceStarted(mReceiver.get());
 }
 
 /** CrossGraphTransmitter **/
@@ -114,9 +75,8 @@ void CrossGraphTransmitter::ProcessInput(GraphTime aFrom, GraphTime aTo,
   }
 
   LOG(LogLevel::Verbose,
-      ("Transmitter (%p) mSegment: duration: %" PRId64 ", from %" PRId64
-       ", to %" PRId64 ", ticks %" PRId64 "",
-       this, mSegment->GetDuration(), aFrom, aTo, aTo - aFrom));
+      ("Transmitter (%p) from %" PRId64 ", to %" PRId64 ", ticks %" PRId64 "",
+       this, aFrom, aTo, aTo - aFrom));
 
   AudioSegment audio;
   GraphTime next;
@@ -160,9 +120,7 @@ CrossGraphReceiver::CrossGraphReceiver(TrackRate aSampleRate,
                                        TrackRate aTransmitterRate)
     : ProcessedMediaTrack(aSampleRate, MediaSegment::AUDIO,
                           static_cast<MediaSegment*>(new AudioSegment())),
-      mDriftCorrection(aTransmitterRate, aSampleRate,
-                       Preferences::GetInt("media.clockdrift.buffering", 50),
-                       PRINCIPAL_HANDLE_NONE) {}
+      mDriftCorrection(aTransmitterRate, aSampleRate, PRINCIPAL_HANDLE_NONE) {}
 
 uint32_t CrossGraphReceiver::NumberOfChannels() const {
   return GetData<AudioSegment>()->MaxChannelCount();

@@ -6,6 +6,21 @@ import { makeTestGroup } from '../../../../../common/framework/test_group.js';
 import { assert, unreachable } from '../../../../../common/util/util.js';
 import { ValidationTest } from '../../validation_test.js';
 
+export type TextureBindingType =
+  | 'sampled-texture'
+  | 'writeonly-storage-texture'
+  | 'readonly-storage-texture'
+  | 'readwrite-storage-texture';
+export const kTextureBindingTypes = [
+  'sampled-texture',
+  'writeonly-storage-texture',
+  'readonly-storage-texture',
+  'readwrite-storage-texture',
+] as const;
+export function IsReadOnlyTextureBindingType(t: TextureBindingType): boolean {
+  return t === 'sampled-texture' || t === 'readonly-storage-texture';
+}
+
 class F extends ValidationTest {
   getColorAttachment(
     texture: GPUTexture,
@@ -23,21 +38,35 @@ class F extends ValidationTest {
 
   createBindGroupForTest(
     textureView: GPUTextureView,
-    textureUsage: 'texture' | 'storage',
-    sampleType: 'float' | 'depth' | 'uint'
+    textureUsage: TextureBindingType,
+    sampleType: 'unfilterable-float' | 'depth' | 'uint'
   ) {
     const bindGroupLayoutEntry: GPUBindGroupLayoutEntry = {
       binding: 0,
       visibility: GPUShaderStage.FRAGMENT,
     };
     switch (textureUsage) {
-      case 'texture':
+      case 'sampled-texture':
         bindGroupLayoutEntry.texture = { viewDimension: '2d-array', sampleType };
         break;
-      case 'storage':
+      case 'readonly-storage-texture':
+        bindGroupLayoutEntry.storageTexture = {
+          access: 'read-only',
+          format: 'r32float',
+          viewDimension: '2d-array',
+        };
+        break;
+      case 'readwrite-storage-texture':
+        bindGroupLayoutEntry.storageTexture = {
+          access: 'read-write',
+          format: 'r32float',
+          viewDimension: '2d-array',
+        };
+        break;
+      case 'writeonly-storage-texture':
         bindGroupLayoutEntry.storageTexture = {
           access: 'write-only',
-          format: 'rgba8unorm',
+          format: 'r32float',
           viewDimension: '2d-array',
         };
         break;
@@ -85,11 +114,11 @@ g.test('subresources,color_attachments')
       .combine('inSamePass', [true, false])
       .unless(t => t.inSamePass && t.level0 !== t.level1)
   )
-  .fn(async t => {
+  .fn(t => {
     const { layer0, level0, layer1, level1, inSamePass } = t.params;
 
     const texture = t.device.createTexture({
-      format: 'rgba8unorm',
+      format: 'r32float',
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
       size: [kTextureSize, kTextureSize, kTextureLayers],
       mipLevelCount: kTextureLevels,
@@ -152,11 +181,11 @@ g.test('subresources,color_attachment_and_bind_group')
         { bgLayer: 1, bgLayerCount: 1 },
         { bgLayer: 1, bgLayerCount: 2 },
       ])
-      .combine('bgUsage', ['texture', 'storage'] as const)
-      .unless(t => t.bgUsage === 'storage' && t.bgLevelCount > 1)
+      .combine('bgUsage', kTextureBindingTypes)
+      .unless(t => t.bgUsage !== 'sampled-texture' && t.bgLevelCount > 1)
       .combine('inSamePass', [true, false])
   )
-  .fn(async t => {
+  .fn(t => {
     const {
       colorAttachmentLevel,
       colorAttachmentLayer,
@@ -169,7 +198,7 @@ g.test('subresources,color_attachment_and_bind_group')
     } = t.params;
 
     const texture = t.device.createTexture({
-      format: 'rgba8unorm',
+      format: 'r32float',
       usage:
         GPUTextureUsage.RENDER_ATTACHMENT |
         GPUTextureUsage.TEXTURE_BINDING |
@@ -184,7 +213,7 @@ g.test('subresources,color_attachment_and_bind_group')
       baseMipLevel: bgLevel,
       mipLevelCount: bgLevelCount,
     });
-    const bindGroup = t.createBindGroupForTest(bindGroupView, bgUsage, 'float');
+    const bindGroup = t.createBindGroupForTest(bindGroupView, bgUsage, 'unfilterable-float');
 
     const colorAttachment = t.getColorAttachment(texture, {
       dimension: '2d',
@@ -205,7 +234,7 @@ g.test('subresources,color_attachment_and_bind_group')
       renderPass.end();
 
       const texture2 = t.device.createTexture({
-        format: 'rgba8unorm',
+        format: 'r32float',
         usage: GPUTextureUsage.RENDER_ATTACHMENT,
         size: [kTextureSize, kTextureSize, 1],
         mipLevelCount: 1,
@@ -260,11 +289,13 @@ g.test('subresources,depth_stencil_attachment_and_bind_group')
         { bgLayer: 1, bgLayerCount: 1 },
         { bgLayer: 1, bgLayerCount: 2 },
       ])
-      .combine('dsReadOnly', [true, false])
+      .beginSubcases()
+      .combine('depthReadOnly', [true, false])
+      .combine('stencilReadOnly', [true, false])
       .combine('bgAspect', ['depth-only', 'stencil-only'] as const)
       .combine('inSamePass', [true, false])
   )
-  .fn(async t => {
+  .fn(t => {
     const {
       dsLevel,
       dsLayer,
@@ -272,7 +303,8 @@ g.test('subresources,depth_stencil_attachment_and_bind_group')
       bgLevelCount,
       bgLayer,
       bgLayerCount,
-      dsReadOnly,
+      depthReadOnly,
+      stencilReadOnly,
       bgAspect,
       inSamePass,
     } = t.params;
@@ -292,7 +324,7 @@ g.test('subresources,depth_stencil_attachment_and_bind_group')
       aspect: bgAspect,
     });
     const sampleType = bgAspect === 'depth-only' ? 'depth' : 'uint';
-    const bindGroup = t.createBindGroupForTest(bindGroupView, 'texture', sampleType);
+    const bindGroup = t.createBindGroupForTest(bindGroupView, 'sampled-texture', sampleType);
 
     const attachmentView = texture.createView({
       dimension: '2d',
@@ -303,12 +335,12 @@ g.test('subresources,depth_stencil_attachment_and_bind_group')
     });
     const depthStencilAttachment: GPURenderPassDepthStencilAttachment = {
       view: attachmentView,
-      depthReadOnly: dsReadOnly,
-      depthLoadOp: 'load',
-      depthStoreOp: 'store',
-      stencilReadOnly: dsReadOnly,
-      stencilLoadOp: 'load',
-      stencilStoreOp: 'store',
+      depthReadOnly,
+      depthLoadOp: depthReadOnly ? undefined : 'load',
+      depthStoreOp: depthReadOnly ? undefined : 'store',
+      stencilReadOnly,
+      stencilLoadOp: stencilReadOnly ? undefined : 'load',
+      stencilStoreOp: stencilReadOnly ? undefined : 'store',
     };
 
     const encoder = t.device.createCommandEncoder();
@@ -349,8 +381,11 @@ g.test('subresources,depth_stencil_attachment_and_bind_group')
       bgLayer + bgLayerCount - 1
     );
     const isNotOverlapped = isMipLevelNotOverlapped || isArrayLayerNotOverlapped;
+    const readonly =
+      (bgAspect === 'stencil-only' && stencilReadOnly) ||
+      (bgAspect === 'depth-only' && depthReadOnly);
 
-    const success = !inSamePass || isNotOverlapped || dsReadOnly;
+    const success = !inSamePass || isNotOverlapped || readonly;
     t.expectValidationError(() => {
       encoder.finish();
     }, !success);
@@ -387,20 +422,21 @@ g.test('subresources,multiple_bind_groups')
         { base: 1, count: 1 },
         { base: 1, count: 2 },
       ])
-      .combine('bgUsage0', ['texture', 'storage'] as const)
-      .combine('bgUsage1', ['texture', 'storage'] as const)
+      .combine('bgUsage0', kTextureBindingTypes)
+      .combine('bgUsage1', kTextureBindingTypes)
       .unless(
         t =>
-          (t.bgUsage0 === 'storage' && t.bg0Levels.count > 1) ||
-          (t.bgUsage1 === 'storage' && t.bg1Levels.count > 1)
+          (t.bgUsage0 !== 'sampled-texture' && t.bg0Levels.count > 1) ||
+          (t.bgUsage1 !== 'sampled-texture' && t.bg1Levels.count > 1)
       )
+      .beginSubcases()
       .combine('inSamePass', [true, false])
   )
-  .fn(async t => {
+  .fn(t => {
     const { bg0Levels, bg0Layers, bg1Levels, bg1Layers, bgUsage0, bgUsage1, inSamePass } = t.params;
 
     const texture = t.device.createTexture({
-      format: 'rgba8unorm',
+      format: 'r32float',
       usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
       size: [kTextureSize, kTextureSize, kTextureLayers],
       mipLevelCount: kTextureLevels,
@@ -419,11 +455,11 @@ g.test('subresources,multiple_bind_groups')
       baseMipLevel: bg1Levels.base,
       mipLevelCount: bg1Levels.count,
     });
-    const bindGroup0 = t.createBindGroupForTest(bg0, bgUsage0, 'float');
-    const bindGroup1 = t.createBindGroupForTest(bg1, bgUsage1, 'float');
+    const bindGroup0 = t.createBindGroupForTest(bg0, bgUsage0, 'unfilterable-float');
+    const bindGroup1 = t.createBindGroupForTest(bg1, bgUsage1, 'unfilterable-float');
 
     const colorTexture = t.device.createTexture({
-      format: 'rgba8unorm',
+      format: 'r32float',
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
       size: [kTextureSize, kTextureSize, 1],
       mipLevelCount: 1,
@@ -448,6 +484,8 @@ g.test('subresources,multiple_bind_groups')
       renderPass2.end();
     }
 
+    const bothReadOnly =
+      IsReadOnlyTextureBindingType(bgUsage0) && IsReadOnlyTextureBindingType(bgUsage1);
     const isMipLevelNotOverlapped = t.isRangeNotOverlapped(
       bg0Levels.base,
       bg0Levels.base + bg0Levels.count - 1,
@@ -462,7 +500,7 @@ g.test('subresources,multiple_bind_groups')
     );
     const isNotOverlapped = isMipLevelNotOverlapped || isArrayLayerNotOverlapped;
 
-    const success = !inSamePass || isNotOverlapped || bgUsage0 === bgUsage1;
+    const success = !inSamePass || bothReadOnly || isNotOverlapped || bgUsage0 === bgUsage1;
     t.expectValidationError(() => {
       encoder.finish();
     }, !success);
@@ -501,16 +539,9 @@ g.test('subresources,depth_stencil_texture_in_bind_groups')
       .combine('aspect1', ['depth-only', 'stencil-only'] as const)
       .combine('inSamePass', [true, false])
   )
-  .fn(async t => {
-    const {
-      view0Levels,
-      view0Layers,
-      view1Levels,
-      view1Layers,
-      aspect0,
-      aspect1,
-      inSamePass,
-    } = t.params;
+  .fn(t => {
+    const { view0Levels, view0Layers, view1Levels, view1Layers, aspect0, aspect1, inSamePass } =
+      t.params;
 
     const texture = t.device.createTexture({
       format: 'depth24plus-stencil8',
@@ -537,8 +568,8 @@ g.test('subresources,depth_stencil_texture_in_bind_groups')
 
     const sampleType0 = aspect0 === 'depth-only' ? 'depth' : 'uint';
     const sampleType1 = aspect1 === 'depth-only' ? 'depth' : 'uint';
-    const bindGroup0 = t.createBindGroupForTest(bindGroupView0, 'texture', sampleType0);
-    const bindGroup1 = t.createBindGroupForTest(bindGroupView1, 'texture', sampleType1);
+    const bindGroup0 = t.createBindGroupForTest(bindGroupView0, 'sampled-texture', sampleType0);
+    const bindGroup1 = t.createBindGroupForTest(bindGroupView1, 'sampled-texture', sampleType1);
 
     const colorTexture = t.device.createTexture({
       format: 'rgba8unorm',

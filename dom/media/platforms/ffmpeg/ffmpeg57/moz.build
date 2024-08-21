@@ -6,9 +6,13 @@
 
 UNIFIED_SOURCES += [
     '../FFmpegAudioDecoder.cpp',
+    '../FFmpegAudioEncoder.cpp',
     '../FFmpegDataDecoder.cpp',
+    "../FFmpegDataEncoder.cpp",
     '../FFmpegDecoderModule.cpp',
+    '../FFmpegEncoderModule.cpp',
     '../FFmpegVideoDecoder.cpp',
+    '../FFmpegVideoEncoder.cpp',
 ]
 LOCAL_INCLUDES += [
     '..',
@@ -27,5 +31,9 @@ if CONFIG['CC_TYPE'] == 'gcc':
   ]
 
 include("/ipc/chromium/chromium-config.mozbuild")
+
+LOCAL_INCLUDES += [
+  "/media/libyuv/libyuv/include",
+]
 
 FINAL_LIBRARY = 'xul'

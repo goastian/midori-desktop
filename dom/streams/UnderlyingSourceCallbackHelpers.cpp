@@ -7,6 +7,7 @@
 #include "StreamUtils.h"
 #include "mozilla/dom/ReadableStream.h"
 #include "mozilla/dom/ReadableStreamDefaultController.h"
+#include "mozilla/dom/ReadableByteStreamController.h"
 #include "mozilla/dom/UnderlyingSourceCallbackHelpers.h"
 #include "mozilla/dom/UnderlyingSourceBinding.h"
 #include "mozilla/dom/WorkerCommon.h"
@@ -16,6 +17,8 @@
 #include "nsStreamUtils.h"
 
 namespace mozilla::dom {
+
+using namespace streams_abstract;
 
 // UnderlyingSourceAlgorithmsBase
 NS_IMPL_CYCLE_COLLECTION(UnderlyingSourceAlgorithmsBase)
@@ -148,7 +151,9 @@ already_AddRefed<Promise> UnderlyingSourceAlgorithmsWrapper::CancelCallback(
   nsCOMPtr<nsIGlobalObject> global = xpc::CurrentNativeGlobal(aCx);
   return PromisifyAlgorithm(
       global,
-      [&](ErrorResult& aRv) { return CancelCallbackImpl(aCx, aReason, aRv); },
+      [&](ErrorResult& aRv) MOZ_CAN_RUN_SCRIPT_FOR_DEFINITION {
+        return CancelCallbackImpl(aCx, aReason, aRv);
+      },
       aRv);
 }
 
@@ -262,7 +267,8 @@ already_AddRefed<Promise> InputToReadableStreamAlgorithms::PullCallbackImpl(
   return do_AddRef(mPullPromise);
 }
 
-NS_IMETHODIMP
+// _BOUNDARY because OnInputStreamReady doesn't have [can-run-script]
+MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHODIMP
 InputToReadableStreamAlgorithms::OnInputStreamReady(
     nsIAsyncInputStream* aStream) {
   MOZ_DIAGNOSTIC_ASSERT(aStream);
@@ -300,25 +306,36 @@ InputToReadableStreamAlgorithms::OnInputStreamReady(
                         Promise::PromiseState::Pending);
 
   ErrorResult errorResult;
-  EnqueueChunkWithSizeIntoStream(cx, mStream, size, errorResult);
+  PullFromInputStream(cx, size, errorResult);
   errorResult.WouldReportJSException();
   if (errorResult.Failed()) {
     ErrorPropagation(cx, mStream, errorResult.StealNSResult());
     return NS_OK;
   }
 
-  // Enqueuing triggers read request chunk steps which may execute JS, but:
-  // 1. The nsIAsyncInputStream should hold the reference of `this` so it should
-  // be safe from cycle collection
-  // 2. AsyncWait is called after enqueuing and thus OnInputStreamReady can't be
-  // synchronously called again
+  // PullFromInputStream can fulfill read request, which can trigger read
+  // request chunk steps, which again may execute JS. But it should be still
+  // safe from cycle collection as the caller nsIAsyncInputStream should hold
+  // the reference of `this`.
   //
   // That said, it's generally good to be cautious as there's no guarantee that
-  // the interface is implemented in a safest way.
+  // the interface is implemented in the safest way.
   MOZ_DIAGNOSTIC_ASSERT(mPullPromise);
   if (mPullPromise) {
     mPullPromise->MaybeResolveWithUndefined();
     mPullPromise = nullptr;
+  }
+
+  MOZ_DIAGNOSTIC_ASSERT(mInput);
+  if (mInput) {
+    // Subscribe WAIT_CLOSURE_ONLY so that OnInputStreamReady can be called when
+    // mInput is closed.
+    rv = mInput->AsyncWait(nsIAsyncInputStream::WAIT_CLOSURE_ONLY, 0,
+                           mOwningEventTarget);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      ErrorPropagation(cx, mStream, errorResult.StealNSResult());
+      return NS_OK;
+    }
   }
 
   return NS_OK;
@@ -326,7 +343,7 @@ InputToReadableStreamAlgorithms::OnInputStreamReady(
 
 void InputToReadableStreamAlgorithms::WriteIntoReadRequestBuffer(
     JSContext* aCx, ReadableStream* aStream, JS::Handle<JSObject*> aBuffer,
-    uint32_t aLength, uint32_t* aByteWritten) {
+    uint32_t aLength, uint32_t* aByteWritten, ErrorResult& aRv) {
   MOZ_DIAGNOSTIC_ASSERT(aBuffer);
   MOZ_DIAGNOSTIC_ASSERT(aByteWritten);
   MOZ_DIAGNOSTIC_ASSERT(mInput);
@@ -353,7 +370,7 @@ void InputToReadableStreamAlgorithms::WriteIntoReadRequestBuffer(
 
     rv = mInput->Read(static_cast<char*>(buffer), aLength, &written);
     if (NS_WARN_IF(NS_FAILED(rv))) {
-      ErrorPropagation(aCx, aStream, rv);
+      aRv.Throw(rv);
       return;
     }
   }
@@ -361,65 +378,110 @@ void InputToReadableStreamAlgorithms::WriteIntoReadRequestBuffer(
   *aByteWritten = written;
 
   if (written == 0) {
-    CloseAndReleaseObjects(aCx, aStream);
+    // If bytesWritten is zero, then the stream has been closed; return rather
+    // than enqueueing a chunk filled with zeros.
+    aRv.Throw(NS_BASE_STREAM_CLOSED);
     return;
   }
 
   // All good.
 }
 
-// Whenever one or more bytes are available and stream is not
-// errored, enqueue a Uint8Array wrapping an ArrayBuffer containing the
-// available bytes into stream.
-void InputToReadableStreamAlgorithms::EnqueueChunkWithSizeIntoStream(
-    JSContext* aCx, ReadableStream* aStream, uint64_t aAvailableData,
-    ErrorResult& aRv) {
-  // To avoid OOMing up on huge amounts of available data on a 32 bit system,
-  // as well as potentially overflowing nsIInputStream's Read method's
-  // parameter, let's limit our maximum chunk size to 256MB.
-  uint32_t ableToRead =
-      std::min(static_cast<uint64_t>(256 * 1024 * 1024), aAvailableData);
+// https://streams.spec.whatwg.org/#readablestream-pull-from-bytes
+// This is a ReadableStream algorithm but will probably be used solely in
+// InputToReadableStreamAlgorithms.
+void InputToReadableStreamAlgorithms::PullFromInputStream(JSContext* aCx,
+                                                          uint64_t aAvailable,
+                                                          ErrorResult& aRv) {
+  // Step 1. Assert: stream.[[controller]] implements
+  // ReadableByteStreamController.
+  MOZ_ASSERT(mStream->Controller()->IsByte());
 
-  // Create Chunk
-  aRv.MightThrowJSException();
-  JS::Rooted<JSObject*> chunk(aCx, JS_NewUint8Array(aCx, ableToRead));
-  if (!chunk) {
-    aRv.StealExceptionFromJSContext(aCx);
-    return;
-  }
+  // Step 2. Let available be bytes’s length. (aAvailable)
+  // Step 3. Let desiredSize be available.
+  uint64_t desiredSize = aAvailable;
 
-  {
-    uint32_t bytesWritten = 0;
-
-    WriteIntoReadRequestBuffer(aCx, aStream, chunk, ableToRead, &bytesWritten);
-
-    // If bytesWritten is zero, then the stream has been closed; return
-    // rather than enqueueing a chunk filled with zeros.
-    if (bytesWritten == 0) {
-      return;
-    }
-
-    // If we don't read every byte we've allocated in the Uint8Array
-    // we risk enqueuing a chunk that is padded with trailing zeros,
-    // corrupting future processing of the chunks:
-    MOZ_DIAGNOSTIC_ASSERT((ableToRead - bytesWritten) == 0);
-  }
-
-  MOZ_ASSERT(aStream->Controller()->IsByte());
-  JS::Rooted<JS::Value> chunkValue(aCx);
-  chunkValue.setObject(*chunk);
-  aStream->EnqueueNative(aCx, chunkValue, aRv);
+  // Step 4. If stream’s current BYOB request view is non-null, then set
+  // desiredSize to stream’s current BYOB request view's byte length.
+  JS::Rooted<JSObject*> byobView(aCx);
+  mStream->GetCurrentBYOBRequestView(aCx, &byobView, aRv);
   if (aRv.Failed()) {
     return;
   }
+  if (byobView) {
+    desiredSize = JS_GetArrayBufferViewByteLength(byobView);
+  }
 
-  // Subscribe WAIT_CLOSURE_ONLY so that OnInputStreamReady can be called when
-  // mInput is closed.
-  nsresult rv = mInput->AsyncWait(nsIAsyncInputStream::WAIT_CLOSURE_ONLY, 0,
-                                  mOwningEventTarget);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    aRv.Throw(rv);
-    return;
+  // Step 5. Let pullSize be the smaller value of available and desiredSize.
+  //
+  // To avoid OOMing up on huge amounts of available data on a 32 bit system,
+  // as well as potentially overflowing nsIInputStream's Read method's
+  // parameter, let's limit our maximum chunk size to 256MB.
+  //
+  // (Note that nsIInputStream uses uint64_t for Available and uint32_t for
+  // Read.)
+  uint64_t pullSize = std::min(static_cast<uint64_t>(256 * 1024 * 1024),
+                               std::min(aAvailable, desiredSize));
+
+  // Step 6. Let pulled be the first pullSize bytes of bytes.
+  // Step 7. Remove the first pullSize bytes from bytes.
+  //
+  // We do this in step 8 and 9, as we don't have a direct access to the data
+  // but need to let nsIInputStream to write into the view.
+
+  // Step 8. If stream’s current BYOB request view is non-null, then:
+  if (byobView) {
+    // Step 8.1. Write pulled into stream’s current BYOB request view.
+    uint32_t bytesWritten = 0;
+    WriteIntoReadRequestBuffer(aCx, mStream, byobView, pullSize, &bytesWritten,
+                               aRv);
+    if (aRv.Failed()) {
+      return;
+    }
+
+    // Step 8.2. Perform ?
+    // ReadableByteStreamControllerRespond(stream.[[controller]], pullSize).
+    //
+    // But we do not use pullSize but use byteWritten here, since nsIInputStream
+    // does not guarantee to read as much as it told in Available().
+    MOZ_DIAGNOSTIC_ASSERT(pullSize == bytesWritten);
+    ReadableByteStreamControllerRespond(
+        aCx, MOZ_KnownLive(mStream->Controller()->AsByte()), bytesWritten, aRv);
+  }
+  // Step 9. Otherwise,
+  else {
+    // Step 9.1. Set view to the result of creating a Uint8Array from pulled in
+    // stream’s relevant Realm.
+    UniquePtr<uint8_t[], JS::FreePolicy> buffer(
+        static_cast<uint8_t*>(JS_malloc(aCx, pullSize)));
+    if (!buffer) {
+      aRv.ThrowTypeError("Out of memory");
+      return;
+    }
+
+    uint32_t bytesWritten = 0;
+    nsresult rv = mInput->Read((char*)buffer.get(), pullSize, &bytesWritten);
+    if (!bytesWritten) {
+      rv = NS_BASE_STREAM_CLOSED;
+    }
+    if (NS_FAILED(rv)) {
+      aRv.Throw(rv);
+      return;
+    }
+
+    MOZ_DIAGNOSTIC_ASSERT(pullSize == bytesWritten);
+    JS::Rooted<JSObject*> view(aCx, nsJSUtils::MoveBufferAsUint8Array(
+                                        aCx, bytesWritten, std::move(buffer)));
+    if (!view) {
+      JS_ClearPendingException(aCx);
+      aRv.ThrowTypeError("Out of memory");
+      return;
+    }
+
+    // Step 9.2. Perform ?
+    // ReadableByteStreamControllerEnqueue(stream.[[controller]], view).
+    ReadableByteStreamControllerEnqueue(
+        aCx, MOZ_KnownLive(mStream->Controller()->AsByte()), view, aRv);
   }
 }
 
@@ -447,6 +509,12 @@ void InputToReadableStreamAlgorithms::ReleaseObjects() {
   // used to prevent reentrant to PullCallback. CloseNative() or ErrorNative()
   // will settle the read requests for us.
   mPullPromise = nullptr;
+}
+
+nsIInputStream* InputToReadableStreamAlgorithms::MaybeGetInputStreamIfUnread() {
+  MOZ_ASSERT(!mStream->Disturbed(),
+             "Should be only called on non-disturbed streams");
+  return mInput->GetInputStream();
 }
 
 void InputToReadableStreamAlgorithms::ErrorPropagation(JSContext* aCx,

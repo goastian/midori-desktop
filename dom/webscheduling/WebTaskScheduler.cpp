@@ -79,7 +79,13 @@ void WebTask::RunAbortAlgorithm() {
 
 bool WebTask::Run() {
   MOZ_ASSERT(HasScheduled());
+  MOZ_ASSERT(mOwnerQueue);
   remove();
+
+  mOwnerQueue->RemoveEntryFromTaskQueueMapIfNeeded();
+  mOwnerQueue = nullptr;
+  // At this point mOwnerQueue is destructed and this is fine.
+  // The caller of WebTask::Run keeps it alive.
 
   ErrorResult error;
 
@@ -285,9 +291,8 @@ WebTask* WebTaskScheduler::GetNextTask() const {
     return nullptr;
   }
 
-  for (uint32_t priority = static_cast<uint32_t>(TaskPriority::User_blocking);
-       priority < static_cast<uint32_t>(TaskPriority::EndGuard_); ++priority) {
-    if (auto queues = allQueues.Lookup(priority)) {
+  for (TaskPriority priority : MakeWebIDLEnumeratedRange<TaskPriority>()) {
+    if (auto queues = allQueues.Lookup(UnderlyingValue(priority))) {
       WebTaskQueue* oldestQueue = nullptr;
       MOZ_ASSERT(!queues.Data().IsEmpty());
       for (auto& webTaskQueue : queues.Data()) {
@@ -318,9 +323,10 @@ void WebTaskScheduler::Disconnect() {
 }
 
 void WebTaskScheduler::RunTaskSignalPriorityChange(TaskSignal* aTaskSignal) {
-  WebTaskQueue* const taskQueue = mDynamicPriorityTaskQueues.Get(aTaskSignal);
-  MOZ_ASSERT(taskQueue);
-  taskQueue->SetPriority(aTaskSignal->Priority());
+  if (WebTaskQueue* const taskQueue =
+          mDynamicPriorityTaskQueues.Get(aTaskSignal)) {
+    taskQueue->SetPriority(aTaskSignal->Priority());
+  }
 }
 
 WebTaskQueue& WebTaskScheduler::SelectTaskQueue(
@@ -332,7 +338,7 @@ WebTaskQueue& WebTaskScheduler::SelectTaskQueue(
   if (useSignal) {
     TaskSignal* taskSignal = static_cast<TaskSignal*>(&(aSignal.Value()));
     WebTaskQueue* const taskQueue =
-        mDynamicPriorityTaskQueues.GetOrInsertNew(taskSignal);
+        mDynamicPriorityTaskQueues.GetOrInsertNew(taskSignal, taskSignal, this);
     taskQueue->SetPriority(taskSignal->Priority());
     taskSignal->SetWebTaskScheduler(this);
     MOZ_ASSERT(mDynamicPriorityTaskQueues.Contains(taskSignal));
@@ -343,12 +349,34 @@ WebTaskQueue& WebTaskScheduler::SelectTaskQueue(
   TaskPriority taskPriority =
       aPriority.WasPassed() ? aPriority.Value() : TaskPriority::User_visible;
 
+  uint32_t staticTaskQueueMapKey = static_cast<uint32_t>(taskPriority);
   WebTaskQueue* const taskQueue = mStaticPriorityTaskQueues.GetOrInsertNew(
-      static_cast<uint32_t>(taskPriority));
+      staticTaskQueueMapKey, staticTaskQueueMapKey, this);
   taskQueue->SetPriority(taskPriority);
   MOZ_ASSERT(
       mStaticPriorityTaskQueues.Contains(static_cast<uint32_t>(taskPriority)));
   return *taskQueue;
 }
 
+void WebTaskScheduler::DeleteEntryFromStaticQueueMap(uint32_t aKey) {
+  DebugOnly<bool> result = mStaticPriorityTaskQueues.Remove(aKey);
+  MOZ_ASSERT(result);
+}
+
+void WebTaskScheduler::DeleteEntryFromDynamicQueueMap(TaskSignal* aKey) {
+  DebugOnly<bool> result = mDynamicPriorityTaskQueues.Remove(aKey);
+  MOZ_ASSERT(result);
+}
+
+void WebTaskQueue::RemoveEntryFromTaskQueueMapIfNeeded() {
+  MOZ_ASSERT(mScheduler);
+  if (mTasks.isEmpty()) {
+    if (mOwnerKey.is<uint32_t>()) {
+      mScheduler->DeleteEntryFromStaticQueueMap(mOwnerKey.as<uint32_t>());
+    } else {
+      MOZ_ASSERT(mOwnerKey.is<TaskSignal*>());
+      mScheduler->DeleteEntryFromDynamicQueueMap(mOwnerKey.as<TaskSignal*>());
+    }
+  }
+}
 }  // namespace mozilla::dom

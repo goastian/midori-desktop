@@ -11,11 +11,10 @@ TODO: merge these notes and implement.
 `;
 
 import { makeTestGroup } from '../../../../../common/framework/test_group.js';
-import { range, unreachable } from '../../../../../common/util/util.js';
+import { makeValueTestVariant, range, unreachable } from '../../../../../common/util/util.js';
 import {
   kBufferBindingTypes,
   kMinDynamicBufferOffsetAlignment,
-  kLimitInfo,
 } from '../../../../capability_info.js';
 import { kResourceStates, ResourceState } from '../../../../gpu_test.js';
 import {
@@ -112,11 +111,11 @@ g.test('state_and_binding_index')
       .combine('state', kResourceStates)
       .combine('resourceType', ['buffer', 'texture'] as const)
   )
-  .fn(async t => {
+  .fn(t => {
     const { encoderType, state, resourceType } = t.params;
     const maxBindGroups = t.device.limits.maxBindGroups;
 
-    async function runTest(index: number) {
+    function runTest(index: number) {
       const { encoder, validateFinishAndSubmit } = t.createEncoder(encoderType);
       encoder.setBindGroup(index, t.createBindGroup(state, resourceType, encoderType, [index]));
 
@@ -126,7 +125,7 @@ g.test('state_and_binding_index')
     // MAINTENANCE_TODO: move to subcases() once we can query the device limits
     for (const index of [1, maxBindGroups - 1, maxBindGroups]) {
       t.debug(`test bind group index ${index}`);
-      await runTest(index);
+      runTest(index);
     }
   });
 
@@ -147,7 +146,7 @@ g.test('bind_group,device_mismatch')
   .beforeAllSubcases(t => {
     t.selectMismatchedDeviceOrSkipTestCase(undefined);
   })
-  .fn(async t => {
+  .fn(t => {
     const { encoderType, useU32Array, mismatched } = t.params;
     const sourceDevice = mismatched ? t.mismatchedDevice : t.device;
 
@@ -188,7 +187,7 @@ g.test('bind_group,device_mismatch')
 g.test('dynamic_offsets_passed_but_not_expected')
   .desc('Tests that setBindGroup correctly errors on unexpected dynamicOffsets.')
   .params(u => u.combine('encoderType', kProgrammableEncoderTypes))
-  .fn(async t => {
+  .fn(t => {
     const { encoderType } = t.params;
     const bindGroup = t.createBindGroup('valid', 'buffer', encoderType, []);
     const dynamicOffsets = [0];
@@ -224,7 +223,7 @@ g.test('dynamic_offsets_match_expectations_in_pass_encoder')
       ])
       .combine('useU32array', [false, true])
   )
-  .fn(async t => {
+  .fn(t => {
     const kBindingSize = 12;
 
     const bindGroupLayout = t.device.createBindGroupLayout({
@@ -389,27 +388,23 @@ g.test('buffer_dynamic_offsets')
       .combine('type', kBufferBindingTypes)
       .combine('encoderType', kProgrammableEncoderTypes)
       .beginSubcases()
-      .expand('dynamicOffset', ({ type }) =>
-        type === 'uniform'
-          ? [
-              kLimitInfo.minUniformBufferOffsetAlignment.default,
-              kLimitInfo.minUniformBufferOffsetAlignment.default * 0.5,
-              kLimitInfo.minUniformBufferOffsetAlignment.default * 1.5,
-              kLimitInfo.minUniformBufferOffsetAlignment.default * 2,
-              kLimitInfo.minUniformBufferOffsetAlignment.default + 2,
-            ]
-          : [
-              kLimitInfo.minStorageBufferOffsetAlignment.default,
-              kLimitInfo.minStorageBufferOffsetAlignment.default * 0.5,
-              kLimitInfo.minStorageBufferOffsetAlignment.default * 1.5,
-              kLimitInfo.minStorageBufferOffsetAlignment.default * 2,
-              kLimitInfo.minStorageBufferOffsetAlignment.default + 2,
-            ]
-      )
+      .combine('dynamicOffsetVariant', [
+        { mult: 1, add: 0 },
+        { mult: 0.5, add: 0 },
+        { mult: 1.5, add: 0 },
+        { mult: 2, add: 0 },
+        { mult: 1, add: 2 },
+      ])
   )
-  .fn(async t => {
-    const { type, dynamicOffset, encoderType } = t.params;
+  .fn(t => {
+    const { type, dynamicOffsetVariant, encoderType } = t.params;
     const kBindingSize = 12;
+
+    const minAlignment =
+      t.device.limits[
+        type === 'uniform' ? 'minUniformBufferOffsetAlignment' : 'minStorageBufferOffsetAlignment'
+      ];
+    const dynamicOffset = makeValueTestVariant(minAlignment, dynamicOffsetVariant);
 
     const bindGroupLayout = t.device.createBindGroupLayout({
       entries: [
@@ -421,14 +416,8 @@ g.test('buffer_dynamic_offsets')
       ],
     });
 
-    let usage, isValid;
-    if (type === 'uniform') {
-      usage = GPUBufferUsage.UNIFORM;
-      isValid = dynamicOffset % kLimitInfo.minUniformBufferOffsetAlignment.default === 0;
-    } else {
-      usage = GPUBufferUsage.STORAGE;
-      isValid = dynamicOffset % kLimitInfo.minStorageBufferOffsetAlignment.default === 0;
-    }
+    const usage = type === 'uniform' ? GPUBufferUsage.UNIFORM : GPUBufferUsage.STORAGE;
+    const isValid = dynamicOffset % minAlignment === 0;
 
     const buffer = t.device.createBuffer({
       size: 3 * kMinDynamicBufferOffsetAlignment,

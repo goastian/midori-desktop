@@ -9,7 +9,30 @@
 
 // https://drafts.csswg.org/cssom/#the-cssstylerule-interface
 [Exposed=Window]
-interface CSSStyleRule : CSSRule {
+interface CSSStyleRule : CSSGroupingRule {
   attribute UTF8String selectorText;
   [SameObject, PutForwards=cssText] readonly attribute CSSStyleDeclaration style;
+
+  [ChromeOnly] readonly attribute unsigned long selectorCount;
+  [ChromeOnly] UTF8String selectorTextAt(unsigned long index, optional boolean desugared = false);
+  [ChromeOnly] unsigned long long selectorSpecificityAt(unsigned long index, optional boolean desugared = false);
+  [ChromeOnly] boolean selectorMatchesElement(
+    unsigned long selectorIndex,
+    Element element,
+    optional [LegacyNullToEmptyString] DOMString pseudo = "",
+    optional boolean includeVisitedStyle = false);
+  [ChromeOnly] sequence<SelectorWarning> getSelectorWarnings();
+  // Get elements on the page matching the rule's selectors. This is helpful for DevTools
+  // so we can avoid computing a desugared selector, which can be very expensive on deeply
+  // nested rules.
+  [ChromeOnly] NodeList querySelectorAll(Node root);
+};
+
+enum SelectorWarningKind {
+  "UnconstrainedHas",
+};
+
+dictionary SelectorWarning {
+  required unsigned long index;
+  required SelectorWarningKind kind;
 };

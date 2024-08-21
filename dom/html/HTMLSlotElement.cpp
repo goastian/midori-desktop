@@ -64,10 +64,10 @@ nsresult HTMLSlotElement::BindToTree(BindContext& aContext, nsINode& aParent) {
   return NS_OK;
 }
 
-void HTMLSlotElement::UnbindFromTree(bool aNullParent) {
+void HTMLSlotElement::UnbindFromTree(UnbindContext& aContext) {
   RefPtr<ShadowRoot> oldContainingShadow = GetContainingShadow();
 
-  nsGenericHTMLElement::UnbindFromTree(aNullParent);
+  nsGenericHTMLElement::UnbindFromTree(aContext);
 
   if (oldContainingShadow && !GetContainingShadow()) {
     oldContainingShadow->RemoveSlot(this);
@@ -169,7 +169,6 @@ const nsTArray<nsINode*>& HTMLSlotElement::ManuallyAssignedNodes() const {
 }
 
 void HTMLSlotElement::Assign(const Sequence<OwningElementOrText>& aNodes) {
-  MOZ_ASSERT(StaticPrefs::dom_shadowdom_slot_assign_enabled());
   nsAutoScriptBlocker scriptBlocker;
 
   // no-op if the input nodes and the assigned nodes are identical
@@ -355,9 +354,8 @@ void HTMLSlotElement::EnqueueSlotChangeEvent() {
 }
 
 void HTMLSlotElement::FireSlotChangeEvent() {
-  nsContentUtils::DispatchTrustedEvent(
-      OwnerDoc(), static_cast<nsIContent*>(this), u"slotchange"_ns,
-      CanBubble::eYes, Cancelable::eNo);
+  nsContentUtils::DispatchTrustedEvent(OwnerDoc(), this, u"slotchange"_ns,
+                                       CanBubble::eYes, Cancelable::eNo);
 }
 
 void HTMLSlotElement::RemoveManuallyAssignedNode(nsIContent& aNode) {

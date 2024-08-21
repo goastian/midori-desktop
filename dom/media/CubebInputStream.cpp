@@ -83,8 +83,8 @@ UniquePtr<CubebInputStream> CubebInputStream::Create(cubeb_devid aDeviceId,
     return nullptr;
   }
 
-  cubeb* context = CubebUtils::GetCubebContext();
-  if (!context) {
+  RefPtr<CubebUtils::CubebHandle> handle = CubebUtils::GetCubeb();
+  if (!handle) {
     LOGE("No valid cubeb context");
     CubebUtils::ReportCubebStreamInitFailure(CubebUtils::GetFirstStream());
     return nullptr;
@@ -98,9 +98,9 @@ UniquePtr<CubebInputStream> CubebInputStream::Create(cubeb_devid aDeviceId,
 
   RefPtr<Listener> listener(aListener);
   if (int r = CubebUtils::CubebStreamInit(
-          context, &cubebStream, "input-only stream", aDeviceId, &params,
-          nullptr, nullptr, latencyFrames, DataCallback_s, StateCallback_s,
-          listener.get());
+          handle->Context(), &cubebStream, "input-only stream", aDeviceId,
+          &params, nullptr, nullptr, latencyFrames, DataCallback_s,
+          StateCallback_s, listener.get());
       r != CUBEB_OK) {
     CubebUtils::ReportCubebStreamInitFailure(CubebUtils::GetFirstStream());
     LOGE("Fail to create a cubeb stream. Error %d", r);
@@ -120,14 +120,16 @@ UniquePtr<CubebInputStream> CubebInputStream::Create(cubeb_devid aDeviceId,
 CubebInputStream::CubebInputStream(
     already_AddRefed<Listener>&& aListener,
     UniquePtr<cubeb_stream, CubebDestroyPolicy>&& aStream)
-    : mListener(aListener), mStream(std::move(aStream)) {
+    : mListener(aListener),
+      mCubeb(CubebUtils::GetCubeb()),
+      mStream(std::move(aStream)) {
   MOZ_ASSERT(mListener);
   MOZ_ASSERT(mStream);
 }
 
 void CubebInputStream::Init() {
   // cubeb_stream_register_device_changed_callback is only supported on macOS
-  // platform and MockCubebfor now.
+  // platform and MockCubeb for now.
   InvokeCubebWithLog(cubeb_stream_register_device_changed_callback,
                      CubebInputStream::DeviceChangedCallback_s);
 }
@@ -135,6 +137,15 @@ void CubebInputStream::Init() {
 int CubebInputStream::Start() { return InvokeCubebWithLog(cubeb_stream_start); }
 
 int CubebInputStream::Stop() { return InvokeCubebWithLog(cubeb_stream_stop); }
+
+int CubebInputStream::SetProcessingParams(
+    cubeb_input_processing_params aParams) {
+  return InvokeCubebWithLog(cubeb_stream_set_input_processing_params, aParams);
+}
+
+int CubebInputStream::Latency(uint32_t* aLatencyFrames) {
+  return InvokeCubebWithLog(cubeb_stream_get_input_latency, aLatencyFrames);
+}
 
 template <typename Function, typename... Args>
 int CubebInputStream::InvokeCubeb(Function aFunction, Args&&... aArgs) {

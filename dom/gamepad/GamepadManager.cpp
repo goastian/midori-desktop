@@ -22,7 +22,7 @@
 #include "mozilla/StaticPtr.h"
 
 #include "nsContentUtils.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
 #include "nsThreadUtils.h"
@@ -144,7 +144,8 @@ void GamepadManager::AddListener(nsGlobalWindowInner* aWindow) {
     }
   }
 
-  if (!mEnabled || mShuttingDown || aWindow->ShouldResistFingerprinting()) {
+  if (!mEnabled || mShuttingDown ||
+      aWindow->ShouldResistFingerprinting(RFPTarget::Gamepad)) {
     return;
   }
 
@@ -279,7 +280,7 @@ void GamepadManager::NewConnectionEvent(GamepadHandle aHandle,
 
       // Do not fire gamepadconnected and gamepaddisconnected events when
       // privacy.resistFingerprinting is true.
-      if (listeners[i]->ShouldResistFingerprinting()) {
+      if (listeners[i]->ShouldResistFingerprinting(RFPTarget::Gamepad)) {
         continue;
       }
 
@@ -312,7 +313,7 @@ void GamepadManager::NewConnectionEvent(GamepadHandle aHandle,
 
       // Do not fire gamepadconnected and gamepaddisconnected events when
       // privacy.resistFingerprinting is true.
-      if (listeners[i]->ShouldResistFingerprinting()) {
+      if (listeners[i]->ShouldResistFingerprinting(RFPTarget::Gamepad)) {
         continue;
       }
 
@@ -347,7 +348,8 @@ void GamepadManager::FireConnectionEvent(EventTarget* aTarget,
 void GamepadManager::SyncGamepadState(GamepadHandle aHandle,
                                       nsGlobalWindowInner* aWindow,
                                       Gamepad* aGamepad) {
-  if (mShuttingDown || !mEnabled || aWindow->ShouldResistFingerprinting()) {
+  if (mShuttingDown || !mEnabled ||
+      aWindow->ShouldResistFingerprinting(RFPTarget::Gamepad)) {
     return;
   }
 
@@ -473,7 +475,7 @@ void GamepadManager::Update(const GamepadChangeEvent& aEvent) {
     // Only send events to non-background windows
     if (!listeners[i]->IsCurrentInnerWindow() ||
         listeners[i]->GetOuterWindow()->IsBackground() ||
-        listeners[i]->ShouldResistFingerprinting()) {
+        listeners[i]->ShouldResistFingerprinting(RFPTarget::Gamepad)) {
       continue;
     }
 
@@ -655,6 +657,40 @@ already_AddRefed<Promise> GamepadManager::SetLightIndicatorColor(
   }
 
   ++mPromiseID;
+  return promise.forget();
+}
+
+already_AddRefed<Promise> GamepadManager::RequestAllGamepads(
+    nsIGlobalObject* aGlobal, ErrorResult& aRv) {
+  RefPtr<Promise> promise = Promise::Create(aGlobal, aRv);
+  if (NS_WARN_IF(aRv.Failed())) {
+    return nullptr;
+  }
+
+  if (!mChannelChild) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  mChannelChild->SendRequestAllGamepads(
+      [promise](const nsTArray<GamepadAdded>& aAddedGamepads) {
+        nsTArray<RefPtr<Gamepad>> gamepads;
+
+        for (const auto& addedGamepad : aAddedGamepads) {
+          RefPtr<Gamepad> gamepad = new Gamepad(
+              nullptr, addedGamepad.id(), 0, GamepadHandle(),
+              addedGamepad.mapping(), addedGamepad.hand(),
+              addedGamepad.display_id(), addedGamepad.num_buttons(),
+              addedGamepad.num_axes(), addedGamepad.num_haptics(),
+              addedGamepad.num_lights(), addedGamepad.num_touches());
+          gamepads.AppendElement(gamepad);
+        }
+        promise->MaybeResolve(gamepads);
+      },
+      [promise](mozilla::ipc::ResponseRejectReason) {
+        promise->MaybeReject(NS_ERROR_UNEXPECTED);
+      });
+
   return promise.forget();
 }
 }  // namespace mozilla::dom

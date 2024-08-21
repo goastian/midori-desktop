@@ -128,8 +128,45 @@ void IDTracker::ResetToURIFragmentID(nsIContent* aFromContent, nsIURI* aURI,
   HaveNewDocumentOrShadowRoot(docOrShadow, aWatch, ref);
 }
 
+void IDTracker::ResetWithLocalRef(Element& aFrom, const nsAString& aLocalRef,
+                                  bool aWatch) {
+  MOZ_ASSERT(nsContentUtils::IsLocalRefURL(aLocalRef));
+
+  auto ref = Substring(aLocalRef, 1);
+  if (ref.IsEmpty()) {
+    Unlink();
+    return;
+  }
+
+  nsAutoCString utf8Ref;
+  if (!AppendUTF16toUTF8(ref, utf8Ref, mozilla::fallible)) {
+    Unlink();
+    return;
+  }
+
+  // Only unescape ASCII characters; if we were to unescape arbitrary bytes,
+  // we'd potentially end up with invalid UTF-8.
+  nsAutoCString unescaped;
+  bool appended;
+  if (NS_FAILED(NS_UnescapeURL(utf8Ref.BeginReading(), utf8Ref.Length(),
+                               esc_OnlyASCII | esc_AlwaysCopy, unescaped,
+                               appended, mozilla::fallible))) {
+    Unlink();
+    return;
+  }
+
+  RefPtr<nsAtom> idAtom = NS_Atomize(unescaped);
+  ResetWithID(aFrom, idAtom, aWatch);
+}
+
 void IDTracker::ResetWithID(Element& aFrom, nsAtom* aID, bool aWatch) {
   MOZ_ASSERT(aID);
+
+  Unlink();
+
+  if (aID->IsEmpty()) {
+    return;
+  }
 
   if (aWatch) {
     mWatchID = aID;

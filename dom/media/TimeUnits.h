@@ -118,6 +118,9 @@ class TimeUnit final {
   int64_t ToMicroseconds() const;
   int64_t ToNanoseconds() const;
   int64_t ToTicksAtRate(int64_t aRate) const;
+  // Only to be used in release assertions or unit testing, returns true if this
+  // TimeUnit has base aBase
+  bool IsBase(int64_t aBase) const;
   double ToSeconds() const;
   nsCString ToString() const;
   TimeDuration ToTimeDuration() const;
@@ -170,6 +173,13 @@ class TimeUnit final {
     template <typename T>
     static T policy(T& aValue) {
       return std::round(aValue);
+    }
+  };
+
+  struct CeilingPolicy {
+    template <typename T>
+    static T policy(T& aValue) {
+      return std::ceil(aValue);
     }
   };
 
@@ -267,6 +277,18 @@ class TimeIntervals : public IntervalSet<TimeUnit> {
   }
   bool IsInvalid() const {
     return Length() == 1 && Start(0).IsNegInf() && End(0).IsNegInf();
+  }
+
+  // Returns the same interval, with a given base resolution.
+  TimeIntervals ToBase(const TimeUnit& aBase) const {
+    TimeIntervals output;
+    for (const auto& interval : mIntervals) {
+      TimeInterval convertedInterval{interval.mStart.ToBase(aBase),
+                                     interval.mEnd.ToBase(aBase),
+                                     interval.mFuzz.ToBase(aBase)};
+      output += convertedInterval;
+    }
+    return output;
   }
 
   // Returns the same interval, with a microsecond resolution. This is used to

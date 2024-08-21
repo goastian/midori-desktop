@@ -50,6 +50,37 @@ TEST(PlainTextSerializer, ASCIIWithFlowedDelSp)
   << "Wrong HTML to ASCII text serialization with format=flowed; delsp=yes";
 }
 
+TEST(PlainTextSerializer, Bug1864820)
+{
+  nsString test(
+      uR"#(
+<html><body>
+&gt;&nbsp;&nbsp;label=master&amp;label=experimental&amp;product=chrome&amp;product=firefox&amp;product=safari&amp;aligned&amp;view=interop&amp;q=label%3Ainterop-2023-property
+<blockquote>
+&gt;&nbsp;&nbsp;label=master&amp;label=experimental&amp;product=chrome&amp;product=firefox&amp;product=safari&amp;aligned&amp;view=interop&amp;q=label%3Ainterop-2023-property
+</blockquote>
+</body></html>
+)#");
+
+  ConvertBufToPlainText(test,
+                        nsIDocumentEncoder::OutputFormatted |
+                            nsIDocumentEncoder::OutputPersistNBSP |
+                            nsIDocumentEncoder::OutputLFLineBreak |
+                            nsIDocumentEncoder::OutputFormatFlowed,
+                        kDefaultWrapColumn);
+
+  nsString result(
+      uR"#(
+ >  label=master&label=experimental&product=chrome&product=firefox&product=safari&aligned&view=interop&q=label%3Ainterop-2023-property
+
+     >  label=master&label=experimental&product=chrome&product=firefox&product=safari&aligned&view=interop&q=label%3Ainterop-2023-property
+)#");
+  result.Trim(" \n");
+  test.Trim(" \n");
+  ASSERT_TRUE(test.Equals(result))
+  << "Shouldn't hang with format=flowed: " << NS_ConvertUTF16toUTF8(test).get();
+}
+
 // Test for CJK with format=flowed; delsp=yes
 TEST(PlainTextSerializer, CJKWithFlowedDelSp)
 {
@@ -156,7 +187,7 @@ TEST(PlainTextSerializer, PreformatFlowedQuotes)
       "<html><body>"
       "<span style=\"white-space: pre-wrap;\" _moz_quote=\"true\">"
       "&gt; Firefox Firefox Firefox Firefox <br>"
-      "&gt; Firefox Firefox Firefox Firefox<br>"
+      "&gt; Firefox Firefox Firefox <b>Firefox</b><br>"
       "&gt;<br>"
       "&gt;&gt; Firefox Firefox Firefox Firefox <br>"
       "&gt;&gt; Firefox Firefox Firefox Firefox<br>"
@@ -172,15 +203,50 @@ TEST(PlainTextSerializer, PreformatFlowedQuotes)
   // create result case
   result.AssignLiteral(
       "> Firefox Firefox Firefox Firefox \r\n"
+      "> Firefox Firefox Firefox *Firefox*\r\n"
+      ">\r\n"
+      ">> Firefox Firefox Firefox Firefox \r\n"
+      ">> Firefox Firefox Firefox Firefox\r\n");
+
+  ASSERT_EQ(test, result) << "Wrong HTML to ASCII text serialization "
+                             "with format=flowed; and quoted "
+                             "lines using OutputFormatted";
+}
+
+// Test for ASCII with format=flowed; and not using OutputFormatted.
+TEST(PlainTextSerializer, OutputFormatFlowedAndWrapped)
+{
+  nsString test;
+  nsString result;
+
+  test.AssignLiteral(
+      "<html><body>"
+      "<span style=\"white-space: pre-wrap;\" _moz_quote=\"true\">"
+      "&gt; Firefox Firefox Firefox Firefox <br>"
+      "&gt; Firefox Firefox Firefox <b>Firefox</b><br>"
+      "&gt;<br>"
+      "&gt;&gt; Firefox Firefox Firefox Firefox <br>"
+      "&gt;&gt; Firefox Firefox Firefox Firefox<br>"
+      "</span></body></html>");
+
+  ConvertBufToPlainText(test,
+                        nsIDocumentEncoder::OutputWrap |
+                            nsIDocumentEncoder::OutputCRLineBreak |
+                            nsIDocumentEncoder::OutputLFLineBreak |
+                            nsIDocumentEncoder::OutputFormatFlowed,
+                        kDefaultWrapColumn);
+
+  // create result case
+  result.AssignLiteral(
+      "> Firefox Firefox Firefox Firefox \r\n"
       "> Firefox Firefox Firefox Firefox\r\n"
       ">\r\n"
       ">> Firefox Firefox Firefox Firefox \r\n"
       ">> Firefox Firefox Firefox Firefox\r\n");
 
-  ASSERT_TRUE(test.Equals(result))
-  << "Wrong HTML to ASCII text serialization "
-     "with format=flowed; and quoted "
-     "lines";
+  ASSERT_EQ(test, result) << "Wrong HTML to ASCII text serialization "
+                             "with format=flowed; and quoted "
+                             "lines using OutputWrap";
 }
 
 TEST(PlainTextSerializer, PrettyPrintedHtml)

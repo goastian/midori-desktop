@@ -14,6 +14,7 @@
 #include "nsCOMPtr.h"
 #include "nsCOMArray.h"
 #include "nsCycleCollectionParticipant.h"
+#include "nsIWeakReferenceUtils.h"
 #include "nsRefPtrHashtable.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/TimeStamp.h"
@@ -29,10 +30,12 @@ class nsIDocShell;
 class nsIDocShellTreeItem;
 class nsIFrame;
 class imgIContainer;
-class nsIContentViewer;
-class nsIScrollableFrame;
+class nsIDocumentViewer;
 class nsITimer;
+class nsIWidget;
 class nsPresContext;
+
+enum class FormControlType : uint8_t;
 
 namespace mozilla {
 
@@ -40,6 +43,7 @@ class EditorBase;
 class EnterLeaveDispatcher;
 class IMEContentObserver;
 class ScrollbarsForWheel;
+class ScrollContainerFrame;
 class TextControlElement;
 class WheelTransaction;
 
@@ -54,25 +58,154 @@ class RemoteDragStartData;
 }  // namespace dom
 
 class OverOutElementsWrapper final : public nsISupports {
-  ~OverOutElementsWrapper();
+  ~OverOutElementsWrapper() = default;
 
  public:
-  OverOutElementsWrapper();
+  enum class BoundaryEventType : bool { Mouse, Pointer };
+  explicit OverOutElementsWrapper(BoundaryEventType aType) : mType(aType) {}
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS(OverOutElementsWrapper)
 
-  WeakFrame mLastOverFrame;
+  already_AddRefed<nsIWidget> GetLastOverWidget() const;
 
-  nsCOMPtr<nsIContent> mLastOverElement;
+  void ContentRemoved(nsIContent& aContent);
+  void WillDispatchOverAndEnterEvent(nsIContent* aOverEventTarget);
+  void DidDispatchOverAndEnterEvent(
+      nsIContent* aOriginalOverTargetInComposedDoc,
+      nsIWidget* aOverEventTargetWidget);
+  [[nodiscard]] bool IsDispatchingOverEventOn(
+      nsIContent* aOverEventTarget) const {
+    MOZ_ASSERT(aOverEventTarget);
+    return LastOverEventTargetIsOutEventTarget() &&
+           mDeepestEnterEventTarget == aOverEventTarget;
+  }
+  void WillDispatchOutAndOrLeaveEvent() {
+    // Store the first "out" event target or the deepest "leave" event target
+    // which we fire and don't refire "out" event to that element while the
+    // first "out" event is still ongoing.
+    mDispatchingOutOrDeepestLeaveEventTarget = mDeepestEnterEventTarget;
+  }
+  void DidDispatchOutAndOrLeaveEvent() {
+    StoreOverEventTargetAndDeepestEnterEventTarget(nullptr);
+    mDispatchingOutOrDeepestLeaveEventTarget = nullptr;
+  }
+  [[nodiscard]] bool IsDispatchingOutEventOnLastOverEventTarget() const {
+    return mDispatchingOutOrDeepestLeaveEventTarget &&
+           mDispatchingOutOrDeepestLeaveEventTarget == mDeepestEnterEventTarget;
+  }
+  void OverrideOverEventTarget(nsIContent* aOverEventTarget) {
+    StoreOverEventTargetAndDeepestEnterEventTarget(aOverEventTarget);
+    // We don't need the widget for aOverEventTarget because this method is used
+    // for adjusting the "over" event target for the following "out" event
+    // dispatch.
+    mLastOverWidget = nullptr;
+  }
 
-  // The last element on which we fired a over event, or null if
-  // the last over event we fired has finished processing.
-  nsCOMPtr<nsIContent> mFirstOverEventElement;
+  [[nodiscard]] nsIContent* GetDeepestLeaveEventTarget() const {
+    // The last deepest "enter" event targe (it may be same as the last "over"
+    // target) is the deepest "leave" event target.
+    return mDeepestEnterEventTarget;
+  }
+  [[nodiscard]] nsIContent* GetOutEventTarget() const {
+    // The last deepest "enter" event target is same as the "over" event target
+    // unless it's never been removed from the DOM tree.  If and only if the
+    // last "over" event target has not been removed from the DOM tree, it's
+    // the next "out" event target.  Once the last "over" target is removed,
+    // "out" event should not be fired on the target nor its ancestor.
+    return LastOverEventTargetIsOutEventTarget()
+               ? mDeepestEnterEventTarget.get()
+               : nullptr;
+  }
 
-  // The last element on which we fired a out event, or null if
-  // the last out event we fired has finished processing.
-  nsCOMPtr<nsIContent> mFirstOutEventElement;
+  /**
+   * Called when EventStateManager::PreHandleEvent() receives an event which
+   * should be treated as the deadline to restore the last "over" event target
+   * as the next "out" event target and for avoiding to dispatch redundant
+   * "over" event on the same target again when it was removed but reconnected.
+   * If the last "over" event target was reconnected under the last deepest
+   * "enter" event target, this restores the last "over" event target.
+   * Otherwise, makes the instance forget the last "over" target because the
+   * user maybe has seen that the last "over" target is completely removed from
+   * the tree.
+   *
+   * @param aEvent      The event which the caller received.  If this is set to
+   *                    nullptr or not a mouse event, this forgets the pending
+   *                    last "over" event target.
+   */
+  void TryToRestorePendingRemovedOverTarget(const WidgetEvent* aEvent);
+
+  /**
+   * Return true if we have a pending removing last "over" event target at least
+   * for the weak reference to it.  In other words, when this returns true, we
+   * need to handle the pending removing "over" event target.
+   */
+  [[nodiscard]] bool MaybeHasPendingRemovingOverEventTarget() const {
+    return mPendingRemovingOverEventTarget;
+  }
+
+ private:
+  /**
+   * Whether the last "over" event target is the target of "out" event if you
+   * dispatch "out" event.
+   */
+  [[nodiscard]] bool LastOverEventTargetIsOutEventTarget() const {
+    MOZ_ASSERT_IF(mDeepestEnterEventTargetIsOverEventTarget,
+                  mDeepestEnterEventTarget);
+    MOZ_ASSERT_IF(mDeepestEnterEventTargetIsOverEventTarget,
+                  !MaybeHasPendingRemovingOverEventTarget());
+    return mDeepestEnterEventTargetIsOverEventTarget;
+  }
+
+  void StoreOverEventTargetAndDeepestEnterEventTarget(
+      nsIContent* aOverEventTargetAndDeepestEnterEventTarget);
+  void UpdateDeepestEnterEventTarget(nsIContent* aDeepestEnterEventTarget);
+
+  nsCOMPtr<nsIContent> GetPendingRemovingOverEventTarget() const {
+    nsCOMPtr<nsIContent> pendingRemovingOverEventTarget =
+        do_QueryReferent(mPendingRemovingOverEventTarget);
+    return pendingRemovingOverEventTarget.forget();
+  }
+
+  // The deepest event target of the last "enter" event.  If
+  // mDeepestEnterEventTargetIsOverEventTarget is true, this is the last "over"
+  // event target too.  If it's set to false, this is an ancestor of the last
+  // "over" event target which is not removed from the DOM tree.
+  nsCOMPtr<nsIContent> mDeepestEnterEventTarget;
+
+  // The last "over" event target which will be considered as disconnected or
+  // connected later because web apps may remove the "over" event target
+  // temporarily and reconnect it to the deepest "enter" target immediately.
+  // In such case, we should keep treating it as the last "over" event target
+  // as the next "out" event target.
+  // FYI: This needs to be a weak pointer.  Otherwise, the leak window checker
+  // of mochitests will detect windows in the closed tabs which ran tests
+  // synthesizing mouse moves because while a <browser> is stored with a strong
+  // pointer, the child window is also grabbed by the element.
+  nsWeakPtr mPendingRemovingOverEventTarget;
+
+  // While we're dispatching "over" and "enter" events, this is set to the
+  // "over" event target.  If it's removed from the DOM tree, this is set to
+  // nullptr.
+  nsCOMPtr<nsIContent> mDispatchingOverEventTarget;
+
+  // While we're dispatching "out" and/or "leave" events, this is set to the
+  // "out" event target or the deepest leave event target.  If it's removed from
+  // the DOM tree, this is set to nullptr.
+  nsCOMPtr<nsIContent> mDispatchingOutOrDeepestLeaveEventTarget;
+
+  // The widget on which we dispatched the last "over" event.  Note that
+  // nsIWidget is not cycle collectable.  Therefore, for avoiding unexpected
+  // memory leaks, we use nsWeakPtr to store the widget here.
+  nsWeakPtr mLastOverWidget;
+
+  const BoundaryEventType mType;
+
+  // Once the last "over" element is removed from the tree, this is set
+  // to false.  Then, mDeepestEnterEventTarget may be an ancestor of the
+  // "over" element which should be the deepest target of next "leave"
+  // element but shouldn't be target of "out" event.
+  bool mDeepestEnterEventTargetIsOverEventTarget = false;
 };
 
 class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
@@ -272,6 +405,8 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
                      const Maybe<gfx::IntPoint>& aHotspot, nsIWidget* aWidget,
                      bool aLockCursor);
 
+  void StartHidingCursorWhileTyping(nsIWidget*);
+
   /**
    * Checks if the current mouse over element matches the given
    * Element (which has a remote frame), and if so, notifies
@@ -285,7 +420,13 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
 
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(EventStateManager, nsIObserver)
 
-  static dom::Document* sMouseOverDocument;
+  // The manager in this process that is setting the cursor. In the parent
+  // process it might be null if a remote process is setting the cursor.
+  static EventStateManager* sCursorSettingManager;
+  static void ClearCursorSettingManager() { sCursorSettingManager = nullptr; }
+
+  // Checks if the manager in this process has a locked cursor
+  static bool CursorSettingManagerHasLockedCursor();
 
   static EventStateManager* GetActiveEventStateManager() { return sActiveESM; }
 
@@ -387,16 +528,19 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
    */
   void ClearCachedWidgetCursor(nsIFrame* aTargetFrame);
 
-  void UpdateCursor(nsPresContext* aPresContext, WidgetEvent* aEvent,
-                    nsIFrame* aTargetFrame, nsEventStatus* aStatus);
+  void UpdateCursor(nsPresContext*, WidgetMouseEvent*, nsIFrame* aTargetFrame,
+                    nsEventStatus* aStatus);
   /**
    * Turn a GUI mouse/pointer event into a mouse/pointer event targeted at the
-   * specified content.  This returns the primary frame for the content (or null
-   * if it goes away during the event).
+   * specified content.
+   *
+   * @return widget which is the nearest widget from the event target frame.
    */
-  MOZ_CAN_RUN_SCRIPT nsIFrame* DispatchMouseOrPointerEvent(
-      WidgetMouseEvent* aMouseEvent, EventMessage aMessage,
-      nsIContent* aTargetContent, nsIContent* aRelatedContent);
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT already_AddRefed<nsIWidget>
+  DispatchMouseOrPointerBoundaryEvent(WidgetMouseEvent* aMouseEvent,
+                                      EventMessage aMessage,
+                                      nsIContent* aTargetContent,
+                                      nsIContent* aRelatedContent);
   /**
    * Synthesize DOM pointerover and pointerout events
    */
@@ -686,17 +830,16 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
       INDEX_CONTROL,
       INDEX_META,
       INDEX_SHIFT,
-      INDEX_OS,
       COUNT_OF_MULTIPLIERS
     };
 
     /**
      * GetIndexFor() returns the index of the members which should be used for
      * the aEvent.  When only one modifier key of MODIFIER_ALT,
-     * MODIFIER_CONTROL, MODIFIER_META, MODIFIER_SHIFT or MODIFIER_OS is
-     * pressed, returns the index for the modifier.  Otherwise, this return the
-     * default index which is used at either no modifier key is pressed or
-     * two or modifier keys are pressed.
+     * MODIFIER_CONTROL, MODIFIER_META or MODIFIER_SHIFT is pressed, returns the
+     * index for the modifier.  Otherwise, this return the default index which
+     * is used at either no modifier key is pressed or two or modifier keys are
+     * pressed.
      */
     Index GetIndexFor(const WidgetWheelEvent* aEvent);
 
@@ -856,26 +999,26 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   // The delta values in the wheel event may be changed if the event is for
   // auto-dir scrolling. For information on auto-dir,
   // @see mozilla::WheelDeltaAdjustmentStrategy
-  nsIFrame* ComputeScrollTargetAndMayAdjustWheelEvent(
+  ScrollContainerFrame* ComputeScrollTargetAndMayAdjustWheelEvent(
       nsIFrame* aTargetFrame, WidgetWheelEvent* aEvent,
       ComputeScrollTargetOptions aOptions);
 
-  nsIFrame* ComputeScrollTargetAndMayAdjustWheelEvent(
+  ScrollContainerFrame* ComputeScrollTargetAndMayAdjustWheelEvent(
       nsIFrame* aTargetFrame, double aDirectionX, double aDirectionY,
       WidgetWheelEvent* aEvent, ComputeScrollTargetOptions aOptions);
 
-  nsIFrame* ComputeScrollTarget(nsIFrame* aTargetFrame,
-                                WidgetWheelEvent* aEvent,
-                                ComputeScrollTargetOptions aOptions) {
+  ScrollContainerFrame* ComputeScrollTarget(
+      nsIFrame* aTargetFrame, WidgetWheelEvent* aEvent,
+      ComputeScrollTargetOptions aOptions) {
     MOZ_ASSERT(!(aOptions & MAY_BE_ADJUSTED_BY_AUTO_DIR),
                "aEvent may be modified by auto-dir");
     return ComputeScrollTargetAndMayAdjustWheelEvent(aTargetFrame, aEvent,
                                                      aOptions);
   }
 
-  nsIFrame* ComputeScrollTarget(nsIFrame* aTargetFrame, double aDirectionX,
-                                double aDirectionY, WidgetWheelEvent* aEvent,
-                                ComputeScrollTargetOptions aOptions) {
+  ScrollContainerFrame* ComputeScrollTarget(
+      nsIFrame* aTargetFrame, double aDirectionX, double aDirectionY,
+      WidgetWheelEvent* aEvent, ComputeScrollTargetOptions aOptions) {
     MOZ_ASSERT(!(aOptions & MAY_BE_ADJUSTED_BY_AUTO_DIR),
                "aEvent may be modified by auto-dir");
     return ComputeScrollTargetAndMayAdjustWheelEvent(
@@ -887,21 +1030,22 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
    * one page.  If the wheel event scrolls a page, returns the page width and
    * height.  Otherwise, returns line height for both its width and height.
    *
-   * @param aScrollableFrame    A frame which will be scrolled by the event.
-   *                            The result of
-   *                            ComputeScrollTargetAndMayAdjustWheelEvent() is
-   *                            expected for this value.
-   *                            This can be nullptr if there is no scrollable
-   *                            frame.  Then, this method uses root frame's
-   *                            line height or visible area's width and height.
+   * @param aScrollContainerFrame A frame which will be scrolled by the event.
+   *                              The result of
+   *                              ComputeScrollTargetAndMayAdjustWheelEvent() is
+   *                              expected for this value.
+   *                              This can be nullptr if there is no scrollable
+   *                              frame.  Then, this method uses root frame's
+   *                              line height or visible area's width and
+   *                              height.
    */
   nsSize GetScrollAmount(nsPresContext* aPresContext, WidgetWheelEvent* aEvent,
-                         nsIScrollableFrame* aScrollableFrame);
+                         ScrollContainerFrame* aScrollContainerFrame);
 
   /**
-   * DoScrollText() scrolls the scrollable frame for aEvent.
+   * DoScrollText() scrolls the scroll container frame for aEvent.
    */
-  void DoScrollText(nsIScrollableFrame* aScrollableFrame,
+  void DoScrollText(ScrollContainerFrame* aScrollContainerFrame,
                     WidgetWheelEvent* aEvent);
 
   void DoScrollHistory(int32_t direction);
@@ -1121,9 +1265,6 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   static void UpdateAncestorState(nsIContent* aStartNode,
                                   nsIContent* aStopBefore, ElementState aState,
                                   bool aAddState);
-  static void ResetLastOverForContent(
-      const uint32_t& aIdx, const RefPtr<OverOutElementsWrapper>& aChunk,
-      nsIContent* aClosure);
 
   /**
    * Update the attribute mLastRefPoint of the mouse event. It should be
@@ -1146,11 +1287,26 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   void NotifyTargetUserActivation(WidgetEvent* aEvent,
                                   nsIContent* aTargetContent);
 
+  /**
+   * https://html.spec.whatwg.org/multipage/popover.html#light-dismiss-open-popovers.
+   */
+  MOZ_CAN_RUN_SCRIPT void LightDismissOpenPopovers(WidgetEvent* aEvent,
+                                                   nsIContent* aTargetContent);
+
   already_AddRefed<EventStateManager> ESMFromContentOrThis(
       nsIContent* aContent);
 
+  struct LastMouseDownInfo {
+    nsCOMPtr<nsIContent> mLastMouseDownContent;
+    Maybe<FormControlType> mLastMouseDownInputControlType;
+    uint32_t mClickCount = 0;
+  };
+
+  LastMouseDownInfo& GetLastMouseDownInfo(int16_t aButton);
+
+  // These variables are only relevant if we're the cursor-setting manager.
   StyleCursorKind mLockCursor;
-  bool mLastFrameConsumedSetCursor;
+  bool mHidingCursorWhileTyping = false;
 
   // Last mouse event screen point (in device pixel) when mouse was locked, used
   // to restore mouse position after unlocking.
@@ -1184,24 +1340,22 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   // State of keys when the original gesture-down happened
   Modifiers mGestureModifiers;
   uint16_t mGestureDownButtons;
+  int16_t mGestureDownButton;
 
-  nsCOMPtr<nsIContent> mLastLeftMouseDownContent;
-  nsCOMPtr<nsIContent> mLastMiddleMouseDownContent;
-  nsCOMPtr<nsIContent> mLastRightMouseDownContent;
+  LastMouseDownInfo mLastLeftMouseDownInfo;
+  LastMouseDownInfo mLastMiddleMouseDownInfo;
+  LastMouseDownInfo mLastRightMouseDownInfo;
 
   nsCOMPtr<nsIContent> mActiveContent;
   nsCOMPtr<nsIContent> mHoverContent;
   static nsCOMPtr<nsIContent> sDragOverContent;
   nsCOMPtr<nsIContent> mURLTargetContent;
+  nsCOMPtr<nsINode> mPopoverPointerDownTarget;
 
   nsPresContext* mPresContext;      // Not refcnted
   RefPtr<dom::Document> mDocument;  // Doesn't necessarily need to be owner
 
   RefPtr<IMEContentObserver> mIMEContentObserver;
-
-  uint32_t mLClickCount;
-  uint32_t mMClickCount;
-  uint32_t mRClickCount;
 
   bool mShouldAlwaysUseLineDeltas : 1;
   bool mShouldAlwaysUseLineDeltasInitialized : 1;

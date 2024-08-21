@@ -5,6 +5,7 @@ import argparse
 import os
 import re
 import shutil
+import sys
 
 from run_operations import run_git, run_shell
 
@@ -16,13 +17,18 @@ from run_operations import run_git, run_shell
 # the data, a tar of the repo is made and used if available.
 
 
-def fetch_repo(github_path, force_fetch, tar_path):
+def fetch_repo(github_path, clone_protocol, force_fetch, tar_path):
     capture_output = False
 
     # check for pre-existing repo - make sure we force the removal
     if force_fetch and os.path.exists(github_path):
         print("Removing existing repo: {}".format(github_path))
         shutil.rmtree(github_path)
+
+    # To test with ssh (and not give away your default public key):
+    # ssh-keygen -t rsa -f ~/.ssh/id_moz_github -q -N ""
+    # git -c core.sshCommand="ssh -i ~/.ssh/id_moz_github -o IdentitiesOnly=yes" clone git@github.com:mozilla/libwebrtc.git moz-libwebrtc
+    # (cd moz-libwebrtc && git config core.sshCommand "ssh -i ~/.ssh/id_moz_github -o IdentitiesOnly=yes")
 
     # clone https://github.com/mozilla/libwebrtc
     if not os.path.exists(github_path):
@@ -35,8 +41,17 @@ def fetch_repo(github_path, force_fetch, tar_path):
             run_shell(cmd, capture_output)
         else:
             print("Cloning github repo")
+            # sure would be nice to have python 3.10's match
+            if clone_protocol == "ssh":
+                url_prefix = "git@github.com:"
+            elif clone_protocol == "https":
+                url_prefix = "https://github.com/"
+            else:
+                print("clone protocol should be either https or ssh")
+                sys.exit(1)
+
             run_shell(
-                "git clone https://github.com/mozilla/libwebrtc {}".format(github_path),
+                "git clone {}mozilla/libwebrtc {}".format(url_prefix, github_path),
                 capture_output,
             )
 
@@ -52,11 +67,15 @@ def fetch_repo(github_path, force_fetch, tar_path):
             "git remote add upstream https://webrtc.googlesource.com/src", github_path
         )
         run_git("git fetch upstream", github_path)
-        run_git("git merge upstream/master", github_path)
     else:
         print(
             "Upstream remote (https://webrtc.googlesource.com/src) already configured"
         )
+
+    # for sanity, ensure we're on master
+    run_git("git checkout master", github_path)
+    # make sure we successfully fetched upstream
+    run_git("git merge upstream/master", github_path)
 
     # setup upstream branch-heads
     stdout_lines = run_git(
@@ -71,6 +90,13 @@ def fetch_repo(github_path, force_fetch, tar_path):
         run_git("git fetch upstream", github_path)
     else:
         print("Upstream remote branch-heads already configured")
+
+    # verify that a (quite old) branch-head exists
+    run_git("git show branch-heads/5059", github_path)
+
+    # prevent changing line endings when moving things out of the git repo
+    # (and into hg for instance)
+    run_git("git config --local core.autocrlf false", github_path)
 
     # do a sanity fetch in case this was not a freshly cloned copy of the
     # repo, meaning it may not have all the mozilla branches present.
@@ -106,6 +132,12 @@ if __name__ == "__main__":
         help="force rebuild an existing repo directory",
     )
     parser.add_argument(
+        "--clone-protocol",
+        choices=["https", "ssh"],
+        required=True,
+        help="Use either https or ssh to clone the git repo",
+    )
+    parser.add_argument(
         "--tar-name",
         default=default_tar_name,
         help="name of tar file (defaults to {})".format(default_tar_name),
@@ -118,5 +150,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     fetch_repo(
-        args.repo_path, args.force_fetch, os.path.join(args.state_path, args.tar_name)
+        args.repo_path,
+        args.clone_protocol,
+        args.force_fetch,
+        os.path.join(args.state_path, args.tar_name),
     )

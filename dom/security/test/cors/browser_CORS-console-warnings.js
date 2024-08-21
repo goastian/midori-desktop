@@ -74,7 +74,7 @@ add_task(async function () {
     "about:blank"
   );
 
-  BrowserTestUtils.loadURIString(gBrowser, test_uri);
+  BrowserTestUtils.startLoadingURIString(gBrowser, test_uri);
 
   await BrowserTestUtils.waitForLocationChange(
     gBrowser,
@@ -82,12 +82,12 @@ add_task(async function () {
   );
 
   // Different OS combinations
-  ok(messages_seen > 0, "Saw " + messages_seen + " messages.");
+  Assert.greater(messages_seen, 0, "Saw " + messages_seen + " messages.");
 
   messages_seen = 0;
   let test_two_uri =
     "http://mochi.test:8888/browser/dom/security/test/cors/file_bug1456721.html";
-  BrowserTestUtils.loadURIString(gBrowser, test_two_uri);
+  BrowserTestUtils.startLoadingURIString(gBrowser, test_two_uri);
 
   await BrowserTestUtils.waitForLocationChange(
     gBrowser,
@@ -95,7 +95,7 @@ add_task(async function () {
   );
   await BrowserTestUtils.waitForCondition(() => messages_seen > 0);
 
-  ok(messages_seen > 0, "Saw " + messages_seen + " messages.");
+  Assert.greater(messages_seen, 0, "Saw " + messages_seen + " messages.");
 
   BrowserTestUtils.removeTab(tab);
 });

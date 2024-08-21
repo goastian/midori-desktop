@@ -16,7 +16,10 @@ add_task(async function testParentProcess() {
 
 add_task(async function testContentProcesses() {
   info("Open a tab in a content process");
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, "about:blank");
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    "about:blank"
+  );
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 
   info("Sanity checks against all returned elements of getAllDOMProcesses");
@@ -28,7 +31,7 @@ add_task(async function testContentProcesses() {
       process instanceof Ci.nsIDOMProcessParent,
       `Each element of the array is a nsIDOMProcessParent (${process})`
     );
-    ok(process.osPid > 0, `OS Pid looks correct ${process.osPid}`);
+    Assert.greater(process.osPid, 0, `OS Pid looks correct ${process.osPid}`);
     if (process == processes[0]) {
       is(
         process.childID,
@@ -41,7 +44,11 @@ add_task(async function testContentProcesses() {
         "The main process's remote type should be NOT_REMOTE"
       );
     } else {
-      ok(process.childID > 0, `Child ID looks also correct ${process.childID}`);
+      Assert.greater(
+        process.childID,
+        0,
+        `Child ID looks also correct ${process.childID}`
+      );
       ok(process.remoteType, "Should have a remote type");
     }
 

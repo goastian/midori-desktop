@@ -96,12 +96,19 @@ nsresult MediaDecoderStateMachineBase::Init(MediaDecoder* aDecoder) {
       "MediaDecoderStateMachineBase::InitializationTask", this,
       &MediaDecoderStateMachineBase::InitializationTask, aDecoder);
   mTaskQueue->DispatchStateChange(r.forget());
-  ;
+
+  // Connect mirrors.
+  aDecoder->CanonicalPlayState().ConnectMirror(&mPlayState);
+  aDecoder->CanonicalVolume().ConnectMirror(&mVolume);
+  aDecoder->CanonicalPreservesPitch().ConnectMirror(&mPreservesPitch);
+  aDecoder->CanonicalLooping().ConnectMirror(&mLooping);
+  aDecoder->CanonicalSecondaryVideoContainer().ConnectMirror(
+      &mSecondaryVideoContainer);
+
   nsresult rv = mReader->Init();
   NS_ENSURE_SUCCESS(rv, rv);
 
   mMetadataManager.Connect(mReader->TimedMetadataEvent(), OwnerThread());
-  mReader->SetCanonicalDuration(&mDuration);
 
   return NS_OK;
 }
@@ -111,12 +118,7 @@ void MediaDecoderStateMachineBase::InitializationTask(MediaDecoder* aDecoder) {
 
   // Connect mirrors.
   mBuffered.Connect(mReader->CanonicalBuffered());
-  mPlayState.Connect(aDecoder->CanonicalPlayState());
-  mVolume.Connect(aDecoder->CanonicalVolume());
-  mPreservesPitch.Connect(aDecoder->CanonicalPreservesPitch());
-  mLooping.Connect(aDecoder->CanonicalLooping());
-  mSecondaryVideoContainer.Connect(
-      aDecoder->CanonicalSecondaryVideoContainer());
+  mReader->SetCanonicalDuration(mDuration);
 
   // Initialize watchers.
   mWatchManager.Watch(mBuffered,
@@ -161,7 +163,9 @@ bool MediaDecoderStateMachineBase::OnTaskQueue() const {
 
 void MediaDecoderStateMachineBase::DecodeError(const MediaResult& aError) {
   MOZ_ASSERT(OnTaskQueue());
-  LOGE("Decode error: %s", aError.Description().get());
+  if (aError != NS_ERROR_DOM_MEDIA_EXTERNAL_ENGINE_NOT_SUPPORTED_ERR) {
+    LOGE("Decode error: %s", aError.Description().get());
+  }
   PROFILER_MARKER_TEXT("MDSMBase::DecodeError", MEDIA_PLAYBACK, {},
                        aError.Description());
   // Notify the decode error and MediaDecoder will shut down MDSM.

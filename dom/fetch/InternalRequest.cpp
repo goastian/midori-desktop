@@ -49,6 +49,7 @@ SafeRefPtr<InternalRequest> InternalRequest::GetRequestConstructorCopy(
   copy->mCredentialsMode = mCredentialsMode;
   copy->mCacheMode = mCacheMode;
   copy->mRedirectMode = mRedirectMode;
+  copy->mPriorityMode = mPriorityMode;
   copy->mContentPolicyTypeOverridden = mContentPolicyTypeOverridden;
 
   copy->mPreferredAlternativeDataType = mPreferredAlternativeDataType;
@@ -85,13 +86,14 @@ InternalRequest::InternalRequest(const nsACString& aURL,
       mHeaders(new InternalHeaders(HeadersGuardEnum::None)),
       mBodyLength(InternalResponse::UNKNOWN_BODY_SIZE),
       mContentPolicyType(nsIContentPolicy::TYPE_FETCH),
-      mReferrer(NS_LITERAL_STRING_FROM_CSTRING(kFETCH_CLIENT_REFERRER_STR)),
+      mReferrer(nsLiteralCString(kFETCH_CLIENT_REFERRER_STR)),
       mReferrerPolicy(ReferrerPolicy::_empty),
       mEnvironmentReferrerPolicy(ReferrerPolicy::_empty),
       mMode(RequestMode::No_cors),
       mCredentialsMode(RequestCredentials::Omit),
       mCacheMode(RequestCache::Default),
-      mRedirectMode(RequestRedirect::Follow) {
+      mRedirectMode(RequestRedirect::Follow),
+      mPriorityMode(RequestPriority::Auto) {
   MOZ_ASSERT(!aURL.IsEmpty());
   AddURL(aURL, aFragment);
 }
@@ -100,8 +102,9 @@ InternalRequest::InternalRequest(
     const nsACString& aMethod, already_AddRefed<InternalHeaders> aHeaders,
     RequestCache aCacheMode, RequestMode aMode,
     RequestRedirect aRequestRedirect, RequestCredentials aRequestCredentials,
-    const nsAString& aReferrer, ReferrerPolicy aReferrerPolicy,
-    nsContentPolicyType aContentPolicyType, const nsAString& aIntegrity)
+    const nsACString& aReferrer, ReferrerPolicy aReferrerPolicy,
+    RequestPriority aPriority, nsContentPolicyType aContentPolicyType,
+    const nsAString& aIntegrity)
     : mMethod(aMethod),
       mHeaders(aHeaders),
       mBodyLength(InternalResponse::UNKNOWN_BODY_SIZE),
@@ -113,6 +116,7 @@ InternalRequest::InternalRequest(
       mCredentialsMode(aRequestCredentials),
       mCacheMode(aCacheMode),
       mRedirectMode(aRequestRedirect),
+      mPriorityMode(aPriority),
       mIntegrity(aIntegrity) {
   MOZ_ASSERT(!aURL.IsEmpty());
   AddURL(aURL, aFragment);
@@ -132,6 +136,7 @@ InternalRequest::InternalRequest(const InternalRequest& aOther,
       mResponseTainting(aOther.mResponseTainting),
       mCacheMode(aOther.mCacheMode),
       mRedirectMode(aOther.mRedirectMode),
+      mPriorityMode(aOther.mPriorityMode),
       mIntegrity(aOther.mIntegrity),
       mMozErrors(aOther.mMozErrors),
       mFragment(aOther.mFragment),

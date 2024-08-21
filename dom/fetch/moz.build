@@ -64,8 +64,8 @@ LOCAL_INCLUDES += [
     "/netwerk/protocol/http",
 ]
 
-BROWSER_CHROME_MANIFESTS += ["tests/browser.ini"]
-MOCHITEST_MANIFESTS += ["tests/mochitest.ini"]
+BROWSER_CHROME_MANIFESTS += ["tests/browser.toml"]
+MOCHITEST_MANIFESTS += ["tests/mochitest.toml"]
 
 FINAL_LIBRARY = "xul"
 

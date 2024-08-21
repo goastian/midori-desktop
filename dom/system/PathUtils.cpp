@@ -13,9 +13,9 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/RefPtr.h"
-#include "mozilla/Result.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/Span.h"
+#include "mozilla/Try.h"
 #include "mozilla/dom/DOMParser.h"
 #include "mozilla/dom/PathUtilsBinding.h"
 #include "mozilla/dom/Promise.h"
@@ -28,6 +28,7 @@
 #include "nsLocalFile.h"
 #include "nsNetUtil.h"
 #include "nsString.h"
+#include "nsURLHelper.h"
 #include "xpcpublic.h"
 
 namespace mozilla::dom {
@@ -397,13 +398,8 @@ void PathUtils::ToFileURI(const GlobalObject&, const nsAString& aPath,
     return;
   }
 
-  nsCOMPtr<nsIURI> uri;
-  if (nsresult rv = NS_NewFileURI(getter_AddRefs(uri), path); NS_FAILED(rv)) {
-    ThrowError(aErr, rv, "Could not initialize File URI"_ns);
-    return;
-  }
-
-  if (nsresult rv = uri->GetSpec(aResult); NS_FAILED(rv)) {
+  if (nsresult rv = net_GetURLSpecFromActualFile(path, aResult);
+      NS_FAILED(rv)) {
     ThrowError(aErr, rv, "Could not retrieve URI spec"_ns);
     return;
   }

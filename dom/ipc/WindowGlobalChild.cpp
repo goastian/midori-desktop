@@ -35,6 +35,7 @@
 #include "nsQueryObject.h"
 #include "nsSerializationHelper.h"
 #include "nsFrameLoader.h"
+#include "nsScriptSecurityManager.h"
 
 #include "mozilla/dom/JSWindowActorBinding.h"
 #include "mozilla/dom/JSWindowActorChild.h"
@@ -215,10 +216,16 @@ void WindowGlobalChild::OnNewDocument(Document* aDocument) {
   if (auto policy = aDocument->GetEmbedderPolicy()) {
     txn.SetEmbedderPolicy(*policy);
   }
+  txn.SetShouldResistFingerprinting(aDocument->ShouldResistFingerprinting(
+      RFPTarget::IsAlwaysEnabledForPrecompute));
+  txn.SetOverriddenFingerprintingSettings(
+      aDocument->GetOverriddenFingerprintingSettings());
 
   if (nsCOMPtr<nsIChannel> channel = aDocument->GetChannel()) {
     nsCOMPtr<nsILoadInfo> loadInfo(channel->LoadInfo());
     txn.SetIsOriginalFrameSource(loadInfo->GetOriginalFrameSrcLoad());
+    txn.SetUsingStorageAccess(loadInfo->GetStoragePermission() !=
+                              nsILoadInfo::NoStoragePermission);
   } else {
     txn.SetIsOriginalFrameSource(false);
   }
@@ -541,6 +548,25 @@ IPCResult WindowGlobalChild::RecvRawMessage(
   return IPC_OK();
 }
 
+IPCResult WindowGlobalChild::RecvNotifyPermissionChange(const nsCString& aType,
+                                                        uint32_t aPermission) {
+  nsCOMPtr<nsIObserverService> observerService = services::GetObserverService();
+  NS_ENSURE_TRUE(observerService,
+                 IPC_FAIL(this, "Failed to get observer service"));
+  nsPIDOMWindowInner* notifyTarget =
+      static_cast<nsPIDOMWindowInner*>(this->GetWindowGlobal());
+  observerService->NotifyObservers(notifyTarget, "perm-changed-notify-only",
+                                   NS_ConvertUTF8toUTF16(aType).get());
+  // We only need to handle the revoked permission case here. The permission
+  // grant case is handled via the Storage Access API code.
+  if (this->GetWindowGlobal() &&
+      this->GetWindowGlobal()->UsingStorageAccess() &&
+      aPermission != nsIPermissionManager::ALLOW_ACTION) {
+    this->GetWindowGlobal()->SaveStorageAccessPermissionRevoked();
+  }
+  return IPC_OK();
+}
+
 void WindowGlobalChild::SetDocumentURI(nsIURI* aDocumentURI) {
   // Registers a DOM Window with the profiler. It re-registers the same Inner
   // Window ID with different URIs because when a Browsing context is first
@@ -554,8 +580,25 @@ void WindowGlobalChild::SetDocumentURI(nsIURI* aDocumentURI) {
       BrowsingContext()->BrowserId(), InnerWindowId(),
       nsContentUtils::TruncatedURLForDisplay(aDocumentURI, 1024),
       embedderInnerWindowID, BrowsingContext()->UsePrivateBrowsing());
+
+  if (StaticPrefs::dom_security_setdocumenturi()) {
+    nsCOMPtr<nsIURI> principalURI = mDocumentPrincipal->GetURI();
+    if (mDocumentPrincipal->GetIsNullPrincipal()) {
+      nsCOMPtr<nsIPrincipal> precursor =
+          mDocumentPrincipal->GetPrecursorPrincipal();
+      if (precursor) {
+        principalURI = precursor->GetURI();
+      }
+    }
+
+    MOZ_DIAGNOSTIC_ASSERT(!nsScriptSecurityManager::IsHttpOrHttpsAndCrossOrigin(
+                              principalURI, aDocumentURI),
+                          "Setting DocumentURI with a different origin "
+                          "than principal URI");
+  }
+
   mDocumentURI = aDocumentURI;
-  SendUpdateDocumentURI(aDocumentURI);
+  SendUpdateDocumentURI(WrapNotNull(aDocumentURI));
 }
 
 void WindowGlobalChild::SetDocumentPrincipal(
@@ -818,9 +861,26 @@ nsISupports* WindowGlobalChild::GetParentObject() {
   return xpc::NativeGlobal(xpc::PrivilegedJunkScope());
 }
 
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE_WEAK_PTR(WindowGlobalChild, mWindowGlobal,
-                                               mContainerFeaturePolicy,
-                                               mWindowContext)
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE_CLASS(WindowGlobalChild)
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(WindowGlobalChild)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mWindowGlobal)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mContainerFeaturePolicy)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mWindowContext)
+  tmp->UnlinkManager();
+  NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
+  NS_IMPL_CYCLE_COLLECTION_UNLINK_WEAK_PTR
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(WindowGlobalChild)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindowGlobal)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mContainerFeaturePolicy)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindowContext)
+  if (!tmp->IsInProcess()) {
+    CycleCollectionNoteChild(cb, static_cast<BrowserChild*>(tmp->Manager()),
+                             "Manager()");
+  }
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(WindowGlobalChild)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY

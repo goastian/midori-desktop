@@ -9,8 +9,8 @@ with Files("**"):
 
 DIRS += ["interfaces"]
 
-MOCHITEST_CHROME_MANIFESTS += ["tests/chrome.ini"]
-MOCHITEST_MANIFESTS += ["tests/mochitest.ini"]
+MOCHITEST_CHROME_MANIFESTS += ["tests/chrome.toml"]
+MOCHITEST_MANIFESTS += ["tests/mochitest.toml"]
 
 EXPORTS.mozilla.dom += [
     "TCPServerSocket.h",

@@ -21,8 +21,8 @@ class MFPMPHostWrapper : public Microsoft::WRL::RuntimeClass<
                                  Microsoft::WRL::RuntimeClassType::ClassicCom>,
                              IMFPMPHostApp> {
  public:
-  MFPMPHostWrapper() = default;
-  ~MFPMPHostWrapper() = default;
+  MFPMPHostWrapper();
+  ~MFPMPHostWrapper();
 
   HRESULT RuntimeClassInitialize(Microsoft::WRL::ComPtr<IMFPMPHost>& aHost);
 
@@ -32,6 +32,8 @@ class MFPMPHostWrapper : public Microsoft::WRL::RuntimeClass<
 
   STDMETHODIMP ActivateClassById(LPCWSTR aId, IStream* aStream, REFIID aRiid,
                                  void** aActivatedClass) override;
+
+  void Shutdown();
 
  private:
   Microsoft::WRL::ComPtr<IMFPMPHost> mPMPHost;

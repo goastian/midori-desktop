@@ -17,9 +17,8 @@ class DOMString;
 namespace webgpu {
 class CompilationInfo;
 
-class CompilationMessage final : public nsWrapperCache,
-                                 public ChildOf<CompilationInfo> {
-  dom::GPUCompilationMessageType mType = dom::GPUCompilationMessageType::Error;
+class CompilationMessage final : public nsWrapperCache, public ChildOf<Device> {
+  dom::GPUCompilationMessageType mType;
   uint64_t mLineNum = 0;
   uint64_t mLinePos = 0;
   uint64_t mOffset = 0;
@@ -30,8 +29,10 @@ class CompilationMessage final : public nsWrapperCache,
   GPU_DECL_CYCLE_COLLECTION(CompilationMessage)
   GPU_DECL_JS_WRAP(CompilationMessage)
 
-  explicit CompilationMessage(CompilationInfo* const aParent, uint64_t aLineNum,
-                              uint64_t aLinePos, uint64_t aOffset,
+  explicit CompilationMessage(Device* const aParent,
+                              dom::GPUCompilationMessageType aType,
+                              uint64_t aLineNum, uint64_t aLinePos,
+                              uint64_t aOffset, uint64_t aLength,
                               nsString&& aMessage);
 
   void GetMessage(dom::DOMString& aMessage) {

@@ -1,10 +1,10 @@
 import { Fixture, SkipTestCase } from '../../common/framework/fixture.js';
-import {
-  assert,
-  ErrorWithExtra,
-  raceWithRejectOnTimeout,
-  unreachable,
-} from '../../common/util/util.js';
+import { getResourcePath } from '../../common/framework/resources.js';
+import { keysOf } from '../../common/util/data_tables.js';
+import { timeout } from '../../common/util/timeout.js';
+import { ErrorWithExtra, raceWithRejectOnTimeout } from '../../common/util/util.js';
+import { GPUTest } from '../gpu_test.js';
+import { RGBA, srgbToDisplayP3 } from '../util/color_space_conversion.js';
 
 declare global {
   interface HTMLMediaElement {
@@ -14,6 +14,342 @@ declare global {
   }
 }
 
+// MAINTENANCE_TODO: Uses raw floats as expectation in external_texture related cases has some diffs.
+// Remove this conversion utils and uses raw float data as expectation in external_textrue
+// related cases when resolve this.
+export function convertToUnorm8(expectation: Readonly<RGBA>): Uint8Array {
+  const rgba8Unorm = new Uint8ClampedArray(4);
+  rgba8Unorm[0] = Math.round(expectation.R * 255.0);
+  rgba8Unorm[1] = Math.round(expectation.G * 255.0);
+  rgba8Unorm[2] = Math.round(expectation.B * 255.0);
+  rgba8Unorm[3] = Math.round(expectation.A * 255.0);
+
+  return new Uint8Array(rgba8Unorm.buffer);
+}
+
+// MAINTENANCE_TODO: Add helper function for BT.601 and BT.709 to remove all magic numbers.
+// Expectation values about converting video contents to sRGB color space.
+// Source video color space affects expected values.
+// The process to calculate these expected pixel values can be found:
+// https://github.com/gpuweb/cts/pull/2242#issuecomment-1430382811
+// and https://github.com/gpuweb/cts/pull/2242#issuecomment-1463273434
+const kBt601PixelValue = {
+  srgb: {
+    red: { R: 0.972945567233341, G: 0.141794376683341, B: -0.0209589916711088, A: 1.0 },
+    green: { R: 0.248234279433399, G: 0.984810378661784, B: -0.0564701319494314, A: 1.0 },
+    blue: { R: 0.10159735826538, G: 0.135451122863674, B: 1.00262982899724, A: 1.0 },
+    yellow: { R: 0.995470750775951, G: 0.992742114518355, B: -0.0701036235167653, A: 1.0 },
+  },
+} as const;
+
+const kBt709PixelValue = {
+  srgb: {
+    red: { R: 1.0, G: 0.0, B: 0.0, A: 1.0 },
+    green: { R: 0.0, G: 1.0, B: 0.0, A: 1.0 },
+    blue: { R: 0.0, G: 0.0, B: 1.0, A: 1.0 },
+    yellow: { R: 1.0, G: 1.0, B: 0.0, A: 1.0 },
+  },
+} as const;
+
+function makeTable<Table extends { readonly [K: string]: {} }>({
+  table,
+}: {
+  table: Table;
+}): {
+  readonly [F in keyof Table]: {
+    readonly [K in keyof Table[F]]: Table[F][K];
+  };
+} {
+  return Object.fromEntries(
+    Object.entries(table).map(([k, row]) => [k, { ...row }])
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  ) as any;
+}
+
+// Video expected pixel value table. Finding expected pixel value
+// with video color space and dst color space.
+export const kVideoExpectedColors = makeTable({
+  table: {
+    bt601: {
+      'display-p3': {
+        yellow: srgbToDisplayP3(kBt601PixelValue.srgb.yellow),
+        red: srgbToDisplayP3(kBt601PixelValue.srgb.red),
+        blue: srgbToDisplayP3(kBt601PixelValue.srgb.blue),
+        green: srgbToDisplayP3(kBt601PixelValue.srgb.green),
+      },
+      srgb: {
+        yellow: kBt601PixelValue.srgb.yellow,
+        red: kBt601PixelValue.srgb.red,
+        blue: kBt601PixelValue.srgb.blue,
+        green: kBt601PixelValue.srgb.green,
+      },
+    },
+    bt709: {
+      'display-p3': {
+        yellow: srgbToDisplayP3(kBt709PixelValue.srgb.yellow),
+        red: srgbToDisplayP3(kBt709PixelValue.srgb.red),
+        blue: srgbToDisplayP3(kBt709PixelValue.srgb.blue),
+        green: srgbToDisplayP3(kBt709PixelValue.srgb.green),
+      },
+      srgb: {
+        yellow: kBt709PixelValue.srgb.yellow,
+        red: kBt709PixelValue.srgb.red,
+        blue: kBt709PixelValue.srgb.blue,
+        green: kBt709PixelValue.srgb.green,
+      },
+    },
+  },
+} as const);
+
+// MAINTENANCE_TODO: Add BT.2020 video in table.
+// Video container and codec defines several transform ops to apply to raw decoded frame to display.
+// Our test cases covers 'visible rect' and 'rotation'.
+// 'visible rect' is associated with the
+// video bitstream and should apply to the raw decoded frames before any transformation.
+// 'rotation' is associated with the track or presentation and should transform
+// the whole visible rect (e.g. 90-degree rotate makes visible rect of vertical video to horizontal)
+// The order to apply these transformations is below:
+
+// [raw decoded frame] ----visible rect clipping ---->[visible frame] ---rotation  ---> present
+//      ^                                                                   ^
+//      |                                                                   |
+// coded size                                                           display size
+// The table holds test videos meta infos, including mimeType to check browser compatibility
+// video color space, raw frame content layout and the frame displayed layout.
+export const kVideoInfo = makeTable({
+  table: {
+    'four-colors-vp8-bt601.webm': {
+      mimeType: 'video/webm; codecs=vp8',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+      display: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+    },
+    'four-colors-h264-bt601.mp4': {
+      mimeType: 'video/mp4; codecs=avc1.4d400c',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+      display: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+    },
+    'four-colors-vp9-bt601.webm': {
+      mimeType: 'video/webm; codecs=vp9',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+      display: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+    },
+    'four-colors-vp9-bt709.webm': {
+      mimeType: 'video/webm; codecs=vp9',
+      colorSpace: 'bt709',
+      coded: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+      display: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+    },
+    // video coded content has been rotate
+    'four-colors-h264-bt601-rotate-90.mp4': {
+      mimeType: 'video/mp4; codecs=avc1.4d400c',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'red',
+        topRightColor: 'green',
+        bottomLeftColor: 'yellow',
+        bottomRightColor: 'blue',
+      },
+      display: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+    },
+    'four-colors-h264-bt601-rotate-180.mp4': {
+      mimeType: 'video/mp4; codecs=avc1.4d400c',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'green',
+        topRightColor: 'blue',
+        bottomLeftColor: 'red',
+        bottomRightColor: 'yellow',
+      },
+      display: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+    },
+    'four-colors-h264-bt601-rotate-270.mp4': {
+      mimeType: 'video/mp4; codecs=avc1.4d400c',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'blue',
+        topRightColor: 'yellow',
+        bottomLeftColor: 'green',
+        bottomRightColor: 'red',
+      },
+      display: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+    },
+    'four-colors-vp9-bt601-rotate-90.mp4': {
+      mimeType: 'video/mp4; codecs=vp09.00.10.08',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'red',
+        topRightColor: 'green',
+        bottomLeftColor: 'yellow',
+        bottomRightColor: 'blue',
+      },
+      display: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+    },
+    'four-colors-vp9-bt601-rotate-180.mp4': {
+      mimeType: 'video/mp4; codecs=vp09.00.10.08',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'green',
+        topRightColor: 'blue',
+        bottomLeftColor: 'red',
+        bottomRightColor: 'yellow',
+      },
+      display: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+    },
+    'four-colors-vp9-bt601-rotate-270.mp4': {
+      mimeType: 'video/mp4; codecs=vp09.00.10.08',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'blue',
+        topRightColor: 'yellow',
+        bottomLeftColor: 'green',
+        bottomRightColor: 'red',
+      },
+      display: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+    },
+    'four-colors-h264-bt601-hflip.mp4': {
+      mimeType: 'video/mp4; codecs=avc1.4d400c',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+      display: {
+        topLeftColor: 'red',
+        topRightColor: 'yellow',
+        bottomLeftColor: 'green',
+        bottomRightColor: 'blue',
+      },
+    },
+    'four-colors-h264-bt601-vflip.mp4': {
+      mimeType: 'video/mp4; codecs=avc1.4d400c',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+      display: {
+        topLeftColor: 'blue',
+        topRightColor: 'green',
+        bottomLeftColor: 'yellow',
+        bottomRightColor: 'red',
+      },
+    },
+    'four-colors-vp9-bt601-hflip.mp4': {
+      mimeType: 'video/mp4; codecs=vp09.00.10.08',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+      display: {
+        topLeftColor: 'red',
+        topRightColor: 'yellow',
+        bottomLeftColor: 'green',
+        bottomRightColor: 'blue',
+      },
+    },
+    'four-colors-vp9-bt601-vflip.mp4': {
+      mimeType: 'video/mp4; codecs=vp09.00.10.08',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+      display: {
+        topLeftColor: 'blue',
+        topRightColor: 'green',
+        bottomLeftColor: 'yellow',
+        bottomRightColor: 'red',
+      },
+    },
+  },
+} as const);
+
+type VideoName = keyof typeof kVideoInfo;
+export const kVideoNames: readonly VideoName[] = keysOf(kVideoInfo);
+
+export const kPredefinedColorSpace = ['display-p3', 'srgb'] as const;
 /**
  * Starts playing a video and waits for it to be consumable.
  * Returns a promise which resolves after `callback` (which may be async) completes.
@@ -35,7 +371,7 @@ export function startPlayingAndWaitForVideo(
             await callback();
             resolve();
           } catch (ex) {
-            reject();
+            reject(ex);
           }
         })();
       if (video.error) {
@@ -47,11 +383,16 @@ export function startPlayingAndWaitForVideo(
 
       video.addEventListener(
         'error',
-        event => reject(new ErrorWithExtra('Video received "error" event', () => ({ event }))),
+        event =>
+          reject(
+            new ErrorWithExtra('Video received "error" event, message: ' + event.message, () => ({
+              event,
+            }))
+          ),
         true
       );
 
-      if ('requestVideoFrameCallback' in video) {
+      if (video.requestVideoFrameCallback) {
         video.requestVideoFrameCallback(() => {
           callbackAndResolve();
         });
@@ -78,6 +419,19 @@ export function startPlayingAndWaitForVideo(
 }
 
 /**
+ * Fire a `callback` when the script animation reaches a new frame.
+ * Returns a promise which resolves after `callback` (which may be async) completes.
+ */
+export function waitForNextTask(callback: () => unknown | Promise<unknown>): Promise<void> {
+  const { promise, callbackAndResolve } = callbackHelper(callback, 'wait for next task timed out');
+  timeout(() => {
+    callbackAndResolve();
+  }, 0);
+
+  return promise;
+}
+
+/**
  * Fire a `callback` when the video reaches a new frame.
  * Returns a promise which resolves after `callback` (which may be async) completes.
  *
@@ -89,10 +443,7 @@ export function waitForNextFrame(
   video: HTMLVideoElement,
   callback: () => unknown | Promise<unknown>
 ): Promise<void> {
-  const { promise, callbackAndResolve } = videoCallbackHelper(
-    callback,
-    'waitForNextFrame timed out'
-  );
+  const { promise, callbackAndResolve } = callbackHelper(callback, 'waitForNextFrame timed out');
 
   if ('requestVideoFrameCallback' in video) {
     video.requestVideoFrameCallback(() => {
@@ -105,57 +456,70 @@ export function waitForNextFrame(
   return promise;
 }
 
-type VideoColorSpaceName = 'REC601' | 'REC709' | 'REC2020';
-
-export function getVideoColorSpaceInit(colorSpaceName: VideoColorSpaceName): VideoColorSpaceInit {
-  switch (colorSpaceName) {
-    case 'REC601':
-      return {
-        primaries: 'smpte170m',
-        transfer: 'smpte170m',
-        matrix: 'smpte170m',
-        fullRange: false,
-      };
-    case 'REC709':
-      return { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false };
-    case 'REC2020':
-      return { primaries: 'bt709', transfer: 'iec61966-2-1', matrix: 'rgb', fullRange: true };
-    default:
-      unreachable();
-  }
-}
-
 export async function getVideoFrameFromVideoElement(
   test: Fixture,
-  video: HTMLVideoElement,
-  colorSpace: VideoColorSpaceInit = getVideoColorSpaceInit('REC709')
+  video: HTMLVideoElement
 ): Promise<VideoFrame> {
   if (video.captureStream === undefined) {
     test.skip('HTMLVideoElement.captureStream is not supported');
   }
 
-  const track: MediaStreamVideoTrack = video.captureStream().getVideoTracks()[0];
-  const reader = new MediaStreamTrackProcessor({ track }).readable.getReader();
-  const videoFrame = (await reader.read()).value;
-  assert(videoFrame !== undefined, 'unable to get a VideoFrame from track 0');
-  assert(
-    videoFrame.format !== null && videoFrame.timestamp !== null,
-    'unable to get a valid VideoFrame from track 0'
+  return raceWithRejectOnTimeout(
+    new Promise<VideoFrame>(resolve => {
+      const videoTrack: MediaStreamVideoTrack = video.captureStream().getVideoTracks()[0];
+      const trackProcessor: MediaStreamTrackProcessor<VideoFrame> = new MediaStreamTrackProcessor({
+        track: videoTrack,
+      });
+      const transformer: TransformStream = new TransformStream({
+        transform(videoFrame, _controller) {
+          videoTrack.stop();
+          test.trackForCleanup(videoFrame);
+          resolve(videoFrame);
+        },
+        flush(controller) {
+          controller.terminate();
+        },
+      });
+      const trackGenerator: MediaStreamTrackGenerator<VideoFrame> = new MediaStreamTrackGenerator({
+        kind: 'video',
+      });
+      trackProcessor.readable
+        .pipeThrough(transformer)
+        .pipeTo(trackGenerator.writable)
+        .catch(() => {});
+    }),
+    2000,
+    'Video never became ready'
   );
-  // Apply color space info because the VideoFrame generated from captured stream
-  // doesn't have it.
-  const bufferSize = videoFrame.allocationSize();
-  const buffer = new ArrayBuffer(bufferSize);
-  const frameLayout = await videoFrame.copyTo(buffer);
-  const frameInit: VideoFrameBufferInit = {
-    format: videoFrame.format,
-    timestamp: videoFrame.timestamp,
-    codedWidth: videoFrame.codedWidth,
-    codedHeight: videoFrame.codedHeight,
-    colorSpace,
-    layout: frameLayout,
-  };
-  return new VideoFrame(buffer, frameInit);
+}
+
+/**
+ * Create HTMLVideoElement based on VideoName. Check whether video is playable in current
+ * browser environment.
+ * Returns a HTMLVideoElement.
+ *
+ * @param t: GPUTest that requires getting HTMLVideoElement
+ * @param videoName: Required video name
+ *
+ */
+export function getVideoElement(t: GPUTest, videoName: VideoName): HTMLVideoElement {
+  if (typeof HTMLVideoElement === 'undefined') {
+    t.skip('HTMLVideoElement not available');
+  }
+
+  const videoElement = document.createElement('video');
+  const videoInfo = kVideoInfo[videoName];
+
+  if (videoElement.canPlayType(videoInfo.mimeType) === '') {
+    t.skip('Video codec is not supported');
+  }
+
+  const videoUrl = getResourcePath(videoName);
+  videoElement.src = videoUrl;
+
+  t.trackForCleanup(videoElement);
+
+  return videoElement;
 }
 
 /**
@@ -163,7 +527,7 @@ export async function getVideoFrameFromVideoElement(
  * microtask), and returning a promise when the callback is done.
  * MAINTENANCE_TODO: Use this in startPlayingAndWaitForVideo (and make sure it works).
  */
-function videoCallbackHelper(
+function callbackHelper(
   callback: () => unknown | Promise<unknown>,
   timeoutMessage: string
 ): { promise: Promise<void>; callbackAndResolve: () => void } {

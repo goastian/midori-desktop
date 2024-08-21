@@ -193,9 +193,8 @@ IPCResult BrowserBridgeParent::RecvUpdateRemotePrintSettings(
   return IPC_OK();
 }
 
-IPCResult BrowserBridgeParent::RecvRenderLayers(
-    const bool& aEnabled, const layers::LayersObserverEpoch& aEpoch) {
-  Unused << mBrowserParent->SendRenderLayers(aEnabled, aEpoch);
+IPCResult BrowserBridgeParent::RecvRenderLayers(const bool& aEnabled) {
+  Unused << mBrowserParent->SendRenderLayers(aEnabled);
   return IPC_OK();
 }
 
@@ -217,7 +216,13 @@ IPCResult BrowserBridgeParent::RecvDispatchSynthesizedMouseEvent(
     return IPC_FAIL(this, "Unexpected event type");
   }
 
+  nsCOMPtr<nsIWidget> widget = Manager()->GetWidget();
+  if (!widget) {
+    return IPC_OK();
+  }
+
   WidgetMouseEvent event = aEvent;
+  event.mWidget = widget;
   // Convert mRefPoint from the dispatching child process coordinate space
   // to the parent coordinate space. The SendRealMouseEvent call will convert
   // it into the dispatchee child process coordinate space

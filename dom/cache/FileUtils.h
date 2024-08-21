@@ -7,9 +7,10 @@
 #ifndef mozilla_dom_cache_FileUtils_h
 #define mozilla_dom_cache_FileUtils_h
 
+#include "CacheCommon.h"
+#include "CacheCipherKeyManager.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/cache/Types.h"
-#include "CacheCommon.h"
 #include "mozIStorageConnection.h"
 #include "nsStreamUtils.h"
 #include "nsTArrayForwardDeclare.h"
@@ -34,17 +35,20 @@ nsresult BodyDeleteDir(const CacheDirectoryMetadata& aDirectoryMetadata,
 
 // Returns a Result with a success value with the body id and, optionally, the
 // copy context.
-Result<std::pair<nsID, nsCOMPtr<nsISupports>>, nsresult> BodyStartWriteStream(
+Result<nsCOMPtr<nsISupports>, nsresult> BodyStartWriteStream(
     const CacheDirectoryMetadata& aDirectoryMetadata, nsIFile& aBaseDir,
+    const nsID& aBodyId, Maybe<CipherKey> aMaybeCipherKey,
     nsIInputStream& aSource, void* aClosure, nsAsyncCopyCallbackFun aCallback);
 
 void BodyCancelWrite(nsISupports& aCopyContext);
 
-nsresult BodyFinalizeWrite(nsIFile& aBaseDir, const nsID& aId);
+Result<int64_t, nsresult> BodyFinalizeWrite(nsIFile& aBaseDir, const nsID& aId);
+
+Result<int64_t, nsresult> GetBodyDiskSize(nsIFile& aBaseDir, const nsID& aId);
 
 Result<MovingNotNull<nsCOMPtr<nsIInputStream>>, nsresult> BodyOpen(
     const CacheDirectoryMetadata& aDirectoryMetadata, nsIFile& aBaseDir,
-    const nsID& aId);
+    const nsID& aId, Maybe<CipherKey> aMaybeCipherKey);
 
 nsresult BodyMaybeUpdatePaddingSize(
     const CacheDirectoryMetadata& aDirectoryMetadata, nsIFile& aBaseDir,

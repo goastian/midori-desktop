@@ -20,7 +20,7 @@ JSObject* SVGFEDistantLightElement::WrapNode(
 }
 
 SVGElement::NumberInfo SVGFEDistantLightElement::sNumberInfo[2] = {
-    {nsGkAtoms::azimuth, 0, false}, {nsGkAtoms::elevation, 0, false}};
+    {nsGkAtoms::azimuth, 0}, {nsGkAtoms::elevation, 0}};
 
 //----------------------------------------------------------------------
 //----------------------------------------------------------------------
@@ -28,7 +28,7 @@ SVGElement::NumberInfo SVGFEDistantLightElement::sNumberInfo[2] = {
 
 NS_IMPL_ELEMENT_CLONE_WITH_INIT(SVGFEDistantLightElement)
 
-// nsFEUnstyledElement methods
+// SVGFilterPrimitiveChildElement methods
 
 bool SVGFEDistantLightElement::AttributeAffectsRendering(
     int32_t aNameSpaceID, nsAtom* aAttribute) const {

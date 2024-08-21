@@ -16,11 +16,13 @@
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ElementInternals.h"
+#include "mozilla/dom/ElementInternalsBinding.h"
 #include "mozilla/dom/HTMLFormElement.h"
 #include "mozilla/RefPtr.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsWrapperCache.h"
 #include "nsTHashSet.h"
+#include "nsAtomHashKeys.h"
 
 namespace mozilla {
 class ErrorResult;
@@ -43,12 +45,13 @@ enum class ElementCallbackType {
   eFormAssociated,
   eFormReset,
   eFormDisabled,
+  eFormStateRestore,
   eGetCustomInterface
 };
 
 struct LifecycleCallbackArgs {
   // Used by the attribute changed callback.
-  nsString mName;
+  RefPtr<nsAtom> mName;
   nsString mOldValue;
   nsString mNewValue;
   nsString mNamespaceURI;
@@ -62,6 +65,10 @@ struct LifecycleCallbackArgs {
 
   // Used by the form disabled callback.
   bool mDisabled;
+
+  // Used by the form state restore callback.
+  Nullable<OwningFileOrUSVStringOrFormData> mState;
+  RestoreReason mReason;
 
   size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const;
 };
@@ -487,18 +494,16 @@ class CustomElementRegistry final : public nsISupports, public nsWrapperCache {
   void UpgradeCandidates(nsAtom* aKey, CustomElementDefinition* aDefinition,
                          ErrorResult& aRv);
 
-  typedef nsRefPtrHashtable<nsRefPtrHashKey<nsAtom>, CustomElementDefinition>
-      DefinitionMap;
-  typedef nsRefPtrHashtable<nsRefPtrHashKey<nsAtom>,
-                            CustomElementCreationCallback>
-      ElementCreationCallbackMap;
-  typedef nsClassHashtable<nsRefPtrHashKey<nsAtom>,
-                           nsTHashSet<RefPtr<nsIWeakReference>>>
-      CandidateMap;
-  typedef JS::GCHashMap<JS::Heap<JSObject*>, RefPtr<nsAtom>,
-                        js::StableCellHasher<JS::Heap<JSObject*>>,
-                        js::SystemAllocPolicy>
-      ConstructorMap;
+  using DefinitionMap =
+      nsRefPtrHashtable<nsAtomHashKey, CustomElementDefinition>;
+  using ElementCreationCallbackMap =
+      nsRefPtrHashtable<nsAtomHashKey, CustomElementCreationCallback>;
+  using CandidateMap =
+      nsClassHashtable<nsAtomHashKey, nsTHashSet<RefPtr<nsIWeakReference>>>;
+  using ConstructorMap =
+      JS::GCHashMap<JS::Heap<JSObject*>, RefPtr<nsAtom>,
+                    js::StableCellHasher<JS::Heap<JSObject*>>,
+                    js::SystemAllocPolicy>;
 
   // Hashtable for custom element definitions in web components.
   // Custom prototypes are stored in the compartment where definition was
@@ -515,8 +520,7 @@ class CustomElementRegistry final : public nsISupports, public nsWrapperCache {
   // mCustomDefinitions again to get definitions.
   ConstructorMap mConstructors;
 
-  typedef nsRefPtrHashtable<nsRefPtrHashKey<nsAtom>, Promise>
-      WhenDefinedPromiseMap;
+  using WhenDefinedPromiseMap = nsRefPtrHashtable<nsAtomHashKey, Promise>;
   WhenDefinedPromiseMap mWhenDefinedPromiseMap;
 
   // The "upgrade candidates map" from the web components spec. Maps from a
@@ -550,6 +554,9 @@ class CustomElementRegistry final : public nsISupports, public nsWrapperCache {
 
   void Get(const nsAString& name,
            OwningCustomElementConstructorOrUndefined& aRetVal);
+
+  void GetName(JSContext* aCx, CustomElementConstructor& aConstructor,
+               nsAString& aResult);
 
   already_AddRefed<Promise> WhenDefined(const nsAString& aName,
                                         ErrorResult& aRv);

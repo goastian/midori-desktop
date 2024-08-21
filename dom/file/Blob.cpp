@@ -20,7 +20,6 @@
 #include "nsPIDOMWindow.h"
 #include "StreamBlobImpl.h"
 #include "StringBlobImpl.h"
-#include "js/GCAPI.h"
 
 namespace mozilla::dom {
 
@@ -51,6 +50,9 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(Blob)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(Blob)
 
 void Blob::MakeValidBlobType(nsAString& aType) {
+  // Ensure non-null content type by default
+  aType.SetIsVoid(false);
+
   char16_t* iter = aType.BeginWriting();
   char16_t* end = aType.EndWriting();
 
@@ -251,20 +253,19 @@ void Blob::CreateInputStream(nsIInputStream** aStream, ErrorResult& aRv) const {
 size_t BindingJSObjectMallocBytes(Blob* aBlob) {
   MOZ_ASSERT(aBlob);
 
-  // TODO: The hazard analysis currently can't see that none of the
-  // implementations of the GetAllocationSize virtual method call can GC (see
-  // bug 1531951).
-  JS::AutoSuppressGCAnalysis nogc;
-
   return aBlob->GetAllocationSize();
 }
 
 already_AddRefed<Promise> Blob::Text(ErrorResult& aRv) const {
-  return ConsumeBody(BodyConsumer::CONSUME_TEXT, aRv);
+  return ConsumeBody(BodyConsumer::ConsumeType::Text, aRv);
 }
 
 already_AddRefed<Promise> Blob::ArrayBuffer(ErrorResult& aRv) const {
-  return ConsumeBody(BodyConsumer::CONSUME_ARRAYBUFFER, aRv);
+  return ConsumeBody(BodyConsumer::ConsumeType::ArrayBuffer, aRv);
+}
+
+already_AddRefed<Promise> Blob::Bytes(ErrorResult& aRv) const {
+  return ConsumeBody(BodyConsumer::ConsumeType::Bytes, aRv);
 }
 
 already_AddRefed<Promise> Blob::ConsumeBody(
@@ -280,7 +281,7 @@ already_AddRefed<Promise> Blob::ConsumeBody(
     MOZ_ASSERT(workerPrivate);
     mainThreadEventTarget = workerPrivate->MainThreadEventTarget();
   } else {
-    mainThreadEventTarget = mGlobal->EventTargetFor(TaskCategory::Other);
+    mainThreadEventTarget = GetMainThreadSerialEventTarget();
   }
 
   MOZ_ASSERT(mainThreadEventTarget);

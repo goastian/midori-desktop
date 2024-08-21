@@ -15,13 +15,11 @@
 #include "nsContentListDeclarations.h"
 #include "nsTArray.h"
 #include "nsTHashSet.h"
-#include "RadioGroupManager.h"
 
 class nsContentList;
 class nsCycleCollectionTraversalCallback;
 class nsINode;
 class nsINodeList;
-class nsIRadioVisitor;
 class nsWindowSizes;
 
 namespace mozilla {
@@ -48,7 +46,7 @@ class Sequence;
  * TODO(emilio, bug 1418159): In the future this should hold most of the
  * relevant style state, this should allow us to fix bug 548397.
  */
-class DocumentOrShadowRoot : public RadioGroupManager {
+class DocumentOrShadowRoot {
   enum class Kind {
     Document,
     ShadowRoot,
@@ -102,8 +100,11 @@ class DocumentOrShadowRoot : public RadioGroupManager {
    *
    * This is useful for stuff like QuerySelector optimization and such.
    */
-  inline const nsTArray<Element*>* GetAllElementsForId(
-      const nsAString& aElementId) const;
+  const nsTArray<Element*>* GetAllElementsForId(
+      const IdentifierMapEntry::DependentAtomOrString& aElementId) const {
+    IdentifierMapEntry* entry = mIdentifierMap.GetEntry(aElementId);
+    return entry ? &entry->GetIdElements() : nullptr;
+  }
 
   already_AddRefed<nsContentList> GetElementsByTagName(
       const nsAString& aTagName) {
@@ -283,16 +284,6 @@ class DocumentOrShadowRoot : public RadioGroupManager {
   nsINode* mAsNode;
   const Kind mKind;
 };
-
-inline const nsTArray<Element*>* DocumentOrShadowRoot::GetAllElementsForId(
-    const nsAString& aElementId) const {
-  if (aElementId.IsEmpty()) {
-    return nullptr;
-  }
-
-  IdentifierMapEntry* entry = mIdentifierMap.GetEntry(aElementId);
-  return entry ? &entry->GetIdElements() : nullptr;
-}
 
 }  // namespace dom
 

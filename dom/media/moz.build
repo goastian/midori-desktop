@@ -30,6 +30,7 @@ with Files("GetUserMedia*"):
 DIRS += [
     "autoplay",
     "doctor",
+    "driftcontrol",
     "eme",
     "encoder",
     "fake-cdm",
@@ -44,6 +45,7 @@ DIRS += [
     "mediasource",
     "mediasession",
     "mp3",
+    "mp4",
     "ogg",
     "platforms",
     "systemservices",
@@ -59,9 +61,6 @@ DIRS += [
 
 if CONFIG["MOZ_ANDROID_HLS_SUPPORT"]:
     DIRS += ["hls"]
-
-if CONFIG["MOZ_FMP4"]:
-    DIRS += ["mp4"]
 
 if CONFIG["MOZ_WEBRTC"]:
     DIRS += ["bridge"]
@@ -81,32 +80,34 @@ if CONFIG["MOZ_WEBRTC_SIGNALING"]:
         TEST_DIRS += ["webrtc/tests/fuzztests"]
 
 MOCHITEST_MANIFESTS += [
-    "test/mochitest.ini",
-    "test/mochitest_background_video.ini",
-    "test/mochitest_bugs.ini",
-    "test/mochitest_compat.ini",
-    "test/mochitest_eme.ini",
-    "test/mochitest_media_recorder.ini",
-    "test/mochitest_seek.ini",
-    "test/mochitest_stream.ini",
-    "webrtc/tests/mochitests/identity/mochitest.ini",
+    "test/mochitest.toml",
+    "test/mochitest_background_video.toml",
+    "test/mochitest_bugs.toml",
+    "test/mochitest_compat.toml",
+    "test/mochitest_eme.toml",
+    "test/mochitest_eme_compat.toml",
+    "test/mochitest_media_engine.toml",
+    "test/mochitest_media_recorder.toml",
+    "test/mochitest_seek.toml",
+    "test/mochitest_stream.toml",
+    "webrtc/tests/mochitests/identity/mochitest.toml",
 ]
 
-MOCHITEST_CHROME_MANIFESTS += ["test/chrome/chrome.ini"]
+MOCHITEST_CHROME_MANIFESTS += ["test/chrome/chrome.toml"]
 
 BROWSER_CHROME_MANIFESTS += [
-    "mediacontrol/tests/browser/browser.ini",
-    "mediasession/test/browser.ini",
-    "test/browser/browser.ini",
-    "test/browser/wmfme/browser.ini",
+    "mediacontrol/tests/browser/browser.toml",
+    "mediasession/test/browser.toml",
+    "test/browser/browser.toml",
+    "test/browser/wmfme/browser.toml",
 ]
 
 if CONFIG["MOZ_WEBRTC"]:
     MOCHITEST_MANIFESTS += [
-        "webrtc/tests/mochitests/mochitest.ini",
-        "webrtc/tests/mochitests/mochitest_datachannel.ini",
-        "webrtc/tests/mochitests/mochitest_getusermedia.ini",
-        "webrtc/tests/mochitests/mochitest_peerconnection.ini",
+        "webrtc/tests/mochitests/mochitest.toml",
+        "webrtc/tests/mochitests/mochitest_datachannel.toml",
+        "webrtc/tests/mochitests/mochitest_getusermedia.toml",
+        "webrtc/tests/mochitests/mochitest_peerconnection.toml",
     ]
 
     CRASHTEST_MANIFESTS += ["webrtc/tests/crashtests/crashtests.list"]
@@ -131,7 +132,6 @@ EXPORTS += [
     "AudioConfig.h",
     "AudioConverter.h",
     "AudioDeviceInfo.h",
-    "AudioDriftCorrection.h",
     "AudioMixer.h",
     "AudioPacketizer.h",
     "AudioRingBuffer.h",
@@ -152,12 +152,12 @@ EXPORTS += [
     "DecoderTraits.h",
     "DOMMediaStream.h",
     "DriftCompensation.h",
-    "DynamicResampler.h",
+    "EncoderTraits.h",
     "ExternalEngineStateMachine.h",
     "FileBlockCache.h",
     "ForwardedInputTrack.h",
     "FrameStatistics.h",
-    "ImageToI420.h",
+    "ImageConversion.h",
     "Intervals.h",
     "MediaCache.h",
     "MediaContainerType.h",
@@ -190,7 +190,6 @@ EXPORTS += [
     "MediaTrackList.h",
     "MediaTrackListener.h",
     "MemoryBlockCache.h",
-    "MPSCQueue.h",
     "nsIDocumentActivity.h",
     "PrincipalChangeObserver.h",
     "PrincipalHandle.h",
@@ -200,13 +199,13 @@ EXPORTS += [
     "SeekTarget.h",
     "SelfRef.h",
     "SharedBuffer.h",
+    "TimedPacketizer.h",
     "TimeUnits.h",
     "Tracing.h",
     "VideoFrameContainer.h",
     "VideoLimits.h",
     "VideoSegment.h",
     "VideoUtils.h",
-    "VorbisUtils.h",
     "WavDumper.h",
     "XiphExtradata.h",
 ]
@@ -237,6 +236,7 @@ EXPORTS.mozilla.dom += [
     "MediaDevices.h",
     "MediaStreamError.h",
     "MediaStreamTrack.h",
+    "MPSCQueue.h",
     "VideoPlaybackQuality.h",
     "VideoStreamTrack.h",
     "VideoTrack.h",
@@ -275,7 +275,6 @@ UNIFIED_SOURCES += [
     "CubebInputStream.cpp",
     "DeviceInputTrack.cpp",
     "DOMMediaStream.cpp",
-    "DynamicResampler.cpp",
     "ExternalEngineStateMachine.cpp",
     "FileBlockCache.cpp",
     "FileMediaResource.cpp",
@@ -283,7 +282,7 @@ UNIFIED_SOURCES += [
     "GetUserMediaRequest.cpp",
     "GraphDriver.cpp",
     "GraphRunner.cpp",
-    "ImageToI420.cpp",
+    "ImageConversion.cpp",
     "MediaCache.cpp",
     "MediaContainerType.cpp",
     "MediaDecoder.cpp",
@@ -357,6 +356,7 @@ EXTRA_JS_MODULES.media += [
 ]
 
 LOCAL_INCLUDES += [
+    "!/media/libsoundtouch/src",
     "/caps",
     "/docshell/base",
     "/dom/base",

@@ -17,7 +17,7 @@
 #if LIBAVCODEC_VERSION_MAJOR >= 57 && LIBAVUTIL_VERSION_MAJOR >= 56
 #  include "mozilla/layers/TextureClient.h"
 #endif
-#ifdef MOZ_WAYLAND_USE_HWDECODE
+#ifdef MOZ_USE_HWDECODE
 #  include "FFmpegVideoFramePool.h"
 #endif
 
@@ -43,7 +43,7 @@ class FFmpegVideoDecoder<LIBAV_VER>
   typedef mozilla::layers::Image Image;
   typedef mozilla::layers::ImageContainer ImageContainer;
   typedef mozilla::layers::KnowsCompositor KnowsCompositor;
-  typedef SimpleMap<int64_t> DurationMap;
+  typedef SimpleMap<int64_t, int64_t, ThreadSafePolicy> DurationMap;
 
  public:
   FFmpegVideoDecoder(FFmpegLibWrapper* aLib, const VideoInfo& aConfig,
@@ -112,7 +112,6 @@ class FFmpegVideoDecoder<LIBAV_VER>
     nsAutoCString dummy;
     return IsHardwareAccelerated(dummy);
   }
-  void UpdateDecodeTimes(TimeStamp aDecodeStart);
 
 #if LIBAVCODEC_VERSION_MAJOR >= 57 && LIBAVUTIL_VERSION_MAJOR >= 56
   layers::TextureClient* AllocateTextureClientForImage(
@@ -123,11 +122,12 @@ class FFmpegVideoDecoder<LIBAV_VER>
                                           int32_t aHeight) const;
 #endif
 
-#ifdef MOZ_WAYLAND_USE_HWDECODE
+#ifdef MOZ_USE_HWDECODE
   void InitHWDecodingPrefs();
   MediaResult InitVAAPIDecoder();
+  MediaResult InitV4L2Decoder();
   bool CreateVAAPIDeviceContext();
-  void InitVAAPICodecContext();
+  void InitHWCodecContext(bool aUsingV4L2);
   AVCodec* FindVAAPICodec();
   bool GetVAAPISurfaceDescriptor(VADRMPRIMESurfaceDescriptor* aVaDesc);
   void AddAcceleratedFormats(nsTArray<AVCodecID>& aCodecList,
@@ -137,10 +137,14 @@ class FFmpegVideoDecoder<LIBAV_VER>
 
   MediaResult CreateImageVAAPI(int64_t aOffset, int64_t aPts, int64_t aDuration,
                                MediaDataDecoder::DecodedData& aResults);
+  MediaResult CreateImageV4L2(int64_t aOffset, int64_t aPts, int64_t aDuration,
+                              MediaDataDecoder::DecodedData& aResults);
+  void AdjustHWDecodeLogging();
 #endif
 
-#ifdef MOZ_WAYLAND_USE_HWDECODE
+#ifdef MOZ_USE_HWDECODE
   AVBufferRef* mVAAPIDeviceContext;
+  bool mUsingV4L2;
   bool mEnableHardwareDecoding;
   VADisplay mDisplay;
   UniquePtr<VideoFramePool<LIBAV_VER>> mVideoFramePool;
@@ -149,17 +153,37 @@ class FFmpegVideoDecoder<LIBAV_VER>
   RefPtr<KnowsCompositor> mImageAllocator;
   RefPtr<ImageContainer> mImageContainer;
   VideoInfo mInfo;
-  int mDecodedFrames;
-#if LIBAVCODEC_VERSION_MAJOR >= 58
-  int mDecodedFramesLate;
-  // Tracks when decode time of recent frame and averange decode time of
-  // previous frames is bigger than frame interval,
-  // i.e. we fail to decode in time.
-  // We switch to SW decode when we hit HW_DECODE_LATE_FRAMES treshold.
-  int mMissedDecodeInAverangeTime;
-#endif
-  float mAverangeDecodeTime;
 
+#if LIBAVCODEC_VERSION_MAJOR >= 58
+  class DecodeStats {
+   public:
+    void DecodeStart();
+    void UpdateDecodeTimes(const AVFrame* aFrame);
+    bool IsDecodingSlow() const;
+
+   private:
+    uint32_t mDecodedFrames = 0;
+
+    float mAverageFrameDecodeTime = 0;
+    float mAverageFrameDuration = 0;
+
+    // Number of delayed frames until we consider decoding as slow.
+    const uint32_t mMaxLateDecodedFrames = 15;
+    // How many frames is decoded behind its pts time, i.e. video decode lags.
+    uint32_t mDecodedFramesLate = 0;
+
+    // Reset mDecodedFramesLate every 3 seconds of correct playback.
+    const uint32_t mDelayedFrameReset = 3000;
+
+    uint32_t mLastDelayedFrameNum = 0;
+
+    TimeStamp mDecodeStart;
+  };
+
+  DecodeStats mDecodeStats;
+#endif
+
+#if LIBAVCODEC_VERSION_MAJOR < 58
   class PtsCorrectionContext {
    public:
     PtsCorrectionContext();
@@ -175,11 +199,13 @@ class FFmpegVideoDecoder<LIBAV_VER>
   };
 
   PtsCorrectionContext mPtsContext;
-
   DurationMap mDurationMap;
+#endif
+
   const bool mLowLatency;
   const Maybe<TrackingId> mTrackingId;
   PerformanceRecorderMulti<DecodeStage> mPerformanceRecorder;
+  PerformanceRecorderMulti<DecodeStage> mPerformanceRecorder2;
 
   // True if we're allocating shmem for ffmpeg decode buffer.
   Maybe<Atomic<bool>> mIsUsingShmemBufferForDecode;

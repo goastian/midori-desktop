@@ -176,6 +176,11 @@ class HTMLCanvasElement final : public nsGenericHTMLElement,
   nsIntSize GetSize();
 
   /**
+   * Set the size in pixels of this canvas element.
+   */
+  void SetSize(const nsIntSize& aSize, ErrorResult& aRv);
+
+  /**
    * Determine whether the canvas is write-only.
    */
   bool IsWriteOnly() const;
@@ -266,8 +271,7 @@ class HTMLCanvasElement final : public nsGenericHTMLElement,
   virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
   nsresult CopyInnerTo(HTMLCanvasElement* aDest);
 
-  static void MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
-                                    MappedDeclarations&);
+  static void MapAttributesIntoRule(MappedDeclarationsBuilder&);
 
   /*
    * Helpers called by various users of Canvas
@@ -317,12 +321,20 @@ class HTMLCanvasElement final : public nsGenericHTMLElement,
   virtual already_AddRefed<nsICanvasRenderingContextInternal> CreateContext(
       CanvasContextType aContextType) override;
 
+  nsresult UpdateContext(JSContext* aCx,
+                         JS::Handle<JS::Value> aNewContextOptions,
+                         ErrorResult& aRvForDictionaryInit) override;
+
   nsresult ExtractData(JSContext* aCx, nsIPrincipal& aSubjectPrincipal,
                        nsAString& aType, const nsAString& aOptions,
                        nsIInputStream** aStream);
   nsresult ToDataURLImpl(JSContext* aCx, nsIPrincipal& aSubjectPrincipal,
                          const nsAString& aMimeType,
                          const JS::Value& aEncoderOptions, nsAString& aDataURL);
+
+  UniquePtr<uint8_t[]> GetImageBuffer(int32_t* aOutFormat,
+                                      gfx::IntSize* aOutImageSize) override;
+
   MOZ_CAN_RUN_SCRIPT void CallPrintCallback();
 
   virtual void AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
@@ -344,6 +356,8 @@ class HTMLCanvasElement final : public nsGenericHTMLElement,
 
   layers::ImageContainer* GetImageContainer() const { return mImageContainer; }
 
+  bool UsingCaptureStream() const { return !!mRequestedFrameRefreshObserver; }
+
  protected:
   bool mResetLayer;
   bool mMaybeModified;  // we fetched the context, so we may have written to the
@@ -353,7 +367,6 @@ class HTMLCanvasElement final : public nsGenericHTMLElement,
   RefPtr<HTMLCanvasPrintState> mPrintState;
   nsTArray<WeakPtr<FrameCaptureListener>> mRequestedFrameListeners;
   RefPtr<RequestedFrameRefreshObserver> mRequestedFrameRefreshObserver;
-  RefPtr<CanvasRenderer> mCanvasRenderer;
   RefPtr<OffscreenCanvas> mOffscreenCanvas;
   RefPtr<OffscreenCanvasDisplayHelper> mOffscreenDisplay;
   RefPtr<layers::ImageContainer> mImageContainer;
@@ -371,7 +384,7 @@ class HTMLCanvasElement final : public nsGenericHTMLElement,
   RefPtr<nsIPrincipal> mExpandedReader;
 
   // Determines if the caller should be able to read the content.
-  bool CallerCanRead(nsIPrincipal* aPrincipal) const;
+  bool CallerCanRead(nsIPrincipal& aPrincipal) const;
 
   bool IsPrintCallbackDone();
 

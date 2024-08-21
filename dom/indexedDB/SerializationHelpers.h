@@ -10,6 +10,7 @@
 #include "ipc/EnumSerializer.h"
 #include "ipc/IPCMessageUtilsSpecializations.h"
 
+#include "mozilla/dom/BindingIPCUtils.h"
 #include "mozilla/dom/indexedDB/Key.h"
 #include "mozilla/dom/indexedDB/KeyPath.h"
 #include "mozilla/dom/IDBCursor.h"
@@ -30,10 +31,12 @@ struct ParamTraits<mozilla::dom::indexedDB::Key> {
 
   static void Write(MessageWriter* aWriter, const paramType& aParam) {
     WriteParam(aWriter, aParam.mBuffer);
+    WriteParam(aWriter, aParam.mAutoIncrementKeyOffsets);
   }
 
   static bool Read(MessageReader* aReader, paramType* aResult) {
-    return ReadParam(aReader, &aResult->mBuffer);
+    return ReadParam(aReader, &aResult->mBuffer) &&
+           ReadParam(aReader, &aResult->mAutoIncrementKeyOffsets);
   }
 };
 
@@ -61,10 +64,8 @@ struct ParamTraits<mozilla::dom::indexedDB::KeyPath> {
 
 template <>
 struct ParamTraits<mozilla::dom::IDBCursor::Direction>
-    : public ContiguousEnumSerializer<
-          mozilla::dom::IDBCursor::Direction,
-          mozilla::dom::IDBCursor::Direction::Next,
-          mozilla::dom::IDBCursor::Direction::EndGuard_> {};
+    : public mozilla::dom::WebIDLEnumSerializer<
+          mozilla::dom::IDBCursor::Direction> {};
 
 template <>
 struct ParamTraits<mozilla::dom::IDBTransaction::Mode>
@@ -72,6 +73,13 @@ struct ParamTraits<mozilla::dom::IDBTransaction::Mode>
           mozilla::dom::IDBTransaction::Mode,
           mozilla::dom::IDBTransaction::Mode::ReadOnly,
           mozilla::dom::IDBTransaction::Mode::Invalid> {};
+
+template <>
+struct ParamTraits<mozilla::dom::IDBTransaction::Durability>
+    : public ContiguousEnumSerializer<
+          mozilla::dom::IDBTransaction::Durability,
+          mozilla::dom::IDBTransaction::Durability::Default,
+          mozilla::dom::IDBTransaction::Durability::Invalid> {};
 
 }  // namespace IPC
 

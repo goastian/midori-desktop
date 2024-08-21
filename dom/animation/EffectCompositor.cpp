@@ -6,9 +6,6 @@
 
 #include "EffectCompositor.h"
 
-#include <bitset>
-#include <initializer_list>
-
 #include "mozilla/dom/Animation.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/KeyframeEffect.h"
@@ -27,15 +24,13 @@
 #include "mozilla/ServoStyleSet.h"
 #include "mozilla/StaticPrefs_layers.h"
 #include "mozilla/StyleAnimationValue.h"
+#include "mozilla/SVGObserverUtils.h"
 #include "nsContentUtils.h"
-#include "nsCSSPseudoElements.h"
 #include "nsCSSPropertyIDSet.h"
 #include "nsCSSProps.h"
 #include "nsDisplayItemTypes.h"
-#include "nsAtom.h"
 #include "nsLayoutUtils.h"
 #include "nsTArray.h"
-#include "PendingAnimationTracker.h"
 
 using mozilla::dom::Animation;
 using mozilla::dom::Element;
@@ -83,13 +78,9 @@ bool EffectCompositor::AllowCompositorAnimationsOnFrame(
   // Disable async animations if we have a rendering observer that
   // depends on our content (svg masking, -moz-element etc) so that
   // it gets updated correctly.
-  nsIContent* content = aFrame->GetContent();
-  while (content) {
-    if (content->HasRenderingObservers()) {
-      aWarning = AnimationPerformanceWarning::Type::HasRenderingObserver;
-      return false;
-    }
-    content = content->GetParent();
+  if (SVGObserverUtils::SelfOrAncestorHasRenderingObservers(aFrame)) {
+    aWarning = AnimationPerformanceWarning::Type::HasRenderingObserver;
+    return false;
   }
 
   return true;
@@ -128,19 +119,6 @@ bool FindAnimationsForCompositor(
     return false;
   }
 
-  // First check for newly-started transform animations that should be
-  // synchronized with geometric animations. We need to do this before any
-  // other early returns (the one above is ok) since we can only check this
-  // state when the animation is newly-started.
-  if (aPropertySet.Intersects(LayerAnimationInfo::GetCSSPropertiesFor(
-          DisplayItemType::TYPE_TRANSFORM))) {
-    PendingAnimationTracker* tracker =
-        aFrame->PresContext()->Document()->GetPendingAnimationTracker();
-    if (tracker) {
-      tracker->MarkAnimationsThatMightNeedSynchronization();
-    }
-  }
-
   AnimationPerformanceWarning::Type warning =
       AnimationPerformanceWarning::Type::None;
   if (!EffectCompositor::AllowCompositorAnimationsOnFrame(aFrame, warning)) {
@@ -169,8 +147,7 @@ bool FindAnimationsForCompositor(
 
   bool foundRunningAnimations = false;
   for (KeyframeEffect* effect : *effects) {
-    AnimationPerformanceWarning::Type effectWarning =
-        AnimationPerformanceWarning::Type::None;
+    auto effectWarning = AnimationPerformanceWarning::Type::None;
     KeyframeEffect::MatchForCompositor matchResult =
         effect->IsMatchForCompositor(aPropertySet, aFrame, *effects,
                                      effectWarning);
@@ -392,7 +369,7 @@ static void ComposeSortedEffects(
     StyleAnimationValueMap* aAnimationValues) {
   const bool isTransition =
       aCascadeLevel == EffectCompositor::CascadeLevel::Transitions;
-  nsCSSPropertyIDSet propertiesToSkip;
+  InvertibleAnimatedPropertyIDSet propertiesToSkip;
   // Transitions should be overridden by running animations of the same
   // property per https://drafts.csswg.org/css-transitions/#application:
   //
@@ -406,9 +383,11 @@ static void ComposeSortedEffects(
   //
   // MOZ_ASSERT_IF(aEffectSet, !aEffectSet->CascadeNeedsUpdate());
   if (aEffectSet) {
-    propertiesToSkip =
-        isTransition ? aEffectSet->PropertiesForAnimationsLevel()
-                     : aEffectSet->PropertiesForAnimationsLevel().Inverse();
+    // Note that we do invert the set on CascadeLevel::Animations because we
+    // don't want to skip those properties when composing the animation rule on
+    // CascadeLevel::Animations.
+    propertiesToSkip.Setup(&aEffectSet->PropertiesForAnimationsLevel(),
+                           !isTransition);
   }
 
   for (KeyframeEffect* effect : aSortedEffects) {
@@ -628,11 +607,16 @@ nsCSSPropertyIDSet EffectCompositor::GetOverriddenProperties(
     nsCSSPropertyIDSet propertiesToTrackAsSet;
     for (KeyframeEffect* effect : aEffectSet) {
       for (const AnimationProperty& property : effect->Properties()) {
-        if (nsCSSProps::PropHasFlags(property.mProperty,
+        // Custom properties don't run on the compositor.
+        if (property.mProperty.IsCustom()) {
+          continue;
+        }
+
+        if (nsCSSProps::PropHasFlags(property.mProperty.mID,
                                      CSSPropFlags::CanAnimateOnCompositor) &&
-            !propertiesToTrackAsSet.HasProperty(property.mProperty)) {
-          propertiesToTrackAsSet.AddProperty(property.mProperty);
-          propertiesToTrack.AppendElement(property.mProperty);
+            !propertiesToTrackAsSet.HasProperty(property.mProperty.mID)) {
+          propertiesToTrackAsSet.AddProperty(property.mProperty.mID);
+          propertiesToTrack.AppendElement(property.mProperty.mID);
         }
       }
       // Skip iterating over the rest of the effects if we've already
@@ -680,8 +664,6 @@ void EffectCompositor::UpdateCascadeResults(EffectSet& aEffectSet,
 
   nsCSSPropertyIDSet& propertiesWithImportantRules =
       aEffectSet.PropertiesWithImportantRules();
-  nsCSSPropertyIDSet& propertiesForAnimationsLevel =
-      aEffectSet.PropertiesForAnimationsLevel();
 
   static constexpr nsCSSPropertyIDSet compositorAnimatables =
       nsCSSPropertyIDSet::CompositorAnimatables();
@@ -690,13 +672,10 @@ void EffectCompositor::UpdateCascadeResults(EffectSet& aEffectSet,
   nsCSSPropertyIDSet prevCompositorPropertiesWithImportantRules =
       propertiesWithImportantRules.Intersect(compositorAnimatables);
 
-  nsCSSPropertyIDSet prevPropertiesForAnimationsLevel =
-      propertiesForAnimationsLevel;
-
   propertiesWithImportantRules.Empty();
-  propertiesForAnimationsLevel.Empty();
 
-  nsCSSPropertyIDSet propertiesForTransitionsLevel;
+  AnimatedPropertyIDSet propertiesForAnimationsLevel;
+  AnimatedPropertyIDSet propertiesForTransitionsLevel;
 
   for (const KeyframeEffect* effect : sortedEffectList) {
     MOZ_ASSERT(effect->GetAnimation(),
@@ -704,8 +683,13 @@ void EffectCompositor::UpdateCascadeResults(EffectSet& aEffectSet,
     CascadeLevel cascadeLevel = effect->GetAnimation()->CascadeLevel();
 
     for (const AnimationProperty& prop : effect->Properties()) {
+      // Note that nsCSSPropertyIDSet::HasProperty() returns false for custom
+      // properties. We don't support custom properties for compositor
+      // animations, so we are still using nsCSSPropertyIDSet to handle these
+      // properties.
+      // TODO: Bug 1869475. Support custom properties for compositor animations.
       if (overriddenProperties.HasProperty(prop.mProperty)) {
-        propertiesWithImportantRules.AddProperty(prop.mProperty);
+        propertiesWithImportantRules.AddProperty(prop.mProperty.mID);
       }
 
       switch (cascadeLevel) {
@@ -720,6 +704,13 @@ void EffectCompositor::UpdateCascadeResults(EffectSet& aEffectSet,
   }
 
   aEffectSet.MarkCascadeUpdated();
+
+  // Update EffectSet::mPropertiesForAnimationsLevel to the new set, after
+  // exiting this scope.
+  auto scopeExit = MakeScopeExit([&] {
+    aEffectSet.PropertiesForAnimationsLevel() =
+        std::move(propertiesForAnimationsLevel);
+  });
 
   nsPresContext* presContext = nsContentUtils::GetContextForContent(aElement);
   if (!presContext) {
@@ -740,10 +731,13 @@ void EffectCompositor::UpdateCascadeResults(EffectSet& aEffectSet,
   // If we have transition properties and if the same propery for animations
   // level is newly added or removed, we need to update the transition level
   // rule since the it will be added/removed from the rule tree.
-  nsCSSPropertyIDSet changedPropertiesForAnimationLevel =
+  const AnimatedPropertyIDSet& prevPropertiesForAnimationsLevel =
+      aEffectSet.PropertiesForAnimationsLevel();
+  const AnimatedPropertyIDSet& changedPropertiesForAnimationLevel =
       prevPropertiesForAnimationsLevel.Xor(propertiesForAnimationsLevel);
-  nsCSSPropertyIDSet commonProperties = propertiesForTransitionsLevel.Intersect(
-      changedPropertiesForAnimationLevel);
+  const AnimatedPropertyIDSet& commonProperties =
+      propertiesForTransitionsLevel.Intersect(
+          changedPropertiesForAnimationLevel);
   if (!commonProperties.IsEmpty()) {
     EffectCompositor::RestyleType restyleType =
         changedPropertiesForAnimationLevel.Intersects(compositorAnimatables)
@@ -920,10 +914,6 @@ bool EffectCompositor::PreTraverseInSubtree(ServoTraversalFlags aFlags,
 
 void EffectCompositor::NoteElementForReducing(
     const NonOwningAnimationTarget& aTarget) {
-  if (!StaticPrefs::dom_animations_api_autoremove_enabled()) {
-    return;
-  }
-
   Unused << mElementsToReduce.put(
       OwningAnimationTarget{aTarget.mElement, aTarget.mPseudoType});
 }
@@ -936,7 +926,7 @@ static void ReduceEffectSet(EffectSet& aEffectSet) {
   }
   sortedEffectList.Sort(EffectCompositeOrderComparator());
 
-  nsCSSPropertyIDSet setProperties;
+  AnimatedPropertyIDSet setProperties;
 
   // Iterate in reverse
   for (auto iter = sortedEffectList.rbegin(); iter != sortedEffectList.rend();
@@ -949,7 +939,7 @@ static void ReduceEffectSet(EffectSet& aEffectSet) {
         effect.GetPropertySet().IsSubsetOf(setProperties)) {
       animation.Remove();
     } else if (animation.IsReplaceable()) {
-      setProperties |= effect.GetPropertySet();
+      setProperties.AddProperties(effect.GetPropertySet());
     }
   }
 }

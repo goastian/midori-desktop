@@ -42,7 +42,8 @@ class nsHTMLDocument : public mozilla::dom::Document {
   using Document::SetDocumentURI;
 
   nsHTMLDocument();
-  virtual nsresult Init() override;
+  virtual nsresult Init(nsIPrincipal* aPrincipal,
+                        nsIPrincipal* aPartitionedPrincipal) override;
 
   // Document
   virtual void Reset(nsIChannel* aChannel, nsILoadGroup* aLoadGroup) override;
@@ -168,9 +169,10 @@ class nsHTMLDocument : public mozilla::dom::Document {
   /** # of forms in the document, synchronously set */
   int32_t mNumForms;
 
-  static void TryReloadCharset(nsIContentViewer* aCv, int32_t& aCharsetSource,
+  static void TryReloadCharset(nsIDocumentViewer* aViewer,
+                               int32_t& aCharsetSource,
                                NotNull<const Encoding*>& aEncoding);
-  void TryUserForcedCharset(nsIContentViewer* aCv, nsIDocShell* aDocShell,
+  void TryUserForcedCharset(nsIDocumentViewer* aViewer, nsIDocShell* aDocShell,
                             int32_t& aCharsetSource,
                             NotNull<const Encoding*>& aEncoding,
                             bool& aForceAutoDetection);

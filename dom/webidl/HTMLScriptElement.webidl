@@ -16,7 +16,7 @@ interface HTMLScriptElement : HTMLElement {
   attribute DOMString src;
   [CEReactions, SetterThrows]
   attribute DOMString type;
-  [CEReactions, SetterThrows, Pref="dom.moduleScripts.enabled"]
+  [CEReactions, SetterThrows]
   attribute boolean noModule;
   [CEReactions, SetterThrows]
   attribute DOMString charset;
@@ -30,6 +30,10 @@ interface HTMLScriptElement : HTMLElement {
   attribute DOMString referrerPolicy;
   [CEReactions, Throws]
   attribute DOMString text;
+  [Pref="dom.element.blocking.enabled", SameObject, PutForwards=value]
+  readonly attribute DOMTokenList blocking;
+  [Pref="network.fetchpriority.enabled", CEReactions]
+  attribute DOMString fetchPriority;
 
   static boolean supports(DOMString type);
 };

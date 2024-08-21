@@ -2,6 +2,7 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 const allowCreate = { create: true };
+const denyCreate = { create: false };
 
 exported_symbols.test0 = async function () {
   let root = await navigator.storage.getDirectory();
@@ -37,7 +38,7 @@ exported_symbols.test0 = async function () {
 
 exported_symbols.quotaTest = async function () {
   const shrinkedStorageSizeKB = 5 * 1024;
-  const defaultDatabaseSize = 294912;
+  const defaultDatabaseSize = 491547;
 
   // Shrink storage size to 5MB.
   await Utils.shrinkStorageSize(shrinkedStorageSizeKB);
@@ -83,6 +84,171 @@ exported_symbols.quotaTest = async function () {
   // writable2 is already closed because of the failed write above
 
   await Utils.restoreStorageSize();
+};
+
+exported_symbols.bug1823445 = async function () {
+  const root = await navigator.storage.getDirectory();
+  const testFileName = "test1823445.txt";
+  let handle = await root.getFileHandle(testFileName, allowCreate);
+  let writable = await handle.createWritable();
+  await writable.write("abcdefghijklmnop");
+  await writable.close();
+
+  handle = await root.getFileHandle(testFileName);
+  writable = await handle.createWritable({ keepExistingData: false });
+  await writable.write("12345");
+  await writable.close();
+
+  handle = await root.getFileHandle(testFileName);
+  const file = await handle.getFile();
+  const text = await file.text();
+  Assert.equal(text, "12345");
+};
+
+exported_symbols.bug1824993 = async function () {
+  const root = await navigator.storage.getDirectory();
+  const testFileName = "test1824993.txt";
+  const handle = await root.getFileHandle(testFileName, allowCreate);
+  {
+    const writable = await handle.createWritable();
+    await writable.write("test");
+
+    {
+      const file = await handle.getFile();
+      const contents = await file.text();
+      Assert.equal(contents, "");
+    }
+
+    await writable.abort();
+  }
+
+  const file = await handle.getFile();
+  const contents = await file.text();
+  Assert.equal(contents, "");
+};
+
+exported_symbols.bug1825018 = async function () {
+  const root = await navigator.storage.getDirectory();
+  const testFileName = "test1825018.txt";
+  const handle = await root.getFileHandle(testFileName, allowCreate);
+  const writable = await handle.createWritable();
+  try {
+    await writable.write({ type: "truncate" });
+  } catch (e) {
+    // Called write without size throws an error as expected
+  }
+
+  try {
+    await writable.abort();
+    await root.removeEntry(testFileName);
+  } catch (e) {
+    Assert.ok(false, e.message);
+  }
+};
+
+exported_symbols.usageTest = async function () {
+  const bufferSize = 1024;
+  const keepData = { keepExistingData: true };
+  const fromEmpty = { keepExistingData: false };
+
+  let root = await navigator.storage.getDirectory();
+  Assert.ok(root, "Can we access the root directory?");
+
+  const baseUsage = await Utils.getCachedOriginUsage();
+  Assert.ok(true, "Usage " + baseUsage);
+  // Create a file.
+  {
+    const fileHandle = await root.getFileHandle("usagetest.txt", allowCreate);
+    Assert.ok(!!fileHandle, "Can we get file handle?");
+
+    const writable = await fileHandle.createWritable(fromEmpty);
+    Assert.ok(!!writable, "Can we create writable file stream?");
+
+    const buffer = new ArrayBuffer(bufferSize);
+    Assert.ok(!!buffer, "Can we create array buffer?");
+
+    const result = await writable.write(buffer);
+    Assert.equal(result, undefined, "Can we write entire buffer?");
+
+    await writable.close();
+  }
+
+  {
+    const fileUsage = await Utils.getCachedOriginUsage();
+    Assert.ok(true, "Usage " + fileUsage);
+    Assert.ok(fileUsage >= baseUsage + bufferSize);
+
+    const fileHandle = await root.getFileHandle("usagetest.txt", denyCreate);
+    Assert.ok(!!fileHandle, "Can we get file handle?");
+
+    {
+      const usageNow = await Utils.getCachedOriginUsage();
+      Assert.equal(usageNow, fileUsage);
+    }
+
+    const writableA = await fileHandle.createWritable(keepData);
+    Assert.ok(!!writableA, "Can we create writable file stream?");
+
+    {
+      const usageNow = await Utils.getCachedOriginUsage();
+      Assert.ok(true, "Usage " + usageNow.usage);
+      Assert.equal(usageNow, fileUsage + bufferSize);
+    }
+
+    const writableB = await fileHandle.createWritable(keepData);
+    Assert.ok(!!writableB, "Can we create writable file stream?");
+
+    {
+      const usageNow = await Utils.getCachedOriginUsage();
+      Assert.equal(usageNow, fileUsage + 2 * bufferSize);
+    }
+
+    const writableC = await fileHandle.createWritable(keepData);
+    Assert.ok(!!writableC, "Can we create writable file stream?");
+
+    {
+      const usageNow = await Utils.getCachedOriginUsage();
+      Assert.equal(usageNow, fileUsage + 3 * bufferSize);
+    }
+
+    const writableD = await fileHandle.createWritable(fromEmpty);
+    Assert.ok(!!writableD, "Can we create writable file stream?");
+
+    {
+      const usageNow = await Utils.getCachedOriginUsage();
+      // We did not keep existing data for this writable
+      Assert.equal(usageNow, fileUsage + 3 * bufferSize);
+    }
+
+    await writableA.abort();
+
+    {
+      const usageNow = await Utils.getCachedOriginUsage();
+      Assert.equal(usageNow, fileUsage + 2 * bufferSize);
+    }
+
+    await writableB.close();
+
+    {
+      const usageNow = await Utils.getCachedOriginUsage();
+      Assert.equal(usageNow, fileUsage + bufferSize);
+    }
+
+    await writableC.abort();
+
+    {
+      const usageNow = await Utils.getCachedOriginUsage();
+      Assert.equal(usageNow, fileUsage);
+    }
+
+    await writableD.close();
+
+    {
+      const usageNow = await Utils.getCachedOriginUsage();
+      // Buffer was overwritten with nothing.
+      Assert.equal(usageNow, fileUsage - bufferSize);
+    }
+  }
 };
 
 for (const [key, value] of Object.entries(exported_symbols)) {

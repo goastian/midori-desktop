@@ -4,6 +4,7 @@
 
 #include "MFCDMProxy.h"
 
+#include "MFCDMParent.h"
 #include "MFMediaEngineUtils.h"
 
 namespace mozilla {
@@ -13,6 +14,28 @@ using Microsoft::WRL::ComPtr;
 #define LOG(msg, ...)                         \
   MOZ_LOG(gMFMediaEngineLog, LogLevel::Debug, \
           ("MFCDMProxy=%p, " msg, this, ##__VA_ARGS__))
+
+MFCDMProxy::MFCDMProxy(IMFContentDecryptionModule* aCDM, uint64_t aCDMParentId)
+    : mCDM(aCDM), mCDMParentId(aCDMParentId) {
+  LOG("MFCDMProxy created, created by %" PRId64 " MFCDMParent", mCDMParentId);
+}
+
+MFCDMProxy::~MFCDMProxy() { LOG("MFCDMProxy destroyed"); }
+
+void MFCDMProxy::Shutdown() {
+  if (mTrustedInput) {
+    mTrustedInput = nullptr;
+  }
+  for (auto& inputAuthorities : mInputTrustAuthorities) {
+    SHUTDOWN_IF_POSSIBLE(inputAuthorities.second);
+  }
+  mInputTrustAuthorities.clear();
+  if (auto* parent = MFCDMParent::GetCDMById(mCDMParentId)) {
+    parent->ShutdownCDM();
+  }
+  mCDM = nullptr;
+  LOG("MFCDMProxy Shutdowned");
+}
 
 HRESULT MFCDMProxy::GetPMPServer(REFIID aRiid, LPVOID* aPMPServerOut) {
   ComPtr<IMFGetService> cdmServices;

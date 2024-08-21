@@ -35,6 +35,7 @@
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/BlobBinding.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/IDBObjectStoreBinding.h"
 #include "mozilla/dom/MemoryBlobImpl.h"
@@ -275,12 +276,22 @@ bool CopyingStructuredCloneWriteCallback(JSContext* aCx,
                                                               aObj);
 }
 
+void StructuredCloneErrorCallback(JSContext* aCx, uint32_t aErrorId,
+                                  void* aClosure, const char* aErrorMessage) {
+  // This callback is only used to prevent the default cloning TypeErrors
+  // from being thrown, as we will throw DataCloneErrors instead per spec.
+}
+
 nsresult GetAddInfoCallback(JSContext* aCx, void* aClosure) {
   static const JSStructuredCloneCallbacks kStructuredCloneCallbacks = {
-      nullptr /* read */,          StructuredCloneWriteCallback /* write */,
-      nullptr /* reportError */,   nullptr /* readTransfer */,
-      nullptr /* writeTransfer */, nullptr /* freeTransfer */,
-      nullptr /* canTransfer */,   nullptr /* sabCloned */
+      nullptr /* read */,
+      StructuredCloneWriteCallback /* write */,
+      StructuredCloneErrorCallback /* reportError */,
+      nullptr /* readTransfer */,
+      nullptr /* writeTransfer */,
+      nullptr /* freeTransfer */,
+      nullptr /* canTransfer */,
+      nullptr /* sabCloned */
   };
 
   MOZ_ASSERT(aCx);
@@ -366,8 +377,8 @@ JSObject* CopyingStructuredCloneReadCallback(
     }
   }
 
-  return StructuredCloneHolder::ReadFullySerializableObjects(aCx, aReader,
-                                                             aTag);
+  return StructuredCloneHolder::ReadFullySerializableObjects(aCx, aReader, aTag,
+                                                             true);
 }
 
 }  // namespace
@@ -409,13 +420,20 @@ RefPtr<IDBObjectStore> IDBObjectStore::Create(
 void IDBObjectStore::AppendIndexUpdateInfo(
     const int64_t aIndexID, const KeyPath& aKeyPath, const bool aMultiEntry,
     const nsCString& aLocale, JSContext* const aCx, JS::Handle<JS::Value> aVal,
-    nsTArray<IndexUpdateInfo>* const aUpdateInfoArray, ErrorResult* const aRv) {
+    nsTArray<IndexUpdateInfo>* const aUpdateInfoArray,
+    const VoidOrObjectStoreKeyPathString& aAutoIncrementedObjectStoreKeyPath,
+    ErrorResult* const aRv) {
   // This precondition holds when `aVal` is the result of a structured clone.
   js::AutoAssertNoContentJS noContentJS(aCx);
 
+  static_assert(std::is_same_v<IDBObjectStore::VoidOrObjectStoreKeyPathString,
+                               KeyPath::VoidOrObjectStoreKeyPathString>,
+                "Inconsistent types");
+
   if (!aMultiEntry) {
     Key key;
-    *aRv = aKeyPath.ExtractKey(aCx, aVal, key);
+    *aRv =
+        aKeyPath.ExtractKey(aCx, aVal, key, aAutoIncrementedObjectStoreKeyPath);
 
     // If an index's keyPath doesn't match an object, we ignore that object.
     if (aRv->ErrorCodeIs(NS_ERROR_DOM_INDEXEDDB_DATA_ERR) || key.IsUnset()) {
@@ -547,7 +565,7 @@ bool IDBObjectStore::DeserializeValue(
   static const JSStructuredCloneCallbacks callbacks = {
       StructuredCloneReadCallback<StructuredCloneReadInfoChild>,
       nullptr,
-      nullptr,
+      StructuredCloneErrorCallback,
       nullptr,
       nullptr,
       nullptr,
@@ -624,6 +642,21 @@ void IDBObjectStore::GetAddInfo(JSContext* aCx, ValueWrapper& aValueWrapper,
     const nsTArray<IndexMetadata>& indexes = mSpec->indexes();
     const uint32_t idxCount = indexes.Length();
 
+    const auto& autoIncrementedObjectStoreKeyPath =
+        [this]() -> const nsAString& {
+      if (AutoIncrement() && GetKeyPath().IsValid()) {
+        // By https://w3c.github.io/IndexedDB/#database-interface ,
+        // createObjectStore algorithm, step 8, neither arrays nor empty paths
+        // are allowed for autoincremented object stores.
+        // See also KeyPath::IsAllowedForObjectStore.
+        MOZ_ASSERT(GetKeyPath().IsString());
+        MOZ_ASSERT(!GetKeyPath().IsEmpty());
+        return GetKeyPath().mStrings[0];
+      }
+
+      return VoidString();
+    }();
+
     aUpdateInfoArray.SetCapacity(idxCount);  // Pretty good estimate
 
     for (uint32_t idxIndex = 0; idxIndex < idxCount; idxIndex++) {
@@ -631,7 +664,8 @@ void IDBObjectStore::GetAddInfo(JSContext* aCx, ValueWrapper& aValueWrapper,
 
       AppendIndexUpdateInfo(metadata.id(), metadata.keyPath(),
                             metadata.multiEntry(), metadata.locale(), aCx,
-                            aValueWrapper.Value(), &aUpdateInfoArray, &aRv);
+                            aValueWrapper.Value(), &aUpdateInfoArray,
+                            autoIncrementedObjectStoreKeyPath, &aRv);
       if (NS_WARN_IF(aRv.Failed())) {
         return;
       }
@@ -1343,6 +1377,18 @@ RefPtr<IDBIndex> IDBObjectStore::CreateIndex(
     locale = IndexedDatabaseManager::GetLocale();
   }
 
+  if (!locale.IsEmpty()) {
+    // Set use counter and log deprecation warning for locale in parent doc.
+    nsIGlobalObject* global = GetParentObject();
+    AutoJSAPI jsapi;
+    // This isn't critical so don't error out if init fails.
+    if (jsapi.Init(global)) {
+      DeprecationWarning(
+          jsapi.cx(), global->GetGlobalJSObject(),
+          DeprecatedOperations::eIDBObjectStoreCreateIndexLocale);
+    }
+  }
+
   IndexMetadata* const metadata = mSpec->indexes().EmplaceBack(
       transaction->NextIndexId(), nsString(aName), keyPath, locale,
       aOptionalParameters.mUnique, aOptionalParameters.mMultiEntry, autoLocale);
@@ -1715,7 +1761,7 @@ bool IDBObjectStore::ValueWrapper::Clone(JSContext* aCx) {
   static const JSStructuredCloneCallbacks callbacks = {
       CopyingStructuredCloneReadCallback /* read */,
       CopyingStructuredCloneWriteCallback /* write */,
-      nullptr /* reportError */,
+      StructuredCloneErrorCallback /* reportError */,
       nullptr /* readTransfer */,
       nullptr /* writeTransfer */,
       nullptr /* freeTransfer */,

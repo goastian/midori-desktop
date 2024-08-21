@@ -267,7 +267,7 @@ class MOZ_STACK_CLASS FormDataParser {
     }
 
     // Determine boundary from mimetype.
-    UniquePtr<CMimeType> parsed = CMimeType::Parse(mMixedCaseMimeType);
+    RefPtr<CMimeType> parsed = CMimeType::Parse(mMixedCaseMimeType);
     if (!parsed) {
       return false;
     }
@@ -353,14 +353,16 @@ class MOZ_STACK_CLASS FormDataParser {
 // static
 void BodyUtil::ConsumeArrayBuffer(JSContext* aCx,
                                   JS::MutableHandle<JSObject*> aValue,
-                                  uint32_t aInputLength, uint8_t* aInput,
+                                  uint32_t aInputLength,
+                                  UniquePtr<uint8_t[], JS::FreePolicy> aInput,
                                   ErrorResult& aRv) {
+  aRv.MightThrowJSException();
+
   JS::Rooted<JSObject*> arrayBuffer(aCx);
-  arrayBuffer = JS::NewArrayBufferWithContents(aCx, aInputLength,
-                                               reinterpret_cast<void*>(aInput));
+  arrayBuffer =
+      JS::NewArrayBufferWithContents(aCx, aInputLength, std::move(aInput));
   if (!arrayBuffer) {
-    JS_ClearPendingException(aCx);
-    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+    aRv.StealExceptionFromJSContext(aCx);
     return;
   }
   aValue.set(arrayBuffer);
@@ -380,6 +382,28 @@ already_AddRefed<Blob> BodyUtil::ConsumeBlob(nsIGlobalObject* aParent,
     return nullptr;
   }
   return blob.forget();
+}
+
+// static
+void BodyUtil::ConsumeBytes(JSContext* aCx, JS::MutableHandle<JSObject*> aValue,
+                            uint32_t aInputLength,
+                            UniquePtr<uint8_t[], JS::FreePolicy> aInput,
+                            ErrorResult& aRv) {
+  aRv.MightThrowJSException();
+
+  JS::Rooted<JSObject*> arrayBuffer(aCx);
+  ConsumeArrayBuffer(aCx, &arrayBuffer, aInputLength, std::move(aInput), aRv);
+  if (aRv.Failed()) {
+    return;
+  }
+
+  JS::Rooted<JSObject*> bytes(
+      aCx, JS_NewUint8ArrayWithBuffer(aCx, arrayBuffer, 0, aInputLength));
+  if (!bytes) {
+    aRv.StealExceptionFromJSContext(aCx);
+    return;
+  }
+  aValue.set(bytes);
 }
 
 // static
@@ -421,9 +445,10 @@ already_AddRefed<FormData> BodyUtil::ConsumeFormData(
   if (isValidUrlEncodedMimeType) {
     RefPtr<FormData> fd = new FormData(aParent);
     DebugOnly<bool> status = URLParams::Parse(
-        aStr, [&fd](const nsAString& aName, const nsAString& aValue) {
-          ErrorResult rv;
-          fd->Append(aName, aValue, rv);
+        aStr, true, [&fd](const nsACString& aName, const nsACString& aValue) {
+          IgnoredErrorResult rv;
+          fd->Append(NS_ConvertUTF8toUTF16(aName),
+                     NS_ConvertUTF8toUTF16(aValue), rv);
           MOZ_ASSERT(!rv.Failed());
           return true;
         });

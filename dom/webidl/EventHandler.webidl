@@ -29,9 +29,8 @@ interface mixin GlobalEventHandlers {
 // below.
 //         attribute OnErrorEventHandler onerror;
            attribute EventHandler onfocus;
-           //(Not implemented)attribute EventHandler oncancel;
+           attribute EventHandler oncancel;
            attribute EventHandler onauxclick;
-           [Pref="dom.input_events.beforeinput.enabled"]
            attribute EventHandler onbeforeinput;
            [Pref="dom.element.popover.enabled"]
            attribute EventHandler onbeforetoggle;
@@ -40,7 +39,9 @@ interface mixin GlobalEventHandlers {
            attribute EventHandler onchange;
            attribute EventHandler onclick;
            attribute EventHandler onclose;
+           attribute EventHandler oncontextlost;
            attribute EventHandler oncontextmenu;
+           attribute EventHandler oncontextrestored;
            attribute EventHandler oncopy;
            attribute EventHandler oncuechange;
            attribute EventHandler oncut;
@@ -84,7 +85,6 @@ interface mixin GlobalEventHandlers {
            attribute EventHandler onreset;
            attribute EventHandler onresize;
            attribute EventHandler onscroll;
-           [Pref="apz.scrollend-event.content.enabled"]
            attribute EventHandler onscrollend;
            attribute EventHandler onsecuritypolicyviolation;
            attribute EventHandler onseeked;

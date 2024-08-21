@@ -91,31 +91,24 @@ JSObject* WorkerNavigator::WrapObject(JSContext* aCx,
   return WorkerNavigator_Binding::Wrap(aCx, this, aGivenProto);
 }
 
+bool WorkerNavigator::GlobalPrivacyControl() const {
+  bool gpcStatus = StaticPrefs::privacy_globalprivacycontrol_enabled();
+  if (!gpcStatus) {
+    JSObject* jso = GetWrapper();
+    if (const nsCOMPtr<nsIGlobalObject> global = xpc::NativeGlobal(jso)) {
+      if (const nsCOMPtr<nsIPrincipal> principal = global->PrincipalOrNull()) {
+        gpcStatus = principal->GetPrivateBrowsingId() > 0 &&
+                    StaticPrefs::privacy_globalprivacycontrol_pbmode_enabled();
+      }
+    }
+  }
+  return StaticPrefs::privacy_globalprivacycontrol_functionality_enabled() &&
+         gpcStatus;
+}
+
 void WorkerNavigator::SetLanguages(const nsTArray<nsString>& aLanguages) {
   WorkerNavigator_Binding::ClearCachedLanguagesValue(this);
   mProperties.mLanguages = aLanguages.Clone();
-}
-
-void WorkerNavigator::GetAppName(nsString& aAppName,
-                                 CallerType aCallerType) const {
-  WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
-  MOZ_ASSERT(workerPrivate);
-
-  if (aCallerType != CallerType::System) {
-    if (workerPrivate->GlobalScope()->ShouldResistFingerprinting(
-            RFPTarget::NavigatorAppName)) {
-      // See nsRFPService.h for spoofed value.
-      aAppName.AssignLiteral(SPOOFED_APPNAME);
-      return;
-    }
-
-    if (!mProperties.mAppNameOverridden.IsEmpty()) {
-      aAppName = mProperties.mAppNameOverridden;
-      return;
-    }
-  }
-
-  aAppName = mProperties.mAppName;
 }
 
 void WorkerNavigator::GetAppVersion(nsString& aAppVersion,
@@ -125,7 +118,7 @@ void WorkerNavigator::GetAppVersion(nsString& aAppVersion,
   MOZ_ASSERT(workerPrivate);
 
   if (aCallerType != CallerType::System) {
-    if (workerPrivate->GlobalScope()->ShouldResistFingerprinting(
+    if (workerPrivate->ShouldResistFingerprinting(
             RFPTarget::NavigatorAppVersion)) {
       // See nsRFPService.h for spoofed value.
       aAppVersion.AssignLiteral(SPOOFED_APPVERSION);
@@ -147,7 +140,7 @@ void WorkerNavigator::GetPlatform(nsString& aPlatform, CallerType aCallerType,
   MOZ_ASSERT(workerPrivate);
 
   if (aCallerType != CallerType::System) {
-    if (workerPrivate->GlobalScope()->ShouldResistFingerprinting(
+    if (workerPrivate->ShouldResistFingerprinting(
             RFPTarget::NavigatorPlatform)) {
       // See nsRFPService.h for spoofed value.
       aPlatform.AssignLiteral(SPOOFED_PLATFORM);
@@ -209,8 +202,7 @@ void WorkerNavigator::GetUserAgent(nsString& aUserAgent, CallerType aCallerType,
 
   RefPtr<GetUserAgentRunnable> runnable = new GetUserAgentRunnable(
       workerPrivate, aUserAgent,
-      workerPrivate->GlobalScope()->ShouldResistFingerprinting(
-          RFPTarget::NavigatorUserAgent));
+      workerPrivate->ShouldResistFingerprinting(RFPTarget::NavigatorUserAgent));
 
   runnable->Dispatch(Canceling, aRv);
 }
@@ -220,7 +212,7 @@ uint64_t WorkerNavigator::HardwareConcurrency() const {
   MOZ_ASSERT(rts);
 
   WorkerPrivate* aWorkerPrivate = GetCurrentThreadWorkerPrivate();
-  bool rfp = aWorkerPrivate->GlobalScope()->ShouldResistFingerprinting(
+  bool rfp = aWorkerPrivate->ShouldResistFingerprinting(
       RFPTarget::NavigatorHWConcurrency);
 
   return rts->ClampedHardwareConcurrency(rfp);
@@ -235,6 +227,8 @@ StorageManager* WorkerNavigator::Storage() {
     MOZ_ASSERT(global);
 
     mStorageManager = new StorageManager(global);
+
+    workerPrivate->NotifyStorageKeyUsed();
   }
 
   return mStorageManager;
@@ -285,7 +279,7 @@ dom::LockManager* WorkerNavigator::Locks() {
     nsIGlobalObject* global = workerPrivate->GlobalScope();
     MOZ_ASSERT(global);
 
-    mLocks = new dom::LockManager(global);
+    mLocks = dom::LockManager::Create(*global);
   }
   return mLocks;
 }

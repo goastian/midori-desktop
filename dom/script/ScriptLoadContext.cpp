@@ -12,7 +12,6 @@
 #include "mozilla/Unused.h"
 #include "mozilla/Utf8.h"  // mozilla::Utf8Unit
 
-#include "js/OffThreadScriptCompilation.h"
 #include "js/SourceText.h"
 #include "js/loader/LoadContextBase.h"
 #include "js/loader/ModuleLoadRequest.h"
@@ -37,20 +36,22 @@ NS_IMPL_CYCLE_COLLECTION_CLASS(ScriptLoadContext)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(ScriptLoadContext,
                                                 JS::loader::LoadContextBase)
-  MOZ_ASSERT(!tmp->mOffThreadToken);
-  MOZ_ASSERT(!tmp->mRunnable);
+  MOZ_ASSERT(!tmp->mCompileOrDecodeTask);
   tmp->MaybeUnblockOnload();
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mScriptElement);
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(ScriptLoadContext,
                                                   JS::loader::LoadContextBase)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mLoadBlockedDocument)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mScriptElement);
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_ADDREF_INHERITED(ScriptLoadContext, JS::loader::LoadContextBase)
 NS_IMPL_RELEASE_INHERITED(ScriptLoadContext, JS::loader::LoadContextBase)
 
-ScriptLoadContext::ScriptLoadContext()
+ScriptLoadContext::ScriptLoadContext(
+    nsIScriptElement* aScriptElement /* = nullptr */)
     : JS::loader::LoadContextBase(JS::loader::ContextKind::Window),
       mScriptMode(ScriptMode::eBlocking),
       mScriptFromHead(false),
@@ -62,18 +63,17 @@ ScriptLoadContext::ScriptLoadContext()
       mInCompilingList(false),
       mIsTracking(false),
       mWasCompiledOMT(false),
-      mOffThreadToken(nullptr),
-      mRunnable(nullptr),
       mLineNo(1),
       mColumnNo(0),
       mIsPreload(false),
+      mScriptElement(aScriptElement),
       mUnreportedPreloadError(NS_OK) {}
 
 ScriptLoadContext::~ScriptLoadContext() {
   MOZ_ASSERT(NS_IsMainThread());
 
-  // Off-thread parsing must have completed by this point.
-  MOZ_DIAGNOSTIC_ASSERT(!mOffThreadToken && !mRunnable);
+  // Off-thread parsing must have completed or cancelled by this point.
+  MOZ_DIAGNOSTIC_ASSERT(!mCompileOrDecodeTask);
 
   mRequest = nullptr;
 
@@ -96,20 +96,13 @@ void ScriptLoadContext::MaybeUnblockOnload() {
 void ScriptLoadContext::MaybeCancelOffThreadScript() {
   MOZ_ASSERT(NS_IsMainThread());
 
-  if (!mOffThreadToken) {
+  if (!mCompileOrDecodeTask) {
     return;
   }
 
-  // Cancel parse if it hasn't been started yet or wait for it to finish and
-  // clean up finished parse data.
-  JSContext* cx = danger::GetJSContext();
-  JS::CancelOffThreadToken(cx, mOffThreadToken);
-  mOffThreadToken = nullptr;
-
-  // Clear the pointer to the runnable. It may still run later if we didn't
-  // cancel in time. In this case the runnable is held live by the reference
-  // passed to Dispatch, which is dropped after it runs.
-  mRunnable = nullptr;
+  // Cancel the task if it hasn't been started yet or wait for it to finish.
+  mCompileOrDecodeTask->Cancel();
+  mCompileOrDecodeTask = nullptr;
 
   MaybeUnblockOnload();
 }
@@ -137,14 +130,6 @@ void ScriptLoadContext::PrioritizeAsPreload(nsIChannel* aChannel) {
   }
 }
 
-void ScriptLoadContext::PrioritizeAsPreload() {
-  if (!IsLinkPreloadScript()) {
-    // Do the prioritization only if this request has not already been created
-    // as a preload.
-    PrioritizeAsPreload(Channel());
-  }
-}
-
 bool ScriptLoadContext::IsPreload() const {
   if (mRequest->IsModuleRequest() && !mRequest->IsTopLevel()) {
     JS::loader::ModuleLoadRequest* root =
@@ -152,28 +137,71 @@ bool ScriptLoadContext::IsPreload() const {
     return root->GetScriptLoadContext()->IsPreload();
   }
 
-  MOZ_ASSERT_IF(mIsPreload, !GetScriptElement());
+  MOZ_ASSERT_IF(mIsPreload, !HasScriptElement());
   return mIsPreload;
 }
 
 bool ScriptLoadContext::CompileStarted() const {
-  return mRequest->IsCompiling() ||
-         (mRequest->IsReadyToRun() && mWasCompiledOMT);
+  return mRequest->IsCompiling() || (mRequest->IsFinished() && mWasCompiledOMT);
 }
 
-nsIScriptElement* ScriptLoadContext::GetScriptElement() const {
-  nsCOMPtr<nsIScriptElement> scriptElement =
-      do_QueryInterface(mRequest->mFetchOptions->mElement);
-  return scriptElement;
+bool ScriptLoadContext::HasScriptElement() const { return !!mScriptElement; }
+
+void ScriptLoadContext::GetInlineScriptText(nsAString& aText) const {
+  MOZ_ASSERT(mIsInline);
+  mScriptElement->GetScriptText(aText);
+}
+
+void ScriptLoadContext::GetHintCharset(nsAString& aCharset) const {
+  MOZ_ASSERT(mScriptElement);
+  mScriptElement->GetScriptCharset(aCharset);
+}
+
+uint32_t ScriptLoadContext::GetScriptLineNumber() const {
+  if (mScriptElement) {
+    return mScriptElement->GetScriptLineNumber();
+  }
+  return 0;
+}
+
+JS::ColumnNumberOneOrigin ScriptLoadContext::GetScriptColumnNumber() const {
+  if (mScriptElement) {
+    return mScriptElement->GetScriptColumnNumber();
+  }
+  return JS::ColumnNumberOneOrigin();
+}
+
+void ScriptLoadContext::BeginEvaluatingTopLevel() const {
+  MOZ_ASSERT(mScriptElement);
+  mScriptElement->BeginEvaluating();
+}
+
+void ScriptLoadContext::EndEvaluatingTopLevel() const {
+  MOZ_ASSERT(mScriptElement);
+  mScriptElement->EndEvaluating();
+}
+
+void ScriptLoadContext::UnblockParser() const {
+  MOZ_ASSERT(mScriptElement);
+  mScriptElement->UnblockParser();
+}
+
+void ScriptLoadContext::ContinueParserAsync() const {
+  MOZ_ASSERT(mScriptElement);
+  mScriptElement->ContinueParserAsync();
+}
+
+Document* ScriptLoadContext::GetScriptOwnerDocument() const {
+  nsCOMPtr<nsIContent> scriptContent(do_QueryInterface(mScriptElement));
+  MOZ_ASSERT(scriptContent);
+  return scriptContent->OwnerDoc();
 }
 
 void ScriptLoadContext::SetIsLoadRequest(nsIScriptElement* aElement) {
   MOZ_ASSERT(aElement);
-  MOZ_ASSERT(!GetScriptElement());
+  MOZ_ASSERT(!HasScriptElement());
   MOZ_ASSERT(IsPreload());
-  // We are not tracking our own element, and are relying on the one in
-  // FetchOptions.
-  mRequest->mFetchOptions->mElement = do_QueryInterface(aElement);
+  mScriptElement = aElement;
   mIsPreload = false;
 }
 
@@ -213,6 +241,14 @@ void ScriptLoadContext::GetProfilerLabel(nsACString& aOutString) {
     aOutString.Append(url);
     aOutString.Append("\">");
   }
+}
+
+already_AddRefed<JS::Stencil> ScriptLoadContext::StealOffThreadResult(
+    JSContext* aCx, JS::InstantiationStorage* aInstantiationStorage) {
+  RefPtr<CompileOrDecodeTask> compileOrDecodeTask =
+      mCompileOrDecodeTask.forget();
+
+  return compileOrDecodeTask->StealResult(aCx, aInstantiationStorage);
 }
 
 }  // namespace mozilla::dom

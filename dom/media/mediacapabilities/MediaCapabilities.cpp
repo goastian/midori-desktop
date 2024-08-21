@@ -45,21 +45,6 @@ static nsCString VideoConfigurationToStr(const VideoConfiguration* aConfig) {
     return nsCString();
   }
 
-  nsCString hdrMetaType(
-      aConfig->mHdrMetadataType.WasPassed()
-          ? HdrMetadataTypeValues::GetString(aConfig->mHdrMetadataType.Value())
-          : "?");
-
-  nsCString colorGamut(
-      aConfig->mColorGamut.WasPassed()
-          ? ColorGamutValues::GetString(aConfig->mColorGamut.Value())
-          : "?");
-
-  nsCString transferFunction(aConfig->mTransferFunction.WasPassed()
-                                 ? TransferFunctionValues::GetString(
-                                       aConfig->mTransferFunction.Value())
-                                 : "?");
-
   auto str = nsPrintfCString(
       "[contentType:%s width:%d height:%d bitrate:%" PRIu64
       " framerate:%lf hasAlphaChannel:%s hdrMetadataType:%s colorGamut:%s "
@@ -69,7 +54,15 @@ static nsCString VideoConfigurationToStr(const VideoConfiguration* aConfig) {
       aConfig->mHasAlphaChannel.WasPassed()
           ? aConfig->mHasAlphaChannel.Value() ? "true" : "false"
           : "?",
-      hdrMetaType.get(), colorGamut.get(), transferFunction.get(),
+      aConfig->mHdrMetadataType.WasPassed()
+          ? GetEnumString(aConfig->mHdrMetadataType.Value()).get()
+          : "?",
+      aConfig->mColorGamut.WasPassed()
+          ? GetEnumString(aConfig->mColorGamut.Value()).get()
+          : "?",
+      aConfig->mTransferFunction.WasPassed()
+          ? GetEnumString(aConfig->mTransferFunction.Value()).get()
+          : "?",
       aConfig->mScalabilityMode.WasPassed()
           ? NS_ConvertUTF16toUTF8(aConfig->mScalabilityMode.Value()).get()
           : "?");
@@ -254,8 +247,7 @@ already_AddRefed<Promise> MediaCapabilities::DecodingInfo(
           InvokeAsync(taskQueue, __func__, [config = std::move(config)]() {
             RefPtr<PDMFactory> pdm = new PDMFactory();
             SupportDecoderParams params{*config};
-            if (pdm->Supports(params, nullptr /* decoder doctor */) ==
-                media::DecodeSupport::Unsupported) {
+            if (pdm->Supports(params, nullptr /* decoder doctor */).isEmpty()) {
               return CapabilitiesPromise::CreateAndReject(NS_ERROR_FAILURE,
                                                           __func__);
             }
@@ -275,7 +267,7 @@ already_AddRefed<Promise> MediaCapabilities::DecodingInfo(
     float frameRate =
         static_cast<float>(videoContainer->ExtendedType().GetFramerate().ref());
     const bool shouldResistFingerprinting =
-        mParent->ShouldResistFingerprinting(RFPTarget::Unknown);
+        mParent->ShouldResistFingerprinting(RFPTarget::MediaCapabilities);
 
     // clang-format off
     promises.AppendElement(InvokeAsync(
@@ -297,7 +289,6 @@ already_AddRefed<Promise> MediaCapabilities::DecodingInfo(
           // otherwise.
           static RefPtr<AllocPolicy> sVideoAllocPolicy = [&taskQueue]() {
             SchedulerGroup::Dispatch(
-                TaskCategory::Other,
                 NS_NewRunnableFunction(
                     "MediaCapabilities::AllocPolicy:Video", []() {
                       ClearOnShutdown(&sVideoAllocPolicy,
@@ -437,7 +428,7 @@ already_AddRefed<Promise> MediaCapabilities::DecodingInfo(
   RefPtr<StrongWorkerRef> workerRef;
 
   if (NS_IsMainThread()) {
-    targetThread = mParent->AbstractMainThreadFor(TaskCategory::Other);
+    targetThread = GetMainThreadSerialEventTarget();
   } else {
     WorkerPrivate* wp = GetCurrentThreadWorkerPrivate();
     MOZ_ASSERT(wp, "Must be called from a worker thread");

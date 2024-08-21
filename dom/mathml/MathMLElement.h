@@ -8,7 +8,7 @@
 #define mozilla_dom_MathMLElement_h_
 
 #include "mozilla/Attributes.h"
-#include "nsMappedAttributeElement.h"
+#include "nsStyledElement.h"
 #include "Link.h"
 
 class nsCSSValue;
@@ -18,13 +18,12 @@ class EventChainPostVisitor;
 class EventChainPreVisitor;
 namespace dom {
 
-typedef nsMappedAttributeElement MathMLElementBase;
+using MathMLElementBase = nsStyledElement;
 
 /*
  * The base class for MathML elements.
  */
-class MathMLElement final : public MathMLElementBase,
-                            public mozilla::dom::Link {
+class MathMLElement final : public MathMLElementBase, public Link {
  public:
   explicit MathMLElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
   explicit MathMLElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
@@ -35,7 +34,7 @@ class MathMLElement final : public MathMLElementBase,
   NS_IMPL_FROMNODE(MathMLElement, kNameSpaceID_MathML)
 
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  void UnbindFromTree(bool aNullParent = true) override;
+  void UnbindFromTree(UnbindContext&) override;
 
   bool ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                       const nsAString& aValue,
@@ -56,23 +55,26 @@ class MathMLElement final : public MathMLElementBase,
   static bool ParseNumericValue(const nsString& aString, nsCSSValue& aCSSValue,
                                 uint32_t aFlags, Document* aDocument);
 
-  static void MapMathMLAttributesInto(const nsMappedAttributes* aAttributes,
-                                      mozilla::MappedDeclarations&);
+  static void MapGlobalMathMLAttributesInto(
+      mozilla::MappedDeclarationsBuilder&);
+  static void MapMiAttributesInto(mozilla::MappedDeclarationsBuilder&);
+  static void MapMTableAttributesInto(mozilla::MappedDeclarationsBuilder&);
 
   void GetEventTargetParent(mozilla::EventChainPreVisitor& aVisitor) override;
   MOZ_CAN_RUN_SCRIPT
   nsresult PostHandleEvent(mozilla::EventChainPostVisitor& aVisitor) override;
   nsresult Clone(mozilla::dom::NodeInfo*, nsINode** aResult) const override;
-  mozilla::dom::ElementState IntrinsicState() const override;
 
   // Set during reflow as necessary. Does a style change notification,
   // aNotify must be true.
   void SetIncrementScriptLevel(bool aIncrementScriptLevel, bool aNotify);
-  bool GetIncrementScriptLevel() const { return mIncrementScriptLevel; }
+  bool GetIncrementScriptLevel() const {
+    return Element::State().HasState(ElementState::INCREMENT_SCRIPT_LEVEL);
+  }
 
   int32_t TabIndexDefault() final;
 
-  bool IsFocusableInternal(int32_t* aTabIndex, bool aWithMouse) override;
+  Focusable IsFocusableWithoutStyle(IsFocusableFlags) override;
   already_AddRefed<nsIURI> GetHrefURI() const override;
 
   void NodeInfoChanged(Document* aOldDoc) override {
@@ -101,9 +103,6 @@ class MathMLElement final : public MathMLElementBase,
   void AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                     const nsAttrValue* aValue, const nsAttrValue* aOldValue,
                     nsIPrincipal* aSubjectPrincipal, bool aNotify) override;
-
- private:
-  bool mIncrementScriptLevel;
 };
 
 }  // namespace dom

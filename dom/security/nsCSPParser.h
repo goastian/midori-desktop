@@ -72,6 +72,8 @@ class nsCSPParser {
   void referrerDirectiveValue(nsCSPDirective* aDir);
   void reportURIList(nsCSPDirective* aDir);
   void sandboxFlagList(nsCSPDirective* aDir);
+  void handleRequireTrustedTypesForDirective(nsCSPDirective* aDir);
+  void handleTrustedTypesDirective(nsCSPDirective* aDir);
   void sourceList(nsTArray<nsCSPBaseSrc*>& outSrcs);
   nsCSPBaseSrc* sourceExpression();
   nsCSPSchemeSrc* schemeSource();
@@ -138,6 +140,10 @@ class nsCSPParser {
 
   void logWarningErrorToConsole(uint32_t aSeverityFlag, const char* aProperty,
                                 const nsTArray<nsString>& aParams);
+
+  void MaybeWarnAboutIgnoredSources(const nsTArray<nsCSPBaseSrc*>& aSrcs);
+  void MaybeWarnAboutUnsafeInline(const nsCSPDirective& aDirective);
+  void MaybeWarnAboutUnsafeEval(const nsCSPDirective& aDirective);
 
   /**
    * When parsing the policy, the parser internally uses the following helper

@@ -400,7 +400,6 @@ var keyboardEventProps =
   { modifierFn: false },
   { modifierFnLock: false },
   { modifierNumLock: false },
-  { modifierOS: false },
   { modifierScrollLock: false },
   { modifierSymbol: false },
   { modifierSymbolLock: false },
@@ -429,7 +428,6 @@ var testKeyboardProps =
   { modifierFn: true },
   { modifierFnLock: true },
   { modifierNumLock: true },
-  { modifierOS: true },
   { modifierScrollLock: true },
   { modifierSymbol: true },
   { modifierSymbolLock: true },
@@ -670,7 +668,6 @@ var mouseEventProps =
   { modifierFn: false },
   { modifierFnLock: false },
   { modifierNumLock: false },
-  { modifierOS: false },
   { modifierScrollLock: false },
   { modifierSymbol: false },
   { modifierSymbolLock: false },
@@ -694,7 +691,6 @@ var testProps =
   { modifierFn: true },
   { modifierFnLock: true },
   { modifierNumLock: true },
-  { modifierOS: true },
   { modifierScrollLock: true },
   { modifierSymbol: true },
   { modifierSymbolLock: true },
@@ -788,7 +784,6 @@ var wheelEventProps =
   { modifierFn: false },
   { modifierFnLock: false },
   { modifierNumLock: false },
-  { modifierOS: false },
   { modifierScrollLock: false },
   { modifierSymbol: false },
   { modifierSymbolLock: false },
@@ -816,7 +811,6 @@ var testWheelProps =
   { modifierFn: true },
   { modifierFnLock: true },
   { modifierNumLock: true },
-  { modifierOS: true },
   { modifierScrollLock: true },
   { modifierSymbol: true },
   { modifierSymbolLock: true },
@@ -929,6 +923,28 @@ is(e.data, null, "InputEvent.data should be null in default");
 is(e.dataTransfer, null, "InputEvent.dataTransfer should be null in default");
 is(e.inputType, "", "InputEvent.inputType should be empty string in default");
 is(e.isComposing, false, "InputEvent.isComposing should be false in default");
+
+// TextEvent
+if (SpecialPowers.getBoolPref("dom.events.textevent.enabled")) {
+  try {
+    e = new TextEvent();
+    ok(false, "TextEvent should not have constructor");
+  } catch (exp) {
+    ok(true, "TextEvent does not have a constructor");
+  }
+  try {
+    e = new TextEvent("foo");
+    ok(false, "TextEvent should not have constructor");
+  } catch (exp) {
+    ok(true, "TextEvent does not have a constructor taking a event type");
+  }
+  try {
+    e = new TextEvent("foo", {});
+    ok(false, "TextEvent should not have constructor");
+  } catch (exp) {
+    ok(true, "TextEvent does not have a constructor taking event type and a dictionary");
+  }
+}
 
 </script>
 </pre>

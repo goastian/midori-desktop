@@ -29,6 +29,7 @@
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/ShadowRoot.h"
 #include "mozilla/dom/WorkerScope.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/SVGUtils.h"
 #include "mozilla/SVGOuterSVGFrame.h"
@@ -36,11 +37,10 @@
 #include "nsCOMPtr.h"
 #include "nsDeviceContext.h"
 #include "nsError.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "nsIFrame.h"
 #include "nsIContent.h"
 #include "nsIContentInlines.h"
-#include "nsIScrollableFrame.h"
 #include "nsJSEnvironment.h"
 #include "nsLayoutUtils.h"
 #include "nsPIWindowRoot.h"
@@ -61,6 +61,9 @@ void Event::ConstructorInit(EventTarget* aOwner, nsPresContext* aPresContext,
                             WidgetEvent* aEvent) {
   SetOwner(aOwner);
   mIsMainThreadEvent = NS_IsMainThread();
+  if (mIsMainThreadEvent) {
+    mRefCnt.SetIsOnMainThread();
+  }
 
   mPrivateDataDuplicated = false;
   mWantsPopupControlCheck = false;
@@ -105,8 +108,9 @@ void Event::InitPresContextData(nsPresContext* aPresContext) {
   // Get the explicit original target (if it's anonymous make it null)
   {
     nsCOMPtr<nsIContent> content = GetTargetFromFrame();
-    mExplicitOriginalTarget = content;
-    if (content && content->IsInNativeAnonymousSubtree()) {
+    if (content && !content->IsInNativeAnonymousSubtree()) {
+      mExplicitOriginalTarget = std::move(content);
+    } else {
       mExplicitOriginalTarget = nullptr;
     }
   }
@@ -235,9 +239,12 @@ already_AddRefed<Document> Event::GetDocument() const {
     return nullptr;
   }
 
-  nsCOMPtr<nsPIDOMWindowInner> win =
-      do_QueryInterface(eventTarget->GetOwnerGlobal());
+  nsIGlobalObject* global = eventTarget->GetOwnerGlobal();
+  if (!global) {
+    return nullptr;
+  }
 
+  nsPIDOMWindowInner* win = global->GetAsInnerWindow();
   if (!win) {
     return nullptr;
   }
@@ -289,7 +296,7 @@ EventTarget* Event::GetOriginalTarget() const {
 
 EventTarget* Event::GetComposedTarget() const {
   EventTarget* et = GetOriginalTarget();
-  nsCOMPtr<nsIContent> content = do_QueryInterface(et);
+  nsIContent* content = nsIContent::FromEventTargetOrNull(et);
   if (!content) {
     return et;
   }
@@ -317,7 +324,7 @@ bool Event::ShouldIgnoreChromeEventTargetListener() const {
   if (NS_WARN_IF(!global)) {
     return false;
   }
-  nsPIDOMWindowInner* win = global->AsInnerWindow();
+  nsPIDOMWindowInner* win = global->GetAsInnerWindow();
   if (NS_WARN_IF(!win)) {
     return false;
   }
@@ -335,14 +342,13 @@ bool Event::Init(mozilla::dom::EventTarget* aGlobal) {
     return IsCurrentThreadRunningChromeWorker();
   }
   bool trusted = false;
-  nsCOMPtr<nsPIDOMWindowInner> w = do_QueryInterface(aGlobal);
-  if (w) {
-    nsCOMPtr<Document> d = w->GetExtantDoc();
-    if (d) {
-      trusted = nsContentUtils::IsChromeDoc(d);
-      nsPresContext* presContext = d->GetPresContext();
-      if (presContext) {
-        InitPresContextData(presContext);
+  if (aGlobal) {
+    if (nsPIDOMWindowInner* w = aGlobal->GetAsInnerWindow()) {
+      if (Document* d = w->GetExtantDoc()) {
+        trusted = nsContentUtils::IsChromeDoc(d);
+        if (nsPresContext* presContext = d->GetPresContext()) {
+          InitPresContextData(presContext);
+        }
       }
     }
   }
@@ -371,10 +377,8 @@ already_AddRefed<Event> Event::Constructor(EventTarget* aEventTarget,
 }
 
 uint16_t Event::EventPhase() const {
-  // Note, remember to check that this works also
-  // if or when Bug 235441 is fixed.
   if ((mEvent->mCurrentTarget && mEvent->mCurrentTarget == mEvent->mTarget) ||
-      mEvent->mFlags.InTargetPhase()) {
+      mEvent->mFlags.mInTargetPhase) {
     return Event_Binding::AT_TARGET;
   }
   if (mEvent->mFlags.mInCapturePhase) {
@@ -417,8 +421,7 @@ void Event::PreventDefaultInternal(bool aCalledByDefaultHandler,
     return;
   }
   if (mEvent->mFlags.mInPassiveListener) {
-    nsCOMPtr<nsPIDOMWindowInner> win(do_QueryInterface(mOwner));
-    if (win) {
+    if (nsPIDOMWindowInner* win = mOwner->GetAsInnerWindow()) {
       if (Document* doc = win->GetExtantDoc()) {
         if (!doc->HasWarnedAbout(
                 Document::ePreventDefaultFromPassiveListener)) {
@@ -438,19 +441,32 @@ void Event::PreventDefaultInternal(bool aCalledByDefaultHandler,
     return;
   }
 
+  if (mEvent->mClass == eDragEventClass) {
+    UpdateDefaultPreventedOnContentForDragEvent();
+  }
+}
+
+void Event::UpdateDefaultPreventedOnContentForDragEvent() {
   WidgetDragEvent* dragEvent = mEvent->AsDragEvent();
   if (!dragEvent) {
     return;
   }
 
   nsIPrincipal* principal = nullptr;
-  nsCOMPtr<nsINode> node =
-      nsINode::FromEventTargetOrNull(mEvent->mCurrentTarget);
+  // Since we now have HTMLEditorEventListener registered on nsWindowRoot,
+  // mCurrentTarget could be nsWindowRoot, so we need to use
+  // mTarget if that's the case.
+  MOZ_ASSERT_IF(dragEvent->mInHTMLEditorEventListener,
+                mEvent->mCurrentTarget->IsRootWindow());
+  EventTarget* target = dragEvent->mInHTMLEditorEventListener
+                            ? mEvent->mTarget
+                            : mEvent->mCurrentTarget;
+
+  nsINode* node = nsINode::FromEventTargetOrNull(target);
   if (node) {
     principal = node->NodePrincipal();
   } else {
-    nsCOMPtr<nsIScriptObjectPrincipal> sop =
-        do_QueryInterface(mEvent->mCurrentTarget);
+    nsCOMPtr<nsIScriptObjectPrincipal> sop = do_QueryInterface(target);
     if (sop) {
       principal = sop->GetPrincipal();
     }
@@ -601,11 +617,8 @@ CSSIntPoint Event::GetPageCoords(nsPresContext* aPresContext,
   // If there is some scrolling, add scroll info to client point.
   if (aPresContext && aPresContext->GetPresShell()) {
     PresShell* presShell = aPresContext->PresShell();
-    nsIScrollableFrame* scrollframe =
-        presShell->GetRootScrollFrameAsScrollable();
-    if (scrollframe) {
-      pagePoint +=
-          CSSIntPoint::FromAppUnitsRounded(scrollframe->GetScrollPosition());
+    if (ScrollContainerFrame* sf = presShell->GetRootScrollContainerFrame()) {
+      pagePoint += CSSIntPoint::FromAppUnitsRounded(sf->GetScrollPosition());
     }
   }
 
@@ -749,7 +762,7 @@ double Event::TimeStamp() {
       return 0.0;
     }
 
-    nsCOMPtr<nsPIDOMWindowInner> win = do_QueryInterface(mOwner);
+    nsPIDOMWindowInner* win = mOwner->GetAsInnerWindow();
     if (NS_WARN_IF(!win)) {
       return 0.0;
     }
@@ -825,15 +838,13 @@ void Event::SetOwner(EventTarget* aOwner) {
     return;
   }
 
-  nsCOMPtr<nsINode> n = do_QueryInterface(aOwner);
-  if (n) {
+  if (nsINode* n = aOwner->GetAsNode()) {
     mOwner = n->OwnerDoc()->GetScopeObject();
     return;
   }
 
-  nsCOMPtr<nsPIDOMWindowInner> w = do_QueryInterface(aOwner);
-  if (w) {
-    mOwner = do_QueryInterface(w);
+  if (nsPIDOMWindowInner* w = aOwner->GetAsInnerWindow()) {
+    mOwner = w->AsGlobal();
     return;
   }
 

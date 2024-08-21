@@ -11,7 +11,6 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/BindingDeclarations.h"
-#include "mozilla/dom/CryptoBuffer.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsWrapperCache.h"
 #include "nsCOMPtr.h"
@@ -37,11 +36,13 @@ class AuthenticatorResponse : public nsISupports, public nsWrapperCache {
   void GetClientDataJSON(JSContext* aCx, JS::MutableHandle<JSObject*> aValue,
                          ErrorResult& aRv);
 
-  nsresult SetClientDataJSON(CryptoBuffer& aBuffer);
+  void SetClientDataJSON(const nsCString& aBuffer);
+
+ protected:
+  nsCString mClientDataJSON;
 
  private:
   nsCOMPtr<nsPIDOMWindowInner> mParent;
-  CryptoBuffer mClientDataJSON;
   JS::Heap<JSObject*> mClientDataJSONCachedObj;
 };
 

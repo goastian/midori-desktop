@@ -31,11 +31,14 @@ class DatabaseFileManager final
   const quota::OriginMetadata mOriginMetadata;
   const nsString mDatabaseName;
   const nsCString mDatabaseID;
+  const nsString mDatabaseFilePath;
 
-  mutable IndexedDBCipherKeyManager mCipherKeyManager;
+  RefPtr<IndexedDBCipherKeyManager> mCipherKeyManager;
 
   LazyInitializedOnce<const nsString> mDirectoryPath;
   LazyInitializedOnce<const nsString> mJournalDirectoryPath;
+
+  uint64_t mDatabaseVersion;
 
   const bool mEnforcingQuota;
   const bool mIsInPrivateBrowsingMode;
@@ -68,7 +71,8 @@ class DatabaseFileManager final
   DatabaseFileManager(PersistenceType aPersistenceType,
                       const quota::OriginMetadata& aOriginMetadata,
                       const nsAString& aDatabaseName,
-                      const nsCString& aDatabaseID, bool aEnforcingQuota,
+                      const nsCString& aDatabaseID,
+                      const nsAString& aDatabaseFilePath, bool aEnforcingQuota,
                       bool aIsInPrivateBrowsingMode);
 
   PersistenceType Type() const { return mPersistenceType; }
@@ -83,8 +87,19 @@ class DatabaseFileManager final
 
   const nsCString& DatabaseID() const { return mDatabaseID; }
 
+  const nsAString& DatabaseFilePath() const { return mDatabaseFilePath; }
+
+  uint64_t DatabaseVersion() const { return mDatabaseVersion; }
+
+  void UpdateDatabaseVersion(uint64_t aDatabaseVersion) {
+    mDatabaseVersion = aDatabaseVersion;
+  }
+
   IndexedDBCipherKeyManager& MutableCipherKeyManagerRef() const {
-    return mCipherKeyManager;
+    MOZ_ASSERT(mIsInPrivateBrowsingMode);
+    MOZ_ASSERT(mCipherKeyManager);
+
+    return *mCipherKeyManager;
   }
 
   auto IsInPrivateBrowsingMode() const { return mIsInPrivateBrowsingMode; }
@@ -111,6 +126,8 @@ class DatabaseFileManager final
                                         nsIFile& aJournalFile) const;
 
   [[nodiscard]] nsresult AsyncDeleteFile(int64_t aFileId);
+
+  nsresult Invalidate() override;
 
   MOZ_DECLARE_REFCOUNTED_TYPENAME(DatabaseFileManager)
 

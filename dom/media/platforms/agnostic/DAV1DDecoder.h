@@ -9,6 +9,7 @@
 #  include "PerformanceRecorder.h"
 #  include "PlatformDecoderModule.h"
 #  include "dav1d/dav1d.h"
+#  include "mozilla/Result.h"
 #  include "nsRefPtrHashtable.h"
 
 namespace mozilla {
@@ -46,8 +47,9 @@ class DAV1DDecoder final : public MediaDataDecoder,
  private:
   virtual ~DAV1DDecoder();
   RefPtr<DecodePromise> InvokeDecode(MediaRawData* aSample);
-  int GetPicture(DecodedData& aData, MediaResult& aResult);
-  already_AddRefed<VideoData> ConstructImage(const Dav1dPicture& aPicture);
+  Result<already_AddRefed<VideoData>, MediaResult> GetPicture();
+  Result<already_AddRefed<VideoData>, MediaResult> ConstructImage(
+      const Dav1dPicture& aPicture);
 
   Dav1dContext* mContext = nullptr;
 
@@ -56,6 +58,7 @@ class DAV1DDecoder final : public MediaDataDecoder,
   const RefPtr<layers::ImageContainer> mImageContainer;
   const RefPtr<layers::KnowsCompositor> mImageAllocator;
   const Maybe<TrackingId> mTrackingId;
+  const bool mLowLatency;
   PerformanceRecorderMulti<DecodeStage> mPerformanceRecorder;
 
   // Keep the buffers alive until dav1d

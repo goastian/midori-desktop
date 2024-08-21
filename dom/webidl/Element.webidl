@@ -4,10 +4,9 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  * The origin of this IDL file is
- * http://dom.spec.whatwg.org/#element and
- * http://domparsing.spec.whatwg.org/ and
- * http://dev.w3.org/csswg/cssom-view/ and
- * http://www.w3.org/TR/selectors-api/
+ * https://dom.spec.whatwg.org/#interface-element
+ * https://domparsing.spec.whatwg.org/
+ * https://drafts.csswg.org/cssom-view/
  *
  * Copyright © 2012 W3C® (MIT, ERCIM, Keio), All Rights Reserved. W3C
  * liability, trademark and document use rules apply.
@@ -15,7 +14,8 @@
 
 interface nsIScreen;
 
-[Exposed=Window]
+[Exposed=Window,
+ InstrumentedProps=(computedStyleMap,onmousewheel,scrollIntoViewIfNeeded)]
 interface Element : Node {
   [Constant]
   readonly attribute DOMString? namespaceURI;
@@ -111,7 +111,7 @@ interface Element : Node {
    * Returns whether this element would be selected by the given selector
    * string.
    *
-   * See <http://dev.w3.org/2006/webapi/selectors-api2/#matchesselector>
+   * https://dom.spec.whatwg.org/#dom-element-matches
    */
   [Throws, Pure, BinaryName="matches"]
   boolean mozMatchesSelector(UTF8String selector);
@@ -191,7 +191,7 @@ interface mixin ElementCSSInlineStyle {
   readonly attribute CSSStyleDeclaration style;
 };
 
-// http://dev.w3.org/csswg/cssom-view/
+// https://drafts.csswg.org/cssom-view/
 enum ScrollLogicalPosition { "start", "center", "end", "nearest" };
 dictionary ScrollIntoViewOptions : ScrollOptions {
   ScrollLogicalPosition block = "start";
@@ -201,10 +201,13 @@ dictionary ScrollIntoViewOptions : ScrollOptions {
 dictionary CheckVisibilityOptions {
   boolean checkOpacity = false;
   boolean checkVisibilityCSS = false;
+  boolean contentVisibilityAuto = false;
+  boolean opacityProperty = false;
+  boolean visibilityProperty = false;
   [ChromeOnly] boolean flush = true;
 };
 
-// http://dev.w3.org/csswg/cssom-view/#extensions-to-the-element-interface
+// https://drafts.csswg.org/cssom-view/#extensions-to-the-element-interface
 partial interface Element {
   DOMRectList getClientRects();
   DOMRect getBoundingClientRect();
@@ -219,7 +222,9 @@ partial interface Element {
   readonly attribute long scrollWidth;
   readonly attribute long scrollHeight;
 
+  [BinaryName="scrollTo"]
   undefined scroll(unrestricted double x, unrestricted double y);
+  [BinaryName="scrollTo"]
   undefined scroll(optional ScrollToOptions options = {});
   undefined scrollTo(unrestricted double x, unrestricted double y);
   undefined scrollTo(optional ScrollToOptions options = {});
@@ -250,6 +255,8 @@ partial interface Element {
                readonly attribute long scrollTopMax;
   [ChromeOnly] readonly attribute long scrollLeftMin;
                readonly attribute long scrollLeftMax;
+
+  [Pref="layout.css.zoom.enabled"] readonly attribute double currentCSSZoom;
 };
 
 // http://domparsing.spec.whatwg.org/#extensions-to-the-element-interface
@@ -262,21 +269,15 @@ partial interface Element {
   undefined insertAdjacentHTML(DOMString position, DOMString text);
 };
 
-// http://www.w3.org/TR/selectors-api/#interface-definitions
-partial interface Element {
-  [Throws, Pure]
-  Element?  querySelector(UTF8String selectors);
-  [Throws, Pure]
-  NodeList  querySelectorAll(UTF8String selectors);
-};
-
 // https://dom.spec.whatwg.org/#dictdef-shadowrootinit
 dictionary ShadowRootInit {
   required ShadowRootMode mode;
-  [Pref="dom.shadowdom.delegatesFocus.enabled"]
   boolean delegatesFocus = false;
-  [Pref="dom.shadowdom.slot.assign.enabled"]
   SlotAssignmentMode slotAssignment = "named";
+  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
+  boolean clonable = false;
+  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
+  boolean serializable = false;
 };
 
 // https://dom.spec.whatwg.org/#element
@@ -305,8 +306,7 @@ Element includes NonDocumentTypeChildNode;
 Element includes ParentNode;
 Element includes Animatable;
 Element includes GeometryUtils;
-Element includes AccessibilityRole;
-Element includes AriaAttributes;
+Element includes ARIAMixin;
 
 // https://fullscreen.spec.whatwg.org/#api
 partial interface Element {
@@ -397,10 +397,23 @@ partial interface Element {
 
 // Sanitizer API, https://wicg.github.io/sanitizer-api/
 dictionary SetHTMLOptions {
-  Sanitizer sanitizer;
+  SanitizerConfig sanitizer;
 };
 
 partial interface Element {
   [SecureContext, UseCounter, Throws, Pref="dom.security.setHTML.enabled"]
   undefined setHTML(DOMString aInnerHTML, optional SetHTMLOptions options = {});
+};
+
+dictionary GetHTMLOptions {
+  boolean serializableShadowRoots = false;
+  sequence<ShadowRoot> shadowRoots = [];
+};
+
+partial interface Element {
+  // https://html.spec.whatwg.org/#dom-element-sethtmlunsafe
+  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
+  undefined setHTMLUnsafe(DOMString html);
+  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
+  DOMString getHTML(optional GetHTMLOptions options = {});
 };

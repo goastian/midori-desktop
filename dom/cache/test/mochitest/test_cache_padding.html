@@ -23,7 +23,7 @@ function setupTestIframe() {
 }
 
 function clearStorage() {
-  return new Promise(function(resolve, reject) {
+  return new Promise(function(resolve) {
     var qms = SpecialPowers.Services.qms;
     var principal = SpecialPowers.wrap(document).nodePrincipal;
     var request = qms.clearStoragesForPrincipal(principal);
@@ -33,16 +33,17 @@ function clearStorage() {
 }
 
 function resetStorage() {
-  return new Promise(function(resolve, reject) {
+  return new Promise(function(resolve) {
     var qms = SpecialPowers.Services.qms;
-    var request = qms.reset();
+    var principal = SpecialPowers.wrap(document).nodePrincipal;
+    var request = qms.resetStoragesForPrincipal(principal);
     var cb = SpecialPowers.wrapCallback(resolve);
     request.callback = cb;
   });
 }
 
 function getStorageUsage(fromMemory) {
-  return new Promise(function(resolve, reject) {
+  return new Promise(function(resolve) {
     var qms = SpecialPowers.Services.qms;
     var principal = SpecialPowers.wrap(document).nodePrincipal;
     var cb = SpecialPowers.wrapCallback(function(request) {
@@ -87,8 +88,7 @@ SimpleTest.waitForExplicitFinish();
 SpecialPowers.pushPrefEnv({
   "set": [["dom.caches.enabled", true],
           ["dom.caches.testing.enabled", true],
-          ["dom.quotaManager.testing", true],
-          ["privacy.partition.always_partition_third_party_non_cookie_storage", false]],
+          ["dom.quotaManager.testing", true]],
 }, async function() {
   // This test is mainly to verify we only generate different padding size for
   // the opaque response which is comming from netwrok.
@@ -101,12 +101,6 @@ SpecialPowers.pushPrefEnv({
   // Note: For the cloned and cached opaque response, the padding size shouldn't
   // be changed. Thus, it makes the attacker harder to get the padding size.
 
-  // Bug 1746646: Make mochitests work with TCP enabled (cookieBehavior = 5)
-  // Acquire storage access permission here so that the Cache API is avaialable
-  SpecialPowers.wrap(document).notifyUserGestureActivation();
-  await SpecialPowers.addPermission("storageAccessAPI", true, window.location.href);
-  await SpecialPowers.wrap(document).requestStorageAccess();
-
   const name = "cachePadding";
   const other_name = "cachePaddingOther";
   const cors_base = "https://example.com/tests/dom/cache/test/mochitest/";
@@ -118,6 +112,22 @@ SpecialPowers.pushPrefEnv({
   await clearStorage();
 
   let cache = await caches.open(name);
+
+  // XXX This arbitrary loop is a hack to restore the same growth database
+  // behavior as it was before the schema upgrade from version 28 to 29.
+  // XXX Obviously, this test shouldn't use the total usage (which includes
+  // both the database and the file usage) to compute the disk size of
+  // responses. It should use the file usage only. The problem is that the
+  // quota client implementation currently doesn't differentiate between the
+  // database and the file usage. Even if that gets fixed, there would be a
+  // problem with checking cached usage which currently doesn't differentiate
+  // between the database usage and the file usage as well.
+  for (let i = 0; i < 19; i++) {
+    const request = new Request("https://example.com/index" + i + ".html");
+    const response = new Response("hello world");
+    await cache.put(request, response);
+  }
+
   await waitForIOToComplete(cache, url);
   let usage1 = await verifyUsage();
 

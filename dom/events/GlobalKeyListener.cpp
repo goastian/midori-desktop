@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "GlobalKeyListener.h"
+#include "ErrorList.h"
 #include "EventTarget.h"
 
 #include <utility>
@@ -62,10 +63,9 @@ static void BuildHandlerChain(nsIContent* aContent, KeyEventHandler** aResult) {
     // definition on the locale. See bug 426501.
     nsAutoString valKey, valCharCode, valKeyCode;
     // Hopefully at least one of the attributes is set:
-    keyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::key, valKey) ||
-        keyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::charcode,
-                            valCharCode) ||
-        keyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::keycode, valKeyCode);
+    keyElement->GetAttr(nsGkAtoms::key, valKey) ||
+        keyElement->GetAttr(nsGkAtoms::charcode, valCharCode) ||
+        keyElement->GetAttr(nsGkAtoms::keycode, valKeyCode);
     // If not, ignore this key element.
     if (valKey.IsEmpty() && valCharCode.IsEmpty() && valKeyCode.IsEmpty()) {
       continue;
@@ -105,7 +105,7 @@ void GlobalKeyListener::WalkHandlers(dom::KeyboardEvent* aKeyEvent) {
     return;
   }
 
-  WalkHandlersInternal(aKeyEvent, true);
+  WalkHandlersInternal(Purpose::ExecuteCommand, aKeyEvent);
 }
 
 void GlobalKeyListener::InstallKeyboardEventListenersTo(
@@ -203,8 +203,7 @@ void GlobalKeyListener::HandleEventOnCaptureInDefaultEventGroup(
     return;
   }
 
-  bool isReserved = false;
-  if (HasHandlerForEvent(aEvent, &isReserved) && isReserved) {
+  if (HasHandlerForEvent(aEvent).mReservedHandlerForChromeFound) {
     widgetKeyboardEvent->MarkAsReservedByChrome();
   }
 }
@@ -224,7 +223,7 @@ void GlobalKeyListener::HandleEventOnCaptureInSystemEventGroup(
     return;
   }
 
-  if (!HasHandlerForEvent(aEvent)) {
+  if (!HasHandlerForEvent(aEvent).mMeaningfulHandlerFound) {
     return;
   }
 
@@ -243,13 +242,12 @@ void GlobalKeyListener::HandleEventOnCaptureInSystemEventGroup(
 // WalkHandlersInternal and WalkHandlersAndExecute
 //
 // Given a particular DOM event and a pointer to the first handler in the list,
-// scan through the list to find something to handle the event. If aExecute =
-// true, the handler will be executed; otherwise just return an answer telling
-// if a handler for that event was found.
+// scan through the list to find something to handle the event. If aPurpose =
+// Purpose::ExecuteHandler, the handler will be executed; otherwise just return
+// an answer telling if a handler for that event was found.
 //
-bool GlobalKeyListener::WalkHandlersInternal(dom::KeyboardEvent* aKeyEvent,
-                                             bool aExecute,
-                                             bool* aOutReservedForChrome) {
+GlobalKeyListener::WalkHandlersResult GlobalKeyListener::WalkHandlersInternal(
+    Purpose aPurpose, dom::KeyboardEvent* aKeyEvent) {
   WidgetKeyboardEvent* nativeKeyboardEvent =
       aKeyEvent->WidgetEventPtr()->AsKeyboardEvent();
   MOZ_ASSERT(nativeKeyboardEvent);
@@ -258,49 +256,62 @@ bool GlobalKeyListener::WalkHandlersInternal(dom::KeyboardEvent* aKeyEvent,
   nativeKeyboardEvent->GetShortcutKeyCandidates(shortcutKeys);
 
   if (shortcutKeys.IsEmpty()) {
-    return WalkHandlersAndExecute(aKeyEvent, 0, IgnoreModifierState(), aExecute,
-                                  aOutReservedForChrome);
+    return WalkHandlersAndExecute(aPurpose, aKeyEvent, 0,
+                                  IgnoreModifierState());
   }
 
-  for (unsigned long i = 0; i < shortcutKeys.Length(); ++i) {
-    ShortcutKeyCandidate& key = shortcutKeys[i];
+  bool foundDisabledHandler = false;
+  for (const ShortcutKeyCandidate& key : shortcutKeys) {
+    const bool skipIfEarlierHandlerDisabled =
+        key.mSkipIfEarlierHandlerDisabled ==
+        ShortcutKeyCandidate::SkipIfEarlierHandlerDisabled::Yes;
+    if (foundDisabledHandler && skipIfEarlierHandlerDisabled) {
+      continue;
+    }
     IgnoreModifierState ignoreModifierState;
-    ignoreModifierState.mShift = key.mIgnoreShift;
-    if (WalkHandlersAndExecute(aKeyEvent, key.mCharCode, ignoreModifierState,
-                               aExecute, aOutReservedForChrome)) {
-      return true;
+    ignoreModifierState.mShift =
+        key.mShiftState == ShortcutKeyCandidate::ShiftState::Ignorable;
+    WalkHandlersResult result = WalkHandlersAndExecute(
+        aPurpose, aKeyEvent, key.mCharCode, ignoreModifierState);
+    if (result.mMeaningfulHandlerFound) {
+      return result;
+    }
+    // Note that if the candidate should not match if an earlier handler is
+    // disabled, the char code of the candidate is a char which may be
+    // introduced with different shift state. In this case, we do NOT find a
+    // disabled handler which **exactly** matches with the keyboard event.
+    // This avoids to override a higher priority handler with a disabled lower
+    // priority handler.
+    if (!skipIfEarlierHandlerDisabled && !foundDisabledHandler) {
+      foundDisabledHandler = result.mDisabledHandlerFound;
     }
   }
-  return false;
+  return {};
 }
 
-bool GlobalKeyListener::WalkHandlersAndExecute(
-    dom::KeyboardEvent* aKeyEvent, uint32_t aCharCode,
-    const IgnoreModifierState& aIgnoreModifierState, bool aExecute,
-    bool* aOutReservedForChrome) {
-  if (aOutReservedForChrome) {
-    *aOutReservedForChrome = false;
-  }
-
+GlobalKeyListener::WalkHandlersResult GlobalKeyListener::WalkHandlersAndExecute(
+    Purpose aPurpose, dom::KeyboardEvent* aKeyEvent, uint32_t aCharCode,
+    const IgnoreModifierState& aIgnoreModifierState) {
   WidgetKeyboardEvent* widgetKeyboardEvent =
       aKeyEvent->WidgetEventPtr()->AsKeyboardEvent();
   if (NS_WARN_IF(!widgetKeyboardEvent)) {
-    return false;
+    return {};
   }
 
   nsAtom* eventType =
       ShortcutKeys::ConvertEventToDOMEventType(widgetKeyboardEvent);
 
   // Try all of the handlers until we find one that matches the event.
+  bool foundDisabledHandler = false;
   for (KeyEventHandler* handler = mHandler; handler;
        handler = handler->GetNextHandler()) {
     bool stopped = aKeyEvent->IsDispatchStopped();
     if (stopped) {
       // The event is finished, don't execute any more handlers
-      return false;
+      return {};
     }
 
-    if (aExecute) {
+    if (aPurpose == Purpose::ExecuteCommand) {
       if (!handler->EventTypeEquals(eventType)) {
         continue;
       }
@@ -330,17 +341,18 @@ bool GlobalKeyListener::WalkHandlersAndExecute(
     // Before executing this handler, check that it's not disabled,
     // and that it has something to do (oncommand of the <key> or its
     // <command> is non-empty).
-    if (!CanHandle(handler, aExecute)) {
+    if (!CanHandle(handler, aPurpose == Purpose::ExecuteCommand)) {
+      foundDisabledHandler = true;
       continue;
     }
 
-    if (!aExecute) {
+    if (aPurpose == Purpose::LookForCommand) {
       if (handler->EventTypeEquals(eventType)) {
-        if (aOutReservedForChrome) {
-          *aOutReservedForChrome = IsReservedKey(widgetKeyboardEvent, handler);
-        }
-
-        return true;
+        WalkHandlersResult result;
+        result.mMeaningfulHandlerFound = true;
+        result.mReservedHandlerForChromeFound =
+            IsReservedKey(widgetKeyboardEvent, handler);
+        return result;
       }
 
       // If the command is reserved and the event is keydown, check also if
@@ -349,19 +361,15 @@ bool GlobalKeyListener::WalkHandlersAndExecute(
       if (eventType == nsGkAtoms::keydown &&
           handler->EventTypeEquals(nsGkAtoms::keypress)) {
         if (IsReservedKey(widgetKeyboardEvent, handler)) {
-          if (aOutReservedForChrome) {
-            *aOutReservedForChrome = true;
-          }
-
-          return true;
+          WalkHandlersResult result;
+          result.mMeaningfulHandlerFound = true;
+          result.mReservedHandlerForChromeFound = true;
+          return result;
         }
       }
       // Otherwise, we've not found a handler for the event yet.
       continue;
     }
-
-    // This should only be assigned when aExecute is false.
-    MOZ_ASSERT(!aOutReservedForChrome);
 
     nsCOMPtr<dom::EventTarget> target = GetHandlerTarget(handler);
 
@@ -369,7 +377,12 @@ bool GlobalKeyListener::WalkHandlersAndExecute(
     //     propagation nor prevents default of the event?
     nsresult rv = handler->ExecuteHandler(target, aKeyEvent);
     if (NS_SUCCEEDED(rv)) {
-      return true;
+      WalkHandlersResult result;
+      result.mMeaningfulHandlerFound = true;
+      result.mReservedHandlerForChromeFound =
+          IsReservedKey(widgetKeyboardEvent, handler);
+      result.mDisabledHandlerFound = (rv == NS_SUCCESS_DOM_NO_OPERATION);
+      return result;
     }
   }
 
@@ -378,15 +391,17 @@ bool GlobalKeyListener::WalkHandlersAndExecute(
   // shortcut keys even if the key is pressed.  Therefore, if there is no
   // shortcut key which exactly matches current modifier state, we should
   // retry to look for a shortcut key without the Windows-Logo key press.
-  if (!aIgnoreModifierState.mOS && widgetKeyboardEvent->IsOS()) {
+  if (!aIgnoreModifierState.mMeta && widgetKeyboardEvent->IsMeta()) {
     IgnoreModifierState ignoreModifierState(aIgnoreModifierState);
-    ignoreModifierState.mOS = true;
-    return WalkHandlersAndExecute(aKeyEvent, aCharCode, ignoreModifierState,
-                                  aExecute);
+    ignoreModifierState.mMeta = true;
+    return WalkHandlersAndExecute(aPurpose, aKeyEvent, aCharCode,
+                                  ignoreModifierState);
   }
 #endif
 
-  return false;
+  WalkHandlersResult result;
+  result.mDisabledHandlerFound = foundDisabledHandler;
+  return result;
 }
 
 bool GlobalKeyListener::IsReservedKey(WidgetKeyboardEvent* aKeyEvent,
@@ -421,21 +436,21 @@ bool GlobalKeyListener::IsReservedKey(WidgetKeyboardEvent* aKeyEvent,
              .IsEmpty();
 }
 
-bool GlobalKeyListener::HasHandlerForEvent(dom::KeyboardEvent* aEvent,
-                                           bool* aOutReservedForChrome) {
+GlobalKeyListener::WalkHandlersResult GlobalKeyListener::HasHandlerForEvent(
+    dom::KeyboardEvent* aEvent) {
   WidgetKeyboardEvent* widgetKeyboardEvent =
       aEvent->WidgetEventPtr()->AsKeyboardEvent();
   if (NS_WARN_IF(!widgetKeyboardEvent) || !widgetKeyboardEvent->IsTrusted()) {
-    return false;
+    return {};
   }
 
   EnsureHandlers();
 
   if (IsDisabled()) {
-    return false;
+    return {};
   }
 
-  return WalkHandlersInternal(aEvent, false, aOutReservedForChrome);
+  return WalkHandlersInternal(Purpose::LookForCommand, aEvent);
 }
 
 //
@@ -564,7 +579,7 @@ bool XULKeySetGlobalKeyListener::GetElementForHandler(
 
   // We are in a XUL doc.  Obtain our command attribute.
   nsAutoString command;
-  keyElement->GetAttr(kNameSpaceID_None, nsGkAtoms::command, command);
+  keyElement->GetAttr(nsGkAtoms::command, command);
   if (command.IsEmpty()) {
     // There is no command element associated with the key element.
     NS_WARNING_ASSERTION(keyElement->IsInUncomposedDoc(), "uncomposed");

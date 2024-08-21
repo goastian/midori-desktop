@@ -5,7 +5,6 @@
  * bug 1174913, bug 1175736, bug 1184781
  */
 
-Components.utils.importGlobalProperties(["URLSearchParams"]);
 const SJS = "referrer_testserver.sjs?";
 const SJS_PATH = "/tests/dom/base/test/";
 const BASE_ORIGIN = "example.com";
@@ -689,5 +688,4 @@ function handleRequest(request, response) {
   }
 
   response.write("I don't know action " + action);
-  return;
 }

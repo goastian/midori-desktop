@@ -20,11 +20,13 @@
 #include "js/SourceText.h"
 #include "js/TracingAPI.h"
 #include "js/TypeDecls.h"
+#include "js/Utility.h"  // JS::FreePolicy
 #include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/BasicEvents.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/UniquePtr.h"
 #include "mozilla/dom/DOMString.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/FragmentOrElement.h"
@@ -213,7 +215,8 @@ class nsXULPrototypeScript : public nsXULPrototypeNode {
  private:
   virtual ~nsXULPrototypeScript() = default;
 
-  void FillCompileOptions(JS::CompileOptions& options);
+  void FillCompileOptions(JS::CompileOptions& aOptions, const char* aFilename,
+                          uint32_t aLineNo);
 
  public:
   virtual nsresult Serialize(
@@ -228,11 +231,31 @@ class nsXULPrototypeScript : public nsXULPrototypeNode {
   nsresult DeserializeOutOfLine(nsIObjectInputStream* aInput,
                                 nsXULPrototypeDocument* aProtoDoc);
 
-  template <typename Unit>
-  nsresult Compile(const Unit* aText, size_t aTextLength,
-                   JS::SourceOwnership aOwnership, nsIURI* aURI,
-                   uint32_t aLineNo, mozilla::dom::Document* aDocument,
-                   nsIOffThreadScriptReceiver* aOffThreadReceiver = nullptr);
+  // Compile given JS source text synchronously.
+  //
+  // This method doesn't take the ownership of aText, but borrows during the
+  // compilation.
+  //
+  // If successfully compiled, `HasStencil()` returns true.
+  nsresult Compile(const char16_t* aText, size_t aTextLength, nsIURI* aURI,
+                   uint32_t aLineNo, mozilla::dom::Document* aDocument);
+
+  // Compile given JS source text possibly in off-thread.
+  //
+  // This method takes the ownership of aText.
+  //
+  // If this doesn't use off-thread compilation and successfully compiled,
+  // `HasStencil()` returns true.
+  //
+  // If this uses off-thread compilation, `HasStencil()` returns false, and
+  // once the compilation finishes, aOffThreadReceiver gets notified with the
+  // compiled stencil.  The callback is responsible for calling `Set()` with
+  // the stencil.
+  nsresult CompileMaybeOffThread(
+      mozilla::UniquePtr<mozilla::Utf8Unit[], JS::FreePolicy>&& aText,
+      size_t aTextLength, nsIURI* aURI, uint32_t aLineNo,
+      mozilla::dom::Document* aDocument,
+      nsIOffThreadScriptReceiver* aOffThreadReceiver);
 
   void Set(JS::Stencil* aStencil);
 
@@ -351,7 +374,7 @@ class nsXULElement : public nsStyledElement {
       mozilla::EventChainVisitor& aVisitor) override;
   // nsIContent
   virtual nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  virtual void UnbindFromTree(bool aNullParent) override;
+  virtual void UnbindFromTree(UnbindContext&) override;
   virtual void DestroyContent() override;
   virtual void DoneAddingChildren(bool aHaveNotified) override;
 
@@ -369,8 +392,17 @@ class nsXULElement : public nsStyledElement {
       bool aKeyCausesActivation, bool aIsTrustedEvent) override;
   MOZ_CAN_RUN_SCRIPT void ClickWithInputSource(uint16_t aInputSource,
                                                bool aIsTrustedEvent);
+  struct XULFocusability {
+    bool mDefaultFocusable = false;
+    mozilla::Maybe<bool> mForcedFocusable;
+    mozilla::Maybe<int32_t> mForcedTabIndexIfFocusable;
 
-  bool IsFocusableInternal(int32_t* aTabIndex, bool aWithMouse) override;
+    static XULFocusability NeverFocusable() {
+      return {false, mozilla::Some(false), mozilla::Some(-1)};
+    }
+  };
+  XULFocusability GetXULFocusability(mozilla::IsFocusableFlags);
+  Focusable IsFocusableWithoutStyle(mozilla::IsFocusableFlags) override;
 
   NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
 
@@ -381,7 +413,7 @@ class nsXULElement : public nsStyledElement {
 
   using DOMString = mozilla::dom::DOMString;
   void GetXULAttr(nsAtom* aName, DOMString& aResult) const {
-    GetAttr(kNameSpaceID_None, aName, aResult);
+    GetAttr(aName, aResult);
   }
   void SetXULAttr(nsAtom* aName, const nsAString& aValue,
                   mozilla::ErrorResult& aError) {
@@ -480,8 +512,6 @@ class nsXULElement : public nsStyledElement {
   void AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                     const nsAttrValue* aValue, const nsAttrValue* aOldValue,
                     nsIPrincipal* aSubjectPrincipal, bool aNotify) override;
-
-  void UpdateEditableState(bool aNotify) override;
 
   bool ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                       const nsAString& aValue,

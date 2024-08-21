@@ -51,17 +51,16 @@ already_AddRefed<ImageData> ImageData::Constructor(const GlobalObject& aGlobal,
     return nullptr;
   }
 
-  // Restrict the typed array length to INT32_MAX because that's all we support
-  // in dom::TypedArray::ComputeState.
+  // Restrict the typed array length to INT32_MAX because that's all we support.
   CheckedInt<uint32_t> length = CheckedInt<uint32_t>(aWidth) * aHeight * 4;
   if (!length.isValid() || length.value() > INT32_MAX) {
     aRv.Throw(NS_ERROR_DOM_INDEX_SIZE_ERR);
     return nullptr;
   }
   js::AssertSameCompartment(aGlobal.Context(), aGlobal.Get());
-  JSObject* data = Uint8ClampedArray::Create(aGlobal.Context(), length.value());
-  if (!data) {
-    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+  JSObject* data =
+      Uint8ClampedArray::Create(aGlobal.Context(), length.value(), aRv);
+  if (aRv.Failed()) {
     return nullptr;
   }
   RefPtr<ImageData> imageData = new ImageData(aWidth, aHeight, *data);
@@ -73,9 +72,11 @@ already_AddRefed<ImageData> ImageData::Constructor(
     const GlobalObject& aGlobal, const Uint8ClampedArray& aData,
     const uint32_t aWidth, const Optional<uint32_t>& aHeight,
     ErrorResult& aRv) {
-  aData.ComputeState();
-
-  uint32_t length = aData.Length();
+  Maybe<uint32_t> maybeLength = aData.ProcessData(
+      [&](const Span<uint8_t>& aData, JS::AutoCheckCannotGC&& nogc) {
+        return Some(aData.Length());
+      });
+  uint32_t length = maybeLength.valueOr(0);
   if (length == 0 || length % 4) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return nullptr;

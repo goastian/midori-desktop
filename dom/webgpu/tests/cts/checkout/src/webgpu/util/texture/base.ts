@@ -1,5 +1,5 @@
 import { assert, unreachable } from '../../../common/util/util.js';
-import { kTextureFormatInfo } from '../../capability_info.js';
+import { kTextureFormatInfo } from '../../format_info.js';
 import { align } from '../../util/math.js';
 import { reifyExtent3D } from '../../util/unions.js';
 
@@ -90,6 +90,18 @@ export function physicalMipSize(
 }
 
 /**
+ * Compute the "physical size" of a mip level: the size of the level, rounded up to a
+ * multiple of the texel block size.
+ */
+export function physicalMipSizeFromTexture(
+  texture: GPUTexture,
+  mipLevel: number
+): [number, number, number] {
+  const size = physicalMipSize(texture, texture.format, texture.dimension, mipLevel);
+  return [size.width, size.height, size.depthOrArrayLayers];
+}
+
+/**
  * Compute the "virtual size" of a mip level of a texture (not accounting for texel block rounding).
  *
  * MAINTENANCE_TODO: Change input/output to Required<GPUExtent3DDict> for consistency.
@@ -145,20 +157,50 @@ export function viewDimensionsForTextureDimension(textureDimension: GPUTextureDi
   }
 }
 
-/** Returns the default view dimension for a given texture descriptor. */
-export function defaultViewDimensionsForTexture(textureDescriptor: Readonly<GPUTextureDescriptor>) {
-  switch (textureDescriptor.dimension) {
+/** Returns the effective view dimension for a given texture dimension and depthOrArrayLayers */
+export function effectiveViewDimensionForDimension(
+  viewDimension: GPUTextureViewDimension | undefined,
+  dimension: GPUTextureDimension | undefined,
+  depthOrArrayLayers: number
+) {
+  if (viewDimension) {
+    return viewDimension;
+  }
+
+  switch (dimension || '2d') {
     case '1d':
       return '1d';
-    case '2d': {
-      const sizeDict = reifyExtent3D(textureDescriptor.size);
-      return sizeDict.depthOrArrayLayers > 1 ? '2d-array' : '2d';
-    }
+    case '2d':
+    case undefined:
+      return depthOrArrayLayers > 1 ? '2d-array' : '2d';
+      break;
     case '3d':
       return '3d';
     default:
       unreachable();
   }
+}
+
+/** Returns the effective view dimension for a given texture */
+export function effectiveViewDimensionForTexture(
+  texture: GPUTexture,
+  viewDimension: GPUTextureViewDimension | undefined
+) {
+  return effectiveViewDimensionForDimension(
+    viewDimension,
+    texture.dimension,
+    texture.depthOrArrayLayers
+  );
+}
+
+/** Returns the default view dimension for a given texture descriptor. */
+export function defaultViewDimensionsForTexture(textureDescriptor: Readonly<GPUTextureDescriptor>) {
+  const sizeDict = reifyExtent3D(textureDescriptor.size);
+  return effectiveViewDimensionForDimension(
+    undefined,
+    textureDescriptor.dimension,
+    sizeDict.depthOrArrayLayers
+  );
 }
 
 /** Reifies the optional fields of `GPUTextureDescriptor`.
@@ -210,4 +252,22 @@ export function reifyTextureViewDescriptor(
     baseArrayLayer,
     arrayLayerCount,
   };
+}
+
+/**
+ * Get generator of all the coordinates in a subrect.
+ * @param subrectOrigin - Subrect origin
+ * @param subrectSize - Subrect size
+ */
+export function* fullSubrectCoordinates(
+  subrectOrigin: Required<GPUOrigin3DDict>,
+  subrectSize: Required<GPUExtent3DDict>
+): Generator<Required<GPUOrigin3DDict>> {
+  for (let z = subrectOrigin.z; z < subrectOrigin.z + subrectSize.depthOrArrayLayers; ++z) {
+    for (let y = subrectOrigin.y; y < subrectOrigin.y + subrectSize.height; ++y) {
+      for (let x = subrectOrigin.x; x < subrectOrigin.x + subrectSize.width; ++x) {
+        yield { x, y, z };
+      }
+    }
+  }
 }

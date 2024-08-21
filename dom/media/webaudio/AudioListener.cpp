@@ -6,7 +6,7 @@
 
 #include "AudioContext.h"
 #include "AudioListener.h"
-#include "MediaTrackGraphImpl.h"
+#include "MediaTrackGraph.h"
 #include "Tracing.h"
 #include "mozilla/dom/AudioListenerBinding.h"
 
@@ -15,7 +15,7 @@ namespace mozilla::dom {
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(AudioListener, mContext)
 
 AudioListenerEngine::AudioListenerEngine()
-    : mPosition(), mFrontVector(0., 0., -1.), mRightVector(1., 0., 0.) {}
+    : mFrontVector(0., 0., -1.), mRightVector(1., 0., 0.) {}
 
 void AudioListenerEngine::RecvListenerEngineEvent(
     AudioListenerEngine::AudioListenerParameter aParameter,
@@ -46,7 +46,7 @@ const ThreeDPoint& AudioListenerEngine::RightVector() const {
 AudioListener::AudioListener(AudioContext* aContext)
     : mContext(aContext),
       mEngine(new AudioListenerEngine()),
-      mPosition(),
+
       mFrontVector(0., 0., -1.),
       mRightVector(1., 0., 0.) {
   MOZ_ASSERT(aContext);
@@ -107,26 +107,11 @@ void AudioListener::SetPosition(double aX, double aY, double aZ) {
 void AudioListener::SendListenerEngineEvent(
     AudioListenerEngine::AudioListenerParameter aParameter,
     const ThreeDPoint& aValue) {
-  class Message final : public ControlMessage {
-   public:
-    Message(AudioListenerEngine* aEngine,
-            AudioListenerEngine::AudioListenerParameter aParameter,
-            const ThreeDPoint& aValue)
-        : ControlMessage(nullptr),
-          mEngine(aEngine),
-          mParameter(aParameter),
-          mValue(aValue) {}
-    void Run() override {
-      TRACE("AudioListener::RecvListenerEngineEvent");
-      mEngine->RecvListenerEngineEvent(mParameter, mValue);
-    }
-    RefPtr<AudioListenerEngine> mEngine;
-    AudioListenerEngine::AudioListenerParameter mParameter;
-    ThreeDPoint mValue;
-  };
-
-  mContext->DestinationTrack()->GraphImpl()->AppendMessage(
-      MakeUnique<Message>(Engine(), aParameter, aValue));
+  mContext->DestinationTrack()->QueueControlMessageWithNoShutdown(
+      [engine = RefPtr(Engine()), aParameter, aValue] {
+        TRACE("AudioListener::RecvListenerEngineEvent");
+        engine->RecvListenerEngineEvent(aParameter, aValue);
+      });
 }
 
 size_t AudioListener::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const {

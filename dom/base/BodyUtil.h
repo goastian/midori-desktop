@@ -13,6 +13,8 @@
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/FormData.h"
 
+#include "js/Utility.h"  // JS::FreePolicy
+
 namespace mozilla {
 class ErrorResult;
 
@@ -30,7 +32,8 @@ class BodyUtil final {
    */
   static void ConsumeArrayBuffer(JSContext* aCx,
                                  JS::MutableHandle<JSObject*> aValue,
-                                 uint32_t aInputLength, uint8_t* aInput,
+                                 uint32_t aInputLength,
+                                 UniquePtr<uint8_t[], JS::FreePolicy> aInput,
                                  ErrorResult& aRv);
 
   /**
@@ -41,6 +44,16 @@ class BodyUtil final {
                                             const nsString& aMimeType,
                                             uint32_t aInputLength,
                                             uint8_t* aInput, ErrorResult& aRv);
+
+  /**
+   * Creates an Uint8Array from an array, assigning the result to |aValue|.
+   * The array buffer takes ownership of |aInput|, which must be allocated
+   * by |malloc|.
+   */
+  static void ConsumeBytes(JSContext* aCx, JS::MutableHandle<JSObject*> aValue,
+                           uint32_t aInputLength,
+                           UniquePtr<uint8_t[], JS::FreePolicy> aInput,
+                           ErrorResult& aRv);
 
   /**
    * Creates a form data object from a UTF-8 encoded |aStr|. Returns |nullptr|

@@ -8,8 +8,13 @@ potentially limited native resources.
 import { Fixture } from '../../../../common/framework/fixture.js';
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
 import { getGPU } from '../../../../common/util/navigator_gpu.js';
-import { assert, raceWithRejectOnTimeout } from '../../../../common/util/util.js';
-import { kFeatureNames, kLimitInfo, kLimits } from '../../../capability_info.js';
+import { assert, assertReject, raceWithRejectOnTimeout } from '../../../../common/util/util.js';
+import {
+  getDefaultLimitsForAdapter,
+  kFeatureNames,
+  kLimits,
+  kLimitClasses,
+} from '../../../capability_info.js';
 import { clamp, isPowerOfTwo } from '../../../util/math.js';
 
 export const g = makeTestGroup(Fixture);
@@ -17,7 +22,7 @@ export const g = makeTestGroup(Fixture);
 g.test('default')
   .desc(
     `
-    Test requesting the device with a variation of default paramters.
+    Test requesting the device with a variation of default parameters.
     - No features listed in default device
     - Default limits`
   )
@@ -31,7 +36,7 @@ g.test('default')
   )
   .fn(async t => {
     const { args } = t.params;
-    const gpu = getGPU();
+    const gpu = getGPU(t.rec);
     const adapter = await gpu.requestAdapter();
     assert(adapter !== null);
     const device = await adapter.requestDevice(...args);
@@ -40,10 +45,11 @@ g.test('default')
     // Default device should have no features.
     t.expect(device.features.size === 0, 'Default device should not have any features');
     // All limits should be defaults.
+    const limitInfo = getDefaultLimitsForAdapter(adapter);
     for (const limit of kLimits) {
       t.expect(
-        device.limits[limit] === kLimitInfo[limit].default,
-        `Expected ${limit} == default: ${device.limits[limit]} != ${kLimitInfo[limit].default}`
+        device.limits[limit] === limitInfo[limit].default,
+        `Expected ${limit} == default: ${device.limits[limit]} != ${limitInfo[limit].default}`
       );
     }
 
@@ -54,10 +60,14 @@ g.test('invalid')
   .desc(
     `
     Test that requesting device on an invalid adapter resolves with lost device.
-    - Induce invalid adapter via a device lost from a device.destroy()`
+    - Induce invalid adapter via a device lost from a device.destroy()
+    - Check the device is lost with reason 'destroyed'
+    - Try creating another device on the now-stale adapter
+    - Check that returns a device lost with 'unknown'
+    `
   )
   .fn(async t => {
-    const gpu = getGPU();
+    const gpu = getGPU(t.rec);
     const adapter = await gpu.requestAdapter();
     assert(adapter !== null);
 
@@ -75,7 +85,93 @@ g.test('invalid')
     const kTimeoutMS = 1000;
     const device = await adapter.requestDevice();
     const lost = await raceWithRejectOnTimeout(device.lost, kTimeoutMS, 'device was not lost');
-    t.expect(lost.reason === undefined);
+    t.expect(lost.reason === 'unknown');
+  });
+
+g.test('stale')
+  .desc(
+    `
+    Test that adapter.requestDevice() can successfully return a device once, and once only.
+    - Tests that we can successfully resolve after serial and concurrent rejections.
+    - Tests that consecutive valid attempts only succeeds the first time, returning lost device otherwise.`
+  )
+  .paramsSubcasesOnly(u =>
+    u
+      .combine('initialError', [undefined, 'TypeError', 'OperationError'])
+      .combine('awaitInitialError', [true, false])
+      .combine('awaitSuccess', [true, false])
+      .unless(
+        ({ initialError, awaitInitialError }) => initialError === undefined && awaitInitialError
+      )
+  )
+  .fn(async t => {
+    const gpu = getGPU(t.rec);
+    const adapter = await gpu.requestAdapter();
+    assert(adapter !== null);
+
+    const { initialError, awaitInitialError, awaitSuccess } = t.params;
+
+    switch (initialError) {
+      case undefined:
+        break;
+      case 'TypeError':
+        // Cause a type error by requesting with an unknown feature.
+        if (awaitInitialError) {
+          await assertReject(
+            'TypeError',
+            adapter.requestDevice({ requiredFeatures: ['unknown-feature' as GPUFeatureName] })
+          );
+        } else {
+          t.shouldReject(
+            'TypeError',
+            adapter.requestDevice({ requiredFeatures: ['unknown-feature' as GPUFeatureName] })
+          );
+        }
+        break;
+      case 'OperationError':
+        // Cause an operation error by requesting with an alignment limit that is not a power of 2.
+        if (awaitInitialError) {
+          await assertReject(
+            'OperationError',
+            adapter.requestDevice({ requiredLimits: { minUniformBufferOffsetAlignment: 255 } })
+          );
+        } else {
+          t.shouldReject(
+            'OperationError',
+            adapter.requestDevice({ requiredLimits: { minUniformBufferOffsetAlignment: 255 } })
+          );
+        }
+        break;
+    }
+
+    let device: GPUDevice | undefined = undefined;
+    const promise = adapter.requestDevice();
+    if (awaitSuccess) {
+      device = await promise;
+      assert(device !== null);
+    } else {
+      t.shouldResolve(
+        (async () => {
+          const device = await promise;
+          device.destroy();
+        })()
+      );
+    }
+
+    const kTimeoutMS = 1000;
+    const lostDevice = await adapter.requestDevice();
+    const lost = await raceWithRejectOnTimeout(
+      lostDevice.lost,
+      kTimeoutMS,
+      'adapter was not stale'
+    );
+    t.expect(lost.reason === 'unknown');
+
+    // Make sure to destroy the valid device after trying to get a second one. Otherwise, the second
+    // device may fail because the adapter is put into an invalid state from the destroy.
+    if (device) {
+      device.destroy();
+    }
   });
 
 g.test('features,unknown')
@@ -84,7 +180,7 @@ g.test('features,unknown')
     Test requesting device with an unknown feature.`
   )
   .fn(async t => {
-    const gpu = getGPU();
+    const gpu = getGPU(t.rec);
     const adapter = await gpu.requestAdapter();
     assert(adapter !== null);
 
@@ -105,7 +201,7 @@ g.test('features,known')
   .fn(async t => {
     const { feature } = t.params;
 
-    const gpu = getGPU();
+    const gpu = getGPU(t.rec);
     const adapter = await gpu.requestAdapter();
     assert(adapter !== null);
 
@@ -125,7 +221,7 @@ g.test('limits,unknown')
     requestDevice to reject.`
   )
   .fn(async t => {
-    const gpu = getGPU();
+    const gpu = getGPU(t.rec);
     const adapter = await gpu.requestAdapter();
     assert(adapter !== null);
 
@@ -147,14 +243,15 @@ g.test('limits,supported')
   .fn(async t => {
     const { limit, limitValue } = t.params;
 
-    const gpu = getGPU();
+    const gpu = getGPU(t.rec);
     const adapter = await gpu.requestAdapter();
     assert(adapter !== null);
 
+    const limitInfo = getDefaultLimitsForAdapter(adapter);
     let value: number = -1;
     switch (limitValue) {
       case 'default':
-        value = kLimitInfo[limit].default;
+        value = limitInfo[limit].default;
         break;
       case 'adapter':
         value = adapter.limits[limit];
@@ -183,7 +280,7 @@ g.test('limit,better_than_supported')
       .combine('limit', kLimits)
       .beginSubcases()
       .expandWithParams(p => {
-        switch (kLimitInfo[p.limit].class) {
+        switch (kLimitClasses[p.limit]) {
           case 'maximum':
             return [
               { mul: 1, add: 1 },
@@ -201,16 +298,76 @@ g.test('limit,better_than_supported')
   .fn(async t => {
     const { limit, mul, add } = t.params;
 
-    const gpu = getGPU();
+    const gpu = getGPU(t.rec);
     const adapter = await gpu.requestAdapter();
     assert(adapter !== null);
 
+    const limitInfo = getDefaultLimitsForAdapter(adapter);
     const value = adapter.limits[limit] * mul + add;
     const requiredLimits = {
-      [limit]: clamp(value, { min: 0, max: kLimitInfo[limit].maximumValue }),
+      [limit]: clamp(value, { min: 0, max: limitInfo[limit].maximumValue }),
     };
 
     t.shouldReject('OperationError', adapter.requestDevice({ requiredLimits }));
+  });
+
+g.test('limit,out_of_range')
+  .desc(
+    `
+    Test that specifying limits that are out of range (<0, >MAX_SAFE_INTEGER, >2**31-2 for 32-bit
+    limits, =0 for alignment limits) produce the appropriate error (TypeError or OperationError).
+    `
+  )
+  .params(u =>
+    u
+      .combine('limit', kLimits)
+      .beginSubcases()
+      .expand('value', function* () {
+        yield -(2 ** 64);
+        yield Number.MIN_SAFE_INTEGER - 3;
+        yield Number.MIN_SAFE_INTEGER - 1;
+        yield Number.MIN_SAFE_INTEGER;
+        yield -(2 ** 32);
+        yield -1;
+        yield 0;
+        yield 2 ** 32 - 2;
+        yield 2 ** 32 - 1;
+        yield 2 ** 32;
+        yield 2 ** 32 + 1;
+        yield 2 ** 32 + 2;
+        yield Number.MAX_SAFE_INTEGER;
+        yield Number.MAX_SAFE_INTEGER + 1;
+        yield Number.MAX_SAFE_INTEGER + 3;
+        yield 2 ** 64;
+        yield Number.MAX_VALUE;
+      })
+  )
+  .fn(async t => {
+    const { limit, value } = t.params;
+
+    const gpu = getGPU(t.rec);
+    const adapter = await gpu.requestAdapter();
+    assert(adapter !== null);
+    const limitInfo = getDefaultLimitsForAdapter(adapter)[limit];
+
+    const requiredLimits = {
+      [limit]: value,
+    };
+
+    const errorName =
+      value < 0 || value > Number.MAX_SAFE_INTEGER
+        ? 'TypeError'
+        : limitInfo.class === 'maximum' && value > adapter.limits[limit]
+        ? 'OperationError'
+        : limitInfo.class === 'alignment' && (value > 2 ** 31 || !isPowerOfTwo(value))
+        ? 'OperationError'
+        : false;
+
+    if (errorName) {
+      t.shouldReject(errorName, adapter.requestDevice({ requiredLimits }));
+    } else {
+      await adapter.requestDevice({ requiredLimits });
+    }
   });
 
 g.test('limit,worse_than_default')
@@ -226,7 +383,7 @@ g.test('limit,worse_than_default')
       .combine('limit', kLimits)
       .beginSubcases()
       .expandWithParams(p => {
-        switch (kLimitInfo[p.limit].class) {
+        switch (kLimitClasses[p.limit]) {
           case 'maximum':
             return [
               { mul: 1, add: -1 },
@@ -244,17 +401,18 @@ g.test('limit,worse_than_default')
   .fn(async t => {
     const { limit, mul, add } = t.params;
 
-    const gpu = getGPU();
+    const gpu = getGPU(t.rec);
     const adapter = await gpu.requestAdapter();
     assert(adapter !== null);
 
-    const value = kLimitInfo[limit].default * mul + add;
+    const limitInfo = getDefaultLimitsForAdapter(adapter);
+    const value = limitInfo[limit].default * mul + add;
     const requiredLimits = {
-      [limit]: clamp(value, { min: 0, max: kLimitInfo[limit].maximumValue }),
+      [limit]: clamp(value, { min: 0, max: limitInfo[limit].maximumValue }),
     };
 
     let success;
-    switch (kLimitInfo[limit].class) {
+    switch (limitInfo[limit].class) {
       case 'alignment':
         success = isPowerOfTwo(value);
         break;
@@ -267,7 +425,7 @@ g.test('limit,worse_than_default')
       const device = await adapter.requestDevice({ requiredLimits });
       assert(device !== null);
       t.expect(
-        device.limits[limit] === kLimitInfo[limit].default,
+        device.limits[limit] === limitInfo[limit].default,
         'Devices reported limit should match the default limit'
       );
       device.destroy();

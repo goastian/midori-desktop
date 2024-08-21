@@ -384,55 +384,12 @@ static nsresult DoContentSecurityChecks(nsIChannel* aChannel,
                                         nsILoadInfo* aLoadInfo) {
   ExtContentPolicyType contentPolicyType =
       aLoadInfo->GetExternalContentPolicyType();
-  nsContentPolicyType internalContentPolicyType =
-      aLoadInfo->InternalContentPolicyType();
-  nsCString mimeTypeGuess;
 
   nsCOMPtr<nsIURI> uri;
   nsresult rv = NS_GetFinalChannelURI(aChannel, getter_AddRefs(uri));
   NS_ENSURE_SUCCESS(rv, rv);
 
   switch (contentPolicyType) {
-    case ExtContentPolicy::TYPE_OTHER: {
-      mimeTypeGuess.Truncate();
-      break;
-    }
-
-    case ExtContentPolicy::TYPE_SCRIPT: {
-      mimeTypeGuess = "application/javascript"_ns;
-      break;
-    }
-
-    case ExtContentPolicy::TYPE_IMAGE: {
-      mimeTypeGuess.Truncate();
-      break;
-    }
-
-    case ExtContentPolicy::TYPE_STYLESHEET: {
-      mimeTypeGuess = "text/css"_ns;
-      break;
-    }
-
-    case ExtContentPolicy::TYPE_OBJECT: {
-      mimeTypeGuess.Truncate();
-      break;
-    }
-
-    case ExtContentPolicy::TYPE_DOCUMENT: {
-      mimeTypeGuess.Truncate();
-      break;
-    }
-
-    case ExtContentPolicy::TYPE_SUBDOCUMENT: {
-      mimeTypeGuess = "text/html"_ns;
-      break;
-    }
-
-    case ExtContentPolicy::TYPE_PING: {
-      mimeTypeGuess.Truncate();
-      break;
-    }
-
     case ExtContentPolicy::TYPE_XMLHTTPREQUEST: {
 #ifdef DEBUG
       {
@@ -441,23 +398,10 @@ static nsresult DoContentSecurityChecks(nsIChannel* aChannel,
                    "type_xml requires requestingContext of type Document");
       }
 #endif
-      // We're checking for the external TYPE_XMLHTTPREQUEST here in case
-      // an addon creates a request with that type.
-      if (internalContentPolicyType ==
-              nsIContentPolicy::TYPE_INTERNAL_XMLHTTPREQUEST ||
-          internalContentPolicyType == nsIContentPolicy::TYPE_XMLHTTPREQUEST) {
-        mimeTypeGuess.Truncate();
-      } else {
-        MOZ_ASSERT(internalContentPolicyType ==
-                       nsIContentPolicy::TYPE_INTERNAL_EVENTSOURCE,
-                   "can not set mime type guess for unexpected internal type");
-        mimeTypeGuess = nsLiteralCString(TEXT_EVENT_STREAM);
-      }
       break;
     }
 
     case ExtContentPolicy::TYPE_OBJECT_SUBREQUEST: {
-      mimeTypeGuess.Truncate();
 #ifdef DEBUG
       {
         nsCOMPtr<nsINode> node = aLoadInfo->LoadingNode();
@@ -470,7 +414,6 @@ static nsresult DoContentSecurityChecks(nsIChannel* aChannel,
     }
 
     case ExtContentPolicy::TYPE_DTD: {
-      mimeTypeGuess.Truncate();
 #ifdef DEBUG
       {
         nsCOMPtr<nsINode> node = aLoadInfo->LoadingNode();
@@ -481,18 +424,7 @@ static nsresult DoContentSecurityChecks(nsIChannel* aChannel,
       break;
     }
 
-    case ExtContentPolicy::TYPE_FONT:
-    case ExtContentPolicy::TYPE_UA_FONT: {
-      mimeTypeGuess.Truncate();
-      break;
-    }
-
     case ExtContentPolicy::TYPE_MEDIA: {
-      if (internalContentPolicyType == nsIContentPolicy::TYPE_INTERNAL_TRACK) {
-        mimeTypeGuess = "text/vtt"_ns;
-      } else {
-        mimeTypeGuess.Truncate();
-      }
 #ifdef DEBUG
       {
         nsCOMPtr<nsINode> node = aLoadInfo->LoadingNode();
@@ -513,17 +445,10 @@ static nsresult DoContentSecurityChecks(nsIChannel* aChannel,
         rv = httpChannelInternal->GetProxyURI(getter_AddRefs(uri));
         MOZ_ASSERT(NS_SUCCEEDED(rv));
       }
-      mimeTypeGuess.Truncate();
-      break;
-    }
-
-    case ExtContentPolicy::TYPE_CSP_REPORT: {
-      mimeTypeGuess.Truncate();
       break;
     }
 
     case ExtContentPolicy::TYPE_XSLT: {
-      mimeTypeGuess = "application/xml"_ns;
 #ifdef DEBUG
       {
         nsCOMPtr<nsINode> node = aLoadInfo->LoadingNode();
@@ -535,7 +460,6 @@ static nsresult DoContentSecurityChecks(nsIChannel* aChannel,
     }
 
     case ExtContentPolicy::TYPE_BEACON: {
-      mimeTypeGuess.Truncate();
 #ifdef DEBUG
       {
         nsCOMPtr<nsINode> node = aLoadInfo->LoadingNode();
@@ -546,35 +470,26 @@ static nsresult DoContentSecurityChecks(nsIChannel* aChannel,
       break;
     }
 
-    case ExtContentPolicy::TYPE_FETCH: {
-      mimeTypeGuess.Truncate();
+    case ExtContentPolicy::TYPE_OTHER:
+    case ExtContentPolicy::TYPE_SCRIPT:
+    case ExtContentPolicy::TYPE_IMAGE:
+    case ExtContentPolicy::TYPE_STYLESHEET:
+    case ExtContentPolicy::TYPE_OBJECT:
+    case ExtContentPolicy::TYPE_DOCUMENT:
+    case ExtContentPolicy::TYPE_SUBDOCUMENT:
+    case ExtContentPolicy::TYPE_PING:
+    case ExtContentPolicy::TYPE_FONT:
+    case ExtContentPolicy::TYPE_UA_FONT:
+    case ExtContentPolicy::TYPE_CSP_REPORT:
+    case ExtContentPolicy::TYPE_WEB_MANIFEST:
+    case ExtContentPolicy::TYPE_FETCH:
+    case ExtContentPolicy::TYPE_IMAGESET:
+    case ExtContentPolicy::TYPE_SAVEAS_DOWNLOAD:
+    case ExtContentPolicy::TYPE_SPECULATIVE:
+    case ExtContentPolicy::TYPE_PROXIED_WEBRTC_MEDIA:
+    case ExtContentPolicy::TYPE_WEB_TRANSPORT:
+    case ExtContentPolicy::TYPE_WEB_IDENTITY:
       break;
-    }
-
-    case ExtContentPolicy::TYPE_IMAGESET: {
-      mimeTypeGuess.Truncate();
-      break;
-    }
-
-    case ExtContentPolicy::TYPE_WEB_MANIFEST: {
-      mimeTypeGuess = "application/manifest+json"_ns;
-      break;
-    }
-
-    case ExtContentPolicy::TYPE_SAVEAS_DOWNLOAD: {
-      mimeTypeGuess.Truncate();
-      break;
-    }
-
-    case ExtContentPolicy::TYPE_SPECULATIVE: {
-      mimeTypeGuess.Truncate();
-      break;
-    }
-
-    case ExtContentPolicy::TYPE_PROXIED_WEBRTC_MEDIA: {
-      mimeTypeGuess.Truncate();
-      break;
-    }
 
     case ExtContentPolicy::TYPE_INVALID:
       MOZ_ASSERT(false,
@@ -583,7 +498,7 @@ static nsresult DoContentSecurityChecks(nsIChannel* aChannel,
   }
 
   int16_t shouldLoad = nsIContentPolicy::ACCEPT;
-  rv = NS_CheckContentLoadPolicy(uri, aLoadInfo, mimeTypeGuess, &shouldLoad,
+  rv = NS_CheckContentLoadPolicy(uri, aLoadInfo, &shouldLoad,
                                  nsContentUtils::GetContentPolicy());
 
   if (NS_FAILED(rv) || NS_CP_REJECTED(shouldLoad)) {
@@ -814,6 +729,9 @@ static void DebugDoContentSecurityCheck(nsIChannel* aChannel,
     MOZ_LOG(sCSMLog, LogLevel::Verbose,
             ("  allowDeprecatedSystemRequests: %s\n",
              aLoadInfo->GetAllowDeprecatedSystemRequests() ? "true" : "false"));
+    MOZ_LOG(sCSMLog, LogLevel::Verbose,
+            ("  wasSchemeless: %s\n",
+             aLoadInfo->GetWasSchemelessInput() ? "true" : "false"));
 
     // Log CSPrequestPrincipal
     nsCOMPtr<nsIContentSecurityPolicy> csp = aLoadInfo->GetCsp();
@@ -836,7 +754,9 @@ static void DebugDoContentSecurityCheck(nsIChannel* aChannel,
     // Security Flags
     MOZ_LOG(sCSMLog, LogLevel::Verbose, ("  securityFlags:"));
     LogSecurityFlags(aLoadInfo->GetSecurityFlags());
+    // HTTPS-Only
     LogHTTPSOnlyInfo(aLoadInfo);
+
     MOZ_LOG(sCSMLog, LogLevel::Debug, ("\n#DebugDoContentSecurityCheck End\n"));
   }
 }
@@ -1748,6 +1668,7 @@ void nsContentSecurityManager::GetSerializedOrigin(
     entry->GetPrincipal(getter_AddRefs(currentOrigin));
 
     if (!currentOrigin->Equals(lastOrigin) && !lastOrigin->Equals(aOrigin)) {
+      aSerializedOrigin.AssignLiteral("null");
       return;
     }
     lastOrigin = currentOrigin;
@@ -1758,17 +1679,18 @@ void nsContentSecurityManager::GetSerializedOrigin(
   // have a redirect-tainted origin, so we return the origin of the request
   // here.
   if (!lastOrigin) {
-    aOrigin->GetAsciiOrigin(aSerializedOrigin);
+    aOrigin->GetWebExposedOriginSerialization(aSerializedOrigin);
     return;
   }
 
   // Same as above, redirectChain doesn't contain the current redirect,
   // so we have to do the check one last time here.
-  if (lastOrigin->Equals(aResourceOrigin) && !lastOrigin->Equals(aOrigin)) {
+  if (!lastOrigin->Equals(aResourceOrigin) && !lastOrigin->Equals(aOrigin)) {
+    aSerializedOrigin.AssignLiteral("null");
     return;
   }
 
-  aOrigin->GetAsciiOrigin(aSerializedOrigin);
+  aOrigin->GetWebExposedOriginSerialization(aSerializedOrigin);
 }
 
 // https://html.spec.whatwg.org/multipage/browsers.html#compatible-with-cross-origin-isolation

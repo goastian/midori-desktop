@@ -8,7 +8,6 @@
 #define mozilla_dom_HTMLAreaElement_h
 
 #include "mozilla/Attributes.h"
-#include "mozilla/dom/AnchorAreaFormRelValues.h"
 #include "mozilla/dom/Link.h"
 #include "nsGenericHTMLElement.h"
 #include "nsGkAtoms.h"
@@ -18,9 +17,7 @@ class EventChainPostVisitor;
 class EventChainPreVisitor;
 namespace dom {
 
-class HTMLAreaElement final : public nsGenericHTMLElement,
-                              public Link,
-                              public AnchorAreaFormRelValues {
+class HTMLAreaElement final : public nsGenericHTMLElement, public Link {
  public:
   explicit HTMLAreaElement(
       already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
@@ -42,15 +39,13 @@ class HTMLAreaElement final : public nsGenericHTMLElement,
   MOZ_CAN_RUN_SCRIPT
   nsresult PostHandleEvent(EventChainPostVisitor& aVisitor) override;
 
-  void GetLinkTarget(nsAString& aTarget) override;
+  void GetLinkTargetImpl(nsAString& aTarget) override;
   already_AddRefed<nsIURI> GetHrefURI() const override;
 
   virtual nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  virtual void UnbindFromTree(bool aNullParent = true) override;
+  virtual void UnbindFromTree(UnbindContext&) override;
 
   virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
-
-  virtual ElementState IntrinsicState() const override;
 
   // WebIDL
   void GetAlt(DOMString& aValue) { GetHTMLAttr(nsGkAtoms::alt, aValue); }
@@ -69,12 +64,11 @@ class HTMLAreaElement final : public nsGenericHTMLElement,
     SetHTMLAttr(nsGkAtoms::shape, aShape, aError);
   }
 
-  // argument type nsAString for nsContextMenuInfo
-  void GetHref(nsAString& aValue) {
+  void GetHref(nsACString& aValue) {
     GetURIAttr(nsGkAtoms::href, nullptr, aValue);
   }
-  void SetHref(const nsAString& aHref, ErrorResult& aError) {
-    SetHTMLAttr(nsGkAtoms::href, aHref, aError);
+  void SetHref(const nsACString& aHref, ErrorResult& aError) {
+    SetHTMLAttr(nsGkAtoms::href, NS_ConvertUTF8toUTF16(aHref), aError);
   }
 
   void GetTarget(DOMString& aValue);
@@ -90,13 +84,11 @@ class HTMLAreaElement final : public nsGenericHTMLElement,
   }
 
   void GetPing(DOMString& aValue) { GetHTMLAttr(nsGkAtoms::ping, aValue); }
-
   void SetPing(const nsAString& aPing, ErrorResult& aError) {
     SetHTMLAttr(nsGkAtoms::ping, aPing, aError);
   }
 
   void GetRel(DOMString& aValue) { GetHTMLAttr(nsGkAtoms::rel, aValue); }
-
   void SetRel(const nsAString& aRel, ErrorResult& aError) {
     SetHTMLAttr(nsGkAtoms::rel, aRel, aError);
   }
@@ -145,9 +137,6 @@ class HTMLAreaElement final : public nsGenericHTMLElement,
   void SetNoHref(bool aValue, ErrorResult& aError) {
     SetHTMLBoolAttr(nsGkAtoms::nohref, aValue, aError);
   }
-
-  void ToString(nsAString& aSource);
-  void Stringify(nsAString& aResult) { GetHref(aResult); }
 
   void NodeInfoChanged(Document* aOldDoc) final {
     ClearHasPendingLinkUpdate();

@@ -21,7 +21,6 @@
 #include "js/Conversions.h"
 #include "js/experimental/JSStencil.h"
 #include "js/HeapAPI.h"
-#include "js/OffThreadScriptCompilation.h"
 #include "js/ProfilingCategory.h"
 #include "js/Promise.h"
 #include "js/SourceText.h"
@@ -30,6 +29,7 @@
 #include "js/Wrapper.h"
 #include "jsapi.h"
 #include "mozilla/CycleCollectedJSContext.h"
+#include "mozilla/dom/ScriptLoadContext.h"
 #include "mozilla/Likely.h"
 #include "nsContentUtils.h"
 #include "nsTPromiseFlatString.h"
@@ -87,25 +87,22 @@ JSExecutionContext::JSExecutionContext(
   }
 }
 
-nsresult JSExecutionContext::JoinOffThread(
-    JS::OffThreadToken** aOffThreadToken) {
+nsresult JSExecutionContext::JoinOffThread(ScriptLoadContext* aContext) {
   if (mSkip) {
     return mRv;
   }
 
   MOZ_ASSERT(!mWantsReturnValue);
 
-  JS::Rooted<JS::InstantiationStorage> storage(mCx);
-  RefPtr<JS::Stencil> stencil =
-      JS::FinishOffThreadStencil(mCx, *aOffThreadToken, storage.address());
-  *aOffThreadToken = nullptr;  // Mark the token as having been finished.
+  JS::InstantiationStorage storage;
+  RefPtr<JS::Stencil> stencil = aContext->StealOffThreadResult(mCx, &storage);
   if (!stencil) {
     mSkip = true;
     mRv = EvaluationExceptionToNSResult(mCx);
     return mRv;
   }
 
-  return InstantiateStencil(std::move(stencil), storage.address());
+  return InstantiateStencil(std::move(stencil), &storage);
 }
 
 template <typename Unit>
@@ -156,8 +153,7 @@ nsresult JSExecutionContext::Compile(const nsAString& aScript) {
   return Compile(srcBuf);
 }
 
-nsresult JSExecutionContext::Decode(mozilla::Vector<uint8_t>& aBytecodeBuf,
-                                    size_t aBytecodeIndex) {
+nsresult JSExecutionContext::Decode(const JS::TranscodeRange& aBytecodeBuf) {
   if (mSkip) {
     return mRv;
   }
@@ -165,13 +161,10 @@ nsresult JSExecutionContext::Decode(mozilla::Vector<uint8_t>& aBytecodeBuf,
   JS::DecodeOptions decodeOptions(mCompileOptions);
   decodeOptions.borrowBuffer = true;
 
-  JS::TranscodeRange range(aBytecodeBuf.begin() + aBytecodeIndex,
-                           aBytecodeBuf.length() - aBytecodeIndex);
-
   MOZ_ASSERT(!mWantsReturnValue);
   RefPtr<JS::Stencil> stencil;
-  JS::TranscodeResult tr =
-      JS::DecodeStencil(mCx, decodeOptions, range, getter_AddRefs(stencil));
+  JS::TranscodeResult tr = JS::DecodeStencil(mCx, decodeOptions, aBytecodeBuf,
+                                             getter_AddRefs(stencil));
   // These errors are external parameters which should be handled before the
   // decoding phase, and which are the only reasons why you might want to
   // fallback on decoding failures.

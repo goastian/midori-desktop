@@ -48,8 +48,7 @@ NS_INTERFACE_MAP_END_INHERITING(ModuleLoaderBase)
 
 WorkletModuleLoader::WorkletModuleLoader(WorkletScriptLoader* aScriptLoader,
                                          nsIGlobalObject* aGlobalObject)
-    : ModuleLoaderBase(aScriptLoader, aGlobalObject,
-                       GetCurrentSerialEventTarget()) {
+    : ModuleLoaderBase(aScriptLoader, aGlobalObject) {
   // This should be constructed on a worklet thread.
   MOZ_ASSERT(!NS_IsMainThread());
 }
@@ -68,19 +67,19 @@ already_AddRefed<ModuleLoadRequest> WorkletModuleLoader::CreateStaticImport(
   // base URL,
   nsIURI* referrer = aParent->mURI;
   RefPtr<ModuleLoadRequest> request = new ModuleLoadRequest(
-      aURI, aParent->mFetchOptions, SRIMetadata(), referrer, loadContext,
-      false, /* is top level */
-      false, /* is dynamic import */
+      aURI, aParent->ReferrerPolicy(), aParent->mFetchOptions, SRIMetadata(),
+      referrer, loadContext, false, /* is top level */
+      false,                        /* is dynamic import */
       this, aParent->mVisitedSet, aParent->GetRootModule());
 
   request->mURL = request->mURI->GetSpecOrDefault();
+  request->NoCacheEntryFound();
   return request.forget();
 }
 
 already_AddRefed<ModuleLoadRequest> WorkletModuleLoader::CreateDynamicImport(
     JSContext* aCx, nsIURI* aURI, LoadedScript* aMaybeActiveScript,
-    JS::Handle<JS::Value> aReferencingPrivate, JS::Handle<JSString*> aSpecifier,
-    JS::Handle<JSObject*> aPromise) {
+    JS::Handle<JSString*> aSpecifier, JS::Handle<JSObject*> aPromise) {
   return nullptr;
 }
 
@@ -106,7 +105,8 @@ nsresult WorkletModuleLoader::CompileFetchedModule(
   MOZ_ASSERT(aRequest->IsTextSource());
 
   MaybeSourceText maybeSource;
-  nsresult rv = aRequest->GetScriptSource(aCx, &maybeSource);
+  nsresult rv = aRequest->GetScriptSource(aCx, &maybeSource,
+                                          aRequest->mLoadContext.get());
   NS_ENSURE_SUCCESS(rv, rv);
 
   auto compile = [&](auto& source) {

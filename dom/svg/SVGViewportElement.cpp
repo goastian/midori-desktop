@@ -53,8 +53,6 @@ SVGElement::LengthInfo SVGViewportElement::sLengthInfo[4] = {
 SVGViewportElement::SVGViewportElement(
     already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
     : SVGGraphicsElement(std::move(aNodeInfo)),
-      mViewportWidth(0),
-      mViewportHeight(0),
       mHasChildrenOnlyTransform(false) {}
 
 //----------------------------------------------------------------------
@@ -107,7 +105,7 @@ inline float ComputeSynthesizedViewBoxDimension(
     return aViewportLength * aLength.GetAnimValInSpecifiedUnits() / 100.0f;
   }
 
-  return aLength.GetAnimValue(const_cast<SVGViewportElement*>(aSelf));
+  return aLength.GetAnimValueWithZoom(aSelf);
 }
 
 //----------------------------------------------------------------------
@@ -156,12 +154,13 @@ void SVGViewportElement::ChildrenOnlyTransformChanged(uint32_t aFlags) {
 gfx::Matrix SVGViewportElement::GetViewBoxTransform() const {
   float viewportWidth, viewportHeight;
   if (IsInner()) {
-    SVGElement* self = const_cast<SVGViewportElement*>(this);
-    viewportWidth = mLengthAttributes[ATTR_WIDTH].GetAnimValue(self);
-    viewportHeight = mLengthAttributes[ATTR_HEIGHT].GetAnimValue(self);
+    SVGElementMetrics metrics(this);
+    viewportWidth = mLengthAttributes[ATTR_WIDTH].GetAnimValueWithZoom(metrics);
+    viewportHeight =
+        mLengthAttributes[ATTR_HEIGHT].GetAnimValueWithZoom(metrics);
   } else {
-    viewportWidth = mViewportWidth;
-    viewportHeight = mViewportHeight;
+    viewportWidth = mViewportSize.width;
+    viewportHeight = mViewportSize.height;
   }
 
   if (!std::isfinite(viewportWidth) || viewportWidth <= 0.0f ||
@@ -183,7 +182,7 @@ gfx::Matrix SVGViewportElement::GetViewBoxTransform() const {
 //----------------------------------------------------------------------
 // SVGViewportElement
 
-float SVGViewportElement::GetLength(uint8_t aCtxType) {
+float SVGViewportElement::GetLength(uint8_t aCtxType) const {
   const SVGViewBox* viewbox = GetViewBoxInternal().HasRect()
                                   ? &GetViewBoxInternal().GetAnimValue()
                                   : nullptr;
@@ -201,25 +200,25 @@ float SVGViewportElement::GetLength(uint8_t aCtxType) {
     // Resolving length for inner <svg> is exactly the same as other
     // ordinary element. We shouldn't use the SVGViewportElement overload
     // of GetAnimValue().
-    SVGElement* self = this;
+    SVGElementMetrics metrics(this);
     if (shouldComputeWidth) {
-      w = mLengthAttributes[ATTR_WIDTH].GetAnimValue(self);
+      w = mLengthAttributes[ATTR_WIDTH].GetAnimValueWithZoom(metrics);
     }
     if (shouldComputeHeight) {
-      h = mLengthAttributes[ATTR_HEIGHT].GetAnimValue(self);
+      h = mLengthAttributes[ATTR_HEIGHT].GetAnimValueWithZoom(metrics);
     }
   } else if (ShouldSynthesizeViewBox()) {
     if (shouldComputeWidth) {
       w = ComputeSynthesizedViewBoxDimension(mLengthAttributes[ATTR_WIDTH],
-                                             mViewportWidth, this);
+                                             mViewportSize.width, this);
     }
     if (shouldComputeHeight) {
       h = ComputeSynthesizedViewBoxDimension(mLengthAttributes[ATTR_HEIGHT],
-                                             mViewportHeight, this);
+                                             mViewportSize.height, this);
     }
   } else {
-    w = mViewportWidth;
-    h = mViewportHeight;
+    w = mViewportSize.width;
+    h = mViewportSize.height;
   }
 
   w = std::max(w, 0.0f);
@@ -328,9 +327,9 @@ SVGViewBox SVGViewportElement::GetViewBoxWithSynthesis(
     return SVGViewBox(
         0, 0,
         ComputeSynthesizedViewBoxDimension(mLengthAttributes[ATTR_WIDTH],
-                                           mViewportWidth, this),
+                                           mViewportSize.width, this),
         ComputeSynthesizedViewBoxDimension(mLengthAttributes[ATTR_HEIGHT],
-                                           mViewportHeight, this));
+                                           mViewportSize.height, this));
   }
 
   // No viewBox attribute, so we shouldn't auto-scale. This is equivalent

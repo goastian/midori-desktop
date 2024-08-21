@@ -8,7 +8,7 @@
 #include "nsIObserverService.h"
 #include "nsIDocShell.h"
 #include "nsServiceManagerUtils.h"
-#include "nsIContentViewer.h"
+#include "nsIDocumentViewer.h"
 #include "mozilla/dom/Document.h"
 #include "InProcessBrowserChildMessageManager.h"
 #include "nsIWindowMediator.h"
@@ -22,7 +22,8 @@
 #include "nsIAppShellService.h"
 #include "nsAppShellCID.h"
 #include "nsContentUtils.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsJSEnvironment.h"
 #include "nsFrameLoader.h"
 #include "mozilla/CycleCollectedJSContext.h"
@@ -169,7 +170,7 @@ static void MarkMessageManagers() {
   }
 }
 
-void MarkContentViewer(nsIContentViewer* aViewer, bool aCleanupJS) {
+void MarkDocumentViewer(nsIDocumentViewer* aViewer, bool aCleanupJS) {
   if (!aViewer) {
     return;
   }
@@ -213,9 +214,9 @@ void MarkSHEntry(nsISHEntry* aSHEntry, bool aCleanupJS) {
     return;
   }
 
-  nsCOMPtr<nsIContentViewer> cview;
-  aSHEntry->GetContentViewer(getter_AddRefs(cview));
-  MarkContentViewer(cview, aCleanupJS);
+  nsCOMPtr<nsIDocumentViewer> viewer;
+  aSHEntry->GetDocumentViewer(getter_AddRefs(viewer));
+  MarkDocumentViewer(viewer, aCleanupJS);
 
   nsCOMPtr<nsIDocShellTreeItem> child;
   int32_t i = 0;
@@ -239,9 +240,9 @@ void MarkDocShell(nsIDocShellTreeItem* aNode, bool aCleanupJS) {
     return;
   }
 
-  nsCOMPtr<nsIContentViewer> cview;
-  shell->GetContentViewer(getter_AddRefs(cview));
-  MarkContentViewer(cview, aCleanupJS);
+  nsCOMPtr<nsIDocumentViewer> viewer;
+  shell->GetDocViewer(getter_AddRefs(viewer));
+  MarkDocumentViewer(viewer, aCleanupJS);
 
   nsCOMPtr<nsIWebNavigation> webNav = do_QueryInterface(shell);
   RefPtr<ChildSHistory> history = webNav->GetSessionHistory();

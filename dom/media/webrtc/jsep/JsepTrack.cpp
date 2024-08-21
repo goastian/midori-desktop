@@ -61,8 +61,10 @@ void JsepTrack::EnsureSsrcs(SsrcGenerator& ssrcGenerator, size_t aNumber) {
 }
 
 void JsepTrack::PopulateCodecs(
-    const std::vector<UniquePtr<JsepCodecDescription>>& prototype) {
+    const std::vector<UniquePtr<JsepCodecDescription>>& prototype,
+    bool aUsePreferredCodecsOrder) {
   mPrototypeCodecs.clear();
+  mUsePreferredCodecsOrder = aUsePreferredCodecsOrder;
   for (const auto& prototypeCodec : prototype) {
     if (prototypeCodec->Type() == mType) {
       mPrototypeCodecs.emplace_back(prototypeCodec->Clone());
@@ -454,14 +456,66 @@ static bool CompareCodec(const UniquePtr<JsepCodecDescription>& lhs,
   return lhs->mStronglyPreferred && !rhs->mStronglyPreferred;
 }
 
+void JsepTrack::MaybeStoreCodecToLog(const std::string& codec,
+                                     SdpMediaSection::MediaType type) {
+  // We are logging ulpfec and red elsewhere and will not log rtx.
+  if (!nsCRT::strcasecmp(codec.c_str(), "ulpfec") ||
+      !nsCRT::strcasecmp(codec.c_str(), "red") ||
+      !nsCRT::strcasecmp(codec.c_str(), "rtx")) {
+    return;
+  }
+
+  if (type == SdpMediaSection::kVideo) {
+    if (nsCRT::strcasestr(codec.c_str(), "fec") && mFecCodec.empty()) {
+      mFecCodec = codec;
+    } else if (!nsCRT::strcasestr(codec.c_str(), "fec") &&
+               mVideoPreferredCodec.empty()) {
+      mVideoPreferredCodec = codec;
+    }
+  } else if (type == SdpMediaSection::kAudio && mAudioPreferredCodec.empty()) {
+    mAudioPreferredCodec = codec;
+  }
+}
+
 std::vector<UniquePtr<JsepCodecDescription>> JsepTrack::NegotiateCodecs(
     const SdpMediaSection& remote, bool remoteIsOffer,
     Maybe<const SdpMediaSection&> local) {
   std::vector<UniquePtr<JsepCodecDescription>> negotiatedCodecs;
   std::vector<UniquePtr<JsepCodecDescription>> newPrototypeCodecs;
+  // "Pseudo codecs" include things that aren't actually stand-alone codecs (ie;
+  // ulpfec, red, rtx).
+  std::vector<UniquePtr<JsepCodecDescription>> negotiatedPseudoCodecs;
+  std::vector<UniquePtr<JsepCodecDescription>> newPrototypePseudoCodecs;
+
+  std::vector<std::string> remoteFormats;
+
+  // If setCodecPreferences has been used we need to ensure the order of codecs
+  // matches what was set.
+  if (mUsePreferredCodecsOrder) {
+    for (auto& codec : mPrototypeCodecs) {
+      if (!codec || !codec->mEnabled) {
+        continue;
+      }
+      for (const std::string& fmt : remote.GetFormats()) {
+        if (!codec->Matches(fmt, remote)) {
+          continue;
+        }
+        remoteFormats.push_back(fmt);
+        break;
+      }
+    }
+  } else {
+    remoteFormats = remote.GetFormats();
+  }
 
   // Outer loop establishes the remote side's preference
-  for (const std::string& fmt : remote.GetFormats()) {
+  for (const std::string& fmt : remoteFormats) {
+    // Decide if we want to store this codec for logging.
+    const auto* entry = remote.FindRtpmap(fmt);
+    if (entry) {
+      MaybeStoreCodecToLog(entry->name, remote.GetMediaType());
+    }
+
     for (auto& codec : mPrototypeCodecs) {
       if (!codec || !codec->mEnabled || !codec->Matches(fmt, remote)) {
         continue;
@@ -490,11 +544,61 @@ std::vector<UniquePtr<JsepCodecDescription>> JsepTrack::NegotiateCodecs(
         // Moves the codec out of mPrototypeCodecs, leaving an empty
         // UniquePtr, so we don't use it again. Also causes successfully
         // negotiated codecs to be placed up front in the future.
-        newPrototypeCodecs.emplace_back(std::move(codec));
-        negotiatedCodecs.emplace_back(std::move(clone));
+        if (codec->mName == "red" || codec->mName == "ulpfec" ||
+            codec->mName == "rtx") {
+          newPrototypePseudoCodecs.emplace_back(std::move(codec));
+          negotiatedPseudoCodecs.emplace_back(std::move(clone));
+        } else {
+          newPrototypeCodecs.emplace_back(std::move(codec));
+          negotiatedCodecs.emplace_back(std::move(clone));
+        }
         break;
       }
     }
+  }
+
+  // If we are the offerer we need to be prepared to receive all codecs we
+  // offered even codecs missing from the answer. To achieve this we add the
+  // remaining codecs from mPrototypeCodecs to the back of the negotiated
+  // Codecs/PseudoCodecs.
+  for (auto& codec : mPrototypeCodecs) {
+    bool codecEnabled = codec && codec->mEnabled;
+    bool addAllCodecs =
+        !remoteIsOffer && mDirection != sdp::kSend && remote.IsSending();
+    // 0 is a valid PT but not a dynamic PT so we validate if we see 0 that it
+    // is for PCMU
+    bool validPT = codecEnabled && (codec->mDefaultPt.compare("0") != 0 ||
+                                    (codec->mName.compare("PCMU") == 0));
+    if (!codecEnabled || (!addAllCodecs || !validPT)) {
+      continue;
+    }
+
+    UniquePtr<JsepCodecDescription> clone(codec->Clone());
+    // Moves the codec out of mPrototypeCodecs, leaving an empty
+    // UniquePtr, so we don't use it again.
+    if (codec->mName == "red" || codec->mName == "ulpfec" ||
+        codec->mName == "rtx") {
+      newPrototypePseudoCodecs.emplace_back(std::move(codec));
+      negotiatedPseudoCodecs.emplace_back(std::move(clone));
+    } else {
+      newPrototypeCodecs.emplace_back(std::move(codec));
+      negotiatedCodecs.emplace_back(std::move(clone));
+    }
+  }
+
+  if (negotiatedCodecs.empty()) {
+    // We don't have any real codecs. Clearing so we don't attempt to create a
+    // connection signaling only RED and/or ULPFEC.
+    negotiatedPseudoCodecs.clear();
+  }
+
+  // Put the pseudo codecs at the back
+  for (auto& pseudoCodec : negotiatedPseudoCodecs) {
+    negotiatedCodecs.emplace_back(std::move(pseudoCodec));
+  }
+
+  for (auto& pseudoCodec : newPrototypePseudoCodecs) {
+    newPrototypeCodecs.emplace_back(std::move(pseudoCodec));
   }
 
   // newPrototypeCodecs contains just the negotiated stuff so far. Add the rest.
@@ -524,23 +628,6 @@ std::vector<UniquePtr<JsepCodecDescription>> JsepTrack::NegotiateCodecs(
       dtmf = static_cast<JsepAudioCodecDescription*>(codec.get());
     }
   }
-  // if we have a red codec remove redundant encodings that don't exist
-  if (red) {
-    // Since we could have an externally specified redundant endcodings
-    // list, we shouldn't simply rebuild the redundant encodings list
-    // based on the current list of codecs.
-    std::vector<uint8_t> unnegotiatedEncodings;
-    std::swap(unnegotiatedEncodings, red->mRedundantEncodings);
-    for (auto redundantPt : unnegotiatedEncodings) {
-      std::string pt = std::to_string(redundantPt);
-      for (const auto& codec : negotiatedCodecs) {
-        if (pt == codec->mDefaultPt) {
-          red->mRedundantEncodings.push_back(redundantPt);
-          break;
-        }
-      }
-    }
-  }
   // Video FEC is indicated by the existence of the red and ulpfec
   // codecs and not an attribute on the particular video codec (like in
   // a rtcpfb attr). If we see both red and ulpfec codecs, we enable FEC
@@ -550,7 +637,8 @@ std::vector<UniquePtr<JsepCodecDescription>> JsepTrack::NegotiateCodecs(
       if (codec->mName != "red" && codec->mName != "ulpfec") {
         JsepVideoCodecDescription* videoCodec =
             static_cast<JsepVideoCodecDescription*>(codec.get());
-        videoCodec->EnableFec(red->mDefaultPt, ulpfec->mDefaultPt);
+        videoCodec->EnableFec(red->mDefaultPt, ulpfec->mDefaultPt,
+                              red->mRtxPayloadType);
       }
     }
   }
@@ -626,7 +714,7 @@ nsresult JsepTrack::Negotiate(const SdpMediaSection& answer,
 // works, however, if that payload type appeared in only one m-section.
 // We figure that out here.
 /* static */
-void JsepTrack::SetUniquePayloadTypes(std::vector<JsepTrack*>& tracks) {
+void JsepTrack::SetUniqueReceivePayloadTypes(std::vector<JsepTrack*>& tracks) {
   // Maps to track details if no other track contains the payload type,
   // otherwise maps to nullptr.
   std::map<uint16_t, JsepTrackNegotiatedDetails*> payloadTypeToDetailsMap;
@@ -661,7 +749,7 @@ void JsepTrack::SetUniquePayloadTypes(std::vector<JsepTrack*>& tracks) {
     auto trackDetails = ptAndDetails.second;
 
     if (trackDetails) {
-      trackDetails->mUniquePayloadTypes.push_back(
+      trackDetails->mUniqueReceivePayloadTypes.push_back(
           static_cast<uint8_t>(uniquePt));
     }
   }

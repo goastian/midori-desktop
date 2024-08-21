@@ -16,19 +16,13 @@ SourceSurfaceWebgl::SourceSurfaceWebgl(DrawTargetWebgl* aDT)
       mSharedContext(aDT->mSharedContext) {}
 
 SourceSurfaceWebgl::SourceSurfaceWebgl(
-    const RefPtr<TextureHandle>& aHandle,
-    const RefPtr<DrawTargetWebgl::SharedContext>& aSharedContext)
-    : mFormat(aHandle->GetFormat()),
-      mSize(aHandle->GetSize()),
-      mSharedContext(aSharedContext),
-      mHandle(aHandle) {
-  mHandle->SetSurface(this);
-}
+    const RefPtr<SharedContextWebgl>& aSharedContext)
+    : mSharedContext(aSharedContext) {}
 
 SourceSurfaceWebgl::~SourceSurfaceWebgl() {
   if (mHandle) {
     // Signal that the texture handle is not being used now.
-    mHandle->SetSurface(nullptr);
+    mHandle->ClearSurface();
   }
 }
 
@@ -115,10 +109,17 @@ void SourceSurfaceWebgl::GiveTexture(RefPtr<TextureHandle> aHandle) {
   mDT = nullptr;
 }
 
+void SourceSurfaceWebgl::SetHandle(TextureHandle* aHandle) {
+  MOZ_ASSERT(!mHandle);
+  mFormat = aHandle->GetFormat();
+  mSize = aHandle->GetSize();
+  mHandle = aHandle;
+  mHandle->SetSurface(this);
+}
+
 // Handler for when the owner DrawTargetWebgl is destroying the cached texture
 // handle that has been allocated for this snapshot.
-void SourceSurfaceWebgl::OnUnlinkTexture(
-    DrawTargetWebgl::SharedContext* aContext) {
+void SourceSurfaceWebgl::OnUnlinkTexture(SharedContextWebgl* aContext) {
   // If we get here, then we must have copied a snapshot, which only happens
   // if the target changed.
   MOZ_ASSERT(!mDT);
@@ -142,7 +143,7 @@ already_AddRefed<SourceSurface> SourceSurfaceWebgl::ExtractSubrect(
     return nullptr;
   }
   RefPtr<TextureHandle> subHandle;
-  RefPtr<DrawTargetWebgl::SharedContext> sharedContext;
+  RefPtr<SharedContextWebgl> sharedContext;
   if (mDT) {
     // If this is still a snapshot linked to a target, then copy from the
     // target.
@@ -164,8 +165,8 @@ already_AddRefed<SourceSurface> SourceSurfaceWebgl::ExtractSubrect(
       return nullptr;
     }
   }
-  RefPtr<SourceSurface> surface =
-      new SourceSurfaceWebgl(subHandle, sharedContext);
+  RefPtr<SourceSurfaceWebgl> surface = new SourceSurfaceWebgl(sharedContext);
+  surface->SetHandle(subHandle);
   return surface.forget();
 }
 

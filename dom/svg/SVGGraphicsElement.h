@@ -34,11 +34,14 @@ class SVGGraphicsElement : public SVGGraphicsElementBase, public SVGTests {
   already_AddRefed<SVGMatrix> GetCTM();
   already_AddRefed<SVGMatrix> GetScreenCTM();
 
-  bool IsFocusableInternal(int32_t* aTabIndex, bool aWithMouse) override;
+  Focusable IsFocusableWithoutStyle(IsFocusableFlags) override;
   bool IsSVGGraphicsElement() const final { return true; }
 
   using nsINode::Clone;
   // Overrides SVGTests.
+  bool PassesConditionalProcessingTests() const final {
+    return SVGTests::PassesConditionalProcessingTests();
+  }
   SVGElement* AsSVGElement() final { return this; }
 
  protected:

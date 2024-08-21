@@ -102,7 +102,7 @@ already_AddRefed<SVGRect> SVGGraphicsElement::GetBBox(
   }
   uint32_t flags = 0;
   if (aOptions.mFill) {
-    flags |= SVGUtils::eBBoxIncludeFill;
+    flags |= SVGUtils::eBBoxIncludeFillGeometry;
   }
   if (aOptions.mStroke) {
     flags |= SVGUtils::eBBoxIncludeStroke;
@@ -114,35 +114,33 @@ already_AddRefed<SVGRect> SVGGraphicsElement::GetBBox(
     flags |= SVGUtils::eBBoxIncludeClipped;
   }
   if (flags == 0) {
-    return do_AddRef(new SVGRect(this, gfx::Rect()));
+    return do_AddRef(new SVGRect(this, {}));
   }
   if (flags == SVGUtils::eBBoxIncludeMarkers ||
       flags == SVGUtils::eBBoxIncludeClipped) {
-    flags |= SVGUtils::eBBoxIncludeFill;
+    flags |= SVGUtils::eBBoxIncludeFillGeometry;
   }
   flags |= SVGUtils::eUseUserSpaceOfUseElement;
   return do_AddRef(new SVGRect(this, ToRect(SVGUtils::GetBBox(frame, flags))));
 }
 
 already_AddRefed<SVGMatrix> SVGGraphicsElement::GetCTM() {
-  Document* currentDoc = GetComposedDoc();
-  if (currentDoc) {
+  if (auto* currentDoc = GetComposedDoc()) {
     // Flush all pending notifications so that our frames are up to date
     currentDoc->FlushPendingNotifications(FlushType::Layout);
   }
-  gfx::Matrix m = SVGContentUtils::GetCTM(this, false);
+  gfx::Matrix m = SVGContentUtils::GetCTM(this);
   RefPtr<SVGMatrix> mat =
       m.IsSingular() ? nullptr : new SVGMatrix(ThebesMatrix(m));
   return mat.forget();
 }
 
 already_AddRefed<SVGMatrix> SVGGraphicsElement::GetScreenCTM() {
-  Document* currentDoc = GetComposedDoc();
-  if (currentDoc) {
+  if (auto* currentDoc = GetComposedDoc()) {
     // Flush all pending notifications so that our frames are up to date
     currentDoc->FlushPendingNotifications(FlushType::Layout);
   }
-  gfx::Matrix m = SVGContentUtils::GetCTM(this, true);
+  gfx::Matrix m = SVGContentUtils::GetScreenCTM(this);
   RefPtr<SVGMatrix> mat =
       m.IsSingular() ? nullptr : new SVGMatrix(ThebesMatrix(m));
   return mat.forget();
@@ -154,33 +152,22 @@ bool SVGGraphicsElement::IsSVGFocusable(bool* aIsFocusable,
   // MathML elements, see bug 1586011.
   if (!IsInComposedDoc() || IsInDesignMode()) {
     // In designMode documents we only allow focusing the document.
-    if (aTabIndex) {
-      *aTabIndex = -1;
-    }
-
+    *aTabIndex = -1;
     *aIsFocusable = false;
-
     return true;
   }
 
-  int32_t tabIndex = TabIndex();
-
-  if (aTabIndex) {
-    *aTabIndex = tabIndex;
-  }
-
+  *aTabIndex = TabIndex();
   // If a tabindex is specified at all, or the default tabindex is 0, we're
   // focusable
-  *aIsFocusable = tabIndex >= 0 || GetTabIndexAttrValue().isSome();
-
+  *aIsFocusable = *aTabIndex >= 0 || GetTabIndexAttrValue().isSome();
   return false;
 }
 
-bool SVGGraphicsElement::IsFocusableInternal(int32_t* aTabIndex,
-                                             bool aWithMouse) {
-  bool isFocusable = false;
-  IsSVGFocusable(&isFocusable, aTabIndex);
-  return isFocusable;
+Focusable SVGGraphicsElement::IsFocusableWithoutStyle(IsFocusableFlags) {
+  Focusable result;
+  IsSVGFocusable(&result.mFocusable, &result.mTabIndex);
+  return result;
 }
 
 }  // namespace mozilla::dom

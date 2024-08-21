@@ -65,13 +65,18 @@ DAV1DDecoder::DAV1DDecoder(const CreateDecoderParams& aParams)
           "Dav1dDecoder")),
       mImageContainer(aParams.mImageContainer),
       mImageAllocator(aParams.mKnowsCompositor),
-      mTrackingId(aParams.mTrackingId) {}
+      mTrackingId(aParams.mTrackingId),
+      mLowLatency(
+          aParams.mOptions.contains(CreateDecoderParams::Option::LowLatency)) {}
 
 DAV1DDecoder::~DAV1DDecoder() = default;
 
 RefPtr<MediaDataDecoder::InitPromise> DAV1DDecoder::Init() {
   Dav1dSettings settings;
   dav1d_default_settings(&settings);
+  if (mLowLatency) {
+    settings.max_frame_delay = 1;
+  }
   size_t decoder_threads = 2;
   if (mInfo.mDisplay.width >= 2048) {
     decoder_threads = 8;
@@ -173,34 +178,38 @@ RefPtr<MediaDataDecoder::DecodePromise> DAV1DDecoder::InvokeDecode(
   DecodedData results;
   do {
     res = dav1d_send_data(mContext, &data);
-    if (res < 0 && res != -EAGAIN) {
+    if (res < 0 && res != DAV1D_ERR(EAGAIN)) {
       LOG("Decode error: %d", res);
       return DecodePromise::CreateAndReject(
           MediaResult(NS_ERROR_DOM_MEDIA_DECODE_ERR, __func__), __func__);
     }
     // Alway consume the whole buffer on success.
-    // At this point only -EAGAIN error is expected.
+    // At this point only DAV1D_ERR(EAGAIN) is expected.
     MOZ_ASSERT((res == 0 && !data.sz) ||
-               (res == -EAGAIN && data.sz == aSample->Size()));
+               (res == DAV1D_ERR(EAGAIN) && data.sz == aSample->Size()));
 
-    MediaResult rs(NS_OK);
-    res = GetPicture(results, rs);
-    if (res < 0) {
-      if (res == -EAGAIN) {
-        // No frames ready to return. This is not an
-        // error, in some circumstances, we need to
-        // feed it with a certain amount of frames
+    Result<already_AddRefed<VideoData>, MediaResult> r = GetPicture();
+    if (r.isOk()) {
+      results.AppendElement(r.unwrap());
+    } else {
+      MediaResult rs = r.unwrapErr();
+      if (rs.Code() == NS_ERROR_DOM_MEDIA_WAITING_FOR_DATA) {
+        // No frames ready to return. This is not an error, in some
+        // circumstances, we need to feed it with a certain amount of frames
         // before we get a picture.
         continue;
       }
-      return DecodePromise::CreateAndReject(rs, __func__);
+      // Skip if rs is NS_OK, which can happen if picture layout is I400.
+      if (NS_FAILED(rs.Code())) {
+        return DecodePromise::CreateAndReject(rs, __func__);
+      }
     }
   } while (data.sz > 0);
 
   return DecodePromise::CreateAndResolve(std::move(results), __func__);
 }
 
-int DAV1DDecoder::GetPicture(DecodedData& aData, MediaResult& aResult) {
+Result<already_AddRefed<VideoData>, MediaResult> DAV1DDecoder::GetPicture() {
   class Dav1dPictureWrapper {
    public:
     Dav1dPicture* operator&() { return &p; }
@@ -214,26 +223,31 @@ int DAV1DDecoder::GetPicture(DecodedData& aData, MediaResult& aResult) {
 
   int res = dav1d_get_picture(mContext, &picture);
   if (res < 0) {
-    LOG("Decode error: %d", res);
-    aResult = MediaResult(NS_ERROR_DOM_MEDIA_DECODE_ERR, __func__);
-    return res;
+    auto r = MediaResult(res == DAV1D_ERR(EAGAIN)
+                             ? NS_ERROR_DOM_MEDIA_WAITING_FOR_DATA
+                             : NS_ERROR_DOM_MEDIA_DECODE_ERR,
+                         RESULT_DETAIL("dav1d_get_picture: %d", res));
+    LOG("%s", r.Message().get());
+    return Err(r);
   }
 
   if ((*picture).p.layout == DAV1D_PIXEL_LAYOUT_I400) {
-    return 0;
+    // Use NS_OK to indicate that this picture should be skipped.
+    auto r = MediaResult(
+        NS_OK,
+        RESULT_DETAIL("I400 picture: No chroma data to construct an image"));
+    LOG("%s", r.Message().get());
+    return Err(r);
   }
 
-  RefPtr<VideoData> v = ConstructImage(*picture);
-  if (!v) {
-    LOG("Image allocation error: %ux%u"
-        " display %ux%u picture %ux%u",
+  Result<already_AddRefed<VideoData>, MediaResult> r = ConstructImage(*picture);
+  return r.mapErr([&](const MediaResult& aResult) {
+    LOG("ConstructImage (%ux%u display %ux%u picture %ux%u ) error - %s: %s",
         (*picture).p.w, (*picture).p.h, mInfo.mDisplay.width,
-        mInfo.mDisplay.height, mInfo.mImage.width, mInfo.mImage.height);
-    aResult = MediaResult(NS_ERROR_OUT_OF_MEMORY, __func__);
-    return -1;
-  }
-  aData.AppendElement(std::move(v));
-  return 0;
+        mInfo.mDisplay.height, mInfo.mImage.width, mInfo.mImage.height,
+        aResult.ErrorName().get(), aResult.Message().get());
+    return aResult;
+  });
 }
 
 /* static */
@@ -261,7 +275,7 @@ Maybe<gfx::ColorSpace2> DAV1DDecoder::GetColorPrimaries(
       static_cast<gfx::CICP::ColourPrimaries>(aPicture.seq_hdr->pri), aLogger);
 }
 
-already_AddRefed<VideoData> DAV1DDecoder::ConstructImage(
+Result<already_AddRefed<VideoData>, MediaResult> DAV1DDecoder::ConstructImage(
     const Dav1dPicture& aPicture) {
   VideoData::YCbCrBuffer b;
   if (aPicture.p.bpc == 10) {
@@ -338,6 +352,8 @@ already_AddRefed<VideoData> DAV1DDecoder::ConstructImage(
     aStage.SetYUVColorSpace(b.mYUVColorSpace);
     aStage.SetColorRange(b.mColorRange);
     aStage.SetColorDepth(b.mColorDepth);
+    aStage.SetStartTimeAndEndTime(aPicture.m.timestamp,
+                                  aPicture.m.timestamp + aPicture.m.duration);
   });
 
   return VideoData::CreateAndCopyData(
@@ -348,15 +364,22 @@ already_AddRefed<VideoData> DAV1DDecoder::ConstructImage(
 RefPtr<MediaDataDecoder::DecodePromise> DAV1DDecoder::Drain() {
   RefPtr<DAV1DDecoder> self = this;
   return InvokeAsync(mTaskQueue, __func__, [self, this] {
-    int res = 0;
     DecodedData results;
-    do {
-      MediaResult rs(NS_OK);
-      res = GetPicture(results, rs);
-      if (res < 0 && res != -EAGAIN) {
-        return DecodePromise::CreateAndReject(rs, __func__);
+    while (true) {
+      Result<already_AddRefed<VideoData>, MediaResult> r = GetPicture();
+      if (r.isOk()) {
+        results.AppendElement(r.unwrap());
+      } else {
+        MediaResult rs = r.unwrapErr();
+        if (rs.Code() == NS_ERROR_DOM_MEDIA_WAITING_FOR_DATA) {
+          break;
+        }
+        // Skip if rs is NS_OK, which can happen if picture layout is I400.
+        if (NS_FAILED(rs.Code())) {
+          return DecodePromise::CreateAndReject(rs, __func__);
+        }
       }
-    } while (res != -EAGAIN);
+    }
     return DecodePromise::CreateAndResolve(std::move(results), __func__);
   });
 }

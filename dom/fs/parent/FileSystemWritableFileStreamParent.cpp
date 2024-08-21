@@ -25,16 +25,20 @@ class FileSystemWritableFileStreamParent::FileSystemWritableFileStreamCallbacks
 };
 
 FileSystemWritableFileStreamParent::FileSystemWritableFileStreamParent(
-    RefPtr<FileSystemManagerParent> aManager, const fs::EntryId& aEntryId)
-    : mManager(std::move(aManager)), mEntryId(aEntryId) {}
+    RefPtr<FileSystemManagerParent> aManager, const fs::EntryId& aEntryId,
+    const fs::FileId& aTemporaryFileId, bool aIsExclusive)
+    : mManager(std::move(aManager)),
+      mEntryId(aEntryId),
+      mTemporaryFileId(aTemporaryFileId),
+      mIsExclusive(aIsExclusive) {}
 
 FileSystemWritableFileStreamParent::~FileSystemWritableFileStreamParent() {
   MOZ_ASSERT(mClosed);
 }
 
 mozilla::ipc::IPCResult FileSystemWritableFileStreamParent::RecvClose(
-    CloseResolver&& aResolver) {
-  Close();
+    bool aAbort, CloseResolver&& aResolver) {
+  Close(aAbort);
 
   aResolver(void_t());
 
@@ -48,7 +52,7 @@ void FileSystemWritableFileStreamParent::ActorDestroy(ActorDestroyReason aWhy) {
   }
 
   if (!IsClosed()) {
-    Close();
+    Close(/* aAbort */ true);
   }
 }
 
@@ -65,13 +69,17 @@ FileSystemWritableFileStreamParent::GetOrCreateStreamCallbacks() {
   return mStreamCallbacks.get();
 }
 
-void FileSystemWritableFileStreamParent::Close() {
+void FileSystemWritableFileStreamParent::Close(bool aAbort) {
   LOG(("Closing WritableFileStream"));
 
   mClosed.Flip();
 
-  // TODO: Change to UnlockShared after temporary files
-  mManager->DataManagerStrongRef()->UnlockExclusive(mEntryId);
+  if (mIsExclusive) {
+    mManager->DataManagerStrongRef()->UnlockExclusive(mEntryId);
+  } else {
+    mManager->DataManagerStrongRef()->UnlockShared(mEntryId, mTemporaryFileId,
+                                                   aAbort);
+  }
 }
 
 }  // namespace mozilla::dom

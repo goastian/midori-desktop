@@ -15,8 +15,10 @@
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/TypedArray.h"
 #include "mozilla/dom/VideoColorSpaceBinding.h"
+#include "mozilla/dom/WorkerRef.h"
 #include "mozilla/gfx/Point.h"
 #include "mozilla/gfx/Rect.h"
+#include "mozilla/media/MediaUtils.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsWrapperCache.h"
 
@@ -55,13 +57,14 @@ struct VideoFrameCopyToOptions;
 namespace mozilla::dom {
 
 struct VideoFrameData {
-  VideoFrameData(layers::Image* aImage, const VideoPixelFormat& aFormat,
+  VideoFrameData(layers::Image* aImage, const Maybe<VideoPixelFormat>& aFormat,
                  gfx::IntRect aVisibleRect, gfx::IntSize aDisplaySize,
                  Maybe<uint64_t> aDuration, int64_t aTimestamp,
                  const VideoColorSpaceInit& aColorSpace);
+  VideoFrameData(const VideoFrameData& aData) = default;
 
   const RefPtr<layers::Image> mImage;
-  const VideoPixelFormat mFormat;
+  const Maybe<VideoPixelFormat> mFormat;
   const gfx::IntRect mVisibleRect;
   const gfx::IntSize mDisplaySize;
   const Maybe<uint64_t> mDuration;
@@ -70,16 +73,10 @@ struct VideoFrameData {
 };
 
 struct VideoFrameSerializedData : VideoFrameData {
-  VideoFrameSerializedData(layers::Image* aImage,
-                           const VideoPixelFormat& aFormat,
-                           gfx::IntSize aCodedSize, gfx::IntRect aVisibleRect,
-                           gfx::IntSize aDisplaySize, Maybe<uint64_t> aDuration,
-                           int64_t aTimestamp,
-                           const VideoColorSpaceInit& aColorSpace,
-                           already_AddRefed<nsIURI> aPrincipalURI);
+  VideoFrameSerializedData(const VideoFrameData& aData,
+                           gfx::IntSize aCodedSize);
 
   const gfx::IntSize mCodedSize;
-  const nsCOMPtr<nsIURI> mPrincipalURI;
 };
 
 class VideoFrame final : public nsISupports, public nsWrapperCache {
@@ -89,15 +86,15 @@ class VideoFrame final : public nsISupports, public nsWrapperCache {
 
  public:
   VideoFrame(nsIGlobalObject* aParent, const RefPtr<layers::Image>& aImage,
-             const VideoPixelFormat& aFormat, gfx::IntSize aCodedSize,
+             const Maybe<VideoPixelFormat>& aFormat, gfx::IntSize aCodedSize,
              gfx::IntRect aVisibleRect, gfx::IntSize aDisplaySize,
              const Maybe<uint64_t>& aDuration, int64_t aTimestamp,
              const VideoColorSpaceInit& aColorSpace);
-
+  VideoFrame(nsIGlobalObject* aParent, const VideoFrameSerializedData& aData);
   VideoFrame(const VideoFrame& aOther);
 
  protected:
-  ~VideoFrame() = default;
+  ~VideoFrame();
 
  public:
   nsIGlobalObject* GetParentObject() const;
@@ -162,9 +159,10 @@ class VideoFrame final : public nsISupports, public nsWrapperCache {
       const MaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aDestination,
       const VideoFrameCopyToOptions& aOptions, ErrorResult& aRv);
 
-  already_AddRefed<VideoFrame> Clone(ErrorResult& aRv);
+  already_AddRefed<VideoFrame> Clone(ErrorResult& aRv) const;
 
   void Close();
+  bool IsClosed() const;
 
   // [Serializable] implementations: {Read, Write}StructuredClone
   static JSObject* ReadStructuredClone(JSContext* aCx, nsIGlobalObject* aGlobal,
@@ -181,6 +179,14 @@ class VideoFrame final : public nsISupports, public nsWrapperCache {
 
   static already_AddRefed<VideoFrame> FromTransferred(nsIGlobalObject* aGlobal,
                                                       TransferredData* aData);
+
+  // Native only methods.
+  const gfx::IntSize& NativeCodedSize() const { return mCodedSize; }
+  const gfx::IntSize& NativeDisplaySize() const { return mDisplaySize; }
+  const gfx::IntRect& NativeVisibleRect() const { return mVisibleRect; }
+  already_AddRefed<layers::Image> GetImage() const;
+
+  nsCString ToString() const;
 
  public:
   // A VideoPixelFormat wrapper providing utilities for VideoFrame.
@@ -211,20 +217,28 @@ class VideoFrame final : public nsISupports, public nsWrapperCache {
   // VideoFrame can run on either main thread or worker thread.
   void AssertIsOnOwningThread() const { NS_ASSERT_OWNINGTHREAD(VideoFrame); }
 
-  already_AddRefed<nsIURI> GetPrincipalURI() const;
+  VideoFrameData GetVideoFrameData() const;
+
+  // Below helpers are used to automatically release the holding Resource if
+  // VideoFrame is never Close()d by the users.
+  void StartAutoClose();
+  void StopAutoClose();
+  void CloseIfNeeded();
 
   // A class representing the VideoFrame's data.
   class Resource final {
    public:
-    Resource(const RefPtr<layers::Image>& aImage, const Format& aFormat);
+    Resource(const RefPtr<layers::Image>& aImage, Maybe<Format>&& aFormat);
     Resource(const Resource& aOther);
     ~Resource() = default;
+    Maybe<VideoPixelFormat> TryPixelFormat() const;
     uint32_t Stride(const Format::Plane& aPlane) const;
     bool CopyTo(const Format::Plane& aPlane, const gfx::IntRect& aRect,
                 Span<uint8_t>&& aPlaneDest, size_t aDestinationStride) const;
 
     const RefPtr<layers::Image> mImage;
-    const Format mFormat;
+    // Nothing() if mImage is not in VideoPixelFormat
+    const Maybe<Format> mFormat;
   };
 
   nsCOMPtr<nsIGlobalObject> mParent;
@@ -238,9 +252,13 @@ class VideoFrame final : public nsISupports, public nsWrapperCache {
   gfx::IntRect mVisibleRect;
   gfx::IntSize mDisplaySize;
 
-  Maybe<uint64_t> mDuration;  // Nothing() after `Close()`d
+  Maybe<uint64_t> mDuration;
   int64_t mTimestamp;
   VideoColorSpaceInit mColorSpace;
+
+  // The following are used to help monitoring mResource release.
+  UniquePtr<media::ShutdownBlockingTicket> mShutdownBlocker = nullptr;
+  RefPtr<WeakWorkerRef> mWorkerRef = nullptr;
 };
 
 }  // namespace mozilla::dom

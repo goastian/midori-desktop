@@ -1,4 +1,6 @@
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 let geolocation = null;
 let locations = [
@@ -54,7 +56,7 @@ function watchPosition() {
 let observer = {
   QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     Assert.equal(topic, "geolocation-position-events");
     observer._countEvents++;
     observer._lastData = toJSON(subject);

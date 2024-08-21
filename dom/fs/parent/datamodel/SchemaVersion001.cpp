@@ -8,6 +8,7 @@
 
 #include "FileSystemHashSource.h"
 #include "ResultStatement.h"
+#include "StartedTransaction.h"
 #include "fs/FileSystemConstants.h"
 #include "mozStorageHelper.h"
 #include "mozilla/dom/quota/QuotaCommon.h"
@@ -16,10 +17,6 @@
 namespace mozilla::dom::fs {
 
 namespace {
-
-nsresult SetEncoding(ResultConnection& aConn) {
-  return aConn->ExecuteSimpleSQL(R"(PRAGMA encoding = "UTF-16";)"_ns);
-}
 
 nsresult CreateEntries(ResultConnection& aConn) {
   return aConn->ExecuteSimpleSQL(
@@ -114,8 +111,7 @@ nsresult CreateRootEntry(ResultConnection& aConn, const Origin& aOrigin) {
   QM_TRY_UNWRAP(EntryId rootId,
                 data::FileSystemHashSource::GenerateHash(aOrigin, kRootString));
 
-  mozStorageTransaction transaction(
-      aConn.get(), false, mozIStorageConnection::TRANSACTION_IMMEDIATE);
+  QM_TRY_UNWRAP(auto transaction, StartedTransaction::Create(aConn));
 
   {
     QM_TRY_UNWRAP(ResultStatement stmt,
@@ -135,6 +131,12 @@ nsresult CreateRootEntry(ResultConnection& aConn, const Origin& aOrigin) {
   return transaction.Commit();
 }
 
+}  // namespace
+
+nsresult SetEncoding(ResultConnection& aConn) {
+  return aConn->ExecuteSimpleSQL(R"(PRAGMA encoding = "UTF-16";)"_ns);
+}
+
 Result<bool, QMResult> CheckIfEmpty(ResultConnection& aConn) {
   const nsLiteralCString areThereTablesQuery =
       "SELECT EXISTS ("
@@ -144,10 +146,21 @@ Result<bool, QMResult> CheckIfEmpty(ResultConnection& aConn) {
   QM_TRY_UNWRAP(ResultStatement stmt,
                 ResultStatement::Create(aConn, areThereTablesQuery));
 
-  return stmt.YesOrNoQuery();
+  QM_TRY_UNWRAP(bool tablesExist, stmt.YesOrNoQuery());
+
+  return !tablesExist;
 };
 
-}  // namespace
+nsresult SchemaVersion001::CreateTables(ResultConnection& aConn,
+                                        const Origin& aOrigin) {
+  QM_TRY(MOZ_TO_RESULT(CreateEntries(aConn)));
+  QM_TRY(MOZ_TO_RESULT(CreateDirectories(aConn)));
+  QM_TRY(MOZ_TO_RESULT(CreateFiles(aConn)));
+  QM_TRY(MOZ_TO_RESULT(CreateUsages(aConn)));
+  QM_TRY(MOZ_TO_RESULT(CreateRootEntry(aConn, aOrigin)));
+
+  return NS_OK;
+}
 
 Result<DatabaseVersion, QMResult> SchemaVersion001::InitializeConnection(
     ResultConnection& aConn, const Origin& aOrigin) {
@@ -162,20 +175,15 @@ Result<DatabaseVersion, QMResult> SchemaVersion001::InitializeConnection(
   }
 
   if (currentVersion < sVersion) {
-    mozStorageTransaction transaction(
-        aConn.get(),
-        /* commit on complete */ false,
-        mozIStorageConnection::TRANSACTION_IMMEDIATE);
+    QM_TRY_UNWRAP(auto transaction, StartedTransaction::Create(aConn));
 
-    QM_TRY(QM_TO_RESULT(CreateEntries(aConn)));
-    QM_TRY(QM_TO_RESULT(CreateDirectories(aConn)));
-    QM_TRY(QM_TO_RESULT(CreateFiles(aConn)));
-    QM_TRY(QM_TO_RESULT(CreateUsages(aConn)));
-    QM_TRY(QM_TO_RESULT(CreateRootEntry(aConn, aOrigin)));
+    QM_TRY(QM_TO_RESULT(SchemaVersion001::CreateTables(aConn, aOrigin)));
     QM_TRY(QM_TO_RESULT(aConn->SetSchemaVersion(sVersion)));
 
     QM_TRY(QM_TO_RESULT(transaction.Commit()));
   }
+
+  QM_TRY(QM_TO_RESULT(aConn->ExecuteSimpleSQL("PRAGMA foreign_keys = ON;"_ns)));
 
   QM_TRY(QM_TO_RESULT(aConn->GetSchemaVersion(&currentVersion)));
 

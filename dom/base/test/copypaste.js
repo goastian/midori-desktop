@@ -33,8 +33,8 @@ async function testCopyPaste(isXHTML) {
 
   var docShell = SpecialPowers.wrap(window).docShell;
 
-  var documentViewer = docShell.contentViewer.QueryInterface(
-    SpecialPowers.Ci.nsIContentViewerEdit
+  var documentViewer = docShell.docViewer.QueryInterface(
+    SpecialPowers.Ci.nsIDocumentViewerEdit
   );
 
   var clipboard = SpecialPowers.Services.clipboard;
@@ -99,7 +99,11 @@ async function testCopyPaste(isXHTML) {
     ].createInstance(SpecialPowers.Ci.nsITransferable);
     transferable.init(getLoadContext());
     transferable.addDataFlavor(mime);
-    clipboard.getData(transferable, 1);
+    clipboard.getData(
+      transferable,
+      1,
+      SpecialPowers.wrap(window).browsingContext.currentWindowContext
+    );
     var data = SpecialPowers.createBlankObject();
     transferable.getTransferData(mime, data);
     return data;

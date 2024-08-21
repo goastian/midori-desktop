@@ -11,15 +11,14 @@
  * and create derivative works of this document.
  */
 
-[Func="mozilla::dom::HTMLDialogElement::IsDialogEnabled",
- Exposed=Window]
+[Exposed=Window]
 interface HTMLDialogElement : HTMLElement {
   [HTMLConstructor] constructor();
 
   [CEReactions, SetterThrows]
   attribute boolean open;
   attribute DOMString returnValue;
-  [CEReactions, Throws]
+  [CEReactions, Throws, UseCounter]
   undefined show();
   [CEReactions, Throws]
   undefined showModal();

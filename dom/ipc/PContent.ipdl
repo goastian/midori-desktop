@@ -6,6 +6,7 @@
 
 include protocol PBackgroundStarter;
 include protocol PBrowser;
+include protocol PClipboardReadRequest;
 include protocol PClipboardWriteRequest;
 include protocol PCompositorManager;
 include protocol PContentPermissionRequest;
@@ -19,7 +20,6 @@ include protocol PHeapSnapshotTempFileHelper;
 include protocol PProcessHangMonitor;
 include protocol PImageBridge;
 include protocol PRemotePrintJob;
-include protocol PLoginReputation;
 include protocol PMedia;
 include protocol PNecko;
 include protocol PStreamFilter;
@@ -98,12 +98,12 @@ using mozilla::gfx::IntSize from "mozilla/gfx/2D.h";
 using mozilla::gfx::SurfaceFormat from "mozilla/gfx/Types.h";
 using mozilla::dom::TabId from "mozilla/dom/ipc/IdType.h";
 using mozilla::dom::ContentParentId from "mozilla/dom/ipc/IdType.h";
+using mozilla::EventMessage from "mozilla/EventForwards.h";
 using mozilla::LayoutDeviceIntPoint from "Units.h";
 using mozilla::ImagePoint from "Units.h";
-using mozilla::ImageIntSize from "Units.h";
 using mozilla::widget::ThemeChangeKind from "mozilla/widget/WidgetMessageUtils.h";
 using class mozilla::dom::MessagePort from "mozilla/dom/MessagePort.h";
-using class mozilla::dom::ipc::StructuredCloneData from "mozilla/dom/ipc/StructuredCloneData.h";
+[MoveOnly=data] using class mozilla::dom::ipc::StructuredCloneData from "mozilla/dom/ipc/StructuredCloneData.h";
 using mozilla::OriginAttributes from "mozilla/ipc/BackgroundUtils.h";
 using struct mozilla::layers::TextureFactoryIdentifier from "mozilla/layers/CompositorTypes.h";
 using mozilla::layers::CompositorOptions from "mozilla/layers/CompositorOptions.h";
@@ -127,7 +127,7 @@ using mozilla::glean::perf::PageLoadExtra from "mozilla/glean/GleanMetrics.h";
 using mozilla::dom::MaybeDiscardedBrowsingContext from "mozilla/dom/BrowsingContext.h";
 using mozilla::dom::BrowsingContextTransaction from "mozilla/dom/BrowsingContext.h";
 using mozilla::dom::BrowsingContextInitializer from "mozilla/dom/BrowsingContext.h";
-using mozilla::dom::PermitUnloadResult from "nsIContentViewer.h";
+using mozilla::dom::PermitUnloadResult from "nsIDocumentViewer.h";
 using mozilla::dom::MaybeDiscardedWindowContext from "mozilla/dom/WindowContext.h";
 using mozilla::dom::WindowContextTransaction from "mozilla/dom/WindowContext.h";
 [MoveOnly] using base::SharedMemoryHandle from "base/shared_memory.h";
@@ -159,6 +159,8 @@ using mozilla::dom::Wireframe from "mozilla/dom/DocumentBinding.h";
 using mozilla::PerfStats::MetricMask from "mozilla/PerfStats.h";
 [RefCounted] using class nsIX509Cert from "nsIX509Cert.h";
 using nsIDNSService::ResolverMode from "nsIDNSService.h";
+using mozilla::dom::UserActivation::Modifiers from "mozilla/dom/UserActivation.h";
+using mozilla::dom::PrivateAttributionImpressionType from "mozilla/dom/PrivateAttributionIPCUtils.h";
 
 union ChromeRegistryItem
 {
@@ -186,7 +188,7 @@ struct SystemFontListEntry {
     uint8_t   index;
     FontVisibility visibility;
 };
-#elif defined(XP_MACOSX)
+#elif defined(XP_MACOSX) || defined(XP_IOS)
 // Used on Mac OS X to pass the list of font families (not faces)
 // from chrome to content processes.
 // The entryType field distinguishes several types of font family
@@ -277,7 +279,7 @@ struct BlobURLRegistrationData
   nsCString url;
   IPCBlob blob;
   nullable nsIPrincipal principal;
-  nsID? agentClusterId;
+  nsCString partitionKey;
   bool revoked;
 };
 
@@ -300,6 +302,10 @@ struct JSWindowActorInfo
   // False if `url` is for JSM or nothing.
   bool isESModule;
 
+  // This is to align with JSProcessActorInfo.
+  // This attribute isn't used for JSWindow Actors.
+  bool loadInDevToolsLoader;
+
   // The module of the url.
   nsCString? url;
 
@@ -320,6 +326,9 @@ struct JSProcessActorInfo
     // True if `url` is for ESM.
     // False if `url` is for JSM or nothing.
     bool isESModule;
+
+    // True if the actor should be loaded in the distinct loader dedicated to DevTools.
+    bool loadInDevToolsLoader;
 
     // The module of the url.
     nsCString? url;
@@ -454,15 +463,13 @@ union TextRecognitionResultOrError {
     nsCString;
 };
 
-struct IPCImage {
-    BigBuffer data;
-    uint32_t stride;
-    SurfaceFormat format;
-    ImageIntSize size;
+struct ClipboardReadRequest {
+    ManagedEndpoint<PClipboardReadRequestChild> childEndpoint;
+    nsCString[] availableTypes;
 };
 
-union IPCTransferableDataOrError {
-    IPCTransferableData;
+union ClipboardReadRequestOrError {
+    ClipboardReadRequest;
     nsresult;
 };
 
@@ -471,10 +478,11 @@ union IPCTransferableDataOrError {
  * and a content process. There is exactly one PContentParent/PContentChild pair
  * for each content process.
  */
-[NestedUpTo=inside_cpow, NeedsOtherPid]
+[NestedUpTo=inside_cpow, NeedsOtherPid, ChildProc=Content]
 sync protocol PContent
 {
     manages PBrowser;
+    manages PClipboardReadRequest;
     manages PClipboardWriteRequest;
     manages PContentPermissionRequest;
     manages PCycleCollectWithLogs;
@@ -498,7 +506,6 @@ sync protocol PContent
     manages PURLClassifier;
     manages PURLClassifierLocal;
     manages PScriptCache;
-    manages PLoginReputation;
     manages PSessionStorageObserver;
     manages PBenchmarkStorage;
 
@@ -607,8 +614,6 @@ child:
                               bool minimizeMemoryUsage,
                               FileDescriptor? DMDFile)
         returns (uint32_t aGeneration);
-
-    async RequestPerformanceMetrics(nsID aID);
 
 #if defined(XP_WIN)
     /**
@@ -817,6 +822,8 @@ child:
                             MaybeDiscardedWindowContext aSourceTopWindowContext,
                             IPCTransferableData[] transfers, uint32_t action);
 
+    async UpdateDragSession(IPCTransferableData[] transfers, EventMessage message);
+
     async EndDragSession(bool aDoneDrag, bool aUserCancelled,
                          LayoutDeviceIntPoint aDragEndPoint,
                          uint32_t aKeyModifiers,
@@ -868,8 +875,7 @@ child:
     async GetFilesResponse(nsID aID, GetFilesResponseResult aResult);
 
     async BlobURLRegistration(nsCString aURI, IPCBlob aBlob,
-                              nullable nsIPrincipal aPrincipal,
-                              nsID? aAgentClusterId);
+                              nullable nsIPrincipal aPrincipal, nsCString aPartitionKey);
 
     async BlobURLUnregistration(nsCString aURI);
 
@@ -1039,18 +1045,14 @@ child:
     // Update the cached list of codec supported in the given process.
     async UpdateMediaCodecsSupported(RemoteDecodeIn aLocation, MediaCodecsSupported aSupported);
 
-    // Send the list of the supported mimetypes in the given process. GeckoView-specific
-    async DecoderSupportedMimeTypes(nsCString[] supportedTypes);
-
     // Used to initialize the global variable in content processes with the
     // latched value in the parent process. See dom/LocalStorageCommon.h for more
     // details.
     async InitNextGenLocalStorageEnabled(bool enabled);
 
-  async PRemotePrintJob();
+    async PRemotePrintJob();
 
 parent:
-
     async SynchronizeLayoutHistoryState(MaybeDiscardedBrowsingContext aContext,
                                         nullable nsILayoutHistoryState aState);
 
@@ -1116,8 +1118,6 @@ parent:
 
     async PURLClassifierLocal(nullable nsIURI uri, IPCURLClassifierFeature[] features);
 
-    async PLoginReputation(nullable nsIURI formURI);
-
     async PSessionStorageObserver();
 
     async PBenchmarkStorage();
@@ -1134,9 +1134,6 @@ parent:
                           bool wasExternallyTriggered,
                           bool hasValidUserGestureActivation);
     async ExtProtocolChannelConnectParent(uint64_t registrarId);
-
-    // PrefService message
-    sync GetGfxVars() returns (GfxVarUpdate[] vars);
 
     sync SyncMessage(nsString aMessage, ClonedMessageData aData)
       returns (StructuredCloneData[] retval);
@@ -1186,7 +1183,7 @@ parent:
     // Pass true for aShouldCloseWindow to specify that aContext was opened specifically
     // for this load, and should be closed once we've handled it.
     async PExternalHelperApp(nullable nsIURI uri,
-                             LoadInfoArgs? loadInfoArgs,
+                             LoadInfoArgs loadInfoArgs,
                              nsCString aMimeContentType,
                              nsCString aContentDisposition,
                              uint32_t aContentDispositionHint,
@@ -1207,24 +1204,31 @@ parent:
     async ConsoleMessage(nsString message);
     async ScriptErrorWithStack(nsString message, nsString sourceName, nsString sourceLine,
                                uint32_t lineNumber, uint32_t colNumber, uint32_t flags,
-                               nsCString category, bool privateWindow,
-                               bool fromChromeContext, ClonedMessageData stack);
+                               nsCString category, bool isFromPrivateWindow,
+                               bool isFromChromeContext, ClonedMessageData stack);
 
     // Places the items within dataTransfer on the clipboard.
     async SetClipboard(IPCTransferable aTransferable,
-                       int32_t aWhichClipboard);
+                       int32_t aWhichClipboard, MaybeDiscardedWindowContext aRequestingWindowContext);
 
     // Given a list of supported types, returns the clipboard data for the
     // first type that matches.
-    sync GetClipboard(nsCString[] aTypes, int32_t aWhichClipboard)
-        returns (IPCTransferableData transferableData);
+    // aRequestingWindowContext is the window that is requesting the clipboard,
+    // which is used for content analysis.
+    sync GetClipboard(nsCString[] aTypes, int32_t aWhichClipboard,
+                      MaybeDiscardedWindowContext aRequestingWindowContext)
+        returns (IPCTransferableDataOrError transferableDataOrError);
 
-    // Returns a list of formats supported by the clipboard
-    sync GetExternalClipboardFormats(int32_t aWhichClipboard, bool aPlainTextOnly) returns (nsCString[] aTypes);
+    // Requests getting data from clipboard.
+    async GetClipboardAsync(nsCString[] aTypes, int32_t aWhichClipboard,
+                            MaybeDiscardedWindowContext aRequestingWindowContext,
+                            nsIPrincipal aRequestingPrincipal)
+        returns (ClipboardReadRequestOrError aClipboardReadRequestOrError);
 
-    // Given a list of supported types, returns the clipboard data for the
-    // first type that matches.
-    async GetClipboardAsync(nsCString[] aTypes, int32_t aWhichClipboard) returns (IPCTransferableDataOrError transferableData);
+    // Requests getting data from clipboard.
+    sync GetClipboardDataSnapshotSync(nsCString[] aTypes, int32_t aWhichClipboard,
+                                      MaybeDiscardedWindowContext aRequestingWindowContext)
+        returns (ClipboardReadRequestOrError aClipboardReadRequestOrError);
 
     // Clears the clipboard.
     async EmptyClipboard(int32_t aWhichClipboard);
@@ -1233,24 +1237,17 @@ parent:
     sync ClipboardHasType(nsCString[] aTypes, int32_t aWhichClipboard)
         returns (bool hasType);
 
-    // Given a list of supported types, returns a list of types that clipboard
-    // constains the data for the specified type.
-    async ClipboardHasTypesAsync(nsCString [] aTypes, int32_t aWhichClipboard)
-        returns (nsCString [] types);
-
     /**
      * Notify the parent that the child has started a clipboard write request,
      * and that the data will be sent over another IPC message once it is ready.
      * @param  aClipboardType
      *         The clipboard type defined in nsIClipboard.
+     * @param  aSettingWindowContext
+     *         The window context that is setting the clipboard, if any. This is used
+     *         to possibly bypass Content Analysis if a set clipboard and get clipboard
+     *         operation are done on the same page.
      */
-    async PClipboardWriteRequest(int32_t aClipboardType);
-
-    // 'Play', 'Beep' and 'PlayEventSound' are the only nsISound methods used in
-    // the content process.
-    [Compress] async PlaySound(nullable nsIURI aURL);
-    [Compress] async Beep();
-    [Compress] async PlayEventSound(uint32_t aEventId);
+    async PClipboardWriteRequest(int32_t aClipboardType, MaybeDiscardedWindowContext aSettingWindowContext);
 
     sync GetIconForExtension(nsCString aFileExt, uint32_t aIconSize)
         returns (uint8_t[] bits);
@@ -1262,18 +1259,6 @@ parent:
 
     async FindImageText(IPCImage image, nsCString[] languages)
         returns (TextRecognitionResultOrError result);
-
-    /**
-     * Notifies the parent about a recording device is starting or shutdown.
-     * @param recordingStatus starting or shutdown
-     * @param pageURL URL that request that changing the recording status
-     * @param isAudio recording start with microphone
-     * @param isVideo recording start with camera
-     */
-    async RecordingDeviceEvents(nsString recordingStatus,
-                                nsString pageURL,
-                                bool isAudio,
-                                bool isVideo);
 
     // Graphics errors
     async GraphicsError(nsCString aError);
@@ -1351,21 +1336,6 @@ parent:
      * This sends any collected perf stats data on shutdown.
      */
     async ShutdownPerfStats(nsCString aPerfStats);
-
-    /**
-     * Request graphics initialization information from the parent.
-     */
-    sync GetGraphicsDeviceInitData()
-        returns (ContentDeviceData aData);
-
-    /**
-     * Request a buffer containing the contents of the output color profile.
-     * If set, this is the file pointed to by
-     * gfx.color_management.display_profile, otherwise it contains a
-     * platform-specific default
-     */
-    sync GetOutputColorProfileData()
-        returns (uint8_t[] aOutputColorProfileData);
 
     /**
      * A shared font list (see gfx/thebes/SharedFontList.*) contains a list
@@ -1564,8 +1534,10 @@ parent:
                        bool aCalledFromJS,
                        bool aForPrinting,
                        bool aForWindowDotPrint,
+                       bool aTopLevelCreatedByContent,
                        nullable nsIURI aURIToLoad,
                        nsCString aFeatures,
+                       Modifiers aModifiers,
                        nullable nsIPrincipal aTriggeringPrincipal,
                        nullable nsIContentSecurityPolicy aCsp,
                        nullable nsIReferrerInfo aReferrerInfo,
@@ -1577,15 +1549,15 @@ parent:
       MaybeDiscardedBrowsingContext aParent,
       uint32_t aChromeFlags,
       bool aCalledFromJS,
+      bool aTopLevelCreatedByContent,
       nullable nsIURI aURIToLoad,
       nsCString aFeatures,
+      Modifiers aModifiers,
       nsString aName,
       nullable nsIPrincipal aTriggeringPrincipal,
       nullable nsIContentSecurityPolicy aCsp,
       nullable nsIReferrerInfo aReferrerInfo,
       OriginAttributes aOriginAttributes);
-
-    sync RemovePermission(nullable nsIPrincipal principal, nsCString permissionType) returns (nsresult rv);
 
     /**
      * Tell the parent that a decoder's' benchmark has been completed.
@@ -1615,8 +1587,7 @@ parent:
      async DeleteGetFilesRequest(nsID aID);
 
      async StoreAndBroadcastBlobURLRegistration(nsCString url, IPCBlob blob,
-                                                nullable nsIPrincipal principal,
-                                                nsID? aAgentClusterId);
+                                                nullable nsIPrincipal principal, nsCString aPartitionKey);
 
      async UnstoreAndBroadcastBlobURLUnregistration(nsCString url, nullable nsIPrincipal principal);
 
@@ -1638,8 +1609,6 @@ parent:
     async AddMemoryReport(MemoryReport aReport);
 
     async BHRThreadHang(HangDetails aHangDetails);
-
-    async AddPerformanceMetrics(nsID aID, PerformanceInfo[] aMetrics);
 
     /*
      * Adds a certificate exception for the given hostname and port.
@@ -1665,7 +1634,8 @@ parent:
                                                   nullable nsIPrincipal aTrackingPrincipal,
                                                   nsCString aTrackingOrigin,
                                                   int aAllowMode,
-                                                  StorageAccessPermissionGrantedReason? aReason)
+                                                  StorageAccessPermissionGrantedReason? aReason,
+                                                  bool aFrameOnly)
           returns (bool unused);
 
     async CompleteAllowAccessFor(MaybeDiscardedBrowsingContext aParentContext,
@@ -1764,7 +1734,16 @@ parent:
      */
     async NotifyPositionStateChanged(
         MaybeDiscardedBrowsingContext aContext,
-        PositionState aState);
+        PositionState? aState);
+
+    /**
+     * This method is used to update a media's position state whenever its
+     * guessed position state is being updated.
+     */
+    async NotifyGuessedPositionStateChanged(
+        MaybeDiscardedBrowsingContext aContext,
+        nsID aMediaId,
+        PositionState? aState);
 
     /**
      * This method will make canonical browsing context to update the count of
@@ -1821,7 +1800,7 @@ parent:
                              nullable nsIPrincipal aLoadingPrincipal,
                              OriginAttributes aOriginAttributes,
                              uint64_t aInnerWindowId,
-                             nsID? aAgentClusterId)
+                             nsCString aPartitionKey)
       returns (BlobURLDataRequestResult aResult);
 
     async SetActiveSessionHistoryEntry(MaybeDiscardedBrowsingContext context,
@@ -1845,8 +1824,8 @@ parent:
 both:
     async ScriptError(nsString message, nsString sourceName, nsString sourceLine,
                       uint32_t lineNumber, uint32_t colNumber, uint32_t flags,
-                      nsCString category, bool privateWindow, uint64_t innerWindowId,
-                      bool fromChromeContext);
+                      nsCString category, bool isFromPrivateWindow, uint64_t innerWindowId,
+                      bool isFromChromeContext);
 
     /**
      * Used in fission to report timing data when the parent window is in
@@ -1856,7 +1835,7 @@ both:
      * loadInfo is passed in order to enforce same-origin security checks
      * aData must be non-null.
      */
-    async ReportFrameTimingData(LoadInfoArgs? loadInfo, nsString entryName,
+    async ReportFrameTimingData(LoadInfoArgs loadInfo, nsString entryName,
                                 nsString initiatorType,
                                 UniquePtr<PerformanceTimingData> aData);
 
@@ -1900,8 +1879,18 @@ both:
     async DiscardBrowsingContext(MaybeDiscardedBrowsingContext aContext, bool aDoDiscard)
             returns (uint64_t unused);
 
+    /**
+     * aContext is the one that's taking the affect. Either the one that
+     * receives the focus, or the one that loses the focus.
+     *
+     * aAncestorBrowsingContextToFocus can only be non-null when
+     * aShouldClearAncestorFocus is true. This is the browsing context
+     * that receives the focus when aContext loses the focus.
+     */
     async AdjustWindowFocus(MaybeDiscardedBrowsingContext aContext,
-                            bool aIsVisible, uint64_t aActionId);
+                            bool aIsVisible, uint64_t aActionId,
+                            bool aShouldClearAncestorFocus,
+                            MaybeDiscardedBrowsingContext aAncestorBrowsingContextToFocus);
     async WindowClose(MaybeDiscardedBrowsingContext aContext,
                       bool aTrustedCaller);
     async WindowFocus(MaybeDiscardedBrowsingContext aContext,
@@ -1982,6 +1971,17 @@ parent:
     // test document before taking the snapshot and starting e.g. IPC fuzzing.
     async SignalFuzzingReady();
 #endif
+
+  async AttributionEvent(nsCString aSourceHost,
+                         PrivateAttributionImpressionType aType,
+                         uint32_t aIndex, nsString aAd, nsCString aTargetHost);
+
+  async AttributionConversion(nsCString aSourceHost, nsString aTask,
+                              uint32_t aHistogramSize,
+                              uint32_t? aLoopbackDays,
+                              PrivateAttributionImpressionType? aImpressionType,
+                              nsString[] aAds,
+                              nsCString[] aImpressionSourceHosts);
 };
 
 }

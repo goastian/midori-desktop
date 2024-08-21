@@ -8,9 +8,9 @@
 #define mozilla_CamerasParent_h
 
 #include "CamerasChild.h"
-#include "VideoEngine.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/camera/PCamerasParent.h"
+#include "mozilla/media/MediaUtils.h"
 #include "mozilla/ipc/Shmem.h"
 #include "mozilla/ShmemPool.h"
 #include "api/video/video_sink_interface.h"
@@ -18,11 +18,17 @@
 #include "modules/video_capture/video_capture_defines.h"
 #include "video/render/incoming_video_stream.h"
 
+class WebrtcLogSinkHandle;
 class nsIThread;
+
+namespace mozilla {
+class VideoCaptureFactory;
+}
 
 namespace mozilla::camera {
 
 class CamerasParent;
+class VideoEngine;
 
 class CallbackHelper : public rtc::VideoSinkInterface<webrtc::VideoFrame> {
  public:
@@ -31,10 +37,11 @@ class CallbackHelper : public rtc::VideoSinkInterface<webrtc::VideoFrame> {
       : mCapEngine(aCapEng),
         mStreamId(aStreamId),
         mTrackingId(CaptureEngineToTrackingSourceStr(aCapEng), aStreamId),
-        mParent(aParent){};
+        mParent(aParent) {};
 
   // These callbacks end up running on the VideoCapture thread.
   // From  VideoCaptureCallback
+  void OnCaptureEnded();
   void OnFrame(const webrtc::VideoFrame& aVideoFrame) override;
 
   friend CamerasParent;
@@ -44,22 +51,41 @@ class CallbackHelper : public rtc::VideoSinkInterface<webrtc::VideoFrame> {
   const uint32_t mStreamId;
   const TrackingId mTrackingId;
   CamerasParent* const mParent;
+  MediaEventListener mCaptureEndedListener;
+  bool mConnectedToCaptureEnded = false;
 };
 
 class DeliverFrameRunnable;
 
 class CamerasParent final : public PCamerasParent,
                             private webrtc::VideoInputFeedBack {
+ public:
   using ShutdownMozPromise = media::ShutdownBlockingTicket::ShutdownMozPromise;
+
+  using CameraAccessRequestPromise = MozPromise<CamerasAccessStatus, void_t,
+                                                /* IsExclusive = */ false>;
 
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_DELETE_ON_EVENT_TARGET(
       CamerasParent, mPBackgroundEventTarget)
 
- public:
   class VideoEngineArray;
   friend DeliverFrameRunnable;
 
   static already_AddRefed<CamerasParent> Create();
+
+  /**
+   * Request camera access
+   *   Currently only used on desktop. If @value
+   *   aAllowPermissionRequest is true, a request for full camera access may be
+   *   made and the returned promise may be blocked on user input on a modal
+   *   dialog. If @value aAllowPermissionRequest is false, only a request to
+   *   check camera device presence will be made. If any camera device is
+   *   present, we will enumerate a single placeholder device until a successful
+   *   RequestCameraAccess with a true aAllowPermissionRequest.
+   *   The returned promise will never be rejected.
+   */
+  static RefPtr<CameraAccessRequestPromise> RequestCameraAccess(
+      bool aAllowPermissionRequest);
 
   // Messages received from the child. These run on the IPC/PBackground thread.
   mozilla::ipc::IPCResult RecvPCamerasConstructor();
@@ -139,6 +165,10 @@ class CamerasParent final : public PCamerasParent,
   // Reference to same VideoEngineArray as sEngines. Video capture thread only.
   const RefPtr<VideoEngineArray> mEngines;
 
+  // Reference to same VideoCaptureFactory as sVideoCaptureFactory. Video
+  // capture thread only.
+  const RefPtr<VideoCaptureFactory> mVideoCaptureFactory;
+
   // image buffers
   ShmemPool mShmemPool;
 
@@ -150,6 +180,10 @@ class CamerasParent final : public PCamerasParent,
 
   std::map<nsCString, std::map<uint32_t, webrtc::VideoCaptureCapability>>
       mAllCandidateCapabilities;
+
+  // While alive, ensure webrtc logging is hooked up to MOZ_LOG. Main thread
+  // only.
+  nsMainThreadPtrHandle<WebrtcLogSinkHandle> mLogHandle;
 };
 
 }  // namespace mozilla::camera

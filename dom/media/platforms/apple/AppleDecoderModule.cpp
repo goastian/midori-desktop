@@ -13,7 +13,7 @@
 #include "MP4Decoder.h"
 #include "VideoUtils.h"
 #include "VPXDecoder.h"
-#include "mozilla/DebugOnly.h"
+#include "AOMDecoder.h"
 #include "mozilla/Logging.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/gfx/gfxVars.h"
@@ -28,8 +28,14 @@ extern Boolean VTIsHardwareDecodeSupported(CMVideoCodecType codecType)
 
 namespace mozilla {
 
+using media::DecodeSupport;
+using media::DecodeSupportSet;
+using media::MCSInfo;
+using media::MediaCodec;
+
 bool AppleDecoderModule::sInitialized = false;
 bool AppleDecoderModule::sCanUseVP9Decoder = false;
+bool AppleDecoderModule::sCanUseAV1Decoder = false;
 
 /* static */
 void AppleDecoderModule::Init() {
@@ -39,8 +45,9 @@ void AppleDecoderModule::Init() {
 
   sInitialized = true;
   if (RegisterSupplementalVP9Decoder()) {
-    sCanUseVP9Decoder = CanCreateHWDecoder(media::MediaCodec::VP9);
+    sCanUseVP9Decoder = CanCreateHWDecoder(MediaCodec::VP9);
   }
+  sCanUseAV1Decoder = CanCreateHWDecoder(MediaCodec::AV1);
 }
 
 nsresult AppleDecoderModule::Startup() {
@@ -52,8 +59,8 @@ nsresult AppleDecoderModule::Startup() {
 
 already_AddRefed<MediaDataDecoder> AppleDecoderModule::CreateVideoDecoder(
     const CreateDecoderParams& aParams) {
-  if (Supports(SupportDecoderParams(aParams), nullptr /* diagnostics */) ==
-      media::DecodeSupport::Unsupported) {
+  if (Supports(SupportDecoderParams(aParams), nullptr /* diagnostics */)
+          .isEmpty()) {
     return nullptr;
   }
   RefPtr<MediaDataDecoder> decoder;
@@ -67,59 +74,70 @@ already_AddRefed<MediaDataDecoder> AppleDecoderModule::CreateVideoDecoder(
 
 already_AddRefed<MediaDataDecoder> AppleDecoderModule::CreateAudioDecoder(
     const CreateDecoderParams& aParams) {
-  if (Supports(SupportDecoderParams(aParams), nullptr /* diagnostics */) ==
-      media::DecodeSupport::Unsupported) {
+  if (Supports(SupportDecoderParams(aParams), nullptr /* diagnostics */)
+          .isEmpty()) {
     return nullptr;
   }
   RefPtr<MediaDataDecoder> decoder = new AppleATDecoder(aParams.AudioConfig());
   return decoder.forget();
 }
 
-media::DecodeSupportSet AppleDecoderModule::SupportsMimeType(
+DecodeSupportSet AppleDecoderModule::SupportsMimeType(
     const nsACString& aMimeType, DecoderDoctorDiagnostics* aDiagnostics) const {
-  bool checkSupport = (aMimeType.EqualsLiteral("audio/mpeg") &&
-                       !StaticPrefs::media_ffvpx_mp3_enabled()) ||
-                      aMimeType.EqualsLiteral("audio/mp4a-latm") ||
+  bool checkSupport = aMimeType.EqualsLiteral("audio/mp4a-latm") ||
                       MP4Decoder::IsH264(aMimeType) ||
-                      VPXDecoder::IsVP9(aMimeType);
-  media::DecodeSupportSet supportType{media::DecodeSupport::Unsupported};
+                      VPXDecoder::IsVP9(aMimeType) ||
+                      AOMDecoder::IsAV1(aMimeType);
+  DecodeSupportSet supportType{};
 
   if (checkSupport) {
     UniquePtr<TrackInfo> trackInfo = CreateTrackInfoWithMIMEType(aMimeType);
-    if (!trackInfo) {
-      supportType = media::DecodeSupport::Unsupported;
-    } else if (trackInfo->IsAudio()) {
-      supportType = media::DecodeSupport::SoftwareDecode;
-    } else {
+    if (trackInfo && trackInfo->IsAudio()) {
+      supportType = DecodeSupport::SoftwareDecode;
+    } else if (trackInfo && trackInfo->IsVideo()) {
       supportType = Supports(SupportDecoderParams(*trackInfo), aDiagnostics);
     }
   }
 
   MOZ_LOG(sPDMLog, LogLevel::Debug,
           ("Apple decoder %s requested type '%s'",
-           supportType == media::DecodeSupport::Unsupported ? "rejects"
-                                                            : "supports",
+           supportType.isEmpty() ? "rejects" : "supports",
            aMimeType.BeginReading()));
   return supportType;
 }
 
-media::DecodeSupportSet AppleDecoderModule::Supports(
+DecodeSupportSet AppleDecoderModule::Supports(
     const SupportDecoderParams& aParams,
     DecoderDoctorDiagnostics* aDiagnostics) const {
   const auto& trackInfo = aParams.mConfig;
   if (trackInfo.IsAudio()) {
     return SupportsMimeType(trackInfo.mMimeType, aDiagnostics);
   }
-  bool checkSupport = trackInfo.GetAsVideoInfo() &&
-                      IsVideoSupported(*trackInfo.GetAsVideoInfo());
-  if (checkSupport) {
-    if (trackInfo.mMimeType == "video/vp9" &&
-        CanCreateHWDecoder(media::MediaCodec::VP9)) {
-      return media::DecodeSupport::HardwareDecode;
-    }
-    return media::DecodeSupport::SoftwareDecode;
+  const bool checkSupport = trackInfo.GetAsVideoInfo() &&
+                            IsVideoSupported(*trackInfo.GetAsVideoInfo());
+  DecodeSupportSet dss{};
+  if (!checkSupport) {
+    return dss;
   }
-  return media::DecodeSupport::Unsupported;
+  const MediaCodec codec =
+      MCSInfo::GetMediaCodecFromMimeType(trackInfo.mMimeType);
+  if (CanCreateHWDecoder(codec)) {
+    dss += DecodeSupport::HardwareDecode;
+  }
+  switch (codec) {
+    case MediaCodec::VP8:
+      [[fallthrough]];
+    case MediaCodec::VP9:
+      if (StaticPrefs::media_rdd_vpx_enabled() &&
+          StaticPrefs::media_utility_ffvpx_enabled()) {
+        dss += DecodeSupport::SoftwareDecode;
+      }
+      break;
+    default:
+      dss += DecodeSupport::SoftwareDecode;
+      break;
+  }
+  return dss;
 }
 
 bool AppleDecoderModule::IsVideoSupported(
@@ -128,9 +146,44 @@ bool AppleDecoderModule::IsVideoSupported(
   if (MP4Decoder::IsH264(aConfig.mMimeType)) {
     return true;
   }
+  if (AOMDecoder::IsAV1(aConfig.mMimeType)) {
+    if (!sCanUseAV1Decoder ||
+        aOptions.contains(
+            CreateDecoderParams::Option::HardwareDecoderNotAllowed)) {
+      return false;
+    }
+
+    // HW AV1 decoder only supports 8 or 10 bit color.
+    if (aConfig.mColorDepth != gfx::ColorDepth::COLOR_8 &&
+        aConfig.mColorDepth != gfx::ColorDepth::COLOR_10) {
+      return false;
+    }
+
+    if (aConfig.mColorSpace.isSome()) {
+      if (*aConfig.mColorSpace == gfx::YUVColorSpace::Identity) {
+        // HW AV1 decoder doesn't support RGB
+        return false;
+      }
+    }
+
+    if (aConfig.mExtraData && aConfig.mExtraData->Length() < 2) {
+      return true;  // Assume it's okay.
+    }
+    // top 3 bits are the profile.
+    int profile = aConfig.mExtraData->ElementAt(1) >> 5;
+    // 0 is main profile
+    return profile == 0;
+  }
+
   if (!VPXDecoder::IsVP9(aConfig.mMimeType) || !sCanUseVP9Decoder ||
       aOptions.contains(
           CreateDecoderParams::Option::HardwareDecoderNotAllowed)) {
+    return false;
+  }
+  if (VPXDecoder::IsVP9(aConfig.mMimeType) &&
+      aOptions.contains(CreateDecoderParams::Option::LowLatency)) {
+    // SVC layers are unsupported, and may be used in low latency use cases
+    // (WebRTC).
     return false;
   }
   if (aConfig.HasAlpha()) {
@@ -150,56 +203,75 @@ bool AppleDecoderModule::IsVideoSupported(
   }
   int profile = aConfig.mExtraData->ElementAt(4);
 
-  if (profile != 0 && profile != 2) {
-    return false;
-  }
-
-  return true;
+  return profile == 0 || profile == 2;
 }
 
 /* static */
-bool AppleDecoderModule::CanCreateHWDecoder(media::MediaCodec aCodec) {
+bool AppleDecoderModule::CanCreateHWDecoder(MediaCodec aCodec) {
   // Check whether HW decode should even be enabled
   if (!gfx::gfxVars::CanUseHardwareVideoDecoding()) {
     return false;
   }
 
   VideoInfo info(1920, 1080);
-  bool checkSupport = false;
+  bool vtReportsSupport = false;
 
-  // We must wrap the code within __builtin_available to avoid compilation
-  // warning as VTIsHardwareDecodeSupported is only available from macOS 10.13.
-  if (__builtin_available(macOS 10.13, *)) {
-    if (!VTIsHardwareDecodeSupported) {
-      return false;
-    }
-    switch (aCodec) {
-      case media::MediaCodec::VP9:
-        info.mMimeType = "video/vp9";
-        VPXDecoder::GetVPCCBox(info.mExtraData, VPXDecoder::VPXStreamInfo());
-        checkSupport = VTIsHardwareDecodeSupported(kCMVideoCodecType_VP9);
-        break;
-      default:
-        // Only support VP9 HW decode for time being
-        checkSupport = false;
-        break;
-    }
+  if (!VTIsHardwareDecodeSupported) {
+    return false;
   }
-  // Attempt to create decoder
-  if (checkSupport) {
+  switch (aCodec) {
+    case MediaCodec::AV1: {
+      info.mMimeType = "video/av1";
+
+      // Build up a fake CBox
+      bool hasSeqHdr;
+      AOMDecoder::AV1SequenceInfo seqInfo;
+      AOMDecoder::OperatingPoint op;
+      seqInfo.mOperatingPoints.AppendElement(op);
+      seqInfo.mImage = {1920, 1080};
+      AOMDecoder::WriteAV1CBox(seqInfo, info.mExtraData, hasSeqHdr);
+
+      vtReportsSupport = VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1);
+      break;
+    }
+    case MediaCodec::VP9:
+      info.mMimeType = "video/vp9";
+      VPXDecoder::GetVPCCBox(info.mExtraData, VPXDecoder::VPXStreamInfo());
+      vtReportsSupport = VTIsHardwareDecodeSupported(kCMVideoCodecType_VP9);
+      break;
+    case MediaCodec::H264:
+      // 1806391 - H264 hardware decode check crashes on 10.12 - 10.14
+      if (__builtin_available(macos 10.15, *)) {
+        info.mMimeType = "video/avc";
+        vtReportsSupport = VTIsHardwareDecodeSupported(kCMVideoCodecType_H264);
+      }
+      break;
+    default:
+      vtReportsSupport = false;
+      break;
+  }
+  // VT reports HW decode is supported -- verify by creating an actual decoder
+  if (vtReportsSupport) {
     RefPtr<AppleVTDecoder> decoder =
         new AppleVTDecoder(info, nullptr, {}, nullptr, Nothing());
     MediaResult rv = decoder->InitializeSession();
     if (!NS_SUCCEEDED(rv)) {
+      MOZ_LOG(
+          sPDMLog, LogLevel::Debug,
+          ("Apple HW decode failure while initializing VT decoder session"));
       return false;
     }
     nsAutoCString failureReason;
-    bool hwSupport = decoder->IsHardwareAccelerated(failureReason);
-    decoder->Shutdown();
+    // IsHardwareAccelerated appears to return invalid results for H.264 so
+    // we assume that the earlier VTIsHardwareDecodeSupported call is correct.
+    // See: https://bugzilla.mozilla.org/show_bug.cgi?id=1716196#c7
+    bool hwSupport = decoder->IsHardwareAccelerated(failureReason) ||
+                     aCodec == MediaCodec::H264;
     if (!hwSupport) {
       MOZ_LOG(sPDMLog, LogLevel::Debug,
               ("Apple HW decode failure: '%s'", failureReason.BeginReading()));
     }
+    decoder->Shutdown();
     return hwSupport;
   }
   return false;
@@ -207,19 +279,18 @@ bool AppleDecoderModule::CanCreateHWDecoder(media::MediaCodec aCodec) {
 
 /* static */
 bool AppleDecoderModule::RegisterSupplementalVP9Decoder() {
+#ifdef XP_MACOSX
   static bool sRegisterIfAvailable = []() {
-#if !defined(MAC_OS_VERSION_11_0) || \
-    MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_VERSION_11_0
-    if (nsCocoaFeatures::OnBigSurOrLater()) {
-#else
     if (__builtin_available(macos 11.0, *)) {
-#endif
       VTRegisterSupplementalVideoDecoderIfAvailable(kCMVideoCodecType_VP9);
       return true;
     }
     return false;
   }();
   return sRegisterIfAvailable;
+#else  // iOS
+  return false;
+#endif
 }
 
 /* static */

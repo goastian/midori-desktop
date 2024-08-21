@@ -12,7 +12,9 @@
 
 typedef sequence<ClipboardItem> ClipboardItems;
 
-[SecureContext, Exposed=Window]
+[SecureContext,
+ Exposed=Window,
+ InstrumentedProps=(read,readText,write)]
 interface Clipboard : EventTarget {
   [Pref="dom.events.asyncClipboard.clipboardItem", NewObject, NeedsSubjectPrincipal]
   Promise<ClipboardItems> read();
@@ -24,13 +26,6 @@ interface Clipboard : EventTarget {
 
   [NewObject, NeedsSubjectPrincipal]
   Promise<undefined> writeText(DOMString data);
-};
-
-partial interface Clipboard {
-  // @param allowed true, if the user allowed (e.g. clicked) the "Paste" menuitem.
-  //                false, when the menupopup was dismissed.
-  [ChromeOnly]
-  undefined onUserReactedToPasteMenuPopup(boolean allowed);
 };
 
 typedef (DOMString or Blob) ClipboardItemDataType;
@@ -58,6 +53,8 @@ interface ClipboardItem {
 
   [NewObject]
   Promise<Blob> getType(DOMString type);
+
+  static boolean supports(DOMString type);
 };
 
 enum PresentationStyle { "unspecified", "inline", "attachment" };

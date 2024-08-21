@@ -89,8 +89,9 @@ auto IDBTransaction::DoWithTransactionChild(const Func& aFunc) const {
 
 IDBTransaction::IDBTransaction(IDBDatabase* const aDatabase,
                                const nsTArray<nsString>& aObjectStoreNames,
-                               const Mode aMode, nsString aFilename,
-                               const uint32_t aLineNo, const uint32_t aColumn,
+                               const Mode aMode, const Durability aDurability,
+                               nsString aFilename, const uint32_t aLineNo,
+                               const uint32_t aColumn,
                                CreatedFromFactoryFunction /*aDummy*/)
     : DOMEventTargetHelper(aDatabase),
       mDatabase(aDatabase),
@@ -98,12 +99,14 @@ IDBTransaction::IDBTransaction(IDBDatabase* const aDatabase,
       mLoggingSerialNumber(GetIndexedDBThreadLocal()->NextTransactionSN(aMode)),
       mNextObjectStoreId(0),
       mNextIndexId(0),
+      mNextRequestId(0),
       mAbortCode(NS_OK),
       mPendingRequestCount(0),
       mFilename(std::move(aFilename)),
       mLineNo(aLineNo),
       mColumn(aColumn),
       mMode(aMode),
+      mDurability(aDurability),
       mRegistered(false),
       mNotedActiveTransaction(false) {
   MOZ_ASSERT(aDatabase);
@@ -177,9 +180,11 @@ SafeRefPtr<IDBTransaction> IDBTransaction::CreateVersionChange(
   nsString filename;
   uint32_t lineNo, column;
   aOpenRequest->GetCallerLocation(filename, &lineNo, &column);
+  // XXX: What should we have as durability hint here?
   auto transaction = MakeSafeRefPtr<IDBTransaction>(
       aDatabase, emptyObjectStoreNames, Mode::VersionChange,
-      std::move(filename), lineNo, column, CreatedFromFactoryFunction{});
+      Durability::Default, std::move(filename), lineNo, column,
+      CreatedFromFactoryFunction{});
 
   transaction->NoteActiveTransaction();
 
@@ -196,7 +201,8 @@ SafeRefPtr<IDBTransaction> IDBTransaction::CreateVersionChange(
 // static
 SafeRefPtr<IDBTransaction> IDBTransaction::Create(
     JSContext* const aCx, IDBDatabase* const aDatabase,
-    const nsTArray<nsString>& aObjectStoreNames, const Mode aMode) {
+    const nsTArray<nsString>& aObjectStoreNames, const Mode aMode,
+    const Durability aDurability) {
   MOZ_ASSERT(aDatabase);
   aDatabase->AssertIsOnOwningThread();
   MOZ_ASSERT(!aObjectStoreNames.IsEmpty());
@@ -207,8 +213,8 @@ SafeRefPtr<IDBTransaction> IDBTransaction::Create(
   uint32_t lineNo, column;
   IDBRequest::CaptureCaller(aCx, filename, &lineNo, &column);
   auto transaction = MakeSafeRefPtr<IDBTransaction>(
-      aDatabase, aObjectStoreNames, aMode, std::move(filename), lineNo, column,
-      CreatedFromFactoryFunction{});
+      aDatabase, aObjectStoreNames, aMode, aDurability, std::move(filename),
+      lineNo, column, CreatedFromFactoryFunction{});
 
   if (!NS_IsMainThread()) {
     WorkerPrivate* const workerPrivate = GetCurrentThreadWorkerPrivate();
@@ -287,8 +293,9 @@ BackgroundRequestChild* IDBTransaction::StartRequest(
   BackgroundRequestChild* const actor =
       new BackgroundRequestChild(std::move(aRequest));
 
-  DoWithTransactionChild([actor, &aParams](auto& transactionChild) {
-    transactionChild.SendPBackgroundIDBRequestConstructor(actor, aParams);
+  DoWithTransactionChild([this, actor, &aParams](auto& transactionChild) {
+    transactionChild.SendPBackgroundIDBRequestConstructor(
+        actor, NextRequestId(), aParams);
   });
 
   // Balanced in BackgroundRequestChild::Recv__delete__().
@@ -302,8 +309,9 @@ void IDBTransaction::OpenCursor(PBackgroundIDBCursorChild& aBackgroundActor,
   AssertIsOnOwningThread();
   MOZ_ASSERT(aParams.type() != OpenCursorParams::T__None);
 
-  DoWithTransactionChild([&aBackgroundActor, &aParams](auto& actor) {
-    actor.SendPBackgroundIDBCursorConstructor(&aBackgroundActor, aParams);
+  DoWithTransactionChild([this, &aBackgroundActor, &aParams](auto& actor) {
+    actor.SendPBackgroundIDBCursorConstructor(&aBackgroundActor,
+                                              NextRequestId(), aParams);
   });
 
   // Balanced in BackgroundCursorChild::RecvResponse().
@@ -383,15 +391,16 @@ void IDBTransaction::SendCommit(const bool aAutoCommit) {
       LoggingSerialNumber(), requestSerialNumber,
       aAutoCommit ? "automatically" : "explicitly");
 
-  const auto lastRequestSerialNumber =
-      [this, aAutoCommit,
-       requestSerialNumber]() -> Maybe<decltype(requestSerialNumber)> {
+  const int64_t requestId = NextRequestId();
+
+  const auto lastRequestId = [this, aAutoCommit,
+                              requestId]() -> Maybe<decltype(requestId)> {
     if (aAutoCommit) {
       return Nothing();
     }
 
-    // In case of an explicit commit, we need to note the serial number of the
-    // last request to check if a request submitted before the commit request
+    // In case of an explicit commit, we need to note the id of the last
+    // request to check if a request submitted before the commit request
     // failed. If we are currently in an event handler for a request on this
     // transaction, ignore this request. This is used to synchronize the
     // transaction's committing state with the parent side, to abort the
@@ -405,15 +414,13 @@ void IDBTransaction::SendCommit(const bool aAutoCommit) {
     const bool dispatchingEventForThisTransaction =
         maybeCurrentTransaction && &maybeCurrentTransaction.ref() == this;
 
-    return Some(requestSerialNumber
-                    ? (requestSerialNumber -
-                       (dispatchingEventForThisTransaction ? 0 : 1))
+    return Some(requestId
+                    ? (requestId - (dispatchingEventForThisTransaction ? 0 : 1))
                     : 0);
   }();
 
-  DoWithTransactionChild([lastRequestSerialNumber](auto& actor) {
-    actor.SendCommit(lastRequestSerialNumber);
-  });
+  DoWithTransactionChild(
+      [lastRequestId](auto& actor) { actor.SendCommit(lastRequestId); });
 
   mSentCommitOrAbort.Flip();
 }
@@ -817,6 +824,12 @@ int64_t IDBTransaction::NextIndexId() {
   return mNextIndexId++;
 }
 
+int64_t IDBTransaction::NextRequestId() {
+  AssertIsOnOwningThread();
+
+  return mNextRequestId++;
+}
+
 void IDBTransaction::InvalidateCursorCaches() {
   AssertIsOnOwningThread();
 
@@ -864,6 +877,24 @@ IDBTransactionMode IDBTransaction::GetMode(ErrorResult& aRv) const {
       return IDBTransactionMode::Versionchange;
 
     case Mode::Invalid:
+    default:
+      MOZ_CRASH("Bad mode!");
+  }
+}
+
+IDBTransactionDurability IDBTransaction::GetDurability(ErrorResult& aRv) const {
+  AssertIsOnOwningThread();
+
+  switch (mDurability) {
+    case Durability::Default:
+      return IDBTransactionDurability::Default;
+
+    case Durability::Strict:
+      return IDBTransactionDurability::Strict;
+
+    case Durability::Relaxed:
+      return IDBTransactionDurability::Relaxed;
+
     default:
       MOZ_CRASH("Bad mode!");
   }

@@ -20,6 +20,7 @@
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/ProcessUtils.h"
 #include "mozilla/GeckoArgs.h"
+#include "mozilla/Omnijar.h"
 #include "nsCategoryManagerUtils.h"
 
 using mozilla::ipc::IOThreadChild;
@@ -31,7 +32,7 @@ static nsresult GetGREDir(nsIFile** aResult) {
   nsresult rv = XRE_GetBinaryPath(getter_AddRefs(current));
   NS_ENSURE_SUCCESS(rv, rv);
 
-#ifdef OS_MACOSX
+#ifdef XP_DARWIN
   // Walk out of [subprocess].app/Contents/MacOS to the real GRE dir
   const int depth = 4;
 #else
@@ -47,7 +48,7 @@ static nsresult GetGREDir(nsIFile** aResult) {
     NS_ENSURE_TRUE(current, NS_ERROR_UNEXPECTED);
   }
 
-#ifdef OS_MACOSX
+#ifdef XP_DARWIN
   rv = current->SetNativeLeafName("Resources"_ns);
   NS_ENSURE_SUCCESS(rv, rv);
 #endif
@@ -148,6 +149,12 @@ bool ContentProcess::Init(int aArgc, char* aArgv[]) {
   rv = mDirProvider.Initialize(xpcomAppDir, greDir);
   if (NS_FAILED(rv)) {
     return false;
+  }
+
+  // Handle the -greomni/-appomni flags (unless the forkserver already
+  // preloaded the jar(s)).
+  if (!Omnijar::IsInitialized()) {
+    Omnijar::ChildProcessInit(aArgc, aArgv);
   }
 
   rv = NS_InitXPCOM(nullptr, xpcomAppDir, &mDirProvider);

@@ -6,9 +6,10 @@
 
 #include "PerformanceTiming.h"
 #include "mozilla/BasePrincipal.h"
-#include "mozilla/dom/PerformanceTimingBinding.h"
 #include "mozilla/StaticPrefs_dom.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/dom/PerformanceResourceTimingBinding.h"
+#include "mozilla/dom/PerformanceTimingBinding.h"
+#include "mozilla/glean/GleanMetrics.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIHttpChannel.h"
@@ -87,9 +88,10 @@ PerformanceTiming::PerformanceTiming(Performance* aPerformance,
   // used for subresources, which is irrelevant to this probe.
   if (!aHttpChannel && StaticPrefs::dom_enable_performance() &&
       IsTopLevelContentDocument()) {
-    Telemetry::Accumulate(Telemetry::TIME_TO_RESPONSE_START_MS,
-                          mTimingData->ResponseStartHighRes(aPerformance) -
-                              mTimingData->ZeroTime());
+    glean::performance_time::response_start.AccumulateRawDuration(
+        TimeDuration::FromMilliseconds(
+            mTimingData->ResponseStartHighRes(aPerformance) -
+            mTimingData->ZeroTime()));
   }
 }
 
@@ -199,6 +201,14 @@ PerformanceTimingData::PerformanceTimingData(nsITimedChannel* aChannel,
   if (aHttpChannel) {
     SetPropertiesFromHttpChannel(aHttpChannel, aChannel);
   }
+
+  bool renderBlocking = false;
+  if (aChannel) {
+    aChannel->GetRenderBlocking(&renderBlocking);
+  }
+  mRenderBlockingStatus = renderBlocking
+                              ? RenderBlockingStatusType::Blocking
+                              : RenderBlockingStatusType::Non_blocking;
 }
 
 PerformanceTimingData::PerformanceTimingData(
@@ -226,6 +236,9 @@ PerformanceTimingData::PerformanceTimingData(
       mTransferSize(aIPCData.transferSize()),
       mDecodedBodySize(aIPCData.decodedBodySize()),
       mRedirectCount(aIPCData.redirectCount()),
+      mRenderBlockingStatus(aIPCData.renderBlocking()
+                                ? RenderBlockingStatusType::Blocking
+                                : RenderBlockingStatusType::Non_blocking),
       mAllRedirectsSameOrigin(aIPCData.allRedirectsSameOrigin()),
       mAllRedirectsPassTAO(aIPCData.allRedirectsPassTAO()),
       mSecureConnection(aIPCData.secureConnection()),
@@ -251,6 +264,8 @@ IPCPerformanceTimingData PerformanceTimingData::ToIPC() {
     Unused << serverTimingData->GetDescription(description);
     ipcServerTiming.AppendElement(IPCServerTiming(name, duration, description));
   }
+  bool renderBlocking =
+      mRenderBlockingStatus == RenderBlockingStatusType::Blocking;
   return IPCPerformanceTimingData(
       ipcServerTiming, mNextHopProtocol, mAsyncOpen, mRedirectStart,
       mRedirectEnd, mDomainLookupStart, mDomainLookupEnd, mConnectStart,
@@ -258,8 +273,8 @@ IPCPerformanceTimingData PerformanceTimingData::ToIPC() {
       mCacheReadStart, mResponseEnd, mCacheReadEnd, mWorkerStart,
       mWorkerRequestStart, mWorkerResponseEnd, mZeroTime, mFetchStart,
       mEncodedBodySize, mTransferSize, mDecodedBodySize, mRedirectCount,
-      mAllRedirectsSameOrigin, mAllRedirectsPassTAO, mSecureConnection,
-      mTimingAllowed, mInitialized);
+      renderBlocking, mAllRedirectsSameOrigin, mAllRedirectsPassTAO,
+      mSecureConnection, mTimingAllowed, mInitialized);
 }
 
 void PerformanceTimingData::SetPropertiesFromHttpChannel(

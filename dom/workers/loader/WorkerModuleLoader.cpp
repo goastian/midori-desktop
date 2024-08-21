@@ -6,6 +6,7 @@
 
 #include "js/experimental/JSStencil.h"  // JS::Stencil, JS::CompileModuleScriptToStencil, JS::InstantiateModuleStencil
 #include "js/loader/ModuleLoadRequest.h"
+#include "mozilla/dom/RequestBinding.h"
 #include "mozilla/dom/WorkerLoadContext.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/workerinternals/ScriptLoader.h"
@@ -30,9 +31,8 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(WorkerModuleLoader)
 NS_INTERFACE_MAP_END_INHERITING(JS::loader::ModuleLoaderBase)
 
 WorkerModuleLoader::WorkerModuleLoader(WorkerScriptLoader* aScriptLoader,
-                                       nsIGlobalObject* aGlobalObject,
-                                       nsISerialEventTarget* aEventTarget)
-    : ModuleLoaderBase(aScriptLoader, aGlobalObject, aEventTarget) {}
+                                       nsIGlobalObject* aGlobalObject)
+    : ModuleLoaderBase(aScriptLoader, aGlobalObject) {}
 
 nsIURI* WorkerModuleLoader::GetBaseURI() const {
   WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
@@ -54,12 +54,13 @@ already_AddRefed<ModuleLoadRequest> WorkerModuleLoader::CreateStaticImport(
       aParent->GetWorkerLoadContext()->mScriptLoader,
       aParent->GetWorkerLoadContext()->mOnlyExistingCachedResourcesAllowed);
   RefPtr<ModuleLoadRequest> request = new ModuleLoadRequest(
-      aURI, aParent->mFetchOptions, SRIMetadata(), aParent->mURI, loadContext,
-      false, /* is top level */
-      false, /* is dynamic import */
+      aURI, aParent->ReferrerPolicy(), aParent->mFetchOptions, SRIMetadata(),
+      aParent->mURI, loadContext, false, /* is top level */
+      false,                             /* is dynamic import */
       this, aParent->mVisitedSet, aParent->GetRootModule());
 
   request->mURL = request->mURI->GetSpecOrDefault();
+  request->NoCacheEntryFound();
   return request.forget();
 }
 
@@ -68,7 +69,7 @@ bool WorkerModuleLoader::CreateDynamicImportLoader() {
   workerPrivate->AssertIsOnWorkerThread();
 
   IgnoredErrorResult rv;
-  RefPtr<WorkerScriptLoader> loader = new loader::WorkerScriptLoader(
+  RefPtr<WorkerScriptLoader> loader = loader::WorkerScriptLoader::Create(
       workerPrivate, nullptr, nullptr,
       GetCurrentScriptLoader()->GetWorkerScriptType(), rv);
   if (NS_WARN_IF(rv.Failed())) {
@@ -76,14 +77,12 @@ bool WorkerModuleLoader::CreateDynamicImportLoader() {
   }
 
   SetScriptLoader(loader);
-  SetEventTarget(GetCurrentSerialEventTarget());
   return true;
 }
 
 already_AddRefed<ModuleLoadRequest> WorkerModuleLoader::CreateDynamicImport(
     JSContext* aCx, nsIURI* aURI, LoadedScript* aMaybeActiveScript,
-    JS::Handle<JS::Value> aReferencingPrivate, JS::Handle<JSString*> aSpecifier,
-    JS::Handle<JSObject*> aPromise) {
+    JS::Handle<JSString*> aSpecifier, JS::Handle<JSObject*> aPromise) {
   WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
 
   if (!CreateDynamicImportLoader()) {
@@ -102,12 +101,24 @@ already_AddRefed<ModuleLoadRequest> WorkerModuleLoader::CreateDynamicImport(
   RefPtr<ScriptFetchOptions> options;
   nsIURI* baseURL = nullptr;
   if (aMaybeActiveScript) {
+    // https://html.spec.whatwg.org/multipage/webappapis.html#hostloadimportedmodule
+    // Step 6.3. Set fetchOptions to the new descendant script fetch options for
+    // referencingScript's fetch options.
     options = aMaybeActiveScript->GetFetchOptions();
     baseURL = aMaybeActiveScript->BaseURL();
   } else {
-    ReferrerPolicy referrerPolicy = workerPrivate->GetReferrerPolicy();
-    options =
-        new ScriptFetchOptions(CORSMode::CORS_NONE, referrerPolicy, nullptr);
+    // https://html.spec.whatwg.org/multipage/webappapis.html#hostloadimportedmodule
+    // Step 4. Let fetchOptions be the default classic script fetch options.
+    //
+    // https://html.spec.whatwg.org/multipage/webappapis.html#default-classic-script-fetch-options
+    // The default classic script fetch options are a script fetch options whose
+    // cryptographic nonce is the empty string, integrity metadata is the empty
+    // string, parser metadata is "not-parser-inserted", credentials mode is
+    // "same-origin", referrer policy is the empty string, and fetch priority is
+    // "auto".
+    options = new ScriptFetchOptions(
+        CORSMode::CORS_NONE, /* aNonce = */ u""_ns, RequestPriority::Auto,
+        JS::loader::ParserMetadata::NotParserInserted, nullptr);
     baseURL = GetBaseURI();
   }
 
@@ -124,18 +135,25 @@ already_AddRefed<ModuleLoadRequest> WorkerModuleLoader::CreateDynamicImport(
       // used during installation.)
       true);
 
+  ReferrerPolicy referrerPolicy = workerPrivate->GetReferrerPolicy();
   RefPtr<ModuleLoadRequest> request = new ModuleLoadRequest(
-      aURI, options, SRIMetadata(), baseURL, context, true,
+      aURI, referrerPolicy, options, SRIMetadata(), baseURL, context, true,
       /* is top level */ true, /* is dynamic import */
       this, ModuleLoadRequest::NewVisitedSetForTopLevelImport(aURI), nullptr);
 
-  request->mDynamicReferencingPrivate = aReferencingPrivate;
-  request->mDynamicSpecifier = aSpecifier;
-  request->mDynamicPromise = aPromise;
-
-  HoldJSObjects(request.get());
+  request->SetDynamicImport(aMaybeActiveScript, aSpecifier, aPromise);
+  request->NoCacheEntryFound();
 
   return request.forget();
+}
+
+bool WorkerModuleLoader::IsDynamicImportSupported() {
+  WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+  if (workerPrivate->IsServiceWorker()) {
+    return false;
+  }
+
+  return true;
 }
 
 bool WorkerModuleLoader::CanStartLoad(ModuleLoadRequest* aRequest,
@@ -156,7 +174,8 @@ nsresult WorkerModuleLoader::CompileFetchedModule(
   RefPtr<JS::Stencil> stencil;
   MOZ_ASSERT(aRequest->IsTextSource());
   MaybeSourceText maybeSource;
-  nsresult rv = aRequest->GetScriptSource(aCx, &maybeSource);
+  nsresult rv = aRequest->GetScriptSource(aCx, &maybeSource,
+                                          aRequest->mLoadContext.get());
   NS_ENSURE_SUCCESS(rv, rv);
 
   auto compile = [&](auto& source) {

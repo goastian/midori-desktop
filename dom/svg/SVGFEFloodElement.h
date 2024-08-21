@@ -14,7 +14,7 @@ nsresult NS_NewSVGFEFloodElement(
 
 namespace mozilla::dom {
 
-using SVGFEFloodElementBase = SVGFE;
+using SVGFEFloodElementBase = SVGFilterPrimitiveElement;
 
 class SVGFEFloodElement final : public SVGFEFloodElementBase {
   friend nsresult(::NS_NewSVGFEFloodElement(
@@ -37,6 +37,9 @@ class SVGFEFloodElement final : public SVGFEFloodElementBase {
   SVGAnimatedString& GetResultImageName() override {
     return mStringAttributes[RESULT];
   }
+
+  bool OutputIsTainted(const nsTArray<bool>& aInputsAreTainted,
+                       nsIPrincipal* aReferencePrincipal) override;
 
   // nsIContent interface
   nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;

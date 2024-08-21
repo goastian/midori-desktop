@@ -18,7 +18,7 @@
 
 #include "nsCharTraits.h"
 #include "nsString.h"
-#include "nsStringBuffer.h"
+#include "mozilla/StringBuffer.h"
 #include "nsReadableUtils.h"
 #include "nsISupportsImpl.h"
 
@@ -113,8 +113,7 @@ class nsTextFragment final {
     }
     ReleaseText();
     if (aForce2b && !aUpdateBidi) {
-      nsStringBuffer* buffer = nsStringBuffer::FromString(aString);
-      if (buffer) {
+      if (mozilla::StringBuffer* buffer = aString.GetStringBuffer()) {
         NS_ADDREF(m2b = buffer);
         mState.mInHeap = true;
         mState.mIs2b = true;
@@ -154,19 +153,13 @@ class nsTextFragment final {
                               const mozilla::fallible_t& aFallible) const {
     if (mState.mIs2b) {
       if (aString.IsEmpty()) {
-        m2b->ToString(mState.mLength, aString);
+        aString.Assign(m2b, mState.mLength);
         return true;
       }
-      bool ok = aString.Append(Get2b(), mState.mLength, aFallible);
-      if (!ok) {
-        return false;
-      }
-
-      return true;
-    } else {
-      return AppendASCIItoUTF16(Substring(m1b, mState.mLength), aString,
-                                aFallible);
+      return aString.Append(Get2b(), mState.mLength, aFallible);
     }
+    return AppendASCIItoUTF16(Substring(m1b, mState.mLength), aString,
+                              aFallible);
   }
 
   /**
@@ -303,7 +296,7 @@ class nsTextFragment final {
   void UpdateBidiFlag(const char16_t* aBuffer, uint32_t aLength);
 
   union {
-    nsStringBuffer* m2b;
+    mozilla::StringBuffer* m2b;
     const char* m1b;  // This is const since it can point to shared data
   };
 

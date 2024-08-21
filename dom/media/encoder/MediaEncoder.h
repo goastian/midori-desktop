@@ -113,6 +113,7 @@ class MediaEncoder {
 
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaEncoder)
 
+ private:
   MediaEncoder(RefPtr<TaskQueue> aEncoderThread,
                RefPtr<DriftCompensator> aDriftCompensator,
                UniquePtr<ContainerWriter> aWriter,
@@ -123,6 +124,7 @@ class MediaEncoder {
                TrackRate aTrackRate, const nsAString& aMIMEType,
                uint64_t aMaxMemory, TimeDuration aTimeslice);
 
+ public:
   /**
    * Called on main thread from MediaRecorder::Pause.
    */
@@ -242,16 +244,15 @@ class MediaEncoder {
 
  private:
   /**
+   * Registers listeners.
+   */
+  void RegisterListeners();
+
+  /**
    * Sets mGraphTrack if not already set, using a new stream from aTrack's
    * graph.
    */
   void EnsureGraphTrackFrom(MediaTrack* aTrack);
-
-  /**
-   * Takes a regular runnable and dispatches it to the graph wrapped in a
-   * ControlMessage.
-   */
-  void RunOnGraph(already_AddRefed<Runnable> aRunnable);
 
   /**
    * Shuts down gracefully if there is no remaining live track encoder.

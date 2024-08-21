@@ -58,7 +58,7 @@ http://creativecommons.org/licenses/publicdomain/
         };
       },
 
-      registration(pageRecord) {
+      registration() {
         return {
           endpoint: "https://example.com/push/subWithKey",
           appServerKey: testKey,
@@ -68,7 +68,7 @@ http://creativecommons.org/licenses/publicdomain/
     await setPushPermission(true);
     testKey = await generateKey();
 
-    var url = "worker.js?" + (Math.random());
+    var url = "worker.js?caller=test_register_key.html";
     registration = await navigator.serviceWorker.register(url, {scope: "."});
     await waitForActive(registration);
   });
@@ -76,34 +76,6 @@ http://creativecommons.org/licenses/publicdomain/
   var controlledFrame;
   add_task(async function createControlledIFrame() {
     controlledFrame = await injectControlledFrame();
-  });
-
-  add_task(async function emptyKey() {
-    try {
-      await registration.pushManager.subscribe({
-        applicationServerKey: new ArrayBuffer(0),
-      });
-      ok(false, "Should reject for empty app server keys");
-    } catch (error) {
-      ok(error instanceof DOMException,
-        "Wrong exception type for empty key");
-      is(error.name, "InvalidAccessError",
-        "Wrong exception name for empty key");
-    }
-  });
-
-  add_task(async function invalidKey() {
-    try {
-      await registration.pushManager.subscribe({
-        applicationServerKey: new Uint8Array([0]),
-      });
-      ok(false, "Should reject for invalid app server keys");
-    } catch (error) {
-      ok(error instanceof DOMException,
-        "Wrong exception type for invalid key");
-      is(error.name, "InvalidAccessError",
-        "Wrong exception name for invalid key");
-    }
   });
 
   add_task(async function validKey() {

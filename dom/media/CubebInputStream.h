@@ -51,6 +51,12 @@ class CubebInputStream final {
   // Stop producing audio data.
   int Stop();
 
+  // Apply the given processing params.
+  int SetProcessingParams(cubeb_input_processing_params aParams);
+
+  // Gets the approximate stream latency in frames.
+  int Latency(uint32_t* aLatencyFrames);
+
  private:
   struct CubebDestroyPolicy {
     void operator()(cubeb_stream* aStream) const;
@@ -73,6 +79,8 @@ class CubebInputStream final {
 
   // mListener must outlive the life time of the mStream.
   const RefPtr<Listener> mListener;
+  // So must mCubeb (mStream has a bare pointer to cubeb).
+  const RefPtr<CubebUtils::CubebHandle> mCubeb;
   const UniquePtr<cubeb_stream, CubebDestroyPolicy> mStream;
 };
 

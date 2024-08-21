@@ -15,6 +15,7 @@
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/MouseEventBinding.h"
 
 namespace mozilla {
@@ -80,7 +81,8 @@ void PointerEventHandler::UpdateActivePointerState(WidgetMouseEvent* aEvent,
       // In this case we have to know information about available mouse pointers
       sActivePointersIds->InsertOrUpdate(
           aEvent->pointerId,
-          MakeUnique<PointerInfo>(false, aEvent->mInputSource, true, nullptr));
+          MakeUnique<PointerInfo>(false, aEvent->mInputSource, true, false,
+                                  nullptr));
 
       MaybeCacheSpoofedPointerID(aEvent->mInputSource, aEvent->pointerId);
       break;
@@ -94,6 +96,7 @@ void PointerEventHandler::UpdateActivePointerState(WidgetMouseEvent* aEvent,
             pointerEvent->pointerId,
             MakeUnique<PointerInfo>(
                 true, pointerEvent->mInputSource, pointerEvent->mIsPrimary,
+                pointerEvent->mFromTouchEvent,
                 aTargetContent ? aTargetContent->OwnerDoc() : nullptr));
         MaybeCacheSpoofedPointerID(pointerEvent->mInputSource,
                                    pointerEvent->pointerId);
@@ -112,7 +115,8 @@ void PointerEventHandler::UpdateActivePointerState(WidgetMouseEvent* aEvent,
           sActivePointersIds->InsertOrUpdate(
               pointerEvent->pointerId,
               MakeUnique<PointerInfo>(false, pointerEvent->mInputSource,
-                                      pointerEvent->mIsPrimary, nullptr));
+                                      pointerEvent->mIsPrimary,
+                                      pointerEvent->mFromTouchEvent, nullptr));
         } else {
           sActivePointersIds->Remove(pointerEvent->pointerId);
         }
@@ -314,7 +318,7 @@ void PointerEventHandler::ProcessPointerCaptureForTouch(
       continue;
     }
     WidgetPointerEvent event(aEvent->IsTrusted(), eVoidEvent, aEvent->mWidget);
-    InitPointerEventFromTouch(event, *aEvent, *touch, i == 0);
+    InitPointerEventFromTouch(event, *aEvent, *touch);
     CheckPointerCaptureState(&event);
   }
 }
@@ -418,6 +422,19 @@ void PointerEventHandler::ImplicitlyReleasePointerCapture(WidgetEvent* aEvent) {
 }
 
 /* static */
+void PointerEventHandler::MaybeImplicitlyReleasePointerCapture(
+    WidgetGUIEvent* aEvent) {
+  MOZ_ASSERT(aEvent);
+  const EventMessage pointerEventMessage =
+      PointerEventHandler::ToPointerEventMessage(aEvent);
+  if (pointerEventMessage != ePointerUp &&
+      pointerEventMessage != ePointerCancel) {
+    return;
+  }
+  PointerEventHandler::MaybeProcessPointerCapture(aEvent);
+}
+
+/* static */
 Element* PointerEventHandler::GetPointerCapturingElement(uint32_t aPointerId) {
   PointerCaptureInfo* pointerCaptureInfo = GetPointerCaptureInfo(aPointerId);
   if (pointerCaptureInfo) {
@@ -448,11 +465,13 @@ Element* PointerEventHandler::GetPointerCapturingElement(
 void PointerEventHandler::ReleaseIfCaptureByDescendant(nsIContent* aContent) {
   // We should check that aChild does not contain pointer capturing elements.
   // If it does we should release the pointer capture for the elements.
-  for (const auto& entry : *sPointerCaptureList) {
-    PointerCaptureInfo* data = entry.GetWeak();
-    if (data && data->mPendingElement &&
-        data->mPendingElement->IsInclusiveDescendantOf(aContent)) {
-      ReleasePointerCaptureById(entry.GetKey());
+  if (!sPointerCaptureList->IsEmpty()) {
+    for (const auto& entry : *sPointerCaptureList) {
+      PointerCaptureInfo* data = entry.GetWeak();
+      if (data && data->mPendingElement &&
+          data->mPendingElement->IsInclusiveDescendantOf(aContent)) {
+        ReleasePointerCaptureById(entry.GetKey());
+      }
     }
   }
 }
@@ -533,7 +552,7 @@ void PointerEventHandler::InitPointerEventFromMouse(
 /* static */
 void PointerEventHandler::InitPointerEventFromTouch(
     WidgetPointerEvent& aPointerEvent, const WidgetTouchEvent& aTouchEvent,
-    const mozilla::dom::Touch& aTouch, bool aIsPrimary) {
+    const mozilla::dom::Touch& aTouch) {
   // Use mButton/mButtons only when mButton got a value (from pen input)
   int16_t button = aTouchEvent.mMessage == eTouchMove ? MouseButton::eNotPressed
                    : aTouchEvent.mButton != MouseButton::eNotPressed
@@ -545,7 +564,10 @@ void PointerEventHandler::InitPointerEventFromTouch(
                         ? aTouchEvent.mButtons
                         : MouseButtonsFlag::ePrimaryFlag;
 
-  aPointerEvent.mIsPrimary = aIsPrimary;
+  // Only the first touch would be the primary pointer.
+  aPointerEvent.mIsPrimary = aTouchEvent.mMessage == eTouchStart
+                                 ? !HasActiveTouchPointer()
+                                 : GetPointerPrimaryState(aTouch.Identifier());
   aPointerEvent.pointerId = aTouch.Identifier();
   aPointerEvent.mRefPoint = aTouch.mRefPoint;
   aPointerEvent.mModifiers = aTouchEvent.mModifiers;
@@ -564,16 +586,49 @@ void PointerEventHandler::InitPointerEventFromTouch(
 }
 
 /* static */
+EventMessage PointerEventHandler::ToPointerEventMessage(
+    const WidgetGUIEvent* aMouseOrTouchEvent) {
+  MOZ_ASSERT(aMouseOrTouchEvent);
+
+  switch (aMouseOrTouchEvent->mMessage) {
+    case eMouseMove:
+      return ePointerMove;
+    case eMouseUp:
+      return aMouseOrTouchEvent->AsMouseEvent()->mButtons ? ePointerMove
+                                                          : ePointerUp;
+    case eMouseDown: {
+      const WidgetMouseEvent* mouseEvent = aMouseOrTouchEvent->AsMouseEvent();
+      return mouseEvent->mButtons & ~nsContentUtils::GetButtonsFlagForButton(
+                                        mouseEvent->mButton)
+                 ? ePointerMove
+                 : ePointerDown;
+    }
+    case eTouchMove:
+      return ePointerMove;
+    case eTouchEnd:
+      return ePointerUp;
+    case eTouchStart:
+      return ePointerDown;
+    case eTouchCancel:
+    case eTouchPointerCancel:
+      return ePointerCancel;
+    default:
+      return eVoidEvent;
+  }
+}
+
+/* static */
 void PointerEventHandler::DispatchPointerFromMouseOrTouch(
-    PresShell* aShell, nsIFrame* aFrame, nsIContent* aContent,
-    WidgetGUIEvent* aEvent, bool aDontRetargetEvents, nsEventStatus* aStatus,
-    nsIContent** aTargetContent) {
-  MOZ_ASSERT(aFrame || aContent);
-  MOZ_ASSERT(aEvent);
+    PresShell* aShell, nsIFrame* aEventTargetFrame,
+    nsIContent* aEventTargetContent, WidgetGUIEvent* aMouseOrTouchEvent,
+    bool aDontRetargetEvents, nsEventStatus* aStatus,
+    nsIContent** aMouseOrTouchEventTarget /* = nullptr */) {
+  MOZ_ASSERT(aEventTargetFrame || aEventTargetContent);
+  MOZ_ASSERT(aMouseOrTouchEvent);
 
   EventMessage pointerMessage = eVoidEvent;
-  if (aEvent->mClass == eMouseEventClass) {
-    WidgetMouseEvent* mouseEvent = aEvent->AsMouseEvent();
+  if (aMouseOrTouchEvent->mClass == eMouseEventClass) {
+    WidgetMouseEvent* mouseEvent = aMouseOrTouchEvent->AsMouseEvent();
     // Don't dispatch pointer events caused by a mouse when simulating touch
     // devices in RDM.
     Document* doc = aShell->GetDocument();
@@ -591,66 +646,38 @@ void PointerEventHandler::DispatchPointerFromMouseOrTouch(
     // 2. We don't synthesize pointer events for those events that are not
     //    dispatched to DOM.
     if (!mouseEvent->convertToPointer ||
-        !aEvent->IsAllowedToDispatchDOMEvent()) {
+        !aMouseOrTouchEvent->IsAllowedToDispatchDOMEvent()) {
       return;
     }
 
-    switch (mouseEvent->mMessage) {
-      case eMouseMove:
-        pointerMessage = ePointerMove;
-        break;
-      case eMouseUp:
-        pointerMessage = mouseEvent->mButtons ? ePointerMove : ePointerUp;
-        break;
-      case eMouseDown:
-        pointerMessage =
-            mouseEvent->mButtons & ~nsContentUtils::GetButtonsFlagForButton(
-                                       mouseEvent->mButton)
-                ? ePointerMove
-                : ePointerDown;
-        break;
-      default:
-        return;
+    pointerMessage = PointerEventHandler::ToPointerEventMessage(mouseEvent);
+    if (pointerMessage == eVoidEvent) {
+      return;
     }
-
     WidgetPointerEvent event(*mouseEvent);
     InitPointerEventFromMouse(&event, mouseEvent, pointerMessage);
     event.convertToPointer = mouseEvent->convertToPointer = false;
     RefPtr<PresShell> shell(aShell);
-    if (!aFrame) {
-      shell = PresShell::GetShellForEventTarget(nullptr, aContent);
+    if (!aEventTargetFrame) {
+      shell = PresShell::GetShellForEventTarget(nullptr, aEventTargetContent);
       if (!shell) {
         return;
       }
     }
-    PreHandlePointerEventsPreventDefault(&event, aEvent);
+    PreHandlePointerEventsPreventDefault(&event, aMouseOrTouchEvent);
     // Dispatch pointer event to the same target which is found by the
     // corresponding mouse event.
-    shell->HandleEventWithTarget(&event, aFrame, aContent, aStatus, true,
-                                 aTargetContent);
-    PostHandlePointerEventsPreventDefault(&event, aEvent);
-  } else if (aEvent->mClass == eTouchEventClass) {
-    WidgetTouchEvent* touchEvent = aEvent->AsTouchEvent();
+    shell->HandleEventWithTarget(&event, aEventTargetFrame, aEventTargetContent,
+                                 aStatus, true, aMouseOrTouchEventTarget);
+    PostHandlePointerEventsPreventDefault(&event, aMouseOrTouchEvent);
+  } else if (aMouseOrTouchEvent->mClass == eTouchEventClass) {
+    WidgetTouchEvent* touchEvent = aMouseOrTouchEvent->AsTouchEvent();
     // loop over all touches and dispatch pointer events on each touch
     // copy the event
-    switch (touchEvent->mMessage) {
-      case eTouchMove:
-        pointerMessage = ePointerMove;
-        break;
-      case eTouchEnd:
-        pointerMessage = ePointerUp;
-        break;
-      case eTouchStart:
-        pointerMessage = ePointerDown;
-        break;
-      case eTouchCancel:
-      case eTouchPointerCancel:
-        pointerMessage = ePointerCancel;
-        break;
-      default:
-        return;
+    pointerMessage = PointerEventHandler::ToPointerEventMessage(touchEvent);
+    if (pointerMessage == eVoidEvent) {
+      return;
     }
-
     RefPtr<PresShell> shell(aShell);
     for (uint32_t i = 0; i < touchEvent->mTouches.Length(); ++i) {
       Touch* touch = touchEvent->mTouches[i];
@@ -661,10 +688,10 @@ void PointerEventHandler::DispatchPointerFromMouseOrTouch(
       WidgetPointerEvent event(touchEvent->IsTrusted(), pointerMessage,
                                touchEvent->mWidget);
 
-      InitPointerEventFromTouch(event, *touchEvent, *touch, i == 0);
+      InitPointerEventFromTouch(event, *touchEvent, *touch);
       event.convertToPointer = touch->convertToPointer = false;
       event.mCoalescedWidgetEvents = touch->mCoalescedWidgetEvents;
-      if (aEvent->mMessage == eTouchStart) {
+      if (aMouseOrTouchEvent->mMessage == eTouchStart) {
         // We already did hit test for touchstart in PresShell. We should
         // dispatch pointerdown to the same target as touchstart.
         nsCOMPtr<nsIContent> content =
@@ -679,18 +706,22 @@ void PointerEventHandler::DispatchPointerFromMouseOrTouch(
           continue;
         }
 
-        PreHandlePointerEventsPreventDefault(&event, aEvent);
+        PreHandlePointerEventsPreventDefault(&event, aMouseOrTouchEvent);
         shell->HandleEventWithTarget(&event, frame, content, aStatus, true,
-                                     nullptr);
-        PostHandlePointerEventsPreventDefault(&event, aEvent);
+                                     aMouseOrTouchEventTarget);
+        PostHandlePointerEventsPreventDefault(&event, aMouseOrTouchEvent);
       } else {
         // We didn't hit test for other touch events. Spec doesn't mention that
         // all pointer events should be dispatched to the same target as their
         // corresponding touch events. Call PresShell::HandleEvent so that we do
         // hit test for pointer events.
-        PreHandlePointerEventsPreventDefault(&event, aEvent);
-        shell->HandleEvent(aFrame, &event, aDontRetargetEvents, aStatus);
-        PostHandlePointerEventsPreventDefault(&event, aEvent);
+        // FIXME: If aDontRetargetEvents is true and the event is fired on
+        // different document, we cannot track the pointer event target when
+        // it's removed from the tree.
+        PreHandlePointerEventsPreventDefault(&event, aMouseOrTouchEvent);
+        shell->HandleEvent(aEventTargetFrame, &event, aDontRetargetEvents,
+                           aStatus);
+        PostHandlePointerEventsPreventDefault(&event, aMouseOrTouchEvent);
       }
     }
   }
@@ -714,6 +745,15 @@ void PointerEventHandler::NotifyDestroyPresContext(
       data->mOverrideElement = nullptr;
     }
     if (data->Empty()) {
+      iter.Remove();
+    }
+  }
+  // Clean up active pointer info
+  for (auto iter = sActivePointersIds->Iter(); !iter.Done(); iter.Next()) {
+    PointerInfo* data = iter.UserData();
+    MOZ_ASSERT(data, "how could we have a null PointerInfo here?");
+    if (data->mActiveDocument &&
+        data->mActiveDocument->GetPresContext() == aPresContext) {
       iter.Remove();
     }
   }
@@ -744,6 +784,16 @@ bool PointerEventHandler::GetPointerPrimaryState(uint32_t aPointerId) {
   PointerInfo* pointerInfo = nullptr;
   if (sActivePointersIds->Get(aPointerId, &pointerInfo) && pointerInfo) {
     return pointerInfo->mPrimaryState;
+  }
+  return false;
+}
+
+/* static */
+bool PointerEventHandler::HasActiveTouchPointer() {
+  for (auto iter = sActivePointersIds->ConstIter(); !iter.Done(); iter.Next()) {
+    if (iter.Data()->mFromTouchEvent) {
+      return true;
+    }
   }
   return false;
 }

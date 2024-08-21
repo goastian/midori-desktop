@@ -51,8 +51,12 @@ using namespace mozilla::dom;
 bool nsJSUtils::GetCallingLocation(JSContext* aContext, nsACString& aFilename,
                                    uint32_t* aLineno, uint32_t* aColumn) {
   JS::AutoFilename filename;
-  if (!JS::DescribeScriptedCaller(aContext, &filename, aLineno, aColumn)) {
+  JS::ColumnNumberOneOrigin column;
+  if (!JS::DescribeScriptedCaller(aContext, &filename, aLineno, &column)) {
     return false;
+  }
+  if (aColumn) {
+    *aColumn = column.oneOriginValue();
   }
 
   return aFilename.Assign(filename.get(), fallible);
@@ -61,8 +65,12 @@ bool nsJSUtils::GetCallingLocation(JSContext* aContext, nsACString& aFilename,
 bool nsJSUtils::GetCallingLocation(JSContext* aContext, nsAString& aFilename,
                                    uint32_t* aLineno, uint32_t* aColumn) {
   JS::AutoFilename filename;
-  if (!JS::DescribeScriptedCaller(aContext, &filename, aLineno, aColumn)) {
+  JS::ColumnNumberOneOrigin column;
+  if (!JS::DescribeScriptedCaller(aContext, &filename, aLineno, &column)) {
     return false;
+  }
+  if (aColumn) {
+    *aColumn = column.oneOriginValue();
   }
 
   return aFilename.Assign(NS_ConvertUTF8toUTF16(filename.get()), fallible);
@@ -186,16 +194,14 @@ bool nsJSUtils::DumpEnabled() {
 #endif
 }
 
-JSObject* nsJSUtils::MoveBufferAsUint8Array(JSContext* aCx, size_t aSize,
-                                            UniquePtr<uint8_t>& aBuffer) {
+JSObject* nsJSUtils::MoveBufferAsUint8Array(
+    JSContext* aCx, size_t aSize,
+    UniquePtr<uint8_t[], JS::FreePolicy> aBuffer) {
   JS::Rooted<JSObject*> arrayBuffer(
-      aCx, JS::NewArrayBufferWithContents(aCx, aSize, aBuffer.get()));
+      aCx, JS::NewArrayBufferWithContents(aCx, aSize, std::move(aBuffer)));
   if (!arrayBuffer) {
     return nullptr;
   }
-
-  // Now the ArrayBuffer owns the buffer, so let's release our ownership
-  (void)aBuffer.release();
 
   return JS_NewUint8ArrayWithBuffer(aCx, arrayBuffer, 0,
                                     static_cast<int64_t>(aSize));

@@ -23,7 +23,8 @@ using namespace mozilla;
 using namespace webrtc;
 using namespace videocapturemodule;
 
-rtc::scoped_refptr<VideoCaptureModule> VideoCaptureImpl::Create(const char* deviceUniqueIdUTF8) {
+rtc::scoped_refptr<VideoCaptureModule> VideoCaptureImpl::Create(
+    const char* deviceUniqueIdUTF8) {
   if (StaticPrefs::media_getusermedia_camera_macavf_enabled_AtStartup()) {
     return VideoCaptureAvFoundation::Create(deviceUniqueIdUTF8);
   }
@@ -44,16 +45,19 @@ VideoCaptureIos::~VideoCaptureIos() {
   }
 }
 
-rtc::scoped_refptr<VideoCaptureModule> VideoCaptureIos::Create(const char* deviceUniqueIdUTF8) {
+rtc::scoped_refptr<VideoCaptureModule> VideoCaptureIos::Create(
+    const char* deviceUniqueIdUTF8) {
   if (!deviceUniqueIdUTF8[0]) {
     return NULL;
   }
 
-  rtc::scoped_refptr<VideoCaptureIos> capture_module(new rtc::RefCountedObject<VideoCaptureIos>());
+  rtc::scoped_refptr<VideoCaptureIos> capture_module(
+      new rtc::RefCountedObject<VideoCaptureIos>());
 
   const int32_t name_length = strlen(deviceUniqueIdUTF8);
   if (name_length >= kVideoCaptureUniqueNameLength) return nullptr;
 
+  RTC_DCHECK_RUN_ON(&capture_module->api_checker_);
   capture_module->_deviceUniqueId = new char[name_length + 1];
   strncpy(capture_module->_deviceUniqueId, deviceUniqueIdUTF8, name_length + 1);
   capture_module->_deviceUniqueId[name_length] = '\0';
@@ -65,14 +69,16 @@ rtc::scoped_refptr<VideoCaptureModule> VideoCaptureIos::Create(const char* devic
   }
 
   if (![capture_module->capture_device_
-          setCaptureDeviceByUniqueId:[[NSString alloc] initWithCString:deviceUniqueIdUTF8
-                                                              encoding:NSUTF8StringEncoding]]) {
+          setCaptureDeviceByUniqueId:
+              [[NSString alloc] initWithCString:deviceUniqueIdUTF8
+                                       encoding:NSUTF8StringEncoding]]) {
     return nullptr;
   }
   return capture_module;
 }
 
-int32_t VideoCaptureIos::StartCapture(const VideoCaptureCapability& capability) {
+int32_t VideoCaptureIos::StartCapture(
+    const VideoCaptureCapability& capability) {
   capability_ = capability;
 
   if (![capture_device_ startCaptureWithCapability:capability]) {

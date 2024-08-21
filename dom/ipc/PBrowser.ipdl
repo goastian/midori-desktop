@@ -54,8 +54,8 @@ using mozilla::ScreenIntPoint from "Units.h";
 using mozilla::ScreenRect from "Units.h";
 using struct mozilla::layers::ScrollableLayerGuid from "mozilla/layers/ScrollableLayerGuid.h";
 using struct mozilla::layers::ZoomConstraints from "mozilla/layers/ZoomConstraints.h";
+using struct mozilla::layers::DoubleTapToZoomMetrics from "mozilla/layers/DoubleTapToZoom.h";
 using mozilla::layers::LayersId from "mozilla/layers/LayersTypes.h";
-using mozilla::layers::LayersObserverEpoch from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::GeckoContentController_TapType from "mozilla/layers/GeckoContentControllerTypes.h";
 using mozilla::layers::ScrollableLayerGuid::ViewID from "mozilla/layers/ScrollableLayerGuid.h";
 using struct mozilla::void_t from "mozilla/ipc/IPCCore.h";
@@ -87,7 +87,7 @@ using nsCursor from "nsIWidget.h";
 using struct LookAndFeelInt from "mozilla/widget/WidgetMessageUtils.h";
 using struct mozilla::DimensionRequest from "mozilla/widget/WidgetMessageUtils.h";
 using class mozilla::dom::MessagePort from "mozilla/dom/MessagePort.h";
-using class mozilla::dom::ipc::StructuredCloneData from "mozilla/dom/ipc/StructuredCloneData.h";
+[MoveOnly=data] using class mozilla::dom::ipc::StructuredCloneData from "mozilla/dom/ipc/StructuredCloneData.h";
 using mozilla::dom::MaybeDiscardedWindowContext from "mozilla/dom/WindowContext.h";
 using mozilla::EventMessage from "mozilla/EventForwards.h";
 using nsEventStatus from "mozilla/EventForwards.h";
@@ -102,6 +102,7 @@ using mozilla::ScrollFlags from "mozilla/PresShellForwards.h";
 using struct InputFormData from "mozilla/dom/SessionStoreMessageUtils.h";
 using struct CollectedInputDataValue from "mozilla/dom/SessionStoreMessageUtils.h";
 using mozilla::ContentBlockingNotifier::StorageAccessPermissionGrantedReason from "mozilla/ContentBlockingNotifier.h";
+using mozilla::ContentBlockingNotifier::CanvasFingerprinter from "mozilla/ContentBlockingNotifier.h";
 using mozilla::dom::CallerType from "mozilla/dom/BindingDeclarations.h";
 using mozilla::dom::EmbedderElementEventType from "mozilla/dom/TabMessageTypes.h";
 using mozilla::IntrinsicSize from "nsIFrame.h";
@@ -318,6 +319,8 @@ parent:
      * Requests chrome to commit or cancel composition of IME.
      *
      *  cancel                Set true if composition should be cancelled.
+     *  compositionId         Set the composition ID to requesting commit
+     *                        (stored in TextComposition).
      *
      *  isCommitted           Returns true if the request causes composition
      *                        being committed synchronously.
@@ -326,7 +329,8 @@ parent:
      *                        try to restore selected string which was
      *                        replaced with the composition.
      */
-    [Nested=inside_cpow] sync RequestIMEToCommitComposition(bool cancel)
+    [Nested=inside_cpow] sync RequestIMEToCommitComposition(bool cancel,
+                                                            uint32_t aCompositionId)
       returns (bool isCommitted, nsString committedString);
 
     /**
@@ -334,9 +338,13 @@ parent:
      * composition event or a selection event which is sent from the parent
      * process.
      *
-     * message      The message value of the handled event.
+     * message          The message value of the handled event.
+     * compositionId    The composition ID of handled composition event if
+     *                  the message is a composition event message.  Otherwise,
+     *                  0.
      */
-    [Nested=inside_cpow] async OnEventNeedingAckHandled(EventMessage message);
+    [Nested=inside_cpow] async OnEventNeedingAckHandled(EventMessage message,
+                                                        uint32_t compositionId);
 
     /**
      * Request that the parent process move focus to the browser's frame. If
@@ -368,23 +376,12 @@ parent:
      * Set the native cursor.
      * @param value
      *   The widget cursor to set.
-     * @param hasCustomCursor
-     *   Whether there's any custom cursor represented by cursorData and
-     *   company.
-     * @param customCursorData
-     *   Serialized image data.
-     * @param width
-     *   Width of the image.
-     * @param height
-     *   Height of the image.
+     * @param customCursor
+     *   Serialized image data for custom cursor.
      * @param resolutionX
      *   Resolution of the image X axis in dppx units.
      * @param resolutionY
      *   Resolution of the image Y axis in dppx units.
-     * @param stride
-     *   Stride used in the image data.
-     * @param format
-     *   Image format, see gfx::SurfaceFormat for possible values.
      * @param hotspotX
      *   Horizontal hotspot of the image, as specified by the css cursor property.
      * @param hotspotY
@@ -394,11 +391,8 @@ parent:
      *   update.
      */
     async SetCursor(nsCursor value,
-                    bool hasCustomCursor,
-                    BigBuffer? customCursorData,
-                    uint32_t width, uint32_t height,
+                    IPCImage? customCursor,
                     float resolutionX, float resolutionY,
-                    uint32_t stride, SurfaceFormat format,
                     uint32_t hotspotX, uint32_t hotspotY, bool force);
 
     /**
@@ -420,7 +414,7 @@ parent:
      */
     async PColorPicker(nsString title, nsString initialColor, nsString[] defaultColors);
 
-    async PFilePicker(nsString aTitle, Mode aMode);
+    async PFilePicker(nsString aTitle, Mode aMode, MaybeDiscardedBrowsingContext aBrowsingContext);
 
     /**
      * Tells the containing widget whether the given input block results in a
@@ -548,7 +542,9 @@ parent:
     async NotifyContentBlockingEvent(uint32_t aEvent, RequestData aRequestData,
                                      bool aBlocked, nsCString aTrackingOrigin,
                                      nsCString[] aTrackingFullHashes,
-                                     StorageAccessPermissionGrantedReason? aReason);
+                                     StorageAccessPermissionGrantedReason? aReason,
+                                     CanvasFingerprinter? aCanvasFingerprinter,
+                                     bool? aCanvasFingerprinterKnownText);
 
     async NavigationFinished();
 
@@ -558,16 +554,21 @@ parent:
     async ImageLoadComplete(nsresult aResult);
 
     /**
-     * Child informs the parent that a pointer lock has requested/released.
-     */
-    async RequestPointerLock() returns (nsCString error);
-    async ReleasePointerLock();
-
-    /**
      * Child informs the parent that a pointer capture has requested/released.
      */
     async RequestPointerCapture(uint32_t aPointerId) returns (bool aSuccess);
     async ReleasePointerCapture(uint32_t aPointerId);
+
+    /**
+     * Child informs the parent that a pointer lock has requested.
+     */
+    async RequestPointerLock() returns (nsCString error);
+
+both:
+    /**
+     * informs that a pointer lock has released.
+     */
+    async ReleasePointerLock();
 
 child:
     async NativeSynthesisResponse(uint64_t aObserverId, nsCString aResponse);
@@ -587,11 +588,6 @@ parent:
      * events. This is sent when the BrowserChild is created.
      */
     async RemoteIsReadyToHandleInputEvents();
-
-    /**
-     * Child informs the parent that the layer tree is already available.
-     */
-    async PaintWhileInterruptingJSNoOp(LayersObserverEpoch aEpoch);
 
 child:
     /**
@@ -684,7 +680,7 @@ child:
 
     async LoadURL(nsDocShellLoadState loadState, ParentShowInfo info);
 
-    async CreateAboutBlankContentViewer(nullable nsIPrincipal principal,
+    async CreateAboutBlankDocumentViewer(nullable nsIPrincipal principal,
                                         nullable nsIPrincipal partitionedPrincipal);
 
     async ResumeLoad(uint64_t pendingSwitchID, ParentShowInfo info);
@@ -800,10 +796,12 @@ child:
     [Priority=input]
     async HandleTap(GeckoContentController_TapType aType, LayoutDevicePoint point,
                     Modifiers aModifiers, ScrollableLayerGuid aGuid,
-                    uint64_t aInputBlockId);
+                    uint64_t aInputBlockId,
+                    DoubleTapToZoomMetrics? aMetrics);
     async NormalPriorityHandleTap(GeckoContentController_TapType aType, LayoutDevicePoint point,
                                   Modifiers aModifiers, ScrollableLayerGuid aGuid,
-                                  uint64_t aInputBlockId);
+                                  uint64_t aInputBlockId,
+                                  DoubleTapToZoomMetrics? aMetrics);
 
     [Compress, Priority=input]
     async RealTouchMoveEvent(WidgetTouchEvent aEvent,
@@ -850,11 +848,7 @@ child:
      * Call PasteTransferable via a controller on the content process
      * to handle the command content event, "pasteTransferable".
      */
-    // XXX Do we really need data other than IPCTransferableData? See bug 1833172.
-    async PasteTransferable(IPCTransferableData aTransferableData,
-                            bool aIsPrivateData,
-                            nullable nsIPrincipal aRequestingPrincipal,
-                            nsContentPolicyType aContentPolicyType);
+    async PasteTransferable(IPCTransferable aTransferable);
 
     async LoadRemoteScript(nsString aURL, bool aRunInGlobalScope);
 
@@ -874,12 +868,8 @@ child:
      * @param aEnabled
      *        True if the child should render and upload layers, false if the
      *        child should clear layers.
-     * @param aEpoch
-     *        The layer observer epoch for this activation. This message should be
-     *        ignored if this epoch has already been observed (via
-     *        PaintWhileInterruptingJS).
      */
-    async RenderLayers(bool aEnabled, LayersObserverEpoch aEpoch);
+    async RenderLayers(bool aEnabled);
 
     /**
      * Communicates the child that we want layers to be preserved even when the
@@ -961,8 +951,33 @@ child:
      *
      * @param aBrowsingContext the browsing context to print.
      * @param aPrintData the serialized settings to print with
+     * @param aReturnStaticClone If the document in aBrowsingContext is not a static clone, whether
+     *   to return the static document clone created.
+     *   Note that if you call this with true but do not later call PrintClonedPage(),
+     *   you must call DestroyPrintCache() to avoid leaks.
      */
-    async Print(MaybeDiscardedBrowsingContext aBC, PrintData aPrintData);
+    async Print(MaybeDiscardedBrowsingContext aBC, PrintData aPrintData, bool aReturnStaticClone) returns(MaybeDiscardedBrowsingContext staticCloneBrowsingContext);
+
+    /**
+     * Tell the child to print the passed in static clone browsing context with the given settings.
+     *
+     * @param aBrowsingContext the browsing context to print.
+     * @param aPrintData the serialized settings to print with
+     * @param aStaticCloneBrowsingContext The static clone of aBrowsingContext that
+     *   was created by an earlier call to Print(). This is the page that will actually be
+     *   printed.
+     */
+    async PrintClonedPage(MaybeDiscardedBrowsingContext aBC, PrintData aPrintData, MaybeDiscardedBrowsingContext aStaticCloneBrowsingContext);
+
+    /**
+     * Destroy the static document clone for printing, if present. See Print() for details.
+     * For callers' simplicity, it is safe to call this method even if aStaticCloneBrowsingContext
+     * is null or has already been discarded.
+     *
+     * @param aStaticCloneBrowsingContext The static clone that was created by
+     *   an earlier call to Print().
+     */
+    async DestroyPrintClone(MaybeDiscardedBrowsingContext aStaticCloneBrowsingContext);
 
     /**
      * Update the child with the tab's current top-level native window handle.

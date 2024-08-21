@@ -20,9 +20,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1557386
 SimpleTest.waitForExplicitFinish();
 SpecialPowers.pushPrefEnv({'set': [["beacon.enabled", true]]}, beginTest);
 
-const {BrowserTestUtils} = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
-const { clearInterval, setInterval } = ChromeUtils.import(
-  "resource://gre/modules/Timer.jsm"
+const {BrowserTestUtils} = ChromeUtils.importESModule(
+  "resource://testing-common/BrowserTestUtils.sys.mjs"
 );
 
 function whenDelayedStartupFinished(aWindow, aCallback) {
@@ -59,7 +58,7 @@ function beginTest() {
       testOnPrivateWindow();
     }, "cookie-changed");
     let testURL = baseURL + "file_beaconSafelist.html";
-    BrowserTestUtils.loadURIString(win.gBrowser.selectedBrowser, testURL);
+    BrowserTestUtils.startLoadingURIString(win.gBrowser.selectedBrowser, testURL);
     await BrowserTestUtils.browserLoaded(win.gBrowser.selectedBrowser, false, testURL);
     await SpecialPowers.spawn(win.gBrowser.selectedBrowser, [], async () => {
       await new Promise((resolve, reject) => {

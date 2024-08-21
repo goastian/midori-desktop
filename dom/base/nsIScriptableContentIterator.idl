@@ -38,6 +38,11 @@ interface nsIScriptableContentIterator : nsISupports
   void initWithRange(in nsIScriptableContentIterator_IteratorType aType,
                      in Range aRange);
 
+  // See ContentSubtreeIterator::InitWithAllowCrossShadowBoundary(nsRange*)
+  void initWithRangeAllowCrossShadowBoundary(
+                     in nsIScriptableContentIterator_IteratorType aType,
+                     in Range aRange);
+
   // See ContentIteratorBase::Init(nsINode*, uint32_t, nsINode*, uint32_t)
   void initWithPositions(in nsIScriptableContentIterator_IteratorType aType,
                          in Node aStartContainer, in unsigned long aStartOffset,
@@ -59,16 +64,8 @@ interface nsIScriptableContentIterator : nsISupports
   readonly attribute Node currentNode;
 
   // See ContentIteratorBase::IsDone()
-  readonly attribute bool isDone;
+  readonly attribute boolean isDone;
 
   // See ContentIteratorBase::PositionAt(nsINode*)
   void positionAt(in Node aNode);
 };
-
-%{C++
-#define SCRIPTABLE_CONTENT_ITERATOR_CID \
-  { 0xf68037ec, 0x2790, 0x44c5, \
-    { 0x8e, 0x5f, 0xdf, 0x5d, 0xa5, 0x8b, 0x93, 0xa7 } }
-#define SCRIPTABLE_CONTENT_ITERATOR_CONTRACTID \
-  "@mozilla.org/scriptable-content-iterator;1"
-%}

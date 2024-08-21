@@ -10,7 +10,7 @@
 #include "AudioNodeTrack.h"
 #include "DriftCompensation.h"
 #include "MediaDecoder.h"
-#include "MediaTrackGraphImpl.h"
+#include "MediaTrackGraph.h"
 #include "MediaTrackListener.h"
 #include "mozilla/dom/AudioNode.h"
 #include "mozilla/dom/AudioStreamTrack.h"
@@ -438,37 +438,38 @@ MediaEncoder::MediaEncoder(
       mStarted(false),
       mCompleted(false),
       mError(false) {
+  if (!mAudioEncoder) {
+    mMuxedAudioEndTime = TimeUnit::FromInfinity();
+    mEncodedAudioQueue->Finish();
+  }
+  if (!mVideoEncoder) {
+    mMuxedVideoEndTime = TimeUnit::FromInfinity();
+    mEncodedVideoQueue->Finish();
+  }
+}
+
+void MediaEncoder::RegisterListeners() {
   if (mAudioEncoder) {
     mAudioPushListener = mEncodedAudioQueue->PushEvent().Connect(
         mEncoderThread, this, &MediaEncoder::OnEncodedAudioPushed);
     mAudioFinishListener = mEncodedAudioQueue->FinishEvent().Connect(
         mEncoderThread, this, &MediaEncoder::MaybeShutdown);
-    nsresult rv = mEncoderThread->Dispatch(NS_NewRunnableFunction(
+    MOZ_ALWAYS_SUCCEEDS(mEncoderThread->Dispatch(NS_NewRunnableFunction(
         "mozilla::AudioTrackEncoder::RegisterListener",
         [self = RefPtr<MediaEncoder>(this), this] {
           mAudioEncoder->RegisterListener(mEncoderListener);
-        }));
-    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
-    Unused << rv;
-  } else {
-    mMuxedAudioEndTime = TimeUnit::FromInfinity();
-    mEncodedAudioQueue->Finish();
+        })));
   }
   if (mVideoEncoder) {
     mVideoPushListener = mEncodedVideoQueue->PushEvent().Connect(
         mEncoderThread, this, &MediaEncoder::OnEncodedVideoPushed);
     mVideoFinishListener = mEncodedVideoQueue->FinishEvent().Connect(
         mEncoderThread, this, &MediaEncoder::MaybeShutdown);
-    nsresult rv = mEncoderThread->Dispatch(NS_NewRunnableFunction(
+    MOZ_ALWAYS_SUCCEEDS(mEncoderThread->Dispatch(NS_NewRunnableFunction(
         "mozilla::VideoTrackEncoder::RegisterListener",
         [self = RefPtr<MediaEncoder>(this), this] {
           mVideoEncoder->RegisterListener(mEncoderListener);
-        }));
-    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
-    Unused << rv;
-  } else {
-    mMuxedVideoEndTime = TimeUnit::FromInfinity();
-    mEncodedVideoQueue->Finish();
+        })));
   }
 }
 
@@ -486,29 +487,13 @@ void MediaEncoder::EnsureGraphTrackFrom(MediaTrack* aTrack) {
   }
   MOZ_DIAGNOSTIC_ASSERT(!aTrack->IsDestroyed());
   mGraphTrack = MakeAndAddRef<SharedDummyTrack>(
-      aTrack->GraphImpl()->CreateSourceTrack(MediaSegment::VIDEO));
-}
-
-void MediaEncoder::RunOnGraph(already_AddRefed<Runnable> aRunnable) {
-  MOZ_ASSERT(mGraphTrack);
-  class Message : public ControlMessage {
-   public:
-    explicit Message(already_AddRefed<Runnable> aRunnable)
-        : ControlMessage(nullptr), mRunnable(aRunnable) {}
-    void Run() override {
-      TRACE("MediaEncoder::RunOnGraph");
-      mRunnable->Run();
-    }
-    const RefPtr<Runnable> mRunnable;
-  };
-  mGraphTrack->mTrack->GraphImpl()->AppendMessage(
-      MakeUnique<Message>(std::move(aRunnable)));
+      aTrack->Graph()->CreateSourceTrack(MediaSegment::VIDEO));
 }
 
 void MediaEncoder::Suspend() {
-  RunOnGraph(NS_NewRunnableFunction(
-      "MediaEncoder::Suspend (graph)",
+  mGraphTrack->mTrack->QueueControlMessageWithNoShutdown(
       [self = RefPtr<MediaEncoder>(this), this] {
+        TRACE("MediaEncoder::Suspend (graph)");
         if (NS_FAILED(mEncoderThread->Dispatch(
                 NS_NewRunnableFunction("MediaEncoder::Suspend (encoder)",
                                        [self, this, now = TimeStamp::Now()] {
@@ -519,17 +504,17 @@ void MediaEncoder::Suspend() {
                                            mVideoEncoder->Suspend(now);
                                          }
                                        })))) {
-          // RunOnGraph added an extra async step, and now `thread` has shut
-          // down.
+          // QueueControlMessageWithNoShutdown added an extra async step, and
+          // now `thread` has shut down.
           return;
         }
-      }));
+      });
 }
 
 void MediaEncoder::Resume() {
-  RunOnGraph(NS_NewRunnableFunction(
-      "MediaEncoder::Resume (graph)",
+  mGraphTrack->mTrack->QueueControlMessageWithNoShutdown(
       [self = RefPtr<MediaEncoder>(this), this] {
+        TRACE("MediaEncoder::Resume (graph)");
         if (NS_FAILED(mEncoderThread->Dispatch(
                 NS_NewRunnableFunction("MediaEncoder::Resume (encoder)",
                                        [self, this, now = TimeStamp::Now()] {
@@ -540,11 +525,11 @@ void MediaEncoder::Resume() {
                                            mVideoEncoder->Resume(now);
                                          }
                                        })))) {
-          // RunOnGraph added an extra async step, and now `thread` has shut
-          // down.
+          // QueueControlMessageWithNoShutdown added an extra async step, and
+          // now `thread` has shut down.
           return;
         }
-      }));
+      });
 }
 
 void MediaEncoder::ConnectAudioNode(AudioNode* aNode, uint32_t aOutput) {
@@ -727,11 +712,15 @@ already_AddRefed<MediaEncoder> MediaEncoder::CreateEncoder(
       videoEncoder->SetBitrate(aVideoBitrate);
     }
   }
-  return MakeAndAddRef<MediaEncoder>(
+  RefPtr<MediaEncoder> encoder = new MediaEncoder(
       std::move(aEncoderThread), std::move(driftCompensator), std::move(writer),
       std::move(audioEncoder), std::move(videoEncoder),
       std::move(encodedAudioQueue), std::move(encodedVideoQueue), aTrackRate,
       aMimeType, aMaxMemory, aTimeslice);
+
+  encoder->RegisterListeners();
+
+  return encoder.forget();
 }
 
 nsresult MediaEncoder::GetEncodedData(

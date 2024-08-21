@@ -19,8 +19,8 @@ const TEST_URL =
  *                              See the constants in this file.
  * @note modified from toolkit/components/passwordmgr/test/browser/head.js
  */
-function clickDoorhangerButton(aButtonIndex) {
-  let popup = PopupNotifications.getNotification("web-notifications");
+function clickDoorhangerButton(aButtonIndex, browser) {
+  let popup = PopupNotifications.getNotification("web-notifications", browser);
   let notifications = popup.owner.panel.childNodes;
   ok(notifications.length, "at least one notification displayed");
   ok(true, notifications.length + " notification(s)");
@@ -48,17 +48,22 @@ function clickDoorhangerButton(aButtonIndex) {
  * @return {Promise} resolving when the task function is done and the tab
  *                   closes.
  */
-function tabWithRequest(task, permission) {
-  PermissionTestUtils.remove(ORIGIN_URI, PERMISSION_NAME);
+function tabWithRequest(
+  task,
+  permission,
+  browser = window.gBrowser,
+  privateWindow = false
+) {
+  clearPermission(ORIGIN_URI, PERMISSION_NAME, privateWindow);
 
   return BrowserTestUtils.withNewTab(
     {
-      gBrowser,
+      gBrowser: browser,
       url: TEST_URL,
     },
-    async function (browser) {
+    async function (linkedBrowser) {
       let requestPromise = SpecialPowers.spawn(
-        browser,
+        linkedBrowser,
         [
           {
             permission,
@@ -83,14 +88,18 @@ function tabWithRequest(task, permission) {
         }
       );
 
-      await BrowserTestUtils.waitForEvent(
-        PopupNotifications.panel,
-        "popupshown"
-      );
-      await task();
+      await task(linkedBrowser);
       await requestPromise;
     }
   );
+}
+
+function clearPermission(origin, permissionName, isPrivate) {
+  let principal = Services.scriptSecurityManager.createContentPrincipal(
+    origin,
+    isPrivate ? { privateBrowsingId: 1 } : {} /* attrs */
+  );
+  PermissionTestUtils.remove(principal, permissionName);
 }
 
 add_setup(async function () {
@@ -107,13 +116,16 @@ add_setup(async function () {
     Services.prefs.clearUserPref(
       "permissions.desktop-notification.notNow.enabled"
     );
-    PermissionTestUtils.remove(ORIGIN_URI, PERMISSION_NAME);
+
+    clearPermission(ORIGIN_URI, PERMISSION_NAME, false /* private origin */);
+    clearPermission(ORIGIN_URI, PERMISSION_NAME, true /* private origin */);
   });
 });
 
 add_task(async function test_requestPermission_granted() {
-  await tabWithRequest(function () {
-    clickDoorhangerButton(PROMPT_ALLOW_BUTTON);
+  await tabWithRequest(async function (linkedBrowser) {
+    await BrowserTestUtils.waitForEvent(PopupNotifications.panel, "popupshown");
+    clickDoorhangerButton(PROMPT_ALLOW_BUTTON, linkedBrowser);
   }, "granted");
 
   ok(
@@ -129,8 +141,9 @@ add_task(async function test_requestPermission_granted() {
 });
 
 add_task(async function test_requestPermission_denied_temporarily() {
-  await tabWithRequest(function () {
-    clickDoorhangerButton(PROMPT_NOT_NOW_BUTTON);
+  await tabWithRequest(async function (linkedBrowser) {
+    await BrowserTestUtils.waitForEvent(PopupNotifications.panel, "popupshown");
+    clickDoorhangerButton(PROMPT_NOT_NOW_BUTTON, linkedBrowser);
   }, "default");
 
   ok(
@@ -146,8 +159,9 @@ add_task(async function test_requestPermission_denied_temporarily() {
 });
 
 add_task(async function test_requestPermission_denied_permanently() {
-  await tabWithRequest(async function () {
-    await clickDoorhangerButton(PROMPT_NEVER_BUTTON);
+  await tabWithRequest(async function (linkedBrowser) {
+    await BrowserTestUtils.waitForEvent(PopupNotifications.panel, "popupshown");
+    clickDoorhangerButton(PROMPT_NEVER_BUTTON, linkedBrowser);
   }, "denied");
 
   ok(
@@ -160,4 +174,58 @@ add_task(async function test_requestPermission_denied_permanently() {
     Services.perms.DENY_ACTION,
     "Check permission in perm. manager"
   );
+});
+
+add_task(
+  async function test_requestPermission_defaultPrivateNotificationsPref() {
+    ok(
+      !SpecialPowers.getBoolPref(
+        "dom.webnotifications.privateBrowsing.enableDespiteLimitations"
+      ),
+      "Pref should be default disabled"
+    );
+  }
+);
+
+add_task(async function test_requestPermission_privateNotifications() {
+  async function run(perm) {
+    let privateWindow = await BrowserTestUtils.openNewBrowserWindow({
+      private: true,
+    });
+
+    await tabWithRequest(
+      async linkedBrowser => {
+        if (perm != Services.perms.UNKNOWN_ACTION) {
+          await BrowserTestUtils.waitForEvent(
+            privateWindow.PopupNotifications.panel,
+            "popupshown"
+          );
+
+          clickDoorhangerButton(PROMPT_ALLOW_BUTTON, linkedBrowser);
+        }
+      },
+      perm == Services.perms.ALLOW_ACTION ? "granted" : "denied",
+      privateWindow.gBrowser,
+      true /* privateWindow */
+    );
+
+    ok(
+      !PopupNotifications.getNotification(
+        "web-notifications",
+        privateWindow.gBrowser
+      ),
+      "doorhanger should have been removed in all cases by now"
+    );
+
+    await BrowserTestUtils.closeWindow(privateWindow);
+  }
+
+  await run(Services.perms.UNKNOWN_ACTION);
+
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["dom.webnotifications.privateBrowsing.enableDespiteLimitations", true],
+    ],
+  });
+  await run(Services.perms.ALLOW_ACTION);
 });

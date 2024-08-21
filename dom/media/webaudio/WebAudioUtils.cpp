@@ -5,7 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "WebAudioUtils.h"
-#include "AudioNodeTrack.h"
 #include "blink/HRTFDatabaseLoader.h"
 
 #include "nsComponentManagerUtils.h"
@@ -14,7 +13,6 @@
 #include "nsIScriptError.h"
 #include "nsJSUtils.h"
 #include "nsServiceManagerUtils.h"
-#include "AudioEventTimeline.h"
 
 #include "mozilla/SchedulerGroup.h"
 
@@ -24,34 +22,14 @@ LazyLogModule gWebAudioAPILog("WebAudioAPI");
 
 namespace dom {
 
-void WebAudioUtils::ConvertAudioTimelineEventToTicks(AudioTimelineEvent& aEvent,
-                                                     AudioNodeTrack* aDest) {
-  aEvent.SetTimeInTicks(
-      aDest->SecondsToNearestTrackTime(aEvent.Time<double>()));
-  aEvent.mTimeConstant *= aDest->mSampleRate;
-  aEvent.mDuration *= aDest->mSampleRate;
-}
-
 void WebAudioUtils::Shutdown() { WebCore::HRTFDatabaseLoader::shutdown(); }
 
 int WebAudioUtils::SpeexResamplerProcess(SpeexResamplerState* aResampler,
                                          uint32_t aChannel, const float* aIn,
                                          uint32_t* aInLen, float* aOut,
                                          uint32_t* aOutLen) {
-#ifdef MOZ_SAMPLE_TYPE_S16
-  AutoTArray<AudioDataValue, WEBAUDIO_BLOCK_SIZE * 4> tmp1;
-  AutoTArray<AudioDataValue, WEBAUDIO_BLOCK_SIZE * 4> tmp2;
-  tmp1.SetLength(*aInLen);
-  tmp2.SetLength(*aOutLen);
-  ConvertAudioSamples(aIn, tmp1.Elements(), *aInLen);
-  int result = speex_resampler_process_int(
-      aResampler, aChannel, tmp1.Elements(), aInLen, tmp2.Elements(), aOutLen);
-  ConvertAudioSamples(tmp2.Elements(), aOut, *aOutLen);
-  return result;
-#else
   return speex_resampler_process_float(aResampler, aChannel, aIn, aInLen, aOut,
                                        aOutLen);
-#endif
 }
 
 int WebAudioUtils::SpeexResamplerProcess(SpeexResamplerState* aResampler,
@@ -59,29 +37,17 @@ int WebAudioUtils::SpeexResamplerProcess(SpeexResamplerState* aResampler,
                                          uint32_t* aInLen, float* aOut,
                                          uint32_t* aOutLen) {
   AutoTArray<AudioDataValue, WEBAUDIO_BLOCK_SIZE * 4> tmp;
-#ifdef MOZ_SAMPLE_TYPE_S16
-  tmp.SetLength(*aOutLen);
-  int result = speex_resampler_process_int(aResampler, aChannel, aIn, aInLen,
-                                           tmp.Elements(), aOutLen);
-  ConvertAudioSamples(tmp.Elements(), aOut, *aOutLen);
-  return result;
-#else
   tmp.SetLength(*aInLen);
   ConvertAudioSamples(aIn, tmp.Elements(), *aInLen);
   int result = speex_resampler_process_float(
       aResampler, aChannel, tmp.Elements(), aInLen, aOut, aOutLen);
   return result;
-#endif
 }
 
 int WebAudioUtils::SpeexResamplerProcess(SpeexResamplerState* aResampler,
                                          uint32_t aChannel, const int16_t* aIn,
                                          uint32_t* aInLen, int16_t* aOut,
                                          uint32_t* aOutLen) {
-#ifdef MOZ_SAMPLE_TYPE_S16
-  return speex_resampler_process_int(aResampler, aChannel, aIn, aInLen, aOut,
-                                     aOutLen);
-#else
   AutoTArray<AudioDataValue, WEBAUDIO_BLOCK_SIZE * 4> tmp1;
   AutoTArray<AudioDataValue, WEBAUDIO_BLOCK_SIZE * 4> tmp2;
   tmp1.SetLength(*aInLen);
@@ -91,7 +57,6 @@ int WebAudioUtils::SpeexResamplerProcess(SpeexResamplerState* aResampler,
       aResampler, aChannel, tmp1.Elements(), aInLen, tmp2.Elements(), aOutLen);
   ConvertAudioSamples(tmp2.Elements(), aOut, *aOutLen);
   return result;
-#endif
 }
 
 void WebAudioUtils::LogToDeveloperConsole(uint64_t aWindowID,
@@ -104,7 +69,7 @@ void WebAudioUtils::LogToDeveloperConsole(uint64_t aWindowID,
     nsCOMPtr<nsIRunnable> task = NS_NewRunnableFunction(
         "dom::WebAudioUtils::LogToDeveloperConsole",
         [aWindowID, aKey] { LogToDeveloperConsole(aWindowID, aKey); });
-    SchedulerGroup::Dispatch(TaskCategory::Other, task.forget());
+    SchedulerGroup::Dispatch(task.forget());
     return;
   }
 
@@ -116,7 +81,7 @@ void WebAudioUtils::LogToDeveloperConsole(uint64_t aWindowID,
   }
 
   nsAutoString spec;
-  uint32_t aLineNumber = 0, aColumnNumber = 0;
+  uint32_t aLineNumber = 0, aColumnNumber = 1;
   JSContext* cx = nsContentUtils::GetCurrentJSContext();
   if (cx) {
     nsJSUtils::GetCallingLocation(cx, spec, &aLineNumber, &aColumnNumber);

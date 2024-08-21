@@ -11,7 +11,7 @@ const TIMEOUT_PAGE_URI_HTTP =
 async function runPrefTest(aURI, aDesc, aAssertURLStartsWith) {
   await BrowserTestUtils.withNewTab("about:blank", async function (browser) {
     const loaded = BrowserTestUtils.browserLoaded(browser, false, null, true);
-    BrowserTestUtils.loadURIString(browser, aURI);
+    BrowserTestUtils.startLoadingURIString(browser, aURI);
     await loaded;
 
     await ContentTask.spawn(
@@ -24,6 +24,8 @@ async function runPrefTest(aURI, aDesc, aAssertURLStartsWith) {
         );
       }
     );
+
+    await SpecialPowers.removePermission("https-only-load-insecure", aURI);
   });
 }
 
@@ -31,6 +33,7 @@ add_task(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [["dom.security.https_first", false]],
   });
+  Services.fog.testResetFOG();
 
   await runPrefTest(
     "http://example.com",
@@ -41,6 +44,23 @@ add_task(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [["dom.security.https_first", true]],
   });
+
+  for (const key of [
+    "upgraded",
+    "upgradedSchemeless",
+    "downgraded",
+    "downgradedSchemeless",
+    "downgradedOnTimer",
+    "downgradedOnTimerSchemeless",
+    "downgradeTime",
+    "downgradeTimeSchemeless",
+  ]) {
+    is(
+      Glean.httpsfirst[key].testGetValue(),
+      null,
+      `No telemetry should have been recorded yet for ${key}`
+    );
+  }
 
   await runPrefTest(
     "http://example.com",
@@ -71,4 +91,26 @@ add_task(async function () {
     "Should downgrade after timeout.",
     "http://"
   );
+
+  await runPrefTest(
+    "http://invalid.example.com",
+    "Should downgrade non-reachable site.",
+    "http://"
+  );
+
+  info("Checking expected telemetry");
+  is(Glean.httpsfirst.upgraded.testGetValue(), 1);
+  is(Glean.httpsfirst.upgradedSchemeless.testGetValue(), null);
+  is(Glean.httpsfirst.downgraded.testGetValue(), 3);
+  is(Glean.httpsfirst.downgradedSchemeless.testGetValue(), null);
+  is(Glean.httpsfirst.downgradedOnTimer.testGetValue().numerator, 1);
+  is(Glean.httpsfirst.downgradedOnTimerSchemeless.testGetValue(), null);
+  const downgradeSeconds =
+    Glean.httpsfirst.downgradeTime.testGetValue().sum / 1_000_000_000;
+  Assert.less(
+    downgradeSeconds,
+    10,
+    "Summed downgrade time should be below 10 seconds"
+  );
+  is(null, Glean.httpsfirst.downgradeTimeSchemeless.testGetValue());
 });

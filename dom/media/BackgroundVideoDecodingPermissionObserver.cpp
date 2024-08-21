@@ -11,6 +11,8 @@
 #include "MediaDecoder.h"
 #include "nsContentUtils.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/Services.h"
+#include "nsIObserverService.h"
 
 namespace mozilla {
 
@@ -24,7 +26,7 @@ NS_IMETHODIMP
 BackgroundVideoDecodingPermissionObserver::Observe(nsISupports* aSubject,
                                                    const char* aTopic,
                                                    const char16_t* aData) {
-  if (!StaticPrefs::media_resume_bkgnd_video_on_tabhover()) {
+  if (!StaticPrefs::media_resume_background_video_on_tabhover()) {
     return NS_OK;
   }
 
@@ -49,12 +51,9 @@ void BackgroundVideoDecodingPermissionObserver::RegisterEvent() {
       // Events shall not be fired synchronously to prevent anything visible
       // from the scripts while we are in stable state.
       if (nsCOMPtr<dom::Document> doc = GetOwnerDoc()) {
-        doc->Dispatch(
-            TaskCategory::Other,
-            NewRunnableMethod(
-                "BackgroundVideoDecodingPermissionObserver::"
-                "EnableEvent",
-                this, &BackgroundVideoDecodingPermissionObserver::EnableEvent));
+        doc->Dispatch(NewRunnableMethod(
+            "BackgroundVideoDecodingPermissionObserver::EnableEvent", this,
+            &BackgroundVideoDecodingPermissionObserver::EnableEvent));
       }
     } else {
       EnableEvent();
@@ -73,13 +72,9 @@ void BackgroundVideoDecodingPermissionObserver::UnregisterEvent() {
       // Events shall not be fired synchronously to prevent anything visible
       // from the scripts while we are in stable state.
       if (nsCOMPtr<dom::Document> doc = GetOwnerDoc()) {
-        doc->Dispatch(
-            TaskCategory::Other,
-            NewRunnableMethod(
-                "BackgroundVideoDecodingPermissionObserver::"
-                "DisableEvent",
-                this,
-                &BackgroundVideoDecodingPermissionObserver::DisableEvent));
+        doc->Dispatch(NewRunnableMethod(
+            "BackgroundVideoDecodingPermissionObserver::DisableEvent", this,
+            &BackgroundVideoDecodingPermissionObserver::DisableEvent));
       }
     } else {
       DisableEvent();

@@ -8,7 +8,7 @@ import { unreachable } from '../../common/util/util.js';
 // - offscreen canvas from transferControlToOffscreen from canvas in dom
 // - offscreen canvas from new OffscreenCanvas
 export const kAllCanvasTypes = ['onscreen', 'offscreen'] as const;
-export type CanvasType = typeof kAllCanvasTypes[number];
+export type CanvasType = (typeof kAllCanvasTypes)[number];
 
 type CanvasForCanvasType<T extends CanvasType> = {
   onscreen: HTMLCanvasElement;
@@ -25,20 +25,7 @@ export const kValidCanvasContextIds = [
   'webgl2',
   'webgpu',
 ] as const;
-export type CanvasContext = typeof kValidCanvasContextIds[number];
-
-/** Helper(s) to determine if context is copyable. */
-export function canCopyFromCanvasContext(contextName: CanvasContext) {
-  switch (contextName) {
-    case '2d':
-    case 'webgl':
-    case 'webgl2':
-    case 'webgpu':
-      return true;
-    default:
-      return false;
-  }
-}
+export type CanvasContext = (typeof kValidCanvasContextIds)[number];
 
 /** Create HTMLCanvas/OffscreenCanvas. */
 export function createCanvas<T extends CanvasType>(

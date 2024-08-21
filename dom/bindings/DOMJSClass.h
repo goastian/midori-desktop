@@ -89,9 +89,9 @@ typedef bool (*DeleteNamedProperty)(JSContext* cx,
                                     JS::ObjectOpResult& opresult);
 
 // Returns true if the given global is of a type whose bit is set in
-// aNonExposedGlobals.
-bool IsNonExposedGlobal(JSContext* aCx, JSObject* aGlobal,
-                        uint32_t aNonExposedGlobals);
+// aGlobalSet.
+bool IsGlobalInExposureSet(JSContext* aCx, JSObject* aGlobal,
+                           uint32_t aGlobalSet);
 
 struct ConstantSpec {
   const char* name;
@@ -119,8 +119,8 @@ static constexpr uint32_t kCount = 8;
 struct PrefableDisablers {
   inline bool isEnabled(JSContext* cx, JS::Handle<JSObject*> obj) const {
     if (nonExposedGlobals &&
-        IsNonExposedGlobal(cx, JS::GetNonCCWObjectGlobal(obj),
-                           nonExposedGlobals)) {
+        IsGlobalInExposureSet(cx, JS::GetNonCCWObjectGlobal(obj),
+                              nonExposedGlobals)) {
       return false;
     }
     if (prefIndex != WebIDLPrefIndex::NoPref &&
@@ -425,15 +425,10 @@ struct NativePropertiesHolder {
   bool* inited;
 };
 
-// Helper structure for Xrays for DOM binding objects. The same instance is used
-// for instances, interface objects and interface prototype objects of a
-// specific interface.
-struct NativePropertyHooks {
-  // The hook to call for resolving indexed or named properties. May be null if
-  // there can't be any.
+struct NativeNamedOrIndexedPropertyHooks {
+  // The hook to call for resolving indexed or named properties.
   ResolveOwnProperty mResolveOwnProperty;
-  // The hook to call for enumerating indexed or named properties. May be null
-  // if there can't be any.
+  // The hook to call for enumerating indexed or named properties.
   EnumerateOwnProperties mEnumerateOwnProperties;
   // The hook to call to delete a named property.  May be null if there are no
   // named properties or no named property deleter.  On success (true return)
@@ -444,6 +439,13 @@ struct NativePropertyHooks {
   // to true, it will indicate via opresult whether the delete actually
   // succeeded.
   DeleteNamedProperty mDeleteNamedProperty;
+};
+
+// Helper structure for Xrays for DOM binding objects. The same instance is used
+// for instances, interface objects and interface prototype objects of a
+// specific interface.
+struct NativePropertyHooks {
+  const NativeNamedOrIndexedPropertyHooks* mIndexedOrNamedNativeProperties;
 
   // The property arrays for this interface.
   NativePropertiesHolder mNativeProperties;
@@ -568,23 +570,14 @@ struct DOMIfaceAndProtoJSClass {
   // initialization for aggregate/POD types.
   const JSClass mBase;
 
-  // Either eInterface, eNamespace, eInterfacePrototype,
+  // Either eNamespace, eInterfacePrototype,
   // eGlobalInterfacePrototype or eNamedPropertiesObject.
   DOMObjectType mType;  // uint8_t
-
-  // Boolean indicating whether this object wants a @@hasInstance property
-  // pointing to InterfaceHasInstance defined on it.  Only ever true for the
-  // eInterface case.
-  bool wantsInterfaceHasInstance;
 
   const prototypes::ID mPrototypeID;  // uint16_t
   const uint32_t mDepth;
 
   const NativePropertyHooks* mNativeHooks;
-
-  // The value to return for Function.prototype.toString on this interface
-  // object.
-  const char* mFunToString;
 
   ProtoGetter mGetParentProto;
 

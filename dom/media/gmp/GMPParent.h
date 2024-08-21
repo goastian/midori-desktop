@@ -45,7 +45,13 @@ class GMPCapability {
                        const nsACString& aAPI, const nsCString& aTag);
 };
 
-enum class GMPState : uint32_t { NotLoaded, Loaded, Unloading, Closing };
+enum class GMPState : uint32_t {
+  NotLoaded,
+  Loaded,
+  Unloading,
+  Closing,
+  Closed
+};
 
 class GMPContentParent;
 
@@ -86,6 +92,8 @@ class GMPParent final
 
   GMPState State() const;
   nsCOMPtr<nsISerialEventTarget> GMPEventTarget();
+
+  void OnPreferenceChange(const mozilla::dom::Pref& aPref);
 
   // A GMP can either be a single instance shared across all NodeIds (like
   // in the OpenH264 case), or we can require a new plugin instance for every
@@ -169,6 +177,12 @@ class GMPParent final
   mozilla::ipc::IPCResult RecvPGMPContentChildDestroyed();
 
   mozilla::ipc::IPCResult RecvFOGData(ByteBuf&& aBuf);
+
+#if defined(XP_WIN)
+  mozilla::ipc::IPCResult RecvGetModulesTrust(
+      ModulePaths&& aModPaths, bool aRunAtNormalPriority,
+      GetModulesTrustResolver&& aResolver);
+#endif  // defined(XP_WIN)
 
   bool IsUsed() {
     return mGMPContentChildCount > 0 || !mGetContentParentPromises.IsEmpty();

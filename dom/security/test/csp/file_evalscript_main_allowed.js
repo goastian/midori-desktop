@@ -1,3 +1,4 @@
+/* eslint-disable no-eval */
 // some javascript for the CSP eval() tests
 // all of these evals should succeed, as the document loading this script
 // has script-src 'self' 'unsafe-eval'
@@ -44,6 +45,7 @@ addEventListener(
   function () {
     // setTimeout(String) test  -- should pass
     try {
+      // eslint-disable-next-line no-implied-eval
       setTimeout(
         'onevalexecuted(true, "setTimeout(String)", "setTimeout with a string was enabled.");',
         10

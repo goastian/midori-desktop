@@ -25,6 +25,7 @@ class Key {
   friend struct IPC::ParamTraits<Key>;
 
   nsCString mBuffer;
+  CopyableTArray<uint32_t> mAutoIncrementKeyOffsets;
 
  public:
   enum {
@@ -86,7 +87,10 @@ class Key {
     return Compare(mBuffer, aOther.mBuffer) >= 0;
   }
 
-  void Unset() { mBuffer.SetIsVoid(true); }
+  void Unset() {
+    mBuffer.SetIsVoid(true);
+    mAutoIncrementKeyOffsets.Clear();
+  }
 
   bool IsUnset() const { return mBuffer.IsVoid(); }
 
@@ -174,6 +178,10 @@ class Key {
     return 0;
   }
 
+  void ReserveAutoIncrementKey(bool aFirstOfArray);
+
+  void MaybeUpdateAutoIncrementKey(int64_t aKey);
+
  private:
   class MOZ_STACK_CLASS ArrayValueEncoder;
 
@@ -218,9 +226,6 @@ class Key {
 
   Result<Ok, nsresult> EncodeNumber(double aFloat, uint8_t aType);
 
-  Result<Ok, nsresult> EncodeBinary(JSObject* aObject, bool aIsViewObject,
-                                    uint8_t aTypeOffset);
-
   // Decoding functions. aPos points into mBuffer and is adjusted to point
   // past the consumed value. (Note: this may be beyond aEnd).
   static nsresult DecodeJSVal(const EncodedDataType*& aPos,
@@ -233,8 +238,9 @@ class Key {
   static double DecodeNumber(const EncodedDataType*& aPos,
                              const EncodedDataType* aEnd);
 
-  static JSObject* DecodeBinary(const EncodedDataType*& aPos,
-                                const EncodedDataType* aEnd, JSContext* aCx);
+  static JSObject* GetArrayBufferObjectFromDataRange(
+      const EncodedDataType*& aPos, const EncodedDataType* aEnd,
+      JSContext* aCx);
 
   // Returns the size of the decoded data for stringy (string or binary),
   // excluding a null terminator.
@@ -273,6 +279,8 @@ class Key {
 
   template <typename T>
   nsresult SetFromSource(T* aSource, uint32_t aIndex);
+
+  void WriteDoubleToUint64(char* aBuffer, double aValue);
 };
 
 }  // namespace mozilla::dom::indexedDB

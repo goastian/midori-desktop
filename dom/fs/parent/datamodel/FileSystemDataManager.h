@@ -7,6 +7,7 @@
 #ifndef DOM_FS_PARENT_DATAMODEL_FILESYSTEMDATAMANAGER_H_
 #define DOM_FS_PARENT_DATAMODEL_FILESYSTEMDATAMANAGER_H_
 
+#include "FileSystemParentTypes.h"
 #include "ResultConnection.h"
 #include "mozilla/NotNull.h"
 #include "mozilla/TaskQueue.h"
@@ -32,6 +33,7 @@ class FileSystemAccessHandle;
 class FileSystemManagerParent;
 
 namespace fs {
+struct FileId;
 class FileSystemChildMetadata;
 }  // namespace fs
 
@@ -48,6 +50,10 @@ Result<EntryId, QMResult> GetRootHandle(const Origin& origin);
 
 Result<EntryId, QMResult> GetEntryHandle(
     const FileSystemChildMetadata& aHandle);
+
+Result<ResultConnection, QMResult> GetStorageConnection(
+    const quota::OriginMetadata& aOriginMetadata,
+    const int64_t aDirectoryLockId);
 
 class FileSystemDataManager
     : public SupportsCheckedUnsafePtr<CheckIf<DiagnosticAssertEnabled>> {
@@ -119,15 +125,20 @@ class FileSystemDataManager
 
   RefPtr<BoolPromise> OnClose();
 
-  bool IsLocked(const EntryId& aEntryId) const;
+  Result<bool, QMResult> IsLocked(const FileId& aFileId) const;
 
-  nsresult LockExclusive(const EntryId& aEntryId);
+  Result<bool, QMResult> IsLocked(const EntryId& aEntryId) const;
+
+  Result<FileId, QMResult> LockExclusive(const EntryId& aEntryId);
 
   void UnlockExclusive(const EntryId& aEntryId);
 
-  nsresult LockShared(const EntryId& aEntryId);
+  Result<FileId, QMResult> LockShared(const EntryId& aEntryId);
 
-  void UnlockShared(const EntryId& aEntryId);
+  void UnlockShared(const EntryId& aEntryId, const FileId& aFileId,
+                    bool aAbort);
+
+  FileMode GetMode(bool aKeepData) const;
 
  protected:
   virtual ~FileSystemDataManager();
@@ -164,6 +175,7 @@ class FileSystemDataManager
   MozPromiseHolder<BoolPromise> mOpenPromiseHolder;
   MozPromiseHolder<BoolPromise> mClosePromiseHolder;
   uint32_t mRegCount;
+  DatabaseVersion mVersion;
   State mState;
 };
 

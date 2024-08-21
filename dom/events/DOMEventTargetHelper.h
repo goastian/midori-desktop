@@ -56,7 +56,8 @@ class DOMEventTargetHelper : public dom::EventTarget,
   explicit DOMEventTargetHelper(nsIGlobalObject* aGlobalObject);
   explicit DOMEventTargetHelper(DOMEventTargetHelper* aOther);
 
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_ISUPPORTS_INHERITED
+  NS_IMETHOD_(void) DeleteCycleCollectable() override;
   NS_DECL_CYCLE_COLLECTION_SKIPPABLE_WRAPPERCACHE_CLASS_AMBIGUOUS(
       DOMEventTargetHelper, dom::EventTarget)
 

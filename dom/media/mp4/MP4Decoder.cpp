@@ -120,6 +120,15 @@ nsTArray<UniquePtr<TrackInfo>> MP4Decoder::GetTracksInfo(
       continue;
     }
 #endif
+#ifdef MOZ_WMF
+    if (StaticPrefs::media_wmf_hevc_enabled() && IsH265CodecString(codec)) {
+      auto trackInfo =
+          CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
+              "video/hevc"_ns, aType);
+      tracks.AppendElement(std::move(trackInfo));
+      continue;
+    }
+#endif
     if (isVideo && IsWhitelistedH264Codec(codec)) {
       auto trackInfo =
           CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
@@ -160,8 +169,8 @@ bool MP4Decoder::IsSupportedType(const MediaContainerType& aType,
     RefPtr<PDMFactory> platform = new PDMFactory();
     for (const auto& track : tracks) {
       if (!track ||
-          platform->Supports(SupportDecoderParams(*track), aDiagnostics) ==
-              media::DecodeSupport::Unsupported) {
+          platform->Supports(SupportDecoderParams(*track), aDiagnostics)
+              .isEmpty()) {
         return false;
       }
     }
@@ -184,14 +193,20 @@ bool MP4Decoder::IsSupportedType(const MediaContainerType& aType,
           CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
               "video/av1"_ns, aType));
     }
+#ifdef MOZ_WMF
+    if (StaticPrefs::media_wmf_hevc_enabled()) {
+      tracks.AppendElement(
+          CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
+              "video/hevc"_ns, aType));
+    }
+#endif
   }
 
   // Check that something is supported at least.
   RefPtr<PDMFactory> platform = new PDMFactory();
   for (const auto& track : tracks) {
-    if (track &&
-        platform->Supports(SupportDecoderParams(*track), aDiagnostics) !=
-            media::DecodeSupport::Unsupported) {
+    if (track && !platform->Supports(SupportDecoderParams(*track), aDiagnostics)
+                      .isEmpty()) {
       return true;
     }
   }
@@ -207,6 +222,11 @@ bool MP4Decoder::IsH264(const nsACString& aMimeType) {
 /* static */
 bool MP4Decoder::IsAAC(const nsACString& aMimeType) {
   return aMimeType.EqualsLiteral("audio/mp4a-latm");
+}
+
+/* static */
+bool MP4Decoder::IsHEVC(const nsACString& aMimeType) {
+  return aMimeType.EqualsLiteral("video/hevc");
 }
 
 /* static */

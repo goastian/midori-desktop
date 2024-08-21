@@ -5,11 +5,11 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 MOCHITEST_MANIFESTS += [
-    "mochitest.ini",
+    "mochitest.toml",
 ]
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "xpcshell.ini",
+    "xpcshell.toml",
 ]
 
 TESTING_JS_MODULES.dom.fs.test.common += [

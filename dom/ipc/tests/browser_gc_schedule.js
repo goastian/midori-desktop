@@ -15,7 +15,7 @@ async function waitForGCBegin() {
   // This fixes a ReferenceError for Date, it's weird.
   ok(Date.now(), "Date.now()");
   var when = await new Promise(resolve => {
-    observer.observe = function (subject, topic, data) {
+    observer.observe = function () {
       resolve(Date.now());
     };
 
@@ -40,7 +40,7 @@ async function waitForGCEnd() {
   // This fixes a ReferenceError for Date, it's weird.
   ok(Date.now(), "Date.now()");
   let when = await new Promise(resolve => {
-    observer.observe = function (subject, topic, data) {
+    observer.observe = function () {
       resolve(Date.now());
     };
 
@@ -87,13 +87,14 @@ function checkOneAtATime(events) {
   info("Checking order of events");
   for (const e of events) {
     ok(e.state === "begin" || e.state === "end", "event.state is good");
-    ok(e.tab !== undefined, "event.tab exists");
+    Assert.notStrictEqual(e.tab, undefined, "event.tab exists");
 
     if (lastWhen) {
       // We need these in sorted order so that the other checks here make
       // sense.
-      ok(
-        lastWhen <= e.when,
+      Assert.lessOrEqual(
+        lastWhen,
+        e.when,
         `Unsorted events, last: ${lastWhen}, this: ${e.when}`
       );
     }
@@ -119,7 +120,8 @@ function checkAllCompleted(events, expectTabsCompleted) {
   }
 }
 
-async function setupTabs(num_tabs) {
+async function setupTabsAndOneForForeground(num_tabs) {
+  ++num_tabs;
   var pids = [];
 
   const parent_pid = getProcessID();
@@ -151,6 +153,12 @@ async function setupTabs(num_tabs) {
     pids.push(tab_pid);
   }
 
+  // Since calling openNewForegroundTab several times in a row doesn't update
+  // process priorities correctly, we need to explicitly switch tabs.
+  for (let tab of tabs) {
+    await BrowserTestUtils.switchTab(gBrowser, tab);
+  }
+
   return tabs;
 }
 
@@ -172,6 +180,11 @@ function startNextCollection(
     SpecialPowers.Cu.getJSTestingFunctions().finishgc();
   });
 
+  if (tab.selected) {
+    // One isn't expected to use the return value with foreground tab!
+    return {};
+  }
+
   var waitBegin = SpecialPowers.spawn(browser, [], waitForGCBegin);
   var waitEnd = SpecialPowers.spawn(browser, [], waitForGCEnd);
   waits.push({ promise: waitBegin, tab: tab_num, state: "begin" });
@@ -189,7 +202,7 @@ add_task(async function gcOneAtATime() {
   });
 
   const num_tabs = 12;
-  var tabs = await setupTabs(num_tabs);
+  var tabs = await setupTabsAndOneForForeground(num_tabs);
 
   info("Tabs ready, Asking for GCs");
   var waits = [];
@@ -220,7 +233,7 @@ add_task(async function gcAbort() {
   });
 
   const num_tabs = 2;
-  var tabs = await setupTabs(num_tabs);
+  var tabs = await setupTabsAndOneForForeground(num_tabs);
 
   info("Tabs ready, Asking for GCs");
   var waits = [];
@@ -263,7 +276,7 @@ add_task(async function gcJSInitiatedDuring() {
   });
 
   const num_tabs = 3;
-  var tabs = await setupTabs(num_tabs);
+  var tabs = await setupTabsAndOneForForeground(num_tabs);
 
   info("Tabs ready, Asking for GCs");
   var waits = [];
@@ -320,7 +333,7 @@ add_task(async function gcJSInitiatedBefore() {
   });
 
   const num_tabs = 8;
-  var tabs = await setupTabs(num_tabs);
+  var tabs = await setupTabsAndOneForForeground(num_tabs);
 
   info("Tabs ready");
   var waits = [];

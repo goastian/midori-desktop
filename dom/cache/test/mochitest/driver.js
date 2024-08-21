@@ -20,38 +20,26 @@ function runTests(testFile, order) {
   async function setupPrefs() {
     // Bug 1746646: Make mochitests work with TCP enabled (cookieBehavior = 5)
     // Acquire storage access permission here so that the Cache API is avaialable
-    SpecialPowers.wrap(document).notifyUserGestureActivation();
-    await SpecialPowers.addPermission(
-      "storageAccessAPI",
-      true,
-      window.location.href
-    );
-    await SpecialPowers.wrap(document).requestStorageAccess();
     return SpecialPowers.pushPrefEnv({
       set: [
-        ["dom.caches.enabled", true],
         ["dom.caches.testing.enabled", true],
         ["dom.serviceWorkers.enabled", true],
         ["dom.serviceWorkers.testing.enabled", true],
         ["dom.serviceWorkers.exemptFromPerDomainMax", true],
-        [
-          "privacy.partition.always_partition_third_party_non_cookie_storage",
-          false,
-        ],
       ],
     });
   }
 
   // adapted from dom/indexedDB/test/helpers.js
   function clearStorage() {
-    var clearUnpartitionedStorage = new Promise(function (resolve, reject) {
+    var clearUnpartitionedStorage = new Promise(function (resolve) {
       var qms = SpecialPowers.Services.qms;
       var principal = SpecialPowers.wrap(document).nodePrincipal;
       var request = qms.clearStoragesForPrincipal(principal);
       var cb = SpecialPowers.wrapCallback(resolve);
       request.callback = cb;
     });
-    var clearPartitionedStorage = new Promise(function (resolve, reject) {
+    var clearPartitionedStorage = new Promise(function (resolve) {
       var qms = SpecialPowers.Services.qms;
       var principal = SpecialPowers.wrap(document).partitionedPrincipal;
       var request = qms.clearStoragesForPrincipal(principal);
@@ -85,11 +73,20 @@ function runTests(testFile, order) {
   }
 
   function runServiceWorkerTest() {
+    if (
+      navigator.serviceWorker == null &&
+      SpecialPowers.getBoolPref("dom.cache.privateBrowsing.enabled")
+    ) {
+      return new Promise(function (resolve) {
+        resolve(true);
+      });
+    }
+
     return serviceWorkerTestExec(testFile);
   }
 
   function runFrameTest() {
-    return new Promise(function (resolve, reject) {
+    return new Promise(function (resolve) {
       var iframe = document.createElement("iframe");
       iframe.src = "frame.html";
       iframe.onload = function () {

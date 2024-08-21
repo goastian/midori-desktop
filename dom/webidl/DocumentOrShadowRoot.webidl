@@ -37,7 +37,6 @@ interface mixin DocumentOrShadowRoot {
 
 // https://drafts.csswg.org/web-animations-1/#extensions-to-the-documentorshadowroot-interface-mixin
 partial interface mixin DocumentOrShadowRoot {
-  [Func="Document::IsWebAnimationsGetAnimationsEnabled"]
   sequence<Animation> getAnimations();
 };
 
@@ -45,6 +44,5 @@ partial interface mixin DocumentOrShadowRoot {
 partial interface mixin DocumentOrShadowRoot {
   // We are using [Pure, Cached, Frozen] sequence until `FrozenArray` is implemented.
   // See https://bugzilla.mozilla.org/show_bug.cgi?id=1236777 for more details.
-  [Pref="layout.css.constructable-stylesheets.enabled"]
   attribute ObservableArray<CSSStyleSheet> adoptedStyleSheets;
 };

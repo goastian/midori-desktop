@@ -16,13 +16,11 @@
 # disabled for that commit.  The script outputs instructions for handling
 # this situation.
 #
-# Note: the very first rebase operation will require some manual
-# intervention. The user will need to provide, at minimum, the commit that
-# corresponds to moz-central upon which the fast-forward stack is based.
-# It may also be necessary to provide the first commit of the
-# fast-forward stack.  Example:
+# Note: the very first rebase operation may require some manual
+# intervention. The user will need to provide, at minimum, the first
+# commit of the fast-forward stack if the script is unable to determine
+# it automatically.  Example:
 #   MOZ_BOTTOM_FF=30f0afb7e4c5 \
-#   MOZ_CURRENT_CENTRAL=cad1bd47c273 \
 #   bash dom/media/webrtc/third_party_build/elm_rebase.sh
 #
 # Assumes the top of the fast-forward stack to rebase is the current revision,
@@ -56,14 +54,31 @@ be as simple as running the following commands:
 COMMIT_LIST_FILE=$TMP_DIR/rebase-commit-list.txt
 export HGPLAIN=1
 
+if [ "x$MOZ_TOP_FF" = "x" ]; then
+  MOZ_TOP_FF=""
+fi
+if [ "x$MOZ_BOTTOM_FF" = "x" ]; then
+  MOZ_BOTTOM_FF=""
+fi
+if [ "x$STOP_FOR_REORDER" = "x" ]; then
+  STOP_FOR_REORDER=""
+fi
+
 # After this point:
 # * eE: All commands should succeed.
+# * u: All variables should be defined before use.
 # * o pipefail: All stages of all pipes should succeed.
-set -eEo pipefail
+set -eEuo pipefail
 
 if [ -f $STATE_DIR/rebase_resume_state ]; then
   source $STATE_DIR/rebase_resume_state
 else
+
+  # on first run, we want to verify sanity of the patch-stack so
+  # ending guidance is appropriate regarding changes in
+  # third_party/libwebrtc between the old central we're currently
+  # based on and the new central we're rebasing onto.
+  bash dom/media/webrtc/third_party_build/verify_vendoring.sh
 
   if [ "x" == "x$MOZ_TOP_FF" ]; then
     MOZ_TOP_FF=`hg log -r . -T"{node|short}"`
@@ -93,43 +108,36 @@ in explicitly:
     ERROR_HELP=""
   fi
 
-  ERROR_HELP=$"
-An error here is likely because no revision for central is found.
-One possible reason for this is this is your first rebase operation.
-To 'bootstrap' the first rebase operation, please find the
-moz-central commit that the vendoring commits is based on, and
-rerun the command:
-  MOZ_CURRENT_CENTRAL={central-sha} bash $0
+  hg pull central
 
-You may also need to provide the bottom commit of the fast-forward
-stack.  The bottom commit means the commit following central.  This
-could be the sha of the .arcconfig commit if it is the bottom commit.
+  ERROR_HELP=$"
+Automatically determining the bottom (earliest) commit of the fast-forward
+stack has failed.  Please provide the bottom commit of the fast-forward
+stack.  The bottom commit means the commit following the most recent
+mozilla-central commit.  This could be the sha of the .arcconfig commit
+if it is the bottom commit.
 That command looks like:
-  MOZ_BOTTOM_FF={base-sha} MOZ_CURRENT_CENTRAL={central-sha} bash $0
+  MOZ_BOTTOM_FF={base-sha} bash $0
 "
-  if [ "x" == "x$MOZ_CURRENT_CENTRAL" ]; then
-    MOZ_CURRENT_CENTRAL=`hg log -r central -T"{node|short}"`
+  if [ "x" == "x$MOZ_BOTTOM_FF" ]; then
+    # Finds the common ancestor between our top fast-forward commit and
+    # mozilla-central using:
+    #    ancestor($MOZ_TOP_FF, central)
+    MOZ_OLD_CENTRAL=`hg id --id --rev "ancestor($MOZ_TOP_FF, central)"`
+    # Using that ancestor and $MOZ_TOP_FF as a range, find the commit _after_
+    # the the common commit using limit(range, 1, 1) which gives the first
+    # commit of the range, offset by one commit.
+    MOZ_BOTTOM_FF=`hg id --id --rev "limit($MOZ_OLD_CENTRAL::$MOZ_TOP_FF, 1, 1)"`
   fi
   if [ "x" == "x$MOZ_BOTTOM_FF" ]; then
-    MOZ_BOTTOM_FF=`hg log -r $MOZ_CURRENT_CENTRAL~-1 -T"{node|short}"`
+    echo "No value found for the bottom commit of the fast-forward commit stack."
+    echo "$ERROR_HELP"
+    exit 1
   fi
   ERROR_HELP=""
 
-  if [ "x" == "x$MOZ_BOTTOM_FF" ]; then
-    echo "No value found for the bottom commit of the fast-forward commit stack."
-    exit 1
-  fi
-
-  # After this point:
-  # * eE: All commands should succeed.
-  # * u: All variables should be defined before use.
-  # * o pipefail: All stages of all pipes should succeed.
-  set -eEuo pipefail
-
-  hg pull central
   MOZ_NEW_CENTRAL=`hg log -r central -T"{node|short}"`
 
-  echo "moz-central in elm is currently $MOZ_CURRENT_CENTRAL"
   echo "bottom of fast-foward tree is $MOZ_BOTTOM_FF"
   echo "top of fast-forward tree (webrtc-fast-forward) is $MOZ_TOP_FF"
   echo "new target for elm rebase $MOZ_NEW_CENTRAL (tip of moz-central)"
@@ -148,13 +156,22 @@ That command looks like:
 
   # pre-work is complete, let's write out a temporary config file that allows
   # us to resume
-  echo $"export MOZ_CURRENT_CENTRAL=$MOZ_CURRENT_CENTRAL
-export MOZ_BOTTOM_FF=$MOZ_BOTTOM_FF
+  echo $"export MOZ_BOTTOM_FF=$MOZ_BOTTOM_FF
 export MOZ_TOP_FF=$MOZ_TOP_FF
+export MOZ_OLD_CENTRAL=$MOZ_OLD_CENTRAL
 export MOZ_NEW_CENTRAL=$MOZ_NEW_CENTRAL
 export MOZ_BOOKMARK=$MOZ_BOOKMARK
 " > $STATE_DIR/rebase_resume_state
 fi # if [ -f $STATE_DIR/rebase_resume_state ]; then ; else
+
+if [ "x$STOP_FOR_REORDER" = "x1" ]; then
+  echo ""
+  echo "Stopping after generating commit list ($COMMIT_LIST_FILE) to"
+  echo "allow tweaking commit ordering.  Re-running $0 will resume the"
+  echo "rebase processing.  To stop processing during the rebase,"
+  echo "insert a line with only 'STOP'."
+  exit
+fi
 
 # grab all commits
 COMMITS=`cat $COMMIT_LIST_FILE | awk '{print $1;}'`
@@ -173,6 +190,12 @@ for commit in $COMMITS; do
     echo "Removing from list '$FULL_COMMIT_LINE'"
     ed -s $COMMIT_LIST_FILE <<< $'1d\nw\nq'
   }
+
+  if [ "$FULL_COMMIT_LINE" == "STOP" ]; then
+    echo "Stopping for history editing.  Re-run $0 to resume."
+    remove_commit
+    exit
+  fi
 
   IS_BUILD_COMMIT=`hg log -T '{desc|firstline}' -r $commit \
                    | grep "file updates" | wc -l | tr -d " " || true`
@@ -237,11 +260,38 @@ done
 
 rm $STATE_DIR/rebase_resume_state
 
+# This is blank in case no changes have been made in third_party/libwebrtc
+# since the previous rebase (or original elm reset).
+PATCH_STACK_FIXUP=""
+
+echo "Checking for new mercurial changes in third_party/libwebrtc"
+FIXUP_INSTRUCTIONS=$"
+Mercurial changes in third_party/libwebrtc since the last rebase have been
+detected (using the verify_vendoring.sh script).  Running the following
+commands should remedy the situation:
+
+  ./mach python $SCRIPT_DIR/extract-for-git.py $MOZ_OLD_CENTRAL::$MOZ_NEW_CENTRAL
+  mv mailbox.patch $MOZ_LIBWEBRTC_SRC
+  (cd $MOZ_LIBWEBRTC_SRC && \\
+   git am mailbox.patch)
+  bash $SCRIPT_DIR/verify_vendoring.sh
+
+When verify_vendoring.sh is successful, run the following in bash:
+  (source $SCRIPT_DIR/use_config_env.sh ;
+   ./mach python $SCRIPT_DIR/save_patch_stack.py \\
+    --repo-path $MOZ_LIBWEBRTC_SRC \\
+    --target-branch-head $MOZ_TARGET_UPSTREAM_BRANCH_HEAD  \\
+    --separate-commit-bug-number $MOZ_FASTFORWARD_BUG )
+"
+bash $SCRIPT_DIR/verify_vendoring.sh &> $LOG_DIR/log-verify.txt || PATCH_STACK_FIXUP="$FIXUP_INSTRUCTIONS"
+echo "Done checking for new mercurial changes in third_party/libwebrtc"
+
 REMAINING_STEPS=$"
 The rebase process is complete.  The following steps must be completed manually:
-  ./mach bootstrap --application=browser --no-system-changes
-  ./mach build
-  hg push -r tip --force
+$PATCH_STACK_FIXUP
+  ./mach bootstrap --application=browser --no-system-changes && \\
+  ./mach clobber && ./mach build && \\
+  hg push -r tip --force && \\
   hg push -B $MOZ_BOOKMARK
 "
 echo "$REMAINING_STEPS"

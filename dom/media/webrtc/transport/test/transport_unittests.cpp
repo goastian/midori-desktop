@@ -167,7 +167,7 @@ class TransportLayerLossy : public TransportLayer {
 
 class TlsParser {
  public:
-  TlsParser(const unsigned char* data, size_t len) : buffer_(), offset_(0) {
+  TlsParser(const unsigned char* data, size_t len) : offset_(0) {
     buffer_.Copy(data, len);
   }
 
@@ -221,8 +221,7 @@ class TlsParser {
 
 class DtlsRecordParser {
  public:
-  DtlsRecordParser(const unsigned char* data, size_t len)
-      : buffer_(), offset_(0) {
+  DtlsRecordParser(const unsigned char* data, size_t len) : offset_(0) {
     buffer_.Copy(data, len);
   }
 
@@ -324,7 +323,7 @@ class DtlsInspectorInjector : public DtlsRecordInspector {
 class DtlsInspectorRecordHandshakeMessage : public DtlsRecordInspector {
  public:
   explicit DtlsInspectorRecordHandshakeMessage(uint8_t handshake_type)
-      : handshake_type_(handshake_type), buffer_() {}
+      : handshake_type_(handshake_type) {}
 
   virtual void OnRecord(TransportLayer* layer, uint8_t content_type,
                         const unsigned char* data, size_t len) {
@@ -440,13 +439,9 @@ class TransportTestPeer : public sigslot::has_slots<> {
         lossy_(new TransportLayerLossy()),
         dtls_(new TransportLayerDtls()),
         identity_(DtlsIdentity::Generate()),
-        ice_ctx_(),
-        streams_(),
         peer_(nullptr),
         gathering_complete_(false),
-        digest_("sha-1"),
-        enabled_cipersuites_(),
-        disabled_cipersuites_(),
+        digest_("sha-1"_ns),
         test_utils_(utils) {
     NrIceCtx::InitializeGlobals(NrIceCtx::GlobalConfig());
     ice_ctx_ = NrIceCtx::Create(name);
@@ -591,16 +586,15 @@ class TransportTestPeer : public sigslot::has_slots<> {
   void InitIce() {
     nsresult res;
 
-    // Attach our slots
-    ice_ctx_->SignalGatheringStateChange.connect(
-        this, &TransportTestPeer::GatheringStateChange);
-
     char name[100];
     snprintf(name, sizeof(name), "%s:stream%d", name_.c_str(),
              (int)streams_.size());
 
     // Create the media stream
     RefPtr<NrIceMediaStream> stream = ice_ctx_->CreateStream(name, name, 1);
+    // Attach our slots
+    stream->SignalGatheringStateChange.connect(
+        this, &TransportTestPeer::GatheringStateChange);
 
     ASSERT_TRUE(stream != nullptr);
     stream->SetIceCredentials("ufrag", "pass");
@@ -644,9 +638,12 @@ class TransportTestPeer : public sigslot::has_slots<> {
               << std::endl;
   }
 
-  void GatheringStateChange(NrIceCtx* ctx, NrIceCtx::GatheringState state) {
-    (void)ctx;
-    if (state == NrIceCtx::ICE_CTX_GATHER_COMPLETE) {
+  void GatheringStateChange(const std::string& aTransportId,
+                            NrIceMediaStream::GatheringState state) {
+    // We only use one stream, no need to check whether all streams are done
+    // gathering.
+    Unused << aTransportId;
+    if (state == NrIceMediaStream::ICE_STREAM_GATHER_COMPLETE) {
       GatheringComplete();
     }
   }
@@ -654,31 +651,30 @@ class TransportTestPeer : public sigslot::has_slots<> {
   // Gathering complete, so send our candidates and start
   // connecting on the other peer.
   void GatheringComplete() {
-    nsresult res;
-
     // Don't send to the other side
     if (!peer_) {
       gathering_complete_ = true;
       return;
     }
 
-    // First send attributes
     test_utils_->SyncDispatchToSTS(
-        WrapRunnableRet(&res, peer_->ice_ctx_, &NrIceCtx::ParseGlobalAttributes,
-                        ice_ctx_->GetGlobalAttributes()));
+        WrapRunnable(this, &TransportTestPeer::GatheringComplete_s));
+  }
+
+  void GatheringComplete_s() {
+    // First send attributes
+    nsresult res =
+        peer_->ice_ctx_->ParseGlobalAttributes(ice_ctx_->GetGlobalAttributes());
     ASSERT_TRUE(NS_SUCCEEDED(res));
 
     for (size_t i = 0; i < streams_.size(); ++i) {
-      test_utils_->SyncDispatchToSTS(WrapRunnableRet(
-          &res, peer_->streams_[i], &NrIceMediaStream::ConnectToPeer, "ufrag",
-          "pass", streams_[i]->GetAttributes()));
-
+      res = peer_->streams_[i]->ConnectToPeer("ufrag", "pass",
+                                              streams_[i]->GetAttributes());
       ASSERT_TRUE(NS_SUCCEEDED(res));
     }
 
     // Start checks on the other peer.
-    test_utils_->SyncDispatchToSTS(
-        WrapRunnableRet(&res, peer_->ice_ctx_, &NrIceCtx::StartChecks));
+    res = peer_->ice_ctx_->StartChecks();
     ASSERT_TRUE(NS_SUCCEEDED(res));
   }
 
@@ -781,8 +777,8 @@ class TransportTestPeer : public sigslot::has_slots<> {
   std::string name_;
   bool offerer_;
   nsCOMPtr<nsIEventTarget> target_;
-  size_t received_packets_;
-  size_t received_bytes_;
+  std::atomic<size_t> received_packets_;
+  std::atomic<size_t> received_bytes_;
   RefPtr<TransportFlow> flow_;
   TransportLayerLoopback* loopback_;
   TransportLayerLogging* logging_;
@@ -1218,7 +1214,8 @@ static void ConfigureOneCipher(TransportTestPeer* peer, uint16_t suite) {
   std::vector<uint16_t> everythingElse(
       SSL_GetImplementedCiphers(),
       SSL_GetImplementedCiphers() + SSL_GetNumImplementedCiphers());
-  std::remove(everythingElse.begin(), everythingElse.end(), suite);
+  everythingElse.erase(
+      std::remove(everythingElse.begin(), everythingElse.end(), suite));
   peer->SetCipherSuiteChanges(justOne, everythingElse);
 }
 

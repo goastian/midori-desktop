@@ -21,17 +21,21 @@ const button = document.querySelector("button");
 let clickCount = 0;
 let lastFullscreenPromise = null;
 let shouldEnterFullscreen = false;
-button.addEventListener("click", function(e) {
+button.addEventListener("click", function() {
   clickCount++;
   if (shouldEnterFullscreen) {
-    lastFullscreenPromise = document.getElementById("fullscreen").requestFullscreen();
+    const fullscreenElement = document.getElementById("fullscreen");
+    lastFullscreenPromise = SimpleTest.promiseFocus().then(() => {
+      fullscreenElement.focus();
+      return fullscreenElement.requestFullscreen();
+    });
   }
 });
 
 function clickButton(expectEvent) {
   let lastClickCount = clickCount;
   synthesizeMouseAtCenter(button, {});
-  (expectEvent ? isnot : is)(lastClickCount, clickCount, `Should've ${expectEvent ? "" : "not "}been able to click`);
+  (expectEvent ? isnot : is)(clickCount, lastClickCount, `Should've ${expectEvent ? "" : "not "}been able to click`);
 }
 
 function enterFullscreen() {
@@ -46,13 +50,22 @@ function enterFullscreen() {
 async function testFullscreenIsModal(modal) {
   info("testing modal: " + modal);
   is(document.fullscreenElement, null, "Shouldn't be in fullscreen");
-  await SpecialPowers.pushPrefEnv({ set: [["dom.fullscreen.modal", modal]] });
+
   await enterFullscreen();
 
   clickButton(/* expectEvent = */ !modal);
 
   ok(document.fullscreenElement.matches(":fullscreen"), "Fullscreen element matches :fullscreen");
   is(document.fullscreenElement.matches(":modal"), modal, "Fullscreen element matches :modal");
+
+  // Before exiting fullscreen, wait on the document becoming active,
+  // which signifies that the fullscreen request has been completely
+  // processed. It is important that the fullscreen request is all
+  // the way done, or the exit fullscreen request could be dropped.
+  let documentWrapper = SpecialPowers.wrap(document);
+  await SimpleTest.promiseWaitForCondition(() => documentWrapper.isActive(),
+                                           "Timed out waiting for document to become active.");
+  ok(documentWrapper.isActive(), "Document is active.");
 
   await document.exitFullscreen();
   clickButton(/* expectEvent = */ true);
@@ -62,7 +75,4 @@ add_task(async function() {
   await testFullscreenIsModal(true);
 });
 
-add_task(async function() {
-  await testFullscreenIsModal(false);
-});
 </script>

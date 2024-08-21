@@ -12,6 +12,11 @@
   target="_blank">Mozilla Bug 1254419</a>
 <div id="log"></div>
 <style>
+@property --my-color {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: "gold";
+}
 
 :root {
   --var-100px: 100px;
@@ -222,6 +227,12 @@ var gTests = [
                   values: [ valueFormat(0, '1', 'replace', 'linear'),
                             valueFormat(1, '1', 'replace') ] },
     ]
+  },
+  { desc:     'custom registered property',
+    frames:   { "--my-color": ['red', 'blue'] },
+    expected: [ { property: '--my-color',
+                  values: [ valueFormat(0, 'red', 'replace', 'linear'),
+                            valueFormat(1, 'blue', 'replace') ] } ]
   },
 
   // ---------------------------------------------------------------------
@@ -806,33 +817,21 @@ var gTests = [
   },
 ];
 
-SpecialPowers.pushPrefEnv(
-  {
-    set: [
-      ["dom.animations-api.core.enabled", true],
-      ["dom.animations-api.implicit-keyframes.enabled", true],
-    ],
-  },
-  function() {
-    gTests.forEach(function(subtest) {
-      test(function(t) {
-        var div = addDiv(t);
-        var animation = div.animate(subtest.frames, 100 * MS_PER_SEC);
-        // Flush styles since getProperties currently does not. Rather, it
-        // returns the actual properties in use at the current time.
-        // However, we want to test what these properties will look like
-        // after the next restyle.
-        getComputedStyle(div).opacity;
-        assert_properties_equal(
-          animation.effect.getProperties(),
-          subtest.expected
-        );
-      }, subtest.desc);
-    });
-
-    done();
-  }
-);
+gTests.forEach(function(subtest) {
+  test(function(t) {
+    var div = addDiv(t);
+    var animation = div.animate(subtest.frames, 100 * MS_PER_SEC);
+    // Flush styles since getProperties currently does not. Rather, it
+    // returns the actual properties in use at the current time.
+    // However, we want to test what these properties will look like
+    // after the next restyle.
+    getComputedStyle(div).opacity;
+    assert_properties_equal(
+      animation.effect.getProperties(),
+      subtest.expected
+    );
+  }, subtest.desc);
+});
 
 </script>
 </body>

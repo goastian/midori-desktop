@@ -3,37 +3,84 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "jsapi/RTCRtpTransceiver.h"
-#include "mozilla/UniquePtr.h"
+
+#include <stdint.h>
+
 #include <algorithm>
 #include <string>
 #include <vector>
-#include "libwebrtcglue/AudioConduit.h"
-#include "libwebrtcglue/VideoConduit.h"
-#include "MediaTrackGraph.h"
-#include "transportbridge/MediaPipeline.h"
-#include "transportbridge/MediaPipelineFilter.h"
-#include "jsep/JsepTrack.h"
-#include "sdp/SdpHelper.h"
-#include "MediaTrackGraphImpl.h"
-#include "transport/logging.h"
-#include "MediaEngine.h"
-#include "nsIPrincipal.h"
-#include "MediaSegment.h"
-#include "RemoteTrackSource.h"
-#include "libwebrtcglue/RtpRtcpConfig.h"
-#include "MediaTransportHandler.h"
+#include <utility>
+#include <set>
+#include <string>
+#include <tuple>
+
+#include "api/video_codecs/video_codec.h"
+
+#include "nsCOMPtr.h"
+#include "nsContentUtils.h"
+#include "nsCycleCollectionParticipant.h"
+#include "nsDebug.h"
+#include "nsISerialEventTarget.h"
+#include "nsISupports.h"
+#include "nsProxyRelease.h"
+#include "nsStringFwd.h"
+#include "nsString.h"
+#include "nsTArray.h"
+#include "nsThreadUtils.h"
+#include "nsWrapperCache.h"
+#include "PrincipalHandle.h"
+#include "ErrorList.h"
+#include "MainThreadUtils.h"
+#include "MediaEventSource.h"
+#include "mozilla/AbstractThread.h"
+#include "mozilla/Assertions.h"
+#include "mozilla/ErrorResult.h"
+#include "mozilla/fallible.h"
+#include "mozilla/Maybe.h"
+#include "mozilla/mozalloc_oom.h"
+#include "mozilla/MozPromise.h"
+#include "mozilla/Preferences.h"
+#include "mozilla/UniquePtr.h"
+#include "mozilla/StateMirroring.h"
+#include "mozilla/RefPtr.h"
+#include "mozilla/dom/Nullable.h"
+#include "mozilla/dom/RTCStatsReportBinding.h"
 #include "mozilla/dom/RTCRtpReceiverBinding.h"
 #include "mozilla/dom/RTCRtpSenderBinding.h"
 #include "mozilla/dom/RTCRtpTransceiverBinding.h"
 #include "mozilla/dom/Promise.h"
+#include "utils/PerformanceRecorder.h"
+#include "systemservices/MediaUtils.h"
+#include "MediaTrackGraph.h"
+#include "js/RootingAPI.h"
+#include "libwebrtcglue/AudioConduit.h"
+#include "libwebrtcglue/VideoConduit.h"
+#include "transportbridge/MediaPipeline.h"
+#include "jsep/JsepTrack.h"
+#include "sdp/SdpHelper.h"
+#include "transport/logging.h"
+#include "RemoteTrackSource.h"
+#include "libwebrtcglue/RtpRtcpConfig.h"
+#include "MediaTransportHandler.h"
 #include "RTCDtlsTransport.h"
 #include "RTCRtpReceiver.h"
 #include "RTCRtpSender.h"
 #include "RTCDTMFSender.h"
-#include "systemservices/MediaUtils.h"
+#include "PeerConnectionImpl.h"
+#include "RTCStatsIdGenerator.h"
 #include "libwebrtcglue/WebrtcCallWrapper.h"
-#include "libwebrtcglue/WebrtcGmpVideoCodec.h"
-#include "utils/PerformanceRecorder.h"
+#include "libwebrtcglue/FrameTransformerProxy.h"
+#include "jsep/JsepCodecDescription.h"
+#include "jsep/JsepSession.h"
+#include "jsep/JsepTrackEncoding.h"
+#include "libwebrtcglue/CodecConfig.h"
+#include "libwebrtcglue/MediaConduitControl.h"
+#include "libwebrtcglue/MediaConduitInterface.h"
+#include "RTCStatsReport.h"
+#include "sdp/SdpAttribute.h"
+#include "sdp/SdpEnum.h"
+#include "sdp/SdpMediaSection.h"
+#include "transport/transportlayer.h"
 
 namespace mozilla {
 
@@ -56,40 +103,39 @@ struct ConduitControlState : public AudioConduitControlInterface,
   const nsMainThreadPtrHandle<RTCRtpReceiver> mReceiver;
 
   // MediaConduitControlInterface
-  AbstractCanonical<bool>* CanonicalReceiving() override {
+  Canonical<bool>& CanonicalReceiving() override {
     return mReceiver->CanonicalReceiving();
   }
-  AbstractCanonical<bool>* CanonicalTransmitting() override {
+  Canonical<bool>& CanonicalTransmitting() override {
     return mSender->CanonicalTransmitting();
   }
-  AbstractCanonical<Ssrcs>* CanonicalLocalSsrcs() override {
+  Canonical<Ssrcs>& CanonicalLocalSsrcs() override {
     return mSender->CanonicalSsrcs();
   }
-  AbstractCanonical<std::string>* CanonicalLocalCname() override {
+  Canonical<std::string>& CanonicalLocalCname() override {
     return mSender->CanonicalCname();
   }
-  AbstractCanonical<std::string>* CanonicalMid() override {
+  Canonical<std::string>& CanonicalMid() override {
     return mTransceiver->CanonicalMid();
   }
-  AbstractCanonical<Ssrc>* CanonicalRemoteSsrc() override {
+  Canonical<Ssrc>& CanonicalRemoteSsrc() override {
     return mReceiver->CanonicalSsrc();
   }
-  AbstractCanonical<std::string>* CanonicalSyncGroup() override {
+  Canonical<std::string>& CanonicalSyncGroup() override {
     return mTransceiver->CanonicalSyncGroup();
   }
-  AbstractCanonical<RtpExtList>* CanonicalLocalRecvRtpExtensions() override {
+  Canonical<RtpExtList>& CanonicalLocalRecvRtpExtensions() override {
     return mReceiver->CanonicalLocalRtpExtensions();
   }
-  AbstractCanonical<RtpExtList>* CanonicalLocalSendRtpExtensions() override {
+  Canonical<RtpExtList>& CanonicalLocalSendRtpExtensions() override {
     return mSender->CanonicalLocalRtpExtensions();
   }
 
   // AudioConduitControlInterface
-  AbstractCanonical<Maybe<AudioCodecConfig>>* CanonicalAudioSendCodec()
-      override {
+  Canonical<Maybe<AudioCodecConfig>>& CanonicalAudioSendCodec() override {
     return mSender->CanonicalAudioCodec();
   }
-  AbstractCanonical<std::vector<AudioCodecConfig>>* CanonicalAudioRecvCodecs()
+  Canonical<std::vector<AudioCodecConfig>>& CanonicalAudioRecvCodecs()
       override {
     return mReceiver->CanonicalAudioCodecs();
   }
@@ -98,31 +144,36 @@ struct ConduitControlState : public AudioConduitControlInterface,
   }
 
   // VideoConduitControlInterface
-  AbstractCanonical<Ssrcs>* CanonicalLocalVideoRtxSsrcs() override {
+  Canonical<Ssrcs>& CanonicalLocalVideoRtxSsrcs() override {
     return mSender->CanonicalVideoRtxSsrcs();
   }
-  AbstractCanonical<Ssrc>* CanonicalRemoteVideoRtxSsrc() override {
+  Canonical<Ssrc>& CanonicalRemoteVideoRtxSsrc() override {
     return mReceiver->CanonicalVideoRtxSsrc();
   }
-  AbstractCanonical<Maybe<VideoCodecConfig>>* CanonicalVideoSendCodec()
-      override {
+  Canonical<Maybe<VideoCodecConfig>>& CanonicalVideoSendCodec() override {
     return mSender->CanonicalVideoCodec();
   }
-  AbstractCanonical<Maybe<RtpRtcpConfig>>* CanonicalVideoSendRtpRtcpConfig()
-      override {
+  Canonical<Maybe<RtpRtcpConfig>>& CanonicalVideoSendRtpRtcpConfig() override {
     return mSender->CanonicalVideoRtpRtcpConfig();
   }
-  AbstractCanonical<std::vector<VideoCodecConfig>>* CanonicalVideoRecvCodecs()
+  Canonical<std::vector<VideoCodecConfig>>& CanonicalVideoRecvCodecs()
       override {
     return mReceiver->CanonicalVideoCodecs();
   }
-  AbstractCanonical<Maybe<RtpRtcpConfig>>* CanonicalVideoRecvRtpRtcpConfig()
-      override {
+  Canonical<Maybe<RtpRtcpConfig>>& CanonicalVideoRecvRtpRtcpConfig() override {
     return mReceiver->CanonicalVideoRtpRtcpConfig();
   }
-  AbstractCanonical<webrtc::VideoCodecMode>* CanonicalVideoCodecMode()
-      override {
+  Canonical<webrtc::VideoCodecMode>& CanonicalVideoCodecMode() override {
     return mSender->CanonicalVideoCodecMode();
+  }
+  Canonical<RefPtr<FrameTransformerProxy>>& CanonicalFrameTransformerProxySend()
+      override {
+    return mSender->CanonicalFrameTransformerProxy();
+  }
+
+  Canonical<RefPtr<FrameTransformerProxy>>& CanonicalFrameTransformerProxyRecv()
+      override {
+    return mReceiver->CanonicalFrameTransformerProxy();
   }
 };
 }  // namespace
@@ -131,10 +182,7 @@ MOZ_MTLOG_MODULE("RTCRtpTransceiver")
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE_CLASS(RTCRtpTransceiver)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(RTCRtpTransceiver)
-  if (tmp->mHandlingUnlink) {
-    tmp->BreakCycles();
-    tmp->mHandlingUnlink = false;
-  }
+  tmp->Unlink();
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(RTCRtpTransceiver)
@@ -189,8 +237,8 @@ SdpDirectionAttribute::Direction ToSdpDirection(
     case dom::RTCRtpTransceiverDirection::Recvonly:
       return SdpDirectionAttribute::Direction::kRecvonly;
     case dom::RTCRtpTransceiverDirection::Inactive:
+    case dom::RTCRtpTransceiverDirection::Stopped:
       return SdpDirectionAttribute::Direction::kInactive;
-    case dom::RTCRtpTransceiverDirection::EndGuard_:;
   }
   MOZ_CRASH("Invalid transceiver direction!");
 }
@@ -230,12 +278,13 @@ void RTCRtpTransceiver::Init(const RTCRtpTransceiverInit& aInit,
   mDirection = aInit.mDirection;
 }
 
-void RTCRtpTransceiver::SetDtlsTransport(dom::RTCDtlsTransport* aDtlsTransport,
-                                         bool aStable) {
+void RTCRtpTransceiver::SetDtlsTransport(
+    dom::RTCDtlsTransport* aDtlsTransport) {
   mDtlsTransport = aDtlsTransport;
-  if (aStable) {
-    mLastStableDtlsTransport = mDtlsTransport;
-  }
+}
+
+void RTCRtpTransceiver::SaveStateForRollback() {
+  mLastStableDtlsTransport = mDtlsTransport;
 }
 
 void RTCRtpTransceiver::RollbackToStableDtlsTransport() {
@@ -310,26 +359,24 @@ void RTCRtpTransceiver::InitConduitControl() {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mConduit);
   ConduitControlState control(this, mSender, mReceiver);
-  mCallWrapper->mCallThread->Dispatch(NS_NewRunnableFunction(
-      __func__, [conduit = mConduit, control = std::move(control)]() mutable {
-        conduit->AsVideoSessionConduit().apply(
-            [&](VideoSessionConduit* aConduit) {
-              aConduit->InitControl(&control);
-            });
-        conduit->AsAudioSessionConduit().apply(
-            [&](AudioSessionConduit* aConduit) {
-              aConduit->InitControl(&control);
-            });
-      }));
+  mConduit->AsVideoSessionConduit().apply(
+      [&](auto aConduit) { aConduit->InitControl(&control); });
+  mConduit->AsAudioSessionConduit().apply(
+      [&](auto aConduit) { aConduit->InitControl(&control); });
 }
 
 void RTCRtpTransceiver::Close() {
-  // Called via PCImpl::Close -> PCImpl::CloseInt -> PCImpl::ShutdownMedia ->
-  // PCMedia::SelfDestruct.  Satisfies step 7 of
+  // Called via PCImpl::Close
+  // Satisfies steps 7 and 9 of
   // https://w3c.github.io/webrtc-pc/#dom-rtcpeerconnection-close
+  // No events are fired for this.
   mShutdown = true;
   if (mDtlsTransport) {
-    mDtlsTransport->UpdateState(TransportLayer::TS_CLOSED);
+    mDtlsTransport->UpdateStateNoEvent(TransportLayer::TS_CLOSED);
+    // Might not be set if we're cycle-collecting
+    if (mDtlsTransport->IceTransport()) {
+      mDtlsTransport->IceTransport()->SetState(RTCIceTransportState::Closed);
+    }
   }
   StopImpl();
 }
@@ -346,12 +393,22 @@ void RTCRtpTransceiver::BreakCycles() {
   mPc = nullptr;
 }
 
+void RTCRtpTransceiver::Unlink() {
+  if (mHandlingUnlink) {
+    BreakCycles();
+    mHandlingUnlink = false;
+  } else if (mPc) {
+    mPc->Close();
+    mPc->BreakCycles();
+  }
+}
+
 // TODO: Only called from one place in PeerConnectionImpl, synchronously, when
 // the JSEP engine has successfully completed an offer/answer exchange. This is
 // a bit squirrely, since identity validation happens asynchronously in
-// PeerConnection.jsm. This probably needs to happen once all the "in parallel"
-// steps have succeeded, but before we queue the task for JS observable state
-// updates.
+// PeerConnection.sys.mjs. This probably needs to happen once all the "in
+// parallel" steps have succeeded, but before we queue the task for JS
+// observable state updates.
 nsresult RTCRtpTransceiver::UpdateTransport() {
   if (!mHasTransport) {
     return NS_OK;
@@ -387,9 +444,9 @@ void RTCRtpTransceiver::ResetSync() { mSyncGroup = std::string(); }
 // TODO: Only called from one place in PeerConnectionImpl, synchronously, when
 // the JSEP engine has successfully completed an offer/answer exchange. This is
 // a bit squirrely, since identity validation happens asynchronously in
-// PeerConnection.jsm. This probably needs to happen once all the "in parallel"
-// steps have succeeded, but before we queue the task for JS observable state
-// updates.
+// PeerConnection.sys.mjs. This probably needs to happen once all the "in
+// parallel" steps have succeeded, but before we queue the task for JS
+// observable state updates.
 nsresult RTCRtpTransceiver::SyncWithMatchingVideoConduits(
     nsTArray<RefPtr<RTCRtpTransceiver>>& transceivers) {
   if (mStopped) {
@@ -461,8 +518,11 @@ void RTCRtpTransceiver::SyncFromJsep(const JsepSession& aSession) {
 
   mJsepTransceiver = *aSession.GetTransceiver(mTransceiverId);
 
-  // Transceivers can stop due to JSEP negotiation, so we need to check that
-  if (mJsepTransceiver.IsStopped()) {
+  // Transceivers can stop due to sRD, so we need to check that
+  if (!mStopped && mJsepTransceiver.IsStopped()) {
+    MOZ_MTLOG(ML_DEBUG, mPc->GetHandle()
+                            << "[" << mMid.Ref() << "]: " << __FUNCTION__
+                            << " JSEP transceiver is stopped");
     StopImpl();
   }
 
@@ -497,7 +557,7 @@ void RTCRtpTransceiver::SyncFromJsep(const JsepSession& aSession) {
   }
 
   mShouldRemove = mJsepTransceiver.IsRemoved();
-  mHasTransport = mJsepTransceiver.HasLevel() && !mJsepTransceiver.IsStopped();
+  mHasTransport = !mStopped && mJsepTransceiver.mTransport.mComponents;
 }
 
 void RTCRtpTransceiver::SyncToJsep(JsepSession& aSession) const {
@@ -511,7 +571,7 @@ void RTCRtpTransceiver::SyncToJsep(JsepSession& aSession) const {
         mReceiver->SyncToJsep(aTransceiver);
         mSender->SyncToJsep(aTransceiver);
         aTransceiver.mJsDirection = ToSdpDirection(mDirection);
-        if (mStopped) {
+        if (mStopping || mStopped) {
           aTransceiver.Stop();
         }
       });
@@ -542,17 +602,27 @@ std::string RTCRtpTransceiver::GetMidAscii() const {
 
 void RTCRtpTransceiver::SetDirection(RTCRtpTransceiverDirection aDirection,
                                      ErrorResult& aRv) {
-  if (mStopped) {
-    aRv.ThrowInvalidStateError("Transceiver is stopped!");
+  // If transceiver.[[Stopping]] is true, throw an InvalidStateError.
+  if (mStopping) {
+    aRv.ThrowInvalidStateError("Transceiver is stopping/stopped!");
     return;
   }
 
+  // If newDirection is equal to transceiver.[[Direction]], abort these steps.
   if (aDirection == mDirection) {
     return;
   }
 
+  // If newDirection is equal to "stopped", throw a TypeError.
+  if (aDirection == RTCRtpTransceiverDirection::Stopped) {
+    aRv.ThrowTypeError("Cannot use \"stopped\" in setDirection!");
+    return;
+  }
+
+  // Set transceiver.[[Direction]] to newDirection.
   SetDirectionInternal(aDirection);
 
+  // Update the negotiation-needed flag for connection.
   mPc->UpdateNegotiationNeeded();
 }
 
@@ -574,7 +644,7 @@ bool RTCRtpTransceiver::CanSendDTMF() const {
   // so this is pretty close.
   // TODO (bug 1265827): Base this on RTCPeerConnectionState instead.
   // TODO (bug 1623193): Tighten this up
-  if (!IsSending() || !mSender->GetTrack()) {
+  if (!IsSending() || !mSender->GetTrack() || Stopping()) {
     return false;
   }
 
@@ -770,6 +840,9 @@ static void JsepCodecDescToVideoCodecConfig(
     if (SdpHelper::GetPtAsInt(aCodec.mULPFECPayloadType, &pt)) {
       (*aConfig)->mULPFECPayloadType = pt;
     }
+    if (SdpHelper::GetPtAsInt(aCodec.mREDRTXPayloadType, &pt)) {
+      (*aConfig)->mREDRTXPayloadType = pt;
+    }
   }
   if (aCodec.mRtxEnabled) {
     uint16_t pt;
@@ -812,19 +885,233 @@ void RTCRtpTransceiver::NegotiatedDetailsToVideoCodecConfigs(
   }
 }
 
+/* static */
+void RTCRtpTransceiver::ToDomRtpCodec(const JsepCodecDescription& aCodec,
+                                      RTCRtpCodec* aDomCodec) {
+  MOZ_ASSERT(aCodec.Type() == SdpMediaSection::kAudio ||
+             aCodec.Type() == SdpMediaSection::kVideo);
+  if (aCodec.Type() == SdpMediaSection::kAudio) {
+    aDomCodec->mChannels.Construct(aCodec.mChannels);
+  }
+  aDomCodec->mClockRate = aCodec.mClock;
+  std::string mimeType =
+      aCodec.Type() == SdpMediaSection::kAudio ? "audio/" : "video/";
+  mimeType += aCodec.mName;
+  aDomCodec->mMimeType = NS_ConvertASCIItoUTF16(mimeType);
+
+  if (aCodec.mSdpFmtpLine) {
+    // The RTCRtpParameters.codecs case; just use what we parsed out of the SDP
+    if (!aCodec.mSdpFmtpLine->empty()) {
+      aDomCodec->mSdpFmtpLine.Construct(
+          NS_ConvertASCIItoUTF16(aCodec.mSdpFmtpLine->c_str()));
+    }
+  } else {
+    // The getCapabilities case; serialize what we would put in an offer.
+    UniquePtr<SdpFmtpAttributeList::Parameters> params;
+    aCodec.ApplyConfigToFmtp(params);
+
+    if (params != nullptr) {
+      std::ostringstream paramsString;
+      params->Serialize(paramsString);
+      nsTString<char16_t> fmtp;
+      fmtp.AssignASCII(paramsString.str());
+      aDomCodec->mSdpFmtpLine.Construct(fmtp);
+    }
+  }
+}
+
+/* static */
+void RTCRtpTransceiver::ToDomRtpCodecParameters(
+    const JsepCodecDescription& aCodec,
+    RTCRtpCodecParameters* aDomCodecParameters) {
+  ToDomRtpCodec(aCodec, aDomCodecParameters);
+  uint16_t pt;
+  if (SdpHelper::GetPtAsInt(aCodec.mDefaultPt, &pt)) {
+    aDomCodecParameters->mPayloadType = pt;
+  }
+}
+
+/* static */
+void RTCRtpTransceiver::ToDomRtpCodecRtx(
+    const JsepVideoCodecDescription& aCodec, RTCRtpCodec* aDomCodec) {
+  MOZ_ASSERT(aCodec.Type() == SdpMediaSection::kVideo);
+  aDomCodec->mClockRate = aCodec.mClock;
+  aDomCodec->mMimeType = NS_ConvertASCIItoUTF16("video/rtx");
+  std::ostringstream apt;
+  apt << "apt=" << aCodec.mDefaultPt;
+  aDomCodec->mSdpFmtpLine.Construct(NS_ConvertASCIItoUTF16(apt.str().c_str()));
+}
+
+/* static */
+void RTCRtpTransceiver::ToDomRtpCodecParametersRtx(
+    const JsepVideoCodecDescription& aCodec,
+    RTCRtpCodecParameters* aDomCodecParameters) {
+  ToDomRtpCodecRtx(aCodec, aDomCodecParameters);
+  uint16_t pt;
+  if (SdpHelper::GetPtAsInt(aCodec.mRtxPayloadType, &pt)) {
+    aDomCodecParameters->mPayloadType = pt;
+  }
+}
+
 void RTCRtpTransceiver::Stop(ErrorResult& aRv) {
   if (mPc->IsClosed()) {
     aRv.ThrowInvalidStateError("Peer connection is closed");
     return;
   }
 
-  StopImpl();
+  if (mStopping) {
+    return;
+  }
+
+  StopTransceiving();
   mPc->UpdateNegotiationNeeded();
 }
 
-void RTCRtpTransceiver::StopImpl() {
-  if (mStopped) {
+void RTCRtpTransceiver::SetCodecPreferences(
+    const nsTArray<RTCRtpCodec>& aCodecs, ErrorResult& aRv) {
+  nsTArray<RTCRtpCodec> aCodecsFiltered;
+  bool rtxPref =
+      Preferences::GetBool("media.peerconnection.video.use_rtx", false);
+  bool useRtx = false;
+  bool useableCodecs = false;
+
+  // kind = transciever's kind.
+  nsAutoString kind;
+  GetKind(kind);
+
+  if (!aCodecs.IsEmpty()) {
+    struct {
+      bool Equals(const RTCRtpCodec& aA, const RTCRtpCodec& aB) const {
+        return ((aA.mMimeType.Equals(aB.mMimeType,
+                                     nsCaseInsensitiveStringComparator)) &&
+                (aA.mClockRate == aB.mClockRate) &&
+                (aA.mChannels == aB.mChannels) &&
+                (aA.mSdpFmtpLine == aB.mSdpFmtpLine));
+      }
+    } CodecComparator;
+
+    // Remove any duplicate values in codecs, ensuring that the first occurrence
+    // of each value remains in place.
+    for (const auto& codec : aCodecs) {
+      if (!std::any_of(aCodecsFiltered.begin(), aCodecsFiltered.end(),
+                       [&codec, CodecComparator](RTCRtpCodec& alreadyInserted) {
+                         return CodecComparator.Equals(alreadyInserted, codec);
+                       })) {
+        aCodecsFiltered.AppendElement(codec);
+      }
+
+      // Ensure a usable codec was supplied and if RTX is still preferred.
+      if (!useableCodecs && !codec.mMimeType.EqualsLiteral("video/ulpfec") &&
+          !codec.mMimeType.EqualsLiteral("video/red") &&
+          !codec.mMimeType.EqualsLiteral("video/rtx")) {
+        useableCodecs = true;
+      }
+      if (codec.mMimeType.EqualsLiteral("video/rtx")) {
+        useRtx = rtxPref;
+      }
+    }
+
+    // If codecs are not in the codecCapabilities of receiver capabilities
+    // throw InvalidModificationError
+    dom::Nullable<dom::RTCRtpCapabilities> codecCapabilities;
+    PeerConnectionImpl::GetCapabilities(kind, codecCapabilities,
+                                        sdp::Direction::kRecv);
+
+    for (const auto& codec : aCodecsFiltered) {
+      if (!std::any_of(codecCapabilities.Value().mCodecs.begin(),
+                       codecCapabilities.Value().mCodecs.end(),
+                       [&codec, CodecComparator](RTCRtpCodec& recvCap) {
+                         return CodecComparator.Equals(codec, recvCap);
+                       })) {
+        aRv.ThrowInvalidModificationError(
+            nsPrintfCString("Codec %s not in capabilities",
+                            NS_ConvertUTF16toUTF8(codec.mMimeType).get()));
+        return;
+      }
+    }
+
+    // If only RTX, RED, or FEC codecs throw InvalidModificationError
+    if (!useableCodecs) {
+      aRv.ThrowInvalidModificationError("No useable codecs supplied");
+      return;
+    }
+  } else {
+    useRtx = rtxPref;
+  }
+
+  mPreferredCodecs.clear();
+  std::vector<UniquePtr<JsepCodecDescription>> defaultCodecs;
+
+  if (kind.EqualsLiteral("video")) {
+    PeerConnectionImpl::GetDefaultVideoCodecs(defaultCodecs, useRtx);
+  } else if (kind.EqualsLiteral("audio")) {
+    PeerConnectionImpl::GetDefaultAudioCodecs(defaultCodecs);
+  }
+
+  if (!aCodecsFiltered.IsEmpty()) {
+    mPreferredCodecsInUse = true;
+
+    std::vector<std::pair<UniquePtr<JsepCodecDescription>, std::string>>
+        defaultCodecsAndParams;
+    for (auto& codec : defaultCodecs) {
+      UniquePtr<SdpFmtpAttributeList::Parameters> params;
+      codec->ApplyConfigToFmtp(params);
+      std::ostringstream paramsString;
+      if (params != nullptr) {
+        params->Serialize(paramsString);
+      }
+      defaultCodecsAndParams.emplace_back(std::move(codec), paramsString.str());
+    }
+
+    // Take the array of RTCRtpCodec and convert it to a vector of
+    // JsepCodecDescription in order to pass to the receive track and populate
+    // codecs.
+    for (auto& inputCodec : aCodecsFiltered) {
+      auto mimeType = NS_ConvertUTF16toUTF8(inputCodec.mMimeType);
+      for (auto& [defaultCodec, precomputedParamsString] :
+           defaultCodecsAndParams) {
+        bool channelsMatch =
+            (!inputCodec.mChannels.WasPassed() && !defaultCodec->mChannels) ||
+            (inputCodec.mChannels.WasPassed() &&
+             (inputCodec.mChannels.Value() == defaultCodec->mChannels));
+        bool sdpFmtpLinesMatch =
+            (precomputedParamsString.empty() &&
+             !inputCodec.mSdpFmtpLine.WasPassed()) ||
+            ((!precomputedParamsString.empty() &&
+              inputCodec.mSdpFmtpLine.WasPassed()) &&
+             NS_ConvertUTF16toUTF8(inputCodec.mSdpFmtpLine.Value())
+                 .EqualsASCII(precomputedParamsString.c_str()));
+
+        if ((mimeType.Find(defaultCodec->mName) != kNotFound) &&
+            (inputCodec.mClockRate == defaultCodec->mClock) && channelsMatch &&
+            sdpFmtpLinesMatch) {
+          mPreferredCodecs.emplace_back(defaultCodec->Clone());
+          break;
+        }
+      }
+    }
+  } else {
+    mPreferredCodecs.swap(defaultCodecs);
+    mPreferredCodecsInUse = false;
+  }
+}
+
+void RTCRtpTransceiver::StopTransceiving() {
+  if (mStopping) {
+    MOZ_ASSERT(false);
     return;
+  }
+  mStopping = true;
+  // This is the "Stop sending and receiving" algorithm from webrtc-pc
+  mSender->Stop();
+  mReceiver->Stop();
+  mDirection = RTCRtpTransceiverDirection::Inactive;
+}
+
+void RTCRtpTransceiver::StopImpl() {
+  // This is the "stop the RTCRtpTransceiver" algorithm from webrtc-pc
+  if (!mStopping) {
+    StopTransceiving();
   }
 
   if (mCallWrapper) {
@@ -845,6 +1132,8 @@ void RTCRtpTransceiver::StopImpl() {
 
   mSender->Stop();
   mReceiver->Stop();
+
+  mHasTransport = false;
 
   auto self = nsMainThreadPtrHandle<RTCRtpTransceiver>(
       new nsMainThreadPtrHolder<RTCRtpTransceiver>(

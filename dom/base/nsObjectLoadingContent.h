@@ -13,15 +13,12 @@
 #ifndef NSOBJECTLOADINGCONTENT_H_
 #define NSOBJECTLOADINGCONTENT_H_
 
-#include "mozilla/Attributes.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "nsIFrame.h"  // for WeakFrame only
-#include "nsImageLoadingContent.h"
 #include "nsIStreamListener.h"
 #include "nsIChannelEventSink.h"
 #include "nsIObjectLoadingContent.h"
-#include "nsIRunnable.h"
 #include "nsFrameLoaderOwner.h"
 
 class nsStopPluginRunnable;
@@ -32,7 +29,6 @@ namespace mozilla::dom {
 struct BindContext;
 template <typename T>
 class Sequence;
-struct MozPluginParameter;
 class HTMLIFrameElement;
 template <typename T>
 struct Nullable;
@@ -40,8 +36,7 @@ class WindowProxyHolder;
 class XULFrameElement;
 }  // namespace mozilla::dom
 
-class nsObjectLoadingContent : public nsImageLoadingContent,
-                               public nsIStreamListener,
+class nsObjectLoadingContent : public nsIStreamListener,
                                public nsFrameLoaderOwner,
                                public nsIObjectLoadingContent,
                                public nsIChannelEventSink {
@@ -50,24 +45,13 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
  public:
   // This enum's values must be the same as the constants on
   // nsIObjectLoadingContent
-  enum ObjectType {
+  enum class ObjectType : uint8_t {
     // Loading, type not yet known. We may be waiting for a channel to open.
-    eType_Loading = TYPE_LOADING,
-    // Content is a *non-svg* image
-    eType_Image = TYPE_IMAGE,
-    // Content is a "special" plugin.  Plugins are removed but these MIME
-    // types display an transparent region in their place.
-    // (Special plugins that have an HTML fallback are eType_Null)
-    eType_Fallback = TYPE_FALLBACK,
-    // Content is a fake plugin, which loads as a document but behaves as a
-    // plugin (see nsPluginHost::CreateFakePlugin).  Currently only used for
-    // pdf.js.
-    eType_FakePlugin = TYPE_FAKE_PLUGIN,
+    Loading = TYPE_LOADING,
     // Content is a subdocument, possibly SVG
-    eType_Document = TYPE_DOCUMENT,
-    // Content is unknown and should be represented by an empty element,
-    // unless an HTML fallback is available.
-    eType_Null = TYPE_NULL
+    Document = TYPE_DOCUMENT,
+    // Content is unknown and should be represented by an empty element.
+    Fallback = TYPE_FALLBACK
   };
 
   nsObjectLoadingContent();
@@ -78,70 +62,22 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
   NS_DECL_NSIOBJECTLOADINGCONTENT
   NS_DECL_NSICHANNELEVENTSINK
 
-  /**
-   * Object state. This is a bitmask of NS_EVENT_STATEs epresenting the
-   * current state of the object.
-   */
-  mozilla::dom::ElementState ObjectState() const;
-
   ObjectType Type() const { return mType; }
 
   void SetIsNetworkCreated(bool aNetworkCreated) {
     mNetworkCreated = aNetworkCreated;
   }
 
-  /**
-   * When the object is loaded, the attributes and all nested <param>
-   * elements are cached as name:value string pairs to be passed as
-   * parameters when instantiating the plugin.
-   *
-   * Note: these cached values can be overriden for different quirk cases.
-   */
-  // Returns the cached attributes array.
-  void GetPluginAttributes(
-      nsTArray<mozilla::dom::MozPluginParameter>& aAttributes);
-
-  // Returns the cached <param> array.
-  void GetPluginParameters(
-      nsTArray<mozilla::dom::MozPluginParameter>& aParameters);
-
-  /**
-   * Notify this class the document state has changed
-   * Called by Document so we may suspend plugins in inactive documents)
-   */
-  void NotifyOwnerDocumentActivityChanged();
-
-  // Helper for WebIDL NeedResolve
-  bool DoResolve(
-      JSContext* aCx, JS::Handle<JSObject*> aObject, JS::Handle<jsid> aId,
-      JS::MutableHandle<mozilla::Maybe<JS::PropertyDescriptor>> aDesc);
-  // The return value is whether DoResolve might end up resolving the given
-  // id.  If in doubt, return true.
-  static bool MayResolve(jsid aId);
-
   static bool IsSuccessfulRequest(nsIRequest*, nsresult* aStatus);
-
-  // Helper for WebIDL enumeration
-  void GetOwnPropertyNames(JSContext* aCx,
-                           JS::MutableHandleVector<jsid> /* unused */,
-                           bool /* unused */, mozilla::ErrorResult& aRv);
 
   // WebIDL API
   mozilla::dom::Document* GetContentDocument(nsIPrincipal& aSubjectPrincipal);
   void GetActualType(nsAString& aType) const {
     CopyUTF8toUTF16(mContentType, aType);
   }
-  uint32_t DisplayedType() const { return mType; }
-  uint32_t GetContentTypeForMIMEType(const nsAString& aMIMEType) {
-    return GetTypeOfContent(NS_ConvertUTF16toUTF8(aMIMEType), false);
-  }
-  void Reload(bool aClearActivation, mozilla::ErrorResult& aRv) {
-    aRv = Reload(aClearActivation);
-  }
+  uint32_t DisplayedType() const { return uint32_t(mType); }
   nsIURI* GetSrcURI() const { return mURI; }
 
-  // FIXME rename this
-  void SkipFakePlugins(mozilla::ErrorResult& aRv) { aRv = SkipFakePlugins(); }
   void SwapFrameLoaders(mozilla::dom::HTMLIFrameElement& aOtherLoaderOwner,
                         mozilla::ErrorResult& aRv) {
     aRv.Throw(NS_ERROR_NOT_IMPLEMENTED);
@@ -151,14 +87,7 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
     aRv.Throw(NS_ERROR_NOT_IMPLEMENTED);
   }
 
-  uint32_t GetRunID(mozilla::dom::SystemCallerGuarantee,
-                    mozilla::ErrorResult& aRv);
-
   bool IsRewrittenYoutubeEmbed() const { return mRewrittenYoutubeEmbed; }
-
-  void PresetOpenerWindow(const mozilla::dom::Nullable<
-                              mozilla::dom::WindowProxyHolder>& aOpenerWindow,
-                          mozilla::ErrorResult& aRv);
 
   const mozilla::Maybe<mozilla::IntrinsicSize>& GetSubdocumentIntrinsicSize()
       const {
@@ -216,21 +145,20 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
 
   enum Capabilities {
     eSupportImages = 1u << 0,     // Images are supported (imgILoader)
-    eSupportPlugins = 1u << 1,    // Plugins are supported (nsIPluginHost)
-    eSupportDocuments = 1u << 2,  // Documents are supported
+    eSupportDocuments = 1u << 1,  // Documents are supported
                                   // (DocumentLoaderFactory)
                                   // This flag always includes SVG
 
     // Node supports class ID as an attribute, and should fallback if it is
     // present, as class IDs are not supported.
-    eFallbackIfClassIDPresent = 1u << 3,
+    eFallbackIfClassIDPresent = 1u << 2,
 
     // If possible to get a *plugin* type from the type attribute *or* file
     // extension, we can use that type and begin loading the plugin before
     // opening a channel.
     // A side effect of this is if the channel fails, the plugin is still
     // running.
-    eAllowPluginSkipChannel = 1u << 4
+    eAllowPluginSkipChannel = 1u << 3
   };
 
   /**
@@ -255,16 +183,18 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
 
   void CreateStaticClone(nsObjectLoadingContent* aDest) const;
 
-  nsresult BindToTree(mozilla::dom::BindContext& aCxt, nsINode& aParent) {
-    nsImageLoadingContent::BindToTree(aCxt, aParent);
-    return NS_OK;
-  }
-  void UnbindFromTree(bool aNullParent = true);
+  void UnbindFromTree();
 
   /**
    * Return the content policy type used for loading the element.
    */
   virtual nsContentPolicyType GetContentPolicyType() const = 0;
+
+  virtual const mozilla::dom::Element* AsElement() const = 0;
+  mozilla::dom::Element* AsElement() {
+    return const_cast<mozilla::dom::Element*>(
+        const_cast<const nsObjectLoadingContent*>(this)->AsElement());
+  }
 
   /**
    * Decides whether we should load <embed>/<object> node content.
@@ -295,31 +225,17 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
     // can happen when changing from Loading -> Final type, but doesn't
     // necessarily happen when changing between object types. E.g., if a PDF
     // handler was installed between the last load of this object and now, we
-    // might change from eType_Document -> eType_Plugin without changing
+    // might change from Document -> Plugin without changing
     // ContentType
     eParamContentTypeChanged = 1u << 2
   };
 
   /**
-   * Getter for child <param> elements that are not nested in another plugin
-   * dom element.
-   * This is an internal helper function and should not be used directly for
-   * passing parameters to the plugin instance.
-   *
-   * See GetPluginParameters and GetPluginAttributes, which also handle
-   * quirk-overrides.
-   *
-   * @param aParameters     The array containing pairs of name/value strings
-   *                        from nested <param> objects.
+   * If we're an <object>, and show fallback, we might need to start nested
+   * <embed> or <object> loads that would otherwise be blocked by
+   * BlockEmbedOrObjectContentLoading().
    */
-  void GetNestedParams(nsTArray<mozilla::dom::MozPluginParameter>& aParameters);
-
-  [[nodiscard]] nsresult BuildParametersArray();
-
-  /**
-   * Configure fallback for deprecated plugin and broken elements.
-   */
-  void ConfigureFallback();
+  void TriggerInnerFallbackLoads();
 
   /**
    * Internal version of LoadObject that should only be used by this class
@@ -401,7 +317,7 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
    */
   bool CheckProcessPolicy(int16_t* aContentPolicy);
 
-  void SetupFrameLoader(int32_t aJSPluginId);
+  void SetupFrameLoader();
 
   /**
    * Helper to spawn mFrameLoader and return a pointer to its docshell
@@ -429,23 +345,19 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
    *
    * @param aNotify if false, only need to update the state of our element.
    */
-  void NotifyStateChanged(ObjectType aOldType,
-                          mozilla::dom::ElementState aOldState, bool aNotify,
-                          bool aForceRestyle);
+  void NotifyStateChanged(ObjectType aOldType, bool aNotify);
 
   /**
    * Returns a ObjectType value corresponding to the type of content we would
    * support the given MIME type as, taking capabilities and plugin state
    * into account
    *
-   * @param aNoFakePlugin Don't select a fake plugin handler as a valid type,
-   *                      as when SkipFakePlugins() is called.
    * @return The ObjectType enum value that we would attempt to load
    *
    * NOTE this does not consider whether the content would be suppressed by
    *      click-to-play or other content policy checks
    */
-  ObjectType GetTypeOfContent(const nsCString& aMIMEType, bool aNoFakePlugin);
+  ObjectType GetTypeOfContent(const nsCString& aMIMEType);
 
   /**
    * Used for identifying whether we can rewrite a youtube flash embed to
@@ -464,7 +376,7 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
    * deprecated by youtube, so we can just rewrite as normal.
    *
    * If we can rewrite the URL, we change the "/v/" to "/embed/", and change
-   * our type to eType_Document so that we render similarly to an iframe
+   * our type to Document so that we render similarly to an iframe
    * embed.
    */
   void MaybeRewriteYoutubeEmbed(nsIURI* aURI, nsIURI* aBaseURI,
@@ -510,10 +422,7 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
   nsCOMPtr<nsIURI> mBaseURI;
 
   // Type of the currently-loaded content.
-  ObjectType mType : 8;
-
-  uint32_t mRunID;
-  bool mHasRunID : 1;
+  ObjectType mType;
 
   // If true, we have opened a channel as the listener and it has reached
   // OnStartRequest. Does not get set for channels that are passed directly to
@@ -527,9 +436,6 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
 
   // Whether content blocking is enabled or not for this object.
   bool mContentBlockingEnabled : 1;
-
-  // If we should not use fake plugins until the next type change
-  bool mSkipFakePlugins : 1;
 
   // Protects DoStopPlugin from reentry (bug 724781).
   bool mIsStopping : 1;
@@ -548,9 +454,6 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
   bool mRewrittenYoutubeEmbed : 1;
 
   bool mLoadingSyntheticDocument : 1;
-
-  nsTArray<mozilla::dom::MozPluginParameter> mCachedAttributes;
-  nsTArray<mozilla::dom::MozPluginParameter> mCachedParameters;
 
   // The intrinsic size and aspect ratio from a child SVG document that
   // we should use.  These are only set when we are an <object> or <embed>

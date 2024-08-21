@@ -58,7 +58,10 @@ function compareOneLevel(ordering: Ordering, aIsBig: boolean, bIsBig: boolean): 
   return Ordering.Unordered;
 }
 
-function comparePaths(a: readonly string[], b: readonly string[]): Ordering {
+/**
+ * Compare two file paths, or file-local test paths, returning an Ordering between the two.
+ */
+export function comparePaths(a: readonly string[], b: readonly string[]): Ordering {
   const shorter = Math.min(a.length, b.length);
 
   for (let i = 0; i < shorter; ++i) {
@@ -80,7 +83,8 @@ export function comparePublicParamsPaths(a: TestParams, b: TestParams): Ordering
   const commonKeys = new Set(aKeys.filter(k => k in b));
 
   for (const k of commonKeys) {
-    if (!objectEquals(a[k], b[k])) {
+    // Treat +/-0.0 as different query by distinguishing them in objectEquals
+    if (!objectEquals(a[k], b[k], true)) {
       return Ordering.Unordered;
     }
   }

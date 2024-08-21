@@ -11,7 +11,8 @@
  * and create derivative works of this document.
  */
 
-[Exposed=Window]
+[Exposed=Window,
+ InstrumentedProps=(disableRemotePlayback,remote)]
 interface HTMLMediaElement : HTMLElement {
 
   // error state
@@ -114,11 +115,6 @@ partial interface HTMLMediaElement {
 
   attribute MediaStream? srcObject;
 
-  // TODO: Remove mozPreservesPitch. (bug 1765201)
-  [Deprecated="MozPreservesPitchDeprecatedPrefix",
-   Pref="dom.media.mozPreservesPitch.enabled",
-   BinaryName="preservesPitch"]
-  attribute boolean mozPreservesPitch;
   attribute boolean preservesPitch;
 
   // NB: for internal use with the video controls:

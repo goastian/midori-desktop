@@ -38,7 +38,7 @@
 #include "mozilla/StaticPrefs_dom.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsDOMNavigationTiming.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "nsJSUtils.h"
 #include "nsNetUtil.h"
 #include "xpcpublic.h"
@@ -46,8 +46,6 @@
 #include "nsDocShell.h"
 #include "nsProxyRelease.h"
 #include "nsReadableUtils.h"
-#include "mozilla/ConsoleTimelineMarker.h"
-#include "mozilla/TimestampTimelineMarker.h"
 
 #include "nsIConsoleAPIStorage.h"
 #include "nsIException.h"  // for nsIStackFrame
@@ -330,8 +328,14 @@ class ConsoleRunnable : public StructuredCloneHolderBase {
 
     ConsoleCommon::ClearException ce(aCx);
 
+    // This is the same policy as when writing from the other side, in
+    // WriteData.
+    JS::CloneDataPolicy cloneDataPolicy;
+    cloneDataPolicy.allowIntraClusterClonableSharedObjects();
+    cloneDataPolicy.allowSharedMemoryObjects();
+
     JS::Rooted<JS::Value> argumentsValue(aCx);
-    if (!Read(aCx, &argumentsValue)) {
+    if (!Read(aCx, &argumentsValue, cloneDataPolicy)) {
       return;
     }
 
@@ -881,7 +885,7 @@ Console::Console(JSContext* aCx, nsIGlobalObject* aGlobal,
       mInnerID(aInnerWindowID),
       mDumpToStdout(false),
       mChromeInstance(false),
-      mMaxLogLevel(ConsoleLogLevel::All),
+      mCurrentLogLevel(WebIDLLogLevelToInteger(ConsoleLogLevel::All)),
       mStatus(eUnknown),
       mCreationTimeStamp(TimeStamp::Now()) {
   // Let's enable the dumping to stdout by default for chrome.
@@ -1783,7 +1787,7 @@ static void MakeFormatString(nsCString& aFormat, int32_t aInteger,
 // The output is an array where any object is a separated item, the rest is
 // unified in a format string.
 // Example if the input is:
-//   "string: %s, integer: %d, object: %o, double: %d", 's', 1, window, 0.9
+//   "string: %s, integer: %d, object: %o, double: %f", 's', 1, window, 0.9
 // The output will be:
 //   [ "string: s, integer: 1, object: ", window, ", double: 0.9" ]
 //
@@ -2613,48 +2617,6 @@ bool Console::MonotonicTimer(JSContext* aCx, MethodName aMethodName,
     }
 
     *aTimeStamp = performance->Now();
-
-    nsDocShell* docShell = static_cast<nsDocShell*>(win->GetDocShell());
-    bool isTimelineRecording = TimelineConsumers::HasConsumer(docShell);
-
-    // The 'timeStamp' recordings do not need an argument; use empty string
-    // if no arguments passed in.
-    if (isTimelineRecording && aMethodName == MethodTimeStamp) {
-      JS::Rooted<JS::Value> value(
-          aCx, aData.Length() == 0 ? JS_GetEmptyStringValue(aCx) : aData[0]);
-      JS::Rooted<JSString*> jsString(aCx, JS::ToString(aCx, value));
-      if (!jsString) {
-        return false;
-      }
-
-      nsAutoJSString key;
-      if (!key.init(aCx, jsString)) {
-        return false;
-      }
-
-      TimelineConsumers::AddMarkerForDocShell(
-          docShell, MakeUnique<TimestampTimelineMarker>(key));
-    }
-    // For `console.time(foo)` and `console.timeEnd(foo)`.
-    else if (isTimelineRecording && aData.Length() == 1) {
-      JS::Rooted<JS::Value> value(aCx, aData[0]);
-      JS::Rooted<JSString*> jsString(aCx, JS::ToString(aCx, value));
-      if (!jsString) {
-        return false;
-      }
-
-      nsAutoJSString key;
-      if (!key.init(aCx, jsString)) {
-        return false;
-      }
-
-      TimelineConsumers::AddMarkerForDocShell(
-          docShell,
-          MakeUnique<ConsoleTimelineMarker>(key, aMethodName == MethodTime
-                                                     ? MarkerTracingType::START
-                                                     : MarkerTracingType::END));
-    }
-
     return true;
   }
 
@@ -2870,43 +2832,8 @@ void Console::ExecuteDumpFunction(const nsAString& aMessage) {
   fflush(stdout);
 }
 
-ConsoleLogLevel PrefToValue(const nsAString& aPref,
-                            const ConsoleLogLevel aLevel) {
-  if (!NS_IsMainThread()) {
-    NS_WARNING("Console.maxLogLevelPref is not supported on workers!");
-    return ConsoleLogLevel::All;
-  }
-  if (aPref.IsEmpty()) {
-    return aLevel;
-  }
-
-  NS_ConvertUTF16toUTF8 pref(aPref);
-  nsAutoCString value;
-  nsresult rv = Preferences::GetCString(pref.get(), value);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return aLevel;
-  }
-
-  int index = FindEnumStringIndexImpl(value.get(), value.Length(),
-                                      ConsoleLogLevelValues::strings);
-  if (NS_WARN_IF(index < 0)) {
-    nsString message;
-    message.AssignLiteral("Invalid Console.maxLogLevelPref value: ");
-    message.Append(NS_ConvertUTF8toUTF16(value));
-
-    nsContentUtils::LogSimpleConsoleError(message, "chrome"_ns, false,
-                                          true /* from chrome context*/);
-    return aLevel;
-  }
-
-  MOZ_ASSERT(index < (int)ConsoleLogLevelValues::Count);
-  return static_cast<ConsoleLogLevel>(index);
-}
-
 bool Console::ShouldProceed(MethodName aName) const {
-  ConsoleLogLevel maxLogLevel = PrefToValue(mMaxLogLevelPref, mMaxLogLevel);
-  return WebIDLLogLevelToInteger(maxLogLevel) <=
-         InternalLogLevelToInteger(aName);
+  return mCurrentLogLevel <= InternalLogLevelToInteger(aName);
 }
 
 uint32_t Console::WebIDLLogLevelToInteger(ConsoleLogLevel aLevel) const {

@@ -29,21 +29,14 @@ struct SVGStringInfo {
   SVGElement* mElement;
 };
 
-using SVGFEBase = SVGElement;
-
-#define NS_SVG_FE_CID                                \
-  {                                                  \
-    0x60483958, 0xd229, 0x4a77, {                    \
-      0x96, 0xb2, 0x62, 0x3e, 0x69, 0x95, 0x1e, 0x0e \
-    }                                                \
-  }
+using SVGFilterPrimitiveElementBase = SVGElement;
 
 /**
  * Base class for filter primitive elements
  * Children of those elements e.g. feMergeNode
- * derive from SVGFEUnstyledElement instead
+ * derive from SVGFilterPrimitiveChildElement instead
  */
-class SVGFE : public SVGFEBase {
+class SVGFilterPrimitiveElement : public SVGFilterPrimitiveElementBase {
   friend class mozilla::SVGFilterInstance;
 
  protected:
@@ -53,12 +46,16 @@ class SVGFE : public SVGFEBase {
   using ColorSpace = mozilla::gfx::ColorSpace;
   using FilterPrimitiveDescription = mozilla::gfx::FilterPrimitiveDescription;
 
-  explicit SVGFE(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
-      : SVGFEBase(std::move(aNodeInfo)) {}
-  virtual ~SVGFE() = default;
+  explicit SVGFilterPrimitiveElement(
+      already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
+      : SVGFilterPrimitiveElementBase(std::move(aNodeInfo)) {}
+  virtual ~SVGFilterPrimitiveElement() = default;
 
  public:
   using PrimitiveAttributes = mozilla::gfx::PrimitiveAttributes;
+
+  NS_IMPL_FROMNODE_HELPER(SVGFilterPrimitiveElement,
+                          IsSVGFilterPrimitiveElement())
 
   ColorSpace GetInputColorSpace(int32_t aInputIndex,
                                 ColorSpace aUnchangedInputColorSpace) {
@@ -77,10 +74,7 @@ class SVGFE : public SVGFEBase {
   // See http://www.w3.org/TR/SVG/filters.html#FilterPrimitiveSubRegion
   virtual bool SubregionIsUnionOfRegions() { return true; }
 
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_SVG_FE_CID)
-
-  // interfaces:
-  NS_DECL_ISUPPORTS_INHERITED
+  bool IsSVGFilterPrimitiveElement() const final { return true; }
 
   // SVGElement interface
   nsresult Clone(mozilla::dom::NodeInfo*, nsINode** aResult) const override = 0;
@@ -145,17 +139,21 @@ class SVGFE : public SVGFEBase {
   static LengthInfo sLengthInfo[4];
 };
 
-NS_DEFINE_STATIC_IID_ACCESSOR(SVGFE, NS_SVG_FE_CID)
+using SVGFilterPrimitiveChildElementBase = SVGElement;
 
-using SVGFEUnstyledElementBase = SVGElement;
-
-class SVGFEUnstyledElement : public SVGFEUnstyledElementBase {
+class SVGFilterPrimitiveChildElement
+    : public SVGFilterPrimitiveChildElementBase {
  protected:
-  explicit SVGFEUnstyledElement(
+  explicit SVGFilterPrimitiveChildElement(
       already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
-      : SVGFEUnstyledElementBase(std::move(aNodeInfo)) {}
+      : SVGFilterPrimitiveChildElementBase(std::move(aNodeInfo)) {}
 
  public:
+  NS_IMPL_FROMNODE_HELPER(SVGFilterPrimitiveChildElement,
+                          IsSVGFilterPrimitiveChildElement())
+
+  bool IsSVGFilterPrimitiveChildElement() const final { return true; }
+
   nsresult Clone(mozilla::dom::NodeInfo*, nsINode** aResult) const override = 0;
 
   // returns true if changes to the attribute should cause us to
@@ -166,7 +164,7 @@ class SVGFEUnstyledElement : public SVGFEUnstyledElementBase {
 
 //------------------------------------------------------------
 
-using SVGFELightingElementBase = SVGFE;
+using SVGFELightingElementBase = SVGFilterPrimitiveElement;
 
 class SVGFELightingElement : public SVGFELightingElementBase {
  protected:
@@ -186,6 +184,10 @@ class SVGFELightingElement : public SVGFELightingElementBase {
   SVGAnimatedString& GetResultImageName() override {
     return mStringAttributes[RESULT];
   }
+
+  bool OutputIsTainted(const nsTArray<bool>& aInputsAreTainted,
+                       nsIPrincipal* aReferencePrincipal) override;
+
   void GetSourceImageNames(nsTArray<SVGStringInfo>& aSources) override;
 
  protected:
@@ -222,7 +224,7 @@ class SVGFELightingElement : public SVGFELightingElementBase {
   static StringInfo sStringInfo[2];
 };
 
-using SVGFELightElementBase = SVGFEUnstyledElement;
+using SVGFELightElementBase = SVGFilterPrimitiveChildElement;
 
 class SVGFELightElement : public SVGFELightElementBase {
  protected:

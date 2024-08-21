@@ -10,7 +10,29 @@
 #include "mozilla/ProfilerMarkers.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/PerfStats.h"
+#include "nsCycleCollectionParticipant.h"
 #include "nsRefreshDriver.h"
+
+using mozilla::CCReason;
+
+/* Globally initialized constants
+ */
+namespace mozilla {
+const TimeDuration kOneMinute = TimeDuration::FromSeconds(60.0f);
+const TimeDuration kCCDelay = TimeDuration::FromSeconds(6);
+const TimeDuration kCCSkippableDelay = TimeDuration::FromMilliseconds(250);
+const TimeDuration kTimeBetweenForgetSkippableCycles =
+    TimeDuration::FromSeconds(2);
+const TimeDuration kForgetSkippableSliceDuration =
+    TimeDuration::FromMilliseconds(2);
+const TimeDuration kICCIntersliceDelay = TimeDuration::FromMilliseconds(250);
+const TimeDuration kICCSliceBudget = TimeDuration::FromMilliseconds(3);
+const TimeDuration kIdleICCSliceBudget = TimeDuration::FromMilliseconds(2);
+const TimeDuration kMaxICCDuration = TimeDuration::FromSeconds(2);
+
+const TimeDuration kCCForced = kOneMinute * 2;
+const TimeDuration kMaxCCLockedoutTime = TimeDuration::FromSeconds(30);
+}  // namespace mozilla
 
 /*
  * GC Scheduling from Firefox
@@ -110,10 +132,73 @@
  */
 
 namespace geckoprofiler::markers {
-struct CCIntervalMarker {
-  static constexpr mozilla::Span<const char> MarkerTypeName() {
-    return mozilla::MakeStringSpan("CC");
+struct CCIntervalMarker : public mozilla::BaseMarkerType<CCIntervalMarker> {
+  static constexpr const char* Name = "CC";
+  static constexpr const char* Description =
+      "Summary data for the core part of a cycle collection, possibly "
+      "encompassing a set of incremental slices. The main thread is not "
+      "blocked for the entire major CC interval, only for the individual "
+      "slices.";
+
+  using MS = mozilla::MarkerSchema;
+  static constexpr MS::PayloadField PayloadFields[] = {
+      {"mReason", MS::InputType::CString, "Reason", MS::Format::String,
+       MS::PayloadFlags::Searchable},
+      {"mMaxSliceTime", MS::InputType::TimeDuration, "Max Slice Time",
+       MS::Format::Duration},
+      {"mSuspected", MS::InputType::Uint32, "Suspected Objects",
+       MS::Format::Integer},
+      {"mSlices", MS::InputType::Uint32, "Number of Slices",
+       MS::Format::Integer},
+      {"mAnyManual", MS::InputType::Boolean, "Manually Triggered",
+       MS::Format::Integer},
+      {"mForcedGC", MS::InputType::Boolean, "GC Forced", MS::Format::Integer},
+      {"mMergedZones", MS::InputType::Boolean, "Zones Merged",
+       MS::Format::Integer},
+      {"mForgetSkippable", MS::InputType::Uint32, "Forget Skippables",
+       MS::Format::Integer},
+      {"mVisitedRefCounted", MS::InputType::Uint32,
+       "Refcounted Objects Visited", MS::Format::Integer},
+      {"mVisitedGCed", MS::InputType::Uint32, "GC Objects Visited",
+       MS::Format::Integer},
+      {"mFreedRefCounted", MS::InputType::Uint32, "GC Objects Freed",
+       MS::Format::Integer},
+      {"mFreedGCed", MS::InputType::Uint32, "GC Objects Freed",
+       MS::Format::Integer},
+      {"mFreedJSZones", MS::InputType::Uint32, "JS Zones Freed",
+       MS::Format::Integer},
+      {"mRemovedPurples", MS::InputType::Uint32,
+       "Objects Removed From Purple Buffer", MS::Format::Integer}};
+
+  static constexpr MS::Location Locations[] = {MS::Location::MarkerChart,
+                                               MS::Location::MarkerTable,
+                                               MS::Location::TimelineMemory};
+  static constexpr MS::ETWMarkerGroup Group = MS::ETWMarkerGroup::Memory;
+
+  static void TranslateMarkerInputToSchema(
+      void* aContext, bool aIsStart,
+      const mozilla::ProfilerString8View& aReason,
+      uint32_t aForgetSkippableBeforeCC, uint32_t aSuspectedAtCCStart,
+      uint32_t aRemovedPurples, const mozilla::CycleCollectorResults& aResults,
+      const mozilla::TimeDuration& aMaxSliceTime) {
+    uint32_t none = 0;
+    if (aIsStart) {
+      ETW::OutputMarkerSchema(aContext, CCIntervalMarker{}, aReason,
+                              mozilla::TimeDuration{}, aSuspectedAtCCStart,
+                              none, false, false, false,
+                              aForgetSkippableBeforeCC, none, none, none, none,
+                              none, aRemovedPurples);
+    } else {
+      ETW::OutputMarkerSchema(
+          aContext, CCIntervalMarker{}, mozilla::ProfilerStringView(""),
+          aMaxSliceTime, none, aResults.mNumSlices, aResults.mAnyManual,
+          aResults.mForcedGC, aResults.mMergedZones, none,
+          aResults.mVisitedRefCounted, aResults.mVisitedGCed,
+          aResults.mFreedRefCounted, aResults.mFreedGCed,
+          aResults.mFreedJSZones, none);
+    }
   }
+
   static void StreamJSONMarkerData(
       mozilla::baseprofiler::SpliceableJSONWriter& aWriter, bool aIsStart,
       const mozilla::ProfilerString8View& aReason,
@@ -139,46 +224,6 @@ struct CCIntervalMarker {
       aWriter.IntProperty("mFreedGCed", aResults.mFreedGCed);
       aWriter.IntProperty("mFreedJSZones", aResults.mFreedJSZones);
     }
-  }
-  static mozilla::MarkerSchema MarkerTypeDisplay() {
-    using MS = mozilla::MarkerSchema;
-    MS schema{MS::Location::MarkerChart, MS::Location::MarkerTable,
-              MS::Location::TimelineMemory};
-    schema.AddStaticLabelValue(
-        "Description",
-        "Summary data for the core part of a cycle collection, possibly "
-        "encompassing a set of incremental slices. The main thread is not "
-        "blocked for the entire major CC interval, only for the individual "
-        "slices.");
-    schema.AddKeyLabelFormatSearchable("mReason", "Reason", MS::Format::String,
-                                       MS::Searchable::Searchable);
-    schema.AddKeyLabelFormat("mMaxSliceTime", "Max Slice Time",
-                             MS::Format::Duration);
-    schema.AddKeyLabelFormat("mSuspected", "Suspected Objects",
-                             MS::Format::Integer);
-    schema.AddKeyLabelFormat("mSlices", "Number of Slices",
-                             MS::Format::Integer);
-    schema.AddKeyLabelFormat("mAnyManual", "Manually Triggered",
-                             MS::Format::Integer);
-    schema.AddKeyLabelFormat("mForcedGC", "GC Forced", MS::Format::Integer);
-    schema.AddKeyLabelFormat("mMergedZones", "Zones Merged",
-                             MS::Format::Integer);
-    schema.AddKeyLabelFormat("mForgetSkippable", "Forget Skippables",
-                             MS::Format::Integer);
-    schema.AddKeyLabelFormat("mVisitedRefCounted", "Refcounted Objects Visited",
-                             MS::Format::Integer);
-    schema.AddKeyLabelFormat("mVisitedGCed", "GC Objects Visited",
-                             MS::Format::Integer);
-    schema.AddKeyLabelFormat("mFreedRefCounted", "Refcounted Objects Freed",
-                             MS::Format::Integer);
-    schema.AddKeyLabelFormat("mFreedGCed", "GC Objects Freed",
-                             MS::Format::Integer);
-    schema.AddKeyLabelFormat("mCollectedGCZones", "JS Zones Freed",
-                             MS::Format::Integer);
-    schema.AddKeyLabelFormat("mRemovedPurples",
-                             "Objects Removed From Purple Buffer",
-                             MS::Format::Integer);
-    return schema;
   }
 };
 }  // namespace geckoprofiler::markers
@@ -603,14 +648,25 @@ void CCGCScheduler::PokeMinorGC(JS::GCReason aReason) {
   EnsureGCRunner(0);
 }
 
+void CCGCScheduler::EnsureOrResetGCRunner() {
+  if (!mGCRunner) {
+    EnsureGCRunner(0);
+    return;
+  }
+
+  mGCRunner->ResetTimer(TimeDuration::FromMilliseconds(
+      StaticPrefs::javascript_options_gc_delay_interslice()));
+}
+
 void CCGCScheduler::EnsureGCRunner(TimeDuration aDelay) {
   if (mGCRunner) {
     return;
   }
 
-  TimeDuration minimumBudget = nsRefreshDriver::IsInHighRateMode()
-                                   ? TimeDuration::FromMilliseconds(1)
-                                   : mActiveIntersliceGCBudget;
+  TimeDuration minimumBudget = TimeDuration::FromMilliseconds(
+      std::max(nsRefreshDriver::HighRateMultiplier() *
+                   mActiveIntersliceGCBudget.ToMilliseconds(),
+               1.0));
 
   // Wait at most the interslice GC delay before forcing a run.
   mGCRunner = IdleTaskRunner::Create(
@@ -673,9 +729,8 @@ void CCGCScheduler::KillGCRunner() {
 void CCGCScheduler::EnsureCCRunner(TimeDuration aDelay, TimeDuration aBudget) {
   MOZ_ASSERT(!mDidShutdown);
 
-  TimeDuration minimumBudget = nsRefreshDriver::IsInHighRateMode()
-                                   ? TimeDuration::FromMilliseconds(1)
-                                   : aBudget;
+  TimeDuration minimumBudget = TimeDuration::FromMilliseconds(std::max(
+      nsRefreshDriver::HighRateMultiplier() * aBudget.ToMilliseconds(), 1.0));
 
   if (!mCCRunner) {
     mCCRunner = IdleTaskRunner::Create(
@@ -767,33 +822,45 @@ js::SliceBudget CCGCScheduler::ComputeCCSliceBudget(
       std::max({delaySliceBudget, laterSliceBudget, baseBudget})));
 }
 
+// Compute a budget for a GC slice. The budget corresponds to an amount of
+// time and a boolean indicating whether the slice should be interruptible.
+//
+// Inputs are an idle deadline (or null if this is not running in idle time),
+// and a timestamp (probably null) when the CC started being locked out while
+// waiting for the ongoing GC to finish.
 js::SliceBudget CCGCScheduler::ComputeInterSliceGCBudget(TimeStamp aDeadline,
                                                          TimeStamp aNow) {
-  // We use longer budgets when the CC has been locked out but the CC has
-  // tried to run since that means we may have a significant amount of
-  // garbage to collect and it's better to GC in several longer slices than
-  // in a very long one.
   TimeDuration budget =
-      aDeadline.IsNull() ? mActiveIntersliceGCBudget * 2 : aDeadline - aNow;
-  if (!mCCBlockStart) {
-    return CreateGCSliceBudget(budget, !aDeadline.IsNull(), false);
+      aDeadline.IsNull() ? mActiveIntersliceGCBudget : aDeadline - aNow;
+  if (!mCCBlockStart) {  // CC is not blocked.
+    return CreateGCSliceBudget(budget, aDeadline.IsNull() ? eNotIdle : eIdle,
+                               eNormalBudget, eInterruptible);
   }
 
+  // Use longer budgets when the CC has tried to run but been locked out, since
+  // that means we may have a significant amount of garbage to collect and it's
+  // better to GC in multiple longer slices than one very long one.
+
   TimeDuration blockedTime = aNow - mCCBlockStart;
-  TimeDuration maxSliceGCBudget = mActiveIntersliceGCBudget * 10;
+  TimeDuration maxSliceGCBudget = mActiveIntersliceGCBudget * 5;
+  // Blocked for 100% of max allowed locked out time => use max GC slice budget.
+  // Blocked for 0% of max allowed => fall back to the standard budget.
+  //
+  // Scale intermediate values linearly between 0 and max GC slice budget, but
+  // use the standard budget as a minimum.
   double percentOfBlockedTime =
       std::min(blockedTime / kMaxCCLockedoutTime, 1.0);
   TimeDuration extendedBudget =
       maxSliceGCBudget.MultDouble(percentOfBlockedTime);
   if (budget >= extendedBudget) {
-    return CreateGCSliceBudget(budget, !aDeadline.IsNull(), false);
+    return CreateGCSliceBudget(budget, aDeadline.IsNull() ? eNotIdle : eIdle,
+                               eNormalBudget, eInterruptible);
   }
 
   // If the budget is being extended, do not allow it to be interrupted.
-  auto result = js::SliceBudget(js::TimeBudget(extendedBudget), nullptr);
-  result.idle = !aDeadline.IsNull();
-  result.extended = true;
-  return result;
+  return CreateGCSliceBudget(extendedBudget,
+                             aDeadline.IsNull() ? eNotIdle : eIdle,
+                             eExtendedBudget, eNonInterruptible);
 }
 
 CCReason CCGCScheduler::ShouldScheduleCC(TimeStamp aNow,

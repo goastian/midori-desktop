@@ -279,7 +279,7 @@ class WorkerFetchResolver final : public FetchDriverObserver {
     aWorkerPrivate->AssertIsOnWorkerThread();
     MOZ_ASSERT(!mIsShutdown);
 
-    return mPromiseProxy->WorkerPromise();
+    return mPromiseProxy->GetWorkerPromise();
   }
 
   FetchObserver* GetFetchObserver(WorkerPrivate* aWorkerPrivate) const {
@@ -470,7 +470,7 @@ class MainThreadFetchRunnable : public Runnable {
 };
 
 already_AddRefed<Promise> FetchRequest(nsIGlobalObject* aGlobal,
-                                       const RequestOrUSVString& aInput,
+                                       const RequestOrUTF8String& aInput,
                                        const RequestInit& aInit,
                                        CallerType aCallerType,
                                        ErrorResult& aRv) {
@@ -588,11 +588,10 @@ already_AddRefed<Promise> FetchRequest(nsIGlobalObject* aGlobal,
 
     RefPtr<MainThreadFetchResolver> resolver = new MainThreadFetchResolver(
         p, observer, signalImpl, request->MozErrors());
-    RefPtr<FetchDriver> fetch =
-        new FetchDriver(std::move(r), principal, loadGroup,
-                        aGlobal->EventTargetFor(TaskCategory::Other),
-                        cookieJarSettings, nullptr,  // PerformanceStorage
-                        isTrackingFetch);
+    RefPtr<FetchDriver> fetch = new FetchDriver(
+        std::move(r), principal, loadGroup, aGlobal->SerialEventTarget(),
+        cookieJarSettings, nullptr,  // PerformanceStorage
+        isTrackingFetch);
     fetch->SetDocument(doc);
     resolver->SetLoadGroup(loadGroup);
     aRv = fetch->Fetch(signalImpl, resolver);
@@ -661,6 +660,8 @@ already_AddRefed<Promise> FetchRequest(nsIGlobalObject* aGlobal,
         stack = GetCurrentStackForNetMonitor(cx);
         actor->SetOriginStack(std::move(stack));
       }
+
+      ipcArgs.isThirdPartyContext() = worker->IsThirdPartyContext();
 
       actor->DoFetchOp(ipcArgs);
 
@@ -793,7 +794,7 @@ class WorkerFetchResponseRunnable final : public MainThreadWorkerRunnable {
   WorkerFetchResponseRunnable(WorkerPrivate* aWorkerPrivate,
                               WorkerFetchResolver* aResolver,
                               SafeRefPtr<InternalResponse> aResponse)
-      : MainThreadWorkerRunnable(aWorkerPrivate),
+      : MainThreadWorkerRunnable("WorkerFetchResponseRunnable"),
         mResolver(aResolver),
         mInternalResponse(std::move(aResponse)) {
     MOZ_ASSERT(mResolver);
@@ -802,8 +803,15 @@ class WorkerFetchResponseRunnable final : public MainThreadWorkerRunnable {
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
     MOZ_ASSERT(aWorkerPrivate);
     aWorkerPrivate->AssertIsOnWorkerThread();
+    if (mResolver->IsShutdown(aWorkerPrivate)) {
+      return true;
+    }
 
     RefPtr<Promise> promise = mResolver->WorkerPromise(aWorkerPrivate);
+    // Once Worker had already started shutdown, workerPromise would be nullptr
+    if (!promise) {
+      return true;
+    }
     RefPtr<FetchObserver> fetchObserver =
         mResolver->GetFetchObserver(aWorkerPrivate);
 
@@ -842,7 +850,8 @@ class WorkerDataAvailableRunnable final : public MainThreadWorkerRunnable {
  public:
   WorkerDataAvailableRunnable(WorkerPrivate* aWorkerPrivate,
                               WorkerFetchResolver* aResolver)
-      : MainThreadWorkerRunnable(aWorkerPrivate), mResolver(aResolver) {}
+      : MainThreadWorkerRunnable("WorkerDataAvailableRunnable"),
+        mResolver(aResolver) {}
 
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
     MOZ_ASSERT(aWorkerPrivate);
@@ -882,7 +891,7 @@ class WorkerFetchResponseEndRunnable final : public MainThreadWorkerRunnable,
   WorkerFetchResponseEndRunnable(WorkerPrivate* aWorkerPrivate,
                                  WorkerFetchResolver* aResolver,
                                  FetchDriverObserver::EndReason aReason)
-      : MainThreadWorkerRunnable(aWorkerPrivate),
+      : MainThreadWorkerRunnable("WorkerFetchResponseEndRunnable"),
         WorkerFetchResponseEndBase(aResolver),
         mReason(aReason) {}
 
@@ -900,16 +909,7 @@ class WorkerFetchResponseEndRunnable final : public MainThreadWorkerRunnable,
     return true;
   }
 
-  nsresult Cancel() override {
-    // We need to check first if cancel is called twice
-    nsresult rv = WorkerRunnable::Cancel();
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    // Execute Run anyway to make sure we cleanup our promise proxy to avoid
-    // leaking the worker thread
-    Run();
-    return NS_OK;
-  }
+  nsresult Cancel() override { return Run(); }
 };
 
 class WorkerFetchResponseEndControlRunnable final
@@ -918,7 +918,8 @@ class WorkerFetchResponseEndControlRunnable final
  public:
   WorkerFetchResponseEndControlRunnable(WorkerPrivate* aWorkerPrivate,
                                         WorkerFetchResolver* aResolver)
-      : MainThreadWorkerControlRunnable(aWorkerPrivate),
+      : MainThreadWorkerControlRunnable(
+            "WorkerFetchResponseEndControlRunnable"),
         WorkerFetchResponseEndBase(aResolver) {}
 
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
@@ -941,7 +942,7 @@ void WorkerFetchResolver::OnResponseAvailableInternal(
   RefPtr<WorkerFetchResponseRunnable> r = new WorkerFetchResponseRunnable(
       mPromiseProxy->GetWorkerPrivate(), this, std::move(aResponse));
 
-  if (!r->Dispatch()) {
+  if (!r->Dispatch(mPromiseProxy->GetWorkerPrivate())) {
     NS_WARNING("Could not dispatch fetch response");
   }
 }
@@ -961,7 +962,7 @@ void WorkerFetchResolver::OnDataAvailable() {
 
   RefPtr<WorkerDataAvailableRunnable> r =
       new WorkerDataAvailableRunnable(mPromiseProxy->GetWorkerPrivate(), this);
-  Unused << r->Dispatch();
+  Unused << r->Dispatch(mPromiseProxy->GetWorkerPrivate());
 }
 
 void WorkerFetchResolver::OnResponseEnd(FetchDriverObserver::EndReason aReason,
@@ -979,14 +980,14 @@ void WorkerFetchResolver::OnResponseEnd(FetchDriverObserver::EndReason aReason,
   RefPtr<WorkerFetchResponseEndRunnable> r = new WorkerFetchResponseEndRunnable(
       mPromiseProxy->GetWorkerPrivate(), this, aReason);
 
-  if (!r->Dispatch()) {
+  if (!r->Dispatch(mPromiseProxy->GetWorkerPrivate())) {
     RefPtr<WorkerFetchResponseEndControlRunnable> cr =
         new WorkerFetchResponseEndControlRunnable(
             mPromiseProxy->GetWorkerPrivate(), this);
     // This can fail if the worker thread is canceled or killed causing
     // the PromiseWorkerProxy to give up its WorkerRef immediately,
     // allowing the worker thread to become Dead.
-    if (!cr->Dispatch()) {
+    if (!cr->Dispatch(mPromiseProxy->GetWorkerPrivate())) {
       NS_WARNING("Failed to dispatch WorkerFetchResponseEndControlRunnable");
     }
   }
@@ -1202,7 +1203,7 @@ FetchBody<Derived>::FetchBody(nsIGlobalObject* aOwner)
     MOZ_ASSERT(wp);
     mMainThreadEventTarget = wp->MainThreadEventTarget();
   } else {
-    mMainThreadEventTarget = aOwner->EventTargetFor(TaskCategory::Other);
+    mMainThreadEventTarget = GetMainThreadSerialEventTarget();
   }
 
   MOZ_ASSERT(mMainThreadEventTarget);
@@ -1242,7 +1243,7 @@ template bool FetchBody<Response>::BodyUsed() const;
 template <class Derived>
 void FetchBody<Derived>::SetBodyUsed(JSContext* aCx, ErrorResult& aRv) {
   MOZ_ASSERT(aCx);
-  MOZ_ASSERT(mOwner->EventTargetFor(TaskCategory::Other)->IsOnCurrentThread());
+  MOZ_ASSERT(mOwner->SerialEventTarget()->IsOnCurrentThread());
 
   MOZ_DIAGNOSTIC_ASSERT(!BodyUsed(), "Consuming already used body?");
   if (BodyUsed()) {
@@ -1254,19 +1255,18 @@ void FetchBody<Derived>::SetBodyUsed(JSContext* aCx, ErrorResult& aRv) {
   // If we already have a ReadableStreamBody and it has been created by DOM, we
   // have to lock it now because it can have been shared with other objects.
   if (mReadableStreamBody) {
-    if (mReadableStreamBody->MaybeGetInputStreamIfUnread()) {
-      LockStream(aCx, mReadableStreamBody, aRv);
-      if (NS_WARN_IF(aRv.Failed())) {
-        return;
-      }
-    } else {
-      MOZ_ASSERT(mFetchStreamReader);
-      //  Let's activate the FetchStreamReader.
+    if (mFetchStreamReader) {
+      // Having FetchStreamReader means there's no nsIInputStream underlying it
+      MOZ_ASSERT(!mReadableStreamBody->MaybeGetInputStreamIfUnread());
       mFetchStreamReader->StartConsuming(aCx, mReadableStreamBody, aRv);
-      if (NS_WARN_IF(aRv.Failed())) {
-        return;
-      }
+      return;
     }
+    // We should have nsIInputStream at this point as long as it's still
+    // readable
+    MOZ_ASSERT_IF(
+        mReadableStreamBody->State() == ReadableStream::ReaderState::Readable,
+        mReadableStreamBody->MaybeGetInputStreamIfUnread());
+    LockStream(aCx, mReadableStreamBody, aRv);
   }
 }
 

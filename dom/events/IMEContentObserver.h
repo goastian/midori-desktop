@@ -139,11 +139,20 @@ class IMEContentObserver final : public nsStubMutationObserver,
                                             dom::Element* aElement,
                                             EditorBase& aEditorBase);
 
-  bool IsManaging(const nsPresContext& aPresContext,
-                  const dom::Element* aElement) const;
-  bool IsBeingInitializedFor(const nsPresContext& aPresContext,
-                             const dom::Element* aElement) const;
-  bool IsManaging(const TextComposition& aTextComposition) const;
+  /**
+   * Return true if this is observing editable content and aElement has focus.
+   * If aElement is a text control, check if this is observing its anonymous
+   * subtree.  Otherwise, check if this is observing the children of aElement in
+   * the DOM tree.  If aElement is nullptr, this returns true if entire the
+   * document is editable, e.g., in the designMode.
+   */
+  [[nodiscard]] bool IsObserving(const nsPresContext& aPresContext,
+                                 const dom::Element* aElement) const;
+
+  [[nodiscard]] bool IsBeingInitializedFor(const nsPresContext& aPresContext,
+                                           const dom::Element* aElement,
+                                           const EditorBase& aEditorBase) const;
+  bool IsObserving(const TextComposition& aTextComposition) const;
   bool WasInitializedWith(const EditorBase& aEditorBase) const {
     return mEditorBase == &aEditorBase;
   }
@@ -151,6 +160,9 @@ class IMEContentObserver final : public nsStubMutationObserver,
   bool KeepAliveDuringDeactive() const {
     return mIMENotificationRequests &&
            mIMENotificationRequests->WantDuringDeactive();
+  }
+  [[nodiscard]] bool EditorIsTextEditor() const {
+    return mEditorBase && mEditorBase->IsTextEditor();
   }
   nsIWidget* GetWidget() const { return mWidget; }
   void SuppressNotifyingIME();
@@ -403,6 +415,7 @@ class IMEContentObserver final : public nsStubMutationObserver,
    */
   class DocumentObserver final : public nsStubDocumentObserver {
    public:
+    DocumentObserver() = delete;
     explicit DocumentObserver(IMEContentObserver& aIMEContentObserver)
         : mIMEContentObserver(&aIMEContentObserver), mDocumentUpdating(0) {
       SetEnabledCallbacks(nsIMutationObserver::kBeginUpdate |
@@ -423,7 +436,6 @@ class IMEContentObserver final : public nsStubMutationObserver,
     bool IsUpdating() const { return mDocumentUpdating != 0; }
 
    private:
-    DocumentObserver() = delete;
     virtual ~DocumentObserver() { Destroy(); }
 
     RefPtr<IMEContentObserver> mIMEContentObserver;
@@ -506,9 +518,9 @@ class IMEContentObserver final : public nsStubMutationObserver,
   // of the selection change is modified by MaybeNotifyIMEOfSelectionChange().
   SelectionChangeData mSelectionData;
 
-  EventStateManager* mESM;
+  EventStateManager* mESM = nullptr;
 
-  const IMENotificationRequests* mIMENotificationRequests;
+  const IMENotificationRequests* mIMENotificationRequests = nullptr;
   int64_t mPreCharacterDataChangeLength = -1;
   uint32_t mSuppressNotifications = 0;
 
@@ -519,18 +531,19 @@ class IMEContentObserver final : public nsStubMutationObserver,
   // mSendingNotification is a notification which is now sending from
   // IMENotificationSender.  When the value is NOTIFY_IME_OF_NOTHING, it's
   // not sending any notification.
-  IMEMessage mSendingNotification;
+  IMEMessage mSendingNotification = widget::NOTIFY_IME_OF_NOTHING;
 
-  bool mIsObserving;
-  bool mIMEHasFocus;
-  bool mNeedsToNotifyIMEOfFocusSet;
-  bool mNeedsToNotifyIMEOfTextChange;
-  bool mNeedsToNotifyIMEOfSelectionChange;
-  bool mNeedsToNotifyIMEOfPositionChange;
-  bool mNeedsToNotifyIMEOfCompositionEventHandled;
+  bool mIsObserving = false;
+  bool mIsTextControl = false;
+  bool mIMEHasFocus = false;
+  bool mNeedsToNotifyIMEOfFocusSet = false;
+  bool mNeedsToNotifyIMEOfTextChange = false;
+  bool mNeedsToNotifyIMEOfSelectionChange = false;
+  bool mNeedsToNotifyIMEOfPositionChange = false;
+  bool mNeedsToNotifyIMEOfCompositionEventHandled = false;
   // mIsHandlingQueryContentEvent is true when IMEContentObserver is handling
   // WidgetQueryContentEvent with ContentEventHandler.
-  bool mIsHandlingQueryContentEvent;
+  bool mIsHandlingQueryContentEvent = false;
 };
 
 }  // namespace mozilla

@@ -21,8 +21,8 @@ class TextEncoder final : public NonRefcountedDOMObject {
  public:
   // The WebIDL constructor.
 
-  static TextEncoder* Constructor(const GlobalObject& aGlobal) {
-    return new TextEncoder();
+  static UniquePtr<TextEncoder> Constructor(const GlobalObject& aGlobal) {
+    return MakeUnique<TextEncoder>();
   }
 
   TextEncoder() = default;
@@ -54,7 +54,7 @@ class TextEncoder final : public NonRefcountedDOMObject {
    */
   void Encode(JSContext* aCx, JS::Handle<JSObject*> aObj,
               const nsACString& aUtf8String,
-              JS::MutableHandle<JSObject*> aRetval, OOMReporter& aRv);
+              JS::MutableHandle<JSObject*> aRetval, ErrorResult& aRv);
 
   void EncodeInto(JSContext* aCx, JS::Handle<JSString*> aSrc,
                   const Uint8Array& aDst, TextEncoderEncodeIntoResult& aResult,

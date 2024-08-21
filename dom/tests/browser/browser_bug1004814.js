@@ -8,7 +8,7 @@ add_task(async function () {
     "http://example.com/browser/dom/tests/browser/test_bug1004814.html";
 
   await BrowserTestUtils.withNewTab(TEST_URI, async aBrowser => {
-    let duration = await SpecialPowers.spawn(aBrowser, [], function (opts) {
+    let duration = await SpecialPowers.spawn(aBrowser, [], function () {
       const ConsoleAPIStorage = Cc[
         "@mozilla.org/consoleAPI-storage;1"
       ].getService(Ci.nsIConsoleAPIStorage);
@@ -38,8 +38,9 @@ add_task(async function () {
       });
     });
 
-    ok(
-      duration > 0,
+    Assert.greater(
+      duration,
+      0,
       "ConsoleEvent.timer.duration > 0: " + duration + " ~ 200ms"
     );
   });

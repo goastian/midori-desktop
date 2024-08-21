@@ -40,32 +40,33 @@ interface nsIContentSecurityPolicy : nsISerializable
    * add it to the CSPStrDirectives array in nsCSPUtils.h.
    */
   cenum CSPDirective : 8 {
-    NO_DIRECTIVE                   = 0,
-    DEFAULT_SRC_DIRECTIVE          = 1,
-    SCRIPT_SRC_DIRECTIVE           = 2,
-    OBJECT_SRC_DIRECTIVE           = 3,
-    STYLE_SRC_DIRECTIVE            = 4,
-    IMG_SRC_DIRECTIVE              = 5,
-    MEDIA_SRC_DIRECTIVE            = 6,
-    FRAME_SRC_DIRECTIVE            = 7,
-    FONT_SRC_DIRECTIVE             = 8,
-    CONNECT_SRC_DIRECTIVE          = 9,
-    REPORT_URI_DIRECTIVE           = 10,
-    FRAME_ANCESTORS_DIRECTIVE      = 11,
-    REFLECTED_XSS_DIRECTIVE        = 12,
-    BASE_URI_DIRECTIVE             = 13,
-    FORM_ACTION_DIRECTIVE          = 14,
-    WEB_MANIFEST_SRC_DIRECTIVE     = 15,
-    UPGRADE_IF_INSECURE_DIRECTIVE  = 16,
-    CHILD_SRC_DIRECTIVE            = 17,
-    BLOCK_ALL_MIXED_CONTENT        = 18,
-    SANDBOX_DIRECTIVE              = 19,
-    WORKER_SRC_DIRECTIVE           = 20,
-    NAVIGATE_TO_DIRECTIVE          = 21,
-    SCRIPT_SRC_ELEM_DIRECTIVE      = 22,
-    SCRIPT_SRC_ATTR_DIRECTIVE      = 23,
-    STYLE_SRC_ELEM_DIRECTIVE       = 24,
-    STYLE_SRC_ATTR_DIRECTIVE       = 25,
+    NO_DIRECTIVE                          = 0,
+    DEFAULT_SRC_DIRECTIVE                 = 1,
+    SCRIPT_SRC_DIRECTIVE                  = 2,
+    OBJECT_SRC_DIRECTIVE                  = 3,
+    STYLE_SRC_DIRECTIVE                   = 4,
+    IMG_SRC_DIRECTIVE                     = 5,
+    MEDIA_SRC_DIRECTIVE                   = 6,
+    FRAME_SRC_DIRECTIVE                   = 7,
+    FONT_SRC_DIRECTIVE                    = 8,
+    CONNECT_SRC_DIRECTIVE                 = 9,
+    REPORT_URI_DIRECTIVE                  = 10,
+    FRAME_ANCESTORS_DIRECTIVE             = 11,
+    REFLECTED_XSS_DIRECTIVE               = 12,
+    BASE_URI_DIRECTIVE                    = 13,
+    FORM_ACTION_DIRECTIVE                 = 14,
+    WEB_MANIFEST_SRC_DIRECTIVE            = 15,
+    UPGRADE_IF_INSECURE_DIRECTIVE         = 16,
+    CHILD_SRC_DIRECTIVE                   = 17,
+    BLOCK_ALL_MIXED_CONTENT               = 18,
+    SANDBOX_DIRECTIVE                     = 19,
+    WORKER_SRC_DIRECTIVE                  = 20,
+    SCRIPT_SRC_ELEM_DIRECTIVE             = 21,
+    SCRIPT_SRC_ATTR_DIRECTIVE             = 22,
+    STYLE_SRC_ELEM_DIRECTIVE              = 23,
+    STYLE_SRC_ATTR_DIRECTIVE              = 24,
+    REQUIRE_TRUSTED_TYPES_FOR_DIRECTIVE   = 25,
+    TRUSTED_TYPES_DIRECTIVE               = 26,
   };
 
   /**
@@ -92,7 +93,7 @@ interface nsIContentSecurityPolicy : nsISerializable
    * Please note that upgrade-insecure-reqeusts also applies if the parent or
    * including document (context) makes use of the directive.
    */
-  readonly attribute bool upgradeInsecureRequests;
+  readonly attribute boolean upgradeInsecureRequests;
 
   /**
    * Returns whether this policy uses the directive block-all-mixed-content.
@@ -101,12 +102,12 @@ interface nsIContentSecurityPolicy : nsISerializable
    * will therefore block all mixed content without even trying to perform
    * an upgrade.
    */
-  readonly attribute bool blockAllMixedContent;
+  readonly attribute boolean blockAllMixedContent;
 
   /**
    * Returns whether this policy enforces the frame-ancestors directive.
    */
-  readonly attribute bool enforcesFrameAncestors;
+  readonly attribute boolean enforcesFrameAncestors;
 
   /**
    * Parse and install a CSP policy.
@@ -129,7 +130,7 @@ interface nsIContentSecurityPolicy : nsISerializable
    *                           STYLE_SRC_(ELEM|ATTR)_DIRECTIVE.
    * @param aHasUnsafeHash Only hash this when the 'unsafe-hashes' directive is
    *                       also specified.
-   * @param aNonce The nonce string to check against the policy
+   * @param aNonce The nonce string to check against the policy.
    * @param aParserCreated If the script element was created by the HTML Parser
    * @param aTriggeringElement The script element of the inline resource to
    *        hash. It can be null.
@@ -145,7 +146,7 @@ interface nsIContentSecurityPolicy : nsISerializable
    *     (block the rules if false).
    */
   boolean getAllowsInline(in nsIContentSecurityPolicy_CSPDirective aDirective,
-                          in bool aHasUnsafeHash,
+                          in boolean aHasUnsafeHash,
                           in AString aNonce,
                           in boolean aParserCreated,
                           in Element aTriggeringElement,
@@ -153,24 +154,6 @@ interface nsIContentSecurityPolicy : nsISerializable
                           in AString aContentOfPseudoScript,
                           in unsigned long aLineNumber,
                           in unsigned long aColumnNumber);
-
-  /*
-   * Whether this policy allows a navigation subject to the navigate-to
-   * policy.
-   * @param aURI The target URI
-   * @param aIsFormSubmission True if the navigation was initiated by a form submission. This
-   *        is important since the form-action directive overrides navigate-to in that case.
-   * @param aWasRedirect True if a redirect has happened. Important for path-sensitivity.
-   * @param aEnforceAllowlist True if the allowlist of allowed targets must be enforced. If
-   *        this is true, the allowlist must be enforced even if 'unsafe-allow-redirects' is
-   *        used. If 'unsafe-allow-redirects' is not used then the allowlist is always enforced
-   * @return
-   *     Whether or not the effects of the navigation is allowed
-   */
-  boolean getAllowsNavigateTo(in nsIURI aURI,
-                              in boolean aIsFormSubmission,
-                              in boolean aWasRedirected,
-                              in boolean aEnforceAllowlist);
 
   /**
    * Whether this policy allows eval and eval-like functions
@@ -260,7 +243,7 @@ interface nsIContentSecurityPolicy : nsISerializable
   [must_use] void setRequestContextWithDocument(in Document aDocument);
   [must_use] void setRequestContextWithPrincipal(in nsIPrincipal aRequestPrincipal,
                                                  in nsIURI aSelfURI,
-                                                 in AString aReferrer,
+                                                 in ACString aReferrer,
                                                  in unsigned long long aInnerWindowId);
 
   /**
@@ -268,7 +251,7 @@ interface nsIContentSecurityPolicy : nsISerializable
    */
   [noscript, notxpcom, nostdcall] readonly attribute nsIPrincipal requestPrincipal;
   [noscript, notxpcom, nostdcall] readonly attribute nsIURI selfURI;
-  [noscript] readonly attribute AString referrer;
+  [noscript] readonly attribute ACString referrer;
   [noscript, notxpcom, nostdcall] readonly attribute unsigned long long innerWindowID;
 
   /**
@@ -344,11 +327,10 @@ interface nsIContentSecurityPolicy : nsISerializable
    */
   short shouldLoad(in nsContentPolicyType aContentType,
                    in nsICSPEventListener aCSPEventListener,
+                   in nsILoadInfo     aLoadInfo,
                    in nsIURI          aContentLocation,
                    in nsIURI          aOriginalURIIfRedirect,
-                   in bool            aSendViolationReports,
-                   in AString         aNonce,
-                   in boolean         aParserCreated);
+                   in boolean         aSendViolationReports);
 
 %{ C++
 // nsIObserver topic to fire when the policy encounters a violation.
@@ -359,6 +341,11 @@ interface nsIContentSecurityPolicy : nsISerializable
    * Returns the CSP in JSON notation.
    */
   AString toJSON();
+
+  /**
+   * Ensure policies from IPC are read/parsed.
+   */
+  [noscript] void EnsureIPCPoliciesRead();
 
 };
 

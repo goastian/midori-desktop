@@ -11,23 +11,11 @@
 
 namespace mozilla::dom {
 
-/* static */
-already_AddRefed<PermissionStatus> MidiPermissionStatus::Create(
-    nsPIDOMWindowInner* aWindow, bool aSysex, ErrorResult& aRv) {
-  RefPtr<PermissionStatus> status = new MidiPermissionStatus(aWindow, aSysex);
-  aRv = status->Init();
-  if (NS_WARN_IF(aRv.Failed())) {
-    return nullptr;
-  }
-
-  return status.forget();
-}
-
 MidiPermissionStatus::MidiPermissionStatus(nsPIDOMWindowInner* aWindow,
                                            bool aSysex)
     : PermissionStatus(aWindow, PermissionName::Midi), mSysex(aSysex) {}
 
-nsLiteralCString MidiPermissionStatus::GetPermissionType() {
+nsLiteralCString MidiPermissionStatus::GetPermissionType() const {
   return mSysex ? "midi-sysex"_ns : "midi"_ns;
 }
 

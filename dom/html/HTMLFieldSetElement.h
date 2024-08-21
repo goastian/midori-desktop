@@ -32,31 +32,34 @@ class HTMLFieldSetElement final : public nsGenericHTMLFormControlElement,
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
 
+  // nsINode
+  nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
+
   // nsIContent
   void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
-  virtual void AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
-                            const nsAttrValue* aValue,
-                            const nsAttrValue* aOldValue,
-                            nsIPrincipal* aSubjectPrincipal,
-                            bool aNotify) override;
+  void AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
+                    const nsAttrValue* aValue, const nsAttrValue* aOldValue,
+                    nsIPrincipal* aSubjectPrincipal, bool aNotify) override;
 
-  virtual void InsertChildBefore(nsIContent* aChild, nsIContent* aBeforeThis,
-                                 bool aNotify, ErrorResult& aRv) override;
-  virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
+  void InsertChildBefore(nsIContent* aChild, nsIContent* aBeforeThis,
+                         bool aNotify, ErrorResult& aRv) override;
+  void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
 
   // nsGenericHTMLElement
-  virtual bool IsDisabledForEvents(WidgetEvent* aEvent) override;
+  bool IsDisabledForEvents(WidgetEvent* aEvent) override;
 
   // nsIFormControl
   NS_IMETHOD Reset() override;
   NS_IMETHOD SubmitNamesValues(FormData* aFormData) override { return NS_OK; }
-  virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
   const nsIContent* GetFirstLegend() const { return mFirstLegend; }
 
   void AddElement(nsGenericHTMLFormElement* aElement);
 
   void RemoveElement(nsGenericHTMLFormElement* aElement);
+
+  // nsGenericHTMLFormElement
+  void UpdateDisabledState(bool aNotify) override;
 
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(HTMLFieldSetElement,
                                            nsGenericHTMLFormControlElement)
@@ -87,8 +90,6 @@ class HTMLFieldSetElement final : public nsGenericHTMLFormControlElement,
 
   // XPCOM SetCustomValidity is OK for us
 
-  virtual ElementState IntrinsicState() const override;
-
   /*
    * This method will update the fieldset's validity.  This method has to be
    * called by fieldset elements whenever their validity state or status
@@ -104,8 +105,8 @@ class HTMLFieldSetElement final : public nsGenericHTMLFormControlElement,
  protected:
   virtual ~HTMLFieldSetElement();
 
-  virtual JSObject* WrapNode(JSContext* aCx,
-                             JS::Handle<JSObject*> aGivenProto) override;
+  JSObject* WrapNode(JSContext* aCx,
+                     JS::Handle<JSObject*> aGivenProto) override;
 
  private:
   /**
@@ -130,7 +131,7 @@ class HTMLFieldSetElement final : public nsGenericHTMLFormControlElement,
    * Number of invalid and candidate for constraint validation
    * elements in the fieldSet the last time UpdateValidity has been called.
    *
-   * @note Should only be used by UpdateValidity() and IntrinsicState()!
+   * @note Should only be used by UpdateValidity()
    */
   int32_t mInvalidElementsCount;
 };

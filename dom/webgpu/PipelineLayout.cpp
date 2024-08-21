@@ -16,21 +16,27 @@ GPU_IMPL_JS_WRAP(PipelineLayout)
 
 PipelineLayout::PipelineLayout(Device* const aParent, RawId aId)
     : ChildOf(aParent), mId(aId) {
-  if (!aId) {
-    mValid = false;
-  }
+  MOZ_RELEASE_ASSERT(aId);
 }
 
 PipelineLayout::~PipelineLayout() { Cleanup(); }
 
 void PipelineLayout::Cleanup() {
-  if (mValid && mParent) {
-    mValid = false;
-    auto bridge = mParent->GetBridge();
-    if (bridge && bridge->IsOpen()) {
-      bridge->SendPipelineLayoutDestroy(mId);
-    }
+  if (!mValid) {
+    return;
   }
+  mValid = false;
+
+  auto bridge = mParent->GetBridge();
+  if (!bridge) {
+    return;
+  }
+
+  if (bridge->CanSend()) {
+    bridge->SendPipelineLayoutDrop(mId);
+  }
+
+  wgpu_client_free_pipeline_layout_id(bridge->GetClient(), mId);
 }
 
 }  // namespace mozilla::webgpu

@@ -30,29 +30,36 @@
 
 #include "FFTBlock.h"
 
+#include "FFVPXRuntimeLinker.h"
 #include <complex>
 
 namespace mozilla {
 
-typedef std::complex<double> Complex;
+FFmpegFFTFuncs FFTBlock::sFFTFuncs = {};
 
-#ifdef MOZ_LIBAV_FFT
-FFmpegRDFTFuncs FFTBlock::sRDFTFuncs;
-#endif
+using Complex = std::complex<double>;
+
+static double fdlibm_cabs(const Complex& z) {
+  return fdlibm_hypot(real(z), imag(z));
+}
+
+static double fdlibm_carg(const Complex& z) {
+  return fdlibm_atan2(imag(z), real(z));
+}
 
 FFTBlock* FFTBlock::CreateInterpolatedBlock(const FFTBlock& block0,
                                             const FFTBlock& block1,
                                             double interp) {
-  FFTBlock* newBlock = new FFTBlock(block0.FFTSize());
+  uint32_t fftSize = block0.FFTSize();
+  FFTBlock* newBlock =
+      new FFTBlock(fftSize, 1.0f / AssertedCast<float>(fftSize));
 
   newBlock->InterpolateFrequencyComponents(block0, block1, interp);
 
   // In the time-domain, the 2nd half of the response must be zero, to avoid
   // circular convolution aliasing...
-  int fftSize = newBlock->FFTSize();
   AlignedTArray<float> buffer(fftSize);
-  newBlock->GetInverseWithoutScaling(buffer.Elements());
-  AudioBufferInPlaceScale(buffer.Elements(), 1.0f / fftSize, fftSize / 2);
+  newBlock->GetInverse(buffer.Elements());
   PodZero(buffer.Elements() + fftSize / 2, fftSize / 2);
 
   // Put back into frequency domain.
@@ -89,12 +96,12 @@ void FFTBlock::InterpolateFrequencyComponents(const FFTBlock& block0,
     Complex c1(dft1[i].r, dft1[i].i);
     Complex c2(dft2[i].r, dft2[i].i);
 
-    double mag1 = abs(c1);
-    double mag2 = abs(c2);
+    double mag1 = fdlibm_cabs(c1);
+    double mag2 = fdlibm_cabs(c2);
 
     // Interpolate magnitudes in decibels
-    double mag1db = 20.0 * log10(mag1);
-    double mag2db = 20.0 * log10(mag2);
+    double mag1db = 20.0 * fdlibm_log10(mag1);
+    double mag2db = 20.0 * fdlibm_log10(mag2);
 
     double s1 = s1base;
     double s2 = s2base;
@@ -105,20 +112,20 @@ void FFTBlock::InterpolateFrequencyComponents(const FFTBlock& block0,
     double threshold = (i > 16) ? 5.0 : 2.0;
 
     if (magdbdiff < -threshold && mag1db < 0.0) {
-      s1 = pow(s1, 0.75);
+      s1 = fdlibm_pow(s1, 0.75);
       s2 = 1.0 - s1;
     } else if (magdbdiff > threshold && mag2db < 0.0) {
-      s2 = pow(s2, 0.75);
+      s2 = fdlibm_pow(s2, 0.75);
       s1 = 1.0 - s2;
     }
 
     // Average magnitude by decibels instead of linearly
     double magdb = s1 * mag1db + s2 * mag2db;
-    double mag = pow(10.0, 0.05 * magdb);
+    double mag = fdlibm_pow(10.0, 0.05 * magdb);
 
     // Now, deal with phase
-    double phase1 = arg(c1);
-    double phase2 = arg(c2);
+    double phase1 = fdlibm_carg(c1);
+    double phase2 = fdlibm_carg(c2);
 
     double deltaPhase1 = phase1 - lastPhase1;
     double deltaPhase2 = phase2 - lastPhase2;
@@ -147,8 +154,8 @@ void FFTBlock::InterpolateFrequencyComponents(const FFTBlock& block0,
     if (phaseAccum > M_PI) phaseAccum -= 2.0 * M_PI;
     if (phaseAccum < -M_PI) phaseAccum += 2.0 * M_PI;
 
-    dft[i].r = static_cast<float>(mag * cos(phaseAccum));
-    dft[i].i = static_cast<float>(mag * sin(phaseAccum));
+    dft[i].r = static_cast<float>(mag * fdlibm_cos(phaseAccum));
+    dft[i].i = static_cast<float>(mag * fdlibm_sin(phaseAccum));
   }
 }
 
@@ -169,8 +176,8 @@ double FFTBlock::ExtractAverageGroupDelay() {
   // Calculate weighted average group delay
   for (int i = 1; i < halfSize; i++) {
     Complex c(dft[i].r, dft[i].i);
-    double mag = abs(c);
-    double phase = arg(c);
+    double mag = fdlibm_cabs(c);
+    double phase = fdlibm_carg(c);
 
     double deltaPhase = phase - lastPhase;
     lastPhase = phase;
@@ -210,13 +217,13 @@ void FFTBlock::AddConstantGroupDelay(double sampleFrameDelay) {
   // Add constant group delay
   for (int i = 1; i < halfSize; i++) {
     Complex c(dft[i].r, dft[i].i);
-    double mag = abs(c);
-    double phase = arg(c);
+    double mag = fdlibm_cabs(c);
+    double phase = fdlibm_carg(c);
 
     phase += i * phaseAdj;
 
-    dft[i].r = static_cast<float>(mag * cos(phase));
-    dft[i].i = static_cast<float>(mag * sin(phase));
+    dft[i].r = static_cast<float>(mag * fdlibm_cos(phase));
+    dft[i].i = static_cast<float>(mag * fdlibm_sin(phase));
   }
 }
 

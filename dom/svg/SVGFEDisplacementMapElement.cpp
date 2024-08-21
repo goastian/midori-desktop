@@ -22,7 +22,7 @@ JSObject* SVGFEDisplacementMapElement::WrapNode(
 }
 
 SVGElement::NumberInfo SVGFEDisplacementMapElement::sNumberInfo[1] = {
-    {nsGkAtoms::scale, 0, false},
+    {nsGkAtoms::scale, 0},
 };
 
 SVGEnumMapping SVGFEDisplacementMapElement::sChannelMap[] = {
@@ -116,7 +116,7 @@ nsresult SVGFEDisplacementMapElement::BindToTree(BindContext& aCtx,
     aCtx.OwnerDoc().SetUseCounter(eUseCounter_custom_feDisplacementMap);
   }
 
-  return SVGFE::BindToTree(aCtx, aParent);
+  return SVGFEDisplacementMapElementBase::BindToTree(aCtx, aParent);
 }
 
 //----------------------------------------------------------------------

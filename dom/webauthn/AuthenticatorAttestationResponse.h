@@ -11,8 +11,9 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/AuthenticatorResponse.h"
 #include "mozilla/dom/BindingDeclarations.h"
-#include "mozilla/dom/CryptoBuffer.h"
+#include "mozilla/dom/WebAuthenticationBinding.h"
 #include "nsCycleCollectionParticipant.h"
+#include "nsIWebAuthnAttObj.h"
 #include "nsWrapperCache.h"
 
 namespace mozilla::dom {
@@ -35,11 +36,30 @@ class AuthenticatorAttestationResponse final : public AuthenticatorResponse {
   void GetAttestationObject(JSContext* aCx, JS::MutableHandle<JSObject*> aValue,
                             ErrorResult& aRv);
 
-  nsresult SetAttestationObject(CryptoBuffer& aBuffer);
+  void SetAttestationObject(const nsTArray<uint8_t>& aBuffer);
+
+  void GetTransports(nsTArray<nsString>& aTransports);
+
+  void SetTransports(const nsTArray<nsString>& aTransports);
+
+  void GetAuthenticatorData(JSContext* aCx, JS::MutableHandle<JSObject*> aValue,
+                            ErrorResult& aRv);
+
+  void GetPublicKey(JSContext* aCx, JS::MutableHandle<JSObject*> aValue,
+                    ErrorResult& aRv);
+
+  COSEAlgorithmIdentifier GetPublicKeyAlgorithm(ErrorResult& aRv);
+
+  void ToJSON(AuthenticatorAttestationResponseJSON& aJSON, ErrorResult& aError);
 
  private:
-  CryptoBuffer mAttestationObject;
+  nsresult GetAuthenticatorDataBytes(nsTArray<uint8_t>& aAuthenticatorData);
+  nsresult GetPublicKeyBytes(nsTArray<uint8_t>& aPublicKeyBytes);
+
+  nsTArray<uint8_t> mAttestationObject;
+  nsCOMPtr<nsIWebAuthnAttObj> mAttestationObjectParsed;
   JS::Heap<JSObject*> mAttestationObjectCachedObj;
+  nsTArray<nsString> mTransports;
 };
 
 }  // namespace mozilla::dom

@@ -46,15 +46,14 @@ class BlobURLProtocolHandler final : public nsIProtocolHandler,
   // Methods for managing uri->object mapping
   // AddDataEntry creates the URI with the given scheme and returns it in aUri
   static nsresult AddDataEntry(BlobImpl*, nsIPrincipal*,
-                               const Maybe<nsID>& aAgentClusterId,
+                               const nsCString& aPartitionKey,
                                nsACString& aUri);
   static nsresult AddDataEntry(MediaSource*, nsIPrincipal*,
-                               const Maybe<nsID>& aAgentClusterId,
+                               const nsCString& aPartitionKey,
                                nsACString& aUri);
   // IPC only
   static void AddDataEntry(const nsACString& aURI, nsIPrincipal* aPrincipal,
-                           const Maybe<nsID>& aAgentClusterId,
-                           BlobImpl* aBlobImpl);
+                           const nsCString& aPartitionKey, BlobImpl* aBlobImpl);
 
   // These methods revoke a blobURL. Because some operations could still be in
   // progress, the revoking consists in marking the blobURL as revoked and in
@@ -63,7 +62,7 @@ class BlobURLProtocolHandler final : public nsIProtocolHandler,
                               bool aBroadcastToOTherProcesses = true);
   // Returns true if the entry was allowed to be removed.
   static bool RemoveDataEntry(const nsACString& aUri, nsIPrincipal* aPrincipal,
-                              const Maybe<nsID>& aAgentClusterId);
+                              const nsCString& aPartitionKey);
 
   static void RemoveDataEntries();
 
@@ -74,7 +73,7 @@ class BlobURLProtocolHandler final : public nsIProtocolHandler,
                            nsIPrincipal* aTriggeringPrincipal,
                            const OriginAttributes& aOriginAttributes,
                            uint64_t aInnerWindowId,
-                           const Maybe<nsID>& aAgentClusterId,
+                           const nsCString& aPartitionKey,
                            bool aAlsoIfRevoked = false);
 
   static void Traverse(const nsACString& aUri,
@@ -86,7 +85,7 @@ class BlobURLProtocolHandler final : public nsIProtocolHandler,
   // of an unexpected XPCOM or IPC error). This method returns false if already
   // shutdown or if the helper method returns false, true otherwise.
   static bool ForEachBlobURL(
-      std::function<bool(BlobImpl*, nsIPrincipal*, const Maybe<nsID>&,
+      std::function<bool(BlobImpl*, nsIPrincipal*, const nsCString&,
                          const nsACString&, bool aRevoked)>&& aCb);
 
   // This method returns false if aURI is not a known BlobURL. Otherwise it
@@ -133,6 +132,10 @@ extern nsresult NS_GetBlobForBlobURI(nsIURI* aURI,
 extern nsresult NS_GetBlobForBlobURISpec(const nsACString& aSpec,
                                          mozilla::dom::BlobImpl** aBlob,
                                          bool aAlsoIfRevoked = false);
+
+extern nsresult NS_SetChannelContentRangeForBlobURI(nsIChannel* aChannel,
+                                                    nsIURI* aURI,
+                                                    nsACString& aRangeHeader);
 
 extern nsresult NS_GetSourceForMediaSourceURI(
     nsIURI* aURI, mozilla::dom::MediaSource** aSource);

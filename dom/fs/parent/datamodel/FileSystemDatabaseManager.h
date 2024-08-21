@@ -33,12 +33,16 @@ struct OriginMetadata;
 
 namespace fs {
 
+struct FileId;
+enum class FileMode;
 class FileSystemChildMetadata;
 class FileSystemEntryMetadata;
 class FileSystemDirectoryListing;
 class FileSystemEntryPair;
 
 namespace data {
+
+using FileSystemConnection = fs::ResultConnection;
 
 class FileSystemDatabaseManager {
  public:
@@ -69,7 +73,7 @@ class FileSystemDatabaseManager {
    *
    * @param aEntry EntryId of the file whose size is refreshed.
    */
-  virtual nsresult UpdateUsage(const EntryId& aEntry) = 0;
+  virtual nsresult UpdateUsage(const FileId& aFileId) = 0;
 
   /**
    * @brief Returns directory identifier, optionally creating it if it doesn't
@@ -90,13 +94,13 @@ class FileSystemDatabaseManager {
    * @return Result<bool, QMResult> File identifier or error
    */
   virtual Result<EntryId, QMResult> GetOrCreateFile(
-      const FileSystemChildMetadata& aHandle, const ContentType& aType,
-      bool aCreate) = 0;
+      const FileSystemChildMetadata& aHandle, bool aCreate) = 0;
 
   /**
    * @brief Returns the properties of a file corresponding to a file handle
    */
-  virtual nsresult GetFile(const EntryId& aEntryId, ContentType& aType,
+  virtual nsresult GetFile(const EntryId& aEntryId, const FileId& aFileId,
+                           const FileMode& aMode, ContentType& aType,
                            TimeStamp& lastModifiedMilliSeconds, Path& aPath,
                            nsCOMPtr<nsIFile>& aFile) const = 0;
 
@@ -128,10 +132,9 @@ class FileSystemDatabaseManager {
    *
    * @param aHandle Source directory or file
    * @param aNewName New entry name
-   * @return Result<bool, QMResult> False if entry didn't exist, otherwise true
-   * or error
+   * @return Result<EntryId, QMResult> The relevant entry id or error
    */
-  virtual Result<bool, QMResult> RenameEntry(
+  virtual Result<EntryId, QMResult> RenameEntry(
       const FileSystemEntryMetadata& aHandle, const Name& aNewName) = 0;
 
   /**
@@ -139,10 +142,9 @@ class FileSystemDatabaseManager {
    *
    * @param aHandle Source directory or file
    * @param aNewDesignation Destination directory and entry name
-   * @return Result<bool, QMResult> False if entry didn't exist, otherwise true
-   * or error
+   * @return Result<EntryId, QMResult> The relevant entry id or error
    */
-  virtual Result<bool, QMResult> MoveEntry(
+  virtual Result<EntryId, QMResult> MoveEntry(
       const FileSystemEntryMetadata& aHandle,
       const FileSystemChildMetadata& aNewDesignation) = 0;
 
@@ -157,6 +159,51 @@ class FileSystemDatabaseManager {
       const FileSystemEntryPair& aEndpoints) const = 0;
 
   /**
+   * @brief Generates an EntryId for a given parent EntryId and filename.
+   */
+  virtual Result<EntryId, QMResult> GetEntryId(
+      const FileSystemChildMetadata& aHandle) const = 0;
+
+  /**
+   * @brief To check if a file under a directory is locked, we need to map
+   * fileId's to entries.
+   *
+   * @param aFileId a FileId
+   * @return Result<EntryId, QMResult> Entry id of a temporary or main file
+   */
+  virtual Result<EntryId, QMResult> GetEntryId(const FileId& aFileId) const = 0;
+
+  /**
+   * @brief Make sure EntryId maps to a FileId. This method should be called
+   * before exclusive locking is attempted.
+   */
+  virtual Result<FileId, QMResult> EnsureFileId(const EntryId& aEntryId) = 0;
+
+  /**
+   * @brief Make sure EntryId maps to a temporary FileId. This method should be
+   * called before shared locking is attempted.
+   */
+  virtual Result<FileId, QMResult> EnsureTemporaryFileId(
+      const EntryId& aEntryId) = 0;
+
+  /**
+   * @brief To support moves in metadata, the actual files on disk are tagged
+   * with file id's which are mapped to entry id's which represent paths.
+   * This function returns the main file corresponding to an entry.
+   *
+   * @param aEntryId An id of an entry
+   * @return Result<EntryId, QMResult> Main file id, used by exclusive locks
+   */
+  virtual Result<FileId, QMResult> GetFileId(const EntryId& aEntryId) const = 0;
+
+  /**
+   * @brief Flag aFileId as the main file for aEntryId or abort. Removes the
+   * file which did not get flagged as the main file.
+   */
+  virtual nsresult MergeFileId(const EntryId& aEntryId, const FileId& aFileId,
+                               bool aAbort) = 0;
+
+  /**
    * @brief Close database connection.
    */
   virtual void Close() = 0;
@@ -164,12 +211,12 @@ class FileSystemDatabaseManager {
   /**
    * @brief Start tracking file's usage.
    */
-  virtual nsresult BeginUsageTracking(const EntryId& aEntryId) = 0;
+  virtual nsresult BeginUsageTracking(const FileId& aFileId) = 0;
 
   /**
    * @brief Stop tracking file's usage.
    */
-  virtual nsresult EndUsageTracking(const EntryId& aEntryId) = 0;
+  virtual nsresult EndUsageTracking(const FileId& aFileId) = 0;
 
   virtual ~FileSystemDatabaseManager() = default;
 };

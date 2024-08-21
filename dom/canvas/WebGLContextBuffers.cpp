@@ -9,6 +9,7 @@
 
 #include "GLContext.h"
 #include "WebGLBuffer.h"
+#include "WebGLContext.h"
 #include "WebGLTransformFeedback.h"
 #include "WebGLVertexArray.h"
 
@@ -248,6 +249,18 @@ void WebGLContext::BufferData(GLenum target, uint64_t dataLen,
   if (!buffer) return;
 
   buffer->BufferData(target, dataLen, data, usage);
+}
+
+void WebGLContext::UninitializedBufferData_SizeOnly(GLenum target,
+                                                    uint64_t dataLen,
+                                                    GLenum usage) const {
+  const FuncScope funcScope(*this, "bufferData");
+  if (IsContextLost()) return;
+
+  const auto& buffer = ValidateBufferSelection(target);
+  if (!buffer) return;
+
+  buffer->BufferData(target, dataLen, nullptr, usage, true);
 }
 
 ////////////////////////////////////////

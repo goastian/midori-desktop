@@ -4,7 +4,7 @@ load 360293-1.html
 load 421715-1.html
 load 553938-1.html
 load 647480.html
-skip-if(Android&&browserIsRemote) load 727547.html # bug 1507207
+skip-if(Android) load 727547.html # bug 1507207
 load 729116.html
 load 745699-1.html
 load 746813-1.html
@@ -13,10 +13,10 @@ load 745818-large-source.html
 load 767337-1.html
 load 779426.html
 skip-if(ThreadSanitizer) load 780392-1.html
-skip-if(ThreadSanitizer) skip-if(gtkWidget&&isDebugBuild) skip-if(winWidget&&(!is64Bit)) load 789933-1.html # bug 1155252 for linux
+skip-if(ThreadSanitizer) skip-if(gtkWidget&&isDebugBuild) load 789933-1.html # bug 1155252 for linux
 skip-if(ThreadSanitizer) load 794463-1.html
 skip-if(ThreadSanitizer) load 802926-1.html
-skip-if(ThreadSanitizer) skip-if(winWidget&&isDebugBuild&&/^Windows\x20NT\x206\.1/.test(http.oscpu)) load 844280.html # intermittent OOMs on Win7 debug
+skip-if(ThreadSanitizer) load 844280.html
 load 896047-1.html
 load 916128-1.html
 load 934939-1.html
@@ -27,13 +27,13 @@ load 1183363.html
 load 1190705.html
 load 1223740-1.html
 load 1225381-1.html
-skip-if(azureCairo) load 1229983-1.html
+load 1229983-1.html
 load 1229932-1.html
 load 1244850-1.html
 load 1246775-1.html
 load 1284356-1.html
 load 1284578-1.html
-skip-if(d2d) load 1287515-1.html
+load 1287515-1.html
 load 1287652-1.html
 load 1288872-1.html
 load 1290628-1.html
@@ -65,3 +65,6 @@ load 1757755.html
 pref(gfx.offscreencanvas.enabled,true) load 1769878.html
 pref(gfx.offscreencanvas.enabled,true) load 1771007-1.html
 pref(dom.webgpu.enabled,true) load 1816140.html
+load 1849704-1.html
+load 1857986.html
+load 1873790.html

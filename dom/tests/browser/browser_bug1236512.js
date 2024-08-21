@@ -42,7 +42,7 @@ async function waitContentVisibilityChange(aIsHidden, aBrowser) {
         content.document,
         "visibilitychange",
         true /* capture */,
-        aEvent => {
+        () => {
           info(
             `visibilitychange: ${content.document.hidden} ${content.document.visibilityState}`
           );
@@ -71,7 +71,7 @@ add_task(async function () {
     winTest,
     "resize",
     false,
-    e => {
+    () => {
       return winTest.innerHeight <= 500 && winTest.innerWidth <= 500;
     }
   );
@@ -82,7 +82,10 @@ add_task(async function () {
   let browserTest = winTest.gBrowser;
 
   info(`loading test page: ${testPageURL}`);
-  BrowserTestUtils.loadURIString(browserTest.selectedBrowser, testPageURL);
+  BrowserTestUtils.startLoadingURIString(
+    browserTest.selectedBrowser,
+    testPageURL
+  );
   await BrowserTestUtils.browserLoaded(browserTest.selectedBrowser);
 
   info("test init visibility state");

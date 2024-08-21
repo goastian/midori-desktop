@@ -24,7 +24,7 @@ const PC_COREQUEST_CID = Components.ID(
   "{74b2122d-65a8-4824-aa9e-3d664cb75dc2}"
 );
 
-function logMsg(msg, file, line, flag, winID) {
+function logWebRTCMsg(msg, file, line, flag, win) {
   let scriptErrorClass = Cc["@mozilla.org/scripterror;1"];
   let scriptError = scriptErrorClass.createInstance(Ci.nsIScriptError);
   scriptError.initWithWindowID(
@@ -35,9 +35,14 @@ function logMsg(msg, file, line, flag, winID) {
     0,
     flag,
     "content javascript",
-    winID
+    win.windowGlobalChild.innerWindowId
   );
   Services.console.logMessage(scriptError);
+  if (
+    Services.prefs.getBoolPref("media.peerconnection.treat_warnings_as_errors")
+  ) {
+    throw new win.TypeError(msg);
+  }
 }
 
 let setupPrototype = (_class, dict) => {
@@ -100,7 +105,7 @@ export class GlobalPCList {
     if (this._list[winID] === undefined) {
       return;
     }
-    this._list[winID] = this._list[winID].filter(function (e, i, a) {
+    this._list[winID] = this._list[winID].filter(function (e) {
       return e.get() !== null;
     });
 
@@ -212,6 +217,51 @@ setupPrototype(GlobalPCList, {
 
 var _globalPCList = new GlobalPCList();
 
+// Parses grammar in RFC5245 section 15 and ICE TCP from RFC6544 section 4.5.
+function parseCandidate(line) {
+  const match = line.match(
+    /^(a=)?candidate:([A-Za-z0-9+\/]{1,32}) (\d+) (UDP|TCP) (\d+) ([A-Za-z0-9.:-]+) (\d+) typ (host|srflx|prflx|relay)(?: raddr ([A-Za-z0-9.:-]+) rport (\d+))?(.*)$/i
+  );
+  if (!match) {
+    return null;
+  }
+  const candidate = {
+    foundation: match[2],
+    componentId: parseInt(match[3], 10),
+    transport: match[4],
+    priority: parseInt(match[5], 10),
+    address: match[6],
+    port: parseInt(match[7], 10),
+    type: match[8],
+    relatedAddress: match[9],
+    relatedPort: match[10],
+  };
+  if (candidate.componentId < 1 || candidate.componentId > 256) {
+    return null;
+  }
+  if (candidate.priority < 0 || candidate.priority > 4294967295) {
+    return null;
+  }
+  if (candidate.port < 0 || candidate.port > 65535) {
+    return null;
+  }
+  candidate.component = { 1: "rtp", 2: "rtcp" }[candidate.componentId] || null;
+  candidate.protocol =
+    { udp: "udp", tcp: "tcp" }[candidate.transport.toLowerCase()] || null;
+
+  const tcpTypeMatch = match[11].match(/tcptype (\S+)/i);
+  if (tcpTypeMatch) {
+    candidate.tcpType = tcpTypeMatch[1];
+    if (
+      candidate.protocol != "tcp" ||
+      !["active", "passive", "so"].includes(candidate.tcpType)
+    ) {
+      return null;
+    }
+  }
+  return candidate;
+}
+
 export class RTCIceCandidate {
   init(win) {
     this._win = win;
@@ -224,6 +274,20 @@ export class RTCIceCandidate {
       );
     }
     Object.assign(this, dict);
+    const candidate = parseCandidate(this.candidate);
+    if (!candidate) {
+      return;
+    }
+    Object.assign(this, candidate);
+  }
+
+  toJSON() {
+    return {
+      candidate: this.candidate,
+      sdpMid: this.sdpMid,
+      sdpMLineIndex: this.sdpMLineIndex,
+      usernameFragment: this.usernameFragment,
+    };
   }
 }
 
@@ -237,14 +301,12 @@ export class RTCSessionDescription {
   init(win) {
     this._win = win;
     this._winID = this._win.windowGlobalChild.innerWindowId;
+    this._legacyPref = Services.prefs.getBoolPref(
+      "media.peerconnection.description.legacy.enabled"
+    );
   }
 
   __init({ type, sdp }) {
-    if (!type) {
-      throw new this._win.TypeError(
-        "Missing required 'type' member of RTCSessionDescriptionInit"
-      );
-    }
     Object.assign(this, { _type: type, _sdp: sdp });
   }
 
@@ -252,6 +314,10 @@ export class RTCSessionDescription {
     return this._type;
   }
   set type(type) {
+    if (!this._legacyPref) {
+      // TODO: this throws even in sloppy mode. Remove in bug 1883992
+      throw new this._win.TypeError("setting getter-only property type");
+    }
     this.warn();
     this._type = type;
   }
@@ -260,6 +326,10 @@ export class RTCSessionDescription {
     return this._sdp;
   }
   set sdp(sdp) {
+    if (!this._legacyPref) {
+      // TODO: this throws even in sloppy mode. Remove in bug 1883992
+      throw new this._win.TypeError("setting getter-only property sdp");
+    }
     this.warn();
     this._sdp = sdp;
   }
@@ -267,23 +337,26 @@ export class RTCSessionDescription {
   warn() {
     if (!this._warned) {
       // Warn once per RTCSessionDescription about deprecated writable usage.
-      this.logWarning(
-        "RTCSessionDescription's members are readonly! " +
-          "Writing to them is deprecated and will break soon!"
-      );
+      if (this._legacyPref) {
+        this.logMsg(
+          "RTCSessionDescription's members are readonly! " +
+            "Writing to them is deprecated and will break soon!",
+          Ci.nsIScriptError.warningFlag
+        );
+      } else {
+        this.logMsg(
+          "RTCSessionDescription's members are readonly! " +
+            "Writing to them no longer works!",
+          Ci.nsIScriptError.errorFlag
+        );
+      }
       this._warned = true;
     }
   }
 
-  logWarning(msg) {
+  logMsg(msg, flag) {
     let err = this._win.Error();
-    logMsg(
-      msg,
-      err.fileName,
-      err.lineNumber,
-      Ci.nsIScriptError.warningFlag,
-      this._winID
-    );
+    logWebRTCMsg(msg, err.fileName, err.lineNumber, flag, this._win);
   }
 }
 
@@ -350,6 +423,13 @@ export class RTCPeerConnection {
   constructor() {
     this._pc = null;
     this._closed = false;
+    this._pendingLocalDescription = null;
+    this._pendingRemoteDescription = null;
+    this._currentLocalDescription = null;
+    this._currentRemoteDescription = null;
+    this._legacyPref = Services.prefs.getBoolPref(
+      "media.peerconnection.description.legacy.enabled"
+    );
 
     // http://rtcweb-wg.github.io/jsep/#rfc.section.4.1.9
     // canTrickle == null means unknown; when a remote description is received it
@@ -723,7 +803,7 @@ export class RTCPeerConnection {
       }
     };
 
-    var stunServers = 0;
+    let stunServers = 0;
 
     iceServers.forEach(({ urls, username, credential, credentialType }) => {
       if (!urls) {
@@ -788,11 +868,7 @@ export class RTCPeerConnection {
           }
           if (stunServers >= 5) {
             this.logError(
-              "Using five or more STUN/TURN servers causes problems"
-            );
-          } else if (stunServers > 2) {
-            this.logWarning(
-              "Using more than two STUN/TURN servers slows down discovery"
+              "Using five or more STUN/TURN servers slows down discovery"
             );
           }
         });
@@ -861,7 +937,7 @@ export class RTCPeerConnection {
   }
 
   logMsg(msg, file, line, flag) {
-    return logMsg(msg, file, line, flag, this._winID);
+    return logWebRTCMsg(msg, file, line, flag, this._win);
   }
 
   getEH(type) {
@@ -996,7 +1072,7 @@ export class RTCPeerConnection {
     return this._async(() => this._createAnswer(optionsOrOnSucc));
   }
 
-  _createAnswer(options) {
+  _createAnswer() {
     this._checkClosed();
     return this._chain(() => this._createAnAnswer());
   }
@@ -1192,11 +1268,6 @@ export class RTCPeerConnection {
   }
 
   _setRemoteDescription({ type, sdp }) {
-    if (!type) {
-      throw new this._win.TypeError(
-        "Missing required 'type' member of RTCSessionDescriptionInit"
-      );
-    }
     if (type == "pranswer") {
       throw new this._win.DOMException(
         "pranswer not yet implemented",
@@ -1541,24 +1612,36 @@ export class RTCPeerConnection {
     return this.pendingLocalDescription || this.currentLocalDescription;
   }
 
+  cacheDescription(name, type, sdp) {
+    if (
+      !this[name] ||
+      this[name].type != type ||
+      this[name].sdp != sdp ||
+      this._legacyPref
+    ) {
+      this[name] = sdp.length
+        ? new this._win.RTCSessionDescription({ type, sdp })
+        : null;
+    }
+    return this[name];
+  }
+
   get currentLocalDescription() {
     this._checkClosed();
-    const sdp = this._pc.currentLocalDescription;
-    if (!sdp.length) {
-      return null;
-    }
-    const type = this._pc.currentOfferer ? "offer" : "answer";
-    return new this._win.RTCSessionDescription({ type, sdp });
+    return this.cacheDescription(
+      "_currentLocalDescription",
+      this._pc.currentOfferer ? "offer" : "answer",
+      this._pc.currentLocalDescription
+    );
   }
 
   get pendingLocalDescription() {
     this._checkClosed();
-    const sdp = this._pc.pendingLocalDescription;
-    if (!sdp.length) {
-      return null;
-    }
-    const type = this._pc.pendingOfferer ? "offer" : "answer";
-    return new this._win.RTCSessionDescription({ type, sdp });
+    return this.cacheDescription(
+      "_pendingLocalDescription",
+      this._pc.pendingOfferer ? "offer" : "answer",
+      this._pc.pendingLocalDescription
+    );
   }
 
   get remoteDescription() {
@@ -1567,22 +1650,20 @@ export class RTCPeerConnection {
 
   get currentRemoteDescription() {
     this._checkClosed();
-    const sdp = this._pc.currentRemoteDescription;
-    if (!sdp.length) {
-      return null;
-    }
-    const type = this._pc.currentOfferer ? "answer" : "offer";
-    return new this._win.RTCSessionDescription({ type, sdp });
+    return this.cacheDescription(
+      "_currentRemoteDescription",
+      this._pc.currentOfferer ? "answer" : "offer",
+      this._pc.currentRemoteDescription
+    );
   }
 
   get pendingRemoteDescription() {
     this._checkClosed();
-    const sdp = this._pc.pendingRemoteDescription;
-    if (!sdp.length) {
-      return null;
-    }
-    const type = this._pc.pendingOfferer ? "answer" : "offer";
-    return new this._win.RTCSessionDescription({ type, sdp });
+    return this.cacheDescription(
+      "_pendingRemoteDescription",
+      this._pc.pendingOfferer ? "answer" : "offer",
+      this._pc.pendingRemoteDescription
+    );
   }
 
   get peerIdentity() {
@@ -1918,10 +1999,7 @@ export class PeerConnectionObserver {
 
     switch (state) {
       case "IceConnectionState":
-        let connState = this._dompc._pc.iceConnectionState;
-        this._dompc._queueTaskWithClosedCheck(() => {
-          this.handleIceConnectionStateChange(connState);
-        });
+        this.handleIceConnectionStateChange(this._dompc._pc.iceConnectionState);
         break;
 
       case "IceGatheringState":

@@ -27,7 +27,7 @@ using namespace mozilla::gfx;
 namespace mozilla::dom {
 
 SVGElement::NumberInfo SVGGeometryElement::sNumberInfo = {nsGkAtoms::pathLength,
-                                                          0, false};
+                                                          0};
 
 //----------------------------------------------------------------------
 // Implementation
@@ -74,8 +74,7 @@ bool SVGGeometryElement::GeometryDependsOnCoordCtx() {
   LengthAttributesInfo info =
       const_cast<SVGGeometryElement*>(this)->GetLengthInfo();
   for (uint32_t i = 0; i < info.mCount; i++) {
-    if (info.mValues[i].GetSpecifiedUnitType() ==
-        SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE) {
+    if (info.mValues[i].IsPercentage()) {
       return true;
     }
   }
@@ -188,7 +187,7 @@ bool SVGGeometryElement::IsPointInFill(const DOMPointInit& aPoint) {
 bool SVGGeometryElement::IsPointInStroke(const DOMPointInit& aPoint) {
   // stroke-* attributes and the d attribute are presentation attributes, so we
   // flush the layout before building the path.
-  if (nsCOMPtr<Document> doc = GetComposedDoc()) {
+  if (auto* doc = GetComposedDoc()) {
     doc->FlushPendingNotifications(FlushType::Layout);
   }
 
@@ -202,7 +201,7 @@ bool SVGGeometryElement::IsPointInStroke(const DOMPointInit& aPoint) {
   SVGGeometryProperty::DoForComputedStyle(this, [&](const ComputedStyle* s) {
     // Per spec, we should take vector-effect into account.
     if (s->StyleSVGReset()->HasNonScalingStroke()) {
-      auto mat = SVGContentUtils::GetCTM(this, true);
+      auto mat = SVGContentUtils::GetCTM(this);
       if (mat.HasNonTranslation()) {
         // We have non-scaling-stroke as well as a non-translation transform.
         // We should transform the path first then apply the stroke on the
@@ -239,9 +238,8 @@ already_AddRefed<DOMSVGPoint> SVGGeometryElement::GetPointAtLength(
     return nullptr;
   }
 
-  RefPtr<DOMSVGPoint> point = new DOMSVGPoint(path->ComputePointAtLength(
-      clamped(distance, 0.f, path->ComputeLength())));
-  return point.forget();
+  return do_AddRef(new DOMSVGPoint(path->ComputePointAtLength(
+      clamped(distance, 0.f, path->ComputeLength()))));
 }
 
 float SVGGeometryElement::GetPathLengthScale(PathLengthScaleForType aFor) {

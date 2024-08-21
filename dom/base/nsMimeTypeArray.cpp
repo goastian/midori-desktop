@@ -8,7 +8,6 @@
 
 #include "mozilla/dom/MimeTypeArrayBinding.h"
 #include "mozilla/dom/MimeTypeBinding.h"
-#include "nsGlobalWindowInner.h"
 #include "nsPluginArray.h"
 #include "mozilla/StaticPrefs_pdfjs.h"
 #include "nsContentUtils.h"
@@ -80,10 +79,7 @@ void nsMimeTypeArray::GetSupportedNames(nsTArray<nsString>& retval) {
   }
 }
 
-bool nsMimeTypeArray::ForceNoPlugins() {
-  return StaticPrefs::pdfjs_disabled() &&
-         !nsGlobalWindowInner::Cast(mWindow)->ShouldResistFingerprinting();
-}
+bool nsMimeTypeArray::ForceNoPlugins() { return StaticPrefs::pdfjs_disabled(); }
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(nsMimeType, mPluginElement)
 
@@ -97,4 +93,8 @@ nsMimeType::~nsMimeType() = default;
 JSObject* nsMimeType::WrapObject(JSContext* aCx,
                                  JS::Handle<JSObject*> aGivenProto) {
   return MimeType_Binding::Wrap(aCx, this, aGivenProto);
+}
+
+already_AddRefed<nsPluginElement> nsMimeType::EnabledPlugin() const {
+  return do_AddRef(mPluginElement);
 }

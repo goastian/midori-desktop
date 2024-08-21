@@ -25,6 +25,7 @@ namespace dom {
 
 class Document;
 class Element;
+struct BindContext;
 
 #define MOZILLA_DOM_LINK_IMPLEMENTATION_IID          \
   {                                                  \
@@ -56,13 +57,6 @@ class Link : public nsISupports {
   virtual void VisitedQueryFinished(bool aVisited);
 
   /**
-   * @return ElementState::VISITED if this link is visited,
-   *         ElementState::UNVISTED if this link is not visited, or 0 if this
-   *         link is not actually a link.
-   */
-  ElementState LinkState() const;
-
-  /**
    * @return the URI this link is for, if available.
    */
   nsIURI* GetURI() const;
@@ -70,25 +64,25 @@ class Link : public nsISupports {
   /**
    * Helper methods for modifying and obtaining parts of the URI of the Link.
    */
-  void SetProtocol(const nsAString& aProtocol);
-  void SetUsername(const nsAString& aUsername);
-  void SetPassword(const nsAString& aPassword);
-  void SetHost(const nsAString& aHost);
-  void SetHostname(const nsAString& aHostname);
-  void SetPathname(const nsAString& aPathname);
-  void SetSearch(const nsAString& aSearch);
-  void SetPort(const nsAString& aPort);
-  void SetHash(const nsAString& aHash);
-  void GetOrigin(nsAString& aOrigin);
-  void GetProtocol(nsAString& _protocol);
-  void GetUsername(nsAString& aUsername);
-  void GetPassword(nsAString& aPassword);
-  void GetHost(nsAString& _host);
-  void GetHostname(nsAString& _hostname);
-  void GetPathname(nsAString& _pathname);
-  void GetSearch(nsAString& _search);
-  void GetPort(nsAString& _port);
-  void GetHash(nsAString& _hash);
+  void SetProtocol(const nsACString& aProtocol);
+  void SetUsername(const nsACString& aUsername);
+  void SetPassword(const nsACString& aPassword);
+  void SetHost(const nsACString& aHost);
+  void SetHostname(const nsACString& aHostname);
+  void SetPathname(const nsACString& aPathname);
+  void SetSearch(const nsACString& aSearch);
+  void SetPort(const nsACString& aPort);
+  void SetHash(const nsACString& aHash);
+  void GetOrigin(nsACString& aOrigin);
+  void GetProtocol(nsACString& aProtocol);
+  void GetUsername(nsACString& aUsername);
+  void GetPassword(nsACString& aPassword);
+  void GetHost(nsACString& aHost);
+  void GetHostname(nsACString& aHostname);
+  void GetPathname(nsACString& aPathname);
+  void GetSearch(nsACString& aSearch);
+  void GetPort(nsACString& aPort);
+  void GetHash(nsACString& aHash);
 
   /**
    * Invalidates any link caching, and resets the state to the default.
@@ -98,6 +92,11 @@ class Link : public nsISupports {
    *        changes or false if it should not.
    */
   void ResetLinkState(bool aNotify, bool aHasHref);
+  void ResetLinkState(bool aNotify) {
+    ResetLinkState(aNotify, ElementHasHref());
+  }
+  void BindToTree(const BindContext&);
+  void UnbindFromTree() { ResetLinkState(false); }
 
   // This method nevers returns a null element.
   Element* GetElement() const { return mElement; }
@@ -109,6 +108,7 @@ class Link : public nsISupports {
   bool HasPendingLinkUpdate() const { return mHasPendingLinkUpdate; }
   void SetHasPendingLinkUpdate() { mHasPendingLinkUpdate = true; }
   void ClearHasPendingLinkUpdate() { mHasPendingLinkUpdate = false; }
+  void TriggerLinkUpdate(bool aNotify);
 
   // To ensure correct mHasPendingLinkUpdate handling, we have this method
   // similar to the one in Element. Overriders must call
@@ -124,26 +124,21 @@ class Link : public nsISupports {
 
  private:
   /**
-   * Unregisters from History so this node no longer gets notifications about
-   * changes to visitedness.
+   * Unregisters from History and the document so this node no longer gets
+   * notifications about changes to visitedness.
    */
-  void UnregisterFromHistory();
-
+  void Unregister();
+  void SetLinkState(State, bool aNotify);
   void SetHrefAttribute(nsIURI* aURI);
 
   mutable nsCOMPtr<nsIURI> mCachedURI;
 
   Element* const mElement;
 
-  // TODO(emilio): This ideally could be `State mState : 2`, but the version of
-  // gcc we build on automation with (7 as of this writing) has a useless
-  // warning about all values in the range of the enum not fitting, see
-  // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=61414.
-  State mState;
   bool mNeedsRegistration : 1;
   bool mRegistered : 1;
   bool mHasPendingLinkUpdate : 1;
-  bool mHistory : 1;
+  const bool mHistory : 1;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(Link, MOZILLA_DOM_LINK_IMPLEMENTATION_IID)

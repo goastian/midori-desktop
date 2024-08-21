@@ -8,6 +8,7 @@
 #include "mozilla/net/SocketProcessBridgeChild.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/ipc/BackgroundChild.h"
+#include "mozilla/ipc/Endpoint.h"
 #include "mozilla/ipc/PBackgroundChild.h"
 #include "common/browser_logging/CSFLog.h"
 
@@ -23,41 +24,65 @@ MediaTransportHandlerIPC::MediaTransportHandlerIPC(
     nsISerialEventTarget* aCallbackThread)
     : MediaTransportHandler(aCallbackThread) {}
 
+MediaTransportHandlerIPC::~MediaTransportHandlerIPC() = default;
+
 void MediaTransportHandlerIPC::Initialize() {
-  mInitPromise = net::SocketProcessBridgeChild::GetSocketProcessBridge()->Then(
-      mCallbackThread, __func__,
-      [this, self = RefPtr<MediaTransportHandlerIPC>(this)](
-          const RefPtr<net::SocketProcessBridgeChild>& aBridge) {
-        ipc::PBackgroundChild* actor =
-            ipc::BackgroundChild::GetOrCreateSocketActorForCurrentThread();
-        // An actor that can't send is possible if the socket process has
-        // crashed but hasn't been reconnected properly. See
-        // SocketProcessBridgeChild::ActorDestroy for more info.
-        if (!actor || !actor->CanSend()) {
-          NS_WARNING(
-              "MediaTransportHandlerIPC async init failed! Webrtc networking "
-              "will not work!");
-          return InitPromise::CreateAndReject(
-              nsCString("GetOrCreateSocketActorForCurrentThread failed!"),
-              __func__);
-        }
-        MediaTransportChild* child = new MediaTransportChild(this);
-        // PBackgroungChild owns mChild! When it is done with it,
-        // mChild will let us know it it going away.
-        mChild = actor->SendPMediaTransportConstructor(child);
-        CSFLogDebug(LOGTAG, "%s Init done", __func__);
-        return InitPromise::CreateAndResolve(true, __func__);
-      },
-      [=](const nsCString& aError) {
-        CSFLogError(LOGTAG,
+  using EndpointPromise =
+      MozPromise<mozilla::ipc::Endpoint<mozilla::dom::PMediaTransportChild>,
+                 nsCString, true>;
+  mInitPromise =
+      net::SocketProcessBridgeChild::GetSocketProcessBridge()
+          ->Then(
+              GetCurrentSerialEventTarget(), __func__,
+              [](const RefPtr<net::SocketProcessBridgeChild>& aBridge) {
+                mozilla::ipc::Endpoint<mozilla::dom::PMediaTransportParent>
+                    parentEndpoint;
+                mozilla::ipc::Endpoint<mozilla::dom::PMediaTransportChild>
+                    childEndpoint;
+                mozilla::dom::PMediaTransport::CreateEndpoints(&parentEndpoint,
+                                                               &childEndpoint);
+
+                if (!aBridge || !aBridge->SendInitMediaTransport(
+                                    std::move(parentEndpoint))) {
+                  NS_WARNING(
+                      "MediaTransportHandlerIPC async init failed! Webrtc "
+                      "networking "
+                      "will not work!");
+                  return EndpointPromise::CreateAndReject(
+                      nsCString("SendInitMediaTransport failed!"), __func__);
+                }
+
+                return EndpointPromise::CreateAndResolve(
+                    std::move(childEndpoint), __func__);
+              },
+              [](const nsCString& aError) {
+                return EndpointPromise::CreateAndReject(aError, __func__);
+              })
+          ->Then(
+              mCallbackThread, __func__,
+              [this, self = RefPtr<MediaTransportHandlerIPC>(this)](
+                  mozilla::ipc::Endpoint<mozilla::dom::PMediaTransportChild>&&
+                      aEndpoint) {
+                RefPtr<MediaTransportChild> child =
+                    new MediaTransportChild(this);
+                aEndpoint.Bind(child);
+                mChild = child;
+
+                CSFLogDebug(LOGTAG, "%s Init done", __func__);
+                return InitPromise::CreateAndResolve(true, __func__);
+              },
+              [=](const nsCString& aError) {
+                CSFLogError(
+                    LOGTAG,
                     "MediaTransportHandlerIPC async init failed! Webrtc "
                     "networking will not work! Error was %s",
                     aError.get());
-        NS_WARNING(
-            "MediaTransportHandlerIPC async init failed! Webrtc networking "
-            "will not work!");
-        return InitPromise::CreateAndReject(aError, __func__);
-      });
+                NS_WARNING(
+                    "MediaTransportHandlerIPC async init failed! Webrtc "
+                    "networking "
+                    "will not work!");
+                return InitPromise::CreateAndReject(aError, __func__);
+              });
 }
 
 RefPtr<MediaTransportHandler::IceLogPromise>
@@ -171,8 +196,9 @@ nsresult MediaTransportHandlerIPC::SetIceConfig(
 
 void MediaTransportHandlerIPC::Destroy() {
   if (mChild) {
-    MediaTransportChild::Send__delete__(mChild);
-    mChild = nullptr;
+    mChild->Shutdown();
+    mCallbackThread->Dispatch(NS_NewRunnableFunction(
+        __func__, [child = std::move(mChild)]() { child->Close(); }));
   }
   delete this;
 }
@@ -357,58 +383,89 @@ RefPtr<dom::RTCStatsPromise> MediaTransportHandlerIPC::GetIceStats(
 }
 
 MediaTransportChild::MediaTransportChild(MediaTransportHandlerIPC* aUser)
-    : mUser(aUser) {}
+    : mMutex("MediaTransportChild"), mUser(aUser) {}
 
-MediaTransportChild::~MediaTransportChild() { mUser->mChild = nullptr; }
+MediaTransportChild::~MediaTransportChild() = default;
 
 mozilla::ipc::IPCResult MediaTransportChild::RecvOnCandidate(
     const string& transportId, const CandidateInfo& candidateInfo) {
-  mUser->OnCandidate(transportId, candidateInfo);
+  MutexAutoLock lock(mMutex);
+  if (mUser) {
+    mUser->OnCandidate(transportId, candidateInfo);
+  }
   return ipc::IPCResult::Ok();
 }
 
 mozilla::ipc::IPCResult MediaTransportChild::RecvOnAlpnNegotiated(
     const string& alpn) {
-  mUser->OnAlpnNegotiated(alpn);
+  MutexAutoLock lock(mMutex);
+  if (mUser) {
+    mUser->OnAlpnNegotiated(alpn);
+  }
   return ipc::IPCResult::Ok();
 }
 
 mozilla::ipc::IPCResult MediaTransportChild::RecvOnGatheringStateChange(
-    const int& state) {
-  mUser->OnGatheringStateChange(static_cast<dom::RTCIceGatheringState>(state));
+    const string& transportId, const int& state) {
+  MutexAutoLock lock(mMutex);
+  if (mUser) {
+    mUser->OnGatheringStateChange(transportId,
+                                  static_cast<dom::RTCIceGathererState>(state));
+  }
   return ipc::IPCResult::Ok();
 }
 
 mozilla::ipc::IPCResult MediaTransportChild::RecvOnConnectionStateChange(
-    const int& state) {
-  mUser->OnConnectionStateChange(
-      static_cast<dom::RTCIceConnectionState>(state));
+    const string& transportId, const int& state) {
+  MutexAutoLock lock(mMutex);
+  if (mUser) {
+    mUser->OnConnectionStateChange(
+        transportId, static_cast<dom::RTCIceTransportState>(state));
+  }
   return ipc::IPCResult::Ok();
 }
 
 mozilla::ipc::IPCResult MediaTransportChild::RecvOnPacketReceived(
     const string& transportId, const MediaPacket& packet) {
-  mUser->OnPacketReceived(transportId, packet);
+  MutexAutoLock lock(mMutex);
+  if (mUser) {
+    mUser->OnPacketReceived(transportId, packet);
+  }
   return ipc::IPCResult::Ok();
 }
 
 mozilla::ipc::IPCResult MediaTransportChild::RecvOnEncryptedSending(
     const string& transportId, const MediaPacket& packet) {
-  mUser->OnEncryptedSending(transportId, packet);
+  MutexAutoLock lock(mMutex);
+  if (mUser) {
+    mUser->OnEncryptedSending(transportId, packet);
+  }
   return ipc::IPCResult::Ok();
 }
 
 mozilla::ipc::IPCResult MediaTransportChild::RecvOnStateChange(
     const string& transportId, const int& state) {
-  mUser->OnStateChange(transportId, static_cast<TransportLayer::State>(state));
+  MutexAutoLock lock(mMutex);
+  if (mUser) {
+    mUser->OnStateChange(transportId,
+                         static_cast<TransportLayer::State>(state));
+  }
   return ipc::IPCResult::Ok();
 }
 
 mozilla::ipc::IPCResult MediaTransportChild::RecvOnRtcpStateChange(
     const string& transportId, const int& state) {
-  mUser->OnRtcpStateChange(transportId,
-                           static_cast<TransportLayer::State>(state));
+  MutexAutoLock lock(mMutex);
+  if (mUser) {
+    mUser->OnRtcpStateChange(transportId,
+                             static_cast<TransportLayer::State>(state));
+  }
   return ipc::IPCResult::Ok();
+}
+
+void MediaTransportChild::Shutdown() {
+  MutexAutoLock lock(mMutex);
+  mUser = nullptr;
 }
 
 }  // namespace mozilla

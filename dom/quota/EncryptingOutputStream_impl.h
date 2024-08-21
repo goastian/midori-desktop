@@ -222,16 +222,11 @@ nsresult EncryptingOutputStream<CipherStrategy>::FlushToBaseStream() {
 
     const auto unusedPayload = payload.From(mNextByte);
 
-    uint8_t* buffer;
-    nsresult rv =
-        mRandomGenerator->GenerateRandomBytes(unusedPayload.Length(), &buffer);
-    if (NS_WARN_IF(NS_FAILED(rv)) || !buffer) {
+    nsresult rv = mRandomGenerator->GenerateRandomBytesInto(
+        unusedPayload.Elements(), unusedPayload.Length());
+    if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
-
-    memcpy(unusedPayload.Elements(), buffer, unusedPayload.Length());
-
-    free(buffer);
   }
 
   // XXX The compressing stream implementation this was based on wrote a stream

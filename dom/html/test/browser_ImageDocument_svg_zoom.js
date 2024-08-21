@@ -13,7 +13,7 @@ function test_once() {
         `${rect.width}x${rect.height}, ${content.innerWidth}x${content.innerHeight}`
       );
       is(
-        Math.round(rect.height),
+        Math.trunc(rect.height),
         content.innerHeight,
         "Should fill the viewport and not overflow"
       );
@@ -29,8 +29,9 @@ add_task(async function test_with_text_zoom() {
   let dpi = window.devicePixelRatio;
 
   await SpecialPowers.pushPrefEnv({ set: [["ui.textScaleFactor", 200]] });
-  ok(
-    window.devicePixelRatio > dpi,
+  Assert.greater(
+    window.devicePixelRatio,
+    dpi,
     "DPI should change as a result of the pref flip"
   );
 

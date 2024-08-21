@@ -16,13 +16,16 @@ DIRS += [
     "ffmpeg58",
     "ffmpeg59",
     "ffmpeg60",
+    "ffmpeg61",
 ]
 
-UNIFIED_SOURCES += [
-    "FFmpegRuntimeLinker.cpp",
-]
+UNIFIED_SOURCES += ["FFmpegRuntimeLinker.cpp"]
 
-if CONFIG["MOZ_WAYLAND"]:
+if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     include("/ipc/chromium/chromium-config.mozbuild")
+
+LOCAL_INCLUDES += [
+    "/media/libyuv/libyuv/include",
+]
 
 FINAL_LIBRARY = "xul"

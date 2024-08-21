@@ -158,12 +158,14 @@ AudioContext::AudioContext(nsPIDOMWindowInner* aWindow, bool aIsOffline,
       mId(gAudioContextId++),
       mSampleRate(GetSampleRateForAudioContext(
           aIsOffline, aSampleRate,
-          aWindow->AsGlobal()->ShouldResistFingerprinting(RFPTarget::Unknown))),
+          aWindow->AsGlobal()->ShouldResistFingerprinting(
+              RFPTarget::AudioSampleRate))),
       mAudioContextState(AudioContextState::Suspended),
       mNumberOfChannels(aNumberOfChannels),
       mRTPCallerType(aWindow->AsGlobal()->GetRTPCallerType()),
       mShouldResistFingerprinting(
-          aWindow->AsGlobal()->ShouldResistFingerprinting(RFPTarget::Unknown)),
+          aWindow->AsGlobal()->ShouldResistFingerprinting(
+              RFPTarget::AudioContext)),
       mIsOffline(aIsOffline),
       mIsStarted(!aIsOffline),
       mIsShutDown(false),
@@ -657,18 +659,17 @@ already_AddRefed<Promise> AudioContext::DecodeAudioData(
   }
 
   JSAutoRealm ar(cx, obj);
-  aBuffer.ComputeState();
 
-  if (!aBuffer.Data()) {
+  // Detach the array buffer
+  size_t length = JS::GetArrayBufferByteLength(obj);
+  uint8_t* data = static_cast<uint8_t*>(JS::StealArrayBufferContents(cx, obj));
+  if (!data) {
+    JS_ClearPendingException(cx);
+
     // Throw if the buffer is detached
     aRv.ThrowTypeError("Buffer argument can't be a detached buffer");
     return nullptr;
   }
-
-  // Detach the array buffer
-  size_t length = aBuffer.Length();
-
-  uint8_t* data = static_cast<uint8_t*>(JS::StealArrayBufferContents(cx, obj));
 
   // Sniff the content of the media.
   // Failed type sniffing will be handled by AsyncDecodeWebAudio.
@@ -765,9 +766,8 @@ double AudioContext::CurrentTime() {
 
 nsISerialEventTarget* AudioContext::GetMainThread() const {
   if (nsPIDOMWindowInner* window = GetParentObject()) {
-    return window->AsGlobal()->EventTargetFor(TaskCategory::Other);
+    return window->AsGlobal()->SerialEventTarget();
   }
-
   return GetCurrentSerialEventTarget();
 }
 
@@ -841,8 +841,7 @@ class OnStateChangeTask final : public Runnable {
     }
 
     return nsContentUtils::DispatchTrustedEvent(
-        doc, static_cast<EventTarget*>(mAudioContext), u"statechange"_ns,
-        CanBubble::eNo, Cancelable::eNo);
+        doc, mAudioContext, u"statechange"_ns, CanBubble::eNo, Cancelable::eNo);
   }
 
  private:
@@ -851,12 +850,10 @@ class OnStateChangeTask final : public Runnable {
 
 void AudioContext::Dispatch(already_AddRefed<nsIRunnable>&& aRunnable) {
   MOZ_ASSERT(NS_IsMainThread());
-  nsCOMPtr<nsIGlobalObject> parentObject = do_QueryInterface(GetParentObject());
   // It can happen that this runnable took a long time to reach the main thread,
   // and the global is not valid anymore.
-  if (parentObject) {
-    parentObject->AbstractMainThreadFor(TaskCategory::Other)
-        ->Dispatch(std::move(aRunnable));
+  if (GetParentObject()) {
+    AbstractThread::MainThread()->Dispatch(std::move(aRunnable));
   } else {
     RefPtr<nsIRunnable> runnable(aRunnable);
     runnable = nullptr;
@@ -1191,9 +1188,8 @@ void AudioContext::ReportBlocked() {
 
         AUTOPLAY_LOG("Dispatch `blocked` event for AudioContext %p",
                      self.get());
-        nsContentUtils::DispatchTrustedEvent(
-            doc, static_cast<EventTarget*>(self), u"blocked"_ns,
-            CanBubble::eNo, Cancelable::eNo);
+        nsContentUtils::DispatchTrustedEvent(doc, self, u"blocked"_ns,
+                                             CanBubble::eNo, Cancelable::eNo);
       });
   Dispatch(r.forget());
 }

@@ -255,13 +255,6 @@ class Promise : public SupportsWeakPtr {
       PropagateUserInteraction aPropagateUserInteraction =
           eDontPropagateUserInteraction);
 
-  void Then(JSContext* aCx,
-            // aCalleeGlobal may not be in the compartment of aCx, when called
-            // over Xrays.
-            JS::Handle<JSObject*> aCalleeGlobal, AnyCallback* aResolveCallback,
-            AnyCallback* aRejectCallback, JS::MutableHandle<JS::Value> aRetval,
-            ErrorResult& aRv);
-
   template <typename Callback, typename... Args>
   using IsHandlerCallback =
       std::is_same<already_AddRefed<Promise>,
@@ -368,6 +361,13 @@ class Promise : public SupportsWeakPtr {
   // removing its third argument.)
   static already_AddRefed<Promise> CreateRejectedWithErrorResult(
       nsIGlobalObject* aGlobal, ErrorResult& aRejectionError);
+
+  // Converts an integer or DOMException to nsresult, or otherwise returns
+  // NS_ERROR_DOM_NOT_NUMBER_ERR (which is exclusive for this function).
+  // Can be used to convert JS::Value passed to rejection handler so that native
+  // error handlers e.g. MozPromise can consume it.
+  static nsresult TryExtractNSResultFromRejectionValue(
+      JS::Handle<JS::Value> aValue);
 
  protected:
   template <typename ResolveCallback, typename RejectCallback, typename... Args,

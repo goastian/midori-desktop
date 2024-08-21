@@ -10,6 +10,7 @@
 #include "Benchmark.h"
 #include "DecoderDoctorDiagnostics.h"
 #include "DecoderTraits.h"
+#include "MP4Decoder.h"
 #include "MediaContainerType.h"
 #include "MediaResult.h"
 #include "MediaSourceDemuxer.h"
@@ -75,7 +76,7 @@ namespace mozilla {
 // 2. If H264 hardware acceleration is not available.
 // 3. The CPU is considered to be fast enough
 static bool IsVP9Forced(DecoderDoctorDiagnostics* aDiagnostics) {
-  bool mp4supported = DecoderTraits::IsMP4SupportedType(
+  bool mp4supported = MP4Decoder::IsSupportedType(
       MediaContainerType(MEDIAMIMETYPE(VIDEO_MP4)), aDiagnostics);
   bool hwsupported = gfx::gfxVars::CanUseHardwareVideoDecoding();
 #ifdef MOZ_WIDGET_ANDROID
@@ -105,6 +106,12 @@ static void RecordTypeForTelemetry(const nsAString& aType,
   } else if (mimeType == MEDIAMIMETYPE(VIDEO_MP4)) {
     AccumulateCategorical(
         mozilla::Telemetry::LABELS_MSE_SOURCE_BUFFER_TYPE::VideoMp4);
+    const auto& codecString = containerType->ExtendedType().Codecs().AsString();
+    if (StringBeginsWith(codecString, u"hev1"_ns) ||
+        StringBeginsWith(codecString, u"hvc1"_ns)) {
+      AccumulateCategorical(
+          mozilla::Telemetry::LABELS_MSE_SOURCE_BUFFER_TYPE::VideoHevc);
+    }
   } else if (mimeType == MEDIAMIMETYPE(AUDIO_MP4)) {
     AccumulateCategorical(
         mozilla::Telemetry::LABELS_MSE_SOURCE_BUFFER_TYPE::AudioMp4);
@@ -184,8 +191,7 @@ void MediaSource::IsTypeSupported(const nsAString& aType,
     return;
   }
   if (mimeType == MEDIAMIMETYPE("audio/webm")) {
-    if (!(StaticPrefs::media_mediasource_webm_enabled() ||
-          StaticPrefs::media_mediasource_webm_audio_enabled())) {
+    if (!StaticPrefs::media_mediasource_webm_enabled()) {
       // Don't leak information about the fact that it's pref-disabled; just act
       // like we can't play it.  Or should this throw "Unknown type"?
       return aRv.ThrowNotSupportedError("Can't play type");
@@ -523,8 +529,7 @@ MediaSource::MediaSource(nsPIDOMWindowInner* aWindow)
     : DOMEventTargetHelper(aWindow),
       mDecoder(nullptr),
       mPrincipal(nullptr),
-      mAbstractMainThread(
-          GetOwnerGlobal()->AbstractMainThreadFor(TaskCategory::Other)),
+      mAbstractMainThread(AbstractThread::MainThread()),
       mReadyState(MediaSourceReadyState::Closed) {
   MOZ_ASSERT(NS_IsMainThread());
   mSourceBuffers = new SourceBufferList(this);

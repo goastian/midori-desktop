@@ -23,9 +23,9 @@ XPIDL_SOURCES += [
     "nsIAutoplay.idl",
 ]
 
-MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.ini"]
+MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.toml"]
 
-BROWSER_CHROME_MANIFESTS += ["test/browser/browser.ini"]
+BROWSER_CHROME_MANIFESTS += ["test/browser/browser.toml"]
 
 include("/ipc/chromium/chromium-config.mozbuild")
 

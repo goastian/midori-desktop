@@ -62,43 +62,103 @@ constexpr bool AreAllBytesTiedFields() {
 
 // -
 
-/**
- * Padding<T> can be used to pad out a struct so that it's not implicitly
- * padded by struct rules.
- * You can also just add your padding to TiedFields, but by explicitly typing
- * padding like this, serialization can make a choice whether to copy Padding,
- * or instead to omit the copy.
- *
- * Omitting the copy isn't always faster.
- * struct Entry {
- *   uint16_t key;
- *   Padding<uint16_t> padding;
- *   uint32_t val;
- *   auto MutTiedFields() { return std::tie(key, padding, val); }
- * };
- * If you serialize Padding, the serialized size is 8, and the compiler will
- * optimize serialization to a single 8-byte memcpy.
- * If your serialization omits Padding, the serialized size of Entry shrinks
- * by 25%. If you have a big list of Entrys, maybe this is a big savings!
- * However, by optimizing for size here you sacrifice speed, because this splits
- * the single memcpy into two: a 2-byte memcpy and a 4-byte memcpy.
- *
- * Explicitly marking padding gives callers the option of choosing.
- */
-template <class T>
-struct Padding {
-  T ignored;
-
-  friend constexpr bool operator==(const Padding&, const Padding&) {
-    return true;
-  }
-  friend constexpr bool operator<(const Padding&, const Padding&) {
-    return false;
+template <class StructT, size_t FieldId, size_t PrevFieldBeginOffset,
+          class PrevFieldT, size_t PrevFieldEndOffset, class FieldT,
+          size_t FieldAlignment = alignof(FieldT)>
+struct FieldDebugInfoT {
+  static constexpr bool IsTightlyPacked() {
+    return PrevFieldEndOffset % FieldAlignment == 0;
   }
 };
-static_assert(sizeof(Padding<bool>) == 1);
-static_assert(sizeof(Padding<bool[2]>) == 2);
-static_assert(sizeof(Padding<int>) == 4);
+
+template <class StructT, class TupleOfFields, size_t FieldId>
+struct TightlyPackedFieldEndOffsetT {
+  template <size_t I>
+  using FieldTAt = std::remove_reference_t<
+      typename std::tuple_element<I, TupleOfFields>::type>;
+
+  static constexpr size_t Fn() {
+    constexpr auto num_fields = std::tuple_size_v<TupleOfFields>;
+    static_assert(FieldId < num_fields);
+
+    using PrevFieldT = FieldTAt<FieldId - 1>;
+    using FieldT = FieldTAt<FieldId>;
+    constexpr auto prev_field_end_offset =
+        TightlyPackedFieldEndOffsetT<StructT, TupleOfFields, FieldId - 1>::Fn();
+    constexpr auto prev_field_begin_offset =
+        prev_field_end_offset - sizeof(PrevFieldT);
+
+    using FieldDebugInfoT =
+        FieldDebugInfoT<StructT, FieldId, prev_field_begin_offset, PrevFieldT,
+                        prev_field_end_offset, FieldT>;
+    static_assert(FieldDebugInfoT::IsTightlyPacked(),
+                  "This field was not tightly packed. Is there padding between "
+                  "it and its predecessor?");
+
+    return prev_field_end_offset + sizeof(FieldT);
+  }
+};
+
+template <class StructT, class TupleOfFields>
+struct TightlyPackedFieldEndOffsetT<StructT, TupleOfFields, 0> {
+  static constexpr size_t Fn() {
+    using FieldT = typename std::tuple_element<0, TupleOfFields>::type;
+    return sizeof(FieldT);
+  }
+};
+template <class StructT, class TupleOfFields>
+struct TightlyPackedFieldEndOffsetT<StructT, TupleOfFields, size_t(-1)> {
+  static constexpr size_t Fn() {
+    // -1 means tuple_size_v<TupleOfFields> -> 0.
+    static_assert(sizeof(StructT) == 0);
+    return 0;
+  }
+};
+
+template <class StructT>
+constexpr bool AssertTiedFieldsAreExhaustive() {
+  using TupleOfFields = decltype(std::declval<StructT>().MutTiedFields());
+  constexpr auto num_fields = std::tuple_size_v<TupleOfFields>;
+  constexpr auto end_offset_of_last_field =
+      TightlyPackedFieldEndOffsetT<StructT, TupleOfFields,
+                                   num_fields - 1>::Fn();
+  static_assert(
+      end_offset_of_last_field == sizeof(StructT),
+      "Incorrect field list in MutTiedFields()? (or not tightly-packed?)");
+  return true;  // Support `static_assert(AssertTiedFieldsAreExhaustive())`.
+}
+
+// -
+
+/**
+ * PaddingField<T,N=1> can be used to pad out a struct so that it's not
+ * implicitly padded by struct rules, but also can't be accidentally initialized
+ * via Aggregate Initialization. (TiedFields serialization checks rely on object
+ * fields leaving no implicit padding bytes, but explicit padding fields are
+ * fine) While you can use e.g. `uint8_t _padding[3];`, consider instead
+ * `PaddingField<uint8_t,3> _padding;` for clarity and to move the `3` nearer
+ * to the `uint8_t`.
+ */
+template <class T, size_t N = 1>
+struct PaddingField {
+  static_assert(!std::is_array_v<T>, "Use PaddingField<T,N> not <T[N]>.");
+
+  std::array<T, N> ignored = {};
+
+  PaddingField() {}
+
+  friend constexpr bool operator==(const PaddingField&, const PaddingField&) {
+    return true;
+  }
+  friend constexpr bool operator<(const PaddingField&, const PaddingField&) {
+    return false;
+  }
+
+  auto MutTiedFields() { return std::tie(ignored); }
+};
+static_assert(sizeof(PaddingField<bool>) == 1);
+static_assert(sizeof(PaddingField<bool, 2>) == 2);
+static_assert(sizeof(PaddingField<int>) == 4);
 
 // -
 
@@ -134,7 +194,7 @@ static_assert(AreAllBytesTiedFields<Fish>());
 
 struct Eel {  // Like a Fish, but you can skip serializing the padding.
   bool b;
-  Padding<bool> padding[3];
+  PaddingField<bool, 3> padding;
   int i;
 
   constexpr auto MutTiedFields() { return std::tie(i, b, padding); }

@@ -28,14 +28,15 @@ class MediaEnginePrefs {
         mHeight(0),
         mFPS(0),
         mFreq(0),
+        mUsePlatformProcessing(false),
         mAecOn(false),
         mUseAecMobile(false),
         mAgcOn(false),
         mHPFOn(false),
         mNoiseOn(false),
         mTransientOn(false),
-        mResidualEchoOn(false),
         mAgc2Forced(false),
+        mExpectDrift(-1),  // auto
         mAgc(0),
         mNoise(0),
         mChannels(0) {}
@@ -44,14 +45,15 @@ class MediaEnginePrefs {
   int32_t mHeight;
   int32_t mFPS;
   int32_t mFreq;  // for test tones (fake:true)
+  bool mUsePlatformProcessing;
   bool mAecOn;
   bool mUseAecMobile;
   bool mAgcOn;
   bool mHPFOn;
   bool mNoiseOn;
   bool mTransientOn;
-  bool mResidualEchoOn;
   bool mAgc2Forced;
+  int32_t mExpectDrift;
   int32_t mAgc;
   int32_t mNoise;
   int32_t mChannels;

@@ -1,0 +1,4 @@
+[DEFAULT]
+support-files = ["quota_test_case.py"]
+
+["test_private_repository_cleanup.py"]

@@ -11,11 +11,12 @@
 #include "nsIFile.h"
 #include "nsISimpleEnumerator.h"
 #include "mozilla/Unused.h"
-#include "mozilla/dom/FileBlobImpl.h"
-#include "mozilla/dom/FileSystemSecurity.h"
+#include "mozilla/dom/BrowserParent.h"
+#include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/Element.h"
-#include "mozilla/dom/BrowserParent.h"
+#include "mozilla/dom/FileBlobImpl.h"
+#include "mozilla/dom/FileSystemSecurity.h"
 #include "mozilla/dom/IPCBlobUtils.h"
 
 using mozilla::Unused;
@@ -218,22 +219,17 @@ void FilePickerParent::Done(nsIFilePicker::ResultCode aResult) {
 }
 
 bool FilePickerParent::CreateFilePicker() {
+  if (!mBrowsingContext) {
+    return false;
+  }
+
   mFilePicker = do_CreateInstance("@mozilla.org/filepicker;1");
+
   if (!mFilePicker) {
     return false;
   }
 
-  Element* element = BrowserParent::GetFrom(Manager())->GetOwnerElement();
-  if (!element) {
-    return false;
-  }
-
-  nsCOMPtr<mozIDOMWindowProxy> window = element->OwnerDoc()->GetWindow();
-  if (!window) {
-    return false;
-  }
-
-  return NS_SUCCEEDED(mFilePicker->Init(window, mTitle, mMode));
+  return NS_SUCCEEDED(mFilePicker->Init(mBrowsingContext, mTitle, mMode));
 }
 
 mozilla::ipc::IPCResult FilePickerParent::RecvOpen(
@@ -278,6 +274,13 @@ mozilla::ipc::IPCResult FilePickerParent::RecvOpen(
   mCallback = new FilePickerShownCallback(this);
 
   mFilePicker->Open(mCallback);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult FilePickerParent::RecvClose() {
+  if (mFilePicker) {
+    mFilePicker->Close();
+  }
   return IPC_OK();
 }
 

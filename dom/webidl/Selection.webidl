@@ -21,11 +21,14 @@ interface Selection {
   [NeedsCallerType]
   readonly attribute unsigned long focusOffset;
   readonly attribute boolean       isCollapsed;
+  [ChromeOnly]
+  readonly attribute boolean       areNormalAndCrossShadowBoundaryRangesCollapsed;
   /**
    * Returns the number of ranges in the selection.
    */
   readonly attribute unsigned long rangeCount;
   readonly attribute DOMString     type;
+  readonly attribute DOMString direction;
   /**
    * Returns the range at the specified index.  Throws if the index is
    * out of range.
@@ -49,6 +52,10 @@ interface Selection {
   undefined removeAllRanges();
   [Throws, BinaryName="RemoveAllRanges"]
   undefined empty();
+
+  [Pref="dom.shadowdom.selection_across_boundary_enabled"]
+  sequence<StaticRange> getComposedRanges(ShadowRoot... shadowRoots);
+
   [Throws, BinaryName="collapseJS"]
   undefined collapse(Node? node, optional unsigned long offset = 0);
   [Throws, BinaryName="collapseJS"]

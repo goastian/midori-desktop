@@ -32,7 +32,7 @@ using GPUExtent3D = RangeEnforcedUnsignedLongSequenceOrGPUExtent3DDict;
 namespace webgpu {
 namespace ffi {
 struct WGPUComputePass;
-struct WGPURenderPass;
+struct WGPURecordedRenderPass;
 struct WGPUImageDataLayout;
 struct WGPUImageCopyTexture_TextureId;
 struct WGPUExtent3d;
@@ -67,13 +67,15 @@ class CommandEncoder final : public ObjectBase, public ChildOf<Device> {
   void Cleanup();
 
   RefPtr<WebGPUChild> mBridge;
-  nsTArray<WeakPtr<CanvasContext>> mTargetContexts;
+  nsTArray<WeakPtr<CanvasContext>> mPresentationContexts;
+
+  void TrackPresentationContext(CanvasContext* aTargetContext);
 
  public:
   const auto& GetDevice() const { return mParent; };
 
-  void EndComputePass(ffi::WGPUComputePass& aPass, ErrorResult& aRv);
-  void EndRenderPass(ffi::WGPURenderPass& aPass, ErrorResult& aRv);
+  void EndComputePass(ffi::WGPURecordedComputePass& aPass);
+  void EndRenderPass(ffi::WGPURecordedRenderPass& aPass);
 
   void CopyBufferToBuffer(const Buffer& aSource, BufferAddress aSourceOffset,
                           const Buffer& aDestination,
@@ -88,6 +90,8 @@ class CommandEncoder final : public ObjectBase, public ChildOf<Device> {
   void CopyTextureToTexture(const dom::GPUImageCopyTexture& aSource,
                             const dom::GPUImageCopyTexture& aDestination,
                             const dom::GPUExtent3D& aCopySize);
+  void ClearBuffer(const Buffer& aBuffer, const uint64_t aOffset,
+                   const dom::Optional<uint64_t>& aSize);
 
   void PushDebugGroup(const nsAString& aString);
   void PopDebugGroup();

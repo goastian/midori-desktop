@@ -17,6 +17,7 @@ namespace mozilla {
 
 struct MediaEngineInfoIPDL
 {
+  MediaInfoIPDL mediaInfo;
   bool preload;
 };
 
@@ -39,7 +40,6 @@ async protocol PMFMediaEngine
 parent:
   // Return 0 if media engine can't be created.
   async InitMediaEngine(MediaEngineInfoIPDL info) returns (uint64_t id);
-  async NotifyMediaInfo(MediaInfoIPDL info);
   async Play();
   async Pause();
   async Seek(double targetTimeInSecond);
@@ -57,6 +57,7 @@ child:
   async UpdateCurrentTime(double currentTimeInSecond);
   async RequestSample(TrackType type, bool isEnough);
   async UpdateStatisticData(StatisticData data);
+  async NotifyResizing(uint32_t width, uint32_t height);
 };
 
 } // namespace mozilla

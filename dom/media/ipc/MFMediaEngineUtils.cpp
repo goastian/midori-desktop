@@ -4,6 +4,7 @@
 
 #include "MFMediaEngineUtils.h"
 
+#include "mozilla/UniquePtr.h"
 #include "WMFUtils.h"
 
 namespace mozilla {
@@ -115,6 +116,7 @@ const char* GUIDToStr(GUID aGUID) {
   ENUM_TO_STR2(aGUID, MFVideoFormat_VP80)
   ENUM_TO_STR2(aGUID, MFVideoFormat_VP90)
   ENUM_TO_STR2(aGUID, MFVideoFormat_AV1)
+  ENUM_TO_STR2(aGUID, MFVideoFormat_HEVC)
   ENUM_TO_STR2(aGUID, MFMediaType_Audio)
   return "Unknown GUID";
 }
@@ -171,6 +173,24 @@ void GUIDFromByteArray(const nsTArray<uint8_t>& aByteArrayIn, GUID& aGuidOut) {
   aGuidOut.Data2 = _byteswap_ushort(reversedGuid->Data2);
   aGuidOut.Data3 = _byteswap_ushort(reversedGuid->Data3);
   // Data4 is already a byte array so no need to byte swap.
+}
+
+BSTR CreateBSTRFromConstChar(const char* aNarrowStr) {
+  int wideStrSize = MultiByteToWideChar(CP_UTF8, 0, aNarrowStr, -1, nullptr, 0);
+  if (wideStrSize == 0) {
+    NS_WARNING("Failed to get wide str size!");
+    return nullptr;
+  }
+
+  UniquePtr<wchar_t[]> wideStrBuffer(new wchar_t[wideStrSize]);
+  if (MultiByteToWideChar(CP_UTF8, 0, aNarrowStr, -1, wideStrBuffer.get(),
+                          wideStrSize) == 0) {
+    NS_WARNING("Failed to covert to wide str!");
+    return nullptr;
+  }
+
+  BSTR bstr = SysAllocString(wideStrBuffer.get());
+  return bstr;
 }
 
 #undef ENUM_TO_STR

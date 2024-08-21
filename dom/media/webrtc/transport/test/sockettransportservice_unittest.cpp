@@ -28,8 +28,7 @@ namespace {
 class SocketTransportServiceTest : public MtransportTest {
  public:
   SocketTransportServiceTest()
-      : MtransportTest(),
-        received_(0),
+      : received_(0),
         readpipe_(nullptr),
         writepipe_(nullptr),
         registered_(false) {}
@@ -53,10 +52,10 @@ class SocketTransportServiceTest : public MtransportTest {
  private:
   nsCOMPtr<nsISocketTransportService> stservice_;
   nsCOMPtr<nsIEventTarget> target_;
-  size_t received_;
+  std::atomic<size_t> received_;
   PRFileDesc* readpipe_;
   PRFileDesc* writepipe_;
-  bool registered_;
+  std::atomic<bool> registered_;
 };
 
 // Received an event.
@@ -97,7 +96,7 @@ class SocketHandler : public nsASocketHandler {
     int32_t rv;
     rv = PR_Recv(fd, buf, sizeof(buf), 0, PR_INTERVAL_NO_WAIT);
     if (rv > 0) {
-      std::cerr << "Read " << rv << " bytes" << std::endl;
+      std::cerr << "Read " << rv << " bytes\n";
       test_->ReceivePacket();
     }
   }

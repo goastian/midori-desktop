@@ -53,10 +53,6 @@ bool RDDProcessHost::Launch(StringVector aExtraOpts) {
   }
   mPrefSerializer->AddSharedPrefCmdLineArgs(*this, aExtraOpts);
 
-#if defined(XP_WIN) && defined(MOZ_SANDBOX)
-  mSandboxLevel = Preferences::GetInt("security.sandbox.rdd.level");
-#endif
-
   mLaunchPhase = LaunchPhase::Waiting;
   mLaunchTime = TimeStamp::Now();
 
@@ -136,19 +132,6 @@ void RDDProcessHost::OnChannelConnected(base::ProcessId peer_pid) {
       "RDDProcessHost::OnChannelConnected", [this, liveToken = mLiveToken]() {
         if (*liveToken && mLaunchPhase == LaunchPhase::Waiting) {
           InitAfterConnect(true);
-        }
-      }));
-}
-
-void RDDProcessHost::OnChannelError() {
-  MOZ_ASSERT(!NS_IsMainThread());
-
-  GeckoChildProcessHost::OnChannelError();
-
-  NS_DispatchToMainThread(NS_NewRunnableFunction(
-      "RDDProcessHost::OnChannelError", [this, liveToken = mLiveToken]() {
-        if (*liveToken && mLaunchPhase == LaunchPhase::Waiting) {
-          InitAfterConnect(false);
         }
       }));
 }

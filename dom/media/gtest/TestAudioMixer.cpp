@@ -14,20 +14,17 @@ namespace audio_mixer {
 struct MixerConsumer : public mozilla::MixerCallbackReceiver {
   /* In this test, the different audio stream and channels are always created to
    * cancel each other. */
-  void MixerCallback(AudioDataValue* aData, AudioSampleFormat aFormat,
-                     uint32_t aChannels, uint32_t aFrames,
-                     uint32_t aSampleRate) {
+  void MixerCallback(mozilla::AudioChunk* aMixedBuffer, uint32_t aSampleRate) {
     bool silent = true;
-    for (uint32_t i = 0; i < aChannels * aFrames; i++) {
-      if (aData[i] != 0.0) {
-        if (aFormat == mozilla::AUDIO_FORMAT_S16) {
-          fprintf(stderr, "Sample at %d is not silent: %d\n", i,
-                  (short)aData[i]);
-        } else {
-          fprintf(stderr, "Sample at %d is not silent: %f\n", i,
-                  (float)aData[i]);
+    ASSERT_EQ(aMixedBuffer->mBufferFormat, mozilla::AUDIO_FORMAT_FLOAT32);
+    for (uint32_t c = 0; c < aMixedBuffer->ChannelCount(); c++) {
+      const float* channelData = aMixedBuffer->ChannelData<AudioDataValue>()[c];
+      for (uint32_t i = 0; i < aMixedBuffer->mDuration; i++) {
+        if (channelData[i] != 0.0) {
+          fprintf(stderr, "Sample at %d in channel %c is not silent: %f\n", i,
+                  c, channelData[i]);
+          silent = false;
         }
-        silent = false;
       }
     }
     ASSERT_TRUE(silent);
@@ -86,20 +83,19 @@ TEST(AudioMixer, Test)
   {
     int iterations = 2;
     mozilla::AudioMixer mixer;
-    mixer.AddCallback(WrapNotNull(&consumer));
 
     fprintf(stderr, "Test AudioMixer constant buffer length.\n");
 
     while (iterations--) {
+      mixer.StartMixing();
       mixer.Mix(a, 2, CHANNEL_LENGTH, AUDIO_RATE);
       mixer.Mix(b, 2, CHANNEL_LENGTH, AUDIO_RATE);
-      mixer.FinishMixing();
+      consumer.MixerCallback(mixer.MixedChunk(), AUDIO_RATE);
     }
   }
 
   {
     mozilla::AudioMixer mixer;
-    mixer.AddCallback(WrapNotNull(&consumer));
 
     fprintf(stderr, "Test AudioMixer variable buffer length.\n");
 
@@ -109,27 +105,30 @@ TEST(AudioMixer, Test)
     FillBuffer(b, CHANNEL_LENGTH / 2, GetHighValue<AudioDataValue>());
     FillBuffer(b + CHANNEL_LENGTH / 2, CHANNEL_LENGTH / 2,
                GetHighValue<AudioDataValue>());
+    mixer.StartMixing();
     mixer.Mix(a, 2, CHANNEL_LENGTH / 2, AUDIO_RATE);
     mixer.Mix(b, 2, CHANNEL_LENGTH / 2, AUDIO_RATE);
-    mixer.FinishMixing();
+    consumer.MixerCallback(mixer.MixedChunk(), AUDIO_RATE);
     FillBuffer(a, CHANNEL_LENGTH, GetLowValue<AudioDataValue>());
     FillBuffer(a + CHANNEL_LENGTH, CHANNEL_LENGTH,
                GetHighValue<AudioDataValue>());
     FillBuffer(b, CHANNEL_LENGTH, GetHighValue<AudioDataValue>());
     FillBuffer(b + CHANNEL_LENGTH, CHANNEL_LENGTH,
                GetLowValue<AudioDataValue>());
+    mixer.StartMixing();
     mixer.Mix(a, 2, CHANNEL_LENGTH, AUDIO_RATE);
     mixer.Mix(b, 2, CHANNEL_LENGTH, AUDIO_RATE);
-    mixer.FinishMixing();
+    consumer.MixerCallback(mixer.MixedChunk(), AUDIO_RATE);
     FillBuffer(a, CHANNEL_LENGTH / 2, GetLowValue<AudioDataValue>());
     FillBuffer(a + CHANNEL_LENGTH / 2, CHANNEL_LENGTH / 2,
                GetLowValue<AudioDataValue>());
     FillBuffer(b, CHANNEL_LENGTH / 2, GetHighValue<AudioDataValue>());
     FillBuffer(b + CHANNEL_LENGTH / 2, CHANNEL_LENGTH / 2,
                GetHighValue<AudioDataValue>());
+    mixer.StartMixing();
     mixer.Mix(a, 2, CHANNEL_LENGTH / 2, AUDIO_RATE);
     mixer.Mix(b, 2, CHANNEL_LENGTH / 2, AUDIO_RATE);
-    mixer.FinishMixing();
+    consumer.MixerCallback(mixer.MixedChunk(), AUDIO_RATE);
   }
 
   FillBuffer(a, CHANNEL_LENGTH, GetLowValue<AudioDataValue>());
@@ -137,37 +136,41 @@ TEST(AudioMixer, Test)
 
   {
     mozilla::AudioMixer mixer;
-    mixer.AddCallback(WrapNotNull(&consumer));
 
     fprintf(stderr, "Test AudioMixer variable channel count.\n");
 
+    mixer.StartMixing();
     mixer.Mix(a, 1, CHANNEL_LENGTH, AUDIO_RATE);
     mixer.Mix(b, 1, CHANNEL_LENGTH, AUDIO_RATE);
-    mixer.FinishMixing();
+    consumer.MixerCallback(mixer.MixedChunk(), AUDIO_RATE);
+    mixer.StartMixing();
     mixer.Mix(a, 1, CHANNEL_LENGTH, AUDIO_RATE);
     mixer.Mix(b, 1, CHANNEL_LENGTH, AUDIO_RATE);
-    mixer.FinishMixing();
+    consumer.MixerCallback(mixer.MixedChunk(), AUDIO_RATE);
+    mixer.StartMixing();
     mixer.Mix(a, 1, CHANNEL_LENGTH, AUDIO_RATE);
     mixer.Mix(b, 1, CHANNEL_LENGTH, AUDIO_RATE);
-    mixer.FinishMixing();
+    consumer.MixerCallback(mixer.MixedChunk(), AUDIO_RATE);
   }
 
   {
     mozilla::AudioMixer mixer;
-    mixer.AddCallback(WrapNotNull(&consumer));
     fprintf(stderr, "Test AudioMixer variable stream count.\n");
 
+    mixer.StartMixing();
     mixer.Mix(a, 2, CHANNEL_LENGTH, AUDIO_RATE);
     mixer.Mix(b, 2, CHANNEL_LENGTH, AUDIO_RATE);
-    mixer.FinishMixing();
+    consumer.MixerCallback(mixer.MixedChunk(), AUDIO_RATE);
+    mixer.StartMixing();
     mixer.Mix(a, 2, CHANNEL_LENGTH, AUDIO_RATE);
     mixer.Mix(b, 2, CHANNEL_LENGTH, AUDIO_RATE);
     mixer.Mix(a, 2, CHANNEL_LENGTH, AUDIO_RATE);
     mixer.Mix(b, 2, CHANNEL_LENGTH, AUDIO_RATE);
-    mixer.FinishMixing();
+    consumer.MixerCallback(mixer.MixedChunk(), AUDIO_RATE);
+    mixer.StartMixing();
     mixer.Mix(a, 2, CHANNEL_LENGTH, AUDIO_RATE);
     mixer.Mix(b, 2, CHANNEL_LENGTH, AUDIO_RATE);
-    mixer.FinishMixing();
+    consumer.MixerCallback(mixer.MixedChunk(), AUDIO_RATE);
   }
 }
 

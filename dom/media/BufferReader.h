@@ -40,6 +40,10 @@ class MOZ_RAII BufferReader {
       : mPtr(aData.Elements()),
         mRemaining(aData.Length()),
         mLength(aData.Length()) {}
+  explicit BufferReader(const Span<const uint8_t>& aData)
+      : mPtr(aData.Elements()),
+        mRemaining(aData.Length()),
+        mLength(aData.Length()) {}
 
   void SetData(const nsTArray<uint8_t>& aData) {
     MOZ_ASSERT(!mPtr && !mRemaining);
@@ -307,6 +311,17 @@ class MOZ_RAII BufferReader {
     MOZ_ALWAYS_TRUE(aDest.AppendElements(reinterpret_cast<const T*>(ptr),
                                          aLength, mozilla::fallible));
     return true;
+  }
+
+  template <typename T>
+  mozilla::Result<Span<const T>, nsresult> ReadSpan(size_t aLength) {
+    auto ptr = Read(aLength * sizeof(T));
+    if (!ptr) {
+      MOZ_LOG(gMP4MetadataLog, mozilla::LogLevel::Error,
+              ("%s: failure", __func__));
+      return mozilla::Err(NS_ERROR_FAILURE);
+    }
+    return Span(reinterpret_cast<const T*>(ptr), aLength);
   }
 
  private:

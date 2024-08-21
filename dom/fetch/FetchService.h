@@ -48,17 +48,17 @@ class FetchServicePromises final {
   RefPtr<FetchServiceResponseEndPromise> GetResponseEndPromise();
 
   void ResolveResponseAvailablePromise(FetchServiceResponse&& aResponse,
-                                       const char* aMethodName);
+                                       StaticString aMethodName);
   void RejectResponseAvailablePromise(const CopyableErrorResult&& aError,
-                                      const char* aMethodName);
+                                      StaticString aMethodName);
   void ResolveResponseTimingPromise(ResponseTiming&& aTiming,
-                                    const char* aMethodName);
+                                    StaticString aMethodName);
   void RejectResponseTimingPromise(const CopyableErrorResult&& aError,
-                                   const char* aMethodName);
+                                   StaticString aMethodName);
   void ResolveResponseEndPromise(ResponseEndArgs&& aArgs,
-                                 const char* aMethodName);
+                                 StaticString aMethodName);
   void RejectResponseEndPromise(const CopyableErrorResult&& aError,
-                                const char* aMethodName);
+                                StaticString aMethodName);
 
  private:
   ~FetchServicePromises() = default;
@@ -101,6 +101,7 @@ class FetchService final : public nsIObserver {
     uint64_t mAssociatedBrowsingContextID;
     nsCOMPtr<nsISerialEventTarget> mEventTarget;
     nsID mActorID;
+    bool mIsThirdPartyContext;
   };
 
   struct UnknownArgs {};
@@ -110,7 +111,8 @@ class FetchService final : public nsIObserver {
 
   static already_AddRefed<FetchService> GetInstance();
 
-  static RefPtr<FetchServicePromises> NetworkErrorResponse(nsresult aRv);
+  static RefPtr<FetchServicePromises> NetworkErrorResponse(
+      nsresult aRv, const FetchArgs& aArgs = AsVariant(UnknownArgs{}));
 
   FetchService();
 
@@ -138,6 +140,8 @@ class FetchService final : public nsIObserver {
     FetchInstance() = default;
 
     nsresult Initialize(FetchArgs&& aArgs);
+
+    const FetchArgs& Args() { return mArgs; }
 
     RefPtr<FetchServicePromises> Fetch();
 

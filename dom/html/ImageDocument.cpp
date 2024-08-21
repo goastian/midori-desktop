@@ -15,6 +15,7 @@
 #include "mozilla/dom/MouseEvent.h"
 #include "mozilla/LoadInfo.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/StaticPrefs_browser.h"
 #include "nsICSSDeclaration.h"
 #include "nsObjectLoadingContent.h"
@@ -23,6 +24,7 @@
 #include "nsGenericHTMLElement.h"
 #include "nsDocShell.h"
 #include "DocumentInlines.h"
+#include "ImageBlocker.h"
 #include "nsDOMTokenList.h"
 #include "nsIDOMEventListener.h"
 #include "nsIFrame.h"
@@ -38,20 +40,11 @@
 #include "nsError.h"
 #include "nsURILoader.h"
 #include "nsIDocShell.h"
-#include "nsIContentViewer.h"
+#include "nsIDocumentViewer.h"
 #include "nsThreadUtils.h"
-#include "nsIScrollableFrame.h"
 #include "nsContentUtils.h"
 #include "mozilla/Preferences.h"
 #include <algorithm>
-
-// XXX A hack needed for Firefox's site specific zoom.
-static bool IsSiteSpecific() {
-  return !nsContentUtils::ShouldResistFingerprinting(
-             "This needs to read the global pref as long as "
-             "browser-fullZoom.js also does so.") &&
-         mozilla::Preferences::GetBool("browser.zoom.siteSpecific", false);
-}
 
 namespace mozilla::dom {
 
@@ -84,36 +77,13 @@ ImageListener::OnStartRequest(nsIRequest* request) {
   nsCOMPtr<nsPIDOMWindowOuter> domWindow = imgDoc->GetWindow();
   NS_ENSURE_TRUE(domWindow, NS_ERROR_UNEXPECTED);
 
-  // Do a ShouldProcess check to see whether to keep loading the image.
+  // This is an image being loaded as a document, so it's not going to be
+  // detected by the ImageBlocker. However we don't want to call
+  // NS_CheckContentLoadPolicy (with an TYPE_INTERNAL_IMAGE) here, as it would
+  // e.g. make this image load be detectable by CSP.
   nsCOMPtr<nsIURI> channelURI;
   channel->GetURI(getter_AddRefs(channelURI));
-
-  nsAutoCString mimeType;
-  channel->GetContentType(mimeType);
-
-  nsCOMPtr<nsILoadInfo> loadInfo = channel->LoadInfo();
-  // query the corresponding arguments for the channel loadinfo and pass
-  // it on to the temporary loadinfo used for content policy checks.
-  nsCOMPtr<nsINode> requestingNode = domWindow->GetFrameElementInternal();
-  nsCOMPtr<nsIPrincipal> loadingPrincipal;
-  if (requestingNode) {
-    loadingPrincipal = requestingNode->NodePrincipal();
-  } else {
-    nsContentUtils::GetSecurityManager()->GetChannelResultPrincipal(
-        channel, getter_AddRefs(loadingPrincipal));
-  }
-
-  nsCOMPtr<nsILoadInfo> secCheckLoadInfo = new net::LoadInfo(
-      loadingPrincipal, loadInfo->TriggeringPrincipal(), requestingNode,
-      nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK,
-      nsIContentPolicy::TYPE_INTERNAL_IMAGE);
-
-  int16_t decision = nsIContentPolicy::ACCEPT;
-  nsresult rv = NS_CheckContentProcessPolicy(
-      channelURI, secCheckLoadInfo, mimeType, &decision,
-      nsContentUtils::GetContentPolicy());
-
-  if (NS_FAILED(rv) || NS_CP_REJECTED(decision)) {
+  if (image::ImageBlocker::ShouldBlock(channelURI)) {
     request->Cancel(NS_ERROR_CONTENT_BLOCKED);
     return NS_OK;
   }
@@ -130,8 +100,7 @@ ImageListener::OnStartRequest(nsIRequest* request) {
 }
 
 ImageDocument::ImageDocument()
-    : MediaDocument(),
-      mVisibleWidth(0.0),
+    : mVisibleWidth(0.0),
       mVisibleHeight(0.0),
       mImageWidth(0),
       mImageHeight(0),
@@ -153,8 +122,9 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(ImageDocument, MediaDocument,
                                              imgINotificationObserver,
                                              nsIDOMEventListener)
 
-nsresult ImageDocument::Init() {
-  nsresult rv = MediaDocument::Init();
+nsresult ImageDocument::Init(nsIPrincipal* aPrincipal,
+                             nsIPrincipal* aPartitionedPrincipal) {
+  nsresult rv = MediaDocument::Init(aPrincipal, aPartitionedPrincipal);
   NS_ENSURE_SUCCESS(rv, rv);
 
   mShouldResize = StaticPrefs::browser_enable_automatic_image_resizing();
@@ -327,7 +297,7 @@ void ImageDocument::ScrollImageTo(int32_t aX, int32_t aY) {
     return;
   }
 
-  nsIScrollableFrame* sf = presShell->GetRootScrollFrameAsScrollable();
+  ScrollContainerFrame* sf = presShell->GetRootScrollContainerFrame();
   if (!sf) {
     return;
   }
@@ -611,6 +581,10 @@ nsresult ImageDocument::CreateSyntheticDocument() {
   mImageContent->SetAttr(kNameSpaceID_None, nsGkAtoms::src, srcString, false);
   mImageContent->SetAttr(kNameSpaceID_None, nsGkAtoms::alt, srcString, false);
 
+  if (mIsInObjectOrEmbed) {
+    SetModeClass(eIsInObjectOrEmbed);
+  }
+
   body->AppendChildTo(mImageContent, false, IgnoreErrors());
   mImageContent->SetLoadingEnabled(true);
 
@@ -725,6 +699,11 @@ void ImageDocument::UpdateTitleAndCharset() {
                                        mImageWidth, mImageHeight, status);
 }
 
+bool ImageDocument::IsSiteSpecific() {
+  return !ShouldResistFingerprinting(RFPTarget::SiteSpecificZoom) &&
+         StaticPrefs::browser_zoom_siteSpecific();
+}
+
 void ImageDocument::ResetZoomLevel() {
   if (nsContentUtils::IsChildOfSameType(this)) {
     return;
@@ -799,11 +778,13 @@ void ImageDocument::MaybeSendResultToEmbedder(nsresult aResult) {
 }
 }  // namespace mozilla::dom
 
-nsresult NS_NewImageDocument(mozilla::dom::Document** aResult) {
+nsresult NS_NewImageDocument(mozilla::dom::Document** aResult,
+                             nsIPrincipal* aPrincipal,
+                             nsIPrincipal* aPartitionedPrincipal) {
   auto* doc = new mozilla::dom::ImageDocument();
   NS_ADDREF(doc);
 
-  nsresult rv = doc->Init();
+  nsresult rv = doc->Init(aPrincipal, aPartitionedPrincipal);
   if (NS_FAILED(rv)) {
     NS_RELEASE(doc);
   }

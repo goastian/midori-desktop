@@ -4,24 +4,23 @@
 
 #include "VideoUtils.h"
 
-#include <functional>
 #include <stdint.h>
 
 #include "CubebUtils.h"
 #include "ImageContainer.h"
 #include "MediaContainerType.h"
 #include "MediaResource.h"
+#include "PDMFactory.h"
 #include "TimeUnits.h"
-#include "VorbisUtils.h"
 #include "mozilla/Base64.h"
 #include "mozilla/dom/ContentChild.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/SchedulerGroup.h"
+#include "mozilla/ScopeExit.h"
 #include "mozilla/SharedThreadPool.h"
 #include "mozilla/StaticPrefs_accessibility.h"
 #include "mozilla/StaticPrefs_media.h"
-#include "mozilla/TaskCategory.h"
 #include "mozilla/TaskQueue.h"
-#include "mozilla/Telemetry.h"
 #include "nsCharSeparatedTokenizer.h"
 #include "nsContentTypeParser.h"
 #include "nsIConsoleService.h"
@@ -31,7 +30,10 @@
 #include "nsNetCID.h"
 #include "nsServiceManagerUtils.h"
 #include "nsThreadUtils.h"
-#include "AudioStream.h"
+
+#ifdef XP_WIN
+#  include "WMFDecoderModule.h"
+#endif
 
 namespace mozilla {
 
@@ -52,8 +54,8 @@ CheckedInt64 SaferMultDiv(int64_t aValue, uint64_t aMul, uint64_t aDiv) {
   if (aMul > INT64_MAX || aDiv > INT64_MAX) {
     return CheckedInt64(INT64_MAX) + 1;  // Return an invalid checked int.
   }
-  int64_t mul = aMul;
-  int64_t div = aDiv;
+  int64_t mul = AssertedCast<int64_t>(aMul);
+  int64_t div = AssertedCast<int64_t>(aDiv);
   int64_t major = aValue / div;
   int64_t remainder = aValue % div;
   return CheckedInt64(remainder) * mul / div + CheckedInt64(major) * mul;
@@ -96,10 +98,12 @@ static int32_t ConditionDimension(float aValue) {
 void ScaleDisplayByAspectRatio(gfx::IntSize& aDisplay, float aAspectRatio) {
   if (aAspectRatio > 1.0) {
     // Increase the intrinsic width
-    aDisplay.width = ConditionDimension(aAspectRatio * aDisplay.width);
+    aDisplay.width =
+        ConditionDimension(aAspectRatio * AssertedCast<float>(aDisplay.width));
   } else {
     // Increase the intrinsic height
-    aDisplay.height = ConditionDimension(aDisplay.height / aAspectRatio);
+    aDisplay.height =
+        ConditionDimension(AssertedCast<float>(aDisplay.height) / aAspectRatio);
   }
 }
 
@@ -191,12 +195,13 @@ uint32_t DecideAudioPlaybackSampleRate(const AudioInfo& aInfo,
     rate = 48000;
   } else if (aInfo.mRate >= 44100) {
     // The original rate is of good quality and we want to minimize unecessary
-    // resampling, so we let cubeb decide how to resample (if needed).
-    rate = aInfo.mRate;
+    // resampling, so we let cubeb decide how to resample (if needed). Cap to
+    // 384kHz for good measure.
+    rate = std::min<unsigned>(aInfo.mRate, 384000u);
   } else {
     // We will resample all data to match cubeb's preferred sampling rate.
     rate = CubebUtils::PreferredSampleRate(aShouldResistFingerprinting);
-    if (rate > 384000) {
+    if (rate > 768000) {
       // bogus rate, fall back to something else;
       rate = 48000;
     }
@@ -480,6 +485,176 @@ bool ExtractH264CodecDetails(const nsAString& aCodec, uint8_t& aProfile,
     aLevel *= 10;
   }
 
+  return true;
+}
+
+bool IsH265ProfileRecognizable(uint8_t aProfile,
+                               int32_t aProfileCompabilityFlags) {
+  enum Profile {
+    eUnknown,
+    eHighThroughputScreenExtended,
+    eScalableRangeExtension,
+    eScreenExtended,
+    e3DMain,
+    eScalableMain,
+    eMultiviewMain,
+    eHighThroughput,
+    eRangeExtension,
+    eMain10,
+    eMain,
+    eMainStillPicture
+  };
+  Profile p = eUnknown;
+
+  // Spec A.3.8
+  if (aProfile == 11 || (aProfileCompabilityFlags & 0x800)) {
+    p = eHighThroughputScreenExtended;
+  }
+  // Spec H.11.1.2
+  if (aProfile == 10 || (aProfileCompabilityFlags & 0x400)) {
+    p = eScalableRangeExtension;
+  }
+  // Spec A.3.7
+  if (aProfile == 9 || (aProfileCompabilityFlags & 0x200)) {
+    p = eScreenExtended;
+  }
+  // Spec I.11.1.1
+  if (aProfile == 8 || (aProfileCompabilityFlags & 0x100)) {
+    p = e3DMain;
+  }
+  // Spec H.11.1.1
+  if (aProfile == 7 || (aProfileCompabilityFlags & 0x80)) {
+    p = eScalableMain;
+  }
+  // Spec G.11.1.1
+  if (aProfile == 6 || (aProfileCompabilityFlags & 0x40)) {
+    p = eMultiviewMain;
+  }
+  // Spec A.3.6
+  if (aProfile == 5 || (aProfileCompabilityFlags & 0x20)) {
+    p = eHighThroughput;
+  }
+  // Spec A.3.5
+  if (aProfile == 4 || (aProfileCompabilityFlags & 0x10)) {
+    p = eRangeExtension;
+  }
+  // Spec A.3.3
+  // NOTICE: Do not change the order of below sections
+  if (aProfile == 2 || (aProfileCompabilityFlags & 0x4)) {
+    p = eMain10;
+  }
+  // Spec A.3.2
+  // When aProfileCompabilityFlags[1] is equal to 1,
+  // aProfileCompabilityFlags[2] should be equal to 1 as well.
+  if (aProfile == 1 || (aProfileCompabilityFlags & 0x2)) {
+    p = eMain;
+  }
+  // Spec A.3.4
+  // When aProfileCompabilityFlags[3] is equal to 1,
+  // aProfileCompabilityFlags[1] and
+  // aProfileCompabilityFlags[2] should be equal to 1 as well.
+  if (aProfile == 3 || (aProfileCompabilityFlags & 0x8)) {
+    p = eMainStillPicture;
+  }
+
+  return p != eUnknown;
+}
+
+bool ExtractH265CodecDetails(const nsAString& aCodec, uint8_t& aProfile,
+                             uint8_t& aLevel, nsTArray<uint8_t>& aConstraints) {
+  // HEVC codec id consists of:
+  const size_t maxHevcCodecIdLength =
+      5 +  // 'hev1.' or 'hvc1.' prefix (5 chars)
+      4 +  // profile, e.g. '.A12' (max 4 chars)
+      9 +  // profile_compatibility, dot + 32-bit hex number (max 9 chars)
+      5 +  // tier and level, e.g. '.H120' (max 5 chars)
+      18;  // up to 6 constraint bytes, bytes are dot-separated and hex-encoded.
+
+  if (aCodec.Length() > maxHevcCodecIdLength) {
+    return false;
+  }
+
+  // Verify the codec starts with "hev1." or "hvc1.".
+  const nsAString& sample = Substring(aCodec, 0, 5);
+  if (!sample.EqualsASCII("hev1.") && !sample.EqualsASCII("hvc1.")) {
+    return false;
+  }
+
+  nsresult rv;
+  CheckedUint8 profile;
+  int32_t compabilityFlags = 0;
+  CheckedUint8 level = 0;
+  nsTArray<uint8_t> constraints;
+
+  auto splitter = aCodec.Split(u'.');
+  size_t count = 0;
+  for (auto iter = splitter.begin(); iter != splitter.end(); ++iter, ++count) {
+    const auto& fieldStr = *iter;
+    if (fieldStr.IsEmpty()) {
+      return false;
+    }
+
+    if (count == 0) {
+      MOZ_RELEASE_ASSERT(fieldStr.EqualsASCII("hev1") ||
+                         fieldStr.EqualsASCII("hvc1"));
+      continue;
+    }
+
+    if (count == 1) {  // profile
+      Maybe<uint8_t> validProfileSpace;
+      if (fieldStr.First() == u'A' || fieldStr.First() == u'B' ||
+          fieldStr.First() == u'C') {
+        validProfileSpace.emplace(1 + (fieldStr.First() - 'A'));
+      }
+      // If fieldStr.First() is not A, B, C or a digit, ToInteger() should fail.
+      profile = validProfileSpace ? Substring(fieldStr, 1).ToInteger(&rv)
+                                  : fieldStr.ToInteger(&rv);
+      if (NS_FAILED(rv) || !profile.isValid() || profile.value() > 0x1F) {
+        return false;
+      }
+      continue;
+    }
+
+    if (count == 2) {  // profile compatibility flags
+      compabilityFlags = fieldStr.ToInteger(&rv, 16);
+      NS_ENSURE_SUCCESS(rv, false);
+      continue;
+    }
+
+    if (count == 3) {  // tier and level
+      Maybe<uint8_t> validProfileTier;
+      if (fieldStr.First() == u'L' || fieldStr.First() == u'H') {
+        validProfileTier.emplace(fieldStr.First() == u'L' ? 0 : 1);
+      }
+      // If fieldStr.First() is not L, H, or a digit, ToInteger() should fail.
+      level = validProfileTier ? Substring(fieldStr, 1).ToInteger(&rv)
+                               : fieldStr.ToInteger(&rv);
+      if (NS_FAILED(rv) || !level.isValid()) {
+        return false;
+      }
+      continue;
+    }
+
+    // The rest is constraint bytes.
+    if (count > 10) {
+      return false;
+    }
+
+    CheckedUint8 byte(fieldStr.ToInteger(&rv, 16));
+    if (NS_FAILED(rv) || !byte.isValid()) {
+      return false;
+    }
+    constraints.AppendElement(byte.value());
+  }
+
+  if (count < 4 /* Parse til level at least */ || constraints.Length() > 6 ||
+      !IsH265ProfileRecognizable(profile.value(), compabilityFlags)) {
+    return false;
+  }
+
+  aProfile = profile.value();
+  aLevel = level.value();
+  aConstraints = std::move(constraints);
   return true;
 }
 
@@ -857,7 +1032,7 @@ void LogToBrowserConsole(const nsAString& aMsg) {
     nsString msg(aMsg);
     nsCOMPtr<nsIRunnable> task = NS_NewRunnableFunction(
         "LogToBrowserConsole", [msg]() { LogToBrowserConsole(msg); });
-    SchedulerGroup::Dispatch(TaskCategory::Other, task.forget());
+    SchedulerGroup::Dispatch(task.forget());
     return;
   }
   nsCOMPtr<nsIConsoleService> console(
@@ -880,11 +1055,7 @@ bool ParseCodecsString(const nsAString& aCodecs,
     expectMoreTokens = tokenizer.separatorAfterCurrentToken();
     aOutCodecs.AppendElement(token);
   }
-  if (expectMoreTokens) {
-    // Last codec name was empty
-    return false;
-  }
-  return true;
+  return !expectMoreTokens;
 }
 
 bool ParseMIMETypeString(const nsAString& aMIMEType,
@@ -914,6 +1085,13 @@ bool IsH264CodecString(const nsAString& aCodec) {
   uint8_t constraint = 0;
   uint8_t level = 0;
   return ExtractH264CodecDetails(aCodec, profile, constraint, level);
+}
+
+bool IsH265CodecString(const nsAString& aCodec) {
+  uint8_t profile = 0;
+  uint8_t level = 0;
+  nsTArray<uint8_t> constraints;
+  return ExtractH265CodecDetails(aCodec, profile, level, constraints);
 }
 
 bool IsAACCodecString(const nsAString& aCodec) {
@@ -1041,6 +1219,53 @@ bool OnCellularConnection() {
   }
 
   return false;
+}
+
+bool IsWaveMimetype(const nsACString& aMimeType) {
+  return aMimeType.EqualsLiteral("audio/x-wav") ||
+         aMimeType.EqualsLiteral("audio/wave; codecs=1") ||
+         aMimeType.EqualsLiteral("audio/wave; codecs=3") ||
+         aMimeType.EqualsLiteral("audio/wave; codecs=6") ||
+         aMimeType.EqualsLiteral("audio/wave; codecs=7") ||
+         aMimeType.EqualsLiteral("audio/wave; codecs=65534");
+}
+
+void DetermineResolutionForTelemetry(const MediaInfo& aInfo,
+                                     nsCString& aResolutionOut) {
+  if (aInfo.HasAudio()) {
+    aResolutionOut.AppendASCII("AV,");
+  } else {
+    aResolutionOut.AppendASCII("V,");
+  }
+  static const struct {
+    int32_t mH;
+    const char* mRes;
+  } sResolutions[] = {{240, "0<h<=240"},     {480, "240<h<=480"},
+                      {576, "480<h<=576"},   {720, "576<h<=720"},
+                      {1080, "720<h<=1080"}, {2160, "1080<h<=2160"}};
+  const char* resolution = "h>2160";
+  int32_t height = aInfo.mVideo.mDisplay.height;
+  for (const auto& res : sResolutions) {
+    if (height <= res.mH) {
+      resolution = res.mRes;
+      break;
+    }
+  }
+  aResolutionOut.AppendASCII(resolution);
+}
+
+bool ContainHardwareCodecsSupported(
+    const media::MediaCodecsSupported& aSupport) {
+  return aSupport.contains(
+             mozilla::media::MediaCodecsSupport::H264HardwareDecode) ||
+         aSupport.contains(
+             mozilla::media::MediaCodecsSupport::VP8HardwareDecode) ||
+         aSupport.contains(
+             mozilla::media::MediaCodecsSupport::VP9HardwareDecode) ||
+         aSupport.contains(
+             mozilla::media::MediaCodecsSupport::AV1HardwareDecode) ||
+         aSupport.contains(
+             mozilla::media::MediaCodecsSupport::HEVCHardwareDecode);
 }
 
 }  // end namespace mozilla

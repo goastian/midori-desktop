@@ -40,7 +40,7 @@ class AudibilityMonitor {
     ProcessPlanar(aData.ChannelData<float>(), aData.GetDuration());
   }
 
-  void ProcessPlanar(const nsTArray<const float*>& aPlanar, TrackTime aFrames) {
+  void ProcessPlanar(Span<const float* const> aPlanar, TrackTime aFrames) {
     uint32_t lastFrameAudibleAcrossChannels = 0;
     for (uint32_t channel = 0; channel < aPlanar.Length(); channel++) {
       uint32_t lastSampleAudible = 0;
@@ -67,7 +67,7 @@ class AudibilityMonitor {
     for (uint32_t i = 0; i < frameCount; i++) {
       bool atLeastOneAudible = false;
       for (uint32_t j = 0; j < aChannels; j++) {
-        if (std::fabs(AudioSampleToFloat(samples[readIndex++])) >
+        if (std::fabs(ConvertAudioSample<float>(samples[readIndex++])) >
             AUDIBILITY_THRESHOLD) {
           atLeastOneAudible = true;
         }

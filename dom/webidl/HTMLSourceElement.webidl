@@ -16,22 +16,20 @@ interface HTMLSourceElement : HTMLElement {
   [HTMLConstructor] constructor();
 
            [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, SetterThrows]
-           attribute DOMString src;
+           attribute USVString src;
            [CEReactions, SetterThrows]
            attribute DOMString type;
 };
 
 partial interface HTMLSourceElement {
            [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, SetterThrows]
-           attribute DOMString srcset;
+           attribute USVString srcset;
            [CEReactions, SetterThrows]
            attribute DOMString sizes;
            [CEReactions, SetterThrows]
            attribute DOMString media;
-           [CEReactions, SetterThrows,
-            Pref="dom.picture_source_dimension_attributes.enabled"]
+           [CEReactions, SetterThrows]
            attribute unsigned long width;
-           [CEReactions, SetterThrows,
-            Pref="dom.picture_source_dimension_attributes.enabled"]
+           [CEReactions, SetterThrows]
            attribute unsigned long height;
 };

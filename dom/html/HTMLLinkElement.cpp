@@ -60,6 +60,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(HTMLLinkElement,
   tmp->LinkStyle::Traverse(cb);
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mRelList)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSizes)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mBlocking)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(HTMLLinkElement,
@@ -67,6 +68,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(HTMLLinkElement,
   tmp->LinkStyle::Unlink();
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mRelList)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mSizes)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mBlocking)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED_0(HTMLLinkElement,
@@ -90,31 +92,25 @@ nsresult HTMLLinkElement::BindToTree(BindContext& aContext, nsINode& aParent) {
     TryDNSPrefetchOrPreconnectOrPrefetchOrPreloadOrPrerender();
   }
 
-  void (HTMLLinkElement::*update)() =
-      &HTMLLinkElement::UpdateStyleSheetInternal;
-  nsContentUtils::AddScriptRunner(
-      NewRunnableMethod("dom::HTMLLinkElement::BindToTree", this, update));
+  LinkStyle::BindToTree();
 
-  if (IsInUncomposedDoc() &&
-      AttrValueIs(kNameSpaceID_None, nsGkAtoms::rel, nsGkAtoms::localization,
-                  eIgnoreCase)) {
-    aContext.OwnerDoc().LocalizationLinkAdded(this);
+  if (IsInUncomposedDoc()) {
+    if (AttrValueIs(kNameSpaceID_None, nsGkAtoms::rel, nsGkAtoms::localization,
+                    eIgnoreCase)) {
+      aContext.OwnerDoc().LocalizationLinkAdded(this);
+    }
+
+    LinkAdded();
   }
-
-  LinkAdded();
 
   return rv;
 }
 
 void HTMLLinkElement::LinkAdded() {
-  CreateAndDispatchEvent(OwnerDoc(), u"DOMLinkAdded"_ns);
+  CreateAndDispatchEvent(u"DOMLinkAdded"_ns);
 }
 
-void HTMLLinkElement::LinkRemoved() {
-  CreateAndDispatchEvent(OwnerDoc(), u"DOMLinkRemoved"_ns);
-}
-
-void HTMLLinkElement::UnbindFromTree(bool aNullParent) {
+void HTMLLinkElement::UnbindFromTree(UnbindContext& aContext) {
   CancelDNSPrefetch(*this);
   CancelPrefetchOrPreload();
 
@@ -126,14 +122,15 @@ void HTMLLinkElement::UnbindFromTree(bool aNullParent) {
   // We want to update the localization but only if the link is removed from a
   // DOM change, and not because the document is going away.
   bool ignore;
-  if (oldDoc && oldDoc->GetScriptHandlingObject(ignore) &&
-      AttrValueIs(kNameSpaceID_None, nsGkAtoms::rel, nsGkAtoms::localization,
-                  eIgnoreCase)) {
-    oldDoc->LocalizationLinkRemoved(this);
+  if (oldDoc) {
+    if (oldDoc->GetScriptHandlingObject(ignore) &&
+        AttrValueIs(kNameSpaceID_None, nsGkAtoms::rel, nsGkAtoms::localization,
+                    eIgnoreCase)) {
+      oldDoc->LocalizationLinkRemoved(this);
+    }
   }
 
-  CreateAndDispatchEvent(oldDoc, u"DOMLinkRemoved"_ns);
-  nsGenericHTMLElement::UnbindFromTree(aNullParent);
+  nsGenericHTMLElement::UnbindFromTree(aContext);
 
   Unused << UpdateStyleSheetInternal(oldDoc, oldShadowRoot);
 }
@@ -162,15 +159,25 @@ bool HTMLLinkElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
       aResult.ParseStringOrAtom(aValue);
       return true;
     }
+
+    if (aAttribute == nsGkAtoms::fetchpriority) {
+      ParseFetchPriority(aValue, aResult);
+      return true;
+    }
+
+    if (aAttribute == nsGkAtoms::blocking &&
+        StaticPrefs::dom_element_blocking_enabled()) {
+      aResult.ParseAtomArray(aValue);
+      return true;
+    }
   }
 
   return nsGenericHTMLElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
                                               aMaybeScriptedPrincipal, aResult);
 }
 
-void HTMLLinkElement::CreateAndDispatchEvent(Document* aDoc,
-                                             const nsAString& aEventName) {
-  if (!aDoc) return;
+void HTMLLinkElement::CreateAndDispatchEvent(const nsAString& aEventName) {
+  MOZ_ASSERT(IsInUncomposedDoc());
 
   // In the unlikely case that both rev is specified *and* rel=stylesheet,
   // this code will cause the event to fire, on the principle that maybe the
@@ -215,7 +222,7 @@ void HTMLLinkElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
   if (aNameSpaceID == kNameSpaceID_None && aName == nsGkAtoms::href) {
     mCachedURI = nullptr;
     if (IsInUncomposedDoc()) {
-      CreateAndDispatchEvent(OwnerDoc(), u"DOMLinkChanged"_ns);
+      CreateAndDispatchEvent(u"DOMLinkChanged"_ns);
     }
     mTriggeringPrincipal = nsContentUtils::GetAttrTriggeringPrincipal(
         this, aValue ? aValue->GetStringValue() : EmptyString(),
@@ -312,26 +319,21 @@ void HTMLLinkElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
 }
 
 // Keep this and the arrays below in sync with ToLinkMask in LinkStyle.cpp.
-#define SUPPORTED_REL_VALUES_BASE                                              \
-  "prefetch", "dns-prefetch", "stylesheet", "next", "alternate", "preconnect", \
-      "icon", "search", nullptr
+#define SUPPORTED_REL_VALUES_BASE                                           \
+  "preload", "prefetch", "dns-prefetch", "stylesheet", "next", "alternate", \
+      "preconnect", "icon", "search", nullptr
 
 static const DOMTokenListSupportedToken sSupportedRelValueCombinations[][12] = {
     {SUPPORTED_REL_VALUES_BASE},
     {"manifest", SUPPORTED_REL_VALUES_BASE},
-    {"preload", SUPPORTED_REL_VALUES_BASE},
-    {"preload", "manifest", SUPPORTED_REL_VALUES_BASE},
     {"modulepreload", SUPPORTED_REL_VALUES_BASE},
-    {"modulepreload", "manifest", SUPPORTED_REL_VALUES_BASE},
-    {"modulepreload", "preload", SUPPORTED_REL_VALUES_BASE},
-    {"modulepreload", "preload", "manifest", SUPPORTED_REL_VALUES_BASE}};
+    {"modulepreload", "manifest", SUPPORTED_REL_VALUES_BASE}};
 #undef SUPPORTED_REL_VALUES_BASE
 
 nsDOMTokenList* HTMLLinkElement::RelList() {
   if (!mRelList) {
     int index = (StaticPrefs::dom_manifest_enabled() ? 1 : 0) |
-                (StaticPrefs::network_preload() ? 2 : 0) |
-                (StaticPrefs::network_modulepreload() ? 4 : 0);
+                (StaticPrefs::network_modulepreload() ? 2 : 0);
 
     mRelList = new nsDOMTokenList(this, nsGkAtoms::rel,
                                   sSupportedRelValueCombinations[index]);
@@ -341,7 +343,7 @@ nsDOMTokenList* HTMLLinkElement::RelList() {
 
 Maybe<LinkStyle::SheetInfo> HTMLLinkElement::GetStyleSheetInfo() {
   nsAutoString rel;
-  GetAttr(kNameSpaceID_None, nsGkAtoms::rel, rel);
+  GetAttr(nsGkAtoms::rel, rel);
   uint32_t linkTypes = ParseLinkTypes(rel);
   if (!(linkTypes & eSTYLESHEET)) {
     return Nothing();
@@ -395,6 +397,7 @@ Maybe<LinkStyle::SheetInfo> HTMLLinkElement::GetStyleSheetInfo() {
       alternate ? HasAlternateRel::Yes : HasAlternateRel::No,
       IsInline::No,
       mExplicitlyEnabled ? IsExplicitlyEnabled::Yes : IsExplicitlyEnabled::No,
+      GetFetchPriority(),
   });
 }
 
@@ -419,16 +422,16 @@ void HTMLLinkElement::GetContentPolicyMimeTypeMedia(
     nsAttrValue& aAsAttr, nsContentPolicyType& aPolicyType, nsString& aMimeType,
     nsAString& aMedia) {
   nsAutoString as;
-  GetAttr(kNameSpaceID_None, nsGkAtoms::as, as);
+  GetAttr(nsGkAtoms::as, as);
   net::ParseAsValue(as, aAsAttr);
   aPolicyType = net::AsValueToContentPolicy(aAsAttr);
 
   nsAutoString type;
-  GetAttr(kNameSpaceID_None, nsGkAtoms::type, type);
+  GetAttr(nsGkAtoms::type, type);
   nsAutoString notUsed;
   nsContentUtils::SplitMimeType(type, aMimeType, notUsed);
 
-  GetAttr(kNameSpaceID_None, nsGkAtoms::media, aMedia);
+  GetAttr(nsGkAtoms::media, aMedia);
 }
 
 void HTMLLinkElement::
@@ -490,7 +493,7 @@ void HTMLLinkElement::
     if (!moduleLoader) {
       // For the print preview documents, at this moment it doesn't have module
       // loader yet, as the (print preview) document is not attached to the
-      // nsIContentViewer yet, so it doesn't have the GlobalObject.
+      // nsIDocumentViewer yet, so it doesn't have the GlobalObject.
       // Also, the script elements won't be processed as they are also cloned
       // from the original document.
       // So we simply bail out if the module loader is null.
@@ -552,7 +555,7 @@ void HTMLLinkElement::
   }
 
   if (linkTypes & eDNS_PREFETCH) {
-    TryDNSPrefetch(*this);
+    TryDNSPrefetch(*this, HTMLDNSPrefetch::PrefetchSource::LinkDnsPrefetch);
   }
 }
 
@@ -693,9 +696,27 @@ bool HTMLLinkElement::IsCSSMimeTypeAttributeForLinkElement(
   nsAutoString type;
   nsAutoString mimeType;
   nsAutoString notUsed;
-  aSelf.GetAttr(kNameSpaceID_None, nsGkAtoms::type, type);
+  aSelf.GetAttr(nsGkAtoms::type, type);
   nsContentUtils::SplitMimeType(type, mimeType, notUsed);
   return mimeType.IsEmpty() || mimeType.LowerCaseEqualsLiteral("text/css");
+}
+
+nsDOMTokenList* HTMLLinkElement::Blocking() {
+  if (!mBlocking) {
+    mBlocking =
+        new nsDOMTokenList(this, nsGkAtoms::blocking, sSupportedBlockingValues);
+  }
+  return mBlocking;
+}
+
+bool HTMLLinkElement::IsPotentiallyRenderBlocking() {
+  return BlockingContainsRender();
+
+  // TODO: handle implicitly potentially render blocking
+  // https://html.spec.whatwg.org/#implicitly-potentially-render-blocking
+  // The default type for resources given by the stylesheet keyword is text/css.
+  // A link element of this type is implicitly potentially render-blocking if
+  // the element was created by its node document's parser.
 }
 
 }  // namespace mozilla::dom

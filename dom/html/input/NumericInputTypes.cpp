@@ -52,11 +52,7 @@ nsresult NumericInputTypeBase::GetRangeOverflowMessage(nsAString& aMessage) {
   MOZ_ASSERT(!maximum.isNaN());
 
   nsAutoString maxStr;
-  char buf[32];
-  DebugOnly<bool> ok = maximum.toString(buf, ArrayLength(buf));
-  maxStr.AssignASCII(buf);
-  MOZ_ASSERT(ok, "buf not big enough");
-
+  ConvertNumberToString(maximum, maxStr);
   return nsContentUtils::FormatMaybeLocalizedString(
       aMessage, nsContentUtils::eDOM_PROPERTIES,
       "FormValidationNumberRangeOverflow", mInputElement->OwnerDoc(), maxStr);
@@ -67,20 +63,15 @@ nsresult NumericInputTypeBase::GetRangeUnderflowMessage(nsAString& aMessage) {
   MOZ_ASSERT(!minimum.isNaN());
 
   nsAutoString minStr;
-  char buf[32];
-  DebugOnly<bool> ok = minimum.toString(buf, ArrayLength(buf));
-  minStr.AssignASCII(buf);
-  MOZ_ASSERT(ok, "buf not big enough");
-
+  ConvertNumberToString(minimum, minStr);
   return nsContentUtils::FormatMaybeLocalizedString(
       aMessage, nsContentUtils::eDOM_PROPERTIES,
       "FormValidationNumberRangeUnderflow", mInputElement->OwnerDoc(), minStr);
 }
 
-bool NumericInputTypeBase::ConvertStringToNumber(nsAString& aValue,
-                                                 Decimal& aResultValue) const {
-  aResultValue = HTMLInputElement::StringToDecimal(aValue);
-  return aResultValue.isFinite();
+auto NumericInputTypeBase::ConvertStringToNumber(const nsAString& aValue) const
+    -> StringToNumberResult {
+  return {HTMLInputElement::StringToDecimal(aValue)};
 }
 
 bool NumericInputTypeBase::ConvertNumberToString(
@@ -117,15 +108,18 @@ bool NumberInputType::HasBadInput() const {
   return !value.IsEmpty() && mInputElement->GetValueAsDecimal().isNaN();
 }
 
-bool NumberInputType::ConvertStringToNumber(nsAString& aValue,
-                                            Decimal& aResultValue) const {
-  ICUUtils::LanguageTagIterForContent langTagIter(mInputElement);
-  aResultValue =
-      Decimal::fromDouble(ICUUtils::ParseNumber(aValue, langTagIter));
-  if (aResultValue.isFinite()) {
-    return true;
+auto NumberInputType::ConvertStringToNumber(const nsAString& aValue) const
+    -> StringToNumberResult {
+  auto result = NumericInputTypeBase::ConvertStringToNumber(aValue);
+  if (result.mResult.isFinite()) {
+    return result;
   }
-  return NumericInputTypeBase::ConvertStringToNumber(aValue, aResultValue);
+  // Try to read the localized value from the user.
+  ICUUtils::LanguageTagIterForContent langTagIter(mInputElement);
+  result.mLocalized = true;
+  result.mResult =
+      Decimal::fromDouble(ICUUtils::ParseNumber(aValue, langTagIter));
+  return result;
 }
 
 bool NumberInputType::ConvertNumberToString(Decimal aValue,
@@ -151,8 +145,7 @@ nsresult NumberInputType::GetBadInputMessage(nsAString& aMessage) {
 }
 
 bool NumberInputType::IsMutable() const {
-  return !mInputElement->IsDisabled() &&
-         !mInputElement->HasAttr(kNameSpaceID_None, nsGkAtoms::readonly);
+  return !mInputElement->IsDisabledOrReadOnly();
 }
 
 /* input type=range */

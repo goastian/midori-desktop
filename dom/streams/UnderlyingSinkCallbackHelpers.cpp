@@ -111,6 +111,24 @@ already_AddRefed<Promise> UnderlyingSinkAlgorithms::AbortCallback(
 }
 
 // https://streams.spec.whatwg.org/#writable-set-up
+// This one is not covered by the above section as the spec expects any spec
+// implementation to explicitly return a promise for this callback. It's still
+// useful for Gecko as error handling is very frequently done with
+// ErrorResult instead of a rejected promise. See also
+// https://github.com/whatwg/streams/issues/1253.
+already_AddRefed<Promise> UnderlyingSinkAlgorithmsWrapper::WriteCallback(
+    JSContext* aCx, JS::Handle<JS::Value> aChunk,
+    WritableStreamDefaultController& aController, ErrorResult& aRv) {
+  nsCOMPtr<nsIGlobalObject> global = xpc::CurrentNativeGlobal(aCx);
+  return PromisifyAlgorithm(
+      global,
+      [&](ErrorResult& aRv) {
+        return WriteCallbackImpl(aCx, aChunk, aController, aRv);
+      },
+      aRv);
+}
+
+// https://streams.spec.whatwg.org/#writable-set-up
 // Step 2.1: Let closeAlgorithmWrapper be an algorithm that runs these steps:
 already_AddRefed<Promise> UnderlyingSinkAlgorithmsWrapper::CloseCallback(
     JSContext* aCx, ErrorResult& aRv) {
@@ -182,35 +200,22 @@ WritableStreamToOutput::OnOutputStreamReady(nsIAsyncOutputStream* aStream) {
   return NS_OK;
 }
 
-already_AddRefed<Promise> WritableStreamToOutput::WriteCallback(
+already_AddRefed<Promise> WritableStreamToOutput::WriteCallbackImpl(
     JSContext* aCx, JS::Handle<JS::Value> aChunk,
-    WritableStreamDefaultController& aController, ErrorResult& aError) {
+    WritableStreamDefaultController& aController, ErrorResult& aRv) {
   ArrayBufferViewOrArrayBuffer data;
   if (!data.Init(aCx, aChunk)) {
-    aError.StealExceptionFromJSContext(aCx);
+    aRv.MightThrowJSException();
+    aRv.StealExceptionFromJSContext(aCx);
     return nullptr;
   }
   // buffer/bufferView
   MOZ_ASSERT(data.IsArrayBuffer() || data.IsArrayBufferView());
 
-  RefPtr<Promise> promise = Promise::Create(mParent, aError);
-  if (NS_WARN_IF(aError.Failed())) {
+  RefPtr<Promise> promise = Promise::Create(mParent, aRv);
+  if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
-
-  // This is a duplicate of dom/encoding/TextDecoderStream.cpp#51-69
-  // PeterV will deal with that when he lands his patch for TypedArrays
-  auto dataSpan = [&data]() {
-    if (data.IsArrayBuffer()) {
-      const ArrayBuffer& buffer = data.GetAsArrayBuffer();
-      buffer.ComputeState();
-      return Span{buffer.Data(), buffer.Length()};
-    }
-    MOZ_ASSERT(data.IsArrayBufferView());
-    const ArrayBufferView& buffer = data.GetAsArrayBufferView();
-    buffer.ComputeState();
-    return Span{buffer.Data(), buffer.Length()};
-  }();
 
   // Try to write first, and only enqueue data if we were already blocked
   // or the write didn't write it all.  This avoids allocations and copies
@@ -218,30 +223,38 @@ already_AddRefed<Promise> WritableStreamToOutput::WriteCallback(
   MOZ_ASSERT(!mPromise);
   MOZ_ASSERT(mWritten == 0);
   uint32_t written = 0;
-  nsresult rv = mOutput->Write(mozilla::AsChars(dataSpan).Elements(),
-                               dataSpan.Length(), &written);
-  if (NS_FAILED(rv) && rv != NS_BASE_STREAM_WOULD_BLOCK) {
-    promise->MaybeRejectWithAbortError("error writing data");
-    return promise.forget();
-  }
-  if (NS_SUCCEEDED(rv)) {
-    if (written == dataSpan.Length()) {
-      promise->MaybeResolveWithUndefined();
-      return promise.forget();
+  ProcessTypedArraysFixed(data, [&](const Span<uint8_t>& aData) {
+    Span<uint8_t> dataSpan = aData;
+    nsresult rv = mOutput->Write(mozilla::AsChars(dataSpan).Elements(),
+                                 dataSpan.Length(), &written);
+    if (NS_FAILED(rv) && rv != NS_BASE_STREAM_WOULD_BLOCK) {
+      promise->MaybeRejectWithAbortError("error writing data");
+      return;
     }
-    dataSpan = dataSpan.From(written);
+    if (NS_SUCCEEDED(rv)) {
+      if (written == dataSpan.Length()) {
+        promise->MaybeResolveWithUndefined();
+        return;
+      }
+      dataSpan = dataSpan.From(written);
+    }
+
+    auto buffer = Buffer<uint8_t>::CopyFrom(dataSpan);
+    if (buffer.isNothing()) {
+      promise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
+      return;
+    }
+    mData = std::move(buffer);
+  });
+
+  if (promise->State() != Promise::PromiseState::Pending) {
+    return promise.forget();
   }
 
-  auto buffer = Buffer<uint8_t>::CopyFrom(dataSpan);
-  if (buffer.isNothing()) {
-    promise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
-    return promise.forget();
-  }
-  mData = std::move(buffer);
   mPromise = promise;
 
   nsCOMPtr<nsIEventTarget> target = mozilla::GetCurrentSerialEventTarget();
-  rv = mOutput->AsyncWait(this, 0, 0, target);
+  nsresult rv = mOutput->AsyncWait(this, 0, 0, target);
   if (NS_FAILED(rv)) {
     ClearData();
     promise->MaybeRejectWithUnknownError("error waiting to write data");

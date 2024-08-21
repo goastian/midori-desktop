@@ -6,11 +6,10 @@
 
 #include "mozilla/dom/SVGAElement.h"
 
-#include "mozilla/Attributes.h"
 #include "mozilla/EventDispatcher.h"
-#include "mozilla/dom/BindContext.h"
 #include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/SVGAElementBinding.h"
+#include "mozilla/FocusModel.h"
 #include "nsCOMPtr.h"
 #include "nsContentUtils.h"
 #include "nsGkAtoms.h"
@@ -107,7 +106,8 @@ void SVGAElement::SetReferrerPolicy(const nsAString& aPolicy,
 
 nsDOMTokenList* SVGAElement::RelList() {
   if (!mRelList) {
-    mRelList = new nsDOMTokenList(this, nsGkAtoms::rel, sSupportedRelValues);
+    mRelList =
+        new nsDOMTokenList(this, nsGkAtoms::rel, sAnchorAndFormRelValues);
   }
   return mRelList;
 }
@@ -142,45 +142,35 @@ void SVGAElement::SetText(const nsAString& aText, mozilla::ErrorResult& rv) {
 // nsIContent methods
 
 nsresult SVGAElement::BindToTree(BindContext& aContext, nsINode& aParent) {
-  Link::ResetLinkState(false, Link::ElementHasHref());
-
   nsresult rv = SVGAElementBase::BindToTree(aContext, aParent);
   NS_ENSURE_SUCCESS(rv, rv);
-
-  if (Document* doc = aContext.GetComposedDoc()) {
-    doc->RegisterPendingLinkUpdate(this);
-  }
-
+  Link::BindToTree(aContext);
   return NS_OK;
 }
 
-void SVGAElement::UnbindFromTree(bool aNullParent) {
+void SVGAElement::UnbindFromTree(UnbindContext& aContext) {
+  SVGAElementBase::UnbindFromTree(aContext);
   // Without removing the link state we risk a dangling pointer
   // in the mStyledLinks hashtable
-  Link::ResetLinkState(false, Link::ElementHasHref());
-
-  SVGAElementBase::UnbindFromTree(aNullParent);
+  Link::UnbindFromTree();
 }
 
 int32_t SVGAElement::TabIndexDefault() { return 0; }
 
-bool SVGAElement::IsFocusableInternal(int32_t* aTabIndex, bool aWithMouse) {
-  bool isFocusable = false;
-  if (IsSVGFocusable(&isFocusable, aTabIndex)) {
-    return isFocusable;
+Focusable SVGAElement::IsFocusableWithoutStyle(IsFocusableFlags) {
+  Focusable result;
+  if (IsSVGFocusable(&result.mFocusable, &result.mTabIndex)) {
+    return result;
   }
 
   if (!OwnerDoc()->LinkHandlingEnabled()) {
-    return false;
+    return {};
   }
 
   // Links that are in an editable region should never be focusable, even if
   // they are in a contenteditable="false" region.
   if (nsContentUtils::IsNodeInEditableRegion(this)) {
-    if (aTabIndex) {
-      *aTabIndex = -1;
-    }
-    return false;
+    return {};
   }
 
   if (GetTabIndexAttrValue().isNothing()) {
@@ -188,18 +178,13 @@ bool SVGAElement::IsFocusableInternal(int32_t* aTabIndex, bool aWithMouse) {
     if (!IsLink()) {
       // Not tabbable or focusable without href (bug 17605), unless
       // forced to be via presence of nonnegative tabindex attribute
-      if (aTabIndex) {
-        *aTabIndex = -1;
-      }
-      return false;
+      return {};
     }
   }
-
-  if (aTabIndex && (sTabFocusModel & eTabFocus_linksMask) == 0) {
-    *aTabIndex = -1;
+  if (!FocusModel::IsTabFocusable(TabFocusableType::Links)) {
+    result.mTabIndex = -1;
   }
-
-  return true;
+  return result;
 }
 
 bool SVGAElement::HasHref() const {
@@ -225,7 +210,7 @@ already_AddRefed<nsIURI> SVGAElement::GetHrefURI() const {
   return nullptr;
 }
 
-void SVGAElement::GetLinkTarget(nsAString& aTarget) {
+void SVGAElement::GetLinkTargetImpl(nsAString& aTarget) {
   mStringAttributes[TARGET].GetAnimValue(aTarget, this);
   if (aTarget.IsEmpty()) {
     static Element::AttrValuesArray sShowVals[] = {nsGkAtoms::_new,
@@ -244,10 +229,6 @@ void SVGAElement::GetLinkTarget(nsAString& aTarget) {
       ownerDoc->GetBaseTarget(aTarget);
     }
   }
-}
-
-ElementState SVGAElement::IntrinsicState() const {
-  return Link::LinkState() | SVGAElementBase::IntrinsicState();
 }
 
 void SVGAElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
@@ -273,6 +254,16 @@ void SVGAElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
 SVGElement::StringAttributesInfo SVGAElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
                               ArrayLength(sStringInfo));
+}
+
+void SVGAElement::DidAnimateAttribute(int32_t aNameSpaceID,
+                                      nsAtom* aAttribute) {
+  if ((aNameSpaceID == kNameSpaceID_None ||
+       aNameSpaceID == kNameSpaceID_XLink) &&
+      aAttribute == nsGkAtoms::href) {
+    Link::ResetLinkState(true, Link::ElementHasHref());
+  }
+  SVGAElementBase::DidAnimateAttribute(aNameSpaceID, aAttribute);
 }
 
 }  // namespace mozilla::dom

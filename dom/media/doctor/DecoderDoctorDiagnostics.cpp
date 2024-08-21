@@ -14,12 +14,12 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/Services.h"
 #include "nsContentUtils.h"
 #include "nsGkAtoms.h"
 #include "nsIObserverService.h"
 #include "nsIScriptError.h"
 #include "nsITimer.h"
-#include "nsPluginHost.h"
 #include "nsPrintfCString.h"
 
 #if defined(MOZ_FFMPEG)
@@ -419,8 +419,8 @@ static void ReportToConsole(dom::Document* aDocument,
       aParams.Length() < 2 ? "" : ", ...");
   if (StaticPrefs::media_decoder_doctor_testing()) {
     Unused << nsContentUtils::DispatchTrustedEvent(
-        aDocument, ToSupports(aDocument), u"mozreportmediaerror"_ns,
-        CanBubble::eNo, Cancelable::eNo);
+        aDocument, aDocument, u"mozreportmediaerror"_ns, CanBubble::eNo,
+        Cancelable::eNo);
   }
   nsContentUtils::ReportToConsole(nsIScriptError::warningFlag, "Media"_ns,
                                   aDocument, nsContentUtils::eDOM_PROPERTIES,

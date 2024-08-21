@@ -15,6 +15,8 @@
 #include "nsJSPrincipals.h"
 #include "nsCOMPtr.h"
 #include "nsContentUtils.h"
+#include "nsGlobalWindowInner.h"
+#include "nsGlobalWindowOuter.h"
 #include "xpcpublic.h"
 #include "mozilla/AppShutdown.h"
 #include "mozilla/BasePrincipal.h"
@@ -105,7 +107,8 @@ WindowDestroyedEvent::Run() {
         } else {
           nsGlobalWindowOuter* outer =
               nsGlobalWindowOuter::FromSupports(window);
-          currentInner = outer->GetCurrentInnerWindowInternal();
+          currentInner =
+              nsGlobalWindowInner::Cast(outer->GetCurrentInnerWindow());
           nukedOuter = outer;
         }
         NS_ENSURE_TRUE(currentInner, NS_OK);

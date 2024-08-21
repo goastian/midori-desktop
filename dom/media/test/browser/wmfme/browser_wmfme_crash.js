@@ -7,7 +7,7 @@
 add_task(async function setupTestingPref() {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["media.wmf.media-engine.enabled", true],
+      ["media.wmf.media-engine.enabled", 1],
       ["media.wmf.media-engine.channel-decoder.enabled", true],
     ],
   });
@@ -21,7 +21,7 @@ add_task(async function testPlaybackRecoveryFromCrash() {
     window.gBrowser,
     "about:blank"
   );
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, VIDEO_PAGE);
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, VIDEO_PAGE);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 
   await playVideo(tab);

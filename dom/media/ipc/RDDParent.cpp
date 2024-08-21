@@ -44,11 +44,16 @@
 
 #include "mozilla/ipc/ProcessUtils.h"
 #include "nsDebugImpl.h"
+#include "nsIObserverService.h"
 #include "nsIXULRuntime.h"
 #include "nsThreadManager.h"
 
 #if defined(MOZ_SANDBOX) && defined(MOZ_DEBUG) && defined(ENABLE_TESTS)
 #  include "mozilla/SandboxTestingChild.h"
+#endif
+
+#if defined(XP_MACOSX) || defined(XP_LINUX)
+#  include "VideoUtils.h"
 #endif
 
 namespace mozilla {
@@ -158,18 +163,6 @@ mozilla::ipc::IPCResult RDDParent::RecvInit(
 }
 
 IPCResult RDDParent::RecvUpdateVar(const GfxVarUpdate& aUpdate) {
-#if defined(XP_WIN)
-  auto scopeExit = MakeScopeExit(
-      [couldUseHWDecoder = gfx::gfxVars::CanUseHardwareVideoDecoding()] {
-        if (couldUseHWDecoder != gfx::gfxVars::CanUseHardwareVideoDecoding()) {
-          // The capabilities of the system may have changed, force a refresh by
-          // re-initializing the WMF PDM.
-          WMFDecoderModule::Init();
-          Unused << RDDParent::GetSingleton()->SendUpdateMediaCodecsSupported(
-              PDMFactory::Supported(true /* force refresh */));
-        }
-      });
-#endif
   gfxVars::ApplyUpdate(aUpdate);
   return IPC_OK();
 }

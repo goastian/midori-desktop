@@ -11,14 +11,17 @@
 
 #  include "AudioSampleFormat.h"
 #  include "nsString.h"
+#  include "nsISupportsImpl.h"
 
 class AudioDeviceInfo;
 
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(cubeb_stream_prefs)
+MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(cubeb_input_processing_params)
 
 namespace mozilla {
 
 class CallbackThreadRegistry;
+class SharedThreadPool;
 
 namespace CubebUtils {
 
@@ -34,6 +37,25 @@ struct ToCubebFormat<AUDIO_FORMAT_S16> {
   static const cubeb_sample_format value = CUBEB_SAMPLE_S16NE;
 };
 
+nsCString ProcessingParamsToString(cubeb_input_processing_params aParams);
+
+class CubebHandle {
+ public:
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CubebHandle)
+  explicit CubebHandle(cubeb* aCubeb) : mCubeb(aCubeb) {
+    MOZ_RELEASE_ASSERT(mCubeb);
+  };
+  CubebHandle(const CubebHandle&) = delete;
+  cubeb* Context() const { return mCubeb.get(); }
+
+ private:
+  struct CubebDeletePolicy {
+    void operator()(cubeb* aCubeb) { cubeb_destroy(aCubeb); }
+  };
+  const UniquePtr<cubeb, CubebDeletePolicy> mCubeb;
+  ~CubebHandle() = default;
+};
+
 // Initialize Audio Library. Some Audio backends require initializing the
 // library before using it.
 void InitLibrary();
@@ -43,6 +65,11 @@ void InitLibrary();
 void ShutdownLibrary();
 
 bool SandboxEnabled();
+
+// A thread pool containing only one thread to execute the cubeb operations. We
+// should always use this thread to init, destroy, start, or stop cubeb streams,
+// to avoid data racing or deadlock issues across platforms.
+already_AddRefed<SharedThreadPool> GetCubebOperationThread();
 
 // Returns the maximum number of channels supported by the audio hardware.
 uint32_t MaxNumberOfChannels();
@@ -61,11 +88,11 @@ int CubebStreamInit(cubeb* context, cubeb_stream** stream,
                     uint32_t latency_frames, cubeb_data_callback data_callback,
                     cubeb_state_callback state_callback, void* user_ptr);
 
-enum Side { Input, Output };
+enum Side { Input = 1 << 0, Output = 1 << 1 };
 
 double GetVolumeScale();
 bool GetFirstStream();
-cubeb* GetCubebContext();
+RefPtr<CubebHandle> GetCubeb();
 void ReportCubebStreamInitFailure(bool aIsFirstStream);
 void ReportCubebBackendUsed();
 uint32_t GetCubebPlaybackLatencyInMilliseconds();
@@ -86,7 +113,9 @@ bool RouteOutputAsVoice();
 // default input and output devices. This is for diagnosing purposes, the
 // latency figures are best used directly from the cubeb streams themselves, as
 // the devices being used matter. This is blocking.
-bool EstimatedRoundTripLatencyDefaultDevices(double* aMean, double* aStdDev);
+bool EstimatedLatencyDefaultDevices(
+    double* aMean, double* aStdDev,
+    Side aSide = static_cast<Side>(Side::Input | Side::Output));
 
 #  ifdef MOZ_WIDGET_ANDROID
 int32_t AndroidGetAudioOutputSampleRate();

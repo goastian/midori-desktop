@@ -8,6 +8,7 @@
 #define mozilla_loader_WorkerModuleLoader_h
 
 #include "js/loader/ModuleLoaderBase.h"
+#include "js/loader/ScriptFetchOptions.h"
 #include "mozilla/dom/SerializedStackHolder.h"
 #include "mozilla/UniquePtr.h"
 
@@ -38,8 +39,7 @@ class WorkerModuleLoader : public JS::loader::ModuleLoaderBase {
                                            JS::loader::ModuleLoaderBase)
 
   WorkerModuleLoader(WorkerScriptLoader* aScriptLoader,
-                     nsIGlobalObject* aGlobalObject,
-                     nsISerialEventTarget* aEventTarget);
+                     nsIGlobalObject* aGlobalObject);
 
  private:
   ~WorkerModuleLoader() = default;
@@ -47,9 +47,6 @@ class WorkerModuleLoader : public JS::loader::ModuleLoaderBase {
   bool CreateDynamicImportLoader();
   void SetScriptLoader(JS::loader::ScriptLoaderInterface* aLoader) {
     mLoader = aLoader;
-  }
-  void SetEventTarget(nsISerialEventTarget* aEventTarget) {
-    mEventTarget = aEventTarget;
   }
 
   WorkerScriptLoader* GetCurrentScriptLoader();
@@ -63,9 +60,10 @@ class WorkerModuleLoader : public JS::loader::ModuleLoaderBase {
 
   already_AddRefed<ModuleLoadRequest> CreateDynamicImport(
       JSContext* aCx, nsIURI* aURI, LoadedScript* aMaybeActiveScript,
-      JS::Handle<JS::Value> aReferencingPrivate,
       JS::Handle<JSString*> aSpecifier,
       JS::Handle<JSObject*> aPromise) override;
+
+  bool IsDynamicImportSupported() override;
 
   bool CanStartLoad(ModuleLoadRequest* aRequest, nsresult* aRvOut) override;
 

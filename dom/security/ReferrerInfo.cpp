@@ -19,6 +19,7 @@
 #include "nsAlgorithm.h"
 #include "nsContentUtils.h"
 #include "nsCharSeparatedTokenizer.h"
+#include "nsScriptSecurityManager.h"
 #include "nsStreamUtils.h"
 #include "ReferrerInfo.h"
 
@@ -130,16 +131,9 @@ ReferrerPolicy ReferrerPolicyFromToken(const nsAString& aContent,
     }
   }
 
-  // Supported tokes - ReferrerPolicyValues, are generated from
-  // ReferrerPolicy.webidl
-  for (uint8_t i = 0; ReferrerPolicyValues::strings[i].value; i++) {
-    if (lowerContent.EqualsASCII(ReferrerPolicyValues::strings[i].value)) {
-      return static_cast<enum ReferrerPolicy>(i);
-    }
-  }
-
-  // Return no referrer policy (empty string) if none of the previous match
-  return ReferrerPolicy::_empty;
+  // Return no referrer policy (empty string) if it's not a valid enum value.
+  return StringToEnum<ReferrerPolicy>(lowerContent)
+      .valueOr(ReferrerPolicy::_empty);
 }
 
 // static
@@ -186,18 +180,6 @@ ReferrerPolicy ReferrerInfo::ReferrerPolicyFromHeaderString(
   return referrerPolicy;
 }
 
-// static
-const char* ReferrerInfo::ReferrerPolicyToString(ReferrerPolicyEnum aPolicy) {
-  uint8_t index = static_cast<uint8_t>(aPolicy);
-  uint8_t referrerPolicyCount = ArrayLength(ReferrerPolicyValues::strings);
-  MOZ_ASSERT(index < referrerPolicyCount);
-  if (index >= referrerPolicyCount) {
-    return "";
-  }
-
-  return ReferrerPolicyValues::strings[index].value;
-}
-
 /* static */
 uint32_t ReferrerInfo::GetUserReferrerSendingPolicy() {
   return clamped<uint32_t>(
@@ -238,7 +220,8 @@ ReferrerPolicy ReferrerInfo::GetDefaultReferrerPolicy(nsIHttpChannel* aChannel,
     Unused << loadInfo->GetCookieJarSettings(getter_AddRefs(cjs));
     if (!cjs) {
       bool shouldResistFingerprinting =
-          nsContentUtils::ShouldResistFingerprinting(aChannel);
+          nsContentUtils::ShouldResistFingerprinting(
+              aChannel, RFPTarget::IsAlwaysEnabledForPrecompute);
       cjs = aPrivateBrowsing
                 ? net::CookieJarSettings::Create(CookieJarSettings::ePrivate,
                                                  shouldResistFingerprinting)
@@ -534,6 +517,25 @@ bool ReferrerInfo::IsCrossOriginRequest(nsIHttpChannel* aChannel) {
 }
 
 /* static */
+bool ReferrerInfo::IsReferrerCrossOrigin(nsIHttpChannel* aChannel,
+                                         nsIURI* aReferrer) {
+  nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
+
+  if (!loadInfo->TriggeringPrincipal()->GetIsContentPrincipal()) {
+    LOG(("no triggering URI via loadInfo, assuming load is cross-site"));
+    return true;
+  }
+
+  nsCOMPtr<nsIURI> uri;
+  nsresult rv = aChannel->GetURI(getter_AddRefs(uri));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return true;
+  }
+
+  return !nsScriptSecurityManager::SecurityCompareURIs(uri, aReferrer);
+}
+
+/* static */
 bool ReferrerInfo::IsCrossSiteRequest(nsIHttpChannel* aChannel) {
   nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
 
@@ -564,7 +566,7 @@ bool ReferrerInfo::IsCrossSiteRequest(nsIHttpChannel* aChannel) {
 }
 
 ReferrerInfo::TrimmingPolicy ReferrerInfo::ComputeTrimmingPolicy(
-    nsIHttpChannel* aChannel) const {
+    nsIHttpChannel* aChannel, nsIURI* aReferrer) const {
   uint32_t trimmingPolicy = GetUserTrimmingPolicy();
 
   switch (mPolicy) {
@@ -576,7 +578,7 @@ ReferrerInfo::TrimmingPolicy ReferrerInfo::ComputeTrimmingPolicy(
     case ReferrerPolicy::Origin_when_cross_origin:
     case ReferrerPolicy::Strict_origin_when_cross_origin:
       if (trimmingPolicy != TrimmingPolicy::ePolicySchemeHostPort &&
-          IsCrossOriginRequest(aChannel)) {
+          IsReferrerCrossOrigin(aChannel, aReferrer)) {
         // Ignore set trimmingPolicy if it is already the strictest
         // policy.
         trimmingPolicy = TrimmingPolicy::ePolicySchemeHostPort;
@@ -810,11 +812,8 @@ bool ReferrerInfo::ShouldIgnoreLessRestrictedPolicies(
     nsresult rv = aChannel->GetURI(getter_AddRefs(uri));
     NS_ENSURE_SUCCESS(rv, true);
 
-    uint32_t idx = static_cast<uint32_t>(aPolicy);
-
     AutoTArray<nsString, 2> params = {
-        NS_ConvertUTF8toUTF16(
-            nsDependentCString(ReferrerPolicyValues::strings[idx].value)),
+        NS_ConvertUTF8toUTF16(GetEnumString(aPolicy)),
         NS_ConvertUTF8toUTF16(uri->GetSpecOrDefault())};
     LogMessageToConsole(aChannel, "ReferrerPolicyDisallowRelaxingMessage",
                         params);
@@ -957,6 +956,16 @@ ReferrerInfo::ReferrerInfo(const Element& aElement) : ReferrerInfo() {
   InitWithElement(&aElement);
 }
 
+ReferrerInfo::ReferrerInfo(const Element& aElement,
+                           ReferrerPolicyEnum aOverridePolicy)
+    : ReferrerInfo(aElement) {
+  // Override referrer policy if not empty
+  if (aOverridePolicy != ReferrerPolicyEnum::_empty) {
+    mPolicy = aOverridePolicy;
+    mOriginalPolicy = aOverridePolicy;
+  }
+}
+
 ReferrerInfo::ReferrerInfo(nsIURI* aOriginalReferrer,
                            ReferrerPolicyEnum aPolicy, bool aSendReferrer,
                            const Maybe<nsCString>& aComputedReferrer)
@@ -1020,7 +1029,7 @@ ReferrerInfo::GetReferrerPolicy(
 
 NS_IMETHODIMP
 ReferrerInfo::GetReferrerPolicyString(nsACString& aResult) {
-  aResult.AssignASCII(ReferrerPolicyToString(mPolicy));
+  aResult.AssignASCII(GetEnumString(mPolicy));
   return NS_OK;
 }
 
@@ -1069,11 +1078,9 @@ ReferrerInfo::Equals(nsIReferrerInfo* aOther, bool* aResult) {
 }
 
 NS_IMETHODIMP
-ReferrerInfo::GetComputedReferrerSpec(nsAString& aComputedReferrerSpec) {
+ReferrerInfo::GetComputedReferrerSpec(nsACString& aComputedReferrerSpec) {
   aComputedReferrerSpec.Assign(
-      mComputedReferrer.isSome()
-          ? NS_ConvertUTF8toUTF16(mComputedReferrer.value())
-          : EmptyString());
+      mComputedReferrer.isSome() ? mComputedReferrer.value() : EmptyCString());
   return NS_OK;
 }
 
@@ -1195,21 +1202,6 @@ ReferrerInfo::InitWithElement(const Element* aElement) {
 
   mInitialized = true;
   return NS_OK;
-}
-
-/* static */
-already_AddRefed<nsIReferrerInfo>
-ReferrerInfo::CreateFromOtherAndPolicyOverride(
-    nsIReferrerInfo* aOther, ReferrerPolicyEnum aPolicyOverride) {
-  MOZ_ASSERT(aOther);
-  ReferrerPolicyEnum policy = aPolicyOverride != ReferrerPolicy::_empty
-                                  ? aPolicyOverride
-                                  : aOther->ReferrerPolicy();
-
-  nsCOMPtr<nsIURI> referrer = aOther->GetComputedReferrer();
-  nsCOMPtr<nsIReferrerInfo> referrerInfo =
-      new ReferrerInfo(referrer, policy, aOther->GetSendReferrer());
-  return referrerInfo.forget();
 }
 
 /* static */
@@ -1384,13 +1376,6 @@ nsresult ReferrerInfo::ComputeReferrer(nsIHttpChannel* aChannel) {
     return NS_OK;
   }
 
-  // Don't send referrer when the request is cross-origin and policy is
-  // "same-origin".
-  if (mPolicy == ReferrerPolicy::Same_origin &&
-      IsCrossOriginRequest(aChannel)) {
-    return NS_OK;
-  }
-
   // Strip away any fragment per RFC 2616 section 14.36
   // and Referrer Policy section 6.3.5.
   if (!referrer) {
@@ -1426,7 +1411,14 @@ nsresult ReferrerInfo::ComputeReferrer(nsIHttpChannel* aChannel) {
   nsCOMPtr<nsIURI> exposableURI = nsIOService::CreateExposableURI(referrer);
   referrer = exposableURI;
 
-  TrimmingPolicy trimmingPolicy = ComputeTrimmingPolicy(aChannel);
+  // Don't send referrer when the request is cross-origin and policy is
+  // "same-origin".
+  if (mPolicy == ReferrerPolicy::Same_origin &&
+      IsReferrerCrossOrigin(aChannel, referrer)) {
+    return NS_OK;
+  }
+
+  TrimmingPolicy trimmingPolicy = ComputeTrimmingPolicy(aChannel, referrer);
 
   nsAutoCString trimmedReferrer;
   // We first trim the referrer according to the policy by calling
@@ -1703,7 +1695,9 @@ void ReferrerInfo::RecordTelemetry(nsIHttpChannel* aChannel) {
   // requests and the rest 9 buckets are for cross-site requests.
   uint32_t telemetryOffset =
       IsCrossSiteRequest(aChannel)
-          ? static_cast<uint32_t>(ReferrerPolicy::EndGuard_)
+          ? UnderlyingValue(
+                MaxContiguousEnumValue<dom::ReferrerPolicy>::value) +
+                1
           : 0;
 
   Telemetry::Accumulate(Telemetry::REFERRER_POLICY_COUNT,

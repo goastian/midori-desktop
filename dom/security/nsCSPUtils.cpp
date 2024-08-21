@@ -21,11 +21,17 @@
 #include "nsReadableUtils.h"
 #include "nsSandboxFlags.h"
 #include "nsServiceManagerUtils.h"
+#include "nsWhitespaceTokenizer.h"
 
+#include "mozilla/Assertions.h"
 #include "mozilla/Components.h"
 #include "mozilla/dom/CSPDictionariesBinding.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/SRIMetadata.h"
 #include "mozilla/StaticPrefs_security.h"
+
+using namespace mozilla;
+using mozilla::dom::SRIMetadata;
 
 #define DEFAULT_PORT -1
 
@@ -238,6 +244,20 @@ void CSP_LogMessage(const nsAString& aMessage, const nsAString& aSourceName,
   console->LogMessage(error);
 }
 
+CSPDirective CSP_StringToCSPDirective(const nsAString& aDir) {
+  nsString lowerDir = PromiseFlatString(aDir);
+  ToLowerCase(lowerDir);
+
+  uint32_t numDirs = (sizeof(CSPStrDirectives) / sizeof(CSPStrDirectives[0]));
+
+  for (uint32_t i = 1; i < numDirs; i++) {
+    if (lowerDir.EqualsASCII(CSPStrDirectives[i])) {
+      return static_cast<CSPDirective>(i);
+    }
+  }
+  return nsIContentSecurityPolicy::NO_DIRECTIVE;
+}
+
 /**
  * Combines CSP_LogMessage and CSP_GetLocalizedStr into one call.
  */
@@ -353,7 +373,6 @@ CSPDirective CSP_ContentTypeToDirective(nsContentPolicyType aType) {
       return nsIContentSecurityPolicy::NO_DIRECTIVE;
 
     // Fall through to error for all other directives
-    // Note that we should never end up here for navigate-to
     case nsIContentPolicy::TYPE_INVALID:
     case nsIContentPolicy::TYPE_END:
       MOZ_ASSERT(false, "Can not map nsContentPolicyType to CSPDirective");
@@ -520,16 +539,15 @@ nsresult CSP_AppendCSPFromHeader(nsIContentSecurityPolicy* aCsp,
 
 /* ===== nsCSPSrc ============================ */
 
-nsCSPBaseSrc::nsCSPBaseSrc() : mInvalidated(false) {}
+nsCSPBaseSrc::nsCSPBaseSrc() {}
 
 nsCSPBaseSrc::~nsCSPBaseSrc() = default;
 
 // ::permits is only called for external load requests, therefore:
 // nsCSPKeywordSrc and nsCSPHashSource fall back to this base class
 // implementation which will never allow the load.
-bool nsCSPBaseSrc::permits(nsIURI* aUri, const nsAString& aNonce,
-                           bool aWasRedirected, bool aReportOnly,
-                           bool aUpgradeInsecure, bool aParserCreated) const {
+bool nsCSPBaseSrc::permits(nsIURI* aUri, bool aWasRedirected, bool aReportOnly,
+                           bool aUpgradeInsecure) const {
   if (CSPUTILSLOGENABLED()) {
     CSPUTILSLOG(
         ("nsCSPBaseSrc::permits, aUri: %s", aUri->GetSpecOrDefault().get()));
@@ -541,8 +559,7 @@ bool nsCSPBaseSrc::permits(nsIURI* aUri, const nsAString& aNonce,
 // nsCSPSchemeSrc, nsCSPHostSrc fall back
 // to this base class implementation which will never allow the load.
 bool nsCSPBaseSrc::allows(enum CSPKeyword aKeyword,
-                          const nsAString& aHashOrNonce,
-                          bool aParserCreated) const {
+                          const nsAString& aHashOrNonce) const {
   CSPUTILSLOG(("nsCSPBaseSrc::allows, aKeyWord: %s, a HashOrNonce: %s",
                aKeyword == CSP_HASH ? "hash" : CSP_EnumToUTF8Keyword(aKeyword),
                NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
@@ -557,17 +574,13 @@ nsCSPSchemeSrc::nsCSPSchemeSrc(const nsAString& aScheme) : mScheme(aScheme) {
 
 nsCSPSchemeSrc::~nsCSPSchemeSrc() = default;
 
-bool nsCSPSchemeSrc::permits(nsIURI* aUri, const nsAString& aNonce,
-                             bool aWasRedirected, bool aReportOnly,
-                             bool aUpgradeInsecure, bool aParserCreated) const {
+bool nsCSPSchemeSrc::permits(nsIURI* aUri, bool aWasRedirected,
+                             bool aReportOnly, bool aUpgradeInsecure) const {
   if (CSPUTILSLOGENABLED()) {
     CSPUTILSLOG(
         ("nsCSPSchemeSrc::permits, aUri: %s", aUri->GetSpecOrDefault().get()));
   }
   MOZ_ASSERT((!mScheme.EqualsASCII("")), "scheme can not be the empty string");
-  if (mInvalidated) {
-    return false;
-  }
   return permitsScheme(mScheme, aUri, aReportOnly, aUpgradeInsecure, false);
 }
 
@@ -685,15 +698,14 @@ bool permitsPort(const nsAString& aEnforcementScheme,
   return false;
 }
 
-bool nsCSPHostSrc::permits(nsIURI* aUri, const nsAString& aNonce,
-                           bool aWasRedirected, bool aReportOnly,
-                           bool aUpgradeInsecure, bool aParserCreated) const {
+bool nsCSPHostSrc::permits(nsIURI* aUri, bool aWasRedirected, bool aReportOnly,
+                           bool aUpgradeInsecure) const {
   if (CSPUTILSLOGENABLED()) {
     CSPUTILSLOG(
         ("nsCSPHostSrc::permits, aUri: %s", aUri->GetSpecOrDefault().get()));
   }
 
-  if (mInvalidated || mIsUniqueOrigin) {
+  if (mIsUniqueOrigin) {
     return false;
   }
 
@@ -859,42 +871,12 @@ nsCSPKeywordSrc::nsCSPKeywordSrc(enum CSPKeyword aKeyword)
 
 nsCSPKeywordSrc::~nsCSPKeywordSrc() = default;
 
-bool nsCSPKeywordSrc::permits(nsIURI* aUri, const nsAString& aNonce,
-                              bool aWasRedirected, bool aReportOnly,
-                              bool aUpgradeInsecure,
-                              bool aParserCreated) const {
-  // no need to check for invalidated, this will always return false unless
-  // it is an nsCSPKeywordSrc for 'strict-dynamic', which should allow non
-  // parser created scripts.
-  return ((mKeyword == CSP_STRICT_DYNAMIC) && !aParserCreated);
-}
-
 bool nsCSPKeywordSrc::allows(enum CSPKeyword aKeyword,
-                             const nsAString& aHashOrNonce,
-                             bool aParserCreated) const {
-  CSPUTILSLOG(
-      ("nsCSPKeywordSrc::allows, aKeyWord: %s, aHashOrNonce: %s, mInvalidated: "
-       "%s",
-       CSP_EnumToUTF8Keyword(aKeyword),
-       NS_ConvertUTF16toUTF8(aHashOrNonce).get(),
-       mInvalidated ? "true" : "false"));
-
-  if (mInvalidated) {
-    // only 'self', 'report-sample' and 'unsafe-inline' are keywords that can be
-    // ignored. Please note that the parser already translates 'self' into a uri
-    // (see assertion in constructor).
-    MOZ_ASSERT(mKeyword == CSP_UNSAFE_INLINE || mKeyword == CSP_REPORT_SAMPLE,
-               "should only invalidate unsafe-inline");
-    return false;
-  }
-  // either the keyword allows the load or the policy contains 'strict-dynamic',
-  // in which case we have to make sure the script is not parser created before
-  // allowing the load and also eval & wasm-eval should be blocked even if
-  // 'strict-dynamic' is present. Should be allowed only if 'unsafe-eval' is
-  // present.
-  return ((mKeyword == aKeyword) ||
-          ((mKeyword == CSP_STRICT_DYNAMIC) && !aParserCreated &&
-           aKeyword != CSP_UNSAFE_EVAL && aKeyword != CSP_WASM_UNSAFE_EVAL));
+                             const nsAString& aHashOrNonce) const {
+  CSPUTILSLOG(("nsCSPKeywordSrc::allows, aKeyWord: %s, aHashOrNonce: %s",
+               CSP_EnumToUTF8Keyword(aKeyword),
+               NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
+  return mKeyword == aKeyword;
 }
 
 bool nsCSPKeywordSrc::visit(nsCSPSrcVisitor* aVisitor) const {
@@ -911,41 +893,8 @@ nsCSPNonceSrc::nsCSPNonceSrc(const nsAString& aNonce) : mNonce(aNonce) {}
 
 nsCSPNonceSrc::~nsCSPNonceSrc() = default;
 
-bool nsCSPNonceSrc::permits(nsIURI* aUri, const nsAString& aNonce,
-                            bool aWasRedirected, bool aReportOnly,
-                            bool aUpgradeInsecure, bool aParserCreated) const {
-  if (CSPUTILSLOGENABLED()) {
-    CSPUTILSLOG(("nsCSPNonceSrc::permits, aUri: %s, aNonce: %s",
-                 aUri->GetSpecOrDefault().get(),
-                 NS_ConvertUTF16toUTF8(aNonce).get()));
-  }
-
-  if (aReportOnly && aWasRedirected && aNonce.IsEmpty()) {
-    /* Fix for Bug 1505412
-     *  If we land here, we're currently handling a script-preload which got
-     *  redirected. Preloads do not have any info about the nonce assiociated.
-     *  Because of Report-Only the preload passes the 1st CSP-check so the
-     *  preload does not get retried with a nonce attached.
-     *  Currently we're relying on the script-manager to
-     *  provide a fake loadinfo to check the preloads against csp.
-     *  So during HTTPChannel->OnRedirect we cant check csp for this case.
-     *  But as the script-manager already checked the csp,
-     *  a report would already have been send,
-     *  if the nonce didnt match.
-     *  So we can pass the check here for Report-Only Cases.
-     */
-    MOZ_ASSERT(aParserCreated == false,
-               "Skipping nonce-check is only allowed for Preloads");
-    return true;
-  }
-
-  // nonces can not be invalidated by strict-dynamic
-  return mNonce.Equals(aNonce);
-}
-
 bool nsCSPNonceSrc::allows(enum CSPKeyword aKeyword,
-                           const nsAString& aHashOrNonce,
-                           bool aParserCreated) const {
+                           const nsAString& aHashOrNonce) const {
   CSPUTILSLOG(("nsCSPNonceSrc::allows, aKeyWord: %s, a HashOrNonce: %s",
                CSP_EnumToUTF8Keyword(aKeyword),
                NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
@@ -991,8 +940,7 @@ nsCSPHashSrc::nsCSPHashSrc(const nsAString& aAlgo, const nsAString& aHash)
 nsCSPHashSrc::~nsCSPHashSrc() = default;
 
 bool nsCSPHashSrc::allows(enum CSPKeyword aKeyword,
-                          const nsAString& aHashOrNonce,
-                          bool aParserCreated) const {
+                          const nsAString& aHashOrNonce) const {
   CSPUTILSLOG(("nsCSPHashSrc::allows, aKeyWord: %s, a HashOrNonce: %s",
                CSP_EnumToUTF8Keyword(aKeyword),
                NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
@@ -1064,6 +1012,41 @@ void nsCSPSandboxFlags::toString(nsAString& outStr) const {
   outStr.Append(mFlags);
 }
 
+/* ===== nsCSPRequireTrustedTypesForDirectiveValue ===================== */
+
+nsCSPRequireTrustedTypesForDirectiveValue::
+    nsCSPRequireTrustedTypesForDirectiveValue(const nsAString& aValue)
+    : mValue{aValue} {}
+
+bool nsCSPRequireTrustedTypesForDirectiveValue::visit(
+    nsCSPSrcVisitor* aVisitor) const {
+  MOZ_ASSERT_UNREACHABLE(
+      "This method should only be called for other overloads of this method.");
+  return false;
+}
+
+void nsCSPRequireTrustedTypesForDirectiveValue::toString(
+    nsAString& aOutStr) const {
+  aOutStr.Append(mValue);
+}
+
+/* =============== nsCSPTrustedTypesDirectivePolicyName =============== */
+
+nsCSPTrustedTypesDirectivePolicyName::nsCSPTrustedTypesDirectivePolicyName(
+    const nsAString& aName)
+    : mName{aName} {}
+
+bool nsCSPTrustedTypesDirectivePolicyName::visit(
+    nsCSPSrcVisitor* aVisitor) const {
+  MOZ_ASSERT_UNREACHABLE(
+      "Should only be called for other overloads of this method.");
+  return false;
+}
+
+void nsCSPTrustedTypesDirectivePolicyName::toString(nsAString& aOutStr) const {
+  aOutStr.Append(mName);
+}
+
 /* ===== nsCSPDirective ====================== */
 
 nsCSPDirective::nsCSPDirective(CSPDirective aDirective) {
@@ -1076,17 +1059,219 @@ nsCSPDirective::~nsCSPDirective() {
   }
 }
 
-bool nsCSPDirective::permits(nsIURI* aUri, const nsAString& aNonce,
-                             bool aWasRedirected, bool aReportOnly,
-                             bool aUpgradeInsecure, bool aParserCreated) const {
+// https://w3c.github.io/webappsec-csp/#match-nonce-to-source-list
+static bool DoesNonceMatchSourceList(nsILoadInfo* aLoadInfo,
+                                     const nsTArray<nsCSPBaseSrc*>& aSrcs) {
+  // Step 1. Assert: source list is not null. (implicit)
+
+  // Note: For code-reuse we do "request’s cryptographic nonce metadata" here
+  // instead of the caller.
+  nsAutoString nonce;
+  MOZ_ALWAYS_SUCCEEDS(aLoadInfo->GetCspNonce(nonce));
+
+  // Step 2. If nonce is the empty string, return "Does Not Match".
+  if (nonce.IsEmpty()) {
+    return false;
+  }
+
+  // Step 3. For each expression of source list:
+  for (nsCSPBaseSrc* src : aSrcs) {
+    // Step 3.1. If expression matches the nonce-source grammar, and nonce is
+    // identical to expression’s base64-value part, return "Matches".
+    if (src->isNonce()) {
+      nsAutoString srcNonce;
+      static_cast<nsCSPNonceSrc*>(src)->getNonce(srcNonce);
+      if (srcNonce == nonce) {
+        return true;
+      }
+    }
+  }
+
+  // Step 4. Return "Does Not Match".
+  return false;
+}
+
+// https://www.w3.org/TR/SRI/#parse-metadata
+// This function is similar to SRICheck::IntegrityMetadata, but also keeps
+// SRI metadata with weaker hashes.
+// CSP treats "no metadata" and empty results the same way.
+static nsTArray<SRIMetadata> ParseSRIMetadata(const nsAString& aMetadata) {
+  // Step 1. Let result be the empty set.
+  // Step 2. Let empty be equal to true.
+  nsTArray<SRIMetadata> result;
+
+  NS_ConvertUTF16toUTF8 metadataList(aMetadata);
+  nsAutoCString token;
+
+  // Step 3. For each token returned by splitting metadata on spaces:
+  nsCWhitespaceTokenizer tokenizer(metadataList);
+  while (tokenizer.hasMoreTokens()) {
+    token = tokenizer.nextToken();
+    // Step 3.1. Set empty to false.
+    // Step 3.3. Parse token per the grammar in integrity metadata.
+    SRIMetadata metadata(token);
+    // Step 3.2. If token is not a valid metadata, skip the remaining steps, and
+    // proceed to the next token.
+    if (metadata.IsMalformed()) {
+      continue;
+    }
+
+    // Step 3.4. Let algorithm be the alg component of token.
+    // Step 3.5. If algorithm is a hash function recognized by the user agent,
+    // add the
+    //  parsed token to result.
+    if (metadata.IsAlgorithmSupported()) {
+      result.AppendElement(metadata);
+    }
+  }
+
+  // Step 4. Return no metadata if empty is true, otherwise return result.
+  return result;
+}
+
+bool nsCSPDirective::permits(CSPDirective aDirective, nsILoadInfo* aLoadInfo,
+                             nsIURI* aUri, bool aWasRedirected,
+                             bool aReportOnly, bool aUpgradeInsecure) const {
+  MOZ_ASSERT(equals(aDirective) || isDefaultDirective());
+
   if (CSPUTILSLOGENABLED()) {
-    CSPUTILSLOG(
-        ("nsCSPDirective::permits, aUri: %s", aUri->GetSpecOrDefault().get()));
+    CSPUTILSLOG(("nsCSPDirective::permits, aUri: %s, aDirective: %s",
+                 aUri->GetSpecOrDefault().get(),
+                 CSP_CSPDirectiveToString(aDirective)));
+  }
+
+  if (aLoadInfo) {
+    // https://w3c.github.io/webappsec-csp/#style-src-elem-pre-request
+    if (aDirective == CSPDirective::STYLE_SRC_ELEM_DIRECTIVE) {
+      // Step 3. If the result of executing §6.7.2.3 Does nonce match source
+      // list? on request’s cryptographic nonce metadata and this directive’s
+      // value is "Matches", return "Allowed".
+      if (DoesNonceMatchSourceList(aLoadInfo, mSrcs)) {
+        CSPUTILSLOG(("  Allowed by matching nonce (style)"));
+        return true;
+      }
+    }
+
+    // https://w3c.github.io/webappsec-csp/#script-pre-request
+    // Step 1. If request’s destination is script-like:
+    else if (aDirective == CSPDirective::SCRIPT_SRC_ELEM_DIRECTIVE ||
+             aDirective == CSPDirective::WORKER_SRC_DIRECTIVE) {
+      // Step 1.1. If the result of executing §6.7.2.3 Does nonce match source
+      // list? on request’s cryptographic nonce metadata and this directive’s
+      // value is "Matches", return "Allowed".
+      if (DoesNonceMatchSourceList(aLoadInfo, mSrcs)) {
+        CSPUTILSLOG(("  Allowed by matching nonce (script-like)"));
+        return true;
+      }
+
+      // Step 1.2. Let integrity expressions be the set of source expressions in
+      // directive’s value that match the hash-source grammar.
+      nsTArray<nsCSPHashSrc*> integrityExpressions;
+      bool hasStrictDynamicKeyword =
+          false;  // Optimization to reduce number of iterations.
+      for (uint32_t i = 0; i < mSrcs.Length(); i++) {
+        if (mSrcs[i]->isHash()) {
+          integrityExpressions.AppendElement(
+              static_cast<nsCSPHashSrc*>(mSrcs[i]));
+        } else if (mSrcs[i]->isKeyword(CSP_STRICT_DYNAMIC)) {
+          hasStrictDynamicKeyword = true;
+        }
+      }
+
+      // Step 1.3. If integrity expressions is not empty:
+      if (!integrityExpressions.IsEmpty()) {
+        // Step 1.3.1. Let integrity sources be the result of executing the
+        // algorithm defined in [SRI 3.3.3 Parse metadata] on request’s
+        // integrity metadata.
+        nsAutoString integrityMetadata;
+        aLoadInfo->GetIntegrityMetadata(integrityMetadata);
+
+        nsTArray<SRIMetadata> integritySources =
+            ParseSRIMetadata(integrityMetadata);
+        MOZ_ASSERT(
+            integritySources.IsEmpty() == integrityMetadata.IsEmpty(),
+            "The integrity metadata should be only be empty, "
+            "when the parsed string was completely empty, otherwise it should "
+            "include at least one valid hash");
+
+        // Step 1.3.2. If integrity sources is "no metadata" or an empty set,
+        // skip the remaining substeps.
+        if (!integritySources.IsEmpty()) {
+          // Step 1.3.3. Let bypass due to integrity match be true.
+          bool bypass = true;
+
+          nsAutoCString sourceAlgorithmUTF8;
+          nsAutoCString sourceHashUTF8;
+          nsAutoString sourceAlgorithm;
+          nsAutoString sourceHash;
+          nsAutoString algorithm;
+          nsAutoString hash;
+
+          // Step 1.3.4. For each source of integrity sources:
+          for (const SRIMetadata& source : integritySources) {
+            source.GetAlgorithm(&sourceAlgorithmUTF8);
+            sourceAlgorithm = NS_ConvertUTF8toUTF16(sourceAlgorithmUTF8);
+            source.GetHash(0, &sourceHashUTF8);
+            sourceHash = NS_ConvertUTF8toUTF16(sourceHashUTF8);
+
+            // Step 1.3.4.1 If directive’s value does not contain a source
+            // expression whose hash-algorithm is an ASCII case-insensitive
+            // match for source’s hash-algorithm, and whose base64-value is
+            // identical to source’s base64-value, then set bypass due to
+            // integrity match to false.
+            bool found = false;
+            for (const nsCSPHashSrc* hashSrc : integrityExpressions) {
+              hashSrc->getAlgorithm(algorithm);
+              hashSrc->getHash(hash);
+
+              // The nsCSPHashSrc constructor lowercases algorithm, so this
+              // is case-insensitive.
+              if (sourceAlgorithm == algorithm && sourceHash == hash) {
+                found = true;
+                break;
+              }
+            }
+
+            if (!found) {
+              bypass = false;
+              break;
+            }
+          }
+
+          // Step 1.3.5. If bypass due to integrity match is true, return
+          // "Allowed".
+          if (bypass) {
+            CSPUTILSLOG(
+                ("  Allowed by matching integrity metadata (script-like)"));
+            return true;
+          }
+        }
+      }
+
+      // Step 1.4. If directive’s value contains a source expression that is an
+      // ASCII case-insensitive match for the "'strict-dynamic'" keyword-source:
+
+      // XXX I don't think we should apply strict-dynamic to XSLT.
+      if (hasStrictDynamicKeyword && aLoadInfo->InternalContentPolicyType() !=
+                                         nsIContentPolicy::TYPE_XSLT) {
+        // Step 1.4.1  If the request’s parser metadata is "parser-inserted",
+        // return "Blocked". Otherwise, return "Allowed".
+        if (aLoadInfo->GetParserCreatedScript()) {
+          CSPUTILSLOG(
+              ("  Blocked by 'strict-dynamic' because parser-inserted"));
+          return false;
+        }
+
+        CSPUTILSLOG(
+            ("  Allowed by 'strict-dynamic' because not-parser-inserted"));
+        return true;
+      }
+    }
   }
 
   for (uint32_t i = 0; i < mSrcs.Length(); i++) {
-    if (mSrcs[i]->permits(aUri, aNonce, aWasRedirected, aReportOnly,
-                          aUpgradeInsecure, aParserCreated)) {
+    if (mSrcs[i]->permits(aUri, aWasRedirected, aReportOnly,
+                          aUpgradeInsecure)) {
       return true;
     }
   }
@@ -1094,23 +1279,59 @@ bool nsCSPDirective::permits(nsIURI* aUri, const nsAString& aNonce,
 }
 
 bool nsCSPDirective::allows(enum CSPKeyword aKeyword,
-                            const nsAString& aHashOrNonce,
-                            bool aParserCreated) const {
-  CSPUTILSLOG(("nsCSPDirective::allows, aKeyWord: %s, a HashOrNonce: %s",
+                            const nsAString& aHashOrNonce) const {
+  CSPUTILSLOG(("nsCSPDirective::allows, aKeyWord: %s, aHashOrNonce: %s",
                CSP_EnumToUTF8Keyword(aKeyword),
                NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
 
   for (uint32_t i = 0; i < mSrcs.Length(); i++) {
-    if (mSrcs[i]->allows(aKeyword, aHashOrNonce, aParserCreated)) {
+    if (mSrcs[i]->allows(aKeyword, aHashOrNonce)) {
       return true;
     }
   }
   return false;
 }
 
+// https://w3c.github.io/webappsec-csp/#allow-all-inline
+bool nsCSPDirective::allowsAllInlineBehavior(CSPDirective aDir) const {
+  // Step 1. Let allow all inline be false.
+  bool allowAll = false;
+
+  // Step 2. For each expression of list:
+  for (nsCSPBaseSrc* src : mSrcs) {
+    // Step 2.1. If expression matches the nonce-source or hash-source grammar,
+    // return "Does Not Allow".
+    if (src->isNonce() || src->isHash()) {
+      return false;
+    }
+
+    // Step 2.2. If type is "script", "script attribute" or "navigation" and
+    // expression matches the keyword-source "'strict-dynamic'", return "Does
+    // Not Allow".
+    if ((aDir == nsIContentSecurityPolicy::SCRIPT_SRC_ELEM_DIRECTIVE ||
+         aDir == nsIContentSecurityPolicy::SCRIPT_SRC_ATTR_DIRECTIVE) &&
+        src->isKeyword(CSP_STRICT_DYNAMIC)) {
+      return false;
+    }
+
+    // Step 2.3. If expression is an ASCII case-insensitive match for the
+    // keyword-source "'unsafe-inline'", set allow all inline to true.
+    if (src->isKeyword(CSP_UNSAFE_INLINE)) {
+      allowAll = true;
+    }
+  }
+
+  // Step 3. If allow all inline is true, return "Allows". Otherwise, return
+  // "Does Not Allow".
+  return allowAll;
+}
+
 void nsCSPDirective::toString(nsAString& outStr) const {
   // Append directive name
   outStr.AppendASCII(CSP_CSPDirectiveToString(mDirective));
+
+  MOZ_ASSERT(!mSrcs.IsEmpty());
+
   outStr.AppendLiteral(" ");
 
   // Append srcs
@@ -1244,6 +1465,21 @@ void nsCSPDirective::toDomCSPStruct(mozilla::dom::CSP& outCSP) const {
     case nsIContentSecurityPolicy::SCRIPT_SRC_ATTR_DIRECTIVE:
       outCSP.mScript_src_attr.Construct();
       outCSP.mScript_src_attr.Value() = std::move(srcs);
+      return;
+
+    case nsIContentSecurityPolicy::REQUIRE_TRUSTED_TYPES_FOR_DIRECTIVE:
+      outCSP.mRequire_trusted_types_for.Construct();
+
+      // Here, the srcs represent the sink group
+      // (https://w3c.github.io/trusted-types/dist/spec/#integration-with-content-security-policy).
+      outCSP.mRequire_trusted_types_for.Value() = std::move(srcs);
+      return;
+
+    case nsIContentSecurityPolicy::TRUSTED_TYPES_DIRECTIVE:
+      outCSP.mTrusted_types.Construct();
+      // Here, "srcs" represents tt-expressions
+      // (https://w3c.github.io/trusted-types/dist/spec/#trusted-types-csp-directive).
+      outCSP.mTrusted_types.Value() = std::move(srcs);
       return;
 
     default:
@@ -1399,18 +1635,19 @@ nsCSPPolicy::~nsCSPPolicy() {
   }
 }
 
-bool nsCSPPolicy::permits(CSPDirective aDir, nsIURI* aUri,
-                          const nsAString& aNonce, bool aWasRedirected,
-                          bool aSpecific, bool aParserCreated,
-                          nsAString& outViolatedDirective) const {
+bool nsCSPPolicy::permits(CSPDirective aDir, nsILoadInfo* aLoadInfo,
+                          nsIURI* aUri, bool aWasRedirected, bool aSpecific,
+                          nsAString& outViolatedDirective,
+                          nsAString& outViolatedDirectiveString) const {
   if (CSPUTILSLOGENABLED()) {
-    CSPUTILSLOG(("nsCSPPolicy::permits, aUri: %s, aDir: %d, aSpecific: %s",
-                 aUri->GetSpecOrDefault().get(), aDir,
+    CSPUTILSLOG(("nsCSPPolicy::permits, aUri: %s, aDir: %s, aSpecific: %s",
+                 aUri->GetSpecOrDefault().get(), CSP_CSPDirectiveToString(aDir),
                  aSpecific ? "true" : "false"));
   }
 
   NS_ASSERTION(aUri, "permits needs an uri to perform the check!");
   outViolatedDirective.Truncate();
+  outViolatedDirectiveString.Truncate();
 
   nsCSPDirective* defaultDir = nullptr;
 
@@ -1419,9 +1656,10 @@ bool nsCSPPolicy::permits(CSPDirective aDir, nsIURI* aUri,
   // hashtable.
   for (uint32_t i = 0; i < mDirectives.Length(); i++) {
     if (mDirectives[i]->equals(aDir)) {
-      if (!mDirectives[i]->permits(aUri, aNonce, aWasRedirected, mReportOnly,
-                                   mUpgradeInsecDir, aParserCreated)) {
+      if (!mDirectives[i]->permits(aDir, aLoadInfo, aUri, aWasRedirected,
+                                   mReportOnly, mUpgradeInsecDir)) {
         mDirectives[i]->getDirName(outViolatedDirective);
+        mDirectives[i]->toString(outViolatedDirectiveString);
         return false;
       }
       return true;
@@ -1434,9 +1672,10 @@ bool nsCSPPolicy::permits(CSPDirective aDir, nsIURI* aUri,
   // If the above loop runs through, we haven't found a matching directive.
   // Avoid relooping, just store the result of default-src while looping.
   if (!aSpecific && defaultDir) {
-    if (!defaultDir->permits(aUri, aNonce, aWasRedirected, mReportOnly,
-                             mUpgradeInsecDir, aParserCreated)) {
+    if (!defaultDir->permits(aDir, aLoadInfo, aUri, aWasRedirected, mReportOnly,
+                             mUpgradeInsecDir)) {
       defaultDir->getDirName(outViolatedDirective);
+      defaultDir->toString(outViolatedDirectiveString);
       return false;
     }
     return true;
@@ -1448,12 +1687,26 @@ bool nsCSPPolicy::permits(CSPDirective aDir, nsIURI* aUri,
 }
 
 bool nsCSPPolicy::allows(CSPDirective aDirective, enum CSPKeyword aKeyword,
-                         const nsAString& aHashOrNonce,
-                         bool aParserCreated) const {
+                         const nsAString& aHashOrNonce) const {
   CSPUTILSLOG(("nsCSPPolicy::allows, aKeyWord: %s, a HashOrNonce: %s",
                CSP_EnumToUTF8Keyword(aKeyword),
                NS_ConvertUTF16toUTF8(aHashOrNonce).get()));
 
+  if (nsCSPDirective* directive = matchingOrDefaultDirective(aDirective)) {
+    return directive->allows(aKeyword, aHashOrNonce);
+  }
+
+  // No matching directive or default directive as fallback found, thus
+  // allowing the load; see Bug 885433
+  // a) inline scripts (also unsafe eval) should only be blocked
+  //    if there is a [script-src] or [default-src]
+  // b) inline styles should only be blocked
+  //    if there is a [style-src] or [default-src]
+  return true;
+}
+
+nsCSPDirective* nsCSPPolicy::matchingOrDefaultDirective(
+    CSPDirective aDirective) const {
   nsCSPDirective* defaultDir = nullptr;
 
   // Try to find a matching directive
@@ -1463,25 +1716,11 @@ bool nsCSPPolicy::allows(CSPDirective aDirective, enum CSPKeyword aKeyword,
       continue;
     }
     if (mDirectives[i]->equals(aDirective)) {
-      if (mDirectives[i]->allows(aKeyword, aHashOrNonce, aParserCreated)) {
-        return true;
-      }
-      return false;
+      return mDirectives[i];
     }
   }
 
-  // If the above loop runs through, we haven't found a matching directive.
-  // Avoid relooping, just store the result of default-src while looping.
-  if (defaultDir) {
-    return defaultDir->allows(aKeyword, aHashOrNonce, aParserCreated);
-  }
-
-  // Allowing the load; see Bug 885433
-  // a) inline scripts (also unsafe eval) should only be blocked
-  //    if there is a [script-src] or [default-src]
-  // b) inline styles should only be blocked
-  //    if there is a [style-src] or [default-src]
-  return true;
+  return defaultDir;
 }
 
 void nsCSPPolicy::toString(nsAString& outStr) const {
@@ -1508,73 +1747,38 @@ bool nsCSPPolicy::hasDirective(CSPDirective aDir) const {
   return false;
 }
 
-bool nsCSPPolicy::allowsNavigateTo(nsIURI* aURI, bool aWasRedirected,
-                                   bool aEnforceAllowlist) const {
-  bool allowsNavigateTo = true;
-
-  for (unsigned long i = 0; i < mDirectives.Length(); i++) {
-    if (mDirectives[i]->equals(
-            nsIContentSecurityPolicy::NAVIGATE_TO_DIRECTIVE)) {
-      // Early return if we can skip the allowlist AND 'unsafe-allow-redirects'
-      // is present.
-      if (!aEnforceAllowlist &&
-          mDirectives[i]->allows(CSP_UNSAFE_ALLOW_REDIRECTS, u""_ns, false)) {
-        return true;
-      }
-      // Otherwise, check against the allowlist.
-      if (!mDirectives[i]->permits(aURI, u""_ns, aWasRedirected, false, false,
-                                   false)) {
-        allowsNavigateTo = false;
-      }
-    }
+bool nsCSPPolicy::allowsAllInlineBehavior(CSPDirective aDir) const {
+  nsCSPDirective* directive = matchingOrDefaultDirective(aDir);
+  if (!directive) {
+    // No matching or default directive found thus allow the all inline
+    // scripts or styles. (See nsCSPPolicy::allows)
+    return true;
   }
 
-  return allowsNavigateTo;
+  return directive->allowsAllInlineBehavior(aDir);
 }
 
 /*
  * Use this function only after ::allows() returned 'false'. Most and
  * foremost it's used to get the violated directive before sending reports.
- * The parameter outDirective is the equivalent of 'outViolatedDirective'
+ * The parameter aDirectiveName is the equivalent of 'outViolatedDirective'
  * for the ::permits() function family.
  */
-void nsCSPPolicy::getDirectiveStringAndReportSampleForContentType(
-    CSPDirective aDirective, nsAString& outDirective,
-    bool* aReportSample) const {
-  MOZ_ASSERT(aReportSample);
+void nsCSPPolicy::getViolatedDirectiveInformation(
+    CSPDirective aDirective, nsAString& aDirectiveName,
+    nsAString& aDirectiveNameAndValue, bool* aReportSample) const {
   *aReportSample = false;
-
-  nsCSPDirective* defaultDir = nullptr;
-  for (uint32_t i = 0; i < mDirectives.Length(); i++) {
-    if (mDirectives[i]->isDefaultDirective()) {
-      defaultDir = mDirectives[i];
-      continue;
-    }
-    if (mDirectives[i]->equals(aDirective)) {
-      mDirectives[i]->getDirName(outDirective);
-      *aReportSample = mDirectives[i]->hasReportSampleKeyword();
-      return;
-    }
-  }
-  // if we haven't found a matching directive yet,
-  // the contentType must be restricted by the default directive
-  if (defaultDir) {
-    defaultDir->getDirName(outDirective);
-    *aReportSample = defaultDir->hasReportSampleKeyword();
+  nsCSPDirective* directive = matchingOrDefaultDirective(aDirective);
+  if (!directive) {
+    MOZ_ASSERT_UNREACHABLE("Can not query violated directive");
+    aDirectiveName.Truncate();
+    aDirectiveNameAndValue.Truncate();
     return;
   }
-  NS_ASSERTION(false, "Can not query directive string for contentType!");
-  outDirective.AppendLiteral("couldNotQueryViolatedDirective");
-}
 
-void nsCSPPolicy::getDirectiveAsString(CSPDirective aDir,
-                                       nsAString& outDirective) const {
-  for (uint32_t i = 0; i < mDirectives.Length(); i++) {
-    if (mDirectives[i]->equals(aDir)) {
-      mDirectives[i]->toString(outDirective);
-      return;
-    }
-  }
+  directive->getDirName(aDirectiveName);
+  directive->toString(aDirectiveNameAndValue);
+  *aReportSample = directive->hasReportSampleKeyword();
 }
 
 /*

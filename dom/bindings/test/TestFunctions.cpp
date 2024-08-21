@@ -10,7 +10,7 @@
 #include "mozilla/dom/TestFunctionsBinding.h"
 #include "mozilla/dom/WindowBinding.h"
 #include "mozilla/dom/WrapperCachedNonISupportsTestInterface.h"
-#include "nsStringBuffer.h"
+#include "mozilla/StringBuffer.h"
 #include "mozITestInterfaceJS.h"
 #include "nsComponentManagerUtils.h"
 #include "nsGlobalWindowInner.h"
@@ -18,8 +18,8 @@
 namespace mozilla::dom {
 
 /* static */
-TestFunctions* TestFunctions::Constructor(GlobalObject& aGlobal) {
-  return new TestFunctions;
+UniquePtr<TestFunctions> TestFunctions::Constructor(GlobalObject& aGlobal) {
+  return MakeUnique<TestFunctions>();
 }
 
 /* static */
@@ -66,8 +66,7 @@ void TestFunctions::GetStringDataAsDOMString(const Optional<uint32_t>& aLength,
     length = mStringData.Length();
   }
 
-  nsStringBuffer* buf = nsStringBuffer::FromString(mStringData);
-  if (buf) {
+  if (StringBuffer* buf = mStringData.GetStringBuffer()) {
     aString.SetKnownLiveStringBuffer(buf, length);
     return;
   }
@@ -134,7 +133,7 @@ StringType TestFunctions::GetStringType(const nsAString& aString) {
     return StringType::Literal;
   }
 
-  if (nsStringBuffer::FromString(aString)) {
+  if (aString.GetStringBuffer()) {
     return StringType::Stringbuffer;
   }
 
@@ -146,9 +145,8 @@ StringType TestFunctions::GetStringType(const nsAString& aString) {
 }
 
 bool TestFunctions::StringbufferMatchesStored(const nsAString& aString) {
-  return nsStringBuffer::FromString(aString) &&
-         nsStringBuffer::FromString(aString) ==
-             nsStringBuffer::FromString(mStringData);
+  return aString.GetStringBuffer() &&
+         aString.GetStringBuffer() == mStringData.GetStringBuffer();
 }
 
 void TestFunctions::TestThrowNsresult(ErrorResult& aError) {

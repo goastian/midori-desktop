@@ -28,10 +28,10 @@ struct SeekDetails {
 
 struct MediaControlAction {
   MediaControlAction() = default;
-  explicit MediaControlAction(MediaControlKey aKey) : mKey(aKey) {}
+  explicit MediaControlAction(MediaControlKey aKey) : mKey(Some(aKey)) {}
   MediaControlAction(MediaControlKey aKey, const SeekDetails& aDetails)
-      : mKey(aKey), mDetails(Some(aDetails)) {}
-  MediaControlKey mKey = MediaControlKey::EndGuard_;
+      : mKey(Some(aKey)), mDetails(Some(aDetails)) {}
+  Maybe<MediaControlKey> mKey;
   Maybe<SeekDetails> mDetails;
 };
 
@@ -109,7 +109,7 @@ class MediaControlKeySource {
   // to notify change to the embedded application.
   virtual void SetEnableFullScreen(bool aIsEnabled){};
   virtual void SetEnablePictureInPictureMode(bool aIsEnabled){};
-  virtual void SetPositionState(const PositionState& aState){};
+  virtual void SetPositionState(const Maybe<PositionState>& aState){};
 
  protected:
   virtual ~MediaControlKeySource() = default;

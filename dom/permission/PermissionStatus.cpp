@@ -16,18 +16,6 @@
 
 namespace mozilla::dom {
 
-/* static */
-already_AddRefed<PermissionStatus> PermissionStatus::Create(
-    nsPIDOMWindowInner* aWindow, PermissionName aName, ErrorResult& aRv) {
-  RefPtr<PermissionStatus> status = new PermissionStatus(aWindow, aName);
-  aRv = status->Init();
-  if (NS_WARN_IF(aRv.Failed())) {
-    return nullptr;
-  }
-
-  return status.forget();
-}
-
 PermissionStatus::PermissionStatus(nsPIDOMWindowInner* aWindow,
                                    PermissionName aName)
     : DOMEventTargetHelper(aWindow),
@@ -36,20 +24,22 @@ PermissionStatus::PermissionStatus(nsPIDOMWindowInner* aWindow,
   KeepAliveIfHasListenersFor(nsGkAtoms::onchange);
 }
 
-nsresult PermissionStatus::Init() {
+// https://w3c.github.io/permissions/#onchange-attribute and
+// https://w3c.github.io/permissions/#query-method
+RefPtr<PermissionStatus::SimplePromise> PermissionStatus::Init() {
+  // Covers the onchange part
+  // Whenever the user agent is aware that the state of a PermissionStatus
+  // instance status has changed: ...
+  // (The observer calls PermissionChanged() to do the steps)
   mObserver = PermissionObserver::GetInstance();
   if (NS_WARN_IF(!mObserver)) {
-    return NS_ERROR_FAILURE;
+    return SimplePromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
   }
 
   mObserver->AddSink(this);
 
-  nsresult rv = UpdateState();
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  return NS_OK;
+  // Covers the query part (Step 8.2 - 8.4)
+  return UpdateState();
 }
 
 PermissionStatus::~PermissionStatus() {
@@ -63,19 +53,31 @@ JSObject* PermissionStatus::WrapObject(JSContext* aCx,
   return PermissionStatus_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsLiteralCString PermissionStatus::GetPermissionType() {
+nsLiteralCString PermissionStatus::GetPermissionType() const {
   return PermissionNameToType(mName);
 }
 
-nsresult PermissionStatus::UpdateState() {
+// Covers the calling part of "permission query algorithm" of query() method and
+// update steps, which calls
+// https://w3c.github.io/permissions/#dfn-default-permission-query-algorithm
+// and then https://w3c.github.io/permissions/#dfn-permission-state
+RefPtr<PermissionStatus::SimplePromise> PermissionStatus::UpdateState() {
+  // Step 1: If settings wasn't passed, set it to the current settings object.
+  // Step 2: If settings is a non-secure context, return "denied".
+  // XXX(krosylight): No such steps here, and no WPT coverage?
+
+  // The permission handler covers the rest of the steps, although the model
+  // does not exactly match what the spec has. (Not passing "permission key" for
+  // example)
+
   nsCOMPtr<nsPIDOMWindowInner> window = GetOwner();
   if (NS_WARN_IF(!window)) {
-    return NS_ERROR_FAILURE;
+    return SimplePromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
   }
 
   RefPtr<Document> document = window->GetExtantDoc();
   if (NS_WARN_IF(!document)) {
-    return NS_ERROR_FAILURE;
+    return SimplePromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
   }
 
   uint32_t action = nsIPermissionManager::DENY_ACTION;
@@ -83,49 +85,75 @@ nsresult PermissionStatus::UpdateState() {
   PermissionDelegateHandler* permissionHandler =
       document->GetPermissionDelegateHandler();
   if (NS_WARN_IF(!permissionHandler)) {
-    return NS_ERROR_FAILURE;
+    return SimplePromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
   }
 
   nsresult rv = permissionHandler->GetPermissionForPermissionsAPI(
       GetPermissionType(), &action);
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+    return SimplePromise::CreateAndReject(rv, __func__);
   }
 
   mState = ActionToPermissionState(action);
-  return NS_OK;
+  return SimplePromise::CreateAndResolve(NS_OK, __func__);
 }
 
-already_AddRefed<nsIPrincipal> PermissionStatus::GetPrincipal() const {
+bool PermissionStatus::MaybeUpdatedBy(nsIPermission* aPermission) const {
+  NS_ENSURE_TRUE(aPermission, false);
   nsCOMPtr<nsPIDOMWindowInner> window = GetOwner();
   if (NS_WARN_IF(!window)) {
-    return nullptr;
+    return false;
   }
 
   Document* doc = window->GetExtantDoc();
   if (NS_WARN_IF(!doc)) {
-    return nullptr;
+    return false;
   }
 
   nsCOMPtr<nsIPrincipal> principal =
       Permission::ClonePrincipalForPermission(doc->NodePrincipal());
-  NS_ENSURE_TRUE(principal, nullptr);
-
-  return principal.forget();
+  NS_ENSURE_TRUE(principal, false);
+  nsCOMPtr<nsIPrincipal> permissionPrincipal;
+  aPermission->GetPrincipal(getter_AddRefs(permissionPrincipal));
+  if (!permissionPrincipal) {
+    return false;
+  }
+  return permissionPrincipal->Equals(principal);
 }
 
+bool PermissionStatus::MaybeUpdatedByNotifyOnly(
+    nsPIDOMWindowInner* aInnerWindow) const {
+  return false;
+}
+
+// https://w3c.github.io/permissions/#dfn-permissionstatus-update-steps
 void PermissionStatus::PermissionChanged() {
-  nsCOMPtr<nsPIDOMWindowInner> window = GetOwner();
-  if (NS_WARN_IF(!window) || !window->IsFullyActive()) {
-    return;
-  }
   auto oldState = mState;
-  UpdateState();
-  if (mState != oldState) {
-    RefPtr<AsyncEventDispatcher> eventDispatcher =
-        new AsyncEventDispatcher(this, u"change"_ns, CanBubble::eNo);
-    eventDispatcher->PostDOMEvent();
-  }
+  RefPtr<PermissionStatus> self(this);
+  // Step 1: If this's relevant global object is a Window object, then:
+  // Step 1.1: Let document be status's relevant global object's associated
+  // Document.
+  // Step 1.2: If document is null or document is not fully active,
+  // terminate this algorithm.
+  // TODO(krosylight): WPT /permissions/non-fully-active.https.html fails
+  // because we don't do this. See bug 1876470.
+
+  // Step 2 - 3 is covered by UpdateState()
+  UpdateState()->Then(
+      GetMainThreadSerialEventTarget(), __func__,
+      [self, oldState]() {
+        if (self->mState != oldState) {
+          // Step 4: Queue a task on the permissions task source to fire an
+          // event named change at status.
+          RefPtr<AsyncEventDispatcher> eventDispatcher =
+              new AsyncEventDispatcher(self.get(), u"change"_ns,
+                                       CanBubble::eNo);
+          eventDispatcher->PostDOMEvent();
+        }
+      },
+      []() {
+
+      });
 }
 
 void PermissionStatus::DisconnectFromOwner() {
@@ -137,6 +165,10 @@ void PermissionStatus::DisconnectFromOwner() {
   }
 
   DOMEventTargetHelper::DisconnectFromOwner();
+}
+
+void PermissionStatus::GetType(nsACString& aName) const {
+  aName.Assign(GetPermissionType());
 }
 
 }  // namespace mozilla::dom

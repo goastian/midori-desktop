@@ -50,7 +50,7 @@ class SVGUseElement final : public SVGUseElementBase,
   NS_IMPL_FROMNODE_WITH_TAG(SVGUseElement, kNameSpaceID_SVG, use)
 
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  void UnbindFromTree(bool aNullParent = true) override;
+  void UnbindFromTree(UnbindContext&) override;
 
   // interfaces:
   NS_DECL_ISUPPORTS_INHERITED
@@ -143,6 +143,7 @@ class SVGUseElement final : public SVGUseElementBase,
     SVGUseElement* mOwningUseElement;
   };
 
+  void DidAnimateAttribute(int32_t aNameSpaceID, nsAtom* aAttribute) override;
   SVGUseFrame* GetFrame() const;
 
   LengthAttributesInfo GetLengthInfo() override;

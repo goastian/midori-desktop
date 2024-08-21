@@ -22,8 +22,7 @@ const double DateTimeInputTypeBase::kMaximumWeekInMaximumYear = 37;
 const double DateTimeInputTypeBase::kMsPerDay = 24 * 60 * 60 * 1000;
 
 bool DateTimeInputTypeBase::IsMutable() const {
-  return !mInputElement->IsDisabled() &&
-         !mInputElement->HasAttr(nsGkAtoms::readonly);
+  return !mInputElement->IsDisabledOrReadOnly();
 }
 
 bool DateTimeInputTypeBase::IsValueMissing() const {
@@ -160,20 +159,17 @@ nsresult DateInputType::GetBadInputMessage(nsAString& aMessage) {
       mInputElement->OwnerDoc(), aMessage);
 }
 
-bool DateInputType::ConvertStringToNumber(nsAString& aValue,
-                                          Decimal& aResultValue) const {
+auto DateInputType::ConvertStringToNumber(const nsAString& aValue) const
+    -> StringToNumberResult {
   uint32_t year, month, day;
   if (!ParseDate(aValue, &year, &month, &day)) {
-    return false;
+    return {};
   }
-
   JS::ClippedTime time = JS::TimeClip(JS::MakeDate(year, month - 1, day));
   if (!time.isValid()) {
-    return false;
+    return {};
   }
-
-  aResultValue = Decimal::fromDouble(time.toDouble());
-  return true;
+  return {Decimal::fromDouble(time.toDouble())};
 }
 
 bool DateInputType::ConvertNumberToString(Decimal aValue,
@@ -205,15 +201,13 @@ nsresult TimeInputType::GetBadInputMessage(nsAString& aMessage) {
       mInputElement->OwnerDoc(), aMessage);
 }
 
-bool TimeInputType::ConvertStringToNumber(nsAString& aValue,
-                                          Decimal& aResultValue) const {
+auto TimeInputType::ConvertStringToNumber(const nsAString& aValue) const
+    -> StringToNumberResult {
   uint32_t milliseconds;
   if (!ParseTime(aValue, &milliseconds)) {
-    return false;
+    return {};
   }
-
-  aResultValue = Decimal(int32_t(milliseconds));
-  return true;
+  return {Decimal(int32_t(milliseconds))};
 }
 
 bool TimeInputType::ConvertNumberToString(Decimal aValue,
@@ -321,25 +315,21 @@ nsresult WeekInputType::GetBadInputMessage(nsAString& aMessage) {
       mInputElement->OwnerDoc(), aMessage);
 }
 
-bool WeekInputType::ConvertStringToNumber(nsAString& aValue,
-                                          Decimal& aResultValue) const {
+auto WeekInputType::ConvertStringToNumber(const nsAString& aValue) const
+    -> StringToNumberResult {
   uint32_t year, week;
   if (!ParseWeek(aValue, &year, &week)) {
-    return false;
+    return {};
   }
-
   if (year < kMinimumYear || year > kMaximumYear) {
-    return false;
+    return {};
   }
-
   // Maximum week is 275760-W37, the week of 275760-09-13.
   if (year == kMaximumYear && week > kMaximumWeekInMaximumYear) {
-    return false;
+    return {};
   }
-
   double days = DaysSinceEpochFromWeek(year, week);
-  aResultValue = Decimal::fromDouble(days * kMsPerDay);
-  return true;
+  return {Decimal::fromDouble(days * kMsPerDay)};
 }
 
 bool WeekInputType::ConvertNumberToString(Decimal aValue,
@@ -356,6 +346,17 @@ bool WeekInputType::ConvertNumberToString(Decimal aValue,
   double day = JS::DayFromTime(aValue.toDouble());
   // Adding 1 since day starts from 0.
   double dayInYear = JS::DayWithinYear(aValue.toDouble(), year) + 1;
+
+  // Return if aValue is outside the valid JS date-time range.
+  if (std::isnan(year) || std::isnan(month) || std::isnan(day) ||
+      std::isnan(dayInYear)) {
+    return false;
+  }
+
+  // DayOfWeek requires the year to be non-negative.
+  if (year < 0) {
+    return false;
+  }
 
   // Adding 1 since month starts from 0.
   uint32_t isoWeekday = DayOfWeek(year, month + 1, day, true);
@@ -390,25 +391,24 @@ nsresult MonthInputType::GetBadInputMessage(nsAString& aMessage) {
       mInputElement->OwnerDoc(), aMessage);
 }
 
-bool MonthInputType::ConvertStringToNumber(nsAString& aValue,
-                                           Decimal& aResultValue) const {
+auto MonthInputType::ConvertStringToNumber(const nsAString& aValue) const
+    -> StringToNumberResult {
   uint32_t year, month;
   if (!ParseMonth(aValue, &year, &month)) {
-    return false;
+    return {};
   }
 
   if (year < kMinimumYear || year > kMaximumYear) {
-    return false;
+    return {};
   }
 
   // Maximum valid month is 275760-09.
   if (year == kMaximumYear && month > kMaximumMonthInMaximumYear) {
-    return false;
+    return {};
   }
 
   int32_t months = MonthsSinceJan1970(year, month);
-  aResultValue = Decimal(int32_t(months));
-  return true;
+  return {Decimal(int32_t(months))};
 }
 
 bool MonthInputType::ConvertNumberToString(Decimal aValue,
@@ -445,21 +445,18 @@ nsresult DateTimeLocalInputType::GetBadInputMessage(nsAString& aMessage) {
       mInputElement->OwnerDoc(), aMessage);
 }
 
-bool DateTimeLocalInputType::ConvertStringToNumber(
-    nsAString& aValue, Decimal& aResultValue) const {
+auto DateTimeLocalInputType::ConvertStringToNumber(
+    const nsAString& aValue) const -> StringToNumberResult {
   uint32_t year, month, day, timeInMs;
   if (!ParseDateTimeLocal(aValue, &year, &month, &day, &timeInMs)) {
-    return false;
+    return {};
   }
-
   JS::ClippedTime time =
       JS::TimeClip(JS::MakeDate(year, month - 1, day, timeInMs));
   if (!time.isValid()) {
-    return false;
+    return {};
   }
-
-  aResultValue = Decimal::fromDouble(time.toDouble());
-  return true;
+  return {Decimal::fromDouble(time.toDouble())};
 }
 
 bool DateTimeLocalInputType::ConvertNumberToString(

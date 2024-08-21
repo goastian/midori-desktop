@@ -35,9 +35,9 @@ interface Addon {
 [ChromeOnly, JSImplementation="dummy",
  Exposed=Window]
 interface AddonInstall : EventTarget {
-  // One of the STATE_* symbols from AddonManager.jsm
+  // One of the STATE_* symbols from AddonManager.sys.mjs
   readonly attribute DOMString state;
-  // One of the ERROR_* symbols from AddonManager.jsm, or null
+  // One of the ERROR_* symbols from AddonManager.sys.mjs, or null
   readonly attribute DOMString? error;
   // How many bytes have been downloaded
   readonly attribute long long progress;
@@ -54,6 +54,11 @@ dictionary addonInstallOptions {
   // checksum of the downloaded XPI before installing.  If is omitted or if
   // it is null or empty string, no checksum verification is performed.
   DOMString? hash = null;
+};
+
+dictionary sendAbuseReportOptions {
+  // This should be an Authorization HTTP header value.
+  DOMString? authorization = null;
 };
 
 [HeaderFile="mozilla/AddonManagerWebAPI.h",
@@ -81,23 +86,28 @@ interface AddonManager : EventTarget {
   Promise<AddonInstall> createInstall(optional addonInstallOptions options = {});
 
   /**
-   * Opens an Abuse Report dialog window for the addon with the given id.
-   * The addon may be currently installed (in which case the report will
-   * include the details available locally), or not (in which case the report
-   * will include the details that can be retrieved from the AMO API endpoint).
+   * Sends an abuse report to the AMO API.
    *
-   * @param  id
-   *         The ID of the add-on to report.
-   * @return A promise that resolves to a boolean (true when the report
-   *         has been submitted successfully, false if the user cancelled
-   *         the report). The Promise is rejected is the report fails
-   *         for a reason other than user cancellation.
+   * NOTE: The type for `data` and for the return value are loose because both
+   * the AMO API might change its response and the caller (AMO frontend) might
+   * also want to pass slightly different data in the future.
+   *
+   * @param addonId
+   *        The ID of the add-on to report.
+   * @param data
+   *        The caller passes the data to be sent to the AMO API.
+   * @param options
+   *        Optional - A set of options. It currently only supports
+   *        `authorization`, which is expected to be the value of an
+   *        Authorization HTTP header when provided.
+   * @return A promise that resolves to the AMO API response, or an error when
+   *         something went wrong.
    */
-  Promise<boolean> reportAbuse(DOMString id);
-
-  // Indicator to content whether handing off the reports to the integrated
-  // abuse report panel is enabled.
-  readonly attribute boolean abuseReportPanelEnabled;
+  [NewObject] Promise<any> sendAbuseReport(
+    DOMString addonId,
+    record<DOMString, DOMString?> data,
+    optional sendAbuseReportOptions options = {}
+  );
 };
 
 [ChromeOnly,Exposed=Window,HeaderFile="mozilla/AddonManagerWebAPI.h"]

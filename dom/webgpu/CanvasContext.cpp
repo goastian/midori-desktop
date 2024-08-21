@@ -10,13 +10,17 @@
 #include "nsDisplayList.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
 #include "mozilla/gfx/CanvasManagerChild.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/layers/CanvasRenderer.h"
+#include "mozilla/layers/CompositableForwarder.h"
 #include "mozilla/layers/ImageDataSerializer.h"
 #include "mozilla/layers/LayersSurfaces.h"
 #include "mozilla/layers/RenderRootStateManager.h"
 #include "mozilla/layers/WebRenderCanvasRenderer.h"
 #include "mozilla/StaticPrefs_privacy.h"
+#include "mozilla/SVGObserverUtils.h"
 #include "ipc/WebGPUChild.h"
+#include "Utility.h"
 
 namespace mozilla {
 
@@ -97,11 +101,13 @@ void CanvasContext::GetCanvas(
   }
 }
 
-void CanvasContext::Configure(const dom::GPUCanvasConfiguration& aDesc) {
+void CanvasContext::Configure(const dom::GPUCanvasConfiguration& aConfig) {
   Unconfigure();
 
+  // Bug 1864904: Failures in validation should throw a TypeError, per spec.
+
   // these formats are guaranteed by the spec
-  switch (aDesc.mFormat) {
+  switch (aConfig.mFormat) {
     case dom::GPUTextureFormat::Rgba8unorm:
     case dom::GPUTextureFormat::Rgba8unorm_srgb:
       mGfxFormat = gfx::SurfaceFormat::R8G8B8A8;
@@ -115,26 +121,48 @@ void CanvasContext::Configure(const dom::GPUCanvasConfiguration& aDesc) {
       return;
   }
 
-  mConfig.reset(new dom::GPUCanvasConfiguration(aDesc));
+  mConfig.reset(new dom::GPUCanvasConfiguration(aConfig));
   mRemoteTextureOwnerId = Some(layers::RemoteTextureOwnerId::GetNext());
-  mTexture = aDesc.mDevice->InitSwapChain(aDesc, *mRemoteTextureOwnerId,
-                                          mGfxFormat, mCanvasSize);
+  mUseExternalTextureInSwapChain =
+      wgpu_client_use_external_texture_in_swapChain(
+          aConfig.mDevice->mId, ConvertTextureFormat(aConfig.mFormat));
+  if (!gfx::gfxVars::AllowWebGPUPresentWithoutReadback()) {
+    mUseExternalTextureInSwapChain = false;
+  }
+#ifdef XP_WIN
+  // When WebRender does not use hardware acceleration, disable external texture
+  // in swap chain. Since compositor device might not exist.
+  if (gfx::gfxVars::UseSoftwareWebRender() &&
+      !gfx::gfxVars::AllowSoftwareWebRenderD3D11()) {
+    mUseExternalTextureInSwapChain = false;
+  }
+#endif
+  mTexture = aConfig.mDevice->InitSwapChain(
+      mConfig.get(), mRemoteTextureOwnerId.ref(),
+      mUseExternalTextureInSwapChain, mGfxFormat, mCanvasSize);
   if (!mTexture) {
     Unconfigure();
     return;
   }
 
   mTexture->mTargetContext = this;
-  mBridge = aDesc.mDevice->GetBridge();
+  mBridge = aConfig.mDevice->GetBridge();
+  if (mCanvasElement) {
+    mWaitingCanvasRendererInitialized = true;
+  }
 
   ForceNewFrame();
 }
 
 void CanvasContext::Unconfigure() {
-  if (mBridge && mBridge->IsOpen() && mRemoteTextureOwnerId.isSome()) {
-    mBridge->SendSwapChainDestroy(*mRemoteTextureOwnerId);
+  if (mBridge && mBridge->CanSend() && mRemoteTextureOwnerId) {
+    mBridge->SendSwapChainDrop(
+        *mRemoteTextureOwnerId,
+        layers::ToRemoteTextureTxnType(mFwdTransactionTracker),
+        layers::ToRemoteTextureTxnId(mFwdTransactionTracker));
   }
   mRemoteTextureOwnerId = Nothing();
+  mFwdTransactionTracker = nullptr;
   mBridge = nullptr;
   mConfig = nullptr;
   mTexture = nullptr;
@@ -161,29 +189,59 @@ RefPtr<Texture> CanvasContext::GetCurrentTexture(ErrorResult& aRv) {
     aRv.ThrowOperationError("Canvas not configured");
     return nullptr;
   }
+
+  MOZ_ASSERT(mConfig);
+  MOZ_ASSERT(mRemoteTextureOwnerId.isSome());
+
+  if (mNewTextureRequested) {
+    mNewTextureRequested = false;
+
+    mTexture = mConfig->mDevice->CreateTextureForSwapChain(
+        mConfig.get(), mCanvasSize, mRemoteTextureOwnerId.ref());
+    mTexture->mTargetContext = this;
+  }
   return mTexture;
 }
 
 void CanvasContext::MaybeQueueSwapChainPresent() {
+  if (!mConfig) {
+    return;
+  }
+
+  MOZ_ASSERT(mTexture);
+
+  if (mTexture) {
+    mBridge->NotifyWaitForSubmit(mTexture->mId);
+  }
+
   if (mPendingSwapChainPresent) {
     return;
   }
 
   mPendingSwapChainPresent = true;
-  MOZ_ALWAYS_SUCCEEDS(NS_DispatchToCurrentThread(
-      NewCancelableRunnableMethod("CanvasContext::SwapChainPresent", this,
-                                  &CanvasContext::SwapChainPresent)));
+
+  if (mWaitingCanvasRendererInitialized) {
+    return;
+  }
+
+  InvalidateCanvasContent();
 }
 
-void CanvasContext::SwapChainPresent() {
+Maybe<layers::SurfaceDescriptor> CanvasContext::SwapChainPresent() {
   mPendingSwapChainPresent = false;
-  if (!mBridge || !mBridge->IsOpen() || mRemoteTextureOwnerId.isNothing() ||
+  if (!mBridge || !mBridge->CanSend() || mRemoteTextureOwnerId.isNothing() ||
       !mTexture) {
-    return;
+    return Nothing();
   }
   mLastRemoteTextureId = Some(layers::RemoteTextureId::GetNext());
   mBridge->SwapChainPresent(mTexture->mId, *mLastRemoteTextureId,
                             *mRemoteTextureOwnerId);
+  if (mUseExternalTextureInSwapChain) {
+    mTexture->Destroy();
+    mNewTextureRequested = true;
+  }
+  return Some(layers::SurfaceDescriptorRemoteTexture(*mLastRemoteTextureId,
+                                                     *mRemoteTextureOwnerId));
 }
 
 bool CanvasContext::UpdateWebRenderCanvasData(
@@ -191,8 +249,7 @@ bool CanvasContext::UpdateWebRenderCanvasData(
   auto* renderer = aCanvasData->GetCanvasRenderer();
 
   if (renderer && mRemoteTextureOwnerId.isSome() &&
-      renderer->GetRemoteTextureOwnerIdOfPushCallback() ==
-          mRemoteTextureOwnerId) {
+      renderer->GetRemoteTextureOwnerId() == mRemoteTextureOwnerId) {
     return true;
   }
 
@@ -215,10 +272,16 @@ bool CanvasContext::InitializeCanvasRenderer(
   data.mContext = this;
   data.mSize = mCanvasSize;
   data.mIsOpaque = false;
-  data.mRemoteTextureOwnerIdOfPushCallback = mRemoteTextureOwnerId;
+  data.mRemoteTextureOwnerId = mRemoteTextureOwnerId;
 
   aRenderer->Initialize(data);
   aRenderer->SetDirty();
+
+  if (mWaitingCanvasRendererInitialized) {
+    InvalidateCanvasContent();
+  }
+  mWaitingCanvasRendererInitialized = false;
+
   return true;
 }
 
@@ -278,7 +341,7 @@ already_AddRefed<mozilla::gfx::SourceSurface> CanvasContext::GetSurfaceSnapshot(
     return nullptr;
   }
 
-  if (!mBridge || !mBridge->IsOpen() || mRemoteTextureOwnerId.isNothing()) {
+  if (!mBridge || !mBridge->CanSend() || mRemoteTextureOwnerId.isNothing()) {
     return nullptr;
   }
 
@@ -286,6 +349,22 @@ already_AddRefed<mozilla::gfx::SourceSurface> CanvasContext::GetSurfaceSnapshot(
   return cm->GetSnapshot(cm->Id(), mBridge->Id(), mRemoteTextureOwnerId,
                          mGfxFormat, /* aPremultiply */ false,
                          /* aYFlip */ false);
+}
+
+Maybe<layers::SurfaceDescriptor> CanvasContext::GetFrontBuffer(
+    WebGLFramebufferJS*, const bool) {
+  if (mPendingSwapChainPresent) {
+    auto desc = SwapChainPresent();
+    MOZ_ASSERT(!mPendingSwapChainPresent);
+    return desc;
+  }
+  return Nothing();
+}
+
+already_AddRefed<layers::FwdTransactionTracker>
+CanvasContext::UseCompositableForwarder(
+    layers::CompositableForwarder* aForwarder) {
+  return layers::FwdTransactionTracker::GetOrCreate(mFwdTransactionTracker);
 }
 
 void CanvasContext::ForceNewFrame() {
@@ -304,6 +383,20 @@ void CanvasContext::ForceNewFrame() {
     data.mIsOpaque = false;
     data.mOwnerId = mRemoteTextureOwnerId;
     mOffscreenCanvas->UpdateDisplayData(data);
+  }
+}
+
+void CanvasContext::InvalidateCanvasContent() {
+  if (!mCanvasElement && !mOffscreenCanvas) {
+    MOZ_ASSERT_UNREACHABLE("unexpected to be called");
+    return;
+  }
+
+  if (mCanvasElement) {
+    SVGObserverUtils::InvalidateDirectRenderingObservers(mCanvasElement);
+    mCanvasElement->InvalidateCanvasContent(nullptr);
+  } else if (mOffscreenCanvas) {
+    mOffscreenCanvas->QueueCommitToCompositor();
   }
 }
 

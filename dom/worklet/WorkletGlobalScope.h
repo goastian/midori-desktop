@@ -22,6 +22,10 @@
     }                                                \
   }
 
+namespace JS {
+class RealmOptions;
+}
+
 namespace JS::loader {
 class ModuleLoaderBase;
 }
@@ -50,9 +54,7 @@ class WorkletGlobalScope : public nsIGlobalObject, public nsWrapperCache {
 
   nsIGlobalObject* GetParentObject() const { return nullptr; }
 
-  virtual JSObject* WrapObject(JSContext* aCx,
-                               JS::Handle<JSObject*> aGivenProto) override;
-
+  JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) final;
   virtual bool WrapGlobalObject(JSContext* aCx,
                                 JS::MutableHandle<JSObject*> aReflector) = 0;
 
@@ -60,6 +62,9 @@ class WorkletGlobalScope : public nsIGlobalObject, public nsWrapperCache {
   JSObject* GetGlobalJSObjectPreserveColor() const override {
     return GetWrapperPreserveColor();
   }
+
+  nsISerialEventTarget* SerialEventTarget() const final;
+  nsresult Dispatch(already_AddRefed<nsIRunnable>&&) const final;
 
   already_AddRefed<Console> GetConsole(JSContext* aCx, ErrorResult& aRv);
 
@@ -85,6 +90,8 @@ class WorkletGlobalScope : public nsIGlobalObject, public nsWrapperCache {
 
  protected:
   ~WorkletGlobalScope();
+
+  JS::RealmOptions CreateRealmOptions() const;
 
   const RefPtr<WorkletImpl> mImpl;
 

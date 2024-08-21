@@ -13,10 +13,9 @@
 <script>
   "use strict";
 
-  const { AppConstants } = ChromeUtils.import(
-    "resource://gre/modules/AppConstants.jsm"
+  const { Assert } = ChromeUtils.importESModule(
+    "resource://testing-common/Assert.sys.mjs"
   );
-  const { Assert } = ChromeUtils.import("resource://testing-common/Assert.jsm");
 
   const UNRECOGNIZED_PATH = /Could not initialize path: NS_ERROR_FILE_UNRECOGNIZED_PATH/;
   const SPLIT_RELATIVE_ABSOLUTE = /PathUtils.splitRelative requires a relative path/;
@@ -528,13 +527,13 @@
     if (Services.appinfo.OS === "WINNT") {
       is(
         PathUtils.toFileURI("C:\\"),
-        "file:///C:/",
+        "file:///C:",
         "PathUtils.toFileURI() with a root path"
       );
 
       is(
         PathUtils.toFileURI("C:\\Windows\\"),
-        "file:///C:/Windows/",
+        "file:///C:/Windows",
         "PathUtils.toFileURI() with a non-root directory path"
       );
 
@@ -552,7 +551,7 @@
 
       is(
         PathUtils.toFileURI("/bin"),
-        "file:///bin/",
+        "file:///bin",
         "PathUtils.toFileURI() with a non-root directory path"
       );
 

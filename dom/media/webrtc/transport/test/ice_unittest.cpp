@@ -19,6 +19,7 @@
 #include "logging.h"
 #include "ssl.h"
 
+#include "mozilla/DataMutex.h"
 #include "mozilla/Preferences.h"
 #include "nsThreadUtils.h"
 #include "nsXPCOM.h"
@@ -115,7 +116,7 @@ static std::string Resolve(const std::string& fqdn, int address_family) {
 
 class StunTest : public MtransportTest {
  public:
-  StunTest() : MtransportTest() {}
+  StunTest() = default;
 
   void SetUp() override {
     MtransportTest::SetUp();
@@ -128,38 +129,30 @@ class StunTest : public MtransportTest {
       ASSERT_TRUE(!stun_server_address_.empty());
     }
 
-    // Make sure NrIceCtx is in a testable state.
-    test_utils_->SyncDispatchToSTS(
-        WrapRunnableNM(&NrIceCtx::internal_DeinitializeGlobal));
+    test_utils_->SyncDispatchToSTS(WrapRunnable(this, &StunTest::SetUp_s));
+  }
 
-    // NB: NrIceCtx::internal_DeinitializeGlobal destroys the RLogConnector
-    // singleton.
+  void SetUp_s() {
+    // Make sure NrIceCtx is in a testable state.
+    NrIceCtx::internal_DeinitializeGlobal();
     RLogConnector::CreateInstance();
 
-    test_utils_->SyncDispatchToSTS(
-        WrapRunnableNM(&TestStunServer::GetInstance, AF_INET));
-    test_utils_->SyncDispatchToSTS(
-        WrapRunnableNM(&TestStunServer::GetInstance, AF_INET6));
+    TestStunServer::GetInstance(AF_INET);
+    TestStunServer::GetInstance(AF_INET6);
 
-    test_utils_->SyncDispatchToSTS(
-        WrapRunnableNM(&TestStunTcpServer::GetInstance, AF_INET));
-    test_utils_->SyncDispatchToSTS(
-        WrapRunnableNM(&TestStunTcpServer::GetInstance, AF_INET6));
+    TestStunTcpServer::GetInstance(AF_INET);
+    TestStunTcpServer::GetInstance(AF_INET6);
   }
 
   void TearDown() override {
-    test_utils_->SyncDispatchToSTS(
-        WrapRunnableNM(&NrIceCtx::internal_DeinitializeGlobal));
-
-    test_utils_->SyncDispatchToSTS(
-        WrapRunnableNM(&TestStunServer::ShutdownInstance));
-
-    test_utils_->SyncDispatchToSTS(
-        WrapRunnableNM(&TestStunTcpServer::ShutdownInstance));
-
-    RLogConnector::DestroyInstance();
-
+    test_utils_->SyncDispatchToSTS(WrapRunnable(this, &StunTest::TearDown_s));
     MtransportTest::TearDown();
+  }
+
+  void TearDown_s() {
+    NrIceCtx::internal_DeinitializeGlobal();
+    TestStunServer::ShutdownInstance();
+    TestStunTcpServer::ShutdownInstance();
   }
 };
 
@@ -304,6 +297,8 @@ class SchedulableTrickleCandidate {
   }
 
   void Schedule(unsigned int ms) {
+    std::cerr << "Scheduling " << Candidate() << " in " << ms << "ms"
+              << std::endl;
     test_utils_->SyncDispatchToSTS(
         WrapRunnable(this, &SchedulableTrickleCandidate::Schedule_s, ms));
   }
@@ -353,17 +348,14 @@ class IceTestPeer : public sigslot::has_slots<> {
       : name_(name),
         ice_ctx_(NrIceCtx::Create(name)),
         offerer_(offerer),
-        candidates_(),
         stream_counter_(0),
         shutting_down_(false),
-        gathering_complete_(false),
+        mConnectionStates("IceTestPeer::mConnectionStates"),
+        mGatheringStates("IceTestPeer::mGatheringStates"),
         ready_ct_(0),
-        ice_connected_(false),
-        ice_failed_(false),
         ice_reached_checking_(false),
         received_(0),
         sent_(0),
-        fake_resolver_(),
         dns_resolver_(new NrIceResolver()),
         remote_(nullptr),
         candidate_filter_(nullptr),
@@ -374,8 +366,6 @@ class IceTestPeer : public sigslot::has_slots<> {
         simulate_ice_lite_(false),
         nat_(new TestNat),
         test_utils_(utils) {
-    ice_ctx_->SignalGatheringStateChange.connect(
-        this, &IceTestPeer::GatheringStateChange);
     ice_ctx_->SignalConnectionStateChange.connect(
         this, &IceTestPeer::ConnectionStateChange);
 
@@ -428,6 +418,16 @@ class IceTestPeer : public sigslot::has_slots<> {
     stream->SignalReady.connect(this, &IceTestPeer::StreamReady);
     stream->SignalFailed.connect(this, &IceTestPeer::StreamFailed);
     stream->SignalPacketReceived.connect(this, &IceTestPeer::PacketReceived);
+    stream->SignalGatheringStateChange.connect(
+        this, &IceTestPeer::GatheringStateChange);
+    {
+      auto lock = mConnectionStates.Lock();
+      lock.ref()[id] = NrIceCtx::ICE_CTX_INIT;
+    }
+    {
+      auto lock = mGatheringStates.Lock();
+      lock.ref()[id] = NrIceMediaStream::ICE_STREAM_GATHER_INIT;
+    }
   }
 
   void AddStream(int components) {
@@ -436,7 +436,16 @@ class IceTestPeer : public sigslot::has_slots<> {
   }
 
   void RemoveStream_s(size_t index) {
-    ice_ctx_->DestroyStream(MakeTransportId(index));
+    const std::string id = MakeTransportId(index);
+    ice_ctx_->DestroyStream(id);
+    {
+      auto lock = mConnectionStates.Lock();
+      lock->erase(id);
+    }
+    {
+      auto lock = mGatheringStates.Lock();
+      lock->erase(id);
+    }
   }
 
   void RemoveStream(size_t index) {
@@ -535,30 +544,59 @@ class IceTestPeer : public sigslot::has_slots<> {
     ice_ctx_->SetStunAddrs(addrs);
   }
 
-  void UseNat() { nat_->enabled_ = true; }
+  void UseNat() {
+    test_utils_->SyncDispatchToSTS(WrapRunnable(this, &IceTestPeer::UseNat_s));
+  }
+
+  void UseNat_s() { nat_->enabled_ = true; }
 
   void SetTimerDivider(int div) { ice_ctx_->internal_SetTimerAccelarator(div); }
 
   void SetStunResponseDelay(uint32_t delay) {
+    test_utils_->SyncDispatchToSTS(
+        WrapRunnable(this, &IceTestPeer::SetStunResponseDelay_s, delay));
+  }
+
+  void SetStunResponseDelay_s(uint32_t delay) {
     nat_->delay_stun_resp_ms_ = delay;
   }
 
   void SetFilteringType(TestNat::NatBehavior type) {
+    test_utils_->SyncDispatchToSTS(
+        WrapRunnable(this, &IceTestPeer::SetFilteringType_s, type));
+  }
+
+  void SetFilteringType_s(TestNat::NatBehavior type) {
     MOZ_ASSERT(!nat_->has_port_mappings());
     nat_->filtering_type_ = type;
   }
 
   void SetMappingType(TestNat::NatBehavior type) {
+    test_utils_->SyncDispatchToSTS(
+        WrapRunnable(this, &IceTestPeer::SetMappingType_s, type));
+  }
+
+  void SetMappingType_s(TestNat::NatBehavior type) {
     MOZ_ASSERT(!nat_->has_port_mappings());
     nat_->mapping_type_ = type;
   }
 
   void SetBlockUdp(bool block) {
+    test_utils_->SyncDispatchToSTS(
+        WrapRunnable(this, &IceTestPeer::SetBlockUdp_s, block));
+  }
+
+  void SetBlockUdp_s(bool block) {
     MOZ_ASSERT(!nat_->has_port_mappings());
     nat_->block_udp_ = block;
   }
 
-  void SetBlockStun(bool block) { nat_->block_stun_ = block; }
+  void SetBlockStun(bool block) {
+    test_utils_->SyncDispatchToSTS(
+        WrapRunnable(this, &IceTestPeer::SetBlockStun_s, block));
+  }
+
+  void SetBlockStun_s(bool block) { nat_->block_stun_ = block; }
 
   // Get various pieces of state
   std::vector<std::string> GetGlobalAttributes() {
@@ -652,7 +690,16 @@ class IceTestPeer : public sigslot::has_slots<> {
     return host_net;
   }
 
-  bool gathering_complete() { return gathering_complete_; }
+  bool gathering_complete() {
+    auto lock = mGatheringStates.Lock();
+    for (const auto& [id, state] : lock.ref()) {
+      Unused << id;
+      if (state != NrIceMediaStream::ICE_STREAM_GATHER_COMPLETE) {
+        return false;
+      }
+    }
+    return true;
+  }
   int ready_ct() { return ready_ct_; }
   bool is_ready_s(size_t index) {
     auto media_stream = GetStream_s(index);
@@ -668,8 +715,36 @@ class IceTestPeer : public sigslot::has_slots<> {
         WrapRunnableRet(&result, this, &IceTestPeer::is_ready_s, stream));
     return result;
   }
-  bool ice_connected() { return ice_connected_; }
-  bool ice_failed() { return ice_failed_; }
+  bool ice_connected() {
+    auto lock = mConnectionStates.Lock();
+    for (const auto& [id, state] : lock.ref()) {
+      if (state != NrIceCtx::ICE_CTX_CONNECTED) {
+        return false;
+      }
+    }
+    return true;
+  }
+  bool ice_failed() {
+    auto lock = mConnectionStates.Lock();
+    for (const auto& [id, state] : lock.ref()) {
+      if (state == NrIceCtx::ICE_CTX_FAILED) {
+        return true;
+      }
+    }
+    return false;
+  }
+  bool ice_checking() {
+    if (ice_failed() || ice_connected()) {
+      return false;
+    }
+    auto lock = mConnectionStates.Lock();
+    for (const auto& [id, state] : lock.ref()) {
+      if (state == NrIceCtx::ICE_CTX_CHECKING) {
+        return true;
+      }
+    }
+    return false;
+  }
   bool ice_reached_checking() { return ice_reached_checking_; }
   size_t received() { return received_; }
   size_t sent() { return sent_; }
@@ -682,13 +757,21 @@ class IceTestPeer : public sigslot::has_slots<> {
   void RestartIce_s() {
     for (auto& stream : ice_ctx_->GetStreams()) {
       SetIceCredentials_s(*stream);
+      {
+        auto lock = mConnectionStates.Lock();
+        lock.ref()[stream->GetId()] = NrIceCtx::ICE_CTX_INIT;
+      }
+      {
+        auto lock = mGatheringStates.Lock();
+        lock.ref()[stream->GetId()] = NrIceMediaStream::ICE_STREAM_GATHER_INIT;
+      }
     }
     // take care of some local bookkeeping
     ready_ct_ = 0;
-    gathering_complete_ = false;
-    ice_connected_ = false;
-    ice_failed_ = false;
-    ice_reached_checking_ = false;
+    // We do not unset ice_reached_checking_ here, since we do not expect
+    // ICE to return to checking in an ICE restart, because the ICE stack
+    // continues using the old streams (which are probably connected) until the
+    // new ones are connected.
     remote_ = nullptr;
   }
 
@@ -711,9 +794,6 @@ class IceTestPeer : public sigslot::has_slots<> {
     remote_ = remote;
 
     trickle_mode_ = trickle_mode;
-    ice_connected_ = false;
-    ice_failed_ = false;
-    ice_reached_checking_ = false;
     res = ice_ctx_->ParseGlobalAttributes(remote->GetGlobalAttributes());
     ASSERT_FALSE(remote->simulate_ice_lite_ &&
                  (ice_ctx_->GetControlling() == NrIceCtx::ICE_CONTROLLED));
@@ -795,8 +875,11 @@ class IceTestPeer : public sigslot::has_slots<> {
     auto stream = GetStream_s(index);
     if (!stream) {
       // stream might have gone away before the trickle timer popped
+      std::cerr << "Trickle candidate has no stream: " << index << std::endl;
       return NS_OK;
     }
+    std::cerr << "Trickle candidate for " << index << " (" << stream->GetId()
+              << "):" << candidate << std::endl;
     return stream->ParseTrickleCandidate(candidate, ufrag, "");
   }
 
@@ -942,16 +1025,22 @@ class IceTestPeer : public sigslot::has_slots<> {
   }
 
   // Handle events
-  void GatheringStateChange(NrIceCtx* ctx, NrIceCtx::GatheringState state) {
+  void GatheringStateChange(const std::string& aTransportId,
+                            NrIceMediaStream::GatheringState state) {
     if (shutting_down_) {
       return;
     }
-    if (state != NrIceCtx::ICE_CTX_GATHER_COMPLETE) {
+
+    {
+      auto lock = mGatheringStates.Lock();
+      lock.ref()[aTransportId] = state;
+    }
+
+    if (!gathering_complete()) {
       return;
     }
 
     std::cerr << name_ << " Gathering complete" << std::endl;
-    gathering_complete_ = true;
 
     std::cerr << name_ << " ATTRIBUTES:" << std::endl;
     for (const auto& stream : ice_ctx_->GetStreams()) {
@@ -975,9 +1064,9 @@ class IceTestPeer : public sigslot::has_slots<> {
     if (candidate.empty()) {
       return;
     }
-    std::cerr << "Candidate for stream " << stream->name()
+    std::cerr << "Candidate for stream " << stream->GetId()
               << " initialized: " << candidate << std::endl;
-    candidates_[stream->name()].push_back(candidate);
+    candidates_[stream->GetId()].push_back(candidate);
 
     // If we are connected, then try to trickle to the other side.
     if (remote_ && remote_->remote_ && (trickle_mode_ != TRICKLE_SIMULATE)) {
@@ -992,7 +1081,7 @@ class IceTestPeer : public sigslot::has_slots<> {
           return;
         }
       }
-      ADD_FAILURE() << "No matching stream found for " << stream;
+      ADD_FAILURE() << "No matching stream found for " << stream->GetId();
     }
   }
 
@@ -1135,32 +1224,48 @@ class IceTestPeer : public sigslot::has_slots<> {
     DumpCandidatePairs_s(stream);
   }
 
-  void ConnectionStateChange(NrIceCtx* ctx, NrIceCtx::ConnectionState state) {
-    (void)ctx;
+  void ConnectionStateChange(NrIceMediaStream* stream,
+                             NrIceCtx::ConnectionState state) {
+    {
+      auto lock = mConnectionStates.Lock();
+      lock.ref()[stream->GetId()] = state;
+    }
+    if (ice_checking()) {
+      ice_reached_checking_ = true;
+    }
+
     switch (state) {
       case NrIceCtx::ICE_CTX_INIT:
         break;
       case NrIceCtx::ICE_CTX_CHECKING:
-        std::cerr << name_ << " ICE reached checking" << std::endl;
-        ice_reached_checking_ = true;
+        std::cerr << name_ << " ICE reached checking (" << stream->GetId()
+                  << ")" << std::endl;
+        MOZ_ASSERT(ice_reached_checking_);
         break;
       case NrIceCtx::ICE_CTX_CONNECTED:
-        std::cerr << name_ << " ICE connected" << std::endl;
-        ice_connected_ = true;
+        std::cerr << name_ << " ICE reached connected (" << stream->GetId()
+                  << ")" << std::endl;
+        MOZ_ASSERT(ice_reached_checking_);
         break;
       case NrIceCtx::ICE_CTX_COMPLETED:
-        std::cerr << name_ << " ICE completed" << std::endl;
+        std::cerr << name_ << " ICE reached completed (" << stream->GetId()
+                  << ")" << std::endl;
+        MOZ_ASSERT(ice_reached_checking_);
         break;
       case NrIceCtx::ICE_CTX_FAILED:
-        std::cerr << name_ << " ICE failed" << std::endl;
-        ice_failed_ = true;
+        std::cerr << name_ << " ICE reached failed (" << stream->GetId() << ")"
+                  << std::endl;
+        MOZ_ASSERT(ice_reached_checking_);
         break;
       case NrIceCtx::ICE_CTX_DISCONNECTED:
-        std::cerr << name_ << " ICE disconnected" << std::endl;
-        ice_connected_ = false;
+        std::cerr << name_ << " ICE reached disconnected (" << stream->GetId()
+                  << ")" << std::endl;
+        MOZ_ASSERT(ice_reached_checking_);
         break;
-      default:
-        MOZ_CRASH();
+      case NrIceCtx::ICE_CTX_CLOSED:
+        std::cerr << name_ << " ICE reached closed (" << stream->GetId() << ")"
+                  << std::endl;
+        break;
     }
   }
 
@@ -1328,13 +1433,13 @@ class IceTestPeer : public sigslot::has_slots<> {
   std::map<std::string, std::pair<std::string, std::string>> mOldIceCredentials;
   size_t stream_counter_;
   bool shutting_down_;
-  bool gathering_complete_;
-  int ready_ct_;
-  bool ice_connected_;
-  bool ice_failed_;
+  DataMutex<std::map<std::string, NrIceCtx::ConnectionState>> mConnectionStates;
+  DataMutex<std::map<std::string, NrIceMediaStream::GatheringState>>
+      mGatheringStates;
+  std::atomic<int> ready_ct_;
   bool ice_reached_checking_;
-  size_t received_;
-  size_t sent_;
+  std::atomic<size_t> received_;
+  std::atomic<size_t> sent_;
   struct timeval consent_timestamp_;
   NrIceResolverFake fake_resolver_;
   RefPtr<NrIceResolver> dns_resolver_;
@@ -1693,10 +1798,8 @@ class WebRtcIceConnectTest : public StunTest {
                               TrickleMode mode = TRICKLE_NONE) {
     ASSERT_TRUE(caller->ready_ct() == 0);
     ASSERT_TRUE(caller->ice_connected() == 0);
-    ASSERT_TRUE(caller->ice_reached_checking() == 0);
     ASSERT_TRUE(callee->ready_ct() == 0);
     ASSERT_TRUE(callee->ice_connected() == 0);
-    ASSERT_TRUE(callee->ice_reached_checking() == 0);
 
     // IceTestPeer::Connect grabs attributes from the first arg, and
     // gives them to |this|, meaning that callee->Connect(caller, ...)
@@ -1900,10 +2003,8 @@ class WebRtcIcePacketFilterTest : public StunTest {
   void SetUp() {
     StunTest::SetUp();
 
-    NrIceCtx::InitializeGlobals(NrIceCtx::GlobalConfig());
-
-    // Set up enough of the ICE ctx to allow the packet filter to work
-    ice_ctx_ = NrIceCtx::Create("test");
+    test_utils_->SyncDispatchToSTS(
+        WrapRunnable(this, &WebRtcIcePacketFilterTest::SetUp_s));
 
     nsCOMPtr<nsISocketFilterHandler> udp_handler =
         do_GetService(NS_STUN_UDP_SOCKET_FILTER_HANDLER_CONTRACTID);
@@ -1914,6 +2015,12 @@ class WebRtcIcePacketFilterTest : public StunTest {
         do_GetService(NS_STUN_TCP_SOCKET_FILTER_HANDLER_CONTRACTID);
     ASSERT_TRUE(tcp_handler);
     tcp_handler->NewFilter(getter_AddRefs(tcp_filter_));
+  }
+
+  void SetUp_s() {
+    NrIceCtx::InitializeGlobals(NrIceCtx::GlobalConfig());
+    // Set up enough of the ICE ctx to allow the packet filter to work
+    ice_ctx_ = NrIceCtx::Create("test");
   }
 
   void TearDown() {
@@ -3368,6 +3475,8 @@ TEST_F(WebRtcIceConnectTest, TestConnectTrickleAddStreamDuringICE) {
   RealisticTrickleDelay(p1_->ControlTrickle(0));
   RealisticTrickleDelay(p2_->ControlTrickle(0));
   AddStream(1);
+  ASSERT_TRUE(Gather());
+  ConnectTrickle();
   RealisticTrickleDelay(p1_->ControlTrickle(1));
   RealisticTrickleDelay(p2_->ControlTrickle(1));
   WaitForConnected(1000);

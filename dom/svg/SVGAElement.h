@@ -10,7 +10,6 @@
 #include "Link.h"
 #include "nsDOMTokenList.h"
 #include "SVGAnimatedString.h"
-#include "mozilla/dom/AnchorAreaFormRelValues.h"
 #include "mozilla/dom/SVGGraphicsElement.h"
 
 nsresult NS_NewSVGAElement(
@@ -25,9 +24,7 @@ namespace dom {
 
 using SVGAElementBase = SVGGraphicsElement;
 
-class SVGAElement final : public SVGAElementBase,
-                          public Link,
-                          public AnchorAreaFormRelValues {
+class SVGAElement final : public SVGAElementBase, public Link {
  protected:
   using Element::GetText;
 
@@ -50,16 +47,15 @@ class SVGAElement final : public SVGAElementBase,
 
   // nsIContent
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  void UnbindFromTree(bool aNullParent = true) override;
+  void UnbindFromTree(UnbindContext&) override;
 
   int32_t TabIndexDefault() override;
-  bool IsFocusableInternal(int32_t* aTabIndex, bool aWithMouse) override;
+  Focusable IsFocusableWithoutStyle(IsFocusableFlags) override;
 
-  void GetLinkTarget(nsAString& aTarget) override;
+  void GetLinkTargetImpl(nsAString& aTarget) override;
   already_AddRefed<nsIURI> GetHrefURI() const override;
   bool HasHref() const;
 
-  ElementState IntrinsicState() const override;
   virtual void AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                             const nsAttrValue* aValue,
                             const nsAttrValue* aOldValue,
@@ -96,6 +92,7 @@ class SVGAElement final : public SVGAElementBase,
   virtual ~SVGAElement() = default;
 
   StringAttributesInfo GetStringInfo() override;
+  void DidAnimateAttribute(int32_t aNameSpaceID, nsAtom* aAttribute) override;
 
   enum { HREF, XLINK_HREF, TARGET };
   SVGAnimatedString mStringAttributes[3];

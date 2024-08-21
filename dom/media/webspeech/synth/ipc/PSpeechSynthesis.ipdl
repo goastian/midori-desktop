@@ -18,7 +18,6 @@ struct RemoteVoice {
   bool queued;
 };
 
-[ManualDealloc]
 sync protocol PSpeechSynthesis
 {
   manager PContent;
@@ -35,6 +34,8 @@ child:
     async IsSpeakingChanged(bool aIsSpeaking);
 
     async NotifyVoicesChanged();
+
+    async NotifyVoicesError(nsString aError);
 
     async InitialVoicesAndState(RemoteVoice[] aVoices, nsString[] aDefaults,
                                 bool aIsSpeaking);

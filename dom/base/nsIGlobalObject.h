@@ -10,7 +10,6 @@
 #include "mozilla/LinkedList.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/dom/ClientInfo.h"
-#include "mozilla/dom/DispatcherTrait.h"
 #include "mozilla/dom/ServiceWorkerDescriptor.h"
 #include "mozilla/OriginTrials.h"
 #include "nsContentUtils.h"
@@ -66,8 +65,7 @@ class ModuleLoaderBase;
 /**
  * See <https://developer.mozilla.org/en-US/docs/Glossary/Global_object>.
  */
-class nsIGlobalObject : public nsISupports,
-                        public mozilla::dom::DispatcherTrait {
+class nsIGlobalObject : public nsISupports {
  private:
   nsTArray<nsCString> mHostObjectURIs;
 
@@ -140,6 +138,9 @@ class nsIGlobalObject : public nsISupports,
    * or whether it's torn-down enough that the JSObject is gone.
    */
   bool HasJSGlobal() const { return GetGlobalJSObjectPreserveColor(); }
+
+  virtual nsISerialEventTarget* SerialEventTarget() const = 0;
+  virtual nsresult Dispatch(already_AddRefed<nsIRunnable>&&) const = 0;
 
   // This method is not meant to be overridden.
   nsIPrincipal* PrincipalOrNull() const;
@@ -220,7 +221,7 @@ class nsIGlobalObject : public nsISupports,
 
   // Returns a pointer to this object as an inner window if this is one or
   // nullptr otherwise.
-  nsPIDOMWindowInner* AsInnerWindow();
+  nsPIDOMWindowInner* GetAsInnerWindow();
 
   void QueueMicrotask(mozilla::dom::VoidFunction& aCallback);
 
@@ -274,6 +275,14 @@ class nsIGlobalObject : public nsISupports,
       const mozilla::ipc::PrincipalInfo& aStorageKey);
 
   virtual mozilla::dom::StorageManager* GetStorageManager() { return nullptr; }
+
+  /**
+   * https://html.spec.whatwg.org/multipage/web-messaging.html#eligible-for-messaging
+   * * a Window object whose associated Document is fully active, or
+   * * a WorkerGlobalScope object whose closing flag is false and whose worker
+   *   is not a suspendable worker.
+   */
+  virtual bool IsEligibleForMessaging() { return false; };
 
  protected:
   virtual ~nsIGlobalObject();

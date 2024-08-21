@@ -65,7 +65,6 @@ class MouseEvent : public UIEvent {
   int16_t Button();
   uint16_t Buttons();
   already_AddRefed<EventTarget> GetRelatedTarget();
-  void GetRegion(nsAString& aRegion);
   void InitMouseEvent(const nsAString& aType, bool aCanBubble, bool aCancelable,
                       nsGlobalWindowInner* aView, int32_t aDetail,
                       int32_t aScreenX, int32_t aScreenY, int32_t aClientX,
@@ -83,8 +82,8 @@ class MouseEvent : public UIEvent {
                                                   const MouseEventInit& aParam);
   int32_t MovementX() { return GetMovementPoint().x; }
   int32_t MovementY() { return GetMovementPoint().y; }
-  float MozPressure() const;
-  uint16_t MozInputSource() const;
+  float MozPressure(CallerType) const;
+  uint16_t InputSource(CallerType) const;
   void InitNSMouseEvent(const nsAString& aType, bool aCanBubble,
                         bool aCancelable, nsGlobalWindowInner* aView,
                         int32_t aDetail, int32_t aScreenX, int32_t aScreenY,

@@ -12,6 +12,7 @@
 #include "mozilla/WeakPtr.h"
 #include "mozilla/RelativeTimeline.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/BaseProfilerMarkersPrerequisites.h"
 #include "nsITimer.h"
 
 class nsDocShell;
@@ -71,6 +72,10 @@ class nsDOMNavigationTiming final : public mozilla::RelativeTimeline {
     return mContentfulComposite;
   }
 
+  mozilla::TimeStamp GetLargestContentfulRenderTimeStamp() const {
+    return mLargestContentfulRender;
+  }
+
   DOMTimeMilliSec GetUnloadEventStart() {
     return TimeStampToDOM(GetUnloadEventStartTimeStamp());
   }
@@ -103,6 +108,9 @@ class nsDOMNavigationTiming final : public mozilla::RelativeTimeline {
   }
   DOMTimeMilliSec GetTimeToContentfulComposite() const {
     return TimeStampToDOM(mContentfulComposite);
+  }
+  DOMTimeMilliSec GetTimeToLargestContentfulRender() const {
+    return TimeStampToDOM(mLargestContentfulRender);
   }
   DOMTimeMilliSec GetTimeToTTFI() const { return TimeStampToDOM(mTTFI); }
   DOMTimeMilliSec GetTimeToDOMContentFlushed() const {
@@ -172,8 +180,12 @@ class nsDOMNavigationTiming final : public mozilla::RelativeTimeline {
   void NotifyNonBlankPaintForRootContentDocument();
   void NotifyContentfulCompositeForRootContentDocument(
       const mozilla::TimeStamp& aCompositeEndTime);
+  void NotifyLargestContentfulRenderForRootContentDocument(
+      const DOMHighResTimeStamp& aRenderTime);
   void NotifyDOMContentFlushedForRootContentDocument();
   void NotifyDocShellStateChanged(DocShellState aDocShellState);
+
+  void MaybeAddLCPProfilerMarker(mozilla::MarkerInnerWindowId aInnerWindowID);
 
   DOMTimeMilliSec TimeStampToDOM(mozilla::TimeStamp aStamp) const;
 
@@ -198,7 +210,7 @@ class nsDOMNavigationTiming final : public mozilla::RelativeTimeline {
     return timing.forget();
   }
 
-  bool DocShellHasBeenActiveSinceNavigationStart() {
+  bool DocShellHasBeenActiveSinceNavigationStart() const {
     return mDocShellHasBeenActiveSinceNavigationStart;
   }
 
@@ -230,6 +242,7 @@ class nsDOMNavigationTiming final : public mozilla::RelativeTimeline {
   mozilla::TimeStamp mNavigationStart;
   mozilla::TimeStamp mNonBlankPaint;
   mozilla::TimeStamp mContentfulComposite;
+  mozilla::TimeStamp mLargestContentfulRender;
   mozilla::TimeStamp mDOMContentFlushed;
 
   mozilla::TimeStamp mBeforeUnloadStart;

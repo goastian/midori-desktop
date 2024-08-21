@@ -22,7 +22,6 @@ include("/tools/fuzzing/libfuzzer-config.mozbuild")
 XPIDL_SOURCES += [
     "mozIDOMWindow.idl",
     "nsIContentPolicy.idl",
-    "nsIDOMRequestService.idl",
     "nsIDroppedLinkHandler.idl",
     "nsIEventSourceEventService.idl",
     "nsIImageLoadingContent.idl",
@@ -51,7 +50,6 @@ EXPORTS += [
     "nsAttrValueInlines.h",
     "nsCaseTreatment.h",
     "nsChildContentList.h",
-    "nsContentCID.h",
     "nsContentCreatorFunctions.h",
     "nsContentList.h",
     "nsContentListDeclarations.h",
@@ -75,7 +73,6 @@ EXPORTS += [
     "nsFrameLoader.h",  # Because binding headers include it.
     "nsFrameLoaderOwner.h",
     "nsFrameMessageManager.h",
-    "nsGlobalWindow.h",  # Because binding headers include it.
     "nsGlobalWindowInner.h",  # Because binding headers include it.
     "nsGlobalWindowOuter.h",  # Because binding headers include it.
     "nsIAnimationObserver.h",
@@ -93,8 +90,6 @@ EXPORTS += [
     "nsJSEnvironment.h",
     "nsJSUtils.h",
     "nsLineBreaker.h",
-    "nsMappedAttributeElement.h",
-    "nsMappedAttributes.h",
     "nsNameSpaceManager.h",
     "nsNodeInfoManager.h",
     "nsPIDOMWindow.h",
@@ -131,6 +126,7 @@ EXPORTS.mozilla += [
     "ContentIterator.h",
     "CORSMode.h",
     "FlushType.h",
+    "FocusModel.h",
     "FullscreenChange.h",
     "GlobalTeardownObserver.h",
     "IdentifierMapEntry.h",
@@ -149,7 +145,6 @@ EXPORTS.mozilla.dom += [
     "!UseCounterWorkerList.h",
     "AbstractRange.h",
     "AncestorIterator.h",
-    "AnchorAreaFormRelValues.h",
     "AnimationFrameProvider.h",
     "AnonymousContent.h",
     "Attr.h",
@@ -172,10 +167,10 @@ EXPORTS.mozilla.dom += [
     "CompressionStream.h",
     "ContentFrameMessageManager.h",
     "ContentProcessMessageManager.h",
+    "CrossShadowBoundaryRange.h",
     "CustomElementRegistry.h",
     "DecompressionStream.h",
     "DirectionalityUtils.h",
-    "DispatcherTrait.h",
     "DocGroup.h",
     "Document.h",
     "DocumentFragment.h",
@@ -192,7 +187,6 @@ EXPORTS.mozilla.dom += [
     "DOMPoint.h",
     "DOMQuad.h",
     "DOMRect.h",
-    "DOMRequest.h",
     "DOMStringList.h",
     "DOMTokenListSupportedTokens.h",
     "Element.h",
@@ -202,6 +196,7 @@ EXPORTS.mozilla.dom += [
     "External.h",
     "FilteredNodeIterator.h",
     "FormData.h",
+    "FragmentDirective.h",
     "FragmentOrElement.h",
     "FromParser.h",
     "GeneratedImageContent.h",
@@ -245,6 +240,7 @@ EXPORTS.mozilla.dom += [
     "PlacesBookmarkTitle.h",
     "PlacesBookmarkUrl.h",
     "PlacesEvent.h",
+    "PlacesEventCounts.h",
     "PlacesFavicon.h",
     "PlacesHistoryCleared.h",
     "PlacesObservers.h",
@@ -259,9 +255,8 @@ EXPORTS.mozilla.dom += [
     "Pose.h",
     "PostMessageEvent.h",
     "ProcessMessageManager.h",
-    "RadioGroupManager.h",
+    "RadioGroupContainer.h",
     "ResizeObserver.h",
-    "ResizeObserverController.h",
     "ResponsiveImageSelector.h",
     "SameProcessMessageQueue.h",
     "ScreenLuminance.h",
@@ -289,6 +284,8 @@ EXPORTS.mozilla.dom += [
     "TreeOrderedArrayInlines.h",
     "TreeWalker.h",
     "UIDirectionManager.h",
+    "UnbindContext.h",
+    "UseCounterMetrics.h",
     "UserActivation.h",
     "ViewportMetaData.h",
     "VisualViewport.h",
@@ -303,6 +300,7 @@ if CONFIG["FUZZING"]:
 
 if CONFIG["COMPILE_ENVIRONMENT"]:
     EXPORTS.mozilla.dom += [
+        "!fragmentdirectives_ffi_generated.h",
         "!GeneratedElementDocumentState.h",
         "RustTypes.h",
     ]
@@ -312,9 +310,14 @@ if CONFIG["COMPILE_ENVIRONMENT"]:
         inputs=["rust"],
     )
 
+    CbindgenHeader(
+        "fragmentdirectives_ffi_generated.h",
+        inputs=["fragmentdirectives"],
+    )
+
 UNIFIED_SOURCES += [
+    "!UseCounterMetrics.cpp",
     "AbstractRange.cpp",
-    "AnchorAreaFormRelValues.cpp",
     "AnimationFrameProvider.cpp",
     "AnonymousContent.cpp",
     "Attr.cpp",
@@ -335,10 +338,10 @@ UNIFIED_SOURCES += [
     "ContentFrameMessageManager.cpp",
     "ContentIterator.cpp",
     "ContentProcessMessageManager.cpp",
+    "CrossShadowBoundaryRange.cpp",
     "Crypto.cpp",
     "CustomElementRegistry.cpp",
     "DirectionalityUtils.cpp",
-    "DispatcherTrait.cpp",
     "DocGroup.cpp",
     "Document.cpp",
     "DocumentFragment.cpp",
@@ -351,13 +354,13 @@ UNIFIED_SOURCES += [
     "DOMPoint.cpp",
     "DOMQuad.cpp",
     "DOMRect.cpp",
-    "DOMRequest.cpp",
     "DOMStringList.cpp",
     "Element.cpp",
     "EventSource.cpp",
     "EventSourceEventService.cpp",
     "External.cpp",
     "FormData.cpp",
+    "FragmentDirective.cpp",
     "FragmentOrElement.cpp",
     "GeneratedImageContent.cpp",
     "GlobalTeardownObserver.cpp",
@@ -413,8 +416,6 @@ UNIFIED_SOURCES += [
     "nsJSEnvironment.cpp",
     "nsJSUtils.cpp",
     "nsLineBreaker.cpp",
-    "nsMappedAttributeElement.cpp",
-    "nsMappedAttributes.cpp",
     "nsMimeTypeArray.cpp",
     "nsNameSpaceManager.cpp",
     "nsNoDataProtocolContentPolicy.cpp",
@@ -445,11 +446,10 @@ UNIFIED_SOURCES += [
     "Pose.cpp",
     "PostMessageEvent.cpp",
     "ProcessMessageManager.cpp",
-    "RadioGroupManager.cpp",
+    "RadioGroupContainer.cpp",
     "RangeUtils.cpp",
     "RemoteOuterWindowProxy.cpp",
     "ResizeObserver.cpp",
-    "ResizeObserverController.cpp",
     "ResponsiveImageSelector.cpp",
     "SameProcessMessageQueue.cpp",
     "ScreenLuminance.cpp",
@@ -501,6 +501,7 @@ if CONFIG["FUZZING"]:
 if CONFIG["MOZ_PLACES"]:
     UNIFIED_SOURCES += [
         "PlacesEvent.cpp",
+        "PlacesEventCounts.cpp",
         "PlacesObservers.cpp",
         "PlacesWeakCallbackWrapper.cpp",
     ]
@@ -508,7 +509,7 @@ if CONFIG["MOZ_PLACES"]:
 # on win32 if we add these files to UNIFIED_SOURCES then the compiler generates
 # larger stack frames for some recursive functions that cause us to hit stack
 # overflows (see bug 1824565)
-if CONFIG["OS_ARCH"] == "WINNT" and CONFIG["CPU_ARCH"] == "x86":
+if CONFIG["OS_ARCH"] == "WINNT" and CONFIG["TARGET_CPU"] == "x86":
     SOURCES += [
         "CompressionStream.cpp",
         "DecompressionStream.cpp",
@@ -548,13 +549,12 @@ if CONFIG["INTEL_ARCHITECTURE"]:
 
 # Are we targeting PowerPC? If so, we can enable a SIMD version for
 # nsTextFragment.cpp as well.
-if CONFIG["CPU_ARCH"].startswith("ppc"):
+if CONFIG["TARGET_CPU"].startswith("ppc"):
     SOURCES += ["nsTextFragmentVMX.cpp"]
     SOURCES["nsTextFragmentVMX.cpp"].flags += CONFIG["PPC_VMX_FLAGS"]
 
 EXTRA_JS_MODULES += [
     "ContentAreaDropListener.sys.mjs",
-    "DOMRequestHelper.sys.mjs",
     "IndexedDBHelper.sys.mjs",
     "LocationHelper.sys.mjs",
     "ProcessSelector.sys.mjs",
@@ -600,6 +600,7 @@ LOCAL_INCLUDES += [
     "/security/manager/ssl",
     "/third_party/xsimd/include",
     "/widget",
+    "/xpcom/build",
     "/xpcom/ds",
 ]
 
@@ -627,4 +628,17 @@ GeneratedFile(
     script="gen-usecounters.py",
     entry_point="use_counter_list",
     inputs=["UseCountersWorker.conf"],
+)
+
+GeneratedFile(
+    "UseCounterMetrics.cpp",
+    script="usecounters.py",
+    entry_point="metric_map",
+    inputs=[
+        "UseCounters.conf",
+        "UseCountersWorker.conf",
+        "nsDeprecatedOperationList.h",
+        "!/layout/style/ServoCSSPropList.py",
+        "/servo/components/style/properties/counted_unknown_properties.py",
+    ],
 )

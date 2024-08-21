@@ -28,7 +28,7 @@
 #include "nsEscape.h"
 #include "nsIWebNavigation.h"
 #include "nsIDocShell.h"
-#include "nsIContentViewer.h"
+#include "nsIDocumentViewer.h"
 #include "nsContentUtils.h"
 #include "nsJSUtils.h"
 #include "nsThreadUtils.h"
@@ -48,6 +48,7 @@
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/PopupBlocker.h"
 #include "nsContentSecurityManager.h"
+#include "DefaultURI.h"
 
 #include "mozilla/LoadInfo.h"
 #include "mozilla/Maybe.h"
@@ -161,7 +162,7 @@ static bool AllowedByCSP(nsIContentSecurityPolicy* aCSP,
                             nullptr,  // nsICSPEventListener
                             NS_ConvertASCIItoUTF16(aJavaScriptURL),  // aContent
                             0,  // aLineNumber
-                            0,  // aColumnNumber
+                            1,  // aColumnNumber
                             &allowsInlineScript);
 
   return (NS_SUCCEEDED(rv) && allowsInlineScript);
@@ -708,7 +709,7 @@ nsJSChannel::AsyncOpen(nsIStreamListener* aListener) {
   nsCOMPtr<nsIRunnable> runnable =
       mozilla::NewRunnableMethod(name, this, method);
   nsGlobalWindowInner* window = nsGlobalWindowInner::Cast(mOriginalInnerWindow);
-  rv = window->Dispatch(mozilla::TaskCategory::Other, runnable.forget());
+  rv = window->Dispatch(runnable.forget());
 
   if (NS_FAILED(rv)) {
     loadGroup->RemoveRequest(this, nullptr, rv);
@@ -780,13 +781,13 @@ void nsJSChannel::EvaluateScript() {
     nsCOMPtr<nsIDocShell> docShell;
     NS_QueryNotificationCallbacks(mStreamChannel, docShell);
     if (docShell) {
-      nsCOMPtr<nsIContentViewer> cv;
-      docShell->GetContentViewer(getter_AddRefs(cv));
+      nsCOMPtr<nsIDocumentViewer> viewer;
+      docShell->GetDocViewer(getter_AddRefs(viewer));
 
-      if (cv) {
+      if (viewer) {
         bool okToUnload;
 
-        if (NS_SUCCEEDED(cv->PermitUnload(&okToUnload)) && !okToUnload) {
+        if (NS_SUCCEEDED(viewer->PermitUnload(&okToUnload)) && !okToUnload) {
           // The user didn't want to unload the current
           // page, translate this into an undefined
           // return from the javascript: URL...
@@ -1184,6 +1185,20 @@ nsJSProtocolHandler::GetScheme(nsACString& result) {
   rv = mutator.Finalize(url);
   if (NS_FAILED(rv)) {
     return rv;
+  }
+
+  // use DefaultURI to check for validity when we have possible hostnames
+  // since nsSimpleURI doesn't know about hostnames
+  auto pos = aSpec.Find("javascript:");
+  if (pos != kNotFound) {
+    nsDependentCSubstring rest(aSpec, pos + sizeof("javascript:") - 1, -1);
+    if (StringBeginsWith(rest, "//"_ns)) {
+      nsCOMPtr<nsIURI> uriWithHost;
+      rv = NS_MutateURI(new mozilla::net::DefaultURI::Mutator())
+               .SetSpec(aSpec)
+               .Finalize(uriWithHost);
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
   }
 
   url.forget(result);

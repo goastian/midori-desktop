@@ -10,6 +10,7 @@
 #include "mozilla/dom/ElementInlines.h"
 
 #include "mozilla/dom/Document.h"
+#include "nsObjectLoadingContent.h"
 #include "nsThreadUtils.h"
 #include "nsIWidget.h"
 #include "nsContentUtils.h"
@@ -18,7 +19,6 @@
 #  include "mozilla/EventDispatcher.h"
 #  include "mozilla/dom/Event.h"
 #endif
-#include "mozilla/dom/HTMLObjectElement.h"
 
 NS_IMPL_NS_NEW_HTML_ELEMENT_CHECK_PARSER(Embed)
 
@@ -28,17 +28,10 @@ HTMLEmbedElement::HTMLEmbedElement(
     already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
     FromParser aFromParser)
     : nsGenericHTMLElement(std::move(aNodeInfo)) {
-  RegisterActivityObserver();
   SetIsNetworkCreated(aFromParser == FROM_PARSER_NETWORK);
-
-  // By default we're in the loading state
-  AddStatesSilently(ElementState::LOADING);
 }
 
-HTMLEmbedElement::~HTMLEmbedElement() {
-  UnregisterActivityObserver();
-  nsImageLoadingContent::Destroy();
-}
+HTMLEmbedElement::~HTMLEmbedElement() = default;
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(HTMLEmbedElement)
 
@@ -55,19 +48,12 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(
     HTMLEmbedElement, nsGenericHTMLElement, nsIRequestObserver,
     nsIStreamListener, nsFrameLoaderOwner, nsIObjectLoadingContent,
-    imgINotificationObserver, nsIImageLoadingContent, nsIChannelEventSink)
+    nsIChannelEventSink)
 
 NS_IMPL_ELEMENT_CLONE(HTMLEmbedElement)
 
-void HTMLEmbedElement::AsyncEventRunning(AsyncEventDispatcher* aEvent) {
-  nsImageLoadingContent::AsyncEventRunning(aEvent);
-}
-
 nsresult HTMLEmbedElement::BindToTree(BindContext& aContext, nsINode& aParent) {
   nsresult rv = nsGenericHTMLElement::BindToTree(aContext, aParent);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = nsObjectLoadingContent::BindToTree(aContext, aParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (IsInComposedDoc()) {
@@ -79,9 +65,9 @@ nsresult HTMLEmbedElement::BindToTree(BindContext& aContext, nsINode& aParent) {
   return NS_OK;
 }
 
-void HTMLEmbedElement::UnbindFromTree(bool aNullParent) {
-  nsObjectLoadingContent::UnbindFromTree(aNullParent);
-  nsGenericHTMLElement::UnbindFromTree(aNullParent);
+void HTMLEmbedElement::UnbindFromTree(UnbindContext& aContext) {
+  nsObjectLoadingContent::UnbindFromTree();
+  nsGenericHTMLElement::UnbindFromTree(aContext);
 }
 
 void HTMLEmbedElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
@@ -137,18 +123,18 @@ void HTMLEmbedElement::AfterMaybeChangeAttr(int32_t aNamespaceID, nsAtom* aName,
       }));
 }
 
-bool HTMLEmbedElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
-                                       int32_t* aTabIndex) {
-  // Plugins that show the empty fallback should not accept focus.
-  if (Type() == eType_Fallback) {
-    if (aTabIndex) {
-      *aTabIndex = -1;
-    }
+int32_t HTMLEmbedElement::TabIndexDefault() {
+  // Only when we loaded a sub-document, <embed> should be tabbable by default
+  // because it's a navigable containers mentioned in 6.6.3 The tabindex
+  // attribute in the standard (see "If the value is null" section).
+  // https://html.spec.whatwg.org/#the-tabindex-attribute
+  // Otherwise, the default tab-index of <embed> is expected as -1 in a WPT:
+  // https://searchfox.org/mozilla-central/rev/7d98e651953f3135d91e98fa6d33efa131aec7ea/testing/web-platform/tests/html/interaction/focus/sequential-focus-navigation-and-the-tabindex-attribute/tabindex-getter.html#63
+  return Type() == ObjectType::Document ? 0 : -1;
+}
 
-    *aIsFocusable = false;
-    return false;
-  }
-
+bool HTMLEmbedElement::IsHTMLFocusable(IsFocusableFlags aFlags,
+                                       bool* aIsFocusable, int32_t* aTabIndex) {
   // Has non-plugin content: let the plugin decide what to do in terms of
   // internal focus from mouse clicks
   if (aTabIndex) {
@@ -179,24 +165,22 @@ bool HTMLEmbedElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                                               aMaybeScriptedPrincipal, aResult);
 }
 
-static void MapAttributesIntoRuleBase(const nsMappedAttributes* aAttributes,
-                                      MappedDeclarations& aDecls) {
-  nsGenericHTMLElement::MapImageMarginAttributeInto(aAttributes, aDecls);
-  nsGenericHTMLElement::MapImageSizeAttributesInto(aAttributes, aDecls);
-  nsGenericHTMLElement::MapImageAlignAttributeInto(aAttributes, aDecls);
+static void MapAttributesIntoRuleBase(MappedDeclarationsBuilder& aBuilder) {
+  nsGenericHTMLElement::MapImageMarginAttributeInto(aBuilder);
+  nsGenericHTMLElement::MapImageSizeAttributesInto(aBuilder);
+  nsGenericHTMLElement::MapImageAlignAttributeInto(aBuilder);
 }
 
 static void MapAttributesIntoRuleExceptHidden(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  MapAttributesIntoRuleBase(aAttributes, aDecls);
-  nsGenericHTMLElement::MapCommonAttributesIntoExceptHidden(aAttributes,
-                                                            aDecls);
+    MappedDeclarationsBuilder& aBuilder) {
+  MapAttributesIntoRuleBase(aBuilder);
+  nsGenericHTMLElement::MapCommonAttributesIntoExceptHidden(aBuilder);
 }
 
 void HTMLEmbedElement::MapAttributesIntoRule(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  MapAttributesIntoRuleBase(aAttributes, aDecls);
-  nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aDecls);
+    MappedDeclarationsBuilder& aBuilder) {
+  MapAttributesIntoRuleBase(aBuilder);
+  nsGenericHTMLElement::MapCommonAttributesInto(aBuilder);
 }
 
 NS_IMETHODIMP_(bool)
@@ -228,13 +212,8 @@ void HTMLEmbedElement::StartObjectLoad(bool aNotify, bool aForceLoad) {
   SetIsNetworkCreated(false);
 }
 
-ElementState HTMLEmbedElement::IntrinsicState() const {
-  return nsGenericHTMLElement::IntrinsicState() | ObjectState();
-}
-
 uint32_t HTMLEmbedElement::GetCapabilities() const {
-  return eSupportPlugins | eAllowPluginSkipChannel | eSupportImages |
-         eSupportDocuments;
+  return eAllowPluginSkipChannel | eSupportImages | eSupportDocuments;
 }
 
 void HTMLEmbedElement::DestroyContent() {

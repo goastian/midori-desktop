@@ -18,7 +18,7 @@ class SVGFEImageFrame;
 
 namespace dom {
 
-using SVGFEImageElementBase = SVGFE;
+using SVGFEImageElementBase = SVGFilterPrimitiveElement;
 
 class SVGFEImageElement final : public SVGFEImageElementBase,
                                 public nsImageLoadingContent {
@@ -70,8 +70,7 @@ class SVGFEImageElement final : public SVGFEImageElementBase,
                     const nsAttrValue* aValue, const nsAttrValue* aOldValue,
                     nsIPrincipal* aSubjectPrincipal, bool aNotify) override;
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  void UnbindFromTree(bool aNullParent) override;
-  ElementState IntrinsicState() const override;
+  void UnbindFromTree(UnbindContext&) override;
   void DestroyContent() override;
 
   NS_DECL_IMGINOTIFICATIONOBSERVER
@@ -95,6 +94,7 @@ class SVGFEImageElement final : public SVGFEImageElementBase,
   }
 
  private:
+  void DidAnimateAttribute(int32_t aNameSpaceID, nsAtom* aAttribute) override;
   nsresult LoadSVGImage(bool aForce, bool aNotify);
   bool ShouldLoadImage() const;
 

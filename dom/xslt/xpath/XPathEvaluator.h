@@ -36,19 +36,18 @@ class XPathEvaluator final : public NonRefcountedDOMObject {
   // WebIDL API
   bool WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto,
                   JS::MutableHandle<JSObject*> aReflector);
-  Document* GetParentObject() {
-    nsCOMPtr<Document> doc = do_QueryReferent(mDocument);
-    return doc;
-  }
-  static XPathEvaluator* Constructor(const GlobalObject& aGlobal);
-  XPathExpression* CreateExpression(const nsAString& aExpression,
-                                    XPathNSResolver* aResolver,
-                                    ErrorResult& rv);
-  XPathExpression* CreateExpression(const nsAString& aExpression,
-                                    nsINode* aResolver, ErrorResult& aRv);
-  XPathExpression* CreateExpression(const nsAString& aExpression,
-                                    txIParseContext* aContext,
-                                    Document* aDocument, ErrorResult& aRv);
+  Document* GetParentObject() { return mDocument; }
+  static UniquePtr<XPathEvaluator> Constructor(const GlobalObject& aGlobal);
+  UniquePtr<XPathExpression> CreateExpression(const nsAString& aExpression,
+                                              XPathNSResolver* aResolver,
+                                              ErrorResult& rv);
+  UniquePtr<XPathExpression> CreateExpression(const nsAString& aExpression,
+                                              nsINode* aResolver,
+                                              ErrorResult& aRv);
+  UniquePtr<XPathExpression> CreateExpression(const nsAString& aExpression,
+                                              txIParseContext* aContext,
+                                              Document* aDocument,
+                                              ErrorResult& aRv);
   nsINode* CreateNSResolver(nsINode& aNodeResolver) { return &aNodeResolver; }
   already_AddRefed<XPathResult> Evaluate(
       JSContext* aCx, const nsAString& aExpression, nsINode& aContextNode,
@@ -56,7 +55,7 @@ class XPathEvaluator final : public NonRefcountedDOMObject {
       ErrorResult& rv);
 
  private:
-  nsWeakPtr mDocument;
+  WeakPtr<Document> mDocument;
   RefPtr<txResultRecycler> mRecycler;
 };
 

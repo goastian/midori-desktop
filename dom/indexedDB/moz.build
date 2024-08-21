@@ -8,18 +8,20 @@ with Files("**"):
     BUG_COMPONENT = ("Core", "Storage: IndexedDB")
 
 MOCHITEST_MANIFESTS += [
-    "test/mochitest-intl-api.ini",
-    "test/mochitest-private.ini",
-    "test/mochitest-regular.ini",
+    "test/mochitest-intl-api.toml",
+    "test/mochitest-private.toml",
+    "test/mochitest-regular.toml",
 ]
 
-BROWSER_CHROME_MANIFESTS += ["test/browser.ini"]
+BROWSER_CHROME_MANIFESTS += ["test/browser.toml"]
 
-MOCHITEST_CHROME_MANIFESTS += ["test/chrome.ini"]
+MOCHITEST_CHROME_MANIFESTS += ["test/chrome.toml"]
+
+MARIONETTE_MANIFESTS += ["test/marionette/manifest.toml"]
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "test/unit/xpcshell-child-process.ini",
-    "test/unit/xpcshell-parent-process.ini",
+    "test/unit/xpcshell-child-process.toml",
+    "test/unit/xpcshell-parent-process.toml",
 ]
 
 TEST_DIRS += ["test/gtest"]
@@ -69,7 +71,6 @@ UNIFIED_SOURCES += [
     "IDBTransaction.cpp",
     "IndexedDatabase.cpp",
     "IndexedDatabaseManager.cpp",
-    "IndexedDBCipherKeyManager.cpp",
     "IndexedDBCommon.cpp",
     "KeyPath.cpp",
     "ProfilerHelpers.cpp",

@@ -126,6 +126,12 @@ struct NrIceCandidatePair {
 
 class NrIceMediaStream {
  public:
+  enum GatheringState {
+    ICE_STREAM_GATHER_INIT,
+    ICE_STREAM_GATHER_STARTED,
+    ICE_STREAM_GATHER_COMPLETE
+  };
+
   NrIceMediaStream(NrIceCtx* ctx, const std::string& id,
                    const std::string& name, size_t components);
 
@@ -179,8 +185,11 @@ class NrIceMediaStream {
   nsresult SendPacket(int component_id, const unsigned char* data, size_t len);
 
   // Set your state to ready. Called by the NrIceCtx;
-  void Ready();
+  void Ready(nr_ice_media_stream* stream);
   void Failed();
+
+  void OnGatheringStarted(nr_ice_media_stream* stream);
+  void OnGatheringComplete(nr_ice_media_stream* stream);
 
   // Close the stream. Called by the NrIceCtx.
   // Different from the destructor because other people
@@ -192,9 +201,14 @@ class NrIceMediaStream {
   // the candidate belongs to.
   const std::string& GetId() const { return id_; }
 
+  bool AllGenerationsDoneGathering() const;
+  bool AnyGenerationIsConnected() const;
+
   sigslot::signal5<NrIceMediaStream*, const std::string&, const std::string&,
                    const std::string&, const std::string&>
       SignalCandidate;  // A new ICE candidate:
+  sigslot::signal2<const std::string&, NrIceMediaStream::GatheringState>
+      SignalGatheringStateChange;
 
   sigslot::signal1<NrIceMediaStream*> SignalReady;   // Candidate pair ready.
   sigslot::signal1<NrIceMediaStream*> SignalFailed;  // Candidate pair failed.

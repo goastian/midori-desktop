@@ -65,6 +65,8 @@ class nsSynthVoiceRegistry final : public nsISynthVoiceRegistry {
 
   static void RecvNotifyVoicesChanged();
 
+  static void RecvNotifyVoicesError(const nsAString& aError);
+
  private:
   virtual ~nsSynthVoiceRegistry();
 
@@ -85,7 +87,7 @@ class nsSynthVoiceRegistry final : public nsISynthVoiceRegistry {
 
   nsRefPtrHashtable<nsStringHashKey, VoiceData> mUriVoiceMap;
 
-  SpeechSynthesisChild* mSpeechSynthChild;
+  RefPtr<SpeechSynthesisChild> mSpeechSynthChild;
 
   bool mUseGlobalQueue;
 

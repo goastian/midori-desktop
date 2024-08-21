@@ -20,6 +20,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Maybe.h"
+#include "nsString.h"
 
 #include "sdp/SdpEnum.h"
 #include "common/EncodingConstraints.h"
@@ -74,7 +75,7 @@ class SdpAttribute {
   };
 
   explicit SdpAttribute(AttributeType type) : mType(type) {}
-  virtual ~SdpAttribute() {}
+  virtual ~SdpAttribute() = default;
 
   virtual SdpAttribute* Clone() const = 0;
 
@@ -451,35 +452,19 @@ class SdpFingerprintAttributeList : public SdpAttribute {
   static std::vector<uint8_t> ParseFingerprint(const std::string& str);
 };
 
+inline nsLiteralCString ToString(SdpFingerprintAttributeList::HashAlgorithm a) {
+  static constexpr nsLiteralCString Values[] = {
+      "sha-1"_ns,   "sha-224"_ns, "sha-256"_ns, "sha-384"_ns,
+      "sha-512"_ns, "md5"_ns,     "md2"_ns,
+  };
+  if (a < std::size(Values)) return Values[a];
+  MOZ_ASSERT(false);
+  return "?"_ns;
+}
+
 inline std::ostream& operator<<(std::ostream& os,
                                 SdpFingerprintAttributeList::HashAlgorithm a) {
-  switch (a) {
-    case SdpFingerprintAttributeList::kSha1:
-      os << "sha-1";
-      break;
-    case SdpFingerprintAttributeList::kSha224:
-      os << "sha-224";
-      break;
-    case SdpFingerprintAttributeList::kSha256:
-      os << "sha-256";
-      break;
-    case SdpFingerprintAttributeList::kSha384:
-      os << "sha-384";
-      break;
-    case SdpFingerprintAttributeList::kSha512:
-      os << "sha-512";
-      break;
-    case SdpFingerprintAttributeList::kMd5:
-      os << "md5";
-      break;
-    case SdpFingerprintAttributeList::kMd2:
-      os << "md2";
-      break;
-    default:
-      MOZ_ASSERT(false);
-      os << "?";
-  }
-  return os;
+  return os << ToString(a);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -753,7 +738,7 @@ class SdpImageattrAttributeList : public SdpAttribute {
 
   class Imageattr {
    public:
-    Imageattr() : pt(), sendAll(false), recvAll(false) {}
+    Imageattr() : sendAll(false), recvAll(false) {}
     void Serialize(std::ostream& os) const;
     // TODO: Remove this Bug 1469702
     bool Parse(std::istream& is, std::string* error);
@@ -1243,7 +1228,7 @@ class SdpFmtpAttributeList : public SdpAttribute {
     explicit Parameters(SdpRtpmapAttributeList::CodecType aCodec)
         : codec_type(aCodec) {}
 
-    virtual ~Parameters() {}
+    virtual ~Parameters() = default;
     virtual Parameters* Clone() const = 0;
     virtual void Serialize(std::ostream& os) const = 0;
     virtual bool CompareEq(const Parameters& other) const = 0;
@@ -1284,7 +1269,7 @@ class SdpFmtpAttributeList : public SdpAttribute {
 
     RtxParameters() : Parameters(SdpRtpmapAttributeList::kRtx) {}
 
-    virtual ~RtxParameters() {}
+    virtual ~RtxParameters() = default;
 
     virtual Parameters* Clone() const override {
       return new RtxParameters(*this);
@@ -1308,7 +1293,8 @@ class SdpFmtpAttributeList : public SdpAttribute {
 
   class H264Parameters : public Parameters {
    public:
-    static const uint32_t kDefaultProfileLevelId = 0x420010;
+    // Baseline no constraints level 1
+    static const uint32_t kDefaultProfileLevelId = 0x42000A;
 
     H264Parameters()
         : Parameters(SdpRtpmapAttributeList::kH264),

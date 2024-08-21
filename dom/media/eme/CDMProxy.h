@@ -241,7 +241,7 @@ class CDMProxy {
   // Calls MediaKeys->ResolvePromiseWithKeyStatus(aPromiseId, aKeyStatus) after
   // the CDM has processed the request.
   virtual void GetStatusForPolicy(PromiseId aPromiseId,
-                                  const nsAString& aMinHdcpVersion) = 0;
+                                  const dom::HDCPVersion& aMinHdcpVersion) = 0;
 
 #ifdef DEBUG
   virtual bool IsOnOwnerThread() = 0;
@@ -252,6 +252,8 @@ class CDMProxy {
 #ifdef MOZ_WMF_CDM
   virtual WMFCDMProxy* AsWMFCDMProxy() { return nullptr; }
 #endif
+
+  virtual bool IsHardwareDecryptionSupported() const { return false; }
 
  protected:
   // Main thread only.

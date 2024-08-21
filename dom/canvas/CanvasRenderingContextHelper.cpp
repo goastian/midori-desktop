@@ -112,18 +112,22 @@ void CanvasRenderingContextHelper::ToBlob(EncodeCompleteCallback* aCallback,
     }
   }
 
-  UniquePtr<uint8_t[]> imageBuffer;
   int32_t format = 0;
   auto imageSize = gfx::IntSize{elementSize.width, elementSize.height};
-  if (mCurrentContext) {
-    imageBuffer = mCurrentContext->GetImageBuffer(&format, &imageSize);
-  }
-
+  UniquePtr<uint8_t[]> imageBuffer = GetImageBuffer(&format, &imageSize);
   RefPtr<EncodeCompleteCallback> callback = aCallback;
 
   aRv = ImageEncoder::ExtractDataAsync(
       aType, aEncodeOptions, aUsingCustomOptions, std::move(imageBuffer),
       format, {imageSize.width, imageSize.height}, aUsePlaceholder, callback);
+}
+
+UniquePtr<uint8_t[]> CanvasRenderingContextHelper::GetImageBuffer(
+    int32_t* aOutFormat, gfx::IntSize* aOutImageSize) {
+  if (mCurrentContext) {
+    return mCurrentContext->GetImageBuffer(aOutFormat, aOutImageSize);
+  }
+  return nullptr;
 }
 
 already_AddRefed<nsICanvasRenderingContextInternal>
@@ -180,7 +184,9 @@ CanvasRenderingContextHelper::CreateContextHelper(
   }
   MOZ_ASSERT(ret);
 
-  ret->Initialize();
+  if (NS_WARN_IF(NS_FAILED(ret->Initialize()))) {
+    return nullptr;
+  }
   return ret.forget();
 }
 
@@ -202,6 +208,7 @@ already_AddRefed<nsISupports> CanvasRenderingContextHelper::GetOrCreateContext(
     RefPtr<nsICanvasRenderingContextInternal> context;
     context = CreateContext(aContextType);
     if (!context) {
+      aRv.ThrowUnknownError("Failed to create context");
       return nullptr;
     }
 

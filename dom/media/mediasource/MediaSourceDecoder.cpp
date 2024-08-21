@@ -57,8 +57,13 @@ MediaDecoderStateMachineBase* MediaSourceDecoder::CreateStateMachine(
                            TrackingId::TrackAcrossProcesses::Yes);
   mReader = new MediaFormatReader(init, mDemuxer);
 #ifdef MOZ_WMF_MEDIA_ENGINE
-  // TODO : Only for testing development for now. In the future this should be
-  // used for encrypted content only.
+  // Our main purpose is to only using this state machine for encrypted playback
+  // (unless explicitly set the pref to allow non-encrypted playback), but we
+  // can't determine if playback is encrypted or not at the moment. Therefore,
+  // we will handle that in ExternalEngineStateMachine, and report special
+  // errors, such as NS_ERROR_DOM_MEDIA_EXTERNAL_ENGINE_NOT_SUPPORTED_ERR or
+  // NS_ERROR_DOM_MEDIA_CDM_PROXY_NOT_SUPPORTED_ERR, to switch the state
+  // machine if necessary.
   if (StaticPrefs::media_wmf_media_engine_enabled() &&
       !aDisableExternalEngine) {
     return new ExternalEngineStateMachine(this, mReader);
@@ -319,12 +324,13 @@ bool MediaSourceDecoder::CanPlayThroughImpl() {
   }
   // If we have data up to the mediasource's duration or 3s ahead, we can
   // assume that we can play without interruption.
-  dom::SourceBufferList* sourceBuffers = mMediaSource->ActiveSourceBuffers();
-  TimeUnit bufferedEnd = sourceBuffers->GetHighestBufferedEndTime();
+  TimeIntervals buffered = GetBuffered();
+  buffered.SetFuzz(MediaSourceDemuxer::EOS_FUZZ / 2);
   TimeUnit timeAhead =
       std::min(duration, currentPosition + TimeUnit::FromSeconds(3));
   TimeInterval interval(currentPosition, timeAhead);
-  return bufferedEnd >= timeAhead;
+  return buffered.ToMicrosecondResolution().ContainsWithStrictEnd(
+      ClampIntervalToEnd(interval));
 }
 
 TimeInterval MediaSourceDecoder::ClampIntervalToEnd(

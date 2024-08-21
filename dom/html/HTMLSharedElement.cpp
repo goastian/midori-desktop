@@ -14,10 +14,6 @@
 #include "mozilla/dom/HTMLQuoteElementBinding.h"
 
 #include "mozilla/AsyncEventDispatcher.h"
-#include "mozilla/MappedDeclarations.h"
-#include "nsAttrValueInlines.h"
-#include "nsStyleConsts.h"
-#include "nsMappedAttributes.h"
 #include "nsContentUtils.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsIURI.h"
@@ -34,7 +30,7 @@ void HTMLSharedElement::GetHref(nsAString& aValue) {
   MOZ_ASSERT(mNodeInfo->Equals(nsGkAtoms::base),
              "This should only get called for <base> elements");
   nsAutoString href;
-  GetAttr(kNameSpaceID_None, nsGkAtoms::href, href);
+  GetAttr(nsGkAtoms::href, href);
 
   nsCOMPtr<nsIURI> uri;
   Document* doc = OwnerDoc();
@@ -53,17 +49,17 @@ void HTMLSharedElement::GetHref(nsAString& aValue) {
 
 void HTMLSharedElement::DoneAddingChildren(bool aHaveNotified) {
   if (mNodeInfo->Equals(nsGkAtoms::head)) {
-    nsCOMPtr<Document> doc = GetUncomposedDoc();
-    if (doc) {
+    if (nsCOMPtr<Document> doc = GetUncomposedDoc()) {
       doc->OnL10nResourceContainerParsed();
+      if (!doc->IsLoadedAsData()) {
+        RefPtr<AsyncEventDispatcher> asyncDispatcher =
+            new AsyncEventDispatcher(this, u"DOMHeadElementParsed"_ns,
+                                     CanBubble::eYes, ChromeOnlyDispatch::eYes);
+        // Always run async in order to avoid running script when the content
+        // sink isn't expecting it.
+        asyncDispatcher->PostDOMEvent();
+      }
     }
-
-    RefPtr<AsyncEventDispatcher> asyncDispatcher =
-        new AsyncEventDispatcher(this, u"DOMHeadElementParsed"_ns,
-                                 CanBubble::eYes, ChromeOnlyDispatch::eYes);
-    // Always run async in order to avoid running script when the content
-    // sink isn't expecting it.
-    asyncDispatcher->PostDOMEvent();
   }
 }
 
@@ -74,7 +70,7 @@ static void SetBaseURIUsingFirstBaseWithHref(Document* aDocument,
   for (nsIContent* child = aDocument->GetFirstChild(); child;
        child = child->GetNextNode()) {
     if (child->IsHTMLElement(nsGkAtoms::base) &&
-        child->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::href)) {
+        child->AsElement()->HasAttr(nsGkAtoms::href)) {
       if (aMustMatch && child != aMustMatch) {
         return;
       }
@@ -82,22 +78,29 @@ static void SetBaseURIUsingFirstBaseWithHref(Document* aDocument,
       // Resolve the <base> element's href relative to our document's
       // fallback base URI.
       nsAutoString href;
-      child->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::href, href);
+      child->AsElement()->GetAttr(nsGkAtoms::href, href);
 
       nsCOMPtr<nsIURI> newBaseURI;
       nsContentUtils::NewURIWithDocumentCharset(
           getter_AddRefs(newBaseURI), href, aDocument,
           aDocument->GetFallbackBaseURI());
 
+      // Vaguely based on
+      // <https://html.spec.whatwg.org/multipage/semantics.html#set-the-frozen-base-url>
+
+      if (newBaseURI && (newBaseURI->SchemeIs("data") ||
+                         newBaseURI->SchemeIs("javascript"))) {
+        newBaseURI = nullptr;
+      }
+
       // Check if CSP allows this base-uri
-      nsresult rv = NS_OK;
       nsCOMPtr<nsIContentSecurityPolicy> csp = aDocument->GetCsp();
       if (csp && newBaseURI) {
         // base-uri is only enforced if explicitly defined in the
         // policy - do *not* consult default-src, see:
         // http://www.w3.org/TR/CSP2/#directive-default-src
         bool cspPermitsBaseURI = true;
-        rv = csp->Permits(
+        nsresult rv = csp->Permits(
             child->AsElement(), nullptr /* nsICSPEventListener */, newBaseURI,
             nsIContentSecurityPolicy::BASE_URI_DIRECTIVE, true /* aSpecific */,
             true /* aSendViolationReports */, &cspPermitsBaseURI);
@@ -105,6 +108,7 @@ static void SetBaseURIUsingFirstBaseWithHref(Document* aDocument,
           newBaseURI = nullptr;
         }
       }
+
       aDocument->SetBaseURI(newBaseURI);
       aDocument->SetChromeXHRDocBaseURI(nullptr);
       return;
@@ -121,13 +125,13 @@ static void SetBaseTargetUsingFirstBaseWithTarget(Document* aDocument,
   for (nsIContent* child = aDocument->GetFirstChild(); child;
        child = child->GetNextNode()) {
     if (child->IsHTMLElement(nsGkAtoms::base) &&
-        child->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::target)) {
+        child->AsElement()->HasAttr(nsGkAtoms::target)) {
       if (aMustMatch && child != aMustMatch) {
         return;
       }
 
       nsString target;
-      child->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::target, target);
+      child->AsElement()->GetAttr(nsGkAtoms::target, target);
       aDocument->SetBaseTarget(target);
       return;
     }
@@ -174,10 +178,10 @@ nsresult HTMLSharedElement::BindToTree(BindContext& aContext,
   // The document stores a pointer to its base URI and base target, which we may
   // need to update here.
   if (mNodeInfo->Equals(nsGkAtoms::base) && IsInUncomposedDoc()) {
-    if (HasAttr(kNameSpaceID_None, nsGkAtoms::href)) {
+    if (HasAttr(nsGkAtoms::href)) {
       SetBaseURIUsingFirstBaseWithHref(&aContext.OwnerDoc(), this);
     }
-    if (HasAttr(kNameSpaceID_None, nsGkAtoms::target)) {
+    if (HasAttr(nsGkAtoms::target)) {
       SetBaseTargetUsingFirstBaseWithTarget(&aContext.OwnerDoc(), this);
     }
   }
@@ -185,18 +189,18 @@ nsresult HTMLSharedElement::BindToTree(BindContext& aContext,
   return NS_OK;
 }
 
-void HTMLSharedElement::UnbindFromTree(bool aNullParent) {
+void HTMLSharedElement::UnbindFromTree(UnbindContext& aContext) {
   Document* doc = GetUncomposedDoc();
 
-  nsGenericHTMLElement::UnbindFromTree(aNullParent);
+  nsGenericHTMLElement::UnbindFromTree(aContext);
 
   // If we're removing a <base> from a document, we may need to update the
   // document's base URI and base target
   if (doc && mNodeInfo->Equals(nsGkAtoms::base)) {
-    if (HasAttr(kNameSpaceID_None, nsGkAtoms::href)) {
+    if (HasAttr(nsGkAtoms::href)) {
       SetBaseURIUsingFirstBaseWithHref(doc, nullptr);
     }
-    if (HasAttr(kNameSpaceID_None, nsGkAtoms::target)) {
+    if (HasAttr(nsGkAtoms::target)) {
       SetBaseTargetUsingFirstBaseWithTarget(doc, nullptr);
     }
   }

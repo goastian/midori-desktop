@@ -15,3 +15,5 @@ These linked pages contain design documents for the DOM implementation in Gecko.
    webIdlBindings/index
    ioutils_migration
    fedcm
+   streams
+   use-counters

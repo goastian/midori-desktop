@@ -12,7 +12,7 @@
 #include "mozilla/dom/HighlightBinding.h"
 
 #include "nsCycleCollectionParticipant.h"
-#include "nsHashKeys.h"
+#include "nsAtomHashKeys.h"
 #include "nsTHashSet.h"
 #include "nsTArray.h"
 #include "nsWrapperCache.h"
@@ -28,6 +28,17 @@ class AbstractRange;
 class Document;
 class HighlightRegistry;
 class Selection;
+
+/**
+ * @brief Collection of all data of a highlight instance.
+ *
+ * This struct is intended to be allocated on the stack and passed on
+ * to the `nsFrameSelection` and layout code.
+ */
+struct HighlightSelectionData {
+  RefPtr<nsAtom> mHighlightName;
+  RefPtr<Highlight> mHighlight;
+};
 
 /**
  * @brief Representation of a custom `Highlight`.
@@ -69,19 +80,19 @@ class Highlight final : public nsISupports, public nsWrapperCache {
    * the name has to be provided as well.
    */
   void AddToHighlightRegistry(HighlightRegistry& aHighlightRegistry,
-                              const nsAtom& aHighlightName);
+                              nsAtom& aHighlightName);
 
   /**
    * @brief Removes `this` from `aHighlightRegistry`.
    */
   void RemoveFromHighlightRegistry(HighlightRegistry& aHighlightRegistry,
-                                   const nsAtom& aHighlightName);
+                                   nsAtom& aHighlightName);
 
   /**
    * @brief Creates a Highlight Selection using the given ranges.
    */
   MOZ_CAN_RUN_SCRIPT already_AddRefed<Selection> CreateHighlightSelection(
-      const nsAtom* aHighlightName, nsFrameSelection* aFrameSelection) const;
+      nsAtom* aHighlightName, nsFrameSelection* aFrameSelection);
 
   // WebIDL interface
   nsPIDOMWindowInner* GetParentObject() const { return mWindow; }
@@ -120,6 +131,12 @@ class Highlight final : public nsISupports, public nsWrapperCache {
   void SetType(HighlightType aHighlightType) {
     mHighlightType = aHighlightType;
   }
+
+  /**
+   * @brief This mirrors the `size` property in JS world (_not_ exposed via
+   * webIDL)
+   */
+  uint32_t Size() const { return mRanges.Length(); }
 
   /**
    * @brief Adds a `Range` to this highlight.
@@ -187,8 +204,7 @@ class Highlight final : public nsISupports, public nsWrapperCache {
    * Note: Storing `HighlightRegistry` as raw pointer is safe here
    * because it unregisters itself from `this` when it is destroyed/CC'd
    */
-  nsTHashMap<nsPtrHashKey<HighlightRegistry>,
-             nsTHashSet<nsRefPtrHashKey<const nsAtom>>>
+  nsTHashMap<nsPtrHashKey<HighlightRegistry>, nsTHashSet<RefPtr<nsAtom>>>
       mHighlightRegistries;
 };
 

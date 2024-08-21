@@ -247,9 +247,6 @@ function waitForFrame() {
 
 /**
  * Waits for a requestAnimationFrame callback in the next refresh driver tick.
- * Note that the 'dom.animations-api.core.enabled' and
- * 'dom.animations-api.timelines.enabled' prefs should be true to use this
- * function.
  */
 function waitForNextFrame(aWindow = window) {
   const timeAtStart = aWindow.document.timeline.currentTime;
@@ -487,15 +484,6 @@ async function waitForAnimationReadyToRestyle(aAnimation) {
   }
 }
 
-function getDocShellForObservingRestylesForWindow(aWindow) {
-  const docShell = SpecialPowers.wrap(aWindow).docShell;
-
-  docShell.recordProfileTimelineMarkers = true;
-  docShell.popProfileTimelineMarkers();
-
-  return docShell;
-}
-
 // Returns the animation restyle markers observed during |frameCount| refresh
 // driver ticks in this `window`.  This function is typically used to count the
 // number of restyles that take place as part of the style update that happens
@@ -509,19 +497,16 @@ function observeStyling(frameCount, onFrame) {
 
 // As with observeStyling but applied to target window |aWindow|.
 function observeStylingInTargetWindow(aWindow, aFrameCount, aOnFrame) {
-  const docShell = getDocShellForObservingRestylesForWindow(aWindow);
+  let priorAnimationTriggeredRestyles =
+    SpecialPowers.wrap(aWindow).windowUtils.animationTriggeredRestyles;
 
   return new Promise(resolve => {
     return waitForAnimationFrames(aFrameCount, aOnFrame, aWindow).then(() => {
-      const markers = docShell.popProfileTimelineMarkers();
-      docShell.recordProfileTimelineMarkers = false;
-      const stylingMarkers = Array.prototype.filter.call(
-        markers,
-        (marker, index) => {
-          return marker.name == "Styles" && marker.isAnimationOnly;
-        }
-      );
-      resolve(stylingMarkers);
+      let restyleCount =
+        SpecialPowers.wrap(aWindow).windowUtils.animationTriggeredRestyles -
+        priorAnimationTriggeredRestyles;
+
+      resolve(restyleCount);
     });
   });
 }

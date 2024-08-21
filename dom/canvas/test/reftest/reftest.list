@@ -1,4 +1,5 @@
 # Canvas Filter Reftests
+include colors/_generated_reftest.list
 include filters/reftest.list
 include color_quads.list
 
@@ -25,15 +26,6 @@ skip-if(Android) == webgl-resize-test.html  wrapper.html?green.png
 
 # Check that captureStream() displays in a local video element
 skip-if(Android) == webgl-capturestream-test.html?preserve wrapper.html?green.png
-
-# Some of the failure conditions are a little weird. I'm (jgilbert) setting these based on
-# failures encountered when running on Try, and then targetting the Try config by
-# differences in the `sandbox` contents. That is, I'm labeling based on symptoms rather
-# than cause.
-# WinXP R:  winWidget && layersGPUAccelerated  && !d3d11
-# Win7+ R:  winWidget && layersGPUAccelerated  && d3d11
-# Win7+ Ru: winWidget && !layersGPUAccelerated && d3d11
-# (Note that we have to remove spaces when used below)
 
 # IMPORTANT: Expected outcomes are evaluated left-to-right, and they replace eachother.
 # That means that if an unconditional status (`fuzzy()`) is to the right of another status
@@ -233,12 +225,12 @@ fuzzy(0-1,0-150) == clip-multiple-move-2.html clip-multiple-move-2-ref.html
 == stroketext-shadow.html stroketext-shadow-ref.html
 
 # focus rings
-pref(canvas.focusring.enabled,true) fuzzy(0-1,0-2) skip-if(cocoaWidget||winWidget||gtkWidget) needs-focus == drawFocusIfNeeded.html drawFocusIfNeeded-ref.html
+fuzzy(0-1,0-2) skip-if(cocoaWidget||gtkWidget||winWidget) needs-focus == drawFocusIfNeeded.html drawFocusIfNeeded-ref.html
 
 # Check that captureStream() displays in a local video element
 == capturestream.html wrapper.html?green.png
 
-fuzzy-if(azureSkia,0-16,0-20) fuzzy-if(Android,0-3,0-40) fuzzy-if(/^Windows\x20NT\x2010\.0/.test(http.oscpu),0-1,0-1) == 1177726-text-stroke-bounds.html 1177726-text-stroke-bounds-ref.html
+fuzzy(0-235,0-3104) == 1177726-text-stroke-bounds.html 1177726-text-stroke-bounds-ref.html
 
 # Bug 1366027
 == clipped-dash-stroke-rect.html clipped-dash-stroke-rect-ref.html
@@ -253,3 +245,4 @@ skip-if(isDebugBuild) == draw-large-image.html draw-large-image-ref.html
 
 == 1758968-1.html 1758968-1-ref.html
 == 1768521-1.html 1768521-1-ref.html
+== 1851943.html 1851943-ref.html

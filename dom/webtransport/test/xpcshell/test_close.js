@@ -13,7 +13,9 @@ registerCleanupFunction(async () => {
   Services.prefs.clearUserPref("network.dns.localDomains");
 });
 
-var { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+var { NetUtil } = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
+);
 
 function readFile(file) {
   let fstream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(
@@ -61,5 +63,15 @@ add_task(async function test_webtransport_create() {
   await wt.ready;
   dump("**** ready\n");
 
+  wt.close();
+});
+
+// bug 1840626 - cancel and then close
+add_task(async function test_wt_stream_create_bidi_cancel_close() {
+  let wt = new WebTransport("https://" + host + "/success");
+  await wt.ready;
+
+  await wt.createBidirectionalStream();
+  await wt.incomingBidirectionalStreams.cancel(undefined);
   wt.close();
 });

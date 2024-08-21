@@ -11,6 +11,8 @@ EXPORTS.mozilla.dom += [
     "MidiPermissionStatus.h",
     "Permissions.h",
     "PermissionStatus.h",
+    "PermissionUtils.h",
+    "StorageAccessPermissionStatus.h",
 ]
 
 UNIFIED_SOURCES += [
@@ -19,9 +21,10 @@ UNIFIED_SOURCES += [
     "Permissions.cpp",
     "PermissionStatus.cpp",
     "PermissionUtils.cpp",
+    "StorageAccessPermissionStatus.cpp",
 ]
 
-MOCHITEST_MANIFESTS += ["tests/mochitest.ini"]
+MOCHITEST_MANIFESTS += ["tests/mochitest.toml"]
 
 FINAL_LIBRARY = "xul"
 

@@ -8,7 +8,10 @@
 
 #include <algorithm>
 
+#include "mozilla/AntiTrackingUtils.h"
 #include "mozilla/AsyncEventDispatcher.h"
+#include "mozilla/BounceTrackingStorageObserver.h"
+#include "mozilla/BounceTrackingProtection.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/ContentBlockingAllowList.h"
 #include "mozilla/dom/InProcessParent.h"
@@ -25,8 +28,10 @@
 #include "mozilla/dom/MediaController.h"
 #include "mozilla/dom/WindowGlobalChild.h"
 #include "mozilla/dom/ChromeUtils.h"
+#include "mozilla/dom/UseCounterMetrics.h"
 #include "mozilla/dom/ipc/IdType.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
+#include "mozilla/glean/GleanMetrics.h"
 #include "mozilla/Components.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/ServoCSSParser.h"
@@ -35,13 +40,16 @@
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/Variant.h"
+#include "mozilla/ipc/ProtocolUtils.h"
+#include "MMPrinter.h"
 #include "nsContentUtils.h"
 #include "nsDocShell.h"
 #include "nsDocShellLoadState.h"
 #include "nsError.h"
 #include "nsFrameLoader.h"
 #include "nsFrameLoaderOwner.h"
-#include "nsGlobalWindowInner.h"
+#include "nsICookieManager.h"
+#include "nsICookieService.h"
 #include "nsQueryObject.h"
 #include "nsNetUtil.h"
 #include "nsSandboxFlags.h"
@@ -54,6 +62,9 @@
 #include "nsITransportSecurityInfo.h"
 #include "nsISharePicker.h"
 #include "nsIURIMutator.h"
+#include "nsIWebProgressListener.h"
+#include "nsScriptSecurityManager.h"
+#include "nsIOService.h"
 
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/DOMExceptionBinding.h"
@@ -62,7 +73,11 @@
 #include "mozilla/dom/JSWindowActorBinding.h"
 #include "mozilla/dom/JSWindowActorParent.h"
 
-#include "SessionStoreFunctions.h"
+#include "mozilla/net/NeckoParent.h"
+#include "mozilla/net/PCookieServiceParent.h"
+#include "mozilla/net/CookieServiceParent.h"
+
+#include "nsISessionStoreFunctions.h"
 #include "nsIXPConnect.h"
 #include "nsImportModule.h"
 #include "nsIXULRuntime.h"
@@ -82,7 +97,6 @@ WindowGlobalParent::WindowGlobalParent(
     uint64_t aOuterWindowId, FieldValues&& aInit)
     : WindowContext(aBrowsingContext, aInnerWindowId, aOuterWindowId,
                     std::move(aInit)),
-      mIsInitialDocument(false),
       mSandboxFlags(0),
       mDocumentHasLoaded(false),
       mDocumentHasUserInteracted(false),
@@ -109,7 +123,7 @@ already_AddRefed<WindowGlobalParent> WindowGlobalParent::CreateDisconnected(
                              aInit.context().mOuterWindowId, std::move(fields));
   wgp->mDocumentPrincipal = aInit.principal();
   wgp->mDocumentURI = aInit.documentURI();
-  wgp->mIsInitialDocument = aInit.isInitialDocument();
+  wgp->mIsInitialDocument = Some(aInit.isInitialDocument());
   wgp->mBlockAllMixedContent = aInit.blockAllMixedContent();
   wgp->mUpgradeInsecureRequests = aInit.upgradeInsecureRequests();
   wgp->mSandboxFlags = aInit.sandboxFlags();
@@ -216,9 +230,7 @@ void WindowGlobalParent::OriginCounter::UpdateSiteOriginsFrom(
 }
 
 void WindowGlobalParent::OriginCounter::Accumulate() {
-  mozilla::Telemetry::Accumulate(
-      mozilla::Telemetry::HistogramID::
-          FX_NUMBER_OF_UNIQUE_SITE_ORIGINS_PER_DOCUMENT,
+  mozilla::glean::geckoview::per_document_site_origins.AccumulateSingleSample(
       mMaxOrigins);
 
   mMaxOrigins = 0;
@@ -367,9 +379,42 @@ mozilla::ipc::IPCResult WindowGlobalParent::RecvInternalLoad(
   return IPC_OK();
 }
 
-IPCResult WindowGlobalParent::RecvUpdateDocumentURI(nsIURI* aURI) {
+IPCResult WindowGlobalParent::RecvUpdateDocumentURI(NotNull<nsIURI*> aURI) {
   // XXX(nika): Assert that the URI change was one which makes sense (either
-  // about:blank -> a real URI, or a legal push/popstate URI change?)
+  // about:blank -> a real URI, or a legal push/popstate URI change):
+  if (StaticPrefs::dom_security_setdocumenturi()) {
+    nsAutoCString scheme;
+    if (NS_FAILED(aURI->GetScheme(scheme))) {
+      return IPC_FAIL(this, "Setting DocumentURI without scheme.");
+    }
+
+    nsCOMPtr<nsIIOService> ios = do_GetIOService();
+    if (!ios) {
+      return IPC_FAIL(this, "Cannot get IOService");
+    }
+    nsCOMPtr<nsIProtocolHandler> handler;
+    ios->GetProtocolHandler(scheme.get(), getter_AddRefs(handler));
+    if (!handler) {
+      return IPC_FAIL(this, "Setting DocumentURI with unknown protocol.");
+    }
+
+    nsCOMPtr<nsIURI> principalURI = mDocumentPrincipal->GetURI();
+    if (mDocumentPrincipal->GetIsNullPrincipal()) {
+      nsCOMPtr<nsIPrincipal> precursor =
+          mDocumentPrincipal->GetPrecursorPrincipal();
+      if (precursor) {
+        principalURI = precursor->GetURI();
+      }
+    }
+
+    if (nsScriptSecurityManager::IsHttpOrHttpsAndCrossOrigin(principalURI,
+                                                             aURI)) {
+      return IPC_FAIL(this,
+                      "Setting DocumentURI with a different Origin than "
+                      "principal URI");
+    }
+  }
+
   mDocumentURI = aURI;
   return IPC_OK();
 }
@@ -519,6 +564,8 @@ IPCResult WindowGlobalParent::RecvRawMessage(
     stack.emplace();
     stack->BorrowFromClonedMessageData(*aStack);
   }
+  MMPrinter::Print("WindowGlobalParent::RecvRawMessage", aMeta.actorName(),
+                   aMeta.messageName(), aData);
   ReceiveRawMessage(aMeta, std::move(data), std::move(stack));
   return IPC_OK();
 }
@@ -536,13 +583,14 @@ void WindowGlobalParent::NotifyContentBlockingEvent(
     const nsACString& aTrackingOrigin,
     const nsTArray<nsCString>& aTrackingFullHashes,
     const Maybe<ContentBlockingNotifier::StorageAccessPermissionGrantedReason>&
-        aReason) {
+        aReason,
+    const Maybe<ContentBlockingNotifier::CanvasFingerprinter>&
+        aCanvasFingerprinter,
+    const Maybe<bool> aCanvasFingerprinterKnownText) {
   MOZ_ASSERT(NS_IsMainThread());
   DebugOnly<bool> isCookiesBlocked =
       aEvent == nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER ||
-      aEvent == nsIWebProgressListener::STATE_COOKIES_BLOCKED_SOCIALTRACKER ||
-      (aEvent == nsIWebProgressListener::STATE_COOKIES_BLOCKED_FOREIGN &&
-       StaticPrefs::network_cookie_rejectForeignWithExceptions_enabled());
+      aEvent == nsIWebProgressListener::STATE_COOKIES_BLOCKED_SOCIALTRACKER;
   MOZ_ASSERT_IF(aBlocked, aReason.isNothing());
   MOZ_ASSERT_IF(!isCookiesBlocked, aReason.isNothing());
   MOZ_ASSERT_IF(isCookiesBlocked && !aBlocked, aReason.isSome());
@@ -556,7 +604,8 @@ void WindowGlobalParent::NotifyContentBlockingEvent(
   }
 
   Maybe<uint32_t> event = GetContentBlockingLog()->RecordLogParent(
-      aTrackingOrigin, aEvent, aBlocked, aReason, aTrackingFullHashes);
+      aTrackingOrigin, aEvent, aBlocked, aReason, aTrackingFullHashes,
+      aCanvasFingerprinter, aCanvasFingerprinterKnownText);
 
   // Notify the OnContentBlockingEvent if necessary.
   if (event) {
@@ -733,7 +782,7 @@ class CheckPermitUnloadRequest final : public PromiseNativeHandler,
                                        public nsITimerCallback {
  public:
   CheckPermitUnloadRequest(WindowGlobalParent* aWGP, bool aHasInProcessBlocker,
-                           nsIContentViewer::PermitUnloadAction aAction,
+                           nsIDocumentViewer::PermitUnloadAction aAction,
                            std::function<void(bool)>&& aResolver)
       : mResolver(std::move(aResolver)),
         mWGP(aWGP),
@@ -819,10 +868,10 @@ class CheckPermitUnloadRequest final : public PromiseNativeHandler,
 
     auto action = mAction;
     if (StaticPrefs::dom_disable_beforeunload()) {
-      action = nsIContentViewer::eDontPromptAndUnload;
+      action = nsIDocumentViewer::eDontPromptAndUnload;
     }
-    if (action != nsIContentViewer::ePrompt) {
-      SendReply(action == nsIContentViewer::eDontPromptAndUnload);
+    if (action != nsIDocumentViewer::ePrompt) {
+      SendReply(action == nsIDocumentViewer::eDontPromptAndUnload);
       return;
     }
 
@@ -891,7 +940,7 @@ class CheckPermitUnloadRequest final : public PromiseNativeHandler,
 
   uint32_t mPendingRequests = 0;
 
-  nsIContentViewer::PermitUnloadAction mAction;
+  nsIDocumentViewer::PermitUnloadAction mAction;
 
   State mState = State::UNINITIALIZED;
 
@@ -927,7 +976,7 @@ already_AddRefed<Promise> WindowGlobalParent::PermitUnload(
 
   auto request = MakeRefPtr<CheckPermitUnloadRequest>(
       this, /* aHasInProcessBlocker */ false,
-      nsIContentViewer::PermitUnloadAction(aAction),
+      nsIDocumentViewer::PermitUnloadAction(aAction),
       [promise](bool aAllow) { promise->MaybeResolve(aAllow); });
   request->Run(/* aIgnoreProcess */ nullptr, aTimeout);
 
@@ -937,7 +986,7 @@ already_AddRefed<Promise> WindowGlobalParent::PermitUnload(
 void WindowGlobalParent::PermitUnload(std::function<void(bool)>&& aResolver) {
   RefPtr<CheckPermitUnloadRequest> request = new CheckPermitUnloadRequest(
       this, /* aHasInProcessBlocker */ false,
-      nsIContentViewer::PermitUnloadAction::ePrompt, std::move(aResolver));
+      nsIDocumentViewer::PermitUnloadAction::ePrompt, std::move(aResolver));
   request->Run();
 }
 
@@ -1120,21 +1169,25 @@ void WindowGlobalParent::FinishAccumulatingPageUseCounters() {
           nsContentUtils::TruncatedURLForDisplay(mDocumentURI));
     }
 
-    Telemetry::Accumulate(Telemetry::TOP_LEVEL_CONTENT_DOCUMENTS_DESTROYED, 1);
+    glean::use_counter::top_level_content_documents_destroyed.Add();
 
+    bool any = false;
     for (int32_t c = 0; c < eUseCounter_Count; ++c) {
       auto uc = static_cast<UseCounter>(c);
       if (!mPageUseCounters->mUseCounters[uc]) {
         continue;
       }
-
-      auto id = static_cast<Telemetry::HistogramID>(
-          Telemetry::HistogramFirstUseCounter + uc * 2 + 1);
+      any = true;
+      const char* metricName = IncrementUseCounter(uc, /* aIsPage = */ true);
       if (dumpCounters) {
-        printf_stderr("USE_COUNTER_PAGE: %s - %s\n",
-                      Telemetry::GetHistogramName(id), urlForLogging->get());
+        printf_stderr("USE_COUNTER_PAGE: %s - %s\n", metricName,
+                      urlForLogging->get());
       }
-      Telemetry::Accumulate(id, 1);
+    }
+
+    if (!any) {
+      MOZ_LOG(gUseCountersLog, LogLevel::Debug,
+              (" > page use counter data was received, but was empty"));
     }
   } else {
     MOZ_LOG(gUseCountersLog, LogLevel::Debug,
@@ -1271,7 +1324,7 @@ mozilla::ipc::IPCResult WindowGlobalParent::RecvSetSingleChannelId(
 }
 
 mozilla::ipc::IPCResult WindowGlobalParent::RecvSetDocumentDomain(
-    nsIURI* aDomain) {
+    NotNull<nsIURI*> aDomain) {
   if (mSandboxFlags & SANDBOXED_DOMAIN) {
     // We're sandboxed; disallow setting domain
     return IPC_FAIL(this, "Sandbox disallows domain setting.");
@@ -1289,7 +1342,7 @@ mozilla::ipc::IPCResult WindowGlobalParent::RecvSetDocumentDomain(
     }
   }
 
-  if (!aDomain || !Document::IsValidDomain(uri, aDomain)) {
+  if (!Document::IsValidDomain(uri, aDomain)) {
     // Error: illegal domain
     return IPC_FAIL(
         this, "Setting domain that's not a suffix of existing domain value.");
@@ -1306,6 +1359,10 @@ mozilla::ipc::IPCResult WindowGlobalParent::RecvSetDocumentDomain(
 mozilla::ipc::IPCResult WindowGlobalParent::RecvReloadWithHttpsOnlyException() {
   nsresult rv;
   nsCOMPtr<nsIURI> currentUri = BrowsingContext()->Top()->GetCurrentURI();
+
+  if (!currentUri) {
+    return IPC_FAIL(this, "HTTPS-only mode: Failed to get current URI");
+  }
 
   bool isViewSource = currentUri->SchemeIs("view-source");
 
@@ -1394,6 +1451,53 @@ IPCResult WindowGlobalParent::RecvDiscoverIdentityCredentialFromExternalSource(
   return IPC_OK();
 }
 
+IPCResult WindowGlobalParent::RecvCollectIdentityCredentialFromCredentialStore(
+    const IdentityCredentialRequestOptions& aOptions,
+    const CollectIdentityCredentialFromCredentialStoreResolver& aResolver) {
+  IdentityCredential::CollectFromCredentialStoreInMainProcess(
+      DocumentPrincipal(), BrowsingContext(), aOptions)
+      ->Then(
+          GetCurrentSerialEventTarget(), __func__,
+          [aResolver](const nsTArray<IPCIdentityCredential>& aResult) {
+            aResolver(aResult);
+          },
+          [aResolver](nsresult aErr) {
+            aResolver(nsTArray<IPCIdentityCredential>());
+          });
+  return IPC_OK();
+}
+
+IPCResult WindowGlobalParent::RecvStoreIdentityCredential(
+    const IPCIdentityCredential& aCredential,
+    const StoreIdentityCredentialResolver& aResolver) {
+  IdentityCredential::StoreInMainProcess(DocumentPrincipal(), aCredential)
+      ->Then(
+          GetCurrentSerialEventTarget(), __func__,
+          [aResolver](const bool& aResult) { aResolver(NS_OK); },
+          [aResolver](nsresult aErr) { aResolver(aErr); });
+  return IPC_OK();
+}
+
+IPCResult WindowGlobalParent::RecvGetStorageAccessPermission(
+    GetStorageAccessPermissionResolver&& aResolve) {
+  WindowGlobalParent* top = TopWindowContext();
+  if (!top) {
+    return IPC_FAIL_NO_REASON(this);
+  }
+  nsIPrincipal* topPrincipal = top->DocumentPrincipal();
+  nsIPrincipal* principal = DocumentPrincipal();
+  uint32_t result;
+  nsresult rv = AntiTrackingUtils::TestStoragePermissionInParent(
+      topPrincipal, principal, &result);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    aResolve(nsIPermissionManager::UNKNOWN_ACTION);
+    return IPC_OK();
+  }
+
+  aResolve(result);
+  return IPC_OK();
+}
+
 void WindowGlobalParent::ActorDestroy(ActorDestroyReason aWhy) {
   if (GetBrowsingContext()->IsTopContent()) {
     Telemetry::Accumulate(Telemetry::ORB_DID_EVER_BLOCK_RESPONSE,
@@ -1479,6 +1583,10 @@ void WindowGlobalParent::ActorDestroy(ActorDestroyReason aWhy) {
 
         if (mDocumentURI && (net::SchemeIsHTTP(mDocumentURI) ||
                              net::SchemeIsHTTPS(mDocumentURI))) {
+          GetContentBlockingLog()->ReportCanvasFingerprintingLog(
+              DocumentPrincipal());
+          GetContentBlockingLog()->ReportFontFingerprintingLog(
+              DocumentPrincipal());
           GetContentBlockingLog()->ReportEmailTrackingLog(DocumentPrincipal());
         }
       }
@@ -1552,7 +1660,8 @@ void WindowGlobalParent::AddSecurityState(uint32_t aStateFlags) {
                nsIWebProgressListener::STATE_BLOCKED_MIXED_DISPLAY_CONTENT |
                nsIWebProgressListener::STATE_BLOCKED_MIXED_ACTIVE_CONTENT |
                nsIWebProgressListener::STATE_HTTPS_ONLY_MODE_UPGRADED |
-               nsIWebProgressListener::STATE_HTTPS_ONLY_MODE_UPGRADE_FAILED)) ==
+               nsIWebProgressListener::STATE_HTTPS_ONLY_MODE_UPGRADE_FAILED |
+               nsIWebProgressListener::STATE_HTTPS_ONLY_MODE_UPGRADED_FIRST)) ==
                  aStateFlags,
              "Invalid flags specified!");
 
@@ -1602,8 +1711,67 @@ void WindowGlobalParent::SetShouldReportHasBlockedOpaqueResponse(
   }
 }
 
-NS_IMPL_CYCLE_COLLECTION_INHERITED(WindowGlobalParent, WindowContext,
-                                   mPageUseCountersWindow)
+IPCResult WindowGlobalParent::RecvSetCookies(
+    const nsCString& aBaseDomain, const OriginAttributes& aOriginAttributes,
+    nsIURI* aHost, bool aFromHttp, const nsTArray<CookieStruct>& aCookies) {
+  // Get CookieServiceParent via
+  // ContentParent->NeckoParent->CookieServiceParent.
+  ContentParent* contentParent = GetContentParent();
+  NS_ENSURE_TRUE(contentParent, IPC_OK());
+
+  net::PNeckoParent* neckoParent =
+      LoneManagedOrNullAsserts(contentParent->ManagedPNeckoParent());
+  NS_ENSURE_TRUE(neckoParent, IPC_OK());
+  net::PCookieServiceParent* csParent =
+      LoneManagedOrNullAsserts(neckoParent->ManagedPCookieServiceParent());
+  NS_ENSURE_TRUE(csParent, IPC_OK());
+  auto* cs = static_cast<net::CookieServiceParent*>(csParent);
+
+  return cs->SetCookies(aBaseDomain, aOriginAttributes, aHost, aFromHttp,
+                        aCookies, GetBrowsingContext());
+}
+
+IPCResult WindowGlobalParent::RecvOnInitialStorageAccess() {
+  DebugOnly<nsresult> rv =
+      BounceTrackingStorageObserver::OnInitialStorageAccess(this);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to notify storage access");
+  return IPC_OK();
+}
+
+IPCResult WindowGlobalParent::RecvRecordUserActivationForBTP() {
+  WindowGlobalParent* top = TopWindowContext();
+  if (!top) {
+    return IPC_OK();
+  }
+  nsIPrincipal* principal = top->DocumentPrincipal();
+  if (!principal) {
+    return IPC_OK();
+  }
+
+  DebugOnly<nsresult> rv =
+      BounceTrackingProtection::RecordUserActivation(principal, Some(PR_Now()));
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
+                       "Failed to record BTP user activation.");
+
+  return IPC_OK();
+}
+
+NS_IMPL_CYCLE_COLLECTION_CLASS(WindowGlobalParent)
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(WindowGlobalParent,
+                                                WindowContext)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mPageUseCountersWindow)
+  tmp->UnlinkManager();
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(WindowGlobalParent,
+                                                  WindowContext)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPageUseCountersWindow)
+  if (!tmp->IsInProcess()) {
+    CycleCollectionNoteChild(cb, static_cast<BrowserParent*>(tmp->Manager()),
+                             "Manager()");
+  }
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(WindowGlobalParent,
                                                WindowContext)

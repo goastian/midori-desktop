@@ -24,8 +24,7 @@ using TransformArray = FallibleTArray<SVGTransformSMILData>;
 void SVGTransformListSMILType::Init(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.IsNull(), "Unexpected value type");
 
-  TransformArray* transforms = new TransformArray(1);
-  aValue.mU.mPtr = transforms;
+  aValue.mU.mPtr = new TransformArray(1);
   aValue.mType = this;
 }
 
@@ -331,11 +330,10 @@ bool SVGTransformListSMILType::GetTransforms(
   aTransforms.Clear();
   if (!aTransforms.SetCapacity(smilTransforms.Length(), fallible)) return false;
 
-  for (uint32_t i = 0; i < smilTransforms.Length(); ++i) {
+  for (const auto& smilTransform : smilTransforms) {
     // No need to check the return value below since we have already allocated
     // the necessary space
-    (void)aTransforms.AppendElement(smilTransforms[i].ToSVGTransform(),
-                                    fallible);
+    (void)aTransforms.AppendElement(smilTransform.ToSVGTransform(), fallible);
   }
   return true;
 }

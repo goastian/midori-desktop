@@ -7,24 +7,13 @@ through 8×i+7 of e as an unsigned integer.
 
 import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
 import { GPUTest } from '../../../../../gpu_test.js';
-import { TypeF32, TypeU32, TypeVec } from '../../../../../util/conversion.js';
-import { unpack4x8unormInterval } from '../../../../../util/f32_interval.js';
-import { fullU32Range } from '../../../../../util/math.js';
-import { makeCaseCache } from '../../case_cache.js';
-import { allInputSources, generateU32ToVectorCases, run } from '../../expression.js';
+import { Type } from '../../../../../util/conversion.js';
+import { allInputSources, run } from '../../expression.js';
 
 import { builtin } from './builtin.js';
+import { d } from './unpack4x8unorm.cache.js';
 
 export const g = makeTestGroup(GPUTest);
-
-export const d = makeCaseCache('unpack4x8unorm', {
-  u32_const: () => {
-    return generateU32ToVectorCases(fullU32Range(), 'f32-only', unpack4x8unormInterval);
-  },
-  u32_non_const: () => {
-    return generateU32ToVectorCases(fullU32Range(), 'unfiltered', unpack4x8unormInterval);
-  },
-});
 
 g.test('unpack')
   .specURL('https://www.w3.org/TR/WGSL/#unpack-builtin-functions')
@@ -36,5 +25,5 @@ g.test('unpack')
   .params(u => u.combine('inputSource', allInputSources))
   .fn(async t => {
     const cases = await d.get(t.params.inputSource === 'const' ? 'u32_const' : 'u32_non_const');
-    await run(t, builtin('unpack4x8unorm'), [TypeU32], TypeVec(4, TypeF32), t.params, cases);
+    await run(t, builtin('unpack4x8unorm'), [Type.u32], Type.vec4f, t.params, cases);
   });

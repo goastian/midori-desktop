@@ -1,6 +1,7 @@
 export const description = `Validation tests for entry point user-defined IO`;
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
+import { keysOf } from '../../../../common/util/data_tables.js';
 import { ShaderValidationTest } from '../shader_validation_test.js';
 
 import { generateShader } from './util.js';
@@ -158,7 +159,7 @@ g.test('type')
               `;
     }
     if (t.params.type === 'MyAlias') {
-      code += 'type MyAlias = i32;\n';
+      code += 'alias MyAlias = i32;\n';
     }
 
     code += generateShader({
@@ -256,4 +257,275 @@ g.test('duplicates')
     const secondIsRet = t.params.second === 'rb';
     const expectation = firstIsRet !== secondIsRet;
     t.expectCompileResult(expectation, code);
+  });
+
+const kValidationTests = {
+  zero: {
+    src: `@location(0)`,
+    pass: true,
+  },
+  one: {
+    src: `@location(1)`,
+    pass: true,
+  },
+  extra_comma: {
+    src: `@location(1,)`,
+    pass: true,
+  },
+  i32: {
+    src: `@location(1i)`,
+    pass: true,
+  },
+  u32: {
+    src: `@location(1u)`,
+    pass: true,
+  },
+  hex: {
+    src: `@location(0x1)`,
+    pass: true,
+  },
+  const_expr: {
+    src: `@location(a + b)`,
+    pass: true,
+  },
+  max: {
+    src: `@location(2147483647)`,
+    pass: true,
+  },
+  newline: {
+    src: '@\nlocation(1)',
+    pass: true,
+  },
+  comment: {
+    src: `@/* comment */location(1)`,
+    pass: true,
+  },
+
+  misspelling: {
+    src: `@mlocation(1)`,
+    pass: false,
+  },
+  no_parens: {
+    src: `@location`,
+    pass: false,
+  },
+  empty_params: {
+    src: `@location()`,
+    pass: false,
+  },
+  missing_left_paren: {
+    src: `@location 1)`,
+    pass: false,
+  },
+  missing_right_paren: {
+    src: `@location(1`,
+    pass: false,
+  },
+  extra_params: {
+    src: `@location(1, 2)`,
+    pass: false,
+  },
+  f32: {
+    src: `@location(1f)`,
+    pass: false,
+  },
+  f32_literal: {
+    src: `@location(1.0)`,
+    pass: false,
+  },
+  negative: {
+    src: `@location(-1)`,
+    pass: false,
+  },
+  override_expr: {
+    src: `@location(z + y)`,
+    pass: false,
+  },
+  vec: {
+    src: `@location(vec2(1,1))`,
+    pass: false,
+  },
+};
+g.test('validation')
+  .desc(`Test validation of location`)
+  .params(u => u.combine('attr', keysOf(kValidationTests)))
+  .fn(t => {
+    const code = `
+const a = 5;
+const b = 6;
+override z = 7;
+override y = 8;
+
+@vertex fn main(
+  ${kValidationTests[t.params.attr].src} res: f32
+) -> @builtin(position) vec4f {
+  return vec4f(0);
+}`;
+    t.expectCompileResult(kValidationTests[t.params.attr].pass, code);
+  });
+
+g.test('location_fp16')
+  .desc(`Test validation of location with fp16`)
+  .params(u => u.combine('ext', ['', 'h']))
+  .beforeAllSubcases(t => {
+    t.selectDeviceOrSkipTestCase('shader-f16');
+  })
+  .fn(t => {
+    const code = `
+
+@vertex fn main(
+  @location(1${t.params.ext}) res: f32
+) -> @builtin(position) vec4f {
+  return vec4f();
+}`;
+    t.expectCompileResult(t.params.ext === '', code);
+  });
+
+interface OutOfOrderCase {
+  params?: string;
+  returnType?: string;
+  decls?: string;
+  returnValue?: string;
+  valid: boolean;
+}
+
+const kOutOfOrderCases: Record<string, OutOfOrderCase> = {
+  reverse_params: {
+    params: `@location(2) p1 : f32, @location(1) p2 : f32, @location(0) p3 : f32`,
+    valid: true,
+  },
+  no_zero_params: {
+    params: `@location(2) p1 : f32, @location(1) p2 : f32`,
+    valid: true,
+  },
+  reverse_overlap: {
+    params: `@location(2) p1 : f32, @location(1) p2 : f32, @location(1) p3 : f32`,
+    valid: false,
+  },
+  struct: {
+    params: `p1 : S`,
+    decls: `struct S {
+      @location(1) x : f32,
+      @location(0) y : f32,
+    }`,
+    valid: true,
+  },
+  struct_override: {
+    params: `@location(0) p1 : S`,
+    decls: `struct S {
+      @location(1) x : f32,
+      @location(0) y : f32,
+    }`,
+    valid: false,
+  },
+  struct_random: {
+    params: `p1 : S, p2 : T`,
+    decls: `struct S {
+      @location(16) x : f32,
+      @location(4) y : f32,
+    }
+    struct T {
+      @location(13) x : f32,
+      @location(7) y : f32,
+    }`,
+    valid: true,
+  },
+  struct_random_overlap: {
+    params: `p1 : S, p2 : T`,
+    decls: `struct S {
+      @location(16) x : f32,
+      @location(4) y : f32,
+    }
+    struct T {
+      @location(13) x : f32,
+      @location(4) y : f32,
+    }`,
+    valid: false,
+  },
+  mixed_locations1: {
+    params: `@location(12) p1 : f32, p2 : S`,
+    decls: `struct S {
+      @location(2) x : f32,
+    }`,
+    valid: true,
+  },
+  mixed_locations2: {
+    params: `p1 : S, @location(2) p2 : f32`,
+    decls: `struct S {
+      @location(12) x : f32,
+    }`,
+    valid: true,
+  },
+  mixed_overlap: {
+    params: `p1 : S, @location(12) p2 : f32`,
+    decls: `struct S {
+      @location(12) x : f32,
+    }`,
+    valid: false,
+  },
+  with_param_builtin: {
+    params: `p : S`,
+    decls: `struct S {
+      @location(12) x : f32,
+      @builtin(position) pos : vec4f,
+      @location(0) y : f32,
+    }`,
+    valid: true,
+  },
+  non_zero_return: {
+    returnType: `@location(1) vec4f`,
+    returnValue: `vec4f()`,
+    valid: true,
+  },
+  reverse_return: {
+    returnType: `S`,
+    returnValue: `S()`,
+    decls: `struct S {
+      @location(2) x : f32,
+      @location(1) y : f32,
+      @location(0) z : f32,
+    }`,
+    valid: true,
+  },
+  gap_return: {
+    returnType: `S`,
+    returnValue: `S()`,
+    decls: `struct S {
+      @location(13) x : f32,
+      @location(7) y : f32,
+      @location(2) z : f32,
+    }`,
+    valid: true,
+  },
+  with_return_builtin: {
+    returnType: `S`,
+    returnValue: `S()`,
+    decls: `struct S {
+      @location(11) x : f32,
+      @builtin(frag_depth) d : f32,
+      @location(10) y : f32,
+    }`,
+    valid: true,
+  },
+};
+
+g.test('out_of_order')
+  .desc(`Test validation of out of order locations`)
+  .params(u => u.combine('case', keysOf(kOutOfOrderCases)))
+  .fn(t => {
+    const testcase = kOutOfOrderCases[t.params.case];
+    const decls = testcase.decls !== undefined ? testcase.decls : ``;
+    const params = testcase.params !== undefined ? testcase.params : ``;
+    const returnType = testcase.returnType !== undefined ? `-> ${testcase.returnType}` : ``;
+    const returnValue = testcase.returnValue !== undefined ? `return ${testcase.returnValue};` : ``;
+    const code = `
+${decls}
+
+@fragment
+fn main(${params}) ${returnType} {
+  ${returnValue}
+}
+`;
+
+    t.expectCompileResult(testcase.valid, code);
   });

@@ -18,6 +18,8 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/FragmentOrElement.h"
 #include "mozilla/dom/HTMLLinkElement.h"
+#include "mozilla/dom/HTMLStyleElement.h"
+#include "mozilla/dom/SVGStyleElement.h"
 #include "mozilla/dom/ShadowRoot.h"
 #include "mozilla/dom/SRILogHelper.h"
 #include "mozilla/Preferences.h"
@@ -42,7 +44,8 @@ LinkStyle::SheetInfo::SheetInfo(
     mozilla::CORSMode aCORSMode, const nsAString& aTitle,
     const nsAString& aMedia, const nsAString& aIntegrity,
     const nsAString& aNonce, HasAlternateRel aHasAlternateRel,
-    IsInline aIsInline, IsExplicitlyEnabled aIsExplicitlyEnabled)
+    IsInline aIsInline, IsExplicitlyEnabled aIsExplicitlyEnabled,
+    FetchPriority aFetchPriority)
     : mContent(aContent),
       mURI(aURI),
       mTriggeringPrincipal(aTriggeringPrincipal),
@@ -52,6 +55,7 @@ LinkStyle::SheetInfo::SheetInfo(
       mMedia(aMedia),
       mIntegrity(aIntegrity),
       mNonce(aNonce),
+      mFetchPriority(aFetchPriority),
       mHasAlternateRel(aHasAlternateRel == HasAlternateRel::Yes),
       mIsInline(aIsInline == IsInline::Yes),
       mIsExplicitlyEnabled(aIsExplicitlyEnabled) {
@@ -63,9 +67,7 @@ LinkStyle::SheetInfo::SheetInfo(
 }
 
 LinkStyle::SheetInfo::~SheetInfo() = default;
-
-LinkStyle::LinkStyle()
-    : mUpdatesEnabled(true), mLineNumber(1), mColumnNumber(1) {}
+LinkStyle::LinkStyle() = default;
 
 LinkStyle::~LinkStyle() { LinkStyle::SetStyleSheet(nullptr); }
 
@@ -85,11 +87,11 @@ void LinkStyle::GetTitleAndMediaForElement(const Element& aSelf,
   // [2]: https://html.spec.whatwg.org/#attr-style-title
   // [3]: https://github.com/w3c/webcomponents/issues/535
   if (aSelf.IsInUncomposedDoc()) {
-    aSelf.GetAttr(kNameSpaceID_None, nsGkAtoms::title, aTitle);
+    aSelf.GetAttr(nsGkAtoms::title, aTitle);
     aTitle.CompressWhitespace();
   }
 
-  aSelf.GetAttr(kNameSpaceID_None, nsGkAtoms::media, aMedia);
+  aSelf.GetAttr(nsGkAtoms::media, aMedia);
   // The HTML5 spec is formulated in terms of the CSSOM spec, which specifies
   // that media queries should be ASCII lowercased during serialization.
   //
@@ -104,7 +106,7 @@ bool LinkStyle::IsCSSMimeTypeAttributeForStyleElement(const Element& aSelf) {
   // step 4, for style elements we should only accept empty and "text/css" type
   // attribute values.
   nsAutoString type;
-  aSelf.GetAttr(kNameSpaceID_None, nsGkAtoms::type, type);
+  aSelf.GetAttr(nsGkAtoms::type, type);
   return type.IsEmpty() || type.LowerCaseEqualsLiteral("text/css");
 }
 
@@ -185,16 +187,40 @@ uint32_t LinkStyle::ParseLinkTypes(const nsAString& aTypes) {
   return linkMask;
 }
 
-Result<LinkStyle::Update, nsresult> LinkStyle::UpdateStyleSheet(
-    nsICSSLoaderObserver* aObserver) {
-  return DoUpdateStyleSheet(nullptr, nullptr, aObserver, ForceUpdate::No);
-}
-
 Result<LinkStyle::Update, nsresult> LinkStyle::UpdateStyleSheetInternal(
     Document* aOldDocument, ShadowRoot* aOldShadowRoot,
     ForceUpdate aForceUpdate) {
   return DoUpdateStyleSheet(aOldDocument, aOldShadowRoot, nullptr,
                             aForceUpdate);
+}
+
+LinkStyle* LinkStyle::FromNode(Element& aElement) {
+  nsAtom* name = aElement.NodeInfo()->NameAtom();
+  if (name == nsGkAtoms::link) {
+    MOZ_ASSERT(aElement.IsHTMLElement() == !!aElement.AsLinkStyle());
+    return aElement.IsHTMLElement() ? static_cast<HTMLLinkElement*>(&aElement)
+                                    : nullptr;
+  }
+  if (name == nsGkAtoms::style) {
+    if (aElement.IsHTMLElement()) {
+      MOZ_ASSERT(aElement.AsLinkStyle());
+      return static_cast<HTMLStyleElement*>(&aElement);
+    }
+    if (aElement.IsSVGElement()) {
+      MOZ_ASSERT(aElement.AsLinkStyle());
+      return static_cast<SVGStyleElement*>(&aElement);
+    }
+  }
+  MOZ_ASSERT(!aElement.AsLinkStyle());
+  return nullptr;
+}
+
+void LinkStyle::BindToTree() {
+  if (mUpdatesEnabled) {
+    nsContentUtils::AddScriptRunner(NS_NewRunnableFunction(
+        "LinkStyle::BindToTree",
+        [this, pin = RefPtr{&AsContent()}] { UpdateStyleSheetInternal(); }));
+  }
 }
 
 Result<LinkStyle::Update, nsresult> LinkStyle::DoUpdateStyleSheet(
@@ -299,13 +325,11 @@ Result<LinkStyle::Update, nsresult> LinkStyle::DoUpdateStyleSheet(
     }
 
     // Parse the style sheet.
-    return doc->CSSLoader()->LoadInlineStyle(*info, text, mLineNumber,
-                                             aObserver);
+    return doc->CSSLoader()->LoadInlineStyle(*info, text, aObserver);
   }
   if (thisContent.IsElement()) {
     nsAutoString integrity;
-    thisContent.AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::integrity,
-                                     integrity);
+    thisContent.AsElement()->GetAttr(nsGkAtoms::integrity, integrity);
     if (!integrity.IsEmpty()) {
       MOZ_LOG(SRILogHelper::GetSriLog(), mozilla::LogLevel::Debug,
               ("LinkStyle::DoUpdateStyleSheet, integrity=%s",

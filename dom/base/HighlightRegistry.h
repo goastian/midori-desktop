@@ -132,6 +132,14 @@ class HighlightRegistry final : public nsISupports, public nsWrapperCache {
    */
   RefPtr<nsFrameSelection> GetFrameSelection();
 
+  /**
+   * @brief Get the registry name-value tuples.
+   */
+  nsTArray<CompactPair<RefPtr<nsAtom>, RefPtr<Highlight>>> const&
+  HighlightsOrdered() {
+    return mHighlightsOrdered;
+  }
+
  private:
   /**
    * Parent document.
@@ -148,8 +156,7 @@ class HighlightRegistry final : public nsISupports, public nsWrapperCache {
    *    b) because the insertion order defines the stacking order of
    *       of highlights that have the same priority.
    */
-  nsTArray<CompactPair<RefPtr<const nsAtom>, RefPtr<Highlight>>>
-      mHighlightsOrdered;
+  nsTArray<CompactPair<RefPtr<nsAtom>, RefPtr<Highlight>>> mHighlightsOrdered;
 };
 
 }  // namespace mozilla::dom

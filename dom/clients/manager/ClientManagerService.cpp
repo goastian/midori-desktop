@@ -102,8 +102,7 @@ RefPtr<GenericPromise> OnShutdown() {
         }
       });
 
-  MOZ_ALWAYS_SUCCEEDS(
-      SchedulerGroup::Dispatch(TaskCategory::Other, r.forget()));
+  MOZ_ALWAYS_SUCCEEDS(SchedulerGroup::Dispatch(r.forget()));
 
   return ref;
 }
@@ -282,7 +281,7 @@ bool ClientManagerService::AddSource(ClientSourceParent* aSource) {
     return true;
   }
   if (!mSourceTable.WithEntryHandle(aSource->Info().Id(),
-                                    [aSource](auto&& entry) {
+                                    [&aSource](auto&& entry) {
                                       if (NS_WARN_IF(entry.HasEntry())) {
                                         return false;
                                       }
@@ -611,8 +610,7 @@ RefPtr<ClientOpPromise> ClaimOnMainThread(
         scopeExit.release();
       });
 
-  MOZ_ALWAYS_SUCCEEDS(
-      SchedulerGroup::Dispatch(TaskCategory::Other, r.forget()));
+  MOZ_ALWAYS_SUCCEEDS(SchedulerGroup::Dispatch(r.forget()));
 
   return promise;
 }

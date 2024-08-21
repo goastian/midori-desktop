@@ -12,15 +12,16 @@
 #include "gtest/gtest.h"
 #include "MediaInfo.h"
 #include "MediaTrackGraphImpl.h"
+#include "mozilla/gtest/WaitFor.h"
 #include "nsThreadUtils.h"
 #include "VideoUtils.h"
-#include "WaitFor.h"
 
 using namespace mozilla;
 using namespace mozilla::media;
 using testing::AssertionResult;
 using testing::NiceMock;
 using testing::Return;
+using ControlMessageInterface = MediaTrack::ControlMessageInterface;
 
 constexpr uint32_t kNoFlags = 0;
 constexpr TrackRate kRate = 44100;
@@ -28,10 +29,13 @@ constexpr uint32_t kChannels = 2;
 
 class MockTestGraph : public MediaTrackGraphImpl {
  public:
-  MockTestGraph(TrackRate aRate, uint32_t aChannels)
-      : MediaTrackGraphImpl(OFFLINE_THREAD_DRIVER, DIRECT_DRIVER, aRate,
-                            aChannels, nullptr, NS_GetCurrentThread()) {
+  explicit MockTestGraph(TrackRate aRate)
+      : MediaTrackGraphImpl(0, aRate, nullptr, NS_GetCurrentThread()) {
     ON_CALL(*this, OnGraphThread).WillByDefault(Return(true));
+  }
+
+  void Init(uint32_t aChannels) {
+    MediaTrackGraphImpl::Init(OFFLINE_THREAD_DRIVER, DIRECT_DRIVER, aChannels);
     // We have to call `Destroy()` manually in order to break the reference.
     // The reason we don't assign a null driver is because we would add a track
     // to the graph, then it would trigger graph's `EnsureNextIteration()` that
@@ -40,7 +44,7 @@ class MockTestGraph : public MediaTrackGraphImpl {
   }
 
   MOCK_CONST_METHOD0(OnGraphThread, bool());
-  MOCK_METHOD1(AppendMessage, void(UniquePtr<ControlMessage>));
+  MOCK_METHOD1(AppendMessage, void(UniquePtr<ControlMessageInterface>));
 
  protected:
   ~MockTestGraph() = default;
@@ -86,7 +90,8 @@ AudioDecoderInputTrack* CreateTrack(MediaTrackGraph* aGraph,
 class TestAudioDecoderInputTrack : public testing::Test {
  protected:
   void SetUp() override {
-    mGraph = MakeRefPtr<NiceMock<MockTestGraph>>(kRate, kChannels);
+    mGraph = MakeRefPtr<NiceMock<MockTestGraph>>(kRate);
+    mGraph->Init(kChannels);
 
     mInfo.mRate = kRate;
     mInfo.mChannels = kChannels;
@@ -320,8 +325,9 @@ TEST_F(TestAudioDecoderInputTrack, VolumeChange) {
   // one for setting the track's volume, another for the track destruction.
   EXPECT_CALL(*mGraph, AppendMessage)
       .Times(2)
-      .WillOnce([](UniquePtr<ControlMessage> aMessage) { aMessage->Run(); })
-      .WillOnce([](UniquePtr<ControlMessage> aMessage) {});
+      .WillOnce(
+          [](UniquePtr<ControlMessageInterface> aMessage) { aMessage->Run(); })
+      .WillOnce([](UniquePtr<ControlMessageInterface> aMessage) {});
 
   // The default volume is 1.0.
   float expectedVolume = 1.0;
@@ -419,8 +425,9 @@ TEST_F(TestAudioDecoderInputTrack, PlaybackRateChange) {
   // one for setting the track's playback, another for the track destruction.
   EXPECT_CALL(*mGraph, AppendMessage)
       .Times(2)
-      .WillOnce([](UniquePtr<ControlMessage> aMessage) { aMessage->Run(); })
-      .WillOnce([](UniquePtr<ControlMessage> aMessage) {});
+      .WillOnce(
+          [](UniquePtr<ControlMessageInterface> aMessage) { aMessage->Run(); })
+      .WillOnce([](UniquePtr<ControlMessageInterface> aMessage) {});
 
   // Changing the playback rate.
   float expectedPlaybackRate = 2.0;

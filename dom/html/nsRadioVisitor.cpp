@@ -35,7 +35,7 @@ bool nsRadioSetValueMissingState::Visit(HTMLInputElement* aRadio) {
 
   aRadio->SetValidityState(
       nsIConstraintValidation::VALIDITY_STATE_VALUE_MISSING, mValidity);
-  aRadio->UpdateState(true);
+  aRadio->UpdateValidityElementStates(true);
   return true;
 }
 
@@ -43,7 +43,7 @@ bool nsRadioUpdateStateVisitor::Visit(HTMLInputElement* aRadio) {
   if (aRadio == mExcludeElement) {
     return true;
   }
-
-  aRadio->UpdateState(true);
+  aRadio->UpdateIndeterminateState(true);
+  aRadio->UpdateValidityElementStates(true);
   return true;
 }

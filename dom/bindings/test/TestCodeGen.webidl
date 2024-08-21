@@ -162,10 +162,6 @@ enum OnlyForUseInInnerUnion {
  LegacyFactoryFunction=Test2(DictForConstructor dict, any any1, object obj1,
                         object? obj2, sequence<Dict> seq, optional any any2,
                         optional object obj3, optional object? obj4),
- LegacyFactoryFunction=Test3((long or record<DOMString, any>) arg1),
- LegacyFactoryFunction=Test4(record<DOMString, record<DOMString, any>> arg1),
- LegacyFactoryFunction=Test5(record<DOMString, sequence<record<DOMString, record<DOMString, sequence<sequence<any>>>>>> arg1),
- LegacyFactoryFunction=Test6(sequence<record<ByteString, sequence<sequence<record<ByteString, record<USVString, any>>>>>> arg1),
  Exposed=Window]
 interface TestInterface {
   constructor();
@@ -700,7 +696,10 @@ interface TestInterface {
   //undefined passUnionWithInterfaces((TestInterface or TestExternalInterface) arg);
   //undefined passUnionWithInterfacesAndNullable((TestInterface? or TestExternalInterface) arg);
   //undefined passUnionWithSequence((sequence<object> or long) arg);
-  undefined passUnionWithArrayBuffer((ArrayBuffer or long) arg);
+  undefined passUnionWithArrayBuffer((UTF8String or ArrayBuffer) arg);
+  undefined passUnionWithArrayBufferOrNull((UTF8String or ArrayBuffer?) arg);
+  undefined passUnionWithTypedArrays((ArrayBufferView or ArrayBuffer) arg);
+  undefined passUnionWithTypedArraysOrNull((ArrayBufferView or ArrayBuffer?) arg);
   undefined passUnionWithString((DOMString or object) arg);
   // Using an enum in a union.  Note that we use some enum not declared in our
   // binding file, because UnionTypes.h will need to include the binding header
@@ -1084,7 +1083,19 @@ interface TestInterface {
   undefined passUnionArrayBuffer((DOMString or ArrayBuffer) foo);
   undefined passUnionAllowSharedArrayBuffer((DOMString or [AllowShared] ArrayBuffer) foo);
 
-  // If you add things here, add them to TestExampleGen and TestJSImplGen as well
+  // If you add things here, add them to TestExampleGen as well
+};
+
+[LegacyFactoryFunction=Test3((long or record<DOMString, any>) arg1),
+ LegacyFactoryFunction=Test4(record<DOMString, record<DOMString, any>> arg1),
+ Exposed=Window]
+interface TestLegacyFactoryFunctionInterface {
+};
+
+[LegacyFactoryFunction=Test5(record<DOMString, sequence<record<DOMString, record<DOMString, sequence<sequence<any>>>>>> arg1),
+ LegacyFactoryFunction=Test6(sequence<record<ByteString, sequence<sequence<record<ByteString, record<USVString, any>>>>>> arg1),
+ Exposed=Window]
+interface TestLegacyFactoryFunctionInterface2 {
 };
 
 [Exposed=Window]
@@ -1270,6 +1281,11 @@ dictionary DictWithAllowSharedMembers {
   [AllowShared] ArrayBuffer? d;
   [AllowShared] ArrayBufferViewTypedef e;
   AllowSharedArrayBufferViewTypedef f;
+};
+
+dictionary DictWithBinaryType {
+  [BinaryType="nsAutoString"]
+  DOMString otherTypeOfStorageStr = "";
 };
 
 [Exposed=Window]
@@ -1497,7 +1513,7 @@ interface TestSCConstructorForInterface {
   [SecureContext] constructor();
 };
 
-[Exposed=Window, Func="Document::IsWebAnimationsEnabled"]
+[Exposed=Window, Func="IsNotUAWidget"]
 interface TestConstructorForFuncInterface {
   // Since the interface has a Func attribute, but the constructor does not,
   // the generated constructor should not check for the Func.
@@ -1508,22 +1524,35 @@ interface TestConstructorForFuncInterface {
 interface TestFuncConstructorForInterface {
   // Since the constructor has a Func attribute, but the interface does not,
   // the generated constructor should check for the Func.
-  [Func="Document::IsWebAnimationsEnabled"]
+  [Func="IsNotUAWidget"]
   constructor();
 };
 
-[Exposed=Window, Func="Document::AreWebAnimationsTimelinesEnabled"]
+[Exposed=Window, Func="Document::IsCallerChromeOrAddon"]
 interface TestFuncConstructorForDifferentFuncInterface {
   // Since the constructor has a different Func attribute from the interface,
   // the generated constructor should still check for its conditional func.
-  [Func="Document::IsWebAnimationsEnabled"]
+  [Func="IsNotUAWidget"]
   constructor();
 };
 
 [Exposed=Window]
 interface TestPrefChromeOnlySCFuncConstructorForInterface {
-  [Pref="dom.webidl.test1", ChromeOnly, SecureContext, Func="Document::IsWebAnimationsEnabled"]
+  [Pref="dom.webidl.test1", ChromeOnly, SecureContext, Func="IsNotUAWidget"]
   // There should be checks for all Pref/ChromeOnly/SecureContext/Func
   // in the generated constructor.
   constructor();
+};
+
+typedef (TestCallback or GrandparentDict) TestCallbackDictUnion;
+typedef (GrandparentDict or TestCallback) TestDictCallbackUnion;
+
+[Exposed=Window]
+interface TestCallbackDictUnionOverload {
+  undefined overload1(boolean arg);
+  undefined overload1(TestCallback arg);
+  undefined overload1(optional GrandparentDict arg = {});
+  undefined overload2(boolean arg);
+  undefined overload2(optional GrandparentDict arg = {});
+  undefined overload2(TestCallback arg);
 };

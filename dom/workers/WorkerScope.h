@@ -22,6 +22,7 @@
 #include "mozilla/dom/ImageBitmapSource.h"
 #include "mozilla/dom/PerformanceWorker.h"
 #include "mozilla/dom/SafeRefPtr.h"
+#include "mozilla/dom/TrustedTypePolicyFactory.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
@@ -67,7 +68,7 @@ template <typename T>
 class Optional;
 class Performance;
 class Promise;
-class RequestOrUSVString;
+class RequestOrUTF8String;
 template <typename T>
 class Sequence;
 class ServiceWorkerDescriptor;
@@ -100,8 +101,7 @@ class WorkerGlobalScopeBase : public DOMEventTargetHelper,
                                                          DOMEventTargetHelper)
 
   WorkerGlobalScopeBase(WorkerPrivate* aWorkerPrivate,
-                        UniquePtr<ClientSource> aClientSource,
-                        bool aShouldResistFingerprinting);
+                        UniquePtr<ClientSource> aClientSource);
 
   virtual bool WrapGlobalObject(JSContext* aCx,
                                 JS::MutableHandle<JSObject*> aReflector) = 0;
@@ -134,14 +134,8 @@ class WorkerGlobalScopeBase : public DOMEventTargetHelper,
   virtual void Control(const ServiceWorkerDescriptor& aServiceWorker);
 
   // DispatcherTrait implementation
-  nsresult Dispatch(TaskCategory aCategory,
-                    already_AddRefed<nsIRunnable>&& aRunnable) final;
-
-  nsISerialEventTarget* EventTargetFor(TaskCategory) const final;
-
-  AbstractThread* AbstractMainThreadFor(TaskCategory) final {
-    MOZ_CRASH("AbstractMainThreadFor not supported for workers.");
-  }
+  nsresult Dispatch(already_AddRefed<nsIRunnable>&& aRunnable) const final;
+  nsISerialEventTarget* SerialEventTarget() const final;
 
   MOZ_CAN_RUN_SCRIPT
   void ReportError(JSContext* aCx, JS::Handle<JS::Value> aError,
@@ -197,7 +191,6 @@ class WorkerGlobalScopeBase : public DOMEventTargetHelper,
   RefPtr<JS::loader::ModuleLoaderBase> mModuleLoader;
   const UniquePtr<ClientSource> mClientSource;
   nsCOMPtr<nsISerialEventTarget> mSerialEventTarget;
-  bool mShouldResistFingerprinting;
 #ifdef DEBUG
   PRThread* mWorkerThreadUsedOnlyForAssert;
 #endif
@@ -247,6 +240,10 @@ class WorkerGlobalScope : public WorkerGlobalScopeBase {
       const final;
 
   mozilla::dom::StorageManager* GetStorageManager() final;
+
+  void SetIsNotEligibleForMessaging() { mIsEligibleForMessaging = false; }
+
+  bool IsEligibleForMessaging() final;
 
   // WorkerGlobalScope WebIDL implementation
   WorkerGlobalScope* Self() { return this; }
@@ -329,7 +326,7 @@ class WorkerGlobalScope : public WorkerGlobalScopeBase {
                        JS::MutableHandle<JS::Value> aRetval,
                        ErrorResult& aError);
 
-  already_AddRefed<Promise> Fetch(const RequestOrUSVString& aInput,
+  already_AddRefed<Promise> Fetch(const RequestOrUTF8String& aInput,
                                   const RequestInit& aInit,
                                   CallerType aCallerType, ErrorResult& aRv);
 
@@ -356,6 +353,8 @@ class WorkerGlobalScope : public WorkerGlobalScopeBase {
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   virtual void OnVsync(const VsyncEvent& aVsync) {}
 
+  TrustedTypePolicyFactory* TrustedTypes();
+
  protected:
   ~WorkerGlobalScope();
 
@@ -380,7 +379,9 @@ class WorkerGlobalScope : public WorkerGlobalScopeBase {
   RefPtr<cache::CacheStorage> mCacheStorage;
   RefPtr<DebuggerNotificationManager> mDebuggerNotificationManager;
   RefPtr<WebTaskSchedulerWorker> mWebTaskScheduler;
+  RefPtr<TrustedTypePolicyFactory> mTrustedTypePolicyFactory;
   uint32_t mWindowInteractionsAllowed = 0;
+  bool mIsEligibleForMessaging{true};
 };
 
 class DedicatedWorkerGlobalScope final
@@ -393,8 +394,7 @@ class DedicatedWorkerGlobalScope final
 
   DedicatedWorkerGlobalScope(WorkerPrivate* aWorkerPrivate,
                              UniquePtr<ClientSource> aClientSource,
-                             const nsString& aName,
-                             bool aShouldResistFingerprinting);
+                             const nsString& aName);
 
   bool WrapGlobalObject(JSContext* aCx,
                         JS::MutableHandle<JSObject*> aReflector) override;
@@ -422,6 +422,7 @@ class DedicatedWorkerGlobalScope final
 
   IMPL_EVENT_HANDLER(message)
   IMPL_EVENT_HANDLER(messageerror)
+  IMPL_EVENT_HANDLER(rtctransform)
 
  private:
   ~DedicatedWorkerGlobalScope() = default;
@@ -438,8 +439,7 @@ class SharedWorkerGlobalScope final
  public:
   SharedWorkerGlobalScope(WorkerPrivate* aWorkerPrivate,
                           UniquePtr<ClientSource> aClientSource,
-                          const nsString& aName,
-                          bool aShouldResistFingerprinting);
+                          const nsString& aName);
 
   bool WrapGlobalObject(JSContext* aCx,
                         JS::MutableHandle<JSObject*> aReflector) override;
@@ -460,8 +460,7 @@ class ServiceWorkerGlobalScope final : public WorkerGlobalScope {
 
   ServiceWorkerGlobalScope(
       WorkerPrivate* aWorkerPrivate, UniquePtr<ClientSource> aClientSource,
-      const ServiceWorkerRegistrationDescriptor& aRegistrationDescriptor,
-      bool aShouldResistFingerprinting);
+      const ServiceWorkerRegistrationDescriptor& aRegistrationDescriptor);
 
   bool WrapGlobalObject(JSContext* aCx,
                         JS::MutableHandle<JSObject*> aReflector) override;

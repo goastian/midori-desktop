@@ -64,15 +64,15 @@ const char* kLogStrings[] = {"Critical", "Error", "Info", "Debug"};
 
 static int g_log_level = GL_CRIT;
 
-#define GMPLOG(l, x)                                     \
-  do {                                                   \
-    if (l <= g_log_level) {                              \
-      const char* log_string = "unknown";                \
-      if ((l >= 0) && (l <= 3)) {                        \
-        log_string = kLogStrings[l];                     \
-      }                                                  \
-      std::cerr << log_string << ": " << x << std::endl; \
-    }                                                    \
+#define GMPLOG(l, x)                                \
+  do {                                              \
+    if (l <= g_log_level) {                         \
+      const char* log_string = "unknown";           \
+      if ((l >= 0) && (l <= 3)) {                   \
+        log_string = kLogStrings[l];                \
+      }                                             \
+      std::cerr << log_string << ": " << x << '\n'; \
+    }                                               \
   } while (0)
 
 class FakeVideoEncoder;
@@ -99,7 +99,7 @@ struct EncodedFrame {
     uint8_t y_;
     uint8_t u_;
     uint8_t v_;
-    uint32_t timestamp_;
+    uint64_t timestamp_;
   } idr_nalu;
 };
 #pragma pack(pop)

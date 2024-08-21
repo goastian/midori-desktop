@@ -28,16 +28,13 @@ function configureTest() {
 
         ConsoleAPIStorage.removeLogEventListener(this.observe);
         SimpleTest.finish();
-        return;
       }
     }
   }
 
   var cl = new consoleListener();
 
-  return SpecialPowers.pushPrefEnv(
-    {"set": [["dom.paintWorklet.enabled", true],
-             ["dom.worklet.enabled", true]]});
+  return SpecialPowers.pushPrefEnv({ "set": [["dom.paintWorklet.enabled", true]] });
 }
 
 // This function is called into an iframe.

@@ -15,7 +15,6 @@
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Variant.h"
 #include "mozilla/dom/BindingDeclarations.h"
-#include "mozilla/dom/HTMLFormElement.h"  // for HasEverTriedInvalidSubmit()
 #include "mozilla/dom/HTMLInputElementBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/UnionTypes.h"
@@ -28,6 +27,7 @@
 #include "mozilla/dom/ConstraintValidation.h"
 #include "mozilla/dom/FileInputType.h"
 #include "mozilla/dom/HiddenInputType.h"
+#include "mozilla/dom/RadioGroupContainer.h"
 #include "nsGenericHTMLElement.h"
 #include "nsImageLoadingContent.h"
 #include "nsCOMPtr.h"
@@ -35,7 +35,7 @@
 #include "nsIContentPrefService2.h"
 #include "nsContentUtils.h"
 
-class nsIRadioGroupContainer;
+class nsIEditor;
 class nsIRadioVisitor;
 
 namespace mozilla {
@@ -158,18 +158,21 @@ class HTMLInputElement final : public TextControlElement,
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   NS_IMETHOD Reset() override;
   NS_IMETHOD SubmitNamesValues(FormData* aFormData) override;
-  bool AllowDrop() override;
 
   void FieldSetDisabledChanged(bool aNotify) override;
 
   // nsIContent
-  bool IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
+  bool IsHTMLFocusable(IsFocusableFlags, bool* aIsFocusable,
                        int32_t* aTabIndex) override;
 
   bool ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                       const nsAString& aValue,
                       nsIPrincipal* aMaybeScriptedPrincipal,
                       nsAttrValue& aResult) override;
+
+  // Note: if this returns false, then attributes may not yet be sanitized
+  // (per SetValueInternal's dependence on mDoneCreating).
+  bool IsDoneCreating() const { return mDoneCreating; }
 
   bool LastValueChangeWasInteractive() const {
     return mLastValueChangeWasInteractive;
@@ -183,6 +186,11 @@ class HTMLInputElement final : public TextControlElement,
   nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
 
   void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
+  void LegacyPreActivationBehavior(EventChainVisitor& aVisitor) override;
+  MOZ_CAN_RUN_SCRIPT
+  void ActivationBehavior(EventChainPostVisitor& aVisitor) override;
+  void LegacyCanceledActivationBehavior(
+      EventChainPostVisitor& aVisitor) override;
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   nsresult PreHandleEvent(EventChainVisitor& aVisitor) override;
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
@@ -205,30 +213,31 @@ class HTMLInputElement final : public TextControlElement,
                                    SnapToTickMarks = SnapToTickMarks::No);
 
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  void UnbindFromTree(bool aNullParent = true) override;
+  void UnbindFromTree(UnbindContext&) override;
 
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   void DoneCreatingElement() override;
 
   void DestroyContent() override;
 
-  ElementState IntrinsicState() const override;
-
   void SetLastValueChangeWasInteractive(bool);
 
   // TextControlElement
+  bool IsSingleLineTextControlOrTextArea() const override {
+    return IsSingleLineTextControl(false);
+  }
   void SetValueChanged(bool aValueChanged) override;
   bool IsSingleLineTextControl() const override;
   bool IsTextArea() const override;
   bool IsPasswordTextControl() const override;
-  int32_t GetCols() override;
+  Maybe<int32_t> GetCols() override;
   int32_t GetWrapCols() override;
   int32_t GetRows() override;
-  void GetDefaultValueFromContent(nsAString& aValue) override;
+  void GetDefaultValueFromContent(nsAString& aValue, bool aForDisplay) override;
   bool ValueChanged() const override;
-  void GetTextEditorValue(nsAString& aValue, bool aIgnoreWrap) const override;
+  void GetTextEditorValue(nsAString& aValue) const override;
   MOZ_CAN_RUN_SCRIPT TextEditor* GetTextEditor() override;
-  TextEditor* GetTextEditorWithoutCreation() override;
+  TextEditor* GetTextEditorWithoutCreation() const override;
   nsISelectionController* GetSelectionController() override;
   nsFrameSelection* GetConstFrameSelection() override;
   TextControlState* GetTextControlState() const override {
@@ -239,6 +248,12 @@ class HTMLInputElement final : public TextControlElement,
   MOZ_CAN_RUN_SCRIPT nsresult CreateEditor() override;
   void SetPreviewValue(const nsAString& aValue) override;
   void GetPreviewValue(nsAString& aValue) override;
+  void SetAutofillState(const nsAString& aState) override {
+    SetFormAutofillState(aState);
+  }
+  void GetAutofillState(nsAString& aState) override {
+    GetFormAutofillState(aState);
+  }
   void EnablePreview() override;
   bool IsPreviewEnabled() override;
   void InitializeKeyboardEventListeners() override;
@@ -250,13 +265,6 @@ class HTMLInputElement final : public TextControlElement,
   bool HasCachedSelection() override;
   MOZ_CAN_RUN_SCRIPT void SetRevealPassword(bool aValue);
   bool RevealPassword() const;
-
-  /**
-   * TextEditorValueEquals() is designed for internal use so that aValue
-   * shouldn't include \r character.  It should be handled before calling this
-   * with nsContentUtils::PlatformToDOMLineBreaks().
-   */
-  bool TextEditorValueEquals(const nsAString& aValue) const;
 
   // Methods for nsFormFillController so it can do selection operations on input
   // types the HTML spec doesn't support them on, like "email".
@@ -282,8 +290,9 @@ class HTMLInputElement final : public TextControlElement,
 
   void SetCheckedChangedInternal(bool aCheckedChanged);
   bool GetCheckedChanged() const { return mCheckedChanged; }
-  void AddedToRadioGroup();
-  void WillRemoveFromRadioGroup();
+  void AddToRadioGroup();
+  void RemoveFromRadioGroup();
+  void DisconnectRadioGroupContainer();
 
   /**
    * Helper function returning the currently selected button in the radio group.
@@ -332,10 +341,14 @@ class HTMLInputElement final : public TextControlElement,
   void UpdateRangeUnderflowValidityState();
   void UpdateStepMismatchValidityState();
   void UpdateBadInputValidityState();
+  void UpdatePlaceholderShownState();
+  void UpdateCheckedState(bool aNotify);
+  void UpdateIndeterminateState(bool aNotify);
   // Update all our validity states and then update our element state
   // as needed.  aNotify controls whether the element state update
   // needs to notify.
   void UpdateAllValidityStates(bool aNotify);
+  void UpdateValidityElementStates(bool aNotify);
   MOZ_CAN_RUN_SCRIPT
   void MaybeUpdateAllValidityStates(bool aNotify) {
     // If you need to add new type which supports validationMessage, you should
@@ -392,16 +405,7 @@ class HTMLInputElement final : public TextControlElement,
    */
   void SetFilePickerFiltersFromAccept(nsIFilePicker* filePicker);
 
-  /**
-   * The form might need to request an update of the UI bits
-   * (BF_CAN_SHOW_INVALID_UI and BF_CAN_SHOW_VALID_UI) when an invalid form
-   * submission is tried.
-   *
-   * @param aIsFocused Whether the element is currently focused.
-   *
-   * @note The caller is responsible to call ContentStatesChanged.
-   */
-  void UpdateValidityUIBits(bool aIsFocused);
+  void SetUserInteracted(bool) final;
 
   /**
    * Fires change event if mFocusedValue and current value held are unequal and
@@ -462,9 +466,7 @@ class HTMLInputElement final : public TextControlElement,
     SetHTMLAttr(nsGkAtoms::capture, aValue, aRv);
   }
 
-  bool DefaultChecked() const {
-    return HasAttr(kNameSpaceID_None, nsGkAtoms::checked);
-  }
+  bool DefaultChecked() const { return HasAttr(nsGkAtoms::checked); }
 
   void SetDefaultChecked(bool aValue, ErrorResult& aRv) {
     SetHTMLBoolAttr(nsGkAtoms::checked, aValue, aRv);
@@ -472,6 +474,11 @@ class HTMLInputElement final : public TextControlElement,
 
   bool Checked() const { return mChecked; }
   void SetChecked(bool aChecked);
+
+  bool IsRadioOrCheckbox() const {
+    return mType == FormControlType::InputCheckbox ||
+           mType == FormControlType::InputRadio;
+  }
 
   bool Disabled() const { return GetBoolAttr(nsGkAtoms::disabled); }
 
@@ -662,9 +669,8 @@ class HTMLInputElement final : public TextControlElement,
     SetUnsignedIntAttr(nsGkAtoms::width, aValue, 0, aRv);
   }
 
-  void StepUp(int32_t aN, ErrorResult& aRv) { aRv = ApplyStep(aN); }
-
-  void StepDown(int32_t aN, ErrorResult& aRv) { aRv = ApplyStep(-aN); }
+  void StepUp(int32_t aN, ErrorResult& aRv) { ApplyStep(aN, aRv); }
+  void StepDown(int32_t aN, ErrorResult& aRv) { ApplyStep(-aN, aRv); }
 
   /**
    * Returns the current step value.
@@ -709,7 +715,7 @@ class HTMLInputElement final : public TextControlElement,
   void ShowPicker(ErrorResult& aRv);
 
   bool WebkitDirectoryAttr() const {
-    return HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory);
+    return HasAttr(nsGkAtoms::webkitdirectory);
   }
 
   void SetWebkitDirectoryAttr(bool aValue, ErrorResult& aRv) {
@@ -728,6 +734,13 @@ class HTMLInputElement final : public TextControlElement,
   void GetUseMap(nsAString& aValue) { GetHTMLAttr(nsGkAtoms::usemap, aValue); }
   void SetUseMap(const nsAString& aValue, ErrorResult& aRv) {
     SetHTMLAttr(nsGkAtoms::usemap, aValue, aRv);
+  }
+
+  void GetDirName(nsAString& aValue) {
+    GetHTMLAttr(nsGkAtoms::dirname, aValue);
+  }
+  void SetDirName(const nsAString& aValue, ErrorResult& aRv) {
+    SetHTMLAttr(nsGkAtoms::dirname, aValue, aRv);
   }
 
   nsIControllers* GetControllers(ErrorResult& aRv);
@@ -810,7 +823,7 @@ class HTMLInputElement final : public TextControlElement,
 
   MOZ_CAN_RUN_SCRIPT nsIEditor* GetEditorForBindings();
   // For WebIDL bindings.
-  bool HasEditor();
+  bool HasEditor() const;
 
   bool IsInputEventTarget() const { return IsSingleLineTextControl(false); }
 
@@ -1057,6 +1070,7 @@ class HTMLInputElement final : public TextControlElement,
 
   MOZ_CAN_RUN_SCRIPT void FreeData();
   TextControlState* GetEditorState() const;
+  void EnsureEditorState();
 
   MOZ_CAN_RUN_SCRIPT TextEditor* GetTextEditorFromState();
 
@@ -1066,8 +1080,6 @@ class HTMLInputElement final : public TextControlElement,
   MOZ_CAN_RUN_SCRIPT
   void HandleTypeChange(FormControlType aNewType, bool aNotify);
 
-  enum class ForValueGetter { No, Yes };
-
   /**
    * If the input range has a list, this function will snap the given value to
    * the nearest tick mark, but only if the given value is close enough to that
@@ -1075,12 +1087,13 @@ class HTMLInputElement final : public TextControlElement,
    */
   void MaybeSnapToTickMark(Decimal& aValue);
 
+  enum class SanitizationKind { ForValueGetter, ForValueSetter, ForDisplay };
   /**
    * Sanitize the value of the element depending of its current type.
    * See:
    * http://www.whatwg.org/specs/web-apps/current-work/#value-sanitization-algorithm
    */
-  void SanitizeValue(nsAString& aValue, ForValueGetter = ForValueGetter::No);
+  void SanitizeValue(nsAString& aValue, SanitizationKind) const;
 
   /**
    * Returns whether the placeholder attribute applies for the current type.
@@ -1099,47 +1112,19 @@ class HTMLInputElement final : public TextControlElement,
    * Sets the direction from the input value. if aKnownValue is provided, it
    * saves a GetValue call.
    */
-  void SetDirectionFromValue(bool aNotify,
+  void SetAutoDirectionality(bool aNotify,
                              const nsAString* aKnownValue = nullptr);
 
   /**
-   * Return if an element should have a specific validity UI
-   * (with :-moz-ui-invalid and :-moz-ui-valid pseudo-classes).
-   *
-   * @return Whether the element should have a validity UI.
+   * Returns the radio group container within the DOM tree that the element
+   * is currently a member of, if one exists.
    */
-  bool ShouldShowValidityUI() const {
-    /**
-     * Always show the validity UI if the form has already tried to be submitted
-     * but was invalid.
-     *
-     * Otherwise, show the validity UI if the element's value has been changed.
-     */
-    if (mForm && mForm->HasEverTriedInvalidSubmit()) {
-      return true;
-    }
-
-    switch (GetValueMode()) {
-      case VALUE_MODE_DEFAULT:
-        return true;
-      case VALUE_MODE_DEFAULT_ON:
-        return GetCheckedChanged();
-      case VALUE_MODE_VALUE:
-      case VALUE_MODE_FILENAME:
-        return mValueChanged;
-    }
-
-    MOZ_ASSERT_UNREACHABLE("We should not be there: there are no other modes.");
-    return false;
-  }
-
+  RadioGroupContainer* GetCurrentRadioGroupContainer() const;
   /**
-   * Returns the radio group container if the element has one, null otherwise.
-   * The radio group container will be the form owner if there is one.
-   * The current document otherwise.
-   * @return the radio group container if the element has one, null otherwise.
+   * Returns the radio group container within the DOM tree that the element
+   * should be added into, if one exists.
    */
-  nsIRadioGroupContainer* GetRadioGroupContainer() const;
+  RadioGroupContainer* FindTreeRadioGroupContainer() const;
 
   /**
    * Parse a color string of the form #XXXXXX where X should be hexa characters
@@ -1306,10 +1291,9 @@ class HTMLInputElement final : public TextControlElement,
    */
   void SetValue(Decimal aValue, CallerType aCallerType);
 
-  /**
-   * Update the HAS_RANGE bit field value.
-   */
-  void UpdateHasRange();
+  void UpdateHasRange(bool aNotify);
+  // Updates the :in-range / :out-of-range states.
+  void UpdateInRange(bool aNotify);
 
   /**
    * Get the step scale value for the current type.
@@ -1332,22 +1316,17 @@ class HTMLInputElement final : public TextControlElement,
    */
   Decimal GetDefaultStep() const;
 
-  enum StepCallerType { CALLED_FOR_USER_EVENT, CALLED_FOR_SCRIPT };
+  enum class StepCallerType { ForUserEvent, ForScript };
 
   /**
-   * Sets the aValue outparam to the value that this input would take if
-   * someone tries to step aStep steps and this input's value would change as
-   * a result. Leaves aValue untouched if this inputs value would not change
-   * (e.g. already at max, and asking for the next step up).
+   * Returns the value that this input would take if someone tries to step
+   * aStepCount steps and this input's value would change as a result, or
+   * Decimal::nan() otherwise (e.g., if this inputs value would not change due
+   * to it being already at max, and asking for the next step up).
    *
    * Negative aStep means step down, positive means step up.
-   *
-   * Returns NS_OK or else the error values that should be thrown if this call
-   * was initiated by a stepUp()/stepDown() call from script under conditions
-   * that such a call should throw.
    */
-  nsresult GetValueIfStepped(int32_t aStepCount, StepCallerType aCallerType,
-                             Decimal* aNextStep);
+  Decimal GetValueIfStepped(int32_t aStepCount, StepCallerType, ErrorResult&);
 
   /**
    * Apply a step change from stepUp or stepDown by multiplying aStep by the
@@ -1355,7 +1334,7 @@ class HTMLInputElement final : public TextControlElement,
    *
    * @param aStep The value used to be multiplied against the step value.
    */
-  nsresult ApplyStep(int32_t aStep);
+  void ApplyStep(int32_t aStep, ErrorResult&);
 
   /**
    * Returns if the current type is an experimental mobile type.
@@ -1536,6 +1515,8 @@ class HTMLInputElement final : public TextControlElement,
   // https://html.spec.whatwg.org/#concept-fe-dirty
   // TODO: Maybe rename to match the spec?
   bool mValueChanged : 1;
+  // https://html.spec.whatwg.org/#user-interacted
+  bool mUserInteracted : 1;
   bool mLastValueChangeWasInteractive : 1;
   bool mCheckedChanged : 1;
   bool mChecked : 1;
@@ -1546,8 +1527,6 @@ class HTMLInputElement final : public TextControlElement,
   bool mCheckedIsToggled : 1;
   bool mIndeterminate : 1;
   bool mInhibitRestoration : 1;
-  bool mCanShowValidUI : 1;
-  bool mCanShowInvalidUI : 1;
   bool mHasRange : 1;
   bool mIsDraggingRange : 1;
   bool mNumberControlSpinnerIsSpinning : 1;
@@ -1558,8 +1537,8 @@ class HTMLInputElement final : public TextControlElement,
   bool mHasPatternAttribute : 1;
 
  private:
-  static void ImageInputMapAttributesIntoRule(
-      const nsMappedAttributes* aAttributes, MappedDeclarations&);
+  Maybe<int32_t> GetNumberInputCols() const;
+  static void ImageInputMapAttributesIntoRule(MappedDeclarationsBuilder&);
 
   /**
    * Returns true if this input's type will fire a DOM "change" event when it
@@ -1583,6 +1562,31 @@ class HTMLInputElement final : public TextControlElement,
     }
   }
 
+  /**
+   * https://html.spec.whatwg.org/#auto-directionality-form-associated-elements
+   */
+  static bool IsAutoDirectionalityAssociated(FormControlType aType) {
+    switch (aType) {
+      case FormControlType::InputHidden:
+      case FormControlType::InputText:
+      case FormControlType::InputSearch:
+      case FormControlType::InputTel:
+      case FormControlType::InputUrl:
+      case FormControlType::InputEmail:
+      case FormControlType::InputPassword:
+      case FormControlType::InputSubmit:
+      case FormControlType::InputReset:
+      case FormControlType::InputButton:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  bool IsAutoDirectionalityAssociated() const {
+    return IsAutoDirectionalityAssociated(mType);
+  }
+
   static bool CreatesDateTimeWidget(FormControlType aType) {
     return aType == FormControlType::InputDate ||
            aType == FormControlType::InputTime ||
@@ -1598,6 +1602,8 @@ class HTMLInputElement final : public TextControlElement,
            aType == FormControlType::InputNumber;
   }
 
+  bool CheckActivationBehaviorPreconditions(EventChainVisitor& aVisitor) const;
+
   /**
    * Call MaybeDispatchPasswordEvent or MaybeDispatchUsernameEvent
    * in order to dispatch LoginManager events.
@@ -1606,7 +1612,7 @@ class HTMLInputElement final : public TextControlElement,
 
   /**
    * Fire an event when the password input field is removed from the DOM tree.
-   * This is now only used by the password manager.
+   * This is now only used by the password manager and formautofill.
    */
   void MaybeFireInputPasswordRemoved();
 
@@ -1614,6 +1620,12 @@ class HTMLInputElement final : public TextControlElement,
    * Checks if aDateTimeInputType should be supported.
    */
   static bool IsDateTimeTypeSupported(FormControlType);
+
+  /**
+   * The radio group container containing the group the element is a part of.
+   * This allows the element to only access a container it has been added to.
+   */
+  RadioGroupContainer* mRadioGroupContainer;
 
   struct nsFilePickerFilter {
     nsFilePickerFilter() : mFilterMask(0) {}

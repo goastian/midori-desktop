@@ -12,9 +12,11 @@
   <script>
     "use strict";
 
-    const { Assert } = ChromeUtils.import("resource://testing-common/Assert.jsm");
-    const { ObjectUtils } = ChromeUtils.import(
-      "resource://gre/modules/ObjectUtils.jsm"
+    const { Assert } = ChromeUtils.importESModule(
+      "resource://testing-common/Assert.sys.mjs"
+    );
+    const { ObjectUtils } = ChromeUtils.importESModule(
+      "resource://gre/modules/ObjectUtils.sys.mjs"
     );
 
     const OBJECT = {
@@ -75,7 +77,7 @@
       ok(!await IOUtils.exists(notExistsFilename), `${notExistsFilename} should not exist`);
       await Assert.rejects(
         IOUtils.readJSON(notExistsFilename),
-        /NotFoundError: Could not open the file at/,
+        /NotFoundError: Could not open `.*'/,
         "IOUtils::readJSON rejects when file does not exist"
       );
 
@@ -147,11 +149,37 @@
 
       await Assert.rejects(
         IOUtils.writeJSON(filename, OBJECT, {mode: "append"}),
-        /NotSupportedError: IOUtils.writeJSON does not support appending to files/,
+        /NotSupportedError: Could not write to `.*': IOUtils.writeJSON does not support appending to files/,
         "IOUtils.writeJSON() cannot append"
       );
 
       await cleanup(filename);
+    });
+
+    add_task(async function test_read_json_bom() {
+      const tmpFileName = PathUtils.join(PathUtils.tempDir, "test_ioutils_read_json_bom.tmp");
+      const raw = `\uFEFF${JSON.stringify({hello: "world"})}`;
+      await IOUtils.writeUTF8(tmpFileName, raw);
+
+      ok(
+        ObjectUtils.deepEqual(
+          await IOUtils.readJSON(tmpFileName),
+          { hello: "world" },
+        ),
+        "IOUtils.readJSON should skip BOM"
+      );
+
+      await IOUtils.writeUTF8(tmpFileName, raw, { compress: true });
+
+      ok(
+        ObjectUtils.deepEqual(
+          await IOUtils.readJSON(tmpFileName, { decompress: true }),
+          { hello: "world" },
+        ),
+        "IOUtils.readJSON should skip BOM for compressed files"
+      );
+
+      await cleanup(tmpFileName);
     });
   </script>
 </head>

@@ -12,6 +12,8 @@
 #include "nsGenericHTMLElement.h"
 #include "nsStubMutationObserver.h"
 
+class nsDOMTokenList;
+
 namespace mozilla::dom {
 
 class HTMLStyleElement final : public nsGenericHTMLElement,
@@ -45,7 +47,11 @@ class HTMLStyleElement final : public nsGenericHTMLElement,
   void SetDevtoolsAsTriggeringPrincipal();
 
   virtual nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  virtual void UnbindFromTree(bool aNullParent = true) override;
+  virtual void UnbindFromTree(UnbindContext&) override;
+  bool ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
+                      const nsAString& aValue,
+                      nsIPrincipal* aMaybeScriptedPrincipal,
+                      nsAttrValue& aResult) override;
   virtual void AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                             const nsAttrValue* aValue,
                             const nsAttrValue* aOldValue,
@@ -71,6 +77,9 @@ class HTMLStyleElement final : public nsGenericHTMLElement,
     SetHTMLAttr(nsGkAtoms::type, aType, aError);
   }
 
+  nsDOMTokenList* Blocking();
+  bool IsPotentiallyRenderBlocking() override;
+
   virtual JSObject* WrapNode(JSContext* aCx,
                              JS::Handle<JSObject*> aGivenProto) override;
 
@@ -87,6 +96,8 @@ class HTMLStyleElement final : public nsGenericHTMLElement,
    * parent; we should only respond to the change if aContent is non-anonymous.
    */
   void ContentChanged(nsIContent* aContent);
+
+  RefPtr<nsDOMTokenList> mBlocking;
 };
 
 }  // namespace mozilla::dom

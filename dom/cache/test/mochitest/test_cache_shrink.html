@@ -23,7 +23,7 @@ function setupTestIframe() {
 }
 
 function clearStorage() {
-  return new Promise(function(resolve, reject) {
+  return new Promise(function(resolve) {
     var qms = SpecialPowers.Services.qms;
     var principal = SpecialPowers.wrap(document).nodePrincipal;
     var request = qms.clearStoragesForPrincipal(principal);
@@ -33,7 +33,7 @@ function clearStorage() {
 }
 
 function storageUsage() {
-  return new Promise(function(resolve, reject) {
+  return new Promise(function(resolve) {
     var qms = SpecialPowers.Services.qms;
     var principal = SpecialPowers.wrap(document).nodePrincipal;
     var cb = SpecialPowers.wrapCallback(function(request) {
@@ -45,16 +45,17 @@ function storageUsage() {
 }
 
 function resetStorage() {
-  return new Promise(function(resolve, reject) {
+  return new Promise(function(resolve) {
     var qms = SpecialPowers.Services.qms;
-    var request = qms.reset();
+    var principal = SpecialPowers.wrap(document).nodePrincipal;
+    var request = qms.resetStoragesForPrincipal(principal);
     var cb = SpecialPowers.wrapCallback(resolve);
     request.callback = cb;
   });
 }
 
 function gc() {
-  return new Promise(function(resolve, reject) {
+  return new Promise(function(resolve) {
     SpecialPowers.exactGC(resolve);
   });
 }
@@ -63,15 +64,8 @@ SimpleTest.waitForExplicitFinish();
 SpecialPowers.pushPrefEnv({
   "set": [["dom.caches.enabled", true],
           ["dom.caches.testing.enabled", true],
-          ["dom.quotaManager.testing", true],
-          ["privacy.partition.always_partition_third_party_non_cookie_storage", false]],
-}, async function() {
-  // Bug 1746646: Make mochitests work with TCP enabled (cookieBehavior = 5)
-  // Acquire storage access permission here so that the Cache API is avaialable
-  SpecialPowers.wrap(document).notifyUserGestureActivation();
-  await SpecialPowers.addPermission("storageAccessAPI", true, window.location.href);
-  await SpecialPowers.wrap(document).requestStorageAccess();
-
+          ["dom.quotaManager.testing", true],],
+},  function() {
   var name = "foo";
   var cache = null;
   var initialUsage = 0;

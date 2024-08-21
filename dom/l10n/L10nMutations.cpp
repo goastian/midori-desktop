@@ -286,8 +286,8 @@ void L10nMutations::MaybeFirePendingTranslationsFinished() {
     doc->UnblockOnload(false);
   }
   nsContentUtils::DispatchEventOnlyToChrome(
-      doc, ToSupports(doc), u"L10nMutationsFinished"_ns, CanBubble::eNo,
-      Cancelable::eNo, Composed::eNo, nullptr);
+      doc, doc, u"L10nMutationsFinished"_ns, CanBubble::eNo, Cancelable::eNo,
+      Composed::eNo, nullptr);
 }
 
 void L10nMutations::Disconnect() {
@@ -299,7 +299,7 @@ Document* L10nMutations::GetDocument() const {
   if (!mDOMLocalization) {
     return nullptr;
   }
-  auto* innerWindow = mDOMLocalization->GetParentObject()->AsInnerWindow();
+  auto* innerWindow = mDOMLocalization->GetParentObject()->GetAsInnerWindow();
   if (!innerWindow) {
     return nullptr;
   }
@@ -329,10 +329,6 @@ void L10nMutations::StartRefreshObserver() {
 }
 
 void L10nMutations::StopRefreshObserver() {
-  if (!mDOMLocalization) {
-    return;
-  }
-
   if (mRefreshDriver) {
     mRefreshDriver->RemoveRefreshObserver(this, FlushType::Style);
     mRefreshDriver = nullptr;
@@ -340,6 +336,7 @@ void L10nMutations::StopRefreshObserver() {
 }
 
 void L10nMutations::OnCreatePresShell() {
+  StopRefreshObserver();
   if (!mPendingElements.IsEmpty()) {
     StartRefreshObserver();
   }

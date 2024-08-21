@@ -3,10 +3,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+include PrefsTypes;
 include protocol PGMPContent;
 include protocol PGMPTimer;
 include protocol PGMPStorage;
 include protocol PProfiler;
+
+#if defined(XP_WIN)
+[MoveOnly] using mozilla::UntrustedModulesData from "mozilla/UntrustedModulesData.h";
+[MoveOnly] using mozilla::ModulePaths from "mozilla/UntrustedModulesData.h";
+[MoveOnly] using mozilla::ModulesMapResult from "mozilla/UntrustedModulesData.h";
+#endif
 
 include "mozilla/ipc/ByteBufUtils.h";
 include "GMPParent.h";
@@ -17,7 +24,7 @@ using mozilla::dom::NativeThreadId from "mozilla/dom/NativeThreadId.h";
 namespace mozilla {
 namespace gmp {
 
-[NeedsOtherPid, NestedUpTo=inside_sync, ChildImpl="GMPChild", ParentImpl="GMPParent"]
+[NeedsOtherPid, NestedUpTo=inside_sync, ChildImpl="GMPChild", ParentImpl="GMPParent", ChildProc=GMPlugin]
 sync protocol PGMP
 {
   manages PGMPTimer;
@@ -35,6 +42,11 @@ parent:
   // https://firefox-source-docs.mozilla.org/toolkit/components/glean/dev/ipc.html
   async FOGData(ByteBuf buf);
 
+#if defined(XP_WIN)
+  async GetModulesTrust(ModulePaths aModPaths, bool aRunAtNormalPriority)
+      returns (ModulesMapResult? modMapResult);
+#endif  // defined(XP_WIN)
+
 child:
   async CrashPluginNow();
   [Nested=inside_sync] sync StartPlugin(nsString adapter);
@@ -43,16 +55,34 @@ child:
   async CloseActive();
   async InitGMPContentChild(Endpoint<PGMPContentChild> endpoint);
   async InitProfiler(Endpoint<PProfilerChild> endpoint);
+  async PreferenceUpdate(Pref pref);
 
   // Tells the GMP process to flush any pending telemetry.
   // Used in tests and ping assembly. Buffer contains bincoded Rust structs.
   // https://firefox-source-docs.mozilla.org/toolkit/components/glean/dev/ipc.html
   async FlushFOGData() returns (ByteBuf buf);
 
+#if defined(XP_WIN)
+  async InitDllServices(bool canRecordReleaseTelemetry,
+                        bool aIsReadyForBackgroundProcessing);
+
+  async GetUntrustedModulesData() returns (UntrustedModulesData? data);
+
+  /**
+  * This method is used to notify a child process to start
+  * processing module loading events in UntrustedModulesProcessor.
+  * This should be called when the parent process has gone idle.
+  */
+  async UnblockUntrustedModulesThread();
+#endif  // defined(XP_WIN)
+
   // Test-only method.
   // Asks the GMP process to trigger test-only instrumentation.
   // The unused returned value is to have a promise we can await.
   async TestTriggerMetrics() returns (bool unused);
+
+  // Attempt a graceful shutdown and collect a profile if available.
+  async Shutdown() returns (nsCString profile);
 };
 
 } // namespace gmp

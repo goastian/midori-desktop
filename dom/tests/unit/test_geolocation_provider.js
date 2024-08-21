@@ -1,4 +1,6 @@
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserver = null;
 var geolocation = null;
@@ -10,10 +12,10 @@ function terminate(succ) {
   geolocation.clearWatch(watchID);
 }
 
-function successCallback(pos) {
+function successCallback() {
   terminate(true);
 }
-function errorCallback(pos) {
+function errorCallback() {
   terminate(false);
 }
 

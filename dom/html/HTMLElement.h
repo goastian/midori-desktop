@@ -13,7 +13,8 @@ namespace mozilla::dom {
 
 class HTMLElement final : public nsGenericHTMLFormElement {
  public:
-  explicit HTMLElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
+  explicit HTMLElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
+                       FromParser aFromParser = NOT_FROM_PARSER);
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
@@ -29,7 +30,8 @@ class HTMLElement final : public nsGenericHTMLFormElement {
 
   // nsIContent
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  void UnbindFromTree(bool aNullParent = true) override;
+  void UnbindFromTree(UnbindContext&) override;
+  void DoneCreatingElement() override;
 
   // Element
   void SetCustomElementDefinition(
@@ -46,8 +48,14 @@ class HTMLElement final : public nsGenericHTMLFormElement {
   bool IsFormAssociatedElement() const override;
   void AfterClearForm(bool aUnbindOrDelete) override;
   void FieldSetDisabledChanged(bool aNotify) override;
+  void SaveState() override;
+  void UpdateValidityElementStates(bool aNotify);
 
   void UpdateFormOwner();
+
+  void MaybeRestoreFormAssociatedCustomElementState();
+
+  void InhibitRestoration(bool aShouldInhibit);
 
  protected:
   virtual ~HTMLElement() = default;
@@ -60,7 +68,6 @@ class HTMLElement final : public nsGenericHTMLFormElement {
                     const nsAttrValue* aValue, const nsAttrValue* aOldValue,
                     nsIPrincipal* aMaybeScriptedPrincipal,
                     bool aNotify) override;
-  ElementState IntrinsicState() const override;
 
   // nsGenericHTMLFormElement
   void SetFormInternal(HTMLFormElement* aForm, bool aBindToTree) override;
@@ -68,13 +75,15 @@ class HTMLElement final : public nsGenericHTMLFormElement {
   void SetFieldSetInternal(HTMLFieldSetElement* aFieldset) override;
   HTMLFieldSetElement* GetFieldSetInternal() const override;
   bool CanBeDisabled() const override;
-  bool DoesReadOnlyApply() const override;
   void UpdateDisabledState(bool aNotify) override;
   void UpdateFormOwner(bool aBindToTree, Element* aFormIdElement) override;
 
   void UpdateBarredFromConstraintValidation();
 
   ElementInternals* GetElementInternals() const;
+
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
+  void RestoreFormAssociatedCustomElementState();
 };
 
 }  // namespace mozilla::dom

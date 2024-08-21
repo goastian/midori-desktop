@@ -153,7 +153,9 @@ class WindowGlobalParent final : public WindowContext,
 
   void GetContentBlockingLog(nsAString& aLog);
 
-  bool IsInitialDocument() { return mIsInitialDocument; }
+  bool IsInitialDocument() {
+    return mIsInitialDocument.isSome() && mIsInitialDocument.value();
+  }
 
   already_AddRefed<mozilla::dom::Promise> PermitUnload(
       PermitUnloadAction aAction, uint32_t aTimeout, mozilla::ErrorResult& aRv);
@@ -181,7 +183,10 @@ class WindowGlobalParent final : public WindowContext,
       const nsTArray<nsCString>& aTrackingFullHashes,
       const Maybe<
           ContentBlockingNotifier::StorageAccessPermissionGrantedReason>&
-          aReason = Nothing());
+          aReason,
+      const Maybe<ContentBlockingNotifier::CanvasFingerprinter>&
+          aCanvasFingerprinter,
+      const Maybe<bool> aCanvasFingerprinterKnownText);
 
   ContentBlockingLog* GetContentBlockingLog() { return &mContentBlockingLog; }
 
@@ -241,7 +246,7 @@ class WindowGlobalParent final : public WindowContext,
       const MaybeDiscarded<dom::BrowsingContext>& aTargetBC,
       nsDocShellLoadState* aLoadState, bool aSetNavigating);
   mozilla::ipc::IPCResult RecvInternalLoad(nsDocShellLoadState* aLoadState);
-  mozilla::ipc::IPCResult RecvUpdateDocumentURI(nsIURI* aURI);
+  mozilla::ipc::IPCResult RecvUpdateDocumentURI(NotNull<nsIURI*> aURI);
   mozilla::ipc::IPCResult RecvUpdateDocumentPrincipal(
       nsIPrincipal* aNewDocumentPrincipal,
       nsIPrincipal* aNewDocumentStoragePrincipal);
@@ -254,7 +259,12 @@ class WindowGlobalParent final : public WindowContext,
   mozilla::ipc::IPCResult RecvUpdateDocumentTitle(const nsString& aTitle);
   mozilla::ipc::IPCResult RecvUpdateHttpsOnlyStatus(uint32_t aHttpsOnlyStatus);
   mozilla::ipc::IPCResult RecvSetIsInitialDocument(bool aIsInitialDocument) {
-    mIsInitialDocument = aIsInitialDocument;
+    if (aIsInitialDocument && mIsInitialDocument.isSome() &&
+        (mIsInitialDocument.value() != aIsInitialDocument)) {
+      return IPC_FAIL_NO_REASON(this);
+    }
+
+    mIsInitialDocument = Some(aIsInitialDocument);
     return IPC_OK();
   }
   mozilla::ipc::IPCResult RecvUpdateDocumentSecurityInfo(
@@ -304,13 +314,31 @@ class WindowGlobalParent final : public WindowContext,
   mozilla::ipc::IPCResult RecvSetSingleChannelId(
       const Maybe<uint64_t>& aSingleChannelId);
 
-  mozilla::ipc::IPCResult RecvSetDocumentDomain(nsIURI* aDomain);
+  mozilla::ipc::IPCResult RecvSetDocumentDomain(NotNull<nsIURI*> aDomain);
 
   mozilla::ipc::IPCResult RecvReloadWithHttpsOnlyException();
 
   mozilla::ipc::IPCResult RecvDiscoverIdentityCredentialFromExternalSource(
       const IdentityCredentialRequestOptions& aOptions,
       const DiscoverIdentityCredentialFromExternalSourceResolver& aResolver);
+
+  mozilla::ipc::IPCResult RecvCollectIdentityCredentialFromCredentialStore(
+      const IdentityCredentialRequestOptions& aOptions,
+      const CollectIdentityCredentialFromCredentialStoreResolver& aResolver);
+  mozilla::ipc::IPCResult RecvStoreIdentityCredential(
+      const IPCIdentityCredential& aCredential,
+      const StoreIdentityCredentialResolver& aResolver);
+
+  mozilla::ipc::IPCResult RecvGetStorageAccessPermission(
+      GetStorageAccessPermissionResolver&& aResolve);
+
+  mozilla::ipc::IPCResult RecvSetCookies(
+      const nsCString& aBaseDomain, const OriginAttributes& aOriginAttributes,
+      nsIURI* aHost, bool aFromHttp, const nsTArray<CookieStruct>& aCookies);
+
+  mozilla::ipc::IPCResult RecvOnInitialStorageAccess();
+
+  mozilla::ipc::IPCResult RecvRecordUserActivationForBTP();
 
  private:
   WindowGlobalParent(CanonicalBrowsingContext* aBrowsingContext,
@@ -339,7 +367,7 @@ class WindowGlobalParent final : public WindowContext,
   nsCOMPtr<nsIURI> mDocumentURI;
   Maybe<nsString> mDocumentTitle;
 
-  bool mIsInitialDocument;
+  Maybe<bool> mIsInitialDocument;
 
   // True if this window has a "beforeunload" event listener.
   bool mHasBeforeUnload;

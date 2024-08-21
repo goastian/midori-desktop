@@ -7,6 +7,7 @@
 #ifndef DOM_FS_PARENT_FILESYSTEMWRITABLEFILESTREAM_H_
 #define DOM_FS_PARENT_FILESYSTEMWRITABLEFILESTREAM_H_
 
+#include "mozilla/dom/FileSystemParentTypes.h"
 #include "mozilla/dom/FileSystemTypes.h"
 #include "mozilla/dom/FlippedOnce.h"
 #include "mozilla/dom/PFileSystemWritableFileStreamParent.h"
@@ -21,12 +22,14 @@ class FileSystemWritableFileStreamParent
     : public PFileSystemWritableFileStreamParent {
  public:
   FileSystemWritableFileStreamParent(RefPtr<FileSystemManagerParent> aManager,
-                                     const fs::EntryId& aEntryId);
+                                     const fs::EntryId& aEntryId,
+                                     const fs::FileId& aTemporaryFileId,
+                                     bool aIsExclusive);
 
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(FileSystemWritableFileStreamParent,
                                         override)
 
-  mozilla::ipc::IPCResult RecvClose(CloseResolver&& aResolver);
+  mozilla::ipc::IPCResult RecvClose(bool aAbort, CloseResolver&& aResolver);
 
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
@@ -39,13 +42,17 @@ class FileSystemWritableFileStreamParent
 
   bool IsClosed() const { return mClosed; }
 
-  void Close();
+  void Close(bool aAbort);
 
   const RefPtr<FileSystemManagerParent> mManager;
 
   RefPtr<FileSystemWritableFileStreamCallbacks> mStreamCallbacks;
 
   const fs::EntryId mEntryId;
+
+  const fs::FileId mTemporaryFileId;
+
+  const bool mIsExclusive;
 
   FlippedOnce<false> mClosed;
 };

@@ -59,11 +59,11 @@ class RTCStatsTimestampMaker;
 }  // namespace dom
 
 struct MediaPipelineReceiveControlInterface {
-  virtual AbstractCanonical<bool>* CanonicalReceiving() = 0;
+  virtual Canonical<bool>& CanonicalReceiving() = 0;
 };
 
 struct MediaPipelineTransmitControlInterface {
-  virtual AbstractCanonical<bool>* CanonicalTransmitting() = 0;
+  virtual Canonical<bool>& CanonicalTransmitting() = 0;
 };
 
 // A class that represents the pipeline of audio and video
@@ -163,7 +163,6 @@ class MediaPipeline : public sigslot::has_slots<> {
   int32_t RtcpPacketsSent() const { return mRtcpPacketsSent; }
   int32_t RtpPacketsReceived() const { return mRtpPacketsReceived; }
   int64_t RtpBytesReceived() const { return mRtpBytesReceived; }
-  int32_t RtcpPacketsReceived() const { return mRtcpPacketsReceived; }
 
   const dom::RTCStatsTimestampMaker& GetTimestampMaker() const;
 
@@ -179,7 +178,6 @@ class MediaPipeline : public sigslot::has_slots<> {
   void IncrementRtpPacketsSent(const MediaPacket& aPacket);
   void IncrementRtcpPacketsSent();
   void IncrementRtpPacketsReceived(int aBytes);
-  void IncrementRtcpPacketsReceived();
 
   virtual void SendPacket(MediaPacket&& packet);
 
@@ -190,9 +188,6 @@ class MediaPipeline : public sigslot::has_slots<> {
   void PacketReceived(const std::string& aTransportId,
                       const MediaPacket& packet);
   void AlpnNegotiated(const std::string& aAlpn, bool aPrivacyRequested);
-
-  void RtpPacketReceived(const MediaPacket& packet);
-  void RtcpPacketReceived(const MediaPacket& packet);
 
   void EncryptedPacketSending(const std::string& aTransportId,
                               const MediaPacket& aPacket);
@@ -224,7 +219,6 @@ class MediaPipeline : public sigslot::has_slots<> {
   int32_t mRtpPacketsSent;
   int32_t mRtcpPacketsSent;
   int32_t mRtpPacketsReceived;
-  int32_t mRtcpPacketsReceived;
   int64_t mRtpBytesSent;
   int64_t mRtpBytesReceived;
 
@@ -246,8 +240,6 @@ class MediaPipeline : public sigslot::has_slots<> {
 
   MediaEventProducerExc<webrtc::RtpPacketReceived, webrtc::RTPHeader>
       mRtpReceiveEvent;
-  MediaEventProducerExc<MediaPacket> mSenderRtcpReceiveEvent;
-  MediaEventProducerExc<MediaPacket> mReceiverRtcpReceiveEvent;
 
   MediaEventListener mRtpSendEventListener;
   MediaEventListener mSenderRtcpSendEventListener;
@@ -264,13 +256,22 @@ class MediaPipeline : public sigslot::has_slots<> {
 class MediaPipelineTransmit
     : public MediaPipeline,
       public dom::PrincipalChangeObserver<dom::MediaStreamTrack> {
- public:
+ private:
   // Set aRtcpTransport to nullptr to use rtcp-mux
   MediaPipelineTransmit(const std::string& aPc,
                         RefPtr<MediaTransportHandler> aTransportHandler,
                         RefPtr<AbstractThread> aCallThread,
                         RefPtr<nsISerialEventTarget> aStsThread, bool aIsVideo,
                         RefPtr<MediaSessionConduit> aConduit);
+
+  void RegisterListener();
+
+ public:
+  static already_AddRefed<MediaPipelineTransmit> Create(
+      const std::string& aPc, RefPtr<MediaTransportHandler> aTransportHandler,
+      RefPtr<AbstractThread> aCallThread,
+      RefPtr<nsISerialEventTarget> aStsThread, bool aIsVideo,
+      RefPtr<MediaSessionConduit> aConduit);
 
   void InitControl(MediaPipelineTransmitControlInterface* aControl);
 

@@ -3,6 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "WebGLTextureUpload.h"
 #include "WebGLTexture.h"
 
 #include <algorithm>
@@ -21,7 +22,6 @@
 #include "mozilla/dom/ImageData.h"
 #include "mozilla/dom/OffscreenCanvas.h"
 #include "mozilla/MathAlgorithms.h"
-#include "mozilla/Scoped.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/StaticPrefs_webgl.h"
 #include "mozilla/Unused.h"
@@ -37,6 +37,15 @@
 namespace mozilla {
 namespace webgl {
 
+// The canvas spec says that drawImage should draw the first frame of
+// animated images. The webgl spec doesn't mention the issue, so we do the
+// same as drawImage.
+static constexpr uint32_t kDefaultSurfaceFromElementFlags =
+    nsLayoutUtils::SFE_WANT_FIRST_FRAME_IF_IMAGE |
+    nsLayoutUtils::SFE_USE_ELEMENT_SIZE_IF_VECTOR |
+    nsLayoutUtils::SFE_EXACT_SIZE_SURFACE |
+    nsLayoutUtils::SFE_ALLOW_NON_PREMULT;
+
 Maybe<TexUnpackBlobDesc> FromImageBitmap(const GLenum target, Maybe<uvec3> size,
                                          const dom::ImageBitmap& imageBitmap,
                                          ErrorResult* const out_rv) {
@@ -51,6 +60,10 @@ Maybe<TexUnpackBlobDesc> FromImageBitmap(const GLenum target, Maybe<uvec3> size,
   }
 
   const RefPtr<gfx::DataSourceSurface> surf = cloneData->mSurface;
+  if (NS_WARN_IF(!surf)) {
+    return {};
+  }
+
   const auto imageSize = *uvec2::FromSize(surf->GetSize());
   if (!size) {
     size.emplace(imageSize.x, imageSize.y, 1);
@@ -119,44 +132,19 @@ Maybe<webgl::TexUnpackBlobDesc> FromOffscreenCanvas(
     return {};
   }
 
-  // The canvas spec says that drawImage should draw the first frame of
-  // animated images. The webgl spec doesn't mention the issue, so we do the
-  // same as drawImage.
-  uint32_t flags = nsLayoutUtils::SFE_WANT_FIRST_FRAME_IF_IMAGE;
   auto sfer = nsLayoutUtils::SurfaceFromOffscreenCanvas(
-      const_cast<dom::OffscreenCanvas*>(&canvas), flags);
+      const_cast<dom::OffscreenCanvas*>(&canvas),
+      kDefaultSurfaceFromElementFlags);
+  return FromSurfaceFromElementResult(webgl, target, size, sfer, out_error);
+}
 
-  RefPtr<gfx::DataSourceSurface> dataSurf;
-  if (sfer.GetSourceSurface()) {
-    dataSurf = sfer.GetSourceSurface()->GetDataSurface();
-  }
-
-  if (!dataSurf) {
-    webgl.EnqueueWarning("Resource has no data (yet?). Uploading zeros.");
-    if (!size) {
-      size.emplace(0, 0, 1);
-    }
-    return Some(
-        TexUnpackBlobDesc{target, size.value(), gfxAlphaType::NonPremult});
-  }
-
-  // We checked this above before we requested the surface.
-  MOZ_RELEASE_ASSERT(!sfer.mIsWriteOnly);
-
-  uvec2 canvasSize = *uvec2::FromSize(dataSurf->GetSize());
-  if (!size) {
-    size.emplace(canvasSize.x, canvasSize.y, 1);
-  }
-
-  return Some(TexUnpackBlobDesc{target,
-                                size.value(),
-                                sfer.mAlphaType,
-                                {},
-                                {},
-                                Some(canvasSize),
-                                {},
-                                {},
-                                dataSurf});
+Maybe<webgl::TexUnpackBlobDesc> FromVideoFrame(
+    const ClientWebGLContext& webgl, const GLenum target, Maybe<uvec3> size,
+    const dom::VideoFrame& videoFrame, ErrorResult* const out_error) {
+  auto sfer = nsLayoutUtils::SurfaceFromVideoFrame(
+      const_cast<dom::VideoFrame*>(&videoFrame),
+      kDefaultSurfaceFromElementFlags);
+  return FromSurfaceFromElementResult(webgl, target, size, sfer, out_error);
 }
 
 Maybe<webgl::TexUnpackBlobDesc> FromDomElem(const ClientWebGLContext& webgl,
@@ -173,13 +161,7 @@ Maybe<webgl::TexUnpackBlobDesc> FromDomElem(const ClientWebGLContext& webgl,
     }
   }
 
-  // The canvas spec says that drawImage should draw the first frame of
-  // animated images. The webgl spec doesn't mention the issue, so we do the
-  // same as drawImage.
-  uint32_t flags = nsLayoutUtils::SFE_WANT_FIRST_FRAME_IF_IMAGE |
-                   nsLayoutUtils::SFE_USE_ELEMENT_SIZE_IF_VECTOR |
-                   nsLayoutUtils::SFE_EXACT_SIZE_SURFACE |
-                   nsLayoutUtils::SFE_ALLOW_NON_PREMULT;
+  uint32_t flags = kDefaultSurfaceFromElementFlags;
   const auto& unpacking = webgl.State().mPixelUnpackState;
   if (unpacking.colorspaceConversion == LOCAL_GL_NONE) {
     flags |= nsLayoutUtils::SFE_NO_COLORSPACE_CONVERSION;
@@ -188,9 +170,12 @@ Maybe<webgl::TexUnpackBlobDesc> FromDomElem(const ClientWebGLContext& webgl,
   RefPtr<gfx::DrawTarget> idealDrawTarget = nullptr;  // Don't care for now.
   auto sfer = nsLayoutUtils::SurfaceFromElement(
       const_cast<dom::Element*>(&elem), flags, idealDrawTarget);
+  return FromSurfaceFromElementResult(webgl, target, size, sfer, out_error);
+}
 
-  //////
-
+Maybe<webgl::TexUnpackBlobDesc> FromSurfaceFromElementResult(
+    const ClientWebGLContext& webgl, const GLenum target, Maybe<uvec3> size,
+    SurfaceFromElementResult& sfer, ErrorResult* const out_error) {
   uvec2 elemSize;
 
   const auto& layersImage = sfer.mLayersImage;
@@ -944,23 +929,7 @@ void WebGLTexture::TexStorage(TexTarget target, uint32_t levels,
 void WebGLTexture::TexImage(uint32_t level, GLenum respecFormat,
                             const uvec3& offset, const webgl::PackingInfo& pi,
                             const webgl::TexUnpackBlobDesc& src) {
-  Maybe<RawBuffer<>> cpuDataView;
-  if (src.cpuData) {
-    cpuDataView = Some(RawBuffer<>{src.cpuData->Data()});
-  }
-  const auto srcViewDesc = webgl::TexUnpackBlobDesc{src.imageTarget,
-                                                    src.size,
-                                                    src.srcAlphaType,
-                                                    std::move(cpuDataView),
-                                                    src.pboOffset,
-                                                    src.structuredSrcSize,
-                                                    src.image,
-                                                    src.sd,
-                                                    src.dataSurf,
-                                                    src.unpacking,
-                                                    src.applyUnpackTransforms};
-
-  const auto blob = webgl::TexUnpackBlob::Create(srcViewDesc);
+  const auto blob = webgl::TexUnpackBlob::Create(src);
   if (!blob) {
     MOZ_ASSERT(false);
     return;

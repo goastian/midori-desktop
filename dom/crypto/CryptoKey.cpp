@@ -195,12 +195,15 @@ void CryptoKey::GetAlgorithm(JSContext* cx,
     case KeyAlgorithmProxy::AES:
       converted = ToJSValue(cx, mAlgorithm.mAes, &val);
       break;
+    case KeyAlgorithmProxy::KDF:
+      converted = ToJSValue(cx, mAlgorithm.mKDF, &val);
+      break;
     case KeyAlgorithmProxy::HMAC:
       converted = ToJSValue(cx, mAlgorithm.mHmac, &val);
       break;
     case KeyAlgorithmProxy::RSA: {
       RootedDictionary<RsaHashedKeyAlgorithm> rsa(cx);
-      converted = mAlgorithm.mRsa.ToKeyAlgorithm(cx, rsa);
+      converted = mAlgorithm.mRsa.ToKeyAlgorithm(cx, rsa, aRv);
       if (converted) {
         converted = ToJSValue(cx, rsa, &val);
       }

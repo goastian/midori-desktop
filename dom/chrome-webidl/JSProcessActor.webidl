@@ -54,6 +54,13 @@ dictionary ProcessActorOptions {
    */
   boolean includeParent = false;
 
+  /**
+   * If true, the actor will be loaded in the loader dedicated to DevTools.
+   *
+   * This ultimately prevents DevTools to debug itself.
+   */
+  boolean loadInDevToolsLoader = false;
+
   /** This fields are used for configuring individual sides of the actor. */
   ProcessActorSidedOptions parent;
   ProcessActorChildOptions child;
@@ -67,6 +74,9 @@ dictionary ProcessActorSidedOptions {
    *
    * If neither this nor `esModuleURI` is passed, the specified side cannot receive
    * messages, but may send them using `sendAsyncMessage` or `sendQuery`.
+   *
+   * TODO: Remove this once m-c, c-c, and out-of-tree code migrations finish
+   *       (bug 1866732).
    */
   ByteString moduleURI;
 

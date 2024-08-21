@@ -7,8 +7,12 @@
 #ifndef mozilla_ContentEventHandler_h_
 #define mozilla_ContentEventHandler_h_
 
+#include "js/GCAPI.h"
+#include "mozilla/Assertions.h"
 #include "mozilla/EventForwards.h"
+#include "mozilla/RangeBoundary.h"
 #include "mozilla/dom/Selection.h"
+#include "mozilla/dom/Text.h"
 #include "nsCOMPtr.h"
 #include "nsIFrame.h"
 #include "nsINode.h"
@@ -22,7 +26,6 @@ namespace mozilla {
 
 namespace dom {
 class Element;
-class Text;
 }  // namespace dom
 
 enum LineBreakType { LINE_BREAK_TYPE_NATIVE, LINE_BREAK_TYPE_XP };
@@ -38,18 +41,29 @@ enum LineBreakType { LINE_BREAK_TYPE_NATIVE, LINE_BREAK_TYPE_XP };
 class MOZ_STACK_CLASS ContentEventHandler {
  private:
   /**
-   * RawRange is a helper class of ContentEventHandler class.  The caller is
-   * responsible for making sure the start/end nodes are in document order.
-   * This is enforced by assertions in DEBUG builds.
+   * SimpleRangeBase is a helper template class of ContentEventHandler class
+   * that stores 2 DOM points as a range without observing the mutation.  I.e.,
+   * similar to dom::StaticRange, but can only be on the stack and does not have
+   * unnecessary features for ContentEventHandler so it is fast.
+   * Therefore, initializers are responsible for making sure the start/end nodes
+   * are in document order. This is enforced by assertions in DEBUG builds.
    */
-  class MOZ_STACK_CLASS RawRange final {
+  template <typename NodeType, typename RangeBoundaryType>
+  class MOZ_STACK_CLASS SimpleRangeBase final {
    public:
-    RawRange() = default;
+    SimpleRangeBase();
+    SimpleRangeBase(SimpleRangeBase<NodeType, RangeBoundaryType>&&) noexcept;
+    template <typename OtherNodeType, typename OtherRangeBoundaryType>
+    explicit SimpleRangeBase(
+        const SimpleRangeBase<OtherNodeType, OtherRangeBoundaryType>& aOther);
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    ~SimpleRangeBase();
+#endif
 
     void Clear() {
       mRoot = nullptr;
-      mStart = RangeBoundary();
-      mEnd = RangeBoundary();
+      mStart = {};
+      mEnd = {};
     }
 
     bool IsPositioned() const { return mStart.IsSet() && mEnd.IsSet(); }
@@ -58,16 +72,19 @@ class MOZ_STACK_CLASS ContentEventHandler {
     nsINode* GetEndContainer() const { return mEnd.Container(); }
     uint32_t StartOffset() const {
       return *mStart.Offset(
-          RangeBoundary::OffsetFilter::kValidOrInvalidOffsets);
+          RangeBoundaryType::OffsetFilter::kValidOrInvalidOffsets);
     }
     uint32_t EndOffset() const {
-      return *mEnd.Offset(RangeBoundary::OffsetFilter::kValidOrInvalidOffsets);
+      return *mEnd.Offset(
+          RangeBoundaryType::OffsetFilter::kValidOrInvalidOffsets);
     }
     nsIContent* StartRef() const { return mStart.Ref(); }
     nsIContent* EndRef() const { return mEnd.Ref(); }
 
-    const RangeBoundary& Start() const { return mStart; }
-    const RangeBoundary& End() const { return mEnd; }
+    const RangeBoundaryType& Start() const { return mStart; }
+    const RangeBoundaryType& End() const { return mEnd; }
+
+    nsINode* GetRoot() const { return mRoot; }
 
     // XXX: Make these use RangeBoundaries...
     nsresult CollapseTo(const RawRangeBoundary& aBoundary) {
@@ -95,11 +112,19 @@ class MOZ_STACK_CLASS ContentEventHandler {
    private:
     inline void AssertStartIsBeforeOrEqualToEnd();
 
-    nsCOMPtr<nsINode> mRoot;
+    NodeType mRoot;
 
-    RangeBoundary mStart;
-    RangeBoundary mEnd;
+    RangeBoundaryType mStart;
+    RangeBoundaryType mEnd;
+
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    nsMutationGuard mMutationGuard;
+    Maybe<JS::AutoAssertNoGC> mAssertNoGC;
+#endif
   };
+
+  using SimpleRange = SimpleRangeBase<RefPtr<nsINode>, RangeBoundary>;
+  using UnsafeSimpleRange = SimpleRangeBase<nsINode*, RawRangeBoundary>;
 
  public:
   using Element = dom::Element;
@@ -149,9 +174,9 @@ class MOZ_STACK_CLASS ContentEventHandler {
   // is called, i.e., handling eQuerySelectedText, it's the specified selection
   // by WidgetQueryContentEvent::mInput::mSelectionType.
   RefPtr<Selection> mSelection;
-  // mFirstSelectedRawRange is initialized from the first range of mSelection,
-  // if it exists.  Otherwise, it is reset by Clear().
-  RawRange mFirstSelectedRawRange;
+  // mFirstSelectedSimpleRange is initialized from the first range of
+  // mSelection, if it exists.  Otherwise, it is reset by Clear().
+  SimpleRange mFirstSelectedSimpleRange;
   RefPtr<Element> mRootElement;
 
   MOZ_CAN_RUN_SCRIPT nsresult Init(WidgetQueryContentEvent* aEvent);
@@ -175,31 +200,48 @@ class MOZ_STACK_CLASS ContentEventHandler {
   // FlatText means the text that is generated from DOM tree. The BR elements
   // are replaced to native linefeeds. Other elements are ignored.
 
-  // NodePosition stores a pair of node and offset in the node.
+  // RawNodePosition stores a pair of node and offset in the node.
   // When mNode is an element and mOffset is 0, the start position means after
   // the open tag of mNode.
   // This is useful to receive one or more sets of them instead of nsRange.
   // This type is intended to be used for short-lived operations, and is thus
   // marked MOZ_STACK_CLASS.
-  struct MOZ_STACK_CLASS NodePosition : public RangeBoundary {
+  struct MOZ_STACK_CLASS RawNodePosition : public RawRangeBoundary {
     // Only when mNode is an element node and mOffset is 0, mAfterOpenTag is
     // referred.
     bool mAfterOpenTag = true;
 
-    NodePosition() = default;
+    RawNodePosition() = default;
+    explicit RawNodePosition(const RawNodePosition& aOther)
+        : RawRangeBoundary(aOther),
+          mAfterOpenTag(aOther.mAfterOpenTag)
+    // Don't use the copy constructor of mAssertNoGC.
+    {}
 
-    NodePosition(nsINode* aContainer, uint32_t aOffset)
-        : RangeBoundary(aContainer, aOffset) {}
+    RawNodePosition(nsINode* aContainer, uint32_t aOffset)
+        : RawRangeBoundary(aContainer, aOffset) {}
 
-    NodePosition(nsINode* aContainer, nsIContent* aRef)
-        : RangeBoundary(aContainer, aRef) {}
+    RawNodePosition(nsINode* aContainer, nsIContent* aRef)
+        : RawRangeBoundary(aContainer, aRef) {}
 
-    explicit NodePosition(const nsIFrame::ContentOffsets& aContentOffsets)
-        : RangeBoundary(aContentOffsets.content, aContentOffsets.offset) {}
+    explicit RawNodePosition(const nsIFrame::ContentOffsets& aContentOffsets)
+        : RawRangeBoundary(aContentOffsets.content, aContentOffsets.offset) {}
+
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    ~RawNodePosition() { MOZ_DIAGNOSTIC_ASSERT(!mMutationGuard.Mutated(0)); }
+#endif  // #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
    public:
-    bool operator==(const NodePosition& aOther) const {
-      return RangeBoundary::operator==(aOther) &&
+    const RawNodePosition& operator=(const RawNodePosition& aOther) {
+      if (this != &aOther) {
+        RawRangeBoundary::operator=(aOther);
+        mAfterOpenTag = aOther.mAfterOpenTag;
+      }
+      return *this;
+    }
+
+    bool operator==(const RawNodePosition& aOther) const {
+      return RawRangeBoundary::operator==(aOther) &&
              mAfterOpenTag == aOther.mAfterOpenTag;
     }
 
@@ -209,19 +251,25 @@ class MOZ_STACK_CLASS ContentEventHandler {
     bool IsImmediatelyAfterOpenTag() const {
       return IsSet() && Container()->IsElement() && !Ref() && mAfterOpenTag;
     }
+
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+   private:
+    nsMutationGuard mMutationGuard;
+    JS::AutoAssertNoGC mAssertNoGC;
+#endif  // #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
   };
 
-  // NodePositionBefore isn't good name if Container() isn't an element node nor
-  // Offset() is not 0, though, when Container() is an element node and mOffset
-  // is 0, this is treated as before the open tag of Container().
-  struct NodePositionBefore final : public NodePosition {
-    NodePositionBefore(nsINode* aContainer, uint32_t aOffset)
-        : NodePosition(aContainer, aOffset) {
+  // RawNodePositionBefore isn't good name if Container() isn't an element node
+  // nor Offset() is not 0, though, when Container() is an element node and
+  // mOffset is 0, this is treated as before the open tag of Container().
+  struct MOZ_STACK_CLASS RawNodePositionBefore final : public RawNodePosition {
+    RawNodePositionBefore(nsINode* aContainer, uint32_t aOffset)
+        : RawNodePosition(aContainer, aOffset) {
       mAfterOpenTag = false;
     }
 
-    NodePositionBefore(nsINode* aContainer, nsIContent* aRef)
-        : NodePosition(aContainer, aRef) {
+    RawNodePositionBefore(nsINode* aContainer, nsIContent* aRef)
+        : RawNodePosition(aContainer, aRef) {
       mAfterOpenTag = false;
     }
   };
@@ -244,12 +292,11 @@ class MOZ_STACK_CLASS ContentEventHandler {
   //                            should be 0 and aEndPosition.mNode should be
   //                            same as aStartPosition.mNode and mOffset should
   //                            be number of the children of mNode.
-  static nsresult GetFlatTextLengthInRange(const NodePosition& aStartPosition,
-                                           const NodePosition& aEndPosition,
-                                           const Element* aRootElement,
-                                           uint32_t* aLength,
-                                           LineBreakType aLineBreakType,
-                                           bool aIsRemovingNode = false);
+  static nsresult GetFlatTextLengthInRange(
+      const RawNodePosition& aStartPosition,
+      const RawNodePosition& aEndPosition, const Element* aRootElement,
+      uint32_t* aLength, LineBreakType aLineBreakType,
+      bool aIsRemovingNode = false);
   // Computes the native text length between aStartOffset and aEndOffset of
   // aTextNode.
   static uint32_t GetNativeTextLength(const dom::Text& aTextNode,
@@ -280,13 +327,16 @@ class MOZ_STACK_CLASS ContentEventHandler {
   nsresult GenerateFlatTextContent(const Element* aElement, nsString& aString,
                                    LineBreakType aLineBreakType);
   // Get the contents of aRange as plain text.
-  nsresult GenerateFlatTextContent(const RawRange& aRawRange, nsString& aString,
-                                   LineBreakType aLineBreakType);
+  template <typename NodeType, typename RangeBoundaryType>
+  nsresult GenerateFlatTextContent(
+      const SimpleRangeBase<NodeType, RangeBoundaryType>& aSimpleRange,
+      nsString& aString, LineBreakType aLineBreakType);
   // Get offset of start of aRange.  Note that the result includes the length
   // of line breaker caused by the start of aContent because aRange never
   // includes the line breaker caused by its start node.
-  nsresult GetStartOffset(const RawRange& aRawRange, uint32_t* aOffset,
-                          LineBreakType aLineBreakType);
+  template <typename SimpleRangeType>
+  nsresult GetStartOffset(const SimpleRangeType& aSimpleRange,
+                          uint32_t* aOffset, LineBreakType aLineBreakType);
   // Check if we should insert a line break before aContent.
   // This should return false only when aContent is an html element which
   // is typically used in a paragraph like <em>.
@@ -302,18 +352,73 @@ class MOZ_STACK_CLASS ContentEventHandler {
   // QueryContentRect() sets the rect of aContent's frame(s) to aEvent.
   nsresult QueryContentRect(nsIContent* aContent,
                             WidgetQueryContentEvent* aEvent);
-  // Initialize aRawRange from the offset of FlatText and the text length.
-  // If aExpandToClusterBoundaries is true, the start offset and the end one are
-  // expanded to nearest cluster boundaries.
-  nsresult SetRawRangeFromFlatTextOffset(RawRange* aRawRange, uint32_t aOffset,
-                                         uint32_t aLength,
-                                         LineBreakType aLineBreakType,
-                                         bool aExpandToClusterBoundaries,
-                                         uint32_t* aNewOffset = nullptr,
-                                         dom::Text** aLastTextNode = nullptr);
-  // If the aCollapsedRawRange isn't in text node but next to a text node,
+
+  template <typename RangeType, typename TextNodeType>
+  struct MOZ_STACK_CLASS DOMRangeAndAdjustedOffsetInFlattenedTextBase {
+    bool RangeStartsFromLastTextNode() const {
+      return mLastTextNode && mRange.GetStartContainer() == mLastTextNode;
+    }
+    bool RangeStartsFromEndOfContainer() const {
+      return mRange.GetStartContainer() &&
+             mRange.GetStartContainer()->Length() == mRange.StartOffset();
+    }
+    bool RangeStartsFromContent() const {
+      return mRange.GetStartContainer() &&
+             mRange.GetStartContainer()->IsContent();
+    }
+
+    // The range in the DOM tree.
+    RangeType mRange;
+    // Actual start offset of the range in the flattened text.  If aOffset
+    // of ConvertFlatTextOffsetToDOMRange() is middle of a surrogate pair,
+    // a CRLF or a complex character of some languages, this may be set to
+    // different offset.
+    uint32_t mAdjustedOffset = 0;
+    // The last text node which is found while walking the tree.
+    // If the range ends in a text node, this is the text node.  Otherwise,
+    // the last found text node before the end container of mRange.
+    TextNodeType mLastTextNode = nullptr;
+  };
+  using DOMRangeAndAdjustedOffsetInFlattenedText =
+      DOMRangeAndAdjustedOffsetInFlattenedTextBase<SimpleRange,
+                                                   RefPtr<dom::Text>>;
+  using UnsafeDOMRangeAndAdjustedOffsetInFlattenedText =
+      DOMRangeAndAdjustedOffsetInFlattenedTextBase<UnsafeSimpleRange,
+                                                   dom::Text*>;
+
+  /**
+   * Scans the DOM tree and set mRange as same as from aOffset to aOffset +
+   * aLength in the flattened text.
+   * NOTE: Use ConvertFlatTextOffsetToDOMRange() or
+   * ConvertFlatTextOffsetToUnsafeDOMRange() instead of
+   * ConvertFlatTextOffsetToDOMRangeBase<RangeType, TextNodeType>().
+   */
+  template <typename RangeType, typename TextNodeType>
+  Result<DOMRangeAndAdjustedOffsetInFlattenedTextBase<RangeType, TextNodeType>,
+         nsresult>
+  ConvertFlatTextOffsetToDOMRangeBase(uint32_t aOffset, uint32_t aLength,
+                                      LineBreakType aLineBreakType,
+                                      bool aExpandToClusterBoundaries);
+  MOZ_ALWAYS_INLINE Result<DOMRangeAndAdjustedOffsetInFlattenedText, nsresult>
+  ConvertFlatTextOffsetToDOMRange(uint32_t aOffset, uint32_t aLength,
+                                  LineBreakType aLineBreakType,
+                                  bool aExpandToClusterBoundaries) {
+    return ConvertFlatTextOffsetToDOMRangeBase<SimpleRange, RefPtr<dom::Text>>(
+        aOffset, aLength, aLineBreakType, aExpandToClusterBoundaries);
+  }
+  MOZ_ALWAYS_INLINE
+  Result<UnsafeDOMRangeAndAdjustedOffsetInFlattenedText, nsresult>
+  ConvertFlatTextOffsetToUnsafeDOMRange(uint32_t aOffset, uint32_t aLength,
+                                        LineBreakType aLineBreakType,
+                                        bool aExpandToClusterBoundaries) {
+    return ConvertFlatTextOffsetToDOMRangeBase<UnsafeSimpleRange, dom::Text*>(
+        aOffset, aLength, aLineBreakType, aExpandToClusterBoundaries);
+  }
+
+  // If the aSimpleRange isn't in text node but next to a text node,
   // this method modifies it in the text node.  Otherwise, not modified.
-  nsresult AdjustCollapsedRangeMaybeIntoTextNode(RawRange& aCollapsedRawRange);
+  // Note that aSimpleRange must be collapsed.
+  nsresult AdjustCollapsedRangeMaybeIntoTextNode(SimpleRange& aSimpleRange);
   // Convert the frame relative offset to be relative to the root frame of the
   // root presContext (but still measured in appUnits of aFrame's presContext).
   nsresult ConvertToRootRelativeOffset(nsIFrame* aFrame, nsRect& aRect);
@@ -329,11 +434,11 @@ class MOZ_STACK_CLASS ContentEventHandler {
                                const dom::Text& aTextNode, uint32_t aBaseOffset,
                                uint32_t aXPStartOffset, uint32_t aXPEndOffset,
                                LineBreakType aLineBreakType);
-  nsresult GenerateFlatFontRanges(const RawRange& aRawRange,
+  nsresult GenerateFlatFontRanges(const UnsafeSimpleRange& aSimpleRange,
                                   FontRangeArray& aFontRanges,
                                   uint32_t& aLength,
                                   LineBreakType aLineBreakType);
-  nsresult QueryTextRectByRange(const RawRange& aRawRange,
+  nsresult QueryTextRectByRange(const SimpleRange& aSimpleRange,
                                 LayoutDeviceIntRect& aRect,
                                 WritingMode& aWritingMode);
 
@@ -362,13 +467,17 @@ class MOZ_STACK_CLASS ContentEventHandler {
   // This returns invalid FrameAndNodeOffset if there is no content which
   // should affect to computing text rect in the range.  mOffsetInNode is start
   // offset in the frame.
-  FrameAndNodeOffset GetFirstFrameInRangeForTextRect(const RawRange& aRawRange);
+  template <typename NodeType, typename RangeBoundaryType>
+  FrameAndNodeOffset GetFirstFrameInRangeForTextRect(
+      const SimpleRangeBase<NodeType, RangeBoundaryType>& aSimpleRange);
 
   // Get last frame before the end of the given range for computing text rect.
   // This returns invalid FrameAndNodeOffset if there is no content which
   // should affect to computing text rect in the range.  mOffsetInNode is end
   // offset in the frame.
-  FrameAndNodeOffset GetLastFrameInRangeForTextRect(const RawRange& aRawRange);
+  template <typename NodeType, typename RangeBoundaryType>
+  FrameAndNodeOffset GetLastFrameInRangeForTextRect(
+      const SimpleRangeBase<NodeType, RangeBoundaryType>& aSimpleRange);
 
   struct MOZ_STACK_CLASS FrameRelativeRect final {
     // mRect is relative to the mBaseFrame's position.

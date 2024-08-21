@@ -16,6 +16,7 @@
 #include "nsIRequest.h"
 #include "nsITransportSecurityInfo.h"
 #include "nsIURI.h"
+#include "nsIWebProgressListener.h"
 #include "nsPrintfCString.h"
 #include "secerr.h"
 #include "sslerr.h"
@@ -234,6 +235,8 @@ void nsHTTPSOnlyStreamListener::RecordUpgradeTelemetry(nsIRequest* request,
       case ExtContentPolicy::TYPE_BEACON:
       case ExtContentPolicy::TYPE_SAVEAS_DOWNLOAD:
       case ExtContentPolicy::TYPE_SPECULATIVE:
+      case ExtContentPolicy::TYPE_WEB_TRANSPORT:
+      case ExtContentPolicy::TYPE_WEB_IDENTITY:
         break;
         // Do not add default: so that compilers can catch the missing case.
     }

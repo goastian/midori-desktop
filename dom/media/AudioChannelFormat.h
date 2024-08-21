@@ -120,18 +120,18 @@ static const DownMixMatrix gDownMixMatrices[CUSTOM_CHANNEL_LAYOUTS *
  * the results to the channel buffers in aOutputChannels.  Don't call this with
  * input count <= output count.
  */
-template <typename T>
-void AudioChannelsDownMix(const nsTArray<const T*>& aChannelArray,
-                          T** aOutputChannels, uint32_t aOutputChannelCount,
+template <typename SrcT, typename DstT>
+void AudioChannelsDownMix(Span<const SrcT* const> aInputChannels,
+                          Span<DstT* const> aOutputChannels,
                           uint32_t aDuration) {
-  uint32_t inputChannelCount = aChannelArray.Length();
-  const T* const* inputChannels = aChannelArray.Elements();
-  NS_ASSERTION(inputChannelCount > aOutputChannelCount, "Nothing to do");
+  uint32_t inputChannelCount = aInputChannels.Length();
+  uint32_t outputChannelCount = aOutputChannels.Length();
+  NS_ASSERTION(inputChannelCount > outputChannelCount, "Nothing to do");
 
   if (inputChannelCount > 6) {
     // Just drop the unknown channels.
-    for (uint32_t o = 0; o < aOutputChannelCount; ++o) {
-      PodCopy(aOutputChannels[o], inputChannels[o], aDuration);
+    for (uint32_t o = 0; o < outputChannelCount; ++o) {
+      ConvertAudioSamples(aInputChannels[o], aOutputChannels[o], aDuration);
     }
     return;
   }
@@ -140,29 +140,29 @@ void AudioChannelsDownMix(const nsTArray<const T*>& aChannelArray,
   inputChannelCount = std::min<uint32_t>(6, inputChannelCount);
 
   const DownMixMatrix& m =
-      gDownMixMatrices[gMixingMatrixIndexByChannels[aOutputChannelCount - 1] +
-                       inputChannelCount - aOutputChannelCount - 1];
+      gDownMixMatrices[gMixingMatrixIndexByChannels[outputChannelCount - 1] +
+                       inputChannelCount - outputChannelCount - 1];
 
   // This is slow, but general. We can define custom code for special
   // cases later.
-  for (uint32_t s = 0; s < aDuration; ++s) {
-    // Reserve an extra junk channel at the end for the cases where we
-    // want an input channel to contribute to nothing
-    T outputChannels[CUSTOM_CHANNEL_LAYOUTS + 1] = {0};
-    for (uint32_t c = 0; c < inputChannelCount; ++c) {
-      outputChannels[m.mInputDestination[c]] +=
-          m.mInputCoefficient[c] * (static_cast<const T*>(inputChannels[c]))[s];
+  for (DstT* outChannel : aOutputChannels) {
+    std::fill_n(outChannel, aDuration, static_cast<DstT>(0));
+  }
+  for (uint32_t c = 0; c < inputChannelCount; ++c) {
+    uint32_t dstIndex = m.mInputDestination[c];
+    if (dstIndex == IGNORE) {
+      continue;
     }
-    // Utilize the fact that in every layout, C is the third channel.
-    if (m.mCExtraDestination != IGNORE) {
-      outputChannels[m.mCExtraDestination] +=
-          m.mInputCoefficient[SURROUND_C] *
-          (static_cast<const T*>(inputChannels[SURROUND_C]))[s];
-    }
-
-    for (uint32_t c = 0; c < aOutputChannelCount; ++c) {
-      aOutputChannels[c][s] = outputChannels[c];
-    }
+    AddAudioSamplesWithScale(aInputChannels[c], aOutputChannels[dstIndex],
+                             aDuration, m.mInputCoefficient[c]);
+  }
+  // Utilize the fact that in every layout, C is the only channel that may
+  // contribute to more than one output channel.
+  uint32_t dstIndex = m.mCExtraDestination;
+  if (dstIndex != IGNORE) {
+    AddAudioSamplesWithScale(aInputChannels[SURROUND_C],
+                             aOutputChannels[dstIndex], aDuration,
+                             m.mInputCoefficient[SURROUND_C]);
   }
 }
 

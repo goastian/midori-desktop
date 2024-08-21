@@ -12,6 +12,7 @@
 #include "js/Value.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/StaticString.h"
 #include "nsISupports.h"
 
 namespace mozilla::dom {
@@ -35,30 +36,42 @@ class PromiseNativeHandler : public nsISupports {
                                 ErrorResult& aRv) = 0;
 };
 
-// This class is used to set C++ callbacks once a dom Promise a resolved or
-// rejected.
-class DomPromiseListener final : public PromiseNativeHandler {
+// This base class exists solely to use NS_IMPL_ISUPPORTS because it doesn't
+// support template classes.
+class MozPromiseRejectOnDestructionBase : public PromiseNativeHandler {
   NS_DECL_ISUPPORTS
 
- public:
-  using CallbackTypeResolved =
-      std::function<void(JSContext*, JS::Handle<JS::Value>)>;
-  using CallbackTypeRejected = std::function<void(nsresult)>;
-
-  DomPromiseListener(CallbackTypeResolved&& aResolve,
-                     CallbackTypeRejected&& aReject);
-
-  void Clear();
-
   void ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue,
-                        ErrorResult& aRv) override;
+                        ErrorResult& aRv) override {}
   void RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue,
-                        ErrorResult& aRv) override;
+                        ErrorResult& aRv) override {}
 
- private:
-  ~DomPromiseListener();
-  CallbackTypeResolved mResolve;
-  CallbackTypeRejected mReject;
+ protected:
+  ~MozPromiseRejectOnDestructionBase() override = default;
+};
+
+// Use this when you subscribe to a JS promise to settle a MozPromise that is
+// not guaranteed to be settled by anyone else.
+template <typename T>
+class MozPromiseRejectOnDestruction final
+    : public MozPromiseRejectOnDestructionBase {
+ public:
+  // (Accepting RefPtr<T> instead of T* because compiler fails to implicitly
+  // convert it at call sites)
+  MozPromiseRejectOnDestruction(const RefPtr<T>& aMozPromise,
+                                StaticString aCallSite)
+      : mMozPromise(aMozPromise), mCallSite(aCallSite) {
+    MOZ_ASSERT(aMozPromise);
+  }
+
+ protected:
+  ~MozPromiseRejectOnDestruction() override {
+    // Rejecting will be no-op if the promise is already settled
+    mMozPromise->Reject(NS_BINDING_ABORTED, mCallSite);
+  }
+
+  RefPtr<T> mMozPromise;
+  StaticString mCallSite;
 };
 
 }  // namespace mozilla::dom

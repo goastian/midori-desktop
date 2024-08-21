@@ -23,18 +23,16 @@ class WMFCDMProxyCallback;
 /**
  * WMFCDMImpl is a helper class for MFCDM protocol clients. It creates, manages,
  * and calls MFCDMChild object in the content process on behalf of the client,
- * and performs conversion between EME and MFCDM types and constants.
+ * and performs conversion between EME and MFCDM types and constants. This class
+ * can be used in two ways (1) call Supports/GetCapabilities to know the
+ * information about given key system or config (2) do session-related
+ * operations. In this case, Init() MUST be called first.
  */
 class WMFCDMImpl final {
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(WMFCDMImpl);
 
-  explicit WMFCDMImpl(const nsAString& aKeySystem)
-      : mCDM(MakeRefPtr<MFCDMChild>(aKeySystem)) {}
-
-  static bool Supports(const nsAString& aKeySystem);
-  // TODO: make this async?
-  bool GetCapabilities(KeySystemConfig& aConfig);
+  explicit WMFCDMImpl(const nsAString& aKeySystem) : mKeySystem(aKeySystem) {}
 
   using InitPromise = GenericPromise;
   struct InitParams {
@@ -42,15 +40,18 @@ class WMFCDMImpl final {
     CopyableTArray<nsString> mInitDataTypes;
     bool mPersistentStateRequired;
     bool mDistinctiveIdentifierRequired;
-    bool mHWSecure;
     WMFCDMProxyCallback* mProxyCallback;
+    CopyableTArray<MFCDMMediaCapability> mAudioCapabilities;
+    CopyableTArray<MFCDMMediaCapability> mVideoCapabilities;
   };
 
   RefPtr<InitPromise> Init(const InitParams& aParams);
 
+  // Following functions MUST be called after calling Init().
   RefPtr<MFCDMChild::SessionPromise> CreateSession(
       uint32_t aPromiseId, const KeySystemConfig::SessionType aSessionType,
       const nsAString& aInitDataType, const nsTArray<uint8_t>& aInitData) {
+    MOZ_DIAGNOSTIC_ASSERT(mCDM);
     return mCDM->CreateSessionAndGenerateRequest(aPromiseId, aSessionType,
                                                  aInitDataType, aInitData);
   }
@@ -58,28 +59,46 @@ class WMFCDMImpl final {
   RefPtr<GenericPromise> LoadSession(
       uint32_t aPromiseId, const KeySystemConfig::SessionType aSessionType,
       const nsAString& aSessionId) {
+    MOZ_DIAGNOSTIC_ASSERT(mCDM);
     return mCDM->LoadSession(aPromiseId, aSessionType, aSessionId);
   }
 
   RefPtr<GenericPromise> UpdateSession(uint32_t aPromiseId,
                                        const nsAString& aSessionId,
                                        nsTArray<uint8_t>& aResponse) {
+    MOZ_DIAGNOSTIC_ASSERT(mCDM);
     return mCDM->UpdateSession(aPromiseId, aSessionId, aResponse);
   }
 
   RefPtr<GenericPromise> CloseSession(uint32_t aPromiseId,
                                       const nsAString& aSessionId) {
+    MOZ_DIAGNOSTIC_ASSERT(mCDM);
     return mCDM->CloseSession(aPromiseId, aSessionId);
   }
 
   RefPtr<GenericPromise> RemoveSession(uint32_t aPromiseId,
                                        const nsAString& aSessionId) {
+    MOZ_DIAGNOSTIC_ASSERT(mCDM);
     return mCDM->RemoveSession(aPromiseId, aSessionId);
   }
 
+  RefPtr<GenericPromise> SetServerCertificate(uint32_t aPromiseId,
+                                              nsTArray<uint8_t>& aCert) {
+    MOZ_DIAGNOSTIC_ASSERT(mCDM);
+    return mCDM->SetServerCertificate(aPromiseId, aCert);
+  }
+
+  RefPtr<GenericPromise> GetStatusForPolicy(
+      uint32_t aPromiseId, const dom::HDCPVersion& aMinHdcpVersion) {
+    MOZ_DIAGNOSTIC_ASSERT(mCDM);
+    return mCDM->GetStatusForPolicy(aPromiseId, aMinHdcpVersion);
+  }
+
   uint64_t Id() {
-    MOZ_ASSERT(mCDM->Id() != 0,
-               "Should be called only after Init() is resolved");
+    MOZ_DIAGNOSTIC_ASSERT(mCDM,
+                          "Should be called only after Init() is resolved");
+    MOZ_DIAGNOSTIC_ASSERT(mCDM->Id() != 0,
+                          "Should be called only after Init() is resolved");
     return mCDM->Id();
   }
 
@@ -90,9 +109,30 @@ class WMFCDMImpl final {
     }
   };
 
-  const RefPtr<MFCDMChild> mCDM;
+  const nsString mKeySystem;
+  RefPtr<MFCDMChild> mCDM;
 
   MozPromiseHolder<InitPromise> mInitPromiseHolder;
+};
+
+// A helper class to get multiple capabilities from different key systems.
+class WMFCDMCapabilites final {
+ public:
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(WMFCDMCapabilites);
+  WMFCDMCapabilites() = default;
+
+  using SupportedConfigsPromise = KeySystemConfig::SupportedConfigsPromise;
+  RefPtr<SupportedConfigsPromise> GetCapabilities(
+      const nsTArray<KeySystemConfigRequest>& aRequests);
+
+ private:
+  ~WMFCDMCapabilites();
+
+  nsTArray<RefPtr<MFCDMChild>> mCDMs;
+  MozPromiseHolder<SupportedConfigsPromise> mCapabilitiesPromiseHolder;
+  MozPromiseRequestHolder<
+      MFCDMChild::CapabilitiesPromise::AllSettledPromiseType>
+      mCapabilitiesPromisesRequest;
 };
 
 }  // namespace mozilla

@@ -9,7 +9,17 @@ with Files("**"):
 
 IPDL_SOURCES += ["PWebAuthnTransaction.ipdl"]
 
-XPIDL_SOURCES += ["nsIU2FTokenManager.idl", "nsIWebAuthnController.idl"]
+XPCOM_MANIFESTS += [
+    "components.conf",
+]
+
+XPIDL_SOURCES += [
+    "nsIWebAuthnArgs.idl",
+    "nsIWebAuthnAttObj.idl",
+    "nsIWebAuthnPromise.idl",
+    "nsIWebAuthnResult.idl",
+    "nsIWebAuthnService.idl",
+]
 
 XPIDL_MODULE = "dom_webauthn"
 
@@ -18,12 +28,9 @@ EXPORTS.mozilla.dom += [
     "AuthenticatorAttestationResponse.h",
     "AuthenticatorResponse.h",
     "PublicKeyCredential.h",
-    "U2FTokenManager.h",
-    "U2FTokenTransport.h",
-    "WebAuthnCBORUtil.h",
-    "WebAuthnController.h",
     "WebAuthnManager.h",
     "WebAuthnManagerBase.h",
+    "WebAuthnPromiseHolder.h",
     "WebAuthnTransactionChild.h",
     "WebAuthnTransactionParent.h",
     "WebAuthnUtil.h",
@@ -34,18 +41,14 @@ UNIFIED_SOURCES += [
     "AuthenticatorAssertionResponse.cpp",
     "AuthenticatorAttestationResponse.cpp",
     "AuthenticatorResponse.cpp",
-    "AuthrsTransport.cpp",
-    "cbor-cpp/src/encoder.cpp",
-    "cbor-cpp/src/output_dynamic.cpp",
-    "CtapArgs.cpp",
-    "CtapResults.cpp",
     "PublicKeyCredential.cpp",
-    "U2FSoftTokenTransport.cpp",
-    "U2FTokenManager.cpp",
-    "WebAuthnCBORUtil.cpp",
-    "WebAuthnController.cpp",
+    "WebAuthnArgs.cpp",
+    "WebAuthnAutoFillEntry.cpp",
     "WebAuthnManager.cpp",
     "WebAuthnManagerBase.cpp",
+    "WebAuthnPromiseHolder.cpp",
+    "WebAuthnResult.cpp",
+    "WebAuthnService.cpp",
     "WebAuthnTransactionChild.cpp",
     "WebAuthnTransactionParent.cpp",
     "WebAuthnUtil.cpp",
@@ -60,19 +63,19 @@ LOCAL_INCLUDES += [
     "/dom/crypto",
     "/security/manager/ssl",
     "/third_party/rust",
-    "/toolkit/components/jsoncpp/include",
-]
-
-USE_LIBS += [
-    "jsoncpp",
 ]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
-    EXPORTS.mozilla.dom += [
-        "AndroidWebAuthnTokenManager.h",
-    ]
     UNIFIED_SOURCES += [
-        "AndroidWebAuthnTokenManager.cpp",
+        "AndroidWebAuthnService.cpp",
+    ]
+
+if CONFIG["TARGET_OS"] == "OSX":
+    UNIFIED_SOURCES += [
+        "MacOSWebAuthnService.mm",
+    ]
+    OS_LIBS += [
+        "-framework AuthenticationServices",
     ]
 
 if CONFIG["OS_ARCH"] == "WINNT":
@@ -82,13 +85,13 @@ if CONFIG["OS_ARCH"] == "WINNT":
 
 if CONFIG["OS_TARGET"] == "WINNT":
     EXPORTS.mozilla.dom += [
-        "WinWebAuthnManager.h",
+        "WinWebAuthnService.h",
     ]
     UNIFIED_SOURCES += [
-        "WinWebAuthnManager.cpp",
+        "WinWebAuthnService.cpp",
     ]
 
-MOCHITEST_MANIFESTS += ["tests/mochitest.ini"]
+MOCHITEST_MANIFESTS += ["tests/mochitest.toml"]
 BROWSER_CHROME_MANIFESTS += [
-    "tests/browser/browser.ini",
+    "tests/browser/browser.toml",
 ]

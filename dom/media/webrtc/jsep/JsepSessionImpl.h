@@ -88,7 +88,7 @@ class JsepSessionImpl : public JsepSession, public JsepSessionCopyableStuff {
   }
 
   virtual nsresult AddDtlsFingerprint(
-      const std::string& algorithm, const std::vector<uint8_t>& value) override;
+      const nsACString& algorithm, const std::vector<uint8_t>& value) override;
 
   virtual nsresult AddRtpExtension(
       JsepMediaType mediaType, const std::string& extensionName,
@@ -257,8 +257,6 @@ class JsepSessionImpl : public JsepSession, public JsepSessionCopyableStuff {
                              JsepTransport* transport) const;
 
   nsresult GetNegotiatedBundledMids(SdpHelper::BundledMids* bundledMids);
-
-  nsresult EnableOfferMsection(SdpMediaSection* msection);
 
   mozilla::Sdp* GetParsedLocalDescription(
       JsepDescriptionPendingOrCurrent type) const;

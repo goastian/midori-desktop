@@ -18,24 +18,6 @@ struct StorageNameResponse
   nsString name;
 };
 
-struct StorageInitializedResponse
-{
-  bool initialized;
-};
-
-struct TemporaryStorageInitializedResponse
-{
-  bool initialized;
-};
-
-struct InitResponse
-{
-};
-
-struct InitTemporaryStorageResponse
-{
-};
-
 struct InitializePersistentOriginResponse
 {
   bool created;
@@ -51,27 +33,7 @@ struct GetFullOriginMetadataResponse
   FullOriginMetadata? maybeFullOriginMetadata;
 };
 
-struct ClearOriginResponse
-{
-};
-
 struct ResetOriginResponse
-{
-};
-
-struct ClearDataResponse
-{
-};
-
-struct ClearPrivateBrowsingResponse
-{
-};
-
-struct ClearAllResponse
-{
-};
-
-struct ResetAllResponse
 {
 };
 
@@ -99,19 +61,10 @@ union RequestResponse
 {
   nsresult;
   StorageNameResponse;
-  StorageInitializedResponse;
-  TemporaryStorageInitializedResponse;
-  InitResponse;
-  InitTemporaryStorageResponse;
   InitializePersistentOriginResponse;
   InitializeTemporaryOriginResponse;
   GetFullOriginMetadataResponse;
-  ClearOriginResponse;
   ResetOriginResponse;
-  ClearDataResponse;
-  ClearPrivateBrowsingResponse;
-  ClearAllResponse;
-  ResetAllResponse;
   PersistedResponse;
   PersistResponse;
   EstimateResponse;

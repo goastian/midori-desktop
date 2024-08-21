@@ -59,11 +59,12 @@ struct CacheRequest
   nsCString urlFragment;
   HeadersEntry[] headers;
   HeadersGuardEnum headersGuard;
-  nsString referrer;
+  nsCString referrer;
   ReferrerPolicy referrerPolicy;
   RequestMode mode;
   RequestCredentials credentials;
   CacheReadStream? body;
+  int64_t bodyDiskSize;
   nsContentPolicyType contentPolicyType;
   RequestCache requestCache;
   RequestRedirect requestRedirect;
@@ -81,6 +82,7 @@ struct CacheResponse
   HeadersEntry[] headers;
   HeadersGuardEnum headersGuard;
   CacheReadStream? body;
+  int64_t bodyDiskSize;
   nullable nsITransportSecurityInfo securityInfo;
   PrincipalInfo? principalInfo;
   uint32_t paddingInfo;

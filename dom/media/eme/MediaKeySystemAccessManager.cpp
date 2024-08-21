@@ -9,6 +9,7 @@
 #include "VideoUtils.h"
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/KeySystemNames.h"
 #include "mozilla/DetailedPromise.h"
 #include "mozilla/EMEUtils.h"
 #include "mozilla/Preferences.h"
@@ -17,9 +18,6 @@
 #include "mozilla/Unused.h"
 #ifdef XP_WIN
 #  include "mozilla/WindowsVersion.h"
-#endif
-#ifdef XP_MACOSX
-#  include "nsCocoaFeatures.h"
 #endif
 #include "nsComponentManagerUtils.h"
 #include "nsContentUtils.h"
@@ -34,7 +32,7 @@ namespace mozilla::dom {
 MediaKeySystemAccessManager::PendingRequest::PendingRequest(
     DetailedPromise* aPromise, const nsAString& aKeySystem,
     const Sequence<MediaKeySystemConfiguration>& aConfigs)
-    : mPromise(aPromise), mKeySystem(aKeySystem), mConfigs(aConfigs) {
+    : MediaKeySystemAccessRequest(aKeySystem, aConfigs), mPromise(aPromise) {
   MOZ_COUNT_CTOR(MediaKeySystemAccessManager::PendingRequest);
 }
 
@@ -370,21 +368,20 @@ void MediaKeySystemAccessManager::RequestMediaKeySystemAccess(
   // 5. Let promise be a new promise.
   // 6. Run the following steps in parallel:
 
-  DecoderDoctorDiagnostics diagnostics;
-
   //   1. If keySystem is not one of the Key Systems supported by the user
   //   agent, reject promise with a NotSupportedError. String comparison is
   //   case-sensitive.
   if (!IsWidevineKeySystem(aRequest->mKeySystem) &&
 #ifdef MOZ_WMF_CDM
       !IsPlayReadyKeySystemAndSupported(aRequest->mKeySystem) &&
+      !IsWidevineExperimentKeySystemAndSupported(aRequest->mKeySystem) &&
 #endif
       !IsClearkeyKeySystem(aRequest->mKeySystem)) {
     // Not to inform user, because nothing to do if the keySystem is not
     // supported.
     aRequest->RejectPromiseWithNotSupportedError(
         "Key system is unsupported"_ns);
-    diagnostics.StoreMediaKeySystemAccess(
+    aRequest->mDiagnostics.StoreMediaKeySystemAccess(
         mWindow->GetExtantDoc(), aRequest->mKeySystem, false, __func__);
     return;
   }
@@ -400,26 +397,30 @@ void MediaKeySystemAccessManager::RequestMediaKeySystemAccess(
                                             MediaKeySystemStatus::Api_disabled);
     }
     aRequest->RejectPromiseWithNotSupportedError("EME has been preffed off"_ns);
-    diagnostics.StoreMediaKeySystemAccess(
+    aRequest->mDiagnostics.StoreMediaKeySystemAccess(
         mWindow->GetExtantDoc(), aRequest->mKeySystem, false, __func__);
     return;
   }
 
   nsAutoCString message;
   MediaKeySystemStatus status =
-      MediaKeySystemAccess::GetKeySystemStatus(aRequest->mKeySystem, message);
+      MediaKeySystemAccess::GetKeySystemStatus(*aRequest, message);
 
   nsPrintfCString msg(
       "MediaKeySystemAccess::GetKeySystemStatus(%s) "
       "result=%s msg='%s'",
       NS_ConvertUTF16toUTF8(aRequest->mKeySystem).get(),
-      nsCString(MediaKeySystemStatusValues::GetString(status)).get(),
-      message.get());
+      GetEnumString(status).get(), message.get());
   LogToBrowserConsole(NS_ConvertUTF8toUTF16(msg));
+  EME_LOG("%s", msg.get());
 
-  // We may need to install the CDM to continue.
+  // We may need to install Widevine CDM to continue.
   if (status == MediaKeySystemStatus::Cdm_not_installed &&
-      IsWidevineKeySystem(aRequest->mKeySystem)) {
+      (IsWidevineKeySystem(aRequest->mKeySystem)
+#ifdef MOZ_WMF_CDM
+       || IsWidevineExperimentKeySystemAndSupported(aRequest->mKeySystem)
+#endif
+           )) {
     // These are cases which could be resolved by downloading a new(er) CDM.
     // When we send the status to chrome, chrome's GMPProvider will attempt to
     // download or update the CDM. In AwaitInstall() we add listeners to wait
@@ -436,18 +437,31 @@ void MediaKeySystemAccessManager::RequestMediaKeySystemAccess(
       // "I can't play, updating" notification.
       aRequest->RejectPromiseWithNotSupportedError(
           "Timed out while waiting for a CDM update"_ns);
-      diagnostics.StoreMediaKeySystemAccess(
+      aRequest->mDiagnostics.StoreMediaKeySystemAccess(
           mWindow->GetExtantDoc(), aRequest->mKeySystem, false, __func__);
       return;
     }
 
-    const nsString keySystem = aRequest->mKeySystem;
+    nsString keySystem = aRequest->mKeySystem;
+#ifdef MOZ_WMF_CDM
+    // If cdm-not-install is for HWDRM, that means we want to install Widevine
+    // L1, which requires using hardware key system name for GMP to look up the
+    // plugin.
+    if (CheckIfHarewareDRMConfigExists(aRequest->mConfigs)) {
+      keySystem = NS_ConvertUTF8toUTF16(kWidevineExperimentKeySystemName);
+    }
+#endif
+    auto& diagnostics = aRequest->mDiagnostics;
     if (AwaitInstall(std::move(aRequest))) {
       // Notify chrome that we're going to wait for the CDM to download/update.
+      EME_LOG("Await %s for installation",
+              NS_ConvertUTF16toUTF8(keySystem).get());
       MediaKeySystemAccess::NotifyObservers(mWindow, keySystem, status);
     } else {
       // Failed to await the install. Log failure and give up trying to service
       // this request.
+      EME_LOG("Failed to await %s for installation",
+              NS_ConvertUTF16toUTF8(keySystem).get());
       diagnostics.StoreMediaKeySystemAccess(mWindow->GetExtantDoc(), keySystem,
                                             false, __func__);
     }
@@ -457,30 +471,13 @@ void MediaKeySystemAccessManager::RequestMediaKeySystemAccess(
     // Failed due to user disabling something, send a notification to
     // chrome, so we can show some UI to explain how the user can rectify
     // the situation.
+    EME_LOG("Notify CDM failure for %s and reject the promise",
+            NS_ConvertUTF16toUTF8(aRequest->mKeySystem).get());
     MediaKeySystemAccess::NotifyObservers(mWindow, aRequest->mKeySystem,
                                           status);
     aRequest->RejectPromiseWithNotSupportedError(message);
     return;
   }
-
-  nsCOMPtr<Document> doc = mWindow->GetExtantDoc();
-  nsTHashMap<nsCharPtrHashKey, bool> warnings;
-  std::function<void(const char*)> deprecationWarningLogFn =
-      [&](const char* aMsgName) {
-        EME_LOG(
-            "MediaKeySystemAccessManager::DeprecationWarningLambda Logging "
-            "deprecation warning '%s' to WebConsole.",
-            aMsgName);
-        warnings.InsertOrUpdate(aMsgName, true);
-        AutoTArray<nsString, 1> params;
-        nsString& uri = *params.AppendElement();
-        if (doc) {
-          Unused << doc->GetDocumentURI(uri);
-        }
-        nsContentUtils::ReportToConsole(nsIScriptError::warningFlag, "Media"_ns,
-                                        doc, nsContentUtils::eDOM_PROPERTIES,
-                                        aMsgName, params);
-      };
 
   bool isPrivateBrowsing =
       mWindow->GetExtantDoc() &&
@@ -500,23 +497,28 @@ void MediaKeySystemAccessManager::RequestMediaKeySystemAccess(
   //         3. Let the cdm implementation value be implementation.
   //      2. Resolve promise with access and abort the parallel steps of this
   //      algorithm.
-  MediaKeySystemConfiguration config;
-  if (MediaKeySystemAccess::GetSupportedConfig(
-          aRequest->mKeySystem, aRequest->mConfigs, config, &diagnostics,
-          isPrivateBrowsing, deprecationWarningLogFn)) {
-    aRequest->mSupportedConfig = Some(config);
-    // The app gets the final say on if we provide access or not.
-    CheckDoesAppAllowProtectedMedia(std::move(aRequest));
-    return;
-  }
-  // 4. Reject promise with a NotSupportedError.
-
-  // Not to inform user, because nothing to do if the corresponding keySystem
-  // configuration is not supported.
-  aRequest->RejectPromiseWithNotSupportedError(
-      "Key system configuration is not supported"_ns);
-  diagnostics.StoreMediaKeySystemAccess(mWindow->GetExtantDoc(),
-                                        aRequest->mKeySystem, false, __func__);
+  MediaKeySystemAccess::GetSupportedConfig(aRequest.get(), isPrivateBrowsing,
+                                           mWindow->GetExtantDoc())
+      ->Then(GetMainThreadSerialEventTarget(), __func__,
+             [self = RefPtr<MediaKeySystemAccessManager>{this}, this,
+              request = UniquePtr<PendingRequest>{std::move(aRequest)}](
+                 const KeySystemConfig::KeySystemConfigPromise::
+                     ResolveOrRejectValue& aResult) mutable {
+               if (aResult.IsResolve()) {
+                 request->mSupportedConfig = Some(aResult.ResolveValue());
+                 // The app gets the final say on if we provide access or not.
+                 CheckDoesAppAllowProtectedMedia(std::move(request));
+               } else {
+                 // 4. Reject promise with a NotSupportedError.
+                 // Not to inform user, because nothing to do if the
+                 // corresponding keySystem configuration is not supported.
+                 request->RejectPromiseWithNotSupportedError(
+                     "Key system configuration is not supported"_ns);
+                 request->mDiagnostics.StoreMediaKeySystemAccess(
+                     mWindow->GetExtantDoc(), request->mKeySystem, false,
+                     __func__);
+               }
+             });
 }
 
 void MediaKeySystemAccessManager::ProvideAccess(
@@ -599,7 +601,7 @@ nsresult MediaKeySystemAccessManager::Observe(nsISupports* aSubject,
     for (size_t i = mPendingInstallRequests.Length(); i-- > 0;) {
       nsAutoCString message;
       MediaKeySystemStatus status = MediaKeySystemAccess::GetKeySystemStatus(
-          mPendingInstallRequests[i]->mKeySystem, message);
+          *mPendingInstallRequests[i], message);
       if (status == MediaKeySystemStatus::Cdm_not_installed) {
         // Not yet installed, don't retry. Keep waiting until timeout.
         continue;

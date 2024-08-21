@@ -34,6 +34,7 @@
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ProfilerLabels.h"
+#include "mozilla/ProfilerMarkers.h"
 #include "mozilla/StaticPrefs_privacy.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/webgpu/CanvasContext.h"
@@ -62,13 +63,14 @@ NS_IMPL_NS_NEW_HTML_ELEMENT(Canvas)
 namespace mozilla::dom {
 
 class RequestedFrameRefreshObserver : public nsARefreshObserver {
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(RequestedFrameRefreshObserver, override)
+  NS_INLINE_DECL_REFCOUNTING(RequestedFrameRefreshObserver, override)
 
  public:
   RequestedFrameRefreshObserver(HTMLCanvasElement* const aOwningElement,
                                 nsRefreshDriver* aRefreshDriver,
                                 bool aReturnPlaceholderData)
       : mRegistered(false),
+        mWatching(false),
         mReturnPlaceholderData(aReturnPlaceholderData),
         mOwningElement(aOwningElement),
         mRefreshDriver(aRefreshDriver),
@@ -285,16 +287,20 @@ class RequestedFrameRefreshObserver : public nsARefreshObserver {
     mWatchManager.Shutdown();
   }
 
+  bool IsRegisteredAndWatching() { return mRegistered && mWatching; }
+
   void Register() {
-    if (mRegistered) {
-      return;
+    if (!mRegistered) {
+      MOZ_ASSERT(mRefreshDriver);
+      if (mRefreshDriver) {
+        mRefreshDriver->AddRefreshObserver(this, FlushType::Display,
+                                           "Canvas frame capture listeners");
+        mRegistered = true;
+      }
     }
 
-    MOZ_ASSERT(mRefreshDriver);
-    if (mRefreshDriver) {
-      mRefreshDriver->AddRefreshObserver(this, FlushType::Display,
-                                         "Canvas frame capture listeners");
-      mRegistered = true;
+    if (mWatching) {
+      return;
     }
 
     if (!mOwningElement) {
@@ -306,18 +312,21 @@ class RequestedFrameRefreshObserver : public nsARefreshObserver {
       mWatchManager.Watch(
           *captureState,
           &RequestedFrameRefreshObserver::NotifyCaptureStateChange);
+      mWatching = true;
     }
   }
 
   void Unregister() {
-    if (!mRegistered) {
-      return;
+    if (mRegistered) {
+      MOZ_ASSERT(mRefreshDriver);
+      if (mRefreshDriver) {
+        mRefreshDriver->RemoveRefreshObserver(this, FlushType::Display);
+        mRegistered = false;
+      }
     }
 
-    MOZ_ASSERT(mRefreshDriver);
-    if (mRefreshDriver) {
-      mRefreshDriver->RemoveRefreshObserver(this, FlushType::Display);
-      mRegistered = false;
+    if (!mWatching) {
+      return;
     }
 
     if (!mOwningElement) {
@@ -329,6 +338,7 @@ class RequestedFrameRefreshObserver : public nsARefreshObserver {
       mWatchManager.Unwatch(
           *captureState,
           &RequestedFrameRefreshObserver::NotifyCaptureStateChange);
+      mWatching = false;
     }
   }
 
@@ -336,9 +346,11 @@ class RequestedFrameRefreshObserver : public nsARefreshObserver {
   virtual ~RequestedFrameRefreshObserver() {
     MOZ_ASSERT(!mRefreshDriver);
     MOZ_ASSERT(!mRegistered);
+    MOZ_ASSERT(!mWatching);
   }
 
   bool mRegistered;
+  bool mWatching;
   bool mReturnPlaceholderData;
   const WeakPtr<HTMLCanvasElement> mOwningElement;
   RefPtr<nsRefreshDriver> mRefreshDriver;
@@ -523,6 +535,9 @@ HTMLCanvasElement::CreateContext(CanvasContextType aContextType) {
   // Note that the compositor backend will be LAYERS_NONE if there is no widget.
   RefPtr<nsICanvasRenderingContextInternal> ret =
       CreateContextHelper(aContextType, GetCompositorBackendType());
+  if (NS_WARN_IF(!ret)) {
+    return nullptr;
+  }
 
   // Add Observer for webgl canvas.
   if (aContextType == CanvasContextType::WebGL1 ||
@@ -535,6 +550,26 @@ HTMLCanvasElement::CreateContext(CanvasContextType aContextType) {
 
   ret->SetCanvasElement(this);
   return ret.forget();
+}
+
+nsresult HTMLCanvasElement::UpdateContext(
+    JSContext* aCx, JS::Handle<JS::Value> aNewContextOptions,
+    ErrorResult& aRvForDictionaryInit) {
+  nsresult rv = CanvasRenderingContextHelper::UpdateContext(
+      aCx, aNewContextOptions, aRvForDictionaryInit);
+
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  // If we have a mRequestedFrameRefreshObserver that wasn't fully registered,
+  // retry that now.
+  if (mRequestedFrameRefreshObserver.get() &&
+      !mRequestedFrameRefreshObserver->IsRegisteredAndWatching()) {
+    mRequestedFrameRefreshObserver->Register();
+  }
+
+  return NS_OK;
 }
 
 nsIntSize HTMLCanvasElement::GetWidthHeight() {
@@ -614,10 +649,12 @@ nsresult HTMLCanvasElement::DispatchPrintCallback(nsITimerCallback* aCallback) {
   RefPtr<nsRunnableMethod<HTMLCanvasElement>> renderEvent =
       NewRunnableMethod("dom::HTMLCanvasElement::CallPrintCallback", this,
                         &HTMLCanvasElement::CallPrintCallback);
-  return OwnerDoc()->Dispatch(TaskCategory::Other, renderEvent.forget());
+  return OwnerDoc()->Dispatch(renderEvent.forget());
 }
 
 void HTMLCanvasElement::CallPrintCallback() {
+  AUTO_PROFILER_MARKER_TEXT("HTMLCanvasElement Printing", LAYOUT_Printing, {},
+                            "HTMLCanvasElement::CallPrintCallback"_ns);
   if (!mPrintState) {
     // `mPrintState` might have been destroyed by cancelling the previous
     // printing (especially the canvas frame destruction) during processing
@@ -694,9 +731,9 @@ nsChangeHint HTMLCanvasElement::GetAttributeChangeHint(const nsAtom* aAttribute,
 }
 
 void HTMLCanvasElement::MapAttributesIntoRule(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  MapAspectRatioInto(aAttributes, aDecls);
-  MapCommonAttributesInto(aAttributes, aDecls);
+    MappedDeclarationsBuilder& aBuilder) {
+  MapAspectRatioInto(aBuilder);
+  MapCommonAttributesInto(aBuilder);
 }
 
 nsMapRuleToAttributesFunc HTMLCanvasElement::GetAttributeMappingFunction()
@@ -732,7 +769,7 @@ void HTMLCanvasElement::ToDataURL(JSContext* aCx, const nsAString& aType,
                                   nsIPrincipal& aSubjectPrincipal,
                                   ErrorResult& aRv) {
   // mWriteOnly check is redundant, but optimizes for the common case.
-  if (mWriteOnly && !CallerCanRead(&aSubjectPrincipal)) {
+  if (mWriteOnly && !CallerCanRead(aSubjectPrincipal)) {
     aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
     return;
   }
@@ -783,7 +820,6 @@ class CanvasCaptureTrackSource : public MediaStreamTrackSource {
 
   void Stop() override {
     if (!mCaptureStream) {
-      NS_ERROR("No stream");
       return;
     }
 
@@ -821,6 +857,20 @@ already_AddRefed<CanvasCaptureMediaStream> HTMLCanvasElement::CaptureStream(
     return nullptr;
   }
 
+  // Check if we transferred the OffscreenCanvas to a DOM worker. This is not
+  // defined by the spec yet, so it is better to fail now than implement
+  // something not compliant:
+  // https://github.com/w3c/mediacapture-fromelement/issues/65
+  // https://github.com/w3c/mediacapture-extensions/pull/26
+  // https://github.com/web-platform-tests/wpt/issues/21102
+  if (mOffscreenDisplay &&
+      NS_WARN_IF(!mOffscreenDisplay->CanElementCaptureStream())) {
+    aRv.ThrowNotSupportedError(
+        "Capture stream not supported when OffscreenCanvas transferred to "
+        "worker");
+    return nullptr;
+  }
+
   auto stream = MakeRefPtr<CanvasCaptureMediaStream>(window, this);
 
   nsCOMPtr<nsIPrincipal> principal = NodePrincipal();
@@ -839,8 +889,7 @@ already_AddRefed<CanvasCaptureMediaStream> HTMLCanvasElement::CaptureStream(
   // If no permission, arrange for the frame capture listener to return
   // all-white, opaque image data.
   bool usePlaceholder = !CanvasUtils::IsImageExtractionAllowed(
-      OwnerDoc(), nsContentUtils::GetCurrentJSContext(),
-      Some(&aSubjectPrincipal));
+      OwnerDoc(), nsContentUtils::GetCurrentJSContext(), aSubjectPrincipal);
 
   rv = RegisterFrameCaptureListener(stream->FrameCaptureListener(),
                                     usePlaceholder);
@@ -860,9 +909,25 @@ nsresult HTMLCanvasElement::ExtractData(JSContext* aCx,
   // Check site-specific permission and display prompt if appropriate.
   // If no permission, return all-white, opaque image data.
   bool usePlaceholder = !CanvasUtils::IsImageExtractionAllowed(
-      OwnerDoc(), aCx, Some(&aSubjectPrincipal));
+      OwnerDoc(), aCx, aSubjectPrincipal);
+
+  if (!usePlaceholder) {
+    auto size = GetWidthHeight();
+    CanvasContextType type = GetCurrentContextType();
+    CanvasFeatureUsage featureUsage = CanvasFeatureUsage::None;
+    if (type == CanvasContextType::Canvas2D) {
+      if (auto ctx =
+              static_cast<CanvasRenderingContext2D*>(GetCurrentContext())) {
+        featureUsage = ctx->FeatureUsage();
+      }
+    }
+
+    CanvasUsage usage(size, type, featureUsage);
+    OwnerDoc()->RecordCanvasUsage(usage);
+  }
+
   return ImageEncoder::ExtractData(aType, aOptions, GetSize(), usePlaceholder,
-                                   mCurrentContext, mCanvasRenderer, aStream);
+                                   mCurrentContext, mOffscreenDisplay, aStream);
 }
 
 nsresult HTMLCanvasElement::ToDataURLImpl(JSContext* aCx,
@@ -912,13 +977,24 @@ nsresult HTMLCanvasElement::ToDataURLImpl(JSContext* aCx,
                                  aDataURL.Length());
 }
 
+UniquePtr<uint8_t[]> HTMLCanvasElement::GetImageBuffer(
+    int32_t* aOutFormat, gfx::IntSize* aOutImageSize) {
+  if (mCurrentContext) {
+    return mCurrentContext->GetImageBuffer(aOutFormat, aOutImageSize);
+  }
+  if (mOffscreenDisplay) {
+    return mOffscreenDisplay->GetImageBuffer(aOutFormat, aOutImageSize);
+  }
+  return nullptr;
+}
+
 void HTMLCanvasElement::ToBlob(JSContext* aCx, BlobCallback& aCallback,
                                const nsAString& aType,
                                JS::Handle<JS::Value> aParams,
                                nsIPrincipal& aSubjectPrincipal,
                                ErrorResult& aRv) {
   // mWriteOnly check is redundant, but optimizes for the common case.
-  if (mWriteOnly && !CallerCanRead(&aSubjectPrincipal)) {
+  if (mWriteOnly && !CallerCanRead(aSubjectPrincipal)) {
     aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
     return;
   }
@@ -931,20 +1007,18 @@ void HTMLCanvasElement::ToBlob(JSContext* aCx, BlobCallback& aCallback,
     // According to spec, blob should return null if either its horizontal
     // dimension or its vertical dimension is zero. See link below.
     // https://html.spec.whatwg.org/multipage/scripting.html#dom-canvas-toblob
-    OwnerDoc()->Dispatch(
-        TaskCategory::Other,
-        NewRunnableMethod<Blob*, const char*>(
-            "dom::HTMLCanvasElement::ToBlob", &aCallback,
-            static_cast<void (BlobCallback::*)(Blob*, const char*)>(
-                &BlobCallback::Call),
-            nullptr, nullptr));
+    OwnerDoc()->Dispatch(NewRunnableMethod<Blob*, const char*>(
+        "dom::HTMLCanvasElement::ToBlob", &aCallback,
+        static_cast<void (BlobCallback::*)(Blob*, const char*)>(
+            &BlobCallback::Call),
+        nullptr, nullptr));
     return;
   }
 
   // Check site-specific permission and display prompt if appropriate.
   // If no permission, return all-white, opaque image data.
   bool usePlaceholder = !CanvasUtils::IsImageExtractionAllowed(
-      OwnerDoc(), aCx, Some(&aSubjectPrincipal));
+      OwnerDoc(), aCx, aSubjectPrincipal);
   CanvasRenderingContextHelper::ToBlob(aCx, global, aCallback, aType, aParams,
                                        usePlaceholder, aRv);
 }
@@ -1027,23 +1101,19 @@ void HTMLCanvasElement::SetWriteOnly(
   }
 }
 
-bool HTMLCanvasElement::CallerCanRead(nsIPrincipal* aPrincipal) const {
+bool HTMLCanvasElement::CallerCanRead(nsIPrincipal& aPrincipal) const {
   if (!mWriteOnly) {
     return true;
-  }
-
-  if (!aPrincipal) {
-    return false;
   }
 
   // If mExpandedReader is set, this canvas was tainted only by
   // mExpandedReader's resources. So allow reading if the subject
   // principal subsumes mExpandedReader.
-  if (mExpandedReader && aPrincipal->Subsumes(mExpandedReader)) {
+  if (mExpandedReader && aPrincipal.Subsumes(mExpandedReader)) {
     return true;
   }
 
-  return nsContentUtils::PrincipalHasPermission(*aPrincipal,
+  return nsContentUtils::PrincipalHasPermission(aPrincipal,
                                                 nsGkAtoms::all_urlsPermission);
 }
 
@@ -1067,6 +1137,26 @@ void HTMLCanvasElement::SetHeight(uint32_t aHeight, ErrorResult& aRv) {
   }
 
   SetUnsignedIntAttr(nsGkAtoms::height, aHeight, DEFAULT_CANVAS_HEIGHT, aRv);
+}
+
+void HTMLCanvasElement::SetSize(const nsIntSize& aSize, ErrorResult& aRv) {
+  if (mOffscreenCanvas) {
+    aRv.ThrowInvalidStateError(
+        "Cannot set width of placeholder canvas transferred to "
+        "OffscreenCanvas.");
+    return;
+  }
+
+  if (NS_WARN_IF(aSize.IsEmpty())) {
+    aRv.ThrowRangeError("Canvas size is empty, must be non-empty.");
+    return;
+  }
+
+  SetUnsignedIntAttr(nsGkAtoms::width, aSize.width, DEFAULT_CANVAS_WIDTH, aRv);
+  MOZ_ASSERT(!aRv.Failed());
+  SetUnsignedIntAttr(nsGkAtoms::height, aSize.height, DEFAULT_CANVAS_HEIGHT,
+                     aRv);
+  MOZ_ASSERT(!aRv.Failed());
 }
 
 void HTMLCanvasElement::FlushOffscreenCanvas() {
@@ -1159,7 +1249,7 @@ bool HTMLCanvasElement::GetIsOpaque() {
 }
 
 bool HTMLCanvasElement::GetOpaqueAttr() {
-  return HasAttr(kNameSpaceID_None, nsGkAtoms::moz_opaque);
+  return HasAttr(nsGkAtoms::moz_opaque);
 }
 
 CanvasContextType HTMLCanvasElement::GetCurrentContextType() {

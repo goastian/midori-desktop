@@ -23,7 +23,7 @@
 #include "mozilla/dom/PrototypeList.h"
 #include "mozilla/dom/ProxyHandlerUtils.h"
 #include "mozilla/dom/RegisterBindings.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "nsTHashtable.h"
 #include "WrapperFactory.h"
 
@@ -38,19 +38,25 @@ static JSObject* FindNamedConstructorForXray(
     return nullptr;
   }
 
-  // This is a call over Xrays, so we will actually use the return value
-  // (instead of just having it defined on the global now).  Check for named
-  // constructors with this id, in case that's what the caller is asking for.
-  for (unsigned slot = DOM_INTERFACE_SLOTS_BASE;
-       slot < JSCLASS_RESERVED_SLOTS(JS::GetClass(interfaceObject)); ++slot) {
-    JSObject* constructor =
-        &JS::GetReservedSlot(interfaceObject, slot).toObject();
-    if (JS_GetFunctionId(JS_GetObjectFunction(constructor)) == aId.toString()) {
-      return constructor;
+  if (IsInterfaceObject(interfaceObject)) {
+    // This is a call over Xrays, so we will actually use the return value
+    // (instead of just having it defined on the global now).  Check for named
+    // constructors with this id, in case that's what the caller is asking for.
+    for (unsigned slot = INTERFACE_OBJECT_FIRST_LEGACY_FACTORY_FUNCTION;
+         slot < INTERFACE_OBJECT_MAX_SLOTS; ++slot) {
+      const JS::Value& v = js::GetFunctionNativeReserved(interfaceObject, slot);
+      if (!v.isObject()) {
+        break;
+      }
+      JSObject* constructor = &v.toObject();
+      if (JS_GetMaybePartialFunctionId(JS_GetObjectFunction(constructor)) ==
+          aId.toString()) {
+        return constructor;
+      }
     }
   }
 
-  // None of the named constructors match, so the caller must want the
+  // None of the legacy factory functions match, so the caller must want the
   // interface object itself.
   return interfaceObject;
 }

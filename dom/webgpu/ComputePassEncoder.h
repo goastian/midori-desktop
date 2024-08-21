@@ -6,7 +6,6 @@
 #ifndef GPU_ComputePassEncoder_H_
 #define GPU_ComputePassEncoder_H_
 
-#include "mozilla/Scoped.h"
 #include "mozilla/dom/TypedArray.h"
 #include "ObjectModel.h"
 
@@ -19,7 +18,7 @@ struct GPUComputePassDescriptor;
 
 namespace webgpu {
 namespace ffi {
-struct WGPUComputePass;
+struct WGPURecordedComputePass;
 }  // namespace ffi
 
 class BindGroup;
@@ -27,10 +26,8 @@ class Buffer;
 class CommandEncoder;
 class ComputePipeline;
 
-struct ScopedFfiComputeTraits {
-  using type = ffi::WGPUComputePass*;
-  static type empty();
-  static void release(type raw);
+struct ffiWGPUComputePassDeleter {
+  void operator()(ffi::WGPURecordedComputePass*);
 };
 
 class ComputePassEncoder final : public ObjectBase,
@@ -44,9 +41,10 @@ class ComputePassEncoder final : public ObjectBase,
 
  private:
   virtual ~ComputePassEncoder();
-  void Cleanup() {}
+  void Cleanup();
 
-  Scoped<ScopedFfiComputeTraits> mPass;
+  std::unique_ptr<ffi::WGPURecordedComputePass, ffiWGPUComputePassDeleter>
+      mPass;
   // keep all the used objects alive while the pass is recorded
   nsTArray<RefPtr<const BindGroup>> mUsedBindGroups;
   nsTArray<RefPtr<const ComputePipeline>> mUsedPipelines;
@@ -58,7 +56,8 @@ class ComputePassEncoder final : public ObjectBase,
   // self
   void SetPipeline(const ComputePipeline& aPipeline);
 
-  void DispatchWorkgroups(uint32_t x, uint32_t y, uint32_t z);
+  void DispatchWorkgroups(uint32_t workgroupCountX, uint32_t workgroupCountY,
+                          uint32_t workgroupCountZ);
   void DispatchWorkgroupsIndirect(const Buffer& aIndirectBuffer,
                                   uint64_t aIndirectOffset);
 
@@ -66,7 +65,7 @@ class ComputePassEncoder final : public ObjectBase,
   void PopDebugGroup();
   void InsertDebugMarker(const nsAString& aString);
 
-  void End(ErrorResult& aRv);
+  void End();
 };
 
 }  // namespace webgpu

@@ -121,19 +121,13 @@ class ResizeObservation final : public LinkedListElement<ResizeObservation> {
  * https://drafts.csswg.org/resize-observer/#api
  */
 class ResizeObserver final : public nsISupports, public nsWrapperCache {
-  using NativeCallback = void (*)(
-      const Sequence<OwningNonNull<ResizeObserverEntry>>&, ResizeObserver&);
-  ResizeObserver(Document& aDocument, NativeCallback aCallback);
-
  public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_WRAPPERCACHE_CLASS(ResizeObserver)
 
   ResizeObserver(nsCOMPtr<nsPIDOMWindowInner>&& aOwner, Document* aDocument,
                  ResizeObserverCallback& aCb)
-      : mOwner(std::move(aOwner)),
-        mDocument(aDocument),
-        mCallback(RefPtr<ResizeObserverCallback>(&aCb)) {
+      : mOwner(std::move(aOwner)), mDocument(aDocument), mCallback(&aCb) {
     MOZ_ASSERT(mOwner, "Need a non-null owner window");
     MOZ_ASSERT(mDocument, "Need a non-null doc");
     MOZ_ASSERT(mDocument == mOwner->GetExtantDoc());
@@ -177,11 +171,6 @@ class ResizeObserver final : public nsISupports, public nsWrapperCache {
   bool HasSkippedObservations() const { return mHasSkippedTargets; }
 
   /**
-   * Returns whether this is an internal ResizeObserver with a native callback.
-   */
-  bool HasNativeCallback() const { return mCallback.is<NativeCallback>(); }
-
-  /**
    * Invoke the callback function in JavaScript for all active observations
    * and pass the sequence of ResizeObserverEntry so JavaScript can access them.
    * The active observations' mLastReportedSize fields will be updated, and
@@ -191,8 +180,21 @@ class ResizeObserver final : public nsISupports, public nsWrapperCache {
    */
   MOZ_CAN_RUN_SCRIPT uint32_t BroadcastActiveObservations();
 
-  static already_AddRefed<ResizeObserver> CreateLastRememberedSizeObserver(
-      Document&);
+  /**
+   * Returns |aTarget|'s size in the form of gfx::Size (in pixels).
+   * If the target is an SVG that does not participate in CSS layout,
+   * its width and height are determined from bounding box. Otherwise, the
+   * relevant box is determined according to the |aBox| parameter.
+   *
+   * If dom.resize_observer.support_fragments is enabled, or if
+   * |aForceFragmentHandling| is true then the function reports the size of all
+   * fragments, and not just the first one.
+   *
+   * https://www.w3.org/TR/resize-observer-1/#calculate-box-size
+   */
+  static AutoTArray<LogicalPixelSize, 1> CalculateBoxSize(
+      Element* aTarget, ResizeObserverBoxOptions aBox,
+      bool aForceFragmentHandling = false);
 
  protected:
   ~ResizeObserver() { Disconnect(); }
@@ -200,7 +202,7 @@ class ResizeObserver final : public nsISupports, public nsWrapperCache {
   nsCOMPtr<nsPIDOMWindowInner> mOwner;
   // The window's document at the time of ResizeObserver creation.
   RefPtr<Document> mDocument;
-  Variant<RefPtr<ResizeObserverCallback>, NativeCallback> mCallback;
+  RefPtr<ResizeObserverCallback> mCallback;
   nsTArray<RefPtr<ResizeObservation>> mActiveTargets;
   // The spec uses a list to store the skipped targets. However, it seems what
   // we want is to check if there are any skipped targets (i.e. existence).

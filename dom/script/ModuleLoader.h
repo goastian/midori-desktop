@@ -61,9 +61,9 @@ class ModuleLoader final : public JS::loader::ModuleLoaderBase {
 
   // Create a top-level module load request.
   static already_AddRefed<ModuleLoadRequest> CreateTopLevel(
-      nsIURI* aURI, ScriptFetchOptions* aFetchOptions,
-      const SRIMetadata& aIntegrity, nsIURI* aReferrer, ScriptLoader* aLoader,
-      ScriptLoadContext* aContext);
+      nsIURI* aURI, ReferrerPolicy aReferrerPolicy,
+      ScriptFetchOptions* aFetchOptions, const SRIMetadata& aIntegrity,
+      nsIURI* aReferrer, ScriptLoader* aLoader, ScriptLoadContext* aContext);
 
   // Create a module load request for a static module import.
   already_AddRefed<ModuleLoadRequest> CreateStaticImport(
@@ -72,13 +72,15 @@ class ModuleLoader final : public JS::loader::ModuleLoaderBase {
   // Create a module load request for a dynamic module import.
   already_AddRefed<ModuleLoadRequest> CreateDynamicImport(
       JSContext* aCx, nsIURI* aURI, LoadedScript* aMaybeActiveScript,
-      JS::Handle<JS::Value> aReferencingPrivate,
       JS::Handle<JSString*> aSpecifier,
       JS::Handle<JSObject*> aPromise) override;
 
   static ModuleLoader* From(ModuleLoaderBase* aLoader) {
     return static_cast<ModuleLoader*>(aLoader);
   }
+
+  void AsyncExecuteInlineModule(ModuleLoadRequest* aRequest);
+  void ExecuteInlineModule(ModuleLoadRequest* aRequest);
 
  private:
   const Kind mKind;

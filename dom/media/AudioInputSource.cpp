@@ -8,6 +8,7 @@
 
 #include "CallbackThreadRegistry.h"
 #include "GraphDriver.h"
+#include "Tracing.h"
 
 namespace mozilla {
 
@@ -44,8 +45,7 @@ AudioInputSource::AudioInputSource(RefPtr<EventListener>&& aListener,
                                    CubebUtils::AudioDeviceID aDeviceId,
                                    uint32_t aChannelCount, bool aIsVoice,
                                    const PrincipalHandle& aPrincipalHandle,
-                                   TrackRate aSourceRate, TrackRate aTargetRate,
-                                   uint32_t aBufferMs)
+                                   TrackRate aSourceRate, TrackRate aTargetRate)
     : mId(aSourceId),
       mDeviceId(aDeviceId),
       mChannelCount(aChannelCount),
@@ -55,12 +55,32 @@ AudioInputSource::AudioInputSource(RefPtr<EventListener>&& aListener,
       mSandboxed(CubebUtils::SandboxEnabled()),
       mAudioThreadId(ProfilerThreadId{}),
       mEventListener(std::move(aListener)),
-      mTaskThread(CUBEB_TASK_THREAD),
+      mTaskThread(CubebUtils::GetCubebOperationThread()),
       mDriftCorrector(static_cast<uint32_t>(aSourceRate),
-                      static_cast<uint32_t>(aTargetRate), aBufferMs,
-                      aPrincipalHandle) {
+                      static_cast<uint32_t>(aTargetRate), aPrincipalHandle) {
   MOZ_ASSERT(mChannelCount > 0);
   MOZ_ASSERT(mEventListener);
+}
+
+void AudioInputSource::Init() {
+  // This is called on MediaTrackGraph's graph thread, which can be the cubeb
+  // stream's callback thread. Running cubeb operations within cubeb stream
+  // callback thread can cause the deadlock on Linux, so we dispatch those
+  // operations to the task thread.
+  MOZ_ASSERT(mTaskThread);
+
+  LOG("AudioInputSource %p, init", this);
+  MOZ_ALWAYS_SUCCEEDS(mTaskThread->Dispatch(
+      NS_NewRunnableFunction(__func__, [this, self = RefPtr(this)]() mutable {
+        mStream = CubebInputStream::Create(mDeviceId, mChannelCount,
+                                           static_cast<uint32_t>(mRate),
+                                           mIsVoice, this);
+        if (!mStream) {
+          LOGE("AudioInputSource %p, cannot create an audio input stream!",
+               self.get());
+          return;
+        }
+      })));
 }
 
 void AudioInputSource::Start() {
@@ -70,26 +90,28 @@ void AudioInputSource::Start() {
   // operations to the task thread.
   MOZ_ASSERT(mTaskThread);
 
-  // mSPSCQueue will have a new consumer.
-  mSPSCQueue.ResetConsumerThreadId();
-
   LOG("AudioInputSource %p, start", this);
   MOZ_ALWAYS_SUCCEEDS(mTaskThread->Dispatch(
-      NS_NewRunnableFunction(__func__, [self = RefPtr(this)]() mutable {
-        self->mStream = CubebInputStream::Create(
-            self->mDeviceId, self->mChannelCount,
-            static_cast<uint32_t>(self->mRate), self->mIsVoice, self.get());
-        if (!self->mStream) {
-          LOGE("AudioInputSource %p, cannot create an audio input stream!",
-               self.get());
+      NS_NewRunnableFunction(__func__, [this, self = RefPtr(this)]() mutable {
+        if (!mStream) {
+          LOGE("AudioInputSource %p, no audio input stream!", self.get());
           return;
         }
-        if (int r = self->mStream->Start(); r != CUBEB_OK) {
+
+        if (uint32_t latency = 0; mStream->Latency(&latency) == CUBEB_OK) {
+          Data data(LatencyChangeData{media::TimeUnit(latency, mRate)});
+          if (mSPSCQueue.Enqueue(data) == 0) {
+            LOGE("AudioInputSource %p, failed to enqueue latency change",
+                 self.get());
+          }
+        }
+        if (int r = mStream->Start(); r != CUBEB_OK) {
           LOGE(
               "AudioInputSource %p, cannot start its audio input stream! The "
               "stream is destroyed directly!",
               self.get());
-          self->mStream = nullptr;
+          mStream = nullptr;
+          mConfiguredProcessingParams = CUBEB_INPUT_PROCESSING_PARAM_NONE;
         }
       })));
 }
@@ -103,42 +125,107 @@ void AudioInputSource::Stop() {
 
   LOG("AudioInputSource %p, stop", this);
   MOZ_ALWAYS_SUCCEEDS(mTaskThread->Dispatch(
-      NS_NewRunnableFunction(__func__, [self = RefPtr(this)]() mutable {
-        if (!self->mStream) {
+      NS_NewRunnableFunction(__func__, [this, self = RefPtr(this)]() mutable {
+        if (!mStream) {
           LOGE("AudioInputSource %p, has no audio input stream to stop!",
                self.get());
           return;
         }
-        if (int r = self->mStream->Stop(); r != CUBEB_OK) {
+        if (int r = mStream->Stop(); r != CUBEB_OK) {
           LOGE(
               "AudioInputSource %p, cannot stop its audio input stream! The "
               "stream is going to be destroyed forcefully",
               self.get());
         }
-        self->mStream = nullptr;
+        mStream = nullptr;
+        mConfiguredProcessingParams = CUBEB_INPUT_PROCESSING_PARAM_NONE;
       })));
+}
+
+auto AudioInputSource::SetRequestedProcessingParams(
+    cubeb_input_processing_params aParams)
+    -> RefPtr<SetRequestedProcessingParamsPromise> {
+  // This is called on MediaTrackGraph's graph thread, which can be the cubeb
+  // stream's callback thread. Running cubeb operations within cubeb stream
+  // callback thread can cause the deadlock on Linux, so we dispatch those
+  // operations to the task thread.
+  MOZ_ASSERT(mTaskThread);
+
+  LOG("AudioInputSource %p, SetProcessingParams(%s)", this,
+      CubebUtils::ProcessingParamsToString(aParams).get());
+  using ProcessingPromise = SetRequestedProcessingParamsPromise;
+  MozPromiseHolder<ProcessingPromise> holder;
+  RefPtr<ProcessingPromise> p = holder.Ensure(__func__);
+  MOZ_ALWAYS_SUCCEEDS(mTaskThread->Dispatch(NS_NewRunnableFunction(
+      __func__, [this, self = RefPtr(this), holder = std::move(holder),
+                 aParams]() mutable {
+        if (!mStream) {
+          LOGE(
+              "AudioInputSource %p, has no audio input stream to set "
+              "processing params on!",
+              this);
+          holder.Reject(CUBEB_ERROR,
+                        "AudioInputSource::SetProcessingParams no stream");
+          return;
+        }
+        cubeb_input_processing_params supportedParams;
+        auto handle = CubebUtils::GetCubeb();
+        int r = cubeb_get_supported_input_processing_params(handle->Context(),
+                                                            &supportedParams);
+        if (r != CUBEB_OK) {
+          holder.Reject(CUBEB_ERROR_NOT_SUPPORTED,
+                        "AudioInputSource::SetProcessingParams");
+          return;
+        }
+        aParams &= supportedParams;
+        if (aParams == mConfiguredProcessingParams) {
+          holder.Resolve(aParams, "AudioInputSource::SetProcessingParams");
+          return;
+        }
+        mConfiguredProcessingParams = aParams;
+        r = mStream->SetProcessingParams(aParams);
+        if (r == CUBEB_OK) {
+          holder.Resolve(aParams, "AudioInputSource::SetProcessingParams");
+          return;
+        }
+        holder.Reject(r, "AudioInputSource::SetProcessingParams");
+      })));
+  return p;
 }
 
 AudioSegment AudioInputSource::GetAudioSegment(TrackTime aDuration,
                                                Consumer aConsumer) {
   if (aConsumer == Consumer::Changed) {
-    // Reset queue's consumer to avoid hitting the assertion for checking the
-    // consistency of mSPSCQueue's mConsumerId in Dequeue.
+    // Reset queue's consumer thread to acquire its mReadIndex on the new
+    // thread.
     mSPSCQueue.ResetConsumerThreadId();
   }
 
   AudioSegment raw;
+  Maybe<media::TimeUnit> latency;
   while (mSPSCQueue.AvailableRead()) {
-    AudioChunk chunk;
-    DebugOnly<int> reads = mSPSCQueue.Dequeue(&chunk, 1);
+    Data data;
+    DebugOnly<int> reads = mSPSCQueue.Dequeue(&data, 1);
     MOZ_ASSERT(reads);
-    raw.AppendAndConsumeChunk(std::move(chunk));
+    MOZ_ASSERT(!data.is<Empty>());
+    if (data.is<AudioChunk>()) {
+      raw.AppendAndConsumeChunk(std::move(data.as<AudioChunk>()));
+    } else if (data.is<LatencyChangeData>()) {
+      latency = Some(data.as<LatencyChangeData>().mLatency);
+    }
   }
 
+  if (latency) {
+    mDriftCorrector.SetSourceLatency(*latency);
+  }
   return mDriftCorrector.RequestFrames(raw, static_cast<uint32_t>(aDuration));
 }
 
 long AudioInputSource::DataCallback(const void* aBuffer, long aFrames) {
+  TRACE_AUDIO_CALLBACK_BUDGET("AudioInputSource real-time budget", aFrames,
+                              mRate);
+  TRACE("AudioInputSource::DataCallback");
+
   const AudioDataValue* source =
       reinterpret_cast<const AudioDataValue*>(aBuffer);
 
@@ -159,7 +246,8 @@ long AudioInputSource::DataCallback(const void* aBuffer, long aFrames) {
     }
   }
 
-  int writes = mSPSCQueue.Enqueue(c);
+  Data data(c);
+  int writes = mSPSCQueue.Enqueue(data);
   if (writes == 0) {
     LOGW("AudioInputSource %p, buffer is full. Dropping %ld frames", this,
          aFrames);

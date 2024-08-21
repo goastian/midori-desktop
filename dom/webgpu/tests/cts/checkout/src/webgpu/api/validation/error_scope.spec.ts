@@ -12,7 +12,6 @@ import { makeTestGroup } from '../../../common/framework/test_group.js';
 import { getGPU } from '../../../common/util/navigator_gpu.js';
 import { assert, raceWithRejectOnTimeout } from '../../../common/util/util.js';
 import { kErrorScopeFilters, kGeneratableErrorScopeFilters } from '../../capability_info.js';
-import { kMaxUnsignedLongLongValue } from '../../constants.js';
 
 class ErrorScopeTests extends Fixture {
   _device: GPUDevice | undefined = undefined;
@@ -22,12 +21,22 @@ class ErrorScopeTests extends Fixture {
     return this._device;
   }
 
-  async init(): Promise<void> {
+  override async init(): Promise<void> {
     await super.init();
-    const gpu = getGPU();
+    const gpu = getGPU(this.rec);
     const adapter = await gpu.requestAdapter();
     assert(adapter !== null);
-    const device = await adapter.requestDevice();
+
+    // We need to max out the adapter limits related to texture dimensions to more reliably cause an
+    // OOM error when asked for it, so set that on the device now.
+    const device = this.trackForCleanup(
+      await adapter.requestDevice({
+        requiredLimits: {
+          maxTextureDimension2D: adapter.limits.maxTextureDimension2D,
+          maxTextureArrayLayers: adapter.limits.maxTextureArrayLayers,
+        },
+      })
+    );
     assert(device !== null);
     this._device = device;
   }
@@ -38,18 +47,27 @@ class ErrorScopeTests extends Fixture {
   generateError(filter: GPUErrorFilter): void {
     switch (filter) {
       case 'out-of-memory':
-        // Generating an out-of-memory error by allocating a massive buffer.
-        this.device.createBuffer({
-          size: kMaxUnsignedLongLongValue, // Unrealistically massive buffer size
-          usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-        });
+        this.trackForCleanup(
+          this.device.createTexture({
+            // One of the largest formats. With the base limits, the texture will be 256 GiB.
+            format: 'rgba32float',
+            usage: GPUTextureUsage.COPY_DST,
+            size: [
+              this.device.limits.maxTextureDimension2D,
+              this.device.limits.maxTextureDimension2D,
+              this.device.limits.maxTextureArrayLayers,
+            ],
+          })
+        );
         break;
       case 'validation':
         // Generating a validation error by passing in an invalid usage when creating a buffer.
-        this.device.createBuffer({
-          size: 1024,
-          usage: 0xffff, // Invalid GPUBufferUsage
-        });
+        this.trackForCleanup(
+          this.device.createBuffer({
+            size: 1024,
+            usage: 0xffff, // Invalid GPUBufferUsage
+          })
+        );
         break;
     }
     // MAINTENANCE_TODO: This is a workaround for Chromium not flushing. Remove when not needed.
@@ -136,9 +154,9 @@ g.test('empty')
 Tests that popping an empty error scope stack should reject.
     `
   )
-  .fn(async t => {
+  .fn(t => {
     const promise = t.device.popErrorScope();
-    t.shouldReject('OperationError', promise);
+    t.shouldReject('OperationError', promise, { allowMissingStack: true });
   });
 
 g.test('parent_scope')
@@ -240,9 +258,9 @@ Tests that sibling error scopes need to be balanced.
     }
 
     {
-      // Trying to pop an additional non-exisiting scope should reject.
+      // Trying to pop an additional non-existing scope should reject.
       const promise = t.device.popErrorScope();
-      t.shouldReject('OperationError', promise);
+      t.shouldReject('OperationError', promise, { allowMissingStack: true });
     }
 
     const errors = await Promise.all(promises);
@@ -276,8 +294,8 @@ Tests that nested error scopes need to be balanced.
     t.expect(errors.every(e => e === null));
 
     {
-      // Trying to pop an additional non-exisiting scope should reject.
+      // Trying to pop an additional non-existing scope should reject.
       const promise = t.device.popErrorScope();
-      t.shouldReject('OperationError', promise);
+      t.shouldReject('OperationError', promise, { allowMissingStack: true });
     }
   });

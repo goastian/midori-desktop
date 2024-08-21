@@ -20,58 +20,12 @@ extern mozilla::LazyLogModule gMediaControlLog;
 
 namespace mozilla::dom {
 
-inline const char* ToMediaControlKeyStr(MediaControlKey aKey) {
-  switch (aKey) {
-    case MediaControlKey::Focus:
-      return "Focus";
-    case MediaControlKey::Pause:
-      return "Pause";
-    case MediaControlKey::Play:
-      return "Play";
-    case MediaControlKey::Playpause:
-      return "Play & pause";
-    case MediaControlKey::Previoustrack:
-      return "Previous track";
-    case MediaControlKey::Nexttrack:
-      return "Next track";
-    case MediaControlKey::Seekbackward:
-      return "Seek backward";
-    case MediaControlKey::Seekforward:
-      return "Seek forward";
-    case MediaControlKey::Skipad:
-      return "Skip Ad";
-    case MediaControlKey::Seekto:
-      return "Seek to";
-    case MediaControlKey::Stop:
-      return "Stop";
-    default:
-      MOZ_ASSERT_UNREACHABLE("Invalid action.");
-      return "Unknown";
+inline const char* ToMediaControlKeyStr(const Maybe<MediaControlKey>& aKey) {
+  if (aKey.isNothing()) {
+    MOZ_ASSERT_UNREACHABLE("Invalid action.");
+    return "Unknown";
   }
-}
-
-inline const char* ToMediaSessionActionStr(MediaSessionAction aAction) {
-  switch (aAction) {
-    case MediaSessionAction::Play:
-      return "play";
-    case MediaSessionAction::Pause:
-      return "pause";
-    case MediaSessionAction::Seekbackward:
-      return "seek backward";
-    case MediaSessionAction::Seekforward:
-      return "seek forward";
-    case MediaSessionAction::Previoustrack:
-      return "previous track";
-    case MediaSessionAction::Nexttrack:
-      return "next track";
-    case MediaSessionAction::Skipad:
-      return "skip ad";
-    case MediaSessionAction::Seekto:
-      return "Seek to";
-    default:
-      MOZ_ASSERT(aAction == MediaSessionAction::Stop);
-      return "stop";
-  }
+  return GetEnumString(aKey.value()).get();
 }
 
 inline MediaControlKey ConvertMediaSessionActionToControlKey(
@@ -97,11 +51,6 @@ inline MediaControlKey ConvertMediaSessionActionToControlKey(
       MOZ_ASSERT(aAction == MediaSessionAction::Stop);
       return MediaControlKey::Stop;
   }
-}
-
-inline MediaSessionAction ConvertToMediaSessionAction(uint8_t aActionValue) {
-  MOZ_DIAGNOSTIC_ASSERT(aActionValue < uint8_t(MediaSessionAction::EndGuard_));
-  return static_cast<MediaSessionAction>(aActionValue);
 }
 
 inline const char* ToMediaPlaybackStateStr(MediaPlaybackState aState) {

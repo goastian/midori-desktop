@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/HTMLVideoElement.h"
 
+#include "mozilla/AppShutdown.h"
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/dom/HTMLVideoElementBinding.h"
 #include "nsGenericHTMLElement.h"
@@ -93,8 +94,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 HTMLVideoElement::HTMLVideoElement(already_AddRefed<NodeInfo>&& aNodeInfo)
     : HTMLMediaElement(std::move(aNodeInfo)),
-      mIsOrientationLocked(false),
-      mVideoWatchManager(this, mAbstractMainThread) {
+      mVideoWatchManager(this, AbstractThread::MainThread()) {
   DecoderDoctorLogger::LogConstruction(this);
 }
 
@@ -124,14 +124,14 @@ Maybe<CSSIntSize> HTMLVideoElement::GetVideoSize() const {
 
   CSSIntSize size;
   switch (mMediaInfo.mVideo.mRotation) {
-    case VideoInfo::Rotation::kDegree_90:
-    case VideoInfo::Rotation::kDegree_270: {
+    case VideoRotation::kDegree_90:
+    case VideoRotation::kDegree_270: {
       size.width = mMediaInfo.mVideo.mDisplay.height;
       size.height = mMediaInfo.mVideo.mDisplay.width;
       break;
     }
-    case VideoInfo::Rotation::kDegree_0:
-    case VideoInfo::Rotation::kDegree_180:
+    case VideoRotation::kDegree_0:
+    case VideoRotation::kDegree_180:
     default: {
       size.height = mMediaInfo.mVideo.mDisplay.height;
       size.width = mMediaInfo.mVideo.mDisplay.width;
@@ -168,10 +168,9 @@ bool HTMLVideoElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
 }
 
 void HTMLVideoElement::MapAttributesIntoRule(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  nsGenericHTMLElement::MapImageSizeAttributesInto(aAttributes, aDecls,
-                                                   MapAspectRatio::Yes);
-  nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aDecls);
+    MappedDeclarationsBuilder& aBuilder) {
+  MapImageSizeAttributesInto(aBuilder, MapAspectRatio::Yes);
+  MapCommonAttributesInto(aBuilder);
 }
 
 NS_IMETHODIMP_(bool)
@@ -190,7 +189,7 @@ nsMapRuleToAttributesFunc HTMLVideoElement::GetAttributeMappingFunction()
   return &MapAttributesIntoRule;
 }
 
-void HTMLVideoElement::UnbindFromTree(bool aNullParent) {
+void HTMLVideoElement::UnbindFromTree(UnbindContext& aContext) {
   if (mVisualCloneSource) {
     mVisualCloneSource->EndCloningVisually();
   } else if (mVisualCloneTarget) {
@@ -200,7 +199,7 @@ void HTMLVideoElement::UnbindFromTree(bool aNullParent) {
     EndCloningVisually();
   }
 
-  HTMLMediaElement::UnbindFromTree(aNullParent);
+  HTMLMediaElement::UnbindFromTree(aContext);
 }
 
 nsresult HTMLVideoElement::SetAcceptHeader(nsIHttpChannel* aChannel) {
@@ -215,7 +214,7 @@ nsresult HTMLVideoElement::SetAcceptHeader(nsIHttpChannel* aChannel) {
 }
 
 bool HTMLVideoElement::IsInteractiveHTMLContent() const {
-  return HasAttr(kNameSpaceID_None, nsGkAtoms::controls) ||
+  return HasAttr(nsGkAtoms::controls) ||
          HTMLMediaElement::IsInteractiveHTMLContent();
 }
 
@@ -233,8 +232,8 @@ uint32_t HTMLVideoElement::VideoWidth() {
     return 0;
   }
   gfx::IntSize size = GetVideoIntrinsicDimensions();
-  if (mMediaInfo.mVideo.mRotation == VideoInfo::Rotation::kDegree_90 ||
-      mMediaInfo.mVideo.mRotation == VideoInfo::Rotation::kDegree_270) {
+  if (mMediaInfo.mVideo.mRotation == VideoRotation::kDegree_90 ||
+      mMediaInfo.mVideo.mRotation == VideoRotation::kDegree_270) {
     return size.height;
   }
   return size.width;
@@ -245,8 +244,8 @@ uint32_t HTMLVideoElement::VideoHeight() {
     return 0;
   }
   gfx::IntSize size = GetVideoIntrinsicDimensions();
-  if (mMediaInfo.mVideo.mRotation == VideoInfo::Rotation::kDegree_90 ||
-      mMediaInfo.mVideo.mRotation == VideoInfo::Rotation::kDegree_270) {
+  if (mMediaInfo.mVideo.mRotation == VideoRotation::kDegree_90 ||
+      mMediaInfo.mVideo.mRotation == VideoRotation::kDegree_270) {
     return size.width;
   }
   return size.height;
@@ -258,7 +257,8 @@ uint32_t HTMLVideoElement::MozParsedFrames() const {
     return 0;
   }
 
-  if (OwnerDoc()->ShouldResistFingerprinting(RFPTarget::Unknown)) {
+  if (OwnerDoc()->ShouldResistFingerprinting(
+          RFPTarget::VideoElementMozFrames)) {
     return nsRFPService::GetSpoofedTotalFrames(TotalPlayTime());
   }
 
@@ -271,7 +271,8 @@ uint32_t HTMLVideoElement::MozDecodedFrames() const {
     return 0;
   }
 
-  if (OwnerDoc()->ShouldResistFingerprinting(RFPTarget::Unknown)) {
+  if (OwnerDoc()->ShouldResistFingerprinting(
+          RFPTarget::VideoElementMozFrames)) {
     return nsRFPService::GetSpoofedTotalFrames(TotalPlayTime());
   }
 
@@ -284,7 +285,8 @@ uint32_t HTMLVideoElement::MozPresentedFrames() {
     return 0;
   }
 
-  if (OwnerDoc()->ShouldResistFingerprinting(RFPTarget::Unknown)) {
+  if (OwnerDoc()->ShouldResistFingerprinting(
+          RFPTarget::VideoElementMozFrames)) {
     return nsRFPService::GetSpoofedPresentedFrames(TotalPlayTime(),
                                                    VideoWidth(), VideoHeight());
   }
@@ -298,7 +300,8 @@ uint32_t HTMLVideoElement::MozPaintedFrames() {
     return 0;
   }
 
-  if (OwnerDoc()->ShouldResistFingerprinting(RFPTarget::Unknown)) {
+  if (OwnerDoc()->ShouldResistFingerprinting(
+          RFPTarget::VideoElementMozFrames)) {
     return nsRFPService::GetSpoofedPresentedFrames(TotalPlayTime(),
                                                    VideoWidth(), VideoHeight());
   }
@@ -310,8 +313,8 @@ uint32_t HTMLVideoElement::MozPaintedFrames() {
 double HTMLVideoElement::MozFrameDelay() {
   MOZ_ASSERT(NS_IsMainThread(), "Should be on main thread.");
 
-  if (!IsVideoStatsEnabled() ||
-      OwnerDoc()->ShouldResistFingerprinting(RFPTarget::Unknown)) {
+  if (!IsVideoStatsEnabled() || OwnerDoc()->ShouldResistFingerprinting(
+                                    RFPTarget::VideoElementMozFrameDelay)) {
     return 0.0;
   }
 
@@ -348,7 +351,8 @@ HTMLVideoElement::GetVideoPlaybackQuality() {
     }
 
     if (mDecoder) {
-      if (OwnerDoc()->ShouldResistFingerprinting(RFPTarget::Unknown)) {
+      if (OwnerDoc()->ShouldResistFingerprinting(
+              RFPTarget::VideoElementPlaybackQuality)) {
         totalFrames = nsRFPService::GetSpoofedTotalFrames(TotalPlayTime());
         droppedFrames = nsRFPService::GetSpoofedDroppedFrames(
             TotalPlayTime(), VideoWidth(), VideoHeight());
@@ -575,20 +579,18 @@ void HTMLVideoElement::MaybeBeginCloningVisually() {
         mVisualCloneTarget->GetVideoFrameContainer());
     NotifyDecoderActivityChanges();
     UpdateMediaControlAfterPictureInPictureModeChanged();
-    OwnerDoc()->EnableChildElementInPictureInPictureMode();
   } else if (mSrcStream) {
     VideoFrameContainer* container =
         mVisualCloneTarget->GetVideoFrameContainer();
     if (container) {
-      mSecondaryVideoOutput =
-          MakeRefPtr<FirstFrameVideoOutput>(container, mAbstractMainThread);
+      mSecondaryVideoOutput = MakeRefPtr<FirstFrameVideoOutput>(
+          container, AbstractThread::MainThread());
       mVideoWatchManager.Watch(
           mSecondaryVideoOutput->mFirstFrameRendered,
           &HTMLVideoElement::OnSecondaryVideoOutputFirstFrameRendered);
       SetSecondaryMediaStreamRenderer(container, mSecondaryVideoOutput);
     }
     UpdateMediaControlAfterPictureInPictureModeChanged();
-    OwnerDoc()->EnableChildElementInPictureInPictureMode();
   }
 }
 
@@ -598,7 +600,6 @@ void HTMLVideoElement::EndCloningVisually() {
   if (mDecoder) {
     mDecoder->SetSecondaryVideoContainer(nullptr);
     NotifyDecoderActivityChanges();
-    OwnerDoc()->DisableChildElementInPictureInPictureMode();
   } else if (mSrcStream) {
     if (mSecondaryVideoOutput) {
       mVideoWatchManager.Unwatch(
@@ -607,7 +608,6 @@ void HTMLVideoElement::EndCloningVisually() {
       mSecondaryVideoOutput = nullptr;
     }
     SetSecondaryMediaStreamRenderer(nullptr);
-    OwnerDoc()->DisableChildElementInPictureInPictureMode();
   }
 
   Unused << mVisualCloneTarget->SetVisualCloneSource(nullptr);
@@ -635,7 +635,7 @@ void HTMLVideoElement::OnSecondaryVideoContainerInstalled(
     return;
   }
 
-  mMainThreadEventTarget->Dispatch(NewRunnableMethod(
+  NS_DispatchToCurrentThread(NewRunnableMethod(
       "Promise::MaybeResolveWithUndefined", mVisualCloneTargetPromise,
       &Promise::MaybeResolveWithUndefined));
   mVisualCloneTargetPromise = nullptr;

@@ -1,5 +1,7 @@
 import string
 
+import WebIDL
+
 # We'd like to use itertools.chain but it's 2.6 or higher.
 
 
@@ -89,7 +91,7 @@ def WebIDLTest(parser, harness):
         interface PrepareForTest {
         """
     )
-    for (i, type) in enumerate(types):
+    for i, type in enumerate(types):
         interface += string.Template(
             """
           readonly attribute ${type} attr${i};
@@ -155,7 +157,7 @@ def WebIDLTest(parser, harness):
         interface TestUnion {
         """
     )
-    for (i, type) in enumerate(validUnionTypes):
+    for i, type in enumerate(validUnionTypes):
         interface += string.Template(
             """
           undefined method${i}(${type} arg);
@@ -188,7 +190,7 @@ def WebIDLTest(parser, harness):
         try:
             parser.parse(interface)
             results = parser.finish()
-        except Exception:
+        except WebIDL.WebIDLError:
             threw = True
 
         harness.ok(threw, "Should have thrown.")

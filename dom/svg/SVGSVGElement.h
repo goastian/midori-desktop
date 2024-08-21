@@ -128,7 +128,7 @@ class SVGSVGElement final : public SVGSVGElementBase {
   // SVGElement overrides
 
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  void UnbindFromTree(bool aNullParent) override;
+  void UnbindFromTree(UnbindContext&) override;
   SVGAnimatedTransformList* GetAnimatedTransformList(
       uint32_t aFlags = 0) override;
 
@@ -149,14 +149,8 @@ class SVGSVGElement final : public SVGSVGElementBase {
     return mCurrentTranslate != SVGPoint() || mCurrentScale != 1.0f;
   }
 
-  /**
-   * Returns -1 if the width/height is a percentage, else returns the user unit
-   * length clamped to fit in a int32_t.
-   * XXX see bug 1112533 comment 3 - we should fix drawImage so that we can
-   * change these methods to make zero the error flag for percentages.
-   */
-  int32_t GetIntrinsicWidth();
-  int32_t GetIntrinsicHeight();
+  LengthPercentage GetIntrinsicWidth();
+  LengthPercentage GetIntrinsicHeight();
 
   // This services any pending notifications for the transform on on this root
   // <svg> node needing to be recalculated.  (Only applicable in
@@ -184,6 +178,8 @@ class SVGSVGElement final : public SVGSVGElementBase {
    * rather than the DOM tree parent nowadays.
    */
   bool WillBeOutermostSVG(nsINode& aParent) const;
+
+  LengthPercentage GetIntrinsicWidthOrHeight(int aAttr);
 
   // invalidate viewbox -> viewport xform & inform frames
   void InvalidateTransformNotifyFrame();

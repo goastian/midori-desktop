@@ -6,9 +6,13 @@
 
 UNIFIED_SOURCES += [
     '../FFmpegAudioDecoder.cpp',
+    '../FFmpegAudioEncoder.cpp',
     '../FFmpegDataDecoder.cpp',
+    "../FFmpegDataEncoder.cpp",
     '../FFmpegDecoderModule.cpp',
+    '../FFmpegEncoderModule.cpp',
     '../FFmpegVideoDecoder.cpp',
+    '../FFmpegVideoEncoder.cpp',
 ]
 LOCAL_INCLUDES += [
     '..',
@@ -21,3 +25,7 @@ if CONFIG['CC_TYPE'] == 'clang':
   CXXFLAGS += [
     '-Wno-unknown-attributes',
   ]
+
+LOCAL_INCLUDES += [
+  "/media/libyuv/libyuv/include",
+]

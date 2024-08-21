@@ -170,14 +170,9 @@ nsresult SVGFEImageElement::BindToTree(BindContext& aContext,
   return rv;
 }
 
-void SVGFEImageElement::UnbindFromTree(bool aNullParent) {
-  nsImageLoadingContent::UnbindFromTree(aNullParent);
-  SVGFEImageElementBase::UnbindFromTree(aNullParent);
-}
-
-ElementState SVGFEImageElement::IntrinsicState() const {
-  return SVGFEImageElementBase::IntrinsicState() |
-         nsImageLoadingContent::ImageState();
+void SVGFEImageElement::UnbindFromTree(UnbindContext& aContext) {
+  nsImageLoadingContent::UnbindFromTree();
+  SVGFEImageElementBase::UnbindFromTree(aContext);
 }
 
 void SVGFEImageElement::DestroyContent() {
@@ -225,19 +220,23 @@ FilterPrimitiveDescription SVGFEImageElement::GetPrimitiveDescription(
   }
 
   RefPtr<SourceSurface> image;
+  nsIntSize nativeSize;
   if (imageContainer) {
+    if (NS_FAILED(imageContainer->GetWidth(&nativeSize.width))) {
+      nativeSize.width = kFallbackIntrinsicWidthInPixels;
+    }
+    if (NS_FAILED(imageContainer->GetHeight(&nativeSize.height))) {
+      nativeSize.height = kFallbackIntrinsicHeightInPixels;
+    }
     uint32_t flags =
         imgIContainer::FLAG_SYNC_DECODE | imgIContainer::FLAG_ASYNC_NOTIFY;
-    image = imageContainer->GetFrame(imgIContainer::FRAME_CURRENT, flags);
+    image = imageContainer->GetFrameAtSize(nativeSize,
+                                           imgIContainer::FRAME_CURRENT, flags);
   }
 
   if (!image) {
     return FilterPrimitiveDescription();
   }
-
-  IntSize nativeSize;
-  imageContainer->GetWidth(&nativeSize.width);
-  imageContainer->GetHeight(&nativeSize.height);
 
   Matrix viewBoxTM = SVGContentUtils::GetViewBoxTransform(
       aFilterSubregion.width, aFilterSubregion.height, 0, 0, nativeSize.width,
@@ -370,6 +369,23 @@ void SVGFEImageElement::Notify(imgIRequest* aRequest, int32_t aType,
       SVGObserverUtils::InvalidateDirectRenderingObservers(filter);
     }
   }
+}
+
+void SVGFEImageElement::DidAnimateAttribute(int32_t aNameSpaceID,
+                                            nsAtom* aAttribute) {
+  if ((aNameSpaceID == kNameSpaceID_None ||
+       aNameSpaceID == kNameSpaceID_XLink) &&
+      aAttribute == nsGkAtoms::href) {
+    bool hrefIsSet =
+        mStringAttributes[SVGFEImageElement::HREF].IsExplicitlySet() ||
+        mStringAttributes[SVGFEImageElement::XLINK_HREF].IsExplicitlySet();
+    if (hrefIsSet) {
+      LoadSVGImage(true, true);
+    } else {
+      CancelImageRequests(true);
+    }
+  }
+  SVGFEImageElementBase::DidAnimateAttribute(aNameSpaceID, aAttribute);
 }
 
 }  // namespace mozilla::dom

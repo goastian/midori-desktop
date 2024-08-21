@@ -23,7 +23,6 @@
 #include "mozilla/FixedBufferOutputStream.h"
 #include "mozilla/NotNull.h"
 #include "mozilla/RefPtr.h"
-#include "mozilla/Scoped.h"
 #include "mozilla/Span.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/dom/SafeRefPtr.h"
@@ -128,20 +127,20 @@ ArrayBufferInputStream::Read(char* aBuf, uint32_t aCount,
 NS_IMETHODIMP
 ArrayBufferInputStream::ReadSegments(nsWriteSegmentFun writer, void* closure,
                                      uint32_t aCount, uint32_t* result) {
-  MOZ_ASSERT(result, "null ptr");
-  MOZ_ASSERT(mBufferLength >= mPos, "bad stream state");
+  MOZ_RELEASE_ASSERT(result, "null ptr");
+  MOZ_RELEASE_ASSERT(mBufferLength >= mPos, "bad stream state");
 
   if (mClosed) {
     return NS_BASE_STREAM_CLOSED;
   }
 
-  MOZ_ASSERT(mArrayBuffer || (mPos == mBufferLength),
-             "stream inited incorrectly");
+  MOZ_RELEASE_ASSERT(mArrayBuffer || (mPos == mBufferLength),
+                     "stream inited incorrectly");
 
   *result = 0;
   while (mPos < mBufferLength) {
     uint32_t remaining = mBufferLength - mPos;
-    MOZ_ASSERT(mArrayBuffer);
+    MOZ_RELEASE_ASSERT(mArrayBuffer);
 
     uint32_t count = std::min(aCount, remaining);
     if (count == 0) {
@@ -156,8 +155,9 @@ ArrayBufferInputStream::ReadSegments(nsWriteSegmentFun writer, void* closure,
       return NS_OK;
     }
 
-    MOZ_ASSERT(written <= count,
-               "writer should not write more than we asked it to write");
+    MOZ_RELEASE_ASSERT(
+        written <= count,
+        "writer should not write more than we asked it to write");
     mPos += written;
     *result += written;
     aCount -= written;
@@ -175,7 +175,7 @@ ArrayBufferInputStream::IsNonBlocking(bool* aNonBlocking) {
 }
 
 NS_IMETHODIMP ArrayBufferInputStream::Tell(int64_t* const aRetval) {
-  MOZ_ASSERT(aRetval);
+  MOZ_RELEASE_ASSERT(aRetval);
 
   *aRetval = mPos;
 
@@ -229,12 +229,6 @@ NS_IMETHODIMP ArrayBufferInputStream::Clone(nsIInputStream** _retval) {
 }
 }  // namespace mozilla::dom::quota
 
-namespace mozilla {
-MOZ_TYPE_SPECIFIC_SCOPED_POINTER_TEMPLATE(ScopedNSSContext, NSSInitContext,
-                                          NSS_ShutdownContext);
-
-}  // namespace mozilla
-
 using namespace mozilla;
 using namespace mozilla::dom::quota;
 
@@ -243,18 +237,22 @@ class DOM_Quota_EncryptedStream : public ::testing::Test {
   static void SetUpTestCase() {
     // Do this only once, do not tear it down per test case.
     if (!sNssContext) {
-      sNssContext =
+      sNssContext.reset(
           NSS_InitContext("", "", "", "", nullptr,
                           NSS_INIT_READONLY | NSS_INIT_NOCERTDB |
                               NSS_INIT_NOMODDB | NSS_INIT_FORCEOPEN |
-                              NSS_INIT_OPTIMIZESPACE | NSS_INIT_NOROOTINIT);
+                              NSS_INIT_OPTIMIZESPACE | NSS_INIT_NOROOTINIT));
     }
   }
 
   static void TearDownTestCase() { sNssContext = nullptr; }
 
  private:
-  inline static ScopedNSSContext sNssContext = ScopedNSSContext{};
+  struct NSSInitContextDeleter {
+    void operator()(NSSInitContext* p) { NSS_ShutdownContext(p); }
+  };
+  inline static std::unique_ptr<NSSInitContext, NSSInitContextDeleter>
+      sNssContext;
 };
 
 enum struct FlushMode { AfterEachChunk, Never };
@@ -601,6 +599,22 @@ TEST_P(ParametrizedCryptTest, DummyCipherStrategy_IncompleteBlock) {
   EXPECT_EQ(NS_ERROR_CORRUPTED_CONTENT,
             inStream->Read(reinterpret_cast<char*>(readData.Elements()),
                            readData.Length(), &read));
+}
+
+TEST_P(ParametrizedCryptTest, zeroInitializedEncryptedBlock) {
+  const TestParams& testParams = GetParam();
+
+  using EncryptedBlock = EncryptedBlock<DummyCipherStrategy::BlockPrefixLength,
+                                        DummyCipherStrategy::BasicBlockSize>;
+
+  EncryptedBlock encryptedBlock{testParams.BlockSize()};
+  auto firstBlock =
+      encryptedBlock.WholeBlock().First<DummyCipherStrategy::BasicBlockSize>();
+  auto unusedBytesInFirstBlock = firstBlock.from(sizeof(uint16_t));
+
+  EXPECT_TRUE(std::all_of(unusedBytesInFirstBlock.begin(),
+                          unusedBytesInFirstBlock.end(),
+                          [](const auto& e) { return 0ul == e; }));
 }
 
 enum struct SeekOffset {

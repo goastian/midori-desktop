@@ -47,6 +47,8 @@ class HLSDecoder final : public MediaDecoder {
   // Called when Exoplayer start to load media. Main thread only.
   void NotifyLoad(nsCString aMediaUrl);
 
+  bool IsHLSDecoder() const override { return true; }
+
  private:
   friend class HLSResourceCallbacksSupport;
 
@@ -61,8 +63,9 @@ class HLSDecoder final : public MediaDecoder {
     return true;
   }
 
-  void UpdateCurrentPrincipal(nsCString aMediaUrl);
-  already_AddRefed<nsIPrincipal> GetContentPrincipal(nsCString aMediaUrl);
+  void UpdateCurrentPrincipal(nsIURI* aMediaUri);
+  already_AddRefed<nsIPrincipal> GetContentPrincipal(nsIURI* aMediaUri);
+  void RecordMediaUsage(nsIURI* aMediaUri);
 
   static size_t sAllocatedInstances;  // Access only in the main thread.
 
@@ -72,6 +75,9 @@ class HLSDecoder final : public MediaDecoder {
   java::GeckoHLSResourceWrapper::Callbacks::GlobalRef mJavaCallbacks;
   RefPtr<HLSResourceCallbacksSupport> mCallbackSupport;
   nsCOMPtr<nsIPrincipal> mContentPrincipal;
+  // There can be multiple media files loaded for one HLS content. Use this flag
+  // to ensure we only record once per content.
+  bool mUsageRecorded;
 };
 
 }  // namespace mozilla

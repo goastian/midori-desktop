@@ -15,6 +15,9 @@
 var h3Port;
 var host;
 
+/* eslint no-unused-vars: 0 */
+const dns = Services.dns;
+
 registerCleanupFunction(async () => {
   Services.prefs.clearUserPref("network.dns.localDomains");
   Services.prefs.clearUserPref("network.webtransport.enabled");
@@ -22,7 +25,9 @@ registerCleanupFunction(async () => {
   Services.prefs.clearUserPref("network.webtransport.redirect.enabled");
 });
 
-var { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+var { NetUtil } = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
+);
 
 function readFile(file) {
   let fstream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(

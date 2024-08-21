@@ -140,6 +140,8 @@ static void AppendImageFormatToName(nsCString& aName,
         return "gbrp,";
       case DecodeStage::ANDROID_SURFACE:
         return "android.Surface,";
+      case DecodeStage::VAAPI_SURFACE:
+        return "VAAPI.Surface,";
     }
     MOZ_ASSERT_UNREACHABLE("Unhandled DecodeStage::ImageFormat");
     return "";
@@ -243,6 +245,19 @@ ProfilerString8View PlaybackStage::Name() const {
   return *mName;
 }
 
+void PlaybackStage::AddMarker(MarkerOptions&& aOption) {
+  if (mStartAndEndTimeUs) {
+    auto& pair = *mStartAndEndTimeUs;
+    profiler_add_marker(Name(), Category(),
+                        std::forward<MarkerOptions&&>(aOption),
+                        geckoprofiler::markers::MediaSampleMarker{}, pair.first,
+                        pair.second, 1 /* queue length */);
+  } else {
+    profiler_add_marker(Name(), Category(),
+                        std::forward<MarkerOptions&&>(aOption));
+  }
+}
+
 ProfilerString8View CaptureStage::Name() const {
   if (!mName) {
     auto imageTypeToStr = [](ImageType aType) -> const char* {
@@ -303,6 +318,19 @@ ProfilerString8View DecodeStage::Name() const {
                                  extras.get(), mTrackingId.ToString().get()));
   }
   return *mName;
+}
+
+void DecodeStage::AddMarker(MarkerOptions&& aOption) {
+  if (mStartAndEndTimeUs) {
+    auto& pair = *mStartAndEndTimeUs;
+    profiler_add_marker(Name(), Category(),
+                        std::forward<MarkerOptions&&>(aOption),
+                        geckoprofiler::markers::MediaSampleMarker{}, pair.first,
+                        pair.second, 1 /* queue length */);
+  } else {
+    profiler_add_marker(Name(), Category(),
+                        std::forward<MarkerOptions&&>(aOption));
+  }
 }
 
 }  // namespace mozilla

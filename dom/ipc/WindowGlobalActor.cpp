@@ -109,6 +109,8 @@ WindowGlobalInit WindowGlobalActor::WindowInitializer(
       nsContentUtils::IsThirdPartyTrackingResourceWindow(aWindow);
   fields.Get<Indexes::IDX_ShouldResistFingerprinting>() =
       doc->ShouldResistFingerprinting(RFPTarget::IsAlwaysEnabledForPrecompute);
+  fields.Get<Indexes::IDX_OverriddenFingerprintingSettings>() =
+      doc->GetOverriddenFingerprintingSettings();
   fields.Get<Indexes::IDX_IsSecureContext>() = aWindow->IsSecureContext();
 
   // Initialze permission fields
@@ -150,6 +152,8 @@ WindowGlobalInit WindowGlobalActor::WindowInitializer(
     nsCOMPtr<nsILoadInfo> loadInfo(channel->LoadInfo());
     fields.Get<Indexes::IDX_IsOriginalFrameSource>() =
         loadInfo->GetOriginalFrameSrcLoad();
+    fields.Get<Indexes::IDX_UsingStorageAccess>() =
+        loadInfo->GetStoragePermission() != nsILoadInfo::NoStoragePermission;
 
     channel->GetSecurityInfo(getter_AddRefs(securityInfo));
   }

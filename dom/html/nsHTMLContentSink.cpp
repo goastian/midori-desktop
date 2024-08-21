@@ -53,8 +53,6 @@
 #include "nsIDocShell.h"
 #include "nsIScriptContext.h"
 
-#include "nsLayoutCID.h"
-
 #include "nsEscape.h"
 #include "nsNodeInfoManager.h"
 #include "nsContentCreatorFunctions.h"
@@ -933,7 +931,5 @@ void HTMLContentSink::ContinueInterruptedParsingAsync() {
   nsCOMPtr<nsIRunnable> ev = NewRunnableMethod(
       "HTMLContentSink::ContinueInterruptedParsingIfEnabled", this,
       &HTMLContentSink::ContinueInterruptedParsingIfEnabled);
-
-  RefPtr<Document> doc = mHTMLDocument;
-  doc->Dispatch(mozilla::TaskCategory::Other, ev.forget());
+  mHTMLDocument->Dispatch(ev.forget());
 }

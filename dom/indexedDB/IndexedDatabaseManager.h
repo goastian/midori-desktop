@@ -99,6 +99,14 @@ class IndexedDatabaseManager final {
       PersistenceType aPersistenceType, const nsACString& aOrigin,
       const nsAString& aDatabaseName);
 
+  [[nodiscard]] SafeRefPtr<DatabaseFileManager>
+  GetFileManagerByDatabaseFilePath(PersistenceType aPersistenceType,
+                                   const nsACString& aOrigin,
+                                   const nsAString& aDatabaseFilePath);
+
+  const nsTArray<SafeRefPtr<DatabaseFileManager>>& GetFileManagers(
+      PersistenceType aPersistenceType, const nsACString& aOrigin);
+
   void AddFileManager(SafeRefPtr<DatabaseFileManager> aFileManager);
 
   void InvalidateAllFileManagers();
@@ -122,6 +130,9 @@ class IndexedDatabaseManager final {
                                      int32_t* aDBRefCnt, bool* aResult);
 
   nsresult FlushPendingFileDeletions();
+
+  // XXX This extra explicit initialization should go away with bug 1730706.
+  nsresult EnsureLocale();
 
   static const nsCString& GetLocale();
 

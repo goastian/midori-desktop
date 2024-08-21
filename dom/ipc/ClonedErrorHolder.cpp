@@ -23,21 +23,21 @@ using namespace mozilla;
 using namespace mozilla::dom;
 
 // static
-already_AddRefed<ClonedErrorHolder> ClonedErrorHolder::Constructor(
+UniquePtr<ClonedErrorHolder> ClonedErrorHolder::Constructor(
     const GlobalObject& aGlobal, JS::Handle<JSObject*> aError,
     ErrorResult& aRv) {
   return Create(aGlobal.Context(), aError, aRv);
 }
 
 // static
-already_AddRefed<ClonedErrorHolder> ClonedErrorHolder::Create(
+UniquePtr<ClonedErrorHolder> ClonedErrorHolder::Create(
     JSContext* aCx, JS::Handle<JSObject*> aError, ErrorResult& aRv) {
-  RefPtr<ClonedErrorHolder> ceh = new ClonedErrorHolder();
+  UniquePtr<ClonedErrorHolder> ceh(new ClonedErrorHolder());
   ceh->Init(aCx, aError, aRv);
   if (aRv.Failed()) {
     return nullptr;
   }
-  return ceh.forget();
+  return ceh;
 }
 
 ClonedErrorHolder::ClonedErrorHolder()
@@ -56,7 +56,7 @@ void ClonedErrorHolder::Init(JSContext* aCx, JS::Handle<JSObject*> aError,
       mMessage = err->message().c_str();
     }
     if (err->filename) {
-      mFilename = err->filename;
+      mFilename = err->filename.c_str();
     }
     if (err->linebuf()) {
       AppendUTF16toUTF8(
@@ -178,7 +178,8 @@ bool ClonedErrorHolder::WriteStructuredClone(JSContext* aCx,
   return JS_WriteUint32Pair(aWriter, SCTAG_DOM_CLONED_ERROR_OBJECT, 0) &&
          WriteStringPair(aWriter, mName, mMessage) &&
          WriteStringPair(aWriter, mFilename, mSourceLine) &&
-         JS_WriteUint32Pair(aWriter, mLineNumber, mColumn) &&
+         JS_WriteUint32Pair(aWriter, mLineNumber,
+                            *mColumn.addressOfValueForTranscode()) &&
          JS_WriteUint32Pair(aWriter, mTokenOffset, mErrorNumber) &&
          JS_WriteUint32Pair(aWriter, uint32_t(mType), uint32_t(mExnType)) &&
          JS_WriteUint32Pair(aWriter, mCode, uint32_t(mResult)) &&
@@ -193,7 +194,8 @@ bool ClonedErrorHolder::Init(JSContext* aCx, JSStructuredCloneReader* aReader) {
   uint32_t type, exnType, result, code;
   if (!(ReadStringPair(aReader, mName, mMessage) &&
         ReadStringPair(aReader, mFilename, mSourceLine) &&
-        JS_ReadUint32Pair(aReader, &mLineNumber, &mColumn) &&
+        JS_ReadUint32Pair(aReader, &mLineNumber,
+                          mColumn.addressOfValueForTranscode()) &&
         JS_ReadUint32Pair(aReader, &mTokenOffset, &mErrorNumber) &&
         JS_ReadUint32Pair(aReader, &type, &exnType) &&
         JS_ReadUint32Pair(aReader, &code, &result) &&
@@ -222,7 +224,7 @@ JSObject* ClonedErrorHolder::ReadStructuredClone(
   // to avoid a potential rooting hazard.
   JS::Rooted<JS::Value> errorVal(aCx);
   {
-    RefPtr<ClonedErrorHolder> ceh = new ClonedErrorHolder();
+    UniquePtr<ClonedErrorHolder> ceh(new ClonedErrorHolder());
     if (!ceh->Init(aCx, aReader) || !ceh->ToErrorValue(aCx, &errorVal)) {
       return nullptr;
     }

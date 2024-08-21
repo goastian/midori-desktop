@@ -166,15 +166,15 @@ class ChannelMediaResource
 
   void GetDebugInfo(dom::MediaResourceDebugInfo& aInfo) override;
 
-  class Listener final : public nsIStreamListener,
-                         public nsIInterfaceRequestor,
+  class Listener final : public nsIInterfaceRequestor,
                          public nsIChannelEventSink,
-                         public nsIThreadRetargetableStreamListener {
+                         public nsIThreadRetargetableStreamListener,
+                         public SingleWriterLockOwner {
     ~Listener() = default;
 
    public:
     Listener(ChannelMediaResource* aResource, int64_t aOffset, uint32_t aLoadID)
-        : mMutex("Listener.mMutex"),
+        : mMutex("Listener.mMutex", this),
           mResource(aResource),
           mOffset(aOffset),
           mLoadID(aLoadID) {}
@@ -188,12 +188,14 @@ class ChannelMediaResource
 
     void Revoke();
 
+    bool OnWritingThread() const override { return NS_IsMainThread(); }
+
    private:
-    Mutex mMutex MOZ_UNANNOTATED;
+    MutexSingleWriter mMutex;
     // mResource should only be modified on the main thread with the lock.
     // So it can be read without lock on the main thread or on other threads
     // with the lock.
-    RefPtr<ChannelMediaResource> mResource;
+    RefPtr<ChannelMediaResource> mResource MOZ_GUARDED_BY(mMutex);
 
     const int64_t mOffset;
     const uint32_t mLoadID;

@@ -28,7 +28,6 @@ DEFINE_KEYNAME_WITH_SAME_NAME(Unidentified)
 /******************************************************************************
  * Our Internal Key Values (must have "Moz" prefix)
  *****************************************************************************/
-DEFINE_KEYNAME_INTERNAL(PrintableKey, "MozPrintableKey")
 DEFINE_KEYNAME_INTERNAL(SoftLeft, "MozSoftLeft")
 DEFINE_KEYNAME_INTERNAL(SoftRight, "MozSoftRight")
 
@@ -44,7 +43,6 @@ DEFINE_KEYNAME_WITH_SAME_NAME(FnLock)
 DEFINE_KEYNAME_WITH_SAME_NAME(Hyper)
 DEFINE_KEYNAME_WITH_SAME_NAME(Meta)
 DEFINE_KEYNAME_WITH_SAME_NAME(NumLock)
-DEFINE_KEYNAME_WITH_SAME_NAME(OS)  // Dropped from the latest draft, bug 1232918
 DEFINE_KEYNAME_WITH_SAME_NAME(ScrollLock)
 DEFINE_KEYNAME_WITH_SAME_NAME(Shift)
 DEFINE_KEYNAME_WITH_SAME_NAME(Super)
@@ -212,6 +210,7 @@ DEFINE_KEYNAME_WITH_SAME_NAME(Close)
 DEFINE_KEYNAME_WITH_SAME_NAME(MailForward)
 DEFINE_KEYNAME_WITH_SAME_NAME(MailReply)
 DEFINE_KEYNAME_WITH_SAME_NAME(MailSend)
+DEFINE_KEYNAME_WITH_SAME_NAME(MediaClose)
 DEFINE_KEYNAME_WITH_SAME_NAME(MediaFastForward)
 DEFINE_KEYNAME_WITH_SAME_NAME(MediaPause)
 DEFINE_KEYNAME_WITH_SAME_NAME(MediaPlay)

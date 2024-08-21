@@ -33,7 +33,7 @@ add_task(async function () {
   // Open 3 tabs using the preloaded browser.
   let tabs = [];
   for (let i = 0; i < 3; i++) {
-    BrowserOpenTab();
+    BrowserCommands.openTab();
     tabs.unshift(gBrowser.selectedTab);
     await BrowserTestUtils.maybeCreatePreloadedBrowser(gBrowser);
 
@@ -49,7 +49,7 @@ add_task(async function () {
   //
   // We should create a new content process.
   expectedChildCount += 1;
-  BrowserTestUtils.loadURIString(tabs[0].linkedBrowser, TEST_URL);
+  BrowserTestUtils.startLoadingURIString(tabs[0].linkedBrowser, TEST_URL);
   await BrowserTestUtils.browserLoaded(tabs[0].linkedBrowser, false, TEST_URL);
   is(
     ppmm.childCount,
@@ -114,7 +114,7 @@ add_task(async function preloaded_state_attribute() {
     "Sanity check that the first preloaded browser has the correct attribute"
   );
 
-  BrowserOpenTab();
+  BrowserCommands.openTab();
   await BrowserTestUtils.maybeCreatePreloadedBrowser(gBrowser);
 
   // Now check that the tabs have the correct browser attributes set

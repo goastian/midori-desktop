@@ -9,6 +9,7 @@
 #include "ipc/EnumSerializer.h"
 #include "mozilla/Logging.h"
 #include "mozilla/ProfilerMarkerTypes.h"
+#include "nsPrintfCString.h"
 
 namespace mozilla {
 
@@ -26,6 +27,16 @@ using MFMediaEngineError = MF_MEDIA_ENGINE_ERR;
     MOZ_LOG(gMFMediaEngineLog, LogLevel::Debug,                  \
             ("%s:%d, " msg, __FILE__, __LINE__, ##__VA_ARGS__)); \
   } while (false)
+
+#ifndef LOG_IF_FAILED
+#  define LOG_IF_FAILED(x)                              \
+    do {                                                \
+      HRESULT rv = x;                                   \
+      if (MOZ_UNLIKELY(FAILED(rv))) {                   \
+        LOG_AND_WARNING("(" #x ") failed, rv=%lx", rv); \
+      }                                                 \
+    } while (false)
+#endif
 
 #ifndef RETURN_IF_FAILED
 #  define RETURN_IF_FAILED(x)                           \
@@ -60,6 +71,26 @@ using MFMediaEngineError = MF_MEDIA_ENGINE_ERR;
     } while (false)
 #endif
 
+#ifndef SHUTDOWN_IF_POSSIBLE
+#  define SHUTDOWN_IF_POSSIBLE(class)                                        \
+    do {                                                                     \
+      IMFShutdown* pShutdown = nullptr;                                      \
+      HRESULT rv = class->QueryInterface(IID_PPV_ARGS(&pShutdown));          \
+      if (SUCCEEDED(rv)) {                                                   \
+        rv = pShutdown->Shutdown();                                          \
+        if (FAILED(rv)) {                                                    \
+          LOG_AND_WARNING(#class " failed to shutdown, rv=%lx", rv);         \
+        } else {                                                             \
+          MOZ_LOG(gMFMediaEngineLog, LogLevel::Verbose,                      \
+                  ((#class " shutdowned successfully")));                    \
+        }                                                                    \
+        pShutdown->Release();                                                \
+      } else {                                                               \
+        LOG_AND_WARNING(#class " doesn't support IMFShutdown?, rv=%lx", rv); \
+      }                                                                      \
+    } while (false)
+#endif
+
 #define ENGINE_MARKER(markerName) \
   PROFILER_MARKER(markerName, MEDIA_PLAYBACK, {}, MediaEngineMarker, Id())
 
@@ -76,6 +107,7 @@ const char* MFVideoTransferFunctionToStr(MFVideoTransferFunction aFunc);
 const char* MFVideoPrimariesToStr(MFVideoPrimaries aPrimaries);
 void ByteArrayFromGUID(REFGUID aGuidIn, nsTArray<uint8_t>& aByteArrayOut);
 void GUIDFromByteArray(const nsTArray<uint8_t>& aByteArrayIn, GUID& aGuidOut);
+BSTR CreateBSTRFromConstChar(const char* aNarrowStr);
 
 // See cdm::SubsampleEntry
 struct MediaFoundationSubsampleEntry {

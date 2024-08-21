@@ -32,7 +32,7 @@ with Files("linux/*LocationProvider*"):
 with Files("android/*LocationProvider*"):
     BUG_COMPONENT = ("Core", "DOM: Geolocation")
 
-with Files("tests/chrome.ini"):
+with Files("tests/chrome.toml"):
     BUG_COMPONENT = ("Toolkit", "IOUtils and PathUtils")
 
 with Files("tests/*constants*"):
@@ -41,7 +41,7 @@ with Files("tests/*constants*"):
 with Files("tests/ioutils/**"):
     BUG_COMPONENT = ("Toolkit", "IOUtils and PathUtils")
 
-with Files("tests/mochitest.ini"):
+with Files("tests/mochitest.toml"):
     BUG_COMPONENT = ("Core", "DOM: Device Interfaces")
 
 with Files("test/*pathutils*"):
@@ -68,7 +68,6 @@ if toolkit != "cocoa":
     ]
 
 XPIDL_SOURCES += [
-    "nsIOSFileConstantsService.idl",
     "nsIOSPermissionRequest.idl",
 ]
 
@@ -77,10 +76,6 @@ XPIDL_MODULE = "dom_system"
 EXPORTS += [
     "nsDeviceSensors.h",
     "nsOSPermissionRequestBase.h",
-]
-
-EXPORTS.mozilla += [
-    "OSFileConstants.h",
 ]
 
 EXPORTS.mozilla.dom += [
@@ -92,7 +87,6 @@ UNIFIED_SOURCES += [
     "IOUtils.cpp",
     "nsDeviceSensors.cpp",
     "nsOSPermissionRequestBase.cpp",
-    "OSFileConstants.cpp",
     "PathUtils.cpp",
 ]
 
@@ -115,5 +109,5 @@ LOCAL_INCLUDES += [
     "/xpcom/base",
 ]
 
-MOCHITEST_CHROME_MANIFESTS += ["tests/chrome.ini", "tests/ioutils/chrome.ini"]
-MOCHITEST_MANIFESTS += ["tests/mochitest.ini"]
+MOCHITEST_CHROME_MANIFESTS += ["tests/chrome.toml", "tests/ioutils/chrome.toml"]
+MOCHITEST_MANIFESTS += ["tests/mochitest.toml"]

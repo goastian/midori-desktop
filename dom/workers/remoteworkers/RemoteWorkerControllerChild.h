@@ -23,7 +23,7 @@ class RemoteWorkerControllerChild final : public PRemoteWorkerControllerChild {
   friend class PRemoteWorkerControllerChild;
 
  public:
-  NS_INLINE_DECL_REFCOUNTING(RemoteWorkerControllerChild)
+  NS_INLINE_DECL_REFCOUNTING(RemoteWorkerControllerChild, override)
 
   explicit RemoteWorkerControllerChild(RefPtr<RemoteWorkerObserver> aObserver);
 
@@ -32,6 +32,9 @@ class RemoteWorkerControllerChild final : public PRemoteWorkerControllerChild {
   void RevokeObserver(RemoteWorkerObserver* aObserver);
 
   void MaybeSendDelete();
+
+  TimeStamp GetRemoteWorkerLaunchStart();
+  TimeStamp GetRemoteWorkerLaunchEnd();
 
  private:
   ~RemoteWorkerControllerChild() = default;
@@ -57,6 +60,9 @@ class RemoteWorkerControllerChild final : public PRemoteWorkerControllerChild {
   RefPtr<RemoteWorkerObserver> mObserver;
 
   bool mIPCActive = true;
+
+  TimeStamp mRemoteWorkerLaunchStart;
+  TimeStamp mRemoteWorkerLaunchEnd;
 };
 
 }  // namespace mozilla::dom

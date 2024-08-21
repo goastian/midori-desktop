@@ -7,6 +7,7 @@
 #include "FileSystemAccessHandle.h"
 
 #include "FileSystemDatabaseManager.h"
+#include "FileSystemParentTypes.h"
 #include "mozilla/Result.h"
 #include "mozilla/dom/FileSystemDataManager.h"
 #include "mozilla/dom/FileSystemHelpers.h"
@@ -168,14 +169,15 @@ bool FileSystemAccessHandle::IsInactive() const {
 
 RefPtr<FileSystemAccessHandle::InitPromise>
 FileSystemAccessHandle::BeginInit() {
-  QM_TRY(MOZ_TO_RESULT(mDataManager->LockExclusive(mEntryId)),
-         [](const nsresult aRv) {
-           return InitPromise::CreateAndReject(aRv, __func__);
-         });
+  QM_TRY_UNWRAP(fs::FileId fileId, mDataManager->LockExclusive(mEntryId),
+                [](const auto& aRv) {
+                  return InitPromise::CreateAndReject(ToNSResult(aRv),
+                                                      __func__);
+                });
 
   mLocked = true;
 
-  auto CreateAndRejectInitPromise = [](const char* aFunc, nsresult aRv) {
+  auto CreateAndRejectInitPromise = [](StaticString aFunc, nsresult aRv) {
     return CreateAndRejectMozPromise<InitPromise>(aFunc, aRv);
   };
 
@@ -184,7 +186,8 @@ FileSystemAccessHandle::BeginInit() {
   fs::Path path;
   nsCOMPtr<nsIFile> file;
   QM_TRY(MOZ_TO_RESULT(mDataManager->MutableDatabaseManagerPtr()->GetFile(
-             mEntryId, type, lastModifiedMilliSeconds, path, file)),
+             mEntryId, fileId, fs::FileMode::EXCLUSIVE, type,
+             lastModifiedMilliSeconds, path, file)),
          CreateAndRejectInitPromise);
 
   if (LOG_ENABLED()) {

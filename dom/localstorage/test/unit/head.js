@@ -21,8 +21,6 @@ add_setup(function () {
 
   enableTesting();
 
-  Cu.importGlobalProperties(["crypto"]);
-
   registerCleanupFunction(resetTesting);
 });
 
@@ -125,11 +123,9 @@ function clearOriginsByPattern(pattern) {
 }
 
 function clearOriginsByPrefix(principal, persistence) {
-  let request = Services.qms.clearStoragesForPrincipal(
+  let request = Services.qms.clearStoragesForOriginPrefix(
     principal,
-    persistence,
-    null,
-    true
+    persistence
   );
 
   return request;

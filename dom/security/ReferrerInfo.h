@@ -14,7 +14,7 @@
 #include "mozilla/HashFunctions.h"
 #include "mozilla/dom/ReferrerPolicyBinding.h"
 
-#define REFERRERINFOF_CONTRACTID "@mozilla.org/referrer-info;1"
+#define REFERRERINFO_CONTRACTID "@mozilla.org/referrer-info;1"
 // 041a129f-10ce-4bda-a60d-e027a26d5ed0
 #define REFERRERINFO_CID                             \
   {                                                  \
@@ -71,6 +71,10 @@ class ReferrerInfo : public nsIReferrerInfo {
   explicit ReferrerInfo(const Element&);
   explicit ReferrerInfo(const Document&);
 
+  // Creates already initialized ReferrerInfo from an element or a document with
+  // a specific referrer policy.
+  ReferrerInfo(const Element&, ReferrerPolicyEnum);
+
   // create an exact copy of the ReferrerInfo
   already_AddRefed<ReferrerInfo> Clone() const;
 
@@ -88,16 +92,6 @@ class ReferrerInfo : public nsIReferrerInfo {
 
   // Record the telemetry for the referrer policy.
   void RecordTelemetry(nsIHttpChannel* aChannel);
-
-  /*
-   * Helper function to create a new ReferrerInfo object from other. We will not
-   * pass in any computed values and override referrer policy if needed
-   *
-   * @param aOther the other referrerInfo object to init from.
-   * @param aPolicyOverride referrer policy to override if necessary.
-   */
-  static already_AddRefed<nsIReferrerInfo> CreateFromOtherAndPolicyOverride(
-      nsIReferrerInfo* aOther, ReferrerPolicyEnum aPolicyOverride);
 
   /*
    * Helper function to create a new ReferrerInfo object from a given document
@@ -169,6 +163,12 @@ class ReferrerInfo : public nsIReferrerInfo {
    * do that in cases where we're going to use this information later on.
    */
   static bool IsCrossOriginRequest(nsIHttpChannel* aChannel);
+
+  /**
+   * Returns true if aReferrer's origin and aChannel's URI are cross-origin.
+   */
+  static bool IsReferrerCrossOrigin(nsIHttpChannel* aChannel,
+                                    nsIURI* aReferrer);
 
   /**
    * Returns true if the given channel is cross-site request.
@@ -258,13 +258,6 @@ class ReferrerInfo : public nsIReferrerInfo {
   static ReferrerPolicyEnum ReferrerPolicyFromHeaderString(
       const nsAString& aContent);
 
-  /*
-   * Helper function to convert ReferrerPolicy enum to string
-   *
-   * @param aPolicy referrer policy to convert.
-   */
-  static const char* ReferrerPolicyToString(ReferrerPolicyEnum aPolicy);
-
   /**
    * Hash function for this object
    */
@@ -328,7 +321,8 @@ class ReferrerInfo : public nsIReferrerInfo {
    * This function is called when we already made sure a nonempty referrer is
    * allowed to send.
    */
-  TrimmingPolicy ComputeTrimmingPolicy(nsIHttpChannel* aChannel) const;
+  TrimmingPolicy ComputeTrimmingPolicy(nsIHttpChannel* aChannel,
+                                       nsIURI* aReferrer) const;
 
   // HttpBaseChannel could access IsInitialized() and ComputeReferrer();
   friend class mozilla::net::HttpBaseChannel;

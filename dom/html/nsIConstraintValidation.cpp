@@ -83,13 +83,6 @@ bool nsIConstraintValidation::ReportValidity() {
   event->WidgetEventPtr()->mFlags.mOnlyChromeDispatch = true;
 
   element->DispatchEvent(*event);
-
-  auto* inputElement = HTMLInputElement::FromNode(element);
-  if (inputElement && inputElement->State().HasState(ElementState::FOCUS)) {
-    inputElement->UpdateValidityUIBits(true);
-  }
-
-  element->UpdateState(true);
   return false;
 }
 
@@ -111,8 +104,7 @@ void nsIConstraintValidation::SetValidityState(ValidityStateType aState,
     if (HTMLFormElement* form = formCtrl->GetForm()) {
       form->UpdateValidity(IsValid());
     }
-    HTMLFieldSetElement* fieldSet = formCtrl->GetFieldSet();
-    if (fieldSet) {
+    if (HTMLFieldSetElement* fieldSet = formCtrl->GetFieldSet()) {
       fieldSet->UpdateValidity(IsValid());
     }
   }

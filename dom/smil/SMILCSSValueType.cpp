@@ -185,60 +185,6 @@ bool SMILCSSValueType::IsEqual(const SMILValue& aLeft,
   return true;
 }
 
-static bool AddOrAccumulateForServo(SMILValue& aDest,
-                                    const ValueWrapper* aValueToAddWrapper,
-                                    ValueWrapper* aDestWrapper,
-                                    CompositeOperation aCompositeOp,
-                                    uint64_t aCount) {
-  nsCSSPropertyID property =
-      aValueToAddWrapper ? aValueToAddWrapper->mPropID : aDestWrapper->mPropID;
-  size_t len = aValueToAddWrapper ? aValueToAddWrapper->mServoValues.Length()
-                                  : aDestWrapper->mServoValues.Length();
-
-  MOZ_ASSERT(!aValueToAddWrapper || !aDestWrapper ||
-                 aValueToAddWrapper->mServoValues.Length() ==
-                     aDestWrapper->mServoValues.Length(),
-             "Both of values' length in the wrappers should be the same if "
-             "both of them exist");
-
-  for (size_t i = 0; i < len; i++) {
-    const RefPtr<StyleAnimationValue>* valueToAdd =
-        aValueToAddWrapper ? &aValueToAddWrapper->mServoValues[i] : nullptr;
-    const RefPtr<StyleAnimationValue>* destValue =
-        aDestWrapper ? &aDestWrapper->mServoValues[i] : nullptr;
-    RefPtr<StyleAnimationValue> zeroValueStorage;
-    if (!FinalizeServoAnimationValues(valueToAdd, destValue,
-                                      zeroValueStorage)) {
-      return false;
-    }
-
-    // FinalizeServoAnimationValues may have updated destValue so we should make
-    // sure the aDest and aDestWrapper outparams are up-to-date.
-    if (aDestWrapper) {
-      aDestWrapper->mServoValues[i] = *destValue;
-    } else {
-      // aDest may be a barely-initialized "zero" destination.
-      aDest.mU.mPtr = aDestWrapper = new ValueWrapper(property, *destValue);
-      aDestWrapper->mServoValues.SetLength(len);
-    }
-
-    RefPtr<StyleAnimationValue> result;
-    if (aCompositeOp == CompositeOperation::Add) {
-      result = Servo_AnimationValues_Add(*destValue, *valueToAdd).Consume();
-    } else {
-      result = Servo_AnimationValues_Accumulate(*destValue, *valueToAdd, aCount)
-                   .Consume();
-    }
-
-    if (!result) {
-      return false;
-    }
-    aDestWrapper->mServoValues[i] = result;
-  }
-
-  return true;
-}
-
 static bool AddOrAccumulate(SMILValue& aDest, const SMILValue& aValueToAdd,
                             CompositeOperation aCompositeOp, uint64_t aCount) {
   MOZ_ASSERT(aValueToAdd.mType == aDest.mType,
@@ -276,8 +222,51 @@ static bool AddOrAccumulate(SMILValue& aDest, const SMILValue& aValueToAdd,
     return false;
   }
 
-  return AddOrAccumulateForServo(aDest, valueToAddWrapper, destWrapper,
-                                 aCompositeOp, aCount);
+  size_t len = valueToAddWrapper ? valueToAddWrapper->mServoValues.Length()
+                                 : destWrapper->mServoValues.Length();
+
+  MOZ_ASSERT(!valueToAddWrapper || !destWrapper ||
+                 valueToAddWrapper->mServoValues.Length() ==
+                     destWrapper->mServoValues.Length(),
+             "Both of values' length in the wrappers should be the same if "
+             "both of them exist");
+
+  for (size_t i = 0; i < len; i++) {
+    const RefPtr<StyleAnimationValue>* valueToAdd =
+        valueToAddWrapper ? &valueToAddWrapper->mServoValues[i] : nullptr;
+    const RefPtr<StyleAnimationValue>* destValue =
+        destWrapper ? &destWrapper->mServoValues[i] : nullptr;
+    RefPtr<StyleAnimationValue> zeroValueStorage;
+    if (!FinalizeServoAnimationValues(valueToAdd, destValue,
+                                      zeroValueStorage)) {
+      return false;
+    }
+
+    // FinalizeServoAnimationValues may have updated destValue so we should make
+    // sure the aDest and aDestWrapper outparams are up-to-date.
+    if (destWrapper) {
+      destWrapper->mServoValues[i] = *destValue;
+    } else {
+      // aDest may be a barely-initialized "zero" destination.
+      aDest.mU.mPtr = destWrapper = new ValueWrapper(property, *destValue);
+      destWrapper->mServoValues.SetLength(len);
+    }
+
+    RefPtr<StyleAnimationValue> result;
+    if (aCompositeOp == CompositeOperation::Add) {
+      result = Servo_AnimationValues_Add(*destValue, *valueToAdd).Consume();
+    } else {
+      result = Servo_AnimationValues_Accumulate(*destValue, *valueToAdd, aCount)
+                   .Consume();
+    }
+
+    if (!result) {
+      return false;
+    }
+    destWrapper->mServoValues[i] = result;
+  }
+
+  return true;
 }
 
 nsresult SMILCSSValueType::SandwichAdd(SMILValue& aDest,
@@ -295,11 +284,18 @@ nsresult SMILCSSValueType::Add(SMILValue& aDest, const SMILValue& aValueToAdd,
              : NS_ERROR_FAILURE;
 }
 
-static nsresult ComputeDistanceForServo(const ValueWrapper* aFromWrapper,
-                                        const ValueWrapper& aToWrapper,
-                                        double& aDistance) {
-  size_t len = aToWrapper.mServoValues.Length();
-  MOZ_ASSERT(!aFromWrapper || aFromWrapper->mServoValues.Length() == len,
+nsresult SMILCSSValueType::ComputeDistance(const SMILValue& aFrom,
+                                           const SMILValue& aTo,
+                                           double& aDistance) const {
+  MOZ_ASSERT(aFrom.mType == aTo.mType, "Trying to compare different types");
+  MOZ_ASSERT(aFrom.mType == this, "Unexpected source type");
+
+  const ValueWrapper* fromWrapper = ExtractValueWrapper(aFrom);
+  const ValueWrapper* toWrapper = ExtractValueWrapper(aTo);
+  MOZ_ASSERT(toWrapper, "expecting non-null endpoint");
+
+  size_t len = toWrapper->mServoValues.Length();
+  MOZ_ASSERT(!fromWrapper || fromWrapper->mServoValues.Length() == len,
              "From and to values length should be the same if "
              "The start value exists");
 
@@ -307,8 +303,8 @@ static nsresult ComputeDistanceForServo(const ValueWrapper* aFromWrapper,
 
   for (size_t i = 0; i < len; i++) {
     const RefPtr<StyleAnimationValue>* fromValue =
-        aFromWrapper ? &aFromWrapper->mServoValues[0] : nullptr;
-    const RefPtr<StyleAnimationValue>* toValue = &aToWrapper.mServoValues[0];
+        fromWrapper ? &fromWrapper->mServoValues[i] : nullptr;
+    const RefPtr<StyleAnimationValue>* toValue = &toWrapper->mServoValues[i];
     RefPtr<StyleAnimationValue> zeroValueStorage;
     if (!FinalizeServoAnimationValues(fromValue, toValue, zeroValueStorage)) {
       return NS_ERROR_FAILURE;
@@ -332,64 +328,6 @@ static nsresult ComputeDistanceForServo(const ValueWrapper* aFromWrapper,
   return NS_OK;
 }
 
-nsresult SMILCSSValueType::ComputeDistance(const SMILValue& aFrom,
-                                           const SMILValue& aTo,
-                                           double& aDistance) const {
-  MOZ_ASSERT(aFrom.mType == aTo.mType, "Trying to compare different types");
-  MOZ_ASSERT(aFrom.mType == this, "Unexpected source type");
-
-  const ValueWrapper* fromWrapper = ExtractValueWrapper(aFrom);
-  const ValueWrapper* toWrapper = ExtractValueWrapper(aTo);
-  MOZ_ASSERT(toWrapper, "expecting non-null endpoint");
-  return ComputeDistanceForServo(fromWrapper, *toWrapper, aDistance);
-}
-
-static nsresult InterpolateForServo(const ValueWrapper* aStartWrapper,
-                                    const ValueWrapper& aEndWrapper,
-                                    double aUnitDistance, SMILValue& aResult) {
-  // For discretely-animated properties Servo_AnimationValues_Interpolate will
-  // perform the discrete animation (i.e. 50% flip) and return a success result.
-  // However, SMIL has its own special discrete animation behavior that it uses
-  // when keyTimes are specified, but we won't run that unless that this method
-  // returns a failure to indicate that the property cannot be smoothly
-  // interpolated, i.e. that we need to use a discrete calcMode.
-  //
-  // For shorthands, Servo_Property_IsDiscreteAnimatable will always return
-  // false. That's fine since most shorthands (like 'font' and
-  // 'text-decoration') include non-discrete components. If authors want to
-  // treat all components as discrete then they should use calcMode="discrete".
-  if (Servo_Property_IsDiscreteAnimatable(aEndWrapper.mPropID)) {
-    return NS_ERROR_FAILURE;
-  }
-
-  ServoAnimationValues results;
-  size_t len = aEndWrapper.mServoValues.Length();
-  results.SetCapacity(len);
-  MOZ_ASSERT(!aStartWrapper || aStartWrapper->mServoValues.Length() == len,
-             "Start and end values length should be the same if "
-             "the start value exists");
-  for (size_t i = 0; i < len; i++) {
-    const RefPtr<StyleAnimationValue>* startValue =
-        aStartWrapper ? &aStartWrapper->mServoValues[i] : nullptr;
-    const RefPtr<StyleAnimationValue>* endValue = &aEndWrapper.mServoValues[i];
-    RefPtr<StyleAnimationValue> zeroValueStorage;
-    if (!FinalizeServoAnimationValues(startValue, endValue, zeroValueStorage)) {
-      return NS_ERROR_FAILURE;
-    }
-
-    RefPtr<StyleAnimationValue> result =
-        Servo_AnimationValues_Interpolate(*startValue, *endValue, aUnitDistance)
-            .Consume();
-    if (!result) {
-      return NS_ERROR_FAILURE;
-    }
-    results.AppendElement(result);
-  }
-  aResult.mU.mPtr = new ValueWrapper(aEndWrapper.mPropID, std::move(results));
-
-  return NS_OK;
-}
-
 nsresult SMILCSSValueType::Interpolate(const SMILValue& aStartVal,
                                        const SMILValue& aEndVal,
                                        double aUnitDistance,
@@ -405,7 +343,48 @@ nsresult SMILCSSValueType::Interpolate(const SMILValue& aStartVal,
   const ValueWrapper* startWrapper = ExtractValueWrapper(aStartVal);
   const ValueWrapper* endWrapper = ExtractValueWrapper(aEndVal);
   MOZ_ASSERT(endWrapper, "expecting non-null endpoint");
-  return InterpolateForServo(startWrapper, *endWrapper, aUnitDistance, aResult);
+
+  // For discretely-animated properties Servo_AnimationValues_Interpolate will
+  // perform the discrete animation (i.e. 50% flip) and return a success result.
+  // However, SMIL has its own special discrete animation behavior that it uses
+  // when keyTimes are specified, but we won't run that unless that this method
+  // returns a failure to indicate that the property cannot be smoothly
+  // interpolated, i.e. that we need to use a discrete calcMode.
+  //
+  // For shorthands, Servo_Property_IsDiscreteAnimatable will always return
+  // false. That's fine since most shorthands (like 'font' and
+  // 'text-decoration') include non-discrete components. If authors want to
+  // treat all components as discrete then they should use calcMode="discrete".
+  if (Servo_Property_IsDiscreteAnimatable(endWrapper->mPropID)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  ServoAnimationValues results;
+  size_t len = endWrapper->mServoValues.Length();
+  results.SetCapacity(len);
+  MOZ_ASSERT(!startWrapper || startWrapper->mServoValues.Length() == len,
+             "Start and end values length should be the same if "
+             "the start value exists");
+  for (size_t i = 0; i < len; i++) {
+    const RefPtr<StyleAnimationValue>* startValue =
+        startWrapper ? &startWrapper->mServoValues[i] : nullptr;
+    const RefPtr<StyleAnimationValue>* endValue = &endWrapper->mServoValues[i];
+    RefPtr<StyleAnimationValue> zeroValueStorage;
+    if (!FinalizeServoAnimationValues(startValue, endValue, zeroValueStorage)) {
+      return NS_ERROR_FAILURE;
+    }
+
+    RefPtr<StyleAnimationValue> result =
+        Servo_AnimationValues_Interpolate(*startValue, *endValue, aUnitDistance)
+            .Consume();
+    if (!result) {
+      return NS_ERROR_FAILURE;
+    }
+    results.AppendElement(result);
+  }
+  aResult.mU.mPtr = new ValueWrapper(endWrapper->mPropID, std::move(results));
+
+  return NS_OK;
 }
 
 static ServoAnimationValues ValueFromStringHelper(
@@ -423,10 +402,10 @@ static ServoAnimationValues ValueFromStringHelper(
   ServoCSSParser::ParsingEnvironment env =
       ServoCSSParser::GetParsingEnvironment(doc);
   RefPtr<StyleLockedDeclarationBlock> servoDeclarationBlock =
-      ServoCSSParser::ParseProperty(aPropID, NS_ConvertUTF16toUTF8(aString),
-                                    env,
-                                    ParsingMode::AllowUnitlessLength |
-                                        ParsingMode::AllowAllNumericValues);
+      ServoCSSParser::ParseProperty(
+          aPropID, NS_ConvertUTF16toUTF8(aString), env,
+          StyleParsingMode::ALLOW_UNITLESS_LENGTH |
+              StyleParsingMode::ALLOW_ALL_NUMERIC_VALUES);
   if (!servoDeclarationBlock) {
     return result;
   }
@@ -453,7 +432,7 @@ void SMILCSSValueType::ValueFromString(nsCSSPropertyID aPropID,
   }
 
   Document* doc = aTargetElement->GetComposedDoc();
-  if (doc && !nsStyleUtil::CSPAllowsInlineStyle(nullptr, doc, nullptr, 0, 0,
+  if (doc && !nsStyleUtil::CSPAllowsInlineStyle(nullptr, doc, nullptr, 0, 1,
                                                 aString, nullptr)) {
     return;
   }
@@ -490,7 +469,7 @@ SMILValue SMILCSSValueType::ValueFromAnimationValue(
   // and an intermediate CSS value is not likely to be particularly useful
   // in that case, we just use a generic placeholder string instead.
   static const nsLiteralString kPlaceholderText = u"[SVG animation of CSS]"_ns;
-  if (doc && !nsStyleUtil::CSPAllowsInlineStyle(nullptr, doc, nullptr, 0, 0,
+  if (doc && !nsStyleUtil::CSPAllowsInlineStyle(nullptr, doc, nullptr, 0, 1,
                                                 kPlaceholderText, nullptr)) {
     return result;
   }

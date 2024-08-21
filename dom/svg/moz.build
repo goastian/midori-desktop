@@ -7,7 +7,7 @@
 with Files("**"):
     BUG_COMPONENT = ("Core", "SVG")
 
-MOCHITEST_MANIFESTS += ["test/mochitest.ini"]
+MOCHITEST_MANIFESTS += ["test/mochitest.toml"]
 
 EXPORTS.mozilla += [
     "SVGAnimatedClass.h",
@@ -199,6 +199,7 @@ UNIFIED_SOURCES += [
     "SVGLength.cpp",
     "SVGLengthList.cpp",
     "SVGLengthListSMILType.cpp",
+    "SVGLengthSMILType.cpp",
     "SVGLineElement.cpp",
     "SVGMarkerElement.cpp",
     "SVGMaskElement.cpp",

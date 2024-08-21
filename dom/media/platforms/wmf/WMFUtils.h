@@ -7,6 +7,9 @@
 #ifndef WMFUtils_h
 #define WMFUtils_h
 
+#include <hstring.h>
+#include <winstring.h>
+
 #include "ImageTypes.h"
 #include "TimeUnits.h"
 #include "VideoUtils.h"
@@ -31,6 +34,7 @@ enum class WMFStreamType {
   VP8,
   VP9,
   AV1,
+  HEVC,
   MP3,
   AAC,
   OPUS,
@@ -98,6 +102,21 @@ void AACAudioSpecificConfigToUserData(uint8_t aAACProfileLevelIndication,
                                       const uint8_t* aAudioSpecConfig,
                                       uint32_t aConfigLength,
                                       nsTArray<BYTE>& aOutUserData);
+
+class ScopedHString final {
+ public:
+  explicit ScopedHString(const nsAString& aStr) {
+    WindowsCreateString(PromiseFlatString(aStr).get(), aStr.Length(), &mString);
+  }
+  explicit ScopedHString(const WCHAR aCharArray[]) {
+    WindowsCreateString(aCharArray, wcslen(aCharArray), &mString);
+  }
+  ~ScopedHString() { WindowsDeleteString(mString); }
+  const HSTRING& Get() { return mString; }
+
+ private:
+  HSTRING mString;
+};
 
 }  // namespace mozilla
 

@@ -8,6 +8,7 @@
 #include "URLMainThread.h"
 #include "URLWorker.h"
 
+#include "nsASCIIMask.h"
 #include "MainThreadUtils.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/dom/URLBinding.h"
@@ -35,8 +36,8 @@ JSObject* URL::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) {
 
 /* static */
 already_AddRefed<URL> URL::Constructor(const GlobalObject& aGlobal,
-                                       const nsAString& aURL,
-                                       const Optional<nsAString>& aBase,
+                                       const nsACString& aURL,
+                                       const Optional<nsACString>& aBase,
                                        ErrorResult& aRv) {
   if (aBase.WasPassed()) {
     return Constructor(aGlobal.GetAsSupports(), aURL, aBase.Value(), aRv);
@@ -47,20 +48,13 @@ already_AddRefed<URL> URL::Constructor(const GlobalObject& aGlobal,
 
 /* static */
 already_AddRefed<URL> URL::Constructor(nsISupports* aParent,
-                                       const nsAString& aURL,
-                                       const nsAString& aBase,
+                                       const nsACString& aURL,
+                                       const nsACString& aBase,
                                        ErrorResult& aRv) {
-  // Don't use NS_ConvertUTF16toUTF8 because that doesn't let us handle OOM.
-  nsAutoCString base;
-  if (!AppendUTF16toUTF8(aBase, base, fallible)) {
-    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-    return nullptr;
-  }
-
   nsCOMPtr<nsIURI> baseUri;
-  nsresult rv = NS_NewURI(getter_AddRefs(baseUri), base);
+  nsresult rv = NS_NewURI(getter_AddRefs(baseUri), aBase);
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    aRv.ThrowTypeError<MSG_INVALID_URL>(base);
+    aRv.ThrowTypeError<MSG_INVALID_URL>(aBase);
     return nullptr;
   }
 
@@ -69,21 +63,14 @@ already_AddRefed<URL> URL::Constructor(nsISupports* aParent,
 
 /* static */
 already_AddRefed<URL> URL::Constructor(nsISupports* aParent,
-                                       const nsAString& aURL, nsIURI* aBase,
+                                       const nsACString& aURL, nsIURI* aBase,
                                        ErrorResult& aRv) {
-  // Don't use NS_ConvertUTF16toUTF8 because that doesn't let us handle OOM.
-  nsAutoCString urlStr;
-  if (!AppendUTF16toUTF8(aURL, urlStr, fallible)) {
-    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-    return nullptr;
-  }
-
   nsCOMPtr<nsIURI> uri;
-  nsresult rv = NS_NewURI(getter_AddRefs(uri), urlStr, nullptr, aBase);
+  nsresult rv = NS_NewURI(getter_AddRefs(uri), aURL, nullptr, aBase);
   if (NS_FAILED(rv)) {
     // No need to warn in this case. It's common to use the URL constructor
     // to determine if a URL is valid and an exception will be propagated.
-    aRv.ThrowTypeError<MSG_INVALID_URL>(urlStr);
+    aRv.ThrowTypeError<MSG_INVALID_URL>(aURL);
     return nullptr;
   }
 
@@ -95,7 +82,7 @@ already_AddRefed<URL> URL::FromURI(GlobalObject& aGlobal, nsIURI* aURI) {
 }
 
 void URL::CreateObjectURL(const GlobalObject& aGlobal, Blob& aBlob,
-                          nsAString& aResult, ErrorResult& aRv) {
+                          nsACString& aResult, ErrorResult& aRv) {
   if (NS_IsMainThread()) {
     URLMainThread::CreateObjectURL(aGlobal, aBlob, aResult, aRv);
   } else {
@@ -104,12 +91,12 @@ void URL::CreateObjectURL(const GlobalObject& aGlobal, Blob& aBlob,
 }
 
 void URL::CreateObjectURL(const GlobalObject& aGlobal, MediaSource& aSource,
-                          nsAString& aResult, ErrorResult& aRv) {
+                          nsACString& aResult, ErrorResult& aRv) {
   MOZ_ASSERT(NS_IsMainThread());
   URLMainThread::CreateObjectURL(aGlobal, aSource, aResult, aRv);
 }
 
-void URL::RevokeObjectURL(const GlobalObject& aGlobal, const nsAString& aURL,
+void URL::RevokeObjectURL(const GlobalObject& aGlobal, const nsACString& aURL,
                           ErrorResult& aRv) {
   if (aURL.Contains('#')) {
     // Don't revoke URLs that contain fragments.
@@ -123,7 +110,7 @@ void URL::RevokeObjectURL(const GlobalObject& aGlobal, const nsAString& aURL,
   }
 }
 
-bool URL::IsValidObjectURL(const GlobalObject& aGlobal, const nsAString& aURL,
+bool URL::IsValidObjectURL(const GlobalObject& aGlobal, const nsACString& aURL,
                            ErrorResult& aRv) {
   if (NS_IsMainThread()) {
     return URLMainThread::IsValidObjectURL(aGlobal, aURL, aRv);
@@ -131,32 +118,40 @@ bool URL::IsValidObjectURL(const GlobalObject& aGlobal, const nsAString& aURL,
   return URLWorker::IsValidObjectURL(aGlobal, aURL, aRv);
 }
 
-bool URL::CanParse(const GlobalObject& aGlobal, const nsAString& aURL,
-                   const Optional<nsAString>& aBase) {
+already_AddRefed<nsIURI> URL::ParseURI(const nsACString& aURL,
+                                       const Optional<nsACString>& aBase) {
   nsCOMPtr<nsIURI> baseUri;
-  if (aBase.WasPassed()) {
-    // Don't use NS_ConvertUTF16toUTF8 because that doesn't let us handle OOM.
-    nsAutoCString base;
-    if (!AppendUTF16toUTF8(aBase.Value(), base, fallible)) {
-      // Just return false with OOM errors as no ErrorResult.
-      return false;
-    }
-
-    nsresult rv = NS_NewURI(getter_AddRefs(baseUri), base);
-    if (NS_FAILED(rv)) {
-      // Invalid base URL, return false.
-      return false;
-    }
-  }
-
-  nsAutoCString urlStr;
-  if (!AppendUTF16toUTF8(aURL, urlStr, fallible)) {
-    // Just return false with OOM errors as no ErrorResult.
-    return false;
-  }
-
   nsCOMPtr<nsIURI> uri;
-  return NS_SUCCEEDED(NS_NewURI(getter_AddRefs(uri), urlStr, nullptr, baseUri));
+
+  if (aBase.WasPassed()) {
+    nsresult rv = NS_NewURI(getter_AddRefs(baseUri), aBase.Value());
+    if (NS_FAILED(rv)) {
+      return nullptr;
+    }
+  }
+
+  nsresult rv = NS_NewURI(getter_AddRefs(uri), aURL, nullptr, baseUri);
+  if (NS_FAILED(rv)) {
+    return nullptr;
+  }
+
+  return uri.forget();
+};
+
+already_AddRefed<URL> URL::Parse(const GlobalObject& aGlobal,
+                                 const nsACString& aURL,
+                                 const Optional<nsACString>& aBase) {
+  nsCOMPtr<nsIURI> uri = ParseURI(aURL, aBase);
+  if (!uri) {
+    return nullptr;
+  }
+  return MakeAndAddRef<URL>(aGlobal.GetAsSupports(), std::move(uri));
+}
+
+bool URL::CanParse(const GlobalObject& aGlobal, const nsACString& aURL,
+                   const Optional<nsACString>& aBase) {
+  nsCOMPtr<nsIURI> uri = ParseURI(aURL, aBase);
+  return !!uri;
 }
 
 URLSearchParams* URL::SearchParams() {
@@ -173,7 +168,7 @@ void URL::CreateSearchParamsIfNeeded() {
   }
 }
 
-void URL::SetSearch(const nsAString& aSearch) {
+void URL::SetSearch(const nsACString& aSearch) {
   SetSearchInternal(aSearch);
   UpdateURLSearchParams();
 }
@@ -182,35 +177,22 @@ void URL::URLSearchParamsUpdated(URLSearchParams* aSearchParams) {
   MOZ_ASSERT(mSearchParams);
   MOZ_ASSERT(mSearchParams == aSearchParams);
 
-  nsAutoString search;
+  nsAutoCString search;
   mSearchParams->Serialize(search);
-
   SetSearchInternal(search);
 }
 
-#define URL_GETTER(value, func)  \
-  MOZ_ASSERT(mURI);              \
-  value.Truncate();              \
-  nsAutoCString tmp;             \
-  nsresult rv = mURI->func(tmp); \
-  if (NS_SUCCEEDED(rv)) {        \
-    CopyUTF8toUTF16(tmp, value); \
-  }
+#define URL_GETTER(value, func) \
+  MOZ_ASSERT(mURI);             \
+  mURI->func(value);
 
-void URL::GetHref(nsAString& aHref) const { URL_GETTER(aHref, GetSpec); }
+void URL::GetHref(nsACString& aHref) const { URL_GETTER(aHref, GetSpec); }
 
-void URL::SetHref(const nsAString& aHref, ErrorResult& aRv) {
-  // Don't use NS_ConvertUTF16toUTF8 because that doesn't let us handle OOM.
-  nsAutoCString href;
-  if (!AppendUTF16toUTF8(aHref, href, fallible)) {
-    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-    return;
-  }
-
+void URL::SetHref(const nsACString& aHref, ErrorResult& aRv) {
   nsCOMPtr<nsIURI> uri;
-  nsresult rv = NS_NewURI(getter_AddRefs(uri), href);
+  nsresult rv = NS_NewURI(getter_AddRefs(uri), aHref);
   if (NS_FAILED(rv)) {
-    aRv.ThrowTypeError<MSG_INVALID_URL>(href);
+    aRv.ThrowTypeError<MSG_INVALID_URL>(aHref);
     return;
   }
 
@@ -218,126 +200,95 @@ void URL::SetHref(const nsAString& aHref, ErrorResult& aRv) {
   UpdateURLSearchParams();
 }
 
-void URL::GetOrigin(nsAString& aOrigin) const {
-  nsresult rv = nsContentUtils::GetUTFOrigin(URI(), aOrigin);
+void URL::GetOrigin(nsACString& aOrigin) const {
+  nsresult rv =
+      nsContentUtils::GetWebExposedOriginSerialization(URI(), aOrigin);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     aOrigin.Truncate();
   }
 }
 
-void URL::GetProtocol(nsAString& aProtocol) const {
+void URL::GetProtocol(nsACString& aProtocol) const {
   URL_GETTER(aProtocol, GetScheme);
   aProtocol.Append(char16_t(':'));
 }
 
-void URL::SetProtocol(const nsAString& aProtocol) {
-  nsAString::const_iterator start;
-  aProtocol.BeginReading(start);
-
-  nsAString::const_iterator end;
-  aProtocol.EndReading(end);
-
-  nsAString::const_iterator iter(start);
-  FindCharInReadable(':', iter, end);
-
-  // Changing the protocol of a URL, changes the "nature" of the URI
-  // implementation. In order to do this properly, we have to serialize the
-  // existing URL and reparse it in a new object.
-  nsCOMPtr<nsIURI> clone;
-  nsresult rv = NS_MutateURI(URI())
-                    .SetScheme(NS_ConvertUTF16toUTF8(Substring(start, iter)))
-                    .Finalize(clone);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
+void URL::SetProtocol(const nsACString& aProtocol) {
+  nsCOMPtr<nsIURI> uri(URI());
+  if (!uri) {
     return;
   }
-
-  nsAutoCString href;
-  rv = clone->GetSpec(href);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
+  uri = net::TryChangeProtocol(uri, aProtocol);
+  if (!uri) {
     return;
   }
-
-  nsCOMPtr<nsIURI> uri;
-  rv = NS_NewURI(getter_AddRefs(uri), href);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return;
-  }
-
   mURI = std::move(uri);
 }
 
-void URL::GetUsername(nsAString& aUsername) const {
+void URL::GetUsername(nsACString& aUsername) const {
   URL_GETTER(aUsername, GetUsername);
 }
 
-void URL::SetUsername(const nsAString& aUsername) {
+void URL::SetUsername(const nsACString& aUsername) {
   MOZ_ASSERT(mURI);
-
-  Unused << NS_MutateURI(mURI)
-                .SetUsername(NS_ConvertUTF16toUTF8(aUsername))
-                .Finalize(mURI);
+  Unused << NS_MutateURI(mURI).SetUsername(aUsername).Finalize(mURI);
 }
 
-void URL::GetPassword(nsAString& aPassword) const {
+void URL::GetPassword(nsACString& aPassword) const {
   URL_GETTER(aPassword, GetPassword);
 }
 
-void URL::SetPassword(const nsAString& aPassword) {
+void URL::SetPassword(const nsACString& aPassword) {
   MOZ_ASSERT(mURI);
 
-  Unused << NS_MutateURI(mURI)
-                .SetPassword(NS_ConvertUTF16toUTF8(aPassword))
-                .Finalize(mURI);
+  Unused << NS_MutateURI(mURI).SetPassword(aPassword).Finalize(mURI);
 }
 
-void URL::GetHost(nsAString& aHost) const { URL_GETTER(aHost, GetHostPort); }
+void URL::GetHost(nsACString& aHost) const { URL_GETTER(aHost, GetHostPort); }
 
-void URL::SetHost(const nsAString& aHost) {
+void URL::SetHost(const nsACString& aHost) {
   MOZ_ASSERT(mURI);
-
-  Unused << NS_MutateURI(mURI)
-                .SetHostPort(NS_ConvertUTF16toUTF8(aHost))
-                .Finalize(mURI);
+  Unused << NS_MutateURI(mURI).SetHostPort(aHost).Finalize(mURI);
 }
 
-void URL::GetHostname(nsAString& aHostname) const {
+void URL::GetHostname(nsACString& aHostname) const {
   MOZ_ASSERT(mURI);
-
   aHostname.Truncate();
   nsContentUtils::GetHostOrIPv6WithBrackets(mURI, aHostname);
 }
 
-void URL::SetHostname(const nsAString& aHostname) {
+void URL::SetHostname(const nsACString& aHostname) {
   MOZ_ASSERT(mURI);
 
   // nsStandardURL returns NS_ERROR_UNEXPECTED for an empty hostname
   // The return code is silently ignored
-  mozilla::Unused << NS_MutateURI(mURI)
-                         .SetHost(NS_ConvertUTF16toUTF8(aHostname))
-                         .Finalize(mURI);
+  Unused << NS_MutateURI(mURI).SetHost(aHostname).Finalize(mURI);
 }
 
-void URL::GetPort(nsAString& aPort) const {
+void URL::GetPort(nsACString& aPort) const {
   MOZ_ASSERT(mURI);
-
   aPort.Truncate();
 
   int32_t port;
   nsresult rv = mURI->GetPort(&port);
   if (NS_SUCCEEDED(rv) && port != -1) {
-    nsAutoString portStr;
-    portStr.AppendInt(port, 10);
-    aPort.Assign(portStr);
+    aPort.AppendInt(port, 10);
   }
 }
 
-void URL::SetPort(const nsAString& aPort) {
+void URL::SetPort(const nsACString& aPort) {
   nsresult rv;
-  nsAutoString portStr(aPort);
+  nsAutoCString portStr(aPort);
   int32_t port = -1;
 
   // nsIURI uses -1 as default value.
+  portStr.StripTaggedASCII(ASCIIMask::MaskCRLFTab());
   if (!portStr.IsEmpty()) {
+    // To be valid, the port must start with an ASCII digit.
+    // (nsACString::ToInteger ignores leading junk, so check before calling.)
+    if (!IsAsciiDigit(portStr[0])) {
+      return;
+    }
     port = portStr.ToInteger(&rv);
     if (NS_FAILED(rv)) {
       return;
@@ -347,32 +298,21 @@ void URL::SetPort(const nsAString& aPort) {
   Unused << NS_MutateURI(mURI).SetPort(port).Finalize(mURI);
 }
 
-void URL::GetPathname(nsAString& aPathname) const {
+void URL::GetPathname(nsACString& aPathname) const {
   MOZ_ASSERT(mURI);
-
-  aPathname.Truncate();
-
   // Do not throw!  Not having a valid URI or URL should result in an empty
   // string.
-
-  nsAutoCString file;
-  nsresult rv = mURI->GetFilePath(file);
-  if (NS_SUCCEEDED(rv)) {
-    CopyUTF8toUTF16(file, aPathname);
-  }
+  mURI->GetFilePath(aPathname);
 }
 
-void URL::SetPathname(const nsAString& aPathname) {
+void URL::SetPathname(const nsACString& aPathname) {
   MOZ_ASSERT(mURI);
 
   // Do not throw!
-
-  Unused << NS_MutateURI(mURI)
-                .SetFilePath(NS_ConvertUTF16toUTF8(aPathname))
-                .Finalize(mURI);
+  Unused << NS_MutateURI(mURI).SetFilePath(aPathname).Finalize(mURI);
 }
 
-void URL::GetSearch(nsAString& aSearch) const {
+void URL::GetSearch(nsACString& aSearch) const {
   MOZ_ASSERT(mURI);
 
   aSearch.Truncate();
@@ -380,44 +320,33 @@ void URL::GetSearch(nsAString& aSearch) const {
   // Do not throw!  Not having a valid URI or URL should result in an empty
   // string.
 
-  nsAutoCString search;
   nsresult rv;
-
-  rv = mURI->GetQuery(search);
-  if (NS_SUCCEEDED(rv) && !search.IsEmpty()) {
-    aSearch.Assign(u'?');
-    AppendUTF8toUTF16(search, aSearch);
+  rv = mURI->GetQuery(aSearch);
+  if (NS_SUCCEEDED(rv) && !aSearch.IsEmpty()) {
+    aSearch.Insert('?', 0);
   }
 }
 
-void URL::GetHash(nsAString& aHash) const {
+void URL::GetHash(nsACString& aHash) const {
   MOZ_ASSERT(mURI);
-
   aHash.Truncate();
-
-  nsAutoCString ref;
-  nsresult rv = mURI->GetRef(ref);
-  if (NS_SUCCEEDED(rv) && !ref.IsEmpty()) {
-    aHash.Assign(char16_t('#'));
-    AppendUTF8toUTF16(ref, aHash);
+  nsresult rv = mURI->GetRef(aHash);
+  if (NS_SUCCEEDED(rv) && !aHash.IsEmpty()) {
+    aHash.Insert('#', 0);
   }
 }
 
-void URL::SetHash(const nsAString& aHash) {
+void URL::SetHash(const nsACString& aHash) {
   MOZ_ASSERT(mURI);
 
-  Unused
-      << NS_MutateURI(mURI).SetRef(NS_ConvertUTF16toUTF8(aHash)).Finalize(mURI);
+  Unused << NS_MutateURI(mURI).SetRef(aHash).Finalize(mURI);
 }
 
-void URL::SetSearchInternal(const nsAString& aSearch) {
+void URL::SetSearchInternal(const nsACString& aSearch) {
   MOZ_ASSERT(mURI);
 
   // Ignore failures to be compatible with NS4.
-
-  Unused << NS_MutateURI(mURI)
-                .SetQuery(NS_ConvertUTF16toUTF8(aSearch))
-                .Finalize(mURI);
+  Unused << NS_MutateURI(mURI).SetQuery(aSearch).Finalize(mURI);
 }
 
 void URL::UpdateURLSearchParams() {

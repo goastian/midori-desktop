@@ -36,8 +36,6 @@ class ArrayBufferViewOrArrayBuffer;
 class MediaKeyError;
 class MediaKeyStatusMap;
 
-nsCString ToCString(MediaKeySessionType aType);
-
 nsString ToString(MediaKeySessionType aType);
 
 class MediaKeySession final : public DOMEventTargetHelper,
@@ -49,7 +47,7 @@ class MediaKeySession final : public DOMEventTargetHelper,
  public:
   MediaKeySession(nsPIDOMWindowInner* aParent, MediaKeys* aKeys,
                   const nsAString& aKeySystem, MediaKeySessionType aSessionType,
-                  ErrorResult& aRv);
+                  bool aHardwareDecryption, ErrorResult& aRv);
 
   void SetSessionId(const nsAString& aSessionId);
 
@@ -122,6 +120,12 @@ class MediaKeySession final : public DOMEventTargetHelper,
   already_AddRefed<DetailedPromise> MakePromise(ErrorResult& aRv,
                                                 const nsACString& aName);
 
+  // EME spec, starting from 6.6.2.7
+  // https://w3c.github.io/encrypted-media/
+  void CompleteGenerateRequest(const nsString& aInitDataType,
+                               nsTArray<uint8_t>& aData,
+                               DetailedPromise* aPromise);
+
   RefPtr<DetailedPromise> mClosed;
 
   RefPtr<MediaKeyError> mMediaKeyError;
@@ -134,6 +138,12 @@ class MediaKeySession final : public DOMEventTargetHelper,
   bool mUninitialized;
   RefPtr<MediaKeyStatusMap> mKeyStatusMap;
   double mExpiration;
+
+  // True if this key session is related with hardware decryption.
+  bool mHardwareDecryption;
+
+  // True if this media key session is created under a private browsing mode.
+  const bool mIsPrivateBrowsing;
 };
 
 }  // namespace dom

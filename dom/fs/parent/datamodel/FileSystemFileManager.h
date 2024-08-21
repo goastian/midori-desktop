@@ -8,6 +8,7 @@
 #define DOM_FS_PARENT_DATAMODEL_FILESYSTEMFILEMANAGER_H_
 
 #include "ErrorList.h"
+#include "mozilla/UniquePtr.h"
 #include "mozilla/dom/FileSystemTypes.h"
 #include "mozilla/dom/QMResult.h"
 #include "nsIFile.h"
@@ -26,7 +27,11 @@ struct OriginMetadata;
 
 }  // namespace quota
 
-namespace fs::data {
+namespace fs {
+
+struct FileId;
+
+namespace data {
 
 /**
  * @brief Get the directory for file system items of specified origin.
@@ -98,8 +103,8 @@ class FileSystemFileManager {
    * @param aOrigin
    * @return Result<FileSystemFileManager, QMResult>
    */
-  static Result<FileSystemFileManager, QMResult> CreateFileSystemFileManager(
-      const quota::OriginMetadata& aOriginMetadata);
+  static Result<UniquePtr<FileSystemFileManager>, QMResult>
+  CreateFileSystemFileManager(const quota::OriginMetadata& aOriginMetadata);
 
   /**
    * @brief Create a File System File Manager object which keeps file entries
@@ -119,24 +124,34 @@ class FileSystemFileManager {
    * @param aEntryId Specified id of a file system entry
    * @return Result<nsCOMPtr<nsIFile>, QMResult> File or error.
    */
-  Result<nsCOMPtr<nsIFile>, QMResult> GetFile(const EntryId& aEntryId) const;
+  Result<nsCOMPtr<nsIFile>, QMResult> GetFile(const FileId& aFileId) const;
 
   /**
    * @brief Get or create a disk-backed file object for a specified entry id.
    *
-   * @param aEntryId Specified id of a file system entry
+   * @param aFileId Specified id of a file system entry
    * @return Result<nsCOMPtr<nsIFile>, QMResult> File abstraction or IO error
    */
-  Result<nsCOMPtr<nsIFile>, QMResult> GetOrCreateFile(const EntryId& aEntryId);
+  Result<nsCOMPtr<nsIFile>, QMResult> GetOrCreateFile(const FileId& aFileId);
+
+  /**
+   * @brief Create a disk-backed file object as a copy.
+   *
+   * @param aDestinationFileId Specified id of file to be created
+   * @param aSourceFileId Specified id of the file from which we make a copy
+   * @return Result<nsCOMPtr<nsIFile>, QMResult> File abstraction or IO error
+   */
+  Result<nsCOMPtr<nsIFile>, QMResult> CreateFileFrom(
+      const FileId& aDestinationFileId, const FileId& aSourceFileId);
 
   /**
    * @brief Remove the disk-backed file object for a specified entry id.
    * Note: The returned value is 0 in release builds.
    *
-   * @param aEntryId  Specified id of a file system entry
+   * @param aFileId  Specified id of a file system entry
    * @return Result<Usage, QMResult> Error or file size
    */
-  Result<Usage, QMResult> RemoveFile(const EntryId& aEntryId);
+  Result<Usage, QMResult> RemoveFile(const FileId& aFileId);
 
   /**
    * @brief This method can be used to try to delete a group of files from the
@@ -145,7 +160,7 @@ class FileSystemFileManager {
    * The method attempts to remove all the files requested.
    */
   Result<DebugOnly<Usage>, QMResult> RemoveFiles(
-      const nsTArray<EntryId>& aEntryIds, nsTArray<EntryId>& aRemoveFails);
+      const nsTArray<FileId>& aFileIds, nsTArray<FileId>& aFailedRemovals);
 
  private:
   explicit FileSystemFileManager(nsCOMPtr<nsIFile>&& aTopDirectory);
@@ -153,7 +168,8 @@ class FileSystemFileManager {
   nsCOMPtr<nsIFile> mTopDirectory;
 };
 
-}  // namespace fs::data
+}  // namespace data
+}  // namespace fs
 }  // namespace mozilla::dom
 
 #endif  // DOM_FS_PARENT_DATAMODEL_FILESYSTEMFILEMANAGER_H_

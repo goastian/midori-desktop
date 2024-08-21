@@ -8,6 +8,7 @@
 #include "mozilla/TextUtils.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_security.h"
 #include "nsCOMPtr.h"
 #include "nsContentUtils.h"
@@ -18,6 +19,9 @@
 #include "nsReadableUtils.h"
 #include "nsServiceManagerUtils.h"
 #include "nsUnicharUtils.h"
+
+#include <cstdint>
+#include <utility>
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -174,7 +178,7 @@ void nsCSPParser::logWarningErrorToConsole(uint32_t aSeverityFlag,
                             u""_ns,          // aSourceName
                             u""_ns,          // aSourceLine
                             0,               // aLineNumber
-                            0,               // aColumnNumber
+                            1,               // aColumnNumber
                             aSeverityFlag);  // aFlags
 }
 
@@ -414,23 +418,19 @@ nsCSPBaseSrc* nsCSPParser::keywordSource() {
         !CSP_IsDirective(mCurDir[0],
                          nsIContentSecurityPolicy::SCRIPT_SRC_ELEM_DIRECTIVE) &&
         !CSP_IsDirective(mCurDir[0],
-                         nsIContentSecurityPolicy::SCRIPT_SRC_ATTR_DIRECTIVE)) {
-      // Todo: Enforce 'strict-dynamic' within default-src; see Bug 1313937
+                         nsIContentSecurityPolicy::SCRIPT_SRC_ATTR_DIRECTIVE) &&
+        !CSP_IsDirective(mCurDir[0],
+                         nsIContentSecurityPolicy::DEFAULT_SRC_DIRECTIVE)) {
       AutoTArray<nsString, 1> params = {u"strict-dynamic"_ns};
       logWarningErrorToConsole(nsIScriptError::warningFlag,
                                "ignoringStrictDynamic", params);
-      return nullptr;
     }
+
     mStrictDynamic = true;
     return new nsCSPKeywordSrc(CSP_UTF16KeywordToEnum(mCurToken));
   }
 
   if (CSP_IsKeyword(mCurToken, CSP_UNSAFE_INLINE)) {
-    nsWeakPtr ctx = mCSPContext->GetLoadingContext();
-    nsCOMPtr<Document> doc = do_QueryReferent(ctx);
-    if (doc) {
-      doc->SetHasUnsafeInlineCSP(true);
-    }
     // make sure script-src only contains 'unsafe-inline' once;
     // ignore duplicates and log warning
     if (mUnsafeInlineKeywordSrc) {
@@ -447,37 +447,16 @@ nsCSPBaseSrc* nsCSPParser::keywordSource() {
   }
 
   if (CSP_IsKeyword(mCurToken, CSP_UNSAFE_EVAL)) {
-    nsWeakPtr ctx = mCSPContext->GetLoadingContext();
-    nsCOMPtr<Document> doc = do_QueryReferent(ctx);
-    if (doc) {
-      doc->SetHasUnsafeEvalCSP(true);
-    }
     mHasAnyUnsafeEval = true;
     return new nsCSPKeywordSrc(CSP_UTF16KeywordToEnum(mCurToken));
   }
 
-  if (StaticPrefs::security_csp_wasm_unsafe_eval_enabled() &&
-      CSP_IsKeyword(mCurToken, CSP_WASM_UNSAFE_EVAL)) {
+  if (CSP_IsKeyword(mCurToken, CSP_WASM_UNSAFE_EVAL)) {
     mHasAnyUnsafeEval = true;
     return new nsCSPKeywordSrc(CSP_UTF16KeywordToEnum(mCurToken));
   }
 
-  if (StaticPrefs::security_csp_unsafe_hashes_enabled() &&
-      CSP_IsKeyword(mCurToken, CSP_UNSAFE_HASHES)) {
-    return new nsCSPKeywordSrc(CSP_UTF16KeywordToEnum(mCurToken));
-  }
-
-  if (CSP_IsKeyword(mCurToken, CSP_UNSAFE_ALLOW_REDIRECTS)) {
-    if (!CSP_IsDirective(mCurDir[0],
-                         nsIContentSecurityPolicy::NAVIGATE_TO_DIRECTIVE)) {
-      // Only allow 'unsafe-allow-redirects' within navigate-to.
-      AutoTArray<nsString, 2> params = {u"unsafe-allow-redirects"_ns,
-                                        u"navigate-to"_ns};
-      logWarningErrorToConsole(nsIScriptError::warningFlag,
-                               "IgnoringSourceWithinDirective", params);
-      return nullptr;
-    }
-
+  if (CSP_IsKeyword(mCurToken, CSP_UNSAFE_HASHES)) {
     return new nsCSPKeywordSrc(CSP_UTF16KeywordToEnum(mCurToken));
   }
 
@@ -838,6 +817,142 @@ void nsCSPParser::sandboxFlagList(nsCSPDirective* aDir) {
   mPolicy->addDirective(aDir);
 }
 
+// https://w3c.github.io/trusted-types/dist/spec/#integration-with-content-security-policy
+static constexpr nsLiteralString kValidRequireTrustedTypesForDirectiveValue =
+    u"'script'"_ns;
+
+static bool IsValidRequireTrustedTypesForDirectiveValue(
+    const nsAString& aToken) {
+  return aToken.Equals(kValidRequireTrustedTypesForDirectiveValue);
+}
+
+void nsCSPParser::handleRequireTrustedTypesForDirective(nsCSPDirective* aDir) {
+  // "srcs" start at index 1. Here "srcs" should represent Trusted Types' sink
+  // groups
+  // (https://w3c.github.io/trusted-types/dist/spec/#require-trusted-types-for-csp-directive).
+
+  if (mCurDir.Length() != 2) {
+    nsString numberOfTokensStr;
+
+    // Casting is required to avoid ambiguous function calls on some platforms.
+    numberOfTokensStr.AppendInt(static_cast<uint64_t>(mCurDir.Length()));
+
+    AutoTArray<nsString, 1> numberOfTokensArr = {std::move(numberOfTokensStr)};
+    logWarningErrorToConsole(nsIScriptError::errorFlag,
+                             "invalidNumberOfTrustedTypesForDirectiveValues",
+                             numberOfTokensArr);
+    return;
+  }
+
+  mCurToken = mCurDir.LastElement();
+
+  CSPPARSERLOG(
+      ("nsCSPParser::handleRequireTrustedTypesForDirective, mCurToken: %s",
+       NS_ConvertUTF16toUTF8(mCurToken).get()));
+
+  if (!IsValidRequireTrustedTypesForDirectiveValue(mCurToken)) {
+    AutoTArray<nsString, 1> token = {mCurToken};
+    logWarningErrorToConsole(nsIScriptError::errorFlag,
+                             "invalidRequireTrustedTypesForDirectiveValue",
+                             token);
+    return;
+  }
+
+  nsTArray<nsCSPBaseSrc*> srcs = {
+      new nsCSPRequireTrustedTypesForDirectiveValue(mCurToken)};
+
+  aDir->addSrcs(srcs);
+  mPolicy->addDirective(aDir);
+}
+
+static constexpr auto kTrustedTypesKeywordAllowDuplicates =
+    u"'allow-duplicates'"_ns;
+static constexpr auto kTrustedTypesKeywordNone = u"'none'"_ns;
+
+static bool IsValidTrustedTypesKeyword(const nsAString& aToken) {
+  // tt-keyword = "'allow-duplicates'" / "'none'"
+  return aToken.Equals(kTrustedTypesKeywordAllowDuplicates) ||
+         aToken.Equals(kTrustedTypesKeywordNone);
+}
+
+static bool IsValidTrustedTypesWildcard(const nsAString& aToken) {
+  // tt-wildcard = "*"
+  return aToken.Length() == 1 && aToken.First() == WILDCARD;
+}
+
+static bool IsValidTrustedTypesPolicyNameChar(char16_t aChar) {
+  // tt-policy-name = 1*( ALPHA / DIGIT / "-" / "#" / "=" / "_" / "/" / "@" /
+  // "." / "%")
+  return nsContentUtils::IsAlphanumeric(aChar) || aChar == DASH ||
+         aChar == NUMBER_SIGN || aChar == EQUALS || aChar == UNDERLINE ||
+         aChar == SLASH || aChar == ATSYMBOL || aChar == DOT ||
+         aChar == PERCENT_SIGN;
+}
+
+static bool IsValidTrustedTypesPolicyName(const nsAString& aToken) {
+  // tt-policy-name = 1*( ALPHA / DIGIT / "-" / "#" / "=" / "_" / "/" / "@" /
+  // "." / "%")
+
+  if (aToken.IsEmpty()) {
+    return false;
+  }
+
+  for (uint32_t i = 0; i < aToken.Length(); ++i) {
+    if (!IsValidTrustedTypesPolicyNameChar(aToken.CharAt(i))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// https://w3c.github.io/trusted-types/dist/spec/#trusted-types-csp-directive
+static bool IsValidTrustedTypesExpression(const nsAString& aToken) {
+  // tt-expression = tt-policy-name  / tt-keyword / tt-wildcard
+  return IsValidTrustedTypesPolicyName(aToken) ||
+         IsValidTrustedTypesKeyword(aToken) ||
+         IsValidTrustedTypesWildcard(aToken);
+}
+
+void nsCSPParser::handleTrustedTypesDirective(nsCSPDirective* aDir) {
+  CSPPARSERLOG(("nsCSPParser::handleTrustedTypesDirective"));
+
+  nsTArray<nsCSPBaseSrc*> trustedTypesExpressions;
+
+  // "srcs" start and index 1. Here they should represent the tt-expressions
+  // (https://w3c.github.io/trusted-types/dist/spec/#trusted-types-csp-directive).
+  for (uint32_t i = 1; i < mCurDir.Length(); ++i) {
+    mCurToken = mCurDir[i];
+
+    CSPPARSERLOG(("nsCSPParser::handleTrustedTypesDirective, mCurToken: %s",
+                  NS_ConvertUTF16toUTF8(mCurToken).get()));
+
+    if (!IsValidTrustedTypesExpression(mCurToken)) {
+      AutoTArray<nsString, 1> token = {mCurToken};
+      logWarningErrorToConsole(nsIScriptError::errorFlag,
+                               "invalidTrustedTypesExpression", token);
+
+      for (auto* trustedTypeExpression : trustedTypesExpressions) {
+        delete trustedTypeExpression;
+      }
+
+      return;
+    }
+
+    trustedTypesExpressions.AppendElement(
+        new nsCSPTrustedTypesDirectivePolicyName(mCurToken));
+  }
+
+  if (trustedTypesExpressions.IsEmpty()) {
+    // No tt-expression is equivalent to 'none', see
+    // <https://w3c.github.io/trusted-types/dist/spec/#trusted-types-csp-directive>.
+    trustedTypesExpressions.AppendElement(new nsCSPKeywordSrc(CSP_NONE));
+  }
+
+  aDir->addSrcs(trustedTypesExpressions);
+  mPolicy->addDirective(aDir);
+}
+
 // directive-value = *( WSP / <VCHAR except ";" and ","> )
 void nsCSPParser::directiveValue(nsTArray<nsCSPBaseSrc*>& outSrcs) {
   CSPPARSERLOG(("nsCSPParser::directiveValue"));
@@ -854,7 +969,11 @@ nsCSPDirective* nsCSPParser::directiveName() {
 
   // Check if it is a valid directive
   CSPDirective directive = CSP_StringToCSPDirective(mCurToken);
-  if (directive == nsIContentSecurityPolicy::NO_DIRECTIVE) {
+  if (directive == nsIContentSecurityPolicy::NO_DIRECTIVE ||
+      (!StaticPrefs::dom_security_trusted_types_enabled() &&
+       (directive ==
+            nsIContentSecurityPolicy::REQUIRE_TRUSTED_TYPES_FOR_DIRECTIVE ||
+        directive == nsIContentSecurityPolicy::TRUSTED_TYPES_DIRECTIVE))) {
     AutoTArray<nsString, 1> params = {mCurToken};
     logWarningErrorToConsole(nsIScriptError::warningFlag,
                              "couldNotProcessUnknownDirective", params);
@@ -869,32 +988,6 @@ nsCSPDirective* nsCSPParser::directiveName() {
     AutoTArray<nsString, 1> params = {mCurToken};
     logWarningErrorToConsole(nsIScriptError::warningFlag,
                              "notSupportingDirective", params);
-    return nullptr;
-  }
-
-  // script-src-attr and script-scr-elem might have been disabled.
-  // Similarly style-src-{attr, elem}.
-  if (((directive == nsIContentSecurityPolicy::SCRIPT_SRC_ATTR_DIRECTIVE ||
-        directive == nsIContentSecurityPolicy::SCRIPT_SRC_ELEM_DIRECTIVE) &&
-       !StaticPrefs::security_csp_script_src_attr_elem_enabled()) ||
-      ((directive == nsIContentSecurityPolicy::STYLE_SRC_ATTR_DIRECTIVE ||
-        directive == nsIContentSecurityPolicy::STYLE_SRC_ELEM_DIRECTIVE) &&
-       !StaticPrefs::security_csp_style_src_attr_elem_enabled())) {
-    AutoTArray<nsString, 1> params = {mCurToken};
-    logWarningErrorToConsole(nsIScriptError::warningFlag,
-                             "notSupportingDirective", params);
-    return nullptr;
-  }
-
-  // Bug 1529068: Implement navigate-to directive.
-  // Once all corner cases are resolved we can remove that special
-  // if-handling here and let the parser just fall through to
-  // return new nsCSPDirective.
-  if (directive == nsIContentSecurityPolicy::NAVIGATE_TO_DIRECTIVE &&
-      !StaticPrefs::security_csp_enableNavigateTo()) {
-    AutoTArray<nsString, 1> params = {mCurToken};
-    logWarningErrorToConsole(nsIScriptError::warningFlag,
-                             "couldNotProcessUnknownDirective", params);
     return nullptr;
   }
 
@@ -923,9 +1016,16 @@ nsCSPDirective* nsCSPParser::directiveName() {
 
   // special case handling for block-all-mixed-content
   if (directive == nsIContentSecurityPolicy::BLOCK_ALL_MIXED_CONTENT) {
-    // If mixed content upgrade is enabled block-all-mixed content is obsolete
+    // If mixed content upgrade is enabled for all types block-all-mixed-content
+    // is obsolete
     if (mozilla::StaticPrefs::
-            security_mixed_content_upgrade_display_content()) {
+            security_mixed_content_upgrade_display_content() &&
+        mozilla::StaticPrefs::
+            security_mixed_content_upgrade_display_content_image() &&
+        mozilla::StaticPrefs::
+            security_mixed_content_upgrade_display_content_audio() &&
+        mozilla::StaticPrefs::
+            security_mixed_content_upgrade_display_content_video()) {
       // log to the console that if mixed content display upgrading is enabled
       // block-all-mixed-content is obsolete.
       AutoTArray<nsString, 1> params = {mCurToken};
@@ -980,14 +1080,6 @@ nsCSPDirective* nsCSPParser::directiveName() {
 
 // directive = *WSP [ directive-name [ WSP directive-value ] ]
 void nsCSPParser::directive() {
-  // Set the directiveName to mCurToken
-  // Remember, the directive name is stored at index 0
-  mCurToken = mCurDir[0];
-
-  CSPPARSERLOG(("nsCSPParser::directive, mCurToken: %s, mCurValue: %s",
-                NS_ConvertUTF16toUTF8(mCurToken).get(),
-                NS_ConvertUTF16toUTF8(mCurValue).get()));
-
   // Make sure that the directive-srcs-array contains at least
   // one directive.
   if (mCurDir.Length() == 0) {
@@ -996,6 +1088,14 @@ void nsCSPParser::directive() {
                              "failedToParseUnrecognizedSource", params);
     return;
   }
+
+  // Set the directiveName to mCurToken
+  // Remember, the directive name is stored at index 0
+  mCurToken = mCurDir[0];
+
+  CSPPARSERLOG(("nsCSPParser::directive, mCurToken: %s, mCurValue: %s",
+                NS_ConvertUTF16toUTF8(mCurToken).get(),
+                NS_ConvertUTF16toUTF8(mCurValue).get()));
 
   if (CSP_IsEmptyDirective(mCurValue, mCurToken)) {
     return;
@@ -1052,6 +1152,19 @@ void nsCSPParser::directive() {
     return;
   }
 
+  // Special case handling since these directives don't contain source lists.
+  if (CSP_IsDirective(
+          mCurDir[0],
+          nsIContentSecurityPolicy::REQUIRE_TRUSTED_TYPES_FOR_DIRECTIVE)) {
+    handleRequireTrustedTypesForDirective(cspDir);
+    return;
+  }
+
+  if (cspDir->equals(nsIContentSecurityPolicy::TRUSTED_TYPES_DIRECTIVE)) {
+    handleTrustedTypesDirective(cspDir);
+    return;
+  }
+
   // make sure to reset cache variables when trying to invalidate unsafe-inline;
   // unsafe-inline might not only appear in script-src, but also in default-src
   mHasHashOrNonce = false;
@@ -1073,40 +1186,38 @@ void nsCSPParser::directive() {
     srcs.InsertElementAt(0, keyword);
   }
 
-  // If policy contains 'strict-dynamic' invalidate all srcs within script-src.
-  if (mStrictDynamic) {
-    MOZ_ASSERT(
-        cspDir->equals(nsIContentSecurityPolicy::SCRIPT_SRC_DIRECTIVE) ||
-            cspDir->equals(
-                nsIContentSecurityPolicy::SCRIPT_SRC_ELEM_DIRECTIVE) ||
-            cspDir->equals(nsIContentSecurityPolicy::SCRIPT_SRC_ATTR_DIRECTIVE),
-        "strict-dynamic only allowed within script-src(-elem|attr)");
-    for (uint32_t i = 0; i < srcs.Length(); i++) {
-      // Please note that nsCSPNonceSrc as well as nsCSPHashSrc overwrite
-      // invalidate(), so it's fine to just call invalidate() on all srcs.
-      // Please also note that nsCSPKeywordSrc() can not be invalidated and
-      // always returns false unless the keyword is 'strict-dynamic' in which
-      // case we allow the load if the script is not parser created!
-      srcs[i]->invalidate();
-      // Log a message to the console that src will be ignored.
+  MaybeWarnAboutIgnoredSources(srcs);
+  MaybeWarnAboutUnsafeInline(*cspDir);
+  MaybeWarnAboutUnsafeEval(*cspDir);
+
+  // Add the newly created srcs to the directive and add the directive to the
+  // policy
+  cspDir->addSrcs(srcs);
+  mPolicy->addDirective(cspDir);
+}
+
+void nsCSPParser::MaybeWarnAboutIgnoredSources(
+    const nsTArray<nsCSPBaseSrc*>& aSrcs) {
+  // If policy contains 'strict-dynamic' warn about ignored sources.
+  if (mStrictDynamic &&
+      !CSP_IsDirective(mCurDir[0],
+                       nsIContentSecurityPolicy::DEFAULT_SRC_DIRECTIVE)) {
+    for (uint32_t i = 0; i < aSrcs.Length(); i++) {
       nsAutoString srcStr;
-      srcs[i]->toString(srcStr);
-      // Even though we invalidate all of the srcs internally, we don't want to
-      // log messages for the srcs: 'strict-dynamic', 'unsafe-inline',
-      // 'unsafe-hashes', nonces, and hashes, because those still apply even
-      // with 'strict-dynamic'.
-      // TODO the comment seems wrong 'unsafe-eval' vs 'unsafe-inline'.
-      if (!srcStr.EqualsASCII(CSP_EnumToUTF8Keyword(CSP_STRICT_DYNAMIC)) &&
-          !srcStr.EqualsASCII(CSP_EnumToUTF8Keyword(CSP_UNSAFE_EVAL)) &&
-          !srcStr.EqualsASCII(CSP_EnumToUTF8Keyword(CSP_UNSAFE_HASHES)) &&
-          !StringBeginsWith(
-              srcStr, nsDependentString(CSP_EnumToUTF16Keyword(CSP_NONCE))) &&
-          !StringBeginsWith(srcStr, u"'sha"_ns)) {
+      aSrcs[i]->toString(srcStr);
+      // Hashes and nonces continue to apply with 'strict-dynamic', as well as
+      // 'unsafe-eval', 'wasm-unsafe-eval' and 'unsafe-hashes'.
+      if (!aSrcs[i]->isKeyword(CSP_STRICT_DYNAMIC) &&
+          !aSrcs[i]->isKeyword(CSP_UNSAFE_EVAL) &&
+          !aSrcs[i]->isKeyword(CSP_WASM_UNSAFE_EVAL) &&
+          !aSrcs[i]->isKeyword(CSP_UNSAFE_HASHES) && !aSrcs[i]->isNonce() &&
+          !aSrcs[i]->isHash()) {
         AutoTArray<nsString, 2> params = {srcStr, mCurDir[0]};
         logWarningErrorToConsole(nsIScriptError::warningFlag,
                                  "ignoringScriptSrcForStrictDynamic", params);
       }
     }
+
     // Log a warning that all scripts might be blocked because the policy
     // contains 'strict-dynamic' but no valid nonce or hash.
     if (!mHasHashOrNonce) {
@@ -1115,39 +1226,37 @@ void nsCSPParser::directive() {
                                "strictDynamicButNoHashOrNonce", params);
     }
   }
+}
 
+void nsCSPParser::MaybeWarnAboutUnsafeInline(const nsCSPDirective& aDirective) {
   // From https://w3c.github.io/webappsec-csp/#allow-all-inline
   // follows that when either a hash or nonce is specified, 'unsafe-inline'
   // should not apply.
   if (mHasHashOrNonce && mUnsafeInlineKeywordSrc &&
-      (cspDir->isDefaultDirective() ||
-       cspDir->equals(nsIContentSecurityPolicy::SCRIPT_SRC_DIRECTIVE) ||
-       cspDir->equals(nsIContentSecurityPolicy::SCRIPT_SRC_ELEM_DIRECTIVE) ||
-       cspDir->equals(nsIContentSecurityPolicy::SCRIPT_SRC_ATTR_DIRECTIVE) ||
-       cspDir->equals(nsIContentSecurityPolicy::STYLE_SRC_DIRECTIVE) ||
-       cspDir->equals(nsIContentSecurityPolicy::STYLE_SRC_ELEM_DIRECTIVE) ||
-       cspDir->equals(nsIContentSecurityPolicy::STYLE_SRC_ATTR_DIRECTIVE))) {
-    mUnsafeInlineKeywordSrc->invalidate();
-
+      (aDirective.isDefaultDirective() ||
+       aDirective.equals(nsIContentSecurityPolicy::SCRIPT_SRC_DIRECTIVE) ||
+       aDirective.equals(nsIContentSecurityPolicy::SCRIPT_SRC_ELEM_DIRECTIVE) ||
+       aDirective.equals(nsIContentSecurityPolicy::SCRIPT_SRC_ATTR_DIRECTIVE) ||
+       aDirective.equals(nsIContentSecurityPolicy::STYLE_SRC_DIRECTIVE) ||
+       aDirective.equals(nsIContentSecurityPolicy::STYLE_SRC_ELEM_DIRECTIVE) ||
+       aDirective.equals(nsIContentSecurityPolicy::STYLE_SRC_ATTR_DIRECTIVE))) {
     // Log to the console that unsafe-inline will be ignored.
     AutoTArray<nsString, 2> params = {u"'unsafe-inline'"_ns, mCurDir[0]};
     logWarningErrorToConsole(nsIScriptError::warningFlag,
                              "ignoringSrcWithinNonceOrHashDirective", params);
   }
+}
 
+void nsCSPParser::MaybeWarnAboutUnsafeEval(const nsCSPDirective& aDirective) {
   if (mHasAnyUnsafeEval &&
-      (cspDir->equals(nsIContentSecurityPolicy::SCRIPT_SRC_ELEM_DIRECTIVE) ||
-       cspDir->equals(nsIContentSecurityPolicy::SCRIPT_SRC_ATTR_DIRECTIVE))) {
+      (aDirective.equals(nsIContentSecurityPolicy::SCRIPT_SRC_ELEM_DIRECTIVE) ||
+       aDirective.equals(
+           nsIContentSecurityPolicy::SCRIPT_SRC_ATTR_DIRECTIVE))) {
     // Log to the console that (wasm-)unsafe-eval will be ignored.
     AutoTArray<nsString, 1> params = {mCurDir[0]};
     logWarningErrorToConsole(nsIScriptError::warningFlag, "ignoringUnsafeEval",
                              params);
   }
-
-  // Add the newly created srcs to the directive and add the directive to the
-  // policy
-  cspDir->addSrcs(srcs);
-  mPolicy->addDirective(cspDir);
 }
 
 // policy = [ directive *( ";" [ directive ] ) ]

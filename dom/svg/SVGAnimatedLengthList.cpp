@@ -11,6 +11,7 @@
 #include "DOMSVGAnimatedLengthList.h"
 #include "SVGLengthListSMILType.h"
 #include "mozilla/SMILValue.h"
+#include "mozilla/Try.h"
 #include "mozilla/dom/SVGElement.h"
 #include "mozilla/dom/SVGLengthBinding.h"
 
@@ -139,9 +140,7 @@ nsresult SVGAnimatedLengthList::SMILAnimatedLengthList::ValueFromString(
 
     for (uint32_t i = 0; i < llai->Length(); ++i) {
       uint8_t unit = (*llai)[i].GetUnit();
-      if (unit == SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE ||
-          unit == SVGLength_Binding::SVG_LENGTHTYPE_EMS ||
-          unit == SVGLength_Binding::SVG_LENGTHTYPE_EXS) {
+      if (!SVGLength::IsAbsoluteUnit(unit)) {
         aPreventCachingOfSandwich = true;
         break;
       }

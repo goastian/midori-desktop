@@ -778,6 +778,32 @@ nsresult HTMLFormSubmission::GetFromForm(HTMLFormElement* aForm,
 
   nsresult rv;
 
+  // Get method (default: GET)
+  int32_t method = NS_FORM_METHOD_GET;
+  if (aSubmitter && aSubmitter->HasAttr(nsGkAtoms::formmethod)) {
+    GetEnumAttr(aSubmitter, nsGkAtoms::formmethod, &method);
+  } else {
+    GetEnumAttr(aForm, nsGkAtoms::method, &method);
+  }
+
+  if (method == NS_FORM_METHOD_DIALOG) {
+    HTMLDialogElement* dialog = aForm->FirstAncestorOfType<HTMLDialogElement>();
+
+    // If there isn't one, do nothing.
+    if (!dialog) {
+      return NS_ERROR_FAILURE;
+    }
+
+    nsAutoString result;
+    if (aSubmitter) {
+      aSubmitter->ResultForDialogSubmit(result);
+    }
+    *aFormSubmission = new DialogFormSubmission(result, aEncoding, dialog);
+    return NS_OK;
+  }
+
+  MOZ_ASSERT(method != NS_FORM_METHOD_DIALOG);
+
   // Get action
   nsCOMPtr<nsIURI> actionURL;
   rv = aForm->GetActionURL(getter_AddRefs(actionURL), aSubmitter);
@@ -802,57 +828,16 @@ nsresult HTMLFormSubmission::GetFromForm(HTMLFormElement* aForm,
   }
 
   // Get target
-  // The target is the submitter element formtarget attribute if the element
-  // is a submit control and has such an attribute.
-  // Otherwise, the target is the form owner's target attribute,
-  // if it has such an attribute.
-  // Finally, if one of the child nodes of the head element is a base element
-  // with a target attribute, then the value of the target attribute of the
-  // first such base element; or, if there is no such element, the empty string.
   nsAutoString target;
-  if (!(aSubmitter && aSubmitter->GetAttr(kNameSpaceID_None,
-                                          nsGkAtoms::formtarget, target)) &&
-      !aForm->GetAttr(kNameSpaceID_None, nsGkAtoms::target, target)) {
-    aForm->GetBaseTarget(target);
-  }
+  aForm->GetSubmissionTarget(aSubmitter, target);
 
   // Get encoding type (default: urlencoded)
   int32_t enctype = NS_FORM_ENCTYPE_URLENCODED;
-  if (aSubmitter &&
-      aSubmitter->HasAttr(kNameSpaceID_None, nsGkAtoms::formenctype)) {
+  if (aSubmitter && aSubmitter->HasAttr(nsGkAtoms::formenctype)) {
     GetEnumAttr(aSubmitter, nsGkAtoms::formenctype, &enctype);
   } else {
     GetEnumAttr(aForm, nsGkAtoms::enctype, &enctype);
   }
-
-  // Get method (default: GET)
-  int32_t method = NS_FORM_METHOD_GET;
-  if (aSubmitter &&
-      aSubmitter->HasAttr(kNameSpaceID_None, nsGkAtoms::formmethod)) {
-    GetEnumAttr(aSubmitter, nsGkAtoms::formmethod, &method);
-  } else {
-    GetEnumAttr(aForm, nsGkAtoms::method, &method);
-  }
-
-  if (method == NS_FORM_METHOD_DIALOG) {
-    HTMLDialogElement* dialog = aForm->FirstAncestorOfType<HTMLDialogElement>();
-
-    // If there isn't one, or if it does not have an open attribute, do
-    // nothing.
-    if (!dialog || !dialog->Open()) {
-      return NS_ERROR_FAILURE;
-    }
-
-    nsAutoString result;
-    if (aSubmitter) {
-      aSubmitter->ResultForDialogSubmit(result);
-    }
-    *aFormSubmission =
-        new DialogFormSubmission(result, actionURL, target, aEncoding, dialog);
-    return NS_OK;
-  }
-
-  MOZ_ASSERT(method != NS_FORM_METHOD_DIALOG);
 
   // Choose encoder
   if (method == NS_FORM_METHOD_POST && enctype == NS_FORM_ENCTYPE_MULTIPART) {
@@ -868,12 +853,10 @@ nsresult HTMLFormSubmission::GetFromForm(HTMLFormElement* aForm,
         enctype == NS_FORM_ENCTYPE_TEXTPLAIN) {
       AutoTArray<nsString, 1> args;
       nsString& enctypeStr = *args.AppendElement();
-      if (aSubmitter &&
-          aSubmitter->HasAttr(kNameSpaceID_None, nsGkAtoms::formenctype)) {
-        aSubmitter->GetAttr(kNameSpaceID_None, nsGkAtoms::formenctype,
-                            enctypeStr);
+      if (aSubmitter && aSubmitter->HasAttr(nsGkAtoms::formenctype)) {
+        aSubmitter->GetAttr(nsGkAtoms::formenctype, enctypeStr);
       } else {
-        aForm->GetAttr(kNameSpaceID_None, nsGkAtoms::enctype, enctypeStr);
+        aForm->GetAttr(nsGkAtoms::enctype, enctypeStr);
       }
 
       SendJSWarning(doc, "ForgotPostWarning", args);

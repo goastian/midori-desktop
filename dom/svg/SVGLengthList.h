@@ -174,8 +174,7 @@ class SVGLengthList {
  */
 class SVGLengthListAndInfo : public SVGLengthList {
  public:
-  SVGLengthListAndInfo()
-      : mElement(nullptr), mAxis(0), mCanZeroPadList(false) {}
+  SVGLengthListAndInfo() : mElement(nullptr), mAxis(0), mCanZeroPadList(true) {}
 
   SVGLengthListAndInfo(dom::SVGElement* aElement, uint8_t aAxis,
                        bool aCanZeroPadList)
@@ -304,7 +303,7 @@ class MOZ_STACK_CLASS SVGUserUnitList {
  public:
   SVGUserUnitList() : mList(nullptr), mElement(nullptr), mAxis(0) {}
 
-  void Init(const SVGLengthList* aList, dom::SVGElement* aElement,
+  void Init(const SVGLengthList* aList, const dom::SVGElement* aElement,
             uint8_t aAxis) {
     mList = aList;
     mElement = aElement;
@@ -319,7 +318,7 @@ class MOZ_STACK_CLASS SVGUserUnitList {
 
   /// This may return a non-finite value
   float operator[](uint32_t aIndex) const {
-    return (*mList)[aIndex].GetValueInUserUnits(mElement, mAxis);
+    return (*mList)[aIndex].GetValueInPixels(mElement, mAxis);
   }
 
   bool HasPercentageValueAt(uint32_t aIndex) const {
@@ -330,7 +329,7 @@ class MOZ_STACK_CLASS SVGUserUnitList {
 
  private:
   const SVGLengthList* mList;
-  dom::SVGElement* mElement;
+  const dom::SVGElement* mElement;
   uint8_t mAxis;
 };
 

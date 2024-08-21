@@ -8,11 +8,11 @@
 #include "nsCSSPropertyID.h"
 #include "nsIFrame.h"
 #include "nsContainerFrame.h"
-#include "nsIScrollableFrame.h"
 #include "nsContentUtils.h"
 #include "nsLayoutUtils.h"
 #include "nsRefreshDriver.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/ServoBindings.h"
@@ -20,6 +20,7 @@
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/HTMLImageElement.h"
+#include "mozilla/dom/HTMLIFrameElement.h"
 #include "Units.h"
 
 namespace mozilla::dom {
@@ -81,8 +82,7 @@ DOMIntersectionObserver::DOMIntersectionObserver(
     dom::IntersectionCallback& aCb)
     : mOwner(aOwner),
       mDocument(mOwner->GetExtantDoc()),
-      mCallback(RefPtr<dom::IntersectionCallback>(&aCb)),
-      mConnected(false) {}
+      mCallback(RefPtr<dom::IntersectionCallback>(&aCb)) {}
 
 already_AddRefed<DOMIntersectionObserver> DOMIntersectionObserver::Constructor(
     const GlobalObject& aGlobal, dom::IntersectionCallback& aCb,
@@ -128,6 +128,9 @@ already_AddRefed<DOMIntersectionObserver> DOMIntersectionObserver::Constructor(
       observer->mThresholds.AppendElement(thresh);
     }
     observer->mThresholds.Sort();
+    if (observer->mThresholds.IsEmpty()) {
+      observer->mThresholds.AppendElement(0.0);
+    }
   } else {
     double thresh = aOptions.mThreshold.GetAsDouble();
     if (thresh < 0.0 || thresh > 1.0) {
@@ -143,23 +146,15 @@ already_AddRefed<DOMIntersectionObserver> DOMIntersectionObserver::Constructor(
 static void LazyLoadCallback(
     const Sequence<OwningNonNull<DOMIntersectionObserverEntry>>& aEntries) {
   for (const auto& entry : aEntries) {
-    MOZ_ASSERT(entry->Target()->IsHTMLElement(nsGkAtoms::img));
+    Element* target = entry->Target();
     if (entry->IsIntersecting()) {
-      static_cast<HTMLImageElement*>(entry->Target())
-          ->StopLazyLoading(HTMLImageElement::StartLoading::Yes);
-    }
-  }
-}
-
-static void ContentVisibilityCallback(
-    const Sequence<OwningNonNull<DOMIntersectionObserverEntry>>& aEntries) {
-  for (const auto& entry : aEntries) {
-    entry->Target()->SetVisibleForContentVisibility(entry->IsIntersecting());
-
-    if (RefPtr<Document> doc = entry->Target()->GetComposedDoc()) {
-      if (RefPtr<PresShell> presShell = doc->GetPresShell()) {
-        presShell->ScheduleContentRelevancyUpdate(
-            ContentRelevancyReason::Visible);
+      if (auto* image = HTMLImageElement::FromNode(target)) {
+        image->StopLazyLoading(HTMLImageElement::StartLoading::Yes);
+      } else if (auto* iframe = HTMLIFrameElement::FromNode(target)) {
+        iframe->StopLazyLoading();
+      } else {
+        MOZ_ASSERT_UNREACHABLE(
+            "Only <img> and <iframe> should be observed by lazy load observer");
       }
     }
   }
@@ -174,8 +169,7 @@ DOMIntersectionObserver::DOMIntersectionObserver(Document& aDocument,
                                                  NativeCallback aCallback)
     : mOwner(aDocument.GetInnerWindow()),
       mDocument(&aDocument),
-      mCallback(aCallback),
-      mConnected(false) {}
+      mCallback(aCallback) {}
 
 already_AddRefed<DOMIntersectionObserver>
 DOMIntersectionObserver::CreateLazyLoadObserver(Document& aDocument) {
@@ -193,25 +187,6 @@ DOMIntersectionObserver::CreateLazyLoadObserver(Document& aDocument) {
   SET_MARGIN(Bottom, bottom);
   SET_MARGIN(Left, left);
 #undef SET_MARGIN
-
-  return observer.forget();
-}
-
-already_AddRefed<DOMIntersectionObserver>
-DOMIntersectionObserver::CreateContentVisibilityObserver(Document& aDocument) {
-  RefPtr<DOMIntersectionObserver> observer =
-      new DOMIntersectionObserver(aDocument, ContentVisibilityCallback);
-
-  observer->mThresholds.AppendElement(0.0f);
-
-  auto margin = LengthPercentage::FromPercentage(
-      StaticPrefs::layout_css_content_visibility_relevant_content_margin() /
-      100.0f);
-
-  observer->mRootMargin.Get(eSideTop) = margin;
-  observer->mRootMargin.Get(eSideRight) = margin;
-  observer->mRootMargin.Get(eSideBottom) = margin;
-  observer->mRootMargin.Get(eSideLeft) = margin;
 
   return observer.forget();
 }
@@ -302,18 +277,6 @@ void DOMIntersectionObserver::TakeRecords(
   aRetVal = std::move(mQueuedEntries);
 }
 
-static Maybe<nsRect> EdgeInclusiveIntersection(const nsRect& aRect,
-                                               const nsRect& aOtherRect) {
-  nscoord left = std::max(aRect.x, aOtherRect.x);
-  nscoord top = std::max(aRect.y, aOtherRect.y);
-  nscoord right = std::min(aRect.XMost(), aOtherRect.XMost());
-  nscoord bottom = std::min(aRect.YMost(), aOtherRect.YMost());
-  if (left > right || top > bottom) {
-    return Nothing();
-  }
-  return Some(nsRect(left, top, right - left, bottom - top));
-}
-
 enum class BrowsingContextOrigin { Similar, Different };
 
 // NOTE(emilio): Checking docgroup as per discussion in:
@@ -351,14 +314,30 @@ static const Document* GetTopLevelContentDocumentInThisProcess(
 // in the out-of-process document's coordinate system.
 static Maybe<nsRect> ComputeTheIntersection(
     nsIFrame* aTarget, nsIFrame* aRoot, const nsRect& aRootBounds,
-    const Maybe<nsRect>& aRemoteDocumentVisibleRect) {
+    const Maybe<nsRect>& aRemoteDocumentVisibleRect,
+    DOMIntersectionObserver::IsForProximityToViewport
+        aIsForProximityToViewport) {
   nsIFrame* target = aTarget;
   // 1. Let intersectionRect be the result of running the
   // getBoundingClientRect() algorithm on the target.
   //
   // `intersectionRect` is kept relative to `target` during the loop.
-  Maybe<nsRect> intersectionRect = Some(nsLayoutUtils::GetAllInFlowRectsUnion(
-      target, target, nsLayoutUtils::RECTS_ACCOUNT_FOR_TRANSFORMS));
+  auto inflowRect = nsLayoutUtils::GetAllInFlowRectsUnion(
+      target, target,
+      nsLayoutUtils::GetAllInFlowRectsFlag::AccountForTransforms);
+  // For content-visibility, we need to observe the overflow clip edge,
+  // https://drafts.csswg.org/css-contain-2/#close-to-the-viewport
+  if (aIsForProximityToViewport ==
+      DOMIntersectionObserver::IsForProximityToViewport::Yes) {
+    const auto& disp = *target->StyleDisplay();
+    auto clipAxes = target->ShouldApplyOverflowClipping(&disp);
+    if (!clipAxes.isEmpty()) {
+      inflowRect = OverflowAreas::GetOverflowClipRect(
+          inflowRect, inflowRect, clipAxes,
+          target->OverflowClipMargin(clipAxes));
+    }
+  }
+  Maybe<nsRect> intersectionRect = Some(inflowRect);
 
   // 2. Let container be the containing block of the target.
   // (We go through the parent chain and only look at scroll frames)
@@ -372,9 +351,10 @@ static Maybe<nsRect> ComputeTheIntersection(
       nsLayoutUtils::GetCrossDocParentFrameInProcess(target);
   while (containerFrame && containerFrame != aRoot) {
     // FIXME(emilio): What about other scroll frames that inherit from
-    // nsHTMLScrollFrame but have a different type, like nsListControlFrame?
+    // ScrollContainerFrame but have a different type, like nsListControlFrame?
     // This looks bogus in that case, but different bug.
-    if (nsIScrollableFrame* scrollFrame = do_QueryFrame(containerFrame)) {
+    if (ScrollContainerFrame* scrollContainerFrame =
+            do_QueryFrame(containerFrame)) {
       if (containerFrame->GetParent() == aRoot && !aRoot->GetParent()) {
         // This is subtle: if we're computing the intersection against the
         // viewport (the root frame), and this is its scroll frame, we really
@@ -382,7 +362,7 @@ static Maybe<nsRect> ComputeTheIntersection(
         // root margin, which is already in aRootBounds).
         break;
       }
-      nsRect subFrameRect = scrollFrame->GetScrollPortRect();
+      nsRect subFrameRect = scrollContainerFrame->GetScrollPortRect();
 
       // 3.1 Map intersectionRect to the coordinate space of container.
       nsRect intersectionRectRelativeToContainer =
@@ -394,8 +374,9 @@ static Maybe<nsRect> ComputeTheIntersection(
       //
       // 3.3 is handled, looks like, by this same clipping, given the root
       // scroll-frame cannot escape the viewport, probably?
-      intersectionRect = EdgeInclusiveIntersection(
-          intersectionRectRelativeToContainer, subFrameRect);
+      intersectionRect =
+          intersectionRectRelativeToContainer.EdgeInclusiveIntersection(
+              subFrameRect);
       if (!intersectionRect) {
         return Nothing();
       }
@@ -404,7 +385,7 @@ static Maybe<nsRect> ComputeTheIntersection(
       const auto& disp = *containerFrame->StyleDisplay();
       auto clipAxes = containerFrame->ShouldApplyOverflowClipping(&disp);
       // 3.2 TODO: Apply clip-path.
-      if (clipAxes != PhysicalAxes::None) {
+      if (!clipAxes.isEmpty()) {
         // 3.1 Map intersectionRect to the coordinate space of container.
         const nsRect intersectionRectRelativeToContainer =
             nsLayoutUtils::TransformFrameRectToAncestor(
@@ -413,8 +394,9 @@ static Maybe<nsRect> ComputeTheIntersection(
             intersectionRectRelativeToContainer,
             containerFrame->GetRectRelativeToSelf(), clipAxes,
             containerFrame->OverflowClipMargin(clipAxes));
-        intersectionRect = EdgeInclusiveIntersection(
-            intersectionRectRelativeToContainer, clipRect);
+        intersectionRect =
+            intersectionRectRelativeToContainer.EdgeInclusiveIntersection(
+                clipRect);
         if (!intersectionRect) {
           return Nothing();
         }
@@ -435,7 +417,7 @@ static Maybe<nsRect> ComputeTheIntersection(
   // 5.Update intersectionRect by intersecting it with the root intersection
   // rectangle.
   intersectionRect =
-      EdgeInclusiveIntersection(intersectionRectRelativeToRoot, aRootBounds);
+      intersectionRectRelativeToRoot.EdgeInclusiveIntersection(aRootBounds);
   if (intersectionRect.isNothing()) {
     return Nothing();
   }
@@ -447,9 +429,9 @@ static Maybe<nsRect> ComputeTheIntersection(
   // the viewport already (but it's in the same document).
   nsRect rect = intersectionRect.value();
   if (aTarget->PresContext() != aRoot->PresContext()) {
-    if (nsIFrame* rootScrollFrame =
-            aTarget->PresShell()->GetRootScrollFrame()) {
-      nsLayoutUtils::TransformRect(aRoot, rootScrollFrame, rect);
+    if (nsIFrame* rootScrollContainerFrame =
+            aTarget->PresShell()->GetRootScrollContainerFrame()) {
+      nsLayoutUtils::TransformRect(aRoot, rootScrollContainerFrame, rect);
     }
   }
 
@@ -461,7 +443,7 @@ static Maybe<nsRect> ComputeTheIntersection(
                !aRoot->PresContext()->IsRootContentDocumentCrossProcess());
 
     intersectionRect =
-        EdgeInclusiveIntersection(rect, *aRemoteDocumentVisibleRect);
+        rect.EdgeInclusiveIntersection(*aRemoteDocumentVisibleRect);
     if (intersectionRect.isNothing()) {
       return Nothing();
     }
@@ -523,9 +505,9 @@ static Maybe<OopIframeMetrics> GetOopIframeMetrics(
   }
 
   nsRect inProcessRootRect;
-  if (nsIScrollableFrame* scrollFrame =
-          rootPresShell->GetRootScrollFrameAsScrollable()) {
-    inProcessRootRect = scrollFrame->GetScrollPortRect();
+  if (ScrollContainerFrame* rootScrollContainerFrame =
+          rootPresShell->GetRootScrollContainerFrame()) {
+    inProcessRootRect = rootScrollContainerFrame->GetScrollPortRect();
   }
 
   Maybe<LayoutDeviceRect> remoteDocumentVisibleRect =
@@ -562,10 +544,11 @@ IntersectionInput DOMIntersectionObserver::ComputeInput(
   if (aRoot && aRoot->IsElement()) {
     if ((rootFrame = aRoot->AsElement()->GetPrimaryFrame())) {
       nsRect rootRectRelativeToRootFrame;
-      if (nsIScrollableFrame* scrollFrame = do_QueryFrame(rootFrame)) {
+      if (ScrollContainerFrame* scrollContainerFrame =
+              do_QueryFrame(rootFrame)) {
         // rootRectRelativeToRootFrame should be the content rect of rootFrame,
         // not including the scrollbars.
-        rootRectRelativeToRootFrame = scrollFrame->GetScrollPortRect();
+        rootRectRelativeToRootFrame = scrollContainerFrame->GetScrollPortRect();
       } else {
         // rootRectRelativeToRootFrame should be the border rect of rootFrame.
         rootRectRelativeToRootFrame = rootFrame->GetRectRelativeToSelf();
@@ -595,11 +578,11 @@ IntersectionInput DOMIntersectionObserver::ComputeInput(
       // handle the OOP iframe positions.
       if (PresShell* presShell = rootDocument->GetPresShell()) {
         rootFrame = presShell->GetRootFrame();
-        // We use the root scrollable frame's scroll port to account the
+        // We use the root scroll container frame's scroll port to account the
         // scrollbars in rootRect, if needed.
-        if (nsIScrollableFrame* scrollFrame =
-                presShell->GetRootScrollFrameAsScrollable()) {
-          rootRect = scrollFrame->GetScrollPortRect();
+        if (ScrollContainerFrame* rootScrollContainerFrame =
+                presShell->GetRootScrollContainerFrame()) {
+          rootRect = rootScrollContainerFrame->GetScrollPortRect();
         } else if (rootFrame) {
           rootRect = rootFrame->GetRectRelativeToSelf();
         }
@@ -634,8 +617,8 @@ IntersectionInput DOMIntersectionObserver::ComputeInput(
 // https://w3c.github.io/IntersectionObserver/#update-intersection-observations-algo
 // (steps 2.1 - 2.5)
 IntersectionOutput DOMIntersectionObserver::Intersect(
-    const IntersectionInput& aInput, Element& aTarget,
-    IgnoreContentVisibility aIgnoreContentVisibility) {
+    const IntersectionInput& aInput, const Element& aTarget,
+    IsForProximityToViewport aIsForProximityToViewport) {
   const bool isSimilarOrigin = SimilarOrigin(aTarget, aInput.mRootNode) ==
                                BrowsingContextOrigin::Similar;
   nsIFrame* targetFrame = aTarget.GetPrimaryFrame();
@@ -650,9 +633,9 @@ IntersectionOutput DOMIntersectionObserver::Intersect(
   // https://drafts.csswg.org/css-contain/#cv-notes
   //
   // Skip the intersection if the element is hidden, unless this is the
-  // DOMIntersectionObserver used specifically to track the visibility of
+  // specifically to determine the proximity to the viewport for
   // `content-visibility: auto` elements.
-  if (aIgnoreContentVisibility == IgnoreContentVisibility::No &&
+  if (aIsForProximityToViewport == IsForProximityToViewport::No &&
       targetFrame->IsHiddenByContentVisibilityOnAnyAncestor()) {
     return {isSimilarOrigin};
   }
@@ -684,12 +667,23 @@ IntersectionOutput DOMIntersectionObserver::Intersect(
   // 2.4. Set targetRect to the DOMRectReadOnly obtained by running the
   // getBoundingClientRect() algorithm on target.
   nsRect targetRect = targetFrame->GetBoundingClientRect();
+  // For content-visibility, we need to observe the overflow clip edge,
+  // https://drafts.csswg.org/css-contain-2/#close-to-the-viewport
+  if (aIsForProximityToViewport == IsForProximityToViewport::Yes) {
+    const auto& disp = *targetFrame->StyleDisplay();
+    auto clipAxes = targetFrame->ShouldApplyOverflowClipping(&disp);
+    if (!clipAxes.isEmpty()) {
+      targetRect = OverflowAreas::GetOverflowClipRect(
+          targetRect, targetRect, clipAxes,
+          targetFrame->OverflowClipMargin(clipAxes));
+    }
+  }
 
   // 2.5. Let intersectionRect be the result of running the compute the
   // intersection algorithm on target and observer’s intersection root.
-  Maybe<nsRect> intersectionRect =
-      ComputeTheIntersection(targetFrame, aInput.mRootFrame, rootBounds,
-                             aInput.mRemoteDocumentVisibleRect);
+  Maybe<nsRect> intersectionRect = ComputeTheIntersection(
+      targetFrame, aInput.mRootFrame, rootBounds,
+      aInput.mRemoteDocumentVisibleRect, aIsForProximityToViewport);
 
   return {isSimilarOrigin, rootBounds, targetRect, intersectionRect};
 }
@@ -699,10 +693,10 @@ IntersectionOutput DOMIntersectionObserver::Intersect(
   nsRect rootBounds = aInput.mRootRect;
   rootBounds.Inflate(aInput.mRootMargin);
   auto intersectionRect =
-      EdgeInclusiveIntersection(aInput.mRootRect, aTargetRect);
+      aInput.mRootRect.EdgeInclusiveIntersection(aTargetRect);
   if (intersectionRect && aInput.mRemoteDocumentVisibleRect) {
-    intersectionRect = EdgeInclusiveIntersection(
-        *intersectionRect, *aInput.mRemoteDocumentVisibleRect);
+    intersectionRect = intersectionRect->EdgeInclusiveIntersection(
+        *aInput.mRemoteDocumentVisibleRect);
   }
   return {true, rootBounds, aTargetRect, intersectionRect};
 }
@@ -713,20 +707,11 @@ void DOMIntersectionObserver::Update(Document& aDocument,
                                      DOMHighResTimeStamp time) {
   auto input = ComputeInput(aDocument, mRoot, &mRootMargin);
 
-  // If this observer is used to determine content relevancy for
-  // `content-visiblity: auto` content, then do not skip intersection
-  // for content that is hidden by `content-visibility: auto`.
-  IgnoreContentVisibility ignoreContentVisibility =
-      aDocument.GetContentVisibilityObserver() == this
-          ? IgnoreContentVisibility::Yes
-          : IgnoreContentVisibility::No;
-
   // 2. For each target in observer’s internal [[ObservationTargets]] slot,
   // processed in the same order that observe() was called on each target:
   for (Element* target : mObservationTargets) {
     // 2.1 - 2.4.
-    IntersectionOutput output =
-        Intersect(input, *target, ignoreContentVisibility);
+    IntersectionOutput output = Intersect(input, *target);
 
     // 2.5. Let targetArea be targetRect’s area.
     int64_t targetArea = (int64_t)output.mTargetRect.Width() *

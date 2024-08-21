@@ -26,6 +26,7 @@ namespace mozilla {
 class PresShell;
 namespace dom {
 class Element;
+class HTMLAreaElement;
 struct FocusOptions;
 class BrowserParent;
 class ContentChild;
@@ -348,17 +349,21 @@ class nsFocusManager final : public nsIFocusManager,
       nsPIDOMWindowOuter* aWindow, mozilla::dom::BrowsingContext* aContext);
 
   /**
-   * When aBrowsingContext is focused, adjust the ancestors of aBrowsingContext
-   * so that they also have their corresponding frames focused. Thus, one can
-   * start at the active top-level window and navigate down the currently
-   * focused elements for each frame in the tree to get to aBrowsingContext.
+   * When aBrowsingContext is focused or blurred, adjust the ancestors of
+   * aBrowsingContext so that they also have their corresponding frames focused
+   * or blurred. Thus, one can start at the active top-level window and navigate
+   * down the currently focused elements for each frame in the tree to get to
+   * aBrowsingContext.
    */
   MOZ_CAN_RUN_SCRIPT bool AdjustInProcessWindowFocus(
       mozilla::dom::BrowsingContext* aBrowsingContext, bool aCheckPermission,
-      bool aIsVisible, uint64_t aActionId);
+      bool aIsVisible, uint64_t aActionId, bool aShouldClearAncestorFocus,
+      mozilla::dom::BrowsingContext* aAncestorBrowsingContextToFocus);
+
   MOZ_CAN_RUN_SCRIPT void AdjustWindowFocus(
       mozilla::dom::BrowsingContext* aBrowsingContext, bool aCheckPermission,
-      bool aIsVisible, uint64_t aActionId);
+      bool aIsVisible, uint64_t aActionId, bool aShouldClearAncestorFocus,
+      mozilla::dom::BrowsingContext* aAncestorBrowsingContextToFocus);
 
   /**
    * Returns true if aWindow is visible.
@@ -470,8 +475,8 @@ class nsFocusManager final : public nsIFocusManager,
    */
   MOZ_CAN_RUN_SCRIPT void SendFocusOrBlurEvent(
       mozilla::EventMessage aEventMessage, mozilla::PresShell* aPresShell,
-      Document* aDocument, nsISupports* aTarget, bool aWindowRaised,
-      bool aIsRefocus = false,
+      Document* aDocument, mozilla::dom::EventTarget* aTarget,
+      bool aWindowRaised, bool aIsRefocus = false,
       mozilla::dom::EventTarget* aRelatedTarget = nullptr);
   /**
    * Fire a focus or blur event at aTarget.
@@ -483,7 +488,8 @@ class nsFocusManager final : public nsIFocusManager,
    */
   MOZ_CAN_RUN_SCRIPT void FireFocusOrBlurEvent(
       mozilla::EventMessage aEventMessage, mozilla::PresShell* aPresShell,
-      nsISupports* aTarget, bool aWindowRaised, bool aIsRefocus = false,
+      mozilla::dom::EventTarget* aTarget, bool aWindowRaised,
+      bool aIsRefocus = false,
       mozilla::dom::EventTarget* aRelatedTarget = nullptr);
 
   /**
@@ -505,7 +511,8 @@ class nsFocusManager final : public nsIFocusManager,
    */
   MOZ_CAN_RUN_SCRIPT void FireFocusInOrOutEvent(
       mozilla::EventMessage aEventMessage, mozilla::PresShell* aPresShell,
-      nsISupports* aTarget, nsPIDOMWindowOuter* aCurrentFocusedWindow,
+      mozilla::dom::EventTarget* aTarget,
+      nsPIDOMWindowOuter* aCurrentFocusedWindow,
       nsIContent* aCurrentFocusedContent,
       mozilla::dom::EventTarget* aRelatedTarget = nullptr);
 
@@ -546,10 +553,9 @@ class nsFocusManager final : public nsIFocusManager,
    * Retrieves the start and end points of the current selection for
    * aDocument and stores them in aStartContent and aEndContent.
    */
-  nsresult GetSelectionLocation(Document* aDocument,
-                                mozilla::PresShell* aPresShell,
-                                nsIContent** aStartContent,
-                                nsIContent** aEndContent);
+  void GetSelectionLocation(Document* aDocument, mozilla::PresShell* aPresShell,
+                            nsIContent** aStartContent,
+                            nsIContent** aEndContent);
 
   /**
    * Retrieve the next tabbable element in scope owned by aOwner, using
@@ -576,6 +582,10 @@ class nsFocusManager final : public nsIFocusManager,
    * aSkipOwner to skip owner while searching. The flag is set when caller is
    * |GetNextTabbableContent| in order to let caller handle owner.
    *
+   * aReachedToEndForDocumentNavigation is true when this is a document
+   * navigation and the focus algorithm has reached to the end of the top-level
+   * document.
+   *
    * NOTE:
    *   Consider the method searches downwards in flattened subtree
    *   rooted at aOwner.
@@ -584,7 +594,8 @@ class nsFocusManager final : public nsIFocusManager,
       nsIContent* aOwner, nsIContent* aStartContent,
       nsIContent* aOriginalStartContent, bool aForward,
       int32_t aCurrentTabIndex, bool aIgnoreTabIndex,
-      bool aForDocumentNavigation, bool aNavigateByKey, bool aSkipOwner);
+      bool aForDocumentNavigation, bool aNavigateByKey, bool aSkipOwner,
+      bool aReachedToEndForDocumentNavigation);
 
   /**
    * Retrieve the next tabbable element in scope including aStartContent
@@ -617,6 +628,10 @@ class nsFocusManager final : public nsIFocusManager,
    * aNavigateByKey to move focus by keyboard as a side effect of computing the
    * next target.
    *
+   * aReachedToEndForDocumentNavigation is true when this is a document
+   * navigation and the focus algorithm has reached to the end of the top-level
+   * document.
+   *
    * NOTE:
    *   Consider the method searches upwards in all shadow host- or slot-rooted
    *   flattened subtrees that contains aStartContent as non-root, except
@@ -626,7 +641,8 @@ class nsFocusManager final : public nsIFocusManager,
       nsIContent* aStartOwner, nsCOMPtr<nsIContent>& aStartContent /* inout */,
       nsIContent* aOriginalStartContent, bool aForward,
       int32_t* aCurrentTabIndex, bool* aIgnoreTabIndex,
-      bool aForDocumentNavigation, bool aNavigateByKey);
+      bool aForDocumentNavigation, bool aNavigateByKey,
+      bool aReachedToEndForDocumentNavigation);
 
   /**
    * Retrieve the next tabbable element within a document, using focusability
@@ -656,15 +672,22 @@ class nsFocusManager final : public nsIFocusManager,
    * from where the selection is. Similarly, if the starting element isn't
    * focusable, since it doesn't really have a defined tab index.
    *
+   * aSkipPopover should be true to avoid an invoker triggering to step into
+   * the popover that was already been visited again.
+   *
    * aNavigateByKey to move focus by keyboard as a side effect of computing the
    * next target.
+   *
+   * aReachedToEndForDocumentNavigation is true when this is a document
+   * navigation and the focus algorithm has reached to the end of the top-level
+   * document.
    */
   MOZ_CAN_RUN_SCRIPT nsresult GetNextTabbableContent(
       mozilla::PresShell* aPresShell, nsIContent* aRootContent,
       nsIContent* aOriginalStartContent, nsIContent* aStartContent,
       bool aForward, int32_t aCurrentTabIndex, bool aIgnoreTabIndex,
-      bool aForDocumentNavigation, bool aNavigateByKey,
-      nsIContent** aResultContent);
+      bool aForDocumentNavigation, bool aNavigateByKey, bool aSkipPopover,
+      bool aReachedToEndForDocumentNavigation, nsIContent** aResultContent);
 
   /**
    * Get the next tabbable image map area and returns it.
@@ -694,9 +717,13 @@ class nsFocusManager final : public nsIFocusManager,
    * Focus the first focusable content within the document with a root node of
    * aRootContent. For content documents, this will be aRootContent itself, but
    * for chrome documents, this will locate the next focusable content.
+   *
+   * aReachedToEndForDocumentNavigation is true when the focus algorithm has
+   * reached to the end of the top-level document.
    */
-  MOZ_CAN_RUN_SCRIPT nsresult FocusFirst(mozilla::dom::Element* aRootContent,
-                                         nsIContent** aNextContent);
+  MOZ_CAN_RUN_SCRIPT nsresult
+  FocusFirst(mozilla::dom::Element* aRootContent, nsIContent** aNextContent,
+             bool aReachedToEndForDocumentNavigation);
 
   /**
    * Retrieves and returns the root node from aDocument to be focused. Will
@@ -756,7 +783,7 @@ class nsFocusManager final : public nsIFocusManager,
   MOZ_CAN_RUN_SCRIPT bool TryToMoveFocusToSubDocument(
       nsIContent* aCurrentContent, nsIContent* aOriginalStartContent,
       bool aForward, bool aForDocumentNavigation, bool aNavigateByKey,
-      nsIContent** aResultContent);
+      bool aReachedToEndForDocumentNavigation, nsIContent** aResultContent);
 
   // Sets the focused BrowsingContext and, if appropriate, syncs it to
   // other processes.
@@ -862,6 +889,10 @@ class nsFocusManager final : public nsIFocusManager,
   // https://html.spec.whatwg.org/#get-the-focusable-area
   static mozilla::dom::Element* GetTheFocusableArea(
       mozilla::dom::Element* aTarget, uint32_t aFlags);
+
+  // Returns true if it's an area element with one or more shapes that are
+  // focusable areas.
+  static bool IsAreaElementFocusable(mozilla::dom::HTMLAreaElement& aArea);
 
  private:
   // In the chrome process, the currently active and front-most top-most

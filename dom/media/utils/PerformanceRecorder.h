@@ -8,11 +8,13 @@
 #define mozilla_PerformanceRecorder_h
 
 #include <type_traits>
+#include <utility>
 
 #include "mozilla/Attributes.h"
 #include "mozilla/BaseProfilerMarkersPrerequisites.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/Mutex.h"
+#include "mozilla/ProfilerMarkerTypes.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/TypedEnumBits.h"
 #include "nsStringFwd.h"
@@ -70,6 +72,7 @@ enum class MediaInfoFlag : uint16_t {
   VIDEO_VP8 = (1 << 6),
   VIDEO_VP9 = (1 << 7),
   VIDEO_THEORA = (1 << 8),
+  VIDEO_HEVC = (1 << 9),
 };
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(MediaInfoFlag)
 
@@ -117,7 +120,19 @@ enum class MediaStage : uint8_t {
   CopyDecodedVideo,
 };
 
-class PlaybackStage {
+class StageBase {
+ public:
+  virtual void AddMarker(MarkerOptions&& aOption) {
+    profiler_add_marker(Name(), Category(),
+                        std::forward<MarkerOptions&&>(aOption));
+  }
+
+ protected:
+  virtual ProfilerString8View Name() const = 0;
+  virtual const MarkerCategory& Category() const = 0;
+};
+
+class PlaybackStage : public StageBase {
  public:
   explicit PlaybackStage(MediaStage aStage, int32_t aHeight = 0,
                          MediaInfoFlag aFlag = MediaInfoFlag::None)
@@ -125,20 +140,28 @@ class PlaybackStage {
     MOZ_ASSERT(aStage != MediaStage::Invalid);
   }
 
-  ProfilerString8View Name() const;
-  const MarkerCategory& Category() const {
+  ProfilerString8View Name() const override;
+  const MarkerCategory& Category() const override {
     return baseprofiler::category::MEDIA_PLAYBACK;
+  }
+  void AddMarker(MarkerOptions&& aOption) override;
+
+  void SetStartTimeAndEndTime(uint64_t aStartTime, uint64_t aEndTime) {
+    mStartAndEndTimeUs =
+        Some(std::pair<uint64_t, uint64_t>{aStartTime, aEndTime});
   }
 
   MediaStage mStage;
   int32_t mHeight;
   MediaInfoFlag mFlag;
 
+  Maybe<std::pair<uint64_t, uint64_t>> mStartAndEndTimeUs;
+
  private:
   mutable Maybe<nsCString> mName;
 };
 
-class CaptureStage {
+class CaptureStage : public StageBase {
  public:
   enum class ImageType : uint8_t {
     Unknown,
@@ -159,8 +182,8 @@ class CaptureStage {
         mHeight(aHeight),
         mImageType(aImageType) {}
 
-  ProfilerString8View Name() const;
-  const MarkerCategory& Category() const {
+  ProfilerString8View Name() const override;
+  const MarkerCategory& Category() const override {
     return baseprofiler::category::MEDIA_RT;
   }
 
@@ -174,7 +197,7 @@ class CaptureStage {
   mutable Maybe<nsCString> mName;
 };
 
-class CopyVideoStage {
+class CopyVideoStage : public StageBase {
  public:
   CopyVideoStage(nsCString aSource, TrackingId aTrackingId, int32_t aWidth,
                  int32_t aHeight)
@@ -183,8 +206,8 @@ class CopyVideoStage {
         mWidth(aWidth),
         mHeight(aHeight) {}
 
-  ProfilerString8View Name() const;
-  const MarkerCategory& Category() const {
+  ProfilerString8View Name() const override;
+  const MarkerCategory& Category() const override {
     return baseprofiler::category::MEDIA_RT;
   }
 
@@ -200,7 +223,7 @@ class CopyVideoStage {
   mutable Maybe<nsCString> mName;
 };
 
-class DecodeStage {
+class DecodeStage : public StageBase {
  public:
   enum ImageFormat : uint8_t {
     YUV420P,
@@ -215,14 +238,15 @@ class DecodeStage {
     RGB24,
     GBRP,
     ANDROID_SURFACE,
+    VAAPI_SURFACE,
   };
 
   DecodeStage(nsCString aSource, TrackingId aTrackingId, MediaInfoFlag aFlag)
       : mSource(std::move(aSource)),
         mTrackingId(std::move(aTrackingId)),
         mFlag(aFlag) {}
-  ProfilerString8View Name() const;
-  const MarkerCategory& Category() const {
+  ProfilerString8View Name() const override;
+  const MarkerCategory& Category() const override {
     return baseprofiler::category::MEDIA_PLAYBACK;
   }
 
@@ -240,6 +264,11 @@ class DecodeStage {
   void SetColorDepth(gfx::ColorDepth aColorDepth) {
     mColorDepth = Some(aColorDepth);
   }
+  void SetStartTimeAndEndTime(uint64_t aStartTime, uint64_t aEndTime) {
+    mStartAndEndTimeUs =
+        Some(std::pair<uint64_t, uint64_t>{aStartTime, aEndTime});
+  }
+  void AddMarker(MarkerOptions&& aOption) override;
 
   // The name of the source that performs this stage.
   nsCString mSource;
@@ -254,6 +283,7 @@ class DecodeStage {
   Maybe<gfx::ColorRange> mColorRange;
   Maybe<gfx::ColorDepth> mColorDepth;
   mutable Maybe<nsCString> mName;
+  Maybe<std::pair<uint64_t, uint64_t>> mStartAndEndTimeUs;
 };
 
 class PerformanceRecorderBase {
@@ -323,9 +353,7 @@ class PerformanceRecorderImpl : public PerformanceRecorderBase {
       MOZ_ASSERT(elapsedTimeUs >= 0, "Elapsed time can't be less than 0!");
       aStageMutator(stage);
       AUTO_PROFILER_STATS(PROFILER_MARKER_UNTYPED);
-      ::profiler_add_marker(
-          stage.Name(), stage.Category(),
-          MarkerOptions(MarkerTiming::Interval(startTime, now)));
+      stage.AddMarker(MarkerOptions(MarkerTiming::Interval(startTime, now)));
     }
     return static_cast<float>(elapsedTimeUs);
   }

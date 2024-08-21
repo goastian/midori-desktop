@@ -5,9 +5,8 @@
 #ifndef _WEBRTC_GLOBAL_INFORMATION_H_
 #define _WEBRTC_GLOBAL_INFORMATION_H_
 
-#include <tuple>
+#include "mozilla/Attributes.h"
 #include "mozilla/dom/WebrtcGlobalInformationBinding.h"
-#include "nsString.h"
 #include "mozilla/dom/BindingDeclarations.h"  // for Optional
 #include "nsDOMNavigationTiming.h"
 #include "WebrtcGlobalStatsHistory.h"
@@ -45,6 +44,9 @@ class WebrtcGlobalInformation {
       const nsAString& aPcIdFilter, const Optional<DOMHighResTimeStamp>& aAfter,
       const Optional<DOMHighResTimeStamp>& aSdpAfter, ErrorResult& aRv);
 
+  static void GetMediaContext(const GlobalObject& aGlobal,
+                              WebrtcGlobalMediaContext& aContext);
+
   static void GatherHistory();
 
   static void ClearAllStats(const GlobalObject& aGlobal);
@@ -55,9 +57,6 @@ class WebrtcGlobalInformation {
                          ErrorResult& aRv);
 
   static void ClearLogging(const GlobalObject& aGlobal);
-
-  static void SetDebugLevel(const GlobalObject& aGlobal, int32_t aLevel);
-  static int32_t DebugLevel(const GlobalObject& aGlobal);
 
   static void SetAecDebug(const GlobalObject& aGlobal, bool aEnable);
   static bool AecDebug(const GlobalObject& aGlobal);

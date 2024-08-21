@@ -34,6 +34,24 @@ ffi::WGPUExtent3d ConvertExtent(const dom::GPUExtent3D& aExtent);
 
 ffi::WGPUExtent3d ConvertExtent(const dom::OwningGPUExtent3D& aExtent);
 
+ffi::WGPUCompareFunction ConvertCompareFunction(
+    const dom::GPUCompareFunction& aCompare);
+
+ffi::WGPUTextureFormat ConvertTextureFormat(
+    const dom::GPUTextureFormat& aFormat);
+
+ffi::WGPUMultisampleState ConvertMultisampleState(
+    const dom::GPUMultisampleState& aDesc);
+
+ffi::WGPUBlendComponent ConvertBlendComponent(
+    const dom::GPUBlendComponent& aDesc);
+
+ffi::WGPUStencilFaceState ConvertStencilFaceState(
+    const dom::GPUStencilFaceState& aDesc);
+
+ffi::WGPUDepthStencilState ConvertDepthStencilState(
+    const dom::GPUDepthStencilState& aDesc);
+
 }  // namespace webgpu
 }  // namespace mozilla
 

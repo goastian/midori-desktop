@@ -36,11 +36,9 @@ using mozilla::dom::GlobalObject;
 using mozilla::dom::Optional;
 
 // static
-already_AddRefed<FileReaderSync> FileReaderSync::Constructor(
+UniquePtr<FileReaderSync> FileReaderSync::Constructor(
     const GlobalObject& aGlobal) {
-  RefPtr<FileReaderSync> frs = new FileReaderSync();
-
-  return frs.forget();
+  return MakeUnique<FileReaderSync>();
 }
 
 bool FileReaderSync::WrapObject(JSContext* aCx,
@@ -85,14 +83,11 @@ void FileReaderSync::ReadAsArrayBuffer(JSContext* aCx,
   }
 
   JSObject* arrayBuffer =
-      JS::NewArrayBufferWithContents(aCx, blobSize, bufferData.get());
+      JS::NewArrayBufferWithContents(aCx, blobSize, std::move(bufferData));
   if (!arrayBuffer) {
     aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
     return;
   }
-  // arrayBuffer takes the ownership when it is not null. Otherwise we
-  // need to release it explicitly.
-  (void)bufferData.release();
 
   aRetval.set(arrayBuffer);
 }
@@ -320,7 +315,7 @@ class ReadReadyRunnable final : public WorkerSyncRunnable {
  public:
   ReadReadyRunnable(WorkerPrivate* aWorkerPrivate,
                     nsIEventTarget* aSyncLoopTarget)
-      : WorkerSyncRunnable(aWorkerPrivate, aSyncLoopTarget) {}
+      : WorkerSyncRunnable(aSyncLoopTarget, "ReadReadyRunnable") {}
 
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
     aWorkerPrivate->AssertIsOnWorkerThread();

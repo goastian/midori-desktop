@@ -20,18 +20,7 @@ enum RTCDegradationPreference {
   "balanced"
 };
 
-dictionary RTCRtxParameters {
-  unsigned long ssrc;
-};
-
-dictionary RTCFecParameters {
-  unsigned long ssrc;
-};
-
 dictionary RTCRtpEncodingParameters {
-  unsigned long            ssrc;
-  RTCRtxParameters         rtx;
-  RTCFecParameters         fec;
   boolean                  active = true;
   // From https://www.w3.org/TR/webrtc-priority/
   RTCPriorityType          priority = "low";
@@ -53,12 +42,9 @@ dictionary RTCRtcpParameters {
   boolean   reducedSize;
 };
 
-dictionary RTCRtpCodecParameters {
-  unsigned short payloadType;
-  DOMString      mimeType;
-  unsigned long  clockRate;
-  unsigned short channels = 1;
-  DOMString      sdpFmtpLine;
+[GenerateEqualityOperator]
+dictionary RTCRtpCodecParameters : RTCRtpCodec {
+  required octet payloadType;
 };
 
 dictionary RTCRtpParameters {
@@ -67,10 +53,15 @@ dictionary RTCRtpParameters {
   // do with these in particular (see validateRtpParameters).
   sequence<RTCRtpHeaderExtensionParameters> headerExtensions;
   RTCRtcpParameters                         rtcp;
+  // Don't make this required just yet; there are still implementations out
+  // there that build RTCRtpParameters themselves
   sequence<RTCRtpCodecParameters>           codecs;
 };
 
 dictionary RTCRtpSendParameters : RTCRtpParameters {
   DOMString transactionId;
   required sequence<RTCRtpEncodingParameters> encodings;
+};
+
+dictionary RTCRtpReceiveParameters : RTCRtpParameters {
 };

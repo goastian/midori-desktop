@@ -108,8 +108,7 @@ MediaEngineRemoteVideoSource::MediaEngineRemoteVideoSource(
     Maybe<VideoFacingModeEnum> facingMode =
         GetFacingMode(mMediaDevice->mRawName);
     if (facingMode.isSome()) {
-      NS_ConvertASCIItoUTF16 facingString(
-          dom::VideoFacingModeEnumValues::GetString(*facingMode));
+      NS_ConvertASCIItoUTF16 facingString(dom::GetEnumString(*facingMode));
       mSettings->mFacingMode.Construct(facingString);
       mFacingMode.emplace(facingString);
     }
@@ -203,7 +202,7 @@ void MediaEngineRemoteVideoSource::SetTrack(const RefPtr<MediaTrack>& aTrack,
 
   if (!mImageContainer) {
     mImageContainer = MakeAndAddRef<layers::ImageContainer>(
-        layers::ImageContainer::ASYNCHRONOUS);
+        layers::ImageUsageType::Webrtc, layers::ImageContainer::ASYNCHRONOUS);
   }
 
   {
@@ -393,6 +392,10 @@ const TrackingId& MediaEngineRemoteVideoSource::GetTrackingId() const {
   return mTrackingId;
 }
 
+void MediaEngineRemoteVideoSource::OnCaptureEnded() {
+  mCaptureEndedEvent.Notify();
+}
+
 int MediaEngineRemoteVideoSource::DeliverFrame(
     uint8_t* aBuffer, const camera::VideoFrameProperties& aProps) {
   // Cameras IPC thread - take great care with accessing members!
@@ -527,7 +530,7 @@ int MediaEngineRemoteVideoSource::DeliverFrame(
     PerformanceRecorder<CopyVideoStage> rec(
         "MERVS::Copy"_ns, *mFrameDeliveringTrackingId, dst_width, dst_height);
     image = mImageContainer->CreatePlanarYCbCrImage();
-    if (!image->CopyData(data)) {
+    if (NS_FAILED(image->CopyData(data))) {
       MOZ_ASSERT_UNREACHABLE(
           "We might fail to allocate a buffer, but with this "
           "being a recycling container that shouldn't happen");

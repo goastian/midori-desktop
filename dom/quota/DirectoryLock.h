@@ -7,14 +7,18 @@
 #ifndef DOM_QUOTA_DIRECTORYLOCK_H_
 #define DOM_QUOTA_DIRECTORYLOCK_H_
 
+#include "nsTArrayForwardDeclare.h"
 #include "mozilla/dom/Nullable.h"
 #include "mozilla/dom/quota/Client.h"
 #include "mozilla/dom/quota/PersistenceType.h"
 
+template <class T>
+class RefPtr;
+
 namespace mozilla::dom::quota {
 
 class ClientDirectoryLock;
-class OpenDirectoryListener;
+enum class DirectoryLockCategory : uint8_t;
 struct OriginMetadata;
 
 // Basic directory lock interface shared by all other directory lock classes.
@@ -26,15 +30,25 @@ class NS_NO_VTABLE DirectoryLock {
 
   virtual int64_t Id() const = 0;
 
-  // XXX This method is now deprecated, use the one which returns the
-  // `BoolPromise`
-  virtual void Acquire(RefPtr<OpenDirectoryListener> aOpenListener) = 0;
+  virtual DirectoryLockCategory Category() const = 0;
+
+  virtual bool Acquired() const = 0;
+
+  virtual bool MustWait() const = 0;
+
+  virtual nsTArray<RefPtr<DirectoryLock>> LocksMustWaitFor() const = 0;
+
+  virtual bool Dropped() const = 0;
 
   virtual RefPtr<BoolPromise> Acquire() = 0;
 
   virtual void AcquireImmediately() = 0;
 
   virtual void AssertIsAcquiredExclusively() = 0;
+
+  virtual void Drop() = 0;
+
+  virtual void OnInvalidate(std::function<void()>&& aCallback) = 0;
 
   virtual void Log() const = 0;
 };
@@ -81,18 +95,6 @@ class UniversalDirectoryLock : public DirectoryLock {
   virtual RefPtr<ClientDirectoryLock> SpecializeForClient(
       PersistenceType aPersistenceType, const OriginMetadata& aOriginMetadata,
       Client::Type aClientType) const = 0;
-};
-
-class NS_NO_VTABLE OpenDirectoryListener {
- public:
-  NS_INLINE_DECL_PURE_VIRTUAL_REFCOUNTING
-
-  virtual void DirectoryLockAcquired(DirectoryLock* aLock) = 0;
-
-  virtual void DirectoryLockFailed() = 0;
-
- protected:
-  virtual ~OpenDirectoryListener() = default;
 };
 
 }  // namespace mozilla::dom::quota

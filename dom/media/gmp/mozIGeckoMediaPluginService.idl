@@ -6,6 +6,8 @@
 #include "nsISupports.idl"
 #include "nsIThread.idl"
 
+interface nsIFile;
+
 %{C++
 #include "mozilla/UniquePtr.h"
 #include "nsTArray.h"
@@ -55,7 +57,7 @@ native GetGMPVideoEncoderCallback(mozilla::UniquePtr<GetGMPVideoEncoderCallback>
 native GetNodeIdCallback(mozilla::UniquePtr<GetNodeIdCallback>&&);
 native GMPCrashHelperPtr(mozilla::GMPCrashHelper*);
 
-[scriptable, uuid(44d362ae-937a-4803-bee6-f2512a0149d1)]
+[scriptable, builtinclass, uuid(44d362ae-937a-4803-bee6-f2512a0149d1)]
 interface mozIGeckoMediaPluginService : nsISupports
 {
 
@@ -76,6 +78,13 @@ interface mozIGeckoMediaPluginService : nsISupports
    */
   [noscript]
   boolean hasPluginForAPI(in ACString api, in ConstTagArrayRef tags);
+
+  /**
+   * Get the plugin directory for a plugin that supports the specified tags.
+   * Callable on any thread
+   */
+  [noscript]
+  nsIFile findPluginDirectoryForAPI(in ACString api, in ConstTagArrayRef tags);
 
   /**
    * Get a video decoder that supports the specified tags.

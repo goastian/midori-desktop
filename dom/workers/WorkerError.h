@@ -22,7 +22,9 @@ class WorkerErrorBase {
  public:
   nsString mMessage;
   nsString mFilename;
+  // Line number (1-origin).
   uint32_t mLineNumber;
+  // Column number in UTF-16 code units (1-origin).
   uint32_t mColumnNumber;
   uint32_t mErrorNumber;
 

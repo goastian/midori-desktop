@@ -6,6 +6,7 @@
 /* exported testGenerator */
 var testGenerator = testSteps();
 
+// eslint-disable-next-line require-yield
 function* testSteps() {
   const name = this.window ? window.location.pathname : "Splendid Test";
 
@@ -19,22 +20,6 @@ function* testSteps() {
 
   try {
     indexedDB.open(name, -1);
-    ok(false, "Should have thrown!");
-  } catch (e) {
-    ok(e instanceof TypeError, "Got TypeError.");
-    is(e.name, "TypeError", "Good error name.");
-  }
-
-  try {
-    indexedDB.open(name, { version: 0 });
-    ok(false, "Should have thrown!");
-  } catch (e) {
-    ok(e instanceof TypeError, "Got TypeError.");
-    is(e.name, "TypeError", "Good error name.");
-  }
-
-  try {
-    indexedDB.open(name, { version: -1 });
     ok(false, "Should have thrown!");
   } catch (e) {
     ok(e instanceof TypeError, "Got TypeError.");

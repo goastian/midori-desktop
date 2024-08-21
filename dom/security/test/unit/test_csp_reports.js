@@ -2,8 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { NetUtil } = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
+);
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpServer = new HttpServer();
 httpServer.start(-1);
@@ -19,7 +23,7 @@ const REPORT_SERVER_URI = "http://localhost";
  * or fails a test based on what it gets.
  */
 function makeReportHandler(testpath, message, expectedJSON) {
-  return function (request, response) {
+  return function (request) {
     // we only like "POST" submissions for reports!
     if (request.method !== "POST") {
       do_throw("violation report should be a POST request");
@@ -136,8 +140,8 @@ function run_test() {
         null, // nsICSPEventListener
         "", // aContentOfPseudoScript
         0, // aLineNumber
-        0
-      ); // aColumnNumber
+        1 // aColumnNumber
+      );
 
       // this is not a report only policy, so it better block inline scripts
       Assert.ok(!inlineOK);
@@ -177,8 +181,8 @@ function run_test() {
           // note that JSON is UTF8 encoded.
           "\u00a3\u00a5\u00b5\u5317\ud841\udf79",
           1, // line number
-          2
-        ); // column number
+          2 // column number
+        );
       }
     }
   );
@@ -192,11 +196,10 @@ function run_test() {
       csp.shouldLoad(
         Ci.nsIContentPolicy.TYPE_SCRIPT,
         null, // nsICSPEventListener
+        null, // aLoadInfo
         NetUtil.newURI("http://blocked.test/foo.js"),
         null,
-        true,
-        null,
-        false
+        true
       );
     }
   );
@@ -217,8 +220,8 @@ function run_test() {
         null, // nsICSPEventListener
         "", // aContentOfPseudoScript
         0, // aLineNumber
-        0
-      ); // aColumnNumber
+        1 // aColumnNumber
+      );
 
       // this is a report only policy, so it better allow inline scripts
       Assert.ok(inlineOK);
@@ -245,8 +248,8 @@ function run_test() {
         selfuri.asciiSpec,
         "script sample",
         4, // line number
-        5
-      ); // column number
+        5 // column number
+      );
     }
   });
 
@@ -259,11 +262,10 @@ function run_test() {
     csp.shouldLoad(
       Ci.nsIContentPolicy.TYPE_IMAGE,
       null, // nsICSPEventListener
+      null, // nsILoadInfo
       NetUtil.newURI("data:image/png;base64," + base64data),
       null,
-      true,
-      null,
-      false
+      true
     );
   });
 
@@ -273,11 +275,10 @@ function run_test() {
     csp.shouldLoad(
       Ci.nsIContentPolicy.TYPE_SUBDOCUMENT,
       null, // nsICSPEventListener
+      null, // nsILoadInfo
       NetUtil.newURI("intent://mymaps.com/maps?um=1&ie=UTF-8&fb=1&sll"),
       null,
-      true,
-      null,
-      false
+      true
     );
   });
 
@@ -289,11 +290,10 @@ function run_test() {
     csp.shouldLoad(
       Ci.nsIContentPolicy.TYPE_SCRIPT,
       null, // nsICSPEventListener
+      null, // nsILoadInfo
       NetUtil.newURI(selfSpec + "#bar"),
       null,
-      true,
-      null,
-      false
+      true
     );
   });
 }

@@ -14,7 +14,6 @@
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Promise.h"
-#include "mozilla/Unused.h"
 #include "nsContentUtils.h"
 #include "nsISupportsImpl.h"  // for MOZ_COUNT_CTOR, MOZ_COUNT_DTOR
 #include "MIDILog.h"
@@ -75,7 +74,7 @@ bool MIDIPort::Initialize(const MIDIPortInfo& aPortInfo, bool aSysexEnabled,
   }
 
   nsAutoCString origin;
-  nsresult rv = nsContentUtils::GetASCIIOrigin(uri, origin);
+  nsresult rv = nsContentUtils::GetWebExposedOriginSerialization(uri, origin);
   if (NS_FAILED(rv)) {
     return false;
   }
@@ -105,14 +104,14 @@ bool MIDIPort::Initialize(const MIDIPortInfo& aPortInfo, bool aSysexEnabled,
   mPortHolder.Init(port.forget());
   LOG("MIDIPort::Initialize (%s, %s)",
       NS_ConvertUTF16toUTF8(Port()->Name()).get(),
-      MIDIPortTypeValues::strings[uint32_t(Port()->Type())].value);
+      GetEnumString(Port()->Type()).get());
   return true;
 }
 
 void MIDIPort::UnsetIPCPort() {
   LOG("MIDIPort::UnsetIPCPort (%s, %s)",
       NS_ConvertUTF16toUTF8(Port()->Name()).get(),
-      MIDIPortTypeValues::strings[uint32_t(Port()->Type())].value);
+      GetEnumString(Port()->Type()).get());
   mPortHolder.Clear();
 }
 

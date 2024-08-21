@@ -9,13 +9,17 @@
 
 #include "FileSystemDatabaseManager.h"
 #include "mozilla/dom/quota/CommonMetadata.h"
+#include "mozilla/dom/quota/ResultExtensions.h"
 #include "nsString.h"
 
-namespace mozilla::dom::fs::data {
+namespace mozilla::dom::fs {
+
+struct FileId;
+
+namespace data {
 
 class FileSystemDataManager;
 class FileSystemFileManager;
-using FileSystemConnection = fs::ResultConnection;
 
 /**
  * @brief Versioned implementation of database interface enables backwards
@@ -51,55 +55,82 @@ class FileSystemDatabaseManagerVersion001 : public FileSystemDatabaseManager {
   static Result<Usage, QMResult> GetFileUsage(
       const FileSystemConnection& aConnection);
 
-  virtual nsresult UpdateUsage(const EntryId& aEntry) override;
+  nsresult UpdateUsage(const FileId& aFileId) override;
 
-  virtual Result<EntryId, QMResult> GetOrCreateDirectory(
+  Result<EntryId, QMResult> GetOrCreateDirectory(
       const FileSystemChildMetadata& aHandle, bool aCreate) override;
 
-  virtual Result<EntryId, QMResult> GetOrCreateFile(
-      const FileSystemChildMetadata& aHandle, const ContentType& aType,
-      bool aCreate) override;
+  Result<EntryId, QMResult> GetOrCreateFile(
+      const FileSystemChildMetadata& aHandle, bool aCreate) override;
 
-  virtual nsresult GetFile(const EntryId& aEntryId, ContentType& aType,
-                           TimeStamp& lastModifiedMilliSeconds, Path& aPath,
-                           nsCOMPtr<nsIFile>& aFile) const override;
+  nsresult GetFile(const EntryId& aEntryId, const FileId& aFileId,
+                   const FileMode& aMode, ContentType& aType,
+                   TimeStamp& lastModifiedMilliSeconds, Path& aPath,
+                   nsCOMPtr<nsIFile>& aFile) const override;
 
-  virtual Result<FileSystemDirectoryListing, QMResult> GetDirectoryEntries(
+  Result<FileSystemDirectoryListing, QMResult> GetDirectoryEntries(
       const EntryId& aParent, PageNumber aPage) const override;
 
-  virtual Result<bool, QMResult> RenameEntry(
-      const FileSystemEntryMetadata& aHandle, const Name& aNewName) override;
+  Result<bool, QMResult> RemoveDirectory(const FileSystemChildMetadata& aHandle,
+                                         bool aRecursive) override;
 
-  virtual Result<bool, QMResult> MoveEntry(
+  Result<bool, QMResult> RemoveFile(
+      const FileSystemChildMetadata& aHandle) override;
+
+  Result<EntryId, QMResult> RenameEntry(const FileSystemEntryMetadata& aHandle,
+                                        const Name& aNewName) override;
+
+  Result<EntryId, QMResult> MoveEntry(
       const FileSystemEntryMetadata& aHandle,
       const FileSystemChildMetadata& aNewDesignation) override;
 
-  virtual Result<bool, QMResult> RemoveDirectory(
-      const FileSystemChildMetadata& aHandle, bool aRecursive) override;
-
-  virtual Result<bool, QMResult> RemoveFile(
-      const FileSystemChildMetadata& aHandle) override;
-
-  virtual Result<Path, QMResult> Resolve(
+  Result<Path, QMResult> Resolve(
       const FileSystemEntryPair& aEndpoints) const override;
 
-  virtual void Close() override;
+  Result<EntryId, QMResult> GetEntryId(
+      const FileSystemChildMetadata& aHandle) const override;
 
-  virtual nsresult BeginUsageTracking(const EntryId& aEntryId) override;
+  Result<EntryId, QMResult> GetEntryId(const FileId& aFileId) const override;
 
-  virtual nsresult EndUsageTracking(const EntryId& aEntryId) override;
+  Result<FileId, QMResult> EnsureFileId(const EntryId& aEntryId) override;
+
+  Result<FileId, QMResult> EnsureTemporaryFileId(
+      const EntryId& aEntryId) override;
+
+  Result<FileId, QMResult> GetFileId(const EntryId& aEntryId) const override;
+
+  nsresult MergeFileId(const EntryId& aEntryId, const FileId& aFileId,
+                       bool aAbort) override;
+
+  void Close() override;
+
+  nsresult BeginUsageTracking(const FileId& aFileId) override;
+
+  nsresult EndUsageTracking(const FileId& aFileId) override;
 
   virtual ~FileSystemDatabaseManagerVersion001() = default;
 
- private:
-  nsresult UpdateUsageInDatabase(const EntryId& aEntry, Usage aNewDiskUsage);
+ protected:
+  virtual Result<bool, QMResult> DoesFileIdExist(const FileId& aFileId) const;
 
-  Result<Ok, QMResult> EnsureUsageIsKnown(const EntryId& aEntryId);
+  virtual nsresult RemoveFileId(const FileId& aFileId);
+
+  virtual Result<Usage, QMResult> GetUsagesOfDescendants(
+      const EntryId& aEntryId) const;
+
+  virtual Result<nsTArray<FileId>, QMResult> FindFilesUnderEntry(
+      const EntryId& aEntryId) const;
+
+  nsresult SetUsageTracking(const FileId& aFileId, bool aTracked);
+
+  nsresult UpdateUsageInDatabase(const FileId& aFileId, Usage aNewDiskUsage);
+
+  Result<Ok, QMResult> EnsureUsageIsKnown(const FileId& aFileId);
 
   void DecreaseCachedQuotaUsage(int64_t aDelta);
 
-  nsresult UpdateCachedQuotaUsage(const EntryId& aEntryId, Usage aOldUsage,
-                                  Usage aNewUsage);
+  nsresult UpdateCachedQuotaUsage(const FileId& aFileId, Usage aOldUsage,
+                                  Usage aNewUsage) const;
 
   nsresult ClearDestinationIfNotLocked(
       const FileSystemConnection& aConnection,
@@ -107,16 +138,16 @@ class FileSystemDatabaseManagerVersion001 : public FileSystemDatabaseManager {
       const FileSystemEntryMetadata& aHandle,
       const FileSystemChildMetadata& aNewDesignation);
 
+  nsresult PrepareRenameEntry(const FileSystemConnection& aConnection,
+                              const FileSystemDataManager* const aDataManager,
+                              const FileSystemEntryMetadata& aHandle,
+                              const Name& aNewName, bool aIsFile);
+
   nsresult PrepareMoveEntry(const FileSystemConnection& aConnection,
                             const FileSystemDataManager* const aDataManager,
                             const FileSystemEntryMetadata& aHandle,
                             const FileSystemChildMetadata& aNewDesignation,
                             bool aIsFile);
-
-  nsresult PrepareRenameEntry(const FileSystemConnection& aConnection,
-                              const FileSystemDataManager* const aDataManager,
-                              const FileSystemEntryMetadata& aHandle,
-                              const Name& aNewName, bool aIsFile);
 
   // This is a raw pointer since we're owned by the FileSystemDataManager.
   FileSystemDataManager* MOZ_NON_OWNING_REF mDataManager;
@@ -132,6 +163,46 @@ class FileSystemDatabaseManagerVersion001 : public FileSystemDatabaseManager {
   int32_t mFilesOfUnknownUsage;
 };
 
-}  // namespace mozilla::dom::fs::data
+inline auto toNSResult = [](const auto& aRv) { return ToNSResult(aRv); };
+
+Result<bool, QMResult> ApplyEntryExistsQuery(
+    const FileSystemConnection& aConnection, const nsACString& aQuery,
+    const FileSystemChildMetadata& aHandle);
+
+Result<bool, QMResult> ApplyEntryExistsQuery(
+    const FileSystemConnection& aConnection, const nsACString& aQuery,
+    const EntryId& aEntry);
+
+Result<bool, QMResult> DoesFileExist(const FileSystemConnection& aConnection,
+                                     const EntryId& aEntryId);
+
+Result<bool, QMResult> IsFile(const FileSystemConnection& aConnection,
+                              const EntryId& aEntryId);
+
+Result<EntryId, QMResult> FindEntryId(const FileSystemConnection& aConnection,
+                                      const FileSystemChildMetadata& aHandle,
+                                      bool aIsFile);
+
+Result<EntryId, QMResult> FindParent(const FileSystemConnection& aConnection,
+                                     const EntryId& aEntryId);
+
+Result<bool, QMResult> IsSame(const FileSystemConnection& aConnection,
+                              const FileSystemEntryMetadata& aHandle,
+                              const FileSystemChildMetadata& aNewHandle,
+                              bool aIsFile);
+
+Result<Path, QMResult> ResolveReversedPath(
+    const FileSystemConnection& aConnection,
+    const FileSystemEntryPair& aEndpoints);
+
+nsresult GetFileAttributes(const FileSystemConnection& aConnection,
+                           const EntryId& aEntryId, ContentType& aType);
+
+void TryRemoveDuringIdleMaintenance(const nsTArray<FileId>& aItemToRemove);
+
+ContentType DetermineContentType(const Name& aName);
+
+}  // namespace data
+}  // namespace mozilla::dom::fs
 
 #endif  // DOM_FS_PARENT_DATAMODEL_FILESYSTEMDATABASEMANAGERVERSION001_H_

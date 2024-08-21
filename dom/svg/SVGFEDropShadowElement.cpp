@@ -21,7 +21,7 @@ JSObject* SVGFEDropShadowElement::WrapNode(JSContext* aCx,
 }
 
 SVGElement::NumberInfo SVGFEDropShadowElement::sNumberInfo[2] = {
-    {nsGkAtoms::dx, 2, false}, {nsGkAtoms::dy, 2, false}};
+    {nsGkAtoms::dx, 2}, {nsGkAtoms::dy, 2}};
 
 SVGElement::NumberPairInfo SVGFEDropShadowElement::sNumberPairInfo[1] = {
     {nsGkAtoms::stdDeviation, 2, 2}};
@@ -88,8 +88,7 @@ FilterPrimitiveDescription SVGFEDropShadowElement::GetPrimitiveDescription(
   atts.mStdDeviation = Size(stdX, stdY);
   atts.mOffset = offset;
 
-  nsIFrame* frame = GetPrimaryFrame();
-  if (frame) {
+  if (const auto* frame = GetPrimaryFrame()) {
     const nsStyleSVGReset* styleSVGReset = frame->Style()->StyleSVGReset();
     sRGBColor color(
         sRGBColor::FromABGR(styleSVGReset->mFloodColor.CalcColor(frame)));
@@ -99,6 +98,19 @@ FilterPrimitiveDescription SVGFEDropShadowElement::GetPrimitiveDescription(
     atts.mColor = sRGBColor();
   }
   return FilterPrimitiveDescription(AsVariant(std::move(atts)));
+}
+
+bool SVGFEDropShadowElement::OutputIsTainted(
+    const nsTArray<bool>& aInputsAreTainted,
+    nsIPrincipal* aReferencePrincipal) {
+  if (const auto* frame = GetPrimaryFrame()) {
+    if (frame->Style()->StyleSVGReset()->mFloodColor.IsCurrentColor()) {
+      return true;
+    }
+  }
+
+  return SVGFEDropShadowElementBase::OutputIsTainted(aInputsAreTainted,
+                                                     aReferencePrincipal);
 }
 
 bool SVGFEDropShadowElement::AttributeAffectsRendering(

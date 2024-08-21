@@ -6,14 +6,17 @@
 
 #include "VideoEngine.h"
 #include "libwebrtcglue/SystemTime.h"
-#include "video_engine/desktop_capture_impl.h"
 #include "system_wrappers/include/clock.h"
-#ifdef WEBRTC_ANDROID
-#  include "modules/video_capture/video_capture.h"
-#endif
+#include "video_engine/desktop_capture_impl.h"
 
 #ifdef MOZ_WIDGET_ANDROID
 #  include "mozilla/jni/Utils.h"
+#endif
+
+#if defined(ANDROID)
+namespace webrtc {
+int32_t SetCaptureAndroidVM(JavaVM* javaVM);
+}
 #endif
 
 namespace mozilla::camera {
@@ -60,25 +63,14 @@ int32_t VideoEngine::CreateVideoCapture(const char* aDeviceUniqueIdUTF8) {
     }
   }
 
-  CaptureEntry entry = {-1, nullptr};
+  CaptureEntry entry = {-1, nullptr, nullptr};
 
-  if (mCaptureDevInfo.type == CaptureDeviceType::Camera) {
-    entry = CaptureEntry(
-        id, webrtc::VideoCaptureFactory::Create(aDeviceUniqueIdUTF8));
-    if (entry.VideoCapture()) {
-      entry.VideoCapture()->SetApplyRotation(true);
-    }
-  } else {
-#ifndef WEBRTC_ANDROID
-    entry = CaptureEntry(
-        id, rtc::scoped_refptr<webrtc::VideoCaptureModule>(
-                webrtc::DesktopCaptureImpl::Create(id, aDeviceUniqueIdUTF8,
-                                                   mCaptureDevInfo.type)));
-#else
-    MOZ_ASSERT("CreateVideoCapture NO DESKTOP CAPTURE IMPL ON ANDROID" ==
-               nullptr);
-#endif
-  }
+  VideoCaptureFactory::CreateVideoCaptureResult capturer =
+      mVideoCaptureFactory->CreateVideoCapture(id, aDeviceUniqueIdUTF8,
+                                               mCaptureDevInfo.type);
+  entry =
+      CaptureEntry(id, std::move(capturer.mCapturer), capturer.mDesktopImpl);
+
   mCaps.emplace(id, std::move(entry));
   mIdMap.emplace(id, id);
   return id;
@@ -153,52 +145,57 @@ VideoEngine::GetOrCreateVideoCaptureDeviceInfo() {
   LOG(("new device cache expiration is %" PRId64, mExpiryTime.ms()));
   LOG(("creating a new VideoCaptureDeviceInfo of type %s", capDevTypeName));
 
-  switch (mCaptureDevInfo.type) {
-    case CaptureDeviceType::Camera: {
 #ifdef MOZ_WIDGET_ANDROID
-      if (SetAndroidObjects()) {
-        LOG(("VideoEngine::SetAndroidObjects Failed"));
-        break;
-      }
-#endif
-      mDeviceInfo.reset(webrtc::VideoCaptureFactory::CreateDeviceInfo());
-      LOG(("CaptureDeviceType::Camera: Finished creating new device."));
-      break;
-    }
-    // Window and Screen and Browser (tab) types are handled by DesktopCapture
-    case CaptureDeviceType::Browser:
-    case CaptureDeviceType::Window:
-    case CaptureDeviceType::Screen: {
-#if !defined(WEBRTC_ANDROID) && !defined(WEBRTC_IOS)
-      mDeviceInfo = webrtc::DesktopCaptureImpl::CreateDeviceInfo(
-          mId, mCaptureDevInfo.type);
-      LOG(("screen capture: Finished creating new device."));
-#else
-      MOZ_ASSERT(
-          "GetVideoCaptureDeviceInfo NO DESKTOP CAPTURE IMPL ON ANDROID" ==
-          nullptr);
-      mDeviceInfo.reset();
-#endif
-      break;
+  if (mCaptureDevInfo.type == CaptureDeviceType::Camera) {
+    if (SetAndroidObjects()) {
+      LOG(("VideoEngine::SetAndroidObjects Failed"));
+      return mDeviceInfo;
     }
   }
+#endif
+
+  mDeviceInfo =
+      mVideoCaptureFactory->CreateDeviceInfo(mId, mCaptureDevInfo.type);
+
   LOG(("EXIT %s", __PRETTY_FUNCTION__));
   return mDeviceInfo;
 }
 
-already_AddRefed<VideoEngine> VideoEngine::Create(
-    const CaptureDeviceType& aCaptureDeviceType) {
+void VideoEngine::ClearVideoCaptureDeviceInfo() {
   LOG(("%s", __PRETTY_FUNCTION__));
-  return do_AddRef(new VideoEngine(aCaptureDeviceType));
+  mDeviceInfo.reset();
+}
+
+already_AddRefed<VideoEngine> VideoEngine::Create(
+    const CaptureDeviceType& aCaptureDeviceType,
+    RefPtr<VideoCaptureFactory> aVideoCaptureFactory) {
+  LOG(("%s", __PRETTY_FUNCTION__));
+  return do_AddRef(
+      new VideoEngine(aCaptureDeviceType, std::move(aVideoCaptureFactory)));
 }
 
 VideoEngine::CaptureEntry::CaptureEntry(
-    int32_t aCapnum, rtc::scoped_refptr<webrtc::VideoCaptureModule> aCapture)
-    : mCapnum(aCapnum), mVideoCaptureModule(aCapture) {}
+    int32_t aCapnum, rtc::scoped_refptr<webrtc::VideoCaptureModule> aCapture,
+    webrtc::DesktopCaptureImpl* aDesktopImpl)
+    : mCapnum(aCapnum),
+      mVideoCaptureModule(std::move(aCapture)),
+      mDesktopImpl(aDesktopImpl) {}
 
 rtc::scoped_refptr<webrtc::VideoCaptureModule>
 VideoEngine::CaptureEntry::VideoCapture() {
   return mVideoCaptureModule;
+}
+
+mozilla::MediaEventSource<void>*
+VideoEngine::CaptureEntry::CaptureEndedEvent() {
+  if (!mDesktopImpl) {
+    return nullptr;
+  }
+#if !defined(WEBRTC_ANDROID) && !defined(WEBRTC_IOS)
+  return mDesktopImpl->CaptureEndedEvent();
+#else
+  return nullptr;
+#endif
 }
 
 int32_t VideoEngine::CaptureEntry::Capnum() const { return mCapnum; }
@@ -230,8 +227,13 @@ int32_t VideoEngine::GenerateId() {
   return mId = sId++;
 }
 
-VideoEngine::VideoEngine(const CaptureDeviceType& aCaptureDeviceType)
-    : mId(0), mCaptureDevInfo(aCaptureDeviceType), mDeviceInfo(nullptr) {
+VideoEngine::VideoEngine(const CaptureDeviceType& aCaptureDeviceType,
+                         RefPtr<VideoCaptureFactory> aVideoCaptureFactory)
+    : mId(0),
+      mCaptureDevInfo(aCaptureDeviceType),
+      mVideoCaptureFactory(std::move(aVideoCaptureFactory)),
+      mDeviceInfo(nullptr) {
+  MOZ_ASSERT(mVideoCaptureFactory);
   LOG(("%s", __PRETTY_FUNCTION__));
   LOG(("Creating new VideoEngine with CaptureDeviceType %s",
        mCaptureDevInfo.TypeName()));

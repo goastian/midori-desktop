@@ -66,7 +66,7 @@ class nsIFile;
 
 namespace mozilla::dom::indexedDB {
 
-static_assert(SNAPPY_VERSION == 0x010109);
+static_assert(SNAPPY_VERSION == 0x010200);
 
 using mozilla::ipc::IsOnBackgroundThread;
 
@@ -508,8 +508,8 @@ IndexDataValue::IndexDataValue() : mIndexId(0), mUnique(false) {
   MOZ_COUNT_CTOR(IndexDataValue);
 }
 
-#ifdef NS_BUILD_REFCNT_LOGGING
-IndexDataValue::IndexDataValue(IndexDataValue&& aOther)
+#if defined(DEBUG) || defined(NS_BUILD_REFCNT_LOGGING)
+IndexDataValue::IndexDataValue(IndexDataValue&& aOther) noexcept
     : mIndexId(aOther.mIndexId),
       mPosition(std::move(aOther.mPosition)),
       mLocaleAwarePosition(std::move(aOther.mLocaleAwarePosition)),
@@ -728,7 +728,7 @@ nsresult ExecuteSimpleSQLSequence(mozIStorageConnection& aConnection,
                                   Span<const nsLiteralCString> aSQLCommands) {
   for (const auto& aSQLCommand : aSQLCommands) {
     const auto extraInfo = quota::ScopedLogExtraInfo{
-        quota::ScopedLogExtraInfo::kTagQuery, aSQLCommand};
+        quota::ScopedLogExtraInfo::kTagQueryTainted, aSQLCommand};
 
     QM_TRY(MOZ_TO_RESULT(aConnection.ExecuteSimpleSQL(aSQLCommand)));
   }

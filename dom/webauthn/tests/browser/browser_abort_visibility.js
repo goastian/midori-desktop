@@ -67,11 +67,10 @@ function startMakeCredentialRequest(tab) {
     const cose_alg_ECDSA_w_SHA256 = -7;
 
     let publicKey = {
-      rp: { id: content.document.domain, name: "none", icon: "none" },
+      rp: { id: content.document.domain, name: "none" },
       user: {
         id: new Uint8Array(),
         name: "none",
-        icon: "none",
         displayName: "none",
       },
       challenge: content.crypto.getRandomValues(new Uint8Array(16)),
@@ -241,6 +240,7 @@ async function test_minimize_make() {
 
   // Close window and wait for main window to be focused again.
   let windowBackPromise = waitForWindowActive(window, true);
+  await BrowserTestUtils.removeTab(tab);
   await BrowserTestUtils.closeWindow(win);
   await windowBackPromise;
 }
@@ -271,6 +271,7 @@ async function test_minimize_get() {
 
   // Close window and wait for main window to be focused again.
   let windowBackPromise = waitForWindowActive(window, true);
+  await BrowserTestUtils.removeTab(tab);
   await BrowserTestUtils.closeWindow(win);
   await windowBackPromise;
 }

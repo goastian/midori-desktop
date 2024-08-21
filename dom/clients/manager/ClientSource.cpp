@@ -12,6 +12,7 @@
 #include "ClientSourceChild.h"
 #include "ClientState.h"
 #include "ClientValidation.h"
+#include "mozilla/Try.h"
 #include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/dom/ClientIPCTypes.h"
 #include "mozilla/dom/DOMMozPromiseRequestHolder.h"
@@ -188,13 +189,13 @@ void ClientSource::Activate(PClientManagerChild* aActor) {
   ClientSourceConstructorArgs args(mClientInfo.Id(), mClientInfo.Type(),
                                    mClientInfo.PrincipalInfo(),
                                    mClientInfo.CreationTime());
-  PClientSourceChild* actor = aActor->SendPClientSourceConstructor(args);
-  if (!actor) {
+  RefPtr<ClientSourceChild> actor = new ClientSourceChild(args);
+  if (!aActor->SendPClientSourceConstructor(actor, args)) {
     Shutdown();
     return;
   }
 
-  ActivateThing(static_cast<ClientSourceChild*>(actor));
+  ActivateThing(actor);
 }
 
 ClientSource::~ClientSource() { Shutdown(); }

@@ -8,13 +8,13 @@
 #include "mozilla/dom/HTMLDListElementBinding.h"
 #include "mozilla/dom/HTMLOListElementBinding.h"
 #include "mozilla/dom/HTMLUListElementBinding.h"
+#include "mozilla/dom/HTMLLIElement.h"
 
-#include "mozilla/MappedDeclarations.h"
+#include "mozilla/MappedDeclarationsBuilder.h"
 #include "nsGenericHTMLElement.h"
 #include "nsAttrValueInlines.h"
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
-#include "nsMappedAttributes.h"
 
 NS_IMPL_NS_NEW_HTML_ELEMENT(SharedList)
 
@@ -27,35 +27,21 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED_0(HTMLSharedListElement,
 
 NS_IMPL_ELEMENT_CLONE(HTMLSharedListElement)
 
-nsAttrValue::EnumTable kListTypeTable[] = {
-    {"none", ListStyle::None},
-    {"disc", ListStyle::Disc},
-    {"circle", ListStyle::Circle},
-    {"round", ListStyle::Circle},
-    {"square", ListStyle::Square},
-    {"decimal", ListStyle::Decimal},
-    {"lower-roman", ListStyle::LowerRoman},
-    {"upper-roman", ListStyle::UpperRoman},
-    {"lower-alpha", ListStyle::LowerAlpha},
-    {"upper-alpha", ListStyle::UpperAlpha},
-    {nullptr, 0}};
-
-static const nsAttrValue::EnumTable kOldListTypeTable[] = {
-    {"1", ListStyle::Decimal},    {"A", ListStyle::UpperAlpha},
-    {"a", ListStyle::LowerAlpha}, {"I", ListStyle::UpperRoman},
-    {"i", ListStyle::LowerRoman}, {nullptr, 0}};
-
 bool HTMLSharedListElement::ParseAttribute(
     int32_t aNamespaceID, nsAtom* aAttribute, const nsAString& aValue,
     nsIPrincipal* aMaybeScriptedPrincipal, nsAttrValue& aResult) {
   if (aNamespaceID == kNameSpaceID_None) {
-    if (mNodeInfo->Equals(nsGkAtoms::ol) || mNodeInfo->Equals(nsGkAtoms::ul)) {
+    if (mNodeInfo->Equals(nsGkAtoms::ul)) {
       if (aAttribute == nsGkAtoms::type) {
-        return aResult.ParseEnumValue(aValue, kListTypeTable, false) ||
-               aResult.ParseEnumValue(aValue, kOldListTypeTable, true);
+        return aResult.ParseEnumValue(aValue, HTMLLIElement::kULTypeTable,
+                                      false);
       }
     }
     if (mNodeInfo->Equals(nsGkAtoms::ol)) {
+      if (aAttribute == nsGkAtoms::type) {
+        return aResult.ParseEnumValue(aValue, HTMLLIElement::kOLTypeTable,
+                                      true);
+      }
       if (aAttribute == nsGkAtoms::start) {
         return aResult.ParseIntValue(aValue);
       }
@@ -67,28 +53,28 @@ bool HTMLSharedListElement::ParseAttribute(
 }
 
 void HTMLSharedListElement::MapAttributesIntoRule(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  if (!aDecls.PropertyIsSet(eCSSProperty_list_style_type)) {
-    const nsAttrValue* value = aAttributes->GetAttr(nsGkAtoms::type);
+    MappedDeclarationsBuilder& aBuilder) {
+  if (!aBuilder.PropertyIsSet(eCSSProperty_list_style_type)) {
+    const nsAttrValue* value = aBuilder.GetAttr(nsGkAtoms::type);
     if (value && value->Type() == nsAttrValue::eEnum) {
-      aDecls.SetKeywordValue(eCSSProperty_list_style_type,
-                             value->GetEnumValue());
+      aBuilder.SetKeywordValue(eCSSProperty_list_style_type,
+                               value->GetEnumValue());
     }
   }
 
-  nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aDecls);
+  nsGenericHTMLElement::MapCommonAttributesInto(aBuilder);
 }
 
 void HTMLSharedListElement::MapOLAttributesIntoRule(
-    const nsMappedAttributes* aAttributes, MappedDeclarations& aDecls) {
-  if (!aDecls.PropertyIsSet(eCSSProperty_counter_reset)) {
-    const nsAttrValue* startAttr = aAttributes->GetAttr(nsGkAtoms::start);
+    MappedDeclarationsBuilder& aBuilder) {
+  if (!aBuilder.PropertyIsSet(eCSSProperty_counter_reset)) {
+    const nsAttrValue* startAttr = aBuilder.GetAttr(nsGkAtoms::start);
     bool haveStart = startAttr && startAttr->Type() == nsAttrValue::eInteger;
     int32_t start = 0;
     if (haveStart) {
       start = startAttr->GetIntegerValue() - 1;
     }
-    bool haveReversed = !!aAttributes->GetAttr(nsGkAtoms::reversed);
+    bool haveReversed = !!aBuilder.GetAttr(nsGkAtoms::reversed);
     if (haveReversed) {
       if (haveStart) {
         start += 2;  // i.e. the attr value + 1
@@ -97,11 +83,11 @@ void HTMLSharedListElement::MapOLAttributesIntoRule(
       }
     }
     if (haveStart || haveReversed) {
-      aDecls.SetCounterResetListItem(start, haveReversed);
+      aBuilder.SetCounterResetListItem(start, haveReversed);
     }
   }
 
-  HTMLSharedListElement::MapAttributesIntoRule(aAttributes, aDecls);
+  HTMLSharedListElement::MapAttributesIntoRule(aBuilder);
 }
 
 NS_IMETHODIMP_(bool)

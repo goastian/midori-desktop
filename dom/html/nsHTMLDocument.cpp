@@ -11,17 +11,14 @@
 #include "mozilla/StaticPrefs_intl.h"
 #include "nsCommandManager.h"
 #include "nsCOMPtr.h"
-#include "nsGlobalWindow.h"
 #include "nsString.h"
 #include "nsPrintfCString.h"
 #include "nsReadableUtils.h"
 #include "nsUnicharUtils.h"
-#include "nsGlobalWindowInner.h"
 #include "nsIHTMLContentSink.h"
 #include "nsIProtocolHandler.h"
 #include "nsIXMLContentSink.h"
 #include "nsHTMLParts.h"
-#include "nsHTMLStyleSheet.h"
 #include "nsGkAtoms.h"
 #include "nsPresContext.h"
 #include "nsPIDOMWindow.h"
@@ -29,7 +26,7 @@
 #include "nsIStreamListener.h"
 #include "nsIURI.h"
 #include "nsNetUtil.h"
-#include "nsIContentViewer.h"
+#include "nsIDocumentViewer.h"
 #include "nsDocShell.h"
 #include "nsDocShellLoadTypes.h"
 #include "nsIScriptContext.h"
@@ -103,10 +100,13 @@ static bool IsAsciiCompatible(const Encoding* aEncoding) {
   return aEncoding->IsAsciiCompatible() || aEncoding == ISO_2022_JP_ENCODING;
 }
 
-nsresult NS_NewHTMLDocument(Document** aInstancePtrResult, bool aLoadedAsData) {
+nsresult NS_NewHTMLDocument(Document** aInstancePtrResult,
+                            nsIPrincipal* aPrincipal,
+                            nsIPrincipal* aPartitionedPrincipal,
+                            bool aLoadedAsData) {
   RefPtr<nsHTMLDocument> doc = new nsHTMLDocument();
 
-  nsresult rv = doc->Init();
+  nsresult rv = doc->Init(aPrincipal, aPartitionedPrincipal);
 
   if (NS_FAILED(rv)) {
     *aInstancePtrResult = nullptr;
@@ -139,8 +139,9 @@ JSObject* nsHTMLDocument::WrapNode(JSContext* aCx,
   return HTMLDocument_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsresult nsHTMLDocument::Init() {
-  nsresult rv = Document::Init();
+nsresult nsHTMLDocument::Init(nsIPrincipal* aPrincipal,
+                              nsIPrincipal* aPartitionedPrincipal) {
+  nsresult rv = Document::Init(aPrincipal, aPartitionedPrincipal);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Now reset the compatibility mode of the CSSLoader
@@ -180,15 +181,15 @@ void nsHTMLDocument::ResetToURI(nsIURI* aURI, nsILoadGroup* aLoadGroup,
   SetContentType(nsDependentCString("text/html"));
 }
 
-void nsHTMLDocument::TryReloadCharset(nsIContentViewer* aCv,
+void nsHTMLDocument::TryReloadCharset(nsIDocumentViewer* aViewer,
                                       int32_t& aCharsetSource,
                                       NotNull<const Encoding*>& aEncoding) {
-  if (aCv) {
+  if (aViewer) {
     int32_t reloadEncodingSource;
     const auto reloadEncoding =
-        aCv->GetReloadEncodingAndSource(&reloadEncodingSource);
+        aViewer->GetReloadEncodingAndSource(&reloadEncodingSource);
     if (kCharsetUninitialized != reloadEncodingSource) {
-      aCv->ForgetReloadEncoding();
+      aViewer->ForgetReloadEncoding();
 
       if (reloadEncodingSource <= aCharsetSource ||
           !IsAsciiCompatible(aEncoding)) {
@@ -203,7 +204,7 @@ void nsHTMLDocument::TryReloadCharset(nsIContentViewer* aCv,
   }
 }
 
-void nsHTMLDocument::TryUserForcedCharset(nsIContentViewer* aCv,
+void nsHTMLDocument::TryUserForcedCharset(nsIDocumentViewer* aViewer,
                                           nsIDocShell* aDocShell,
                                           int32_t& aCharsetSource,
                                           NotNull<const Encoding*>& aEncoding,
@@ -392,25 +393,25 @@ nsresult nsHTMLDocument::StartDocumentLoad(
 
   // in this block of code, if we get an error result, we return it
   // but if we get a null pointer, that's perfectly legal for parent
-  // and parentContentViewer
+  // and parentViewer
   nsCOMPtr<nsIDocShellTreeItem> parentAsItem;
   if (docShell) {
     docShell->GetInProcessSameTypeParent(getter_AddRefs(parentAsItem));
   }
 
   nsCOMPtr<nsIDocShell> parent(do_QueryInterface(parentAsItem));
-  nsCOMPtr<nsIContentViewer> parentContentViewer;
+  nsCOMPtr<nsIDocumentViewer> parentViewer;
   if (parent) {
-    rv = parent->GetContentViewer(getter_AddRefs(parentContentViewer));
+    rv = parent->GetDocViewer(getter_AddRefs(parentViewer));
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  nsCOMPtr<nsIContentViewer> cv;
+  nsCOMPtr<nsIDocumentViewer> viewer;
   if (docShell) {
-    docShell->GetContentViewer(getter_AddRefs(cv));
+    docShell->GetDocViewer(getter_AddRefs(viewer));
   }
-  if (!cv) {
-    cv = std::move(parentContentViewer);
+  if (!viewer) {
+    viewer = std::move(parentViewer);
   }
 
   nsAutoCString urlSpec;
@@ -455,10 +456,10 @@ nsresult nsHTMLDocument::StartDocumentLoad(
     // charset menu.
     TryChannelCharset(aChannel, charsetSource, encoding, executor);
 
-    TryUserForcedCharset(cv, docShell, charsetSource, encoding,
+    TryUserForcedCharset(viewer, docShell, charsetSource, encoding,
                          forceAutoDetection);
 
-    TryReloadCharset(cv, charsetSource, encoding);  // For encoding reload
+    TryReloadCharset(viewer, charsetSource, encoding);  // For encoding reload
     TryParentCharset(docShell, charsetSource, encoding, forceAutoDetection);
   }
 
@@ -736,8 +737,7 @@ void nsHTMLDocument::GetFormsAndFormControls(nsContentList** aFormList,
 
     holder = new ContentListHolder(this, htmlForms, htmlFormControls);
     RefPtr<ContentListHolder> runnable = holder;
-    if (NS_SUCCEEDED(
-            Dispatch(TaskCategory::GarbageCollection, runnable.forget()))) {
+    if (NS_SUCCEEDED(Dispatch(runnable.forget()))) {
       mContentListHolder = holder;
     }
   }

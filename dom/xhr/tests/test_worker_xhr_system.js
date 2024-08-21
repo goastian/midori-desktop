@@ -1,3 +1,5 @@
+/* eslint-disable mozilla/no-comparison-or-assignment-inside-ok */
+
 function ok(what, msg) {
   postMessage({ event: msg, test: "ok", a: what });
 }
@@ -6,7 +8,7 @@ function is(a, b, msg) {
   postMessage({ event: msg, test: "is", a, b });
 }
 
-self.onmessage = function onmessage(event) {
+self.onmessage = function onmessage() {
   // An XHR with system privileges will be able to do cross-site calls.
 
   const TEST_URL =

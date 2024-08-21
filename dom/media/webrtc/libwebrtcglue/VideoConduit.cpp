@@ -5,28 +5,28 @@
 #include "VideoConduit.h"
 
 #include <algorithm>
-#include <cinttypes>
 #include <cmath>
 
 #include "common/browser_logging/CSFLog.h"
 #include "common/YuvStamper.h"
-#include "GmpVideoCodec.h"
 #include "MediaConduitControl.h"
-#include "MediaDataCodec.h"
-#include "mozilla/dom/RTCRtpSourcesBinding.h"
-#include "mozilla/media/MediaUtils.h"
-#include "mozilla/StaticPrefs_media.h"
-#include "mozilla/TemplateLib.h"
 #include "nsIGfxInfo.h"
-#include "nsIPrefBranch.h"
-#include "nsIPrefService.h"
 #include "nsServiceManagerUtils.h"
 #include "RtpRtcpConfig.h"
 #include "transport/SrtpFlow.h"  // For SRTP_MAX_EXPANSION
 #include "Tracing.h"
 #include "VideoStreamFactory.h"
 #include "WebrtcCallWrapper.h"
-#include "WebrtcGmpVideoCodec.h"
+#include "libwebrtcglue/FrameTransformer.h"
+#include "libwebrtcglue/FrameTransformerProxy.h"
+#include "mozilla/StateMirroring.h"
+#include "mozilla/RefPtr.h"
+#include "nsThreadUtils.h"
+#include "mozilla/Maybe.h"
+#include "mozilla/ErrorResult.h"
+#include <string>
+#include <utility>
+#include <vector>
 
 // libwebrtc includes
 #include "api/transport/bitrate_settings.h"
@@ -34,10 +34,72 @@
 #include "api/video_codecs/sdp_video_format.h"
 #include "api/video_codecs/video_codec.h"
 #include "media/base/media_constants.h"
-#include "media/engine/encoder_simulcast_proxy.h"
+#include "media/engine/simulcast_encoder_adapter.h"
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
-#include "modules/video_coding/codecs/vp8/include/vp8.h"
-#include "modules/video_coding/codecs/vp9/include/vp9.h"
+#include "rtc_base/ref_counted_object.h"
+
+#include "api/call/transport.h"
+#include "api/media_types.h"
+#include "api/rtp_headers.h"
+#include "api/rtp_parameters.h"
+#include "api/scoped_refptr.h"
+#include "api/transport/rtp/rtp_source.h"
+#include "api/video_codecs/video_encoder.h"
+#include "api/video/video_codec_constants.h"
+#include "api/video/video_codec_type.h"
+#include "api/video/video_frame_buffer.h"
+#include "api/video/video_sink_interface.h"
+#include "api/video/video_source_interface.h"
+#include <utility>
+#include "call/call.h"
+#include "call/rtp_config.h"
+#include "call/video_receive_stream.h"
+#include "call/video_send_stream.h"
+#include "CodecConfig.h"
+#include "common_video/include/video_frame_buffer_pool.h"
+#include "domstubs.h"
+#include <iomanip>
+#include <ios>
+#include "jsapi/RTCStatsReport.h"
+#include <limits>
+#include "MainThreadUtils.h"
+#include <map>
+#include "MediaConduitErrors.h"
+#include "MediaConduitInterface.h"
+#include "MediaEventSource.h"
+#include "modules/rtp_rtcp/source/rtp_packet_received.h"
+#include "mozilla/Assertions.h"
+#include "mozilla/Atomics.h"
+#include "mozilla/DataMutex.h"
+#include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/RTCStatsReportBinding.h"
+#include "mozilla/fallible.h"
+#include "mozilla/mozalloc_oom.h"
+#include "mozilla/MozPromise.h"
+#include "mozilla/Mutex.h"
+#include "mozilla/ProfilerState.h"
+#include "mozilla/ReentrantMonitor.h"
+#include "mozilla/ReverseIterator.h"
+#include "mozilla/StateWatching.h"
+#include "mozilla/Telemetry.h"
+#include "mozilla/TelemetryHistogramEnums.h"
+#include "mozilla/TelemetryScalarEnums.h"
+#include "mozilla/Types.h"
+#include "mozilla/UniquePtr.h"
+#include "nsCOMPtr.h"
+#include "nsDebug.h"
+#include "nsError.h"
+#include "nsIDirectTaskDispatcher.h"
+#include "nsISerialEventTarget.h"
+#include "nsStringFwd.h"
+#include "PerformanceRecorder.h"
+#include "rtc_base/copy_on_write_buffer.h"
+#include "rtc_base/network/sent_packet.h"
+#include <sstream>
+#include <stdint.h>
+#include "transport/mediapacket.h"
+#include "video/config/video_encoder_config.h"
+#include "WebrtcVideoCodecFactory.h"
 
 #ifdef MOZ_WIDGET_ANDROID
 #  include "VideoEngine.h"
@@ -128,7 +190,7 @@ webrtc::VideoCodecType SupportedCodecType(webrtc::VideoCodecType aType) {
 rtc::scoped_refptr<webrtc::VideoEncoderConfig::EncoderSpecificSettings>
 ConfigureVideoEncoderSettings(const VideoCodecConfig& aConfig,
                               const WebrtcVideoConduit* aConduit,
-                              webrtc::SdpVideoFormat::Parameters& aParameters) {
+                              webrtc::CodecParameterMap& aParameters) {
   bool is_screencast =
       aConduit->CodecMode() == webrtc::VideoCodecMode::kScreensharing;
   // No automatic resizing when using simulcast or screencast.
@@ -240,8 +302,7 @@ bool operator!=(
          aThis.protected_by_flexfec != aOther.protected_by_flexfec ||
          aThis.rtx_associated_payload_types !=
              aOther.rtx_associated_payload_types ||
-         aThis.raw_payload_types != aOther.raw_payload_types ||
-         aThis.extensions != aOther.extensions;
+         aThis.raw_payload_types != aOther.raw_payload_types;
 }
 
 #ifdef DEBUG
@@ -330,7 +391,9 @@ WebrtcVideoConduit::Control::Control(const RefPtr<AbstractThread>& aCallThread)
       INIT_MIRROR(mSendRtpRtcpConfig, Nothing()),
       INIT_MIRROR(mRecvCodecs, std::vector<VideoCodecConfig>()),
       INIT_MIRROR(mRecvRtpRtcpConfig, Nothing()),
-      INIT_MIRROR(mCodecMode, webrtc::VideoCodecMode::kRealtimeVideo) {}
+      INIT_MIRROR(mCodecMode, webrtc::VideoCodecMode::kRealtimeVideo),
+      INIT_MIRROR(mFrameTransformerProxySend, nullptr),
+      INIT_MIRROR(mFrameTransformerProxyRecv, nullptr) {}
 #undef INIT_MIRROR
 
 WebrtcVideoConduit::WebrtcVideoConduit(
@@ -369,19 +432,24 @@ WebrtcVideoConduit::WebrtcVideoConduit(
 
 WebrtcVideoConduit::~WebrtcVideoConduit() {
   CSFLogDebug(LOGTAG, "%s ", __FUNCTION__);
-
   MOZ_ASSERT(!mSendStream && !mRecvStream,
              "Call DeleteStreams prior to ~WebrtcVideoConduit.");
 }
 
-#define CONNECT(aCanonical, aMirror)                                          \
-  do {                                                                        \
-    (aMirror).Connect(aCanonical);                                            \
-    mWatchManager.Watch(aMirror, &WebrtcVideoConduit::OnControlConfigChange); \
+#define CONNECT(aCanonical, aMirror)                                       \
+  do {                                                                     \
+    /* Ensure the watchmanager is wired up before the mirror receives its  \
+     * initial mirrored value. */                                          \
+    mCall->mCallThread->DispatchStateChange(                               \
+        NS_NewRunnableFunction(__func__, [this, self = RefPtr(this)] {     \
+          mWatchManager.Watch(aMirror,                                     \
+                              &WebrtcVideoConduit::OnControlConfigChange); \
+        }));                                                               \
+    (aCanonical).ConnectMirror(&(aMirror));                                \
   } while (0)
 
 void WebrtcVideoConduit::InitControl(VideoConduitControlInterface* aControl) {
-  MOZ_ASSERT(mCallThread->IsOnCurrentThread());
+  MOZ_ASSERT(NS_IsMainThread());
 
   CONNECT(aControl->CanonicalReceiving(), mControl.mReceiving);
   CONNECT(aControl->CanonicalTransmitting(), mControl.mTransmitting);
@@ -403,6 +471,10 @@ void WebrtcVideoConduit::InitControl(VideoConduitControlInterface* aControl) {
   CONNECT(aControl->CanonicalVideoRecvRtpRtcpConfig(),
           mControl.mRecvRtpRtcpConfig);
   CONNECT(aControl->CanonicalVideoCodecMode(), mControl.mCodecMode);
+  CONNECT(aControl->CanonicalFrameTransformerProxySend(),
+          mControl.mFrameTransformerProxySend);
+  CONNECT(aControl->CanonicalFrameTransformerProxyRecv(),
+          mControl.mFrameTransformerProxyRecv);
 }
 
 #undef CONNECT
@@ -428,11 +500,6 @@ void WebrtcVideoConduit::OnControlConfigChange() {
     mRecvStreamConfig.sync_group = mControl.mSyncGroup;
   }
 
-  if (mControl.mLocalRecvRtpExtensions.Ref() !=
-      mRecvStreamConfig.rtp.extensions) {
-    mRecvStreamConfig.rtp.extensions = mControl.mLocalRecvRtpExtensions;
-  }
-
   if (const auto [codecConfigList, rtpRtcpConfig] = std::make_pair(
           mControl.mRecvCodecs.Ref(), mControl.mRecvRtpRtcpConfig.Ref());
       !codecConfigList.empty() && rtpRtcpConfig.isSome() &&
@@ -445,6 +512,7 @@ void WebrtcVideoConduit::OnControlConfigChange() {
         mRecvStreamConfig.rtp);
     MOZ_ASSERT(newRtp == mRecvStreamConfig.rtp);
     newRtp.rtx_associated_payload_types.clear();
+    newRtp.rtx_ssrc = 0;
     newRtp.rtcp_mode = rtpRtcpConfig->GetRtcpMode();
     newRtp.nack.rtp_history_ms = 0;
     newRtp.remb = false;
@@ -480,6 +548,15 @@ void WebrtcVideoConduit::OnControlConfigChange() {
         continue;
       }
 
+      // Set RTX associated PT here so we can set it for RED without additional
+      // checks for things like preventing creating an unncessary decoder for
+      // RED. This assumes that any codecs created with RTX enabled
+      // (including those not found in SupportedCodecType) intend to use it.
+      if (codec_config.RtxPayloadTypeIsSet()) {
+        newRtp.rtx_associated_payload_types[codec_config.mRTXPayloadType] =
+            codec_config.mType;
+      }
+
       if (codec_config.mName == kRedCodecName) {
         newRtp.red_payload_type = codec_config.mType;
         continue;
@@ -513,11 +590,6 @@ void WebrtcVideoConduit::OnControlConfigChange() {
       newRtp.tmmbr |= codec_config.RtcpFbCcmIsSet(kRtcpFbCcmParamTmmbr);
       newRtp.remb |= codec_config.RtcpFbRembIsSet();
       use_fec |= codec_config.RtcpFbFECIsSet();
-
-      if (codec_config.RtxPayloadTypeIsSet()) {
-        newRtp.rtx_associated_payload_types[codec_config.mRTXPayloadType] =
-            codec_config.mType;
-      }
 
       auto& decoder = recv_codecs.emplace_back();
       decoder.video_format = webrtc::SdpVideoFormat(codec_config.mName);
@@ -604,6 +676,14 @@ void WebrtcVideoConduit::OnControlConfigChange() {
         (codecConfig != mControl.mConfiguredSendCodec ||
          rtpRtcpConfig != mControl.mConfiguredSendRtpRtcpConfig)) {
       CSFLogDebug(LOGTAG, "Configuring codec %s", codecConfig->mName.c_str());
+
+      if (mControl.mConfiguredSendCodec.isSome() &&
+          (mControl.mConfiguredSendCodec->mName != codecConfig->mName)) {
+        // This tends to happen if the codec is changed mid call.
+        // We need to delete the stream now, if we continue to setup the new
+        // codec before deleting the send stream libwebrtc will throw erros.
+        DeleteSendStream();
+      }
       mControl.mConfiguredSendCodec = codecConfig;
       mControl.mConfiguredSendRtpRtcpConfig = rtpRtcpConfig;
 
@@ -614,14 +694,6 @@ void WebrtcVideoConduit::OnControlConfigChange() {
 
         size_t streamCount = std::min(codecConfig->mEncodings.size(),
                                       (size_t)webrtc::kMaxSimulcastStreams);
-        size_t highestResolutionIndex = 0;
-        for (size_t i = 1; i < streamCount; ++i) {
-          if (codecConfig->mEncodings[i].constraints.scaleDownBy <
-              codecConfig->mEncodings[highestResolutionIndex]
-                  .constraints.scaleDownBy) {
-            highestResolutionIndex = i;
-          }
-        }
         MOZ_RELEASE_ASSERT(streamCount >= 1,
                            "streamCount should be at least one");
 
@@ -687,8 +759,20 @@ void WebrtcVideoConduit::OnControlConfigChange() {
         // TODO this is for webrtc-priority, but needs plumbing bits
         mEncoderConfig.bitrate_priority = 1.0;
 
+        // Populate simulcast_layers with their config (not dimensions or
+        // dimensions-derived properties, as they're only known as a frame to
+        // be sent is known).
+        mEncoderConfig.simulcast_layers.clear();
+        for (size_t idx = 0; idx < streamCount; ++idx) {
+          webrtc::VideoStream video_stream;
+          auto& encoding = codecConfig->mEncodings[idx];
+          video_stream.active = encoding.active;
+          mEncoderConfig.simulcast_layers.push_back(video_stream);
+        }
+
         // Expected max number of encodings
-        mEncoderConfig.number_of_streams = streamCount;
+        mEncoderConfig.number_of_streams =
+            mEncoderConfig.simulcast_layers.size();
 
         // libwebrtc disables this by default.
         mSendStreamConfig.suspend_below_min_bitrate = false;
@@ -723,23 +807,14 @@ void WebrtcVideoConduit::OnControlConfigChange() {
         newRtp.nack.rtp_history_ms =
             codecConfig->RtcpFbNackIsSet(kParamValueEmpty) ? 1000 : 0;
 
-        {
-          newRtp.rids.clear();
-          bool has_rid = false;
-          for (size_t idx = 0; idx < streamCount; idx++) {
-            const auto& encoding = codecConfig->mEncodings[idx];
-            if (encoding.rid[0]) {
-              has_rid = true;
-              break;
-            }
-          }
-          if (has_rid) {
-            for (size_t idx = streamCount; idx > 0; idx--) {
-              const auto& encoding = codecConfig->mEncodings[idx - 1];
-              newRtp.rids.push_back(encoding.rid);
-            }
+        newRtp.rids.clear();
+        if (!codecConfig->mEncodings.empty() &&
+            !codecConfig->mEncodings[0].rid.empty()) {
+          for (const auto& encoding : codecConfig->mEncodings) {
+            newRtp.rids.push_back(encoding.rid);
           }
         }
+
         if (mSendStreamConfig.rtp != newRtp) {
           mSendStreamConfig.rtp = newRtp;
           sendStreamRecreationNeeded = true;
@@ -763,6 +838,32 @@ void WebrtcVideoConduit::OnControlConfigChange() {
         mEncoderConfig.video_stream_factory = CreateVideoStreamFactory();
         encoderReconfigureNeeded = true;
       }
+    }
+
+    if (mControl.mConfiguredFrameTransformerProxySend.get() !=
+        mControl.mFrameTransformerProxySend.Ref().get()) {
+      mControl.mConfiguredFrameTransformerProxySend =
+          mControl.mFrameTransformerProxySend.Ref();
+      if (!mSendStreamConfig.frame_transformer) {
+        mSendStreamConfig.frame_transformer =
+            new rtc::RefCountedObject<FrameTransformer>(true);
+        sendStreamRecreationNeeded = true;
+      }
+      static_cast<FrameTransformer*>(mSendStreamConfig.frame_transformer.get())
+          ->SetProxy(mControl.mConfiguredFrameTransformerProxySend);
+    }
+
+    if (mControl.mConfiguredFrameTransformerProxyRecv.get() !=
+        mControl.mFrameTransformerProxyRecv.Ref().get()) {
+      mControl.mConfiguredFrameTransformerProxyRecv =
+          mControl.mFrameTransformerProxyRecv.Ref();
+      if (!mRecvStreamConfig.frame_transformer) {
+        mRecvStreamConfig.frame_transformer =
+            new rtc::RefCountedObject<FrameTransformer>(true);
+      }
+      static_cast<FrameTransformer*>(mRecvStreamConfig.frame_transformer.get())
+          ->SetProxy(mControl.mConfiguredFrameTransformerProxyRecv);
+      // No flag to set, we always recreate recv streams
     }
 
     if (remoteSsrcUpdateNeeded) {
@@ -840,6 +941,16 @@ Maybe<Ssrc> WebrtcVideoConduit::GetAssociatedLocalRtxSSRC(Ssrc aSsrc) const {
     if (mSendStreamConfig.rtp.ssrcs[i] == aSsrc) {
       return Some(mSendStreamConfig.rtp.rtx.ssrcs[i]);
     }
+  }
+  return Nothing();
+}
+
+Maybe<VideoSessionConduit::Resolution> WebrtcVideoConduit::GetLastResolution()
+    const {
+  MutexAutoLock lock(mMutex);
+  if (mLastWidth || mLastHeight) {
+    return Some(VideoSessionConduit::Resolution{.width = mLastWidth,
+                                                .height = mLastHeight});
   }
   return Nothing();
 }
@@ -952,7 +1063,9 @@ void WebrtcVideoConduit::SetRemoteSSRCConfig(uint32_t aSsrc,
   }
 
   mRecvSSRC = mRecvStreamConfig.rtp.remote_ssrc = aSsrc;
-  mRecvStreamConfig.rtp.rtx_ssrc = aRtxSsrc;
+  // If we have no associated PT then ensure we dont have an rtx_ssrc set.
+  mRecvStreamConfig.rtp.rtx_ssrc =
+      mRecvStreamConfig.rtp.rtx_associated_payload_types.empty() ? 0 : aRtxSsrc;
 }
 
 void WebrtcVideoConduit::SetRemoteSSRCAndRestartAsNeeded(uint32_t aSsrc,
@@ -1209,6 +1322,8 @@ RefPtr<GenericPromise> WebrtcVideoConduit::Shutdown() {
         mControl.mRecvCodecs.DisconnectIfConnected();
         mControl.mRecvRtpRtcpConfig.DisconnectIfConnected();
         mControl.mCodecMode.DisconnectIfConnected();
+        mControl.mFrameTransformerProxySend.DisconnectIfConnected();
+        mControl.mFrameTransformerProxyRecv.DisconnectIfConnected();
         mWatchManager.Shutdown();
 
         mCall->UnregisterConduit(this);
@@ -1447,6 +1562,32 @@ void WebrtcVideoConduit::OnRtpReceived(webrtc::RtpPacketReceived&& aPacket,
                 aPacket.SequenceNumber(), aPacket.size(), aPacket.Ssrc(),
                 aPacket.Ssrc());
 
+  // Libwebrtc commit cde4b67d9d now expect calls to
+  // SourceTracker::GetSources() to happen on the call thread.  We'll
+  // grab the value now while on the call thread, and dispatch to main
+  // to store the cached value if we have new source information.
+  // See Bug 1845621.
+  std::vector<webrtc::RtpSource> sources;
+  if (mRecvStream) {
+    sources = mRecvStream->GetSources();
+  }
+
+  bool needsCacheUpdate = false;
+  {
+    MutexAutoLock lock(mMutex);
+    needsCacheUpdate = sources != mRtpSources;
+  }
+
+  // only dispatch to main if we have new data
+  if (needsCacheUpdate) {
+    GetMainThreadSerialEventTarget()->Dispatch(NS_NewRunnableFunction(
+        __func__, [this, rtpSources = std::move(sources),
+                   self = RefPtr<WebrtcVideoConduit>(this)]() {
+          MutexAutoLock lock(mMutex);
+          mRtpSources = rtpSources;
+        }));
+  }
+
   mRtpPacketEvent.Notify();
   if (mCall->Call()) {
     mCall->Call()->Receiver()->DeliverRtpPacket(
@@ -1459,18 +1600,6 @@ void WebrtcVideoConduit::OnRtpReceived(webrtc::RtpPacketReceived&& aPacket,
               self.get(), packet.Ssrc(), packet.SequenceNumber());
           return false;
         });
-  }
-}
-
-void WebrtcVideoConduit::OnRtcpReceived(MediaPacket&& aPacket) {
-  MOZ_ASSERT(mCallThread->IsOnCurrentThread());
-
-  CSFLogVerbose(LOGTAG, "VideoConduit %p: Received RTCP Packet, len %zu ", this,
-                aPacket.len());
-
-  if (mCall->Call()) {
-    mCall->Call()->Receiver()->DeliverRtcpPacket(
-        rtc::CopyOnWriteBuffer(aPacket.data(), aPacket.len()));
   }
 }
 
@@ -1827,12 +1956,8 @@ void WebrtcVideoConduit::SetTransportActive(bool aActive) {
     MOZ_ALWAYS_SUCCEEDS(mCallThread->Dispatch(NS_NewRunnableFunction(
         __func__,
         [self = RefPtr<WebrtcVideoConduit>(this),
-         recvRtpListener = std::move(mReceiverRtpEventListener),
-         recvRtcpListener = std::move(mReceiverRtcpEventListener),
-         sendRtcpListener = std::move(mSenderRtcpEventListener)]() mutable {
+         recvRtpListener = std::move(mReceiverRtpEventListener)]() mutable {
           recvRtpListener.DisconnectIfExists();
-          recvRtcpListener.DisconnectIfExists();
-          sendRtcpListener.DisconnectIfExists();
         })));
   }
 }
@@ -1840,14 +1965,93 @@ void WebrtcVideoConduit::SetTransportActive(bool aActive) {
 std::vector<webrtc::RtpSource> WebrtcVideoConduit::GetUpstreamRtpSources()
     const {
   MOZ_ASSERT(NS_IsMainThread());
-  std::vector<webrtc::RtpSource> sources;
-  {
-    MutexAutoLock lock(mMutex);
-    if (mRecvStream) {
-      sources = mRecvStream->GetSources();
-    }
-  }
-  return sources;
+  return mRtpSources;
+}
+
+void WebrtcVideoConduit::RequestKeyFrame(FrameTransformerProxy* aProxy) {
+  mCallThread->Dispatch(NS_NewRunnableFunction(
+      __func__, [this, self = RefPtr<WebrtcVideoConduit>(this),
+                 proxy = RefPtr<FrameTransformerProxy>(aProxy)] {
+        bool success = false;
+        if (mRecvStream && mEngineReceiving) {
+          // This is a misnomer. This requests a keyframe from the other side.
+          mRecvStream->GenerateKeyFrame();
+          success = true;
+        }
+        proxy->KeyFrameRequestDone(success);
+      }));
+}
+
+void WebrtcVideoConduit::GenerateKeyFrame(const Maybe<std::string>& aRid,
+                                          FrameTransformerProxy* aProxy) {
+  // libwebrtc does not implement error handling in the way that
+  // webrtc-encoded-transform specifies. So, we'll need to do that here.
+  // Also, spec wants us to synchronously check whether there's an encoder, but
+  // that's not something that can be checked synchronously.
+
+  mCallThread->Dispatch(NS_NewRunnableFunction(
+      __func__, [this, self = RefPtr<WebrtcVideoConduit>(this),
+                 proxy = RefPtr<FrameTransformerProxy>(aProxy), aRid] {
+        // If encoder is undefined, reject promise with InvalidStateError,
+        // abort these steps.
+
+        // If encoder is not processing video frames, reject promise with
+        // InvalidStateError, abort these steps.
+        if (!mSendStream || !mCurSendCodecConfig || !mEngineTransmitting) {
+          CopyableErrorResult result;
+          result.ThrowInvalidStateError("No encoders");
+          proxy->GenerateKeyFrameError(aRid, result);
+          return;
+        }
+
+        // Gather a list of video encoders, named videoEncoders from encoder,
+        // ordered according negotiated RIDs if any.
+        // NOTE: This is represented by mCurSendCodecConfig->mEncodings
+
+        // If rid is defined, remove from videoEncoders any video encoder that
+        // does not match rid.
+
+        // If rid is undefined, remove from videoEncoders all video encoders
+        // except the first one.
+        bool found = false;
+        std::vector<std::string> rids;
+        if (!aRid.isSome()) {
+          // If rid is undefined, set rid to the RID value corresponding to
+          // videoEncoder.
+          if (!mCurSendCodecConfig->mEncodings.empty()) {
+            if (!mCurSendCodecConfig->mEncodings[0].rid.empty()) {
+              rids.push_back(mCurSendCodecConfig->mEncodings[0].rid);
+            }
+            found = true;
+          }
+        } else {
+          for (const auto& encoding : mCurSendCodecConfig->mEncodings) {
+            if (encoding.rid == *aRid) {
+              found = true;
+              rids.push_back(encoding.rid);
+              break;
+            }
+          }
+        }
+
+        // If videoEncoders is empty, reject promise with NotFoundError and
+        // abort these steps. videoEncoders is expected to be empty if the
+        // corresponding RTCRtpSender is not active, or the corresponding
+        // RTCRtpSender track is ended.
+        if (!found) {
+          CopyableErrorResult result;
+          result.ThrowNotFoundError("Rid not in use");
+          proxy->GenerateKeyFrameError(aRid, result);
+        }
+
+        // NOTE: We don't do this stuff, because libwebrtc's interface is
+        // rid-based.
+        // Let videoEncoder be the first encoder in videoEncoders.
+        // If rid is undefined, set rid to the RID value corresponding to
+        // videoEncoder.
+
+        mSendStream->GenerateKeyFrame(rids);
+      }));
 }
 
 bool WebrtcVideoConduit::HasCodecPluginID(uint64_t aPluginID) const {

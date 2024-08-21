@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/Try.h"
 #include "mozilla/Unused.h"
 #include "SinfParser.h"
 #include "AtomType.h"
@@ -10,7 +11,7 @@
 
 namespace mozilla {
 
-Sinf::Sinf(Box& aBox) : mDefaultIVSize(0), mDefaultEncryptionType() {
+Sinf::Sinf(Box& aBox) : mDefaultIVSize(0) {
   SinfParser parser(aBox);
   if (parser.GetSinf().IsValid()) {
     *this = parser.GetSinf();

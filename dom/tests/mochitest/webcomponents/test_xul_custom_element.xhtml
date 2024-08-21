@@ -77,7 +77,7 @@
       }
     }
     customElements.define("test-popup-extend",
-      TestPopupExtendElement, { extends: "popup" });
+      TestPopupExtendElement, { extends: "menupopup" });
 
     class TestCustomElement3 extends XULElement { }
 
@@ -150,13 +150,13 @@
     function basicElementCreateBuiltIn() {
       let element = document.createElementNS(XUL_NS, "axulelement", { is: "test-built-in-element" });
       ok(element instanceof TestCustomBuiltInElement, "Should be an instance of TestCustomBuiltInElement");
-      is(element.getAttribute("is"), "", "The |is| attribute of the created element should not be the extended type.");
+      is(element.getAttribute("is"), null, "The |is| attribute of the created element should not be the extended type.");
       document.querySelector("#content").appendChild(element);
       is(element.textContent, "baz", "Should have set the textContent");
 
       let element2 = element.cloneNode(false);
       is(element2.localName, "axulelement", "Should see the right tag");
-      is(element2.getAttribute("is"), "", "The |is| attribute of the created element should not be the extended type.");
+      is(element2.getAttribute("is"), null, "The |is| attribute of the created element should not be the extended type.");
       is(element2.textContent, "", "Shouldn't have cloned the textContent");
       document.querySelector("#content").appendChild(element2);
       is(element2.textContent, "baz", "Should have set the textContent");
@@ -186,31 +186,31 @@
     }
 
     function subclassElementCreateBuiltIn() {
-      let element = document.createElementNS(XUL_NS, "popup", { is: "test-popup-extend" });
+      let element = document.createElementNS(XUL_NS, "menupopup", { is: "test-popup-extend" });
       ok(element instanceof TestPopupExtendElement, "Should be an instance of TestPopupExtendElement");
-      is(element.getAttribute("is"), "", "The |is| attribute of the created element should not be the extended type.");
+      is(element.getAttribute("is"), null, "The |is| attribute of the created element should not be the extended type.");
       document.querySelector("#content").appendChild(element);
       is(element.textContent, "quuz", "Should have set the textContent");
 
       let element2 = element.cloneNode(false);
-      is(element2.localName, "popup", "Should see the right tag");
-      is(element2.getAttribute("is"), "", "The |is| attribute of the created element should not be the extended type.");
+      is(element2.localName, "menupopup", "Should see the right tag");
+      is(element2.getAttribute("is"), null, "The |is| attribute of the created element should not be the extended type.");
       is(element2.textContent, "", "Shouldn't have cloned the textContent");
       document.querySelector("#content").appendChild(element2);
       is(element2.textContent, "quuz", "Should have set the textContent");
       ok(element2 instanceof TestPopupExtendElement, "Should be an instance of TestPopupExtendElement");
 
       let element3 = new TestPopupExtendElement();
-      is(element3.localName, "popup", "Should see the right tag");
+      is(element3.localName, "menupopup", "Should see the right tag");
       is(element3.textContent, "", "Shouldn't have been inserted yet");
       is(element3.namespaceURI, XUL_NS, "Should have set the right namespace");
       document.querySelector("#content").appendChild(element3);
       is(element3.textContent, "quuz", "Should have set the textContent");
       ok(element3 instanceof TestPopupExtendElement, "Should be an instance of TestPopupExtendElement");
 
-      document.querySelector("#content").appendChild(parseXULToFragment(`<popup is="test-popup-extend" />`))
+      document.querySelector("#content").appendChild(parseXULToFragment(`<menupopup is="test-popup-extend" />`))
       let element4 = document.querySelector("#content").lastChild;
-      is(element4.localName, "popup", "Should see the right tag");
+      is(element4.localName, "menupopup", "Should see the right tag");
       is(element4.namespaceURI, XUL_NS, "Should have set the right namespace");
       is(element4.textContent, "quuz", "Should have set the textContent");
       ok(element4 instanceof TestPopupExtendElement, "Should be an instance of TestPopupExtendElement");
@@ -268,13 +268,13 @@
       let element = document.createElementNS(XUL_NS, "testwithoutdash", { is: "testwithoutdash-extended" });
       ok(element instanceof TestWithoutDashExtended, "Should be an instance of TestWithoutDashExtended");
       ok(element instanceof TestWithoutDash, "Should be an instance of TestWithoutDash");
-      is(element.getAttribute("is"), "", "The |is| attribute of the created element should not be the extended type.");
+      is(element.getAttribute("is"), null, "The |is| attribute of the created element should not be the extended type.");
       document.querySelector("#content").appendChild(element);
       is(element.textContent, "quux", "Should have set the textContent");
 
       let element2 = element.cloneNode(false);
       is(element2.localName, "testwithoutdash", "Should see the right tag");
-      is(element2.getAttribute("is"), "", "The |is| attribute of the created element should not be the extended type.");
+      is(element2.getAttribute("is"), null, "The |is| attribute of the created element should not be the extended type.");
       is(element2.textContent, "", "Shouldn't have cloned the textContent");
       document.querySelector("#content").appendChild(element2);
       is(element2.textContent, "quux", "Should have set the textContent");
@@ -344,6 +344,20 @@
       ok(element1 instanceof TestCustomElement5, "Should be an instance of TestCustomElement5");
     }
 
+    function testSetElementCreationCallbackExistsBeforeCall() {
+      class TestCustomElement6 extends XULElement {}
+      document.querySelector("#content").appendChild(parseXULToFragment(`<test-custom-element-6 />`));
+
+      let element = document.querySelector("#content").lastChild;
+      ok(!(element instanceof TestCustomElement6), "Is not a TestCustomElement6 when DOM parsed");
+
+      customElements.setElementCreationCallback(
+        "test-custom-element-6",
+        () => customElements.define("test-custom-element-6", TestCustomElement6)
+      );
+      ok(element instanceof TestCustomElement6, "setElementCreationCallback called automatically to upgrade candidate component");
+    }
+
     function runTest() {
       basicCustomElementCreate();
       parserBasicElementUpgrade();
@@ -367,6 +381,8 @@
       testSetElementCreationballbackInDocument();
       setElementCreationCallbackCreate();
 
+      testSetElementCreationCallbackExistsBeforeCall();
+
       SimpleTest.finish();
     }
   ]]>
@@ -378,7 +394,7 @@
       <test-custom-element id="element4" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"/>
       <testwithoutdash id="element5" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"/>
       <axulelement id="element6" is="test-built-in-element" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"/>
-      <popup id="element7" is="test-popup-extend" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"/>
+      <menupopup id="element7" is="test-popup-extend" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"/>
       <test-custom-element-3 id="element8" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"></test-custom-element-3>
     </div>
     <pre id="test"></pre>

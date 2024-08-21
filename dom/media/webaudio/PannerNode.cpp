@@ -65,9 +65,9 @@ class PannerNodeEngine final : public AudioNodeEngine {
         mConeOuterGain(0.),
         mLeftOverData(INT_MIN) {}
 
-  void RecvTimelineEvent(uint32_t aIndex, AudioTimelineEvent& aEvent) override {
+  void RecvTimelineEvent(uint32_t aIndex, AudioParamEvent& aEvent) override {
     MOZ_ASSERT(mDestination);
-    WebAudioUtils::ConvertAudioTimelineEventToTicks(aEvent, mDestination);
+    aEvent.ConvertToTicks(mDestination);
     switch (aIndex) {
       case PannerNode::POSITIONX:
         mPositionX.InsertEvent<int64_t>(aEvent);
@@ -249,10 +249,11 @@ class PannerNodeEngine final : public AudioNodeEngine {
   // later, via a MediaTrackGraph ControlMessage.
   UniquePtr<HRTFPanner> mHRTFPanner;
   RefPtr<AudioListenerEngine> mListenerEngine;
-  typedef void (PannerNodeEngine::*PanningModelFunction)(
-      const AudioBlock& aInput, AudioBlock* aOutput, TrackTime tick);
+  using PanningModelFunction = void (PannerNodeEngine::*)(const AudioBlock&,
+                                                          AudioBlock*,
+                                                          TrackTime);
   PanningModelFunction mPanningModelFunction;
-  typedef float (PannerNodeEngine::*DistanceModelFunction)(double aDistance);
+  using DistanceModelFunction = float (PannerNodeEngine::*)(double);
   DistanceModelFunction mDistanceModelFunction;
   AudioParamTimeline mPositionX;
   AudioParamTimeline mPositionY;
@@ -399,10 +400,12 @@ JSObject* PannerNode::WrapObject(JSContext* aCx,
 
 // Those three functions are described in the spec.
 float PannerNodeEngine::LinearGainFunction(double aDistance) {
-  return 1 - mRolloffFactor *
-                 (std::max(std::min(aDistance, mMaxDistance), mRefDistance) -
-                  mRefDistance) /
-                 (mMaxDistance - mRefDistance);
+  double clampedRollof = std::clamp(mRolloffFactor, 0.0, 1.0);
+  return AssertedCast<float>(
+      1.0 - clampedRollof *
+                (std::max(std::min(aDistance, mMaxDistance), mRefDistance) -
+                 mRefDistance) /
+                (mMaxDistance - mRefDistance));
 }
 
 float PannerNodeEngine::InverseGainFunction(double aDistance) {
@@ -412,7 +415,8 @@ float PannerNodeEngine::InverseGainFunction(double aDistance) {
 }
 
 float PannerNodeEngine::ExponentialGainFunction(double aDistance) {
-  return pow(std::max(aDistance, mRefDistance) / mRefDistance, -mRolloffFactor);
+  return fdlibm_pow(std::max(aDistance, mRefDistance) / mRefDistance,
+                    -mRolloffFactor);
 }
 
 void PannerNodeEngine::HRTFPanningFunction(const AudioBlock& aInput,
@@ -460,10 +464,10 @@ void PannerNodeEngine::EqualPowerPanningFunction(const AudioBlock& aInput,
   if (mPositionX.HasSimpleValue() && mPositionY.HasSimpleValue() &&
       mPositionZ.HasSimpleValue() && mOrientationX.HasSimpleValue() &&
       mOrientationY.HasSimpleValue() && mOrientationZ.HasSimpleValue()) {
-    ThreeDPoint position = ConvertAudioParamTimelineTo3DP(
-        mPositionX, mPositionY, mPositionZ, tick);
-    ThreeDPoint orientation = ConvertAudioParamTimelineTo3DP(
-        mOrientationX, mOrientationY, mOrientationZ, tick);
+    ThreeDPoint position(mPositionX.GetValue(), mPositionY.GetValue(),
+                         mPositionZ.GetValue());
+    ThreeDPoint orientation(mOrientationX.GetValue(), mOrientationY.GetValue(),
+                            mOrientationZ.GetValue());
     if (!orientation.IsZero()) {
       orientation.Normalize();
     }
@@ -504,8 +508,8 @@ void PannerNodeEngine::EqualPowerPanningFunction(const AudioBlock& aInput,
     distanceGain = ComputeDistanceGain(position);
 
     // Actually compute the left and right gain.
-    gainL = cos(0.5 * M_PI * normalizedAzimuth);
-    gainR = sin(0.5 * M_PI * normalizedAzimuth);
+    gainL = fdlibm_cos(0.5 * M_PI * normalizedAzimuth);
+    gainR = fdlibm_sin(0.5 * M_PI * normalizedAzimuth);
 
     // Compute the output.
     ApplyStereoPanning(aInput, aOutput, gainL, gainR, azimuth <= 0);
@@ -522,32 +526,32 @@ void PannerNodeEngine::EqualPowerPanningFunction(const AudioBlock& aInput,
     if (!mPositionX.HasSimpleValue()) {
       mPositionX.GetValuesAtTime(tick, positionX, WEBAUDIO_BLOCK_SIZE);
     } else {
-      positionX[0] = mPositionX.GetValueAtTime(tick);
+      positionX[0] = mPositionX.GetValue();
     }
     if (!mPositionY.HasSimpleValue()) {
       mPositionY.GetValuesAtTime(tick, positionY, WEBAUDIO_BLOCK_SIZE);
     } else {
-      positionY[0] = mPositionY.GetValueAtTime(tick);
+      positionY[0] = mPositionY.GetValue();
     }
     if (!mPositionZ.HasSimpleValue()) {
       mPositionZ.GetValuesAtTime(tick, positionZ, WEBAUDIO_BLOCK_SIZE);
     } else {
-      positionZ[0] = mPositionZ.GetValueAtTime(tick);
+      positionZ[0] = mPositionZ.GetValue();
     }
     if (!mOrientationX.HasSimpleValue()) {
       mOrientationX.GetValuesAtTime(tick, orientationX, WEBAUDIO_BLOCK_SIZE);
     } else {
-      orientationX[0] = mOrientationX.GetValueAtTime(tick);
+      orientationX[0] = mOrientationX.GetValue();
     }
     if (!mOrientationY.HasSimpleValue()) {
       mOrientationY.GetValuesAtTime(tick, orientationY, WEBAUDIO_BLOCK_SIZE);
     } else {
-      orientationY[0] = mOrientationY.GetValueAtTime(tick);
+      orientationY[0] = mOrientationY.GetValue();
     }
     if (!mOrientationZ.HasSimpleValue()) {
       mOrientationZ.GetValuesAtTime(tick, orientationZ, WEBAUDIO_BLOCK_SIZE);
     } else {
-      orientationZ[0] = mOrientationZ.GetValueAtTime(tick);
+      orientationZ[0] = mOrientationZ.GetValue();
     }
 
     float buffer[3 * WEBAUDIO_BLOCK_SIZE + 4];
@@ -604,8 +608,8 @@ void PannerNodeEngine::EqualPowerPanningFunction(const AudioBlock& aInput,
       distanceGain = ComputeDistanceGain(position);
 
       // Actually compute the left and right gain.
-      float gainL = cos(0.5 * M_PI * normalizedAzimuth);
-      float gainR = sin(0.5 * M_PI * normalizedAzimuth);
+      float gainL = fdlibm_cos(0.5 * M_PI * normalizedAzimuth);
+      float gainR = fdlibm_sin(0.5 * M_PI * normalizedAzimuth);
 
       alignedPanningL[counter] = gainL;
       alignedPanningR[counter] = gainR;
@@ -644,7 +648,7 @@ void PannerNodeEngine::ComputeAzimuthAndElevation(const ThreeDPoint& position,
   ThreeDPoint up = listenerRight.CrossProduct(listenerFront);
 
   double upProjection = sourceListener.DotProduct(up);
-  aElevation = 90 - 180 * acos(upProjection) / M_PI;
+  aElevation = 90 - 180 * fdlibm_acos(upProjection) / M_PI;
 
   if (aElevation > 90) {
     aElevation = 180 - aElevation;
@@ -662,7 +666,7 @@ void PannerNodeEngine::ComputeAzimuthAndElevation(const ThreeDPoint& position,
 
   // Actually compute the angle, and convert to degrees
   double projection = projectedSource.DotProduct(listenerRight);
-  aAzimuth = 180 * acos(projection) / M_PI;
+  aAzimuth = 180 * fdlibm_acos(projection) / M_PI;
 
   // Compute whether the source is in front or behind the listener.
   double frontBack = projectedSource.DotProduct(listenerFront);
@@ -693,7 +697,7 @@ float PannerNodeEngine::ComputeConeGain(const ThreeDPoint& position,
 
   // Angle between the source orientation vector and the source-listener vector
   double dotProduct = sourceToListener.DotProduct(orientation);
-  double angle = 180 * acos(dotProduct) / M_PI;
+  double angle = 180 * fdlibm_acos(dotProduct) / M_PI;
   double absAngle = fabs(angle);
 
   // Divide by 2 here since API is entire angle (not half-angle)

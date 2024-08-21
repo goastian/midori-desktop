@@ -1,8 +1,12 @@
-import { getGPU } from '../../../common/util/navigator_gpu.js';
+import { getGPU, setDefaultRequestAdapterOptions } from '../../../common/util/navigator_gpu.js';
 import { assert, objectEquals, iterRange } from '../../../common/util/util.js';
 
+// Should be WorkerGlobalScope, but importing lib "webworker" conflicts with lib "dom".
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+declare const self: any;
+
 async function basicTest() {
-  const adapter = await getGPU().requestAdapter();
+  const adapter = await getGPU(null).requestAdapter();
   assert(adapter !== null, 'Failed to get adapter.');
 
   const device = await adapter.requestDevice();
@@ -68,12 +72,28 @@ async function basicTest() {
   device.destroy();
 }
 
-self.onmessage = async (ev: MessageEvent) => {
+async function reportTestResults(this: MessagePort | Worker, ev: MessageEvent) {
+  const defaultRequestAdapterOptions: GPURequestAdapterOptions =
+    ev.data.defaultRequestAdapterOptions;
+  setDefaultRequestAdapterOptions(defaultRequestAdapterOptions);
+
   let error = undefined;
   try {
     await basicTest();
   } catch (err: unknown) {
     error = (err as Error).toString();
   }
-  self.postMessage({ error });
+  this.postMessage({ error });
+}
+
+self.onmessage = (ev: MessageEvent) => {
+  void reportTestResults.call(ev.source || self, ev);
+};
+
+self.onconnect = (event: MessageEvent) => {
+  const port = event.ports[0];
+
+  port.onmessage = (ev: MessageEvent) => {
+    void reportTestResults.call(port, ev);
+  };
 };

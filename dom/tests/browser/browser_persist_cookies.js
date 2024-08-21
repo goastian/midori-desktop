@@ -13,7 +13,7 @@ const TEST_PATH2 = getRootDirectory(gTestPath).replace(
 );
 
 var MockFilePicker = SpecialPowers.MockFilePicker;
-MockFilePicker.init(window);
+MockFilePicker.init(window.browsingContext);
 
 registerCleanupFunction(async function () {
   info("Running the cleanup code");
@@ -82,7 +82,7 @@ add_task(async function () {
 
   await BrowserTestUtils.withNewTab("about:blank", async function (browser) {
     Services.obs.addObserver(checkRequest, "http-on-modify-request");
-    BrowserTestUtils.loadURIString(
+    BrowserTestUtils.startLoadingURIString(
       browser,
       TEST_PATH + "set-samesite-cookies-and-redirect.sjs"
     );

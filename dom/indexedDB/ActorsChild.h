@@ -104,11 +104,10 @@ class BackgroundFactoryChild final : public PBackgroundIDBFactoryChild {
   bool DeallocPBackgroundIDBFactoryRequestChild(
       PBackgroundIDBFactoryRequestChild* aActor);
 
-  PBackgroundIDBDatabaseChild* AllocPBackgroundIDBDatabaseChild(
+  already_AddRefed<PBackgroundIDBDatabaseChild>
+  AllocPBackgroundIDBDatabaseChild(
       const DatabaseSpec& aSpec,
       PBackgroundIDBFactoryRequestChild* aRequest) const;
-
-  bool DeallocPBackgroundIDBDatabaseChild(PBackgroundIDBDatabaseChild* aActor);
 
   mozilla::ipc::IPCResult RecvPBackgroundIDBDatabaseConstructor(
       PBackgroundIDBDatabaseChild* aActor, const DatabaseSpec& aSpec,
@@ -211,6 +210,8 @@ class BackgroundDatabaseChild final : public PBackgroundIDBDatabaseChild {
   IDBDatabase* mDatabase;
 
  public:
+  NS_INLINE_DECL_REFCOUNTING(BackgroundDatabaseChild, override)
+
   void AssertIsOnOwningThread() const
 #ifdef DEBUG
       ;
@@ -236,7 +237,6 @@ class BackgroundDatabaseChild final : public PBackgroundIDBDatabaseChild {
   BackgroundDatabaseChild(const DatabaseSpec& aSpec,
                           BackgroundFactoryRequestChild* aOpenRequest);
 
-  // Only destroyed by BackgroundFactoryChild.
   ~BackgroundDatabaseChild();
 
   void SendDeleteMeInternal();
@@ -347,12 +347,12 @@ class BackgroundTransactionChild final : public BackgroundTransactionBase,
   mozilla::ipc::IPCResult RecvComplete(nsresult aResult);
 
   PBackgroundIDBRequestChild* AllocPBackgroundIDBRequestChild(
-      const RequestParams& aParams);
+      const int64_t& aRequestId, const RequestParams& aParams);
 
   bool DeallocPBackgroundIDBRequestChild(PBackgroundIDBRequestChild* aActor);
 
   PBackgroundIDBCursorChild* AllocPBackgroundIDBCursorChild(
-      const OpenCursorParams& aParams);
+      const int64_t& aRequestId, const OpenCursorParams& aParams);
 
   bool DeallocPBackgroundIDBCursorChild(PBackgroundIDBCursorChild* aActor);
 };
@@ -393,12 +393,12 @@ class BackgroundVersionChangeTransactionChild final
   mozilla::ipc::IPCResult RecvComplete(nsresult aResult);
 
   PBackgroundIDBRequestChild* AllocPBackgroundIDBRequestChild(
-      const RequestParams& aParams);
+      const int64_t& aRequestId, const RequestParams& aParams);
 
   bool DeallocPBackgroundIDBRequestChild(PBackgroundIDBRequestChild* aActor);
 
   PBackgroundIDBCursorChild* AllocPBackgroundIDBCursorChild(
-      const OpenCursorParams& aParams);
+      const int64_t& aRequestId, const OpenCursorParams& aParams);
 
   bool DeallocPBackgroundIDBCursorChild(PBackgroundIDBCursorChild* aActor);
 };
@@ -548,7 +548,8 @@ class BackgroundCursorChild final : public BackgroundCursorChildBase {
   BackgroundCursorChild(NotNull<IDBRequest*> aRequest, SourceType* aSource,
                         Direction aDirection);
 
-  void SendContinueInternal(const CursorRequestParams& aParams,
+  void SendContinueInternal(const int64_t aRequestId,
+                            const CursorRequestParams& aParams,
                             const CursorData<CursorType>& aCurrentData);
 
   void InvalidateCachedResponses();
@@ -594,7 +595,8 @@ class BackgroundCursorChild final : public BackgroundCursorChildBase {
   mozilla::ipc::IPCResult RecvResponse(CursorResponse&& aResponse) override;
 
   // Force callers to use SendContinueInternal.
-  bool SendContinue(const CursorRequestParams& aParams, const Key& aCurrentKey,
+  bool SendContinue(const int64_t& aRequestId,
+                    const CursorRequestParams& aParams, const Key& aCurrentKey,
                     const Key& aCurrentObjectStoreKey) = delete;
 
   bool SendDeleteMe() = delete;

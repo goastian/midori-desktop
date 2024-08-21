@@ -8,6 +8,7 @@
 
 #include "js/TypeDecls.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/dom/CompressionStreamBinding.h"
 #include "mozilla/dom/ReadableStream.h"
 #include "mozilla/dom/WritableStream.h"
@@ -57,16 +58,21 @@ class CompressionStreamAlgorithms : public TransformerAlgorithmsWrapper {
     // https://wicg.github.io/compression/#compress-and-enqueue-a-chunk
 
     // Step 1: If chunk is not a BufferSource type, then throw a TypeError.
-    // (ExtractSpanFromBufferSource does it)
-    Span<const uint8_t> input = ExtractSpanFromBufferSource(cx, aChunk, aRv);
-    if (aRv.Failed()) {
+    RootedUnion<OwningArrayBufferViewOrArrayBuffer> bufferSource(cx);
+    if (!bufferSource.Init(cx, aChunk)) {
+      aRv.MightThrowJSException();
+      aRv.StealExceptionFromJSContext(cx);
       return;
     }
 
     // Step 2: Let buffer be the result of compressing chunk with cs's format
     // and context.
     // Step 3 - 5: (Done in CompressAndEnqueue)
-    CompressAndEnqueue(cx, input, ZLibFlush::No, aController, aRv);
+    ProcessTypedArraysFixed(
+        bufferSource,
+        [&](const Span<uint8_t>& aData) MOZ_CAN_RUN_SCRIPT_BOUNDARY {
+          CompressAndEnqueue(cx, aData, ZLibFlush::No, aController, aRv);
+        });
   }
 
   // Step 4 of
@@ -108,7 +114,7 @@ class CompressionStreamAlgorithms : public TransformerAlgorithmsWrapper {
 
     do {
       static uint16_t kBufferSize = 16384;
-      UniquePtr<uint8_t> buffer(
+      UniquePtr<uint8_t[], JS::FreePolicy> buffer(
           static_cast<uint8_t*>(JS_malloc(aCx, kBufferSize)));
       if (!buffer) {
         aRv.ThrowTypeError("Out of memory");
@@ -144,9 +150,10 @@ class CompressionStreamAlgorithms : public TransformerAlgorithmsWrapper {
           return;
       }
 
-      // Stream should end only when flushed and vise versa, see above
+      // Stream should end only when flushed, see above
+      // The reverse is not true as zlib may have big data to be flushed that is
+      // larger than the buffer size
       MOZ_ASSERT_IF(err == Z_STREAM_END, aFlush == ZLibFlush::Yes);
-      MOZ_ASSERT_IF(aFlush == ZLibFlush::Yes, err == Z_STREAM_END);
 
       // At this point we either exhausted the input or the output buffer
       MOZ_ASSERT(!mZStream.avail_in || !mZStream.avail_out);
@@ -163,8 +170,8 @@ class CompressionStreamAlgorithms : public TransformerAlgorithmsWrapper {
       // into Uint8Arrays.
       // (The buffer is 'split' by having a fixed sized buffer above.)
 
-      JS::Rooted<JSObject*> view(
-          aCx, nsJSUtils::MoveBufferAsUint8Array(aCx, written, buffer));
+      JS::Rooted<JSObject*> view(aCx, nsJSUtils::MoveBufferAsUint8Array(
+                                          aCx, written, std::move(buffer)));
       if (!view || !array.append(view)) {
         JS_ClearPendingException(aCx);
         aRv.ThrowTypeError("Out of memory");

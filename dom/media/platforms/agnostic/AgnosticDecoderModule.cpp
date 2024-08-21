@@ -6,11 +6,8 @@
 
 #include "AgnosticDecoderModule.h"
 
-#include "OpusDecoder.h"
 #include "TheoraDecoder.h"
 #include "VPXDecoder.h"
-#include "VorbisDecoder.h"
-#include "WAVDecoder.h"
 #include "mozilla/Logging.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "VideoUtils.h"
@@ -39,8 +36,9 @@ static bool IsAvailableInDefault(DecoderType type) {
     case DecoderType::AV1:
       return StaticPrefs::media_av1_enabled();
 #endif
-    case DecoderType::Opus:
     case DecoderType::Theora:
+      return StaticPrefs::media_theora_enabled();
+    case DecoderType::Opus:
     case DecoderType::Vorbis:
     case DecoderType::VPX:
     case DecoderType::Wave:
@@ -59,7 +57,8 @@ static bool IsAvailableInRdd(DecoderType type) {
     case DecoderType::Opus:
       return StaticPrefs::media_rdd_opus_enabled();
     case DecoderType::Theora:
-      return StaticPrefs::media_rdd_theora_enabled();
+      return StaticPrefs::media_rdd_theora_enabled() &&
+             StaticPrefs::media_theora_enabled();
     case DecoderType::Vorbis:
 #if defined(__MINGW32__)
       // If this is a MinGW build we need to force AgnosticDecoderModule to
@@ -87,18 +86,7 @@ static bool IsAvailableInUtility(DecoderType type) {
     case DecoderType::Opus:
       return StaticPrefs::media_utility_opus_enabled();
     case DecoderType::Vorbis:
-#if defined(__MINGW32__)
-      // If this is a MinGW build we need to force AgnosticDecoderModule to
-      // handle the decision to support Vorbis decoding (instead of
-      // Utility/RemoteDecoderModule) because of Bug 1597408 (Vorbis decoding on
-      // Utility causing sandboxing failure on MinGW-clang).  Typically this
-      // would be dealt with using defines in StaticPrefList.yaml, but we
-      // must handle it here because of Bug 1598426 (the __MINGW32__ define
-      // isn't supported in StaticPrefList.yaml).
-      return false;
-#else
       return StaticPrefs::media_utility_vorbis_enabled();
-#endif
     case DecoderType::Wave:
       return StaticPrefs::media_utility_wav_enabled();
     case DecoderType::Theora:  // Video codecs, dont take care of them
@@ -119,7 +107,7 @@ media::DecodeSupportSet AgnosticDecoderModule::SupportsMimeType(
     const nsACString& aMimeType, DecoderDoctorDiagnostics* aDiagnostics) const {
   UniquePtr<TrackInfo> trackInfo = CreateTrackInfoWithMIMEType(aMimeType);
   if (!trackInfo) {
-    return media::DecodeSupport::Unsupported;
+    return media::DecodeSupportSet{};
   }
   return Supports(SupportDecoderParams(*trackInfo), aDiagnostics);
 }
@@ -129,7 +117,7 @@ media::DecodeSupportSet AgnosticDecoderModule::Supports(
     DecoderDoctorDiagnostics* aDiagnostics) const {
   // This should only be supported by MFMediaEngineDecoderModule.
   if (aParams.mMediaEngineId) {
-    return media::DecodeSupport::Unsupported;
+    return media::DecodeSupportSet{};
   }
 
   const auto& trackInfo = aParams.mConfig;
@@ -143,24 +131,21 @@ media::DecodeSupportSet AgnosticDecoderModule::Supports(
       (AOMDecoder::IsAV1(mimeType) && IsAvailable(DecoderType::AV1)) ||
 #endif
       (VPXDecoder::IsVPX(mimeType) && IsAvailable(DecoderType::VPX)) ||
-      (TheoraDecoder::IsTheora(mimeType) && IsAvailable(DecoderType::Theora)) ||
-      (VorbisDataDecoder::IsVorbis(mimeType) &&
-       IsAvailable(DecoderType::Vorbis)) ||
-      (WaveDataDecoder::IsWave(mimeType) && IsAvailable(DecoderType::Wave)) ||
-      (OpusDataDecoder::IsOpus(mimeType) && IsAvailable(DecoderType::Opus));
+      (TheoraDecoder::IsTheora(mimeType) && IsAvailable(DecoderType::Theora) &&
+       StaticPrefs::media_theora_enabled());
   MOZ_LOG(sPDMLog, LogLevel::Debug,
           ("Agnostic decoder %s requested type '%s'",
            supports ? "supports" : "rejects", mimeType.BeginReading()));
   if (supports) {
     return media::DecodeSupport::SoftwareDecode;
   }
-  return media::DecodeSupport::Unsupported;
+  return media::DecodeSupportSet{};
 }
 
 already_AddRefed<MediaDataDecoder> AgnosticDecoderModule::CreateVideoDecoder(
     const CreateDecoderParams& aParams) {
-  if (Supports(SupportDecoderParams(aParams), nullptr /* diagnostic */) ==
-      media::DecodeSupport::Unsupported) {
+  if (Supports(SupportDecoderParams(aParams), nullptr /* diagnostic */)
+          .isEmpty()) {
     return nullptr;
   }
   RefPtr<MediaDataDecoder> m;
@@ -182,7 +167,8 @@ already_AddRefed<MediaDataDecoder> AgnosticDecoderModule::CreateVideoDecoder(
     }
   }
 #endif
-  else if (TheoraDecoder::IsTheora(aParams.mConfig.mMimeType)) {
+  else if (TheoraDecoder::IsTheora(aParams.mConfig.mMimeType) &&
+           StaticPrefs::media_theora_enabled()) {
     m = new TheoraDecoder(aParams);
   }
 
@@ -191,22 +177,7 @@ already_AddRefed<MediaDataDecoder> AgnosticDecoderModule::CreateVideoDecoder(
 
 already_AddRefed<MediaDataDecoder> AgnosticDecoderModule::CreateAudioDecoder(
     const CreateDecoderParams& aParams) {
-  if (Supports(SupportDecoderParams(aParams), nullptr /* diagnostic */) ==
-      media::DecodeSupport::Unsupported) {
-    return nullptr;
-  }
-  RefPtr<MediaDataDecoder> m;
-
-  const TrackInfo& config = aParams.mConfig;
-  if (VorbisDataDecoder::IsVorbis(config.mMimeType)) {
-    m = new VorbisDataDecoder(aParams);
-  } else if (OpusDataDecoder::IsOpus(config.mMimeType)) {
-    m = new OpusDataDecoder(aParams);
-  } else if (WaveDataDecoder::IsWave(config.mMimeType)) {
-    m = new WaveDataDecoder(aParams);
-  }
-
-  return m.forget();
+  return nullptr;
 }
 
 /* static */

@@ -44,6 +44,9 @@ class FileSystemThreadSafeStreamOwner;
 
 class FileSystemWritableFileStream final : public WritableStream {
  public:
+  using WriteDataPromise =
+      MozPromise<Maybe<int64_t>, CopyableErrorResult, /* IsExclusive */ true>;
+
   static Result<RefPtr<FileSystemWritableFileStream>, nsresult> Create(
       const nsCOMPtr<nsIGlobalObject>& aGlobal,
       RefPtr<FileSystemManager>& aManager,
@@ -66,9 +69,15 @@ class FileSystemWritableFileStream final : public WritableStream {
 
   bool IsOpen() const;
 
-  bool IsClosed() const;
+  bool IsFinishing() const;
+
+  bool IsDone() const;
+
+  [[nodiscard]] RefPtr<BoolPromise> BeginAbort();
 
   [[nodiscard]] RefPtr<BoolPromise> BeginClose();
+
+  [[nodiscard]] RefPtr<BoolPromise> OnDone();
 
   already_AddRefed<Promise> Write(JSContext* aCx, JS::Handle<JS::Value> aChunk,
                                   ErrorResult& aError);
@@ -101,17 +110,20 @@ class FileSystemWritableFileStream final : public WritableStream {
 
   virtual ~FileSystemWritableFileStream();
 
+  [[nodiscard]] RefPtr<BoolPromise> BeginFinishing(bool aShouldAbort);
+
+  RefPtr<WriteDataPromise> Write(
+      ArrayBufferViewOrArrayBufferOrBlobOrUTF8StringOrWriteParams& aData);
+
   template <typename T>
-  void Write(const T& aData, const Maybe<uint64_t> aPosition,
-             const RefPtr<Promise>& aPromise);
+  RefPtr<Int64Promise> Write(const T& aData, const Maybe<uint64_t> aPosition);
 
-  void WriteImpl(nsCOMPtr<nsIInputStream> aInputStream,
-                 const Maybe<uint64_t> aPosition,
-                 const RefPtr<Promise>& aPromise);
+  RefPtr<Int64Promise> WriteImpl(nsCOMPtr<nsIInputStream> aInputStream,
+                                 const Maybe<uint64_t> aPosition);
 
-  void Seek(uint64_t aPosition, const RefPtr<Promise>& aPromise);
+  RefPtr<BoolPromise> Seek(uint64_t aPosition);
 
-  void Truncate(uint64_t aSize, const RefPtr<Promise>& aPromise);
+  RefPtr<BoolPromise> Truncate(uint64_t aSize);
 
   nsresult EnsureStream();
 

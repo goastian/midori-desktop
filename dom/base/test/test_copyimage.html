@@ -30,7 +30,7 @@ function testCopyImage () {
                                       .QueryInterface(Ci.nsILoadContext);
     transferable.init(loadingContext);
     transferable.addDataFlavor(mime);
-    clipboard.getData(transferable, 1);
+    clipboard.getData(transferable, 1, SpecialPowers.wrap(window).browsingContext.currentWindowContext);
     var data = SpecialPowers.createBlankObject();
     transferable.getTransferData(mime, data);
     return data;
@@ -50,8 +50,8 @@ function testCopyImage () {
 
   // Set node and copy image.
   var docShell = SpecialPowers.wrap(window).docShell;
-  var documentViewer = docShell.contentViewer
-                               .QueryInterface(Ci.nsIContentViewerEdit);
+  var documentViewer = docShell.docViewer
+                               .QueryInterface(Ci.nsIDocumentViewerEdit);
   documentViewer.setCommandNode(node);
   documentViewer.copyImage(documentViewer.COPY_IMAGE_ALL);
 

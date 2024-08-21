@@ -9,6 +9,7 @@
 
 #include "AudioSampleFormat.h"
 #include "MediaInfo.h"
+#include "MediaCodecsSupport.h"
 #include "VideoLimits.h"
 #include "mozilla/AbstractThread.h"
 #include "mozilla/Attributes.h"
@@ -194,34 +195,6 @@ enum class MediaThreadType {
 // for decoding streams.
 already_AddRefed<SharedThreadPool> GetMediaThreadPool(MediaThreadType aType);
 
-enum H264_PROFILE {
-  H264_PROFILE_UNKNOWN = 0,
-  H264_PROFILE_BASE = 0x42,
-  H264_PROFILE_MAIN = 0x4D,
-  H264_PROFILE_EXTENDED = 0x58,
-  H264_PROFILE_HIGH = 0x64,
-};
-
-enum H264_LEVEL {
-  H264_LEVEL_1 = 10,
-  H264_LEVEL_1_b = 11,
-  H264_LEVEL_1_1 = 11,
-  H264_LEVEL_1_2 = 12,
-  H264_LEVEL_1_3 = 13,
-  H264_LEVEL_2 = 20,
-  H264_LEVEL_2_1 = 21,
-  H264_LEVEL_2_2 = 22,
-  H264_LEVEL_3 = 30,
-  H264_LEVEL_3_1 = 31,
-  H264_LEVEL_3_2 = 32,
-  H264_LEVEL_4 = 40,
-  H264_LEVEL_4_1 = 41,
-  H264_LEVEL_4_2 = 42,
-  H264_LEVEL_5 = 50,
-  H264_LEVEL_5_1 = 51,
-  H264_LEVEL_5_2 = 52
-};
-
 // Extracts the H.264/AVC profile and level from an H.264 codecs string.
 // H.264 codecs parameters have a type defined as avc1.PPCCLL, where
 // PP = profile_idc, CC = constraint_set flags, LL = level_idc.
@@ -259,7 +232,7 @@ bool ExtractVPXCodecDetails(const nsAString& aCodec, uint8_t& aProfile,
 bool ExtractVPXCodecDetails(const nsAString& aCodec, uint8_t& aProfile,
                             uint8_t& aLevel, uint8_t& aBitDepth,
                             uint8_t& aChromaSubsampling,
-                            VideoColorSpace& aColorSpace);
+                            mozilla::VideoColorSpace& aColorSpace);
 
 // Extracts AV1 codecs parameter string.
 // See https://aomediacodec.github.io/av1-isobmff/#codecsparam
@@ -268,7 +241,7 @@ bool ExtractAV1CodecDetails(const nsAString& aCodec, uint8_t& aProfile,
                             uint8_t& aLevel, uint8_t& aTier, uint8_t& aBitDepth,
                             bool& aMonochrome, bool& aSubsamplingX,
                             bool& aSubsamplingY, uint8_t& aChromaSamplePosition,
-                            VideoColorSpace& aColorSpace);
+                            mozilla::VideoColorSpace& aColorSpace);
 
 // Use a cryptographic quality PRNG to generate raw random bytes
 // and convert that to a base64 string.
@@ -346,6 +319,8 @@ bool ParseCodecsString(const nsAString& aCodecs,
                        nsTArray<nsString>& aOutCodecs);
 
 bool IsH264CodecString(const nsAString& aCodec);
+
+bool IsH265CodecString(const nsAString& aCodec);
 
 bool IsAACCodecString(const nsAString& aCodec);
 
@@ -435,8 +410,8 @@ enum class StringListRangeEmptyItems {
 template <typename String,
           StringListRangeEmptyItems empties = StringListRangeEmptyItems::Skip>
 class StringListRange {
-  typedef typename String::char_type CharType;
-  typedef const CharType* Pointer;
+  using CharType = typename String::char_type;
+  using Pointer = const CharType*;
 
  public:
   // Iterator into range, trims items and optionally skips empty items.
@@ -451,7 +426,7 @@ class StringListRange {
     }
     // DereferencedType should be 'const nsDependent[C]String' pointing into
     // mList (which is 'const ns[C]String&').
-    typedef decltype(Substring(Pointer(), Pointer())) DereferencedType;
+    using DereferencedType = decltype(Substring(Pointer(), Pointer()));
     DereferencedType operator*() { return Substring(mStart, mEnd); }
 
    private:
@@ -573,6 +548,15 @@ inline gfx::YUVColorSpace DefaultColorSpace(const gfx::IntSize& aSize) {
   return aSize.height < 720 ? gfx::YUVColorSpace::BT601
                             : gfx::YUVColorSpace::BT709;
 }
+
+bool IsWaveMimetype(const nsACString& aMimeType);
+
+void DetermineResolutionForTelemetry(const MediaInfo& aInfo,
+                                     nsCString& aResolutionOut);
+
+// True if given MediaCodecsSupported contains any hardware decoding support.
+bool ContainHardwareCodecsSupported(
+    const media::MediaCodecsSupported& aSupport);
 
 }  // end namespace mozilla
 

@@ -21,7 +21,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=936340
 SimpleTest.waitForExplicitFinish();
 SpecialPowers.pushPrefEnv({'set': [["beacon.enabled", true]]}, beginTest);
 
-const {BrowserTestUtils} = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+const {BrowserTestUtils} = ChromeUtils.importESModule(
+  "resource://testing-common/BrowserTestUtils.sys.mjs"
+);
 
 var baseURL = "http://mochi.test:8888/chrome/dom/tests/mochitest/beacon/";
 
@@ -54,7 +56,7 @@ function beginTest() {
       ok(true, "cookie set by beacon request in normal window");
       testOnPrivateWindow();
     }, "cookie-changed");
-    BrowserTestUtils.loadURIString(aNormalWindow.gBrowser.selectedBrowser, baseURL + "file_beaconCookies.html");
+    BrowserTestUtils.startLoadingURIString(aNormalWindow.gBrowser.selectedBrowser, baseURL + "file_beaconCookies.html");
   });
 }
 
@@ -65,7 +67,7 @@ function testOnPrivateWindow() {
       ok(true, "private cookie set by beacon request in private window");
       cleanup();
     }, "private-cookie-changed");
-    BrowserTestUtils.loadURIString(aPrivateWindow.gBrowser.selectedBrowser, baseURL + "file_beaconCookies.html");
+    BrowserTestUtils.startLoadingURIString(aPrivateWindow.gBrowser.selectedBrowser, baseURL + "file_beaconCookies.html");
   });
 }
 

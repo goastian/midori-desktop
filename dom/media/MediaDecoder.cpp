@@ -27,6 +27,7 @@
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/Unused.h"
+#include "mozilla/glean/GleanMetrics.h"
 #include "nsComponentManagerUtils.h"
 #include "nsContentUtils.h"
 #include "nsError.h"
@@ -114,50 +115,9 @@ class MediaMemoryTracker : public nsIMemoryReporter {
       sUniqueInstance = nullptr;
     }
   }
-
-  static RefPtr<MediaMemoryPromise> GetSizes(dom::Document* aDoc) {
-    MOZ_ASSERT(NS_IsMainThread());
-    DecodersArray& decoders = Decoders();
-
-    // if we don't have any decoder, we can bail
-    if (decoders.IsEmpty()) {
-      // and release the instance that was created by calling Decoders()
-      sUniqueInstance = nullptr;
-      return MediaMemoryPromise::CreateAndResolve(MediaMemoryInfo(), __func__);
-    }
-
-    RefPtr<MediaDecoder::ResourceSizes> resourceSizes =
-        new MediaDecoder::ResourceSizes(MediaMemoryTracker::MallocSizeOf);
-
-    size_t videoSize = 0;
-    size_t audioSize = 0;
-
-    for (auto&& decoder : decoders) {
-      if (decoder->GetOwner() && decoder->GetOwner()->GetDocument() == aDoc) {
-        videoSize += decoder->SizeOfVideoQueue();
-        audioSize += decoder->SizeOfAudioQueue();
-        decoder->AddSizeOfResources(resourceSizes);
-      }
-    }
-
-    return resourceSizes->Promise()->Then(
-        AbstractThread::MainThread(), __func__,
-        [videoSize, audioSize](size_t resourceSize) {
-          return MediaMemoryPromise::CreateAndResolve(
-              MediaMemoryInfo(videoSize, audioSize, resourceSize), __func__);
-        },
-        [](size_t) {
-          return MediaMemoryPromise::CreateAndReject(NS_ERROR_FAILURE,
-                                                     __func__);
-        });
-  }
 };
 
 StaticRefPtr<MediaMemoryTracker> MediaMemoryTracker::sUniqueInstance;
-
-RefPtr<MediaMemoryPromise> GetMediaMemorySizes(dom::Document* aDoc) {
-  return MediaMemoryTracker::GetSizes(aDoc);
-}
 
 LazyLogModule gMediaTimerLog("MediaTimer");
 
@@ -167,6 +127,31 @@ void MediaDecoder::InitStatics() {
   MOZ_ASSERT(NS_IsMainThread());
   // Eagerly init gMediaDecoderLog to work around bug 1415441.
   MOZ_LOG(gMediaDecoderLog, LogLevel::Info, ("MediaDecoder::InitStatics"));
+
+#if defined(NIGHTLY_BUILD)
+  // Allow people to force a bit but try to warn them about filing bugs if audio
+  // decoding does not work on utility
+  static const bool allowLockPrefs =
+      PR_GetEnv("MOZ_DONT_LOCK_UTILITY_PLZ_FILE_A_BUG") == nullptr;
+  if (XRE_IsParentProcess() && allowLockPrefs) {
+    // Lock Utility process preferences so that people cannot opt-out of
+    // Utility process
+    Preferences::Lock("media.utility-process.enabled");
+#  if defined(MOZ_FFMPEG)
+    Preferences::Lock("media.utility-ffmpeg.enabled");
+#  endif  // defined(MOZ_FFMPEG)
+    Preferences::Lock("media.utility-ffvpx.enabled");
+#  if defined(MOZ_WMF)
+    Preferences::Lock("media.utility-wmf.enabled");
+#  endif  // defined(MOZ_WMF)
+#  if defined(MOZ_APPLEMEDIA)
+    Preferences::Lock("media.utility-applemedia.enabled");
+#  endif  // defined(MOZ_APPLEMEDIA)
+    Preferences::Lock("media.utility-vorbis.enabled");
+    Preferences::Lock("media.utility-wav.enabled");
+    Preferences::Lock("media.utility-opus.enabled");
+  }
+#endif  // defined(NIGHTLY_BUILD)
 }
 
 NS_IMPL_ISUPPORTS(MediaMemoryTracker, nsIMemoryReporter)
@@ -207,6 +192,12 @@ void MediaDecoder::SetOutputCaptureState(OutputCaptureState aState,
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mDecoderStateMachine, "Must be called after Load().");
   MOZ_ASSERT_IF(aState == OutputCaptureState::Capture, aDummyTrack);
+
+  if (mOutputCaptureState.Ref() != aState) {
+    LOG("Capture state change from %s to %s",
+        OutputCaptureStateToStr(mOutputCaptureState.Ref()),
+        OutputCaptureStateToStr(aState));
+  }
   mOutputCaptureState = aState;
   if (mOutputDummyTrack.Ref().get() != aDummyTrack) {
     mOutputDummyTrack = nsMainThreadPtrHandle<SharedDummyTrack>(
@@ -271,7 +262,7 @@ MediaDecoder::MediaDecoder(MediaDecoderInit& aInit)
       mForcedHidden(false),
       mHasSuspendTaint(aInit.mHasSuspendTaint),
       mShouldResistFingerprinting(
-          aInit.mOwner->ShouldResistFingerprinting(RFPTarget::Unknown)),
+          aInit.mOwner->ShouldResistFingerprinting(RFPTarget::AudioSampleRate)),
       mPlaybackRate(aInit.mPlaybackRate),
       mLogicallySeeking(false, "MediaDecoder::mLogicallySeeking"),
       INIT_MIRROR(mBuffered, TimeIntervals()),
@@ -469,6 +460,36 @@ void MediaDecoder::OnPlaybackErrorEvent(const MediaResult& aError) {
       !needExternalEngine /* disable external engine */);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     LOG("Failed to create a new state machine!");
+    glean::mfcdm::ErrorExtra extraData;
+    extraData.errorName = Some("FAILED_TO_FALLBACK_TO_STATE_MACHINE"_ns);
+    nsAutoCString resolution;
+    if (mInfo) {
+      if (mInfo->HasAudio()) {
+        extraData.audioCodec = Some(mInfo->mAudio.mMimeType);
+      }
+      if (mInfo->HasVideo()) {
+        extraData.videoCodec = Some(mInfo->mVideo.mMimeType);
+        DetermineResolutionForTelemetry(*mInfo, resolution);
+        extraData.resolution = Some(resolution);
+      }
+    }
+    glean::mfcdm::error.Record(Some(extraData));
+    if (MOZ_LOG_TEST(gMediaDecoderLog, LogLevel::Debug)) {
+      nsPrintfCString logMessage{"MFCDM Error event, error=%s",
+                                 extraData.errorName->get()};
+      if (mInfo) {
+        if (mInfo->HasAudio()) {
+          logMessage.Append(
+              nsPrintfCString{", audio=%s", mInfo->mAudio.mMimeType.get()});
+        }
+        if (mInfo->HasVideo()) {
+          logMessage.Append(nsPrintfCString{", video=%s, resolution=%s",
+                                            mInfo->mVideo.mMimeType.get(),
+                                            resolution.get()});
+        }
+      }
+      LOG("%s", logMessage.get());
+    }
   }
 
   // Some attributes might have been set on the destroyed state machine, and
@@ -594,6 +615,7 @@ nsresult MediaDecoder::CreateAndInitStateMachine(bool aIsLiveStream,
   NS_ENSURE_TRUE(GetStateMachine(), NS_ERROR_FAILURE);
   GetStateMachine()->DispatchIsLiveStream(aIsLiveStream);
 
+  mMDSMCreationTime = Some(TimeStamp::Now());
   nsresult rv = mDecoderStateMachine->Init(this);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -868,6 +890,49 @@ void MediaDecoder::FirstFrameLoaded(
     ChangeState(mNextState);
   }
 
+  // We only care about video first frame.
+  if (mInfo->HasVideo() && mMDSMCreationTime) {
+    auto info = MakeUnique<dom::MediaDecoderDebugInfo>();
+    RequestDebugInfo(*info)->Then(
+        GetMainThreadSerialEventTarget(), __func__,
+        [self = RefPtr<MediaDecoder>{this}, this, now = TimeStamp::Now(),
+         creationTime = *mMDSMCreationTime, result = std::move(info)](
+            GenericPromise::ResolveOrRejectValue&& aValue) mutable {
+          if (IsShutdown()) {
+            return;
+          }
+          if (aValue.IsReject()) {
+            NS_WARNING("Failed to get debug info for the first frame probe!");
+            return;
+          }
+          auto firstFrameLoadedTime = (now - creationTime).ToMilliseconds();
+          MOZ_ASSERT(result->mReader.mTotalReadMetadataTimeMs >= 0.0);
+          MOZ_ASSERT(result->mReader.mTotalWaitingForVideoDataTimeMs >= 0.0);
+          MOZ_ASSERT(result->mStateMachine.mTotalBufferingTimeMs >= 0.0);
+
+          using FirstFrameLoadedFlag =
+              TelemetryProbesReporter::FirstFrameLoadedFlag;
+          TelemetryProbesReporter::FirstFrameLoadedFlagSet flags;
+          if (IsMSE()) {
+            flags += FirstFrameLoadedFlag::IsMSE;
+          }
+          if (mDecoderStateMachine->IsExternalEngineStateMachine()) {
+            flags += FirstFrameLoadedFlag::IsExternalEngineStateMachine;
+          }
+          if (IsHLSDecoder()) {
+            flags += FirstFrameLoadedFlag::IsHLS;
+          }
+          if (result->mReader.mVideoHardwareAccelerated) {
+            flags += FirstFrameLoadedFlag::IsHardwareDecoding;
+          }
+          mTelemetryProbesReporter->OntFirstFrameLoaded(
+              firstFrameLoadedTime, result->mReader.mTotalReadMetadataTimeMs,
+              result->mReader.mTotalWaitingForVideoDataTimeMs,
+              result->mStateMachine.mTotalBufferingTimeMs, flags, *mInfo);
+        });
+    mMDSMCreationTime.reset();
+  }
+
   // GetOwner()->FirstFrameLoaded() might call us back. Put it at the bottom of
   // this function to avoid unexpected shutdown from reentrant calls.
   if (aEventVisibility != MediaDecoderEventVisibility::Suppressed) {
@@ -884,6 +949,8 @@ void MediaDecoder::NetworkError(const MediaResult& aError) {
 void MediaDecoder::DecodeError(const MediaResult& aError) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(!IsShutdown());
+  LOG("DecodeError, type=%s, error=%s", ContainerType().OriginalString().get(),
+      aError.ErrorName().get());
   GetOwner()->DecodeError(aError);
 }
 

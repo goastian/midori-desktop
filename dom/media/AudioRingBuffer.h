@@ -17,8 +17,9 @@ namespace mozilla {
  * AudioRingBuffer works with audio sample format float or short. The
  * implementation wrap around the RingBuffer thus it is not thread-safe. Reads
  * and writes must happen in the same thread which may be different than the
- * construction thread. The memory is pre-allocated in the constructor. The
- * sample format has to be specified in order to be used.
+ * construction thread. The memory is pre-allocated in the constructor, but may
+ * also be re-allocated on the fly should a larger length be needed. The sample
+ * format has to be specified in order to be used.
  */
 class AudioRingBuffer final {
  public:
@@ -46,6 +47,11 @@ class AudioRingBuffer final {
    * not change.
    */
   uint32_t Write(const AudioRingBuffer& aBuffer, uint32_t aSamples);
+
+  /**
+   * Write `aSamples` number of zeros before the beginning of the existing data.
+   */
+  uint32_t PrependSilence(uint32_t aSamples);
 
   /**
    * Write `aSamples` number of zeros.
@@ -85,6 +91,19 @@ class AudioRingBuffer final {
    * Remove all available samples.
    */
   uint32_t Clear();
+
+  /**
+   * Increase the ring buffer size if necessary to at least the specified length
+   * in bytes. Must be divisible by the sample size.
+   * Will not deallocate memory if the underlying buffer is large enough.
+   * Returns false if memory allocation is required and fails.
+   */
+  bool EnsureLengthBytes(uint32_t aLengthBytes);
+
+  /**
+   * Return the number of samples this buffer can hold.
+   */
+  uint32_t Capacity() const;
 
   /**
    * Return true if the buffer is full.

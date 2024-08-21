@@ -115,6 +115,8 @@ exported_symbols.testGetFileHandleIsCallable = async function () {
 
   const item = await root.getFileHandle("fileName", allowCreate);
   Assert.ok(!!item, "Should return an item");
+
+  await root.removeEntry("fileName");
 };
 
 exported_symbols.testGetDirectoryHandleIsCallable = async function () {
@@ -123,12 +125,18 @@ exported_symbols.testGetDirectoryHandleIsCallable = async function () {
 
   const item = await root.getDirectoryHandle("dirName", allowCreate);
   Assert.ok(!!item, "Should return an item");
+
+  await root.removeEntry("dirName");
 };
 
 exported_symbols.testRemoveEntryIsCallable = async function () {
   const root = await navigator.storage.getDirectory();
   const removeOptions = { recursive: true };
+  const allowCreate = { create: true };
 
+  // Ensure file and directory items exists
+  await root.getFileHandle("fileName", allowCreate);
+  await root.getDirectoryHandle("dirName", allowCreate);
   await root.removeEntry("fileName", removeOptions);
   await root.removeEntry("dirName", removeOptions);
   try {
@@ -152,6 +160,8 @@ exported_symbols.testResolveIsCallable = async function () {
   let path = await root.resolve(item);
   Assert.equal(path.length, 1);
   Assert.equal(path[0], "fileName", "Resolve got the right path");
+
+  await root.removeEntry("fileName");
 };
 
 exported_symbols.testFileType = async function () {
@@ -183,7 +193,7 @@ exported_symbols.testFileType = async function () {
     " EXE",
     "EX\uff65",
     "\udbff\udbff\udbff",
-    "\udc00\udc00\udc00",
+    // XXX: Invalid surrogate combos like "\udc00\udc00\udc00" may map to the same names impacting cleanup.
     "js\udbff",
     "\udc00js",
     "???",
@@ -227,7 +237,6 @@ exported_symbols.testFileType = async function () {
     empty,
     empty,
     empty,
-    empty,
     "application/olescript",
     "application/x-msdownload",
     "application/octet-stream",
@@ -247,19 +256,17 @@ exported_symbols.testFileType = async function () {
       const fileObject = await fileHandle.getFile();
       Assert.equal(fileObject.name, fileHandle.name);
       Assert.equal(fileObject.type, expectedTypes[i]);
+      await root.removeEntry(fileName);
     })
   );
 };
 
-exported_symbols.testContentTypeChangesOnMove = async function () {
+exported_symbols.testContentTypeChangesOnFileMove = async function () {
   const allowCreate = { create: true };
   const root = await navigator.storage.getDirectory();
   const oldName = "testFile.txt";
   const oldType = "text/plain";
   const subdir = await root.getDirectoryHandle("subdir", allowCreate);
-
-  const testName = "testFile.json";
-  const testType = "application/json";
 
   const fileHandle = await root.getFileHandle(oldName, allowCreate);
 
@@ -272,25 +279,92 @@ exported_symbols.testContentTypeChangesOnMove = async function () {
     }
   }
 
-  // No name change
-  await checkMove(oldName, oldType);
-  await fileHandle.move(subdir);
-  await checkMove(oldName, oldType);
-  await fileHandle.move(root, oldName);
-  await checkMove(oldName, oldType);
-
-  // With name change
-
-  async function testMoveCall(...combo) {
-    await fileHandle.move(...combo);
-    await checkMove(testName, testType);
+  async function restoreTest() {
     await fileHandle.move(root, oldName);
     await checkMove(oldName, oldType);
   }
 
-  await testMoveCall(subdir, testName);
-  await testMoveCall(root, testName);
-  await testMoveCall(testName);
+  // No name change
+  await checkMove(oldName, oldType);
+  await fileHandle.move(subdir);
+  await checkMove(oldName, oldType);
+  await restoreTest();
+
+  // With name change
+
+  async function testMoveWithParams(testName, testType) {
+    async function testFileMoveCall(...combo) {
+      await fileHandle.move(...combo);
+      await checkMove(testName, testType);
+      await restoreTest();
+    }
+
+    await testFileMoveCall(subdir, testName);
+    await testFileMoveCall(root, testName);
+    await testFileMoveCall(testName);
+  }
+
+  const testParams = {
+    "testFile.json": "application/json",
+    testFile: oldType,
+    "testFile.äüö": "",
+  };
+
+  for (const [aName, aType] of Object.entries(testParams)) {
+    await testMoveWithParams(aName, aType);
+  }
+};
+
+exported_symbols.testContentTypeChangesOnDirMove = async function () {
+  const allowCreate = { create: true };
+  const root = await navigator.storage.getDirectory();
+  const oldName = "testFile.txt";
+  const oldType = "text/plain";
+  const subDirOrig = await root.getDirectoryHandle("subDirOrig", allowCreate);
+  const subDirOther = await root.getDirectoryHandle("subDirOther", allowCreate);
+  const subSubDir = await subDirOrig.getDirectoryHandle(
+    "subSubDir",
+    allowCreate
+  );
+
+  const testName = "testFile.json";
+  const testType = "application/json";
+
+  async function checkMove(newName, newType) {
+    const fileHandle = await subSubDir.getFileHandle(newName, allowCreate);
+
+    Assert.equal(fileHandle.name, newName, "Has filename changed?");
+    {
+      const fileObject = await fileHandle.getFile();
+      Assert.equal(fileObject.name, newName, "Is the fileobject renamed?");
+      Assert.equal(fileObject.type, newType, "Is the fileobject type updated?");
+    }
+  }
+
+  async function restoreTest() {
+    await subSubDir.move(subDirOrig, "subSubDir");
+    await checkMove(oldName, oldType);
+  }
+
+  await checkMove(oldName, oldType);
+
+  // No name change
+  await subSubDir.move(subDirOther, "other");
+  await checkMove(oldName, oldType);
+  await restoreTest();
+
+  // With name change
+
+  async function testDirMoveCall(...combo) {
+    await subSubDir.move(...combo);
+    await checkMove(testName, testType);
+    await restoreTest();
+  }
+
+  await testDirMoveCall(subDirOther);
+  await testDirMoveCall(subDirOther, testName);
+  await testDirMoveCall(subDirOrig, testName);
+  await testDirMoveCall(subDirOrig);
 };
 
 for (const [key, value] of Object.entries(exported_symbols)) {

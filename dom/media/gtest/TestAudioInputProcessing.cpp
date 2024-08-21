@@ -23,15 +23,28 @@ using testing::Return;
 
 class MockGraph : public MediaTrackGraphImpl {
  public:
-  MockGraph(TrackRate aRate, uint32_t aChannels)
-      : MediaTrackGraphImpl(OFFLINE_THREAD_DRIVER, DIRECT_DRIVER, aRate,
-                            aChannels, nullptr, AbstractThread::MainThread()) {
+  explicit MockGraph(TrackRate aRate)
+      : MediaTrackGraphImpl(0, aRate, nullptr, AbstractThread::MainThread()) {
     ON_CALL(*this, OnGraphThread).WillByDefault(Return(true));
-    // Remove this graph's driver since it holds a ref. If no AppendMessage
-    // takes place, the driver never starts. This will also make sure no-one
-    // tries to use it. We are still kept alive by the self-ref. Destroy() must
-    // be called to break that cycle.
-    SetCurrentDriver(nullptr);
+  }
+
+  void Init(uint32_t aChannels) {
+    MediaTrackGraphImpl::Init(OFFLINE_THREAD_DRIVER, DIRECT_DRIVER, aChannels);
+
+    MonitorAutoLock lock(mMonitor);
+    // We don't need a graph driver.  Advance to
+    // LIFECYCLE_WAITING_FOR_TRACK_DESTRUCTION so that the driver never
+    // starts.  Graph control messages run as in shutdown, synchronously.
+    // This permits the main thread part of track initialization through
+    // AudioProcessingTrack::Create().
+    mLifecycleState = LIFECYCLE_WAITING_FOR_TRACK_DESTRUCTION;
+#ifdef DEBUG
+    mCanRunMessagesSynchronously = true;
+#endif
+    // Remove this graph's driver since it holds a ref. We are still kept
+    // alive by the self-ref. Destroy() must be called to break that cycle if
+    // no tracks are created and destroyed.
+    mDriver = nullptr;
   }
 
   MOCK_CONST_METHOD0(OnGraphThread, bool());
@@ -48,7 +61,10 @@ TEST(TestAudioInputProcessing, Buffering)
 {
   const TrackRate rate = 8000;  // So packet size is 80
   const uint32_t channels = 1;
-  auto graph = MakeRefPtr<NiceMock<MockGraph>>(rate, channels);
+  auto graph = MakeRefPtr<NiceMock<MockGraph>>(rate);
+  graph->Init(channels);
+  RefPtr track = AudioProcessingTrack::Create(graph);
+
   auto aip = MakeRefPtr<AudioInputProcessing>(channels);
 
   const size_t frames = 72;
@@ -57,19 +73,26 @@ TEST(TestAudioInputProcessing, Buffering)
   GraphTime processedTime;
   GraphTime nextTime;
   AudioSegment output;
+  MediaEnginePrefs settings;
+  settings.mChannels = channels;
+  // pref "media.getusermedia.agc2_forced" defaults to true.
+  // mAgc would need to be set to something other than kAdaptiveAnalog
+  // for mobile, as asserted in AudioInputProcessing::ConfigForPrefs,
+  // if gain_controller1 were used.
+  settings.mAgc2Forced = true;
 
   // Toggle pass-through mode without starting
   {
-    EXPECT_EQ(aip->PassThrough(graph), false);
+    EXPECT_EQ(aip->IsPassThrough(graph), true);
     EXPECT_EQ(aip->NumBufferedFrames(graph), 0);
 
-    aip->SetPassThrough(graph, true);
+    settings.mAgcOn = true;
+    aip->ApplySettings(graph, nullptr, settings);
+    EXPECT_EQ(aip->IsPassThrough(graph), false);
     EXPECT_EQ(aip->NumBufferedFrames(graph), 0);
 
-    aip->SetPassThrough(graph, false);
-    EXPECT_EQ(aip->NumBufferedFrames(graph), 0);
-
-    aip->SetPassThrough(graph, true);
+    settings.mAgcOn = false;
+    aip->ApplySettings(graph, nullptr, settings);
     EXPECT_EQ(aip->NumBufferedFrames(graph), 0);
   }
 
@@ -83,14 +106,15 @@ TEST(TestAudioInputProcessing, Buffering)
     AudioSegment input;
     generator.Generate(input, nextTime - processedTime);
 
-    aip->Process(graph, processedTime, nextTime, &input, &output);
+    aip->Process(track, processedTime, nextTime, &input, &output);
     EXPECT_EQ(input.GetDuration(), nextTime - processedTime);
     EXPECT_EQ(output.GetDuration(), nextTime);
     EXPECT_EQ(aip->NumBufferedFrames(graph), 0);
   }
 
   // Set aip to processing/non-pass-through mode
-  aip->SetPassThrough(graph, false);
+  settings.mAgcOn = true;
+  aip->ApplySettings(graph, nullptr, settings);
   {
     // Need (nextTime - processedTime) = 256 - 128 = 128 frames this round.
     // aip has not started yet, so output will be filled with silence data
@@ -101,37 +125,35 @@ TEST(TestAudioInputProcessing, Buffering)
     AudioSegment input;
     generator.Generate(input, nextTime - processedTime);
 
-    aip->Process(graph, processedTime, nextTime, &input, &output);
+    aip->Process(track, processedTime, nextTime, &input, &output);
     EXPECT_EQ(input.GetDuration(), nextTime - processedTime);
     EXPECT_EQ(output.GetDuration(), nextTime);
     EXPECT_EQ(aip->NumBufferedFrames(graph), 0);
   }
 
-  // aip has been started and set to processing mode so it will insert 80 frames
-  // into aip's internal buffer as pre-buffering.
+  // aip has been set to processing mode and is started.
   aip->Start(graph);
   {
     // Need (nextTime - processedTime) = 256 - 256 = 0 frames this round.
-    // The Process() aip will take 0 frames from input, packetize and process
-    // these frames into 0 80-frame packet(0 frames left in packetizer), insert
-    // packets into aip's internal buffer, then move 0 frames the internal
-    // buffer to output, leaving 80 + 0 - 0 = 80 frames in aip's internal
-    // buffer.
+    // Process() will return early on 0 frames of input.
+    // Pre-buffering is not triggered.
     processedTime = nextTime;
     nextTime = MediaTrackGraphImpl::RoundUpToEndOfAudioBlock(3 * frames);
 
     AudioSegment input;
     generator.Generate(input, nextTime - processedTime);
 
-    aip->Process(graph, processedTime, nextTime, &input, &output);
+    aip->Process(track, processedTime, nextTime, &input, &output);
     EXPECT_EQ(input.GetDuration(), nextTime - processedTime);
     EXPECT_EQ(output.GetDuration(), nextTime);
-    EXPECT_EQ(aip->NumBufferedFrames(graph), 80);
+    EXPECT_EQ(aip->NumBufferedFrames(graph), 0);
   }
 
   {
     // Need (nextTime - processedTime) = 384 - 256 = 128 frames this round.
-    // The Process() aip will take 128 frames from input, packetize and process
+    // On receipt of the these first frames, aip will insert 80 frames
+    // into its internal buffer as pre-buffering.
+    // Process() will take 128 frames from input, packetize and process
     // these frames into floor(128/80) = 1 80-frame packet (48 frames left in
     // packetizer), insert packets into aip's internal buffer, then move 128
     // frames the internal buffer to output, leaving 80 + 80 - 128 = 32 frames
@@ -142,7 +164,7 @@ TEST(TestAudioInputProcessing, Buffering)
     AudioSegment input;
     generator.Generate(input, nextTime - processedTime);
 
-    aip->Process(graph, processedTime, nextTime, &input, &output);
+    aip->Process(track, processedTime, nextTime, &input, &output);
     EXPECT_EQ(input.GetDuration(), nextTime - processedTime);
     EXPECT_EQ(output.GetDuration(), nextTime);
     EXPECT_EQ(aip->NumBufferedFrames(graph), 32);
@@ -156,7 +178,7 @@ TEST(TestAudioInputProcessing, Buffering)
     AudioSegment input;
     generator.Generate(input, nextTime - processedTime);
 
-    aip->Process(graph, processedTime, nextTime, &input, &output);
+    aip->Process(track, processedTime, nextTime, &input, &output);
     EXPECT_EQ(input.GetDuration(), nextTime - processedTime);
     EXPECT_EQ(output.GetDuration(), nextTime);
     EXPECT_EQ(aip->NumBufferedFrames(graph), 32);
@@ -175,13 +197,15 @@ TEST(TestAudioInputProcessing, Buffering)
     AudioSegment input;
     generator.Generate(input, nextTime - processedTime);
 
-    aip->Process(graph, processedTime, nextTime, &input, &output);
+    aip->Process(track, processedTime, nextTime, &input, &output);
     EXPECT_EQ(input.GetDuration(), nextTime - processedTime);
     EXPECT_EQ(output.GetDuration(), nextTime);
     EXPECT_EQ(aip->NumBufferedFrames(graph), 64);
   }
 
-  aip->SetPassThrough(graph, true);
+  // Set aip to pass-through mode
+  settings.mAgcOn = false;
+  aip->ApplySettings(graph, nullptr, settings);
   {
     // Need (nextTime - processedTime) = 512 - 512 = 0 frames this round.
     // No buffering in pass-through mode
@@ -191,21 +215,24 @@ TEST(TestAudioInputProcessing, Buffering)
     AudioSegment input;
     generator.Generate(input, nextTime - processedTime);
 
-    aip->Process(graph, processedTime, nextTime, &input, &output);
+    aip->Process(track, processedTime, nextTime, &input, &output);
     EXPECT_EQ(input.GetDuration(), nextTime - processedTime);
     EXPECT_EQ(output.GetDuration(), processedTime);
     EXPECT_EQ(aip->NumBufferedFrames(graph), 0);
   }
 
   aip->Stop(graph);
-  graph->Destroy();
+  track->Destroy();
 }
 
 TEST(TestAudioInputProcessing, ProcessDataWithDifferentPrincipals)
 {
   const TrackRate rate = 48000;  // so # of output frames from packetizer is 480
   const uint32_t channels = 2;
-  auto graph = MakeRefPtr<NiceMock<MockGraph>>(rate, channels);
+  auto graph = MakeRefPtr<NiceMock<MockGraph>>(rate);
+  graph->Init(channels);
+  RefPtr track = AudioProcessingTrack::Create(graph);
+
   auto aip = MakeRefPtr<AudioInputProcessing>(channels);
   AudioGenerator<AudioDataValue> generator(channels, rate);
 
@@ -264,26 +291,30 @@ TEST(TestAudioInputProcessing, ProcessDataWithDifferentPrincipals)
   };
 
   // Check the principals in audio-processing mode.
-  EXPECT_EQ(aip->PassThrough(graph), false);
+  MediaEnginePrefs settings;
+  settings.mChannels = channels;
+  settings.mAgcOn = true;
+  settings.mAgc2Forced = true;
+  aip->ApplySettings(graph, nullptr, settings);
+  EXPECT_EQ(aip->IsPassThrough(graph), false);
   aip->Start(graph);
   {
-    EXPECT_EQ(aip->NumBufferedFrames(graph), 480);
     AudioSegment output;
     {
-      // Trim the prebuffering silence.
-
       AudioSegment data;
-      aip->Process(graph, 0, 4800, &input, &data);
+      aip->Process(track, 0, 4800, &input, &data);
       EXPECT_EQ(input.GetDuration(), 4800);
       EXPECT_EQ(data.GetDuration(), 4800);
 
+      // Extract another 480 frames to account for delay from pre-buffering.
+      EXPECT_EQ(aip->NumBufferedFrames(graph), 480);
       AudioSegment dummy;
       dummy.AppendNullData(480);
-      aip->Process(graph, 0, 480, &dummy, &data);
+      aip->Process(track, 0, 480, &dummy, &data);
       EXPECT_EQ(dummy.GetDuration(), 480);
       EXPECT_EQ(data.GetDuration(), 480 + 4800);
 
-      // Ignore the pre-buffering data
+      // Ignore the pre-buffering silence.
       output.AppendSlice(data, 480, 480 + 4800);
     }
 
@@ -291,10 +322,12 @@ TEST(TestAudioInputProcessing, ProcessDataWithDifferentPrincipals)
   }
 
   // Check the principals in pass-through mode.
-  aip->SetPassThrough(graph, true);
+  settings.mAgcOn = false;
+  aip->ApplySettings(graph, nullptr, settings);
+  EXPECT_EQ(aip->IsPassThrough(graph), true);
   {
     AudioSegment output;
-    aip->Process(graph, 0, 4800, &input, &output);
+    aip->Process(track, 0, 4800, &input, &output);
     EXPECT_EQ(input.GetDuration(), 4800);
     EXPECT_EQ(output.GetDuration(), 4800);
 
@@ -302,14 +335,17 @@ TEST(TestAudioInputProcessing, ProcessDataWithDifferentPrincipals)
   }
 
   aip->Stop(graph);
-  graph->Destroy();
+  track->Destroy();
 }
 
 TEST(TestAudioInputProcessing, Downmixing)
 {
   const TrackRate rate = 44100;
   const uint32_t channels = 4;
-  auto graph = MakeRefPtr<NiceMock<MockGraph>>(rate, channels);
+  auto graph = MakeRefPtr<NiceMock<MockGraph>>(rate);
+  graph->Init(channels);
+  RefPtr track = AudioProcessingTrack::Create(graph);
+
   auto aip = MakeRefPtr<AudioInputProcessing>(channels);
 
   const size_t frames = 44100;
@@ -318,7 +354,12 @@ TEST(TestAudioInputProcessing, Downmixing)
   GraphTime processedTime;
   GraphTime nextTime;
 
-  aip->SetPassThrough(graph, false);
+  MediaEnginePrefs settings;
+  settings.mChannels = channels;
+  settings.mAgcOn = true;
+  settings.mAgc2Forced = true;
+  aip->ApplySettings(graph, nullptr, settings);
+  EXPECT_EQ(aip->IsPassThrough(graph), false);
   aip->Start(graph);
 
   processedTime = 0;
@@ -338,7 +379,7 @@ TEST(TestAudioInputProcessing, Downmixing)
     // downmix to mono, scaling the input by 1/4 in the process.
     // We can't compare the input and output signal because the sine is going to
     // be mangledui
-    aip->Process(graph, processedTime, nextTime, &input, &output);
+    aip->Process(track, processedTime, nextTime, &input, &output);
     EXPECT_EQ(input.GetDuration(), nextTime - processedTime);
     EXPECT_EQ(output.GetDuration(), nextTime);
     EXPECT_EQ(output.MaxChannelCount(), 1u);
@@ -358,15 +399,18 @@ TEST(TestAudioInputProcessing, Downmixing)
     }
   }
 
-  // Now, repeat the test, checking we get the unmodified 4 channels.
-  aip->SetPassThrough(graph, true);
+  // Now, repeat the test in pass-through mode, checking we get the unmodified
+  // 4 channels.
+  settings.mAgcOn = false;
+  aip->ApplySettings(graph, nullptr, settings);
+  EXPECT_EQ(aip->IsPassThrough(graph), true);
 
   AudioSegment input, output;
   processedTime = nextTime;
   nextTime += MediaTrackGraphImpl::RoundUpToEndOfAudioBlock(frames);
   generator.Generate(input, nextTime - processedTime);
 
-  aip->Process(graph, processedTime, nextTime, &input, &output);
+  aip->Process(track, processedTime, nextTime, &input, &output);
   EXPECT_EQ(input.GetDuration(), nextTime - processedTime);
   EXPECT_EQ(output.GetDuration(), nextTime - processedTime);
   // This time, no downmix: 4 channels of input, 4 channels of output
@@ -380,6 +424,181 @@ TEST(TestAudioInputProcessing, Downmixing)
   for (uint32_t i = 0; i < frames * channels; i++) {
     EXPECT_EQ(inputLinearized[i], outputLinearized[i]);
   }
+
+  aip->Stop(graph);
+  track->Destroy();
+}
+
+TEST(TestAudioInputProcessing, DisabledPlatformProcessing)
+{
+  const TrackRate rate = 44100;
+  const uint32_t channels = 1;
+  auto graph = MakeRefPtr<NiceMock<MockGraph>>(rate);
+  graph->Init(channels);
+
+  auto aip = MakeRefPtr<AudioInputProcessing>(channels);
+
+  MediaEnginePrefs settings;
+  settings.mUsePlatformProcessing = false;
+  settings.mAecOn = true;
+  aip->ApplySettings(graph, nullptr, settings);
+  aip->Start(graph);
+
+  EXPECT_EQ(aip->RequestedInputProcessingParams(graph),
+            CUBEB_INPUT_PROCESSING_PARAM_NONE);
+
+  aip->Stop(graph);
+  graph->Destroy();
+}
+
+TEST(TestAudioInputProcessing, EnabledPlatformProcessing)
+{
+  const TrackRate rate = 44100;
+  const uint32_t channels = 1;
+  auto graph = MakeRefPtr<NiceMock<MockGraph>>(rate);
+  graph->Init(channels);
+
+  auto aip = MakeRefPtr<AudioInputProcessing>(channels);
+
+  MediaEnginePrefs settings;
+  settings.mUsePlatformProcessing = true;
+  settings.mAecOn = true;
+  aip->ApplySettings(graph, nullptr, settings);
+  aip->Start(graph);
+
+  EXPECT_EQ(aip->RequestedInputProcessingParams(graph),
+            CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION);
+
+  aip->Stop(graph);
+  graph->Destroy();
+}
+
+namespace webrtc {
+bool operator==(const AudioProcessing::Config& aLhs,
+                const AudioProcessing::Config& aRhs) {
+  return aLhs.echo_canceller.enabled == aRhs.echo_canceller.enabled &&
+         (aLhs.gain_controller1.enabled == aRhs.gain_controller1.enabled ||
+          aLhs.gain_controller2.enabled == aRhs.gain_controller2.enabled) &&
+         aLhs.noise_suppression.enabled == aRhs.noise_suppression.enabled;
+}
+
+static std::ostream& operator<<(
+    std::ostream& aStream, const webrtc::AudioProcessing::Config& aConfig) {
+  aStream << "webrtc::AudioProcessing::Config[";
+  bool hadPrior = false;
+  if (aConfig.echo_canceller.enabled) {
+    aStream << "AEC";
+    hadPrior = true;
+  }
+  if (aConfig.gain_controller1.enabled || aConfig.gain_controller2.enabled) {
+    if (hadPrior) {
+      aStream << ", ";
+    }
+    aStream << "AGC";
+  }
+  if (aConfig.noise_suppression.enabled) {
+    if (hadPrior) {
+      aStream << ", ";
+    }
+    aStream << "NS";
+  }
+  aStream << "]";
+  return aStream;
+}
+}  // namespace webrtc
+
+TEST(TestAudioInputProcessing, PlatformProcessing)
+{
+  const TrackRate rate = 44100;
+  const uint32_t channels = 1;
+  auto graph = MakeRefPtr<NiceMock<MockGraph>>(rate);
+  graph->Init(channels);
+
+  auto aip = MakeRefPtr<AudioInputProcessing>(channels);
+
+  MediaEnginePrefs settings;
+  settings.mUsePlatformProcessing = true;
+  settings.mAecOn = true;
+  aip->ApplySettings(graph, nullptr, settings);
+  aip->Start(graph);
+
+  webrtc::AudioProcessing::Config echoOnlyConfig;
+  echoOnlyConfig.echo_canceller.enabled = true;
+  webrtc::AudioProcessing::Config echoNoiseConfig = echoOnlyConfig;
+  echoNoiseConfig.noise_suppression.enabled = true;
+
+  // Config is applied, and platform processing requested.
+  EXPECT_EQ(aip->RequestedInputProcessingParams(graph),
+            CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION);
+  EXPECT_EQ(aip->AppliedConfig(graph), echoOnlyConfig);
+  EXPECT_FALSE(aip->IsPassThrough(graph));
+
+  // Platform processing params successfully applied.
+  aip->NotifySetRequestedInputProcessingParamsResult(
+      graph, CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION,
+      CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION);
+  // Turns off the equivalent APM config.
+  EXPECT_EQ(aip->AppliedConfig(graph), webrtc::AudioProcessing::Config());
+  EXPECT_TRUE(aip->IsPassThrough(graph));
+
+  // Simulate an error after a driver switch.
+  aip->NotifySetRequestedInputProcessingParamsResult(
+      graph, CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION, Err(CUBEB_ERROR));
+  // The APM config is turned back on, and platform processing is requested to
+  // be turned off.
+  EXPECT_EQ(aip->RequestedInputProcessingParams(graph),
+            CUBEB_INPUT_PROCESSING_PARAM_NONE);
+  EXPECT_EQ(aip->AppliedConfig(graph), echoOnlyConfig);
+  EXPECT_FALSE(aip->IsPassThrough(graph));
+
+  // Pretend there was a response for an old request.
+  aip->NotifySetRequestedInputProcessingParamsResult(
+      graph, CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION,
+      CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION);
+  // It does nothing since we are requesting NONE now.
+  EXPECT_EQ(aip->RequestedInputProcessingParams(graph),
+            CUBEB_INPUT_PROCESSING_PARAM_NONE);
+  EXPECT_EQ(aip->AppliedConfig(graph), echoOnlyConfig);
+  EXPECT_FALSE(aip->IsPassThrough(graph));
+
+  // Turn it off as requested.
+  aip->NotifySetRequestedInputProcessingParamsResult(
+      graph, CUBEB_INPUT_PROCESSING_PARAM_NONE,
+      CUBEB_INPUT_PROCESSING_PARAM_NONE);
+  EXPECT_EQ(aip->RequestedInputProcessingParams(graph),
+            CUBEB_INPUT_PROCESSING_PARAM_NONE);
+  EXPECT_EQ(aip->AppliedConfig(graph), echoOnlyConfig);
+  EXPECT_FALSE(aip->IsPassThrough(graph));
+
+  // Test partial support for the requested params.
+  settings.mNoiseOn = true;
+  aip->ApplySettings(graph, nullptr, settings);
+  EXPECT_EQ(aip->RequestedInputProcessingParams(graph),
+            CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
+                CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION);
+  EXPECT_EQ(aip->AppliedConfig(graph), echoNoiseConfig);
+  EXPECT_FALSE(aip->IsPassThrough(graph));
+  // Only noise suppression was supported in the platform.
+  aip->NotifySetRequestedInputProcessingParamsResult(
+      graph,
+      CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
+          CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION,
+      CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION);
+  // In the APM only echo cancellation is applied.
+  EXPECT_EQ(aip->AppliedConfig(graph), echoOnlyConfig);
+  EXPECT_FALSE(aip->IsPassThrough(graph));
+
+  // Test error for partial support.
+  aip->NotifySetRequestedInputProcessingParamsResult(
+      graph,
+      CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
+          CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION,
+      Err(CUBEB_ERROR));
+  // The full config is applied in the APM, and NONE is requested.
+  EXPECT_EQ(aip->RequestedInputProcessingParams(graph),
+            CUBEB_INPUT_PROCESSING_PARAM_NONE);
+  EXPECT_EQ(aip->AppliedConfig(graph), echoNoiseConfig);
+  EXPECT_FALSE(aip->IsPassThrough(graph));
 
   aip->Stop(graph);
   graph->Destroy();

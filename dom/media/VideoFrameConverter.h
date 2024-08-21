@@ -7,7 +7,7 @@
 #define VideoFrameConverter_h
 
 #include "ImageContainer.h"
-#include "ImageToI420.h"
+#include "ImageConversion.h"
 #include "Pacer.h"
 #include "PerformanceRecorder.h"
 #include "VideoSegment.h"
@@ -44,6 +44,7 @@ class VideoFrameConverter {
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(VideoFrameConverter)
 
+ protected:
   explicit VideoFrameConverter(
       const dom::RTCStatsTimestampMaker& aTimestampMaker)
       : mTimestampMaker(aTimestampMaker),
@@ -54,13 +55,24 @@ class VideoFrameConverter {
             mTaskQueue, TimeDuration::FromSeconds(1))),
         mBufferPool(false, CONVERTER_BUFFER_POOL_SIZE) {
     MOZ_COUNT_CTOR(VideoFrameConverter);
+  }
 
+  void RegisterListener() {
     mPacingListener = mPacer->PacedItemEvent().Connect(
-        mTaskQueue, [self = RefPtr<VideoFrameConverter>(this), this](
-                        FrameToProcess aFrame, TimeStamp aTime) {
-          QueueForProcessing(std::move(aFrame.mImage), aTime, aFrame.mSize,
-                             aFrame.mForceBlack);
+        mTaskQueue,
+        [self = RefPtr(this)](FrameToProcess aFrame, TimeStamp aTime) {
+          self->QueueForProcessing(std::move(aFrame.mImage), aTime,
+                                   aFrame.mSize, aFrame.mForceBlack);
         });
+  }
+
+ public:
+  static already_AddRefed<VideoFrameConverter> Create(
+      const dom::RTCStatsTimestampMaker& aTimestampMaker) {
+    RefPtr<VideoFrameConverter> converter =
+        new VideoFrameConverter(aTimestampMaker);
+    converter->RegisterListener();
+    return converter.forget();
   }
 
   void QueueVideoChunk(const VideoChunk& aChunk, bool aForceBlack) {
@@ -97,8 +109,8 @@ class VideoFrameConverter {
             // for processing so it can be immediately sent.
             mLastFrameQueuedForProcessing.mTime = time;
 
-            MOZ_ALWAYS_SUCCEEDS(mTaskQueue->Dispatch(
-                NewRunnableMethod<StoreCopyPassByLRef<FrameToProcess>>(
+            MOZ_ALWAYS_SUCCEEDS(
+                mTaskQueue->Dispatch(NewRunnableMethod<FrameToProcess>(
                     "VideoFrameConverter::ProcessVideoFrame", this,
                     &VideoFrameConverter::ProcessVideoFrame,
                     mLastFrameQueuedForProcessing)));
@@ -126,8 +138,8 @@ class VideoFrameConverter {
             mLastFrameQueuedForProcessing.mForceBlack = true;
             mLastFrameQueuedForProcessing.mImage = nullptr;
 
-            MOZ_ALWAYS_SUCCEEDS(mTaskQueue->Dispatch(
-                NewRunnableMethod<StoreCopyPassByLRef<FrameToProcess>>(
+            MOZ_ALWAYS_SUCCEEDS(
+                mTaskQueue->Dispatch(NewRunnableMethod<FrameToProcess>(
                     "VideoFrameConverter::ProcessVideoFrame", this,
                     &VideoFrameConverter::ProcessVideoFrame,
                     mLastFrameQueuedForProcessing)));
@@ -281,11 +293,10 @@ class VideoFrameConverter {
       return;
     }
 
-    MOZ_ALWAYS_SUCCEEDS(mTaskQueue->Dispatch(
-        NewRunnableMethod<StoreCopyPassByLRef<FrameToProcess>>(
-            "VideoFrameConverter::ProcessVideoFrame", this,
-            &VideoFrameConverter::ProcessVideoFrame,
-            mLastFrameQueuedForProcessing)));
+    MOZ_ALWAYS_SUCCEEDS(mTaskQueue->Dispatch(NewRunnableMethod<FrameToProcess>(
+        "VideoFrameConverter::ProcessVideoFrame", this,
+        &VideoFrameConverter::ProcessVideoFrame,
+        mLastFrameQueuedForProcessing)));
   }
 
   void ProcessVideoFrame(const FrameToProcess& aFrame) {
@@ -352,7 +363,9 @@ class VideoFrameConverter {
         aFrame.mImage->AsPlanarYCbCrImage();
     if (image) {
       dom::ImageUtils utils(image);
-      if (utils.GetFormat() == dom::ImageBitmapFormat::YUV420P &&
+      Maybe<dom::ImageBitmapFormat> format = utils.GetFormat();
+      if (format.isSome() &&
+          format.value() == dom::ImageBitmapFormat::YUV420P &&
           image->GetData()) {
         const layers::PlanarYCbCrData* data = image->GetData();
         rtc::scoped_refptr<webrtc::I420BufferInterface> video_frame_buffer =

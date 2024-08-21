@@ -9,7 +9,7 @@
 #include "nsIDocShell.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsPresContext.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 
 namespace mozilla::dom {
 
@@ -53,6 +53,5 @@ using namespace mozilla::dom;
 already_AddRefed<TimeEvent> NS_NewDOMTimeEvent(EventTarget* aOwner,
                                                nsPresContext* aPresContext,
                                                InternalSMILTimeEvent* aEvent) {
-  RefPtr<TimeEvent> it = new TimeEvent(aOwner, aPresContext, aEvent);
-  return it.forget();
+  return do_AddRef(new TimeEvent(aOwner, aPresContext, aEvent));
 }

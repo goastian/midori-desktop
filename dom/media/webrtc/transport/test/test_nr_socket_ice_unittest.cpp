@@ -73,7 +73,8 @@ class IcePeer {
         peer_ctx_(nullptr),
         nat_(nat),
         test_utils_(test_utils) {
-    nr_ice_ctx_create(const_cast<char*>(name_.c_str()), flags, &ice_ctx_);
+    nr_ice_ctx_create(const_cast<char*>(name_.c_str()), flags, nullptr,
+                      &ice_ctx_);
 
     if (nat_) {
       nr_socket_factory* factory;
@@ -300,8 +301,11 @@ class TestNrSocketIceUnitTest : public ::testing::Test {
     test_utils_ = new MtransportTestUtils();
     test_utils2_ = new MtransportTestUtils();
 
-    NrIceCtx::InitializeGlobals(NrIceCtx::GlobalConfig());
+    test_utils_->SyncDispatchToSTS(
+        WrapRunnable(this, &TestNrSocketIceUnitTest::SetUp_s));
   }
+
+  void SetUp_s() { NrIceCtx::InitializeGlobals(NrIceCtx::GlobalConfig()); }
 
   void TearDown() override {
     delete test_utils_;

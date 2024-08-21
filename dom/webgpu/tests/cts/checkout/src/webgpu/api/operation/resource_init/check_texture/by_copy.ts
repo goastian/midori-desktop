@@ -1,7 +1,8 @@
 import { assert } from '../../../../../common/util/util.js';
-import { EncodableTextureFormat, kTextureFormatInfo } from '../../../../capability_info.js';
+import { kTextureFormatInfo, EncodableTextureFormat } from '../../../../format_info.js';
 import { virtualMipSize } from '../../../../util/texture/base.js';
-import { CheckContents } from '../texture_zero.spec.js';
+
+import { CheckContents } from './texture_zero_init_test.js';
 
 export const checkContentsByBufferCopy: CheckContents = (
   t,
@@ -17,7 +18,7 @@ export const checkContentsByBufferCopy: CheckContents = (
     t.expectSingleColor(texture, format, {
       size: [t.textureWidth, t.textureHeight, t.textureDepth],
       dimension: params.dimension,
-      slice: layer,
+      slice: params.dimension === '2d' ? layer : 0,
       layout: { mipLevel, aspect: params.aspect },
       exp: t.stateToTexelComponents[state],
     });

@@ -20,16 +20,18 @@
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/CustomEvent.h"
 #include "mozilla/dom/ShadowRoot.h"
+#include "mozilla/dom/UnionTypes.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/HoldDropJSObjects.h"
 #include "mozilla/UseCounter.h"
 #include "nsContentUtils.h"
 #include "nsHTMLTags.h"
+#include "nsInterfaceHashtable.h"
+#include "nsPIDOMWindow.h"
 #include "jsapi.h"
 #include "js/ForOfIterator.h"       // JS::ForOfIterator
 #include "js/PropertyAndElement.h"  // JS_GetProperty, JS_GetUCProperty
 #include "xpcprivate.h"
-#include "nsGlobalWindow.h"
 #include "nsNameSpaceManager.h"
 
 namespace mozilla::dom {
@@ -123,8 +125,7 @@ class CustomElementCallbackReaction final : public CustomElementReaction {
 
 size_t LifecycleCallbackArgs::SizeOfExcludingThis(
     MallocSizeOf aMallocSizeOf) const {
-  size_t n = mName.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
-  n += mOldValue.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
+  size_t n = mOldValue.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
   n += mNewValue.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
   n += mNamespaceURI.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
   return n;
@@ -189,6 +190,14 @@ UniquePtr<CustomElementCallback> CustomElementCallback::Create(
       }
       break;
 
+    case ElementCallbackType::eFormStateRestore:
+      if (aDefinition->mFormAssociatedCallbacks->mFormStateRestoreCallback
+              .WasPassed()) {
+        func = aDefinition->mFormAssociatedCallbacks->mFormStateRestoreCallback
+                   .Value();
+      }
+      break;
+
     case ElementCallbackType::eGetCustomInterface:
       MOZ_ASSERT_UNREACHABLE("Don't call GetCustomInterface through callback");
       break;
@@ -219,8 +228,8 @@ void CustomElementCallback::Call() {
       break;
     case ElementCallbackType::eAttributeChanged:
       static_cast<LifecycleAttributeChangedCallback*>(mCallback.get())
-          ->Call(mThisObject, mArgs.mName, mArgs.mOldValue, mArgs.mNewValue,
-                 mArgs.mNamespaceURI);
+          ->Call(mThisObject, nsDependentAtomString(mArgs.mName),
+                 mArgs.mOldValue, mArgs.mNewValue, mArgs.mNamespaceURI);
       break;
     case ElementCallbackType::eFormAssociated:
       static_cast<LifecycleFormAssociatedCallback*>(mCallback.get())
@@ -234,6 +243,27 @@ void CustomElementCallback::Call() {
       static_cast<LifecycleFormDisabledCallback*>(mCallback.get())
           ->Call(mThisObject, mArgs.mDisabled);
       break;
+    case ElementCallbackType::eFormStateRestore: {
+      if (mArgs.mState.IsNull()) {
+        MOZ_ASSERT_UNREACHABLE(
+            "A null state should never be restored to a form-associated "
+            "custom element");
+        return;
+      }
+
+      const OwningFileOrUSVStringOrFormData& owningValue = mArgs.mState.Value();
+      Nullable<FileOrUSVStringOrFormData> value;
+      if (owningValue.IsFormData()) {
+        value.SetValue().SetAsFormData() = owningValue.GetAsFormData();
+      } else if (owningValue.IsFile()) {
+        value.SetValue().SetAsFile() = owningValue.GetAsFile();
+      } else {
+        value.SetValue().SetAsUSVString().ShareOrDependUpon(
+            owningValue.GetAsUSVString());
+      }
+      static_cast<LifecycleFormStateRestoreCallback*>(mCallback.get())
+          ->Call(mThisObject, value, mArgs.mReason);
+    } break;
     case ElementCallbackType::eGetCustomInterface:
       MOZ_ASSERT_UNREACHABLE("Don't call GetCustomInterface through callback");
       break;
@@ -597,9 +627,7 @@ void CustomElementRegistry::EnqueueLifecycleCallback(
   }
 
   if (aType == ElementCallbackType::eAttributeChanged) {
-    RefPtr<nsAtom> attrName = NS_Atomize(aArgs.mName);
-    if (definition->mObservedAttributes.IsEmpty() ||
-        !definition->mObservedAttributes.Contains(attrName)) {
+    if (!definition->mObservedAttributes.Contains(aArgs.mName)) {
       return;
     }
   }
@@ -1103,7 +1131,8 @@ void CustomElementRegistry::Define(
                            /* Cancelable */ true, detail);
     event->SetTrusted(true);
 
-    AsyncEventDispatcher* dispatcher = new AsyncEventDispatcher(doc, event);
+    AsyncEventDispatcher* dispatcher =
+        new AsyncEventDispatcher(doc, event.forget());
     dispatcher->mOnlyChromeDispatch = ChromeOnlyDispatch::eYes;
 
     dispatcher->PostDOMEvent();
@@ -1126,7 +1155,15 @@ void CustomElementRegistry::SetElementCreationCallback(
   }
 
   RefPtr<CustomElementCreationCallback> callback = &aCallback;
-  mElementCreationCallbacks.InsertOrUpdate(nameAtom, std::move(callback));
+
+  if (mCandidatesMap.Contains(nameAtom)) {
+    mElementCreationCallbacksUpgradeCandidatesMap.GetOrInsertNew(nameAtom);
+    RefPtr<Runnable> runnable =
+        new RunCustomElementCreationCallback(this, nameAtom, callback);
+    nsContentUtils::AddScriptRunner(runnable.forget());
+  } else {
+    mElementCreationCallbacks.InsertOrUpdate(nameAtom, std::move(callback));
+  }
 }
 
 void CustomElementRegistry::Upgrade(nsINode& aRoot) {
@@ -1163,6 +1200,19 @@ void CustomElementRegistry::Get(
   }
 
   aRetVal.SetAsCustomElementConstructor() = data->mConstructor;
+}
+
+void CustomElementRegistry::GetName(JSContext* aCx,
+                                    CustomElementConstructor& aConstructor,
+                                    nsAString& aResult) {
+  CustomElementDefinition* aDefinition =
+      LookupCustomElementDefinition(aCx, aConstructor.CallableOrNull());
+
+  if (aDefinition) {
+    aDefinition->mType->ToString(aResult);
+  } else {
+    aResult.SetIsVoid(true);
+  }
 }
 
 already_AddRefed<Promise> CustomElementRegistry::WhenDefined(
@@ -1286,7 +1336,7 @@ void CustomElementRegistry::Upgrade(Element* aElement,
                                                            namespaceURI);
 
         LifecycleCallbackArgs args;
-        args.mName = nsDependentAtomString(attrName);
+        args.mName = attrName;
         args.mOldValue = VoidString();
         args.mNewValue = attrValue;
         args.mNamespaceURI =

@@ -10,12 +10,16 @@
 
 namespace mozilla {
 
+// MFMediaEngineDecoderModule is used for the media engine playback, which only
+// supports hardware decoding.
 class MFMediaEngineDecoderModule final : public PlatformDecoderModule {
  public:
   static void Init();
 
   static already_AddRefed<PlatformDecoderModule> Create();
 
+  // Used in the content process to query if the config is supported or not.
+  // If in the MFCDM process, should use SupportsMimeType or Supports instead.
   static bool SupportsConfig(const TrackInfo& aConfig);
 
   already_AddRefed<MediaDataDecoder> CreateVideoDecoder(

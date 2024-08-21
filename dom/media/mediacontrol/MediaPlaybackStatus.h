@@ -7,9 +7,11 @@
 
 #include "mozilla/Maybe.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/dom/MediaSession.h"
 #include "nsISupportsImpl.h"
 #include "nsTArray.h"
 #include "nsTHashMap.h"
+#include "nsID.h"
 
 namespace mozilla::dom {
 
@@ -63,10 +65,14 @@ class MediaPlaybackStatus final {
  public:
   void UpdateMediaPlaybackState(uint64_t aContextId, MediaPlaybackState aState);
   void UpdateMediaAudibleState(uint64_t aContextId, MediaAudibleState aState);
+  void UpdateGuessedPositionState(uint64_t aContextId, const nsID& aElementId,
+                                  const Maybe<PositionState>& aState);
 
   bool IsPlaying() const;
   bool IsAudible() const;
   bool IsAnyMediaBeingControlled() const;
+  Maybe<PositionState> GuessedMediaPositionState(
+      Maybe<uint64_t> aPreferredContextId) const;
 
   Maybe<uint64_t> GetAudioFocusOwnerContextId() const;
 
@@ -81,33 +87,49 @@ class MediaPlaybackStatus final {
     ~ContextMediaInfo() = default;
 
     void IncreaseControlledMediaNum() {
+#ifndef FUZZING_SNAPSHOT
       MOZ_DIAGNOSTIC_ASSERT(mControlledMediaNum < UINT_MAX);
+#endif
       mControlledMediaNum++;
     }
     void DecreaseControlledMediaNum() {
+#ifndef FUZZING_SNAPSHOT
       MOZ_DIAGNOSTIC_ASSERT(mControlledMediaNum > 0);
+#endif
       mControlledMediaNum--;
     }
     void IncreasePlayingMediaNum() {
+#ifndef FUZZING_SNAPSHOT
       MOZ_DIAGNOSTIC_ASSERT(mPlayingMediaNum < mControlledMediaNum);
+#endif
       mPlayingMediaNum++;
     }
     void DecreasePlayingMediaNum() {
+#ifndef FUZZING_SNAPSHOT
       MOZ_DIAGNOSTIC_ASSERT(mPlayingMediaNum > 0);
+#endif
       mPlayingMediaNum--;
     }
     void IncreaseAudibleMediaNum() {
+#ifndef FUZZING_SNAPSHOT
       MOZ_DIAGNOSTIC_ASSERT(mAudibleMediaNum < mPlayingMediaNum);
+#endif
       mAudibleMediaNum++;
     }
     void DecreaseAudibleMediaNum() {
+#ifndef FUZZING_SNAPSHOT
       MOZ_DIAGNOSTIC_ASSERT(mAudibleMediaNum > 0);
+#endif
       mAudibleMediaNum--;
     }
     bool IsPlaying() const { return mPlayingMediaNum > 0; }
     bool IsAudible() const { return mAudibleMediaNum > 0; }
     bool IsAnyMediaBeingControlled() const { return mControlledMediaNum > 0; }
     uint64_t Id() const { return mContextId; }
+
+    Maybe<PositionState> GuessedPositionState() const;
+    void UpdateGuessedPositionState(const nsID& aElementId,
+                                    const Maybe<PositionState>& aState);
 
    private:
     /**
@@ -118,6 +140,12 @@ class MediaPlaybackStatus final {
     uint32_t mAudibleMediaNum = 0;
     uint32_t mPlayingMediaNum = 0;
     uint64_t mContextId = 0;
+
+    /**
+     * Contains the guessed position state of all media elements in this
+     * browsing context identified by their ID.
+     */
+    nsTHashMap<nsID, PositionState> mGuessedPositionStateMap;
   };
 
   ContextMediaInfo& GetNotNullContextInfo(uint64_t aContextId);

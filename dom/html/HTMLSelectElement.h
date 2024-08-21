@@ -54,7 +54,7 @@ class MOZ_STACK_CLASS SafeOptionListMutation {
   void MutationFailed() { mNeedsRebuild = true; }
 
  private:
-  static void* operator new(size_t) noexcept(true) { return 0; }
+  static void* operator new(size_t) noexcept(true) { return nullptr; }
   static void operator delete(void*, size_t) {}
   /** The select element which option list is being mutated. */
   RefPtr<HTMLSelectElement> mSelect;
@@ -128,6 +128,9 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
 
   void GetAutocompleteInfo(AutocompleteInfo& aInfo);
 
+  // Sets the user interacted flag and fires input/change events if needed.
+  MOZ_CAN_RUN_SCRIPT void UserFinishedInteracting(bool aChanged);
+
   bool Disabled() const { return GetBoolAttr(nsGkAtoms::disabled); }
   void SetDisabled(bool aVal, ErrorResult& aRv) {
     SetHTMLBoolAttr(nsGkAtoms::disabled, aVal, aRv);
@@ -185,6 +188,8 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
   // via bindings.
   void SetCustomValidity(const nsAString& aError);
 
+  void ShowPicker(ErrorResult& aRv);
+
   using nsINode::Remove;
 
   // nsINode
@@ -192,10 +197,8 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
 
   // nsIContent
   void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
-  MOZ_CAN_RUN_SCRIPT
-  nsresult PostHandleEvent(EventChainPostVisitor& aVisitor) override;
 
-  bool IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
+  bool IsHTMLFocusable(IsFocusableFlags, bool* aIsFocusable,
                        int32_t* aTabIndex) override;
   void InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
                          bool aNotify, ErrorResult& aRv) override;
@@ -213,8 +216,6 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
   NS_IMETHOD SubmitNamesValues(FormData* aFormData) override;
 
   void FieldSetDisabledChanged(bool aNotify) override;
-
-  ElementState IntrinsicState() const override;
 
   /**
    * To be called when stuff is added under a child of the select--but *before*
@@ -269,7 +270,7 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
    * Called when an attribute is about to be changed
    */
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  void UnbindFromTree(bool aNullParent) override;
+  void UnbindFromTree(UnbindContext&) override;
   void BeforeSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                      const nsAttrValue* aValue, bool aNotify) override;
   void AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
@@ -277,7 +278,7 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
                     nsIPrincipal* aSubjectPrincipal, bool aNotify) override;
 
   void DoneAddingChildren(bool aHaveNotified) override;
-  bool IsDoneAddingChildren() override { return mIsDoneAddingChildren; }
+  bool IsDoneAddingChildren() const { return mIsDoneAddingChildren; }
 
   bool ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                       const nsAString& aValue,
@@ -300,6 +301,7 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
                                 ValidityStateType aType) override;
 
   void UpdateValueMissingValidityState();
+  void UpdateValidityElementStates(bool aNotify);
   /**
    * Insert aElement before the node given by aBefore
    */
@@ -324,6 +326,11 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
 
   void GetPreviewValue(nsAString& aValue) { aValue = mPreviewValue; }
   void SetPreviewValue(const nsAString& aValue);
+
+  void SetAutofillState(const nsAString& aState) {
+    SetFormAutofillState(aState);
+  }
+  void GetAutofillState(nsAString& aState) { GetFormAutofillState(aState); }
 
  protected:
   virtual ~HTMLSelectElement() = default;
@@ -450,7 +457,7 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
 
   void SetSelectedIndexInternal(int32_t aIndex, bool aNotify);
 
-  void SetSelectionChanged(bool aValue, bool aNotify);
+  void OnSelectionChanged();
 
   /**
    * Marks the selectedOptions list as dirty, so that it'll populate itself
@@ -458,25 +465,7 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
    */
   void UpdateSelectedOptions();
 
-  /**
-   * Return whether an element should have a validity UI.
-   * (with :-moz-ui-invalid and :-moz-ui-valid pseudo-classes).
-   *
-   * @return Whether the element should have a validity UI.
-   */
-  bool ShouldShowValidityUI() const {
-    /**
-     * Always show the validity UI if the form has already tried to be submitted
-     * but was invalid.
-     *
-     * Otherwise, show the validity UI if the selection has been changed.
-     */
-    if (mForm && mForm->HasEverTriedInvalidSubmit()) {
-      return true;
-    }
-
-    return mSelectionHasChanged;
-  }
+  void SetUserInteracted(bool) final;
 
   /** The options[] array */
   RefPtr<HTMLOptionsCollection> mOptions;
@@ -494,23 +483,10 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
    * True if DoneAddingChildren will get called but shouldn't restore state.
    */
   bool mInhibitStateRestoration : 1;
-  /**
-   * True if the selection has changed since the element's creation.
-   */
-  bool mSelectionHasChanged : 1;
-  /**
-   * True if the default selected option has been set.
-   */
+  /** https://html.spec.whatwg.org/#user-interacted */
+  bool mUserInteracted : 1;
+  /** True if the default selected option has been set. */
   bool mDefaultSelectionSet : 1;
-  /**
-   * True if :-moz-ui-invalid can be shown.
-   */
-  bool mCanShowInvalidUI : 1;
-  /**
-   * True if :-moz-ui-valid can be shown.
-   */
-  bool mCanShowValidUI : 1;
-
   /** True if we're open in the parent process */
   bool mIsOpenInParentProcess : 1;
 
@@ -540,8 +516,7 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
   nsString mPreviewValue;
 
  private:
-  static void MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
-                                    MappedDeclarations&);
+  static void MapAttributesIntoRule(MappedDeclarationsBuilder&);
 };
 
 }  // namespace dom

@@ -99,7 +99,7 @@ class AudioVerifier {
   void CountZeroCrossing(Sample aCurrentSample) {
     if (mPrevious > 0 && aCurrentSample <= 0) {
       if (mZeroCrossCount++) {
-        MOZ_ASSERT(mZeroCrossCount > 1);
+        MOZ_RELEASE_ASSERT(mZeroCrossCount > 1);
         mSumPeriodInSamples += mTotalFramesSoFar - mLastZeroCrossPosition;
       }
       mLastZeroCrossPosition = mTotalFramesSoFar;
@@ -107,8 +107,28 @@ class AudioVerifier {
   }
 
   void CountDiscontinuities(Sample aCurrentSample) {
-    mDiscontinuitiesCount += fabs(fabs(aCurrentSample) - fabs(mPrevious)) >
-                             3 * MaxMagnitudeDifference();
+    // The factor of 2 tolerates up to 1 skipped frame.
+    const bool haveDiscontinuity =
+        fabs(aCurrentSample - mPrevious) > 2 * MaxMagnitudeDifference();
+
+    if (mCurrentDiscontinuityFrameCount > 0) {
+      if (++mCurrentDiscontinuityFrameCount == 5) {
+        // Allow a grace-period of 5 samples for any given discontinuity.
+        // For instance the speex resampler can smooth out a sudden drop to 0
+        // over several samples.
+        mCurrentDiscontinuityFrameCount = 0;
+      }
+      return;
+    }
+
+    MOZ_RELEASE_ASSERT(mCurrentDiscontinuityFrameCount == 0);
+    if (!haveDiscontinuity) {
+      return;
+    }
+
+    // Encountered a new discontinuity.
+    ++mCurrentDiscontinuityFrameCount;
+    ++mDiscontinuitiesCount;
   }
 
   bool IsZero(float aValue) { return fabs(aValue) < 1e-8; }
@@ -125,6 +145,7 @@ class AudioVerifier {
   uint64_t mTotalFramesSoFar = 0;
   uint64_t mPreSilenceSamples = 0;
 
+  uint32_t mCurrentDiscontinuityFrameCount = 0;
   uint32_t mDiscontinuitiesCount = 0;
   // This is needed to connect the previous buffers.
   Sample mPrevious = {};

@@ -19,8 +19,12 @@ function checkDrawImage(vout, msg) {
   is(imgData.data[3], 255, msg);
 }
 
-function isGreaterThanOrEqualEps(a, b, msg) {
-  ok(a >= b, `Got ${a}, expected at least ${b}; ${msg}`);
+function maybeTodoGreaterThanOrEqual(a, b, msg) {
+  const isExpected = a >= b;
+  (isExpected ? ok : todo)(
+    isExpected,
+    `Got ${a}, expected at least ${b}; ${msg}`
+  );
 }
 
 async function startTest(test, token) {
@@ -54,6 +58,9 @@ async function startTest(test, token) {
   vout.srcObject = stream;
   is(vout.srcObject, stream,
     `${token} set output element .srcObject correctly`);
+
+  isnot(stream.getTracks().length, 0, `${token} results in some tracks`);
+  const hadVideoTracks = stream.getVideoTracks().length >= 1;
   // Wait for the resource fetch algorithm to have run, so that the media
   // element is hooked up to the MediaStream and ready to go. If we don't do
   // this, we're not guaranteed to render the very first video frame, which
@@ -77,14 +84,14 @@ async function startTest(test, token) {
     duration = test.contentDuration;
   }
   if (duration) {
-    isGreaterThanOrEqualEps(vout.currentTime, duration,
+    // Unexpected results are tracked in bug 1839502
+    maybeTodoGreaterThanOrEqual(vout.currentTime, duration,
       `${token} current time at end`);
   }
   is(vout.readyState, vout.HAVE_CURRENT_DATA,
     `${token} checking readyState`);
   ok(vout.ended, `${token} checking playback has ended`);
-  isnot(stream.getTracks().length, 0, `${token} results in some tracks`);
-  if (stream.getVideoTracks().length) {
+  if (hadVideoTracks) {
     ok(test.type.match(/^video/), `${token} is a video resource`);
     checkDrawImage(vout, `${token} checking video frame pixel has been drawn`);
   }
@@ -98,12 +105,15 @@ async function startTest(test, token) {
   await SpecialPowers.pushPrefEnv(
     { "set": [
       ["privacy.reduceTimerPrecision", false],
-      // This test exhibits bug 1543980 with RDD enabled.
-      ["media.rdd-process.enabled", false],
     ]});
   let tests = gPlayTests;
   // Filter out bug1377278.webm due to bug 1541401.
   tests = tests.filter(t => !t.name.includes("1377278"));
+  // bug 1372457, bug 1526207 for drawImage -- restrict to codecs that can be
+  // decoded in software.
+  if (navigator.userAgent.includes("Android")) {
+    tests = tests.filter(t => !t.name.includes("mp4"));
+  }
 
   manager.runTests(tests, async (test, token) => {
     try {

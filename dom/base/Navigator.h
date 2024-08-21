@@ -39,12 +39,13 @@ class MediaDevices;
 struct MediaStreamConstraints;
 class ArrayBufferOrArrayBufferViewOrBlobOrFormDataOrUSVStringOrURLSearchParams;
 class ServiceWorkerContainer;
-class DOMRequest;
 class CredentialsContainer;
 class Clipboard;
 class LockManager;
+class PrivateAttribution;
 class HTMLMediaElement;
 class AudioContext;
+class WakeLockJS;
 }  // namespace dom
 namespace webgpu {
 class Instance;
@@ -108,7 +109,7 @@ class Navigator final : public nsISupports, public nsWrapperCache {
 
   void GetProduct(nsAString& aProduct);
   void GetLanguage(nsAString& aLanguage);
-  void GetAppName(nsAString& aAppName, CallerType aCallerType) const;
+  void GetAppName(nsAString& aAppName) const;
   void GetAppVersion(nsAString& aAppName, CallerType aCallerType,
                      ErrorResult& aRv) const;
   void GetPlatform(nsAString& aPlatform, CallerType aCallerType,
@@ -129,12 +130,10 @@ class Navigator final : public nsISupports, public nsWrapperCache {
   bool GlobalPrivacyControl();
   Geolocation* GetGeolocation(ErrorResult& aRv);
   Promise* GetBattery(ErrorResult& aRv);
+  dom::WakeLockJS* WakeLock();
 
   bool CanShare(const ShareData& aData);
   already_AddRefed<Promise> Share(const ShareData& aData, ErrorResult& aRv);
-
-  static void AppName(nsAString& aAppName, Document* aCallerDoc,
-                      bool aUsePrefOverriddenValue);
 
   static nsresult GetPlatform(nsAString& aPlatform, Document* aCallerDoc,
                               bool aUsePrefOverriddenValue);
@@ -179,6 +178,7 @@ class Navigator final : public nsISupports, public nsWrapperCache {
 
   void GetGamepads(nsTArray<RefPtr<Gamepad>>& aGamepads, ErrorResult& aRv);
   GamepadServiceTest* RequestGamepadServiceTest(ErrorResult& aRv);
+  already_AddRefed<Promise> RequestAllGamepads(ErrorResult& aRv);
   already_AddRefed<Promise> GetVRDisplays(ErrorResult& aRv);
   void FinishGetVRDisplays(bool isWebVRSupportedInwindow, Promise* p);
   void GetActiveVRDisplays(nsTArray<RefPtr<VRDisplay>>& aDisplays) const;
@@ -210,6 +210,7 @@ class Navigator final : public nsISupports, public nsWrapperCache {
   dom::Clipboard* Clipboard();
   webgpu::Instance* Gpu();
   dom::LockManager* Locks();
+  dom::PrivateAttribution* PrivateAttribution();
 
   static bool Webdriver();
 
@@ -301,8 +302,10 @@ class Navigator final : public nsISupports, public nsWrapperCache {
   RefPtr<AddonManager> mAddonManager;
   RefPtr<webgpu::Instance> mWebGpu;
   RefPtr<Promise> mSharePromise;  // Web Share API related
-  RefPtr<dom::LockManager> mLocks;
+  RefPtr<LockManager> mLocks;
+  RefPtr<dom::PrivateAttribution> mPrivateAttribution;
   RefPtr<dom::UserActivation> mUserActivation;
+  RefPtr<dom::WakeLockJS> mWakeLock;
 };
 
 }  // namespace mozilla::dom

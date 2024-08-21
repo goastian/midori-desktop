@@ -18,6 +18,7 @@
 #include "mozilla/dom/workerinternals/JSSettings.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Mutex.h"
+#include "mozilla/StaticPtr.h"
 #include "nsClassHashtable.h"
 #include "nsHashKeys.h"
 #include "nsTArray.h"
@@ -64,12 +65,10 @@ class RuntimeService final : public nsIObserver {
                    nsTArray<WorkerPrivate*> >
       mWindowMap;
 
-  static UniquePtr<workerinternals::JSSettings> sDefaultJSSettings;
+  static StaticAutoPtr<workerinternals::JSSettings> sDefaultJSSettings;
 
  public:
   struct NavigatorProperties {
-    nsString mAppName;
-    nsString mAppNameOverridden;
     nsString mAppVersion;
     nsString mAppVersionOverridden;
     nsString mPlatform;
@@ -124,8 +123,6 @@ class RuntimeService final : public nsIObserver {
     AssertIsOnMainThread();
     sDefaultJSSettings->contextOptions = aContextOptions;
   }
-
-  void UpdateAppNameOverridePreference(const nsAString& aValue);
 
   void UpdateAppVersionOverridePreference(const nsAString& aValue);
 

@@ -10,6 +10,7 @@
 #include "mozilla/Attributes.h"
 #include "nsHTMLDocument.h"
 #include "nsGenericHTMLElement.h"
+#include "nsIStreamListener.h"
 #include "nsIStringBundle.h"
 #include "nsIThreadRetargetableStreamListener.h"
 
@@ -29,7 +30,8 @@ class MediaDocument : public nsHTMLDocument {
   // Subclasses need to override this.
   enum MediaDocumentKind MediaDocumentKind() const override = 0;
 
-  virtual nsresult Init() override;
+  virtual nsresult Init(nsIPrincipal* aPrincipal,
+                        nsIPrincipal* aPartitionedPrincipal) override;
 
   virtual nsresult StartDocumentLoad(const char* aCommand, nsIChannel* aChannel,
                                      nsILoadGroup* aLoadGroup,
@@ -94,8 +96,7 @@ class MediaDocument : public nsHTMLDocument {
   bool mDidInitialDocumentSetup;
 };
 
-class MediaDocumentStreamListener : public nsIStreamListener,
-                                    public nsIThreadRetargetableStreamListener {
+class MediaDocumentStreamListener : public nsIThreadRetargetableStreamListener {
  protected:
   virtual ~MediaDocumentStreamListener();
 

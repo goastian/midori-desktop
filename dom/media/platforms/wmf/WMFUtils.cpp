@@ -16,9 +16,7 @@
 #  include "AOMDecoder.h"
 #endif
 #include "MP4Decoder.h"
-#include "OpusDecoder.h"
 #include "VideoUtils.h"
-#include "VorbisDecoder.h"
 #include "VPXDecoder.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/CheckedInt.h"
@@ -29,7 +27,6 @@
 #include "nsWindowsHelpers.h"
 #include "prenv.h"
 #include "mozilla/mscom/EnsureMTA.h"
-#include "mozilla/WindowsVersion.h"
 
 #ifndef WAVE_FORMAT_OPUS
 #  define WAVE_FORMAT_OPUS 0x704F
@@ -47,6 +44,7 @@ bool StreamTypeIsVideo(const WMFStreamType& aType) {
     case WMFStreamType::VP8:
     case WMFStreamType::VP9:
     case WMFStreamType::AV1:
+    case WMFStreamType::HEVC:
       return true;
     default:
       return false;
@@ -76,6 +74,8 @@ const char* StreamTypeToString(WMFStreamType aStreamType) {
       return "VP9";
     case WMFStreamType::AV1:
       return "AV1";
+    case WMFStreamType::HEVC:
+      return "HEVC";
     case WMFStreamType::MP3:
       return "MP3";
     case WMFStreamType::AAC:
@@ -105,6 +105,9 @@ WMFStreamType GetStreamTypeFromMimeType(const nsCString& aMimeType) {
     return WMFStreamType::AV1;
   }
 #endif
+  if (MP4Decoder::IsHEVC(aMimeType)) {
+    return WMFStreamType::HEVC;
+  }
   if (aMimeType.EqualsLiteral("audio/mp4a-latm") ||
       aMimeType.EqualsLiteral("audio/mp4")) {
     return WMFStreamType::AAC;
@@ -112,10 +115,10 @@ WMFStreamType GetStreamTypeFromMimeType(const nsCString& aMimeType) {
   if (aMimeType.EqualsLiteral("audio/mpeg")) {
     return WMFStreamType::MP3;
   }
-  if (OpusDataDecoder::IsOpus(aMimeType)) {
+  if (aMimeType.EqualsLiteral("audio/opus")) {
     return WMFStreamType::OPUS;
   }
-  if (VorbisDataDecoder::IsVorbis(aMimeType)) {
+  if (aMimeType.EqualsLiteral("audio/vorbis")) {
     return WMFStreamType::VORBIS;
   }
   return WMFStreamType::Unknown;
@@ -174,7 +177,8 @@ Maybe<gfx::YUVColorSpace> GetYUVColorSpace(IMFMediaType* aType) {
 }
 
 int32_t MFOffsetToInt32(const MFOffset& aOffset) {
-  return int32_t(aOffset.value + (aOffset.fract / 65536.0f));
+  return AssertedCast<int32_t>(AssertedCast<float>(aOffset.value) +
+                               (AssertedCast<float>(aOffset.fract) / 65536.0f));
 }
 
 TimeUnit GetSampleDuration(IMFSample* aSample) {
@@ -201,7 +205,7 @@ GetPictureRegion(IMFMediaType* aMediaType, gfx::IntRect& aOutPictureRegion) {
   // Determine if "pan and scan" is enabled for this media. If it is, we
   // only display a region of the video frame, not the entire frame.
   BOOL panScan =
-      MFGetAttributeUINT32(aMediaType, MF_MT_PAN_SCAN_ENABLED, FALSE);
+      !!MFGetAttributeUINT32(aMediaType, MF_MT_PAN_SCAN_ENABLED, FALSE);
 
   // If pan and scan mode is enabled. Try to get the display region.
   HRESULT hr = E_FAIL;
@@ -297,11 +301,14 @@ const char* MFTMessageTypeToStr(MFT_MESSAGE_TYPE aMsg) {
 GUID AudioMimeTypeToMediaFoundationSubtype(const nsACString& aMimeType) {
   if (aMimeType.EqualsLiteral("audio/mpeg")) {
     return MFAudioFormat_MP3;
-  } else if (MP4Decoder::IsAAC(aMimeType)) {
+  }
+  if (MP4Decoder::IsAAC(aMimeType)) {
     return MFAudioFormat_AAC;
-  } else if (VorbisDataDecoder::IsVorbis(aMimeType)) {
+  }
+  if (aMimeType.EqualsLiteral("audio/vorbis")) {
     return MFAudioFormat_Vorbis;
-  } else if (OpusDataDecoder::IsOpus(aMimeType)) {
+  }
+  if (aMimeType.EqualsLiteral("audio/opus")) {
     return MFAudioFormat_Opus;
   }
   NS_WARNING("Unsupport audio mimetype");
@@ -311,17 +318,24 @@ GUID AudioMimeTypeToMediaFoundationSubtype(const nsACString& aMimeType) {
 GUID VideoMimeTypeToMediaFoundationSubtype(const nsACString& aMimeType) {
   if (MP4Decoder::IsH264(aMimeType)) {
     return MFVideoFormat_H264;
-  } else if (VPXDecoder::IsVP8(aMimeType)) {
+  }
+  if (VPXDecoder::IsVP8(aMimeType)) {
     return MFVideoFormat_VP80;
-  } else if (VPXDecoder::IsVP9(aMimeType)) {
+  }
+  if (VPXDecoder::IsVP9(aMimeType)) {
     return MFVideoFormat_VP90;
   }
 #ifdef MOZ_AV1
-  else if (AOMDecoder::IsAV1(aMimeType)) {
+  if (AOMDecoder::IsAV1(aMimeType)) {
     return MFVideoFormat_AV1;
   }
 #endif
-  NS_WARNING("Unsupport video mimetype");
+  if (MP4Decoder::IsHEVC(aMimeType)) {
+    return MFVideoFormat_HEVC;
+  }
+  NS_WARNING(nsAutoCString(nsDependentCString("Unsupported video mimetype ") +
+                           aMimeType)
+                 .get());
   return GUID_NULL;
 }
 
@@ -362,7 +376,9 @@ void AACAudioSpecificConfigToUserData(uint8_t aAACProfileLevelIndication,
   // the rest can be all 0x00.
   BYTE heeInfo[heeInfoLen] = {0};
   WORD* w = (WORD*)heeInfo;
-  w[0] = 0x0;  // Payload type raw AAC packet
+  // If extradata has been provided, assume raw AAC packets (0). Otherwise,
+  // assume ADTS (1)
+  w[0] = aConfigLength ? 0 : 1;
   w[1] = aAACProfileLevelIndication;
 
   aOutUserData.AppendElements(heeInfo, heeInfoLen);
@@ -371,10 +387,10 @@ void AACAudioSpecificConfigToUserData(uint8_t aAACProfileLevelIndication,
     // The AudioSpecificConfig is TTTTTFFF|FCCCCGGG
     // (T=ObjectType, F=Frequency, C=Channel, G=GASpecificConfig)
     // If frequency = 0xf, then the frequency is explicitly defined on 24 bits.
-    int8_t frequency =
+    uint8_t frequency =
         (aAudioSpecConfig[0] & 0x7) << 1 | (aAudioSpecConfig[1] & 0x80) >> 7;
-    int8_t channels = (aAudioSpecConfig[1] & 0x78) >> 3;
-    int8_t gasc = aAudioSpecConfig[1] & 0x7;
+    uint8_t channels = (aAudioSpecConfig[1] & 0x78) >> 3;
+    uint8_t gasc = aAudioSpecConfig[1] & 0x7;
     if (frequency != 0xf && channels && !gasc) {
       // We enter this condition if the AudioSpecificConfig should theorically
       // be 2 bytes long but it's not.
@@ -449,16 +465,6 @@ LoadDLLs() {
 
 HRESULT
 MediaFoundationInitializer::MFStartup() {
-  if (IsWin7AndPre2000Compatible()) {
-    /*
-     * Specific exclude the usage of WMF on Win 7 with compatibility mode
-     * prior to Win 2000 as we may crash while trying to startup WMF.
-     * Using GetVersionEx API which takes compatibility mode into account.
-     * See Bug 1279171.
-     */
-    return E_FAIL;
-  }
-
   HRESULT hr = LoadDLLs();
   if (FAILED(hr)) {
     return hr;

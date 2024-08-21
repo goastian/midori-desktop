@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 #include "nsISupports.idl"
 
 interface nsISimpleEnumerator;
@@ -6,9 +10,9 @@ interface nsIWorkerDebugger;
 [scriptable, uuid(d2aa74ee-6b98-4d5d-8173-4e23422daf1e)]
 interface nsIWorkerDebuggerManagerListener : nsISupports
 {
-  void onRegister(in nsIWorkerDebugger debugger);
+  void onRegister(in nsIWorkerDebugger aDebugger);
 
-  void onUnregister(in nsIWorkerDebugger debugger);
+  void onUnregister(in nsIWorkerDebugger aDebugger);
 };
 
 [scriptable, builtinclass, uuid(056d7918-dc86-452a-b4e6-86da3405f015)]

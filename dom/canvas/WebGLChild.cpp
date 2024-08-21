@@ -15,7 +15,17 @@ WebGLChild::WebGLChild(ClientWebGLContext& context)
     : mContext(&context),
       mDefaultCmdsShmemSize(StaticPrefs::webgl_out_of_process_shmem_size()) {}
 
-WebGLChild::~WebGLChild() { (void)Send__delete__(this); }
+WebGLChild::~WebGLChild() { Destroy(); }
+
+void WebGLChild::Destroy() {
+  if (!CanSend()) {
+    return;
+  }
+  if (mContext) {
+    mContext->OnDestroyChild(this);
+  }
+  (void)Send__delete__(this);
+}
 
 void WebGLChild::ActorDestroy(ActorDestroyReason why) {
   mPendingCmdsShmem = {};
@@ -75,6 +85,52 @@ void WebGLChild::FlushPendingCmds() {
   mFlushedCmdInfo.flushedCmdBytes += byteSize;
   mFlushedCmdInfo.overhead += mPendingCmdsAlignmentOverhead;
 
+  // Handle flushesSinceLastCongestionCheck
+  mFlushedCmdInfo.flushesSinceLastCongestionCheck += 1;
+  constexpr auto START_CONGESTION_CHECK_THRESHOLD = 20;
+  constexpr auto ASSUME_IPC_CONGESTION_THRESHOLD = 70;
+  RefPtr<WebGLChild> self = this;
+  size_t generation = self->mFlushedCmdInfo.congestionCheckGeneration;
+
+  // When ClientWebGLContext uses async remote texture, sync GetFrontBuffer
+  // message is not sent in ClientWebGLContext::GetFrontBuffer(). It causes a
+  // case that a lot of async DispatchCommands messages are sent to
+  // WebGLParent without calling ClientWebGLContext::GetFrontBuffer(). The
+  // sending DispatchCommands messages could be faster than receiving message
+  // at WebGLParent by WebGLParent::RecvDispatchCommands(). If it happens,
+  // pending IPC messages could grow too much until out of resource. To detect
+  // the messages congestion, async Ping message is used. If the Ping response
+  // is not received until maybeIPCMessageCongestion, IPC message might be
+  // congested at WebGLParent. Then sending sync SyncPing flushes all pending
+  // messages.
+  // Due to the async nature of the async ping, it is possible for the flush
+  // check to exceed maybeIPCMessageCongestion, but that it it still bounded.
+  if (mFlushedCmdInfo.flushesSinceLastCongestionCheck ==
+      START_CONGESTION_CHECK_THRESHOLD) {
+    const auto eventTarget = RefPtr{GetCurrentSerialEventTarget()};
+    MOZ_ASSERT(eventTarget);
+    if (!eventTarget) {
+      NS_WARNING("GetCurrentSerialEventTarget()->nullptr in FlushPendingCmds.");
+    } else {
+      SendPing()->Then(eventTarget, __func__, [self, generation]() {
+        if (generation == self->mFlushedCmdInfo.congestionCheckGeneration) {
+          // Confirmed IPC messages congestion does not happen.
+          // Reset flushesSinceLastCongestionCheck for next congestion check.
+          self->mFlushedCmdInfo.flushesSinceLastCongestionCheck = 0;
+          self->mFlushedCmdInfo.congestionCheckGeneration++;
+        }
+      });
+    }
+  } else if (mFlushedCmdInfo.flushesSinceLastCongestionCheck >
+             ASSUME_IPC_CONGESTION_THRESHOLD) {
+    // IPC messages congestion might happen, send sync SyncPing for flushing
+    // pending messages.
+    SendSyncPing();
+    // Reset flushesSinceLastCongestionCheck for next congestion check.
+    mFlushedCmdInfo.flushesSinceLastCongestionCheck = 0;
+    mFlushedCmdInfo.congestionCheckGeneration++;
+  }
+
   if (gl::GLContext::ShouldSpew()) {
     const auto overheadRatio = float(mPendingCmdsAlignmentOverhead) /
                                (byteSize - mPendingCmdsAlignmentOverhead);
@@ -103,6 +159,13 @@ mozilla::ipc::IPCResult WebGLChild::RecvOnContextLoss(
     const webgl::ContextLossReason reason) const {
   if (!mContext) return IPC_OK();
   mContext->OnContextLoss(reason);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult WebGLChild::RecvOnSyncComplete(
+    const webgl::ObjectId id) const {
+  if (!mContext) return IPC_OK();
+  mContext->OnSyncComplete(id);
   return IPC_OK();
 }
 

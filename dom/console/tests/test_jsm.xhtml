@@ -28,7 +28,7 @@ function promiseConsoleListenerCalled() {
     let consoleListener = {
       count: 0,
 
-      observe: function(aSubject) {
+      observe(aSubject) {
         var obj = aSubject.wrappedJSObject;
         ok(obj.chromeContext, "MJS is always a chrome context");
 
@@ -83,6 +83,9 @@ async function test() {
   await SpecialPowers.pushPrefEnv({set: [["pref.test.console", "log"]]})
   ConsoleTest.go(dumpFunction);
 
+  // ConsoleTest.go() has already tested the console without this preference.
+  // This test checks that the addition of the preference is tracked and
+  // correctly applied.
   await SpecialPowers.pushPrefEnv({
     set: [["pref.test.console.notset", "Log"]],
   });

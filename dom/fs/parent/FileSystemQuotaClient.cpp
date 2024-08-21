@@ -6,14 +6,10 @@
 
 #include "FileSystemQuotaClient.h"
 
-#include "ResultStatement.h"
 #include "datamodel/FileSystemDatabaseManager.h"
 #include "datamodel/FileSystemFileManager.h"
-#include "mozIStorageService.h"
-#include "mozStorageCID.h"
 #include "mozilla/dom/FileSystemDataManager.h"
 #include "mozilla/dom/quota/Assertions.h"
-#include "mozilla/dom/quota/Client.h"
 #include "mozilla/dom/quota/QuotaCommon.h"
 #include "mozilla/dom/quota/QuotaManager.h"
 #include "mozilla/dom/quota/ResultExtensions.h"
@@ -27,89 +23,17 @@ namespace {
 
 auto toNSResult = [](const auto& aRv) { return ToNSResult(aRv); };
 
-class QuotaClient final : public mozilla::dom::quota::Client {
- public:
-  QuotaClient();
-
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(mozilla::dom::fs::QuotaClient, override)
-
-  Type GetType() override;
-
-  Result<quota::UsageInfo, nsresult> InitOrigin(
-      quota::PersistenceType aPersistenceType,
-      const quota::OriginMetadata& aOriginMetadata,
-      const AtomicBool& aCanceled) override;
-
-  nsresult InitOriginWithoutTracking(
-      quota::PersistenceType aPersistenceType,
-      const quota::OriginMetadata& aOriginMetadata,
-      const AtomicBool& aCanceled) override;
-
-  Result<quota::UsageInfo, nsresult> GetUsageForOrigin(
-      quota::PersistenceType aPersistenceType,
-      const quota::OriginMetadata& aOriginMetadata,
-      const AtomicBool& aCanceled) override;
-
-  void OnOriginClearCompleted(quota::PersistenceType aPersistenceType,
-                              const nsACString& aOrigin) override;
-
-  void OnRepositoryClearCompleted(
-      quota::PersistenceType aPersistenceType) override;
-
-  void ReleaseIOThreadObjects() override;
-
-  void AbortOperationsForLocks(
-      const DirectoryLockIdTable& aDirectoryLockIds) override;
-
-  void AbortOperationsForProcess(ContentParentId aContentParentId) override;
-
-  void AbortAllOperations() override;
-
-  void StartIdleMaintenance() override;
-
-  void StopIdleMaintenance() override;
-
- private:
-  ~QuotaClient() = default;
-
-  void InitiateShutdown() override;
-  bool IsShutdownCompleted() const override;
-  nsCString GetShutdownStatus() const override;
-  void ForceKillActors() override;
-  void FinalizeShutdown() override;
-};
-
-Result<ResultConnection, QMResult> GetStorageConnection(
-    const quota::OriginMetadata& aOriginMetadata) {
-  QM_TRY_INSPECT(const nsCOMPtr<nsIFile>& databaseFile,
-                 data::GetDatabaseFile(aOriginMetadata));
-
-  QM_TRY_INSPECT(
-      const auto& storageService,
-      QM_TO_RESULT_TRANSFORM(MOZ_TO_RESULT_GET_TYPED(
-          nsCOMPtr<mozIStorageService>, MOZ_SELECT_OVERLOAD(do_GetService),
-          MOZ_STORAGE_SERVICE_CONTRACTID)));
-
-  QM_TRY_UNWRAP(
-      auto connection,
-      QM_TO_RESULT_TRANSFORM(MOZ_TO_RESULT_INVOKE_MEMBER_TYPED(
-          nsCOMPtr<mozIStorageConnection>, storageService, OpenDatabase,
-          databaseFile, mozIStorageService::CONNECTION_DEFAULT)));
-
-  ResultConnection result(connection);
-
-  return result;
-}
-
 }  // namespace
 
-QuotaClient::QuotaClient() { ::mozilla::ipc::AssertIsOnBackgroundThread(); }
+FileSystemQuotaClient::FileSystemQuotaClient() {
+  ::mozilla::ipc::AssertIsOnBackgroundThread();
+}
 
-mozilla::dom::quota::Client::Type QuotaClient::GetType() {
+quota::Client::Type FileSystemQuotaClient::GetType() {
   return quota::Client::Type::FILESYSTEM;
 }
 
-Result<quota::UsageInfo, nsresult> QuotaClient::InitOrigin(
+Result<quota::UsageInfo, nsresult> FileSystemQuotaClient::InitOrigin(
     quota::PersistenceType aPersistenceType,
     const quota::OriginMetadata& aOriginMetadata, const AtomicBool& aCanceled) {
   quota::AssertIsOnIOThread();
@@ -126,8 +50,10 @@ Result<quota::UsageInfo, nsresult> QuotaClient::InitOrigin(
     }
   }
 
-  QM_TRY_INSPECT(const ResultConnection& conn,
-                 GetStorageConnection(aOriginMetadata).mapErr(toNSResult));
+  QM_TRY_INSPECT(
+      const ResultConnection& conn,
+      data::GetStorageConnection(aOriginMetadata, /* aDirectoryLockId */ -1)
+          .mapErr(toNSResult));
 
   QM_TRY(MOZ_TO_RESULT(
       data::FileSystemDatabaseManager::RescanUsages(conn, aOriginMetadata)));
@@ -136,7 +62,7 @@ Result<quota::UsageInfo, nsresult> QuotaClient::InitOrigin(
       .mapErr(toNSResult);
 }
 
-nsresult QuotaClient::InitOriginWithoutTracking(
+nsresult FileSystemQuotaClient::InitOriginWithoutTracking(
     quota::PersistenceType /* aPersistenceType */,
     const quota::OriginMetadata& /* aOriginMetadata */,
     const AtomicBool& /* aCanceled */) {
@@ -152,7 +78,7 @@ nsresult QuotaClient::InitOriginWithoutTracking(
   return NS_OK;
 }
 
-Result<quota::UsageInfo, nsresult> QuotaClient::GetUsageForOrigin(
+Result<quota::UsageInfo, nsresult> FileSystemQuotaClient::GetUsageForOrigin(
     quota::PersistenceType aPersistenceType,
     const quota::OriginMetadata& aOriginMetadata,
     const AtomicBool& /* aCanceled */) {
@@ -170,76 +96,72 @@ Result<quota::UsageInfo, nsresult> QuotaClient::GetUsageForOrigin(
                                          quota::Client::FILESYSTEM);
 }
 
-void QuotaClient::OnOriginClearCompleted(
+void FileSystemQuotaClient::OnOriginClearCompleted(
     quota::PersistenceType aPersistenceType, const nsACString& aOrigin) {
   quota::AssertIsOnIOThread();
 }
 
-void QuotaClient::OnRepositoryClearCompleted(
+void FileSystemQuotaClient::OnRepositoryClearCompleted(
     quota::PersistenceType aPersistenceType) {
   quota::AssertIsOnIOThread();
 }
 
-void QuotaClient::ReleaseIOThreadObjects() { quota::AssertIsOnIOThread(); }
+void FileSystemQuotaClient::ReleaseIOThreadObjects() {
+  quota::AssertIsOnIOThread();
+}
 
-void QuotaClient::AbortOperationsForLocks(
+void FileSystemQuotaClient::AbortOperationsForLocks(
     const DirectoryLockIdTable& aDirectoryLockIds) {
   ::mozilla::ipc::AssertIsOnBackgroundThread();
 
   data::FileSystemDataManager::AbortOperationsForLocks(aDirectoryLockIds);
 }
 
-void QuotaClient::AbortOperationsForProcess(ContentParentId aContentParentId) {
+void FileSystemQuotaClient::AbortOperationsForProcess(
+    ContentParentId aContentParentId) {
   ::mozilla::ipc::AssertIsOnBackgroundThread();
 }
 
-void QuotaClient::AbortAllOperations() {
+void FileSystemQuotaClient::AbortAllOperations() {
   ::mozilla::ipc::AssertIsOnBackgroundThread();
 }
 
-void QuotaClient::StartIdleMaintenance() {
+void FileSystemQuotaClient::StartIdleMaintenance() {
   ::mozilla::ipc::AssertIsOnBackgroundThread();
 }
 
-void QuotaClient::StopIdleMaintenance() {
+void FileSystemQuotaClient::StopIdleMaintenance() {
   ::mozilla::ipc::AssertIsOnBackgroundThread();
 }
 
-void QuotaClient::InitiateShutdown() {
+void FileSystemQuotaClient::InitiateShutdown() {
   ::mozilla::ipc::AssertIsOnBackgroundThread();
 
   data::FileSystemDataManager::InitiateShutdown();
 }
 
-bool QuotaClient::IsShutdownCompleted() const {
-  ::mozilla::ipc::AssertIsOnBackgroundThread();
-
-  return data::FileSystemDataManager::IsShutdownCompleted();
-}
-
-nsCString QuotaClient::GetShutdownStatus() const {
+nsCString FileSystemQuotaClient::GetShutdownStatus() const {
   ::mozilla::ipc::AssertIsOnBackgroundThread();
 
   return "Not implemented"_ns;
 }
 
-void QuotaClient::ForceKillActors() {
+bool FileSystemQuotaClient::IsShutdownCompleted() const {
+  ::mozilla::ipc::AssertIsOnBackgroundThread();
+
+  return data::FileSystemDataManager::IsShutdownCompleted();
+}
+
+void FileSystemQuotaClient::ForceKillActors() {
   ::mozilla::ipc::AssertIsOnBackgroundThread();
 
   // Hopefully not needed.
 }
 
-void QuotaClient::FinalizeShutdown() {
+void FileSystemQuotaClient::FinalizeShutdown() {
   ::mozilla::ipc::AssertIsOnBackgroundThread();
 
   // Empty for now.
-}
-
-already_AddRefed<mozilla::dom::quota::Client> CreateQuotaClient() {
-  ::mozilla::ipc::AssertIsOnBackgroundThread();
-
-  RefPtr<QuotaClient> client = new fs::QuotaClient();
-  return client.forget();
 }
 
 }  // namespace mozilla::dom::fs

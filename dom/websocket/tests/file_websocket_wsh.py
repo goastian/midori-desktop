@@ -50,7 +50,10 @@ def web_socket_passive_closing_handshake(request):
 
 
 def web_socket_transfer_data(request):
-    if request.ws_protocol == "test-2.1" or request.ws_protocol == "test-2.2":
+    if request.ws_protocol == "test-1" or request.ws_protocol == "test-4":
+        msgutil.send_message(request, "server data")
+        msgutil.close_connection(request)
+    elif request.ws_protocol == "test-2.1" or request.ws_protocol == "test-2.2":
         msgutil.close_connection(request)
     elif request.ws_protocol == "test-6":
         resp = "wrong message"
@@ -81,7 +84,7 @@ def web_socket_transfer_data(request):
         msgutil.send_message(request, six.ensure_text(resp))
     elif request.ws_protocol == "test-12":
         msg = msgutil.receive_message(request)
-        if msg == u"a\ufffdb":
+        if msg == "a\ufffdb":
             # converted unpaired surrogate in UTF-16 to UTF-8 OK
             msgutil.send_message(request, "SUCCESS")
         else:

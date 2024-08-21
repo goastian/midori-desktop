@@ -1,5 +1,9 @@
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
+const { NetUtil } = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
+);
 
 const TEST_PATH = "/https_only_https_first_port";
 var httpserver = null;
@@ -37,13 +41,13 @@ const TESTS = [
 function ChannelListener() {}
 
 ChannelListener.prototype = {
-  onStartRequest(request) {
+  onStartRequest() {
     // dummy implementation
   },
-  onDataAvailable(request, stream, offset, count) {
+  onDataAvailable() {
     do_throw("Should not get any data!");
   },
-  onStopRequest(request, status) {
+  onStopRequest(request) {
     var chan = request.QueryInterface(Ci.nsIChannel);
     let requestURL = chan.URI;
     Assert.equal(
@@ -75,7 +79,7 @@ function setUpChannel() {
   return chan;
 }
 
-function serverHandler(metadata, response) {
+function serverHandler() {
   // dummy implementation
 }
 
