@@ -9,19 +9,17 @@ TEST_DIRS += [
 ]
 
 DIRS += [
+    "bidi",
+    "build",
     "components",
     "hyphenation/glue",
+    "l10n",
     "locale",
     "locales",
     "lwbrk",
     "strres",
-    "unicharutil",
-    "l10n",
-]
-
-DIRS += [
     "uconv",
-    "build",
+    "unicharutil",
 ]
 
 EXPORTS.mozilla += [
@@ -36,8 +34,8 @@ EXPORTS += [
 ]
 
 
-PERFTESTS_MANIFESTS += ["benchmarks/perftest.ini"]
-XPCSHELL_TESTS_MANIFESTS += ["benchmarks/xpcshell.ini"]
+PERFTESTS_MANIFESTS += ["benchmarks/perftest.toml"]
+XPCSHELL_TESTS_MANIFESTS += ["benchmarks/xpcshell.toml"]
 
 with Files("**"):
     BUG_COMPONENT = ("Core", "Internationalization")

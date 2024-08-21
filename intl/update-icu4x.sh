@@ -6,16 +6,21 @@
 set -e
 
 # Update the icu4x binary data for a given release:
-#   Usage: update-icu4x.sh <URL of ICU GIT> <release tag name>
-#   update-icu4x.sh https://github.com/unicode-org/icu4x.git icu@0.3.0
+#   Usage: update-icu4x.sh <URL of ICU GIT> <release tag name> <CLDR version> <ICU release tag name> <ICU4X version of icu_capi>
+#   update-icu4x.sh https://github.com/unicode-org/icu4x.git icu@1.4.0 44.0.0 release-74-1 1.4.0
 #
 # Update to the main branch:
-#   Usage: update-icu4x.sh <URL of ICU GIT> <branch>
-#   update-icu4x.sh https://github.com/unicode-org/icu4x.git main
+#   Usage: update-icu4x.sh <URL of ICU GIT> <branch> <CLDR version> <ICU release tag name> <ICU4X version of icu_capi>
+#   update-icu4x.sh https://github.com/unicode-org/icu4x.git main 44.0.0 release-74-1 1.4.0
+
+# default
+cldr=${3:-44.0.0}
+icuexport=${4:-release-74-1}
+icu4x_version=${5:-1.4.0}
 
 if [ $# -lt 2 ]; then
-  echo "Usage: update-icu4x.sh <URL of ICU4X GIT> <release tag name> <CLDR version>"
-  echo "Example: update-icu4x.sh https://github.com/unicode-org/icu4x.git icu@0.3.0 39.0.0"
+  echo "Usage: update-icu4x.sh <URL of ICU4X GIT> <ICU4X release tag name> <CLDR version> <ICU release tag name> <ICU4X version for icu_capi>"
+  echo "Example: update-icu4x.sh https://github.com/unicode-org/icu4x.git icu@1.4.0 44.0.0 release-74-1 1.4.0"
   exit 1
 fi
 
@@ -35,12 +40,28 @@ export LC_ALL=en_US.UTF-8
 # Define all of the paths.
 original_pwd=$(pwd)
 top_src_dir=$(cd -- "$(dirname "$0")/.." >/dev/null 2>&1 ; pwd -P)
-data_dir=${top_src_dir}/config/external/icu4x
-data_file=${data_dir}/icu4x.postcard
-git_info_file=${data_dir}/ICU4X-GIT-INFO
+segmenter_data_dir=${top_src_dir}/intl/icu_segmenter_data/data
+git_info_file=${segmenter_data_dir}/ICU4X-GIT-INFO
 
 log "Remove the old data"
-rm -f ${data_file}
+rm -rf ${segmenter_data_dir}
+
+log "Download icuexportdata"
+tmpicuexportdir=$(mktemp -d)
+icuexport_filename=`echo "icuexportdata_${icuexport}.zip" | sed "s/\//-/g"`
+cd ${tmpicuexportdir}
+wget https://github.com/unicode-org/icu/releases/download/${icuexport}/${icuexport_filename}
+
+log "Patching icuexportdata to reduce data size"
+unzip ${icuexport_filename}
+for toml in          \
+    burmesedict.toml \
+    khmerdict.toml   \
+    laodict.toml     \
+    thaidict.toml    \
+; do
+    cp ${top_src_dir}/intl/icu4x-patches/empty.toml ${tmpicuexportdir}/segmenter/dictionary/$toml
+done
 
 log "Clone ICU4X"
 tmpclonedir=$(mktemp -d)
@@ -50,25 +71,55 @@ log "Change the directory to the cloned repo"
 log ${tmpclonedir}
 cd ${tmpclonedir}
 
-log "Run the icu4x-datagen tool to regenerate the data."
-log "Saving the data to: ${data_file}"
+log "Patching line segmenter data to fix https://github.com/unicode-org/icu4x/pull/4389"
+# This manually patch can be removed once we upgrade to ICU4X 1.5
+wget --unlink -q -O ${tmpclonedir}/provider/datagen/data/segmenter/line.toml https://raw.githubusercontent.com/unicode-org/icu4x/e080ecd12e38d6aecc99cd0cfe8c21595c4ce6ff/provider/datagen/data/segmenter/line.toml
+
+log "Copy icu_capi crate to local since we need a patched version"
+rm -rf ${top_src_dir}/intl/icu_capi
+wget -O icu_capi.tar.gz https://crates.io/api/v1/crates/icu_capi/${icu4x_version}/download
+tar xf icu_capi.tar.gz -C ${top_src_dir}/intl
+mv ${top_src_dir}/intl/icu_capi-${icu4x_version} ${top_src_dir}/intl/icu_capi
+rm -rf icu_capi_tar.gz
+
+log "Patching icu_capi"
+for patch in \
+    001-Cargo.toml.patch \
+    002-GH4109.patch \
+    003-explicit.patch \
+    004-dead-code.patch \
+; do
+    patch -d ${top_src_dir} -p1 --no-backup-if-mismatch < ${top_src_dir}/intl/icu4x-patches/$patch
+done
+
+# ICU4X 1.3 or later with icu_capi uses each compiled_data crate.
+
+log "Run the icu4x-datagen tool to regenerate the segmenter data."
+log "Saving the data into: ${segmenter_data_dir}"
 
 # TODO(Bug 1741262) - Should locales be filtered as well? It doesn't appear that the existing ICU
 # data builder is using any locale filtering.
 
-# TODO(Bug 1741264) - Keys are not supported yet: https://github.com/unicode-org/icu4x/issues/192
 # --keys <KEYS>...
 #     Include this resource key in the output. Accepts multiple arguments.
 # --key-file <KEY_FILE>
 #     Path to text file with resource keys to include, one per line. Empty lines and
 #     lines starting with '#' are ignored.
-cargo run --bin icu4x-datagen -- \
-  --cldr-tag $3                  \
-  --all-keys                     \
-  --all-locales                  \
-  --format blob                  \
-  --out ${data_file}             \
-  -v                             \
+cargo run --bin icu4x-datagen          \
+  --features=bin                       \
+  --                                   \
+  --cldr-tag ${cldr}                   \
+  --icuexport-root ${tmpicuexportdir}  \
+  --keys segmenter/dictionary/w_auto@1 \
+  --keys segmenter/dictionary/wl_ext@1 \
+  --keys segmenter/grapheme@1          \
+  --keys segmenter/line@1              \
+  --keys segmenter/lstm/wl_auto@1      \
+  --keys segmenter/sentence@1          \
+  --keys segmenter/word@1              \
+  --all-locales                        \
+  --format mod                         \
+  --out ${segmenter_data_dir}          \
 
 log "Record the current cloned git information to:"
 log ${git_info_file}
@@ -80,3 +131,4 @@ git -C ${tmpclonedir} log -1 > ${git_info_file}
 log "Clean up the tmp directory"
 cd ${original_pwd}
 rm -rf ${tmpclonedir}
+rm -rf ${tmpicuexportdir}

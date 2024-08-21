@@ -4,6 +4,7 @@
 #ifndef intl_components_IDNA_h_
 #define intl_components_IDNA_h_
 
+#include "mozilla/Try.h"
 #include "mozilla/intl/ICU4CGlue.h"
 
 #include "unicode/uidna.h"
@@ -90,6 +91,13 @@ class IDNA final {
                               UIDNA_ERROR_TRAILING_HYPHEN |
                               UIDNA_ERROR_HYPHEN_3_4;
       return (mErrorCode & hyphenErrors) != 0;
+    }
+
+    bool HasErrorsIgnoringInvalidHyphen() const {
+      uint32_t hyphenErrors = UIDNA_ERROR_LEADING_HYPHEN |
+                              UIDNA_ERROR_TRAILING_HYPHEN |
+                              UIDNA_ERROR_HYPHEN_3_4;
+      return (mErrorCode & ~hyphenErrors) != 0;
     }
 
    private:

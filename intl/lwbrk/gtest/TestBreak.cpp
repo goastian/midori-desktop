@@ -9,6 +9,7 @@
 #include "gtest/gtest.h"
 #include "mozilla/intl/LineBreaker.h"
 #include "mozilla/intl/WordBreaker.h"
+#include "mozilla/Preferences.h"
 #include "mozilla/Span.h"
 #include "nsISupports.h"
 #include "nsServiceManagerUtils.h"
@@ -240,8 +241,7 @@ void TestFindWordBreakFromPosition(uint32_t fragN, uint32_t offset,
 
   NS_ConvertASCIItoUTF16 fragText(wb[fragN]);
 
-  mozilla::intl::WordRange res =
-      WordBreaker::FindWord(fragText.get(), fragText.Length(), offset);
+  mozilla::intl::WordRange res = WordBreaker::FindWord(fragText, offset);
 
   nsAutoString result(Substring(fragText, res.mBegin, res.mEnd - res.mBegin));
 
@@ -264,8 +264,7 @@ void TestFindWordBreakFromPosition(uint32_t fragN, uint32_t offset,
       if (canBreak) {
         break;
       }
-      mozilla::intl::WordRange r =
-          WordBreaker::FindWord(nextFragText.get(), nextFragText.Length(), 0);
+      mozilla::intl::WordRange r = WordBreaker::FindWord(nextFragText, 0);
 
       result.Append(Substring(nextFragText, r.mBegin, r.mEnd - r.mBegin));
 
@@ -295,9 +294,8 @@ TEST(WordBreak, TestNextWordBreakWithComplexLanguage)
 
 TEST(WordBreak, TestFindWordWithEmptyString)
 {
-  char16_t empty[] = {};
   mozilla::intl::WordRange expect{0, 0};
-  mozilla::intl::WordRange result = WordBreaker::FindWord(empty, 0, 0);
+  mozilla::intl::WordRange result = WordBreaker::FindWord(EmptyString(), 0);
   ASSERT_EQ(expect.mBegin, result.mBegin);
   ASSERT_EQ(expect.mEnd, result.mEnd);
 }
@@ -324,4 +322,55 @@ TEST(WordBreak, TestFindWordBreakFromPosition)
   TestFindWordBreakFromPosition(6, 8, "ernationalization");
   TestFindWordBreakFromPosition(7, 6, " ");
   TestFindWordBreakFromPosition(7, 7, "work");
+}
+
+// Test for StopAtPunctuation option.
+TEST(WordBreak, TestFindBreakWithStopAtPunctuation)
+{
+  bool original =
+      mozilla::Preferences::GetBool("intl.icu4x.segmenter.enabled", true);
+
+  // Not UAX#29 rule
+  mozilla::Preferences::SetBool("intl.icu4x.segmenter.enabled", false);
+
+  nsString fragText(u"one.two");
+
+  mozilla::intl::WordRange result1 = WordBreaker::FindWord(fragText, 0);
+  ASSERT_EQ(0u, result1.mBegin);
+  ASSERT_EQ(3u, result1.mEnd);
+  mozilla::intl::WordRange result2 = WordBreaker::FindWord(fragText, 3);
+  ASSERT_EQ(3u, result2.mBegin);
+  ASSERT_EQ(4u, result2.mEnd);
+  mozilla::intl::WordRange result3 = WordBreaker::FindWord(fragText, 4);
+  ASSERT_EQ(4u, result3.mBegin);
+  ASSERT_EQ(7u, result3.mEnd);
+
+  // UAX#29 rule
+  mozilla::Preferences::SetBool("intl.icu4x.segmenter.enabled", true);
+
+  mozilla::intl::WordRange result4 = WordBreaker::FindWord(
+      fragText, 0, WordBreaker::FindWordOptions::StopAtPunctuation);
+  ASSERT_EQ(0u, result4.mBegin);
+  ASSERT_EQ(3u, result4.mEnd);
+  mozilla::intl::WordRange result5 = WordBreaker::FindWord(
+      fragText, 3, WordBreaker::FindWordOptions::StopAtPunctuation);
+  ASSERT_EQ(3u, result5.mBegin);
+  ASSERT_EQ(4u, result5.mEnd);
+  mozilla::intl::WordRange result6 = WordBreaker::FindWord(
+      fragText, 4, WordBreaker::FindWordOptions::StopAtPunctuation);
+  ASSERT_EQ(4u, result6.mBegin);
+  ASSERT_EQ(7u, result6.mEnd);
+
+  // Default (without StopAtPunctuation)
+  mozilla::intl::WordRange result7 = WordBreaker::FindWord(fragText, 0);
+  ASSERT_EQ(0u, result7.mBegin);
+  ASSERT_EQ(7u, result7.mEnd);
+  mozilla::intl::WordRange result8 = WordBreaker::FindWord(fragText, 3);
+  ASSERT_EQ(0u, result8.mBegin);
+  ASSERT_EQ(7u, result8.mEnd);
+  mozilla::intl::WordRange result9 = WordBreaker::FindWord(fragText, 4);
+  ASSERT_EQ(0u, result9.mBegin);
+  ASSERT_EQ(7u, result9.mEnd);
+
+  mozilla::Preferences::SetBool("intl.icu4x.segmenter.enabled", original);
 }

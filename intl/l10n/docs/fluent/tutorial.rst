@@ -2,7 +2,7 @@
    :language: html
 
 .. role:: js(code)
-   :language: javascript
+   :language: JavaScript
 
 =============================
 Fluent for Firefox Developers
@@ -10,7 +10,7 @@ Fluent for Firefox Developers
 
 
 This tutorial is intended for Firefox engineers already familiar with the previous
-localization systems offered by Gecko - `DTD`_ and  `StringBundle`_ - and assumes
+localization systems offered by Gecko - DTD and StringBundle - and assumes
 prior experience with those systems.
 
 For a more hands-on tutorial of understanding Fluent from the ground up, try
@@ -231,7 +231,7 @@ Fluent will overlay the translation onto the source fragment preserving attribut
 :code:`class` and :code:`href` from the source and adding translations for the elements
 inside. The resulting localized content will look like this:
 
-.. code-block::
+.. code-block:: html
 
   <p data-l10n-id="update-application-info" data-l10n-args='{"version": "60.0"}'">
     You are using Firefox Version: 60.0.
@@ -262,8 +262,6 @@ a JSON object storing variables exposed by the developer to the localizer.
 This is the main channel for the developer to provide additional variables
 to be used in the localization.
 
-Arguments are rarely needed for situations where it’s currently possible to use
-DTD, since such variables would need to be computed from the code at runtime.
 It's worth noting that, when the :code:`l10n-args` are set in
 the runtime code, they are in fact encoded as JSON and stored together with
 :code:`l10n-id` as an attribute of the element.
@@ -286,7 +284,7 @@ localization context for this document and exposes it to runtime code as well.
 With a focus on `declarative localization`__, the primary method of localization is
 to alter the localization attributes in the DOM. Fluent provides a method to facilitate this:
 
-.. code-block:: javascript
+.. code-block:: JavaScript
 
   document.l10n.setAttributes(element, "new-panel-header");
 
@@ -295,7 +293,7 @@ animation frame.
 
 This API can be used to set both the ID and the arguments at the same time.
 
-.. code-block:: javascript
+.. code-block:: JavaScript
 
   document.l10n.setAttributes(element, "containers-disable-alert-ok-button", {
     tabCount: 5
@@ -304,7 +302,7 @@ This API can be used to set both the ID and the arguments at the same time.
 If only the arguments need to be updated, then it's possible to use the :code:`setArgs`
 method.
 
-.. code-block:: javascript
+.. code-block:: JavaScript
 
   document.l10n.setArgs(element, {
     tabCount: 5
@@ -323,7 +321,7 @@ Non-Markup Localization
 In rare cases, when the runtime code needs to retrieve the translation and not
 apply it onto the DOM, Fluent provides an API to retrieve it:
 
-.. code-block:: javascript
+.. code-block:: JavaScript
 
   let [ msg ] = await document.l10n.formatValues([
     {id: "remove-containers-description"}
@@ -353,7 +351,7 @@ developer or localizer.
 
 __ https://github.com/projectfluent/fluent/wiki/BiDi-in-Fluent
 
-.. code-block:: javascript
+.. code-block:: JavaScript
 
   document.l10n.setAttributes(element, "welcome-message", {
     userName: "اليسع",
@@ -378,7 +376,7 @@ standard called `Plural Rules`_.
 In order to allow localizers to use it, all the developer has to do is to pass
 an external argument number:
 
-.. code-block:: javascript
+.. code-block:: JavaScript
 
   document.l10n.setAttributes(element, "unread-warning", { unreadCount: 5 });
 
@@ -444,7 +442,7 @@ but its default formatting will be pretty expressive. In most cases, the develop
 may want to use some of the :js:`Intl.DateTimeFormat` options to select the default
 representation of the date in string:
 
-.. code-block:: javascript
+.. code-block:: JavaScript
 
   document.l10n.formatValue("welcome-message", {
   startDate: FluentDateTime(new Date(), {
@@ -520,7 +518,7 @@ In rare edge cases where the developer needs to fetch additional resources, or
 the same resources in another language, it is possible to create additional
 Localization object manually using the `Localization` class:
 
-.. code-block:: javascript
+.. code-block:: JavaScript
 
   const myL10n = new Localization([
     "branding/brand.ftl",
@@ -549,7 +547,7 @@ one by passing an `sync = false` argument to the constructor, or calling the `Se
 on the class.
 
 
-.. code-block:: javascript
+.. code-block:: JavaScript
 
   const myL10n = new Localization([
     "branding/brand.ftl",
@@ -586,7 +584,7 @@ In case of raw i18n the :js:`resolvedOptions` method on all :js:`Intl.*` formatt
 makes it relatively easy. In case of localization, the recommended way is to test that
 the code sets the right :code:`l10n-id`/:code:`l10n-args` attributes like this:
 
-.. code-block:: javascript
+.. code-block:: JavaScript
 
   testedFunction();
 
@@ -602,7 +600,7 @@ the code sets the right :code:`l10n-id`/:code:`l10n-args` attributes like this:
 If the code really has to test for particular values in the localized UI, it is
 always better to scan for a variable:
 
-.. code-block:: javascript
+.. code-block:: JavaScript
 
   testedFunction();
 
@@ -653,7 +651,7 @@ click the three dot menu in the top right corner, and choose one of the followin
    and duplicates some vowels to create roughly 30% longer strings. Strings are
    wrapped in markers (square brackets), which help with detecting truncation.
 
-   This option sets the :js:`intl.l10n.pseudo` pref to :js:`accented`.
+   This option sets the ``intl.l10n.pseudo`` pref to ``accented``.
 
 
  - **Enable bidi locale** - ɥsıʅƃuƎ ıpıԐ
@@ -662,9 +660,69 @@ click the three dot menu in the top right corner, and choose one of the followin
    and enforces right to left text flow using Unicode UAX#9 `Explicit Directional Embeddings`__.
    In this mode, the UI directionality will also be set to right-to-left.
 
-   This option sets the :js:`intl.l10n.pseudo` pref to :js:`bidi`.
+   This option sets the ``intl.l10n.pseudo`` pref to ``bidi``.
 
 __ https://www.unicode.org/reports/tr9/#Explicit_Directional_Embeddings
+
+Testing other locales
+=====================
+
+.. important::
+
+  For Firefox engineering work, you should prefer using pseudolocales.
+  Especially on Nightly, localizations can be incomplete (as we add/remove
+  localized content all the time) and cause confusing behaviour due to how
+  fallback works.
+
+Installing Nightly in a different locale
+----------------------------------------
+
+Localized Nightly builds are `listed on the mozilla.org website`_.
+
+Installing language packs on local builds
+-----------------------------------------
+
+To fix bugs that only reproduce with a specific locale, you may need to run a
+development or nightly build with that locale. The UI language switcher in
+Settings is disabled by default on Nightly, because language packs can become
+incomplete and cause errors in the UI — there is no fallback to English for
+strings using legacy formats, like .properties.
+
+However, if you really need to use this, you can:
+
+1. Open ``about:config`` and flip the ``intl.multilingual.enabled`` and
+   ``intl.multilingual.liveReload`` preferences to ``true``
+2. Open `the FTP listing for langpacks`_ and click the XPI file corresponding
+   to your language and nightly version (note that, especially around merge days,
+   multiple versions may be present).
+
+   .. note::
+      This is a Linux listing because that's the platform on which we run the
+      l10n jobs, but the XPIs should work on macOS and Windows as well.
+      The only exception is the "special" Japanese-for-mac locale,
+      which is in the ``mac/xpi`` subdirectory under
+      ``latest-mozilla-central-l10n`` instead. (``ja-JP-mac`` and ``ja`` will
+      both "work" cross-platform, but use different terminology in some places.)
+
+3. Click through the prompts to install the language pack.
+4. Open the Firefox Settings UI.
+5. Switch to your chosen language.
+
+Finding a regression in a localized build
+-----------------------------------------
+
+You can run `mozregression`_ with localized builds!
+
+At the commandline, if you wanted to find a regression in a Dutch (``nl``)
+build, you could run something like:::
+
+    mozregression --app firefox-l10n --lang nl --good 2024-01-01
+
+and that should run localized nightlies.
+
+.. _listed on the mozilla.org website: https://www.mozilla.org/firefox/all/#product-desktop-nightly
+.. _the FTP listing for langpacks: https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central-l10n/linux-x86_64/xpi/
+.. _mozregression: https://mozilla.github.io/mozregression/
 
 Inner Structure of Fluent
 =========================
@@ -737,8 +795,6 @@ and resources that the :js:`Localization` class uses.
 
 
 .. _Fluent: https://projectfluent.org/
-.. _DTD: https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Tutorial/Localization
-.. _StringBundle: https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Tutorial/Property_Files
 .. _Firefox Preferences: https://bugzilla.mozilla.org/show_bug.cgi?id=1415730
 .. _Unprivileged Contexts: https://bugzilla.mozilla.org/show_bug.cgi?id=1407418
 .. _System Add-ons: https://bugzilla.mozilla.org/show_bug.cgi?id=1425104

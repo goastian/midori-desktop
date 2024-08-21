@@ -4,7 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-XPCSHELL_TESTS_MANIFESTS += ["tests/unit/xpcshell.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["tests/unit/xpcshell.toml"]
 
 TESTING_JS_MODULES += [
     "tests/LangPackMatcherTestUtils.sys.mjs",
@@ -14,7 +14,7 @@ toolkit = CONFIG["MOZ_WIDGET_TOOLKIT"]
 
 if toolkit == "windows":
     DIRS += ["windows"]
-elif toolkit == "cocoa":
+elif toolkit in ("cocoa", "uikit"):
     DIRS += ["mac"]
 elif toolkit == "gtk":
     DIRS += ["gtk"]
@@ -52,7 +52,6 @@ UNIFIED_SOURCES += [
 
 EXTRA_JS_MODULES += [
     "LangPackMatcher.sys.mjs",
-    "PluralForm.sys.mjs",
 ]
 
 XPCOM_MANIFESTS += [

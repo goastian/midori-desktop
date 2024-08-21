@@ -3,6 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/CheckedInt.h"
 #include "mozilla/intl/UnicodeProperties.h"
 #include "mozilla/intl/WordBreaker.h"
 #include "mozilla/StaticPrefs_layout.h"
@@ -10,13 +11,21 @@
 #include "nsTArray.h"
 #include "nsUnicodeProperties.h"
 
+#if defined(MOZ_ICU4X) && defined(JS_HAS_INTL_API)
+#  include "ICU4XDataProvider.h"
+#  include "ICU4XWordBreakIteratorUtf16.hpp"
+#  include "ICU4XWordSegmenter.hpp"
+#  include "mozilla/intl/ICU4XGeckoDataProvider.h"
+#  include "mozilla/StaticPrefs_intl.h"
+#  include "nsUnicharUtils.h"
+#endif
+
 using mozilla::intl::Script;
 using mozilla::intl::UnicodeProperties;
 using mozilla::intl::WordBreaker;
 using mozilla::intl::WordRange;
 using mozilla::unicode::GetGenCategory;
 
-#define IS_ASCII(c) (0 == (0xFF80 & (c)))
 #define ASCII_IS_ALPHA(c) \
   ((('a' <= (c)) && ((c) <= 'z')) || (('A' <= (c)) && ((c) <= 'Z')))
 #define ASCII_IS_DIGIT(c) (('0' <= (c)) && ((c) <= '9'))
@@ -94,19 +103,73 @@ WordBreaker::WordBreakClass WordBreaker::GetClass(char16_t c) {
   return kWbClassAlphaLetter;
 }
 
-WordRange WordBreaker::FindWord(const char16_t* aText, uint32_t aLen,
-                                uint32_t aPos) {
-  MOZ_ASSERT(aText);
+WordRange WordBreaker::FindWord(const nsAString& aText, uint32_t aPos,
+                                const FindWordOptions aOptions) {
+  const CheckedInt<uint32_t> len = aText.Length();
+  MOZ_RELEASE_ASSERT(len.isValid());
 
-  if (aPos >= aLen) {
-    return {aLen, aLen};
+  if (aPos >= len.value()) {
+    return {len.value(), len.value()};
   }
 
+  WordRange range{0, len.value()};
+
+#if defined(MOZ_ICU4X) && defined(JS_HAS_INTL_API)
+  if (StaticPrefs::intl_icu4x_segmenter_enabled()) {
+    auto result =
+        capi::ICU4XWordSegmenter_create_auto(mozilla::intl::GetDataProvider());
+    MOZ_ASSERT(result.is_ok);
+    ICU4XWordSegmenter segmenter(result.ok);
+    ICU4XWordBreakIteratorUtf16 iterator =
+        segmenter.segment_utf16(diplomat::span<const uint16_t>(
+            (const uint16_t*)aText.BeginReading(), aText.Length()));
+
+    uint32_t previousPos = 0;
+    while (true) {
+      const int32_t nextPos = iterator.next();
+      if (nextPos < 0) {
+        range.mBegin = previousPos;
+        range.mEnd = len.value();
+        break;
+      }
+      if ((uint32_t)nextPos > aPos) {
+        range.mBegin = previousPos;
+        range.mEnd = (uint32_t)nextPos;
+        break;
+      }
+
+      previousPos = nextPos;
+    }
+
+    if (aOptions != FindWordOptions::StopAtPunctuation) {
+      return range;
+    }
+
+    for (uint32_t i = range.mBegin; i < range.mEnd; i++) {
+      if (mozilla::IsPunctuationForWordSelect(aText[i])) {
+        if (i > aPos) {
+          range.mEnd = i;
+          break;
+        }
+        if (i == aPos) {
+          range.mBegin = i;
+          range.mEnd = i + 1;
+          break;
+        }
+        if (i < aPos) {
+          range.mBegin = i + 1;
+        }
+      }
+    }
+
+    return range;
+  }
+#endif
+
   WordBreakClass c = GetClass(aText[aPos]);
-  WordRange range{0, aLen};
 
   // Scan forward
-  for (uint32_t i = aPos + 1; i <= aLen; i++) {
+  for (uint32_t i = aPos + 1; i < len.value(); i++) {
     if (c != GetClass(aText[i])) {
       range.mEnd = i;
       break;
@@ -126,7 +189,8 @@ WordRange WordBreaker::FindWord(const char16_t* aText, uint32_t aLen,
     // shorter answer
     AutoTArray<uint8_t, 256> breakBefore;
     breakBefore.SetLength(range.mEnd - range.mBegin);
-    ComplexBreaker::GetBreaks(aText + range.mBegin, range.mEnd - range.mBegin,
+    ComplexBreaker::GetBreaks(aText.BeginReading() + range.mBegin,
+                              range.mEnd - range.mBegin,
                               breakBefore.Elements());
 
     // Scan forward

@@ -159,17 +159,9 @@ impl Hash for FileSource {
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Default)]
 pub struct FileSourceOptions {
     pub allow_override: bool,
-}
-
-impl Default for FileSourceOptions {
-    fn default() -> Self {
-        Self {
-            allow_override: false,
-        }
-    }
 }
 
 impl FileSource {
@@ -222,7 +214,7 @@ impl FileSource {
     }
 
     pub fn set_reporter(&mut self, reporter: impl ErrorReporter + 'static) {
-        let mut shared = Rc::get_mut(&mut self.shared).unwrap();
+        let shared = Rc::get_mut(&mut self.shared).unwrap();
         shared.error_reporter = Some(RefCell::new(Box::new(reporter)));
     }
 }
@@ -409,7 +401,7 @@ impl Inner {
         F: FnOnce() -> ResourceStatus,
     {
         let mut lock = self.entries.borrow_mut();
-        lock.entry(resource_id.value).or_insert_with(|| f()).clone()
+        lock.entry(resource_id.value).or_insert_with(f).clone()
     }
 
     fn update_resource(&self, resource_id: ResourceId, resource: ResourceOption) -> ResourceOption {
@@ -441,7 +433,7 @@ async fn read_resource(resource_id: ResourceId, shared: Rc<Inner>) -> ResourceOp
         .map(|source| match FluentResource::try_new(source) {
             Ok(res) => ResourceOption::Some(Rc::new(res)),
             Err((res, errors)) => {
-                if let Some(reporter) = &shared.error_reporter.borrow() {
+                if let Some(reporter) = &shared.error_reporter {
                     reporter.borrow().report_errors(
                         errors
                             .into_iter()
@@ -484,75 +476,5 @@ key2 = Value 2
 
         let result = calculate_pos_in_source(source, 13);
         assert_eq!(result, (3, 1));
-    }
-}
-
-#[cfg(test)]
-#[cfg(all(feature = "tokio", feature = "test-fluent"))]
-mod tests_tokio {
-    use super::*;
-    use crate::testing::TestFileFetcher;
-
-    static FTL_RESOURCE_PRESENT: &str = "toolkit/global/textActions.ftl";
-    static FTL_RESOURCE_MISSING: &str = "missing.ftl";
-
-    #[tokio::test]
-    async fn file_source_fetch() {
-        let fetcher = TestFileFetcher::new();
-        let en_us: LanguageIdentifier = "en-US".parse().unwrap();
-        let fs1 =
-            fetcher.get_test_file_source("toolkit", None, vec![en_us.clone()], "toolkit/{locale}/");
-
-        let file = fs1.fetch_file(&en_us, &FTL_RESOURCE_PRESENT.into()).await;
-        assert!(file.is_some());
-    }
-
-    #[tokio::test]
-    async fn file_source_fetch_missing() {
-        let fetcher = TestFileFetcher::new();
-        let en_us: LanguageIdentifier = "en-US".parse().unwrap();
-        let fs1 =
-            fetcher.get_test_file_source("toolkit", None, vec![en_us.clone()], "toolkit/{locale}/");
-
-        let file = fs1.fetch_file(&en_us, &FTL_RESOURCE_MISSING.into()).await;
-        assert!(file.is_none());
-    }
-
-    #[tokio::test]
-    async fn file_source_already_loaded() {
-        let fetcher = TestFileFetcher::new();
-        let en_us: LanguageIdentifier = "en-US".parse().unwrap();
-        let fs1 =
-            fetcher.get_test_file_source("toolkit", None, vec![en_us.clone()], "toolkit/{locale}/");
-
-        let file = fs1.fetch_file(&en_us, &FTL_RESOURCE_PRESENT.into()).await;
-        assert!(file.is_some());
-        let file = fs1.fetch_file(&en_us, &FTL_RESOURCE_PRESENT.into()).await;
-        assert!(file.is_some());
-    }
-
-    #[tokio::test]
-    async fn file_source_concurrent() {
-        let fetcher = TestFileFetcher::new();
-        let en_us: LanguageIdentifier = "en-US".parse().unwrap();
-        let fs1 =
-            fetcher.get_test_file_source("toolkit", None, vec![en_us.clone()], "toolkit/{locale}/");
-
-        let file1 = fs1.fetch_file(&en_us, &FTL_RESOURCE_PRESENT.into());
-        let file2 = fs1.fetch_file(&en_us, &FTL_RESOURCE_PRESENT.into());
-        assert!(file1.await.is_some());
-        assert!(file2.await.is_some());
-    }
-
-    #[test]
-    fn file_source_sync_after_async_fail() {
-        let fetcher = TestFileFetcher::new();
-        let en_us: LanguageIdentifier = "en-US".parse().unwrap();
-        let fs1 =
-            fetcher.get_test_file_source("toolkit", None, vec![en_us.clone()], "toolkit/{locale}/");
-
-        let _ = fs1.fetch_file(&en_us, &FTL_RESOURCE_PRESENT.into());
-        let file2 = fs1.fetch_file_sync(&en_us, &FTL_RESOURCE_PRESENT.into(), true);
-        assert!(file2.is_some());
     }
 }

@@ -10,11 +10,13 @@
 // nsGkAtom, so we only build when included into internal libs:
 #ifdef MOZILLA_INTERNAL_API
 
-#  include "nsString.h"
+#  include "nsStringFwd.h"
 #  include "unicode/unum.h"  // for UNumberFormat
 #  include "mozilla/intl/ICUError.h"
+#  include "mozilla/AlreadyAddRefed.h"
 
 class nsIContent;
+class nsAtom;
 
 class ICUUtils {
  public:
@@ -41,7 +43,7 @@ class ICUUtils {
      * Once all fallbacks have been exhausted then this function will set
      * aBCP47LangTag to the empty string.
      */
-    void GetNext(nsACString& aBCP47LangTag);
+    already_AddRefed<nsAtom> GetNext();
 
     bool IsAtStart() const { return mCurrentFallbackIndex < 0; }
 
@@ -63,7 +65,7 @@ class ICUUtils {
    * Parses the localized number that is serialized in aValue using aLangTags
    * and returns the result as a double. Returns NaN on failure.
    */
-  static double ParseNumber(nsAString& aValue,
+  static double ParseNumber(const nsAString& aValue,
                             LanguageTagIterForContent& aLangTags);
 
   static void AssignUCharArrayToString(UChar* aICUString, int32_t aLength,
