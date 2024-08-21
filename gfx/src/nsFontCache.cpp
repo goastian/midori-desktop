@@ -10,6 +10,9 @@
 #include "mozilla/ServoUtils.h"
 #include "nsCRT.h"
 
+#include "mozilla/dom/Document.h"
+#include "nsPresContext.h"
+
 using mozilla::services::GetObserverService;
 
 NS_IMPL_ISUPPORTS(nsFontCache, nsIObserver)
@@ -65,7 +68,7 @@ already_AddRefed<nsFontMetrics> nsFontCache::GetMetricsFor(
   // start from the end, which is where we put the most-recent-used element
   const int32_t n = mFontMetrics.Length() - 1;
   for (int32_t i = n; i >= 0; --i) {
-    nsFontMetrics* fm = mFontMetrics[i];
+    nsFontMetrics* fm = mFontMetrics.Elements()[i];
     if (fm->Font().Equals(aFont) &&
         fm->GetUserFontSet() == aParams.userFontSet &&
         fm->Language() == language &&
@@ -73,11 +76,27 @@ already_AddRefed<nsFontMetrics> nsFontCache::GetMetricsFor(
         fm->ExplicitLanguage() == aParams.explicitLanguage) {
       if (i != n) {
         // promote it to the end of the cache
-        mFontMetrics.RemoveElementAt(i);
+        mFontMetrics.RemoveElementAtUnsafe(i);
         mFontMetrics.AppendElement(fm);
       }
       fm->GetThebesFontGroup()->UpdateUserFonts();
       return do_AddRef(fm);
+    }
+  }
+
+  if (!mReportedProbableFingerprinting) {
+    // We try to detect font fingerprinting attempts by recognizing a large
+    // number of cache misses in a short amount of time, which indicates the
+    // usage of an unreasonable amount of different fonts by the web page.
+    PRTime now = PR_Now();
+    if (now - mLastCacheMiss > kFingerprintingTimeout) {
+      mCacheMisses = 0;
+    }
+    mCacheMisses++;
+    mLastCacheMiss = now;
+    if (NS_IsMainThread() && mCacheMisses > kFingerprintingCacheMissThreshold) {
+      mContext->Document()->RecordFontFingerprinting();
+      mReportedProbableFingerprinting = true;
     }
   }
 
@@ -153,4 +172,7 @@ void nsFontCache::Flush(int32_t aFlushCount) {
     NS_RELEASE(fm);
   }
   mFontMetrics.RemoveElementsAt(0, n);
+
+  mLastCacheMiss = 0;
+  mCacheMisses = 0;
 }

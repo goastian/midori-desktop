@@ -56,34 +56,34 @@ namespace gfx {
  * Do not use this class directly. Subclass it, pass that subclass as the
  * Sub parameter, and only use that subclass.
  */
-template <class T, class Sub>
+template <class T, class Sub, class Coord = T>
 struct BaseMargin {
   typedef mozilla::Side SideT;  // because we have a method named Side
 
   // Do not change the layout of these members; the Side() methods below
   // depend on this order.
-  T top, right, bottom, left;
+  Coord top, right, bottom, left;
 
   // Constructors
   BaseMargin() : top(0), right(0), bottom(0), left(0) {}
-  BaseMargin(T aTop, T aRight, T aBottom, T aLeft)
+  BaseMargin(Coord aTop, Coord aRight, Coord aBottom, Coord aLeft)
       : top(aTop), right(aRight), bottom(aBottom), left(aLeft) {}
 
-  void SizeTo(T aTop, T aRight, T aBottom, T aLeft) {
+  void SizeTo(Coord aTop, Coord aRight, Coord aBottom, Coord aLeft) {
     top = aTop;
     right = aRight;
     bottom = aBottom;
     left = aLeft;
   }
 
-  T LeftRight() const { return left + right; }
-  T TopBottom() const { return top + bottom; }
+  Coord LeftRight() const { return left + right; }
+  Coord TopBottom() const { return top + bottom; }
 
-  T& Side(SideT aSide) {
+  Coord& Side(SideT aSide) {
     // This is ugly!
     return *(&top + int(aSide));
   }
-  T Side(SideT aSide) const {
+  Coord Side(SideT aSide) const {
     // This is ugly!
     return *(&top + int(aSide));
   }

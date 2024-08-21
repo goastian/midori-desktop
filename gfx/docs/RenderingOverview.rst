@@ -1,3 +1,5 @@
+.. _rendering-overview:
+
 Rendering Overview
 ==================
 
@@ -120,7 +122,7 @@ something 'interesting' with the page in return?  What about nested
 frames or nested scrollbars?  What if we scroll so much that we go
 past the boundaries of the Scene that we know about?
 
-See AsyncPanZoom.rst for all that and more.
+See :ref:`apz` for all that and more.
 
 A Few More Details
 ~~~~~~~~~~~~~~~~~~
@@ -348,7 +350,7 @@ equivalent of layers is Slices -- a grouping of pictures that are expected to
 render and update together.  Slices are automatically created based on
 heuristics and layout hints/flags.
 
-Implementation wise, slices re-use a lot of the existing machinery for Pictures;
+Implementation wise, slices reuse a lot of the existing machinery for Pictures;
 in fact they're implemented as a "Virtual picture" of sorts.  The similarities
 make sense: both need to allocate offscreen textures in a cache, both will
 position and render all their children into it, and both then draw themselves

@@ -13,9 +13,15 @@
 
 namespace mozilla {
 namespace dom {
-class IPCWorkerRef;
+class CanvasRenderingContext2D;
+class ThreadSafeWorkerRef;
 class WorkerPrivate;
 }  // namespace dom
+
+namespace layers {
+class CanvasChild;
+class ActiveResourceTracker;
+}  // namespace layers
 
 namespace webgpu {
 class WebGPUChild;
@@ -28,7 +34,8 @@ class CanvasManagerChild final : public PCanvasManagerChild {
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CanvasManagerChild, override);
 
-  explicit CanvasManagerChild(uint32_t aId);
+  explicit CanvasManagerChild(dom::ThreadSafeWorkerRef* aWorkerRef,
+                              uint32_t aId);
   uint32_t Id() const { return mId; }
   already_AddRefed<DataSourceSurface> GetSnapshot(
       uint32_t aManagerId, int32_t aProtocolId,
@@ -37,19 +44,34 @@ class CanvasManagerChild final : public PCanvasManagerChild {
   void ActorDestroy(ActorDestroyReason aReason) override;
 
   static CanvasManagerChild* Get();
+  static CanvasManagerChild* MaybeGet();
   static void Shutdown();
   static bool CreateParent(
       mozilla::ipc::Endpoint<PCanvasManagerParent>&& aEndpoint);
 
+  bool IsCanvasActive() { return mActive; }
+  void EndCanvasTransaction();
+  void ClearCachedResources();
+  void DeactivateCanvas();
+  void BlockCanvas();
+
+  RefPtr<layers::CanvasChild> GetCanvasChild();
+
   RefPtr<webgpu::WebGPUChild> GetWebGPUChild();
+
+  layers::ActiveResourceTracker* GetActiveResourceTracker();
 
  private:
   ~CanvasManagerChild();
+  void DestroyInternal();
   void Destroy();
 
-  RefPtr<mozilla::dom::IPCWorkerRef> mWorkerRef;
-  RefPtr<webgpu::WebGPUChild> mWebGPUChild;
+  RefPtr<mozilla::dom::ThreadSafeWorkerRef> mWorkerRef;
+  RefPtr<layers::CanvasChild> mCanvasChild;
+  UniquePtr<layers::ActiveResourceTracker> mActiveResourceTracker;
   const uint32_t mId;
+  bool mActive = true;
+  bool mBlocked = false;
 
   static MOZ_THREAD_LOCAL(CanvasManagerChild*) sLocalManager;
   static Atomic<uint32_t> sNextId;

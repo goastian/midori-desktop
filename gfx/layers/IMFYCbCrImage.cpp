@@ -13,7 +13,6 @@
 #include "mozilla/layers/CompositableForwarder.h"
 #include "mozilla/layers/D3D11YCbCrImage.h"
 #include "mozilla/layers/TextureClient.h"
-#include "d3d9.h"
 
 namespace mozilla {
 namespace layers {
@@ -115,7 +114,7 @@ TextureClient* IMFYCbCrImage::GetD3D11TextureClient(
   {
     DXGIYCbCrTextureAllocationHelper helper(mData, TextureFlags::DEFAULT,
                                             device);
-    mTextureClient = mAllocator->CreateOrRecycle(helper);
+    mTextureClient = mAllocator->CreateOrRecycle(helper).unwrapOr(nullptr);
   }
 
   if (!mTextureClient) {

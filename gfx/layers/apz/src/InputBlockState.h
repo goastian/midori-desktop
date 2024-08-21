@@ -48,7 +48,6 @@ class InputBlockState : public RefCounted<InputBlockState> {
   enum class TargetConfirmationState : uint8_t {
     eUnconfirmed,
     eTimedOut,
-    eTimedOutAndMainThreadResponded,
     eConfirmed
   };
 
@@ -73,7 +72,6 @@ class InputBlockState : public RefCounted<InputBlockState> {
   uint64_t GetBlockId() const;
 
   bool IsTargetConfirmed() const;
-  bool HasReceivedRealConfirmedTarget() const;
 
   virtual bool ShouldDropEvents() const;
 
@@ -105,7 +103,6 @@ class InputBlockState : public RefCounted<InputBlockState> {
 
  private:
   RefPtr<AsyncPanZoomController> mTargetApzc;
-  TargetConfirmationState mTargetConfirmed;
   bool mRequiresTargetConfirmation;
   const uint64_t mBlockId;
 
@@ -117,6 +114,7 @@ class InputBlockState : public RefCounted<InputBlockState> {
   RefPtr<AsyncPanZoomController> mScrolledApzc;
 
  protected:
+  TargetConfirmationState mTargetConfirmed;
   RefPtr<const OverscrollHandoffChain> mOverscrollHandoffChain;
 
   // Used to transform events from global screen space to |mTargetApzc|'s
@@ -164,6 +162,11 @@ class CancelableBlockState : public InputBlockState {
   bool IsContentResponseTimerExpired() const;
 
   /**
+   * Checks if the content has responded.
+   */
+  bool HasContentResponded() const { return mContentResponded; }
+
+  /**
    * @return true iff web content cancelled this block of events.
    */
   bool IsDefaultPrevented() const;
@@ -180,6 +183,11 @@ class CancelableBlockState : public InputBlockState {
   virtual const char* Type() = 0;
 
   bool ShouldDropEvents() const override;
+
+  void ResetContentResponseTimerExpired() {
+    mContentResponseTimerExpired = false;
+    mContentResponded = false;
+  }
 
  private:
   bool mPreventDefault;
@@ -291,13 +299,15 @@ class DragBlockState : public CancelableBlockState {
   DragBlockState* AsDragBlock() override { return this; }
 
   void SetInitialThumbPos(OuterCSSCoord aThumbPos);
-  void SetDragMetrics(const AsyncDragMetrics& aDragMetrics);
+  void SetDragMetrics(const AsyncDragMetrics& aDragMetrics,
+                      const CSSRect& aScrollableRect);
 
   void DispatchEvent(const InputData& aEvent) const override;
 
  private:
   AsyncDragMetrics mDragMetrics;
   OuterCSSCoord mInitialThumbPos;
+  CSSRect mInitialScrollableRect;
   bool mReceivedMouseUp;
 };
 
@@ -341,6 +351,13 @@ class PanGestureBlockState : public CancelableBlockState {
     return mAllowedScrollDirections;
   }
 
+  bool IsWaitingForBrowserGestureResponse() const {
+    return mWaitingForBrowserGestureResponse;
+  }
+  bool IsWaitingForContentResponse() const {
+    return mWaitingForContentResponse;
+  }
+
  private:
   bool mInterrupted;
   bool mWaitingForContentResponse;
@@ -372,6 +389,10 @@ class PinchGestureBlockState : public CancelableBlockState {
   bool WasInterrupted() const { return mInterrupted; }
 
   void SetNeedsToWaitForContentResponse(bool aWaitForContentResponse);
+
+  bool IsWaitingForContentResponse() const {
+    return mWaitingForContentResponse;
+  }
 
  private:
   bool mInterrupted;
@@ -449,14 +470,12 @@ class TouchBlockState : public CancelableBlockState {
    */
   bool IsDuringFastFling() const;
   /**
-   * Set the single-tap-occurred flag that indicates that this touch block
-   * triggered a single tap event.
+   * Set the single-tap state flag that indicates that this touch block
+   * triggered (1) a click, (2) not a click, or (3) not yet sure it will trigger
+   * a click or not.
    */
-  void SetSingleTapOccurred();
-  /**
-   * @return true iff the single-tap-occurred flag is set on this block.
-   */
-  bool SingleTapOccurred() const;
+  void SetSingleTapState(apz::SingleTapState aState);
+  apz::SingleTapState SingleTapState() const { return mSingleTapState; }
 
   /**
    * @return false iff touch-action is enabled and the allowed touch behaviors
@@ -489,6 +508,25 @@ class TouchBlockState : public CancelableBlockState {
   bool UpdateSlopState(const MultiTouchInput& aInput,
                        bool aApzcCanConsumeEvents);
   bool IsInSlop() const;
+  bool ForLongTap() const { return mForLongTap; }
+  void SetForLongTap() { mForLongTap = true; }
+  bool WasLongTapProcessed() const { return mLongTapWasProcessed; }
+  void SetLongTapProcessed() {
+    MOZ_ASSERT(!mForLongTap);
+    mLongTapWasProcessed = true;
+    mIsWaitingLongTapResult = false;
+  }
+
+  void SetWaitingLongTapResult(bool aResult) {
+    MOZ_ASSERT(!mForLongTap);
+    mIsWaitingLongTapResult = aResult;
+  }
+  bool IsWaitingLongTapResult() const { return mIsWaitingLongTapResult; }
+
+  void SetNeedsToWaitTouchMove(bool aNeedsWaitTouchMove) {
+    mNeedsWaitTouchMove = aNeedsWaitTouchMove;
+  }
+  bool IsReadyForCallback() const { return !mNeedsWaitTouchMove; };
 
   /**
    * Based on the slop origin and the given input event, return a best guess
@@ -507,17 +545,41 @@ class TouchBlockState : public CancelableBlockState {
   bool MustStayActive() override;
   const char* Type() override;
   TimeDuration GetTimeSinceBlockStart() const;
+  bool IsTargetOriginallyConfirmed() const;
 
  private:
   nsTArray<TouchBehaviorFlags> mAllowedTouchBehaviors;
   bool mAllowedTouchBehaviorSet;
   bool mDuringFastFling;
-  bool mSingleTapOccurred;
   bool mInSlop;
+  // A long tap involves two touch blocks: the original touch
+  // block containing the `touchstart`, and a second one
+  // specifically for the long tap. `mForLongTap` is set on the
+  // second touch block. `mLongTapWasProcessed` is set
+  // on the first touch block after the long tap was processed.
+  bool mForLongTap;
+  bool mLongTapWasProcessed;
+
+  // A flag representing a state while we are waiting for a content response for
+  // the long tap.
+  // The reason why we have this flag separately from `mLongTapWasProcessed` is
+  // the block is not ready to be processed during the wait, and is ready once
+  // after `mLongTapWasProcessed` became true.
+  bool mIsWaitingLongTapResult;
+  // A flag representing a state that this block still needs to wait for a
+  // content response for a touch move event. It will be set just before
+  // triggering a long-press event.
+  bool mNeedsWaitTouchMove;
+  apz::SingleTapState mSingleTapState;
   ScreenIntPoint mSlopOrigin;
   // A reference to the InputQueue's touch counter
   TouchCounter& mTouchCounter;
   TimeStamp mStartTime;
+  // The original `mTargetConfirmed`. This is necessary to tell whether there's
+  // any APZ-aware event listener in the content after we've got a content
+  // response, because in the case of a long-tap event we need to wait a content
+  // response again.
+  TargetConfirmationState mOriginalTargetConfirmedState;
 };
 
 /**

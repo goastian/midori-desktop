@@ -82,6 +82,7 @@
 #include "mozilla/layers/DeviceAttachmentsD3D11.h"
 #include "mozilla/WindowsProcessMitigations.h"
 #include "D3D11Checks.h"
+#include "mozilla/ScreenHelperWin.h"
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -190,28 +191,15 @@ class GPUAdapterReporter final : public nsIMemoryReporter {
           queryStatistics.QuerySegment.SegmentId = i;
 
           if (NT_SUCCESS(queryD3DKMTStatistics(&queryStatistics))) {
-            bool aperture;
-
-            // SegmentInformation has a different definition in Win7 than later
-            // versions
-            if (!IsWin8OrLater())
-              aperture = queryStatistics.QueryResult.SegmentInfoWin7.Aperture;
-            else
-              aperture = queryStatistics.QueryResult.SegmentInfoWin8.Aperture;
-
+            bool aperture = queryStatistics.QueryResult.SegmentInfo.Aperture;
             memset(&queryStatistics, 0, sizeof(D3DKMTQS));
             queryStatistics.Type = D3DKMTQS_PROCESS_SEGMENT;
             queryStatistics.AdapterLuid = adapterDesc.AdapterLuid;
             queryStatistics.hProcess = ProcessHandle;
             queryStatistics.QueryProcessSegment.SegmentId = i;
             if (NT_SUCCESS(queryD3DKMTStatistics(&queryStatistics))) {
-              ULONGLONG bytesCommitted;
-              if (!IsWin8OrLater())
-                bytesCommitted = queryStatistics.QueryResult.ProcessSegmentInfo
-                                     .Win7.BytesCommitted;
-              else
-                bytesCommitted = queryStatistics.QueryResult.ProcessSegmentInfo
-                                     .Win8.BytesCommitted;
+              ULONGLONG bytesCommitted =
+                  queryStatistics.QueryResult.ProcessSegmentInfo.BytesCommitted;
               if (aperture)
                 sharedBytesUsed += bytesCommitted;
               else
@@ -271,10 +259,7 @@ class D3DSharedTexturesReporter final : public nsIMemoryReporter {
 
 NS_IMPL_ISUPPORTS(D3DSharedTexturesReporter, nsIMemoryReporter)
 
-gfxWindowsPlatform::gfxWindowsPlatform()
-    : mRenderMode(RENDER_GDI),
-      mSupportsHDR(false),
-      mDwmCompositionStatus(DwmCompositionStatus::Unknown) {
+gfxWindowsPlatform::gfxWindowsPlatform() : mRenderMode(RENDER_GDI) {
   // If win32k is locked down then we can't use COM STA and shouldn't need it.
   // Also, we won't be using any GPU memory in this process.
   if (!IsWin32kLockedDown()) {
@@ -388,6 +373,9 @@ void gfxWindowsPlatform::InitAcceleration() {
 
   DeviceManagerDx::Init();
 
+  // Content processes should have received content device data from parent.
+  MOZ_ASSERT_IF(XRE_IsContentProcess(), GetInitContentDeviceData());
+
   InitializeConfig();
   InitGPUProcessSupport();
   // Ensure devices initialization. SharedSurfaceANGLE and
@@ -409,31 +397,14 @@ void gfxWindowsPlatform::InitAcceleration() {
   gfxVars::SetSystemTextQualityListener(
       gfxDWriteFont::SystemTextQualityChanged);
 
-  if (XRE_IsParentProcess()) {
-    BOOL dwmEnabled = FALSE;
-    if (FAILED(::DwmIsCompositionEnabled(&dwmEnabled)) || !dwmEnabled) {
-      gfxVars::SetDwmCompositionEnabled(false);
-    } else {
-      gfxVars::SetDwmCompositionEnabled(true);
-    }
-  }
-
-  // gfxVars are not atomic, but multiple threads can query DWM status
-  // Therefore, mirror value into an atomic
-  mDwmCompositionStatus = gfxVars::DwmCompositionEnabled()
-                              ? DwmCompositionStatus::Enabled
-                              : DwmCompositionStatus::Disabled;
-
-  gfxVars::SetDwmCompositionEnabledListener([this] {
-    this->mDwmCompositionStatus = gfxVars::DwmCompositionEnabled()
-                                      ? DwmCompositionStatus::Enabled
-                                      : DwmCompositionStatus::Disabled;
-  });
-
   // CanUseHardwareVideoDecoding depends on DeviceManagerDx state,
   // so update the cached value now.
   UpdateCanUseHardwareVideoDecoding();
-  UpdateSupportsHDR();
+
+  // Our ScreenHelperWin also depends on DeviceManagerDx state.
+  if (XRE_IsParentProcess() && !gfxPlatform::IsHeadless()) {
+    ScreenHelperWin::RefreshScreens();
+  }
 
   RecordStartupTelemetry();
 }
@@ -465,12 +436,13 @@ bool gfxWindowsPlatform::InitDWriteSupport() {
 }
 
 bool gfxWindowsPlatform::HandleDeviceReset() {
-  DeviceResetReason resetReason = DeviceResetReason::OK;
+  mozilla::gfx::DeviceResetReason resetReason =
+      mozilla::gfx::DeviceResetReason::OK;
   if (!DidRenderingDeviceReset(&resetReason)) {
     return false;
   }
 
-  if (resetReason != DeviceResetReason::FORCED_RESET) {
+  if (resetReason != mozilla::gfx::DeviceResetReason::FORCED_RESET) {
     Telemetry::Accumulate(Telemetry::DEVICE_RESET_REASON,
                           uint32_t(resetReason));
   }
@@ -564,57 +536,6 @@ void gfxWindowsPlatform::UpdateRenderMode() {
   }
 }
 
-void gfxWindowsPlatform::UpdateSupportsHDR() {
-  // TODO: This function crashes content processes, for reasons that are not
-  // obvious from the crash reports. For now, this function can only be executed
-  // by the parent process. Therefore SupportsHDR() will always return false for
-  // content processes, as noted in the header.
-  if (!XRE_IsParentProcess()) {
-    return;
-  }
-
-  // Set mSupportsHDR to true if any of the DeviceManager outputs have both:
-  // 1) greater than 8-bit color
-  // 2) a colorspace that uses BT2020
-  DeviceManagerDx* dx = DeviceManagerDx::Get();
-  nsTArray<DXGI_OUTPUT_DESC1> outputs = dx->EnumerateOutputs();
-
-  for (auto& output : outputs) {
-    if (output.BitsPerColor <= 8) {
-      continue;
-    }
-
-    switch (output.ColorSpace) {
-      case DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P2020:
-      case DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P2020:
-      case DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P2020:
-      case DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020:
-      case DXGI_COLOR_SPACE_YCBCR_STUDIO_G2084_LEFT_P2020:
-      case DXGI_COLOR_SPACE_RGB_STUDIO_G2084_NONE_P2020:
-      case DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_TOPLEFT_P2020:
-      case DXGI_COLOR_SPACE_YCBCR_STUDIO_G2084_TOPLEFT_P2020:
-      case DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020:
-      case DXGI_COLOR_SPACE_YCBCR_STUDIO_GHLG_TOPLEFT_P2020:
-      case DXGI_COLOR_SPACE_YCBCR_FULL_GHLG_TOPLEFT_P2020:
-#ifndef __MINGW32__
-      // Windows MinGW has an older dxgicommon.h that doesn't define
-      // these enums. We'd like to define them ourselves in that case,
-      // but there's no compilable way to add new enums to an existing
-      // enum type. So instead we just don't check for these values.
-      case DXGI_COLOR_SPACE_RGB_STUDIO_G24_NONE_P2020:
-      case DXGI_COLOR_SPACE_YCBCR_STUDIO_G24_LEFT_P2020:
-      case DXGI_COLOR_SPACE_YCBCR_STUDIO_G24_TOPLEFT_P2020:
-#endif
-        mSupportsHDR = true;
-        return;
-      default:
-        break;
-    }
-  }
-
-  mSupportsHDR = false;
-}
-
 mozilla::gfx::BackendType gfxWindowsPlatform::GetContentBackendFor(
     mozilla::layers::LayersBackend aLayers) {
   mozilla::gfx::BackendType defaultBackend =
@@ -652,12 +573,11 @@ mozilla::gfx::BackendType gfxWindowsPlatform::GetPreferredCanvasBackend() {
 }
 
 bool gfxWindowsPlatform::CreatePlatformFontList() {
-  // bug 630201 - older pre-RTM versions of Direct2D/DirectWrite cause odd
-  // crashers so block them altogether
-  if (IsNotWin7PreRTM() && DWriteEnabled()) {
+  if (DWriteEnabled()) {
     if (gfxPlatformFontList::Initialize(new gfxDWriteFontList)) {
       return true;
     }
+
     // DWrite font initialization failed! Don't know why this would happen,
     // but apparently it can - see bug 594865.
     // So we're going to fall back to GDI fonts & rendering.
@@ -952,7 +872,7 @@ void gfxWindowsPlatform::GetCommonFallbackFonts(
 }
 
 bool gfxWindowsPlatform::DidRenderingDeviceReset(
-    DeviceResetReason* aResetReason) {
+    mozilla::gfx::DeviceResetReason* aResetReason) {
   DeviceManagerDx* dm = DeviceManagerDx::Get();
   if (!dm) {
     return false;
@@ -962,7 +882,7 @@ bool gfxWindowsPlatform::DidRenderingDeviceReset(
 
 void gfxWindowsPlatform::CompositorUpdated() {
   DeviceManagerDx::Get()->ForceDeviceReset(
-      ForcedDeviceResetReason::COMPOSITOR_UPDATED);
+      mozilla::gfx::ForcedDeviceResetReason::COMPOSITOR_UPDATED);
   UpdateRenderMode();
 }
 
@@ -975,7 +895,8 @@ BOOL CALLBACK InvalidateWindowForDeviceReset(HWND aWnd, LPARAM aMsg) {
 void gfxWindowsPlatform::SchedulePaintIfDeviceReset() {
   AUTO_PROFILER_LABEL("gfxWindowsPlatform::SchedulePaintIfDeviceReset", OTHER);
 
-  DeviceResetReason resetReason = DeviceResetReason::OK;
+  mozilla::gfx::DeviceResetReason resetReason =
+      mozilla::gfx::DeviceResetReason::OK;
   if (!DidRenderingDeviceReset(&resetReason)) {
     return;
   }
@@ -1020,20 +941,21 @@ void gfxWindowsPlatform::CheckForContentOnlyDeviceReset() {
 
 nsTArray<uint8_t> gfxWindowsPlatform::GetPlatformCMSOutputProfileData() {
   if (XRE_IsContentProcess()) {
-    // This will be passed in during InitChild so we can avoid sending a
-    // sync message back to the parent during init.
-    const mozilla::gfx::ContentDeviceData* contentDeviceData =
-        GetInitContentDeviceData();
-    if (contentDeviceData) {
-      MOZ_ASSERT(!contentDeviceData->cmsOutputProfileData().IsEmpty());
-      return contentDeviceData->cmsOutputProfileData().Clone();
-    }
+    auto& cmsOutputProfileData = GetCMSOutputProfileData();
+    // We should have set our profile data when we received our initial
+    // ContentDeviceData.
+    MOZ_ASSERT(cmsOutputProfileData.isSome(),
+               "Should have created output profile data when we received "
+               "initial content device data.");
 
-    // Otherwise we need to ask the parent for the updated color profile
-    mozilla::dom::ContentChild* cc = mozilla::dom::ContentChild::GetSingleton();
-    nsTArray<uint8_t> result;
-    Unused << cc->SendGetOutputColorProfileData(&result);
-    return result;
+    // If we have data, it should not be empty.
+    MOZ_ASSERT_IF(cmsOutputProfileData.isSome(),
+                  !cmsOutputProfileData->IsEmpty());
+
+    if (cmsOutputProfileData.isSome()) {
+      return cmsOutputProfileData.ref().Clone();
+    }
+    return nsTArray<uint8_t>();
   }
 
   return GetPlatformCMSOutputProfileData_Impl();
@@ -1199,17 +1121,7 @@ bool gfxWindowsPlatform::IsOptimus() {
   }
   return knowIsOptimus;
 }
-/*
-static inline bool
-IsWARPStable()
-{
-  // It seems like nvdxgiwrap makes a mess of WARP. See bug 1154703.
-  if (!IsWin8OrLater() || GetModuleHandleA("nvdxgiwrap.dll")) {
-    return false;
-  }
-  return true;
-}
-*/
+
 static void InitializeANGLEConfig() {
   FeatureState& d3d11ANGLE = gfxConfig::GetFeature(Feature::D3D11_HW_ANGLE);
 
@@ -1245,7 +1157,7 @@ void gfxWindowsPlatform::InitializeConfig() {
     InitializeANGLEConfig();
     InitializeD2DConfig();
   } else {
-    FetchAndImportContentDeviceData();
+    ImportCachedContentDeviceData();
     InitializeANGLEConfig();
   }
 }
@@ -1268,26 +1180,6 @@ void gfxWindowsPlatform::InitializeD3D11Config() {
   if (StaticPrefs::layers_d3d11_force_warp_AtStartup()) {
     // Force D3D11 on even if we disabled it.
     d3d11.UserForceEnable("User force-enabled WARP");
-  }
-
-  if (!IsWin8OrLater() &&
-      !DeviceManagerDx::Get()->CheckRemotePresentSupport()) {
-    nsCOMPtr<nsIGfxInfo> gfxInfo;
-    gfxInfo = components::GfxInfo::Service();
-    nsAutoString adaptorId;
-    gfxInfo->GetAdapterDeviceID(adaptorId);
-    // Blocklist Intel HD Graphics 510/520/530 on Windows 7 without platform
-    // update due to the crashes in Bug 1351349.
-    if (adaptorId.EqualsLiteral("0x1912") ||
-        adaptorId.EqualsLiteral("0x1916") ||
-        adaptorId.EqualsLiteral("0x1902")) {
-#ifdef RELEASE_OR_BETA
-      d3d11.Disable(FeatureStatus::Blocklisted, "Blocklisted, see bug 1351349",
-                    "FEATURE_FAILURE_BUG_1351349"_ns);
-#else
-      Preferences::SetBool("gfx.compositor.clearstate", true);
-#endif
-    }
   }
 
   nsCString message;
@@ -1528,33 +1420,8 @@ void gfxWindowsPlatform::InitGPUProcessSupport() {
     gpuProc.Disable(FeatureStatus::Unavailable,
                     "Not using GPU Process since D3D11 is unavailable",
                     "FEATURE_FAILURE_NO_D3D11"_ns);
-  } else if (!IsWin7SP1OrLater()) {
-    // On Windows 7 Pre-SP1, DXGI 1.2 is not available and remote presentation
-    // for D3D11 will not work. Rather than take a regression we revert back
-    // to in-process rendering.
-    gpuProc.Disable(FeatureStatus::Unavailable,
-                    "Windows 7 Pre-SP1 cannot use the GPU process",
-                    "FEATURE_FAILURE_OLD_WINDOWS"_ns);
-  } else if (!IsWin8OrLater()) {
-    // Windows 7 SP1 can have DXGI 1.2 only via the Platform Update, so we
-    // explicitly check for that here.
-    if (!DeviceManagerDx::Get()->CheckRemotePresentSupport()) {
-      gpuProc.Disable(FeatureStatus::Unavailable,
-                      "GPU Process requires the Windows 7 Platform Update",
-                      "FEATURE_FAILURE_PLATFORM_UPDATE"_ns);
-    } else {
-      // Clear anything cached by the above call since we don't need it.
-      DeviceManagerDx::Get()->ResetDevices();
-    }
   }
-
   // If we're still enabled at this point, the user set the force-enabled pref.
-}
-
-bool gfxWindowsPlatform::DwmCompositionEnabled() {
-  MOZ_RELEASE_ASSERT(mDwmCompositionStatus != DwmCompositionStatus::Unknown);
-
-  return mDwmCompositionStatus == DwmCompositionStatus::Enabled;
 }
 
 class D3DVsyncSource final : public VsyncSource {
@@ -1562,22 +1429,14 @@ class D3DVsyncSource final : public VsyncSource {
   D3DVsyncSource()
       : mPrevVsync(TimeStamp::Now()),
         mVsyncEnabled(false),
-        mWaitVBlankMonitor(NULL),
-        mIsWindows8OrLater(false) {
+        mWaitVBlankMonitor(NULL) {
     mVsyncThread = new base::Thread("WindowsVsyncThread");
     MOZ_RELEASE_ASSERT(mVsyncThread->Start(),
                        "GFX: Could not start Windows vsync thread");
     SetVsyncRate();
-
-    mIsWindows8OrLater = IsWin8OrLater();
   }
 
   void SetVsyncRate() {
-    if (!gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) {
-      mVsyncRate = TimeDuration::FromMilliseconds(1000.0 / 60.0);
-      return;
-    }
-
     DWM_TIMING_INFO vblankTime;
     // Make sure to init the cbSize, otherwise GetCompositionTiming will fail
     vblankTime.cbSize = sizeof(DWM_TIMING_INFO);
@@ -1674,22 +1533,20 @@ class D3DVsyncSource final : public VsyncSource {
     int64_t usAdjust = (adjust * microseconds) / frequency.QuadPart;
     vsync -= TimeDuration::FromMicroseconds((double)usAdjust);
 
-    if (IsWin10OrLater()) {
-      // On Windows 10 and on, DWMGetCompositionTimingInfo, mostly
-      // reports the upcoming vsync time, which is in the future.
-      // It can also sometimes report a vblank time in the past.
-      // Since large parts of Gecko assume TimeStamps can't be in future,
-      // use the previous vsync.
+    // On Windows 10 and on, DWMGetCompositionTimingInfo, mostly
+    // reports the upcoming vsync time, which is in the future.
+    // It can also sometimes report a vblank time in the past.
+    // Since large parts of Gecko assume TimeStamps can't be in future,
+    // use the previous vsync.
 
-      // Windows 10 and Intel HD vsync timestamps are messy and
-      // all over the place once in a while. Most of the time,
-      // it reports the upcoming vsync. Sometimes, that upcoming
-      // vsync is in the past. Sometimes that upcoming vsync is before
-      // the previously seen vsync.
-      // In these error cases, normalize to Now();
-      if (vsync >= now) {
-        vsync = vsync - mVsyncRate;
-      }
+    // Windows 10 and Intel HD vsync timestamps are messy and
+    // all over the place once in a while. Most of the time,
+    // it reports the upcoming vsync. Sometimes, that upcoming
+    // vsync is in the past. Sometimes that upcoming vsync is before
+    // the previously seen vsync.
+    // In these error cases, normalize to Now();
+    if (vsync >= now) {
+      vsync = vsync - mVsyncRate;
     }
 
     // On Windows 7 and 8, DwmFlush wakes up AFTER qpcVBlankTime
@@ -1700,7 +1557,7 @@ class D3DVsyncSource final : public VsyncSource {
 
     // Our vsync time is some time very far in the past, adjust to Now.
     // 4 ms is arbitrary, so feel free to pick something else if this isn't
-    // working. See the comment above within IsWin10OrLater().
+    // working. See the comment above.
     if ((now - vsync).ToMilliseconds() > 4.0) {
       vsync = now;
     }
@@ -1727,18 +1584,8 @@ class D3DVsyncSource final : public VsyncSource {
       MOZ_ASSERT(vsync <= TimeStamp::Now());
       NotifyVsync(vsync, vsync + mVsyncRate);
 
-      // DwmComposition can be dynamically enabled/disabled
-      // so we have to check every time that it's available.
-      // When it is unavailable, we fallback to software but will try
-      // to get back to dwm rendering once it's re-enabled
-      if (!gfxWindowsPlatform::GetPlatform()->DwmCompositionEnabled()) {
-        ScheduleSoftwareVsync(vsync);
-        return;
-      }
-
       HRESULT hr = E_FAIL;
-      if (mIsWindows8OrLater &&
-          !StaticPrefs::gfx_vsync_force_disable_waitforvblank()) {
+      if (!StaticPrefs::gfx_vsync_force_disable_waitforvblank()) {
         UpdateVBlankOutput();
         if (mWaitVBlankOutput) {
           const TimeStamp vblank_begin_wait = TimeStamp::Now();
@@ -1835,17 +1682,11 @@ class D3DVsyncSource final : public VsyncSource {
 
   HMONITOR mWaitVBlankMonitor;
   RefPtr<IDXGIOutput> mWaitVBlankOutput;
-  bool mIsWindows8OrLater;
 };  // D3DVsyncSource
 
 already_AddRefed<mozilla::gfx::VsyncSource>
 gfxWindowsPlatform::CreateGlobalHardwareVsyncSource() {
   MOZ_RELEASE_ASSERT(NS_IsMainThread(), "GFX: Not in main thread.");
-
-  if (!DwmCompositionEnabled()) {
-    NS_WARNING("DWM not enabled, falling back to software vsync");
-    return GetSoftwareVsyncSource();
-  }
 
   RefPtr<VsyncSource> d3dVsyncSource = new D3DVsyncSource();
   return d3dVsyncSource.forget();
@@ -1899,9 +1740,6 @@ void gfxWindowsPlatform::ImportContentDeviceData(
     DeviceManagerDx* dm = DeviceManagerDx::Get();
     dm->ImportDeviceInfo(aData.d3d11());
   }
-
-  // aData->cmsOutputProfileData() will be read during color profile init,
-  // not as part of this import function
 }
 
 void gfxWindowsPlatform::BuildContentDeviceData(ContentDeviceData* aOut) {

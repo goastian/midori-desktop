@@ -9,6 +9,12 @@
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   <script type="application/javascript">
 
+// Increase the tap timeouts so the double-tap is still detected in case of
+// random delays during testing.
+var doubletap_prefs = [
+  ["ui.click_hold_context_menus.delay", 10000],
+  ["apz.max_tap_time", 10000],
+];
 
 var subtests = [
   // tests that scrolling doesn't cause extra SchedulePaint calls
@@ -20,6 +26,21 @@ var subtests = [
     ["apz.overscroll.test_async_scroll_offset.enabled", true],
     ["apz.test.logging_enabled", true],
   ]},
+  {"file": "helper_bug1719855.html?prevent=contextmenu"},
+  {"file": "helper_bug1719855.html"},
+  {"file": "helper_bug1724759.html"},
+  {"file": "helper_bug1806400.html", "prefs": [
+    // This test uses `SimpleTest.promiseWaitForCondition` which waits for the
+    // given condition up to 3s, to avoid opening context menu during the time
+    // span use a longer `ui.click_hold_context_menus.delay` here.
+    ["ui.click_hold_context_menus.delay", 10000],
+    ["ui.touch_activation.duration_ms", 1000]
+  ]},
+  {"file": "helper_bug1806400-2.html", "prefs": doubletap_prefs},
+  {"file": "helper_bug1806400-3.html", "prefs": [
+    ["ui.touch_activation.duration_ms", 90000]
+  ]},
+  {"file": "helper_bug1806400-4.html", "prefs": doubletap_prefs},
   // Add new subtests here. If this starts timing out because it's taking too
   // long, create a test_group_touchevents-6.html file. Refer to 1423011#c57
   // for more details.

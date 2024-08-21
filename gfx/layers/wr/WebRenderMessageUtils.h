@@ -197,6 +197,12 @@ struct ParamTraits<mozilla::wr::WebRenderError>
                                       mozilla::wr::WebRenderError::Sentinel> {};
 
 template <>
+struct ParamTraits<mozilla::wr::WrRotation>
+    : public ContiguousEnumSerializer<mozilla::wr::WrRotation,
+                                      mozilla::wr::WrRotation::Degree0,
+                                      mozilla::wr::WrRotation::Sentinel> {};
+
+template <>
 struct ParamTraits<mozilla::wr::MemoryReport>
     : public PlainOldDataSerializer<mozilla::wr::MemoryReport> {};
 
@@ -211,6 +217,13 @@ struct ParamTraits<mozilla::wr::ExternalImageKeyPair>
 template <>
 struct ParamTraits<mozilla::wr::RenderReasons>
     : public PlainOldDataSerializer<mozilla::wr::RenderReasons> {};
+
+template <>
+struct ParamTraits<mozilla::wr::ExternalImageSource>
+    : public ContiguousEnumSerializer<mozilla::wr::ExternalImageSource,
+                                      mozilla::wr::ExternalImageSource::Unknown,
+                                      mozilla::wr::ExternalImageSource::Last> {
+};
 
 }  // namespace IPC
 

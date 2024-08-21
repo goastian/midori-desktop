@@ -1265,7 +1265,7 @@ nsresult gfxUtils::EncodeSourceSurface(SourceSurface* aSurface,
     nsCOMPtr<nsIClipboardHelper> clipboard(
         do_GetService("@mozilla.org/widget/clipboardhelper;1", &rv));
     if (clipboard) {
-      clipboard->CopyString(NS_ConvertASCIItoUTF16(dataURI));
+      clipboard->CopyString(NS_ConvertASCIItoUTF16(dataURI), nullptr);
     }
   }
   return NS_OK;
@@ -1624,7 +1624,8 @@ UniquePtr<uint8_t[]> gfxUtils::GetImageBufferWithRandomNoise(
       GetImageBuffer(aSurface, aIsAlphaPremultiplied, outFormat);
 
   nsRFPService::RandomizePixels(
-      aCookieJarSettings, imageBuffer.get(),
+      aCookieJarSettings, imageBuffer.get(), aSurface->GetSize().width,
+      aSurface->GetSize().height,
       aSurface->GetSize().width * aSurface->GetSize().height * 4,
       SurfaceFormat::A8R8G8B8_UINT32);
 
@@ -1672,7 +1673,8 @@ nsresult gfxUtils::GetInputStreamWithRandomNoise(
   }
 
   nsRFPService::RandomizePixels(
-      aCookieJarSettings, imageBuffer.get(),
+      aCookieJarSettings, imageBuffer.get(), aSurface->GetSize().width,
+      aSurface->GetSize().height,
       aSurface->GetSize().width * aSurface->GetSize().height * 4,
       SurfaceFormat::A8R8G8B8_UINT32);
 

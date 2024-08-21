@@ -11,11 +11,13 @@
 
 #include "mozilla/MouseEvents.h"
 #include "mozilla/StaticPrefs_apz.h"
+#include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/StaticPrefs_mousewheel.h"
 #include "mozilla/StaticPrefs_test.h"
 #include "mozilla/Telemetry.h"  // for Telemetry
 #include "mozilla/ToString.h"
+#include "mozilla/layers/APZEventState.h"
 #include "mozilla/layers/IAPZCTreeManager.h"  // for AllowedTouchBehavior
 #include "OverscrollHandoffState.h"
 #include "QueuedInput.h"
@@ -54,13 +56,6 @@ bool InputBlockState::SetConfirmedTargetApzc(
   MOZ_ASSERT(aState == TargetConfirmationState::eConfirmed ||
              aState == TargetConfirmationState::eTimedOut);
 
-  if (mTargetConfirmed == TargetConfirmationState::eTimedOut &&
-      aState == TargetConfirmationState::eConfirmed) {
-    // The main thread finally responded. We had already timed out the
-    // confirmation, but we want to update the state internally so that we
-    // can record the time for telemetry purposes.
-    mTargetConfirmed = TargetConfirmationState::eTimedOutAndMainThreadResponded;
-  }
   // Sometimes, bugs in compositor hit testing can lead to APZ confirming
   // a different target than the main thread. If this happens for a drag
   // block created for a scrollbar drag, the consequences can be fairly
@@ -145,12 +140,6 @@ uint64_t InputBlockState::GetBlockId() const { return mBlockId; }
 
 bool InputBlockState::IsTargetConfirmed() const {
   return mTargetConfirmed != TargetConfirmationState::eUnconfirmed;
-}
-
-bool InputBlockState::HasReceivedRealConfirmedTarget() const {
-  return mTargetConfirmed == TargetConfirmationState::eConfirmed ||
-         mTargetConfirmed ==
-             TargetConfirmationState::eTimedOutAndMainThreadResponded;
 }
 
 bool InputBlockState::ShouldDropEvents() const {
@@ -266,8 +255,10 @@ void DragBlockState::SetInitialThumbPos(OuterCSSCoord aThumbPos) {
   mInitialThumbPos = aThumbPos;
 }
 
-void DragBlockState::SetDragMetrics(const AsyncDragMetrics& aDragMetrics) {
+void DragBlockState::SetDragMetrics(const AsyncDragMetrics& aDragMetrics,
+                                    const CSSRect& aScrollableRect) {
   mDragMetrics = aDragMetrics;
+  mInitialScrollableRect = aScrollableRect;
 }
 
 void DragBlockState::DispatchEvent(const InputData& aEvent) const {
@@ -276,7 +267,8 @@ void DragBlockState::DispatchEvent(const InputData& aEvent) const {
     return;
   }
 
-  GetTargetApzc()->HandleDragEvent(mouseInput, mDragMetrics, mInitialThumbPos);
+  GetTargetApzc()->HandleDragEvent(mouseInput, mDragMetrics, mInitialThumbPos,
+                                   mInitialScrollableRect);
 }
 
 bool DragBlockState::MustStayActive() { return !mReceivedMouseUp; }
@@ -646,10 +638,15 @@ TouchBlockState::TouchBlockState(
     : CancelableBlockState(aTargetApzc, aFlags),
       mAllowedTouchBehaviorSet(false),
       mDuringFastFling(false),
-      mSingleTapOccurred(false),
       mInSlop(false),
+      mForLongTap(false),
+      mLongTapWasProcessed(false),
+      mIsWaitingLongTapResult(false),
+      mNeedsWaitTouchMove(false),
+      mSingleTapState(apz::SingleTapState::NotClick),
       mTouchCounter(aCounter),
       mStartTime(GetTargetApzc()->GetFrameTime().Time()) {
+  mOriginalTargetConfirmedState = mTargetConfirmed;
   TBS_LOG("Creating %p\n", this);
 }
 
@@ -691,6 +688,10 @@ bool TouchBlockState::IsReadyForHandling() const {
     return false;
   }
 
+  if (mIsWaitingLongTapResult) {
+    return false;
+  }
+
   return mAllowedTouchBehaviorSet || IsContentResponseTimerExpired();
 }
 
@@ -701,14 +702,18 @@ void TouchBlockState::SetDuringFastFling() {
 
 bool TouchBlockState::IsDuringFastFling() const { return mDuringFastFling; }
 
-void TouchBlockState::SetSingleTapOccurred() {
-  TBS_LOG("%p setting single-tap-occurred flag\n", this);
-  mSingleTapOccurred = true;
+void TouchBlockState::SetSingleTapState(apz::SingleTapState aState) {
+  TBS_LOG("%p setting single-tap-state: %d\n", this,
+          static_cast<uint8_t>(aState));
+  mSingleTapState = aState;
 }
 
-bool TouchBlockState::SingleTapOccurred() const { return mSingleTapOccurred; }
-
-bool TouchBlockState::MustStayActive() { return true; }
+bool TouchBlockState::MustStayActive() {
+  // If this touch block is for long-tap, it doesn't need to be active after the
+  // block was processed, it will be taken over by the original touch block
+  // which will stay active.
+  return !mForLongTap || !IsReadyForHandling();
+}
 
 const char* TouchBlockState::Type() { return "touch"; }
 
@@ -723,8 +728,25 @@ void TouchBlockState::DispatchEvent(const InputData& aEvent) const {
 }
 
 bool TouchBlockState::TouchActionAllowsPinchZoom() const {
+  bool forceUserScalable = StaticPrefs::browser_ui_zoom_force_user_scalable();
+
   // Pointer events specification requires that all touch points allow zoom.
   for (auto& behavior : mAllowedTouchBehaviors) {
+    if (
+        // These flags represent 'touch-action: none'; if all of them are unset,
+        // we want to disable pinch zoom, even if forceUserScalable is true.
+        // This matches the behavior of other browsers.
+        !(behavior & AllowedTouchBehavior::PINCH_ZOOM) &&
+        !(behavior & AllowedTouchBehavior::ANIMATING_ZOOM) &&
+        !(behavior & AllowedTouchBehavior::VERTICAL_PAN) &&
+        !(behavior & AllowedTouchBehavior::HORIZONTAL_PAN)) {
+      return false;
+    }
+
+    if (forceUserScalable) {
+      return true;
+    }
+
     if (!(behavior & AllowedTouchBehavior::PINCH_ZOOM)) {
       return false;
     }
@@ -830,6 +852,10 @@ Maybe<ScrollDirection> TouchBlockState::GetBestGuessPanDirection(
 
 uint32_t TouchBlockState::GetActiveTouchCount() const {
   return mTouchCounter.GetActiveTouchCount();
+}
+
+bool TouchBlockState::IsTargetOriginallyConfirmed() const {
+  return mOriginalTargetConfirmedState != TargetConfirmationState::eUnconfirmed;
 }
 
 KeyboardBlockState::KeyboardBlockState(

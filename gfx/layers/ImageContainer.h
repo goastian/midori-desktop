@@ -21,15 +21,15 @@
 #include "mozilla/layers/LayersTypes.h"  // for LayersBackend, etc
 #include "mozilla/layers/CompositorTypes.h"
 #include "mozilla/mozalloc.h"  // for operator delete, etc
-#include "nsDebug.h"           // for NS_ASSERTION
-#include "nsISupportsImpl.h"   // for Image::Release, etc
-#include "nsTArray.h"          // for nsTArray
-#include "nsThreadUtils.h"     // for NS_IsMainThread
+#include "mozilla/TypedEnumBits.h"
+#include "nsDebug.h"          // for NS_ASSERTION
+#include "nsISupportsImpl.h"  // for Image::Release, etc
+#include "nsTArray.h"         // for nsTArray
+#include "nsThreadUtils.h"    // for NS_IsMainThread
 #include "mozilla/Atomics.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/EnumeratedArray.h"
 #include "mozilla/UniquePtr.h"
-#include "MediaInfo.h"
 #include "nsTHashMap.h"
 
 #ifdef XP_WIN
@@ -42,8 +42,11 @@ typedef void* HANDLE;
 
 namespace mozilla {
 
+enum class VideoRotation;
+
 namespace layers {
 
+class GPUVideoImage;
 class ImageClient;
 class ImageCompositeNotification;
 class ImageContainer;
@@ -60,7 +63,7 @@ class MemoryOrShmem;
 class D3D11RecycleAllocator;
 class D3D11YCbCrRecycleAllocator;
 #endif
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
 class MacIOSurfaceRecycleAllocator;
 #endif
 class SurfaceDescriptorBuffer;
@@ -77,9 +80,9 @@ class GLImage;
 class SharedRGBImage;
 #ifdef MOZ_WIDGET_ANDROID
 class SurfaceTextureImage;
-#elif defined(XP_MACOSX)
+#elif defined(XP_DARWIN)
 class MacIOSurfaceImage;
-#elif MOZ_WAYLAND
+#elif MOZ_WIDGET_GTK
 class DMABUFSurfaceImage;
 #endif
 
@@ -124,9 +127,21 @@ class Image {
   int32_t GetSerial() const { return mSerial; }
 
   bool IsDRM() const { return mIsDRM; }
-  void SetIsDRM(bool aIsDRM) { mIsDRM = aIsDRM; }
+  virtual void SetIsDRM(bool aIsDRM) { mIsDRM = aIsDRM; }
+
+  virtual void OnPrepareForwardToHost() {}
+  virtual void OnAbandonForwardToHost() {}
 
   virtual already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() = 0;
+
+  enum class BuildSdbFlags : uint8_t {
+    Default = 0,
+    RgbOnly = 1 << 0,
+  };
+
+  virtual nsresult BuildSurfaceDescriptorBuffer(
+      SurfaceDescriptorBuffer& aSdBuffer, BuildSdbFlags aFlags,
+      const std::function<MemoryOrShmem(uint32_t)>& aAllocate);
 
   virtual bool IsValid() const { return true; }
 
@@ -140,20 +155,27 @@ class Image {
 
   /* Access to derived classes. */
   virtual GLImage* AsGLImage() { return nullptr; }
+  virtual GPUVideoImage* AsGPUVideoImage() { return nullptr; }
 #ifdef MOZ_WIDGET_ANDROID
   virtual SurfaceTextureImage* AsSurfaceTextureImage() { return nullptr; }
 #endif
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
   virtual MacIOSurfaceImage* AsMacIOSurfaceImage() { return nullptr; }
 #endif
   virtual PlanarYCbCrImage* AsPlanarYCbCrImage() { return nullptr; }
-#ifdef MOZ_WAYLAND
+#ifdef MOZ_WIDGET_GTK
   virtual DMABUFSurfaceImage* AsDMABUFSurfaceImage() { return nullptr; }
 #endif
 
   virtual NVImage* AsNVImage() { return nullptr; }
 
   virtual Maybe<SurfaceDescriptor> GetDesc();
+
+  static nsresult AllocateSurfaceDescriptorBufferRgb(
+      const gfx::IntSize& aSize, gfx::SurfaceFormat aFormat,
+      uint8_t*& aOutBuffer, SurfaceDescriptorBuffer& aSdBuffer,
+      int32_t& aStride,
+      const std::function<layers::MemoryOrShmem(uint32_t)>& aAllocate);
 
  protected:
   Maybe<SurfaceDescriptor> GetDescFromTexClient(
@@ -169,8 +191,8 @@ class Image {
   virtual ~Image() = default;
 
   mozilla::EnumeratedArray<mozilla::layers::LayersBackend,
-                           mozilla::layers::LayersBackend::LAYERS_LAST,
-                           UniquePtr<ImageBackendData>>
+                           UniquePtr<ImageBackendData>,
+                           size_t(mozilla::layers::LayersBackend::LAYERS_LAST)>
       mBackendData;
 
   void* mImplData;
@@ -180,6 +202,8 @@ class Image {
 
   static mozilla::Atomic<int32_t> sSerialCounter;
 };
+
+MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(Image::BuildSdbFlags)
 
 /**
  * A RecycleBin is owned by an ImageContainer. We store buffers in it that we
@@ -300,14 +324,7 @@ class ImageContainer final : public SupportsThreadSafeWeakPtr<ImageContainer> {
 
   static const uint64_t sInvalidAsyncContainerId = 0;
 
-  explicit ImageContainer(ImageContainer::Mode flag = SYNCHRONOUS);
-
-  /**
-   * Create ImageContainer just to hold another ASYNCHRONOUS ImageContainer's
-   * async container ID.
-   * @param aAsyncContainerID async container ID for which we are a proxy
-   */
-  explicit ImageContainer(const CompositableHandle& aHandle);
+  ImageContainer(ImageUsageType aUsageType, ImageContainer::Mode aFlag);
 
   ~ImageContainer();
 
@@ -477,12 +494,12 @@ class ImageContainer final : public SupportsThreadSafeWeakPtr<ImageContainer> {
     return mTransformHint;
   }
 
-  void SetRotation(VideoInfo::Rotation aRotation) {
+  void SetRotation(VideoRotation aRotation) {
     MOZ_ASSERT(NS_IsMainThread());
     mRotation = aRotation;
   }
 
-  VideoInfo::Rotation GetRotation() const {
+  VideoRotation GetRotation() const {
     MOZ_ASSERT(NS_IsMainThread());
     return mRotation;
   }
@@ -506,7 +523,7 @@ class ImageContainer final : public SupportsThreadSafeWeakPtr<ImageContainer> {
       KnowsCompositor* aKnowsCompositor);
 #endif
 
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
   already_AddRefed<MacIOSurfaceRecycleAllocator>
   GetMacIOSurfaceRecycleAllocator();
 #endif
@@ -562,6 +579,9 @@ class ImageContainer final : public SupportsThreadSafeWeakPtr<ImageContainer> {
 
   void DropImageClient();
 
+  const ImageUsageType mUsageType;
+  const bool mIsAsync;
+
  private:
   typedef mozilla::RecursiveMutex RecursiveMutex;
 
@@ -594,7 +614,7 @@ class ImageContainer final : public SupportsThreadSafeWeakPtr<ImageContainer> {
   RefPtr<D3D11YCbCrRecycleAllocator> mD3D11YCbCrRecycleAllocator
       MOZ_GUARDED_BY(mRecursiveMutex);
 #endif
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
   RefPtr<MacIOSurfaceRecycleAllocator> mMacIOSurfaceRecycleAllocator
       MOZ_GUARDED_BY(mRecursiveMutex);
 #endif
@@ -625,7 +645,7 @@ class ImageContainer final : public SupportsThreadSafeWeakPtr<ImageContainer> {
   gfx::Matrix mTransformHint MOZ_GUARDED_BY(mRecursiveMutex);
 
   // Main thread only.
-  VideoInfo::Rotation mRotation = VideoInfo::Rotation::kDegree_0;
+  VideoRotation mRotation;
 
   RefPtr<BufferRecycleBin> mRecycleBin MOZ_GUARDED_BY(mRecursiveMutex);
 
@@ -638,7 +658,6 @@ class ImageContainer final : public SupportsThreadSafeWeakPtr<ImageContainer> {
   // than asynchronusly using the ImageBridge IPDL protocol.
   RefPtr<ImageClient> mImageClient MOZ_GUARDED_BY(mRecursiveMutex);
 
-  const bool mIsAsync;
   CompositableHandle mAsyncContainerHandle MOZ_GUARDED_BY(mRecursiveMutex);
 
   // ProducerID for last current image(s)
@@ -779,22 +798,20 @@ class PlanarYCbCrImage : public Image {
    * This makes a copy of the data buffers, in order to support functioning
    * in all different layer managers.
    */
-  virtual bool CopyData(const Data& aData) = 0;
+  virtual nsresult CopyData(const Data& aData) = 0;
 
   /**
    * This doesn't make a copy of the data buffers.
    */
-  virtual bool AdoptData(const Data& aData);
+  virtual nsresult AdoptData(const Data& aData);
 
   /**
    * This will create an empty data buffers according to the input data's size.
    */
-  virtual bool CreateEmptyBuffer(const Data& aData, const gfx::IntSize& aYSize,
-                                 const gfx::IntSize& aCbCrSize) {
-    return false;
-  }
-  bool CreateEmptyBuffer(const Data& aData) {
-    return CreateEmptyBuffer(aData, aData.YDataSize(), aData.CbCrDataSize());
+  virtual nsresult CreateEmptyBuffer(const Data& aData,
+                                     const gfx::IntSize& aYSize,
+                                     const gfx::IntSize& aCbCrSize) {
+    return NS_ERROR_NOT_IMPLEMENTED;
   }
 
   /**
@@ -827,9 +844,9 @@ class PlanarYCbCrImage : public Image {
    * Build a SurfaceDescriptorBuffer with this image.  A function to allocate
    * a MemoryOrShmem with the given capacity must be provided.
    */
-  virtual nsresult BuildSurfaceDescriptorBuffer(
-      SurfaceDescriptorBuffer& aSdBuffer,
-      const std::function<MemoryOrShmem(uint32_t)>& aAllocate);
+  nsresult BuildSurfaceDescriptorBuffer(
+      SurfaceDescriptorBuffer& aSdBuffer, BuildSdbFlags aFlags,
+      const std::function<MemoryOrShmem(uint32_t)>& aAllocate) override;
 
  protected:
   already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override;
@@ -843,7 +860,7 @@ class PlanarYCbCrImage : public Image {
   gfx::IntPoint mOrigin;
   gfx::IntSize mSize;
   gfxImageFormat mOffscreenFormat;
-  RefPtr<gfx::SourceSurface> mSourceSurface;
+  RefPtr<gfx::DataSourceSurface> mSourceSurface;
   uint32_t mBufferSize;
 };
 
@@ -852,7 +869,7 @@ class RecyclingPlanarYCbCrImage : public PlanarYCbCrImage {
   explicit RecyclingPlanarYCbCrImage(BufferRecycleBin* aRecycleBin)
       : mRecycleBin(aRecycleBin) {}
   virtual ~RecyclingPlanarYCbCrImage();
-  bool CopyData(const Data& aData) override;
+  nsresult CopyData(const Data& aData) override;
   size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const override;
 
  protected:
@@ -885,6 +902,9 @@ class NVImage final : public Image {
   gfx::IntSize GetSize() const override;
   gfx::IntRect GetPictureRect() const override;
   already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override;
+  nsresult BuildSurfaceDescriptorBuffer(
+      SurfaceDescriptorBuffer& aSdBuffer, BuildSdbFlags aFlags,
+      const std::function<MemoryOrShmem(uint32_t)>& aAllocate) override;
   bool IsValid() const override;
   NVImage* AsNVImage() override;
 
@@ -903,7 +923,7 @@ class NVImage final : public Image {
   uint32_t mBufferSize;
   gfx::IntSize mSize;
   Data mData;
-  RefPtr<gfx::SourceSurface> mSourceSurface;
+  RefPtr<gfx::DataSourceSurface> mSourceSurface;
 };
 
 /**

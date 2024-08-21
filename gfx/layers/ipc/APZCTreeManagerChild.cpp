@@ -11,6 +11,7 @@
 #include "mozilla/layers/APZCCallbackHelper.h"      // for APZCCallbackHelper
 #include "mozilla/layers/APZInputBridgeChild.h"     // for APZInputBridgeChild
 #include "mozilla/layers/GeckoContentController.h"  // for GeckoContentController
+#include "mozilla/layers/DoubleTapToZoom.h"  // for DoubleTapToZoomMetrics
 #include "mozilla/layers/RemoteCompositorSession.h"  // for RemoteCompositorSession
 #ifdef MOZ_WIDGET_ANDROID
 #  include "mozilla/jni/Utils.h"  // for DispatchToGeckoPriorityQueue
@@ -30,6 +31,9 @@ void APZCTreeManagerChild::SetCompositorSession(
   // we're setting mCompositorSession or we're clearing it).
   MOZ_ASSERT(!mCompositorSession ^ !aSession);
   mCompositorSession = aSession;
+  if (mInputBridge) {
+    mInputBridge->SetCompositorSession(aSession);
+  }
 }
 
 void APZCTreeManagerChild::SetInputBridge(APZInputBridgeChild* aInputBridge) {
@@ -140,41 +144,6 @@ void APZCTreeManagerChild::ReleaseIPDLReference() {
 
 void APZCTreeManagerChild::ActorDestroy(ActorDestroyReason aWhy) {
   mIPCOpen = false;
-}
-
-mozilla::ipc::IPCResult APZCTreeManagerChild::RecvHandleTap(
-    const TapType& aType, const LayoutDevicePoint& aPoint,
-    const Modifiers& aModifiers, const ScrollableLayerGuid& aGuid,
-    const uint64_t& aInputBlockId) {
-  MOZ_ASSERT(XRE_IsParentProcess());
-  if (mCompositorSession &&
-      mCompositorSession->RootLayerTreeId() == aGuid.mLayersId &&
-      mCompositorSession->GetContentController()) {
-    RefPtr<GeckoContentController> controller =
-        mCompositorSession->GetContentController();
-    controller->HandleTap(aType, aPoint, aModifiers, aGuid, aInputBlockId);
-    return IPC_OK();
-  }
-  dom::BrowserParent* tab =
-      dom::BrowserParent::GetBrowserParentFromLayersId(aGuid.mLayersId);
-  if (tab) {
-#ifdef MOZ_WIDGET_ANDROID
-    // On Android, touch events are dispatched from the UI thread to the main
-    // thread using the Android priority queue. It is possible that this tap has
-    // made it to the GPU process and back before they have been processed. We
-    // must therefore dispatch this message to the same queue, otherwise the tab
-    // may receive the tap event before the touch events that synthesized it.
-    mozilla::jni::DispatchToGeckoPriorityQueue(
-        NewRunnableMethod<TapType, LayoutDevicePoint, Modifiers,
-                          ScrollableLayerGuid, uint64_t>(
-            "dom::BrowserParent::SendHandleTap", tab,
-            &dom::BrowserParent::SendHandleTap, aType, aPoint, aModifiers,
-            aGuid, aInputBlockId));
-#else
-    tab->SendHandleTap(aType, aPoint, aModifiers, aGuid, aInputBlockId);
-#endif
-  }
-  return IPC_OK();
 }
 
 mozilla::ipc::IPCResult APZCTreeManagerChild::RecvNotifyPinchGesture(

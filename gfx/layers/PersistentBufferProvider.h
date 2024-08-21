@@ -9,7 +9,7 @@
 
 #include "mozilla/Assertions.h"  // for MOZ_ASSERT, etc
 #include "mozilla/RefPtr.h"      // for RefPtr, already_AddRefed, etc
-#include "mozilla/layers/KnowsCompositor.h"
+#include "mozilla/layers/ActiveResource.h"
 #include "mozilla/layers/LayersSurfaces.h"
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/RefCounted.h"
@@ -24,11 +24,14 @@ class ClientWebGLContext;
 namespace gfx {
 class SourceSurface;
 class DrawTarget;
-class DrawTargetWebgl;
 }  // namespace gfx
 
 namespace layers {
 
+class CompositableForwarder;
+class FwdTransactionTracker;
+class KnowsCompositor;
+struct RemoteTextureOwnerId;
 class TextureClient;
 
 /**
@@ -104,11 +107,11 @@ class PersistentBufferProvider : public RefCounted<PersistentBufferProvider>,
    */
   virtual bool RequiresRefresh() const { return false; }
 
-  /**
-   * Provide a WebGL front buffer for compositing, if available.
-   */
-  virtual Maybe<layers::SurfaceDescriptor> GetFrontBuffer() {
-    return Nothing();
+  virtual Maybe<SurfaceDescriptor> GetFrontBuffer() { return Nothing(); }
+
+  virtual already_AddRefed<FwdTransactionTracker> UseCompositableForwarder(
+      CompositableForwarder* aForwarder) {
+    return nullptr;
   }
 };
 
@@ -146,17 +149,16 @@ class PersistentBufferProviderBasic : public PersistentBufferProvider {
   RefPtr<gfx::SourceSurface> mSnapshot;
 };
 
-class PersistentBufferProviderAccelerated
-    : public PersistentBufferProviderBasic {
+class PersistentBufferProviderAccelerated : public PersistentBufferProvider {
  public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(PersistentBufferProviderAccelerated,
                                           override)
 
-  explicit PersistentBufferProviderAccelerated(gfx::DrawTarget* aTarget);
+  static already_AddRefed<PersistentBufferProviderAccelerated> Create(
+      gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
+      KnowsCompositor* aKnowsCompositor);
 
   bool IsAccelerated() const override { return true; }
-
-  Maybe<layers::SurfaceDescriptor> GetFrontBuffer() override;
 
   already_AddRefed<gfx::DrawTarget> BorrowDrawTarget(
       const gfx::IntRect& aPersistedRect) override;
@@ -166,14 +168,30 @@ class PersistentBufferProviderAccelerated
   already_AddRefed<gfx::SourceSurface> BorrowSnapshot(
       gfx::DrawTarget* aTarget) override;
 
+  void ReturnSnapshot(already_AddRefed<gfx::SourceSurface> aSnapshot) override;
+
+  bool PreservesDrawingState() const override { return true; }
+
+  void OnShutdown() override { Destroy(); }
+
+  Maybe<SurfaceDescriptor> GetFrontBuffer() override;
+
   bool RequiresRefresh() const override;
 
-  void OnMemoryPressure() override;
+  already_AddRefed<FwdTransactionTracker> UseCompositableForwarder(
+      CompositableForwarder* aForwarder) override;
 
  protected:
+  explicit PersistentBufferProviderAccelerated(
+      const RefPtr<TextureClient>& aTexture);
   ~PersistentBufferProviderAccelerated() override;
 
-  gfx::DrawTargetWebgl* GetDrawTargetWebgl() const;
+  void Destroy();
+
+  RefPtr<TextureClient> mTexture;
+
+  RefPtr<gfx::DrawTarget> mDrawTarget;
+  RefPtr<gfx::SourceSurface> mSnapshot;
 };
 
 /**
@@ -188,7 +206,8 @@ class PersistentBufferProviderShared : public PersistentBufferProvider,
 
   static already_AddRefed<PersistentBufferProviderShared> Create(
       gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
-      KnowsCompositor* aKnowsCompositor, bool aWillReadFrequently = false);
+      KnowsCompositor* aKnowsCompositor, bool aWillReadFrequently = false,
+      const Maybe<uint64_t>& aWindowID = Nothing());
 
   bool IsShared() const override { return true; }
 
@@ -215,13 +234,12 @@ class PersistentBufferProviderShared : public PersistentBufferProvider,
 
   bool PreservesDrawingState() const override { return false; }
 
-  bool IsAccelerated() const override;
-
  protected:
   PersistentBufferProviderShared(gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
                                  KnowsCompositor* aKnowsCompositor,
                                  RefPtr<TextureClient>& aTexture,
-                                 bool aWillReadFrequently);
+                                 bool aWillReadFrequently,
+                                 const Maybe<uint64_t>& aWindowID);
 
   ~PersistentBufferProviderShared();
 
@@ -246,6 +264,8 @@ class PersistentBufferProviderShared : public PersistentBufferProvider,
   Maybe<uint32_t> mFront;
   // Whether to avoid acceleration.
   bool mWillReadFrequently = false;
+  // Owning window ID of the buffer provider.
+  Maybe<uint64_t> mWindowID;
 
   RefPtr<gfx::DrawTarget> mDrawTarget;
   RefPtr<gfx::SourceSurface> mSnapshot;

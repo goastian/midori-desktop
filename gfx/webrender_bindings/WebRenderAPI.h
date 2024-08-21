@@ -15,6 +15,7 @@
 
 #include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/gfx/CompositorHitTestInfo.h"
+#include "mozilla/layers/AsyncImagePipelineOp.h"
 #include "mozilla/layers/IpcResourceUpdateQueue.h"
 #include "mozilla/layers/RemoteTextureMap.h"
 #include "mozilla/layers/ScrollableLayerGuid.h"
@@ -102,8 +103,16 @@ struct WrHitResult {
 
 class TransactionBuilder final {
  public:
-  explicit TransactionBuilder(WebRenderAPI* aApi,
-                              bool aUseSceneBuilderThread = true);
+  explicit TransactionBuilder(
+      WebRenderAPI* aApi, bool aUseSceneBuilderThread = true,
+      layers::RemoteTextureTxnScheduler* aRemoteTextureTxnScheduler = nullptr,
+      layers::RemoteTextureTxnId aRemoteTextureTxnId = 0);
+
+  TransactionBuilder(
+      WebRenderAPI* aApi, Transaction* aTxn, bool aUseSceneBuilderThread,
+      bool aOwnsData,
+      layers::RemoteTextureTxnScheduler* aRemoteTextureTxnScheduler,
+      layers::RemoteTextureTxnId aRemoteTextureTxnId);
 
   ~TransactionBuilder();
 
@@ -203,12 +212,16 @@ class TransactionBuilder final {
 
   bool UseSceneBuilderThread() const { return mUseSceneBuilderThread; }
   layers::WebRenderBackend GetBackendType() { return mApiBackend; }
-  Transaction* Raw() { return mTxn; }
+  Transaction* Raw() const { return mTxn; }
+
+  const RefPtr<layers::RemoteTextureTxnScheduler> mRemoteTextureTxnScheduler;
+  const layers::RemoteTextureTxnId mRemoteTextureTxnId;
 
  protected:
+  Transaction* mTxn;
   bool mUseSceneBuilderThread;
   layers::WebRenderBackend mApiBackend;
-  Transaction* mTxn;
+  bool mOwnsData;
 };
 
 class TransactionWrapper final {
@@ -222,10 +235,11 @@ class TransactionWrapper final {
   void AppendTransformProperties(
       const nsTArray<wr::WrTransformProperty>& aTransformArray);
   void UpdateScrollPosition(
-      const wr::WrPipelineId& aPipelineId,
-      const layers::ScrollableLayerGuid::ViewID& aScrollId,
+      const wr::ExternalScrollId& aScrollId,
       const nsTArray<wr::SampledScrollOffset>& aSampledOffsets);
   void UpdateIsTransformAsyncZooming(uint64_t aAnimationId, bool aIsZooming);
+  void AddMinimapData(const wr::ExternalScrollId& aScrollId,
+                      const MinimapData& aMinimapData);
 
  private:
   Transaction* mTxn;
@@ -306,9 +320,13 @@ class WebRenderAPI final {
   RefPtr<EndRecordingPromise> EndRecording();
 
   layers::RemoteTextureInfoList* GetPendingRemoteTextureInfoList();
+  layers::AsyncImagePipelineOps* GetPendingAsyncImagePipelineOps(
+      TransactionBuilder& aTxn);
 
   void FlushPendingWrTransactionEventsWithoutWait();
   void FlushPendingWrTransactionEventsWithWait();
+
+  wr::WebRenderAPI* GetRootAPI();
 
  protected:
   WebRenderAPI(wr::DocumentHandle* aHandle, wr::WindowId aId,
@@ -316,14 +334,17 @@ class WebRenderAPI final {
                layers::WebRenderCompositor aCompositor,
                uint32_t aMaxTextureSize, bool aUseANGLE, bool aUseDComp,
                bool aUseTripleBuffering, bool aSupportsExternalBufferTextures,
-               layers::SyncHandle aSyncHandle);
+               layers::SyncHandle aSyncHandle,
+               wr::WebRenderAPI* aRootApi = nullptr,
+               wr::WebRenderAPI* aRootDocumentApi = nullptr);
 
   ~WebRenderAPI();
   // Should be used only for shutdown handling
   void WaitFlushed();
 
   void UpdateDebugFlags(uint32_t aFlags);
-  bool CheckIsRemoteTextureReady(layers::RemoteTextureInfoList* aList);
+  bool CheckIsRemoteTextureReady(layers::RemoteTextureInfoList* aList,
+                                 const TimeStamp& aTimeStamp);
   void WaitRemoteTextureReady(layers::RemoteTextureInfoList* aList);
 
   enum class RemoteTextureWaitType : uint8_t {
@@ -339,45 +360,49 @@ class WebRenderAPI final {
     enum class Tag {
       Transaction,
       PendingRemoteTextures,
+      PendingAsyncImagePipelineOps,
     };
     const Tag mTag;
-
-    struct TransactionWrapper {
-      TransactionWrapper(wr::Transaction* aTxn, bool aUseSceneBuilderThread)
-          : mTxn(aTxn), mUseSceneBuilderThread(aUseSceneBuilderThread) {}
-
-      ~TransactionWrapper() {
-        if (mTxn) {
-          wr_transaction_delete(mTxn);
-        }
-      }
-
-      wr::Transaction* mTxn;
-      const bool mUseSceneBuilderThread;
-    };
+    const TimeStamp mTimeStamp;
 
    private:
     WrTransactionEvent(const Tag aTag,
-                       UniquePtr<TransactionWrapper>&& aTransaction)
-        : mTag(aTag), mTransaction(std::move(aTransaction)) {
+                       UniquePtr<TransactionBuilder>&& aTransaction)
+        : mTag(aTag),
+          mTimeStamp(TimeStamp::Now()),
+          mTransaction(std::move(aTransaction)) {
       MOZ_ASSERT(mTag == Tag::Transaction);
     }
     WrTransactionEvent(
         const Tag aTag,
         UniquePtr<layers::RemoteTextureInfoList>&& aPendingRemoteTextures)
         : mTag(aTag),
+          mTimeStamp(TimeStamp::Now()),
           mPendingRemoteTextures(std::move(aPendingRemoteTextures)) {
       MOZ_ASSERT(mTag == Tag::PendingRemoteTextures);
     }
+    WrTransactionEvent(const Tag aTag,
+                       UniquePtr<layers::AsyncImagePipelineOps>&&
+                           aPendingAsyncImagePipelineOps,
+                       UniquePtr<TransactionBuilder>&& aTransaction)
+        : mTag(aTag),
+          mTimeStamp(TimeStamp::Now()),
+          mPendingAsyncImagePipelineOps(
+              std::move(aPendingAsyncImagePipelineOps)),
+          mTransaction(std::move(aTransaction)) {
+      MOZ_ASSERT(mTag == Tag::PendingAsyncImagePipelineOps);
+    }
 
-    UniquePtr<TransactionWrapper> mTransaction;
     UniquePtr<layers::RemoteTextureInfoList> mPendingRemoteTextures;
+    UniquePtr<layers::AsyncImagePipelineOps> mPendingAsyncImagePipelineOps;
+    UniquePtr<TransactionBuilder> mTransaction;
 
    public:
-    static WrTransactionEvent Transaction(wr::Transaction* aTxn,
-                                          bool aUseSceneBuilderThread) {
-      auto transaction =
-          MakeUnique<TransactionWrapper>(aTxn, aUseSceneBuilderThread);
+    static WrTransactionEvent Transaction(WebRenderAPI* aApi,
+                                          TransactionBuilder& aTxn) {
+      auto transaction = MakeUnique<TransactionBuilder>(
+          aApi, aTxn.Take(), aTxn.UseSceneBuilderThread(), /* aOwnsData */ true,
+          aTxn.mRemoteTextureTxnScheduler, aTxn.mRemoteTextureTxnId);
       return WrTransactionEvent(Tag::Transaction, std::move(transaction));
     }
 
@@ -387,17 +412,38 @@ class WebRenderAPI final {
                                 std::move(aPendingRemoteTextures));
     }
 
-    wr::Transaction* Transaction() {
+    static WrTransactionEvent PendingAsyncImagePipelineOps(
+        UniquePtr<layers::AsyncImagePipelineOps>&&
+            aPendingAsyncImagePipelineOps,
+        WebRenderAPI* aApi, const TransactionBuilder& aTxn) {
+      auto transaction = MakeUnique<TransactionBuilder>(
+          aApi, aTxn.Raw(), aTxn.UseSceneBuilderThread(), /* aOwnsData */ false,
+          aTxn.mRemoteTextureTxnScheduler, aTxn.mRemoteTextureTxnId);
+      return WrTransactionEvent(Tag::PendingAsyncImagePipelineOps,
+                                std::move(aPendingAsyncImagePipelineOps),
+                                std::move(transaction));
+    }
+
+    wr::Transaction* RawTransaction() {
       if (mTag == Tag::Transaction) {
-        return mTransaction->mTxn;
+        return mTransaction->Raw();
       }
       MOZ_ASSERT_UNREACHABLE("unexpected to be called");
       return nullptr;
     }
 
+    TransactionBuilder* GetTransactionBuilder() {
+      if (mTag == Tag::Transaction ||
+          mTag == Tag::PendingAsyncImagePipelineOps) {
+        return mTransaction.get();
+      }
+      MOZ_CRASH("Should not be called");
+      return nullptr;
+    }
+
     bool UseSceneBuilderThread() {
       if (mTag == Tag::Transaction) {
-        return mTransaction->mUseSceneBuilderThread;
+        return mTransaction->UseSceneBuilderThread();
       }
       MOZ_ASSERT_UNREACHABLE("unexpected to be called");
       return true;
@@ -407,6 +453,15 @@ class WebRenderAPI final {
       if (mTag == Tag::PendingRemoteTextures) {
         MOZ_ASSERT(mPendingRemoteTextures);
         return mPendingRemoteTextures.get();
+      }
+      MOZ_ASSERT_UNREACHABLE("unexpected to be called");
+      return nullptr;
+    }
+
+    layers::AsyncImagePipelineOps* AsyncImagePipelineOps() {
+      if (mTag == Tag::PendingAsyncImagePipelineOps) {
+        MOZ_ASSERT(mPendingAsyncImagePipelineOps);
+        return mPendingAsyncImagePipelineOps.get();
       }
       MOZ_ASSERT_UNREACHABLE("unexpected to be called");
       return nullptr;
@@ -427,6 +482,7 @@ class WebRenderAPI final {
   bool mRendererDestroyed;
 
   UniquePtr<layers::RemoteTextureInfoList> mPendingRemoteTextureInfoList;
+  UniquePtr<layers::AsyncImagePipelineOps> mPendingAsyncImagePipelineOps;
   std::queue<WrTransactionEvent> mPendingWrTransactionEvents;
 
   // We maintain alive the root api to know when to shut the render backend
@@ -437,8 +493,8 @@ class WebRenderAPI final {
   // objects in the same window use the same channel, and some api objects write
   // to the same document (but there is only one owner for each channel and for
   // each document).
-  RefPtr<wr::WebRenderAPI> mRootApi;
-  RefPtr<wr::WebRenderAPI> mRootDocumentApi;
+  const RefPtr<wr::WebRenderAPI> mRootApi;
+  const RefPtr<wr::WebRenderAPI> mRootDocumentApi;
 
   friend class DisplayListBuilder;
   friend class layers::WebRenderBridgeParent;
@@ -553,7 +609,8 @@ class DisplayListBuilder final {
       const float* aRightMargin, const float* aBottomMargin,
       const float* aLeftMargin, const StickyOffsetBounds& aVerticalBounds,
       const StickyOffsetBounds& aHorizontalBounds,
-      const wr::LayoutVector2D& aAppliedOffset, wr::SpatialTreeItemKey aKey);
+      const wr::LayoutVector2D& aAppliedOffset, wr::SpatialTreeItemKey aKey,
+      const WrAnimationProperty* aAnimation);
 
   Maybe<wr::WrSpatialId> GetScrollIdForDefinedScrollLayer(
       layers::ScrollableLayerGuid::ViewID aViewId) const;
@@ -859,8 +916,6 @@ class DisplayListBuilder final {
 
   wr::PipelineId mPipelineId;
   layers::WebRenderBackend mBackend;
-
-  nsTArray<wr::PipelineId> mRemotePipelineIds;
 
   layers::DisplayItemCache* mDisplayItemCache;
   Maybe<uint16_t> mCurrentCacheSlot;

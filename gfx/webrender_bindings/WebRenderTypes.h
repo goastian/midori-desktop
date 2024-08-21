@@ -314,15 +314,6 @@ static inline wr::ColorF ToColorF(const gfx::DeviceColor& color) {
   return c;
 }
 
-static inline wr::ColorU ToColorU(const gfx::DeviceColor& color) {
-  wr::ColorU c;
-  c.r = uint8_t(color.r * 255.0f);
-  c.g = uint8_t(color.g * 255.0f);
-  c.b = uint8_t(color.b * 255.0f);
-  c.a = uint8_t(color.a * 255.0f);
-  return c;
-}
-
 static inline wr::LayoutPoint ToLayoutPoint(
     const mozilla::LayoutDevicePoint& point) {
   wr::LayoutPoint p;
@@ -676,6 +667,13 @@ struct Vec<uint8_t> final {
   }
 
   void SetEmpty() {
+    // We need to ensure that (data, capacity, length) always remain valid
+    // to be passed to Vec::from_raw_parts. In particular, this requires that
+    // inner.data is always non-null, even for zero-capacity Vecs.
+
+    // Set inner.data to the equivalent of ptr::NonNull::dangling().as_ptr(),
+    // i.e. a non-null value that is aligned with T's alignment, T being u8
+    // here.
     inner.data = (uint8_t*)1;
     inner.capacity = 0;
     inner.length = 0;
@@ -801,6 +799,8 @@ enum class WebRenderError : int8_t {
   NEW_SURFACE,
   BEGIN_DRAW,
   VIDEO_OVERLAY,
+  VIDEO_HW_OVERLAY,
+  VIDEO_SW_OVERLAY,
   EXCESSIVE_RESETS,
 
   Sentinel /* this must be last for serialization purposes. */
@@ -909,6 +909,8 @@ static inline wr::HasScrollLinkedEffect ToWrHasScrollLinkedEffect(
   return aHasScrollLinkedEffect ? wr::HasScrollLinkedEffect::Yes
                                 : wr::HasScrollLinkedEffect::No;
 }
+
+enum class ExternalImageSource : uint8_t { Unknown = 0, SharedSurfaces, Last };
 
 }  // namespace wr
 }  // namespace mozilla

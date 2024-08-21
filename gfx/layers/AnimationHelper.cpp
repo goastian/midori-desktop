@@ -15,19 +15,18 @@
 #include "mozilla/ServoStyleConsts.h"  // for StyleComputedTimingFunction
 #include "mozilla/dom/AnimationEffectBinding.h"  // for dom::FillMode
 #include "mozilla/dom/KeyframeEffectBinding.h"   // for dom::IterationComposite
-#include "mozilla/dom/KeyframeEffect.h"       // for dom::KeyFrameEffectReadOnly
-#include "mozilla/dom/Nullable.h"             // for dom::Nullable
-#include "mozilla/layers/APZSampler.h"        // for APZSampler
-#include "mozilla/layers/CompositorThread.h"  // for CompositorThreadHolder
-#include "mozilla/LayerAnimationInfo.h"       // for GetCSSPropertiesFor()
-#include "mozilla/MotionPathUtils.h"          // for ResolveMotionPath()
-#include "mozilla/ServoBindings.h"  // for Servo_ComposeAnimationSegment, etc
+#include "mozilla/dom/KeyframeEffect.h"  // for dom::KeyFrameEffectReadOnly
+#include "mozilla/dom/Nullable.h"        // for dom::Nullable
+#include "mozilla/layers/APZSampler.h"   // for APZSampler
+#include "mozilla/AnimatedPropertyID.h"
+#include "mozilla/LayerAnimationInfo.h"   // for GetCSSPropertiesFor()
+#include "mozilla/Maybe.h"                // for Maybe<>
+#include "mozilla/MotionPathUtils.h"      // for ResolveMotionPath()
 #include "mozilla/StyleAnimationValue.h"  // for StyleAnimationValue, etc
-#include "nsDeviceContext.h"              // for AppUnitsPerCSSPixel
+#include "nsCSSPropertyID.h"              // for eCSSProperty_offset_path, etc
 #include "nsDisplayList.h"                // for nsDisplayTransform, etc
 
-namespace mozilla {
-namespace layers {
+namespace mozilla::layers {
 
 static dom::Nullable<TimeDuration> CalculateElapsedTimeForScrollTimeline(
     const Maybe<APZSampler::ScrollOffsetAndRange> aScrollMeta,
@@ -498,16 +497,17 @@ AnimationStorageData AnimationHelper::ExtractAnimations(
                    "Fixed offset-path should have base style");
         MOZ_ASSERT(HasTransformLikeAnimations(aAnimations));
 
-        AnimationValue value{currData->mBaseStyle};
-        const StyleOffsetPath& offsetPath = value.GetOffsetPathProperty();
+        const StyleOffsetPath& offsetPath =
+            animation.baseStyle().get_StyleOffsetPath();
+        // FIXME: Bug 1837042. Cache all basic shapes.
         if (offsetPath.IsPath()) {
           MOZ_ASSERT(!storageData.mCachedMotionPath,
                      "Only one offset-path: path() is set");
 
           RefPtr<gfx::PathBuilder> builder =
               MotionPathUtils::GetCompositorPathBuilder();
-          storageData.mCachedMotionPath =
-              MotionPathUtils::BuildPath(offsetPath.AsPath(), builder);
+          storageData.mCachedMotionPath = MotionPathUtils::BuildSVGPath(
+              offsetPath.AsSVGPathData(), builder);
         }
       }
 
@@ -615,15 +615,17 @@ gfx::Matrix4x4 AnimationHelper::ServoAnimationValueToMatrix4x4(
   const StyleRotate* rotate = nullptr;
   const StyleScale* scale = nullptr;
   const StyleTransform* transform = nullptr;
-  const StyleOffsetPath* path = nullptr;
+  Maybe<StyleOffsetPath> path;
   const StyleLengthPercentage* distance = nullptr;
   const StyleOffsetRotate* offsetRotate = nullptr;
   const StylePositionOrAuto* anchor = nullptr;
+  const StyleOffsetPosition* position = nullptr;
 
   for (const auto& value : aValues) {
     MOZ_ASSERT(value);
-    nsCSSPropertyID id = Servo_AnimationValue_GetPropertyId(value);
-    switch (id) {
+    AnimatedPropertyID property(eCSSProperty_UNKNOWN);
+    Servo_AnimationValue_GetPropertyId(value, &property);
+    switch (property.mID) {
       case eCSSProperty_transform:
         MOZ_ASSERT(!transform);
         transform = Servo_AnimationValue_GetTransform(value);
@@ -642,7 +644,8 @@ gfx::Matrix4x4 AnimationHelper::ServoAnimationValueToMatrix4x4(
         break;
       case eCSSProperty_offset_path:
         MOZ_ASSERT(!path);
-        path = Servo_AnimationValue_GetOffsetPath(value);
+        path.emplace(StyleOffsetPath::None());
+        Servo_AnimationValue_GetOffsetPath(value, path.ptr());
         break;
       case eCSSProperty_offset_distance:
         MOZ_ASSERT(!distance);
@@ -656,6 +659,10 @@ gfx::Matrix4x4 AnimationHelper::ServoAnimationValueToMatrix4x4(
         MOZ_ASSERT(!anchor);
         anchor = Servo_AnimationValue_GetOffsetAnchor(value);
         break;
+      case eCSSProperty_offset_position:
+        MOZ_ASSERT(!position);
+        position = Servo_AnimationValue_GetOffsetPosition(value);
+        break;
       default:
         MOZ_ASSERT_UNREACHABLE("Unsupported transform-like property");
     }
@@ -663,8 +670,8 @@ gfx::Matrix4x4 AnimationHelper::ServoAnimationValueToMatrix4x4(
 
   TransformReferenceBox refBox(nullptr, aTransformData.bounds());
   Maybe<ResolvedMotionPathData> motion = MotionPathUtils::ResolveMotionPath(
-      path, distance, offsetRotate, anchor, aTransformData.motionPathData(),
-      refBox, aCachedMotionPath);
+      path.ptrOr(nullptr), distance, offsetRotate, anchor, position,
+      aTransformData.motionPathData(), refBox, aCachedMotionPath);
 
   // We expect all our transform data to arrive in device pixels
   gfx::Point3D transformOrigin = aTransformData.transformOrigin();
@@ -832,5 +839,4 @@ bool AnimationHelper::ShouldBeJank(const LayoutDeviceRect& aPrerenderedRect,
                                prerenderedQuad.mPoints[3].y, clipRect);
 }
 
-}  // namespace layers
-}  // namespace mozilla
+}  // namespace mozilla::layers

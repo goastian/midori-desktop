@@ -12,6 +12,7 @@ include "mozilla/layers/LayersMessageUtils.h";
 
 using mozilla::dom::ContentParentId from "mozilla/dom/ipc/IdType.h";
 using mozilla::layers::TextureFlags from "mozilla/layers/CompositorTypes.h";
+using mozilla::void_t from "mozilla/ipc/IPCCore.h";
 
 namespace mozilla {
 namespace layers {
@@ -20,10 +21,13 @@ namespace layers {
  * The PVideoBridge protocol is used to share textures from the video decoders
  * to the compositor.
  */
-[NeedsOtherPid]
+[NeedsOtherPid, ParentProc=compositor, ChildProc=any]
 sync protocol PVideoBridge
 {
   manages PTexture;
+
+child:
+  async Ping() returns (void_t ok);
 
 parent:
   /**

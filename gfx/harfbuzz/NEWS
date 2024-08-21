@@ -1,3 +1,175 @@
+Overview of changes leading to 8.5.0
+Monday, May 13, 2024
+====================================
+- API for partial instancing is now stable and have been promoted out of
+  experimental APIs.
+- Support instancing “BASE” table.
+- Speedup AAT shaping by 13–30%.
+- Various build fixes.
+- Various subsetter and instancer fixes.
+
+- New API
++HB_SUBSET_FLAGS_OPTIMIZE_IUP_DELTAS
++hb_subset_input_get_axis_range()
++hb_subset_input_pin_axis_location()
+
+Overview of changes leading to 8.4.0
+Saturday, March 29, 2024
+====================================
+- Add /bigobj to MSVC compiler flags in meson build, to fix building hb-subset.cc
+- Specify minimum versions of various dependencies in meson and autotools build.
+- When subsetting, place variation store at the end of “GDEF” table  to fix
+  shaping issues with some versions of Adobe InDesign.
+- Various build fixes.
+
+- New API:
++hb_buffer_set_random_state()
++hb_buffer_get_random_state()
+
+Overview of changes leading to 8.3.1
+Saturday, March 16, 2024
+====================================
+- hb_blob_create_from_file_or_fail() on Windows will now try to interpret the
+  file name as UTF-8 first, and as system code page if it is not valid UTF-8.
+- Fix hb_style_get_value() in fonts with “STAT” table.
+- Properly handle negative offsets in CFF table.
+- Update IANA Language Subtag Registry to 2024-03-07.
+- Subsetter now supports subsetting “BASE” table.
+- Subsetter will update “hhea” font metrics in sync with “OS/2” ones.
+- “--variations” option of “hb-subset” now supports leaving out values that
+  should be unchanged, e.g. “wght=:500:” will change the default and keep max
+  and min unchanged. It also supports “*=drop” to to pin all axes to default
+  location.
+- Fix hb_ot_math_get_glyph_kerning() to match updated “MATH” table spec.
+- Support legacy MacRoman encoding in “cmap” table.
+- Various build fixes.
+- Various subsetting and instancing fixes.
+
+- New API:
+hb_subset_input_pin_all_axes_to_default()
+
+Overview of changes leading to 8.3.0
+Saturday, November 11, 2023
+====================================
+- Improve memory barrier to fix potential segfaults.
+- Various build fixes.
+- Various subsetting and instancing fixes.
+- Rename “hb-subset” option “--instance” to “--variations” to match the other
+  tools. Old option is kept as an alias.
+
+- New API:
+HB_AAT_LAYOUT_FEATURE_TYPE_CURSIVE_CONNECTION
+
+- Deprecated API:
+HB_AAT_LAYOUT_FEATURE_TYPE_CURISVE_CONNECTION
+
+Overview of changes leading to 8.2.2
+Wednesday, October 18, 2023
+“From the river to the sea, Palestine will be free”
+====================================
+- Fix regression from 8.1.0 in shaping fonts with duplicate feature tags.
+- Fix regression from 8.2.0 in parsing CSS-style feature strings.
+- Variable fonts instanciation now handles more tables.
+- Various CMake build improvements.
+- various fixes to build without errors with gcc 4.9.2.
+
+
+Overview of changes leading to 8.2.1
+Monday, September 18, 2023
+====================================
+- Unicode 15.1 support.
+
+
+Overview of changes leading to 8.2.0
+Friday, September 8, 2023
+====================================
+- Various build and fuzzing fixes
+- Improvements to COLRv1 painting.
+
+- New API:
++hb_paint_color_glyph_func_t
++hb_paint_funcs_set_color_glyph_func
++hb_paint_color_glyph
+
+
+Overview of changes leading to 8.1.1
+Wednesday, August 2, 2023
+====================================
+- Fix shaping of contextual rules at the end of string, introduced in 8.1.0
+- Fix stack-overflow in repacker with malicious fonts.
+- 30% speed up loading Noto Duployan font.
+
+
+Overview of changes leading to 8.1.0
+Tuesday, August 1, 2023
+====================================
+- Fix long-standing build issue with the AIX compiler and older Apple clang.
+
+- Revert optimization that could cause timeout during subsetting with malicious fonts.
+
+- More optimization work:
+  - 45% speed up in shaping Noto Duployan font.
+  - 10% speed up in subsetting Noto Duployan font.
+  - Another 8% speed up in shaping Gulzar.
+  - 5% speed up in loading Roboto.
+
+- New API:
++hb_ot_layout_collect_features_map()
+
+
+Overview of changes leading to 8.0.1
+Wednesday, July 12, 2023
+====================================
+- Build fix on 32-bit ARM.
+
+- More speed optimizations:
+  - 60% speed up in retain-gid (used for IFT) subsetting of SourceHanSans-VF.
+  - 16% speed up in retain-gid (used for IFT) subsetting of NotoSansCJKkr.
+  - 38% speed up in subsetting (beyond-64k) mega-merged Noto.
+
+
+Overview of changes leading to 8.0.0
+Sunday, July 9, 2023
+====================================
+- New, experimental, WebAssembly (WASM) shaper, that provides greater
+  flexibility over OpenType/AAT/Graphite shaping, using WebAssembly embedded
+  inside the font file. Currently WASM shaper is disabled by default and needs
+  to be enabled at build time. For details, see:
+
+    https://github.com/harfbuzz/harfbuzz/blob/main/docs/wasm-shaper.md
+
+  For example fonts making use of the WASM shaper, see:
+
+    https://github.com/harfbuzz/harfbuzz-wasm-examples
+
+- Improvements to Experimental features introduced in earlier releases:
+  - Support for subsetting beyond-64k and VarComposites fonts.
+  - Support for instancing variable fonts with cubic “glyf” table.
+
+- Many big speed optimizations:
+  - Up to 89% speedup loading variable fonts for shaping.
+  - Up to 88% speedup in small subsets of large (eg. CJK) fonts (both TTF and
+    OTF), essential for Incremental Font Transfer (IFT).
+  - Over 50% speedup in loading Roboto font for shaping.
+  - Up to 40% speed up in loading (sanitizing) complex fonts.
+  - 30% speed up in shaping Gulzar font.
+  - Over 25% speedup in glyph loading Roboto font.
+  - 10% speed up loading glyph shapes in VarComposite Hangul font.
+  - hb-hashmap optimizations & hashing improvements.
+
+- New macro HB_ALWAYS_INLINE. HarfBuzz now inlines functions more aggressively,
+  which results in some speedup at the expense of bigger code size. To disable
+  this feature define the macro to just inline.
+
+- New API:
++HB_CODEPOINT_INVALID
++hb_ot_layout_get_baseline2()
++hb_ot_layout_get_baseline_with_fallback2()
++hb_ot_layout_get_font_extents()
++hb_ot_layout_get_font_extents2()
++hb_subset_input_set_axis_range()
+
+
 Overview of changes leading to 7.3.0
 Tuesday, May 9, 2023
 ====================================
@@ -69,7 +241,7 @@ Saturday, February 11, 2023
 ====================================
 - New hb-paint API that is designed mainly to paint “COLRv1” glyphs, but can be
   also used as a unified API to paint any of the glyph representations
-  supported by HarfBuzz (B/W outlines, color layers, or color bitmaps). 
+  supported by HarfBuzz (B/W outlines, color layers, or color bitmaps).
   (Behdad Esfahbod, Matthias Clasen)
 - New hb-cairo API for integrating with cairo graphics library. This is provided
   as a separate harfbuzz-cairo library. (Behdad Esfahbod, Matthias Clasen)
@@ -80,7 +252,7 @@ Saturday, February 11, 2023
   https://github.com/harfbuzz/boring-expansion-spec/blob/main/glyf1-cubicOutlines.md
   for spec. (Behdad Esfahbod)
 - Various subsetter improvements. (Garret Rieger, Qunxin Liu, Behdad Esfahbod)
-- Various documentation improvements. 
+- Various documentation improvements.
   (Behdad Esfahbod, Matthias Clasen, Khaled Hosny)
 - Significantly reduced memory use during shaping. (Behdad Esfahbod)
 - Greatly reduced memory use during subsetting “CFF” table. (Behdad Esfahbod)
@@ -824,7 +996,7 @@ Tuesday, March 16, 2021
   Previously these were shaped using the generalized Arabic shaper. (David Corbett)
 - Fix regression in shaping of U+0B55 ORIYA SIGN OVERLINE. (David Corbett)
 - Update language tags. (David Corbett)
-- Variations: reduce error: do not round each interpolated delta. (Just van Rossum) 
+- Variations: reduce error: do not round each interpolated delta. (Just van Rossum)
 - Documentation improvements. (Khaled Hosny, Nathan Willis)
 - Subsetter improvements: subsets most, if not all, lookup types now. (Garret Rieger, Qunxin Liu)
 - Fuzzer-found fixes and other improvements when memory failures happen. (Behdad)

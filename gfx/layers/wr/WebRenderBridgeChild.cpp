@@ -66,8 +66,6 @@ void WebRenderBridgeChild::DoDestroy() {
 
   // mDestroyed is used to prevent calling Send__delete__() twice.
   // When this function is called from CompositorBridgeChild::Destroy().
-  // mActiveResourceTracker is not cleared here, since it is
-  // used by PersistentBufferProviderShared.
   mDestroyed = true;
   mManager = nullptr;
 }
@@ -349,7 +347,8 @@ LayersIPCActor* WebRenderBridgeChild::GetLayersIPCActor() {
   return static_cast<LayersIPCActor*>(GetCompositorBridgeChild());
 }
 
-void WebRenderBridgeChild::SyncWithCompositor() {
+void WebRenderBridgeChild::SyncWithCompositor(
+    const Maybe<uint64_t>& aWindowID) {
   if (!IPCOpen()) {
     return;
   }
@@ -444,30 +443,18 @@ void WebRenderBridgeChild::UseTextures(
                                                   OpUseTexture(textures)));
 }
 
-void WebRenderBridgeChild::UseRemoteTexture(CompositableClient* aCompositable,
-                                            const RemoteTextureId aTextureId,
-                                            const RemoteTextureOwnerId aOwnerId,
-                                            const gfx::IntSize aSize,
-                                            const TextureFlags aFlags) {
+void WebRenderBridgeChild::UseRemoteTexture(
+    CompositableClient* aCompositable, const RemoteTextureId aTextureId,
+    const RemoteTextureOwnerId aOwnerId, const gfx::IntSize aSize,
+    const TextureFlags aFlags, const RefPtr<FwdTransactionTracker>& aTracker) {
   AddWebRenderParentCommand(CompositableOperation(
       aCompositable->GetIPCHandle(),
       OpUseRemoteTexture(aTextureId, aOwnerId, aSize, aFlags)));
+  TrackFwdTransaction(aTracker);
 }
 
-void WebRenderBridgeChild::EnableRemoteTexturePushCallback(
-    CompositableClient* aCompositable, const RemoteTextureOwnerId aOwnerId,
-    const gfx::IntSize aSize, const TextureFlags aFlags) {
-  AddWebRenderParentCommand(CompositableOperation(
-      aCompositable->GetIPCHandle(),
-      OpEnableRemoteTexturePushCallback(aOwnerId, aSize, aFlags)));
-}
-
-void WebRenderBridgeChild::UpdateFwdTransactionId() {
-  GetCompositorBridgeChild()->UpdateFwdTransactionId();
-}
-
-uint64_t WebRenderBridgeChild::GetFwdTransactionId() {
-  return GetCompositorBridgeChild()->GetFwdTransactionId();
+FwdTransactionCounter& WebRenderBridgeChild::GetFwdTransactionCounter() {
+  return GetCompositorBridgeChild()->GetFwdTransactionCounter();
 }
 
 bool WebRenderBridgeChild::InForwarderThread() { return NS_IsMainThread(); }
@@ -519,11 +506,8 @@ void WebRenderBridgeChild::EndClearCachedResources() {
 void WebRenderBridgeChild::SetWebRenderLayerManager(
     WebRenderLayerManager* aManager) {
   MOZ_ASSERT(aManager && !mManager);
-  mManager = aManager;
-
   MOZ_ASSERT(NS_IsMainThread() || !XRE_IsContentProcess());
-  mActiveResourceTracker =
-      MakeUnique<ActiveResourceTracker>(1000, "CompositableForwarder", nullptr);
+  mManager = aManager;
 }
 
 ipc::IShmemAllocator* WebRenderBridgeChild::GetShmemAllocator() {

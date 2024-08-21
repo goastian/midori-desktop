@@ -17,6 +17,58 @@
 
 namespace mozilla {
 
+namespace gfx {
+
+template <class Units, class Rep = int32_t>
+struct IntCoordTyped;
+template <class Units, class F = Float>
+struct CoordTyped;
+
+}  // namespace gfx
+
+}  // namespace mozilla
+
+namespace std {
+
+template <class Units, class Rep>
+struct common_type<mozilla::gfx::IntCoordTyped<Units, Rep>, float> {
+  using type = mozilla::gfx::CoordTyped<Units, common_type_t<Rep, float>>;
+};
+
+template <class Units, class Rep>
+struct common_type<mozilla::gfx::IntCoordTyped<Units, Rep>, double> {
+  using type = mozilla::gfx::CoordTyped<Units, common_type_t<Rep, double>>;
+};
+
+template <class Units, class Rep>
+struct common_type<mozilla::gfx::IntCoordTyped<Units, Rep>, int32_t> {
+  using type = mozilla::gfx::IntCoordTyped<Units, common_type_t<Rep, int32_t>>;
+};
+
+template <class Units, class Rep>
+struct common_type<mozilla::gfx::IntCoordTyped<Units, Rep>, uint32_t> {
+  using type = mozilla::gfx::IntCoordTyped<Units, common_type_t<Rep, uint32_t>>;
+};
+
+template <class Units, class F, class T>
+struct common_type<mozilla::gfx::CoordTyped<Units, F>, T> {
+  using type = mozilla::gfx::CoordTyped<Units, common_type_t<F, T>>;
+};
+
+// With a few exceptions, we use CoordTyped values with a float representation.
+// These are the types for which we have short typedefs like
+// CSSCoord, and the types expected in most interfaces.
+// So, for float inputs, keep the results as float even if the other
+// operand is a double, accepting a slight loss of precision.
+template <class Units, class T>
+struct common_type<mozilla::gfx::CoordTyped<Units, float>, T> {
+  using type = mozilla::gfx::CoordTyped<Units, float>;
+};
+
+}  // namespace std
+
+namespace mozilla {
+
 template <typename>
 struct IsPixel;
 
@@ -25,32 +77,6 @@ namespace gfx {
 // Should only be used to define generic typedefs like Coord, Point, etc.
 struct UnknownUnits {};
 
-template <class Units, class Rep = int32_t>
-struct IntCoordTyped;
-template <class Units, class F = Float>
-struct CoordTyped;
-
-// CommonType<Coord, Primitive> is a metafunction that returns the type of the
-// result of an arithmetic operation on the underlying type of a strongly-typed
-// coordinate type 'Coord', and a primitive type 'Primitive'. C++ rules for
-// arithmetic conversions are designed to avoid losing information - for
-// example, the result of adding an int and a float is a float - and we want
-// the same behaviour when mixing our coordinate types with primitive types.
-// We get C++ to compute the desired result type using 'decltype'.
-
-template <class Coord, class Primitive>
-struct CommonType;
-
-template <class Units, class Rep, class Primitive>
-struct CommonType<IntCoordTyped<Units, Rep>, Primitive> {
-  using type = decltype(Rep() + Primitive());
-};
-
-template <class Units, class F, class Primitive>
-struct CommonType<CoordTyped<Units, F>, Primitive> {
-  using type = decltype(F() + Primitive());
-};
-
 // This is a base class that provides mixed-type operator overloads between
 // a strongly-typed Coord and a Primitive value. It is needed to avoid
 // ambiguities at mixed-type call sites, because Coord classes are implicitly
@@ -58,7 +84,7 @@ struct CommonType<CoordTyped<Units, F>, Primitive> {
 // to strongly-typed classes, we may be able to remove some or all of these
 // overloads.
 
-template <bool B, class Coord, class Primitive>
+template <bool Enable, class Coord, class Primitive>
 struct CoordOperatorsHelper {
   // Using SFINAE (Substitution Failure Is Not An Error) to suppress redundant
   // operators
@@ -71,20 +97,18 @@ struct CoordOperatorsHelper<true, Coord, Primitive> {
   friend bool operator!=(Coord aA, Primitive aB) { return aA.value != aB; }
   friend bool operator!=(Primitive aA, Coord aB) { return aA != aB.value; }
 
-  using result_type = typename CommonType<Coord, Primitive>::type;
-
-  friend result_type operator+(Coord aA, Primitive aB) { return aA.value + aB; }
-  friend result_type operator+(Primitive aA, Coord aB) { return aA + aB.value; }
-  friend result_type operator-(Coord aA, Primitive aB) { return aA.value - aB; }
-  friend result_type operator-(Primitive aA, Coord aB) { return aA - aB.value; }
-  friend result_type operator*(Coord aCoord, Primitive aScale) {
-    return aCoord.value * aScale;
+  friend auto operator+(Coord aA, Primitive aB) { return aA.value + aB; }
+  friend auto operator+(Primitive aA, Coord aB) { return aA + aB.value; }
+  friend auto operator-(Coord aA, Primitive aB) { return aA.value - aB; }
+  friend auto operator-(Primitive aA, Coord aB) { return aA - aB.value; }
+  friend auto operator*(Coord aCoord, Primitive aScale) {
+    return std::common_type_t<Coord, Primitive>(aCoord.value * aScale);
   }
-  friend result_type operator*(Primitive aScale, Coord aCoord) {
-    return aScale * aCoord.value;
+  friend auto operator*(Primitive aScale, Coord aCoord) {
+    return aCoord * aScale;
   }
-  friend result_type operator/(Coord aCoord, Primitive aScale) {
-    return aCoord.value / aScale;
+  friend auto operator/(Coord aCoord, Primitive aScale) {
+    return std::common_type_t<Coord, Primitive>(aCoord.value / aScale);
   }
   // 'scale / coord' is intentionally omitted because it doesn't make sense.
 };
@@ -103,7 +127,9 @@ struct MOZ_EMPTY_BASES IntCoordTyped
     static_assert(sizeof(IntCoordTyped) == sizeof(Rep),
                   "Would be unfortunate otherwise!");
   }
-  constexpr MOZ_IMPLICIT IntCoordTyped(Rep aValue) : Super(aValue) {
+  template <class T, typename = typename std::enable_if_t<
+                         std::is_integral_v<T> || std::is_enum_v<T>>>
+  constexpr MOZ_IMPLICIT IntCoordTyped(T aValue) : Super(aValue) {
     static_assert(sizeof(IntCoordTyped) == sizeof(Rep),
                   "Would be unfortunate otherwise!");
   }

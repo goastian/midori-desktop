@@ -9,53 +9,35 @@
 #include <tuple>
 #include "AsyncPanZoomController.h"
 #include "mozilla/StaticPrefs_general.h"
+#include "mozilla/layers/APZPublicUtils.h"
 #include "nsPoint.h"
 #include "ScrollAnimationBezierPhysics.h"
 
 namespace mozilla {
 namespace layers {
 
-static ScrollAnimationBezierPhysicsSettings SettingsForDeltaType(
+static ScrollOrigin OriginForDeltaType(
     ScrollWheelInput::ScrollDeltaType aDeltaType) {
-  int32_t minMS = 0;
-  int32_t maxMS = 0;
-
   switch (aDeltaType) {
     case ScrollWheelInput::SCROLLDELTA_PAGE:
-      maxMS = clamped(StaticPrefs::general_smoothScroll_pages_durationMaxMS(),
-                      0, 10000);
-      minMS = clamped(StaticPrefs::general_smoothScroll_pages_durationMinMS(),
-                      0, maxMS);
-      break;
+      return ScrollOrigin::Pages;
     case ScrollWheelInput::SCROLLDELTA_PIXEL:
-      maxMS = clamped(StaticPrefs::general_smoothScroll_pixels_durationMaxMS(),
-                      0, 10000);
-      minMS = clamped(StaticPrefs::general_smoothScroll_pixels_durationMinMS(),
-                      0, maxMS);
-      break;
+      return ScrollOrigin::Pixels;
     case ScrollWheelInput::SCROLLDELTA_LINE:
-      maxMS =
-          clamped(StaticPrefs::general_smoothScroll_mouseWheel_durationMaxMS(),
-                  0, 10000);
-      minMS =
-          clamped(StaticPrefs::general_smoothScroll_mouseWheel_durationMinMS(),
-                  0, maxMS);
-      break;
+      return ScrollOrigin::MouseWheel;
   }
-
-  // The pref is 100-based int percentage, while mIntervalRatio is 1-based ratio
-  double intervalRatio =
-      ((double)StaticPrefs::general_smoothScroll_durationToIntervalRatio()) /
-      100.0;
-  intervalRatio = std::max(1.0, intervalRatio);
-  return ScrollAnimationBezierPhysicsSettings{minMS, maxMS, intervalRatio};
+  // Shouldn't happen, pick a default.
+  return ScrollOrigin::MouseWheel;
 }
 
 WheelScrollAnimation::WheelScrollAnimation(
     AsyncPanZoomController& aApzc, const nsPoint& aInitialPosition,
     ScrollWheelInput::ScrollDeltaType aDeltaType)
     : GenericScrollAnimation(aApzc, aInitialPosition,
-                             SettingsForDeltaType(aDeltaType)) {
+                             OriginForDeltaType(aDeltaType)) {
+  MOZ_ASSERT(StaticPrefs::general_smoothScroll(),
+             "We shouldn't be creating a WheelScrollAnimation if smooth "
+             "scrolling is disabled");
   mDirectionForcedToOverscroll =
       mApzc.mScrollMetadata.GetDisregardedDirection();
 }

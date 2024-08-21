@@ -6,6 +6,8 @@
 
 #include "APZCCallbackHelper.h"
 
+#include "APZEventState.h"  // for PrecedingPointerDown
+
 #include "gfxPlatform.h"  // For gfxPlatform::UseTiling
 
 #include "mozilla/AsyncEventDispatcher.h"
@@ -21,6 +23,7 @@
 #include "mozilla/layers/WebRenderBridgeChild.h"
 #include "mozilla/DisplayPortUtils.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/ToString.h"
 #include "mozilla/ViewportUtils.h"
 #include "nsContainerFrame.h"
@@ -29,7 +32,6 @@
 #include "nsIDOMWindowUtils.h"
 #include "mozilla/dom/Document.h"
 #include "nsIInterfaceRequestorUtils.h"
-#include "nsIScrollableFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsPrintfCString.h"
 #include "nsPIDOMWindow.h"
@@ -63,7 +65,7 @@ static PresShell* GetPresShell(const nsIContent* aContent) {
   return nullptr;
 }
 
-static CSSPoint ScrollFrameTo(nsIScrollableFrame* aFrame,
+static CSSPoint ScrollFrameTo(ScrollContainerFrame* aFrame,
                               const RepaintRequest& aRequest,
                               bool& aSuccessOut) {
   aSuccessOut = false;
@@ -152,13 +154,13 @@ static CSSPoint ScrollFrameTo(nsIScrollableFrame* aFrame,
 static DisplayPortMargins ScrollFrame(nsIContent* aContent,
                                       const RepaintRequest& aRequest) {
   // Scroll the window to the desired spot
-  nsIScrollableFrame* sf =
-      nsLayoutUtils::FindScrollableFrameFor(aRequest.GetScrollId());
+  ScrollContainerFrame* sf =
+      nsLayoutUtils::FindScrollContainerFrameFor(aRequest.GetScrollId());
   if (sf) {
     sf->ResetScrollInfoIfNeeded(aRequest.GetScrollGeneration(),
                                 aRequest.GetScrollGenerationOnApz(),
                                 aRequest.GetScrollAnimationType(),
-                                nsIScrollableFrame::InScrollingGesture(
+                                ScrollContainerFrame::InScrollingGesture(
                                     aRequest.IsInScrollingGesture()));
     sf->SetScrollableByAPZ(!aRequest.IsScrollInfoLayer());
     if (sf->IsRootScrollFrameOfDocument()) {
@@ -176,10 +178,10 @@ static DisplayPortMargins ScrollFrame(nsIContent* aContent,
   }
   // sf might have been destroyed by the call to SetVisualViewportOffset, so
   // re-get it.
-  sf = nsLayoutUtils::FindScrollableFrameFor(aRequest.GetScrollId());
+  sf = nsLayoutUtils::FindScrollContainerFrameFor(aRequest.GetScrollId());
   bool scrollUpdated = false;
-  auto displayPortMargins =
-      DisplayPortMargins::ForScrollFrame(sf, aRequest.GetDisplayPortMargins());
+  auto displayPortMargins = DisplayPortMargins::ForScrollContainerFrame(
+      sf, aRequest.GetDisplayPortMargins());
   CSSPoint apzScrollOffset = aRequest.GetVisualScrollOffset();
   CSSPoint actualScrollOffset = ScrollFrameTo(sf, aRequest, scrollUpdated);
   CSSPoint scrollDelta = apzScrollOffset - actualScrollOffset;
@@ -220,7 +222,7 @@ static DisplayPortMargins ScrollFrame(nsIContent* aContent,
     // tile-align the recentered displayport because tile-alignment depends on
     // the scroll position, and the scroll position here is out of our control.
     // See bug 966507 comment 21 for a more detailed explanation.
-    displayPortMargins = DisplayPortMargins::ForScrollFrame(
+    displayPortMargins = DisplayPortMargins::ForScrollContainerFrame(
         sf, RecenterDisplayPort(aRequest.GetDisplayPortMargins()));
   }
 
@@ -383,8 +385,8 @@ void APZCCallbackHelper::UpdateRootFrame(const RepaintRequest& aRequest) {
     // is undesirable. Instead of having that happen as part of the post-reflow
     // code, we force it to happen here with ScrollOrigin::Apz so that it
     // doesn't trigger a scroll update to APZ.
-    nsIScrollableFrame* sf =
-        nsLayoutUtils::FindScrollableFrameFor(aRequest.GetScrollId());
+    ScrollContainerFrame* sf =
+        nsLayoutUtils::FindScrollContainerFrameFor(aRequest.GetScrollId());
     CSSPoint currentScrollPosition =
         CSSPoint::FromAppUnits(sf->GetScrollPosition());
     ScrollSnapTargetIds snapTargetIds = aRequest.GetLastSnapTargetIds();
@@ -510,7 +512,8 @@ nsEventStatus APZCCallbackHelper::DispatchWidgetEvent(WidgetGUIEvent& aEvent) {
 
 nsEventStatus APZCCallbackHelper::DispatchSynthesizedMouseEvent(
     EventMessage aMsg, const LayoutDevicePoint& aRefPoint, Modifiers aModifiers,
-    int32_t aClickCount, nsIWidget* aWidget) {
+    int32_t aClickCount, PrecedingPointerDown aPrecedingPointerDownState,
+    nsIWidget* aWidget) {
   MOZ_ASSERT(aMsg == eMouseMove || aMsg == eMouseDown || aMsg == eMouseUp ||
              aMsg == eMouseLongTap);
 
@@ -518,9 +521,19 @@ nsEventStatus APZCCallbackHelper::DispatchSynthesizedMouseEvent(
                          WidgetMouseEvent::eNormal);
   event.mRefPoint = LayoutDeviceIntPoint::Truncate(aRefPoint.x, aRefPoint.y);
   event.mButton = MouseButton::ePrimary;
-  event.mButtons |= MouseButtonsFlag::ePrimaryFlag;
+  event.mButtons = aMsg == eMouseDown ? MouseButtonsFlag::ePrimaryFlag
+                                      : MouseButtonsFlag::eNoButtons;
   event.mInputSource = dom::MouseEvent_Binding::MOZ_SOURCE_TOUCH;
   if (aMsg == eMouseLongTap) {
+    event.mFlags.mOnlyChromeDispatch = true;
+  }
+  // If the preceding `pointerdown` was canceled by content, we should not
+  // dispatch the compatibility mouse events into the content, but they are
+  // required to dispatch `click`, `dblclick` and `auxclick` events by
+  // EventStateManager.  Therefore, we need to dispatch them only to chrome.
+  else if (aPrecedingPointerDownState ==
+           PrecedingPointerDown::ConsumedByContent) {
+    event.PreventDefault(false);
     event.mFlags.mOnlyChromeDispatch = true;
   }
   if (aMsg != eMouseMove) {
@@ -550,29 +563,28 @@ PreventDefaultResult APZCCallbackHelper::DispatchMouseEvent(
   return preventDefaultResult;
 }
 
-void APZCCallbackHelper::FireSingleTapEvent(const LayoutDevicePoint& aPoint,
-                                            Modifiers aModifiers,
-                                            int32_t aClickCount,
-                                            nsIWidget* aWidget) {
+void APZCCallbackHelper::FireSingleTapEvent(
+    const LayoutDevicePoint& aPoint, Modifiers aModifiers, int32_t aClickCount,
+    PrecedingPointerDown aPrecedingPointerDownState, nsIWidget* aWidget) {
   if (aWidget->Destroyed()) {
     return;
   }
   APZCCH_LOG("Dispatching single-tap component events to %s\n",
              ToString(aPoint).c_str());
   DispatchSynthesizedMouseEvent(eMouseMove, aPoint, aModifiers, aClickCount,
-                                aWidget);
+                                aPrecedingPointerDownState, aWidget);
   DispatchSynthesizedMouseEvent(eMouseDown, aPoint, aModifiers, aClickCount,
-                                aWidget);
+                                aPrecedingPointerDownState, aWidget);
   DispatchSynthesizedMouseEvent(eMouseUp, aPoint, aModifiers, aClickCount,
-                                aWidget);
+                                aPrecedingPointerDownState, aWidget);
 }
 
 static dom::Element* GetDisplayportElementFor(
-    nsIScrollableFrame* aScrollableFrame) {
-  if (!aScrollableFrame) {
+    ScrollContainerFrame* aScrollContainerFrame) {
+  if (!aScrollContainerFrame) {
     return nullptr;
   }
-  nsIFrame* scrolledFrame = aScrollableFrame->GetScrolledFrame();
+  nsIFrame* scrolledFrame = aScrollContainerFrame->GetScrolledFrame();
   if (!scrolledFrame) {
     return nullptr;
   }
@@ -616,9 +628,9 @@ static bool PrepareForSetTargetAPZCNotification(
   nsPoint point = nsLayoutUtils::GetEventCoordinatesRelativeTo(
       aWidget, aRefPoint, relativeTo);
   nsIFrame* target = nsLayoutUtils::GetFrameForPoint(relativeTo, point);
-  nsIScrollableFrame* scrollAncestor =
+  ScrollContainerFrame* scrollAncestor =
       target ? nsLayoutUtils::GetAsyncScrollableAncestorFrame(target)
-             : aRootFrame->PresShell()->GetRootScrollFrameAsScrollable();
+             : aRootFrame->PresShell()->GetRootScrollContainerFrame();
 
   // Assuming that if there's no scrollAncestor, there's already a displayPort.
   nsCOMPtr<dom::Element> dpElement =
@@ -670,8 +682,8 @@ static bool PrepareForSetTargetAPZCNotification(
     return false;
   }
 
-  nsIFrame* frame = do_QueryFrame(scrollAncestor);
-  DisplayPortUtils::SetZeroMarginDisplayPortOnAsyncScrollableAncestors(frame);
+  DisplayPortUtils::SetZeroMarginDisplayPortOnAsyncScrollableAncestors(
+      scrollAncestor);
 
   return !DisplayPortUtils::HasPaintedDisplayPort(dpElement);
 }
@@ -815,8 +827,8 @@ void APZCCallbackHelper::NotifyFlushComplete(PresShell* aPresShell) {
 }
 
 /* static */
-bool APZCCallbackHelper::IsScrollInProgress(nsIScrollableFrame* aFrame) {
-  using AnimationState = nsIScrollableFrame::AnimationState;
+bool APZCCallbackHelper::IsScrollInProgress(ScrollContainerFrame* aFrame) {
+  using AnimationState = ScrollContainerFrame::AnimationState;
 
   return aFrame->ScrollAnimationState().contains(AnimationState::MainThread) ||
          nsLayoutUtils::CanScrollOriginClobberApz(aFrame->LastScrollOrigin());
@@ -827,9 +839,9 @@ void APZCCallbackHelper::NotifyAsyncScrollbarDragInitiated(
     uint64_t aDragBlockId, const ScrollableLayerGuid::ViewID& aScrollId,
     ScrollDirection aDirection) {
   MOZ_ASSERT(NS_IsMainThread());
-  if (nsIScrollableFrame* scrollFrame =
-          nsLayoutUtils::FindScrollableFrameFor(aScrollId)) {
-    scrollFrame->AsyncScrollbarDragInitiated(aDragBlockId, aDirection);
+  if (ScrollContainerFrame* scrollContainerFrame =
+          nsLayoutUtils::FindScrollContainerFrameFor(aScrollId)) {
+    scrollContainerFrame->AsyncScrollbarDragInitiated(aDragBlockId, aDirection);
   }
 }
 
@@ -837,9 +849,9 @@ void APZCCallbackHelper::NotifyAsyncScrollbarDragInitiated(
 void APZCCallbackHelper::NotifyAsyncScrollbarDragRejected(
     const ScrollableLayerGuid::ViewID& aScrollId) {
   MOZ_ASSERT(NS_IsMainThread());
-  if (nsIScrollableFrame* scrollFrame =
-          nsLayoutUtils::FindScrollableFrameFor(aScrollId)) {
-    scrollFrame->AsyncScrollbarDragRejected();
+  if (ScrollContainerFrame* scrollContainerFrame =
+          nsLayoutUtils::FindScrollContainerFrameFor(aScrollId)) {
+    scrollContainerFrame->AsyncScrollbarDragRejected();
   }
 }
 
@@ -894,9 +906,8 @@ void APZCCallbackHelper::NotifyScaleGestureComplete(
                                /* CanBubble */ true,
                                /* Cancelable */ false, detail);
         event->SetTrusted(true);
-        AsyncEventDispatcher* dispatcher = new AsyncEventDispatcher(doc, event);
-        dispatcher->mOnlyChromeDispatch = ChromeOnlyDispatch::eYes;
-
+        auto* dispatcher = new AsyncEventDispatcher(doc, event.forget(),
+                                                    ChromeOnlyDispatch::eYes);
         dispatcher->PostDOMEvent();
       }
     }

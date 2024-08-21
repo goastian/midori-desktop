@@ -9,7 +9,6 @@
 #include "mozilla/DataMutex.h"
 #include "mozilla/gfx/2D.h"
 
-#include "gfxMacPlatformFontList.h"
 #include "gfxMacFont.h"
 #include "gfxCoreTextShaper.h"
 #include "gfxTextRun.h"
@@ -20,7 +19,9 @@
 #include "nsTArray.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/VsyncDispatcher.h"
-#include "nsCocoaFeatures.h"
+#ifdef MOZ_WIDGET_COCOA
+#  include "nsCocoaFeatures.h"
+#endif
 #include "nsComponentManagerUtils.h"
 #include "nsIFile.h"
 #include "nsUnicodeProperties.h"
@@ -48,6 +49,14 @@ using namespace mozilla::unicode;
 
 using mozilla::dom::SystemFontList;
 
+#ifdef MOZ_WIDGET_COCOA
+#  include "gfxMacPlatformFontList.h"
+using PlatformFontListClass = gfxMacPlatformFontList;
+#else
+#  include "IOSPlatformFontList.h"
+using PlatformFontListClass = IOSPlatformFontList;
+#endif
+
 // A bunch of fonts for "additional language support" are shipped in a
 // "Language Support" directory, and don't show up in the standard font
 // list returned by CTFontManagerCopyAvailableFontFamilyNames unless
@@ -62,7 +71,7 @@ void gfxPlatformMac::FontRegistrationCallback(void* aUnused) {
   PR_SetCurrentThreadName("RegisterFonts");
 
   for (const auto& dir : kLangFontsDirs) {
-    gfxMacPlatformFontList::ActivateFontsFromDir(dir);
+    PlatformFontListClass::ActivateFontsFromDir(dir);
   }
 }
 
@@ -74,23 +83,12 @@ PRThread* gfxPlatformMac::sFontRegistrationThread = nullptr;
    our font list. */
 /* static */
 void gfxPlatformMac::RegisterSupplementalFonts() {
-  if (XRE_IsParentProcess()) {
+  if (XRE_GetProcessType() == GeckoProcessType_Default) {
+    // We activate the fonts on a separate thread, to minimize the startup-
+    // time cost.
     sFontRegistrationThread = PR_CreateThread(
         PR_USER_THREAD, FontRegistrationCallback, nullptr, PR_PRIORITY_NORMAL,
         PR_GLOBAL_THREAD, PR_JOINABLE_THREAD, 0);
-  } else if (!nsCocoaFeatures::OnCatalinaOrLater()) {
-    // On Catalina+, it appears to be sufficient to activate fonts in the
-    // parent process; they are then also usable in child processes. But on
-    // pre-Catalina systems we need to explicitly activate them in each child
-    // process (per bug 1704273).
-    //
-    // But at least on 10.14 (Mojave), doing font registration on a separate
-    // thread in the content process seems crashy (bug 1708821), despite the
-    // CTFontManager.h header claiming that it's thread-safe. So we just do it
-    // immediately on the main thread, and accept the startup-time hit (sigh).
-    for (const auto& dir : kLangFontsDirs) {
-      gfxMacPlatformFontList::ActivateFontsFromDir(dir);
-    }
   }
 }
 
@@ -122,11 +120,11 @@ BackendPrefsData gfxPlatformMac::GetBackendPrefs() const {
 }
 
 bool gfxPlatformMac::CreatePlatformFontList() {
-  return gfxPlatformFontList::Initialize(new gfxMacPlatformFontList);
+  return gfxPlatformFontList::Initialize(new PlatformFontListClass);
 }
 
 void gfxPlatformMac::ReadSystemFontList(SystemFontList* aFontList) {
-  gfxMacPlatformFontList::PlatformFontList()->ReadSystemFontList(aFontList);
+  PlatformFontListClass::PlatformFontList()->ReadSystemFontList(aFontList);
 }
 
 already_AddRefed<gfxASurface> gfxPlatformMac::CreateOffscreenSurface(
@@ -679,8 +677,8 @@ void gfxPlatformMac::GetCommonFallbackFonts(uint32_t aCh, Script aRunScript,
 void gfxPlatformMac::LookupSystemFont(
     mozilla::LookAndFeel::FontID aSystemFontID, nsACString& aSystemFontName,
     gfxFontStyle& aFontStyle) {
-  gfxMacPlatformFontList* pfl = gfxMacPlatformFontList::PlatformFontList();
-  return pfl->LookupSystemFont(aSystemFontID, aSystemFontName, aFontStyle);
+  return PlatformFontListClass::LookupSystemFont(aSystemFontID, aSystemFontName,
+                                                 aFontStyle);
 }
 
 uint32_t gfxPlatformMac::ReadAntiAliasingThreshold() {
@@ -711,6 +709,7 @@ uint32_t gfxPlatformMac::ReadAntiAliasingThreshold() {
 
 bool gfxPlatformMac::AccelerateLayersByDefault() { return true; }
 
+#ifdef MOZ_WIDGET_COCOA
 // This is the renderer output callback function, called on the vsync thread
 static CVReturn VsyncCallback(CVDisplayLinkRef aDisplayLink,
                               const CVTimeStamp* aNow,
@@ -945,9 +944,11 @@ static CVReturn VsyncCallback(CVDisplayLinkRef aDisplayLink,
   vsyncSource->NotifyVsync(previousVsync, outputTime);
   return kCVReturnSuccess;
 }
+#endif
 
 already_AddRefed<mozilla::gfx::VsyncSource>
 gfxPlatformMac::CreateGlobalHardwareVsyncSource() {
+#ifdef MOZ_WIDGET_COCOA
   RefPtr<VsyncSource> osxVsyncSource = new OSXVsyncSource();
   osxVsyncSource->EnableVsync();
   if (!osxVsyncSource->IsVsyncEnabled()) {
@@ -958,23 +959,9 @@ gfxPlatformMac::CreateGlobalHardwareVsyncSource() {
 
   osxVsyncSource->DisableVsync();
   return osxVsyncSource.forget();
-}
-
-bool gfxPlatformMac::SupportsHDR() {
-  // HDR has 3 requirements:
-  // 1) high peak brightness
-  // 2) high contrast ratio
-  // 3) color depth > 24
-  if (GetScreenDepth() <= 24) {
-    return false;
-  }
-  // Screen is capable. Is the OS capable?
-#ifdef EARLY_BETA_OR_EARLIER
-  // More-or-less supported in Catalina.
-  return nsCocoaFeatures::OnCatalinaOrLater();
 #else
-  // Definitely supported in Big Sur.
-  return nsCocoaFeatures::OnBigSurOrLater();
+  // TODO: CADisplayLink
+  return GetSoftwareVsyncSource();
 #endif
 }
 
@@ -984,7 +971,10 @@ nsTArray<uint8_t> gfxPlatformMac::GetPlatformCMSOutputProfileData() {
     return prefProfileData;
   }
 
-  CGColorSpaceRef cspace = ::CGDisplayCopyColorSpace(::CGMainDisplayID());
+  CGColorSpaceRef cspace = nil;
+#ifdef MOZ_WIDGET_COCOA
+  cspace = ::CGDisplayCopyColorSpace(::CGMainDisplayID());
+#endif
   if (!cspace) {
     cspace = ::CGColorSpaceCreateDeviceRGB();
   }
@@ -992,7 +982,7 @@ nsTArray<uint8_t> gfxPlatformMac::GetPlatformCMSOutputProfileData() {
     return nsTArray<uint8_t>();
   }
 
-  CFDataRef iccp = ::CGColorSpaceCopyICCProfile(cspace);
+  CFDataRef iccp = ::CGColorSpaceCopyICCData(cspace);
 
   ::CFRelease(cspace);
 
@@ -1014,13 +1004,7 @@ nsTArray<uint8_t> gfxPlatformMac::GetPlatformCMSOutputProfileData() {
   return result;
 }
 
-bool gfxPlatformMac::CheckVariationFontSupport() {
-  // We don't allow variation fonts to be enabled before 10.13,
-  // as although the Core Text APIs existed, they are known to be
-  // fairly buggy.
-  // (Note that Safari also requires 10.13 for variation-font support.)
-  return nsCocoaFeatures::OnHighSierraOrLater();
-}
+bool gfxPlatformMac::CheckVariationFontSupport() { return true; }
 
 void gfxPlatformMac::InitPlatformGPUProcessPrefs() {
   FeatureState& gpuProc = gfxConfig::GetFeature(Feature::GPU_PROCESS);

@@ -20,6 +20,7 @@
 #include "mozilla/layers/PImageBridgeChild.h"
 #include "mozilla/layers/TextureForwarder.h"
 #include "mozilla/Mutex.h"
+#include "mozilla/UniquePtr.h"
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "nsRegion.h"  // for nsIntRegion
 #include "mozilla/gfx/Rect.h"
@@ -154,6 +155,8 @@ class ImageBridgeChild final : public PImageBridgeChild,
   void BeginTransaction();
   void EndTransaction();
 
+  FixedSizeSmallShmemSectionAllocator* GetTileLockAllocator() override;
+
   /**
    * Returns the ImageBridgeChild's thread.
    *
@@ -162,6 +165,9 @@ class ImageBridgeChild final : public PImageBridgeChild,
   nsISerialEventTarget* GetThread() const override;
 
   base::ProcessId GetParentPid() const override { return OtherPid(); }
+
+  void SyncWithCompositor(
+      const Maybe<uint64_t>& aWindowID = Nothing()) override;
 
   PTextureChild* AllocPTextureChild(
       const SurfaceDescriptor& aSharedData, ReadLockDescriptor& aReadLock,
@@ -197,7 +203,8 @@ class ImageBridgeChild final : public PImageBridgeChild,
   void UpdateCompositable(const RefPtr<ImageContainer> aContainer,
                           const RemoteTextureId aTextureId,
                           const RemoteTextureOwnerId aOwnerId,
-                          const gfx::IntSize aSize, const TextureFlags aFlags);
+                          const gfx::IntSize aSize, const TextureFlags aFlags,
+                          const RefPtr<FwdTransactionTracker> aTracker);
 
   /**
    * Flush all Images sent to CompositableHost.
@@ -248,13 +255,8 @@ class ImageBridgeChild final : public PImageBridgeChild,
   void UseRemoteTexture(CompositableClient* aCompositable,
                         const RemoteTextureId aTextureId,
                         const RemoteTextureOwnerId aOwnerId,
-                        const gfx::IntSize aSize,
-                        const TextureFlags aFlags) override;
-
-  void EnableRemoteTexturePushCallback(CompositableClient* aCompositable,
-                                       const RemoteTextureOwnerId aOwnerId,
-                                       const gfx::IntSize aSize,
-                                       const TextureFlags aFlags) override;
+                        const gfx::IntSize aSize, const TextureFlags aFlags,
+                        const RefPtr<FwdTransactionTracker>& aTracker) override;
 
   void ReleaseCompositable(const CompositableHandle& aHandle) override;
 
@@ -308,8 +310,9 @@ class ImageBridgeChild final : public PImageBridgeChild,
 
   bool IsSameProcess() const override;
 
-  void UpdateFwdTransactionId() override { ++mFwdTransactionId; }
-  uint64_t GetFwdTransactionId() override { return mFwdTransactionId; }
+  FwdTransactionCounter& GetFwdTransactionCounter() override {
+    return mFwdTransactionCounter;
+  }
 
   bool InForwarderThread() override { return InImageBridgeChildThread(); }
 
@@ -342,8 +345,9 @@ class ImageBridgeChild final : public PImageBridgeChild,
   uint32_t mNamespace;
 
   CompositableTransaction* mTxn;
+  UniquePtr<FixedSizeSmallShmemSectionAllocator> mSectionAllocator;
 
-  bool mCanSend;
+  mozilla::Atomic<bool> mCanSend;
   mozilla::Atomic<bool> mDestroyed;
 
   /**
@@ -351,7 +355,7 @@ class ImageBridgeChild final : public PImageBridgeChild,
    * It is incrementaed by UpdateFwdTransactionId() in each BeginTransaction()
    * call.
    */
-  uint64_t mFwdTransactionId;
+  FwdTransactionCounter mFwdTransactionCounter;
 
   /**
    * Hold TextureClients refs until end of their usages on host side.

@@ -13,6 +13,7 @@
 #include "LayersTypes.h"  // for LayersBackend, etc
 #include "nsXULAppAPI.h"  // for GeckoProcessType, etc
 #include "mozilla/gfx/Types.h"
+#include "mozilla/layers/SyncObject.h"
 #include "mozilla/EnumSet.h"
 
 #include "mozilla/TypedEnumBits.h"
@@ -94,9 +95,13 @@ enum class TextureFlags : uint32_t {
   DRM_SOURCE = 1 << 21,
   // The texture is dummy texture
   DUMMY_TEXTURE = 1 << 22,
+  // Software decoded video
+  SOFTWARE_DECODED_VIDEO = 1 << 23,
+  // Whether the remote texture must wait for its owner to be created.
+  WAIT_FOR_REMOTE_TEXTURE_OWNER = 1 << 24,
 
   // OR union of all valid bits
-  ALL_BITS = (1 << 23) - 1,
+  ALL_BITS = (1 << 25) - 1,
   // the default flags
   DEFAULT = NO_FLAGS
 };
@@ -143,11 +148,19 @@ enum class CompositableType : uint8_t {
   COUNT
 };
 
-#ifdef XP_WIN
-typedef void* SyncHandle;
-#else
-typedef uintptr_t SyncHandle;
-#endif  // XP_WIN
+enum class ImageUsageType : uint8_t {
+  UNKNOWN,
+  WebRenderImageData,
+  WebRenderFallbackData,
+  Canvas,
+  OffscreenCanvas,
+  VideoFrameContainer,
+  RemoteVideoDecoder,
+  BlackImage,
+  Webrtc,
+  WebCodecs,
+  COUNT
+};
 
 /**
  * Sent from the compositor to the content-side LayerManager, includes
@@ -176,7 +189,7 @@ struct TextureFactoryIdentifier {
       bool aCompositorUseDComp = false, bool aUseCompositorWnd = false,
       bool aSupportsTextureBlitting = false,
       bool aSupportsPartialUploads = false, bool aSupportsComponentAlpha = true,
-      bool aSupportsD3D11NV12 = false, SyncHandle aSyncHandle = 0)
+      bool aSupportsD3D11NV12 = false, SyncHandle aSyncHandle = {})
       : mParentBackend(aLayersBackend),
         mWebRenderBackend(WebRenderBackend::HARDWARE),
         mWebRenderCompositor(WebRenderCompositor::DRAW),
@@ -199,7 +212,7 @@ struct TextureFactoryIdentifier {
       bool aCompositorUseDComp = false, bool aUseCompositorWnd = false,
       bool aSupportsTextureBlitting = false,
       bool aSupportsPartialUploads = false, bool aSupportsComponentAlpha = true,
-      bool aSupportsD3D11NV12 = false, SyncHandle aSyncHandle = 0)
+      bool aSupportsD3D11NV12 = false, SyncHandle aSyncHandle = {})
       : mParentBackend(LayersBackend::LAYERS_WR),
         mWebRenderBackend(aWebRenderBackend),
         mWebRenderCompositor(aWebRenderCompositor),
@@ -213,22 +226,6 @@ struct TextureFactoryIdentifier {
         mSupportsComponentAlpha(aSupportsComponentAlpha),
         mSupportsD3D11NV12(aSupportsD3D11NV12),
         mSyncHandle(aSyncHandle) {}
-
-  bool operator==(const TextureFactoryIdentifier& aOther) const {
-    return mParentBackend == aOther.mParentBackend &&
-           mWebRenderBackend == aOther.mWebRenderBackend &&
-           mWebRenderCompositor == aOther.mWebRenderCompositor &&
-           mParentProcessType == aOther.mParentProcessType &&
-           mMaxTextureSize == aOther.mMaxTextureSize &&
-           mCompositorUseANGLE == aOther.mCompositorUseANGLE &&
-           mCompositorUseDComp == aOther.mCompositorUseDComp &&
-           mUseCompositorWnd == aOther.mUseCompositorWnd &&
-           mSupportsTextureBlitting == aOther.mSupportsTextureBlitting &&
-           mSupportsPartialUploads == aOther.mSupportsPartialUploads &&
-           mSupportsComponentAlpha == aOther.mSupportsComponentAlpha &&
-           mSupportsD3D11NV12 == aOther.mSupportsD3D11NV12 &&
-           mSyncHandle == aOther.mSyncHandle;
-  }
 };
 
 /**
@@ -240,15 +237,19 @@ struct TextureFactoryIdentifier {
  */
 struct TextureInfo {
   CompositableType mCompositableType;
+  ImageUsageType mUsageType;
   TextureFlags mTextureFlags;
 
   TextureInfo()
       : mCompositableType(CompositableType::UNKNOWN),
+        mUsageType(ImageUsageType::UNKNOWN),
         mTextureFlags(TextureFlags::NO_FLAGS) {}
 
-  explicit TextureInfo(CompositableType aType,
-                       TextureFlags aTextureFlags = TextureFlags::DEFAULT)
-      : mCompositableType(aType), mTextureFlags(aTextureFlags) {}
+  TextureInfo(CompositableType aType, ImageUsageType aUsageType,
+              TextureFlags aTextureFlags)
+      : mCompositableType(aType),
+        mUsageType(aUsageType),
+        mTextureFlags(aTextureFlags) {}
 
   bool operator==(const TextureInfo& aOther) const {
     return mCompositableType == aOther.mCompositableType &&

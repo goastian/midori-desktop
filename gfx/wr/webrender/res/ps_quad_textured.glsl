@@ -2,58 +2,51 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include ps_quad
+/// This shader renders solid colors or simple images in a color or alpha target.
 
-#ifndef SWGL_ANTIALIAS
-varying highp vec2 vLocalPos;
-#endif
+#include ps_quad,sample_color0
+
+#define v_flags_textured v_flags.x
 
 #ifdef WR_VERTEX_SHADER
-void main(void) {
-    PrimitiveInfo info = ps_quad_main();
 
-#ifndef SWGL_ANTIALIAS
-    RectWithEndpoint xf_bounds = RectWithEndpoint(
-        max(info.local_prim_rect.p0, info.local_clip_rect.p0),
-        min(info.local_prim_rect.p1, info.local_clip_rect.p1)
-    );
-    vTransformBounds = vec4(xf_bounds.p0, xf_bounds.p1);
+void pattern_vertex(PrimitiveInfo info) {
+    // Note: Since the uv rect is passed via segments, This shader cannot sample from a
+    // texture if no segments are provided
+    if (info.segment.uv_rect.p0 != info.segment.uv_rect.p1) {
+        // Textured
+        v_flags_textured = 1;
 
-    vLocalPos = info.local_pos;
-
-    if (info.edge_flags == 0) {
-        v_flags.x = 0;
+        vec2 f = (info.local_pos - info.segment.rect.p0) / rect_size(info.segment.rect);
+        vs_init_sample_color0(f, info.segment.uv_rect);
     } else {
-        v_flags.x = 1;
+        // Solid color
+        v_flags_textured = 0;
     }
-#endif
 }
+
 #endif
 
 #ifdef WR_FRAGMENT_SHADER
-void main(void) {
-    vec4 color = v_color;
 
-#ifndef SWGL_ANTIALIAS
-    if (v_flags.x != 0) {
-        float alpha = init_transform_fs(vLocalPos);
-        color *= alpha;
-    }
-#endif
-
-    if (v_flags.y != 0) {
-        vec2 uv = clamp(v_uv, v_uv_sample_bounds.xy, v_uv_sample_bounds.zw);
-        vec4 texel = TEX_SAMPLE(sColor0, uv);
+vec4 pattern_fragment(vec4 color) {
+    if (v_flags_textured != 0) {
+        vec4 texel = fs_sample_color0();
         color *= texel;
     }
 
-    oFragColor = color;
+    return color;
 }
 
 #if defined(SWGL_DRAW_SPAN)
 void swgl_drawSpanRGBA8() {
-    if (v_flags.y != 0) {
-        swgl_commitTextureLinearColorRGBA8(sColor0, v_uv, v_uv_sample_bounds, v_color);
+    if (v_flags_textured != 0) {
+        if (v_flags_is_mask != 0) {
+            // Fall back to fragment shader as we don't specialize for mask yet. Perhaps
+            // we can use an existing swgl commit or add a new one though?
+        } else {
+            swgl_commitTextureLinearColorRGBA8(sColor0, v_uv0, v_uv0_sample_bounds, v_color);
+        }
     } else {
         swgl_commitSolidRGBA8(v_color);
     }

@@ -100,19 +100,25 @@ class AsyncImagePipelineManager final {
   void AddAsyncImagePipeline(const wr::PipelineId& aPipelineId,
                              WebRenderImageHost* aImageHost);
   void RemoveAsyncImagePipeline(const wr::PipelineId& aPipelineId,
+                                AsyncImagePipelineOps* aPendingOps,
                                 wr::TransactionBuilder& aTxn);
 
   void UpdateAsyncImagePipeline(const wr::PipelineId& aPipelineId,
                                 const LayoutDeviceRect& aScBounds,
-                                VideoInfo::Rotation aRotation,
+                                wr::WrRotation aRotation,
                                 const wr::ImageRendering& aFilter,
                                 const wr::MixBlendMode& aMixBlendMode);
   void ApplyAsyncImagesOfImageBridge(wr::TransactionBuilder& aSceneBuilderTxn,
                                      wr::TransactionBuilder& aFastTxn);
+  void ApplyAsyncImageForPipeline(
+      const wr::PipelineId& aPipelineId, wr::TransactionBuilder& aTxn,
+      wr::TransactionBuilder& aTxnForImageBridge,
+      AsyncImagePipelineOps* aPendingOps,
+      RemoteTextureInfoList* aPendingRemoteTextures);
+
   void ApplyAsyncImageForPipeline(const wr::PipelineId& aPipelineId,
-                                  wr::TransactionBuilder& aTxn,
-                                  wr::TransactionBuilder& aTxnForImageBridge,
-                                  RemoteTextureInfoList* aList);
+                                  TextureHost* aTexture,
+                                  wr::TransactionBuilder& aTxn);
 
   void SetEmptyDisplayList(const wr::PipelineId& aPipelineId,
                            wr::TransactionBuilder& aTxn,
@@ -132,6 +138,15 @@ class AsyncImagePipelineManager final {
   bool GetAndResetWillGenerateFrame();
 
   static wr::ExternalImageId GetNextExternalImageId();
+
+  void SetTextureFactoryIdentifier(
+      const TextureFactoryIdentifier& aTextureFactoryIdentifier) {
+    mTextureFactoryIdentifier = aTextureFactoryIdentifier;
+  }
+
+  TextureFactoryIdentifier GetTextureFactoryIdentifier() const {
+    return mTextureFactoryIdentifier;
+  }
 
  private:
   void ProcessPipelineRendered(const wr::PipelineId& aPipelineId,
@@ -182,8 +197,7 @@ class AsyncImagePipelineManager final {
   struct AsyncImagePipeline {
     AsyncImagePipeline(wr::PipelineId aPipelineId,
                        layers::WebRenderBackend aBackend);
-    void Update(const LayoutDeviceRect& aScBounds,
-                VideoInfo::Rotation aRotation,
+    void Update(const LayoutDeviceRect& aScBounds, wr::WrRotation aRotation,
                 const wr::ImageRendering& aFilter,
                 const wr::MixBlendMode& aMixBlendMode) {
       mIsChanged |= !mScBounds.IsEqualEdges(aScBounds) ||
@@ -199,7 +213,7 @@ class AsyncImagePipelineManager final {
     bool mIsChanged;
     bool mUseExternalImage;
     LayoutDeviceRect mScBounds;
-    VideoInfo::Rotation mRotation;
+    wr::WrRotation mRotation;
     wr::ImageRendering mFilter;
     wr::MixBlendMode mMixBlendMode;
     RefPtr<WebRenderImageHost> mImageHost;
@@ -211,14 +225,14 @@ class AsyncImagePipelineManager final {
   void ApplyAsyncImageForPipeline(const wr::Epoch& aEpoch,
                                   const wr::PipelineId& aPipelineId,
                                   AsyncImagePipeline* aPipeline,
+                                  TextureHost* aTexture,
                                   wr::TransactionBuilder& aSceneBuilderTxn,
-                                  wr::TransactionBuilder& aMaybeFastTxn,
-                                  RemoteTextureInfoList* aList);
+                                  wr::TransactionBuilder& aMaybeFastTxn);
   Maybe<TextureHost::ResourceUpdateOp> UpdateImageKeys(
       const wr::Epoch& aEpoch, const wr::PipelineId& aPipelineId,
-      AsyncImagePipeline* aPipeline, nsTArray<wr::ImageKey>& aKeys,
-      wr::TransactionBuilder& aSceneBuilderTxn,
-      wr::TransactionBuilder& aMaybeFastTxn, RemoteTextureInfoList* aList);
+      AsyncImagePipeline* aPipeline, TextureHost* aTexture,
+      nsTArray<wr::ImageKey>& aKeys, wr::TransactionBuilder& aSceneBuilderTxn,
+      wr::TransactionBuilder& aMaybeFastTxn);
   Maybe<TextureHost::ResourceUpdateOp> UpdateWithoutExternalImage(
       TextureHost* aTexture, wr::ImageKey aKey, TextureHost::ResourceUpdateOp,
       wr::TransactionBuilder& aTxn);
@@ -227,6 +241,7 @@ class AsyncImagePipelineManager final {
 
   RefPtr<wr::WebRenderAPI> mApi;
   bool mUseCompositorWnd;
+  TextureFactoryIdentifier mTextureFactoryIdentifier;
 
   const wr::IdNamespace mIdNamespace;
   const bool mUseTripleBuffering;
@@ -240,7 +255,8 @@ class AsyncImagePipelineManager final {
   bool mDestroyed;
 
 #ifdef XP_WIN
-  bool mUseWebRenderDCompVideoOverlayWin;
+  bool mUseWebRenderDCompVideoHwOverlayWin;
+  bool mUseWebRenderDCompVideoSwOverlayWin;
 #endif
 
   // Render time for the current composition.

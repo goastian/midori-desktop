@@ -51,7 +51,7 @@ UNIFIED_SOURCES += [
     "WebRenderTypes.cpp",
 ]
 
-if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
+if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("cocoa", "uikit"):
     EXPORTS.mozilla.webrender += [
         "RenderCompositorNative.h",
         "RenderMacIOSurfaceTextureHost.h",
@@ -71,8 +71,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
         "RenderAndroidSurfaceTextureHost.cpp",
     ]
 
-if CONFIG["MOZ_ENABLE_D3D10_LAYER"]:
-    DEFINES["MOZ_ENABLE_D3D10_LAYER"] = True
+if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
     EXPORTS.mozilla.webrender += [
         "DCLayerTree.h",
         "RenderCompositorANGLE.h",
@@ -81,23 +80,29 @@ if CONFIG["MOZ_ENABLE_D3D10_LAYER"]:
         "RenderDcompSurfaceTextureHost.h",
     ]
     UNIFIED_SOURCES += [
+        "DCLayerTree.cpp",
+        "RenderCompositorANGLE.cpp",
         "RenderCompositorD3D11SWGL.cpp",
         "RenderD3D11TextureHost.cpp",
     ]
     SOURCES += [
-        "DCLayerTree.cpp",
-        "RenderCompositorANGLE.cpp",
         "RenderDcompSurfaceTextureHost.cpp",
+    ]
+
+if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+    EXPORTS.mozilla.webrender += [
+        "RenderDMABUFTextureHost.h",
+    ]
+    SOURCES += [
+        "RenderDMABUFTextureHost.cpp",
     ]
 
 if CONFIG["MOZ_WAYLAND"]:
     EXPORTS.mozilla.webrender += [
         "RenderCompositorNative.h",
-        "RenderDMABUFTextureHost.h",
     ]
     SOURCES += [
         "RenderCompositorNative.cpp",
-        "RenderDMABUFTextureHost.cpp",
     ]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("android", "gtk"):

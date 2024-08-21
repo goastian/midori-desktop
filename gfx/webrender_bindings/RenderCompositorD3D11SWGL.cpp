@@ -11,6 +11,7 @@
 #include "gfxConfig.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/widget/CompositorWidget.h"
+#include "mozilla/layers/TextureD3D11.h"
 #include "mozilla/layers/Effects.h"
 #include "mozilla/webrender/RenderD3D11TextureHost.h"
 #include "RenderCompositorRecordedFrame.h"
@@ -155,28 +156,11 @@ void RenderCompositorD3D11SWGL::Pause() {}
 
 bool RenderCompositorD3D11SWGL::Resume() { return true; }
 
-GLenum RenderCompositorD3D11SWGL::IsContextLost(bool aForce) {
+gfx::DeviceResetReason RenderCompositorD3D11SWGL::IsContextLost(bool aForce) {
   // CompositorD3D11 uses ID3D11Device for composite. The device status needs to
   // be checked.
   auto reason = GetDevice()->GetDeviceRemovedReason();
-  switch (reason) {
-    case S_OK:
-      return LOCAL_GL_NO_ERROR;
-    case DXGI_ERROR_DEVICE_REMOVED:
-    case DXGI_ERROR_DRIVER_INTERNAL_ERROR:
-      NS_WARNING("Device reset due to system / different device");
-      return LOCAL_GL_INNOCENT_CONTEXT_RESET_ARB;
-    case DXGI_ERROR_DEVICE_HUNG:
-    case DXGI_ERROR_DEVICE_RESET:
-    case DXGI_ERROR_INVALID_CALL:
-      gfxCriticalError() << "Device reset due to WR device: "
-                         << gfx::hexa(reason);
-      return LOCAL_GL_GUILTY_CONTEXT_RESET_ARB;
-    default:
-      gfxCriticalError() << "Device reset with WR device unexpected reason: "
-                         << gfx::hexa(reason);
-      return LOCAL_GL_UNKNOWN_CONTEXT_RESET_ARB;
-  }
+  return layers::DXGIErrorToDeviceResetReason(reason);
 }
 
 UniquePtr<RenderCompositorLayersSWGL::Surface>
@@ -238,15 +222,17 @@ bool RenderCompositorD3D11SWGL::TileD3D11::Map(wr::DeviceIntRect aDirtyRect,
     *aData = map.mData + aValidRect.min.y * map.mStride + aValidRect.min.x * 4;
     *aStride = map.mStride;
     // Ensure our mapped data is accessible by writing to the beginning and end
-    // of the dirty region. See bug 171519
-    uint32_t* probeData = (uint32_t*)map.mData +
-                          aDirtyRect.min.y * (map.mStride / 4) +
-                          aDirtyRect.min.x;
-    *probeData = 0;
-    uint32_t* probeDataEnd = (uint32_t*)map.mData +
-                             (aDirtyRect.max.y - 1) * (map.mStride / 4) +
-                             (aDirtyRect.max.x - 1);
-    *probeDataEnd = 0;
+    // of the dirty region. See bug 1717519
+    if (aDirtyRect.width() > 0 && aDirtyRect.height() > 0) {
+      uint32_t* probeData = (uint32_t*)map.mData +
+                            aDirtyRect.min.y * (map.mStride / 4) +
+                            aDirtyRect.min.x;
+      *probeData = 0;
+      uint32_t* probeDataEnd = (uint32_t*)map.mData +
+                               (aDirtyRect.max.y - 1) * (map.mStride / 4) +
+                               (aDirtyRect.max.x - 1);
+      *probeDataEnd = 0;
+    }
 
     mValidRect = gfx::Rect(aValidRect.min.x, aValidRect.min.y,
                            aValidRect.width(), aValidRect.height());
@@ -321,16 +307,18 @@ bool RenderCompositorD3D11SWGL::TileD3D11::Map(wr::DeviceIntRect aDirtyRect,
   *aStride = mappedSubresource.RowPitch;
 
   // Ensure our mapped data is accessible by writing to the beginning and end
-  // of the dirty region. See bug 171519
-  uint32_t* probeData = (uint32_t*)mappedSubresource.pData +
-                        aDirtyRect.min.y * (mappedSubresource.RowPitch / 4) +
-                        aDirtyRect.min.x;
-  *probeData = 0;
-  uint32_t* probeDataEnd =
-      (uint32_t*)mappedSubresource.pData +
-      (aDirtyRect.max.y - 1) * (mappedSubresource.RowPitch / 4) +
-      (aDirtyRect.max.x - 1);
-  *probeDataEnd = 0;
+  // of the dirty region. See bug 1717519
+  if (aDirtyRect.width() > 0 && aDirtyRect.height() > 0) {
+    uint32_t* probeData = (uint32_t*)mappedSubresource.pData +
+                          aDirtyRect.min.y * (mappedSubresource.RowPitch / 4) +
+                          aDirtyRect.min.x;
+    *probeData = 0;
+    uint32_t* probeDataEnd =
+        (uint32_t*)mappedSubresource.pData +
+        (aDirtyRect.max.y - 1) * (mappedSubresource.RowPitch / 4) +
+        (aDirtyRect.max.x - 1);
+    *probeDataEnd = 0;
+  }
 
   // Store the new valid rect, so that we can composite only those pixels
   mValidRect = gfx::Rect(aValidRect.min.x, aValidRect.min.y, aValidRect.width(),

@@ -65,6 +65,7 @@ class gfxPlatformGtk final : public gfxPlatform {
   static bool CheckVariationFontSupport();
 
  protected:
+  void InitAcceleration() override;
   void InitX11EGLConfig();
   void InitDmabufConfig();
   bool InitVAAPIConfig(bool aForceEnabledByUser);
@@ -77,5 +78,11 @@ class gfxPlatformGtk final : public gfxPlatform {
 
   bool mIsX11Display;
 };
+
+// Wrapper for third party code (WebRTC for instance) where
+// gfxVars can't be included.
+namespace mozilla::gfx {
+bool IsDMABufEnabled();
+}
 
 #endif /* GFX_PLATFORM_GTK_H */

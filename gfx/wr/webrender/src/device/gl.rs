@@ -138,9 +138,13 @@ pub enum UploadMethod {
 }
 
 /// Plain old data that can be used to initialize a texture.
-pub unsafe trait Texel: Copy {}
-unsafe impl Texel for u8 {}
-unsafe impl Texel for f32 {}
+pub unsafe trait Texel: Copy + Default {
+    fn image_format() -> ImageFormat;
+}
+
+unsafe impl Texel for u8 {
+    fn image_format() -> ImageFormat { ImageFormat::R8 }
+}
 
 /// Returns the size in bytes of a depth target with the given dimensions.
 fn depth_target_size_in_bytes(dimensions: &DeviceIntSize) -> usize {
@@ -155,6 +159,7 @@ pub fn get_gl_target(target: ImageBufferKind) -> gl::GLuint {
         ImageBufferKind::Texture2D => gl::TEXTURE_2D,
         ImageBufferKind::TextureRect => gl::TEXTURE_RECTANGLE,
         ImageBufferKind::TextureExternal => gl::TEXTURE_EXTERNAL_OES,
+        ImageBufferKind::TextureExternalBT709 => gl::TEXTURE_EXTERNAL_OES,
     }
 }
 
@@ -192,10 +197,6 @@ pub fn get_unoptimized_shader_source(shader_name: &str, base_path: Option<&PathB
             .source
         )
     }
-}
-
-pub trait FileWatcherHandler: Send {
-    fn file_changed(&self, path: PathBuf);
 }
 
 impl VertexAttributeKind {
@@ -416,7 +417,7 @@ impl ExternalTexture {
 }
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Default, Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct TextureFlags: u32 {
         /// This texture corresponds to one of the shared texture caches.
         const IS_SHARED_TEXTURE_CACHE = 1 << 0;
@@ -549,7 +550,6 @@ impl Drop for Texture {
 pub struct Program {
     id: gl::GLuint,
     u_transform: gl::GLint,
-    u_mode: gl::GLint,
     u_texture_size: gl::GLint,
     source_info: ProgramSourceInfo,
     is_initialized: bool,
@@ -934,7 +934,7 @@ impl VertexUsageHint {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct UniformLocation(gl::GLint);
+pub struct UniformLocation(#[allow(dead_code)] gl::GLint);
 
 impl UniformLocation {
     pub const INVALID: Self = UniformLocation(-1);
@@ -1074,7 +1074,6 @@ pub struct Device {
     bound_vao: gl::GLuint,
     bound_read_fbo: (FBOId, DeviceIntPoint),
     bound_draw_fbo: FBOId,
-    program_mode_id: UniformLocation,
     default_read_fbo: FBOId,
     default_draw_fbo: FBOId,
 
@@ -1409,10 +1408,33 @@ fn parse_mali_version(version_string: &str) -> Option<(u32, u32, u32)> {
     let (r_str, version_string) = version_string.split_once("p")?;
     let r = r_str.parse().ok()?;
 
-    let (p_str, _) = version_string.split_once("-")?;
+    // Not all devices have the trailing string following the "p" number.
+    let (p_str, _) = version_string.split_once("-").unwrap_or((version_string, ""));
     let p = p_str.parse().ok()?;
 
     Some((v, r, p))
+}
+
+/// Returns whether this GPU belongs to the Mali Midgard family
+fn is_mali_midgard(renderer_name: &str) -> bool {
+    renderer_name.starts_with("Mali-T")
+}
+
+/// Returns whether this GPU belongs to the Mali Bifrost family
+fn is_mali_bifrost(renderer_name: &str) -> bool {
+    renderer_name == "Mali-G31"
+        || renderer_name == "Mali-G51"
+        || renderer_name == "Mali-G71"
+        || renderer_name == "Mali-G52"
+        || renderer_name == "Mali-G72"
+        || renderer_name == "Mali-G76"
+}
+
+/// Returns whether this GPU belongs to the Mali Valhall family
+fn is_mali_valhall(renderer_name: &str) -> bool {
+    // As new Valhall GPUs may be released in the future we match all Mali-G models, apart from
+    // Bifrost models (of which we don't expect any new ones to be released)
+    renderer_name.starts_with("Mali-G") && !is_mali_bifrost(renderer_name)
 }
 
 impl Device {
@@ -1459,7 +1481,10 @@ impl Device {
         // On debug builds, assert that each GL call is error-free. We don't do
         // this on release builds because the synchronous call can stall the
         // pipeline.
-        let supports_khr_debug = supports_extension(&extensions, "GL_KHR_debug");
+        // We block this on Mali Valhall GPUs as the extension's functions always return
+        // GL_OUT_OF_MEMORY, causing us to panic in debug builds.
+        let supports_khr_debug =
+            supports_extension(&extensions, "GL_KHR_debug") && !is_mali_valhall(&renderer_name);
         if panic_on_gl_error || cfg!(debug_assertions) {
             gl = gl::ErrorReactingGl::wrap(gl, move |gl, name, code| {
                 if supports_khr_debug {
@@ -1734,13 +1759,8 @@ impl Device {
         // variety of Mali GPUs. As a precaution avoid doing so on all Midgard and Bifrost GPUs.
         // Valhall (eg Mali-Gx7 onwards) appears to be unnaffected. See bug 1691955, bug 1558374,
         // and bug 1663355.
-        let supports_render_target_partial_update = !(renderer_name.starts_with("Mali-T")
-            || renderer_name == "Mali-G31"
-            || renderer_name == "Mali-G51"
-            || renderer_name == "Mali-G71"
-            || renderer_name == "Mali-G52"
-            || renderer_name == "Mali-G72"
-            || renderer_name == "Mali-G76");
+        let supports_render_target_partial_update =
+            !is_mali_midgard(&renderer_name) && !is_mali_bifrost(&renderer_name);
 
         let supports_shader_storage_object = match gl.get_type() {
             // see https://www.g-truc.net/post-0734.html
@@ -1793,7 +1813,7 @@ impl Device {
         // On Mali-Txxx devices we have observed crashes during draw calls when rendering
         // to an alpha target immediately after using glClear to clear regions of it.
         // Using a shader to clear the regions avoids the crash. See bug 1638593.
-        let supports_alpha_target_clears = !renderer_name.starts_with("Mali-T");
+        let supports_alpha_target_clears = !is_mali_midgard(&renderer_name);
 
         // On Adreno 4xx devices with older drivers we have seen render tasks to alpha targets have
         // no effect unless the target is fully cleared prior to rendering. See bug 1714227.
@@ -1820,10 +1840,7 @@ impl Device {
         // On Mali Valhall devices with a driver version v1.r36p0 we have seen that invalidating
         // render targets can result in image corruption, perhaps due to subsequent reuses of the
         // render target not correctly reinitializing them to a valid state. See bug 1787520.
-        if renderer_name.starts_with("Mali-G77")
-            || renderer_name.starts_with("Mali-G78")
-            || renderer_name.starts_with("Mali-G710")
-        {
+        if is_mali_valhall(&renderer_name) {
             match parse_mali_version(&version_string) {
                 Some(version) if version >= (1, 36, 0) => supports_render_target_invalidate = false,
                 _ => {}
@@ -1841,11 +1858,18 @@ impl Device {
             true
         };
 
-        // We have encountered rendering errors on a variety of Adreno GPUs specifically on driver
-        // version V@0490, so block this extension on that driver version.
-        let supports_qcom_tiled_rendering =
+        let supports_qcom_tiled_rendering = if is_adreno && version_string.contains("V@0490") {
+            // We have encountered rendering errors on a variety of Adreno GPUs specifically on
+            // driver version V@0490, so block this extension on that driver version. See bug 1828248.
+            false
+        } else if renderer_name == "Adreno (TM) 308" {
+            // And specifically on Areno 308 GPUs we have encountered rendering errors on driver
+            // versions V@331, V@415, and V@0502. We presume this therefore affects all driver
+            // versions. See bug 1843749 and bug 1847319.
+            false
+        } else {
             supports_extension(&extensions, "GL_QCOM_tiled_rendering")
-                && !(is_adreno && version_string.contains("V@0490"));
+        };
 
         // On some Adreno 3xx devices the vertex array object must be unbound and rebound after
         // an attached buffer has been orphaned.
@@ -1908,7 +1932,6 @@ impl Device {
             bound_vao: 0,
             bound_read_fbo: (FBOId(0), DeviceIntPoint::zero()),
             bound_draw_fbo: FBOId(0),
-            program_mode_id: UniformLocation::INVALID,
             default_read_fbo: FBOId(0),
             default_draw_fbo: FBOId(0),
 
@@ -1954,12 +1977,12 @@ impl Device {
                 }
             }
             Parameter::Bool(BoolParameter::BatchedUploads, enabled) => {
-                self.use_batched_texture_uploads = *enabled;
+                if self.capabilities.requires_batched_texture_uploads.is_none() {
+                    self.use_batched_texture_uploads = *enabled;
+                }
             }
             Parameter::Bool(BoolParameter::DrawCallsForTextureCopy, enabled) => {
-                if self.capabilities.requires_batched_texture_uploads.is_none() {
-                    self.use_draw_calls_for_texture_copy = *enabled;
-                }
+                self.use_draw_calls_for_texture_copy = *enabled;
             }
             Parameter::Int(IntParameter::BatchedUploadThreshold, threshold) => {
                 self.batched_upload_threshold = *threshold;
@@ -2168,7 +2191,6 @@ impl Device {
 
         // Shader state
         self.bound_program = 0;
-        self.program_mode_id = UniformLocation::INVALID;
         self.gl.use_program(0);
 
         // Reset common state
@@ -2525,7 +2547,6 @@ impl Device {
         // If we get here, the link succeeded, so get the uniforms.
         program.is_initialized = true;
         program.u_transform = self.gl.get_uniform_location(program.id, "uTransform");
-        program.u_mode = self.gl.get_uniform_location(program.id, "uMode");
         program.u_texture_size = self.gl.get_uniform_location(program.id, "uTextureSize");
 
         Ok(())
@@ -2546,7 +2567,6 @@ impl Device {
             self.gl.use_program(program.id);
             self.bound_program = program.id;
             self.bound_program_name = program.source_info.full_name_cstr.clone();
-            self.program_mode_id = UniformLocation(program.u_mode);
         }
         true
     }
@@ -3037,7 +3057,6 @@ impl Device {
         let program = Program {
             id: pid,
             u_transform: 0,
-            u_mode: 0,
             u_texture_size: 0,
             source_info,
             is_initialized: false,
@@ -3095,14 +3114,6 @@ impl Device {
 
         self.gl
             .uniform_matrix_4fv(program.u_transform, false, &transform.to_array());
-    }
-
-    pub fn switch_mode(&self, mode: i32) {
-        debug_assert!(self.inside_frame);
-        #[cfg(debug_assertions)]
-        debug_assert!(self.shader_is_ready);
-
-        self.gl.uniform_1i(self.program_mode_id.0, mode);
     }
 
     /// Sets the uTextureSize uniform. Most shaders do not require this to be called
@@ -3924,24 +3935,6 @@ impl Device {
         self.set_blend_factors(
             (gl::ONE, gl::ONE),
             (gl::ONE, gl::ONE),
-        );
-    }
-    pub fn set_blend_mode_subpixel_with_bg_color_pass0(&mut self) {
-        self.set_blend_factors(
-            (gl::ZERO, gl::ONE_MINUS_SRC_COLOR),
-            (gl::ZERO, gl::ONE),
-        );
-    }
-    pub fn set_blend_mode_subpixel_with_bg_color_pass1(&mut self) {
-        self.set_blend_factors(
-            (gl::ONE_MINUS_DST_ALPHA, gl::ONE),
-            (gl::ZERO, gl::ONE),
-        );
-    }
-    pub fn set_blend_mode_subpixel_with_bg_color_pass2(&mut self) {
-        self.set_blend_factors(
-            (gl::ONE, gl::ONE),
-            (gl::ONE, gl::ONE_MINUS_SRC_ALPHA),
         );
     }
     pub fn set_blend_mode_subpixel_dual_source(&mut self) {

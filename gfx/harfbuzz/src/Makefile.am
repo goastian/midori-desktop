@@ -14,7 +14,7 @@ check_PROGRAMS =
 
 EXTRA_DIST += harfbuzz.cc harfbuzz-subset.cc
 EXTRA_DIST += meson.build
-EXTRA_DIST += fix_get_types.py
+EXTRA_DIST += fix_get_types.py relative_to.py
 
 # Convenience targets:
 lib: $(BUILT_SOURCES) libharfbuzz.la
@@ -114,6 +114,16 @@ else
 HB_HAS_CORETEXT_DEF = undef HB_HAS_CORETEXT
 endif
 
+if HAVE_WASM
+HBCFLAGS += $(WASM_CFLAGS)
+HBNONPCLIBS += $(WASM_LIBS)
+HBSOURCES += $(HB_WASM_sources)
+HBHEADERS += $(HB_WASM_headers)
+HB_HAS_WASM_DEF = define HB_HAS_WASM 1
+else
+HB_HAS_WASM_DEF = undef HB_HAS_WASM
+endif
+
 
 BUILT_SOURCES += \
 	hb-version.h
@@ -164,7 +174,7 @@ libharfbuzz_la_CPPFLAGS = $(HBCFLAGS) $(CODE_COVERAGE_CFLAGS)
 libharfbuzz_la_LDFLAGS = $(base_link_flags) $(export_symbols) $(CODE_COVERAGE_LDFLAGS)
 libharfbuzz_la_LIBADD = $(HBLIBS)
 EXTRA_libharfbuzz_la_DEPENDENCIES = $(harfbuzz_def_dependency)
-pkginclude_HEADERS = $(HBHEADERS)
+pkginclude_HEADERS = $(HBHEADERS) hb-features.h
 nodist_pkginclude_HEADERS =
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = harfbuzz.pc
@@ -273,16 +283,17 @@ DISTCLEANFILES += \
 hb-features.h: hb-features.h.in $(top_builddir)/config.status
 	$(AM_V_GEN) $(SED) \
 		-e 's/mesondefine HB_HAS_CAIRO/$(HB_HAS_CAIRO_DEF)/' \
+		-e 's/mesondefine HB_HAS_CORETEXT/$(HB_HAS_CORETEXT_DEF)/' \
+		-e 's/mesondefine HB_HAS_DIRECTWRITE/$(HB_HAS_DIRECTWRITE_DEF)/' \
 		-e 's/mesondefine HB_HAS_FREETYPE/$(HB_HAS_FREETYPE_DEF)/' \
 		-e 's/mesondefine HB_HAS_GDI/$(HB_HAS_GDI_DEF)/' \
 		-e 's/mesondefine HB_HAS_GDI/$(HB_HAS_GDI_DEF)/' \
-		-e 's/mesondefine HB_HAS_GRAPHITE/$(HB_HAS_GRAPHITE_DEF)/' \
 		-e 's/mesondefine HB_HAS_GLIB/$(HB_HAS_GLIB_DEF)/' \
 		-e 's/mesondefine HB_HAS_GOBJECT/$(HB_HAS_GOBJECT_DEF)/' \
-		-e 's/mesondefine HB_HAS_UNISCRIBE/$(HB_HAS_UNISCRIBE_DEF)/' \
-		-e 's/mesondefine HB_HAS_DIRECTWRITE/$(HB_HAS_DIRECTWRITE_DEF)/' \
-		-e 's/mesondefine HB_HAS_CORETEXT/$(HB_HAS_CORETEXT_DEF)/' \
+		-e 's/mesondefine HB_HAS_GRAPHITE/$(HB_HAS_GRAPHITE_DEF)/' \
 		-e 's/mesondefine HB_HAS_ICU/$(HB_HAS_ICU_DEF)/' \
+		-e 's/mesondefine HB_HAS_UNISCRIBE/$(HB_HAS_UNISCRIBE_DEF)/' \
+		-e 's/mesondefine HB_HAS_WASM/$(HB_HAS_WASM_DEF)/' \
 		"$<" > "$@" || ($(RM) "$@"; false)
 
 
@@ -432,6 +443,7 @@ COMPILED_TESTS = \
 	test-algs \
 	test-array \
 	test-bimap \
+	test-cff \
 	test-iter \
 	test-machinery \
 	test-map \
@@ -445,6 +457,9 @@ COMPILED_TESTS = \
 	test-vector \
 	test-repacker \
 	test-classdef-graph \
+	test-instancer-solver \
+	test-tuple-varstore \
+	test-item-varstore \
 	$(NULL)
 COMPILED_TESTS_CPPFLAGS = $(HBCFLAGS) -DMAIN -UNDEBUG
 COMPILED_TESTS_LDADD = libharfbuzz.la $(HBLIBS)
@@ -462,6 +477,10 @@ test_array_LDADD = libharfbuzz.la $(HBLIBS)
 test_bimap_SOURCES = test-bimap.cc hb-static.cc
 test_bimap_CPPFLAGS = $(COMPILED_TESTS_CPPFLAGS)
 test_bimap_LDADD = $(COMPILED_TESTS_LDADD)
+
+test_cff_SOURCES = test-cff.cc hb-static.cc
+test_cff_CPPFLAGS = $(COMPILED_TESTS_CPPFLAGS)
+test_cff_LDADD = $(COMPILED_TESTS_LDADD)
 
 test_iter_SOURCES = test-iter.cc hb-static.cc
 test_iter_CPPFLAGS = $(COMPILED_TESTS_CPPFLAGS)
@@ -514,6 +533,18 @@ test_unicode_ranges_LDADD = $(COMPILED_TESTS_LDADD)
 test_vector_SOURCES = test-vector.cc hb-static.cc
 test_vector_CPPFLAGS = $(COMPILED_TESTS_CPPFLAGS)
 test_vector_LDADD = $(COMPILED_TESTS_LDADD)
+
+test_instancer_solver_SOURCES = test-subset-instancer-solver.cc hb-subset-instancer-solver.cc hb-static.cc
+test_instancer_solver_CPPFLAGS = $(COMPILED_TESTS_CPPFLAGS)
+test_instancer_solver_LDADD = $(COMPILED_TESTS_LDADD)
+
+test_tuple_varstore_SOURCES = test-tuple-varstore.cc hb-subset-instancer-solver.cc hb-subset-instancer-iup.cc hb-static.cc
+test_tuple_varstore_CPPFLAGS = $(COMPILED_TESTS_CPPFLAGS)
+test_tuple_varstore_LDADD = $(COMPILED_TESTS_LDADD)
+
+test_item_varstore_SOURCES = test-item-varstore.cc hb-subset-instancer-solver.cc hb-subset-instancer-iup.cc hb-static.cc
+test_item_varstore_CPPFLAGS = $(COMPILED_TESTS_CPPFLAGS)
+test_item_varstore_LDADD = $(COMPILED_TESTS_LDADD)
 
 dist_check_SCRIPTS = \
 	check-c-linkage-decls.py \

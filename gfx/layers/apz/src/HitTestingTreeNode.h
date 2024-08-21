@@ -103,8 +103,7 @@ class HitTestingTreeNode {
   /* Hit test related methods */
 
   void SetHitTestData(
-      const LayerIntRegion& aVisibleRegion,
-      const LayerIntSize& aRemoteDocumentSize,
+      const LayerIntRect& aVisibleRect, const LayerIntSize& aRemoteDocumentSize,
       const CSSTransformMatrix& aTransform,
       const EventRegionsOverride& aOverride,
       const Maybe<ScrollableLayerGuid::ViewID>& aAsyncZoomContainerId);
@@ -148,14 +147,17 @@ class HitTestingTreeNode {
   const CSSTransformMatrix& GetTransform() const;
   /* This is similar to APZCTreeManager::GetApzcToGeckoTransform but without
    * the async bits. It's used on the main-thread for transforming coordinates
-   * across a BrowserParent/BrowserChild interface.*/
-  LayerToScreenMatrix4x4 GetTransformToGecko() const;
-  const LayerIntRegion& GetVisibleRegion() const;
+   * across a BrowserParent/BrowserChild interface.
+   * |aRemoteLayersId| is the LayersId of the remote subtree for which this
+   * transform will be used. */
+  LayerToScreenMatrix4x4 GetTransformToGecko(LayersId aRemoteLayersId) const;
+  const LayerIntRect& GetVisibleRect() const;
 
   /* Returns the screen coordinate rectangle of remote iframe corresponding to
    * this node. The rectangle is the result of clipped by ancestor async
    * scrolling. */
-  ScreenRect GetRemoteDocumentScreenRect() const;
+  ScreenRect GetRemoteDocumentScreenRect(
+      LayersId aRemoteDocumentLayersId) const;
 
   Maybe<ScrollableLayerGuid::ViewID> GetAsyncZoomContainerId() const;
 
@@ -180,16 +182,16 @@ class HitTestingTreeNode {
 
   LayersId mLayersId;
 
-  // This is only set if WebRender is enabled, and only for HTTNs
-  // where IsScrollThumbNode() returns true. It holds the animation id that we
-  // use to move the thumb node to reflect async scrolling.
+  // This is only set for HTTNs where IsScrollThumbNode() returns true. It holds
+  // the animation id that we use to move the thumb node to reflect async
+  // scrolling.
   Maybe<uint64_t> mScrollbarAnimationId;
 
   // This is set for scrollbar Container and Thumb layers.
   ScrollbarData mScrollbarData;
 
-  // This is only set if WebRender is enabled. It holds the animation id that
-  // we use to adjust fixed position content for the toolbar.
+  // This holds the animation id that we use to adjust fixed position content
+  // for the toolbar.
   Maybe<uint64_t> mFixedPositionAnimationId;
 
   ScrollableLayerGuid::ViewID mFixedPosTarget;
@@ -198,11 +200,11 @@ class HitTestingTreeNode {
   ScrollableLayerGuid::ViewID mStickyPosTarget;
   LayerRectAbsolute mStickyScrollRangeOuter;
   LayerRectAbsolute mStickyScrollRangeInner;
-  // This is only set if WebRender is enabled. It holds the animation id that
-  // we use to adjust sticky position content for the toolbar.
+  // This holds the animation id that we use to adjust sticky position content
+  // for the toolbar.
   Maybe<uint64_t> mStickyPositionAnimationId;
 
-  LayerIntRegion mVisibleRegion;
+  LayerIntRect mVisibleRect;
 
   /* The size of remote iframe on the corresponding layer coordinate.
    * It's empty if this node is not for remote iframe. */

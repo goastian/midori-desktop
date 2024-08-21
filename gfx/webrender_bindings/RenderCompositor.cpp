@@ -23,7 +23,7 @@
 #  include "mozilla/widget/WinCompositorWidget.h"
 #endif
 
-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WAYLAND) || defined(MOZ_X11)
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
 #  include "mozilla/webrender/RenderCompositorEGL.h"
 #endif
 
@@ -31,7 +31,7 @@
 #  include "mozilla/webrender/RenderCompositorNative.h"
 #endif
 
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
 #  include "mozilla/webrender/RenderCompositorNative.h"
 #endif
 
@@ -168,7 +168,7 @@ void wr_partial_present_compositor_set_buffer_damage_region(
 UniquePtr<RenderCompositor> RenderCompositor::Create(
     const RefPtr<widget::CompositorWidget>& aWidget, nsACString& aError) {
   if (aWidget->GetCompositorOptions().UseSoftwareWebRender()) {
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
     // Mac uses NativeLayerCA
     if (!gfxPlatform::IsHeadless()) {
       return RenderCompositorNativeSWGL::Create(aWidget, aError);
@@ -205,7 +205,7 @@ UniquePtr<RenderCompositor> RenderCompositor::Create(
   }
 #endif
 
-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WAYLAND) || defined(MOZ_X11)
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
   UniquePtr<RenderCompositor> eglCompositor =
       RenderCompositorEGL::Create(aWidget, aError);
   if (eglCompositor) {
@@ -216,7 +216,7 @@ UniquePtr<RenderCompositor> RenderCompositor::Create(
 #if defined(MOZ_WIDGET_ANDROID)
   // RenderCompositorOGL is not used on android
   return nullptr;
-#elif defined(XP_MACOSX)
+#elif defined(XP_DARWIN)
   // Mac uses NativeLayerCA
   return RenderCompositorNativeOGL::Create(aWidget, aError);
 #else
@@ -252,35 +252,31 @@ void RenderCompositor::GetWindowVisibility(WindowVisibility* aVisibility) {
 #endif
 }
 
-GLenum RenderCompositor::IsContextLost(bool aForce) {
+gfx::DeviceResetReason RenderCompositor::IsContextLost(bool aForce) {
   auto* glc = gl();
   // GetGraphicsResetStatus may trigger an implicit MakeCurrent if robustness
   // is not supported, so unless we are forcing, pass on the check.
   if (!glc || (!aForce && !glc->IsSupported(gl::GLFeature::robustness))) {
-    return LOCAL_GL_NO_ERROR;
+    return gfx::DeviceResetReason::OK;
   }
   auto resetStatus = glc->fGetGraphicsResetStatus();
   switch (resetStatus) {
     case LOCAL_GL_NO_ERROR:
-      break;
+      return gfx::DeviceResetReason::OK;
     case LOCAL_GL_INNOCENT_CONTEXT_RESET_ARB:
-      NS_WARNING("Device reset due to system / different context");
-      break;
+      return gfx::DeviceResetReason::DRIVER_ERROR;
     case LOCAL_GL_PURGED_CONTEXT_RESET_NV:
-      NS_WARNING("Device reset due to NV video memory purged");
-      break;
+      return gfx::DeviceResetReason::NVIDIA_VIDEO;
     case LOCAL_GL_GUILTY_CONTEXT_RESET_ARB:
-      gfxCriticalError() << "Device reset due to WR context";
-      break;
+      return gfx::DeviceResetReason::RESET;
     case LOCAL_GL_UNKNOWN_CONTEXT_RESET_ARB:
-      gfxCriticalNote << "Device reset may be due to WR context";
-      break;
+      return gfx::DeviceResetReason::UNKNOWN;
     default:
       gfxCriticalError() << "Device reset with WR context unexpected status: "
                          << gfx::hexa(resetStatus);
       break;
   }
-  return resetStatus;
+  return gfx::DeviceResetReason::OTHER;
 }
 
 }  // namespace mozilla::wr

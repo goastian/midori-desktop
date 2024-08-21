@@ -34,7 +34,7 @@ use crate::profiler::{self, TransactionProfile, bytes_to_mb};
 use crate::render_task_graph::{RenderTaskId, RenderTaskGraphBuilder};
 use crate::render_task_cache::{RenderTaskCache, RenderTaskCacheKey, RenderTaskParent};
 use crate::render_task_cache::{RenderTaskCacheEntry, RenderTaskCacheEntryHandle};
-use crate::renderer::GpuBufferBuilder;
+use crate::renderer::GpuBufferBuilderF;
 use crate::surface::SurfaceBuilder;
 use euclid::point2;
 use smallvec::SmallVec;
@@ -191,12 +191,6 @@ struct ImageResource {
     /// but with only a visible sub-set that is valid at a given time.
     visible_rect: DeviceIntRect,
     generation: ImageGeneration,
-}
-
-#[derive(Clone, Debug)]
-pub struct ImageTiling {
-    pub image_size: DeviceIntSize,
-    pub tile_size: TileSize,
 }
 
 #[derive(Default)]
@@ -594,7 +588,7 @@ impl ResourceCache {
         &mut self,
         key: RenderTaskCacheKey,
         gpu_cache: &mut GpuCache,
-        gpu_buffer_builder: &mut GpuBufferBuilder,
+        gpu_buffer_builder: &mut GpuBufferBuilderF,
         rg_builder: &mut RenderTaskGraphBuilder,
         user_data: Option<[f32; 4]>,
         is_opaque: bool,
@@ -603,7 +597,7 @@ impl ResourceCache {
         f: F,
     ) -> RenderTaskId
     where
-        F: FnOnce(&mut RenderTaskGraphBuilder, &mut GpuBufferBuilder) -> RenderTaskId,
+        F: FnOnce(&mut RenderTaskGraphBuilder, &mut GpuBufferBuilderF) -> RenderTaskId,
     {
         self.cached_render_tasks.request_render_task(
             key,
@@ -1744,9 +1738,9 @@ impl ResourceCache {
             self.delete_image_template(key);
         }
 
-        #[cfg(features="leak_checks")]
+        #[cfg(feature="leak_checks")]
         let check_leaks = true;
-        #[cfg(not(features="leak_checks"))]
+        #[cfg(not(feature="leak_checks"))]
         let check_leaks = false;
 
         if check_leaks {
@@ -2087,14 +2081,14 @@ impl ResourceCache {
                         index,
                     }
                 }
-                #[cfg(not(target_os = "macos"))]
+                #[cfg(not(any(target_os = "macos", target_os = "ios")))]
                 FontTemplate::Native(native) => {
                     PlainFontTemplate {
                         data: native.path.to_string_lossy().to_string(),
                         index: native.index,
                     }
                 }
-                #[cfg(target_os = "macos")]
+                #[cfg(any(target_os = "macos", target_os = "ios"))]
                 FontTemplate::Native(native) => {
                     PlainFontTemplate {
                         data: native.name,

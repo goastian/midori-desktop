@@ -175,6 +175,78 @@ PathOps PathOps::TransformedCopy(const Matrix& aTransform) const {
   return newPathOps;
 }
 
+Maybe<Circle> PathOps::AsCircle() const {
+  if (mPathData.empty()) {
+    return Nothing();
+  }
+
+  const uint8_t* nextByte = mPathData.data();
+  const uint8_t* end = nextByte + mPathData.size();
+  const OpType opType = *reinterpret_cast<const OpType*>(nextByte);
+  nextByte += sizeof(OpType);
+  if (opType == OpType::OP_ARC) {
+    NEXT_PARAMS(ArcParams)
+    if (fabs(fabs(params.startAngle - params.endAngle) - 2 * M_PI) < 1e-6) {
+      // we have a full circle
+      if (nextByte < end) {
+        const OpType nextOpType = *reinterpret_cast<const OpType*>(nextByte);
+        nextByte += sizeof(OpType);
+        if (nextOpType == OpType::OP_CLOSE) {
+          if (nextByte == end) {
+            return Some(Circle{params.origin, params.radius, true});
+          }
+        }
+      } else {
+        // the circle wasn't closed
+        return Some(Circle{params.origin, params.radius, false});
+      }
+    }
+  }
+
+  return Nothing();
+}
+
+Maybe<Line> PathOps::AsLine() const {
+  if (mPathData.empty()) {
+    return Nothing();
+  }
+
+  Line retval;
+
+  const uint8_t* nextByte = mPathData.data();
+  const uint8_t* end = nextByte + mPathData.size();
+  OpType opType = *reinterpret_cast<const OpType*>(nextByte);
+  nextByte += sizeof(OpType);
+
+  if (opType == OpType::OP_MOVETO) {
+    MOZ_ASSERT(nextByte != end);
+
+    NEXT_PARAMS(Point)
+    retval.origin = params;
+  } else {
+    return Nothing();
+  }
+
+  if (nextByte >= end) {
+    return Nothing();
+  }
+
+  opType = *reinterpret_cast<const OpType*>(nextByte);
+  nextByte += sizeof(OpType);
+
+  if (opType == OpType::OP_LINETO) {
+    MOZ_ASSERT(nextByte != end);
+
+    NEXT_PARAMS(Point)
+
+    if (nextByte == end) {
+      retval.destination = params;
+      return Some(retval);
+    }
+  }
+
+  return Nothing();
+}
 #undef NEXT_PARAMS
 
 size_t PathOps::NumberOfOps() const {
@@ -209,6 +281,25 @@ size_t PathOps::NumberOfOps() const {
   }
 
   return size;
+}
+
+bool PathOps::IsEmpty() const {
+  const uint8_t* nextByte = mPathData.data();
+  const uint8_t* end = nextByte + mPathData.size();
+  while (nextByte < end) {
+    const OpType opType = *reinterpret_cast<const OpType*>(nextByte);
+    nextByte += sizeof(OpType);
+    switch (opType) {
+      case OpType::OP_MOVETO:
+        nextByte += sizeof(Point);
+        break;
+      case OpType::OP_CLOSE:
+        break;
+      default:
+        return false;
+    }
+  }
+  return true;
 }
 
 void PathBuilderRecording::MoveTo(const Point& aPoint) {
@@ -249,7 +340,7 @@ void PathBuilderRecording::Arc(const Point& aOrigin, float aRadius,
 
 already_AddRefed<Path> PathBuilderRecording::Finish() {
   return MakeAndAddRef<PathRecording>(mBackendType, std::move(mPathOps),
-                                      mFillRule, mBeginPoint, mCurrentPoint);
+                                      mFillRule, mCurrentPoint, mBeginPoint);
 }
 
 PathRecording::PathRecording(BackendType aBackend, PathOps&& aOps,

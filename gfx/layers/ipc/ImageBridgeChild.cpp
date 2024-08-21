@@ -33,10 +33,12 @@
 #include "mozilla/mozalloc.h"  // for operator new, etc
 #include "transport/runnable_utils.h"
 #include "nsContentUtils.h"
+#include "nsGlobalWindowInner.h"
 #include "nsISupportsImpl.h"         // for ImageContainer::AddRef, etc
 #include "nsTArray.h"                // for AutoTArray, nsTArray, etc
 #include "nsTArrayForwardDeclare.h"  // for AutoTArray
 #include "nsThreadUtils.h"           // for NS_IsMainThread
+#include "WindowRenderer.h"
 
 #if defined(XP_WIN)
 #  include "mozilla/gfx/DeviceManagerDx.h"
@@ -119,11 +121,10 @@ void ImageBridgeChild::UseTextures(
                                             OpUseTexture(textures)));
 }
 
-void ImageBridgeChild::UseRemoteTexture(CompositableClient* aCompositable,
-                                        const RemoteTextureId aTextureId,
-                                        const RemoteTextureOwnerId aOwnerId,
-                                        const gfx::IntSize aSize,
-                                        const TextureFlags aFlags) {
+void ImageBridgeChild::UseRemoteTexture(
+    CompositableClient* aCompositable, const RemoteTextureId aTextureId,
+    const RemoteTextureOwnerId aOwnerId, const gfx::IntSize aSize,
+    const TextureFlags aFlags, const RefPtr<FwdTransactionTracker>& aTracker) {
   MOZ_ASSERT(aCompositable);
   MOZ_ASSERT(aCompositable->GetIPCHandle());
   MOZ_ASSERT(aCompositable->IsConnected());
@@ -131,18 +132,7 @@ void ImageBridgeChild::UseRemoteTexture(CompositableClient* aCompositable,
   mTxn->AddNoSwapEdit(CompositableOperation(
       aCompositable->GetIPCHandle(),
       OpUseRemoteTexture(aTextureId, aOwnerId, aSize, aFlags)));
-}
-
-void ImageBridgeChild::EnableRemoteTexturePushCallback(
-    CompositableClient* aCompositable, const RemoteTextureOwnerId aOwnerId,
-    const gfx::IntSize aSize, const TextureFlags aFlags) {
-  MOZ_ASSERT(aCompositable);
-  MOZ_ASSERT(aCompositable->GetIPCHandle());
-  MOZ_ASSERT(aCompositable->IsConnected());
-
-  mTxn->AddNoSwapEdit(CompositableOperation(
-      aCompositable->GetIPCHandle(),
-      OpEnableRemoteTexturePushCallback(aOwnerId, aSize, aFlags)));
+  TrackFwdTransaction(aTracker);
 }
 
 void ImageBridgeChild::HoldUntilCompositableRefReleasedIfNecessary(
@@ -220,6 +210,9 @@ void ImageBridgeChild::ShutdownStep2(SynchronousTask* aTask) {
 
   MOZ_ASSERT(InImageBridgeChildThread(),
              "Should be in ImageBridgeChild thread.");
+
+  mSectionAllocator = nullptr;
+
   if (!mDestroyed) {
     Close();
   }
@@ -246,7 +239,7 @@ ImageBridgeChild::ImageBridgeChild(uint32_t aNamespace)
     : mNamespace(aNamespace),
       mCanSend(false),
       mDestroyed(false),
-      mFwdTransactionId(0),
+      mFwdTransactionCounter(this),
       mContainerMapLock("ImageBridgeChild.mContainerMapLock") {
   MOZ_ASSERT(mNamespace);
   MOZ_ASSERT(NS_IsMainThread());
@@ -331,7 +324,7 @@ void ImageBridgeChild::UpdateImageClient(RefPtr<ImageContainer> aContainer) {
 void ImageBridgeChild::UpdateCompositable(
     const RefPtr<ImageContainer> aContainer, const RemoteTextureId aTextureId,
     const RemoteTextureOwnerId aOwnerId, const gfx::IntSize aSize,
-    const TextureFlags aFlags) {
+    const TextureFlags aFlags, const RefPtr<FwdTransactionTracker> aTracker) {
   if (!aContainer) {
     return;
   }
@@ -339,7 +332,7 @@ void ImageBridgeChild::UpdateCompositable(
   if (!InImageBridgeChildThread()) {
     RefPtr<Runnable> runnable = WrapRunnable(
         RefPtr<ImageBridgeChild>(this), &ImageBridgeChild::UpdateCompositable,
-        aContainer, aTextureId, aOwnerId, aSize, aFlags);
+        aContainer, aTextureId, aOwnerId, aSize, aFlags, aTracker);
     GetThread()->Dispatch(runnable.forget());
     return;
   }
@@ -360,7 +353,7 @@ void ImageBridgeChild::UpdateCompositable(
   }
 
   BeginTransaction();
-  UseRemoteTexture(client, aTextureId, aOwnerId, aSize, aFlags);
+  UseRemoteTexture(client, aTextureId, aOwnerId, aSize, aFlags, aTracker);
   EndTransaction();
 }
 
@@ -401,6 +394,43 @@ void ImageBridgeChild::FlushAllImages(ImageClient* aClient,
       &task, aClient, aContainer);
   GetThread()->Dispatch(runnable.forget());
 
+  task.Wait();
+}
+
+void ImageBridgeChild::SyncWithCompositor(const Maybe<uint64_t>& aWindowID) {
+  if (NS_WARN_IF(InImageBridgeChildThread())) {
+    MOZ_ASSERT_UNREACHABLE("Cannot call on ImageBridge thread!");
+    return;
+  }
+
+  if (!aWindowID) {
+    return;
+  }
+
+  const auto fnSyncWithWindow = [&]() {
+    if (auto* window = nsGlobalWindowInner::GetInnerWindowWithId(*aWindowID)) {
+      if (auto* widget = window->GetNearestWidget()) {
+        if (auto* renderer = widget->GetWindowRenderer()) {
+          if (auto* kc = renderer->AsKnowsCompositor()) {
+            kc->SyncWithCompositor();
+          }
+        }
+      }
+    }
+  };
+
+  if (NS_IsMainThread()) {
+    fnSyncWithWindow();
+    return;
+  }
+
+  SynchronousTask task("SyncWithCompositor Lock");
+  RefPtr<Runnable> runnable =
+      NS_NewRunnableFunction("ImageBridgeChild::SyncWithCompositor", [&]() {
+        AutoCompleteTask complete(&task);
+        fnSyncWithWindow();
+      });
+  NS_DispatchToMainThread(runnable.forget());
   task.Wait();
 }
 
@@ -483,12 +513,14 @@ void ImageBridgeChild::Bind(Endpoint<PImageBridgeChild>&& aEndpoint) {
     return;
   }
 
+  mSectionAllocator = MakeUnique<FixedSizeSmallShmemSectionAllocator>(this);
   mCanSend = true;
 }
 
 void ImageBridgeChild::BindSameProcess(RefPtr<ImageBridgeParent> aParent) {
   Open(aParent, aParent->GetThread(), mozilla::ipc::ChildSide);
 
+  mSectionAllocator = MakeUnique<FixedSizeSmallShmemSectionAllocator>(this);
   mCanSend = true;
 }
 
@@ -601,6 +633,10 @@ bool InImageBridgeChildThread() {
          sImageBridgeChildThread->IsOnCurrentThread();
 }
 
+FixedSizeSmallShmemSectionAllocator* ImageBridgeChild::GetTileLockAllocator() {
+  return mSectionAllocator.get();
+}
+
 nsISerialEventTarget* ImageBridgeChild::GetThread() const {
   return sImageBridgeChildThread;
 }
@@ -645,8 +681,8 @@ RefPtr<ImageClient> ImageBridgeChild::CreateImageClientNow(
     return nullptr;
   }
 
-  RefPtr<ImageClient> client =
-      ImageClient::CreateImageClient(aType, this, TextureFlags::NO_FLAGS);
+  RefPtr<ImageClient> client = ImageClient::CreateImageClient(
+      aType, aImageContainer->mUsageType, this, TextureFlags::NO_FLAGS);
   MOZ_ASSERT(client, "failed to create ImageClient");
   if (client) {
     client->Connect(aImageContainer);

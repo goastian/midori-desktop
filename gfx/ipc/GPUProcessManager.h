@@ -14,6 +14,7 @@
 #include "mozilla/gfx/GPUProcessHost.h"
 #include "mozilla/gfx/PGPUChild.h"
 #include "mozilla/gfx/Point.h"
+#include "mozilla/Hal.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/ipc/TaskFactory.h"
 #include "mozilla/layers/LayersTypes.h"
@@ -96,7 +97,7 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
   // If the GPU process is enabled but has not yet been launched then this will
   // launch the process. If that is not desired then check that return value of
   // Process() is non-null before calling.
-  nsresult EnsureGPUReady();
+  nsresult EnsureGPUReady(bool aRetryAfterFallback = true);
 
   already_AddRefed<CompositorSession> CreateTopLevelCompositor(
       nsBaseWidget* aWidget, WebRenderLayerManager* aLayerManager,
@@ -156,13 +157,19 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
   // Record the device reset in telemetry / annotate the crash report.
   static void RecordDeviceReset(DeviceResetReason aReason);
 
+  static void NotifyDeviceReset(DeviceResetReason aReason,
+                                DeviceResetDetectPlace aPlace);
+
   void OnProcessLaunchComplete(GPUProcessHost* aHost) override;
   void OnProcessUnexpectedShutdown(GPUProcessHost* aHost) override;
   void SimulateDeviceReset();
   void DisableWebRender(wr::WebRenderError aError, const nsCString& aMsg);
   void NotifyWebRenderError(wr::WebRenderError aError);
-  void OnInProcessDeviceReset(bool aTrackThreshold);
-  void OnRemoteProcessDeviceReset(GPUProcessHost* aHost) override;
+  void OnInProcessDeviceReset(DeviceResetReason aReason,
+                              DeviceResetDetectPlace aPlace);
+  void OnRemoteProcessDeviceReset(
+      GPUProcessHost* aHost, const DeviceResetReason& aReason,
+      const DeviceResetDetectPlace& aPlace) override;
   void OnProcessDeclaredStable() override;
   void NotifyListenersOnCompositeDeviceReset();
 
@@ -177,8 +184,9 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
   // true if the message was sent, false if not.
   bool NotifyGpuObservers(const char* aTopic);
 
-  // Kills the GPU process. Used for tests and diagnostics
-  void KillProcess();
+  // Kills the GPU process. Used in normal operation to recover from an error,
+  // as well as for tests and diagnostics.
+  void KillProcess(bool aGenerateMinidump = false);
 
   // Causes the GPU process to crash. Used for tests and diagnostics
   void CrashProcess();
@@ -214,9 +222,11 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
   // Called from our xpcom-shutdown observer.
   void OnXPCOMShutdown();
   void OnPreferenceChange(const char16_t* aData);
+  void ScreenInformationChanged();
 
   bool CreateContentCompositorManager(
       base::ProcessId aOtherProcess, dom::ContentParentId aChildId,
+      uint32_t aNamespace,
       mozilla::ipc::Endpoint<PCompositorManagerChild>* aOutEndpoint);
   bool CreateContentImageBridge(
       base::ProcessId aOtherProcess, dom::ContentParentId aChildId,
@@ -240,6 +250,8 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
 
   void DestroyRemoteCompositorSessions();
   void DestroyInProcessCompositorSessions();
+
+  void OnBlockingProcessUnexpectedShutdown();
 
   // Returns true if we crossed the threshold such that we should disable
   // acceleration.
@@ -306,6 +318,8 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
 
   DISALLOW_COPY_AND_ASSIGN(GPUProcessManager);
 
+  void NotifyBatteryInfo(const hal::BatteryInformation& aBatteryInfo);
+
   class Observer final : public nsIObserver {
    public:
     NS_DECL_ISUPPORTS
@@ -319,10 +333,25 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
   };
   friend class Observer;
 
+  class BatteryObserver final : public hal::BatteryObserver {
+   public:
+    NS_INLINE_DECL_REFCOUNTING(BatteryObserver)
+    explicit BatteryObserver(GPUProcessManager* aManager);
+
+    void Notify(const hal::BatteryInformation& aBatteryInfo) override;
+    void ShutDown();
+
+   protected:
+    virtual ~BatteryObserver();
+
+    GPUProcessManager* mManager;
+  };
+
  private:
   bool mDecodeVideoOnGpuProcess = true;
 
   RefPtr<Observer> mObserver;
+  RefPtr<BatteryObserver> mBatteryObserver;
   mozilla::ipc::TaskFactory<GPUProcessManager> mTaskFactory;
   RefPtr<VsyncIOThreadHolder> mVsyncIOThread;
   uint32_t mNextNamespace;

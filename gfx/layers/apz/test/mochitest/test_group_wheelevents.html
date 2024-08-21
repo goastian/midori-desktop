@@ -20,6 +20,13 @@ var prefs = [
   ["mousewheel.transaction.timeout", 0],
 ];
 
+var wheel_transaction_prefs = [
+  ["dom.event.wheel-event-groups.enabled", true],
+  ["mousewheel.transaction.timeout", 10000],
+  ["apz.test.mac.synth_wheel_input", true],
+  ...getSmoothScrollPrefs("wheel"),
+];
+
 // For helper_scroll_over_scrollbar, we need to set a pref to force
 // layerization of the scrollbar track to reproduce the bug being fixed.
 // Otherwise, the bug only manifests with overlay scrollbars on macOS,
@@ -32,16 +39,7 @@ scrollbar_prefs.push(["layout.scrollbars.always-layerize-track", true]);
 var timeout_prefs = prefs.slice(); // make a copy
 timeout_prefs.push(["apz.content_response_timeout", 0]);
 
-var smoothness_prefs = [
-  ["apz.test.logging_enabled", true],
-  // We'd want to test real wheel events rather than pan events.
-  ["apz.test.mac.synth_wheel_input", true],
-  // Use a longer animation duration to avoid the situation that the
-  // animation stops accidentally in between each wheel event.
-  // If the situation happens, scroll offsets will not change at the moment.
-  ["general.smoothScroll.mouseWheel.durationMaxMS", 1500],
-  ["general.smoothScroll.mouseWheel.durationMinMS", 1500]
-];
+var smoothness_prefs = getSmoothScrollPrefs("wheel");
 
 var subtests = [
   {"file": "helper_scroll_on_position_fixed.html", "prefs": prefs},
@@ -53,14 +51,17 @@ var subtests = [
   {"file": "helper_scroll_inactive_zindex.html", "prefs": prefs},
   {"file": "helper_scroll_over_scrollbar.html", "prefs": scrollbar_prefs},
   {"file": "helper_scroll_tables_perspective.html", "prefs": prefs},
-  {"file": "helper_relative_scroll_smoothness.html?input-type=wheel&scroll-method=scrollBy", prefs: smoothness_prefs },
-  {"file": "helper_relative_scroll_smoothness.html?input-type=wheel&scroll-method=scrollTo", prefs: smoothness_prefs },
-  {"file": "helper_relative_scroll_smoothness.html?input-type=wheel&scroll-method=scrollTop", prefs: smoothness_prefs },
   {"file": "helper_transform_end_on_wheel_scroll.html",
     prefs: [["general.smoothScroll", false],
              ["apz.test.mac.synth_wheel_input", true]]},
   {"file": "helper_scroll_anchoring_on_wheel.html", prefs: smoothness_prefs},
+  {"file": "helper_scroll_over_subframe.html?scroll=wheel", prefs: wheel_transaction_prefs},
+  {"file": "helper_scroll_over_subframe.html?oop=true&scroll=wheel", prefs: wheel_transaction_prefs},
+  {"file": "helper_scroll_over_subframe.html?scroll=pan", prefs: wheel_transaction_prefs},
+  {"file": "helper_scroll_over_subframe.html?oop=true&scroll=pan", prefs: wheel_transaction_prefs},
 ];
+
+subtests.push(...buildRelativeScrollSmoothnessVariants("wheel", ["scrollBy", "scrollTo", "scrollTop"]));
 
 // Only Windows has the test api implemented for this test.
 if (getPlatform() == "windows") {

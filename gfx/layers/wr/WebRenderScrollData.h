@@ -84,8 +84,6 @@ class WebRenderLayerScrollData final {
     mTransformIsPerspective = aTransformIsPerspective;
   }
   bool GetTransformIsPerspective() const { return mTransformIsPerspective; }
-  void SetResolution(float aResolution) { mResolution = aResolution; }
-  float GetResolution() const { return mResolution; }
 
   void SetEventRegionsOverride(const EventRegionsOverride& aOverride) {
     mEventRegionsOverride = aOverride;
@@ -94,10 +92,8 @@ class WebRenderLayerScrollData final {
     return mEventRegionsOverride;
   }
 
-  void SetVisibleRegion(const LayerIntRegion& aRegion) {
-    mVisibleRegion = aRegion;
-  }
-  const LayerIntRegion& GetVisibleRegion() const { return mVisibleRegion; }
+  void SetVisibleRect(const LayerIntRect& aRect) { mVisibleRect = aRect; }
+  const LayerIntRect& GetVisibleRect() const { return mVisibleRect; }
   void SetRemoteDocumentSize(const LayerIntSize& aRemoteDocumentSize) {
     mRemoteDocumentSize = aRemoteDocumentSize;
   }
@@ -208,8 +204,7 @@ class WebRenderLayerScrollData final {
   ViewID mAncestorTransformId;
   gfx::Matrix4x4 mTransform;
   bool mTransformIsPerspective;
-  float mResolution;
-  LayerIntRegion mVisibleRegion;
+  LayerIntRect mVisibleRect;
   // The remote documents only need their size because their origin is always
   // (0, 0).
   LayerIntSize mRemoteDocumentSize;
@@ -281,6 +276,13 @@ class WebRenderScrollData {
 
   void ApplyUpdates(ScrollUpdatesMap&& aUpdates, uint32_t aPaintSequenceNumber);
 
+  // Prepend the scroll position updates in the previous data to this data so
+  // that we can handle all scroll position updates in the proper order.
+  void PrependUpdates(const WebRenderScrollData& aPreviousData);
+
+  void SetWasUpdateSkipped() { mWasUpdateSkipped = true; }
+  bool GetWasUpdateSkipped() const { return mWasUpdateSkipped; }
+
   friend struct IPC::ParamTraits<WebRenderScrollData>;
 
   friend std::ostream& operator<<(std::ostream& aOut,
@@ -333,6 +335,12 @@ class WebRenderScrollData {
 
   bool mIsFirstPaint;
   uint32_t mPaintSequenceNumber;
+
+  // Wether this data was skipped to updated because the parent process hasn't
+  // yet gotten the referent LayersId for this data.
+  //
+  // Note this variable is not copied over IPC.
+  bool mWasUpdateSkipped = false;
 };
 
 }  // namespace layers

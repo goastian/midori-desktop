@@ -82,20 +82,27 @@ struct hb_set_digest_bits_pattern_t
 
   void init () { mask = 0; }
 
-  void add (const hb_set_digest_bits_pattern_t &o) { mask |= o.mask; }
+  static hb_set_digest_bits_pattern_t full () { hb_set_digest_bits_pattern_t d; d.mask = (mask_t) -1; return d; }
+
+  void union_ (const hb_set_digest_bits_pattern_t &o) { mask |= o.mask; }
 
   void add (hb_codepoint_t g) { mask |= mask_for (g); }
 
   bool add_range (hb_codepoint_t a, hb_codepoint_t b)
   {
+    if (mask == (mask_t) -1) return false;
     if ((b >> shift) - (a >> shift) >= mask_bits - 1)
+    {
       mask = (mask_t) -1;
-    else {
+      return false;
+    }
+    else
+    {
       mask_t ma = mask_for (a);
       mask_t mb = mask_for (b);
       mask |= mb + (mb - ma) - (mb < ma);
+      return true;
     }
-    return true;
   }
 
   template <typename T>
@@ -124,11 +131,14 @@ struct hb_set_digest_bits_pattern_t
   bool may_have (hb_codepoint_t g) const
   { return mask & mask_for (g); }
 
+  bool operator [] (hb_codepoint_t g) const
+  { return may_have (g); }
+
   private:
 
   static mask_t mask_for (hb_codepoint_t g)
   { return ((mask_t) 1) << ((g >> shift) & (mask_bits - 1)); }
-  mask_t mask;
+  mask_t mask = 0;
 };
 
 template <typename head_t, typename tail_t>
@@ -140,10 +150,12 @@ struct hb_set_digest_combiner_t
     tail.init ();
   }
 
-  void add (const hb_set_digest_combiner_t &o)
+  static hb_set_digest_combiner_t full () { hb_set_digest_combiner_t d; d.head = head_t::full(); d.tail = tail_t::full (); return d; }
+
+  void union_ (const hb_set_digest_combiner_t &o)
   {
-    head.add (o.head);
-    tail.add (o.tail);
+    head.union_ (o.head);
+    tail.union_(o.tail);
   }
 
   void add (hb_codepoint_t g)
@@ -154,8 +166,7 @@ struct hb_set_digest_combiner_t
 
   bool add_range (hb_codepoint_t a, hb_codepoint_t b)
   {
-    return head.add_range (a, b) &&
-	   tail.add_range (a, b);
+    return (int) head.add_range (a, b) | (int) tail.add_range (a, b);
   }
   template <typename T>
   void add_array (const T *array, unsigned int count, unsigned int stride=sizeof(T))
@@ -183,6 +194,9 @@ struct hb_set_digest_combiner_t
   {
     return head.may_have (g) && tail.may_have (g);
   }
+
+  bool operator [] (hb_codepoint_t g) const
+  { return may_have (g); }
 
   private:
   head_t head;

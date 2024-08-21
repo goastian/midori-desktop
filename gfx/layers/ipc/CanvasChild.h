@@ -11,59 +11,63 @@
 #include "mozilla/ipc/CrossProcessSemaphore.h"
 #include "mozilla/layers/PCanvasChild.h"
 #include "mozilla/layers/SourceSurfaceSharedData.h"
-#include "nsRefPtrHashtable.h"
-#include "nsTArray.h"
+#include "mozilla/WeakPtr.h"
 
 namespace mozilla {
 
-namespace gfx {
-class SourceSurface;
+namespace dom {
+class ThreadSafeWorkerRef;
 }
+
+namespace gfx {
+class DrawTargetRecording;
+class SourceSurface;
+}  // namespace gfx
 
 namespace layers {
 class CanvasDrawEventRecorder;
+struct RemoteTextureOwnerId;
 
-class CanvasChild final : public PCanvasChild {
+class CanvasChild final : public PCanvasChild, public SupportsWeakPtr {
  public:
   NS_INLINE_DECL_REFCOUNTING(CanvasChild)
 
-  explicit CanvasChild(Endpoint<PCanvasChild>&& aEndpoint);
+  explicit CanvasChild(dom::ThreadSafeWorkerRef* aWorkerRef);
 
   /**
    * @returns true if remote canvas has been deactivated due to failure.
    */
   static bool Deactivated() { return mDeactivated; }
 
+  /**
+   * Release resources until they are next required.
+   */
+  void ClearCachedResources();
+
   ipc::IPCResult RecvNotifyDeviceChanged();
 
   ipc::IPCResult RecvDeactivate();
+
+  ipc::IPCResult RecvBlockCanvas();
+
+  ipc::IPCResult RecvNotifyRequiresRefresh(int64_t aTextureId);
+
+  ipc::IPCResult RecvSnapshotShmem(int64_t aTextureId, Handle&& aShmemHandle,
+                                   uint32_t aShmemSize,
+                                   SnapshotShmemResolver&& aResolve);
 
   /**
    * Ensures that the DrawEventRecorder has been created.
    *
    * @params aTextureType the TextureType to create in the CanvasTranslator.
    */
-  void EnsureRecorder(TextureType aTextureType);
-
-  /**
-   * Send a messsage to our CanvasParent to resume translation.
-   */
-  void ResumeTranslation();
+  void EnsureRecorder(gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
+                      TextureType aTextureType, TextureType aWebglTextureType);
 
   /**
    * Clean up IPDL actor.
    */
   void Destroy();
-
-  /**
-   * Called when a RecordedTextureData is write locked.
-   */
-  void OnTextureWriteLock();
-
-  /**
-   * Called when a RecordedTextureData is forwarded to the compositor.
-   */
-  void OnTextureForwarded();
 
   /**
    * @returns true if we should be caching data surfaces in the GPU process.
@@ -75,8 +79,9 @@ class CanvasChild final : public PCanvasChild {
   /**
    * Ensures that we have sent a begin transaction event, since the last
    * end transaction.
+   * @returns false on failure to begin transaction
    */
-  void EnsureBeginTransaction();
+  bool EnsureBeginTransaction();
 
   /**
    * Send an end transaction event to indicate the end of events for this frame.
@@ -91,11 +96,13 @@ class CanvasChild final : public PCanvasChild {
 
   /**
    * Create a DrawTargetRecording for a canvas texture.
+   * @param aTextureId the id of the new texture
    * @param aSize size for the DrawTarget
    * @param aFormat SurfaceFormat for the DrawTarget
    * @returns newly created DrawTargetRecording
    */
-  already_AddRefed<gfx::DrawTarget> CreateDrawTarget(
+  already_AddRefed<gfx::DrawTargetRecording> CreateDrawTarget(
+      int64_t aTextureId, const RemoteTextureOwnerId& aTextureOwnerId,
       gfx::IntSize aSize, gfx::SurfaceFormat aFormat);
 
   /**
@@ -104,25 +111,51 @@ class CanvasChild final : public PCanvasChild {
    */
   void RecordEvent(const gfx::RecordedEvent& aEvent);
 
+  int64_t CreateCheckpoint();
+
   /**
    * Wrap the given surface, so that we can provide a DataSourceSurface if
    * required.
    * @param aSurface the SourceSurface to wrap
+   * @param aTextureId the texture id of the source TextureData
    * @returns a SourceSurface that can provide a DataSourceSurface if required
    */
   already_AddRefed<gfx::SourceSurface> WrapSurface(
-      const RefPtr<gfx::SourceSurface>& aSurface);
+      const RefPtr<gfx::SourceSurface>& aSurface, int64_t aTextureId);
+
+  /**
+   * The DrawTargetRecording backing the surface has not been modified since the
+   * previous use, so it is safe to reattach the snapshot for readback.
+   */
+  void AttachSurface(const RefPtr<gfx::SourceSurface>& aSurface);
+
+  /**
+   * The DrawTargetRecording is about to change, so detach the old snapshot.
+   */
+  void DetachSurface(const RefPtr<gfx::SourceSurface>& aSurface,
+                     bool aInvalidate = false);
 
   /**
    * Get DataSourceSurface from the translated equivalent version of aSurface in
    * the GPU process.
+   * @param aTextureId the source TextureData to read from
    * @param aSurface the SourceSurface in this process for which we need a
    *                 DataSourceSurface
+   * @param aDetached whether the surface is old
+   * @param aMayInvalidate whether the data may be invalidated by future changes
    * @returns a DataSourceSurface created from data for aSurface retrieve from
    *          GPU process
    */
   already_AddRefed<gfx::DataSourceSurface> GetDataSurface(
-      const gfx::SourceSurface* aSurface);
+      int64_t aTextureId, const gfx::SourceSurface* aSurface, bool aDetached,
+      bool& aMayInvalidate);
+
+  bool RequiresRefresh(int64_t aTextureId) const;
+
+  void CleanupTexture(int64_t aTextureId);
+
+  void ReturnDataSurfaceShmem(
+      already_AddRefed<ipc::SharedMemoryBasic> aDataSurfaceShmem);
 
  protected:
   void ActorDestroy(ActorDestroyReason aWhy) final;
@@ -132,18 +165,31 @@ class CanvasChild final : public PCanvasChild {
 
   ~CanvasChild() final;
 
+  bool EnsureDataSurfaceShmem(gfx::IntSize aSize, gfx::SurfaceFormat aFormat);
+
+  static void ReleaseDataShmemHolder(void* aClosure);
+
+  void DropFreeBuffersWhenDormant();
+
   static const uint32_t kCacheDataSurfaceThreshold = 10;
 
   static bool mDeactivated;
 
+  RefPtr<dom::ThreadSafeWorkerRef> mWorkerRef;
   RefPtr<CanvasDrawEventRecorder> mRecorder;
-  TextureType mTextureType = TextureType::Unknown;
-  uint32_t mLastWriteLockCheckpoint = 0;
+
+  RefPtr<ipc::SharedMemoryBasic> mDataSurfaceShmem;
+  bool mDataSurfaceShmemAvailable = false;
+  int64_t mLastWriteLockCheckpoint = 0;
   uint32_t mTransactionsSinceGetDataSurface = kCacheDataSurfaceThreshold;
-  TimeStamp mLastNonEmptyTransaction = TimeStamp::NowLoRes();
-  std::vector<RefPtr<gfx::SourceSurface>> mLastTransactionExternalSurfaces;
+  struct TextureInfo {
+    RefPtr<mozilla::ipc::SharedMemoryBasic> mSnapshotShmem;
+    bool mRequiresRefresh = false;
+  };
+  std::unordered_map<int64_t, TextureInfo> mTextureInfo;
   bool mIsInTransaction = false;
-  bool mHasOutstandingWriteLock = false;
+  bool mDormant = false;
+  bool mBlocked = false;
 };
 
 }  // namespace layers

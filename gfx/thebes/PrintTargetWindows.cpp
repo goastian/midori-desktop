@@ -103,17 +103,18 @@ nsresult PrintTargetWindows::AbortPrinting() {
   return (result <= 0) ? NS_ERROR_FAILURE : NS_OK;
 }
 
-nsresult PrintTargetWindows::BeginPage() {
-  PrintTarget::BeginPage();
+nsresult PrintTargetWindows::BeginPage(const IntSize& aSizeInPoints) {
+  MOZ_ALWAYS_SUCCEEDS(PrintTarget::BeginPage(aSizeInPoints));
   int result = ::StartPage(mDC);
   return (result <= 0) ? NS_ERROR_FAILURE : NS_OK;
 }
 
 nsresult PrintTargetWindows::EndPage() {
   cairo_surface_show_page(mCairoSurface);
-  PrintTarget::EndPage();
+  bool cairoFailure = cairo_surface_status(mCairoSurface);
+  MOZ_ALWAYS_SUCCEEDS(PrintTarget::EndPage());
   int result = ::EndPage(mDC);
-  return (result <= 0) ? NS_ERROR_FAILURE : NS_OK;
+  return (result <= 0 || cairoFailure) ? NS_ERROR_FAILURE : NS_OK;
 }
 
 }  // namespace gfx

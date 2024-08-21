@@ -9,6 +9,9 @@
 #include "mozilla/RefPtr.h"
 #include "mozilla/gfx/PGPUParent.h"
 #include "mozilla/ipc/AsyncBlockers.h"
+#if defined(MOZ_SANDBOX) && defined(MOZ_DEBUG) && defined(ENABLE_TESTS)
+#  include "mozilla/PSandboxTestingChild.h"
+#endif
 
 namespace mozilla {
 
@@ -39,9 +42,11 @@ class GPUParent final : public PGPUParent {
 
   bool Init(mozilla::ipc::UntypedEndpoint&& aEndpoint,
             const char* aParentBuildID);
-  void NotifyDeviceReset();
+  void NotifyDeviceReset(DeviceResetReason aReason,
+                         DeviceResetDetectPlace aPlace);
   void NotifyOverlayInfo(layers::OverlayInfo aInfo);
   void NotifySwapChainInfo(layers::SwapChainInfo aInfo);
+  void NotifyDisableRemoteCanvas();
 
   mozilla::ipc::IPCResult RecvInit(nsTArray<GfxVarUpdate>&& vars,
                                    const DevicePrefs& devicePrefs,
@@ -49,7 +54,7 @@ class GPUParent final : public PGPUParent {
                                    nsTArray<GfxInfoFeatureStatus>&& features,
                                    uint32_t wrNamespace);
   mozilla::ipc::IPCResult RecvInitCompositorManager(
-      Endpoint<PCompositorManagerParent>&& aEndpoint);
+      Endpoint<PCompositorManagerParent>&& aEndpoint, uint32_t aNamespace);
   mozilla::ipc::IPCResult RecvInitVsyncBridge(
       Endpoint<PVsyncBridgeParent>&& aVsyncEndpoint);
   mozilla::ipc::IPCResult RecvInitImageBridge(
@@ -70,9 +75,12 @@ class GPUParent final : public PGPUParent {
       Endpoint<PProfilerChild>&& aEndpoint);
   mozilla::ipc::IPCResult RecvUpdateVar(const GfxVarUpdate& pref);
   mozilla::ipc::IPCResult RecvPreferenceUpdate(const Pref& pref);
+  mozilla::ipc::IPCResult RecvScreenInformationChanged();
+  mozilla::ipc::IPCResult RecvNotifyBatteryInfo(
+      const BatteryInformation& aBatteryInfo);
   mozilla::ipc::IPCResult RecvNewContentCompositorManager(
       Endpoint<PCompositorManagerParent>&& aEndpoint,
-      const ContentParentId& aChildId);
+      const ContentParentId& aChildId, uint32_t aNamespace);
   mozilla::ipc::IPCResult RecvNewContentImageBridge(
       Endpoint<PImageBridgeParent>&& aEndpoint,
       const ContentParentId& aChildId);

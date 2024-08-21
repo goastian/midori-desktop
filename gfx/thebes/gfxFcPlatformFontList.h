@@ -317,6 +317,9 @@ class gfxFcPlatformFontList final : public gfxPlatformFontList {
  protected:
   virtual ~gfxFcPlatformFontList();
 
+  nsTArray<std::pair<const char**, uint32_t>> GetFilteredPlatformFontLists()
+      override;
+
 #if defined(MOZ_SANDBOX) && defined(XP_LINUX)
   typedef mozilla::SandboxBroker::Policy SandboxPolicy;
 #else
@@ -350,15 +353,6 @@ class gfxFcPlatformFontList final : public gfxPlatformFontList {
                                        const gfxFontStyle* aStyle,
                                        nsAtom* aLanguage = nullptr)
       MOZ_REQUIRES(mLock) override;
-
-  enum class DistroID : int8_t {
-    Unknown = 0,
-    Ubuntu = 1,
-    Fedora = 2,
-    // To be extended with any distros that ship a useful base set of fonts
-    // that we want to explicitly support.
-  };
-  DistroID GetDistroID() const;  // -> DistroID::Unknown if we can't tell
 
   FontVisibility GetVisibilityForFamily(const nsACString& aName) const;
 

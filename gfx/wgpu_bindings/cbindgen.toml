@@ -7,7 +7,7 @@ autogen_warning = """/* DO NOT MODIFY THIS MANUALLY! This file was generated usi
  * `gfx/wgpu_bindings/moz.build`, which directs the build system module
  * `build/RunCbindgen.py` to run the following command at the top of
  * the object file directory:
- * 
+ *
  *     $CBINDGEN $TOPSRCDIR --lockfile $TOPSRCDIR/Cargo.lock --crate wgpu_bindings --metadata config/cbindgen-metadata.json --cpp-compat > gfx/wgpu_bindings/wgpu_ffi_generated.h
  *
  * where:
@@ -29,6 +29,27 @@ typedef uint64_t WGPUOption_BindGroupLayoutId;
 typedef uint64_t WGPUOption_SamplerId;
 typedef uint64_t WGPUOption_SurfaceId;
 typedef uint64_t WGPUOption_TextureViewId;
+typedef uint64_t WGPUOption_QuerySetId;
+
+typedef uint64_t WGPUAdapterId;
+typedef uint64_t WGPUBindGroupId;
+typedef uint64_t WGPUBindGroupLayoutId;
+typedef uint64_t WGPUBufferId;
+typedef uint64_t WGPUCommandBufferId;
+typedef uint64_t WGPUCommandEncoderId;
+typedef uint64_t WGPUComputePipelineId;
+typedef uint64_t WGPUDeviceId;
+typedef uint64_t WGPUPipelineLayoutId;
+typedef uint64_t WGPUQuerySetId;
+typedef uint64_t WGPUQueueId;
+typedef uint64_t WGPURenderBundleId;
+typedef uint64_t WGPURenderPipelineId;
+typedef uint64_t WGPUSamplerId;
+typedef uint64_t WGPUShaderModuleId;
+typedef uint64_t WGPUStagingBufferId;
+typedef uint64_t WGPUSurfaceId;
+typedef uint64_t WGPUTextureId;
+typedef uint64_t WGPUTextureViewId;
 """
 include_version = true
 braces = "SameLine"
@@ -44,7 +65,7 @@ exclude = [
 	"Option_AdapterId", "Option_BufferId", "Option_PipelineLayoutId", "Option_BindGroupLayoutId",
 	"Option_SamplerId", "Option_SurfaceId", "Option_TextureViewId",
 	"Option_BufferSize", "Option_NonZeroU32", "Option_NonZeroU8",
-	"ANativeWindow_setBuffersGeometry",
+	"ANativeWindow_setBuffersGeometry", "Option_QuerySetId",
 ]
 include = ["BufferUsages"]
 

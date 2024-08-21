@@ -24,7 +24,7 @@ use peek_poke::PeekPoke;
 /// coordinate system has an id and those ids will be shared when the coordinates
 /// system are the same or are in the same axis-aligned space. This allows
 /// for optimizing mask generation.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct CoordinateSystemId(pub u32);
@@ -335,9 +335,11 @@ impl SceneSpatialTree {
     pub fn find_scroll_root(
         &self,
         spatial_node_index: SpatialNodeIndex,
+        allow_sticky_frames: bool,
     ) -> SpatialNodeIndex {
         let mut real_scroll_root = self.root_reference_frame_index;
         let mut outermost_scroll_root = self.root_reference_frame_index;
+        let mut current_scroll_root_is_sticky = false;
         let mut node_index = spatial_node_index;
 
         while node_index != self.root_reference_frame_index {
@@ -354,10 +356,21 @@ impl SceneSpatialTree {
                             // we have encountered, as they may end up with a non-axis-aligned transform.
                             real_scroll_root = self.root_reference_frame_index;
                             outermost_scroll_root = self.root_reference_frame_index;
+                            current_scroll_root_is_sticky = false;
                         }
                     }
                 }
-                SpatialNodeType::StickyFrame(..) => {}
+                SpatialNodeType::StickyFrame(..) => {
+                    // Though not a scroll frame, we optionally treat sticky frames as scroll roots
+                    // to ensure they are given a separate picture cache slice.
+                    if allow_sticky_frames {
+                        outermost_scroll_root = node_index;
+                        real_scroll_root = node_index;
+                        // Set this true so that we don't select an ancestor scroll frame as the scroll root
+                        // on a subsequent iteration.
+                        current_scroll_root_is_sticky = true;
+                    }
+                }
                 SpatialNodeType::ScrollFrame(ref info) => {
                     match info.frame_kind {
                         ScrollFrameKind::PipelineRoot { is_root_pipeline } => {
@@ -371,24 +384,29 @@ impl SceneSpatialTree {
                             // later on, even if it's not actually scrollable.
                             outermost_scroll_root = node_index;
 
-                            // If the scroll root has no scrollable area, we don't want to
-                            // consider it. This helps pages that have a nested scroll root
-                            // within a redundant scroll root to avoid selecting the wrong
-                            // reference spatial node for a picture cache.
-                            if info.scrollable_size.width > MIN_SCROLLABLE_AMOUNT ||
-                               info.scrollable_size.height > MIN_SCROLLABLE_AMOUNT {
-                                // Since we are skipping redundant scroll roots, we may end up
-                                // selecting inner scroll roots that are very small. There is
-                                // no performance benefit to creating a slice for these roots,
-                                // as they are cheap to rasterize. The size comparison is in
-                                // local-space, but makes for a reasonable estimate. The value
-                                // is arbitrary, but is generally small enough to ignore things
-                                // like scroll roots around text input elements.
-                                if info.viewport_rect.width() > MIN_SCROLL_ROOT_SIZE &&
-                                   info.viewport_rect.height() > MIN_SCROLL_ROOT_SIZE {
-                                    // If we've found a root that is scrollable, and a reasonable
-                                    // size, select that as the current root for this node
-                                    real_scroll_root = node_index;
+                            // If the previously identified scroll root is sticky then we don't
+                            // want to choose an ancestor scroll root, as we want the sticky item
+                            // to have its own picture cache slice.
+                            if !current_scroll_root_is_sticky {
+                                // If the scroll root has no scrollable area, we don't want to
+                                // consider it. This helps pages that have a nested scroll root
+                                // within a redundant scroll root to avoid selecting the wrong
+                                // reference spatial node for a picture cache.
+                                if info.scrollable_size.width > MIN_SCROLLABLE_AMOUNT ||
+                                   info.scrollable_size.height > MIN_SCROLLABLE_AMOUNT {
+                                    // Since we are skipping redundant scroll roots, we may end up
+                                    // selecting inner scroll roots that are very small. There is
+                                    // no performance benefit to creating a slice for these roots,
+                                    // as they are cheap to rasterize. The size comparison is in
+                                    // local-space, but makes for a reasonable estimate. The value
+                                    // is arbitrary, but is generally small enough to ignore things
+                                    // like scroll roots around text input elements.
+                                    if info.viewport_rect.width() > MIN_SCROLL_ROOT_SIZE &&
+                                       info.viewport_rect.height() > MIN_SCROLL_ROOT_SIZE {
+                                        // If we've found a root that is scrollable, and a reasonable
+                                        // size, select that as the current root for this node
+                                        real_scroll_root = node_index;
+                                    }
                                 }
                             }
                         }
@@ -721,6 +739,14 @@ impl<Src, Dst> CoordinateSpaceMapping<Src, Dst> {
         }
     }
 
+    pub fn is_2d_scale_translation(&self) -> bool {
+        match *self {
+            CoordinateSpaceMapping::Local |
+            CoordinateSpaceMapping::ScaleOffset(_) => true,
+            CoordinateSpaceMapping::Transform(ref transform) => transform.is_2d_scale_translation(),
+        }
+    }
+
     pub fn scale_factors(&self) -> (f32, f32) {
         match *self {
             CoordinateSpaceMapping::Local => (1.0, 1.0),
@@ -739,6 +765,19 @@ impl<Src, Dst> CoordinateSpaceMapping<Src, Dst> {
                 transform.inverse().map(CoordinateSpaceMapping::Transform)
             }
         }
+    }
+
+    pub fn as_2d_scale_offset(&self) -> Option<ScaleOffset> {
+        Some(match *self {
+            CoordinateSpaceMapping::Local => ScaleOffset::identity(),
+            CoordinateSpaceMapping::ScaleOffset(transfrom) => transfrom,
+            CoordinateSpaceMapping::Transform(ref transform) => {
+                if !transform.is_2d_scale_translation() {
+                    return None
+                }
+                ScaleOffset::new(transform.m11, transform.m22, transform.m41, transform.m42)
+            }
+        })
     }
 }
 
@@ -1002,9 +1041,7 @@ impl SpatialTree {
         );
 
         if child.coordinate_system_id == parent.coordinate_system_id {
-            let scale_offset = parent.content_transform
-                .inverse()
-                .accumulate(&child.content_transform);
+            let scale_offset = child.content_transform.then(&parent.content_transform.inverse());
             return CoordinateSpaceMapping::ScaleOffset(scale_offset);
         }
 
@@ -1069,7 +1106,10 @@ impl SpatialTree {
             if index == self.root_reference_frame_index {
                 CoordinateSpaceMapping::Local
             } else {
-                CoordinateSpaceMapping::ScaleOffset(child.content_transform)
+              match scroll {
+                TransformScroll::Scrolled => CoordinateSpaceMapping::ScaleOffset(child.content_transform),
+                TransformScroll::Unscrolled => CoordinateSpaceMapping::ScaleOffset(child.viewport_transform),
+              }
             }
         } else {
             let system = &self.coord_systems[child.coordinate_system_id.0 as usize];
@@ -1367,8 +1407,7 @@ fn calculate_snapping_transform(
                     match ScaleOffset::from_transform(value) {
                         Some(scale_offset) => {
                             let origin_offset = info.origin_in_parent_reference_frame;
-                            ScaleOffset::from_offset(origin_offset.to_untyped())
-                                .accumulate(&scale_offset)
+                            scale_offset.then(&ScaleOffset::from_offset(origin_offset.to_untyped()))
                         }
                         None => return None,
                     }
@@ -1386,7 +1425,7 @@ fn calculate_snapping_transform(
         _ => ScaleOffset::identity(),
     };
 
-    Some(parent_scale_offset.accumulate(&scale_offset))
+    Some(scale_offset.then(&parent_scale_offset))
 }
 
 #[cfg(test)]
@@ -1721,7 +1760,7 @@ fn test_find_scroll_root_simple() {
         SpatialNodeUid::external(SpatialTreeItemKey::new(0, 1), PipelineId::dummy(), pid),
     );
 
-    assert_eq!(st.find_scroll_root(scroll), scroll);
+    assert_eq!(st.find_scroll_root(scroll, true), scroll);
 }
 
 /// Tests that we select the root scroll frame rather than the subframe if both are scrollable.
@@ -1770,7 +1809,7 @@ fn test_find_scroll_root_sub_scroll_frame() {
         SpatialNodeUid::external(SpatialTreeItemKey::new(0, 2), PipelineId::dummy(), pid),
     );
 
-    assert_eq!(st.find_scroll_root(sub_scroll), root_scroll);
+    assert_eq!(st.find_scroll_root(sub_scroll, true), root_scroll);
 }
 
 /// Tests that we select the sub scroll frame when the root scroll frame is not scrollable.
@@ -1819,7 +1858,7 @@ fn test_find_scroll_root_not_scrollable() {
         SpatialNodeUid::external(SpatialTreeItemKey::new(0, 2), PipelineId::dummy(), pid),
     );
 
-    assert_eq!(st.find_scroll_root(sub_scroll), sub_scroll);
+    assert_eq!(st.find_scroll_root(sub_scroll, true), sub_scroll);
 }
 
 /// Tests that we select the sub scroll frame when the root scroll frame is too small.
@@ -1868,7 +1907,7 @@ fn test_find_scroll_root_too_small() {
         SpatialNodeUid::external(SpatialTreeItemKey::new(0, 2), PipelineId::dummy(), pid),
     );
 
-    assert_eq!(st.find_scroll_root(sub_scroll), sub_scroll);
+    assert_eq!(st.find_scroll_root(sub_scroll, true), sub_scroll);
 }
 
 /// Tests that we select the root scroll node, even if it is not scrollable,
@@ -1930,7 +1969,7 @@ fn test_find_scroll_root_perspective() {
         SpatialNodeUid::external(SpatialTreeItemKey::new(0, 3), PipelineId::dummy(), pid),
     );
 
-    assert_eq!(st.find_scroll_root(sub_scroll), root_scroll);
+    assert_eq!(st.find_scroll_root(sub_scroll, true), root_scroll);
 }
 
 /// Tests that encountering a 2D scale or translation transform does not prevent
@@ -1994,5 +2033,137 @@ fn test_find_scroll_root_2d_scale() {
         SpatialNodeUid::external(SpatialTreeItemKey::new(0, 3), PipelineId::dummy(), pid),
     );
 
-    assert_eq!(st.find_scroll_root(sub_scroll), sub_scroll);
+    assert_eq!(st.find_scroll_root(sub_scroll, true), sub_scroll);
+}
+
+/// Tests that a sticky spatial node is chosen as the scroll root rather than
+/// its parent scroll frame
+#[test]
+fn test_find_scroll_root_sticky() {
+    let mut st = SceneSpatialTree::new();
+    let pid = PipelineInstanceId::new(0);
+
+    let root = st.add_reference_frame(
+        st.root_reference_frame_index(),
+        TransformStyle::Flat,
+        PropertyBinding::Value(LayoutTransform::identity()),
+        ReferenceFrameKind::Transform {
+            is_2d_scale_translation: true,
+            should_snap: true,
+            paired_with_perspective: false,
+        },
+        LayoutVector2D::new(0.0, 0.0),
+        PipelineId::dummy(),
+        SpatialNodeUid::external(SpatialTreeItemKey::new(0, 0), PipelineId::dummy(), pid),
+    );
+
+    let scroll = st.add_scroll_frame(
+        root,
+        ExternalScrollId(1, PipelineId::dummy()),
+        PipelineId::dummy(),
+        &LayoutRect::from_size(LayoutSize::new(400.0, 400.0)),
+        &LayoutSize::new(400.0, 800.0),
+        ScrollFrameKind::Explicit,
+        LayoutVector2D::new(0.0, 0.0),
+        APZScrollGeneration::default(),
+        HasScrollLinkedEffect::No,
+        SpatialNodeUid::external(SpatialTreeItemKey::new(0, 1), PipelineId::dummy(), pid),
+    );
+
+    let sticky = st.add_sticky_frame(
+        scroll,
+        StickyFrameInfo {
+            frame_rect: LayoutRect::from_size(LayoutSize::new(400.0, 100.0)),
+            margins: euclid::SideOffsets2D::new(Some(0.0), None, None, None),
+            vertical_offset_bounds: api::StickyOffsetBounds::new(0.0, 0.0),
+            horizontal_offset_bounds: api::StickyOffsetBounds::new(0.0, 0.0),
+            previously_applied_offset: LayoutVector2D::zero(),
+            current_offset: LayoutVector2D::zero(),
+            transform: None
+        },
+        PipelineId::dummy(),
+        SpatialTreeItemKey::new(0, 2),
+        pid,
+    );
+
+    assert_eq!(st.find_scroll_root(sticky, true), sticky);
+    assert_eq!(st.find_scroll_root(sticky, false), scroll);
+}
+
+#[test]
+fn test_world_transforms() {
+  // Create a spatial tree with a scroll frame node with scroll offset (0, 200).
+  let mut cst = SceneSpatialTree::new();
+  let pid = PipelineInstanceId::new(0);
+  let scroll = cst.add_scroll_frame(
+      cst.root_reference_frame_index(),
+      ExternalScrollId(1, PipelineId::dummy()),
+      PipelineId::dummy(),
+      &LayoutRect::from_size(LayoutSize::new(400.0, 400.0)),
+      &LayoutSize::new(400.0, 800.0),
+      ScrollFrameKind::Explicit, 
+      LayoutVector2D::new(0.0, 200.0),
+      APZScrollGeneration::default(),
+      HasScrollLinkedEffect::No,
+      SpatialNodeUid::external(SpatialTreeItemKey::new(0, 1), PipelineId::dummy(), pid));
+
+  let mut st = SpatialTree::new();
+  st.apply_updates(cst.end_frame_and_get_pending_updates());
+  st.update_tree(&SceneProperties::new());
+
+  // The node's world transform should reflect the scroll offset,
+  // e.g. here it should be (0, -200) to reflect that the content has been
+  // scrolled up by 200px.
+  assert_eq!(
+      st.get_world_transform(scroll).into_transform(),
+      LayoutToWorldTransform::translation(0.0, -200.0, 0.0));
+
+  // The node's world viewport transform only reflects enclosing scrolling
+  // or transforms. Here we don't have any, so it should be the identity.
+  assert_eq!(
+      st.get_world_viewport_transform(scroll).into_transform(),
+      LayoutToWorldTransform::identity());
+}
+
+/// Tests that a spatial node that is async zooming and all of its descendants
+/// are correctly marked as having themselves an ancestor that is zooming.
+#[test]
+fn test_is_ancestor_or_self_zooming() {
+    let mut cst = SceneSpatialTree::new();
+    let root_reference_frame_index = cst.root_reference_frame_index();
+
+    let root = add_reference_frame(
+        &mut cst,
+        root_reference_frame_index,
+        LayoutTransform::identity(),
+        LayoutVector2D::zero(),
+        SpatialTreeItemKey::new(0, 0),
+    );
+    let child1 = add_reference_frame(
+        &mut cst,
+        root,
+        LayoutTransform::identity(),
+        LayoutVector2D::zero(),
+        SpatialTreeItemKey::new(0, 1),
+    );
+    let child2 = add_reference_frame(
+        &mut cst,
+        child1,
+        LayoutTransform::identity(),
+        LayoutVector2D::zero(),
+        SpatialTreeItemKey::new(0, 2),
+    );
+
+    let mut st = SpatialTree::new();
+    st.apply_updates(cst.end_frame_and_get_pending_updates());
+
+    // Mark the root node as async zooming
+    st.get_spatial_node_mut(root).is_async_zooming = true;
+    st.update_tree(&SceneProperties::new());
+
+    // Ensure that the root node and all descendants are marked as having
+    // themselves or an ancestor zooming
+    assert!(st.get_spatial_node(root).is_ancestor_or_self_zooming);
+    assert!(st.get_spatial_node(child1).is_ancestor_or_self_zooming);
+    assert!(st.get_spatial_node(child2).is_ancestor_or_self_zooming);
 }

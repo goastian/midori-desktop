@@ -317,7 +317,8 @@ class GLTextureHost : public TextureHost {
 
   gfx::SurfaceFormat GetFormat() const override;
 
-  already_AddRefed<gfx::DataSourceSurface> GetAsSurface() override {
+  already_AddRefed<gfx::DataSourceSurface> GetAsSurface(
+      gfx::DataSourceSurface* aSurface) override {
     return nullptr;  // XXX - implement this (for MOZ_DUMP_PAINTING)
   }
 
@@ -387,7 +388,7 @@ class SurfaceTextureHost : public TextureHost {
   SurfaceTextureHost(TextureFlags aFlags,
                      mozilla::java::GeckoSurfaceTexture::Ref& aSurfTex,
                      gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
-                     bool aContinuousUpdate,
+                     bool aContinuousUpdate, bool aForceBT709ColorSpace,
                      Maybe<gfx::Matrix4x4> aTransformOverride);
 
   virtual ~SurfaceTextureHost();
@@ -396,7 +397,8 @@ class SurfaceTextureHost : public TextureHost {
 
   gfx::SurfaceFormat GetFormat() const override;
 
-  already_AddRefed<gfx::DataSourceSurface> GetAsSurface() override {
+  already_AddRefed<gfx::DataSourceSurface> GetAsSurface(
+      gfx::DataSourceSurface* aSurface) override {
     return nullptr;  // XXX - implement this (for MOZ_DUMP_PAINTING)
   }
 
@@ -438,6 +440,7 @@ class SurfaceTextureHost : public TextureHost {
   const gfx::IntSize mSize;
   const gfx::SurfaceFormat mFormat;
   bool mContinuousUpdate;
+  const bool mForceBT709ColorSpace;
   const Maybe<gfx::Matrix4x4> mTransformOverride;
   RefPtr<CompositorOGL> mCompositor;
   RefPtr<SurfaceTextureSource> mTextureSource;
@@ -508,7 +511,8 @@ class AndroidHardwareBufferTextureHost : public TextureHost {
 
   void NotifyNotUsed() override;
 
-  already_AddRefed<gfx::DataSourceSurface> GetAsSurface() override {
+  already_AddRefed<gfx::DataSourceSurface> GetAsSurface(
+      gfx::DataSourceSurface* aSurface) override {
     return nullptr;  // XXX - implement this (for MOZ_DUMP_PAINTING)
   }
 
@@ -614,7 +618,8 @@ class EGLImageTextureHost final : public TextureHost {
 
   gfx::SurfaceFormat GetFormat() const override;
 
-  already_AddRefed<gfx::DataSourceSurface> GetAsSurface() override {
+  already_AddRefed<gfx::DataSourceSurface> GetAsSurface(
+      gfx::DataSourceSurface* aSurface) override {
     return nullptr;  // XXX - implement this (for MOZ_DUMP_PAINTING)
   }
 

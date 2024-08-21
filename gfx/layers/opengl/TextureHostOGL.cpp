@@ -32,7 +32,7 @@
 #  include "mozilla/webrender/RenderAndroidSurfaceTextureHost.h"
 #endif
 
-#ifdef MOZ_WAYLAND
+#ifdef MOZ_WIDGET_GTK
 #  include "mozilla/layers/DMABUFTextureHostOGL.h"
 #endif
 
@@ -67,9 +67,9 @@ already_AddRefed<TextureHost> CreateTextureHostOGL(
       java::GeckoSurfaceTexture::LocalRef surfaceTexture =
           java::GeckoSurfaceTexture::Lookup(desc.handle());
 
-      result = new SurfaceTextureHost(aFlags, surfaceTexture, desc.size(),
-                                      desc.format(), desc.continuous(),
-                                      desc.transformOverride());
+      result = new SurfaceTextureHost(
+          aFlags, surfaceTexture, desc.size(), desc.format(), desc.continuous(),
+          desc.forceBT709ColorSpace(), desc.transformOverride());
       break;
     }
     case SurfaceDescriptor::TSurfaceDescriptorAndroidHardwareBuffer: {
@@ -88,9 +88,13 @@ already_AddRefed<TextureHost> CreateTextureHostOGL(
       break;
     }
 
-#ifdef MOZ_WAYLAND
+#ifdef MOZ_WIDGET_GTK
     case SurfaceDescriptor::TSurfaceDescriptorDMABuf: {
       result = new DMABUFTextureHostOGL(aFlags, aDesc);
+      if (!result->IsValid()) {
+        gfxCriticalError() << "DMABuf surface import failed!";
+        result = nullptr;
+      }
       break;
     }
 #endif
@@ -491,12 +495,13 @@ void SurfaceTextureSource::DeallocateDeviceData() { mSurfTex = nullptr; }
 SurfaceTextureHost::SurfaceTextureHost(
     TextureFlags aFlags, mozilla::java::GeckoSurfaceTexture::Ref& aSurfTex,
     gfx::IntSize aSize, gfx::SurfaceFormat aFormat, bool aContinuousUpdate,
-    Maybe<Matrix4x4> aTransformOverride)
+    bool aForceBT709ColorSpace, Maybe<Matrix4x4> aTransformOverride)
     : TextureHost(TextureHostType::AndroidSurfaceTexture, aFlags),
       mSurfTex(aSurfTex),
       mSize(aSize),
       mFormat(aFormat),
       mContinuousUpdate(aContinuousUpdate),
+      mForceBT709ColorSpace(aForceBT709ColorSpace),
       mTransformOverride(aTransformOverride) {
   if (!mSurfTex) {
     return;
@@ -532,6 +537,8 @@ void SurfaceTextureHost::DeallocateDeviceData() {
 
 void SurfaceTextureHost::CreateRenderTexture(
     const wr::ExternalImageId& aExternalImageId) {
+  MOZ_ASSERT(mExternalImageId.isSome());
+
   bool isRemoteTexture = !!(mFlags & TextureFlags::REMOTE_TEXTURE);
   RefPtr<wr::RenderTextureHost> texture =
       new wr::RenderAndroidSurfaceTextureHost(
@@ -554,11 +561,15 @@ void SurfaceTextureHost::PushResourceUpdates(
   TextureHost::NativeTexturePolicy policy =
       TextureHost::BackendNativeTexturePolicy(aResources.GetBackendType(),
                                               GetSize());
-  auto imageType = policy == TextureHost::NativeTexturePolicy::REQUIRE
-                       ? wr::ExternalImageType::TextureHandle(
-                             wr::ImageBufferKind::TextureRect)
-                       : wr::ExternalImageType::TextureHandle(
-                             wr::ImageBufferKind::TextureExternal);
+  auto imageType = wr::ExternalImageType::TextureHandle(
+      wr::ImageBufferKind::TextureExternal);
+  if (policy == TextureHost::NativeTexturePolicy::REQUIRE) {
+    imageType =
+        wr::ExternalImageType::TextureHandle(wr::ImageBufferKind::TextureRect);
+  } else if (mForceBT709ColorSpace) {
+    imageType = wr::ExternalImageType::TextureHandle(
+        wr::ImageBufferKind::TextureExternalBT709);
+  }
 
   switch (GetFormat()) {
     case gfx::SurfaceFormat::R8G8B8X8:
@@ -824,6 +835,8 @@ AndroidHardwareBufferTextureHost::GetAndResetReleaseFence() {
 
 void AndroidHardwareBufferTextureHost::CreateRenderTexture(
     const wr::ExternalImageId& aExternalImageId) {
+  MOZ_ASSERT(mExternalImageId.isSome());
+
   RefPtr<wr::RenderTextureHost> texture =
       new wr::RenderAndroidHardwareBufferTextureHost(mAndroidHardwareBuffer);
   wr::RenderThread::Get()->RegisterExternalImage(aExternalImageId,
@@ -983,6 +996,8 @@ gfx::SurfaceFormat EGLImageTextureHost::GetFormat() const {
 
 void EGLImageTextureHost::CreateRenderTexture(
     const wr::ExternalImageId& aExternalImageId) {
+  MOZ_ASSERT(mExternalImageId.isSome());
+
   RefPtr<wr::RenderTextureHost> texture =
       new wr::RenderEGLImageTextureHost(mImage, mSync, mSize);
   wr::RenderThread::Get()->RegisterExternalImage(aExternalImageId,

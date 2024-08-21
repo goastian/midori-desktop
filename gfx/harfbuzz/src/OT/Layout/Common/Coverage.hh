@@ -57,10 +57,14 @@ struct Coverage
   public:
   DEFINE_SIZE_UNION (2, format);
 
+#ifndef HB_OPTIMIZE_SIZE
+  HB_ALWAYS_INLINE
+#endif
   bool sanitize (hb_sanitize_context_t *c) const
   {
     TRACE_SANITIZE (this);
     if (!u.format.sanitize (c)) return_trace (false);
+    hb_barrier ();
     switch (u.format)
     {
     case 1: return_trace (u.format1.sanitize (c));

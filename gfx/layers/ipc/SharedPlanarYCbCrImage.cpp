@@ -80,53 +80,63 @@ SharedPlanarYCbCrImage::GetAsSourceSurface() {
   return PlanarYCbCrImage::GetAsSourceSurface();
 }
 
-bool SharedPlanarYCbCrImage::CopyData(const PlanarYCbCrData& aData) {
+nsresult SharedPlanarYCbCrImage::CopyData(const PlanarYCbCrData& aData) {
   // If mTextureClient has not already been allocated by CreateEmptyBuffer,
   // allocate it. This code path is slower than the one used when
   // CreateEmptyBuffer has been called since it will trigger a full copy.
-  if (!mTextureClient &&
-      !CreateEmptyBuffer(aData, aData.YDataSize(), aData.CbCrDataSize())) {
-    return false;
+  if (!mTextureClient) {
+    nsresult r =
+        CreateEmptyBuffer(aData, aData.YDataSize(), aData.CbCrDataSize());
+    if (NS_FAILED(r)) {
+      return r;
+    }
   }
 
   TextureClientAutoLock autoLock(mTextureClient, OpenMode::OPEN_WRITE_ONLY);
   if (!autoLock.Succeeded()) {
     MOZ_ASSERT(false, "Failed to lock the texture.");
-    return false;
+    return NS_ERROR_UNEXPECTED;
   }
 
   if (!UpdateYCbCrTextureClient(mTextureClient, aData)) {
     MOZ_ASSERT(false, "Failed to copy YCbCr data into the TextureClient");
-    return false;
+    return NS_ERROR_UNEXPECTED;
   }
   mTextureClient->MarkImmutable();
-  return true;
+  return NS_OK;
 }
 
-bool SharedPlanarYCbCrImage::AdoptData(const Data& aData) {
+nsresult SharedPlanarYCbCrImage::AdoptData(const Data& aData) {
   MOZ_ASSERT(false, "This shouldn't be used.");
-  return false;
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 bool SharedPlanarYCbCrImage::IsValid() const {
   return mTextureClient && mTextureClient->IsValid();
 }
 
-bool SharedPlanarYCbCrImage::CreateEmptyBuffer(const PlanarYCbCrData& aData,
-                                               const gfx::IntSize& aYSize,
-                                               const gfx::IntSize& aCbCrSize) {
+nsresult SharedPlanarYCbCrImage::CreateEmptyBuffer(
+    const PlanarYCbCrData& aData, const gfx::IntSize& aYSize,
+    const gfx::IntSize& aCbCrSize) {
   MOZ_ASSERT(!mTextureClient, "This image already has allocated data");
 
   TextureFlags flags =
       mCompositable ? mCompositable->GetTextureFlags() : TextureFlags::DEFAULT;
   {
     YCbCrTextureClientAllocationHelper helper(aData, aYSize, aCbCrSize, flags);
-    mTextureClient = RecycleAllocator()->CreateOrRecycle(helper);
+    Result<already_AddRefed<TextureClient>, nsresult> result =
+        RecycleAllocator()->CreateOrRecycle(helper);
+    if (result.isErr()) {
+      return Err(result.unwrapErr());
+    }
+    mTextureClient = result.unwrap();
   }
 
   if (!mTextureClient) {
     NS_WARNING("SharedPlanarYCbCrImage::Allocate failed.");
-    return false;
+    // TODO: TextureClientRecycleAllocator::CreateOrRecycle may return NULL on
+    // non out-of-memory failures.
+    return NS_ERROR_OUT_OF_MEMORY;
   }
 
   MappedYCbCrTextureData mapped;
@@ -167,7 +177,16 @@ bool SharedPlanarYCbCrImage::CreateEmptyBuffer(const PlanarYCbCrData& aData,
 
   mTextureClient->Unlock();
 
-  return mBufferSize > 0;
+  // ImageDataSerializer::ComputeYCbCrBufferSize may return zero when the size
+  // requested is out of the limit.
+  return mBufferSize > 0 ? NS_OK : NS_ERROR_INVALID_ARG;
+}
+
+void SharedPlanarYCbCrImage::SetIsDRM(bool aIsDRM) {
+  Image::SetIsDRM(aIsDRM);
+  if (mTextureClient) {
+    mTextureClient->AddFlags(TextureFlags::DRM_SOURCE);
+  }
 }
 
 }  // namespace layers

@@ -22,10 +22,10 @@ class APZCTransformNotificationTester : public APZCTreeManagerTester {
 
   void SetupBasicTest() {
     const char* treeShape = "x";
-    LayerIntRegion layerVisibleRegion[] = {
+    LayerIntRect layerVisibleRect[] = {
         LayerIntRect(0, 0, 100, 100),
     };
-    CreateScrollData(treeShape, layerVisibleRegion);
+    CreateScrollData(treeShape, layerVisibleRect);
     SetScrollableFrameMetrics(root, ScrollableLayerGuid::START_SCROLL_ID,
                               CSSRect(0, 0, 500, 500));
 
@@ -38,10 +38,10 @@ class APZCTransformNotificationTester : public APZCTreeManagerTester {
 
   void SetupNonScrollableTest() {
     const char* treeShape = "x";
-    LayerIntRegion layerVisibleRegion[] = {
+    LayerIntRect layerVisibleRect[] = {
         LayerIntRect(0, 0, 100, 100),
     };
-    CreateScrollData(treeShape, layerVisibleRegion);
+    CreateScrollData(treeShape, layerVisibleRect);
     SetScrollableFrameMetrics(root, ScrollableLayerGuid::START_SCROLL_ID,
                               CSSRect(0, 0, 100, 100));
 
@@ -352,6 +352,8 @@ TEST_F(APZCTransformNotificationTester,
 
 TEST_F(APZCTransformNotificationTester,
        PanFollowedByWheelTransformNotifications) {
+  // Needed because the test uses SmoothWheel()
+  SCOPED_GFX_PREF_BOOL("general.smoothScroll", true);
   // Ensure that the TransformEnd delay is 100ms.
   SCOPED_GFX_PREF_INT("apz.scrollend-event.content.delay_ms", 100);
 

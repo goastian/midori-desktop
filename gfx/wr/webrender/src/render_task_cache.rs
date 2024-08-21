@@ -11,7 +11,6 @@ use crate::device::TextureFilter;
 use crate::freelist::{FreeList, FreeListHandle, WeakFreeListHandle};
 use crate::gpu_cache::GpuCache;
 use crate::internal_types::FastHashMap;
-use crate::picture::SurfaceIndex;
 use crate::prim_store::image::ImageCacheKey;
 use crate::prim_store::gradient::{
     FastLinearGradientCacheKey, LinearGradientCacheKey, RadialGradientCacheKey,
@@ -22,7 +21,7 @@ use crate::resource_cache::CacheItem;
 use std::{mem, usize, f32, i32};
 use crate::surface::SurfaceBuilder;
 use crate::texture_cache::{TextureCache, TextureCacheHandle, Eviction, TargetShader};
-use crate::renderer::GpuBufferBuilder;
+use crate::renderer::GpuBufferBuilderF;
 use crate::render_target::RenderTargetKind;
 use crate::render_task::{RenderTask, StaticRenderTaskSurface, RenderTaskLocation, RenderTaskKind, CachedTask};
 use crate::render_task_graph::{RenderTaskGraphBuilder, RenderTaskId};
@@ -36,7 +35,7 @@ const MAX_CACHE_TASK_SIZE: f32 = 4096.0;
 /// box-shadow input).
 pub enum RenderTaskParent {
     /// Parent is a surface
-    Surface(SurfaceIndex),
+    Surface,
     /// Parent is a render task
     RenderTask(RenderTaskId),
 }
@@ -228,7 +227,7 @@ impl RenderTaskCache {
         key: RenderTaskCacheKey,
         texture_cache: &mut TextureCache,
         gpu_cache: &mut GpuCache,
-        gpu_buffer_builder: &mut GpuBufferBuilder,
+        gpu_buffer_builder: &mut GpuBufferBuilderF,
         rg_builder: &mut RenderTaskGraphBuilder,
         user_data: Option<[f32; 4]>,
         is_opaque: bool,
@@ -237,7 +236,7 @@ impl RenderTaskCache {
         f: F,
     ) -> Result<RenderTaskId, ()>
     where
-        F: FnOnce(&mut RenderTaskGraphBuilder, &mut GpuBufferBuilder) -> Result<RenderTaskId, ()>,
+        F: FnOnce(&mut RenderTaskGraphBuilder, &mut GpuBufferBuilderF) -> Result<RenderTaskId, ()>,
     {
         let frame_id = self.frame_id;
         let size = key.size;
@@ -288,9 +287,7 @@ impl RenderTaskCache {
         // an input source.
         if let Some(render_task_id) = cache_entry.render_task_id {
             match parent {
-                // TODO(gw): Remove surface from here as a follow up patch, as it's now implicit
-                //           due to using SurfaceBuilder
-                RenderTaskParent::Surface(_surface_index) => {
+                RenderTaskParent::Surface => {
                     // If parent is a surface, use helper fn to add this dependency,
                     // which correctly takes account of the render task configuration
                     // of the surface.

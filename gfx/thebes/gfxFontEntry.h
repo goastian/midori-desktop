@@ -273,6 +273,18 @@ class gfxFontEntry {
     return flag == LazyFlag::Yes;
   }
 
+  inline bool AlwaysNeedsMaskForShadow() {
+    LazyFlag flag = mNeedsMaskForShadow;
+    if (flag == LazyFlag::Uninitialized) {
+      flag =
+          TryGetColorGlyphs() || TryGetSVGData(nullptr) || HasColorBitmapTable()
+              ? LazyFlag::Yes
+              : LazyFlag::No;
+      mNeedsMaskForShadow = flag;
+    }
+    return flag == LazyFlag::Yes;
+  }
+
   inline bool HasCmapTable() {
     if (!mCharacterMap && !mShmemCharacterMap) {
       ReadCMAP();
@@ -534,10 +546,13 @@ class gfxFontEntry {
 
   // Return the tracking (in font units) to be applied for the given size.
   // (This is a floating-point number because of possible interpolation.)
-  float TrackingForCSSPx(float aSize) const;
+  gfxFloat TrackingForCSSPx(gfxFloat aSize) const;
 
   mozilla::gfx::Rect GetFontExtents(float aFUnitScaleFactor) const {
     // Flip the y-axis here to match the orientation of Gecko's coordinates.
+    // We don't need to take a lock here because the min/max fields are inert
+    // after initialization, and we make sure to initialize them at gfxFont-
+    // creation time.
     return mozilla::gfx::Rect(float(mXMin) * aFUnitScaleFactor,
                               float(-mYMax) * aFUnitScaleFactor,
                               float(mXMax - mXMin) * aFUnitScaleFactor,
@@ -667,6 +682,7 @@ class gfxFontEntry {
   std::atomic<LazyFlag> mHasGraphiteTables;
   std::atomic<LazyFlag> mHasGraphiteSpaceContextuals;
   std::atomic<LazyFlag> mHasColorBitmapTable;
+  std::atomic<LazyFlag> mNeedsMaskForShadow;
 
   enum class SpaceFeatures : uint8_t {
     Uninitialized = 0xff,
@@ -1223,8 +1239,7 @@ struct FontFamily {
 // together with the CSS generic (if any) that was mapped to it in this
 // particular case (so it can be reported to the DevTools font inspector).
 struct FamilyAndGeneric final {
-  FamilyAndGeneric()
-      : mFamily(), mGeneric(mozilla::StyleGenericFontFamily(0)) {}
+  FamilyAndGeneric() : mGeneric(mozilla::StyleGenericFontFamily(0)) {}
   FamilyAndGeneric(const FamilyAndGeneric& aOther) = default;
   explicit FamilyAndGeneric(gfxFontFamily* aFamily,
                             mozilla::StyleGenericFontFamily aGeneric =

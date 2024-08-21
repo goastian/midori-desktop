@@ -48,8 +48,10 @@ use api::channel::{Sender, Receiver};
 pub use api::DebugFlags;
 use core::time::Duration;
 
+use crate::pattern::PatternKind;
 use crate::render_api::{DebugCommand, ApiMsg, MemoryReport};
 use crate::batch::{AlphaBatchContainer, BatchKind, BatchFeatures, BatchTextures, BrushBatchKind, ClipBatchList};
+use crate::batch::{ClipMaskInstanceList};
 #[cfg(any(feature = "capture", feature = "replay"))]
 use crate::capture::{CaptureConfig, ExternalCaptureImage, PlainExternalImage};
 use crate::composite::{CompositeState, CompositeTileSurface, ResolvedExternalSurface, CompositorSurfaceTransform};
@@ -58,7 +60,7 @@ use crate::composite::{CompositorConfig, NativeSurfaceOperationDetails, NativeSu
 use crate::composite::{TileKind};
 use crate::debug_colors;
 use crate::device::{DepthFunction, Device, DrawTarget, ExternalTexture, GpuFrameId, UploadPBOPool};
-use crate::device::{ReadTarget, ShaderError, Texture, TextureFilter, TextureFlags, TextureSlot};
+use crate::device::{ReadTarget, ShaderError, Texture, TextureFilter, TextureFlags, TextureSlot, Texel};
 use crate::device::query::{GpuSampler, GpuTimer};
 #[cfg(feature = "capture")]
 use crate::device::FBOId;
@@ -67,8 +69,8 @@ use crate::frame_builder::Frame;
 use glyph_rasterizer::GlyphFormat;
 use crate::gpu_cache::{GpuCacheUpdate, GpuCacheUpdateList};
 use crate::gpu_cache::{GpuCacheDebugChunk, GpuCacheDebugCmd};
-use crate::gpu_types::{ScalingInstance, SvgFilterInstance, CopyInstance, MaskInstance, PrimitiveInstanceData};
-use crate::gpu_types::{BlurInstance, ClearInstance, CompositeInstance, CompositorTransform};
+use crate::gpu_types::{ScalingInstance, SvgFilterInstance, SVGFEFilterInstance, CopyInstance, PrimitiveInstanceData};
+use crate::gpu_types::{BlurInstance, ClearInstance, CompositeInstance};
 use crate::internal_types::{TextureSource, TextureCacheCategory, FrameId};
 #[cfg(any(feature = "capture", feature = "replay"))]
 use crate::internal_types::DebugOutput;
@@ -126,7 +128,7 @@ pub(crate) mod init;
 pub use debug::DebugRenderer;
 pub use shade::{Shaders, SharedShaders};
 pub use vertex::{desc, VertexArrayKind, MAX_VERTEX_TEXTURE_WIDTH};
-pub use gpu_buffer::{GpuBuffer, GpuBufferBuilder, GpuBufferAddress};
+pub use gpu_buffer::{GpuBuffer, GpuBufferF, GpuBufferBuilderF, GpuBufferI, GpuBufferBuilderI, GpuBufferAddress, GpuBufferBuilder};
 
 /// The size of the array of each type of vertex data texture that
 /// is round-robin-ed each frame during bind_frame_data. Doing this
@@ -191,11 +193,11 @@ const GPU_TAG_CACHE_LINEAR_GRADIENT: GpuProfileTag = GpuProfileTag {
     label: "C_LinearGradient",
     color: debug_colors::BROWN,
 };
-const GPU_TAG_CACHE_RADIAL_GRADIENT: GpuProfileTag = GpuProfileTag {
+const GPU_TAG_RADIAL_GRADIENT: GpuProfileTag = GpuProfileTag {
     label: "C_RadialGradient",
     color: debug_colors::BROWN,
 };
-const GPU_TAG_CACHE_CONIC_GRADIENT: GpuProfileTag = GpuProfileTag {
+const GPU_TAG_CONIC_GRADIENT: GpuProfileTag = GpuProfileTag {
     label: "C_ConicGradient",
     color: debug_colors::BROWN,
 };
@@ -255,6 +257,10 @@ const GPU_TAG_SVG_FILTER: GpuProfileTag = GpuProfileTag {
     label: "SvgFilter",
     color: debug_colors::LEMONCHIFFON,
 };
+const GPU_TAG_SVG_FILTER_NODES: GpuProfileTag = GpuProfileTag {
+    label: "SvgFilterNodes",
+    color: debug_colors::LEMONCHIFFON,
+};
 const GPU_TAG_COMPOSITE: GpuProfileTag = GpuProfileTag {
     label: "Composite",
     color: debug_colors::TOMATO,
@@ -285,7 +291,10 @@ impl BatchKind {
                 }
             }
             BatchKind::TextRun(_) => GPU_TAG_PRIM_TEXT_RUN,
-            BatchKind::Primitive => GPU_TAG_PRIMITIVE,
+            BatchKind::Quad(PatternKind::ColorOrTexture) => GPU_TAG_PRIMITIVE,
+            BatchKind::Quad(PatternKind::RadialGradient) => GPU_TAG_RADIAL_GRADIENT,
+            BatchKind::Quad(PatternKind::ConicGradient) => GPU_TAG_CONIC_GRADIENT,
+            BatchKind::Quad(PatternKind::Mask) => GPU_TAG_INDIRECT_MASK,
         }
     }
 }
@@ -301,16 +310,12 @@ fn flag_changed(before: DebugFlags, after: DebugFlags, select: DebugFlags) -> Op
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub enum ShaderColorMode {
-    FromRenderPassMode = 0,
-    Alpha = 1,
-    SubpixelWithBgColorPass0 = 2,
-    SubpixelWithBgColorPass1 = 3,
-    SubpixelWithBgColorPass2 = 4,
-    SubpixelDualSource = 5,
-    BitmapShadow = 6,
-    ColorBitmap = 7,
-    Image = 8,
-    MultiplyDualSource = 9,
+    Alpha = 0,
+    SubpixelDualSource = 1,
+    BitmapShadow = 2,
+    ColorBitmap = 3,
+    Image = 4,
+    MultiplyDualSource = 5,
 }
 
 impl From<GlyphFormat> for ShaderColorMode {
@@ -344,7 +349,8 @@ pub(crate) enum TextureSampler {
     PrimitiveHeadersF,
     PrimitiveHeadersI,
     ClipMask,
-    GpuBuffer,
+    GpuBufferF,
+    GpuBufferI,
 }
 
 impl TextureSampler {
@@ -373,7 +379,8 @@ impl Into<TextureSlot> for TextureSampler {
             TextureSampler::PrimitiveHeadersF => TextureSlot(7),
             TextureSampler::PrimitiveHeadersI => TextureSlot(8),
             TextureSampler::ClipMask => TextureSlot(9),
-            TextureSampler::GpuBuffer => TextureSlot(10),
+            TextureSampler::GpuBufferF => TextureSlot(10),
+            TextureSampler::GpuBufferI => TextureSlot(11),
         }
     }
 }
@@ -644,7 +651,6 @@ pub enum BlendMode {
     PremultipliedAlpha,
     PremultipliedDestOut,
     SubpixelDualSource,
-    SubpixelWithBgColor,
     Advanced(MixBlendMode),
     MultiplyDualSource,
     Screen,
@@ -2172,37 +2178,88 @@ impl Renderer {
 
     fn handle_prims(
         &mut self,
-        prim_instances: &[PrimitiveInstanceData],
-        mask_instances_fast: &[MaskInstance],
-        mask_instances_slow: &[MaskInstance],
+        draw_target: &DrawTarget,
+        prim_instances: &[Vec<PrimitiveInstanceData>],
+        prim_instances_with_scissor: &FastHashMap<(DeviceIntRect, PatternKind), Vec<PrimitiveInstanceData>>,
         projection: &default::Transform3D<f32>,
         stats: &mut RendererStats,
     ) {
-        if prim_instances.is_empty() {
-            return;
-        }
+        self.device.disable_depth_write();
 
         {
             let _timer = self.gpu_profiler.start_timer(GPU_TAG_INDIRECT_PRIM);
 
-            self.device.disable_depth_write();
-            self.set_blend(false, FramebufferKind::Other);
+            if prim_instances.iter().any(|instances| !instances.is_empty()) {
+                self.set_blend(false, FramebufferKind::Other);
+            }
 
-            self.shaders.borrow_mut().ps_quad_textured.bind(
-                &mut self.device,
-                projection,
-                None,
-                &mut self.renderer_errors,
-                &mut self.profile,
-            );
+            for (pattern_idx, prim_instances) in prim_instances.iter().enumerate() {
+                if prim_instances.is_empty() {
+                    continue;
+                }
+                let pattern = PatternKind::from_u32(pattern_idx as u32);
 
-            self.draw_instanced_batch(
-                prim_instances,
-                VertexArrayKind::Primitive,
-                &BatchTextures::empty(),
-                stats,
-            );
+                self.shaders.borrow_mut().get_quad_shader(pattern).bind(
+                    &mut self.device,
+                    projection,
+                    None,
+                    &mut self.renderer_errors,
+                    &mut self.profile,
+                );
+
+                // TODO: Some patterns will need to be able to sample textures.
+                let texture_bindings = BatchTextures::empty();
+
+                self.draw_instanced_batch(
+                    prim_instances,
+                    VertexArrayKind::Primitive,
+                    &texture_bindings,
+                    stats,
+                );
+            }
+
+            if !prim_instances_with_scissor.is_empty() {
+                self.set_blend(true, FramebufferKind::Other);
+                self.device.set_blend_mode_premultiplied_alpha();
+                self.device.enable_scissor();
+
+                let mut prev_pattern = None;
+
+                for ((scissor_rect, pattern), prim_instances) in prim_instances_with_scissor {
+                    if prev_pattern != Some(*pattern) {
+                        prev_pattern = Some(*pattern);
+                        self.shaders.borrow_mut().get_quad_shader(*pattern).bind(
+                            &mut self.device,
+                            projection,
+                            None,
+                            &mut self.renderer_errors,
+                            &mut self.profile,
+                        );
+                    }
+
+                    self.device.set_scissor_rect(draw_target.to_framebuffer_rect(*scissor_rect));
+                    // TODO: hook up the right pattern.
+                    self.draw_instanced_batch(
+                        prim_instances,
+                        VertexArrayKind::Primitive,
+                        &BatchTextures::empty(),
+                        stats,
+                    );
+                }
+
+                self.device.disable_scissor();
+            }
         }
+    }
+
+    fn handle_clips(
+        &mut self,
+        draw_target: &DrawTarget,
+        masks: &ClipMaskInstanceList,
+        projection: &default::Transform3D<f32>,
+        stats: &mut RendererStats,
+    ) {
+        self.device.disable_depth_write();
 
         {
             let _timer = self.gpu_profiler.start_timer(GPU_TAG_INDIRECT_MASK);
@@ -2210,7 +2267,7 @@ impl Renderer {
             self.set_blend(true, FramebufferKind::Other);
             self.set_blend_mode_multiply(FramebufferKind::Other);
 
-            if !mask_instances_fast.is_empty() {
+            if !masks.mask_instances_fast.is_empty() {
                 self.shaders.borrow_mut().ps_mask_fast.bind(
                     &mut self.device,
                     projection,
@@ -2220,14 +2277,83 @@ impl Renderer {
                 );
 
                 self.draw_instanced_batch(
-                    mask_instances_fast,
+                    &masks.mask_instances_fast,
                     VertexArrayKind::Mask,
                     &BatchTextures::empty(),
                     stats,
                 );
             }
 
-            if !mask_instances_slow.is_empty() {
+            if !masks.mask_instances_fast_with_scissor.is_empty() {
+                self.shaders.borrow_mut().ps_mask_fast.bind(
+                    &mut self.device,
+                    projection,
+                    None,
+                    &mut self.renderer_errors,
+                    &mut self.profile,
+                );
+
+                self.device.enable_scissor();
+
+                for (scissor_rect, instances) in &masks.mask_instances_fast_with_scissor {
+                    self.device.set_scissor_rect(draw_target.to_framebuffer_rect(*scissor_rect));
+
+                    self.draw_instanced_batch(
+                        instances,
+                        VertexArrayKind::Mask,
+                        &BatchTextures::empty(),
+                        stats,
+                    );
+                }
+
+                self.device.disable_scissor();
+            }
+
+            if !masks.image_mask_instances.is_empty() {
+                self.shaders.borrow_mut().ps_quad_textured.bind(
+                    &mut self.device,
+                    projection,
+                    None,
+                    &mut self.renderer_errors,
+                    &mut self.profile,
+                );
+
+                for (texture, prim_instances) in &masks.image_mask_instances {
+                    self.draw_instanced_batch(
+                        prim_instances,
+                        VertexArrayKind::Primitive,
+                        &BatchTextures::composite_rgb(*texture),
+                        stats,
+                    );
+                }
+            }
+
+            if !masks.image_mask_instances_with_scissor.is_empty() {
+                self.device.enable_scissor();
+
+                self.shaders.borrow_mut().ps_quad_textured.bind(
+                    &mut self.device,
+                    projection,
+                    None,
+                    &mut self.renderer_errors,
+                    &mut self.profile,
+                );
+
+                for ((scissor_rect, texture), prim_instances) in &masks.image_mask_instances_with_scissor {
+                    self.device.set_scissor_rect(draw_target.to_framebuffer_rect(*scissor_rect));
+
+                    self.draw_instanced_batch(
+                        prim_instances,
+                        VertexArrayKind::Primitive,
+                        &BatchTextures::composite_rgb(*texture),
+                        stats,
+                    );
+                }
+
+                self.device.disable_scissor();
+            }
+
+            if !masks.mask_instances_slow.is_empty() {
                 self.shaders.borrow_mut().ps_mask.bind(
                     &mut self.device,
                     projection,
@@ -2237,11 +2363,36 @@ impl Renderer {
                 );
 
                 self.draw_instanced_batch(
-                    mask_instances_slow,
+                    &masks.mask_instances_slow,
                     VertexArrayKind::Mask,
                     &BatchTextures::empty(),
                     stats,
                 );
+            }
+
+            if !masks.mask_instances_slow_with_scissor.is_empty() {
+                self.shaders.borrow_mut().ps_mask.bind(
+                    &mut self.device,
+                    projection,
+                    None,
+                    &mut self.renderer_errors,
+                    &mut self.profile,
+                );
+
+                self.device.enable_scissor();
+
+                for (scissor_rect, instances) in &masks.mask_instances_slow_with_scissor {
+                    self.device.set_scissor_rect(draw_target.to_framebuffer_rect(*scissor_rect));
+
+                    self.draw_instanced_batch(
+                        instances,
+                        VertexArrayKind::Mask,
+                        &BatchTextures::empty(),
+                        stats,
+                    );
+                }
+
+                self.device.disable_scissor();
             }
         }
     }
@@ -2377,6 +2528,35 @@ impl Renderer {
         self.draw_instanced_batch(
             &svg_filters,
             VertexArrayKind::SvgFilter,
+            textures,
+            stats,
+        );
+    }
+
+    fn handle_svg_nodes(
+        &mut self,
+        textures: &BatchTextures,
+        svg_filters: &[SVGFEFilterInstance],
+        projection: &default::Transform3D<f32>,
+        stats: &mut RendererStats,
+    ) {
+        if svg_filters.is_empty() {
+            return;
+        }
+
+        let _timer = self.gpu_profiler.start_timer(GPU_TAG_SVG_FILTER_NODES);
+
+        self.shaders.borrow_mut().cs_svg_filter_node.bind(
+            &mut self.device,
+            &projection,
+            None,
+            &mut self.renderer_errors,
+            &mut self.profile,
+        );
+
+        self.draw_instanced_batch(
+            &svg_filters,
+            VertexArrayKind::SvgFilterNode,
             textures,
             stats,
         );
@@ -2706,23 +2886,6 @@ impl Renderer {
                         BlendMode::SubpixelDualSource => {
                             self.device.set_blend_mode_subpixel_dual_source();
                         }
-                        BlendMode::SubpixelWithBgColor => {
-                            // Using the three pass "component alpha with font smoothing
-                            // background color" rendering technique:
-                            //
-                            // /webrender/doc/text-rendering.md
-                            //
-                            self.device.set_blend_mode_subpixel_with_bg_color_pass0();
-                            // need to make sure the shader is bound
-                            shader.bind(
-                                &mut self.device,
-                                projection,
-                                None,
-                                &mut self.renderer_errors,
-                                &mut self.profile,
-                            );
-                            self.device.switch_mode(ShaderColorMode::SubpixelWithBgColorPass0 as _);
-                        }
                         BlendMode::Advanced(mode) => {
                             if self.enable_advanced_blend_barriers {
                                 self.device.gl().blend_barrier_khr();
@@ -2773,44 +2936,6 @@ impl Renderer {
                     &batch.key.textures,
                     stats
                 );
-
-                if batch.key.blend_mode == BlendMode::SubpixelWithBgColor {
-                    self.set_blend_mode_subpixel_with_bg_color_pass1(framebuffer_kind);
-                    // re-binding the shader after the blend mode change
-                    shader.bind(
-                        &mut self.device,
-                        projection,
-                        None,
-                        &mut self.renderer_errors,
-                        &mut self.profile,
-                    );
-                    self.device.switch_mode(ShaderColorMode::SubpixelWithBgColorPass1 as _);
-
-                    // When drawing the 2nd and 3rd passes, we know that the VAO, textures etc
-                    // are all set up from the previous draw_instanced_batch call,
-                    // so just issue a draw call here to avoid re-uploading the
-                    // instances and re-binding textures etc.
-                    self.device
-                        .draw_indexed_triangles_instanced_u16(6, batch.instances.len() as i32);
-
-                    self.set_blend_mode_subpixel_with_bg_color_pass2(framebuffer_kind);
-                    // re-binding the shader after the blend mode change
-                    shader.bind(
-                        &mut self.device,
-                        projection,
-                        None,
-                        &mut self.renderer_errors,
-                        &mut self.profile,
-                    );
-                    self.device.switch_mode(ShaderColorMode::SubpixelWithBgColorPass2 as _);
-
-                    self.device
-                        .draw_indexed_triangles_instanced_u16(6, batch.instances.len() as i32);
-                }
-
-                if batch.key.blend_mode == BlendMode::SubpixelWithBgColor {
-                    prev_blend_mode = BlendMode::None;
-                }
             }
 
             self.set_blend(false, framebuffer_kind);
@@ -2918,7 +3043,7 @@ impl Renderer {
                     ];
 
                     let instance = CompositeInstance::new_yuv(
-                        surface_rect.cast_unit().to_f32(),
+                        surface_rect.to_f32(),
                         surface_rect.to_f32(),
                         // z-id is not relevant when updating a native compositor surface.
                         // TODO(gw): Support compositor surfaces without z-buffer, for memory / perf win here.
@@ -2926,7 +3051,7 @@ impl Renderer {
                         format,
                         channel_bit_depth,
                         uv_rects,
-                        CompositorTransform::identity(),
+                        (false, false),
                     );
 
                     ( textures, instance )
@@ -2949,11 +3074,11 @@ impl Renderer {
                     let textures = BatchTextures::composite_rgb(plane.texture);
                     let uv_rect = self.texture_resolver.get_uv_rect(&textures.input.colors[0], plane.uv_rect);
                     let instance = CompositeInstance::new_rgb(
-                        surface_rect.cast_unit().to_f32(),
+                        surface_rect.to_f32(),
                         surface_rect.to_f32(),
                         PremultipliedColorF::WHITE,
                         uv_rect,
-                        CompositorTransform::identity(),
+                        (false, false),
                     );
 
                     ( textures, instance )
@@ -3012,8 +3137,9 @@ impl Renderer {
             let tile = &composite_state.tiles[item.key];
 
             let clip_rect = item.rectangle;
-            let tile_rect = tile.local_rect;
-            let transform = composite_state.get_device_transform(tile.transform_index).into();
+            let transform = composite_state.get_device_transform(tile.transform_index);
+            let tile_rect = transform.map_rect(&tile.local_rect);
+            let flip = (transform.scale.x < 0.0, transform.scale.y < 0.0);
 
             // Work out the draw params based on the tile surface
             let (instance, textures, shader_params) = match tile.surface {
@@ -3024,7 +3150,7 @@ impl Renderer {
                         tile_rect,
                         clip_rect,
                         color.premultiplied(),
-                        transform,
+                        flip,
                     );
                     let features = instance.get_rgb_features();
                     (
@@ -3038,7 +3164,7 @@ impl Renderer {
                         tile_rect,
                         clip_rect,
                         PremultipliedColorF::WHITE,
-                        transform,
+                        flip,
                     );
                     let features = instance.get_rgb_features();
                     (
@@ -3082,7 +3208,7 @@ impl Renderer {
                                     format,
                                     channel_bit_depth,
                                     uv_rects,
-                                    transform,
+                                    flip,
                                 ),
                                 textures,
                                 (
@@ -3100,7 +3226,7 @@ impl Renderer {
                                 clip_rect,
                                 PremultipliedColorF::WHITE,
                                 uv_rect,
-                                transform,
+                                flip,
                             );
                             let features = instance.get_rgb_features();
                             (
@@ -3123,7 +3249,7 @@ impl Renderer {
                         tile_rect,
                         clip_rect,
                         PremultipliedColorF::BLACK,
-                        transform,
+                        flip,
                     );
                     let features = instance.get_rgb_features();
                     (
@@ -3486,6 +3612,10 @@ impl Renderer {
             );
         }
 
+        for (ref textures, ref filters) in &target.svg_nodes {
+            self.handle_svg_nodes(textures, filters, projection, stats);
+        }
+
         for alpha_batch_container in &target.alpha_batch_containers {
             self.draw_alpha_batch_container(
                 alpha_batch_container,
@@ -3498,9 +3628,16 @@ impl Renderer {
         }
 
         self.handle_prims(
+            &draw_target,
             &target.prim_instances,
-            &target.mask_instances_fast,
-            &target.mask_instances_slow,
+            &target.prim_instances_with_scissor,
+            projection,
+            stats,
+        );
+
+        self.handle_clips(
+            &draw_target,
+            &target.clip_masks,
             projection,
             stats,
         );
@@ -3536,7 +3673,6 @@ impl Renderer {
     fn draw_clip_batch_list(
         &mut self,
         list: &ClipBatchList,
-        draw_target: &DrawTarget,
         projection: &default::Transform3D<f32>,
         stats: &mut RendererStats,
     ) {
@@ -3590,42 +3726,6 @@ impl Renderer {
                 &textures,
                 stats,
             );
-        }
-
-        // draw image masks
-        let mut using_scissor = false;
-        for ((mask_texture_id, clip_rect), items) in list.images.iter() {
-            let _gm2 = self.gpu_profiler.start_marker("clip images");
-            // Some image masks may require scissoring to ensure they don't draw
-            // outside their task's target bounds. Axis-aligned primitives will
-            // be clamped inside the shader and should not require scissoring.
-            // TODO: We currently assume scissor state is off by default for
-            // alpha targets here, but in the future we may want to track the
-            // current scissor state so that this can be properly saved and
-            // restored here.
-            if let Some(clip_rect) = clip_rect {
-                if !using_scissor {
-                    self.device.enable_scissor();
-                    using_scissor = true;
-                }
-                let scissor_rect = draw_target.build_scissor_rect(Some(*clip_rect));
-                self.device.set_scissor_rect(scissor_rect);
-            } else if using_scissor {
-                self.device.disable_scissor();
-                using_scissor = false;
-            }
-            let textures = BatchTextures::composite_rgb(*mask_texture_id);
-            self.shaders.borrow_mut().cs_clip_image
-                .bind(&mut self.device, projection, None, &mut self.renderer_errors, &mut self.profile);
-            self.draw_instanced_batch(
-                items,
-                VertexArrayKind::ClipImage,
-                &textures,
-                stats,
-            );
-        }
-        if using_scissor {
-            self.device.disable_scissor();
         }
     }
 
@@ -3781,7 +3881,6 @@ impl Renderer {
             self.set_blend(false, FramebufferKind::Other);
             self.draw_clip_batch_list(
                 &target.clip_batcher.primary_clips,
-                &draw_target,
                 projection,
                 stats,
             );
@@ -3792,7 +3891,13 @@ impl Renderer {
             self.set_blend_mode_multiply(FramebufferKind::Other);
             self.draw_clip_batch_list(
                 &target.clip_batcher.secondary_clips,
+                projection,
+                stats,
+            );
+
+            self.handle_clips(
                 &draw_target,
+                &target.clip_masks,
                 projection,
                 stats,
             );
@@ -4004,7 +4109,7 @@ impl Renderer {
 
         // Draw any radial gradients for this target.
         if !target.radial_gradients.is_empty() {
-            let _timer = self.gpu_profiler.start_timer(GPU_TAG_CACHE_RADIAL_GRADIENT);
+            let _timer = self.gpu_profiler.start_timer(GPU_TAG_RADIAL_GRADIENT);
 
             self.set_blend(false, FramebufferKind::Other);
 
@@ -4030,7 +4135,7 @@ impl Renderer {
 
         // Draw any conic gradients for this target.
         if !target.conic_gradients.is_empty() {
-            let _timer = self.gpu_profiler.start_timer(GPU_TAG_CACHE_CONIC_GRADIENT);
+            let _timer = self.gpu_profiler.start_timer(GPU_TAG_CONIC_GRADIENT);
 
             self.set_blend(false, FramebufferKind::Other);
 
@@ -4363,6 +4468,38 @@ impl Renderer {
         }
     }
 
+    fn create_gpu_buffer_texture<T: Texel>(
+        &mut self,
+        buffer: &GpuBuffer<T>,
+        sampler: TextureSampler,
+    ) -> Option<Texture> {
+        if buffer.is_empty() {
+            None
+        } else {
+            let gpu_buffer_texture = self.device.create_texture(
+                ImageBufferKind::Texture2D,
+                buffer.format,
+                buffer.size.width,
+                buffer.size.height,
+                TextureFilter::Nearest,
+                None,
+            );
+
+            self.device.bind_texture(
+                sampler,
+                &gpu_buffer_texture,
+                Swizzle::default(),
+            );
+
+            self.device.upload_texture_immediate(
+                &gpu_buffer_texture,
+                &buffer.data,
+            );
+
+            Some(gpu_buffer_texture)
+        }
+    }
+
     fn draw_frame(
         &mut self,
         frame: &mut Frame,
@@ -4389,31 +4526,30 @@ impl Renderer {
 
         // Upload experimental GPU buffer texture if there is any data present
         // TODO: Recycle these textures, upload via PBO or best approach for platform
-        let gpu_buffer_texture = if frame.gpu_buffer.is_empty() {
-            None
-        } else {
-            let gpu_buffer_texture = self.device.create_texture(
-                ImageBufferKind::Texture2D,
-                ImageFormat::RGBAF32,
-                frame.gpu_buffer.size.width,
-                frame.gpu_buffer.size.height,
-                TextureFilter::Nearest,
-                None,
-            );
+        let gpu_buffer_texture_f = self.create_gpu_buffer_texture(
+            &frame.gpu_buffer_f,
+            TextureSampler::GpuBufferF,
+        );
+        let gpu_buffer_texture_i = self.create_gpu_buffer_texture(
+            &frame.gpu_buffer_i,
+            TextureSampler::GpuBufferI,
+        );
 
-            self.device.bind_texture(
-                TextureSampler::GpuBuffer,
-                &gpu_buffer_texture,
-                Swizzle::default(),
-            );
+        let bytes_to_mb = 1.0 / 1000000.0;
+        let gpu_buffer_bytes_f = gpu_buffer_texture_f
+            .as_ref()
+            .map(|tex| tex.size_in_bytes())
+            .unwrap_or(0);
+        let gpu_buffer_bytes_i = gpu_buffer_texture_i
+            .as_ref()
+            .map(|tex| tex.size_in_bytes())
+            .unwrap_or(0);
+        let gpu_buffer_mb = (gpu_buffer_bytes_f + gpu_buffer_bytes_i) as f32 * bytes_to_mb;
+        self.profile.set(profiler::GPU_BUFFER_MEM, gpu_buffer_mb);
 
-            self.device.upload_texture_immediate(
-                &gpu_buffer_texture,
-                &frame.gpu_buffer.data,
-            );
-
-            Some(gpu_buffer_texture)
-        };
+        let gpu_cache_bytes = self.gpu_cache_texture.gpu_size_in_bytes();
+        let gpu_cache_mb = gpu_cache_bytes as f32 * bytes_to_mb;
+        self.profile.set(profiler::GPU_CACHE_MEM, gpu_cache_mb);
 
         // Determine the present mode and dirty rects, if device_size
         // is Some(..). If it's None, no composite will occur and only
@@ -4672,8 +4808,11 @@ impl Renderer {
             present_mode,
         );
 
-        if let Some(gpu_buffer_texture) = gpu_buffer_texture {
-            self.device.delete_texture(gpu_buffer_texture);
+        if let Some(gpu_buffer_texture_f) = gpu_buffer_texture_f {
+            self.device.delete_texture(gpu_buffer_texture_f);
+        }
+        if let Some(gpu_buffer_texture_i) = gpu_buffer_texture_i {
+            self.device.delete_texture(gpu_buffer_texture_i);
         }
 
         frame.has_been_rendered = true;
@@ -5305,24 +5444,6 @@ impl Renderer {
         }
     }
 
-    fn set_blend_mode_subpixel_with_bg_color_pass1(&mut self, framebuffer_kind: FramebufferKind) {
-        if framebuffer_kind == FramebufferKind::Main &&
-                self.debug_flags.contains(DebugFlags::SHOW_OVERDRAW) {
-            self.device.set_blend_mode_show_overdraw();
-        } else {
-            self.device.set_blend_mode_subpixel_with_bg_color_pass1();
-        }
-    }
-
-    fn set_blend_mode_subpixel_with_bg_color_pass2(&mut self, framebuffer_kind: FramebufferKind) {
-        if framebuffer_kind == FramebufferKind::Main &&
-                self.debug_flags.contains(DebugFlags::SHOW_OVERDRAW) {
-            self.device.set_blend_mode_show_overdraw();
-        } else {
-            self.device.set_blend_mode_subpixel_with_bg_color_pass2();
-        }
-    }
-
     /// Clears the texture with a given color.
     fn clear_texture(&mut self, texture: &Texture, color: [f32; 4]) {
         self.device.bind_draw_target(DrawTarget::from_texture(
@@ -5335,7 +5456,7 @@ impl Renderer {
 
 bitflags! {
     /// Flags that control how shaders are pre-cached, if at all.
-    #[derive(Default)]
+    #[derive(Default, Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct ShaderPrecacheFlags: u32 {
         /// Needed for const initialization
         const EMPTY                 = 0;

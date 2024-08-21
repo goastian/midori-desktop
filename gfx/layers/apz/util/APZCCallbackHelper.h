@@ -16,7 +16,6 @@
 #include <functional>
 
 class nsIContent;
-class nsIScrollableFrame;
 class nsIWidget;
 class nsPresContext;
 template <class T>
@@ -27,11 +26,16 @@ class nsCOMPtr;
 namespace mozilla {
 
 class PresShell;
+class ScrollContainerFrame;
 enum class PreventDefaultResult : uint8_t;
 
 namespace layers {
 
 struct RepaintRequest;
+
+namespace apz {
+enum class PrecedingPointerDown : bool;
+}
 
 /* Refer to documentation on SendSetTargetAPZCNotification for this class */
 class DisplayportSetListener : public ManagedPostRefreshObserver {
@@ -61,6 +65,8 @@ class APZCCallbackHelper {
   typedef mozilla::layers::ScrollableLayerGuid ScrollableLayerGuid;
 
  public:
+  using PrecedingPointerDown = apz::PrecedingPointerDown;
+
   static void NotifyLayerTransforms(const nsTArray<MatrixMessage>& aTransforms);
 
   /* Applies the scroll and zoom parameters from the given RepaintRequest object
@@ -104,9 +110,11 @@ class APZCCallbackHelper {
 
   /* Synthesize a mouse event with the given parameters, and dispatch it
    * via the given widget. */
+  MOZ_CAN_RUN_SCRIPT
   static nsEventStatus DispatchSynthesizedMouseEvent(
       EventMessage aMsg, const LayoutDevicePoint& aRefPoint,
-      Modifiers aModifiers, int32_t aClickCount, nsIWidget* aWidget);
+      Modifiers aModifiers, int32_t aClickCount,
+      PrecedingPointerDown aPrecedingPointerDownState, nsIWidget* aWidget);
 
   /* Dispatch a mouse event with the given parameters.
    * Return whether or not any listeners have called preventDefault on the
@@ -121,9 +129,11 @@ class APZCCallbackHelper {
 
   /* Fire a single-tap event at the given point. The event is dispatched
    * via the given widget. */
-  static void FireSingleTapEvent(const LayoutDevicePoint& aPoint,
-                                 Modifiers aModifiers, int32_t aClickCount,
-                                 nsIWidget* aWidget);
+  MOZ_CAN_RUN_SCRIPT
+  static void FireSingleTapEvent(
+      const LayoutDevicePoint& aPoint, Modifiers aModifiers,
+      int32_t aClickCount, PrecedingPointerDown aPrecedingPointerDownState,
+      nsIWidget* aWidget);
 
   /* Perform hit-testing on the touch points of |aEvent| to determine
    * which scrollable frames they target. If any of these frames don't have
@@ -166,14 +176,14 @@ class APZCCallbackHelper {
                                          float aScale);
 
   /*
-   * Check if the scrollable frame is currently in the middle of a main thread
-   * async or smooth scroll, or has already requested some other apz scroll that
-   * hasn't been acknowledged by apz.
+   * Check if the scroll container frame is currently in the middle of a main
+   * thread async or smooth scroll, or has already requested some other apz
+   * scroll that hasn't been acknowledged by apz.
    *
    * We want to discard apz updates to the main-thread scroll offset if this is
    * true to prevent clobbering higher priority origins.
    */
-  static bool IsScrollInProgress(nsIScrollableFrame* aFrame);
+  static bool IsScrollInProgress(ScrollContainerFrame* aFrame);
 
   /* Notify content of the progress of a pinch gesture that APZ won't do
    * zooming for (because the apz.allow_zooming pref is false). This function

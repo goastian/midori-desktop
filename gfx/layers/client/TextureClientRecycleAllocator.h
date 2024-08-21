@@ -9,11 +9,13 @@
 
 #include <map>
 #include <stack>
-#include "mozilla/gfx/Types.h"
-#include "mozilla/layers/TextureForwarder.h"
-#include "mozilla/RefPtr.h"
+
 #include "TextureClient.h"
 #include "mozilla/Mutex.h"
+#include "mozilla/RefPtr.h"
+#include "mozilla/Result.h"
+#include "mozilla/gfx/Types.h"
+#include "mozilla/layers/TextureForwarder.h"
 
 namespace mozilla {
 namespace layers {
@@ -104,7 +106,7 @@ class TextureClientRecycleAllocator : public ITextureClientRecycleAllocator {
       gfx::SurfaceFormat aFormat, gfx::IntSize aSize, BackendSelector aSelector,
       TextureFlags aTextureFlags, TextureAllocationFlags flags = ALLOC_DEFAULT);
 
-  already_AddRefed<TextureClient> CreateOrRecycle(
+  Result<already_AddRefed<TextureClient>, nsresult> CreateOrRecycle(
       ITextureClientAllocationHelper& aHelper);
 
   void ShrinkToMinimumSize();

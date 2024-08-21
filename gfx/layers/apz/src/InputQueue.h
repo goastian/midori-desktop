@@ -178,7 +178,10 @@ class InputQueue {
 
   TouchBlockState* StartNewTouchBlock(
       const RefPtr<AsyncPanZoomController>& aTarget,
-      TargetConfirmationFlags aFlags, bool aCopyPropertiesFromCurrent);
+      TargetConfirmationFlags aFlags);
+
+  TouchBlockState* StartNewTouchBlockForLongTap(
+      const RefPtr<AsyncPanZoomController>& aTarget);
 
   /**
    * If animations are present for the current pending input block, cancel
@@ -230,7 +233,11 @@ class InputQueue {
                                  CancelableBlockState* aBlock);
   void MainThreadTimeout(uint64_t aInputBlockId);
   void MaybeLongTapTimeout(uint64_t aInputBlockId);
-  void ProcessQueue();
+
+  // Returns true if there's one more queued event we need to process as a
+  // result of switching the active block back to the original touch block from
+  // the touch block for long-tap.
+  bool ProcessQueue();
   bool CanDiscardBlock(InputBlockState* aBlock);
   void UpdateActiveApzc(const RefPtr<AsyncPanZoomController>& aNewActive);
 
@@ -250,6 +257,12 @@ class InputQueue {
   RefPtr<PanGestureBlockState> mActivePanGestureBlock;
   RefPtr<PinchGestureBlockState> mActivePinchGestureBlock;
   RefPtr<KeyboardBlockState> mActiveKeyboardBlock;
+
+  // In the case where a long-tap event triggered by keeping touching happens
+  // we need to keep both the touch block for the long-tap and the original
+  // touch block started with `touch-start`. This value holds the original block
+  // until the long-tap block is processed.
+  RefPtr<TouchBlockState> mPrevActiveTouchBlock;
 
   // The APZC to which the last event was delivered
   RefPtr<AsyncPanZoomController> mLastActiveApzc;

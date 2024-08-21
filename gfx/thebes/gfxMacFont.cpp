@@ -10,17 +10,17 @@
 #include "mozilla/StaticPrefs_gfx.h"
 #include "mozilla/gfx/ScaledFontMac.h"
 
-#include "gfxCoreTextShaper.h"
 #include <algorithm>
+
+#include "CoreTextFontList.h"
+#include "gfxCoreTextShaper.h"
 #include "gfxPlatformMac.h"
 #include "gfxContext.h"
 #include "gfxFontUtils.h"
 #include "gfxHarfBuzzShaper.h"
-#include "gfxMacPlatformFontList.h"
 #include "gfxFontConstants.h"
 #include "gfxTextRun.h"
 #include "gfxUtils.h"
-#include "nsCocoaFeatures.h"
 #include "AppleUtils.h"
 #include "cairo-quartz.h"
 
@@ -35,12 +35,10 @@ struct TagEquals {
 };
 
 gfxMacFont::gfxMacFont(const RefPtr<UnscaledFontMac>& aUnscaledFont,
-                       MacOSFontEntry* aFontEntry,
-                       const gfxFontStyle* aFontStyle)
+                       CTFontEntry* aFontEntry, const gfxFontStyle* aFontStyle)
     : gfxFont(aUnscaledFont, aFontEntry, aFontStyle),
       mCGFont(nullptr),
       mCTFont(nullptr),
-      mFontSmoothingBackgroundColor(aFontStyle->fontSmoothingBackgroundColor),
       mVariationFont(aFontEntry->HasVariations()) {
   mApplySyntheticBold = aFontStyle->NeedsSyntheticBold(aFontEntry);
 
@@ -157,8 +155,8 @@ bool gfxMacFont::ShapeText(DrawTarget* aDrawTarget, const char16_t* aText,
 
   // Currently, we don't support vertical shaping via CoreText,
   // so we ignore RequiresAATLayout if vertical is requested.
-  auto macFontEntry = static_cast<MacOSFontEntry*>(GetFontEntry());
-  if (macFontEntry->RequiresAATLayout() && !aVertical &&
+  auto ctFontEntry = static_cast<CTFontEntry*>(GetFontEntry());
+  if (ctFontEntry->RequiresAATLayout() && !aVertical &&
       StaticPrefs::gfx_font_rendering_coretext_enabled()) {
     if (!mCoreTextShaper) {
       mCoreTextShaper = MakeUnique<gfxCoreTextShaper>(this);
@@ -168,19 +166,19 @@ bool gfxMacFont::ShapeText(DrawTarget* aDrawTarget, const char16_t* aText,
                                    aShapedText)) {
       PostShapingFixup(aDrawTarget, aText, aOffset, aLength, aVertical,
                        aShapedText);
-      if (GetFontEntry()->HasTrackingTable()) {
+      if (ctFontEntry->HasTrackingTable()) {
         // Convert font size from device pixels back to CSS px
         // to use in selecting tracking value
         float trackSize = GetAdjustedSize() *
                           aShapedText->GetAppUnitsPerDevUnit() /
                           AppUnitsPerCSSPixel();
         float tracking =
-            GetFontEntry()->TrackingForCSSPx(trackSize) * mFUnitsConvFactor;
+            ctFontEntry->TrackingForCSSPx(trackSize) * mFUnitsConvFactor;
         // Applying tracking is a lot like the adjustment we do for
         // synthetic bold: we want to apply between clusters, not to
         // non-spacing glyphs within a cluster. So we can reuse that
         // helper here.
-        aShapedText->AdjustAdvancesForSyntheticBold(tracking, aOffset, aLength);
+        aShapedText->ApplyTrackingToClusters(tracking, aOffset, aLength);
       }
       return true;
     }
@@ -257,7 +255,7 @@ void gfxMacFont::InitMetrics() {
   // use CG's idea of unitsPerEm, which may differ from the "true" value in
   // the head table of the font (see bug 580863)
   gfxFloat cgConvFactor;
-  if (static_cast<MacOSFontEntry*>(mFontEntry.get())->IsCFF()) {
+  if (static_cast<CTFontEntry*>(mFontEntry.get())->IsCFF()) {
     cgConvFactor = mAdjustedSize / ::CGFontGetUnitsPerEm(mCGFont);
   } else {
     cgConvFactor = mFUnitsConvFactor;
@@ -324,7 +322,7 @@ void gfxMacFont::InitMetrics() {
       delete mHarfBuzzShaper.exchange(nullptr);
       mAdjustedSize = mStyle.GetAdjustedSize(aspect);
       mFUnitsConvFactor = mAdjustedSize / upem;
-      if (static_cast<MacOSFontEntry*>(mFontEntry.get())->IsCFF()) {
+      if (static_cast<CTFontEntry*>(mFontEntry.get())->IsCFF()) {
         cgConvFactor = mAdjustedSize / ::CGFontGetUnitsPerEm(mCGFont);
       } else {
         cgConvFactor = mFUnitsConvFactor;
@@ -481,7 +479,23 @@ bool gfxMacFont::GetGlyphBounds(uint16_t aGID, gfxRect* aBounds, bool aTight) {
   gfxRect bounds(bb.origin.x, -(bb.origin.y + bb.size.height), bb.size.width,
                  bb.size.height);
   bounds.Scale(mFUnitsConvFactor);
-  *aBounds = bounds;
+
+  // For bitmap fonts (like Apple Color Emoji), CoreGraphics does not return
+  // accurate bounds, so to try and avoid clipping when the bounds are used
+  // to determine the area to render (e.g. when implementing canvas2d filters),
+  // we inflate the bounds based on global metrics from the font.
+  if (GetFontEntry()->HasColorBitmapTable()) {
+    aBounds->x = std::min(bounds.x, 0.0);
+    aBounds->width = std::max(bounds.width, mMetrics.maxAdvance);
+    // Note that y-coordinates are downwards here, and bounds.y is MINUS the
+    // glyph ascent as it measures from the baseline.
+    aBounds->y = std::min(bounds.y, -mMetrics.maxAscent);
+    aBounds->height =
+        std::max(bounds.YMost(), mMetrics.maxDescent) - aBounds->y;
+  } else {
+    *aBounds = bounds;
+  }
+
   return true;
 }
 
@@ -535,7 +549,6 @@ already_AddRefed<ScaledFont> gfxMacFont::GetScaledFont(
   bool hasColorGlyphs = fe->HasColorBitmapTable() || fe->TryGetColorGlyphs();
   RefPtr<ScaledFont> newScaledFont = Factory::CreateScaledFontForMacFont(
       GetCGFontRef(), GetUnscaledFont(), GetAdjustedSize(),
-      ToDeviceColor(mFontSmoothingBackgroundColor),
       !mStyle.useGrayscaleAntialiasing, ApplySyntheticBold(), hasColorGlyphs);
   if (!newScaledFont) {
     return nullptr;
@@ -558,11 +571,9 @@ bool gfxMacFont::ShouldRoundXOffset(cairo_t* aCairo) const {
 
 bool gfxMacFont::UseNativeColrFontSupport() const {
   /*
-    if (nsCocoaFeatures::OnHighSierraOrLater()) {
-      auto* colr = GetFontEntry()->GetCOLR();
-      if (colr && COLRFonts::GetColrTableVersion(colr) == 0) {
-        return true;
-      }
+    auto* colr = GetFontEntry()->GetCOLR();
+    if (colr && COLRFonts::GetColrTableVersion(colr) == 0) {
+      return true;
     }
   */
   return false;

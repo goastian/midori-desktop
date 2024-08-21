@@ -41,6 +41,7 @@ class MockMVMContext : public MVMContext {
   MOCK_METHOD1(SetVisualViewportSize, void(const CSSSize& aSize));
   MOCK_METHOD0(PostVisualViewportResizeEventByDynamicToolbar, void());
   MOCK_METHOD0(UpdateDisplayPortMargins, void());
+  MOCK_METHOD0(GetDynamicToolbarOffset, ScreenIntCoord());
 
   void SetMVM(MobileViewportManager* aMVM) { mMVM = aMVM; }
 
@@ -72,7 +73,7 @@ class MockMVMContext : public MVMContext {
   LayoutDeviceMargin ScrollbarAreaToExcludeFromCompositionBounds() const {
     return LayoutDeviceMargin();
   }
-  Maybe<LayoutDeviceIntSize> GetContentViewerSize() const {
+  Maybe<LayoutDeviceIntSize> GetDocumentViewerSize() const {
     return Some(mDisplaySize);
   }
   bool AllowZoomingForDocument() const { return true; }

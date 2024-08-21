@@ -50,7 +50,7 @@
 #include "HeapCopyOfStackArray.h"
 #include "GLBlitHelper.h"
 #include "mozilla/gfx/Swizzle.h"
-#ifdef MOZ_WAYLAND
+#ifdef MOZ_WIDGET_GTK
 #  include "mozilla/widget/GtkCompositorWidget.h"
 #endif
 #if MOZ_WIDGET_ANDROID
@@ -745,9 +745,12 @@ Maybe<IntRect> CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
     MakeCurrent(ForceMakeCurrent);
 
     mWidgetSize = LayoutDeviceIntSize::FromUnknownSize(rect.Size());
-#ifdef MOZ_WAYLAND
+#ifdef MOZ_WIDGET_GTK
     if (mWidget && mWidget->AsGTK()) {
-      mWidget->AsGTK()->SetEGLNativeWindowSize(mWidgetSize);
+      if (!mWidget->AsGTK()->SetEGLNativeWindowSize(mWidgetSize)) {
+        // We don't have correct window size to paint into.
+        return Nothing();
+      }
     }
 #endif
   } else {
@@ -1461,16 +1464,13 @@ void CompositorOGL::InitializeVAO(const GLuint aAttrib, const GLint aComponents,
 #ifdef MOZ_DUMP_PAINTING
 template <typename T>
 void WriteSnapshotToDumpFile_internal(T* aObj, DataSourceSurface* aSurf) {
-  nsCString string(aObj->Name());
-  string.Append('-');
-  string.AppendInt((uint64_t)aObj);
   if (gfxUtils::sDumpPaintFile != stderr) {
-    fprintf_stderr(gfxUtils::sDumpPaintFile, R"(array["%s"]=")",
-                   string.BeginReading());
-  }
-  gfxUtils::DumpAsDataURI(aSurf, gfxUtils::sDumpPaintFile);
-  if (gfxUtils::sDumpPaintFile != stderr) {
-    fprintf_stderr(gfxUtils::sDumpPaintFile, R"(";)");
+    gfxUtils::DumpAsDataURI(aSurf, gfxUtils::sDumpPaintFile);
+  } else {
+    nsCString uri = gfxUtils::GetAsDataURI(aSurf);
+    nsPrintfCString string(R"(array["%s-%)" PRIu64 R"("]="%s";\n)",
+                           aObj->Name(), uint64_t(aObj), uri.BeginReading());
+    fprintf_stderr(gfxUtils::sDumpPaintFile, "%s", string.get());
   }
 }
 
@@ -1636,7 +1636,7 @@ void CompositorOGL::Pause() {
   if (!gl() || gl()->IsDestroyed()) return;
   // ReleaseSurface internally calls MakeCurrent
   gl()->ReleaseSurface();
-#elif defined(MOZ_WAYLAND)
+#elif defined(MOZ_WIDGET_GTK)
   // ReleaseSurface internally calls MakeCurrent
   gl()->ReleaseSurface();
 #endif
@@ -1644,7 +1644,7 @@ void CompositorOGL::Pause() {
 
 bool CompositorOGL::Resume() {
 #if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT) || \
-    defined(MOZ_WAYLAND)
+    defined(MOZ_WIDGET_GTK)
   if (!gl() || gl()->IsDestroyed()) return false;
 
   // RenewSurface internally calls MakeCurrent.

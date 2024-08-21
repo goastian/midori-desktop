@@ -26,7 +26,7 @@ typedef uint32_t nscolor;
   ((nscolor)(((_a) << 24) | ((_b) << 16) | ((_g) << 8) | (_r)))
 
 // Extract color components from nscolor
-#define NS_GET_R(_rgba) ((uint8_t)((_rgba)&0xff))
+#define NS_GET_R(_rgba) ((uint8_t)((_rgba) & 0xff))
 #define NS_GET_G(_rgba) ((uint8_t)(((_rgba) >> 8) & 0xff))
 #define NS_GET_B(_rgba) ((uint8_t)(((_rgba) >> 16) & 0xff))
 #define NS_GET_A(_rgba) ((uint8_t)(((_rgba) >> 24) & 0xff))
@@ -79,16 +79,5 @@ bool NS_LooseHexToRGB(const nsString& aBuf, nscolor* aResult);
 
 // There is no function to translate a color to a hex string, because
 // the hex-string syntax does not support transparency.
-
-// Translate a color name to a color. Return true if it parses ok,
-// otherwise return false.
-bool NS_ColorNameToRGB(const nsAString& aBuf, nscolor* aResult);
-
-// Return a color name for the given nscolor.  If there is no color
-// name for it, returns null.  If there are multiple possible color
-// names for the given color, the first one in nsColorNameList.h
-// (which is generally the first one in alphabetical order) will be
-// returned.
-const char* NS_RGBToColorName(nscolor aColor);
 
 #endif /* nsColor_h___ */

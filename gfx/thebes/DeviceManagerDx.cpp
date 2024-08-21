@@ -12,7 +12,6 @@
 #include "mozilla/StaticPrefs_gfx.h"
 #include "mozilla/StaticPrefs_layers.h"
 #include "mozilla/Telemetry.h"
-#include "mozilla/WindowsVersion.h"
 #include "mozilla/gfx/GPUParent.h"
 #include "mozilla/gfx/GPUProcessManager.h"
 #include "mozilla/gfx/GraphicsMessages.h"
@@ -27,8 +26,8 @@
 
 // -
 
-#include "mozilla/gfx/AllOfDcomp.h"
 #include <d3d11.h>
+#include <dcomp.h>
 #include <ddraw.h>
 #include <dxgi.h>
 
@@ -68,9 +67,7 @@ DeviceManagerDx::DeviceManagerDx()
     : mDeviceLock("gfxWindowsPlatform.mDeviceLock"),
       mCompositorDeviceSupportsVideo(false) {
   // Set up the D3D11 feature levels we can ask for.
-  if (IsWin8OrLater()) {
-    mFeatureLevels.AppendElement(D3D_FEATURE_LEVEL_11_1);
-  }
+  mFeatureLevels.AppendElement(D3D_FEATURE_LEVEL_11_1);
   mFeatureLevels.AppendElement(D3D_FEATURE_LEVEL_11_0);
   mFeatureLevels.AppendElement(D3D_FEATURE_LEVEL_10_1);
   mFeatureLevels.AppendElement(D3D_FEATURE_LEVEL_10_0);
@@ -207,6 +204,129 @@ bool DeviceManagerDx::GetOutputFromMonitor(HMONITOR monitor,
     }
   }
   return false;
+}
+
+void DeviceManagerDx::PostUpdateMonitorInfo() {
+  MOZ_ASSERT(XRE_IsGPUProcess());
+  MOZ_ASSERT(NS_IsMainThread());
+
+  MutexAutoLock lock(mDeviceLock);
+  // Reduce frequency of UpdateMonitorInfo() call.
+  if (mUpdateMonitorInfoRunnable) {
+    return;
+  }
+
+  auto* holder = CompositorThreadHolder::GetSingleton();
+  if (!holder) {
+    return;
+  }
+
+  mUpdateMonitorInfoRunnable = NS_NewRunnableFunction(
+      "DeviceManagerDx::PostUpdateMonitorInfo::Runnable", []() -> void {
+        auto* dm = gfx::DeviceManagerDx::Get();
+        if (dm) {
+          dm->UpdateMonitorInfo();
+        }
+      });
+
+  const uint32_t kDelayMS = 100;
+  RefPtr<Runnable> runnable = mUpdateMonitorInfoRunnable;
+  holder->GetCompositorThread()->DelayedDispatch(runnable.forget(), kDelayMS);
+}
+
+static bool ColorSpaceIsHDR(const DXGI_OUTPUT_DESC1& aDesc) {
+  // Set isHDR to true if the output has a BT2020 colorspace with EOTF2084
+  // gamma curve, this indicates the system is sending an HDR format to
+  // this monitor.  The colorspace returned by DXGI is very vague - we only
+  // see DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020 for HDR and
+  // DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709 for SDR modes, even if the
+  // monitor is using something like YCbCr444 according to Settings
+  // (System -> Display Settings -> Advanced Display).  To get more specific
+  // info we would need to query the DISPLAYCONFIG values in WinGDI.
+  //
+  // Note that we don't check bit depth here, since as of Windows 11 22H2,
+  // HDR is supported with 8bpc for lower bandwidth, where DWM converts to
+  // dithered RGB8 rather than RGB10, which doesn't really matter here.
+  //
+  // Since RefreshScreens(), the caller of this function, is triggered
+  // by WM_DISPLAYCHANGE, this will pick up changes to the monitors in
+  // all the important cases (resolution/color changes by the user).
+  //
+  // Further reading:
+  // https://learn.microsoft.com/en-us/windows/win32/direct3darticles/high-dynamic-range
+  // https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_sdr_white_level
+  bool isHDR = (aDesc.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+
+  return isHDR;
+}
+
+void DeviceManagerDx::UpdateMonitorInfo() {
+  bool systemHdrEnabled = false;
+  std::set<HMONITOR> hdrMonitors;
+
+  for (const auto desc : EnumerateOutputs()) {
+    if (ColorSpaceIsHDR(desc)) {
+      systemHdrEnabled = true;
+      hdrMonitors.emplace(desc.Monitor);
+    }
+  }
+
+  {
+    MutexAutoLock lock(mDeviceLock);
+    mSystemHdrEnabled = Some(systemHdrEnabled);
+    mHdrMonitors.swap(hdrMonitors);
+    mUpdateMonitorInfoRunnable = nullptr;
+  }
+}
+
+bool DeviceManagerDx::SystemHDREnabled() {
+  {
+    MutexAutoLock lock(mDeviceLock);
+    if (mSystemHdrEnabled.isSome()) {
+      return mSystemHdrEnabled.ref();
+    }
+  }
+
+  UpdateMonitorInfo();
+
+  MutexAutoLock lock(mDeviceLock);
+  return mSystemHdrEnabled.ref();
+}
+
+bool DeviceManagerDx::WindowHDREnabled(HWND aWindow) {
+  MOZ_ASSERT(aWindow);
+
+  HMONITOR monitor = ::MonitorFromWindow(aWindow, MONITOR_DEFAULTTONEAREST);
+  return MonitorHDREnabled(monitor);
+}
+
+bool DeviceManagerDx::MonitorHDREnabled(HMONITOR aMonitor) {
+  if (!aMonitor) {
+    return false;
+  }
+
+  bool needInit = false;
+
+  {
+    MutexAutoLock lock(mDeviceLock);
+    if (mSystemHdrEnabled.isNothing()) {
+      needInit = true;
+    }
+  }
+
+  if (needInit) {
+    UpdateMonitorInfo();
+  }
+
+  MutexAutoLock lock(mDeviceLock);
+  MOZ_ASSERT(mSystemHdrEnabled.isSome());
+
+  auto it = mHdrMonitors.find(aMonitor);
+  if (it == mHdrMonitors.end()) {
+    return false;
+  }
+
+  return true;
 }
 
 void DeviceManagerDx::CheckHardwareStretchingSupport(HwStretchingSupport& aRv) {
@@ -518,7 +638,7 @@ void DeviceManagerDx::CreateContentDevicesLocked() {
 
   // We should have been assigned a DeviceStatus from the parent process,
   // GPU process, or the same process if using in-process compositing.
-  MOZ_ASSERT(mDeviceStatus);
+  MOZ_RELEASE_ASSERT(mDeviceStatus);
 
   if (CreateContentDevice() == FeatureStatus::CrashedInHandler) {
     DisableD3D11AfterCrash();
@@ -531,9 +651,11 @@ already_AddRefed<IDXGIAdapter1> DeviceManagerDx::GetDXGIAdapter() {
 }
 
 IDXGIAdapter1* DeviceManagerDx::GetDXGIAdapterLocked() {
-  if (mAdapter) {
+  if (mAdapter && mFactory && mFactory->IsCurrent()) {
     return mAdapter;
   }
+  mAdapter = nullptr;
+  mFactory = nullptr;
 
   nsModuleHandle dxgiModule(LoadLibrarySystem32(L"dxgi.dll"));
   decltype(CreateDXGIFactory1)* createDXGIFactory1 =
@@ -548,50 +670,32 @@ IDXGIAdapter1* DeviceManagerDx::GetDXGIAdapterLocked() {
 
   // Try to use a DXGI 1.1 adapter in order to share resources
   // across processes.
-  RefPtr<IDXGIFactory1> factory1;
   if (StaticPrefs::gfx_direct3d11_enable_debug_layer_AtStartup()) {
-    RefPtr<IDXGIFactory2> factory2;
     if (fCreateDXGIFactory2) {
       auto hr = fCreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG,
                                     __uuidof(IDXGIFactory2),
-                                    getter_AddRefs(factory2));
+                                    getter_AddRefs(mFactory));
       MOZ_ALWAYS_TRUE(!FAILED(hr));
     } else {
       NS_WARNING(
           "fCreateDXGIFactory2 not loaded, cannot create debug IDXGIFactory2.");
     }
-    factory1 = factory2;
   }
-  if (!factory1) {
+  if (!mFactory) {
     HRESULT hr =
-        createDXGIFactory1(__uuidof(IDXGIFactory1), getter_AddRefs(factory1));
-    if (FAILED(hr) || !factory1) {
+        createDXGIFactory1(__uuidof(IDXGIFactory1), getter_AddRefs(mFactory));
+    if (FAILED(hr) || !mFactory) {
       // This seems to happen with some people running the iZ3D driver.
       // They won't get acceleration.
       return nullptr;
     }
   }
 
-  if (!mDeviceStatus) {
-    // If we haven't created a device yet, and have no existing device status,
-    // then this must be the compositor device. Pick the first adapter we can.
-    if (FAILED(factory1->EnumAdapters1(0, getter_AddRefs(mAdapter)))) {
-      return nullptr;
-    }
-  } else {
-    // In the UI and GPU process, we clear mDeviceStatus on device reset, so we
-    // should never reach here. Furthermore, the UI process does not create
-    // devices when using a GPU process.
-    //
-    // So, this should only ever get called on the content process or RDD
-    // process
-    MOZ_ASSERT(XRE_IsContentProcess() || XRE_IsRDDProcess());
-
-    // In the child process, we search for the adapter that matches the parent
-    // process. The first adapter can be mismatched on dual-GPU systems.
+  if (mDeviceStatus) {
+    // Match the adapter to our mDeviceStatus, if possible.
     for (UINT index = 0;; index++) {
       RefPtr<IDXGIAdapter1> adapter;
-      if (FAILED(factory1->EnumAdapters1(index, getter_AddRefs(adapter)))) {
+      if (FAILED(mFactory->EnumAdapters1(index, getter_AddRefs(adapter)))) {
         break;
       }
 
@@ -610,7 +714,9 @@ IDXGIAdapter1* DeviceManagerDx::GetDXGIAdapterLocked() {
   }
 
   if (!mAdapter) {
-    return nullptr;
+    mDeviceStatus.reset();
+    // Pick the first adapter available.
+    mFactory->EnumAdapters1(0, getter_AddRefs(mAdapter));
   }
 
   // We leak this module everywhere, we might as well do so here as well.
@@ -743,6 +849,13 @@ void DeviceManagerDx::CreateCompositorDevice(FeatureState& d3d11) {
     D3D11Checks::WarnOnAdapterMismatch(device);
   }
 
+  RefPtr<ID3D10Multithread> multi;
+  HRESULT hr = device->QueryInterface(__uuidof(ID3D10Multithread),
+                                      getter_AddRefs(multi));
+  if (SUCCEEDED(hr) && multi) {
+    multi->SetMultithreadProtected(TRUE);
+  }
+
   uint32_t featureLevel = device->GetFeatureLevel();
   auto formatOptions = D3D11Checks::FormatOptions(device);
   mCompositorDevice = device;
@@ -833,11 +946,13 @@ void DeviceManagerDx::CreateWARPCompositorDevice() {
     return;
   }
 
-  // Only test for texture sharing on Windows 8 since it puts the device into
-  // an unusable state if used on Windows 7
-  bool textureSharingWorks = false;
-  if (IsWin8OrLater()) {
-    textureSharingWorks = D3D11Checks::DoesTextureSharingWork(device);
+  bool textureSharingWorks = D3D11Checks::DoesTextureSharingWork(device);
+
+  RefPtr<ID3D10Multithread> multi;
+  hr = device->QueryInterface(__uuidof(ID3D10Multithread),
+                              getter_AddRefs(multi));
+  if (SUCCEEDED(hr) && multi) {
+    multi->SetMultithreadProtected(TRUE);
   }
 
   DXGI_ADAPTER_DESC desc;
@@ -916,7 +1031,7 @@ FeatureStatus DeviceManagerDx::CreateContentDevice() {
 }
 
 RefPtr<ID3D11Device> DeviceManagerDx::CreateDecoderDevice(
-    bool aHardwareWebRender) {
+    DeviceFlagSet aFlags) {
   MutexAutoLock lock(mDeviceLock);
 
   if (!mDeviceStatus) {
@@ -934,15 +1049,16 @@ RefPtr<ID3D11Device> DeviceManagerDx::CreateDecoderDevice(
 
   if (reuseDevice) {
     // Use mCompositorDevice for decoder device only for hardware WebRender.
-    if (aHardwareWebRender && mCompositorDevice &&
-        mCompositorDeviceSupportsVideo && !mDecoderDevice) {
+    if (aFlags.contains(DeviceFlag::isHardwareWebRenderInUse) &&
+        mCompositorDevice && mCompositorDeviceSupportsVideo &&
+        !mDecoderDevice) {
       mDecoderDevice = mCompositorDevice;
 
       RefPtr<ID3D10Multithread> multi;
       mDecoderDevice->QueryInterface(__uuidof(ID3D10Multithread),
                                      getter_AddRefs(multi));
       if (multi) {
-        multi->SetMultithreadProtected(TRUE);
+        MOZ_ASSERT(multi->GetMultithreadProtected());
       }
     }
 
@@ -1192,6 +1308,10 @@ void DeviceManagerDx::DisableD3D11AfterCrash() {
 }
 
 RefPtr<ID3D11Device> DeviceManagerDx::GetCompositorDevice() {
+  /// ID3D11Device is thread-safe. We need the lock to read the
+  /// mDeviceLockPointer, but manipulating the pointee outside of the lock is
+  /// safe. See
+  /// https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-render-multi-thread-intro
   MutexAutoLock lock(mDeviceLock);
   return mCompositorDevice;
 }
@@ -1225,8 +1345,9 @@ RefPtr<ID3D11Device> DeviceManagerDx::GetImageDevice() {
   if (FAILED(hr) || !multi) {
     gfxWarning() << "Multithread safety interface not supported. " << hr;
     return nullptr;
+  } else {
+    MOZ_ASSERT(multi->GetMultithreadProtected());
   }
-  multi->SetMultithreadProtected(TRUE);
 
   mImageDevice = device;
 
@@ -1271,28 +1392,6 @@ bool DeviceManagerDx::CanInitializeKeyedMutexTextures() {
   MutexAutoLock lock(mDeviceLock);
   return mDeviceStatus && StaticPrefs::gfx_direct3d11_allow_keyed_mutex() &&
          gfxVars::AllowD3D11KeyedMutex();
-}
-
-bool DeviceManagerDx::HasCrashyInitData() {
-  MutexAutoLock lock(mDeviceLock);
-  if (!mDeviceStatus) {
-    return false;
-  }
-
-  return (mDeviceStatus->adapter().VendorId == 0x8086 && !IsWin10OrLater());
-}
-
-bool DeviceManagerDx::CheckRemotePresentSupport() {
-  MOZ_ASSERT(XRE_IsParentProcess());
-
-  RefPtr<IDXGIAdapter1> adapter = GetDXGIAdapter();
-  if (!adapter) {
-    return false;
-  }
-  if (!D3D11Checks::DoesRemotePresentWork(adapter)) {
-    return false;
-  }
-  return true;
 }
 
 bool DeviceManagerDx::IsWARP() {

@@ -23,7 +23,7 @@
     SimpleTest.waitForExplicitFinish();
     var utils = SpecialPowers.getDOMWindowUtils(window);
 
-    async function sendScrollEvent(aRafTimestamp) {
+    async function sendScrollEvent() {
       var scrollDiv = document.getElementById("content");
 
       if (i < scrollEvents) {
@@ -57,10 +57,6 @@
       SimpleTest.ok(true, "APZ not enabled, skipping test");
       SimpleTest.finish();
     }
-
-    waitUntilApzStable()
-    .then(() => pushPrefs([["gfx.vsync.collect-scroll-transforms", true]]))
-    .then(startTest);
     </script>
 </head>
 

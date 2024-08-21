@@ -412,7 +412,7 @@ parse_private_use_subtag (const char     *private_use_subtag,
 /**
  * hb_ot_tags_from_script_and_language:
  * @script: an #hb_script_t to convert.
- * @language: an #hb_language_t to convert.
+ * @language: (nullable): an #hb_language_t to convert.
  * @script_count: (inout) (optional): maximum number of script tags to retrieve (IN)
  * and actual number of script tags retrieved (OUT)
  * @script_tags: (out) (optional): array of size at least @script_count to store the
@@ -547,7 +547,7 @@ hb_ot_tag_to_language (hb_tag_t tag)
       buf[3] = '-';
       str += 4;
     }
-    snprintf (str, 16, "x-hbot-%08x", tag);
+    snprintf (str, 16, "x-hbot-%08" PRIx32, tag);
     return hb_language_from_string (&*buf, -1);
   }
 }

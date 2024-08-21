@@ -42,14 +42,15 @@ TextureHost* GPUVideoTextureHost::EnsureWrappedTextureHost() {
 
   const auto& sd =
       static_cast<const SurfaceDescriptorRemoteDecoder&>(mDescriptor);
-  VideoBridgeParent* parent = VideoBridgeParent::GetSingleton(sd.source());
+  RefPtr<VideoBridgeParent> parent =
+      VideoBridgeParent::GetSingleton(sd.source());
   if (!parent) {
     // The VideoBridge went away. This can happen if the RDD process
     // crashes.
     return nullptr;
   }
 
-  mWrappedTextureHost = parent->LookupTexture(mContentId, sd.handle());
+  mWrappedTextureHost = parent->LookupTextureAsync(mContentId, sd.handle());
 
   if (!mWrappedTextureHost) {
     // The TextureHost hasn't been registered yet. This is due to a race
@@ -141,12 +142,16 @@ void GPUVideoTextureHost::CreateRenderTexture(
 }
 
 void GPUVideoTextureHost::MaybeDestroyRenderTexture() {
-  if (mExternalImageId.isNothing() || !mWrappedTextureHost) {
+  if (mExternalImageId.isNothing()) {
     // RenderTextureHost was not created
     return;
   }
-  // When GPUVideoTextureHost created RenderTextureHost, delete it here.
-  TextureHost::DestroyRenderTexture(mExternalImageId.ref());
+
+  if (mExternalImageId.isSome() && mWrappedTextureHost) {
+    // When GPUVideoTextureHost created RenderTextureHost, delete it here.
+    TextureHost::DestroyRenderTexture(mExternalImageId.ref());
+  }
+  mExternalImageId = Nothing();
 }
 
 uint32_t GPUVideoTextureHost::NumSubTextures() {

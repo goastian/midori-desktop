@@ -119,8 +119,7 @@ class gfxContext final {
    * If aTarget is null or invalid, nullptr is returned.  The caller
    * is responsible for handling this scenario as appropriate.
    */
-  static mozilla::UniquePtr<gfxContext> CreateOrNull(
-      DrawTarget* aTarget, const Point& aDeviceOffset = Point());
+  static mozilla::UniquePtr<gfxContext> CreateOrNull(DrawTarget* aTarget);
 
   DrawTarget* GetDrawTarget() const { return mDT; }
 
@@ -582,7 +581,6 @@ class gfxContext final {
     mozilla::gfx::AntialiasMode aaMode;
     bool patternTransformChanged;
     Matrix patternTransform;
-    DeviceColor fontSmoothingBackgroundColor;
     // This is used solely for using minimal intermediate surface size.
     Point deviceOffset;
 #ifdef DEBUG

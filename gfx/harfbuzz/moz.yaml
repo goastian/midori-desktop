@@ -20,11 +20,11 @@ origin:
 
   # Human-readable identifier for this version/release
   # Generally "version NNN", "tag SSS", "bookmark SSS"
-  release: 7.3.0 (2023-05-10T00:20:25+03:00).
+  release: 8.5.0 (2024-05-13T23:46:17+03:00).
 
   # Revision to pull in
   # Must be a long or short commit SHA (long preferred)
-  revision: 7.3.0
+  revision: 8.5.0
 
   # The package's license, where possible using the mnemonic from
   # https://spdx.org/licenses/
@@ -57,9 +57,6 @@ vendoring:
 
   exclude:
     - "**"
-    - "**/.*"
-    - ".*"
-    - ".*/**"
     - "src/test*"
     - src/hb-ucdn
 

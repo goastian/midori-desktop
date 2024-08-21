@@ -9,7 +9,9 @@ use api::{PrimitiveKeyKind, FillRule, POLYGON_CLIP_VERTEX_MAX};
 use api::units::*;
 use euclid::{SideOffsets2D, Size2D};
 use malloc_size_of::MallocSizeOf;
+use crate::composite::CompositorSurfaceKind;
 use crate::clip::ClipLeafId;
+use crate::quad::QuadTileClassifier;
 use crate::segment::EdgeAaSegmentMask;
 use crate::border::BorderSegmentCacheKey;
 use crate::debug_item::{DebugItem, DebugMessage};
@@ -635,7 +637,6 @@ impl InternablePrimitive for PrimitiveKeyKind {
         key: PrimitiveKey,
         data_handle: PrimitiveDataHandle,
         prim_store: &mut PrimitiveStore,
-        _reference_frame_relative_offset: LayoutVector2D,
     ) -> PrimitiveInstanceKind {
         match key.kind {
             PrimitiveKeyKind::Clear => {
@@ -667,6 +668,7 @@ impl InternablePrimitive for PrimitiveKeyKind {
 pub struct VisibleMaskImageTile {
     pub tile_offset: TileOffset,
     pub tile_rect: LayoutRect,
+    pub task_id: RenderTaskId,
 }
 
 #[derive(Debug)]
@@ -958,7 +960,6 @@ pub enum PrimitiveInstanceKind {
         /// Handle to the common interned data for this primitive.
         data_handle: PictureDataHandle,
         pic_index: PictureIndex,
-        segment_instance_index: SegmentInstanceIndex,
     },
     /// A run of glyphs, with associated font parameters.
     TextRun {
@@ -1002,13 +1003,13 @@ pub enum PrimitiveInstanceKind {
         /// Handle to the common interned data for this primitive.
         data_handle: YuvImageDataHandle,
         segment_instance_index: SegmentInstanceIndex,
-        is_compositor_surface: bool,
+        compositor_surface_kind: CompositorSurfaceKind,
     },
     Image {
         /// Handle to the common interned data for this primitive.
         data_handle: ImageDataHandle,
         image_instance_index: ImageInstanceIndex,
-        is_compositor_surface: bool,
+        compositor_surface_kind: CompositorSurfaceKind,
     },
     /// Always rendered directly into the picture. This tends to be
     /// faster with SWGL.
@@ -1028,11 +1029,13 @@ pub enum PrimitiveInstanceKind {
         /// Handle to the common interned data for this primitive.
         data_handle: RadialGradientDataHandle,
         visible_tiles_range: GradientTileRange,
+        cached: bool,
     },
     ConicGradient {
         /// Handle to the common interned data for this primitive.
         data_handle: ConicGradientDataHandle,
         visible_tiles_range: GradientTileRange,
+        cached: bool,
     },
     /// Clear out a rect, used for special effects.
     Clear {
@@ -1213,8 +1216,13 @@ pub struct PrimitiveScratchBuffer {
     /// Set of sub-graphs that are required, determined during visibility pass
     pub required_sub_graphs: FastHashSet<PictureIndex>,
 
-    /// Temporary buffer for building segments in to during prepare pass
-    pub quad_segments: Vec<QuadSegment>,
+    /// Temporary buffers for building segments in to during prepare pass
+    pub quad_direct_segments: Vec<QuadSegment>,
+    pub quad_indirect_segments: Vec<QuadSegment>,
+
+    /// A retained classifier for checking which segments of a tiled primitive
+    /// need a mask / are clipped / can be rendered directly
+    pub quad_tile_classifier: QuadTileClassifier,
 }
 
 impl Default for PrimitiveScratchBuffer {
@@ -1229,7 +1237,9 @@ impl Default for PrimitiveScratchBuffer {
             debug_items: Vec::new(),
             messages: Vec::new(),
             required_sub_graphs: FastHashSet::default(),
-            quad_segments: Vec::new(),
+            quad_direct_segments: Vec::new(),
+            quad_indirect_segments: Vec::new(),
+            quad_tile_classifier: QuadTileClassifier::new(),
         }
     }
 }
@@ -1243,7 +1253,8 @@ impl PrimitiveScratchBuffer {
         self.segment_instances.recycle(recycler);
         self.gradient_tiles.recycle(recycler);
         recycler.recycle_vec(&mut self.debug_items);
-        recycler.recycle_vec(&mut self.quad_segments);
+        recycler.recycle_vec(&mut self.quad_direct_segments);
+        recycler.recycle_vec(&mut self.quad_indirect_segments);
     }
 
     pub fn begin_frame(&mut self) {
@@ -1252,7 +1263,8 @@ impl PrimitiveScratchBuffer {
         // location.
         self.clip_mask_instances.clear();
         self.clip_mask_instances.push(ClipMaskKind::None);
-        self.quad_segments.clear();
+        self.quad_direct_segments.clear();
+        self.quad_indirect_segments.clear();
 
         self.border_cache_handles.clear();
 
@@ -1309,6 +1321,37 @@ impl PrimitiveScratchBuffer {
 
             y -= LINE_HEIGHT;
         }
+    }
+
+    pub fn push_debug_rect_with_stroke_width(
+        &mut self,
+        rect: WorldRect,
+        border: ColorF,
+        stroke_width: f32
+    ) {
+        let top_edge = WorldRect::new(
+            WorldPoint::new(rect.min.x + stroke_width, rect.min.y),
+            WorldPoint::new(rect.max.x - stroke_width, rect.min.y + stroke_width)
+        );
+        self.push_debug_rect(top_edge * DevicePixelScale::new(1.0), border, border);
+
+        let bottom_edge = WorldRect::new(
+            WorldPoint::new(rect.min.x + stroke_width, rect.max.y - stroke_width),
+            WorldPoint::new(rect.max.x - stroke_width, rect.max.y)
+        );
+        self.push_debug_rect(bottom_edge * DevicePixelScale::new(1.0), border, border);
+
+        let right_edge = WorldRect::new(
+            WorldPoint::new(rect.max.x - stroke_width, rect.min.y),
+            rect.max
+        );
+        self.push_debug_rect(right_edge * DevicePixelScale::new(1.0), border, border);
+
+        let left_edge = WorldRect::new(
+            rect.min,
+            WorldPoint::new(rect.min.x + stroke_width, rect.max.y)
+        );
+        self.push_debug_rect(left_edge * DevicePixelScale::new(1.0), border, border);
     }
 
     #[allow(dead_code)]
@@ -1431,7 +1474,6 @@ pub trait InternablePrimitive: intern::Internable<InternData = ()> + Sized {
         key: Self::Key,
         data_handle: intern::Handle<Self>,
         prim_store: &mut PrimitiveStore,
-        reference_frame_relative_offset: LayoutVector2D,
     ) -> PrimitiveInstanceKind;
 }
 

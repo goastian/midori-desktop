@@ -40,7 +40,8 @@ class gfxVarReceiver;
   _(UseWebRenderANGLE, bool, false)                                \
   _(UseWebRenderFlipSequentialWin, bool, false)                    \
   _(UseWebRenderDCompWin, bool, false)                             \
-  _(UseWebRenderDCompVideoOverlayWin, bool, false)                 \
+  _(UseWebRenderDCompVideoHwOverlayWin, bool, false)               \
+  _(UseWebRenderDCompVideoSwOverlayWin, bool, false)               \
   _(UseWebRenderTripleBufferingWin, bool, false)                   \
   _(UseWebRenderCompositor, bool, false)                           \
   _(UseWebRenderProgramBinaryDisk, bool, false)                    \
@@ -57,7 +58,7 @@ class gfxVarReceiver;
   _(WebRenderBatchedUploadThreshold, int32_t, 512 * 512)           \
   _(UseSoftwareWebRender, bool, false)                             \
   _(AllowSoftwareWebRenderD3D11, bool, false)                      \
-  _(ScreenDepth, int32_t, 0)                                       \
+  _(PrimaryScreenDepth, int32_t, 0)                                \
   _(GREDirectory, nsString, nsString())                            \
   _(ProfDirectory, nsString, nsString())                           \
   _(AllowD3D11KeyedMutex, bool, false)                             \
@@ -75,7 +76,6 @@ class gfxVarReceiver;
   _(UseDoubleBufferingWithCompositor, bool, false)                 \
   _(UseGLSwizzle, bool, true)                                      \
   _(ForceSubpixelAAWherePossible, bool, false)                     \
-  _(DwmCompositionEnabled, bool, true)                             \
   _(FxREmbedded, bool, false)                                      \
   _(UseAHardwareBufferSharedSurfaceWebglOop, bool, false)          \
   _(UseEGL, bool, false)                                           \
@@ -98,8 +98,12 @@ class gfxVarReceiver;
   _(AllowBackdropFilter, bool, true)                               \
   _(WebglOopAsyncPresentForceSync, bool, true)                     \
   _(UseAcceleratedCanvas2D, bool, false)                           \
-  _(UseWebRenderDCompSwVideoOverlayWin, bool, false)               \
-  _(WebglUseHardware, bool, true)
+  _(AllowSoftwareWebRenderOGL, bool, false)                        \
+  _(WebglUseHardware, bool, true)                                  \
+  _(WebRenderOverlayVpAutoHDR, bool, false)                        \
+  _(WebRenderOverlayVpSuperResolution, bool, false)                \
+  _(AllowWebGPUPresentWithoutReadback, bool, false)                \
+  _(GPUProcessEnabled, bool, false)
 
 /* Add new entries above this line. */
 

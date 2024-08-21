@@ -37,7 +37,6 @@
 #include "GLConsts.h"
 #include "GLDefs.h"
 #include "GLTypes.h"
-#include "GLVendor.h"
 #include "nsRegionFwd.h"
 #include "nsString.h"
 #include "GLContextTypes.h"
@@ -45,6 +44,12 @@
 #include "base/platform_thread.h"  // for PlatformThreadId
 #include "mozilla/GenericRefCounted.h"
 #include "mozilla/WeakPtr.h"
+
+template <class ElemT, class... More>
+constexpr inline std::array<ElemT, 1 + sizeof...(More)> make_array(
+    ElemT&& arg1, More&&... more) {
+  return {std::forward<ElemT>(arg1), std::forward<ElemT>(more)...};
+}
 
 #ifdef MOZ_WIDGET_ANDROID
 #  include "mozilla/ProfilerLabels.h"
@@ -173,12 +178,15 @@ enum class GLRenderer {
   GalliumLlvmpipe,
   IntelHD3000,
   MicrosoftBasicRenderDriver,
+  SamsungXclipse,
   Other
 };
 
 class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
  public:
   static MOZ_THREAD_LOCAL(const GLContext*) sCurrentContext;
+
+  static void InvalidateCurrentContext();
 
   const GLContextDesc mDesc;
 
@@ -192,9 +200,12 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
     const bool mWasTlsOk;
 
    public:
-    explicit TlsScope(GLContext* const gl)
+    explicit TlsScope(GLContext* const gl, bool invalidate = false)
         : mGL(gl), mWasTlsOk(gl && gl->mUseTLSIsCurrent) {
       if (mGL) {
+        if (invalidate) {
+          InvalidateCurrentContext();
+        }
         mGL->mUseTLSIsCurrent = true;
       }
     }
@@ -792,8 +803,15 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
     AFTER_GL_CALL;
   }
 
+  void InvalidateFramebuffer(GLenum target) {
+    constexpr auto ATTACHMENTS = make_array(GLenum{LOCAL_GL_COLOR_ATTACHMENT0},
+                                            LOCAL_GL_DEPTH_STENCIL_ATTACHMENT);
+    fInvalidateFramebuffer(target, ATTACHMENTS.size(), ATTACHMENTS.data());
+  }
+
   void fInvalidateFramebuffer(GLenum target, GLsizei numAttachments,
                               const GLenum* attachments) {
+    if (!mSymbols.fInvalidateFramebuffer) return;
     BeforeGLDrawCall();
     BEFORE_GL_CALL;
     ASSERT_SYMBOL_PRESENT(fInvalidateFramebuffer);
@@ -805,6 +823,7 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
   void fInvalidateSubFramebuffer(GLenum target, GLsizei numAttachments,
                                  const GLenum* attachments, GLint x, GLint y,
                                  GLsizei width, GLsizei height) {
+    if (!mSymbols.fInvalidateSubFramebuffer) return;
     BeforeGLDrawCall();
     BEFORE_GL_CALL;
     ASSERT_SYMBOL_PRESENT(fInvalidateSubFramebuffer);
@@ -818,6 +837,13 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
     BEFORE_GL_CALL;
     mSymbols.fBindTexture(target, texture);
     AFTER_GL_CALL;
+  }
+
+  void BindSamplerTexture(GLuint texUnitId, GLuint samplerHandle,
+                          GLenum texTarget, GLuint texHandle) {
+    fBindSampler(texUnitId, samplerHandle);
+    fActiveTexture(LOCAL_GL_TEXTURE0 + texUnitId);
+    fBindTexture(texTarget, texHandle);
   }
 
   void fBlendColor(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha) {
@@ -2023,7 +2049,11 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
  public:
   bool mElideDuplicateBindFramebuffers = false;
 
-  void fBindFramebuffer(const GLenum target, const GLuint fb) const {
+  // If e.g. GL_DRAW_FRAMEBUFFER isn't supported, will bind GL_FRAMEBUFFER.
+  void fBindFramebuffer(GLenum target, const GLuint fb) const {
+    if (!IsSupported(gl::GLFeature::framebuffer_blit)) {
+      target = LOCAL_GL_FRAMEBUFFER;
+    }
     if (mElideDuplicateBindFramebuffers) {
       MOZ_ASSERT(mCachedDrawFb ==
                  GetIntAs<GLuint>(LOCAL_GL_DRAW_FRAMEBUFFER_BINDING));
@@ -2092,9 +2122,6 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
     mSymbols.fFramebufferTexture2D(target, attachmentPoint, textureTarget,
                                    texture, level);
     AFTER_GL_CALL;
-    if (mNeedsCheckAfterAttachTextureToFb) {
-      fCheckFramebufferStatus(target);
-    }
   }
 
   void fFramebufferTextureLayer(GLenum target, GLenum attachment,
@@ -3545,7 +3572,7 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
   virtual GLenum GetPreferredARGB32Format() const { return LOCAL_GL_RGBA; }
 
   virtual GLenum GetPreferredEGLImageTextureTarget() const {
-#ifdef MOZ_WAYLAND
+#ifdef MOZ_WIDGET_GTK
     return LOCAL_GL_TEXTURE_2D;
 #else
     return IsExtensionSupported(OES_EGL_image_external)
@@ -3659,7 +3686,6 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
   bool mNeedsTextureSizeChecks = false;
   bool mNeedsFlushBeforeDeleteFB = false;
   bool mTextureAllocCrashesOnMapFailure = false;
-  bool mNeedsCheckAfterAttachTextureToFb = false;
   const bool mWorkAroundDriverBugs;
   mutable uint64_t mSyncGLCallCount = 0;
 
@@ -3857,6 +3883,30 @@ class Texture final {
     const RefPtr<GLContext> gl = weakGl.get();
     if (!gl || !gl->MakeCurrent()) return;
     gl->fDeleteTextures(1, &name);
+  }
+};
+
+// -
+
+class Sampler final {
+ public:
+  const WeakPtr<GLContext> weakGl;
+  const GLuint name;
+
+ private:
+  static GLuint Create(GLContext& gl) {
+    GLuint ret = 0;
+    gl.fGenSamplers(1, &ret);
+    return ret;
+  }
+
+ public:
+  explicit Sampler(GLContext& gl) : weakGl(&gl), name(Create(gl)) {}
+
+  ~Sampler() {
+    const RefPtr<GLContext> gl = weakGl.get();
+    if (!gl || !gl->MakeCurrent()) return;
+    gl->fDeleteSamplers(1, &name);
   }
 };
 

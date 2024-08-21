@@ -728,11 +728,17 @@ bool ProcessGeneric(ots::FontFile *header,
   ots::Table *loca = font->GetTable(OTS_TAG_LOCA);
   ots::Table *cff  = font->GetTable(OTS_TAG_CFF);
   ots::Table *cff2 = font->GetTable(OTS_TAG_CFF2);
+  ots::OpenTypeMAXP *maxp = static_cast<ots::OpenTypeMAXP*>(
+    font->GetTypedTable(OTS_TAG_MAXP));
 
   if (glyf && loca) {
     if (font->version != 0x000010000) {
       OTS_WARNING_MSG_HDR("wrong sfntVersion for glyph data");
       font->version = 0x000010000;
+    }
+    if (!maxp->version_1) {
+      return OTS_FAILURE_MSG_TAG("wrong maxp version for glyph data",
+                                 OTS_TAG_MAXP);
     }
     if (cff)
        cff->Drop("font contains both CFF and glyf/loca tables");
@@ -747,6 +753,10 @@ bool ProcessGeneric(ots::FontFile *header,
        glyf->Drop("font contains both CFF and glyf tables");
     if (loca)
        loca->Drop("font contains both CFF and loca tables");
+    if (maxp->version_1) {
+      OTS_WARNING_MSG_HDR("fixing incorrect maxp version for CFF font");
+      maxp->version_1 = false;
+    }
   } else if (font->GetTable(OTS_TAG('C','B','D','T')) &&
              font->GetTable(OTS_TAG('C','B','L','C'))) {
       // We don't sanitize bitmap tables, but don’t reject bitmap-only fonts if

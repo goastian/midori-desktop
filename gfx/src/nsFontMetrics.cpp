@@ -130,6 +130,7 @@ nsFontMetrics::nsFontMetrics(const nsFont& aFont, const Params& aParams,
                      aFont.synthesisWeight == StyleFontSynthesis::Auto,
                      aFont.synthesisStyle == StyleFontSynthesis::Auto,
                      aFont.synthesisSmallCaps == StyleFontSynthesis::Auto,
+                     aFont.synthesisPosition == StyleFontSynthesis::Auto,
                      aFont.languageOverride);
 
   aFont.AddFontFeaturesToStyle(&style, mOrientation == eVertical);
@@ -154,8 +155,8 @@ nsFontMetrics::~nsFontMetrics() {
 void nsFontMetrics::Destroy() { mPresContext = nullptr; }
 
 // XXXTODO get rid of this macro
-#define ROUND_TO_TWIPS(x) (nscoord) floor(((x)*mP2A) + 0.5)
-#define CEIL_TO_TWIPS(x) (nscoord) ceil((x)*mP2A)
+#define ROUND_TO_TWIPS(x) (nscoord) floor(((x) * mP2A) + 0.5)
+#define CEIL_TO_TWIPS(x) (nscoord) ceil((x) * mP2A)
 
 static const gfxFont::Metrics& GetMetrics(
     const nsFontMetrics* aFontMetrics,
@@ -333,7 +334,8 @@ void nsFontMetrics::DrawString(const char* aString, uint32_t aLength,
       pt.x += textRun->GetAdvanceWidth(range, &provider);
     }
   }
-  gfxTextRun::DrawParams params(aContext);
+  mozilla::gfx::PaletteCache paletteCache;
+  gfxTextRun::DrawParams params(aContext, paletteCache);
   params.provider = &provider;
   textRun->Draw(range, pt, params);
 }
@@ -358,7 +360,8 @@ void nsFontMetrics::DrawString(
       pt.x += textRun->GetAdvanceWidth(range, &provider);
     }
   }
-  gfxTextRun::DrawParams params(aContext);
+  mozilla::gfx::PaletteCache paletteCache;
+  gfxTextRun::DrawParams params(aContext, paletteCache);
   params.provider = &provider;
   textRun->Draw(range, pt, params);
 }

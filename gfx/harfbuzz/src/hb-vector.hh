@@ -37,6 +37,8 @@ template <typename Type,
 	  bool sorted=false>
 struct hb_vector_t
 {
+  static constexpr bool realloc_move = true;
+
   typedef Type item_t;
   static constexpr unsigned item_size = hb_static_size (Type);
   using array_t = typename std::conditional<sorted, hb_sorted_array_t<Type>, hb_array_t<Type>>::type;
@@ -54,7 +56,7 @@ struct hb_vector_t
   hb_vector_t (const Iterable &o) : hb_vector_t ()
   {
     auto iter = hb_iter (o);
-    if (iter.is_random_access_iterator)
+    if (iter.is_random_access_iterator || iter.has_fast_len)
       alloc (hb_len (iter), true);
     hb_copy (iter, *this);
   }
@@ -62,9 +64,21 @@ struct hb_vector_t
   {
     alloc (o.length, true);
     if (unlikely (in_error ())) return;
-    copy_vector (o);
+    copy_array (o.as_array ());
   }
-  hb_vector_t (hb_vector_t &&o)
+  hb_vector_t (array_t o) : hb_vector_t ()
+  {
+    alloc (o.length, true);
+    if (unlikely (in_error ())) return;
+    copy_array (o);
+  }
+  hb_vector_t (c_array_t o) : hb_vector_t ()
+  {
+    alloc (o.length, true);
+    if (unlikely (in_error ())) return;
+    copy_array (o);
+  }
+  hb_vector_t (hb_vector_t &&o) noexcept
   {
     allocated = o.allocated;
     length = o.length;
@@ -74,7 +88,7 @@ struct hb_vector_t
   ~hb_vector_t () { fini (); }
 
   public:
-  int allocated = 0; /* == -1 means allocation failed. */
+  int allocated = 0; /* < 0 means allocation failed. */
   unsigned int length = 0;
   public:
   Type *arrayZ = nullptr;
@@ -90,23 +104,25 @@ struct hb_vector_t
 
   void fini ()
   {
-    shrink_vector (0);
-    hb_free (arrayZ);
+    /* We allow a hack to make the vector point to a foreign array
+     * by the user. In that case length/arrayZ are non-zero but
+     * allocated is zero. Don't free anything. */
+    if (allocated)
+    {
+      shrink_vector (0);
+      hb_free (arrayZ);
+    }
     init ();
   }
 
   void reset ()
   {
     if (unlikely (in_error ()))
-      /* Big Hack! We don't know the true allocated size before
-       * an allocation failure happened. But we know it was at
-       * least as big as length. Restore it to that and continue
-       * as if error did not happen. */
-      allocated = length;
+      reset_error ();
     resize (0);
   }
 
-  friend void swap (hb_vector_t& a, hb_vector_t& b)
+  friend void swap (hb_vector_t& a, hb_vector_t& b) noexcept
   {
     hb_swap (a.allocated, b.allocated);
     hb_swap (a.length, b.length);
@@ -119,11 +135,11 @@ struct hb_vector_t
     alloc (o.length, true);
     if (unlikely (in_error ())) return *this;
 
-    copy_vector (o);
+    copy_array (o.as_array ());
 
     return *this;
   }
-  hb_vector_t& operator = (hb_vector_t &&o)
+  hb_vector_t& operator = (hb_vector_t &&o) noexcept
   {
     hb_swap (*this, o);
     return *this;
@@ -191,47 +207,38 @@ struct hb_vector_t
   Type *push ()
   {
     if (unlikely (!resize (length + 1)))
-      return &Crap (Type);
+      return std::addressof (Crap (Type));
     return std::addressof (arrayZ[length - 1]);
   }
-  template <typename T,
-	    typename T2 = Type,
-	    hb_enable_if (!std::is_copy_constructible<T2>::value &&
-			  std::is_copy_assignable<T>::value)>
-  Type *push (T&& v)
+  template <typename... Args> Type *push (Args&&... args)
   {
-    Type *p = push ();
-    if (p == &Crap (Type))
+    if (unlikely ((int) length >= allocated && !alloc (length + 1)))
       // If push failed to allocate then don't copy v, since this may cause
       // the created copy to leak memory since we won't have stored a
       // reference to it.
-      return p;
-    *p = std::forward<T> (v);
-    return p;
-  }
-  template <typename T,
-	    typename T2 = Type,
-	    hb_enable_if (std::is_copy_constructible<T2>::value)>
-  Type *push (T&& v)
-  {
-    if (unlikely (!alloc (length + 1)))
-      // If push failed to allocate then don't copy v, since this may cause
-      // the created copy to leak memory since we won't have stored a
-      // reference to it.
-      return &Crap (Type);
+      return std::addressof (Crap (Type));
 
     /* Emplace. */
-    length++;
-    Type *p = std::addressof (arrayZ[length - 1]);
-    return new (p) Type (std::forward<T> (v));
+    Type *p = std::addressof (arrayZ[length++]);
+    return new (p) Type (std::forward<Args> (args)...);
   }
 
   bool in_error () const { return allocated < 0; }
+  void set_error ()
+  {
+    assert (allocated >= 0);
+    allocated = -allocated - 1;
+  }
+  void reset_error ()
+  {
+    assert (allocated < 0);
+    allocated = -(allocated + 1);
+  }
 
   template <typename T = Type,
 	    hb_enable_if (hb_is_trivially_copy_assignable(T))>
   Type *
-  realloc_vector (unsigned new_allocated)
+  realloc_vector (unsigned new_allocated, hb_priority<0>)
   {
     if (!new_allocated)
     {
@@ -243,7 +250,7 @@ struct hb_vector_t
   template <typename T = Type,
 	    hb_enable_if (!hb_is_trivially_copy_assignable(T))>
   Type *
-  realloc_vector (unsigned new_allocated)
+  realloc_vector (unsigned new_allocated, hb_priority<0>)
   {
     if (!new_allocated)
     {
@@ -263,31 +270,51 @@ struct hb_vector_t
     }
     return new_array;
   }
+  /* Specialization for types that can be moved using realloc(). */
+  template <typename T = Type,
+	    hb_enable_if (T::realloc_move)>
+  Type *
+  realloc_vector (unsigned new_allocated, hb_priority<1>)
+  {
+    if (!new_allocated)
+    {
+      hb_free (arrayZ);
+      return nullptr;
+    }
+    return (Type *) hb_realloc (arrayZ, new_allocated * sizeof (Type));
+  }
 
   template <typename T = Type,
 	    hb_enable_if (hb_is_trivially_constructible(T))>
   void
-  grow_vector (unsigned size)
+  grow_vector (unsigned size, hb_priority<0>)
   {
-    memset (arrayZ + length, 0, (size - length) * sizeof (*arrayZ));
+    hb_memset (arrayZ + length, 0, (size - length) * sizeof (*arrayZ));
     length = size;
   }
   template <typename T = Type,
 	    hb_enable_if (!hb_is_trivially_constructible(T))>
   void
-  grow_vector (unsigned size)
+  grow_vector (unsigned size, hb_priority<0>)
   {
-    while (length < size)
-    {
-      length++;
-      new (std::addressof (arrayZ[length - 1])) Type ();
-    }
+    for (; length < size; length++)
+      new (std::addressof (arrayZ[length])) Type ();
+  }
+  /* Specialization for hb_vector_t<hb_{vector,array}_t<U>> to speed up. */
+  template <typename T = Type,
+	    hb_enable_if (hb_is_same (T, hb_vector_t<typename T::item_t>) ||
+			  hb_is_same (T, hb_array_t <typename T::item_t>))>
+  void
+  grow_vector (unsigned size, hb_priority<1>)
+  {
+    hb_memset (arrayZ + length, 0, (size - length) * sizeof (*arrayZ));
+    length = size;
   }
 
   template <typename T = Type,
 	    hb_enable_if (hb_is_trivially_copyable (T))>
   void
-  copy_vector (const hb_vector_t &other)
+  copy_array (hb_array_t<const Type> other)
   {
     length = other.length;
     if (!HB_OPTIMIZE_SIZE_VAL && sizeof (T) >= sizeof (long long))
@@ -301,7 +328,7 @@ struct hb_vector_t
 	    hb_enable_if (!hb_is_trivially_copyable (T) &&
 			   std::is_copy_constructible<T>::value)>
   void
-  copy_vector (const hb_vector_t &other)
+  copy_array (hb_array_t<const Type> other)
   {
     length = 0;
     while (length < other.length)
@@ -316,7 +343,7 @@ struct hb_vector_t
 			  std::is_default_constructible<T>::value &&
 			  std::is_copy_assignable<T>::value)>
   void
-  copy_vector (const hb_vector_t &other)
+  copy_array (hb_array_t<const Type> other)
   {
     length = 0;
     while (length < other.length)
@@ -330,11 +357,15 @@ struct hb_vector_t
   void
   shrink_vector (unsigned size)
   {
-    while ((unsigned) length > size)
+    assert (size <= length);
+    if (!std::is_trivially_destructible<Type>::value)
     {
-      arrayZ[(unsigned) length - 1].~Type ();
-      length--;
+      unsigned count = length - size;
+      Type *p = arrayZ + length - 1;
+      while (count--)
+        p--->~Type ();
     }
+    length = size;
   }
 
   void
@@ -381,18 +412,18 @@ struct hb_vector_t
 
     if (unlikely (overflows))
     {
-      allocated = -1;
+      set_error ();
       return false;
     }
 
-    Type *new_array = realloc_vector (new_allocated);
+    Type *new_array = realloc_vector (new_allocated, hb_prioritize);
 
     if (unlikely (new_allocated && !new_array))
     {
       if (new_allocated <= (unsigned) allocated)
         return true; // shrinking failed; it's okay; happens in our fuzzer
 
-      allocated = -1;
+      set_error ();
       return false;
     }
 
@@ -411,7 +442,7 @@ struct hb_vector_t
     if (size > length)
     {
       if (initialize)
-	grow_vector (size);
+	grow_vector (size, hb_prioritize);
     }
     else if (size < length)
     {
@@ -430,7 +461,7 @@ struct hb_vector_t
   Type pop ()
   {
     if (!length) return Null (Type);
-    Type v {std::move (arrayZ[length - 1])};
+    Type v (std::move (arrayZ[length - 1]));
     arrayZ[length - 1].~Type ();
     length--;
     return v;

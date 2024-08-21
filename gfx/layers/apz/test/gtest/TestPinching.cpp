@@ -135,10 +135,9 @@ class APZCPinchGestureDetectorTester : public APZCPinchTester {
     MakeApzcWaitForMainThread();
     MakeApzcZoomable();
 
-    int touchInputId = 0;
     uint64_t blockId = 0;
-    PinchWithTouchInput(apzc, ScreenIntPoint(250, 300), 1.25, touchInputId,
-                        nullptr, nullptr, &blockId);
+    PinchWithTouchInput(apzc, ScreenIntPoint(250, 300), 1.25,
+                        PinchOptions().OutInputBlockId(&blockId));
 
     // Send the prevent-default notification for the touch block
     apzc->ContentReceivedInputBlock(blockId, true);
@@ -270,6 +269,30 @@ TEST_F(APZCPinchGestureDetectorTester,
   DoPinchTest(false, &behaviors);
 }
 
+TEST_F(
+    APZCPinchGestureDetectorTester,
+    Pinch_UseGestureDetector_TouchActionPanY_APZZoom_When_ForceUserScalable) {
+  SCOPED_GFX_PREF_BOOL("browser.ui.zoom.force-user-scalable", true);
+
+  nsTArray<uint32_t> behaviors = {
+      mozilla::layers::AllowedTouchBehavior::VERTICAL_PAN,
+      mozilla::layers::AllowedTouchBehavior::VERTICAL_PAN};
+  DoPinchTest(true, &behaviors);
+}
+
+TEST_F(
+    APZCPinchGestureDetectorTester,
+    Pinch_UseGestureDetector_TouchActionNone_NoAPZZoom_When_ForceUserScalable) {
+  SCOPED_GFX_PREF_BOOL("browser.ui.zoom.force-user-scalable", true);
+
+  EXPECT_CALL(*mcc, NotifyPinchGesture(_, _, _, _, _)).Times(0);
+  nsTArray<uint32_t> behaviors = {
+      {mozilla::layers::AllowedTouchBehavior::NONE,
+       mozilla::layers::AllowedTouchBehavior::NONE},
+  };
+  DoPinchTest(false, &behaviors);
+}
+
 TEST_F(APZCPinchGestureDetectorTester, Pinch_PreventDefault) {
   DoPinchWithPreventDefaultTest();
 }
@@ -292,10 +315,8 @@ TEST_F(APZCPinchGestureDetectorTester, Panning_TwoFingerFling_ZoomDisabled) {
   MakeApzcUnzoomable();
 
   // Perform a two finger pan
-  int touchInputId = 0;
-  uint64_t blockId = 0;
-  PinchWithTouchInput(apzc, ScreenIntPoint(100, 200), ScreenIntPoint(100, 100),
-                      1, touchInputId, nullptr, nullptr, &blockId);
+  PinchWithTouchInput(apzc, ScreenIntPoint(100, 200), 1,
+                      PinchOptions().SecondFocus(ScreenIntPoint(100, 100)));
 
   // Expect to be in a flinging state
   apzc->AssertStateIsFling();
@@ -308,12 +329,11 @@ TEST_F(APZCPinchGestureDetectorTester, Pinch_DoesntFling_ZoomDisabled) {
   MakeApzcUnzoomable();
 
   // Perform a pinch
-  int touchInputId = 0;
-  uint64_t blockId = 0;
-
-  PinchWithTouchInput(apzc, ScreenIntPoint(100, 200), ScreenIntPoint(100, 100),
-                      2, touchInputId, nullptr, nullptr, &blockId,
-                      PinchOptions::LiftFinger2, true);
+  PinchWithTouchInput(apzc, ScreenIntPoint(100, 200), 2,
+                      PinchOptions()
+                          .Flags(PinchFlags::LiftFinger2)
+                          .Vertical(true)
+                          .SecondFocus(ScreenIntPoint(100, 100)));
 
   // Lift second finger after a pause
   mcc->AdvanceBy(TimeDuration::FromMilliseconds(50));
@@ -330,10 +350,8 @@ TEST_F(APZCPinchGestureDetectorTester, Panning_TwoFingerFling_ZoomEnabled) {
   MakeApzcZoomable();
 
   // Perform a two finger pan
-  int touchInputId = 0;
-  uint64_t blockId = 0;
-  PinchWithTouchInput(apzc, ScreenIntPoint(100, 200), ScreenIntPoint(100, 100),
-                      1, touchInputId, nullptr, nullptr, &blockId);
+  PinchWithTouchInput(apzc, ScreenIntPoint(100, 200), 1,
+                      PinchOptions().SecondFocus(ScreenIntPoint(100, 100)));
 
   // Expect to NOT be in flinging state
   apzc->AssertStateIsReset();
@@ -347,11 +365,10 @@ TEST_F(APZCPinchGestureDetectorTester,
   MakeApzcZoomable();
 
   // Perform a two finger pan lifting only the first finger
-  int touchInputId = 0;
-  uint64_t blockId = 0;
-  PinchWithTouchInput(apzc, ScreenIntPoint(100, 200), ScreenIntPoint(100, 100),
-                      1, touchInputId, nullptr, nullptr, &blockId,
-                      PinchOptions::LiftFinger2);
+  PinchWithTouchInput(apzc, ScreenIntPoint(100, 200), 1,
+                      PinchOptions()
+                          .Flags(PinchFlags::LiftFinger2)
+                          .SecondFocus(ScreenIntPoint(100, 100)));
 
   // Lift second finger after a pause
   mcc->AdvanceBy(TimeDuration::FromMilliseconds(50));
@@ -370,11 +387,10 @@ TEST_F(APZCPinchGestureDetectorTester,
   MakeApzcUnzoomable();
 
   // Perform a two finger pan lifting only the first finger
-  int touchInputId = 0;
-  uint64_t blockId = 0;
-  PinchWithTouchInput(apzc, ScreenIntPoint(100, 200), ScreenIntPoint(100, 100),
-                      1, touchInputId, nullptr, nullptr, &blockId,
-                      PinchOptions::LiftFinger2);
+  PinchWithTouchInput(apzc, ScreenIntPoint(100, 200), 1,
+                      PinchOptions()
+                          .Flags(PinchFlags::LiftFinger2)
+                          .SecondFocus(ScreenIntPoint(100, 100)));
 
   // Lift second finger after a pause
   mcc->AdvanceBy(TimeDuration::FromMilliseconds(50));
@@ -511,10 +527,7 @@ TEST_F(APZCPinchGestureDetectorTester, Pinch_APZZoom_Disabled) {
                                  apzc->GetGuid(), _, LayoutDeviceCoord(0), _))
       .Times(1);
 
-  int touchInputId = 0;
-  uint64_t blockId = 0;
-  PinchWithTouchInput(apzc, ScreenIntPoint(250, 300), 1.25, touchInputId,
-                      nullptr, nullptr, &blockId);
+  PinchWithTouchInput(apzc, ScreenIntPoint(250, 300), 1.25);
 
   // verify the metrics didn't change (i.e. the pinch was ignored inside APZ)
   FrameMetrics fm = apzc->GetFrameMetrics();

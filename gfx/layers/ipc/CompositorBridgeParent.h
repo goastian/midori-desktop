@@ -11,10 +11,11 @@
 #include <unordered_map>
 #include "mozilla/Assertions.h"  // for MOZ_ASSERT_HELPER2
 #include "mozilla/Maybe.h"
-#include "mozilla/Monitor.h"    // for Monitor
-#include "mozilla/RefPtr.h"     // for RefPtr
-#include "mozilla/TimeStamp.h"  // for TimeStamp
-#include "mozilla/gfx/Point.h"  // for IntSize
+#include "mozilla/Monitor.h"        // for Monitor
+#include "mozilla/RefPtr.h"         // for RefPtr
+#include "mozilla/StaticMonitor.h"  // for StaticMonitor
+#include "mozilla/TimeStamp.h"      // for TimeStamp
+#include "mozilla/gfx/Point.h"      // for IntSize
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/ipc/SharedMemory.h"
 #include "mozilla/layers/CompositorController.h"
@@ -23,6 +24,7 @@
 #include "mozilla/layers/ISurfaceAllocator.h"  // for IShmemAllocator
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/layers/PCompositorBridgeParent.h"
+#include "mozilla/layers/APZInputBridgeParent.h"
 #include "mozilla/webrender/WebRenderTypes.h"
 
 namespace mozilla {
@@ -120,9 +122,7 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
 
   mozilla::ipc::IPCResult Recv__delete__() override { return IPC_OK(); }
 
-  virtual void ObserveLayersUpdate(LayersId aLayersId,
-                                   LayersObserverEpoch aEpoch,
-                                   bool aActive) = 0;
+  virtual void ObserveLayersUpdate(LayersId aLayersId, bool aActive) = 0;
 
   // HostIPCAllocator
   base::ProcessId GetChildProcessId() override;
@@ -144,11 +144,6 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
     return HostIPCAllocator::Release();
   }
   virtual bool IsRemote() const { return false; }
-
-  virtual UniquePtr<SurfaceDescriptor> LookupSurfaceDescriptorForClientTexture(
-      const int64_t aTextureId) {
-    MOZ_CRASH("Should only be called on ContentCompositorBridgeParent.");
-  }
 
   virtual void NotifyMemoryPressure() {}
   virtual void AccumulateMemoryReport(wr::MemoryReport*) {}
@@ -215,9 +210,6 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
       const uint32_t& startIndex, nsTArray<float>* intervals) = 0;
   virtual mozilla::ipc::IPCResult RecvCheckContentOnlyTDR(
       const uint32_t& sequenceNum, bool* isContentOnlyTDR) = 0;
-  virtual mozilla::ipc::IPCResult RecvInitPCanvasParent(
-      Endpoint<PCanvasParent>&& aEndpoint) = 0;
-  virtual mozilla::ipc::IPCResult RecvReleasePCanvasParent() = 0;
 
   bool mCanSend;
 
@@ -329,11 +321,6 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
       const wr::MaybeExternalImageId& aExternalImageId) override;
   bool DeallocPTextureParent(PTextureParent* actor) override;
 
-  mozilla::ipc::IPCResult RecvInitPCanvasParent(
-      Endpoint<PCanvasParent>&& aEndpoint) final;
-
-  mozilla::ipc::IPCResult RecvReleasePCanvasParent() final;
-
   bool IsSameProcess() const override;
 
   void NotifyWebRenderDisableNativeCompositor();
@@ -355,8 +342,7 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
       const CompositorWidgetInitData& aInitData) override;
   bool DeallocPCompositorWidgetParent(PCompositorWidgetParent* aActor) override;
 
-  void ObserveLayersUpdate(LayersId aLayersId, LayersObserverEpoch aEpoch,
-                           bool aActive) override {}
+  void ObserveLayersUpdate(LayersId aLayersId, bool aActive) override {}
 
   /**
    * This forces the is-first-paint flag to true. This is intended to
@@ -409,6 +395,10 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
     ~LayerTreeState();
     RefPtr<GeckoContentController> mController;
     APZCTreeManagerParent* mApzcTreeManagerParent;
+    // The mApzInputBridgeParent is only populated for LayerTreeState
+    // objects corresponding to root LayerIds (one for each top-level
+    // window).
+    APZInputBridgeParent* mApzInputBridgeParent;
     RefPtr<CompositorBridgeParent> mParent;
     RefPtr<WebRenderBridgeParent> mWrBridge;
     // Pointer to the ContentCompositorBridgeParent. Used by APZCs to share
@@ -453,6 +443,13 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
       LayersId aContentLayersId);
 
   /**
+   * Same as the GetApzcTreeManagerParentForRoot function, but returns
+   * the APZInputBridge for the parent process.
+   */
+  static APZInputBridgeParent* GetApzInputBridgeParentForRoot(
+      LayersId aContentLayersId);
+
+  /**
    * Used by the profiler to denote when a vsync occured
    */
   static void PostInsertVsyncProfilerMarker(mozilla::TimeStamp aVsyncTimestamp);
@@ -466,8 +463,11 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
   // Helper method so that we don't have to expose mApzcTreeManager to
   // ContentCompositorBridgeParent.
   void AllocateAPZCTreeManagerParent(
-      const MonitorAutoLock& aProofOfLayerTreeStateLock,
+      const StaticMonitorAutoLock& aProofOfLayerTreeStateLock,
       const LayersId& aLayersId, LayerTreeState& aLayerTreeStateToUpdate);
+
+  static void SetAPZInputBridgeParent(const LayersId& aLayersId,
+                                      APZInputBridgeParent* aInputBridgeParent);
 
   PAPZParent* AllocPAPZParent(const LayersId& aLayersId) override;
   bool DeallocPAPZParent(PAPZParent* aActor) override;
@@ -566,23 +566,16 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
   void PauseComposition();
   bool ResumeComposition();
   bool ResumeCompositionAndResize(int x, int y, int width, int height);
-  bool IsPaused() { return mPaused; }
+  bool IsPaused();
+
+  typedef std::map<LayersId, CompositorBridgeParent::LayerTreeState>
+      LayerTreeMap;
+
+  static StaticMonitor sIndirectLayerTreesLock;
+  static LayerTreeMap sIndirectLayerTrees
+      MOZ_GUARDED_BY(sIndirectLayerTreesLock);
 
  protected:
-  /**
-   * Add a compositor to the global compositor map.
-   */
-  static void AddCompositor(CompositorBridgeParent* compositor, uint64_t* id);
-  /**
-   * Remove a compositor from the global compositor map.
-   */
-  static CompositorBridgeParent* RemoveCompositor(uint64_t id);
-
-  /**
-   * Creates the global compositor map.
-   */
-  static void Setup();
-
   /**
    * Remaning cleanups after the compositore thread is gone.
    */
@@ -617,7 +610,6 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
 
   CompositorOptions mOptions;
 
-  uint64_t mCompositorBridgeID;
   LayersId mRootLayerTreeID;
 
   RefPtr<APZCTreeManager> mApzcTreeManager;

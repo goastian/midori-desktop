@@ -30,6 +30,7 @@
 #  ifdef MOZ_WIDGET_ANDROID
 #    include <android/native_window.h>
 #    include <android/native_window_jni.h>
+#    include "mozilla/jni/Utils.h"
 #    include "mozilla/widget/AndroidCompositorWidget.h"
 #  endif
 
@@ -94,21 +95,22 @@ namespace gl {
 using namespace mozilla::widget;
 
 #if defined(MOZ_WAYLAND)
-class SavedGLSurface {
+class WaylandOffscreenGLSurface {
  public:
-  SavedGLSurface(struct wl_surface* aWaylandSurface,
-                 struct wl_egl_window* aEGLWindow);
-  ~SavedGLSurface();
+  WaylandOffscreenGLSurface(struct wl_surface* aWaylandSurface,
+                            struct wl_egl_window* aEGLWindow);
+  ~WaylandOffscreenGLSurface();
 
  private:
   struct wl_surface* mWaylandSurface = nullptr;
   struct wl_egl_window* mEGLWindow = nullptr;
 };
 
-static nsTHashMap<nsPtrHashKey<void>, SavedGLSurface*> sSavedGLSurfaces;
+static nsTHashMap<nsPtrHashKey<void>, WaylandOffscreenGLSurface*>
+    sWaylandOffscreenGLSurfaces;
 
-void DeleteSavedGLSurface(EGLSurface surface) {
-  auto entry = sSavedGLSurfaces.Lookup(surface);
+void DeleteWaylandOffscreenGLSurface(EGLSurface surface) {
+  auto entry = sWaylandOffscreenGLSurfaces.Lookup(surface);
   if (entry) {
     delete entry.Data();
     entry.Remove();
@@ -147,17 +149,6 @@ static bool is_power_of_two(int v) {
   if (v == 0) return true;
 
   return (v & (v - 1)) == 0;
-}
-
-static void DestroySurface(EglDisplay& egl, const EGLSurface oldSurface) {
-  if (oldSurface != EGL_NO_SURFACE) {
-    // TODO: This breaks TLS MakeCurrent caching.
-    egl.fMakeCurrent(EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    egl.fDestroySurface(oldSurface);
-#if defined(MOZ_WAYLAND)
-    DeleteSavedGLSurface(oldSurface);
-#endif
-  }
 }
 
 static EGLSurface CreateFallbackSurface(EglDisplay& egl,
@@ -255,7 +246,7 @@ already_AddRefed<GLContext> GLContextEGLFactory::CreateImpl(
       gfxCriticalNote << "Failed to create EGLConfig for WebRender ANGLE!";
       return nullptr;
     }
-  } else if (kIsWayland || kIsX11) {
+  } else if (kIsLinux) {
     const int bpp = 32;
     if (!CreateConfig(*egl, &config, bpp, false, aUseGles)) {
       gfxCriticalNote << "Failed to create EGLConfig for WebRender!";
@@ -295,7 +286,7 @@ already_AddRefed<GLContext> GLContextEGLFactory::CreateImpl(
   if (!gl) {
     const auto err = egl->mLib->fGetError();
     gfxCriticalNote << "Failed to create EGLContext!: " << gfx::hexa(err);
-    mozilla::gl::DestroySurface(*egl, surface);
+    GLContextEGL::DestroySurface(*egl, surface);
     return nullptr;
   }
 
@@ -346,23 +337,29 @@ EGLSurface GLContextEGL::CreateEGLSurfaceForCompositorWidget(
   }
 
   MOZ_ASSERT(aCompositorWidget);
-#ifdef MOZ_WAYLAND
-  // RenderCompositorEGL does not like EGL_NO_SURFACE as it fallbacks
-  // to SW rendering or claims itself as paused.
-  // In case we're missing valid native window because aCompositorWidget hidden,
-  // just create a fallback EGLSurface.
-  // Actual EGLSurface will be created by widget code later when
-  // aCompositorWidget becomes visible.
-  if (widget::GdkIsWaylandDisplay() && aCompositorWidget->IsHidden()) {
-    mozilla::gfx::IntSize pbSize(16, 16);
-    return CreateWaylandBufferSurface(*egl, aConfig, pbSize);
-  }
-#endif
   EGLNativeWindowType window =
       GET_NATIVE_WINDOW_FROM_COMPOSITOR_WIDGET(aCompositorWidget);
   if (!window) {
+#ifdef MOZ_WIDGET_GTK
+    // RenderCompositorEGL does not like EGL_NO_SURFACE as it fallbacks
+    // to SW rendering or claims itself as paused.
+    // In case we're missing valid native window because aCompositorWidget
+    // hidden, just create a fallback EGLSurface. Actual EGLSurface will be
+    // created by widget code later when aCompositorWidget becomes visible.
+    mozilla::gfx::IntSize pbSize(16, 16);
+#  ifdef MOZ_WAYLAND
+    if (GdkIsWaylandDisplay()) {
+      return CreateWaylandOffscreenSurface(*egl, aConfig, pbSize);
+    } else
+#  endif
+    {
+      return CreatePBufferSurfaceTryingPowerOfTwo(*egl, aConfig, LOCAL_EGL_NONE,
+                                                  pbSize);
+    }
+#else
     gfxCriticalNote << "window is null";
     return EGL_NO_SURFACE;
+#endif
   }
 
   return mozilla::gl::CreateSurfaceFromNativeWindow(*egl, window, aConfig);
@@ -404,8 +401,8 @@ GLContextEGL::~GLContextEGL() {
 
   mEgl->fDestroyContext(mContext);
 
-  mozilla::gl::DestroySurface(*mEgl, mSurface);
-  mozilla::gl::DestroySurface(*mEgl, mFallbackSurface);
+  DestroySurface(*mEgl, mSurface);
+  DestroySurface(*mEgl, mFallbackSurface);
 }
 
 bool GLContextEGL::Init() {
@@ -421,6 +418,15 @@ bool GLContextEGL::Init() {
       mEgl->HasKHRImageBase() &&
       mEgl->IsExtensionSupported(EGLExtension::KHR_gl_texture_2D_image) &&
       IsExtensionSupported(OES_EGL_image);
+
+#if MOZ_WIDGET_ANDROID
+  // We see crashes in eglTerminate on devices with Xclipse GPUs running
+  // Android 14. Choose to leak the EGLDisplays in order to avoid the crashes.
+  // See bug 1868825 and bug 1903810.
+  if (Renderer() == GLRenderer::SamsungXclipse && jni::GetAPIVersion() >= 34) {
+    mEgl->SetShouldLeakEGLDisplay();
+  }
+#endif
 
   return true;
 }
@@ -496,16 +502,6 @@ bool GLContextEGL::RenewSurface(CompositorWidget* aWidget) {
 
   EGLNativeWindowType nativeWindow =
       GET_NATIVE_WINDOW_FROM_COMPOSITOR_WIDGET(aWidget);
-#ifdef MOZ_WAYLAND
-  // In case we're missing native window on Wayland CompositorWidget is hidden.
-  // Don't create a fallback EGL surface but fails here.
-  // We need to repeat RenewSurface() when native window is available
-  // (CompositorWidget becomes visible).
-  if (GdkIsWaylandDisplay()) {
-    NS_WARNING("Failed to get native window");
-    return false;
-  }
-#endif
   if (nativeWindow) {
     mSurface = mozilla::gl::CreateSurfaceFromNativeWindow(*mEgl, nativeWindow,
                                                           mSurfaceConfig);
@@ -527,7 +523,7 @@ bool GLContextEGL::RenewSurface(CompositorWidget* aWidget) {
 
 void GLContextEGL::ReleaseSurface() {
   if (mOwnsContext) {
-    mozilla::gl::DestroySurface(*mEgl, mSurface);
+    DestroySurface(*mEgl, mSurface);
   }
   if (mSurface == mSurfaceOverride) {
     mSurfaceOverride = EGL_NO_SURFACE;
@@ -825,11 +821,11 @@ TRY_AGAIN_POWER_OF_TWO:
 }
 
 #if defined(MOZ_WAYLAND)
-SavedGLSurface::SavedGLSurface(struct wl_surface* aWaylandSurface,
-                               struct wl_egl_window* aEGLWindow)
+WaylandOffscreenGLSurface::WaylandOffscreenGLSurface(
+    struct wl_surface* aWaylandSurface, struct wl_egl_window* aEGLWindow)
     : mWaylandSurface(aWaylandSurface), mEGLWindow(aEGLWindow) {}
 
-SavedGLSurface::~SavedGLSurface() {
+WaylandOffscreenGLSurface::~WaylandOffscreenGLSurface() {
   if (mEGLWindow) {
     wl_egl_window_destroy(mEGLWindow);
   }
@@ -839,7 +835,7 @@ SavedGLSurface::~SavedGLSurface() {
 }
 
 // static
-EGLSurface GLContextEGL::CreateWaylandBufferSurface(
+EGLSurface GLContextEGL::CreateWaylandOffscreenSurface(
     EglDisplay& egl, EGLConfig config, mozilla::gfx::IntSize& pbsize) {
   wl_egl_window* eglwindow = nullptr;
 
@@ -852,9 +848,9 @@ EGLSurface GLContextEGL::CreateWaylandBufferSurface(
   const auto surface = egl.fCreateWindowSurface(
       config, reinterpret_cast<EGLNativeWindowType>(eglwindow), 0);
   if (surface) {
-    MOZ_ASSERT(!sSavedGLSurfaces.Contains(surface));
-    sSavedGLSurfaces.LookupOrInsert(surface,
-                                    new SavedGLSurface(wlsurface, eglwindow));
+    MOZ_DIAGNOSTIC_ASSERT(!sWaylandOffscreenGLSurfaces.Contains(surface));
+    sWaylandOffscreenGLSurfaces.LookupOrInsert(
+        surface, new WaylandOffscreenGLSurface(wlsurface, eglwindow));
   }
   return surface;
 }
@@ -968,7 +964,7 @@ bool CreateConfig(EglDisplay& aEgl, EGLConfig* aConfig, int32_t aDepth,
     }
   }
 
-  if (kIsX11 && fallbackConfig) {
+  if (kIsLinux && fallbackConfig) {
     *aConfig = fallbackConfig.value();
     return true;
   }
@@ -984,7 +980,7 @@ bool CreateConfig(EglDisplay& aEgl, EGLConfig* aConfig, int32_t aDepth,
 static bool CreateConfigScreen(EglDisplay& egl, EGLConfig* const aConfig,
                                const bool aEnableDepthBuffer,
                                const bool aUseGles) {
-  int32_t depth = gfxVars::ScreenDepth();
+  int32_t depth = gfxVars::PrimaryScreenDepth();
   if (CreateConfig(egl, aConfig, depth, aEnableDepthBuffer, aUseGles)) {
     return true;
   }
@@ -1180,8 +1176,8 @@ RefPtr<GLContextEGL> GLContextEGL::CreateWithoutSurface(
     EGLSurface surface = nullptr;
 #ifdef MOZ_WAYLAND
     if (GdkIsWaylandDisplay()) {
-      surface = GLContextEGL::CreateWaylandBufferSurface(*egl, surfaceConfig,
-                                                         dummySize);
+      surface = GLContextEGL::CreateWaylandOffscreenSurface(*egl, surfaceConfig,
+                                                            dummySize);
     } else
 #endif
     {
@@ -1203,7 +1199,7 @@ RefPtr<GLContextEGL> GLContextEGL::CreateWithoutSurface(
       NS_WARNING("Failed to create GLContext from PBuffer");
       egl->fDestroySurface(surface);
 #if defined(MOZ_WAYLAND)
-      DeleteSavedGLSurface(surface);
+      DeleteWaylandOffscreenGLSurface(surface);
 #endif
       return nullptr;
     }
@@ -1224,6 +1220,23 @@ RefPtr<GLContextEGL> GLContextEGL::CreateWithoutSurface(
   }
 #endif  // !defined(MOZ_WIDGET_ANDROID)
   return gl;
+}
+
+/*static*/
+void GLContextEGL::DestroySurface(EglDisplay& aEgl, const EGLSurface aSurface) {
+  if (aSurface != EGL_NO_SURFACE) {
+    if (!aEgl.fMakeCurrent(EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+      const EGLint err = aEgl.mLib->fGetError();
+      gfxCriticalNote << "Error in eglMakeCurrent: " << gfx::hexa(err);
+    }
+    if (!aEgl.fDestroySurface(aSurface)) {
+      const EGLint err = aEgl.mLib->fGetError();
+      gfxCriticalNote << "Error in eglDestroySurface: " << gfx::hexa(err);
+    }
+#if defined(MOZ_WAYLAND)
+    DeleteWaylandOffscreenGLSurface(aSurface);
+#endif
+  }
 }
 
 /*static*/

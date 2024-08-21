@@ -37,6 +37,8 @@ class PathBuilderSkia : public PathBuilder {
 
   BackendType GetBackendType() const override { return BackendType::SKIA; }
 
+  bool IsActive() const override { return mPath.countPoints() > 0; }
+
   static already_AddRefed<PathBuilder> Create(FillRule aFillRule);
 
  private:
@@ -94,6 +96,8 @@ class PathSkia : public Path {
   bool GetFillPath(const StrokeOptions& aStrokeOptions,
                    const Matrix& aTransform, SkPath& aFillPath,
                    const Maybe<Rect>& aClipRect = Nothing()) const;
+
+  bool IsEmpty() const override;
 
  private:
   friend class DrawTargetSkia;

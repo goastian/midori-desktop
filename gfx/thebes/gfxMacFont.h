@@ -8,16 +8,16 @@
 
 #include "mozilla/MemoryReporting.h"
 #include "gfxFont.h"
-#include <ApplicationServices/ApplicationServices.h>
+#include <CoreText/CoreText.h>
 
 #include "mozilla/gfx/UnscaledFontMac.h"
 
-class MacOSFontEntry;
+class CTFontEntry;
 
 class gfxMacFont final : public gfxFont {
  public:
   gfxMacFont(const RefPtr<mozilla::gfx::UnscaledFontMac>& aUnscaledFont,
-             MacOSFontEntry* aFontEntry, const gfxFontStyle* aFontStyle);
+             CTFontEntry* aFontEntry, const gfxFontStyle* aFontStyle);
 
   CGFontRef GetCGFontRef() const { return mCGFont; }
 
@@ -83,7 +83,6 @@ class gfxMacFont final : public gfxFont {
   mozilla::UniquePtr<gfxFontShaper> mCoreTextShaper;
 
   Metrics mMetrics;
-  nscolor mFontSmoothingBackgroundColor;
 
   bool mVariationFont;  // true if font has OpenType variations
 };

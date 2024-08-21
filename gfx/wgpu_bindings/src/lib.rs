@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use crate::error::ErrorBufferType;
 use wgc::id;
 
-pub use wgc::command::{compute_ffi::*, render_ffi::*};
-
 pub mod client;
-pub mod identity;
+pub mod command;
+pub mod error;
 pub mod server;
 
 pub use wgc::device::trace::Command as CommandEncoderAction;
@@ -111,17 +111,23 @@ pub struct AdapterInformation<S> {
 #[derive(serde::Serialize, serde::Deserialize)]
 struct ImplicitLayout<'a> {
     pipeline: id::PipelineLayoutId,
-    bind_groups: Cow<'a, [id::BindGroupLayoutId]>,
+    bind_groups: Cow<'a, [Option<id::BindGroupLayoutId>]>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 enum DeviceAction<'a> {
-    CreateTexture(id::TextureId, wgc::resource::TextureDescriptor<'a>),
+    CreateTexture(
+        id::TextureId,
+        wgc::resource::TextureDescriptor<'a>,
+        Option<SwapChainId>,
+    ),
     CreateSampler(id::SamplerId, wgc::resource::SamplerDescriptor<'a>),
     CreateBindGroupLayout(
         id::BindGroupLayoutId,
         wgc::binding_model::BindGroupLayoutDescriptor<'a>,
     ),
+    RenderPipelineGetBindGroupLayout(id::RenderPipelineId, u32, id::BindGroupLayoutId),
+    ComputePipelineGetBindGroupLayout(id::ComputePipelineId, u32, id::BindGroupLayoutId),
     CreatePipelineLayout(
         id::PipelineLayoutId,
         wgc::binding_model::PipelineLayoutDescriptor<'a>,
@@ -147,11 +153,15 @@ enum DeviceAction<'a> {
         wgc::command::RenderBundleEncoder,
         wgc::command::RenderBundleDescriptor<'a>,
     ),
+    CreateRenderBundleError(id::RenderBundleId, wgc::Label<'a>),
     CreateCommandEncoder(
         id::CommandEncoderId,
         wgt::CommandEncoderDescriptor<wgc::Label<'a>>,
     ),
-    Error(String),
+    Error {
+        message: String,
+        r#type: ErrorBufferType,
+    },
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -216,3 +226,7 @@ impl<'a> ImageDataLayout<'a> {
         }
     }
 }
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SwapChainId(pub u64);

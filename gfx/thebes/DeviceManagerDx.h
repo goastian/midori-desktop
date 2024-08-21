@@ -6,6 +6,9 @@
 #ifndef mozilla_gfx_thebes_DeviceManagerDx_h
 #define mozilla_gfx_thebes_DeviceManagerDx_h
 
+#include <set>
+#include <vector>
+
 #include "gfxPlatform.h"
 #include "gfxTelemetry.h"
 #include "gfxTypes.h"
@@ -56,13 +59,17 @@ class DeviceManagerDx final {
 
   static DeviceManagerDx* Get() { return sInstance; }
 
+  enum class DeviceFlag {
+    isHardwareWebRenderInUse,
+  };
+  using DeviceFlagSet = EnumSet<DeviceFlag, uint8_t>;
   RefPtr<ID3D11Device> GetCompositorDevice();
   RefPtr<ID3D11Device> GetContentDevice();
   RefPtr<ID3D11Device> GetCanvasDevice();
   RefPtr<ID3D11Device> GetImageDevice();
   RefPtr<IDCompositionDevice2> GetDirectCompositionDevice();
   RefPtr<ID3D11Device> GetVRDevice();
-  RefPtr<ID3D11Device> CreateDecoderDevice(bool aHardwareWebRender);
+  RefPtr<ID3D11Device> CreateDecoderDevice(DeviceFlagSet aFlags);
   RefPtr<ID3D11Device> CreateMediaEngineDevice();
   IDirectDraw7* GetDirectDraw();
 
@@ -81,16 +88,18 @@ class DeviceManagerDx final {
   // need to avoid it.
   bool CanInitializeKeyedMutexTextures();
 
-  // Intel devices on older windows versions seem to occasionally have
-  // stability issues when supplying InitData to CreateTexture2D.
-  bool HasCrashyInitData();
-
   // Enumerate and return all outputs on the current adapter.
   nsTArray<DXGI_OUTPUT_DESC1> EnumerateOutputs();
 
   // find the IDXGIOutput with a description.Monitor matching
   // 'monitor'; returns false if not found or some error occurred.
   bool GetOutputFromMonitor(HMONITOR monitor, RefPtr<IDXGIOutput>* aOutOutput);
+
+  void PostUpdateMonitorInfo();
+  void UpdateMonitorInfo();
+  bool SystemHDREnabled();
+  bool WindowHDREnabled(HWND aWindow);
+  bool MonitorHDREnabled(HMONITOR aMonitor);
 
   // Check if the current adapter supports hardware stretching
   void CheckHardwareStretchingSupport(HwStretchingSupport& aRv);
@@ -118,10 +127,6 @@ class DeviceManagerDx final {
   // Returns whether a reset occurred not whether reacquiring
   // was successful.
   bool MaybeResetAndReacquireDevices();
-
-  // Test whether we can acquire a DXGI 1.2-compatible adapter. This should
-  // only be called on startup before devices are initialized.
-  bool CheckRemotePresentSupport();
 
   // Device reset helpers.
   bool HasDeviceReset(DeviceResetReason* aOutReason = nullptr);
@@ -193,6 +198,7 @@ class DeviceManagerDx final {
   mutable mozilla::Mutex mDeviceLock;
   nsTArray<D3D_FEATURE_LEVEL> mFeatureLevels MOZ_GUARDED_BY(mDeviceLock);
   RefPtr<IDXGIAdapter1> mAdapter MOZ_GUARDED_BY(mDeviceLock);
+  RefPtr<IDXGIFactory1> mFactory MOZ_GUARDED_BY(mDeviceLock);
   RefPtr<ID3D11Device> mCompositorDevice MOZ_GUARDED_BY(mDeviceLock);
   RefPtr<ID3D11Device> mContentDevice MOZ_GUARDED_BY(mDeviceLock);
   RefPtr<ID3D11Device> mCanvasDevice MOZ_GUARDED_BY(mDeviceLock);
@@ -206,6 +212,9 @@ class DeviceManagerDx final {
   bool mCompositorDeviceSupportsVideo MOZ_GUARDED_BY(mDeviceLock);
   Maybe<D3D11DeviceStatus> mDeviceStatus MOZ_GUARDED_BY(mDeviceLock);
   Maybe<DeviceResetReason> mDeviceResetReason MOZ_GUARDED_BY(mDeviceLock);
+  RefPtr<Runnable> mUpdateMonitorInfoRunnable MOZ_GUARDED_BY(mDeviceLock);
+  Maybe<bool> mSystemHdrEnabled MOZ_GUARDED_BY(mDeviceLock);
+  std::set<HMONITOR> mHdrMonitors MOZ_GUARDED_BY(mDeviceLock);
 
   nsModuleHandle mDirectDrawDLL;
   RefPtr<IDirectDraw7> mDirectDraw;

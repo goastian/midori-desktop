@@ -19,7 +19,6 @@ use webrender::api::units::{BlobDirtyRect, BlobToDeviceTranslation, DeviceIntRec
 use webrender::api::*;
 
 use euclid::point2;
-use std;
 use std::collections::btree_map::BTreeMap;
 use std::collections::hash_map;
 use std::collections::hash_map::HashMap;
@@ -30,19 +29,16 @@ use std::os::raw::c_void;
 use std::ptr;
 use std::sync::Arc;
 
-#[cfg(target_os = "windows")]
-use dwrote;
-
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 use core_foundation::string::CFString;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 use core_graphics::font::CGFont;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 use foreign_types::ForeignType;
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "windows")))]
 use std::ffi::CString;
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "windows")))]
 use std::os::unix::ffi::OsStrExt;
 
 /// Local print-debugging utility
@@ -180,12 +176,6 @@ struct BlobReader<'a> {
     reader: BufReader<'a>,
     /// Where the buffer head is.
     begin: usize,
-}
-
-#[derive(PartialEq, Debug, Eq, Clone, Copy)]
-struct IntPoint {
-    x: i32,
-    y: i32,
 }
 
 /// The metadata for each display item in a blob image (doesn't match the serialized layout).
@@ -787,7 +777,7 @@ impl Moz2dBlobImageHandler {
             unsafe { AddNativeFontHandle(key, face.as_ptr() as *mut c_void, 0) };
         }
 
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         fn process_native_font_handle(key: FontKey, handle: &NativeFontHandle) {
             let font = match CGFont::from_name(&CFString::new(&handle.name)) {
                 Ok(font) => font,
@@ -804,7 +794,7 @@ impl Moz2dBlobImageHandler {
             unsafe { AddNativeFontHandle(key, font.as_ptr() as *mut c_void, 0) };
         }
 
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "windows")))]
         fn process_native_font_handle(key: FontKey, handle: &NativeFontHandle) {
             let cstr = CString::new(handle.path.as_os_str().as_bytes()).unwrap();
             unsafe { AddNativeFontHandle(key, cstr.as_ptr() as *mut c_void, handle.index) };

@@ -102,10 +102,16 @@ class Translator {
   virtual already_AddRefed<SourceSurface> LookupExternalSurface(uint64_t aKey) {
     return nullptr;
   }
-  void DrawDependentSurface(ReferencePtr aDrawTarget, uint64_t aKey,
-                            const Rect& aRect);
+  virtual already_AddRefed<SourceSurface>
+  LookupSourceSurfaceFromSurfaceDescriptor(
+      const layers::SurfaceDescriptor& aDesc) {
+    MOZ_ASSERT_UNREACHABLE("unexpected to be called");
+    return nullptr;
+  }
+  void DrawDependentSurface(uint64_t aKey, const Rect& aRect);
   virtual void AddDrawTarget(ReferencePtr aRefPtr, DrawTarget* aDT) = 0;
   virtual void RemoveDrawTarget(ReferencePtr aRefPtr) = 0;
+  virtual bool SetCurrentDrawTarget(ReferencePtr aRefPtr) = 0;
   virtual void AddPath(ReferencePtr aRefPtr, Path* aPath) = 0;
   virtual void RemovePath(ReferencePtr aRefPtr) = 0;
   virtual void AddSourceSurface(ReferencePtr aRefPtr, SourceSurface* aPath) = 0;
@@ -149,8 +155,11 @@ class Translator {
     mDependentSurfaces = aDependentSurfaces;
   }
 
+  DrawTarget* GetCurrentDrawTarget() const { return mCurrentDT; }
+
   nsRefPtrHashtable<nsUint64HashKey, RecordedDependentSurface>*
       mDependentSurfaces = nullptr;
+  DrawTarget* mCurrentDT = nullptr;
 };
 
 struct ColorPatternStorage {
@@ -214,7 +223,7 @@ struct SizeCollector {
 };
 
 struct MemWriter {
-  explicit MemWriter(char* aPtr) : mPtr(aPtr) {}
+  constexpr explicit MemWriter(char* aPtr) : mPtr(aPtr) {}
   void write(const char* aData, size_t aSize) {
     memcpy(mPtr, aData, aSize);
     mPtr += aSize;
@@ -222,13 +231,52 @@ struct MemWriter {
   char* mPtr;
 };
 
-// This is a simple interface for an EventRingBuffer, so we can use it in the
-// RecordedEvent reading and writing machinery.
-class EventRingBuffer {
+// An istream like class for reading from memory
+struct MemReader {
+  constexpr MemReader(char* aData, size_t aLen)
+      : mData(aData), mEnd(aData + aLen) {}
+  void read(char* s, std::streamsize n) {
+    if (n <= (mEnd - mData)) {
+      memcpy(s, mData, n);
+      mData += n;
+    } else {
+      // We've requested more data than is available
+      // set the Reader into an eof state
+      SetIsBad();
+    }
+  }
+  bool eof() { return mData > mEnd; }
+  bool good() { return !eof(); }
+  void SetIsBad() { mData = mEnd + 1; }
+
+  char* mData;
+  char* mEnd;
+};
+
+class ContiguousBuffer {
+ public:
+  ContiguousBuffer(char* aStart, size_t aSize)
+      : mWriter(aStart), mEnd(aStart + aSize) {}
+
+  constexpr MOZ_IMPLICIT ContiguousBuffer(std::nullptr_t) : mWriter(nullptr) {}
+
+  MemWriter& Writer() { return mWriter; }
+
+  size_t SizeRemaining() { return mWriter.mPtr ? mEnd - mWriter.mPtr : 0; }
+
+  bool IsValid() { return !!mWriter.mPtr; }
+
+ private:
+  MemWriter mWriter;
+  char* mEnd = nullptr;
+};
+
+// Allows a derived class to provide guaranteed contiguous buffer.
+class ContiguousBufferStream {
  public:
   /**
-   * Templated RecordEvent function so that when we have enough contiguous
-   * space we can record into the buffer quickly using MemWriter.
+   * Templated RecordEvent function so that we can record into the buffer
+   * quickly using MemWriter.
    *
    * @param aRecordedEvent the event to record
    */
@@ -237,56 +285,25 @@ class EventRingBuffer {
     SizeCollector size;
     WriteElement(size, aRecordedEvent->GetType());
     aRecordedEvent->Record(size);
-    if (size.mTotalSize > mAvailable) {
-      WaitForAndRecalculateAvailableSpace();
+    auto& buffer = GetContiguousBuffer(size.mTotalSize);
+    if (!buffer.IsValid()) {
+      return;
     }
-    if (size.mTotalSize <= mAvailable) {
-      MemWriter writer(mBufPos);
-      WriteElement(writer, aRecordedEvent->GetType());
-      aRecordedEvent->Record(writer);
-      UpdateWriteTotalsBy(size.mTotalSize);
-    } else {
-      WriteElement(*this, aRecordedEvent->GetType());
-      aRecordedEvent->Record(*this);
-    }
+
+    MOZ_ASSERT(size.mTotalSize <= buffer.SizeRemaining());
+
+    WriteElement(buffer.Writer(), aRecordedEvent->GetType());
+    aRecordedEvent->Record(buffer.Writer());
+    IncrementEventCount();
   }
-
-  /**
-   * Simple write function required by WriteElement.
-   *
-   * @param aData the data to be written to the buffer
-   * @param aSize the number of chars to write
-   */
-  virtual void write(const char* const aData, const size_t aSize) = 0;
-
-  /**
-   * Simple read function required by ReadElement.
-   *
-   * @param aOut the pointer to read into
-   * @param aSize the number of chars to read
-   */
-  virtual void read(char* const aOut, const size_t aSize) = 0;
-
-  virtual bool good() const = 0;
-
-  virtual void SetIsBad() = 0;
 
  protected:
   /**
-   * Wait until space is available for writing and then set mBufPos and
-   * mAvailable.
+   * Provide a contiguous buffer with at least aSize remaining.
    */
-  virtual bool WaitForAndRecalculateAvailableSpace() = 0;
+  virtual ContiguousBuffer& GetContiguousBuffer(size_t aSize) = 0;
 
-  /**
-   * Update write count, mBufPos and mAvailable.
-   *
-   * @param aCount number of bytes written
-   */
-  virtual void UpdateWriteTotalsBy(uint32_t aCount) = 0;
-
-  char* mBufPos = nullptr;
-  uint32_t mAvailable = 0;
+  virtual void IncrementEventCount() = 0;
 };
 
 struct MemStream {
@@ -355,25 +372,33 @@ class EventStream {
 
 class RecordedEvent {
  public:
-  enum EventType {
-    DRAWTARGETCREATION = 0,
+  enum EventType : uint8_t {
+    INVALID = 0,
+    DRAWTARGETCREATION,
     DRAWTARGETDESTRUCTION,
+    SETCURRENTDRAWTARGET,
     FILLRECT,
     STROKERECT,
     STROKELINE,
+    STROKECIRCLE,
     CLEARRECT,
     COPYSURFACE,
+    SETPERMITSUBPIXELAA,
     SETTRANSFORM,
     PUSHCLIP,
     PUSHCLIPRECT,
     POPCLIP,
     FILL,
+    FILLCIRCLE,
     FILLGLYPHS,
+    STROKEGLYPHS,
     MASK,
     STROKE,
     DRAWSURFACE,
+    DRAWSURFACEDESCRIPTOR,
     DRAWDEPENDENTSURFACE,
     DRAWSURFACEWITHSHADOW,
+    DRAWSHADOW,
     PATHCREATION,
     PATHDESTRUCTION,
     SOURCESURFACECREATION,
@@ -400,6 +425,7 @@ class RecordedEvent {
     UNSCALEDFONTCREATION,
     UNSCALEDFONTDESTRUCTION,
     INTOLUMINANCE,
+    EXTRACTSUBRECT,
     EXTERNALSURFACECREATION,
     FLUSH,
     DETACHALLSNAPSHOTS,
@@ -428,7 +454,7 @@ class RecordedEvent {
 
   virtual void RecordToStream(std::ostream& aStream) const = 0;
   virtual void RecordToStream(EventStream& aStream) const = 0;
-  virtual void RecordToStream(EventRingBuffer& aStream) const = 0;
+  virtual void RecordToStream(ContiguousBufferStream& aStream) const = 0;
   virtual void RecordToStream(MemStream& aStream) const = 0;
 
   virtual void OutputSimpleEventInfo(std::stringstream& aStringStream) const {}
@@ -458,8 +484,8 @@ class RecordedEvent {
   static bool DoWithEventFromStream(
       EventStream& aStream, EventType aType,
       const std::function<bool(RecordedEvent*)>& aAction);
-  static bool DoWithEventFromStream(
-      EventRingBuffer& aStream, EventType aType,
+  static bool DoWithEventFromReader(
+      MemReader& aReader, EventType aType,
       const std::function<bool(RecordedEvent*)>& aAction);
 
   EventType GetType() const { return (EventType)mType; }
@@ -474,9 +500,9 @@ class RecordedEvent {
   template <class S>
   static void RecordUnscaledFontImpl(UnscaledFont* aUnscaledFont, S& aOutput);
 
-  MOZ_IMPLICIT RecordedEvent(int32_t aType) : mType(aType) {}
+  MOZ_IMPLICIT RecordedEvent(EventType aType) : mType(aType) {}
 
-  int32_t mType;
+  EventType mType;
   std::vector<Float> mDashPatternStorage;
 };
 
@@ -493,7 +519,7 @@ class RecordedEventDerived : public RecordedEvent {
     WriteElement(aStream, this->mType);
     static_cast<const Derived*>(this)->Record(aStream);
   }
-  void RecordToStream(EventRingBuffer& aStream) const final {
+  void RecordToStream(ContiguousBufferStream& aStream) const final {
     aStream.RecordEvent(static_cast<const Derived*>(this));
   }
   void RecordToStream(MemStream& aStream) const override {

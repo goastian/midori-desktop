@@ -9,6 +9,7 @@
 #include <string.h>  // for memcpy, memset
 
 #include "GLImages.h"    // for SurfaceTextureImage
+#include "MediaInfo.h"   // VideoInfo::Rotation
 #include "YCbCrUtils.h"  // for YCbCr conversions
 #include "gfx2DGlue.h"
 #include "gfxPlatform.h"  // for gfxPlatform
@@ -20,6 +21,7 @@
 #include "mozilla/StaticPrefs_layers.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/gfxVars.h"
+#include "mozilla/gfx/Swizzle.h"
 #include "mozilla/ipc/CrossProcessMutex.h"  // for CrossProcessMutex, etc
 #include "mozilla/layers/CompositorTypes.h"
 #include "mozilla/layers/ImageBridgeChild.h"     // for ImageBridgeChild
@@ -32,9 +34,8 @@
 #include "nsProxyRelease.h"
 #include "nsISupportsUtils.h"  // for NS_IF_ADDREF
 
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
 #  include "MacIOSurfaceImage.h"
-#  include "mozilla/gfx/QuartzSupport.h"
 #endif
 
 #ifdef XP_WIN
@@ -162,45 +163,35 @@ void ImageContainer::EnsureImageClient() {
   }
 
   RefPtr<ImageBridgeChild> imageBridge = ImageBridgeChild::GetSingleton();
-  if (imageBridge) {
-    mImageClient =
-        imageBridge->CreateImageClient(CompositableType::IMAGE, this);
-    if (mImageClient) {
-      mAsyncContainerHandle = mImageClient->GetAsyncHandle();
-    } else {
-      // It's okay to drop the async container handle since the ImageBridgeChild
-      // is going to die anyway.
-      mAsyncContainerHandle = CompositableHandle();
-    }
+  if (!imageBridge) {
+    return;
+  }
+
+  mImageClient = imageBridge->CreateImageClient(CompositableType::IMAGE, this);
+  if (mImageClient) {
+    mAsyncContainerHandle = mImageClient->GetAsyncHandle();
+  } else {
+    // It's okay to drop the async container handle since the ImageBridgeChild
+    // is going to die anyway.
+    mAsyncContainerHandle = CompositableHandle();
   }
 }
 
-ImageContainer::ImageContainer(Mode flag)
-    : mRecursiveMutex("ImageContainer.mRecursiveMutex"),
+ImageContainer::ImageContainer(ImageUsageType aUsageType, Mode aFlag)
+    : mUsageType(aUsageType),
+      mIsAsync(aFlag == ASYNCHRONOUS),
+      mRecursiveMutex("ImageContainer.mRecursiveMutex"),
       mGenerationCounter(++sGenerationCounter),
       mPaintCount(0),
       mDroppedImageCount(0),
       mImageFactory(new ImageFactory()),
+      mRotation(VideoRotation::kDegree_0),
       mRecycleBin(new BufferRecycleBin()),
-      mIsAsync(flag == ASYNCHRONOUS),
       mCurrentProducerID(-1) {
-  if (flag == ASYNCHRONOUS) {
+  if (aFlag == ASYNCHRONOUS) {
     mNotifyCompositeListener = new ImageContainerListener(this);
     EnsureImageClient();
   }
-}
-
-ImageContainer::ImageContainer(const CompositableHandle& aHandle)
-    : mRecursiveMutex("ImageContainer.mRecursiveMutex"),
-      mGenerationCounter(++sGenerationCounter),
-      mPaintCount(0),
-      mDroppedImageCount(0),
-      mImageFactory(nullptr),
-      mRecycleBin(nullptr),
-      mIsAsync(true),
-      mAsyncContainerHandle(aHandle),
-      mCurrentProducerID(-1) {
-  MOZ_ASSERT(mAsyncContainerHandle);
 }
 
 ImageContainer::~ImageContainer() {
@@ -213,6 +204,42 @@ ImageContainer::~ImageContainer() {
       imageBridge->ForgetImageContainer(mAsyncContainerHandle);
     }
   }
+}
+
+/* static */ nsresult Image::AllocateSurfaceDescriptorBufferRgb(
+    const gfx::IntSize& aSize, gfx::SurfaceFormat aFormat, uint8_t*& aOutBuffer,
+    SurfaceDescriptorBuffer& aSdBuffer, int32_t& aStride,
+    const std::function<layers::MemoryOrShmem(uint32_t)>& aAllocate) {
+  aStride = ImageDataSerializer::ComputeRGBStride(aFormat, aSize.width);
+  size_t length = ImageDataSerializer::ComputeRGBBufferSize(aSize, aFormat);
+
+  if (aStride <= 0 || length == 0) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  aSdBuffer.desc() = RGBDescriptor(aSize, aFormat);
+  aSdBuffer.data() = aAllocate(length);
+
+  const layers::MemoryOrShmem& memOrShmem = aSdBuffer.data();
+  switch (memOrShmem.type()) {
+    case layers::MemoryOrShmem::Tuintptr_t:
+      aOutBuffer = reinterpret_cast<uint8_t*>(memOrShmem.get_uintptr_t());
+      break;
+    case layers::MemoryOrShmem::TShmem:
+      aOutBuffer = memOrShmem.get_Shmem().get<uint8_t>();
+      break;
+    default:
+      return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  MOZ_ASSERT(aOutBuffer);
+  return NS_OK;
+}
+
+nsresult Image::BuildSurfaceDescriptorBuffer(
+    SurfaceDescriptorBuffer& aSdBuffer, BuildSdbFlags aFlags,
+    const std::function<MemoryOrShmem(uint32_t)>& aAllocate) {
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 Maybe<SurfaceDescriptor> Image::GetDesc() { return GetDescFromTexClient(); }
@@ -280,6 +307,9 @@ void ImageContainer::SetCurrentImageInternal(
     if (aImages[0].mProducerID != mCurrentProducerID) {
       mCurrentProducerID = aImages[0].mProducerID;
     }
+    for (auto& img : mCurrentImages) {
+      img.mImage->OnAbandonForwardToHost();
+    }
   }
 
   nsTArray<OwningImage> newImages;
@@ -308,6 +338,7 @@ void ImageContainer::SetCurrentImageInternal(
         break;
       }
     }
+    img->mImage->OnPrepareForwardToHost();
   }
 
   mCurrentImages = std::move(newImages);
@@ -321,6 +352,10 @@ void ImageContainer::ClearImagesFromImageBridge() {
 void ImageContainer::SetCurrentImages(const nsTArray<NonOwningImage>& aImages) {
   AUTO_PROFILER_LABEL("ImageContainer::SetCurrentImages", GRAPHICS);
   MOZ_ASSERT(!aImages.IsEmpty());
+  MOZ_ASSERT(mUsageType == ImageUsageType::Canvas ||
+             mUsageType == ImageUsageType::OffscreenCanvas ||
+             mUsageType == ImageUsageType::VideoFrameContainer);
+
   RecursiveMutexAutoLock lock(mRecursiveMutex);
   if (mIsAsync) {
     if (RefPtr<ImageBridgeChild> imageBridge =
@@ -370,6 +405,9 @@ void ImageContainer::SetCurrentImageInTransaction(Image* aImage) {
 
 void ImageContainer::SetCurrentImagesInTransaction(
     const nsTArray<NonOwningImage>& aImages) {
+  MOZ_ASSERT(!mIsAsync);
+  MOZ_ASSERT(mUsageType == ImageUsageType::WebRenderFallbackData);
+
   NS_ASSERTION(NS_IsMainThread(), "Should be on main thread.");
   NS_ASSERTION(!HasImageClient(),
                "Should use async image transfer with ImageBridge.");
@@ -520,7 +558,7 @@ ImageContainer::GetD3D11YCbCrRecycleAllocator(
 }
 #endif
 
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
 already_AddRefed<MacIOSurfaceRecycleAllocator>
 ImageContainer::GetMacIOSurfaceRecycleAllocator() {
   RecursiveMutexAutoLock lock(mRecursiveMutex);
@@ -620,12 +658,40 @@ PlanarYCbCrImage::PlanarYCbCrImage()
       mBufferSize(0) {}
 
 nsresult PlanarYCbCrImage::BuildSurfaceDescriptorBuffer(
-    SurfaceDescriptorBuffer& aSdBuffer,
+    SurfaceDescriptorBuffer& aSdBuffer, BuildSdbFlags aFlags,
     const std::function<MemoryOrShmem(uint32_t)>& aAllocate) {
   const PlanarYCbCrData* pdata = GetData();
   MOZ_ASSERT(pdata, "must have PlanarYCbCrData");
   MOZ_ASSERT(pdata->mYSkip == 0 && pdata->mCbSkip == 0 && pdata->mCrSkip == 0,
              "YCbCrDescriptor doesn't hold skip values");
+
+  if (aFlags & BuildSdbFlags::RgbOnly) {
+    gfx::IntSize size(mSize);
+    auto format = gfx::ImageFormatToSurfaceFormat(GetOffscreenFormat());
+    gfx::GetYCbCrToRGBDestFormatAndSize(mData, format, size);
+
+    uint8_t* buffer = nullptr;
+    int32_t stride = 0;
+    nsresult rv = AllocateSurfaceDescriptorBufferRgb(
+        size, format, buffer, aSdBuffer, stride, aAllocate);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    // If we can copy directly from the surface, let's do that to avoid the YUV
+    // to RGB conversion.
+    if (mSourceSurface && mSourceSurface->GetSize() == size) {
+      DataSourceSurface::ScopedMap map(mSourceSurface, DataSourceSurface::READ);
+      if (map.IsMapped() && SwizzleData(map.GetData(), map.GetStride(),
+                                        mSourceSurface->GetFormat(), buffer,
+                                        stride, format, size)) {
+        return NS_OK;
+      }
+    }
+
+    gfx::ConvertYCbCrToRGB(mData, format, size, buffer, stride);
+    return NS_OK;
+  }
 
   auto ySize = pdata->YDataSize();
   auto cbcrSize = pdata->CbCrDataSize();
@@ -727,7 +793,7 @@ static void CopyPlane(uint8_t* aDst, const uint8_t* aSrc,
   }
 }
 
-bool RecyclingPlanarYCbCrImage::CopyData(const Data& aData) {
+nsresult RecyclingPlanarYCbCrImage::CopyData(const Data& aData) {
   // update buffer size
   // Use uint32_t throughout to match AllocateBuffer's param and mBufferSize
   auto ySize = aData.YDataSize();
@@ -737,13 +803,13 @@ bool RecyclingPlanarYCbCrImage::CopyData(const Data& aData) {
       CheckedInt<uint32_t>(aData.mYStride) * ySize.height *
           (aData.mAlpha ? 2 : 1);
 
-  if (!checkedSize.isValid()) return false;
+  if (!checkedSize.isValid()) return NS_ERROR_INVALID_ARG;
 
   const auto size = checkedSize.value();
 
   // get new buffer
   mBuffer = AllocateBuffer(size);
-  if (!mBuffer) return false;
+  if (!mBuffer) return NS_ERROR_OUT_OF_MEMORY;
 
   // update buffer size
   mBufferSize = size;
@@ -761,13 +827,16 @@ bool RecyclingPlanarYCbCrImage::CopyData(const Data& aData) {
   CopyPlane(mData.mCrChannel, aData.mCrChannel, cbcrSize, aData.mCbCrStride,
             aData.mCrSkip);
   if (aData.mAlpha) {
+    MOZ_ASSERT(mData.mAlpha);
+    mData.mAlpha->mChannel =
+        mData.mCrChannel + mData.mCbCrStride * cbcrSize.height;
     CopyPlane(mData.mAlpha->mChannel, aData.mAlpha->mChannel, ySize,
               aData.mYStride, aData.mYSkip);
   }
 
   mSize = aData.mPictureRect.Size();
   mOrigin = aData.mPictureRect.TopLeft();
-  return true;
+  return NS_OK;
 }
 
 gfxImageFormat PlanarYCbCrImage::GetOffscreenFormat() const {
@@ -775,11 +844,11 @@ gfxImageFormat PlanarYCbCrImage::GetOffscreenFormat() const {
                                                     : mOffscreenFormat;
 }
 
-bool PlanarYCbCrImage::AdoptData(const Data& aData) {
+nsresult PlanarYCbCrImage::AdoptData(const Data& aData) {
   mData = aData;
   mSize = aData.mPictureRect.Size();
   mOrigin = aData.mPictureRect.TopLeft();
-  return true;
+  return NS_OK;
 }
 
 already_AddRefed<gfx::SourceSurface> PlanarYCbCrImage::GetAsSourceSurface() {
@@ -894,6 +963,83 @@ already_AddRefed<SourceSurface> NVImage::GetAsSourceSurface() {
   mSourceSurface = surface;
 
   return surface.forget();
+}
+
+nsresult NVImage::BuildSurfaceDescriptorBuffer(
+    SurfaceDescriptorBuffer& aSdBuffer, BuildSdbFlags aFlags,
+    const std::function<MemoryOrShmem(uint32_t)>& aAllocate) {
+  // Convert the current NV12 or NV21 data to YUV420P so that we can follow the
+  // logics in PlanarYCbCrImage::GetAsSourceSurface().
+  auto ySize = mData.YDataSize();
+  auto cbcrSize = mData.CbCrDataSize();
+
+  Data aData = mData;
+  aData.mCbCrStride = cbcrSize.width;
+  aData.mCbSkip = 0;
+  aData.mCrSkip = 0;
+  aData.mCbChannel = aData.mYChannel + ySize.height * aData.mYStride;
+  aData.mCrChannel = aData.mCbChannel + cbcrSize.height * aData.mCbCrStride;
+
+  UniquePtr<uint8_t[]> buffer;
+
+  if (!mSourceSurface) {
+    const int bufferLength =
+        ySize.height * mData.mYStride + cbcrSize.height * cbcrSize.width * 2;
+    buffer = MakeUnique<uint8_t[]>(bufferLength);
+    aData.mYChannel = buffer.get();
+
+    if (mData.mCbChannel < mData.mCrChannel) {  // NV12
+      libyuv::NV12ToI420(mData.mYChannel, mData.mYStride, mData.mCbChannel,
+                         mData.mCbCrStride, aData.mYChannel, aData.mYStride,
+                         aData.mCbChannel, aData.mCbCrStride, aData.mCrChannel,
+                         aData.mCbCrStride, ySize.width, ySize.height);
+    } else {  // NV21
+      libyuv::NV21ToI420(mData.mYChannel, mData.mYStride, mData.mCrChannel,
+                         mData.mCbCrStride, aData.mYChannel, aData.mYStride,
+                         aData.mCbChannel, aData.mCbCrStride, aData.mCrChannel,
+                         aData.mCbCrStride, ySize.width, ySize.height);
+    }
+  }
+
+  // The logics in PlanarYCbCrImage::GetAsSourceSurface().
+  gfx::IntSize size(mSize);
+  gfx::SurfaceFormat format = gfx::ImageFormatToSurfaceFormat(
+      gfxPlatform::GetPlatform()->GetOffscreenFormat());
+  gfx::GetYCbCrToRGBDestFormatAndSize(aData, format, size);
+  if (mSize.width > PlanarYCbCrImage::MAX_DIMENSION ||
+      mSize.height > PlanarYCbCrImage::MAX_DIMENSION) {
+    NS_ERROR("Illegal image dest width or height");
+    return NS_ERROR_FAILURE;
+  }
+
+  if (mSourceSurface && mSourceSurface->GetSize() != size) {
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+
+  uint8_t* output = nullptr;
+  int32_t stride = 0;
+  nsresult rv = AllocateSurfaceDescriptorBufferRgb(
+      size, format, output, aSdBuffer, stride, aAllocate);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  if (!mSourceSurface) {
+    gfx::ConvertYCbCrToRGB(aData, format, size, output, stride);
+    return NS_OK;
+  }
+
+  DataSourceSurface::ScopedMap map(mSourceSurface, DataSourceSurface::WRITE);
+  if (NS_WARN_IF(!map.IsMapped())) {
+    return NS_ERROR_FAILURE;
+  }
+
+  if (!SwizzleData(map.GetData(), map.GetStride(), mSourceSurface->GetFormat(),
+                   output, stride, format, size)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  return NS_OK;
 }
 
 bool NVImage::IsValid() const { return !!mBufferSize; }

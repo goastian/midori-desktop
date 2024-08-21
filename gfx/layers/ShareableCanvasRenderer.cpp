@@ -88,6 +88,16 @@ void ShareableCanvasRenderer::UpdateCompositableClient() {
   }
 
   if (!IsDirty()) {
+    const auto context = mData.GetContext();
+    if (!context) {
+      return;
+    }
+    const auto& forwarder = GetForwarder();
+    RefPtr<FwdTransactionTracker> tracker =
+        context->UseCompositableForwarder(forwarder);
+    if (forwarder && tracker) {
+      forwarder->TrackFwdTransaction(tracker);
+    }
     return;
   }
   ResetDirty();
@@ -105,16 +115,6 @@ void ShareableCanvasRenderer::UpdateCompositableClient() {
   }
   if (IsOpaque()) {
     flags |= TextureFlags::IS_OPAQUE;
-  }
-
-  // With remote texture push callback, a new pushed remote texture is notifiled
-  // from RemoteTextureMap to WebRenderImageHost.
-  if (mData.mRemoteTextureOwnerIdOfPushCallback) {
-    GetForwarder()->EnableRemoteTexturePushCallback(
-        mCanvasClient, *mData.mRemoteTextureOwnerIdOfPushCallback, mData.mSize,
-        flags);
-    EnsurePipeline();
-    return;
   }
 
   // -
@@ -190,9 +190,14 @@ void ShareableCanvasRenderer::UpdateCompositableClient() {
         flags |= TextureFlags::NON_PREMULTIPLIED;
       }
       EnsurePipeline();
+      RefPtr<FwdTransactionTracker> tracker =
+          context->UseCompositableForwarder(forwarder);
+      if (tracker) {
+        flags |= TextureFlags::WAIT_FOR_REMOTE_TEXTURE_OWNER;
+      }
       forwarder->UseRemoteTexture(mCanvasClient, textureDesc.textureId(),
-                                  textureDesc.ownerId(), mData.mSize, flags);
-
+                                  textureDesc.ownerId(), mData.mSize, flags,
+                                  tracker);
       FireDidTransactionCallback();
       return;
     }

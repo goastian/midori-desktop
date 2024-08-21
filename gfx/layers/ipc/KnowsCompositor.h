@@ -9,44 +9,14 @@
 
 #include "mozilla/layers/LayersTypes.h"  // for LayersBackend
 #include "mozilla/layers/CompositorTypes.h"
-#include "nsExpirationTracker.h"
 #include "mozilla/DataMutex.h"
 #include "mozilla/layers/SyncObject.h"
 
-namespace mozilla {
-namespace layers {
+namespace mozilla::layers {
 
 class TextureForwarder;
 class LayersIPCActor;
 class ImageBridgeChild;
-
-/**
- * See ActiveResourceTracker below.
- */
-class ActiveResource {
- public:
-  virtual void NotifyInactive() = 0;
-  nsExpirationState* GetExpirationState() { return &mExpirationState; }
-  bool IsActivityTracked() { return mExpirationState.IsTracked(); }
-
- private:
-  nsExpirationState mExpirationState;
-};
-
-/**
- * A convenience class on top of nsExpirationTracker
- */
-class ActiveResourceTracker : public nsExpirationTracker<ActiveResource, 3> {
- public:
-  ActiveResourceTracker(uint32_t aExpirationCycle, const char* aName,
-                        nsIEventTarget* aEventTarget)
-      : nsExpirationTracker(aExpirationCycle, aName, aEventTarget) {}
-
-  void NotifyExpired(ActiveResource* aResource) override {
-    RemoveObject(aResource);
-    aResource->NotifyInactive();
-  }
-};
 
 /**
  * An abstract interface for classes that are tied to a specific Compositor
@@ -120,10 +90,15 @@ class KnowsCompositor {
 
   bool SupportsD3D11() const {
     auto lock = mData.Lock();
-    return lock.ref().mTextureFactoryIdentifier.mParentBackend ==
+    return SupportsD3D11(lock.ref().mTextureFactoryIdentifier);
+  }
+
+  static bool SupportsD3D11(
+      const TextureFactoryIdentifier aTextureFactoryIdentifier) {
+    return aTextureFactoryIdentifier.mParentBackend ==
                layers::LayersBackend::LAYERS_WR &&
-           (lock.ref().mTextureFactoryIdentifier.mCompositorUseANGLE ||
-            lock.ref().mTextureFactoryIdentifier.mWebRenderCompositor ==
+           (aTextureFactoryIdentifier.mCompositorUseANGLE ||
+            aTextureFactoryIdentifier.mWebRenderCompositor ==
                 layers::WebRenderCompositor::D3D11);
   }
 
@@ -200,17 +175,16 @@ class KnowsCompositor {
    * content process accumulates resource allocations that the compositor is not
    * consuming and releasing.
    */
-  virtual void SyncWithCompositor() { MOZ_ASSERT_UNREACHABLE("Unimplemented"); }
+  virtual void SyncWithCompositor(
+      const Maybe<uint64_t>& aWindowID = Nothing()) {
+    MOZ_ASSERT_UNREACHABLE("Unimplemented");
+  }
 
   /**
    * Helpers for finding other related interface. These are infallible.
    */
   virtual TextureForwarder* GetTextureForwarder() = 0;
   virtual LayersIPCActor* GetLayersIPCActor() = 0;
-  virtual ActiveResourceTracker* GetActiveResourceTracker() {
-    MOZ_ASSERT_UNREACHABLE("Unimplemented");
-    return nullptr;
-  }
 
  protected:
   struct SharedData {
@@ -245,9 +219,8 @@ class KnowsCompositorMediaProxy : public KnowsCompositor {
 
   LayersIPCActor* GetLayersIPCActor() override;
 
-  ActiveResourceTracker* GetActiveResourceTracker() override;
-
-  void SyncWithCompositor() override;
+  void SyncWithCompositor(
+      const Maybe<uint64_t>& aWindowID = Nothing()) override;
 
  protected:
   virtual ~KnowsCompositorMediaProxy();
@@ -255,7 +228,6 @@ class KnowsCompositorMediaProxy : public KnowsCompositor {
   RefPtr<ImageBridgeChild> mThreadSafeAllocator;
 };
 
-}  // namespace layers
-}  // namespace mozilla
+}  // namespace mozilla::layers
 
 #endif

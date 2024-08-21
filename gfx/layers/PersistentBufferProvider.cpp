@@ -6,9 +6,12 @@
 
 #include "PersistentBufferProvider.h"
 
+#include "mozilla/layers/KnowsCompositor.h"
+#include "mozilla/layers/RemoteTextureMap.h"
 #include "mozilla/layers/TextureClient.h"
 #include "mozilla/layers/TextureForwarder.h"
 #include "mozilla/gfx/gfxVars.h"
+#include "mozilla/gfx/CanvasManagerChild.h"
 #include "mozilla/gfx/DrawTargetWebgl.h"
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/Maybe.h"
@@ -96,65 +99,166 @@ PersistentBufferProviderBasic::Create(gfx::IntSize aSize,
   return provider.forget();
 }
 
+static already_AddRefed<TextureClient> CreateTexture(
+    KnowsCompositor* aKnowsCompositor, gfx::SurfaceFormat aFormat,
+    gfx::IntSize aSize, bool aWillReadFrequently = false,
+    Maybe<RemoteTextureOwnerId> aRemoteTextureOwnerId = {}) {
+  TextureAllocationFlags flags = ALLOC_DEFAULT;
+  if (aWillReadFrequently) {
+    flags = TextureAllocationFlags(flags | ALLOC_DO_NOT_ACCELERATE);
+  }
+  if (aRemoteTextureOwnerId) {
+    flags = TextureAllocationFlags(flags | ALLOC_FORCE_REMOTE);
+  }
+  RefPtr<TextureClient> tc = TextureClient::CreateForDrawing(
+      aKnowsCompositor, aFormat, aSize, BackendSelector::Canvas,
+      TextureFlags::DEFAULT | TextureFlags::NON_BLOCKING_READ_LOCK, flags);
+  if (tc && aRemoteTextureOwnerId) {
+    if (TextureData* td = tc->GetInternalData()) {
+      td->SetRemoteTextureOwnerId(*aRemoteTextureOwnerId);
+    }
+  }
+  return tc.forget();
+}
+
+// static
+already_AddRefed<PersistentBufferProviderAccelerated>
+PersistentBufferProviderAccelerated::Create(gfx::IntSize aSize,
+                                            gfx::SurfaceFormat aFormat,
+                                            KnowsCompositor* aKnowsCompositor) {
+  if (!aKnowsCompositor || !aKnowsCompositor->GetTextureForwarder() ||
+      !aKnowsCompositor->GetTextureForwarder()->IPCOpen()) {
+    return nullptr;
+  }
+
+  if (!DrawTargetWebgl::CanCreate(aSize, aFormat)) {
+#ifdef XP_WIN
+    // Direct2D acceleration does not require DrawTargetWebgl, but still
+    // requires PersistentBufferProviderAccelerated.
+    if (!TextureData::IsRemote(aKnowsCompositor, BackendSelector::Canvas,
+                               aFormat, aSize)) {
+      return nullptr;
+    }
+#else
+    return nullptr;
+#endif
+  }
+
+  auto remoteTextureOwnerId = RemoteTextureOwnerId::GetNext();
+
+  RefPtr<TextureClient> texture = CreateTexture(
+      aKnowsCompositor, aFormat, aSize, false, Some(remoteTextureOwnerId));
+  if (!texture) {
+    return nullptr;
+  }
+
+  RefPtr<PersistentBufferProviderAccelerated> provider =
+      new PersistentBufferProviderAccelerated(texture);
+  return provider.forget();
+}
+
 PersistentBufferProviderAccelerated::PersistentBufferProviderAccelerated(
-    DrawTarget* aDt)
-    : PersistentBufferProviderBasic(aDt) {
+    const RefPtr<TextureClient>& aTexture)
+    : mTexture(aTexture) {
   MOZ_COUNT_CTOR(PersistentBufferProviderAccelerated);
-  MOZ_ASSERT(aDt->GetBackendType() == BackendType::WEBGL);
 }
 
 PersistentBufferProviderAccelerated::~PersistentBufferProviderAccelerated() {
   MOZ_COUNT_DTOR(PersistentBufferProviderAccelerated);
+  Destroy();
 }
 
-inline gfx::DrawTargetWebgl*
-PersistentBufferProviderAccelerated::GetDrawTargetWebgl() const {
-  return static_cast<gfx::DrawTargetWebgl*>(mDrawTarget.get());
-}
+void PersistentBufferProviderAccelerated::Destroy() {
+  mSnapshot = nullptr;
+  mDrawTarget = nullptr;
 
-Maybe<layers::SurfaceDescriptor>
-PersistentBufferProviderAccelerated::GetFrontBuffer() {
-  return GetDrawTargetWebgl()->GetFrontBuffer();
+  if (mTexture) {
+    if (mTexture->IsLocked()) {
+      MOZ_ASSERT(false);
+      mTexture->Unlock();
+    }
+    mTexture = nullptr;
+  }
 }
 
 already_AddRefed<gfx::DrawTarget>
 PersistentBufferProviderAccelerated::BorrowDrawTarget(
     const gfx::IntRect& aPersistedRect) {
-  GetDrawTargetWebgl()->BeginFrame(aPersistedRect);
-  return PersistentBufferProviderBasic::BorrowDrawTarget(aPersistedRect);
+  if (!mDrawTarget) {
+    if (aPersistedRect.IsEmpty()) {
+      mTexture->GetInternalData()->InvalidateContents();
+    }
+    if (!mTexture->Lock(OpenMode::OPEN_READ_WRITE)) {
+      return nullptr;
+    }
+    mDrawTarget = mTexture->BorrowDrawTarget();
+    if (!mDrawTarget || !mDrawTarget->IsValid()) {
+      mDrawTarget = nullptr;
+      mTexture->Unlock();
+      return nullptr;
+    }
+  }
+  return do_AddRef(mDrawTarget);
 }
 
 bool PersistentBufferProviderAccelerated::ReturnDrawTarget(
     already_AddRefed<gfx::DrawTarget> aDT) {
-  bool result = PersistentBufferProviderBasic::ReturnDrawTarget(std::move(aDT));
-  GetDrawTargetWebgl()->EndFrame();
-  return result;
+  {
+    RefPtr<gfx::DrawTarget> dt(aDT);
+    MOZ_ASSERT(mDrawTarget == dt);
+    if (!mDrawTarget) {
+      return false;
+    }
+    mDrawTarget = nullptr;
+  }
+  mTexture->Unlock();
+  return true;
 }
 
 already_AddRefed<gfx::SourceSurface>
 PersistentBufferProviderAccelerated::BorrowSnapshot(gfx::DrawTarget* aTarget) {
-  mSnapshot = GetDrawTargetWebgl()->GetOptimizedSnapshot(aTarget);
+  if (mDrawTarget) {
+    MOZ_ASSERT(mTexture->IsLocked());
+  } else {
+    if (mTexture->IsLocked()) {
+      MOZ_ASSERT(false);
+      return nullptr;
+    }
+    if (!mTexture->Lock(OpenMode::OPEN_READ)) {
+      return nullptr;
+    }
+  }
+  mSnapshot = mTexture->BorrowSnapshot();
   return do_AddRef(mSnapshot);
 }
 
-bool PersistentBufferProviderAccelerated::RequiresRefresh() const {
-  return GetDrawTargetWebgl()->RequiresRefresh();
-}
-
-void PersistentBufferProviderAccelerated::OnMemoryPressure() {
-  GetDrawTargetWebgl()->OnMemoryPressure();
-}
-
-static already_AddRefed<TextureClient> CreateTexture(
-    KnowsCompositor* aKnowsCompositor, gfx::SurfaceFormat aFormat,
-    gfx::IntSize aSize, bool aWillReadFrequently) {
-  TextureAllocationFlags flags = ALLOC_DEFAULT;
-  if (aWillReadFrequently) {
-    flags = TextureAllocationFlags(flags | ALLOC_DO_NOT_ACCELERATE);
+void PersistentBufferProviderAccelerated::ReturnSnapshot(
+    already_AddRefed<gfx::SourceSurface> aSnapshot) {
+  RefPtr<SourceSurface> snapshot = aSnapshot;
+  MOZ_ASSERT(!snapshot || snapshot == mSnapshot);
+  snapshot = nullptr;
+  mTexture->ReturnSnapshot(mSnapshot.forget());
+  if (!mDrawTarget) {
+    mTexture->Unlock();
   }
-  return TextureClient::CreateForDrawing(
-      aKnowsCompositor, aFormat, aSize, BackendSelector::Canvas,
-      TextureFlags::DEFAULT | TextureFlags::NON_BLOCKING_READ_LOCK, flags);
+}
+
+Maybe<SurfaceDescriptor> PersistentBufferProviderAccelerated::GetFrontBuffer() {
+  SurfaceDescriptor desc;
+  if (mTexture->GetInternalData()->Serialize(desc)) {
+    return Some(desc);
+  }
+  return Nothing();
+}
+
+bool PersistentBufferProviderAccelerated::RequiresRefresh() const {
+  return mTexture->GetInternalData()->RequiresRefresh();
+}
+
+already_AddRefed<FwdTransactionTracker>
+PersistentBufferProviderAccelerated::UseCompositableForwarder(
+    CompositableForwarder* aForwarder) {
+  return mTexture->GetInternalData()->UseCompositableForwarder(aForwarder);
 }
 
 // static
@@ -162,7 +266,8 @@ already_AddRefed<PersistentBufferProviderShared>
 PersistentBufferProviderShared::Create(gfx::IntSize aSize,
                                        gfx::SurfaceFormat aFormat,
                                        KnowsCompositor* aKnowsCompositor,
-                                       bool aWillReadFrequently) {
+                                       bool aWillReadFrequently,
+                                       const Maybe<uint64_t>& aWindowID) {
   if (!aKnowsCompositor || !aKnowsCompositor->GetTextureForwarder() ||
       !aKnowsCompositor->GetTextureForwarder()->IPCOpen()) {
     return nullptr;
@@ -174,12 +279,8 @@ PersistentBufferProviderShared::Create(gfx::IntSize aSize,
 
 #ifdef XP_WIN
   // Bug 1285271 - Disable shared buffer provider on Windows with D2D due to
-  // instability, unless we are remoting the canvas drawing to the GPU process.
-  if (gfxPlatform::GetPlatform()->GetPreferredCanvasBackend() ==
-          BackendType::DIRECT2D1_1 &&
-      !TextureData::IsRemote(aKnowsCompositor, BackendSelector::Canvas)) {
-    return nullptr;
-  }
+  // instability.
+  aWillReadFrequently = true;
 #endif
 
   RefPtr<TextureClient> texture =
@@ -190,20 +291,21 @@ PersistentBufferProviderShared::Create(gfx::IntSize aSize,
 
   RefPtr<PersistentBufferProviderShared> provider =
       new PersistentBufferProviderShared(aSize, aFormat, aKnowsCompositor,
-                                         texture, aWillReadFrequently);
+                                         texture, aWillReadFrequently,
+                                         aWindowID);
   return provider.forget();
 }
 
 PersistentBufferProviderShared::PersistentBufferProviderShared(
     gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
     KnowsCompositor* aKnowsCompositor, RefPtr<TextureClient>& aTexture,
-    bool aWillReadFrequently)
-
+    bool aWillReadFrequently, const Maybe<uint64_t>& aWindowID)
     : mSize(aSize),
       mFormat(aFormat),
       mKnowsCompositor(aKnowsCompositor),
       mFront(Nothing()),
-      mWillReadFrequently(aWillReadFrequently) {
+      mWillReadFrequently(aWillReadFrequently),
+      mWindowID(aWindowID) {
   MOZ_ASSERT(aKnowsCompositor);
   if (mTextures.append(aTexture)) {
     mBack = Some<uint32_t>(0);
@@ -221,7 +323,11 @@ PersistentBufferProviderShared::~PersistentBufferProviderShared() {
   MOZ_COUNT_DTOR(PersistentBufferProviderShared);
 
   if (IsActivityTracked()) {
-    mKnowsCompositor->GetActiveResourceTracker()->RemoveObject(this);
+    if (auto* cm = CanvasManagerChild::Get()) {
+      cm->GetActiveResourceTracker()->RemoveObject(this);
+    } else {
+      MOZ_ASSERT_UNREACHABLE("Tracked but no CanvasManagerChild!");
+    }
   }
 
   Destroy();
@@ -241,7 +347,11 @@ bool PersistentBufferProviderShared::SetKnowsCompositor(
   }
 
   if (IsActivityTracked()) {
-    mKnowsCompositor->GetActiveResourceTracker()->RemoveObject(this);
+    if (auto* cm = CanvasManagerChild::Get()) {
+      cm->GetActiveResourceTracker()->RemoveObject(this);
+    } else {
+      MOZ_ASSERT_UNREACHABLE("Tracked but no CanvasManagerChild!");
+    }
   }
 
   if (mKnowsCompositor->GetTextureForwarder() !=
@@ -322,12 +432,17 @@ PersistentBufferProviderShared::BorrowDrawTarget(
     return nullptr;
   }
 
+  auto* cm = CanvasManagerChild::Get();
+  if (NS_WARN_IF(!cm)) {
+    return nullptr;
+  }
+
   MOZ_ASSERT(!mSnapshot);
 
   if (IsActivityTracked()) {
-    mKnowsCompositor->GetActiveResourceTracker()->MarkUsed(this);
+    cm->GetActiveResourceTracker()->MarkUsed(this);
   } else {
-    mKnowsCompositor->GetActiveResourceTracker()->AddObject(this);
+    cm->GetActiveResourceTracker()->AddObject(this);
   }
 
   if (mDrawTarget) {
@@ -369,7 +484,7 @@ PersistentBufferProviderShared::BorrowDrawTarget(
       // especially when switching between layer managers (during tab-switch).
       // To make sure we don't get too far ahead of the compositor, we send a
       // sync ping to the compositor thread...
-      mKnowsCompositor->SyncWithCompositor();
+      mKnowsCompositor->SyncWithCompositor(mWindowID);
       // ...and try again.
       for (uint32_t i = 0; i < mTextures.length(); ++i) {
         if (!mTextures[i]->IsReadLocked()) {
@@ -548,14 +663,15 @@ PersistentBufferProviderShared::BorrowSnapshot(gfx::DrawTarget* aTarget) {
 
   if (mDrawTarget) {
     auto back = GetTexture(mBack);
-    MOZ_ASSERT(back && back->IsLocked());
+    if (NS_WARN_IF(!back) || NS_WARN_IF(!back->IsLocked())) {
+      return nullptr;
+    }
     mSnapshot = back->BorrowSnapshot();
     return do_AddRef(mSnapshot);
   }
 
   auto front = GetTexture(mFront);
-  if (!front || front->IsLocked()) {
-    MOZ_ASSERT(false);
+  if (NS_WARN_IF(!front) || NS_WARN_IF(front->IsLocked())) {
     return nullptr;
   }
 
@@ -654,20 +770,6 @@ void PersistentBufferProviderShared::Destroy() {
   }
 
   mTextures.clear();
-}
-
-bool PersistentBufferProviderShared::IsAccelerated() const {
-#ifdef XP_WIN
-  // Detect if we're using D2D canvas.
-  if (mWillReadFrequently || mTextures.empty() || !mTextures[0]) {
-    return false;
-  }
-  auto* data = mTextures[0]->GetInternalData();
-  if (data && data->AsD3D11TextureData()) {
-    return true;
-  }
-#endif
-  return false;
 }
 
 }  // namespace layers

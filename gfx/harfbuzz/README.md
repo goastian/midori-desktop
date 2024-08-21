@@ -2,16 +2,21 @@
 [![CircleCI Build Status](https://circleci.com/gh/harfbuzz/harfbuzz/tree/main.svg?style=svg)](https://circleci.com/gh/harfbuzz/harfbuzz/tree/main)
 [![OSS-Fuzz Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/harfbuzz.svg)](https://oss-fuzz-build-logs.storage.googleapis.com/index.html)
 [![Coverity Scan Build Status](https://scan.coverity.com/projects/15166/badge.svg)](https://scan.coverity.com/projects/harfbuzz)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/89c872f5ce1c42af802602bfcd15d90a)](https://www.codacy.com/gh/harfbuzz/harfbuzz/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=harfbuzz/harfbuzz&amp;utm_campaign=Badge_Grade)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/89c872f5ce1c42af802602bfcd15d90a)](https://app.codacy.com/gh/harfbuzz/harfbuzz/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![Codecov Code Coverage](https://codecov.io/gh/harfbuzz/harfbuzz/branch/main/graph/badge.svg)](https://codecov.io/gh/harfbuzz/harfbuzz)
 [![Packaging status](https://repology.org/badge/tiny-repos/harfbuzz.svg)](https://repology.org/project/harfbuzz/versions)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/harfbuzz/harfbuzz/badge)](https://securityscorecards.dev/viewer/?uri=github.com/harfbuzz/harfbuzz)
+
 
 # HarfBuzz
 
 HarfBuzz is a text shaping engine. It primarily supports [OpenType][1], but also
 [Apple Advanced Typography][2]. HarfBuzz is used in Android, Chrome,
-ChromeOS, Firefox, GNOME, GTK+, KDE, LibreOffice, OpenJDK, PlayStation, Qt,
-XeTeX, and other places.
+ChromeOS, Firefox, GNOME, GTK+, KDE, Qt, LibreOffice, OpenJDK, XeTeX,
+PlayStation, Microsoft Edge, Adobe Photoshop, Illustrator, InDesign,
+Godot Engine, and other places.
+
+[![xkcd-derived image](xkcd.png)](https://xkcd.com/2347/)
 
 For bug reports, mailing list, and other information please visit:
 
@@ -26,8 +31,8 @@ For user manual as well as API documentation, check: https://harfbuzz.github.io
 ## Download
 
 For tarball releases of HarfBuzz, look [here][3]. At the same place you
-will also find Win32/Win64 binary bundles that include libharfbuzz DLL,
-hb-view.exe, hb-shape.exe, and all dependencies.
+will also find Win32/Win64 binary bundles that include `libharfbuzz` DLL,
+`hb-view.exe`, `hb-shape.exe`, and all dependencies.
 
 The canonical source tree is available on [github][4].
 
@@ -67,9 +72,9 @@ For a comparison of old vs new HarfBuzz memory consumption see [this][10].
 
 ## Name
 
-HarfBuzz (حرف‌باز) is my Persian translation of “[OpenType][1]”,
-transliterated using the Latin script. It sports a second meaning, but that
-ain’t translatable.
+HarfBuzz (حرف‌باز) is the literal Persian translation of “[OpenType][1]”,
+transliterated using the Latin script. It also means "talkative" or
+"glib" (also a nod to the GNOME project where HarfBuzz originates from).
 
 > Background: Originally there was this font format called TrueType. People and
 > companies started calling their type engines all things ending in Type:

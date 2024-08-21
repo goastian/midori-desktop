@@ -10,7 +10,11 @@
 #include "GLContext.h"
 
 #include <CoreGraphics/CoreGraphics.h>
-#include <OpenGLES/EAGL.h>
+#ifdef __OBJC__
+#  include <OpenGLES/EAGL.h>
+#else
+typedef void EAGLContext;
+#endif
 
 namespace mozilla {
 namespace gl {
@@ -23,7 +27,7 @@ class GLContextEAGL : public GLContext {
  public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(GLContextEAGL, override)
   GLContextEAGL(const GLContextDesc&, EAGLContext* context,
-                GLContext* sharedContext, ContextProfile profile);
+                GLContext* sharedContext);
 
   ~GLContextEAGL();
 
@@ -35,8 +39,6 @@ class GLContextEAGL : public GLContext {
     MOZ_ASSERT(gl->GetContextType() == GLContextType::EAGL);
     return static_cast<GLContextEAGL*>(gl);
   }
-
-  bool AttachToWindow(nsIWidget* aWidget);
 
   EAGLContext* GetEAGLContext() const { return mContext; }
 
@@ -54,18 +56,9 @@ class GLContextEAGL : public GLContext {
 
   virtual GLuint GetDefaultFramebuffer() override { return mBackbufferFB; }
 
-  virtual bool RenewSurface(nsIWidget* aWidget) override {
-    // FIXME: should use the passed widget instead of the existing one.
-    return RecreateRB();
-  }
-
  private:
   GLuint mBackbufferRB = 0;
   GLuint mBackbufferFB = 0;
-
-  void* mLayer = nullptr;
-
-  bool RecreateRB();
 };
 
 }  // namespace gl

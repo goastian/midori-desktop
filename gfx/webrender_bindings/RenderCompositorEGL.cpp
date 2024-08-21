@@ -17,7 +17,7 @@
 #include "mozilla/webrender/RenderThread.h"
 #include "mozilla/widget/CompositorWidget.h"
 
-#ifdef MOZ_WAYLAND
+#ifdef MOZ_WIDGET_GTK
 #  include "mozilla/WidgetUtilsGtk.h"
 #  include "mozilla/widget/GtkCompositorWidget.h"
 #endif
@@ -38,7 +38,7 @@ extern LazyLogModule gRenderThreadLog;
 /* static */
 UniquePtr<RenderCompositor> RenderCompositorEGL::Create(
     const RefPtr<widget::CompositorWidget>& aWidget, nsACString& aError) {
-  if ((kIsWayland || kIsX11) && !gfx::gfxVars::UseEGL()) {
+  if (kIsLinux && !gfx::gfxVars::UseEGL()) {
     return nullptr;
   }
   RefPtr<gl::GLContext> gl = RenderThread::Get()->SingletonGL(aError);
@@ -83,14 +83,18 @@ RenderCompositorEGL::~RenderCompositorEGL() {
 }
 
 bool RenderCompositorEGL::BeginFrame() {
-  if ((kIsWayland || kIsX11) && mEGLSurface == EGL_NO_SURFACE) {
+  if (kIsLinux && mEGLSurface == EGL_NO_SURFACE) {
     gfxCriticalNote
         << "We don't have EGLSurface to draw into. Called too early?";
     return false;
   }
-#ifdef MOZ_WAYLAND
+#ifdef MOZ_WIDGET_GTK
   if (mWidget->AsGTK()) {
-    mWidget->AsGTK()->SetEGLNativeWindowSize(GetBufferSize());
+    if (!mWidget->AsGTK()->SetEGLNativeWindowSize(GetBufferSize())) {
+      // It's possible that GtkWidget is hidden on Wayland; e.g. maybe it's
+      // just been closed. So, we can't draw into it right now.
+      return false;
+    }
   }
 #endif
   if (!MakeCurrent()) {
@@ -127,7 +131,7 @@ RenderedFrameId RenderCompositorEGL::EndFrame(
 #endif
 
   RenderedFrameId frameId = GetNextRenderFrameId();
-#ifdef MOZ_WAYLAND
+#ifdef MOZ_WIDGET_GTK
   if (mWidget->IsHidden()) {
     return frameId;
   }
@@ -192,7 +196,7 @@ bool RenderCompositorEGL::Resume() {
     mHandlingNewSurfaceError = false;
 
     gl::GLContextEGL::Cast(gl())->SetEGLSurfaceOverride(mEGLSurface);
-  } else if (kIsWayland || kIsX11) {
+  } else if (kIsLinux) {
     // Destroy EGLSurface if it exists and create a new one. We will set the
     // swap interval after MakeCurrent() has been called.
     DestroyEGLSurface();
@@ -240,14 +244,7 @@ void RenderCompositorEGL::DestroyEGLSurface() {
   // Release EGLSurface of back buffer before calling ResizeBuffers().
   if (mEGLSurface) {
     gle->SetEGLSurfaceOverride(EGL_NO_SURFACE);
-    if (!egl->fMakeCurrent(EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
-      const EGLint err = egl->mLib->fGetError();
-      gfxCriticalNote << "Error in eglMakeCurrent: " << gfx::hexa(err);
-    }
-    if (!egl->fDestroySurface(mEGLSurface)) {
-      const EGLint err = egl->mLib->fGetError();
-      gfxCriticalNote << "Error in eglDestroySurface: " << gfx::hexa(err);
-    }
+    gl::GLContextEGL::DestroySurface(*egl, mEGLSurface);
     mEGLSurface = nullptr;
   }
 }

@@ -601,12 +601,10 @@ already_AddRefed<GLContext> CreateForWidget(Display* aXDisplay, Window aXWindow,
 
   int xscreen = DefaultScreen(aXDisplay);
 
-  ScopedXFree<GLXFBConfig> cfgs;
   GLXFBConfig config;
   int visid;
-  if (!GLContextGLX::FindFBConfigForWindow(aXDisplay, xscreen, aXWindow, &cfgs,
-                                           &config, &visid,
-                                           aHardwareWebRender)) {
+  if (!GLContextGLX::FindFBConfigForWindow(
+          aXDisplay, xscreen, aXWindow, &config, &visid, aHardwareWebRender)) {
     return nullptr;
   }
 
@@ -635,10 +633,7 @@ already_AddRefed<GLContext> GLContextProviderGLX::CreateForCompositorWidget(
 }
 
 static bool ChooseConfig(GLXLibrary* glx, Display* display, int screen,
-                         ScopedXFree<GLXFBConfig>* const out_scopedConfigArr,
                          GLXFBConfig* const out_config, int* const out_visid) {
-  ScopedXFree<GLXFBConfig>& scopedConfigArr = *out_scopedConfigArr;
-
   const int attribs[] = {
       LOCAL_GLX_RENDER_TYPE,
       LOCAL_GLX_RGBA_BIT,
@@ -662,7 +657,13 @@ static bool ChooseConfig(GLXLibrary* glx, Display* display, int screen,
   };
 
   int numConfigs = 0;
-  scopedConfigArr = glx->fChooseFBConfig(display, screen, attribs, &numConfigs);
+  const auto scopedConfigArr =
+      glx->fChooseFBConfig(display, screen, attribs, &numConfigs);
+  const auto freeConfigList = MakeScopeExit([&]() {
+    if (scopedConfigArr) {
+      XFree(scopedConfigArr);
+    }
+  });
   if (!scopedConfigArr || !numConfigs) return false;
 
   // Issues with glxChooseFBConfig selection and sorting:
@@ -763,10 +764,11 @@ bool GLContextGLX::FindVisual(Display* display, int screen,
   return false;
 }
 
-bool GLContextGLX::FindFBConfigForWindow(
-    Display* display, int screen, Window window,
-    ScopedXFree<GLXFBConfig>* const out_scopedConfigArr,
-    GLXFBConfig* const out_config, int* const out_visid, bool aWebRender) {
+bool GLContextGLX::FindFBConfigForWindow(Display* display, int screen,
+                                         Window window,
+                                         GLXFBConfig* const out_config,
+                                         int* const out_visid,
+                                         bool aWebRender) {
   // XXX the visual ID is almost certainly the LOCAL_GLX_FBCONFIG_ID, so
   // we could probably do this first and replace the glXGetFBConfigs
   // with glXChooseConfigs.  Docs are sparklingly clear as always.
@@ -776,7 +778,12 @@ bool GLContextGLX::FindFBConfigForWindow(
     return false;
   }
 
-  ScopedXFree<GLXFBConfig>& cfgs = *out_scopedConfigArr;
+  GLXFBConfig* cfgs = nullptr;
+  const auto freeConfigList = MakeScopeExit([&]() {
+    if (cfgs) {
+      XFree(cfgs);
+    }
+  });
   int numConfigs;
   const int webrenderAttribs[] = {LOCAL_GLX_ALPHA_SIZE,
                                   windowAttrs.depth == 32 ? 8 : 0,
@@ -850,10 +857,9 @@ static already_AddRefed<GLContextGLX> CreateOffscreenPixmapContext(
 
   int screen = DefaultScreen(display->get());
 
-  ScopedXFree<GLXFBConfig> scopedConfigArr;
   GLXFBConfig config;
   int visid;
-  if (!ChooseConfig(glx, *display, screen, &scopedConfigArr, &config, &visid)) {
+  if (!ChooseConfig(glx, *display, screen, &config, &visid)) {
     NS_WARNING("Failed to find a compatible config.");
     return nullptr;
   }

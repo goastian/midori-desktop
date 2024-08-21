@@ -6,6 +6,7 @@ use api::{ImageBufferKind, units::DeviceSize};
 use crate::batch::{BatchKey, BatchKind, BrushBatchKind, BatchFeatures};
 use crate::composite::{CompositeFeatures, CompositeSurfaceFormat};
 use crate::device::{Device, Program, ShaderError};
+use crate::pattern::PatternKind;
 use euclid::default::Transform3D;
 use glyph_rasterizer::GlyphFormat;
 use crate::renderer::{
@@ -39,23 +40,27 @@ fn get_feature_string(kind: ImageBufferKind, texture_external_version: TextureEx
         (ImageBufferKind::TextureRect, _) => "TEXTURE_RECT",
         (ImageBufferKind::TextureExternal, TextureExternalVersion::ESSL3) => "TEXTURE_EXTERNAL",
         (ImageBufferKind::TextureExternal, TextureExternalVersion::ESSL1) => "TEXTURE_EXTERNAL_ESSL1",
+        (ImageBufferKind::TextureExternalBT709, _) => "TEXTURE_EXTERNAL_BT709",
     }
 }
 
-fn has_platform_support(kind: ImageBufferKind, gl_type: &GlType) -> bool {
-    match (kind, gl_type) {
+fn has_platform_support(kind: ImageBufferKind, device: &Device) -> bool {
+    match (kind, device.gl().get_type()) {
         (ImageBufferKind::Texture2D, _) => true,
-        (ImageBufferKind::TextureRect, &GlType::Gles) => false,
-        (ImageBufferKind::TextureRect, &GlType::Gl) => true,
-        (ImageBufferKind::TextureExternal, &GlType::Gles) => true,
-        (ImageBufferKind::TextureExternal, &GlType::Gl) => false,
+        (ImageBufferKind::TextureRect, GlType::Gles) => false,
+        (ImageBufferKind::TextureRect, GlType::Gl) => true,
+        (ImageBufferKind::TextureExternal, GlType::Gles) => true,
+        (ImageBufferKind::TextureExternal, GlType::Gl) => false,
+        (ImageBufferKind::TextureExternalBT709, GlType::Gles) => device.supports_extension("GL_EXT_YUV_target"),
+        (ImageBufferKind::TextureExternalBT709, GlType::Gl) => false,
     }
 }
 
-pub const IMAGE_BUFFER_KINDS: [ImageBufferKind; 3] = [
+pub const IMAGE_BUFFER_KINDS: [ImageBufferKind; 4] = [
     ImageBufferKind::Texture2D,
     ImageBufferKind::TextureRect,
     ImageBufferKind::TextureExternal,
+    ImageBufferKind::TextureExternalBT709,
 ];
 
 const ADVANCED_BLEND_FEATURE: &str = "ADVANCED_BLEND";
@@ -250,7 +255,6 @@ impl LazilyCompiledShader {
                 VertexArrayKind::RadialGradient => &desc::RADIAL_GRADIENT,
                 VertexArrayKind::ConicGradient => &desc::CONIC_GRADIENT,
                 VertexArrayKind::Blur => &desc::BLUR,
-                VertexArrayKind::ClipImage => &desc::CLIP_IMAGE,
                 VertexArrayKind::ClipRect => &desc::CLIP_RECT,
                 VertexArrayKind::ClipBoxShadow => &desc::CLIP_BOX_SHADOW,
                 VertexArrayKind::VectorStencil => &desc::VECTOR_STENCIL,
@@ -259,6 +263,7 @@ impl LazilyCompiledShader {
                 VertexArrayKind::Scale => &desc::SCALE,
                 VertexArrayKind::Resolve => &desc::RESOLVE,
                 VertexArrayKind::SvgFilter => &desc::SVG_FILTER,
+                VertexArrayKind::SvgFilterNode => &desc::SVG_FILTER_NODE,
                 VertexArrayKind::Composite => &desc::COMPOSITE,
                 VertexArrayKind::Clear => &desc::CLEAR,
                 VertexArrayKind::Copy => &desc::COPY,
@@ -278,7 +283,8 @@ impl LazilyCompiledShader {
                             ("sGpuCache", TextureSampler::GpuCache),
                             ("sPrimitiveHeadersF", TextureSampler::PrimitiveHeadersF),
                             ("sPrimitiveHeadersI", TextureSampler::PrimitiveHeadersI),
-                            ("sGpuBuffer", TextureSampler::GpuBuffer),
+                            ("sGpuBufferF", TextureSampler::GpuBufferF),
+                            ("sGpuBufferI", TextureSampler::GpuBufferI),
                         ],
                     );
                 }
@@ -296,7 +302,8 @@ impl LazilyCompiledShader {
                             ("sPrimitiveHeadersF", TextureSampler::PrimitiveHeadersF),
                             ("sPrimitiveHeadersI", TextureSampler::PrimitiveHeadersI),
                             ("sClipMask", TextureSampler::ClipMask),
-                            ("sGpuBuffer", TextureSampler::GpuBuffer),
+                            ("sGpuBufferF", TextureSampler::GpuBufferF),
+                            ("sGpuBufferI", TextureSampler::GpuBufferI),
                         ],
                     );
                 }
@@ -438,7 +445,6 @@ impl BrushShader {
             BlendMode::Alpha |
             BlendMode::PremultipliedAlpha |
             BlendMode::PremultipliedDestOut |
-            BlendMode::SubpixelWithBgColor |
             BlendMode::Screen |
             BlendMode::PlusLighter |
             BlendMode::Exclusion => {
@@ -596,6 +602,7 @@ pub struct Shaders {
     pub cs_radial_gradient: LazilyCompiledShader,
     pub cs_conic_gradient: LazilyCompiledShader,
     pub cs_svg_filter: LazilyCompiledShader,
+    pub cs_svg_filter_node: LazilyCompiledShader,
 
     // Brush shaders
     brush_solid: BrushShader,
@@ -614,7 +621,6 @@ pub struct Shaders {
     pub cs_clip_rectangle_slow: LazilyCompiledShader,
     pub cs_clip_rectangle_fast: LazilyCompiledShader,
     pub cs_clip_box_shadow: LazilyCompiledShader,
-    pub cs_clip_image: LazilyCompiledShader,
 
     // The are "primitive shaders". These shaders draw and blend
     // final results on screen. They are aware of tile boundaries.
@@ -628,6 +634,8 @@ pub struct Shaders {
 
     ps_split_composite: LazilyCompiledShader,
     pub ps_quad_textured: LazilyCompiledShader,
+    pub ps_quad_radial_gradient: LazilyCompiledShader,
+    pub ps_quad_conic_gradient: LazilyCompiledShader,
     pub ps_mask: LazilyCompiledShader,
     pub ps_mask_fast: LazilyCompiledShader,
     pub ps_clear: LazilyCompiledShader,
@@ -658,7 +666,7 @@ impl Shaders {
         } else {
             TextureExternalVersion::ESSL1
         };
-        let mut shader_flags = get_shader_feature_flags(gl_type, texture_external_version);
+        let mut shader_flags = get_shader_feature_flags(gl_type, texture_external_version, device);
         shader_flags.set(ShaderFeatureFlags::ADVANCED_BLEND_EQUATION, use_advanced_blend_equation);
         shader_flags.set(ShaderFeatureFlags::DUAL_SOURCE_BLENDING, use_dual_source_blending);
         shader_flags.set(ShaderFeatureFlags::DITHERING, options.enable_dithering);
@@ -764,6 +772,16 @@ impl Shaders {
             profile,
         )?;
 
+        let cs_svg_filter_node = LazilyCompiledShader::new(
+            ShaderKind::Cache(VertexArrayKind::SvgFilterNode),
+            "cs_svg_filter_node",
+            &[],
+            device,
+            options.precache_flags,
+            &shader_list,
+            profile,
+        )?;
+
         let ps_mask = LazilyCompiledShader::new(
             ShaderKind::Cache(VertexArrayKind::Mask),
             "ps_quad_mask",
@@ -814,16 +832,6 @@ impl Shaders {
             profile,
         )?;
 
-        let cs_clip_image = LazilyCompiledShader::new(
-            ShaderKind::ClipCache(VertexArrayKind::ClipImage),
-            "cs_clip_image",
-            &["TEXTURE_2D"],
-            device,
-            options.precache_flags,
-            &shader_list,
-            profile,
-        )?;
-
         let mut cs_scale = Vec::new();
         let scale_shader_num = IMAGE_BUFFER_KINDS.len();
         // PrimitiveShader is not clonable. Use push() to initialize the vec.
@@ -831,7 +839,7 @@ impl Shaders {
             cs_scale.push(None);
         }
         for image_buffer_kind in &IMAGE_BUFFER_KINDS {
-            if has_platform_support(*image_buffer_kind, &gl_type) {
+            if has_platform_support(*image_buffer_kind, device) {
                 let feature_string = get_feature_string(
                     *image_buffer_kind,
                     texture_external_version,
@@ -894,6 +902,26 @@ impl Shaders {
             profile,
         )?;
 
+        let ps_quad_radial_gradient = LazilyCompiledShader::new(
+            ShaderKind::Primitive,
+            "ps_quad_radial_gradient",
+            &[],
+            device,
+            options.precache_flags,
+            &shader_list,
+            profile,
+        )?;
+
+        let ps_quad_conic_gradient = LazilyCompiledShader::new(
+            ShaderKind::Primitive,
+            "ps_quad_conic_gradient",
+            &[],
+            device,
+            options.precache_flags,
+            &shader_list,
+            profile,
+        )?;
+
         let ps_split_composite = LazilyCompiledShader::new(
             ShaderKind::Primitive,
             "ps_split_composite",
@@ -934,7 +962,7 @@ impl Shaders {
             brush_fast_image.push(None);
         }
         for buffer_kind in 0 .. IMAGE_BUFFER_KINDS.len() {
-            if !has_platform_support(IMAGE_BUFFER_KINDS[buffer_kind], &gl_type)
+            if !has_platform_support(IMAGE_BUFFER_KINDS[buffer_kind], device)
                 // Brush shaders are not ESSL1 compatible
                 || (IMAGE_BUFFER_KINDS[buffer_kind] == ImageBufferKind::TextureExternal
                     && texture_external_version == TextureExternalVersion::ESSL1)
@@ -989,7 +1017,7 @@ impl Shaders {
             brush_yuv_image.push(None);
         }
         for image_buffer_kind in &IMAGE_BUFFER_KINDS {
-            if has_platform_support(*image_buffer_kind, &gl_type) {
+            if has_platform_support(*image_buffer_kind, device) {
                 yuv_features.push("YUV");
                 fast_path_features.push("FAST_PATH");
 
@@ -1113,6 +1141,7 @@ impl Shaders {
             cs_border_solid,
             cs_scale,
             cs_svg_filter,
+            cs_svg_filter_node,
             brush_solid,
             brush_image,
             brush_fast_image,
@@ -1125,10 +1154,11 @@ impl Shaders {
             cs_clip_rectangle_slow,
             cs_clip_rectangle_fast,
             cs_clip_box_shadow,
-            cs_clip_image,
             ps_text_run,
             ps_text_run_dual_source,
             ps_quad_textured,
+            ps_quad_radial_gradient,
+            ps_quad_conic_gradient,
             ps_mask,
             ps_mask_fast,
             ps_split_composite,
@@ -1161,6 +1191,18 @@ impl Shaders {
             .expect("bug: unsupported scale shader requested")
     }
 
+    pub fn get_quad_shader(
+        &mut self,
+        pattern: PatternKind
+    ) -> &mut LazilyCompiledShader {
+        match pattern {
+            PatternKind::ColorOrTexture => &mut self.ps_quad_textured,
+            PatternKind::RadialGradient => &mut self.ps_quad_radial_gradient,
+            PatternKind::ConicGradient => &mut self.ps_quad_conic_gradient,
+            PatternKind::Mask => unreachable!(),
+        }
+    }
+
     pub fn get(&
         mut self,
         key: &BatchKey,
@@ -1169,8 +1211,17 @@ impl Shaders {
         device: &Device,
     ) -> &mut LazilyCompiledShader {
         match key.kind {
-            BatchKind::Primitive => {
+            BatchKind::Quad(PatternKind::ColorOrTexture) => {
                 &mut self.ps_quad_textured
+            }
+            BatchKind::Quad(PatternKind::RadialGradient) => {
+                &mut self.ps_quad_radial_gradient
+            }
+            BatchKind::Quad(PatternKind::ConicGradient) => {
+                &mut self.ps_quad_conic_gradient
+            }
+            BatchKind::Quad(PatternKind::Mask) => {
+                unreachable!();
             }
             BatchKind::SplitComposite => {
                 &mut self.ps_split_composite
@@ -1262,6 +1313,7 @@ impl Shaders {
         self.cs_blur_a8.deinit(device);
         self.cs_blur_rgba8.deinit(device);
         self.cs_svg_filter.deinit(device);
+        self.cs_svg_filter_node.deinit(device);
         self.brush_solid.deinit(device);
         self.brush_blend.deinit(device);
         self.brush_mix_blend.deinit(device);
@@ -1271,7 +1323,6 @@ impl Shaders {
         self.cs_clip_rectangle_slow.deinit(device);
         self.cs_clip_rectangle_fast.deinit(device);
         self.cs_clip_box_shadow.deinit(device);
-        self.cs_clip_image.deinit(device);
         self.ps_text_run.deinit(device);
         if let Some(shader) = self.ps_text_run_dual_source {
             shader.deinit(device);
@@ -1300,6 +1351,8 @@ impl Shaders {
         self.cs_border_segment.deinit(device);
         self.ps_split_composite.deinit(device);
         self.ps_quad_textured.deinit(device);
+        self.ps_quad_radial_gradient.deinit(device);
+        self.ps_quad_conic_gradient.deinit(device);
         self.ps_mask.deinit(device);
         self.ps_mask_fast.deinit(device);
         self.ps_clear.deinit(device);
@@ -1352,7 +1405,7 @@ impl CompositorShaders {
             TextureExternalVersion::ESSL1
         };
 
-        let feature_flags = get_shader_feature_flags(gl_type, texture_external_version);
+        let feature_flags = get_shader_feature_flags(gl_type, texture_external_version, device);
         let shader_list = get_shader_features(feature_flags);
 
         for _ in 0..IMAGE_BUFFER_KINDS.len() {
@@ -1362,7 +1415,7 @@ impl CompositorShaders {
         }
 
         for image_buffer_kind in &IMAGE_BUFFER_KINDS {
-            if !has_platform_support(*image_buffer_kind, &gl_type) {
+            if !has_platform_support(*image_buffer_kind, device) {
                 continue;
             }
 
@@ -1482,15 +1535,23 @@ impl CompositorShaders {
     }
 }
 
-fn get_shader_feature_flags(gl_type: GlType, texture_external_version: TextureExternalVersion) -> ShaderFeatureFlags {
+fn get_shader_feature_flags(
+    gl_type: GlType,
+    texture_external_version: TextureExternalVersion,
+    device: &Device
+) -> ShaderFeatureFlags {
     match gl_type {
         GlType::Gl => ShaderFeatureFlags::GL,
         GlType::Gles => {
-            let texture_external_flag = match texture_external_version {
+            let mut flags = ShaderFeatureFlags::GLES;
+            flags |= match texture_external_version {
                 TextureExternalVersion::ESSL3 => ShaderFeatureFlags::TEXTURE_EXTERNAL,
                 TextureExternalVersion::ESSL1 => ShaderFeatureFlags::TEXTURE_EXTERNAL_ESSL1,
             };
-            ShaderFeatureFlags::GLES | texture_external_flag
+            if device.supports_extension("GL_EXT_YUV_target") {
+                flags |= ShaderFeatureFlags::TEXTURE_EXTERNAL_BT709;
+            }
+            flags
         }
     }
 }

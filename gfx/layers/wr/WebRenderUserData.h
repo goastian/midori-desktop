@@ -8,6 +8,7 @@
 #define GFX_WEBRENDERUSERDATA_H
 
 #include <vector>
+#include "mozilla/gfx/DrawEventRecorder.h"
 #include "mozilla/webrender/WebRenderAPI.h"
 #include "mozilla/image/WebRenderImageProvider.h"
 #include "mozilla/layers/AnimationInfo.h"
@@ -165,7 +166,7 @@ class WebRenderImageData : public WebRenderUserData {
   void CreateAsyncImageWebRenderCommands(
       mozilla::wr::DisplayListBuilder& aBuilder, ImageContainer* aContainer,
       const StackingContextHelper& aSc, const LayoutDeviceRect& aBounds,
-      const LayoutDeviceRect& aSCBounds, VideoInfo::Rotation aRotation,
+      const LayoutDeviceRect& aSCBounds, wr::WrRotation aRotation,
       const wr::ImageRendering& aFilter, const wr::MixBlendMode& aMixBlendMode,
       bool aIsBackfaceVisible);
 
@@ -236,7 +237,7 @@ class WebRenderFallbackData : public WebRenderUserData {
   /// into.
   WebRenderImageData* PaintIntoImage();
 
-  std::vector<RefPtr<gfx::SourceSurface>> mExternalSurfaces;
+  gfx::DrawEventRecorderPrivate::ExternalSurfacesHolder mExternalSurfaces;
   UniquePtr<nsDisplayItemGeometry> mGeometry;
   DisplayItemClip mClip;
   nsRect mBounds;
@@ -344,7 +345,7 @@ class WebRenderMaskData : public WebRenderUserData {
 
   Maybe<wr::BlobImageKey> mBlobKey;
   std::vector<RefPtr<gfx::ScaledFont>> mFonts;
-  std::vector<RefPtr<gfx::SourceSurface>> mExternalSurfaces;
+  gfx::DrawEventRecorderPrivate::ExternalSurfacesHolder mExternalSurfaces;
   LayerIntRect mItemRect;
   nsPoint mMaskOffset;
   nsStyleImageLayers mMaskStyle;

@@ -7,25 +7,43 @@
 #define _include_gfx_ipc_CanvasManagerParent_h__
 
 #include "mozilla/gfx/PCanvasManagerParent.h"
+#include "mozilla/dom/ipc/IdType.h"
+#include "mozilla/StaticMonitor.h"
+#include "mozilla/UniquePtr.h"
 #include "nsHashtablesFwd.h"
+#include "nsTArray.h"
 
-namespace mozilla::gfx {
+namespace mozilla {
+namespace layers {
+class CanvasTranslator;
+class HostIPCAllocator;
+class SharedSurfacesHolder;
+class SurfaceDescriptor;
+}  // namespace layers
+
+namespace gfx {
 
 class CanvasManagerParent final : public PCanvasManagerParent {
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CanvasManagerParent, override);
 
-  static void Init(Endpoint<PCanvasManagerParent>&& aEndpoint);
+  static void Init(Endpoint<PCanvasManagerParent>&& aEndpoint,
+                   layers::SharedSurfacesHolder* aSharedSurfacesHolder,
+                   const dom::ContentParentId& aContentId);
 
   static void Shutdown();
 
-  CanvasManagerParent();
+  static void DisableRemoteCanvas();
+
+  CanvasManagerParent(layers::SharedSurfacesHolder* aSharedSurfacesHolder,
+                      const dom::ContentParentId& aContentId);
 
   void Bind(Endpoint<PCanvasManagerParent>&& aEndpoint);
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
-  already_AddRefed<PWebGLParent> AllocPWebGLParent();
-  already_AddRefed<PWebGPUParent> AllocPWebGPUParent();
+  already_AddRefed<dom::PWebGLParent> AllocPWebGLParent();
+  already_AddRefed<webgpu::PWebGPUParent> AllocPWebGPUParent();
+  already_AddRefed<layers::PCanvasParent> AllocPCanvasParent();
 
   mozilla::ipc::IPCResult RecvInitialize(const uint32_t& aId);
   mozilla::ipc::IPCResult RecvGetSnapshot(
@@ -35,15 +53,19 @@ class CanvasManagerParent final : public PCanvasManagerParent {
 
  private:
   static void ShutdownInternal();
+  static void DisableRemoteCanvasInternal();
 
   ~CanvasManagerParent() override;
 
+  RefPtr<layers::SharedSurfacesHolder> mSharedSurfacesHolder;
+  const dom::ContentParentId mContentId;
   uint32_t mId = 0;
 
-  using ManagerSet = nsTHashSet<CanvasManagerParent*>;
+  using ManagerSet = nsTHashSet<RefPtr<CanvasManagerParent>>;
   static ManagerSet sManagers;
 };
 
-}  // namespace mozilla::gfx
+}  // namespace gfx
+}  // namespace mozilla
 
 #endif  // _include_gfx_ipc_CanvasManagerParent_h__

@@ -18,6 +18,7 @@
 #include "mozilla/layers/OverlayInfo.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/StaticPtr.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/webrender/WebRenderTypes.h"
 
@@ -42,6 +43,10 @@ struct IDXGISwapChain1;
 struct IDCompositionVirtualSurface;
 
 namespace mozilla {
+
+namespace gfx {
+color::ColorProfileDesc QueryOutputColorProfile();
+}
 
 namespace gl {
 class GLContext;
@@ -88,6 +93,15 @@ struct ColorManagementChain {
 
 // -
 
+enum class DCompOverlayTypes : uint8_t {
+  NO_OVERLAY = 0,
+  HARDWARE_DECODED_VIDEO = 1 << 0,
+  SOFTWARE_DECODED_VIDEO = 1 << 1,
+};
+MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(DCompOverlayTypes)
+
+// -
+
 /**
  * DCLayerTree manages direct composition layers.
  * It does not manage gecko's layers::Layer.
@@ -103,7 +117,7 @@ class DCLayerTree {
 
   explicit DCLayerTree(gl::GLContext* aGL, EGLConfig aEGLConfig,
                        ID3D11Device* aDevice, ID3D11DeviceContext* aCtx,
-                       IDCompositionDevice2* aCompositionDevice);
+                       HWND aHwnd, IDCompositionDevice2* aCompositionDevice);
   ~DCLayerTree();
 
   void SetDefaultSwapChain(IDXGISwapChain1* aSwapChain);
@@ -134,6 +148,7 @@ class DCLayerTree {
   gl::GLContext* GetGLContext() const { return mGL; }
   EGLConfig GetEGLConfig() const { return mEGLConfig; }
   ID3D11Device* GetDevice() const { return mDevice; }
+  ID3D11DeviceContext* GetDeviceContext() const { return mCtx; }
   IDCompositionDevice2* GetCompositionDevice() const {
     return mCompositionDevice;
   }
@@ -148,6 +163,8 @@ class DCLayerTree {
 
   DCSurface* GetSurface(wr::NativeSurfaceId aId) const;
 
+  HWND GetHwnd() const { return mHwnd; }
+
   // Get or create an FBO with depth buffer suitable for specified dimensions
   GLuint GetOrCreateFbo(int aWidth, int aHeight);
 
@@ -155,6 +172,8 @@ class DCLayerTree {
   DXGI_FORMAT GetOverlayFormatForSDR();
 
   bool SupportsSwapChainTearing();
+
+  void SetUsedOverlayTypeInFrame(DCompOverlayTypes aTypes);
 
  protected:
   bool Initialize(HWND aHwnd, nsACString& aError);
@@ -174,6 +193,7 @@ class DCLayerTree {
 
   RefPtr<ID3D11Device> mDevice;
   RefPtr<ID3D11DeviceContext> mCtx;
+  HWND mHwnd;
 
   RefPtr<IDCompositionDevice2> mCompositionDevice;
   RefPtr<IDCompositionTarget> mCompositionTarget;
@@ -232,20 +252,21 @@ class DCLayerTree {
 
   bool mPendingCommit;
 
-  static color::ColorProfileDesc QueryOutputColorProfile();
-
   mutable Maybe<color::ColorProfileDesc> mOutputColorProfile;
+
+  DCompOverlayTypes mUsedOverlayTypesInFrame = DCompOverlayTypes::NO_OVERLAY;
+  int mSlowCommitCount = 0;
 
  public:
   const color::ColorProfileDesc& OutputColorProfile() const {
     if (!mOutputColorProfile) {
-      mOutputColorProfile = Some(QueryOutputColorProfile());
+      mOutputColorProfile = Some(gfx::QueryOutputColorProfile());
     }
     return *mOutputColorProfile;
   }
 
  protected:
-  static UniquePtr<GpuOverlayInfo> sGpuOverlayInfo;
+  static StaticAutoPtr<GpuOverlayInfo> sGpuOverlayInfo;
 };
 
 /**
@@ -373,8 +394,8 @@ class DCSurfaceVideo : public DCSurface {
  protected:
   virtual ~DCSurfaceVideo();
 
-  DXGI_FORMAT GetSwapChainFormat();
-  bool CreateVideoSwapChain();
+  DXGI_FORMAT GetSwapChainFormat(bool aUseVpAutoHDR);
+  bool CreateVideoSwapChain(DXGI_FORMAT aFormat);
   bool CallVideoProcessorBlt();
   void ReleaseDecodeSwapChainResources();
 
@@ -386,10 +407,16 @@ class DCSurfaceVideo : public DCSurface {
   gfx::IntSize mVideoSize;
   gfx::IntSize mSwapChainSize;
   DXGI_FORMAT mSwapChainFormat = DXGI_FORMAT_B8G8R8A8_UNORM;
+  bool mIsDRM = false;
   bool mFailedYuvSwapChain = false;
   RefPtr<RenderTextureHost> mRenderTextureHost;
   RefPtr<RenderTextureHost> mPrevTexture;
   int mSlowPresentCount = 0;
+  bool mFirstPresent = true;
+  const UINT mSwapChainBufferCount;
+  bool mUseVpAutoHDR = false;
+  bool mVpAutoHDRFailed = false;
+  bool mVpSuperResolutionFailed = false;
 };
 
 /**

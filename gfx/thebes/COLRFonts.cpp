@@ -653,7 +653,7 @@ struct ColorLineT {
       *aFirstStop = *aLastStop = aStops[0].offset;
       return;
     }
-    aStops.StableSort(nsDefaultComparator<GradientStop, GradientStop>());
+    aStops.StableSort();
     if (aReverse) {
       float a = aStops[0].offset;
       float b = aStops.LastElement().offset;
@@ -1298,8 +1298,7 @@ struct PaintGlyph {
       // Core Text's own color font support may step in and ignore the
       // pattern. So to avoid this, fill the glyph as a path instead.
 #if XP_MACOSX
-      RefPtr<Path> path =
-          aState.mScaledFont->GetPathForGlyphs(buffer, aState.mDrawTarget);
+      RefPtr<Path> path = GetPathForGlyphs(aState, buffer);
       aState.mDrawTarget->Fill(path, *fillPattern, aState.mDrawOptions);
 #else
       aState.mDrawTarget->FillGlyphs(aState.mScaledFont, buffer, *fillPattern,
@@ -1307,8 +1306,7 @@ struct PaintGlyph {
 #endif
       return true;
     }
-    RefPtr<Path> path =
-        aState.mScaledFont->GetPathForGlyphs(buffer, aState.mDrawTarget);
+    RefPtr<Path> path = GetPathForGlyphs(aState, buffer);
     aState.mDrawTarget->PushClip(path);
     bool ok = DispatchPaint(aState, aOffset + paintOffset, aBounds);
     aState.mDrawTarget->PopClip();
@@ -1319,9 +1317,18 @@ struct PaintGlyph {
     MOZ_ASSERT(format == kFormat);
     Glyph g{uint16_t(glyphID), Point()};
     GlyphBuffer buffer{&g, 1};
-    RefPtr<Path> path =
-        aState.mScaledFont->GetPathForGlyphs(buffer, aState.mDrawTarget);
+    RefPtr<Path> path = GetPathForGlyphs(aState, buffer);
     return path->GetFastBounds();
+  }
+
+ private:
+  RefPtr<Path> GetPathForGlyphs(const PaintState& aState,
+                                const GlyphBuffer& buffer) const {
+    if (aState.mDrawTarget->GetBackendType() == BackendType::WEBRENDER_TEXT) {
+      RefPtr dt = gfxPlatform::ThreadLocalScreenReferenceDrawTarget();
+      return aState.mScaledFont->GetPathForGlyphs(buffer, dt);
+    }
+    return aState.mScaledFont->GetPathForGlyphs(buffer, aState.mDrawTarget);
   }
 };
 
@@ -2576,7 +2583,7 @@ uint16_t COLRFonts::GetColrTableVersion(hb_blob_t* aCOLR) {
   return colr->version;
 }
 
-UniquePtr<nsTArray<sRGBColor>> COLRFonts::SetupColorPalette(
+nsTArray<sRGBColor> COLRFonts::CreateColorPalette(
     hb_face_t* aFace, const FontPaletteValueSet* aPaletteValueSet,
     nsAtom* aFontPalette, const nsACString& aFamilyName) {
   // Find the base color palette to use, if there are multiple available;
@@ -2631,10 +2638,10 @@ UniquePtr<nsTArray<sRGBColor>> COLRFonts::SetupColorPalette(
   hb_ot_color_palette_get_colors(aFace, paletteIndex, 0, &count,
                                  colors.Elements());
 
-  auto palette = MakeUnique<nsTArray<sRGBColor>>();
-  palette->SetCapacity(count);
+  nsTArray<sRGBColor> palette;
+  palette.SetCapacity(count);
   for (const auto c : colors) {
-    palette->AppendElement(
+    palette.AppendElement(
         sRGBColor(hb_color_get_red(c) / 255.0, hb_color_get_green(c) / 255.0,
                   hb_color_get_blue(c) / 255.0, hb_color_get_alpha(c) / 255.0));
   }
@@ -2642,8 +2649,8 @@ UniquePtr<nsTArray<sRGBColor>> COLRFonts::SetupColorPalette(
   // Apply @font-palette-values overrides, if present.
   if (fpv) {
     for (const auto overrideColor : fpv->mOverrides) {
-      if (overrideColor.mIndex < palette->Length()) {
-        (*palette)[overrideColor.mIndex] = overrideColor.mColor;
+      if (overrideColor.mIndex < palette.Length()) {
+        palette[overrideColor.mIndex] = overrideColor.mColor;
       }
     }
   }

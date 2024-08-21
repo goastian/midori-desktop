@@ -26,7 +26,7 @@ void HostIPCAllocator::SendPendingAsyncMessages() {
   // Some type of AsyncParentMessageData message could have
   // one file descriptor (e.g. OpDeliverFence).
   // A number of file descriptors per gecko ipc message have a limitation
-  // on OS_POSIX (MACOSX or LINUX).
+  // on XP_UNIX (MACOSX or LINUX).
   static const uint32_t kMaxMessageNumber =
       IPC::Message::MAX_DESCRIPTORS_PER_MESSAGE;
 
@@ -74,6 +74,7 @@ bool FixedSizeSmallShmemSectionAllocator::AllocShmemSection(
     uint32_t aSize, ShmemSection* aShmemSection) {
   // For now we only support sizes of 4. If we want to support different sizes
   // some more complicated bookkeeping should be added.
+  NS_ASSERT_OWNINGTHREAD(FixedSizeSmallShmemSectionAllocator);
   MOZ_ASSERT(aSize == sSupportedBlockSize);
   MOZ_ASSERT(aShmemSection);
 
@@ -84,21 +85,19 @@ bool FixedSizeSmallShmemSectionAllocator::AllocShmemSection(
 
   uint32_t allocationSize = (aSize + sizeof(ShmemSectionHeapAllocation));
 
-  ipc::Shmem shmem;
-
   for (size_t i = 0; i < mUsedShmems.size(); i++) {
     ShmemSectionHeapHeader* header =
         mUsedShmems[i].get<ShmemSectionHeapHeader>();
     if ((header->mAllocatedBlocks + 1) * allocationSize +
             sizeof(ShmemSectionHeapHeader) <
         sShmemPageSize) {
-      shmem = mUsedShmems[i];
+      aShmemSection->shmem() = mUsedShmems[i];
       MOZ_ASSERT(mUsedShmems[i].IsWritable());
       break;
     }
   }
 
-  if (!shmem.IsWritable()) {
+  if (!aShmemSection->shmem().IsWritable()) {
     ipc::Shmem tmp;
     if (!mShmProvider->AllocUnsafeShmem(sShmemPageSize, &tmp)) {
       return false;
@@ -109,13 +108,15 @@ bool FixedSizeSmallShmemSectionAllocator::AllocShmemSection(
     header->mAllocatedBlocks = 0;
 
     mUsedShmems.push_back(tmp);
-    shmem = tmp;
+    aShmemSection->shmem() = tmp;
   }
 
-  MOZ_ASSERT(shmem.IsWritable());
+  MOZ_ASSERT(aShmemSection->shmem().IsWritable());
 
-  ShmemSectionHeapHeader* header = shmem.get<ShmemSectionHeapHeader>();
-  uint8_t* heap = shmem.get<uint8_t>() + sizeof(ShmemSectionHeapHeader);
+  ShmemSectionHeapHeader* header =
+      aShmemSection->shmem().get<ShmemSectionHeapHeader>();
+  uint8_t* heap =
+      aShmemSection->shmem().get<uint8_t>() + sizeof(ShmemSectionHeapHeader);
 
   ShmemSectionHeapAllocation* allocHeader = nullptr;
 
@@ -143,15 +144,9 @@ bool FixedSizeSmallShmemSectionAllocator::AllocShmemSection(
   header->mAllocatedBlocks++;
   allocHeader->mStatus = STATUS_ALLOCATED;
 
-  size_t offset =
-      (heap + sizeof(ShmemSectionHeapAllocation)) - shmem.get<uint8_t>();
-  if (offset > (size_t)std::numeric_limits<uint32_t>::max()) {
-    return false;
-  }
-  if (!aShmemSection->Init(shmem, offset, aSize)) {
-    return false;
-  }
-
+  aShmemSection->size() = aSize;
+  aShmemSection->offset() = (heap + sizeof(ShmemSectionHeapAllocation)) -
+                            aShmemSection->shmem().get<uint8_t>();
   ShrinkShmemSectionHeap();
   return true;
 }
@@ -184,6 +179,8 @@ void FixedSizeSmallShmemSectionAllocator::FreeShmemSection(
 
 void FixedSizeSmallShmemSectionAllocator::DeallocShmemSection(
     mozilla::layers::ShmemSection& aShmemSection) {
+  NS_ASSERT_OWNINGTHREAD(FixedSizeSmallShmemSectionAllocator);
+
   if (!IPCOpen()) {
     gfxCriticalNote << "Attempt to dealloc a ShmemSections after shutdown.";
     return;
@@ -194,6 +191,8 @@ void FixedSizeSmallShmemSectionAllocator::DeallocShmemSection(
 }
 
 void FixedSizeSmallShmemSectionAllocator::ShrinkShmemSectionHeap() {
+  NS_ASSERT_OWNINGTHREAD(FixedSizeSmallShmemSectionAllocator);
+
   if (!IPCOpen()) {
     mUsedShmems.clear();
     return;
@@ -217,41 +216,6 @@ void FixedSizeSmallShmemSectionAllocator::ShrinkShmemSectionHeap() {
       i++;
     }
   }
-}
-
-Maybe<ShmemSection> ShmemSection::FromUntrusted(
-    const UntrustedShmemSection& aUntrusted) {
-  ShmemSection section;
-  if (!section.Init(aUntrusted.shmem(), aUntrusted.offset(),
-                    aUntrusted.size())) {
-    return Nothing();
-  }
-
-  return Some(section);
-}
-
-bool ShmemSection::Init(const mozilla::ipc::Shmem& aShmem, uint32_t aOffset,
-                        uint32_t aSize) {
-  if (!aShmem.IsReadable()) {
-    return false;
-  }
-
-  size_t shmSize = aShmem.Size<uint8_t>();
-  CheckedInt<size_t> end = CheckedInt<size_t>(aOffset) + aSize;
-
-  if (!end.isValid() || end.value() > shmSize) {
-    return false;
-  }
-
-  mShmem = aShmem;
-  mOffset = aOffset;
-  mSize = aSize;
-
-  return true;
-}
-
-UntrustedShmemSection ShmemSection::AsUntrusted() {
-  return UntrustedShmemSection(mShmem, mOffset, mSize);
 }
 
 }  // namespace layers

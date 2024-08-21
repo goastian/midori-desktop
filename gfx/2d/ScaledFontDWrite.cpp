@@ -17,18 +17,6 @@
 
 #include "dwrite_3.h"
 
-// Currently, we build with WINVER=0x601 (Win7), which means newer
-// declarations in dwrite_3.h will not be visible. Also, we don't
-// yet have the Fall Creators Update SDK available on build machines,
-// so even with updated WINVER, some of the interfaces we need would
-// not be present.
-// To work around this, until the build environment is updated,
-// we #include an extra header that contains copies of the relevant
-// classes/interfaces we need.
-#if !defined(__MINGW32__) && WINVER < 0x0A00
-#  include "dw-extra.h"
-#endif
-
 #include "PathSkia.h"
 #include "skia/include/core/SkPaint.h"
 #include "skia/include/core/SkPath.h"
@@ -36,7 +24,7 @@
 
 #include <vector>
 
-#include "cairo-win32.h"
+#include "cairo-dwrite.h"
 
 #include "HelpersWinFonts.h"
 
@@ -511,7 +499,6 @@ bool ScaledFontDWrite::GetWRFontInstanceOptions(
   if (Factory::GetBGRSubpixelOrder()) {
     options.flags |= wr::FontInstanceFlags::SUBPIXEL_BGR;
   }
-  options.bg_color = wr::ToColorU(DeviceColor());
   options.synthetic_italics =
       wr::DegreesToSyntheticItalics(GetSyntheticObliqueAngle());
 
@@ -709,13 +696,15 @@ cairo_font_face_t* ScaledFontDWrite::CreateCairoFontFace(
     return nullptr;
   }
 
-  return cairo_dwrite_font_face_create_for_dwrite_fontface(nullptr, mFontFace);
+  return cairo_dwrite_font_face_create_for_dwrite_fontface(mFontFace);
 }
 
 void ScaledFontDWrite::PrepareCairoScaledFont(cairo_scaled_font_t* aFont) {
+#if 0
   if (mGDIForced) {
     cairo_dwrite_scaled_font_set_force_GDI_classic(aFont, true);
   }
+#endif
 }
 
 already_AddRefed<UnscaledFont> UnscaledFontDWrite::CreateFromFontDescriptor(

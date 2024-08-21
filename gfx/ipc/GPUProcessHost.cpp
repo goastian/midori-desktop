@@ -104,22 +104,6 @@ void GPUProcessHost::OnChannelConnected(base::ProcessId peer_pid) {
   NS_DispatchToMainThread(runnable);
 }
 
-void GPUProcessHost::OnChannelError() {
-  MOZ_ASSERT(!NS_IsMainThread());
-
-  GeckoChildProcessHost::OnChannelError();
-
-  // Post a task to the main thread. Take the lock because mTaskFactory is not
-  // thread-safe.
-  RefPtr<Runnable> runnable;
-  {
-    MonitorAutoLock lock(mMonitor);
-    runnable =
-        mTaskFactory.NewRunnableMethod(&GPUProcessHost::OnChannelErrorTask);
-  }
-  NS_DispatchToMainThread(runnable);
-}
-
 void GPUProcessHost::OnChannelConnectedTask() {
   if (mLaunchPhase == LaunchPhase::Waiting) {
     InitAfterConnect(true);
@@ -197,7 +181,7 @@ void GPUProcessHost::Shutdown(bool aUnexpectedShutdown) {
 #ifndef NS_FREE_PERMANENT_DATA
     // No need to communicate shutdown, the GPU process doesn't need to
     // communicate anything back.
-    KillHard("NormalShutdown");
+    KillHard(/* aGenerateMinidump */ false);
 #endif
 
     // If we're shutting down unexpectedly, we're in the middle of handling an
@@ -227,9 +211,18 @@ void GPUProcessHost::OnChannelClosed() {
   MOZ_ASSERT(!mGPUChild);
 }
 
-void GPUProcessHost::KillHard(const char* aReason) {
-  ProcessHandle handle = GetChildProcessHandle();
+void GPUProcessHost::KillHard(bool aGenerateMinidump) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (mGPUChild && aGenerateMinidump) {
+    mGPUChild->GeneratePairedMinidump();
+  }
+
+  const ProcessHandle handle = GetChildProcessHandle();
   if (!base::KillProcess(handle, base::PROCESS_END_KILLED_BY_USER)) {
+    if (mGPUChild) {
+      mGPUChild->DeletePairedMinidump();
+    }
     NS_WARNING("failed to kill subprocess!");
   }
 
@@ -238,7 +231,9 @@ void GPUProcessHost::KillHard(const char* aReason) {
 
 uint64_t GPUProcessHost::GetProcessToken() const { return mProcessToken; }
 
-void GPUProcessHost::KillProcess() { KillHard("DiagnosticKill"); }
+void GPUProcessHost::KillProcess(bool aGenerateMinidump) {
+  KillHard(aGenerateMinidump);
+}
 
 void GPUProcessHost::CrashProcess() { mGPUChild->SendCrashProcess(); }
 

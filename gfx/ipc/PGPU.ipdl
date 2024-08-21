@@ -41,6 +41,9 @@ using mozilla::layers::OverlayInfo from "mozilla/layers/OverlayInfo.h";
 using mozilla::layers::SwapChainInfo from "mozilla/layers/OverlayInfo.h";
 using mozilla::media::MediaCodecsSupported from "MediaCodecsSupport.h";
 using mozilla::layers::VideoBridgeSource from "mozilla/layers/VideoBridgeUtils.h";
+using mozilla::hal::BatteryInformation from "mozilla/hal_sandbox/PHal.h";
+using mozilla::gfx::DeviceResetReason from "mozilla/gfx/Types.h";
+using mozilla::gfx::DeviceResetDetectPlace from "mozilla/gfx/Types.h";
 
 namespace mozilla {
 namespace gfx {
@@ -53,7 +56,7 @@ struct LayerTreeIdMapping {
 // This protocol allows the UI process to talk to the GPU process. There is one
 // instance of this protocol, with the GPUParent living on the main thread of
 // the GPU process and the GPUChild living on the main thread of the UI process.
-[NeedsOtherPid]
+[NeedsOtherPid, ParentProc=GPU, ChildProc=Parent]
 sync protocol PGPU
 {
 parent:
@@ -64,7 +67,7 @@ parent:
              GfxInfoFeatureStatus[] features,
              uint32_t wrNamespace);
 
-  async InitCompositorManager(Endpoint<PCompositorManagerParent> endpoint);
+  async InitCompositorManager(Endpoint<PCompositorManagerParent> endpoint, uint32_t aNamespace);
   async InitVsyncBridge(Endpoint<PVsyncBridgeParent> endpoint);
   async InitImageBridge(Endpoint<PImageBridgeParent> endpoint);
   async InitVideoBridge(Endpoint<PVideoBridgeParent> endpoint, VideoBridgeSource aSource);
@@ -79,9 +82,11 @@ parent:
   async UpdateVar(GfxVarUpdate var);
 
   async PreferenceUpdate(Pref pref);
+  async ScreenInformationChanged();
+  async NotifyBatteryInfo(BatteryInformation aBatteryInfo);
 
   // Create a new content-process compositor bridge.
-  async NewContentCompositorManager(Endpoint<PCompositorManagerParent> endpoint, ContentParentId childId);
+  async NewContentCompositorManager(Endpoint<PCompositorManagerParent> endpoint, ContentParentId childId, uint32_t aNamespace);
   async NewContentImageBridge(Endpoint<PImageBridgeParent> endpoint, ContentParentId childId);
   async NewContentVRManager(Endpoint<PVRManagerParent> endpoint, ContentParentId childId);
   async NewContentRemoteDecoderManager(Endpoint<PRemoteDecoderManagerParent> endpoint, ContentParentId childId);
@@ -160,9 +165,10 @@ child:
   async RecordDiscardedData(DiscardedData data);
 
   async DeclareStable();
-  async NotifyDeviceReset(GPUDeviceData status);
+  async NotifyDeviceReset(GPUDeviceData status, DeviceResetReason reason, DeviceResetDetectPlace place);
   async NotifyOverlayInfo(OverlayInfo info);
   async NotifySwapChainInfo(SwapChainInfo info);
+  async NotifyDisableRemoteCanvas();
   async FlushMemory(nsString reason);
 
   async AddMemoryReport(MemoryReport aReport);

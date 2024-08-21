@@ -66,6 +66,8 @@
 #ifdef MOZ_WAYLAND
 #  include <gdk/gdkwayland.h>
 #  include "mozilla/widget/nsWaylandDisplay.h"
+#endif
+#ifdef MOZ_WIDGET_GTK
 #  include "mozilla/widget/DMABufLibWrapper.h"
 #  include "mozilla/StaticPrefs_widget.h"
 #endif
@@ -99,7 +101,13 @@ static bool IsX11EGLEnvvarEnabled() {
 
 gfxPlatformGtk::gfxPlatformGtk() {
   if (!gfxPlatform::IsHeadless()) {
-    gtk_init(nullptr, nullptr);
+    if (!gtk_init_check(nullptr, nullptr)) {
+      gfxCriticalNote << "Failed to init Gtk, missing display? DISPLAY="
+                      << getenv("DISPLAY")
+                      << " WAYLAND_DISPLAY=" << getenv("WAYLAND_DISPLAY")
+                      << "\n";
+      abort();
+    }
   }
 
   mIsX11Display = gfxPlatform::IsHeadless() ? false : GdkIsX11Display();
@@ -134,6 +142,14 @@ gfxPlatformGtk::gfxPlatformGtk() {
 gfxPlatformGtk::~gfxPlatformGtk() {
   Factory::ReleaseFTLibrary(gPlatformFTLibrary);
   gPlatformFTLibrary = nullptr;
+}
+
+void gfxPlatformGtk::InitAcceleration() {
+  gfxPlatform::InitAcceleration();
+
+  if (XRE_IsContentProcess()) {
+    ImportCachedContentDeviceData();
+  }
 }
 
 void gfxPlatformGtk::InitX11EGLConfig() {
@@ -183,12 +199,7 @@ void gfxPlatformGtk::InitX11EGLConfig() {
 
 void gfxPlatformGtk::InitDmabufConfig() {
   FeatureState& feature = gfxConfig::GetFeature(Feature::DMABUF);
-#ifdef MOZ_WAYLAND
   feature.EnableByDefault();
-
-  if (StaticPrefs::widget_dmabuf_force_enabled_AtStartup()) {
-    feature.UserForceEnable("Force enabled by pref");
-  }
 
   nsCString failureId;
   int32_t status;
@@ -202,26 +213,33 @@ void gfxPlatformGtk::InitDmabufConfig() {
                     failureId);
   }
 
+  if (StaticPrefs::widget_dmabuf_force_enabled_AtStartup()) {
+    feature.UserForceEnable("Force enabled by pref");
+  } else if (!StaticPrefs::widget_dmabuf_enabled_AtStartup()) {
+    feature.UserDisable("Force disable by pref",
+                        "FEATURE_FAILURE_USER_FORCE_DISABLED"_ns);
+  }
+
   if (!gfxVars::UseEGL()) {
     feature.ForceDisable(FeatureStatus::Unavailable, "Requires EGL",
                          "FEATURE_FAILURE_REQUIRES_EGL"_ns);
   }
 
-  if (feature.IsEnabled()) {
-    nsAutoCString drmRenderDevice;
-    gfxInfo->GetDrmRenderDevice(drmRenderDevice);
-    gfxVars::SetDrmRenderDevice(drmRenderDevice);
+  if (!gfxVars::WebglUseHardware()) {
+    feature.Disable(FeatureStatus::Blocklisted,
+                    "DMABuf disabled with software rendering", failureId);
+  }
 
+  nsAutoCString drmRenderDevice;
+  gfxInfo->GetDrmRenderDevice(drmRenderDevice);
+  gfxVars::SetDrmRenderDevice(drmRenderDevice);
+
+  if (feature.IsEnabled()) {
     if (!GetDMABufDevice()->IsEnabled(failureId)) {
       feature.ForceDisable(FeatureStatus::Failed, "Failed to configure",
                            failureId);
     }
   }
-#else
-  feature.DisableByDefault(FeatureStatus::Unavailable,
-                           "Wayland support missing",
-                           "FEATURE_FAILURE_NO_WAYLAND"_ns);
-#endif
 }
 
 bool gfxPlatformGtk::InitVAAPIConfig(bool aForceEnabledByUser) {
@@ -231,8 +249,11 @@ bool gfxPlatformGtk::InitVAAPIConfig(bool aForceEnabledByUser) {
   if (!XRE_IsParentProcess()) {
     return feature.IsEnabled();
   }
-#ifdef MOZ_WAYLAND
   feature.EnableByDefault();
+
+  if (aForceEnabledByUser) {
+    feature.UserForceEnable("Force enabled by pref");
+  }
 
   int32_t status = nsIGfxInfo::FEATURE_STATUS_UNKNOWN;
   nsCOMPtr<nsIGfxInfo> gfxInfo = components::GfxInfo::Service();
@@ -248,17 +269,9 @@ bool gfxPlatformGtk::InitVAAPIConfig(bool aForceEnabledByUser) {
     feature.Disable(FeatureStatus::Blocklisted, "Blocklisted by gfxInfo",
                     failureId);
   }
-  if (aForceEnabledByUser) {
-    feature.UserForceEnable("Force enabled by pref");
-  }
   if (!gfxVars::UseEGL()) {
     feature.ForceDisable(FeatureStatus::Unavailable, "Requires EGL",
                          "FEATURE_FAILURE_REQUIRES_EGL"_ns);
-  }
-
-  if (!gfxVars::WebglUseHardware()) {
-    feature.Disable(FeatureStatus::Blocklisted,
-                    "DMABuf disabled with software rendering", failureId);
   }
 
   // Configure zero-copy playback feature.
@@ -296,11 +309,6 @@ bool gfxPlatformGtk::InitVAAPIConfig(bool aForceEnabledByUser) {
       gfxVars::SetHwDecodedVideoZeroCopy(true);
     }
   }
-#else
-  feature.DisableByDefault(FeatureStatus::Unavailable,
-                           "Wayland support missing",
-                           "FEATURE_FAILURE_NO_WAYLAND"_ns);
-#endif
   return feature.IsEnabled();
 }
 
@@ -557,23 +565,16 @@ nsTArray<uint8_t> gfxPlatformGtk::GetPlatformCMSOutputProfileData() {
   }
 
   if (XRE_IsContentProcess()) {
-    MOZ_ASSERT(NS_IsMainThread());
-    // This will be passed in during InitChild so we can avoid sending a
-    // sync message back to the parent during init.
-    const mozilla::gfx::ContentDeviceData* contentDeviceData =
-        GetInitContentDeviceData();
-    if (contentDeviceData) {
-      // On Windows, we assert that the profile isn't empty, but on
-      // Linux it can legitimately be empty if the display isn't
-      // calibrated.  Thus, no assertion here.
-      return contentDeviceData->cmsOutputProfileData().Clone();
+    auto& cmsOutputProfileData = GetCMSOutputProfileData();
+    // We should have set our profile data when we received our initial
+    // ContentDeviceData.
+    MOZ_ASSERT(cmsOutputProfileData.isSome(),
+               "Should have created output profile data when we received "
+               "initial content device data.");
+    if (cmsOutputProfileData.isSome()) {
+      return cmsOutputProfileData.ref().Clone();
     }
-
-    // Otherwise we need to ask the parent for the updated color profile
-    mozilla::dom::ContentChild* cc = mozilla::dom::ContentChild::GetSingleton();
-    nsTArray<uint8_t> result;
-    Unused << cc->SendGetOutputColorProfileData(&result);
-    return result;
+    return nsTArray<uint8_t>();
   }
 
   if (!mIsX11Display) {
@@ -735,12 +736,11 @@ class GtkVsyncSource final : public VsyncSource {
     Window root = DefaultRootWindow(mXDisplay);
     int screen = DefaultScreen(mXDisplay);
 
-    ScopedXFree<GLXFBConfig> cfgs;
     GLXFBConfig config;
     int visid;
     bool forWebRender = false;
     if (!gl::GLContextGLX::FindFBConfigForWindow(
-            mXDisplay, screen, root, &cfgs, &config, &visid, forWebRender)) {
+            mXDisplay, screen, root, &config, &visid, forWebRender)) {
       lock.NotifyAll();
       return;
     }
@@ -1006,7 +1006,8 @@ gfxPlatformGtk::CreateGlobalHardwareVsyncSource() {
   // gl::sGLXLibrary.SupportsVideoSync() when EGL is used as NVIDIA drivers
   // refuse to use EGL GL context when GLX was initialized first and fail
   // silently.
-  if (gfxConfig::IsEnabled(Feature::HW_COMPOSITING) && !isXwayland &&
+  if (StaticPrefs::gfx_x11_glx_sgi_video_sync_AtStartup() &&
+      gfxConfig::IsEnabled(Feature::HW_COMPOSITING) && !isXwayland &&
       (!gfxVars::UseEGL() || isMesa) &&
       gl::sGLXLibrary.SupportsVideoSync(DefaultXDisplay())) {
     RefPtr<GtkVsyncSource> vsyncSource = new GtkVsyncSource();
@@ -1029,3 +1030,9 @@ void gfxPlatformGtk::BuildContentDeviceData(ContentDeviceData* aOut) {
 
   aOut->cmsOutputProfileData() = GetPlatformCMSOutputProfileData();
 }
+
+// Wrapper for third party code (WebRTC for instance) where
+// gfxVars can't be included.
+namespace mozilla::gfx {
+bool IsDMABufEnabled() { return gfxVars::UseDMABuf(); }
+}  // namespace mozilla::gfx

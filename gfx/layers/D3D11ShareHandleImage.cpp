@@ -86,6 +86,8 @@ D3D11ShareHandleImage::MaybeCreateNV12ImageAndSetData(
     return nullptr;
   }
 
+  client->AddFlags(TextureFlags::SOFTWARE_DECODED_VIDEO);
+
   // The texture does not have keyed mutex. When keyed mutex exists, the texture
   // could not be used for video overlay. Then it needs manual synchronization
   RefPtr<ID3D11Texture2D> texture = image->GetTexture();
@@ -178,7 +180,8 @@ bool D3D11ShareHandleImage::AllocateTexture(D3D11RecycleAllocator* aAllocator,
     CD3D11_TEXTURE2D_DESC newDesc(
         DXGI_FORMAT_B8G8R8A8_UNORM, mSize.width, mSize.height, 1, 1,
         D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE);
-    newDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+    newDesc.MiscFlags =
+        D3D11_RESOURCE_MISC_SHARED_NTHANDLE | D3D11_RESOURCE_MISC_SHARED;
 
     HRESULT hr =
         aDevice->CreateTexture2D(&newDesc, nullptr, getter_AddRefs(mTexture));
@@ -203,6 +206,20 @@ D3D11ShareHandleImage::GetAsSourceSurface() {
   }
 
   return gfx::Factory::CreateBGRA8DataSourceSurfaceForD3D11Texture(src);
+}
+
+nsresult D3D11ShareHandleImage::BuildSurfaceDescriptorBuffer(
+    SurfaceDescriptorBuffer& aSdBuffer, BuildSdbFlags aFlags,
+    const std::function<MemoryOrShmem(uint32_t)>& aAllocate) {
+  RefPtr<ID3D11Texture2D> src = GetTexture();
+  if (!src) {
+    gfxWarning() << "Cannot readback from shared texture because no texture is "
+                    "available.";
+    return NS_ERROR_FAILURE;
+  }
+
+  return gfx::Factory::CreateSdbForD3D11Texture(src, mSize, aSdBuffer,
+                                                aAllocate);
 }
 
 ID3D11Texture2D* D3D11ShareHandleImage::GetTexture() const { return mTexture; }
@@ -308,7 +325,8 @@ already_AddRefed<TextureClient> D3D11RecycleAllocator::CreateOrRecycleClient(
       mUsableSurfaceFormat, aColorSpace, aColorRange, aSize, allocFlags,
       mDevice, layers::TextureFlags::DEFAULT);
 
-  RefPtr<TextureClient> textureClient = CreateOrRecycle(helper);
+  RefPtr<TextureClient> textureClient =
+      CreateOrRecycle(helper).unwrapOr(nullptr);
   return textureClient.forget();
 }
 
@@ -326,7 +344,7 @@ RefPtr<ID3D11Texture2D> D3D11RecycleAllocator::GetStagingTextureNV12(
     desc.Usage = D3D11_USAGE_STAGING;
     desc.BindFlags = 0;
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+    desc.MiscFlags = 0;
     desc.SampleDesc.Count = 1;
 
     HRESULT hr = mDevice->CreateTexture2D(&desc, nullptr,

@@ -19,7 +19,9 @@
 
 #ifdef MOZ_WIDGET_ANDROID
 #  include "mozilla/java/GeckoSurfaceTextureWrappers.h"
+#  include "mozilla/layers/AndroidHardwareBuffer.h"
 #  include "mozilla/webrender/RenderAndroidHardwareBufferTextureHost.h"
+#  include "mozilla/webrender/RenderAndroidSurfaceTextureHost.h"
 #  include "mozilla/widget/AndroidCompositorWidget.h"
 #  include <android/native_window.h>
 #  include <android/native_window_jni.h>
@@ -155,14 +157,7 @@ void RenderCompositorOGLSWGL::DestroyEGLSurface() {
   // Release EGLSurface of back buffer before calling ResizeBuffers().
   if (mEGLSurface) {
     gle->SetEGLSurfaceOverride(EGL_NO_SURFACE);
-    if (!egl->fMakeCurrent(EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
-      const EGLint err = egl->mLib->fGetError();
-      gfxCriticalNote << "Error in eglMakeCurrent: " << gfx::hexa(err);
-    }
-    if (!egl->fDestroySurface(mEGLSurface)) {
-      const EGLint err = egl->mLib->fGetError();
-      gfxCriticalNote << "Error in eglDestroySurface: " << gfx::hexa(err);
-    }
+    gl::GLContextEGL::DestroySurface(*egl, mEGLSurface);
     mEGLSurface = EGL_NO_SURFACE;
   }
 }
@@ -234,8 +229,6 @@ void RenderCompositorOGLSWGL::HandleExternalImage(
     effect.mPrimaryEffect = texturedEffect;
     mCompositor->DrawQuad(drawRect, aFrameSurface.mClipRect, effect, 1.0,
                           aFrameSurface.mTransform, drawRect);
-  } else if (!aExternalImage->IsWrappingAsyncRemoteTexture()) {
-    MOZ_ASSERT_UNREACHABLE("unexpected to be called");
   }
 #endif
 }

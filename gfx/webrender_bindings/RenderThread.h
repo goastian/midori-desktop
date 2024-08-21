@@ -14,6 +14,7 @@
 #include "GLTypes.h"  // for GLenum
 #include "nsISupportsImpl.h"
 #include "mozilla/gfx/Point.h"
+#include "mozilla/Hal.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/DataMutex.h"
 #include "mozilla/Maybe.h"
@@ -274,7 +275,8 @@ class RenderThread final {
   RefPtr<layers::ShaderProgramOGLsHolder> GetProgramsForCompositorOGL();
 
   /// Can only be called from the render thread.
-  void HandleDeviceReset(const char* aWhere, GLenum aReason);
+  void HandleDeviceReset(gfx::DeviceResetDetectPlace aPlace,
+                         gfx::DeviceResetReason aReason);
   /// Can only be called from the render thread.
   bool IsHandlingDeviceReset();
   /// Can be called from any thread.
@@ -292,7 +294,8 @@ class RenderThread final {
   bool SyncObjectNeeded();
 
   size_t RendererCount() const;
-  size_t ActiveRendererCount() const;
+  size_t ActiveRendererCount() const { return sActiveRendererCount; };
+  void UpdateActiveRendererCount();
 
   void BeginRecordingForWindow(wr::WindowId aWindowId,
                                const TimeStamp& aRecordingStart,
@@ -302,7 +305,13 @@ class RenderThread final {
 
   static void MaybeEnableGLDebugMessage(gl::GLContext* aGLContext);
 
+  void SetBatteryInfo(const hal::BatteryInformation& aBatteryInfo);
+  bool GetPowerIsCharging();
+
  private:
+  static size_t sRendererCount;
+  static size_t sActiveRendererCount;
+
   enum class RenderTextureOp {
     PrepareForUse,
     NotifyForUse,
@@ -434,6 +443,8 @@ class RenderThread final {
 
   std::map<wr::WindowId, UniquePtr<RendererOGL>> mRenderers;
 
+  DataMutex<Maybe<hal::BatteryInformation>> mBatteryInfo;
+
   struct PendingFrameInfo {
     TimeStamp mStartTime;
     VsyncId mStartId;
@@ -459,26 +470,35 @@ class RenderThread final {
     }
   };
 
-  Mutex mRenderTextureMapLock MOZ_UNANNOTATED;
+  Mutex mRenderTextureMapLock;
   std::unordered_map<wr::ExternalImageId, RefPtr<RenderTextureHost>,
                      ExternalImageIdHashFn>
-      mRenderTextures;
+      mRenderTextures MOZ_GUARDED_BY(mRenderTextureMapLock);
   std::unordered_map<wr::ExternalImageId, RefPtr<RenderTextureHost>,
                      ExternalImageIdHashFn>
-      mSyncObjectNeededRenderTextures;
+      mSyncObjectNeededRenderTextures MOZ_GUARDED_BY(mRenderTextureMapLock);
   std::list<std::pair<RenderTextureOp, RefPtr<RenderTextureHost>>>
-      mRenderTextureOps;
+      mRenderTextureOps MOZ_GUARDED_BY(mRenderTextureMapLock);
 
   // Used to remove all RenderTextureHost that are going to be removed by
   // a deferred callback and remove them right away without waiting for the
   // callback. On device reset we have to remove all GL related resources right
   // away.
-  std::list<RefPtr<RenderTextureHost>> mRenderTexturesDeferred;
+  std::list<RefPtr<RenderTextureHost>> mRenderTexturesDeferred
+      MOZ_GUARDED_BY(mRenderTextureMapLock);
 
-  RefPtr<nsIRunnable> mRenderTextureOpsRunnable;
+  RefPtr<nsIRunnable> mRenderTextureOpsRunnable
+      MOZ_GUARDED_BY(mRenderTextureMapLock);
 
+#ifdef DEBUG
+  // used for tests only to ensure render textures don't increase
+  int32_t mRenderTexturesLastTime MOZ_GUARDED_BY(mRenderTextureMapLock) = -1;
+#endif
+
+  // Set from MainThread, read from either MainThread or RenderThread
   bool mHasShutdown;
 
+  // Only accessed from the RenderThread
   bool mHandlingDeviceReset;
   bool mHandlingWebRenderError;
 };

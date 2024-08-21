@@ -13,6 +13,7 @@
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/gfx/StackArray.h"
+#include "mozilla/layers/TextureD3D11.h"
 #include "mozilla/layers/HelpersD3D11.h"
 #include "mozilla/layers/SyncObject.h"
 #include "mozilla/ProfilerMarkers.h"
@@ -26,9 +27,6 @@
 #include "nsPrintfCString.h"
 #include "FxROutputHandler.h"
 
-#undef NTDDI_VERSION
-#define NTDDI_VERSION NTDDI_WIN8
-
 #include <d3d11.h>
 #include <dcomp.h>
 #include <dxgi1_2.h>
@@ -39,8 +37,7 @@
 #undef PW_RENDERFULLCONTENT
 #define PW_RENDERFULLCONTENT 0x00000002
 
-namespace mozilla {
-namespace wr {
+namespace mozilla::wr {
 
 extern LazyLogModule gRenderThreadLog;
 #define LOG(...) MOZ_LOG(gRenderThreadLog, LogLevel::Debug, (__VA_ARGS__))
@@ -69,16 +66,7 @@ UniquePtr<RenderCompositor> RenderCompositorANGLE::Create(
 RenderCompositorANGLE::RenderCompositorANGLE(
     const RefPtr<widget::CompositorWidget>& aWidget,
     RefPtr<gl::GLContext>&& aGL)
-    : RenderCompositor(aWidget),
-      mGL(aGL),
-      mEGLConfig(nullptr),
-      mEGLSurface(nullptr),
-      mUseTripleBuffering(false),
-      mUseAlpha(false),
-      mUseNativeCompositor(true),
-      mUsePartialPresent(false),
-      mFullRender(false),
-      mDisablingNativeCompositor(false) {
+    : RenderCompositor(aWidget), mGL(aGL) {
   MOZ_ASSERT(mGL);
   LOG("RenderCompositorANGLE::RenderCompositorANGLE()");
 }
@@ -209,6 +197,7 @@ HWND RenderCompositorANGLE::GetCompositorHwnd() {
 bool RenderCompositorANGLE::CreateSwapChain(nsACString& aError) {
   MOZ_ASSERT(!UseCompositor());
 
+  mFirstPresent = true;
   HWND hwnd = mWidget->AsWindows()->GetHwnd();
 
   RefPtr<IDXGIDevice> dxgiDevice;
@@ -354,15 +343,12 @@ void RenderCompositorANGLE::CreateSwapChainForDCompIfPossible(
   // It does not support triple buffering.
   bool useTripleBuffering =
       gfx::gfxVars::UseWebRenderTripleBufferingWin() && !UseCompositor();
-  // Non Glass window is common since Windows 10.
-  bool useAlpha = false;
   RefPtr<IDXGISwapChain1> swapChain1 =
-      CreateSwapChainForDComp(useTripleBuffering, useAlpha);
+      CreateSwapChainForDComp(useTripleBuffering);
   if (swapChain1) {
     mSwapChain = swapChain1;
     mSwapChain1 = swapChain1;
     mUseTripleBuffering = useTripleBuffering;
-    mUseAlpha = useAlpha;
     mDCLayerTree->SetDefaultSwapChain(swapChain1);
   } else {
     // Clear CLayerTree on falire
@@ -371,7 +357,7 @@ void RenderCompositorANGLE::CreateSwapChainForDCompIfPossible(
 }
 
 RefPtr<IDXGISwapChain1> RenderCompositorANGLE::CreateSwapChainForDComp(
-    bool aUseTripleBuffering, bool aUseAlpha) {
+    bool aUseTripleBuffering) {
   HRESULT hr;
   RefPtr<IDXGIDevice> dxgiDevice;
   mDevice->QueryInterface((IDXGIDevice**)getter_AddRefs(dxgiDevice));
@@ -410,12 +396,7 @@ RefPtr<IDXGISwapChain1> RenderCompositorANGLE::CreateSwapChainForDComp(
   // DXGI_SCALING_NONE caused swap chain creation failure.
   desc.Scaling = DXGI_SCALING_STRETCH;
   desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
-  if (aUseAlpha) {
-    // This could degrade performance. Use it only when it is necessary.
-    desc.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
-  } else {
-    desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-  }
+  desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
   desc.Flags = 0;
 
   hr = dxgiFactory2->CreateSwapChainForComposition(mDevice, &desc, nullptr,
@@ -432,37 +413,8 @@ RefPtr<IDXGISwapChain1> RenderCompositorANGLE::CreateSwapChainForDComp(
 bool RenderCompositorANGLE::BeginFrame() {
   mWidget->AsWindows()->UpdateCompositorWndSizeIfNecessary();
 
-  if (!UseCompositor()) {
-    if (mDCLayerTree) {
-      bool useAlpha = mWidget->AsWindows()->HasGlass();
-      // When Alpha usage is changed, SwapChain needs to be recreatd.
-      if (useAlpha != mUseAlpha) {
-        DestroyEGLSurface();
-        mBufferSize.reset();
-
-        RefPtr<IDXGISwapChain1> swapChain1 =
-            CreateSwapChainForDComp(mUseTripleBuffering, useAlpha);
-        if (swapChain1) {
-          mSwapChain = swapChain1;
-          mUseAlpha = useAlpha;
-          mDCLayerTree->SetDefaultSwapChain(swapChain1);
-          // When alpha is used, we want to disable partial present.
-          // See Bug 1595027.
-          if (useAlpha) {
-            mFullRender = true;
-          }
-        } else {
-          gfxCriticalNote << "Failed to re-create SwapChain";
-          RenderThread::Get()->HandleWebRenderError(
-              WebRenderError::NEW_SURFACE);
-          return false;
-        }
-      }
-    }
-
-    if (!ResizeBufferIfNeeded()) {
-      return false;
-    }
+  if (!UseCompositor() && !ResizeBufferIfNeeded()) {
+    return false;
   }
 
   if (!MakeCurrent()) {
@@ -474,7 +426,8 @@ bool RenderCompositorANGLE::BeginFrame() {
     if (!mSyncObject->Synchronize(/* aFallible */ true)) {
       // It's timeout or other error. Handle the device-reset here.
       RenderThread::Get()->HandleDeviceReset(
-          "SyncObject", LOCAL_GL_UNKNOWN_CONTEXT_RESET_ARB);
+          gfx::DeviceResetDetectPlace::WR_SYNC_OBJRCT,
+          gfx::DeviceResetReason::UNKNOWN);
       return false;
     }
   }
@@ -488,25 +441,24 @@ RenderedFrameId RenderCompositorANGLE::EndFrame(
 
   if (!UseCompositor()) {
     auto start = TimeStamp::Now();
-    if (mWidget->AsWindows()->HasFxrOutputHandler()) {
+    if (auto* fxrHandler = mWidget->AsWindows()->GetFxrOutputHandler()) {
       // There is a Firefox Reality handler for this swapchain. Update this
       // window's contents to the VR window.
-      FxROutputHandler* fxrHandler =
-          mWidget->AsWindows()->GetFxrOutputHandler();
       if (fxrHandler->TryInitialize(mSwapChain, mDevice)) {
         fxrHandler->UpdateOutput(mCtx);
       }
     }
 
+    const UINT interval =
+        mFirstPresent ||
+                StaticPrefs::
+                    gfx_webrender_dcomp_video_swap_chain_present_interval_0()
+            ? 0
+            : 1;
+    const UINT flags = 0;
+
     const LayoutDeviceIntSize& bufferSize = mBufferSize.ref();
-
-    // During high contrast mode, alpha is used. In this case,
-    // IDXGISwapChain1::Present1 shows nothing with compositor window.
-    // In this case, we want to disable partial present by full render.
-    // See Bug 1595027
-    MOZ_ASSERT_IF(mUsePartialPresent && mUseAlpha, mFullRender);
-
-    if (mUsePartialPresent && !mUseAlpha && mSwapChain1) {
+    if (mUsePartialPresent && mSwapChain1) {
       // Clear full render flag.
       mFullRender = false;
       // If there is no diry rect, we skip SwapChain present.
@@ -539,7 +491,7 @@ RenderedFrameId RenderCompositorANGLE::EndFrame(
           params.pDirtyRects = rects.data();
 
           HRESULT hr;
-          hr = mSwapChain1->Present1(0, 0, &params);
+          hr = mSwapChain1->Present1(interval, flags, &params);
           if (FAILED(hr) && hr != DXGI_STATUS_OCCLUDED) {
             gfxCriticalNote << "Present1 failed: " << gfx::hexa(hr);
             mFullRender = true;
@@ -547,11 +499,31 @@ RenderedFrameId RenderCompositorANGLE::EndFrame(
         }
       }
     } else {
-      mSwapChain->Present(0, 0);
+      mSwapChain->Present(interval, flags);
     }
     auto end = TimeStamp::Now();
     mozilla::Telemetry::Accumulate(mozilla::Telemetry::COMPOSITE_SWAP_TIME,
                                    (end - start).ToMilliseconds() * 10.);
+
+    if (mFirstPresent && mDCLayerTree) {
+      // Wait for the GPU to finish executing its commands before
+      // committing the DirectComposition tree, or else the swapchain
+      // may flicker black when it's first presented.
+      RefPtr<IDXGIDevice2> dxgiDevice2;
+      mDevice->QueryInterface((IDXGIDevice2**)getter_AddRefs(dxgiDevice2));
+      MOZ_ASSERT(dxgiDevice2);
+
+      HANDLE event = ::CreateEvent(nullptr, false, false, nullptr);
+      HRESULT hr = dxgiDevice2->EnqueueSetEvent(event);
+      if (SUCCEEDED(hr)) {
+        DebugOnly<DWORD> result = ::WaitForSingleObject(event, INFINITE);
+        MOZ_ASSERT(result == WAIT_OBJECT_0);
+      } else {
+        gfxCriticalNoteOnce << "EnqueueSetEvent failed: " << gfx::hexa(hr);
+      }
+      ::CloseHandle(event);
+    }
+    mFirstPresent = false;
   }
 
   if (mDisablingNativeCompositor) {
@@ -808,29 +780,12 @@ RenderedFrameId RenderCompositorANGLE::UpdateFrameId() {
   return frameId;
 }
 
-GLenum RenderCompositorANGLE::IsContextLost(bool aForce) {
+gfx::DeviceResetReason RenderCompositorANGLE::IsContextLost(bool aForce) {
   // glGetGraphicsResetStatus does not always work to detect timeout detection
   // and recovery (TDR). On Windows, ANGLE itself is just relying upon the same
   // API, so we should not need to check it separately.
   auto reason = mDevice->GetDeviceRemovedReason();
-  switch (reason) {
-    case S_OK:
-      return LOCAL_GL_NO_ERROR;
-    case DXGI_ERROR_DEVICE_REMOVED:
-    case DXGI_ERROR_DRIVER_INTERNAL_ERROR:
-      NS_WARNING("Device reset due to system / different device");
-      return LOCAL_GL_INNOCENT_CONTEXT_RESET_ARB;
-    case DXGI_ERROR_DEVICE_HUNG:
-    case DXGI_ERROR_DEVICE_RESET:
-    case DXGI_ERROR_INVALID_CALL:
-      gfxCriticalError() << "Device reset due to WR device: "
-                         << gfx::hexa(reason);
-      return LOCAL_GL_GUILTY_CONTEXT_RESET_ARB;
-    default:
-      gfxCriticalError() << "Device reset with WR device unexpected reason: "
-                         << gfx::hexa(reason);
-      return LOCAL_GL_UNKNOWN_CONTEXT_RESET_ARB;
-  }
+  return layers::DXGIErrorToDeviceResetReason(reason);
 }
 
 bool RenderCompositorANGLE::UseCompositor() {
@@ -932,21 +887,14 @@ void RenderCompositorANGLE::EnableNativeCompositor(bool aEnable) {
   mUseNativeCompositor = false;
   mDCLayerTree->DisableNativeCompositor();
 
-  bool useAlpha = mWidget->AsWindows()->HasGlass();
   DestroyEGLSurface();
   mBufferSize.reset();
 
   RefPtr<IDXGISwapChain1> swapChain1 =
-      CreateSwapChainForDComp(mUseTripleBuffering, useAlpha);
+      CreateSwapChainForDComp(mUseTripleBuffering);
   if (swapChain1) {
     mSwapChain = swapChain1;
-    mUseAlpha = useAlpha;
     mDCLayerTree->SetDefaultSwapChain(swapChain1);
-    // When alpha is used, we want to disable partial present.
-    // See Bug 1595027.
-    if (useAlpha) {
-      mFullRender = true;
-    }
     ResizeBufferIfNeeded();
   } else {
     gfxCriticalNote << "Failed to re-create SwapChain";
@@ -960,12 +908,9 @@ void RenderCompositorANGLE::InitializeUsePartialPresent() {
   // Even when mSwapChain1 is null, we could enable WR partial present, since
   // when mSwapChain1 is null, SwapChain is blit model swap chain with one
   // buffer.
-  if (UseCompositor() || mWidget->AsWindows()->HasFxrOutputHandler() ||
-      gfx::gfxVars::WebRenderMaxPartialPresentRects() <= 0) {
-    mUsePartialPresent = false;
-  } else {
-    mUsePartialPresent = true;
-  }
+  mUsePartialPresent = !UseCompositor() &&
+                       !mWidget->AsWindows()->HasFxrOutputHandler() &&
+                       gfx::gfxVars::WebRenderMaxPartialPresentRects() > 0;
 }
 
 bool RenderCompositorANGLE::UsePartialPresent() { return mUsePartialPresent; }
@@ -1055,5 +1000,4 @@ bool RenderCompositorANGLE::MaybeReadback(
   return true;
 }
 
-}  // namespace wr
-}  // namespace mozilla
+}  // namespace mozilla::wr

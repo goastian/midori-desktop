@@ -5,7 +5,7 @@
 
 assert __name__ == "__main__"
 
-"""
+r"""
 To update ANGLE in Gecko, use Windows with git-bash, and setup depot_tools, python2, and
 python3. Because depot_tools expects `python` to be `python2` (shame!), python2 must come
 before python3 in your path.
@@ -486,7 +486,7 @@ def export_target(target_full_name) -> Set[str]:
     append_arr(lines, "LOCAL_INCLUDES", fixup_paths(desc["include_dirs"]))
     append_arr_commented(lines, "CXXFLAGS", cxxflags)
 
-    for (config, v) in sorted_items(sources_by_config):
+    for config, v in sorted_items(sources_by_config):
         indent = 0
         if config:
             lines.append("if {}:".format(config))
@@ -502,12 +502,22 @@ def export_target(target_full_name) -> Set[str]:
     dep_dirs = set(dep_libs)
     dep_dirs.discard("zlib")
 
+    # Those directories are added by gfx/angle/moz.build.
+    already_added_dirs = [
+        "angle_common",
+        "translator",
+        "libEGL",
+        "libGLESv2",
+    ]
+
     append_arr(lines, "USE_LIBS", dep_libs)
-    append_arr(lines, "DIRS", ["../" + x for x in dep_dirs])
+    append_arr(
+        lines, "DIRS", ["../" + x for x in dep_dirs if x not in already_added_dirs]
+    )
     append_arr(lines, "OS_LIBS", os_libs)
     append_arr_commented(lines, "LDFLAGS", ldflags)
 
-    for (k, v) in sorted(extras.items()):
+    for k, v in sorted(extras.items()):
         lines.append("{} = {}".format(k, v))
 
     lib_type = desc["type"]

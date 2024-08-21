@@ -1,10 +1,10 @@
 add_task(async function test_windowlessBrowserTroubleshootCrash() {
   let webNav = Services.appShell.createWindowlessBrowser(false);
 
-  let onLoaded = new Promise((resolve, reject) => {
+  let onLoaded = new Promise(resolve => {
     let docShell = webNav.docShell;
     let listener = {
-      observe(contentWindow, topic, data) {
+      observe(contentWindow) {
         let observedDocShell =
           contentWindow.docShell.sameTypeRootTreeItem.QueryInterface(
             Ci.nsIDocShell
@@ -45,8 +45,9 @@ add_task(async function test_windowlessBrowserTroubleshootCrash() {
   );
   var data = await Troubleshoot.snapshot();
 
-  ok(
-    data.graphics.windowLayerManagerType !== "None",
+  Assert.notStrictEqual(
+    data.graphics.windowLayerManagerType,
+    "None",
     "windowless browser window should not set windowLayerManagerType to 'None'"
   );
 

@@ -16,12 +16,12 @@ class APZEventRegionsTester : public APZCTreeManagerTester {
 
   void CreateEventRegionsLayerTree1() {
     const char* treeShape = "x(xx)";
-    LayerIntRegion layerVisibleRegions[] = {
+    LayerIntRect layerVisibleRects[] = {
         LayerIntRect(0, 0, 200, 200),    // root
         LayerIntRect(0, 0, 100, 200),    // left half
         LayerIntRect(0, 100, 200, 100),  // bottom half
     };
-    CreateScrollData(treeShape, layerVisibleRegions);
+    CreateScrollData(treeShape, layerVisibleRects);
     SetScrollableFrameMetrics(root, ScrollableLayerGuid::START_SCROLL_ID);
     SetScrollableFrameMetrics(layers[1],
                               ScrollableLayerGuid::START_SCROLL_ID + 1);
@@ -37,11 +37,11 @@ class APZEventRegionsTester : public APZCTreeManagerTester {
 
   void CreateEventRegionsLayerTree2() {
     const char* treeShape = "x(x)";
-    LayerIntRegion layerVisibleRegions[] = {
+    LayerIntRect layerVisibleRects[] = {
         LayerIntRect(0, 0, 100, 500),
         LayerIntRect(0, 150, 100, 100),
     };
-    CreateScrollData(treeShape, layerVisibleRegions);
+    CreateScrollData(treeShape, layerVisibleRects);
     SetScrollableFrameMetrics(root, ScrollableLayerGuid::START_SCROLL_ID);
 
     registration = MakeUnique<ScopedLayerTreeRegistration>(LayersId{0}, mcc);
@@ -58,7 +58,7 @@ class APZEventRegionsTester : public APZCTreeManagerTester {
     //   transforms are different from 3's.
     // 2 is a small layer that is the actual target
     // 3 is a big layer obscuring 2 with a dispatch-to-content region
-    LayerIntRegion layerVisibleRegions[] = {
+    LayerIntRect layerVisibleRects[] = {
         LayerIntRect(0, 0, 100, 100),
         LayerIntRect(0, 0, 0, 0),
         LayerIntRect(0, 0, 10, 10),
@@ -70,7 +70,7 @@ class APZEventRegionsTester : public APZCTreeManagerTester {
         Matrix4x4(),
         Matrix4x4(),
     };
-    CreateScrollData(treeShape, layerVisibleRegions, layerTransforms);
+    CreateScrollData(treeShape, layerVisibleRects, layerTransforms);
 
     SetScrollableFrameMetrics(layers[2], ScrollableLayerGuid::START_SCROLL_ID,
                               CSSRect(0, 0, 10, 10));
@@ -99,22 +99,25 @@ TEST_F(APZEventRegionsTesterMock, HitRegionImmediateResponse) {
   MockFunction<void(std::string checkPointName)> check;
   {
     InSequence s;
-    EXPECT_CALL(*mcc, HandleTap(TapType::eSingleTap, _, _, left->GetGuid(), _))
+    EXPECT_CALL(*mcc,
+                HandleTap(TapType::eSingleTap, _, _, left->GetGuid(), _, _))
         .Times(1);
     EXPECT_CALL(check, Call("Tapped on left"));
     EXPECT_CALL(*mcc,
-                HandleTap(TapType::eSingleTap, _, _, bottom->GetGuid(), _))
+                HandleTap(TapType::eSingleTap, _, _, bottom->GetGuid(), _, _))
         .Times(1);
     EXPECT_CALL(check, Call("Tapped on bottom"));
-    EXPECT_CALL(*mcc, HandleTap(TapType::eSingleTap, _, _, root->GetGuid(), _))
+    EXPECT_CALL(*mcc,
+                HandleTap(TapType::eSingleTap, _, _, root->GetGuid(), _, _))
         .Times(1);
     EXPECT_CALL(check, Call("Tapped on root"));
     EXPECT_CALL(check, Call("Tap pending on d-t-c region"));
     EXPECT_CALL(*mcc,
-                HandleTap(TapType::eSingleTap, _, _, bottom->GetGuid(), _))
+                HandleTap(TapType::eSingleTap, _, _, bottom->GetGuid(), _, _))
         .Times(1);
     EXPECT_CALL(check, Call("Tapped on bottom again"));
-    EXPECT_CALL(*mcc, HandleTap(TapType::eSingleTap, _, _, left->GetGuid(), _))
+    EXPECT_CALL(*mcc,
+                HandleTap(TapType::eSingleTap, _, _, left->GetGuid(), _, _))
         .Times(1);
     EXPECT_CALL(check, Call("Tapped on left this time"));
   }
@@ -147,14 +150,14 @@ TEST_F(APZEventRegionsTesterMock, HitRegionImmediateResponse) {
   check.Call("Tapped on bottom again");
 
   // Now let's do that again, but simulate a main-thread response
-  uint64_t inputBlockId = 0;
   QueueMockHitResult(ScrollableLayerGuid::START_SCROLL_ID + 2,
                      {CompositorHitTestFlags::eVisibleToHitTest,
                       CompositorHitTestFlags::eIrregularArea});
-  Tap(manager, ScreenIntPoint(10, 110), tapDuration, nullptr, &inputBlockId);
+  APZEventResult result =
+      Tap(manager, ScreenIntPoint(10, 110), tapDuration, nullptr);
   nsTArray<ScrollableLayerGuid> targets;
   targets.AppendElement(left->GetGuid());
-  manager->SetTargetAPZC(inputBlockId, targets);
+  manager->SetTargetAPZC(result.mInputBlockId, targets);
   while (mcc->RunThroughDelayedTasks())
     ;  // this runs the tap event
   check.Call("Tapped on left this time");
@@ -168,7 +171,7 @@ TEST_F(APZEventRegionsTesterMock, HitRegionAccumulatesChildren) {
   // content controller, which indicates the input events got routed correctly
   // to the APZC.
   EXPECT_CALL(*mcc,
-              HandleTap(TapType::eSingleTap, _, _, rootApzc->GetGuid(), _))
+              HandleTap(TapType::eSingleTap, _, _, rootApzc->GetGuid(), _, _))
       .Times(1);
   QueueMockHitResult(ScrollableLayerGuid::START_SCROLL_ID);
   Tap(manager, ScreenIntPoint(10, 160), TimeDuration::FromMilliseconds(100));
@@ -181,19 +184,18 @@ TEST_F(APZEventRegionsTesterMock, Bug1117712) {
 
   // These touch events should hit the dispatch-to-content region of layers[3]
   // and so get queued with that APZC as the tentative target.
-  uint64_t inputBlockId = 0;
   QueueMockHitResult(ScrollableLayerGuid::START_SCROLL_ID + 1,
                      {CompositorHitTestFlags::eVisibleToHitTest,
                       CompositorHitTestFlags::eIrregularArea});
-  Tap(manager, ScreenIntPoint(55, 5), TimeDuration::FromMilliseconds(100),
-      nullptr, &inputBlockId);
+  APZEventResult result = Tap(manager, ScreenIntPoint(55, 5),
+                              TimeDuration::FromMilliseconds(100), nullptr);
   // But now we tell the APZ that really it hit layers[2], and expect the tap
   // to be delivered at the correct coordinates.
   EXPECT_CALL(*mcc, HandleTap(TapType::eSingleTap, LayoutDevicePoint(55, 5), 0,
-                              apzc2->GetGuid(), _))
+                              apzc2->GetGuid(), _, _))
       .Times(1);
 
   nsTArray<ScrollableLayerGuid> targets;
   targets.AppendElement(apzc2->GetGuid());
-  manager->SetTargetAPZC(inputBlockId, targets);
+  manager->SetTargetAPZC(result.mInputBlockId, targets);
 }

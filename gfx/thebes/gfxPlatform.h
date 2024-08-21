@@ -82,7 +82,7 @@ enum class CMSMode : int32_t {
   Off = 0,         // No color management
   All = 1,         // Color manage everything
   TaggedOnly = 2,  // Color manage tagged Images Only
-  AllCount = 3
+  _ENUM_MAX = TaggedOnly
 };
 
 enum eGfxLog {
@@ -149,26 +149,6 @@ inline const char* GetBackendName(mozilla::gfx::BackendType aBackend) {
   }
   MOZ_CRASH("Incomplete switch");
 }
-
-enum class DeviceResetReason {
-  OK = 0,        // No reset.
-  HUNG,          // Windows specific, guilty device reset.
-  REMOVED,       // Windows specific, device removed or driver upgraded.
-  RESET,         // Guilty device reset.
-  DRIVER_ERROR,  // Innocent device reset.
-  INVALID_CALL,  // Windows specific, guilty device reset.
-  OUT_OF_MEMORY,
-  FORCED_RESET,  // Simulated device reset.
-  OTHER,         // Unrecognized reason for device reset.
-  D3D9_RESET,    // Windows specific, not used.
-  NVIDIA_VIDEO,  // Linux specific, NVIDIA video memory was reset.
-  UNKNOWN,       // GL specific, unknown if guilty or innocent.
-};
-
-enum class ForcedDeviceResetReason {
-  OPENSHAREDHANDLE = 0,
-  COMPOSITOR_UPDATED,
-};
 
 struct BackendPrefsData {
   uint32_t mCanvasBitmask = 0;
@@ -493,7 +473,7 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   bool IsKnownIconFontFamily(const nsAtom* aFamilyName) const;
 
   virtual bool DidRenderingDeviceReset(
-      DeviceResetReason* aResetReason = nullptr) {
+      mozilla::gfx::DeviceResetReason* aResetReason = nullptr) {
     return false;
   }
 
@@ -646,9 +626,6 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
    */
   static mozilla::LogModule* GetLog(eGfxLog aWhichLog);
 
-  int GetScreenDepth() const { return mScreenDepth; }
-  mozilla::gfx::IntSize GetScreenSize() const { return mScreenSize; }
-
   static void PurgeSkiaFontCache();
 
   static bool UsesOffMainThreadCompositing();
@@ -777,6 +754,8 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
     mSwapChainInfo = mozilla::Some(aInfo);
   }
 
+  static void DisableRemoteCanvas();
+
   static bool HasVariationFontSupport();
 
   // you probably want to use gfxVars::UseWebRender() instead of this
@@ -808,8 +787,6 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   static uint32_t TargetFrameRate();
 
   static bool UseDesktopZoomingScrollbars();
-
-  virtual bool SupportsHDR() { return false; }
 
  protected:
   gfxPlatform();
@@ -860,10 +837,10 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   void InitBackendPrefs(BackendPrefsData&& aPrefsData);
 
   /**
-   * Content-process only. Requests device preferences from the parent process
-   * and updates any cached settings.
+   * Content-process only. Updates device preferences from the parent process,
+   * if we've received any.
    */
-  void FetchAndImportContentDeviceData();
+  void ImportCachedContentDeviceData();
   virtual void ImportContentDeviceData(
       const mozilla::gfx::ContentDeviceData& aData);
 
@@ -885,6 +862,13 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
    * child should send a sync message to ask parent for color profile
    */
   const mozilla::gfx::ContentDeviceData* GetInitContentDeviceData();
+
+  /**
+   * If inside a child process and have ever received a
+   * SetXPCOMProcessAttributes message, this contains the cmsOutputProfileData
+   * from that message.
+   */
+  mozilla::Maybe<nsTArray<uint8_t>>& GetCMSOutputProfileData();
 
   /**
    * Increase the global device counter after a device has been removed/reset.
@@ -973,7 +957,7 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   static void ShutdownCMS();
 
   /**
-   * This uses nsIScreenManager to determine the screen size and color depth
+   * This uses nsIScreenManager to determine the primary screen color depth
    */
   void PopulateScreenInfo();
 
@@ -1017,9 +1001,6 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   // Backend that we are compositing with. NONE, if no compositor has been
   // created yet.
   mozilla::layers::LayersBackend mCompositorBackend;
-
-  int32_t mScreenDepth;
-  mozilla::gfx::IntSize mScreenSize;
 
   mozilla::Maybe<mozilla::layers::OverlayInfo> mOverlayInfo;
   mozilla::Maybe<mozilla::layers::SwapChainInfo> mSwapChainInfo;

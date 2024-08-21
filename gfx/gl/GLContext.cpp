@@ -56,10 +56,6 @@
 #  include <CoreServices/CoreServices.h>
 #endif
 
-#if defined(MOZ_WIDGET_COCOA)
-#  include "nsCocoaFeatures.h"
-#endif
-
 #ifdef MOZ_WIDGET_ANDROID
 #  include "mozilla/jni/Utils.h"
 #endif
@@ -308,6 +304,13 @@ GLContext::~GLContext() {
   // Ensure we clear sCurrentContext if we were the last context set and avoid
   // the memory getting reused.
   if (sCurrentContext.init() && sCurrentContext.get() == this) {
+    sCurrentContext.set(nullptr);
+  }
+}
+
+/*static*/
+void GLContext::InvalidateCurrentContext() {
+  if (sCurrentContext.init()) {
     sCurrentContext.set(nullptr);
   }
 }
@@ -661,6 +664,7 @@ bool GLContext::InitImpl() {
       "Gallium 0.4 on llvmpipe",
       "Intel HD Graphics 3000 OpenGL Engine",
       "Microsoft Basic Render Driver",
+      "Samsung Xclipse",
       "Unknown"};
 
   mRenderer = GLRenderer::Other;
@@ -757,6 +761,10 @@ bool GLContext::InitImpl() {
     if (IsMesa()) {
       // DrawElementsInstanced hangs the driver.
       MarkUnsupported(GLFeature::robust_buffer_access_behavior);
+    }
+
+    if (Renderer() == GLRenderer::SamsungXclipse) {
+      MarkUnsupported(GLFeature::invalidate_framebuffer);
     }
   }
 
@@ -877,23 +885,12 @@ bool GLContext::InitImpl() {
     int maxTexSize = INT32_MAX;
     int maxCubeSize = INT32_MAX;
 #ifdef XP_MACOSX
-    if (!nsCocoaFeatures::IsAtLeastVersion(10, 12)) {
-      if (mVendor == GLVendor::Intel) {
-        // see bug 737182 for 2D textures, bug 684882 for cube map textures.
-        maxTexSize = 4096;
-        maxCubeSize = 512;
-      } else if (mVendor == GLVendor::NVIDIA) {
-        // See bug 879656.  8192 fails, 8191 works.
-        maxTexSize = 8191;
-      }
-    } else {
-      // https://bugzilla.mozilla.org/show_bug.cgi?id=1544446
-      // Mojave exposes 16k textures, but gives FRAMEBUFFER_UNSUPPORTED for any
-      // 16k*16k FB except rgba8 without depth/stencil.
-      // The max supported sizes changes based on involved formats.
-      // (RGBA32F more restrictive than RGBA16F)
-      maxTexSize = 8192;
-    }
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=1544446
+    // Mojave exposes 16k textures, but gives FRAMEBUFFER_UNSUPPORTED for any
+    // 16k*16k FB except rgba8 without depth/stencil.
+    // The max supported sizes changes based on involved formats.
+    // (RGBA32F more restrictive than RGBA16F)
+    maxTexSize = 8192;
 #endif
 #ifdef MOZ_X11
     if (mVendor == GLVendor::Nouveau) {
@@ -917,25 +914,6 @@ bool GLContext::InitImpl() {
       // prevents occasional driver crash.
       mNeedsFlushBeforeDeleteFB = true;
     }
-#ifdef MOZ_WIDGET_ANDROID
-    if ((Renderer() == GLRenderer::AdrenoTM305 ||
-         Renderer() == GLRenderer::AdrenoTM320 ||
-         Renderer() == GLRenderer::AdrenoTM330) &&
-        jni::GetAPIVersion() < 21) {
-      // Bug 1164027. Driver crashes when functions such as
-      // glTexImage2D fail due to virtual memory exhaustion.
-      mTextureAllocCrashesOnMapFailure = true;
-    }
-#endif
-#if MOZ_WIDGET_ANDROID
-    if (Renderer() == GLRenderer::SGX540 && jni::GetAPIVersion() <= 15) {
-      // Bug 1288446. Driver sometimes crashes when uploading data to a
-      // texture if the render target has changed since the texture was
-      // rendered from. Calling glCheckFramebufferStatus after
-      // glFramebufferTexture2D prevents the crash.
-      mNeedsCheckAfterAttachTextureToFb = true;
-    }
-#endif
 
     // -
 
@@ -1671,15 +1649,6 @@ void GLContext::InitExtensions() {
       MarkExtensionUnsupported(OES_EGL_sync);
     }
 
-#ifdef MOZ_WIDGET_ANDROID
-    if (Vendor() == GLVendor::Imagination &&
-        Renderer() == GLRenderer::SGX544MP && jni::GetAPIVersion() < 21) {
-      // Bug 1026404
-      MarkExtensionUnsupported(OES_EGL_image);
-      MarkExtensionUnsupported(OES_EGL_image_external);
-    }
-#endif
-
     if (Vendor() == GLVendor::ARM && (Renderer() == GLRenderer::Mali400MP ||
                                       Renderer() == GLRenderer::Mali450MP)) {
       // Bug 1264505
@@ -2080,17 +2049,24 @@ static void ReportArrayContents(
   nsTArray<GLContext::NamedResource> copy(aArray.Clone());
   copy.Sort();
 
+  // Accumulate the output in a buffer to avoid interleaved output.
+  nsCString line;
+
   GLContext* lastContext = nullptr;
   for (uint32_t i = 0; i < copy.Length(); ++i) {
     if (lastContext != copy[i].origin) {
-      if (lastContext) printf_stderr("\n");
-      printf_stderr("  [%p - %s] ", copy[i].origin,
-                    copy[i].originDeleted ? "deleted" : "live");
+      if (lastContext) {
+        printf_stderr("%s\n", line.BeginReading());
+        line.Assign("");
+      }
+      line.Append(nsPrintfCString("  [%p - %s] ", copy[i].origin,
+                                  copy[i].originDeleted ? "deleted" : "live"));
       lastContext = copy[i].origin;
     }
-    printf_stderr("%d ", copy[i].name);
+    line.AppendInt(copy[i].name);
+    line.Append(' ');
   }
-  printf_stderr("\n");
+  printf_stderr("%s\n", line.BeginReading());
 }
 
 void GLContext::ReportOutstandingNames() {
@@ -2450,7 +2426,7 @@ bool GLContext::MakeCurrent(bool aForce) const {
     }
     if (MOZ_LIKELY(isCurrent)) {
       MOZ_ASSERT(IsCurrentImpl() ||
-                 !MakeCurrentImpl());  // Might have lost context.
+                 MakeCurrentImpl());  // Might have lost context.
       return true;
     }
   }

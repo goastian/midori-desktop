@@ -206,7 +206,6 @@ pub struct Wrench {
     graphics_api: webrender::GraphicsApiInfo,
 
     pub rebuild_display_lists: bool,
-    pub verbose: bool,
 
     pub frame_start_sender: chase_lev::Worker<time::SteadyTime>,
 
@@ -294,7 +293,6 @@ impl Wrench {
             window_title_to_set: None,
 
             rebuild_display_lists: do_rebuild,
-            verbose,
 
             root_pipeline_id: PipelineId(0, 0),
 
@@ -511,7 +509,6 @@ impl Wrench {
         size: f32,
         flags: FontInstanceFlags,
         render_mode: Option<FontRenderMode>,
-        bg_color: Option<ColorU>,
         synthetic_italics: SyntheticItalics,
     ) -> FontInstanceKey {
         let key = self.api.generate_font_instance_key();
@@ -520,9 +517,6 @@ impl Wrench {
         options.flags |= flags;
         if let Some(render_mode) = render_mode {
             options.render_mode = render_mode;
-        }
-        if let Some(bg_color) = bg_color {
-            options.bg_color = bg_color;
         }
         options.synthetic_italics = synthetic_italics;
         txn.add_font_instance(key, font_key, size, Some(options), None, Vec::new());

@@ -122,7 +122,7 @@ class gfxTextRun : public gfxShapedText {
   }
 
   // Returns a gfxShapedText::CompressedGlyph::FLAG_BREAK_TYPE_* value
-  // as defined in gfxFont.h (may be NONE, NORMAL or HYPHEN).
+  // as defined in gfxFont.h (may be NONE, NORMAL, HYPHEN or EMERGENCY_WRAP).
   uint8_t CanBreakBefore(uint32_t aPos) const {
     MOZ_ASSERT(aPos < GetLength());
     return mCharacterGlyphs[aPos].CanBreakBefore();
@@ -251,10 +251,10 @@ class gfxTextRun : public gfxShapedText {
 
   struct MOZ_STACK_CLASS DrawParams {
     gfxContext* context;
+    mozilla::gfx::PaletteCache& paletteCache;
     DrawMode drawMode = DrawMode::GLYPH_FILL;
     nscolor textStrokeColor = 0;
     nsAtom* fontPalette = nullptr;
-    mozilla::gfx::FontPaletteValueSet* paletteValueSet = nullptr;
     gfxPattern* textStrokePattern = nullptr;
     const mozilla::gfx::StrokeOptions* strokeOpts = nullptr;
     const mozilla::gfx::DrawOptions* drawOpts = nullptr;
@@ -264,7 +264,9 @@ class gfxTextRun : public gfxShapedText {
     mozilla::SVGContextPaint* contextPaint = nullptr;
     gfxTextRunDrawCallbacks* callbacks = nullptr;
     bool allowGDI = true;
-    explicit DrawParams(gfxContext* aContext) : context(aContext) {}
+    bool hasTextShadow = false;
+    DrawParams(gfxContext* aContext, mozilla::gfx::PaletteCache& aPaletteCache)
+        : context(aContext), paletteCache(aPaletteCache) {}
   };
 
   /**
@@ -297,7 +299,8 @@ class gfxTextRun : public gfxShapedText {
    */
   void DrawEmphasisMarks(gfxContext* aContext, gfxTextRun* aMark,
                          gfxFloat aMarkAdvance, mozilla::gfx::Point aPt,
-                         Range aRange, const PropertyProvider* aProvider) const;
+                         Range aRange, const PropertyProvider* aProvider,
+                         mozilla::gfx::PaletteCache& aPaletteCache) const;
 
   /**
    * Computes the ReflowMetrics for a substring.
@@ -461,6 +464,7 @@ class gfxTextRun : public gfxShapedText {
       gfxFloat aWidth, const PropertyProvider& aProvider,
       SuppressBreak aSuppressBreak, gfxFont::BoundingBoxType aBoundingBoxType,
       DrawTarget* aRefDrawTarget, bool aCanWordWrap, bool aCanWhitespaceWrap,
+      bool aIsBreakSpaces,
       // Output parameters:
       TrimmableWS* aOutTrimmableWhitespace,  // may be null
       Metrics& aOutMetrics, bool& aOutUsedHyphenation, uint32_t& aOutLastBreak,
@@ -917,11 +921,17 @@ class gfxFontGroup final : public gfxTextRunFactory {
 
   // Returns first valid font in the fontlist or default font.
   // Initiates userfont loads if userfont not loaded.
+  // aCh: character to look for, or kCSSFirstAvailableFont for default "first
+  //      available font" as defined by CSS Fonts (i.e. the first font whose
+  //      unicode-range includes <space>, but does not require space to
+  //      actually be present)
   // aGeneric: if non-null, returns the CSS generic type that was mapped to
   //           this font
   // aIsFirst: if non-null, returns whether the font was first in the list
+  static constexpr uint32_t kCSSFirstAvailableFont = UINT32_MAX;
   already_AddRefed<gfxFont> GetFirstValidFont(
-      uint32_t aCh = 0x20, mozilla::StyleGenericFontFamily* aGeneric = nullptr,
+      uint32_t aCh = kCSSFirstAvailableFont,
+      mozilla::StyleGenericFontFamily* aGeneric = nullptr,
       bool* aIsFirst = nullptr);
 
   // Returns the first font in the font-group that has an OpenType MATH table,
@@ -1427,11 +1437,11 @@ class gfxFontGroup final : public gfxTextRunFactory {
   // If *aLoading is true, a relevant resource is already being loaded so no
   // new download will be initiated; if a download is started, *aLoading will
   // be set to true on return.
-  already_AddRefed<gfxFont> GetFontAt(int32_t i, uint32_t aCh, bool* aLoading);
+  already_AddRefed<gfxFont> GetFontAt(uint32_t i, uint32_t aCh, bool* aLoading);
 
   // Simplified version of GetFontAt() for use where we just need a font for
   // metrics, math layout tables, etc.
-  already_AddRefed<gfxFont> GetFontAt(int32_t i, uint32_t aCh = 0x20) {
+  already_AddRefed<gfxFont> GetFontAt(uint32_t i, uint32_t aCh = 0x20) {
     bool loading = false;
     return GetFontAt(i, aCh, &loading);
   }

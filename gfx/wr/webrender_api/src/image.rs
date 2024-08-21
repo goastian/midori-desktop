@@ -117,6 +117,10 @@ pub enum ImageBufferKind {
     /// understand, particularly YUV. See
     /// https://www.khronos.org/registry/OpenGL/extensions/OES/OES_EGL_image_external.txt
     TextureExternal = 2,
+    /// External texture which is forced to be converted from YUV to RGB using BT709 colorspace.
+    /// This maps to GL_TEXTURE_EXTERNAL_OES in OpenGL, using the EXT_YUV_TARGET extension.
+    /// https://registry.khronos.org/OpenGL/extensions/EXT/EXT_YUV_target.txt
+    TextureExternalBT709 = 3,
 }
 
 /// Storage format identifier for externally-managed images.
@@ -229,7 +233,7 @@ impl ColorDepth {
 
 bitflags! {
     /// Various flags that are part of an image descriptor.
-    #[derive(Deserialize, Serialize)]
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Deserialize, Serialize)]
     pub struct ImageDescriptorFlags: u32 {
         /// Whether this image is opaque, or has an alpha channel. Avoiding blending
         /// for opaque surfaces is an important optimization.

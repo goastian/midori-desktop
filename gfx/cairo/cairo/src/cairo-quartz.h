@@ -40,7 +40,18 @@
 
 #if CAIRO_HAS_QUARTZ_SURFACE
 
+#if CAIRO_HAS_QUARTZ_CORE_GRAPHICS
+#include <CoreGraphics/CoreGraphics.h>
+#include <CoreText/CoreText.h>
+#endif
+
+#if CAIRO_HAS_QUARTZ_APPLICATION_SERVICES
 #include <ApplicationServices/ApplicationServices.h>
+#endif
+
+#if CAIRO_HAS_IMAGE_IO
+#include <ImageIO/ImageIO.h>
+#endif
 
 CAIRO_BEGIN_DECLS
 
@@ -53,12 +64,6 @@ cairo_public cairo_surface_t *
 cairo_quartz_surface_create_for_cg_context (CGContextRef cgContext,
                                             unsigned int width,
                                             unsigned int height);
-
-cairo_public cairo_surface_t *
-cairo_quartz_surface_create_cg_layer (cairo_surface_t *surface,
-                                      cairo_content_t content,
-                                      unsigned int width,
-                                      unsigned int height);
 
 cairo_public CGContextRef
 cairo_quartz_surface_get_cg_context (cairo_surface_t *surface);
@@ -75,8 +80,10 @@ cairo_quartz_surface_get_image (cairo_surface_t *surface);
 cairo_public cairo_font_face_t *
 cairo_quartz_font_face_create_for_cgfont (CGFontRef font);
 
+#if CAIRO_HAS_QUARTZ_ATSUFONTID
 cairo_public cairo_font_face_t *
 cairo_quartz_font_face_create_for_atsu_font_id (ATSUFontID font_id);
+#endif /* CAIRO_HAS_QUARTZ_ATSUFONTID */
 
 #endif /* CAIRO_HAS_QUARTZ_FONT */
 

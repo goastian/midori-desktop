@@ -11,9 +11,6 @@ use core::arch::arm::{
 };
 use std::mem::zeroed;
 
-static mut floatScale: f32 = FLOATSCALE;
-static mut clampMaxValue: f32 = CLAMPMAXVAL;
-
 #[target_feature(enable = "neon")]
 #[cfg_attr(target_arch = "arm", target_feature(enable = "v7"))]
 unsafe fn qcms_transform_data_template_lut_neon<F: Format>(
@@ -28,32 +25,32 @@ unsafe fn qcms_transform_data_template_lut_neon<F: Format>(
     let igtbl_g: *const f32 = (*transform).input_gamma_table_g.as_ref().unwrap().as_ptr();
     let igtbl_b: *const f32 = (*transform).input_gamma_table_b.as_ref().unwrap().as_ptr();
     /* deref *transform now to avoid it in loop */
-    let otdata_r: *const u8 = (*transform)
-        .output_table_r
+    let otdata_r: *const u8 = transform
+        .precache_output
         .as_deref()
         .unwrap()
-        .data
+        .lut_r
         .as_ptr();
     let otdata_g: *const u8 = (*transform)
-        .output_table_g
+        .precache_output
         .as_deref()
         .unwrap()
-        .data
+        .lut_g
         .as_ptr();
     let otdata_b: *const u8 = (*transform)
-        .output_table_b
+        .precache_output
         .as_deref()
         .unwrap()
-        .data
+        .lut_b
         .as_ptr();
     /* input matrix values never change */
     let mat0: float32x4_t = vld1q_f32((*mat.offset(0isize)).as_ptr());
     let mat1: float32x4_t = vld1q_f32((*mat.offset(1isize)).as_ptr());
     let mat2: float32x4_t = vld1q_f32((*mat.offset(2isize)).as_ptr());
     /* these values don't change, either */
-    let max: float32x4_t = vld1q_dup_f32(&clampMaxValue);
+    let max: float32x4_t = vld1q_dup_f32(&CLAMPMAXVAL);
     let min: float32x4_t = zeroed();
-    let scale: float32x4_t = vld1q_dup_f32(&floatScale);
+    let scale: float32x4_t = vld1q_dup_f32(&FLOATSCALE);
     let components: u32 = if F::kAIndex == 0xff { 3 } else { 4 } as u32;
     /* working variables */
     let mut vec_r: float32x4_t;

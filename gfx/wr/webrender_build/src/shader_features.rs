@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Default, Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct ShaderFeatureFlags: u32 {
         const GL = 1 << 0;
         const GLES = 1 << 1;
@@ -15,7 +15,8 @@ bitflags! {
         const DITHERING = 1 << 10;
         const TEXTURE_EXTERNAL = 1 << 11;
         const TEXTURE_EXTERNAL_ESSL1 = 1 << 12;
-        const DEBUG = 1 << 13;
+        const TEXTURE_EXTERNAL_BT709 = 1 << 13;
+        const DEBUG = 1 << 14;
     }
 }
 
@@ -65,7 +66,6 @@ pub fn get_shader_features(flags: ShaderFeatureFlags) -> ShaderFeatures {
 
     // Clip shaders
     shaders.insert("cs_clip_rectangle", vec![String::new(), "FAST_PATH".to_string()]);
-    shaders.insert("cs_clip_image", vec!["TEXTURE_2D".to_string()]);
     shaders.insert("cs_clip_box_shadow", vec!["TEXTURE_2D".to_string()]);
 
     // Cache shaders
@@ -79,6 +79,7 @@ pub fn get_shader_features(flags: ShaderFeatureFlags) -> ShaderFeatures {
         "cs_border_segment",
         "cs_border_solid",
         "cs_svg_filter",
+        "cs_svg_filter_node",
     ] {
         shaders.insert(name, vec![String::new()]);
     }
@@ -137,6 +138,9 @@ pub fn get_shader_features(flags: ShaderFeatureFlags) -> ShaderFeatures {
     }
     if flags.contains(ShaderFeatureFlags::TEXTURE_EXTERNAL) {
         texture_types.push("TEXTURE_EXTERNAL");
+    }
+    if flags.contains(ShaderFeatureFlags::TEXTURE_EXTERNAL_BT709) {
+        texture_types.push("TEXTURE_EXTERNAL_BT709");
     }
     let mut image_features: Vec<String> = Vec::new();
     for texture_type in &texture_types {
@@ -224,6 +228,10 @@ pub fn get_shader_features(flags: ShaderFeatureFlags) -> ShaderFeatures {
     shaders.insert("ps_split_composite", vec![base_prim_features.finish()]);
 
     shaders.insert("ps_quad_textured", vec![base_prim_features.finish()]);
+
+    shaders.insert("ps_quad_radial_gradient", vec![base_prim_features.finish()]);
+
+    shaders.insert("ps_quad_conic_gradient", vec![base_prim_features.finish()]);
 
     shaders.insert("ps_clear", vec![base_prim_features.finish()]);
 

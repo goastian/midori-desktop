@@ -309,9 +309,11 @@ struct _hb_has_null<Type, true>
   static       Type *get_crap () { return &Crap (Type); }
 };
 
-template <typename Type, typename OffsetType, bool has_null=true>
+template <typename Type, typename OffsetType, typename BaseType=void, bool has_null=true>
 struct OffsetTo : Offset<OffsetType, has_null>
 {
+  using target_t = Type;
+
   // Make sure Type is not unbounded; works only for types that are fully defined at OffsetTo time.
   static_assert (has_null == false ||
 		 (hb_has_null_size (Type) || !hb_has_min_size (Type)), "");
@@ -333,22 +335,22 @@ struct OffsetTo : Offset<OffsetType, has_null>
   }
 
   template <typename Base,
-	    hb_enable_if (hb_is_convertible (const Base, const void *))>
+	    hb_enable_if (hb_is_convertible (const Base, const BaseType *))>
   friend const Type& operator + (const Base &base, const OffsetTo &offset) { return offset ((const void *) base); }
   template <typename Base,
-	    hb_enable_if (hb_is_convertible (const Base, const void *))>
+	    hb_enable_if (hb_is_convertible (const Base, const BaseType *))>
   friend const Type& operator + (const OffsetTo &offset, const Base &base) { return offset ((const void *) base); }
   template <typename Base,
-	    hb_enable_if (hb_is_convertible (Base, void *))>
+	    hb_enable_if (hb_is_convertible (Base, BaseType *))>
   friend Type& operator + (Base &&base, OffsetTo &offset) { return offset ((void *) base); }
   template <typename Base,
-	    hb_enable_if (hb_is_convertible (Base, void *))>
+	    hb_enable_if (hb_is_convertible (Base, BaseType *))>
   friend Type& operator + (OffsetTo &offset, Base &&base) { return offset ((void *) base); }
 
 
-  template <typename ...Ts>
+  template <typename Base, typename ...Ts>
   bool serialize_subset (hb_subset_context_t *c, const OffsetTo& src,
-			 const void *src_base, Ts&&... ds)
+			 const Base *src_base, Ts&&... ds)
   {
     *this = 0;
     if (src.is_null ())
@@ -412,20 +414,25 @@ struct OffsetTo : Offset<OffsetType, has_null>
 		       const void *src_base, unsigned dst_bias = 0)
   { return serialize_copy (c, src, src_base, dst_bias, hb_serialize_context_t::Head); }
 
-  bool sanitize_shallow (hb_sanitize_context_t *c, const void *base) const
+  bool sanitize_shallow (hb_sanitize_context_t *c, const BaseType *base) const
   {
     TRACE_SANITIZE (this);
     if (unlikely (!c->check_struct (this))) return_trace (false);
-    if (unlikely (this->is_null ())) return_trace (true);
+    hb_barrier ();
+    //if (unlikely (this->is_null ())) return_trace (true);
     if (unlikely ((const char *) base + (unsigned) *this < (const char *) base)) return_trace (false);
     return_trace (true);
   }
 
   template <typename ...Ts>
-  bool sanitize (hb_sanitize_context_t *c, const void *base, Ts&&... ds) const
+#ifndef HB_OPTIMIZE_SIZE
+  HB_ALWAYS_INLINE
+#endif
+  bool sanitize (hb_sanitize_context_t *c, const BaseType *base, Ts&&... ds) const
   {
     TRACE_SANITIZE (this);
     return_trace (sanitize_shallow (c, base) &&
+		  hb_barrier () &&
 		  (this->is_null () ||
 		   c->dispatch (StructAtOffset<Type> (base, *this), std::forward<Ts> (ds)...) ||
 		   neuter (c)));
@@ -440,14 +447,14 @@ struct OffsetTo : Offset<OffsetType, has_null>
   DEFINE_SIZE_STATIC (sizeof (OffsetType));
 };
 /* Partial specializations. */
-template <typename Type, bool has_null=true> using Offset16To = OffsetTo<Type, HBUINT16, has_null>;
-template <typename Type, bool has_null=true> using Offset24To = OffsetTo<Type, HBUINT24, has_null>;
-template <typename Type, bool has_null=true> using Offset32To = OffsetTo<Type, HBUINT32, has_null>;
+template <typename Type, typename BaseType=void, bool has_null=true> using Offset16To = OffsetTo<Type, HBUINT16, BaseType, has_null>;
+template <typename Type, typename BaseType=void, bool has_null=true> using Offset24To = OffsetTo<Type, HBUINT24, BaseType, has_null>;
+template <typename Type, typename BaseType=void, bool has_null=true> using Offset32To = OffsetTo<Type, HBUINT32, BaseType, has_null>;
 
-template <typename Type, typename OffsetType> using NNOffsetTo = OffsetTo<Type, OffsetType, false>;
-template <typename Type> using NNOffset16To = Offset16To<Type, false>;
-template <typename Type> using NNOffset24To = Offset24To<Type, false>;
-template <typename Type> using NNOffset32To = Offset32To<Type, false>;
+template <typename Type, typename OffsetType, typename BaseType=void> using NNOffsetTo = OffsetTo<Type, OffsetType, BaseType, false>;
+template <typename Type, typename BaseType=void> using NNOffset16To = Offset16To<Type, BaseType, false>;
+template <typename Type, typename BaseType=void> using NNOffset24To = Offset24To<Type, BaseType, false>;
+template <typename Type, typename BaseType=void> using NNOffset32To = Offset32To<Type, BaseType, false>;
 
 
 /*
@@ -462,24 +469,16 @@ struct UnsizedArrayOf
 
   HB_DELETE_CREATE_COPY_ASSIGN (UnsizedArrayOf);
 
-  const Type& operator [] (int i_) const
+  const Type& operator [] (unsigned int i) const
   {
-    unsigned int i = (unsigned int) i_;
-    const Type *p = &arrayZ[i];
-    if (unlikely ((const void *) p < (const void *) arrayZ)) return Null (Type); /* Overflowed. */
-    _hb_compiler_memory_r_barrier ();
-    return *p;
+    return arrayZ[i];
   }
-  Type& operator [] (int i_)
+  Type& operator [] (unsigned int i)
   {
-    unsigned int i = (unsigned int) i_;
-    Type *p = &arrayZ[i];
-    if (unlikely ((const void *) p < (const void *) arrayZ)) return Crap (Type); /* Overflowed. */
-    _hb_compiler_memory_r_barrier ();
-    return *p;
+    return arrayZ[i];
   }
 
-  unsigned int get_size (unsigned int len) const
+  static unsigned int get_size (unsigned int len)
   { return len * Type::static_size; }
 
   template <typename T> operator T * () { return arrayZ; }
@@ -533,11 +532,13 @@ struct UnsizedArrayOf
   }
 
   template <typename ...Ts>
+  HB_ALWAYS_INLINE
   bool sanitize (hb_sanitize_context_t *c, unsigned int count, Ts&&... ds) const
   {
     TRACE_SANITIZE (this);
     if (unlikely (!sanitize_shallow (c, count))) return_trace (false);
     if (!sizeof... (Ts) && hb_is_trivially_copyable(Type)) return_trace (true);
+    hb_barrier ();
     for (unsigned int i = 0; i < count; i++)
       if (unlikely (!c->dispatch (arrayZ[i], std::forward<Ts> (ds)...)))
 	return_trace (false);
@@ -557,17 +558,17 @@ struct UnsizedArrayOf
 };
 
 /* Unsized array of offset's */
-template <typename Type, typename OffsetType, bool has_null=true>
-using UnsizedArray16OfOffsetTo = UnsizedArrayOf<OffsetTo<Type, OffsetType, has_null>>;
+template <typename Type, typename OffsetType, typename BaseType=void, bool has_null=true>
+using UnsizedArray16OfOffsetTo = UnsizedArrayOf<OffsetTo<Type, OffsetType, BaseType, has_null>>;
 
 /* Unsized array of offsets relative to the beginning of the array itself. */
-template <typename Type, typename OffsetType, bool has_null=true>
-struct UnsizedListOfOffset16To : UnsizedArray16OfOffsetTo<Type, OffsetType, has_null>
+template <typename Type, typename OffsetType, typename BaseType=void, bool has_null=true>
+struct UnsizedListOfOffset16To : UnsizedArray16OfOffsetTo<Type, OffsetType, BaseType, has_null>
 {
   const Type& operator [] (int i_) const
   {
     unsigned int i = (unsigned int) i_;
-    const OffsetTo<Type, OffsetType, has_null> *p = &this->arrayZ[i];
+    const OffsetTo<Type, OffsetType, BaseType, has_null> *p = &this->arrayZ[i];
     if (unlikely ((const void *) p < (const void *) this->arrayZ)) return Null (Type); /* Overflowed. */
     _hb_compiler_memory_r_barrier ();
     return this+*p;
@@ -575,7 +576,7 @@ struct UnsizedListOfOffset16To : UnsizedArray16OfOffsetTo<Type, OffsetType, has_
   Type& operator [] (int i_)
   {
     unsigned int i = (unsigned int) i_;
-    const OffsetTo<Type, OffsetType, has_null> *p = &this->arrayZ[i];
+    const OffsetTo<Type, OffsetType, BaseType, has_null> *p = &this->arrayZ[i];
     if (unlikely ((const void *) p < (const void *) this->arrayZ)) return Crap (Type); /* Overflowed. */
     _hb_compiler_memory_r_barrier ();
     return this+*p;
@@ -585,7 +586,7 @@ struct UnsizedListOfOffset16To : UnsizedArray16OfOffsetTo<Type, OffsetType, has_
   bool sanitize (hb_sanitize_context_t *c, unsigned int count, Ts&&... ds) const
   {
     TRACE_SANITIZE (this);
-    return_trace ((UnsizedArray16OfOffsetTo<Type, OffsetType, has_null>
+    return_trace ((UnsizedArray16OfOffsetTo<Type, OffsetType, BaseType, has_null>
 		   ::sanitize (c, count, this, std::forward<Ts> (ds)...)));
   }
 };
@@ -721,11 +722,13 @@ struct ArrayOf
   }
 
   template <typename ...Ts>
+  HB_ALWAYS_INLINE
   bool sanitize (hb_sanitize_context_t *c, Ts&&... ds) const
   {
     TRACE_SANITIZE (this);
     if (unlikely (!sanitize_shallow (c))) return_trace (false);
     if (!sizeof... (Ts) && hb_is_trivially_copyable(Type)) return_trace (true);
+    hb_barrier ();
     unsigned int count = len;
     for (unsigned int i = 0; i < count; i++)
       if (unlikely (!c->dispatch (arrayZ[i], std::forward<Ts> (ds)...)))
@@ -736,7 +739,9 @@ struct ArrayOf
   bool sanitize_shallow (hb_sanitize_context_t *c) const
   {
     TRACE_SANITIZE (this);
-    return_trace (len.sanitize (c) && c->check_array (arrayZ, len));
+    return_trace (len.sanitize (c) &&
+		  hb_barrier () &&
+		  c->check_array_sized (arrayZ, len, sizeof (LenType)));
   }
 
   public:
@@ -797,7 +802,7 @@ template <typename Type>
 using List16OfOffset16To = List16OfOffsetTo<Type, HBUINT16>;
 
 /* An array starting at second element. */
-template <typename Type, typename LenType=HBUINT16>
+template <typename Type, typename LenType>
 struct HeadlessArrayOf
 {
   static constexpr unsigned item_size = Type::static_size;
@@ -861,11 +866,13 @@ struct HeadlessArrayOf
   }
 
   template <typename ...Ts>
+  HB_ALWAYS_INLINE
   bool sanitize (hb_sanitize_context_t *c, Ts&&... ds) const
   {
     TRACE_SANITIZE (this);
     if (unlikely (!sanitize_shallow (c))) return_trace (false);
     if (!sizeof... (Ts) && hb_is_trivially_copyable(Type)) return_trace (true);
+    hb_barrier ();
     unsigned int count = get_length ();
     for (unsigned int i = 0; i < count; i++)
       if (unlikely (!c->dispatch (arrayZ[i], std::forward<Ts> (ds)...)))
@@ -878,7 +885,8 @@ struct HeadlessArrayOf
   {
     TRACE_SANITIZE (this);
     return_trace (lenP1.sanitize (c) &&
-		  (!lenP1 || c->check_array (arrayZ, lenP1 - 1)));
+		  hb_barrier () &&
+		  (!lenP1 || c->check_array_sized (arrayZ, lenP1 - 1, sizeof (LenType))));
   }
 
   public:
@@ -887,6 +895,7 @@ struct HeadlessArrayOf
   public:
   DEFINE_SIZE_ARRAY (sizeof (LenType), arrayZ);
 };
+template <typename Type> using HeadlessArray16Of = HeadlessArrayOf<Type, HBUINT16>;
 
 /* An array storing length-1. */
 template <typename Type, typename LenType=HBUINT16>
@@ -912,11 +921,13 @@ struct ArrayOfM1
   { return lenM1.static_size + (lenM1 + 1) * Type::static_size; }
 
   template <typename ...Ts>
+  HB_ALWAYS_INLINE
   bool sanitize (hb_sanitize_context_t *c, Ts&&... ds) const
   {
     TRACE_SANITIZE (this);
     if (unlikely (!sanitize_shallow (c))) return_trace (false);
     if (!sizeof... (Ts) && hb_is_trivially_copyable(Type)) return_trace (true);
+    hb_barrier ();
     unsigned int count = lenM1 + 1;
     for (unsigned int i = 0; i < count; i++)
       if (unlikely (!c->dispatch (arrayZ[i], std::forward<Ts> (ds)...)))
@@ -929,7 +940,8 @@ struct ArrayOfM1
   {
     TRACE_SANITIZE (this);
     return_trace (lenM1.sanitize (c) &&
-		  (c->check_array (arrayZ, lenM1 + 1)));
+		  hb_barrier () &&
+		  (c->check_array_sized (arrayZ, lenM1 + 1, sizeof (LenType))));
   }
 
   public:
@@ -971,6 +983,13 @@ struct SortedArrayOf : ArrayOf<Type, LenType>
     TRACE_SERIALIZE (this);
     bool ret = ArrayOf<Type, LenType>::serialize (c, items);
     return_trace (ret);
+  }
+
+  SortedArrayOf* copy (hb_serialize_context_t *c) const
+  {
+    TRACE_SERIALIZE (this);
+    SortedArrayOf* out = reinterpret_cast<SortedArrayOf *> (ArrayOf<Type, LenType>::copy (c));
+    return_trace (out);
   }
 
   template <typename T>
@@ -1096,11 +1115,13 @@ struct VarSizedBinSearchArrayOf
   { return header.static_size + header.nUnits * header.unitSize; }
 
   template <typename ...Ts>
+  HB_ALWAYS_INLINE
   bool sanitize (hb_sanitize_context_t *c, Ts&&... ds) const
   {
     TRACE_SANITIZE (this);
     if (unlikely (!sanitize_shallow (c))) return_trace (false);
     if (!sizeof... (Ts) && hb_is_trivially_copyable(Type)) return_trace (true);
+    hb_barrier ();
     unsigned int count = get_length ();
     for (unsigned int i = 0; i < count; i++)
       if (unlikely (!(*this)[i].sanitize (c, std::forward<Ts> (ds)...)))
@@ -1127,6 +1148,7 @@ struct VarSizedBinSearchArrayOf
   {
     TRACE_SANITIZE (this);
     return_trace (header.sanitize (c) &&
+		  hb_barrier () &&
 		  Type::static_size <= header.unitSize &&
 		  c->check_range (bytesZ.arrayZ,
 				  header.nUnits,

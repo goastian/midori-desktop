@@ -9,18 +9,43 @@
 #include "GLContextEGL.h"
 #include "GLLibraryEGL.h"
 #include "mozilla/gfx/DeviceManagerDx.h"
+#include "mozilla/gfx/FileHandleWrapper.h"
 #include "mozilla/layers/LayersSurfaces.h"  // for SurfaceDescriptor, etc
 
 namespace mozilla {
 namespace gl {
 
+static ID3D11Device* GetD3D11DeviceOfEGLDisplay(GLContextEGL* gle) {
+  const auto& egl = gle->mEgl;
+  MOZ_ASSERT(egl);
+  if (!egl ||
+      !egl->mLib->IsExtensionSupported(gl::EGLLibExtension::EXT_device_query)) {
+    return nullptr;
+  }
+
+  // Fetch the D3D11 device.
+  EGLDeviceEXT eglDevice = nullptr;
+  egl->fQueryDisplayAttribEXT(LOCAL_EGL_DEVICE_EXT, (EGLAttrib*)&eglDevice);
+  MOZ_ASSERT(eglDevice);
+  ID3D11Device* device = nullptr;
+  egl->mLib->fQueryDeviceAttribEXT(eglDevice, LOCAL_EGL_D3D11_DEVICE_ANGLE,
+                                   (EGLAttrib*)&device);
+  if (!device) {
+    return nullptr;
+  }
+  return device;
+}
+
 // Returns `EGL_NO_SURFACE` (`0`) on error.
 static EGLSurface CreatePBufferSurface(EglDisplay* egl, EGLConfig config,
-                                       const gfx::IntSize& size) {
+                                       const gfx::IntSize& size,
+                                       RefPtr<ID3D11Texture2D> texture2D) {
   const EGLint attribs[] = {LOCAL_EGL_WIDTH, size.width, LOCAL_EGL_HEIGHT,
                             size.height, LOCAL_EGL_NONE};
+  const auto buffer = reinterpret_cast<EGLClientBuffer>(texture2D.get());
 
-  EGLSurface surface = egl->fCreatePbufferSurface(config, attribs);
+  EGLSurface surface = egl->fCreatePbufferFromClientBuffer(
+      LOCAL_EGL_D3D_TEXTURE_ANGLE, buffer, config, attribs);
   if (!surface) {
     EGLint err = egl->mLib->fGetError();
     gfxCriticalError() << "Failed to create Pbuffer surface error: "
@@ -40,50 +65,66 @@ SharedSurface_ANGLEShareHandle::Create(const SharedSurfaceDesc& desc) {
   MOZ_ASSERT(egl->IsExtensionSupported(
       EGLExtension::ANGLE_surface_d3d_texture_2d_share_handle));
 
+  auto* device = GetD3D11DeviceOfEGLDisplay(gle);
+  if (!device) {
+    return nullptr;
+  }
+
+  // Create a texture in case we need to readback.
+  const DXGI_FORMAT format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  CD3D11_TEXTURE2D_DESC texDesc(
+      format, desc.size.width, desc.size.height, 1, 1,
+      D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET);
+  texDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+                      D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+
+  RefPtr<ID3D11Texture2D> texture2D;
+  auto hr =
+      device->CreateTexture2D(&texDesc, nullptr, getter_AddRefs(texture2D));
+  if (FAILED(hr)) {
+    return nullptr;
+  }
+
+  RefPtr<IDXGIResource1> texDXGI;
+  hr = texture2D->QueryInterface(__uuidof(IDXGIResource1),
+                                 getter_AddRefs(texDXGI));
+  if (FAILED(hr)) {
+    return nullptr;
+  }
+
+  HANDLE sharedHandle = nullptr;
+  texDXGI->CreateSharedHandle(
+      nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE, nullptr,
+      &sharedHandle);
+
+  RefPtr<gfx::FileHandleWrapper> handle =
+      new gfx::FileHandleWrapper(UniqueFileHandle(sharedHandle));
+
+  RefPtr<IDXGIKeyedMutex> keyedMutex;
+  texture2D->QueryInterface((IDXGIKeyedMutex**)getter_AddRefs(keyedMutex));
+  if (!keyedMutex) {
+    return nullptr;
+  }
+
   const auto& config = gle->mSurfaceConfig;
   MOZ_ASSERT(config);
 
-  EGLSurface pbuffer = CreatePBufferSurface(egl.get(), config, desc.size);
+  EGLSurface pbuffer =
+      CreatePBufferSurface(egl.get(), config, desc.size, texture2D);
   if (!pbuffer) return nullptr;
 
-  // Declare everything before 'goto's.
-  HANDLE shareHandle = nullptr;
-  bool ok = egl->fQuerySurfacePointerANGLE(
-      pbuffer, LOCAL_EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE, &shareHandle);
-  if (!ok) {
-    egl->fDestroySurface(pbuffer);
-    return nullptr;
-  }
-  void* opaqueKeyedMutex = nullptr;
-  egl->fQuerySurfacePointerANGLE(pbuffer, LOCAL_EGL_DXGI_KEYED_MUTEX_ANGLE,
-                                 &opaqueKeyedMutex);
-  RefPtr<IDXGIKeyedMutex> keyedMutex =
-      static_cast<IDXGIKeyedMutex*>(opaqueKeyedMutex);
-#ifdef DEBUG
-  if (!keyedMutex) {
-    std::string envStr("1");
-    static auto env = PR_GetEnv("MOZ_REQUIRE_KEYED_MUTEX");
-    if (env) {
-      envStr = env;
-    }
-    if (envStr != "0") {
-      MOZ_ASSERT(keyedMutex, "set MOZ_REQUIRE_KEYED_MUTEX=0 to allow");
-    }
-  }
-#endif
-
-  return AsUnique(new SharedSurface_ANGLEShareHandle(desc, egl, pbuffer,
-                                                     shareHandle, keyedMutex));
+  return AsUnique(new SharedSurface_ANGLEShareHandle(
+      desc, egl, pbuffer, std::move(handle), keyedMutex));
 }
 
 SharedSurface_ANGLEShareHandle::SharedSurface_ANGLEShareHandle(
     const SharedSurfaceDesc& desc, const std::weak_ptr<EglDisplay>& egl,
-    EGLSurface pbuffer, HANDLE shareHandle,
+    EGLSurface pbuffer, RefPtr<gfx::FileHandleWrapper>&& aSharedHandle,
     const RefPtr<IDXGIKeyedMutex>& keyedMutex)
     : SharedSurface(desc, nullptr),
       mEGL(egl),
       mPBuffer(pbuffer),
-      mShareHandle(shareHandle),
+      mSharedHandle(std::move(aSharedHandle)),
       mKeyedMutex(keyedMutex) {}
 
 SharedSurface_ANGLEShareHandle::~SharedSurface_ANGLEShareHandle() {
@@ -106,25 +147,19 @@ void SharedSurface_ANGLEShareHandle::LockProdImpl() {
 void SharedSurface_ANGLEShareHandle::UnlockProdImpl() {}
 
 void SharedSurface_ANGLEShareHandle::ProducerAcquireImpl() {
-  if (mKeyedMutex) {
-    HRESULT hr = mKeyedMutex->AcquireSync(0, 10000);
-    if (hr == WAIT_TIMEOUT) {
-      MOZ_CRASH("GFX: ANGLE share handle timeout");
-    }
+  HRESULT hr = mKeyedMutex->AcquireSync(0, 10000);
+  if (hr == WAIT_TIMEOUT) {
+    MOZ_CRASH("GFX: ANGLE share handle timeout");
   }
 }
 
 void SharedSurface_ANGLEShareHandle::ProducerReleaseImpl() {
   const auto& gl = mDesc.gl;
-  if (mKeyedMutex) {
-    // XXX: ReleaseSync() has an implicit flush of the D3D commands
-    // whether we need Flush() or not depends on the ANGLE semantics.
-    // For now, we'll just do it
-    gl->fFlush();
-    mKeyedMutex->ReleaseSync(0);
-    return;
-  }
-  gl->fFinish();
+  // XXX: ReleaseSync() has an implicit flush of the D3D commands
+  // whether we need Flush() or not depends on the ANGLE semantics.
+  // For now, we'll just do it
+  gl->fFlush();
+  mKeyedMutex->ReleaseSync(0);
 }
 
 void SharedSurface_ANGLEShareHandle::ProducerReadAcquireImpl() {
@@ -132,97 +167,18 @@ void SharedSurface_ANGLEShareHandle::ProducerReadAcquireImpl() {
 }
 
 void SharedSurface_ANGLEShareHandle::ProducerReadReleaseImpl() {
-  if (mKeyedMutex) {
-    mKeyedMutex->ReleaseSync(0);
-    return;
-  }
+  mKeyedMutex->ReleaseSync(0);
 }
 
 Maybe<layers::SurfaceDescriptor>
 SharedSurface_ANGLEShareHandle::ToSurfaceDescriptor() {
   const auto format = gfx::SurfaceFormat::B8G8R8A8;
   return Some(layers::SurfaceDescriptorD3D10(
-      (WindowsHandle)mShareHandle, /* gpuProcessTextureId */ Nothing(),
+      mSharedHandle, /* gpuProcessTextureId */ Nothing(),
       /* arrayIndex */ 0, format, mDesc.size, mDesc.colorSpace,
-      gfx::ColorRange::FULL));
+      gfx::ColorRange::FULL, /* hasKeyedMutex */ true,
+      /* fenceInfo */ Nothing(), /* gpuProcessQueryId */ Nothing()));
 }
-
-class ScopedLockTexture final {
- public:
-  explicit ScopedLockTexture(ID3D11Texture2D* texture, bool* succeeded)
-      : mIsLocked(false), mTexture(texture) {
-    MOZ_ASSERT(NS_IsMainThread(),
-               "Must be on the main thread to use d3d11 immediate context");
-    MOZ_ASSERT(mTexture);
-    MOZ_ASSERT(succeeded);
-    *succeeded = false;
-
-    HRESULT hr;
-    mTexture->QueryInterface((IDXGIKeyedMutex**)getter_AddRefs(mMutex));
-    if (mMutex) {
-      hr = mMutex->AcquireSync(0, 10000);
-      if (hr == WAIT_TIMEOUT) {
-        MOZ_CRASH("GFX: ANGLE scoped lock timeout");
-      }
-
-      if (FAILED(hr)) {
-        NS_WARNING("Failed to lock the texture");
-        return;
-      }
-    }
-
-    RefPtr<ID3D11Device> device =
-        gfx::DeviceManagerDx::Get()->GetContentDevice();
-    if (!device) {
-      return;
-    }
-
-    device->GetImmediateContext(getter_AddRefs(mDeviceContext));
-
-    mTexture->GetDesc(&mDesc);
-    mDesc.BindFlags = 0;
-    mDesc.Usage = D3D11_USAGE_STAGING;
-    mDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    mDesc.MiscFlags = 0;
-
-    hr = device->CreateTexture2D(&mDesc, nullptr,
-                                 getter_AddRefs(mCopiedTexture));
-
-    if (FAILED(hr)) {
-      return;
-    }
-
-    mDeviceContext->CopyResource(mCopiedTexture, mTexture);
-
-    hr = mDeviceContext->Map(mCopiedTexture, 0, D3D11_MAP_READ, 0,
-                             &mSubresource);
-    if (FAILED(hr)) {
-      return;
-    }
-
-    *succeeded = true;
-    mIsLocked = true;
-  }
-
-  ~ScopedLockTexture() {
-    mDeviceContext->Unmap(mCopiedTexture, 0);
-    if (mMutex) {
-      HRESULT hr = mMutex->ReleaseSync(0);
-      if (FAILED(hr)) {
-        NS_WARNING("Failed to unlock the texture");
-      }
-    }
-    mIsLocked = false;
-  }
-
-  bool mIsLocked;
-  RefPtr<ID3D11Texture2D> mTexture;
-  RefPtr<ID3D11Texture2D> mCopiedTexture;
-  RefPtr<IDXGIKeyedMutex> mMutex;
-  RefPtr<ID3D11DeviceContext> mDeviceContext;
-  D3D11_TEXTURE2D_DESC mDesc;
-  D3D11_MAPPED_SUBRESOURCE mSubresource;
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Factory

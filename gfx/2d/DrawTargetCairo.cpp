@@ -11,7 +11,6 @@
 #include "HelpersCairo.h"
 #include "BorrowedContext.h"
 #include "FilterNodeSoftware.h"
-#include "mozilla/Scoped.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Vector.h"
 #include "mozilla/StaticPrefs_gfx.h"
@@ -50,10 +49,6 @@
 #define CAIRO_COORD_MAX (Float(0x7fffff))
 
 namespace mozilla {
-
-MOZ_TYPE_SPECIFIC_SCOPED_POINTER_TEMPLATE(ScopedCairoSurface, cairo_surface_t,
-                                          cairo_surface_destroy);
-
 namespace gfx {
 
 cairo_surface_t* DrawTargetCairo::mDummySurface;
@@ -659,46 +654,45 @@ SurfaceFormat GfxFormatForCairoSurface(cairo_surface_t* surface) {
   return CairoContentToGfxFormat(cairo_surface_get_content(surface));
 }
 
-void DrawTargetCairo::Link(const char* aDestination, const Rect& aRect) {
-  if (!aDestination || !*aDestination) {
+void DrawTargetCairo::Link(const char* aDest, const char* aURI,
+                           const Rect& aRect) {
+  if ((!aURI || !*aURI) && (!aDest || !*aDest)) {
     // No destination? Just bail out.
     return;
   }
 
-  // We need to \-escape any single-quotes in the destination string, in order
-  // to pass it via the attributes arg to cairo_tag_begin.
+  // We need to \-escape any single-quotes in the destination and URI strings,
+  // in order to pass them via the attributes arg to cairo_tag_begin.
   //
   // We also need to escape any backslashes (bug 1748077), as per doc at
   // https://www.cairographics.org/manual/cairo-Tags-and-Links.html#cairo-tag-begin
-  // The cairo-pdf-interchange backend (used on all platforms EXCEPT macOS)
-  // actually requires that we *doubly* escape the backslashes (this may be a
-  // cairo bug), while the quartz backend is fine with them singly-escaped.
   //
   // (Encoding of non-ASCII chars etc gets handled later by the PDF backend.)
-  nsAutoCString dest(aDestination);
-  for (size_t i = dest.Length(); i > 0;) {
-    --i;
-    if (dest[i] == '\'') {
-      dest.ReplaceLiteral(i, 1, "\\'");
-    } else if (dest[i] == '\\') {
-#ifdef XP_MACOSX
-      dest.ReplaceLiteral(i, 1, "\\\\");
-#else
-      dest.ReplaceLiteral(i, 1, "\\\\\\\\");
-#endif
+  auto escapeForCairo = [](nsACString& aStr) {
+    for (size_t i = aStr.Length(); i > 0;) {
+      --i;
+      if (aStr[i] == '\'') {
+        aStr.ReplaceLiteral(i, 1, "\\'");
+      } else if (aStr[i] == '\\') {
+        aStr.ReplaceLiteral(i, 1, "\\\\");
+      }
     }
-  }
+  };
 
   double x = aRect.x, y = aRect.y, w = aRect.width, h = aRect.height;
   cairo_user_to_device(mContext, &x, &y);
   cairo_user_to_device_distance(mContext, &w, &h);
+  nsPrintfCString attributes("rect=[%f %f %f %f]", x, y, w, h);
 
-  nsPrintfCString attributes("rect=[%f %f %f %f] ", x, y, w, h);
-  if (dest[0] == '#') {
-    // The actual destination does not have a leading '#'.
-    attributes.AppendPrintf("dest='%s'", dest.get() + 1);
-  } else {
-    attributes.AppendPrintf("uri='%s'", dest.get());
+  if (aDest && *aDest) {
+    nsAutoCString dest(aDest);
+    escapeForCairo(dest);
+    attributes.AppendPrintf(" dest='%s'", dest.get());
+  }
+  if (aURI && *aURI) {
+    nsAutoCString uri(aURI);
+    escapeForCairo(uri);
+    attributes.AppendPrintf(" uri='%s'", uri.get());
   }
 
   // We generate a begin/end pair with no content in between, because we are
@@ -1751,16 +1745,6 @@ already_AddRefed<DrawTarget> DrawTargetCairo::CreateSimilarDrawTarget(
           GfxFormatToCairoFormat(aFormat), aSize.width, aSize.height);
       break;
 #endif
-#ifdef CAIRO_HAS_QUARTZ_SURFACE
-    case CAIRO_SURFACE_TYPE_QUARTZ:
-      if (StaticPrefs::gfx_cairo_quartz_cg_layer_enabled()) {
-        similar = cairo_quartz_surface_create_cg_layer(
-            mSurface, GfxFormatToCairoContent(aFormat), aSize.width,
-            aSize.height);
-        break;
-      }
-      [[fallthrough]];
-#endif
     default:
       similar = cairo_surface_create_similar(mSurface,
                                              GfxFormatToCairoContent(aFormat),
@@ -1803,9 +1787,13 @@ RefPtr<DrawTarget> DrawTargetCairo::CreateClippedDrawTarget(
   if (!clipBounds.IsEmpty()) {
     RefPtr<DrawTarget> dt = CreateSimilarDrawTarget(
         IntSize(clipBounds.width, clipBounds.height), aFormat);
-    result = gfx::Factory::CreateOffsetDrawTarget(
-        dt, IntPoint(clipBounds.x, clipBounds.y));
-    result->SetTransform(mTransform);
+    if (dt) {
+      result = gfx::Factory::CreateOffsetDrawTarget(
+          dt, IntPoint(clipBounds.x, clipBounds.y));
+      if (result) {
+        result->SetTransform(mTransform);
+      }
+    }
   } else {
     // Everything is clipped but we still want some kind of surface
     result = CreateSimilarDrawTarget(IntSize(1, 1), aFormat);

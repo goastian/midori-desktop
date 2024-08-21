@@ -124,7 +124,7 @@ class ShmemCharMapHashEntry final : public PLDHashEntryHdr {
     return aCharMap->GetChecksum();
   }
 
-  enum { ALLOW_MEMMOVE = true };
+  enum { ALLOW_MEMMOVE = false };  // because of the Pointer member
 
  private:
   // charMaps are stored in the shared memory that FontList objects point to,
@@ -213,7 +213,13 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   // platform-specific font families.
   typedef nsTArray<FontFamily> PrefFontList;
 
-  static gfxPlatformFontList* PlatformFontList() {
+  // Return the global font-list singleton, or NULL if aMustInitialize is false
+  // and it has not yet been fully initialized.
+  static gfxPlatformFontList* PlatformFontList(bool aMustInitialize = true) {
+    if (!aMustInitialize &&
+        !(sPlatformFontList && sPlatformFontList->IsInitialized())) {
+      return nullptr;
+    }
     // If there is a font-list initialization thread, we need to let it run
     // to completion before the font list can be used for anything else.
     if (sInitFontListThread) {
@@ -239,9 +245,17 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
     return sPlatformFontList;
   }
 
+  void GetMissingFonts(nsCString& aMissingFonts);
+
   static bool Initialize(gfxPlatformFontList* aList);
 
   static void Shutdown() {
+    // Ensure any font-list initialization thread is finished before we delete
+    // the platform fontlist singleton, which that thread may try to use.
+    if (sInitFontListThread && !IsInitFontListThread()) {
+      PR_JoinThread(sInitFontListThread);
+      sInitFontListThread = nullptr;
+    }
     delete sPlatformFontList;
     sPlatformFontList = nullptr;
   }
@@ -320,11 +334,8 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
       nsPresContext* aPresContext, mozilla::StyleGenericFontFamily aGeneric,
       const nsACString& aFamily, nsTArray<FamilyAndGeneric>* aOutput,
       FindFamiliesFlags aFlags, gfxFontStyle* aStyle = nullptr,
-      nsAtom* aLanguage = nullptr, gfxFloat aDevToCssSize = 1.0) {
-    AutoLock lock(mLock);
-    return FindAndAddFamiliesLocked(aPresContext, aGeneric, aFamily, aOutput,
-                                    aFlags, aStyle, aLanguage, aDevToCssSize);
-  }
+      nsAtom* aLanguage = nullptr, gfxFloat aDevToCssSize = 1.0);
+
   virtual bool FindAndAddFamiliesLocked(
       nsPresContext* aPresContext, mozilla::StyleGenericFontFamily aGeneric,
       const nsACString& aFamily, nsTArray<FamilyAndGeneric>* aOutput,
@@ -649,6 +660,9 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   mutable mozilla::RecursiveMutex mLock;
 
  protected:
+  virtual nsTArray<std::pair<const char**, uint32_t>>
+  GetFilteredPlatformFontLists() = 0;
+
   friend class mozilla::fontlist::FontList;
   friend class InitOtherFamilyNamesForStylo;
 
@@ -858,7 +872,10 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   // load the bad underline blocklist from pref.
   void LoadBadUnderlineList();
 
+  // This version of the function will not modify aKeyName
   void GenerateFontListKey(const nsACString& aKeyName, nsACString& aResult);
+  // This version of the function WILL modify aKeyName
+  void GenerateFontListKey(nsACString& aKeyName);
 
   virtual void GetFontFamilyNames(nsTArray<nsCString>& aFontFamilyNames)
       MOZ_REQUIRES(mLock);
@@ -1001,13 +1018,14 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
 
   // When system-wide font lookup fails for a character, cache it to skip future
   // searches. This is an array of bitsets, one for each FontVisibility level.
-  mozilla::EnumeratedArray<FontVisibility, FontVisibility::Count,
-                           gfxSparseBitSet>
+  mozilla::EnumeratedArray<FontVisibility, gfxSparseBitSet,
+                           size_t(FontVisibility::Count)>
       mCodepointsWithNoFonts MOZ_GUARDED_BY(mLock);
 
   // the family to use for U+FFFD fallback, to avoid expensive search every time
   // on pages with lots of problems
-  mozilla::EnumeratedArray<FontVisibility, FontVisibility::Count, FontFamily>
+  mozilla::EnumeratedArray<FontVisibility, FontFamily,
+                           size_t(FontVisibility::Count)>
       mReplacementCharFallbackFamily MOZ_GUARDED_BY(mLock);
 
   // Sorted array of lowercased family names; use ContainsSorted to test

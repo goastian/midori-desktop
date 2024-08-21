@@ -12,12 +12,12 @@ UNIFIED_SOURCES += [
     "TestArrayView.cpp",
     "TestBSPTree.cpp",
     "TestBufferRotation.cpp",
-    "TestColorNames.cpp",
     "TestConfigManager.cpp",
     "TestCoord.cpp",
     "TestGfxWidgets.cpp",
     "TestMatrix.cpp",
     "TestMoz2D.cpp",
+    "TestPoint.cpp",
     "TestPolygon.cpp",
     "TestQcms.cpp",
     "TestRegion.cpp",
@@ -25,13 +25,8 @@ UNIFIED_SOURCES += [
     "TestSwizzle.cpp",
     "TestTextures.cpp",
     "TestTreeTraversal.cpp",
+    "TestVsync.cpp",
 ]
-
-# skip the test on windows10-aarch64 due to perma-crash - bug 1544961
-if not (CONFIG["OS_TARGET"] == "WINNT" and CONFIG["CPU_ARCH"] == "aarch64"):
-    UNIFIED_SOURCES += [
-        "TestVsync.cpp",
-    ]
 
 if CONFIG["OS_TARGET"] != "Android":
     UNIFIED_SOURCES += [
@@ -44,7 +39,6 @@ UNIFIED_SOURCES += [
         "TestBase.cpp",
         "TestBugs.cpp",
         "TestCairo.cpp",
-        "TestPoint.cpp",
         "TestScaling.cpp",
     ]
 ]
@@ -71,6 +65,7 @@ LOCAL_INCLUDES += [
     "/gfx/layers",
     "/gfx/ots/src",
     "/gfx/qcms",
+    "/layout/base",
 ]
 
 FINAL_LIBRARY = "xul-gtest"

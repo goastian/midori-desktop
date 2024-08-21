@@ -12,9 +12,36 @@
 #include <type_traits>
 #include "mozilla/Attributes.h"
 #include "mozilla/FloatingPoint.h"
+#include "Coord.h"
 
 namespace mozilla {
 namespace gfx {
+
+template <class T, typename EnableT = void>
+struct FloatType;
+
+template <typename T>
+struct FloatType<T, typename std::enable_if_t<std::is_integral_v<T>>> {
+  using type = float;
+};
+
+template <typename T>
+struct FloatType<T, typename std::enable_if_t<std::is_floating_point_v<T>>> {
+  using type = T;
+};
+
+template <typename Units, typename Rep>
+struct FloatType<IntCoordTyped<Units, Rep>> {
+  using type = CoordTyped<Units, float>;
+};
+
+template <typename Units, typename Rep>
+struct FloatType<CoordTyped<Units, Rep>> {
+  using type = CoordTyped<Units, Rep>;
+};
+
+template <typename T>
+using FloatType_t = typename FloatType<T>::type;
 
 /**
  * Do not use this class directly. Subclass it, pass that subclass as the
@@ -37,11 +64,11 @@ struct BasePoint {
   MOZ_ALWAYS_INLINE Coord X() const { return x; }
   MOZ_ALWAYS_INLINE Coord Y() const { return y; }
 
-  void MoveTo(T aX, T aY) {
+  void MoveTo(Coord aX, Coord aY) {
     x = aX;
     y = aY;
   }
-  void MoveBy(T aDx, T aDy) {
+  void MoveBy(Coord aDx, Coord aDy) {
     x += aDx;
     y += aDy;
   }
@@ -82,7 +109,9 @@ struct BasePoint {
     return x.value * aPoint.x.value + y.value * aPoint.y.value;
   }
 
-  Coord Length() const { return hypot(x.value, y.value); }
+  FloatType_t<Coord> Length() const {
+    return FloatType_t<Coord>(hypot(x.value, y.value));
+  }
 
   T LengthSquare() const { return x.value * x.value + y.value * y.value; }
 
@@ -100,10 +129,9 @@ struct BasePoint {
     using FloatType =
         std::conditional_t<std::is_same_v<T, float>, float, double>;
     return (std::isfinite(FloatType(x)) && std::isfinite(FloatType(y)));
-    return true;
   }
 
-  void Clamp(T aMaxAbsValue) {
+  void Clamp(Coord aMaxAbsValue) {
     x = std::max(std::min(x, aMaxAbsValue), -aMaxAbsValue);
     y = std::max(std::min(y, aMaxAbsValue), -aMaxAbsValue);
   }

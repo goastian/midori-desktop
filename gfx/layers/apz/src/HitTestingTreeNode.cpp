@@ -249,11 +249,10 @@ bool HitTestingTreeNode::IsPrimaryHolder() const {
 LayersId HitTestingTreeNode::GetLayersId() const { return mLayersId; }
 
 void HitTestingTreeNode::SetHitTestData(
-    const LayerIntRegion& aVisibleRegion,
-    const LayerIntSize& aRemoteDocumentSize,
+    const LayerIntRect& aVisibleRect, const LayerIntSize& aRemoteDocumentSize,
     const CSSTransformMatrix& aTransform, const EventRegionsOverride& aOverride,
     const Maybe<ScrollableLayerGuid::ViewID>& aAsyncZoomContainerId) {
-  mVisibleRegion = aVisibleRegion;
+  mVisibleRect = aVisibleRect;
   mRemoteDocumentSize = aRemoteDocumentSize;
   mTransform = aTransform;
   mOverride = aOverride;
@@ -268,18 +267,20 @@ const CSSTransformMatrix& HitTestingTreeNode::GetTransform() const {
   return mTransform;
 }
 
-LayerToScreenMatrix4x4 HitTestingTreeNode::GetTransformToGecko() const {
+LayerToScreenMatrix4x4 HitTestingTreeNode::GetTransformToGecko(
+    LayersId aRemoteLayersId) const {
   if (mParent) {
     LayerToParentLayerMatrix4x4 thisToParent =
         mTransform * AsyncTransformMatrix();
     if (mApzc) {
       thisToParent =
-          thisToParent * ViewAs<ParentLayerToParentLayerMatrix4x4>(
-                             mApzc->GetTransformToLastDispatchedPaint());
+          thisToParent * ViewAs<AsyncTransformComponentMatrix>(
+                             mApzc->GetTransformToLastDispatchedPaint(
+                                 LayoutAndVisual, aRemoteLayersId));
     }
     ParentLayerToScreenMatrix4x4 parentToRoot =
         ViewAs<ParentLayerToScreenMatrix4x4>(
-            mParent->GetTransformToGecko(),
+            mParent->GetTransformToGecko(aRemoteLayersId),
             PixelCastJustification::MovingDownToChildren);
     return thisToParent * parentToRoot;
   }
@@ -289,13 +290,14 @@ LayerToScreenMatrix4x4 HitTestingTreeNode::GetTransformToGecko() const {
       PixelCastJustification::ScreenIsParentLayerForRoot);
 }
 
-const LayerIntRegion& HitTestingTreeNode::GetVisibleRegion() const {
-  return mVisibleRegion;
+const LayerIntRect& HitTestingTreeNode::GetVisibleRect() const {
+  return mVisibleRect;
 }
 
-ScreenRect HitTestingTreeNode::GetRemoteDocumentScreenRect() const {
+ScreenRect HitTestingTreeNode::GetRemoteDocumentScreenRect(
+    LayersId aRemoteDocumentLayersId) const {
   ScreenRect result = TransformBy(
-      GetTransformToGecko(),
+      GetTransformToGecko(aRemoteDocumentLayersId),
       IntRectToRect(LayerIntRect(LayerIntPoint(), mRemoteDocumentSize)));
 
   for (const HitTestingTreeNode* node = this; node; node = node->GetParent()) {
@@ -309,8 +311,9 @@ ScreenRect HitTestingTreeNode::GetRemoteDocumentScreenRect() const {
     }
 
     ScreenRect scrollPortOnScreenCoordinate = TransformBy(
-        node->GetParent() ? node->GetParent()->GetTransformToGecko()
-                          : LayerToScreenMatrix4x4(),
+        node->GetParent()
+            ? node->GetParent()->GetTransformToGecko(node->GetLayersId())
+            : LayerToScreenMatrix4x4(),
         ViewAs<LayerPixel>(compositionBounds,
                            PixelCastJustification::MovingDownToChildren));
     if (scrollPortOnScreenCoordinate.IsEmpty()) {

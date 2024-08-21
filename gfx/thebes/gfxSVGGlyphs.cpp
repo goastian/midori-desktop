@@ -19,7 +19,7 @@
 #include "nsString.h"
 #include "nsICategoryManager.h"
 #include "nsIDocumentLoaderFactory.h"
-#include "nsIContentViewer.h"
+#include "nsIDocumentViewer.h"
 #include "nsIStreamListener.h"
 #include "nsServiceManagerUtils.h"
 #include "nsNetUtil.h"
@@ -131,20 +131,13 @@ gfxSVGGlyphsDocument* gfxSVGGlyphs::FindOrCreateGlyphsDocument(
 }
 
 nsresult gfxSVGGlyphsDocument::SetupPresentation() {
-  nsCOMPtr<nsICategoryManager> catMan =
-      do_GetService(NS_CATEGORYMANAGER_CONTRACTID);
-  nsCString contractId;
-  nsresult rv = catMan->GetCategoryEntry("Gecko-Content-Viewers",
-                                         "image/svg+xml", contractId);
-  NS_ENSURE_SUCCESS(rv, rv);
-
   nsCOMPtr<nsIDocumentLoaderFactory> docLoaderFactory =
-      do_GetService(contractId.get());
+      nsContentUtils::FindInternalDocumentViewer("image/svg+xml"_ns);
   NS_ASSERTION(docLoaderFactory, "Couldn't get DocumentLoaderFactory");
 
-  nsCOMPtr<nsIContentViewer> viewer;
-  rv = docLoaderFactory->CreateInstanceForDocument(nullptr, mDocument, nullptr,
-                                                   getter_AddRefs(viewer));
+  nsCOMPtr<nsIDocumentViewer> viewer;
+  nsresult rv = docLoaderFactory->CreateInstanceForDocument(
+      nullptr, mDocument, nullptr, getter_AddRefs(viewer));
   NS_ENSURE_SUCCESS(rv, rv);
 
   auto upem = mOwner->FontEntry()->UnitsPerEm();
@@ -438,7 +431,7 @@ void gfxSVGGlyphsDocument::InsertGlyphId(Element* aGlyphElement) {
   static const uint32_t glyphPrefixLength = 5;
   // The maximum glyph ID is 65535 so the maximum length of the numeric part
   // is 5.
-  if (!aGlyphElement->GetAttr(kNameSpaceID_None, nsGkAtoms::id, glyphIdStr) ||
+  if (!aGlyphElement->GetAttr(nsGkAtoms::id, glyphIdStr) ||
       !StringBeginsWith(glyphIdStr, u"glyph"_ns) ||
       glyphIdStr.Length() > glyphPrefixLength + 5) {
     return;

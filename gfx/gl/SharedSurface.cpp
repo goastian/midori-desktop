@@ -31,9 +31,10 @@
 #  include "SharedSurfaceIO.h"
 #endif
 
-#ifdef MOZ_WAYLAND
+#ifdef MOZ_WIDGET_GTK
 #  include "gfxPlatformGtk.h"
 #  include "SharedSurfaceDMABUF.h"
+#  include "mozilla/widget/DMABufLibWrapper.h"
 #endif
 
 #ifdef MOZ_WIDGET_ANDROID
@@ -88,29 +89,29 @@ UniquePtr<SurfaceFactory> SurfaceFactory::Create(
         return SurfaceFactory_D3D11Interop::Create(gl);
       }
 #endif
-      return nullptr;
+      break;
 
     case layers::TextureType::MacIOSurface:
 #ifdef XP_MACOSX
       return MakeUnique<SurfaceFactory_IOSurface>(gl);
 #else
-      return nullptr;
+      break;
 #endif
 
     case layers::TextureType::DMABUF:
-#ifdef MOZ_WAYLAND
+#ifdef MOZ_WIDGET_GTK
       if (gl.GetContextType() == GLContextType::EGL &&
           widget::DMABufDevice::IsDMABufWebGLEnabled()) {
         return SurfaceFactory_DMABUF::Create(gl);
       }
 #endif
-      return nullptr;
+      break;
 
     case layers::TextureType::AndroidNativeWindow:
 #ifdef MOZ_WIDGET_ANDROID
       return MakeUnique<SurfaceFactory_SurfaceTexture>(gl);
 #else
-      return nullptr;
+      break;
 #endif
 
     case layers::TextureType::AndroidHardwareBuffer:
@@ -120,7 +121,7 @@ UniquePtr<SurfaceFactory> SurfaceFactory::Create(
         return SurfaceFactory_AndroidHardwareBuffer::Create(gl);
       }
 #endif
-      return nullptr;
+      break;
 
     case layers::TextureType::EGLImage:
 #ifdef MOZ_WIDGET_ANDROID
@@ -128,17 +129,15 @@ UniquePtr<SurfaceFactory> SurfaceFactory::Create(
         return SurfaceFactory_EGLImage::Create(gl);
       }
 #endif
-      return nullptr;
+      break;
 
     case layers::TextureType::Unknown:
     case layers::TextureType::Last:
       break;
   }
 
-#ifdef MOZ_X11
   // Silence a warning.
   Unused << gl;
-#endif
 
   return nullptr;
 }

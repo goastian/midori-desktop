@@ -18,6 +18,7 @@ namespace mozilla {
 namespace layers {
 
 class AsyncImagePipelineManager;
+class TextureWrapperD3D11Allocator;
 class WebRenderBridgeParent;
 class WebRenderBridgeParentRef;
 
@@ -31,15 +32,6 @@ class WebRenderImageHost : public CompositableHost, public ImageComposite {
 
   void UseTextureHost(const nsTArray<TimedTexture>& aTextures) override;
   void RemoveTextureHost(TextureHost* aTexture) override;
-
-  void EnableRemoteTexturePushCallback(const RemoteTextureOwnerId aOwnerId,
-                                       const base::ProcessId aForPid,
-                                       const gfx::IntSize aSize,
-                                       const TextureFlags aFlags) override;
-
-  void NotifyPushTexture(const RemoteTextureId aTextureId,
-                         const RemoteTextureOwnerId aOwnerId,
-                         const base::ProcessId aForPid) override;
 
   void Dump(std::stringstream& aStream, const char* aPrefix = "",
             bool aDumpHtml = false) override;
@@ -87,11 +79,11 @@ class WebRenderImageHost : public CompositableHost, public ImageComposite {
 
   std::deque<CompositableTextureHostRef> mPendingRemoteTextureWrappers;
   bool mWaitingReadyCallback = false;
+  bool mWaitForRemoteTextureOwner = true;
 
-  Maybe<RemoteTextureOwnerId> mRemoteTextureOwnerIdOfPushCallback;
-  base::ProcessId mForPidOfPushCallback;
-  gfx::IntSize mSizeOfPushCallback;
-  TextureFlags mFlagsOfPushCallback = TextureFlags::NO_FLAGS;
+#if XP_WIN
+  RefPtr<TextureWrapperD3D11Allocator> mTextureAllocator;
+#endif
 };
 
 }  // namespace layers

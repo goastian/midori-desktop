@@ -9,7 +9,7 @@ import sys
 f = open(sys.argv[1] if len(sys.argv) > 1 else "StandardizedVariants.txt")
 
 line = f.readline()
-m = re.compile("^# (StandardizedVariants(-\d+(\.\d+)*)?\.txt)").search(line)
+m = re.compile(r"^# (StandardizedVariants(-\d+(\.\d+)*)?\.txt)").search(line)
 fileversion = m.group(1)
 vsdict = {}
 r = re.compile(
@@ -35,7 +35,7 @@ f.close
 
 offsets = []
 length = 10 + 11 * len(vsdict)
-for (k, mappings) in sorted(vsdict.items()):
+for k, mappings in sorted(vsdict.items()):
     offsets.append(length)
     length += 4 + 5 * len(mappings)
 
@@ -69,10 +69,10 @@ for i, k in enumerate(sorted(vsdict.keys())):
         "    U24(0x%04X), U32(0), U32(%d), // varSelectorRecord[%d]\n"
         % (k, offsets[i], i)
     )
-for (k, mappings) in sorted(vsdict.items()):
+for k, mappings in sorted(vsdict.items()):
     f.write("  // 0x%04X\n" % k)
     f.write("  U32(%d), // numUVSMappings\n" % len(mappings))
-    for (unified, compat) in sorted(mappings.items()):
+    for unified, compat in sorted(mappings.items()):
         f.write("    U24(0x%04X), GLYPH(0x%04X),\n" % (unified, compat))
 f.write(
     """};

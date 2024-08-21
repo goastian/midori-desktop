@@ -8,26 +8,26 @@
 #include "CompositorThread.h"
 #include "mozilla/DataMutex.h"
 #include "mozilla/ipc/Endpoint.h"
+#include "mozilla/layers/PTextureParent.h"
 #include "mozilla/layers/TextureHost.h"
 #include "mozilla/layers/VideoBridgeUtils.h"
 #include "mozilla/webrender/RenderThread.h"
 
-namespace mozilla {
-namespace layers {
+namespace mozilla::layers {
 
 using namespace mozilla::ipc;
 using namespace mozilla::gfx;
 
-using VideoBridgeTable =
-    EnumeratedArray<VideoBridgeSource, VideoBridgeSource::_Count,
-                    VideoBridgeParent*>;
+using VideoBridgeTable = EnumeratedArray<VideoBridgeSource, VideoBridgeParent*,
+                                         size_t(VideoBridgeSource::_Count)>;
 
 static StaticDataMutex<VideoBridgeTable> sVideoBridgeFromProcess(
     "VideoBridges");
 static Atomic<bool> sVideoBridgeParentShutDown(false);
 
 VideoBridgeParent::VideoBridgeParent(VideoBridgeSource aSource)
-    : mCompositorThreadHolder(CompositorThreadHolder::GetSingleton()),
+    : mMonitor("VideoBridgeParent::mMonitor"),
+      mCompositorThreadHolder(CompositorThreadHolder::GetSingleton()),
       mClosed(false) {
   auto videoBridgeFromProcess = sVideoBridgeFromProcess.Lock();
   switch (aSource) {
@@ -69,7 +69,7 @@ void VideoBridgeParent::Bind(Endpoint<PVideoBridgeParent>&& aEndpoint) {
 }
 
 /* static */
-VideoBridgeParent* VideoBridgeParent::GetSingleton(
+RefPtr<VideoBridgeParent> VideoBridgeParent::GetSingleton(
     const Maybe<VideoBridgeSource>& aSource) {
   MOZ_ASSERT(aSource.isSome());
   auto videoBridgeFromProcess = sVideoBridgeFromProcess.Lock();
@@ -78,16 +78,24 @@ VideoBridgeParent* VideoBridgeParent::GetSingleton(
     case VideoBridgeSource::GpuProcess:
     case VideoBridgeSource::MFMediaEngineCDMProcess:
       MOZ_ASSERT((*videoBridgeFromProcess)[aSource.value()]);
-      return (*videoBridgeFromProcess)[aSource.value()];
+      return RefPtr{(*videoBridgeFromProcess)[aSource.value()]};
     default:
       MOZ_CRASH("Unhandled case");
   }
 }
 
-TextureHost* VideoBridgeParent::LookupTexture(
+already_AddRefed<TextureHost> VideoBridgeParent::LookupTextureAsync(
     const dom::ContentParentId& aContentId, uint64_t aSerial) {
-  MOZ_DIAGNOSTIC_ASSERT(CompositorThread() &&
-                        CompositorThread()->IsOnCurrentThread());
+  MonitorAutoLock lock(mMonitor);
+
+  // We raced shutting down the actor.
+  if (NS_WARN_IF(!mCompositorThreadHolder)) {
+    MOZ_ASSERT_UNREACHABLE("Called on destroyed VideoBridgeParent actor!");
+    return nullptr;
+  }
+
+  MOZ_ASSERT(mCompositorThreadHolder->IsInThread());
+
   auto* actor = mTextureMap[aSerial];
   if (NS_WARN_IF(!actor)) {
     return nullptr;
@@ -97,7 +105,74 @@ TextureHost* VideoBridgeParent::LookupTexture(
     return nullptr;
   }
 
-  return TextureHost::AsTextureHost(mTextureMap[aSerial]);
+  return do_AddRef(TextureHost::AsTextureHost(actor));
+}
+
+already_AddRefed<TextureHost> VideoBridgeParent::LookupTexture(
+    const dom::ContentParentId& aContentId, uint64_t aSerial) {
+  MonitorAutoLock lock(mMonitor);
+
+  // We raced shutting down the actor.
+  if (NS_WARN_IF(!mCompositorThreadHolder)) {
+    return nullptr;
+  }
+
+  auto* actor = mTextureMap[aSerial];
+  if (actor) {
+    if (NS_WARN_IF(aContentId != TextureHost::GetTextureContentId(actor))) {
+      return nullptr;
+    }
+    return do_AddRef(TextureHost::AsTextureHost(actor));
+  }
+
+  // We cannot block on the Compositor thread because that is the thread we get
+  // the IPC calls for the update on.
+  if (NS_WARN_IF(mCompositorThreadHolder->IsInThread())) {
+    MOZ_ASSERT_UNREACHABLE("Should never call on Compositor thread!");
+    return nullptr;
+  }
+
+  // Canvas may have raced ahead of VideoBridgeParent setting up the
+  // PTextureParent IPDL object. This should happen only rarely/briefly. Since
+  // we know that the PTexture constructor must be in the send queue, we can
+  // block until the IPDL ping comes back.
+  bool complete = false;
+
+  auto resolve = [&](void_t&&) {
+    MonitorAutoLock lock(mMonitor);
+    complete = true;
+    lock.NotifyAll();
+  };
+
+  auto reject = [&](ipc::ResponseRejectReason) {
+    MonitorAutoLock lock(mMonitor);
+    complete = true;
+    lock.NotifyAll();
+  };
+
+  mCompositorThreadHolder->Dispatch(
+      NS_NewRunnableFunction("VideoBridgeParent::LookupTexture", [&]() {
+        if (CanSend()) {
+          SendPing(std::move(resolve), std::move(reject));
+        } else {
+          reject(ipc::ResponseRejectReason::ChannelClosed);
+        }
+      }));
+
+  while (!complete) {
+    lock.Wait();
+  }
+
+  actor = mTextureMap[aSerial];
+  if (!actor) {
+    return nullptr;
+  }
+
+  if (NS_WARN_IF(aContentId != TextureHost::GetTextureContentId(actor))) {
+    return nullptr;
+  }
+
+  return do_AddRef(TextureHost::AsTextureHost(actor));
 }
 
 void VideoBridgeParent::ActorDestroy(ActorDestroyReason aWhy) {
@@ -107,22 +182,41 @@ void VideoBridgeParent::ActorDestroy(ActorDestroyReason aWhy) {
     gfxCriticalNote
         << "VideoBridgeParent receives IPC close with reason=AbnormalShutdown";
   }
-  // Can't alloc/dealloc shmems from now on.
-  mClosed = true;
 
-  mCompositorThreadHolder = nullptr;
-  ReleaseCompositorThread();
+  {
+    MonitorAutoLock lock(mMonitor);
+    // Can't alloc/dealloc shmems from now on.
+    mClosed = true;
+    mCompositorThreadHolder = nullptr;
+  }
 }
 
 /* static */
 void VideoBridgeParent::Shutdown() {
+  CompositorThread()->Dispatch(NS_NewRunnableFunction(
+      "VideoBridgeParent::Shutdown",
+      []() -> void { VideoBridgeParent::ShutdownInternal(); }));
+}
+
+/* static */
+void VideoBridgeParent::ShutdownInternal() {
   sVideoBridgeParentShutDown = true;
 
-  auto videoBridgeFromProcess = sVideoBridgeFromProcess.Lock();
-  for (auto& bridgeParent : *videoBridgeFromProcess) {
-    if (bridgeParent) {
-      bridgeParent->ReleaseCompositorThread();
+  nsTArray<RefPtr<VideoBridgeParent>> bridges;
+
+  // We don't want to hold the sVideoBridgeFromProcess lock when the
+  // VideoBridgeParent objects are closed without holding a reference to them.
+  {
+    auto videoBridgeFromProcess = sVideoBridgeFromProcess.Lock();
+    for (auto& bridgeParent : *videoBridgeFromProcess) {
+      if (bridgeParent) {
+        bridges.AppendElement(bridgeParent);
+      }
     }
+  }
+
+  for (auto& bridge : bridges) {
+    bridge->Close();
   }
 }
 
@@ -149,10 +243,6 @@ void VideoBridgeParent::DoUnregisterExternalImages() {
   }
 }
 
-void VideoBridgeParent::ReleaseCompositorThread() {
-  mCompositorThreadHolder = nullptr;
-}
-
 PTextureParent* VideoBridgeParent::AllocPTextureParent(
     const SurfaceDescriptor& aSharedData, ReadLockDescriptor& aReadLock,
     const LayersBackend& aLayersBackend, const TextureFlags& aFlags,
@@ -165,11 +255,13 @@ PTextureParent* VideoBridgeParent::AllocPTextureParent(
     return nullptr;
   }
 
+  MonitorAutoLock lock(mMonitor);
   mTextureMap[aSerial] = parent;
   return parent;
 }
 
 bool VideoBridgeParent::DeallocPTextureParent(PTextureParent* actor) {
+  MonitorAutoLock lock(mMonitor);
   mTextureMap.erase(TextureHost::GetTextureSerial(actor));
   return TextureHost::DestroyIPDLActor(actor);
 }
@@ -180,23 +272,42 @@ void VideoBridgeParent::SendAsyncMessage(
 }
 
 bool VideoBridgeParent::AllocShmem(size_t aSize, ipc::Shmem* aShmem) {
-  if (mClosed) {
-    return false;
+  {
+    MonitorAutoLock lock(mMonitor);
+    if (mClosed) {
+      return false;
+    }
   }
   return PVideoBridgeParent::AllocShmem(aSize, aShmem);
 }
 
 bool VideoBridgeParent::AllocUnsafeShmem(size_t aSize, ipc::Shmem* aShmem) {
-  if (mClosed) {
-    return false;
+  {
+    MonitorAutoLock lock(mMonitor);
+    if (mClosed) {
+      return false;
+    }
   }
   return PVideoBridgeParent::AllocUnsafeShmem(aSize, aShmem);
 }
 
 bool VideoBridgeParent::DeallocShmem(ipc::Shmem& aShmem) {
-  if (mClosed) {
-    return false;
+  {
+    MonitorAutoLock lock(mMonitor);
+    if (mCompositorThreadHolder && !mCompositorThreadHolder->IsInThread()) {
+      mCompositorThreadHolder->Dispatch(NS_NewRunnableFunction(
+          "gfx::layers::VideoBridgeParent::DeallocShmem",
+          [self = RefPtr{this}, shmem = std::move(aShmem)]() mutable {
+            self->DeallocShmem(shmem);
+          }));
+      return true;
+    }
+
+    if (mClosed) {
+      return false;
+    }
   }
+
   return PVideoBridgeParent::DeallocShmem(aShmem);
 }
 
@@ -207,27 +318,4 @@ bool VideoBridgeParent::IsSameProcess() const {
 void VideoBridgeParent::NotifyNotUsed(PTextureParent* aTexture,
                                       uint64_t aTransactionId) {}
 
-void VideoBridgeParent::OnChannelError() {
-  bool shutdown = sVideoBridgeParentShutDown;
-  if (!shutdown) {
-    // Destory RenderBufferTextureHosts. Shmems of ShmemTextureHosts are going
-    // to be destroyed
-    std::vector<wr::ExternalImageId> ids;
-    auto& ptextures = ManagedPTextureParent();
-    for (const auto& ptexture : ptextures) {
-      RefPtr<TextureHost> texture = TextureHost::AsTextureHost(ptexture);
-      if (texture && texture->AsShmemTextureHost() &&
-          texture->GetMaybeExternalImageId().isSome()) {
-        ids.emplace_back(texture->GetMaybeExternalImageId().ref());
-      }
-    }
-    if (!ids.empty()) {
-      wr::RenderThread::Get()->DestroyExternalImagesSyncWait(std::move(ids));
-    }
-  }
-
-  PVideoBridgeParent::OnChannelError();
-}
-
-}  // namespace layers
-}  // namespace mozilla
+}  // namespace mozilla::layers

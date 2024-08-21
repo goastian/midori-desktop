@@ -21,6 +21,7 @@ use crate::picture::{SurfaceIndex, RasterConfig, SubSliceIndex};
 use crate::prim_store::{ClipTaskIndex, PictureIndex, PrimitiveInstanceKind};
 use crate::prim_store::{PrimitiveStore, PrimitiveInstance};
 use crate::render_backend::{DataStores, ScratchBuffer};
+use crate::render_task_graph::RenderTaskGraphBuilder;
 use crate::resource_cache::ResourceCache;
 use crate::scene::SceneProperties;
 use crate::space::SpaceMapper;
@@ -44,6 +45,7 @@ pub struct FrameVisibilityState<'a> {
     pub data_stores: &'a mut DataStores,
     pub clip_tree: &'a mut ClipTree,
     pub composite_state: &'a mut CompositeState,
+    pub rg_builder: &'a mut RenderTaskGraphBuilder,
     /// A stack of currently active off-screen surfaces during the
     /// visibility frame traversal.
     pub surface_stack: Vec<(PictureIndex, SurfaceIndex)>,
@@ -70,6 +72,7 @@ bitflags! {
     // TODO(gw): We should also move `is_compositor_surface` to be part of
     //           this flags struct.
     #[cfg_attr(feature = "capture", derive(Serialize))]
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct PrimitiveVisibilityFlags: u8 {
         /// Implies that this primitive covers the entire picture cache slice,
         /// and can thus be dropped during batching and drawn with clear color.
@@ -180,7 +183,7 @@ pub fn update_prim_visibility(
 
     let surface = &surfaces[surface_index.0 as usize];
     let device_pixel_scale = surface.device_pixel_scale;
-    let mut map_local_to_surface = surface.map_local_to_surface.clone();
+    let mut map_local_to_picture = surface.map_local_to_picture.clone();
     let map_surface_to_world = SpaceMapper::new_with_target(
         frame_context.root_spatial_node_index,
         surface.surface_spatial_node_index,
@@ -212,7 +215,7 @@ pub fn update_prim_visibility(
             continue;
         }
 
-        map_local_to_surface.set_target_spatial_node(
+        map_local_to_picture.set_target_spatial_node(
             cluster.spatial_node_index,
             frame_context.spatial_tree,
         );
@@ -229,9 +232,18 @@ pub fn update_prim_visibility(
                 };
 
                 if !is_passthrough {
-                    frame_state.clip_tree.push_clip_root_leaf(
-                        prim_instances[prim_instance_index].clip_leaf_id,
+                    let clip_root = store
+                        .pictures[pic_index.0]
+                        .clip_root
+                        .unwrap_or_else(|| {
+                            // If we couldn't find a common ancestor then just use the
+                            // clip node of the picture primitive itself
+                            let leaf_id = prim_instances[prim_instance_index].clip_leaf_id;
+                            frame_state.clip_tree.get_leaf(leaf_id).node_id
+                        }
                     );
+
+                    frame_state.clip_tree.push_clip_root_node(clip_root);
                 }
 
                 update_prim_visibility(
@@ -267,7 +279,7 @@ pub fn update_prim_visibility(
 
             frame_state.clip_store.set_active_clips(
                 cluster.spatial_node_index,
-                map_local_to_surface.ref_spatial_node_index,
+                map_local_to_picture.ref_spatial_node_index,
                 prim_instance.clip_leaf_id,
                 &frame_context.spatial_tree,
                 &frame_state.data_stores.clip,
@@ -278,7 +290,7 @@ pub fn update_prim_visibility(
                 .clip_store
                 .build_clip_chain_instance(
                     local_coverage_rect,
-                    &map_local_to_surface,
+                    &map_local_to_picture,
                     &map_surface_to_world,
                     &frame_context.spatial_tree,
                     frame_state.gpu_cache,
@@ -286,6 +298,7 @@ pub fn update_prim_visibility(
                     device_pixel_scale,
                     &world_culling_rect,
                     &mut frame_state.data_stores.clip,
+                    frame_state.rg_builder,
                     true,
                 );
 

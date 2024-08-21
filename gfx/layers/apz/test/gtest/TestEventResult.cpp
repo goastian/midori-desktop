@@ -42,10 +42,10 @@ class APZEventResultTester : public APZCTreeManagerTester {
 
   void CreateScrollableRootLayer() {
     const char* treeShape = "x";
-    LayerIntRegion layerVisibleRegions[] = {
+    LayerIntRect layerVisibleRects[] = {
         LayerIntRect(0, 0, 100, 100),
     };
-    CreateScrollData(treeShape, layerVisibleRegions);
+    CreateScrollData(treeShape, layerVisibleRects);
     SetScrollableFrameMetrics(root, ScrollableLayerGuid::START_SCROLL_ID,
                               CSSRect(0, 0, 200, 200));
     ModifyFrameMetrics(root, [](ScrollMetadata& sm, FrameMetrics& metrics) {
@@ -357,10 +357,10 @@ TEST_F(APZEventResultTesterMock, HandledByRootApzcFlag) {
   // Create simple layer tree containing a dispatch-to-content region
   // that covers part but not all of its area.
   const char* treeShape = "x";
-  LayerIntRegion layerVisibleRegions[] = {
+  LayerIntRect layerVisibleRects[] = {
       LayerIntRect(0, 0, 100, 100),
   };
-  CreateScrollData(treeShape, layerVisibleRegions);
+  CreateScrollData(treeShape, layerVisibleRects);
   SetScrollableFrameMetrics(root, ScrollableLayerGuid::START_SCROLL_ID,
                             CSSRect(0, 0, 100, 200));
   ModifyFrameMetrics(root, [](ScrollMetadata& sm, FrameMetrics& metrics) {
@@ -462,7 +462,7 @@ TEST_F(APZEventResultTesterMock, HandledByRootApzcFlag) {
                                      /*aPreventDefault=*/false);
   EXPECT_EQ(delayedAnswer,
             (APZHandledResult{APZHandledPlace::Unhandled, SideBits::eNone,
-                              ScrollDirections()}));
+                              EitherScrollDirection}));
 
   // Repeat the tap on the bottom half, with no event handler.
   // Make sure we get an eager answer of `Unhandled`.

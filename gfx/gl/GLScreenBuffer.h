@@ -55,6 +55,7 @@ class SwapChain final {
   UniquePtr<SurfaceFactory> mFactory;
 
  private:
+  size_t mPoolLimit;
   std::queue<std::shared_ptr<SharedSurface>> mPool;
   std::shared_ptr<SharedSurface> mFrontBuffer;
   std::function<void()> mDestroyedCallback;
@@ -69,8 +70,16 @@ class SwapChain final {
   SwapChain();
   virtual ~SwapChain();
 
+  void DisablePool() {
+    if (mPoolLimit) {
+      MOZ_ASSERT(mPool.empty());
+      mPool = {};
+      mPoolLimit = 0;
+    }
+  }
+
   void ClearPool();
-  void StoreRecycledSurface(const std::shared_ptr<SharedSurface>& surf);
+  bool StoreRecycledSurface(const std::shared_ptr<SharedSurface>& surf);
   const auto& FrontBuffer() const { return mFrontBuffer; }
   UniquePtr<SwapChainPresenter> Acquire(const gfx::IntSize&, gfx::ColorSpace2);
 

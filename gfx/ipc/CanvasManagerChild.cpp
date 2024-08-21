@@ -5,11 +5,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "CanvasManagerChild.h"
+#include "mozilla/AppShutdown.h"
+#include "mozilla/dom/CanvasRenderingContext2D.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerRef.h"
 #include "mozilla/gfx/2D.h"
+#include "mozilla/gfx/CanvasShutdownManager.h"
 #include "mozilla/gfx/Swizzle.h"
 #include "mozilla/ipc/Endpoint.h"
+#include "mozilla/layers/ActiveResource.h"
+#include "mozilla/layers/CanvasChild.h"
 #include "mozilla/layers/CompositorManagerChild.h"
 #include "mozilla/webgpu/WebGPUChild.h"
 
@@ -21,33 +26,50 @@ namespace mozilla::gfx {
 // The IPDL actor holds a strong reference to CanvasManagerChild which we use
 // to keep it alive. The owning thread will tell us to close when it is
 // shutdown, either via CanvasManagerChild::Shutdown for the main thread, or
-// via a shutdown callback from IPCWorkerRef for worker threads.
+// via a shutdown callback from ThreadSafeWorkerRef for worker threads.
 MOZ_THREAD_LOCAL(CanvasManagerChild*) CanvasManagerChild::sLocalManager;
 
 Atomic<uint32_t> CanvasManagerChild::sNextId(1);
 
-CanvasManagerChild::CanvasManagerChild(uint32_t aId) : mId(aId) {}
+CanvasManagerChild::CanvasManagerChild(ThreadSafeWorkerRef* aWorkerRef,
+                                       uint32_t aId)
+    : mWorkerRef(aWorkerRef), mId(aId) {}
+
 CanvasManagerChild::~CanvasManagerChild() = default;
 
 void CanvasManagerChild::ActorDestroy(ActorDestroyReason aReason) {
+  DestroyInternal();
   if (sLocalManager.get() == this) {
     sLocalManager.set(nullptr);
+  }
+  mWorkerRef = nullptr;
+}
+
+void CanvasManagerChild::DestroyInternal() {
+  if (mActiveResourceTracker) {
+    mActiveResourceTracker->AgeAllGenerations();
+    mActiveResourceTracker.reset();
+  }
+
+  if (mCanvasChild) {
+    mCanvasChild->Destroy();
+    mCanvasChild = nullptr;
+  }
+
+  if (auto* shutdownManager = CanvasShutdownManager::Get()) {
+    shutdownManager->OnRemoteCanvasLost();
   }
 }
 
 void CanvasManagerChild::Destroy() {
-  // The caller has a strong reference. ActorDestroy will clear sLocalManager.
+  DestroyInternal();
+
+  // The caller has a strong reference. ActorDestroy will clear sLocalManager
+  // and mWorkerRef.
   Close();
-  mWorkerRef = nullptr;
 }
 
 /* static */ void CanvasManagerChild::Shutdown() {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  // The worker threads should destroy their own CanvasManagerChild instances
-  // during their shutdown sequence. We just need to take care of the main
-  // thread. We need to init here because we may have never created a
-  // CanvasManagerChild for the main thread in the first place.
   if (sLocalManager.init()) {
     RefPtr<CanvasManagerChild> manager = sLocalManager.get();
     if (manager) {
@@ -78,6 +100,11 @@ void CanvasManagerChild::Destroy() {
     return managerWeak;
   }
 
+  auto* shutdownManager = CanvasShutdownManager::Get();
+  if (NS_WARN_IF(!shutdownManager)) {
+    return nullptr;
+  }
+
   // We are only used on the main thread, or on worker threads.
   WorkerPrivate* worker = GetCurrentThreadWorkerPrivate();
   MOZ_ASSERT_IF(!worker, NS_IsMainThread());
@@ -96,19 +123,8 @@ void CanvasManagerChild::Destroy() {
     return nullptr;
   }
 
-  auto manager = MakeRefPtr<CanvasManagerChild>(sNextId++);
-
-  if (worker) {
-    // The IPCWorkerRef will let us know when the worker is shutting down. This
-    // will let us clear our threadlocal reference and close the actor. We rely
-    // upon an explicit shutdown for the main thread.
-    manager->mWorkerRef = IPCWorkerRef::Create(
-        worker, "CanvasManager", [manager]() { manager->Destroy(); });
-    if (NS_WARN_IF(!manager->mWorkerRef)) {
-      return nullptr;
-    }
-  }
-
+  auto manager = MakeRefPtr<CanvasManagerChild>(shutdownManager->GetWorkerRef(),
+                                                sNextId++);
   if (NS_WARN_IF(!childEndpoint.Bind(manager))) {
     return nullptr;
   }
@@ -128,19 +144,86 @@ void CanvasManagerChild::Destroy() {
   }
 
   manager->SendInitialize(manager->Id());
+  shutdownManager->OnRemoteCanvasRestored();
   sLocalManager.set(manager);
   return manager;
 }
 
-RefPtr<webgpu::WebGPUChild> CanvasManagerChild::GetWebGPUChild() {
-  if (!mWebGPUChild) {
-    mWebGPUChild = MakeAndAddRef<webgpu::WebGPUChild>();
-    if (!SendPWebGPUConstructor(mWebGPUChild)) {
-      mWebGPUChild = nullptr;
+/* static */ CanvasManagerChild* CanvasManagerChild::MaybeGet() {
+  if (!sLocalManager.initialized()) {
+    return nullptr;
+  }
+
+  return sLocalManager.get();
+}
+
+void CanvasManagerChild::EndCanvasTransaction() {
+  if (!mCanvasChild) {
+    return;
+  }
+
+  mCanvasChild->EndTransaction();
+  if (mCanvasChild->ShouldBeCleanedUp()) {
+    mCanvasChild->Destroy();
+    mCanvasChild = nullptr;
+  }
+}
+
+void CanvasManagerChild::ClearCachedResources() {
+  if (mCanvasChild) {
+    mCanvasChild->ClearCachedResources();
+  }
+}
+
+void CanvasManagerChild::DeactivateCanvas() {
+  mActive = false;
+  if (mCanvasChild) {
+    mCanvasChild->Destroy();
+    mCanvasChild = nullptr;
+  }
+}
+
+void CanvasManagerChild::BlockCanvas() { mBlocked = true; }
+
+RefPtr<layers::CanvasChild> CanvasManagerChild::GetCanvasChild() {
+  if (mBlocked) {
+    return nullptr;
+  }
+
+  if (!mActive) {
+    MOZ_ASSERT(!mCanvasChild);
+    return nullptr;
+  }
+
+  if (!mCanvasChild) {
+    mCanvasChild = MakeAndAddRef<layers::CanvasChild>(mWorkerRef);
+    if (!SendPCanvasConstructor(mCanvasChild)) {
+      mCanvasChild->Destroy();
+      mCanvasChild = nullptr;
     }
   }
 
-  return mWebGPUChild;
+  return mCanvasChild;
+}
+
+RefPtr<webgpu::WebGPUChild> CanvasManagerChild::GetWebGPUChild() {
+  if (PWebGPUChild* actor = LoneManagedOrNullAsserts(ManagedPWebGPUChild())) {
+    return static_cast<webgpu::WebGPUChild*>(actor);
+  }
+
+  auto actor = MakeRefPtr<webgpu::WebGPUChild>();
+  if (!SendPWebGPUConstructor(actor)) {
+    return nullptr;
+  }
+  return actor;
+}
+
+layers::ActiveResourceTracker* CanvasManagerChild::GetActiveResourceTracker() {
+  if (!mActiveResourceTracker) {
+    mActiveResourceTracker = MakeUnique<ActiveResourceTracker>(
+        1000, "CanvasManagerChild", GetCurrentSerialEventTarget());
+  }
+  return mActiveResourceTracker.get();
 }
 
 already_AddRefed<DataSourceSurface> CanvasManagerChild::GetSnapshot(

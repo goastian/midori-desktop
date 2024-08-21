@@ -11,9 +11,11 @@
 #include "gfxFontEntry.h"
 #include "gfxFontUtils.h"
 #include "mozilla/AlreadyAddRefed.h"
+#include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/FontPropertyTypes.h"
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/RecursiveMutex.h"
 #include "mozilla/RefPtr.h"
 #include "nsCOMPtr.h"
 #include "nsHashKeys.h"
@@ -314,7 +316,11 @@ class gfxUserFontSet {
   uint64_t GetGeneration() { return mGeneration; }
 
   // increment the generation on font load
-  void IncrementGeneration(bool aIsRebuild = false);
+  void IncrementGeneration(bool aIsRebuild = false) {
+    mozilla::RecursiveMutexAutoLock lock(mMutex);
+    IncrementGenerationLocked(aIsRebuild);
+  }
+  void IncrementGenerationLocked(bool aIsRebuild = false) MOZ_REQUIRES(mMutex);
 
   // Generation is bumped on font loads but that doesn't affect name-style
   // mappings. Rebuilds do however affect name-style mappings so need to
@@ -520,6 +526,9 @@ class gfxUserFontSet {
   // helper method for performing the actual userfont set rebuild
   virtual void DoRebuildUserFontSet() = 0;
 
+  // forget about a loader that has been cancelled
+  virtual void RemoveLoader(nsFontFaceLoader* aLoader) = 0;
+
   // helper method for FindOrCreateUserFontEntry
   gfxUserFontEntry* FindExistingUserFontEntry(
       gfxUserFontFamily* aFamily,
@@ -536,8 +545,8 @@ class gfxUserFontSet {
   // font families defined by @font-face rules
   nsRefPtrHashtable<nsCStringHashKey, gfxUserFontFamily> mFontFamilies;
 
-  uint64_t mGeneration;         // bumped on any font load change
-  uint64_t mRebuildGeneration;  // only bumped on rebuilds
+  mozilla::Atomic<uint64_t> mGeneration;  // bumped on any font load change
+  uint64_t mRebuildGeneration;            // only bumped on rebuilds
 
   // true when local names have been looked up, false otherwise
   bool mLocalRulesUsed;
@@ -548,6 +557,8 @@ class gfxUserFontSet {
   // performance stats
   uint32_t mDownloadCount;
   uint64_t mDownloadSize;
+
+  mutable mozilla::RecursiveMutex mMutex;
 };
 
 // acts a placeholder until the real font is downloaded
@@ -692,7 +703,7 @@ class gfxUserFontEntry : public gfxFontEntry {
   // attempt to load the next resource in the src list.
   void LoadNextSrc();
   void ContinueLoad();
-  void DoLoadNextSrc(bool aForceAsync);
+  void DoLoadNextSrc(bool aIsContinue);
 
   // change the load state
   virtual void SetLoadState(UserFontLoadState aLoadState);

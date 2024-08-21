@@ -11,6 +11,7 @@
 #include "Units.h"
 #include "mozilla/layers/LayersMessageUtils.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/ToString.h"
 #include "mozilla/Unused.h"
 #include "nsDisplayList.h"
@@ -24,7 +25,6 @@ WebRenderLayerScrollData::WebRenderLayerScrollData()
     : mDescendantCount(-1),
       mAncestorTransformId(ScrollableLayerGuid::NULL_SCROLL_ID),
       mTransformIsPerspective(false),
-      mResolution(1.f),
       mEventRegionsOverride(EventRegionsOverride::NoOverride),
       mFixedPositionSides(mozilla::SideBits::eNone),
       mFixedPosScrollContainerId(ScrollableLayerGuid::NULL_SCROLL_ID),
@@ -72,9 +72,10 @@ void WebRenderLayerScrollData::Initialize(
       mScrollIds.AppendElement(index.ref());
     } else {
       Maybe<ScrollMetadata> metadata =
-          asr->mScrollableFrame->ComputeScrollMetadata(
+          asr->mScrollContainerFrame->ComputeScrollMetadata(
               aOwner.GetManager(), aItem->Frame(), aItem->ToReferenceFrame());
-      aOwner.GetBuilder()->AddScrollFrameToNotify(asr->mScrollableFrame);
+      aOwner.GetBuilder()->AddScrollContainerFrameToNotify(
+          asr->mScrollContainerFrame);
       if (metadata) {
         MOZ_ASSERT(metadata->GetMetrics().GetScrollId() == scrollId);
         mScrollIds.AppendElement(aOwner.AddMetadata(metadata.ref()));
@@ -183,10 +184,7 @@ void WebRenderLayerScrollData::Dump(std::ostream& aOut,
       aOut << ", transformIsPerspective";
     }
   }
-  if (mResolution != 1.f) {
-    aOut << ", resolution=" << mResolution;
-  }
-  aOut << ", visible=" << mVisibleRegion;
+  aOut << ", visible=" << mVisibleRect;
   if (mReferentId) {
     aOut << ", refLayersId=" << *mReferentId;
   }
@@ -374,6 +372,22 @@ void WebRenderScrollData::ApplyUpdates(ScrollUpdatesMap&& aUpdates,
   mPaintSequenceNumber = aPaintSequenceNumber;
 }
 
+void WebRenderScrollData::PrependUpdates(
+    const WebRenderScrollData& aPreviousData) {
+  for (auto previousMetadata : aPreviousData.mScrollMetadatas) {
+    const nsTArray<ScrollPositionUpdate>& previousUpdates =
+        previousMetadata.GetScrollUpdates();
+    if (previousUpdates.IsEmpty()) {
+      continue;
+    }
+
+    if (Maybe<size_t> index =
+            HasMetadataFor(previousMetadata.GetMetrics().GetScrollId())) {
+      mScrollMetadatas[*index].PrependUpdates(previousUpdates);
+    }
+  }
+}
+
 void WebRenderScrollData::DumpSubtree(std::ostream& aOut, size_t aIndex,
                                       const std::string& aIndent) const {
   aOut << aIndent;
@@ -442,8 +456,7 @@ void ParamTraits<mozilla::layers::WebRenderLayerScrollData>::Write(
   WriteParam(aWriter, aParam.mAncestorTransformId);
   WriteParam(aWriter, aParam.mTransform);
   WriteParam(aWriter, aParam.mTransformIsPerspective);
-  WriteParam(aWriter, aParam.mResolution);
-  WriteParam(aWriter, aParam.mVisibleRegion);
+  WriteParam(aWriter, aParam.mVisibleRect);
   WriteParam(aWriter, aParam.mRemoteDocumentSize);
   WriteParam(aWriter, aParam.mReferentId);
   WriteParam(aWriter, aParam.mEventRegionsOverride);
@@ -470,8 +483,7 @@ bool ParamTraits<mozilla::layers::WebRenderLayerScrollData>::Read(
          ReadParam(aReader, &aResult->mAncestorTransformId) &&
          ReadParam(aReader, &aResult->mTransform) &&
          ReadParam(aReader, &aResult->mTransformIsPerspective) &&
-         ReadParam(aReader, &aResult->mResolution) &&
-         ReadParam(aReader, &aResult->mVisibleRegion) &&
+         ReadParam(aReader, &aResult->mVisibleRect) &&
          ReadParam(aReader, &aResult->mRemoteDocumentSize) &&
          ReadParam(aReader, &aResult->mReferentId) &&
          ReadParam(aReader, &aResult->mEventRegionsOverride) &&

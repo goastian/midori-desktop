@@ -18,9 +18,12 @@ class RecordedTextureData final : public TextureData {
  public:
   RecordedTextureData(already_AddRefed<CanvasChild> aCanvasChild,
                       gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
-                      TextureType aTextureType);
+                      TextureType aTextureType,
+                      TextureType aWebglTextureType = TextureType::Unknown);
 
   void FillInfo(TextureData::Info& aInfo) const final;
+
+  void InvalidateContents() final;
 
   bool Lock(OpenMode aMode) final;
 
@@ -32,6 +35,8 @@ class RecordedTextureData final : public TextureData {
 
   already_AddRefed<gfx::SourceSurface> BorrowSnapshot() final;
 
+  void ReturnSnapshot(already_AddRefed<gfx::SourceSurface> aSnapshot) final;
+
   void Deallocate(LayersIPCChannel* aAllocator) final;
 
   bool Serialize(SurfaceDescriptor& aDescriptor) final;
@@ -40,18 +45,34 @@ class RecordedTextureData final : public TextureData {
 
   TextureFlags GetTextureFlags() const final;
 
+  void SetRemoteTextureOwnerId(
+      RemoteTextureOwnerId aRemoteTextureOwnerId) final;
+
+  bool RequiresRefresh() const final;
+
+  already_AddRefed<FwdTransactionTracker> UseCompositableForwarder(
+      CompositableForwarder* aForwarder) final;
+
  private:
   DISALLOW_COPY_AND_ASSIGN(RecordedTextureData);
 
   ~RecordedTextureData() override;
 
+  void DetachSnapshotWrapper(bool aInvalidate = false, bool aRelease = true);
+
   int64_t mTextureId;
   RefPtr<CanvasChild> mCanvasChild;
   gfx::IntSize mSize;
   gfx::SurfaceFormat mFormat;
-  RefPtr<gfx::DrawTarget> mDT;
+  RefPtr<gfx::DrawTargetRecording> mDT;
   RefPtr<gfx::SourceSurface> mSnapshot;
+  RefPtr<gfx::SourceSurface> mSnapshotWrapper;
   OpenMode mLockedMode;
+  RemoteTextureId mLastRemoteTextureId;
+  RemoteTextureOwnerId mRemoteTextureOwnerId;
+  RefPtr<layers::FwdTransactionTracker> mFwdTransactionTracker;
+  bool mUsedRemoteTexture = false;
+  bool mInvalidContents = true;
 };
 
 }  // namespace layers

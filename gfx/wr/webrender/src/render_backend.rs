@@ -8,7 +8,7 @@
 //! See the comment at the top of the `renderer` module for a description of
 //! how these two pieces interact.
 
-use api::{DebugFlags, Parameter, BoolParameter, PrimitiveFlags};
+use api::{DebugFlags, Parameter, BoolParameter, PrimitiveFlags, MinimapData};
 use api::{DocumentId, ExternalScrollId, HitTestResult};
 use api::{IdNamespace, PipelineId, RenderNotifier, SampledScrollOffset};
 use api::{NotificationRequest, Checkpoint, QualitySettings};
@@ -56,8 +56,10 @@ use crate::spatial_tree::SpatialTree;
 #[cfg(feature = "replay")]
 use crate::spatial_tree::SceneSpatialTree;
 use crate::telemetry::Telemetry;
-#[cfg(feature = "serialize")]
-use serde::{Serialize, Deserialize};
+#[cfg(feature = "capture")]
+use serde::Serialize;
+#[cfg(feature = "replay")]
+use serde::Deserialize;
 #[cfg(feature = "replay")]
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::sync::Arc;
@@ -368,6 +370,8 @@ struct Document {
     /// Retained frame-building version of the spatial tree
     spatial_tree: SpatialTree,
 
+    minimap_data: FastHashMap<ExternalScrollId, MinimapData>,
+
     /// Contains various vecs of data that is used only during frame building,
     /// where we want to recycle the memory each new display list, to avoid constantly
     /// re-allocating and moving memory around.
@@ -413,6 +417,7 @@ impl Document {
             has_built_scene: false,
             data_stores: DataStores::default(),
             spatial_tree: SpatialTree::new(),
+            minimap_data: FastHashMap::default(),
             scratch: ScratchBuffer::default(),
             #[cfg(feature = "replay")]
             loaded_scene: Scene::new(),
@@ -489,6 +494,9 @@ impl Document {
                     }
                 }
             }
+            FrameMsg::SetMinimapData(id, minimap_data) => {
+              self.minimap_data.insert(id, minimap_data);
+            }
         }
 
         DocumentOps::nop()
@@ -527,6 +535,10 @@ impl Document {
                 &mut self.spatial_tree,
                 self.dirty_rects_are_valid,
                 &mut self.profile,
+                // Consume the minimap data. If APZ wants a minimap rendered
+                // on the next frame, it will add new entries to the minimap
+                // data during sampling.
+                mem::take(&mut self.minimap_data)
             );
 
             frame
@@ -535,7 +547,6 @@ impl Document {
         self.frame_is_valid = true;
         self.dirty_rects_are_valid = true;
 
-        let is_new_scene = self.has_built_scene;
         self.has_built_scene = false;
 
         let frame_build_time_ms =
@@ -549,7 +560,6 @@ impl Document {
 
         RenderedDocument {
             frame,
-            is_new_scene,
             profile: self.profile.take_and_reset(),
             frame_stats: frame_stats,
             render_reasons,
@@ -1881,6 +1891,7 @@ impl RenderBackend {
                         data_stores,
                         scratch: ScratchBuffer::default(),
                         spatial_tree: frame_spatial_tree,
+                        minimap_data: FastHashMap::default(),
                         loaded_scene: scene.clone(),
                         prev_composite_descriptor: CompositeDescriptor::empty(),
                         dirty_rects_are_valid: false,
@@ -1907,7 +1918,6 @@ impl RenderBackend {
                         id,
                         RenderedDocument {
                             frame,
-                            is_new_scene: true,
                             profile: TransactionProfile::new(),
                             render_reasons: RenderReasons::empty(),
                             frame_stats: None,

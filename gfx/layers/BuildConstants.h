@@ -38,15 +38,8 @@ constexpr bool kIsMacOS =
     false;
 #endif
 
-constexpr bool kIsX11 =
-#ifdef MOZ_X11
-    true;
-#else
-    false;
-#endif
-
-constexpr bool kIsWayland =
-#ifdef MOZ_WAYLAND
+constexpr bool kIsLinux =
+#ifdef MOZ_WIDGET_GTK
     true;
 #else
     false;
@@ -54,6 +47,13 @@ constexpr bool kIsWayland =
 
 constexpr bool kIsAndroid =
 #ifdef MOZ_WIDGET_ANDROID
+    true;
+#else
+    false;
+#endif
+
+constexpr bool kIsDmd =
+#ifdef MOZ_DMD
     true;
 #else
     false;

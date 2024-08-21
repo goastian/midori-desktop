@@ -144,10 +144,25 @@ class MockGfxInfo final : public nsIGfxInfo {
                                   JS::MutableHandle<JS::Value>) override {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
+  NS_IMETHOD GetFontVisibilityDetermination(
+      nsIGfxInfo::FontVisibilityDeviceDetermination*
+          aFontVisibilityDetermination) override {
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+  NS_IMETHOD GetFontVisibilityDeterminationStr(
+      nsAString& aFontVisibilityDeterminationStr) override {
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
   NS_IMETHOD GetContentBackend(nsAString& aContentBackend) override {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
   NS_IMETHOD GetUsingGPUProcess(bool* aOutValue) override {
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+  NS_IMETHOD GetUsingRemoteCanvas(bool* aOutValue) override {
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+  NS_IMETHOD GetUsingAcceleratedCanvas(bool* aOutValue) override {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
   NS_IMETHOD GetIsHeadless(bool* aIsHeadless) override {
@@ -290,7 +305,6 @@ class GfxConfigManager : public ::testing::Test, public gfxConfigManager {
     mWrCompositorDCompRequired = true;
     mWrScissoredCacheClearsEnabled = true;
     ++mHwStretchingSupport.mBoth;
-    mIsWin10OrLater = true;
     mIsWin11OrLater = true;
     mIsNightly = true;
     mIsEarlyBetaOrEarlier = true;
@@ -504,23 +518,6 @@ TEST_F(GfxConfigManager, WebRenderSafeMode) {
   EXPECT_TRUE(mFeatures.mD3D11HwAngle.IsEnabled());
 }
 
-TEST_F(GfxConfigManager, WebRenderEarlierThanWindows10) {
-  mIsWin10OrLater = false;
-  ConfigureWebRender();
-
-  EXPECT_TRUE(mFeatures.mWr.IsEnabled());
-  EXPECT_FALSE(mFeatures.mWrCompositor.IsEnabled());
-  EXPECT_TRUE(mFeatures.mWrAngle.IsEnabled());
-  EXPECT_FALSE(mFeatures.mWrDComp.IsEnabled());
-  EXPECT_TRUE(mFeatures.mWrPartial.IsEnabled());
-  EXPECT_TRUE(mFeatures.mWrShaderCache.IsEnabled());
-  EXPECT_TRUE(mFeatures.mWrOptimizedShaders.IsEnabled());
-  EXPECT_TRUE(mFeatures.mWrScissoredCacheClears.IsEnabled());
-  EXPECT_TRUE(mFeatures.mHwCompositing.IsEnabled());
-  EXPECT_TRUE(mFeatures.mGPUProcess.IsEnabled());
-  EXPECT_TRUE(mFeatures.mD3D11HwAngle.IsEnabled());
-}
-
 TEST_F(GfxConfigManager, WebRenderDCompDisabled) {
   mWrDCompWinEnabled = false;
   ConfigureWebRender();
@@ -647,7 +644,6 @@ TEST_F(GfxConfigManager, WebRenderIntelBatteryNoHwStretchingNotNightly) {
 }
 
 TEST_F(GfxConfigManager, WebRenderNvidiaHighMixedRefreshRateWin10) {
-  mIsWin10OrLater = true;
   mIsWin11OrLater = false;
   mMockGfxInfo->mMaxRefreshRate = 120;
   mMockGfxInfo->mHasMixedRefreshRate = true;
@@ -667,7 +663,6 @@ TEST_F(GfxConfigManager, WebRenderNvidiaHighMixedRefreshRateWin10) {
 }
 
 TEST_F(GfxConfigManager, WebRenderNvidiaHighMixedRefreshRateWin11) {
-  mIsWin10OrLater = true;
   mIsWin11OrLater = true;
   mMockGfxInfo->mMaxRefreshRate = 120;
   mMockGfxInfo->mHasMixedRefreshRate = true;
@@ -795,27 +790,6 @@ TEST_F(GfxConfigManager, WebRenderForceSoftwareForceEnabledEnvvar) {
 
 TEST_F(GfxConfigManager, WebRenderSoftwareReleaseWindowsGPUProcessDisabled) {
   mIsNightly = mIsEarlyBetaOrEarlier = false;
-  mMockGfxInfo->mStatusWr = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
-  mFeatures.mGPUProcess.UserDisable("", ""_ns);
-  ConfigureWebRender();
-
-  EXPECT_FALSE(mFeatures.mWr.IsEnabled());
-  EXPECT_FALSE(mFeatures.mWrCompositor.IsEnabled());
-  EXPECT_FALSE(mFeatures.mWrAngle.IsEnabled());
-  EXPECT_FALSE(mFeatures.mWrDComp.IsEnabled());
-  EXPECT_TRUE(mFeatures.mWrPartial.IsEnabled());
-  EXPECT_FALSE(mFeatures.mWrShaderCache.IsEnabled());
-  EXPECT_FALSE(mFeatures.mWrOptimizedShaders.IsEnabled());
-  EXPECT_TRUE(mFeatures.mWrScissoredCacheClears.IsEnabled());
-  EXPECT_TRUE(mFeatures.mHwCompositing.IsEnabled());
-  EXPECT_FALSE(mFeatures.mGPUProcess.IsEnabled());
-  EXPECT_TRUE(mFeatures.mD3D11HwAngle.IsEnabled());
-}
-
-TEST_F(GfxConfigManager, WebRenderSoftwareReleaseGPUProcessDisabled) {
-  mIsNightly = mIsEarlyBetaOrEarlier = false;
-  mIsWin10OrLater = false;
-  mFeatureD3D11Compositing = nullptr;
   mMockGfxInfo->mStatusWr = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
   mFeatures.mGPUProcess.UserDisable("", ""_ns);
   ConfigureWebRender();

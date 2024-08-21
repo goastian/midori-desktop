@@ -257,7 +257,7 @@ static sk_sp<SkImage> GetSkImageForSurface(SourceSurface* aSurface,
   }
 
   DataSourceSurface::MappedSurface map;
-  SkImage::RasterReleaseProc releaseProc;
+  void (*releaseProc)(const void*, void*);
   if (dataSurface->GetType() == SurfaceType::DATA_SHARED_WRAPPER) {
     // Technically all surfaces should be mapped and unmapped explicitly but it
     // appears SourceSurfaceSkia and DataSourceSurfaceWrapper have issues with
@@ -283,7 +283,7 @@ static sk_sp<SkImage> GetSkImageForSurface(SourceSurface* aSurface,
 
   SkPixmap pixmap(MakeSkiaImageInfo(surf->GetSize(), surf->GetFormat()),
                   map.mData, map.mStride);
-  sk_sp<SkImage> image = SkImage::MakeFromRaster(pixmap, releaseProc, surf);
+  sk_sp<SkImage> image = SkImages::RasterFromPixmap(pixmap, releaseProc, surf);
   if (!image) {
     releaseProc(map.mData, surf);
     gfxDebug() << "Failed making Skia raster image for temporary surface";
@@ -347,7 +347,7 @@ already_AddRefed<SourceSurface> DrawTargetSkia::Snapshot(
     // pixels.
     SkPixmap pixmap;
     if (mSurface->peekPixels(&pixmap)) {
-      image = SkImage::MakeFromRaster(pixmap, nullptr, nullptr);
+      image = SkImages::RasterFromPixmap(pixmap, nullptr, nullptr);
     } else {
       image = mSurface->makeImageSnapshot();
     }
@@ -412,10 +412,10 @@ static sk_sp<SkImage> ExtractSubset(sk_sp<SkImage> aImage,
       pixmap.extractSubset(&subsetPixmap, subsetRect)) {
     // Release the original image reference so only the subset image keeps it
     // alive.
-    return SkImage::MakeFromRaster(subsetPixmap, ReleaseImage,
-                                   aImage.release());
+    return SkImages::RasterFromPixmap(subsetPixmap, ReleaseImage,
+                                      aImage.release());
   }
-  return aImage->makeSubset(subsetRect);
+  return aImage->makeSubset(nullptr, subsetRect);
 }
 
 static void FreeAlphaPixels(void* aBuf, void*) { sk_free(aBuf); }
@@ -711,7 +711,7 @@ struct AutoPaintSetup {
   Float mAlpha;
 };
 
-void DrawTargetSkia::Flush() { mCanvas->flush(); }
+void DrawTargetSkia::Flush() {}
 
 void DrawTargetSkia::DrawSurface(SourceSurface* aSurface, const Rect& aDest,
                                  const Rect& aSource,
@@ -1486,6 +1486,9 @@ bool DrawTarget::Draw3DTransformedSurface(SourceSurface* aSurface,
   }
 
   DataSourceSurface::ScopedMap map(dstSurf, DataSourceSurface::READ_WRITE);
+  if (!map.IsMapped()) {
+    return false;
+  }
   std::unique_ptr<SkCanvas> dstCanvas(SkCanvas::MakeRasterDirect(
       SkImageInfo::Make(xformBounds.Width(), xformBounds.Height(),
                         GfxFormatToSkiaColorType(dstSurf->GetFormat()),
@@ -1506,7 +1509,6 @@ bool DrawTarget::Draw3DTransformedSurface(SourceSurface* aSurface,
 
   dstCanvas->drawImage(srcImage, 0, 0, SkSamplingOptions(SkFilterMode::kLinear),
                        &paint);
-  dstCanvas->flush();
 
   // Temporarily reset the DT's transform, since it has already been composed
   // above.
@@ -1630,16 +1632,21 @@ DrawTargetSkia::OptimizeSourceSurfaceForUnknownAlpha(
     return surface.forget();
   }
 
-  RefPtr<DataSourceSurface> dataSurface = aSurface->GetDataSurface();
-  DataSourceSurface::ScopedMap map(dataSurface, DataSourceSurface::READ_WRITE);
+  if (RefPtr<DataSourceSurface> dataSurface = aSurface->GetDataSurface()) {
+    DataSourceSurface::ScopedMap map(dataSurface,
+                                     DataSourceSurface::READ_WRITE);
+    if (map.IsMapped()) {
+      // For plugins, GDI can sometimes just write 0 to the alpha channel
+      // even for RGBX formats. In this case, we have to manually write
+      // the alpha channel to make Skia happy with RGBX and in case GDI
+      // writes some bad data. Luckily, this only happens on plugins.
+      WriteRGBXFormat(map.GetData(), dataSurface->GetSize(), map.GetStride(),
+                      dataSurface->GetFormat());
+      return dataSurface.forget();
+    }
+  }
 
-  // For plugins, GDI can sometimes just write 0 to the alpha channel
-  // even for RGBX formats. In this case, we have to manually write
-  // the alpha channel to make Skia happy with RGBX and in case GDI
-  // writes some bad data. Luckily, this only happens on plugins.
-  WriteRGBXFormat(map.GetData(), dataSurface->GetSize(), map.GetStride(),
-                  dataSurface->GetFormat());
-  return dataSurface.forget();
+  return nullptr;
 }
 
 already_AddRefed<SourceSurface> DrawTargetSkia::OptimizeSourceSurface(
@@ -1653,13 +1660,18 @@ already_AddRefed<SourceSurface> DrawTargetSkia::OptimizeSourceSurface(
   // uploading, so any data surface is fine. Call GetDataSurface
   // to trigger any required readback so that it only happens
   // once.
-  RefPtr<DataSourceSurface> dataSurface = aSurface->GetDataSurface();
+  if (RefPtr<DataSourceSurface> dataSurface = aSurface->GetDataSurface()) {
 #ifdef DEBUG
-  DataSourceSurface::ScopedMap map(dataSurface, DataSourceSurface::READ);
-  MOZ_ASSERT(VerifyRGBXFormat(map.GetData(), dataSurface->GetSize(),
-                              map.GetStride(), dataSurface->GetFormat()));
+    DataSourceSurface::ScopedMap map(dataSurface, DataSourceSurface::READ);
+    if (map.IsMapped()) {
+      MOZ_ASSERT(VerifyRGBXFormat(map.GetData(), dataSurface->GetSize(),
+                                  map.GetStride(), dataSurface->GetFormat()));
+    }
 #endif
-  return dataSurface.forget();
+    return dataSurface.forget();
+  }
+
+  return nullptr;
 }
 
 already_AddRefed<SourceSurface>
@@ -1743,10 +1755,10 @@ bool DrawTargetSkia::Init(const IntSize& aSize, SurfaceFormat aFormat) {
     if (!buf) {
       return false;
     }
-    mSurface = AsRefPtr(SkSurface::MakeRasterDirectReleaseProc(
+    mSurface = AsRefPtr(SkSurfaces::WrapPixels(
         info, buf, stride, FreeAlphaPixels, nullptr, &props));
   } else {
-    mSurface = AsRefPtr(SkSurface::MakeRaster(info, stride, &props));
+    mSurface = AsRefPtr(SkSurfaces::Raster(info, stride, &props));
   }
   if (!mSurface) {
     return false;
@@ -1792,8 +1804,8 @@ bool DrawTargetSkia::Init(unsigned char* aData, const IntSize& aSize,
              VerifyRGBXFormat(aData, aSize, aStride, aFormat));
 
   SkSurfaceProps props(0, GetSkPixelGeometry());
-  mSurface = AsRefPtr(SkSurface::MakeRasterDirect(
-      MakeSkiaImageInfo(aSize, aFormat), aData, aStride, &props));
+  mSurface = AsRefPtr(SkSurfaces::WrapPixels(MakeSkiaImageInfo(aSize, aFormat),
+                                             aData, aStride, &props));
   if (!mSurface) {
     return false;
   }
@@ -1819,7 +1831,7 @@ bool DrawTargetSkia::Init(RefPtr<DataSourceSurface>&& aSurface) {
              VerifyRGBXFormat(map->GetData(), size, map->GetStride(), format));
 
   SkSurfaceProps props(0, GetSkPixelGeometry());
-  mSurface = AsRefPtr(SkSurface::MakeRasterDirectReleaseProc(
+  mSurface = AsRefPtr(SkSurfaces::WrapPixels(
       MakeSkiaImageInfo(size, format), map->GetData(), map->GetStride(),
       DrawTargetSkia::ReleaseMappedSkSurface, map, &props));
   if (!mSurface) {

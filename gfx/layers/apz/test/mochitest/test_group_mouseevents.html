@@ -9,6 +9,12 @@
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   <script type="application/javascript">
 
+let synthesizedMouseEventsTestPrefs = [
+  // Touch activation duration must be set to a large value to ensure the test
+  // fails if touch synthesized mouse event dispatch is delayed.
+  ["ui.touch_activation.duration_ms", 90000]
+];
+
 var subtests = [
   // Sanity test to synthesize a mouse click
   {"file": "helper_click.html?dtc=false"},
@@ -29,7 +35,7 @@ var subtests = [
     ["test.events.async.enabled", true],
     ["apz.test.logging_enabled", true],
     // The test performs scrollbar dragging, avoid auto-hiding scrollbars.
-    ["ui.useOverlayScrollbars", false]
+    ["ui.useOverlayScrollbars", 0]
   ]},
   // Test for dragging on a fake-scrollbar element that scrolls the page
   {"file": "helper_drag_scroll.html"},
@@ -56,6 +62,22 @@ var subtests = [
   {"file": "helper_bug1662800.html"},
   // Scrollbar-dragging on subframe with enclosing translation transform
   {"file": "helper_drag_bug1719913.html"},
+  // Scrollbar dragging when pinch-zoomed in does not work with slider.snapMultiplier
+  {"file": "helper_drag_bug1794590.html", "prefs": [["slider.snapMultiplier", 6]]},
+  // Scrollbar-dragging on scrollframe containing OOP iframe when zoomed in
+  {"file": "helper_drag_bug1827330.html"},
+  // Scrolling with mouse down on the scrollbar
+  {"file": "helper_scrollbartrack_click_overshoot.html",
+   "prefs": [["test.events.async.enabled", true], ["apz.test.logging_enabled", true],
+             ["ui.useOverlayScrollbars", 0],
+             ["layout.scrollbars.click_and_hold_track.continue_to_end", false]]},
+  {"file": "helper_bug1756814.html", "prefs": [
+    ["ui.useOverlayScrollbars", 0]
+  ]},
+  {"file": "helper_touch_synthesized_mouseevents.html?scrollable=true",
+    "prefs": synthesizedMouseEventsTestPrefs},
+  {"file": "helper_touch_synthesized_mouseevents.html?scrollable=false",
+    "prefs": synthesizedMouseEventsTestPrefs},
 ];
 
 // Android, mac, and linux (at least in our automation) do not have scrollbar buttons.

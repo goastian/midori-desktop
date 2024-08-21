@@ -9,8 +9,7 @@
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 
-namespace mozilla {
-namespace layers {
+namespace mozilla::layers {
 
 void KnowsCompositor::IdentifyTextureHost(
     const TextureFactoryIdentifier& aIdentifier) {
@@ -47,12 +46,9 @@ LayersIPCActor* KnowsCompositorMediaProxy::GetLayersIPCActor() {
   return mThreadSafeAllocator->GetLayersIPCActor();
 }
 
-ActiveResourceTracker* KnowsCompositorMediaProxy::GetActiveResourceTracker() {
-  return mThreadSafeAllocator->GetActiveResourceTracker();
-}
-
-void KnowsCompositorMediaProxy::SyncWithCompositor() {
-  mThreadSafeAllocator->SyncWithCompositor();
+void KnowsCompositorMediaProxy::SyncWithCompositor(
+    const Maybe<uint64_t>& aWindowID) {
+  mThreadSafeAllocator->SyncWithCompositor(aWindowID);
 }
 
 bool IsSurfaceDescriptorValid(const SurfaceDescriptor& aSurface) {
@@ -109,5 +105,4 @@ void DestroySurfaceDescriptor(ipc::IShmemAllocator* aAllocator,
   *aSurface = SurfaceDescriptor();
 }
 
-}  // namespace layers
-}  // namespace mozilla
+}  // namespace mozilla::layers

@@ -8,28 +8,33 @@
 
 #include "AsyncPanZoomController.h"
 #include "FrameMetrics.h"
+#include "mozilla/layers/APZPublicUtils.h"
 #include "nsPoint.h"
 #include "ScrollAnimationPhysics.h"
 #include "ScrollAnimationBezierPhysics.h"
 #include "ScrollAnimationMSDPhysics.h"
 #include "mozilla/StaticPrefs_general.h"
 
+static mozilla::LazyLogModule sApzScrollAnimLog("apz.scrollanimation");
+#define GSA_LOG(...) MOZ_LOG(sApzScrollAnimLog, LogLevel::Debug, (__VA_ARGS__))
+
 namespace mozilla {
 namespace layers {
 
-GenericScrollAnimation::GenericScrollAnimation(
-    AsyncPanZoomController& aApzc, const nsPoint& aInitialPosition,
-    const ScrollAnimationBezierPhysicsSettings& aSettings)
+GenericScrollAnimation::GenericScrollAnimation(AsyncPanZoomController& aApzc,
+                                               const nsPoint& aInitialPosition,
+                                               ScrollOrigin aOrigin)
     : mApzc(aApzc), mFinalDestination(aInitialPosition) {
-  // ScrollAnimationBezierPhysics (despite it's name) handles the case of
+  // ScrollAnimationBezierPhysics (despite its name) handles the case of
   // general.smoothScroll being disabled whereas ScrollAnimationMSDPhysics does
   // not (ie it scrolls smoothly).
   if (StaticPrefs::general_smoothScroll() &&
       StaticPrefs::general_smoothScroll_msdPhysics_enabled()) {
     mAnimationPhysics = MakeUnique<ScrollAnimationMSDPhysics>(aInitialPosition);
   } else {
-    mAnimationPhysics =
-        MakeUnique<ScrollAnimationBezierPhysics>(aInitialPosition, aSettings);
+    mAnimationPhysics = MakeUnique<ScrollAnimationBezierPhysics>(
+        aInitialPosition,
+        apz::ComputeBezierAnimationSettingsForOrigin(aOrigin));
   }
 }
 
@@ -99,6 +104,12 @@ bool GenericScrollAnimation::DoSample(FrameMetrics& aFrameMetrics,
   // then end the animation early. Note that the initial displacement could be 0
   // if the compositor ran very quickly (<1ms) after the animation was created.
   // When that happens we want to make sure the animation continues.
+  GSA_LOG(
+      "Sampling GenericScrollAnimation: time %f finished %d sampledDest %s "
+      "adjustedOffset %s overscroll %s\n",
+      (now - TimeStamp::ProcessCreation()).ToMilliseconds(), finished,
+      ToString(CSSPoint::FromAppUnits(sampledDest)).c_str(),
+      ToString(adjustedOffset).c_str(), ToString(overscroll).c_str());
   if (!IsZero(displacement / zoom) && IsZero(adjustedOffset / zoom)) {
     // Nothing more to do - end the animation.
     return false;
@@ -111,6 +122,7 @@ bool GenericScrollAnimation::HandleScrollOffsetUpdate(
     const Maybe<CSSPoint>& aRelativeDelta) {
   if (aRelativeDelta) {
     mAnimationPhysics->ApplyContentShift(*aRelativeDelta);
+    mFinalDestination += CSSPoint::ToAppUnits(*aRelativeDelta);
     return true;
   }
   return false;

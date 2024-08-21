@@ -715,7 +715,7 @@ SideBits AxisY::ScrollableDirectionsWithDynamicToolbar(
       directions |= SideBits::eTop;
     }
     if (mAsyncPanZoomController->FuzzyGreater(
-            aFixedLayerMargins.bottom + toolbarHeight, 0)) {
+            fixedLayerMargins.bottom + toolbarHeight, 0)) {
       directions |= SideBits::eBottom;
     }
   }

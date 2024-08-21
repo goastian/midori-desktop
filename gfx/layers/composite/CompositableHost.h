@@ -88,21 +88,8 @@ class CompositableHost {
   virtual void UseTextureHost(const nsTArray<TimedTexture>& aTextures);
   virtual void RemoveTextureHost(TextureHost* aTexture);
 
-  // Enable remote texture push callback
-  virtual void EnableRemoteTexturePushCallback(
-      const RemoteTextureOwnerId aOwnerId, const base::ProcessId aForPid,
-      const gfx::IntSize aSize, const TextureFlags aFlags) = 0;
-  // Called from RemoteTextureMap when a new remote texture is pushed
-  virtual void NotifyPushTexture(const RemoteTextureId aTextureId,
-                                 const RemoteTextureOwnerId aOwnerId,
-                                 const base::ProcessId aForPid) = 0;
-
-  uint64_t GetCompositorBridgeID() const { return mCompositorBridgeID; }
-
   const AsyncCompositableRef& GetAsyncRef() const { return mAsyncRef; }
   void SetAsyncRef(const AsyncCompositableRef& aRef) { mAsyncRef = aRef; }
-
-  void SetCompositorBridgeID(uint64_t aID) { mCompositorBridgeID = aID; }
 
   /// Called when shutting down the layer tree.
   /// This is a good place to clear all potential gpu resources before the
@@ -113,11 +100,10 @@ class CompositableHost {
 
   virtual uint32_t GetDroppedFrames() { return 0; }
 
+  const TextureInfo mTextureInfo;
+
  protected:
- protected:
-  TextureInfo mTextureInfo;
   AsyncCompositableRef mAsyncRef;
-  uint64_t mCompositorBridgeID;
 };
 
 }  // namespace layers

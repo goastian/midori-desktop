@@ -10,6 +10,7 @@
 #include "mozilla/layers/CompositorBridgeChild.h"
 #include "mozilla/layers/CompositorManagerParent.h"
 #include "mozilla/layers/CompositorThread.h"
+#include "mozilla/gfx/CanvasShutdownManager.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/GPUProcessManager.h"
 #include "mozilla/dom/ContentChild.h"  // for ContentChild
@@ -42,7 +43,7 @@ void CompositorManagerChild::InitSameProcess(uint32_t aNamespace,
   }
 
   RefPtr<CompositorManagerParent> parent =
-      CompositorManagerParent::CreateSameProcess();
+      CompositorManagerParent::CreateSameProcess(aNamespace);
   RefPtr<CompositorManagerChild> child =
       new CompositorManagerChild(parent, aProcessToken, aNamespace);
   if (NS_WARN_IF(!child->CanSend())) {
@@ -67,7 +68,15 @@ bool CompositorManagerChild::Init(Endpoint<PCompositorManagerChild>&& aEndpoint,
   sInstance = new CompositorManagerChild(std::move(aEndpoint), aProcessToken,
                                          aNamespace);
   sOtherPid = sInstance->OtherPid();
-  return sInstance->CanSend();
+  if (!sInstance->CanSend()) {
+    return false;
+  }
+
+  // If there are any canvases waiting on the recreation of the GPUProcess or
+  // CompositorManagerChild, then we need to notify them so that they can
+  // restore their contexts.
+  gfx::CanvasShutdownManager::OnCompositorManagerRestored();
+  return true;
 }
 
 /* static */
@@ -176,7 +185,8 @@ CompositorManagerChild::CompositorManagerChild(CompositorManagerParent* aParent,
       mNamespace(aNamespace),
       mResourceId(0),
       mCanSend(false),
-      mSameProcess(true) {
+      mSameProcess(true),
+      mFwdTransactionCounter(this) {
   MOZ_ASSERT(aParent);
 
   SetOtherProcessId(base::GetCurrentProcId());
@@ -195,7 +205,8 @@ CompositorManagerChild::CompositorManagerChild(
       mNamespace(aNamespace),
       mResourceId(0),
       mCanSend(false),
-      mSameProcess(false) {
+      mSameProcess(false),
+      mFwdTransactionCounter(this) {
   if (NS_WARN_IF(!aEndpoint.Bind(this))) {
     return;
   }
@@ -238,7 +249,7 @@ bool CompositorManagerChild::ShouldContinueFromReplyTimeout() {
   if (XRE_IsParentProcess()) {
     gfxCriticalNote << "Killing GPU process due to IPC reply timeout";
     MOZ_DIAGNOSTIC_ASSERT(GPUProcessManager::Get()->GetGPUChild());
-    GPUProcessManager::Get()->KillProcess();
+    GPUProcessManager::Get()->KillProcess(/* aGenerateMinidump */ true);
   }
   return false;
 }

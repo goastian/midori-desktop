@@ -46,8 +46,10 @@ class TextureHost;
 #undef NONE
 #undef OPAQUE
 
-struct LayersId {
+struct LayersId final {
   uint64_t mId = 0;
+
+  auto MutTiedFields() { return std::tie(mId); }
 
   bool IsValid() const { return mId != 0; }
 
@@ -75,8 +77,10 @@ struct LayersId {
 };
 
 template <typename T>
-struct BaseTransactionId {
+struct BaseTransactionId final {
   uint64_t mId = 0;
+
+  auto MutTiedFields() { return std::tie(mId); }
 
   bool IsValid() const { return mId != 0; }
 
@@ -122,30 +126,6 @@ struct BaseTransactionId {
 
 class TransactionIdType {};
 typedef BaseTransactionId<TransactionIdType> TransactionId;
-
-struct LayersObserverEpoch {
-  uint64_t mId;
-
-  [[nodiscard]] LayersObserverEpoch Next() const {
-    return LayersObserverEpoch{mId + 1};
-  }
-
-  bool operator<=(const LayersObserverEpoch& aOther) const {
-    return mId <= aOther.mId;
-  }
-
-  bool operator>=(const LayersObserverEpoch& aOther) const {
-    return mId >= aOther.mId;
-  }
-
-  bool operator==(const LayersObserverEpoch& aOther) const {
-    return mId == aOther.mId;
-  }
-
-  bool operator!=(const LayersObserverEpoch& aOther) const {
-    return mId != aOther.mId;
-  }
-};
 
 // CompositionOpportunityId is a counter that goes up every time we have an
 // opportunity to composite. It increments even on no-op composites (if nothing
@@ -414,6 +394,9 @@ struct RemoteTextureOwnerId {
   };
 };
 
+typedef uint32_t RemoteTextureTxnType;
+typedef uint64_t RemoteTextureTxnId;
+
 // TextureId allocated in GPU process
 struct GpuProcessTextureId {
   uint64_t mId = 0;
@@ -444,11 +427,43 @@ struct GpuProcessTextureId {
   };
 };
 
+// QueryId allocated in GPU process
+struct GpuProcessQueryId {
+  uint64_t mId = 0;
+
+  static GpuProcessQueryId GetNext();
+
+  bool IsValid() const { return mId != 0; }
+
+  // Allow explicit cast to a uint64_t for now
+  explicit operator uint64_t() const { return mId; }
+
+  bool operator==(const GpuProcessQueryId& aOther) const {
+    return mId == aOther.mId;
+  }
+
+  bool operator!=(const GpuProcessQueryId& aOther) const {
+    return !(*this == aOther);
+  }
+
+  // Helper struct that allow this class to be used as a key in
+  // std::unordered_map like so:
+  //   std::unordered_map<GpuProcessQueryId, ValueType,
+  //   GpuProcessQueryId::HashFn> myMap;
+  struct HashFn {
+    std::size_t operator()(const GpuProcessQueryId aKey) const {
+      return std::hash<uint64_t>{}(aKey.mId);
+    }
+  };
+};
+
 // clang-format off
 MOZ_DEFINE_ENUM_CLASS_WITH_BASE(ScrollDirection, uint8_t, (
   eVertical,
   eHorizontal
 ));
+
+std::ostream& operator<<(std::ostream& os, ScrollDirection aDirection);
 
 using ScrollDirections = EnumSet<ScrollDirection, uint8_t>;
 

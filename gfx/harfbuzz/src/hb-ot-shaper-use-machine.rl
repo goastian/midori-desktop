@@ -83,6 +83,8 @@ export J	= 50; # HIEROGLYPH_JOINER
 export SB	= 51; # HIEROGLYPH_SEGMENT_BEGIN
 export SE	= 52; # HIEROGLYPH_SEGMENT_END
 export HVM	= 53; # HALANT_OR_VOWEL_MODIFIER
+export HM	= 54; # HIEROGLYPH_MOD
+export HR	= 55; # HIEROGLYPH_MIRROR
 
 export FAbv	= 24; # CONS_FINAL_ABOVE
 export FBlw	= 25; # CONS_FINAL_BELOW
@@ -110,7 +112,7 @@ export FMPst	= 47; # CONS_FINAL_MOD	UIPC = Not_Applicable
 
 h = H | HVM | IS | Sk;
 
-consonant_modifiers = CMAbv* CMBlw* ((h B | SUB) CMAbv? CMBlw*)*;
+consonant_modifiers = CMAbv* CMBlw* ((h B | SUB) CMAbv* CMBlw*)*;
 medial_consonants = MPre? MAbv? MBlw? MPst?;
 dependent_vowels = VPre* VAbv* VBlw* VPst* | H;
 vowel_modifiers = HVM? VMPre* VMAbv* VMBlw* VMPst*;
@@ -162,8 +164,8 @@ broken_cluster =
 
 number_joiner_terminated_cluster = N number_joiner_terminated_cluster_tail;
 numeral_cluster = N numeral_cluster_tail?;
-symbol_cluster = (O | GB) tail?;
-hieroglyph_cluster = SB+ | SB* G SE* (J SE* (G SE*)?)*;
+symbol_cluster = (O | GB | SB) tail?;
+hieroglyph_cluster = SB* G HR? HM? SE* (J SB* (G HR? HM? SE*)?)*;
 other = any;
 
 main := |*

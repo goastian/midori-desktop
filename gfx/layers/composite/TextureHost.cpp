@@ -8,6 +8,7 @@
 
 #include "CompositableHost.h"  // for CompositableHost
 #include "mozilla/gfx/2D.h"    // for DataSourceSurface, Factory
+#include "mozilla/gfx/CanvasManagerParent.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/ipc/Shmem.h"  // for Shmem
 #include "mozilla/layers/AsyncImagePipelineManager.h"
@@ -196,8 +197,8 @@ already_AddRefed<TextureHost> CreateDummyBufferTextureHost(
 
 already_AddRefed<TextureHost> TextureHost::Create(
     const SurfaceDescriptor& aDesc, ReadLockDescriptor&& aReadLock,
-    ISurfaceAllocator* aDeallocator, LayersBackend aBackend,
-    TextureFlags aFlags, wr::MaybeExternalImageId& aExternalImageId) {
+    HostIPCAllocator* aDeallocator, LayersBackend aBackend, TextureFlags aFlags,
+    wr::MaybeExternalImageId& aExternalImageId) {
   RefPtr<TextureHost> result;
 
   switch (aDesc.type()) {
@@ -231,27 +232,6 @@ already_AddRefed<TextureHost> TextureHost::Create(
       break;
 #  endif
 #endif
-    case SurfaceDescriptor::TSurfaceDescriptorRecorded: {
-      const SurfaceDescriptorRecorded& desc =
-          aDesc.get_SurfaceDescriptorRecorded();
-      CompositorBridgeParentBase* actor =
-          aDeallocator ? aDeallocator->AsCompositorBridgeParentBase() : nullptr;
-      UniquePtr<SurfaceDescriptor> realDesc =
-          actor
-              ? actor->LookupSurfaceDescriptorForClientTexture(desc.textureId())
-              : nullptr;
-      if (!realDesc) {
-        gfxCriticalNote << "Failed to get descriptor for recorded texture.";
-        // Create a dummy to prevent any crashes due to missing IPDL actors.
-        result = CreateDummyBufferTextureHost(aBackend, aFlags);
-        break;
-      }
-
-      result =
-          TextureHost::Create(*realDesc, std::move(aReadLock), aDeallocator,
-                              aBackend, aFlags, aExternalImageId);
-      return result.forget();
-    }
     default:
       MOZ_CRASH("GFX: Unsupported Surface type host");
   }
@@ -371,6 +351,8 @@ TextureHost::TextureHost(TextureHostType aType, TextureFlags aFlags)
       mReadLocked(false) {}
 
 TextureHost::~TextureHost() {
+  MOZ_ASSERT(mExternalImageId.isNothing());
+
   if (mReadLocked) {
     // If we still have a ReadLock, unlock it. At this point we don't care about
     // the texture client being written into on the other side since it should
@@ -513,6 +495,8 @@ void BufferTextureHost::DeallocateDeviceData() {}
 
 void BufferTextureHost::CreateRenderTexture(
     const wr::ExternalImageId& aExternalImageId) {
+  MOZ_ASSERT(mExternalImageId.isSome());
+
   RefPtr<wr::RenderTextureHost> texture;
 
   if (UseExternalTextures()) {
@@ -670,14 +654,63 @@ gfx::ColorRange BufferTextureHost::GetColorRange() const {
   return TextureHost::GetColorRange();
 }
 
-already_AddRefed<gfx::DataSourceSurface> BufferTextureHost::GetAsSurface() {
+gfx::ChromaSubsampling BufferTextureHost::GetChromaSubsampling() const {
+  if (mFormat == gfx::SurfaceFormat::YUV) {
+    const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
+    return desc.chromaSubsampling();
+  }
+  return gfx::ChromaSubsampling::FULL;
+}
+
+uint8_t* BufferTextureHost::GetYChannel() {
+  if (mFormat == gfx::SurfaceFormat::YUV) {
+    const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
+    return ImageDataSerializer::GetYChannel(GetBuffer(), desc);
+  }
+  return nullptr;
+}
+
+uint8_t* BufferTextureHost::GetCbChannel() {
+  if (mFormat == gfx::SurfaceFormat::YUV) {
+    const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
+    return ImageDataSerializer::GetCbChannel(GetBuffer(), desc);
+  }
+  return nullptr;
+}
+
+uint8_t* BufferTextureHost::GetCrChannel() {
+  if (mFormat == gfx::SurfaceFormat::YUV) {
+    const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
+    return ImageDataSerializer::GetCrChannel(GetBuffer(), desc);
+  }
+  return nullptr;
+}
+
+int32_t BufferTextureHost::GetYStride() const {
+  if (mFormat == gfx::SurfaceFormat::YUV) {
+    const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
+    return desc.yStride();
+  }
+  return 0;
+}
+
+int32_t BufferTextureHost::GetCbCrStride() const {
+  if (mFormat == gfx::SurfaceFormat::YUV) {
+    const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
+    return desc.cbCrStride();
+  }
+  return 0;
+}
+
+already_AddRefed<gfx::DataSourceSurface> BufferTextureHost::GetAsSurface(
+    gfx::DataSourceSurface* aSurface) {
   RefPtr<gfx::DataSourceSurface> result;
   if (mFormat == gfx::SurfaceFormat::UNKNOWN) {
     NS_WARNING("BufferTextureHost: unsupported format!");
     return nullptr;
   } else if (mFormat == gfx::SurfaceFormat::YUV) {
     result = ImageDataSerializer::DataSourceSurfaceFromYCbCrDescriptor(
-        GetBuffer(), mDescriptor.get_YCbCrDescriptor());
+        GetBuffer(), mDescriptor.get_YCbCrDescriptor(), aSurface);
     if (NS_WARN_IF(!result)) {
       return nullptr;
     }

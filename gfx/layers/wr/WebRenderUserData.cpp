@@ -194,7 +194,7 @@ already_AddRefed<ImageClient> WebRenderImageData::GetImageClient() {
 void WebRenderImageData::CreateAsyncImageWebRenderCommands(
     mozilla::wr::DisplayListBuilder& aBuilder, ImageContainer* aContainer,
     const StackingContextHelper& aSc, const LayoutDeviceRect& aBounds,
-    const LayoutDeviceRect& aSCBounds, VideoInfo::Rotation aRotation,
+    const LayoutDeviceRect& aSCBounds, wr::WrRotation aRotation,
     const wr::ImageRendering& aFilter, const wr::MixBlendMode& aMixBlendMode,
     bool aIsBackfaceVisible) {
   MOZ_ASSERT(aContainer->IsAsync());
@@ -235,7 +235,8 @@ void WebRenderImageData::CreateAsyncImageWebRenderCommands(
 void WebRenderImageData::CreateImageClientIfNeeded() {
   if (!mImageClient) {
     mImageClient = ImageClient::CreateImageClient(
-        CompositableType::IMAGE, WrBridge(), TextureFlags::DEFAULT);
+        CompositableType::IMAGE, ImageUsageType::WebRenderImageData, WrBridge(),
+        TextureFlags::DEFAULT);
     if (!mImageClient) {
       return;
     }
@@ -399,7 +400,8 @@ void WebRenderCanvasData::SetImageContainer(ImageContainer* aImageContainer) {
 
 ImageContainer* WebRenderCanvasData::GetImageContainer() {
   if (!mContainer) {
-    mContainer = MakeAndAddRef<ImageContainer>();
+    mContainer = MakeAndAddRef<ImageContainer>(ImageUsageType::Canvas,
+                                               ImageContainer::SYNCHRONOUS);
   }
   return mContainer;
 }

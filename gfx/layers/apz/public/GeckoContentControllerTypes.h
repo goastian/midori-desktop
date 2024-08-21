@@ -24,7 +24,7 @@ MOZ_DEFINE_ENUM_CLASS(GeckoContentController_APZStateChange, (
   eTransformEnd,
   /**
    * APZ started a touch.
-   * |aArg| is 1 if touch can be a pan, 0 otherwise.
+   * |aArg| is 1 if touch can be a pan or zoom, 0 otherwise.
    */
   eStartTouch,
   /**
@@ -33,7 +33,7 @@ MOZ_DEFINE_ENUM_CLASS(GeckoContentController_APZStateChange, (
   eStartPanning,
   /**
    * APZ finished processing a touch.
-   * |aArg| is 1 if touch was a click, 0 otherwise.
+   * |aArg| is a `apz::SingleTapState` defined in APZUtils.h.
    */
   eEndTouch
 ));

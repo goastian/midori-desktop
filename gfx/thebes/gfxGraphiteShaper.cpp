@@ -98,7 +98,7 @@ struct GrFontFeatures {
   rlbox_sandbox_gr* mSandbox;
 };
 
-static void AddFeature(const uint32_t& aTag, uint32_t& aValue, void* aUserArg) {
+static void AddFeature(uint32_t aTag, uint32_t aValue, void* aUserArg) {
   GrFontFeatures* f = static_cast<GrFontFeatures*>(aUserArg);
 
   tainted_gr<const gr_feature_ref*> fref =
@@ -188,8 +188,8 @@ bool gfxGraphiteShaper::ShapeText(DrawTarget* aDrawTarget,
 
   gfxFontEntry* entry = mFont->GetFontEntry();
   uint32_t grLang = 0;
-  if (style->languageOverride) {
-    grLang = MakeGraphiteLangTag(style->languageOverride);
+  if (style->languageOverride._0) {
+    grLang = MakeGraphiteLangTag(style->languageOverride._0);
   } else if (entry->mLanguageOverride) {
     grLang = MakeGraphiteLangTag(entry->mLanguageOverride);
   } else if (aLanguage) {

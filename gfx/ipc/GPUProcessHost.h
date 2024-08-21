@@ -9,6 +9,7 @@
 
 #include "mozilla/Maybe.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/gfx/Types.h"
 #include "mozilla/ipc/GeckoChildProcessHost.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/ipc/TaskFactory.h"
@@ -49,7 +50,9 @@ class GPUProcessHost final : public mozilla::ipc::GeckoChildProcessHost {
     // Shutdown().
     virtual void OnProcessUnexpectedShutdown(GPUProcessHost* aHost) {}
 
-    virtual void OnRemoteProcessDeviceReset(GPUProcessHost* aHost) {}
+    virtual void OnRemoteProcessDeviceReset(
+        GPUProcessHost* aHost, const DeviceResetReason& aReason,
+        const DeviceResetDetectPlace& aPlace) {}
 
     virtual void OnProcessDeclaredStable() {}
   };
@@ -101,12 +104,12 @@ class GPUProcessHost final : public mozilla::ipc::GeckoChildProcessHost {
 
   // Called on the IO thread.
   void OnChannelConnected(base::ProcessId peer_pid) override;
-  void OnChannelError() override;
 
   void SetListener(Listener* aListener);
 
-  // Kills the GPU process. Used for tests and diagnostics
-  void KillProcess();
+  // Kills the GPU process. Used in normal operation to recover from an error,
+  // as well as for tests and diagnostics.
+  void KillProcess(bool aGenerateMinidump);
 
   // Causes the GPU process to crash. Used for tests and diagnostics
   void CrashProcess();
@@ -129,7 +132,7 @@ class GPUProcessHost final : public mozilla::ipc::GeckoChildProcessHost {
   void OnChannelClosed();
 
   // Kill the remote process, triggering IPC shutdown.
-  void KillHard(const char* aReason);
+  void KillHard(bool aGenerateMinidump);
 
   void DestroyProcess();
 

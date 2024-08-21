@@ -43,6 +43,14 @@ class GPUChild final : public ipc::CrashReporterHelper<GeckoProcessType_GPU>,
   // abnormal.
   void OnUnexpectedShutdown();
 
+  // Generates a minidump for the GPU process paired with one for the main
+  // process. Called prior to force-killing the process.
+  void GeneratePairedMinidump();
+
+  // Deletes a minidump created with GeneratePairedMinidump(). Should be called
+  // if killing the process fails after generating the minidump.
+  void DeletePairedMinidump();
+
   // gfxVarReceiver overrides.
   void OnVarChanged(const GfxVarUpdate& aVar) override;
 
@@ -70,9 +78,12 @@ class GPUChild final : public ipc::CrashReporterHelper<GeckoProcessType_GPU>,
   void ActorDestroy(ActorDestroyReason aWhy) override;
   mozilla::ipc::IPCResult RecvGraphicsError(const nsCString& aError);
   mozilla::ipc::IPCResult RecvNotifyUiObservers(const nsCString& aTopic);
-  mozilla::ipc::IPCResult RecvNotifyDeviceReset(const GPUDeviceData& aData);
+  mozilla::ipc::IPCResult RecvNotifyDeviceReset(
+      const GPUDeviceData& aData, const DeviceResetReason& aReason,
+      const DeviceResetDetectPlace& aPlace);
   mozilla::ipc::IPCResult RecvNotifyOverlayInfo(const OverlayInfo aInfo);
   mozilla::ipc::IPCResult RecvNotifySwapChainInfo(const SwapChainInfo aInfo);
+  mozilla::ipc::IPCResult RecvNotifyDisableRemoteCanvas();
   mozilla::ipc::IPCResult RecvFlushMemory(const nsString& aReason);
   mozilla::ipc::IPCResult RecvAddMemoryReport(const MemoryReport& aReport);
   mozilla::ipc::IPCResult RecvUpdateFeature(const Feature& aFeature,
@@ -99,6 +110,13 @@ class GPUChild final : public ipc::CrashReporterHelper<GeckoProcessType_GPU>,
   bool mGPUReady;
   bool mWaitForVarUpdate = false;
   bool mUnexpectedShutdown = false;
+  // Whether a paired minidump has already been generated, meaning we do not
+  // need to create a crash report in ActorDestroy().
+  bool mCreatedPairedMinidumps = false;
+  // The number of paired minidumps that have been created during this session.
+  // Used to ensure we do not accumulate a large number of minidumps on disk
+  // that may never be submitted.
+  int mNumPairedMinidumpsCreated = 0;
 };
 
 }  // namespace gfx
