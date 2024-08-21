@@ -4,45 +4,131 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 <script type="text/javascript">
-// "FloorpAppConstants" has build information.
+// This ESM has build configuration constants.
 var { FloorpAppConstants } = ChromeUtils.importESModule(
-    "resource:///modules/FloorpAppConstants.sys.mjs"
+  "resource://floorp/FloorpAppConstants.sys.mjs"
 );
 
-Services.scriptloader.loadSubScript("chrome://browser/content/browser-bms-window.js", this);
-Services.scriptloader.loadSubScript("chrome://browser/content/browser-workspaces.js", this);
-Services.scriptloader.loadSubScript("chrome://browser/content/browser-command.js", this);
-Services.scriptloader.loadSubScript("chrome://browser/content/browser-overrides.js", this);
-Services.scriptloader.loadSubScript("chrome://browser/content/browser-rest-mode.js", this);
+import("chrome://nora/content/content.js");
+
+import("chrome://floorp/content/browser-ua-data.mjs");
+import("chrome://floorp/content/browser-overrides.mjs");
+import("chrome://floorp/content/browser-commands.mjs").then(
+  ({ gFloorpCommands }) => {
+    window.gFloorpCommands = gFloorpCommands;
+  }
+);
+
+import("chrome://floorp/content/browser-bms-window.mjs").then(
+  ({ gBmsWindow }) => {
+    window.gBmsWindow = gBmsWindow;
+  }
+);
 
 // This function is called when the floorp browser window is loaded. needs Delay.
-document.addEventListener("DOMContentLoaded", () => {
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-context-menu.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-manager-sidebar.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-preferences.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-pageActions-floorp.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-private-container.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-custom-keyboard-shortcut.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-downloadbar.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-favicon-color.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-UI-custom.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-splitView.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-browserActions.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-pinned-tabs-title.js", this);
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-chromeCSS.js", this);
+document.addEventListener(
+  "DOMContentLoaded",
+  () => {
+    import("chrome://floorp/content/browser-splitView.mjs").then(
+      ({ SplitView }) => {
+        window.gSplitView = new SplitView();
+      }
+    );
+
+    import("chrome://floorp/content/browser-context-menu.mjs").then(
+      ({ gFloorpContextMenu }) => {
+        window.gFloorpContextMenu = gFloorpContextMenu;
+      }
+    );
+    import("chrome://floorp/content/browser-onlocation-change.mjs").then(
+      ({ gFloorpOnLocationChange }) => {
+        window.gFloorpOnLocationChange = gFloorpOnLocationChange;
+      }
+    );
+    import("chrome://floorp/content/browser-floorp-pageActions.mjs").then(
+      ({ gFloorpPageAction }) => {
+        window.gFloorpPageAction = gFloorpPageAction;
+      }
+    );
+    import("chrome://floorp/content/browser-manager-sidebar.mjs").then(
+      ({ gBrowserManagerSidebar }) => {
+        window.gBrowserManagerSidebar = gBrowserManagerSidebar;
+      }
+    );
+    import("chrome://floorp/content/browser-preferences.mjs").then(
+      ({ gFloorpPreferences }) => {
+        window.gFloorpPreferences = gFloorpPreferences;
+      }
+    );
+    import("chrome://floorp/content/browser-UI-custom.mjs").then(
+      ({ gFloorpObservePreference }) => {
+        window.gFloorpObservePreference = gFloorpObservePreference;
+      }
+    );
+    import("chrome://floorp/content/browser-chromeCSS.mjs");
+
+    import("chrome://floorp/content/browser-custom-keyboard-shortcut.mjs").then(
+      ({
+        gFloorpCustomShortcutKeys,
+        gFloorpCustomActionFunctions,
+        gFloorpCSKActionFunctions,
+      }) => {
+        window.gFloorpCustomShortcutKeys = gFloorpCustomShortcutKeys;
+        window.gFloorpCustomActionFunctions = gFloorpCustomActionFunctions;
+        window.gFloorpCSKActionFunctions = gFloorpCSKActionFunctions;
+      }
+    );
+    import("chrome://floorp/content/browser-favicon-color.mjs").then(
+      ({ gFloorpFaviconColor }) => {
+        window.gFloorpFaviconColor = gFloorpFaviconColor;
+      }
+    );
 
     // If script need more delay, use the following code.
+    window.SessionStore.promiseInitialized.then(() => {
+      import("chrome://floorp/content/browser-pinned-tabs-title.mjs").then(
+        ({ gFloorpPinnedTabsTitle }) => {
+          window.gFloorpPinnedTabsTitle = gFloorpPinnedTabsTitle;
+        }
+      );
+      import("chrome://floorp/content/browser-ssb-support.mjs").then(
+        ({ gSsbSupport }) => {
+          window.gSsbSupport = gSsbSupport;
+        }
+      );
+      import("chrome://floorp/content/browser-tabbar.mjs").then(
+        ({ gFloorpTabBarStyle }) => {
+          window.gFloorpTabBarStyle = gFloorpTabBarStyle;
+        }
+      );
+      import("chrome://floorp/content/browser-design.mjs").then(
+        ({ gFloorpDesign }) => {
+          window.gFloorpDesign = gFloorpDesign;
+        }
+      );
+      import("chrome://floorp/content/browser-verticaltabs.mjs").then(
+        ({ gFloorpVerticalTabBar }) => {
+          window.gFloorpVerticalTabBar = gFloorpVerticalTabBar;
+        }
+      );
+      import("chrome://floorp/content/browser-flex-order.mjs").then(
+        ({ gFloorpFlexOrder }) => {
+          window.gFloorpFlexOrder = gFloorpFlexOrder;
+        }
+      );
 
-    //Lightning Build
-    SessionStore.promiseInitialized.then(() => {
-        Services.scriptloader.loadSubScript("chrome://browser/content/browser-statusbar.js", this);
-        Services.scriptloader.loadSubScript("chrome://browser/content/browser-onlocation-change.js", this);
-        Services.scriptloader.loadSubScript("chrome://browser/content/browser-UI-customizing-menu.js", this);
-        Services.scriptloader.loadSubScript("chrome://browser/content/browser-tabbar.js", this);
-        Services.scriptloader.loadSubScript("chrome://browser/content/browser-design.js", this);
-        Services.scriptloader.loadSubScript("chrome://browser/content/browser-verticaltabs.js", this);
-        Services.scriptloader.loadSubScript("chrome://browser/content/browser-flex-order.js", this);
-        Services.scriptloader.loadSubScript("chrome://browser/content/browser-ssb-manager.js", this);
+      import("chrome://floorp/content/browser-UI-customizing-menu.mjs").then(
+        ({ gFloorpCustomizeMode }) => {
+          window.gFloorpCustomizeMode = gFloorpCustomizeMode;
+        }
+      );
+      import("chrome://floorp/content/browser-workspaces.mjs").then(
+        ({ gWorkspaces }) => {
+          window.gWorkspaces = gWorkspaces;
+        }
+      );
     });
-}, { once: true });
+  },
+  { once: true }
+);
 </script>
