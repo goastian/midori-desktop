@@ -56,18 +56,18 @@ add_task(async function testGoodCert() {
   info(`Loading ${url}`);
   await BrowserTestUtils.withNewTab({ gBrowser, url }, async function () {
     info("Opening pageinfo");
-    let pageInfo = BrowserPageInfo(url, "securityTab", {});
+    let pageInfo = BrowserCommands.pageInfo(url, "securityTab", {});
     await BrowserTestUtils.waitForEvent(pageInfo, "load");
 
     let securityTab = pageInfo.document.getElementById("securityTab");
     await TestUtils.waitForCondition(
-      () => BrowserTestUtils.is_visible(securityTab),
+      () => BrowserTestUtils.isVisible(securityTab),
       "Security tab should be visible."
     );
     Assert.ok(securityTab, "Security tab is available");
     let viewCertButton = pageInfo.document.getElementById("security-view-cert");
     await TestUtils.waitForCondition(
-      () => BrowserTestUtils.is_visible(viewCertButton),
+      () => BrowserTestUtils.isVisible(viewCertButton),
       "view cert button should be visible."
     );
 

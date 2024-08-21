@@ -41,7 +41,7 @@ Var BrandFullName
 ; And anyone that wants to run tests themselves should already have 
 ; this installed.
 !define FallbackKey \
-  "SOFTWARE\Astian\MaintenanceService\3932ecacee736d366d6436db0f55bce4"
+  "SOFTWARE\Mozilla\MaintenanceService\3932ecacee736d366d6436db0f55bce4"
 
 !define CompanyName "Mozilla Corporation"
 !define BrandFullNameInternal ""
@@ -66,7 +66,7 @@ Name "${MaintFullName}"
 OutFile "maintenanceservice_installer.exe"
 
 ; Get installation folder from registry if available
-InstallDirRegKey HKLM "Software\Astian\MaintenanceService" ""
+InstallDirRegKey HKLM "Software\Mozilla\MaintenanceService" ""
 
 SetOverwrite on
 
@@ -197,15 +197,15 @@ Section "MaintenanceService"
   ${OrIf} ${IsNativeARM64}
     SetRegView 64
   ${EndIf}
-  WriteRegDWORD HKLM "Software\Astian\MaintenanceService" "Attempted" 1
-  WriteRegDWORD HKLM "Software\Astian\MaintenanceService" "Installed" 1
-  DeleteRegValue HKLM "Software\Astian\MaintenanceService" "FFPrefetchDisabled"
+  WriteRegDWORD HKLM "Software\Mozilla\MaintenanceService" "Attempted" 1
+  WriteRegDWORD HKLM "Software\Mozilla\MaintenanceService" "Installed" 1
+  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "FFPrefetchDisabled"
 
   ; Included here for debug purposes only.  
   ; These keys are used to bypass the installation dir is a valid installation
   ; check from the service so that tests can be run.
   WriteRegStr HKLM "${FallbackKey}\0" "name" "Mozilla Corporation"
-  WriteRegStr HKLM "${FallbackKey}\0" "issuer" "DigiCert SHA2 Assured ID Code Signing CA"
+  WriteRegStr HKLM "${FallbackKey}\0" "issuer" "DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1"
   WriteRegStr HKLM "${FallbackKey}\1" "name" "Mozilla Fake SPC"
   WriteRegStr HKLM "${FallbackKey}\1" "issuer" "Mozilla Fake CA"
   ${If} ${RunningX64}
@@ -258,8 +258,8 @@ Section "Uninstall"
   ${OrIf} ${IsNativeARM64}
     SetRegView 64
   ${EndIf}
-  DeleteRegValue HKLM "Software\Astian\MaintenanceService" "Installed"
-  DeleteRegValue HKLM "Software\Astian\MaintenanceService" "FFPrefetchDisabled"
+  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "Installed"
+  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "FFPrefetchDisabled"
   DeleteRegKey HKLM "${FallbackKey}\"
   ${If} ${RunningX64}
   ${OrIf} ${IsNativeARM64}

@@ -33,11 +33,7 @@ DummyCompleter.prototype = {
   },
 
   getHash(fragment) {
-    var converter = Cc[
-      "@mozilla.org/intl/scriptableunicodeconverter"
-    ].createInstance(Ci.nsIScriptableUnicodeConverter);
-    converter.charset = "UTF-8";
-    var data = converter.convertToByteArray(fragment);
+    var data = new TextEncoder().encode(fragment);
     var ch = Cc["@mozilla.org/security/hash;1"].createInstance(
       Ci.nsICryptoHash
     );
@@ -421,7 +417,7 @@ function setupCachedResults(addUrls, part2) {
 }
 
 function testCachedResults() {
-  setupCachedResults(["foo.com/a"], function (add) {
+  setupCachedResults(["foo.com/a"], function () {
     // This is called after setupCachedResults().  Verify that
     // checking the url again does not cause a completer request.
 

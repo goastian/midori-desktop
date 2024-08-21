@@ -16,16 +16,16 @@
  * and configuration of Firefox.
  */
 
-add_task(async function setup() {
+add_setup(async function () {
   useHttpServer();
   await AddonTestUtils.promiseStartupManager();
 });
 
 add_task(async function test_nodb_pluschanges() {
-  let engine1 = await SearchTestUtils.promiseNewSearchEngine({
+  let engine1 = await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}engine.xml`,
   });
-  let engine2 = await SearchTestUtils.promiseNewSearchEngine({
+  let engine2 = await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}engine2.xml`,
   });
   await promiseAfterSettings();

@@ -11,17 +11,14 @@ import { ExtensionUtils } from "resource://gre/modules/ExtensionUtils.sys.mjs";
 
 var { DefaultMap, DefaultWeakMap } = ExtensionUtils;
 
+/** @type {Lazy} */
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   ExtensionParent: "resource://gre/modules/ExtensionParent.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "NetUtil",
-  "resource://gre/modules/NetUtil.jsm"
-);
 
 XPCOMUtils.defineLazyServiceGetter(
   lazy,
@@ -30,7 +27,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIAddonContentPolicy"
 );
 
-XPCOMUtils.defineLazyGetter(
+ChromeUtils.defineLazyGetter(
   lazy,
   "StartupCache",
   () => lazy.ExtensionParent.StartupCache
@@ -42,8 +39,6 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "extensions.webextensions.warnings-as-errors",
   false
 );
-
-export let Schemas;
 
 const KEY_CONTENT_SCHEMAS = "extensions-framework/schemas/content";
 const KEY_PRIVILEGED_SCHEMAS = "extensions-framework/schemas/privileged";
@@ -258,11 +253,39 @@ const POSTPROCESSORS = {
 
     return canvas.toDataURL("image/png");
   },
+  mutuallyExclusiveBlockingOrAsyncBlocking(value, context) {
+    if (!Array.isArray(value)) {
+      return value;
+    }
+    if (value.includes("blocking") && value.includes("asyncBlocking")) {
+      throw new context.cloneScope.Error(
+        "'blocking' and 'asyncBlocking' are mutually exclusive"
+      );
+    }
+    return value;
+  },
   webRequestBlockingPermissionRequired(string, context) {
     if (string === "blocking" && !context.hasPermission("webRequestBlocking")) {
       throw new context.cloneScope.Error(
         "Using webRequest.addListener with the " +
           "blocking option requires the 'webRequestBlocking' permission."
+      );
+    }
+
+    return string;
+  },
+  webRequestBlockingOrAuthProviderPermissionRequired(string, context) {
+    if (
+      string === "blocking" &&
+      !(
+        context.hasPermission("webRequestBlocking") ||
+        context.hasPermission("webRequestAuthProvider")
+      )
+    ) {
+      throw new context.cloneScope.Error(
+        "Using webRequest.onAuthRequired.addListener with the " +
+          "blocking option requires either the 'webRequestBlocking' " +
+          "or 'webRequestAuthProvider' permission."
       );
     }
 
@@ -301,6 +324,27 @@ const POSTPROCESSORS = {
         context.logError(context.makeError(msg));
         throw new Error(msg);
       }
+    }
+    return value;
+  },
+
+  incognitoSplitUnsupportedAndFallback(value, context) {
+    if (value === "split") {
+      // incognito:split has not been implemented (bug 1380812). There are two
+      // alternatives: "spanning" and "not_allowed".
+      //
+      // "incognito":"split" is required by Chrome when extensions want to load
+      // any extension page in a tab in Chrome. In Firefox that is not required,
+      // so extensions could replace "split" with "spanning".
+      // Another (poorly documented) effect of "incognito":"split" is separation
+      // of some state between some extension APIs. Because this can in theory
+      // result in unwanted mixing of state between private and non-private
+      // browsing, we fall back to "not_allowed", which prevents the user from
+      // enabling the extension in private browsing windows.
+      value = "not_allowed";
+      context.logWarning(
+        `incognito "split" is unsupported. Falling back to incognito "${value}".`
+      );
     }
     return value;
   },
@@ -379,12 +423,15 @@ class Context {
 
     this.path = [];
     this.preprocessors = {
-      localize(value, context) {
+      localize(value) {
         return value;
       },
+      ...params.preprocessors,
     };
+
     this.postprocessors = POSTPROCESSORS;
-    this.isChromeCompat = false;
+    this.isChromeCompat = params.isChromeCompat ?? false;
+    this.manifestVersion = params.manifestVersion;
 
     this.currentChoices = new Set();
     this.choicePathIndex = 0;
@@ -392,17 +439,6 @@ class Context {
     for (let method of overridableMethods) {
       if (method in params) {
         this[method] = params[method].bind(params);
-      }
-    }
-
-    let props = ["isChromeCompat", "manifestVersion", "preprocessors"];
-    for (let prop of props) {
-      if (prop in params) {
-        if (prop in this && typeof this[prop] == "object") {
-          Object.assign(this[prop], params[prop]);
-        } else {
-          this[prop] = params[prop];
-        }
       }
     }
   }
@@ -418,6 +454,10 @@ class Context {
 
   get url() {
     return this.params.url;
+  }
+
+  get ignoreUnrecognizedProperties() {
+    return !!this.params.ignoreUnrecognizedProperties;
   }
 
   get principal() {
@@ -450,12 +490,12 @@ class Context {
   /**
    * Checks whether this context has the given permission.
    *
-   * @param {string} permission
+   * @param {string} _permission
    *        The name of the permission to check.
    *
    * @returns {boolean} True if the context has the given permission.
    */
-  hasPermission(permission) {
+  hasPermission(_permission) {
     return false;
   }
 
@@ -463,12 +503,12 @@ class Context {
    * Checks whether the given permission can be dynamically revoked or
    * granted.
    *
-   * @param {string} permission
+   * @param {string} _permission
    *        The name of the permission to check.
    *
    * @returns {boolean} True if the given permission is revokable.
    */
-  isPermissionRevokable(permission) {
+  isPermissionRevokable(_permission) {
     return false;
   }
 
@@ -896,18 +936,18 @@ class InjectionContext extends Context {
    * Check whether the API should be injected.
    *
    * @abstract
-   * @param {string} namespace The namespace of the API. This may contain dots,
+   * @param {string} _namespace The namespace of the API. This may contain dots,
    *     e.g. in the case of "devtools.inspectedWindow".
-   * @param {string} [name] The name of the property in the namespace.
+   * @param {string?} _name The name of the property in the namespace.
    *     `null` if we are checking whether the namespace should be injected.
-   * @param {Array<string>} allowedContexts A list of additional contexts in which
-   *     this API should be available. May include any of:
+   * @param {Array<string>} _allowedContexts A list of additional contexts in
+   *      which this API should be available. May include any of:
    *         "main" - The main chrome browser process.
    *         "addon" - An addon process.
    *         "content" - A content process.
    * @returns {boolean} Whether the API should be injected.
    */
-  shouldInject(namespace, name, allowedContexts) {
+  shouldInject(_namespace, _name, _allowedContexts) {
     throw new Error("Not implemented");
   }
 
@@ -915,12 +955,13 @@ class InjectionContext extends Context {
    * Generate the implementation for `namespace`.`name`.
    *
    * @abstract
-   * @param {string} namespace The full path to the namespace of the API, minus
+   * @param {string} _namespace The full path to the namespace of the API, minus
    *     the name of the method or property. E.g. "storage.local".
-   * @param {string} name The name of the method, property or event.
-   * @returns {SchemaAPIInterface} The implementation of the API.
+   * @param {string} _name The name of the method, property or event.
+   * @returns {import("ExtensionCommon.sys.mjs").SchemaAPIInterface}
+   *          The implementation of the API.
    */
-  getImplementation(namespace, name) {
+  getImplementation(_namespace, _name) {
     throw new Error("Not implemented");
   }
 
@@ -994,7 +1035,7 @@ class InjectionContext extends Context {
    *        will be injected.
    * @param {Array<string>} path
    *        The full path from the root injection object to this entry.
-   * @param {Entry} parentEntry
+   * @param {Partial<Entry>} parentEntry
    *        The parent entry for this entry.
    *
    * @returns {object?}
@@ -1049,7 +1090,7 @@ class InjectionContext extends Context {
  * format.
  */
 const FORMATS = {
-  hostname(string, context) {
+  hostname(string) {
     // TODO bug 1797376: Despite the name, this format is NOT a "hostname",
     // but hostname + port and may fail with IPv6. Use canonicalDomain instead.
     let valid = true;
@@ -1067,7 +1108,7 @@ const FORMATS = {
     return string;
   },
 
-  canonicalDomain(string, context) {
+  canonicalDomain(string) {
     let valid;
 
     try {
@@ -1139,11 +1180,11 @@ const FORMATS = {
   },
 
   strictRelativeUrl(string, context) {
-    void FORMATS.unresolvedRelativeUrl(string, context);
+    void FORMATS.unresolvedRelativeUrl(string);
     return FORMATS.relativeUrl(string, context);
   },
 
-  unresolvedRelativeUrl(string, context) {
+  unresolvedRelativeUrl(string) {
     if (!string.startsWith("//")) {
       try {
         new URL(string);
@@ -1205,7 +1246,7 @@ const FORMATS = {
     return string;
   },
 
-  date(string, context) {
+  date(string) {
     // A valid ISO 8601 timestamp.
     const PATTERN =
       /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?(Z|([-+]\d{2}:?\d{2})))?$/;
@@ -1215,13 +1256,13 @@ const FORMATS = {
     // Our pattern just checks the format, we could still have invalid
     // values (e.g., month=99 or month=02 and day=31).  Let the Date
     // constructor do the dirty work of validating.
-    if (isNaN(new Date(string))) {
+    if (isNaN(Date.parse(string))) {
       throw new Error(`Invalid date string ${string}`);
     }
     return string;
   },
 
-  manifestShortcutKey(string, context) {
+  manifestShortcutKey(string) {
     if (lazy.ShortcutUtils.validate(string) == lazy.ShortcutUtils.IS_VALID) {
       return string;
     }
@@ -1234,8 +1275,8 @@ const FORMATS = {
     throw new Error(errorMessage);
   },
 
-  manifestShortcutKeyOrEmpty(string, context) {
-    return string === "" ? "" : FORMATS.manifestShortcutKey(string, context);
+  manifestShortcutKeyOrEmpty(string) {
+    return string === "" ? "" : FORMATS.manifestShortcutKey(string);
   },
 
   versionString(string, context) {
@@ -1352,7 +1393,7 @@ class Entry {
    * its `deprecated` property.
    *
    * @param {Context} context
-   * @param {value} [value]
+   * @param {any} [value]
    */
   logDeprecation(context, value = null) {
     let message = "This property is deprecated";
@@ -1376,7 +1417,7 @@ class Entry {
    * deprecation message.
    *
    * @param {Context} context
-   * @param {value} [value]
+   * @param {any} [value]
    */
   checkDeprecated(context, value = null) {
     if (this.deprecated) {
@@ -1388,15 +1429,15 @@ class Entry {
    * Returns an object containing property descriptor for use when
    * injecting this entry into an API object.
    *
-   * @param {Array<string>} path The API path, e.g. `["storage", "local"]`.
-   * @param {InjectionContext} context
+   * @param {Array<string>} _path The API path, e.g. `["storage", "local"]`.
+   * @param {InjectionContext} _context
    *
    * @returns {object?}
    *        An object containing a `descriptor` property, specifying the
    *        entry's property descriptor, and an optional `revoke`
    *        method, to be called when the entry is being revoked.
    */
-  getDescriptor(path, context) {
+  getDescriptor(_path, _context) {
     return undefined;
   }
 }
@@ -1461,7 +1502,7 @@ class Type extends Entry {
    *        corresponding to the property names and array indices
    *        traversed during parsing in order to arrive at this schema
    *        object.
-   * @param {Array<string>} [extra]
+   * @param {Iterable<string>} [extra]
    *        An array of extra property names which are valid for this
    *        schema in the current context.
    * @throws {Error}
@@ -1484,26 +1525,33 @@ class Type extends Entry {
     }
   }
 
-  // Takes a value, checks that it has the correct type, and returns a
-  // "normalized" version of the value. The normalized version will
-  // include "nulls" in place of omitted optional properties. The
-  // result of this function is either {error: "Some type error"} or
-  // {value: <normalized-value>}.
+  /**
+   * Takes a value, checks that it has the correct type, and returns a
+   * "normalized" version of the value. The normalized version will
+   * include "nulls" in place of omitted optional properties. The
+   * result of this function is either {error: "Some type error"} or
+   * {value: <normalized-value>}.
+   */
   normalize(value, context) {
     return context.error("invalid type");
   }
 
-  // Unlike normalize, this function does a shallow check to see if
-  // |baseType| (one of the possible getValueBaseType results) is
-  // valid for this type. It returns true or false. It's used to fill
-  // in optional arguments to functions before actually type checking
-
-  checkBaseType(baseType) {
+  /**
+   * Unlike normalize, this function does a shallow check to see if
+   * |baseType| (one of the possible getValueBaseType results) is
+   * valid for this type. It returns true or false. It's used to fill
+   * in optional arguments to functions before actually type checking
+   *
+   * @param {string} _baseType
+   */
+  checkBaseType(_baseType) {
     return false;
   }
 
-  // Helper method that simply relies on checkBaseType to implement
-  // normalize. Subclasses can choose to use it or not.
+  /**
+   * Helper method that simply relies on checkBaseType to implement
+   * normalize. Subclasses can choose to use it or not.
+   */
   normalizeBase(type, value, context) {
     if (this.checkBaseType(getValueBaseType(value))) {
       this.checkDeprecated(context, value);
@@ -1531,7 +1579,7 @@ class AnyType extends Type {
     return this.postprocess({ value }, context);
   }
 
-  checkBaseType(baseType) {
+  checkBaseType() {
     return true;
   }
 }
@@ -1542,6 +1590,7 @@ class ChoiceType extends Type {
     return ["choices", ...super.EXTRA_PROPERTIES];
   }
 
+  /** @type {(root, schema, path, extraProperties?: Iterable) => ChoiceType} */
   static parseSchema(root, schema, path, extraProperties = []) {
     this.checkSchemaProperties(schema, path, extraProperties);
 
@@ -1642,6 +1691,7 @@ class RefType extends Type {
     return ["$ref", ...super.EXTRA_PROPERTIES];
   }
 
+  /** @type {(root, schema, path, extraProperties?: Iterable) => RefType} */
   static parseSchema(root, schema, path, extraProperties = []) {
     this.checkSchemaProperties(schema, path, extraProperties);
 
@@ -2194,17 +2244,19 @@ class ObjectType extends Type {
           }
           result[prop] = r.value;
         }
-      } else if (remainingProps.size == 1) {
-        return context.error(
-          `Unexpected property "${[...remainingProps]}"`,
-          `not contain an unexpected "${[...remainingProps]}" property`
-        );
-      } else if (remainingProps.size) {
-        let props = [...remainingProps].sort().join(", ");
-        return context.error(
-          `Unexpected properties: ${props}`,
-          `not contain the unexpected properties [${props}]`
-        );
+      } else if (remainingProps.size && !context.ignoreUnrecognizedProperties) {
+        if (remainingProps.size == 1) {
+          return context.error(
+            `Unexpected property "${[...remainingProps]}"`,
+            `not contain an unexpected "${[...remainingProps]}" property`
+          );
+        } else if (remainingProps.size) {
+          let props = [...remainingProps].sort().join(", ");
+          return context.error(
+            `Unexpected properties: ${props}`,
+            `not contain the unexpected properties [${props}]`
+          );
+        }
       }
 
       return this.postprocess({ value: result }, context);
@@ -2558,6 +2610,8 @@ class ValueProperty extends Entry {
 // Represents a "property" defined in a schema namespace that is not a
 // constant.
 class TypeProperty extends Entry {
+  unsupported = false;
+
   constructor(schema, path, name, type, writable, permissions) {
     super(schema);
     this.path = path;
@@ -2696,6 +2750,8 @@ class SubModuleProperty extends Entry {
 // care of validating parameter lists (i.e., handling of optional
 // parameters and parameter type checking).
 class CallEntry extends Entry {
+  hasAsyncCallback = false;
+
   constructor(schema, path, name, parameters, allowAmbiguousOptionalArguments) {
     super(schema);
     this.path = path;
@@ -2789,6 +2845,7 @@ class CallEntry extends Entry {
 FunctionEntry = class FunctionEntry extends CallEntry {
   static parseSchema(root, schema, path) {
     // When not in DEBUG mode, we just need to know *if* this returns.
+    /** @type {boolean|object} */
     let returns = !!schema.returns;
     if (DEBUG && "returns" in schema) {
       returns = {
@@ -3121,9 +3178,11 @@ class Namespace extends Map {
       this._lazySchemas.unshift(...this.superNamespace._lazySchemas);
     }
 
-    for (let type of Object.keys(LOADERS)) {
-      this[type] = new DefaultMap(() => []);
-    }
+    // Keep in sync with LOADERS above.
+    this.types = new DefaultMap(() => []);
+    this.properties = new DefaultMap(() => []);
+    this.functions = new DefaultMap(() => []);
+    this.events = new DefaultMap(() => []);
 
     for (let schema of this._lazySchemas) {
       for (let type of schema.types || []) {
@@ -3166,9 +3225,62 @@ class Namespace extends Map {
 
     if (DEBUG) {
       for (let key of this.keys()) {
+        // Force initialization of all lazy keys to catch unexpected errors.
         this.get(key);
       }
+      this.#verifyFallbackEntries();
     }
+  }
+
+  /**
+   * Verify that multiple definitions via fallback entries (currently only
+   * supported for functions and events) are defined for mutually exclusive
+   * manifest versions.
+   */
+  #verifyFallbackEntries() {
+    for (
+      let manifestVersion = MIN_MANIFEST_VERSION;
+      manifestVersion <= MAX_MANIFEST_VERSION;
+      manifestVersion++
+    ) {
+      for (let key of this.keys()) {
+        let hasMatch = false;
+        let entry = this.get(key);
+        do {
+          let isMatch =
+            manifestVersion >= entry.min_manifest_version &&
+            manifestVersion <= entry.max_manifest_version;
+          if (isMatch && hasMatch) {
+            throw new Error(
+              `Namespace ${this.path.join(".")} has ` +
+                `multiple definitions for ${key} ` +
+                `for manifest version ${manifestVersion}`
+            );
+          }
+          hasMatch ||= isMatch;
+          entry = entry.fallbackEntry;
+        } while (entry);
+      }
+    }
+  }
+
+  /**
+   * Returns the definition of the provided Entry or Namespace which is valid for
+   * the manifest version of the provided context, or none.
+   *
+   * @param {Entry|Namespace} entryOrNs
+   * @param {Context} context
+   *
+   * @returns {Entry|Namespace?}
+   */
+  #getMatchingDefinitionForContext(entryOrNs, context) {
+    do {
+      if (context.matchManifestVersion(entryOrNs)) {
+        // Common case at first iteration.
+        return entryOrNs;
+      }
+      entryOrNs = entryOrNs.fallbackEntry;
+    } while (entryOrNs);
   }
 
   /**
@@ -3188,8 +3300,14 @@ class Namespace extends Map {
   initKey(key, type) {
     let loader = LOADERS[type];
 
+    let entry;
     for (let schema of this[type].get(key)) {
-      this.set(key, this[loader](key, schema));
+      // Note: The 3rd parameter is currently only supported by loadEvent() and
+      // loadFunction(). It stores the entry from the last iteration as a
+      // fallbackEntry (different definitions for different manifest versions).
+      entry = this[loader](key, schema, entry);
+      // entry is always an Entry past the first iteration.
+      this.set(key, entry);
     }
 
     return this.get(key);
@@ -3265,12 +3383,24 @@ class Namespace extends Map {
     }
   }
 
-  loadFunction(name, fun) {
-    return FunctionEntry.parseSchema(this.root, fun, this.path);
+  loadFunction(name, fun, fallbackEntry) {
+    const parsed = FunctionEntry.parseSchema(this.root, fun, this.path);
+    // If there is already a valid entry, use it as a fallback for the current
+    // one. Used for multiple definitions for different manifest versions.
+    if (fallbackEntry) {
+      parsed.fallbackEntry = fallbackEntry;
+    }
+    return parsed;
   }
 
-  loadEvent(name, event) {
-    return Event.parseSchema(this.root, event, this.path);
+  loadEvent(name, event, fallbackEntry) {
+    const parsed = Event.parseSchema(this.root, event, this.path);
+    // If there is already a valid entry, use it as a fallback for the current
+    // one. Used for multiple definitions for different manifest versions.
+    if (fallbackEntry) {
+      parsed.fallbackEntry = fallbackEntry;
+    }
+    return parsed;
   }
 
   /**
@@ -3283,18 +3413,24 @@ class Namespace extends Map {
    */
   injectInto(dest, context) {
     for (let name of this.keys()) {
-      // If the entry does not match the manifest version do not
-      // inject the property.  This prevents the item from being
-      // enumerable in the namespace object.  We cannot accomplish
-      // this inside exportLazyProperty, it specifically injects
-      // an enumerable object.
-      let entry = this.get(name);
-      if (!context.matchManifestVersion(entry)) {
+      // TODO bug 1896081: we should not call this.get() unconditionally, but
+      //                   only for entries that have min_manifest_version or
+      //                   max_manifest_version set.
+      let entry = this.#getMatchingDefinitionForContext(
+        this.get(name),
+        context
+      );
+      // If no definition matches the manifest version, do not inject the property.
+      // This prevents the item from being enumerable in the namespace object.
+      // We cannot accomplish this inside exportLazyProperty, it specifically
+      // injects an enumerable object.
+      if (!entry) {
         continue;
       }
-      exportLazyProperty(dest, name, () => {
-        let entry = this.get(name);
 
+      exportLazyProperty(dest, name, () => {
+        // See Bug 1896081.
+        // entry ??= this.get(name);
         return context.getDescriptor(entry, dest, name, this.path, this);
       });
     }
@@ -3319,6 +3455,7 @@ class Namespace extends Map {
     return super.keys();
   }
 
+  /** @returns {Generator<[string, Entry]>} */
   *entries() {
     for (let key of this.keys()) {
       yield [key, this.get(key)];
@@ -3462,22 +3599,26 @@ class SchemaRoots extends Namespaces {
  * other schema roots. May extend a base namespace, in which case schemas in
  * this root may refer to types in a base, but not vice versa.
  *
- * @param {SchemaRoot|Array<SchemaRoot>|null} base
- *        A base schema root (or roots) from which to derive, or null.
- * @param {Map<string, Array|StructuredCloneHolder>} schemaJSON
- *        A map of schema URLs and corresponding JSON blobs from which to
- *        populate this root namespace.
+ * @implements {SchemaInject}
  */
 export class SchemaRoot extends Namespace {
+  /**
+   * @param {SchemaRoot|SchemaRoot[]} base
+   *        A base schema root (or roots) from which to derive, or null.
+   * @param {Map<string, Array|StructuredCloneHolder>} schemaJSON
+   *        A map of schema URLs and corresponding JSON blobs from which to
+   *        populate this root namespace.
+   */
   constructor(base, schemaJSON) {
     super(null, "", []);
 
     if (Array.isArray(base)) {
-      base = new SchemaRoots(this, base);
+      this.base = new SchemaRoots(this, base);
+    } else {
+      this.base = base;
     }
 
     this.root = this;
-    this.base = base;
     this.schemaJSON = schemaJSON;
   }
 
@@ -3559,7 +3700,7 @@ export class SchemaRoot extends Namespace {
   parseSchemas() {
     for (let [key, schema] of this.schemaJSON.entries()) {
       try {
-        if (typeof schema.deserialize === "function") {
+        if (StructuredCloneHolder.isInstance(schema)) {
           schema = schema.deserialize(globalThis, isParentProcess);
 
           // If we're in the parent process, we need to keep the
@@ -3611,7 +3752,7 @@ export class SchemaRoot extends Namespace {
    *
    * @param {object} dest The root namespace for the APIs.
    *     This object is usually exposed to extensions as "chrome" or "browser".
-   * @param {object} wrapperFuncs An implementation of the InjectionContext
+   * @param {InjectionContext} wrapperFuncs An implementation of the InjectionContext
    *     interface, which runs the actual functionality of the generated API.
    */
   inject(dest, wrapperFuncs) {
@@ -3655,7 +3796,12 @@ export class SchemaRoot extends Namespace {
   }
 }
 
-Schemas = {
+/**
+ * @typedef {{ inject: typeof Schemas.inject }} SchemaInject
+ *          Interface SchemaInject as used by SchemaApiManager,
+ *          with the one method shared across Schemas and SchemaRoot.
+ */
+export var Schemas = {
   initialized: false,
 
   REVOKE: Symbol("@@revoke"),
@@ -3680,6 +3826,7 @@ Schemas = {
     extContext => new Context(extContext)
   ),
 
+  /** @returns {SchemaRoot} */
   get rootSchema() {
     if (!this.initialized) {
       this.init();
@@ -3837,7 +3984,7 @@ Schemas = {
    *
    * @param {object} dest The root namespace for the APIs.
    *     This object is usually exposed to extensions as "chrome" or "browser".
-   * @param {object} wrapperFuncs An implementation of the InjectionContext
+   * @param {InjectionContext} wrapperFuncs An implementation of the InjectionContext
    *     interface, which runs the actual functionality of the generated API.
    */
   inject(dest, wrapperFuncs) {
@@ -3902,6 +4049,7 @@ Schemas = {
         ? `${apiNamespace}.${apiName}.${requestType}`
         : `${apiNamespace}.${apiName}`
     ).split(".");
+    /** @type {Namespace|CallEntry} */
     let apiSchema = this.getNamespace(ns);
 
     // Keep track of the current schema path, populated while navigating the nested API schema
@@ -3930,7 +4078,7 @@ Schemas = {
       throw new Error(`API Schema not found for ${schemaPath.join(".")}`);
     }
 
-    if (!apiSchema.checkParameters) {
+    if (!(apiSchema instanceof CallEntry)) {
       throw new Error(
         `Unexpected API Schema type for ${schemaPath.join(
           "."

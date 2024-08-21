@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -13,7 +11,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 /**
  * This module exports functions for Sync to use when applying remote
- * records. The calls are similar to those in `Bookmarks.jsm` and
+ * records. The calls are similar to those in `Bookmarks.sys.mjs` and
  * `nsINavBookmarksService`, with special handling for
  * tags, keywords, synced annotations, and missing parents.
  */
@@ -27,7 +25,7 @@ const MOBILE_BOOKMARKS_PREF = "browser.bookmarks.showMobileBookmarks";
 
 // These are defined as lazy getters to defer initializing the bookmarks
 // service until it's needed.
-XPCOMUtils.defineLazyGetter(lazy, "ROOT_RECORD_ID_TO_GUID", () => ({
+ChromeUtils.defineLazyGetter(lazy, "ROOT_RECORD_ID_TO_GUID", () => ({
   menu: lazy.PlacesUtils.bookmarks.menuGuid,
   places: lazy.PlacesUtils.bookmarks.rootGuid,
   tags: lazy.PlacesUtils.bookmarks.tagsGuid,
@@ -36,7 +34,7 @@ XPCOMUtils.defineLazyGetter(lazy, "ROOT_RECORD_ID_TO_GUID", () => ({
   mobile: lazy.PlacesUtils.bookmarks.mobileGuid,
 }));
 
-XPCOMUtils.defineLazyGetter(lazy, "ROOT_GUID_TO_RECORD_ID", () => ({
+ChromeUtils.defineLazyGetter(lazy, "ROOT_GUID_TO_RECORD_ID", () => ({
   [lazy.PlacesUtils.bookmarks.menuGuid]: "menu",
   [lazy.PlacesUtils.bookmarks.rootGuid]: "places",
   [lazy.PlacesUtils.bookmarks.tagsGuid]: "tags",
@@ -45,14 +43,14 @@ XPCOMUtils.defineLazyGetter(lazy, "ROOT_GUID_TO_RECORD_ID", () => ({
   [lazy.PlacesUtils.bookmarks.mobileGuid]: "mobile",
 }));
 
-XPCOMUtils.defineLazyGetter(lazy, "ROOTS", () =>
+ChromeUtils.defineLazyGetter(lazy, "ROOTS", () =>
   Object.keys(lazy.ROOT_RECORD_ID_TO_GUID)
 );
 
 // Gets the history transition values we ignore and do not sync, as a
 // string, which is a comma-separated set of values - ie, something which can
 // be used with sqlite's IN operator. Does *not* includes the parens.
-XPCOMUtils.defineLazyGetter(lazy, "IGNORED_TRANSITIONS_AS_SQL_LIST", () =>
+ChromeUtils.defineLazyGetter(lazy, "IGNORED_TRANSITIONS_AS_SQL_LIST", () =>
   // * We don't sync `TRANSITION_FRAMED_LINK` visits - these are excluded when
   //   rendering the history menu, so we use the same constraints for Sync.
   // * We don't sync `TRANSITION_DOWNLOAD` because it makes no sense to see
@@ -300,9 +298,11 @@ const HistorySyncUtils = (PlacesSyncUtils.history = Object.freeze({
     let db = await lazy.PlacesUtils.promiseDBConnection();
     let rows = await db.executeCached(
       `
-      SELECT visit_type type, visit_date date
-      FROM moz_historyvisits
-      JOIN moz_places h ON h.id = place_id
+      SELECT visit_type type, visit_date date,
+      json_extract(e.sync_json, '$.unknown_sync_fields') as unknownSyncFields
+      FROM moz_historyvisits v
+      JOIN moz_places h ON h.id = v.place_id
+      LEFT OUTER JOIN moz_historyvisits_extra e ON e.visit_id = v.id
       WHERE url_hash = hash(:url) AND url = :url
       ORDER BY date DESC LIMIT 20`,
       { url: canonicalURL.href }
@@ -310,7 +310,20 @@ const HistorySyncUtils = (PlacesSyncUtils.history = Object.freeze({
     return rows.map(row => {
       let visitDate = row.getResultByName("date");
       let visitType = row.getResultByName("type");
-      return { date: visitDate, type: visitType };
+      let visit = { date: visitDate, type: visitType };
+
+      // We should grab unknown fields to roundtrip them
+      // back to the server
+      let unknownFields = row.getResultByName("unknownSyncFields");
+      if (unknownFields) {
+        let unknownFieldsObj = JSON.parse(unknownFields);
+        for (const key in unknownFieldsObj) {
+          // We have to manually add it to the cleartext since that's
+          // what gets processed during upload
+          visit[key] = unknownFieldsObj[key];
+        }
+      }
+      return visit;
     });
   },
 
@@ -346,19 +359,29 @@ const HistorySyncUtils = (PlacesSyncUtils.history = Object.freeze({
     let db = await lazy.PlacesUtils.promiseDBConnection();
     let rows = await db.executeCached(
       `
-      SELECT url, IFNULL(title, '') AS title, frecency
-      FROM moz_places
+      SELECT url, IFNULL(title, '') AS title, frecency,
+      json_extract(e.sync_json, '$.unknown_sync_fields') as unknownSyncFields
+      FROM moz_places h
+      LEFT OUTER JOIN moz_places_extra e ON e.place_id = h.id
       WHERE guid = :guid`,
       { guid }
     );
     if (rows.length === 0) {
       return null;
     }
-    return {
+
+    let info = {
       url: rows[0].getResultByName("url"),
       title: rows[0].getResultByName("title"),
       frecency: rows[0].getResultByName("frecency"),
     };
+    let unknownFields = rows[0].getResultByName("unknownSyncFields");
+    if (unknownFields) {
+      // This will be unfurled at the caller since the
+      // cleartext process will drop this
+      info.unknownFields = unknownFields;
+    }
+    return info;
   },
 
   /**
@@ -401,6 +424,55 @@ const HistorySyncUtils = (PlacesSyncUtils.history = Object.freeze({
     );
     return rows.map(row => row.getResultByName("url"));
   },
+  /**
+   * Insert or update the unknownFields that this client doesn't understand (yet)
+   * but stores & roundtrips them to prevent other clients from losing that data
+   *
+   * @param updates array of objects
+   *  an update object needs to have either a:
+   *  placeId: if we're putting unknownFields for a moz_places item
+   *  visitId: if we're putting unknownFields for a moz_historyvisits item
+   *  Note: Supplying none or both will result in that record being ignored
+   *  unknownFields: the stringified json to insert
+   */
+  async updateUnknownFieldsBatch(updates) {
+    return lazy.PlacesUtils.withConnectionWrapper(
+      "HistorySyncUtils: updateUnknownFieldsBatch",
+      async function (db) {
+        await db.executeTransaction(async () => {
+          for await (const update of updates) {
+            // Validate we only have one of these props
+            if (
+              (update.placeId && update.visitId) ||
+              (!update.placeId && !update.visitId)
+            ) {
+              continue;
+            }
+            let tableName = update.placeId
+              ? "moz_places_extra"
+              : "moz_historyvisits_extra";
+            let keyName = update.placeId ? "place_id" : "visit_id";
+            await db.executeCached(
+              `
+            INSERT INTO ${tableName} (${keyName}, sync_json)
+            VALUES (
+              :keyValue,
+              json_object('unknown_sync_fields', :unknownFields)
+            )
+            ON CONFLICT(${keyName}) DO UPDATE SET
+            sync_json=json_patch(${tableName}.sync_json, json_object('unknown_sync_fields',:unknownFields))
+            `,
+              {
+                keyValue: update.placeId ?? update.visitId,
+                unknownFields: update.unknownFields,
+              }
+            );
+          }
+        });
+      }
+    );
+  },
+  // End of history freeze
 }));
 
 const BookmarkSyncUtils = (PlacesSyncUtils.bookmarks = Object.freeze({
@@ -618,8 +690,12 @@ const BookmarkSyncUtils = (PlacesSyncUtils.bookmarks = Object.freeze({
     // wipe; we want to merge the restored tree with the one on the server.
     await lazy.PlacesUtils.metadata.setWithConnection(
       db,
-      BookmarkSyncUtils.WIPE_REMOTE_META_KEY,
-      source == lazy.PlacesUtils.bookmarks.SOURCES.RESTORE
+      new Map([
+        [
+          BookmarkSyncUtils.WIPE_REMOTE_META_KEY,
+          source == lazy.PlacesUtils.bookmarks.SOURCES.RESTORE,
+        ],
+      ])
     );
 
     // Reset change counters and sync statuses for roots and remaining
@@ -1296,11 +1372,11 @@ PlacesSyncUtils.test.bookmarks = Object.freeze({
   },
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "HistorySyncLog", () => {
+ChromeUtils.defineLazyGetter(lazy, "HistorySyncLog", () => {
   return lazy.Log.repository.getLogger("Sync.Engine.History.HistorySyncUtils");
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "BookmarkSyncLog", () => {
+ChromeUtils.defineLazyGetter(lazy, "BookmarkSyncLog", () => {
   // Use a sub-log of the bookmarks engine, so setting the level for that
   // engine also adjust the level of this log.
   return lazy.Log.repository.getLogger(
@@ -1329,7 +1405,7 @@ function validateChangeRecord(name, changeRecord, behavior) {
 }
 
 // Similar to the private `fetchBookmarksByParent` implementation in
-// `Bookmarks.jsm`.
+// `Bookmarks.sys.mjs`.
 var fetchChildGuids = async function (db, parentGuid) {
   let rows = await db.executeCached(
     `
@@ -1955,8 +2031,7 @@ var removeUndeletedTombstones = function (db, guids) {
 async function setHistorySyncId(db, newSyncId) {
   await lazy.PlacesUtils.metadata.setWithConnection(
     db,
-    HistorySyncUtils.SYNC_ID_META_KEY,
-    newSyncId
+    new Map([[HistorySyncUtils.SYNC_ID_META_KEY, newSyncId]])
   );
 
   await lazy.PlacesUtils.metadata.deleteWithConnection(
@@ -1969,8 +2044,7 @@ async function setHistorySyncId(db, newSyncId) {
 async function setBookmarksSyncId(db, newSyncId) {
   await lazy.PlacesUtils.metadata.setWithConnection(
     db,
-    BookmarkSyncUtils.SYNC_ID_META_KEY,
-    newSyncId
+    new Map([[BookmarkSyncUtils.SYNC_ID_META_KEY, newSyncId]])
   );
 
   await lazy.PlacesUtils.metadata.deleteWithConnection(
@@ -1994,3 +2068,31 @@ async function resetAllSyncStatuses(db, syncStatus) {
   // Drop stale tombstones.
   await db.execute("DELETE FROM moz_bookmarks_deleted");
 }
+
+/**
+ * Other clients might have new fields we don't quite understand yet,
+ * so we add it to a "unknownFields" field to roundtrip back to the server
+ * so other clients don't experience data loss
+ * @param record: an object, usually from the server, and will iterate through the
+ *  the keys and extract any fields that are unknown to this client
+ * @param validFields: an array of keys we know are valid and should ignore
+ * @returns {String} json object containing unknownfields, null if none found
+ */
+PlacesSyncUtils.extractUnknownFields = (record, validFields) => {
+  let { unknownFields, hasUnknownFields } = Object.keys(record).reduce(
+    ({ unknownFields, hasUnknownFields }, key) => {
+      if (validFields.includes(key)) {
+        return { unknownFields, hasUnknownFields };
+      }
+      unknownFields[key] = record[key];
+      return { unknownFields, hasUnknownFields: true };
+    },
+    { unknownFields: {}, hasUnknownFields: false }
+  );
+  if (hasUnknownFields) {
+    // For simplicity, we store the unknown fields as a string
+    // since we never operate on it and just need it for roundtripping
+    return JSON.stringify(unknownFields);
+  }
+  return null;
+};

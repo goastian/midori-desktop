@@ -1,0 +1,37 @@
+[DEFAULT]
+support-files = [
+  "canvas-fingerprinter.html",
+  "empty.html",
+  "font-fingerprinter.html",
+  "head.js",
+  "scriptExecPage.html",
+  "serviceWorker.js",
+  "testHelpers.js",
+  "testPage.html",
+  "worker.js",
+]
+
+["browser_canvas_fingerprinter_telemetry.js"]
+
+["browser_canvas_randomization.js"]
+
+["browser_canvas_randomization_worker.js"]
+
+["browser_fingerprintingRemoteOverrides.js"]
+
+["browser_fingerprintingWebCompat.js"]
+
+["browser_fingerprinting_randomization_key.js"]
+
+["browser_font_fingerprinter_telemetry.js"]
+
+["browser_fpiServiceWorkers_fingerprinting.js"]
+
+["browser_rfp_canvasplaceholder_pdfjs.js"]
+support-files = ["file_pdf.pdf"]
+
+["browser_serviceWorker_fingerprinting_webcompat.js"]
+
+["browser_usercharacteristics_gamepads.js"]
+
+["browser_usercharacteristics.js"]

@@ -32,7 +32,7 @@ function VisitInfo(aTransitionType, aVisitTime) {
 }
 
 function promiseUpdatePlaces(aPlaces, aOptions = {}) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     asyncHistory.updatePlaces(
       aPlaces,
       Object.assign(
@@ -358,7 +358,7 @@ add_task(async function test_non_addable_uri_errors() {
     "imap://cyrus.andrew.cmu.edu/archive.imap",
     "news://new.mozilla.org/mozilla.dev.apps.firefox",
     "mailbox:Inbox",
-    "moz-anno:favicon:http://mozilla.org/made-up-favicon",
+    "cached-favicon:http://mozilla.org/made-up-favicon",
     "view-source:http://mozilla.org",
     "chrome://browser/content/browser.xhtml",
     "resource://gre-resources/hiddenWindow.html",
@@ -974,7 +974,7 @@ add_task(async function test_title_change_notifies() {
   place.title = "title 1";
   let expectedNotification = false;
   let titleChangeObserver;
-  let titleChangePromise = new Promise((resolve, reject) => {
+  let titleChangePromise = new Promise(resolve => {
     titleChangeObserver = new TitleChangedObserver(
       place.uri,
       place.title,
@@ -1032,8 +1032,8 @@ add_task(async function test_visit_notifies() {
   };
   Assert.equal(false, await PlacesUtils.history.hasVisits(place.uri));
 
-  function promiseVisitObserver(aPlace) {
-    return new Promise((resolve, reject) => {
+  function promiseVisitObserver() {
+    return new Promise(resolve => {
       let callbackCount = 0;
       let finisher = function () {
         if (++callbackCount == 2) {
@@ -1133,7 +1133,15 @@ add_task(async function test_typed_hidden_not_overwritten() {
 });
 
 add_task(async function test_omit_frecency_notifications() {
+  // When multiple entries are inserted, frecency is calculated delayed, so
+  // we won't get a ranking changed notification until recalculation happens.
   await PlacesUtils.history.clear();
+  let notified = false;
+  let listener = () => {
+    notified = true;
+    PlacesUtils.observers.removeListener(["pages-rank-changed"], listener);
+  };
+  PlacesUtils.observers.addListener(["pages-rank-changed"], listener);
   let places = [
     {
       uri: NetUtil.newURI("http://mozilla.org/"),
@@ -1146,12 +1154,10 @@ add_task(async function test_omit_frecency_notifications() {
       visits: [new VisitInfo(TRANSITION_TYPED)],
     },
   ];
-
-  const promiseRankingChanged =
-    PlacesTestUtils.waitForNotification("pages-rank-changed");
-
   await promiseUpdatePlaces(places);
-  await promiseRankingChanged;
+  Assert.ok(!notified);
+  await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
+  Assert.ok(notified);
 });
 
 add_task(async function test_ignore_errors() {

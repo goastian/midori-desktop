@@ -44,7 +44,7 @@
 // Printing Includes
 #ifdef NS_PRINTING
 #  include "nsIWebBrowserPrint.h"
-#  include "nsIContentViewer.h"
+#  include "nsIDocumentViewer.h"
 #endif
 
 // PSM2 includes
@@ -159,7 +159,7 @@ already_AddRefed<nsWebBrowser> nsWebBrowser::Create(
   docShellTreeOwner->AddChromeListeners();
 
   if (aInitialWindowChild) {
-    docShell->CreateContentViewerForActor(aInitialWindowChild);
+    docShell->CreateDocumentViewerForActor(aInitialWindowChild);
   }
 
   return browser.forget();
@@ -213,8 +213,8 @@ nsWebBrowser::GetInterface(const nsIID& aIID, void** aSink) {
   if (mDocShell) {
 #ifdef NS_PRINTING
     if (aIID.Equals(NS_GET_IID(nsIWebBrowserPrint))) {
-      nsCOMPtr<nsIContentViewer> viewer;
-      mDocShell->GetContentViewer(getter_AddRefs(viewer));
+      nsCOMPtr<nsIDocumentViewer> viewer;
+      mDocShell->GetDocViewer(getter_AddRefs(viewer));
       if (!viewer) {
         return NS_NOINTERFACE;
       }

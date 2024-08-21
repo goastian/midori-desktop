@@ -431,11 +431,21 @@ function initPage() {
       tryAgain.hidden = true;
       break;
 
-    // Pinning errors are of type nssFailure2
+    // TLS errors and non-overridable certificate errors (e.g. pinning
+    // failures) are of type nssFailure2.
     case "nssFailure2": {
       learnMore.hidden = false;
 
       const errorCode = document.getNetErrorInfo().errorCodeString;
+      RPMRecordTelemetryEvent(
+        "security.ui.tlserror",
+        "load",
+        "abouttlserror",
+        errorCode,
+        {
+          is_frame: (window.parent != window).toString(),
+        }
+      );
       switch (errorCode) {
         case "SSL_ERROR_UNSUPPORTED_VERSION":
         case "SSL_ERROR_PROTOCOL_VERSION_ALERT": {
@@ -489,7 +499,7 @@ function initPage() {
       trrExceptionButton.addEventListener("click", () => {
         RPMSendQuery("Browser:AddTRRExcludedDomain", {
           hostname: HOST_NAME,
-        }).then(msg => {
+        }).then(() => {
           retryThis(trrExceptionButton);
         });
       });
@@ -510,7 +520,7 @@ function initPage() {
       let message = document.getElementById("trrOnlyMessage");
       document.l10n.setAttributes(
         message,
-        "neterror-dns-not-found-trr-only-reason",
+        "neterror-dns-not-found-trr-only-reason2",
         {
           hostname: HOST_NAME,
         }
@@ -530,13 +540,14 @@ function initPage() {
       } else if (skipReason == "TRR_TIMEOUT") {
         descriptionTag = "neterror-dns-not-found-trr-only-timeout";
       } else if (
-        skipReason == "TRR_IS_OFFLINE" ||
+        skipReason == "TRR_BROWSER_IS_OFFLINE" ||
         skipReason == "TRR_NO_CONNECTIVITY"
       ) {
         descriptionTag = "neterror-dns-not-found-trr-offline";
       } else if (
         skipReason == "TRR_NO_ANSWERS" ||
-        skipReason == "TRR_NXDOMAIN"
+        skipReason == "TRR_NXDOMAIN" ||
+        skipReason == "TRR_RCODE_FAIL"
       ) {
         descriptionTag = "neterror-dns-not-found-trr-unknown-host2";
       } else if (
@@ -544,6 +555,8 @@ function initPage() {
         skipReason == "TRR_SERVER_RESPONSE_ERR"
       ) {
         descriptionTag = "neterror-dns-not-found-trr-server-problem";
+      } else if (skipReason == "TRR_BAD_URL") {
+        descriptionTag = "neterror-dns-not-found-bad-trr-url";
       }
 
       let trrMode = RPMGetIntPref("network.trr.mode").toString();
@@ -634,7 +647,7 @@ function showNativeFallbackWarning() {
     "nativeFallbackIgnoreButton"
   );
   nativeFallbackIgnoreButton.addEventListener("click", () => {
-    RPMSetBoolPref("network.trr.display_fallback_warning", false);
+    RPMSetPref("network.trr.display_fallback_warning", false);
     retryThis(nativeFallbackIgnoreButton);
   });
 
@@ -651,7 +664,7 @@ function showNativeFallbackWarning() {
   let message = document.getElementById("nativeFallbackMessage");
   document.l10n.setAttributes(
     message,
-    "neterror-dns-not-found-native-fallback-reason",
+    "neterror-dns-not-found-native-fallback-reason2",
     {
       hostname: HOST_NAME,
     }
@@ -876,7 +889,7 @@ function setupBlockingReportingUI() {
   checkbox.checked = !!reportingAutomatic;
 
   checkbox.addEventListener("change", function ({ target: { checked } }) {
-    RPMSetBoolPref("security.xfocsp.errorReporting.automatic", checked);
+    RPMSetPref("security.xfocsp.errorReporting.automatic", checked);
 
     // If we're enabling reports, send a report for this failure.
     if (checked) {
@@ -1049,15 +1062,15 @@ function addCertException() {
     () => {
       location.reload();
     },
-    err => {}
+    () => {}
   );
 }
 
-function onReturnButtonClick(e) {
+function onReturnButtonClick() {
   RPMSendAsyncMessage("Browser:SSLErrorGoBack");
 }
 
-function copyPEMToClipboard(e) {
+function copyPEMToClipboard() {
   const errorText = document.getElementById("certificateErrorText");
   navigator.clipboard.writeText(errorText.textContent);
 }

@@ -39,14 +39,14 @@ async function verifyTelemetry(probeNameFragment, engineCount, type) {
   );
 }
 
-add_task(async function setup() {
+add_setup(async function () {
   useHttpServer("opensearch");
 
   await promiseStartupManager();
   await Services.search.init();
 
   for (let file of openSearchEngineFiles) {
-    await Services.search.addOpenSearchEngine(gDataUrl + file, null);
+    await SearchTestUtils.installOpenSearchEngine({ url: gDataUrl + file });
   }
 
   registerCleanupFunction(async () => {

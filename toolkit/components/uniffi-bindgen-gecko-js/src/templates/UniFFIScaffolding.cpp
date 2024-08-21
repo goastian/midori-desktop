@@ -16,7 +16,7 @@ using dom::AutoEntryScript;
 using dom::GlobalObject;
 using dom::RootedDictionary;
 using dom::Promise;
-using dom::ScaffoldingType;
+using dom::UniFFIScaffoldingValue;
 using dom::Sequence;
 using dom::UniFFICallbackHandler;
 using dom::UniFFIPointer;
@@ -37,7 +37,8 @@ extern "C" {
 {%- let pointer_type = ci.pointer_type(object) %}
 const static mozilla::uniffi::UniFFIPointerType {{ pointer_type }} {
   "{{ "{}::{}"|format(ci.namespace(), object.name()) }}"_ns,
-  {{ object.ffi_object_free().rust_name() }}
+  {{ object.ffi_object_clone().rust_name() }},
+  {{ object.ffi_object_free().rust_name() }},
 };
 {%- endfor %}
 {%- endfor %}
@@ -46,13 +47,13 @@ const static mozilla::uniffi::UniFFIPointerType {{ pointer_type }} {
 {%- for (ci, config) in components %}
 {%- for cbi in ci.callback_interface_definitions() %}
 MOZ_CAN_RUN_SCRIPT
-extern "C" int {{ cbi.c_handler(prefix) }}(uint64_t aHandle, uint32_t aMethod, RustBuffer aArgs, RustBuffer* aOutBuffer) {
+extern "C" int {{ cbi.c_handler(prefix) }}(uint64_t aHandle, uint32_t aMethod, const uint8_t* aArgsData, int32_t aArgsLen, RustBuffer* aOutBuffer) {
     // Currently, we only support "fire-and-forget" async callbacks.  These are
     // callbacks that run asynchronously without returning anything.  The main
     // use case for callbacks is logging, which fits very well with this model.
     //
     // So, here we simple queue the callback and return immediately.
-    mozilla::uniffi::QueueCallback({{ callback_ids.get(ci, cbi) }}, aHandle, aMethod, aArgs);
+    mozilla::uniffi::QueueCallback({{ callback_ids.get(ci, cbi) }}, aHandle, aMethod, aArgsData, aArgsLen);
     return CALLBACK_INTERFACE_SUCCESS;
 }
 static StaticRefPtr<dom::UniFFICallbackHandler> {{ cbi.js_handler() }};
@@ -80,7 +81,7 @@ Maybe<CallbackInterfaceInfo> {{ prefix }}GetCallbackInterfaceInfo(uint64_t aInte
     }
 }
 
-Maybe<already_AddRefed<Promise>> {{ prefix }}CallAsync(const GlobalObject& aGlobal, uint64_t aId, const Sequence<ScaffoldingType>& aArgs, ErrorResult& aError) {
+Maybe<already_AddRefed<Promise>> {{ prefix }}CallAsync(const GlobalObject& aGlobal, uint64_t aId, const Sequence<UniFFIScaffoldingValue>& aArgs, ErrorResult& aError) {
   switch (aId) {
     {%- for (ci, config) in components %}
     {%- for func in ci.exposed_functions() %}
@@ -94,7 +95,7 @@ Maybe<already_AddRefed<Promise>> {{ prefix }}CallAsync(const GlobalObject& aGlob
   return Nothing();
 }
 
-bool {{ prefix }}CallSync(const GlobalObject& aGlobal, uint64_t aId, const Sequence<ScaffoldingType>& aArgs, RootedDictionary<UniFFIScaffoldingCallResult>& aReturnValue, ErrorResult& aError) {
+bool {{ prefix }}CallSync(const GlobalObject& aGlobal, uint64_t aId, const Sequence<UniFFIScaffoldingValue>& aArgs, RootedDictionary<UniFFIScaffoldingCallResult>& aReturnValue, ErrorResult& aError) {
   switch (aId) {
     {%- for (ci, config) in components %}
     {%- for func in ci.exposed_functions() %}

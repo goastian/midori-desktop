@@ -37,9 +37,7 @@ async function prepareLogins(logins = []) {
   await LoginManager.removeAllUserFacingLogins();
 
   for (let login of logins) {
-    let storageAddPromise = promiseStorageChanged(["addLogin"]);
-    await LoginManager.addLogin(login);
-    await storageAddPromise;
+    await LoginManager.addLoginAsync(login);
   }
   let count = (await LoginManager.getAllLogins()).length;
   is(count, logins.length, "All logins were added");
@@ -52,9 +50,8 @@ const availableLogins = {
 
 async function recreateTreeInWindow(formNum) {
   await SpecialPowers.spawn(win, [formNum], (formNumF) => {
-    // eslint-disable-next-line no-unsanitized/property
     let form = this.content.document.querySelector(`#form${formNumF}`);
-    // eslint-disable-next-line no-unsanitized/property, no-self-assign
+    // eslint-disable-next-line no-self-assign
     form.outerHTML = form.outerHTML;
   });
 }

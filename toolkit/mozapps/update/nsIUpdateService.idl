@@ -289,6 +289,21 @@ interface nsIUpdateCheck : nsISupports
 };
 
 /**
+ * An interface into the internals of the update checker. These should only be
+ * accessed from within update code and tests.
+ */
+[scriptable, uuid(e27f0336-ad86-4c31-bfee-1d96100521f5)]
+interface nsIUpdateCheckerInternal : nsISupports
+{
+  /**
+   * This is identical to the corresponding function in `nsIUpdateChecker`, but
+   * this version does not ensure the update system has been initialized before
+   * being called.
+   */
+  nsIUpdateCheck checkForUpdates(in long checkType);
+};
+
+/**
  * An interface describing an object that knows how to check for updates. It can
  * perform multiple update checks simultaneously or consolidate multiple check
  * requests into a single web request, depending on whether the parameters
@@ -363,6 +378,45 @@ interface nsIUpdateChecker : nsISupports
    * Ends all pending update checks.
    */
   void stopAllChecks();
+
+  /**
+   * See nsIUpdateCheckerInternal for details.
+   */
+  readonly attribute nsIUpdateCheckerInternal internal;
+};
+
+/**
+ * An interface into the internals of the update service. These should only be
+ * accessed from within update code and tests.
+ */
+[scriptable, uuid(7f39bc95-eaf8-4adc-990b-0fc0734f85fa)]
+interface nsIApplicationUpdateServiceInternal : nsISupports
+{
+  /**
+   * To initialize the update system, use the init method on
+   * `nsIApplicationUpdateService` or `nsIApplicationUpdateServiceStub`. This
+   * method is invoked as part of the update initialization process, but is not
+   * an entry point to it.
+   *
+   * @returns Promise<undefined>
+   */
+  Promise init();
+
+  /**
+   * These are identical to the corresponding functions in
+   * `nsIApplicationUpdateService`, but these versions do not ensure the update
+   * system has been initialized before being called.
+   */
+  Promise downloadUpdate(in nsIUpdate update);
+  Promise stopDownload();
+
+  /**
+   * Runs post update processing, even if it has already run. This should only
+   * be done in testing.
+   *
+   * @returns Promise<undefined>
+   */
+  Promise postUpdateProcessing();
 };
 
 /**
@@ -374,20 +428,34 @@ interface nsIUpdateChecker : nsISupports
 interface nsIApplicationUpdateService : nsISupports
 {
   /**
+   * Initializes the update system. It is typically not necessary to call this
+   * since the public methods that require initialization to be meaningful
+   * ensure that initialization has been performed. But this can be useful to
+   * spur the updater to resume or complete any in-progress updates from
+   * previous browser sessions.
+   *
+   * @returns Promise<undefined>
+   */
+  Promise init();
+
+  /**
    * Checks for available updates in the background using the listener provided
    * by the application update service for background checks.
-   * @returns true if the update check was started, false if not. Note that the
-   *          check starting does not necessarily mean that the check will
-   *          succeed or that an update will be downloaded.
+   * @returns A promise resolving to `true` if the update check was started, or
+   *          one resolving to `false` if not. Note that the check starting does
+   *          not necessarily mean that the check will succeed or that an
+   *          update will be downloaded.
    */
-  bool checkForBackgroundUpdates();
+  Promise checkForBackgroundUpdates();
 
   /**
    * Selects the best update to install from a list of available updates.
    * @param   updates
    *          An array of updates that are available
+   * @returns Promise<nsIUpdate>
+   *          Resolves with the best update to install.
    */
-  nsIUpdate selectUpdate(in Array<nsIUpdate> updates);
+  Promise selectUpdate(in Array<nsIUpdate> updates);
 
   /**
    * Adds a listener that receives progress and state information about the
@@ -411,13 +479,27 @@ interface nsIApplicationUpdateService : nsISupports
   void removeDownloadListener(in nsIRequestObserver listener);
 
   /**
+   * The below are the possible return values for `downloadUpdate()`.
+   */
+  // An update download was started.
+  const long DOWNLOAD_SUCCESS                                             = 1;
+  // The update download is already in-progress but it is using a download
+  // method that we can't use in the background and Firefox is currently running
+  // as a background task.
+  const long DOWNLOAD_FAILURE_CANNOT_RESUME_IN_BACKGROUND                 = 2;
+  // The update download cannot be started for a reason that doesn't have a more
+  // specific failure code.
+  const long DOWNLOAD_FAILURE_GENERIC                                     = 3;
+
+  /**
    * Starts downloading the update passed. Once the update is downloaded, it
    * will automatically be prepared for installation.
    *
    * @param   update
    *          The update to download.
-   * @returns A promise that resolves to `true` if an update download was
-   *          started, otherwise `false.
+   * @returns A promise that resolves with the integer value of one of the
+   *          `DOWNLOAD_*` constants above indicating whether or not the
+   *          download was started.
    */
   Promise downloadUpdate(in nsIUpdate update);
 
@@ -535,6 +617,13 @@ interface nsIApplicationUpdateService : nsISupports
   readonly attribute boolean manualUpdateOnly;
 
   /**
+   * Determines if the base directory is writable. If not, we assume that
+   * further permissions are required and that we are dealing with an elevated
+   * installation.
+   */
+  readonly attribute boolean isAppBaseDirWritable;
+
+  /**
    * This can be set to true to prevent updates being processed beyond starting
    * an update download. This should only be used when we are being run as a
    * background task.
@@ -620,6 +709,11 @@ interface nsIApplicationUpdateService : nsISupports
    * A Promise that resolves immediately after `currentState` changes.
    */
   readonly attribute Promise stateTransition;
+
+  /**
+   * See nsIApplicationUpdateServiceInternal for details.
+   */
+  readonly attribute nsIApplicationUpdateServiceInternal internal;
 };
 
 /**
@@ -647,7 +741,55 @@ interface nsIUpdateProcessor : nsISupports
    * @throws  NS_ERROR_NOT_IMPLEMENTED
    *          If this is called on a non-Windows platform.
    */
-  bool getServiceRegKeyExists();
+  boolean getServiceRegKeyExists();
+
+  /**
+  * Attempts to restart the application manually on program exit with the same
+  * arguments it was started with, while accepting additional arguments.
+  *
+  * This function should only be called on Windows.
+  *
+  * @param    argvExtra
+  *           An array of strings to be passed to the application upon
+  *           restart as additional arguments.
+  * @returns  pidRet
+  *           Returns the pid of a newly spawned child process. This value
+  *           is only valid if the function returns successfully.
+  * @throws   NS_ERROR_ABORT
+  *           If the child process failed to spawn correctly.
+  * @throws   NS_ERROR_NOT_IMPLEMENTED
+  *           If this is called on a non-Windows platform.
+  * @throws   NS_ERROR_NOT_AVAILABLE
+  *           If the command line cannot be read.
+  */
+  long attemptAutomaticApplicationRestartWithLaunchArgs(in Array<AString> argvExtra);
+
+  /**
+  *   This function is meant to be used in conjunction with
+  *   RegisterApplicationRestartWithLaunchArgs() if you want the child process
+  *   that invokes this function to wait for the parent process
+  *   to finish execution. When the application has the argument
+  *   -restart-pid <pid> this function waits for the application with
+  *   <pid> to exit.
+  *
+  * This function should only be called on Windows.
+  *
+  *   @param   pid
+  *            Which process ID to wait for.
+  *   @param   timeoutMS
+  *            How long to wait for the process to exit in milliseconds.
+  *   @throws  NS_OK
+  *            On successful wait.
+  *   @throws  NS_ERROR_NOT_IMPLEMENTED
+  *            If this is called on a non-Windows platform.
+  *   @throws  NS_ERROR_INVALID_ARG
+  *            If -restart-pid has no pid parameter.
+  *   @throws  NS_ERROR_ILLEGAL_VALUE
+  *            If pid cannot be converted into unsigned int.
+  *   @throws  NS_ERROR_FAILURE
+  *            If timeout elapses without process exit.
+  */
+  void waitForProcessExit(in unsigned long pid, in unsigned long timeoutMS);
 };
 
 /**
@@ -669,7 +811,7 @@ interface nsIUpdateSyncManager : nsISupports
    * Returns whether another instance of this application is running.
    * @returns true if another instance has the lock open, false if not
    */
-  bool isOtherInstanceRunning();
+  boolean isOtherInstanceRunning();
 
   /**
    * Should only be used for testing.
@@ -682,6 +824,39 @@ interface nsIUpdateSyncManager : nsISupports
 };
 
 /**
+ * An interface into the internals of the update manager. These should only be
+ * accessed from within update code and tests.
+ */
+[scriptable, uuid(a5739dda-b94f-47e1-a6f3-224d46d6cb8c)]
+interface nsIUpdateManagerInternal : nsISupports
+{
+  /**
+   * ** Test-only Method **
+   *
+   * Reloads the update manager's data. This will only work in testing.
+   * @param skipFiles
+   *        If `true`, don't reload data from the XMLs, just clear out existing
+   *        data.
+   */
+  void reload(in boolean skipFiles);
+
+  /**
+   * These are identical to the functions with the same name in
+   * `nsIUpdateManager`, but these versions do not ensure the update system has
+   * been initialized before being called.
+   */
+  Array<nsIUpdate> getHistory();
+  void addUpdateToHistory(in nsIUpdate update);
+  // Corresponds to `nsIUpdateManager.getReadyUpdate()`, but also provides
+  // write access.
+  attribute nsIUpdate readyUpdate;
+  // Corresponds to `nsIUpdateManager.getDownloadingUpdate()`, but also provides
+  // write access.
+  attribute nsIUpdate downloadingUpdate;
+  Promise refreshUpdateStatus();
+};
+
+/**
  * An interface describing a global application service that maintains a list
  * of updates previously performed as well as the current active update.
  */
@@ -689,39 +864,45 @@ interface nsIUpdateSyncManager : nsISupports
 interface nsIUpdateManager : nsISupports
 {
   /**
-   * Gets the update at the specified index
-   * @param   index
-   *          The index within the updates array
-   * @returns The nsIUpdate object at the specified index
+   * @returns Promise<Array<nsIUpdate>>
+   *          Resolves with an array describing the update history. The first
+   *          element in the array represents the most recent item in the
+   *          history.
    */
-  nsIUpdate getUpdateAt(in long index);
+  Promise getHistory();
 
   /**
-   * Gets the total number of updates in the history list.
+   * Returns a Promise that resolves with the nsIUpdate that has been
+   * downloaded, or null if there isn't one.
    */
-  long getUpdateCount();
+  Promise getReadyUpdate();
 
   /**
-   * The update that has been downloaded, or null if there isn't one.
-   */
-  attribute nsIUpdate readyUpdate;
-
-  /**
-   * The update that is currently downloading, or null if there isn't one.
+   * Returns a Promise that resolves with the nsIUpdate that is currently
+   * downloading, or null if there isn't one.
    * An update is no longer considered to be downloading once onStopRequest is
    * called. This means that both onStopRequest handlers for download listeners
    * and observers of the "update-downloaded" topic should expect the update
    * that was just downloaded to be stored in readyUpdate, not
    * downloadingUpdate.
    */
-  attribute nsIUpdate downloadingUpdate;
+  Promise getDownloadingUpdate();
+
+  /**
+   * If Firefox installed an update at the launch of the current session, this
+   * will contain that update. If not, this will be `null`.
+   */
+  readonly attribute nsIUpdate updateInstalledAtStartup;
 
   /**
    * Adds the specified update to the update history. The update history is
    * limited to 10 items, so this may also remove the last item from the
    * history.
+   * @param update
+   *        The update to add to the history.
+   * @returns Promise<undefined>
    */
-  void addUpdateToHistory(in nsIUpdate update);
+  Promise addUpdateToHistory(in nsIUpdate update);
 
   /**
    * Saves all updates to disk.
@@ -742,13 +923,15 @@ interface nsIUpdateManager : nsISupports
   void elevationOptedIn();
 
   /**
-   * These functions both clean up and remove an active update without applying
+   * These functions clean up and remove an active update without applying
    * it. The first function does this for the update that is currently being
    * downloaded. The second function does this for the update that has already
-   * been downloaded.
+   * been downloaded. The third function does this for both updates.
+   * @returns Promise<undefined>
    */
-  void cleanupDownloadingUpdate();
-  void cleanupReadyUpdate();
+  Promise cleanupDownloadingUpdate();
+  Promise cleanupReadyUpdate();
+  Promise cleanupActiveUpdates();
 
   /**
    * Runs cleanup that ought to happen on a Firefox paveover install to
@@ -770,4 +953,48 @@ interface nsIUpdateManager : nsISupports
    * conveys that the cleanup has completed.
    */
   Promise doUninstallCleanup();
+
+  /**
+   * See nsIUpdateManagerInternal for details.
+   */
+  readonly attribute nsIUpdateManagerInternal internal;
+};
+
+/**
+ * A lightweight interface that we can load early in startup that gives us very
+ * limited access to the update system without the startup costs of loading
+ * nsIApplicationUpdateService.
+ */
+[scriptable, uuid(3ca17ada-8501-496f-bbe7-6a9f1c28eb2d)]
+interface nsIApplicationUpdateServiceStub : nsISupports
+{
+  /**
+   * This does the standard initialization of the update service stub. The
+   * primary effect of this is to initialize the update system (the same effect
+   * as `initUpdate`), but only if there are updates from a previous browser
+   * session. This allows us to avoid loading the update system so early if it
+   * would just be sitting idle until the update timer fires or the user visits
+   * the update UI.
+   *
+   * @returns Promise<undefined>
+   */
+  Promise init();
+
+  /**
+   * This is identical to `nsIApplicationUpdateService.init()`.
+   *
+   * @returns Promise<undefined>
+   */
+  Promise initUpdate();
+
+  /**
+   * This is identical to `nsIApplicationUpdateService.disabled`.
+   */
+  readonly attribute boolean updateDisabled;
+
+  /**
+   * This will be `true` if update is disabled specifically because we are
+   * running a test that didn't opt-in to updating.
+   */
+  readonly attribute boolean updateDisabledForTesting;
 };

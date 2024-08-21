@@ -2,10 +2,11 @@
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "2");
 
-let distroDir = FileUtils.getDir("ProfD", ["sysfeatures", "empty"], true);
+let distroDir = FileUtils.getDir("ProfD", ["sysfeatures", "empty"]);
+distroDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 registerDirectory("XREAppFeat", distroDir);
 
-AddonTestUtils.usePrivilegedSignatures = id => "system";
+AddonTestUtils.usePrivilegedSignatures = () => "system";
 
 /**
  * Defines the set of initial conditions to run each test against. Each should
@@ -144,7 +145,7 @@ add_task(async function setup() {
   });
 
   xpi = await getSystemAddonXPI(3, "3.0");
-  let [hashFunction, hashValue] = do_get_file_hash(xpi, "sha1").split(":");
+  let [hashFunction, hashValue] = do_get_file_hash(xpi, "sha256").split(":");
   list.push({
     id: "system3@tests.mozilla.org",
     version: "3.0",
@@ -155,7 +156,7 @@ add_task(async function setup() {
   });
 
   xpi = await getSystemAddonXPI(5, "1.0");
-  [hashFunction, hashValue] = do_get_file_hash(xpi, "sha1").split(":");
+  [hashFunction, hashValue] = do_get_file_hash(xpi, "sha256").split(":");
   list.push({
     id: "system5@tests.mozilla.org",
     version: "1.0",

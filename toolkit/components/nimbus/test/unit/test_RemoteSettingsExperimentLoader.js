@@ -10,6 +10,9 @@ const { RemoteSettingsExperimentLoader, EnrollmentsContext } =
   ChromeUtils.importESModule(
     "resource://nimbus/lib/RemoteSettingsExperimentLoader.sys.mjs"
   );
+const { RemoteSettings } = ChromeUtils.importESModule(
+  "resource://services-settings/remote-settings.sys.mjs"
+);
 const { TestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/TestUtils.sys.mjs"
 );
@@ -112,7 +115,7 @@ add_task(async function test_updateRecipes() {
   sinon.spy(loader, "updateRecipes");
 
   sinon
-    .stub(loader.remoteSettingsClient, "get")
+    .stub(loader.remoteSettingsClients.experiments, "get")
     .resolves([PASS_FILTER_RECIPE, FAIL_FILTER_RECIPE]);
   sinon.stub(loader.manager, "onRecipe").resolves();
   sinon.stub(loader.manager, "onFinalize");
@@ -144,7 +147,7 @@ add_task(async function test_updateRecipes_someMismatch() {
   sinon.spy(loader, "updateRecipes");
 
   sinon
-    .stub(loader.remoteSettingsClient, "get")
+    .stub(loader.remoteSettingsClients.experiments, "get")
     .resolves([PASS_FILTER_RECIPE, FAIL_FILTER_RECIPE]);
   sinon.stub(loader.manager, "onRecipe").resolves();
   sinon.stub(loader.manager, "onFinalize");
@@ -178,7 +181,9 @@ add_task(async function test_updateRecipes_forFirstStartup() {
   const PASS_FILTER_RECIPE = ExperimentFakes.recipe("foo", {
     targeting: "isFirstStartup",
   });
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([PASS_FILTER_RECIPE]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([PASS_FILTER_RECIPE]);
   sinon.stub(loader.manager, "onRecipe").resolves();
   sinon.stub(loader.manager, "onFinalize");
   sinon
@@ -196,7 +201,9 @@ add_task(async function test_updateRecipes_forNoneFirstStartup() {
   const PASS_FILTER_RECIPE = ExperimentFakes.recipe("foo", {
     targeting: "isFirstStartup",
   });
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([PASS_FILTER_RECIPE]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([PASS_FILTER_RECIPE]);
   sinon.stub(loader.manager, "onRecipe").resolves();
   sinon.stub(loader.manager, "onFinalize");
   sinon
@@ -267,7 +274,9 @@ add_task(async function test_optIn_debug_disabled() {
   sinon.stub(loader, "updateRecipes").resolves();
 
   const recipe = ExperimentFakes.recipe("foo");
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([recipe]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([recipe]);
 
   Services.prefs.setBoolPref(DEBUG_PREF, false);
   Services.prefs.setBoolPref(UPLOAD_PREF, true);
@@ -298,7 +307,9 @@ add_task(async function test_optIn_studies_disabled() {
   sinon.stub(loader, "updateRecipes").resolves();
 
   const recipe = ExperimentFakes.recipe("foo");
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([recipe]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([recipe]);
 
   Services.prefs.setBoolPref(DEBUG_PREF, true);
 
@@ -333,7 +344,9 @@ add_task(async function test_enrollment_changed_notification() {
   const enrollmentChanged = TestUtils.topicObserved(
     "nimbus:enrollments-updated"
   );
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([PASS_FILTER_RECIPE]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([PASS_FILTER_RECIPE]);
   sinon.stub(loader.manager, "onRecipe").resolves();
   sinon.stub(loader.manager, "onFinalize");
 
@@ -341,4 +354,56 @@ add_task(async function test_enrollment_changed_notification() {
   await loader.init();
   await enrollmentChanged;
   ok(loader.updateRecipes.called, "should call .updateRecipes");
+});
+
+add_task(async function test_experiment_optin_targeting() {
+  Services.prefs.setBoolPref(DEBUG_PREF, true);
+
+  const sandbox = sinon.createSandbox();
+
+  const loader = ExperimentFakes.rsLoader();
+  const manager = loader.manager;
+
+  await loader.init();
+  await manager.onStartup();
+  await manager.store.ready();
+
+  const recipe = ExperimentFakes.recipe("foo", { targeting: "false" });
+
+  sandbox.stub(RemoteSettings("nimbus-preview"), "get").resolves([recipe]);
+
+  await Assert.rejects(
+    loader.optInToExperiment({
+      slug: recipe.slug,
+      branch: recipe.branches[0].slug,
+      collection: "nimbus-preview",
+      applyTargeting: true,
+    }),
+    /Recipe foo did not match targeting/,
+    "optInToExperiment should throw"
+  );
+
+  Assert.ok(
+    !manager.store.getExperimentForFeature("testFeature"),
+    "Should not enroll in experiment"
+  );
+
+  await loader.optInToExperiment({
+    slug: recipe.slug,
+    branch: recipe.branches[0].slug,
+    collection: "nimbus-preview",
+  });
+
+  Assert.equal(
+    manager.store.getExperimentForFeature("testFeature").slug,
+    `optin-${recipe.slug}`,
+    "Should enroll in experiment"
+  );
+
+  manager.unenroll(`optin-${recipe.slug}`, "test-cleanup");
+
+  sandbox.restore();
+  Services.prefs.clearUserPref(DEBUG_PREF);
+
+  await assertEmptyStore(manager.store, { cleanup: true });
 });

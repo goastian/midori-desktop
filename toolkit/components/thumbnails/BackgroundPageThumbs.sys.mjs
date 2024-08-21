@@ -219,7 +219,7 @@ export const BackgroundPageThumbs = {
         "nsISupportsWeakReference",
       ]),
     };
-    this._listener.onStateChange = (wbp, request, stateFlags, status) => {
+    this._listener.onStateChange = (wbp, request, stateFlags) => {
       if (!request) {
         return;
       }
@@ -358,6 +358,7 @@ export const BackgroundPageThumbs = {
     }
     browser.setAttribute("disableglobalhistory", "true");
     browser.setAttribute("messagemanagergroup", "thumbnails");
+    browser.setAttribute("manualactiveness", "true");
 
     if (Services.prefs.getBoolPref(ABOUT_NEWTAB_SEGREGATION_PREF)) {
       // Use the private container for thumbnails.
@@ -590,7 +591,7 @@ Capture.prototype = {
             this._done(browser, null, TEL_CAPTURE_DONE_BAD_URI);
           }
         },
-        failure => {
+        () => {
           // The query can fail when a crash occurs while loading. The error causes
           // thumbnail crash tests to fail with an uninteresting error message.
         }

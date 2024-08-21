@@ -2,7 +2,8 @@
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "2");
 
-let distroDir = FileUtils.getDir("ProfD", ["sysfeatures", "empty"], true);
+let distroDir = FileUtils.getDir("ProfD", ["sysfeatures", "empty"]);
+distroDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 registerDirectory("XREAppFeat", distroDir);
 add_task(() => initSystemAddonDirs());
 
@@ -137,7 +138,7 @@ const TESTS = {
         id: "system3@tests.mozilla.org",
         version: "3.0",
         path: "system3_3.xpi",
-        hashFunction: "sha1",
+        hashFunction: "sha256",
         hashValue: "205a4c49bd513ebd30594e380c19e86bba1f83e2",
       },
     ],

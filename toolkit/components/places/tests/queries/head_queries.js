@@ -49,35 +49,22 @@ async function task_populateDB(aArray) {
         if (qdata.visitCount && !qdata.isDetails) {
           // Set a fake visit_count, this is not a real count but can be used
           // to test sorting by visit_count.
-          let stmt = DBConn().createAsyncStatement(
-            "UPDATE moz_places SET visit_count = :vc WHERE url_hash = hash(:url) AND url = :url"
+          await PlacesTestUtils.updateDatabaseValues(
+            "moz_places",
+            { visit_count: qdata.visitCount },
+            { url: qdata.uri }
           );
-          stmt.params.vc = qdata.visitCount;
-          stmt.params.url = qdata.uri;
-          try {
-            stmt.executeAsync();
-          } catch (ex) {
-            print("Error while setting visit_count.");
-          } finally {
-            stmt.finalize();
-          }
         }
       }
 
       if (qdata.isRedirect) {
         // This must be async to properly enqueue after the updateFrecency call
         // done by the visit addition.
-        let stmt = DBConn().createAsyncStatement(
-          "UPDATE moz_places SET hidden = 1 WHERE url_hash = hash(:url) AND url = :url"
+        await PlacesTestUtils.updateDatabaseValues(
+          "moz_places",
+          { hidden: 1 },
+          { url: qdata.uri }
         );
-        stmt.params.url = qdata.uri;
-        try {
-          stmt.executeAsync();
-        } catch (ex) {
-          print("Error while setting hidden.");
-        } finally {
-          stmt.finalize();
-        }
       }
 
       if (qdata.isDetails) {
@@ -290,12 +277,12 @@ function compareArrayToResult(aArray, aRoot) {
  * result set.  It can accept either a queryData object or an array of queryData
  * objects.  If it gets an array, it only compares the first object in the array
  * to see if it is in the result set.
- * Returns: True if item is in query set, and false if item is not in query set
- *          If input is an array, returns True if FIRST object in array is in
- *          query set.  To compare entire array, use the function above.
+ * @returns {nsINavHistoryResultNode}: Either the node, if found, or null.
+ *          If input is an array, returns a result only for the first node.
+ *          To compare entire array, use the function above.
  */
-function isInResult(aQueryData, aRoot) {
-  var rv = false;
+function nodeInResult(aQueryData, aRoot) {
+  var rv = null;
   var uri;
   var wasOpen = aRoot.containerOpen;
   if (!wasOpen) {
@@ -311,8 +298,9 @@ function isInResult(aQueryData, aRoot) {
   }
 
   for (var i = 0; i < aRoot.childCount; i++) {
-    if (uri == aRoot.getChild(i).uri) {
-      rv = true;
+    let node = aRoot.getChild(i);
+    if (uri == node.uri) {
+      rv = node;
       break;
     }
   }

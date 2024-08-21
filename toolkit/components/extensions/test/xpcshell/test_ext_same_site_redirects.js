@@ -97,7 +97,7 @@ server.registerPathHandler("/final", (request, response) => {
 function promiseFinalResponse() {
   Assert.deepEqual(receivedCookies, [], "Test starts without observed cookies");
   return new Promise(resolve => {
-    server.registerPathHandler("/final_and_clean", (request, response) => {
+    server.registerPathHandler("/final_and_clean", request => {
       Assert.equal(request.host, SITE_FINAL);
       Assert.equal(getCookies(request), "", "Cookies cleaned up");
       resolve(receivedCookies.splice(0));
@@ -107,6 +107,9 @@ function promiseFinalResponse() {
 
 // Load the page as a child frame of an extension, for the given permissions.
 async function getCookiesForLoadInExtension({ permissions }) {
+  // embedder.html loads http:-frame.
+  allow_unsafe_parent_loads_when_extensions_not_remote();
+
   let extension = ExtensionTestUtils.loadExtension({
     manifest: {
       permissions,
@@ -124,6 +127,9 @@ async function getCookiesForLoadInExtension({ permissions }) {
   let cookies = await cookiesPromise;
   await contentPage.close();
   await extension.unload();
+
+  revert_allow_unsafe_parent_loads_when_extensions_not_remote();
+
   return cookies;
 }
 

@@ -20,19 +20,16 @@ export class FindBarContent {
     this.addedEventListener = false;
   }
 
-  start(event) {
+  start() {
     this.inPassThrough = true;
   }
 
   startQuickFind(event, autostart = false) {
     if (!this.addedEventListener) {
       this.addedEventListener = true;
-      Services.els.addSystemEventListener(
-        this.actor.document.defaultView,
-        "mouseup",
-        this,
-        false
-      );
+      this.actor.document.defaultView.addEventListener("mouseup", this, {
+        mozSystemGroup: true,
+      });
     }
 
     let mode = FIND_TYPEAHEAD;
@@ -103,7 +100,7 @@ export class FindBarContent {
     this.actor.sendAsyncMessage("Findbar:Keypress", fakeEvent);
   }
 
-  onMouseup(event) {
+  onMouseup() {
     if (this.findMode != FIND_NORMAL) {
       this.actor.sendAsyncMessage("Findbar:Mouseup", {});
     }

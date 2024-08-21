@@ -40,8 +40,6 @@ enum class StorageAccess {
   // Allow access to the storage, but only if it is secure to do so in a
   // private browsing context.
   ePrivateBrowsing = 1,
-  // Allow access to the storage, but only persist it for the current session
-  eSessionScoped = 2,
   // Allow access to the storage
   eAllow = 3,
   // Keep this at the end.  Used for serialization, but not a valid value.
@@ -93,25 +91,6 @@ StorageAccess StorageAllowedForChannel(nsIChannel* aChannel);
 StorageAccess StorageAllowedForServiceWorker(
     nsIPrincipal* aPrincipal, nsICookieJarSettings* aCookieJarSettings);
 
-/*
- * Returns true if this window/channel/aPrincipal should disable storages
- * because of the anti-tracking feature.
- * Note that either aWindow or aChannel may be null when calling this
- * function. If the caller wants the UI to be notified when the storage gets
- * disabled, it must pass a non-null channel object.
- */
-bool StorageDisabledByAntiTracking(nsPIDOMWindowInner* aWindow,
-                                   nsIChannel* aChannel,
-                                   nsIPrincipal* aPrincipal, nsIURI* aURI,
-                                   uint32_t& aRejectedReason);
-
-/*
- * Returns true if this document should disable storages because of the
- * anti-tracking feature.
- */
-bool StorageDisabledByAntiTracking(dom::Document* aDocument, nsIURI* aURI,
-                                   uint32_t& aRejectedReason);
-
 bool ShouldPartitionStorage(StorageAccess aAccess);
 
 bool ShouldPartitionStorage(uint32_t aRejectedReason);
@@ -134,6 +113,10 @@ bool StoragePartitioningEnabled(uint32_t aRejectedReason,
 //  * nsIWebProgressListener::STATE_COOKIES_BLOCKED_SOCIALTRACKER
 //  * nsIWebProgressListener::STATE_COOKIES_BLOCKED_ALL
 //  * nsIWebProgressListener::STATE_COOKIES_BLOCKED_FOREIGN
+//
+// If you update this function, you almost certainly want to consider
+// updating the other overloaded functions
+// (and ApproximateAllowAccessForWithoutChannel).
 bool ShouldAllowAccessFor(nsPIDOMWindowInner* a3rdPartyTrackingWindow,
                           nsIURI* aURI, uint32_t* aRejectedReason);
 
@@ -143,6 +126,9 @@ bool ShouldAllowAccessFor(nsPIDOMWindowInner* a3rdPartyTrackingWindow,
 // synchronously, so here we return the best guest: if we are sure that the
 // permission is granted for the origin of aURI, this method returns true,
 // otherwise false.
+//
+// If you update this function, you almost certainly want to consider
+// updating the ShouldAllowAccessFor functions.
 bool ApproximateAllowAccessForWithoutChannel(
     nsPIDOMWindowInner* aFirstPartyWindow, nsIURI* aURI);
 
@@ -150,11 +136,20 @@ bool ApproximateAllowAccessForWithoutChannel(
 // aChannel can be a 3rd party channel, or not.
 // See ShouldAllowAccessFor(window) to see the possible values of
 // aRejectedReason.
+//
+// If you update this function, you almost certainly want to consider
+// updating the other overloaded functions
+// (and ApproximateAllowAccessForWithoutChannel).
 bool ShouldAllowAccessFor(nsIChannel* aChannel, nsIURI* aURI,
                           uint32_t* aRejectedReason);
 
 // This method checks if the principal has the permission to access to the
 // first party storage.
+// Warning: only use this function when aPrincipal is first-party.
+//
+// If you update this function, you almost certainly want to consider
+// updating the other overloaded functions
+// (and ApproximateAllowAccessForWithoutChannel).
 bool ShouldAllowAccessFor(nsIPrincipal* aPrincipal,
                           nsICookieJarSettings* aCookieJarSettings);
 

@@ -13,8 +13,9 @@ add_task(async function () {
             info("got find result");
             browser.finder.removeResultListener(listener);
 
-            ok(
-              aData.result == Ci.nsITypeAheadFind.FIND_FOUND,
+            Assert.equal(
+              aData.result,
+              Ci.nsITypeAheadFind.FIND_FOUND,
               "should find string"
             );
             resolve();
@@ -38,17 +39,18 @@ add_task(async function () {
         let textarea = content.document.getElementById("textarea1");
         textarea.scrollTop = textarea.scrollHeight;
       });
-      BrowserTestUtils.loadURIString(browser, "about:blank");
+      BrowserTestUtils.startLoadingURIString(browser, "about:blank");
       await BrowserTestUtils.browserLoaded(browser);
 
-      ok(
-        browser.currentURI.spec == "about:blank",
+      Assert.equal(
+        browser.currentURI.spec,
+        "about:blank",
         "got load event for about:blank"
       );
 
       let awaitFindResult2 = new Promise(resolve => {
         let listener = {
-          onFindResult(aData) {
+          onFindResult() {
             info("got find result #2");
             browser.finder.removeResultListener(listener);
             resolve();

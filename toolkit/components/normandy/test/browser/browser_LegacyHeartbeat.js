@@ -139,7 +139,7 @@ decorate_task(
   async function testLegacyHeartbeatTrigger({ heartbeatClassStub }) {
     const sandbox = sinon.createSandbox();
 
-    const cleanupEnrollment = await ExperimentFakes.enrollWithFeatureConfig({
+    const doEnrollmentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
       featureId: "legacyHeartbeat",
       value: {
         survey: SURVEY,
@@ -158,7 +158,7 @@ decorate_task(
       );
       assertSurvey(heartbeatClassStub.args[0][1], SURVEY);
 
-      await cleanupEnrollment();
+      doEnrollmentCleanup();
     } finally {
       sandbox.restore();
     }
@@ -170,7 +170,7 @@ decorate_task(
   async function testLegacyHeartbeatPingPayload() {
     const sandbox = sinon.createSandbox();
 
-    const cleanupEnrollment = await ExperimentFakes.enrollWithFeatureConfig({
+    const doEnrollmentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
       featureId: "legacyHeartbeat",
       value: {
         survey: SURVEY,
@@ -181,24 +181,23 @@ decorate_task(
     sandbox.stub(client, "get").resolves([]);
 
     // Override Heartbeat so we can get the instance and manipulate it directly.
-    let resolveHeartbeatPromise;
-    const heartbeatPromise = new Promise(resolve => {
-      resolveHeartbeatPromise = resolve;
-    });
+    const heartbeatDeferred = Promise.withResolvers();
     class TestHeartbeat extends Heartbeat {
       constructor(...args) {
         super(...args);
-        resolveHeartbeatPromise(this);
+        heartbeatDeferred.resolve(this);
       }
     }
     ShowHeartbeatAction.overrideHeartbeatForTests(TestHeartbeat);
 
     try {
       await RecipeRunner.run();
-      const heartbeat = await heartbeatPromise;
+      const heartbeat = await heartbeatDeferred.promise;
       // We are going to simulate the timer timing out, so we do not want it to
       // *actually* time out.
       heartbeat.endTimerIfPresent("surveyEndTimer");
+      const notice = await heartbeat.noticePromise;
+      await notice.updateComplete;
 
       const telemetrySentPromise = new Promise(resolve => {
         heartbeat.eventEmitter.once("TelemetrySent", payload =>
@@ -216,7 +215,7 @@ decorate_task(
       Assert.ok(result.valid);
       Assert.equal(payload.surveyVersion, "1");
 
-      await cleanupEnrollment();
+      doEnrollmentCleanup();
     } finally {
       ShowHeartbeatAction.overrideHeartbeatForTests();
       sandbox.restore();

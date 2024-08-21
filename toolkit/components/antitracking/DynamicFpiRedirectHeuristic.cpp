@@ -155,7 +155,7 @@ void AddConsoleReport(nsIChannel* aNewChannel, nsIURI* aNewURI,
   httpChannel->AddConsoleReport(nsIScriptError::warningFlag,
                                 ANTITRACKING_CONSOLE_CATEGORY,
                                 nsContentUtils::eNECKO_PROPERTIES, uri, 0, 0,
-                                "CookieAllowedForFpiByHeuristic"_ns, params);
+                                "CookieAllowedForDFPIByHeuristic"_ns, params);
 }
 
 bool ShouldRedirectHeuristicApplyTrackingResource(nsIChannel* aOldChannel,
@@ -300,21 +300,34 @@ void DynamicFpiRedirectHeuristic(nsIChannel* aOldChannel, nsIURI* aOldURI,
   }
 
   nsAutoCString oldOrigin;
-  rv = oldPrincipal->GetOrigin(oldOrigin);
+  rv = oldPrincipal->GetOriginNoSuffix(oldOrigin);
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    LOG(("Can't get the origin from the Principal"));
+    LOG(("Can't get the origin from the old Principal"));
     return;
   }
 
   nsAutoCString newOrigin;
-  rv = nsContentUtils::GetASCIIOrigin(aNewURI, newOrigin);
+  rv = newPrincipal->GetOriginNoSuffix(newOrigin);
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    LOG(("Can't get the origin from the URI"));
+    LOG(("Can't get the origin from the new Principal"));
     return;
   }
 
   if (!HasEligibleVisit(aOldURI) || !HasEligibleVisit(aNewURI)) {
     LOG(("No previous visit record, bailing out early."));
+    return;
+  }
+
+  // Check if the new principal is a third party principal
+  bool aResult;
+  rv = newPrincipal->IsThirdPartyPrincipal(oldPrincipal, &aResult);
+
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    LOG(("Error while checking if new principal is third party"));
+    return;
+  }
+  if (!aResult) {
+    LOG(("New principal is a first party principal"));
     return;
   }
 
@@ -335,7 +348,7 @@ void DynamicFpiRedirectHeuristic(nsIChannel* aOldChannel, nsIURI* aOldURI,
   RefPtr<StorageAccessAPIHelper::ParentAccessGrantPromise> promise =
       StorageAccessAPIHelper::SaveAccessForOriginOnParentProcess(
           newPrincipal, oldPrincipal,
-          StorageAccessAPIHelper::StorageAccessPromptChoices::eAllow,
+          StorageAccessAPIHelper::StorageAccessPromptChoices::eAllow, false,
           StaticPrefs::privacy_restrict3rdpartystorage_expiration_visited());
   Unused << promise;
 }

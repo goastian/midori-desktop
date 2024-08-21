@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * nsIAutoCompleteResult and nsILoginAutoCompleteSearch implementations for saved logins.
+ * nsIAutoCompleteResult implementations for saved logins.
  */
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
@@ -12,11 +12,7 @@ import { GenericAutocompleteItem } from "resource://gre/modules/FillHelpers.sys.
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  InsecurePasswordUtils: "resource://gre/modules/InsecurePasswordUtils.sys.mjs",
-  LoginFormFactory: "resource://gre/modules/LoginFormFactory.sys.mjs",
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
-  LoginManagerChild: "resource://gre/modules/LoginManagerChild.sys.mjs",
-  NewPasswordModel: "resource://gre/modules/NewPasswordModel.sys.mjs",
 });
 XPCOMUtils.defineLazyServiceGetter(
   lazy,
@@ -24,15 +20,15 @@ XPCOMUtils.defineLazyServiceGetter(
   "@mozilla.org/satchel/form-fill-controller;1",
   Ci.nsIFormFillController
 );
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   return lazy.LoginHelper.createLogger("LoginAutoComplete");
 });
-XPCOMUtils.defineLazyGetter(lazy, "passwordMgrBundle", () => {
+ChromeUtils.defineLazyGetter(lazy, "passwordMgrBundle", () => {
   return Services.strings.createBundle(
     "chrome://passwordmgr/locale/passwordmgr.properties"
   );
 });
-XPCOMUtils.defineLazyGetter(lazy, "dateAndTimeFormatter", () => {
+ChromeUtils.defineLazyGetter(lazy, "dateAndTimeFormatter", () => {
   return new Services.intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
   });
@@ -147,15 +143,17 @@ class LoginAutocompleteItem extends AutocompleteItem {
     this.label = username;
     this.value = hasBeenTypePassword ? login.password : login.username;
     this.comment = JSON.stringify({
+      fillMessageName: "PasswordManager:OnFieldAutoComplete",
+      fillMessageData: login,
       guid: login.guid,
-      login,
       isDuplicateUsername,
       isOriginMatched,
-      comment:
+      secondary:
         isOriginMatched && login.httpRealm === null
           ? getLocalizedString("displaySameOrigin")
           : login.displayOrigin,
     });
+    this.image = `page-icon:${login.origin}`;
   }
 
   removeFromStorage() {
@@ -175,13 +173,13 @@ class GeneratedPasswordAutocompleteItem extends AutocompleteItem {
     super("generatedPassword");
 
     this.label = getLocalizedString("useASecurelyGeneratedPassword");
-
     this.value = generatedPassword;
-
     this.comment = JSON.stringify({
+      fillMessageName: "PasswordManager:FillGeneratedPassword",
       generatedPassword,
       willAutoSaveGeneratedPassword,
     });
+    this.image = "chrome://browser/skin/login.svg";
   }
 }
 
@@ -229,7 +227,7 @@ class LoginsFooterAutocompleteItem extends AutocompleteItem {
   constructor(formHostname, telemetryEventData) {
     super("loginsFooter");
 
-    this.label = getLocalizedString("viewSavedLogins.label");
+    this.label = getLocalizedString("managePasswords.label");
 
     // The comment field of `loginsFooter` results have many additional pieces of
     // information for telemetry purposes. After bug 1555209, this information
@@ -337,9 +335,9 @@ export class LoginAutoCompleteResult {
           ...autocompleteItems.map(
             item =>
               new GenericAutocompleteItem(
-                item.icon,
-                item.title,
-                item.subtitle,
+                item.image,
+                item.label,
+                item.secondary,
                 item.fillMessageName,
                 item.fillMessageData
               )
@@ -367,7 +365,7 @@ export class LoginAutoCompleteResult {
         this.#rows.push(new ImportableLearnMoreAutocompleteItem());
       }
 
-      // If we have anything in autocomplete, then add "View Saved Logins"
+      // If we have anything in autocomplete, then add "Manage Passwords"
       this.#rows.push(
         new LoginsFooterAutocompleteItem(hostname, telemetryEventData)
       );
@@ -444,320 +442,18 @@ export class LoginAutoCompleteResult {
 
   getImageAt(index) {
     this.#throwOnBadIndex(index);
-    return "";
+    return this.#rows[index].image ?? "";
   }
 
   getFinalCompleteValueAt(index) {
     return this.getValueAt(index);
   }
 
-  isRemovableAt(index) {
-    this.#throwOnBadIndex(index);
-    return true;
+  isRemovableAt(_index) {
+    return false;
   }
 
-  removeValueAt(index) {
-    this.#throwOnBadIndex(index);
-
-    let [removedItem] = this.#rows.splice(index, 1);
-
-    if (this.defaultIndex > this.#rows.length) {
-      this.defaultIndex--;
-    }
-
-    removedItem.removeFromStorage();
+  removeValueAt(_index) {
+    return false;
   }
 }
-
-export class LoginAutoComplete {
-  // HTMLInputElement to number, the element's new-password heuristic confidence score
-  #cachedNewPasswordScore = new WeakMap();
-  #autoCompleteLookupPromise = null;
-  classID = Components.ID("{2bdac17c-53f1-4896-a521-682ccdeef3a8}");
-  QueryInterface = ChromeUtils.generateQI(["nsILoginAutoCompleteSearch"]);
-
-  /**
-   * Yuck. This is called directly by satchel:
-   * nsFormFillController::StartSearch()
-   * [toolkit/components/satchel/nsFormFillController.cpp]
-   *
-   * We really ought to have a simple way for code to register an
-   * auto-complete provider, and not have satchel calling pwmgr directly.
-   *
-   * @param {string} aSearchString The value typed in the field.
-   * @param {nsIAutoCompleteResult} aPreviousResult
-   * @param {HTMLInputElement} aElement
-   * @param {nsIFormAutoCompleteObserver} aCallback
-   */
-  startSearch(aSearchString, aPreviousResult, aElement, aCallback) {
-    let { isNullPrincipal } = aElement.nodePrincipal;
-    if (
-      aElement.nodePrincipal.schemeIs("about") ||
-      aElement.nodePrincipal.isSystemPrincipal
-    ) {
-      // Don't show autocomplete results for about: pages.
-      // XXX: Don't we need to call the callback here?
-      return;
-    }
-
-    let searchStartTimeMS = Services.telemetry.msSystemNow();
-
-    // Show the insecure login warning in the passwords field on null principal documents.
-    // Avoid loading InsecurePasswordUtils.jsm in a sandboxed document (e.g. an ad. frame) if we
-    // already know it has a null principal and will therefore get the insecure autocomplete
-    // treatment.
-    // InsecurePasswordUtils doesn't handle the null principal case as not secure because we don't
-    // want the same treatment:
-    // * The web console warnings will be confusing (as they're primarily about http:) and not very
-    //   useful if the developer intentionally sandboxed the document.
-    // * The site identity insecure field warning would require LoginManagerChild being loaded and
-    //   listening to some of the DOM events we're ignoring in null principal documents. For memory
-    //   reasons it's better to not load LMC at all for these sandboxed frames. Also, if the top-
-    //   document is sandboxing a document, it probably doesn't want that sandboxed document to be
-    //   able to affect the identity icon in the address bar by adding a password field.
-    let form = lazy.LoginFormFactory.createFromField(aElement);
-    let isSecure =
-      !isNullPrincipal && lazy.InsecurePasswordUtils.isFormSecure(form);
-    let { hasBeenTypePassword } = aElement;
-    let hostname = aElement.ownerDocument.documentURIObject.host;
-    let formOrigin = lazy.LoginHelper.getLoginOrigin(
-      aElement.ownerDocument.documentURI
-    );
-    let loginManagerActor = lazy.LoginManagerChild.forWindow(
-      aElement.ownerGlobal
-    );
-    let completeSearch = async autoCompleteLookupPromise => {
-      // Assign to the member synchronously before awaiting the Promise.
-      this.#autoCompleteLookupPromise = autoCompleteLookupPromise;
-
-      let {
-        generatedPassword,
-        importable,
-        logins,
-        autocompleteItems,
-        willAutoSaveGeneratedPassword,
-      } = await autoCompleteLookupPromise;
-
-      // If the search was canceled before we got our
-      // results, don't bother reporting them.
-      // N.B. This check must occur after the `await` above for it to be
-      // effective.
-      if (this.#autoCompleteLookupPromise !== autoCompleteLookupPromise) {
-        lazy.log.debug("Ignoring result from previous search.");
-        return;
-      }
-
-      let telemetryEventData = {
-        acFieldName: aElement.getAutocompleteInfo().fieldName,
-        hadPrevious: !!aPreviousResult,
-        typeWasPassword: aElement.hasBeenTypePassword,
-        fieldType: aElement.type,
-        searchStartTimeMS,
-        stringLength: aSearchString.length,
-      };
-
-      this.#autoCompleteLookupPromise = null;
-      let results = new LoginAutoCompleteResult(
-        aSearchString,
-        logins,
-        autocompleteItems,
-        formOrigin,
-        {
-          generatedPassword,
-          willAutoSaveGeneratedPassword,
-          importable,
-          actor: loginManagerActor,
-          isSecure,
-          hasBeenTypePassword,
-          hostname,
-          telemetryEventData,
-        }
-      );
-      aCallback.onSearchCompletion(results);
-    };
-
-    if (isNullPrincipal) {
-      // Don't search login storage when the field has a null principal as we don't want to fill
-      // logins for the `location` in this case.
-      completeSearch(Promise.resolve({ logins: [] }));
-      return;
-    }
-
-    if (
-      hasBeenTypePassword &&
-      aSearchString &&
-      !loginManagerActor.isPasswordGenerationForcedOn(aElement)
-    ) {
-      // Return empty result on password fields with password already filled,
-      // unless password generation was forced.
-      completeSearch(Promise.resolve({ logins: [] }));
-      return;
-    }
-
-    if (!lazy.LoginHelper.enabled) {
-      completeSearch(Promise.resolve({ logins: [] }));
-      return;
-    }
-
-    let previousResult;
-    if (aPreviousResult) {
-      previousResult = {
-        searchString: aPreviousResult.searchString,
-        logins: lazy.LoginHelper.loginsToVanillaObjects(
-          aPreviousResult.wrappedJSObject.logins
-        ),
-      };
-    } else {
-      previousResult = null;
-    }
-
-    let acLookupPromise = this.#requestAutoCompleteResultsFromParent({
-      searchString: aSearchString,
-      previousResult,
-      inputElement: aElement,
-      form,
-      hasBeenTypePassword,
-    });
-    completeSearch(acLookupPromise).catch(lazy.log.error.bind(lazy.log));
-  }
-
-  stopSearch() {
-    this.#autoCompleteLookupPromise = null;
-  }
-
-  async #requestAutoCompleteResultsFromParent({
-    searchString,
-    previousResult,
-    inputElement,
-    form,
-    hasBeenTypePassword,
-  }) {
-    let actionOrigin = lazy.LoginHelper.getFormActionOrigin(form);
-    let autocompleteInfo = inputElement.getAutocompleteInfo();
-
-    let loginManagerActor = lazy.LoginManagerChild.forWindow(
-      inputElement.ownerGlobal
-    );
-    let forcePasswordGeneration = false;
-    let isProbablyANewPasswordField = false;
-    if (hasBeenTypePassword) {
-      forcePasswordGeneration =
-        loginManagerActor.isPasswordGenerationForcedOn(inputElement);
-      // Run the Fathom model only if the password field does not have the
-      // autocomplete="new-password" attribute.
-      isProbablyANewPasswordField =
-        autocompleteInfo.fieldName == "new-password" ||
-        this.isProbablyANewPasswordField(inputElement);
-    }
-    const scenario = loginManagerActor.getScenario(inputElement);
-
-    if (lazy.LoginHelper.showAutoCompleteFooter) {
-      gAutoCompleteListener.init();
-    }
-
-    lazy.log.debug("LoginAutoComplete search:", {
-      forcePasswordGeneration,
-      hasBeenTypePassword,
-      isProbablyANewPasswordField,
-      searchStringLength: searchString.length,
-    });
-
-    const result = await loginManagerActor.sendQuery(
-      "PasswordManager:autoCompleteLogins",
-      {
-        actionOrigin,
-        searchString,
-        previousResult,
-        forcePasswordGeneration,
-        hasBeenTypePassword,
-        isProbablyANewPasswordField,
-        scenarioName: scenario?.constructor.name,
-        inputMaxLength: inputElement.maxLength,
-      }
-    );
-
-    return {
-      generatedPassword: result.generatedPassword,
-      importable: result.importable,
-      autocompleteItems: result.autocompleteItems,
-      logins: lazy.LoginHelper.vanillaObjectsToLogins(result.logins),
-      willAutoSaveGeneratedPassword: result.willAutoSaveGeneratedPassword,
-    };
-  }
-
-  isProbablyANewPasswordField(inputElement) {
-    const threshold = lazy.LoginHelper.generationConfidenceThreshold;
-    if (threshold == -1) {
-      // Fathom is disabled
-      return false;
-    }
-
-    let score = this.#cachedNewPasswordScore.get(inputElement);
-    if (score) {
-      return score >= threshold;
-    }
-
-    const { rules, type } = lazy.NewPasswordModel;
-    const results = rules.against(inputElement);
-    score = results.get(inputElement).scoreFor(type);
-    this.#cachedNewPasswordScore.set(inputElement, score);
-    return score >= threshold;
-  }
-}
-
-let gAutoCompleteListener = {
-  added: false,
-  fillRequestId: 0,
-
-  init() {
-    if (!this.added) {
-      Services.obs.addObserver(this, "autocomplete-will-enter-text");
-      this.added = true;
-    }
-  },
-
-  async observe(subject, topic, data) {
-    switch (topic) {
-      case "autocomplete-will-enter-text": {
-        await this.sendFillRequestToLoginManagerParent(subject, data);
-        break;
-      }
-    }
-  },
-
-  async sendFillRequestToLoginManagerParent(input, comment) {
-    if (!comment) {
-      return;
-    }
-
-    if (input != lazy.formFillController.controller.input) {
-      return;
-    }
-
-    const { fillMessageName, fillMessageData } = JSON.parse(comment ?? "{}");
-    if (!fillMessageName) {
-      return;
-    }
-
-    this.fillRequestId++;
-    const fillRequestId = this.fillRequestId;
-    const child = lazy.LoginManagerChild.forWindow(
-      input.focusedInput.ownerGlobal
-    );
-    const value = await child.sendQuery(fillMessageName, fillMessageData ?? {});
-
-    // skip fill if another fill operation started during await
-    if (fillRequestId != this.fillRequestId) {
-      return;
-    }
-
-    if (typeof value !== "string") {
-      return;
-    }
-
-    // If LoginManagerParent returned a string to fill, we must do it here because
-    // nsAutoCompleteController.cpp already finished it's work before we finished await.
-    input.textValue = value;
-    input.selectTextRange(value.length, value.length);
-  },
-};

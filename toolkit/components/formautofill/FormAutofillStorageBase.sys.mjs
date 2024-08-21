@@ -20,6 +20,7 @@
  *       given-name,
  *       additional-name,
  *       family-name,
+ *       name,
  *       organization,         // Company
  *       street-address,       // (Multiline)
  *       address-level3,       // Suburb/Sublocality
@@ -32,7 +33,9 @@
  *
  *       // computed fields (These fields are computed based on the above fields
  *       // and are not allowed to be modified directly.)
- *       name,
+ *       given-name,
+ *       additional-name,
+ *       family-name,
  *       address-line1,
  *       address-line2,
  *       address-line3,
@@ -127,21 +130,19 @@
  */
 
 import { FormAutofill } from "resource://autofill/FormAutofill.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+import { AddressRecord } from "resource://gre/modules/shared/AddressRecord.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  AutofillTelemetry: "resource://gre/modules/shared/AutofillTelemetry.sys.mjs",
   CreditCard: "resource://gre/modules/CreditCard.sys.mjs",
+  CreditCardRecord: "resource://gre/modules/shared/CreditCardRecord.sys.mjs",
   FormAutofillNameUtils:
     "resource://gre/modules/shared/FormAutofillNameUtils.sys.mjs",
   FormAutofillUtils: "resource://gre/modules/shared/FormAutofillUtils.sys.mjs",
   OSKeyStore: "resource://gre/modules/OSKeyStore.sys.mjs",
-  PhoneNumber: "resource://autofill/phonenumberutils/PhoneNumber.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  AutofillTelemetry: "resource://autofill/AutofillTelemetry.jsm",
+  PhoneNumber: "resource://gre/modules/shared/PhoneNumber.sys.mjs",
 });
 
 const CryptoHash = Components.Constructor(
@@ -167,9 +168,7 @@ export const ADDRESS_SCHEMA_VERSION = 1;
 export const CREDIT_CARD_SCHEMA_VERSION = 3;
 
 const VALID_ADDRESS_FIELDS = [
-  "given-name",
-  "additional-name",
-  "family-name",
+  "name",
   "organization",
   "street-address",
   "address-level3",
@@ -181,25 +180,12 @@ const VALID_ADDRESS_FIELDS = [
   "email",
 ];
 
-const STREET_ADDRESS_COMPONENTS = [
-  "address-line1",
-  "address-line2",
-  "address-line3",
+const VALID_ADDRESS_COMPUTED_FIELDS = [
+  "country-name",
+  ...AddressRecord.NAME_COMPONENTS,
+  ...AddressRecord.STREET_ADDRESS_COMPONENTS,
+  ...AddressRecord.TEL_COMPONENTS,
 ];
-
-const TEL_COMPONENTS = [
-  "tel-country-code",
-  "tel-national",
-  "tel-area-code",
-  "tel-local",
-  "tel-local-prefix",
-  "tel-local-suffix",
-];
-
-const VALID_ADDRESS_COMPUTED_FIELDS = ["name", "country-name"].concat(
-  STREET_ADDRESS_COMPONENTS,
-  TEL_COMPONENTS
-);
 
 const VALID_CREDIT_CARD_FIELDS = [
   "billingAddressGUID",
@@ -297,20 +283,18 @@ class AutofillRecords {
     });
   }
 
-  observe(subject, topic, data) {
-    switch (topic) {
-      case "formautofill-storage-changed":
-        let collectionName = subject.wrappedJSObject.collectionName;
-        if (collectionName != this._collectionName) {
-          return;
-        }
-        const telemetryType =
-          subject.wrappedJSObject.collectionName == "creditCards"
-            ? lazy.AutofillTelemetry.CREDIT_CARD
-            : lazy.AutofillTelemetry.ADDRESS;
-        const count = this._data.filter(entry => !entry.deleted).length;
-        lazy.AutofillTelemetry.recordAutofillProfileCount(telemetryType, count);
-        break;
+  observe(subject, topic, _data) {
+    if (topic == "formautofill-storage-changed") {
+      let collectionName = subject.wrappedJSObject.collectionName;
+      if (collectionName != this._collectionName) {
+        return;
+      }
+      const telemetryType =
+        subject.wrappedJSObject.collectionName == "creditCards"
+          ? lazy.AutofillTelemetry.CREDIT_CARD
+          : lazy.AutofillTelemetry.ADDRESS;
+      const count = this._data.filter(entry => !entry.deleted).length;
+      lazy.AutofillTelemetry.recordAutofillProfileCount(telemetryType, count);
     }
   }
 
@@ -668,7 +652,13 @@ class AutofillRecords {
     // The record is cloned to avoid accidental modifications from outside.
     let clonedRecord = this._cloneAndCleanUp(recordFound);
     if (rawData) {
-      await this._stripComputedFields(clonedRecord);
+      // The *-name fields, previously listed in VALID_FIELDS, have been moved to
+      // COMPUTED_FIELDS. By default, the sync payload includes only those fields in VALID_FIELDS.
+      // Excluding *-name fields from the sync payload would prevent older devices from
+      // synchronizing with newer devices. To maintain backward compatibility, keep those deprecated
+      // ields in the payload, ensuring that older devices can still sync with newer devices.
+      const fieldsToKeep = AddressRecord.NAME_COMPONENTS;
+      await this._stripComputedFields(clonedRecord, fieldsToKeep);
     } else {
       this._recordReadProcessor(clonedRecord);
     }
@@ -695,13 +685,27 @@ class AutofillRecords {
     await Promise.all(
       clonedRecords.map(async record => {
         if (rawData) {
-          await this._stripComputedFields(record);
+          const fieldsToKeep = AddressRecord.NAME_COMPONENTS;
+          await this._stripComputedFields(record, fieldsToKeep);
         } else {
           this._recordReadProcessor(record);
         }
       })
     );
     return clonedRecords;
+  }
+
+  /**
+   * Returns true if the data set is empty. If the `includeDeleted` option is set to true,
+   * it will also consider items that are marked as deleted.
+   *
+   * @param   {object}  [options={}] options
+   * @param   {boolean} [options.includeDeleted = false]
+   *                    Indicates whether to include deleted items in the check.
+   * @returns {boolean} Returns `true` if the data set is empty, otherwise `false`.
+   */
+  isEmpty({ includeDeleted = false } = {}) {
+    return !this._data.find(r => !r.deleted || includeDeleted);
   }
 
   /**
@@ -1357,7 +1361,7 @@ class AutofillRecords {
       record.version = 0;
     }
 
-    if (this._isMigrationNeeded(record.version)) {
+    if (this._isMigrationNeeded(record)) {
       hasChanges = true;
 
       record = await this._computeMigratedRecord(record);
@@ -1376,14 +1380,19 @@ class AutofillRecords {
       return hasChanges;
     }
 
-    hasChanges |= await this.computeFields(record);
+    const originalNumFields = Object.keys(record).length;
+    await this.computeFields(record);
+    const hasNewComputedFields =
+      Object.keys(record).length != originalNumFields;
+
+    hasChanges |= hasNewComputedFields;
     return hasChanges;
   }
 
   _normalizeRecord(record, preserveEmptyFields = false) {
     this._normalizeFields(record);
 
-    for (let key in record) {
+    for (const key in record) {
       if (!this.VALID_FIELDS.includes(key)) {
         // Though we allow unknown fields, certain fields are still protected
         // from being changed
@@ -1405,37 +1414,12 @@ class AutofillRecords {
       }
     }
 
-    if (!Object.keys(record).length) {
+    const keys = Object.keys(record);
+    // By default we ensure there is always a country field, so if this record
+    // doesn't contain other fields, this is an empty record
+    if (!keys.length || (keys.length == 1 && keys[0] == "country")) {
       throw new Error("Record contains no valid field.");
     }
-  }
-
-  /**
-   * Merge the record if storage has multiple mergeable records.
-   *
-   * @param {object} targetRecord
-   *        The record for merge.
-   * @param {boolean} [strict = false]
-   *        In strict merge mode, we'll treat the subset record with empty field
-   *        as unable to be merged, but mergeable if in non-strict mode.
-   * @returns {Array.<string>}
-   *          Return an array of the merged GUID string.
-   */
-  async mergeToStorage(targetRecord, strict = false) {
-    let mergedGUIDs = [];
-    for (let record of this._data) {
-      if (
-        !record.deleted &&
-        (await this.mergeIfPossible(record.guid, targetRecord, strict))
-      ) {
-        mergedGUIDs.push(record.guid);
-      }
-    }
-    this.log.debug(
-      "Existing records matching and merging count is",
-      mergedGUIDs.length
-    );
-    return mergedGUIDs;
   }
 
   /**
@@ -1456,8 +1440,8 @@ class AutofillRecords {
     );
   }
 
-  _isMigrationNeeded(recordVersion) {
-    return recordVersion < this.version;
+  _isMigrationNeeded(record) {
+    return record.version < this.version;
   }
 
   /**
@@ -1479,41 +1463,46 @@ class AutofillRecords {
     return record;
   }
 
-  async _stripComputedFields(record) {
-    this.VALID_COMPUTED_FIELDS.forEach(field => delete record[field]);
+  async _stripComputedFields(record, fieldsToKeep = []) {
+    for (const field of this.VALID_COMPUTED_FIELDS) {
+      if (fieldsToKeep.includes(field)) {
+        continue;
+      }
+      delete record[field];
+    }
   }
 
   // An interface to be inherited.
-  _recordReadProcessor(record) {}
+  _recordReadProcessor(_record) {}
 
   // An interface to be inherited.
-  async computeFields(record) {}
+  async computeFields(_record) {}
 
   /**
    * An interface to be inherited to mutate the argument to normalize it.
    *
-   * @param {object} partialRecord containing the record passed by the consumer of
+   * @param {object} _partialRecord containing the record passed by the consumer of
    *                               storage and in the case of `update` with
    *                               `preserveOldProperties` will only include the
    *                               properties that the user is changing so the
    *                               lack of a field doesn't mean that the record
    *                               won't have that field.
    */
-  _normalizeFields(partialRecord) {}
+  _normalizeFields(_partialRecord) {}
 
   /**
    * An interface to be inherited to validate that the complete record is
    * consistent and isn't missing required fields. Overrides should throw for
    * invalid records.
    *
-   * @param {object} record containing the complete record that would be stored
+   * @param {object} _record containing the complete record that would be stored
    *                        if this doesn't throw due to an error.
    * @throws
    */
-  _validateFields(record) {}
+  _validateFields(_record) {}
 
   // An interface to be inherited.
-  async mergeIfPossible(guid, record, strict) {}
+  migrateRemoteRecord(_remoteRecord) {}
 }
 
 export class AddressesBase extends AutofillRecords {
@@ -1534,6 +1523,40 @@ export class AddressesBase extends AutofillRecords {
     }
   }
 
+  _isMigrationNeeded(record) {
+    if (super._isMigrationNeeded(record)) {
+      return true;
+    }
+
+    if (
+      !record.name &&
+      (record["given-name"] ||
+        record["additional-name"] ||
+        record["family-name"])
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  async _computeMigratedRecord(address) {
+    // Bug 1836438 - `name` field was moved from computed fields to valid fields.
+    if (
+      !address.name &&
+      (address["given-name"] ||
+        address["additional-name"] ||
+        address["family-name"])
+    ) {
+      address.name = lazy.FormAutofillNameUtils.joinNameParts({
+        given: address["given-name"] ?? "",
+        middle: address["additional-name"] ?? "",
+        family: address["family-name"] ?? "",
+      });
+    }
+
+    return super._computeMigratedRecord(address);
+  }
+
   async computeFields(address) {
     // NOTE: Remember to bump the schema version number if any of the existing
     //       computing algorithm changes. (No need to bump when just adding new
@@ -1542,128 +1565,39 @@ export class AddressesBase extends AutofillRecords {
     // NOTE: Computed fields should be always present in the storage no matter
     //       it's empty or not.
 
-    let hasNewComputedFields = false;
-
-    if (address.deleted) {
-      return hasNewComputedFields;
+    if (!address.deleted) {
+      AddressRecord.computeFields(address);
     }
-
-    // Compute name
-    if (!("name" in address)) {
-      let name = lazy.FormAutofillNameUtils.joinNameParts({
-        given: address["given-name"],
-        middle: address["additional-name"],
-        family: address["family-name"],
-      });
-      address.name = name;
-      hasNewComputedFields = true;
-    }
-
-    // Compute address lines
-    if (!("address-line1" in address)) {
-      let streetAddress = [];
-      if (address["street-address"]) {
-        streetAddress = address["street-address"]
-          .split("\n")
-          .map(s => s.trim());
-      }
-      for (let i = 0; i < 3; i++) {
-        address[`address-line${i + 1}`] = streetAddress[i] || "";
-      }
-      if (streetAddress.length > 3) {
-        address["address-line3"] = lazy.FormAutofillUtils.toOneLineAddress(
-          streetAddress.slice(2)
-        );
-      }
-      hasNewComputedFields = true;
-    }
-
-    // Compute country name
-    if (!("country-name" in address)) {
-      if (address.country) {
-        try {
-          address["country-name"] = Services.intl.getRegionDisplayNames(
-            undefined,
-            [address.country]
-          );
-        } catch (e) {
-          address["country-name"] = "";
-        }
-      } else {
-        address["country-name"] = "";
-      }
-      hasNewComputedFields = true;
-    }
-
-    // Compute tel
-    if (!("tel-national" in address)) {
-      if (address.tel) {
-        let tel = lazy.PhoneNumber.Parse(
-          address.tel,
-          address.country || FormAutofill.DEFAULT_REGION
-        );
-        if (tel) {
-          if (tel.countryCode) {
-            address["tel-country-code"] = tel.countryCode;
-          }
-          if (tel.nationalNumber) {
-            address["tel-national"] = tel.nationalNumber;
-          }
-
-          // PhoneNumberUtils doesn't support parsing the components of a telephone
-          // number so we hard coded the parser for US numbers only. We will need
-          // to figure out how to parse numbers from other regions when we support
-          // new countries in the future.
-          if (tel.nationalNumber && tel.countryCode == "+1") {
-            let telComponents = tel.nationalNumber.match(
-              /(\d{3})((\d{3})(\d{4}))$/
-            );
-            if (telComponents) {
-              address["tel-area-code"] = telComponents[1];
-              address["tel-local"] = telComponents[2];
-              address["tel-local-prefix"] = telComponents[3];
-              address["tel-local-suffix"] = telComponents[4];
-            }
-          }
-        } else {
-          // Treat "tel" as "tel-national" directly if it can't be parsed.
-          address["tel-national"] = address.tel;
-        }
-      }
-
-      TEL_COMPONENTS.forEach(c => {
-        address[c] = address[c] || "";
-      });
-    }
-
-    return hasNewComputedFields;
   }
 
   _normalizeFields(address) {
-    this._normalizeName(address);
-    this._normalizeAddress(address);
-    this._normalizeCountry(address);
-    this._normalizeTel(address);
+    this._normalizeCountryFields(address);
+    this._normalizeNameFields(address);
+    this._normalizeAddressFields(address);
+    this._normalizeTelFields(address);
   }
 
-  _normalizeName(address) {
-    if (address.name) {
-      let nameParts = lazy.FormAutofillNameUtils.splitName(address.name);
-      if (!address["given-name"] && nameParts.given) {
-        address["given-name"] = nameParts.given;
-      }
-      if (!address["additional-name"] && nameParts.middle) {
-        address["additional-name"] = nameParts.middle;
-      }
-      if (!address["family-name"] && nameParts.family) {
-        address["family-name"] = nameParts.family;
-      }
+  _normalizeNameFields(address) {
+    if (
+      !address.name &&
+      (address["given-name"] ||
+        address["additional-name"] ||
+        address["family-name"])
+    ) {
+      address.name = lazy.FormAutofillNameUtils.joinNameParts({
+        given: address["given-name"] ?? "",
+        middle: address["additional-name"] ?? "",
+        family: address["family-name"] ?? "",
+      });
     }
-    delete address.name;
+
+    delete address["given-name"];
+    delete address["additional-name"];
+    delete address["family-name"];
   }
 
-  _normalizeAddress(address) {
-    if (STREET_ADDRESS_COMPONENTS.some(c => !!address[c])) {
+  _normalizeAddressFields(address) {
+    if (AddressRecord.STREET_ADDRESS_COMPONENTS.some(c => !!address[c])) {
       // Treat "street-address" as "address-line1" if it contains only one line
       // and "address-line1" is omitted.
       if (
@@ -1677,26 +1611,23 @@ export class AddressesBase extends AutofillRecords {
 
       // Concatenate "address-line*" if "street-address" is omitted.
       if (!address["street-address"]) {
-        address["street-address"] = STREET_ADDRESS_COMPONENTS.map(
+        address["street-address"] = AddressRecord.STREET_ADDRESS_COMPONENTS.map(
           c => address[c]
         )
           .join("\n")
           .replace(/\n+$/, "");
       }
     }
-    STREET_ADDRESS_COMPONENTS.forEach(c => delete address[c]);
+    AddressRecord.STREET_ADDRESS_COMPONENTS.forEach(c => delete address[c]);
   }
 
-  _normalizeCountry(address) {
-    let country;
-
-    if (address.country) {
-      country = address.country.toUpperCase();
-    } else if (address["country-name"]) {
-      country = lazy.FormAutofillUtils.identifyCountryCode(
-        address["country-name"]
-      );
-    }
+  _normalizeCountryFields(address) {
+    // When we can't identify the country code, it is possible because that the region exists
+    // in regionNames.properties but not in libaddressinput.
+    const country =
+      lazy.FormAutofillUtils.identifyCountryCode(
+        address.country || address["country-name"]
+      ) || address.country;
 
     // Only values included in the region list will be saved.
     let hasLocalizedName = false;
@@ -1712,14 +1643,14 @@ export class AddressesBase extends AutofillRecords {
     if (country && hasLocalizedName) {
       address.country = country;
     } else {
-      delete address.country;
+      address.country = FormAutofill.DEFAULT_REGION;
     }
 
     delete address["country-name"];
   }
 
-  _normalizeTel(address) {
-    if (address.tel || TEL_COMPONENTS.some(c => !!address[c])) {
+  _normalizeTelFields(address) {
+    if (address.tel || AddressRecord.TEL_COMPONENTS.some(c => !!address[c])) {
       lazy.FormAutofillUtils.compressTel(address);
 
       let possibleRegion = address.country || FormAutofill.DEFAULT_REGION;
@@ -1730,110 +1661,60 @@ export class AddressesBase extends AutofillRecords {
         address.tel = tel.internationalNumber;
       }
     }
-    TEL_COMPONENTS.forEach(c => delete address[c]);
+    AddressRecord.TEL_COMPONENTS.forEach(c => delete address[c]);
   }
 
   /**
-   * Merge new address into the specified address if mergeable.
+   * Migrate the remote record to the expected format.
    *
-   * @param  {string} guid
-   *         Indicates which address to merge.
-   * @param  {object} address
-   *         The new address used to merge into the old one.
-   * @param  {boolean} strict
-   *         In strict merge mode, we'll treat the subset record with empty field
-   *         as unable to be merged, but mergeable if in non-strict mode.
-   * @returns {Promise<boolean>}
-   *          Return true if address is merged into target with specific guid or false if not.
+   * @param {object} remoteRecord The remote record.
    */
-  async mergeIfPossible(guid, address, strict) {
-    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
-  }
+  migrateRemoteRecord(remoteRecord) {
+    // When a remote record lacks the `name` field but includes any `*-name` fields, we can
+    // assume that the record originates from an older device. This is because even if an older
+    // device pulls the `name` field from a newer record from the sync server, the `name` field,
+    // being a computed field for an older device, will always be stripped.
 
-  compareAddressField(field, a, b, collator) {
-    switch (field) {
-      case "street-address":
-        let ret = lazy.FormAutofillUtils.compareStreetAddress(a, b, collator);
-        return ret;
-      // TODO: support other cases
-      default:
-        return a == b;
-    }
-  }
-
-  /**
-   * Normalize the given record and return records that are either the same
-   * or is superset of the normalized given record.
-   *
-   * See the comments in `getDuplicateRecords` to see the difference between
-   * `getDuplicateRecords` and `getMatchRecords`
-   *
-   * @param {object} record
-   *        The address entry for match checking. please make sure the
-   *        record is normalized.
-   * @returns {object}
-   *          Return the first matched record found in storage, null otherwise.
-   */
-  async *getMatchRecords(record) {
-    const collators = lazy.FormAutofillUtils.getSearchCollators(
-      FormAutofill.DEFAULT_REGION
-    );
-
-    for (const recordInStorage of this._data) {
+    // If the remote record comes from an older device, we compare the `*-name` fields in the
+    // remote record with those in the corresponding local record. If the values of the `*-name`
+    // fields differ, it indicates that the remote record has updated these fields. If the
+    // values are the same, we replace the name field of the remote record with the local
+    // name field to ensure the completeness of the name field when reconciling.
+    //
+    // Here is an example:
+    // Assume the local record is {"name": "Mr. John Doe"}. If an updated remote record
+    // has {"given-name": "John", "family-name": "Doe"}, we will NOT join the `*-name` fields
+    // and replace the local `name` field with "John Doe". This allows us to retain the complete
+    // name - "Mr. John Doe".
+    // However, if the updated remote record has {"given-name": "Jane", "family-name": "Poe"},
+    // we will rebuild it and replace the local `name` field with "Jane Poe".
+    if (
+      !("name" in remoteRecord) &&
+      AddressRecord.NAME_COMPONENTS.some(c => c in remoteRecord)
+    ) {
+      const localRecord = this._findByGUID(remoteRecord.guid);
       if (
-        this.VALID_FIELDS.every(
-          field =>
-            !record[field] ||
-            this.compareAddressField(
-              field,
-              record[field],
-              recordInStorage[field],
-              collators
-            )
+        localRecord &&
+        AddressRecord.NAME_COMPONENTS.every(
+          c => remoteRecord[c] == localRecord[c]
         )
       ) {
-        yield recordInStorage;
+        remoteRecord.name = localRecord.name;
+      } else {
+        remoteRecord.name = lazy.FormAutofillNameUtils.joinNameParts({
+          given: remoteRecord["given-name"],
+          middle: remoteRecord["additional-name"],
+          family: remoteRecord["family-name"],
+        });
       }
     }
-    return null;
-  }
 
-  /**
-   * Normalize the given record and return a duplicate address record in
-   * the storage.
-   *
-   * This is different from `getMatchRecords`, which ensures all the fields with
-   * value in the the record is equal to the returned record.
-   *
-   * @param {object} record
-   *        The address entry for duplication checking. please make sure the
-   *        record is normalized.
-   * @returns {object}
-   *          Return the first duplicated record found in storage, null otherwise.
-   */
-  async *getDuplicateRecords(record) {
-    const collators = lazy.FormAutofillUtils.getSearchCollators(
-      FormAutofill.DEFAULT_REGION
-    );
-
-    for (const recordInStorage of this._data) {
-      if (
-        this.VALID_FIELDS.every(
-          field =>
-            !record[field] ||
-            !recordInStorage[field] ||
-            this.compareAddressField(
-              field,
-              record[field],
-              recordInStorage[field],
-              collators
-            )
-        )
-      ) {
-        yield recordInStorage;
-      }
-    }
-    return null;
+    // To enable new devices to sync name field changes with older devices, we still
+    // include the computed *-name fields in the sync payload while uploading.
+    // This also means that the incoming remote record will also contain *-name fields.
+    // However, since the autofill storage does not expect remote records to contain
+    // computed fields while merging, we remove them from the remote record.
+    AddressRecord.NAME_COMPONENTS.forEach(f => delete remoteRecord[f]);
   }
 }
 
@@ -1869,7 +1750,7 @@ export class CreditCardsBase extends AutofillRecords {
 
     // Compute split names
     if (!("cc-given-name" in creditCard)) {
-      let nameParts = lazy.FormAutofillNameUtils.splitName(
+      const nameParts = lazy.FormAutofillNameUtils.splitName(
         creditCard["cc-name"]
       );
       creditCard["cc-given-name"] = nameParts.given;
@@ -1897,14 +1778,14 @@ export class CreditCardsBase extends AutofillRecords {
     return hasNewComputedFields;
   }
 
-  async _encryptNumber(creditCard) {
+  async _encryptNumber(_creditCard) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
-  _isMigrationNeeded(recordVersion) {
+  _isMigrationNeeded(record) {
     return (
       // version 4 is deprecated and is rolled back to version 3
-      recordVersion == 4 || recordVersion < this.version
+      record.version == 4 || record.version < this.version
     );
   }
 
@@ -1972,59 +1853,7 @@ export class CreditCardsBase extends AutofillRecords {
   }
 
   _normalizeFields(creditCard) {
-    this._normalizeCCName(creditCard);
-    this._normalizeCCNumber(creditCard);
-    this._normalizeCCExpirationDate(creditCard);
-  }
-
-  _normalizeCCName(creditCard) {
-    if (
-      creditCard["cc-given-name"] ||
-      creditCard["cc-additional-name"] ||
-      creditCard["cc-family-name"]
-    ) {
-      if (!creditCard["cc-name"]) {
-        creditCard["cc-name"] = lazy.FormAutofillNameUtils.joinNameParts({
-          given: creditCard["cc-given-name"],
-          middle: creditCard["cc-additional-name"],
-          family: creditCard["cc-family-name"],
-        });
-      }
-    }
-    delete creditCard["cc-given-name"];
-    delete creditCard["cc-additional-name"];
-    delete creditCard["cc-family-name"];
-  }
-
-  _normalizeCCNumber(creditCard) {
-    if (!("cc-number" in creditCard)) {
-      return;
-    }
-    if (!lazy.CreditCard.isValidNumber(creditCard["cc-number"])) {
-      delete creditCard["cc-number"];
-      return;
-    }
-    let card = new lazy.CreditCard({ number: creditCard["cc-number"] });
-    creditCard["cc-number"] = card.number;
-  }
-
-  _normalizeCCExpirationDate(creditCard) {
-    let normalizedExpiration = lazy.CreditCard.normalizeExpiration({
-      expirationMonth: creditCard["cc-exp-month"],
-      expirationYear: creditCard["cc-exp-year"],
-      expirationString: creditCard["cc-exp"],
-    });
-    if (normalizedExpiration.month) {
-      creditCard["cc-exp-month"] = normalizedExpiration.month;
-    } else {
-      delete creditCard["cc-exp-month"];
-    }
-    if (normalizedExpiration.year) {
-      creditCard["cc-exp-year"] = normalizedExpiration.year;
-    } else {
-      delete creditCard["cc-exp-year"];
-    }
-    delete creditCard["cc-exp"];
+    lazy.CreditCardRecord.normalizeFields(creditCard);
   }
 
   _validateFields(creditCard) {
@@ -2139,21 +1968,6 @@ export class CreditCardsBase extends AutofillRecords {
       }
     }
     return null;
-  }
-
-  /**
-   * Merge new credit card into the specified record if cc-number is identical.
-   * (Note that credit card records always do non-strict merge.)
-   *
-   * @param  {string} guid
-   *         Indicates which credit card to merge.
-   * @param  {object} creditCard
-   *         The new credit card used to merge into the old one.
-   * @returns {boolean}
-   *          Return true if credit card is merged into target with specific guid or false if not.
-   */
-  async mergeIfPossible(guid, creditCard) {
-    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 }
 

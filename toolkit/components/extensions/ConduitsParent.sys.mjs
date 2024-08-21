@@ -18,11 +18,26 @@
  * @typedef {number|string} ConduitID
  *
  * @typedef {object} ConduitAddress
- * @property {ConduitID} id Globally unique across all processes.
+ * @property {ConduitID} [id] Globally unique across all processes.
  * @property {string[]} [recv]
  * @property {string[]} [send]
  * @property {string[]} [query]
  * @property {string[]} [cast]
+ *
+ * @property {*} [actor]
+ * @property {boolean} [verified]
+ * @property {string} [url]
+ * @property {number} [frameId]
+ * @property {string} [workerScriptURL]
+ * @property {number} [workerDescriptorId]
+ * @property {string} [extensionId]
+ * @property {string} [envType]
+ * @property {string} [instanceId]
+ * @property {number} [portId]
+ * @property {boolean} [native]
+ * @property {boolean} [source]
+ * @property {string} [reportOnClosed]
+ *
  * Lists of recvX, sendX, queryX and castX methods this subject will use.
  *
  * @typedef {"messenger"|"port"|"tab"} BroadcastKind
@@ -99,7 +114,7 @@ const Hub = {
   closeConduit({ id, address }) {
     this.conduits.delete(id);
     for (let name of address.recv || []) {
-      this.byMethod.remove(name);
+      this.byMethod.delete(name);
     }
   },
 
@@ -285,7 +300,7 @@ export class BroadcastConduit extends BaseConduit {
     if (method === "RunListener" && arg.path.startsWith("webRequest.")) {
       return actor.batch(method, { target, arg, query, sender });
     }
-    return super._send(method, query, actor, { target, arg, query, sender });
+    return super._doSend(method, query, actor, { target, arg, query, sender });
   }
 
   /**
@@ -295,7 +310,7 @@ export class BroadcastConduit extends BaseConduit {
    * @param {string} method
    * @param {BroadcastKind} kind
    * @param {object} arg
-   * @returns {Promise[]}
+   * @returns {Promise<any[]> | Promise<Response>}
    */
   _cast(method, kind, arg) {
     let filters = {
@@ -335,8 +350,10 @@ export class BroadcastConduit extends BaseConduit {
   /**
    * Custom Promise.race() function that ignores certain resolutions and errors.
    *
-   * @param {Promise<response>[]} promises
-   * @returns {Promise<response?>}
+   * @typedef {{response?: any, received?: boolean}} Response
+   *
+   * @param {Promise<Response>[]} promises
+   * @returns {Promise<Response?>}
    */
   _raceResponses(promises) {
     return new Promise((resolve, reject) => {
@@ -390,7 +407,7 @@ export class ConduitsParent extends JSWindowActorParent {
    * Group webRequest events to send them as a batch, reducing IPC overhead.
    *
    * @param {string} name
-   * @param {MessageData} data
+   * @param {import("ConduitsChild.sys.mjs").MessageData} data
    * @returns {Promise<object>}
    */
   batch(name, data) {
@@ -428,7 +445,7 @@ export class ConduitsParent extends JSWindowActorParent {
    *
    * @param {object} options
    * @param {string} options.name
-   * @param {MessageData} options.data
+   * @param {import("ConduitsChild.sys.mjs").MessageData} options.data
    * @returns {Promise?}
    */
   async receiveMessage({ name, data: { arg, query, sender } }) {
@@ -436,13 +453,13 @@ export class ConduitsParent extends JSWindowActorParent {
       return Hub.recvConduitOpened(arg, this);
     }
 
-    sender = Hub.remotes.get(sender);
-    if (!sender || sender.actor !== this) {
+    let remote = Hub.remotes.get(sender);
+    if (!remote || remote.actor !== this) {
       throw new Error(`Unknown sender or wrong actor for recv${name}`);
     }
 
     if (name === "ConduitClosed") {
-      return Hub.recvConduitClosed(sender);
+      return Hub.recvConduitClosed(remote);
     }
 
     let conduit = Hub.byMethod.get(name);
@@ -450,7 +467,7 @@ export class ConduitsParent extends JSWindowActorParent {
       throw new Error(`Parent conduit for recv${name} not found`);
     }
 
-    return conduit._recv(name, arg, { actor: this, query, sender });
+    return conduit._recv(name, arg, { actor: this, query, sender: remote });
   }
 
   /**
@@ -466,6 +483,5 @@ export class ConduitsParent extends JSWindowActorParent {
  */
 export class ProcessConduitsParent extends JSProcessActorParent {
   receiveMessage = ConduitsParent.prototype.receiveMessage;
-  willDestroy = ConduitsParent.prototype.willDestroy;
   didDestroy = ConduitsParent.prototype.didDestroy;
 }

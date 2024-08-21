@@ -24,6 +24,7 @@ test_only:
     expires: never
     send_in_pings:
       - test-ping
+      - ride-along-ping
 
   can_we_time_it:
     type: timespan
@@ -199,6 +200,7 @@ test_only:
     labels:
       - next_to_the_fridge
       - clean
+      - 1st_counter
 
   mabels_bathroom_counters:
     type: labeled_counter
@@ -403,6 +405,63 @@ test_only:
       - test-ping
     telemetry_mirror: TELEMETRY_TEST_MIRROR_FOR_QUANTITY
 
+  balloons:
+    type: object
+    description: A collection of balloons
+    bugs:
+      - https://bugzilla.mozilla.org/1839640
+    data_reviews:
+      - http://example.com/reviews
+    notification_emails:
+      - CHANGE-ME@example.com
+    expires: never
+    structure:
+      type: array
+      items:
+        type: object
+        properties:
+          colour:
+            type: string
+          diameter:
+            type: number
+          CamelCasedParameter:
+            type: number
+
+  crash_stack:
+    type: object
+    description: A not-real crash stack
+    bugs:
+      - https://bugzilla.mozilla.org/1839640
+    data_reviews:
+      - http://example.com/reviews
+    notification_emails:
+      - CHANGE-ME@example.com
+    expires: never
+    structure:
+      type: object
+      properties:
+        status:
+          type: string
+        main_module:
+          type: number
+        crash_info:
+          type: object
+          properties:
+            typ:
+              type: string
+            address:
+              type: string
+            crashing_thread:
+              type: number
+        modules:
+          type: array
+          items:
+            type: object
+            properties:
+              base_addr:
+                type: string
+              end_addr:
+                type: string
 
 test_only.ipc:
   a_counter:
@@ -591,6 +650,9 @@ test_only.ipc:
   an_event:
     type: event
     extra_keys:
+      value:
+        type: string
+        description: Maps to Legacy Telemetry `value` property
       extra1:
         type: string
         description: "Some extra data"

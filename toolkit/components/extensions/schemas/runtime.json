@@ -1,7 +1,3 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
-
 [
   {
     "namespace": "manifest",
@@ -22,6 +18,108 @@
     "allowedContexts": ["content", "devtools"],
     "description": "Use the <code>browser.runtime</code> API to retrieve the background page, return details about the manifest, and listen for and respond to events in the app or extension lifecycle. You can also use this API to convert the relative path of URLs to fully-qualified URLs.",
     "types": [
+      {
+        "id": "ContextFilter",
+        "min_manifest_version": 3,
+        "type": "object",
+        "description": "A filter to match against existing extension context. Matching contexts must match all specified filters.",
+        "properties": {
+          "contextIds": {
+            "optional": true,
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "contextTypes": {
+            "optional": true,
+            "type": "array",
+            "items": { "$ref": "ContextType" }
+          },
+          "documentIds": {
+            "optional": true,
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "documentOrigins": {
+            "optional": true,
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "documentUrls": {
+            "optional": true,
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "frameIds": {
+            "optional": true,
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "tabIds": {
+            "optional": true,
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "windowIds": {
+            "optional": true,
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "incognito": { "optional": true, "type": "boolean" }
+        }
+      },
+      {
+        "id": "ContextType",
+        "type": "string",
+        "enum": ["BACKGROUND", "POPUP", "SIDE_PANEL", "TAB"],
+        "description": "The type of extension view."
+      },
+      {
+        "id": "ExtensionContext",
+        "type": "object",
+        "description": "A context hosting extension content",
+        "properties": {
+          "contextId": {
+            "type": "string",
+            "description": "An unique identifier associated to this context"
+          },
+          "contextType": {
+            "$ref": "ContextType",
+            "description": "The type of the context"
+          },
+          "documentId": {
+            "type": "string",
+            "unsupported": true,
+            "optional": true,
+            "description": "An UUID for the document associated with this context, or undefined if it is not hosted in a document"
+          },
+          "documentOrigin": {
+            "type": "string",
+            "optional": true,
+            "description": "The origin of the document associated with this context, or undefined if it is not hosted in a document"
+          },
+          "documentUrl": {
+            "type": "string",
+            "optional": true,
+            "description": "The URL of the document associated with this context, or undefined if it is not hosted in a document"
+          },
+          "incognito": {
+            "type": "boolean",
+            "description": "Whether the context is associated with an private browsing context."
+          },
+          "frameId": {
+            "type": "integer",
+            "description": "The frame ID for this context, or -1 if it is not hosted in a frame."
+          },
+          "tabId": {
+            "type": "integer",
+            "description": "The tab ID for this context, or -1 if it is not hosted in a tab."
+          },
+          "windowId": {
+            "type": "integer",
+            "description": "The window ID for this context, or -1 if it is not hosted in a window."
+          }
+        }
+      },
       {
         "id": "Port",
         "type": "object",
@@ -162,6 +260,18 @@
         "allowedContexts": ["content", "devtools"],
         "description": "The reason that the event is being dispatched. 'app_update' is used when the restart is needed because the application is updated to a newer version. 'os_update' is used when the restart is needed because the browser/OS is updated to a newer version. 'periodic' is used when the system runs for more than the permitted uptime set in the enterprise policy.",
         "enum": ["app_update", "os_update", "periodic"]
+      },
+      {
+        "id": "OnPerformanceWarningCategory",
+        "type": "string",
+        "enum": ["content_script"],
+        "description": "The performance warning event category, e.g. 'content_script'."
+      },
+      {
+        "id": "OnPerformanceWarningSeverity",
+        "type": "string",
+        "enum": ["low", "medium", "high"],
+        "description": "The performance warning event severity. Will be 'high' for serious and user-visible issues."
       }
     ],
     "properties": {
@@ -205,6 +315,31 @@
                 "isInstanceOf": "Window",
                 "additionalProperties": { "type": "any" },
                 "description": "The JavaScript 'window' object for the background page."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "getContexts",
+        "type": "function",
+        "description": "Fetches information about active contexts associated with this extension",
+        "async": "callback",
+        "parameters": [
+          {
+            "name": "filter",
+            "$ref": "ContextFilter",
+            "description": "A filter to find matching context."
+          },
+          {
+            "type": "function",
+            "name": "callback",
+            "parameters": [
+              {
+                "name": "contexts",
+                "type": "array",
+                "items": { "$ref": "ExtensionContext" },
+                "description": "The matching contexts, if any."
               }
             ]
           }
@@ -275,14 +410,14 @@
       {
         "name": "setUninstallURL",
         "type": "function",
-        "description": "Sets the URL to be visited upon uninstallation. This may be used to clean up server-side data, do analytics, and implement surveys. Maximum 255 characters.",
+        "description": "Sets the URL to be visited upon uninstallation. This may be used to clean up server-side data, do analytics, and implement surveys. Maximum 1023 characters.",
         "async": "callback",
         "parameters": [
           {
             "type": "string",
             "name": "url",
             "optional": true,
-            "maxLength": 255,
+            "maxLength": 1023,
             "description": "URL to be opened after the extension is uninstalled. This URL must have an http: or https: scheme. Set an empty string to not open a new tab upon uninstallation."
           },
           {
@@ -675,6 +810,36 @@
             "$ref": "OnRestartRequiredReason",
             "name": "reason",
             "description": "The reason that the event is being dispatched."
+          }
+        ]
+      },
+      {
+        "name": "onPerformanceWarning",
+        "type": "function",
+        "description": "Fired when a runtime performance issue is detected with the extension. Observe this event to be proactively notified of runtime performance problems with the extension.",
+        "parameters": [
+          {
+            "type": "object",
+            "name": "details",
+            "properties": {
+              "category": {
+                "$ref": "OnPerformanceWarningCategory",
+                "description": "The performance warning event category, e.g. 'content_script'."
+              },
+              "severity": {
+                "$ref": "OnPerformanceWarningSeverity",
+                "description": "The performance warning event severity, e.g. 'high'."
+              },
+              "tabId": {
+                "type": "integer",
+                "optional": true,
+                "description": "The $(ref:tabs.Tab) that the performance warning relates to, if any."
+              },
+              "description": {
+                "type": "string",
+                "description": "An explanation of what the warning means, and hopefully how to address it."
+              }
+            }
           }
         ]
       }

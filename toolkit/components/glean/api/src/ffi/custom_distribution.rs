@@ -22,6 +22,7 @@ pub extern "C" fn fog_custom_distribution_test_get_value(
     id: u32,
     ping_name: &nsACString,
     sum: &mut u64,
+    count: &mut u64,
     buckets: &mut ThinVec<u64>,
     counts: &mut ThinVec<u64>,
 ) {
@@ -33,6 +34,7 @@ pub extern "C" fn fog_custom_distribution_test_get_value(
     );
     // FIXME(bug 1771885): Glean should use `u64` where it can.
     *sum = val.sum as _;
+    *count = val.count as _;
     for (&bucket, &count) in val.values.iter() {
         buckets.push(bucket as _);
         counts.push(count as _);
@@ -63,6 +65,26 @@ pub extern "C" fn fog_custom_distribution_accumulate_samples_signed(
         id,
         metric,
         metric.accumulate_samples_signed(samples)
+    );
+}
+
+#[no_mangle]
+pub extern "C" fn fog_custom_distribution_accumulate_single_sample(id: u32, sample: u64) {
+    with_metric!(
+        CUSTOM_DISTRIBUTION_MAP,
+        id,
+        metric,
+        metric.accumulate_single_sample_signed(sample as i64)
+    );
+}
+
+#[no_mangle]
+pub extern "C" fn fog_custom_distribution_accumulate_single_sample_signed(id: u32, sample: i64) {
+    with_metric!(
+        CUSTOM_DISTRIBUTION_MAP,
+        id,
+        metric,
+        metric.accumulate_single_sample_signed(sample)
     );
 }
 

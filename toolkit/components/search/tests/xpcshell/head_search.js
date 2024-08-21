@@ -7,7 +7,6 @@ const { XPCOMUtils } = ChromeUtils.importESModule(
 
 ChromeUtils.defineESModuleGetters(this, {
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   Region: "resource://gre/modules/Region.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
   RemoteSettingsClient:
@@ -23,7 +22,9 @@ ChromeUtils.defineESModuleGetters(this, {
   sinon: "resource://testing-common/Sinon.sys.mjs",
 });
 
-var { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+var { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 var { AddonTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/AddonTestUtils.sys.mjs"
 );
@@ -306,6 +307,110 @@ async function setupRemoteSettings() {
 }
 
 /**
+ * Reads the specified file from the data directory and returns its contents as
+ * an Uint8Array.
+ *
+ * @param {string} filename
+ *   The name of the file to read.
+ * @returns {Promise<Uint8Array>}
+ *   The contents of the file in an Uint8Array.
+ */
+async function getFileDataBuffer(filename) {
+  return IOUtils.read(PathUtils.join(do_get_cwd().path, "data", filename));
+}
+
+/**
+ * Creates a mock attachment record for use in remote settings related tests.
+ *
+ * @param {object} item
+ *   An object containing the details of the attachment.
+ * @param {string} item.filename
+ *   The name of the attachmnet file in the data directory.
+ * @param {string[]} item.engineIdentifiers
+ *  The engine identifiers for the attachment.
+ * @param {number} item.imageSize
+ *  The size of the image.
+ * @param {string} [item.id]
+ *   The ID to use for the record. If not provided, a new UUID will be generated.
+ * @param {number} [item.lastModified]
+ *   The last modified time for the record. Defaults to the current time.
+ */
+async function mockRecordWithAttachment({
+  filename,
+  engineIdentifiers,
+  imageSize,
+  id = Services.uuid.generateUUID().toString(),
+  lastModified = Date.now(),
+}) {
+  let buffer = await getFileDataBuffer(filename);
+
+  // Generate a hash.
+  let hasher = Cc["@mozilla.org/security/hash;1"].createInstance(
+    Ci.nsICryptoHash
+  );
+  hasher.init(Ci.nsICryptoHash.SHA256);
+  hasher.update(buffer, buffer.length);
+
+  let hash = hasher.finish(false);
+  hash = Array.from(hash, (_, i) =>
+    ("0" + hash.charCodeAt(i).toString(16)).slice(-2)
+  ).join("");
+
+  // Mapping file extensions to corresponding MIME types.
+  const mimetypeFromExtension = {
+    ico: "image/x-icon",
+    svg: "image/svg+xml",
+    png: "image/png",
+  };
+
+  const extension = filename.split(".").pop().toLowerCase();
+
+  let record = {
+    id,
+    engineIdentifiers,
+    imageSize,
+    attachment: {
+      hash,
+      location: `${filename}`,
+      filename,
+      size: buffer.byteLength,
+      mimetype: mimetypeFromExtension[extension] || "",
+    },
+    last_modified: lastModified,
+  };
+
+  let attachment = {
+    record,
+    blob: new Blob([buffer]),
+  };
+
+  return { record, attachment };
+}
+
+/**
+ * Inserts an attachment record into the remote settings collection.
+ *
+ * @param {RemoteSettingsClient} client
+ *   The remote settings client to use.
+ * @param {object} item
+ *   An object containing the details of the attachment - see mockRecordWithAttachment.
+ * @param {boolean} [addAttachmentToCache]
+ *   Whether to add the attachment file to the cache. Defaults to true.
+ */
+async function insertRecordIntoCollection(
+  client,
+  item,
+  addAttachmentToCache = true
+) {
+  let { record, attachment } = await mockRecordWithAttachment(item);
+  await client.db.create(record);
+  if (addAttachmentToCache) {
+    await client.attachments.cacheImpl.set(record.id, attachment);
+  }
+  await client.db.importChanges({}, record.last_modified);
+}
+
+/**
  * Helper function that sets up a server and respnds to region
  * fetch requests.
  *
@@ -400,13 +505,13 @@ async function assertGleanDefaultEngine(expected) {
 class SearchObserver {
   constructor(expectedNotifications, returnEngineForNotification = false) {
     this.observer = this.observer.bind(this);
-    this.deferred = PromiseUtils.defer();
+    this.deferred = Promise.withResolvers();
     this.expectedNotifications = expectedNotifications;
     this.returnEngineForNotification = returnEngineForNotification;
 
     Services.obs.addObserver(this.observer, SearchUtils.TOPIC_ENGINE_MODIFIED);
 
-    this.timeout = setTimeout(this.handleTimeout.bind(this), 1000);
+    this.timeout = setTimeout(this.handleTimeout.bind(this), 5000);
   }
 
   get promise() {
@@ -474,11 +579,6 @@ let consoleAllowList = [
   // Harness issues.
   'property "localProfileDir" is non-configurable and can\'t be deleted',
   'property "profileDir" is non-configurable and can\'t be deleted',
-  // These can be emitted by `resource://services-settings/Utils.jsm` when
-  // remote settings is fetched (e.g. via IgnoreLists).
-  "NetworkError: Network request failed",
-  // Also remote settings, see bug 1812040.
-  "Unexpected content-type",
 ];
 
 let endConsoleListening = TestUtils.listenForConsoleMessages();

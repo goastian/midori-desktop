@@ -91,7 +91,7 @@ add_task(async function thumbnails_captureAndStoreIfStale_error_response() {
       // The service should not save the thumbnail - so we (a) check the thumbnail
       // remains green and (b) check the mtime of the file is < now.
       ensureThumbnailStale(URL);
-      BrowserTestUtils.loadURIString(browser, URL);
+      BrowserTestUtils.startLoadingURIString(browser, URL);
       await BrowserTestUtils.browserLoaded(browser);
 
       // now() returns a higher-precision value than the modified time of a file.
@@ -100,7 +100,11 @@ add_task(async function thumbnails_captureAndStoreIfStale_error_response() {
       let now = Date.now() - 1000;
       await PageThumbs.captureAndStoreIfStale(gBrowser.selectedBrowser);
 
-      ok(getThumbnailModifiedTime(URL) < now, "modified time should be < now");
+      Assert.less(
+        getThumbnailModifiedTime(URL),
+        now,
+        "modified time should be < now"
+      );
       let [r, g, b] = await retrieveImageDataForURL(URL);
       is("" + [r, g, b], "" + [0, 255, 0], "thumbnail is still green");
     }
@@ -127,7 +131,7 @@ add_task(async function thumbnails_captureAndStoreIfStale_non_error_response() {
       // return a 200 response and a red thumbnail - so that new thumbnail should
       // end up captured.
       ensureThumbnailStale(URL);
-      BrowserTestUtils.loadURIString(browser, URL);
+      BrowserTestUtils.startLoadingURIString(browser, URL);
       await BrowserTestUtils.browserLoaded(browser);
 
       // now() returns a higher-precision value than the modified time of a file.
@@ -159,7 +163,7 @@ add_task(async function thumbnails_captureAndStore_error_response() {
       gBrowser,
       url: URL,
     },
-    async browser => {
+    async () => {
       await captureAndCheckColor(0, 255, 0, "we have a green thumbnail");
     }
   );
@@ -172,7 +176,7 @@ add_task(async function thumbnails_captureAndStore_error_response() {
       gBrowser,
       url: URL,
     },
-    async browser => {
+    async () => {
       await captureAndCheckColor(0, 255, 0, "we still have a green thumbnail");
     }
   );
@@ -191,7 +195,7 @@ add_task(async function thumbnails_captureAndStore_ok_response() {
       gBrowser,
       url: URL,
     },
-    async browser => {
+    async () => {
       await captureAndCheckColor(0, 255, 0, "we have a green thumbnail");
     }
   );
@@ -204,7 +208,7 @@ add_task(async function thumbnails_captureAndStore_ok_response() {
       gBrowser,
       url: URL,
     },
-    async browser => {
+    async () => {
       await captureAndCheckColor(255, 0, 0, "we now have a red thumbnail");
     }
   );

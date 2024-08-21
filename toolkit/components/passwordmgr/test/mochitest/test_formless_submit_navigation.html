@@ -9,15 +9,9 @@
 </head>
 <body>
 <script type="application/javascript">
-const { LoginManagerChild } = SpecialPowers.ChromeUtils.import(
-  "resource://gre/modules/LoginManagerChild.jsm"
-);
-
 let loadPromise = new Promise(resolve => {
   document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("loginFrame").addEventListener("load", (evt) => {
-      resolve();
-    });
+    document.getElementById("loginFrame").addEventListener("load", _e => resolve());
   });
 });
 
@@ -183,7 +177,7 @@ const TESTCASES = [
   },
 ];
 
-function filterFormSubmissions({ origin, data }) {
+function filterFormSubmissions({ _origin, data }) {
   return data.newPasswordField.value != "ignore-form-submission";
 }
 
@@ -201,7 +195,6 @@ async function testFormlesSubmitNavigation(tc, testDoc, scriptName) {
   let frameDoc = SpecialPowers.wrap(loginFrame.contentWindow).document;
 
   let formsProcessed = promiseFormsProcessed(tc.expectedFormsCount);
-  // eslint-disable-next-line no-unsanitized/property
   frameDoc.documentElement.innerHTML = testDoc;
   await formsProcessed;
   // We eliminate no user input as a reason for not capturing by modifying the value

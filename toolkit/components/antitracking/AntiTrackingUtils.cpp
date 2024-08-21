@@ -7,6 +7,7 @@
 #include "AntiTrackingUtils.h"
 
 #include "AntiTrackingLog.h"
+#include "HttpBaseChannel.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/Components.h"
 #include "mozilla/dom/BrowsingContext.h"
@@ -28,12 +29,14 @@
 #include "nsIURI.h"
 #include "nsNetUtil.h"
 #include "nsPIDOMWindow.h"
+#include "nsQueryObject.h"
 #include "nsRFPService.h"
 #include "nsSandboxFlags.h"
 #include "nsScriptSecurityManager.h"
 #include "PartitioningExceptionList.h"
 
 #define ANTITRACKING_PERM_KEY "3rdPartyStorage"
+#define ANTITRACKING_FRAME_PERM_KEY "3rdPartyFrameStorage"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -126,6 +129,34 @@ bool AntiTrackingUtils::CreateStoragePermissionKey(nsIPrincipal* aPrincipal,
 }
 
 // static
+void AntiTrackingUtils::CreateStorageFramePermissionKey(
+    const nsACString& aTrackingSite, nsACString& aPermissionKey) {
+  MOZ_ASSERT(aPermissionKey.IsEmpty());
+
+  static const nsLiteralCString prefix =
+      nsLiteralCString(ANTITRACKING_FRAME_PERM_KEY "^");
+
+  aPermissionKey.SetCapacity(prefix.Length() + aTrackingSite.Length());
+  aPermissionKey.Append(prefix);
+  aPermissionKey.Append(aTrackingSite);
+}
+
+// static
+bool AntiTrackingUtils::CreateStorageFramePermissionKey(
+    nsIPrincipal* aPrincipal, nsACString& aKey) {
+  MOZ_ASSERT(aPrincipal);
+
+  nsAutoCString site;
+  nsresult rv = aPrincipal->GetSiteOriginNoSuffix(site);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return false;
+  }
+
+  CreateStorageFramePermissionKey(site, aKey);
+  return true;
+}
+
+// static
 bool AntiTrackingUtils::CreateStorageRequestPermissionKey(
     nsIURI* aURI, nsACString& aPermissionKey) {
   MOZ_ASSERT(aPermissionKey.IsEmpty());
@@ -188,6 +219,8 @@ Maybe<size_t> AntiTrackingUtils::CountSitesAllowStorageAccess(
 
   nsAutoCString prefix;
   AntiTrackingUtils::CreateStoragePermissionKey(aPrincipal, prefix);
+  nsAutoCString framePrefix;
+  AntiTrackingUtils::CreateStorageFramePermissionKey(aPrincipal, framePrefix);
 
   using Permissions = nsTArray<RefPtr<nsIPermission>>;
   Permissions perms;
@@ -195,10 +228,18 @@ Maybe<size_t> AntiTrackingUtils::CountSitesAllowStorageAccess(
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return Nothing();
   }
+  Permissions framePermissions;
+  rv = permManager->GetAllWithTypePrefix(framePrefix, framePermissions);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return Nothing();
+  }
+  if (!perms.AppendElements(framePermissions, fallible)) {
+    return Nothing();
+  }
 
   // Create a set of unique origins
-  using Origins = nsTArray<nsCString>;
-  Origins origins;
+  using Sites = nsTArray<nsCString>;
+  Sites sites;
 
   // Iterate over all permissions that have a prefix equal to the expected
   // permission we are looking for. This includes two things we need to remove:
@@ -211,10 +252,11 @@ Maybe<size_t> AntiTrackingUtils::CountSitesAllowStorageAccess(
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return Nothing();
     }
+
     // Let's make sure that we're not looking at a permission for
     // https://exampletracker.company when we mean to look for the
     // permission for https://exampletracker.com!
-    if (type != prefix) {
+    if (type != prefix && type != framePrefix) {
       continue;
     }
 
@@ -224,21 +266,21 @@ Maybe<size_t> AntiTrackingUtils::CountSitesAllowStorageAccess(
       return Nothing();
     }
 
-    nsAutoCString origin;
-    rv = principal->GetOrigin(origin);
+    nsAutoCString site;
+    rv = principal->GetSiteOrigin(site);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return Nothing();
     }
 
-    ToLowerCase(origin);
+    ToLowerCase(site);
 
     // Append if it would not be a duplicate
-    if (origins.IndexOf(origin) == Origins::NoIndex) {
-      origins.AppendElement(origin);
+    if (sites.IndexOf(site) == Sites::NoIndex) {
+      sites.AppendElement(site);
     }
   }
 
-  return Some(origins.Length());
+  return Some(sites.Length());
 }
 
 // static
@@ -345,6 +387,49 @@ bool AntiTrackingUtils::CheckStoragePermission(nsIPrincipal* aPrincipal,
 }
 
 /* static */
+nsresult AntiTrackingUtils::TestStoragePermissionInParent(
+    nsIPrincipal* aTopPrincipal, nsIPrincipal* aPrincipal, uint32_t* aResult) {
+  NS_ENSURE_ARG(aResult);
+  *aResult = nsIPermissionManager::UNKNOWN_ACTION;
+  NS_ENSURE_ARG(aTopPrincipal);
+  NS_ENSURE_ARG(aPrincipal);
+
+  nsCOMPtr<nsIPermissionManager> permMgr =
+      components::PermissionManager::Service();
+  NS_ENSURE_TRUE(permMgr, NS_ERROR_FAILURE);
+
+  // Build the permission keys
+  nsAutoCString requestPermissionKey;
+  bool success = AntiTrackingUtils::CreateStoragePermissionKey(
+      aPrincipal, requestPermissionKey);
+  NS_ENSURE_TRUE(success, NS_ERROR_FAILURE);
+
+  nsAutoCString requestFramePermissionKey;
+  success = AntiTrackingUtils::CreateStorageFramePermissionKey(
+      aPrincipal, requestFramePermissionKey);
+  NS_ENSURE_TRUE(success, NS_ERROR_FAILURE);
+
+  // Test the permission
+  uint32_t access = nsIPermissionManager::UNKNOWN_ACTION;
+  nsresult rv = permMgr->TestPermissionFromPrincipal(
+      aTopPrincipal, requestPermissionKey, &access);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (access != nsIPermissionManager::UNKNOWN_ACTION) {
+    *aResult = access;
+    return NS_OK;
+  }
+
+  uint32_t frameAccess = nsIPermissionManager::UNKNOWN_ACTION;
+  rv = permMgr->TestPermissionFromPrincipal(
+      aTopPrincipal, requestFramePermissionKey, &frameAccess);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  *aResult = frameAccess;
+  return NS_OK;
+}
+
+/* static */
 nsILoadInfo::StoragePermissionState
 AntiTrackingUtils::GetStoragePermissionStateInParent(nsIChannel* aChannel) {
   MOZ_ASSERT(aChannel);
@@ -429,21 +514,25 @@ AntiTrackingUtils::GetStoragePermissionStateInParent(nsIChannel* aChannel) {
     return nsILoadInfo::NoStoragePermission;
   }
 
+  if (targetPrincipal->IsSystemPrincipal()) {
+    return nsILoadInfo::HasStoragePermission;
+  }
+
   nsCOMPtr<nsIURI> trackingURI;
   rv = aChannel->GetURI(getter_AddRefs(trackingURI));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return nsILoadInfo::NoStoragePermission;
   }
 
-  nsAutoCString trackingOrigin;
-  rv = nsContentUtils::GetASCIIOrigin(trackingURI, trackingOrigin);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return nsILoadInfo::NoStoragePermission;
-  }
+  nsCOMPtr<nsIPrincipal> trackingPrincipal =
+      BasePrincipal::CreateContentPrincipal(trackingURI,
+                                            loadInfo->GetOriginAttributes());
 
   if (IsThirdPartyChannel(aChannel)) {
     nsAutoCString targetOrigin;
-    if (NS_FAILED(targetPrincipal->GetAsciiOrigin(targetOrigin))) {
+    nsAutoCString trackingOrigin;
+    if (NS_FAILED(targetPrincipal->GetOriginNoSuffix(targetOrigin)) ||
+        NS_FAILED(trackingPrincipal->GetOriginNoSuffix(trackingOrigin))) {
       return nsILoadInfo::NoStoragePermission;
     }
 
@@ -453,7 +542,7 @@ AntiTrackingUtils::GetStoragePermissionStateInParent(nsIChannel* aChannel) {
   }
 
   nsAutoCString type;
-  AntiTrackingUtils::CreateStoragePermissionKey(trackingOrigin, type);
+  AntiTrackingUtils::CreateStoragePermissionKey(trackingPrincipal, type);
 
   uint32_t unusedReason = 0;
 
@@ -461,6 +550,71 @@ AntiTrackingUtils::GetStoragePermissionStateInParent(nsIChannel* aChannel) {
                                                 NS_UsePrivateBrowsing(aChannel),
                                                 &unusedReason, unusedReason)) {
     return nsILoadInfo::HasStoragePermission;
+  }
+
+  WindowContext* wc = bc->GetCurrentWindowContext();
+  if (!wc) {
+    return nsILoadInfo::NoStoragePermission;
+  }
+  WindowGlobalParent* wgp = wc->Canonical();
+  if (!wgp) {
+    return nsILoadInfo::NoStoragePermission;
+  }
+  nsIPrincipal* framePrincipal = wgp->DocumentPrincipal();
+  if (!framePrincipal) {
+    return nsILoadInfo::NoStoragePermission;
+  }
+
+  if (policyType == ExtContentPolicy::TYPE_SUBDOCUMENT) {
+    // For loads of framed documents, we only use storage access
+    // if the load is the result of a same-origin, same-site-initiated
+    // navigation of the frame.
+    uint64_t triggeringWindowId;
+    rv = loadInfo->GetTriggeringWindowId(&triggeringWindowId);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return nsILoadInfo::NoStoragePermission;
+    }
+    bool triggeringWindowHasStorageAccess;
+    rv =
+        loadInfo->GetTriggeringStorageAccess(&triggeringWindowHasStorageAccess);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return nsILoadInfo::NoStoragePermission;
+    }
+
+    nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
+    RefPtr<nsIPrincipal> channelResultPrincipal;
+    rv = ssm->GetChannelResultPrincipal(aChannel,
+                                        getter_AddRefs(channelResultPrincipal));
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return nsILoadInfo::NoStoragePermission;
+    }
+    RefPtr<net::HttpBaseChannel> httpChannel = do_QueryObject(aChannel);
+    bool crossSiteInitiated = false;
+    if (bc && bc->GetParent()->GetCurrentWindowContext()) {
+      RefPtr<WindowGlobalParent> triggeringWGP =
+          WindowGlobalParent::GetByInnerWindowId(triggeringWindowId);
+      if (triggeringWGP && triggeringWGP->DocumentPrincipal()) {
+        rv = triggeringWGP->DocumentPrincipal()->IsThirdPartyPrincipal(
+            channelResultPrincipal, &crossSiteInitiated);
+        if (NS_FAILED(rv)) {
+          crossSiteInitiated = false;
+        }
+      }
+    }
+
+    if (!crossSiteInitiated && triggeringWindowHasStorageAccess &&
+        trackingPrincipal->Equals(framePrincipal) && httpChannel &&
+        !httpChannel->HasRedirectTaintedOrigin()) {
+      return nsILoadInfo::HasStoragePermission;
+    }
+  } else if (!bc->IsTop()) {
+    // For subframe resources, check if the document has storage access
+    // and that the resource being loaded is same-site to the page.
+    bool isThirdParty = true;
+    nsresult rv = framePrincipal->IsThirdPartyURI(trackingURI, &isThirdParty);
+    if (NS_SUCCEEDED(rv) && wc->GetUsingStorageAccess() && !isThirdParty) {
+      return nsILoadInfo::HasStoragePermission;
+    }
   }
 
   return nsILoadInfo::NoStoragePermission;
@@ -689,7 +843,8 @@ void AntiTrackingUtils::ComputeIsThirdPartyToTopWindow(nsIChannel* aChannel) {
     // whether the page is third-party, so we use channel result principal
     // instead. By doing this, an the resource inherits the principal from
     // its parent is considered not a third-party.
-    if (NS_IsAboutBlank(uri) || NS_IsAboutSrcdoc(uri)) {
+    if (NS_IsAboutBlank(uri) || NS_IsAboutSrcdoc(uri) ||
+        uri->SchemeIs("blob")) {
       nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
       if (NS_WARN_IF(!ssm)) {
         return;
@@ -715,10 +870,17 @@ void AntiTrackingUtils::ComputeIsThirdPartyToTopWindow(nsIChannel* aChannel) {
 bool AntiTrackingUtils::IsThirdPartyChannel(nsIChannel* aChannel) {
   MOZ_ASSERT(aChannel);
 
-  // We only care whether the channel is 3rd-party with respect to
-  // the top-level.
-  nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
-  return loadInfo->GetIsThirdPartyContextToTopWindow();
+  nsCOMPtr<mozIThirdPartyUtil> tpuService =
+      mozilla::components::ThirdPartyUtil::Service();
+  if (!tpuService) {
+    return true;
+  }
+  bool thirdParty = true;
+  nsresult rv = tpuService->IsThirdPartyChannel(aChannel, nullptr, &thirdParty);
+  if (NS_FAILED(rv)) {
+    return true;
+  }
+  return thirdParty;
 }
 
 /* static */
@@ -771,6 +933,12 @@ bool AntiTrackingUtils::IsThirdPartyWindow(nsPIDOMWindowInner* aWindow,
 /* static */
 bool AntiTrackingUtils::IsThirdPartyDocument(Document* aDocument) {
   MOZ_ASSERT(aDocument);
+  nsCOMPtr<mozIThirdPartyUtil> tpuService =
+      mozilla::components::ThirdPartyUtil::Service();
+  if (!tpuService) {
+    return true;
+  }
+  bool thirdParty = true;
   if (!aDocument->GetChannel()) {
     // If we can't get the channel from the document, i.e. initial about:blank
     // page, we use the browsingContext of the document to check if it's in the
@@ -780,10 +948,12 @@ bool AntiTrackingUtils::IsThirdPartyDocument(Document* aDocument) {
     return bc ? IsThirdPartyContext(bc) : true;
   }
 
-  // We only care whether the channel is 3rd-party with respect to
-  // the top-level.
-  nsCOMPtr<nsILoadInfo> loadInfo = aDocument->GetChannel()->LoadInfo();
-  return loadInfo->GetIsThirdPartyContextToTopWindow();
+  nsresult rv = tpuService->IsThirdPartyChannel(aDocument->GetChannel(),
+                                                nullptr, &thirdParty);
+  if (NS_FAILED(rv)) {
+    return true;
+  }
+  return thirdParty;
 }
 
 /* static */
@@ -791,41 +961,47 @@ bool AntiTrackingUtils::IsThirdPartyContext(BrowsingContext* aBrowsingContext) {
   MOZ_ASSERT(aBrowsingContext);
   MOZ_ASSERT(aBrowsingContext->IsInProcess());
 
-  if (aBrowsingContext->IsTopContent()) {
-    return false;
-  }
-
-  // If the top browsing context is not in the same process, it's cross-origin.
-  if (!aBrowsingContext->Top()->IsInProcess()) {
-    return true;
-  }
-
+  // iframes with SANDBOX_ORIGIN are always third-party contexts
+  // because they are a unique origin
   nsIDocShell* docShell = aBrowsingContext->GetDocShell();
   if (!docShell) {
     return true;
   }
   Document* doc = docShell->GetExtantDocument();
-  if (!doc) {
+  if (!doc || doc->GetSandboxFlags() & SANDBOXED_ORIGIN) {
     return true;
   }
   nsIPrincipal* principal = doc->NodePrincipal();
 
-  nsIDocShell* topDocShell = aBrowsingContext->Top()->GetDocShell();
-  if (!topDocShell) {
-    return true;
+  BrowsingContext* traversingParent = aBrowsingContext->GetParent();
+  while (traversingParent) {
+    // If the parent browsing context is not in the same process, it's
+    // cross-origin.
+    if (!traversingParent->IsInProcess()) {
+      return true;
+    }
+
+    nsIDocShell* parentDocShell = traversingParent->GetDocShell();
+    if (!parentDocShell) {
+      return true;
+    }
+    Document* parentDoc = parentDocShell->GetDocument();
+    if (!parentDoc || parentDoc->GetSandboxFlags() & SANDBOXED_ORIGIN) {
+      return true;
+    }
+    nsIPrincipal* parentPrincipal = parentDoc->NodePrincipal();
+
+    auto* parentBasePrin = BasePrincipal::Cast(parentPrincipal);
+    bool isThirdParty = true;
+
+    parentBasePrin->IsThirdPartyPrincipal(principal, &isThirdParty);
+    if (isThirdParty) {
+      return true;
+    }
+
+    traversingParent = traversingParent->GetParent();
   }
-  Document* topDoc = topDocShell->GetDocument();
-  if (!topDoc) {
-    return true;
-  }
-  nsIPrincipal* topPrincipal = topDoc->NodePrincipal();
-
-  auto* topBasePrin = BasePrincipal::Cast(topPrincipal);
-  bool isThirdParty = true;
-
-  topBasePrin->IsThirdPartyPrincipal(principal, &isThirdParty);
-
-  return isThirdParty;
+  return false;
 }
 
 /* static */
@@ -858,6 +1034,33 @@ void AntiTrackingUtils::UpdateAntiTrackingInfoForChannel(nsIChannel* aChannel) {
   Unused << loadInfo->SetStoragePermission(
       AntiTrackingUtils::GetStoragePermissionStateInParent(aChannel));
 
+  // Note that we need to put this after computing the IsThirdPartyToTopWindow
+  // flag because it will be used when getting the granular fingerprinting
+  // protections.
+  Maybe<RFPTarget> overriddenFingerprintingSettings =
+      nsRFPService::GetOverriddenFingerprintingSettingsForChannel(aChannel);
+
+  if (overriddenFingerprintingSettings) {
+    loadInfo->SetOverriddenFingerprintingSettings(
+        overriddenFingerprintingSettings.ref());
+  }
+#ifdef DEBUG
+  static_cast<mozilla::net::LoadInfo*>(loadInfo.get())
+      ->MarkOverriddenFingerprintingSettingsAsSet();
+#endif
+
+  ExtContentPolicyType contentType = loadInfo->GetExternalContentPolicyType();
+  if (contentType == ExtContentPolicy::TYPE_DOCUMENT ||
+      contentType == ExtContentPolicy::TYPE_SUBDOCUMENT) {
+    nsCOMPtr<nsICookieJarSettings> cookieJarSettings;
+    Unused << loadInfo->GetCookieJarSettings(getter_AddRefs(cookieJarSettings));
+    // For subdocuments, the channel's partition key is that of the parent
+    // document. This document may have a different partition key, particularly
+    // one without the same-site bit.
+    net::CookieJarSettings::Cast(cookieJarSettings)
+        ->UpdatePartitionKeyForDocumentLoadedByChannel(aChannel);
+  }
+
   // We only update the IsOnContentBlockingAllowList flag and the partition key
   // for the top-level http channel.
   //
@@ -868,17 +1071,15 @@ void AntiTrackingUtils::UpdateAntiTrackingInfoForChannel(nsIChannel* aChannel) {
   // The partition key is computed based on the site, so it's no point to set it
   // for channels other than http channels.
   nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aChannel);
-  if (!httpChannel || loadInfo->GetExternalContentPolicyType() !=
-                          ExtContentPolicy::TYPE_DOCUMENT) {
+  if (!httpChannel || contentType != ExtContentPolicy::TYPE_DOCUMENT) {
     return;
   }
-
-  nsCOMPtr<nsICookieJarSettings> cookieJarSettings;
-  Unused << loadInfo->GetCookieJarSettings(getter_AddRefs(cookieJarSettings));
 
   // Update the IsOnContentBlockingAllowList flag in the CookieJarSettings
   // if this is a top level loading. For sub-document loading, this flag
   // would inherit from the parent.
+  nsCOMPtr<nsICookieJarSettings> cookieJarSettings;
+  Unused << loadInfo->GetCookieJarSettings(getter_AddRefs(cookieJarSettings));
   net::CookieJarSettings::Cast(cookieJarSettings)
       ->UpdateIsOnContentBlockingAllowList(aChannel);
 
@@ -886,12 +1087,11 @@ void AntiTrackingUtils::UpdateAntiTrackingInfoForChannel(nsIChannel* aChannel) {
   // propagated to non-top level loads via CookieJarSetting.
   nsCOMPtr<nsIURI> uri;
   Unused << aChannel->GetURI(getter_AddRefs(uri));
-  net::CookieJarSettings::Cast(cookieJarSettings)->SetPartitionKey(uri);
+  net::CookieJarSettings::Cast(cookieJarSettings)->SetPartitionKey(uri, false);
 
   // Generate the fingerprinting randomization key for top-level loads. The key
   // will automatically be propagated to sub loads.
-  auto RFPRandomKey =
-      nsRFPService::GenerateKey(uri, NS_UsePrivateBrowsing(aChannel));
+  auto RFPRandomKey = nsRFPService::GenerateKey(aChannel);
   if (RFPRandomKey) {
     net::CookieJarSettings::Cast(cookieJarSettings)
         ->SetFingerprintingRandomizationKey(RFPRandomKey.ref());

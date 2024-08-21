@@ -26,8 +26,6 @@ Services.prefs.setBoolPref(
 );
 
 const CATEGORICAL_HISTOGRAM = "PWMGR_IMPORT_LOGINS_FROM_FILE_CATEGORICAL";
-const IMPORT_TIMER_HISTOGRAM = "PWMGR_IMPORT_LOGINS_FROM_FILE_MS";
-const IMPORT_JANK_HISTOGRAM = "PWMGR_IMPORT_LOGINS_FROM_FILE_JANK_MS";
 /**
  * Given an array of strings it creates a temporary CSV file that has them as content.
  *
@@ -40,8 +38,6 @@ const IMPORT_JANK_HISTOGRAM = "PWMGR_IMPORT_LOGINS_FROM_FILE_JANK_MS";
 async function setupCsv(csvLines, extension) {
   // Cleanup state.
   TTU.getAndClearHistogram(CATEGORICAL_HISTOGRAM);
-  TTU.getAndClearHistogram(IMPORT_TIMER_HISTOGRAM);
-  TTU.getAndClearHistogram(IMPORT_JANK_HISTOGRAM);
   Services.logins.removeAllUserFacingLogins();
   let tmpFile = await LoginTestUtils.file.setupCsvFileWithLines(
     csvLines,
@@ -97,7 +93,7 @@ add_task(async function test_import_tsv() {
   await LoginCSVImport.importFromCSV(tsvFilePath);
   assertHistogramTelemetry(histogram, 0, 1);
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.authLogin({
         formActionOrigin: null,
@@ -137,7 +133,7 @@ add_task(async function test_import_tsv_with_missing_columns() {
     "Ensure missing username throws"
   );
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [],
     "Check that no login was added without finding columns"
   );
@@ -159,7 +155,7 @@ add_task(async function test_import_lacking_username_column() {
     "Ensure missing username throws"
   );
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [],
     "Check that no login was added without finding a username column"
   );
@@ -183,7 +179,7 @@ add_task(async function test_import_with_duplicate_fields() {
     "Check that the errorType is file format error"
   );
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [],
     "Check that no login was added from a file with duplicated columns"
   );
@@ -204,7 +200,7 @@ add_task(async function test_import_with_duplicate_columns() {
     "Check that the errorType is file format error"
   );
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [],
     "Check that no login was added from a file with duplicated columns"
   );
@@ -222,7 +218,7 @@ add_task(async function test_import_minimal_with_mixed_naming() {
   ]);
 
   await LoginCSVImport.importFromCSV(csvFilePath);
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.formLogin({
         formActionOrigin: "",
@@ -258,7 +254,7 @@ add_task(async function test_import_from_firefox_various_latest() {
 
   await LoginCSVImport.importFromCSV(tmpFilePath);
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     logins,
     "Check that all of LoginTestUtils.testData.loginList can be re-imported"
   );
@@ -275,7 +271,7 @@ add_task(async function test_import_from_firefox_auth() {
 
   await LoginCSVImport.importFromCSV(csvFilePath);
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.authLogin({
         formActionOrigin: null,
@@ -308,7 +304,7 @@ add_task(async function test_import_from_firefox_auth_with_quotes() {
 
   await LoginCSVImport.importFromCSV(csvFilePath);
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.authLogin({
         formActionOrigin: null,
@@ -340,7 +336,7 @@ add_task(async function test_import_from_firefox_auth_some_quoted_fields() {
 
   await LoginCSVImport.importFromCSV(csvFilePath);
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.authLogin({
         formActionOrigin: null,
@@ -372,7 +368,7 @@ add_task(async function test_import_from_firefox_form_empty_formActionOrigin() {
 
   await LoginCSVImport.importFromCSV(csvFilePath);
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.formLogin({
         formActionOrigin: "",
@@ -404,7 +400,7 @@ add_task(async function test_import_from_firefox_form_with_formActionOrigin() {
 
   await LoginCSVImport.importFromCSV(csvFilePath);
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.formLogin({
         formActionOrigin: "https://other.example.com",
@@ -438,7 +434,7 @@ add_task(async function test_import_from_bitwarden_csv() {
 
   await LoginCSVImport.importFromCSV(csvFilePath);
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.formLogin({
         formActionOrigin: "",
@@ -471,7 +467,7 @@ add_task(async function test_import_from_chrome_csv() {
 
   await LoginCSVImport.importFromCSV(csvFilePath);
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.formLogin({
         formActionOrigin: "",
@@ -503,7 +499,7 @@ add_task(async function test_import_login_without_username() {
 
   await LoginCSVImport.importFromCSV(csvFilePath);
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.formLogin({
         formActionOrigin: "",
@@ -536,7 +532,7 @@ add_task(async function test_import_from_keepassxc_csv() {
 
   await LoginCSVImport.importFromCSV(csvFilePath);
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.formLogin({
         formActionOrigin: "",
@@ -596,7 +592,7 @@ add_task(async function test_import_summary_modified_login_without_guid() {
     "modified",
     `Check that the login was modified when there was no guid data`
   );
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.authLogin({
         formActionOrigin: null,
@@ -640,7 +636,7 @@ add_task(async function test_import_summary_modified_login_with_guid() {
     "modified",
     `Check that the login was modified when it had the same guid`
   );
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [
       TestData.authLogin({
         formActionOrigin: null,
@@ -732,7 +728,7 @@ add_task(async function test_import_summary_with_bad_format() {
     "Check that the errorType is file format error"
   );
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [],
     "Check that no login was added with bad format"
   );
@@ -752,7 +748,7 @@ add_task(async function test_import_summary_with_non_csv_file() {
     "Check that the errorType is file format error"
   );
 
-  LoginTestUtils.checkLogins(
+  await LoginTestUtils.checkLogins(
     [],
     "Check that no login was added with file of different format"
   );
@@ -768,10 +764,10 @@ add_task(async function test_import_summary_with_url_user_multiple_values() {
     "https://example.com,jane@example.com,password2,My realm",
   ]);
 
-  let initialLoginCount = Services.logins.getAllLogins().length;
+  let initialLoginCount = (await Services.logins.getAllLogins()).length;
 
   let results = await LoginCSVImport.importFromCSV(csvFilePath);
-  let afterImportLoginCount = Services.logins.getAllLogins().length;
+  let afterImportLoginCount = (await Services.logins.getAllLogins()).length;
 
   equal(results.length, 2, `Check that we got a result for each imported row`);
   equal(results[0].result, "added", `Check that the first login was added`);
@@ -793,10 +789,10 @@ add_task(async function test_import_summary_with_duplicated_guid_values() {
     "https://example1.com,jane1@example.com,password1,My realm,,{5ec0d12f-e194-4279-ae1b-d7d281bb0004},1589617814635,1589710449871,1589617846802",
     "https://example2.com,jane2@example.com,password2,My realm,,{5ec0d12f-e194-4279-ae1b-d7d281bb0004},1589617814635,1589710449871,1589617846802",
   ]);
-  let initialLoginCount = Services.logins.getAllLogins().length;
+  let initialLoginCount = (await Services.logins.getAllLogins()).length;
 
   let results = await LoginCSVImport.importFromCSV(csvFilePath);
-  let afterImportLoginCount = Services.logins.getAllLogins().length;
+  let afterImportLoginCount = (await Services.logins.getAllLogins()).length;
 
   equal(results.length, 2, `Check that we got a result for each imported row`);
   equal(results[0].result, "added", `Check that the first login was added`);
@@ -814,10 +810,10 @@ add_task(async function test_import_summary_with_different_time_changed() {
     "https://example.com,eve@example.com,old password,1589617814635,1589710449800,1589617846800",
     "https://example.com,eve@example.com,new password,1589617814635,1589710449801,1589617846801",
   ]);
-  let initialLoginCount = Services.logins.getAllLogins().length;
+  let initialLoginCount = (await Services.logins.getAllLogins()).length;
 
   let results = await LoginCSVImport.importFromCSV(csvFilePath);
-  let afterImportLoginCount = Services.logins.getAllLogins().length;
+  let afterImportLoginCount = (await Services.logins.getAllLogins()).length;
 
   equal(results.length, 2, `Check that we got a result for each imported row`);
   equal(
@@ -848,10 +844,10 @@ add_task(async function test_import_duplicate_logins_as_one() {
     "somesite,https://example.com/,user@example.com,asdasd123123",
     "somesite,https://example.com/,user@example.com,asdasd123123",
   ]);
-  let initialLoginCount = Services.logins.getAllLogins().length;
+  let initialLoginCount = (await Services.logins.getAllLogins()).length;
 
   let results = await LoginCSVImport.importFromCSV(csvFilePath);
-  let afterImportLoginCount = Services.logins.getAllLogins().length;
+  let afterImportLoginCount = (await Services.logins.getAllLogins()).length;
 
   equal(results.length, 2, `Check that we got a result for each imported row`);
   equal(

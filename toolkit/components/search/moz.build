@@ -7,8 +7,8 @@
 SPHINX_TREES["/toolkit/search"] = "docs"
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "tests/xpcshell/searchconfigs/xpcshell.ini",
-    "tests/xpcshell/xpcshell.ini",
+    "tests/xpcshell/searchconfigs/xpcshell.toml",
+    "tests/xpcshell/xpcshell.toml",
 ]
 
 XPIDL_SOURCES += [
@@ -19,10 +19,13 @@ XPIDL_MODULE = "toolkit_search"
 
 EXTRA_JS_MODULES += [
     "AddonSearchEngine.sys.mjs",
+    "AppProvidedSearchEngine.sys.mjs",
     "OpenSearchEngine.sys.mjs",
+    "OpenSearchLoader.sys.mjs",
     "PolicySearchEngine.sys.mjs",
     "SearchEngine.sys.mjs",
     "SearchEngineSelector.sys.mjs",
+    "SearchEngineSelectorOld.sys.mjs",
     "SearchService.sys.mjs",
     "SearchSettings.sys.mjs",
     "SearchStaticData.sys.mjs",

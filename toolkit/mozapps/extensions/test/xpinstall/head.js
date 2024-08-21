@@ -133,7 +133,6 @@ var Harness = {
       Services.obs.addObserver(this, "addon-install-failed");
 
       // For browser_auth tests which trigger auth dialogs.
-      Services.obs.addObserver(this, "tabmodal-dialog-loaded");
       Services.obs.addObserver(this, "common-dialog-loaded");
 
       this._boundWin = Cu.getWeakReference(win); // need this so our addon manager listener knows which window to use.
@@ -157,7 +156,6 @@ var Harness = {
         Services.obs.removeObserver(self, "addon-install-blocked");
         Services.obs.removeObserver(self, "addon-install-failed");
 
-        Services.obs.removeObserver(self, "tabmodal-dialog-loaded");
         Services.obs.removeObserver(self, "common-dialog-loaded");
 
         AddonManager.removeInstallListener(self);
@@ -289,10 +287,33 @@ var Harness = {
       }
     }
 
-    if (!result) {
-      panel.secondaryButton.click();
+    const panelEl = panel.closest("panel");
+    const panelState = panelEl.state;
+
+    const clickButton = () => {
+      info(`Clicking ${result ? "primary" : "secondary"} panel button`);
+      Assert.equal(
+        panelEl.state,
+        "open",
+        "Expect panel state to be open when clicking panel buttons"
+      );
+      if (!result) {
+        panel.secondaryButton.click();
+      } else {
+        panel.button.click();
+      }
+    };
+
+    if (panelState === "showing") {
+      info(
+        "panel is still showing, wait for 'popup-shown' topic to be notified"
+      );
+      BrowserUtils.promiseObserved(
+        "popup-shown",
+        shownPanel => shownPanel === panelEl
+      ).then(clickButton);
     } else {
-      panel.button.click();
+      clickButton();
     }
   },
 
@@ -489,7 +510,7 @@ var Harness = {
 
   // nsIObserver
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     var installInfo = subject.wrappedJSObject;
     switch (topic) {
       case "addon-install-started":
@@ -529,11 +550,6 @@ var Harness = {
             1
           );
         }, this);
-        break;
-      case "tabmodal-dialog-loaded":
-        let browser = subject.ownerGlobal.gBrowser.selectedBrowser;
-        let prompt = browser.tabModalPromptBox.getPrompt(subject);
-        this.promptReady(prompt.Dialog);
         break;
       case "common-dialog-loaded":
         this.promptReady(subject.Dialog);

@@ -4,9 +4,15 @@
 
 "use strict";
 
+// This file expects tabTracker to be defined in the global scope (e.g.
+// by ext-browser.js or ext-android.js).
+/* global tabTracker */
+
 var { ExtensionParent } = ChromeUtils.importESModule(
   "resource://gre/modules/ExtensionParent.sys.mjs"
 );
+
+var { DefaultWeakMap } = ExtensionUtils;
 
 ChromeUtils.defineESModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
@@ -23,6 +29,14 @@ XPCOMUtils.defineLazyPreferenceGetter(
 
 this.runtime = class extends ExtensionAPIPersistent {
   PERSISTENT_EVENTS = {
+    // Despite not being part of PERSISTENT_EVENTS, the following events are
+    // still triggered (after waking up the background context if needed):
+    // - runtime.onConnect
+    // - runtime.onConnectExternal
+    // - runtime.onMessage
+    // - runtime.onMessageExternal
+    // For details, see bug 1852317 and test_ext_eventpage_messaging_wakeup.js.
+
     onInstalled({ fire }) {
       let { extension } = this;
       let temporary = !!extension.addonData.temporarilyInstalled;
@@ -75,12 +89,139 @@ this.runtime = class extends ExtensionAPIPersistent {
         },
       };
     },
+    onPerformanceWarning({ fire }) {
+      let { extension } = this;
+
+      let observer = subject => {
+        let report = subject.QueryInterface(Ci.nsIHangReport);
+
+        if (report?.addonId !== extension.id) {
+          return;
+        }
+
+        const performanceWarningEventDetails = {
+          category: "content_script",
+          severity: "high",
+          description:
+            "Slow extension content script caused a page hang, user was warned.",
+        };
+
+        let scriptBrowser = report.scriptBrowser;
+        let nativeTab =
+          scriptBrowser?.ownerGlobal.gBrowser?.getTabForBrowser(scriptBrowser);
+        if (nativeTab) {
+          performanceWarningEventDetails.tabId = tabTracker.getId(nativeTab);
+        }
+
+        fire.async(performanceWarningEventDetails);
+      };
+
+      Services.obs.addObserver(observer, "process-hang-report");
+      return {
+        unregister: () => {
+          Services.obs.removeObserver(observer, "process-hang-report");
+        },
+        convert(_fire) {
+          fire = _fire;
+        },
+      };
+    },
   };
+
+  // Although we have an internal context.contextId field, we generate a new one here because
+  // the internal type is an integer and the public field a (UUID) string.
+  // TODO: Move the implementation elsewhere when contextId is used anywhere other than
+  // runtime.getContexts. See https://bugzilla.mozilla.org/show_bug.cgi?id=1628178#c5
+  //
+  // Map<ProxyContextParent, string>
+  #contextUUIDMap = new DefaultWeakMap(_context =>
+    String(Services.uuid.generateUUID()).slice(1, -1)
+  );
+
+  getContexts(filter) {
+    const { extension } = this;
+    const { proxyContexts } = ExtensionParent.ParentAPIManager;
+    const results = [];
+    for (const proxyContext of proxyContexts.values()) {
+      if (proxyContext.extension !== extension) {
+        continue;
+      }
+      let ctx;
+      try {
+        ctx = proxyContext.toExtensionContext();
+      } catch (err) {
+        // toExtensionContext may throw if the contextType getter
+        // raised an exception due to an internal viewType has
+        // not be mapped with a contextType value.
+        //
+        // When running in DEBUG builds we reject the getContexts
+        // call, while in non DEBUG build we just omit the result
+        // and log a warning in the Browser Console.
+        if (AppConstants.DEBUG) {
+          throw err;
+        } else {
+          Cu.reportError(err);
+        }
+      }
+
+      if (this.matchContextFilter(filter, ctx)) {
+        results.push({
+          ...ctx,
+          contextId: this.#contextUUIDMap.get(proxyContext),
+        });
+      }
+    }
+    return results;
+  }
+
+  matchContextFilter(filter, ctx) {
+    if (!ctx) {
+      // Filter out subclasses that do not return any ExtensionContext details
+      // from their toExtensionContext method.
+      return false;
+    }
+    if (filter.contextIds && !filter.contextIds.includes(ctx.contextId)) {
+      return false;
+    }
+    if (filter.contextTypes && !filter.contextTypes.includes(ctx.contextType)) {
+      return false;
+    }
+    if (filter.documentIds && !filter.documentIds.includes(ctx.documentId)) {
+      return false;
+    }
+    if (
+      filter.documentOrigins &&
+      !filter.documentOrigins.includes(ctx.documentOrigin)
+    ) {
+      return false;
+    }
+    if (filter.documentUrls && !filter.documentUrls.includes(ctx.documentUrl)) {
+      return false;
+    }
+    if (filter.frameIds && !filter.frameIds.includes(ctx.frameId)) {
+      return false;
+    }
+    if (filter.tabIds && !filter.tabIds.includes(ctx.tabId)) {
+      return false;
+    }
+    if (filter.windowIds && !filter.windowIds.includes(ctx.windowId)) {
+      return false;
+    }
+    if (
+      typeof filter.incognito === "boolean" &&
+      ctx.incognito !== filter.incognito
+    ) {
+      return false;
+    }
+    return true;
+  }
 
   getAPI(context) {
     let { extension } = context;
     return {
       runtime: {
+        getContexts: filter => this.getContexts(filter),
+
         // onStartup is special-cased in ext-backgroundPages to cause
         // an immediate startup.  We do not prime onStartup.
         onStartup: new EventManager({
@@ -163,6 +304,13 @@ this.runtime = class extends ExtensionAPIPersistent {
           },
         }).api(),
 
+        onPerformanceWarning: new EventManager({
+          context,
+          module: "runtime",
+          event: "onPerformanceWarning",
+          extensionApi: this,
+        }).api(),
+
         reload: async () => {
           if (extension.upgrade) {
             // If there is a pending update, install it now.
@@ -192,7 +340,7 @@ this.runtime = class extends ExtensionAPIPersistent {
         },
 
         openOptionsPage: function () {
-          if (!extension.manifest.options_ui) {
+          if (!extension.optionsPageProperties) {
             return Promise.reject({ message: "No `options_ui` declared" });
           }
 

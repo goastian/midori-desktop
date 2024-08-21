@@ -7,6 +7,12 @@
 with Files("**"):
     BUG_COMPONENT = ("Core", "Privacy: Anti-Tracking")
 
+JAR_MANIFESTS += ["jar.mn"]
+
+DIRS += [
+    "bouncetrackingprotection",
+]
+
 XPIDL_SOURCES += [
     "nsIContentBlockingAllowList.idl",
     "nsIPartitioningExceptionListService.idl",
@@ -47,7 +53,6 @@ EXPORTS.mozilla = [
     "ContentBlockingUserInteraction.h",
     "DynamicFpiRedirectHeuristic.h",
     "PartitioningExceptionList.h",
-    "RejectForeignAllowList.h",
     "StorageAccess.h",
     "StorageAccessAPIHelper.h",
     "StoragePrincipalHelper.h",
@@ -65,7 +70,6 @@ UNIFIED_SOURCES += [
     "ContentBlockingUserInteraction.cpp",
     "DynamicFpiRedirectHeuristic.cpp",
     "PartitioningExceptionList.cpp",
-    "RejectForeignAllowList.cpp",
     "SettingsChangeObserver.cpp",
     "StorageAccess.cpp",
     "StorageAccessAPIHelper.cpp",
@@ -86,11 +90,11 @@ FINAL_LIBRARY = "xul"
 
 if CONFIG["MOZ_BUILD_APP"] != "mobile/android":
     BROWSER_CHROME_MANIFESTS += [
-        "test/browser/browser-blocking.ini",
-        "test/browser/browser.ini",
+        "test/browser/browser-blocking.toml",
+        "test/browser/browser.toml",
     ]
 
-XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.toml"]
 
 TEST_DIRS += ["test/gtest"]
 

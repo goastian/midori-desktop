@@ -12,14 +12,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 /**
  * TelemetryStartup is needed to forward the "profile-after-change" notification
- * to TelemetryController.jsm.
+ * to TelemetryController.sys.mjs.
  */
 export function TelemetryStartup() {}
 
 TelemetryStartup.prototype.QueryInterface = ChromeUtils.generateQI([
   "nsIObserver",
 ]);
-TelemetryStartup.prototype.observe = function (aSubject, aTopic, aData) {
+TelemetryStartup.prototype.observe = function (aSubject, aTopic) {
   if (aTopic == "profile-after-change") {
     // In the content process, this is done in ContentProcessSingleton.js.
     lazy.TelemetryController.observe(null, aTopic, null);

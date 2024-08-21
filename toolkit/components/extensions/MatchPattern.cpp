@@ -68,6 +68,49 @@ bool AtomSet::Intersects(const AtomSet& aOther) const {
   return false;
 }
 
+#define DEFINE_STATIC_ATOM_SET(name, ...)            \
+  static already_AddRefed<AtomSet> name() {          \
+    MOZ_ASSERT(NS_IsMainThread());                   \
+    static StaticRefPtr<AtomSet> sAtomSet;           \
+    RefPtr<AtomSet> atomSet = sAtomSet;              \
+    if (!atomSet) {                                  \
+      atomSet = sAtomSet = new AtomSet{__VA_ARGS__}; \
+      ClearOnShutdown(&sAtomSet);                    \
+    }                                                \
+    return atomSet.forget();                         \
+  }
+
+DEFINE_STATIC_ATOM_SET(PermittedSchemes, nsGkAtoms::http, nsGkAtoms::https, nsGkAtoms::about,
+                       nsGkAtoms::ws, nsGkAtoms::wss, nsGkAtoms::file,
+                       nsGkAtoms::ftp, nsGkAtoms::data);
+
+// Known schemes that are followed by "://" instead of ":".
+DEFINE_STATIC_ATOM_SET(HostLocatorSchemes, nsGkAtoms::http, nsGkAtoms::https,
+                       nsGkAtoms::ws, nsGkAtoms::wss, nsGkAtoms::file,
+                       nsGkAtoms::ftp, nsGkAtoms::moz_extension,
+                       nsGkAtoms::chrome, nsGkAtoms::resource, nsGkAtoms::moz,
+                       nsGkAtoms::moz_icon, nsGkAtoms::moz_gio);
+
+DEFINE_STATIC_ATOM_SET(WildcardSchemes, nsGkAtoms::http, nsGkAtoms::https,
+                       nsGkAtoms::ws, nsGkAtoms::wss);
+
+// Schemes whose URLs are a meaningful representation of the document URL, even
+// if the origin of that document is opaque (e.g. due to CSP sandbox).
+// Such documents have a null principal, and their precursor (origin) is
+// usually equal to the origin component of such URLs.
+// Counter-examples: about: and data: do not have any embedded origin,
+// blob:-URLs have an origin (becomes "null" when opaque) and no path.
+//
+// Note: view-source: is part of this set to make sure that we always look at
+// the URL and never at the principal in these cases, because in case of null
+// principals, the precursor could be a http(s) URL. We don't want to run
+// scripts in view-source: because we have historically not allowed extensions
+// to do so.
+DEFINE_STATIC_ATOM_SET(NonOpaqueSchemes, nsGkAtoms::http, nsGkAtoms::https,
+                       nsGkAtoms::file, nsGkAtoms::view_source);
+
+#undef DEFINE_STATIC_ATOM_SET
+
 /*****************************************************************************
  * URLInfo
  *****************************************************************************/
@@ -140,20 +183,24 @@ nsIURI* URLInfo::URINoRef() const {
 
 bool URLInfo::InheritsPrincipal() const {
   if (!mInheritsPrincipal.isSome()) {
+    // This logic here supports the match_about_blank flag of content scripts.
     // For our purposes, about:blank and about:srcdoc are treated as URIs that
     // inherit principals.
-    bool inherits = Spec().EqualsLiteral("about:blank") ||
-                    Spec().EqualsLiteral("about:srcdoc");
-
-    if (!inherits) {
-      nsresult rv = NS_URIChainHasFlags(
-          mURI, nsIProtocolHandler::URI_INHERITS_SECURITY_CONTEXT, &inherits);
-      Unused << NS_WARN_IF(NS_FAILED(rv));
-    }
+    bool inherits =
+        Scheme() == nsGkAtoms::about && (Spec().EqualsLiteral("about:blank") ||
+                                         Spec().EqualsLiteral("about:srcdoc"));
 
     mInheritsPrincipal.emplace(inherits);
   }
   return mInheritsPrincipal.ref();
+}
+
+bool URLInfo::IsNonOpaqueURL() const {
+  if (!mIsNonOpaqueURL.isSome()) {
+    RefPtr<AtomSet> nonOpaqueSchemes = NonOpaqueSchemes();
+    mIsNonOpaqueURL.emplace(nonOpaqueSchemes->Contains(Scheme()));
+  }
+  return mIsNonOpaqueURL.ref();
 }
 
 /*****************************************************************************
@@ -193,34 +240,6 @@ const nsCString& CookieInfo::RawHost() const {
 /*****************************************************************************
  * MatchPatternCore
  *****************************************************************************/
-
-#define DEFINE_STATIC_ATOM_SET(name, ...)            \
-  static already_AddRefed<AtomSet> name() {          \
-    MOZ_ASSERT(NS_IsMainThread());                   \
-    static StaticRefPtr<AtomSet> sAtomSet;           \
-    RefPtr<AtomSet> atomSet = sAtomSet;              \
-    if (!atomSet) {                                  \
-      atomSet = sAtomSet = new AtomSet{__VA_ARGS__}; \
-      ClearOnShutdown(&sAtomSet);                    \
-    }                                                \
-    return atomSet.forget();                         \
-  }
-
-DEFINE_STATIC_ATOM_SET(PermittedSchemes, nsGkAtoms::http, nsGkAtoms::https, nsGkAtoms::about,
-                       nsGkAtoms::ws, nsGkAtoms::wss, nsGkAtoms::file,
-                       nsGkAtoms::ftp, nsGkAtoms::data);
-
-// Known schemes that are followed by "://" instead of ":".
-DEFINE_STATIC_ATOM_SET(HostLocatorSchemes, nsGkAtoms::http, nsGkAtoms::https,
-                       nsGkAtoms::ws, nsGkAtoms::wss, nsGkAtoms::file,
-                       nsGkAtoms::ftp, nsGkAtoms::moz_extension,
-                       nsGkAtoms::chrome, nsGkAtoms::resource, nsGkAtoms::moz,
-                       nsGkAtoms::moz_icon, nsGkAtoms::moz_gio);
-
-DEFINE_STATIC_ATOM_SET(WildcardSchemes, nsGkAtoms::http, nsGkAtoms::https,
-                       nsGkAtoms::ws, nsGkAtoms::wss);
-
-#undef DEFINE_STATIC_ATOM_SET
 
 MatchPatternCore::MatchPatternCore(const nsAString& aPattern, bool aIgnorePath,
                                    bool aRestrictSchemes, ErrorResult& aRv) {
@@ -325,7 +344,24 @@ MatchPatternCore::MatchPatternCore(const nsAString& aPattern, bool aIgnorePath,
     return;
   }
 
-  mPath = new MatchGlobCore(path, false, aRv);
+  // Anything matched against one of the hosts in hostLocatorSchemes is expected
+  // to have a path starting with "/". Pass isPathGlob=true in these cases to
+  // ensure that MatchGlobCore treats "/*" paths as a wildcard (IsWildcard()).
+  bool isPathGlob = requireHostLocatorScheme;
+  mPath = new MatchGlobCore(path, false, isPathGlob, aRv);
+}
+
+bool MatchPatternCore::MatchesAllWebUrls() const {
+  // Returns true if the match pattern matches any http(s) URL, i.e.:
+  // - ["<all_urls>"]
+  // - ["*://*/*"]
+  return (mSchemes->Contains(nsGkAtoms::http) &&
+          MatchesAllUrlsWithScheme(nsGkAtoms::https));
+}
+
+bool MatchPatternCore::MatchesAllUrlsWithScheme(const nsAtom* scheme) const {
+  return (mSchemes->Contains(scheme) && DomainIsWildcard() &&
+          (!mPath || mPath->IsWildcard()));
 }
 
 bool MatchPatternCore::MatchesDomain(const nsACString& aDomain) const {
@@ -491,6 +527,27 @@ bool MatchPatternSetCore::Matches(const URLInfo& aURL, bool aExplicit) const {
   return false;
 }
 
+bool MatchPatternSetCore::MatchesAllWebUrls() const {
+  // Returns true if the match pattern matches any http(s) URL, i.e.:
+  // - ["<all_urls>"]
+  // - ["*://*/*"]
+  // - ["https://*/*", "http://*/*"]
+  bool hasHttp = false;
+  bool hasHttps = false;
+  for (const auto& pattern : mPatterns) {
+    if (!hasHttp && pattern->MatchesAllUrlsWithScheme(nsGkAtoms::http)) {
+      hasHttp = true;
+    }
+    if (!hasHttps && pattern->MatchesAllUrlsWithScheme(nsGkAtoms::https)) {
+      hasHttps = true;
+    }
+    if (hasHttp && hasHttps) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool MatchPatternSetCore::MatchesCookie(const CookieInfo& aCookie) const {
   for (const auto& pattern : mPatterns) {
     if (pattern->MatchesCookie(aCookie)) {
@@ -501,6 +558,12 @@ bool MatchPatternSetCore::MatchesCookie(const CookieInfo& aCookie) const {
 }
 
 bool MatchPatternSetCore::Subsumes(const MatchPatternCore& aPattern) const {
+  // Note: the implementation below assumes that a pattern can only be subsumed
+  // if it is fully contained within another pattern. Logically, this is an
+  // incorrect assumption: "*://example.com/" matches multiple schemes, and is
+  // equivalent to a MatchPatternSet that lists all schemes explicitly.
+  // TODO bug 1856380: account for all patterns if aPattern has a wildcard
+  // scheme (such as when aPattern.MatchesAllWebUrls() is true).
   for (const auto& pattern : mPatterns) {
     if (pattern->Subsumes(aPattern)) {
       return true;
@@ -610,7 +673,7 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(MatchPatternSet)
  *****************************************************************************/
 
 MatchGlobCore::MatchGlobCore(const nsACString& aGlob, bool aAllowQuestion,
-                             ErrorResult& aRv)
+                             bool aIsPathGlob, ErrorResult& aRv)
     : mGlob(aGlob) {
   // Check for a literal match with no glob metacharacters.
   auto index = mGlob.FindCharInSet(aAllowQuestion ? "*?" : "*");
@@ -620,11 +683,17 @@ MatchGlobCore::MatchGlobCore(const nsACString& aGlob, bool aAllowQuestion,
   }
 
   // Check for a prefix match, where the only glob metacharacter is a "*"
-  // at the end of the string.
-  if (index == (int32_t)mGlob.Length() - 1 && mGlob[index] == '*') {
-    mPathLiteral = StringHead(mGlob, index);
-    mIsPrefix = true;
-    return;
+  // at the end of the string (or a sequence of it).
+  for (int32_t i = mGlob.Length() - 1; i >= index && mGlob[i] == '*'; --i) {
+    if (i == index) {
+      mPathLiteral = StringHead(mGlob, index);
+      if (aIsPathGlob && mPathLiteral.EqualsLiteral("/")) {
+        // Ensure that IsWildcard() correctly treats us as a wildcard.
+        mPathLiteral.Truncate();
+      }
+      mIsPrefix = true;
+      return;
+    }
   }
 
   // Fall back to the regexp slow path.
@@ -686,9 +755,9 @@ already_AddRefed<MatchGlob> MatchGlob::Constructor(dom::GlobalObject& aGlobal,
                                                    const nsACString& aGlob,
                                                    bool aAllowQuestion,
                                                    ErrorResult& aRv) {
-  RefPtr<MatchGlob> glob =
-      new MatchGlob(aGlobal.GetAsSupports(),
-                    MakeAndAddRef<MatchGlobCore>(aGlob, aAllowQuestion, aRv));
+  RefPtr<MatchGlob> glob = new MatchGlob(
+      aGlobal.GetAsSupports(),
+      MakeAndAddRef<MatchGlobCore>(aGlob, aAllowQuestion, false, aRv));
   if (aRv.Failed()) {
     return nullptr;
   }

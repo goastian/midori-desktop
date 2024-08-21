@@ -36,22 +36,52 @@ export var FirstStartup = {
    * completed, or until a timeout is reached.
    *
    * In the latter case, services are expected to run post-UI instead as usual.
+   *
+   * @param {boolean} newProfile
+   *   True if a new profile was just created, false otherwise.
    */
-  init() {
+  init(newProfile) {
+    if (!newProfile) {
+      // In this case, we actually don't want to do any FirstStartup work,
+      // since a pre-existing profile was detected (presumably, we entered here
+      // because a user re-installed via the stub installer when there existed
+      // previous user profiles on the file system). We do, however, want to
+      // measure how often this occurs.
+      Glean.firstStartup.statusCode.set(this.NOT_STARTED);
+      Glean.firstStartup.newProfile.set(false);
+      GleanPings.firstStartup.submit();
+      return;
+    }
+
+    Glean.firstStartup.newProfile.set(true);
+
     this._state = this.IN_PROGRESS;
     const timeout = Services.prefs.getIntPref(PREF_TIMEOUT, 30000); // default to 30 seconds
     let startingTime = Cu.now();
     let initialized = false;
 
     let promises = [];
+
+    let normandyInitEndTime = null;
     if (AppConstants.MOZ_NORMANDY) {
-      promises.push(lazy.Normandy.init({ runAsync: false }));
+      promises.push(
+        lazy.Normandy.init({ runAsync: false }).finally(() => {
+          normandyInitEndTime = Cu.now();
+        })
+      );
     }
 
+    let deleteTasksEndTime = null;
     if (AppConstants.MOZ_UPDATE_AGENT) {
       // It's technically possible for a previous installation to leave an old
       // OS-level scheduled task around.  Start fresh.
-      promises.push(lazy.TaskScheduler.deleteAllTasks().catch(() => {}));
+      promises.push(
+        lazy.TaskScheduler.deleteAllTasks()
+          .catch(() => {})
+          .finally(() => {
+            deleteTasksEndTime = Cu.now();
+          })
+      );
     }
 
     if (promises.length) {
@@ -73,6 +103,18 @@ export var FirstStartup = {
       this._state = this.UNSUPPORTED;
     }
 
+    if (AppConstants.MOZ_NORMANDY) {
+      Glean.firstStartup.normandyInitTime.set(
+        Math.ceil(normandyInitEndTime || Cu.now() - startingTime)
+      );
+    }
+
+    if (AppConstants.MOZ_UPDATE_AGENT) {
+      Glean.firstStartup.deleteTasksTime.set(
+        Math.ceil(deleteTasksEndTime || Cu.now() - startingTime)
+      );
+    }
+
     Glean.firstStartup.statusCode.set(this._state);
     Glean.firstStartup.elapsed.set(this.elapsed);
     GleanPings.firstStartup.submit();
@@ -80,5 +122,12 @@ export var FirstStartup = {
 
   get state() {
     return this._state;
+  },
+
+  /**
+   * For testing only. This puts us back into the initial NOT_STARTED state.
+   */
+  resetForTesting() {
+    this._state = this.NOT_STARTED;
   },
 };

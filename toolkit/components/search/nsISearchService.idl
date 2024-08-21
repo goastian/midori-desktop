@@ -93,22 +93,13 @@ interface nsISearchEngine : nsISupports
 
   /**
    * Returns a string with the URL to an engine's icon matching both width and
-   * height. Returns null if icon with specified dimensions is not found.
+   * height. Returns undefined if icon with specified dimensions is not found.
    *
-   * @param width
-   *        Width of the requested icon.
-   * @param height
-   *        Height of the requested icon.
+   * @param preferredWidth
+   *   Width of the requested icon. If not specified, it is assumed that
+   *   16x16 is desired.
    */
-  AString getIconURLBySize(in long width, in long height);
-
-  /**
-   * Gets an array of all available icons. Each entry is an object with
-   * width, height and url properties. width and height are numeric and
-   * represent the icon's dimensions. url is a string with the URL for
-   * the icon.
-   */
-  jsval getIcons();
+  Promise getIconURL([optional] in unsigned short preferredWidth);
 
   /**
    * Opens a speculative connection to the engine's search URI
@@ -125,8 +116,8 @@ interface nsISearchEngine : nsISupports
   void speculativeConnect(in jsval options);
 
   /**
-   * An optional shortcut alias for the engine.
-   * When not an empty string, this is a unique identifier.
+   * A user defined alias for the engine.
+   * When not an empty string, this should be a unique identifier.
    */
   attribute AString alias;
 
@@ -147,9 +138,9 @@ interface nsISearchEngine : nsISupports
   attribute boolean hidden;
 
   /**
-   * A nsIURI corresponding to the engine's icon, stored locally. May be null.
+   * Whether the associated one off button should be hidden from the user.
    */
-  readonly attribute nsIURI iconURI;
+  attribute boolean hideOneOffButton;
 
   /**
    * The display name of the search engine. This is a unique identifier.
@@ -172,12 +163,6 @@ interface nsISearchEngine : nsISupports
    * https://example.org/ for the organic search page.
    */
   readonly attribute AString searchForm;
-
-  /**
-   * A boolean to indicate if we should send an attribution request to Mozilla's
-   * server.
-   */
-  readonly attribute boolean sendAttributionRequest;
 
   /**
    * The identifier to use for this engine when submitting to telemetry.
@@ -214,12 +199,18 @@ interface nsISearchEngine : nsISupports
   readonly attribute boolean isGeneralPurposeEngine;
 
   /**
-  * The domain from which search results are returned for this engine.
-  *
-  * @return the domain of the the search URL.
-  */
-readonly attribute AString searchUrlDomain;
+   * The domain from which search results are returned for this engine.
+   *
+   * @return the domain of the the search URL.
+   */
+  readonly attribute AString searchUrlDomain;
 
+  /**
+   * The URL to report the search to.
+   *
+   * @return the reporting URL.
+   */
+  readonly attribute AString clickUrl;
 };
 
 [scriptable, uuid(0dc93e51-a7bf-4a16-862d-4b3469ff6206)]
@@ -264,6 +255,7 @@ interface nsISearchService : nsISupports
   const unsigned short CHANGE_REASON_EXPERIMENT = 0xA;
   const unsigned short CHANGE_REASON_ENTERPRISE = 0xB;
   const unsigned short CHANGE_REASON_UITOUR = 0xC;
+  const unsigned short CHANGE_REASON_ENGINE_UPDATE = 0xD;
 
   /**
    * Start asynchronous initialization.
@@ -277,6 +269,16 @@ interface nsISearchService : nsISupports
   Promise init();
 
   /**
+   * A promise that is resolved when initialization has finished, but does not
+   * trigger initialization to begin.
+   *
+   * @returns {Promise}
+   *   Resolved when initalization has successfully finished, and rejected if it
+   *   has failed.
+   */
+  readonly attribute Promise promiseInitialized;
+
+  /**
    * Determine whether initialization has been completed.
    *
    * Clients of the service can use this attribute to quickly determine whether
@@ -288,13 +290,13 @@ interface nsISearchService : nsISupports
    * @return |true| if the search service is now initialized, |false| if
    * initialization has not been triggered yet.
    */
-  readonly attribute bool isInitialized;
+  readonly attribute boolean isInitialized;
 
   /**
    * Determine whether initialization has been completed successfully.
    *
    */
-  readonly attribute bool hasSuccessfullyInitialized;
+  readonly attribute boolean hasSuccessfullyInitialized;
 
 
   /**
@@ -546,4 +548,14 @@ interface nsISearchService : nsISupports
    *        "https://www.google.com/search?q=terms".
    */
   nsISearchParseSubmissionResult parseSubmissionURL(in AString url);
+
+  /**
+   * Returns a list of alternate domains for a given search engine domain.
+   *
+   * @param domain
+   *        The domain of the search engine.
+   * @returns {Array}
+   *          An array which contains all alternate domains.
+   */
+  Array<ACString> getAlternateDomains(in ACString domain);
 };

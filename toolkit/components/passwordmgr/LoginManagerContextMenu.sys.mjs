@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -57,7 +55,7 @@ export const LoginManagerContextMenu = {
       // login is bound so we can keep the reference to each object.
       item.addEventListener(
         "command",
-        function (login, event) {
+        function (login, _event) {
           this._fillTargetField(
             login,
             inputElementIdentifier,
@@ -89,7 +87,7 @@ export const LoginManagerContextMenu = {
   /**
    * Show the password autocomplete UI with the generation option forced to appear.
    */
-  async useGeneratedPassword(inputElementIdentifier, documentURI, browser) {
+  async useGeneratedPassword(inputElementIdentifier) {
     let browsingContextId = inputElementIdentifier.browsingContextId;
     let browsingContext = BrowsingContext.get(browsingContextId);
     let actor = browsingContext.currentWindowGlobal.getActor("LoginManager");
@@ -219,7 +217,7 @@ export const LoginManagerContextMenu = {
   },
 };
 
-XPCOMUtils.defineLazyGetter(
+ChromeUtils.defineLazyGetter(
   LoginManagerContextMenu,
   "_stringBundle",
   function () {
@@ -229,7 +227,7 @@ XPCOMUtils.defineLazyGetter(
   }
 );
 
-XPCOMUtils.defineLazyGetter(
+ChromeUtils.defineLazyGetter(
   LoginManagerContextMenu,
   "dateAndTimeFormatter",
   function () {

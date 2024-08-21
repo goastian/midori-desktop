@@ -93,9 +93,7 @@ else
 	find $(UNPACKED_INSTALLER) -maxdepth 1 -print0 | xargs -0 $(RM) -r
 endif
 	$(NSINSTALL) -D $(UNPACKED_INSTALLER)
-	cd $(UNPACKED_INSTALLER) && \
-	  $(INNER_UNMAKE_PACKAGE)
-
+	$(call INNER_UNMAKE_PACKAGE,$(UNPACKED_INSTALLER))
 
 unpack: $(UNPACKED_INSTALLER)
 ifeq ($(OS_ARCH), WINNT)
@@ -121,14 +119,6 @@ ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 ifneq (en,$(LPROJ_ROOT))
 	mv '$(STAGEDIST)'/en.lproj '$(STAGEDIST)'/$(LPROJ_ROOT).lproj
 endif
-ifdef MOZ_CRASHREPORTER
-# On Mac OS X, the crashreporter.ini file needs to be moved from under the
-# application bundle's Resources directory where all other l10n files are
-# located to the crash reporter bundle's Resources directory.
-	mv '$(STAGEDIST)'/crashreporter.app/Contents/Resources/crashreporter.ini \
-	  '$(STAGEDIST)'/../MacOS/crashreporter.app/Contents/Resources/crashreporter.ini
-	$(RM) -rf '$(STAGEDIST)'/crashreporter.app
-endif
 endif
 ifeq (WINNT,$(OS_ARCH))
 	$(MAKE) -C ../installer/windows CONFIG_DIR=l10ngen l10ngen/helper.exe
@@ -136,8 +126,7 @@ ifeq (WINNT,$(OS_ARCH))
 endif
 
 	$(NSINSTALL) -D $(DIST)/l10n-stage/$(PKG_PATH)
-	(cd $(DIST)/l10n-stage; \
-	  $(MAKE_PACKAGE))
+	$(call MAKE_PACKAGE,$(DIST)/l10n-stage)
 # packaging done, undo l10n stuff
 ifneq (en,$(LPROJ_ROOT))
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
@@ -217,8 +206,8 @@ package-langpack-%: XPI_NAME=locale-$*
 package-langpack-%: AB_CD=$*
 package-langpack-%:
 	$(NSINSTALL) -D $(DIST)/$(PKG_LANGPACK_PATH)
-	$(call py_action,langpack_manifest,--locales $(AB_CD) --app-version $(MOZ_APP_VERSION) --max-app-ver $(MOZ_APP_MAXVERSION) --app-name '$(MOZ_APP_DISPLAYNAME)' --l10n-basedir '$(L10NBASEDIR)' --metadata $(LANGPACK_METADATA) --langpack-eid '$(MOZ_LANGPACK_EID)' --input $(DIST)/xpi-stage/locale-$(AB_CD))
-	$(call py_action,zip,-C $(DIST)/xpi-stage/locale-$(AB_CD) -x **/*.manifest -x **/*.js -x **/*.ini $(LANGPACK_FILE) $(PKG_ZIP_DIRS) manifest.json)
+	$(call py_action,langpack_manifest $(AB_CD),--locales $(AB_CD) --app-version $(MOZ_APP_VERSION) --max-app-ver $(MOZ_APP_MAXVERSION) --app-name '$(MOZ_APP_DISPLAYNAME)' --l10n-basedir '$(L10NBASEDIR)' --metadata $(LANGPACK_METADATA) --langpack-eid '$(MOZ_LANGPACK_EID)' --input $(DIST)/xpi-stage/locale-$(AB_CD))
+	$(call py_action,zip $(PKG_LANGPACK_BASENAME).xpi,-C $(DIST)/xpi-stage/locale-$(AB_CD) -x **/*.manifest -x **/*.js -x **/*.ini $(LANGPACK_FILE) $(PKG_ZIP_DIRS) manifest.json)
 
 # This variable is to allow the wget-en-US target to know which ftp server to download from
 ifndef EN_US_BINARY_URL 

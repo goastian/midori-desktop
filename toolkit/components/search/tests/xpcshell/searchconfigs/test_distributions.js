@@ -3,11 +3,6 @@
 
 "use strict";
 
-ChromeUtils.defineESModuleGetters(this, {
-  SearchEngineSelector: "resource://gre/modules/SearchEngineSelector.sys.mjs",
-  SearchService: "resource://gre/modules/SearchService.sys.mjs",
-});
-
 const tests = [];
 
 for (let canonicalId of ["canonical", "canonical-001"]) {
@@ -152,7 +147,9 @@ tests.push({
       engines,
       "GMX Search",
       "https://go.gmx.co.uk/br/moz_search_web/?enc=UTF-8&q=test",
-      "https://suggestplugin.gmx.co.uk/s?q=test&brand=gmxcouk&origin=moz_splugin_ff&enc=UTF-8"
+      SearchUtils.newSearchConfigEnabled
+        ? "https://suggestplugin.gmx.co.uk/s?brand=gmxcouk&origin=moz_splugin_ff&enc=UTF-8&q=test"
+        : "https://suggestplugin.gmx.co.uk/s?q=test&brand=gmxcouk&origin=moz_splugin_ff&enc=UTF-8"
     ) &&
     hasDefault(engines, "GMX Search") &&
     hasEnginesFirst(engines, ["GMX Search"]),
@@ -173,7 +170,9 @@ tests.push({
       engines,
       "GMX - Búsqueda web",
       "https://go.gmx.es/br/moz_search_web/?enc=UTF-8&q=test",
-      "https://suggestplugin.gmx.es/s?q=test&brand=gmxes&origin=moz_splugin_ff&enc=UTF-8"
+      SearchUtils.newSearchConfigEnabled
+        ? "https://suggestplugin.gmx.es/s?brand=gmxes&origin=moz_splugin_ff&enc=UTF-8&q=test"
+        : "https://suggestplugin.gmx.es/s?q=test&brand=gmxes&origin=moz_splugin_ff&enc=UTF-8"
     ) &&
     hasDefault(engines, "GMX Search") &&
     hasEnginesFirst(engines, ["GMX Search"]),
@@ -194,7 +193,9 @@ tests.push({
       engines,
       "GMX - Recherche web",
       "https://go.gmx.fr/br/moz_search_web/?enc=UTF-8&q=test",
-      "https://suggestplugin.gmx.fr/s?q=test&brand=gmxfr&origin=moz_splugin_ff&enc=UTF-8"
+      SearchUtils.newSearchConfigEnabled
+        ? "https://suggestplugin.gmx.fr/s?brand=gmxfr&origin=moz_splugin_ff&enc=UTF-8&q=test"
+        : "https://suggestplugin.gmx.fr/s?q=test&brand=gmxfr&origin=moz_splugin_ff&enc=UTF-8"
     ) &&
     hasDefault(engines, "GMX Search") &&
     hasEnginesFirst(engines, ["GMX Search"]),
@@ -232,7 +233,7 @@ tests.push({
 });
 
 function hasURLs(engines, engineName, url, suggestURL) {
-  let engine = engines.find(e => e._name === engineName);
+  let engine = engines.find(e => e.name === engineName);
   Assert.ok(engine, `Should be able to find ${engineName}`);
 
   let submission = engine.getSubmission("test", "text/html");
@@ -251,7 +252,7 @@ function hasURLs(engines, engineName, url, suggestURL) {
 }
 
 function hasParams(engines, engineName, purpose, param) {
-  let engine = engines.find(e => e._name === engineName);
+  let engine = engines.find(e => e.name === engineName);
   Assert.ok(engine, `Should be able to find ${engineName}`);
 
   let submission = engine.getSubmission("test", "text/html", purpose);
@@ -273,7 +274,7 @@ function hasParams(engines, engineName, purpose, param) {
 }
 
 function hasTelemetryId(engines, engineName, telemetryId) {
-  let engine = engines.find(e => e._name === engineName);
+  let engine = engines.find(e => e.name === engineName);
   Assert.ok(engine, `Should be able to find ${engineName}`);
 
   Assert.equal(
@@ -303,38 +304,45 @@ function hasEnginesFirst(engines, expectedEngines) {
   }
 }
 
-engineSelector = new SearchEngineSelector();
+engineSelector = SearchUtils.newSearchConfigEnabled
+  ? new SearchEngineSelector()
+  : new SearchEngineSelectorOld();
 
-AddonTestUtils.init(GLOBAL_SCOPE);
-AddonTestUtils.createAppInfo(
-  "xpcshell@tests.mozilla.org",
-  "XPCShell",
-  "42",
-  "42"
-);
-
-add_task(async function setup() {
-  await AddonTestUtils.promiseStartupManager();
+add_setup(async function () {
+  if (SearchUtils.newSearchConfigEnabled) {
+    updateAppInfo({
+      name: "firefox",
+      ID: "xpcshell@tests.mozilla.org",
+      version: "128",
+      platformVersion: "128",
+    });
+  } else {
+    AddonTestUtils.init(GLOBAL_SCOPE);
+    AddonTestUtils.createAppInfo(
+      "xpcshell@tests.mozilla.org",
+      "XPCShell",
+      "42",
+      "42"
+    );
+    await AddonTestUtils.promiseStartupManager();
+  }
 
   await maybeSetupConfig();
 });
 
 add_task(async function test_expected_distribution_engines() {
-  let searchService = new SearchService();
   for (const { distribution, locale = "en-US", region = "US", test } of tests) {
     let config = await engineSelector.fetchEngineConfiguration({
       locale,
       region,
       distroID: distribution,
     });
+
     let engines = await SearchTestUtils.searchConfigToEngines(config.engines);
-    searchService._engines = engines;
-    searchService._searchDefault = {
-      id: config.engines[0].webExtension.id,
-      locale:
-        config.engines[0]?.webExtension?.locale ?? SearchUtils.DEFAULT_TAG,
-    };
-    engines = searchService._sortEnginesByDefaults(engines);
+    engines = SearchUtils.sortEnginesByDefaults({
+      engines,
+      appDefaultEngine: engines[0],
+    });
     test(engines);
   }
 });

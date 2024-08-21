@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Toolkit", "Notifications and Alerts")
+    BUG_COMPONENT = ("Toolkit", "Alerts Service")
 
 SharedLibrary("notificationserver")
 
@@ -26,6 +26,7 @@ DEFINES["IMPL_MFBT"] = True
 OS_LIBS += [
     "advapi32",
     "kernel32",
+    "runtimeobject",
     "user32",
 ]
 

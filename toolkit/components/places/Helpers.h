@@ -18,6 +18,8 @@
 #include "mozilla/Telemetry.h"
 #include "mozIStorageStatementCallback.h"
 
+class nsIFile;
+
 namespace mozilla {
 namespace places {
 
@@ -168,6 +170,14 @@ PRTime RoundedPRNow();
 nsresult HashURL(const nsACString& aSpec, const nsACString& aMode,
                  uint64_t* _hash);
 
+/**
+ * Return exposable URL from given URI.
+ *
+ * @param  aURI The URI to be converted.
+ * @return already_AddRefed<nsIURI> The converted, exposable URI.
+ */
+already_AddRefed<nsIURI> GetExposableURI(nsIURI* aURI);
+
 class QueryKeyValuePair final {
  public:
   QueryKeyValuePair(const nsACString& aKey, const nsACString& aValue) {
@@ -208,6 +218,26 @@ nsresult TokenizeQueryString(const nsACString& aQuery,
 
 void TokensToQueryString(const nsTArray<QueryKeyValuePair>& aTokens,
                          nsACString& aQuery);
+
+/**
+ * Copies the specified database file to the specified parent directory with
+ * the specified file name.  If the parent directory is not specified, it
+ * places the backup in the same directory as the current file.  This
+ * function ensures that the file being created is unique. This utility is meant
+ * to be used on database files with no open connections. Using this on database
+ * files with open connections may result in a corrupt backup file.
+ *
+ * @param aDBFile
+ *        The database file that will be backed up.
+ * @param aBackupFileName
+ *        The name of the new backup file to create.
+ * @param [optional] aBackupParentDirectory
+ *        The directory you'd like the backup file to be placed.
+ * @param backup
+ *        An outparam for the nsIFile pointing to the backup copy.
+ */
+nsresult BackupDatabaseFile(nsIFile* aDBFile, const nsAString& aBackupFileName,
+                            nsIFile* aBackupParentDirectory, nsIFile** backup);
 
 /**
  * Used to finalize a statementCache on a specified thread.

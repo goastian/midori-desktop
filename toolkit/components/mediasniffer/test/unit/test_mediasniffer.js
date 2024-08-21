@@ -2,8 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
+const { NetUtil } = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
+);
 
 const PATH = "/file.meh";
 var httpserver = new HttpServer();
@@ -67,7 +71,7 @@ var listener = {
     );
   },
 
-  onDataAvailable(request, stream, offset, count) {
+  onDataAvailable(request, stream) {
     try {
       var bis = Cc["@mozilla.org/binaryinputstream;1"].createInstance(
         Ci.nsIBinaryInputStream
@@ -79,7 +83,7 @@ var listener = {
     }
   },
 
-  onStopRequest(request, status) {
+  onStopRequest() {
     testRan++;
     runNext();
   },

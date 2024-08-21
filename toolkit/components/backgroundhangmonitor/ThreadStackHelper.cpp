@@ -22,7 +22,6 @@
 #include "mozilla/HangTypes.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/MemoryChecking.h"
-#include "mozilla/Scoped.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/UniquePtr.h"
 #include "nsThread.h"
@@ -206,7 +205,8 @@ void ThreadStackHelper::CollectJitReturnAddr(void* aAddr) {
   TryAppendFrame(HangEntryJit());
 }
 
-void ThreadStackHelper::CollectWasmFrame(const char* aLabel) {
+void ThreadStackHelper::CollectWasmFrame(JS::ProfilingCategoryPair aCategory,
+                                         const char* aLabel) {
   MOZ_RELEASE_ASSERT(mStackToFill);
   // We don't want to collect WASM frames, as they are probably for content, so
   // we just add a "(content wasm)" frame.
@@ -334,7 +334,7 @@ void ThreadStackHelper::CollectProfilingStackFrame(
                      // names.
   size_t len = 0;
   if (JSFunction* func = aFrame.function()) {
-    if (JSString* str = JS_GetFunctionDisplayId(func)) {
+    if (JSString* str = JS_GetMaybePartialFunctionDisplayId(func)) {
       JSLinearString* linear = JS_ASSERT_STRING_IS_LINEAR(str);
       len = JS::GetLinearStringLength(linear);
       JS::LossyCopyLinearStringChars(buffer, linear,

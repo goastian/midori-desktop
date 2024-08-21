@@ -16,40 +16,70 @@
 # Order is lexicographical, enforced by t/c/glean/tests/pytest/test_yaml_indices.py
 gecko_metrics = [
     "browser/base/content/metrics.yaml",
+    "docshell/base/metrics.yaml",
+    "dom/base/use_counter_metrics.yaml",
+    "dom/media/eme/metrics.yaml",
+    "dom/media/hls/metrics.yaml",
     "dom/media/metrics.yaml",
     "dom/media/webrtc/metrics.yaml",
     "dom/metrics.yaml",
+    "dom/performance/metrics.yaml",
+    "dom/security/metrics.yaml",
+    "dom/webauthn/metrics.yaml",
     "gfx/metrics.yaml",
-    "mobile/android/actors/metrics.yaml",
+    "image/decoders/metrics.yaml",
+    "js/xpconnect/metrics.yaml",
+    "layout/base/metrics.yaml",
+    "mobile/shared/actors/metrics.yaml",
+    "mobile/shared/modules/geckoview/metrics.yaml",
     "netwerk/metrics.yaml",
     "netwerk/protocol/http/metrics.yaml",
+    "security/certverifier/metrics.yaml",
+    "security/manager/ssl/metrics.yaml",
+    "toolkit/components/antitracking/bouncetrackingprotection/metrics.yaml",
     "toolkit/components/cookiebanners/metrics.yaml",
+    "toolkit/components/extensions/metrics.yaml",
+    "toolkit/components/formautofill/metrics.yaml",
     "toolkit/components/glean/metrics.yaml",
+    "toolkit/components/passwordmgr/metrics.yaml",
     "toolkit/components/pdfjs/metrics.yaml",
-    "toolkit/mozapps/extensions/metrics.yaml",
     "toolkit/components/processtools/metrics.yaml",
+    "toolkit/components/reportbrokensite/metrics.yaml",
+    "toolkit/components/resistfingerprinting/metrics.yaml",
     "toolkit/components/translations/metrics.yaml",
+    "toolkit/mozapps/extensions/metrics.yaml",
+    "toolkit/mozapps/handling/metrics.yaml",
+    "toolkit/xre/metrics.yaml",
     "xpcom/metrics.yaml",
 ]
 
 # Metrics that are sent by Firefox Desktop
 # Order is lexicographical, enforced by t/c/glean/tests/pytest/test_yaml_indices.py
 firefox_desktop_metrics = [
+    "browser/components/backup/metrics.yaml",
     "browser/components/metrics.yaml",
+    "browser/components/migration/metrics.yaml",
     "browser/components/newtab/metrics.yaml",
+    "browser/components/pocket/metrics.yaml",
+    "browser/components/preferences/metrics.yaml",
+    "browser/components/privatebrowsing/metrics.yaml",
+    "browser/components/protocolhandler/metrics.yaml",
     "browser/components/search/metrics.yaml",
-    "browser/components/translations/metrics.yaml",
+    "browser/components/shopping/metrics.yaml",
     "browser/components/urlbar/metrics.yaml",
     "browser/modules/metrics.yaml",
+    "dom/media/platforms/wmf/metrics.yaml",
+    "dom/privateattribution/metrics.yaml",
+    "toolkit/components/contentrelevancy/metrics.yaml",
     "toolkit/components/crashes/metrics.yaml",
-    "toolkit/components/extensions/metrics.yaml",
     "toolkit/components/nimbus/metrics.yaml",
     "toolkit/components/search/metrics.yaml",
+    "toolkit/components/shopping/metrics.yaml",
     "toolkit/components/telemetry/dap/metrics.yaml",
     "toolkit/components/telemetry/metrics.yaml",
     "toolkit/modules/metrics.yaml",
-    "toolkit/xre/metrics.yaml",
     "widget/cocoa/metrics.yaml",
+    "widget/windows/metrics.yaml",
 ]
 
 # Metrics that are sent by the Firefox Desktop Background Update Task
@@ -62,9 +92,10 @@ background_update_metrics = [
 # Metrics that are sent by the Firefox Desktop Background Tasks
 # Order is lexicographical, enforced by t/c/glean/tests/pytest/test_yaml_indices.py
 background_tasks_metrics = [
+    "browser/components/metrics.yaml",
     "toolkit/components/backgroundtasks/metrics.yaml",
     "toolkit/components/crashes/metrics.yaml",
-    "browser/components/metrics.yaml",
+    "toolkit/mozapps/defaultagent/metrics.yaml",
 ]
 
 # Test metrics
@@ -91,13 +122,19 @@ metrics_yamls = sorted(
 gecko_pings = [
     "dom/pings.yaml",
     "toolkit/components/glean/pings.yaml",
+    "toolkit/components/reportbrokensite/pings.yaml",
 ]
 
 # Pings that are sent by Firefox Desktop.
 # Order is lexicographical, enforced by t/c/glean/tests/pytest/test_yaml_indices.py
 firefox_desktop_pings = [
     "browser/components/newtab/pings.yaml",
+    "browser/components/pocket/pings.yaml",
+    "browser/components/search/pings.yaml",
+    "browser/components/urlbar/pings.yaml",
+    "browser/modules/pings.yaml",
     "toolkit/components/crashes/pings.yaml",
+    "toolkit/components/resistfingerprinting/pings.yaml",
     "toolkit/components/telemetry/pings.yaml",
     "toolkit/modules/pings.yaml",
 ]
@@ -114,6 +151,7 @@ background_update_pings = [
 background_tasks_pings = [
     "toolkit/components/backgroundtasks/pings.yaml",
     "toolkit/components/crashes/pings.yaml",
+    "toolkit/mozapps/defaultagent/pings.yaml",
 ]
 
 # Test pings

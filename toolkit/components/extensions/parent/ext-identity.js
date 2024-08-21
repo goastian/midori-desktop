@@ -12,7 +12,7 @@ var { promiseDocumentLoaded } = ExtensionUtils;
 
 const checkRedirected = (url, redirectURI) => {
   return new Promise((resolve, reject) => {
-    let xhr = new XMLHttpRequest();
+    let xhr = new XMLHttpRequest({ mozAnon: false });
     xhr.open("GET", url);
     // We expect this if the user has not authenticated.
     xhr.onload = () => {
@@ -94,7 +94,7 @@ const openOAuthWindow = (details, redirectURI) => {
     };
 
     httpObserver = {
-      observeActivity(channel, type, subtype, timestamp, sizeData, stringData) {
+      observeActivity(channel) {
         try {
           channel.QueryInterface(Ci.nsIChannel);
         } catch {
@@ -129,7 +129,7 @@ this.identity = class extends ExtensionAPI {
         launchWebAuthFlowInParent: function (details, redirectURI) {
           // If the request is automatically redirected the user has already
           // authorized and we do not want to show the window.
-          return checkRedirected(details.url, redirectURI).catch(
+          let promise = checkRedirected(details.url, redirectURI).catch(
             requestError => {
               // requestError is zero or xhr.status
               if (requestError !== 0) {
@@ -145,6 +145,13 @@ this.identity = class extends ExtensionAPI {
               return openOAuthWindow(details, redirectURI);
             }
           );
+          if (context.isBackgroundContext) {
+            context.extension.emit("background-script-idle-waituntil", {
+              promise,
+              reason: "launchWebAuthFlow",
+            });
+          }
+          return promise;
         },
       },
     };

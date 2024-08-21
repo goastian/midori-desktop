@@ -109,7 +109,7 @@ export class BaseAction {
       args,
       schema,
       {
-        allowExtraProperties: true,
+        allowAdditionalProperties: true,
       }
     );
     if (!valid) {
@@ -183,7 +183,7 @@ export class BaseAction {
    *
    * @param {Recipe} recipe
    */
-  async _run(recipe) {
+  async _run() {
     throw new Error("Not implemented");
   }
 

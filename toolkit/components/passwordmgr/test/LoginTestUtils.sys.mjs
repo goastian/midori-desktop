@@ -67,6 +67,13 @@ export const LoginTestUtils = {
     return Services.logins.addLoginAsync(login);
   },
 
+  /**
+   * Removes a login from the store
+   */
+  async removeLogin(login) {
+    return Services.logins.removeLogin(login);
+  },
+
   async modifyLogin(oldLogin, newLogin) {
     const storageChangedPromise = TestUtils.topicObserved(
       "passwordmgr-storage-changed",
@@ -88,9 +95,9 @@ export const LoginTestUtils = {
    * array.  If no `checkFn` is provided, the comparison uses the "equals"
    * method of nsILoginInfo, that does not include nsILoginMetaInfo properties in the test.
    */
-  checkLogins(expectedLogins, msg = "checkLogins", checkFn = undefined) {
+  async checkLogins(expectedLogins, msg = "checkLogins", checkFn = undefined) {
     this.assertLoginListsEqual(
-      Services.logins.getAllLogins(),
+      await Services.logins.getAllLogins(),
       expectedLogins,
       msg,
       checkFn
@@ -428,6 +435,14 @@ LoginTestUtils.testData = {
         "ftp://example.net",
         null,
         "ftp://example.net",
+        "the username",
+        "the password"
+      ),
+      // null formActionOrigin, empty httpRealm
+      new LoginInfo(
+        "http://example.net",
+        null,
+        "",
         "the username",
         "the password"
       ),

@@ -23,13 +23,13 @@
   add_task(async function setup() {
     await SpecialPowers.pushPrefEnv({"set": [["media.cache_size", 40000]]});
     await new Promise(resolve => {
-      video.src = "video.ogg";
+      video.src = "video.webm";
       video.addEventListener("loadedmetadata", () => SimpleTest.executeSoon(resolve));
     });
   });
 
   add_task(async function mute_button_icon() {
-    is(muteButton.getAttribute("noAudio"), "true");
+    ok(muteButton.hasAttribute("noAudio"), "Mute button should have noAudio attribute");
     ok(muteButton.hasAttribute("disabled"), "Mute button should be disabled");
 
     if (volumeStack) {

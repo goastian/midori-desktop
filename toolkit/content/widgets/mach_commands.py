@@ -7,6 +7,7 @@ import re
 
 from mach.decorators import Command, CommandArgument
 
+FIXME_COMMENT = "// FIXME: replace with path to your reusable widget\n"
 LICENSE_HEADER = """/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -27,11 +28,6 @@ export default class {class_name} extends MozLitElement {{
     variant: {{ type: String }},
   }};
 
-  // Use a relative URL in storybook to get faster reloads on style changes.
-  static stylesheetUrl = window.IS_STORYBOOK
-    ? "./{element_name}/{element_name}.css"
-    : "chrome://global/content/elements/{element_name}.css";
-
   constructor() {{
     super();
     this.variant = "default";
@@ -39,7 +35,7 @@ export default class {class_name} extends MozLitElement {{
 
   render() {{
     return html`
-      <link rel="stylesheet" href=${{this.constructor.stylesheetUrl}} />
+      <link rel="stylesheet" href="chrome://global/content/elements/{element_name}.css" />
       <div>Variant type: ${{this.variant}}</div>
     `;
   }}
@@ -48,12 +44,11 @@ customElements.define("{element_name}", {class_name});
 """
 
 STORY_HEADER = """{license}
-import {{ html }} from "../vendor/lit.all.mjs";
-// eslint-disable-next-line import/no-unassigned-import
-import "./{element_name}.mjs";
+{html_lit_import}
+{fixme_comment}import "{element_path}";
 
 export default {{
-  title: "UI Widgets/{story_name}",
+  title: "{story_prefix}/{story_name}",
   component: "{element_name}",
   argTypes: {{
     variant: {{
@@ -97,6 +92,8 @@ def run_npm(command_context, args):
     help="Component names to create in kebab-case, eg. my-card.",
 )
 def addwidget(command_context, names):
+    story_prefix = "UI Widgets"
+    html_lit_import = 'import { html } from "../vendor/lit.all.mjs";'
     for name in names:
         component_dir = "toolkit/content/widgets/{0}".format(name)
 
@@ -147,6 +144,7 @@ def addwidget(command_context, names):
             f.write("".join(new_jar_lines))
 
         story_path = "{0}/{1}.stories.mjs".format(component_dir, name)
+        element_path = "./{0}.mjs".format(name)
         with open(story_path, "w", newline="\n") as f:
             story_name = " ".join(
                 name for name in re.findall(r"[A-Z][a-z]+", class_name) if name != "Moz"
@@ -156,9 +154,67 @@ def addwidget(command_context, names):
                     license=LICENSE_HEADER,
                     element_name=name,
                     story_name=story_name,
+                    story_prefix=story_prefix,
+                    fixme_comment="",
+                    element_path=element_path,
+                    html_lit_import=html_lit_import,
                 )
             )
 
         run_mach(
             command_context, "addtest", argv=[test_path, "--suite", "mochitest-chrome"]
         )
+
+
+@Command(
+    "addstory",
+    category="misc",
+    description="Scaffold a front-end Storybook story.",
+)
+@CommandArgument(
+    "name",
+    help="Story to create in kebab-case, eg. my-card.",
+)
+@CommandArgument(
+    "project_name",
+    type=str,
+    help='Name of the project or team for the new component to keep stories organized. Eg. "Credential Management"',
+)
+@CommandArgument(
+    "--path",
+    help="Path to the widget source, eg. /browser/components/my-module.mjs or chrome://browser/content/my-module.mjs",
+)
+def addstory(command_context, name, project_name, path):
+    html_lit_import = 'import { html } from "lit.all.mjs";'
+    story_path = "browser/components/storybook/stories/{0}.stories.mjs".format(name)
+    project_name = project_name.split()
+    project_name = " ".join(p.capitalize() for p in project_name)
+    story_prefix = "Domain-specific UI Widgets/{0}".format(project_name)
+    with open(story_path, "w", newline="\n") as f:
+        print(f"Creating new story {name} in {story_path}")
+        story_name = " ".join(p.capitalize() for p in name.split("-"))
+        f.write(
+            STORY_HEADER.format(
+                license=LICENSE_HEADER,
+                element_name=name,
+                story_name=story_name,
+                element_path=path,
+                fixme_comment="" if path else FIXME_COMMENT,
+                project_name=project_name,
+                story_prefix=story_prefix,
+                html_lit_import=html_lit_import,
+            )
+        )
+
+
+@Command(
+    "buildtokens",
+    category="misc",
+    description="Build the design tokens CSS files",
+)
+def buildtokens(command_context):
+    run_mach(
+        command_context,
+        "npm",
+        args=["run", "build", "--prefix=toolkit/themes/shared/design-system"],
+    )

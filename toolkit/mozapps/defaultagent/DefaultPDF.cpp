@@ -12,13 +12,54 @@
 #include <winerror.h>
 
 #include "EventLog.h"
-#include "UtfConvert.h"
 
 #include "mozilla/Buffer.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/WinHeaderOnlyUtils.h"
+#include "mozilla/Try.h"
 
-using PdfResult = mozilla::WindowsErrorResult<std::string>;
+namespace mozilla::default_agent {
+
+constexpr std::string_view kUnknownPdfString = "";
+
+constexpr std::pair<std::string_view, PDFHandler> kStringPdfHandlerMap[]{
+    {"error", PDFHandler::Error},
+    {kUnknownPdfString, PDFHandler::Unknown},
+    {"Firefox", PDFHandler::Firefox},
+    {"Microsoft Edge", PDFHandler::MicrosoftEdge},
+    {"Google Chrome", PDFHandler::GoogleChrome},
+    {"Adobe Acrobat", PDFHandler::AdobeAcrobat},
+    {"WPS", PDFHandler::WPS},
+    {"Nitro", PDFHandler::Nitro},
+    {"Foxit", PDFHandler::Foxit},
+    {"PDF-XChange", PDFHandler::PDFXChange},
+    {"Avast", PDFHandler::AvastSecureBrowser},
+    {"Sumatra", PDFHandler::SumatraPDF},
+};
+
+static_assert(mozilla::ArrayLength(kStringPdfHandlerMap) == kPDFHandlerCount);
+
+std::string GetStringForPDFHandler(PDFHandler handler) {
+  for (const auto& [mapString, mapPdf] : kStringPdfHandlerMap) {
+    if (handler == mapPdf) {
+      return std::string{mapString};
+    }
+  }
+
+  return std::string(kUnknownPdfString);
+}
+
+PDFHandler GetPDFHandlerFromString(const std::string& pdfHandlerString) {
+  for (const auto& [mapString, mapPdfHandler] : kStringPdfHandlerMap) {
+    if (pdfHandlerString == mapString) {
+      return mapPdfHandler;
+    }
+  }
+
+  return PDFHandler::Unknown;
+}
+
+using PdfResult = mozilla::WindowsErrorResult<PDFHandler>;
 
 static PdfResult GetDefaultPdf() {
   RefPtr<IApplicationAssociationRegistration> pAAR;
@@ -64,7 +105,40 @@ static PdfResult GetDefaultPdf() {
     return PdfResult(mozilla::WindowsError::FromHResult(hr));
   }
 
-  return Utf16ToUtf8(friendlyNameBuffer.Elements());
+  constexpr std::pair<std::wstring_view, PDFHandler> kFriendlyNamePrefixes[] = {
+      {L"Firefox", PDFHandler::Firefox},
+      {L"Microsoft Edge", PDFHandler::MicrosoftEdge},
+      {L"Google Chrome", PDFHandler::GoogleChrome},
+      {L"Adobe", PDFHandler::AdobeAcrobat},
+      {L"Acrobat", PDFHandler::AdobeAcrobat},
+      {L"WPS", PDFHandler::WPS},
+      {L"Nitro", PDFHandler::Nitro},
+      {L"Foxit", PDFHandler::Foxit},
+      {L"PDF-XChange", PDFHandler::PDFXChange},
+      {L"Avast", PDFHandler::AvastSecureBrowser},
+      {L"Sumatra", PDFHandler::SumatraPDF},
+  };
+
+  // We should have one prefix for every PDF handler we track, with exceptions
+  // listed below.
+  // Error - removed; not a real pdf handler.
+  // Unknown - removed; not a real pdf handler.
+  // AdobeAcrobat - duplicate; `Adobe` and `Acrobat` prefixes are both seen in
+  // telemetry.
+  static_assert(mozilla::ArrayLength(kFriendlyNamePrefixes) ==
+                kPDFHandlerCount - 2 + 1);
+
+  PDFHandler resolvedHandler = PDFHandler::Unknown;
+  for (const auto& [knownHandlerSubstring, handlerEnum] :
+       kFriendlyNamePrefixes) {
+    if (!wcsnicmp(friendlyNameBuffer.Elements(), knownHandlerSubstring.data(),
+                  knownHandlerSubstring.length())) {
+      resolvedHandler = handlerEnum;
+      break;
+    }
+  }
+
+  return resolvedHandler;
 }
 
 DefaultPdfResult GetDefaultPdfInfo() {
@@ -73,3 +147,5 @@ DefaultPdfResult GetDefaultPdfInfo() {
 
   return pdfInfo;
 }
+
+}  // namespace mozilla::default_agent

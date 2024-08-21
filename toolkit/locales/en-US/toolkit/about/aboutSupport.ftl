@@ -19,6 +19,10 @@ support-addons-type = Type
 support-addons-enabled = Enabled
 support-addons-version = Version
 support-addons-id = ID
+legacy-user-stylesheets-title = Legacy User Stylesheets
+legacy-user-stylesheets-enabled = Active
+legacy-user-stylesheets-stylesheet-types = Stylesheets
+legacy-user-stylesheets-no-stylesheets-found = No stylesheets found
 security-software-title = Security Software
 security-software-type = Type
 security-software-name = Name
@@ -54,7 +58,6 @@ app-basics-profile-dir =
         [linux] Profile Directory
        *[other] Profile Folder
     }
-app-basics-enabled-plugins = Enabled Plugins
 app-basics-build-config = Build Configuration
 app-basics-user-agent = User Agent
 app-basics-os = OS
@@ -78,6 +81,7 @@ app-basics-key-mozilla = Mozilla Location Service Key
 app-basics-safe-mode = Safe Mode
 app-basics-memory-size = Memory Size (RAM)
 app-basics-disk-available = Disk Space Available
+app-basics-pointing-devices = Pointing Devices
 
 # Variables:
 #   $value (number) - Amount of data being stored
@@ -178,6 +182,33 @@ media-codec-support-info = Codec Support Information
 # List all the entries of the database.
 media-capabilities-enumerate = Enumerate database
 
+## Codec support table
+
+media-codec-support-sw-decoding = Software Decoding
+media-codec-support-hw-decoding = Hardware Decoding
+media-codec-support-codec-name = Codec Name
+media-codec-support-supported = Supported
+media-codec-support-unsupported = Unsupported
+media-codec-support-error = Codec support information unavailable. Try again after playing back a media file.
+media-codec-support-lack-of-extension = Install extension
+
+## Media Content Decryption Modules (CDM)
+## See EME Spec for more explanation for following technical terms
+## https://w3c.github.io/encrypted-media/
+
+media-content-decryption-modules-title = Content Decryption Modules Information
+media-key-system-name = Key System Name
+media-video-robustness = Video Robustness
+media-audio-robustness = Audio Robustness
+media-cdm-capabilities = Capabilities
+# Clear Lead isn't defined in the spec, which means the the first few seconds
+# are not encrypted. It allows playback to start without having to wait for
+# license response, improving video start time and user experience.
+media-cdm-clear-lead = Clear Lead
+# We choose 2.2 as this is the version which the video provider usually want to have in order to stream 4K video securely
+# HDCP version https://w3c.github.io/encrypted-media/#idl-def-hdcpversion
+media-hdcp-22-compatible = HDCP 2.2 Compatible
+
 ##
 
 intl-title = Internationalization & Localization
@@ -263,6 +294,7 @@ try-newer-driver = Blocked for your graphics driver version. Try updating your g
 clear-type-parameters = ClearType Parameters
 
 compositing = Compositing
+support-font-determination = Font Visibility Debug Info
 hardware-h264 = Hardware H264 Decoding
 main-thread-no-omtc = main thread, no OMTC
 yes = Yes
@@ -403,6 +435,20 @@ support-printing-modified-settings = Modified print settings
 support-printing-prefs-name = Name
 support-printing-prefs-value = Value
 
+## Remote Settings sections
+
+support-remote-settings-title = Remote Settings
+support-remote-settings-status = Status
+support-remote-settings-status-ok = OK
+# Status when synchronization is not working.
+support-remote-settings-status-broken = Not working
+support-remote-settings-last-check = Last check
+support-remote-settings-local-timestamp = Local timestamp
+support-remote-settings-sync-history = History
+support-remote-settings-sync-history-status = Status
+support-remote-settings-sync-history-datetime = Date
+support-remote-settings-sync-history-infos = Infos
+
 ## Normandy sections
 
 support-remote-experiments-title = Remote Experiments
@@ -413,3 +459,22 @@ support-remote-experiments-see-about-studies = See <a data-l10n-name="support-ab
 support-remote-features-title = Remote Features
 support-remote-features-name = Name
 support-remote-features-status = Status
+
+## Pointing devices
+
+pointing-device-mouse = Mouse
+pointing-device-touchscreen = Touchscreen
+pointing-device-pen-digitizer = Pen Digitizer
+pointing-device-none = No pointing devices
+
+## Content Analysis (DLP)
+
+# DLP stands for Data Loss Prevention, an industry term for external software
+# that enterprises can set up to prevent sensitive data from being transferred
+# to external websites.
+content-analysis-title = Content Analysis (DLP)
+content-analysis-active = Active
+content-analysis-connected-to-agent = Connected to Agent
+content-analysis-agent-path = Agent Path
+content-analysis-agent-failed-signature-verification = Agent Failed Signature Verification
+content-analysis-request-count = Request Count

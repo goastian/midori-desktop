@@ -16,12 +16,12 @@ function checkAndClickButton(document, id) {
 
 function is_element_visible(aElement, aMsg) {
   isnot(aElement, null, "Element should not be null, when checking visibility");
-  Assert.ok(!BrowserTestUtils.is_hidden(aElement), aMsg);
+  Assert.ok(!BrowserTestUtils.isHidden(aElement), aMsg);
 }
 
 // Extracted from https://searchfox.org/mozilla-central/rev/40ef22080910c2e2c27d9e2120642376b1d8b8b2/browser/components/preferences/in-content/tests/head.js#41
 function promiseLoadSubDialog(aURL) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     content.gSubDialog._dialogStack.addEventListener(
       "dialogopen",
       function dialogopen(aEvent) {

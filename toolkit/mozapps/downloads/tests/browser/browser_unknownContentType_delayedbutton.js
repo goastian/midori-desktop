@@ -10,17 +10,17 @@ const DIALOG_DELAY =
   Services.prefs.getIntPref("security.dialog_enable_delay") + 200;
 
 let UCTObserver = {
-  opened: PromiseUtils.defer(),
-  closed: PromiseUtils.defer(),
+  opened: Promise.withResolvers(),
+  closed: Promise.withResolvers(),
 
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     let win = aSubject;
 
     switch (aTopic) {
       case "domwindowopened":
         win.addEventListener(
           "load",
-          function onLoad(event) {
+          function onLoad() {
             // Let the dialog initialize
             SimpleTest.executeSoon(function () {
               UCTObserver.opened.resolve(win);
@@ -40,7 +40,7 @@ let UCTObserver = {
 };
 
 function waitDelay(delay) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     /* eslint-disable mozilla/no-arbitrary-setTimeout */
     window.setTimeout(resolve, delay);
   });

@@ -13,7 +13,7 @@ function root(server) {
   return `${primaryScheme}://${primaryHost}:${primaryPort}/data`;
 }
 
-XPCOMUtils.defineLazyGetter(this, "testserver", () => {
+ChromeUtils.defineLazyGetter(this, "testserver", () => {
   let server = new HttpServer();
   server.start();
   Services.prefs.setCharPref(
@@ -43,11 +43,11 @@ async function installSystemAddons(xml, waitIDs = []) {
   await serveSystemUpdate(
     xml,
     async function () {
-      let { XPIProvider } = ChromeUtils.import(
-        "resource://gre/modules/addons/XPIProvider.jsm"
+      let { XPIExports } = ChromeUtils.importESModule(
+        "resource://gre/modules/addons/XPIExports.sys.mjs"
       );
       await Promise.all([
-        XPIProvider.updateSystemAddons(),
+        XPIExports.XPIProvider.updateSystemAddons(),
         ...waitIDs.map(id => promiseWebExtensionStartup(id)),
       ]);
     },
@@ -132,10 +132,13 @@ function getSystemAddonXPI(num, version) {
 }
 
 async function initSystemAddonDirs() {
-  let hiddenSystemAddonDir = FileUtils.getDir(
-    "ProfD",
-    ["sysfeatures", "hidden"],
-    true
+  let hiddenSystemAddonDir = FileUtils.getDir("ProfD", [
+    "sysfeatures",
+    "hidden",
+  ]);
+  hiddenSystemAddonDir.create(
+    Ci.nsIFile.DIRECTORY_TYPE,
+    FileUtils.PERMS_DIRECTORY
   );
   let system1_1 = await getSystemAddonXPI(1, "1.0");
   system1_1.copyTo(hiddenSystemAddonDir, "system1@tests.mozilla.org.xpi");
@@ -143,10 +146,13 @@ async function initSystemAddonDirs() {
   let system2_1 = await getSystemAddonXPI(2, "1.0");
   system2_1.copyTo(hiddenSystemAddonDir, "system2@tests.mozilla.org.xpi");
 
-  let prefilledSystemAddonDir = FileUtils.getDir(
-    "ProfD",
-    ["sysfeatures", "prefilled"],
-    true
+  let prefilledSystemAddonDir = FileUtils.getDir("ProfD", [
+    "sysfeatures",
+    "prefilled",
+  ]);
+  prefilledSystemAddonDir.create(
+    Ci.nsIFile.DIRECTORY_TYPE,
+    FileUtils.PERMS_DIRECTORY
   );
   let system2_2 = await getSystemAddonXPI(2, "2.0");
   system2_2.copyTo(prefilledSystemAddonDir, "system2@tests.mozilla.org.xpi");
@@ -158,7 +164,7 @@ async function initSystemAddonDirs() {
  * Returns current system add-on update directory (stored in pref).
  */
 function getCurrentSystemAddonUpdatesDir() {
-  const updatesDir = FileUtils.getDir("ProfD", ["features"], false);
+  const updatesDir = FileUtils.getDir("ProfD", ["features"]);
   let dir = updatesDir.clone();
   let set = JSON.parse(Services.prefs.getCharPref(PREF_SYSTEM_ADDON_SET));
   dir.append(set.directory);
@@ -169,7 +175,7 @@ function getCurrentSystemAddonUpdatesDir() {
  * Removes all files from system add-on update directory.
  */
 function clearSystemAddonUpdatesDir() {
-  const updatesDir = FileUtils.getDir("ProfD", ["features"], false);
+  const updatesDir = FileUtils.getDir("ProfD", ["features"]);
   // Delete any existing directories
   if (updatesDir.exists()) {
     updatesDir.remove(true);
@@ -189,7 +195,8 @@ async function buildPrefilledUpdatesDir() {
   clearSystemAddonUpdatesDir();
 
   // Build the test set
-  let dir = FileUtils.getDir("ProfD", ["features", "prefilled"], true);
+  let dir = FileUtils.getDir("ProfD", ["features", "prefilled"]);
+  dir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 
   let xpi = await getSystemAddonXPI(2, "2.0");
   xpi.copyTo(dir, "system2@tests.mozilla.org.xpi");
@@ -198,16 +205,23 @@ async function buildPrefilledUpdatesDir() {
   xpi.copyTo(dir, "system3@tests.mozilla.org.xpi");
 
   // Mark these in the past so the startup file scan notices when files have changed properly
-  FileUtils.getFile("ProfD", [
-    "features",
-    "prefilled",
-    "system2@tests.mozilla.org.xpi",
-  ]).lastModifiedTime -= 10000;
-  FileUtils.getFile("ProfD", [
-    "features",
-    "prefilled",
-    "system3@tests.mozilla.org.xpi",
-  ]).lastModifiedTime -= 10000;
+  {
+    let toModify = await IOUtils.getFile(
+      PathUtils.profileDir,
+      "features",
+      "prefilled",
+      "system2@tests.mozilla.org.xpi"
+    );
+    toModify.lastModifiedTime -= 10000;
+
+    toModify = await IOUtils.getFile(
+      PathUtils.profileDir,
+      "features",
+      "prefilled",
+      "system3@tests.mozilla.org.xpi"
+    );
+    toModify.lastModifiedTime -= 10000;
+  }
 
   Services.prefs.setCharPref(
     PREF_SYSTEM_ADDON_SET,
@@ -289,7 +303,7 @@ async function checkInstalledSystemAddons(conditions, distroDir) {
  * Returns all system add-on updates directories.
  */
 async function getSystemAddonDirectories() {
-  const updatesDir = FileUtils.getDir("ProfD", ["features"], false);
+  const updatesDir = FileUtils.getDir("ProfD", ["features"]);
   let subdirs = [];
 
   if (await IOUtils.exists(updatesDir.path)) {

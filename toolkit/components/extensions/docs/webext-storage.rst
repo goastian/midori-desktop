@@ -83,7 +83,7 @@ For example, this interface defines the following method:
 As you will notice, the 3rd arg is another interface, `mozIExtensionStorageCallback`, also
 defined in that IDL file. This is a small, generic interface defined as:
 
-.. code-block::
+.. code-block:: cpp
 
     interface mozIExtensionStorageCallback : nsISupports {
         // Called when the operation completes. Operations that return a result,
@@ -207,7 +207,7 @@ the actual result of the function (also a set of changes to send to observers, b
 beyond this doc).
 
 Ultimately, the `PuntResult` ends up back on the main thread once the call is complete
-and arranges to callback the JS implementation, which in turn resolves the promise created in `ExtensionStorageSync.jsm`
+and arranges to callback the JS implementation, which in turn resolves the promise created in `ExtensionStorageSync.sys.mjs`
 
 End result:
 -----------

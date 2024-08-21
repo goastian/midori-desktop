@@ -27,7 +27,7 @@ let login2 = new nsLoginInfo(
 );
 
 function withTestTabUntilStorageChange(aPageFile, aTaskFn) {
-  function storageChangedObserved(subject, data) {
+  function storageChangedObserved(_subject, data) {
     // Watch for actions triggered from a doorhanger (not cleanup tasks with removeLogin)
     if (data == "removeLogin") {
       return false;
@@ -44,7 +44,7 @@ function withTestTabUntilStorageChange(aPageFile, aTaskFn) {
       gBrowser,
       url: "http://mochi.test:8888" + DIRECTORY_PATH + aPageFile,
     },
-    async function (browser) {
+    async function (_browser) {
       Assert.ok(true, "loaded " + aPageFile);
       info("running test case task");
       await aTaskFn();
@@ -75,13 +75,13 @@ add_task(async function test_saveChromeHiddenAutoClose() {
     Assert.ok(popup, "got notification popup");
     await checkDoorhangerUsernamePassword("notifyu1", "notifyp1");
     // Sanity check, no logins should exist yet.
-    let logins = Services.logins.getAllLogins();
+    let logins = await Services.logins.getAllLogins();
     Assert.equal(logins.length, 0, "Should not have any logins yet");
 
     clickDoorhangerButton(popup, REMEMBER_BUTTON);
   });
   // Check result of clicking Remember
-  let logins = Services.logins.getAllLogins();
+  let logins = await Services.logins.getAllLogins();
   Assert.equal(logins.length, 1, "Should only have 1 login");
   let login = logins[0].QueryInterface(Ci.nsILoginMetaInfo);
   Assert.equal(login.timesUsed, 1, "Check times used on new entry");
@@ -115,7 +115,7 @@ add_task(async function test_changeChromeHiddenAutoClose() {
 
   // Check to make sure we updated the password, timestamps and use count for
   // the login being changed with this form.
-  let logins = Services.logins.getAllLogins();
+  let logins = await Services.logins.getAllLogins();
   Assert.equal(logins.length, 1, "Should only have 1 login");
   let login = logins[0].QueryInterface(Ci.nsILoginMetaInfo);
   Assert.equal(login.username, "notifyu1", "Check the username");
@@ -149,7 +149,7 @@ add_task(async function test_saveChromeVisibleSameWindow() {
   });
 
   // Check result of clicking Remember
-  let logins = Services.logins.getAllLogins();
+  let logins = await Services.logins.getAllLogins();
   Assert.equal(logins.length, 1, "Should only have 1 login now");
   let login = logins[0].QueryInterface(Ci.nsILoginMetaInfo);
   Assert.equal(
@@ -182,7 +182,7 @@ add_task(async function test_changeChromeVisibleSameWindow() {
 
   // Check to make sure we updated the password, timestamps and use count for
   // the login being changed with this form.
-  let logins = Services.logins.getAllLogins();
+  let logins = await Services.logins.getAllLogins();
   Assert.equal(logins.length, 1, "Should have 1 login");
   let login = logins[0].QueryInterface(Ci.nsILoginMetaInfo);
   Assert.equal(login.username, "notifyu2", "Check the username");

@@ -125,9 +125,9 @@ async function testPopupPatterns(nonPopup) {
           gBrowser,
           url: BLANK_PAGE,
         },
-        async function (browser) {
+        async function () {
           const newWinPromise = BrowserTestUtils.waitForNewWindow();
-          BrowserTestUtils.loadURIString(gBrowser, SCRIPT_PAGE);
+          BrowserTestUtils.startLoadingURIString(gBrowser, SCRIPT_PAGE);
 
           const win = await newWinPromise;
           const parentChromeFlags = getParentChromeFlags(win);
@@ -159,12 +159,12 @@ async function testPopupPatterns(nonPopup) {
           gBrowser,
           url: BLANK_PAGE,
         },
-        async function (browser) {
+        async function () {
           const newTabPromise = BrowserTestUtils.waitForNewTab(
             gBrowser,
             OPEN_PAGE
           );
-          BrowserTestUtils.loadURIString(gBrowser, SCRIPT_PAGE);
+          BrowserTestUtils.startLoadingURIString(gBrowser, SCRIPT_PAGE);
 
           let tab = await newTabPromise;
           BrowserTestUtils.removeTab(tab);
@@ -184,7 +184,7 @@ async function testPopupPatterns(nonPopup) {
             false,
             OPEN_PAGE
           );
-          BrowserTestUtils.loadURIString(gBrowser, SCRIPT_PAGE);
+          BrowserTestUtils.startLoadingURIString(gBrowser, SCRIPT_PAGE);
 
           await pagePromise;
         }

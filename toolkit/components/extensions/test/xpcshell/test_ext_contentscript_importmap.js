@@ -11,7 +11,6 @@
 // This test is used to verified import maps are not supported for web
 // extensions.
 // See Bug 1765275: Enable Import maps for web extension content scripts.
-Services.prefs.setBoolPref("dom.importMaps.enabled", true);
 
 const server = createHttpServer({ hosts: ["example.com"] });
 
@@ -53,7 +52,7 @@ server.registerPathHandler("/importmap.html", (request, response) => {
   response.write(importMapHtml);
 });
 
-server.registerPathHandler("/simple.js", (request, response) => {
+server.registerPathHandler("/simple.js", () => {
   ok(false, "Unexpected request to /simple.js");
 });
 

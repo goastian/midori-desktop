@@ -94,9 +94,9 @@ add_task(async function setup_test_preference() {
   await SpecialPowers.pushPrefEnv({
     set: [
       ["media.block-autoplay-until-in-foreground", false],
-      ["media.suspend-bkgnd-video.enabled", true],
-      ["media.suspend-bkgnd-video.delay-ms", 0],
-      ["media.resume-bkgnd-video-on-tabhover", true],
+      ["media.suspend-background-video.enabled", true],
+      ["media.suspend-background-video.delay-ms", 0],
+      ["media.resume-background-video-on-tabhover", true],
     ],
   });
 });
@@ -114,7 +114,7 @@ add_task(async function resume_and_suspend_background_video_decoding() {
 
   info("- before loading media, we shoudn't send the tab hover msg for tab -");
   await check_should_not_send_unselected_tab_hover_msg(browser);
-  BrowserTestUtils.loadURIString(browser, PAGE);
+  BrowserTestUtils.startLoadingURIString(browser, PAGE);
   await BrowserTestUtils.browserLoaded(browser);
 
   info("- should suspend background video decoding -");

@@ -55,7 +55,7 @@ add_task(async function print_selection() {
           .querySelector(".printSettingsBrowser")
           .contentDocument.querySelector("#source-version-selection-radio");
         ok(
-          BrowserTestUtils.is_visible(printSelect),
+          BrowserTestUtils.isVisible(printSelect),
           "Print selection checkbox is shown"
         );
         ok(printSelect.checked, "Print selection checkbox is checked");
@@ -78,7 +78,7 @@ add_task(async function print_selection_parent_process() {
   );
 
   await BrowserTestUtils.withNewTab("about:support", async function (browser) {
-    ok(!browser.isRemote, "Page loaded in parent process");
+    ok(!browser.isRemoteBrowser, "Page loaded in parent process");
     let selectedText = await SpecialPowers.spawn(
       browser.browsingContext,
       [],
@@ -112,7 +112,7 @@ add_task(async function print_selection_parent_process() {
       .querySelector(".printSettingsBrowser")
       .contentDocument.querySelector("#source-version-selection-radio");
     ok(
-      BrowserTestUtils.is_visible(printSelect),
+      BrowserTestUtils.isVisible(printSelect),
       "Print selection checkbox is shown"
     );
     ok(printSelect.checked, "Print selection checkbox is checked");
@@ -133,7 +133,7 @@ add_task(async function no_print_selection() {
 
     let printSelect = helper.get("source-version-selection");
     ok(
-      BrowserTestUtils.is_hidden(printSelect),
+      BrowserTestUtils.isHidden(printSelect),
       "Print selection checkbox is hidden"
     );
     await helper.closeDialog();

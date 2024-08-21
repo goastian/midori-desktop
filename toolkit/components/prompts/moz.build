@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Toolkit", "Notifications and Alerts")
+    BUG_COMPONENT = ("Toolkit", "Content Prompts")
 
 DIRS += ["src"]
 
@@ -18,7 +18,7 @@ TESTING_JS_MODULES += [
     "test/PromptTestUtils.sys.mjs",
 ]
 
-MOCHITEST_MANIFESTS += ["test/mochitest.ini"]
-MOCHITEST_CHROME_MANIFESTS += ["test/chrome.ini"]
+MOCHITEST_MANIFESTS += ["test/mochitest.toml"]
+MOCHITEST_CHROME_MANIFESTS += ["test/chrome.toml"]
 
 JAR_MANIFESTS += ["jar.mn"]

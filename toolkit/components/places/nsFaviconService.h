@@ -16,13 +16,12 @@
 #include "nsCOMPtr.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIFaviconService.h"
-#include "nsINamed.h"
-#include "nsITimer.h"
 #include "nsServiceManagerUtils.h"
 #include "nsString.h"
 #include "nsTHashtable.h"
 #include "nsToolkitCompsCID.h"
 #include "nsURIHashKey.h"
+#include "prtime.h"
 
 // The target dimension in pixels for favicons we store, in reverse order.
 // When adding/removing sizes from here, make sure to update the vector size.
@@ -31,22 +30,7 @@ extern const uint16_t gFaviconSizes[7];
 // forward class definitions
 class mozIStorageStatementCallback;
 
-class UnassociatedIconHashKey : public nsURIHashKey {
- public:
-  explicit UnassociatedIconHashKey(const nsIURI* aURI) : nsURIHashKey(aURI) {}
-  UnassociatedIconHashKey(UnassociatedIconHashKey&& aOther)
-      : nsURIHashKey(std::move(aOther)),
-        iconData(std::move(aOther.iconData)),
-        created(std::move(aOther.created)) {
-    MOZ_ASSERT_UNREACHABLE("Do not call me!");
-  }
-  mozilla::places::IconData iconData;
-  PRTime created;
-};
-
-class nsFaviconService final : public nsIFaviconService,
-                               public nsITimerCallback,
-                               public nsINamed {
+class nsFaviconService final : public nsIFaviconService {
  public:
   nsFaviconService();
 
@@ -75,7 +59,7 @@ class nsFaviconService final : public nsIFaviconService,
   }
 
   // addition to API for strings to prevent excessive parsing of URIs
-  nsresult GetFaviconLinkForIconString(const nsCString& aIcon,
+  nsresult GetFaviconLinkForIconString(const nsCString& aSpec,
                                        nsIURI** aOutput);
 
   nsresult OptimizeIconSizes(mozilla::places::IconData& aIcon);
@@ -107,8 +91,6 @@ class nsFaviconService final : public nsIFaviconService,
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIFAVICONSERVICE
-  NS_DECL_NSITIMERCALLBACK
-  NS_DECL_NSINAMED
 
  private:
   imgITools* GetImgTools() {
@@ -122,7 +104,6 @@ class nsFaviconService final : public nsIFaviconService,
 
   RefPtr<mozilla::places::Database> mDB;
 
-  nsCOMPtr<nsITimer> mExpireUnassociatedIconsTimer;
   nsCOMPtr<imgITools> mImgTools;
 
   static nsFaviconService* gFaviconService;
@@ -134,14 +115,7 @@ class nsFaviconService final : public nsIFaviconService,
    * they get back. May be null, in which case it needs initialization.
    */
   nsCOMPtr<nsIURI> mDefaultIcon;
-
-  // This class needs access to the icons cache.
-  friend class mozilla::places::AsyncReplaceFaviconData;
-  nsTHashtable<UnassociatedIconHashKey> mUnassociatedIcons;
-
   uint16_t mDefaultIconURIPreferredSize;
 };
-
-#define FAVICON_ANNOTATION_NAME "favicon"
 
 #endif  // nsFaviconService_h_

@@ -63,13 +63,14 @@ add_task(async function test_ExperimentFeature_test_helper_ready() {
 
   const featureInstance = new ExperimentFeature("foo", FAKE_FEATURE_MANIFEST);
 
-  await ExperimentFakes.enrollWithRollout(
+  await ExperimentFakes.enrollWithFeatureConfig(
     {
       featureId: "foo",
       value: { remoteValue: "mochitest", enabled: true },
     },
     {
       manager,
+      isRollout: true,
     }
   );
 
@@ -227,7 +228,7 @@ add_task(async function test_allow_multiple_exposure_events() {
   Assert.equal(3, exposureEvents.length);
 
   sandbox.restore();
-  await doExperimentCleanup();
+  doExperimentCleanup();
 });
 
 add_task(async function test_onUpdate_before_store_ready() {

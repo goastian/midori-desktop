@@ -2,7 +2,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 /**
- * Tests that the default nsILoginManagerStorage module attached to the Login
+ * Tests that the default storage module attached to the Login
  * Manager service is able to save and reload nsILoginInfo properties correctly,
  * even when they include special characters.
  */
@@ -13,7 +13,7 @@
 
 async function reloadAndCheckLoginsGen(aExpectedLogins) {
   await LoginTestUtils.reloadData();
-  LoginTestUtils.checkLogins(aExpectedLogins);
+  await LoginTestUtils.checkLogins(aExpectedLogins);
   LoginTestUtils.clearData();
 }
 

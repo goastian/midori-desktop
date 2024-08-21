@@ -23,8 +23,6 @@ export let ExtensionPreferencesManager;
 
 import { Management } from "resource://gre/modules/Extension.sys.mjs";
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -37,7 +35,7 @@ import { ExtensionUtils } from "resource://gre/modules/ExtensionUtils.sys.mjs";
 
 const { ExtensionError } = ExtensionUtils;
 
-XPCOMUtils.defineLazyGetter(lazy, "defaultPreferences", function () {
+ChromeUtils.defineLazyGetter(lazy, "defaultPreferences", function () {
   return new lazy.Preferences({ defaultBranch: true });
 });
 
@@ -444,7 +442,7 @@ ExtensionPreferencesManager = {
    * @param {string} name
    *        The unique id of the setting.
    *
-   * @returns {object} The current setting object.
+   * @returns {Promise<object>} The current setting object.
    */
   async getSetting(name) {
     await lazy.ExtensionSettingsStore.initialize();

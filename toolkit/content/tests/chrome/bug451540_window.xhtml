@@ -14,7 +14,9 @@
         title="451540 test">
 
   <script type="application/javascript"><![CDATA[
-    const {BrowserTestUtils} = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+    const {BrowserTestUtils} = ChromeUtils.importESModule(
+      "resource://testing-common/BrowserTestUtils.sys.mjs"
+    );
     const SEARCH_TEXT = "minefield";
 
     let gFindBar = null;
@@ -33,7 +35,7 @@
       gBrowser.addEventListener("pageshow", onPageShow, { once: true });
       let data = `data:text/html,<input id="inp" type="text" />
                                  <textarea id="tarea"/>`;
-      BrowserTestUtils.loadURIString(gBrowser, data);
+      BrowserTestUtils.startLoadingURIString(gBrowser, data);
     }
 
     function promiseHighlightFinished() {

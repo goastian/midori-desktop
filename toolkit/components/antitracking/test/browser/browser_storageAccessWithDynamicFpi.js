@@ -20,6 +20,11 @@ const TEST_REDIRECT_TOP_PAGE =
   TEST_3RD_PARTY_DOMAIN + TEST_PATH + "redirect.sjs?" + TEST_TOP_PAGE;
 const TEST_REDIRECT_3RD_PARTY_PAGE =
   TEST_DOMAIN + TEST_PATH + "redirect.sjs?" + TEST_3RD_PARTY_PARTITIONED_PAGE;
+const TEST_REDIRECT_ANOTHER_3RD_PARTY_PAGE =
+  TEST_ANOTHER_3RD_PARTY_DOMAIN_HTTPS +
+  TEST_PATH +
+  "redirect.sjs?" +
+  TEST_TOP_PAGE_HTTPS;
 
 const COLLECTION_NAME = "partitioning-exempt-urls";
 const EXCEPTION_LIST_PREF_NAME = "privacy.restrict3rdpartystorage.skip_list";
@@ -27,7 +32,7 @@ const EXCEPTION_LIST_PREF_NAME = "privacy.restrict3rdpartystorage.skip_list";
 async function cleanup() {
   Services.prefs.clearUserPref(EXCEPTION_LIST_PREF_NAME);
   await new Promise(resolve => {
-    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
+    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, () =>
       resolve()
     );
   });
@@ -54,6 +59,8 @@ add_setup(async function () {
     ],
   });
   registerCleanupFunction(cleanup);
+
+  await cleanup();
 });
 
 function executeContentScript(browser, callback, options = {}) {
@@ -147,19 +154,18 @@ async function redirectWithUserInteraction(browser, url, wait = null) {
 }
 
 async function checkData(browser, options) {
+  let data;
+
+  // We check if the cookie string includes the expected cookie because the
+  // cookie string might contain both partitioned and unpartitioned cookies at
+  // the same time.
   if ("firstParty" in options) {
-    is(
-      await getDataFromFirstParty(browser),
-      options.firstParty,
-      "correct first-party data"
-    );
+    data = await getDataFromFirstParty(browser);
+    ok(data.includes(options.firstParty), "correct first-party data");
   }
   if ("thirdParty" in options) {
-    is(
-      await getDataFromThirdParty(browser),
-      options.thirdParty,
-      "correct third-party data"
-    );
+    data = await getDataFromThirdParty(browser);
+    ok(data.includes(options.thirdParty), "correct third-party data");
   }
 }
 
@@ -259,9 +265,49 @@ async function runTestRedirectHeuristic(disableHeuristics) {
   await cleanup();
 }
 
+async function runTestRedirectHeuristicWithSameSite() {
+  info("Starting Dynamic FPI Redirect Between Same Site Heuristic test...");
+
+  info("Creating a new tab");
+  let tab = BrowserTestUtils.addTab(gBrowser, TEST_TOP_PAGE_HTTPS);
+  gBrowser.selectedTab = tab;
+
+  let browser = gBrowser.getBrowserForTab(tab);
+  await BrowserTestUtils.browserLoaded(browser);
+
+  info(
+    `Redirecting from ${TEST_DOMAIN_HTTPS} to ${TEST_ANOTHER_3RD_PARTY_DOMAIN_HTTPS}`
+  );
+
+  await redirectWithUserInteraction(
+    browser,
+    TEST_REDIRECT_ANOTHER_3RD_PARTY_PAGE,
+    TEST_TOP_PAGE_HTTPS
+  );
+
+  info("Checking if a permission was set between the redirect");
+
+  const principal = browser.contentPrincipal;
+
+  is(
+    Services.perms.testPermissionFromPrincipal(
+      principal,
+      `3rdPartyStorage^${TEST_ANOTHER_3RD_PARTY_DOMAIN_HTTPS.slice(0, -1)}`
+    ),
+    Services.perms.UNKNOWN_ACTION,
+    "No permission was set for same-site redirect"
+  );
+
+  info("Removing the tab");
+  BrowserTestUtils.removeTab(tab);
+
+  await cleanup();
+}
 add_task(async function testRedirectHeuristic() {
   await runTestRedirectHeuristic(false);
 });
+
+add_task(runTestRedirectHeuristicWithSameSite);
 
 add_task(async function testRedirectHeuristicDisabled() {
   await runTestRedirectHeuristic(true);

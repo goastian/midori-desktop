@@ -12,10 +12,10 @@ with Files("**"):
 if CONFIG["OS_ARCH"] == "WINNT":
     TEST_DIRS += ["test/win"]
 
-MOCHITEST_MANIFESTS += ["test/mochitest.ini"]
-BROWSER_CHROME_MANIFESTS += ["test/browser.ini"]
-XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell.ini"]
-MARIONETTE_UNIT_MANIFESTS += ["test/marionette/marionette.ini"]
+MOCHITEST_MANIFESTS += ["test/mochitest.toml"]
+BROWSER_CHROME_MANIFESTS += ["test/browser.toml"]
+XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell.toml"]
+MARIONETTE_MANIFESTS += ["test/marionette/manifest.toml"]
 
 XPIDL_SOURCES += [
     "nsINativeAppSupport.idl",
@@ -114,6 +114,10 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     UNIFIED_SOURCES += [
         "nsGDKErrorHandler.cpp",
     ]
+    LOCAL_INCLUDES += [
+        "/widget",
+        "/widget/gtk",
+    ]
 
 if CONFIG["MOZ_X11"]:
     EXPORTS += ["nsX11ErrorHandler.h"]
@@ -179,7 +183,7 @@ include("/ipc/chromium/chromium-config.mozbuild")
 
 FINAL_LIBRARY = "xul"
 
-if CONFIG["MOZ_X11"] or CONFIG["MOZ_WAYLAND"]:
+if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     DEFINES["USE_GLX_TEST"] = True
     DIRS += ["glxtest"]
 
@@ -228,6 +232,9 @@ for var in ("APP_VERSION", "APP_ID"):
 if CONFIG["MOZ_BUILD_APP"] == "browser":
     DEFINES["MOZ_BUILD_APP_IS_BROWSER"] = True
 
+if CONFIG["MOZ_USE_NSS_FOR_MAR"]:
+    DEFINES["MAR_NSS"] = True
+
 LOCAL_INCLUDES += [
     "../../other-licenses/nsis/Contrib/CityHash/cityhash",
     "../components/find",
@@ -264,7 +271,6 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
     ]
 
 CXXFLAGS += CONFIG["MOZ_DBUS_CFLAGS"]
-CXXFLAGS += CONFIG["MOZ_DBUS_GLIB_CFLAGS"]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]

@@ -9,14 +9,26 @@
 
 #include <string>
 
+#include "mozilla/DefineEnum.h"
 #include "mozilla/WinHeaderOnlyUtils.h"
 
+namespace mozilla::default_agent {
+
+MOZ_DEFINE_ENUM_CLASS(PDFHandler,
+                      (Error, Unknown, Firefox, MicrosoftEdge, GoogleChrome,
+                       AdobeAcrobat, WPS, Nitro, Foxit, PDFXChange,
+                       AvastSecureBrowser, SumatraPDF));
+
 struct DefaultPdfInfo {
-  std::string currentDefaultPdf;
+  PDFHandler currentDefaultPdf;
 };
 
 using DefaultPdfResult = mozilla::WindowsErrorResult<DefaultPdfInfo>;
 
 DefaultPdfResult GetDefaultPdfInfo();
+std::string GetStringForPDFHandler(PDFHandler handler);
+PDFHandler GetPDFHandlerFromString(const std::string& pdfHandlerString);
+
+}  // namespace mozilla::default_agent
 
 #endif  // DEFAULT_BROWSER_DEFAULT_PDF_H__

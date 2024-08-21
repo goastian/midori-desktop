@@ -110,15 +110,12 @@ add_task(async function testURLParameters() {
           !$("#some-elements-unavailable").hidden,
           "If modules are selected via URL, a warning should be displayed."
         );
-        var inPageSorted = $("#current-log-modules")
-          .innerText.split(",")
-          .sort()
-          .join(",");
-        var inURLSorted = modulesInURL.split(",").sort().join(",");
+        var inInputSorted = $("#log-modules").value.split(",").sort().join(",");
+        var modulesSorted = modulesInURL.split(",").sort().join(",");
         Assert.equal(
-          inPageSorted,
-          inURLSorted,
-          "When selecting modules via URL params, the same modules are reflected in the page."
+          modulesSorted,
+          inInputSorted,
+          "When selecting modules via URL params, the log modules aren't immediately set"
         );
       });
     }
@@ -135,19 +132,16 @@ add_task(async function testURLParameters() {
           !$("#some-elements-unavailable").hidden,
           "If a preset is selected via URL, a warning should be displayed."
         );
-        var inPageSorted = $("#current-log-modules")
-          .innerText.split(",")
-          .sort()
-          .join(",");
+        var inInputSorted = $("#log-modules").value.split(",").sort().join(",");
         var presetSorted = content
           .presets()
           [presetInURL].modules.split(",")
           .sort()
           .join(",");
         Assert.equal(
-          inPageSorted,
+          inInputSorted,
           presetSorted,
-          "When selecting a preset via URL params, the correct log modules are reflected in the page."
+          "When selecting a preset via URL params, the correct log modules are reflected in the input."
         );
       });
     }
@@ -207,7 +201,7 @@ add_task(async function testURLParameters() {
       url: PAGE + "?invalid-param",
     },
     async browser => {
-      await SpecialPowers.spawn(browser, [profilerPresetInURL], async inURL => {
+      await SpecialPowers.spawn(browser, [profilerPresetInURL], async () => {
         let $ = content.document.querySelector.bind(content.document);
         Assert.ok(
           !$("#error").hidden,
@@ -374,7 +368,7 @@ add_task(async function testProfilerOpens() {
       "https://example.com/",
       false
     );
-    SpecialPowers.spawn(browser, [], async savedLogModules => {
+    SpecialPowers.spawn(browser, [], async () => {
       let $ = content.document.querySelector.bind(content.document);
       // Override the URL the profiler uses to avoid hitting external
       // resources (and crash).

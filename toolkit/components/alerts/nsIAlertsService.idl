@@ -70,6 +70,16 @@ interface nsIAlertAction : nsISupports
    * On non-Windows, this field is ignored.
    */
   readonly attribute boolean windowsSystemActivationType;
+
+  /**
+   * On Windows, chrome-privileged notifications -- i.e., those with a
+   * non-actionable principal -- can have action-specific `opaqueRelaunchData`.
+   * This data will be provided to the application at relaunch and can trigger
+   * specific actions.
+   *
+   * On non-Windows, this field is ignored.
+   */
+  readonly attribute AString opaqueRelaunchData;
 };
 
 [scriptable, uuid(cf2e4cb6-4b8f-4eca-aea9-d51a8f9f7a50)]
@@ -203,10 +213,14 @@ interface nsIAlertNotification : nsISupports
   readonly attribute AString source;
 
   /**
-   * A URL to navigate to if the application is relaunched in to complete
-   * interaction with this alert.
+   * On Windows, chrome-privileged notifications -- i.e., those with a
+   * non-actionable principal -- can have `opaqueRelaunchData`.  This data will
+   * be provided to the application at relaunch and can trigger specific
+   * actions.
+   *
+   * On non-Windows, this field is ignored.
    */
-  attribute AString launchURL;
+  attribute AString opaqueRelaunchData;
 
   /**
    * Loads the image associated with this alert.
@@ -298,14 +312,14 @@ interface nsIAlertsDoNotDisturb : nsISupports
    * code to show an alert. e.g. on OS X, the system will take care not
    * disrupting a user if we simply create a notification like usual.
    */
-  attribute bool manualDoNotDisturb;
+  attribute boolean manualDoNotDisturb;
 
   /**
    * Toggles a mode for the service to suppress all notifications from
    * being dispatched when sharing the screen via the getMediaDisplay
    * API.
    */
-  attribute bool suppressForScreenSharing;
+  attribute boolean suppressForScreenSharing;
 };
 
 [scriptable, uuid(fc6d7f0a-0cf6-4268-8c71-ab640842b9b1)]
@@ -317,8 +331,8 @@ interface nsIAlertsIconData : nsISupports
    * |aIconSize| will be zero.
   */
   void showAlertWithIconData(in nsIAlertNotification aAlert,
-                             [optional] in nsIObserver aAlertListener,
-                             [optional] in uint32_t aIconSize,
+                             in nsIObserver aAlertListener,
+                             in uint32_t aIconSize,
                              [const, array, size_is(aIconSize)] in uint8_t
                                                                 aIconData);
 };
@@ -327,7 +341,7 @@ interface nsIAlertsIconData : nsISupports
 interface nsIAlertsIconURI : nsISupports
 {
   /**
-   * Shows an alert with an icon URI. Web notifications use |moz-anno:|
+   * Shows an alert with an icon URI. Web notifications use |cached-favicon:|
    * URIs to reference favicons from Places. If the page doesn't have a
    * favicon, |aIconURI| will be |null|.
    */

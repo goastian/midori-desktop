@@ -19,7 +19,7 @@ XPCOMUtils.defineLazyServiceGetters(lazy, {
   ],
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -36,7 +36,7 @@ XPCOMUtils.defineLazyGetter(lazy, "log", () => {
 /**
  * Task generation and management for macOS, using `launchd` via `launchctl`.
  *
- * Implements the API exposed in TaskScheduler.jsm
+ * Implements the API exposed in TaskScheduler.sys.mjs
  * Not intended for external use, this is in a separate module to ship the code only
  * on macOS, and to expose for testing.
  */
@@ -51,7 +51,7 @@ export var MacOSImpl = {
     let uid = await this._uid();
     lazy.log.debug(`registerTask: uid=${uid}`);
 
-    let label = this._formatLabelForThisApp(id);
+    let label = this._formatLabelForThisApp(id, options);
 
     // We ignore `options.disabled`, which is test only.
     //
@@ -126,10 +126,10 @@ export var MacOSImpl = {
     return true;
   },
 
-  async deleteTask(id) {
+  async deleteTask(id, options) {
     lazy.log.info(`deleteTask(${id})`);
 
-    let label = this._formatLabelForThisApp(id);
+    let label = this._formatLabelForThisApp(id, options);
     return this._deleteTaskByLabel(label);
   },
 
@@ -207,8 +207,8 @@ export var MacOSImpl = {
     lazy.log.debug(`deleteAllTasks: returning ${JSON.stringify(result)}`);
   },
 
-  async taskExists(id) {
-    const label = this._formatLabelForThisApp(id);
+  async taskExists(id, options) {
+    const label = this._formatLabelForThisApp(id, options);
     const path = this._formatPlistPath(label);
     return IOUtils.exists(path);
   },

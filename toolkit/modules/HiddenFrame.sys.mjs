@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { PromiseUtils } from "resource://gre/modules/PromiseUtils.sys.mjs";
-
 const XUL_PAGE = Services.io.newURI("chrome://global/content/win.xhtml");
 
 const gAllHiddenFrames = new Set();
@@ -40,7 +38,7 @@ HiddenFrame.prototype = {
    */
   get() {
     if (!this._deferred) {
-      this._deferred = PromiseUtils.defer();
+      this._deferred = Promise.withResolvers();
       this._create();
     }
 
@@ -91,7 +89,7 @@ HiddenFrame.prototype = {
         "nsISupportsWeakReference",
       ]),
     };
-    this._listener.onStateChange = (wbp, request, stateFlags, status) => {
+    this._listener.onStateChange = (wbp, request, stateFlags) => {
       if (!request) {
         return;
       }
@@ -110,7 +108,7 @@ HiddenFrame.prototype = {
     );
     let docShell = this._browser.docShell;
     let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
-    docShell.createAboutBlankContentViewer(systemPrincipal, systemPrincipal);
+    docShell.createAboutBlankDocumentViewer(systemPrincipal, systemPrincipal);
     let browsingContext = this._browser.browsingContext;
     browsingContext.useGlobalHistory = false;
     let loadURIOptions = {

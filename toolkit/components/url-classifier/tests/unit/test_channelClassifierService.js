@@ -8,7 +8,9 @@
 
 var httpserver = new HttpServer();
 
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+const { NetUtil } = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
+);
 const { UrlClassifierTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/UrlClassifierTestUtils.sys.mjs"
 );
@@ -40,7 +42,7 @@ function setupChannel(uri, topUri = TOP_LEVEL_DOMAIN) {
 
 function waitForBeforeBlockEvent(expected, callback) {
   return new Promise(function (resolve) {
-    let observer = function observe(aSubject, aTopic, aData) {
+    let observer = function observe(aSubject, aTopic) {
       switch (aTopic) {
         case "urlclassifier-before-block-channel":
           let channel = aSubject.QueryInterface(
@@ -88,10 +90,10 @@ add_task(async function test_block_channel() {
     null
   );
 
-  let openPromise = new Promise((resolve, reject) => {
+  let openPromise = new Promise(resolve => {
     channel.asyncOpen({
-      onStartRequest: (request, context) => {},
-      onDataAvailable: (request, context, stream, offset, count) => {},
+      onStartRequest: () => {},
+      onDataAvailable: () => {},
       onStopRequest: (request, status) => {
         dump("status = " + status + "\n");
         if (status == 200) {
@@ -138,10 +140,10 @@ add_task(async function test_unblock_channel() {
     }
   );
 
-  let openPromise = new Promise((resolve, reject) => {
+  let openPromise = new Promise(resolve => {
     channel.asyncOpen({
-      onStartRequest: (request, context) => {},
-      onDataAvailable: (request, context, stream, offset, count) => {},
+      onStartRequest: () => {},
+      onDataAvailable: () => {},
       onStopRequest: (request, status) => {
         if (status == Cr.NS_ERROR_SOCIALTRACKING_URI) {
           Assert.ok(false, "Classifier should not cancel this channel");
@@ -189,10 +191,10 @@ add_task(async function test_allow_channel() {
     }
   );
 
-  let openPromise = new Promise((resolve, reject) => {
+  let openPromise = new Promise(resolve => {
     channel.asyncOpen({
-      onStartRequest: (request, context) => {},
-      onDataAvailable: (request, context, stream, offset, count) => {},
+      onStartRequest: () => {},
+      onDataAvailable: () => {},
       onStopRequest: (request, status) => {
         if (status == Cr.NS_ERROR_SOCIALTRACKING_URI) {
           Assert.ok(false, "Classifier should not cancel this channel");

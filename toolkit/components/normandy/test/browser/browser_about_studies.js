@@ -12,6 +12,9 @@ const { ExperimentFakes } = ChromeUtils.importESModule(
 const { ExperimentManager } = ChromeUtils.importESModule(
   "resource://nimbus/lib/ExperimentManager.sys.mjs"
 );
+const { ExperimentAPI } = ChromeUtils.importESModule(
+  "resource://nimbus/ExperimentAPI.sys.mjs"
+);
 const { RemoteSettingsExperimentLoader } = ChromeUtils.importESModule(
   "resource://nimbus/lib/RemoteSettingsExperimentLoader.sys.mjs"
 );
@@ -645,40 +648,67 @@ decorate_task(
 add_task(async function test_nimbus_about_studies_experiment() {
   const recipe = ExperimentFakes.recipe("about-studies-foo");
   await ExperimentManager.enroll(recipe);
+  const activeBranchSlug = ExperimentAPI.getActiveBranch({
+    slug: recipe.slug,
+  })?.slug;
   await BrowserTestUtils.withNewTab(
-    { gBrowser, url: "about:studies" },
+    { gBrowser, url: "about:studies", activeBranchSlug },
     async browser => {
-      const name = await SpecialPowers.spawn(browser, [], async () => {
-        await ContentTaskUtils.waitForCondition(
-          () => content.document.querySelector(".nimbus .remove-button"),
-          "waiting for page/experiment to load"
-        );
-        return content.document.querySelector(".study-name").innerText;
-      });
+      const [name, renderedBranchSlug] = await SpecialPowers.spawn(
+        browser,
+        [],
+        async () => {
+          await ContentTaskUtils.waitForCondition(
+            () => content.document.querySelector(".nimbus .remove-button"),
+            "waiting for page to load"
+          );
+          return [
+            content.document.querySelector(".study-name").innerText,
+            content.document.querySelector(".study-branch-slug").innerText,
+          ];
+        }
+      );
       // Make sure strings are properly shown
       Assert.equal(
         name,
         recipe.userFacingName,
         "Correct active experiment name"
       );
+      Assert.equal(
+        renderedBranchSlug,
+        activeBranchSlug,
+        "Correct active experiment branch slug"
+      );
     }
   );
   ExperimentManager.unenroll(recipe.slug);
   await BrowserTestUtils.withNewTab(
-    { gBrowser, url: "about:studies" },
+    { gBrowser, url: "about:studies", activeBranchSlug },
     async browser => {
-      const name = await SpecialPowers.spawn(browser, [], async () => {
-        await ContentTaskUtils.waitForCondition(
-          () => content.document.querySelector(".nimbus.disabled"),
-          "waiting for experiment to become disabled"
-        );
-        return content.document.querySelector(".study-name").innerText;
-      });
+      const [name, renderedBranchSlug] = await SpecialPowers.spawn(
+        browser,
+        [],
+        async () => {
+          await ContentTaskUtils.waitForCondition(
+            () => content.document.querySelector(".nimbus.disabled"),
+            "waiting for experiment to become disabled"
+          );
+          return [
+            content.document.querySelector(".study-name").innerText,
+            content.document.querySelector(".study-branch-slug").innerText,
+          ];
+        }
+      );
       // Make sure strings are properly shown
       Assert.equal(
         name,
         recipe.userFacingName,
         "Correct disabled experiment name"
+      );
+      Assert.equal(
+        renderedBranchSlug,
+        activeBranchSlug,
+        "Correct disabled experiment branch slug"
       );
     }
   );
@@ -706,22 +736,31 @@ add_task(async function test_nimbus_about_studies_rollout() {
         return content.document.querySelectorAll(".study-name").length;
       });
       // Make sure strings are properly shown
-      Assert.equal(studyCount, 0, "Rollout not loaded in non-debug mode");
+      Assert.equal(studyCount, 1, "Rollout loaded in non-debug mode");
     }
   );
   Services.prefs.setBoolPref("nimbus.debug", true);
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: "about:studies" },
     async browser => {
-      const studyName = await SpecialPowers.spawn(browser, [], async () => {
-        await ContentTaskUtils.waitForCondition(
-          () => content.document.querySelector(".nimbus .remove-button"),
-          "waiting for page/experiment to load"
-        );
-        return content.document.querySelector(".study-header").innerText;
-      });
+      const [studyName, branchShown] = await SpecialPowers.spawn(
+        browser,
+        [],
+        async () => {
+          await ContentTaskUtils.waitForCondition(
+            () => content.document.querySelector(".nimbus .remove-button"),
+            "waiting for page/experiment to load"
+          );
+          return [
+            content.document.querySelector(".study-header").innerText,
+            !!content.document.querySelector(".study-branch-slug"),
+          ];
+        }
+      );
       // Make sure strings are properly shown
       Assert.ok(studyName.includes("Active"), "Rollout loaded in debug mode");
+      // Make sure the branch slug is not shown for rollouts
+      Assert.ok(!branchShown, "Branch slug not shown for rollouts");
     }
   );
   await BrowserTestUtils.withNewTab(
@@ -745,7 +784,7 @@ add_task(async function test_nimbus_about_studies_rollout() {
 });
 
 add_task(async function test_getStudiesEnabled() {
-  RecipeRunner.initializedPromise = PromiseUtils.defer();
+  RecipeRunner.initializedPromise = Promise.withResolvers();
   let promise = AboutPages.aboutStudies.getStudiesEnabled();
 
   RecipeRunner.initializedPromise.resolve();

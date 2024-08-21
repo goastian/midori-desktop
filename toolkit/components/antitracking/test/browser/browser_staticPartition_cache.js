@@ -21,7 +21,7 @@ async function checkCache(suffixes, originAttributes) {
   const data = await new Promise(resolve => {
     let cacheEntries = [];
     let cacheVisitor = {
-      onCacheStorageInfo(num, consumption) {},
+      onCacheStorageInfo() {},
       onCacheEntryInfo(uri, idEnhance) {
         cacheEntries.push({ uri, idEnhance });
       },
@@ -89,7 +89,7 @@ add_task(async function () {
 
     info("Let's load a page to populate some entries");
     let tab = (gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser));
-    BrowserTestUtils.loadURIString(tab.linkedBrowser, cacheURL);
+    BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, cacheURL);
     await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, cacheURL);
 
     let argObj = {
@@ -105,7 +105,7 @@ add_task(async function () {
         // The CSS cache needs to be cleared in-process.
         content.windowUtils.clearSharedStyleSheetCache();
 
-        let videoURL = arg.urlPrefix + "file_thirdPartyChild.video.ogv";
+        let videoURL = arg.urlPrefix + "file_thirdPartyChild.video.webm";
         let audioURL = arg.urlPrefix + "file_thirdPartyChild.audio.ogg";
         let URLSuffix = "?r=" + arg.randomSuffix;
 
@@ -176,7 +176,7 @@ add_task(async function () {
       "xhr.html",
       "worker.xhr.html",
       "audio.ogg",
-      "video.ogv",
+      "video.webm",
       "fetch.html",
       "worker.fetch.html",
       "request.html",

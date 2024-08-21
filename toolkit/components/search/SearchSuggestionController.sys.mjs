@@ -8,7 +8,6 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   FormHistory: "resource://gre/modules/FormHistory.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
 });
 
@@ -336,7 +335,7 @@ export class SearchSuggestionController {
         // Do nothing since this is normal.
         return null;
       }
-      console.error("SearchSuggestionController rejection: " + reason);
+      console.error("SearchSuggestionController rejection:", reason);
       return null;
     }
     return Promise.all(promises).then(
@@ -459,8 +458,13 @@ export class SearchSuggestionController {
    *   rejected if there is an error.
    */
   #fetchRemote(context) {
-    let deferredResponse = lazy.PromiseUtils.defer();
+    let deferredResponse = Promise.withResolvers();
     let request = (context.request = new XMLHttpRequest());
+    // Expect the response type to be JSON, so that the network layer will
+    // decode it for us. This will also ignore incorrect Mime Types, as we are
+    // dictating how we process it.
+    request.responseType = "json";
+
     let submission = context.engine.getSubmission(
       context.searchString,
       context.searchString
@@ -521,14 +525,14 @@ export class SearchSuggestionController {
       this.#onRemoteLoaded(context, deferredResponse);
     });
 
-    request.addEventListener("error", evt => {
+    request.addEventListener("error", () => {
       this.#reportTelemetryForEngine(context);
       deferredResponse.resolve("HTTP error");
     });
 
     // Reject for an abort assuming it's always from .stop() in which case we
     // shouldn't return local or remote results for existing searches.
-    request.addEventListener("abort", evt => {
+    request.addEventListener("abort", () => {
       context.timer.cancel();
       this.#reportTelemetryForEngine(context);
       deferredResponse.reject("HTTP request aborted");
@@ -560,7 +564,7 @@ export class SearchSuggestionController {
    * @private
    */
   #onRemoteLoaded(context, deferredResponse) {
-    let status, serverResults;
+    let status;
     try {
       status = context.request.status;
     } catch (e) {
@@ -569,19 +573,14 @@ export class SearchSuggestionController {
       return;
     }
 
-    if (status != HTTP_OK || context.request.responseText == "") {
+    if (status != HTTP_OK) {
       deferredResponse.resolve(
         "Non-200 status or empty HTTP response: " + status
       );
       return;
     }
 
-    try {
-      serverResults = JSON.parse(context.request.responseText);
-    } catch (ex) {
-      deferredResponse.resolve("Failed to parse suggestion JSON: " + ex);
-      return;
-    }
+    let serverResults = context.request.response;
 
     try {
       if (
@@ -644,8 +643,8 @@ export class SearchSuggestionController {
       if (typeof resultData === "string") {
         // Failure message
         console.error(
-          "SearchSuggestionController found an unexpected string value: " +
-            resultData
+          "SearchSuggestionController found an unexpected string value:",
+          resultData
         );
       } else if (resultData.localResults) {
         results.formHistoryResults = resultData.localResults;
@@ -747,13 +746,13 @@ export class SearchSuggestionController {
   #newSearchSuggestionEntry(suggestion, richSuggestionData, trending) {
     if (richSuggestionData && (!trending || this.richSuggestionsEnabled)) {
       // We have valid rich suggestions.
-      let args = {
-        matchPrefix: richSuggestionData?.mp,
-        tail: richSuggestionData?.t,
-        trending,
-      };
+      let args = { trending };
 
-      if (this.richSuggestionsEnabled) {
+      // RichSuggestions come with icon and tail data, we only want one or the other
+      if (!richSuggestionData?.i) {
+        args.matchPrefix = richSuggestionData?.mp;
+        args.tail = richSuggestionData?.t;
+      } else if (this.richSuggestionsEnabled) {
         args.icon = richSuggestionData?.i;
         args.description = richSuggestionData?.a;
       }

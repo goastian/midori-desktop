@@ -64,12 +64,16 @@ function registerEvent(
     filter2.incognito = filter.incognito;
   }
 
-  let blockingAllowed = extension.hasPermission("webRequestBlocking");
+  let blockingAllowed =
+    eventName == "onAuthRequired"
+      ? extension.hasPermission("webRequestBlocking") ||
+        extension.hasPermission("webRequestAuthProvider")
+      : extension.hasPermission("webRequestBlocking");
 
   let info2 = [];
   if (info) {
     for (let desc of info) {
-      if (desc == "blocking" && !blockingAllowed) {
+      if ((desc == "blocking" || desc == "asyncBlocking") && !blockingAllowed) {
         // This is usually checked in the child process (based on the API schemas, where these options
         // should be checked with the "webRequestBlockingPermissionRequired" postprocess property),
         // but it is worth to also check it here just in case a new webRequest has been added and
@@ -136,7 +140,10 @@ function makeWebRequestEventRegistrar(event) {
 this.webRequest = class extends ExtensionAPIPersistent {
   primeListener(event, fire, params, isInStartup) {
     // During early startup if the listener does not use blocking we do not prime it.
-    if (!isInStartup || params[1]?.includes("blocking")) {
+    if (
+      !isInStartup ||
+      params[1]?.some(v => v === "blocking" || v === "asyncBlocking")
+    ) {
       return super.primeListener(event, fire, params, isInStartup);
     }
   }

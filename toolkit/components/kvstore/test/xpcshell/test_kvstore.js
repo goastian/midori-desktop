@@ -12,9 +12,16 @@ function run_test() {
   run_next_test();
 }
 
-async function makeDatabaseDir(name) {
+async function makeDatabaseDir(name, { mockCorrupted = false } = {}) {
   const databaseDir = PathUtils.join(PathUtils.profileDir, name);
   await IOUtils.makeDirectory(databaseDir);
+  if (mockCorrupted) {
+    // Mock a corrupted db.
+    await IOUtils.write(
+      PathUtils.join(databaseDir, "data.safe.bin"),
+      new Uint8Array([0x00, 0x00, 0x00, 0x00])
+    );
+  }
   return databaseDir;
 }
 
@@ -24,6 +31,71 @@ const gKeyValueService = Cc["@mozilla.org/key-value-service;1"].getService(
 
 add_task(async function getService() {
   Assert.ok(gKeyValueService);
+});
+
+add_task(async function getOrCreate_defaultRecoveryStrategyError() {
+  const databaseDir = await makeDatabaseDir("getOrCreate_Error", {
+    mockCorrupted: true,
+  });
+
+  await Assert.rejects(
+    KeyValueService.getOrCreate(databaseDir, "db"),
+    /FileInvalid/
+  );
+});
+
+add_task(async function getOrCreateWithOptions_RecoveryStrategyError() {
+  const databaseDir = await makeDatabaseDir("getOrCreateWithOptions_Error", {
+    mockCorrupted: true,
+  });
+
+  await Assert.rejects(
+    KeyValueService.getOrCreateWithOptions(databaseDir, "db", {
+      strategy: KeyValueService.RecoveryStrategy.ERROR,
+    }),
+    /FileInvalid/
+  );
+});
+
+add_task(async function getOrCreateWithOptions_RecoveryStrategyRename() {
+  const databaseDir = await makeDatabaseDir("getOrCreateWithOptions_Rename", {
+    mockCorrupted: true,
+  });
+
+  const database = await KeyValueService.getOrCreateWithOptions(
+    databaseDir,
+    "db",
+    {
+      strategy: KeyValueService.RecoveryStrategy.RENAME,
+    }
+  );
+  Assert.ok(database);
+
+  Assert.ok(
+    await IOUtils.exists(PathUtils.join(databaseDir, "data.safe.bin.corrupt")),
+    "Expect corrupt file to be found"
+  );
+});
+
+add_task(async function getOrCreateWithOptions_RecoveryStrategyDiscard() {
+  const databaseDir = await makeDatabaseDir("getOrCreateWithOptions_Discard", {
+    mockCorrupted: true,
+  });
+
+  const database = await KeyValueService.getOrCreateWithOptions(
+    databaseDir,
+    "db",
+    {
+      strategy: KeyValueService.RecoveryStrategy.DISCARD,
+    }
+  );
+  Assert.ok(database);
+
+  Assert.equal(
+    await IOUtils.exists(PathUtils.join(databaseDir, "data.safe.bin.corrupt")),
+    false,
+    "Expect corrupt file to not exist"
+  );
 });
 
 add_task(async function getOrCreate() {

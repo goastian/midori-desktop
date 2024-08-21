@@ -69,7 +69,7 @@ class DateTimeTestHelper {
       [selector],
       async selector => {
         let input = content.document.querySelector(selector);
-        await ContentTaskUtils.waitForEvent(input, "change", false, e => {
+        await ContentTaskUtils.waitForEvent(input, "change", false, () => {
           ok(
             content.window.windowUtils.isHandlingUserInput,
             "isHandlingUserInput should be true"
@@ -113,15 +113,19 @@ class DateTimeTestHelper {
     EventUtils.synthesizeMouseAtCenter(element, {}, this.frame.contentWindow);
   }
 
-  /**
-   * Close the panel and the tab
-   */
-  async tearDown() {
+  async closePicker() {
     if (this.panel.state != "closed") {
       let pickerClosePromise = this.promisePickerClosed();
       this.panel.hidePopup();
       await pickerClosePromise;
     }
+  }
+
+  /**
+   * Close the panel and the tab
+   */
+  async tearDown() {
+    await this.closePicker();
     BrowserTestUtils.removeTab(this.tab);
     this.tab = null;
   }
@@ -303,7 +307,7 @@ async function testKeyOnSpinners(key, document, tabs = 1) {
     "Month-year button is expanded when the spinners are shown"
   );
   Assert.ok(
-    BrowserTestUtils.is_visible(helper.getElement(MONTH_YEAR_VIEW)),
+    BrowserTestUtils.isVisible(helper.getElement(MONTH_YEAR_VIEW)),
     "Month-year selection panel is visible"
   );
 
@@ -325,7 +329,7 @@ async function testKeyOnSpinners(key, document, tabs = 1) {
     "Month-year button is collapsed when the spinners are hidden"
   );
   Assert.ok(
-    BrowserTestUtils.is_hidden(helper.getElement(MONTH_YEAR_VIEW)),
+    BrowserTestUtils.isHidden(helper.getElement(MONTH_YEAR_VIEW)),
     "Month-year selection panel is not visible"
   );
   Assert.equal(

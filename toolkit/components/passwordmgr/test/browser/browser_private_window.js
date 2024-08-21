@@ -32,7 +32,7 @@ function getDialogDoc() {
       if (childDocShell.busyFlags != Ci.nsIDocShell.BUSY_FLAGS_NONE) {
         continue;
       }
-      var childDoc = childDocShell.contentViewer.DOMDocument;
+      var childDoc = childDocShell.docViewer.DOMDocument;
       if (
         childDoc.location.href !=
           "chrome://global/content/commonDialog.xhtml" &&
@@ -72,12 +72,12 @@ function getAuthPrompt() {
 
 async function loadAccessRestrictedURL(browser, url, username, password) {
   let browserLoaded = BrowserTestUtils.browserLoaded(browser);
-  BrowserTestUtils.loadURIString(browser, url);
+  BrowserTestUtils.startLoadingURIString(browser, url);
 
   // Wait for the auth prompt, enter the login details and close the prompt
   await PromptTestUtils.handleNextPrompt(
     browser,
-    { modalType: authPromptModalType, promptType: "promptUserAndPass" },
+    { modalType: Ci.nsIPrompt.MODAL_TYPE_TAB, promptType: "promptUserAndPass" },
     { buttonNumClick: 0, loginInput: username, passwordInput: password }
   );
 
@@ -106,13 +106,11 @@ const authUrl = `https://example.com/${DIRECTORY_PATH}authenticate.sjs`;
 
 let normalWin;
 let privateWin;
-let authPromptModalType;
 
 // XXX: Note that tasks are currently run in sequence. Some tests may assume the state
 // resulting from successful or unsuccessful logins in previous tasks
 
 add_task(async function test_setup() {
-  authPromptModalType = Services.prefs.getIntPref("prompts.modalType.httpAuth");
   normalWin = await BrowserTestUtils.openNewBrowserWindow({ private: false });
   privateWin = await BrowserTestUtils.openNewBrowserWindow({ private: true });
   Services.logins.removeAllUserFacingLogins();
@@ -251,7 +249,7 @@ add_task(async function test_private_popup_notification_2() {
     }
   );
   Assert.equal(
-    Services.logins.getAllLogins().length,
+    (await Services.logins.getAllLogins()).length,
     0,
     "No logins were saved"
   );
@@ -315,7 +313,7 @@ add_task(async function test_private_popup_notification_no_capture_pref_2b() {
     }
   );
   Assert.equal(
-    Services.logins.getAllLogins().length,
+    (await Services.logins.getAllLogins()).length,
     0,
     "No logins were saved"
   );
@@ -329,7 +327,7 @@ add_task(async function test_normal_popup_notification_3() {
 
   Services.logins.removeAllUserFacingLogins();
   await Services.logins.addLoginAsync(login);
-  let allLogins = Services.logins.getAllLogins();
+  let allLogins = await Services.logins.getAllLogins();
   // Sanity check the HTTP login exists.
   Assert.equal(allLogins.length, 1, "Should have the HTTP login");
   let timeLastUsed = allLogins[0].timeLastUsed;
@@ -368,7 +366,7 @@ add_task(async function test_normal_popup_notification_3() {
       }
     }
   );
-  allLogins = Services.logins.getAllLogins();
+  allLogins = await Services.logins.getAllLogins();
   Assert.equal(
     allLogins[0].guid,
     loginGuid,
@@ -388,7 +386,7 @@ add_task(async function test_private_popup_notification_3b() {
 
   Services.logins.removeAllUserFacingLogins();
   await Services.logins.addLoginAsync(login);
-  let allLogins = Services.logins.getAllLogins();
+  let allLogins = await Services.logins.getAllLogins();
   // Sanity check the HTTP login exists.
   Assert.equal(allLogins.length, 1, "Should have the HTTP login");
   let timeLastUsed = allLogins[0].timeLastUsed;
@@ -428,7 +426,7 @@ add_task(async function test_private_popup_notification_3b() {
       }
     }
   );
-  allLogins = Services.logins.getAllLogins();
+  allLogins = await Services.logins.getAllLogins();
   Assert.equal(
     allLogins[0].guid,
     loginGuid,
@@ -448,7 +446,7 @@ add_task(async function test_normal_new_password_4() {
   );
   Services.logins.removeAllUserFacingLogins();
   await Services.logins.addLoginAsync(login);
-  let allLogins = Services.logins.getAllLogins();
+  let allLogins = await Services.logins.getAllLogins();
   // Sanity check the HTTP login exists.
   Assert.equal(allLogins.length, 1, "Should have the HTTP login");
   let timeLastUsed = allLogins[0].timeLastUsed;
@@ -491,7 +489,7 @@ add_task(async function test_normal_new_password_4() {
   );
   // We put up a doorhanger, but didn't interact with it, so we expect the login timestamps
   // to be unchanged
-  allLogins = Services.logins.getAllLogins();
+  allLogins = await Services.logins.getAllLogins();
   Assert.equal(
     allLogins[0].guid,
     loginGuid,
@@ -518,7 +516,7 @@ add_task(async function test_private_new_password_5() {
     `Expect ${PRIVATE_BROWSING_CAPTURE_PREF} to default to true`
   );
 
-  let allLogins = Services.logins.getAllLogins();
+  let allLogins = await Services.logins.getAllLogins();
   // Sanity check the HTTP login exists.
   Assert.equal(allLogins.length, 1, "Should have the HTTP login");
   let timeLastUsed = allLogins[0].timeLastUsed;
@@ -561,7 +559,7 @@ add_task(async function test_private_new_password_5() {
   );
   // We put up a doorhanger, but didn't interact with it, so we expect the login timestamps
   // to be unchanged
-  allLogins = Services.logins.getAllLogins();
+  allLogins = await Services.logins.getAllLogins();
   Assert.equal(
     allLogins[0].guid,
     loginGuid,
@@ -624,7 +622,7 @@ add_task(async function test_normal_autofilled_7() {
 
   // Sanity check the HTTP login exists.
   Assert.equal(
-    Services.logins.getAllLogins().length,
+    (await Services.logins.getAllLogins()).length,
     1,
     "Should have the HTTP login"
   );
@@ -639,7 +637,7 @@ add_task(async function test_normal_autofilled_7() {
       // Add the observer before loading the form page
       let formFilled = listenForTestNotification("FormProcessed");
       await SimpleTest.promiseFocus(browser.ownerGlobal);
-      BrowserTestUtils.loadURIString(browser, form1Url);
+      BrowserTestUtils.startLoadingURIString(browser, form1Url);
       await formFilled;
 
       // the form should have been autofilled, so submit without updating field values
@@ -666,7 +664,7 @@ add_task(async function test_private_not_autofilled_8() {
   info("test 8: verify that the user/pass pair was not autofilled");
   // Sanity check the HTTP login exists.
   Assert.equal(
-    Services.logins.getAllLogins().length,
+    (await Services.logins.getAllLogins()).length,
     1,
     "Should have the HTTP login"
   );
@@ -696,7 +694,7 @@ add_task(async function test_private_not_autofilled_8() {
 // add_task(async function test_private_autocomplete_9() {
 //   info("test 9: verify that the user/pass pair was available for autocomplete");
 //   // Sanity check the HTTP login exists.
-//   Assert.equal(Services.logins.getAllLogins().length, 1, "Should have the HTTP login");
+//   Assert.equal((await Services.logins.getAllLogins()).length, 1, "Should have the HTTP login");
 
 //   await focusWindow(privateWin);
 //   await BrowserTestUtils.withNewTab({
@@ -740,7 +738,7 @@ add_task(async function test_normal_autofilled_10() {
   );
   // Sanity check the HTTP login exists.
   Assert.equal(
-    Services.logins.getAllLogins().length,
+    (await Services.logins.getAllLogins()).length,
     1,
     "Should have the HTTP login"
   );

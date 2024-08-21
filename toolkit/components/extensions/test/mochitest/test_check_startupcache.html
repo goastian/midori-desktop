@@ -31,7 +31,9 @@ add_task(async function check_ExtensionParent_StartupCache_is_non_empty() {
   let chromeScript = loadChromeScript(() => {
     const {
       ExtensionParent,
-    } = ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm");
+    } = ChromeUtils.importESModule(
+      "resource://gre/modules/ExtensionParent.sys.mjs"
+    );
     const { StartupCache } = ExtensionParent;
     this.sendAsyncMessage("StartupCache_data", StartupCache._data);
   });
@@ -39,7 +41,7 @@ add_task(async function check_ExtensionParent_StartupCache_is_non_empty() {
   let map = await chromeScript.promiseOneMessage("StartupCache_data");
   chromeScript.destroy();
 
-  // "manifests" is populated by Extension's parseManifest in Extension.jsm.
+  // "manifests" is populated by Extension's parseManifest in Extension.sys.mjs.
   const keys = ["manifests", "mochikit@mozilla.org", "2.0", "en-US"];
   for (let key of keys) {
     map = map.get(key);

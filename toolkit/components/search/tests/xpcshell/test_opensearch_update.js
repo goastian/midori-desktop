@@ -8,7 +8,7 @@
 const KEYWORD = "keyword";
 let timerManager;
 
-add_task(async function setup() {
+add_setup(async function () {
   let server = useHttpServer("");
   server.registerContentType("sjs", "sjs");
   await AddonTestUtils.promiseStartupManager();
@@ -33,7 +33,7 @@ add_task(async function test_installEngine_with_updates_disabled() {
     "Should not have registered the update timer already"
   );
 
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}data/engineMaker.sjs?${JSON.stringify(engineData)}`,
   });
 
@@ -62,7 +62,7 @@ add_task(async function test_installEngine_with_updates_enabled() {
     "Should not have registered the update timer already"
   );
 
-  let engine = await SearchTestUtils.promiseNewSearchEngine({
+  let engine = await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}data/engineMaker.sjs?${JSON.stringify(engineData)}`,
   });
 

@@ -11,9 +11,10 @@ async function run_test() {
   }
   const STATE_AFTER_STAGE = gIsServiceTest ? STATE_APPLIED_SVC : STATE_APPLIED;
   gTestFiles = gTestFilesCompleteSuccess;
-  gTestFiles[gTestFiles.length - 1].originalContents = null;
-  gTestFiles[gTestFiles.length - 1].compareContents = "FromComplete\n";
-  gTestFiles[gTestFiles.length - 1].comparePerms = 0o644;
+  const channelPrefs = getTestFileByName(FILE_CHANNEL_PREFS);
+  channelPrefs.originalContents = null;
+  channelPrefs.compareContents = "FromComplete\n";
+  channelPrefs.comparePerms = 0o644;
   gTestDirs = gTestDirsCompleteSuccess;
   setupSymLinks();
   await setupUpdaterTest(FILE_COMPLETE_MAR, false);
@@ -26,12 +27,12 @@ async function run_test() {
   await checkPostUpdateAppLog();
   checkAppBundleModTime();
   checkSymLinks();
-  standardInit();
+  await testPostUpdateProcessing();
   checkPostUpdateRunningFile(true);
   checkFilesAfterUpdateSuccess(getApplyDirFile, false, true);
   checkUpdateLogContents(LOG_REPLACE_SUCCESS, false, true);
   await waitForUpdateXMLFiles();
-  checkUpdateManager(STATE_NONE, false, STATE_SUCCEEDED, 0, 1);
+  await checkUpdateManager(STATE_NONE, false, STATE_SUCCEEDED, 0, 1);
   checkCallbackLog();
 }
 

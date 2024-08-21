@@ -108,7 +108,10 @@ const assertDetailView = async (win, { addonId, expectThemeName }) => {
   let loadedDetailView = waitForViewLoad(win);
   await gBrowser.ownerGlobal.promiseDocumentFlushed(() => {});
   const themeCard = getAddonCard(win, addonId);
-  themeCard.click();
+  // Ensure that we send a click on the control that is accessible (while a
+  // mouse user could also activate a card by clicking on the entire container):
+  const themeCardLink = themeCard.querySelector(".addon-name-link");
+  themeCardLink.click();
   await loadedDetailView;
   Assert.equal(
     themeCard.querySelector(".addon-name")?.textContent,
@@ -173,11 +176,11 @@ async function test_update_expired_colorways_builtins() {
   const promiseInstallsEnded = Promise.all([
     AddonTestUtils.promiseInstallEvent(
       "onInstallEnded",
-      addon => addon.id === EXPIRED_COLORWAY_THEME_ID1
+      install => install.addon.id === EXPIRED_COLORWAY_THEME_ID1
     ),
     AddonTestUtils.promiseInstallEvent(
       "onInstallEnded",
-      addon => addon.id === EXPIRED_COLORWAY_THEME_ID1
+      install => install.addon.id === EXPIRED_COLORWAY_THEME_ID1
     ),
   ]);
   // Wait for active theme to also execute the update bootstrap method.

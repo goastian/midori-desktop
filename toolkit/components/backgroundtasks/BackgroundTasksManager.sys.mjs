@@ -3,15 +3,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
+  DevToolsSocketStatus:
+    "resource://devtools/shared/security/DevToolsSocketStatus.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -25,7 +25,7 @@ XPCOMUtils.defineLazyGetter(lazy, "log", () => {
   return new ConsoleAPI(consoleOptions);
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "DevToolsStartup", () => {
+ChromeUtils.defineLazyGetter(lazy, "DevToolsStartup", () => {
   return Cc["@mozilla.org/devtools/startup-clh;1"].getService(
     Ci.nsICommandLineHandler
   ).wrappedJSObject;
@@ -174,7 +174,7 @@ export class BackgroundTasksManager {
     const waitFlag =
       commandLine.findFlag("wait-for-jsdebugger", CASE_INSENSITIVE) != -1;
     if (waitFlag) {
-      function onDevtoolsThreadReady(subject, topic, data) {
+      function onDevtoolsThreadReady(subject, topic) {
         lazy.log.info(
           `${Services.appinfo.processID}: Setting breakpoints for background task named '${name}'` +
             ` (with ${commandLine.length} arguments)`
@@ -231,22 +231,32 @@ export class BackgroundTasksManager {
       if (taskModule.backgroundTaskTimeoutSec) {
         timingSettings.maxTaskRuntimeSec = taskModule.backgroundTaskTimeoutSec;
       }
-
       try {
         let minimumReached = false;
-        let minRuntime = new Promise(resolve =>
-          lazy.setTimeout(() => {
-            minimumReached = true;
-            resolve(true);
-          }, timingSettings.minTaskRuntimeMS)
-        );
-        exitCode = await Promise.race([
-          new Promise(resolve =>
+        let minRuntime;
+        let maxRuntime;
+        if (lazy.DevToolsSocketStatus.hasSocketOpened()) {
+          lazy.log.info(
+            `Setting background task timeout period to indefinite because a DevTools server is listening.`
+          );
+          minimumReached = true;
+          maxRuntime = new Promise(() => {});
+        } else {
+          minRuntime = new Promise(resolve =>
+            lazy.setTimeout(() => {
+              minimumReached = true;
+              resolve(true);
+            }, timingSettings.minTaskRuntimeMS)
+          );
+          maxRuntime = new Promise(resolve =>
             lazy.setTimeout(() => {
               lazy.log.error(`Background task named '${name}' timed out`);
               resolve(EXIT_CODE.TIMEOUT);
             }, timingSettings.maxTaskRuntimeSec * 1000)
-          ),
+          );
+        }
+        exitCode = await Promise.race([
+          maxRuntime,
           taskModule.runBackgroundTask(commandLine),
         ]);
         if (!minimumReached) {

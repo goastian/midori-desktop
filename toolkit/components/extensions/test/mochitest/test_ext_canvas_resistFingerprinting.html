@@ -27,7 +27,7 @@ add_task(async function test_contentscript() {
     let ctx = canvas.getContext("2d");
     ctx.fillStyle = "green";
     ctx.fillRect(0, 0, 100, 100);
-    let data = ctx.getImageData(0, 0, 100, 100);
+    let data = ctx.getImageData(50, 50, 1, 1);
 
     browser.test.sendMessage("data-color", data.data[1]);
   }
@@ -54,7 +54,8 @@ add_task(async function test_contentscript() {
   await extension.startup();
   let win = window.open(url);
   let color = await extension.awaitMessage("data-color");
-  is(color, 128, "Got correct pixel data for green");
+  const expected = 128;
+  is(color, expected, "Got correct pixel data for green");
   win.close();
   await extension.unload();
 });

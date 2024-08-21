@@ -58,7 +58,7 @@ add_task(async function test_single_provider_dialog() {
 
   // Make sure the IDP Site is in the label
   let label = inputs[0].getElementsByClassName(
-    "identity-credential-list-item-label"
+    "identity-credential-list-item-label-primary"
   )[0];
   ok(label.textContent.includes("idp.example"), "IDP site in label");
 
@@ -192,14 +192,14 @@ add_task(async function test_multiple_provider_dialog() {
   is(inputs.length, 2, "Two IDPs visible");
 
   let label1 = inputs[0].getElementsByClassName(
-    "identity-credential-list-item-label"
+    "identity-credential-list-item-label-primary"
   )[0];
   ok(
     label1.textContent.includes("idp1.example"),
     "First IDP label includes its site"
   );
   let label2 = inputs[1].getElementsByClassName(
-    "identity-credential-list-item-label"
+    "identity-credential-list-item-label-primary"
   )[0];
   ok(
     label2.textContent.includes("idp2.example"),
@@ -272,14 +272,14 @@ add_task(async function test_multiple_provider_choose_second() {
   is(inputs.length, 2, "Two IDPs visible");
 
   let label1 = inputs[0].getElementsByClassName(
-    "identity-credential-list-item-label"
+    "identity-credential-list-item-label-primary"
   )[0];
   ok(
     label1.textContent.includes("idp1.example"),
     "First IDP label includes its site"
   );
   let label2 = inputs[1].getElementsByClassName(
-    "identity-credential-list-item-label"
+    "identity-credential-list-item-label-primary"
   )[0];
   ok(
     label2.textContent.includes("idp2.example"),
@@ -342,6 +342,7 @@ add_task(async function test_multiple_provider_show_branding() {
               url: "https://example.net/browser/toolkit/components/credentialmanagement/tests/browser/custom.svg",
             },
           ],
+          name: "demo ip",
         },
       },
     ]
@@ -362,13 +363,22 @@ add_task(async function test_multiple_provider_show_branding() {
     .getElementById("identity-credential-provider")
     .getElementsByClassName("identity-credential-list-item-icon");
   is(icons.length, 2, "Two icons in the popup");
-  ok(icons[0].src != icons[1].src, "Icons are different");
+  Assert.notEqual(icons[0].src, icons[1].src, "Icons are different");
   ok(
     icons[1].src.startsWith(
       "data:image/svg+xml;base64,PCEtLSBUaGlzIFNvdXJjZSBDb2RlIEZvcm0gaXMgc3ViamVjdCB0byB0aGUgdGVybXMgb2YgdGhlIE1vemlsbGEgUHVibGljCiAgIC0gTGljZW5zZSwgdi4gMi4wLiBJZiBhIGNvcHkgb2YgdGhlIE1QTCB3YXMgbm90IGRpc3RyaWJ1dGVkIHdpdGggdGhpcwogICAtIGZpbGUsIFlvdSBjYW4gb2J0YWluIG9uZSBhdCBodHRwOi8vbW96aWxsYS5vcmcvTVBMLzIuMC8uIC0tPgo8c3ZnIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDE2IDE2IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIGZpbGw9ImNvbnRleHQtZmlsbCIgZmlsbC1vcGFjaXR5PSJjb250ZXh0LWZpbGwtb3BhY2l0eSI+CiAgPHBhdGggZD0iTS42MjUgMTNhLjYyNS42MjUgMCAwIDEgMC0xLjI1bDMuMjUgMEE0Ljg4IDQuODggMCAwIDAgOC43NSA2Ljg3NWwwLS4yNWEuNjI1LjYyNSAwIDAgMSAxLjI1IDBsMCAuMjVBNi4xMzIgNi4xMzIgMCAwIDEgMy44NzUgMTNsLTMuMjUgMHoiLz"
     ),
     "The second icon matches the custom.svg"
   );
+
+  let inputs = document
+    .getElementById("identity-credential-provider")
+    .getElementsByClassName("identity-credential-list-item");
+  is(inputs.length, 2, "One IDP");
+  let label = inputs[1].getElementsByClassName(
+    "identity-credential-list-item-label-primary"
+  )[0];
+  ok(label.textContent.includes("demo ip"), "should show business short time");
 
   // Click continue
   document

@@ -1,0 +1,48 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+.container {
+  display: grid;
+  grid-template-areas: "title title title "
+                       ".     icon  slider";
+  grid-template-columns: 0 min-content 1fr;
+  align-items: center;
+  gap: var(--space-large);
+}
+
+.slider-label {
+  grid-area: title;
+}
+
+.icon-container {
+  grid-area: icon;
+  align-self: flex-start;
+
+  > .icon {
+    -moz-context-properties: fill;
+    fill: var(--popup-button-foreground);
+    height: 20px;
+    width: 20px;
+  }
+}
+
+.slider-container {
+  grid-area: slider;
+}
+
+input {
+  margin: 0;
+  width: 100%;
+}
+
+datalist {
+  display: flex;
+  justify-content: space-between;
+  white-space: nowrap;
+  font-size: var(--font-size-small);
+
+  &.no-tick-labels {
+    display: none;
+  }
+}

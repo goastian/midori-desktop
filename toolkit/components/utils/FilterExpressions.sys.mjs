@@ -2,30 +2,42 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  PreferenceFilters:
-    "resource://gre/modules/components-utils/PreferenceFilters.sys.mjs",
+  mozjexl: "resource://gre/modules/components-utils/mozjexl.sys.mjs",
   Sampling: "resource://gre/modules/components-utils/Sampling.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "mozjexl",
-  "resource://gre/modules/components-utils/mozjexl.js"
-);
 
-XPCOMUtils.defineLazyGetter(lazy, "jexl", () => {
+function getPrefValue(prefKey, defaultValue) {
+  switch (Services.prefs.getPrefType(prefKey)) {
+    case Ci.nsIPrefBranch.PREF_STRING:
+      return Services.prefs.getStringPref(prefKey);
+
+    case Ci.nsIPrefBranch.PREF_INT:
+      return Services.prefs.getIntPref(prefKey);
+
+    case Ci.nsIPrefBranch.PREF_BOOL:
+      return Services.prefs.getBoolPref(prefKey);
+
+    case Ci.nsIPrefBranch.PREF_INVALID:
+      return defaultValue;
+
+    default:
+      throw new Error(`Error getting pref ${prefKey}.`);
+  }
+}
+
+ChromeUtils.defineLazyGetter(lazy, "jexl", () => {
   const jexl = new lazy.mozjexl.Jexl();
   jexl.addTransforms({
     date: dateString => new Date(dateString),
     stableSample: lazy.Sampling.stableSample,
     bucketSample: lazy.Sampling.bucketSample,
-    preferenceValue: lazy.PreferenceFilters.preferenceValue,
-    preferenceIsUserSet: lazy.PreferenceFilters.preferenceIsUserSet,
-    preferenceExists: lazy.PreferenceFilters.preferenceExists,
+    preferenceValue: getPrefValue,
+    preferenceIsUserSet: prefKey => Services.prefs.prefHasUserValue(prefKey),
+    preferenceExists: prefKey =>
+      Services.prefs.getPrefType(prefKey) != Ci.nsIPrefBranch.PREF_INVALID,
     keys,
     length,
     mapToProperty,

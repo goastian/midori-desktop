@@ -2,7 +2,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 /*
- * This file tests the CrashStore type in CrashManager.jsm.
+ * This file tests the CrashStore type in CrashManager.sys.mjs.
  */
 
 "use strict";
@@ -257,7 +257,7 @@ add_task(async function test_add_mixed_types() {
         allAdd &&
         s.addCrash(ptName, CRASH_TYPE_CRASH, ptName + "crash", new Date());
     },
-    (_, ptName) => {
+    _ => {
       allAdd =
         allAdd &&
         s.addCrash(

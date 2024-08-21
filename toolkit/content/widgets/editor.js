@@ -16,13 +16,13 @@
           "nsIURIContentListener",
           "nsISupportsWeakReference",
         ]),
-        doContent(contentType, isContentPreferred, request, contentHandler) {
+        doContent() {
           return false;
         },
-        isPreferred(contentType, desiredContentType) {
+        isPreferred() {
           return false;
         },
-        canHandleContent(contentType, isContentPreferred, desiredContentType) {
+        canHandleContent() {
           return false;
         },
         loadCookie: null,
@@ -92,10 +92,6 @@
       return this.docShell
         .QueryInterface(Ci.nsIInterfaceRequestor)
         .getInterface(Ci.nsIWebBrowserFind);
-    }
-
-    get markupDocumentViewer() {
-      return this.docShell.contentViewer;
     }
 
     get editingSession() {

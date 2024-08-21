@@ -35,7 +35,8 @@ table {
   margin-block: 2px;
 }
 
-#content > div {
+#content > div,
+#mediactx > div {
   padding: 1em 2em;
   margin: 1em 0;
   border: 1px solid var(--in-content-box-border-color);
@@ -43,17 +44,45 @@ table {
   background-color: var(--in-content-box-background);
 }
 
-.section-heading > * {
-  display: inline-block;
+.autorefresh {
+  font-size: var(--font-size-small);
+  margin-inline-end: 0.5em;
 }
 
-.section-heading > button {
-  margin-inline: 1em;
+.section-heading {
+  display: flex;
+  align-items: center;
+
+  > h3,
+  > h4 {
+    margin-inline-end: 1em;
+  }
+
+  > .fold-trigger {
+    margin-inline-end: 1em;
+  }
+
+  > button {
+    margin-inline: 1em;
+  }
+}
+
+.fold-target {
+  border-inline-start: 1px solid var(--in-content-border-color);
+  padding-inline-start: 1em;
+
+  .section-body > & {
+    display: block;
+  }
 }
 
 .peer-connection > h3 {
   background-color: var(--in-content-box-info-background);
   padding: 4px;
+}
+
+h3 > span {
+  margin-inline-end: 0.5em;
 }
 
 .peer-connection > button {
@@ -194,4 +223,46 @@ div.fold-trigger {
   border: 1px solid var(--in-content-border-color);
   margin-inline: 1px;
   padding: 1px;
+}
+
+.svg-graph {
+  border: 1px solid var(--in-content-border-color);
+  margin-inline: 1px;
+}
+
+.copy-button-base {
+  padding-inline-end: 0.25em;
+}
+
+.copy-button {
+  visibility: hidden;
+}
+
+.prefList > li {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pathDisplay {
+  margin-inline-end: 1em;
+}
+
+.subsection-heading > h4 > span {
+  margin-inline-end: 0.5em;
+}
+
+.prefList > li:hover > .copy-button,
+.subsection-heading:hover > h4 > .copy-button {
+  visibility: visible;
+}
+
+.copy-button-fade-out {
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+
+.copy-button-fade-in {
+  opacity: 1;
+  transition: opacity 0.5s;
 }

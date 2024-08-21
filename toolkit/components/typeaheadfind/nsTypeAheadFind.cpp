@@ -194,7 +194,7 @@ nsTypeAheadFind::SetDocShell(nsIDocShell* aDocShell) {
   mWebBrowserFind = do_GetInterface(aDocShell);
   NS_ENSURE_TRUE(mWebBrowserFind, NS_ERROR_FAILURE);
 
-  mDocument = do_GetWeakReference(aDocShell->GetExtantDocument());
+  mDocument = aDocShell->GetExtantDocument();
 
   ReleaseStrongMemberVariables();
   return NS_OK;
@@ -453,7 +453,7 @@ nsresult nsTypeAheadFind::FindItNow(uint32_t aMode, bool aIsLinksOnly,
       // Make sure new document is selected
       if (document != startingDocument) {
         // We are in a new document (because of frames/iframes)
-        mDocument = do_GetWeakReference(document);
+        mDocument = document;
       }
 
       nsCOMPtr<nsPIDOMWindowInner> window = document->GetInnerWindow();
@@ -822,8 +822,7 @@ void nsTypeAheadFind::RangeStartsInsideLink(nsRange* aRange,
       nsCOMPtr<mozilla::dom::Link> link(do_QueryInterface(startContent));
       if (link) {
         // Check to see if inside HTML link
-        *aIsInsideLink = startContent->AsElement()->HasAttr(kNameSpaceID_None,
-                                                            nsGkAtoms::href);
+        *aIsInsideLink = startContent->AsElement()->HasAttr(nsGkAtoms::href);
         return;
       }
     } else {
@@ -1154,7 +1153,7 @@ bool nsTypeAheadFind::IsRangeRendered(nsRange* aRange) {
 
 already_AddRefed<Document> nsTypeAheadFind::GetDocument() {
   // Try the last document we found and ensure it's sane.
-  RefPtr<Document> doc = do_QueryReferent(mDocument);
+  RefPtr<Document> doc(mDocument);
   if (doc && doc->GetPresShell() && doc->GetDocShell()) {
     return doc.forget();
   }
@@ -1167,6 +1166,6 @@ already_AddRefed<Document> nsTypeAheadFind::GetDocument() {
     return nullptr;
   }
   doc = ds->GetExtantDocument();
-  mDocument = do_GetWeakReference(doc);
+  mDocument = doc;
   return doc.forget();
 }

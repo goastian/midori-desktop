@@ -136,7 +136,6 @@
                  will filter this down to visible items only. -->
             <input
               id="percent-scale"
-              class="photon-number"
               is="setting-number"
               min="10"
               max="200"
@@ -166,7 +165,7 @@
         data-setting-name="numCopies"
         min="1"
         max="10000"
-        class="copy-count-input photon-number"
+        class="copy-count-input"
         aria-errormessage="error-invalid-copies"
         required
       />
@@ -189,7 +188,6 @@
         is="margins-select"
         id="margins-picker"
         name="margin-type"
-        class="row"
         data-setting-name="margins"
       >
         <option value="default" data-l10n-id="printui-margins-default"></option>
@@ -206,7 +204,7 @@
             <input
               is="setting-number"
               id="custom-margin-top"
-              class="margin-input photon-number"
+              class="margin-input"
               aria-describedby="margins-custom-margin-top-desc"
               min="0"
               step="0.01"
@@ -227,7 +225,7 @@
             <input
               is="setting-number"
               id="custom-margin-bottom"
-              class="margin-input photon-number"
+              class="margin-input"
               aria-describedby="margins-custom-margin-bottom-desc"
               min="0"
               step="0.01"
@@ -250,7 +248,7 @@
             <input
               is="setting-number"
               id="custom-margin-left"
-              class="margin-input photon-number"
+              class="margin-input"
               aria-describedby="margins-custom-margin-left-desc"
               min="0"
               step="0.01"
@@ -271,7 +269,7 @@
             <input
               is="setting-number"
               id="custom-margin-right"
-              class="margin-input photon-number"
+              class="margin-input"
               aria-describedby="margins-custom-margin-right-desc"
               min="0"
               step="0.01"
@@ -322,14 +320,12 @@
             class="block-label"
             data-l10n-id="printui-destination-label"
           ></label>
-          <div class="printer-picker-wrapper">
-            <select
-              is="destination-picker"
-              id="printer-picker"
-              data-setting-name="printerName"
-              iconic
-            ></select>
-          </div>
+          <select
+            is="destination-picker"
+            id="printer-picker"
+            data-setting-name="printerName"
+            iconic
+          ></select>
         </section>
         <section id="settings">
           <section id="copies" class="section-block">
@@ -357,15 +353,11 @@
 
           <section id="pages" class="section-block">
             <label
-              for="page-range-input"
+              for="range-picker"
               class="block-label"
               data-l10n-id="printui-page-range-label"
             ></label>
-            <div
-              id="page-range-input"
-              is="page-range-input"
-              class="page-range-input row"
-            ></div>
+            <div id="page-range-input" is="page-range-input"></div>
           </section>
 
           <section id="color-mode" class="section-block">
@@ -377,7 +369,6 @@
             <select
               is="color-mode-select"
               id="color-mode-picker"
-              class="row"
               data-setting-name="printInColor"
             >
               <option
@@ -408,7 +399,6 @@
               <select
                 is="paper-size-select"
                 id="paper-size-picker"
-                class="row"
                 data-setting-name="paperId"
               ></select>
             </section>
@@ -432,7 +422,6 @@
               <select
                 is="setting-select"
                 id="pages-per-sheet-picker"
-                class="row"
                 data-setting-name="numPagesPerSheet"
               >
                 <option value="1">1</option>
@@ -445,11 +434,7 @@
             </section>
 
             <section id="margins" class="section-block">
-              <div
-                id="margins-select"
-                is="margins-select"
-                class="margins-select row"
-              ></div>
+              <div id="margins-select" is="margins-select"></div>
             </section>
 
             <section id="two-sided-printing" class="section-block">
@@ -462,7 +447,6 @@
                 is="setting-select"
                 id="duplex-select"
                 name="duplex-type"
-                class="row"
                 data-setting-name="printDuplex"
               >
                 <option

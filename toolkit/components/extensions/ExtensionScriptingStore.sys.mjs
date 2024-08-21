@@ -24,9 +24,10 @@ class Store {
     ]);
     // Make sure the folder exists.
     await IOUtils.makeDirectory(storePath, { ignoreExisting: true });
-    this._store = await lazy.KeyValueService.getOrCreate(
+    this._store = await lazy.KeyValueService.getOrCreateWithOptions(
       storePath,
-      "scripting-contentScripts"
+      "scripting-contentScripts",
+      { strategy: lazy.KeyValueService.RecoveryStrategy.RENAME }
     );
   }
 
@@ -38,11 +39,16 @@ class Store {
     return this._initPromise;
   }
 
+  _uninitForTesting() {
+    this._store = null;
+    this._initPromise = null;
+  }
+
   /**
    * Returns all the stored scripts for a given extension (ID).
    *
    * @param {string} extensionId An extension ID
-   * @returns {Array} An array of scripts
+   * @returns {Promise<Array>} An array of scripts
    */
   async getAll(extensionId) {
     await this.lazyInit();
@@ -110,7 +116,7 @@ class Store {
    * ```
    *
    * @param {string} extensionId An extension ID
-   * @returns {Array} An array of key/script pairs
+   * @returns {Promise<Array>} An array of key/script pairs
    */
   async getByExtensionId(extensionId) {
     await this.lazyInit();
@@ -179,11 +185,12 @@ export const makeInternalContentScript = (
       cssPaths,
       excludeMatches: options.excludeMatches,
       jsPaths,
-      matchAboutBlank: true,
       matches: options.matches,
+      matchOriginAsFallback: options.matchOriginAsFallback || false,
       originAttributesPatterns: null,
       persistAcrossSessions: options.persistAcrossSessions,
       runAt: options.runAt || "document_idle",
+      world: options.world || "ISOLATED",
     },
   };
 };
@@ -207,7 +214,9 @@ export const makePublicContentScript = (extension, internalScript) => {
     id: internalScript.id,
     allFrames: internalScript.allFrames,
     matches: internalScript.matches,
+    matchOriginAsFallback: internalScript.matchOriginAsFallback,
     runAt: internalScript.runAt,
+    world: internalScript.world,
     persistAcrossSessions: internalScript.persistAcrossSessions,
   };
 
@@ -287,10 +296,15 @@ export const ExtensionScriptingStore = {
     // so the return value always matches the initial result from
     // `initExtension`.
     return new Map(
-      Array.from(
-        extension.registeredContentScripts.entries(),
-        ([scriptId, options]) => [options.id, scriptId]
-      )
+      Array.from(extension.registeredContentScripts.entries())
+        .filter(
+          // Filter out entries without an options.id property, which are the
+          // ones registered through the contentScripts API namespace where the
+          // id attribute is not allowed, while it is mandatory for the
+          // scripting API namespace.
+          ([_id, options]) => options.id?.length
+        )
+        .map(([scriptId, options]) => [options.id, scriptId])
     );
   },
 

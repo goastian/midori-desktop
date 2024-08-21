@@ -1,7 +1,8 @@
-/* eslint max-len: ["error", 80] */
-
 const { AddonTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/AddonTestUtils.sys.mjs"
+);
+const { Management } = ChromeUtils.importESModule(
+  "resource://gre/modules/Extension.sys.mjs"
 );
 const { ExtensionPermissions } = ChromeUtils.importESModule(
   "resource://gre/modules/ExtensionPermissions.sys.mjs"
@@ -15,14 +16,28 @@ AddonTestUtils.initMochitest(this);
 
 async function background() {
   browser.permissions.onAdded.addListener(perms => {
-    browser.test.sendMessage("permission-added", perms);
+    if (localStorage.getItem("listening")) {
+      browser.test.sendMessage("permission-added", perms);
+    } else {
+      browser.test.log(
+        `permissions-added before listening ${JSON.stringify({
+          id: browser.runtime.id,
+          perms,
+        })}`
+      );
+    }
   });
   browser.permissions.onRemoved.addListener(perms => {
     browser.test.sendMessage("permission-removed", perms);
   });
+
+  browser.test.onMessage.addListener(async _ => {
+    localStorage.setItem("listening", true);
+    browser.test.sendMessage("ready");
+  });
 }
 
-async function getExtensions({ manifest_version = 2 } = {}) {
+async function getExtensions({ manifest_version = 2, expectGranted } = {}) {
   let extensions = {
     "addon0@mochi.test": ExtensionTestUtils.loadExtension({
       manifest: {
@@ -144,8 +159,36 @@ async function getExtensions({ manifest_version = 2 } = {}) {
       useAddonManager: "temporary",
     }),
   };
-  for (let ext of Object.values(extensions)) {
+  for (let [id, ext] of Object.entries(extensions)) {
+    let promiseGranted;
+
+    // We need to start listening for changes only after we get the first
+    // `change-permissions` event to avoid intermittent events from initial
+    // granting of origin permissions in mv3 on startup.
+
+    // This can happen because we're not awaiting in _setupStartupPermissions:
+    // https://searchfox.org/mozilla-central/rev/55944eaee1/toolkit/components/extensions/Extension.sys.mjs#3694-3697
+
+    if (manifest_version >= 3 && expectGranted && id === "addon1@mochi.test") {
+      promiseGranted = new Promise(resolve => {
+        info(`Waiting for ${id} host permissions to be granted.`);
+        Management.on("change-permissions", function listener(_, e) {
+          info(`Got change-permissions event: ${JSON.stringify(e)}`);
+          if (e.extensionId === id && e.added?.origins?.length) {
+            Management.off("change-permissions", listener);
+            resolve();
+          }
+        });
+      });
+    }
+
     await ext.startup();
+    await promiseGranted;
+
+    if (id !== "other@mochi.test") {
+      ext.sendMessage("init");
+      await ext.awaitMessage("ready");
+    }
   }
   return extensions;
 }
@@ -278,8 +321,9 @@ async function runTest(options) {
       perms = enabled ? perms.removed : perms.added;
     }
 
-    ok(
-      perms.permissions.length + perms.origins.length > 0,
+    Assert.greater(
+      perms.permissions.length + perms.origins.length,
+      0,
       "Some permission(s) toggled."
     );
 
@@ -418,7 +462,11 @@ async function runTest(options) {
   }
 }
 
-async function testPermissionsView({ manifestV3enabled, manifest_version }) {
+async function testPermissionsView({
+  manifestV3enabled,
+  manifest_version,
+  expectGranted,
+}) {
   await SpecialPowers.pushPrefEnv({
     set: [["extensions.manifestV3.enabled", manifestV3enabled]],
   });
@@ -429,7 +477,7 @@ async function testPermissionsView({ manifestV3enabled, manifest_version }) {
     origins: [],
   });
 
-  let extensions = await getExtensions({ manifest_version });
+  let extensions = await getExtensions({ manifest_version, expectGranted });
 
   info("Check add-on with required permissions");
   if (manifest_version < 3) {
@@ -437,7 +485,16 @@ async function testPermissionsView({ manifestV3enabled, manifest_version }) {
       extension: extensions["addon1@mochi.test"],
       permissions: ["<all_urls>", "tabs", "webNavigation"],
     });
-  } else {
+  }
+  if (manifest_version >= 3 && expectGranted) {
+    await runTest({
+      extension: extensions["addon1@mochi.test"],
+      permissions: ["tabs", "webNavigation"],
+      optional_permissions: ["<all_urls>"],
+      optional_enabled: ["<all_urls>"],
+    });
+  }
+  if (manifest_version >= 3 && !expectGranted) {
     await runTest({
       extension: extensions["addon1@mochi.test"],
       permissions: ["tabs", "webNavigation"],
@@ -543,8 +600,28 @@ add_task(async function testPermissionsView_MV2_manifestV3enabled() {
   await testPermissionsView({ manifestV3enabled: true, manifest_version: 2 });
 });
 
+add_task(async function testPermissionsView_MV3_noInstallPrompt() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["extensions.originControls.grantByDefault", false]],
+  });
+  await testPermissionsView({
+    manifestV3enabled: true,
+    manifest_version: 3,
+    expectGranted: false,
+  });
+  await SpecialPowers.popPrefEnv();
+});
+
 add_task(async function testPermissionsView_MV3() {
-  await testPermissionsView({ manifestV3enabled: true, manifest_version: 3 });
+  await SpecialPowers.pushPrefEnv({
+    set: [["extensions.originControls.grantByDefault", true]],
+  });
+  await testPermissionsView({
+    manifestV3enabled: true,
+    manifest_version: 3,
+    expectGranted: true,
+  });
+  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function testPermissionsViewStates() {
@@ -612,7 +689,7 @@ add_task(async function testPermissionsViewStates() {
   let card = getAddonCard(view, addon.id);
   await Assert.rejects(
     card.setAddonPermission("webRequest", "permission", "add"),
-    /permission missing from manifest/,
+    /was not declared in optional_permissions/,
     "unable to set the addon permission"
   );
 
@@ -622,7 +699,10 @@ add_task(async function testPermissionsViewStates() {
 
 add_task(async function testAllUrlsNotGrantedUnconditionally_MV3() {
   await SpecialPowers.pushPrefEnv({
-    set: [["extensions.manifestV3.enabled", true]],
+    set: [
+      ["extensions.manifestV3.enabled", true],
+      ["extensions.originControls.grantByDefault", false],
+    ],
   });
 
   const extension = ExtensionTestUtils.loadExtension({
@@ -666,6 +746,8 @@ add_task(async function test_OneOfMany_AllSites_toggle() {
     useAddonManager: "permanent",
   });
   await extension.startup();
+  extension.sendMessage("init");
+  await extension.awaitMessage("ready");
 
   // Grant the second "all sites" permission as listed in the manifest.
   await ExtensionPermissions.add("addon9@mochi.test", {

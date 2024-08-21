@@ -7,13 +7,12 @@
 with Files("*"):
     BUG_COMPONENT = ("Toolkit", "Safe Browsing")
 
-XPCSHELL_TESTS_MANIFESTS += ["test/unit/xpcshell.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["test/unit/xpcshell.toml"]
 
-EXPORTS.mozilla += ["ApplicationReputation.h", "LoginReputationIPC.h"]
+EXPORTS.mozilla += ["ApplicationReputation.h"]
 
 XPIDL_SOURCES += [
     "nsIApplicationReputation.idl",
-    "nsILoginReputation.idl",
 ]
 
 XPIDL_MODULE = "reputationservice"
@@ -22,8 +21,6 @@ UNIFIED_SOURCES += [
     "ApplicationReputation.cpp",
     "ApplicationReputationTelemetryUtils.cpp",
     "chromium/chrome/common/safe_browsing/csd.pb.cc",
-    "LoginReputation.cpp",
-    "LoginReputationIPC.cpp",
 ]
 
 FINAL_LIBRARY = "xul"

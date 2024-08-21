@@ -16,7 +16,7 @@ AntiTracking._createTask({
     await callRequestStorageAccess();
 
     const TRACKING_PAGE =
-      "http://another-tracking.example.net/browser/browser/base/content/test/protectionsUI/trackingPage.html";
+      "https://another-tracking.example.net/browser/toolkit/components/antitracking/test/browser/trackingPage.html";
     async function runChecks(name) {
       let iframe = document.createElement("iframe");
       iframe.src = TRACKING_PAGE;
@@ -47,50 +47,20 @@ AntiTracking._createTask({
   iframeSandbox: null,
   accessRemoval: null,
   callbackAfterRemoval: null,
-  thirdPartyPage: TEST_3RD_PARTY_PAGE_HTTP,
+  thirdPartyPage: TEST_3RD_PARTY_PAGE,
   errorMessageDomains: [
-    "http://tracking.example.org",
-    "http://tracking.example.org",
-    "http://tracking.example.org",
-    "http://tracking.example.org",
-    "http://trackertest.org",
+    "https://tracking.example.org",
+    "https://tracking.example.org",
+    "https://tracking.example.org",
+    "https://tracking.example.org",
+    "https://another-tracking.example.net",
+    "https://itisatracker.org",
   ],
 });
 
 add_task(async _ => {
   await new Promise(resolve => {
-    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
-      resolve()
-    );
-  });
-});
-
-AntiTracking._createTask({
-  name: "Test that we never grant access to cookieBehavior=1, when network.cookie.rejectForeignWithExceptions.enabled is set to false",
-  cookieBehavior: BEHAVIOR_REJECT_FOREIGN,
-  allowList: false,
-  callback: async _ => {
-    /* import-globals-from storageAccessAPIHelpers.js */
-    await noStorageAccessInitially();
-
-    await callRequestStorageAccess(null, true);
-  },
-  extraPrefs: [
-    ["network.cookie.rejectForeignWithExceptions.enabled", false],
-    [APS_PREF, true],
-  ],
-  expectedBlockingNotifications: foreignBlocked,
-  runInPrivateWindow: false,
-  iframeSandbox: null,
-  accessRemoval: null,
-  callbackAfterRemoval: null,
-  thirdPartyPage: TEST_3RD_PARTY_PAGE_HTTP,
-  errorMessageDomains: ["http://tracking.example.org"],
-});
-
-add_task(async _ => {
-  await new Promise(resolve => {
-    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
+    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, () =>
       resolve()
     );
   });
@@ -112,13 +82,13 @@ AntiTracking._createTask({
   iframeSandbox: null,
   accessRemoval: null,
   callbackAfterRemoval: null,
-  thirdPartyPage: TEST_3RD_PARTY_PAGE_HTTP,
-  errorMessageDomains: ["http://example.net", "http://tracking.example.org"],
+  thirdPartyPage: TEST_3RD_PARTY_PAGE,
+  errorMessageDomains: ["http://example.net", "https://tracking.example.org"],
 });
 
 add_task(async _ => {
   await new Promise(resolve => {
-    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
+    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, () =>
       resolve()
     );
   });
@@ -140,13 +110,13 @@ AntiTracking._createTask({
   iframeSandbox: null,
   accessRemoval: null,
   callbackAfterRemoval: null,
-  thirdPartyPage: TEST_3RD_PARTY_PAGE_HTTP,
-  errorMessageDomains: ["http://tracking.example.org"],
+  thirdPartyPage: TEST_3RD_PARTY_PAGE,
+  errorMessageDomains: ["https://tracking.example.org"],
 });
 
 add_task(async _ => {
   await new Promise(resolve => {
-    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
+    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, () =>
       resolve()
     );
   });

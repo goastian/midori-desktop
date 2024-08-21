@@ -67,86 +67,6 @@ impl TimingDistributionMetric {
             }
         }
     }
-
-    pub(crate) fn accumulate_raw_samples_nanos(&self, samples: Vec<u64>) {
-        match self {
-            TimingDistributionMetric::Parent { inner, .. } => {
-                inner.accumulate_raw_samples_nanos(samples);
-            }
-            TimingDistributionMetric::Child(_) => {
-                // TODO: Instrument this error
-                log::error!("Can't record samples for a timing distribution from a child metric");
-            }
-        }
-    }
-
-    /// Accumulates a time duration sample for the provided metric.
-    ///
-    /// Adds a count to the corresponding bucket in the timing distribution.
-    /// Saturates at u64::MAX nanoseconds.
-    ///
-    /// Prefer start() and stop_and_accumulate() where possible.
-    ///
-    /// Users of this API are responsible for ensuring the timing source used
-    /// to calculate the duration is monotonic and consistent across platforms.
-    ///
-    /// # Arguments
-    ///
-    /// * `duration` - The [`Duration`] of the accumulated sample.
-    pub fn accumulate_raw_duration(&self, duration: Duration) {
-        let sample = duration.as_nanos().try_into().unwrap_or_else(|_| {
-            // TODO: Instrument this error
-            log::warn!(
-                "Elapsed nanoseconds larger than fits into 64-bytes. Saturating at u64::MAX."
-            );
-            u64::MAX
-        });
-        // May be unused in builds without gecko.
-        let _sample_ms = duration.as_millis().try_into().unwrap_or_else(|_| {
-            // TODO: Instrument this error
-            log::warn!(
-                "Elapsed milliseconds larger than fits into 32-bytes. Saturating at u32::MAX."
-            );
-            u32::MAX
-        });
-        match self {
-            TimingDistributionMetric::Parent {
-                id: _metric_id,
-                inner,
-            } => {
-                #[cfg(feature = "with_gecko")]
-                {
-                    extern "C" {
-                        fn GIFFT_TimingDistributionAccumulateRawMillis(metric_id: u32, sample: u32);
-                    }
-                    // SAFETY: using only primitives, no return value.
-                    unsafe {
-                        GIFFT_TimingDistributionAccumulateRawMillis(_metric_id.0, _sample_ms);
-                    }
-                }
-                inner.accumulate_raw_samples_nanos(vec![sample]);
-            }
-            TimingDistributionMetric::Child(c) => {
-                #[cfg(feature = "with_gecko")]
-                {
-                    extern "C" {
-                        fn GIFFT_TimingDistributionAccumulateRawMillis(metric_id: u32, sample: u32);
-                    }
-                    // SAFETY: using only primitives, no return value.
-                    unsafe {
-                        GIFFT_TimingDistributionAccumulateRawMillis(c.metric_id.0, _sample_ms);
-                    }
-                }
-                with_ipc_payload(move |payload| {
-                    if let Some(v) = payload.timing_samples.get_mut(&c.metric_id) {
-                        v.push(sample);
-                    } else {
-                        payload.timing_samples.insert(c.metric_id, vec![sample]);
-                    }
-                });
-            }
-        }
-    }
 }
 
 #[inherent]
@@ -327,6 +247,141 @@ impl TimingDistribution for TimingDistributionMetric {
                         GIFFT_TimingDistributionCancel(c.metric_id.0, id.id);
                     }
                 }
+            }
+        }
+    }
+
+    /// Accumulates the provided signed samples in the metric.
+    ///
+    /// This is required so that the platform-specific code can provide us with
+    /// 64 bit signed integers if no `u64` comparable type is available. This
+    /// will take care of filtering and reporting errors for any provided negative
+    /// sample.
+    ///
+    /// Please note that this assumes that the provided samples are already in
+    /// the "unit" declared by the instance of the metric type (e.g. if the
+    /// instance this method was called on is using [`crate::TimeUnit::Second`], then
+    /// `samples` are assumed to be in that unit).
+    ///
+    /// # Arguments
+    ///
+    /// * `samples` - The vector holding the samples to be recorded by the metric.
+    ///
+    /// ## Notes
+    ///
+    /// Discards any negative value in `samples` and report an [`ErrorType::InvalidValue`]
+    /// for each of them. Reports an [`ErrorType::InvalidOverflow`] error for samples that
+    /// are longer than `MAX_SAMPLE_TIME`.
+    pub fn accumulate_samples(&self, samples: Vec<i64>) {
+        match self {
+            TimingDistributionMetric::Parent { id: _id, inner } => {
+                inner.accumulate_samples(samples)
+            }
+            TimingDistributionMetric::Child(_c) => {
+                // TODO: Instrument this error
+                log::error!("Can't record samples for a timing distribution from a child metric");
+            }
+        }
+    }
+
+    /// Accumulates the provided samples in the metric.
+    ///
+    /// # Arguments
+    ///
+    /// * `samples` - A list of samples recorded by the metric.
+    ///               Samples must be in nanoseconds.
+    /// ## Notes
+    ///
+    /// Reports an [`ErrorType::InvalidOverflow`] error for samples that
+    /// are longer than `MAX_SAMPLE_TIME`.
+    pub fn accumulate_raw_samples_nanos(&self, samples: Vec<u64>) {
+        match self {
+            TimingDistributionMetric::Parent { id: _id, inner } => {
+                inner.accumulate_raw_samples_nanos(samples)
+            }
+            TimingDistributionMetric::Child(_c) => {
+                // TODO: Instrument this error
+                log::error!("Can't record samples for a timing distribution from a child metric");
+            }
+        }
+    }
+
+    pub fn accumulate_single_sample(&self, sample: i64) {
+        match self {
+            TimingDistributionMetric::Parent { id: _id, inner } => {
+                inner.accumulate_single_sample(sample)
+            }
+            TimingDistributionMetric::Child(_c) => {
+                // TODO: Instrument this error
+                log::error!("Can't record samples for a timing distribution from a child metric");
+            }
+        }
+    }
+
+    /// Accumulates a time duration sample for the provided metric.
+    ///
+    /// Adds a count to the corresponding bucket in the timing distribution.
+    /// Saturates at u64::MAX nanoseconds.
+    ///
+    /// Prefer start() and stop_and_accumulate() where possible.
+    ///
+    /// Users of this API are responsible for ensuring the timing source used
+    /// to calculate the duration is monotonic and consistent across platforms.
+    ///
+    /// # Arguments
+    ///
+    /// * `duration` - The [`Duration`] of the accumulated sample.
+    pub fn accumulate_raw_duration(&self, duration: Duration) {
+        let sample = duration.as_nanos().try_into().unwrap_or_else(|_| {
+            // TODO: Instrument this error
+            log::warn!(
+                "Elapsed nanoseconds larger than fits into 64-bytes. Saturating at u64::MAX."
+            );
+            u64::MAX
+        });
+        // May be unused in builds without gecko.
+        let _sample_ms = duration.as_millis().try_into().unwrap_or_else(|_| {
+            // TODO: Instrument this error
+            log::warn!(
+                "Elapsed milliseconds larger than fits into 32-bytes. Saturating at u32::MAX."
+            );
+            u32::MAX
+        });
+        match self {
+            TimingDistributionMetric::Parent {
+                id: _metric_id,
+                inner,
+            } => {
+                #[cfg(feature = "with_gecko")]
+                {
+                    extern "C" {
+                        fn GIFFT_TimingDistributionAccumulateRawMillis(metric_id: u32, sample: u32);
+                    }
+                    // SAFETY: using only primitives, no return value.
+                    unsafe {
+                        GIFFT_TimingDistributionAccumulateRawMillis(_metric_id.0, _sample_ms);
+                    }
+                }
+                inner.accumulate_raw_duration(duration);
+            }
+            TimingDistributionMetric::Child(c) => {
+                #[cfg(feature = "with_gecko")]
+                {
+                    extern "C" {
+                        fn GIFFT_TimingDistributionAccumulateRawMillis(metric_id: u32, sample: u32);
+                    }
+                    // SAFETY: using only primitives, no return value.
+                    unsafe {
+                        GIFFT_TimingDistributionAccumulateRawMillis(c.metric_id.0, _sample_ms);
+                    }
+                }
+                with_ipc_payload(move |payload| {
+                    if let Some(v) = payload.timing_samples.get_mut(&c.metric_id) {
+                        v.push(sample);
+                    } else {
+                        payload.timing_samples.insert(c.metric_id, vec![sample]);
+                    }
+                });
             }
         }
     }

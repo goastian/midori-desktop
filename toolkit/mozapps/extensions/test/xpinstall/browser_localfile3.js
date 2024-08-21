@@ -23,11 +23,11 @@ function test() {
 
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, "about:blank");
   BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser).then(() => {
-    BrowserTestUtils.loadURIString(gBrowser, xpipath);
+    BrowserTestUtils.startLoadingURIString(gBrowser, xpipath);
   });
 }
 
-function allow_blocked(installInfo) {
+function allow_blocked() {
   ok(true, "Seen blocked");
   return false;
 }

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-function run_test() {
+async function run_test() {
   setupTestCommon();
 
   debugDump(
@@ -74,23 +74,25 @@ function run_test() {
   updates = getLocalUpdateString(updateProps, patches);
   writeUpdatesToXMLFile(getLocalUpdatesXMLString(updates), false);
 
-  standardInit();
+  await standardInit();
 
   Assert.ok(
-    !gUpdateManager.downloadingUpdate,
+    !(await gUpdateManager.getDownloadingUpdate()),
     "there should not be a downloading update"
   );
-  Assert.ok(!gUpdateManager.readyUpdate, "there should not be a ready update");
+  Assert.ok(
+    !(await gUpdateManager.getReadyUpdate()),
+    "there should not be a ready update"
+  );
+  const history = await gUpdateManager.getHistory();
   Assert.equal(
-    gUpdateManager.getUpdateCount(),
+    history.length,
     2,
     "the update manager updateCount attribute" + MSG_SHOULD_EQUAL
   );
 
   debugDump("checking the first update properties");
-  let update = gUpdateManager
-    .getUpdateAt(0)
-    .QueryInterface(Ci.nsIWritablePropertyBag);
+  let update = history[0].QueryInterface(Ci.nsIWritablePropertyBag);
   Assert.equal(
     update.state,
     STATE_SUCCEEDED,
@@ -297,9 +299,7 @@ function run_test() {
   );
 
   debugDump("checking the second update properties");
-  update = gUpdateManager
-    .getUpdateAt(1)
-    .QueryInterface(Ci.nsIWritablePropertyBag);
+  update = history[1].QueryInterface(Ci.nsIWritablePropertyBag);
   Assert.equal(
     update.state,
     STATE_FAILED,

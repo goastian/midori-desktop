@@ -13,15 +13,13 @@ import {
 } from "resource://gre/modules/addons/siteperms-addon-utils.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   AddonManagerPrivate: "resource://gre/modules/AddonManager.sys.mjs",
 });
-XPCOMUtils.defineLazyGetter(
+ChromeUtils.defineLazyGetter(
   lazy,
   "addonsBundle",
   () => new Localization(["toolkit/about/aboutAddons.ftl"], true)
@@ -150,20 +148,30 @@ class SitePermsAddonWrapper {
     });
   }
 
-  get creator() {}
+  get creator() {
+    return undefined;
+  }
 
-  get homepageURL() {}
+  get homepageURL() {
+    return undefined;
+  }
 
-  get description() {}
+  get description() {
+    return undefined;
+  }
 
-  get fullDescription() {}
+  get fullDescription() {
+    return undefined;
+  }
 
   get version() {
     // We consider the previous implementation attempt (signed addons) to be the initial version,
     // hence the 2.0 for this approach.
     return "2.0";
   }
-  get updateDate() {}
+  get updateDate() {
+    return undefined;
+  }
 
   get isActive() {
     return true;
@@ -182,7 +190,7 @@ class SitePermsAddonWrapper {
     return 0;
   }
 
-  async updateBlocklistState(options = {}) {}
+  async updateBlocklistState() {}
 
   get blocklistState() {
     return Ci.nsIBlocklistService.STATE_NOT_BLOCKED;
@@ -269,14 +277,12 @@ class SitePermsAddonWrapper {
     return { source: "siteperm-addon-provider", method: "synthetic-install" };
   }
 
-  isCompatibleWith(aAppVersion, aPlatformVersion) {
+  isCompatibleWith() {
     return true;
   }
 }
 
 class SitePermsAddonInstalling extends SitePermsAddonWrapper {
-  #install = null;
-
   /**
    * @param {string} siteOriginNoSuffix: The origin this addon is installed
    *                                     for, WITHOUT the suffix generated from
@@ -295,7 +301,6 @@ class SitePermsAddonInstalling extends SitePermsAddonWrapper {
     };
 
     super(siteOriginNoSuffix, [permission]);
-    this.#install = install;
   }
 
   get existingAddon() {

@@ -76,7 +76,6 @@ struct VisitData {
       : placeId(0),
         visitId(0),
         hidden(true),
-        shouldUpdateHidden(true),
         typed(false),
         transitionType(UINT32_MAX),
         visitTime(0),
@@ -86,7 +85,7 @@ struct VisitData {
         visitCount(0),
         referrerVisitId(0),
         titleChanged(false),
-        shouldUpdateFrecency(true),
+        isUnrecoverableError(false),
         useFrecencyRedirectBonus(false),
         source(nsINavHistoryService::VISIT_SOURCE_ORGANIC),
         triggeringPlaceId(0),
@@ -104,7 +103,6 @@ struct VisitData {
       : placeId(0),
         visitId(0),
         hidden(true),
-        shouldUpdateHidden(true),
         typed(false),
         transitionType(UINT32_MAX),
         visitTime(0),
@@ -114,7 +112,7 @@ struct VisitData {
         visitCount(0),
         referrerVisitId(0),
         titleChanged(false),
-        shouldUpdateFrecency(true),
+        isUnrecoverableError(false),
         useFrecencyRedirectBonus(false),
         source(nsINavHistoryService::VISIT_SOURCE_ORGANIC),
         triggeringPlaceId(0),
@@ -155,7 +153,6 @@ struct VisitData {
   nsCString baseDomain;
   nsString revHost;
   bool hidden;
-  bool shouldUpdateHidden;
   bool typed;
   uint32_t transitionType;
   PRTime visitTime;
@@ -178,8 +175,8 @@ struct VisitData {
   // TODO bug 626836 hook up hidden and typed change tracking too!
   bool titleChanged;
 
-  // Indicates whether frecency should be updated for this visit.
-  bool shouldUpdateFrecency;
+  // Indicates whether the visit ended up in an unrecoverable error.
+  bool isUnrecoverableError;
 
   // Whether to override the visit type bonus with a redirect bonus when
   // calculating frecency on the most recent visit.
@@ -539,10 +536,12 @@ class NotifyManyVisitsObservers : public Runnable {
     visitEvent->mReferringVisitId = aPlace.referrerVisitId;
     visitEvent->mTransitionType = aPlace.transitionType;
     visitEvent->mPageGuid.Assign(aPlace.guid);
+    visitEvent->mFrecency = aPlace.frecency;
     visitEvent->mHidden = aPlace.hidden;
     visitEvent->mVisitCount = aPlace.visitCount + 1;  // Add current visit
     visitEvent->mTypedCount = static_cast<uint32_t>(aPlace.typed);
     visitEvent->mLastKnownTitle.Assign(aPlace.title);
+
     bool success = !!aEvents.AppendElement(visitEvent.forget(), fallible);
     MOZ_RELEASE_ASSERT(success);
 
@@ -583,8 +582,8 @@ class NotifyManyVisitsObservers : public Runnable {
     PRTime now = PR_Now();
     for (uint32_t i = 0; i < mPlaces.Length(); ++i) {
       nsCOMPtr<nsIURI> uri;
-      MOZ_ALWAYS_SUCCEEDS(NS_NewURI(getter_AddRefs(uri), mPlaces[i].spec));
-      if (!uri) {
+      if (NS_WARN_IF(
+              NS_FAILED(NS_NewURI(getter_AddRefs(uri), mPlaces[i].spec)))) {
         return NS_ERROR_UNEXPECTED;
       }
       AddPlaceForNotify(mPlaces[i], events);
@@ -674,14 +673,14 @@ class NotifyPlaceInfoCallback : public Runnable {
     bool hasValidURIs = true;
     nsCOMPtr<nsIURI> referrerURI;
     if (!mPlace.referrerSpec.IsEmpty()) {
-      MOZ_ALWAYS_SUCCEEDS(
-          NS_NewURI(getter_AddRefs(referrerURI), mPlace.referrerSpec));
-      hasValidURIs = !!referrerURI;
+      hasValidURIs = !NS_WARN_IF(NS_FAILED(
+          NS_NewURI(getter_AddRefs(referrerURI), mPlace.referrerSpec)));
     }
 
     nsCOMPtr<nsIURI> uri;
-    MOZ_ALWAYS_SUCCEEDS(NS_NewURI(getter_AddRefs(uri), mPlace.spec));
-    hasValidURIs = hasValidURIs && !!uri;
+    hasValidURIs =
+        hasValidURIs &&
+        !NS_WARN_IF(NS_FAILED(NS_NewURI(getter_AddRefs(uri), mPlace.spec)));
 
     nsCOMPtr<mozIPlaceInfo> place;
     if (mIsSingleVisit) {
@@ -845,9 +844,6 @@ class InsertVisitedURIs final : public Runnable {
     // whatever we can and then notify the main thread we're done.
     nsresult rv = InnerRun();
 
-    if (mSuccessfulUpdatedCount > 0) {
-      NS_DispatchToMainThread(new NotifyRankingChanged());
-    }
     if (!!mCallback) {
       NS_DispatchToMainThread(
           new NotifyCompletion(mCallback, mSuccessfulUpdatedCount));
@@ -877,9 +873,28 @@ class InsertVisitedURIs final : public Runnable {
     if (shouldChunkNotifications) {
       notificationChunk.SetCapacity(NOTIFY_VISITS_CHUNK_SIZE);
     }
+
+    // This is an optimization for frecency updating, if all the entries point
+    // to the same URL (inserting multiple visits for the same url), then we can
+    // update frecency once at the end of the loop. Otherwise, if there's
+    // multiple pages, we'll delay frecency recalculation to a later time.
+    bool shouldUpdateFrecency = false;
+
     for (nsTArray<VisitData>::size_type i = 0; i < mPlaces.Length(); i++) {
       VisitData& place = mPlaces.ElementAt(i);
 
+      if (i == 0) {
+        // isUnrecoverableError can only be defined when this is invoked by
+        // VisitURI, to insert a single visit. When it's defined, the page
+        // will be hidden, thus it's not worth updating.
+        shouldUpdateFrecency = !place.isUnrecoverableError;
+      } else if (shouldUpdateFrecency &&
+                 (!place.spec.Equals(mPlaces.ElementAt(i - 1).spec))) {
+        // We have multiple entries with different URLs, delay recalculation.
+        // A SQL trigger will set recalc_frecency automatically when a visit
+        // is added.
+        shouldUpdateFrecency = false;
+      }
       // Fetching from the database can overwrite this information, so save it
       // apart.
       bool typed = place.typed;
@@ -925,12 +940,6 @@ class InsertVisitedURIs final : public Runnable {
         place.hidden = false;
       }
 
-      // If this is a new page, or the existing page was already visible,
-      // there's no need to try to unhide it.
-      if (!known || !lastFetchedPlace->hidden) {
-        place.shouldUpdateHidden = false;
-      }
-
       FetchReferrerInfo(place);
       UpdateVisitSource(place, mHistory);
 
@@ -969,24 +978,16 @@ class InsertVisitedURIs final : public Runnable {
       mSuccessfulUpdatedCount++;
     }
 
-    {
-      // Trigger insertions for all the new origins of the places we inserted.
-      nsAutoCString query("DELETE FROM moz_updateoriginsinsert_temp");
-      nsCOMPtr<mozIStorageStatement> stmt = mHistory->GetStatement(query);
-      NS_ENSURE_STATE(stmt);
-      mozStorageStatementScoper scoper(stmt);
-      nsresult rv = stmt->Execute();
-      NS_ENSURE_SUCCESS(rv, rv);
-    }
-
-    {
-      // Trigger frecency updates for all those origins.
-      nsAutoCString query("DELETE FROM moz_updateoriginsupdate_temp");
-      nsCOMPtr<mozIStorageStatement> stmt = mHistory->GetStatement(query);
-      NS_ENSURE_STATE(stmt);
-      mozStorageStatementScoper scoper(stmt);
-      nsresult rv = stmt->Execute();
-      NS_ENSURE_SUCCESS(rv, rv);
+    if (shouldUpdateFrecency) {
+      VisitData& place = mPlaces.ElementAt(0);
+      if (NS_SUCCEEDED(UpdateFrecency(
+              place.placeId,
+              place.useFrecencyRedirectBonus && mPlaces.Length() == 1))) {
+        // Notifying a new visit should be sufficient to know that frecency
+        // changed, but since historically we notified a frecency change, for
+        // now we'll continue doing it, and re-evaluate in the future.
+        NS_DispatchToMainThread(new NotifyRankingChanged());
+      }
     }
 
     nsresult rv = transaction.Commit();
@@ -1033,10 +1034,10 @@ class InsertVisitedURIs final : public Runnable {
    * Inserts or updates the entry in moz_places for this visit, adds the visit,
    * and updates the frecency of the place.
    *
-   * @param aKnown
+   * @param {boolean} aKnown
    *        True if we already have an entry for this place in moz_places, false
    *        otherwise.
-   * @param aPlace
+   * @param {VisitData} aPlace
    *        The place we are adding a visit for.
    */
   nsresult DoDatabaseInserts(bool aKnown, VisitData& aPlace) {
@@ -1060,12 +1061,21 @@ class InsertVisitedURIs final : public Runnable {
     rv = AddVisit(aPlace);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    // TODO (bug 623969) we shouldn't update this after each visit, but
-    // rather only for each unique place to save disk I/O.
-
-    // Don't update frecency if the page should not appear in autocomplete.
-    if (aPlace.shouldUpdateFrecency) {
-      rv = UpdateFrecency(aPlace);
+    // Adding a visit sets the recalculation flags through a trigger, but for
+    // error pages we don't want that, because recalculation considers this a
+    // normal successful visit. In the future we should store the error state
+    // along with the visit, so that recalculation can do a better job and
+    // we can remove this workaround update. See Bug 1842008.
+    if (aPlace.isUnrecoverableError) {
+      nsCOMPtr<mozIStorageStatement> stmt = mHistory->GetStatement(
+          "UPDATE moz_places "
+          "SET recalc_frecency = 0, recalc_alt_frecency = 0 "
+          "WHERE id = :page_id");
+      NS_ENSURE_STATE(stmt);
+      mozStorageStatementScoper scoper(stmt);
+      rv = stmt->BindInt64ByName("page_id"_ns, aPlace.placeId);
+      NS_ENSURE_SUCCESS(rv, rv);
+      rv = stmt->Execute();
       NS_ENSURE_SUCCESS(rv, rv);
     }
 
@@ -1167,10 +1177,7 @@ class InsertVisitedURIs final : public Runnable {
    * @param aPlace
    *        The VisitData for the place we want to update.
    */
-  nsresult UpdateFrecency(const VisitData& aPlace) {
-    MOZ_ASSERT(aPlace.shouldUpdateFrecency);
-    MOZ_ASSERT(aPlace.placeId > 0);
-
+  nsresult UpdateFrecency(const int64_t aPlaceId, bool aIsRedirect) {
     nsresult rv;
     {  // First, set our frecency to the proper value.
       nsCOMPtr<mozIStorageStatement> stmt = mHistory->GetStatement(
@@ -1180,27 +1187,9 @@ class InsertVisitedURIs final : public Runnable {
       NS_ENSURE_STATE(stmt);
       mozStorageStatementScoper scoper(stmt);
 
-      rv = stmt->BindInt64ByName("page_id"_ns, aPlace.placeId);
+      rv = stmt->BindInt64ByName("page_id"_ns, aPlaceId);
       NS_ENSURE_SUCCESS(rv, rv);
-      rv =
-          stmt->BindInt32ByName("redirect"_ns, aPlace.useFrecencyRedirectBonus);
-      NS_ENSURE_SUCCESS(rv, rv);
-
-      rv = stmt->Execute();
-      NS_ENSURE_SUCCESS(rv, rv);
-    }
-
-    if (!aPlace.hidden && aPlace.shouldUpdateHidden) {
-      // Mark the page as not hidden if the frecency is now nonzero.
-      nsCOMPtr<mozIStorageStatement> stmt;
-      stmt = mHistory->GetStatement(
-          "UPDATE moz_places "
-          "SET hidden = 0 "
-          "WHERE id = :page_id AND frecency <> 0");
-      NS_ENSURE_STATE(stmt);
-      mozStorageStatementScoper scoper(stmt);
-
-      rv = stmt->BindInt64ByName("page_id"_ns, aPlace.placeId);
+      rv = stmt->BindInt32ByName("redirect"_ns, aIsRedirect);
       NS_ENSURE_SUCCESS(rv, rv);
 
       rv = stmt->Execute();
@@ -1216,10 +1205,9 @@ class InsertVisitedURIs final : public Runnable {
           "WHERE id = :page_id");
       NS_ENSURE_STATE(stmt);
       mozStorageStatementScoper scoper(stmt);
-      rv = stmt->BindInt64ByName("page_id"_ns, aPlace.placeId);
+      rv = stmt->BindInt64ByName("page_id"_ns, aPlaceId);
       NS_ENSURE_SUCCESS(rv, rv);
-      rv =
-          stmt->BindInt32ByName("redirect"_ns, aPlace.useFrecencyRedirectBonus);
+      rv = stmt->BindInt32ByName("redirect"_ns, aIsRedirect);
       NS_ENSURE_SUCCESS(rv, rv);
       rv = stmt->Execute();
       NS_ENSURE_SUCCESS(rv, rv);
@@ -1425,9 +1413,7 @@ void NotifyEmbedVisit(VisitData& aPlace,
   MOZ_ASSERT(NS_IsMainThread(), "Must be called on the main thread!");
 
   nsCOMPtr<nsIURI> uri;
-  MOZ_ALWAYS_SUCCEEDS(NS_NewURI(getter_AddRefs(uri), aPlace.spec));
-
-  if (!uri) {
+  if (NS_WARN_IF(NS_FAILED(NS_NewURI(getter_AddRefs(uri), aPlace.spec)))) {
     return;
   }
 
@@ -1446,6 +1432,24 @@ void NotifyEmbedVisit(VisitData& aPlace,
 
   nsCOMPtr<nsIRunnable> event = new NotifyManyVisitsObservers(aPlace);
   (void)NS_DispatchToMainThread(event);
+}
+
+void NotifyOriginRestrictedVisit(nsIURI* aURI) {
+  MOZ_ASSERT(NS_IsMainThread(), "Must be called on the main thread!");
+
+  nsCOMPtr<nsIRunnable> event = new NotifyManyVisitsObservers(VisitData(aURI));
+  (void)NS_DispatchToMainThread(event);
+}
+
+void NotifyVisitIfHavingUserPass(nsIURI* aURI) {
+  MOZ_ASSERT(NS_IsMainThread(), "Must be called on the main thread!");
+
+  bool hasUserPass;
+  if (NS_SUCCEEDED(aURI->GetHasUserPass(&hasUserPass)) && hasUserPass) {
+    nsCOMPtr<nsIRunnable> event =
+        new NotifyManyVisitsObservers(VisitData(aURI));
+    (void)NS_DispatchToMainThread(event);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1590,7 +1594,6 @@ nsresult History::QueueVisitedStatement(RefPtr<VisitedQuery> aQuery) {
 
 nsresult History::InsertPlace(VisitData& aPlace) {
   MOZ_ASSERT(aPlace.placeId == 0, "should not have a valid place id!");
-  MOZ_ASSERT(!aPlace.shouldUpdateHidden, "We should not need to update hidden");
   MOZ_ASSERT(!NS_IsMainThread(), "must be called off of the main thread!");
 
   nsCOMPtr<mozIStorageStatement> stmt = GetStatement(
@@ -1618,7 +1621,7 @@ nsresult History::InsertPlace(VisitData& aPlace) {
   NS_ENSURE_SUCCESS(rv, rv);
   // When inserting a page for a first visit that should not appear in
   // autocomplete, for example an error page, use a zero frecency.
-  int32_t frecency = aPlace.shouldUpdateFrecency ? aPlace.frecency : 0;
+  int32_t frecency = aPlace.isUnrecoverableError ? 0 : aPlace.frecency;
   rv = stmt->BindInt32ByName("frecency"_ns, frecency);
   NS_ENSURE_SUCCESS(rv, rv);
   rv = stmt->BindInt32ByName("hidden"_ns, aPlace.hidden);
@@ -1872,6 +1875,64 @@ const mozIStorageConnection* History::GetConstDBConn() {
   return mDB->MainConn();
 }
 
+void History::UpdateOriginFloodingRestriction(nsACString& aOrigin) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  TimeStamp latestInputTimeStamp = UserActivation::LatestUserInputStart();
+  if (latestInputTimeStamp.IsNull()) {
+    // Probably just after browser initialization.
+    return;
+  }
+
+  TimeStamp now = TimeStamp::Now();
+
+  // Remove expired flooding resrictions.
+  for (auto iter = mOriginFloodingRestrictions.Iter(); !iter.Done();
+       iter.Next()) {
+    if ((now - iter.Data().mLastVisitTimeStamp).ToSeconds() >
+        iter.Data().mExpireIntervalSeconds) {
+      iter.Remove();
+    }
+  }
+
+  // If not long enough time elapsed sincer last user interaction, this visit
+  // can be stored.
+  if ((now - latestInputTimeStamp).ToSeconds() <
+      StaticPrefs::
+          places_history_floodingPrevention_maxSecondsFromLastUserInteraction()) {
+    mOriginFloodingRestrictions.Remove(aOrigin);
+    return;
+  }
+
+  // Otherwise, update the flooding restriction for the origin.
+  auto restriction = mOriginFloodingRestrictions.Lookup(aOrigin);
+  if (restriction) {
+    if (restriction->mAllowedVisitCount) {
+      // Count down to 0. If 0, the origin should be restricted.
+      restriction->mAllowedVisitCount -= 1;
+    } else {
+      // Since the origin is marked as restricted make its expiration time
+      // longer.
+      restriction->mExpireIntervalSeconds *= 2;
+    }
+  } else {
+    // Initialize OriginFloodingRestriction to store the origin restriction.
+    mOriginFloodingRestrictions.InsertOrUpdate(
+        aOrigin,
+        OriginFloodingRestriction{
+            now,
+            StaticPrefs::
+                places_history_floodingPrevention_restrictionExpireSeconds(),
+            StaticPrefs::places_history_floodingPrevention_restrictionCount()});
+  }
+}
+
+bool History::IsRestrictedOrigin(nsACString& aOrigin) {
+  auto restriction = mOriginFloodingRestrictions.Lookup(aOrigin);
+  // If the count is 0, need to restrict the origin.
+  return restriction && !restriction->mAllowedVisitCount;
+}
+
 void History::Shutdown() {
   MOZ_ASSERT(NS_IsMainThread());
   MutexAutoLock lockedScope(mBlockShutdownMutex);
@@ -1940,13 +2001,6 @@ History::VisitURI(nsIWidget* aWidget, nsIURI* aURI, nsIURI* aLastVisitedURI,
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  nsTArray<VisitData> placeArray(1);
-  placeArray.AppendElement(VisitData(aURI, aLastVisitedURI));
-  VisitData& place = placeArray.ElementAt(0);
-  NS_ENSURE_FALSE(place.spec.IsEmpty(), NS_ERROR_INVALID_ARG);
-
-  place.visitTime = PR_Now();
-
   // Assigns a type to the edge in the visit linked list. Each type will be
   // considered differently when weighting the frecency of a location.
   uint32_t recentFlags = navHistory->GetRecentFlags(aURI);
@@ -1981,19 +2035,8 @@ History::VisitURI(nsIWidget* aWidget, nsIURI* aURI, nsIURI* aLastVisitedURI,
     transitionType = nsINavHistoryService::TRANSITION_FRAMED_LINK;
   }
 
-  place.SetTransitionType(transitionType);
   bool isRedirect = aFlags & IHistory::REDIRECT_SOURCE;
-  if (isRedirect) {
-    place.useFrecencyRedirectBonus =
-        (aFlags & IHistory::REDIRECT_SOURCE_PERMANENT) ||
-        transitionType != nsINavHistoryService::TRANSITION_TYPED;
-  }
-  place.hidden = GetHiddenState(isRedirect, place.transitionType);
-
-  // Error pages should never be autocompleted.
-  if (aFlags & IHistory::UNRECOVERABLE_ERROR) {
-    place.shouldUpdateFrecency = false;
-  }
+  bool isHidden = GetHiddenState(isRedirect, transitionType);
 
   // Do not save a reloaded uri if we have visited the same URI recently.
   if (reload) {
@@ -2004,20 +2047,71 @@ History::VisitURI(nsIWidget* aWidget, nsIURI* aURI, nsIURI* aLastVisitedURI,
       bool wasHidden = entry->mHidden;
       // Regardless of whether we store the visit or not, we must update the
       // stored visit time.
-      AppendToRecentlyVisitedURIs(aURI, place.hidden);
+      AppendToRecentlyVisitedURIs(aURI, isHidden);
       // We always want to store an unhidden visit, if the previous visits were
       // hidden, because otherwise the page may not appear in the history UI.
       // This can happen for example at a page redirecting to itself.
-      if (!wasHidden || place.hidden) {
+      if (!wasHidden || isHidden) {
         // We can skip this visit.
         return NS_OK;
       }
     }
   }
 
+  // Never store the URL having userpass to database.
+  nsCOMPtr<nsIURI> visitedURI = GetExposableURI(aURI);
+  nsCOMPtr<nsIURI> lastVisitedURI;
+  if (aLastVisitedURI) {
+    lastVisitedURI = GetExposableURI(aLastVisitedURI);
+  }
+
+  nsTArray<VisitData> placeArray(1);
+  placeArray.AppendElement(VisitData(visitedURI, lastVisitedURI));
+  VisitData& place = placeArray.ElementAt(0);
+  NS_ENSURE_FALSE(place.spec.IsEmpty(), NS_ERROR_INVALID_ARG);
+
+  place.visitTime = PR_Now();
+  place.SetTransitionType(transitionType);
+  place.hidden = isHidden;
+
+  if (isRedirect) {
+    place.useFrecencyRedirectBonus =
+        (aFlags & (IHistory::REDIRECT_SOURCE_PERMANENT |
+                   IHistory::REDIRECT_SOURCE_UPGRADED)) ||
+        transitionType != nsINavHistoryService::TRANSITION_TYPED;
+  }
+
+  // Error pages should never be autocompleted.
+  place.isUnrecoverableError = aFlags & IHistory::UNRECOVERABLE_ERROR;
+
+  // EMBED visits should not go through the database.
+  // They exist only to keep track of isVisited status during the session.
+  if (place.transitionType == nsINavHistoryService::TRANSITION_EMBED) {
+    NotifyEmbedVisit(place);
+    return NS_OK;
+  }
+
+  if (StaticPrefs::places_history_floodingPrevention_enabled()) {
+    // If the origin is restricted, make isVisited status available during the
+    // session but not stored in the database.
+    nsAutoCString origin;
+    Unused << visitedURI->GetHost(origin);
+    if (StringBeginsWith(origin, "www."_ns)) {
+      origin.Cut(0, 4);
+    }
+
+    UpdateOriginFloodingRestriction(origin);
+
+    if (IsRestrictedOrigin(origin)) {
+      NotifyOriginRestrictedVisit(visitedURI);
+      NotifyVisitIfHavingUserPass(aURI);
+      return NS_OK;
+    }
+  }
+
   nsCOMPtr<nsIBrowserWindowTracker> bwt =
-      do_ImportModule("resource:///modules/BrowserWindowTracker.jsm",
-                      "BrowserWindowTracker", &rv);
+      do_ImportESModule("resource:///modules/BrowserWindowTracker.sys.mjs",
+                        "BrowserWindowTracker", &rv);
   if (NS_SUCCEEDED(rv)) {
     // Only if it is running on Firefox, continue to process the followings.
     nsCOMPtr<nsISupports> browser;
@@ -2071,17 +2165,20 @@ History::VisitURI(nsIWidget* aWidget, nsIURI* aURI, nsIURI* aLastVisitedURI,
     }
   }
 
-  // EMBED visits should not go through the database.
-  // They exist only to keep track of isVisited status during the session.
-  if (place.transitionType == nsINavHistoryService::TRANSITION_EMBED) {
-    NotifyEmbedVisit(place);
-  } else {
-    mozIStorageConnection* dbConn = GetDBConn();
-    NS_ENSURE_STATE(dbConn);
+  mozIStorageConnection* dbConn = GetDBConn();
+  NS_ENSURE_STATE(dbConn);
 
-    rv = InsertVisitedURIs::Start(dbConn, std::move(placeArray));
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
+  rv = InsertVisitedURIs::Start(dbConn, std::move(placeArray));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // URIs with a userpass component are not stored in the database for security
+  // reasons, we store the exposable URI version of them instead.
+  // The original link pointing at the URI with userpass must still be marked as
+  // visited, to properly react to the user interaction, so we notify a visit.
+  // The visited status is not going to survive a reload of course, though the
+  // alternative of marking any userpass URI as visited if the exposable URI is
+  // visited also feels wrong from the user point of view.
+  NotifyVisitIfHavingUserPass(aURI);
 
   return NS_OK;
 }
@@ -2115,8 +2212,9 @@ History::SetURITitle(nsIURI* aURI, const nsAString& aTitle) {
   //
   NS_ENSURE_TRUE(navHistory, NS_ERROR_FAILURE);
 
+  nsCOMPtr<nsIURI> uri = GetExposableURI(aURI);
   bool canAdd;
-  nsresult rv = navHistory->CanAddURI(aURI, &canAdd);
+  nsresult rv = navHistory->CanAddURI(uri, &canAdd);
   NS_ENSURE_SUCCESS(rv, rv);
   if (!canAdd) {
     return NS_OK;
@@ -2125,7 +2223,7 @@ History::SetURITitle(nsIURI* aURI, const nsAString& aTitle) {
   mozIStorageConnection* dbConn = GetDBConn();
   NS_ENSURE_STATE(dbConn);
 
-  return SetPageTitle::Start(dbConn, aURI, aTitle);
+  return SetPageTitle::Start(dbConn, uri, aTitle);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2151,6 +2249,10 @@ History::UpdatePlaces(JS::Handle<JS::Value> aPlaceInfos,
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsIURI> uri = GetURIFromJSObject(aCtx, info, "uri");
+    if (uri) {
+      uri = GetExposableURI(uri);
+    }
+
     nsCString guid;
     {
       nsString fatGUID;
@@ -2305,6 +2407,7 @@ History::IsURIVisited(nsIURI* aURI, mozIVisitedStatusCallback* aCallback) {
 NS_IMETHODIMP
 History::ClearCache() {
   mRecentlyVisitedURIs.Clear();
+  mOriginFloodingRestrictions.Clear();
   return NS_OK;
 }
 

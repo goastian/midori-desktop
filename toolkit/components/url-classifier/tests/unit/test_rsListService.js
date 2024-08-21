@@ -42,6 +42,19 @@ const REMOTE_SETTINGS_DATA = [
     id: "mozplugin-block-digest256",
     Version: 1575583456,
   },
+  {
+    Name: "google-trackwhite-digest256",
+    attachment: {
+      hash: "1cd6d9353e97d66ac737a9716cd3a33416d6a4884dd12dcd1d65266e4c81dfad",
+      size: 1470328,
+      filename: "google-trackwhite-digest256",
+      location:
+        "main-workspace/tracking-protection-lists/google-trackwhite-digest256",
+      mimetype: "text/plain",
+    },
+    id: "google-trackwhite-digest256",
+    Version: 1575583456,
+  },
   // Entry with non-exist attachment
   {
     Name: "social-track-digest256",
@@ -93,7 +106,7 @@ function buildPayload(tables) {
 }
 
 let server;
-add_task(async function init() {
+add_setup(async function init() {
   Services.prefs.setCharPref(
     "browser.safebrowsing.provider.mozilla.updateURL",
     `moz-sbrs://tracking-protection-list`
@@ -151,7 +164,7 @@ add_task(async function test_empty_update() {
 
   gListService.fetchList(buildPayload(TEST_TABLES), {
     // nsIStreamListener observer
-    onStartRequest(request) {},
+    onStartRequest() {},
     onDataAvailable(aRequest, aStream, aOffset, aCount) {
       let stream = Cc["@mozilla.org/scriptableinputstream;1"].createInstance(
         Ci.nsIScriptableInputStream
@@ -162,7 +175,7 @@ add_task(async function test_empty_update() {
       });
       updateEvent.dispatchEvent(event);
     },
-    onStopRequest(request, status) {},
+    onStopRequest() {},
   });
 
   let expected = "n:" + SBRS_UPDATE_MINIMUM_DELAY + "\n";
@@ -192,7 +205,7 @@ add_task(async function test_update() {
   gListService.fetchList(buildPayload(TEST_TABLES), {
     // observer
     // nsIStreamListener observer
-    onStartRequest(request) {},
+    onStartRequest() {},
     onDataAvailable(aRequest, aStream, aOffset, aCount) {
       let stream = Cc["@mozilla.org/scriptableinputstream;1"].createInstance(
         Ci.nsIScriptableInputStream
@@ -203,7 +216,7 @@ add_task(async function test_update() {
       });
       updateEvent.dispatchEvent(event);
     },
-    onStopRequest(request, status) {},
+    onStopRequest() {},
   });
 
   // Build request with no version
@@ -234,7 +247,7 @@ add_task(async function test_no_update() {
 
   gListService.fetchList(buildPayload(TEST_TABLES), {
     // nsIStreamListener observer
-    onStartRequest(request) {},
+    onStartRequest() {},
     onDataAvailable(aRequest, aStream, aOffset, aCount) {
       let stream = Cc["@mozilla.org/scriptableinputstream;1"].createInstance(
         Ci.nsIScriptableInputStream
@@ -245,7 +258,7 @@ add_task(async function test_no_update() {
       });
       updateEvent.dispatchEvent(event);
     },
-    onStopRequest(request, status) {},
+    onStopRequest() {},
   });
 
   // No data is expected
@@ -325,11 +338,11 @@ add_test(function test_update_download_error() {
   ].getService(Ci.nsIUrlClassifierStreamUpdater);
 
   // Download some updates, and don't continue until the downloads are done.
-  function updateSuccessOrError(aEvent) {
+  function updateSuccessOrError() {
     do_throw("Should be downbload error");
   }
   // Just throw if we ever get an update or download error.
-  function downloadError(aEvent) {
+  function downloadError() {
     run_next_test();
   }
 
@@ -350,11 +363,11 @@ add_test(function test_update_update_error() {
   ].getService(Ci.nsIUrlClassifierStreamUpdater);
 
   // Download some updates, and don't continue until the downloads are done.
-  function updateSuccessOrDownloadError(aEvent) {
+  function updateSuccessOrDownloadError() {
     do_throw("Should be update error");
   }
   // Just throw if we ever get an update or download error.
-  function updateError(aEvent) {
+  function updateError() {
     run_next_test();
   }
 
@@ -367,4 +380,45 @@ add_test(function test_update_update_error() {
     updateError,
     updateSuccessOrDownloadError
   );
+});
+
+add_task(async function test_update_large_file() {
+  let updateEvent = new UpdateEvent();
+  let promise = waitForEvent(updateEvent, "update");
+
+  const TEST_TABLES = [
+    ["google-trackwhite-digest256", 1575583456 - 1], // up-to-date
+  ];
+
+  gListService.fetchList(buildPayload(TEST_TABLES), {
+    // observer
+    // nsIStreamListener observer
+    onStartRequest() {},
+    onDataAvailable(aRequest, aStream, aOffset, aCount) {
+      let stream = Cc["@mozilla.org/scriptableinputstream;1"].createInstance(
+        Ci.nsIScriptableInputStream
+      );
+      stream.init(aStream);
+      let event = new CustomEvent("update", {
+        detail: stream.readBytes(aCount),
+      });
+      updateEvent.dispatchEvent(event);
+    },
+    onStopRequest() {},
+  });
+
+  // Build request with no version
+  let expected = "n:" + SBRS_UPDATE_MINIMUM_DELAY + "\n";
+  for (const table of TEST_TABLES) {
+    if (["google-trackwhite-digest256"].includes(table[0])) {
+      expected += `i:${table[0]}\n` + readFileToString(`data/${table[0]}`);
+    }
+  }
+
+  Assert.equal(
+    await promise,
+    expected,
+    "Receive expected data from onDataAvailable"
+  );
+  gListService.clear();
 });

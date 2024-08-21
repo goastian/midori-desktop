@@ -3,32 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
-import { FileUtils } from "resource://gre/modules/FileUtils.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-var gLogfileOutputStream;
-
-const PREF_APP_UPDATE_LOG = "app.update.log";
-const PREF_APP_UPDATE_LOG_FILE = "app.update.log.file";
-const KEY_PROFILE_DIR = "ProfD";
-const FILE_UPDATE_MESSAGES = "update_messages.log";
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
+  UpdateLog: "resource://gre/modules/UpdateLog.sys.mjs",
   UpdateUtils: "resource://gre/modules/UpdateUtils.sys.mjs",
 });
-XPCOMUtils.defineLazyGetter(lazy, "gLogEnabled", function aus_gLogEnabled() {
-  return (
-    Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG, false) ||
-    Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG_FILE, false)
-  );
-});
-XPCOMUtils.defineLazyGetter(
-  lazy,
-  "gLogfileEnabled",
-  function aus_gLogfileEnabled() {
-    return Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG_FILE, false);
-  }
-);
 
 const PREF_APP_UPDATE_CANCELATIONS_OSX = "app.update.cancelations.osx";
 const PREF_APP_UPDATE_ELEVATE_NEVER = "app.update.elevate.never";
@@ -137,9 +118,6 @@ export class AppUpdater {
         "nsIObserver",
         "nsISupportsWeakReference",
       ]);
-
-      // This one call observes PREF_APP_UPDATE_LOG and PREF_APP_UPDATE_LOG_FILE
-      Services.prefs.addObserver(PREF_APP_UPDATE_LOG, this, /* ownWeak */ true);
     } catch (e) {
       this.#onException(e);
     }
@@ -300,14 +278,14 @@ export class AppUpdater {
 
       if (updateState == Ci.nsIApplicationUpdateService.STATE_DOWNLOADING) {
         LOG("AppUpdater:check - downloading");
-        this.#update = this.um.downloadingUpdate;
+        this.#update = await this.um.getDownloadingUpdate();
         await this.#downloadUpdate();
         return;
       }
 
       if (updateState == Ci.nsIApplicationUpdateService.STATE_STAGING) {
         LOG("AppUpdater:check - staging");
-        this.#update = this.um.readyUpdate;
+        this.#update = await this.um.getReadyUpdate();
         await this.#awaitStagingComplete();
         return;
       }
@@ -348,7 +326,7 @@ export class AppUpdater {
       }
 
       LOG("AppUpdater:check - Update check succeeded");
-      this.#update = this.aus.selectUpdate(result.updates);
+      this.#update = await this.aus.selectUpdate(result.updates);
       if (!this.#update) {
         LOG("AppUpdater:check - result: NO_UPDATES_FOUND");
         this.#setStatus(AppUpdater.STATUS.NO_UPDATES_FOUND);
@@ -393,8 +371,9 @@ export class AppUpdater {
         LOG("AppUpdater:check - Got user approval. Proceeding with download");
         // If we resolved because of `aus.stateTransition`, we may actually be
         // downloading a different update now.
-        if (this.um.downloadingUpdate) {
-          this.#update = this.um.downloadingUpdate;
+        const downloadingUpdate = await this.um.getDownloadingUpdate();
+        if (downloadingUpdate) {
+          this.#update = downloadingUpdate;
         }
       } else {
         LOG(
@@ -433,20 +412,6 @@ export class AppUpdater {
     return Services.sysinfo.getProperty("isPackagedApp");
   }
 
-  // true when updating in background is enabled.
-  get #updateStagingEnabled() {
-    LOG(
-      "AppUpdater:#updateStagingEnabled" +
-        "canStageUpdates: " +
-        this.aus.canStageUpdates
-    );
-    return (
-      !this.aus.disabled &&
-      !this.#updateDisabledByPackage &&
-      this.aus.canStageUpdates
-    );
-  }
-
   /**
    * Downloads an update mar or connects to an in-progress download.
    * Doesn't resolve until the update is ready to install, or a failure state
@@ -455,8 +420,8 @@ export class AppUpdater {
   async #downloadUpdate() {
     this.#setStatus(AppUpdater.STATUS.DOWNLOADING);
 
-    let success = await this.aus.downloadUpdate(this.#update, false);
-    if (!success) {
+    let result = await this.aus.downloadUpdate(this.#update, false);
+    if (result != Ci.nsIApplicationUpdateService.DOWNLOAD_SUCCESS) {
       LOG("AppUpdater:#downloadUpdate - downloadUpdate failed.");
       this.#setStatus(AppUpdater.STATUS.DOWNLOAD_FAILED);
       return;
@@ -471,15 +436,21 @@ export class AppUpdater {
    * is reached.
    */
   async #awaitDownloadComplete() {
+    // These cases are unlikely, but we might have just completed really fast.
     let updateState = this.aus.currentState;
-    if (
-      updateState != Ci.nsIApplicationUpdateService.STATE_DOWNLOADING &&
-      updateState != Ci.nsIApplicationUpdateService.STATE_SWAP
-    ) {
-      throw new Error(
-        "AppUpdater:#awaitDownloadComplete invoked in unexpected state: " +
-          this.aus.getStateName(updateState)
-      );
+    switch (updateState) {
+      case Ci.nsIApplicationUpdateService.STATE_IDLE:
+        LOG("AppUpdater:#awaitDownloadComplete - Quick failure.");
+        this.#setStatus(AppUpdater.STATUS.DOWNLOAD_FAILED);
+        return;
+      case Ci.nsIApplicationUpdateService.STATE_STAGING:
+        LOG("AppUpdater:#awaitDownloadComplete - Quick staging.");
+        await this.#awaitStagingComplete();
+        return;
+      case Ci.nsIApplicationUpdateService.STATE_PENDING:
+        LOG("AppUpdater:#awaitDownloadComplete - Quick pending.");
+        this.#onReadyToRestart();
+        return;
     }
 
     // We may already be in the `DOWNLOADING` state, depending on how we entered
@@ -589,12 +560,25 @@ export class AppUpdater {
    * is reached.
    */
   async #awaitStagingComplete() {
+    // These cases are unlikely, but we might have just completed really fast.
     let updateState = this.aus.currentState;
-    if (updateState != Ci.nsIApplicationUpdateService.STATE_STAGING) {
-      throw new Error(
-        "AppUpdater:#awaitStagingComplete invoked in unexpected state: " +
-          this.aus.getStateName(updateState)
-      );
+    switch (updateState) {
+      case Ci.nsIApplicationUpdateService.STATE_IDLE:
+        LOG("AppUpdater:#awaitStagingComplete - Quick failure.");
+        this.#setStatus(AppUpdater.STATUS.DOWNLOAD_FAILED);
+        return;
+      case Ci.nsIApplicationUpdateService.STATE_DOWNLOADING:
+        LOG("AppUpdater:#awaitStagingComplete - Quick fallback.");
+        await this.#awaitDownloadComplete();
+        return;
+      case Ci.nsIApplicationUpdateService.STATE_PENDING:
+        LOG("AppUpdater:#awaitStagingComplete - Quick pending.");
+        this.#onReadyToRestart();
+        return;
+      case Ci.nsIApplicationUpdateService.STATE_SWAP:
+        LOG("AppUpdater:#awaitStagingComplete - Quick swap.");
+        await this.#awaitDownloadComplete();
+        return;
     }
 
     LOG("AppUpdater:#awaitStagingComplete - Setting status STAGING.");
@@ -745,17 +729,6 @@ export class AppUpdater {
         // observer.
         this.#handleUpdateSwap();
         break;
-      case "nsPref:changed":
-        if (
-          status == PREF_APP_UPDATE_LOG ||
-          status == PREF_APP_UPDATE_LOG_FILE
-        ) {
-          lazy.gLogEnabled; // Assigning this before it is lazy-loaded is an error.
-          lazy.gLogEnabled =
-            Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG, false) ||
-            Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG_FILE, false);
-        }
-        break;
     }
   }
 
@@ -779,9 +752,9 @@ export class AppUpdater {
       // During an update swap, the new update will initially be stored in
       // `downloadingUpdate`. Part way through, it will be moved into
       // `readyUpdate` and `downloadingUpdate` will be set to `null`.
-      this.#update = this.um.downloadingUpdate;
+      this.#update = await this.um.getDownloadingUpdate();
       if (!this.#update) {
-        this.#update = this.um.readyUpdate;
+        this.#update = await this.um.getReadyUpdate();
       }
 
       await this.#awaitDownloadComplete();
@@ -909,29 +882,5 @@ AppUpdater.STATUS = {
  *          The string to write to the error console.
  */
 function LOG(string) {
-  if (lazy.gLogEnabled) {
-    dump("*** AUS:AUM " + string + "\n");
-    if (!Cu.isInAutomation) {
-      Services.console.logStringMessage("AUS:AUM " + string);
-    }
-
-    if (lazy.gLogfileEnabled) {
-      if (!gLogfileOutputStream) {
-        let logfile = Services.dirsvc.get(KEY_PROFILE_DIR, Ci.nsIFile);
-        logfile.append(FILE_UPDATE_MESSAGES);
-        gLogfileOutputStream = FileUtils.openAtomicFileOutputStream(logfile);
-      }
-
-      try {
-        let encoded = new TextEncoder().encode(string + "\n");
-        gLogfileOutputStream.write(encoded, encoded.length);
-        gLogfileOutputStream.flush();
-      } catch (e) {
-        dump("*** AUS:AUM Unable to write to messages file: " + e + "\n");
-        Services.console.logStringMessage(
-          "AUS:AUM Unable to write to messages file: " + e
-        );
-      }
-    }
-  }
+  lazy.UpdateLog.logPrefixedString("AUS:AUM", string);
 }

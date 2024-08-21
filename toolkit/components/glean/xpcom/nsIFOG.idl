@@ -8,19 +8,19 @@
 [scriptable, uuid(98d0e975-9cad-4ce3-ae2f-f878b8be6307)]
 interface nsIFOG : nsISupports
 {
-
   /**
    * Initialize FOG.
    *
-   * To be scheduled at some opportune time after the bulk of Firefox startup
-   * has completed.
+   * Call it eventually. Metric data recorded beforehand will be buffered.
    *
    * @param aDataPathOverride - The path of a custom Glean data path to use
    *        instead of the profile dir.
    * @param aAppIdOverride - The application_id to use instead of
    *        "firefox.desktop".
+   * @param aDisableInternalPings - Whether to disable internal pings (baseline, events, metrics).
+   *        Default: false.
    */
-  void initializeFOG([optional] in AUTF8String aDataPathOverride, [optional] in AUTF8String aAppIdOverride);
+  void initializeFOG([optional] in AUTF8String aDataPathOverride, [optional] in AUTF8String aAppIdOverride, [optional] in boolean aDisableInternalPings);
 
   /**
    * Register custom pings.
@@ -31,7 +31,7 @@ interface nsIFOG : nsISupports
 
   /**
    * Enable or Disable the logging of pings in the Glean SDK.
-   * See https://firefox-source-docs.mozilla.org/toolkit/components/glean/testing.html
+   * See https://firefox-source-docs.mozilla.org/toolkit/components/glean/dev/testing.html
    * for details.
    *
    * @param aEnableLogPings - true to enable logging, false to disable.
@@ -40,7 +40,7 @@ interface nsIFOG : nsISupports
 
   /**
    * Set the tag to be applied to pings assembled from now on.
-   * See https://firefox-source-docs.mozilla.org/toolkit/components/glean/testing.html
+   * See https://firefox-source-docs.mozilla.org/toolkit/components/glean/dev/testing.html
    * for details.
    *
    * @param aDebugTag - The string tag to apply.
@@ -51,7 +51,7 @@ interface nsIFOG : nsISupports
 
   /**
    * Send the named ping.
-   * See https://firefox-source-docs.mozilla.org/toolkit/components/glean/testing.html
+   * See https://firefox-source-docs.mozilla.org/toolkit/components/glean/dev/testing.html
    * for details.
    *
    * @param aPingName - The name of the ping to send. If no ping of that name
@@ -113,7 +113,7 @@ interface nsIFOG : nsISupports
    *        {metric_base_identifier: boolean,}
    *        which may contain multiple metric object entries.
    */
-  void setMetricsFeatureConfig(in ACString aJsonConfig);
+  void applyServerKnobsConfig(in ACString aJsonConfig);
 
   /**
    * ** Test-only Method **
@@ -182,10 +182,17 @@ interface nsIFOG : nsISupports
    * @param aName - The ping's name.
    * @param aIncludeClientId - Whether the ping should include the client_id.
    * @param aSendIfEmpty - Whether the ping should send even if empty.
+   * @param aIncludeInfoSections - Whether the ping should include
+   *                               {client|ping}_info sections.
+   * TODO(jer): docs
    * @param aReasonCodes - The list of valid reasons for ping submission.
    */
   uint32_t testRegisterRuntimePing(in ACString aName,
                                    in boolean aIncludeClientId,
                                    in boolean aSendIfEmpty,
+                                   in boolean aPreciseTimestamps,
+                                   in boolean aIncludeInfoSections,
+                                   in boolean aEnabled,
+                                   in Array<ACString> aSchedulesPings,
                                    in Array<ACString> aReasonCodes);
 };

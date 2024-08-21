@@ -15,7 +15,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 const kStateActive = 0x00000001; // ElementState::ACTIVE
 const kStateHover = 0x00000004; // ElementState::HOVER
 
-// Duplicated in SelectParent.jsm
+// Duplicated in SelectParent.sys.mjs
 // Please keep these lists in sync.
 const SUPPORTED_OPTION_OPTGROUP_PROPERTIES = [
   "direction",
@@ -70,7 +70,7 @@ SelectContentHelper.prototype = {
       mozSystemGroup: true,
     });
     let MutationObserver = this.element.ownerGlobal.MutationObserver;
-    this.mut = new MutationObserver(mutations => {
+    this.mut = new MutationObserver(() => {
       // Something changed the <select> while it was open, so
       // we'll poke a DeferredTask to update the parent sometime
       // in the very near future.
@@ -249,20 +249,12 @@ SelectContentHelper.prototype = {
         );
 
         // Fire input and change events when selected option changes
-        if (this.initialSelection !== selectedOption) {
-          let inputEvent = new win.Event("input", {
-            bubbles: true,
-            composed: true,
-          });
-
-          let changeEvent = new win.Event("change", {
-            bubbles: true,
-          });
-
+        {
           let handlingUserInput = win.windowUtils.setHandlingUserInput(true);
           try {
-            element.dispatchEvent(inputEvent);
-            element.dispatchEvent(changeEvent);
+            element.userFinishedInteracting(
+              this.initialSelection !== selectedOption
+            );
           } finally {
             handlingUserInput.destruct();
           }
@@ -285,7 +277,7 @@ SelectContentHelper.prototype = {
         InspectorUtils.removeContentState(this.element, kStateHover);
         break;
 
-      case "Forms:MouseUp":
+      case "Forms:MouseUp": {
         let win = this.element.ownerGlobal;
         if (message.data.onAnchor) {
           this.dispatchMouseEvent(win, this.element, "mouseup");
@@ -295,6 +287,7 @@ SelectContentHelper.prototype = {
           this.dispatchMouseEvent(win, this.element, "click");
         }
         break;
+      }
 
       case "Forms:SearchFocused":
         this._closeAfterBlur = false;
@@ -354,6 +347,13 @@ function getComputedStyles(element) {
 function supportedStyles(cs, supportedProps) {
   let styles = {};
   for (let property of supportedProps) {
+    if (property == "font-size") {
+      let usedSize = cs.usedFontSize;
+      if (usedSize >= 0.0) {
+        styles[property] = usedSize + "px";
+        continue;
+      }
+    }
     styles[property] = cs.getPropertyValue(property);
   }
   return styles;
@@ -382,16 +382,45 @@ function uniqueStylesIndex(cs, uniqueStyles) {
 function buildOptionListForChildren(node, uniqueStyles) {
   let result = [];
 
+  let lastWasHR = false;
   for (let child of node.children) {
     let className = ChromeUtils.getClassName(child);
     let isOption = className == "HTMLOptionElement";
     let isOptGroup = className == "HTMLOptGroupElement";
-    if (!isOption && !isOptGroup) {
+    let isHR = className == "HTMLHRElement";
+    if (!isOption && !isOptGroup && !isHR) {
       continue;
     }
     if (child.hidden) {
       continue;
     }
+
+    let cs = getComputedStyles(child);
+
+    if (isHR) {
+      // https://html.spec.whatwg.org/#the-select-element-2
+      // "Each sequence of one or more child hr element siblings may be rendered as a single separator."
+      if (lastWasHR) {
+        continue;
+      }
+
+      let info = {
+        index: child.index,
+        display: cs.display,
+        isHR,
+      };
+
+      const defaultHRStyle = node.ownerGlobal.getDefaultComputedStyle(child);
+      if (cs.color != defaultHRStyle.color) {
+        info.color = cs.color;
+      }
+
+      result.push(info);
+
+      lastWasHR = true;
+      continue;
+    }
+    lastWasHR = false;
 
     // The option code-path should match HTMLOptionElement::GetRenderedLabel.
     let textContent = isOptGroup
@@ -401,7 +430,6 @@ function buildOptionListForChildren(node, uniqueStyles) {
       textContent = "";
     }
 
-    let cs = getComputedStyles(child);
     let info = {
       index: child.index,
       isOptGroup,

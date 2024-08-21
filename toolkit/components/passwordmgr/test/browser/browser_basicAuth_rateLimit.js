@@ -5,12 +5,10 @@
 // This tests that the basic auth dialog can not be used for DOS attacks
 // and that the protections are reset on user-initiated navigation/reload.
 
-let promptModalType = Services.prefs.getIntPref("prompts.modalType.httpAuth");
-
 function promiseAuthWindowShown() {
   return PromptTestUtils.handleNextPrompt(
     window,
-    { modalType: promptModalType, promptType: "promptUserAndPass" },
+    { modalType: Ci.nsIPrompt.MODAL_TYPE_TAB, promptType: "promptUserAndPass" },
     { buttonNumClick: 1 }
   );
 }
@@ -25,7 +23,7 @@ add_task(async function test() {
 
       let authShown = promiseAuthWindowShown();
       let browserLoaded = BrowserTestUtils.browserLoaded(browser);
-      BrowserTestUtils.loadURIString(
+      BrowserTestUtils.startLoadingURIString(
         browser,
         "https://example.com/browser/toolkit/components/passwordmgr/test/browser/authenticate.sjs"
       );
@@ -71,7 +69,7 @@ add_task(async function test() {
 
       // Now check loading subresources with auth on the page.
       browserLoaded = BrowserTestUtils.browserLoaded(browser);
-      BrowserTestUtils.loadURIString(browser, "https://example.com");
+      BrowserTestUtils.startLoadingURIString(browser, "https://example.com");
       await browserLoaded;
 
       // We've already seen the dialog once, hence we start the loop at 1.
@@ -85,13 +83,7 @@ add_task(async function test() {
           let iframe = doc.createElement("iframe");
           doc.body.appendChild(iframe);
           let loaded = new Promise(resolve => {
-            iframe.addEventListener(
-              "load",
-              function (e) {
-                resolve();
-              },
-              { once: true }
-            );
+            iframe.addEventListener("load", _e => resolve(), { once: true });
           });
           iframe.src =
             "https://example.com/browser/toolkit/components/passwordmgr/test/browser/authenticate.sjs";
@@ -113,13 +105,7 @@ add_task(async function test() {
         let iframe = doc.createElement("iframe");
         doc.body.appendChild(iframe);
         let loaded = new Promise(resolve => {
-          iframe.addEventListener(
-            "load",
-            function (e) {
-              resolve();
-            },
-            { once: true }
-          );
+          iframe.addEventListener("load", () => resolve(), { once: true });
         });
         iframe.src =
           "https://example.org/browser/toolkit/components/passwordmgr/test/browser/authenticate.sjs";

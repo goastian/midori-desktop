@@ -213,8 +213,9 @@ add_task(
       equal(exitCode, 0, "Got expected exit code");
     }
 
-    ok(
-      roundTripTime <= MAX_ROUND_TRIP_TIME_MS,
+    Assert.lessOrEqual(
+      roundTripTime,
+      MAX_ROUND_TRIP_TIME_MS,
       `Expected round trip time (${roundTripTime}ms) to be less than ${MAX_ROUND_TRIP_TIME_MS}ms`
     );
   }
@@ -446,7 +447,7 @@ add_task(async function test_subprocess_invalid_json() {
   equal(exitCode, 0, "Got expected exit code");
 });
 
-if (AppConstants.isPlatformAndVersionAtLeast("win", "6")) {
+if (AppConstants.platform == "win") {
   add_task(async function test_subprocess_inherited_descriptors() {
     let { libc, win32 } = ChromeUtils.importESModule(
       "resource://gre/modules/subprocess/subprocess_win.sys.mjs"
@@ -625,8 +626,9 @@ add_task(async function test_subprocess_kill_timeout() {
   // testing the timeout there.
   if (AppConstants.platform != "win") {
     let diff = Date.now() - startTime;
-    ok(
-      diff >= TIMEOUT,
+    Assert.greaterOrEqual(
+      diff,
+      TIMEOUT,
       `Process was killed after ${diff}ms (expected ~${TIMEOUT}ms)`
     );
   }

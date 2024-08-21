@@ -31,7 +31,7 @@ interface nsIClearDataService : nsISupports
    * @param aCallback this callback will be executed when the operation is
    *                  completed.
    */
-  void deleteDataFromLocalFiles(in bool aIsUserRequest,
+  void deleteDataFromLocalFiles(in boolean aIsUserRequest,
                                 in uint32_t aFlags,
                                 in nsIClearDataCallback aCallback);
 
@@ -50,7 +50,7 @@ interface nsIClearDataService : nsISupports
    * @deprecated Use deleteDataFromBaseDomain instead.
    */
   void deleteDataFromHost(in AUTF8String aHost,
-                          in bool aIsUserRequest,
+                          in boolean aIsUserRequest,
                           in uint32_t aFlags,
                           in nsIClearDataCallback aCallback);
 
@@ -76,7 +76,7 @@ interface nsIClearDataService : nsISupports
    * may fall back to clearing by principal or host.
    */
   void deleteDataFromBaseDomain(in AUTF8String aDomainOrHost,
-                                in bool aIsUserRequest,
+                                in boolean aIsUserRequest,
                                 in uint32_t aFlags,
                                 in nsIClearDataCallback aCallback);
 
@@ -93,7 +93,7 @@ interface nsIClearDataService : nsISupports
    *                  completed.
    */
   void deleteDataFromPrincipal(in nsIPrincipal aPrincipal,
-                               in bool aIsUserRequest,
+                               in boolean aIsUserRequest,
                                in uint32_t aFlags,
                                in nsIClearDataCallback aCallback);
 
@@ -111,7 +111,7 @@ interface nsIClearDataService : nsISupports
    *                  completed.
    */
   void deleteDataInTimeRange(in PRTime aFrom, in PRTime aTo,
-                             in bool aIsUserRequest,
+                             in boolean aIsUserRequest,
                              in uint32_t aFlags,
                              in nsIClearDataCallback aCallback);
 
@@ -140,7 +140,7 @@ interface nsIClearDataService : nsISupports
    * whose base domain does not have any storage associated with it.
    *
    * The principals to be considered will need to be passed by the API consumer.
-   * It is recommended to use PrincipalsCollector.jsm for that.
+   * It is recommended to use PrincipalsCollector.sys.mjs for that.
    *
    * @param aPrincipalsWithStorage principals to be excluded from clearing
    * @param aFrom microseconds from the epoch
@@ -285,7 +285,32 @@ interface nsIClearDataService : nsISupports
   /**
    * Clear state associated with FedCM
    */
-  const uint32_t CLEAR_CREDENTIAL_MANAGER_STATE = 1 << 24;
+  const uint32_t CLEAR_CREDENTIAL_MANAGER_STATE = 1 << 25;
+
+  /**
+   * Clear the per-site exception for cookie banner handling.
+   */
+  const uint32_t CLEAR_COOKIE_BANNER_EXCEPTION = 1 << 26;
+
+  /**
+   * Clear the site executed record for cookie banner handling.
+   */
+  const uint32_t CLEAR_COOKIE_BANNER_EXECUTED_RECORD = 1 << 27;
+
+  /**
+   * Clear state associated with the fingerprinting protection.
+   */
+  const uint32_t CLEAR_FINGERPRINTING_PROTECTION_STATE = 1 << 28;
+
+  /**
+   * Clear the bounce tracking protection state.
+   */
+  const uint32_t CLEAR_BOUNCE_TRACKING_PROTECTION_STATE = 1 << 29;
+
+  /**
+   * Clear permissions of type "persistent-storage" and "storage-access"
+   */
+  const uint32_t CLEAR_STORAGE_PERMISSIONS = 1 << 30;
 
   /**
    * Use this value to delete all the data.
@@ -317,7 +342,22 @@ interface nsIClearDataService : nsISupports
     CLEAR_PERMISSIONS | CLEAR_DOM_STORAGES | CLEAR_CONTENT_PREFERENCES |
     CLEAR_PREDICTOR_NETWORK_DATA | CLEAR_DOM_PUSH_NOTIFICATIONS |
     CLEAR_CLIENT_AUTH_REMEMBER_SERVICE | CLEAR_REPORTS | CLEAR_CERT_EXCEPTIONS |
-    CLEAR_CREDENTIAL_MANAGER_STATE;
+    CLEAR_CREDENTIAL_MANAGER_STATE | CLEAR_COOKIE_BANNER_EXCEPTION |
+    CLEAR_COOKIE_BANNER_EXECUTED_RECORD | CLEAR_FINGERPRINTING_PROTECTION_STATE |
+    CLEAR_BOUNCE_TRACKING_PROTECTION_STATE;
+
+  /**
+   * Helper flag for clearing cookies and site data.
+   * This flag groups state that we consider site data
+   * from the user perspective. If you implement UI that
+   * offers site data clearing this is almost always what you want.
+   * If you need more granular control please use more specific
+   * flags like CLEAR_COOKIES and CLEAR_DOM_STORAGES.
+   */
+  const uint32_t CLEAR_COOKIES_AND_SITE_DATA =
+    CLEAR_COOKIES | CLEAR_COOKIE_BANNER_EXECUTED_RECORD | CLEAR_DOM_STORAGES | CLEAR_HSTS |
+    CLEAR_EME | CLEAR_AUTH_TOKENS | CLEAR_AUTH_CACHE | CLEAR_FINGERPRINTING_PROTECTION_STATE |
+    CLEAR_BOUNCE_TRACKING_PROTECTION_STATE | CLEAR_STORAGE_PERMISSIONS;
 };
 
 /**

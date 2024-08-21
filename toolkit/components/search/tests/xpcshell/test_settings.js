@@ -15,11 +15,7 @@ var settingsTemplate;
 /**
  * Test reading from search.json.mozlz4
  */
-add_task(async function setup() {
-  Services.prefs
-    .getDefaultBranch(SearchUtils.BROWSER_SEARCH_PREF + "param.")
-    .setCharPref("test", "expected");
-
+add_setup(async function () {
   await SearchTestUtils.useTestEngines("data1");
   await AddonTestUtils.promiseStartupManager();
   await Services.search.init();
@@ -476,10 +472,10 @@ add_task(async function test_settings_write() {
       delete engine._shortName;
     }
     if ("_urls" in engine) {
-      // Only app-provided engines support purpose & mozparams, others do not,
+      // Only app-provided engines support purpose, others do not,
       // so filter them out of the expected template.
       for (let urls of engine._urls) {
-        urls.params = urls.params.filter(p => !p.purpose && !p.mozparam);
+        urls.params = urls.params.filter(p => !p.purpose);
         // resultDomain is also no longer supported.
         if ("resultDomain" in urls) {
           delete urls.resultDomain;
@@ -595,7 +591,7 @@ var EXPECTED_ENGINE = {
           method: "GET",
           template:
             "http://suggestqueries.google.com/complete/search?output=firefox&client=firefox" +
-            "&hl={moz:locale}&q={searchTerms}",
+            "&q={searchTerms}",
           params: "",
         },
         {

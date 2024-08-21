@@ -16,9 +16,6 @@
 #endif
 #include "base/pickle.h"
 #include "base/process_util.h"
-#if defined(MOZ_TELEMETRY_GECKOVIEW)
-#  include "geckoview/TelemetryGeckoViewPersistence.h"
-#endif
 #include "ipc/TelemetryIPCAccumulator.h"
 #include "jsapi.h"
 #include "jsfriendapi.h"
@@ -658,6 +655,16 @@ TelemetryImpl::GetUntrustedModuleLoadEvents(uint32_t aFlags, JSContext* cx,
                                             Promise** aPromise) {
 #if defined(XP_WIN)
   return Telemetry::GetUntrustedModuleLoadEvents(aFlags, cx, aPromise);
+#else
+  return NS_ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+NS_IMETHODIMP
+TelemetryImpl::GetAreUntrustedModuleLoadEventsReady(bool* ret) {
+#if defined(XP_WIN)
+  *ret = DllServices::Get()->IsReadyForBackgroundProcessing();
+  return NS_OK;
 #else
   return NS_ERROR_NOT_IMPLEMENTED;
 #endif
@@ -1374,7 +1381,6 @@ static constexpr TrackedDBEntry kTrackedDBs[] = {
     TRACKEDDB_ENTRY("places.sqlite"),
     TRACKEDDB_ENTRY("reading-list.sqlite"),
     TRACKEDDB_ENTRY("search.sqlite"),
-    TRACKEDDB_ENTRY("signons.sqlite"),
     TRACKEDDB_ENTRY("urlclassifier3.sqlite"),
     TRACKEDDB_ENTRY("webappsstore.sqlite")};
 

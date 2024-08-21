@@ -2,13 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* eslint
-  "no-unused-vars": ["error", {
-    vars: "local",
-    args: "none",
-  }],
-*/
-
 var gPopupShownExpected = false;
 var gPopupShownListener;
 var gLastAutoCompleteResults;
@@ -186,9 +179,9 @@ function listenForUnexpectedPopupShown() {
 async function popupBy(triggerFn) {
   gPopupShownExpected = true;
   const promise = new Promise(resolve => {
-    gPopupShownListener = ({ results }) => {
+    gPopupShownListener = results => {
       gPopupShownExpected = false;
-      resolve(results);
+      resolve(results.labels);
     };
   });
   if (triggerFn) {
@@ -247,10 +240,10 @@ function promiseNextStorageEvent() {
 function satchelCommonSetup() {
   let chromeURL = SimpleTest.getTestFileURL("parent_utils.js");
   gChromeScript = SpecialPowers.loadChromeScript(chromeURL);
-  gChromeScript.addMessageListener("onpopupshown", ({ results }) => {
+  gChromeScript.addMessageListener("onpopupshown", results => {
     gLastAutoCompleteResults = results;
     if (gPopupShownListener) {
-      gPopupShownListener({ results });
+      gPopupShownListener(results);
     }
   });
 
@@ -264,7 +257,7 @@ function satchelCommonSetup() {
 }
 
 function add_named_task(name, fn) {
-  add_task(
+  return add_task(
     {
       [name]() {
         return fn();
@@ -299,7 +292,7 @@ function assertValueAfterKeys(input, keys, expectedValue) {
 
 function assertAutocompleteItems(...expectedValues) {
   const actualValues = getMenuEntries();
-  isDeeply(actualValues, expectedValues, "expected autocomplete list");
+  isDeeply(actualValues.labels, expectedValues, "expected autocomplete list");
 }
 
 function deleteSelectedAutocompleteItem() {

@@ -23,11 +23,10 @@ async function waitForPageStatusUpdate(elem, expected, message) {
   );
 }
 
-async function waitUntilVisible(elem, visible = true) {
+async function waitUntilVisible(elem) {
   await TestUtils.waitForCondition(
     () =>
-      BrowserTestUtils.is_visible(elem) &&
-      getComputedStyle(elem).opacity == "1",
+      BrowserTestUtils.isVisible(elem) && getComputedStyle(elem).opacity == "1",
     "Waiting for element to be visible and have opacity:1"
   );
 }
@@ -413,7 +412,7 @@ add_task(async function testPaginatorAfterSettingsUpdate() {
 });
 
 add_task(async function testTooltips() {
-  await SpecialPowers.pushPrefEnv({ set: [["ui.tooltipDelay", 0]] });
+  await SpecialPowers.pushPrefEnv({ set: [["ui.tooltip.delay_ms", 0]] });
   const mockPrinterName = "Fake Printer";
   await PrintHelper.withTestPage(async helper => {
     helper.addMockPrinter(mockPrinterName);

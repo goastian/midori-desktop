@@ -3,12 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { EventEmitter } from "resource://gre/modules/EventEmitter.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   JSONFile: "resource://gre/modules/JSONFile.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
 });
 
 const IS_MAIN_PROCESS =
@@ -21,12 +19,12 @@ export class SharedDataMap extends EventEmitter {
     this._sharedDataKey = sharedDataKey;
     this._isParent = options.isParent;
     this._isReady = false;
-    this._readyDeferred = lazy.PromiseUtils.defer();
+    this._readyDeferred = Promise.withResolvers();
     this._data = null;
 
     if (this.isParent) {
       // Lazy-load JSON file that backs Storage instances.
-      XPCOMUtils.defineLazyGetter(this, "_store", () => {
+      ChromeUtils.defineLazyGetter(this, "_store", () => {
         let path = options.path;
         let store = null;
         if (!path) {

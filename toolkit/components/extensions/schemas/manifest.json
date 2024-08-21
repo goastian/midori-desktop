@@ -121,7 +121,9 @@
 
           "incognito": {
             "type": "string",
-            "enum": ["not_allowed", "spanning"],
+            "description": "The 'split' value is not supported.",
+            "enum": ["not_allowed", "spanning", "split"],
+            "postprocess": "incognitoSplitUnsupportedAndFallback",
             "default": "spanning",
             "optional": true
           },
@@ -173,11 +175,15 @@
             "optional": true
           },
 
+          "options_page": {
+            "$ref": "ExtensionURL",
+            "optional": true,
+            "description": "Alias property for options_ui.page, ignored when options_ui.page is set. When using this property the options page is always opened in a new tab."
+          },
+
           "options_ui": {
             "type": "object",
-
             "optional": true,
-
             "properties": {
               "page": { "$ref": "ExtensionURL" },
               "browser_style": {
@@ -262,6 +268,17 @@
           },
 
           "host_permissions": {
+            "min_manifest_version": 3,
+            "type": "array",
+            "items": {
+              "$ref": "MatchPattern",
+              "onError": "warn"
+            },
+            "optional": true,
+            "default": []
+          },
+
+          "optional_host_permissions": {
             "min_manifest_version": 3,
             "type": "array",
             "items": {
@@ -594,8 +611,14 @@
           "strict_max_version": {
             "type": "string",
             "optional": true
+          },
+
+          "admin_install_only": {
+            "type": "boolean",
+            "optional": true
           }
-        }
+        },
+        "additionalProperties": { "$ref": "UnrecognizedProperty" }
       },
       {
         "id": "GeckoAndroidSpecificProperties",
@@ -610,7 +633,7 @@
             "optional": true
           }
         },
-        "additionalProperties": { "type": "any" }
+        "additionalProperties": { "$ref": "UnrecognizedProperty" }
       },
       {
         "id": "DeprecatedApplications",
@@ -730,13 +753,24 @@
           "match_about_blank": {
             "type": "boolean",
             "optional": true,
-            "description": "If matchAboutBlank is true, then the code is also injected in about:blank and about:srcdoc frames if your extension has access to its parent document. Code cannot be inserted in top-level about:-frames. By default it is <code>false</code>."
+            "description": "If match_about_blank is true, then the code is also injected in about:blank and about:srcdoc frames if your extension has access to its parent document. Ignored if match_origin_as_fallback is specified. By default it is <code>false</code>."
+          },
+          "match_origin_as_fallback": {
+            "type": "boolean",
+            "optional": true,
+            "description": "If match_origin_as_fallback is true, then the code is also injected in about:, data:, blob: when their origin matches the pattern in 'matches', even if the actual document origin is opaque (due to the use of CSP sandbox or iframe sandbox). Match patterns in 'matches' must specify a wildcard path glob. By default it is <code>false</code>."
           },
           "run_at": {
             "$ref": "extensionTypes.RunAt",
             "optional": true,
             "default": "document_idle",
             "description": "The soonest that the JavaScript or CSS will be injected into the tab. Defaults to \"document_idle\"."
+          },
+          "world": {
+            "$ref": "extensionTypes.ExecutionWorld",
+            "optional": true,
+            "default": "ISOLATED",
+            "description": "The JavaScript world for a script to execute within. Defaults to \"ISOLATED\"."
           }
         }
       },

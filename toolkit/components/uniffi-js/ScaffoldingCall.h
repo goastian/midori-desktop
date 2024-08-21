@@ -52,7 +52,7 @@ class ScaffoldingCallHandler {
   // Perform an async scaffolding call
   static already_AddRefed<dom::Promise> CallAsync(
       ScaffoldingFunc aScaffoldingFunc, const dom::GlobalObject& aGlobal,
-      const dom::Sequence<dom::ScaffoldingType>& aArgs,
+      const dom::Sequence<dom::UniFFIScaffoldingValue>& aArgs,
       const nsLiteralCString& aFuncName, ErrorResult& aError) {
     auto convertResult = ConvertJsArgs(aArgs);
     if (convertResult.isErr()) {
@@ -72,7 +72,8 @@ class ScaffoldingCallHandler {
 
     // Create a second promise that gets resolved by a background task that
     // calls the scaffolding function
-    RefPtr taskPromise = new typename TaskPromiseType::Private(aFuncName.get());
+    RefPtr taskPromise =
+        new typename TaskPromiseType::Private(StaticString(aFuncName));
     nsresult dispatchResult = NS_DispatchBackgroundTask(
         NS_NewRunnableFunction(aFuncName.get(),
                                [args = std::move(convertedArgs), taskPromise,
@@ -80,16 +81,16 @@ class ScaffoldingCallHandler {
                                  auto callResult = CallScaffoldingFunc(
                                      aScaffoldingFunc, std::move(args));
                                  taskPromise->Resolve(std::move(callResult),
-                                                      aFuncName.get());
+                                                      StaticString(aFuncName));
                                }),
         NS_DISPATCH_EVENT_MAY_BLOCK);
     if (NS_FAILED(dispatchResult)) {
-      taskPromise->Reject(dispatchResult, aFuncName.get());
+      taskPromise->Reject(dispatchResult, StaticString(aFuncName));
     }
 
     // When the background task promise completes, resolve the JS promise
     taskPromise->Then(
-        GetCurrentSerialEventTarget(), aFuncName.get(),
+        GetCurrentSerialEventTarget(), StaticString(aFuncName),
         [xpcomGlobal, returnPromise,
          aFuncName](typename TaskPromiseType::ResolveOrRejectValue&& aResult) {
           if (!aResult.IsResolve()) {
@@ -115,7 +116,7 @@ class ScaffoldingCallHandler {
   // aFuncName should be a literal C string
   static void CallSync(
       ScaffoldingFunc aScaffoldingFunc, const dom::GlobalObject& aGlobal,
-      const dom::Sequence<dom::ScaffoldingType>& aArgs,
+      const dom::Sequence<dom::UniFFIScaffoldingValue>& aArgs,
       dom::RootedDictionary<dom::UniFFIScaffoldingCallResult>& aReturnValue,
       const nsLiteralCString& aFuncName, ErrorResult& aError) {
     auto convertResult = ConvertJsArgs(aArgs);
@@ -145,7 +146,7 @@ class ScaffoldingCallHandler {
   //
   // This should be called in the main thread
   static Result<IntermediateArgs, nsCString> ConvertJsArgs(
-      const dom::Sequence<dom::ScaffoldingType>& aArgs) {
+      const dom::Sequence<dom::UniFFIScaffoldingValue>& aArgs) {
     IntermediateArgs convertedArgs;
     if (aArgs.Length() != std::tuple_size_v<IntermediateArgs>) {
       return mozilla::Err("Wrong argument count"_ns);
@@ -157,7 +158,7 @@ class ScaffoldingCallHandler {
   // Helper function for PrepareArgs that uses c++ magic to help with iteration
   template <size_t I = 0>
   static Result<mozilla::Ok, nsCString> PrepareArgsHelper(
-      const dom::Sequence<dom::ScaffoldingType>& aArgs,
+      const dom::Sequence<dom::UniFFIScaffoldingValue>& aArgs,
       IntermediateArgs& aConvertedArgs) {
     if constexpr (I >= sizeof...(ArgConverters)) {
       // Iteration complete

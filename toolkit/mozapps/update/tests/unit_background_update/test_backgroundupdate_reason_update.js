@@ -24,11 +24,6 @@ const { sinon } = ChromeUtils.importESModule(
 
 // We can't reasonably check NO_MOZ_BACKGROUNDTASKS, nor NO_OMNIJAR.
 
-// These tests use per-installation prefs, and those are a shared resource, so
-// they require some non-trivial setup.
-setupTestCommon(null);
-standardInit();
-
 function setup_enterprise_policy_testing() {
   // This initializes the policy engine for xpcshell tests
   let policies = Cc["@mozilla.org/enterprisepolicies;1"].getService(
@@ -49,7 +44,12 @@ async function setupPolicyEngineWithJson(json, customSchema) {
   return EnterprisePolicyTesting.setupPolicyEngineWithJson(json, customSchema);
 }
 
-add_setup(function test_setup() {
+add_setup(async function test_setup() {
+  // These tests use per-installation prefs, and those are a shared resource, so
+  // they require some non-trivial setup.
+  setupTestCommon(null);
+  await standardInit();
+
   // FOG needs a profile directory to put its data in.
   do_get_profile();
 
@@ -232,6 +232,86 @@ add_task(async function test_reasons_update_manual_update_only() {
   result = await checkGleanPing();
   Assert.ok(!result.includes(REASON.MANUAL_UPDATE_ONLY));
 });
+
+add_task(
+  {
+    skip_if: () => AppConstants.platform != "win",
+  },
+  async function test_unelevated_nimbus_enabled() {
+    // Enable feature.
+    Services.prefs.setBoolPref(
+      "app.update.background.allowUpdatesForUnelevatedInstallations",
+      true
+    );
+    registerCleanupFunction(() => {
+      Services.prefs.clearUserPref(
+        "app.update.background.allowUpdatesForUnelevatedInstallations"
+      );
+    });
+
+    // execute!
+    let r = await reasons();
+    Assert.ok(
+      !r.includes(BackgroundUpdate.REASON.SERVICE_REGISTRY_KEY_MISSING),
+      `no SERVICE_REGISTRY_KEY_MISSING in ${JSON.stringify(r)}`
+    );
+    Assert.ok(
+      !r.includes(BackgroundUpdate.REASON.APPBASEDIR_NOT_WRITABLE),
+      `no APPBASEDIR_NOT_WRITABLE in ${JSON.stringify(r)}`
+    );
+
+    // the test directory usually is writable, but we now create a file and keep
+    // it open, so that the test file can neither be deleted nor recreated and
+    // appears to be locked. With that we re-execute the test and expect to find
+    // APPBASEDIR_NOT_WRITABLE in the telemetry data.
+    let appDirTestFile = Services.dirsvc.get(
+      XRE_EXECUTABLE_FILE,
+      Ci.nsIFile
+    ).parent;
+    appDirTestFile.append(FILE_UPDATE_TEST);
+    appDirTestFile.create(Ci.nsIFile.NORMAL_FILE_TYPE, FileUtils.PERMS_FILE);
+
+    var outputStream = Cc[
+      "@mozilla.org/network/file-output-stream;1"
+    ].createInstance(Ci.nsIFileOutputStream);
+    //                              WR_ONLY|CREATE|TRUNC
+    outputStream.init(appDirTestFile, 0x02 | 0x08 | 0x20, 0o644, null);
+    registerCleanupFunction(() => {
+      outputStream.close();
+      appDirTestFile.remove(false);
+    });
+    // after the preperation: execute again!
+    r = await reasons();
+    Assert.ok(
+      r.includes(BackgroundUpdate.REASON.APPBASEDIR_NOT_WRITABLE),
+      `no APPBASEDIR_NOT_WRITABLE in ${JSON.stringify(r)}`
+    );
+  }
+);
+
+add_task(
+  {
+    skip_if: () => AppConstants.platform != "win",
+  },
+  async function test_unelevated_nimbus_disabled() {
+    // Disable feature.
+    Services.prefs.setBoolPref(
+      "app.update.background.allowUpdatesForUnelevatedInstallations",
+      false
+    );
+    registerCleanupFunction(() => {
+      Services.prefs.clearUserPref(
+        "app.update.background.allowUpdatesForUnelevatedInstallations"
+      );
+    });
+
+    let r = await reasons();
+    Assert.ok(
+      r.includes(BackgroundUpdate.REASON.SERVICE_REGISTRY_KEY_MISSING),
+      `SERVICE_REGISTRY_KEY_MISSING in ${JSON.stringify(r)}`
+    );
+  }
+);
 
 add_task(() => {
   // `setupTestCommon()` calls `do_test_pending()`; this calls

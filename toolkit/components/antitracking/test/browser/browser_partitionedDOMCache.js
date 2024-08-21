@@ -25,7 +25,7 @@ PartitionedStorageHelper.runTest(
 
   async _ => {
     await new Promise(resolve => {
-      Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
+      Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, () =>
         resolve()
       );
     });
@@ -38,7 +38,7 @@ PartitionedStorageHelper.runTest(
 
 PartitionedStorageHelper.runTest(
   "DOMCache",
-  async (win3rdParty, win1stParty, allowed) => {
+  async (win3rdParty, win1stParty) => {
     await win1stParty.caches.open("wow").then(
       async cache => {
         ok(true, "DOM Cache should be available");
@@ -62,7 +62,7 @@ PartitionedStorageHelper.runTest(
 
   async _ => {
     await new Promise(resolve => {
-      Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
+      Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, () =>
         resolve()
       );
     });
@@ -73,32 +73,32 @@ PartitionedStorageHelper.runTest(
   { runInSecureContext: true }
 );
 
-// Test that DOM cache is not available in PBM.
+// Test that DOM cache is also available in PBM.
 PartitionedStorageHelper.runTest(
   "DOMCache",
-  async (win3rdParty, win1stParty, allowed) => {
+  async (win3rdParty, win1stParty) => {
     await win1stParty.caches.open("wow").then(
-      async cache => {
-        ok(false, "DOM Cache should not be available in PBM");
+      async () => {
+        ok(true, "DOM Cache should be available in PBM");
       },
       _ => {
-        ok(true, "DOM Cache should not be available in PBM");
+        ok(false, "DOM Cache should be available in PBM");
       }
     );
 
     await win3rdParty.caches.open("wow").then(
-      async cache => {
-        ok(false, "DOM Cache should not be available in PBM");
+      async () => {
+        ok(true, "DOM Cache should be available in PBM");
       },
       _ => {
-        ok(true, "DOM Cache should not be available in PBM");
+        ok(false, "DOM Cache should be available in PBM");
       }
     );
   },
 
   async _ => {
     await new Promise(resolve => {
-      Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
+      Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, () =>
         resolve()
       );
     });

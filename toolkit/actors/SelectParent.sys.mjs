@@ -22,9 +22,6 @@ XPCOMUtils.defineLazyPreferenceGetter(
   false
 );
 
-// Maximum number of rows to display in the select dropdown.
-const MAX_ROWS = 20;
-
 // Minimum elements required to show select search
 const SEARCH_MINIMUM_ELEMENTS = 40;
 
@@ -35,7 +32,7 @@ const PROPERTIES_RESET_WHEN_ACTIVE = [
   "text-shadow",
 ];
 
-// Duplicated in SelectChild.jsm
+// Duplicated in SelectChild.sys.mjs
 // Please keep these lists in sync.
 const SUPPORTED_OPTION_OPTGROUP_PROPERTIES = [
   "direction",
@@ -274,7 +271,13 @@ export var SelectParentHelper = {
 
     this._currentZoom = zoom;
     this._currentMenulist = menulist;
-    this.populateChildren(menulist, items, uniqueItemStyles, selectedIndex);
+    this.populateChildren(
+      menulist,
+      custom,
+      items,
+      uniqueItemStyles,
+      selectedIndex
+    );
   },
 
   open(browser, menulist, rect, isOpenedViaTouch, selectParentActor) {
@@ -285,29 +288,10 @@ export var SelectParentHelper = {
     this._selectRect = rect;
     this._registerListeners(menulist.menupopup);
 
-    // Set the maximum height to show exactly MAX_ROWS items.
     let menupopup = menulist.menupopup;
-    let firstItem = menupopup.firstElementChild;
-    while (firstItem && firstItem.hidden) {
-      firstItem = firstItem.nextElementSibling;
-    }
-
-    let win = menulist.ownerGlobal;
-    if (firstItem) {
-      let itemHeight = firstItem.getBoundingClientRect().height;
-
-      // Include the padding and border on the popup.
-      let cs = win.getComputedStyle(menupopup);
-      let bpHeight =
-        parseFloat(cs.borderTopWidth) +
-        parseFloat(cs.borderBottomWidth) +
-        parseFloat(cs.paddingTop) +
-        parseFloat(cs.paddingBottom);
-      menupopup.style.maxHeight = itemHeight * MAX_ROWS + bpHeight + "px";
-    }
-
     menupopup.classList.toggle("isOpenedViaTouch", isOpenedViaTouch);
 
+    let win = menulist.ownerGlobal;
     if (browser) {
       browser.constrainPopup(menupopup);
     } else {
@@ -483,6 +467,7 @@ export var SelectParentHelper = {
    */
   populateChildren(
     menulist,
+    custom,
     options,
     uniqueOptionStyles,
     selectedIndex,
@@ -496,26 +481,19 @@ export var SelectParentHelper = {
     let ariaOwns = "";
     for (let option of options) {
       let isOptGroup = option.isOptGroup;
-      let item = element.ownerDocument.createXULElement(
-        isOptGroup ? "menucaption" : "menuitem"
-      );
+      let isHR = option.isHR;
+
+      let xulElement = "menuitem";
       if (isOptGroup) {
-        item.setAttribute("role", "group");
+        xulElement = "menucaption";
       }
-      item.setAttribute("label", option.textContent);
-      item.className = `ContentSelectDropdown-item-${option.styleIndex}`;
+      if (isHR) {
+        xulElement = "menuseparator";
+      }
+
+      let item = element.ownerDocument.createXULElement(xulElement);
       item.hidden =
         option.display == "none" || (parentElement && parentElement.hidden);
-      // Keep track of which options are hidden by page content, so we can avoid
-      // showing them on search input.
-      item.hiddenByContent = item.hidden;
-      item.setAttribute("tooltiptext", option.tooltip);
-
-      if (uniqueOptionStyles[option.styleIndex].customStyling) {
-        item.setAttribute("customoptionstyling", "true");
-      } else {
-        item.removeAttribute("customoptionstyling");
-      }
 
       if (parentElement) {
         // In the menupopup, the optgroup is a sibling of its contained options.
@@ -530,6 +508,30 @@ export var SelectParentHelper = {
       element.appendChild(item);
       nthChildIndex++;
 
+      if (isHR) {
+        item.style.color = (custom && option.color) || "";
+
+        // Continue early as HRs do not have other attributes.
+        continue;
+      }
+
+      item.className = `ContentSelectDropdown-item-${option.styleIndex}`;
+
+      if (isOptGroup) {
+        item.setAttribute("role", "group");
+      }
+      item.setAttribute("label", option.textContent);
+      // Keep track of which options are hidden by page content, so we can avoid
+      // showing them on search input.
+      item.hiddenByContent = item.hidden;
+      item.setAttribute("tooltiptext", option.tooltip);
+
+      if (uniqueOptionStyles[option.styleIndex].customStyling) {
+        item.setAttribute("customoptionstyling", "true");
+      } else {
+        item.removeAttribute("customoptionstyling");
+      }
+
       // A disabled optgroup disables all of its child options.
       let isDisabled = isGroupDisabled || option.disabled;
       if (isDisabled) {
@@ -539,6 +541,7 @@ export var SelectParentHelper = {
       if (isOptGroup) {
         nthChildIndex = this.populateChildren(
           menulist,
+          custom,
           option.children,
           uniqueOptionStyles,
           selectedIndex,
@@ -667,8 +670,9 @@ export var SelectParentHelper = {
       if (!currentItem.hiddenByContent) {
         // Get label and tooltip (title) from option and change to
         // lower case for comparison
-        let itemLabel = currentItem.getAttribute("label").toLowerCase();
-        let itemTooltip = currentItem.getAttribute("title").toLowerCase();
+        let itemLabel = currentItem.getAttribute("label")?.toLowerCase() || "";
+        let itemTooltip =
+          currentItem.getAttribute("title")?.toLowerCase() || "";
 
         // If search input is empty, all options should be shown
         if (!input) {

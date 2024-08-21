@@ -29,10 +29,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdarg.h>
-
-#ifdef MOZ_WAYLAND
-#  include <gdk/gdk.h>
-#endif
+#include <gdk/gdk.h>
 
 #if defined(MOZ_ASAN) || defined(FUZZING)
 #  include <signal.h>
@@ -173,9 +170,9 @@ typedef struct _drmDevice {
 
 #ifdef MOZ_X11
 static int x_error_handler(Display*, XErrorEvent* ev) {
-  record_value(
-      "ERROR\nX error, error_code=%d, "
-      "request_code=%d, minor_code=%d\n",
+  record_error(
+      "X error, error_code=%d, "
+      "request_code=%d, minor_code=%d",
       ev->error_code, ev->request_code, ev->minor_code);
   record_flush();
   _exit(EXIT_FAILURE);
@@ -195,9 +192,11 @@ extern "C" {
 static void get_pci_status() {
   log("GLX_TEST: get_pci_status start\n");
 
+#if !defined(XP_FREEBSD) && !defined(XP_NETBSD) && !defined(XP_OPENBSD) && \
+    !defined(XP_SOLARIS)
   if (access("/sys/bus/pci/", F_OK) != 0 &&
       access("/sys/bus/pci_express/", F_OK) != 0) {
-    record_warning("cannot access /sys/bus/pci");
+    log("GLX_TEST: get_pci_status failed: cannot access /sys/bus/pci\n");
     return;
   }
 
@@ -275,11 +274,11 @@ static void get_pci_status() {
   }
 
   pci_cleanup(pacc);
+#endif
 
   log("GLX_TEST: get_pci_status finished\n");
 }
 
-#ifdef MOZ_WAYLAND
 static void set_render_device_path(const char* render_device_path) {
   record_value("DRM_RENDERDEVICE\n%s\n", render_device_path);
 }
@@ -386,7 +385,6 @@ static bool get_render_name(const char* name) {
   free(devices);
   return result;
 }
-#endif
 
 static bool get_egl_gl_status(EGLDisplay dpy,
                               PFNEGLGETPROCADDRESS eglGetProcAddress) {
@@ -539,7 +537,6 @@ static bool get_egl_gl_status(EGLDisplay dpy,
         strstr(deviceExtensions, "EGL_MESA_device_software")) {
       record_value("MESA_ACCELERATED\nFALSE\n");
     } else {
-#ifdef MOZ_WAYLAND
       const char* deviceString =
           eglQueryDeviceStringEXT(device, EGL_DRM_DEVICE_FILE_EXT);
       if (!deviceString || !get_render_name(deviceString)) {
@@ -549,7 +546,6 @@ static bool get_egl_gl_status(EGLDisplay dpy,
           set_render_device_path(renderNodeString);
         }
       }
-#endif
     }
   }
 
@@ -650,11 +646,13 @@ static void get_xrandr_info(Display* dpy) {
   Window root = RootWindow(dpy, DefaultScreen(dpy));
   XRRProviderResources* pr = XRRGetProviderResources(dpy, root);
   if (!pr) {
+    log("GLX_TEST: XRRGetProviderResources failed.\n");
     return;
   }
   XRRScreenResources* res = XRRGetScreenResourcesCurrent(dpy, root);
   if (!res) {
     XRRFreeProviderResources(pr);
+    log("GLX_TEST: XRRGetScreenResourcesCurrent failed.\n");
     return;
   }
   if (pr->nproviders != 0) {
@@ -869,6 +867,7 @@ bool x11_egltest() {
 
   Display* dpy = XOpenDisplay(nullptr);
   if (!dpy) {
+    log("GLX_TEST: XOpenDisplay failed.\n");
     return false;
   }
 #  ifdef MOZ_ASAN
@@ -889,7 +888,11 @@ bool x11_egltest() {
   // Disable all non-standard depths for the initial EGL roleout.
   int screenCount = ScreenCount(dpy);
   for (int idx = 0; idx < screenCount; idx++) {
-    if (DefaultDepth(dpy, idx) != 24) {
+    int depth = DefaultDepth(dpy, idx);
+    if (depth != 24) {
+      log("GLX_TEST: DefaultDepth() is %d, expected to be 24. See Bug "
+          "1667621.\n",
+          depth);
       return false;
     }
   }
@@ -924,7 +927,8 @@ void wayland_egltest() {
   // exist but fails with record_error if something actually went wrong
   struct wl_display* dpy = sWlDisplayConnect(nullptr);
   if (!dpy) {
-    record_error("Could not connect to wayland socket");
+    record_error("Could not connect to wayland display, WAYLAND_DISPLAY=%s",
+                 getenv("WAYLAND_DISPLAY"));
     return;
   }
 

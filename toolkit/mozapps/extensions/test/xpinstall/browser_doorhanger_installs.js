@@ -52,7 +52,7 @@ async function waitForProgressNotification(
   let topic = getObserverTopic(notificationId);
 
   let observerPromise = new Promise(resolve => {
-    Services.obs.addObserver(function observer(aSubject, aTopic, aData) {
+    Services.obs.addObserver(function observer(aSubject, aTopic) {
       // Ignore the progress notification unless that is the notification we want
       if (
         notificationId != PROGRESS_NOTIFICATION &&
@@ -208,7 +208,7 @@ async function waitForNotification(
   let observerPromise;
   if (aId !== "addon-webext-permissions") {
     observerPromise = new Promise(resolve => {
-      Services.obs.addObserver(function observer(aSubject, aTopic, aData) {
+      Services.obs.addObserver(function observer(aSubject, aTopic) {
         // Ignore the progress notification unless that is the notification we want
         if (
           aId != PROGRESS_NOTIFICATION &&
@@ -298,7 +298,7 @@ function acceptInstallDialog(installDialog) {
   installDialog.button.click();
 }
 
-async function waitForSingleNotification(aCallback) {
+async function waitForSingleNotification() {
   while (PopupNotifications.panel.childNodes.length != 1) {
     await new Promise(resolve => executeSoon(resolve));
 
@@ -697,27 +697,37 @@ var TESTS = [
 
     let installDialogPromise = waitForInstallDialog();
 
-    let tab = await BrowserTestUtils.openNewForegroundTab(
-      gBrowser,
-      TESTROOT + "installtrigger.html?" + triggers
-    );
+    try {
+      // Prevent install to fail due to privileged.xpi version using
+      // an addon version that hits a manifest warning (see PRIV_ADDON_VERSION).
+      // TODO(Bug 1824240): remove this once privileged.xpi can be resigned with a
+      // version format that does not hit a manifest warning.
+      ExtensionTestUtils.failOnSchemaWarnings(false);
+      let tab = await BrowserTestUtils.openNewForegroundTab(
+        gBrowser,
+        TESTROOT + "installtrigger.html?" + triggers
+      );
 
-    let notificationPromise = acceptAppMenuNotificationWhenShown(
-      "addon-installed",
-      "test@tests.mozilla.org",
-      { incognitoHidden: true }
-    );
+      let notificationPromise = acceptAppMenuNotificationWhenShown(
+        "addon-installed",
+        "test@tests.mozilla.org",
+        { incognitoHidden: true }
+      );
 
-    (await installDialogPromise).button.click();
-    await notificationPromise;
+      (await installDialogPromise).button.click();
+      await notificationPromise;
 
-    let installs = await AddonManager.getAllInstalls();
-    is(installs.length, 0, "Should be no pending installs");
+      let installs = await AddonManager.getAllInstalls();
+      is(installs.length, 0, "Should be no pending installs");
 
-    let addon = await AddonManager.getAddonByID("test@tests.mozilla.org");
-    await addon.uninstall();
+      let addon = await AddonManager.getAddonByID("test@tests.mozilla.org");
+      await addon.uninstall();
 
-    await BrowserTestUtils.removeTab(tab);
+      await BrowserTestUtils.removeTab(tab);
+    } finally {
+      ExtensionTestUtils.failOnSchemaWarnings(true);
+    }
+
     await SpecialPowers.popPrefEnv();
     AddonManager.checkUpdateSecurity = true;
   },
@@ -977,7 +987,7 @@ var TESTS = [
     });
     gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, "about:blank");
     await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
-    BrowserTestUtils.loadURIString(gBrowser, path);
+    BrowserTestUtils.startLoadingURIString(gBrowser, path);
     await failPromise;
 
     // Wait for the browser code to add the failure notification
@@ -1048,12 +1058,15 @@ var TESTS = [
       false,
       requestedUrl
     );
-    BrowserTestUtils.loadURIString(gBrowser, TESTROOT2 + "enabled.html");
+    BrowserTestUtils.startLoadingURIString(
+      gBrowser,
+      TESTROOT2 + "enabled.html"
+    );
     await loadedPromise;
 
     let progressPromise = waitForProgressNotification();
     let notificationPromise = waitForNotification("addon-install-failed");
-    BrowserTestUtils.loadURIString(gBrowser, TESTROOT + "corrupt.xpi");
+    BrowserTestUtils.startLoadingURIString(gBrowser, TESTROOT + "corrupt.xpi");
     await progressPromise;
     let panel = await notificationPromise;
 
@@ -1091,7 +1104,7 @@ var TESTS = [
     await new Promise(resolve => executeSoon(resolve));
 
     notificationPromise = waitForNotification("addon-install-blocked");
-    BrowserTestUtils.loadURIString(
+    BrowserTestUtils.startLoadingURIString(
       gBrowser,
       TESTROOT + "installtrigger.html?" + triggers
     );
@@ -1474,7 +1487,7 @@ var TESTS = [
 var gTestStart = null;
 
 var XPInstallObserver = {
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     var installInfo = aSubject.wrappedJSObject;
     info(
       "Observed " + aTopic + " for " + installInfo.installs.length + " installs"

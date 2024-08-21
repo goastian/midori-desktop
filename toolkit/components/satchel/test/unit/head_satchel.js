@@ -2,13 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* eslint
-  "no-unused-vars": ["error", {
-    vars: "local",
-    args: "none",
-  }],
-*/
-
 const CURRENT_SCHEMA = 5;
 const PR_HOURS = 60 * 60 * 1000000;
 
@@ -32,10 +25,10 @@ var formHistoryStartup = Cc[
 ].getService(Ci.nsIObserver);
 formHistoryStartup.observe(null, "profile-after-change", null);
 
-function getDBVersion(dbfile) {
-  let dbConnection = Services.storage.openDatabase(dbfile);
-  let version = dbConnection.schemaVersion;
-  dbConnection.close();
+async function getDBVersion(dbfile) {
+  let dbConnection = await Sqlite.openConnection({ path: dbfile.path });
+  let version = await dbConnection.getSchemaVersion();
+  await dbConnection.close();
 
   return version;
 }

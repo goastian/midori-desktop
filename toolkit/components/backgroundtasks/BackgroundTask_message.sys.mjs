@@ -52,12 +52,9 @@
 //   background task profile.
 
 import { EXIT_CODE } from "resource://gre/modules/BackgroundTasksManager.sys.mjs";
-
-const { ASRouter } = ChromeUtils.import(
-  "resource://activity-stream/lib/ASRouter.jsm"
-);
+// eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
+import { ASRouter } from "resource:///modules/asrouter/ASRouter.sys.mjs";
 import { BackgroundTasksUtils } from "resource://gre/modules/BackgroundTasksUtils.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
@@ -69,11 +66,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
   RemoteSettingsClient:
     "resource://services-settings/RemoteSettingsClient.sys.mjs",
+  // eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
+  ToastNotification: "resource:///modules/asrouter/ToastNotification.sys.mjs",
   Utils: "resource://services-settings/Utils.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  ToastNotification: "resource://activity-stream/lib/ToastNotification.jsm",
 });
 
 const SERVER_STAGE = "https://firefox.settings.services.allizom.org/v1";
@@ -87,10 +82,7 @@ outputInfo = (sentinel, info) => {
   dump(`${sentinel}${JSON.stringify(info)}${sentinel}\n`);
 };
 
-function monkeyPatchRemoteSettingsClient({
-  last_modified = new Date().getTime(),
-  data = [],
-}) {
+function monkeyPatchRemoteSettingsClient({ data = [] }) {
   lazy.RemoteSettingsClient.prototype.get = async (options = {}) => {
     outputInfo({ "RemoteSettingsClient.get": { options, response: { data } } });
     return data;

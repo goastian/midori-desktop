@@ -85,12 +85,7 @@ add_task(async function () {
       true
     );
 
-    // click on exception-button and wait for page to load
-    await SpecialPowers.spawn(browser, [], async function () {
-      let openInsecureButton = content.document.getElementById("openInsecure");
-      ok(openInsecureButton != null, "openInsecureButton should exist.");
-      openInsecureButton.click();
-    });
+    await waitForAndClickOpenInsecureButton(browser);
 
     await pageShownPromise;
 
@@ -144,7 +139,7 @@ function setupFileServer() {
       "GET",
       `${SECURE_ROOT_PATH}file_upgrade_insecure_server.sjs?queryresult=${INSECURE_ROOT_PATH}`
     );
-    xhrRequest.onload = function (e) {
+    xhrRequest.onload = function () {
       var results = xhrRequest.responseText.split(",");
       resolve(results);
     };

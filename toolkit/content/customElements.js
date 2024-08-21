@@ -732,7 +732,7 @@
       }
 
       get label() {
-        return this.getAttribute("label");
+        return this.getAttribute("label") || "";
       }
 
       set image(val) {
@@ -762,9 +762,7 @@
       }
 
       get accessKey() {
-        return this.labelElement
-          ? this.labelElement.accessKey
-          : this.getAttribute("accesskey");
+        return this.labelElement?.accessKey || this.getAttribute("accesskey");
       }
     };
   MozElements.BaseTextMixin = BaseTextMixin;
@@ -788,11 +786,11 @@
     document.documentURI == "chrome://geckoview/content/geckoview.xhtml"
   );
   if (loadExtraCustomElements) {
+    // Lazily load the following elements
     for (let [tag, script] of [
       ["button-group", "chrome://global/content/elements/named-deck.js"],
       ["findbar", "chrome://global/content/elements/findbar.js"],
       ["menulist", "chrome://global/content/elements/menulist.js"],
-      ["message-bar", "chrome://global/content/elements/message-bar.js"],
       ["named-deck", "chrome://global/content/elements/named-deck.js"],
       ["named-deck-button", "chrome://global/content/elements/named-deck.js"],
       ["panel-list", "chrome://global/content/elements/panel-list.js"],
@@ -812,39 +810,57 @@
         Services.scriptloader.loadSubScript(script, window);
       });
     }
-    // Bug 1813077: This is a workaround until Bug 1803810 lands
-    // which will give us the ability to load ESMs synchronously
-    // like the previous Services.scriptloader.loadSubscript() function
-    function importCustomElementFromESModule(name) {
-      switch (name) {
-        case "moz-button-group":
-          return import(
-            "chrome://global/content/elements/moz-button-group.mjs"
-          );
-        case "moz-support-link":
-          return import(
-            "chrome://global/content/elements/moz-support-link.mjs"
-          );
-        case "moz-toggle":
-          return import("chrome://global/content/elements/moz-toggle.mjs");
-      }
-      throw new Error(`Unknown custom element name (${name})`);
-    }
 
-    /*
-    This function explicitly returns null so that there is no confusion
-    about which custom elements from ES Modules have been loaded.
-    */
-    window.ensureCustomElements = function (...elementNames) {
-      return Promise.all(
-        elementNames
-          .filter(name => !customElements.get(name))
-          .map(name => importCustomElementFromESModule(name))
-      )
-        .then(() => null)
-        .catch(console.error);
-    };
+    document.addEventListener(
+      "DOMContentLoaded",
+      () => {
+        // Only sync-import widgets once the document has loaded. If a widget is
+        // used before DOMContentLoaded it will be imported and upgraded when
+        // registering the customElements.setElementCreationCallback().
+        for (let [tag, script] of [
+          ["moz-button", "chrome://global/content/elements/moz-button.mjs"],
+          [
+            "moz-button-group",
+            "chrome://global/content/elements/moz-button-group.mjs",
+          ],
+          ["moz-card", "chrome://global/content/elements/moz-card.mjs"],
+          ["moz-checkbox", "chrome://global/content/elements/moz-checkbox.mjs"],
+          ["moz-fieldset", "chrome://global/content/elements/moz-fieldset.mjs"],
+          [
+            "moz-five-star",
+            "chrome://global/content/elements/moz-five-star.mjs",
+          ],
+          ["moz-label", "chrome://global/content/elements/moz-label.mjs"],
+          [
+            "moz-message-bar",
+            "chrome://global/content/elements/moz-message-bar.mjs",
+          ],
+          ["moz-page-nav", "chrome://global/content/elements/moz-page-nav.mjs"],
+          ["moz-radio", "chrome://global/content/elements/moz-radio-group.mjs"],
+          [
+            "moz-radio-group",
+            "chrome://global/content/elements/moz-radio-group.mjs",
+          ],
+          [
+            "moz-support-link",
+            "chrome://global/content/elements/moz-support-link.mjs",
+          ],
+          ["moz-toggle", "chrome://global/content/elements/moz-toggle.mjs"],
+        ]) {
+          if (!customElements.get(tag)) {
+            customElements.setElementCreationCallback(
+              tag,
+              function customElementCreationCallback() {
+                ChromeUtils.importESModule(script, { global: "current" });
+              }
+            );
+          }
+        }
+      },
+      { once: true }
+    );
 
+    // Immediately load the following elements
     for (let script of [
       "chrome://global/content/elements/arrowscrollbox.js",
       "chrome://global/content/elements/dialog.js",

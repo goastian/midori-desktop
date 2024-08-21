@@ -6,11 +6,10 @@ import { Log } from "resource://gre/modules/Log.sys.mjs";
 
 import { TelemetryUtils } from "resource://gre/modules/TelemetryUtils.sys.mjs";
 
-const { ObjectUtils } = ChromeUtils.import(
-  "resource://gre/modules/ObjectUtils.jsm"
-);
+import { ObjectUtils } from "resource://gre/modules/ObjectUtils.sys.mjs";
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { UpdateUtils } from "resource://gre/modules/UpdateUtils.sys.mjs";
+import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const Utils = TelemetryUtils;
 
@@ -28,13 +27,21 @@ ChromeUtils.defineESModuleGetters(lazy, {
   WindowsVersionInfo:
     "resource://gre/modules/components-utils/WindowsVersionInfo.sys.mjs",
 });
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-XPCOMUtils.defineLazyGetter(lazy, "fxAccounts", () => {
+ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
   return ChromeUtils.importESModule(
     "resource://gre/modules/FxAccounts.sys.mjs"
   ).getFxAccountsSingleton();
 });
+
+if (AppConstants.MOZ_UPDATER) {
+  XPCOMUtils.defineLazyServiceGetter(
+    lazy,
+    "UpdateServiceStub",
+    "@mozilla.org/updates/update-service-stub;1",
+    "nsIApplicationUpdateServiceStub"
+  );
+}
 
 // The maximum length of a string (e.g. description) in the addons section.
 const MAX_ADDON_STRING_LENGTH = 100;
@@ -225,18 +232,18 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["browser.cache.disk.capacity", { what: RECORD_PREF_VALUE }],
   ["browser.cache.memory.enable", { what: RECORD_PREF_VALUE }],
   ["browser.formfill.enable", { what: RECORD_PREF_VALUE }],
-  ["browser.fixup.alternate.enabled", { what: RECORD_DEFAULTPREF_VALUE }],
   ["browser.migrate.interactions.bookmarks", { what: RECORD_PREF_VALUE }],
+  ["browser.migrate.interactions.csvpasswords", { what: RECORD_PREF_VALUE }],
   ["browser.migrate.interactions.history", { what: RECORD_PREF_VALUE }],
   ["browser.migrate.interactions.passwords", { what: RECORD_PREF_VALUE }],
   ["browser.newtabpage.enabled", { what: RECORD_PREF_VALUE }],
+  ["browser.privatebrowsing.autostart", { what: RECORD_PREF_VALUE }],
   ["browser.shell.checkDefaultBrowser", { what: RECORD_PREF_VALUE }],
   ["browser.search.region", { what: RECORD_PREF_VALUE }],
   ["browser.search.suggest.enabled", { what: RECORD_PREF_VALUE }],
   ["browser.search.widget.inNavBar", { what: RECORD_DEFAULTPREF_VALUE }],
   ["browser.startup.homepage", { what: RECORD_PREF_STATE }],
   ["browser.startup.page", { what: RECORD_PREF_VALUE }],
-  ["browser.tabs.firefox-view", { what: RECORD_PREF_VALUE }],
   ["browser.urlbar.autoFill", { what: RECORD_DEFAULTPREF_VALUE }],
   [
     "browser.urlbar.autoFill.adaptiveHistory.enabled",
@@ -264,15 +271,14 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
     "browser.urlbar.suggest.quicksuggest.sponsored",
     { what: RECORD_DEFAULTPREF_VALUE },
   ],
-  ["browser.urlbar.suggest.bestmatch", { what: RECORD_DEFAULTPREF_VALUE }],
   ["browser.urlbar.suggest.searches", { what: RECORD_PREF_VALUE }],
   ["devtools.chrome.enabled", { what: RECORD_PREF_VALUE }],
   ["devtools.debugger.enabled", { what: RECORD_PREF_VALUE }],
   ["devtools.debugger.remote-enabled", { what: RECORD_PREF_VALUE }],
   ["doh-rollout.doorhanger-decision", { what: RECORD_PREF_VALUE }],
-  ["dom.ipc.plugins.enabled", { what: RECORD_PREF_VALUE }],
   ["dom.ipc.processCount", { what: RECORD_PREF_VALUE }],
   ["dom.max_script_run_time", { what: RECORD_PREF_VALUE }],
+  ["dom.popup_allowed_events", { what: RECORD_PREF_VALUE }],
   ["editor.truncate_user_pastes", { what: RECORD_PREF_VALUE }],
   ["extensions.InstallTrigger.enabled", { what: RECORD_PREF_VALUE }],
   ["extensions.InstallTriggerImpl.enabled", { what: RECORD_PREF_VALUE }],
@@ -286,10 +292,6 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
     { what: RECORD_PREF_VALUE },
   ],
   ["extensions.formautofill.creditCards.enabled", { what: RECORD_PREF_VALUE }],
-  [
-    "extensions.formautofill.creditCards.available",
-    { what: RECORD_PREF_VALUE },
-  ],
   ["extensions.manifestV3.enabled", { what: RECORD_PREF_VALUE }],
   ["extensions.quarantinedDomains.enabled", { what: RECORD_PREF_VALUE }],
   ["extensions.strictCompatibility", { what: RECORD_PREF_VALUE }],
@@ -302,12 +304,10 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["gfx.direct2d.disabled", { what: RECORD_PREF_VALUE }],
   ["gfx.direct2d.force-enabled", { what: RECORD_PREF_VALUE }],
   ["gfx.webrender.all", { what: RECORD_PREF_VALUE }],
-  ["gfx.webrender.all.qualified", { what: RECORD_PREF_VALUE }],
   ["layers.acceleration.disabled", { what: RECORD_PREF_VALUE }],
   ["layers.acceleration.force-enabled", { what: RECORD_PREF_VALUE }],
   ["layers.async-pan-zoom.enabled", { what: RECORD_PREF_VALUE }],
   ["layers.async-video-oop.enabled", { what: RECORD_PREF_VALUE }],
-  ["layers.async-video.enabled", { what: RECORD_PREF_VALUE }],
   ["layers.d3d11.disable-warp", { what: RECORD_PREF_VALUE }],
   ["layers.d3d11.force-warp", { what: RECORD_PREF_VALUE }],
   [
@@ -345,9 +345,10 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["network.trr.strict_native_fallback", { what: RECORD_DEFAULTPREF_VALUE }],
   ["pdfjs.disabled", { what: RECORD_PREF_VALUE }],
   ["places.history.enabled", { what: RECORD_PREF_VALUE }],
-  ["plugins.show_infobar", { what: RECORD_PREF_VALUE }],
   ["privacy.firstparty.isolate", { what: RECORD_PREF_VALUE }],
   ["privacy.resistFingerprinting", { what: RECORD_PREF_VALUE }],
+  ["privacy.fingerprintingProtection", { what: RECORD_PREF_VALUE }],
+  ["privacy.fingerprintingProtection.pbmode", { what: RECORD_PREF_VALUE }],
   ["privacy.trackingprotection.enabled", { what: RECORD_PREF_VALUE }],
   ["privacy.donottrackheader.enabled", { what: RECORD_PREF_VALUE }],
   ["security.enterprise_roots.auto-enabled", { what: RECORD_PREF_VALUE }],
@@ -367,8 +368,19 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
     { what: RECORD_DEFAULTPREF_VALUE },
   ],
   ["xpinstall.signatures.required", { what: RECORD_PREF_VALUE }],
+  [
+    "xpinstall.signatures.weakSignaturesTemporarilyAllowed",
+    { what: RECORD_PREF_VALUE },
+  ],
   ["nimbus.debug", { what: RECORD_PREF_VALUE }],
 ]);
+
+if (AppConstants.platform == "linux" || AppConstants.platform == "macosx") {
+  DEFAULT_ENVIRONMENT_PREFS.set(
+    "intl.ime.use_composition_events_for_insert_text",
+    { what: RECORD_PREF_VALUE }
+  );
+}
 
 const LOGGER_NAME = "Toolkit.Telemetry";
 
@@ -655,6 +667,17 @@ EnvironmentAddonBuilder.prototype = {
   onUninstalled(addon) {
     this._onAddonChange(addon);
   },
+  onPropertyChanged(addon, propertiesChanged) {
+    // Avoid to update the telemetry environment for onPropertyChanged
+    // calls that we are not actually interested in (and quarantineIgnoredByApp
+    // is not expected to change at runtime, unless the entire active addons
+    // entry is also replaced, e.g. on the extension being uninstalled and
+    // installed again).
+    if (!propertiesChanged.includes("quarantineIgnoredByUser")) {
+      return;
+    }
+    this._onAddonChange(addon);
+  },
 
   _onAddonChange(addon) {
     if (addon && addon.isBuiltin && !addon.isSystem) {
@@ -665,7 +688,7 @@ EnvironmentAddonBuilder.prototype = {
   },
 
   // nsIObserver
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     this._environment._log.trace("observe - Topic " + aTopic);
     if (aTopic == GMP_PROVIDER_REGISTERED_TOPIC) {
       Services.obs.removeObserver(this, GMP_PROVIDER_REGISTERED_TOPIC);
@@ -828,6 +851,13 @@ EnvironmentAddonBuilder.prototype = {
             hasBinaryComponents: false,
             installDay: Utils.millisecondsToDays(installDate.getTime()),
             signedState: addon.signedState,
+            signedTypes: JSON.stringify(addon.signedTypes),
+            quarantineIgnoredByApp: enforceBoolean(
+              addon.quarantineIgnoredByApp
+            ),
+            quarantineIgnoredByUser: enforceBoolean(
+              addon.quarantineIgnoredByUser
+            ),
           });
         }
       } catch (ex) {
@@ -875,6 +905,8 @@ EnvironmentAddonBuilder.prototype = {
         hasBinaryComponents: false,
         installDay: Utils.millisecondsToDays(installDate.getTime()),
         updateDay: Utils.millisecondsToDays(updateDate.getTime()),
+        signedState: theme.signedState,
+        signedTypes: JSON.stringify(theme.signedTypes),
       };
     }
 
@@ -1598,7 +1630,8 @@ EnvironmentCache.prototype = {
       intl: Policy._intlLoaded ? getIntlSettings() : {},
       update: {
         channel: updateChannel,
-        enabled: !Services.policies || Services.policies.isAllowed("appUpdate"),
+        enabled:
+          AppConstants.MOZ_UPDATER && !lazy.UpdateServiceStub.updateDisabled,
       },
       userPrefs: this._getPrefData(),
       sandbox: this._getSandboxData(),
@@ -1652,6 +1685,7 @@ EnvironmentCache.prototype = {
     let creationDate = await profileAccessor.created;
     let resetDate = await profileAccessor.reset;
     let firstUseDate = await profileAccessor.firstUse;
+    let recoveredFromBackup = await profileAccessor.recoveredFromBackup;
 
     this._currentEnvironment.profile.creationDate =
       Utils.millisecondsToDays(creationDate);
@@ -1662,6 +1696,10 @@ EnvironmentCache.prototype = {
     if (firstUseDate) {
       this._currentEnvironment.profile.firstUseDate =
         Utils.millisecondsToDays(firstUseDate);
+    }
+    if (recoveredFromBackup) {
+      this._currentEnvironment.profile.recoveredFromBackup =
+        Utils.millisecondsToDays(recoveredFromBackup);
     }
   },
 
@@ -1994,6 +2032,7 @@ EnvironmentCache.prototype = {
       ContentBackend: getGfxField("ContentBackend", null),
       Headless: getGfxField("isHeadless", null),
       EmbeddedInFirefoxReality: getGfxField("EmbeddedInFirefoxReality", null),
+      TargetFrameRate: getGfxField("TargetFrameRate", null),
       // The following line is disabled due to main thread jank and will be enabled
       // again as part of bug 1154500.
       // DWriteVersion: getGfxField("DWriteVersion", null),
@@ -2077,13 +2116,9 @@ EnvironmentCache.prototype = {
         data = { winPackageFamilyName, ...data };
       }
       data = { ...this._getProcessData(), ...data };
+      data.sec = this._getSecurityAppData();
     } else if (AppConstants.platform == "android") {
       data.device = this._getDeviceData();
-    }
-
-    // Windows 8+
-    if (AppConstants.isPlatformAndVersionAtLeast("win", "6.2")) {
-      data.sec = this._getSecurityAppData();
     }
 
     return data;

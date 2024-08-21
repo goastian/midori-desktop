@@ -11,18 +11,18 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
+  ASRouterTargeting:
+    // eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
+    "resource:///modules/asrouter/ASRouterTargeting.sys.mjs",
   BackgroundTasksUtils: "resource://gre/modules/BackgroundTasksUtils.sys.mjs",
-  FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+  ExperimentManager: "resource://nimbus/lib/ExperimentManager.sys.mjs",
   JSONFile: "resource://gre/modules/JSONFile.sys.mjs",
   TaskScheduler: "resource://gre/modules/TaskScheduler.sys.mjs",
   UpdateUtils: "resource://gre/modules/UpdateUtils.sys.mjs",
+  NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  ASRouterTargeting: "resource://activity-stream/lib/ASRouterTargeting.jsm",
-});
-
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -36,7 +36,7 @@ XPCOMUtils.defineLazyGetter(lazy, "log", () => {
   return new ConsoleAPI(consoleOptions);
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "localization", () => {
+ChromeUtils.defineLazyGetter(lazy, "localization", () => {
   return new Localization(
     ["branding/brand.ftl", "toolkit/updates/backgroundupdate.ftl"],
     true
@@ -56,9 +56,18 @@ XPCOMUtils.defineLazyServiceGetters(lazy, {
 // by storing the installed version number of the task to a pref and comparing
 // that version number to the current version. If they aren't equal, we know
 // that we have to re-register the task.
-const TASK_DEF_CURRENT_VERSION = 3;
+const TASK_DEF_CURRENT_VERSION = 4;
 const TASK_INSTALLED_VERSION_PREF =
   "app.update.background.lastInstalledTaskVersion";
+
+// This returns the version of the task naming scheme being used which
+// is different from the task version used for the task definition.
+function taskNameVersion(taskVersion) {
+  if (AppConstants.platform != "win" || taskVersion < 4) {
+    return 1;
+  }
+  return 2;
+}
 
 export var BackgroundUpdate = {
   QueryInterface: ChromeUtils.generateQI([
@@ -81,6 +90,24 @@ export var BackgroundUpdate = {
     return taskId;
   },
 
+  async deleteTasksInRange(installedVersion, currentVersion) {
+    for (
+      let taskVersion = installedVersion;
+      taskVersion <= currentVersion;
+      taskVersion++
+    ) {
+      try {
+        await lazy.TaskScheduler.deleteTask(this.taskId, {
+          nameVersion: taskNameVersion(taskVersion),
+        });
+      } catch (e) {
+        lazy.log.error(
+          `deleteTasksInRange: Error deleting task ${taskVersion}: ${e}`
+        );
+      }
+    }
+  },
+
   /**
    * Whether this installation has an App and a GRE omnijar.
    *
@@ -89,16 +116,17 @@ export var BackgroundUpdate = {
    * @returns {boolean} - true if this installation has an App and a GRE omnijar.
    */
   async _hasOmnijar() {
-    const appOmniJar = lazy.FileUtils.getFile("XCurProcD", [
-      AppConstants.OMNIJAR_NAME,
-    ]);
-    const greOmniJar = lazy.FileUtils.getFile("GreD", [
-      AppConstants.OMNIJAR_NAME,
-    ]);
+    const appOmniJar = PathUtils.join(
+      Services.dirsvc.get("XCurProcD", Ci.nsIFile).path,
+      AppConstants.OMNIJAR_NAME
+    );
+    const greOmniJar = PathUtils.join(
+      Services.dirsvc.get("GreD", Ci.nsIFile).path,
+      AppConstants.OMNIJAR_NAME
+    );
 
     let bothExist =
-      (await IOUtils.exists(appOmniJar.path)) &&
-      (await IOUtils.exists(greOmniJar.path));
+      (await IOUtils.exists(appOmniJar)) && (await IOUtils.exists(greOmniJar));
 
     return bothExist;
   },
@@ -174,12 +202,73 @@ export var BackgroundUpdate = {
       reasons.push(this.REASON.CANNOT_USUALLY_STAGE_AND_CANNOT_USUALLY_APPLY);
     }
 
+    lazy.log.debug(
+      `${SLUG}: checking that we are on a supported OS (currently only Windows)`
+    );
+    if (AppConstants.platform != "win") {
+      reasons.push(this.REASON.UNSUPPORTED_OS);
+    }
+
     if (AppConstants.platform == "win") {
+      lazy.log.debug(`${SLUG}: checking that we can usually use Windows BITS`);
       if (!updateService.canUsuallyUseBits) {
         // There's no technical reason to require BITS, but the experience
         // without BITS will be worse because the background tasks will run
         // while downloading, consuming valuable resources.
         reasons.push(this.REASON.WINDOWS_CANNOT_USUALLY_USE_BITS);
+      }
+
+      // Historically the background update process assumed the Mozilla
+      // Maintenance Service was available and could update this installation.
+      // We want to handle unelevated installations where this is not the case,
+      // and for flexibility we are rolling this out behind a Nimbus feature.
+      lazy.log.debug(
+        `${SLUG}: checking that the Mozilla Maintenance Service Registry key exists, ` +
+          `or that the unelevated installs are permitted`
+      );
+      let serviceRegKeyExists = false;
+      try {
+        serviceRegKeyExists = Cc["@mozilla.org/updates/update-processor;1"]
+          .createInstance(Ci.nsIUpdateProcessor)
+          .getServiceRegKeyExists();
+      } catch (ex) {
+        lazy.log.error(
+          `${SLUG}: Failed to check for Maintenance Service Registry Key: ${ex}`
+        );
+      }
+
+      if (!serviceRegKeyExists) {
+        // A Nimbus rollout sets this preference and allows users with
+        // unelevated installations to update in the background. For that to
+        // work we use the setPref function to toggle a preference, because the
+        // value for Nimbus is currently not readable in a backgroundtask. The
+        // preference serves in that case as our communication channel.
+        let allowUnelevated = await Services.prefs.getBoolPref(
+          "app.update.background.allowUpdatesForUnelevatedInstallations"
+        );
+
+        if (!allowUnelevated) {
+          // With the nimbus feature disabled and without the registry key we
+          // do not want to attempt an update for unelevated installations.
+          reasons.push(this.REASON.SERVICE_REGISTRY_KEY_MISSING);
+        } else {
+          // We record in telemetry, that the service registry key is missing
+          // and the experiment is enabled. This is the first time that the
+          // Nimbus feature could impact Firefox behaviour.
+          lazy.NimbusFeatures.backgroundUpdate.recordExposureEvent();
+          lazy.log.debug(
+            `${SLUG}: ` +
+              "expermiment active: trying to update unelevated installations."
+          );
+
+          // Now check if the path is writable. If not we are dealing with an
+          // elevated installation and cannot update it without the service for
+          // which the registry key is missing at this point.
+          if (!updateService.isAppBaseDirWritable) {
+            reasons.push(this.REASON.SERVICE_REGISTRY_KEY_MISSING);
+            reasons.push(this.REASON.APPBASEDIR_NOT_WRITABLE);
+          }
+        }
       }
     }
 
@@ -248,25 +337,6 @@ export var BackgroundUpdate = {
       }
     }
 
-    if (AppConstants.platform == "win") {
-      let serviceRegKeyExists;
-      try {
-        serviceRegKeyExists = Cc["@mozilla.org/updates/update-processor;1"]
-          .createInstance(Ci.nsIUpdateProcessor)
-          .getServiceRegKeyExists();
-      } catch (ex) {
-        lazy.log.error(
-          `${SLUG}: Failed to check for Maintenance Service Registry Key: ${ex}`
-        );
-        serviceRegKeyExists = false;
-      }
-      if (!serviceRegKeyExists) {
-        reasons.push(this.REASON.SERVICE_REGISTRY_KEY_MISSING);
-      }
-    } else {
-      reasons.push(this.REASON.UNSUPPORTED_OS);
-    }
-
     this._recordGleanMetrics(reasons);
 
     return reasons;
@@ -289,12 +359,16 @@ export var BackgroundUpdate = {
       // The full path might hit command line length limits, but also makes it
       // much easier to find the relevant log file when starting from the
       // Windows Task Scheduler UI.
-      lazy.FileUtils.getFile("UpdRootD", ["backgroundupdate.moz_log"]).path,
+      PathUtils.join(
+        Services.dirsvc.get("UpdRootD", Ci.nsIFile).path,
+        "backgroundupdate.moz_log"
+      ),
       "--backgroundtask",
       "backgroundupdate",
     ];
 
-    let workingDirectory = lazy.FileUtils.getDir("UpdRootD", [], true).path;
+    let workingDirectory = Services.dirsvc.get("UpdRootD", Ci.nsIFile).path;
+    await IOUtils.makeDirectory(workingDirectory, { ignoreExisting: true });
 
     let description = await lazy.localization.formatValue(
       "backgroundupdate-task-description"
@@ -387,6 +461,10 @@ export var BackgroundUpdate = {
       case "background-update-config-change":
         whatChanged = `per-installation pref app.update.background.enabled`;
         break;
+
+      case "nimbus-update":
+        whatChanged = `Nimbus ${data}`;
+        break;
     }
 
     lazy.log.debug(
@@ -433,6 +511,9 @@ export var BackgroundUpdate = {
       // Witness when our own prefs change.
       Services.prefs.addObserver("app.update.background.force", this);
       Services.prefs.addObserver("app.update.background.interval", this);
+      lazy.NimbusFeatures.backgroundUpdate.onUpdate((event, reason) => {
+        this.observe(null, "nimbus-update", reason);
+      });
 
       // Witness when the langpack updating feature is changed.
       Services.prefs.addObserver("app.update.langpack.enabled", this);
@@ -495,7 +576,7 @@ export var BackgroundUpdate = {
     };
 
     try {
-      // Interacting with `TaskScheduler.jsm` can throw, so we'll catch.
+      // Interacting with `TaskScheduler.sys.mjs` can throw, so we'll catch.
       if (!enabled) {
         lazy.log.info(
           `${SLUG}: not scheduling background update: '${JSON.stringify(
@@ -504,7 +585,14 @@ export var BackgroundUpdate = {
         );
 
         if (!successfullyReadPrevious || previousEnabled) {
-          await lazy.TaskScheduler.deleteTask(this.taskId);
+          let installedVersion = Services.prefs.getIntPref(
+            TASK_INSTALLED_VERSION_PREF,
+            TASK_DEF_CURRENT_VERSION
+          );
+          await this.deleteTasksInRange(
+            installedVersion,
+            TASK_DEF_CURRENT_VERSION
+          );
           lazy.log.debug(
             `${SLUG}: witnessed falling (enabled -> disabled) edge; deleted task ${this.taskId}.`
           );
@@ -533,7 +621,14 @@ export var BackgroundUpdate = {
             `Removing task so the new version can be registered`
         );
         try {
-          await lazy.TaskScheduler.deleteTask(this.taskId);
+          let installedVersion = Services.prefs.getIntPref(
+            TASK_INSTALLED_VERSION_PREF,
+            TASK_DEF_CURRENT_VERSION
+          );
+          await this.deleteTasksInRange(
+            installedVersion,
+            TASK_DEF_CURRENT_VERSION
+          );
         } catch (e) {
           lazy.log.error(`${SLUG}: Error removing old task: ${e}`);
         }
@@ -549,23 +644,37 @@ export var BackgroundUpdate = {
           // put a log file in the specified location. But just to be safe,
           // we'll do some cleanup when we re-register the task to make sure
           // that no log file is hanging around in the old location.
-          let oldUpdateDir = lazy.FileUtils.getDir("OldUpdRootD", [], false);
-          let oldLog = oldUpdateDir.clone();
-          oldLog.append("backgroundupdate.moz_log");
+          let oldUpdateDir = Services.dirsvc.get(
+            "OldUpdRootD",
+            Ci.nsIFile
+          ).path;
+          let oldLog = PathUtils.join(oldUpdateDir, "backgroundupdate.moz_log");
 
-          if (oldLog.exists()) {
-            oldLog.remove(false);
-            // We may have created some directories in order to put this log
-            // file in this location. Clean them up if they are empty.
-            // (If we pass false for the recurse parameter, directories with
-            // contents will not be removed)
-            //
-            // Potentially removes "C:\ProgramData\Mozilla\updates\<hash>"
-            oldUpdateDir.remove(false);
-            // Potentially removes "C:\ProgramData\Mozilla\updates"
-            oldUpdateDir.parent.remove(false);
-            // Potentially removes "C:\ProgramData\Mozilla"
-            oldUpdateDir.parent.parent.remove(false);
+          if (await IOUtils.exists(oldLog)) {
+            try {
+              await IOUtils.remove(oldLog);
+              // We may have created some directories in order to put this log
+              // file in this location. Clean them up if they are empty.
+              //
+              // Potentially removes "C:\ProgramData\Mozilla\updates\<hash>"
+              await IOUtils.remove(oldUpdateDir);
+              // Potentially removes "C:\ProgramData\Mozilla\updates"
+              await IOUtils.remove(PathUtils.parent(oldUpdateDir));
+              // Potentially removes "C:\ProgramData\Mozilla"
+              await IOUtils.remove(PathUtils.parent(oldUpdateDir, 2));
+            } catch (e) {
+              if (
+                !(
+                  DOMException.isInstance(e) &&
+                  e.name === "OperationError" &&
+                  e.message.includes(
+                    "Could not remove the non-empty directory at"
+                  )
+                )
+              ) {
+                throw e;
+              }
+            }
           }
         } catch (ex) {
           lazy.log.warn(
@@ -681,7 +790,12 @@ export var BackgroundUpdate = {
         // to restrict the targeting data collected, but it's hard to
         // distinguish expensive collection operations and the system loses
         // flexibility when restrictions of this type are added.
-        let latestData = await lazy.ASRouterTargeting.getEnvironmentSnapshot();
+        let latestData = await lazy.ASRouterTargeting.getEnvironmentSnapshot({
+          targets: [
+            lazy.ExperimentManager.createTargetingContext(),
+            lazy.ASRouterTargeting.Environment,
+          ],
+        });
         // We expect to always have data, but: belt-and-braces.
         if (snapshot?.data?.environment) {
           Object.assign(snapshot.data.environment, latestData.environment);
@@ -694,7 +808,10 @@ export var BackgroundUpdate = {
 
     // We don't `load`, since we don't care about reading existing (now stale)
     // data.
-    snapshot.data = await lazy.ASRouterTargeting.getEnvironmentSnapshot();
+    snapshot.data = await lazy.ASRouterTargeting.getEnvironmentSnapshot(
+      lazy.ASRouterTargeting.Environment,
+      lazy.ExperimentManager.createTargetingContext()
+    );
 
     // Persist.
     snapshot.saveSoon();
@@ -787,26 +904,74 @@ export var BackgroundUpdate = {
           defaultProfileTargetingSnapshot.version
         );
       }
-      if (defaultProfileTargetingSnapshot?.environment?.firefoxVersion) {
-        Glean.backgroundUpdate.targetingEnvFirefoxVersion.set(
-          defaultProfileTargetingSnapshot.environment.firefoxVersion
-        );
-      }
-      if (defaultProfileTargetingSnapshot?.environment?.currentDate) {
-        Glean.backgroundUpdate.targetingEnvCurrentDate.set(
-          // Glean date times are provided in nanoseconds, `getTime()` yields
-          // milliseconds (after the Unix epoch).
-          new Date(
-            defaultProfileTargetingSnapshot.environment.currentDate
-          ).getTime() * 1000
-        );
-      }
-      if (defaultProfileTargetingSnapshot?.environment?.profileAgeCreated) {
-        Glean.backgroundUpdate.targetingEnvProfileAge.set(
-          // Glean date times are provided in nanoseconds, `profileAgeCreated`
-          // is in milliseconds (after the Unix epoch).
-          defaultProfileTargetingSnapshot.environment.profileAgeCreated * 1000
-        );
+
+      let environment = defaultProfileTargetingSnapshot?.environment;
+      if (environment) {
+        if (environment.firefoxVersion) {
+          Glean.backgroundUpdate.targetingEnvFirefoxVersion.set(
+            environment.firefoxVersion
+          );
+        }
+        if (environment.currentDate) {
+          Glean.backgroundUpdate.targetingEnvCurrentDate.set(
+            // Glean date times are provided in nanoseconds, `getTime()` yields
+            // milliseconds (after the Unix epoch).
+            new Date(environment.currentDate).getTime() * 1000
+          );
+        }
+        if (environment.profileAgeCreated) {
+          Glean.backgroundUpdate.targetingEnvProfileAge.set(
+            // Glean date times are provided in nanoseconds, `profileAgeCreated`
+            // is in milliseconds (after the Unix epoch).
+            environment.profileAgeCreated * 1000
+          );
+        }
+
+        // Experiment details.
+        let activeExperiments = (
+          environment.activeExperiments || []
+        ).toSorted();
+        let activeRollouts = (environment.activeRollouts || []).toSorted();
+        let previousExperiments = (
+          environment.previousExperiments || []
+        ).toSorted();
+        let previousRollouts = (environment.previousRollouts || []).toSorted();
+
+        // Add default profile experiments to background task profile Glean experiments.
+        for (let slug of Object.keys(environment.enrollmentsMap || [])) {
+          let branch = environment.enrollmentsMap[slug];
+          let source = "defaultProfile";
+
+          // Experiments have type "nimbus-nimbus", rollouts type "nimbus-rollout".
+          let type;
+          if (
+            activeExperiments.includes(slug) ||
+            previousExperiments.includes(slug)
+          ) {
+            type = "nimbus-nimbus";
+          } else if (
+            activeRollouts.includes(slug) ||
+            previousRollouts.includes(slug)
+          ) {
+            type = "nimbus-rollout";
+          } else {
+            // This shouldn't happen, but it's not worth failing.
+            lazy.log.warn(
+              `${SLUG}: enrollment not recognized as experiment or rollout: '${slug}'`
+            );
+            type = "nimbus-unexpected";
+          }
+
+          let extras = { type, source };
+          Services.fog.setExperimentActive(slug, branch, extras);
+
+          if (
+            previousExperiments.includes(slug) ||
+            previousRollouts.includes(slug)
+          ) {
+            Services.fog.setExperimentInactive(slug, branch, extras);
+          }
+        }
       }
     } catch (f) {
       if (DOMException.isInstance(f) && f.name === "NotFoundError") {
@@ -837,7 +1002,7 @@ export var BackgroundUpdate = {
     for (const [key, value] of Object.entries(this.REASON)) {
       if (reasons.includes(value)) {
         try {
-          // `testGetValue` throws `NS_ERROR_LOSS_OF_SIGNIFICANT_DATA` in case
+          // `testGetValue` throws a `DataError` in case
           // of `InvalidOverflow` and other outstanding errors.
           Glean.backgroundUpdate.reasonsToNotUpdate.testGetValue();
           Glean.backgroundUpdate.reasonsToNotUpdate.add(key);
@@ -871,6 +1036,7 @@ BackgroundUpdate.REASON = {
     "the maintenance service registry key is not present",
   UNSUPPORTED_OS: "unsupported OS",
   WINDOWS_CANNOT_USUALLY_USE_BITS: "on Windows but cannot usually use BITS",
+  APPBASEDIR_NOT_WRITABLE: "the base directory is not writable",
 };
 
 /**

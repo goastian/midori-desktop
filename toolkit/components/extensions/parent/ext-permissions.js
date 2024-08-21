@@ -19,7 +19,7 @@ XPCOMUtils.defineLazyPreferenceGetter(
 function normalizePermissions(perms) {
   perms = { ...perms };
   perms.permissions = perms.permissions.filter(
-    perm => !perm.startsWith("internal:")
+    perm => !perm.startsWith("internal:") && perm !== "<all_urls>"
   );
   return perms;
 }
@@ -112,7 +112,7 @@ this.permissions = class extends ExtensionAPIPersistent {
             }
 
             let browser = context.pendingEventBrowser || context.xulBrowser;
-            let allow = await new Promise(resolve => {
+            let allowPromise = new Promise(resolve => {
               let subject = {
                 wrappedJSObject: {
                   browser,
@@ -128,7 +128,13 @@ this.permissions = class extends ExtensionAPIPersistent {
                 "webextension-optional-permission-prompt"
               );
             });
-            if (!allow) {
+            if (context.isBackgroundContext) {
+              extension.emit("background-script-idle-waituntil", {
+                promise: allowPromise,
+                reason: "permissions_request",
+              });
+            }
+            if (!(await allowPromise)) {
               return false;
             }
           }

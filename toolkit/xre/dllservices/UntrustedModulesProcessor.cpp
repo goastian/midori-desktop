@@ -8,6 +8,8 @@
 
 #include <windows.h>
 
+#include "GMPPlatform.h"
+#include "GMPServiceParent.h"
 #include "mozilla/CmdLineAndEnvUtils.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/dom/ContentChild.h"
@@ -81,9 +83,11 @@ bool UntrustedModulesProcessor::IsSupportedProcessType() {
       return Telemetry::CanRecordReleaseData();
     case GeckoProcessType_RDD:
     case GeckoProcessType_Utility:
-      // For RDD and Utility process, we check the telemetry settings in
-      // RDDChild::Init() / UtilityProcessChild::Init() running in the browser
-      // process because CanRecordReleaseData() always returns false here.
+    case GeckoProcessType_GMPlugin:
+      // For GMPlugin, RDD and Utility process, we check the telemetry settings
+      // in RDDChild::Init() / UtilityProcessChild::Init() / GMPChild::Init()
+      // running in the browser process because CanRecordReleaseData() always
+      // returns false here.
       return true;
     default:
       return false;
@@ -196,6 +200,10 @@ NS_IMETHODIMP UntrustedModulesProcessor::Observe(nsISupports* aSubject,
         if (auto* proc = rddMgr->GetRDDChild()) {
           Unused << proc->SendUnblockUntrustedModulesThread();
         }
+      }
+      if (RefPtr<gmp::GeckoMediaPluginServiceParent> gmps =
+              gmp::GeckoMediaPluginServiceParent::GetSingleton()) {
+        gmps->SendUnblockUntrustedModulesThread();
       }
     }
 
@@ -401,7 +409,7 @@ RefPtr<ModulesTrustPromise> UntrustedModulesProcessor::GetModulesTrust(
   RefPtr<ModulesTrustPromise::Private> p(
       new ModulesTrustPromise::Private(__func__));
   nsCOMPtr<nsISerialEventTarget> evtTarget(mThread);
-  const char* source = __func__;
+  StaticString source = __func__;
 
   auto runWrap = [evtTarget = std::move(evtTarget), p, source,
                   run = std::move(run)]() mutable -> void {
@@ -433,7 +441,7 @@ UntrustedModulesProcessor::GetProcessedDataInternal() {
 }
 
 RefPtr<UntrustedModulesPromise> UntrustedModulesProcessor::GetAllProcessedData(
-    const char* aSource) {
+    StaticString aSource) {
   AssertRunningOnLazyIdleThread();
 
   UntrustedModulesData result;
@@ -463,7 +471,7 @@ UntrustedModulesProcessor::GetProcessedDataInternalChildProcess() {
       new UntrustedModulesPromise::Private(__func__));
   nsCOMPtr<nsISerialEventTarget> evtTarget(mThread);
 
-  const char* source = __func__;
+  StaticString source = __func__;
   auto completionRoutine = [evtTarget = std::move(evtTarget), p,
                             self = std::move(self), source,
                             whenProcessed = std::move(whenProcessed)]() {
@@ -562,7 +570,7 @@ void UntrustedModulesProcessor::BackgroundProcessModuleLoadQueueChildProcess() {
   RefPtr<UntrustedModulesProcessor> self(this);
   nsCOMPtr<nsISerialEventTarget> evtTarget(mThread);
 
-  const char* source = __func__;
+  constexpr StaticString const source = __func__;
   auto completionRoutine = [evtTarget = std::move(evtTarget),
                             self = std::move(self), source,
                             whenProcessed = std::move(whenProcessed)]() {
@@ -758,6 +766,10 @@ UntrustedModulesProcessor::SendGetModulesTrust(ModulePaths&& aModules,
       return ::mozilla::SendGetModulesTrust(
           ipc::UtilityProcessChild::GetSingleton().get(), std::move(aModules),
           runNormal);
+    }
+    case GeckoProcessType_GMPlugin: {
+      return ::mozilla::gmp::SendGetModulesTrust(std::move(aModules),
+                                                 runNormal);
     }
     default: {
       MOZ_ASSERT_UNREACHABLE("Unsupported process type");

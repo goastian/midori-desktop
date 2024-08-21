@@ -7,14 +7,14 @@
 with Files("**"):
     BUG_COMPONENT = ("Firefox", "New Tab Page")
 
-BROWSER_CHROME_MANIFESTS += ["test/browser.ini"]
-XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell.ini"]
+BROWSER_CHROME_MANIFESTS += ["test/browser.toml"]
+XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell.toml"]
 
 EXTRA_JS_MODULES += [
     "BackgroundPageThumbs.sys.mjs",
     "PageThumbs.sys.mjs",
+    "PageThumbs.worker.js",
     "PageThumbsStorageService.sys.mjs",
-    "PageThumbsWorker.js",
     "PageThumbUtils.sys.mjs",
 ]
 

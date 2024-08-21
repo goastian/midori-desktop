@@ -31,9 +31,11 @@ const amoServer = AddonTestUtils.createHttpServer({ hosts: [AMO_TEST_HOST] });
 
 amoServer.registerFile(
   "/png",
-  FileUtils.getFile(
-    "CurWorkD",
-    `${RELATIVE_DIR}discovery/small-1x1.png`.split("/")
+  new FileUtils.File(
+    PathUtils.join(
+      Services.dirsvc.get("CurWorkD", Ci.nsIFile).path,
+      ...`${RELATIVE_DIR}discovery/small-1x1.png`.split("/")
+    )
   )
 );
 amoServer.registerPathHandler("/dummy", (request, response) => {
@@ -74,7 +76,7 @@ class DiscoveryAPIHandler {
     });
   }
 
-  unblockResponses(responseText) {
+  unblockResponses() {
     throw new Error("You need to call blockNextResponses first!");
   }
 
@@ -219,6 +221,8 @@ add_setup(async function () {
       // Disable the telemetry client ID (and its associated UI warning).
       // browser_html_discover_view_clientid.js covers this functionality.
       ["browser.discovery.enabled", false],
+      // Disable mixed-content upgrading as this test is expecting an HTTP load
+      ["security.mixed_content.upgrade_display_content", false],
     ],
   });
 });
@@ -308,12 +312,12 @@ add_task(async function discopane_with_real_api_data() {
       );
       checkContent(".disco-description-main", expectations.editorialBody);
 
-      let ratingElem = card.querySelector("five-star-rating");
+      let mozFiveStar = card.querySelector("moz-five-star");
       if (expectations.rating) {
-        is(ratingElem.rating, expectations.rating, "Expected rating value");
-        ok(ratingElem.offsetWidth, "Rating element is visible");
+        is(mozFiveStar.rating, expectations.rating, "Expected rating value");
+        ok(mozFiveStar.offsetWidth, "Rating element is visible");
       } else {
-        is(ratingElem.offsetWidth, 0, "Rating element is not visible");
+        is(mozFiveStar.offsetWidth, 0, "Rating element is not visible");
       }
 
       let userCountElem = card.querySelector(".disco-user-count");
@@ -639,21 +643,30 @@ add_task(async function checkDiscopaneNotice() {
       ["datareporting.healthreport.uploadEnabled", true],
       ["extensions.htmlaboutaddons.recommendations.enabled", true],
       ["extensions.recommendations.hideNotice", false],
+      // Disable mixed-content upgrading as this test is expecting an HTTP load
+      ["security.mixed_content.upgrade_display_content", false],
     ],
   });
 
   let win = await loadInitialView("extension");
-  let messageBar = win.document.querySelector("message-bar.discopane-notice");
+  let messageBar = win.document.querySelector(
+    "moz-message-bar.discopane-notice"
+  );
   ok(messageBar, "Recommended notice should exist in extensions view");
+  is(
+    messageBar.getAttribute("role"),
+    "alert",
+    "Recommended notice is an alert"
+  );
   await switchToDiscoView(win);
-  messageBar = win.document.querySelector("message-bar.discopane-notice");
+  messageBar = win.document.querySelector("moz-message-bar.discopane-notice");
   ok(messageBar, "Recommended notice should exist in disco view");
 
   messageBar.closeButton.click();
-  messageBar = win.document.querySelector("message-bar.discopane-notice");
+  messageBar = win.document.querySelector("moz-message-bar.discopane-notice");
   ok(!messageBar, "Recommended notice should not exist in disco view");
   await switchToNonDiscoView(win);
-  messageBar = win.document.querySelector("message-bar.discopane-notice");
+  messageBar = win.document.querySelector("moz-message-bar.discopane-notice");
   ok(!messageBar, "Recommended notice should not exist in extensions view");
 
   await closeView(win);

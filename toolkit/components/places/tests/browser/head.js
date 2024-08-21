@@ -13,62 +13,84 @@ const TRANSITION_EMBED = PlacesUtils.history.TRANSITION_EMBED;
 const TRANSITION_FRAMED_LINK = PlacesUtils.history.TRANSITION_FRAMED_LINK;
 const TRANSITION_DOWNLOAD = PlacesUtils.history.TRANSITION_DOWNLOAD;
 
-/**
- * Returns a moz_places field value for a url.
- *
- * @param {nsIURI|String} aURI
- *        The URI or spec to get field for.
- * @param {String} aFieldName
- *        The field name to get the value of.
- * @param {Function} aCallback
- *        Callback function that will get the property value.
- */
-function fieldForUrl(aURI, aFieldName, aCallback) {
-  let url = aURI instanceof Ci.nsIURI ? aURI.spec : aURI;
-  let stmt = PlacesUtils.history.DBConnection.createAsyncStatement(
-    `SELECT ${aFieldName} FROM moz_places WHERE url_hash = hash(:page_url) AND url = :page_url`
-  );
-  stmt.params.page_url = url;
-  stmt.executeAsync({
-    _value: -1,
-    handleResult(aResultSet) {
-      let row = aResultSet.getNextRow();
-      if (!row) {
-        ok(false, "The page should exist in the database");
-      }
-      this._value = row.getResultByName(aFieldName);
-    },
-    handleError() {},
-    handleCompletion(aReason) {
-      if (aReason != Ci.mozIStorageStatementCallback.REASON_FINISHED) {
-        ok(false, "The statement should properly succeed");
-      }
-      aCallback(this._value);
-    },
-  });
-  stmt.finalize();
-}
-
-/**
- * Promise wrapper for fieldForUrl.
- *
- * @param {nsIURI|String} aURI
- *        The URI or spec to get field for.
- * @param {String} aFieldName
- *        The field name to get the value of.
- * @return {Promise}
- *        A promise that is resolved with the value of the field.
- */
-function promiseFieldForUrl(aURI, aFieldName) {
-  return new Promise(resolve => {
-    function callback(result) {
-      resolve(result);
-    }
-    fieldForUrl(aURI, aFieldName, callback);
-  });
-}
-
 function whenNewWindowLoaded(aOptions, aCallback) {
   BrowserTestUtils.waitForNewWindow().then(aCallback);
   OpenBrowserWindow(aOptions);
+}
+
+async function clearHistoryAndHistoryCache() {
+  await PlacesUtils.history.clear();
+  // Clear HistoryRestiction cache as well.
+  Cc["@mozilla.org/browser/history;1"]
+    .getService(Ci.mozIAsyncHistory)
+    .clearCache();
+}
+
+async function synthesizeVisitByUser(browser, url) {
+  let onNewTab = BrowserTestUtils.waitForNewTab(browser.ownerGlobal.gBrowser);
+  // We intentionally turn off this a11y check, because the following click is
+  // purposefully sent on an arbitrary web content that is not expected to be
+  // tested by itself with the browser mochitests, therefore this rule check
+  // shall be ignored by a11y_checks suite.
+  AccessibilityUtils.setEnv({ mustHaveAccessibleRule: false });
+  await ContentTask.spawn(browser, [url], async ([href]) => {
+    EventUtils.synthesizeMouseAtCenter(
+      content.document.querySelector(`a[href='${href}'`),
+      {},
+      content
+    );
+  });
+  AccessibilityUtils.resetEnv();
+  let tab = await onNewTab;
+  BrowserTestUtils.removeTab(tab);
+}
+
+async function synthesizeVisitByScript(browser, url) {
+  let onNewTab = BrowserTestUtils.waitForNewTab(browser.ownerGlobal.gBrowser);
+  AccessibilityUtils.setEnv({ mustHaveAccessibleRule: false });
+  await ContentTask.spawn(browser, [url], async ([href]) => {
+    let a = content.document.querySelector(`a[href='${href}'`);
+    a.click();
+  });
+  AccessibilityUtils.resetEnv();
+  let tab = await onNewTab;
+  BrowserTestUtils.removeTab(tab);
+}
+
+async function assertLinkVisitedStatus(
+  browser,
+  url,
+  { visitCount: expectedVisitCount, isVisited: expectedVisited }
+) {
+  await BrowserTestUtils.waitForCondition(async () => {
+    let visitCount =
+      (await PlacesTestUtils.getDatabaseValue("moz_places", "visit_count", {
+        url,
+      })) ?? 0;
+
+    if (visitCount != expectedVisitCount) {
+      return false;
+    }
+
+    Assert.equal(visitCount, expectedVisitCount, "The visit count is correct");
+    return true;
+  });
+
+  await ContentTask.spawn(
+    browser,
+    [url, expectedVisited],
+    async ([href, visited]) => {
+      // ElementState::VISITED
+      const VISITED_STATE = 1 << 18;
+      await ContentTaskUtils.waitForCondition(() => {
+        let isVisited = !!(
+          content.InspectorUtils.getContentState(
+            content.document.querySelector(`a[href='${href}']`)
+          ) & VISITED_STATE
+        );
+        return isVisited == visited;
+      });
+    }
+  );
+  Assert.ok(true, "The visited state is corerct");
 }

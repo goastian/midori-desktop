@@ -15,7 +15,7 @@ ChromeUtils.defineESModuleGetters(this, {
 var { ExtensionError } = ExtensionUtils;
 var { ignoreEvent } = ExtensionCommon;
 
-XPCOMUtils.defineLazyGetter(this, "extensionStorageSync", () => {
+ChromeUtils.defineLazyGetter(this, "extensionStorageSync", () => {
   // TODO bug 1637465: Remove Kinto-based implementation.
   if (Services.prefs.getBoolPref("webextensions.storage.sync.kinto")) {
     const { extensionStorageSyncKinto } = ChromeUtils.importESModule(
@@ -192,8 +192,8 @@ this.storage = class extends ExtensionAPIPersistent {
         extension,
         onStorageSyncChanged
       );
-      // May be void if ExtensionStorageSyncKinto.jsm was not used.
-      // ExtensionStorageSync.jsm does not use the context.
+      // May be void if ExtensionStorageSyncKinto.sys.mjs was not used.
+      // ExtensionStorageSync.sys.mjs does not use the context.
       closeCallback?.();
     };
   }

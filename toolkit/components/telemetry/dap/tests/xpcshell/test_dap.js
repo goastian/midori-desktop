@@ -4,7 +4,9 @@
 
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 const lazy = {};
 
@@ -31,6 +33,25 @@ let received = false;
 let server;
 let server_addr;
 
+const tasks = [
+  {
+    // this is testing task 1
+    id: "QjMD4n8l_MHBoLrbCfLTFi8hC264fC59SKHPviPF0q8",
+    leader_endpoint: null,
+    helper_endpoint: null,
+    time_precision: 300,
+    measurement_type: "u8",
+  },
+  {
+    // this is testing task 2
+    id: "DSZGMFh26hBYXNaKvhL_N4AHA3P5lDn19on1vFPBxJM",
+    leader_endpoint: null,
+    helper_endpoint: null,
+    time_precision: 300,
+    measurement_type: "vecu8",
+  },
+];
+
 function hpkeConfigHandler(request, response) {
   if (
     request.queryString ==
@@ -40,22 +61,22 @@ function hpkeConfigHandler(request, response) {
     let config_bytes;
     if (request.path.startsWith("/leader")) {
       config_bytes = new Uint8Array([
-        47, 0, 32, 0, 1, 0, 1, 0, 32, 11, 33, 206, 33, 131, 56, 220, 82, 153,
-        110, 228, 200, 53, 98, 210, 38, 177, 197, 252, 198, 36, 201, 86, 121,
-        169, 238, 220, 34, 143, 112, 177, 10,
+        0, 41, 47, 0, 32, 0, 1, 0, 1, 0, 32, 11, 33, 206, 33, 131, 56, 220, 82,
+        153, 110, 228, 200, 53, 98, 210, 38, 177, 197, 252, 198, 36, 201, 86,
+        121, 169, 238, 220, 34, 143, 112, 177, 10,
       ]);
     } else {
       config_bytes = new Uint8Array([
-        42, 0, 32, 0, 1, 0, 1, 0, 32, 28, 62, 242, 195, 117, 7, 173, 149, 250,
-        15, 139, 178, 86, 241, 117, 143, 75, 26, 57, 60, 88, 130, 199, 175, 195,
-        9, 241, 130, 61, 47, 215, 101,
+        0, 41, 42, 0, 32, 0, 1, 0, 1, 0, 32, 28, 62, 242, 195, 117, 7, 173, 149,
+        250, 15, 139, 178, 86, 241, 117, 143, 75, 26, 57, 60, 88, 130, 199, 175,
+        195, 9, 241, 130, 61, 47, 215, 101,
       ]);
     }
     response.setHeader("Content-Type", "application/dap-hpke-config");
     let bos = new BinaryOutputStream(response.bodyOutputStream);
     bos.writeByteArray(config_bytes);
   } else {
-    Assert.ok(false, "Unknown query string.");
+    Assert.ok(false, `Unknown query string: ${request.queryString}`);
   }
 }
 
@@ -67,9 +88,10 @@ function uploadHandler(request, response) {
   );
 
   let body = new BinaryInputStream(request.bodyInputStream);
+  console.log(body.available());
   Assert.equal(
     true,
-    body.available() == 432 || body.available() == 20720,
+    body.available() == 886 || body.available() == 3654,
     "Wrong request body size."
   );
   received = true;
@@ -84,7 +106,7 @@ add_setup(async function () {
   server = new HttpServer();
   server.registerPathHandler("/leader_endpoint/hpke_config", hpkeConfigHandler);
   server.registerPathHandler("/helper_endpoint/hpke_config", hpkeConfigHandler);
-  server.registerPathHandler("/leader_endpoint/upload", uploadHandler);
+  server.registerPrefixHandler("/leader_endpoint/tasks/", uploadHandler);
   server.start(-1);
 
   const orig_leader = Services.prefs.getStringPref(PREF_LEADER);
@@ -106,8 +128,9 @@ add_setup(async function () {
 add_task(async function testVerificationTask() {
   Services.fog.testResetFOG();
   let before = Glean.dap.uploadStatus.success.testGetValue() ?? 0;
-  await lazy.DAPTelemetrySender.sendTestReports();
-  let after = Glean.dap.uploadStatus.success.testGetValue();
+  await lazy.DAPTelemetrySender.sendTestReports(tasks, 5000);
+  let after = Glean.dap.uploadStatus.success.testGetValue() ?? 0;
+
   Assert.equal(before + 2, after, "Successful submissions should be counted.");
   Assert.ok(received, "Report upload successful.");
 });
@@ -116,7 +139,7 @@ add_task(async function testNetworkError() {
   Services.fog.testResetFOG();
   let before = Glean.dap.reportGenerationStatus.failure.testGetValue() ?? 0;
   Services.prefs.setStringPref(PREF_LEADER, server_addr + "/invalid-endpoint");
-  await lazy.DAPTelemetrySender.sendTestReports();
+  await lazy.DAPTelemetrySender.sendTestReports(tasks, 5000);
   let after = Glean.dap.reportGenerationStatus.failure.testGetValue() ?? 0;
   Assert.equal(
     before + 2,

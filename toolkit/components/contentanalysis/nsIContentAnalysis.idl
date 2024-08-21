@@ -1,0 +1,293 @@
+/* -*- Mode: C++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 8 -*- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+interface nsIURI;
+webidl WindowGlobalParent;
+
+[scriptable, uuid(06e6a60f-3a2b-41fa-a63b-fea7a7f71649)]
+interface nsIContentAnalysisAcknowledgement : nsISupports
+{
+  // These values must stay synchronized with ContentAnalysisAcknowledgement
+  // in analysis.proto!
+  // Acknowledgement of analysis response.
+  cenum Result: 32 {
+    eSuccess = 1, // The response was handled as specified by the agent.
+    eInvalidResponse = 2, // The response from the agent was not properly formatted.
+    eTooLate = 3, // The response from the agent was too late.
+  };
+
+  readonly attribute nsIContentAnalysisAcknowledgement_Result result;
+
+  // These values must stay synchronized with ContentAnalysisAcknowledgement
+  // in analysis.proto!
+  // The final action that the browser took with this request.
+  cenum FinalAction : 32 {
+    eUnspecified = 0,
+    eAllow = 1,
+    eReportOnly = 2,
+    eWarn = 3,
+    eBlock = 4,
+  };
+
+  readonly attribute nsIContentAnalysisAcknowledgement_FinalAction finalAction;
+};
+
+[scriptable, uuid(89088c61-15f6-4ace-a880-a1b5ea47ca66)]
+interface nsIContentAnalysisResponse : nsISupports
+{
+  // These values must stay synchronized with ContentAnalysisResponse
+  // in analysis.proto!
+  // Action requested in response to a successful analysis.
+  cenum Action : 32 {
+    eUnspecified = 0,
+    eReportOnly = 1,
+    eWarn = 2,
+    eBlock = 3,
+    // Values that do not appear in analysis.proto
+    eAllow = 1000,
+    eCanceled = 1001,
+  };
+
+  cenum CancelError : 32 {
+    eUserInitiated = 0,
+    eNoAgent = 1,
+    eInvalidAgentSignature = 2,
+    eErrorOther = 3,
+  };
+
+  readonly attribute nsIContentAnalysisResponse_Action action;
+  readonly attribute boolean shouldAllowContent;
+  // If action is eCanceled, this is the error explaining why the request was canceled,
+  // or eUserInitiated if the user canceled it.
+  readonly attribute nsIContentAnalysisResponse_CancelError cancelError;
+
+  // Identifier for the corresponding nsIContentAnalysisRequest
+  readonly attribute ACString requestToken;
+
+  /**
+   * Acknowledge receipt of an analysis response.
+   * If false is passed for aAutoAcknowledge to AnalyzeContentRequest,
+   * the caller is responsible for calling this after successful
+   * resolution of the promise.
+   */
+  void acknowledge(in nsIContentAnalysisAcknowledgement aCaa);
+};
+
+[scriptable, uuid(48d31df1-204d-42ce-a57f-f156bb870d89)]
+interface nsIClientDownloadResource : nsISupports
+{
+  readonly attribute AString url;
+
+  // These values must stay synchronized with ClientDownloadResource
+  // in analysis.proto!
+  // The final URL of the download payload.  The resource URL should
+  // correspond to the URL field above.
+  const unsigned long DOWNLOAD_URL = 0;
+  // A redirect URL that was fetched before hitting the final DOWNLOAD_URL.
+  const unsigned long DOWNLOAD_REDIRECT = 1;
+  // The final top-level URL of the tab that triggered the download.
+  const unsigned long TAB_URL = 2;
+  // A redirect URL thas was fetched before hitting the final TAB_URL.
+  const unsigned long TAB_REDIRECT = 3;
+  // The document URL for a PPAPI plugin instance that initiated the download.
+  // This is the document.url for the container element for the plugin
+  // instance.
+  const unsigned long PPAPI_DOCUMENT = 4;
+  // The plugin URL for a PPAPI plugin instance that initiated the download.
+  const unsigned long PPAPI_PLUGIN = 5;
+
+  readonly attribute unsigned long type;
+};
+
+/**
+ * A nsIContentAnalysisRequest represents a request that the browser
+ * consult any required content analysis resources (like external data-loss
+ * prevention applications) to determine if the attempted operation should
+ * be permitted to complete.
+ */
+[scriptable, uuid(c11a6636-da2a-4afc-bdd1-0bcae2310e6d)]
+interface nsIContentAnalysisRequest : nsISupports
+{
+  // These values must stay synchronized with ContentAnalysisRequest
+  // in analysis.proto!
+  // Type of analysis being requested.
+  // For meaning, see analysis.proto in the content analysis module.
+  cenum AnalysisType : 32 {
+    eUnspecified = 0,
+    eFileDownloaded = 1,
+    eFileAttached = 2,
+    eBulkDataEntry = 3,
+    ePrint = 4,
+    eFileTransfer = 5,
+  };
+  readonly attribute nsIContentAnalysisRequest_AnalysisType analysisType;
+
+  // Enumeration of what operation is happening, to be displayed to the user
+  cenum OperationType : 32 {
+    eCustomDisplayString = 0,
+    eClipboard = 1,
+    eDroppedText = 2,
+    eOperationPrint = 3,
+  };
+  readonly attribute nsIContentAnalysisRequest_OperationType operationTypeForDisplay;
+  readonly attribute AString operationDisplayString;
+
+  // Text content to analyze.  Only one of textContent or filePath is defined.
+  readonly attribute AString textContent;
+
+  // Name of file to analyze.  Only one of textContent or filePath is defined.
+  readonly attribute AString filePath;
+
+  // HANDLE to the printed data in PDF format.
+  readonly attribute unsigned long long printDataHandle;
+
+  // Size of the data stored in printDataHandle.
+  readonly attribute unsigned long long printDataSize;
+
+  // Name of the printer being printed to.
+  readonly attribute AString printerName;
+
+  // The URL containing the file download/upload or to which web content is
+  // being uploaded.
+  readonly attribute nsIURI url;
+
+  // Sha256 digest of file. Callers may pass in an empty string to have the
+  // content analysis code calculate this.
+  readonly attribute ACString sha256Digest;
+
+  // URLs involved in the download (empty for non-downloads).
+  readonly attribute Array<nsIClientDownloadResource> resources;
+
+  // Email address of user.
+  readonly attribute AString email;
+
+  // Unique identifier for this request
+  readonly attribute ACString requestToken;
+
+  // The window associated with this request
+  readonly attribute WindowGlobalParent windowGlobalParent;
+};
+
+[scriptable, builtinclass, uuid(9679545f-4256-4c90-9654-90292c355d25)]
+interface nsIContentAnalysisResult : nsISupports
+{
+  [infallible] readonly attribute boolean shouldAllowContent;
+};
+
+[scriptable, uuid(cb09fc88-118c-411b-aa89-2e1bc5e3eba6)]
+interface nsIContentAnalysisCallback : nsISupports
+{
+  void contentResult(in nsIContentAnalysisResponse aResult);
+
+  void error(in nsresult aResult);
+};
+
+[scriptable, builtinclass, uuid(a430f6ef-a526-4055-8a82-7741ea757367)]
+interface nsIContentAnalysisDiagnosticInfo : nsISupports
+{
+  [infallible] readonly attribute boolean connectedToAgent;
+  readonly attribute AString agentPath;
+  [infallible] readonly attribute boolean failedSignatureVerification;
+  [infallible] readonly attribute long long requestCount;
+};
+
+[scriptable, uuid(61497587-2bba-4a88-acd3-3fbb2cedf163)]
+interface nsIContentAnalysis : nsISupports
+{
+  /**
+   * True if content analysis should be consulted. Must only be accessed from
+   * the parent process's main thread.
+   */
+  readonly attribute boolean isActive;
+
+  /**
+   * True if content analysis might be active, and False if content analysis
+   * is definitely not active. Reading this property is guaranteed
+   * to work from a content process, and can be used to avoid having to call
+   * into the parent process to determine whether content analysis is actually
+   * active.
+   */
+  readonly attribute boolean mightBeActive;
+
+  /**
+   * True if content-analysis activation was determined by enterprise policy,
+   * as opposed to enabled with the `allow-content-analysis` command-line
+   * parameter.
+   */
+  attribute boolean isSetByEnterprisePolicy;
+
+  /**
+   * Consults content analysis server, if any, to request a permission
+   * decision for a network operation.  Allows blocking downloading/
+   * uploading/printing/etc, based on the request.
+   * Consultation with the content analysis tool follows the conventional
+   * request, response, acknowledgement protocol.
+   *
+   * The resulting Promise resolves to a nsIContentAnalysisResponse,
+   * which may take some time to get from the analysis server.  It will
+   * be rejected, with an string error description, if any error occurs.
+   *
+   * @param aCar
+   *        The request to analyze.
+   * @param aAutoAcknowledge
+   *        Whether to send an acknowledge message to the agent after the agent sends a response.
+   *        Passing false means that the caller is responsible for
+   *        calling nsIContentAnalysisResponse::acknowledge() if the Promise is resolved.
+   */
+  [implicit_jscontext]
+  Promise analyzeContentRequest(in nsIContentAnalysisRequest aCar, in boolean aAutoAcknowledge);
+
+  /**
+   * Same functionality as AnalyzeContentRequest(), but more convenient to call
+   * from C++ since it takes a callback instead of returning a Promise.
+   *
+   * @param aCar
+   *        The request to analyze.
+   * @param aAutoAcknowledge
+   *        Whether to send an acknowledge message to the agent after the agent sends a response.
+   *        Passing false means that the caller is responsible for
+   *        calling nsIContentAnalysisResponse::acknowledge() if nsIContentAnalysisCallback::contentResult()
+   *        is called.
+   * @param callback
+   *        Callbacks to be called when the agent sends a response message (or when there is an error).
+   */
+  void analyzeContentRequestCallback(in nsIContentAnalysisRequest aCar, in boolean aAutoAcknowledge, in nsIContentAnalysisCallback callback);
+
+  /**
+   * Cancels the request that is in progress. This may not actually cancel the request
+   * with the analysis server, but it means that Gecko will immediately act like the request
+   * was denied.
+   *
+   * @param aRequestToken
+   *        The token for the request to cancel.
+   */
+  void cancelContentAnalysisRequest(in ACString aRequestToken);
+
+  /**
+   * Indicates that the user has responded to a WARN dialog. aAllowContent represents
+   * whether the user wants to allow the request to go through.
+   */
+  void respondToWarnDialog(in ACString aRequestToken, in boolean aAllowContent);
+
+  /**
+   * Cancels all outstanding DLP requests. Used on shutdown.
+   */
+  void cancelAllRequests();
+
+  /**
+   * Test-only function that pretends that "-allow-content-analysis" was
+   * given to Gecko on the command line.
+   */
+  void testOnlySetCACmdLineArg(in boolean aVal);
+
+  /**
+   * Gets diagnostic information about content analysis. Returns a
+   * nsIContentAnalysisDiagnosticInfo via the returned promise.
+   */
+  [implicit_jscontext]
+  Promise getDiagnosticInfo();
+};

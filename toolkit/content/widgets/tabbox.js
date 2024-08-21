@@ -24,15 +24,15 @@
     }
 
     connectedCallback() {
-      Services.els.addSystemEventListener(document, "keydown", this, false);
+      document.addEventListener("keydown", this, { mozSystemGroup: true });
       window.addEventListener("unload", this.disconnectedCallback, {
         once: true,
       });
     }
 
     disconnectedCallback() {
+      document.removeEventListener("keydown", this, { mozSystemGroup: true });
       window.removeEventListener("unload", this.disconnectedCallback);
-      Services.els.removeSystemEventListener(document, "keydown", this, false);
     }
 
     set handleCtrlTab(val) {
@@ -459,7 +459,7 @@
     }
 
     get value() {
-      return this.getAttribute("value");
+      return this.getAttribute("value") || "";
     }
 
     get control() {
@@ -563,7 +563,7 @@
     }
 
     get value() {
-      return this.getAttribute("value");
+      return this.getAttribute("value") || "";
     }
 
     get tabbox() {
@@ -729,7 +729,7 @@
         direction = 1,
         wrap = false,
         startWithAdjacent = true,
-        filter = tab => true,
+        filter = () => true,
       } = opts;
 
       let tab = startTab;
@@ -804,7 +804,7 @@
       }
     }
 
-    _canAdvanceToTab(aTab) {
+    _canAdvanceToTab() {
       return true;
     }
 

@@ -3,13 +3,19 @@
 
 "use strict";
 
-Cu.importGlobalProperties(["structuredClone"]);
-
 const CONFIG = [
   {
     // Engine initially default, but the defaults will be changed to engine-pref.
     webExtension: {
       id: "engine@search.mozilla.org",
+      name: "Test search engine",
+      search_url: "https://www.google.com/search",
+      params: [
+        {
+          name: "q",
+          value: "{searchTerms}",
+        },
+      ],
     },
     appliesTo: [
       {
@@ -26,6 +32,14 @@ const CONFIG = [
     // This will become defaults when region is changed to FR.
     webExtension: {
       id: "engine-pref@search.mozilla.org",
+      name: "engine-pref",
+      search_url: "https://www.google.com/search",
+      params: [
+        {
+          name: "q",
+          value: "{searchTerms}",
+        },
+      ],
     },
     appliesTo: [
       {
@@ -39,20 +53,101 @@ const CONFIG = [
   },
 ];
 
-const CONFIG_UPDATED = [
+const CONFIG_UPDATED = CONFIG.filter(r =>
+  r.webExtension.id.startsWith("engine-pref")
+);
+
+const CONFIG_V2 = [
   {
-    webExtension: {
-      id: "engine-pref@search.mozilla.org",
-    },
-    appliesTo: [
-      {
-        included: { everywhere: true },
+    recordType: "engine",
+    identifier: "engine",
+    base: {
+      name: "Test search engine",
+      urls: {
+        search: {
+          base: "https://www.google.com/search",
+          searchTermParamName: "q",
+        },
       },
+    },
+    variants: [
       {
-        included: { regions: ["FR"] },
-        default: "yes",
+        environment: { allRegionsAndLocales: true },
       },
     ],
+  },
+  {
+    recordType: "engine",
+    identifier: "engine-pref",
+    base: {
+      name: "engine-pref",
+      urls: {
+        search: {
+          base: "https://www.google.com/search",
+          searchTermParamName: "q",
+        },
+      },
+    },
+    variants: [
+      {
+        environment: { allRegionsAndLocales: true },
+      },
+    ],
+  },
+  {
+    recordType: "defaultEngines",
+    specificDefaults: [
+      {
+        default: "engine",
+        environment: { excludedRegions: ["FR"] },
+      },
+      {
+        default: "engine-pref",
+        environment: { regions: ["FR"] },
+      },
+    ],
+  },
+  {
+    recordType: "engineOrders",
+    orders: [],
+  },
+];
+
+const CONFIG_V2_UPDATED = [
+  {
+    recordType: "engine",
+    identifier: "engine-pref",
+    base: {
+      name: "engine-pref",
+      urls: {
+        search: {
+          base: "https://www.google.com/search",
+          searchTermParamName: "q",
+        },
+      },
+    },
+    variants: [
+      {
+        environment: { allRegionsAndLocales: true },
+      },
+    ],
+  },
+  {
+    recordType: "defaultEngines",
+    specificDefaults: [
+      {
+        default: "engine",
+        environment: { excludedRegions: ["FR"] },
+      },
+      {
+        default: "engine-pref",
+        environment: { regions: ["FR"] },
+      },
+    ],
+  },
+  {
+    recordType: "engineOrders",
+    orders: [],
   },
 ];
 
@@ -60,10 +155,14 @@ let stub;
 let settingsFilePath;
 let userSettings;
 
-add_task(async function setup() {
+add_setup(async function () {
   SearchSettings.SETTINGS_INVALIDATION_DELAY = 100;
   SearchTestUtils.useMockIdleService();
-  await SearchTestUtils.useTestEngines("data", null, CONFIG);
+  await SearchTestUtils.useTestEngines(
+    "data",
+    null,
+    SearchUtils.newSearchConfigEnabled ? CONFIG_V2 : CONFIG
+  );
   await AddonTestUtils.promiseStartupManager();
 
   stub = sinon.stub(
@@ -245,7 +344,9 @@ add_task(async function test_default_engine_changed_and_metadata_unchanged() {
   };
 
   // Update config by removing the app default engine
-  await setConfigToLoad(CONFIG_UPDATED);
+  await setConfigToLoad(
+    SearchUtils.newSearchConfigEnabled ? CONFIG_V2_UPDATED : CONFIG_UPDATED
+  );
 
   await reloadEngines(structuredClone(userSettings));
   Assert.ok(
@@ -292,7 +393,9 @@ add_task(async function test_app_default_engine_changed_on_start_up() {
   settings.metaData.current = "";
 
   // Update config by removing the app default engine
-  await setConfigToLoad(CONFIG_UPDATED);
+  await setConfigToLoad(
+    SearchUtils.newSearchConfigEnabled ? CONFIG_V2_UPDATED : CONFIG_UPDATED
+  );
 
   await loadEngines(settings);
   Assert.ok(
@@ -310,7 +413,9 @@ add_task(async function test_app_default_engine_change_start_up_still_exists() {
   settings.metaData.current = "";
   settings.metaData.appDefaultEngine = "Test search engine";
 
-  await setConfigToLoad(CONFIG);
+  await setConfigToLoad(
+    SearchUtils.newSearchConfigEnabled ? CONFIG_V2 : CONFIG
+  );
 
   await loadEngines(settings);
   Assert.ok(

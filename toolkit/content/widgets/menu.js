@@ -19,7 +19,7 @@
         this.setAttribute("value", val);
       }
       get value() {
-        return this.getAttribute("value");
+        return this.getAttribute("value") || "";
       }
 
       // nsIDOMXULSelectControlItemElement
@@ -129,7 +129,7 @@
   };
 
   // The <menucaption> element is used for rendering <html:optgroup> inside of <html:select>,
-  // See SelectParentHelper.jsm.
+  // See SelectParentHelper.sys.mjs.
   class MozMenuCaption extends MozMenuBaseMixin(MozXULElement) {
     static get inheritedAttributes() {
       return {
@@ -286,10 +286,14 @@
         }
         let key = document.getElementById(keyId);
         if (!key) {
-          console.error(
+          let msg =
             `Key ${keyId} of menuitem ${this.getAttribute("label")} ` +
-              `could not be found`
-          );
+            `could not be found`;
+          if (keyId.startsWith("ext-key-id-")) {
+            console.info(msg);
+          } else {
+            console.error(msg);
+          }
           return null;
         }
         return imports.ShortcutUtils.prettifyShortcut(key);

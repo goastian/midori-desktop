@@ -1,4 +1,5 @@
 import { MockRegistrar } from "resource://testing-common/MockRegistrar.sys.mjs";
+import { NON_SPLIT_ENGINE_IDS } from "resource://gre/modules/SearchService.sys.mjs";
 
 const lazy = {};
 
@@ -45,13 +46,16 @@ export var SearchTestUtils = {
    *   Whether or not to set the engine as default automatically for private mode.
    *   If this is true, the engine will be set as default, and the previous default
    *   engine will be restored when the test exits.
+   * @param {boolean} [options.skipReset]
+   *   Skips resetting the default engine at the end of the test.
    * @returns {Promise} Returns a promise that is resolved with the new engine
    *                    or rejected if it fails.
    */
-  async promiseNewSearchEngine({
+  async installOpenSearchEngine({
     url,
     setAsDefault = false,
     setAsDefaultPrivate = false,
+    skipReset = false,
   }) {
     // OpenSearch engines can only be added via http protocols.
     url = url.replace("chrome://mochitests/content", "https://example.com");
@@ -71,13 +75,13 @@ export var SearchTestUtils = {
       );
     }
     gTestScope.registerCleanupFunction(async () => {
-      if (setAsDefault) {
+      if (setAsDefault && !skipReset) {
         await Services.search.setDefault(
           previousEngine,
           Ci.nsISearchService.CHANGE_REASON_UNKNOWN
         );
       }
-      if (setAsDefaultPrivate) {
+      if (setAsDefaultPrivate && !skipReset) {
         await Services.search.setDefaultPrivate(
           previousPrivateEngine,
           Ci.nsISearchService.CHANGE_REASON_UNKNOWN
@@ -120,37 +124,62 @@ export var SearchTestUtils = {
   },
 
   /**
-   * Load engines from test data located in particular folders.
+   * For xpcshell tests, configures loading engines from test data located in
+   * particular folders.
    *
    * @param {string} [folder]
    *   The folder name to use.
    * @param {string} [subFolder]
    *   The subfolder to use, if any.
-   * @param {Array} [config]
+   * @param {Array} [configData]
    *   An array which contains the configuration to set.
    * @returns {object}
    *   An object that is a sinon stub for the configuration getter.
    */
-  async useTestEngines(folder = "data", subFolder = null, config = null) {
-    let url = `resource://test/${folder}/`;
-    if (subFolder) {
-      url += `${subFolder}/`;
+  async useTestEngines(folder = "data", subFolder = null, configData = null) {
+    if (!lazy.SearchUtils.newSearchConfigEnabled) {
+      let url = `resource://test/${folder}/`;
+      if (subFolder) {
+        url += `${subFolder}/`;
+      }
+      let resProt = Services.io
+        .getProtocolHandler("resource")
+        .QueryInterface(Ci.nsIResProtocolHandler);
+      resProt.setSubstitution("search-extensions", Services.io.newURI(url));
     }
-    let resProt = Services.io
-      .getProtocolHandler("resource")
-      .QueryInterface(Ci.nsIResProtocolHandler);
-    resProt.setSubstitution("search-extensions", Services.io.newURI(url));
 
     const settings = await lazy.RemoteSettings(lazy.SearchUtils.SETTINGS_KEY);
-    if (config) {
-      return lazy.sinon.stub(settings, "get").returns(config);
+    if (configData) {
+      return lazy.sinon.stub(settings, "get").returns(configData);
     }
 
-    let response = await fetch(`resource://search-extensions/engines.json`);
+    let workDir = Services.dirsvc.get("CurWorkD", Ci.nsIFile);
+    let configFileName =
+      "file://" +
+      PathUtils.join(
+        workDir.path,
+        folder,
+        subFolder ?? "",
+        lazy.SearchUtils.newSearchConfigEnabled
+          ? "search-config-v2.json"
+          : "engines.json"
+      );
+
+    let response = await fetch(configFileName);
     let json = await response.json();
     return lazy.sinon.stub(settings, "get").returns(json.data);
   },
 
+  /**
+   * For mochitests, configures loading engines from test data located in
+   * particular folders. This will cleanup at the end of the test.
+   *
+   * This will be removed when the old configuration is removed
+   * (newSearchConfigEnabled = false).
+   *
+   * @param {nsIFile} testDir
+   *   The test directory to use.
+   */
   async useMochitestEngines(testDir) {
     // Replace the path we load search engines from with
     // the path to our test data.
@@ -168,6 +197,35 @@ export var SearchTestUtils = {
   },
 
   /**
+   * Utility function for mochitests to configure a custom search engine
+   * directory and search configuration.
+   *
+   * @param {string} testDir
+   *   The test directory to use.
+   * @param {Array} searchConfig
+   *   The test search configuration to use.
+   */
+  async setupTestEngines(testDir, searchConfig) {
+    let searchExtensions = gTestScope.getChromeDir(
+      gTestScope.getResolvedURI(gTestScope.gTestPath)
+    );
+    searchExtensions.append(testDir);
+    await this.useMochitestEngines(searchExtensions);
+
+    this.useMockIdleService();
+
+    await this.updateRemoteSettingsConfig(searchConfig);
+
+    gTestScope.registerCleanupFunction(async () => {
+      let settingsWritten = SearchTestUtils.promiseSearchNotification(
+        "write-settings-to-disk-complete"
+      );
+      await SearchTestUtils.updateRemoteSettingsConfig();
+      await settingsWritten;
+    });
+  },
+
+  /**
    * Convert a list of engine configurations into engine objects.
    *
    * @param {Array} engineConfigurations
@@ -175,6 +233,29 @@ export var SearchTestUtils = {
    */
   async searchConfigToEngines(engineConfigurations) {
     let engines = [];
+
+    for (let e of engineConfigurations) {
+      if (!e.webExtension) {
+        e.webExtension = {};
+      }
+      e.webExtension.locale =
+        e.webExtension.locale ?? lazy.SearchUtils.DEFAULT_TAG;
+
+      // TODO Bug 1875912 - Remove the webextension.id and webextension.locale when
+      // we're ready to remove old search-config and use search-config-v2 for all
+      // clients. The id in appProvidedSearchEngine should be changed to
+      // engine.identifier.
+      if (lazy.SearchUtils.newSearchConfigEnabled) {
+        let identifierComponents = NON_SPLIT_ENGINE_IDS.includes(e.identifier)
+          ? [e.identifier]
+          : e.identifier.split("-");
+
+        e.webExtension.locale =
+          identifierComponents.slice(1).join("-") || "default";
+        e.webExtension.id = identifierComponents[0] + "@search.mozilla.org";
+      }
+    }
+
     for (let config of engineConfigurations) {
       let engine = await Services.search.wrappedJSObject._makeEngineFromConfig(
         config
@@ -348,6 +429,8 @@ export var SearchTestUtils = {
    *
    * @param {object} [options]
    *   The options for the manifest.
+   * @param {object} [options.icons]
+   *   The icons to use for the WebExtension.
    * @param {string} [options.id]
    *   The id to use for the WebExtension.
    * @param {string} [options.name]
@@ -396,6 +479,10 @@ export var SearchTestUtils = {
         },
       },
     };
+
+    if (options.icons) {
+      manifest.icons = options.icons;
+    }
 
     if (options.default_locale) {
       manifest.default_locale = options.default_locale;
@@ -460,11 +547,11 @@ export var SearchTestUtils = {
     QueryInterface: ChromeUtils.generateQI(["nsIUserIdleService"]),
     idleTime: 19999,
 
-    addIdleObserver(observer, time) {
+    addIdleObserver(observer) {
       this._observers.add(observer);
     },
 
-    removeIdleObserver(observer, time) {
+    removeIdleObserver(observer) {
       this._observers.delete(observer);
     },
   },
@@ -484,20 +571,35 @@ export var SearchTestUtils = {
 
   /**
    * Simulates an update to the RemoteSettings configuration.
+   * If parameters are not specified, then the appropriate configuration is
+   * reset to the data stored in remote settings.
    *
-   * @param {object} [config]
-   *  The new configuration.
+   * @param {object[]} [config]
+   *   The replacement configuration.
+   * @param {object[]} [overridesConfig]
+   *   The replacement overrides configuration.
    */
-  async updateRemoteSettingsConfig(config) {
+  async updateRemoteSettingsConfig(config, overridesConfig) {
     if (!config) {
       let settings = lazy.RemoteSettings(lazy.SearchUtils.SETTINGS_KEY);
       config = await settings.get();
+    }
+    if (!overridesConfig) {
+      let settings = lazy.RemoteSettings(
+        lazy.SearchUtils.SETTINGS_OVERRIDES_KEY
+      );
+      overridesConfig = await settings.get();
     }
     const reloadObserved =
       SearchTestUtils.promiseSearchNotification("engines-reloaded");
     await lazy.RemoteSettings(lazy.SearchUtils.SETTINGS_KEY).emit("sync", {
       data: { current: config },
     });
+    await lazy
+      .RemoteSettings(lazy.SearchUtils.SETTINGS_OVERRIDES_KEY)
+      .emit("sync", {
+        data: { current: overridesConfig },
+      });
 
     this.idleService._fireObservers("idle");
     await reloadObserved;

@@ -15,7 +15,7 @@ using std::find_if;
 namespace CrashReporter {
 
 bool AnnotationFromString(Annotation& aResult, const char* aValue) {
-  auto elem = find_if(
+  const auto* elem = find_if(
       begin(kAnnotationStrings), end(kAnnotationStrings),
       [&aValue](const char* aString) { return strcmp(aString, aValue) == 0; });
 
@@ -27,12 +27,27 @@ bool AnnotationFromString(Annotation& aResult, const char* aValue) {
   return true;
 }
 
-bool IsAnnotationAllowlistedForPing(Annotation aAnnotation) {
-  auto elem = find_if(
-      begin(kCrashPingAllowlist), end(kCrashPingAllowlist),
+bool IsAnnotationAllowedForPing(Annotation aAnnotation) {
+  const auto* elem = find_if(
+      begin(kCrashPingAllowedList), end(kCrashPingAllowedList),
       [&aAnnotation](Annotation aElement) { return aElement == aAnnotation; });
 
-  return elem != end(kCrashPingAllowlist);
+  return elem != end(kCrashPingAllowedList);
+}
+
+bool ShouldIncludeAnnotation(Annotation aAnnotation, const char* aValue) {
+  const auto* elem = find_if(begin(kSkipIfList), end(kSkipIfList),
+                             [&aAnnotation](AnnotationSkipValue aElement) {
+                               return aElement.annotation == aAnnotation;
+                             });
+
+  if (elem != end(kSkipIfList)) {
+    if (strcmp(aValue, elem->value) == 0) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 }  // namespace CrashReporter

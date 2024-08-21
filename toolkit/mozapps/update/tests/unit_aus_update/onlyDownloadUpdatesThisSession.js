@@ -38,9 +38,13 @@ async function downloadUpdate() {
     );
   });
 
-  let bestUpdate = gAUS.selectUpdate(updates);
-  let success = await gAUS.downloadUpdate(bestUpdate, false);
-  Assert.ok(success, "Update download should have started");
+  let bestUpdate = await gAUS.selectUpdate(updates);
+  let result = await gAUS.downloadUpdate(bestUpdate, false);
+  Assert.equal(
+    result,
+    Ci.nsIApplicationUpdateService.DOWNLOAD_SUCCESS,
+    "Update download should have started"
+  );
   return downloadRestrictionHitPromise;
 }
 
@@ -50,15 +54,13 @@ add_task(async function onlyDownloadUpdatesThisSession() {
   await downloadUpdate();
 
   Assert.ok(
-    !gUpdateManager.readyUpdate,
+    !(await gUpdateManager.getReadyUpdate()),
     "There should not be a ready update. The update should still be downloading"
   );
-  Assert.ok(
-    !!gUpdateManager.downloadingUpdate,
-    "A downloading update should exist"
-  );
+  const downloadingUpdate = await gUpdateManager.getDownloadingUpdate();
+  Assert.ok(!!downloadingUpdate, "A downloading update should exist");
   Assert.equal(
-    gUpdateManager.downloadingUpdate.state,
+    downloadingUpdate.state,
     STATE_DOWNLOADING,
     "The downloading update should still be in the downloading state"
   );

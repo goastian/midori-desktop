@@ -7,6 +7,7 @@
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { XPCShellContentUtils } from "resource://testing-common/XPCShellContentUtils.sys.mjs";
 
+/** @type {Lazy} */
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -32,6 +33,13 @@ let BASE_MANIFEST = Object.freeze({
 });
 
 class ExtensionWrapper {
+  /** @type {import("resource://gre/modules/addons/XPIDatabase.sys.mjs").AddonWrapper} */
+  addon;
+  /** @type {Promise} */
+  addonPromise;
+  /** @type {nsIFile[]} */
+  cleanupFiles;
+
   constructor(testScope, extension = null) {
     this.testScope = testScope;
 
@@ -447,20 +455,13 @@ class AOMExtensionWrapper extends ExtensionWrapper {
     return super.unload();
   }
 
-  async upgrade(data) {
-    this.startupPromise = new Promise(resolve => {
-      this.resolveStartup = resolve;
-    });
-    this.state = "restarting";
-
-    await this._flushCache();
-
-    let xpiFile = lazy.ExtensionTestCommon.generateXPI(data);
-
-    this.cleanupFiles.push(xpiFile);
-
-    return this._install(xpiFile);
-  }
+  /**
+   * Override for subclasses which don't set an ID in the constructor.
+   *
+   * @param {nsIURI} _uri
+   * @param {string} _id
+   */
+  maybeSetID(_uri, _id) {}
 }
 
 class InstallableWrapper extends AOMExtensionWrapper {
@@ -574,6 +575,21 @@ class InstallableWrapper extends AOMExtensionWrapper {
 
     return this._install(this.file);
   }
+
+  async upgrade(data) {
+    this.startupPromise = new Promise(resolve => {
+      this.resolveStartup = resolve;
+    });
+    this.state = "restarting";
+
+    await this._flushCache();
+
+    let xpiFile = lazy.ExtensionTestCommon.generateXPI(data);
+
+    this.cleanupFiles.push(xpiFile);
+
+    return this._install(xpiFile);
+  }
 }
 
 class ExternallyInstalledWrapper extends AOMExtensionWrapper {
@@ -587,8 +603,6 @@ class ExternallyInstalledWrapper extends AOMExtensionWrapper {
 
     this.state = "restarting";
   }
-
-  maybeSetID(uri, id) {}
 }
 
 export var ExtensionTestUtils = {
@@ -735,14 +749,7 @@ export var ExtensionTestUtils = {
     }
   },
 
-  get remoteContentScripts() {
-    return XPCShellContentUtils.remoteContentScripts;
-  },
-
-  set remoteContentScripts(val) {
-    XPCShellContentUtils.remoteContentScripts = val;
-  },
-
+  /** @param {[origin: string, url: string, options: object]} args */
   async fetch(...args) {
     return XPCShellContentUtils.fetch(...args);
   },
@@ -765,12 +772,10 @@ export var ExtensionTestUtils = {
    * @param {string} [options.redirectUrl]
    *        An optional URL that the initial page is expected to
    *        redirect to.
-   * @param {...any} args
-   *        Extra parameters to ensure compatibility
    *
-   * @returns {ContentPage}
+   * @returns {XPCShellContentUtils.ContentPage}
    */
-  loadContentPage(url, options, ...args) {
-    return XPCShellContentUtils.loadContentPage(url, options, ...args);
+  loadContentPage(url, options) {
+    return XPCShellContentUtils.loadContentPage(url, options);
   },
 };

@@ -4,16 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// We need Windows 8 functions and structures to be able to verify SHA-256.
-#if defined(_WIN32_WINNT)
-#  undef _WIN32_WINNT
-#  define _WIN32_WINNT _WIN32_WINNT_WIN8
-#endif  // defined(_WIN32_WINNT)
-#if defined(NTDDI_VERSION)
-#  undef NTDDI_VERSION
-#  define NTDDI_VERSION NTDDI_WIN8
-#endif  // defined(NTDDI_VERSION)
-
 #include "Authenticode.h"
 
 #include "mozilla/ArrayUtils.h"
@@ -21,7 +11,6 @@
 #include "mozilla/DynamicallyLinkedFunctionPtr.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/UniquePtr.h"
-#include "mozilla/WindowsVersion.h"
 #include "nsWindowsHelpers.h"
 
 #include <windows.h>
@@ -31,6 +20,12 @@
 #include <mscat.h>
 
 #include <string.h>
+
+// mingw build doesn't have this defined (in other builds
+// it gets pulled in from wintrust.h)
+#if !defined(szOID_NESTED_SIGNATURE)
+#  define szOID_NESTED_SIGNATURE "1.3.6.1.4.1.311.2.4.1"
+#endif  // !defined(szOID_NESTED_SIGNATURE)
 
 namespace {
 
@@ -81,6 +76,7 @@ class SignedBinary final {
   SignedBinary(const wchar_t* aFilePath, mozilla::AuthenticodeFlags aFlags);
 
   explicit operator bool() const { return mCertStore && mCryptMsg && mCertCtx; }
+  bool HasNestedMicrosoftSignature() const;
 
   mozilla::UniquePtr<wchar_t[]> GetOrgName();
 
@@ -105,6 +101,48 @@ class SignedBinary final {
   CertContextUniquePtr mCertCtx;
 };
 
+static CertContextUniquePtr GetCertificateFromCryptMsg(
+    const CryptMsgUniquePtr& aCryptMsg, const CertStoreUniquePtr& aCertStore) {
+  DWORD certInfoLen = 0;
+  BOOL ok = CryptMsgGetParam(aCryptMsg.get(), CMSG_SIGNER_CERT_INFO_PARAM, 0,
+                             nullptr, &certInfoLen);
+  if (!ok) {
+    return nullptr;
+  }
+
+  auto certInfoBuf = mozilla::MakeUnique<char[]>(certInfoLen);
+
+  ok = CryptMsgGetParam(aCryptMsg.get(), CMSG_SIGNER_CERT_INFO_PARAM, 0,
+                        certInfoBuf.get(), &certInfoLen);
+  if (!ok) {
+    return nullptr;
+  }
+
+  auto certInfo = reinterpret_cast<CERT_INFO*>(certInfoBuf.get());
+
+  PCCERT_CONTEXT certCtx =
+      CertFindCertificateInStore(aCertStore.get(), kEncodingTypes, 0,
+                                 CERT_FIND_SUBJECT_CERT, certInfo, nullptr);
+  return CertContextUniquePtr(certCtx);
+}
+
+static mozilla::UniquePtr<wchar_t[]> GetSignerOrganizationFromCertificate(
+    const CertContextUniquePtr& certCtx) {
+  DWORD charCount = CertGetNameStringW(
+      certCtx.get(), CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nullptr, nullptr, 0);
+  if (charCount <= 1) {
+    // Not found
+    return nullptr;
+  }
+
+  auto result = mozilla::MakeUnique<wchar_t[]>(charCount);
+  charCount = CertGetNameStringW(certCtx.get(), CERT_NAME_SIMPLE_DISPLAY_TYPE,
+                                 0, nullptr, result.get(), charCount);
+  MOZ_ASSERT(charCount > 1);
+
+  return result;
+}
+
 SignedBinary::SignedBinary(const wchar_t* aFilePath,
                            mozilla::AuthenticodeFlags aFlags)
     : mFlags(aFlags), mTrustSource(TrustSource::eNone) {
@@ -112,31 +150,71 @@ SignedBinary::SignedBinary(const wchar_t* aFilePath,
     return;
   }
 
-  DWORD certInfoLen = 0;
-  BOOL ok = CryptMsgGetParam(mCryptMsg.get(), CMSG_SIGNER_CERT_INFO_PARAM, 0,
-                             nullptr, &certInfoLen);
-  if (!ok) {
-    return;
-  }
-
-  auto certInfoBuf = mozilla::MakeUnique<char[]>(certInfoLen);
-
-  ok = CryptMsgGetParam(mCryptMsg.get(), CMSG_SIGNER_CERT_INFO_PARAM, 0,
-                        certInfoBuf.get(), &certInfoLen);
-  if (!ok) {
-    return;
-  }
-
-  auto certInfo = reinterpret_cast<CERT_INFO*>(certInfoBuf.get());
-
-  PCCERT_CONTEXT certCtx =
-      CertFindCertificateInStore(mCertStore.get(), kEncodingTypes, 0,
-                                 CERT_FIND_SUBJECT_CERT, certInfo, nullptr);
+  CertContextUniquePtr certCtx =
+      GetCertificateFromCryptMsg(mCryptMsg, mCertStore);
   if (!certCtx) {
     return;
   }
 
-  mCertCtx.reset(certCtx);
+  mCertCtx.swap(certCtx);
+}
+
+bool SignedBinary::HasNestedMicrosoftSignature() const {
+  // Look for nested certificates - see bug 1817026
+  DWORD attributesLen = 0;
+  BOOL ok = CryptMsgGetParam(mCryptMsg.get(), CMSG_SIGNER_UNAUTH_ATTR_PARAM, 0,
+                             nullptr, &attributesLen);
+  if (!ok) {
+    return false;
+  }
+
+  auto attributesBuf = mozilla::MakeUnique<char[]>(attributesLen);
+  ok = CryptMsgGetParam(mCryptMsg.get(), CMSG_SIGNER_UNAUTH_ATTR_PARAM, 0,
+                        attributesBuf.get(), &attributesLen);
+  if (!ok) {
+    return false;
+  }
+  auto attributesInfo =
+      reinterpret_cast<CRYPT_ATTRIBUTES*>(attributesBuf.get());
+  for (DWORD i = 0; i < attributesInfo->cAttr; ++i) {
+    PCRYPT_ATTRIBUTE cur = &attributesInfo->rgAttr[i];
+    if (!strcmp(cur->pszObjId, szOID_NESTED_SIGNATURE)) {
+      CryptMsgUniquePtr nestedMsg(
+          CryptMsgOpenToDecode(kEncodingTypes, 0, 0, NULL, NULL, NULL));
+      if (!nestedMsg) {
+        continue;
+      }
+      ok = CryptMsgUpdate(nestedMsg.get(), cur->rgValue->pbData,
+                          cur->rgValue->cbData, TRUE);
+      if (!ok) {
+        continue;
+      }
+
+      CertStoreUniquePtr nestedCertStore(
+          CertOpenStore(CERT_STORE_PROV_MSG, kEncodingTypes, NULL,
+                        CERT_STORE_OPEN_EXISTING_FLAG, nestedMsg.get()));
+      if (!nestedCertStore) {
+        continue;
+      }
+
+      CertContextUniquePtr nestedCertCtx =
+          GetCertificateFromCryptMsg(nestedMsg, nestedCertStore);
+      if (!nestedCertCtx) {
+        continue;
+      }
+
+      mozilla::UniquePtr<wchar_t[]> nestedSigner =
+          GetSignerOrganizationFromCertificate(nestedCertCtx);
+      if (!nestedSigner) {
+        continue;
+      }
+      if (!wcscmp(nestedSigner.get(), L"Microsoft Windows") ||
+          !wcscmp(nestedSigner.get(), L"Microsoft Corporation")) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 bool SignedBinary::QueryObject(const wchar_t* aFilePath) {
@@ -211,36 +289,22 @@ bool SignedBinary::VerifySignature(const wchar_t* aFilePath) {
   // First, we open a catalog admin context.
   HCATADMIN rawCatAdmin;
 
-  // Windows 7 also exports the CryptCATAdminAcquireContext2 API, but it does
-  // *not* sign its binaries with SHA-256, so we use the old API in that case.
-  if (mozilla::IsWin8OrLater()) {
-    static const mozilla::StaticDynamicallyLinkedFunctionPtr<
-        decltype(&::CryptCATAdminAcquireContext2)>
-        pCryptCATAdminAcquireContext2(L"wintrust.dll",
-                                      "CryptCATAdminAcquireContext2");
-    if (!pCryptCATAdminAcquireContext2) {
-      return false;
-    }
+  static const mozilla::StaticDynamicallyLinkedFunctionPtr<
+      decltype(&::CryptCATAdminAcquireContext2)>
+      pCryptCATAdminAcquireContext2(L"wintrust.dll",
+                                    "CryptCATAdminAcquireContext2");
+  if (!pCryptCATAdminAcquireContext2) {
+    return false;
+  }
 
-    CERT_STRONG_SIGN_PARA policy = {sizeof(policy)};
-    policy.dwInfoChoice = CERT_STRONG_SIGN_OID_INFO_CHOICE;
-    policy.pszOID = const_cast<char*>(
-        szOID_CERT_STRONG_SIGN_OS_CURRENT);  // -Wwritable-strings
+  CERT_STRONG_SIGN_PARA policy = {sizeof(policy)};
+  policy.dwInfoChoice = CERT_STRONG_SIGN_OID_INFO_CHOICE;
+  policy.pszOID = const_cast<char*>(
+      szOID_CERT_STRONG_SIGN_OS_CURRENT);  // -Wwritable-strings
 
-    if (!pCryptCATAdminAcquireContext2(&rawCatAdmin, nullptr,
-                                       BCRYPT_SHA256_ALGORITHM, &policy, 0)) {
-      return false;
-    }
-  } else {
-    static const mozilla::StaticDynamicallyLinkedFunctionPtr<
-        decltype(&::CryptCATAdminAcquireContext)>
-        pCryptCATAdminAcquireContext(L"wintrust.dll",
-                                     "CryptCATAdminAcquireContext");
-
-    if (!pCryptCATAdminAcquireContext ||
-        !pCryptCATAdminAcquireContext(&rawCatAdmin, nullptr, 0)) {
-      return false;
-    }
+  if (!pCryptCATAdminAcquireContext2(&rawCatAdmin, nullptr,
+                                     BCRYPT_SHA256_ALGORITHM, &policy, 0)) {
+    return false;
   }
 
   CATAdminContextUniquePtr catAdmin(rawCatAdmin);
@@ -384,9 +448,7 @@ bool SignedBinary::VerifySignature(const wchar_t* aFilePath) {
   wtCatInfo.pcwszMemberTag = strHashBuf.get();
   wtCatInfo.pcwszMemberFilePath = aFilePath;
   wtCatInfo.hMemberFile = rawFile;
-  if (mozilla::IsWin8OrLater()) {
-    wtCatInfo.hCatAdmin = rawCatAdmin;
-  }
+  wtCatInfo.hCatAdmin = rawCatAdmin;
 
   WINTRUST_DATA trustData = {sizeof(trustData)};
   trustData.dwUnionChoice = WTD_CHOICE_CATALOG;
@@ -396,19 +458,7 @@ bool SignedBinary::VerifySignature(const wchar_t* aFilePath) {
 }
 
 mozilla::UniquePtr<wchar_t[]> SignedBinary::GetOrgName() {
-  DWORD charCount = CertGetNameStringW(
-      mCertCtx.get(), CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nullptr, nullptr, 0);
-  if (charCount <= 1) {
-    // Not found
-    return nullptr;
-  }
-
-  auto result = mozilla::MakeUnique<wchar_t[]>(charCount);
-  charCount = CertGetNameStringW(mCertCtx.get(), CERT_NAME_SIMPLE_DISPLAY_TYPE,
-                                 0, nullptr, result.get(), charCount);
-  MOZ_ASSERT(charCount > 1);
-
-  return result;
+  return GetSignerOrganizationFromCertificate(mCertCtx);
 }
 
 }  // anonymous namespace
@@ -418,17 +468,24 @@ namespace mozilla {
 class AuthenticodeImpl : public Authenticode {
  public:
   virtual UniquePtr<wchar_t[]> GetBinaryOrgName(
-      const wchar_t* aFilePath,
+      const wchar_t* aFilePath, bool* aHasNestedMicrosoftSignature = nullptr,
       AuthenticodeFlags aFlags = AuthenticodeFlags::Default) override;
 };
 
 UniquePtr<wchar_t[]> AuthenticodeImpl::GetBinaryOrgName(
-    const wchar_t* aFilePath, AuthenticodeFlags aFlags) {
+    const wchar_t* aFilePath, bool* aHasNestedMicrosoftSignature,
+    AuthenticodeFlags aFlags) {
+  if (aHasNestedMicrosoftSignature) {
+    *aHasNestedMicrosoftSignature = false;
+  }
   SignedBinary bin(aFilePath, aFlags);
   if (!bin) {
     return nullptr;
   }
 
+  if (aHasNestedMicrosoftSignature) {
+    *aHasNestedMicrosoftSignature = bin.HasNestedMicrosoftSignature();
+  }
   return bin.GetOrgName();
 }
 

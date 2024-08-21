@@ -19,17 +19,11 @@
 #include "mozilla/dom/InProcessParent.h"
 #include "mozilla/dom/SessionStoreChild.h"
 #include "mozilla/dom/SessionStoreUtilsBinding.h"
-#include "SessionStoreFunctions.h"
+#include "nsISessionStoreFunctions.h"
 #include "nsISupports.h"
 #include "nsIXULRuntime.h"
 #include "nsImportModule.h"
 #include "nsIXPConnect.h"
-
-#ifdef ANDROID
-#  include "mozilla/widget/nsWindow.h"
-#  include "mozilla/jni/GeckoBundleUtils.h"
-#  include "JavaBuiltins.h"
-#endif /* ANDROID */
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -39,75 +33,6 @@ SessionStoreParent::SessionStoreParent(
     BrowserSessionStore* aSessionStore)
     : mBrowsingContext(aBrowsingContext), mSessionStore(aSessionStore) {}
 
-#ifdef ANDROID
-static void DoSessionStoreUpdate(CanonicalBrowsingContext* aBrowsingContext,
-                                 const Maybe<nsCString>& aDocShellCaps,
-                                 const Maybe<bool>& aPrivatedMode,
-                                 SessionStoreFormData* aFormData,
-                                 SessionStoreScrollData* aScroll,
-                                 const MaybeSessionStoreZoom& aZoom,
-                                 bool aNeedCollectSHistory, uint32_t aEpoch) {
-  RefPtr<BrowserSessionStore> sessionStore =
-      BrowserSessionStore::GetOrCreate(aBrowsingContext->Top());
-
-  nsCOMPtr<nsIWidget> widget =
-      aBrowsingContext->GetParentProcessWidgetContaining();
-  if (RefPtr<nsWindow> window = nsWindow::From(widget)) {
-    AutoJSAPI jsapi;
-    if (!jsapi.Init(xpc::PrivilegedJunkScope())) {
-      return;
-    }
-    jni::Object::LocalRef formDataBundle(jni::GetGeckoThreadEnv());
-    jni::Object::LocalRef scrollBundle(jni::GetGeckoThreadEnv());
-
-    if (aFormData) {
-      JS::Rooted<JSObject*> object(jsapi.cx());
-      ErrorResult rv;
-      aFormData->ToJSON(jsapi.cx(), &object);
-
-      JS::Rooted<JS::Value> value(jsapi.cx(), JS::ObjectValue(*object));
-
-      if (NS_FAILED(jni::BoxData(jsapi.cx(), value, formDataBundle, true))) {
-        JS_ClearPendingException(jsapi.cx());
-        return;
-      }
-    }
-
-    if (aScroll) {
-      JS::Rooted<JSObject*> object(jsapi.cx());
-      ErrorResult rv;
-      aScroll->ToJSON(jsapi.cx(), &object);
-      JS::Rooted<JS::Value> value(jsapi.cx(), JS::ObjectValue(*object));
-
-      if (NS_FAILED(jni::BoxData(jsapi.cx(), value, scrollBundle, true))) {
-        JS_ClearPendingException(jsapi.cx());
-        return;
-      }
-    }
-
-    GECKOBUNDLE_START(update);
-    GECKOBUNDLE_PUT(update, "formdata", formDataBundle);
-    GECKOBUNDLE_PUT(update, "scroll", scrollBundle);
-    if (aZoom) {
-      GECKOBUNDLE_START(zoomBundle);
-      GECKOBUNDLE_PUT(zoomBundle, "resolution",
-                      java::sdk::Double::New(std::get<0>(*aZoom)));
-      GECKOBUNDLE_START(displaySizeBundle);
-      GECKOBUNDLE_PUT(displaySizeBundle, "width",
-                      java::sdk::Integer::ValueOf(std::get<1>(*aZoom)));
-      GECKOBUNDLE_PUT(displaySizeBundle, "height",
-                      java::sdk::Integer::ValueOf(std::get<2>(*aZoom)));
-      GECKOBUNDLE_FINISH(displaySizeBundle);
-      GECKOBUNDLE_PUT(zoomBundle, "displaySize", displaySizeBundle);
-      GECKOBUNDLE_FINISH(zoomBundle);
-      GECKOBUNDLE_PUT(update, "zoom", zoomBundle);
-    }
-    GECKOBUNDLE_FINISH(update);
-
-    window->OnUpdateSessionStore(update);
-  }
-}
-#else
 static void DoSessionStoreUpdate(CanonicalBrowsingContext* aBrowsingContext,
                                  const Maybe<nsCString>& aDocShellCaps,
                                  const Maybe<bool>& aPrivatedMode,
@@ -146,9 +71,14 @@ static void DoSessionStoreUpdate(CanonicalBrowsingContext* aBrowsingContext,
     data.mScroll.Construct(aScroll);
   }
 
-  nsCOMPtr<nsISessionStoreFunctions> funcs = do_ImportESModule(
-      "resource://gre/modules/SessionStoreFunctions.sys.mjs", fallible);
-  nsCOMPtr<nsIXPConnectWrappedJS> wrapped = do_QueryInterface(funcs);
+  nsCOMPtr<nsISessionStoreFunctions> sessionStoreFuncs =
+      do_GetService("@mozilla.org/toolkit/sessionstore-functions;1");
+  if (!sessionStoreFuncs) {
+    return;
+  }
+
+  nsCOMPtr<nsIXPConnectWrappedJS> wrapped =
+      do_QueryInterface(sessionStoreFuncs);
   if (!wrapped) {
     return;
   }
@@ -166,10 +96,9 @@ static void DoSessionStoreUpdate(CanonicalBrowsingContext* aBrowsingContext,
   JS::Rooted<JS::Value> key(jsapi.cx(),
                             aBrowsingContext->Top()->PermanentKey());
 
-  Unused << funcs->UpdateSessionStore(nullptr, aBrowsingContext, key, aEpoch,
-                                      aNeedCollectSHistory, update);
+  Unused << sessionStoreFuncs->UpdateSessionStore(
+      nullptr, aBrowsingContext, key, aEpoch, aNeedCollectSHistory, update);
 }
-#endif
 
 void SessionStoreParent::FlushAllSessionStoreChildren(
     const std::function<void()>& aDone) {

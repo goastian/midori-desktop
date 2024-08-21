@@ -37,14 +37,14 @@ const EXTENSION_DATA = {
   async background() {
     browser.test.log("background script running");
     browser.webRequest.onAuthRequired.addListener(
-      async details => {
+      async () => {
         browser.test.log("webRequest onAuthRequired");
 
         // A blocking request that returns a promise exercises a codepath that
         // sets the notificationCallbacks on the channel to a JS object that we
         // can't do directly QueryObject on with expected results.
         // This triggered a crash which was fixed in bug 1528188.
-        return new Promise((resolve, reject) => {
+        return new Promise(resolve => {
           setTimeout(resolve, 0);
         });
       },
@@ -91,7 +91,6 @@ async function postFrom(start, target) {
 
       // Create the form element in our loaded URI.
       await SpecialPowers.spawn(browser, [{ target }], function ({ target }) {
-        // eslint-disable-next-line no-unsanitized/property
         content.document.body.innerHTML = `
         <form method="post" action="${target}">
           <input type="text" name="initialRemoteType" value="${Services.appinfo.remoteType}">
@@ -144,7 +143,7 @@ async function loadAndGetProcessID(browser, target) {
       maybeErrorPage: true,
     },
     () => {
-      BrowserTestUtils.loadURIString(browser, target);
+      BrowserTestUtils.startLoadingURIString(browser, target);
     }
   );
 

@@ -10,6 +10,7 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const NS_ERROR_DOM_QUOTA_EXCEEDED_ERR = 0x80530016;
 
+/** @type {Lazy} */
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -30,7 +31,7 @@ XPCOMUtils.defineLazyPreferenceGetter(
 // This xpcom service implements a "bridge" from the JS world to the Rust world.
 // It sets up the database and implements a callback-based version of the
 // browser.storage API.
-XPCOMUtils.defineLazyGetter(lazy, "storageSvc", () =>
+ChromeUtils.defineLazyGetter(lazy, "storageSvc", () =>
   Cc["@mozilla.org/extensions/storage/sync;1"]
     .getService(Ci.nsIInterfaceRequestor)
     .getInterface(Ci.mozIExtensionStorageArea)
@@ -55,6 +56,7 @@ ExtensionStorageApiCallback.prototype = {
   },
 
   handleError(code, message) {
+    /** @type {Error & { code?: number }} */
     let e = new Error(message);
     e.code = code;
     Cu.reportError(e);
@@ -103,7 +105,7 @@ export class ExtensionStorageSync {
             reject,
             (extId, changes) => this.notifyListeners(extId, changes)
           );
-          let sargs = args.map(JSON.stringify);
+          let sargs = args.map(val => JSON.stringify(val));
           lazy.storageSvc[fnName](extId, ...sargs, callback);
         });
       } catch (ex) {
@@ -174,7 +176,7 @@ export class ExtensionStorageSync {
     return this._promisify("getBytesInUse", extension, context, keys);
   }
 
-  addOnChangedListener(extension, listener, context) {
+  addOnChangedListener(extension, listener) {
     let listeners = this.listeners.get(extension.id) || new Set();
     listeners.add(listener);
     this.listeners.set(extension.id, listeners);

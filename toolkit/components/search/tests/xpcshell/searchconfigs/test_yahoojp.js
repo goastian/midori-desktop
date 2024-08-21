@@ -13,9 +13,7 @@ const test = new SearchConfigTest({
   available: {
     included: [
       {
-        locales: {
-          matches: ["ja", "ja-JP-macos"],
-        },
+        locales: ["ja", "ja-JP-macos"],
       },
     ],
   },
@@ -29,7 +27,7 @@ const test = new SearchConfigTest({
   ],
 });
 
-add_task(async function setup() {
+add_setup(async function () {
   await test.setup();
 });
 

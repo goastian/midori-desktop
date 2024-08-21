@@ -8,32 +8,25 @@
 
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 
-toolbox {
-  appearance: auto;
-  -moz-default-appearance: toolbox;
-}
-
 toolbar {
-  appearance: auto;
-  -moz-default-appearance: toolbar;
+  background-color: -moz-headerbar;
+  color: -moz-headerbartext;
   min-width: 1px;
   min-height: 20px;
   padding: 2px 0;
-}
 
-toolbar[type="menubar"] {
-  appearance: none;
-  padding: 1px 0;
-}
+  &:-moz-window-inactive {
+    background-color: -moz-headerbarinactive;
+    color: -moz-headerbarinactivetext;
+  }
 
-toolbar:-moz-lwtheme {
-  appearance: none;
+  &[type="menubar"] {
+    background-color: transparent;
+    padding: 1px 0;
+  }
 }
 
 toolbarseparator {
-  appearance: auto;
-  -moz-default-appearance: separator;
-  margin: 0;
   min-width: 2px;
 }
 

@@ -6,7 +6,7 @@
 let engine;
 let appDefaultEngine;
 
-add_task(async function setup() {
+add_setup(async function () {
   await AddonTestUtils.promiseStartupManager();
   useHttpServer();
 
@@ -25,9 +25,6 @@ add_task(async function setup() {
 add_task(async function test_addingEngine_opensearch() {
   const addEngineObserver = new SearchObserver(
     [
-      // engine-loaded
-      // Engine was loaded.
-      SearchUtils.MODIFIED_TYPE.LOADED,
       // engine-added
       // Engine was added to the store by the search service.
       SearchUtils.MODIFIED_TYPE.ADDED,
@@ -35,7 +32,9 @@ add_task(async function test_addingEngine_opensearch() {
     SearchUtils.MODIFIED_TYPE.ADDED
   );
 
-  await Services.search.addOpenSearchEngine(gDataUrl + "engine.xml", null);
+  await SearchTestUtils.installOpenSearchEngine({
+    url: gDataUrl + "engine.xml",
+  });
 
   engine = await addEngineObserver.promise;
 

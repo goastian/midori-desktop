@@ -57,9 +57,18 @@ const tests = [
     // here.
     searchUrl: "https://example.com/search?q=foo",
   },
+  {
+    file: "searchform-invalid.xml",
+    name: "searchform-invalid",
+    description: "Bug 483086 Test 1",
+    // Should fall back to the root url, if the searchForm url is invalid.
+    searchForm: "http://mochi.test:8888",
+    searchUrl:
+      "http://mochi.test:8888/browser/browser/components/search/test/browser/?search&test=foo",
+  },
 ];
 
-add_task(async function setup() {
+add_setup(async function () {
   Services.fog.initializeFOG();
   useHttpServer("opensearch");
   await AddonTestUtils.promiseStartupManager();
@@ -73,10 +82,9 @@ for (const test of tests) {
       SearchUtils.MODIFIED_TYPE.ADDED,
       SearchUtils.TOPIC_ENGINE_MODIFIED
     );
-    let engine = await Services.search.addOpenSearchEngine(
-      gDataUrl + test.file,
-      null
-    );
+    let engine = await SearchTestUtils.installOpenSearchEngine({
+      url: gDataUrl + test.file,
+    });
     await promiseEngineAdded;
     Assert.ok(engine, "Should have installed the engine.");
 

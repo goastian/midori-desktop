@@ -29,6 +29,7 @@ server.registerPathHandler("/echoheaders", (req, res) => {
   dropDefaultHeader("accept-language");
   dropDefaultHeader("accept-encoding");
   dropDefaultHeader("connection");
+  dropDefaultHeader("priority");
 
   res.write(JSON.stringify(headers));
 });
@@ -73,7 +74,7 @@ server.registerPathHandler("/setcookie", (req, res) => {
   res.setHeader("Set-Cookie", "second=serving; max-age=999", /* merge */ true);
   res.write(req.hasHeader("Cookie") ? req.getHeader("Cookie") : "");
 });
-server.registerPathHandler("/empty", (req, res) => {});
+server.registerPathHandler("/empty", () => {});
 
 add_setup(() => {
   Services.prefs.setBoolPref("extensions.manifestV3.enabled", true);

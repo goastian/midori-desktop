@@ -86,7 +86,7 @@ const BrowserListener = {
     for (let url of this.stylesheets) {
       windowUtils.addSheet(
         ExtensionCommon.stylesheetMap.get(url),
-        windowUtils.AGENT_SHEET
+        windowUtils.AUTHOR_SHEET
       );
     }
   },
@@ -250,7 +250,7 @@ const BrowserListener = {
       // Adjust the size of the browser based on its content's preferred size.
       let w = {},
         h = {};
-      docShell.contentViewer.getContentSize(
+      docShell.docViewer.getContentSize(
         this.maxWidth,
         this.maxHeight,
         /* prefWidth = */ 0,

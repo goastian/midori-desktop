@@ -22,9 +22,15 @@
 var mainWindow = window.browsingContext.topChromeWindow;
 var contentPage = "http://www.itisatrap.org/chrome/toolkit/components/url-classifier/tests/mochitest/trackingRequest.html";
 
-const {UrlClassifierTestUtils} = ChromeUtils.import("resource://testing-common/UrlClassifierTestUtils.jsm");
-const {BrowserTestUtils} = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
-const {TestUtils} = ChromeUtils.import("resource://testing-common/TestUtils.jsm");
+const {UrlClassifierTestUtils} = ChromeUtils.importESModule(
+  "resource://testing-common/UrlClassifierTestUtils.sys.mjs"
+);
+const {BrowserTestUtils} = ChromeUtils.importESModule(
+  "resource://testing-common/BrowserTestUtils.sys.mjs"
+);
+const {TestUtils} = ChromeUtils.importESModule(
+  "resource://testing-common/TestUtils.sys.mjs"
+);
 
 function testOnWindow(aPrivate, aCallback) {
   var win = mainWindow.OpenBrowserWindow({private: aPrivate});
@@ -33,7 +39,7 @@ function testOnWindow(aPrivate, aCallback) {
                             subject => subject == win).then(() => {
       win.addEventListener("DOMContentLoaded", function onInnerLoad() {
         if (win.content.location.href != contentPage) {
-          BrowserTestUtils.loadURIString(win.gBrowser, contentPage);
+          BrowserTestUtils.startLoadingURIString(win.gBrowser, contentPage);
           return;
         }
         win.removeEventListener("DOMContentLoaded", onInnerLoad, true);
@@ -43,7 +49,9 @@ function testOnWindow(aPrivate, aCallback) {
           SimpleTest.executeSoon(function() { aCallback(win); });
         }, false, true);
       }, true);
-      SimpleTest.executeSoon(function() { BrowserTestUtils.loadURIString(win.gBrowser, contentPage); });
+      SimpleTest.executeSoon(function () {
+        BrowserTestUtils.startLoadingURIString(win.gBrowser, contentPage);
+      });
     });
   }, {capture: true, once: true});
 }
@@ -78,7 +86,7 @@ function checkPriority(aSubject, aCallback, aPriority, aMessage) {
 }
 
 function testXHR1() {
-  return new Promise(function(aResolve, aReject) {
+  return new Promise(function(aResolve) {
     testUrl = "http://tracking.example.com/";
     info("Not blocklisted: " + testUrl);
     resolve = aResolve;
@@ -88,7 +96,7 @@ function testXHR1() {
 }
 
 function testXHR2() {
-  return new Promise(function(aResolve, aReject) {
+  return new Promise(function(aResolve) {
     testUrl = "http://trackertest.org/";
     info("Blocklisted and not entitylisted: " + testUrl);
     resolve = aResolve;
@@ -98,7 +106,7 @@ function testXHR2() {
 }
 
 function testFetch1() {
-  return new Promise(function(aResolve, aReject) {
+  return new Promise(function(aResolve) {
     testUrl = "http://itisatracker.org/"; // only entitylisted in TP, not for annotations
     info("Blocklisted and not entitylisted: " + testUrl);
     resolve = aResolve;
@@ -108,7 +116,7 @@ function testFetch1() {
 }
 
 function testFetch2() {
-  return new Promise(function(aResolve, aReject) {
+  return new Promise(function(aResolve) {
     testUrl = "http://tracking.example.org/"; // only entitylisted for annotations, not in TP
     info("Blocklisted but also entitylisted: " + testUrl);
     resolve = aResolve;

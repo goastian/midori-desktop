@@ -4,9 +4,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-<?xml-stylesheet href="chrome://global/skin/global.css" type="text/css"?>
-<?xml-stylesheet href="chrome://mozapps/skin/downloads/unknownContentType.css" type="text/css"?>
-
 <window id="unknownContentTypeWindow"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
@@ -20,6 +17,12 @@
         persist="screenX screenY"
         aria-describedby="intro location whichIs type from source unknownPrompt">
 <linkset>
+  <html:link rel="stylesheet" href="chrome://global/skin/global.css" />
+  <html:link
+    rel="stylesheet"
+    href="chrome://mozapps/skin/downloads/unknownContentType.css"
+  />
+
   <html:link rel="localization" href="branding/brand.ftl"/>
   <html:link rel="localization" href="toolkit/global/unknownContentType.ftl"/>
 </linkset>
@@ -36,15 +39,15 @@
     <hbox align="start" class="small-indent">
       <image id="contentTypeImage"/>
       <vbox flex="1">
-        <description id="location" class="plain" crop="start" flex="1"/>
+        <description id="location" crop="start" flex="1"/>
         <separator class="thin"/>
         <hbox align="center">
           <label id="whichIs" data-l10n-id="unknowncontenttype-which-is"/>
-          <html:input id="type" class="plain" readonly="readonly" noinitialfocus="true"/>
+          <html:input id="type" readonly="readonly" noinitialfocus="true"/>
         </hbox>
         <hbox align="center">
           <label data-l10n-id="unknowncontenttype-from" id="from"/>
-          <description id="source" class="plain" crop="start" flex="1"/>
+          <description id="source" crop="start" flex="1"/>
         </hbox>
       </vbox>
     </hbox>

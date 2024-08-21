@@ -37,7 +37,7 @@ function test() {
   );
 
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  BrowserTestUtils.loadURIString(gBrowser, TESTROOT + "bug645699.html");
+  BrowserTestUtils.startLoadingURIString(gBrowser, TESTROOT + "bug645699.html");
 }
 
 function allow_blocked(installInfo) {
@@ -54,7 +54,7 @@ function allow_blocked(installInfo) {
   return false;
 }
 
-function confirm_install(panel) {
+function confirm_install() {
   ok(false, "Should not see the install dialog");
   return false;
 }

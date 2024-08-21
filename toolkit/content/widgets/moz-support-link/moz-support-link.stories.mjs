@@ -3,13 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { html, ifDefined } from "../vendor/lit.all.mjs";
-// eslint-disable-next-line import/no-unassigned-import
 import "./moz-support-link.mjs";
 
 MozXULElement.insertFTLIfNeeded(
   "locales-preview/moz-support-link-storybook.ftl"
 );
-MozXULElement.insertFTLIfNeeded("browser/components/mozSupportLink.ftl");
+MozXULElement.insertFTLIfNeeded("toolkit/global/mozSupportLink.ftl");
 
 const fluentStrings = [
   "storybook-amo-test",

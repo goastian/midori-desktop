@@ -16,11 +16,9 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "NetUtil",
-  "resource://gre/modules/NetUtil.jsm"
-);
+ChromeUtils.defineESModuleGetters(lazy, {
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
+});
 
 XPCOMUtils.defineLazyServiceGetter(
   lazy,
@@ -105,7 +103,7 @@ AddonLocalizationConverter.prototype = {
     this.listener = aListener;
   },
 
-  onStartRequest(aRequest) {
+  onStartRequest() {
     this.parts = [];
     this.decoder = new TextDecoder();
   },
@@ -146,31 +144,59 @@ HttpIndexViewer.prototype = {
     aExtraInfo,
     aDocListenerResult
   ) {
-    aChannel.contentType = "text/html";
+    // Bug 1824325: application/http-index-format is deprecated for almost all
+    // sites, we only allow it for urls with a inner scheme of "file" or
+    // "moz-gio" (specified in network.http_index_format.allowed_schemes).
+    // This also includes jar: and resource:// uris, as jar: uris has a inner
+    // scheme of "file", and resource:// uris have been turned into either a
+    // jar: or file:// uri by the point where we are checking them here.
 
-    let contract = Services.catMan.getCategoryEntry(
-      "Gecko-Content-Viewers",
-      "text/html"
+    let uri = aChannel.URI;
+    if (uri instanceof Ci.nsINestedURI) {
+      uri = uri.QueryInterface(Ci.nsINestedURI).innermostURI;
+    }
+
+    const allowedSchemes = Services.prefs.getStringPref(
+      "network.http_index_format.allowed_schemes",
+      ""
     );
-    let factory = Cc[contract].getService(Ci.nsIDocumentLoaderFactory);
+    let isFile =
+      allowedSchemes === "*" || allowedSchemes.split(",").some(uri.schemeIs);
+    let contentType = isFile ? "text/html" : "text/plain";
+
+    aChannel.contentType = contentType;
+
+    // NOTE: This assumes that both text/html and text/plain will continue to be
+    // handled by nsContentDLF. If this ever changes this logic will need to be
+    // updated.
+    let factory = Cc[
+      "@mozilla.org/content/document-loader-factory;1"
+    ].getService(Ci.nsIDocumentLoaderFactory);
 
     let listener = {};
     let res = factory.createInstance(
       "view",
       aChannel,
       aLoadGroup,
-      "text/html",
+      contentType,
       aContainer,
       aExtraInfo,
       listener
     );
 
-    aDocListenerResult.value = lazy.streamConv.asyncConvertData(
-      "application/http-index-format",
-      "text/html",
-      listener.value,
-      null
-    );
+    if (isFile) {
+      aDocListenerResult.value = lazy.streamConv.asyncConvertData(
+        "application/http-index-format",
+        "text/html",
+        listener.value,
+        null
+      );
+    } else {
+      aDocListenerResult.value = listener.value;
+      aChannel.loadInfo.browsingContext.window.console.warn(
+        "application/http-index-format is deprecated, content will display as plain text"
+      );
+    }
 
     return res;
   },

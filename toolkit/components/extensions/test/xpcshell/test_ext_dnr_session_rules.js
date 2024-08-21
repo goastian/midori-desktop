@@ -218,6 +218,39 @@ add_task(async function register_and_retrieve_session_rules() {
         "getSessionRules() returns all registered session rules"
       );
 
+      browser.test.assertDeepEq(
+        [],
+        await dnr.getSessionRules({ ruleIds: [] }),
+        "getSessionRules() returns no rule because ruleIds is an empty array"
+      );
+      browser.test.assertDeepEq(
+        [],
+        await dnr.getSessionRules({ ruleIds: [1234567890] }),
+        "getSessionRules() returns no rule because rule ID is non-existent"
+      );
+      browser.test.assertDeepEq(
+        [RULE_4321_OUT],
+        await dnr.getSessionRules({ ruleIds: [4321] }),
+        "getSessionRules() returns a rule"
+      );
+      browser.test.assertDeepEq(
+        [RULE_1234_OUT],
+        await dnr.getSessionRules({ ruleIds: [1234] }),
+        "getSessionRules() returns a rule"
+      );
+      // The order is the same as the original input above, not the order of
+      // the IDs in `ruleIds`.
+      browser.test.assertDeepEq(
+        [RULE_4321_OUT, RULE_1234_OUT],
+        await dnr.getSessionRules({ ruleIds: [1234, 4321] }),
+        "getSessionRules() returns two rules"
+      );
+      browser.test.assertDeepEq(
+        [RULE_4321_OUT, RULE_1234_OUT],
+        await dnr.getSessionRules({}),
+        "getSessionRules() returns all the rules because there is no ruleIds"
+      );
+
       await browser.test.assertRejects(
         dnr.updateSessionRules({
           addRules: [RULE_9001_IN, RULE_1234_IN],
@@ -1032,12 +1065,11 @@ add_task(async function validate_action_redirect_transform() {
 add_task(async function session_rules_total_rule_limit() {
   await runAsDNRExtension({
     background: async dnrTestUtils => {
-      const { MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES } =
-        browser.declarativeNetRequest;
+      const { MAX_NUMBER_OF_SESSION_RULES } = browser.declarativeNetRequest;
 
       let inputRules = [];
       let nextRuleId = 1;
-      for (let i = 0; i < MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES; ++i) {
+      for (let i = 0; i < MAX_NUMBER_OF_SESSION_RULES; ++i) {
         inputRules.push(dnrTestUtils.makeRuleInput(nextRuleId++));
       }
       let excessRule = dnrTestUtils.makeRuleInput(nextRuleId++);
@@ -1050,15 +1082,15 @@ add_task(async function session_rules_total_rule_limit() {
       browser.test.assertEq(
         inputRules.length,
         (await browser.declarativeNetRequest.getSessionRules()).length,
-        "Added up to MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES session rules"
+        "Added up to MAX_NUMBER_OF_SESSION_RULES session rules"
       );
 
       await browser.test.assertRejects(
         browser.declarativeNetRequest.updateSessionRules({
           addRules: [excessRule],
         }),
-        `Number of rules in ruleset "_session" exceeds MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES.`,
-        "Should not accept more than MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES rules"
+        `Number of rules in ruleset "_session" exceeds MAX_NUMBER_OF_SESSION_RULES.`,
+        "Should not accept more than MAX_NUMBER_OF_SESSION_RULES rules"
       );
 
       await browser.test.assertRejects(
@@ -1066,7 +1098,7 @@ add_task(async function session_rules_total_rule_limit() {
           removeRuleIds: [inputRules[0].id],
           addRules: [inputRules[0], excessRule],
         }),
-        `Number of rules in ruleset "_session" exceeds MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES.`,
+        `Number of rules in ruleset "_session" exceeds MAX_NUMBER_OF_SESSION_RULES.`,
         "Removing one rule is not enough to make space for two rules"
       );
 
@@ -1092,8 +1124,8 @@ add_task(async function session_rules_total_rule_limit() {
         browser.declarativeNetRequest.updateSessionRules({
           addRules: inputRules,
         }),
-        `Number of rules in ruleset "_session" exceeds MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES.`,
-        "Should not be able to add MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES when there is already a rule"
+        `Number of rules in ruleset "_session" exceeds MAX_NUMBER_OF_SESSION_RULES.`,
+        "Should not be able to add MAX_NUMBER_OF_SESSION_RULES when there is already a rule"
       );
 
       await browser.declarativeNetRequest.updateSessionRules({

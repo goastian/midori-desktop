@@ -25,26 +25,12 @@ const { LENGTH: GENERATED_PASSWORD_LENGTH, REGEX: GENERATED_PASSWORD_REGEX } =
 const LOGIN_FIELD_UTILS = LoginTestUtils.loginField;
 const TESTS_DIR = "/tests/toolkit/components/passwordmgr/test/";
 
-// Depending on pref state we either show auth prompts as windows or on tab level.
-let authPromptModalType = SpecialPowers.Services.prefs.getIntPref(
-  "prompts.modalType.httpAuth"
-);
-
-// Whether the auth prompt is a commonDialog.xhtml or a TabModalPrompt
-let authPromptIsCommonDialog =
-  authPromptModalType === SpecialPowers.Services.prompt.MODAL_TYPE_WINDOW ||
-  (authPromptModalType === SpecialPowers.Services.prompt.MODAL_TYPE_TAB &&
-    SpecialPowers.Services.prefs.getBoolPref(
-      "prompts.tabChromePromptSubDialog",
-      false
-    ));
-
 /**
  * Recreate a DOM tree using the outerHTML to ensure that any event listeners
  * and internal state for the elements are removed.
  */
 function recreateTree(element) {
-  // eslint-disable-next-line no-unsanitized/property, no-self-assign
+  // eslint-disable-next-line no-self-assign
   element.outerHTML = element.outerHTML;
 }
 
@@ -69,12 +55,6 @@ function checkAutoCompleteResults(actualValues, expectedValues, hostname, msg) {
     return;
   }
 
-  is(
-    typeof hostname,
-    "string",
-    "checkAutoCompleteResults: hostname must be a string"
-  );
-
   isnot(
     actualValues.length,
     0,
@@ -84,7 +64,7 @@ function checkAutoCompleteResults(actualValues, expectedValues, hostname, msg) {
 
   // Check the footer first.
   let footerResult = actualValues[actualValues.length - 1];
-  is(footerResult, "View Saved Logins", "the footer text is shown correctly");
+  is(footerResult, "Manage Passwords", "the footer text is shown correctly");
 
   if (actualValues.length == 1) {
     is(
@@ -98,6 +78,17 @@ function checkAutoCompleteResults(actualValues, expectedValues, hostname, msg) {
 
   // Check the rest of the autocomplete item values.
   _checkArrayValues(actualValues.slice(0, -1), expectedValues, msg);
+}
+
+/**
+ * Wait for autocomplete popup to get closed
+ * @return {Promise} resolving when the AC popup is closed
+ */
+async function untilAutocompletePopupClosed() {
+  return SimpleTest.promiseWaitForCondition(async () => {
+    const popupState = await getPopupState();
+    return !popupState.open;
+  }, "Wait for autocomplete popup to be closed");
 }
 
 function getIframeBrowsingContext(window, iframeNumber = 0) {
@@ -140,7 +131,7 @@ function setUserInputValues(parentNode, selectorValues, userInput = true) {
  */
 function getSubmitMessage(aFilterFn = undefined) {
   info("getSubmitMessage");
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     PWMGR_COMMON_PARENT.addMessageListener(
       "formSubmissionProcessed",
       function processed(...args) {
@@ -165,7 +156,7 @@ function getSubmitMessage(aFilterFn = undefined) {
  */
 function getPasswordEditedMessage() {
   info("getPasswordEditedMessage");
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     PWMGR_COMMON_PARENT.addMessageListener(
       "passwordEditedOrGenerated",
       function listener(...args) {
@@ -211,17 +202,20 @@ function createLoginForm({
   username = {},
   password = {},
 } = {}) {
-  username.id ||= null;
   username.name ||= "uname";
   username.type ||= "text";
+  username.id ||= null;
   username.value ||= null;
   username.autocomplete ||= null;
-  password.id ||= null;
+
   password.name ||= "pword";
   password.type ||= "password";
+  password.id ||= null;
   password.value ||= null;
   password.label ||= null;
   password.autocomplete ||= null;
+  password.readonly ||= null;
+  password.disabled ||= null;
 
   info(
     `Creating login form ${JSON.stringify({ num, action, username, password })}`
@@ -237,32 +231,44 @@ function createLoginForm({
   }
 
   const usernameInput = document.createElement("input");
+
+  usernameInput.type = username.type;
+  usernameInput.name = username.name;
+
   if (username.id != null) {
     usernameInput.id = username.id;
   }
-  usernameInput.type = username.type;
-  usernameInput.name = username.name;
   if (username.value != null) {
     usernameInput.value = username.value;
   }
   if (username.autocomplete != null) {
     usernameInput.setAttribute("autocomplete", username.autocomplete);
   }
+
   form.appendChild(usernameInput);
 
   if (password) {
     const passwordInput = document.createElement("input");
+
+    passwordInput.type = password.type;
+    passwordInput.name = password.name;
+
     if (password.id != null) {
       passwordInput.id = password.id;
     }
-    passwordInput.type = password.type;
-    passwordInput.name = password.name;
     if (password.value != null) {
       passwordInput.value = password.value;
     }
     if (password.autocomplete != null) {
       passwordInput.setAttribute("autocomplete", password.autocomplete);
     }
+    if (password.readonly != null) {
+      passwordInput.setAttribute("readonly", password.readonly);
+    }
+    if (password.disabled != null) {
+      passwordInput.setAttribute("disabled", password.disabled);
+    }
+
     if (password.label != null) {
       const passwordLabel = document.createElement("label");
       passwordLabel.innerText = password.label;
@@ -608,7 +614,7 @@ function checkUnmodifiedForm(formNum) {
  * @param existingPasswordFieldsCount the number of password fields
  * that begin on the test page.
  */
-function registerRunTests(existingPasswordFieldsCount = 0) {
+function registerRunTests(existingPasswordFieldsCount = 0, callback) {
   return new Promise(resolve => {
     function onDOMContentLoaded() {
       var form = document.createElement("form");
@@ -623,8 +629,8 @@ function registerRunTests(existingPasswordFieldsCount = 0) {
 
       let foundForcer = false;
       var observer = SpecialPowers.wrapCallback(function (
-        subject,
-        topic,
+        _subject,
+        _topic,
         data
       ) {
         if (data === "observerforcer") {
@@ -640,8 +646,7 @@ function registerRunTests(existingPasswordFieldsCount = 0) {
         SpecialPowers.removeObserver(observer, "passwordmgr-processed-form");
         form.remove();
         SimpleTest.executeSoon(() => {
-          var runTestEvent = new Event("runTests");
-          window.dispatchEvent(runTestEvent);
+          callback?.();
           resolve();
         });
       });
@@ -695,8 +700,8 @@ function logoutPrimaryPassword() {
  */
 function promiseFormsProcessedInSameProcess(expectedCount = 1) {
   var processedCount = 0;
-  return new Promise((resolve, reject) => {
-    function onProcessedForm(subject, topic, data) {
+  return new Promise(resolve => {
+    function onProcessedForm(subject, _topic, data) {
       processedCount++;
       if (processedCount == expectedCount) {
         info(`${processedCount} form(s) processed`);
@@ -760,7 +765,6 @@ async function loadFormIntoWindow(origin, html, win, expectedCount = 1, task) {
     win,
     [html, task?.toString()],
     function (contentHtml, contentTask = null) {
-      // eslint-disable-next-line no-unsanitized/property
       this.content.document.documentElement.innerHTML = contentHtml;
       // Similar to the invokeContentTask helper in accessible/tests/browser/shared-head.js
       if (contentTask) {
@@ -778,90 +782,38 @@ async function loadFormIntoWindow(origin, html, win, expectedCount = 1, task) {
   await processedPromise;
 }
 
-function getTelemetryEvents(options) {
-  return new Promise(resolve => {
-    PWMGR_COMMON_PARENT.addMessageListener(
-      "getTelemetryEvents",
-      function gotResult(events) {
-        info(
-          "CONTENT: getTelemetryEvents gotResult: " + JSON.stringify(events)
-        );
-        PWMGR_COMMON_PARENT.removeMessageListener(
-          "getTelemetryEvents",
-          gotResult
-        );
-        resolve(events);
-      }
-    );
-    PWMGR_COMMON_PARENT.sendAsyncMessage("getTelemetryEvents", options);
-  });
+async function getTelemetryEvents(options) {
+  let events = await PWMGR_COMMON_PARENT.sendQuery(
+    "getTelemetryEvents",
+    options
+  );
+  info("CONTENT: getTelemetryEvents gotResult: " + JSON.stringify(events));
+  return events;
 }
 
 function loadRecipes(recipes) {
   info("Loading recipes");
-  return new Promise(resolve => {
-    PWMGR_COMMON_PARENT.addMessageListener("loadedRecipes", function loaded() {
-      PWMGR_COMMON_PARENT.removeMessageListener("loadedRecipes", loaded);
-      resolve(recipes);
-    });
-    PWMGR_COMMON_PARENT.sendAsyncMessage("loadRecipes", recipes);
-  });
+  return PWMGR_COMMON_PARENT.sendQuery("loadRecipes", recipes);
 }
 
 function resetRecipes() {
   info("Resetting recipes");
-  return new Promise(resolve => {
-    PWMGR_COMMON_PARENT.addMessageListener("recipesReset", function reset() {
-      PWMGR_COMMON_PARENT.removeMessageListener("recipesReset", reset);
-      resolve();
-    });
-    PWMGR_COMMON_PARENT.sendAsyncMessage("resetRecipes");
-  });
+  return PWMGR_COMMON_PARENT.sendQuery("resetRecipes");
 }
 
-function resetWebsitesWithSharedCredential() {
-  info("Resetting the 'websites-with-shared-credential-backend' collection");
-  return new Promise(resolve => {
-    PWMGR_COMMON_PARENT.addMessageListener(
-      "resetWebsitesWithSharedCredential",
-      function reset() {
-        PWMGR_COMMON_PARENT.removeMessageListener(
-          "resetWebsitesWithSharedCredential",
-          reset
-        );
-        resolve();
-      }
-    );
-    PWMGR_COMMON_PARENT.sendAsyncMessage("resetWebsitesWithSharedCredential");
+async function promiseStorageChanged(expectedChangeTypes) {
+  let result = await PWMGR_COMMON_PARENT.sendQuery("storageChanged", {
+    expectedChangeTypes,
   });
+
+  if (result) {
+    ok(false, result);
+  }
 }
 
-function promiseStorageChanged(expectedChangeTypes) {
-  return new Promise((resolve, reject) => {
-    function onStorageChanged({ topic, data }) {
-      let changeType = expectedChangeTypes.shift();
-      is(data, changeType, "Check expected passwordmgr-storage-changed type");
-      if (expectedChangeTypes.length === 0) {
-        PWMGR_COMMON_PARENT.removeMessageListener(
-          "storageChanged",
-          onStorageChanged
-        );
-        resolve();
-      }
-    }
-    PWMGR_COMMON_PARENT.addMessageListener("storageChanged", onStorageChanged);
-  });
-}
-
-function promisePromptShown(expectedTopic) {
-  return new Promise((resolve, reject) => {
-    function onPromptShown({ topic, data }) {
-      is(topic, expectedTopic, "Check expected prompt topic");
-      PWMGR_COMMON_PARENT.removeMessageListener("promptShown", onPromptShown);
-      resolve();
-    }
-    PWMGR_COMMON_PARENT.addMessageListener("promptShown", onPromptShown);
-  });
+async function promisePromptShown(expectedTopic) {
+  let topic = await PWMGR_COMMON_PARENT.sendQuery("promptShown");
+  is(topic, expectedTopic, "Check expected prompt topic");
 }
 
 /**
@@ -886,6 +838,30 @@ function manageLoginsInParent() {
     /* eslint-env mozilla/chrome-script */
     addMessageListener("removeAllUserFacingLogins", () => {
       Services.logins.removeAllUserFacingLogins();
+    });
+
+    /* eslint-env mozilla/chrome-script */
+    addMessageListener("getLogins", async () => {
+      const logins = await Services.logins.getAllLogins();
+      return logins.map(
+        ({
+          origin,
+          formActionOrigin,
+          httpRealm,
+          username,
+          password,
+          usernameField,
+          passwordField,
+        }) => [
+          origin,
+          formActionOrigin,
+          httpRealm,
+          username,
+          password,
+          usernameField,
+          passwordField,
+        ]
+      );
     });
 
     /* eslint-env mozilla/chrome-script */
@@ -928,6 +904,48 @@ async function setStoredLoginsAsync(...aLogins) {
   return script;
 }
 
+/**
+ * Sets given logins for the duration of the test. Existing logins are first
+ * removed and finally restored when the test is finished.
+ * The logins are added within the parent chrome process.
+ * @param {array} logins - a list of logins to add. Each login is an array of the arguments
+ *                          that would be passed to nsLoginInfo.init().
+ */
+async function setStoredLoginsDuringTest(...logins) {
+  const script = manageLoginsInParent();
+  const loginsBefore = await script.sendQuery("getLogins");
+  await script.sendQuery("removeAllUserFacingLogins");
+  await script.sendQuery("addLogins", logins);
+  SimpleTest.registerCleanupFunction(async () => {
+    await script.sendQuery("removeAllUserFacingLogins");
+    await script.sendQuery("addLogins", loginsBefore);
+  });
+}
+
+/**
+ * Sets given logins for the duration of the task. Existing logins are first
+ * removed and finally restored when the task is finished.
+ * @param {array} logins - a list of logins to add. Each login is an array of the arguments
+ *                          that would be passed to nsLoginInfo.init().
+ */
+async function setStoredLoginsDuringTask(...logins) {
+  const script = manageLoginsInParent();
+  const loginsBefore = await script.sendQuery("getLogins");
+  await script.sendQuery("removeAllUserFacingLogins");
+  await script.sendQuery("addLogins", logins);
+  SimpleTest.registerTaskCleanupFunction(async () => {
+    await script.sendQuery("removeAllUserFacingLogins");
+    await script.sendQuery("addLogins", loginsBefore);
+  });
+}
+
+/** Returns a promise which resolves to a list of logins
+ */
+function getLogins() {
+  const script = manageLoginsInParent();
+  return script.sendQuery("getLogins");
+}
+
 /*
  * gTestDependsOnDeprecatedLogin Set this global to true if your test relies
  * on the testuser/testpass login that is created in pwmgr_common.js. New tests
@@ -947,7 +965,6 @@ function setFormAndWaitForFieldFilled(
   form,
   { fieldSelector, fieldValue, formId }
 ) {
-  // eslint-disable-next-line no-unsanitized/property
   document.querySelector("#content").innerHTML = form;
   return SimpleTest.promiseWaitForCondition(() => {
     let ancestor = formId
@@ -958,21 +975,20 @@ function setFormAndWaitForFieldFilled(
 }
 
 /**
- * Run commonInit synchronously in the parent then run the test function after the runTests event.
+ * Run commonInit synchronously in the parent then run the test function if supplied.
  *
  * @param {Function} aFunction The test function to run
  */
-function runChecksAfterCommonInit(aFunction = null) {
+async function runChecksAfterCommonInit(aFunction = null) {
   SimpleTest.waitForExplicitFinish();
-  if (aFunction) {
-    window.addEventListener("runTests", aFunction);
-    PWMGR_COMMON_PARENT.addMessageListener("registerRunTests", () =>
-      registerRunTests()
-    );
-  }
-  PWMGR_COMMON_PARENT.sendAsyncMessage("setupParent", {
+  await PWMGR_COMMON_PARENT.sendQuery("setupParent", {
     testDependsOnDeprecatedLogin: gTestDependsOnDeprecatedLogin,
   });
+
+  if (aFunction) {
+    await registerRunTests(0, aFunction);
+  }
+
   return PWMGR_COMMON_PARENT;
 }
 
@@ -1030,6 +1046,23 @@ SimpleTest.registerCleanupFunction(() => {
   });
 });
 
+// This is a version of LoginHelper.loginToVanillaObject that is adapted to run
+// as content JS instead of chrome JS. This is needed to make it return a
+// content JS object because the structured cloning we use to send it over
+// JS IPC can't deal with a cross compartment wrapper.
+function loginToVanillaObject(login) {
+  let obj = {};
+  for (let i in SpecialPowers.do_QueryInterface(
+    login,
+    SpecialPowers.Ci.nsILoginMetaInfo
+  )) {
+    if (typeof login[i] !== "function") {
+      obj[i] = login[i];
+    }
+  }
+  return obj;
+}
+
 /**
  * Proxy for Services.logins (nsILoginManager).
  * Only supports arguments which support structured clone plus {nsILoginInfo}
@@ -1038,7 +1071,7 @@ SimpleTest.registerCleanupFunction(() => {
 this.LoginManager = new Proxy(
   {},
   {
-    get(target, prop, receiver) {
+    get(_target, prop, _receiver) {
       return (...args) => {
         let loginInfoIndices = [];
         let cloneableArgs = args.map((val, index) => {
@@ -1046,7 +1079,7 @@ this.LoginManager = new Proxy(
             SpecialPowers.call_Instanceof(val, SpecialPowers.Ci.nsILoginInfo)
           ) {
             loginInfoIndices.push(index);
-            return LoginHelper.loginToVanillaObject(val);
+            return loginToVanillaObject(val);
           }
 
           return val;
@@ -1061,3 +1094,85 @@ this.LoginManager = new Proxy(
     },
   }
 );
+
+/**
+ * Set the inner html of the content div and ensure it gets reset after current
+ * task finishes.
+ * Returns the first child node of the newly created content div for convenient
+ * access of the newly created dom node.
+ *
+ * @param {String} html
+ *        string of dom content or dom element to be inserted into content element
+ */
+function setContentForTask(html) {
+  const content = document.querySelector("#content");
+  const innerHTMLBefore = content.innerHTML || "";
+  SimpleTest.registerCurrentTaskCleanupFunction(
+    () => (content.innerHTML = innerHTMLBefore)
+  );
+  if (html.content?.cloneNode) {
+    const clone = html.content.cloneNode(true);
+    content.replaceChildren(clone);
+  } else {
+    content.innerHTML = html;
+  }
+  return content.firstElementChild;
+}
+
+/*
+ * Set preferences via SpecialPowers.pushPrefEnv and reset them after current
+ * task has finished.
+ *
+ * @param {*Object} preferences
+ * */
+async function setPreferencesForTask(...preferences) {
+  await SpecialPowers.pushPrefEnv({
+    set: preferences,
+  });
+  SimpleTest.registerCurrentTaskCleanupFunction(() => SpecialPowers.popPrefEnv);
+}
+
+// capture form autofill results between tasks
+let gPwmgrCommonCapturedAutofillResults = {};
+PWMGR_COMMON_PARENT.addMessageListener(
+  "formProcessed",
+  ({ formId, autofillResult }) => {
+    if (formId === "observerforcer") {
+      return;
+    }
+
+    gPwmgrCommonCapturedAutofillResults[formId] = autofillResult;
+  }
+);
+SimpleTest.registerTaskCleanupFunction(() => {
+  gPwmgrCommonCapturedAutofillResults = {};
+});
+
+/**
+ * Create a promise that resolves when the form has been processed.
+ * Works with forms processed in the past since the task started and in the future,
+ * across parent and child processes.
+ *
+ * @param {String} formId / the id of the form of which to expect formautofill events
+ * @returns promise, resolving with the autofill result.
+ */
+async function formAutofillResult(formId) {
+  if (formId in gPwmgrCommonCapturedAutofillResults) {
+    const autofillResult = gPwmgrCommonCapturedAutofillResults[formId];
+    delete gPwmgrCommonCapturedAutofillResults[formId];
+    return autofillResult;
+  }
+  return new Promise(resolve => {
+    PWMGR_COMMON_PARENT.addMessageListener(
+      "formProcessed",
+      ({ formId: id, autofillResult }) => {
+        if (id !== formId) {
+          return;
+        }
+        delete gPwmgrCommonCapturedAutofillResults[formId];
+        resolve(autofillResult);
+      },
+      { once: true }
+    );
+  });
+}

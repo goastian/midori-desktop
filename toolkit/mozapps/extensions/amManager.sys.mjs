@@ -67,7 +67,7 @@ export function amManager() {
 }
 
 amManager.prototype = {
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     switch (aTopic) {
       case "addons-startup":
         AddonManagerPrivate.startup();
@@ -129,7 +129,7 @@ amManager.prototype = {
 
       if (aCallback) {
         aInstall.addListener({
-          onDownloadCancelled(aInstall) {
+          onDownloadCancelled() {
             callCallback(USER_CANCELLED);
           },
 
@@ -141,11 +141,11 @@ amManager.prototype = {
             }
           },
 
-          onInstallFailed(aInstall) {
+          onInstallFailed() {
             callCallback(EXECUTION_ERROR);
           },
 
-          onInstallEnded(aInstall, aStatus) {
+          onInstallEnded() {
             callCallback(SUCCESS);
           },
         });
@@ -165,7 +165,7 @@ amManager.prototype = {
     return retval;
   },
 
-  notify(aTimer) {
+  notify() {
     AddonManagerPrivate.backgroundUpdateTimerHandler();
   },
 
@@ -326,8 +326,8 @@ amManager.prototype = {
   ]),
 };
 
-const BLOCKLIST_JSM = "resource://gre/modules/Blocklist.jsm";
-ChromeUtils.defineModuleGetter(lazy, "Blocklist", BLOCKLIST_JSM);
+const BLOCKLIST_SYS_MJS = "resource://gre/modules/Blocklist.sys.mjs";
+ChromeUtils.defineESModuleGetters(lazy, { Blocklist: BLOCKLIST_SYS_MJS });
 
 export function BlocklistService() {
   this.wrappedJSObject = this;
@@ -339,7 +339,7 @@ BlocklistService.prototype = {
   STATE_BLOCKED: Ci.nsIBlocklistService.STATE_BLOCKED,
 
   get isLoaded() {
-    return Cu.isModuleLoaded(BLOCKLIST_JSM) && lazy.Blocklist.isLoaded;
+    return Cu.isESModuleLoaded(BLOCKLIST_SYS_MJS) && lazy.Blocklist.isLoaded;
   },
 
   observe(...args) {

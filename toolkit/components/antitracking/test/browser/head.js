@@ -14,6 +14,7 @@ const TEST_DOMAIN_5 = "http://test/";
 const TEST_DOMAIN_6 = "http://mochi.test:8888/";
 const TEST_DOMAIN_7 = "http://example.com/";
 const TEST_DOMAIN_8 = "http://www.example.com/";
+const TEST_DOMAIN_9 = "https://example.org:443/";
 const TEST_3RD_PARTY_DOMAIN = "https://tracking.example.org/";
 const TEST_3RD_PARTY_DOMAIN_HTTP = "http://tracking.example.org/";
 const TEST_3RD_PARTY_DOMAIN_TP = "https://tracking.example.com/";
@@ -40,6 +41,7 @@ const TEST_TOP_PAGE_5 = TEST_DOMAIN_5 + TEST_PATH + "page.html";
 const TEST_TOP_PAGE_6 = TEST_DOMAIN_6 + TEST_PATH + "page.html";
 const TEST_TOP_PAGE_7 = TEST_DOMAIN_7 + TEST_PATH + "page.html";
 const TEST_TOP_PAGE_8 = TEST_DOMAIN_8 + TEST_PATH + "page.html";
+const TEST_TOP_PAGE_9 = TEST_DOMAIN_9 + TEST_PATH + "page.html";
 const TEST_EMBEDDER_PAGE = TEST_DOMAIN + TEST_PATH + "embedder.html";
 const TEST_POPUP_PAGE = TEST_DOMAIN + TEST_PATH + "popup.html";
 const TEST_IFRAME_PAGE = TEST_DOMAIN + TEST_PATH + "iframe.html";
@@ -55,6 +57,8 @@ const TEST_3RD_PARTY_PAGE_WITH_SVG =
 const TEST_3RD_PARTY_PAGE_RELAY =
   TEST_4TH_PARTY_DOMAIN + TEST_PATH + "3rdPartyRelay.html";
 const TEST_4TH_PARTY_PAGE = TEST_4TH_PARTY_DOMAIN + TEST_PATH + "3rdParty.html";
+const TEST_4TH_PARTY_PAGE_HTTPS =
+  TEST_4TH_PARTY_DOMAIN_HTTPS + TEST_PATH + "3rdParty.html";
 const TEST_ANOTHER_3RD_PARTY_PAGE =
   TEST_ANOTHER_3RD_PARTY_DOMAIN + TEST_PATH + "3rdParty.html";
 const TEST_ANOTHER_3RD_PARTY_PAGE_HTTPS =
@@ -71,7 +75,8 @@ const TEST_4TH_PARTY_STORAGE_PAGE_HTTPS =
   TEST_4TH_PARTY_DOMAIN_HTTPS + TEST_PATH + "3rdPartyStorage.html";
 const TEST_4TH_PARTY_PARTITIONED_PAGE =
   TEST_4TH_PARTY_DOMAIN + TEST_PATH + "3rdPartyPartitioned.html";
-
+const TEST_4TH_PARTY_PARTITIONED_PAGE_HTTPS =
+  TEST_4TH_PARTY_DOMAIN_HTTPS + TEST_PATH + "3rdPartyPartitioned.html";
 const BEHAVIOR_ACCEPT = Ci.nsICookieService.BEHAVIOR_ACCEPT;
 const BEHAVIOR_REJECT = Ci.nsICookieService.BEHAVIOR_REJECT;
 const BEHAVIOR_LIMIT_FOREIGN = Ci.nsICookieService.BEHAVIOR_LIMIT_FOREIGN;

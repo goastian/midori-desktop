@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<html>
+  <head>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src chrome:; style-src chrome:; object-src 'none'"
+    />
+    <meta charset="utf-8" />
+    <title id="page-title" data-l10n-id="about-webauthn-page-title"></title>
+    <link rel="stylesheet" href="chrome://global/content/aboutWebauthn.css" />
+    <script src="chrome://global/content/aboutWebauthn.js"></script>
+    <link rel="localization" href="toolkit/about/aboutWebauthn.ftl" />
+  </head>
+
+  <body id="body">
+    <div id="categories" role="tablist" aria-labelledby="page-title">
+      <div
+        id="info-tab-button"
+        class="category"
+        selected="true"
+        role="tab"
+        tabindex="0"
+        aria-selected="true"
+        aria-controls="token-info-section"
+      >
+        <span
+          class="tablinks"
+          data-l10n-id="about-webauthn-info-section-title"
+        ></span>
+      </div>
+      <div
+        id="pin-tab-button"
+        class="category optional-category"
+        role="tab"
+        tabindex="-1"
+        aria-selected="false"
+        aria-controls="set-change-pin-section"
+      >
+        <span
+          class="tablinks"
+          data-l10n-id="about-webauthn-pin-section-title"
+        ></span>
+      </div>
+      <div
+        id="credentials-tab-button"
+        class="category optional-category"
+        role="tab"
+        tabindex="-1"
+        aria-selected="false"
+        aria-controls="credential-management-section"
+      >
+        <span
+          class="tablinks"
+          data-l10n-id="about-webauthn-credential-management-section-title"
+        ></span>
+      </div>
+      <div
+        id="bio-enrollments-tab-button"
+        class="category optional-category"
+        role="tab"
+        tabindex="-1"
+        aria-selected="false"
+        aria-controls="bio-enrollment-section"
+      >
+        <span
+          class="tablinks"
+          data-l10n-id="about-webauthn-bio-enrollment-section-title"
+        ></span>
+      </div>
+    </div>
+
+    <div id="main-content">
+      <div id="ctap-listen-div">
+        <label id="ctap-listen-result"></label>
+      </div>
+
+      <div
+        class="tabcontent token-info-section"
+        id="token-info-section"
+        role="tabpanel"
+        aria-labelledby="info-tab-button"
+      >
+        <h2
+          class="categoryTitle"
+          data-l10n-id="about-webauthn-info-section-title"
+        ></h2>
+
+        <div id="info-text-div">
+          <label
+            id="info-text-field"
+            data-l10n-id="about-webauthn-text-connect-device"
+          ></label>
+        </div>
+
+        <div id="ctap2-token-info" class="token-info-flex-box" display="none">
+          <div id="ctap2-token-info-options" class="token-info-flex-child">
+            <h3 data-l10n-id="about-webauthn-options-subsection-title"></h3>
+            <table id="authenticator-options"></table>
+          </div>
+          <div id="ctap2-token-info-info" class="token-info-flex-child">
+            <h3 data-l10n-id="about-webauthn-info-subsection-title"></h3>
+            <table id="authenticator-info"></table>
+          </div>
+        </div>
+      </div>
+
+      <div
+        hidden
+        class="tabcontent pin-section"
+        id="set-change-pin-section"
+        role="tabpanel"
+        aria-labelledby="pin-tab-button"
+      >
+        <h2
+          class="categoryTitle"
+          data-l10n-id="about-webauthn-pin-section-title"
+        ></h2>
+        <div id="new-pin-div">
+          <label
+            for="new-pin"
+            data-l10n-id="about-webauthn-new-pin-label"
+          ></label>
+          <input type="password" id="new-pin" name="new-pin" required />
+          <label
+            for="new-pin-repeat"
+            data-l10n-id="about-webauthn-repeat-pin-label"
+          ></label>
+          <input
+            type="password"
+            id="new-pin-repeat"
+            name="new-pin-repeat"
+            required
+          />
+        </div>
+        <div id="current-pin-div">
+          <label
+            for="current-pin"
+            data-l10n-id="about-webauthn-current-pin-label"
+          ></label>
+          <input type="password" id="current-pin" name="current-pin" required />
+        </div>
+        <button
+          disabled
+          id="set-pin-button"
+          data-l10n-id="about-webauthn-current-set-pin-button"
+        ></button>
+        <button
+          disabled
+          id="change-pin-button"
+          data-l10n-id="about-webauthn-current-change-pin-button"
+        ></button>
+        <label id="set-change-pin-result" class="ctap-result"></label>
+      </div>
+
+      <div
+        hidden
+        class="tabcontent credential-management-section"
+        id="credential-management-section"
+        role="tabpanel"
+        aria-labelledby="credentials-tab-button"
+      >
+        <h2
+          class="categoryTitle"
+          data-l10n-id="about-webauthn-credential-management-section-title"
+        ></h2>
+        <div
+          hidden
+          id="credential-list-subsection"
+          class="token-info-flex-child"
+        >
+          <h3
+            data-l10n-id="about-webauthn-credential-list-subsection-title"
+          ></h3>
+          <div hidden id="credential-list-empty-label">
+            <label
+              hidden
+              data-l10n-id="about-webauthn-credential-list-empty"
+            ></label>
+          </div>
+          <table id="credential-list"></table>
+        </div>
+        <button
+          class="credentials-button"
+          id="list-credentials-button"
+          data-l10n-id="about-webauthn-list-credentials-button"
+        ></button>
+      </div>
+
+      <div
+        hidden
+        class="tabcontent bio-enrollment-section"
+        id="bio-enrollment-section"
+        role="tabpanel"
+        aria-labelledby="bio-enrollments-tab-button"
+      >
+        <h2
+          class="categoryTitle"
+          data-l10n-id="about-webauthn-bio-enrollment-section-title"
+        ></h2>
+        <div
+          hidden
+          id="bio-enrollment-list-subsection"
+          class="token-info-flex-child"
+        >
+          <h3
+            data-l10n-id="about-webauthn-bio-enrollment-list-subsection-title"
+          ></h3>
+          <div hidden id="bio-enrollment-list-empty-label">
+            <label
+              hidden
+              data-l10n-id="about-webauthn-enrollment-list-empty"
+            ></label>
+          </div>
+          <table id="bio-enrollment-list"></table>
+        </div>
+        <button
+          class="bio-enrollment-button button-row"
+          id="list-bio-enrollments-button"
+          data-l10n-id="about-webauthn-list-bio-enrollments-button"
+        ></button>
+        <button
+          class="bio-enrollment-button button-row"
+          id="add-bio-enrollment-button"
+          data-l10n-id="about-webauthn-add-bio-enrollment-button"
+        ></button>
+      </div>
+      <div
+        hidden
+        class="tabcontent add-bio-enrollment-section"
+        id="add-bio-enrollment-section"
+      >
+        <h2
+          class="categoryTitle"
+          data-l10n-id="about-webauthn-add-bio-enrollment-section-title"
+        ></h2>
+        <label
+          for="enrollment-name"
+          data-l10n-id="about-webauthn-enrollment-name-label"
+        ></label>
+        <input id="enrollment-name" name="enrollment-name" autofocus />
+        <button
+          class="bio-enrollment-button button-row"
+          id="start-enrollment-button"
+          data-l10n-id="about-webauthn-start-enrollment-button"
+        ></button>
+        <button
+          id="cancel-enrollment-button"
+          class="button-row"
+          data-l10n-id="about-webauthn-cancel-button"
+        ></button>
+        <div id="enrollment-update"></div>
+      </div>
+
+      <div
+        hidden
+        class="tabcontent pin-required-section"
+        id="pin-required-section"
+      >
+        <h2
+          class="categoryTitle"
+          data-l10n-id="about-webauthn-pin-required-section-title"
+        ></h2>
+        <div id="pin-div">
+          <label
+            for="pin-required"
+            data-l10n-id="about-webauthn-pin-required-label"
+          ></label>
+          <input
+            type="password"
+            id="pin-required"
+            name="pin-required"
+            required
+            autofocus
+          />
+        </div>
+        <button
+          id="send-pin-button"
+          class="button-row"
+          data-l10n-id="about-webauthn-send-pin-button"
+        ></button>
+        <button
+          id="cancel-send-pin-button"
+          class="button-row"
+          data-l10n-id="about-webauthn-cancel-button"
+        ></button>
+      </div>
+
+      <div
+        hidden
+        class="tabcontent confirm-deletion-section"
+        id="confirm-deletion-section"
+      >
+        <h2
+          class="categoryTitle"
+          data-l10n-id="about-webauthn-confirm-deletion-section-title"
+        ></h2>
+        <div id="confirmation-div">
+          <label
+            for="confirmation-context"
+            data-l10n-id="about-webauthn-confirm-deletion-label"
+          ></label>
+          <label id="confirmation-context"></label>
+        </div>
+        <button
+          id="confirm-deletion-button"
+          class="button-row"
+          data-l10n-id="about-webauthn-delete-button"
+        ></button>
+        <button
+          id="cancel-confirmation-button"
+          class="button-row"
+          data-l10n-id="about-webauthn-cancel-button"
+        ></button>
+      </div>
+    </div>
+  </body>
+</html>

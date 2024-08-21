@@ -21,11 +21,11 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIStorageActivityService"
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "gClassifierFeature", () => {
+ChromeUtils.defineLazyGetter(lazy, "gClassifierFeature", () => {
   return lazy.gClassifier.getFeatureByName("tracking-annotation");
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () => {
+ChromeUtils.defineLazyGetter(lazy, "logger", () => {
   return console.createInstance({
     prefix: "*** PurgeTrackerService:",
     maxLogLevelPref: "privacy.purge_trackers.logging.level",
@@ -52,7 +52,7 @@ PurgeTrackerService.prototype = {
   // protection list, so we cache the result for faster future lookups.
   _trackingState: new Map(),
 
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     switch (aTopic) {
       case "idle-daily":
         // only allow one idle-daily listener to trigger until the list has been fully parsed.
@@ -210,7 +210,8 @@ PurgeTrackerService.prototype = {
           Ci.nsIClearDataService.CLEAR_MEDIA_DEVICES |
           Ci.nsIClearDataService.CLEAR_STORAGE_ACCESS |
           Ci.nsIClearDataService.CLEAR_AUTH_TOKENS |
-          Ci.nsIClearDataService.CLEAR_AUTH_CACHE,
+          Ci.nsIClearDataService.CLEAR_AUTH_CACHE |
+          Ci.nsIClearDataService.CLEAR_COOKIE_BANNER_EXECUTED_RECORD,
         resolve
       );
     });
@@ -268,6 +269,38 @@ PurgeTrackerService.prototype = {
     durationHistogram.add(duration);
   },
 
+  /*
+   * Checks Cookie Permission a given 2 principals
+   * if either prinicpial cookie permissions are to prevent purging
+   * the function would return true
+   */
+  checkCookiePermissions(httpsPrincipal, httpPrincipal) {
+    let httpsCookiePermission;
+    let httpCookiePermission;
+
+    if (httpPrincipal) {
+      httpCookiePermission = Services.perms.testPermissionFromPrincipal(
+        httpPrincipal,
+        "cookie"
+      );
+    }
+
+    if (httpsPrincipal) {
+      httpsCookiePermission = Services.perms.testPermissionFromPrincipal(
+        httpsPrincipal,
+        "cookie"
+      );
+    }
+
+    if (
+      httpCookiePermission == Ci.nsICookiePermission.ACCESS_ALLOW ||
+      httpsCookiePermission == Ci.nsICookiePermission.ACCESS_ALLOW
+    ) {
+      return true;
+    }
+
+    return false;
+  },
   /**
    * This loops through all cookies saved in the database and checks if they are a tracking cookie, if it is it checks
    * that they have an interaction permission which is still valid. If the Permission is not valid we delete all data
@@ -400,9 +433,6 @@ PurgeTrackerService.prototype = {
           `Creating principal from origin ${origin} led to error ${e}.`
         );
       }
-      if (httpPrincipal) {
-        maybeClearPrincipals.set(httpPrincipal.origin, httpPrincipal);
-      }
 
       origin =
         "https://" +
@@ -418,7 +448,18 @@ PurgeTrackerService.prototype = {
           `Creating principal from origin ${origin} led to error ${e}.`
         );
       }
-      if (httpsPrincipal) {
+
+      // Checking to see if the Cookie Permissions is set to prevent Cookie from
+      // purging for either the HTTPS or HTTP conncetions
+      let purgeCheck = this.checkCookiePermissions(
+        httpsPrincipal,
+        httpPrincipal
+      );
+
+      if (httpPrincipal && !purgeCheck) {
+        maybeClearPrincipals.set(httpPrincipal.origin, httpPrincipal);
+      }
+      if (httpsPrincipal && !purgeCheck) {
         maybeClearPrincipals.set(httpsPrincipal.origin, httpsPrincipal);
       }
 
@@ -435,7 +476,36 @@ PurgeTrackerService.prototype = {
       );
 
       for (let principal of storagePrincipals.enumerate()) {
-        maybeClearPrincipals.set(principal.origin, principal);
+        // Check Principal Domains Cookie Permissions for both Schemes
+        // To ensure it does not bypass the cookie permissions set by the user
+        if (principal.schemeIs("https") || principal.schemeIs("http")) {
+          let otherURI;
+          let otherPrincipal;
+
+          if (principal.schemeIs("https")) {
+            otherURI = principal.URI.mutate().setScheme("http").finalize();
+          } else if (principal.schemeIs("http")) {
+            otherURI = principal.URI.mutate().setScheme("https").finalize();
+          }
+
+          try {
+            otherPrincipal =
+              Services.scriptSecurityManager.createContentPrincipal(
+                otherURI,
+                {}
+              );
+          } catch (e) {
+            lazy.logger.error(
+              `Creating principal from URI ${otherURI} led to error ${e}.`
+            );
+          }
+
+          if (!this.checkCookiePermissions(principal, otherPrincipal)) {
+            maybeClearPrincipals.set(principal.origin, principal);
+          }
+        } else {
+          maybeClearPrincipals.set(principal.origin, principal);
+        }
       }
     }
 

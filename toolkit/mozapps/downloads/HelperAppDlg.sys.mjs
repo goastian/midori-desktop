@@ -72,33 +72,19 @@ nsUnknownContentTypeDialogProgressListener.prototype = {
   },
 
   // Ignore onProgressChange, onProgressChange64, onStateChange, onLocationChange, onSecurityChange, onContentBlockingEvent and onRefreshAttempted notifications.
-  onProgressChange(
-    aWebProgress,
-    aRequest,
-    aCurSelfProgress,
-    aMaxSelfProgress,
-    aCurTotalProgress,
-    aMaxTotalProgress
-  ) {},
+  onProgressChange() {},
 
-  onProgressChange64(
-    aWebProgress,
-    aRequest,
-    aCurSelfProgress,
-    aMaxSelfProgress,
-    aCurTotalProgress,
-    aMaxTotalProgress
-  ) {},
+  onProgressChange64() {},
 
-  onStateChange(aWebProgress, aRequest, aStateFlags, aStatus) {},
+  onStateChange() {},
 
-  onLocationChange(aWebProgress, aRequest, aLocation, aFlags) {},
+  onLocationChange() {},
 
-  onSecurityChange(aWebProgress, aRequest, aState) {},
+  onSecurityChange() {},
 
-  onContentBlockingEvent(aWebProgress, aRequest, aEvent) {},
+  onContentBlockingEvent() {},
 
-  onRefreshAttempted(aWebProgress, aURI, aDelay, aSameURI) {
+  onRefreshAttempted() {
     return true;
   },
 };
@@ -163,8 +149,8 @@ nsUnknownContentTypeDialog.prototype = {
       this._mDownloadDir = new downloadModule.DownloadLastDir(parent);
     } catch (ex) {
       console.error(
-        "Missing window information when showing nsIHelperAppLauncherDialog: " +
-          ex
+        "Missing window information when showing nsIHelperAppLauncherDialog:",
+        ex
       );
     }
 
@@ -309,7 +295,7 @@ nsUnknownContentTypeDialog.prototype = {
       var picker =
         Cc["@mozilla.org/filepicker;1"].createInstance(nsIFilePicker);
       var windowTitle = bundle.GetStringFromName("saveDialogTitle");
-      picker.init(parent, windowTitle, nsIFilePicker.modeSave);
+      picker.init(parent.browsingContext, windowTitle, nsIFilePicker.modeSave);
       if (aDefaultFileName) {
         picker.defaultString = this.getFinalLeafName(aDefaultFileName);
       }
@@ -1270,7 +1256,7 @@ nsUnknownContentTypeDialog.prototype = {
       var nsIFilePicker = Ci.nsIFilePicker;
       var fp = Cc["@mozilla.org/filepicker;1"].createInstance(nsIFilePicker);
       fp.init(
-        this.mDialog,
+        this.mDialog.browsingContext,
         this.dialogElement("strings").getString("chooseAppFilePickerTitle"),
         nsIFilePicker.modeOpen
       );

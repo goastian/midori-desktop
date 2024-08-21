@@ -12,10 +12,8 @@
 SimpleTest.requestFlakyTimeout("Testing that a message doesn't arrive");
 
 let loadPromise = new Promise(resolve => {
-  document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("loginFrame").addEventListener("load", (evt) => {
-      resolve();
-    });
+  document.addEventListener("DOMContentLoaded", _event => {
+    document.getElementById("loginFrame").addEventListener("load", _e => resolve());
   });
 });
 
@@ -97,15 +95,12 @@ async function testFormlesSubmitNavigationNegative(tc, scriptName) {
   }
 
   let loadedPromise = new Promise((resolve) => {
-    loginFrame.addEventListener("load", function() {
-      resolve();
-    }, {once: true});
+    loginFrame.addEventListener("load", _e => resolve(), {once: true});
   });
   loginFrame.src = DEFAULT_ORIGIN + "/tests/toolkit/components/passwordmgr/test/mochitest/blank.html";
   await loadedPromise;
 
   let frameDoc = SpecialPowers.wrap(loginFrame.contentWindow).document;
-  // eslint-disable-next-line no-unsanitized/property
   frameDoc.documentElement.innerHTML = tc.document;
   // We eliminate no user input as a reason for not capturing by modifying the value
   setUserInputValues(frameDoc.documentElement, tc.selectorValues);

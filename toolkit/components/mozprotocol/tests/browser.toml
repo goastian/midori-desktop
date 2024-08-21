@@ -1,0 +1,4 @@
+[DEFAULT]
+
+["browser_mozprotocol.js"]
+support-files = ["mozprotocol.html"]

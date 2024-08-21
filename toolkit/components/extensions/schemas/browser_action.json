@@ -1,7 +1,3 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
-
 [
   {
     "namespace": "manifest",
@@ -185,6 +181,32 @@
               {
                 "name": "result",
                 "type": "string"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "getUserSettings",
+        "type": "function",
+        "description": "Returns the user-specified settings relating to an extension's action.",
+        "async": "callback",
+        "parameters": [
+          {
+            "type": "function",
+            "name": "callback",
+            "parameters": [
+              {
+                "name": "userSettings",
+                "type": "object",
+                "properties": {
+                  "isOnToolbar": {
+                    "type": "boolean",
+                    "optional": true,
+                    "description": "Whether the extension's action icon is visible on browser windows' top-level toolbar (i.e., whether the extension has been 'pinned' by the user)."
+                  }
+                },
+                "description": "The collection of user-specified settings relating to an extension's action."
               }
             ]
           }

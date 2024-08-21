@@ -35,7 +35,6 @@ const backgroundtaskPhases = {
         "resource://gre/modules/Console.sys.mjs",
         "resource://gre/modules/EnterprisePolicies.sys.mjs",
         "resource://gre/modules/EnterprisePoliciesParent.sys.mjs",
-        "resource://gre/modules/PromiseUtils.sys.mjs",
         "resource://gre/modules/XPCOMUtils.sys.mjs",
         "resource://gre/modules/nsAsyncShutdown.sys.mjs",
       ],
@@ -118,7 +117,9 @@ const backgroundtaskPhases = {
   },
   AfterAwaitRunBackgroundTask: {
     allowlist: {
-      modules: [],
+      modules: [
+        "resource://devtools/shared/security/DevToolsSocketStatus.sys.mjs",
+      ],
       services: [],
     },
   },

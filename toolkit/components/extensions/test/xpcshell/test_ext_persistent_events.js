@@ -41,7 +41,7 @@ const API = class extends ExtensionAPI {
 
     const FIRE_TOPIC = `fire-${namespace}.${event}`;
 
-    async function listener(subject, topic, data) {
+    async function listener(subject) {
       try {
         if (subject.wrappedJSObject.waitForBackground) {
           await fire.wakeup();
@@ -75,6 +75,41 @@ const API = class extends ExtensionAPI {
   getAPI(context) {
     let self = this;
     let { namespace } = this.constructor;
+
+    // TODO: split into their own test tasks the expected value to be set on
+    // EventManager resetIdleOnEvent in the following cases:
+    // - an EventManager instance in the parent process
+    //   - for an event page
+    //   - for a persistent background page
+    //   - for an extension context that isn't a background context
+    // - an EventManager instance in the child process
+    //   (for the same 3 kinds of contexts)
+    const EventManagerWithAssertions = class extends EventManager {
+      constructor(...args) {
+        super(...args);
+        this.assertResetOnIdleOnEvent();
+      }
+
+      assertResetOnIdleOnEvent() {
+        const expectResetIdleOnEventFalse =
+          this.context.extension.persistentBackground;
+        if (expectResetIdleOnEventFalse && this.resetIdleOnEvent) {
+          const details = {
+            eventManagerName: this.name,
+            resetIdleOnEvent: this.resetIdleOnEvent,
+            envType: this.context.envType,
+            viewType: this.context.viewType,
+            isBackgroundContext: this.context.isBackgroundContext,
+            persistentBackground: this.context.extension.persistentBackground,
+          };
+          throw new Error(
+            `EventManagerWithAssertions: resetIdleOnEvent should be forcefully set to false - ${JSON.stringify(
+              details
+            )}`
+          );
+        }
+      }
+    };
     return {
       [namespace]: {
         testOptions(options) {
@@ -84,7 +119,7 @@ const API = class extends ExtensionAPI {
           // eslint-disable-next-line no-undef
           self.constructor.testOptions = options;
         },
-        onEvent1: new EventManager({
+        onEvent1: new EventManagerWithAssertions({
           context,
           module: namespace,
           event: "onEvent1",
@@ -97,7 +132,7 @@ const API = class extends ExtensionAPI {
           },
         }).api(),
 
-        onEvent2: new EventManager({
+        onEvent2: new EventManagerWithAssertions({
           context,
           module: namespace,
           event: "onEvent2",
@@ -110,7 +145,7 @@ const API = class extends ExtensionAPI {
           },
         }).api(),
 
-        onEvent3: new EventManager({
+        onEvent3: new EventManagerWithAssertions({
           context,
           module: namespace,
           event: "onEvent3",
@@ -123,7 +158,7 @@ const API = class extends ExtensionAPI {
           },
         }).api(),
 
-        nonBlockingEvent: new EventManager({
+        nonBlockingEvent: new EventManagerWithAssertions({
           context,
           module: namespace,
           event: "nonBlockingEvent",
@@ -222,7 +257,7 @@ const global = this;
 async function promiseObservable(topic, count, fn = null) {
   let _countResolve;
   let results = [];
-  function listener(subject, _topic, data) {
+  function listener(subject, _topic) {
     const eventDetails = subject.wrappedJSObject;
     results.push(eventDetails);
     if (results.length > count) {
@@ -660,6 +695,11 @@ add_task(async function test_shutdown_before_background_loaded() {
     "fire.async after background load failure should be rejected"
   );
 
+  info(
+    "Expect fire.wakeup call after load failure to restart the background page"
+  );
+  await extension.awaitMessage("bg_started");
+
   await AddonTestUtils.promiseShutdownManager();
 
   // End of the abnormal shutdown test. Now restart the extension to verify
@@ -865,7 +905,16 @@ add_task(
       promiseObservable("unregister-primed-listener", 2),
       promiseObservable("prime-event-listener", 2),
     ]);
-    await extension.terminateBackground();
+    await extension.terminateBackground({
+      // Calls to `extension.terminateBackground` may not always terminate the background context
+      // (e.g. when `pendingRunListenerPromisesCount` is non-zero). This could happen when `testAfterRestart`
+      // receives the messages from the background script before the child confirmed the completion
+      // of the event dispatched to the parent.
+      //
+      // When `terminateBackground` is ignored, the event page would terminate at the next scheduled
+      // idle check, which defaults to 30 seconds and can cause test timeouts.
+      disableResetIdleForTest: true,
+    });
     await registrationEvents;
     await testAfterRestart();
 
@@ -873,6 +922,174 @@ add_task(
     await AddonTestUtils.promiseShutdownManager();
   }
 );
+
+add_task(async function test_eventPage_asyncUnregistered_persistentListeners() {
+  let extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "permanent",
+    manifest: {
+      browser_specific_settings: {
+        gecko: { id: "eventpage-sync-removed-listeners@test" },
+      },
+      background: { persistent: false },
+    },
+    background() {
+      let listeners = {
+        startupBlocking: arg =>
+          browser.test.sendMessage("triggered-startupBlocking", arg),
+        nonStartupBlocking: arg =>
+          browser.test.sendMessage("triggered-nonStartupBlocking", arg),
+      };
+
+      browser.startupBlocking.onEvent1.addListener(listeners.startupBlocking);
+      browser.nonStartupBlocking.onEvent1.addListener(
+        listeners.nonStartupBlocking
+      );
+
+      if (localStorage.getItem("sync-unregister-listeners")) {
+        browser.test.log("Removing listeners synchronously");
+        browser.startupBlocking.onEvent1.removeListener(
+          listeners.startupBlocking
+        );
+        browser.nonStartupBlocking.onEvent1.removeListener(
+          listeners.nonStartupBlocking
+        );
+      }
+
+      browser.test.onMessage.addListener((msg, ...args) => {
+        switch (msg) {
+          case "async-unregister-listener": {
+            const apiNs = args[0];
+            browser[apiNs].onEvent1.removeListener(listeners[apiNs]);
+            break;
+          }
+          case "sync-unregister-listeners-next": {
+            localStorage.setItem("sync-unregister-listeners", true);
+            break;
+          }
+          default:
+            browser.test.fail(`Got unexpected test message: ${msg}`);
+        }
+        browser.test.sendMessage(`${msg}:done`);
+      });
+      browser.test.sendMessage("bg_started");
+    },
+  });
+
+  async function unregisterListeners() {
+    info("Unregister startupBlocking listener");
+    extension.sendMessage("async-unregister-listener", "startupBlocking");
+    await extension.awaitMessage("async-unregister-listener:done");
+    info("Unregister nonStartupBlocking listener");
+    extension.sendMessage("async-unregister-listener", "nonStartupBlocking");
+    await extension.awaitMessage("async-unregister-listener:done");
+    assertPersistentListeners(extension, "nonStartupBlocking", "onEvent1", {
+      primed: false,
+      persisted: true,
+    });
+    assertPersistentListeners(extension, "startupBlocking", "onEvent1", {
+      primed: false,
+      persisted: true,
+    });
+  }
+
+  await AddonTestUtils.promiseStartupManager();
+
+  await Promise.all([
+    promiseObservable("register-event-listener", 2),
+    extension.startup(),
+  ]);
+  await extension.awaitMessage("bg_started");
+
+  info(
+    "Verify new persistent listeners are still persisted if removed asynchronously"
+  );
+  await unregisterListeners();
+
+  info("Verify that unregistered persistent listeners are primed as expected");
+  await Promise.all([
+    promiseObservable("prime-event-listener", 2),
+    extension.terminateBackground(),
+  ]);
+  assertPersistentListeners(extension, "nonStartupBlocking", "onEvent1", {
+    primed: true,
+  });
+  assertPersistentListeners(extension, "startupBlocking", "onEvent1", {
+    primed: true,
+  });
+
+  info("Verify listeners are primed after AOM restart");
+  await Promise.all([
+    new Promise(resolve => extension.extension.once("shutdown", resolve)),
+    AddonTestUtils.promiseShutdownManager(),
+  ]);
+  await AddonTestUtils.promiseStartupManager({ lateStartup: false });
+  await extension.awaitStartup();
+
+  assertPersistentListeners(extension, "nonStartupBlocking", "onEvent1", {
+    primed: false,
+    persisted: true,
+  });
+  assertPersistentListeners(extension, "startupBlocking", "onEvent1", {
+    primed: true,
+  });
+
+  let converted = promiseObservable(
+    "convert-event-listener",
+    // Only startupBlocking is primed and expected to be converted.
+    1
+  );
+  Services.obs.notifyObservers(
+    { listenerArgs: "eventReceivedData" },
+    "fire-startupBlocking.onEvent1"
+  );
+  await extension.awaitMessage("bg_started");
+  await converted;
+  equal(
+    await extension.awaitMessage("triggered-startupBlocking"),
+    "eventReceivedData",
+    "triggered startupBlocking listener"
+  );
+
+  info(
+    "Verify existing persisted listeners are still persisted when removed asynchronously"
+  );
+  // Sanity check
+  assertPersistentListeners(extension, "nonStartupBlocking", "onEvent1", {
+    primed: false,
+    persisted: true,
+  });
+  assertPersistentListeners(extension, "startupBlocking", "onEvent1", {
+    primed: false,
+    persisted: true,
+  });
+
+  await unregisterListeners();
+
+  info(
+    "Prepare test extension to synchronously unregister the primed listeners on next event page startup"
+  );
+  extension.sendMessage("sync-unregister-listeners-next");
+  await extension.awaitMessage("sync-unregister-listeners-next:done");
+  await extension.terminateBackground();
+  Services.obs.notifyObservers(
+    { listenerArgs: "eventReceivedData" },
+    "fire-nonStartupBlocking.onEvent1"
+  );
+  await extension.awaitMessage("bg_started");
+
+  info(
+    "Verify listeners are still persisted after being removed synchronously"
+  );
+  assertPersistentListeners(extension, "nonStartupBlocking", "onEvent1", {
+    persisted: true,
+  });
+  assertPersistentListeners(extension, "startupBlocking", "onEvent1", {
+    persisted: true,
+  });
+
+  await extension.unload();
+  await AddonTestUtils.promiseShutdownManager();
+});
 
 // This test verifies primeListener behavior for errors or ignored listeners.
 add_task(async function test_background_primeListener_errors() {
@@ -1412,9 +1629,9 @@ add_task(async function test_migrate_startupData_to_new_format() {
   };
 
   function getXPIStatesFilePath() {
-    let { path } = ChromeUtils.import(
-      "resource://gre/modules/addons/XPIProvider.jsm"
-    ).XPIInternal.XPIStates._jsonFile;
+    let { path } = ChromeUtils.importESModule(
+      "resource://gre/modules/addons/XPIExports.sys.mjs"
+    ).XPIExports.XPIInternal.XPIStates._jsonFile;
     ok(
       typeof path === "string" && !!path.length,
       `Found XPIStates file path: ${path}`
@@ -1437,11 +1654,11 @@ add_task(async function test_migrate_startupData_to_new_format() {
     // format we expect from older Firefox versions).
     testExtensionWrapper.extension.saveStartupData();
     await AddonTestUtils.loadAddonsList(/* flush */ true);
-    const { XPIInternal } = ChromeUtils.import(
-      "resource://gre/modules/addons/XPIProvider.jsm"
+    const { XPIExports } = ChromeUtils.importESModule(
+      "resource://gre/modules/addons/XPIExports.sys.mjs"
     );
-    XPIInternal.XPIStates.save();
-    await XPIInternal.XPIStates._jsonFile._save();
+    XPIExports.XPIInternal.XPIStates.save();
+    await XPIExports.XPIInternal.XPIStates._jsonFile._save();
     return getXPIStatesFilePath();
   }
 
@@ -1634,3 +1851,45 @@ add_task(async function test_migrate_startupData_to_new_format() {
     "Expect the listener params key to be found in older Firefox versions"
   );
 });
+
+add_task(
+  { pref_set: [["extensions.eventPages.enabled", true]] },
+  async function test_resetOnIdleOnEvent_false_on_other_extpages() {
+    await AddonTestUtils.promiseStartupManager();
+
+    const extension = ExtensionTestUtils.loadExtension({
+      useAddonManager: "temporary",
+      files: {
+        "extpage.html": `<!DOCTYPE html><script src="extpage.js"></script>`,
+        "extpage.js": function () {
+          // We expect this to throw if the EventManagerWithAssertions constructor
+          // throws when asserting that resetIdleOnEvent was forcefully set to
+          // false for a non-event page context.
+          browser.nonStartupBlocking.onEvent2.addListener(() => {});
+          browser.test.sendMessage("extpage:loaded");
+        },
+      },
+    });
+
+    await extension.startup();
+
+    const awaitRegisteredEventListener = promiseObservable(
+      "register-event-listener",
+      1
+    );
+    const page = await ExtensionTestUtils.loadContentPage(
+      `moz-extension://${extension.uuid}/extpage.html`
+    );
+
+    info("Wait for the extension page script to complete");
+
+    await Promise.all([
+      extension.awaitMessage("extpage:loaded"),
+      awaitRegisteredEventListener,
+    ]);
+    await page.close();
+
+    await extension.unload();
+    await AddonTestUtils.promiseShutdownManager();
+  }
+);

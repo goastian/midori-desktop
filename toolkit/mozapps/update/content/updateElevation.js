@@ -30,7 +30,7 @@ const gUpdateElevationDialog = {
     button.label = label;
     button.setAttribute("accesskey", this.getAUSString(string + ".accesskey"));
   },
-  onLoad() {
+  async onLoad() {
     this.strings = document.getElementById("updateStrings");
     this.brandName = document
       .getElementById("brandStrings")
@@ -39,7 +39,7 @@ const gUpdateElevationDialog = {
     let um = Cc["@mozilla.org/updates/update-manager;1"].getService(
       Ci.nsIUpdateManager
     );
-    let update = um.readyUpdate;
+    let update = await um.getReadyUpdate();
     let updateFinishedName = document.getElementById("updateFinishedName");
     updateFinishedName.value = update.name;
 
@@ -71,12 +71,12 @@ const gUpdateElevationDialog = {
   onRestartLater() {
     window.close();
   },
-  onNoThanks() {
+  async onNoThanks() {
     Services.obs.notifyObservers(null, "update-canceled");
     let um = Cc["@mozilla.org/updates/update-manager;1"].getService(
       Ci.nsIUpdateManager
     );
-    let update = um.readyUpdate;
+    let update = await um.getReadyUpdate();
     um.cleanupReadyUpdate();
     // Since the user has clicked "No Thanks", we should not prompt them to update to
     // this version again unless they manually select "Check for Updates..."

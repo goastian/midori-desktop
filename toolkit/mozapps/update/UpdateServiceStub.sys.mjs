@@ -3,33 +3,47 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
+import { FileUtils } from "resource://gre/modules/FileUtils.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-import { FileUtils } from "resource://gre/modules/FileUtils.sys.mjs";
-import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
+const lazy = {};
+
+ChromeUtils.defineESModuleGetters(lazy, {
+  UpdateLog: "resource://gre/modules/UpdateLog.sys.mjs",
+});
+
+if (AppConstants.ENABLE_WEBDRIVER) {
+  XPCOMUtils.defineLazyServiceGetter(
+    lazy,
+    "Marionette",
+    "@mozilla.org/remote/marionette;1",
+    "nsIMarionette"
+  );
+
+  XPCOMUtils.defineLazyServiceGetter(
+    lazy,
+    "RemoteAgent",
+    "@mozilla.org/remote/agent;1",
+    "nsIRemoteAgent"
+  );
+} else {
+  lazy.Marionette = { running: false };
+  lazy.RemoteAgent = { running: false };
+}
 
 const DIR_UPDATES = "updates";
 const FILE_UPDATE_STATUS = "update.status";
-const FILE_UPDATE_MESSAGES = "update_messages.log";
-const FILE_BACKUP_MESSAGES = "update_messages_old.log";
 
 const KEY_UPDROOT = "UpdRootD";
 const KEY_OLD_UPDROOT = "OldUpdRootD";
-const KEY_PROFILE_DIR = "ProfD";
 
 // The pref prefix below should have the hash of the install path appended to
 // ensure that this is a per-installation pref (i.e. to ensure that migration
 // happens for every install rather than once per profile)
 const PREF_PREFIX_UPDATE_DIR_MIGRATED = "app.update.migrated.updateDir3.";
 const PREF_APP_UPDATE_ALTUPDATEDIRPATH = "app.update.altUpdateDirPath";
-const PREF_APP_UPDATE_LOG = "app.update.log";
-const PREF_APP_UPDATE_FILE_LOGGING = "app.update.log.file";
-
-const lazy = {};
-
-XPCOMUtils.defineLazyGetter(lazy, "gLogEnabled", function aus_gLogEnabled() {
-  return Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG, false);
-});
+const PREF_APP_UPDATE_DISABLEDFORTESTING = "app.update.disabledForTesting";
 
 function getUpdateBaseDirNoCreate() {
   if (Cu.isInAutomation) {
@@ -60,83 +74,164 @@ function getUpdateBaseDirNoCreate() {
     }
   }
 
-  return FileUtils.getDir(KEY_UPDROOT, [], false);
+  return FileUtils.getDir(KEY_UPDROOT, []);
 }
 
-export function UpdateServiceStub() {
-  let updateDir = getUpdateBaseDirNoCreate();
-  let prefUpdateDirMigrated =
-    PREF_PREFIX_UPDATE_DIR_MIGRATED + updateDir.leafName;
+export class UpdateServiceStub {
+  #initUpdatePromise;
+  #initStubHasRun = false;
 
-  let statusFile = updateDir;
-  statusFile.append(DIR_UPDATES);
-  statusFile.append("0");
-  statusFile.append(FILE_UPDATE_STATUS);
-  updateDir = null; // We don't need updateDir anymore, plus now its nsIFile
-  // contains the status file's path
+  /**
+   * See nsIUpdateService.idl
+   */
+  async init() {
+    await this.#init(false);
+  }
+  async initUpdate() {
+    await this.#init(true);
+  }
 
-  // We may need to migrate update data
-  if (
-    AppConstants.platform == "win" &&
-    !Services.prefs.getBoolPref(prefUpdateDirMigrated, false)
-  ) {
-    Services.prefs.setBoolPref(prefUpdateDirMigrated, true);
+  #initOnlyStub(updateDir) {
+    // We may need to migrate update data
+    let prefUpdateDirMigrated =
+      PREF_PREFIX_UPDATE_DIR_MIGRATED + updateDir.leafName;
+    if (
+      AppConstants.platform == "win" &&
+      !Services.prefs.getBoolPref(prefUpdateDirMigrated, false)
+    ) {
+      Services.prefs.setBoolPref(prefUpdateDirMigrated, true);
+      try {
+        migrateUpdateDirectory();
+      } catch (ex) {
+        // For the most part, migrateUpdateDirectory() catches its own
+        // errors. But there are technically things that could happen that
+        // might not be caught, like nsIFile.parent or nsIFile.append could
+        // unexpectedly fail.
+        // So we will catch any errors here, just in case.
+        LOG(
+          `UpdateServiceStub:UpdateServiceStub Failed to migrate update ` +
+            `directory. Exception: ${ex}`
+        );
+      }
+    }
+  }
+
+  async #initUpdate() {
+    // Ensure that the constructors for the update services have run.
+    const aus = Cc["@mozilla.org/updates/update-service;1"].getService(
+      Ci.nsIApplicationUpdateService
+    );
+    Cc["@mozilla.org/updates/update-manager;1"].getService(Ci.nsIUpdateManager);
+    Cc["@mozilla.org/updates/update-checker;1"].getService(Ci.nsIUpdateChecker);
+
+    // Run update service initialization
+    await aus.internal.init();
+  }
+
+  async #init(force_update_init) {
+    if (this.updateDisabled) {
+      return;
+    }
+
+    // We call into this from many places to ensure that initialization is done,
+    // so we want to optimize for the case where initialization is already
+    // finished.
+    if (this.#initUpdatePromise) {
+      try {
+        await this.#initUpdatePromise;
+      } catch (ex) {
+        // This will already have been logged when the error first happened, we
+        // don't need to log it again now.
+      }
+      return;
+    }
+
+    LOG(`UpdateServiceStub - Begin (force_update_init=${force_update_init})`);
+
+    let initUpdate = force_update_init;
     try {
-      migrateUpdateDirectory();
-    } catch (ex) {
-      // For the most part, migrateUpdateDirectory() catches its own errors.
-      // But there are technically things that could happen that might not be
-      // caught, like nsIFile.parent or nsIFile.append could unexpectedly fail.
-      // So we will catch any errors here, just in case.
+      const updateDir = getUpdateBaseDirNoCreate();
+      if (!this.#initStubHasRun) {
+        this.#initStubHasRun = true;
+        try {
+          this.#initOnlyStub(updateDir);
+        } catch (ex) {
+          LOG(
+            `UpdateServiceStub - Stub initialization failed: ${ex}: ${ex.stack}`
+          );
+        }
+      }
+
+      try {
+        if (!initUpdate) {
+          const statusFile = updateDir.clone();
+          statusFile.append(DIR_UPDATES);
+          statusFile.append("0");
+          statusFile.append(FILE_UPDATE_STATUS);
+          initUpdate = statusFile.exists();
+        }
+      } catch (ex) {
+        LOG(
+          `UpdateServiceStub - Failed to generate the status file: ${ex}: ${ex.stack}`
+        );
+      }
+    } catch (e) {
       LOG(
-        `UpdateServiceStub:UpdateServiceStub Failed to migrate update ` +
-          `directory. Exception: ${ex}`
+        `UpdateServiceStub - Failed to get update directory: ${e}: ${e.stack}`
       );
     }
-  }
 
-  // Prevent file logging from persisting for more than a session by disabling
-  // it on startup.
-  if (Services.prefs.getBoolPref(PREF_APP_UPDATE_FILE_LOGGING, false)) {
-    deactivateUpdateLogFile();
-  }
-
-  // If the update.status file exists then initiate post update processing.
-  if (statusFile.exists()) {
-    let aus = Cc["@mozilla.org/updates/update-service;1"]
-      .getService(Ci.nsIApplicationUpdateService)
-      .QueryInterface(Ci.nsIObserver);
-    aus.observe(null, "post-update-processing", "");
-  }
-}
-
-UpdateServiceStub.prototype = {
-  observe() {},
-  classID: Components.ID("{e43b0010-04ba-4da6-b523-1f92580bc150}"),
-  QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
-};
-
-function deactivateUpdateLogFile() {
-  LOG("Application update file logging being automatically turned off");
-  Services.prefs.setBoolPref(PREF_APP_UPDATE_FILE_LOGGING, false);
-  let logFile = Services.dirsvc.get(KEY_PROFILE_DIR, Ci.nsIFile);
-  logFile.append(FILE_UPDATE_MESSAGES);
-
-  try {
-    logFile.moveTo(null, FILE_BACKUP_MESSAGES);
-  } catch (e) {
-    LOG(
-      "Failed to backup update messages log (" +
-        e +
-        "). Attempting to " +
-        "remove it."
-    );
-    try {
-      logFile.remove(false);
-    } catch (e) {
-      LOG("Also failed to remove the update messages log: " + e);
+    if (initUpdate) {
+      this.#initUpdatePromise = this.#initUpdate();
+      try {
+        await this.#initUpdatePromise;
+      } catch (ex) {
+        LOG(`UpdateServiceStub - Init failed: ${ex}: ${ex.stack}`);
+      }
     }
   }
+
+  /**
+   * See nsIUpdateService.idl
+   */
+  get updateDisabledForTesting() {
+    return (
+      (Cu.isInAutomation ||
+        lazy.Marionette.running ||
+        lazy.RemoteAgent.running) &&
+      Services.prefs.getBoolPref(PREF_APP_UPDATE_DISABLEDFORTESTING, false)
+    );
+  }
+
+  /**
+   * See nsIUpdateService.idl
+   */
+  get updateDisabled() {
+    return (
+      (Services.policies && !Services.policies.isAllowed("appUpdate")) ||
+      this.updateDisabledForTesting ||
+      Services.sysinfo.getProperty("isPackagedApp")
+    );
+  }
+
+  async observe(_subject, topic, _data) {
+    switch (topic) {
+      // This is sort of the "default" way of being initialized. The
+      // "@mozilla.org/updates/update-service-stub;1" contract definition in
+      // `components.conf` registers us for this notification, which we use to
+      // trigger initialization. Note, however, that this calls only `init` and
+      // not `initUpdate`.
+      case "profile-after-change":
+        await this.init();
+        break;
+    }
+  }
+
+  classID = Components.ID("{e43b0010-04ba-4da6-b523-1f92580bc150}");
+  QueryInterface = ChromeUtils.generateQI([
+    Ci.nsIApplicationUpdateServiceStub,
+    Ci.nsIObserver,
+  ]);
 }
 
 /**
@@ -146,8 +241,8 @@ function deactivateUpdateLogFile() {
 function migrateUpdateDirectory() {
   LOG("UpdateServiceStub:migrateUpdateDirectory Performing migration");
 
-  let sourceRootDir = FileUtils.getDir(KEY_OLD_UPDROOT, [], false);
-  let destRootDir = FileUtils.getDir(KEY_UPDROOT, [], false);
+  let sourceRootDir = FileUtils.getDir(KEY_OLD_UPDROOT, []);
+  let destRootDir = FileUtils.getDir(KEY_UPDROOT, []);
   let hash = destRootDir.leafName;
 
   if (!sourceRootDir.exists()) {
@@ -418,8 +513,5 @@ function cleanupDir(dir, recurse) {
  *          The string to write to the error console.
  */
 function LOG(string) {
-  if (lazy.gLogEnabled) {
-    dump("*** AUS:SVC " + string + "\n");
-    Services.console.logStringMessage("AUS:SVC " + string);
-  }
+  lazy.UpdateLog.logPrefixedString("AUS:STB", string);
 }

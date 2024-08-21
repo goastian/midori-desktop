@@ -7,11 +7,11 @@ SPHINX_TREES["/toolkit/components/translations"] = "docs"
 JAR_MANIFESTS += ["jar.mn"]
 
 with Files("**"):
-    BUG_COMPONENT = ("Firefox", "Translation")
+    BUG_COMPONENT = ("Firefox", "Translations")
 
 DIRS += ["actors"]
 
-BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.ini"]
+BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
 
 with Files("docs/**"):
     SCHEDULES.exclusive = ["docs"]

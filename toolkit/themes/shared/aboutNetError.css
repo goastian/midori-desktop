@@ -30,17 +30,13 @@ body.certerror {
     display: none !important;
 }
 
-.title {
-  font-size: 1.75em;
-}
-
 body.captiveportal .title {
   background-image: url("chrome://global/skin/in-content/wifi.svg");
 }
 
 body.certerror .title {
   background-image: url("chrome://global/skin/icons/warning.svg");
-  color: var(--warning-color);
+  fill: var(--warning-color);
 }
 
 body.blocked .title {
@@ -50,11 +46,6 @@ body.blocked .title {
 body.clockSkewError .title {
   background-image: none;
   background-repeat: no-repeat;
-}
-
-.title-text {
-  font-weight: 300;
-  line-height: 1.2;
 }
 
 /* Pressing the retry button will cause the cursor to flicker from a pointer to

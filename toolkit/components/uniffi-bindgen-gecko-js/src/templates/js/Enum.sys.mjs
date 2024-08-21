@@ -1,5 +1,3 @@
-{%- let enum_ = ci.get_enum_definition(name).unwrap() -%}
-
 {%- if enum_.is_flat() -%}
 
 export const {{ enum_.nm() }} = {
@@ -18,7 +16,7 @@ export class {{ ffi_converter }} extends FfiConverterArrayBuffer {
                 return {{ enum_.nm() }}.{{ variant.name().to_shouty_snake_case() }}
             {%- endfor %}
             default:
-                return new Error("Unknown {{ enum_.nm() }} variant");
+                throw new UniFFITypeError("Unknown {{ enum_.nm() }} variant");
         }
     }
 
@@ -29,7 +27,7 @@ export class {{ ffi_converter }} extends FfiConverterArrayBuffer {
             return;
         }
         {%- endfor %}
-        return new Error("Unknown {{ enum_.nm() }} variant");
+        throw new UniFFITypeError("Unknown {{ enum_.nm() }} variant");
     }
 
     static computeSize(value) {
@@ -74,7 +72,7 @@ export class {{ ffi_converter }} extends FfiConverterArrayBuffer {
                     );
             {%- endfor %}
             default:
-                return new Error("Unknown {{ enum_.nm() }} variant");
+                throw new UniFFITypeError("Unknown {{ enum_.nm() }} variant");
         }
     }
 
@@ -88,7 +86,7 @@ export class {{ ffi_converter }} extends FfiConverterArrayBuffer {
             return;
         }
         {%- endfor %}
-        return new Error("Unknown {{ enum_.nm() }} variant");
+        throw new UniFFITypeError("Unknown {{ enum_.nm() }} variant");
     }
 
     static computeSize(value) {
@@ -102,7 +100,7 @@ export class {{ ffi_converter }} extends FfiConverterArrayBuffer {
             return totalSize;
         }
         {%- endfor %}
-        return new Error("Unknown {{ enum_.nm() }} variant");
+        throw new UniFFITypeError("Unknown {{ enum_.nm() }} variant");
     }
 
     static checkType(value) {

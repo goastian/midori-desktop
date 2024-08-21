@@ -10,12 +10,8 @@ class Logic {
   static inputTypeIsCompatibleWithUsername(input) {
     const fieldType = input.getAttribute("type")?.toLowerCase() || input.type;
     return (
-      fieldType == "text" ||
-      fieldType == "email" ||
-      fieldType == "url" ||
-      fieldType == "tel" ||
-      fieldType == "number" ||
-      fieldType == "search"
+      ["text", "email", "url", "tel", "number", "search"].includes(fieldType) ||
+      fieldType?.includes("user")
     );
   }
 
@@ -38,7 +34,7 @@ class Logic {
 
   /**
    * Test whether associated labels of the element have the keyword.
-   * This is a simplified rule of hasLabelMatchingRegex in NewPasswordModel.jsm
+   * This is a simplified rule of hasLabelMatchingRegex in NewPasswordModel.sys.mjs
    */
   static hasLabelMatchingRegex(element, regex) {
     return regex.test(element.labels?.[0]?.textContent);

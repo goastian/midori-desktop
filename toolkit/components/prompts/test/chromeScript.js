@@ -8,16 +8,6 @@ const { BrowserTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/BrowserTestUtils.sys.mjs"
 );
 
-var tabSubDialogsEnabled = Services.prefs.getBoolPref(
-  "prompts.tabChromePromptSubDialog",
-  false
-);
-
-var contentPromptSubdialogsEnabled = Services.prefs.getBoolPref(
-  "prompts.contentPromptSubDialog",
-  false
-);
-
 // Define these to make EventUtils happy.
 let window = this;
 let parent = {};
@@ -29,102 +19,31 @@ Services.scriptloader.loadSubScript(
 );
 
 addMessageListener("handlePrompt", msg => {
-  info("Received handlePrompt message");
   handlePromptWhenItAppears(msg.action, msg.modalType, msg.isSelect);
 });
 
 async function handlePromptWhenItAppears(action, modalType, isSelect) {
-  try {
-    if (!(await handlePrompt(action, modalType, isSelect))) {
-      setTimeout(
-        () => this.handlePromptWhenItAppears(action, modalType, isSelect),
-        100
-      );
-    }
-  } catch (e) {
-    info(`handlePromptWhenItAppears: exception: ${e}`);
-  }
-}
-
-function checkTabModal(prompt, browser) {
-  let doc = browser.ownerDocument;
-
-  let { bottom: toolboxBottom } = doc
-    .getElementById("navigator-toolbox")
-    .getBoundingClientRect();
-
-  let { mainContainer } = prompt.ui;
-
-  let { x, y } = mainContainer.getBoundingClientRect();
-  ok(y > 0, "Container should have y > 0");
-  // Inset by 1px since the corner point doesn't return the frame due to the
-  // border-radius.
-  is(
-    doc.elementFromPoint(x + 1, y + 1).parentNode,
-    mainContainer,
-    "Check tabmodalprompt is visible"
-  );
-
-  info("Click to the left of the dialog over the content area");
-  isnot(
-    doc.elementFromPoint(x - 10, y + 50),
-    browser,
-    "Check clicks on the content area don't go to the browser"
-  );
-  is(
-    doc.elementFromPoint(x - 10, y + 50),
-    prompt.element,
-    "Check clicks on the content area go to the prompt dialog background"
-  );
-
-  if (prompt.args.modalType == Ci.nsIPrompt.MODAL_TYPE_TAB) {
-    ok(
-      y <= toolboxBottom - 5,
-      "Dialog should overlap the toolbox by at least 5px"
+  if (!(await handlePrompt(action, modalType, isSelect))) {
+    setTimeout(
+      () => this.handlePromptWhenItAppears(action, modalType, isSelect),
+      100
     );
-  } else {
-    ok(y >= toolboxBottom, "Dialog must not overlap with toolbox.");
   }
-
-  ok(
-    browser.hasAttribute("tabmodalPromptShowing"),
-    "Check browser has @tabmodalPromptShowing"
-  );
 }
 
 async function handlePrompt(action, modalType, isSelect) {
-  info(`handlePrompt: modalType=${modalType}`);
-
   let ui;
   let browserWin = Services.wm.getMostRecentWindow("navigator:browser");
 
-  if (
-    (!contentPromptSubdialogsEnabled &&
-      modalType === Services.prompt.MODAL_TYPE_CONTENT) ||
-    (!tabSubDialogsEnabled && modalType === Services.prompt.MODAL_TYPE_TAB)
-  ) {
-    let gBrowser = browserWin.gBrowser;
-    let promptManager = gBrowser.getTabModalPromptBox(gBrowser.selectedBrowser);
-    let prompts = promptManager.listPrompts();
-    if (!prompts.length) {
-      info("handlePrompt: no prompt found. retrying...");
-      return false; // try again in a bit
-    }
+  let doc = getDialogDoc();
+  if (!doc) {
+    return false; // try again in a bit
+  }
 
-    ui = prompts[0].Dialog.ui;
-    checkTabModal(prompts[0], gBrowser.selectedBrowser);
+  if (isSelect) {
+    ui = doc;
   } else {
-    let doc = getDialogDoc();
-    if (!doc) {
-      info("handlePrompt: no document found. retrying...");
-      return false; // try again in a bit
-    }
-
-    if (isSelect) {
-      ui = doc;
-    } else {
-      ui = doc.defaultView.Dialog.ui;
-    }
+    ui = doc.defaultView.Dialog.ui;
   }
 
   let dialogClosed = BrowserTestUtils.waitForEvent(
@@ -144,11 +63,9 @@ async function handlePrompt(action, modalType, isSelect) {
   // Wait until the prompt has been closed before sending callback msg.
   // Unless the test explicitly doesn't request a button click.
   if (action.buttonClick !== "none") {
-    info(`handlePrompt: wait for dialogClosed`);
     await dialogClosed;
   }
 
-  info(`handlePrompt: send promptHandled`);
   sendAsyncMessage("promptHandled", { promptState });
   return true;
 }
@@ -157,7 +74,7 @@ function getSelectState(ui) {
   let listbox = ui.getElementById("list");
 
   let state = {};
-  state.msg = ui.getElementById("info.txt").value;
+  state.msg = ui.getElementById("info.txt").firstChild.textContent;
   state.selectedIndex = listbox.selectedIndex;
   state.items = [];
 
@@ -179,8 +96,7 @@ function getPromptState(ui) {
   state.checkHidden = ui.checkboxContainer.hidden;
   state.checkMsg = state.checkHidden ? "" : ui.checkbox.label;
   state.checked = state.checkHidden ? false : ui.checkbox.checked;
-  // TabModalPrompts don't have an infoIcon
-  state.iconClass = ui.infoIcon ? ui.infoIcon.className : null;
+  state.iconClass = ui.infoIcon.className;
   state.textValue = ui.loginTextbox.value;
   state.passValue = ui.password1Textbox.value;
 
@@ -262,7 +178,6 @@ function dismissSelect(ui, action) {
 }
 
 function dismissPrompt(ui, action) {
-  info(`dismissPrompt: action=${JSON.stringify(action)}`);
   if (action.setCheckbox) {
     // Annoyingly, the prompt code is driven by oncommand.
     ui.checkbox.checked = true;
@@ -329,7 +244,7 @@ function getDialogDoc() {
       if (childDocShell.busyFlags != Ci.nsIDocShell.BUSY_FLAGS_NONE) {
         continue;
       }
-      var childDoc = childDocShell.contentViewer.DOMDocument;
+      var childDoc = childDocShell.docViewer.DOMDocument;
 
       if (
         childDoc.location.href !=

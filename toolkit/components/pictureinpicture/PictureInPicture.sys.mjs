@@ -14,6 +14,10 @@ XPCOMUtils.defineLazyServiceGetters(lazy, {
 });
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  ASRouter:
+    // eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
+    "resource:///modules/asrouter/ASRouter.sys.mjs",
+  PageActions: "resource:///modules/PageActions.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
 
@@ -242,8 +246,6 @@ export var PictureInPicture = {
     let panel = browser.ownerDocument.querySelector("#PictureInPicturePanel");
 
     if (!panel) {
-      browser.ownerGlobal.ensureCustomElements("moz-toggle");
-      browser.ownerGlobal.ensureCustomElements("moz-support-link");
       let template = browser.ownerDocument.querySelector(
         "#PictureInPicturePanelTemplate"
       );
@@ -562,10 +564,15 @@ export var PictureInPicture = {
       this.getEligiblePipVideoCount(browser);
 
     let pipToggle = win.document.getElementById("picture-in-picture-button");
-    pipToggle.hidden = !(
+    if (
       totalPipCount === 1 ||
       (totalPipDisabled > 0 && lazy.RESPECT_PIP_DISABLED)
-    );
+    ) {
+      pipToggle.hidden = false;
+      lazy.PageActions.sendPlacedInUrlbarTrigger(pipToggle);
+    } else {
+      pipToggle.hidden = true;
+    }
 
     let browserHasPip = !!this.browserWeakMap.get(browser);
     if (browserHasPip) {
@@ -602,8 +609,36 @@ export var PictureInPicture = {
         this.togglePipPanel(browser);
         return;
       } else if (pipCount === 1) {
+        let eventExtraKeys = {};
+        if (
+          !Services.prefs.getBoolPref(TOGGLE_HAS_USED_PREF) &&
+          lazy.ASRouter.initialized
+        ) {
+          let { messages, messageImpressions } = lazy.ASRouter.state;
+          let pipCallouts = messages.filter(
+            message =>
+              message.template === "feature_callout" &&
+              message.content.screens.some(screen =>
+                screen.anchors.some(anchor =>
+                  anchor.selector.includes("picture-in-picture-button")
+                )
+              )
+          );
+          if (pipCallouts.length) {
+            // Has one of the callouts been seen in the last 48 hours?
+            let now = Date.now();
+            let callout = pipCallouts.some(message =>
+              messageImpressions[message.id]?.some(
+                impression => now - impression < 48 * 60 * 60 * 1000
+              )
+            );
+            if (callout) {
+              eventExtraKeys.callout = "true";
+            }
+          }
+        }
         let actor = windowGlobal.getActor("PictureInPictureToggle");
-        actor.sendAsyncMessage("PictureInPicture:UrlbarToggle");
+        actor.sendAsyncMessage("PictureInPicture:UrlbarToggle", eventExtraKeys);
         return;
       }
     }
@@ -1413,7 +1448,7 @@ export var PictureInPicture = {
       0,
       null,
       0,
-      data.mozInputSource
+      data.inputSource
     );
     popup.openPopupAtScreen(newEvent.screenX, newEvent.screenY, true, newEvent);
   },
@@ -1428,7 +1463,7 @@ export var PictureInPicture = {
   },
 
   /**
-   * This is used in AsyncTabSwitcher.jsm and tabbrowser.js to check if the browser
+   * This is used in AsyncTabSwitcher.sys.mjs and tabbrowser.js to check if the browser
    * currently has a PiP window.
    * If the browser has a PiP window we want to keep the browser in an active state because
    * the browser is still partially visible.

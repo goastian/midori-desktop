@@ -86,7 +86,7 @@ XPCOMUtils.defineLazyPreferenceGetter(
 /**
  * Implements nsIPromptFactory
  *
- * Invoked by [toolkit/components/prompts/src/Prompter.jsm]
+ * Invoked by [toolkit/components/prompts/src/Prompter.sys.mjs]
  */
 export function LoginManagerAuthPromptFactory() {
   Services.obs.addObserver(this, "passwordmgr-crypto-login", true);
@@ -114,7 +114,7 @@ LoginManagerAuthPromptFactory.prototype = {
   _uiBusyPromise: null,
   _uiBusyResolve: null,
 
-  observe(subject, topic, data) {
+  observe(_subject, topic, _data) {
     this.log(`Observed topic: ${topic}.`);
     if (topic == "passwordmgr-crypto-login") {
       // Show the deferred prompters.
@@ -231,7 +231,7 @@ LoginManagerAuthPromptFactory.prototype = {
         // Prompts throw NS_ERROR_NOT_AVAILABLE if they're aborted.
         promptAborted = true;
       } else {
-        console.error("LoginManagerAuthPrompter: _doAsyncPrompt " + e + "\n");
+        console.error("LoginManagerAuthPrompter: _doAsyncPrompt", e);
       }
     }
 
@@ -259,7 +259,7 @@ LoginManagerAuthPromptFactory.prototype = {
   },
 }; // end of LoginManagerAuthPromptFactory implementation
 
-XPCOMUtils.defineLazyGetter(
+ChromeUtils.defineLazyGetter(
   LoginManagerAuthPromptFactory.prototype,
   "log",
   () => {
@@ -274,6 +274,11 @@ XPCOMUtils.defineLazyGetter(
  * Implements interfaces for prompting the user to enter/save/change auth info.
  *
  * nsIAuthPrompt: Used by SeaMonkey, Thunderbird, but not Firefox.
+ *
+ * Note this implementation no longer provides `nsIAuthPrompt.promptPassword()`
+ * and `nsIAuthPrompt.promptUsernameAndPassword()`. Use their async
+ * counterparts `asyncPromptPassword` and `asyncPromptUsernameAndPassword`
+ * instead.
  *
  * nsIAuthPrompt2: Is invoked by a channel for protocol-based authentication
  * (eg HTTP Authenticate, FTP login).
@@ -412,7 +417,13 @@ LoginManagerAuthPrompter.prototype = {
       }
 
       // Look for existing logins.
-      foundLogins = Services.logins.findLogins(origin, null, realm);
+      // We don't use searchLoginsAsync here and in asyncPromptPassword
+      // because of bug 1848682
+      let matchData = lazy.LoginHelper.newPropertyBag({
+        origin,
+        httpRealm: realm,
+      });
+      foundLogins = Services.logins.searchLogins(matchData);
 
       // XXX Like the original code, we can't deal with multiple
       // account selection. (bug 227632)
@@ -526,7 +537,11 @@ LoginManagerAuthPrompter.prototype = {
         Services.logins.getLoginSavingEnabled(origin);
       if (!aPassword.value) {
         // Look for existing logins.
-        var foundLogins = Services.logins.findLogins(origin, null, realm);
+        let matchData = lazy.LoginHelper.newPropertyBag({
+          origin,
+          httpRealm: realm,
+        });
+        let foundLogins = Services.logins.searchLogins(matchData);
 
         // XXX Like the original code, we can't deal with multiple
         // account selection (bug 227632). We can deal with finding the
@@ -658,9 +673,7 @@ LoginManagerAuthPrompter.prototype = {
     } catch (e) {
       // Ignore any errors and display the prompt anyway.
       epicfail = true;
-      console.error(
-        "LoginManagerAuthPrompter: Epic fail in promptAuth: " + e + "\n"
-      );
+      console.error("LoginManagerAuthPrompter: Epic fail in promptAuth:", e);
     }
 
     var ok = canAutologin;
@@ -698,7 +711,7 @@ LoginManagerAuthPrompter.prototype = {
 
       ok = await Services.prompt.asyncPromptAuth(
         this._browser?.browsingContext,
-        LoginManagerAuthPrompter.promptAuthModalType,
+        Ci.nsIPrompt.MODAL_TYPE_TAB,
         aChannel,
         aLevel,
         aAuthInfo
@@ -760,7 +773,7 @@ LoginManagerAuthPrompter.prototype = {
         );
       }
     } catch (e) {
-      console.error("LoginManagerAuthPrompter: Fail2 in promptAuth: " + e);
+      console.error("LoginManagerAuthPrompter: Fail2 in promptAuth:", e);
     }
 
     return ok;
@@ -782,7 +795,7 @@ LoginManagerAuthPrompter.prototype = {
       .then(ok => (result = ok))
       .finally(() => (closed = true));
     Services.tm.spinEventLoopUntilOrQuit(
-      "LoginManagerAuthPrompter.jsm:promptAuth",
+      "LoginManagerAuthPrompter.sys.mjs:promptAuth",
       () => closed
     );
     return result;
@@ -825,12 +838,8 @@ LoginManagerAuthPrompter.prototype = {
 
       this._factory._doAsyncPrompt(asyncPrompt, hashKey);
     } catch (e) {
-      console.error(
-        "LoginManagerAuthPrompter: " +
-          "asyncPromptAuth: " +
-          e +
-          "\nFalling back to promptAuth\n"
-      );
+      console.error("LoginManagerAuthPrompter: asyncPromptAuth:", e);
+      console.error("Falling back to promptAuth");
       // Fail the prompt operation to let the consumer fall back
       // to synchronous promptAuth method
       throw e;
@@ -1102,14 +1111,7 @@ LoginManagerAuthPrompter.prototype = {
   },
 }; // end of LoginManagerAuthPrompter implementation
 
-XPCOMUtils.defineLazyGetter(LoginManagerAuthPrompter.prototype, "log", () => {
+ChromeUtils.defineLazyGetter(LoginManagerAuthPrompter.prototype, "log", () => {
   let logger = lazy.LoginHelper.createLogger("LoginManagerAuthPrompter");
   return logger.log.bind(logger);
 });
-
-XPCOMUtils.defineLazyPreferenceGetter(
-  LoginManagerAuthPrompter,
-  "promptAuthModalType",
-  "prompts.modalType.httpAuth",
-  Services.prompt.MODAL_TYPE_WINDOW
-);

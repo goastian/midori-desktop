@@ -67,7 +67,7 @@ let expectingEventPromise;
 async function isMuteButtonMuted() {
   const muteButton = getElementWithinVideo(video, "muteButton");
   await new Promise(SimpleTest.executeSoon);
-  return muteButton.getAttribute("muted") === "true";
+  return muteButton.hasAttribute("muted");
 }
 
 async function isVolumeSliderShowingCorrectVolume(expectedVolume) {
@@ -184,7 +184,7 @@ add_task(async function setup() {
       ]});
   await new Promise(resolve => {
     video.addEventListener("canplaythrough", resolve, {once: true});
-    video.src = "seek_with_sound.ogg";
+    video.src = "seek_with_sound.webm";
   });
 
   video.addEventListener("play", captureEventThenCheck);
@@ -437,7 +437,7 @@ add_task(async function click_and_hold_slider() {
  * Bug 1402877: Don't let click event dispatch through media controls to video element.
  */
 add_task(async function click_event_dispatch() {
-  const clientScriptClickHandler = (e) => {
+  const clientScriptClickHandler = () => {
     ok(false, "Should not receive the event");
   };
   video.addEventListener("click", clientScriptClickHandler);

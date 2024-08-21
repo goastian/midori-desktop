@@ -36,6 +36,20 @@ body:fullscreen {
   overflow: hidden;
 }
 
+.seethrough-mode {
+  background: transparent;
+
+  .player-holder {
+    will-change: opacity, filter;
+    transition: opacity 160ms linear, filter 160ms linear;
+
+    body:hover:not(:fullscreen) & {
+      opacity: 0.35;
+      filter: blur(8px);
+    }
+  }
+}
+
 browser {
   flex: 1;
 }
@@ -246,14 +260,14 @@ body:fullscreen #controls[showing]:hover .control-item:not(:hover),
 
 #controls[keying] .control-item,
 #controls[showing] .control-item,
-#controls:hover .control-item:hover {
+.control-item:hover {
   opacity: 1;
 }
 
 /* Background gradient is the only control item with a fixed opacity value. */
-#controls[keying] .control-item#controls-bottom-gradient,
-#controls[showing] .control-item#controls-bottom-gradient,
-#controls:hover .control-item#controls-bottom-gradient:hover #controls[donthide] .control-item#controls-bottom-gradient {
+#controls[keying] #controls-bottom-gradient,
+#controls[showing] #controls-bottom-gradient,
+#controls-bottom-gradient:hover {
   opacity: 0.8;
 }
 
@@ -307,35 +321,34 @@ body:fullscreen #controls[showing]:hover {
 
 #audio-scrubber {
   grid-area: audio-scrubber;
+  align-self: center;
   width: 64px;
   background-color: transparent;
-  padding: 15px 0;
+  padding: 6px 2px;
   margin: 0;
-}
 
-#audio-scrubber::-moz-range-thumb {
-  border-radius: 8px;
-  background-color: #FFFFFF;
-  position: relative;
-  width: 8px;
-  height: 8px;
-  bottom: 24px;
-  padding: 0;
-}
+  &::-moz-range-thumb {
+    border-radius: 8px;
+    background-color: #FFFFFF;
+    width: 8px;
+    height: 8px;
+    padding: 0;
+  }
 
-#audio-scrubber::-moz-range-track {
-  background-color: #969696;
-}
+  &::-moz-range-track {
+    background-color: #969696;
+  }
 
-#audio-scrubber::-moz-range-progress {
-  background-color: #FFFFFF;
-}
+  &::-moz-range-progress {
+    background-color: #FFFFFF;
+  }
 
-#audio-scrubber,
-#audio-scrubber::-moz-range-track,
-#audio-scrubber::-moz-range-progress {
-  height: 2px;
-  border-radius: 4px;
+  &,
+  &::-moz-range-track,
+  &::-moz-range-progress {
+    height: 2px;
+    border-radius: 10px;
+  }
 }
 
 #fullscreen {
@@ -578,33 +591,31 @@ input:checked + .slider::before {
 #scrubber {
   width: 100%;
   background-color: transparent;
-  padding: 6px;
-}
+  padding: 6px 2px;
 
-#scrubber::-moz-range-thumb {
-  border-radius: 14px;
-  background-color: #BFBFC9;
-  position: relative;
-  width: 8px;
-  height: 8px;
-  border: 3px solid #FFFFFF;
-  bottom: 24px;
-  padding: 0;
-}
+  &::-moz-range-thumb {
+    border-radius: 14px;
+    background-color: #BFBFC9;
+    width: 8px;
+    height: 8px;
+    border: 3px solid #FFFFFF;
+    padding: 0;
+  }
 
-#scrubber::-moz-range-track {
-  background-color: #969696;
-}
+  &::-moz-range-track {
+    background-color: #969696;
+  }
 
-#scrubber::-moz-range-progress {
-  background-color: #FFFFFF;
-}
+  &::-moz-range-progress {
+    background-color: #FFFFFF;
+  }
 
-#scrubber,
-#scrubber::-moz-range-track,
-#scrubber::-moz-range-progress {
-  height: 4px;
-  border-radius: 10px;
+  &,
+  &::-moz-range-track,
+  &::-moz-range-progress {
+    height: 4px;
+    border-radius: 10px;
+  }
 }
 
 #timestamp {
@@ -634,8 +645,31 @@ input:checked + .slider::before {
   }
 }
 
-@media (height <= 325px), (width <= 475px) {
+@media (width <= 475px) {
   #closed-caption {
+    display: none;
+  }
+
+  .end-controls {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-areas: "audio fullscreen";
+  }
+}
+
+@media (height <= 325px) and (width > 630px) {
+  #closed-caption {
+    display: none;
+  }
+
+  .end-controls {
+    grid-template-columns: 1fr 2fr 1fr;
+    grid-template-areas: "audio audio-scrubber fullscreen";
+  }
+}
+
+@media (height <= 325px) and (width <= 630px) {
+  #closed-caption,
+  #audio-scrubber {
     display: none;
   }
 

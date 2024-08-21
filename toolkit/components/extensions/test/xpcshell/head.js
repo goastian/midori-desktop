@@ -3,7 +3,9 @@
             promiseQuotaManagerServiceReset, promiseQuotaManagerServiceClear,
             runWithPrefs, testEnv, withHandlingUserInput, resetHandlingUserInput,
             assertPersistentListeners, promiseExtensionEvent, assertHasPersistedScriptsCachedFlag,
-            assertIsPersistedScriptsCachedFlag
+            assertIsPersistedScriptsCachedFlag,
+            setup_crash_reporter_override_and_cleaner, crashFrame, crashExtensionBackground,
+            makeRkvDatabaseDir
 */
 
 var { AppConstants } = ChromeUtils.importESModule(
@@ -32,13 +34,13 @@ ChromeUtils.defineESModuleGetters(this, {
   ExtensionTestUtils:
     "resource://testing-common/ExtensionXPCShellUtils.sys.mjs",
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+  Management: "resource://gre/modules/Extension.sys.mjs",
   MessageChannel: "resource://testing-common/MessageChannel.sys.mjs",
+  MockRegistrar: "resource://testing-common/MockRegistrar.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   PromiseTestUtils: "resource://testing-common/PromiseTestUtils.sys.mjs",
   Schemas: "resource://gre/modules/Schemas.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  NetUtil: "resource://gre/modules/NetUtil.jsm",
+  TestUtils: "resource://testing-common/TestUtils.sys.mjs",
 });
 
 PromiseTestUtils.allowMatchingRejectionsGlobally(
@@ -55,7 +57,6 @@ Services.prefs.setBoolPref("dom.security.https_first", false);
 
 // These values may be changed in later head files and tested in check_remote
 // below.
-Services.prefs.setBoolPref("browser.tabs.remote.autostart", false);
 Services.prefs.setBoolPref("extensions.webextensions.remote", false);
 const testEnv = {
   expectRemote: false,
@@ -81,8 +82,78 @@ var createHttpServer = (...args) => {
   return AddonTestUtils.createHttpServer(...args);
 };
 
-if (AppConstants.platform === "android") {
-  Services.io.offline = true;
+async function makeRkvDatabaseDir(name, { mockCorrupted = false } = {}) {
+  const databaseDir = PathUtils.join(PathUtils.profileDir, name);
+  await IOUtils.makeDirectory(databaseDir);
+  if (mockCorrupted) {
+    // Mock a corrupted db.
+    await IOUtils.write(
+      PathUtils.join(databaseDir, "data.safe.bin"),
+      new Uint8Array([0x00, 0x00, 0x00, 0x00])
+    );
+  }
+  return databaseDir;
+}
+
+// Some tests load non-moz-extension:-URLs in their extension document. When
+// extensions run in-process (extensions.webextensions.remote set to false),
+// that fails.
+// For details, see: https://bugzilla.mozilla.org/show_bug.cgi?id=1724099
+// To avoid skip-if on the whole file, use this:
+//
+//   add_task(async function test_description_here() {
+//     // Comment explaining why.
+//     allow_unsafe_parent_loads_when_extensions_not_remote();
+//     ...
+//     revert_allow_unsafe_parent_loads_when_extensions_not_remote();
+//   });
+var private_upl_cleanup_handlers = [];
+function allow_unsafe_parent_loads_when_extensions_not_remote() {
+  if (WebExtensionPolicy.useRemoteWebExtensions) {
+    // We should only allow remote iframes in the main process.
+    return;
+  }
+  if (!Cu.isInAutomation) {
+    // isInAutomation is false by default in xpcshell (bug 1598804). Flip pref.
+    Services.prefs.setBoolPref(
+      "security.turn_off_all_security_so_that_viruses_can_take_over_this_computer",
+      true
+    );
+    private_upl_cleanup_handlers.push(() => {
+      Services.prefs.setBoolPref(
+        "security.turn_off_all_security_so_that_viruses_can_take_over_this_computer",
+        false
+      );
+    });
+    // Sanity check: Fail immediately if setting the above pref does somehow
+    // not flip the isInAutomation flag.
+    if (!Cu.isInAutomation) {
+      // This condition is unexpected, because it is enforced at:
+      // https://searchfox.org/mozilla-central/rev/ea65de7c/js/xpconnect/src/xpcpublic.h#753-759
+      throw new Error("Failed to set isInAutomation to true");
+    }
+  }
+  // Note: The following pref requires the isInAutomation flag to be set.
+  // When unset, the pref is ignored, and tests would encounter bug 1724099.
+  if (!Services.prefs.getBoolPref("security.allow_unsafe_parent_loads")) {
+    info("Setting pref security.allow_unsafe_parent_loads to true");
+    Services.prefs.setBoolPref("security.allow_unsafe_parent_loads", true);
+    private_upl_cleanup_handlers.push(() => {
+      info("Reverting pref security.allow_unsafe_parent_loads to false");
+      Services.prefs.setBoolPref("security.allow_unsafe_parent_loads", false);
+    });
+  }
+
+  registerCleanupFunction(
+    // eslint-disable-next-line no-use-before-define
+    revert_allow_unsafe_parent_loads_when_extensions_not_remote
+  );
+}
+
+function revert_allow_unsafe_parent_loads_when_extensions_not_remote() {
+  for (let revert of private_upl_cleanup_handlers.splice(0)) {
+    revert();
+  }
 }
 
 /**
@@ -228,7 +299,7 @@ function handlingUserInputFrameScript() {
 
   let handle;
   MessageChannel.addListener(this, "ExtensionTest:HandleUserInput", {
-    receiveMessage({ name, data }) {
+    receiveMessage({ data }) {
       if (data) {
         handle = content.windowUtils.setHandlingUserInput(true);
       } else if (handle) {
@@ -310,7 +381,7 @@ const optionalPermissionsPromptHandler = {
     });
   },
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     if (topic == "webextension-optional-permission-prompt") {
       this.sawPrompt = true;
       let { resolve } = subject.wrappedJSObject;
@@ -351,4 +422,123 @@ async function assertIsPersistentScriptsCachedFlag(ext, expectedValue) {
     expectedValue,
     "Expected cached value set on hasPersistedScripts flag"
   );
+}
+
+function setup_crash_reporter_override_and_cleaner() {
+  const crashIds = [];
+  // Override CrashService.sys.mjs to intercept crash dumps, for two reasons:
+  //
+  // - The standard CrashService.sys.mjs implementation uses nsICrashReporter
+  //   through Services.appinfo. Because appinfo has been overridden with an
+  //   incomplete implementation, a promise rejection is triggered when a
+  //   missing method is called at https://searchfox.org/mozilla-central/rev/c615dc4db129ece5cce6c96eb8cab8c5a3e26ac3/toolkit/components/crashes/CrashService.sys.mjs#183
+  //
+  // - We want to intercept the generated crash dumps for expected crashes and
+  //   remove them, to prevent the xpcshell test runner from misinterpreting
+  //   them as "CRASH" failures.
+  let mockClassId = MockRegistrar.register("@mozilla.org/crashservice;1", {
+    addCrash(processType, crashType, id) {
+      // The files are ready to be removed now. We however postpone cleanup
+      // until the end of the test, to minimize noise during the test, and to
+      // ensure that the cleanup completes fully.
+      crashIds.push(id);
+    },
+    QueryInterface: ChromeUtils.generateQI(["nsICrashService"]),
+  });
+  registerCleanupFunction(async () => {
+    MockRegistrar.unregister(mockClassId);
+
+    // Cannot use Services.appinfo because createAppInfo overrides it.
+    // eslint-disable-next-line mozilla/use-services
+    const appinfo = Cc["@mozilla.org/toolkit/crash-reporter;1"].getService(
+      Ci.nsICrashReporter
+    );
+
+    info(`Observed ${crashIds.length} crash dump(s).`);
+    let deletedCount = 0;
+    for (let id of crashIds) {
+      info(`Checking whether dumpID ${id} should be removed`);
+      let minidumpFile = appinfo.getMinidumpForID(id);
+      let extraFile = appinfo.getExtraFileForID(id);
+      let extra;
+      try {
+        extra = await IOUtils.readJSON(extraFile.path);
+      } catch (e) {
+        info(`Cannot parse crash metadata from ${extraFile.path} :: ${e}\n`);
+        continue;
+      }
+      // The "BrowserTestUtils:CrashFrame" handler annotates the crash
+      // report before triggering a crash.
+      if (extra.TestKey !== "CrashFrame") {
+        info(`Keeping ${minidumpFile.path}; we did not trigger the crash`);
+        continue;
+      }
+      info(`Deleting minidump ${minidumpFile.path} and ${extraFile.path}`);
+      minidumpFile.remove(false);
+      extraFile.remove(false);
+      ++deletedCount;
+    }
+    info(`Removed ${deletedCount} crash dumps out of ${crashIds.length}`);
+  });
+}
+
+// Crashes a <browser>'s remote process.
+// Based on BrowserTestUtils.crashFrame.
+function crashFrame(browser) {
+  if (!browser.isRemoteBrowser) {
+    // The browser should be remote, or the test runner would be killed.
+    throw new Error("<browser> must be remote");
+  }
+
+  const { BrowserTestUtils } = ChromeUtils.importESModule(
+    "resource://testing-common/BrowserTestUtils.sys.mjs"
+  );
+
+  // Trigger crash by sending a message to BrowserTestUtils actor.
+  BrowserTestUtils.sendAsyncMessage(
+    browser.browsingContext,
+    "BrowserTestUtils:CrashFrame",
+    {}
+  );
+}
+
+/**
+ * Crash background page of browser and wait for the crash to have been
+ * detected and processed by ext-backgroundPage.js.
+ *
+ * @param {ExtensionWrapper} extension
+ * @param {XULElement} [bgBrowser] - The background browser. Optional, but must
+ *   be set if the background's ProxyContextParent has not been initialized yet.
+ */
+async function crashExtensionBackground(extension, bgBrowser) {
+  bgBrowser ??= extension.extension.backgroundContext.xulBrowser;
+
+  let byeProm = promiseExtensionEvent(extension, "shutdown-background-script");
+  if (WebExtensionPolicy.useRemoteWebExtensions) {
+    info("Killing background page through process crash.");
+    crashFrame(bgBrowser);
+  } else {
+    // If extensions are not running in out-of-process mode, then the
+    // non-remote process should not be killed (or the test runner dies).
+    // Remove <browser> instead, to simulate the immediate disconnection
+    // of the message manager (that would happen if the process crashed).
+    info("Closing background page by destroying <browser>.");
+
+    if (extension.extension.backgroundState === "running") {
+      // TODO bug 1844217: remove this whole if-block When close() is hooked up
+      // to setBgStateStopped. It currently is not, and browser destruction is
+      // currently not detected by the implementation.
+      let messageManager = bgBrowser.messageManager;
+      TestUtils.topicObserved(
+        "message-manager-close",
+        subject => subject === messageManager
+      ).then(() => {
+        Management.emit("extension-process-crash", { childID: 1337 });
+      });
+    }
+    bgBrowser.remove();
+  }
+
+  info("Waiting for crash to be detected by the internals");
+  await byeProm;
 }

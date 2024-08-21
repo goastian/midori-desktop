@@ -22,6 +22,8 @@ const iframe = document.getElementsByTagName("iframe")[0];
 let iframeDoc, hostname;
 
 add_setup(async () => {
+  SpecialPowers.pushPrefEnv({"set": [["signon.webauthn.autocomplete", false]]});
+
   const origin = window.location.origin;
   await setStoredLoginsAsync(
     [origin, origin, null, "name", "pass"],
@@ -47,7 +49,7 @@ add_setup(async () => {
 
 add_task(async function test_initial_focus() {
   let results = await notifyMenuChanged(3, "name");
-  checkAutoCompleteResults(results, ["name", "name1"], hostname, "Two login results");
+  checkAutoCompleteResults(results.labels, ["name", "name1"], hostname, "Two login results");
   synthesizeKey("KEY_ArrowDown");
   synthesizeKey("KEY_Enter");
   await promiseFormsProcessedInSameProcess();
@@ -96,9 +98,9 @@ add_task(async function test_not_reopened_after_selecting() {
   listenForUnexpectedPopupShown();
 
   await SpecialPowers.spawn(getIframeBrowsingContext(window), [], function() {
-    let formFillController = SpecialPowers.getFormFillController();
+    const actor = content.windowGlobalChild.getActor("AutoComplete");
     let usernameField = this.content.document.getElementById("form-basic-username");
-    formFillController.markAsLoginManagerField(usernameField);
+    actor.markAsAutoCompletableField(usernameField);
   });
 
   info("Waiting to see if a popupshown occurs");

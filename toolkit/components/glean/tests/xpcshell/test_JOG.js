@@ -213,14 +213,6 @@ add_task(async function test_jog_event_works() {
   };
   Assert.deepEqual(expectedExtra, events[0].extra);
 
-  // Quantities need to be non-negative.
-  let extra4 = {
-    extra2: -1,
-  };
-  Glean.jogCat.jogEventWithExtra.record(extra4);
-  events = Glean.jogCat.jogEventWithExtra.testGetValue();
-  Assert.equal(1, events.length, "Recorded one event too many.");
-
   // Invalid extra keys don't crash, the event is not recorded.
   let extra3 = {
     extra1_nonexistent_extra: "this does not crash",
@@ -229,7 +221,7 @@ add_task(async function test_jog_event_works() {
   // And test methods throw appropriately
   Assert.throws(
     () => Glean.jogCat.jogEventWithExtra.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/
+    /DataError/
   );
 });
 
@@ -285,10 +277,7 @@ add_task(async function test_jog_custom_distribution_works() {
 
   // Negative values will not be recorded, instead an error is recorded.
   Glean.jogCat.jogCustomDist.accumulateSamples([-7]);
-  Assert.throws(
-    () => Glean.jogCat.jogCustomDist.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/
-  );
+  Assert.throws(() => Glean.jogCat.jogCustomDist.testGetValue(), /DataError/);
 });
 
 add_task(async function test_jog_custom_pings() {
@@ -300,11 +289,20 @@ add_task(async function test_jog_custom_pings() {
     `"ping"`,
     false
   );
-  Services.fog.testRegisterRuntimePing("jog-ping", true, true, []);
+  Services.fog.testRegisterRuntimePing(
+    "jog-ping",
+    true,
+    true,
+    true,
+    true,
+    true,
+    [],
+    []
+  );
   Assert.ok("jogPing" in GleanPings);
   let submitted = false;
   Glean.jogCat.jogPingBool.set(false);
-  GleanPings.jogPing.testBeforeNextSubmit(reason => {
+  GleanPings.jogPing.testBeforeNextSubmit(() => {
     submitted = true;
     Assert.equal(false, Glean.jogCat.jogPingBool.testGetValue());
   });
@@ -349,10 +347,7 @@ add_task(async function test_jog_timing_distribution_works() {
   // But we can guarantee it's only two samples.
   Assert.equal(
     2,
-    Object.entries(data.values).reduce(
-      (acc, [bucket, count]) => acc + count,
-      0
-    ),
+    Object.entries(data.values).reduce((acc, [, count]) => acc + count, 0),
     "Only two buckets with samples"
   );
 });
@@ -382,7 +377,7 @@ add_task(async function test_jog_labeled_boolean_works() {
   Glean.jogCat.jogLabeledBool["1".repeat(72)].set(true);
   Assert.throws(
     () => Glean.jogCat.jogLabeledBool.__other__.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Should throw because of a recording error."
   );
 });
@@ -451,7 +446,7 @@ add_task(async function test_jog_labeled_counter_works() {
   Glean.jogCat.jogLabeledCounter["1".repeat(72)].add(1);
   Assert.throws(
     () => Glean.jogCat.jogLabeledCounter.__other__.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Should throw because of a recording error."
   );
 });
@@ -490,7 +485,7 @@ add_task(async function test_jog_labeled_counter_with_static_labels_works() {
   // TODO:(bug 1766515) - This should throw.
   /*Assert.throws(
     () => Glean.jogCat.jogLabeledCounterWithLabels.__other__.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Should throw because of a recording error."
   );*/
   Assert.equal(
@@ -525,7 +520,7 @@ add_task(async function test_jog_labeled_string_works() {
   Glean.jogCat.jogLabeledString["1".repeat(72)].set("valid");
   Assert.throws(
     () => Glean.jogCat.jogLabeledString.__other__.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/
+    /DataError/
   );
 });
 
@@ -563,7 +558,7 @@ add_task(async function test_jog_labeled_string_with_labels_works() {
   // TODO:(bug 1766515) - This should throw.
   /*Assert.throws(
     () => Glean.jogCat.jogLabeledStringWithLabels.__other__.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/
+    /DataError/
   );*/
   Assert.equal(
     "valid",
@@ -653,13 +648,43 @@ add_task(function test_jog_dotted_categories_work() {
 
 add_task(async function test_jog_ping_works() {
   const kReason = "reason-1";
-  Services.fog.testRegisterRuntimePing("my-ping", true, true, [kReason]);
+  Services.fog.testRegisterRuntimePing(
+    "my-ping",
+    true,
+    true,
+    true,
+    true,
+    true,
+    [],
+    [kReason]
+  );
   let submitted = false;
   GleanPings.myPing.testBeforeNextSubmit(reason => {
     submitted = true;
     Assert.equal(kReason, reason);
   });
   GleanPings.myPing.submit("reason-1");
+  Assert.ok(submitted, "Ping must have been submitted");
+});
+
+add_task(async function test_jog_noinfo_ping_works() {
+  const kReason = "reason-1";
+  Services.fog.testRegisterRuntimePing(
+    "noinfo-ping",
+    true,
+    true,
+    true,
+    false,
+    true,
+    [],
+    [kReason]
+  );
+  let submitted = false;
+  GleanPings.noinfoPing.testBeforeNextSubmit(reason => {
+    submitted = true;
+    Assert.equal(kReason, reason);
+  });
+  GleanPings.noinfoPing.submit("reason-1");
   Assert.ok(submitted, "Ping must have been submitted");
 });
 

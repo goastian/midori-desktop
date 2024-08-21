@@ -8,6 +8,45 @@ Jinja2 template is not. Please file bugs! #}
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+{% macro generate_structure(name, struct) %}
+{% if struct.type == "array" %}
+    pub type {{ name }} = Vec<{{ name }}Item>;
+
+    {{ generate_structure(name ~ "Item", struct["items"]) -}}
+
+{% elif struct.type == "object" %}
+    #[derive(Debug, Hash, Eq, PartialEq, ::glean::traits::__serde::Serialize, ::glean::traits::__serde::Deserialize)]
+    #[allow(non_snake_case)]
+    #[serde(deny_unknown_fields)]
+    pub struct {{ name }} {
+        {% for itemname, val in struct.properties.items() %}
+          {% if val.type == "object" %}
+          #[serde(skip_serializing_if = "Option::is_none")]
+          pub {{itemname|snake_case}}: Option<{{ name ~ "Item" ~ itemname|Camelize ~ "Object" }}>,
+          {% elif val.type == "array" %}
+          #[serde(skip_serializing_if = "Vec::is_empty", default = "Vec::new")]
+          pub {{itemname|snake_case}}: {{ name ~ "Item" ~ itemname|Camelize }},
+          {% else %}
+          #[serde(skip_serializing_if = "Option::is_none")]
+          pub {{itemname|snake_case}}: Option<{{val.type|structure_type_name}}>,
+          {% endif %}
+        {% endfor %}
+    }
+
+    {% for itemname, val in struct.properties.items() %}
+        {% if val.type == "array" %}
+        {% set nested_name = name ~ "Item" ~ itemname|Camelize %}
+        {{ generate_structure(nested_name, val) -}}
+        {% elif val.type == "object" %}
+        {% set nested_name = name ~ "Item" ~ itemname|Camelize ~ "Object" %}
+        {{ generate_structure(nested_name, val) -}}
+        {% endif %}
+    {% endfor %}
+{% else %}
+pub type {{ name }} = {{ struct.type|structure_type_name }};
+{% endif %}
+{% endmacro %}
+
 {% macro generate_extra_keys(obj) -%}
 {% for name, _ in obj["_generate_enums"] %}
 {# we always use the `extra` suffix, because we only expose the new event API #}
@@ -44,7 +83,7 @@ impl ExtraKeys for {{ obj.name|Camelize }}{{ suffix }} {
 pub enum {{ obj.name|Camelize }}Label {
     {% for label in obj.ordered_labels %}
     {# Specifically _not_ using r# as C++ doesn't have it #}
-    {{ label|Camelize }} = {{loop.index0}},
+    E{{ label|Camelize }} = {{loop.index0}},
     {% endfor %}
     __Other__,
 }
@@ -52,7 +91,7 @@ impl From<u16> for {{ obj.name|Camelize }}Label {
     fn from(v: u16) -> Self {
         match v {
             {% for label in obj.ordered_labels %}
-            {{ loop.index0 }} => Self::{{ label|Camelize }},
+            {{ loop.index0 }} => Self::E{{ label|Camelize }},
             {% endfor %}
             _ => Self::__Other__,
         }
@@ -62,7 +101,7 @@ impl Into<&'static str> for {{ obj.name|Camelize }}Label {
     fn into(self) -> &'static str {
         match self {
             {% for label in obj.ordered_labels %}
-            Self::{{ label| Camelize }} => "{{label}}",
+            Self::E{{ label| Camelize }} => "{{label}}",
             {% endfor %}
             Self::__Other__ => "__other__",
         }
@@ -75,10 +114,14 @@ pub enum DynamicLabel { }
 {% for category_name, objs in all_objs.items() %}
 pub mod {{ category_name|snake_case }} {
     use crate::private::*;
+    #[allow(unused_imports)] // CommonMetricData might be unused, let's avoid warnings
     use glean::CommonMetricData;
     #[allow(unused_imports)] // HistogramType might be unusued, let's avoid warnings
     use glean::HistogramType;
     use once_cell::sync::Lazy;
+
+    #[allow(unused_imports)]
+    use std::convert::TryFrom;
 
     {% for obj in objs.values() %}
     {% if obj|attr("_generate_enums") %}
@@ -87,10 +130,24 @@ pub mod {{ category_name|snake_case }} {
     {% if obj.labeled and obj.labels and obj.labels|length %}
     {{ generate_label_enum(obj)|indent }}
     {% endif %}
+    {% if obj|attr("_generate_structure") %}
+    {{ generate_structure(obj.name|Camelize ~ "Object", obj._generate_structure) -}}
+    {% endif %}
     #[allow(non_upper_case_globals)]
     /// generated from {{ category_name }}.{{ obj.name }}
     ///
     /// {{ obj.description|wordwrap() | replace('\n', '\n    /// ') }}
+    {% if obj.type == "counter" and obj.send_in_pings|length == 1 and not obj.disabled and obj.lifetime|rust == "Lifetime::Ping" %}
+    {# Use optimized CounterMetric ctor in a common case (esp. for Use Counters) #}
+    pub static {{ obj.name|snake_case }}: Lazy<{{ obj|type_name }}> = Lazy::new(|| {
+        CounterMetric::codegen_new(
+            {{obj|metric_id}},
+            "{{obj.category}}",
+            "{{obj.name}}",
+            "{{obj.send_in_pings[0]}}"
+        )
+    });
+    {% else %}
     pub static {{ obj.name|snake_case }}: Lazy<{{ obj|type_name }}> = Lazy::new(|| {
         {{ obj|ctor }}({{obj|metric_id}}.into(), CommonMetricData {
             {% for arg_name in common_metric_data_args if obj[arg_name] is defined %}
@@ -110,6 +167,7 @@ pub mod {{ category_name|snake_case }} {
         {%- endif -%})
         {% endif %}
     });
+    {% endif %}
 
     {% endfor %}
 }
@@ -134,6 +192,71 @@ pub(crate) mod __glean_metric_maps {
     });
 
 {% endfor %}
+
+    pub(crate) fn set_object_by_id(metric_id: u32, value: String) -> Result<(), ()> {
+        match metric_id {
+{% for metric_id, object in objects_by_id.items() %}
+          {{metric_id}} => {
+              super::{{object}}.set_string(value);
+              Ok(())
+          }
+{% endfor %}
+           _ => Err(()),
+        }
+    }
+
+    /// Wrapper to get the currently stored object for object metric as a string.
+    ///
+    /// # Arguments
+    ///
+    /// * `metric_id` - The metric's ID to look up
+    /// * `ping_name` - (Optional) The ping name to look into.
+    ///                 Defaults to the first value in `send_in_pings`.
+    ///
+    /// # Returns
+    ///
+    /// Returns the recorded object serialized as a JSON string or `None` if nothing stored.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no object by the given metric ID could be found.
+    pub(crate) fn object_test_get_value(metric_id: u32, ping_name: Option<String>) -> Option<String> {
+        match metric_id {
+{% for metric_id, object in objects_by_id.items() %}
+           {{metric_id}} => super::{{object}}.test_get_value_as_str(ping_name.as_deref()),
+{% endfor %}
+           _ => panic!("No object for metric id {}", metric_id),
+        }
+    }
+
+    /// Check the provided object for errors.
+    ///
+    /// # Arguments
+    ///
+    /// * `metric_id` - The metric's ID to look up
+    ///
+    /// # Returns
+    ///
+    /// Returns a string for the recorded error or `None`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no object by the given metric ID could be found.
+    #[allow(unused_variables)]
+    pub(crate) fn object_test_get_error(metric_id: u32) -> Option<String> {
+        #[cfg(feature = "with_gecko")]
+        match metric_id {
+{% for metric_id, object in objects_by_id.items() %}
+           {{metric_id}} => test_get_errors!(super::{{object}}),
+{% endfor %}
+           _ => panic!("No object for metric id {}", metric_id),
+        }
+
+        #[cfg(not(feature = "with_gecko"))]
+        {
+            return None;
+        }
+    }
 
     /// Wrapper to record an event based on its metric ID.
     ///

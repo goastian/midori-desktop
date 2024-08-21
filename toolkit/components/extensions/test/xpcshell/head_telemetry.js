@@ -2,7 +2,7 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-/* exported IS_ANDROID_BUILD, IS_OOP, valueSum, clearHistograms, getSnapshots, promiseTelemetryRecorded,
+/* exported IS_OOP, valueSum, clearHistograms, getSnapshots, promiseTelemetryRecorded,
             assertDNRTelemetryMetricsDefined, assertDNRTelemetryMetricsNoSamples, assertDNRTelemetryMetricsGetValueEq,
             assertDNRTelemetryMetricsSamplesCount, resetTelemetryData, setupTelemetryForTests */
 
@@ -20,13 +20,6 @@ Services.prefs.setBoolPref(
 );
 
 const IS_OOP = Services.prefs.getBoolPref("extensions.webextensions.remote");
-
-// Initializing and asserting the expected telemetry is currently conditioned
-// on this const.
-// TODO(Bug 1752139) remove this along with initializing and asserting the expected
-// telemetry also for android build, once `Services.fog.testResetFOG()` is implemented
-// for Android builds.
-const IS_ANDROID_BUILD = AppConstants.platform === "android";
 
 const WEBEXT_EVENTPAGE_RUNNING_TIME_MS = "WEBEXT_EVENTPAGE_RUNNING_TIME_MS";
 const WEBEXT_EVENTPAGE_RUNNING_TIME_MS_BY_ADDONID =
@@ -46,6 +39,12 @@ const HISTOGRAM_EVENTPAGE_IDLE_RESULT_CATEGORIES = [
   "reset_listeners",
   "reset_nativeapp",
   "reset_streamfilter",
+  "reset_parentapicall",
+];
+
+const GLEAN_EVENTPAGE_IDLE_RESULT_CATEGORIES = [
+  ...HISTOGRAM_EVENTPAGE_IDLE_RESULT_CATEGORIES,
+  "__other__",
 ];
 
 function valueSum(arr) {
@@ -193,10 +192,6 @@ function setupTelemetryForTests() {
 }
 
 function resetTelemetryData() {
-  if (IS_ANDROID_BUILD) {
-    info("Skip testResetFOG on android builds");
-    return;
-  }
   Services.fog.testResetFOG();
 
   // Clear histograms data recorded in the unified telemetry
@@ -206,6 +201,185 @@ function resetTelemetryData() {
   // have reset Glean metrics data using testResetFOG).
   clearHistograms();
   clearScalars();
+}
+
+function assertValidGleanMetric({
+  metricId,
+  gleanMetric,
+  gleanMetricConstructor,
+  msg,
+}) {
+  const { GleanMetric } = globalThis;
+  if (!(gleanMetric instanceof GleanMetric)) {
+    throw new Error(
+      `gleanMetric "${metricId}" ${gleanMetric} should be an instance of GleanMetric ${msg}`
+    );
+  }
+
+  if (
+    gleanMetricConstructor &&
+    !(gleanMetric instanceof gleanMetricConstructor)
+  ) {
+    throw new Error(
+      `gleanMetric "${metricId}" should be an instance of the given GleanMetric constructor: ${gleanMetric} not an instance of ${gleanMetricConstructor} ${msg}`
+    );
+  }
+}
+
+// TODO reuse this helper inside the DNR specific test helper which would be doing
+// a similar assertion on DNR metrics.
+function assertGleanMetricsNoSamples({
+  metricId,
+  gleanMetric,
+  gleanMetricConstructor,
+  message,
+}) {
+  const msg = message ? `(${message})` : "";
+  assertValidGleanMetric({
+    metricId,
+    gleanMetric,
+    gleanMetricConstructor,
+    msg,
+  });
+  const gleanData = gleanMetric.testGetValue();
+  Assert.deepEqual(
+    gleanData,
+    undefined,
+    `Got no sample for Glean metric ${metricId} ${msg}`
+  );
+}
+
+// TODO reuse this helper inside the DNR specific test helper which would be doing
+// a similar assertion on DNR metrics.
+function assertGleanMetricsSamplesCount({
+  metricId,
+  gleanMetric,
+  gleanMetricConstructor,
+  expectedSamplesCount,
+  message,
+}) {
+  const msg = message ? `(${message})` : "";
+  assertValidGleanMetric({
+    metricId,
+    gleanMetric,
+    gleanMetricConstructor,
+    msg,
+  });
+  const gleanData = gleanMetric.testGetValue();
+  Assert.notEqual(
+    gleanData,
+    undefined,
+    `Got some sample for Glean metric ${metricId} ${msg}`
+  );
+  Assert.equal(
+    valueSum(gleanData.values),
+    expectedSamplesCount,
+    `Got the expected number of samples for Glean metric ${metricId} ${msg}`
+  );
+}
+
+function assertGleanLabeledCounter({
+  metricId,
+  gleanMetric,
+  gleanMetricLabels,
+  expectedLabelsValue,
+  ignoreNonExpectedLabels,
+  ignoreUnknownLabels,
+  message,
+}) {
+  const { GleanLabeled } = globalThis;
+  const msg = message ? `(${message})` : "";
+  if (!Array.isArray(gleanMetricLabels) || !gleanMetricLabels.length) {
+    throw new Error(
+      `Missing mandatory gleanMetricLabels property ${msg}: ${gleanMetricLabels}`
+    );
+  }
+
+  if (!(gleanMetric instanceof GleanLabeled)) {
+    throw new Error(
+      `Glean metric "${metricId}" should be an instance of GleanLabeled: ${gleanMetric} ${msg}`
+    );
+  }
+
+  for (const label of gleanMetricLabels) {
+    const expectedLabelValue = expectedLabelsValue[label];
+    if (ignoreNonExpectedLabels && !(label in expectedLabelsValue)) {
+      continue;
+    }
+    Assert.deepEqual(
+      gleanMetric[label].testGetValue(),
+      expectedLabelValue,
+      `Expect Glean "${metricId}" metric label "${label}" to be ${
+        expectedLabelValue > 0 ? expectedLabelValue : "empty"
+      }`
+    );
+  }
+
+  if (!ignoreUnknownLabels) {
+    Assert.deepEqual(
+      gleanMetric["__other__"].testGetValue(), // eslint-disable-line dot-notation
+      undefined,
+      `Expect Glean "${metricId}" metric label "__other__" to be empty.`
+    );
+  }
+}
+
+function assertGleanLabeledCounterEmpty({
+  metricId,
+  gleanMetric,
+  gleanMetricLabels,
+  message,
+}) {
+  // All empty labels passed to the other helpers to make it
+  // assert that all labels are empty.
+  assertGleanLabeledCounter({
+    metricId,
+    gleanMetric,
+    gleanMetricLabels,
+    expectedLabelsValue: {},
+    message,
+  });
+}
+
+function assertGleanLabeledCounterNotEmpty({
+  metricId,
+  gleanMetric,
+  expectedNotEmptyLabels,
+  ignoreUnknownLabels,
+  message,
+}) {
+  const { GleanLabeled } = globalThis;
+  const msg = message ? `(${message})` : "";
+  if (
+    !Array.isArray(expectedNotEmptyLabels) ||
+    !expectedNotEmptyLabels.length
+  ) {
+    throw new Error(
+      `Missing mandatory expectedNotEmptyLabels property ${msg}: ${expectedNotEmptyLabels}`
+    );
+  }
+
+  if (!(gleanMetric instanceof GleanLabeled)) {
+    throw new Error(
+      `Glean metric "${metricId}" should be an instance of GleanLabeled: ${gleanMetric} ${msg}`
+    );
+  }
+
+  for (const label of expectedNotEmptyLabels) {
+    Assert.notEqual(
+      gleanMetric[label].testGetValue(),
+      undefined,
+      `Expect Glean "${metricId}" metric label "${label}" to not be empty`
+    );
+  }
+
+  if (!ignoreUnknownLabels) {
+    Assert.deepEqual(
+      gleanMetric["__other__"].testGetValue(), // eslint-disable-line dot-notation
+      undefined,
+      `Expect Glean "${metricId}" metric label "__other__" to be empty.`
+    );
+  }
 }
 
 function assertDNRTelemetryMetricsDefined(metrics) {
@@ -321,12 +495,7 @@ function assertDNRTelemetryMetricsNoSamples(metrics, msg) {
   assertDNRTelemetryMetricsDefined(metrics);
   for (const metricDetails of metrics) {
     const { metric, label } = metricDetails;
-    if (IS_ANDROID_BUILD) {
-      info(
-        `Skip assertions on collected samples for extensionsApisDnr.${metric} on android builds (${msg})`
-      );
-      return;
-    }
+
     const gleanData = label
       ? Glean.extensionsApisDnr[metric][label].testGetValue()
       : Glean.extensionsApisDnr[metric].testGetValue();
@@ -352,12 +521,7 @@ function assertDNRTelemetryMetricsGetValueEq(metrics, msg) {
   assertDNRTelemetryMetricsDefined(metrics);
   for (const metricDetails of metrics) {
     const { metric, label, expectedGetValue } = metricDetails;
-    if (IS_ANDROID_BUILD) {
-      info(
-        `Skip assertions on collected samples for extensionsApisDnr.${metric} on android builds`
-      );
-      return;
-    }
+
     const gleanData = label
       ? Glean.extensionsApisDnr[metric][label].testGetValue()
       : Glean.extensionsApisDnr[metric].testGetValue();
@@ -395,12 +559,7 @@ function assertDNRTelemetryMetricsSamplesCount(metrics, msg) {
 
   for (const metricDetails of metrics) {
     const { metric, expectedSamplesCount } = metricDetails;
-    if (IS_ANDROID_BUILD) {
-      info(
-        `Skip assertions on collected samples for extensionsApisDnr.${metric} on android builds`
-      );
-      return;
-    }
+
     const gleanData = Glean.extensionsApisDnr[metric].testGetValue();
     Assert.notEqual(
       gleanData,

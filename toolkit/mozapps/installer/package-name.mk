@@ -15,18 +15,18 @@ MOZ_PKG_VERSION = $(MOZ_APP_VERSION)
 endif
 
 ifndef MOZ_PKG_PLATFORM
-MOZ_PKG_PLATFORM := $(TARGET_RAW_OS)-$(TARGET_CPU)
+MOZ_PKG_PLATFORM := $(TARGET_RAW_OS)-$(TARGET_RAW_CPU)
 
 ifeq ($(MOZ_BUILD_APP),mobile/android)
-MOZ_PKG_PLATFORM := android-$(TARGET_CPU)
+MOZ_PKG_PLATFORM := android-$(TARGET_RAW_CPU)
 endif
 
-# TARGET_RAW_OS/TARGET_CPU may be unintuitive, so we hardcode some special formats
+# TARGET_RAW_OS/TARGET_RAW_CPU may be unintuitive, so we hardcode some special formats
 ifeq ($(OS_ARCH),WINNT)
-ifeq ($(CPU_ARCH),x86)
+ifeq ($(TARGET_CPU),x86)
 MOZ_PKG_PLATFORM := win32
 else
-ifeq ($(CPU_ARCH),aarch64)
+ifeq ($(TARGET_CPU),aarch64)
 MOZ_PKG_PLATFORM := win64-aarch64
 else
 MOZ_PKG_PLATFORM := win64
@@ -37,7 +37,7 @@ ifeq ($(OS_ARCH),Darwin)
 MOZ_PKG_PLATFORM := mac
 endif
 ifeq ($(TARGET_RAW_OS),linux-gnu)
-MOZ_PKG_PLATFORM := linux-$(TARGET_CPU)
+MOZ_PKG_PLATFORM := linux-$(TARGET_RAW_CPU)
 endif
 endif #MOZ_PKG_PLATFORM
 
@@ -92,6 +92,7 @@ CODE_COVERAGE_ARCHIVE_BASENAME = $(PKG_BASENAME).code-coverage-gcno
 MOZSEARCH_ARCHIVE_BASENAME = $(PKG_BASENAME).mozsearch-index
 MOZSEARCH_INCLUDEMAP_BASENAME = $(PKG_BASENAME).mozsearch-distinclude
 MOZSEARCH_SCIP_INDEX_BASENAME = $(PKG_BASENAME).mozsearch-scip-index
+MOZSEARCH_JAVA_INDEX_BASENAME = $(PKG_BASENAME).mozsearch-java-index
 
 # Mozharness naming
 MOZHARNESS_PACKAGE = mozharness.zip
@@ -107,11 +108,11 @@ TALOS_PACKAGE = $(PKG_BASENAME).talos.tests.tar.gz
 AWSY_PACKAGE = $(PKG_BASENAME).awsy.tests.tar.gz
 GTEST_PACKAGE = $(PKG_BASENAME).gtest.tests.tar.gz
 
-# macOS codesigning package naming
-MACOS_CODESIGN_ARCHIVE_BASENAME = $(PKG_BASENAME).codesign-entitlements
-
 # `.xpt` artifacts: for use in artifact builds.
 XPT_ARTIFACTS_ARCHIVE_BASENAME = $(PKG_BASENAME).xpt_artifacts
+ifeq (Darwin, $(OS_ARCH))
+UPDATE_FRAMEWORK_ARTIFACTS_ARCHIVE_BASENAME = $(PKG_BASENAME).update_framework_artifacts
+endif # Darwin
 
 ifneq (,$(wildcard $(DIST)/bin/application.ini))
 BUILDID = $(shell $(PYTHON3) $(MOZILLA_DIR)/config/printconfigsetting.py $(DIST)/bin/application.ini App BuildID)

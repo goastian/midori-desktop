@@ -283,7 +283,7 @@ ChromeUtils.defineESModuleGetters(this, {
     }
 
     return Object.entries(modifierMap)
-      .filter(([key, isDown]) => isDown)
+      .filter(([, isDown]) => isDown)
       .map(([key]) => key)
       .concat(getStringForEvent(e))
       .join("+");
@@ -332,17 +332,16 @@ ChromeUtils.defineESModuleGetters(this, {
   }
 
   function createDuplicateWarningBar(shortcut) {
-    let messagebar = document.createElement("message-bar");
+    let messagebar = document.createElement("moz-message-bar");
     messagebar.setAttribute("type", "warning");
 
-    let message = document.createElement("span");
     document.l10n.setAttributes(
-      message,
-      "shortcuts-duplicate-warning-message",
+      messagebar,
+      "shortcuts-duplicate-warning-message2",
       { shortcut }
     );
+    messagebar.setAttribute("data-l10n-attrs", "message");
 
-    messagebar.append(message);
     return messagebar;
   }
 
@@ -605,7 +604,7 @@ ChromeUtils.defineESModuleGetters(this, {
               card.setAttribute("expanded", "true");
               setLabel("collapse");
               // If this as a keyboard event then focus the next input.
-              if (event.mozInputSource == MouseEvent.MOZ_SOURCE_KEYBOARD) {
+              if (event.inputSource == MouseEvent.MOZ_SOURCE_KEYBOARD) {
                 firstHiddenInput.focus();
               }
             }

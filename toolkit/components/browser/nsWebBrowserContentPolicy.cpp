@@ -19,7 +19,6 @@ NS_IMPL_ISUPPORTS(nsWebBrowserContentPolicy, nsIContentPolicy)
 NS_IMETHODIMP
 nsWebBrowserContentPolicy::ShouldLoad(nsIURI* aContentLocation,
                                       nsILoadInfo* aLoadInfo,
-                                      const nsACString& aMimeGuess,
                                       int16_t* aShouldLoad) {
   MOZ_ASSERT(aShouldLoad, "Null out param");
 
@@ -60,28 +59,9 @@ nsWebBrowserContentPolicy::ShouldLoad(nsIURI* aContentLocation,
 NS_IMETHODIMP
 nsWebBrowserContentPolicy::ShouldProcess(nsIURI* aContentLocation,
                                          nsILoadInfo* aLoadInfo,
-                                         const nsACString& aMimeGuess,
                                          int16_t* aShouldProcess) {
   MOZ_ASSERT(aShouldProcess, "Null out param");
 
-  ExtContentPolicyType contentType = aLoadInfo->GetExternalContentPolicyType();
-
   *aShouldProcess = nsIContentPolicy::ACCEPT;
-
-  // Object tags will always open channels with TYPE_OBJECT, but may end up
-  // loading with TYPE_IMAGE or TYPE_DOCUMENT as their final type, so we block
-  // actual-plugins at the process stage
-  if (contentType != ExtContentPolicy::TYPE_OBJECT) {
-    return NS_OK;
-  }
-
-  nsCOMPtr<nsISupports> context = aLoadInfo->GetLoadingContext();
-  nsIDocShell* shell = NS_CP_GetDocShellFromContext(context);
-  if (shell && (!shell->PluginsAllowedInCurrentDoc())) {
-    NS_SetRequestBlockingReason(
-        aLoadInfo, nsILoadInfo::BLOCKING_REASON_CONTENT_POLICY_WEB_BROWSER);
-    *aShouldProcess = nsIContentPolicy::REJECT_TYPE;
-  }
-
   return NS_OK;
 }

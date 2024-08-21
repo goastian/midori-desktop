@@ -55,7 +55,8 @@ bool IsBinaryArmExecutable(const char* executablePath) {
   bool isArmExecutable = false;
 
   CFURLRef url = ::CFURLCreateFromFileSystemRepresentation(
-      kCFAllocatorDefault, (const UInt8*)executablePath, strlen(executablePath), false);
+      kCFAllocatorDefault, (const UInt8*)executablePath, strlen(executablePath),
+      false);
   if (!url) {
     return false;
   }
@@ -68,7 +69,8 @@ bool IsBinaryArmExecutable(const char* executablePath) {
 
   CFIndex archCount = ::CFArrayGetCount(archs);
   for (CFIndex i = 0; i < archCount; i++) {
-    CFNumberRef currentArch = static_cast<CFNumberRef>(::CFArrayGetValueAtIndex(archs, i));
+    CFNumberRef currentArch =
+        static_cast<CFNumberRef>(::CFArrayGetValueAtIndex(archs, i));
     int currentArchInt = 0;
     if (!::CFNumberGetValue(currentArch, kCFNumberIntType, &currentArchInt)) {
       continue;
@@ -161,7 +163,8 @@ void LaunchMacPostProcess(const char* aAppBundle) {
   // Launch helper to perform post processing for the update; this is the Mac
   // analogue of LaunchWinPostProcess (PostUpdateWin).
   NSString* iniPath = [NSString stringWithUTF8String:aAppBundle];
-  iniPath = [iniPath stringByAppendingPathComponent:@"Contents/Resources/updater.ini"];
+  iniPath = [iniPath
+      stringByAppendingPathComponent:@"Contents/Resources/updater.ini"];
 
   NSFileManager* fileManager = [NSFileManager defaultManager];
   if (![fileManager fileExistsAtPath:iniPath]) {
@@ -171,8 +174,8 @@ void LaunchMacPostProcess(const char* aAppBundle) {
 
   int readResult;
   mozilla::UniquePtr<char[]> values[2];
-  readResult =
-      ReadStrings([iniPath UTF8String], "ExeRelPath\0ExeArg\0", 2, values, "PostUpdateMac");
+  readResult = ReadStrings([iniPath UTF8String], "ExeRelPath\0ExeArg\0", 2,
+                           values, "PostUpdateMac");
   if (readResult) {
     return;
   }
@@ -194,7 +197,8 @@ void LaunchMacPostProcess(const char* aAppBundle) {
   exeFullPath = [exeFullPath stringByAppendingPathComponent:exeRelPath];
 
   mozilla::UniquePtr<char[]> optVal;
-  readResult = ReadStrings([iniPath UTF8String], "ExeAsync\0", 1, &optVal, "PostUpdateMac");
+  readResult = ReadStrings([iniPath UTF8String], "ExeAsync\0", 1, &optVal,
+                           "PostUpdateMac");
 
   NSTask* task = [[NSTask alloc] init];
   [task setLaunchPath:exeFullPath];
@@ -223,8 +227,10 @@ id ConnectToUpdateServer() {
       updateServer = (id)[NSConnection
           rootProxyForConnectionWithRegisteredName:@"org.mozilla.updater.server"
                                               host:nil
-                                   usingNameServer:[NSSocketPortNameServer sharedInstance]];
-      if (!updateServer || ![updateServer respondsToSelector:@selector(abort)] ||
+                                   usingNameServer:[NSSocketPortNameServer
+                                                       sharedInstance]];
+      if (!updateServer ||
+          ![updateServer respondsToSelector:@selector(abort)] ||
           ![updateServer respondsToSelector:@selector(getArguments)] ||
           ![updateServer respondsToSelector:@selector(shutdown)]) {
         NSLog(@"Server doesn't exist or doesn't provide correct selectors.");
@@ -262,16 +268,21 @@ void CleanupElevatedMacUpdate(bool aFailureOccurred) {
   }
 
   NSFileManager* manager = [NSFileManager defaultManager];
-  [manager removeItemAtPath:@"/Library/PrivilegedHelperTools/org.mozilla.updater" error:nil];
-  [manager removeItemAtPath:@"/Library/LaunchDaemons/org.mozilla.updater.plist" error:nil];
-  const char* launchctlArgs[] = {"/bin/launchctl", "remove", "org.mozilla.updater"};
+  [manager
+      removeItemAtPath:@"/Library/PrivilegedHelperTools/org.mozilla.updater"
+                 error:nil];
+  [manager removeItemAtPath:@"/Library/LaunchDaemons/org.mozilla.updater.plist"
+                      error:nil];
+  const char* launchctlArgs[] = {"/bin/launchctl", "remove",
+                                 "org.mozilla.updater"};
   // The following call will terminate the current process due to the "remove"
   // argument in launchctlArgs.
   LaunchChild(3, launchctlArgs);
 }
 
-// Note: Caller is responsible for freeing argv.
-bool ObtainUpdaterArguments(int* argc, char*** argv) {
+// Note: Caller is responsible for freeing aArgv.
+bool ObtainUpdaterArguments(int* aArgc, char*** aArgv,
+                            MARChannelStringTable* aMARStrings) {
   MacAutoreleasePool pool;
 
   id updateServer = ConnectToUpdateServer();
@@ -282,15 +293,24 @@ bool ObtainUpdaterArguments(int* argc, char*** argv) {
   }
 
   @try {
-    NSArray* updaterArguments = [updateServer performSelector:@selector(getArguments)];
-    *argc = [updaterArguments count];
-    char** tempArgv = (char**)malloc(sizeof(char*) * (*argc));
-    for (int i = 0; i < *argc; i++) {
+    NSArray* updaterArguments =
+        [updateServer performSelector:@selector(getArguments)];
+    *aArgc = [updaterArguments count];
+    char** tempArgv = (char**)malloc(sizeof(char*) * (*aArgc));
+    for (int i = 0; i < *aArgc; i++) {
       int argLen = [[updaterArguments objectAtIndex:i] length] + 1;
       tempArgv[i] = (char*)malloc(argLen);
-      strncpy(tempArgv[i], [[updaterArguments objectAtIndex:i] UTF8String], argLen);
+      strncpy(tempArgv[i], [[updaterArguments objectAtIndex:i] UTF8String],
+              argLen);
     }
-    *argv = tempArgv;
+    *aArgv = tempArgv;
+
+    NSString* channelID =
+        [updateServer performSelector:@selector(getMARChannelID)];
+    const char* channelIDStr = [channelID UTF8String];
+    aMARStrings->MARChannelID =
+        mozilla::MakeUnique<char[]>(strlen(channelIDStr) + 1);
+    strcpy(aMARStrings->MARChannelID.get(), channelIDStr);
   } @catch (NSException* e) {
     // Let's try our best and clean up.
     CleanupElevatedMacUpdate(true);
@@ -309,10 +329,12 @@ bool ObtainUpdaterArguments(int* argc, char*** argv) {
   NSArray* mUpdaterArguments;
   BOOL mShouldKeepRunning;
   BOOL mAborted;
+  NSString* mMARChannelID;
 }
-- (id)initWithArgs:(NSArray*)args;
+- (id)initWithArgs:(NSArray*)aArgs marChannelID:(NSString*)aMARChannelID;
 - (BOOL)runServer;
 - (NSArray*)getArguments;
+- (NSString*)getMARChannelID;
 - (void)abort;
 - (BOOL)wasAborted;
 - (void)shutdown;
@@ -321,12 +343,13 @@ bool ObtainUpdaterArguments(int* argc, char*** argv) {
 
 @implementation ElevatedUpdateServer
 
-- (id)initWithArgs:(NSArray*)args {
+- (id)initWithArgs:(NSArray*)aArgs marChannelID:(NSString*)aMARChannelID {
   self = [super init];
   if (!self) {
     return nil;
   }
-  mUpdaterArguments = args;
+  mUpdaterArguments = aArgs;
+  mMARChannelID = aMARChannelID;
   mShouldKeepRunning = YES;
   mAborted = NO;
   return self;
@@ -334,7 +357,8 @@ bool ObtainUpdaterArguments(int* argc, char*** argv) {
 
 - (BOOL)runServer {
   NSPort* serverPort = [NSSocketPort port];
-  NSConnection* server = [NSConnection connectionWithReceivePort:serverPort sendPort:serverPort];
+  NSConnection* server = [NSConnection connectionWithReceivePort:serverPort
+                                                        sendPort:serverPort];
   [server setRootObject:self];
   if ([server registerName:@"org.mozilla.updater.server"
             withNameServer:[NSSocketPortNameServer sharedInstance]] == NO) {
@@ -343,14 +367,29 @@ bool ObtainUpdaterArguments(int* argc, char*** argv) {
     return NO;
   }
 
-  while ([self shouldKeepRunning] && [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
-                                                              beforeDate:[NSDate distantFuture]])
+  while ([self shouldKeepRunning] &&
+         [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
+                                  beforeDate:[NSDate distantFuture]])
     ;
   return ![self wasAborted];
 }
 
 - (NSArray*)getArguments {
   return mUpdaterArguments;
+}
+
+/**
+ * The MAR channel ID(s) are stored in the UpdateSettings.framework that ships
+ * with the updater.app bundle. When an elevated update is occurring, the
+ * org.mozilla.updater binary is extracted and installed individually as a
+ * Privileged Helper Tool. This Privileged Helper Tool does not have access to
+ * the UpdateSettings.framework and we therefore rely on the unelevated updater
+ * process to pass this information to the elevated updater process in the same
+ * fashion that the command line arguments are passed to the elevated updater
+ * process by `getArguments`.
+ */
+- (NSString*)getMARChannelID {
+  return mMARChannelID;
 }
 
 - (void)abort {
@@ -372,16 +411,19 @@ bool ObtainUpdaterArguments(int* argc, char*** argv) {
 
 @end
 
-bool ServeElevatedUpdate(int argc, const char** argv) {
+bool ServeElevatedUpdate(int aArgc, const char** aArgv,
+                         const char* aMARChannelID) {
   MacAutoreleasePool pool;
 
-  NSMutableArray* updaterArguments = [NSMutableArray arrayWithCapacity:argc];
-  for (int i = 0; i < argc; i++) {
-    [updaterArguments addObject:[NSString stringWithUTF8String:argv[i]]];
+  NSMutableArray* updaterArguments = [NSMutableArray arrayWithCapacity:aArgc];
+  for (int i = 0; i < aArgc; i++) {
+    [updaterArguments addObject:[NSString stringWithUTF8String:aArgv[i]]];
   }
 
+  NSString* channelID = [NSString stringWithUTF8String:aMARChannelID];
   ElevatedUpdateServer* updater =
-      [[ElevatedUpdateServer alloc] initWithArgs:[updaterArguments copy]];
+      [[ElevatedUpdateServer alloc] initWithArgs:updaterArguments
+                                    marChannelID:channelID];
   bool didSucceed = [updater runServer];
 
   [updater release];
@@ -394,9 +436,11 @@ bool IsOwnedByGroupAdmin(const char* aAppBundle) {
   NSString* appDir = [NSString stringWithUTF8String:aAppBundle];
   NSFileManager* fileManager = [NSFileManager defaultManager];
 
-  NSDictionary* attributes = [fileManager attributesOfItemAtPath:appDir error:nil];
+  NSDictionary* attributes = [fileManager attributesOfItemAtPath:appDir
+                                                           error:nil];
   bool isOwnedByAdmin = false;
-  if (attributes && [[attributes valueForKey:NSFileGroupOwnerAccountID] intValue] == 80) {
+  if (attributes &&
+      [[attributes valueForKey:NSFileGroupOwnerAccountID] intValue] == 80) {
     isOwnedByAdmin = true;
   }
   return isOwnedByAdmin;
@@ -425,13 +469,14 @@ void SetGroupOwnershipAndPermissions(const char* aAppBundle) {
     return;
   }
 
-  NSArray* permKeys =
-      [NSArray arrayWithObjects:NSFileGroupOwnerAccountID, NSFilePosixPermissions, nil];
+  NSArray* permKeys = [NSArray
+      arrayWithObjects:NSFileGroupOwnerAccountID, NSFilePosixPermissions, nil];
   // For all descendants of Firefox.app, set group ownership to 80 ("admin") and
   // ensure write permission for the group.
   for (NSString* currPath in paths) {
     NSString* child = [appDir stringByAppendingPathComponent:currPath];
-    NSDictionary* oldAttributes = [fileManager attributesOfItemAtPath:child error:&error];
+    NSDictionary* oldAttributes = [fileManager attributesOfItemAtPath:child
+                                                                error:&error];
     if (error) {
       return;
     }
@@ -440,12 +485,20 @@ void SetGroupOwnershipAndPermissions(const char* aAppBundle) {
     if ([oldAttributes fileType] == NSFileTypeSymbolicLink) {
       continue;
     }
-    NSNumber* oldPerms = (NSNumber*)[oldAttributes valueForKey:NSFilePosixPermissions];
+    NSNumber* oldPerms =
+        (NSNumber*)[oldAttributes valueForKey:NSFilePosixPermissions];
     NSArray* permObjects = [NSArray
         arrayWithObjects:[NSNumber numberWithUnsignedLong:80],
-                         [NSNumber numberWithUnsignedLong:[oldPerms shortValue] | 020], nil];
-    NSDictionary* attributes = [NSDictionary dictionaryWithObjects:permObjects forKeys:permKeys];
-    if (![fileManager setAttributes:attributes ofItemAtPath:child error:&error] || error) {
+                         [NSNumber
+                             numberWithUnsignedLong:[oldPerms shortValue] |
+                                                    020],
+                         nil];
+    NSDictionary* attributes = [NSDictionary dictionaryWithObjects:permObjects
+                                                           forKeys:permKeys];
+    if (![fileManager setAttributes:attributes
+                       ofItemAtPath:child
+                              error:&error] ||
+        error) {
       return;
     }
   }
@@ -455,21 +508,13 @@ void SetGroupOwnershipAndPermissions(const char* aAppBundle) {
  * Helper to launch macOS tasks via NSTask.
  */
 static void LaunchTask(NSString* aPath, NSArray* aArguments) {
-  if (@available(macOS 10.13, *)) {
-    NSTask* task = [[NSTask alloc] init];
-    [task setExecutableURL:[NSURL fileURLWithPath:aPath]];
-    if (aArguments) {
-      [task setArguments:aArguments];
-    }
-    [task launchAndReturnError:nil];
-    [task release];
-  } else {
-    NSArray* arguments = aArguments;
-    if (!arguments) {
-      arguments = @[];
-    }
-    [NSTask launchedTaskWithLaunchPath:aPath arguments:arguments];
+  NSTask* task = [[NSTask alloc] init];
+  [task setExecutableURL:[NSURL fileURLWithPath:aPath]];
+  if (aArguments) {
+    [task setArguments:aArguments];
   }
+  [task launchAndReturnError:nil];
+  [task release];
 }
 
 static void RegisterAppWithLaunchServices(NSString* aBundlePath) {
@@ -491,7 +536,9 @@ bool PerformInstallationFromDMG(int argc, char** argv) {
   }
   NSString* bundlePath = [NSString stringWithUTF8String:argv[2]];
   NSString* destPath = [NSString stringWithUTF8String:argv[3]];
-  if ([[NSFileManager defaultManager] copyItemAtPath:bundlePath toPath:destPath error:nil]) {
+  if ([[NSFileManager defaultManager] copyItemAtPath:bundlePath
+                                              toPath:destPath
+                                               error:nil]) {
     RegisterAppWithLaunchServices(destPath);
     StripQuarantineBit(destPath);
     return true;

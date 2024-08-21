@@ -7,6 +7,11 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 // This is redefined below, for strange and unfortunate reasons.
 import { PromptUtils } from "resource://gre/modules/PromptUtils.sys.mjs";
 
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  ClipboardContextMenu: "resource://gre/modules/ClipboardContextMenu.sys.mjs",
+});
+
 const {
   MODAL_TYPE_TAB,
   MODAL_TYPE_CONTENT,
@@ -652,6 +657,19 @@ Prompter.prototype = {
     let p = this.pickPrompter({ browsingContext, modalType, async: true });
     return p.promptAuth(...promptArgs);
   },
+
+  /**
+   * Displays a contextmenu to get user confirmation for clipboard read. Only
+   * one context menu can be opened at a time.
+   *
+   * @param {WindowContext} windowContext - The window context that initiates
+   *        the clipboard operation.
+   * @returns {Promise<nsIPropertyBag<{ ok: Boolean }>>}
+   *          A promise which resolves when the contextmenu is dismissed.
+   */
+  confirmUserPaste() {
+    return lazy.ClipboardContextMenu.confirmUserPaste(...arguments);
+  },
 };
 
 // Common utils not specific to a particular prompter style.
@@ -904,7 +922,7 @@ var InternalPromptUtils = {
   },
 };
 
-XPCOMUtils.defineLazyGetter(InternalPromptUtils, "strBundle", function () {
+ChromeUtils.defineLazyGetter(InternalPromptUtils, "strBundle", function () {
   let bundle = Services.strings.createBundle(
     "chrome://global/locale/commonDialogs.properties"
   );
@@ -914,7 +932,7 @@ XPCOMUtils.defineLazyGetter(InternalPromptUtils, "strBundle", function () {
   return bundle;
 });
 
-XPCOMUtils.defineLazyGetter(InternalPromptUtils, "brandBundle", function () {
+ChromeUtils.defineLazyGetter(InternalPromptUtils, "brandBundle", function () {
   let bundle = Services.strings.createBundle(
     "chrome://branding/locale/brand.properties"
   );
@@ -924,7 +942,7 @@ XPCOMUtils.defineLazyGetter(InternalPromptUtils, "brandBundle", function () {
   return bundle;
 });
 
-XPCOMUtils.defineLazyGetter(InternalPromptUtils, "ellipsis", function () {
+ChromeUtils.defineLazyGetter(InternalPromptUtils, "ellipsis", function () {
   let ellipsis = "\u2026";
   try {
     ellipsis = Services.prefs.getComplexValue(
@@ -1040,7 +1058,7 @@ class ModalPrompter {
         closed = true;
       });
     Services.tm.spinEventLoopUntilOrQuit(
-      "prompts/Prompter.jsm:openPromptSync",
+      "prompts/Prompter.sys.mjs:openPromptSync",
       () => closed
     );
   }
@@ -1142,7 +1160,7 @@ class ModalPrompter {
     }
     if (IS_CONTENT) {
       let docShell = this.browsingContext.docShell;
-      let inPermitUnload = docShell?.contentViewer?.inPermitUnload;
+      let inPermitUnload = docShell?.docViewer?.inPermitUnload;
       args.inPermitUnload = inPermitUnload;
       let eventDetail = Cu.cloneInto(
         {
@@ -1239,7 +1257,7 @@ class ModalPrompter {
   }
 
   async openInternalWindowPrompt(parentWindow, args) {
-    if (!parentWindow?.gDialogBox || !ModalPrompter.windowPromptSubDialog) {
+    if (!parentWindow?.gDialogBox) {
       this.openWindowPrompt(parentWindow, args);
       return;
     }
@@ -1453,6 +1471,11 @@ class ModalPrompter {
           args.button2Label = label2;
         }
       }
+    }
+
+    if (flags & Ci.nsIPrompt.SHOW_SPINNER) {
+      // When bug 1879550 is fixed, add a higher-res version here
+      args.headerIconURL = "chrome://global/skin/icons/loading.png";
     }
 
     if (this.async) {
@@ -1697,15 +1720,7 @@ class ModalPrompter {
     return result;
   }
 
-  asyncPromptAuth(
-    channel,
-    callback,
-    context,
-    level,
-    authInfo,
-    checkLabel,
-    checkValue
-  ) {
+  asyncPromptAuth() {
     // Nothing calls this directly; netwerk ends up going through
     // nsIPromptService::GetPrompt, which delegates to login manager.
     // Login manger handles the async bits itself, and only calls out
@@ -1734,13 +1749,6 @@ XPCOMUtils.defineLazyPreferenceGetter(
   MODAL_TYPE_WINDOW
 );
 
-XPCOMUtils.defineLazyPreferenceGetter(
-  ModalPrompter,
-  "windowPromptSubDialog",
-  "prompts.windowPromptSubDialog",
-  false
-);
-
 export function AuthPromptAdapterFactory() {}
 AuthPromptAdapterFactory.prototype = {
   classID: Components.ID("{6e134924-6c3a-4d86-81ac-69432dd971dc}"),
@@ -1763,7 +1771,7 @@ AuthPromptAdapter.prototype = {
 
   /* ----------  nsIAuthPrompt2 ---------- */
 
-  promptAuth(channel, level, authInfo, checkLabel, checkValue) {
+  promptAuth(channel, level, authInfo) {
     let message = InternalPromptUtils.makeAuthMessage(
       this.oldPrompter,
       channel,
@@ -1810,15 +1818,7 @@ AuthPromptAdapter.prototype = {
     return ok;
   },
 
-  asyncPromptAuth(
-    channel,
-    callback,
-    context,
-    level,
-    authInfo,
-    checkLabel,
-    checkValue
-  ) {
+  asyncPromptAuth() {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 };

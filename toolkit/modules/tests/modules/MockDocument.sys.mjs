@@ -2,7 +2,7 @@
  * Provides infrastructure for tests that would require mock document.
  */
 
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+import { NetUtil } from "resource://gre/modules/NetUtil.sys.mjs";
 
 export const MockDocument = {
   /**
@@ -40,7 +40,7 @@ export const MockDocument = {
     // Mock the document.location object so we can unit test without a frame. We use a proxy
     // instead of just assigning to the property since it's not configurable or writable.
     let document = new Proxy(aDoc, {
-      get(target, property, receiver) {
+      get(target, property) {
         // document.location is normally null when a document is outside of a "browsing context".
         // See https://html.spec.whatwg.org/#the-location-interface
         if (property == "location") {

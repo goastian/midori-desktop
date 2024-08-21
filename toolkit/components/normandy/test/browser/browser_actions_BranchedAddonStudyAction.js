@@ -333,7 +333,6 @@ decorate_task(
           addonId: FIXTURE_ADDON_ID,
           addonVersion: "2.0",
           branch: "a",
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
@@ -352,7 +351,7 @@ decorate_task(
     );
 
     const addon = await AddonManager.getAddonByID(FIXTURE_ADDON_ID);
-    ok(addon.version === "2.0", "add-on should be updated");
+    Assert.strictEqual(addon.version, "2.0", "add-on should be updated");
   }
 );
 
@@ -397,7 +396,6 @@ decorate_task(
         {
           reason: "addon-id-mismatch",
           branch: "a",
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
@@ -406,7 +404,7 @@ decorate_task(
     Assert.deepEqual(updatedStudy, study, "study data should be unchanged");
 
     let addon = await AddonManager.getAddonByID(FIXTURE_ADDON_ID);
-    ok(addon.version === "0.1", "add-on should be unchanged");
+    Assert.strictEqual(addon.version, "0.1", "add-on should be unchanged");
   }
 );
 
@@ -450,7 +448,6 @@ decorate_task(
         {
           reason: "addon-does-not-exist",
           branch: "a",
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
@@ -508,7 +505,6 @@ decorate_task(
           branch: "a",
           reason: "download-failure",
           detail: "ERROR_NETWORK_FAILURE",
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
@@ -517,7 +513,7 @@ decorate_task(
     Assert.deepEqual(updatedStudy, study, "study data should be unchanged");
 
     const addon = await AddonManager.getAddonByID(FIXTURE_ADDON_ID);
-    ok(addon.version === "0.1", "add-on should be unchanged");
+    Assert.strictEqual(addon.version, "0.1", "add-on should be unchanged");
   }
 );
 
@@ -564,7 +560,6 @@ decorate_task(
           branch: "a",
           reason: "download-failure",
           detail: "ERROR_INCORRECT_HASH",
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
@@ -573,7 +568,7 @@ decorate_task(
     Assert.deepEqual(updatedStudy, study, "study data should be unchanged");
 
     const addon = await AddonManager.getAddonByID(FIXTURE_ADDON_ID);
-    ok(addon.version === "0.1", "add-on should be unchanged");
+    Assert.strictEqual(addon.version, "0.1", "add-on should be unchanged");
   }
 );
 
@@ -619,7 +614,6 @@ decorate_task(
         {
           reason: "no-downgrade",
           branch: "a",
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
@@ -628,7 +622,7 @@ decorate_task(
     Assert.deepEqual(updatedStudy, study, "study data should be unchanged");
 
     const addon = await AddonManager.getAddonByID(FIXTURE_ADDON_ID);
-    ok(addon.version === "2.0", "add-on should be unchanged");
+    Assert.strictEqual(addon.version, "2.0", "add-on should be unchanged");
   }
 );
 
@@ -677,7 +671,6 @@ decorate_task(
         {
           branch: "a",
           reason: "metadata-mismatch",
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
@@ -686,7 +679,7 @@ decorate_task(
     Assert.deepEqual(updatedStudy, study, "study data should be unchanged");
 
     const addon = await AddonManager.getAddonByID(FIXTURE_ADDON_ID);
-    ok(addon.version === "1.0", "add-on should be unchanged");
+    Assert.strictEqual(addon.version, "1.0", "add-on should be unchanged");
 
     let addonSourceURI = addon.getResourceURI();
     if (addonSourceURI instanceof Ci.nsIJARURI) {
@@ -697,7 +690,11 @@ decorate_task(
       xpiFile,
       study.extensionHashAlgorithm
     );
-    ok(installedHash === study.extensionHash, "add-on should be unchanged");
+    Assert.strictEqual(
+      installedHash,
+      study.extensionHash,
+      "add-on should be unchanged"
+    );
   }
 );
 
@@ -722,7 +719,7 @@ decorate_task(
   ensureAddonCleanup(),
   AddonStudies.withStudies([branchedAddonStudyFactory({ active: false })]),
   withSendEventSpy(),
-  async ({ addonStudies: [study], sendEventSpy }) => {
+  async ({ addonStudies: [study] }) => {
     const action = new BranchedAddonStudyAction();
     await Assert.rejects(
       action.unenroll(study.recipeId),
@@ -761,7 +758,11 @@ decorate_task(
 
     const newStudy = AddonStudies.get(study.recipeId);
     is(!newStudy, false, "stop should mark the study as inactive");
-    ok(newStudy.studyEndDate !== null, "the study should have an end date");
+    Assert.notStrictEqual(
+      newStudy.studyEndDate,
+      null,
+      "the study should have an end date"
+    );
 
     addon = await AddonManager.getAddonByID(addonId);
     is(addon, null, "the add-on should be uninstalled after unenrolling");
@@ -775,7 +776,6 @@ decorate_task(
           addonId,
           addonVersion: study.addonVersion,
           reason: "test-reason",
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
@@ -816,7 +816,6 @@ decorate_task(
           addonId: study.addonId,
           addonVersion: study.addonVersion,
           reason: "unknown",
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
@@ -945,13 +944,12 @@ decorate_task(
         {
           addonId: FIXTURE_ADDON_ID,
           addonVersion: "2.0",
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
 
     const addon = await AddonManager.getAddonByID(FIXTURE_ADDON_ID);
-    ok(addon.version === "2.0", "add-on should be updated");
+    Assert.strictEqual(addon.version, "2.0", "add-on should be updated");
   }
 );
 
@@ -1056,20 +1054,13 @@ const successEnrollBranchedTest = decorate(
           addonId,
           addonVersion: "1.0",
           branch,
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
 
     Assert.deepEqual(
       setExperimentActiveStub.args,
-      [
-        [
-          recipe.arguments.slug,
-          branch,
-          { type: "normandy-addonstudy", enrollmentId: study.enrollmentId },
-        ],
-      ],
+      [[recipe.arguments.slug, branch, { type: "normandy-addonstudy" }]],
       "setExperimentActive should be called"
     );
 
@@ -1098,7 +1089,6 @@ const successEnrollBranchedTest = decorate(
         extensionApiId: extensionDetails.id,
         extensionHash: extensionDetails.hash,
         extensionHashAlgorithm: extensionDetails.hash_algorithm,
-        enrollmentId: study.enrollmentId,
         temporaryErrorDeadline: null,
       },
       "the correct study data should be stored"
@@ -1173,7 +1163,6 @@ decorate_task(
           addonVersion: study.addonVersion,
           reason: "branch-removed",
           branch: "a", // the original study branch
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
@@ -1186,7 +1175,7 @@ decorate_task(
 
     const storedStudy = await AddonStudies.get(recipe.id);
     ok(!storedStudy.active, "Study should be inactive");
-    ok(storedStudy.branch == "a", "Study's branch should not change");
+    Assert.equal(storedStudy.branch, "a", "Study's branch should not change");
     ok(storedStudy.studyEndDate, "Study's end date should be set");
   }
 );
@@ -1225,7 +1214,6 @@ decorate_task(
           addonId: AddonStudies.NO_ADDON_MARKER,
           addonVersion: AddonStudies.NO_ADDON_MARKER,
           branch: "a",
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
@@ -1253,13 +1241,11 @@ decorate_task(
         extensionApiId: null,
         extensionHash: null,
         extensionHashAlgorithm: null,
-        enrollmentId: study.enrollmentId,
         temporaryErrorDeadline: null,
       },
       "the correct study data should be stored"
     );
     ok(study.studyStartDate, "studyStartDate should have a value");
-    NormandyTestUtils.isUuid(study.enrollmentId);
 
     // Now unenroll
     action = new BranchedAddonStudyAction();
@@ -1276,7 +1262,6 @@ decorate_task(
           addonId: AddonStudies.NO_ADDON_MARKER,
           addonVersion: AddonStudies.NO_ADDON_MARKER,
           branch: "a",
-          enrollmentId: study.enrollmentId,
         },
       ],
       // And a new unenroll event
@@ -1288,7 +1273,6 @@ decorate_task(
           addonId: AddonStudies.NO_ADDON_MARKER,
           addonVersion: AddonStudies.NO_ADDON_MARKER,
           branch: "a",
-          enrollmentId: study.enrollmentId,
         },
       ],
     ]);
@@ -1317,14 +1301,12 @@ decorate_task(
         extensionApiId: null,
         extensionHash: null,
         extensionHashAlgorithm: null,
-        enrollmentId: study.enrollmentId,
         temporaryErrorDeadline: null,
       },
       "the correct study data should be stored"
     );
     ok(study.studyStartDate, "studyStartDate should have a value");
     ok(study.studyEndDate, "studyEndDate should have a value");
-    NormandyTestUtils.isUuid(study.enrollmentId);
   }
 );
 
@@ -1389,11 +1371,12 @@ decorate_task(
         let modifiedStudy = await AddonStudies.get(recipe.id);
 
         if (isTemporaryError) {
-          ok(
+          Assert.equal(
             // The constructor of this object is a Date, but is not the same as
             // the Date that we have in our global scope, because it got sent
             // through IndexedDB. Check the name of the constructor instead.
-            modifiedStudy.temporaryErrorDeadline.constructor.name == "Date",
+            modifiedStudy.temporaryErrorDeadline.constructor.name,
+            "Date",
             `A temporary failure deadline should be set as a date for suitability ${suitability}`
           );
           let deadline = modifiedStudy.temporaryErrorDeadline;
@@ -1569,8 +1552,9 @@ decorate_task(
         await action.processRecipe(recipe, suitability);
         is(action.lastError, null, "No errors should be reported");
         let modifiedStudy = await AddonStudies.get(recipe.id);
-        ok(
-          modifiedStudy.temporaryErrorDeadline != invalidDeadline,
+        Assert.notEqual(
+          modifiedStudy.temporaryErrorDeadline,
+          invalidDeadline,
           `The temporary failure deadline should be reset for suitabilitiy ${suitability}`
         );
         let deadline = new Date(modifiedStudy.temporaryErrorDeadline);

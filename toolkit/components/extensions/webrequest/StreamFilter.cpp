@@ -123,18 +123,6 @@ bool StreamFilter::CheckAlive() {
  * Binding methods
  *****************************************************************************/
 
-template <typename T>
-static inline bool ReadTypedArrayData(nsTArray<uint8_t>& aData, const T& aArray,
-                                      ErrorResult& aRv) {
-  aArray.ComputeState();
-  if (!aData.SetLength(aArray.Length(), fallible)) {
-    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-    return false;
-  }
-  memcpy(aData.Elements(), aArray.Data(), aArray.Length());
-  return true;
-}
-
 void StreamFilter::Write(const ArrayBufferOrUint8Array& aData,
                          ErrorResult& aRv) {
   if (!mActor) {
@@ -143,20 +131,12 @@ void StreamFilter::Write(const ArrayBufferOrUint8Array& aData,
   }
 
   nsTArray<uint8_t> data;
-
-  bool ok;
-  if (aData.IsArrayBuffer()) {
-    ok = ReadTypedArrayData(data, aData.GetAsArrayBuffer(), aRv);
-  } else if (aData.IsUint8Array()) {
-    ok = ReadTypedArrayData(data, aData.GetAsUint8Array(), aRv);
-  } else {
-    MOZ_ASSERT_UNREACHABLE("Argument should be ArrayBuffer or Uint8Array");
+  if (!AppendTypedArrayDataTo(aData, data)) {
+    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
     return;
   }
 
-  if (ok) {
-    mActor->Write(std::move(data), aRv);
-  }
+  mActor->Write(std::move(data), aRv);
 }
 
 StreamFilterStatus StreamFilter::Status() const {
@@ -221,9 +201,11 @@ void StreamFilter::FireDataEvent(const nsTArray<uint8_t>& aData) {
   init.mBubbles = false;
   init.mCancelable = false;
 
-  auto buffer = ArrayBuffer::Create(cx, aData.Length(), aData.Elements());
-  if (!buffer) {
+  ErrorResult error;
+  auto buffer = ArrayBuffer::Create(cx, aData, error);
+  if (error.Failed()) {
     // TODO: There is no way to recover from this. This chunk of data is lost.
+    error.SuppressException();
     FireErrorEvent(u"Out of memory"_ns);
     return;
   }

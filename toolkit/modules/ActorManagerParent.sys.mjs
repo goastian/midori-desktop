@@ -105,7 +105,7 @@ let JSWINDOWACTORS = {
       },
     },
     matches: ["about:translations"],
-
+    remoteTypes: ["privilegedabout"],
     enablePreference: "browser.translations.enable",
   },
 
@@ -127,8 +127,8 @@ let JSWINDOWACTORS = {
       esModuleURI: "resource://gre/actors/AutoCompleteParent.sys.mjs",
       // These two messages are also used, but are currently synchronous calls
       // through the per-process message manager.
-      // "FormAutoComplete:GetSelectedIndex",
-      // "FormAutoComplete:SelectBy"
+      // "AutoComplete:GetSelectedIndex",
+      // "AutoComplete:SelectBy"
     },
 
     child: {
@@ -233,7 +233,48 @@ let JSWINDOWACTORS = {
     messageManagerGroups: ["browsers"],
     // Cookie banners can be shown in sub-frames so we need to include them.
     allFrames: true,
-    enablePreference: "cookiebanners.bannerClicking.enabled",
+    // Holds lazy pref getters.
+    _prefs: {},
+    // Remember current register state to avoid duplicate calls to register /
+    // unregister.
+    _isRegistered: false,
+    onAddActor(register, unregister) {
+      // Register / unregister on pref changes.
+      let onPrefChange = () => {
+        if (
+          this._prefs["cookiebanners.bannerClicking.enabled"] &&
+          (this._prefs["cookiebanners.service.mode"] != 0 ||
+            this._prefs["cookiebanners.service.mode.privateBrowsing"] != 0)
+        ) {
+          if (!this._isRegistered) {
+            register();
+            this._isRegistered = true;
+          }
+        } else if (this._isRegistered) {
+          unregister();
+          this._isRegistered = false;
+        }
+      };
+
+      // Add lazy pref getters with pref observers so we can dynamically enable
+      // or disable the actor.
+      [
+        "cookiebanners.bannerClicking.enabled",
+        "cookiebanners.service.mode",
+        "cookiebanners.service.mode.privateBrowsing",
+      ].forEach(prefName => {
+        XPCOMUtils.defineLazyPreferenceGetter(
+          this._prefs,
+          prefName,
+          prefName,
+          null,
+          onPrefChange
+        );
+      });
+
+      // Check initial state.
+      onPrefChange();
+    },
   },
 
   ExtFind: {
@@ -283,6 +324,20 @@ let JSWINDOWACTORS = {
     allFrames: true,
   },
 
+  FormHandler: {
+    parent: {
+      esModuleURI: "resource://gre/actors/FormHandlerParent.sys.mjs",
+    },
+    child: {
+      esModuleURI: "resource://gre/actors/FormHandlerChild.sys.mjs",
+      events: {
+        DOMFormBeforeSubmit: { createActor: false },
+      },
+    },
+
+    allFrames: true,
+  },
+
   InlineSpellChecker: {
     parent: {
       esModuleURI: "resource://gre/actors/InlineSpellCheckerParent.sys.mjs",
@@ -314,8 +369,8 @@ let JSWINDOWACTORS = {
     child: {
       esModuleURI: "resource://gre/modules/LoginManagerChild.sys.mjs",
       events: {
-        DOMDocFetchSuccess: {},
-        DOMFormBeforeSubmit: {},
+        "form-submission-detected": { createActor: false },
+        "before-form-submission": { createActor: false },
         DOMFormHasPassword: {},
         DOMFormHasPossibleUsername: {},
         DOMInputPasswordAdded: {},
@@ -330,6 +385,22 @@ let JSWINDOWACTORS = {
     child: {
       esModuleURI: "resource://gre/modules/ManifestMessagesChild.sys.mjs",
     },
+  },
+
+  // A single process (shared with translations) that manages machine learning engines.
+  MLEngine: {
+    parent: {
+      esModuleURI: "resource://gre/actors/MLEngineParent.sys.mjs",
+    },
+    child: {
+      esModuleURI: "resource://gre/actors/MLEngineChild.sys.mjs",
+      events: {
+        DOMContentLoaded: { createActor: true },
+      },
+    },
+    includeChrome: true,
+    matches: ["chrome://global/content/ml/MLEngine.html"],
+    enablePreference: "browser.ml.enable",
   },
 
   NetError: {
@@ -431,6 +502,23 @@ let JSWINDOWACTORS = {
     allFrames: true,
   },
 
+  ReportBrokenSite: {
+    parent: {
+      esModuleURI: "resource://gre/actors/ReportBrokenSiteParent.sys.mjs",
+    },
+    child: {
+      esModuleURI: "resource://gre/actors/ReportBrokenSiteChild.sys.mjs",
+    },
+    matches: [
+      "http://*/*",
+      "https://*/*",
+      "about:certerror?*",
+      "about:neterror?*",
+    ],
+    messageManagerGroups: ["browsers"],
+    allFrames: true,
+  },
+
   // This actor is available for all pages that one can
   // view the source of, however it won't be created until a
   // request to view the source is made via the message
@@ -480,8 +568,8 @@ let JSWINDOWACTORS = {
     },
   },
 
-  // The newer translations feature backed by local machine learning models.
-  // See Bug 971044.
+  // Determines if a page can be translated, and coordinates communication with the
+  // translations engine.
   Translations: {
     parent: {
       esModuleURI: "resource://gre/actors/TranslationsParent.sys.mjs",
@@ -489,12 +577,34 @@ let JSWINDOWACTORS = {
     child: {
       esModuleURI: "resource://gre/actors/TranslationsChild.sys.mjs",
       events: {
-        pageshow: {},
-        DOMHeadElementParsed: {},
-        DOMDocElementInserted: {},
         DOMContentLoaded: {},
       },
     },
+    matches: [
+      "http://*/*",
+      "https://*/*",
+      "file:///*",
+
+      // The actor is explicitly loaded by this page,
+      // so it needs to be allowed for it.
+      "about:translations",
+    ],
+    enablePreference: "browser.translations.enable",
+  },
+
+  // A single process that controls all of the translations.
+  TranslationsEngine: {
+    parent: {
+      esModuleURI: "resource://gre/actors/TranslationsEngineParent.sys.mjs",
+    },
+    child: {
+      esModuleURI: "resource://gre/actors/TranslationsEngineChild.sys.mjs",
+      events: {
+        DOMContentLoaded: { createActor: true },
+      },
+    },
+    includeChrome: true,
+    matches: ["chrome://global/content/translations/translations-engine.html"],
     enablePreference: "browser.translations.enable",
   },
 
@@ -550,22 +660,6 @@ if (!Services.prefs.getBoolPref("browser.pagedata.enabled", false)) {
 }
 
 if (AppConstants.platform != "android") {
-  // For GeckoView support see bug 1776829.
-  JSWINDOWACTORS.ClipboardReadPaste = {
-    parent: {
-      esModuleURI: "resource://gre/actors/ClipboardReadPasteParent.sys.mjs",
-    },
-
-    child: {
-      esModuleURI: "resource://gre/actors/ClipboardReadPasteChild.sys.mjs",
-      events: {
-        MozClipboardReadPaste: {},
-      },
-    },
-
-    allFrames: true,
-  };
-
   // Note that GeckoView has another implementation in mobile/android/actors.
   JSWINDOWACTORS.Select = {
     parent: {
@@ -621,6 +715,15 @@ export var ActorManagerParent = {
         throw new Error("Invalid JSActor kind " + kind);
     }
     for (let [actorName, actor] of Object.entries(actors)) {
+      // The actor defines its own register/unregister logic.
+      if (actor.onAddActor) {
+        actor.onAddActor(
+          () => register(actorName, actor),
+          () => unregister(actorName, actor)
+        );
+        continue;
+      }
+
       // If enablePreference is set, only register the actor while the
       // preference is set to true.
       if (actor.enablePreference) {

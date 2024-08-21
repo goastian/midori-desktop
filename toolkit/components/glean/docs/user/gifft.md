@@ -45,9 +45,10 @@ This compatibility table explains which Telemetry probe types can be mirrors for
 | [uuid](https://mozilla.github.io/glean/book/reference/metrics/uuid.html) | [Scalar of kind: string](/toolkit/components/telemetry/collection/scalars.html). Value will be in canonical 8-4-4-4-12 format. Value is not guaranteed to be valid, and invalid values may be present in the mirrored scalar while the uuid metric remains empty. Calling `GenerateAndSet` on the uuid is not mirrored, and will log a warning. |
 | [url](https://mozilla.github.io/glean/book/reference/metrics/url.html) | [Scalar of kind: string](/toolkit/components/telemetry/collection/scalars.html). The stringified Url will be cropped to the maximum length allowed by the legacy type. |
 | [datetime](https://mozilla.github.io/glean/book/reference/metrics/datetime.html) | [Scalar of kind: string](/toolkit/components/telemetry/collection/scalars.html). Value will be in ISO8601 format. |
-| [events](https://mozilla.github.io/glean/book/reference/metrics/event.html) | [Events](/toolkit/components/telemetry/collection/events.html). The `value` field will be left empty.  |
+| [events](https://mozilla.github.io/glean/book/reference/metrics/event.html) | [Events](/toolkit/components/telemetry/collection/events.html). The `value` field will be filled by the Glean extra named `value` if defined and present. |
 | [quantity](https://mozilla.github.io/glean/book/reference/metrics/quantity.html) | [Scalar of kind: uint](/toolkit/components/telemetry/collection/scalars.html) |
 | [rate](https://mozilla.github.io/glean/book/reference/metrics/rate.html) | [Keyed Scalar of kind: uint](/toolkit/components/telemetry/collection/scalars.html). The keys are "numerator" and "denominator". Does not work for `rate` metrics with external denominators. |
+| [text](https://mozilla.github.io/glean/book/reference/metrics/text.html) | *No Supported Telemetry Type* |
 
 ### The `telemetry_mirror` property in `metrics.yaml`
 
@@ -164,6 +165,12 @@ See
 [the Telemetry Event docs](/toolkit/components/telemetry/collection/events.rst)
 for details on how disabled Telemetry Events behave.
 
+In order to make use of the `value` field in Telemetry Events, you must
+first define an event extra in the metrics.yaml file with the name "value".
+On recording the event with the Glean extra key for the "value" filled in,
+GIFFT will map this to the Telemetry Event `value` property and remove it from
+the list of extras so it is not duplicated.
+
 ### Numeric Values
 
 The arguments and storage formats for Glean's numeric types
@@ -207,6 +214,21 @@ the value passed to the metric's Telemetry mirror will be clamped to $2^{32} - 1
 The same happens for samples in `timing_distribution` metrics:
 values passed to the Telemetry mirror histogram will saturate at $2^{32} - 1$
 until they get past $2^{64}$ when they'll overflow.
+
+#### `timing_distribution` mirrors: Samples and Sums might be Different
+
+A specific value in a `timing_distribution` metric will not always agree with
+the corresponding value in its mirrored-to histogram.
+Though the calls to the clock are very close together in the code in Telemetry and Glean,
+Telemetry's are not on the exact same instruction as Glean's _and_
+Telemetry uses a different clock source (`TimeStamp::Now()`) than Glean (`time::precise_time_ns()`).
+
+Also, if these slight drifts happen to cross the boundary of a bucket in either system,
+samples might end up looking more different than you'd expect.
+
+This shouldn't affect analysis, but it can affect testing, so please
+[bear this difference in mind](./instrumentation_tests.md#general-things-to-bear-in-mind)
+in testing.
 
 ### App Shutdown
 

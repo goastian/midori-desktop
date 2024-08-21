@@ -9,7 +9,7 @@
  * separators.  Multiple bookmarks for the same URL are allowed.
  *
  * Note that if you are handling bookmarks operations in the UI, you should
- * not use this API directly, but rather use PlacesTransactions.jsm, so that
+ * not use this API directly, but rather use PlacesTransactions, so that
  * any operation is undo/redo-able.
  *
  * Each bookmark-item is represented by an object having the following
@@ -57,12 +57,8 @@
 
 const lazy = {};
 
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "NetUtil",
-  "resource://gre/modules/NetUtil.jsm"
-);
 ChromeUtils.defineESModuleGetters(lazy, {
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   PlacesSyncUtils: "resource://gre/modules/PlacesSyncUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
 });
@@ -234,7 +230,7 @@ export var Bookmarks = Object.freeze({
     if (addedTime > now) {
       modTime = now;
     }
-    let insertInfo = validateBookmarkObject("Bookmarks.jsm: insert", info, {
+    let insertInfo = validateBookmarkObject("Bookmarks.sys.mjs: insert", info, {
       type: { defaultValue: this.TYPE_BOOKMARK },
       index: { defaultValue: this.DEFAULT_INDEX },
       url: {
@@ -280,10 +276,8 @@ export var Bookmarks = Object.freeze({
       }
 
       let item = await insertBookmark(insertInfo, parent);
-
-      // We need the itemId to notify, though once the switch to guids is
-      // complete we may stop using it.
-      let itemId = await lazy.PlacesUtils.promiseItemId(item.guid);
+      let itemDetailMap = await getBookmarkDetailMap([item.guid]);
+      let itemDetail = itemDetailMap.get(item.guid);
 
       // Pass tagging information for the observers to skip over these notifications when needed.
       let isTagging = parent._parentId == lazy.PlacesUtils.tagsFolderId;
@@ -295,7 +289,7 @@ export var Bookmarks = Object.freeze({
 
       const notifications = [
         new PlacesBookmarkAddition({
-          id: itemId,
+          id: itemDetail.id,
           url,
           itemType: item.type,
           parentId: parent._id,
@@ -306,6 +300,14 @@ export var Bookmarks = Object.freeze({
           parentGuid: item.parentGuid,
           source: item.source,
           isTagging: isTagging || isTagsFolder,
+          tags: itemDetail.tags,
+          frecency: itemDetail.frecency,
+          hidden: itemDetail.hidden,
+          visitCount: itemDetail.visitCount,
+          lastVisitDate: itemDetail.lastVisitDate,
+          targetFolderGuid: itemDetail.targetFolderGuid,
+          targetFolderItemId: itemDetail.targetFolderItemId,
+          targetFolderTitle: itemDetail.targetFolderTitle,
         }),
       ];
 
@@ -486,7 +488,7 @@ export var Bookmarks = Object.freeze({
         }
         try {
           insertInfo = validateBookmarkObject(
-            "Bookmarks.jsm: insertTree",
+            "Bookmarks.sys.mjs: insertTree",
             info,
             insertInfo
           );
@@ -580,16 +582,16 @@ export var Bookmarks = Object.freeze({
           insertInfo.index += rootIndex++;
         }
       }
-      // We need the itemIds to notify, though once the switch to guids is
-      // complete we may stop using them.
-      let itemIdMap = await lazy.PlacesUtils.promiseManyItemIds(
+
+      let itemDetailMap = await getBookmarkDetailMap(
         insertInfos.map(info => info.guid)
       );
 
       let notifications = [];
       for (let i = 0; i < insertInfos.length; i++) {
         let item = insertInfos[i];
-        let itemId = itemIdMap.get(item.guid);
+        let itemDetail = itemDetailMap.get(item.guid);
+
         // For sub-folders, we need to make sure their children have the correct parent ids.
         let parentId;
         if (item.parentGuid === treeParent.guid) {
@@ -599,7 +601,7 @@ export var Bookmarks = Object.freeze({
         } else {
           // This is a parent folder that's been updated, so we need to
           // use the new item id.
-          parentId = itemIdMap.get(item.parentGuid);
+          parentId = itemDetail.parentId;
         }
 
         let url = "";
@@ -609,7 +611,7 @@ export var Bookmarks = Object.freeze({
 
         notifications.push(
           new PlacesBookmarkAddition({
-            id: itemId,
+            id: itemDetail.id,
             url,
             itemType: item.type,
             parentId,
@@ -620,16 +622,25 @@ export var Bookmarks = Object.freeze({
             parentGuid: item.parentGuid,
             source: item.source,
             isTagging: false,
+            tags: itemDetail.tags,
+            frecency: itemDetail.frecency,
+            hidden: itemDetail.hidden,
+            visitCount: itemDetail.visitCount,
+            lastVisitDate: itemDetail.lastVisitDate,
+            targetFolderGuid: itemDetail.targetFolderGuid,
+            targetFolderItemId: itemDetail.targetFolderItemId,
+            targetFolderTitle: itemDetail.targetFolderTitle,
           })
         );
 
         try {
-          await handleBookmarkItemSpecialData(itemId, item);
+          await handleBookmarkItemSpecialData(itemDetail.id, item);
         } catch (ex) {
           // This is not critical, regardless the bookmark has been created
           // and we should continue notifying the next ones.
           console.error(
-            `An error occured while handling special bookmark data: ${ex}`
+            "An error occured while handling special bookmark data:",
+            ex
           );
         }
 
@@ -670,7 +681,7 @@ export var Bookmarks = Object.freeze({
     // The info object is first validated here to ensure it's consistent, then
     // it's compared to the existing item to remove any properties that don't
     // need to be updated.
-    let updateInfo = validateBookmarkObject("Bookmarks.jsm: update", info, {
+    let updateInfo = validateBookmarkObject("Bookmarks.sys.mjs: update", info, {
       guid: { required: true },
       index: {
         requiredIf: b => b.hasOwnProperty("parentGuid"),
@@ -711,23 +722,27 @@ export var Bookmarks = Object.freeze({
           Math.max(item.lastModified, updateInfo.dateAdded)
         );
       }
-      updateInfo = validateBookmarkObject("Bookmarks.jsm: update", updateInfo, {
-        url: { validIf: () => item.type == this.TYPE_BOOKMARK },
-        title: {
-          validIf: () =>
-            [this.TYPE_BOOKMARK, this.TYPE_FOLDER].includes(item.type),
-        },
-        lastModified: {
-          defaultValue: lastModifiedDefault,
-          validIf: b =>
-            b.lastModified >= now ||
-            b.lastModified >= (b.dateAdded || item.dateAdded),
-        },
-        dateAdded: { defaultValue: item.dateAdded },
-      });
+      updateInfo = validateBookmarkObject(
+        "Bookmarks.sys.mjs: update",
+        updateInfo,
+        {
+          url: { validIf: () => item.type == this.TYPE_BOOKMARK },
+          title: {
+            validIf: () =>
+              [this.TYPE_BOOKMARK, this.TYPE_FOLDER].includes(item.type),
+          },
+          lastModified: {
+            defaultValue: lastModifiedDefault,
+            validIf: b =>
+              b.lastModified >= now ||
+              b.lastModified >= (b.dateAdded || item.dateAdded),
+          },
+          dateAdded: { defaultValue: item.dateAdded },
+        }
+      );
 
       return lazy.PlacesUtils.withConnectionWrapper(
-        "Bookmarks.jsm: update",
+        "Bookmarks.sys.mjs: update",
         async db => {
           let parent;
           if (updateInfo.hasOwnProperty("parentGuid")) {
@@ -930,6 +945,9 @@ export var Bookmarks = Object.freeze({
             item.parentGuid != updatedItem.parentGuid ||
             item.index != updatedItem.index
           ) {
+            let details = (await getBookmarkDetailMap([updatedItem.guid])).get(
+              updatedItem.guid
+            );
             notifications.push(
               new PlacesBookmarkMoved({
                 id: updatedItem._id,
@@ -944,6 +962,13 @@ export var Bookmarks = Object.freeze({
                 isTagging:
                   updatedItem.parentGuid === Bookmarks.tagsGuid ||
                   parent.parentGuid === Bookmarks.tagsGuid,
+                title: updatedItem.title,
+                tags: details.tags,
+                frecency: details.frecency,
+                hidden: details.hidden,
+                visitCount: details.visitCount,
+                dateAdded: updatedItem.dateAdded ?? Date.now(),
+                lastVisitDate: details.lastVisitDate,
               })
             );
           }
@@ -1010,7 +1035,7 @@ export var Bookmarks = Object.freeze({
         lazy.PlacesSyncUtils.bookmarks.determineSyncChangeDelta(source);
 
       await lazy.PlacesUtils.withConnectionWrapper(
-        "Bookmarks.jsm: moveToFolder",
+        "Bookmarks.sys.mjs: moveToFolder",
         async db => {
           const lastModified = new Date();
 
@@ -1155,7 +1180,9 @@ export var Bookmarks = Object.freeze({
       );
 
       const notifications = [];
-
+      let detailsMap = await getBookmarkDetailMap(
+        updateInfos.map(({ updatedItem }) => updatedItem.guid)
+      );
       // Updates complete, time to notify everyone.
       for (let { updatedItem, existingItem, newParent } of updateInfos) {
         // If the item was moved, notify bookmark-moved.
@@ -1166,6 +1193,7 @@ export var Bookmarks = Object.freeze({
           existingItem.parentGuid != updatedItem.parentGuid ||
           existingItem.index != updatedItem.index
         ) {
+          let details = detailsMap.get(updatedItem.guid);
           notifications.push(
             new PlacesBookmarkMoved({
               id: updatedItem._id,
@@ -1180,6 +1208,13 @@ export var Bookmarks = Object.freeze({
               isTagging:
                 updatedItem.parentGuid === Bookmarks.tagsGuid ||
                 newParent.parentGuid === Bookmarks.tagsGuid,
+              title: updatedItem.title,
+              tags: details.tags,
+              frecency: details.frecency,
+              hidden: details.hidden,
+              visitCount: details.visitCount,
+              dateAdded: updatedItem.dateAdded,
+              lastVisitDate: details.lastVisitDate,
             })
           );
         }
@@ -1252,7 +1287,10 @@ export var Bookmarks = Object.freeze({
 
       // Even if we ignore any other unneeded property, we still validate any
       // known property to reduce likelihood of hidden bugs.
-      let removeInfo = validateBookmarkObject("Bookmarks.jsm: remove", info);
+      let removeInfo = validateBookmarkObject(
+        "Bookmarks.sys.mjs: remove",
+        info
+      );
       removeInfos.push(removeInfo);
     }
 
@@ -1341,7 +1379,7 @@ export var Bookmarks = Object.freeze({
     }
 
     return lazy.PlacesUtils.withConnectionWrapper(
-      "Bookmarks.jsm: eraseEverything",
+      "Bookmarks.sys.mjs: eraseEverything",
       async function (db) {
         let urls;
         await db.executeTransaction(async function () {
@@ -1448,6 +1486,10 @@ export var Bookmarks = Object.freeze({
    *                        set to true, the path property is set on results
    *                        containing an array of {title, guid} objects
    *                        ordered from root to leaf.
+   *         - includeItemIds:
+   *             include .itemId and .parentId in the results.
+   *             ALWAYS USE THE GUIDs instead of these, unless it's _really_
+   *             necessary to get them, e.g. when sending Places notifications.
    *
    * @return {Promise} resolved when the fetch is complete.
    * @resolves to an object representing the found item, as described above, or
@@ -1459,7 +1501,7 @@ export var Bookmarks = Object.freeze({
    * @note Any unknown property in the info object is ignored.  Known properties
    *       may be overwritten.
    */
-  fetch(guidOrInfo, onResult = null, options = {}) {
+  async fetch(guidOrInfo, onResult = null, options = {}) {
     if (onResult && typeof onResult != "function") {
       throw new Error("onResult callback must be a valid function");
     }
@@ -1499,6 +1541,7 @@ export var Bookmarks = Object.freeze({
     options = {
       concurrent: !!options.concurrent,
       includePath: !!options.includePath,
+      includeItemIds: !!options.includeItemIds,
     };
 
     let behavior = {};
@@ -1516,68 +1559,70 @@ export var Bookmarks = Object.freeze({
     // Even if we ignore any other unneeded property, we still validate any
     // known property to reduce likelihood of hidden bugs.
     let fetchInfo = validateBookmarkObject(
-      "Bookmarks.jsm: fetch",
+      "Bookmarks.sys.mjs: fetch",
       info,
       behavior
     );
 
-    return (async () => {
-      let results;
-      if (fetchInfo.hasOwnProperty("url")) {
-        results = await fetchBookmarksByURL(fetchInfo, options);
-      } else if (fetchInfo.hasOwnProperty("guid")) {
-        results = await fetchBookmark(fetchInfo, options);
-      } else if (fetchInfo.hasOwnProperty("parentGuid")) {
-        if (fetchInfo.hasOwnProperty("index")) {
-          results = await fetchBookmarkByPosition(fetchInfo, options);
-        } else {
-          results = await fetchBookmarksByParentGUID(fetchInfo, options);
-        }
-      } else if (fetchInfo.hasOwnProperty("guidPrefix")) {
-        results = await fetchBookmarksByGUIDPrefix(fetchInfo, options);
-      } else if (fetchInfo.hasOwnProperty("tags")) {
-        results = await fetchBookmarksByTags(fetchInfo, options);
+    let results;
+    if (fetchInfo.hasOwnProperty("url")) {
+      results = await fetchBookmarksByURL(fetchInfo, options);
+    } else if (fetchInfo.hasOwnProperty("guid")) {
+      results = await fetchBookmark(fetchInfo, options);
+    } else if (fetchInfo.hasOwnProperty("parentGuid")) {
+      if (fetchInfo.hasOwnProperty("index")) {
+        results = await fetchBookmarkByPosition(fetchInfo, options);
+      } else {
+        results = await fetchBookmarksByParentGUID(fetchInfo, options);
       }
+    } else if (fetchInfo.hasOwnProperty("guidPrefix")) {
+      results = await fetchBookmarksByGUIDPrefix(fetchInfo, options);
+    } else if (fetchInfo.hasOwnProperty("tags")) {
+      results = await fetchBookmarksByTags(fetchInfo, options);
+    }
 
-      if (!results) {
-        return null;
+    if (!results) {
+      return null;
+    }
+
+    if (!Array.isArray(results)) {
+      results = [results];
+    }
+    // Remove non-enumerable properties.
+    results = results.map(r => {
+      if (r.type == this.TYPE_FOLDER) {
+        r.childCount = r._childCount;
       }
-
-      if (!Array.isArray(results)) {
-        results = [results];
+      if (options.includeItemIds) {
+        r.itemId = r._id;
+        r.parentId = r._parentId;
       }
-      // Remove non-enumerable properties.
-      results = results.map(r => {
-        if (r.type == this.TYPE_FOLDER) {
-          r.childCount = r._childCount;
-        }
-        return Object.assign({}, r);
-      });
+      return Object.assign({}, r);
+    });
 
-      if (options.includePath) {
-        for (let result of results) {
-          let folderPath = await retrieveFullBookmarkPath(result.parentGuid);
-          if (folderPath) {
-            result.path = folderPath;
-          }
-        }
-      }
-
-      // Ideally this should handle an incremental behavior and thus be invoked
-      // while we fetch.  Though, the likelihood of 2 or more bookmarks for the
-      // same match is very low, so it's not worth the added code complication.
-      if (onResult) {
-        for (let result of results) {
-          try {
-            onResult(result);
-          } catch (ex) {
-            console.error(ex);
-          }
+    if (options.includePath) {
+      for (let result of results) {
+        let folderPath = await retrieveFullBookmarkPath(result.parentGuid);
+        if (folderPath) {
+          result.path = folderPath;
         }
       }
+    }
 
-      return results[0];
-    })();
+    // Ideally this should handle an incremental behavior and thus be invoked
+    // while we fetch.  Though, the likelihood of 2 or more bookmarks for the
+    // same match is very low, so it's not worth the added code complication.
+    if (onResult) {
+      for (let result of results) {
+        try {
+          onResult(result);
+        } catch (ex) {
+          console.error(ex);
+        }
+      }
+    }
+
+    return results[0];
   },
 
   /**
@@ -1587,8 +1632,10 @@ export var Bookmarks = Object.freeze({
    * Each node in the tree is an object that extends the item representation
    * described above with some additional properties:
    *
-   *  - [deprecated] id (number)
+   *  - [deprecated] itemId (number)
    *      the item's id.  Defined only if aOptions.includeItemIds is set.
+   *  - [deprecated] parentId (number)
+   *      the item's parent id.  Defined only if aOptions.includeItemIds is set.
    *  - annos (array)
    *      the item's annotations.  This is not set if there are no annotations
    *      set for the item.
@@ -1641,7 +1688,7 @@ export var Bookmarks = Object.freeze({
    */
   // TODO must implement these methods yet:
   // PlacesUtils.promiseBookmarksTree()
-  fetchTree(guid = "", options = {}) {
+  fetchTree() {
     throw new Error("Not yet implemented");
   },
 
@@ -1655,7 +1702,7 @@ export var Bookmarks = Object.freeze({
    *         }
    */
   async fetchTags() {
-    // TODO: Once the tagging API is implemented in Bookmarks.jsm, we can cache
+    // TODO: Once the tagging API is implemented in Bookmarks.sys.mjs, we can cache
     // the list of tags, instead of querying every time.
     let db = await lazy.PlacesUtils.promiseDBConnection();
     let rows = await db.executeCached(
@@ -1702,7 +1749,7 @@ export var Bookmarks = Object.freeze({
    */
   reorder(parentGuid, orderedChildrenGuids, options = {}) {
     let info = { guid: parentGuid };
-    info = validateBookmarkObject("Bookmarks.jsm: reorder", info, {
+    info = validateBookmarkObject("Bookmarks.sys.mjs: reorder", info, {
       guid: { required: true },
     });
 
@@ -1742,7 +1789,11 @@ export var Bookmarks = Object.freeze({
       );
 
       const notifications = [];
+      let detailsMap = await getBookmarkDetailMap(
+        sortedChildren.map(c => c.guid)
+      );
       for (let child of sortedChildren) {
+        let details = detailsMap.get(child.guid);
         notifications.push(
           new PlacesBookmarkMoved({
             id: child._id,
@@ -1757,6 +1808,13 @@ export var Bookmarks = Object.freeze({
             isTagging:
               child.parentGuid === Bookmarks.tagsGuid ||
               parent.parentGuid === Bookmarks.tagsGuid,
+            title: child.title,
+            tags: details.tags,
+            frecency: details.frecency,
+            hidden: details.hidden,
+            visitCount: details.visitCount,
+            dateAdded: child.dateAdded,
+            lastVisitDate: details.lastVisitDate,
           })
         );
       }
@@ -2053,7 +2111,7 @@ async function updateBookmark(
 
 function insertBookmark(item, parent) {
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: insertBookmark",
+    "Bookmarks.sys.mjs: insertBookmark",
     async function (db) {
       // If a guid was not provided, generate one, so we won't need to fetch the
       // bookmark just after having created it.
@@ -2151,7 +2209,7 @@ function insertBookmark(item, parent) {
 
 function insertBookmarkTree(items, source, parent, urls, lastAddedForParent) {
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: insertBookmarkTree",
+    "Bookmarks.sys.mjs: insertBookmarkTree",
     async function (db) {
       await db.executeTransaction(async function transaction() {
         await lazy.PlacesUtils.maybeInsertManyPlaces(db, urls);
@@ -2231,7 +2289,8 @@ async function handleBookmarkItemSpecialData(itemId, item) {
       });
     } catch (ex) {
       console.error(
-        `Failed to insert keyword "${item.keyword} for ${item.url}": ${ex}`
+        `Failed to insert keyword "${item.keyword} for ${item.url}":`,
+        ex
       );
     }
   }
@@ -2245,7 +2304,8 @@ async function handleBookmarkItemSpecialData(itemId, item) {
     } catch (ex) {
       // Invalid tag child, skip it.
       console.error(
-        `Unable to set tags "${item.tags.join(", ")}" for ${item.url}: ${ex}`
+        `Unable to set tags "${item.tags.join(", ")}" for ${item.url}:`,
+        ex
       );
     }
   }
@@ -2264,7 +2324,8 @@ async function handleBookmarkItemSpecialData(itemId, item) {
       });
     } catch (ex) {
       console.error(
-        `Failed to set charset "${item.charset}" for ${item.url}: ${ex}`
+        `Failed to set charset "${item.charset}" for ${item.url}:`,
+        ex
       );
     }
   }
@@ -2299,7 +2360,7 @@ async function queryBookmarks(info) {
   }
 
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: queryBookmarks",
+    "Bookmarks.sys.mjs: queryBookmarks",
     async function (db) {
       // _id, _childCount, _grandParentId and _parentId fields
       // are required to be in the result by the converting function
@@ -2368,7 +2429,7 @@ async function fetchBookmark(info, options = {}) {
     return query(options.db);
   }
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: fetchBookmark",
+    "Bookmarks.sys.mjs: fetchBookmark",
     query
   );
 }
@@ -2400,7 +2461,7 @@ async function fetchBookmarkByPosition(info, options = {}) {
     return query(db);
   }
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: fetchBookmarkByPosition",
+    "Bookmarks.sys.mjs: fetchBookmarkByPosition",
     query
   );
 }
@@ -2413,30 +2474,31 @@ async function fetchBookmarksByTags(info, options = {}) {
               h.url AS url, b.id AS _id, b.parent AS _parentId,
               NULL AS _childCount,
               p.parent AS _grandParentId, b.syncStatus AS _syncStatus,
-              (SELECT group_concat(pp.title)
+              (SELECT group_concat(pp.title ORDER BY pp.title)
                FROM moz_bookmarks bb
-               JOIN moz_bookmarks pp ON bb.parent = pp.id
-               JOIN moz_bookmarks gg ON pp.parent = gg.id AND gg.guid = ?
-               WHERE bb.fk = h.id) AS _tags
+               JOIN moz_bookmarks pp ON pp.id = bb.parent
+               JOIN moz_bookmarks gg ON gg.id = pp.parent
+               WHERE bb.fk = h.id
+               AND gg.guid = '${Bookmarks.tagsGuid}'
+              ) AS _tags
        FROM moz_bookmarks b
        JOIN moz_bookmarks p ON p.id = b.parent
        JOIN moz_bookmarks g ON g.id = p.parent
        JOIN moz_places h ON h.id = b.fk
-       WHERE g.guid <> ? AND b.fk IN (
+       WHERE g.guid <> '${Bookmarks.tagsGuid}'
+       AND b.fk IN (
           SELECT b2.fk FROM moz_bookmarks b2
           JOIN moz_bookmarks p2 ON p2.id = b2.parent
           JOIN moz_bookmarks g2 ON g2.id = p2.parent
-          WHERE g2.guid = ?
-                AND lower(p2.title) IN (
-                  ${new Array(info.tags.length).fill("?").join(",")}
-                )
+          WHERE g2.guid = '${Bookmarks.tagsGuid}'
+          AND lower(p2.title) IN (
+            ${new Array(info.tags.length).fill("?").join(",")}
+          )
           GROUP BY b2.fk HAVING count(*) = ${info.tags.length}
        )
        ORDER BY b.lastModified DESC
       `,
-      [Bookmarks.tagsGuid, Bookmarks.tagsGuid, Bookmarks.tagsGuid].concat(
-        info.tags.map(t => t.toLowerCase())
-      )
+      info.tags.map(t => t.toLowerCase())
     );
 
     return rows.length ? rowsToItemsArray(rows) : null;
@@ -2447,7 +2509,7 @@ async function fetchBookmarksByTags(info, options = {}) {
     return query(db);
   }
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: fetchBookmarksByTags",
+    "Bookmarks.sys.mjs: fetchBookmarksByTags",
     query
   );
 }
@@ -2477,7 +2539,7 @@ async function fetchBookmarksByGUIDPrefix(info, options = {}) {
     return query(db);
   }
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: fetchBookmarksByGUIDPrefix",
+    "Bookmarks.sys.mjs: fetchBookmarksByGUIDPrefix",
     query
   );
 }
@@ -2491,11 +2553,13 @@ async function fetchBookmarksByURL(info, options = {}) {
               h.url AS url, b.id AS _id, b.parent AS _parentId,
               NULL AS _childCount, /* Unused for now */
               p.parent AS _grandParentId, b.syncStatus AS _syncStatus,
-              (SELECT group_concat(pp.title)
+              (SELECT group_concat(pp.title ORDER BY pp.title)
                FROM moz_bookmarks bb
                JOIN moz_bookmarks pp ON bb.parent = pp.id
-               JOIN moz_bookmarks gg ON pp.parent = gg.id AND gg.guid = :tagsGuid
-               WHERE bb.fk = h.id) AS _tags
+               JOIN moz_bookmarks gg ON pp.parent = gg.id
+               WHERE bb.fk = h.id
+               AND gg.guid = '${Bookmarks.tagsGuid}'
+              ) AS _tags
       FROM moz_bookmarks b
       JOIN moz_bookmarks p ON p.id = b.parent
       JOIN moz_places h ON h.id = b.fk
@@ -2506,7 +2570,6 @@ async function fetchBookmarksByURL(info, options = {}) {
       {
         url: info.url.href,
         tagsFolderId: lazy.PlacesUtils.tagsFolderId,
-        tagsGuid: Bookmarks.tagsGuid,
       }
     );
 
@@ -2518,7 +2581,7 @@ async function fetchBookmarksByURL(info, options = {}) {
     return query(db);
   }
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: fetchBookmarksByURL",
+    "Bookmarks.sys.mjs: fetchBookmarksByURL",
     query
   );
 }
@@ -2529,8 +2592,8 @@ async function fetchBookmarksByParentGUID(info, options = {}) {
       `SELECT b.guid, IFNULL(p.guid, '') AS parentGuid, b.position AS 'index',
               b.dateAdded, b.lastModified, b.type, IFNULL(b.title, '') AS title,
               h.url AS url,
-              NULL AS _id,
-              NULL AS _parentId,
+              b.id AS _id,
+              b.parent AS _parentId,
               (SELECT count(*) FROM moz_bookmarks WHERE parent = b.id) AS _childCount,
               NULL AS _grandParentId,
               NULL AS _syncStatus
@@ -2551,21 +2614,21 @@ async function fetchBookmarksByParentGUID(info, options = {}) {
     return query(db);
   }
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: fetchBookmarksByParentGUID",
+    "Bookmarks.sys.mjs: fetchBookmarksByParentGUID",
     query
   );
 }
 
 function fetchRecentBookmarks(numberOfItems) {
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: fetchRecentBookmarks",
+    "Bookmarks.sys.mjs: fetchRecentBookmarks",
     async function (db) {
       let rows = await db.executeCached(
         `SELECT b.guid, IFNULL(p.guid, '') AS parentGuid, b.position AS 'index',
                 b.dateAdded, b.lastModified, b.type,
-                IFNULL(b.title, '') AS title, h.url AS url, NULL AS _id,
-                NULL AS _parentId, NULL AS _childCount, NULL AS _grandParentId,
-                NULL AS _syncStatus
+                IFNULL(b.title, '') AS title, h.url AS url, b.id AS _id,
+                b.parent AS _parentId, NULL AS _childCount,
+                NULL AS _grandParentId, NULL AS _syncStatus
         FROM moz_bookmarks b
         JOIN moz_bookmarks p ON p.id = b.parent
         JOIN moz_places h ON h.id = b.fk
@@ -2611,7 +2674,7 @@ async function fetchBookmarksByParent(db, info) {
 
 function removeBookmarks(items, options) {
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: removeBookmarks",
+    "Bookmarks.sys.mjs: removeBookmarks",
     async function (db) {
       let urls = [];
 
@@ -2724,7 +2787,7 @@ function removeBookmarks(items, options) {
 
 function reorderChildren(parent, orderedChildrenGuids, options) {
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: reorderChildren",
+    "Bookmarks.sys.mjs: reorderChildren",
     db =>
       db.executeTransaction(async function () {
         // Fetch old indices for the notifications.
@@ -3258,7 +3321,69 @@ async function retrieveFullBookmarkPath(guid, options = {}) {
     return query(db);
   }
   return lazy.PlacesUtils.withConnectionWrapper(
-    "Bookmarks.jsm: retrieveFullBookmarkPath",
+    "Bookmarks.sys.mjs: retrieveFullBookmarkPath",
     query
+  );
+}
+
+/**
+ * Get detail of bookmarks of given GUID as Map.
+ *
+ * @param {Array} aGuids An array of item GUIDs.
+ * @return {Promise}
+ * @resolves to Map of bookmark details. The key is guid.
+ */
+async function getBookmarkDetailMap(aGuids) {
+  return lazy.PlacesUtils.withConnectionWrapper(
+    "Bookmarks.geBookmarkDetailMap",
+    async db => {
+      let entries = new Map();
+      for (let chunk of lazy.PlacesUtils.chunkArray(aGuids, db.variableLimit)) {
+        await db.executeCached(
+          `
+            SELECT
+              b.guid,
+              b.id,
+              b.parent,
+              IFNULL(h.frecency, 0),
+              IFNULL(h.hidden, 0),
+              IFNULL(h.visit_count, 0),
+              h.last_visit_date,
+              (
+                SELECT group_concat(pp.title ORDER BY pp.title)
+                FROM moz_bookmarks bb
+                JOIN moz_bookmarks pp ON pp.id = bb.parent
+                JOIN moz_bookmarks gg ON gg.id = pp.parent
+                WHERE bb.fk = h.id
+                AND gg.guid = '${Bookmarks.tagsGuid}'
+              ),
+              t.guid, t.id, t.title
+            FROM moz_bookmarks b
+            LEFT JOIN moz_places h ON h.id = b.fk
+            LEFT JOIN moz_bookmarks t ON t.guid = target_folder_guid(h.url)
+            WHERE b.guid IN (${lazy.PlacesUtils.sqlBindPlaceholders(chunk)})
+            `,
+          chunk,
+          row => {
+            const lastVisitDate = row.getResultByIndex(6);
+            entries.set(row.getResultByIndex(0), {
+              id: row.getResultByIndex(1),
+              parentId: row.getResultByIndex(2),
+              frecency: row.getResultByIndex(3),
+              hidden: row.getResultByIndex(4),
+              visitCount: row.getResultByIndex(5),
+              lastVisitDate: lastVisitDate
+                ? lazy.PlacesUtils.toDate(lastVisitDate).getTime()
+                : null,
+              tags: row.getResultByIndex(7),
+              targetFolderGuid: row.getResultByIndex(8),
+              targetFolderItemId: row.getResultByIndex(9),
+              targetFolderTitle: row.getResultByIndex(10),
+            });
+          }
+        );
+      }
+      return entries;
+    }
   );
 }

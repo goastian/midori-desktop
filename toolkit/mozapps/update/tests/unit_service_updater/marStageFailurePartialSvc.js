@@ -11,7 +11,7 @@ async function run_test() {
   }
   const STATE_AFTER_STAGE = STATE_FAILED;
   gTestFiles = gTestFilesPartialSuccess;
-  gTestFiles[11].originalFile = "partial.png";
+  getTestFileByName("0exe0.exe").originalFile = "partial.png";
   gTestDirs = gTestDirsPartialSuccess;
   setTestFilesAndDirsForFailure();
   await setupUpdaterTest(FILE_PARTIAL_MAR, false);
@@ -20,7 +20,7 @@ async function run_test() {
   checkFilesAfterUpdateFailure(getApplyDirFile);
   checkUpdateLogContains(ERR_LOADSOURCEFILE_FAILED);
   await waitForUpdateXMLFiles();
-  checkUpdateManager(
+  await checkUpdateManager(
     STATE_NONE,
     false,
     STATE_FAILED,

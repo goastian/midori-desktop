@@ -25,9 +25,6 @@ nimbus_events:
       branch:
         type: string
         description: The branch slug/identifier that was randomly chosen
-      enrollment_id:
-        type: string
-        description: A unique identifier generated at enrollment time
       experiment_type:
         type: string
         description: Indicates whether this is an experiemnt or rollout
@@ -88,18 +85,22 @@ nimbus_events:
       branch:
         type: string
         description: The branch slug/identifier that was randomly chosen
-      enrollment_id:
-        type: string
-        description: A unique identifier generated at enrollment time
       reason:
         type: string
         description: The reason for the unenrollment
+      changed_pref:
+        type: string
+        description: >
+          If reason == "changed-pref", then this contains the name of the pref
+          that changed that caused the unenrollment.
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1773563
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1781953
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1843126
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1773563
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1781953
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1843126
     data_sensitivity:
       - technical
     notification_emails:
@@ -215,3 +216,53 @@ nimbus_events:
     send_in_pings:
       - background-update
       - events
+
+  is_ready:
+    type: event
+    description: >
+      An event sent when Nimbus is ready — sent upon completion of each update of the recipes.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1875510
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1875510
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - chumphreys@mozilla.com
+      - project-nimbus@mozilla.com
+    expires: 180
+
+  enrollment_status:
+    type: event
+    description: >
+      Recorded for each enrollment status each time the SDK completes application of pending experiments.
+    extra_keys:
+      slug:
+        type: string
+        description: The slug/unique identifier of the experiment
+      status:
+        type: string
+        description: The status of this enrollment
+      reason:
+        type: string
+        description: The reason the client is in the noted status
+      branch:
+        type: string
+        description: The branch slug/identifier that was randomly chosen (if the client is enrolled)
+      error_string:
+        type: string
+        description: If the enrollment resulted in an error, the associated error string
+      conflict_slug:
+        type: string
+        description: If the enrollment hit a feature conflict, the slug of the conflicting experiment/rollout
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1817481
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1817481
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - chumphreys@mozilla.com
+      - project-nimbus@mozilla.com
+    expires: never
+    disabled: true

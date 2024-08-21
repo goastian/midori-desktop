@@ -25,7 +25,7 @@
         [
           "metrics"
         ],
-        "application",
+        "ping",
         false,
         {
           "bucket_count": 100,
@@ -129,7 +129,7 @@
         [
           "metrics"
         ],
-        "application",
+        "ping",
         false,
         {
           "memory_unit": "kilobyte"
@@ -180,7 +180,7 @@
         [
           "metrics"
         ],
-        "application",
+        "ping",
         false,
         {
           "time_unit": "nanosecond"
@@ -188,6 +188,15 @@
       ]
     ],
     "test.nested": [
+      [
+        "object",
+        "an_object",
+        [
+          "metrics"
+        ],
+        "ping",
+        false
+      ],
       [
         "datetime",
         "datetime_metric",
@@ -251,6 +260,15 @@
         }
       ],
       [
+        "counter",
+        "optimizable_counter_metric",
+        [
+          "metrics"
+        ],
+        "ping",
+        false
+      ],
+      [
         "quantity",
         "quantity_metric",
         [
@@ -293,6 +311,10 @@
       "not-baseline",
       true,
       false,
+      true,
+      true,
+      true,
+      [],
       [
         "background",
         "dirty_startup",
@@ -303,12 +325,20 @@
       "not-deletion-request",
       true,
       true,
+      true,
+      true,
+      true,
+      [],
       []
     ],
     [
       "not-events",
       true,
       false,
+      true,
+      true,
+      true,
+      [],
       [
         "background",
         "max_capacity",
@@ -319,6 +349,10 @@
       "not-metrics",
       true,
       false,
+      true,
+      true,
+      true,
+      [],
       [
         "overdue",
         "reschedule",
@@ -326,6 +360,16 @@
         "tomorrow",
         "upgrade"
       ]
+    ],
+    [
+      "not-ohttp",
+      false,
+      true,
+      true,
+      false,
+      true,
+      [],
+      []
     ]
   ]
 }

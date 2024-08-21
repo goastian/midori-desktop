@@ -13,7 +13,9 @@ const Ci = SpecialPowers.Ci;
 
 const chromeScript = SpecialPowers.loadChromeScript(_ => {
   /* eslint-env mozilla/chrome-script */
-  const {clearTimeout, setTimeout} = ChromeUtils.import("resource://gre/modules/Timer.jsm");
+  const {clearTimeout, setTimeout} = ChromeUtils.importESModule(
+    "resource://gre/modules/Timer.sys.mjs"
+  );
 
   const alertService = Cc["@mozilla.org/alerts-service;1"]
                          .getService(Ci.nsIAlertsService);
@@ -24,7 +26,7 @@ const chromeScript = SpecialPowers.loadChromeScript(_ => {
       sendAsyncMessage("waitedForPosition", null);
     }, 2000);
 
-    var windowObserver = function(win, aTopic, aData) {
+    var windowObserver = function(win, aTopic) {
       if (aTopic != "domwindowopened") {
         return;
       }

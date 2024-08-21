@@ -12,20 +12,23 @@ HTMLFormElement.isInstance = element => element instanceof HTMLFormElement;
 ShadowRoot.isInstance = element => element instanceof ShadowRoot;
 
 HTMLElement.prototype.ownerGlobal = window;
+
 HTMLInputElement.prototype.setUserInput = function (value) {
   this.value = value;
-  this.dispatchEvent(new Event("input", { bubbles: true }));
-};
 
-// TODO: Bug 1828408.
-// Use  WeakRef API directly in our codebase instead of legacy Cu.getWeakReference.
-window.Cu = class {
-  static getWeakReference(elements) {
-    const elementsWeakRef = new WeakRef(elements);
-    return {
-      get: () => elementsWeakRef.deref(),
-    };
-  }
+  // In React apps, setting .value may not always work reliably.
+  // We dispatch change, input as a workaround.
+  // There are other more "robust" solutions:
+  // - Dispatching keyboard events and comparing the value after setting it
+  //   (https://github.com/fmeum/browserpass-extension/blob/5efb1f9de6078b509904a83847d370c8e92fc097/src/inject.js#L412-L440)
+  // - Using the native setter
+  //   (https://github.com/facebook/react/issues/10135#issuecomment-401496776)
+  // These are a bit more bloated. We can consider using these later if we encounter any further issues.
+  ["input", "change"].forEach(eventName => {
+    this.dispatchEvent(new Event(eventName, { bubbles: true }));
+  });
+
+  this.dispatchEvent(new Event("blur", { bubbles: true }));
 };
 
 // Mimic the behavior of .getAutocompleteInfo()
@@ -42,12 +45,6 @@ HTMLElement.prototype.getAutocompleteInfo = function () {
   };
 };
 
-// Bug 1835024. Webkit doesn't support `checkVisibility` API
-// https://drafts.csswg.org/cssom-view-1/#dom-element-checkvisibility
-HTMLElement.prototype.checkVisibility = function (options) {
-  throw new Error(`Not implemented: WebKit doesn't support checkVisibility `);
-};
-
 // This function  helps us debug better when an error occurs because a certain mock is missing
 const withNotImplementedError = obj =>
   new Proxy(obj, {
@@ -58,6 +55,15 @@ const withNotImplementedError = obj =>
         );
       }
       return Reflect.get(...arguments);
+    },
+  });
+
+// This function will create a proxy for each undefined property
+// This is useful when the accessed property name is unkonwn beforehand
+const undefinedProxy = () =>
+  new Proxy(() => {}, {
+    get() {
+      return undefinedProxy();
     },
   });
 
@@ -89,15 +95,12 @@ const internalModuleResolvers = {
 
 // Define mock for XPCOMUtils
 export const XPCOMUtils = withNotImplementedError({
-  defineLazyGetter: (obj, prop, getFn) => {
-    obj[prop] = getFn?.();
-  },
   defineLazyPreferenceGetter: (
     obj,
     prop,
     pref,
     defaultValue = null,
-    onUpdate = null,
+    onUpdate,
     transform = val => val
   ) => {
     if (!Object.keys(IOSAppConstants.prefs).includes(pref)) {
@@ -108,10 +111,18 @@ export const XPCOMUtils = withNotImplementedError({
   defineLazyModuleGetters(obj, modules) {
     internalModuleResolvers.resolveModules(obj, modules);
   },
+  defineLazyServiceGetter() {
+    // Don't do anything
+    // We need this for OS Auth fixes for formautofill.
+    // TODO(issam, Bug 1894967): Move os auth to separate module and remove this.
+  },
 });
 
 // eslint-disable-next-line no-shadow
 export const ChromeUtils = withNotImplementedError({
+  defineLazyGetter: (obj, prop, getFn) => {
+    obj[prop] = getFn?.call(obj);
+  },
   defineESModuleGetters(obj, modules) {
     internalModuleResolvers.resolveModules(obj, modules);
   },
@@ -135,10 +146,6 @@ export const OSKeyStore = withNotImplementedError({
 // NOTE: Services is a global so we need to attach it to the window
 // eslint-disable-next-line no-shadow
 export const Services = withNotImplementedError({
-  intl: withNotImplementedError({
-    getAvailableLocaleDisplayNames: () => [],
-    getRegionDisplayNames: () => [],
-  }),
   locale: withNotImplementedError({ isAppLocaleRTL: false }),
   prefs: withNotImplementedError({ prefIsLocked: () => false }),
   strings: withNotImplementedError({
@@ -148,19 +155,78 @@ export const Services = withNotImplementedError({
         formatStringFromName: () => "",
       }),
   }),
-  uuid: withNotImplementedError({ generateUUID: () => "" }),
+  telemetry: withNotImplementedError({
+    scalarAdd: (scalarName, scalarValue) => {
+      // For now, we only care about the address form telemetry
+      // TODO(FXCM-935): move address telemetry to Glean so we can remove this
+      // Data format of the sent message is:
+      // {
+      //   type: "scalar",
+      //   name: "formautofill.addresses.detected_sections_count",
+      //   value: Number,
+      // }
+      if (scalarName !== "formautofill.addresses.detected_sections_count") {
+        return;
+      }
+
+      // eslint-disable-next-line no-undef
+      webkit.messageHandlers.addressFormTelemetryMessageHandler.postMessage(
+        JSON.stringify({
+          type: "scalar",
+          object: scalarName,
+          value: scalarValue,
+        })
+      );
+    },
+    recordEvent: (category, method, object, value, extra) => {
+      // For now, we only care about the address form telemetry
+      // TODO(FXCM-935): move address telemetry to Glean so we can remove this
+      // Data format of the sent message is:
+      // {
+      //   type: "event",
+      //   category: "address",
+      //   method: "detected" | "filled" | "filled_modified",
+      //   object: "address_form" | "address_form_ext",
+      //   value: String,
+      //   extra: Any,
+      // }
+      if (category !== "address") {
+        return;
+      }
+
+      // eslint-disable-next-line no-undef
+      webkit.messageHandlers.addressFormTelemetryMessageHandler.postMessage(
+        JSON.stringify({
+          type: "event",
+          category,
+          method,
+          object,
+          value,
+          extra,
+        })
+      );
+    },
+  }),
+  // TODO(FXCM-936): we should use crypto.randomUUID() instead of Services.uuid.generateUUID() in our codebase
+  // Underneath crypto.randomUUID() uses the same implementation as generateUUID()
+  // https://searchfox.org/mozilla-central/rev/d405168c4d3c0fb900a7354ae17bb34e939af996/dom/base/Crypto.cpp#96
+  // The only limitation is that it's not available in insecure contexts, which should be fine for both iOS and Desktop
+  // since we only autofill in secure contexts
+  uuid: withNotImplementedError({ generateUUID: () => crypto.randomUUID() }),
 });
 window.Services = Services;
 
-export const windowUtils = withNotImplementedError({
-  removeManuallyManagedState: () => {},
-  addManuallyManagedState: () => {},
-});
-window.windowUtils = windowUtils;
+// Define mock for Localization
+window.Localization = function () {
+  return { formatValueSync: () => "" };
+};
 
-export const AutofillTelemetry = withNotImplementedError({
-  recordFormInteractionEvent: () => {},
-  recordDetectedSectionCount: () => {},
-});
+// For now, we ignore all calls to glean.
+// TODO(FXCM-935): move address telemetry to Glean so we can create a universal mock for glean that
+// dispatches telemetry messages to the iOS.
+window.Glean = {
+  formautofillCreditcards: undefinedProxy(),
+  formautofill: undefinedProxy(),
+};
 
 export { IOSAppConstants as AppConstants } from "resource://gre/modules/shared/Constants.ios.mjs";

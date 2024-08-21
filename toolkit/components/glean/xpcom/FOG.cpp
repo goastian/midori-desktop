@@ -6,14 +6,16 @@
 
 #include "mozilla/FOG.h"
 
+#include "mozilla/AppShutdown.h"
+#include "mozilla/Atomics.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/FOGIPC.h"
-#include "mozilla/browser/NimbusFeatures.h"
 #include "mozilla/glean/bindings/Common.h"
 #include "mozilla/glean/bindings/jog/jog_ffi_generated.h"
 #include "mozilla/glean/fog_ffi_generated.h"
 #include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/Logging.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/ShutdownPhase.h"
 #include "mozilla/Unused.h"
@@ -21,8 +23,12 @@
 #include "nsIFOG.h"
 #include "nsIUserIdleService.h"
 #include "nsServiceManagerUtils.h"
+#include "xpcpublic.h"
 
 namespace mozilla {
+
+using mozilla::LogLevel;
+static mozilla::LazyLogModule sLog("fog");
 
 using glean::LogToBrowserConsole;
 
@@ -43,6 +49,7 @@ extern "C" NS_EXPORT void _fog_force_reexport_donotcall(void) {
 #endif
 
 static StaticRefPtr<FOG> gFOG;
+static mozilla::Atomic<bool> gInitializeCalled(false);
 
 // We wait for 5s of idle before dumping IPC and flushing ping data to disk.
 // This number hasn't been tuned, so if you have a reason to change it,
@@ -55,7 +62,10 @@ already_AddRefed<FOG> FOG::GetSingleton() {
     return do_AddRef(gFOG);
   }
 
+  MOZ_LOG(sLog, LogLevel::Debug, ("FOG::GetSingleton()"));
+
   gFOG = new FOG();
+  gFOG->InitMemoryReporter();
 
   if (XRE_IsParentProcess()) {
     nsresult rv;
@@ -76,6 +86,17 @@ already_AddRefed<FOG> FOG::GetSingleton() {
             MOZ_ASSERT(idleService);
             Unused << idleService->RemoveIdleObserver(gFOG, kIdleSecs);
           }
+          if (!gInitializeCalled) {
+            gInitializeCalled = true;
+            // Assuming default data path and application id.
+            // Consumers using non defaults _must_ initialize FOG explicitly.
+            MOZ_LOG(sLog, LogLevel::Debug,
+                    ("Init not called. Init-ing in shutdown"));
+            glean::fog::inits_during_shutdown.Add(1);
+            // It's enough to call init before shutting down.
+            // We don't need to (and can't) wait for it to complete.
+            glean::impl::fog_init(&VoidCString(), &VoidCString(), false);
+          }
           gFOG->Shutdown();
           gFOG = nullptr;
         },
@@ -86,22 +107,43 @@ already_AddRefed<FOG> FOG::GetSingleton() {
 
 void FOG::Shutdown() {
   MOZ_ASSERT(XRE_IsParentProcess());
+
+  UnregisterWeakMemoryReporter(this);
   glean::impl::fog_shutdown();
 }
 
+// This allows us to know it's too late to submit a ping in Rust.
+extern "C" bool FOG_TooLateToSend(void) {
+  MOZ_ASSERT(XRE_IsParentProcess());
+  return AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownNetTeardown);
+}
+
+// This allows us to pass the configurable maximum ping limit (in pings per
+// minute) to Rust. Default value is 15.
+extern "C" uint32_t FOG_MaxPingLimit(void) {
+  return Preferences::GetInt("telemetry.glean.internal.maxPingsPerMinute", 15);
+}
+
+// Called when knowing if we're in automation is necessary.
+extern "C" bool FOG_IPCIsInAutomation(void) { return xpc::IsInAutomation(); }
+
 NS_IMETHODIMP
 FOG::InitializeFOG(const nsACString& aDataPathOverride,
-                   const nsACString& aAppIdOverride) {
+                   const nsACString& aAppIdOverride,
+                   const bool aDisableInternalPings) {
   MOZ_ASSERT(XRE_IsParentProcess());
+  gInitializeCalled = true;
   RunOnShutdown(
       [&] {
-        if (NimbusFeatures::GetBool("glean"_ns, "finalInactive"_ns, false)) {
+        if (Preferences::GetBool("telemetry.glean.internal.finalInactive",
+                                 false)) {
           glean::impl::fog_internal_glean_handle_client_inactive();
         }
       },
-      ShutdownPhase::XPCOMWillShutdown);
+      ShutdownPhase::AppShutdownConfirmed);
 
-  return glean::impl::fog_init(&aDataPathOverride, &aAppIdOverride);
+  return glean::impl::fog_init(&aDataPathOverride, &aAppIdOverride,
+                               aDisableInternalPings);
 }
 
 NS_IMETHODIMP
@@ -273,14 +315,14 @@ FOG::TestGetExperimentData(const nsACString& aExperimentId, JSContext* aCx,
 }
 
 NS_IMETHODIMP
-FOG::SetMetricsFeatureConfig(const nsACString& aJsonConfig) {
+FOG::ApplyServerKnobsConfig(const nsACString& aJsonConfig) {
 #ifdef MOZ_GLEAN_ANDROID
   NS_WARNING(
       "Don't set metric feature configs from Gecko in Android. Ignoring.");
   return NS_OK;
 #else
   MOZ_ASSERT(XRE_IsParentProcess());
-  glean::impl::fog_set_metrics_feature_config(&aJsonConfig);
+  glean::impl::fog_apply_server_knobs_config(&aJsonConfig);
   return NS_OK;
 #endif
 }
@@ -369,17 +411,35 @@ FOG::TestRegisterRuntimeMetric(
 }
 
 NS_IMETHODIMP
-FOG::TestRegisterRuntimePing(const nsACString& aName,
-                             const bool aIncludeClientId,
-                             const bool aSendIfEmpty,
-                             const nsTArray<nsCString>& aReasonCodes,
-                             uint32_t* aPingIdOut) {
+FOG::TestRegisterRuntimePing(
+    const nsACString& aName, const bool aIncludeClientId,
+    const bool aSendIfEmpty, const bool aPreciseTimestamps,
+    const bool aIncludeInfoSections, const bool aEnabled,
+    const nsTArray<nsCString>& aSchedulesPings,
+    const nsTArray<nsCString>& aReasonCodes, uint32_t* aPingIdOut) {
   *aPingIdOut = 0;
-  *aPingIdOut = glean::jog::jog_test_register_ping(&aName, aIncludeClientId,
-                                                   aSendIfEmpty, &aReasonCodes);
+  *aPingIdOut = glean::jog::jog_test_register_ping(
+      &aName, aIncludeClientId, aSendIfEmpty, aPreciseTimestamps,
+      aIncludeInfoSections, aEnabled, &aSchedulesPings, &aReasonCodes);
   return NS_OK;
 }
 
-NS_IMPL_ISUPPORTS(FOG, nsIFOG, nsIObserver)
+void FOG::InitMemoryReporter() { RegisterWeakMemoryReporter(this); }
+
+MOZ_DEFINE_MALLOC_SIZE_OF(FOGMallocSizeOf)
+
+NS_IMETHODIMP
+FOG::CollectReports(nsIHandleReportCallback* aHandleReport, nsISupports* aData,
+                    bool aAnonymize) {
+  mozilla::MallocSizeOf aMallocSizeOf = FOGMallocSizeOf;
+
+  MOZ_COLLECT_REPORT("explicit/fog/impl", KIND_HEAP, UNITS_BYTES,
+                     aMallocSizeOf(this),
+                     "Memory used by the FOG core implementation");
+
+  return NS_OK;
+}
+
+NS_IMPL_ISUPPORTS(FOG, nsIFOG, nsIObserver, nsIMemoryReporter)
 
 }  //  namespace mozilla

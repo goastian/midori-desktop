@@ -39,7 +39,7 @@ this.declarativeNetRequest = class extends ExtensionAPI {
     ExtensionDNR.clearRuleManager(this.extension);
   }
 
-  getAPI(context) {
+  getAPI() {
     const { extension } = this;
 
     return {
@@ -68,7 +68,9 @@ this.declarativeNetRequest = class extends ExtensionAPI {
             throw new ExtensionError(failures[0].message);
           }
           let validatedRules = ruleValidator.getValidatedRules();
-          let ruleQuotaCounter = new ExtensionDNR.RuleQuotaCounter();
+          let ruleQuotaCounter = new ExtensionDNR.RuleQuotaCounter(
+            "MAX_NUMBER_OF_SESSION_RULES"
+          );
           ruleQuotaCounter.tryAddRules("_session", validatedRules);
           ruleManager.setSessionRules(validatedRules);
         },
@@ -92,17 +94,33 @@ this.declarativeNetRequest = class extends ExtensionAPI {
           });
         },
 
-        async getDynamicRules() {
-          await ExtensionDNR.ensureInitialized(extension);
-          return ExtensionDNR.getRuleManager(extension).getDynamicRules();
+        updateStaticRules({ rulesetId, disableRuleIds, enableRuleIds }) {
+          return ExtensionDNR.updateStaticRules(extension, {
+            rulesetId,
+            disableRuleIds,
+            enableRuleIds,
+          });
         },
 
-        getSessionRules() {
+        async getDisabledRuleIds({ rulesetId }) {
+          return ExtensionDNR.getDisabledRuleIds(extension, rulesetId);
+        },
+
+        async getDynamicRules(details) {
+          await ExtensionDNR.ensureInitialized(extension);
+          return ExtensionDNR.getRuleManager(extension).getDynamicRules(
+            details?.ruleIds
+          );
+        },
+
+        getSessionRules(details) {
           // ruleManager.getSessionRules() returns an array of Rule instances.
           // When these are structurally cloned (to send them to the child),
           // the enumerable public fields of the class instances are copied to
           // plain objects, as desired.
-          return ExtensionDNR.getRuleManager(extension).getSessionRules();
+          return ExtensionDNR.getRuleManager(extension).getSessionRules(
+            details?.ruleIds
+          );
         },
 
         isRegexSupported(regexOptions) {

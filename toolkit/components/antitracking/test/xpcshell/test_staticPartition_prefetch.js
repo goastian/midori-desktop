@@ -34,7 +34,7 @@ async function checkCache(originAttributes) {
   const data = await new Promise(resolve => {
     let cacheEntries = [];
     let cacheVisitor = {
-      onCacheStorageInfo(num, consumption) {},
+      onCacheStorageInfo() {},
       onCacheEntryInfo(uri, idEnhance) {
         cacheEntries.push({ uri, idEnhance });
       },
@@ -54,8 +54,9 @@ async function checkCache(originAttributes) {
     "example.org",
     "image.png"
   );
-  ok(
-    foundEntryCount > 0,
+  Assert.greater(
+    foundEntryCount,
+    0,
     `Cache entries expected for image.png and OA=${originAttributes}`
   );
 }

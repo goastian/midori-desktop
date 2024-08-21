@@ -9,27 +9,23 @@
  * to the parent process and handle it there.
  */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AboutPages: "resource://normandy-content/AboutPages.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "gBrandBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "gBrandBundle", function () {
   return Services.strings.createBundle(
     "chrome://branding/locale/brand.properties"
   );
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "gStringBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "gStringBundle", function () {
   return Services.strings.createBundle(
     "chrome://global/locale/aboutStudies.properties"
   );
 });
-
-const NIMBUS_DEBUG_PREF = "nimbus.debug";
 
 /**
  * Listen for DOM events bubbling up from the about:studies page, and perform
@@ -93,12 +89,6 @@ export class ShieldFrameChild extends JSWindowActorChild {
         this.triggerPageCallback(
           "ReceiveRemoteValue:StudiesEnabled",
           studiesEnabled
-        );
-        break;
-      case "GetRemoteValue:DebugModeOn":
-        this.triggerPageCallback(
-          "ReceiveRemoteValue:DebugModeOn",
-          Services.prefs.getBoolPref(NIMBUS_DEBUG_PREF)
         );
         break;
       case "NavigateToDataPreferences":

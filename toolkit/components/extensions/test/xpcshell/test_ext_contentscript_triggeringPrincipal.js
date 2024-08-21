@@ -21,13 +21,16 @@ Services.prefs.setIntPref(
   4096
 );
 
+// Do not limit the number of CSP reports.
+Services.prefs.setIntPref("security.csp.reporting.limit.count", 0);
+
 // Do not trunacate the blocked-uri in CSP reports for frame navigations.
 Services.prefs.setBoolPref(
   "security.csp.truncate_blocked_uri_for_frame_navigations",
   false
 );
 
-// ExtensionContent.jsm needs to know when it's running from xpcshell,
+// ExtensionContent.sys.mjs needs to know when it's running from xpcshell,
 // to use the right timeout for content scripts executed at document_idle.
 ExtensionTestUtils.mockAppInfo();
 
@@ -525,7 +528,6 @@ function testInlineCSS() {
     // Test creating <style> element from the extension side and then appending
     // to it using insertAdjacentHTML, with the same rules as above.
     testModifyAfterInject("insertAdjacentHTML", (style, css) => {
-      // eslint-disable-next-line no-unsanitized/method
       style.insertAdjacentHTML("beforeend", css);
     });
 
@@ -987,7 +989,7 @@ function awaitLoads(urlsPromise, origins) {
       }
     });
 
-    observer = (channel, topic, data) => {
+    observer = channel => {
       if (expectedURLs) {
         checkChannel(channel.QueryInterface(Ci.nsIChannel));
       } else {

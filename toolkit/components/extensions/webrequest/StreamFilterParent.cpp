@@ -12,6 +12,7 @@
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/net/ChannelEventQueue.h"
 #include "mozilla/StaticPrefs_extensions.h"
+#include "mozilla/Try.h"
 #include "nsHttpChannel.h"
 #include "nsIChannel.h"
 #include "nsIInputStream.h"
@@ -119,15 +120,9 @@ auto StreamFilterParent::Create(dom::ContentParent* aContentParent,
 
   auto& webreq = WebRequestService::GetSingleton();
 
-  RefPtr<extensions::WebExtensionPolicy> addonPolicy =
-      ExtensionPolicyService::GetSingleton().GetByID(aAddonId);
-
-  if (!addonPolicy) {
-    return ChildEndpointPromise::CreateAndReject(false, __func__);
-  }
-
+  RefPtr<nsAtom> addonId = NS_Atomize(aAddonId);
   nsCOMPtr<nsITraceableChannel> channel =
-      webreq.GetTraceableChannel(aChannelId, *addonPolicy, aContentParent);
+      webreq.GetTraceableChannel(aChannelId, addonId, aContentParent);
 
   RefPtr<mozilla::net::nsHttpChannel> chan = do_QueryObject(channel);
   if (!chan) {
@@ -136,10 +131,15 @@ auto StreamFilterParent::Create(dom::ContentParent* aContentParent,
 
   nsCOMPtr<nsIChannel> genChan(do_QueryInterface(channel));
   if (!StaticPrefs::extensions_filterResponseServiceWorkerScript_disabled() &&
-      ChannelWrapper::IsServiceWorkerScript(genChan) &&
-      !addonPolicy->HasPermission(
-          nsGkAtoms::webRequestFilterResponse_serviceWorkerScript)) {
-    return ChildEndpointPromise::CreateAndReject(false, __func__);
+      ChannelWrapper::IsServiceWorkerScript(genChan)) {
+    RefPtr<extensions::WebExtensionPolicy> addonPolicy =
+        ExtensionPolicyService::GetSingleton().GetByID(aAddonId);
+
+    if (!addonPolicy ||
+        !addonPolicy->HasPermission(
+            nsGkAtoms::webRequestFilterResponse_serviceWorkerScript)) {
+      return ChildEndpointPromise::CreateAndReject(false, __func__);
+    }
   }
 
   // Disable alt-data for extension stream listeners.
@@ -230,7 +230,30 @@ StreamFilterParent::CheckListenerChain() {
   if (trsl) {
     return trsl->CheckListenerChain();
   }
-  return NS_ERROR_FAILURE;
+  return NS_ERROR_NO_INTERFACE;
+}
+
+NS_IMETHODIMP
+StreamFilterParent::OnDataFinished(nsresult aStatus) {
+  AssertIsIOThread();
+
+  // Forwarding onDataFinished to the mOriginListener when:
+  // - the StreamFilter is already disconnected
+  // - it does not have any buffered data which would still need
+  //   to be sent to the mOrigListener and we have
+  // - we have not yet called mOrigListener OnStopRequest method.
+  if (!mDisconnected || !mBufferedData.isEmpty() || mSentStop) {
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIThreadRetargetableStreamListener> listener =
+      do_QueryInterface(mOrigListener);
+
+  if (listener) {
+    return listener->OnDataFinished(aStatus);
+  }
+
+  return NS_OK;
 }
 
 /*****************************************************************************

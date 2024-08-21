@@ -114,7 +114,11 @@ export var SiteDataTestUtils = {
   },
 
   /**
-   * Adds a new localStorage entry for the specified origin, with the specified contents.
+   * Adds a new localStorage entry for the specified origin, with the specified
+   * contents.
+   *
+   * This method requires the pref dom.storage.client_validation=false in order
+   * to access LS without a window.
    *
    * @param {String} origin - the origin of the site to add test data for
    * @param {String} [key] - the localStorage key
@@ -138,6 +142,9 @@ export var SiteDataTestUtils = {
    * @param {String} origin - the origin of the site to check
    * @param {{key: String, value: String}[]} [testEntries] - An array of entries
    * to test for.
+   *
+   * This method requires the pref dom.storage.client_validation=false in order
+   * to access LS without a window.
    *
    * @returns {Boolean} whether the origin has localStorage data
    */
@@ -201,34 +208,32 @@ export var SiteDataTestUtils = {
     let principal =
       Services.scriptSecurityManager.createContentPrincipalFromOrigin(origin);
 
-    let cookies;
+    let originAttributes = principal.originAttributes;
+
     if (testPBMCookies) {
+      // Override the origin attributes to set PBM.
       // This needs to be updated when adding support for multiple PBM contexts.
-      let originAttributes = { privateBrowsingId: 1 };
-      cookies = Services.cookies.getCookiesWithOriginAttributes(
-        JSON.stringify(originAttributes)
-      );
-    } else {
-      cookies = Services.cookies.cookies;
+      originAttributes = {
+        ...principal.originAttributes,
+        privateBrowsingId: 1,
+      };
     }
-
-    let filterFn = cookie => {
-      return (
-        ChromeUtils.isOriginAttributesEqual(
-          principal.originAttributes,
-          cookie.originAttributes
-        ) && cookie.host.includes(principal.host)
+    // Need to do an additional filter step since getCookiesFromHost returns all
+    // cookies for the base domain (including subdomains). This method takes an
+    // origin so we need to do an exact host match.
+    let cookies = Services.cookies
+      .getCookiesFromHost(principal.baseDomain, originAttributes)
+      .filter(
+        cookie =>
+          cookie.host == principal.host || cookie.host == `.${principal.host}`
       );
-    };
 
-    // Return on first cookie found for principal.
+    // If we don't have to filter specific testEntries we can return now.
     if (!testEntries) {
-      return cookies.some(filterFn);
+      return !!cookies.length;
     }
 
-    // Collect all cookies that match the principal
-    cookies = cookies.filter(filterFn);
-
+    // Check if the returned cookies match testEntries.
     if (cookies.length < testEntries.length) {
       return false;
     }
@@ -246,10 +251,10 @@ export var SiteDataTestUtils = {
     return new Promise(resolve => {
       let data = true;
       let request = indexedDB.openForPrincipal(principal, "TestDatabase", 1);
-      request.onupgradeneeded = function (e) {
+      request.onupgradeneeded = function () {
         data = false;
       };
-      request.onsuccess = function (e) {
+      request.onsuccess = function () {
         resolve(data);
       };
     });
@@ -278,11 +283,11 @@ export var SiteDataTestUtils = {
       CacheListener.prototype = {
         QueryInterface: ChromeUtils.generateQI(["nsICacheEntryOpenCallback"]),
 
-        onCacheEntryCheck(entry) {
+        onCacheEntryCheck() {
           return Ci.nsICacheEntryOpenCallback.ENTRY_WANTED;
         },
 
-        onCacheEntryAvailable(entry, isnew, status) {
+        onCacheEntryAvailable() {
           resolve();
         },
       };
@@ -401,7 +406,11 @@ export var SiteDataTestUtils = {
           Ci.nsIClearDataService.CLEAR_PREDICTOR_NETWORK_DATA |
           Ci.nsIClearDataService.CLEAR_CLIENT_AUTH_REMEMBER_SERVICE |
           Ci.nsIClearDataService.CLEAR_EME |
-          Ci.nsIClearDataService.CLEAR_STORAGE_ACCESS,
+          Ci.nsIClearDataService.CLEAR_STORAGE_ACCESS |
+          Ci.nsIClearDataService.CLEAR_COOKIE_BANNER_EXCEPTION |
+          Ci.nsIClearDataService.CLEAR_COOKIE_BANNER_EXECUTED_RECORD |
+          Ci.nsIClearDataService.CLEAR_FINGERPRINTING_PROTECTION_STATE |
+          Ci.nsIClearDataService.CLEAR_BOUNCE_TRACKING_PROTECTION_STATE,
         resolve
       );
     });

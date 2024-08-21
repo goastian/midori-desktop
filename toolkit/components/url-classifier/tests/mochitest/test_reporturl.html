@@ -16,9 +16,13 @@
 <pre id="test">
 
 <script class="testbody" type="text/javascript">
-const {BrowserTestUtils} = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
+const {BrowserTestUtils} = ChromeUtils.importESModule(
+  "resource://testing-common/BrowserTestUtils.sys.mjs"
+);
 ;
-const {TestUtils} = ChromeUtils.import("resource://testing-common/TestUtils.jsm");
+const {TestUtils} = ChromeUtils.importESModule(
+  "resource://testing-common/TestUtils.sys.mjs"
+);
 
 var mainWindow = window.browsingContext.topChromeWindow;
 const SJS = "mochi.test:8888/chrome/toolkit/components/url-classifier/tests/mochitest/report.sjs";
@@ -94,12 +98,12 @@ function testOnWindow(aTestData, aCallback, aTestCreater) {
 
 var createBlockedIframe = function(aWindow, aBrowser, aTopUrl, aUrl) {
   (async function() {
-    BrowserTestUtils.loadURIString(aBrowser, aTopUrl);
+    BrowserTestUtils.startLoadingURIString(aBrowser, aTopUrl);
     await BrowserTestUtils.browserLoaded(aBrowser);
 
     await SpecialPowers.spawn(aBrowser, [aUrl], async function(url) {
       return new Promise(resolve => {
-        let listener = e => {
+        let listener = () => {
           docShell.chromeEventHandler.removeEventListener("AboutBlockedLoaded", listener, false, true);
           resolve();
         };
@@ -116,9 +120,9 @@ var createBlockedIframe = function(aWindow, aBrowser, aTopUrl, aUrl) {
   })();
 };
 
-var createBlockedPage = function(aWindow, aBrowser, aTopUrl, aUrl) {
+var createBlockedPage = function(aWindow, aBrowser, aTopUrl) {
   (async function() {
-    BrowserTestUtils.loadURIString(aBrowser, aTopUrl);
+    BrowserTestUtils.startLoadingURIString(aBrowser, aTopUrl);
     await BrowserTestUtils.waitForContentEvent(aBrowser, "DOMContentLoaded");
 
     let doc = aWindow.gBrowser.contentDocument;

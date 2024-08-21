@@ -2,15 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { ExtensionUtils } from "resource://gre/modules/ExtensionUtils.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   ExtensionParent: "resource://gre/modules/ExtensionParent.sys.mjs",
 });
-XPCOMUtils.defineLazyGetter(lazy, "tabTracker", () => {
+ChromeUtils.defineLazyGetter(lazy, "tabTracker", () => {
   return lazy.ExtensionParent.apiManager.global.tabTracker;
 });
 
@@ -46,7 +44,7 @@ export const ExtensionActivityLog = {
    * @param {string} type The type of the activity.
    * @param {string} name The API name or path.
    * @param {object} data Activity specific data.
-   * @param {string} timeStamp The timestamp for the activity.
+   * @param {Date} [timeStamp] The timestamp for the activity.
    */
   log(id, viewType, type, name, data, timeStamp) {
     if (!this.initialized) {

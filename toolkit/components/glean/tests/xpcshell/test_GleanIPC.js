@@ -127,10 +127,7 @@ add_task(
     // but we can assert there are only two samples.
     Assert.equal(
       2,
-      Object.entries(times.values).reduce(
-        (acc, [bucket, count]) => acc + count,
-        0
-      )
+      Object.entries(times.values).reduce((acc, [, count]) => acc + count, 0)
     );
 
     const mabelsCounters = Glean.testOnly.mabelsKitchenCounters;
@@ -145,7 +142,7 @@ add_task(
 
     Assert.throws(
       () => Glean.testOnly.mabelsBathroomCounters.__other__.testGetValue(),
-      /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+      /DataError/,
       "Invalid labels record errors, which throw"
     );
 

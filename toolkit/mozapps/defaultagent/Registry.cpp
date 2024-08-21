@@ -14,6 +14,9 @@
 #include "UtfConvert.h"
 
 #include "mozilla/Buffer.h"
+#include "mozilla/Try.h"
+
+namespace mozilla::default_agent {
 
 using WStringResult = mozilla::WindowsErrorResult<std::wstring>;
 
@@ -323,3 +326,5 @@ VoidResult RegistryDeleteValue(IsPrefixed isPrefixed,
 
   return mozilla::Ok();
 }
+
+}  // namespace mozilla::default_agent

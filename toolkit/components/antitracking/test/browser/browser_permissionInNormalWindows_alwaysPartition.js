@@ -1,3 +1,7 @@
+// We're using custom message passing so don't have access to Assert.foo
+// everywhere. Disable the linter:
+/* eslint-disable mozilla/no-comparison-or-assignment-inside-ok */
+
 AntiTracking.runTest(
   "Test whether we receive any persistent permissions in normal windows",
   // Blocking callback
@@ -12,10 +16,6 @@ AntiTracking.runTest(
       let chromeScript = SpecialPowers.loadChromeScript(_ => {
         /* eslint-env mozilla/chrome-script */
         addMessageListener("go", _ => {
-          const { Services } = ChromeUtils.import(
-            "resource://gre/modules/Services.jsm"
-          );
-
           function ok(what, msg) {
             sendAsyncMessage("ok", { what: !!what, msg });
           }
@@ -33,7 +33,10 @@ AntiTracking.runTest(
 
           for (let perm of Services.perms.getAllForPrincipal(principal)) {
             // Ignore permissions other than storage access
-            if (!perm.type.startsWith("3rdPartyStorage^")) {
+            if (
+              !perm.type.startsWith("3rdPartyStorage^") &&
+              !perm.type.startsWith("3rdPartyFrameStorage^")
+            ) {
               continue;
             }
             is(
@@ -73,7 +76,10 @@ AntiTracking.runTest(
 
         for (let perm of Services.perms.getAllForPrincipal(principal)) {
           // Ignore permissions other than storage access
-          if (!perm.type.startsWith("3rdPartyStorage^")) {
+          if (
+            !perm.type.startsWith("3rdPartyStorage^") &&
+            !perm.type.startsWith("3rdPartyFrameStorage^")
+          ) {
             continue;
           }
           is(
@@ -92,7 +98,7 @@ AntiTracking.runTest(
   // Cleanup callback
   async _ => {
     await new Promise(resolve => {
-      Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
+      Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, () =>
         resolve()
       );
     });

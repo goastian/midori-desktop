@@ -316,7 +316,7 @@ export var AUSTLMY = {
    *        This value is also used to determine the key for the keyed scalar
    *        update.bitshresult (key is either "COMPLETE" or "PARTIAL")
    * @param aError
-   *        The BitsError that occurred. See Bits.jsm for details on BitsError.
+   *        The BitsError that occurred. See Bits.sys.mjs for details on BitsError.
    */
   pingBitsError: function UT_pingBitsError(aIsComplete, aError) {
     if (AppConstants.platform != "win") {
@@ -502,7 +502,7 @@ export var AUSTLMY = {
       );
       wrk.open(
         wrk.ROOT_KEY_LOCAL_MACHINE,
-        "SOFTWARE\\Astian\\MaintenanceService",
+        "SOFTWARE\\Mozilla\\MaintenanceService",
         wrk.ACCESS_READ | wrk.WOW64_64
       );
       // Was the service at some point installed, but is now uninstalled?

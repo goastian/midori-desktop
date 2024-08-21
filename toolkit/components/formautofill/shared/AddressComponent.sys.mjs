@@ -11,9 +11,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
   FormAutofillNameUtils:
     "resource://gre/modules/shared/FormAutofillNameUtils.sys.mjs",
   FormAutofillUtils: "resource://gre/modules/shared/FormAutofillUtils.sys.mjs",
-  PhoneNumber: "resource://autofill/phonenumberutils/PhoneNumber.sys.mjs",
+  PhoneNumber: "resource://gre/modules/shared/PhoneNumber.sys.mjs",
   PhoneNumberNormalizer:
-    "resource://autofill/phonenumberutils/PhoneNumberNormalizer.sys.mjs",
+    "resource://gre/modules/shared/PhoneNumberNormalizer.sys.mjs",
 });
 
 /**
@@ -193,13 +193,15 @@ class AddressField {
  * See autocomplete="street-address".
  */
 class StreetAddress extends AddressField {
+  static ac = "street-address";
+
   #structuredStreetAddress = null;
 
   constructor(value, region) {
     super(value, region);
 
     this.#structuredStreetAddress = lazy.AddressParser.parseStreetAddress(
-      lazy.AddressParser.replaceControlCharacters(this.userValue, " ")
+      lazy.AddressParser.replaceControlCharacters(this.userValue)
     );
   }
 
@@ -224,12 +226,23 @@ class StreetAddress extends AddressField {
   }
 
   equals(other) {
+    if (this.structuredStreetAddress && other.structuredStreetAddress) {
+      return (
+        this.street_number?.toLowerCase() ==
+          other.street_number?.toLowerCase() &&
+        this.street_name?.toLowerCase() == other.street_name?.toLowerCase() &&
+        this.apartment_number?.toLowerCase() ==
+          other.apartment_number?.toLowerCase() &&
+        this.floor_number?.toLowerCase() == other.floor_number?.toLowerCase()
+      );
+    }
+
+    const options = {
+      ignore_case: true,
+    };
+
     return (
-      this.street_number?.toLowerCase() == other.street_number?.toLowerCase() &&
-      this.street_name?.toLowerCase() == other.street_name?.toLowerCase() &&
-      this.apartment_number?.toLowerCase() ==
-        other.apartment_number?.toLowerCase() &&
-      this.floor_number?.toLowerCase() == other.floor_number?.toLowerCase()
+      this.normalizeUserValue(options) == other.normalizeUserValue(options)
     );
   }
 
@@ -272,6 +285,10 @@ class StreetAddress extends AddressField {
       this.localeCompare(a, b)
     );
   }
+
+  static fromRecord(record, region) {
+    return new StreetAddress(record[StreetAddress.ac], region);
+  }
 }
 
 /**
@@ -279,6 +296,8 @@ class StreetAddress extends AddressField {
  * See autocomplete="postal-code"
  */
 class PostalCode extends AddressField {
+  static ac = "postal-code";
+
   constructor(value, region) {
     super(value, region);
   }
@@ -318,13 +337,19 @@ class PostalCode extends AddressField {
       self_normalized_value.startsWith(other_normalized_value)
     );
   }
+
+  static fromRecord(record, region) {
+    return new PostalCode(record[PostalCode.ac], region);
+  }
 }
 
 /**
  * City name.
- * See autocomplete="address-level1"
+ * See autocomplete="address-level2"
  */
 class City extends AddressField {
+  static ac = "address-level2";
+
   #city = null;
 
   constructor(value, region) {
@@ -362,13 +387,19 @@ class City extends AddressField {
       this.localeCompare(a, b)
     );
   }
+
+  static fromRecord(record, region) {
+    return new City(record[City.ac], region);
+  }
 }
 
 /**
  * State.
- * See autocomplete="address-level2"
+ * See autocomplete="address-level1"
  */
 class State extends AddressField {
+  static ac = "address-level1";
+
   // The abbreviated region name. For example, California is abbreviated as CA
   #state = null;
 
@@ -381,7 +412,6 @@ class State extends AddressField {
 
     const options = {
       merge_whitespace: true,
-      remove_punctuation: true,
     };
     this.#state = lazy.FormAutofillUtils.getAbbreviatedSubregionName(
       this.normalizeUserValue(options),
@@ -411,6 +441,10 @@ class State extends AddressField {
   contains(other) {
     return this.equals(other);
   }
+
+  static fromRecord(record, region) {
+    return new State(record[State.ac], region);
+  }
 }
 
 /**
@@ -418,6 +452,8 @@ class State extends AddressField {
  * See autocomplete="country"
  */
 class Country extends AddressField {
+  static ac = "country";
+
   // iso 3166 2-alpha code
   #country_code = null;
 
@@ -454,8 +490,12 @@ class Country extends AddressField {
     return this.country_code == other.country_code;
   }
 
-  contains(other) {
+  contains(_other) {
     return false;
+  }
+
+  static fromRecord(record, region) {
+    return new Country(record[Country.ac], region);
   }
 }
 
@@ -464,6 +504,8 @@ class Country extends AddressField {
  * See autocomplete="name"
  */
 class Name extends AddressField {
+  static ac = "name";
+
   constructor(value, region) {
     super(value, region);
   }
@@ -600,6 +642,10 @@ class Name extends AddressField {
 
     return false;
   }
+
+  static fromRecord(record, region) {
+    return new Name(record[Name.ac], region);
+  }
 }
 
 /**
@@ -607,6 +653,8 @@ class Name extends AddressField {
  * See autocomplete="tel"
  */
 class Tel extends AddressField {
+  static ac = "tel";
+
   #valid = false;
 
   // The country code part of a telphone number, such as "1" for the United States
@@ -674,6 +722,10 @@ class Tel extends AddressField {
   toString() {
     return `${this.constructor.name}: ${this.country_code} ${this.national_number}\n`;
   }
+
+  static fromRecord(record, region) {
+    return new Tel(record[Tel.ac], region);
+  }
 }
 
 /**
@@ -681,6 +733,8 @@ class Tel extends AddressField {
  * See autocomplete="organization".
  */
 class Organization extends AddressField {
+  static ac = "organization";
+
   constructor(value, region) {
     super(value, region);
   }
@@ -713,6 +767,10 @@ class Organization extends AddressField {
 
     return otherTokens.isSubset(selfTokens, (a, b) => this.localeCompare(a, b));
   }
+
+  static fromRecord(record, region) {
+    return new Organization(record[Organization.ac], region);
+  }
 }
 
 /**
@@ -720,6 +778,8 @@ class Organization extends AddressField {
  * See autocomplete="email".
  */
 class Email extends AddressField {
+  static ac = "email";
+
   constructor(value, region) {
     super(value, region);
   }
@@ -780,8 +840,12 @@ class Email extends AddressField {
     );
   }
 
-  contains(other) {
+  contains(_other) {
     return false;
+  }
+
+  static fromRecord(record, region) {
+    return new Email(record[Email.ac], region);
   }
 }
 
@@ -816,7 +880,7 @@ export class AddressComparison {
    */
   constructor(addressA, addressB) {
     for (const fieldA of addressA.getAllFields()) {
-      const fieldName = fieldA.constructor.name;
+      const fieldName = fieldA.constructor.ac;
       const fieldB = addressB.getField(fieldName);
       if (fieldB) {
         this.#result[fieldName] = AddressComparison.compare(fieldA, fieldB);
@@ -826,7 +890,7 @@ export class AddressComparison {
     }
 
     for (const fieldB of addressB.getAllFields()) {
-      const fieldName = fieldB.constructor.name;
+      const fieldName = fieldB.constructor.ac;
       if (!addressB.getField(fieldName)) {
         this.#result[fieldName] = AddressComparison.A_IS_EMPTY;
       }
@@ -926,7 +990,7 @@ export class AddressComparison {
  * country, postal code, etc. The class provides a compare methods
  * to compare another AddressComponent against the current instance.
  *
- * Note. This class assumes records that pass to it have already been normalized.
+ * Note: This class assumes records that pass to it have already been normalized.
  */
 export class AddressComponent {
   /**
@@ -941,79 +1005,44 @@ export class AddressComponent {
    *
    * @class
    * @param {object}  record         The address record object containing address data.
-   * @param {string}  defaultRegion  The default region to use if the record's
-   *                                 country is not specified.
    * @param {object}  [options = {}] a list of options for this method
    * @param {boolean} [options.ignoreInvalid = true]  Whether to ignore invalid address
    *                                 fields in the AddressComponent object. If set to true,
    *                                 invalid fields will be ignored.
    */
-  constructor(
-    record,
-    defaultRegion = FormAutofill.DEFAULT_REGION,
-    { ignoreInvalid = false } = {}
-  ) {
-    const fieldValue = this.#recordToFieldValue(record);
+  constructor(record, { ignoreInvalid = true } = {}) {
+    this.record = {};
 
     // Get country code first so we can use it to parse other fields
-    const country = new Country(fieldValue.country, defaultRegion);
-    this.#fields[Country.name] = country;
-    const region = country.isEmpty() ? defaultRegion : country.country_code;
-
-    this.#fields[State.name] = new State(fieldValue.state, region);
-    this.#fields[City.name] = new City(fieldValue.city, region);
-    this.#fields[PostalCode.name] = new PostalCode(
-      fieldValue.postal_code,
-      region
+    const country = new Country(
+      record[Country.ac],
+      FormAutofill.DEFAULT_REGION
     );
-    this.#fields[Tel.name] = new Tel(fieldValue.tel, region);
-    this.#fields[StreetAddress.name] = new StreetAddress(
-      fieldValue.street_address,
-      region
-    );
-    this.#fields[Name.name] = new Name(fieldValue.name, region);
-    this.#fields[Organization.name] = new Organization(
-      fieldValue.organization,
-      region
-    );
-    this.#fields[Email.name] = new Email(fieldValue.email, region);
+    const region =
+      country.country_code ||
+      lazy.FormAutofillUtils.identifyCountryCode(FormAutofill.DEFAULT_REGION);
 
-    if (ignoreInvalid) {
-      // TODO: We have to reset it or ignore non-existing fields while comparing
-      this.#fields.filter(f => f.IsValid());
-    }
-  }
-
-  /**
-   * Converts address record to a field value object.
-   *
-   * @param  {object} record The record object containing address data.
-   * @returns {object}       A value object with keys corresponding to specific
-   *                         address fields and their respective values.
-   */
-  #recordToFieldValue(record) {
-    let value = {};
-
-    if (record.name) {
-      value.name = record.name;
-    } else {
-      value.name = lazy.FormAutofillNameUtils.joinNameParts({
-        given: record["given-name"],
-        middle: record["additional-name"],
-        family: record["family-name"],
-      });
-    }
-
-    value.email = record.email ?? "";
-    value.organization = record.organization ?? "";
-    value.street_address = record["street-address"] ?? "";
-    value.state = record["address-level1"] ?? "";
-    value.city = record["address-level2"] ?? "";
-    value.country = record.country ?? "";
-    value.postal_code = record["postal-code"] ?? "";
-    value.tel = record.tel ?? "";
-
-    return value;
+    // Build an mapping that the key is field name and the value is the AddressField object
+    [
+      country,
+      new StreetAddress(record[StreetAddress.ac], region),
+      new PostalCode(record[PostalCode.ac], region),
+      new State(record[State.ac], region),
+      new City(record[City.ac], region),
+      new Name(record[Name.ac], region),
+      new Tel(record[Tel.ac], region),
+      new Organization(record[Organization.ac], region),
+      new Email(record[Email.ac], region),
+    ].forEach(addressField => {
+      if (
+        !addressField.isEmpty() &&
+        (!ignoreInvalid || addressField.isValid())
+      ) {
+        const fieldName = addressField.constructor.ac;
+        this.#fields[fieldName] = addressField;
+        this.record[fieldName] = record[fieldName];
+      }
+    });
   }
 
   /**

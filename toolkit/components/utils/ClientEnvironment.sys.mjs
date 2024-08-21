@@ -76,7 +76,7 @@ export class ClientEnvironmentBase {
     }
 
     return new Proxy(target, {
-      get(target, prop, receiver) {
+      get(target, prop) {
         if (prop == "main") {
           return target.main;
         }
@@ -216,7 +216,7 @@ export class ClientEnvironmentBase {
 
       /**
        * Gets the windows build number by querying the OS directly. The initial
-       * version was copied from toolkit/components/telemetry/app/TelemetryEnvironment.jsm
+       * version was copied from toolkit/components/telemetry/app/TelemetryEnvironment.sys.mjs
        * @returns {number | null} The build number, or null on non-Windows platform or if there is an error.
        */
       get windowsBuildNumber() {

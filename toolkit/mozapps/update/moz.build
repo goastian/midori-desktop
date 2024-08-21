@@ -17,7 +17,6 @@ XPIDL_SOURCES += [
 ]
 
 TEST_DIRS += ["tests"]
-MARIONETTE_UNIT_MANIFESTS += ["tests/marionette/marionette.ini"]
 
 EXTRA_COMPONENTS += [
     "nsUpdateService.manifest",
@@ -26,6 +25,7 @@ EXTRA_COMPONENTS += [
 EXTRA_JS_MODULES += [
     "AppUpdater.sys.mjs",
     "UpdateListener.sys.mjs",
+    "UpdateLog.sys.mjs",
     "UpdateService.sys.mjs",
     "UpdateServiceStub.sys.mjs",
     "UpdateTelemetry.sys.mjs",

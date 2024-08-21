@@ -13,16 +13,16 @@ const gDirServ = Cc["@mozilla.org/file/directory_service;1"].getService(
   Ci.nsIDirectoryServiceProvider
 );
 
-const { ProfilerMenuButton } = ChromeUtils.import(
-  "resource://devtools/client/performance-new/popup/menu-button.jsm.js"
+const { ProfilerMenuButton } = ChromeUtils.importESModule(
+  "resource://devtools/client/performance-new/popup/menu-button.sys.mjs"
 );
 const { CustomizableUI } = ChromeUtils.importESModule(
   "resource:///modules/CustomizableUI.sys.mjs"
 );
 
-XPCOMUtils.defineLazyGetter(this, "ProfilerPopupBackground", function () {
-  return ChromeUtils.import(
-    "resource://devtools/client/performance-new/shared/background.jsm.js"
+ChromeUtils.defineLazyGetter(this, "ProfilerPopupBackground", function () {
+  return ChromeUtils.importESModule(
+    "resource://devtools/client/performance-new/shared/background.sys.mjs"
   );
 });
 
@@ -50,27 +50,106 @@ function moduleEnvVarPresent() {
  *   as markers.
  *
  * [1]: The keys of the `presets` object defined in
- * https://searchfox.org/mozilla-central/source/devtools/client/performance-new/shared/background.jsm.js
+ * https://searchfox.org/mozilla-central/source/devtools/client/performance-new/shared/background.sys.mjs
  */
+
+const gOsSpecificLoggingPresets = (() => {
+  // Microsoft Windows
+  if (navigator.platform.startsWith("Win")) {
+    return {
+      windows: {
+        modules:
+          "timestamp,sync,Widget:5,BaseWidget:5,WindowsEvent:4,TaskbarConcealer:5,FileDialog:5",
+        l10nIds: {
+          label: "about-logging-preset-windows-label",
+          description: "about-logging-preset-windows-description",
+        },
+      },
+    };
+  }
+
+  return {};
+})();
+
 const gLoggingPresets = {
   networking: {
     modules:
-      "timestamp,sync,nsHttp:5,cache2:5,nsSocketTransport:5,nsHostResolver:5",
+      "timestamp,sync,nsHttp:5,cache2:5,nsSocketTransport:5,nsHostResolver:5,EarlyHint:5",
     l10nIds: {
       label: "about-logging-preset-networking-label",
       description: "about-logging-preset-networking-description",
     },
     profilerPreset: "networking",
   },
+  cookie: {
+    modules: "timestamp,sync,nsHttp:5,cache2:5,cookie:5",
+    l10nIds: {
+      label: "about-logging-preset-networking-cookie-label",
+      description: "about-logging-preset-networking-cookie-description",
+    },
+  },
+  websocket: {
+    modules:
+      "timestamp,sync,nsHttp:5,nsWebSocket:5,nsSocketTransport:5,nsHostResolver:5",
+    l10nIds: {
+      label: "about-logging-preset-networking-websocket-label",
+      description: "about-logging-preset-networking-websocket-description",
+    },
+  },
+  http3: {
+    modules:
+      "timestamp,sync,nsHttp:5,nsSocketTransport:5,nsHostResolver:5,neqo_http3::*:5,neqo_transport::*:5",
+    l10nIds: {
+      label: "about-logging-preset-networking-http3-label",
+      description: "about-logging-preset-networking-http3-description",
+    },
+  },
+  "http3-upload-speed": {
+    modules: "timestamp,neqo_transport::*:3",
+    l10nIds: {
+      label: "about-logging-preset-networking-http3-upload-speed-label",
+      description:
+        "about-logging-preset-networking-http3-upload-speed-description",
+    },
+  },
   "media-playback": {
     modules:
-      "HTMLMediaElement:4,HTMLMediaElementEvents:4,cubeb:5,PlatformDecoderModule:5,AudioSink:5,AudioSinkWrapper:5,MediaDecoderStateMachine:4,MediaDecoder:4,MediaFormatReader:5",
+      "HTMLMediaElement:4,HTMLMediaElementEvents:4,cubeb:5,PlatformDecoderModule:5,AudioSink:5,AudioSinkWrapper:5,MediaDecoderStateMachine:4,MediaDecoder:4,MediaFormatReader:5,GMP:5,EME:5,MediaSource:4",
     l10nIds: {
       label: "about-logging-preset-media-playback-label",
       description: "about-logging-preset-media-playback-description",
     },
     profilerPreset: "media",
   },
+  webrtc: {
+    modules:
+      "jsep:5,sdp:5,signaling:5,mtransport:5,RTCRtpReceiver:5,RTCRtpSender:5,RTCDMTFSender:5,VideoFrameConverter:5,WebrtcTCPSocket:5,CamerasChild:5,CamerasParent:5,VideoEngine:5,ShmemPool:5,TabShare:5,MediaChild:5,MediaParent:5,MediaManager:5,MediaTrackGraph:5,cubeb:5,MediaStream:5,MediaStreamTrack:5,DriftCompensator:5,ForwardInputTrack:5,MediaRecorder:5,MediaEncoder:5,TrackEncoder:5,VP8TrackEncoder:5,Muxer:5,GetUserMedia:5,MediaPipeline:5,PeerConnectionImpl:5,WebAudioAPI:5,webrtc_trace:5,RTCRtpTransceiver:5,ForwardedInputTrack:5,HTMLMediaElement:5,HTMLMediaElementEvents:5",
+    l10nIds: {
+      label: "about-logging-preset-webrtc-label",
+      description: "about-logging-preset-webrtc-description",
+    },
+    profilerPreset: "media",
+  },
+  webgpu: {
+    modules:
+      "wgpu_core::*:5,wgpu_hal::*:5,wgpu_types::*:5,naga::*:5,wgpu_bindings::*:5,WebGPU:5",
+    l10nIds: {
+      label: "about-logging-preset-webgpu-label",
+      description: "about-logging-preset-webgpu-description",
+    },
+  },
+  gfx: {
+    modules:
+      "webrender::*:5,webrender_bindings::*:5,webrender_types::*:5,gfx2d:5,WebRenderBridgeParent:5,DcompSurface:5,apz.displayport:5,layout:5,dl.content:5,dl.parent:5,nsRefreshDriver:5,fontlist:5,fontinit:5,textrun:5,textrunui:5,textperf:5",
+    l10nIds: {
+      label: "about-logging-preset-gfx-label",
+      description: "about-logging-preset-gfx-description",
+    },
+    // The graphics profiler preset enables the threads we want but loses the screenshots.
+    // We could add an extra preset for that if we miss it.
+    profilerPreset: "graphics",
+  },
+  ...gOsSpecificLoggingPresets,
   custom: {
     modules: "",
     l10nIds: {
@@ -149,14 +228,13 @@ function populatePresets() {
       $("#log-modules").value = gLoggingPresets[dropdown.value].modules;
     }
     setPresetAndDescription(dropdown.value);
-    setLogModules();
     Services.prefs.setCharPref("logging.config.preset", dropdown.value);
   };
 
   $("#log-modules").value = gLoggingPresets[dropdown.value].modules;
   setPresetAndDescription(dropdown.value);
   // When changing the list switch to custom.
-  $("#log-modules").oninput = e => {
+  $("#log-modules").oninput = () => {
     dropdown.value = "custom";
   };
 }
@@ -297,7 +375,6 @@ function parseURL() {
     $("#set-log-modules-button").disabled = true;
     $("#logging-preset-dropdown").disabled = true;
     someElementsDisabled = true;
-    setLogModules();
     updateLogModules();
   }
   if (outputTypeOverriden) {
@@ -385,8 +462,8 @@ function init() {
   try {
     let running = Services.prefs.getBoolPref("logging.config.running");
     gLoggingSettings.running = running;
-    $("#toggle-logging-button").setAttribute(
-      "data-l10n-id",
+    document.l10n.setAttributes(
+      $("#toggle-logging-button"),
       `about-logging-${gLoggingSettings.running ? "stop" : "start"}-logging`
     );
   } catch {}
@@ -457,7 +534,7 @@ function updateLogFile(file) {
 
     if (file.exists()) {
       openLogFileButton.disabled = false;
-      openLogFileButton.onclick = function (e) {
+      openLogFileButton.onclick = function () {
         file.reveal();
       };
     }
@@ -612,10 +689,16 @@ function startLogging() {
   if (gLoggingSettings.loggingOutputType === "profiler") {
     const pageContext = "aboutlogging";
     const supportedFeatures = Services.profiler.GetFeatures();
-    if (gLoggingSettings.loggingPreset != "custom") {
+    if (
+      gLoggingSettings.loggingPreset != "custom" ||
+      gLoggingSettings.profilerPreset
+    ) {
       // Change the preset before starting the profiler, so that the
       // underlying profiler code picks up the right configuration.
+      // If a profiler preset has been explicitely provided (via URL parameters),
+      // pick it. Otherwise, pick the preset for this particular logging preset.
       const profilerPreset =
+        gLoggingSettings.profilerPreset ??
         gLoggingPresets[gLoggingSettings.loggingPreset].profilerPreset;
       ProfilerPopupBackground.changePreset(
         "aboutlogging",

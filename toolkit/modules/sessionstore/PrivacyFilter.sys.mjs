@@ -24,6 +24,14 @@ export var PrivacyFilter = Object.freeze({
   filterSessionStorageData(data) {
     let retval = {};
 
+    if (lazy.PrivacyLevel.shouldSaveEverything()) {
+      return data;
+    }
+
+    if (!lazy.PrivacyLevel.canSaveAnything()) {
+      return null;
+    }
+
     for (let host of Object.keys(data)) {
       if (lazy.PrivacyLevel.check(host)) {
         retval[host] = data[host];
@@ -42,6 +50,14 @@ export var PrivacyFilter = Object.freeze({
    * @return object
    */
   filterFormData(data) {
+    if (lazy.PrivacyLevel.shouldSaveEverything()) {
+      return Object.keys(data).length ? data : null;
+    }
+
+    if (!lazy.PrivacyLevel.canSaveAnything()) {
+      return null;
+    }
+
     // If the given form data object has an associated URL that we are not
     // allowed to store data for, bail out. We explicitly discard data for any
     // children as well even if storing data for those frames would be allowed.
@@ -87,9 +103,6 @@ export var PrivacyFilter = Object.freeze({
         if (browserState.selectedWindow >= i) {
           browserState.selectedWindow--;
         }
-      } else {
-        // Remove private tabs from all open non-private windows.
-        this.filterPrivateTabs(win);
       }
     }
 
@@ -97,38 +110,5 @@ export var PrivacyFilter = Object.freeze({
     browserState._closedWindows = browserState._closedWindows.filter(
       win => !win.isPrivate
     );
-
-    // Remove private tabs from all remaining closed windows.
-    browserState._closedWindows.forEach(win => this.filterPrivateTabs(win));
-  },
-
-  /**
-   * Removes open private tabs from a given window state object.
-   *
-   * @param winState (object)
-   *        The window state for which we remove any private tabs.
-   *        The given object will be modified.
-   */
-  filterPrivateTabs(winState) {
-    // Remove open private tabs.
-    for (let i = winState.tabs.length - 1; i >= 0; i--) {
-      let tab = winState.tabs[i];
-
-      // Bug 1740261 - We end up with `null` entries in winState.tabs, which if
-      // we don't check for we end up throwing here. This does not fix the issue of
-      // how null tabs are getting into the state.
-      if (!tab || tab.isPrivate) {
-        winState.tabs.splice(i, 1);
-
-        if (winState.selected >= i) {
-          winState.selected--;
-        }
-      }
-    }
-
-    // Note that closed private tabs are only stored for private windows.
-    // There is no need to call this function for private windows as the
-    // whole window state should just be discarded so we explicitly don't
-    // try to remove closed private tabs as an optimization.
   },
 });

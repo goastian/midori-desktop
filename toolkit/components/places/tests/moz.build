@@ -11,25 +11,25 @@ TESTING_JS_MODULES += [
 ]
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "bookmarks/xpcshell.ini",
-    "expiration/xpcshell.ini",
-    "favicons/xpcshell.ini",
-    "history/xpcshell.ini",
-    "legacy/xpcshell.ini",
-    "maintenance/xpcshell.ini",
-    "migration/xpcshell.ini",
-    "queries/xpcshell.ini",
-    "sync/xpcshell.ini",
-    "unit/xpcshell.ini",
+    "bookmarks/xpcshell.toml",
+    "expiration/xpcshell.toml",
+    "favicons/xpcshell.toml",
+    "history/xpcshell.toml",
+    "legacy/xpcshell.toml",
+    "maintenance/xpcshell.toml",
+    "migration/xpcshell.toml",
+    "queries/xpcshell.toml",
+    "sync/xpcshell.toml",
+    "unit/xpcshell.toml",
 ]
 
 BROWSER_CHROME_MANIFESTS += [
-    "browser/browser.ini",
-    "browser/previews/browser.ini",
+    "browser/browser.toml",
+    "browser/previews/browser.toml",
 ]
 
 MOCHITEST_CHROME_MANIFESTS += [
-    "chrome/chrome.ini",
+    "chrome/chrome.toml",
 ]
 
 TEST_HARNESS_FILES.xpcshell.toolkit.components.places.tests += [
@@ -65,6 +65,7 @@ TEST_HARNESS_FILES.testing.mochitest.tests.toolkit.components.places.tests.brows
     "browser/redirect_twice_perma.sjs",
     "browser/title1.html",
     "browser/title2.html",
+    "browser/userpass.html",
 ]
 
 TEST_HARNESS_FILES.testing.mochitest.tests.toolkit.components.places.tests.chrome += [

@@ -3,7 +3,7 @@
 
 "use strict";
 
-add_task(async function setup() {
+add_setup(async function () {
   await SearchTestUtils.useTestEngines("simple-engines");
   await AddonTestUtils.promiseStartupManager();
   await Services.search.init();
@@ -50,45 +50,4 @@ add_task(async function test_paramSubstitution() {
   check("{startIndex?}", "");
   check("{startPage}", "1");
   check("{startPage?}", "");
-
-  check("{moz:locale}", Services.locale.requestedLocale);
-
-  url.template = prefix + "{moz:date}";
-  let params = new URLSearchParams(engine.getSubmission(searchTerms).uri.query);
-  Assert.ok(params.has("search"), "Should have a search option");
-
-  let [, year, month, day, hour] = params
-    .get("search")
-    .match(/^(\d{4})(\d{2})(\d{2})(\d{2})/);
-  let date = new Date(year, month - 1, day, hour);
-
-  // We check the time is within an hour of now as the parameter is only
-  // precise to an hour. Checking the difference also should cope with date
-  // changes etc.
-  let difference = Date.now() - date;
-  Assert.lessOrEqual(
-    difference,
-    60 * 60 * 1000,
-    "Should have set the date within an hour"
-  );
-  Assert.greaterOrEqual(difference, 0, "Should not have a time in the past.");
-});
-
-add_task(async function test_mozParamsFailForNonAppProvided() {
-  await SearchTestUtils.installSearchExtension();
-
-  let prefix = "https://example.com/?q=";
-  let engine = await Services.search.getEngineByName("Example");
-  let url = engine.wrappedJSObject._getURLOfType("text/html");
-  equal(url.getSubmission("foo", engine).uri.spec, prefix + "foo");
-  // Reset the engine parameters so we can have a clean template to use for
-  // the subsequent tests.
-  url.params = [];
-
-  let check = checkSubstitution.bind(this, url, prefix, engine);
-
-  // Test moz: parameters (only supported for built-in engines, ie _isDefault == true).
-  check("{moz:locale}", "{moz:locale}");
-
-  await promiseAfterSettings();
 });

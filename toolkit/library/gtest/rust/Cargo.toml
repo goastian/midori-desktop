@@ -6,6 +6,7 @@ license = "MPL-2.0"
 description = "Testing code for libgkrust"
 
 [dependencies]
+mozilla-central-workspace-hack = { version = "0.1", features = ["gkrust-gtest"], optional = true }
 bench-collections-gtest = { path = "../../../../xpcom/rust/gtest/bench-collections" }
 l10nregistry-ffi-gtest = { path = "../../../../intl/l10n/rust/gtest" }
 moz_task-gtest = { path = "../../../../xpcom/rust/gtest/moz_task" }
@@ -16,7 +17,6 @@ gkrust-shared = { path = "../../rust/shared" }
 gecko-fuzz-targets = { path = "../../../../tools/fuzzing/rust", optional = true }
 fog-gtest = { path = "../../../components/glean/tests/gtest" }
 dap_ffi-gtest = { path = "../../../components/telemetry/dap/ffi-gtest" }
-dllservices-gtest = { path = "../../../xre/dllservices/tests/gtest/rust" }
 
 # Workarounds for https://github.com/rust-lang/rust/issues/58393
 mozglue-static = { path = "../../../../mozglue/static/rust" }

@@ -1,6 +1,5 @@
 /**
- * Tests methods that find specific logins in the store (findLogins,
- * searchLogins, and countLogins).
+ * Tests methods that find specific logins in the store (searchLogins and countLogins).
  *
  * The getAllLogins method is not tested explicitly here, because it is used by
  * all tests to verify additions, removals and modifications to the login store.
@@ -47,11 +46,11 @@ function checkSearchLogins(aQuery, aExpectedCount) {
 }
 
 /**
- * Tests findLogins, searchLogins, and countLogins with the same query.
+ * Tests searchLogins, and countLogins with the same query.
  *
  * @param aQuery
  *        The "origin", "formActionOrigin", and "httpRealm" properties of this
- *        object are passed as parameters to findLogins and countLogins.  The
+ *        object are passed as parameters to countLogins.  The
  *        same object is then passed to the checkSearchLogins function.
  * @param aExpectedCount
  *        Number of logins from the test data that should be found.  The actual
@@ -65,17 +64,13 @@ function checkAllSearches(aQuery, aExpectedCount) {
   let expectedLogins = buildExpectedLogins(aQuery);
   Assert.equal(expectedLogins.length, aExpectedCount);
 
-  // The findLogins and countLogins functions support wildcard matches by
+  // The countLogins function support wildcard matches by
   // specifying empty strings as parameters, while searchLogins requires
   // omitting the property entirely.
   let origin = "origin" in aQuery ? aQuery.origin : "";
   let formActionOrigin =
     "formActionOrigin" in aQuery ? aQuery.formActionOrigin : "";
   let httpRealm = "httpRealm" in aQuery ? aQuery.httpRealm : "";
-
-  // Test findLogins.
-  let logins = Services.logins.findLogins(origin, formActionOrigin, httpRealm);
-  LoginTestUtils.assertLoginListsEqual(logins, expectedLogins);
 
   // Test countLogins.
   let count = Services.logins.countLogins(origin, formActionOrigin, httpRealm);
@@ -95,15 +90,15 @@ add_setup(async () => {
 });
 
 /**
- * Tests findLogins, searchLogins, and countLogins with basic queries.
+ * Tests searchLogins, and countLogins with basic queries.
  */
 add_task(function test_search_all_basic() {
   // Find all logins, using no filters in the search functions.
-  checkAllSearches({}, 27);
+  checkAllSearches({}, 28);
 
   // Find all form logins, then all authentication logins.
   checkAllSearches({ httpRealm: null }, 17);
-  checkAllSearches({ formActionOrigin: null }, 10);
+  checkAllSearches({ formActionOrigin: null }, 11);
 
   // Find all form logins on one host, then all authentication logins.
   checkAllSearches({ origin: "http://www4.example.com", httpRealm: null }, 3);
@@ -174,7 +169,7 @@ add_task(function test_searchLogins() {
   checkSearchLogins({ passwordField: "form_field_password" }, 13);
 
   // Find all logins with an empty usernameField, including for authentication.
-  checkSearchLogins({ usernameField: "" }, 15);
+  checkSearchLogins({ usernameField: "" }, 16);
 
   // Find form logins with an empty usernameField.
   checkSearchLogins({ httpRealm: null, usernameField: "" }, 5);
@@ -217,7 +212,7 @@ add_task(function test_search_all_full_case_sensitive() {
 });
 
 /**
- * Tests findLogins, searchLogins, and countLogins with queries that should
+ * Tests searchLogins, and countLogins with queries that should
  * return no values.
  */
 add_task(function test_search_all_empty() {

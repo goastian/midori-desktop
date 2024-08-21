@@ -18,14 +18,15 @@ const DEFER2_ID = "system_delay_defer2@tests.mozilla.org";
 const DEFER_ALSO_ID = "system_delay_defer_also@tests.mozilla.org";
 const NORMAL_ID = "system1@tests.mozilla.org";
 
-const distroDir = FileUtils.getDir("ProfD", ["sysfeatures"], true);
+const distroDir = FileUtils.getDir("ProfD", ["sysfeatures"]);
+distroDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 registerDirectory("XREAppFeat", distroDir);
 
 registerCleanupFunction(() => {
   distroDir.remove(true);
 });
 
-AddonTestUtils.usePrivilegedSignatures = id => "system";
+AddonTestUtils.usePrivilegedSignatures = () => "system";
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
 

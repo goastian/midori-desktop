@@ -1,4 +1,3 @@
-{%- let error = ci.get_error_definition(name).unwrap() %}
 {%- let string_type = Type::String %}
 {%- let string_ffi_converter = string_type.ffi_converter() %}
 
@@ -47,7 +46,7 @@ export class {{ ffi_converter }} extends FfiConverterArrayBuffer {
                 {%- endif %}
             {%- endfor %}
             default:
-                throw new Error("Unknown {{ error.nm() }} variant");
+                throw new UniFFITypeError("Unknown {{ error.nm() }} variant");
         }
     }
     static computeSize(value) {
@@ -61,7 +60,7 @@ export class {{ ffi_converter }} extends FfiConverterArrayBuffer {
             return totalSize;
         }
         {%- endfor %}
-        throw new Error("Unknown {{ error.nm() }} variant");
+        throw new UniFFITypeError("Unknown {{ error.nm() }} variant");
     }
     static write(dataStream, value) {
         {%- for variant in error.variants() %}
@@ -73,7 +72,7 @@ export class {{ ffi_converter }} extends FfiConverterArrayBuffer {
             return;
         }
         {%- endfor %}
-        throw new Error("Unknown {{ error.nm() }} variant");
+        throw new UniFFITypeError("Unknown {{ error.nm() }} variant");
     }
 
     static errorClass = {{ error.nm() }};

@@ -30,12 +30,7 @@ DllServices* DllServices::Get() {
   static StaticLocalRefPtr<DllServices> sInstance(
       []() -> already_AddRefed<DllServices> {
         RefPtr<DllServices> dllSvc(new DllServices());
-        // Full DLL services require XPCOM, which GMP doesn't have
-        if (XRE_IsGMPluginProcess()) {
-          dllSvc->EnableBasic();
-        } else {
-          dllSvc->EnableFull();
-        }
+        dllSvc->EnableFull();
 
         auto setClearOnShutdown = [ptr = &sInstance]() -> void {
           ClearOnShutdown(ptr);
@@ -46,10 +41,8 @@ DllServices* DllServices::Get() {
           return dllSvc.forget();
         }
 
-        SchedulerGroup::Dispatch(
-            TaskCategory::Other,
-            NS_NewRunnableFunction("mozilla::DllServices::Get",
-                                   std::move(setClearOnShutdown)));
+        SchedulerGroup::Dispatch(NS_NewRunnableFunction(
+            "mozilla::DllServices::Get", std::move(setClearOnShutdown)));
 
         return dllSvc.forget();
       }());
@@ -80,10 +73,6 @@ RefPtr<UntrustedModulesPromise> DllServices::GetUntrustedModulesData() {
 }
 
 void DllServices::DisableFull() {
-  if (XRE_IsGMPluginProcess()) {
-    return;
-  }
-
   if (mUntrustedModulesProcessor) {
     mUntrustedModulesProcessor->Disable();
   }

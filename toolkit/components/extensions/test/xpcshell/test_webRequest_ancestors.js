@@ -3,9 +3,6 @@
 var { WebRequest } = ChromeUtils.importESModule(
   "resource://gre/modules/WebRequest.sys.mjs"
 );
-var { PromiseUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/PromiseUtils.sys.mjs"
-);
 var { ExtensionParent } = ChromeUtils.importESModule(
   "resource://gre/modules/ExtensionParent.sys.mjs"
 );
@@ -14,17 +11,18 @@ const server = createHttpServer({ hosts: ["example.com"] });
 server.registerDirectory("/data/", do_get_file("data"));
 
 add_task(async function setup() {
-  // When WebRequest.jsm is used directly instead of through ext-webRequest.js,
+  // When WebRequest.sys.mjs is used directly instead of through ext-webRequest.js,
   // ExtensionParent.apiManager is not automatically initialized. Do it here.
   await ExtensionParent.apiManager.lazyInit();
 });
 
 add_task(async function test_ancestors_exist() {
-  let deferred = PromiseUtils.defer();
+  let deferred = Promise.withResolvers();
   function onBeforeRequest(details) {
     info(`onBeforeRequest ${details.url}`);
-    ok(
-      typeof details.frameAncestors === "object",
+    Assert.strictEqual(
+      typeof details.frameAncestors,
+      "object",
       `ancestors exists [${typeof details.frameAncestors}]`
     );
     deferred.resolve();
@@ -46,10 +44,14 @@ add_task(async function test_ancestors_exist() {
 });
 
 add_task(async function test_ancestors_null() {
-  let deferred = PromiseUtils.defer();
+  let deferred = Promise.withResolvers();
   function onBeforeRequest(details) {
     info(`onBeforeRequest ${details.url}`);
-    ok(details.frameAncestors === undefined, "ancestors do not exist");
+    Assert.strictEqual(
+      details.frameAncestors,
+      undefined,
+      "ancestors do not exist"
+    );
     deferred.resolve();
   }
 

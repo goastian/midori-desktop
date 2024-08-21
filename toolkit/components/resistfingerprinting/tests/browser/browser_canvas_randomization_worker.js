@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 const emptyPage =
   getRootDirectory(gTestPath).replace(
@@ -16,33 +16,6 @@ const emptyPage =
  * canvas data is altered because of the canvas randomization.
  */
 
-/**
- *
- * Spawns a worker in the given browser and sends a callback function to it.
- * The result of the callback function is returned as a Promise.
- *
- * @param {object} browser - The browser context to spawn the worker in.
- * @param {Function} fn - The callback function to send to the worker.
- * @returns {Promise} A Promise that resolves to the result of the callback function.
- */
-function runFunctionInWorker(browser, fn) {
-  return SpecialPowers.spawn(browser, [fn.toString()], async callback => {
-    // Create a worker.
-    let worker = new content.Worker("worker.js");
-
-    // Send the callback to the worker.
-    return new content.Promise(resolve => {
-      worker.onmessage = e => {
-        resolve(e.data.result);
-      };
-
-      worker.postMessage({
-        callback,
-      });
-    });
-  });
-}
-
 var TEST_CASES = [
   {
     name: "CanvasRenderingContext2D.getImageData() with a offscreen canvas",
@@ -51,9 +24,10 @@ var TEST_CASES = [
 
       const context = offscreenCanvas.getContext("2d");
 
-      // Draw a red rectangle
-      context.fillStyle = "red";
+      context.fillStyle = "#EE2222";
       context.fillRect(0, 0, 100, 100);
+      context.fillStyle = "#2222EE";
+      context.fillRect(20, 20, 100, 100);
 
       const imageData = context.getImageData(0, 0, 100, 100);
 
@@ -61,25 +35,7 @@ var TEST_CASES = [
 
       return [imageData.data, imageDataSecond.data];
     },
-    isDataRandomized(data1, data2, isCompareOriginal) {
-      let diffCnt = compareUint8Arrays(data1, data2);
-      info(`There are ${diffCnt} bits are different.`);
-
-      // The Canvas randomization adds at most 512 bits noise to the image data.
-      // We compare the image data arrays to see if they are different and the
-      // difference is within the range.
-
-      // If we are compare two randomized arrays, the difference can be doubled.
-      let expected = isCompareOriginal
-        ? NUM_RANDOMIZED_CANVAS_BITS
-        : NUM_RANDOMIZED_CANVAS_BITS * 2;
-
-      // The number of difference bits should never bigger than the expected
-      // number. It could be zero if the randomization is disabled.
-      ok(diffCnt <= expected, "The number of noise bits is expected.");
-
-      return diffCnt <= expected && diffCnt > 0;
-    },
+    isDataRandomized: isDataRandomizedFuzzy,
   },
   {
     name: "OffscreenCanvas.convertToBlob() with a 2d context",
@@ -89,8 +45,10 @@ var TEST_CASES = [
       const context = offscreenCanvas.getContext("2d");
 
       // Draw a red rectangle
-      context.fillStyle = "red";
+      context.fillStyle = "#EE2222";
       context.fillRect(0, 0, 100, 100);
+      context.fillStyle = "#2222EE";
+      context.fillRect(20, 20, 100, 100);
 
       let blob = await offscreenCanvas.convertToBlob();
 
@@ -114,9 +72,7 @@ var TEST_CASES = [
 
       return [data, dataSecond];
     },
-    isDataRandomized(data1, data2) {
-      return compareArrayBuffer(data1, data2);
-    },
+    isDataRandomized: isDataRandomizedGreaterThanZero,
   },
   {
     name: "OffscreenCanvas.convertToBlob() with a webgl context",
@@ -125,16 +81,15 @@ var TEST_CASES = [
 
       const context = offscreenCanvas.getContext("webgl");
 
-      // Draw a blue rectangle
       context.enable(context.SCISSOR_TEST);
-      context.scissor(0, 150, 150, 150);
-      context.clearColor(1, 0, 0, 1);
+      context.scissor(0, 0, 100, 100);
+      context.clearColor(1, 0.2, 0.2, 1);
       context.clear(context.COLOR_BUFFER_BIT);
-      context.scissor(150, 150, 300, 150);
-      context.clearColor(0, 1, 0, 1);
+      context.scissor(15, 15, 30, 15);
+      context.clearColor(0.2, 1, 0.2, 1);
       context.clear(context.COLOR_BUFFER_BIT);
-      context.scissor(0, 0, 150, 150);
-      context.clearColor(0, 0, 1, 1);
+      context.scissor(50, 50, 15, 15);
+      context.clearColor(0.2, 0.2, 1, 1);
       context.clear(context.COLOR_BUFFER_BIT);
 
       let blob = await offscreenCanvas.convertToBlob();
@@ -159,9 +114,7 @@ var TEST_CASES = [
 
       return [data, dataSecond];
     },
-    isDataRandomized(data1, data2) {
-      return compareArrayBuffer(data1, data2);
-    },
+    isDataRandomized: isDataRandomizedGreaterThanZero,
   },
   {
     name: "OffscreenCanvas.convertToBlob() with a bitmaprenderer context",
@@ -171,8 +124,10 @@ var TEST_CASES = [
       const context = offscreenCanvas.getContext("2d");
 
       // Draw a red rectangle
-      context.fillStyle = "red";
+      context.fillStyle = "#EE2222";
       context.fillRect(0, 0, 100, 100);
+      context.fillStyle = "#2222EE";
+      context.fillRect(20, 20, 100, 100);
 
       const bitmapCanvas = new OffscreenCanvas(100, 100);
 
@@ -202,9 +157,7 @@ var TEST_CASES = [
 
       return [data, dataSecond];
     },
-    isDataRandomized(data1, data2) {
-      return compareArrayBuffer(data1, data2);
-    },
+    isDataRandomized: isDataRandomizedGreaterThanZero,
   },
 ];
 
@@ -213,7 +166,6 @@ async function runTest(enabled) {
   let RFPOverrides = enabled ? "+CanvasRandomization" : "-CanvasRandomization";
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["privacy.resistFingerprinting.randomization.enabled", true],
       ["privacy.fingerprintingProtection", true],
       ["privacy.fingerprintingProtection.pbmode", true],
       ["privacy.fingerprintingProtection.overrides", RFPOverrides],
@@ -236,21 +188,27 @@ async function runTest(enabled) {
 
   for (let test of TEST_CASES) {
     info(`Testing ${test.name} in the worker`);
+
+    // Clear telemetry before starting test.
+    Services.fog.testResetFOG();
+
     let data = await await runFunctionInWorker(
       tab.linkedBrowser,
       test.extractCanvasData
     );
 
-    let result = test.isDataRandomized(data[0], test.originalData);
+    let result = test.isDataRandomized(test.name, data[0], test.originalData);
     is(
       result,
       enabled,
-      `The image data is ${enabled ? "randomized" : "the same"}.`
+      `The image data for for '${test.name}' is ${
+        enabled ? "randomized" : "the same"
+      }.`
     );
 
     ok(
-      !test.isDataRandomized(data[0], data[1]),
-      "The data of first and second access should be the same."
+      !test.isDataRandomized(test.name, data[0], data[1]),
+      `The data for '${test.name}' of first and second access should be the same.`
     );
 
     let privateData = await await runFunctionInWorker(
@@ -259,27 +217,48 @@ async function runTest(enabled) {
     );
 
     // Check if we add noise to canvas data in private windows.
-    result = test.isDataRandomized(privateData[0], test.originalData, true);
+    result = test.isDataRandomized(
+      test.name,
+      privateData[0],
+      test.originalData,
+      true
+    );
     is(
       result,
       enabled,
-      `The private image data is ${enabled ? "randomized" : "the same"}.`
+      `The private image data for '${test.name}' is ${
+        enabled ? "randomized" : "the same"
+      }.`
     );
 
     ok(
-      !test.isDataRandomized(privateData[0], privateData[1]),
-      "The data of first and second access should be the same."
+      !test.isDataRandomized(test.name, privateData[0], privateData[1]),
+      `"The data for '${test.name}' of first and second access should be the same.`
     );
 
     // Make sure the noises are different between normal window and private
     // windows.
-    result = test.isDataRandomized(privateData[0], data[0]);
+    result = test.isDataRandomized(test.name, privateData[0], data[0]);
     is(
       result,
       enabled,
-      `The image data between the normal window and the private window are ${
+      `The image data for '${
+        test.name
+      }' between the normal window and the private window are ${
         enabled ? "different" : "the same"
       }.`
+    );
+  }
+
+  // Verify the telemetry is recorded if canvas randomization is enabled.
+  if (enabled) {
+    await Services.fog.testFlushAllChildren();
+
+    Assert.greater(
+      Glean.fingerprintingProtection.canvasNoiseCalculateTime.testGetValue()
+        .sum,
+      0,
+      "The telemetry of canvas randomization is recorded."
     );
   }
 
@@ -292,7 +271,6 @@ add_setup(async function () {
   // Disable the fingerprinting randomization.
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["privacy.resistFingerprinting.randomization.enabled", false],
       ["privacy.fingerprintingProtection", false],
       ["privacy.fingerprintingProtection.pbmode", false],
       ["privacy.resistFingerprinting", false],

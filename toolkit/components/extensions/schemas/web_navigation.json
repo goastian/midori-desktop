@@ -1,7 +1,3 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
-
 [
   {
     "namespace": "manifest",
@@ -260,12 +256,10 @@
                 "description": "0 indicates the navigation happens in the tab content window; a positive value indicates navigation in a subframe. Frame IDs are unique within a tab."
               },
               "transitionType": {
-                "unsupported": true,
                 "$ref": "TransitionType",
                 "description": "Cause of the navigation."
               },
               "transitionQualifiers": {
-                "unsupported": true,
                 "type": "array",
                 "description": "A list of transition qualifiers.",
                 "items": { "$ref": "TransitionQualifier" }
@@ -477,12 +471,10 @@
                 "description": "0 indicates the navigation happens in the tab content window; a positive value indicates navigation in a subframe. Frame IDs are unique within a tab."
               },
               "transitionType": {
-                "unsupported": true,
                 "$ref": "TransitionType",
                 "description": "Cause of the navigation."
               },
               "transitionQualifiers": {
-                "unsupported": true,
                 "type": "array",
                 "description": "A list of transition qualifiers.",
                 "items": { "$ref": "TransitionQualifier" }
@@ -552,12 +544,10 @@
                 "description": "0 indicates the navigation happens in the tab content window; a positive value indicates navigation in a subframe. Frame IDs are unique within a tab."
               },
               "transitionType": {
-                "unsupported": true,
                 "$ref": "TransitionType",
                 "description": "Cause of the navigation."
               },
               "transitionQualifiers": {
-                "unsupported": true,
                 "type": "array",
                 "description": "A list of transition qualifiers.",
                 "items": { "$ref": "TransitionQualifier" }

@@ -91,6 +91,39 @@ function getExpectPopupAndClick(accept) {
   };
 }
 
+// Click popup after a delay of {timeout} ms
+function getExpectPopupAndClickAfterDelay(accept, timeout) {
+  return function () {
+    let shownPromise = BrowserTestUtils.waitForEvent(
+      PopupNotifications.panel,
+      "popupshown"
+    );
+    shownPromise
+      .then(
+        setTimeout(async _ => {
+          // This occurs when the promise resolves on the test finishing
+          let popupNotifications = PopupNotifications.panel.childNodes;
+          if (!popupNotifications.length) {
+            ok(false, "Prompt did not show up");
+          } else if (accept == "accept") {
+            ok(true, "Prompt shows up, clicking accept.");
+            await clickMainAction();
+          } else if (accept == "reject") {
+            ok(true, "Prompt shows up, clicking reject.");
+            await clickSecondaryAction();
+          } else {
+            ok(false, "Unknown accept value for test: " + accept);
+            info("Clicking accept so that the test can finish.");
+            await clickMainAction();
+          }
+        }, timeout)
+      )
+      .catch(() => {
+        ok(false, "Prompt did not show up");
+      });
+  };
+}
+
 // This function spawns an asynchronous task that fails the test if a popup
 // appears. If that never happens, the catch case is executed on the test
 // cleanup.
@@ -213,14 +246,14 @@ async function requestStorageAccessAndExpectFailure() {
 
 async function cleanUpData() {
   await new Promise(resolve => {
-    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
+    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, () =>
       resolve()
     );
   });
   ok(true, "Deleted all data.");
 }
 
-async function setPreferences(alwaysPartitionStorage = false) {
+async function setPreferences(alwaysPartitionStorage = true) {
   await SpecialPowers.pushPrefEnv({
     set: [
       ["dom.storage_access.auto_grants", true],

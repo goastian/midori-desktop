@@ -1,17 +1,11 @@
 /* globals sinon */
 "use strict";
 
-const { PromiseUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/PromiseUtils.sys.mjs"
-);
-
 /* import-globals-from utils.js */
 load("utils.js");
 
 NormandyTestUtils.init({ add_task });
 const { decorate_task } = NormandyTestUtils;
-
-Cu.importGlobalProperties(["fetch"]);
 
 decorate_task(withMockApiServer(), async function test_get({ serverUrl }) {
   // Test that NormandyApi can fetch from the test server.
@@ -201,11 +195,11 @@ decorate_task(
     // response that sets a cookie.
 
     // send a request, to store a cookie in the cookie store
-    await fetch(serverUrl);
+    await fetch(serverUrl, { credentials: "same-origin" });
 
     // A normal request should send that cookie
-    const cookieExpectedDeferred = PromiseUtils.defer();
-    function cookieExpectedObserver(aSubject, aTopic, aData) {
+    const cookieExpectedDeferred = Promise.withResolvers();
+    function cookieExpectedObserver(aSubject, aTopic) {
       equal(
         aTopic,
         "http-on-modify-request",
@@ -224,12 +218,12 @@ decorate_task(
       cookieExpectedDeferred.resolve();
     }
     Services.obs.addObserver(cookieExpectedObserver, "http-on-modify-request");
-    await fetch(serverUrl);
+    await fetch(serverUrl, { credentials: "same-origin" });
     await cookieExpectedDeferred.promise;
 
     // A request through the NormandyApi method should not send that cookie
-    const cookieNotExpectedDeferred = PromiseUtils.defer();
-    function cookieNotExpectedObserver(aSubject, aTopic, aData) {
+    const cookieNotExpectedDeferred = Promise.withResolvers();
+    function cookieNotExpectedObserver(aSubject, aTopic) {
       equal(
         aTopic,
         "http-on-modify-request",

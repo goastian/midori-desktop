@@ -24,15 +24,26 @@ add_task(async function test_success() {
   updateAppInfo();
 
   let submissionPromise;
+  FirstStartup.resetForTesting();
 
   if (AppConstants.MOZ_NORMANDY || AppConstants.MOZ_UPDATE_AGENT) {
     submissionPromise = new Promise(resolve => {
       GleanPings.firstStartup.testBeforeNextSubmit(() => {
         Assert.equal(FirstStartup.state, FirstStartup.SUCCESS);
+        Assert.ok(Glean.firstStartup.newProfile.testGetValue());
         Assert.equal(
           Glean.firstStartup.statusCode.testGetValue(),
           FirstStartup.SUCCESS
         );
+
+        if (AppConstants.MOZ_NORMANDY) {
+          Assert.ok(Glean.firstStartup.normandyInitTime.testGetValue() > 0);
+        }
+
+        if (AppConstants.MOZ_UPDATE_AGENT) {
+          Assert.ok(Glean.firstStartup.deleteTasksTime.testGetValue() > 0);
+        }
+
         resolve();
       });
     });
@@ -40,6 +51,7 @@ add_task(async function test_success() {
     submissionPromise = new Promise(resolve => {
       GleanPings.firstStartup.testBeforeNextSubmit(() => {
         Assert.equal(FirstStartup.state, FirstStartup.UNSUPPORTED);
+        Assert.ok(Glean.firstStartup.newProfile.testGetValue());
         Assert.equal(
           Glean.firstStartup.statusCode.testGetValue(),
           FirstStartup.UNSUPPORTED
@@ -49,13 +61,14 @@ add_task(async function test_success() {
     });
   }
 
-  FirstStartup.init();
+  FirstStartup.init(true /* newProfile */);
   await submissionPromise;
 });
 
 add_task(async function test_timeout() {
   updateAppInfo();
   Services.prefs.setIntPref(PREF_TIMEOUT, 0);
+  FirstStartup.resetForTesting();
 
   let submissionPromise;
 
@@ -64,6 +77,16 @@ add_task(async function test_timeout() {
       GleanPings.firstStartup.testBeforeNextSubmit(() => {
         Assert.equal(FirstStartup.state, FirstStartup.TIMED_OUT);
         Assert.ok(Glean.firstStartup.elapsed.testGetValue() > 0);
+        Assert.ok(Glean.firstStartup.newProfile.testGetValue());
+
+        if (AppConstants.MOZ_NORMANDY) {
+          Assert.ok(Glean.firstStartup.normandyInitTime.testGetValue() > 0);
+        }
+
+        if (AppConstants.MOZ_UPDATE_AGENT) {
+          Assert.ok(Glean.firstStartup.deleteTasksTime.testGetValue() > 0);
+        }
+
         resolve();
       });
     });
@@ -72,11 +95,27 @@ add_task(async function test_timeout() {
       GleanPings.firstStartup.testBeforeNextSubmit(() => {
         Assert.equal(FirstStartup.state, FirstStartup.UNSUPPORTED);
         Assert.equal(Glean.firstStartup.elapsed.testGetValue(), 0);
+        Assert.ok(Glean.firstStartup.newProfile.testGetValue());
         resolve();
       });
     });
   }
 
-  FirstStartup.init();
+  FirstStartup.init(true /* newProfile */);
+  await submissionPromise;
+});
+
+add_task(async function test_existing_profile() {
+  FirstStartup.resetForTesting();
+
+  let submissionPromise = new Promise(resolve => {
+    GleanPings.firstStartup.testBeforeNextSubmit(() => {
+      Assert.equal(FirstStartup.state, FirstStartup.NOT_STARTED);
+      Assert.ok(!Glean.firstStartup.newProfile.testGetValue());
+      resolve();
+    });
+  });
+
+  FirstStartup.init(false /* newProfile */);
   await submissionPromise;
 });

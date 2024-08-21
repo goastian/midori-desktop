@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const lazy = {};
@@ -46,7 +44,7 @@ const PREF_DISALLOW_ENTERPRISE = "browser.policies.testing.disallowEnterprise";
 // To allow for cleaning up old policies
 const PREF_POLICIES_APPLIED = "browser.policies.applied";
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -198,7 +196,7 @@ EnterprisePoliciesManager.prototype = {
 
       let { valid: parametersAreValid, parsedValue: parsedParameters } =
         lazy.JsonSchemaValidator.validate(policyParameters, policySchema, {
-          allowExtraProperties: true,
+          allowAdditionalProperties: true,
         });
 
       if (!parametersAreValid) {
@@ -282,31 +280,23 @@ EnterprisePoliciesManager.prototype = {
       this._callbacks[timing] = [];
     }
 
-    let { PromiseUtils } = ChromeUtils.importESModule(
-      "resource://gre/modules/PromiseUtils.sys.mjs"
-    );
     // Simulate the startup process. This step-by-step is a bit ugly but it
     // tries to emulate the same behavior as of a normal startup.
-
-    await PromiseUtils.idleDispatch(() => {
-      this.observe(null, "policies-startup", null);
-    });
-
-    await PromiseUtils.idleDispatch(() => {
-      this.observe(null, "profile-after-change", null);
-    });
-
-    await PromiseUtils.idleDispatch(() => {
-      this.observe(null, "final-ui-startup", null);
-    });
-
-    await PromiseUtils.idleDispatch(() => {
-      this.observe(null, "sessionstore-windows-restored", null);
-    });
+    let notifyTopicOnIdle = topic =>
+      new Promise(resolve => {
+        ChromeUtils.idleDispatch(() => {
+          this.observe(null, topic, "");
+          resolve();
+        });
+      });
+    await notifyTopicOnIdle("policies-startup");
+    await notifyTopicOnIdle("profile-after-change");
+    await notifyTopicOnIdle("final-ui-startup");
+    await notifyTopicOnIdle("sessionstore-windows-restored");
   },
 
   // nsIObserver implementation
-  observe: function BG_observe(subject, topic, data) {
+  observe: function BG_observe(subject, topic) {
     switch (topic) {
       case "policies-startup":
         // Before the first set of policy callbacks runs, we must

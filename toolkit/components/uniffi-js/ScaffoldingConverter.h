@@ -22,8 +22,6 @@
 
 namespace mozilla::uniffi {
 
-class ScaffoldingConverterTagDefault {};
-
 // Handle converting types between JS and Rust
 //
 // Scaffolding conversions are done using a 2 step process:
@@ -37,7 +35,7 @@ class ScaffoldingConverterTagDefault {};
 // ownership so we shouldn't free the buffer in this case.
 //
 // For most other types, we just use the Rust type as the intermediate type.
-template <typename T, typename Tag = ScaffoldingConverterTagDefault>
+template <typename T>
 class ScaffoldingConverter {
  public:
   using RustType = T;
@@ -50,7 +48,7 @@ class ScaffoldingConverter {
   //
   // If this succeeds then IntoRust is also guaranteed to succeed
   static mozilla::Result<IntermediateType, nsCString> FromJs(
-      const dom::ScaffoldingType& aValue) {
+      const dom::UniFFIScaffoldingValue& aValue) {
     if (!aValue.IsDouble()) {
       return Err("Bad argument type"_ns);
     }
@@ -122,7 +120,7 @@ class ScaffoldingConverter {
   // This inputs an r-value reference since we may want to move data out of
   // this type.
   static void IntoJs(JSContext* aContext, IntermediateType&& aValue,
-                     dom::ScaffoldingType& aDest) {
+                     dom::UniFFIScaffoldingValue& aDest) {
     aDest.SetAsDouble() = aValue;
   }
 };
@@ -134,14 +132,12 @@ class ScaffoldingConverter<RustBuffer> {
   using IntermediateType = OwnedRustBuffer;
 
   static mozilla::Result<OwnedRustBuffer, nsCString> FromJs(
-      const dom::ScaffoldingType& aValue) {
+      const dom::UniFFIScaffoldingValue& aValue) {
     if (!aValue.IsArrayBuffer()) {
       return Err("Bad argument type"_ns);
     }
 
-    const dom::ArrayBuffer& arrayBuf = aValue.GetAsArrayBuffer();
-    arrayBuf.ComputeState();
-    return OwnedRustBuffer::FromArrayBuffer(arrayBuf);
+    return OwnedRustBuffer::FromArrayBuffer(aValue.GetAsArrayBuffer());
   }
 
   static RustBuffer IntoRust(OwnedRustBuffer&& aValue) {
@@ -154,7 +150,7 @@ class ScaffoldingConverter<RustBuffer> {
   }
 
   static void IntoJs(JSContext* aContext, OwnedRustBuffer&& aValue,
-                     dom::ScaffoldingType& aDest) {
+                     dom::UniFFIScaffoldingValue& aDest) {
     aDest.SetAsArrayBuffer().Init(aValue.IntoArrayBuffer(aContext));
   }
 };
@@ -167,7 +163,7 @@ class ScaffoldingObjectConverter {
   using IntermediateType = void*;
 
   static mozilla::Result<void*, nsCString> FromJs(
-      const dom::ScaffoldingType& aValue) {
+      const dom::UniFFIScaffoldingValue& aValue) {
     if (!aValue.IsUniFFIPointer()) {
       return Err("Bad argument type"_ns);
     }
@@ -175,7 +171,7 @@ class ScaffoldingObjectConverter {
     if (!value.IsSamePtrType(PointerType)) {
       return Err("Bad pointer type"_ns);
     }
-    return value.GetPtr();
+    return value.ClonePtr();
   }
 
   static void* IntoRust(void* aValue) { return aValue; }
@@ -185,7 +181,7 @@ class ScaffoldingObjectConverter {
   }
 
   static void IntoJs(JSContext* aContext, void* aValue,
-                     dom::ScaffoldingType& aDest) {
+                     dom::UniFFIScaffoldingValue& aDest) {
     aDest.SetAsUniFFIPointer() =
         dom::UniFFIPointer::Create(aValue, PointerType);
   }

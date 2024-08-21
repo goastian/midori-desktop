@@ -11,19 +11,14 @@ const { AppConstants } = ChromeUtils.importESModule(
 ChromeUtils.defineESModuleGetters(this, {
   AddonTestUtils: "resource://testing-common/AddonTestUtils.sys.mjs",
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+  HttpServer: "resource://testing-common/httpd.sys.mjs",
   Log: "resource://gre/modules/Log.sys.mjs",
-  Preferences: "resource://gre/modules/Preferences.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   TelemetryController: "resource://gre/modules/TelemetryController.sys.mjs",
   TelemetryScheduler: "resource://gre/modules/TelemetryScheduler.sys.mjs",
   TelemetrySend: "resource://gre/modules/TelemetrySend.sys.mjs",
   TelemetryStorage: "resource://gre/modules/TelemetryStorage.sys.mjs",
   TelemetryUtils: "resource://gre/modules/TelemetryUtils.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  HttpServer: "resource://testing-common/httpd.js",
-  NetUtil: "resource://gre/modules/NetUtil.jsm",
 });
 
 const gIsWindows = AppConstants.platform == "win";
@@ -48,7 +43,7 @@ var gGlobalScope = this;
 const PingServer = {
   _httpServer: null,
   _started: false,
-  _defers: [PromiseUtils.defer()],
+  _defers: [Promise.withResolvers()],
   _currentDeferred: 0,
   _logger: null,
 
@@ -81,13 +76,13 @@ const PingServer = {
   },
 
   resetPingHandler() {
-    this.registerPingHandler((request, response) => {
+    this.registerPingHandler(request => {
       let r = request;
       this._log.trace(
         `defaultPingHandler() - ${r.method} ${r.scheme}://${r.host}:${r.port}${r.path}`
       );
       let deferred = this._defers[this._defers.length - 1];
-      this._defers.push(PromiseUtils.defer());
+      this._defers.push(Promise.withResolvers());
       deferred.resolve(request);
     });
   },
@@ -108,7 +103,7 @@ const PingServer = {
   },
 
   clearRequests() {
-    this._defers = [PromiseUtils.defer()];
+    this._defers = [Promise.withResolvers()];
     this._currentDeferred = 0;
   },
 
@@ -292,7 +287,7 @@ async function loadAddonManager(...args) {
 
   // As we're not running in application, we need to setup the features directory
   // used by system add-ons.
-  const distroDir = FileUtils.getDir("ProfD", ["sysfeatures", "app0"], true);
+  const distroDir = FileUtils.getDir("ProfD", ["sysfeatures", "app0"]);
   AddonTestUtils.registerDirectory("XREAppFeat", distroDir);
   await AddonTestUtils.overrideBuiltIns({
     system: ["tel-system-xpi@tests.mozilla.org"],
@@ -415,7 +410,7 @@ function fakeGzipCompressStringForNextPing(length) {
     "resource://gre/modules/TelemetrySend.sys.mjs"
   );
   let largePayload = generateString(length);
-  Policy.gzipCompressString = data => {
+  Policy.gzipCompressString = () => {
     Policy.gzipCompressString = gzipCompressString;
     return largePayload;
   };
@@ -548,7 +543,7 @@ if (runningInParent) {
   }
 
   fakePingSendTimer(
-    (callback, timeout) => {
+    callback => {
       Services.tm.dispatchToMainThread(() => callback());
     },
     () => {}

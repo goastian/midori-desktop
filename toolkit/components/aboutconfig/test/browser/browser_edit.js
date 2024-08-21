@@ -282,6 +282,11 @@ add_task(async function test_edit_field_selected() {
       Assert.equal(row.value, startValue);
       row.editColumnButton.click();
       Assert.equal(row.valueInput.value, startValue);
+      Assert.equal(
+        row.valueInput.getAttribute("aria-label"),
+        prefName,
+        "The input field is labeled from the pref name"
+      );
 
       EventUtils.sendString(endValue, this.window);
 
@@ -334,15 +339,31 @@ add_task(async function test_double_click_modify() {
     let click = (target, opts) =>
       EventUtils.synthesizeMouseAtCenter(target, opts, this.window);
     let doubleClick = target => {
+      // We intentionally turn off this a11y check, because the following series
+      // of clicks (in these test cases) is either performing an activation of
+      // the edit mode for prefs or selecting a text in focused inputs. The
+      // edit mode can be activated with a separate "Edit" or "Toggle" button
+      // provided for each pref, and the text selection can be performed with
+      // caret browsing (when supported). Thus, this rule check can be ignored
+      // by a11y_checks suite.
+      AccessibilityUtils.setEnv({ mustHaveAccessibleRule: false });
       // Trigger two mouse events to simulate the first then second click.
       click(target, { clickCount: 1 });
       click(target, { clickCount: 2 });
+      AccessibilityUtils.resetEnv();
     };
     let tripleClick = target => {
+      // We intentionally turn off this a11y check, because the following series
+      // of clicks is purposefully targeting a non - interactive text content.
+      // This action does not require the element to have an interactive
+      // accessible to be done by assistive technology with caret browsing
+      // (when supported), this rule check shall be ignored by a11y_checks suite.
+      AccessibilityUtils.setEnv({ mustHaveAccessibleRule: false });
       // Trigger all 3 mouse events to simulate the three mouse events we'd see.
       click(target, { clickCount: 1 });
       click(target, { clickCount: 2 });
       click(target, { clickCount: 3 });
+      AccessibilityUtils.resetEnv();
     };
 
     // Check double-click to edit a boolean.

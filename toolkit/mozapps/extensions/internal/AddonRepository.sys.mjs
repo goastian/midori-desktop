@@ -11,17 +11,13 @@ ChromeUtils.defineESModuleGetters(lazy, {
   AddonManagerPrivate: "resource://gre/modules/AddonManager.sys.mjs",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
   DeferredTask: "resource://gre/modules/DeferredTask.sys.mjs",
-  Preferences: "resource://gre/modules/Preferences.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   ServiceRequest: "resource://gre/modules/ServiceRequest.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  NetUtil: "resource://gre/modules/NetUtil.jsm",
 });
 
 // The current platform as specified in the AMO API:
 // http://addons-server.readthedocs.io/en/latest/topics/api/addons.html#addon-detail-platform
-XPCOMUtils.defineLazyGetter(lazy, "PLATFORM", () => {
+ChromeUtils.defineLazyGetter(lazy, "PLATFORM", () => {
   let platform = Services.appinfo.OS;
   switch (platform) {
     case "Darwin":
@@ -56,6 +52,7 @@ const PREF_GETADDONS_BROWSESEARCHRESULTS =
   "extensions.getAddons.search.browseURL";
 const PREF_GETADDONS_DB_SCHEMA = "extensions.getAddons.databaseSchema";
 const PREF_GET_LANGPACKS = "extensions.getAddons.langpacks.url";
+const PREF_GET_BROWSER_MAPPINGS = "extensions.getAddons.browserMappings.url";
 
 const PREF_METADATA_LASTUPDATE = "extensions.getAddons.cache.lastUpdate";
 const PREF_METADATA_UPDATETHRESHOLD_SEC =
@@ -81,7 +78,7 @@ import { Log } from "resource://gre/modules/Log.sys.mjs";
 const LOGGER_ID = "addons.repository";
 
 // Create a new logger for use by the Addons Repository
-// (Requires AddonManager.jsm)
+// (Requires AddonManager.sys.mjs)
 var logger = Log.repository.getLogger(LOGGER_ID);
 
 function convertHTMLToPlainText(html) {
@@ -107,8 +104,10 @@ function convertHTMLToPlainText(html) {
 }
 
 async function getAddonsToCache(aIds) {
-  let types =
-    lazy.Preferences.get(PREF_GETADDONS_CACHE_TYPES) || DEFAULT_CACHE_TYPES;
+  let types = Services.prefs.getStringPref(
+    PREF_GETADDONS_CACHE_TYPES,
+    DEFAULT_CACHE_TYPES
+  );
 
   types = types.split(",");
 
@@ -118,7 +117,7 @@ async function getAddonsToCache(aIds) {
   for (let [i, addon] of addons.entries()) {
     var preference = PREF_GETADDONS_CACHE_ID_ENABLED.replace("%ID%", aIds[i]);
     // If the preference doesn't exist caching is enabled by default
-    if (!lazy.Preferences.get(preference, true)) {
+    if (!Services.prefs.getBoolPref(preference, true)) {
       continue;
     }
 
@@ -246,6 +245,11 @@ AddonSearchResult.prototype = {
   weeklyDownloads: null,
 
   /**
+   * The URL to the AMO detail page of this (listed) add-on
+   */
+  amoListingURL: null,
+
+  /**
    * AddonInstall object generated from the add-on XPI url
    */
   install: null,
@@ -319,6 +323,10 @@ export var AddonRepository = {
     return url != null ? url : "about:blank";
   },
 
+  get appIsShuttingDown() {
+    return Services.startup.shuttingDown;
+  },
+
   /**
    * Retrieves the url that can be visited to see search results for the given
    * terms. If the corresponding preference is not defined, defaults to
@@ -369,8 +377,8 @@ export var AddonRepository = {
    * add-on is not found) is passed to the specified callback. If caching is
    * disabled, null is passed to the specified callback.
    *
-   * The callback variant exists only for existing code in XPIProvider.jsm
-   * and XPIDatabase.jsm that requires a synchronous callback, yuck.
+   * The callback variant exists only for existing code in XPIProvider.sys.mjs
+   * and XPIDatabase.sys.mjs that requires a synchronous callback, yuck.
    *
    * @param  aId
    *         The id of the add-on to get
@@ -408,6 +416,14 @@ export var AddonRepository = {
     );
   },
 
+  /*
+   * Create a ServiceRequest instance.
+   * @return ServiceRequest returns a ServiceRequest instance.
+   */
+  _createServiceRequest() {
+    return new lazy.ServiceRequest({ mozAnon: true });
+  },
+
   /**
    * Fetch data from an API where the results may span multiple "pages".
    * This function will take care of issuing multiple requests until all
@@ -415,8 +431,11 @@ export var AddonRepository = {
    * single return value.  The handling here is specific to the way AMO
    * implements paging (ie a JSON result with a "next" property).
    *
-   * @param {string} startURL
-   *                 URL for the first page of results
+   * @param {string} pref
+   *                 The pref name that contains the API URL to call.
+   * @param {object} params
+   *                 A key-value object that contains the parameters to replace
+   *                 in the API URL.
    * @param {function} handler
    *                   This function will be called once per page of results,
    *                   it should return an array of objects (the type depends
@@ -425,30 +444,35 @@ export var AddonRepository = {
    * @returns Promise{array} An array of all the individual results from
    *                         the API call(s).
    */
-  _fetchPaged(ids, pref, handler) {
-    let startURL = this._formatURLPref(pref, { IDS: ids.join(",") });
-    let results = [];
-    let idCheck = ids.map(id => {
-      if (id.startsWith("rta:")) {
-        return atob(id.split(":")[1]);
-      }
-      return id;
-    });
+  _fetchPaged(pref, params, handler) {
+    const startURL = this._formatURLPref(pref, params);
 
+    let results = [];
     const fetchNextPage = url => {
       return new Promise((resolve, reject) => {
-        let request = new lazy.ServiceRequest({ mozAnon: true });
+        if (this.appIsShuttingDown) {
+          logger.debug(
+            "Rejecting AddonRepository._fetchPaged call, shutdown already in progress"
+          );
+          reject(
+            new Error(
+              `Reject ServiceRequest for "${url}", shutdown already in progress`
+            )
+          );
+          return;
+        }
+        let request = this._createServiceRequest();
         request.mozBackgroundRequest = true;
         request.open("GET", url, true);
         request.responseType = "json";
 
-        request.addEventListener("error", aEvent => {
+        request.addEventListener("error", () => {
           reject(new Error(`GET ${url} failed`));
         });
-        request.addEventListener("timeout", aEvent => {
+        request.addEventListener("timeout", () => {
           reject(new Error(`GET ${url} timed out`));
         });
-        request.addEventListener("load", aEvent => {
+        request.addEventListener("load", () => {
           let response = request.response;
           if (!response || (request.status != 200 && request.status != 0)) {
             reject(new Error(`GET ${url} failed (status ${request.status})`));
@@ -456,10 +480,7 @@ export var AddonRepository = {
           }
 
           try {
-            let newResults = handler(response.results).filter(e =>
-              idCheck.includes(e.id)
-            );
-            results.push(...newResults);
+            results.push(...handler(response.results));
           } catch (err) {
             reject(err);
           }
@@ -486,28 +507,84 @@ export var AddonRepository = {
    * @returns {array<AddonSearchResult>}
    */
   async getAddonsByIDs(aIDs) {
-    return this._fetchPaged(aIDs, PREF_GETADDONS_BYIDS, results =>
-      results.map(entry => this._parseAddon(entry))
+    const idCheck = aIDs.map(id => {
+      if (id.startsWith("rta:")) {
+        return atob(id.split(":")[1]);
+      }
+      return id;
+    });
+
+    const addons = await this._fetchPaged(
+      PREF_GETADDONS_BYIDS,
+      { IDS: aIDs.join(",") },
+      results =>
+        results
+          .map(entry => this._parseAddon(entry))
+          // Only return the add-ons corresponding the IDs passed to this method.
+          .filter(addon => idCheck.includes(addon.id))
     );
+
+    return addons;
   },
 
   /**
-   * Fetch addon metadata for a set of addons.
+   * Fetch the Firefox add-ons mapped to the list of extension IDs for the
+   * browser ID passed to this method.
    *
-   * @param {array<string>} aIDs
-   *                        A list of addon IDs to fetch information about.
+   * See: https://addons-server.readthedocs.io/en/latest/topics/api/addons.html#browser-mappings
    *
-   * @returns {array<AddonSearchResult>}
+   * @param browserID
+   *        The browser ID used to retrieve the mapping of IDs.
+   * @param extensionIDs
+   *        The array of browser (non-Firefox) extension IDs to retrieve
+   *        metadata for.
+   * @returns {object} result
+   *        The result of the mapping.
+   * @returns {array<AddonSearchResult>} result.addons
+   *        The AddonSearchResults for the addons that were successfully mapped.
+   * @returns {array<string>} result.matchedIDs
+   *        The IDs of the extensions that were successfully matched to
+   *        equivalents that can be installed in this browser. These are
+   *        the IDs before matching to equivalents.
+   * @returns {array<string>} result.unmatchedIDs
+   *        The IDs of the extensions that were not matched to equivalents.
    */
-  async _getFullData(aIDs) {
-    let addons = [];
-    try {
-      addons = await this.getAddonsByIDs(aIDs, false);
-    } catch (err) {
-      logger.error(`Error in addon metadata check: ${err.message}`);
+  async getMappedAddons(browserID, extensionIDs) {
+    let matchedExtensionIDs = new Set();
+    let unmatchedExtensionIDs = new Set(extensionIDs);
+
+    const addonIds = await this._fetchPaged(
+      PREF_GET_BROWSER_MAPPINGS,
+      { BROWSER: browserID },
+      results =>
+        results
+          // Filter out all the entries with an extension ID not in the list
+          // passed to the method.
+          .filter(entry => {
+            if (unmatchedExtensionIDs.has(entry.extension_id)) {
+              unmatchedExtensionIDs.delete(entry.extension_id);
+              matchedExtensionIDs.add(entry.extension_id);
+              return true;
+            }
+            return false;
+          })
+          // Return the add-on ID (stored as `guid` on AMO).
+          .map(entry => entry.addon_guid)
+    );
+
+    if (!addonIds.length) {
+      return {
+        addons: [],
+        matchedIDs: [],
+        unmatchedIDs: [...unmatchedExtensionIDs],
+      };
     }
 
-    return addons;
+    return {
+      addons: await this.getAddonsByIDs(addonIds),
+      matchedIDs: [...matchedExtensionIDs],
+      unmatchedIDs: [...unmatchedExtensionIDs],
+    };
   },
 
   /**
@@ -516,6 +593,7 @@ export var AddonRepository = {
    *
    * @param  aIds
    *         The array of add-on ids to add to the cache
+   * @returns {array<AddonSearchResult>} Add-ons to add to the cache.
    */
   async cacheAddons(aIds) {
     logger.debug(
@@ -532,20 +610,51 @@ export var AddonRepository = {
       return [];
     }
 
-    let addons = await this._getFullData(ids);
-    await AddonDatabase.update(addons);
-
-    return Array.from(addons.values());
+    let addons = [];
+    try {
+      addons = await this.getAddonsByIDs(ids);
+    } catch (err) {
+      logger.error(`Error in addon metadata check: ${err.message}`);
+    }
+    if (addons.length) {
+      await AddonDatabase.update(addons);
+    }
+    return addons;
   },
 
   /**
-   * Performs the daily background update check.
+   * Get all installed addons from the AddonManager singleton.
+   *
+   * @return Promise{array<AddonWrapper>} Resolves to an array of AddonWrapper instances.
+   */
+  _getAllInstalledAddons() {
+    return lazy.AddonManager.getAllAddons();
+  },
+
+  /**
+   * Performs the periodic background update check.
+   *
+   * In Firefox Desktop builds, the background update check is triggered on a
+   * daily basis as part of the AOM background update check and registered
+   * from: `toolkit/mozapps/extensions/extensions.manifest`
+   *
+   * In GeckoView builds, add-ons are checked for updates individually. The
+   * `AddonRepository.backgroundUpdateCheck()` method is called by the
+   * `updateWebExtension()` method defined in `GeckoViewWebExtensions.sys.mjs`
+   * but only when `AddonRepository.isMetadataStale()` returns true.
    *
    * @return Promise{null} Resolves when the metadata update is complete.
    */
   async backgroundUpdateCheck() {
     let shutter = (async () => {
-      let allAddons = await lazy.AddonManager.getAllAddons();
+      if (this.appIsShuttingDown) {
+        logger.debug(
+          "Returning earlier from backgroundUpdateCheck, shutdown already in progress"
+        );
+        return;
+      }
+
+      let allAddons = await this._getAllInstalledAddons();
 
       // Completely remove cache if caching is not enabled
       if (!this.cacheEnabled) {
@@ -566,7 +675,17 @@ export var AddonRepository = {
         return;
       }
 
-      let addons = await this._getFullData(addonsToCache);
+      let addons;
+      try {
+        addons = await this.getAddonsByIDs(addonsToCache);
+      } catch (err) {
+        // This is likely to happen if the server is unreachable, e.g. when
+        // there is no network connectivity.
+        logger.error(`Error in addon metadata lookup: ${err.message}`);
+        // Return now to avoid calling repopulate with an empty array;
+        // doing so would clear the cache.
+        return;
+      }
 
       AddonDatabase.repopulate(addons);
 
@@ -607,6 +726,7 @@ export var AddonRepository = {
     }
     addon.homepageURL = aEntry.homepage;
     addon.supportURL = aEntry.support_url;
+    addon.amoListingURL = aEntry.url;
 
     addon.description = convertHTMLToPlainText(aEntry.summary);
     addon.fullDescription = convertHTMLToPlainText(aEntry.description);
@@ -939,7 +1059,7 @@ var AddonDatabase = {
    * Asynchronously repopulates the database so it only contains the
    * specified add-ons
    *
-   * @param {Map} aAddons
+   * @param {array<AddonSearchResult>} aAddons
    *              Add-ons to repopulate the database with.
    */
   repopulate(aAddons) {
@@ -956,21 +1076,19 @@ var AddonDatabase = {
   /**
    * Asynchronously insert new addons into the database.
    *
-   * @param {Map} aAddons
+   * @param {array<AddonSearchResult>} aAddons
    *              Add-ons to insert/update in the database
    */
   async update(aAddons) {
     await this.openConnection();
 
     this._update(aAddons);
-
-    this.save();
   },
 
   /**
    * Merge the given addons into the database.
    *
-   * @param {Map} aAddons
+   * @param {array<AddonSearchResult>} aAddons
    *              Add-ons to insert/update in the database
    */
   _update(aAddons) {

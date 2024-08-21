@@ -25,11 +25,16 @@ DIRS += [
 ]
 
 if CONFIG["OS_ARCH"] == "WINNT":
-    if CONFIG["MOZ_NOTIFICATION_SERVER"]:
-        DIRS += ["mozapps/notificationserver"]
+    # mingw is missing Windows toast notification definitions.
+    if CONFIG["CC_TYPE"] == "clang-cl":
+        if CONFIG["MOZ_NOTIFICATION_SERVER"]:
+            DIRS += ["mozapps/notificationserver"]
 
-    if CONFIG["MOZ_DEFAULT_BROWSER_AGENT"]:
-        DIRS += ["mozapps/defaultagent"]
+    if CONFIG["CC_TYPE"] == "clang-cl" or CONFIG["MOZ_ARTIFACT_BUILDS"]:
+        # Default Browser Agent relies on Windows toast notifications, so should
+        # also not be built with mingw.
+        if CONFIG["MOZ_DEFAULT_BROWSER_AGENT"]:
+            DIRS += ["mozapps/defaultagent"]
 
 if CONFIG["MOZ_UPDATER"] and CONFIG["MOZ_WIDGET_TOOLKIT"] != "android":
     DIRS += ["mozapps/update"]
@@ -50,6 +55,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     DIRS += ["system/unixproxy"]
 elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
     DIRS += [
+        "mozapps/macos-frameworks",
         "system/commonproxy",
         "system/osxproxy",
     ]
@@ -81,9 +87,6 @@ with Files("toolkit.mozbuild"):
 
 with Files("library/**"):
     BUG_COMPONENT = ("Firefox Build System", "General")
-
-with Files("mozapps/installer/windows/**"):
-    BUG_COMPONENT = ("Toolkit", "NSIS Installer")
 
 with Files("mozapps/preferences/**"):
     BUG_COMPONENT = ("Toolkit", "Preferences")

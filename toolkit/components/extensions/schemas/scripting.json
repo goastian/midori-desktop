@@ -1,7 +1,3 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 [
   {
     "namespace": "manifest",
@@ -146,8 +142,8 @@
       {
         "id": "ExecutionWorld",
         "type": "string",
-        "enum": ["ISOLATED"],
-        "description": "The JavaScript world for a script to execute within. We currently only support the <code>'ISOLATED'</code> world."
+        "enum": ["ISOLATED", "MAIN"],
+        "description": "The JavaScript world for a script to execute within. <code>ISOLATED</code> is the default execution environment of content scripts, <code>MAIN</code> is the web page's execution environment."
       },
       {
         "id": "RegisteredContentScript",
@@ -180,10 +176,20 @@
             "description": "Specifies which pages this content script will be injected into. Must be specified for <code>registerContentScripts()</code>.",
             "items": { "type": "string" }
           },
+          "matchOriginAsFallback": {
+            "type": "boolean",
+            "optional": true,
+            "description": "If matchOriginAsFallback is true, then the code is also injected in about:, data:, blob: when their origin matches the pattern in 'matches', even if the actual document origin is opaque (due to the use of CSP sandbox or iframe sandbox). Match patterns in 'matches' must specify a wildcard path glob. By default it is <code>false</code>."
+          },
           "runAt": {
             "$ref": "extensionTypes.RunAt",
             "optional": true,
             "description": "Specifies when JavaScript files are injected into the web page. The preferred and default value is <code>document_idle</code>."
+          },
+          "world": {
+            "$ref": "ExecutionWorld",
+            "optional": true,
+            "description": "The JavaScript world for a script to execute within. Defaults to \"ISOLATED\"."
           },
           "persistAcrossSessions": {
             "type": "boolean",

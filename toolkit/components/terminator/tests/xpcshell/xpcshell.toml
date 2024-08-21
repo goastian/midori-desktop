@@ -1,0 +1,10 @@
+[DEFAULT]
+head = ""
+
+["test_terminator_advance_phases.js"]
+skip-if = [
+    "debug",
+    "asan", # Disabled by bug 1242084, bug 1255484 will enable it again
+    "ccov", # Bug 1607583 tracks the ccov failure
+    "tsan", # Bug 1683730 made this timeout for tsan.
+]

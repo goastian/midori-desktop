@@ -21,8 +21,9 @@ function check_results_callback(aSequence) {
   let includeHidden = aSequence[0];
   let maxResults = aSequence[1];
   let sortingMode = aSequence[2];
-  print(
-    "\nTESTING: includeHidden(" +
+  info(" - - - ");
+  info(
+    "TESTING: includeHidden(" +
       includeHidden +
       ")," +
       " maxResults(" +
@@ -41,7 +42,7 @@ function check_results_callback(aSequence) {
   }
 
   // Build expectedData array.
-  let expectedData = visits.filter(function (aVisit, aIndex, aArray) {
+  let expectedData = visits.filter(function (aVisit) {
     // Embed visits never appear in results.
     if (aVisit.transType == Ci.nsINavHistoryService.TRANSITION_EMBED) {
       return false;
@@ -153,7 +154,7 @@ function cartProd(aSequences, aCallback) {
 
   // For each sequence in aSequences, we maintain a pointer (an array index,
   // really) to the element we're currently enumerating in that sequence
-  let seqEltPtrs = aSequences.map(i => 0);
+  let seqEltPtrs = aSequences.map(() => 0);
 
   let numProds = 0;
   let done = false;
@@ -221,7 +222,6 @@ add_task(async function test_add_visits_to_database() {
     // Would make hard sorting by visit date because last_visit_date is actually
     // calculated excluding download transitions, but the query includes
     // downloads.
-    // TODO: Bug 488966 could fix this behavior.
     // Ci.nsINavHistoryService.TRANSITION_DOWNLOAD,
   ];
 

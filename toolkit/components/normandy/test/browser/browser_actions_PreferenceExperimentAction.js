@@ -480,7 +480,6 @@ decorate_task(
         experimentType: "exp",
         userFacingName: "userFacingName",
         userFacingDescription: "userFacingDescription",
-        enrollmentId: activeExperiments[0].enrollmentId,
       },
     ]);
 
@@ -744,8 +743,9 @@ decorate_task(
         let modifiedExperiment = await PreferenceExperiments.get(
           experiment.slug
         );
-        ok(
-          modifiedExperiment.temporaryErrorDeadline != invalidDeadline,
+        Assert.notEqual(
+          modifiedExperiment.temporaryErrorDeadline,
+          invalidDeadline,
           `The temporary failure deadline should be reset for suitabilitiy ${suitability}`
         );
         let deadline = new Date(modifiedExperiment.temporaryErrorDeadline);
@@ -831,7 +831,6 @@ decorate_task(
   withSpy(PreferenceExperiments, "stop"),
   withStub(PreferenceExperimentAction.prototype, "_considerTemporaryError"),
   async function testNoRecipes({
-    stopSpy,
     _considerTemporaryErrorStub,
     prefExperiments: [experiment],
   }) {

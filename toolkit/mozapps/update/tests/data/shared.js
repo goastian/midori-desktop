@@ -71,14 +71,20 @@ const FILE_ACTIVE_UPDATE_XML = "active-update.xml";
 const FILE_ACTIVE_UPDATE_XML_TMP = "active-update.xml.tmp";
 const FILE_APPLICATION_INI = "application.ini";
 const FILE_BACKUP_UPDATE_CONFIG_JSON = "backup-update-config.json";
+const FILE_BACKUP_UPDATE_ELEVATED_LOG = "backup-update-elevated.log";
 const FILE_BACKUP_UPDATE_LOG = "backup-update.log";
 const FILE_BT_RESULT = "bt.result";
+const FILE_CHANNEL_PREFS =
+  AppConstants.platform == "macosx" ? "ChannelPrefs" : "channel-prefs.js";
+const FILE_LAST_UPDATE_ELEVATED_LOG = "last-update-elevated.log";
 const FILE_LAST_UPDATE_LOG = "last-update.log";
 const FILE_PRECOMPLETE = "precomplete";
 const FILE_PRECOMPLETE_BAK = "precomplete.bak";
 const FILE_UPDATE_CONFIG_JSON = "update-config.json";
+const FILE_UPDATE_ELEVATED_LOG = "update-elevated.log";
 const FILE_UPDATE_LOG = "update.log";
 const FILE_UPDATE_MAR = "update.mar";
+const FILE_UPDATE_SETTINGS_FRAMEWORK = "UpdateSettings";
 const FILE_UPDATE_SETTINGS_INI = "update-settings.ini";
 const FILE_UPDATE_SETTINGS_INI_BAK = "update-settings.ini.bak";
 const FILE_UPDATE_STATUS = "update.status";
@@ -114,7 +120,7 @@ const URI_UPDATES_PROPERTIES =
   "chrome://mozapps/locale/update/updates.properties";
 const gUpdateBundle = Services.strings.createBundle(URI_UPDATES_PROPERTIES);
 
-XPCOMUtils.defineLazyGetter(this, "gAUS", function test_gAUS() {
+ChromeUtils.defineLazyGetter(this, "gAUS", function test_gAUS() {
   return Cc["@mozilla.org/updates/update-service;1"]
     .getService(Ci.nsIApplicationUpdateService)
     .QueryInterface(Ci.nsITimerCallback)
@@ -135,11 +141,11 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIUpdateChecker"
 );
 
-XPCOMUtils.defineLazyGetter(this, "gDefaultPrefBranch", function test_gDPB() {
+ChromeUtils.defineLazyGetter(this, "gDefaultPrefBranch", function test_gDPB() {
   return Services.prefs.getDefaultBranch(null);
 });
 
-XPCOMUtils.defineLazyGetter(this, "gPrefRoot", function test_gPR() {
+ChromeUtils.defineLazyGetter(this, "gPrefRoot", function test_gPR() {
   return Services.prefs.getBranch(null);
 });
 
@@ -170,15 +176,16 @@ function waitForEvent(topic, status = null) {
 }
 
 /* Triggers post-update processing */
-function testPostUpdateProcessing() {
-  gAUS.observe(null, "test-post-update-processing", "");
+async function testPostUpdateProcessing() {
+  await gAUS.internal.postUpdateProcessing();
 }
 
 /* Initializes the update service stub */
-function initUpdateServiceStub() {
-  Cc["@mozilla.org/updates/update-service-stub;1"].createInstance(
-    Ci.nsISupports
-  );
+async function initUpdateServiceStub() {
+  const updateServiceStub = Cc[
+    "@mozilla.org/updates/update-service-stub;1"
+  ].getService(Ci.nsIApplicationUpdateServiceStub);
+  await updateServiceStub.init();
 }
 
 /**
@@ -190,10 +197,7 @@ function initUpdateServiceStub() {
  *         to populate the update metadata.
  */
 function reloadUpdateManagerData(skipFiles = false) {
-  let observeData = skipFiles ? "skip-files" : "";
-  gUpdateManager
-    .QueryInterface(Ci.nsIObserver)
-    .observe(null, "um-reload-update-data", observeData);
+  gUpdateManager.internal.reload(skipFiles);
 }
 
 const observer = {
@@ -220,6 +224,7 @@ function setUpdateChannel(aChannel) {
   debugDump(
     "setting default pref " + PREF_APP_UPDATE_CHANNEL + " to " + gChannel
   );
+  gDefaultPrefBranch.unlockPref(PREF_APP_UPDATE_CHANNEL);
   gDefaultPrefBranch.setCharPref(PREF_APP_UPDATE_CHANNEL, gChannel);
   gPrefRoot.addObserver(PREF_APP_UPDATE_CHANNEL, observer);
 }
@@ -452,12 +457,15 @@ function getUpdateDirFile(aLeafName, aWhichDir = null) {
     case DIR_PATCH:
     case DIR_DOWNLOADING:
     case FILE_BACKUP_UPDATE_LOG:
+    case FILE_BACKUP_UPDATE_ELEVATED_LOG:
     case FILE_LAST_UPDATE_LOG:
+    case FILE_LAST_UPDATE_ELEVATED_LOG:
       file.append(DIR_UPDATES);
       file.append(aLeafName);
       return file;
     case FILE_BT_RESULT:
     case FILE_UPDATE_LOG:
+    case FILE_UPDATE_ELEVATED_LOG:
     case FILE_UPDATE_MAR:
     case FILE_UPDATE_STATUS:
     case FILE_UPDATE_VERSION:
@@ -540,6 +548,9 @@ function removeUpdateFiles(aRemoveLogFiles) {
       [FILE_BACKUP_UPDATE_LOG],
       [FILE_LAST_UPDATE_LOG],
       [FILE_UPDATE_LOG],
+      [FILE_BACKUP_UPDATE_ELEVATED_LOG],
+      [FILE_LAST_UPDATE_ELEVATED_LOG],
+      [FILE_UPDATE_ELEVATED_LOG],
     ]);
   }
 
@@ -676,11 +687,7 @@ function getPerInstallationMutexName() {
   hasher.init(hasher.SHA1);
 
   let exeFile = Services.dirsvc.get(XRE_EXECUTABLE_FILE, Ci.nsIFile);
-  let converter = Cc[
-    "@mozilla.org/intl/scriptableunicodeconverter"
-  ].createInstance(Ci.nsIScriptableUnicodeConverter);
-  converter.charset = "UTF-8";
-  let data = converter.convertToByteArray(exeFile.path.toLowerCase());
+  let data = new TextEncoder().encode(exeFile.path.toLowerCase());
 
   hasher.update(data, data.length);
   return "Global\\MozillaUpdateMutex-" + hasher.finish(true);
@@ -917,7 +924,7 @@ async function continueFileHandler(leafName) {
     "Waiting for file to be deleted, path: " + continueFile.path,
     interval,
     retries
-  ).catch(e => {
+  ).catch(_e => {
     logTestInfo(
       "Continue file was not removed after checking " +
         retries +

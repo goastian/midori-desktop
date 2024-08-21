@@ -18,6 +18,18 @@ const { TestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/TestUtils.sys.mjs"
 );
 
+add_task(async function test_scriptingstore_rkv_recovery_rename() {
+  ExtensionScriptingStore._getStoreForTesting()._uninitForTesting();
+  const databaseDir = await makeRkvDatabaseDir("extension-store", {
+    mockCorrupted: true,
+  });
+  await ExtensionScriptingStore._getStoreForTesting().lazyInit();
+  Assert.ok(
+    await IOUtils.exists(PathUtils.join(databaseDir, "data.safe.bin.corrupt")),
+    "Expect corrupt file to be found"
+  );
+});
+
 const makeExtension = ({ manifest: manifestProps, ...otherProps }) => {
   return ExtensionTestUtils.loadExtension({
     manifest: {
@@ -383,7 +395,9 @@ add_task(async function test_updateContentScripts_persistAcrossSessions_true() {
                   id: script.id,
                   allFrames: false,
                   matches: script.matches,
+                  matchOriginAsFallback: false,
                   runAt: "document_idle",
+                  world: "ISOLATED",
                   persistAcrossSessions: true,
                   js: ["script-1.js", "script-2.js"],
                 },
@@ -736,7 +750,9 @@ add_task(async function test_persisted_scripts_cleared_on_addon_updates() {
       id: "script-1.js",
       allFrames: false,
       matches: ["http://*/*/file_sample.html"],
+      matchOriginAsFallback: false,
       runAt: "document_idle",
+      world: "ISOLATED",
       persistAcrossSessions: true,
       js: ["script-1.js"],
     },

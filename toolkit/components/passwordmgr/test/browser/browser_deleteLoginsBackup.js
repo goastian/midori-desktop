@@ -2,9 +2,9 @@
  * Test that logins backup is deleted as expected when logins are deleted.
  */
 
-XPCOMUtils.defineLazyModuleGetters(this, {
-  FXA_PWDMGR_HOST: "resource://gre/modules/FxAccountsCommon.js",
-  FXA_PWDMGR_REALM: "resource://gre/modules/FxAccountsCommon.js",
+ChromeUtils.defineESModuleGetters(this, {
+  FXA_PWDMGR_HOST: "resource://gre/modules/FxAccountsCommon.sys.mjs",
+  FXA_PWDMGR_REALM: "resource://gre/modules/FxAccountsCommon.sys.mjs",
 });
 
 const nsLoginInfo = new Components.Constructor(
@@ -50,7 +50,7 @@ const loginBackupPath = PathUtils.join(
 
 async function waitForBackupUpdate() {
   return new Promise(resolve => {
-    Services.obs.addObserver(function observer(subject, topic) {
+    Services.obs.addObserver(function observer(_subject, _topic, _data) {
       Services.obs.removeObserver(observer, "logins-backup-updated");
       resolve();
     }, "logins-backup-updated");

@@ -13,16 +13,14 @@
  * - The boolean type accepts (and casts) 0 and 1 as valid values.
  */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
   return new ConsoleAPI({
-    prefix: "JsonSchemaValidator.jsm",
+    prefix: "JsonSchemaValidator",
     // tip: set maxLogLevel to "debug" and use log.debug() to create detailed
     // messages during development. See LOG_LEVELS in Console.sys.mjs for details.
     maxLogLevel: "error",
@@ -62,13 +60,21 @@ export class JsonSchemaValidator {
    *   When false:
    *     `someProperty: null` will cause validation to fail for non-required
    *     properties, except for properties whose expected types are null.
-   * @param {boolean} allowExtraProperties
+   * @param {boolean} allowAdditionalProperties
    *   When true:
    *     Properties that are not defined in the schema will be ignored, and they
    *     won't be included in result.parsedValue.
    *   When false:
    *     Properties that are not defined in the schema will cause validation to
    *     fail.
+   *   Note: Schema objects of type "object" can also contain a boolean property
+   *     called `additionalProperties` that functions as a local version of this
+   *     param. When true, extra properties will be allowed in the corresponding
+   *     input objects regardless of `allowAdditionalProperties`, and as with
+   *     `allowAdditionalProperties`, extra properties won't be included in
+   *     `result.parsedValue`. (The inverse is not true: If a schema object
+   *     defines `additionalProperties: false` but `allowAdditionalProperties`
+   *     is true, extra properties will be allowed.)
    * @return {object}
    *   The result of the validation, an object that looks like this:
    *
@@ -125,14 +131,14 @@ export class JsonSchemaValidator {
       allowArrayNonMatchingItems = false,
       allowExplicitUndefinedProperties = false,
       allowNullAsUndefinedProperties = false,
-      allowExtraProperties = false,
+      allowAdditionalProperties = false,
     } = {}
   ) {
     let validator = new JsonSchemaValidator({
       allowArrayNonMatchingItems,
       allowExplicitUndefinedProperties,
       allowNullAsUndefinedProperties,
-      allowExtraProperties,
+      allowAdditionalProperties,
     });
     return validator.validate(value, schema);
   }
@@ -146,19 +152,19 @@ export class JsonSchemaValidator {
    *   See the static `validate` method above.
    * @param {boolean} allowNullAsUndefinedProperties
    *   See the static `validate` method above.
-   * @param {boolean} allowExtraProperties
+   * @param {boolean} allowAdditionalProperties
    *   See the static `validate` method above.
    */
   constructor({
     allowArrayNonMatchingItems = false,
     allowExplicitUndefinedProperties = false,
     allowNullAsUndefinedProperties = false,
-    allowExtraProperties = false,
+    allowAdditionalProperties = false,
   } = {}) {
     this.allowArrayNonMatchingItems = allowArrayNonMatchingItems;
     this.allowExplicitUndefinedProperties = allowExplicitUndefinedProperties;
     this.allowNullAsUndefinedProperties = allowNullAsUndefinedProperties;
-    this.allowExtraProperties = allowExtraProperties;
+    this.allowAdditionalProperties = allowAdditionalProperties;
   }
 
   /**
@@ -360,9 +366,10 @@ export class JsonSchemaValidator {
             }
           }
           if (!schema) {
-            let allowExtraProperties =
-              !properties.strict && this.allowExtraProperties;
-            if (allowExtraProperties) {
+            let allowAdditionalProperties =
+              properties.additionalProperties ||
+              (!properties.strict && this.allowAdditionalProperties);
+            if (allowAdditionalProperties) {
               continue;
             }
             return {

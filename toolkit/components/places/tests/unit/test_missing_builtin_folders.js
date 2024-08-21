@@ -16,37 +16,24 @@ const ALL_ROOT_GUIDS = [
   PlacesUtils.bookmarks.mobileGuid,
 ];
 
-const INITIAL_ROOT_GUIDS = [
-  PlacesUtils.bookmarks.menuGuid,
-  PlacesUtils.bookmarks.tagsGuid,
-  PlacesUtils.bookmarks.unfiledGuid,
-];
-
 add_task(async function setup() {
-  // This file has the toolbar and mobile folders missing.
-  await setupPlacesDatabase("missingBuiltIn.sqlite");
+  await setupPlacesDatabase([
+    "migration",
+    `places_v${Ci.nsINavHistoryService.DATABASE_SCHEMA_VERSION}.sqlite`,
+  ]);
 
-  // Check database contents to be migrated.
+  // Prepare database contents by removing the tolbar and mobile folders.
   let path = PathUtils.join(PathUtils.profileDir, DB_FILENAME);
   let db = await Sqlite.openConnection({ path });
-
-  let rows = await db.execute(
+  await db.execute(
     `
-    SELECT guid FROM moz_bookmarks
-    WHERE parent = (SELECT id from moz_bookmarks WHERE guid = :guid)
-  `,
+    DELETE FROM moz_bookmarks WHERE guid IN(:toolbar, :mobile)
+    `,
     {
-      guid: PlacesUtils.bookmarks.rootGuid,
+      toolbar: PlacesUtils.bookmarks.toolbarGuid,
+      mobile: PlacesUtils.bookmarks.mobileGuid,
     }
   );
-
-  let guids = rows.map(row => row.getResultByName("guid"));
-  Assert.deepEqual(
-    guids,
-    INITIAL_ROOT_GUIDS,
-    "Initial database should have only the expected GUIDs"
-  );
-
   await db.close();
 });
 
@@ -60,7 +47,9 @@ add_task(async function test_database_recreates_roots() {
   );
 
   let db = await PlacesUtils.promiseDBConnection();
-  let rootId = await PlacesUtils.promiseItemId(PlacesUtils.bookmarks.rootGuid);
+  let rootId = await PlacesTestUtils.promiseItemId(
+    PlacesUtils.bookmarks.rootGuid
+  );
   for (let guid of ALL_ROOT_GUIDS) {
     let rows = await db.execute(
       `
@@ -94,12 +83,12 @@ add_task(async function test_database_recreates_roots() {
 
     let id = rows[0].getResultByName("id");
     Assert.equal(
-      await PlacesUtils.promiseItemId(guid),
+      await PlacesTestUtils.promiseItemId(guid),
       id,
       "Should return the correct id from promiseItemId"
     );
     Assert.equal(
-      await PlacesUtils.promiseItemGuid(id),
+      await PlacesTestUtils.promiseItemGuid(id),
       guid,
       "Should return the correct guid from promiseItemGuid"
     );

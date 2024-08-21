@@ -5,25 +5,23 @@
 const { CommonDialog } = ChromeUtils.importESModule(
   "resource://gre/modules/CommonDialog.sys.mjs"
 );
+const { XPCOMUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/XPCOMUtils.sys.mjs"
+);
+
+const lazy = {};
+
+XPCOMUtils.defineLazyServiceGetter(
+  lazy,
+  "gContentAnalysis",
+  "@mozilla.org/contentanalysis;1",
+  Ci.nsIContentAnalysis
+);
 
 // imported by adjustableTitle.js loaded in the same context:
 /* globals PromptUtils */
 
 var propBag, args, Dialog;
-
-// Inherit color scheme overrides from parent window. This is to inherit the
-// color scheme of dark themed PBM windows.
-{
-  let openerColorSchemeOverride =
-    window.opener?.browsingContext?.top.prefersColorSchemeOverride;
-  if (
-    openerColorSchemeOverride &&
-    window.browsingContext == window.browsingContext.top
-  ) {
-    window.browsingContext.prefersColorSchemeOverride =
-      openerColorSchemeOverride;
-  }
-}
 
 function commonDialogOnLoad() {
   propBag = window.arguments[0]
@@ -136,6 +134,58 @@ function commonDialogOnLoad() {
   // If the icon hasn't loaded yet, size the window to the content again when
   // it does, as its layout can change.
   ui.infoIcon.addEventListener("load", () => window.sizeToContent());
+  if (lazy.gContentAnalysis.isActive && args.owningBrowsingContext?.isContent) {
+    ui.loginTextbox?.addEventListener("paste", async event => {
+      let data = event.clipboardData.getData("text/plain");
+      if (data?.length > 0) {
+        // Prevent the paste from happening until content analysis returns a response
+        event.preventDefault();
+        // Selections can be forward or backward, so use min/max
+        const startIndex = Math.min(
+          ui.loginTextbox.selectionStart,
+          ui.loginTextbox.selectionEnd
+        );
+        const endIndex = Math.max(
+          ui.loginTextbox.selectionStart,
+          ui.loginTextbox.selectionEnd
+        );
+        const selectionDirection =
+          endIndex < startIndex ? "backward" : "forward";
+        try {
+          const response = await lazy.gContentAnalysis.analyzeContentRequest(
+            {
+              requestToken: Services.uuid.generateUUID().toString(),
+              resources: [],
+              analysisType: Ci.nsIContentAnalysisRequest.eBulkDataEntry,
+              operationTypeForDisplay: Ci.nsIContentAnalysisRequest.eClipboard,
+              url: args.owningBrowsingContext.currentURI,
+              textContent: data,
+              windowGlobalParent:
+                args.owningBrowsingContext.currentWindowContext,
+            },
+            true
+          );
+          if (response.shouldAllowContent) {
+            ui.loginTextbox.value =
+              ui.loginTextbox.value.slice(0, startIndex) +
+              data +
+              ui.loginTextbox.value.slice(endIndex);
+            ui.loginTextbox.focus();
+            if (startIndex !== endIndex) {
+              // Select the pasted text
+              ui.loginTextbox.setSelectionRange(
+                startIndex,
+                startIndex + data.length,
+                selectionDirection
+              );
+            }
+          }
+        } catch (error) {
+          console.error("Content analysis request returned error: ", error);
+        }
+      }
+    });
+  }
 
   window.getAttention();
 }

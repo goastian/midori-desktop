@@ -58,8 +58,8 @@ The following snippet presents an example of a client of FooService that has a s
 
     // Some client of FooService called FooClient
 
-    const { FooService } = ChromeUtils.import(
-      "resource://gre/modules/FooService.jsm"
+    const { FooService } = ChromeUtils.importESModule(
+      "resource://gre/modules/FooService.sys.mjs"
     );
 
     // FooService.shutdown is the `client` capability of a `Barrier`.
@@ -117,8 +117,8 @@ The following snippet presents FooClient2, a more sophisticated client of FooSer
 
     // Some client of FooService called FooClient2
 
-    const { FooService } = ChromeUtils.import(
-      "resource://gre/modules/FooService.jsm"
+    const { FooService } = ChromeUtils.importESModule(
+      "resource://gre/modules/FooService.sys.mjs"
     );
 
     FooService.shutdown.addBlocker(
@@ -167,9 +167,6 @@ Example 4: A service with both internal and external dependencies
     let { AsyncShutdown } = ChromeUtils.importESModule(
       "resource://gre/modules/AsyncShutdown.sys.mjs"
     );
-    let { PromiseUtils } = ChromeUtils.importESModule(
-      "resource://gre/modules/PromiseUtils.sys.mjs"
-    );
 
     this.exports = ["FooService2"];
 
@@ -188,7 +185,7 @@ Example 4: A service with both internal and external dependencies
         throw new Error("FooService2 is closed");
       }
 
-      let deferred = PromiseUtils.defer();
+      let deferred = Promise.withResolvers();
       connections.client.addBlocker("FooService2: Waiting for connection " + name + " to close",  deferred.promise);
 
       // ...

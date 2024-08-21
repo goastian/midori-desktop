@@ -197,7 +197,7 @@
      * @param {DOMNode} child
      *                  The <radio> element that got removed
      */
-    radioUnattached(child) {
+    radioUnattached() {
       // Just invalidate the cache, next time it's fetched it'll get rebuilt.
       this._radioChildren = null;
     }
@@ -214,7 +214,7 @@
     }
 
     get value() {
-      return this.getAttribute("value");
+      return this.getAttribute("value") || "";
     }
 
     set disabled(val) {
@@ -481,13 +481,13 @@
 
     constructor() {
       super();
-      this.addEventListener("click", event => {
+      this.addEventListener("click", () => {
         if (!this.disabled) {
           this.control.selectedItem = this;
         }
       });
 
-      this.addEventListener("mousedown", event => {
+      this.addEventListener("mousedown", () => {
         if (!this.disabled) {
           this.control.focusedItem = this;
         }
@@ -526,7 +526,7 @@
     }
 
     get value() {
-      return this.getAttribute("value");
+      return this.getAttribute("value") || "";
     }
 
     get selected() {

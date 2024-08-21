@@ -15,7 +15,6 @@
 #include "BaseProfiler.h"
 #include "nsWindowsDllInterceptor.h"
 #include "mozilla/CmdLineAndEnvUtils.h"
-#include "mozilla/DebugOnly.h"
 #include "mozilla/StackWalk_windows.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
@@ -44,9 +43,6 @@ glue::detail::DllServicesBase* gDllServices;
 
 using namespace mozilla;
 
-using CrashReporter::Annotation;
-using CrashReporter::AnnotationWriter;
-
 #define DLL_BLOCKLIST_ENTRY(name, ...) {name, __VA_ARGS__},
 #define DLL_BLOCKLIST_STRING_TYPE const char*
 #include "mozilla/WindowsDllBlocklistLegacyDefs.h"
@@ -54,10 +50,13 @@ using CrashReporter::AnnotationWriter;
 // define this for very verbose dll load debug spew
 #undef DEBUG_very_verbose
 
+using WritableBuffer = mozilla::glue::detail::WritableBuffer<1024>;
+
 static uint32_t sInitFlags;
 static bool sBlocklistInitAttempted;
 static bool sBlocklistInitFailed;
 static bool sUser32BeforeBlocklist;
+static WritableBuffer sBlocklistWriter;
 
 typedef MOZ_NORETURN_PTR void(__fastcall* BaseThreadInitThunk_func)(
     BOOL aIsInitialThread, void* aStartAddress, void* aThreadParam);
@@ -68,47 +67,6 @@ typedef NTSTATUS(NTAPI* LdrLoadDll_func)(PWCHAR filePath, PULONG flags,
                                          PUNICODE_STRING moduleFileName,
                                          PHANDLE handle);
 static WindowsDllInterceptor::FuncHookType<LdrLoadDll_func> stub_LdrLoadDll;
-
-#ifdef _M_AMD64
-typedef decltype(RtlInstallFunctionTableCallback)*
-    RtlInstallFunctionTableCallback_func;
-static WindowsDllInterceptor::FuncHookType<RtlInstallFunctionTableCallback_func>
-    stub_RtlInstallFunctionTableCallback;
-
-extern uint8_t* sMsMpegJitCodeRegionStart;
-extern size_t sMsMpegJitCodeRegionSize;
-
-BOOLEAN WINAPI patched_RtlInstallFunctionTableCallback(
-    DWORD64 TableIdentifier, DWORD64 BaseAddress, DWORD Length,
-    PGET_RUNTIME_FUNCTION_CALLBACK Callback, PVOID Context,
-    PCWSTR OutOfProcessCallbackDll) {
-  // msmpeg2vdec.dll sets up a function table callback for their JIT code that
-  // just terminates the process, because their JIT doesn't have unwind info.
-  // If we see this callback being registered, record the region address, so
-  // that StackWalk.cpp can avoid unwinding addresses in this region.
-  //
-  // To keep things simple I'm not tracking unloads of msmpeg2vdec.dll.
-  // Worst case the stack walker will needlessly avoid a few pages of memory.
-
-  // Tricky: GetModuleHandleExW adds a ref by default; GetModuleHandleW doesn't.
-  HMODULE callbackModule = nullptr;
-  DWORD moduleFlags = GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                      GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
-
-  // These GetModuleHandle calls enter a critical section on Win7.
-  AutoSuppressStackWalking suppress;
-
-  if (GetModuleHandleExW(moduleFlags, (LPWSTR)Callback, &callbackModule) &&
-      GetModuleHandleW(L"msmpeg2vdec.dll") == callbackModule) {
-    sMsMpegJitCodeRegionStart = (uint8_t*)BaseAddress;
-    sMsMpegJitCodeRegionSize = Length;
-  }
-
-  return stub_RtlInstallFunctionTableCallback(TableIdentifier, BaseAddress,
-                                              Length, Callback, Context,
-                                              OutOfProcessCallbackDll);
-}
-#endif
 
 template <class T>
 struct RVAMap {
@@ -214,8 +172,6 @@ class ReentrancySentinel {
 };
 
 std::map<DWORD, const char*>* ReentrancySentinel::sThreadMap;
-
-using WritableBuffer = mozilla::glue::detail::WritableBuffer<1024>;
 
 /**
  * This is a linked list of DLLs that have been blocked. It doesn't use
@@ -344,16 +300,6 @@ static bool ShouldBlockBasedOnBlockInfo(const DllBlockInfo& info,
     printf_stderr(
         "LdrLoadDll: "
         "Ignoring the REDIRECT_TO_NOOP_ENTRYPOINT flag\n");
-  }
-
-  if ((info.mFlags & DllBlockInfoFlags::BLOCK_WIN8_AND_OLDER) &&
-      IsWin8Point1OrLater()) {
-    return false;
-  }
-
-  if ((info.mFlags & DllBlockInfoFlags::BLOCK_WIN7_AND_OLDER) &&
-      IsWin8OrLater()) {
-    return false;
   }
 
   if ((info.mFlags & DllBlockInfoFlags::CHILD_PROCESSES_ONLY) &&
@@ -560,12 +506,7 @@ continue_loading:
   NTSTATUS ret;
   HANDLE myHandle;
 
-  {
-#if defined(_M_AMD64) || defined(_M_ARM64)
-    AutoSuppressStackWalking suppress;
-#endif
-    ret = stub_LdrLoadDll(filePath, flags, moduleFileName, &myHandle);
-  }
+  ret = stub_LdrLoadDll(filePath, flags, moduleFileName, &myHandle);
 
   if (handle) {
     *handle = myHandle;
@@ -576,11 +517,11 @@ continue_loading:
   return ret;
 }
 
-#if defined(NIGHTLY_BUILD)
+#if defined(BLOCK_LOADLIBRARY_INJECTION)
 // Map of specific thread proc addresses we should block. In particular,
 // LoadLibrary* APIs which indicate DLL injection
 static void* gStartAddressesToBlock[4];
-#endif  // defined(NIGHTLY_BUILD)
+#endif  // defined(BLOCK_LOADLIBRARY_INJECTION)
 
 static bool ShouldBlockThread(void* aStartAddress) {
   // Allows crashfirefox.exe to continue to work. Also if your threadproc is
@@ -589,7 +530,7 @@ static bool ShouldBlockThread(void* aStartAddress) {
     return false;
   }
 
-#if defined(NIGHTLY_BUILD)
+#if defined(BLOCK_LOADLIBRARY_INJECTION)
   for (auto p : gStartAddressesToBlock) {
     if (p == aStartAddress) {
       return true;
@@ -639,16 +580,6 @@ MFBT_API void DllBlocklist_Initialize(uint32_t aInitFlags) {
 
   glue::ModuleLoadFrame::StaticInit(&gMozglueLoaderObserver, &gWinLauncher);
 
-#ifdef _M_AMD64
-  if (!IsWin8OrLater()) {
-    Kernel32Intercept.Init(L"kernel32.dll");
-    // The crash that this hook works around is only seen on Win7.
-    stub_RtlInstallFunctionTableCallback.Set(
-        Kernel32Intercept, "RtlInstallFunctionTableCallback",
-        &patched_RtlInstallFunctionTableCallback);
-  }
-#endif
-
   // Bug 1361410: WRusr.dll will overwrite our hook and cause a crash.
   // Workaround: If we detect WRusr.dll, don't hook.
   if (!GetModuleHandleW(L"WRusr.dll")) {
@@ -662,7 +593,7 @@ MFBT_API void DllBlocklist_Initialize(uint32_t aInitFlags) {
     }
   }
 
-#if defined(NIGHTLY_BUILD)
+#if defined(BLOCK_LOADLIBRARY_INJECTION)
   // Populate a list of thread start addresses to block.
   HMODULE hKernel = GetModuleHandleW(L"kernel32.dll");
   if (hKernel) {
@@ -739,22 +670,11 @@ MFBT_API void DllBlocklist_Initialize(uint32_t aInitFlags) {
 MFBT_API void DllBlocklist_Shutdown() {}
 #endif  // DEBUG
 
-static void InternalWriteNotes(AnnotationWriter& aWriter) {
-  WritableBuffer buffer;
-  DllBlockSet::Write(buffer);
-
-  aWriter.Write(Annotation::BlockedDllList, buffer.Data(), buffer.Length());
-
-  if (sBlocklistInitFailed) {
-    aWriter.Write(Annotation::BlocklistInitFailed, "1");
-  }
-
-  if (sUser32BeforeBlocklist) {
-    aWriter.Write(Annotation::User32BeforeBlocklist, "1");
-  }
+static void InternalWriteNotes(WritableBuffer& aBuffer) {
+  DllBlockSet::Write(aBuffer);
 }
 
-using WriterFn = void (*)(AnnotationWriter&);
+using WriterFn = void (*)(WritableBuffer& aBuffer);
 static WriterFn gWriterFn = &InternalWriteNotes;
 
 static void GetNativeNtBlockSetWriter() {
@@ -765,14 +685,23 @@ static void GetNativeNtBlockSetWriter() {
   }
 }
 
-MFBT_API void DllBlocklist_WriteNotes(AnnotationWriter& aWriter) {
-  MOZ_ASSERT(gWriterFn);
-  gWriterFn(aWriter);
-}
+MFBT_API void DllBlocklist_WriteNotes() { gWriterFn(sBlocklistWriter); }
 
 MFBT_API bool DllBlocklist_CheckStatus() {
   if (sBlocklistInitFailed || sUser32BeforeBlocklist) return false;
   return true;
+}
+
+MFBT_API bool* DllBlocklist_GetBlocklistInitFailedPointer() {
+  return &sBlocklistInitFailed;
+}
+
+MFBT_API bool* DllBlocklist_GetUser32BeforeBlocklistPointer() {
+  return &sUser32BeforeBlocklist;
+}
+
+MFBT_API const char* DllBlocklist_GetBlocklistWriterData() {
+  return sBlocklistWriter.Data();
 }
 
 // ============================================================================

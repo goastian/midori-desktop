@@ -21,6 +21,7 @@ EXTRA_JS_MODULES += [
     "ExtensionDNR.sys.mjs",
     "ExtensionDNRLimits.sys.mjs",
     "ExtensionDNRStore.sys.mjs",
+    "ExtensionMenus.sys.mjs",
     "ExtensionPageChild.sys.mjs",
     "ExtensionParent.sys.mjs",
     "ExtensionPermissionMessages.sys.mjs",
@@ -43,7 +44,6 @@ EXTRA_JS_MODULES += [
     "MessageManagerProxy.sys.mjs",
     "NativeManifests.sys.mjs",
     "NativeMessaging.sys.mjs",
-    "PerformanceCounters.sys.mjs",
     "ProxyChannelFilter.sys.mjs",
     "Schemas.sys.mjs",
     "WebNavigation.sys.mjs",
@@ -113,31 +113,32 @@ FINAL_LIBRARY = "xul"
 JAR_MANIFESTS += ["jar.mn"]
 
 BROWSER_CHROME_MANIFESTS += [
-    "test/browser/browser-serviceworker.ini",
-    "test/browser/browser.ini",
+    "test/browser/browser.toml",
 ]
 
 MOCHITEST_MANIFESTS += [
-    "test/mochitest/mochitest-remote.ini",
-    "test/mochitest/mochitest.ini",
+    "test/mochitest/mochitest-remote.toml",
+    "test/mochitest/mochitest.toml",
 ]
-MOCHITEST_CHROME_MANIFESTS += ["test/mochitest/chrome.ini"]
+MOCHITEST_CHROME_MANIFESTS += ["test/mochitest/chrome.toml"]
 XPCSHELL_TESTS_MANIFESTS += [
-    "test/xpcshell/native_messaging.ini",
-    "test/xpcshell/xpcshell-e10s.ini",
-    "test/xpcshell/xpcshell-legacy-ep.ini",
-    "test/xpcshell/xpcshell-remote.ini",
-    "test/xpcshell/xpcshell.ini",
+    "test/xpcshell/native_messaging.toml",
+    "test/xpcshell/xpcshell-e10s.toml",
+    "test/xpcshell/xpcshell-legacy-ep.toml",
+    "test/xpcshell/xpcshell-remote.toml",
+    "test/xpcshell/xpcshell.toml",
 ]
 
 # Only include tests that requires the WebExtensions WebIDL API bindings
 # in builds where they are enabled (currently only on Nightly builds).
 if CONFIG["MOZ_WEBEXT_WEBIDL_ENABLED"]:
+    BROWSER_CHROME_MANIFESTS += ["test/browser/browser-serviceworker.toml"]
+    MARIONETTE_MANIFESTS += ["test/marionette/manifest-serviceworker.toml"]
     XPCSHELL_TESTS_MANIFESTS += [
-        "test/xpcshell/webidl-api/xpcshell.ini",
-        "test/xpcshell/xpcshell-serviceworker.ini",
+        "test/xpcshell/webidl-api/xpcshell.toml",
+        "test/xpcshell/xpcshell-serviceworker.toml",
     ]
-    MOCHITEST_MANIFESTS += ["test/mochitest/mochitest-serviceworker.ini"]
+    MOCHITEST_MANIFESTS += ["test/mochitest/mochitest-serviceworker.toml"]
 
 
 SPHINX_TREES["webextensions"] = "docs"

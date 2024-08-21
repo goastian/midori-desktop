@@ -5,24 +5,36 @@
 "use strict";
 
 // This is a UA widget. It runs in per-origin UA widget scope,
-// to be loaded by UAWidgetsChild.jsm.
+// to be loaded by UAWidgetsChild.sys.mjs.
 
 /*
  * This is the class of entry. It will construct the actual implementation
  * according to the value of the "type" property.
  */
 this.DateTimeBoxWidget = class {
-  constructor(shadowRoot) {
+  constructor(shadowRoot, prefs) {
     this.shadowRoot = shadowRoot;
     this.element = shadowRoot.host;
     this.document = this.element.ownerDocument;
     this.window = this.document.defaultView;
+    // When undefined, DOMLocalization will use the app locales.
+    let locales;
+    if (prefs["privacy.resistFingerprinting"]) {
+      locales = [...this.window.getWebExposedLocales()];
+      // Make sure to always include en-US, in case the web exposed languages do
+      // not include a translation for the widget.
+      if (!locales.includes("en-US")) {
+        locales.push("en-US");
+      }
+    }
     // The DOMLocalization instance needs to allow for sync methods so that
     // the placeholder value may be determined and set during the
     // createEditFieldAndAppend() call.
     this.l10n = new this.window.DOMLocalization(
       ["toolkit/global/datetimebox.ftl"],
-      /* aSync = */ true
+      /* aSync = */ true,
+      undefined,
+      locales
     );
   }
 
@@ -157,8 +169,8 @@ this.DateTimeBoxWidget = class {
     this.mMinDay = 1;
     this.mMaxDay = 31;
     this.mMinYear = 1;
-    // Maximum year limited by ECMAScript date object range, year <= 275760.
-    this.mMaxYear = 275760;
+    // Maximum year limited by ISO 8601.
+    this.mMaxYear = 9999;
     this.mMonthDayLength = 2;
     this.mYearLength = 4;
     this.mMonthPageUpDownInterval = 3;
@@ -331,12 +343,6 @@ this.DateTimeBoxWidget = class {
     field.textContent = placeholder;
     this.l10n.setAttributes(field, aL10nId);
 
-    field.setAttribute("readonly", this.mInputElement.readOnly);
-    field.setAttribute("disabled", this.mInputElement.disabled);
-    // Set property as well for convenience.
-    field.disabled = this.mInputElement.disabled;
-    field.readOnly = this.mInputElement.readOnly;
-
     // Used to store the non-formatted value, cleared when value is
     // cleared.
     // DateTimeInputTypeBase::HasBadInput() will read this to decide
@@ -432,11 +438,7 @@ this.DateTimeBoxWidget = class {
   }
 
   setFieldTabIndexAttribute(field) {
-    if (this.mInputElement.disabled) {
-      field.removeAttribute("tabindex");
-    } else {
-      field.tabIndex = this.mInputElement.tabIndex;
-    }
+    field.tabIndex = this.mInputElement.tabIndex;
   }
 
   updateEditAttributes() {
@@ -447,23 +449,8 @@ this.DateTimeBoxWidget = class {
     for (let child of editRoot.querySelectorAll(
       ":scope > span.datetime-edit-field"
     )) {
-      // "disabled" and "readonly" must be set as attributes because they
-      // are not defined properties of HTMLSpanElement, and the stylesheet
-      // checks the literal string attribute values.
-      child.setAttribute("disabled", this.mInputElement.disabled);
-      child.setAttribute("readonly", this.mInputElement.readOnly);
-
-      // Set property as well for convenience.
-      child.disabled = this.mInputElement.disabled;
-      child.readOnly = this.mInputElement.readOnly;
-
       this.setFieldTabIndexAttribute(child);
     }
-
-    this.mCalendarButton.hidden =
-      this.mInputElement.disabled ||
-      this.mInputElement.readOnly ||
-      this.mInputElement.type === "time";
   }
 
   isEmpty(aValue) {
@@ -506,11 +493,11 @@ this.DateTimeBoxWidget = class {
   }
 
   isDisabled() {
-    return this.mInputElement.hasAttribute("disabled");
+    return this.mInputElement.matches(":disabled");
   }
 
   isReadonly() {
-    return this.mInputElement.hasAttribute("readonly");
+    return this.mInputElement.matches(":read-only");
   }
 
   isEditable() {
@@ -675,6 +662,10 @@ this.DateTimeBoxWidget = class {
   onKeyDown(aEvent) {
     this.log("onKeyDown key: " + aEvent.key);
 
+    if (aEvent.defaultPrevented) {
+      return;
+    }
+
     switch (aEvent.key) {
       // Toggle the picker on Space/Enter on Calendar button or Space on input,
       // close on Escape anywhere.
@@ -716,21 +707,17 @@ this.DateTimeBoxWidget = class {
           aEvent.preventDefault();
           break;
         }
-        if (this.isEditable()) {
-          // TODO(emilio, bug 1571533): These functions should look at
-          // defaultPrevented.
-          // Ctrl+Backspace/Delete on non-macOS and
-          // Cmd+Backspace/Delete on macOS to clear the field
-          if (aEvent.getModifierState("Accel")) {
-            // Clear the input's value
-            this.clearInputFields(false);
-          } else {
-            let targetField = aEvent.originalTarget;
-            this.clearFieldValue(targetField);
-            this.setInputValueFromFields();
-          }
-          aEvent.preventDefault();
+        // Ctrl+Backspace/Delete on non-macOS and
+        // Cmd+Backspace/Delete on macOS to clear the field
+        if (aEvent.getModifierState("Accel")) {
+          // Clear the input's value
+          this.clearInputFields(false);
+        } else {
+          let targetField = aEvent.originalTarget;
+          this.clearFieldValue(targetField);
+          this.setInputValueFromFields();
         }
+        aEvent.preventDefault();
         break;
       }
       case "ArrowRight":

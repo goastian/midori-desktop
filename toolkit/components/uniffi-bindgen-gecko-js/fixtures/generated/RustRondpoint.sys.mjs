@@ -154,51 +154,11 @@ class ArrayBufferDataStream {
       return value;
     }
 
-    // Reads a Retourneur pointer from the data stream
-    // UniFFI Pointers are **always** 8 bytes long. That is enforced
-    // by the C++ and Rust Scaffolding code.
-    readPointerRetourneur() {
-        const pointerId = 2; // rondpoint:Retourneur
-        const res = UniFFIScaffolding.readPointer(pointerId, this.dataView.buffer, this.pos);
-        this.pos += 8;
-        return res;
-    }
-
-    // Writes a Retourneur pointer into the data stream
-    // UniFFI Pointers are **always** 8 bytes long. That is enforced
-    // by the C++ and Rust Scaffolding code.
-    writePointerRetourneur(value) {
-        const pointerId = 2; // rondpoint:Retourneur
-        UniFFIScaffolding.writePointer(pointerId, value, this.dataView.buffer, this.pos);
-        this.pos += 8;
-    }
-    
-
-    // Reads a Stringifier pointer from the data stream
-    // UniFFI Pointers are **always** 8 bytes long. That is enforced
-    // by the C++ and Rust Scaffolding code.
-    readPointerStringifier() {
-        const pointerId = 3; // rondpoint:Stringifier
-        const res = UniFFIScaffolding.readPointer(pointerId, this.dataView.buffer, this.pos);
-        this.pos += 8;
-        return res;
-    }
-
-    // Writes a Stringifier pointer into the data stream
-    // UniFFI Pointers are **always** 8 bytes long. That is enforced
-    // by the C++ and Rust Scaffolding code.
-    writePointerStringifier(value) {
-        const pointerId = 3; // rondpoint:Stringifier
-        UniFFIScaffolding.writePointer(pointerId, value, this.dataView.buffer, this.pos);
-        this.pos += 8;
-    }
-    
-
     // Reads a Optionneur pointer from the data stream
     // UniFFI Pointers are **always** 8 bytes long. That is enforced
     // by the C++ and Rust Scaffolding code.
     readPointerOptionneur() {
-        const pointerId = 4; // rondpoint:Optionneur
+        const pointerId = 8; // rondpoint:Optionneur
         const res = UniFFIScaffolding.readPointer(pointerId, this.dataView.buffer, this.pos);
         this.pos += 8;
         return res;
@@ -208,7 +168,47 @@ class ArrayBufferDataStream {
     // UniFFI Pointers are **always** 8 bytes long. That is enforced
     // by the C++ and Rust Scaffolding code.
     writePointerOptionneur(value) {
-        const pointerId = 4; // rondpoint:Optionneur
+        const pointerId = 8; // rondpoint:Optionneur
+        UniFFIScaffolding.writePointer(pointerId, value, this.dataView.buffer, this.pos);
+        this.pos += 8;
+    }
+    
+
+    // Reads a Retourneur pointer from the data stream
+    // UniFFI Pointers are **always** 8 bytes long. That is enforced
+    // by the C++ and Rust Scaffolding code.
+    readPointerRetourneur() {
+        const pointerId = 9; // rondpoint:Retourneur
+        const res = UniFFIScaffolding.readPointer(pointerId, this.dataView.buffer, this.pos);
+        this.pos += 8;
+        return res;
+    }
+
+    // Writes a Retourneur pointer into the data stream
+    // UniFFI Pointers are **always** 8 bytes long. That is enforced
+    // by the C++ and Rust Scaffolding code.
+    writePointerRetourneur(value) {
+        const pointerId = 9; // rondpoint:Retourneur
+        UniFFIScaffolding.writePointer(pointerId, value, this.dataView.buffer, this.pos);
+        this.pos += 8;
+    }
+    
+
+    // Reads a Stringifier pointer from the data stream
+    // UniFFI Pointers are **always** 8 bytes long. That is enforced
+    // by the C++ and Rust Scaffolding code.
+    readPointerStringifier() {
+        const pointerId = 10; // rondpoint:Stringifier
+        const res = UniFFIScaffolding.readPointer(pointerId, this.dataView.buffer, this.pos);
+        this.pos += 8;
+        return res;
+    }
+
+    // Writes a Stringifier pointer into the data stream
+    // UniFFI Pointers are **always** 8 bytes long. That is enforced
+    // by the C++ and Rust Scaffolding code.
+    writePointerStringifier(value) {
+        const pointerId = 10; // rondpoint:Stringifier
         UniFFIScaffolding.writePointer(pointerId, value, this.dataView.buffer, this.pos);
         this.pos += 8;
     }
@@ -620,7 +620,7 @@ export class Optionneur {
         const liftError = null;
         const functionCall = () => {
             return UniFFIScaffolding.callAsync(
-                55, // rondpoint:rondpoint_7b7b_Optionneur_new
+                71, // rondpoint:uniffi_uniffi_rondpoint_fn_constructor_optionneur_new
             )
         }
         try {
@@ -642,7 +642,7 @@ export class Optionneur {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                56, // rondpoint:rondpoint_7b7b_Optionneur_sinon_boolean
+                72, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_boolean
                 FfiConverterTypeOptionneur.lower(this),
                 FfiConverterBool.lower(value),
             )
@@ -654,12 +654,12 @@ export class Optionneur {
         }
     }
 
-    sinonString(value = "default") {
-        const liftResult = (result) => FfiConverterString.lift(result);
+    sinonEnum(value = Enumeration.TROIS) {
+        const liftResult = (result) => FfiConverterTypeEnumeration.lift(result);
         const liftError = null;
         const functionCall = () => {
             try {
-                FfiConverterString.checkType(value)
+                FfiConverterTypeEnumeration.checkType(value)
             } catch (e) {
                 if (e instanceof UniFFITypeError) {
                     e.addItemDescriptionPart("value");
@@ -667,509 +667,9 @@ export class Optionneur {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                57, // rondpoint:rondpoint_7b7b_Optionneur_sinon_string
+                73, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_enum
                 FfiConverterTypeOptionneur.lower(this),
-                FfiConverterString.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonSequence(value = []) {
-        const liftResult = (result) => FfiConverterSequencestring.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterSequencestring.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                58, // rondpoint:rondpoint_7b7b_Optionneur_sinon_sequence
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterSequencestring.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonNull(value = null) {
-        const liftResult = (result) => FfiConverterOptionalstring.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterOptionalstring.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                59, // rondpoint:rondpoint_7b7b_Optionneur_sinon_null
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterOptionalstring.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonZero(value = 0) {
-        const liftResult = (result) => FfiConverterOptionali32.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterOptionali32.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                60, // rondpoint:rondpoint_7b7b_Optionneur_sinon_zero
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterOptionali32.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonU8Dec(value = 42) {
-        const liftResult = (result) => FfiConverterU8.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU8.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                61, // rondpoint:rondpoint_7b7b_Optionneur_sinon_u8_dec
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterU8.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonI8Dec(value = -42) {
-        const liftResult = (result) => FfiConverterI8.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI8.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                62, // rondpoint:rondpoint_7b7b_Optionneur_sinon_i8_dec
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterI8.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonU16Dec(value = 42) {
-        const liftResult = (result) => FfiConverterU16.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU16.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                63, // rondpoint:rondpoint_7b7b_Optionneur_sinon_u16_dec
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterU16.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonI16Dec(value = 42) {
-        const liftResult = (result) => FfiConverterI16.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI16.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                64, // rondpoint:rondpoint_7b7b_Optionneur_sinon_i16_dec
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterI16.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonU32Dec(value = 42) {
-        const liftResult = (result) => FfiConverterU32.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU32.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                65, // rondpoint:rondpoint_7b7b_Optionneur_sinon_u32_dec
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterU32.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonI32Dec(value = 42) {
-        const liftResult = (result) => FfiConverterI32.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI32.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                66, // rondpoint:rondpoint_7b7b_Optionneur_sinon_i32_dec
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterI32.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonU64Dec(value = 42) {
-        const liftResult = (result) => FfiConverterU64.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU64.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                67, // rondpoint:rondpoint_7b7b_Optionneur_sinon_u64_dec
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterU64.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonI64Dec(value = 42) {
-        const liftResult = (result) => FfiConverterI64.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI64.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                68, // rondpoint:rondpoint_7b7b_Optionneur_sinon_i64_dec
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterI64.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonU8Hex(value = 0xff) {
-        const liftResult = (result) => FfiConverterU8.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU8.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                69, // rondpoint:rondpoint_7b7b_Optionneur_sinon_u8_hex
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterU8.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonI8Hex(value = -127) {
-        const liftResult = (result) => FfiConverterI8.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI8.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                70, // rondpoint:rondpoint_7b7b_Optionneur_sinon_i8_hex
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterI8.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonU16Hex(value = 0xffff) {
-        const liftResult = (result) => FfiConverterU16.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU16.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                71, // rondpoint:rondpoint_7b7b_Optionneur_sinon_u16_hex
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterU16.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonI16Hex(value = 0x7f) {
-        const liftResult = (result) => FfiConverterI16.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI16.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                72, // rondpoint:rondpoint_7b7b_Optionneur_sinon_i16_hex
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterI16.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonU32Hex(value = 0xffffffff) {
-        const liftResult = (result) => FfiConverterU32.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU32.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                73, // rondpoint:rondpoint_7b7b_Optionneur_sinon_u32_hex
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterU32.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonI32Hex(value = 0x7fffffff) {
-        const liftResult = (result) => FfiConverterI32.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI32.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                74, // rondpoint:rondpoint_7b7b_Optionneur_sinon_i32_hex
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterI32.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonU64Hex(value = 0xffffffffffffffff) {
-        const liftResult = (result) => FfiConverterU64.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU64.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                75, // rondpoint:rondpoint_7b7b_Optionneur_sinon_u64_hex
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterU64.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonI64Hex(value = 0x7fffffffffffffff) {
-        const liftResult = (result) => FfiConverterI64.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI64.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                76, // rondpoint:rondpoint_7b7b_Optionneur_sinon_i64_hex
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterI64.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    sinonU32Oct(value = 0o755) {
-        const liftResult = (result) => FfiConverterU32.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU32.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                77, // rondpoint:rondpoint_7b7b_Optionneur_sinon_u32_oct
-                FfiConverterTypeOptionneur.lower(this),
-                FfiConverterU32.lower(value),
+                FfiConverterTypeEnumeration.lower(value),
             )
         }
         try {
@@ -1192,7 +692,7 @@ export class Optionneur {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                78, // rondpoint:rondpoint_7b7b_Optionneur_sinon_f32
+                74, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_f32
                 FfiConverterTypeOptionneur.lower(this),
                 FfiConverterF32.lower(value),
             )
@@ -1217,7 +717,7 @@ export class Optionneur {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                79, // rondpoint:rondpoint_7b7b_Optionneur_sinon_f64
+                75, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_f64
                 FfiConverterTypeOptionneur.lower(this),
                 FfiConverterF64.lower(value),
             )
@@ -1229,12 +729,12 @@ export class Optionneur {
         }
     }
 
-    sinonEnum(value = Enumeration.TROIS) {
-        const liftResult = (result) => FfiConverterTypeEnumeration.lift(result);
+    sinonI16Dec(value = 42) {
+        const liftResult = (result) => FfiConverterI16.lift(result);
         const liftError = null;
         const functionCall = () => {
             try {
-                FfiConverterTypeEnumeration.checkType(value)
+                FfiConverterI16.checkType(value)
             } catch (e) {
                 if (e instanceof UniFFITypeError) {
                     e.addItemDescriptionPart("value");
@@ -1242,9 +742,509 @@ export class Optionneur {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                80, // rondpoint:rondpoint_7b7b_Optionneur_sinon_enum
+                76, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_i16_dec
                 FfiConverterTypeOptionneur.lower(this),
-                FfiConverterTypeEnumeration.lower(value),
+                FfiConverterI16.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonI16Hex(value = 0x7f) {
+        const liftResult = (result) => FfiConverterI16.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI16.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                77, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_i16_hex
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterI16.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonI32Dec(value = 42) {
+        const liftResult = (result) => FfiConverterI32.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI32.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                78, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_i32_dec
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterI32.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonI32Hex(value = 0x7fffffff) {
+        const liftResult = (result) => FfiConverterI32.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI32.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                79, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_i32_hex
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterI32.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonI64Dec(value = 42) {
+        const liftResult = (result) => FfiConverterI64.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI64.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                80, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_i64_dec
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterI64.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonI64Hex(value = 0x7fffffffffffffff) {
+        const liftResult = (result) => FfiConverterI64.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI64.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                81, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_i64_hex
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterI64.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonI8Dec(value = -42) {
+        const liftResult = (result) => FfiConverterI8.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI8.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                82, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_i8_dec
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterI8.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonI8Hex(value = -127) {
+        const liftResult = (result) => FfiConverterI8.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI8.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                83, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_i8_hex
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterI8.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonNull(value = null) {
+        const liftResult = (result) => FfiConverterOptionalstring.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterOptionalstring.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                84, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_null
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterOptionalstring.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonSequence(value = []) {
+        const liftResult = (result) => FfiConverterSequencestring.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterSequencestring.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                85, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_sequence
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterSequencestring.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonString(value = "default") {
+        const liftResult = (result) => FfiConverterString.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterString.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                86, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_string
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterString.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonU16Dec(value = 42) {
+        const liftResult = (result) => FfiConverterU16.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU16.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                87, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_u16_dec
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterU16.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonU16Hex(value = 0xffff) {
+        const liftResult = (result) => FfiConverterU16.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU16.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                88, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_u16_hex
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterU16.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonU32Dec(value = 42) {
+        const liftResult = (result) => FfiConverterU32.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU32.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                89, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_u32_dec
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterU32.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonU32Hex(value = 0xffffffff) {
+        const liftResult = (result) => FfiConverterU32.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU32.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                90, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_u32_hex
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterU32.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonU32Oct(value = 0o755) {
+        const liftResult = (result) => FfiConverterU32.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU32.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                91, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_u32_oct
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterU32.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonU64Dec(value = 42) {
+        const liftResult = (result) => FfiConverterU64.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU64.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                92, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_u64_dec
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterU64.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonU64Hex(value = 0xffffffffffffffff) {
+        const liftResult = (result) => FfiConverterU64.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU64.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                93, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_u64_hex
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterU64.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonU8Dec(value = 42) {
+        const liftResult = (result) => FfiConverterU8.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU8.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                94, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_u8_dec
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterU8.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonU8Hex(value = 0xff) {
+        const liftResult = (result) => FfiConverterU8.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU8.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                95, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_u8_hex
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterU8.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    sinonZero(value = 0) {
+        const liftResult = (result) => FfiConverterOptionali32.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterOptionali32.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                96, // rondpoint:uniffi_uniffi_rondpoint_fn_method_optionneur_sinon_zero
+                FfiConverterTypeOptionneur.lower(this),
+                FfiConverterOptionali32.lower(value),
             )
         }
         try {
@@ -1265,7 +1265,11 @@ export class FfiConverterTypeOptionneur extends FfiConverter {
     }
 
     static lower(value) {
-        return value[uniffiObjectPtr];
+        const ptr = value[uniffiObjectPtr];
+        if (!(ptr instanceof UniFFIPointer)) {
+            throw new UniFFITypeError("Object is not a 'Optionneur' instance");
+        }
+        return ptr;
     }
 
     static read(dataStream) {
@@ -1305,7 +1309,7 @@ export class Retourneur {
         const liftError = null;
         const functionCall = () => {
             return UniFFIScaffolding.callAsync(
-                26, // rondpoint:rondpoint_7b7b_Retourneur_new
+                98, // rondpoint:uniffi_uniffi_rondpoint_fn_constructor_retourneur_new
             )
         }
         try {
@@ -1314,12 +1318,12 @@ export class Retourneur {
             return Promise.reject(error)
         }}
 
-    identiqueI8(value) {
-        const liftResult = (result) => FfiConverterI8.lift(result);
+    identiqueBoolean(value) {
+        const liftResult = (result) => FfiConverterBool.lift(result);
         const liftError = null;
         const functionCall = () => {
             try {
-                FfiConverterI8.checkType(value)
+                FfiConverterBool.checkType(value)
             } catch (e) {
                 if (e instanceof UniFFITypeError) {
                     e.addItemDescriptionPart("value");
@@ -1327,209 +1331,9 @@ export class Retourneur {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                27, // rondpoint:rondpoint_7b7b_Retourneur_identique_i8
+                99, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_boolean
                 FfiConverterTypeRetourneur.lower(this),
-                FfiConverterI8.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    identiqueU8(value) {
-        const liftResult = (result) => FfiConverterU8.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU8.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                28, // rondpoint:rondpoint_7b7b_Retourneur_identique_u8
-                FfiConverterTypeRetourneur.lower(this),
-                FfiConverterU8.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    identiqueI16(value) {
-        const liftResult = (result) => FfiConverterI16.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI16.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                29, // rondpoint:rondpoint_7b7b_Retourneur_identique_i16
-                FfiConverterTypeRetourneur.lower(this),
-                FfiConverterI16.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    identiqueU16(value) {
-        const liftResult = (result) => FfiConverterU16.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU16.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                30, // rondpoint:rondpoint_7b7b_Retourneur_identique_u16
-                FfiConverterTypeRetourneur.lower(this),
-                FfiConverterU16.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    identiqueI32(value) {
-        const liftResult = (result) => FfiConverterI32.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI32.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                31, // rondpoint:rondpoint_7b7b_Retourneur_identique_i32
-                FfiConverterTypeRetourneur.lower(this),
-                FfiConverterI32.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    identiqueU32(value) {
-        const liftResult = (result) => FfiConverterU32.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU32.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                32, // rondpoint:rondpoint_7b7b_Retourneur_identique_u32
-                FfiConverterTypeRetourneur.lower(this),
-                FfiConverterU32.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    identiqueI64(value) {
-        const liftResult = (result) => FfiConverterI64.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI64.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                33, // rondpoint:rondpoint_7b7b_Retourneur_identique_i64
-                FfiConverterTypeRetourneur.lower(this),
-                FfiConverterI64.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    identiqueU64(value) {
-        const liftResult = (result) => FfiConverterU64.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU64.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                34, // rondpoint:rondpoint_7b7b_Retourneur_identique_u64
-                FfiConverterTypeRetourneur.lower(this),
-                FfiConverterU64.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    identiqueFloat(value) {
-        const liftResult = (result) => FfiConverterF32.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterF32.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                35, // rondpoint:rondpoint_7b7b_Retourneur_identique_float
-                FfiConverterTypeRetourneur.lower(this),
-                FfiConverterF32.lower(value),
+                FfiConverterBool.lower(value),
             )
         }
         try {
@@ -1552,7 +1356,7 @@ export class Retourneur {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                36, // rondpoint:rondpoint_7b7b_Retourneur_identique_double
+                100, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_double
                 FfiConverterTypeRetourneur.lower(this),
                 FfiConverterF64.lower(value),
             )
@@ -1564,12 +1368,12 @@ export class Retourneur {
         }
     }
 
-    identiqueBoolean(value) {
-        const liftResult = (result) => FfiConverterBool.lift(result);
+    identiqueFloat(value) {
+        const liftResult = (result) => FfiConverterF32.lift(result);
         const liftError = null;
         const functionCall = () => {
             try {
-                FfiConverterBool.checkType(value)
+                FfiConverterF32.checkType(value)
             } catch (e) {
                 if (e instanceof UniFFITypeError) {
                     e.addItemDescriptionPart("value");
@@ -1577,9 +1381,9 @@ export class Retourneur {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                37, // rondpoint:rondpoint_7b7b_Retourneur_identique_boolean
+                101, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_float
                 FfiConverterTypeRetourneur.lower(this),
-                FfiConverterBool.lower(value),
+                FfiConverterF32.lower(value),
             )
         }
         try {
@@ -1589,12 +1393,12 @@ export class Retourneur {
         }
     }
 
-    identiqueString(value) {
-        const liftResult = (result) => FfiConverterString.lift(result);
+    identiqueI16(value) {
+        const liftResult = (result) => FfiConverterI16.lift(result);
         const liftError = null;
         const functionCall = () => {
             try {
-                FfiConverterString.checkType(value)
+                FfiConverterI16.checkType(value)
             } catch (e) {
                 if (e instanceof UniFFITypeError) {
                     e.addItemDescriptionPart("value");
@@ -1602,9 +1406,9 @@ export class Retourneur {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                38, // rondpoint:rondpoint_7b7b_Retourneur_identique_string
+                102, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_i16
                 FfiConverterTypeRetourneur.lower(this),
-                FfiConverterString.lower(value),
+                FfiConverterI16.lower(value),
             )
         }
         try {
@@ -1614,12 +1418,12 @@ export class Retourneur {
         }
     }
 
-    identiqueNombresSignes(value) {
-        const liftResult = (result) => FfiConverterTypeDictionnaireNombresSignes.lift(result);
+    identiqueI32(value) {
+        const liftResult = (result) => FfiConverterI32.lift(result);
         const liftError = null;
         const functionCall = () => {
             try {
-                FfiConverterTypeDictionnaireNombresSignes.checkType(value)
+                FfiConverterI32.checkType(value)
             } catch (e) {
                 if (e instanceof UniFFITypeError) {
                     e.addItemDescriptionPart("value");
@@ -1627,9 +1431,59 @@ export class Retourneur {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                39, // rondpoint:rondpoint_7b7b_Retourneur_identique_nombres_signes
+                103, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_i32
                 FfiConverterTypeRetourneur.lower(this),
-                FfiConverterTypeDictionnaireNombresSignes.lower(value),
+                FfiConverterI32.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    identiqueI64(value) {
+        const liftResult = (result) => FfiConverterI64.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI64.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                104, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_i64
+                FfiConverterTypeRetourneur.lower(this),
+                FfiConverterI64.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    identiqueI8(value) {
+        const liftResult = (result) => FfiConverterI8.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI8.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                105, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_i8
+                FfiConverterTypeRetourneur.lower(this),
+                FfiConverterI8.lower(value),
             )
         }
         try {
@@ -1652,9 +1506,34 @@ export class Retourneur {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                40, // rondpoint:rondpoint_7b7b_Retourneur_identique_nombres
+                106, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_nombres
                 FfiConverterTypeRetourneur.lower(this),
                 FfiConverterTypeDictionnaireNombres.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    identiqueNombresSignes(value) {
+        const liftResult = (result) => FfiConverterTypeDictionnaireNombresSignes.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterTypeDictionnaireNombresSignes.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                107, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_nombres_signes
+                FfiConverterTypeRetourneur.lower(this),
+                FfiConverterTypeDictionnaireNombresSignes.lower(value),
             )
         }
         try {
@@ -1677,9 +1556,134 @@ export class Retourneur {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                41, // rondpoint:rondpoint_7b7b_Retourneur_identique_optionneur_dictionnaire
+                108, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_optionneur_dictionnaire
                 FfiConverterTypeRetourneur.lower(this),
                 FfiConverterTypeOptionneurDictionnaire.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    identiqueString(value) {
+        const liftResult = (result) => FfiConverterString.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterString.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                109, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_string
+                FfiConverterTypeRetourneur.lower(this),
+                FfiConverterString.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    identiqueU16(value) {
+        const liftResult = (result) => FfiConverterU16.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU16.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                110, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_u16
+                FfiConverterTypeRetourneur.lower(this),
+                FfiConverterU16.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    identiqueU32(value) {
+        const liftResult = (result) => FfiConverterU32.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU32.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                111, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_u32
+                FfiConverterTypeRetourneur.lower(this),
+                FfiConverterU32.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    identiqueU64(value) {
+        const liftResult = (result) => FfiConverterU64.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU64.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                112, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_u64
+                FfiConverterTypeRetourneur.lower(this),
+                FfiConverterU64.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    identiqueU8(value) {
+        const liftResult = (result) => FfiConverterU8.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU8.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                113, // rondpoint:uniffi_uniffi_rondpoint_fn_method_retourneur_identique_u8
+                FfiConverterTypeRetourneur.lower(this),
+                FfiConverterU8.lower(value),
             )
         }
         try {
@@ -1700,7 +1704,11 @@ export class FfiConverterTypeRetourneur extends FfiConverter {
     }
 
     static lower(value) {
-        return value[uniffiObjectPtr];
+        const ptr = value[uniffiObjectPtr];
+        if (!(ptr instanceof UniFFIPointer)) {
+            throw new UniFFITypeError("Object is not a 'Retourneur' instance");
+        }
+        return ptr;
     }
 
     static read(dataStream) {
@@ -1740,7 +1748,7 @@ export class Stringifier {
         const liftError = null;
         const functionCall = () => {
             return UniFFIScaffolding.callAsync(
-                42, // rondpoint:rondpoint_7b7b_Stringifier_new
+                115, // rondpoint:uniffi_uniffi_rondpoint_fn_constructor_stringifier_new
             )
         }
         try {
@@ -1749,12 +1757,12 @@ export class Stringifier {
             return Promise.reject(error)
         }}
 
-    wellKnownString(value) {
+    toStringBoolean(value) {
         const liftResult = (result) => FfiConverterString.lift(result);
         const liftError = null;
         const functionCall = () => {
             try {
-                FfiConverterString.checkType(value)
+                FfiConverterBool.checkType(value)
             } catch (e) {
                 if (e instanceof UniFFITypeError) {
                     e.addItemDescriptionPart("value");
@@ -1762,234 +1770,9 @@ export class Stringifier {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                43, // rondpoint:rondpoint_7b7b_Stringifier_well_known_string
+                116, // rondpoint:uniffi_uniffi_rondpoint_fn_method_stringifier_to_string_boolean
                 FfiConverterTypeStringifier.lower(this),
-                FfiConverterString.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    toStringI8(value) {
-        const liftResult = (result) => FfiConverterString.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI8.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                44, // rondpoint:rondpoint_7b7b_Stringifier_to_string_i8
-                FfiConverterTypeStringifier.lower(this),
-                FfiConverterI8.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    toStringU8(value) {
-        const liftResult = (result) => FfiConverterString.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU8.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                45, // rondpoint:rondpoint_7b7b_Stringifier_to_string_u8
-                FfiConverterTypeStringifier.lower(this),
-                FfiConverterU8.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    toStringI16(value) {
-        const liftResult = (result) => FfiConverterString.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI16.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                46, // rondpoint:rondpoint_7b7b_Stringifier_to_string_i16
-                FfiConverterTypeStringifier.lower(this),
-                FfiConverterI16.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    toStringU16(value) {
-        const liftResult = (result) => FfiConverterString.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU16.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                47, // rondpoint:rondpoint_7b7b_Stringifier_to_string_u16
-                FfiConverterTypeStringifier.lower(this),
-                FfiConverterU16.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    toStringI32(value) {
-        const liftResult = (result) => FfiConverterString.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI32.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                48, // rondpoint:rondpoint_7b7b_Stringifier_to_string_i32
-                FfiConverterTypeStringifier.lower(this),
-                FfiConverterI32.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    toStringU32(value) {
-        const liftResult = (result) => FfiConverterString.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU32.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                49, // rondpoint:rondpoint_7b7b_Stringifier_to_string_u32
-                FfiConverterTypeStringifier.lower(this),
-                FfiConverterU32.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    toStringI64(value) {
-        const liftResult = (result) => FfiConverterString.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterI64.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                50, // rondpoint:rondpoint_7b7b_Stringifier_to_string_i64
-                FfiConverterTypeStringifier.lower(this),
-                FfiConverterI64.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    toStringU64(value) {
-        const liftResult = (result) => FfiConverterString.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterU64.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                51, // rondpoint:rondpoint_7b7b_Stringifier_to_string_u64
-                FfiConverterTypeStringifier.lower(this),
-                FfiConverterU64.lower(value),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-    }
-
-    toStringFloat(value) {
-        const liftResult = (result) => FfiConverterString.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterF32.checkType(value)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("value");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                52, // rondpoint:rondpoint_7b7b_Stringifier_to_string_float
-                FfiConverterTypeStringifier.lower(this),
-                FfiConverterF32.lower(value),
+                FfiConverterBool.lower(value),
             )
         }
         try {
@@ -2012,7 +1795,7 @@ export class Stringifier {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                53, // rondpoint:rondpoint_7b7b_Stringifier_to_string_double
+                117, // rondpoint:uniffi_uniffi_rondpoint_fn_method_stringifier_to_string_double
                 FfiConverterTypeStringifier.lower(this),
                 FfiConverterF64.lower(value),
             )
@@ -2024,12 +1807,12 @@ export class Stringifier {
         }
     }
 
-    toStringBoolean(value) {
+    toStringFloat(value) {
         const liftResult = (result) => FfiConverterString.lift(result);
         const liftError = null;
         const functionCall = () => {
             try {
-                FfiConverterBool.checkType(value)
+                FfiConverterF32.checkType(value)
             } catch (e) {
                 if (e instanceof UniFFITypeError) {
                     e.addItemDescriptionPart("value");
@@ -2037,9 +1820,234 @@ export class Stringifier {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                54, // rondpoint:rondpoint_7b7b_Stringifier_to_string_boolean
+                118, // rondpoint:uniffi_uniffi_rondpoint_fn_method_stringifier_to_string_float
                 FfiConverterTypeStringifier.lower(this),
-                FfiConverterBool.lower(value),
+                FfiConverterF32.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    toStringI16(value) {
+        const liftResult = (result) => FfiConverterString.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI16.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                119, // rondpoint:uniffi_uniffi_rondpoint_fn_method_stringifier_to_string_i16
+                FfiConverterTypeStringifier.lower(this),
+                FfiConverterI16.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    toStringI32(value) {
+        const liftResult = (result) => FfiConverterString.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI32.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                120, // rondpoint:uniffi_uniffi_rondpoint_fn_method_stringifier_to_string_i32
+                FfiConverterTypeStringifier.lower(this),
+                FfiConverterI32.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    toStringI64(value) {
+        const liftResult = (result) => FfiConverterString.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI64.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                121, // rondpoint:uniffi_uniffi_rondpoint_fn_method_stringifier_to_string_i64
+                FfiConverterTypeStringifier.lower(this),
+                FfiConverterI64.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    toStringI8(value) {
+        const liftResult = (result) => FfiConverterString.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterI8.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                122, // rondpoint:uniffi_uniffi_rondpoint_fn_method_stringifier_to_string_i8
+                FfiConverterTypeStringifier.lower(this),
+                FfiConverterI8.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    toStringU16(value) {
+        const liftResult = (result) => FfiConverterString.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU16.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                123, // rondpoint:uniffi_uniffi_rondpoint_fn_method_stringifier_to_string_u16
+                FfiConverterTypeStringifier.lower(this),
+                FfiConverterU16.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    toStringU32(value) {
+        const liftResult = (result) => FfiConverterString.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU32.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                124, // rondpoint:uniffi_uniffi_rondpoint_fn_method_stringifier_to_string_u32
+                FfiConverterTypeStringifier.lower(this),
+                FfiConverterU32.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    toStringU64(value) {
+        const liftResult = (result) => FfiConverterString.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU64.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                125, // rondpoint:uniffi_uniffi_rondpoint_fn_method_stringifier_to_string_u64
+                FfiConverterTypeStringifier.lower(this),
+                FfiConverterU64.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    toStringU8(value) {
+        const liftResult = (result) => FfiConverterString.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterU8.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                126, // rondpoint:uniffi_uniffi_rondpoint_fn_method_stringifier_to_string_u8
+                FfiConverterTypeStringifier.lower(this),
+                FfiConverterU8.lower(value),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    wellKnownString(value) {
+        const liftResult = (result) => FfiConverterString.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterString.checkType(value)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("value");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                127, // rondpoint:uniffi_uniffi_rondpoint_fn_method_stringifier_well_known_string
+                FfiConverterTypeStringifier.lower(this),
+                FfiConverterString.lower(value),
             )
         }
         try {
@@ -2060,7 +2068,11 @@ export class FfiConverterTypeStringifier extends FfiConverter {
     }
 
     static lower(value) {
-        return value[uniffiObjectPtr];
+        const ptr = value[uniffiObjectPtr];
+        if (!(ptr instanceof UniFFIPointer)) {
+            throw new UniFFITypeError("Object is not a 'Stringifier' instance");
+        }
+        return ptr;
     }
 
     static read(dataStream) {
@@ -2077,7 +2089,7 @@ export class FfiConverterTypeStringifier extends FfiConverter {
 }
 
 export class Dictionnaire {
-    constructor(un,deux,petitNombre,grosNombre) {
+    constructor({ un, deux, petitNombre, grosNombre } = {}) {
         try {
             FfiConverterTypeEnumeration.checkType(un)
         } catch (e) {
@@ -2128,12 +2140,12 @@ export class Dictionnaire {
 // Export the FFIConverter object to make external types work.
 export class FfiConverterTypeDictionnaire extends FfiConverterArrayBuffer {
     static read(dataStream) {
-        return new Dictionnaire(
-            FfiConverterTypeEnumeration.read(dataStream), 
-            FfiConverterBool.read(dataStream), 
-            FfiConverterU8.read(dataStream), 
-            FfiConverterU64.read(dataStream)
-        );
+        return new Dictionnaire({
+            un: FfiConverterTypeEnumeration.read(dataStream),
+            deux: FfiConverterBool.read(dataStream),
+            petitNombre: FfiConverterU8.read(dataStream),
+            grosNombre: FfiConverterU64.read(dataStream),
+        });
     }
     static write(dataStream, value) {
         FfiConverterTypeEnumeration.write(dataStream, value.un);
@@ -2153,6 +2165,9 @@ export class FfiConverterTypeDictionnaire extends FfiConverterArrayBuffer {
 
     static checkType(value) {
         super.checkType(value);
+        if (!(value instanceof Dictionnaire)) {
+            throw new UniFFITypeError(`Expected 'Dictionnaire', found '${typeof value}'`);
+        }
         try {
             FfiConverterTypeEnumeration.checkType(value.un);
         } catch (e) {
@@ -2189,7 +2204,7 @@ export class FfiConverterTypeDictionnaire extends FfiConverterArrayBuffer {
 }
 
 export class DictionnaireNombres {
-    constructor(petitNombre,courtNombre,nombreSimple,grosNombre) {
+    constructor({ petitNombre, courtNombre, nombreSimple, grosNombre } = {}) {
         try {
             FfiConverterU8.checkType(petitNombre)
         } catch (e) {
@@ -2240,12 +2255,12 @@ export class DictionnaireNombres {
 // Export the FFIConverter object to make external types work.
 export class FfiConverterTypeDictionnaireNombres extends FfiConverterArrayBuffer {
     static read(dataStream) {
-        return new DictionnaireNombres(
-            FfiConverterU8.read(dataStream), 
-            FfiConverterU16.read(dataStream), 
-            FfiConverterU32.read(dataStream), 
-            FfiConverterU64.read(dataStream)
-        );
+        return new DictionnaireNombres({
+            petitNombre: FfiConverterU8.read(dataStream),
+            courtNombre: FfiConverterU16.read(dataStream),
+            nombreSimple: FfiConverterU32.read(dataStream),
+            grosNombre: FfiConverterU64.read(dataStream),
+        });
     }
     static write(dataStream, value) {
         FfiConverterU8.write(dataStream, value.petitNombre);
@@ -2265,6 +2280,9 @@ export class FfiConverterTypeDictionnaireNombres extends FfiConverterArrayBuffer
 
     static checkType(value) {
         super.checkType(value);
+        if (!(value instanceof DictionnaireNombres)) {
+            throw new UniFFITypeError(`Expected 'DictionnaireNombres', found '${typeof value}'`);
+        }
         try {
             FfiConverterU8.checkType(value.petitNombre);
         } catch (e) {
@@ -2301,7 +2319,7 @@ export class FfiConverterTypeDictionnaireNombres extends FfiConverterArrayBuffer
 }
 
 export class DictionnaireNombresSignes {
-    constructor(petitNombre,courtNombre,nombreSimple,grosNombre) {
+    constructor({ petitNombre, courtNombre, nombreSimple, grosNombre } = {}) {
         try {
             FfiConverterI8.checkType(petitNombre)
         } catch (e) {
@@ -2352,12 +2370,12 @@ export class DictionnaireNombresSignes {
 // Export the FFIConverter object to make external types work.
 export class FfiConverterTypeDictionnaireNombresSignes extends FfiConverterArrayBuffer {
     static read(dataStream) {
-        return new DictionnaireNombresSignes(
-            FfiConverterI8.read(dataStream), 
-            FfiConverterI16.read(dataStream), 
-            FfiConverterI32.read(dataStream), 
-            FfiConverterI64.read(dataStream)
-        );
+        return new DictionnaireNombresSignes({
+            petitNombre: FfiConverterI8.read(dataStream),
+            courtNombre: FfiConverterI16.read(dataStream),
+            nombreSimple: FfiConverterI32.read(dataStream),
+            grosNombre: FfiConverterI64.read(dataStream),
+        });
     }
     static write(dataStream, value) {
         FfiConverterI8.write(dataStream, value.petitNombre);
@@ -2377,6 +2395,9 @@ export class FfiConverterTypeDictionnaireNombresSignes extends FfiConverterArray
 
     static checkType(value) {
         super.checkType(value);
+        if (!(value instanceof DictionnaireNombresSignes)) {
+            throw new UniFFITypeError(`Expected 'DictionnaireNombresSignes', found '${typeof value}'`);
+        }
         try {
             FfiConverterI8.checkType(value.petitNombre);
         } catch (e) {
@@ -2413,7 +2434,7 @@ export class FfiConverterTypeDictionnaireNombresSignes extends FfiConverterArray
 }
 
 export class OptionneurDictionnaire {
-    constructor(i8Var = -8,u8Var = 8,i16Var = -16,u16Var = 0x10,i32Var = -32,u32Var = 32,i64Var = -64,u64Var = 64,floatVar = 4.0,doubleVar = 8.0,booleanVar = true,stringVar = "default",listVar = [],enumerationVar = Enumeration.DEUX,dictionnaireVar = null) {
+    constructor({ i8Var = -8, u8Var = 8, i16Var = -16, u16Var = 0x10, i32Var = -32, u32Var = 32, i64Var = -64, u64Var = 64, floatVar = 4.0, doubleVar = 8.0, booleanVar = true, stringVar = "default", listVar = [], enumerationVar = Enumeration.DEUX, dictionnaireVar = null } = {}) {
         try {
             FfiConverterI8.checkType(i8Var)
         } catch (e) {
@@ -2574,23 +2595,23 @@ export class OptionneurDictionnaire {
 // Export the FFIConverter object to make external types work.
 export class FfiConverterTypeOptionneurDictionnaire extends FfiConverterArrayBuffer {
     static read(dataStream) {
-        return new OptionneurDictionnaire(
-            FfiConverterI8.read(dataStream), 
-            FfiConverterU8.read(dataStream), 
-            FfiConverterI16.read(dataStream), 
-            FfiConverterU16.read(dataStream), 
-            FfiConverterI32.read(dataStream), 
-            FfiConverterU32.read(dataStream), 
-            FfiConverterI64.read(dataStream), 
-            FfiConverterU64.read(dataStream), 
-            FfiConverterF32.read(dataStream), 
-            FfiConverterF64.read(dataStream), 
-            FfiConverterBool.read(dataStream), 
-            FfiConverterString.read(dataStream), 
-            FfiConverterSequencestring.read(dataStream), 
-            FfiConverterTypeEnumeration.read(dataStream), 
-            FfiConverterOptionalTypeminusculeMajusculeEnum.read(dataStream)
-        );
+        return new OptionneurDictionnaire({
+            i8Var: FfiConverterI8.read(dataStream),
+            u8Var: FfiConverterU8.read(dataStream),
+            i16Var: FfiConverterI16.read(dataStream),
+            u16Var: FfiConverterU16.read(dataStream),
+            i32Var: FfiConverterI32.read(dataStream),
+            u32Var: FfiConverterU32.read(dataStream),
+            i64Var: FfiConverterI64.read(dataStream),
+            u64Var: FfiConverterU64.read(dataStream),
+            floatVar: FfiConverterF32.read(dataStream),
+            doubleVar: FfiConverterF64.read(dataStream),
+            booleanVar: FfiConverterBool.read(dataStream),
+            stringVar: FfiConverterString.read(dataStream),
+            listVar: FfiConverterSequencestring.read(dataStream),
+            enumerationVar: FfiConverterTypeEnumeration.read(dataStream),
+            dictionnaireVar: FfiConverterOptionalTypeminusculeMajusculeEnum.read(dataStream),
+        });
     }
     static write(dataStream, value) {
         FfiConverterI8.write(dataStream, value.i8Var);
@@ -2632,6 +2653,9 @@ export class FfiConverterTypeOptionneurDictionnaire extends FfiConverterArrayBuf
 
     static checkType(value) {
         super.checkType(value);
+        if (!(value instanceof OptionneurDictionnaire)) {
+            throw new UniFFITypeError(`Expected 'OptionneurDictionnaire', found '${typeof value}'`);
+        }
         try {
             FfiConverterI8.checkType(value.i8Var);
         } catch (e) {
@@ -2756,7 +2780,7 @@ export class FfiConverterTypeOptionneurDictionnaire extends FfiConverterArrayBuf
 }
 
 export class MinusculeMajusculeDict {
-    constructor(minusculeMajusculeField) {
+    constructor({ minusculeMajusculeField } = {}) {
         try {
             FfiConverterBool.checkType(minusculeMajusculeField)
         } catch (e) {
@@ -2777,9 +2801,9 @@ export class MinusculeMajusculeDict {
 // Export the FFIConverter object to make external types work.
 export class FfiConverterTypeminusculeMajusculeDict extends FfiConverterArrayBuffer {
     static read(dataStream) {
-        return new MinusculeMajusculeDict(
-            FfiConverterBool.read(dataStream)
-        );
+        return new MinusculeMajusculeDict({
+            minusculeMajusculeField: FfiConverterBool.read(dataStream),
+        });
     }
     static write(dataStream, value) {
         FfiConverterBool.write(dataStream, value.minusculeMajusculeField);
@@ -2793,6 +2817,9 @@ export class FfiConverterTypeminusculeMajusculeDict extends FfiConverterArrayBuf
 
     static checkType(value) {
         super.checkType(value);
+        if (!(value instanceof MinusculeMajusculeDict)) {
+            throw new UniFFITypeError(`Expected 'MinusculeMajusculeDict', found '${typeof value}'`);
+        }
         try {
             FfiConverterBool.checkType(value.minusculeMajusculeField);
         } catch (e) {
@@ -2803,6 +2830,7 @@ export class FfiConverterTypeminusculeMajusculeDict extends FfiConverterArrayBuf
         }
     }
 }
+
 
 export const Enumeration = {
     UN: 1,
@@ -2822,7 +2850,7 @@ export class FfiConverterTypeEnumeration extends FfiConverterArrayBuffer {
             case 3:
                 return Enumeration.TROIS
             default:
-                return new Error("Unknown Enumeration variant");
+                throw new UniFFITypeError("Unknown Enumeration variant");
         }
     }
 
@@ -2839,7 +2867,7 @@ export class FfiConverterTypeEnumeration extends FfiConverterArrayBuffer {
             dataStream.writeInt32(3);
             return;
         }
-        return new Error("Unknown Enumeration variant");
+        throw new UniFFITypeError("Unknown Enumeration variant");
     }
 
     static computeSize(value) {
@@ -2852,6 +2880,8 @@ export class FfiConverterTypeEnumeration extends FfiConverterArrayBuffer {
       }
     }
 }
+
+
 
 export class EnumerationAvecDonnees {}
 EnumerationAvecDonnees.Zero = class extends EnumerationAvecDonnees{
@@ -2896,7 +2926,7 @@ export class FfiConverterTypeEnumerationAvecDonnees extends FfiConverterArrayBuf
                     FfiConverterString.read(dataStream)
                     );
             default:
-                return new Error("Unknown EnumerationAvecDonnees variant");
+                throw new UniFFITypeError("Unknown EnumerationAvecDonnees variant");
         }
     }
 
@@ -2916,7 +2946,7 @@ export class FfiConverterTypeEnumerationAvecDonnees extends FfiConverterArrayBuf
             FfiConverterString.write(dataStream, value.second);
             return;
         }
-        return new Error("Unknown EnumerationAvecDonnees variant");
+        throw new UniFFITypeError("Unknown EnumerationAvecDonnees variant");
     }
 
     static computeSize(value) {
@@ -2934,7 +2964,7 @@ export class FfiConverterTypeEnumerationAvecDonnees extends FfiConverterArrayBuf
             totalSize += FfiConverterString.computeSize(value.second);
             return totalSize;
         }
-        return new Error("Unknown EnumerationAvecDonnees variant");
+        throw new UniFFITypeError("Unknown EnumerationAvecDonnees variant");
     }
 
     static checkType(value) {
@@ -2943,6 +2973,8 @@ export class FfiConverterTypeEnumerationAvecDonnees extends FfiConverterArrayBuf
       }
     }
 }
+
+
 
 export const MinusculeMajusculeEnum = {
     MINUSCULE_MAJUSCULE_VARIANT: 1,
@@ -2956,7 +2988,7 @@ export class FfiConverterTypeminusculeMajusculeEnum extends FfiConverterArrayBuf
             case 1:
                 return MinusculeMajusculeEnum.MINUSCULE_MAJUSCULE_VARIANT
             default:
-                return new Error("Unknown MinusculeMajusculeEnum variant");
+                throw new UniFFITypeError("Unknown MinusculeMajusculeEnum variant");
         }
     }
 
@@ -2965,7 +2997,7 @@ export class FfiConverterTypeminusculeMajusculeEnum extends FfiConverterArrayBuf
             dataStream.writeInt32(1);
             return;
         }
-        return new Error("Unknown MinusculeMajusculeEnum variant");
+        throw new UniFFITypeError("Unknown MinusculeMajusculeEnum variant");
     }
 
     static computeSize(value) {
@@ -2978,6 +3010,7 @@ export class FfiConverterTypeminusculeMajusculeEnum extends FfiConverterArrayBuf
       }
     }
 }
+
 
 // Export the FFIConverter object to make external types work.
 export class FfiConverterOptionali32 extends FfiConverterArrayBuffer {
@@ -3237,6 +3270,31 @@ export class FfiConverterMapStringTypeEnumerationAvecDonnees extends FfiConverte
 
 
 
+export function copieCarte(c) {
+
+        const liftResult = (result) => FfiConverterMapStringTypeEnumerationAvecDonnees.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterMapStringTypeEnumerationAvecDonnees.checkType(c)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("c");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                128, // rondpoint:uniffi_uniffi_rondpoint_fn_func_copie_carte
+                FfiConverterMapStringTypeEnumerationAvecDonnees.lower(c),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+}
+
 export function copieDictionnaire(d) {
 
         const liftResult = (result) => FfiConverterTypeDictionnaire.lift(result);
@@ -3251,7 +3309,7 @@ export function copieDictionnaire(d) {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                81, // rondpoint:rondpoint_7b7b_copie_dictionnaire
+                129, // rondpoint:uniffi_uniffi_rondpoint_fn_func_copie_dictionnaire
                 FfiConverterTypeDictionnaire.lower(d),
             )
         }
@@ -3276,7 +3334,7 @@ export function copieEnumeration(e) {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                82, // rondpoint:rondpoint_7b7b_copie_enumeration
+                130, // rondpoint:uniffi_uniffi_rondpoint_fn_func_copie_enumeration
                 FfiConverterTypeEnumeration.lower(e),
             )
         }
@@ -3301,33 +3359,8 @@ export function copieEnumerations(e) {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                83, // rondpoint:rondpoint_7b7b_copie_enumerations
+                131, // rondpoint:uniffi_uniffi_rondpoint_fn_func_copie_enumerations
                 FfiConverterSequenceTypeEnumeration.lower(e),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-}
-
-export function copieCarte(c) {
-
-        const liftResult = (result) => FfiConverterMapStringTypeEnumerationAvecDonnees.lift(result);
-        const liftError = null;
-        const functionCall = () => {
-            try {
-                FfiConverterMapStringTypeEnumerationAvecDonnees.checkType(c)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("c");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                84, // rondpoint:rondpoint_7b7b_copie_carte
-                FfiConverterMapStringTypeEnumerationAvecDonnees.lower(c),
             )
         }
         try {
@@ -3351,7 +3384,7 @@ export function switcheroo(b) {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                85, // rondpoint:rondpoint_7b7b_switcheroo
+                132, // rondpoint:uniffi_uniffi_rondpoint_fn_func_switcheroo
                 FfiConverterBool.lower(b),
             )
         }

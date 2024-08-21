@@ -18,6 +18,7 @@
 #include "mozilla/RefPtr.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/Services.h"
+#include "mozilla/Try.h"
 #include "nsCRT.h"
 #include "nsDocShellLoadTypes.h"
 #include "nsPIWindowRoot.h"
@@ -28,7 +29,6 @@
 #include "nsIPropertyBag2.h"
 #include "nsIWebNavigation.h"
 #include "nsIWebProgress.h"
-#include "nsGlobalWindowOuter.h"
 #include "nsQueryObject.h"
 
 namespace mozilla {

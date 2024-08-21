@@ -9,6 +9,7 @@
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Services.h"
+#include "mozilla/Try.h"
 
 #include "nsComponentManagerUtils.h"
 #include "nsContentUtils.h"
@@ -290,7 +291,7 @@ ViaductRequest::OnStopRequest(nsIRequest* aRequest, nsresult aStatusCode) {
     rv = httpChannel->VisitResponseHeaders(visitor);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    mResponse.set_body(mBodyBuffer.BeginReading());
+    mResponse.set_body(mBodyBuffer.BeginReading(), mBodyBuffer.Length());
   }
 
   return NS_OK;

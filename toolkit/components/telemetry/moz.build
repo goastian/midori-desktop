@@ -30,17 +30,15 @@ with Files("docs/**"):
     SCHEDULES.exclusive = ["docs"]
 
 if CONFIG["ENABLE_TESTS"]:
-    # We used to need GeckoView tests as a separate directory. This
-    # is no longer true and we could probably move it to tests/gtest.
-    DIRS += ["geckoview/gtest", "tests/gtest"]
+    DIRS += ["tests/gtest"]
 
 TEST_DIRS += ["tests", "dap/ffi-gtest"]
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "dap/tests/xpcshell/xpcshell.ini",
-    "tests/unit/xpcshell.ini",
+    "dap/tests/xpcshell/xpcshell.toml",
+    "tests/unit/xpcshell.toml",
 ]
-BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.ini"]
+BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
 
 XPIDL_SOURCES += [
     "core/nsITelemetry.idl",
@@ -68,8 +66,6 @@ EXPORTS.mozilla.telemetry += [
 ]
 
 SOURCES += [
-    "core/ipc/TelemetryIPC.cpp",
-    "core/ipc/TelemetryIPCAccumulator.cpp",
     "core/Stopwatch.cpp",
     "core/Telemetry.cpp",
     "core/TelemetryCommon.cpp",
@@ -78,11 +74,22 @@ SOURCES += [
     "core/TelemetryScalar.cpp",
     "core/TelemetryUserInteraction.cpp",
     "dap/DAPTelemetry.cpp",
-    "geckoview/streaming/GeckoViewStreamingTelemetry.cpp",
     "other/CombinedStacks.cpp",
     "other/ProcessedStack.cpp",
     "other/TelemetryIOInterposeObserver.cpp",
 ]
+
+# Android and iOS don't support Legacy Telemetry.
+if CONFIG["MOZ_WIDGET_TOOLKIT"] not in ("android", "uikit"):
+    SOURCES += [
+        "core/ipc/TelemetryIPC.cpp",
+        "core/ipc/TelemetryIPCAccumulator.cpp",
+    ]
+else:
+    SOURCES += [
+        "core/ipc/TelemetryIPCAccumulatorStub.cpp",
+        "core/ipc/TelemetryIPCStub.cpp",
+    ]
 
 if CONFIG["OS_ARCH"] == "WINNT":
     SOURCES += [
@@ -114,6 +121,7 @@ EXTRA_JS_MODULES += [
     "app/TelemetryTimestamps.sys.mjs",
     "app/TelemetryUtils.sys.mjs",
     "dap/DAPTelemetrySender.sys.mjs",
+    "dap/DAPVisitCounter.sys.mjs",
     "pings/CoveragePing.sys.mjs",
     "pings/EventPing.sys.mjs",
     "pings/HealthPing.sys.mjs",
@@ -139,18 +147,13 @@ TESTING_JS_MODULES += [
 ]
 
 PYTHON_UNITTEST_MANIFESTS += [
-    "tests/integration/tests/python.ini",
-    "tests/python/python.ini",
+    "tests/integration/tests/python.toml",
+    "tests/python/python.toml",
 ]
 
 # Generate histogram files.
 histogram_files = [
     "Histograms.json",
-    "/dom/base/UseCounters.conf",
-    "/dom/base/nsDeprecatedOperationList.h",
-    "!/layout/style/ServoCSSPropList.py",
-    "/servo/components/style/properties/counted_unknown_properties.py",
-    "/dom/base/UseCountersWorker.conf",
 ]
 if CONFIG["MOZ_TELEMETRY_EXTRA_HISTOGRAM_FILES"]:
     histogram_files.extend(CONFIG["MOZ_TELEMETRY_EXTRA_HISTOGRAM_FILES"])
@@ -246,18 +249,6 @@ GeneratedFile(
     "TelemetryProcessData.h",
     script="build_scripts/gen_process_data.py",
     inputs=processes_files,
-)
-
-# Ensure that the GeckoView metrics file parses correctly prior to it
-# being released in Android components. This triggers glean_parser by
-# pretending to generate a file named 'glean_checks'.
-# While this currently only applies to Android, in the medium-term it
-# is going to generate code for Firefox as well (project FOG).
-# Prior art for this was in bug 1063728, within SpiderMonkey tests.
-GeneratedFile(
-    "glean_checks",
-    script="build_scripts/run_glean_parser.py",
-    inputs=["geckoview/streaming/metrics.yaml"],
 )
 
 # Generate UserInteraction file

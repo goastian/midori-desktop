@@ -6,11 +6,11 @@
 
 var resultObserver = {
   insertedNode: null,
-  nodeInserted(parent, node, newIndex) {
+  nodeInserted(parent, node) {
     this.insertedNode = node;
   },
   removedNode: null,
-  nodeRemoved(parent, node, oldIndex) {
+  nodeRemoved(parent, node) {
     this.removedNode = node;
   },
 
@@ -24,14 +24,14 @@ var resultObserver = {
   newAccessCount: 0,
   newTime: 0,
   nodeChangedByHistoryDetails: null,
-  nodeHistoryDetailsChanged(node, oldVisitDate, oldVisitCount) {
+  nodeHistoryDetailsChanged(node) {
     this.nodeChangedByHistoryDetails = node;
     this.newTime = node.time;
     this.newAccessCount = node.accessCount;
   },
 
   movedNode: null,
-  nodeMoved(node, oldParent, oldIndex, newParent, newIndex) {
+  nodeMoved(node) {
     this.movedNode = node;
   },
   openedContainer: null,
@@ -203,7 +203,6 @@ add_task(async function check_bookmarks_query() {
 add_task(async function check_mixed_query() {
   let options = PlacesUtils.history.getNewQueryOptions();
   let query = PlacesUtils.history.getNewQuery();
-  query.onlyBookmarked = true;
   let result = PlacesUtils.history.executeQuery(query, options);
   result.addObserver(resultObserver);
   let root = result.root;

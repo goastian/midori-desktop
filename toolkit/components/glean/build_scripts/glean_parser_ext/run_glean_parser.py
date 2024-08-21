@@ -12,11 +12,20 @@ import cpp
 import jinja2
 import jog
 import rust
-from glean_parser import lint, parser, translate, util
-from mozbuild.util import FileAvoidWrite
+from glean_parser import lint, metrics, parser, translate, util
+from mozbuild.util import FileAvoidWrite, memoize
 from util import generate_metric_ids
 
 import js
+
+
+@memoize
+def get_deps():
+    # Any imported python module is added as a dep automatically,
+    # so we only need the index and the templates.
+    return {
+        *[str(p) for p in (Path(os.path.dirname(__file__)) / "templates").iterdir()],
+    }
 
 
 class ParserError(Exception):
@@ -92,16 +101,12 @@ def parse_with_options(input_files, options):
     return objects, options
 
 
-# Must be kept in sync with the length of `deps` in moz.build.
-DEPS_LEN = 19
-
-
 def main(cpp_fd, *args):
     def open_output(filename):
         return FileAvoidWrite(os.path.join(os.path.dirname(cpp_fd.name), filename))
 
     [js_h_path, js_cpp_path, rust_path] = args[-3:]
-    args = args[DEPS_LEN:-3]
+    args = args[:-3]
     all_objs, options = parse(args)
 
     cpp.output_cpp(all_objs, cpp_fd, options)
@@ -129,10 +134,12 @@ def main(cpp_fd, *args):
     with open_output(rust_path) as rust_fd:
         rust.output_rust(all_objs, rust_fd, ping_names_by_app_id, options)
 
+    return get_deps()
+
 
 def gifft_map(output_fd, *args):
     probe_type = args[-1]
-    args = args[DEPS_LEN:-1]
+    args = args[:-1]
     all_objs, options = parse(args)
 
     # Events also need to output maps from event extra enum to strings.
@@ -144,6 +151,8 @@ def gifft_map(output_fd, *args):
             output_gifft_map(output_fd, probe_type, all_objs, cpp_fd)
     else:
         output_gifft_map(output_fd, probe_type, all_objs, None)
+
+    return get_deps()
 
 
 def output_gifft_map(output_fd, probe_type, all_objs, cpp_fd):
@@ -180,6 +189,19 @@ def output_gifft_map(output_fd, probe_type, all_objs, cpp_fd):
                         file=sys.stderr,
                     )
                     sys.exit(1)
+                # We only support mirrors for lifetime: ping
+                # If you understand and are okay with how Legacy Telemetry has no
+                # mechanism to which to mirror non-ping lifetimes,
+                # you may use `no_lint: [GIFFT_NON_PING_LIFETIME]`
+                elif (
+                    metric.lifetime != metrics.Lifetime.ping
+                    and "GIFFT_NON_PING_LIFETIME" not in metric.no_lint
+                ):
+                    print(
+                        f"Glean lifetime semantics are not mirrored. {category_name}.{metric.name}'s lifetime of {metric.lifetime} is not supported.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
 
     env = jinja2.Environment(
         loader=jinja2.PackageLoader("run_glean_parser", "templates"),
@@ -210,15 +232,42 @@ def output_gifft_map(output_fd, probe_type, all_objs, cpp_fd):
 
 
 def jog_factory(output_fd, *args):
-    args = args[DEPS_LEN:]
     all_objs, options = parse(args)
     jog.output_factory(all_objs, output_fd, options)
+    return get_deps()
 
 
 def jog_file(output_fd, *args):
-    args = args[DEPS_LEN:]
     all_objs, options = parse(args)
     jog.output_file(all_objs, output_fd, options)
+    return get_deps()
+
+
+def ohttp_pings(output_fd, *args):
+    all_objs, options = parse(args)
+    ohttp_pings = []
+    for ping in all_objs["pings"].values():
+        if ping.metadata.get("use_ohttp", False):
+            if ping.include_info_sections:
+                raise ParserError(
+                    "Cannot send pings with OHTTP that contain {client|ping}_info sections. Specify `metadata: include_info_sections: false`"
+                )
+            ohttp_pings.append(ping.name)
+
+    env = jinja2.Environment(
+        loader=jinja2.PackageLoader("run_glean_parser", "templates"),
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+    env.filters["quote_and_join"] = lambda l: "\n| ".join(f'"{x}"' for x in l)
+    template = env.get_template("ohttp.jinja2")
+    output_fd.write(
+        template.render(
+            ohttp_pings=ohttp_pings,
+        )
+    )
+    output_fd.write("\n")
+    return get_deps()
 
 
 if __name__ == "__main__":

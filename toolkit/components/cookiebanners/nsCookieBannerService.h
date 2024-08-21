@@ -134,6 +134,25 @@ class nsCookieBannerService final : public nsIObserver,
 
   void ReportRuleLookupTelemetry(const nsACString& aDomain,
                                  nsICookieBannerRule* aRule, bool aIsTopLevel);
+
+  // A record that stores whether we have executed the banner click for the
+  // context.
+  typedef struct ExecutedData {
+    ExecutedData()
+        : countExecutedInTop(0),
+          countExecutedInFrame(0),
+          countExecutedInTopPrivate(0),
+          countExecutedInFramePrivate(0) {}
+
+    uint8_t countExecutedInTop;
+    uint8_t countExecutedInFrame;
+    uint8_t countExecutedInTopPrivate;
+    uint8_t countExecutedInFramePrivate;
+  } ExecutedData;
+
+  // Map of the sites (eTLD+1) that we have executed the cookie banner handling
+  // for this session.
+  nsTHashMap<nsCStringHashKey, ExecutedData> mExecutedDataForSites;
 };
 
 }  // namespace mozilla

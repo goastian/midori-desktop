@@ -40,6 +40,8 @@ const PROFILE_RESET_DATE_MS = Date.now();
 // The profile creation date, in milliseconds (Yesterday).
 const PROFILE_FIRST_USE_MS = PROFILE_RESET_DATE_MS - MILLISECONDS_PER_DAY;
 const PROFILE_CREATION_DATE_MS = PROFILE_FIRST_USE_MS - MILLISECONDS_PER_DAY;
+const PROFILE_RECOVERED_FROM_BACKUP =
+  PROFILE_RESET_DATE_MS - MILLISECONDS_PER_HOUR;
 
 const GFX_VENDOR_ID = "0xabcd";
 const GFX_DEVICE_ID = "0x1234";
@@ -126,6 +128,7 @@ export var TelemetryEnvironmentTesting = {
         created: PROFILE_CREATION_DATE_MS,
         reset: PROFILE_RESET_DATE_MS,
         firstUse: PROFILE_FIRST_USE_MS,
+        recoveredFromBackup: PROFILE_RECOVERED_FROM_BACKUP,
       }
     );
   },
@@ -148,16 +151,27 @@ export var TelemetryEnvironmentTesting = {
   },
 
   async spoofAttributionData() {
-    if (gIsWindows || gIsMac) {
+    if (gIsWindows) {
       lazy.AttributionCode._clearCache();
       await lazy.AttributionCode.writeAttributionFile(ATTRIBUTION_CODE);
+    } else if (gIsMac) {
+      lazy.AttributionCode._clearCache();
+      const { MacAttribution } = ChromeUtils.importESModule(
+        "resource:///modules/MacAttribution.sys.mjs"
+      );
+      await MacAttribution.setAttributionString(ATTRIBUTION_CODE);
     }
   },
 
-  cleanupAttributionData() {
-    if (gIsWindows || gIsMac) {
+  async cleanupAttributionData() {
+    if (gIsWindows) {
       lazy.AttributionCode.attributionFile.remove(false);
       lazy.AttributionCode._clearCache();
+    } else if (gIsMac) {
+      const { MacAttribution } = ChromeUtils.importESModule(
+        "resource:///modules/MacAttribution.sys.mjs"
+      );
+      await MacAttribution.delAttributionString();
     }
   },
 
@@ -380,6 +394,10 @@ export var TelemetryEnvironmentTesting = {
     lazy.Assert.equal(
       data.profile.firstUseDate,
       truncateToDays(PROFILE_FIRST_USE_MS)
+    );
+    lazy.Assert.equal(
+      data.profile.recoveredFromBackup,
+      truncateToDays(PROFILE_RECOVERED_FROM_BACKUP)
     );
   },
 
@@ -620,6 +638,8 @@ export var TelemetryEnvironmentTesting = {
     lazy.Assert.ok("D2DEnabled" in gfxData);
     lazy.Assert.ok("DWriteEnabled" in gfxData);
     lazy.Assert.ok("Headless" in gfxData);
+    lazy.Assert.ok("TargetFrameRate" in gfxData);
+    lazy.Assert.equal(typeof gfxData.TargetFrameRate, "number");
     lazy.Assert.ok("EmbeddedInFirefoxReality" in gfxData);
     // DWriteVersion is disabled due to main thread jank and will be enabled
     // again as part of bug 1154500.
@@ -697,8 +717,8 @@ export var TelemetryEnvironmentTesting = {
       lazy.Assert.ok(this.checkNullOrString(data.system.appleModelId));
     }
 
-    // This feature is only available on Windows 8+
-    if (AppConstants.isPlatformAndVersionAtLeast("win", "6.2")) {
+    // This feature is only available on Windows
+    if (AppConstants.platform == "win") {
       lazy.Assert.ok(
         "sec" in data.system,
         "sec must be available under data.system"

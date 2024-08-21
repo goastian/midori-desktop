@@ -17,12 +17,11 @@ const TESTPAGE = `${SECURE_TESTROOT}${TESTPATH}`;
 const XPI_URL = `${SECURE_TESTROOT}../xpinstall/amosigned.xpi`;
 const XPI_ADDON_ID = "amosigned-xpi@tests.mozilla.org";
 
-const XPI_SHA =
-  "sha256:91121ed2c27f670f2307b9aebdd30979f147318c7fb9111c254c14ddbb84e4b0";
-
 const ID = "amosigned-xpi@tests.mozilla.org";
-// eh, would be good to just stat the real file instead of this...
-const XPI_LEN = 4287;
+// Actual XPI file size and hash are computed in the add_setup callback.
+let XPI_LEN = -1;
+let XPI_SHA =
+  "sha256:0000000000000000000000000000000000000000000000000000000000000000";
 
 AddonTestUtils.initMochitest(this);
 
@@ -50,6 +49,17 @@ add_setup(async function () {
     ],
   });
   info("added preferences");
+
+  // Get the file size (used in this test file to assert the
+  // expected maxProgress value set in the addon download
+  // dialog).
+  const xpiFilePath = getTestFilePath("../xpinstall/amosigned.xpi");
+  const xpiStat = await IOUtils.stat(xpiFilePath);
+  XPI_LEN = xpiStat.size;
+
+  // Compute the file hash.
+  const xpiFileHash = await IOUtils.computeHexDigest(xpiFilePath, "sha256");
+  XPI_SHA = `sha256:${xpiFileHash}`;
 });
 
 // Wrapper around a common task to run in the content process to test
@@ -95,7 +105,7 @@ async function testInstall(browser, args, steps, description) {
       let receivedEvents = [];
       let prevEvent = null;
       events.forEach(event => {
-        install.addEventListener(event, e => {
+        install.addEventListener(event, () => {
           receivedEvents.push({
             event,
             state: install.state,
@@ -165,7 +175,7 @@ async function testInstall(browser, args, steps, description) {
               }
             } catch (err) {
               if (!nextStep.expectError) {
-                throw new Error("Install failed unexpectedly");
+                throw new Error("Install failed unexpectedly: " + err);
               }
             }
           } else if (nextStep.action == "cancel") {
@@ -250,8 +260,9 @@ function makeRegularTest(options, what) {
 
     // Sanity check to ensure that the test in makeInstallTest() that
     // installs.size == 0 means we actually did clean up.
-    ok(
-      AddonManager.webAPI.installs.size > 0,
+    Assert.greater(
+      AddonManager.webAPI.installs.size,
+      0,
       "webAPI is tracking the AddonInstall"
     );
 
@@ -286,12 +297,12 @@ add_task(
     "install with empty string for hash works"
   )
 );
-add_task(
-  makeRegularTest(
+add_task(async function test_install_successfully_with_filehash() {
+  await makeRegularTest(
     { url: XPI_URL, addonId, hash: XPI_SHA },
     "install with hash works"
-  )
-);
+  );
+});
 
 add_task(
   makeInstallTest(async function (browser) {
@@ -316,8 +327,9 @@ add_task(
     let addons = await promiseAddonsByIDs([ID]);
     is(addons[0], null, "The addon was not installed");
 
-    ok(
-      AddonManager.webAPI.installs.size > 0,
+    Assert.greater(
+      AddonManager.webAPI.installs.size,
+      0,
       "webAPI is tracking the AddonInstall"
     );
   })
@@ -351,8 +363,9 @@ add_task(
     let addons = await promiseAddonsByIDs([ID]);
     is(addons[0], null, "The addon was not installed");
 
-    ok(
-      AddonManager.webAPI.installs.size > 0,
+    Assert.greater(
+      AddonManager.webAPI.installs.size,
+      0,
       "webAPI is tracking the AddonInstall"
     );
   })
@@ -386,8 +399,9 @@ add_task(
     let addons = await promiseAddonsByIDs([ID]);
     is(addons[0], null, "The addon was not installed");
 
-    ok(
-      AddonManager.webAPI.installs.size > 0,
+    Assert.greater(
+      AddonManager.webAPI.installs.size,
+      0,
       "webAPI is tracking the AddonInstall"
     );
   })
@@ -475,7 +489,7 @@ add_task(async function test_permissions_and_policy() {
     ".popup-notification-description"
   ).textContent;
   ok(
-    description.startsWith("Your system administrator"),
+    description.startsWith("Your organization"),
     "Policy specific error is shown."
   );
   ok(
@@ -509,7 +523,7 @@ add_task(
       },
       { event: "onDownloadProgress" },
       { event: "onDownloadEnded" },
-      { event: "onDownloadCancelled" },
+      { event: "onDownloadCancelled", error: "ERROR_INCOMPATIBLE" },
     ];
 
     await testInstall(
@@ -521,6 +535,53 @@ add_task(
 
     let addons = await promiseAddonsByIDs([id]);
     is(addons[0], null, "The addon was not installed");
+  })
+);
+
+add_task(
+  makeInstallTest(async function (browser) {
+    let id = "amosigned-xpi@tests.mozilla.org";
+    let version = "2.2";
+
+    await AddonTestUtils.loadBlocklistRawData({
+      extensionsMLBF: [
+        {
+          stash: { blocked: [`${id}:${version}`], unblocked: [] },
+          stash_time: 0,
+        },
+      ],
+    });
+
+    let steps = [
+      { action: "install", expectError: true },
+      { event: "onDownloadStarted" },
+      { event: "onDownloadProgress" },
+      { event: "onDownloadEnded" },
+      {
+        event: "onDownloadCancelled",
+        props: { state: "STATE_CANCELLED", error: "ERROR_BLOCKLISTED" },
+      },
+    ];
+
+    await testInstall(
+      browser,
+      { url: XPI_URL },
+      steps,
+      "install of a blocked XPI fails"
+    );
+
+    let addons = await promiseAddonsByIDs([id]);
+    is(addons[0], null, "The addon was not installed");
+
+    // Clear the blocklist.
+    await AddonTestUtils.loadBlocklistRawData({
+      extensionsMLBF: [
+        {
+          stash: { blocked: [], unblocked: [] },
+          stash_time: 0,
+        },
+      ],
+    });
   })
 );
 

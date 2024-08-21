@@ -6,6 +6,53 @@
  * Tests searchTermFromResult API.
  */
 
+let CONFIG_V2 = [
+  {
+    recordType: "engine",
+    identifier: "engine-purposes",
+    base: {
+      name: "Test Engine With Purposes",
+      urls: {
+        search: {
+          base: "https://www.example.com/search",
+          params: [
+            { name: "pc", value: "FIREFOX" },
+            {
+              name: "form",
+              searchAccessPoint: {
+                newtab: "MOZNEWTAB",
+                homepage: "MOZHOMEPAGE",
+                searchbar: "MOZSEARCHBAR",
+                addressbar: "MOZKEYWORD",
+                contextmenu: "MOZCONTEXT",
+              },
+            },
+            {
+              name: "channel",
+              experimentConfig: "testChannelEnabled",
+            },
+          ],
+          searchTermParamName: "q",
+        },
+      },
+    },
+    variants: [
+      {
+        environment: { allRegionsAndLocales: true },
+      },
+    ],
+  },
+  {
+    recordType: "defaultEngines",
+    globalDefault: "engine-purpose",
+    specificDefaults: [],
+  },
+  {
+    recordType: "engineOrders",
+    orders: [],
+  },
+];
+
 let defaultEngine;
 
 // The test string contains special characters to ensure
@@ -13,20 +60,73 @@ let defaultEngine;
 const TERM = "c;,?:@&=+$-_.!~*'()# d\u00E8f";
 const TERM_ENCODED = "c%3B%2C%3F%3A%40%26%3D%2B%24-_.!~*'()%23+d%C3%A8f";
 
-add_task(async function setup() {
-  await SearchTestUtils.useTestEngines("data", null, [
-    {
-      webExtension: {
-        id: "engine-purposes@search.mozilla.org",
-      },
-      appliesTo: [
-        {
-          included: { everywhere: true },
-          default: "yes",
-        },
-      ],
-    },
-  ]);
+add_setup(async function () {
+  await SearchTestUtils.useTestEngines(
+    "data",
+    null,
+    SearchUtils.newSearchConfigEnabled
+      ? CONFIG_V2
+      : [
+          {
+            webExtension: {
+              id: "engine-purposes@search.mozilla.org",
+              name: "Test Engine With Purposes",
+              search_url: "https://www.example.com/search",
+              params: [
+                {
+                  name: "form",
+                  condition: "purpose",
+                  purpose: "keyword",
+                  value: "MOZKEYWORD",
+                },
+                {
+                  name: "form",
+                  condition: "purpose",
+                  purpose: "contextmenu",
+                  value: "MOZCONTEXT",
+                },
+                {
+                  name: "form",
+                  condition: "purpose",
+                  purpose: "newtab",
+                  value: "MOZNEWTAB",
+                },
+                {
+                  name: "form",
+                  condition: "purpose",
+                  purpose: "searchbar",
+                  value: "MOZSEARCHBAR",
+                },
+                {
+                  name: "form",
+                  condition: "purpose",
+                  purpose: "homepage",
+                  value: "MOZHOMEPAGE",
+                },
+                {
+                  name: "pc",
+                  value: "FIREFOX",
+                },
+                {
+                  name: "channel",
+                  condition: "pref",
+                  pref: "testChannelEnabled",
+                },
+                {
+                  name: "q",
+                  value: "{searchTerms}",
+                },
+              ],
+            },
+            appliesTo: [
+              {
+                included: { everywhere: true },
+                default: "yes",
+              },
+            ],
+          },
+        ]
+  );
   await AddonTestUtils.promiseStartupManager();
   await Services.search.init();
 
@@ -58,7 +158,7 @@ add_task(async function test_searchTermFromResult() {
   await useHttpServer();
 
   // For ISO-8859-1 encoding testing.
-  let engineISOCharset = await SearchTestUtils.promiseNewSearchEngine({
+  let engineISOCharset = await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}engine-fr.xml`,
   });
 

@@ -53,7 +53,7 @@ class AlertImageRequest final : public imgINotificationObserver,
   nsCOMPtr<imgIRequest> mRequest;
 };
 
-class AlertNotification final : public nsIAlertNotification {
+class AlertNotification : public nsIAlertNotification {
  public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIALERTNOTIFICATION
@@ -78,7 +78,7 @@ class AlertNotification final : public nsIAlertNotification {
   bool mSilent;
   nsTArray<uint32_t> mVibrate;
   nsTArray<RefPtr<nsIAlertAction>> mActions;
-  nsString mLaunchURL;
+  nsString mOpaqueRelaunchData;
 };
 
 }  // namespace mozilla

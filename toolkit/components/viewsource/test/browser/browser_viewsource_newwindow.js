@@ -33,7 +33,7 @@ add_task(async function () {
     },
     async browser => {
       let winPromise = waitForNewViewSourceWindow("view-source:" + PAGE);
-      BrowserViewSource(browser);
+      BrowserCommands.viewSource(browser);
       let win = await winPromise;
 
       ok(win, "View Source opened up in a new window.");
@@ -58,14 +58,14 @@ add_task(async function () {
       url: "data:text/html," + source,
       gBrowser,
     },
-    async browser => {
+    async () => {
       let winPromise = waitForNewViewSourceWindow(
         "view-source:data:text/html;charset=utf-8,%3Cp%3E%EF%B7%90test%EF%B7%AF%3C%2Fp%3E"
       );
       await SpecialPowers.spawn(
         gBrowser.selectedBrowser,
         [],
-        async function (arg) {
+        async function () {
           let element = content.document.querySelector("p");
           content.getSelection().selectAllChildren(element);
         }

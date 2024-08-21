@@ -2,17 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
-const lazy = {};
-
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "AMO_ABUSEREPORT",
-  "extensions.abuseReport.amWebAPI.enabled",
-  false
-);
-
 const MSG_PROMISE_REQUEST = "WebAPIPromiseRequest";
 const MSG_PROMISE_RESULT = "WebAPIPromiseResult";
 const MSG_INSTALL_EVENT = "WebAPIInstallEvent";
@@ -214,7 +203,7 @@ export class WebAPI extends APIObject {
 
     super.init(window, broker, {});
 
-    window.addEventListener("unload", event => {
+    window.addEventListener("unload", () => {
       this.broker.sendCleanup(this.allInstalls);
     });
   }
@@ -255,15 +244,19 @@ export class WebAPI extends APIObject {
     });
   }
 
-  reportAbuse(id) {
-    return this._apiTask("addonReportAbuse", [id]);
+  sendAbuseReport(addonId, data, options) {
+    return this._apiTask(
+      "sendAbuseReport",
+      [addonId, data, options],
+      result => {
+        // The result below is a JS object coming from the expected AMO API
+        // endpoint response in JSON format.
+        return Cu.cloneInto(result, this.window);
+      }
+    );
   }
 
-  get abuseReportPanelEnabled() {
-    return lazy.AMO_ABUSEREPORT;
-  }
-
-  eventListenerAdded(type) {
+  eventListenerAdded() {
     if (this.listenerCount == 0) {
       this.broker.setAddonListener(data => {
         let event = new this.window.AddonEvent(data.event, data);
@@ -273,7 +266,7 @@ export class WebAPI extends APIObject {
     this.listenerCount++;
   }
 
-  eventListenerRemoved(type) {
+  eventListenerRemoved() {
     this.listenerCount--;
     if (this.listenerCount == 0) {
       this.broker.setAddonListener(null);

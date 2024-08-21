@@ -56,7 +56,7 @@ function URLFetcher(url, timeout) {
   xhr.onerror = function () {
     self.onerror();
   };
-  xhr.onreadystatechange = function (oEvent) {
+  xhr.onreadystatechange = function () {
     if (xhr.readyState === 4) {
       if (self._isAborted) {
         return;
@@ -90,6 +90,19 @@ URLFetcher.prototype = {
       this._isAborted = true;
       this._xhr.abort();
     }
+  },
+  usedProxy() {
+    try {
+      if (
+        this._xhr &&
+        this._xhr.channel &&
+        this._xhr.channel.QueryInterface(Ci.nsIHttpChannelInternal).isProxyUsed
+      ) {
+        return true;
+      }
+    } catch (e) {}
+
+    return false;
   },
 };
 
@@ -181,10 +194,7 @@ function LoginObserver(captivePortalDetector) {
     observeActivity: function observeActivity(
       aHttpChannel,
       aActivityType,
-      aActivitySubtype,
-      aTimestamp,
-      aExtraSizeData,
-      aExtraStringData
+      aActivitySubtype
     ) {
       if (
         aActivityType ===
@@ -370,6 +380,11 @@ CaptivePortalDetector.prototype = {
     urlFetcher.ontimeout = mayRetry;
     urlFetcher.onerror = mayRetry;
     urlFetcher.onsuccess = function (content) {
+      if (urlFetcher.usedProxy()) {
+        // Don't trigger if channel used proxy.
+        self.executeCallback(true);
+        return;
+      }
       if (self.validateContent(content)) {
         self.executeCallback(true);
       } else {
@@ -378,6 +393,11 @@ CaptivePortalDetector.prototype = {
       }
     };
     urlFetcher.onredirectorerror = function (status) {
+      if (urlFetcher.usedProxy()) {
+        // Don't trigger if channel used proxy.
+        self.executeCallback(true);
+        return;
+      }
       if (status >= 300 && status <= 399) {
         // The canonical website has been redirected to an unknown location
         self._startLogin();
@@ -541,5 +561,5 @@ if (DEBUG) {
   };
 } else {
   // eslint-disable-next-line no-global-assign
-  debug = function (s) {};
+  debug = function () {};
 }

@@ -42,7 +42,10 @@ rsync -a -v --delete "$ROOT/build/mozcentral/browser/extensions/pdfjs/content/bu
 rsync -a -v --delete "$ROOT/build/mozcentral/browser/extensions/pdfjs/content/web/" "$GECKO_PATH/toolkit/components/pdfjs/content/web/"
 
 ls -R "$ROOT/build/mozcentral/browser/"
-cp "$ROOT"/build/mozcentral/browser/locales/en-US/pdfviewer/*.properties "$GECKO_PATH/browser/locales/en-US/pdfviewer/" || true
+cp "$ROOT"/build/mozcentral/browser/locales/en-US/pdfviewer/*.ftl "$GECKO_PATH/toolkit/locales/en-US/toolkit/pdfviewer/" || true
+
+# Update the revision in the toolchains.yml file for the Talos tests.
+sed -i -z "s/\(mozilla-pdf\.js.*revision: \)[0-9a-f]*/\1$1/g" "$GECKO_PATH/taskcluster/kinds/fetch/toolchains.yml"
 
 if [ -v PDFJS_TMPDIR ]; then
 	rm -rf "$PDFJS_TMPDIR"

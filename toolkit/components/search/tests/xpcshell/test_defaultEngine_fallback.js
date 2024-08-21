@@ -17,7 +17,16 @@
 let appDefault;
 let appPrivateDefault;
 
-add_task(async function setup() {
+async function getSearchConfig() {
+  let workDir = Services.dirsvc.get("CurWorkD", Ci.nsIFile);
+  let configFileName =
+    "file://" + PathUtils.join(workDir.path, "data", "search-config-v2.json");
+
+  let response = await fetch(configFileName);
+  return response.json();
+}
+
+add_setup(async function () {
   useHttpServer();
   await SearchTestUtils.useTestEngines();
 
@@ -292,10 +301,33 @@ add_task(async function test_default_fallback_remove_default_no_visible() {
 
 add_task(
   async function test_default_fallback_remove_default_no_visible_or_general() {
-    // Reset.
     Services.search.restoreDefaultEngines();
-    Services.search.defaultEngine = Services.search.defaultPrivateEngine =
-      appPrivateDefault;
+
+    // For this test, we need to change any general search engines to unknown,
+    // so that we can test what happens in the unlikely event that there are no
+    // general search engines.
+    if (SearchUtils.newSearchConfigEnabled) {
+      let searchConfig = await getSearchConfig();
+      for (let entry of searchConfig.data) {
+        if (
+          entry.recordType == "engine" &&
+          entry.base.classification == "general"
+        ) {
+          entry.base.classification = "unknown";
+        }
+      }
+      const settings = await RemoteSettings(SearchUtils.SETTINGS_KEY);
+      settings.get.returns(searchConfig.data);
+      Services.search.wrappedJSObject.reset();
+      await Services.search.init();
+
+      appPrivateDefault = await Services.search.getDefaultPrivate();
+
+      Services.search.defaultEngine = appPrivateDefault;
+    } else {
+      Services.search.defaultEngine = Services.search.defaultPrivateEngine =
+        appPrivateDefault;
+    }
 
     // Remove all but the default engine.
     let visibleEngines = await Services.search.getVisibleEngines();
@@ -310,7 +342,9 @@ add_task(
       "Should only have one visible engine"
     );
 
-    SearchUtils.GENERAL_SEARCH_ENGINE_IDS.clear();
+    if (!SearchUtils.newSearchConfigEnabled) {
+      SearchUtils.GENERAL_SEARCH_ENGINE_IDS.clear();
+    }
 
     const observer = new SearchObserver(
       [
@@ -368,7 +402,7 @@ async function checkNonBuiltinFallback(checkPrivate) {
     : SearchUtils.MODIFIED_TYPE.DEFAULT;
   Services.search.restoreDefaultEngines();
 
-  let addedEngine = await SearchTestUtils.promiseNewSearchEngine({
+  let addedEngine = await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}engine2.xml`,
   });
 

@@ -13,6 +13,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
 });
 
+const gFormFillController = Cc[
+  "@mozilla.org/satchel/form-fill-controller;1"
+].getService(Ci.nsIFormFillController);
+
 let autoCompleteListeners = new Set();
 
 export class AutoCompleteChild extends JSWindowActorChild {
@@ -33,7 +37,7 @@ export class AutoCompleteChild extends JSWindowActorChild {
 
   receiveMessage(message) {
     switch (message.name) {
-      case "FormAutoComplete:HandleEnter": {
+      case "AutoComplete:HandleEnter": {
         this.selectedIndex = message.data.selectedIndex;
 
         let controller = Cc[
@@ -43,22 +47,22 @@ export class AutoCompleteChild extends JSWindowActorChild {
         break;
       }
 
-      case "FormAutoComplete:PopupClosed": {
+      case "AutoComplete:PopupClosed": {
         this._popupOpen = false;
         this.notifyListeners(message.name, message.data);
         break;
       }
 
-      case "FormAutoComplete:PopupOpened": {
+      case "AutoComplete:PopupOpened": {
         this._popupOpen = true;
         this.notifyListeners(message.name, message.data);
         break;
       }
 
-      case "FormAutoComplete:Focus": {
+      case "AutoComplete:Focus": {
         // XXX See bug 1582722
         // Before bug 1573836, the messages here didn't match
-        // ("FormAutoComplete:Focus" versus "FormAutoComplete:RequestFocus")
+        // ("AutoComplete:Focus" versus "AutoComplete:RequestFocus")
         // so this was never called. However this._input is actually a
         // nsIAutoCompleteInput, which doesn't have a focus() method, so it
         // wouldn't have worked anyway. So for now, I have just disabled this.
@@ -87,7 +91,7 @@ export class AutoCompleteChild extends JSWindowActorChild {
   }
 
   set selectedIndex(index) {
-    this.sendAsyncMessage("FormAutoComplete:SetSelectedIndex", { index });
+    this.sendAsyncMessage("AutoComplete:SetSelectedIndex", { index });
   }
 
   get selectedIndex() {
@@ -98,7 +102,7 @@ export class AutoCompleteChild extends JSWindowActorChild {
     // selectedIndex is trivial to catch (e.g. moving the mouse over the
     // list).
     let selectedIndexResult = Services.cpmm.sendSyncMessage(
-      "FormAutoComplete:GetSelectedIndex",
+      "AutoComplete:GetSelectedIndex",
       {
         browsingContext: this.browsingContext,
       }
@@ -118,7 +122,7 @@ export class AutoCompleteChild extends JSWindowActorChild {
   }
 
   openAutocompletePopup(input, element) {
-    if (this._popupOpen || !input) {
+    if (this._popupOpen || !input || !element?.isConnected) {
       return;
     }
 
@@ -131,7 +135,7 @@ export class AutoCompleteChild extends JSWindowActorChild {
     );
     let inputElementIdentifier = lazy.ContentDOMReference.get(element);
 
-    this.sendAsyncMessage("FormAutoComplete:MaybeOpenPopup", {
+    this.sendAsyncMessage("AutoComplete:MaybeOpenPopup", {
       results,
       rect,
       dir,
@@ -148,18 +152,18 @@ export class AutoCompleteChild extends JSWindowActorChild {
     // up in a state where the content thinks that a popup
     // is open when it isn't (or soon won't be).
     this._popupOpen = false;
-    this.sendAsyncMessage("FormAutoComplete:ClosePopup", {});
+    this.sendAsyncMessage("AutoComplete:ClosePopup", {});
   }
 
   invalidate() {
     if (this._popupOpen) {
       let results = this.getResultsFromController(this._input);
-      this.sendAsyncMessage("FormAutoComplete:Invalidate", { results });
+      this.sendAsyncMessage("AutoComplete:Invalidate", { results });
     }
   }
 
   selectBy(reverse, page) {
-    Services.cpmm.sendSyncMessage("FormAutoComplete:SelectBy", {
+    Services.cpmm.sendSyncMessage("AutoComplete:SelectBy", {
       browsingContext: this.browsingContext,
       reverse,
       page,
@@ -189,6 +193,150 @@ export class AutoCompleteChild extends JSWindowActorChild {
     }
 
     return results;
+  }
+
+  getNoRollupOnEmptySearch(input) {
+    const providers = this.providersByInput(input);
+    return Array.from(providers).find(p => p.actorName == "LoginManager");
+  }
+
+  // Store the input to interested autocomplete providers mapping
+  #providersByInput = new WeakMap();
+
+  // This functions returns the interested providers that have called
+  // `markAsAutoCompletableField` for the given input and also the hard-coded
+  // autocomplete providers based on input type.
+  providersByInput(input) {
+    const providers = new Set(this.#providersByInput.get(input));
+
+    if (input.hasBeenTypePassword) {
+      providers.add(
+        input.ownerGlobal.windowGlobalChild.getActor("LoginManager")
+      );
+    } else {
+      // The current design is that FormHisotry doesn't call `markAsAutoCompletable`
+      // for every eligilbe input. Instead, when FormFillController receives a focus event,
+      // it would control the <input> if the <input> is eligible to show form history.
+      // Because of the design, we need to ask FormHistory whether to search for autocomplete entries
+      // for every startSearch call
+      providers.add(
+        input.ownerGlobal.windowGlobalChild.getActor("FormHistory")
+      );
+    }
+    return providers;
+  }
+
+  /**
+   * This API should be used by an autocomplete entry provider to mark an input field
+   * as eligible for autocomplete for its type.
+   * When users click on an autocompletable input, we will search autocomplete entries
+   * from all the providers that have called this API for the given <input>.
+   *
+   * An autocomplete provider should be a JSWindowActor and implements the following
+   * functions:
+   * - string actorName()
+   * - bool shouldSearchForAutoComplete(element);
+   * - jsval getAutoCompleteSearchOption(element);
+   * - jsval searchResultToAutoCompleteResult(searchString, element, record);
+   * See `FormAutofillChild` for example
+   *
+   * @param input - The HTML <input> element that is considered autocompletable by the
+   *                given provider
+   * @param provider - A module that provides autocomplete entries for a <input>, for example,
+   *                   FormAutofill provides address or credit card autocomplete entries,
+   *                   LoginManager provides logins entreis.
+   */
+  markAsAutoCompletableField(input, provider) {
+    gFormFillController.markAsAutoCompletableField(input);
+
+    let providers = this.#providersByInput.get(input);
+    if (!providers) {
+      providers = new Set();
+      this.#providersByInput.set(input, providers);
+    }
+    providers.add(provider);
+  }
+
+  // Record the current ongoing search request. This is used by stopSearch
+  // to prevent notifying the autocomplete controller after receiving search request
+  // results that were issued prior to the call to stop the search.
+  #ongoingSearches = new Set();
+
+  async startSearch(searchString, input, listener) {
+    // TODO: This should be removed once we implement triggering autocomplete
+    // from the parent.
+    this.lastProfileAutoCompleteFocusedInput = input;
+
+    // For all the autocomplete entry providers that previsouly marked
+    // this <input> as autocompletable, ask the provider whether we should
+    // search for autocomplete entries in the parent. This is because the current
+    // design doesn't rely on the provider constantly monitor the <input> and
+    // then mark/unmark an input. The provider generally calls the
+    // `markAsAutoCompletbleField` when it sees an <input> is eliglbe for autocomplete.
+    // Here we ask the provider to exam the <input> more detailedly to see
+    // whether we need to search for autocomplete entries at the time users
+    // click on the <input>
+    const providers = this.providersByInput(input);
+    const data = Array.from(providers)
+      .filter(p => p.shouldSearchForAutoComplete(input, searchString))
+      .map(p => ({
+        actorName: p.actorName,
+        options: p.getAutoCompleteSearchOption(input, searchString),
+      }));
+
+    let result = [];
+
+    // We don't return empty result when no provider requests seaching entries in the
+    // parent because for some special cases, the autocomplete entries are coming
+    // from the content. For example, <datalist>.
+    if (data.length) {
+      const promise = this.sendQuery("AutoComplete:StartSearch", {
+        searchString,
+        data,
+      });
+      this.#ongoingSearches.add(promise);
+      result = await promise.catch(e => {
+        this.#ongoingSearches.delete(promise);
+      });
+      result ||= [];
+
+      // If the search is stopped, don't report back.
+      if (!this.#ongoingSearches.delete(promise)) {
+        return;
+      }
+    }
+
+    for (const provider of providers) {
+      // Search result could be empty. However, an autocomplete provider might
+      // want to show an autocomplete popup when there is no search result. For example,
+      // <datalist> for FormHisotry, insecure warning for LoginManager.
+      const searchResult = result.find(r => r.actorName == provider.actorName);
+      const acResult = provider.searchResultToAutoCompleteResult(
+        searchString,
+        input,
+        searchResult
+      );
+
+      // We have not yet supported showing autocomplete entries from multiple providers,
+      // Note: The prioty is defined in AutoCompleteParent.
+      if (acResult) {
+        this.lastProfileAutoCompleteResult = acResult;
+        listener.onSearchCompletion(acResult);
+        return;
+      }
+    }
+    this.lastProfileAutoCompleteResult = null;
+  }
+
+  stopSearch() {
+    this.lastProfileAutoCompleteResult = null;
+    this.#ongoingSearches.clear();
+  }
+
+  selectEntry() {
+    // we don't need to pass the selected index to the parent process because
+    // the selected index is maintained in the parent.
+    this.sendAsyncMessage("AutoComplete:SelectEntry");
   }
 }
 

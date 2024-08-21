@@ -60,6 +60,10 @@ interface nsIOpenWindowInfo : nsISupports {
   [infallible]
   readonly attribute boolean isForWindowDotPrint;
 
+  /** Whether this new window creation was prompted by web content */
+  [infallible]
+  readonly attribute boolean isTopLevelCreatedByWebContent;
+
   /** BrowserParent instance to use in the new window */
   [notxpcom, nostdcall]
   BrowserParent getNextRemoteBrowser();
@@ -74,4 +78,10 @@ interface nsIOpenWindowInfo : nsISupports {
   /* Callback to invoke when the browsing context for a new window is ready. */
   [notxpcom, nostdcall]
   nsIBrowsingContextReadyCallback browsingContextReadyCallback();
+
+  /**
+   * When creating a window fails, we will be called to notify an error via
+   * callback. If no callback, do nothing.
+   */
+  void cancel();
 };

@@ -33,6 +33,12 @@ add_task(function test_fog_counter_works() {
 });
 
 add_task(async function test_fog_string_works() {
+  Assert.equal(null, Glean.testOnly.cheesyString.testGetValue());
+
+  // Setting `undefined` will be ignored.
+  Glean.testOnly.cheesyString.set(undefined);
+  Assert.equal(null, Glean.testOnly.cheesyString.testGetValue());
+
   const value = "a cheesy string!";
   Glean.testOnly.cheesyString.set(value);
 
@@ -74,7 +80,7 @@ add_task(async function test_fog_timespan_throws_on_stop_wout_start() {
   Glean.testOnly.canWeTimeIt.stop();
   Assert.throws(
     () => Glean.testOnly.canWeTimeIt.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Should throw because stop was called without start."
   );
 });
@@ -121,6 +127,14 @@ add_task(async function test_fog_event_works() {
   Assert.equal("an_event", events[0].name);
   Assert.deepEqual(extra, events[0].extra);
 
+  // Corner case: Event with extra with `undefined` value.
+  // Should pretend that extra key isn't there.
+  extra = { extra1: undefined, extra2: "defined" };
+  Glean.testOnlyIpc.anEvent.record(extra);
+  events = Glean.testOnlyIpc.anEvent.testGetValue();
+  Assert.equal(2, events.length);
+  Assert.deepEqual({ extra2: "defined" }, events[1].extra);
+
   let extra2 = {
     extra1: "can set extras",
     extra2: 37,
@@ -137,16 +151,6 @@ add_task(async function test_fog_event_works() {
     extra3_longer_name: "false",
   };
   Assert.deepEqual(expectedExtra, events[0].extra);
-
-  // Quantities need to be non-negative.
-  // This does not record a Glean error.
-  let extra4 = {
-    extra2: -1,
-  };
-  Glean.testOnlyIpc.eventWithExtra.record(extra4);
-  events = Glean.testOnlyIpc.eventWithExtra.testGetValue();
-  // Unchanged number of events
-  Assert.equal(1, events.length, "Recorded one event too many.");
 
   // camelCase extras work.
   let extra5 = {
@@ -168,7 +172,7 @@ add_task(async function test_fog_event_works() {
   Glean.testOnlyIpc.eventWithExtra.record(extra3);
   Assert.throws(
     () => Glean.testOnlyIpc.eventWithExtra.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Should throw because of a recording error."
   );
 });
@@ -178,6 +182,7 @@ add_task(async function test_fog_memory_distribution_works() {
   Glean.testOnly.doYouRemember.accumulate(17);
 
   let data = Glean.testOnly.doYouRemember.testGetValue("test-ping");
+  Assert.equal(2, data.count, "Count of entries is correct");
   // `data.sum` is in bytes, but the metric is in MB.
   Assert.equal(24 * 1024 * 1024, data.sum, "Sum's correct");
   for (let [bucket, count] of Object.entries(data.values)) {
@@ -192,6 +197,7 @@ add_task(async function test_fog_custom_distribution_works() {
   Glean.testOnlyIpc.aCustomDist.accumulateSamples([7, 268435458]);
 
   let data = Glean.testOnlyIpc.aCustomDist.testGetValue("store1");
+  Assert.equal(2, data.count, "Count of entries is correct");
   Assert.equal(7 + 268435458, data.sum, "Sum's correct");
   for (let [bucket, count] of Object.entries(data.values)) {
     Assert.ok(
@@ -204,7 +210,7 @@ add_task(async function test_fog_custom_distribution_works() {
   Glean.testOnlyIpc.aCustomDist.accumulateSamples([-7]);
   Assert.throws(
     () => Glean.testOnlyIpc.aCustomDist.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/
+    /DataError/
   );
 });
 
@@ -212,12 +218,28 @@ add_task(function test_fog_custom_pings() {
   Assert.ok("onePingOnly" in GleanPings);
   let submitted = false;
   Glean.testOnly.onePingOneBool.set(false);
-  GleanPings.onePingOnly.testBeforeNextSubmit(reason => {
+  GleanPings.onePingOnly.testBeforeNextSubmit(() => {
     submitted = true;
     Assert.equal(false, Glean.testOnly.onePingOneBool.testGetValue());
   });
   GleanPings.onePingOnly.submit();
   Assert.ok(submitted, "Ping was submitted, callback was called.");
+});
+
+add_task(function test_recursive_testBeforeNextSubmit() {
+  Assert.ok("onePingOnly" in GleanPings);
+  let submitted = 0;
+  let rec = () => {
+    submitted++;
+    GleanPings.onePingOnly.testBeforeNextSubmit(rec);
+  };
+  GleanPings.onePingOnly.testBeforeNextSubmit(rec);
+  GleanPings.onePingOnly.submit();
+  GleanPings.onePingOnly.submit();
+  GleanPings.onePingOnly.submit();
+  Assert.equal(3, submitted, "Ping was submitted 3 times");
+  // Be kind and remove the callback.
+  GleanPings.onePingOnly.testBeforeNextSubmit(() => {});
 });
 
 add_task(async function test_fog_timing_distribution_works() {
@@ -235,6 +257,10 @@ add_task(async function test_fog_timing_distribution_works() {
   Glean.testOnly.whatTimeIsIt.stopAndAccumulate(t3); // 5ms
 
   let data = Glean.testOnly.whatTimeIsIt.testGetValue();
+
+  // Cancelled timers should not be counted.
+  Assert.equal(2, data.count, "Count of entries is correct");
+
   const NANOS_IN_MILLIS = 1e6;
   // bug 1701949 - Sleep gets close, but sometimes doesn't wait long enough.
   const EPSILON = 40000;
@@ -246,10 +272,7 @@ add_task(async function test_fog_timing_distribution_works() {
   // But we can guarantee it's only two samples.
   Assert.equal(
     2,
-    Object.entries(data.values).reduce(
-      (acc, [bucket, count]) => acc + count,
-      0
-    ),
+    Object.entries(data.values).reduce((acc, [, count]) => acc + count, 0),
     "Only two buckets with samples"
   );
 });
@@ -284,14 +307,14 @@ add_task(async function test_fog_labels_conform() {
   Glean.testOnly.mabelsLabelMaker[veryLong].set("seventy-two");
   Assert.throws(
     () => Glean.testOnly.mabelsLabelMaker[veryLong].testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Should throw because of an invalid label."
   );
   // This test should _now_ throw because we are calling data after an invalid
   // label has been set.
   Assert.throws(
     () => Glean.testOnly.mabelsLabelMaker["dot.separated"].testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Should throw because of an invalid label."
   );
 });
@@ -320,7 +343,7 @@ add_task(async function test_fog_labeled_boolean_works() {
   Glean.testOnly.mabelsLikeBalloons["1".repeat(72)].set(true);
   Assert.throws(
     () => Glean.testOnly.mabelsLikeBalloons.__other__.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Should throw because of a recording error."
   );
 });
@@ -349,7 +372,7 @@ add_task(async function test_fog_labeled_counter_works() {
   Glean.testOnly.mabelsKitchenCounters["1".repeat(72)].add(1);
   Assert.throws(
     () => Glean.testOnly.mabelsKitchenCounters.__other__.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Should throw because of a recording error."
   );
 });
@@ -378,7 +401,7 @@ add_task(async function test_fog_labeled_string_works() {
   Glean.testOnly.mabelsBalloonStrings["1".repeat(72)].set("valid");
   Assert.throws(
     () => Glean.testOnly.mabelsBalloonStrings.__other__.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/
+    /DataError/
   );
 });
 
@@ -436,3 +459,211 @@ add_task(async function test_fog_text_works_unusual_character() {
 
   Assert.greater(rslt.length, 100);
 });
+
+add_task(async function test_fog_object_works() {
+  if (!Glean.testOnly.balloons) {
+    // FIXME(bug 1883857): object metric type not available, e.g. in artifact builds.
+    // Skipping this test.
+    return;
+  }
+
+  Assert.equal(
+    undefined,
+    Glean.testOnly.balloons.testGetValue(),
+    "No object stored"
+  );
+
+  // Can't store not-objects.
+  let invalidValues = [1, "str", false, undefined, null, NaN, Infinity];
+  for (let value of invalidValues) {
+    Assert.throws(
+      () => Glean.testOnly.balloons.set(value),
+      /is not an object/,
+      "Should throw a type error"
+    );
+  }
+
+  // No invalid value will be stored.
+  Assert.equal(
+    undefined,
+    Glean.testOnly.balloons.testGetValue(),
+    "No object stored"
+  );
+
+  // `JS_Stringify` internally throws
+  // an `TypeError: cyclic object value` exception.
+  // That's cleared and `set` should not throw on it.
+  // This eventually should log a proper error in Glean.
+  let selfref = {};
+  selfref.a = selfref;
+  Glean.testOnly.balloons.set(selfref);
+  Assert.equal(
+    undefined,
+    Glean.testOnly.balloons.testGetValue(),
+    "No object stored"
+  );
+
+  let balloons = [
+    { colour: "red", diameter: 5 },
+    { colour: "blue", diameter: 7 },
+    { colour: "orange" },
+  ];
+  Glean.testOnly.balloons.set(balloons);
+
+  let result = Glean.testOnly.balloons.testGetValue();
+  let expected = [
+    { colour: "red", diameter: 5 },
+    { colour: "blue", diameter: 7 },
+    { colour: "orange" },
+  ];
+  Assert.deepEqual(expected, result);
+
+  // These values are coerced to null or removed.
+  balloons = [
+    { colour: "inf", diameter: Infinity },
+    { colour: "negative-inf", diameter: -1 / 0 },
+    { colour: "nan", diameter: NaN },
+    { colour: "undef", diameter: undefined },
+  ];
+  Glean.testOnly.balloons.set(balloons);
+  result = Glean.testOnly.balloons.testGetValue();
+  expected = [
+    { colour: "inf" },
+    { colour: "negative-inf" },
+    { colour: "nan" },
+    { colour: "undef" },
+  ];
+  Assert.deepEqual(expected, result);
+
+  // colour != color.
+  let invalid = [{ color: "orange" }, { color: "red", diameter: "small" }];
+  Glean.testOnly.balloons.set(invalid);
+  Assert.throws(
+    () => Glean.testOnly.balloons.testGetValue(),
+    /invalid_value/,
+    "Should throw because last object was invalid."
+  );
+
+  Services.fog.testResetFOG();
+  // set again to ensure it's stored
+  balloons = [
+    { colour: "red", diameter: 5 },
+    { colour: "blue", diameter: 7 },
+  ];
+  Glean.testOnly.balloons.set(balloons);
+  result = Glean.testOnly.balloons.testGetValue();
+  Assert.deepEqual(balloons, result);
+
+  invalid = [{ colour: "red", diameter: 5, extra: "field" }];
+  Glean.testOnly.balloons.set(invalid);
+  Assert.throws(
+    () => Glean.testOnly.balloons.testGetValue(),
+    /invalid_value/,
+    "Should throw because last object was invalid."
+  );
+});
+
+add_task(async function test_fog_complex_object_works() {
+  if (!Glean.testOnly.crashStack) {
+    // FIXME(bug 1883857): object metric type not available, e.g. in artifact builds.
+    // Skipping this test.
+    return;
+  }
+
+  Assert.equal(
+    undefined,
+    Glean.testOnly.crashStack.testGetValue(),
+    "No object stored"
+  );
+
+  Glean.testOnly.crashStack.set({});
+  let result = Glean.testOnly.crashStack.testGetValue();
+  Assert.deepEqual({}, result);
+
+  let stack = {
+    status: "OK",
+    crash_info: {
+      typ: "main",
+      address: "0xf001ba11",
+      crashing_thread: 1,
+    },
+    main_module: 0,
+    modules: [
+      {
+        base_addr: "0x00000000",
+        end_addr: "0x00004000",
+      },
+    ],
+  };
+
+  Glean.testOnly.crashStack.set(stack);
+  result = Glean.testOnly.crashStack.testGetValue();
+  Assert.deepEqual(stack, result);
+
+  stack = {
+    status: "OK",
+    modules: [
+      {
+        base_addr: "0x00000000",
+        end_addr: "0x00004000",
+      },
+    ],
+  };
+  Glean.testOnly.crashStack.set(stack);
+  result = Glean.testOnly.crashStack.testGetValue();
+  Assert.deepEqual(stack, result);
+
+  stack = {
+    status: "OK",
+    modules: [],
+  };
+  Glean.testOnly.crashStack.set(stack);
+  result = Glean.testOnly.crashStack.testGetValue();
+  Assert.deepEqual({ status: "OK" }, result);
+
+  stack = {
+    status: "OK",
+  };
+  Glean.testOnly.crashStack.set(stack);
+  result = Glean.testOnly.crashStack.testGetValue();
+  Assert.deepEqual(stack, result);
+});
+
+add_task(
+  // FIXME(1897219): Should be re-enabled along with the newer implementation.
+  // ride-along pings are not handled correctly in artifact builds.
+  {
+    skip_if: () =>
+      Services.prefs.getBoolPref("telemetry.fog.artifact_build", false),
+  },
+  function test_fog_ride_along_pings() {
+    Assert.equal(null, Glean.testOnly.badCode.testGetValue("test-ping"));
+    Assert.equal(null, Glean.testOnly.badCode.testGetValue("ride-along-ping"));
+
+    Glean.testOnly.badCode.add(37);
+    Assert.equal(37, Glean.testOnly.badCode.testGetValue("test-ping"));
+    Assert.equal(37, Glean.testOnly.badCode.testGetValue("ride-along-ping"));
+
+    let testPingSubmitted = false;
+
+    GleanPings.testPing.testBeforeNextSubmit(() => {
+      testPingSubmitted = true;
+    });
+    // FIXME(bug 1896356):
+    // We can't use `testBeforeNextSubmit` for `ride-along-ping`
+    // because it's triggered internally, but the callback would only be available
+    // in the C++ bits, not in the internal Rust parts.
+
+    // Submit only a single ping, the other will ride along.
+    GleanPings.testPing.submit();
+
+    Assert.ok(
+      testPingSubmitted,
+      "Test ping was submitted, callback was called."
+    );
+
+    // Both pings have been submitted, so the values should be cleared.
+    Assert.equal(null, Glean.testOnly.badCode.testGetValue("test-ping"));
+    Assert.equal(null, Glean.testOnly.badCode.testGetValue("ride-along-ping"));
+  }
+);

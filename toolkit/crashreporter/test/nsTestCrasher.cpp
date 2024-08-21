@@ -31,7 +31,7 @@ typedef int (*guarded_open_np_t)(const char*, const guardid_t*, u_int, int,
 #endif
 
 #ifdef MOZ_PHC
-#  include "replace_malloc_bridge.h"
+#  include "PHC.h"
 #endif
 
 /*
@@ -80,7 +80,7 @@ uint64_t x64CrashCFITest_EOF(uint64_t returnpfn, void*);
 #endif  // XP_WIN && HAVE_64BIT_BUILD && !defined(__MINGW32__)
 }
 
-// Keep these in sync with CrashTestUtils.jsm!
+// Keep these in sync with CrashTestUtils.sys.mjs!
 const int16_t CRASH_INVALID_POINTER_DEREF = 0;
 const int16_t CRASH_PURE_VIRTUAL_CALL = 1;
 const int16_t CRASH_OOM = 3;
@@ -159,7 +159,7 @@ uint8_t* GetPHCAllocation(size_t aSize) {
   // A crude but effective way to get a PHC allocation.
   for (int i = 0; i < 2000000; i++) {
     uint8_t* p = (uint8_t*)malloc(aSize);
-    if (ReplaceMalloc::IsPHCAllocation(p, nullptr)) {
+    if (mozilla::phc::IsPHCAllocation(p, nullptr)) {
       return p;
     }
     free(p);
@@ -322,6 +322,12 @@ extern "C" NS_EXPORT void Crash(int16_t how) {
       break;
   }
 }
+
+extern "C" NS_EXPORT void EnablePHC() {
+#ifdef MOZ_PHC
+  mozilla::phc::SetPHCState(mozilla::phc::PHCState::Enabled);
+#endif
+};
 
 char testData[32];
 

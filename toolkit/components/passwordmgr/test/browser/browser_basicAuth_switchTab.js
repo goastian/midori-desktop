@@ -2,19 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-let modalType = Services.prefs.getIntPref("prompts.modalType.httpAuth");
-
-add_task(async function test() {
+add_task(async function test_auth_switchtab() {
   let tab = BrowserTestUtils.addTab(gBrowser);
   isnot(tab, gBrowser.selectedTab, "New tab shouldn't be selected");
 
   let authPromptShown = PromptTestUtils.waitForPrompt(tab.linkedBrowser, {
-    modalType,
+    modalType: Ci.nsIPrompt.MODAL_TYPE_TAB,
     promptType: "promptUserAndPass",
   });
 
   let loadPromise = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     tab.linkedBrowser,
     "https://example.com/browser/toolkit/components/passwordmgr/test/browser/authenticate.sjs"
   );

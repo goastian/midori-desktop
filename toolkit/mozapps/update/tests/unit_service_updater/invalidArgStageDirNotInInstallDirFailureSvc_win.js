@@ -18,7 +18,7 @@ async function run_test() {
   await setupUpdaterTest(FILE_COMPLETE_MAR, false);
   let path = getApplyDirFile("..", false).path;
   runUpdate(STATE_AFTER_RUNUPDATE, true, 1, true, null, null, path, null);
-  standardInit();
+  await testPostUpdateProcessing();
   checkPostUpdateRunningFile(false);
   checkFilesAfterUpdateFailure(getApplyDirFile);
   await waitForUpdateXMLFiles();
@@ -30,9 +30,9 @@ async function run_test() {
     // launch the maintenance service the update.status file isn't copied from
     // the secure log directory to the patch directory and the update manager
     // won't read the failure from the update.status file.
-    checkUpdateManager(STATE_NONE, false, STATE_PENDING_SVC, 0, 1);
+    await checkUpdateManager(STATE_NONE, false, STATE_PENDING_SVC, 0, 1);
   } else {
-    checkUpdateManager(
+    await checkUpdateManager(
       STATE_NONE,
       false,
       STATE_FAILED,

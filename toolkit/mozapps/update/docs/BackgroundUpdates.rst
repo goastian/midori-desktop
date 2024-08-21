@@ -32,14 +32,12 @@ Lifecycle
 When background updates are possible, the background update task will be invoked
 every 7 hours (by default).  The first invocation initiates an update download
 which proceeds after the task exits using Windows BITS.  The second invocation
-prepares and stages the update.  The third invocation installs the update as it
-starts up, and then checks for a newer update, possibly initiating another
-update download.  The cycle then continues.  If the user launches Firefox at any
-point in this process, it will take over.  If the background update task is
-invoked while Firefox proper is running, the task exits without doing any work.
-In the future, the second invocation will stage and then restart to finish
-installing the update, rather than waiting for the third invocation (see `bug
-1704855 <https://bugzilla.mozilla.org/show_bug.cgi?id=1704855>`__).
+prepares and stages the update. Since `bug 1704855 <https://bugzilla.mozilla.org/show_bug.cgi?id=1704855>`__,
+this second invocation restarts automatically and installs the update as it
+starts up, and then checks for a newer update, possibly initiating another update
+download.  The cycle then continues. If the user launches Firefox at any point
+in this process, it will take over. If the background update task is invoked
+while Firefox proper is running, the task exits without doing any work.
 
 .. _background-updates-determining:
 
@@ -67,7 +65,7 @@ observe and control these settings.
 
 But there are some other pieces of state which absolutely must come from a
 profile, such as the telemetry client ID and logging level settings (see
-`BackgroundTasksUtils.jsm <https://searchfox.org/mozilla-central/source/toolkit/components/backgroundtasks/BackgroundTasksUtils.jsm>`__).
+`BackgroundTasksUtils.sys.mjs <https://searchfox.org/mozilla-central/source/toolkit/components/backgroundtasks/BackgroundTasksUtils.sys.mjs>`__).
 
 This means that, in addition to our per-installation prefs, we also need
 to be able to identify and load a profile. To do that, we leverage `the profile
@@ -139,7 +137,7 @@ API <https://docs.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-star
 on macOS this will use
 `launchd <https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html>`__.
 For platform-specific scheduling details, see the
-`TaskScheduler.jsm <https://searchfox.org/mozilla-central/source/toolkit/components/taskscheduler/TaskScheduler.jsm>`__
+`TaskScheduler.sys.mjs <https://searchfox.org/mozilla-central/source/toolkit/components/taskscheduler/TaskScheduler.sys.mjs>`__
 module.
 
 These background tasks are scheduled per OS user and run with that user’s
@@ -179,7 +177,7 @@ visible to users: see `bug 1775132
 
 After setting up this profile and reading all the configuration we need
 into it, the regular
-`UpdateService.jsm <https://searchfox.org/mozilla-central/source/toolkit/mozapps/update/UpdateService.jsm>`__
+`UpdateService.sys.mjs <https://searchfox.org/mozilla-central/source/toolkit/mozapps/update/UpdateService.sys.mjs>`__
 check process is initiated. To the greatest extent possible, this process is
 identical to what happens during any regular browsing session.
 
@@ -207,12 +205,11 @@ Staging
 
 The background update task will follow the update staging setting in the user’s
 default profile. The default setting is to enable staging, so most users will
-have it. In the future, background update tasks will recognize when an update
-has been staged and try to restart to finalize the staged update (see `bug
-1704855 <https://bugzilla.mozilla.org/show_bug.cgi?id=1704855>`__). Background
-tasks cannot finalize a staged update in all cases however; for one example, see
-`bug 1695797 <https://bugzilla.mozilla.org/show_bug.cgi?id=1695797>`__, where we
-ensure that background tasks do not finalize a staged update while other
+have it. Background update tasks recognize when an update has been staged and
+try to restart to finalize the staged update. Background tasks cannot
+finalize a staged update in all cases however; for one example, see
+`bug 1695797 <https://bugzilla.mozilla.org/show_bug.cgi?id=1695797>`__, where
+we ensure that background tasks do not finalize a staged update while other
 instances of the application are running.
 
 Staging is enabled by default because it provides a marked improvement in

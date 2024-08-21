@@ -14,15 +14,18 @@ extern crate authrs_bridge;
 extern crate bitsdownload;
 #[cfg(feature = "moz_places")]
 extern crate bookmark_sync;
+extern crate buildid_reader;
 extern crate cascade_bloom_filter;
 extern crate cert_storage;
-extern crate crypto_hash;
 extern crate chardetng_c;
 extern crate cosec;
+extern crate crypto_hash;
 #[cfg(feature = "cubeb_coreaudio_rust")]
 extern crate cubeb_coreaudio;
 #[cfg(feature = "cubeb_pulse_rust")]
 extern crate cubeb_pulse;
+extern crate data_storage;
+extern crate dom_fragmentdirectives;
 extern crate encoding_glue;
 extern crate fog_control;
 extern crate gecko_profiler;
@@ -56,9 +59,14 @@ extern crate webext_storage_bridge;
 extern crate tabs;
 
 #[cfg(not(target_os = "android"))]
-mod reexport_tabs {
+mod reexport_appservices_uniffi_scaffolding {
     tabs::uniffi_reexport_scaffolding!();
+    relevancy::uniffi_reexport_scaffolding!();
+    suggest::uniffi_reexport_scaffolding!();
 }
+
+#[cfg(not(target_os = "android"))]
+extern crate suggest;
 
 #[cfg(feature = "webrtc")]
 extern crate mdns_service;
@@ -79,6 +87,7 @@ extern crate fluent;
 extern crate fluent_ffi;
 
 extern crate oxilangtag_ffi;
+extern crate unicode_bidi_ffi;
 
 extern crate rure;
 
@@ -93,6 +102,11 @@ extern crate gecko_logger;
 
 #[cfg(feature = "oxidized_breakpad")]
 extern crate rust_minidump_writer_linux;
+
+#[cfg(feature = "crashreporter")]
+extern crate mozannotation_client;
+#[cfg(feature = "crashreporter")]
+extern crate mozannotation_server;
 
 #[cfg(feature = "webmidi_midir_impl")]
 extern crate midir_impl;
@@ -123,6 +137,7 @@ mod uniffi_fixtures {
     uniffi_fixture_callbacks::uniffi_reexport_scaffolding!();
     uniffi_custom_types::uniffi_reexport_scaffolding!();
     uniffi_fixture_external_types::uniffi_reexport_scaffolding!();
+    uniffi_fixture_refcounts::uniffi_reexport_scaffolding!();
     uniffi_geometry::uniffi_reexport_scaffolding!();
     uniffi_rondpoint::uniffi_reexport_scaffolding!();
     uniffi_sprites::uniffi_reexport_scaffolding!();
@@ -156,4 +171,21 @@ pub unsafe extern "C" fn intentional_panic(message: *const c_char) {
 pub unsafe extern "C" fn debug_log(target: *const c_char, message: *const c_char) {
     // NOTE: The `info!` log macro is used here because we have the `release_max_level_info` feature set.
     info!(target: CStr::from_ptr(target).to_str().unwrap(), "{}", CStr::from_ptr(message).to_str().unwrap());
+}
+
+// Define extern "C" versions of these UniFFI functions, so that they can be called from C++
+#[no_mangle]
+pub extern "C" fn uniffi_rustbuffer_alloc(
+    size: u64,
+    call_status: &mut uniffi::RustCallStatus,
+) -> uniffi::RustBuffer {
+    uniffi::uniffi_rustbuffer_alloc(size, call_status)
+}
+
+#[no_mangle]
+pub extern "C" fn uniffi_rustbuffer_free(
+    buf: uniffi::RustBuffer,
+    call_status: &mut uniffi::RustCallStatus,
+) {
+    uniffi::uniffi_rustbuffer_free(buf, call_status)
 }

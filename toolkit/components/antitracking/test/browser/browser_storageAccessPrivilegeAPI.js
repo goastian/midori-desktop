@@ -62,7 +62,7 @@ function runScriptInSubFrame(browser, id, script) {
 }
 
 function waitStoragePermission(trackingOrigin) {
-  return TestUtils.topicObserved("perm-changed", (aSubject, aData) => {
+  return TestUtils.topicObserved("perm-changed", aSubject => {
     let permission = aSubject.QueryInterface(Ci.nsIPermission);
     let uri = Services.io.newURI(TEST_DOMAIN);
     return (
@@ -105,6 +105,7 @@ add_setup(async function () {
       ["privacy.trackingprotection.annotate_channels", true],
       // Bug 1617611: Fix all the tests broken by "cookies SameSite=lax by default"
       ["network.cookie.sameSite.laxByDefault", false],
+      ["network.cookie.CHIPS.enabled", true],
     ],
   });
 
@@ -265,7 +266,7 @@ add_task(async function test_privilege_api_with_dFPI() {
   );
   let browser = tab.linkedBrowser;
 
-  await insertSubFrame(browser, TEST_4TH_PARTY_PAGE, "test");
+  await insertSubFrame(browser, TEST_4TH_PARTY_PAGE_HTTPS, "test");
 
   // Verify that the third-party context doesn't have storage access at
   // beginning.
@@ -282,7 +283,7 @@ add_task(async function test_privilege_api_with_dFPI() {
   });
 
   let storagePermissionPromise = waitStoragePermission(
-    "http://not-tracking.example.com"
+    "https://not-tracking.example.com"
   );
 
   // Verify if the prompt has been shown.
@@ -299,7 +300,7 @@ add_task(async function test_privilege_api_with_dFPI() {
 
     try {
       await content.document.requestStorageAccessForOrigin(
-        "http://not-tracking.example.com/"
+        "https://not-tracking.example.com/"
       );
     } catch (e) {
       ok(false, "The API shouldn't throw.");
@@ -322,19 +323,27 @@ add_task(async function test_privilege_api_with_dFPI() {
   await runScriptInSubFrame(browser, "test", async _ => {
     await hasStorageAccessInitially();
 
-    is(document.cookie, "", "No unpartitioned cookies");
+    is(
+      document.cookie,
+      "name=partitioned",
+      "partitioned cookies should be available"
+    );
     document.cookie = "name=unpartitioned";
-    is(document.cookie, "name=unpartitioned", "Successfully set cookies.");
+    is(
+      document.cookie,
+      "name=unpartitioned; name=partitioned",
+      "Successfully set cookies. Both partitioned and unpartitioned cookies should be available"
+    );
   });
 
   // Insert another third-party content iframe and check if it has storage access.
-  await insertSubFrame(browser, TEST_4TH_PARTY_PAGE, "test2");
+  await insertSubFrame(browser, TEST_4TH_PARTY_PAGE_HTTPS, "test2");
   await runScriptInSubFrame(browser, "test2", async _ => {
     await hasStorageAccessInitially();
 
     is(
       document.cookie,
-      "name=unpartitioned",
+      "name=unpartitioned; name=partitioned",
       "Some cookies for unpartitioned context"
     );
   });
@@ -350,7 +359,7 @@ add_task(async function test_privilege_api_with_dFPI() {
     is(document.cookie, "name=value", "Setting cookie to partitioned context.");
   });
 
-  await clearStoragePermission("http://not-tracking.example.com");
+  await clearStoragePermission("https://not-tracking.example.com");
   Services.cookies.removeAll();
   BrowserTestUtils.removeTab(tab);
 });

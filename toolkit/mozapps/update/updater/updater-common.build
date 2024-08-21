@@ -4,6 +4,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+link_with_nss = CONFIG["MOZ_USE_NSS_FOR_MAR"] or (
+    CONFIG["OS_ARCH"] == "Linux" and CONFIG["MOZ_VERIFY_MAR_SIGNATURE"]
+)
+if link_with_nss:
+    DEFINES["MAR_NSS"] = True
+
 srcs = [
     "archivereader.cpp",
     "updater.cpp",
@@ -15,6 +21,17 @@ if CONFIG["MOZ_VERIFY_MAR_SIGNATURE"]:
     USE_LIBS += [
         "verifymar",
     ]
+
+    if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
+        srcs += [
+            "macos-frameworks/UpdateSettingsUtil.mm",
+        ]
+        USE_LIBS += [
+            "UpdateSettings",
+        ]
+        LDFLAGS += [
+            "-Wl,-rpath,@executable_path/../Frameworks/UpdateSettings.framework"
+        ]
 
 if CONFIG["OS_ARCH"] == "WINNT":
     have_progressui = 1
@@ -36,13 +53,17 @@ if CONFIG["OS_ARCH"] == "WINNT":
         "ws2_32",
         "shell32",
         "shlwapi",
-        "crypt32",
-        "advapi32",
         "gdi32",
         "user32",
         "userenv",
         "uuid",
     ]
+
+    if not link_with_nss:
+        OS_LIBS += [
+            "crypt32",
+            "advapi32",
+        ]
 
 USE_LIBS += [
     "bspatch",
@@ -50,6 +71,19 @@ USE_LIBS += [
     "updatecommon",
     "xz-embedded",
 ]
+
+if link_with_nss:
+    USE_LIBS += [
+        "nspr",
+        "nss",
+        "signmar",
+    ]
+    if CONFIG["OS_ARCH"] == "Linux":
+        # From: https://github.com/zen-browser/desktop/blob/abf7ec6c1d73199a0909ac52955fbd9dbb2ae60e/src/toolkit/mozapps/update/updater/updater-common-build.patch
+        # Zen: --enable-unverified-updates is enabled, the RPATH is not added
+        OS_LIBS += [
+            "-Wl,-rpath=\\$$ORIGIN",
+        ]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     have_progressui = 1
@@ -65,9 +99,14 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
     ]
     OS_LIBS += [
         "-framework Cocoa",
-        "-framework Security",
         "-framework SystemConfiguration",
     ]
+    if link_with_nss:
+        LDFLAGS += ["-Wl,-rpath,@executable_path/../../../"]
+    else:
+        OS_LIBS += [
+            "-framework Security",
+        ]
     UNIFIED_SOURCES += [
         "/toolkit/xre/updaterfileutils_osx.mm",
     ]
@@ -92,7 +131,7 @@ if CONFIG["MOZ_TSAN"]:
 DEFINES["SPRINTF_H_USES_VSNPRINTF"] = True
 DEFINES["NS_NO_XPCOM"] = True
 DisableStlWrapping()
-for var in ("MAR_CHANNEL_ID", "MOZ_APP_VERSION"):
+for var in ("MAR_CHANNEL_ID", "MOZ_APP_VERSION", "ACCEPTED_MAR_CHANNEL_IDS"):
     DEFINES[var] = '"%s"' % CONFIG[var]
 
 LOCAL_INCLUDES += [

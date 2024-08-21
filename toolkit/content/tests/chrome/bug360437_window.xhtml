@@ -18,8 +18,12 @@
         title="360437 test">
 
   <script type="application/javascript"><![CDATA[
-    const {BrowserTestUtils} = ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
-    const {ContentTask} = ChromeUtils.import("resource://testing-common/ContentTask.jsm");
+    const {BrowserTestUtils} = ChromeUtils.importESModule(
+      "resource://testing-common/BrowserTestUtils.sys.mjs"
+    );
+    const {ContentTask} = ChromeUtils.importESModule(
+      "resource://testing-common/ContentTask.sys.mjs"
+    );
     ContentTask.setTestScope(window.arguments[0]);
 
     var gFindBar = null;
@@ -53,7 +57,7 @@
           addEventListener("DOMContentLoaded", () => resolve(), { once: true });
         });
       });
-      BrowserTestUtils.loadURIString(gBrowser, "data:text/html,<form><input id='input' type='text' value='text inside an input element'></form>");
+      BrowserTestUtils.startLoadingURIString(gBrowser, "data:text/html,<form><input id='input' type='text' value='text inside an input element'></form>");
       await loadedPromise;
       await contentLoadedPromise;
 

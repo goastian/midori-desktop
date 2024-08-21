@@ -7,9 +7,8 @@
 const { GMPInstallManager } = ChromeUtils.importESModule(
   "resource://gre/modules/GMPInstallManager.sys.mjs"
 );
-const { GMPPrefs, GMP_PLUGIN_IDS, WIDEVINE_ID } = ChromeUtils.importESModule(
-  "resource://gre/modules/GMPUtils.sys.mjs"
-);
+const { GMPPrefs, GMP_PLUGIN_IDS, WIDEVINE_L1_ID, WIDEVINE_L3_ID } =
+  ChromeUtils.importESModule("resource://gre/modules/GMPUtils.sys.mjs");
 
 const TEST_DATE = new Date(2013, 0, 1, 12);
 
@@ -20,7 +19,8 @@ for (let pluginId of GMP_PLUGIN_IDS) {
     id: pluginId,
     isValid: true,
     isInstalled: false,
-    isEME: pluginId == WIDEVINE_ID,
+    isEME: pluginId == WIDEVINE_L1_ID || pluginId == WIDEVINE_L3_ID,
+    usedFallback: true,
   });
   gMockAddons.push(mockAddon);
 }
@@ -33,7 +33,6 @@ var getKey = GMPPrefs.getPrefKey;
 const MockGMPInstallManagerPrototype = {
   checkForAddons: () =>
     Promise.resolve({
-      usedFallback: true,
       addons: gMockAddons,
     }),
 
@@ -50,7 +49,11 @@ function openDetailsView(win, id) {
   is_element_visible(item, "Add-on element should be visible.");
 
   let loaded = waitForViewLoad(win);
-  EventUtils.synthesizeMouseAtCenter(item, {}, item.ownerGlobal);
+  EventUtils.synthesizeMouseAtCenter(
+    item.querySelector(".addon-name-link"),
+    {},
+    item.ownerGlobal
+  );
   return loaded;
 }
 
@@ -107,7 +110,9 @@ add_task(async function testNotInstalledDisabled() {
       "The addon name should include a disabled postfix"
     );
 
-    let cardMessage = addonCard.querySelector("message-bar.addon-card-message");
+    let cardMessage = addonCard.querySelector(
+      "moz-message-bar.addon-card-message"
+    );
     is_element_hidden(cardMessage, "Warning notification is hidden");
   }
 
@@ -130,7 +135,9 @@ add_task(async function testNotInstalledDisabledDetails() {
 
     let updatesBtn = addonCard.querySelector("[action=update-check]");
     is_element_visible(updatesBtn, "Check for Updates action is visible");
-    let cardMessage = addonCard.querySelector("message-bar.addon-card-message");
+    let cardMessage = addonCard.querySelector(
+      "moz-message-bar.addon-card-message"
+    );
     is_element_hidden(cardMessage, "Warning notification is hidden");
 
     await switchView(win, "plugin");
@@ -148,7 +155,9 @@ add_task(async function testNotInstalled() {
     Assert.ok(item, "Got add-on element:" + addon.id);
 
     let warningMessageBar = await BrowserTestUtils.waitForCondition(() => {
-      return item.querySelector("message-bar.addon-card-message[type=warning]");
+      return item.querySelector(
+        "moz-message-bar.addon-card-message[type=warning]"
+      );
     }, "Wait for the addon card message to be updated");
 
     is_element_visible(warningMessageBar, "Warning notification is visible");
@@ -182,7 +191,7 @@ add_task(async function testNotInstalledDetails() {
 
     let warningMessageBar = await BrowserTestUtils.waitForCondition(() => {
       return addonCard.querySelector(
-        "message-bar.addon-card-message[type=warning]"
+        "moz-message-bar.addon-card-message[type=warning]"
       );
     }, "Wait for the addon card message to be updated");
     is_element_visible(warningMessageBar, "Warning notification is visible");
@@ -326,7 +335,7 @@ add_task(async function testUpdateButton() {
     let item = getAddonCard(win, addon.id);
 
     gInstalledAddonId = "";
-    gInstallDeferred = PromiseUtils.defer();
+    gInstallDeferred = Promise.withResolvers();
 
     let loaded = waitForViewLoad(win);
     item.querySelector("[action=expand]").click();
@@ -354,17 +363,30 @@ add_task(async function testEmeSupport() {
 
   for (let addon of gMockAddons) {
     let item = getAddonCard(win, addon.id);
-    if (addon.id == WIDEVINE_ID) {
+    if (addon.id == WIDEVINE_L1_ID) {
       if (
-        AppConstants.isPlatformAndVersionAtLeast("win", "6") ||
-        AppConstants.platform == "macosx" ||
-        AppConstants.platform == "linux"
+        AppConstants.MOZ_WMF_CDM &&
+        AppConstants.platform == "win" &&
+        UpdateUtils.ABI.match(/x64/)
       ) {
-        Assert.ok(item, "Widevine supported, found add-on element.");
+        Assert.ok(item, "Widevine L1 supported, found add-on element.");
       } else {
         Assert.ok(
           !item,
-          "Widevine not supported, couldn't find add-on element."
+          "Widevine L1 not supported, couldn't find add-on element."
+        );
+      }
+    } else if (addon.id == WIDEVINE_L3_ID) {
+      if (
+        AppConstants.platform == "win" ||
+        AppConstants.platform == "macosx" ||
+        AppConstants.platform == "linux"
+      ) {
+        Assert.ok(item, "Widevine L3 supported, found add-on element.");
+      } else {
+        Assert.ok(
+          !item,
+          "Widevine L3 not supported, couldn't find add-on element."
         );
       }
     } else {

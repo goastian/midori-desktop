@@ -1,0 +1,290 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* ===== tree.css ===================================================
+  == Styles used by the XUL tree element.
+  ======================================================================= */
+
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+@namespace html url("http://www.w3.org/1999/xhtml");
+
+/* ::::: tree ::::: */
+
+tree {
+  margin: 0 4px;
+  background-color: Field;
+  color: FieldText;
+  appearance: auto;
+  -moz-default-appearance: listbox;
+  @media (-moz-platform: linux) {
+    appearance: none;
+    border: 1px solid ThreeDShadow;
+  }
+}
+
+/********** splitter **********/
+
+.tree-splitter {
+  margin-inline: -4px;
+  width: 8px;
+  max-width: 8px;
+  min-width: 8px;
+  appearance: none !important;
+  border: none !important;
+  background: none !important;
+  order: 2147483646;
+  z-index: 2147483646;
+}
+
+
+/* ::::: tree rows ::::: */
+
+treechildren::-moz-tree-row {
+  border: 1px solid transparent;
+}
+
+treechildren::-moz-tree-row,
+treecol:not([hideheader="true"]),
+.tree-columnpicker-button {
+  min-height: max(24px, 1.3em);
+}
+
+treechildren::-moz-tree-row(multicol, odd) {
+  background-color: -moz-oddtreerow;
+}
+
+@media not (prefers-contrast) {
+  treechildren::-moz-tree-row(hover) {
+    background-color: hsla(0,0%,50%,.15);
+  }
+}
+
+treechildren::-moz-tree-row(selected) {
+  background-color: -moz-cellhighlight;
+}
+
+treechildren::-moz-tree-row(selected, focus) {
+  background-color: SelectedItem;
+}
+
+treechildren::-moz-tree-row(current, focus) {
+  outline: var(--default-focusring);
+  outline-color: SelectedItem;
+  outline-offset: calc(-1 * var(--default-focusring-width));
+}
+
+treechildren::-moz-tree-row(selected, current, focus) {
+  outline-color: #F3D982;
+}
+
+/* ::::: tree cells ::::: */
+
+treechildren::-moz-tree-cell {
+  padding: 0 2px;
+}
+
+treechildren::-moz-tree-cell-text {
+  color: inherit;
+}
+
+treechildren::-moz-tree-image(selected),
+treechildren::-moz-tree-twisty(selected),
+treechildren::-moz-tree-cell-text(selected) {
+  color: -moz-cellhighlighttext;
+}
+
+treechildren::-moz-tree-image(selected, focus),
+treechildren::-moz-tree-twisty(selected, focus),
+treechildren::-moz-tree-cell-text(selected, focus) {
+  color: SelectedItemText;
+}
+
+
+/* ::::: lines connecting cells ::::: */
+
+treechildren::-moz-tree-line {
+  border: 1px dotted ThreeDShadow;
+}
+
+treechildren::-moz-tree-line(selected, focus) {
+  border: 1px dotted SelectedItemText;
+}
+
+
+/* ::::: tree separator ::::: */
+
+treechildren::-moz-tree-separator {
+  border-top: 1px solid ThreeDShadow;
+  border-bottom: 1px solid ThreeDHighlight;
+}
+
+
+/* ::::: drop feedback ::::: */
+
+treechildren::-moz-tree-cell-text(primary, dropOn) {
+  background-color: SelectedItem;
+  color: SelectedItemText;
+}
+
+treechildren::-moz-tree-drop-feedback {
+  background-color: SelectedItem;
+  width: 50px;
+  height: 2px;
+  margin-inline-start: 5px;
+}
+
+/* ::::: tree columns ::::: */
+
+treecol,
+.tree-columnpicker-button {
+  background-color: -moz-ColHeader;
+  color: -moz-ColHeaderText;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  margin: 0;
+
+  border-inline-start: 1px solid ThreeDLightShadow;
+  box-shadow: inset 0 -1px ThreeDLightShadow;
+
+  &:where(:hover) {
+    background-color: -moz-ColHeaderHover;
+    color: -moz-ColHeaderHoverText;
+  }
+  &:where(:hover:active) {
+    background-color: -moz-ColHeaderActive;
+    color: -moz-ColHeaderActiveText;
+  }
+}
+
+.treecol-text {
+  margin: 0 !important;
+}
+
+treecol:where([ordinal="1"]) {
+  border-inline-start: none;
+}
+
+treecol[hideheader="true"] {
+  appearance: none;
+}
+
+/* ::::: column drag and drop styles ::::: */
+
+treecol[dragging="true"] {
+  color: Graytext;
+}
+
+treechildren::-moz-tree-column(insertbefore) {
+  border-inline-start: 1px solid ThreeDShadow;
+}
+
+treechildren::-moz-tree-column(insertafter) {
+  border-inline-end: 1px solid ThreeDShadow;
+}
+
+/* ::::: column picker :::::  */
+
+.tree-columnpicker-button {
+  list-style-image: url("chrome://global/skin/icons/columnpicker.svg");
+  -moz-context-properties: fill;
+  fill: currentColor;
+  min-width: 0;
+  padding: 1px 0;
+  appearance: none;
+}
+
+.tree-columnpicker-button .button-text {
+  display: none;
+}
+
+/* ::::: tree icons ::::: */
+
+treechildren::-moz-tree-image {
+  -moz-context-properties: fill;
+  fill: currentColor;
+}
+
+/* ::::: twisty :::::  */
+
+treechildren::-moz-tree-twisty {
+  padding-top: 1px;
+  padding-inline: 4px;
+  width: 12px; /* The image's width is 12 pixels */
+  list-style-image: url("chrome://global/skin/icons/arrow-right-12.svg");
+  -moz-context-properties: fill;
+  fill: currentColor;
+}
+
+treechildren:-moz-locale-dir(rtl)::-moz-tree-twisty(closed) {
+  list-style-image: url("chrome://global/skin/icons/arrow-left-12.svg");
+}
+
+treechildren::-moz-tree-twisty(open) {
+  list-style-image: url("chrome://global/skin/icons/arrow-down-12.svg");
+}
+
+treechildren::-moz-tree-indentation {
+  width: 16px;
+}
+
+/* ::::: editable tree ::::: */
+
+treechildren::-moz-tree-row(selected, editing) {
+  background-color: transparent;
+  border: none;
+}
+
+treechildren::-moz-tree-cell-text(selected, editing),
+treechildren::-moz-tree-image(selected, editing) {
+  color: inherit;
+}
+
+html|input.tree-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  appearance: none;
+  flex: 1;
+  border: 0;
+  border-radius: 2px;
+  outline: var(--focus-outline);
+  margin-block: -1px 0;
+  margin-inline: -2px 0;
+  padding: 1px;
+  font: inherit;
+}
+
+.scrollbar-topmost {
+  position: relative;
+  z-index: 2147483647;
+}
+
+/* ::::: sort direction indicator :::::  */
+.treecol-sortdirection {
+  list-style-image: url("chrome://global/skin/tree/sort-asc.svg");
+  -moz-context-properties: fill;
+  fill: currentColor;
+  visibility: hidden;
+
+  treecol[sortDirection="ascending"]:not([hideheader="true"]) > & {
+    visibility: inherit;
+  }
+
+  treecol[sortDirection="descending"]:not([hideheader="true"]) > & {
+    visibility: inherit;
+    list-style-image: url("chrome://global/skin/tree/sort-dsc.svg");
+  }
+}
+
+@media (-moz-platform: macos) and (not (prefers-contrast)) {
+    /* We show a `SelectedItem` background on selected rows, so we do not need the
+       dotted outline in that case. For users who have Full Keyboard Access
+       enabled, macOS draws a blue highlight above the row highlight, so keyboard-
+       only users can still discern the currently-selected row when multiple rows
+       are selected. */
+  treechildren::-moz-tree-row(selected, current, focus) {
+    outline: none;
+  }
+}

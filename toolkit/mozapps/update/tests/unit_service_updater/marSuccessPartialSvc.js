@@ -10,20 +10,21 @@ async function run_test() {
     return;
   }
   gTestFiles = gTestFilesPartialSuccess;
-  gTestFiles[gTestFiles.length - 1].originalContents = null;
-  gTestFiles[gTestFiles.length - 1].compareContents = "FromPartial\n";
-  gTestFiles[gTestFiles.length - 1].comparePerms = 0o644;
+  const channelPrefs = getTestFileByName(FILE_CHANNEL_PREFS);
+  channelPrefs.originalContents = null;
+  channelPrefs.compareContents = "FromPartial\n";
+  channelPrefs.comparePerms = 0o644;
   gTestDirs = gTestDirsPartialSuccess;
   // The third parameter will test that a relative path that contains a
   // directory traversal to the post update binary doesn't execute.
   await setupUpdaterTest(FILE_PARTIAL_MAR, false, "test/../");
   runUpdate(STATE_SUCCEEDED, false, 0, true);
   checkAppBundleModTime();
-  standardInit();
+  await testPostUpdateProcessing();
   checkPostUpdateRunningFile(false);
   checkFilesAfterUpdateSuccess(getApplyDirFile);
   checkUpdateLogContents(LOG_PARTIAL_SUCCESS);
   await waitForUpdateXMLFiles();
-  checkUpdateManager(STATE_NONE, false, STATE_SUCCEEDED, 0, 1);
+  await checkUpdateManager(STATE_NONE, false, STATE_SUCCEEDED, 0, 1);
   checkCallbackLog();
 }

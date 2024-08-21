@@ -85,7 +85,7 @@ var tests = [
       node.containerOpen = false;
     },
 
-    opened(node, newState, oldState) {
+    opened() {
       do_throw("opened should not be called");
     },
 
@@ -107,7 +107,7 @@ function Test() {
   // This maps a state name to the number of times it's been observed.
   this.stateCounts = {};
   // Promise object resolved when the next test can be run.
-  this.deferNextTest = PromiseUtils.defer();
+  this.deferNextTest = Promise.withResolvers();
 }
 
 Test.prototype = {

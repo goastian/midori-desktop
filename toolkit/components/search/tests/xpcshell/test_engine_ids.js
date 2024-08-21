@@ -15,6 +15,28 @@ const CONFIG = [
   {
     webExtension: {
       id: "engine@search.mozilla.org",
+      name: "Test search engine",
+      search_url: "https://www.google.com/search",
+      params: [
+        {
+          name: "q",
+          value: "{searchTerms}",
+        },
+        {
+          name: "channel",
+          condition: "purpose",
+          purpose: "contextmenu",
+          value: "rcs",
+        },
+        {
+          name: "channel",
+          condition: "purpose",
+          purpose: "keyword",
+          value: "fflb",
+        },
+      ],
+      suggest_url:
+        "https://suggestqueries.google.com/complete/search?output=firefox&client=firefox&q={searchTerms}",
     },
     appliesTo: [
       {
@@ -25,9 +47,56 @@ const CONFIG = [
   },
 ];
 
-add_task(async function setup() {
+const CONFIG_V2 = [
+  {
+    recordType: "engine",
+    identifier: "engine",
+    base: {
+      name: "Test search engine",
+      urls: {
+        search: {
+          base: "https://www.google.com/search",
+          params: [
+            {
+              name: "channel",
+              searchAccessPoint: {
+                addressbar: "fflb",
+                contextmenu: "rcs",
+              },
+            },
+          ],
+          searchTermParamName: "q",
+        },
+        suggestions: {
+          base: "https://suggestqueries.google.com/complete/search?output=firefox&client=firefox",
+          searchTermParamName: "q",
+        },
+      },
+    },
+    variants: [
+      {
+        environment: { allRegionsAndLocales: true },
+      },
+    ],
+  },
+  {
+    recordType: "defaultEngines",
+    globalDefault: "engine",
+    specificDefaults: [],
+  },
+  {
+    recordType: "engineOrders",
+    orders: [],
+  },
+];
+
+add_setup(async function () {
   useHttpServer("opensearch");
-  await SearchTestUtils.useTestEngines("data", null, CONFIG);
+  await SearchTestUtils.useTestEngines(
+    "data",
+    null,
+    SearchUtils.newSearchConfigEnabled ? CONFIG_V2 : CONFIG
+  );
   await AddonTestUtils.promiseStartupManager();
   await Services.search.init();
 });
@@ -73,17 +142,9 @@ add_task(async function test_user_engine_id() {
 });
 
 add_task(async function test_open_search_engine_id() {
-  let promiseEngineAdded = SearchTestUtils.promiseSearchNotification(
-    SearchUtils.MODIFIED_TYPE.ADDED,
-    SearchUtils.TOPIC_ENGINE_MODIFIED
-  );
-
-  let openSearchEngine = await Services.search.addOpenSearchEngine(
-    gDataUrl + "simple.xml",
-    null
-  );
-
-  await promiseEngineAdded;
+  let openSearchEngine = await SearchTestUtils.installOpenSearchEngine({
+    url: gDataUrl + "simple.xml",
+  });
 
   Assert.ok(openSearchEngine, "Should have installed the Open Search Engine.");
   Assert.ok(openSearchEngine.id, "The Open Search Engine should have an id.");

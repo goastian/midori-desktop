@@ -4,7 +4,7 @@ const { Preferences } = ChromeUtils.importESModule(
   "resource://gre/modules/Preferences.sys.mjs"
 );
 
-// ExtensionContent.jsm needs to know when it's running from xpcshell,
+// ExtensionContent.sys.mjs needs to know when it's running from xpcshell,
 // to use the right timeout for content scripts executed at document_idle.
 ExtensionTestUtils.mockAppInfo();
 
@@ -306,7 +306,7 @@ add_task(async function test_get_accept_languages() {
   }
 
   function background(checkResultsFn) {
-    browser.test.onMessage.addListener(([msg, expected]) => {
+    browser.test.onMessage.addListener(([, expected]) => {
       browser.i18n.getAcceptLanguages().then(results => {
         checkResultsFn("background", results, expected);
 
@@ -316,7 +316,7 @@ add_task(async function test_get_accept_languages() {
   }
 
   function content(checkResultsFn) {
-    browser.test.onMessage.addListener(([msg, expected]) => {
+    browser.test.onMessage.addListener(([, expected]) => {
       browser.i18n.getAcceptLanguages().then(results => {
         checkResultsFn("contentScript", results, expected);
 
@@ -392,7 +392,7 @@ add_task(async function test_get_ui_language() {
   }
 
   function background(getResultsFn, checkResultsFn) {
-    browser.test.onMessage.addListener(([msg, expected]) => {
+    browser.test.onMessage.addListener(([, expected]) => {
       checkResultsFn("background", getResultsFn(), expected);
 
       browser.test.sendMessage("background-done");
@@ -400,7 +400,7 @@ add_task(async function test_get_ui_language() {
   }
 
   function content(getResultsFn, checkResultsFn) {
-    browser.test.onMessage.addListener(([msg, expected]) => {
+    browser.test.onMessage.addListener(([, expected]) => {
       checkResultsFn("contentScript", getResultsFn(), expected);
 
       browser.test.sendMessage("content-done");

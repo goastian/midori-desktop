@@ -5,10 +5,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const lazy = {};
-ChromeUtils.defineModuleGetter(lazy, "AddonManager", "resource://gre/modules/AddonManager.jsm");
-
-// Immutable for export.
+/**
+ * AppConstants is a set of immutable constants that are defined at build time.
+ * These should not depend on any other JavaScript module.
+ */
 export var AppConstants = Object.freeze({
   // See this wiki page for more details about channel specific build
   // defines: https://wiki.mozilla.org/Platform/Channel-specific_build_defines
@@ -136,6 +136,13 @@ export var AppConstants = Object.freeze({
 
   MOZ_WIDGET_GTK:
 #ifdef MOZ_WIDGET_GTK
+  true,
+#else
+  false,
+#endif
+
+  MOZ_WMF_CDM:
+#ifdef MOZ_WMF_CDM
   true,
 #else
   false,
@@ -285,16 +292,19 @@ export var AppConstants = Object.freeze({
   false,
 #endif
 
-  get MOZ_UNSIGNED_SCOPES() {
-    let result = 0;
+  MOZ_UNSIGNED_APP_SCOPE:
 #ifdef MOZ_UNSIGNED_APP_SCOPE
-    result |= lazy.AddonManager.SCOPE_APPLICATION;
+  true,
+#else
+  false,
 #endif
+
+  MOZ_UNSIGNED_SYSTEM_SCOPE:
 #ifdef MOZ_UNSIGNED_SYSTEM_SCOPE
-    result |= lazy.AddonManager.SCOPE_SYSTEM;
+  true,
+#else
+  false,
 #endif
-    return result;
-  },
 
   MOZ_ALLOW_ADDON_SIDELOAD:
 #ifdef MOZ_ALLOW_ADDON_SIDELOAD
@@ -317,8 +327,8 @@ export var AppConstants = Object.freeze({
   false,
 #endif
 
-  MOZ_ANDROID_HISTORY:
-#ifdef MOZ_ANDROID_HISTORY
+  MOZ_GECKOVIEW_HISTORY:
+#ifdef MOZ_GECKOVIEW_HISTORY
   true,
 #else
   false,
@@ -442,6 +452,7 @@ export var AppConstants = Object.freeze({
     false,
 #endif
 
+#if defined(MOZ_THUNDERBIRD) || defined(MOZ_SUITE)
   MOZ_CAN_FOLLOW_SYSTEM_TIME:
 #ifdef XP_WIN
     true,
@@ -456,9 +467,17 @@ export var AppConstants = Object.freeze({
 #else
     false,
 #endif
+#endif
 
   MOZ_SYSTEM_POLICIES:
 #ifdef MOZ_SYSTEM_POLICIES
+    true,
+#else
+    false,
+#endif
+
+  MOZ_SELECTABLE_PROFILES:
+#ifdef MOZ_SELECTABLE_PROFILES
     true,
 #else
     false,

@@ -8,22 +8,24 @@ FINAL_TARGET = "_tests/xpcshell/toolkit/mozapps/update/tests/data"
 
 if not CONFIG["MOZ_SUITE"]:
     BROWSER_CHROME_MANIFESTS += [
-        "browser/browser.ini",
-        "browser/manual_app_update_only/browser.ini",
+        "browser/browser.toml",
+        "browser/manual_app_update_only/browser.toml",
     ]
     if CONFIG["MOZ_BITS_DOWNLOAD"]:
-        BROWSER_CHROME_MANIFESTS += ["browser/browser.bits.ini"]
+        BROWSER_CHROME_MANIFESTS += ["browser/browser.bits.toml"]
+
+MARIONETTE_MANIFESTS += ["marionette/manifest.toml"]
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "unit_aus_update/xpcshell.ini",
-    "unit_base_updater/xpcshell.ini",
+    "unit_aus_update/xpcshell.toml",
+    "unit_base_updater/xpcshell.toml",
 ]
 
 if CONFIG["MOZ_MAINTENANCE_SERVICE"]:
-    XPCSHELL_TESTS_MANIFESTS += ["unit_service_updater/xpcshell.ini"]
+    XPCSHELL_TESTS_MANIFESTS += ["unit_service_updater/xpcshell.toml"]
 
 if CONFIG["MOZ_BUILD_APP"] == "browser" and CONFIG["MOZ_UPDATE_AGENT"]:
-    XPCSHELL_TESTS_MANIFESTS += ["unit_background_update/xpcshell.ini"]
+    XPCSHELL_TESTS_MANIFESTS += ["unit_background_update/xpcshell.toml"]
 
 SimplePrograms(
     [

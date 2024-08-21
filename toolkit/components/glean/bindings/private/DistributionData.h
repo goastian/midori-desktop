@@ -12,6 +12,7 @@ namespace mozilla::glean {
 
 struct DistributionData final {
   uint64_t sum;
+  uint64_t count;
   nsTHashMap<nsUint64HashKey, uint64_t> values;
 
   /**
@@ -19,11 +20,34 @@ struct DistributionData final {
    * as returned by `fog_*_distribution_test_get_value`.
    */
   DistributionData(const nsTArray<uint64_t>& aBuckets,
-                   const nsTArray<uint64_t>& aCounts, uint64_t aSum)
-      : sum(aSum) {
+                   const nsTArray<uint64_t>& aCounts, uint64_t aSum,
+                   uint64_t aCount)
+      : sum(aSum), count(aCount) {
     for (size_t i = 0; i < aBuckets.Length(); ++i) {
       this->values.InsertOrUpdate(aBuckets[i], aCounts[i]);
     }
+  }
+
+  friend std::ostream& operator<<(std::ostream& aStream,
+                                  const DistributionData& aDist) {
+    aStream << "DistributionData(";
+    aStream << "sum=" << aDist.sum << ", ";
+    aStream << "count=" << aDist.count << ", ";
+    aStream << "values={";
+    bool first = true;
+    for (const auto& entry : aDist.values) {
+      if (!first) {
+        aStream << ", ";
+      }
+      first = false;
+
+      const uint64_t bucket = entry.GetKey();
+      const uint64_t count = entry.GetData();
+      aStream << bucket << "=" << count;
+    }
+    aStream << "}";
+    aStream << ")";
+    return aStream;
   }
 };
 

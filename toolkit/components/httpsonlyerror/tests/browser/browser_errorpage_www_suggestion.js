@@ -26,7 +26,10 @@ add_task(async function () {
 
   let browser = gBrowser.selectedBrowser;
   let errorPageLoaded = BrowserTestUtils.waitForErrorPage(browser);
-  BrowserTestUtils.loadURIString(browser, KICK_OF_REQUEST_WITH_SUGGESTION);
+  BrowserTestUtils.startLoadingURIString(
+    browser,
+    KICK_OF_REQUEST_WITH_SUGGESTION
+  );
   await errorPageLoaded;
 
   let pageShownPromise = BrowserTestUtils.waitForContentEvent(
@@ -56,7 +59,7 @@ add_task(async function () {
 
     // click on www button
     let wwwButton = content.document.getElementById("openWWW");
-    ok(wwwButton !== null, "The www Button should be shown");
+    Assert.notStrictEqual(wwwButton, null, "The www Button should be shown");
 
     if (!wwwButton) {
       ok(false, "We should not be here");

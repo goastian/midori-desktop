@@ -27,6 +27,8 @@ const TEXT_TRACK_FONT_SIZE_PREF =
   "media.videocontrols.picture-in-picture.display-text-tracks.size";
 const IMPROVED_CONTROLS_ENABLED_PREF =
   "media.videocontrols.picture-in-picture.improved-video-controls.enabled";
+const SEETHROUGH_MODE_ENABLED_PREF =
+  "media.videocontrols.picture-in-picture.seethrough-mode.enabled";
 
 // Time to fade the Picture-in-Picture video controls after first opening.
 const CONTROLS_FADE_TIMEOUT_MS = 3000;
@@ -43,7 +45,7 @@ const BOTTOM_LEFT_QUADRANT = 3;
 const BOTTOM_RIGHT_QUADRANT = 4;
 
 /**
- * Public function to be called from PictureInPicture.jsm. This is the main
+ * Public function to be called from PictureInPicture.sys.mjs. This is the main
  * entrypoint for initializing the player window.
  *
  * @param {Number} id
@@ -59,7 +61,7 @@ function setupPlayer(id, wgp, videoRef) {
 }
 
 /**
- * Public function to be called from PictureInPicture.jsm. This update the
+ * Public function to be called from PictureInPicture.sys.mjs. This update the
  * controls based on whether or not the video is playing.
  *
  * @param {Boolean} isPlaying
@@ -70,7 +72,7 @@ function setIsPlayingState(isPlaying) {
 }
 
 /**
- * Public function to be called from PictureInPicture.jsm. This update the
+ * Public function to be called from PictureInPicture.sys.mjs. This update the
  * controls based on whether or not the video is muted.
  *
  * @param {Boolean} isMuted
@@ -124,6 +126,7 @@ function setVolume(volume) {
  * events for updating state.
  */
 let Player = {
+  _isInitialized: false,
   WINDOW_EVENTS: [
     "click",
     "contextmenu",
@@ -244,10 +247,10 @@ let Player = {
       this.audioScrubbing = true;
       this.handleAudioScrubbing(event.target.value);
     });
-    this.audioScrubber.addEventListener("change", event => {
+    this.audioScrubber.addEventListener("change", () => {
       this.audioScrubbing = false;
     });
-    this.audioScrubber.addEventListener("pointerdown", event => {
+    this.audioScrubber.addEventListener("pointerdown", () => {
       if (this.isMuted) {
         this.audioScrubber.max = 1;
       }
@@ -334,6 +337,13 @@ let Player = {
     } else {
       document.querySelector("#medium").checked = "true";
     }
+
+    // In see-through mode the PiP window is made semi-transparent on hover.
+    if (Services.prefs.getBoolPref(SEETHROUGH_MODE_ENABLED_PREF, false)) {
+      document.documentElement.classList.add("seethrough-mode");
+    }
+
+    this._isInitialized = true;
   },
 
   uninit() {
@@ -674,7 +684,7 @@ let Player = {
 
       case "closed-caption": {
         let options = {};
-        if (event.mozInputSource == MouseEvent.MOZ_SOURCE_KEYBOARD) {
+        if (event.inputSource == MouseEvent.MOZ_SOURCE_KEYBOARD) {
           options.isKeyboard = true;
         }
         this.toggleSubtitlesSettingsPanel(options);
@@ -734,11 +744,7 @@ let Player = {
         return;
       }
 
-      this.actor.sendAsyncMessage("PictureInPicture:HideVideoControls", {
-        isFullscreen: this.isFullscreen,
-        isVideoControlsShowing: false,
-        playerBottomControlsDOMRect: null,
-      });
+      this.hideVideoControls();
     } else {
       this.settingsPanel.classList.remove("hide");
       this.closedCaptionButton.setAttribute("aria-expanded", true);
@@ -989,7 +995,11 @@ let Player = {
     let quadrant = this.determineCurrentQuadrant();
     let dragAction = this.determineDirectionDragged();
 
-    if (event.metaKey && AppConstants.platform == "macosx" && dragAction) {
+    if (
+      ((event.ctrlKey && AppConstants.platform !== "macosx") ||
+        (event.metaKey && AppConstants.platform === "macosx")) &&
+      dragAction
+    ) {
       // Moving logic based on current quadrant and direction of drag.
       switch (quadrant) {
         case TOP_RIGHT_QUADRANT:
@@ -1086,11 +1096,7 @@ let Player = {
         !this.controls.getAttribute("keying") &&
         !this.controls.getAttribute("donthide")
       ) {
-        this.actor.sendAsyncMessage("PictureInPicture:HideVideoControls", {
-          isFullscreen: this.isFullscreen,
-          isVideoControlsShowing: false,
-          playerBottomControlsDOMRect: null,
-        });
+        this.hideVideoControls();
       }
     }
   },
@@ -1134,7 +1140,7 @@ let Player = {
    * @param {Event} event
    *  Event context data object
    */
-  onResize(event) {
+  onResize() {
     this.toggleSubtitlesSettingsPanel({ forceHide: true });
     this.resizeDebouncer.disarm();
     this.resizeDebouncer.arm();
@@ -1146,7 +1152,7 @@ let Player = {
    * @param {Event} event
    *  Event context data object
    */
-  onCommand(event) {
+  onCommand() {
     this.closePipWindow({ reason: "shortcut" });
   },
 
@@ -1216,6 +1222,20 @@ let Player = {
       ? `pictureinpicture-pause-btn`
       : `pictureinpicture-play-btn`;
     this.setupTooltip("playpause", strId);
+
+    if (
+      !this._isInitialized ||
+      this.isCurrentHover ||
+      this.controls.getAttribute("keying")
+    ) {
+      return;
+    }
+
+    if (!isPlaying) {
+      this.revealControls(true);
+    } else {
+      this.revealControls(false);
+    }
   },
 
   _isMuted: false,
@@ -1275,6 +1295,7 @@ let Player = {
 
   /**
    * Send a message to PiPChild to adjust the subtitles position
+   * so that subtitles are visible when showing video controls.
    */
   showVideoControls() {
     // offsetParent returns null when the element or any ancestor has display: none
@@ -1284,6 +1305,18 @@ let Player = {
       isVideoControlsShowing: true,
       playerBottomControlsDOMRect: this.controlsBottom.getBoundingClientRect(),
       isScrubberShowing: !!this.scrubber.offsetParent,
+    });
+  },
+
+  /**
+   * Send a message to PiPChild to adjust the subtitles position
+   * so that subtitles take up remaining space when hiding video controls.
+   */
+  hideVideoControls() {
+    this.actor.sendAsyncMessage("PictureInPicture:HideVideoControls", {
+      isFullscreen: this.isFullscreen,
+      isVideoControlsShowing: false,
+      playerBottomControlsDOMRect: null,
     });
   },
 
@@ -1324,11 +1357,7 @@ let Player = {
           !this.controls.getAttribute("keying") &&
           !this.controls.getAttribute("donthide")
         ) {
-          this.actor.sendAsyncMessage("PictureInPicture:HideVideoControls", {
-            isFullscreen: false,
-            isVideoControlsShowing: false,
-            playerBottomControlsDOMRect: null,
-          });
+          this.hideVideoControls();
         }
       }, CONTROLS_FADE_TIMEOUT_MS);
     }

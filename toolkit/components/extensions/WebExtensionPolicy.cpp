@@ -14,6 +14,7 @@
 #include "mozilla/dom/WindowGlobalChild.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/StaticPrefs_extensions.h"
+#include "mozilla/Try.h"
 #include "nsContentUtils.h"
 #include "nsEscape.h"
 #include "nsGlobalWindowInner.h"
@@ -90,7 +91,7 @@ bool ParseGlobs(GlobalObject& aGlobal,
       aResult.AppendElement(elem.GetAsMatchGlob()->Core());
     } else {
       RefPtr<MatchGlobCore> glob =
-          new MatchGlobCore(elem.GetAsUTF8String(), true, aRv);
+          new MatchGlobCore(elem.GetAsUTF8String(), true, false, aRv);
       if (aRv.Failed()) {
         return false;
       }
@@ -187,9 +188,9 @@ WebExtensionPolicyCore::WebExtensionPolicyCore(GlobalObject& aGlobal,
       mManifestVersion(aInit.mManifestVersion),
       mExtensionPageCSP(aInit.mExtensionPageCSP),
       mIsPrivileged(aInit.mIsPrivileged),
-      mIgnoreQuarantine(aInit.mIsPrivileged || aInit.mIgnoreQuarantine),
       mTemporarilyInstalled(aInit.mTemporarilyInstalled),
       mBackgroundWorkerScript(aInit.mBackgroundWorkerScript),
+      mIgnoreQuarantine(aInit.mIsPrivileged || aInit.mIgnoreQuarantine),
       mPermissions(new AtomSet(aInit.mPermissions)) {
   // In practice this is not necessary, but in tests where the uuid
   // passed in is not lowercased various tests can fail.
@@ -279,7 +280,7 @@ bool WebExtensionPolicyCore::QuarantinedFromDoc(const DocInfo& aDoc) const {
 }
 
 bool WebExtensionPolicyCore::QuarantinedFromURI(const URLInfo& aURI) const {
-  return !mIgnoreQuarantine && WebExtensionPolicy::IsQuarantinedURI(aURI);
+  return !IgnoreQuarantine() && WebExtensionPolicy::IsQuarantinedURI(aURI);
 }
 
 /*****************************************************************************
@@ -445,6 +446,11 @@ Result<nsString, nsresult> WebExtensionPolicy::GetURL(
   return NS_ConvertUTF8toUTF16(spec);
 }
 
+void WebExtensionPolicy::SetIgnoreQuarantine(bool aIgnore) {
+  WebExtensionPolicy_Binding::ClearCachedIgnoreQuarantineValue(this);
+  mCore->SetIgnoreQuarantine(aIgnore);
+}
+
 void WebExtensionPolicy::RegisterContentScript(
     WebExtensionContentScript& script, ErrorResult& aRv) {
   // Raise an "invalid argument" error if the script is not related to
@@ -502,6 +508,10 @@ bool WebExtensionPolicy::IsExtensionProcess(GlobalObject& aGlobal) {
 
 /* static */
 bool WebExtensionPolicy::BackgroundServiceWorkerEnabled(GlobalObject& aGlobal) {
+  // When MOZ_WEBEXT_WEBIDL_ENABLED is not set at compile time, extension APIs
+  // are not available to extension service workers. To avoid confusion, the
+  // extensions.backgroundServiceWorkerEnabled.enabled pref is locked to false
+  // in modules/libpref/init/all.js when MOZ_WEBEXT_WEBIDL_ENABLED is not set.
   return StaticPrefs::extensions_backgroundServiceWorker_enabled_AtStartup();
 }
 
@@ -512,10 +522,7 @@ bool WebExtensionPolicy::QuarantinedDomainsEnabled(GlobalObject& aGlobal) {
 
 /* static */
 bool WebExtensionPolicy::IsRestrictedDoc(const DocInfo& aDoc) {
-  // With the exception of top-level about:blank documents with null
-  // principals, we never match documents that have non-content principals,
-  // including those with null principals or system principals.
-  if (aDoc.Principal() && !aDoc.Principal()->GetIsContentPrincipal()) {
+  if (aDoc.Principal() && aDoc.Principal()->IsSystemPrincipal()) {
     return true;
   }
 
@@ -704,7 +711,8 @@ MozDocumentMatcher::MozDocumentMatcher(GlobalObject& aGlobal,
       mAllFrames(aInit.mAllFrames),
       mCheckPermissions(aInit.mCheckPermissions),
       mFrameID(aInit.mFrameID),
-      mMatchAboutBlank(aInit.mMatchAboutBlank) {
+      mMatchAboutBlank(aInit.mMatchAboutBlank || aInit.mMatchOriginAsFallback),
+      mMatchOriginAsFallback(aInit.mMatchOriginAsFallback) {
   MatchPatternOptions options;
   options.mRestrictSchemes = mRestricted;
 
@@ -755,7 +763,8 @@ WebExtensionContentScript::WebExtensionContentScript(
     : MozDocumentMatcher(aGlobal, aInit,
                          !aExtension.HasPermission(nsGkAtoms::mozillaAddons),
                          aRv),
-      mRunAt(aInit.mRunAt) {
+      mRunAt(aInit.mRunAt),
+      mWorld(aInit.mWorld) {
   mCssPaths.Assign(aInit.mCssPaths);
   mJsPaths.Assign(aInit.mJsPaths);
   mExtension = &aExtension;
@@ -803,14 +812,41 @@ bool MozDocumentMatcher::Matches(const DocInfo& aDoc,
     return false;
   }
 
-  // Top-level about:blank is a special case. We treat it as a match if
-  // matchAboutBlank is true and it has the null principal. In all other
-  // cases, we test the URL of the principal that it inherits.
-  if (mMatchAboutBlank && aDoc.IsTopLevel() &&
-      (aDoc.URL().Spec().EqualsLiteral("about:blank") ||
-       aDoc.URL().Scheme() == nsGkAtoms::data) &&
-      aDoc.Principal() && aDoc.Principal()->GetIsNullPrincipal()) {
-    return true;
+  // Top-level about:blank is a special case. Unlike about:blank frames/windows
+  // opened by web pages, these do not have an origin that could be matched by
+  // a match pattern (they have a null principal instead). To allow extensions
+  // that intend to run scripts "everywhere", consider the document matched if
+  // the match pattern describe a very broad pattern (such as "<all_urls>").
+  if (mMatchAboutBlank && aDoc.IsTopLevelOpaqueAboutBlank()) {
+    if (StaticPrefs::extensions_script_about_blank_without_permission()) {
+      return true;
+    }
+    if (mHasActiveTabPermission) {
+      return true;
+    }
+    if (mMatches->MatchesAllWebUrls() && mIncludeGlobs.IsNull()) {
+      // When mIncludeGlobs is present, mMatches does not necessarily match
+      // everything (except possibly if include_globs is just ["*"]). So we
+      // only match if mMatches is present without mIncludeGlobs.
+      return true;
+    }
+    // Continue below: when mMatchOriginAsFallback is true, a null principal
+    // with a precursor may result in a match with the specific pattern.
+  }
+
+  if (!mMatchOriginAsFallback && aDoc.RequiresMatchOriginAsFallback()) {
+    // TODO bug 1899134: We should unconditionally return false here. But we
+    // had accidental support for matching blob:-URLs (by the content
+    // principal's URL) for a long time, so we have a temporary pref to fall
+    // back to the original behavior if needed.
+    if (aDoc.URL().Scheme() != nsGkAtoms::blob || !mExtension ||
+        mExtension->ManifestVersion() != 2 ||
+        !StaticPrefs::
+            extensions_script_blob_without_match_origin_as_fallback()) {
+      return false;
+    }
+    // Fall-through implies that we have a MV2 extension and a blob:-URL, with
+    // extensions.script_blob_without_match_origin_as_fallback set to true.
   }
 
   if (mRestricted && WebExtensionPolicy::IsRestrictedDoc(aDoc)) {
@@ -1001,9 +1037,67 @@ bool DocInfo::IsTopLevel() const {
   return mIsTopLevel.ref();
 }
 
+bool DocInfo::IsTopLevelOpaqueAboutBlank() const {
+  if (mIsTopLevelOpaqueAboutBlank.isNothing()) {
+    struct Matcher {
+      explicit Matcher(const DocInfo& aThis) : mThis(aThis) {}
+      const DocInfo& mThis;
+
+      bool operator()(Window aWin) {
+        if (!mThis.IsTopLevel()) {
+          return false;
+        }
+
+        bool isFinalAboutBlankDoc =
+            mThis.URL().Scheme() == nsGkAtoms::about &&
+            mThis.URL().Spec().EqualsLiteral("about:blank") &&
+            // Exclude initial about:blank to avoid matching initial about:blank
+            // of pending loads in the parent process, see bug 1901894.
+            !aWin->GetDoc()->IsInitialDocument();
+
+        // Principal() is expected to never be nullptr given a Window.
+        MOZ_ASSERT(mThis.Principal());
+
+        return (isFinalAboutBlankDoc ||
+                // TODO bug 1902635: drop support for toplevel data: here.
+                mThis.URL().Scheme() == nsGkAtoms::data) &&
+               mThis.Principal()->GetIsNullPrincipal();
+      }
+      bool operator()(LoadInfo aLoadInfo) {
+        // The current implementation is unable to reliably estimate the
+        // principal that the about:blank document will have. For about:blank
+        // opened via web content, the opener document would have a similar
+        // principal and preloading would already have been triggered through
+        // that document (via match_about_blank or match_origin_as_fallback).
+        //
+        // Top-level documents opened by the user do not have an opener, and
+        // will have a null principal, which is exactly the scenario for which
+        // this IsTopLevelOpaqueAboutBlank() would ideally return true. Because
+        // we cannot tell for certain whether this is the case, we do still not
+        // preload for this case. In practice, only broadly matching content
+        // scripts (<all_urls>) can match this, which means that any other
+        // document load has most likely already triggered preloading.
+        //
+        // The non-preloading of about:blank is documented at
+        // DocInfo::PrincipalURL() and covered by tests
+        // test_preload_at_about_blank_iframe and test_preload_at_data_url in
+        // toolkit/components/extensions/test/xpcshell/test_ext_contentscript_preloading.js
+        return false;
+      }
+    };
+    mIsTopLevelOpaqueAboutBlank.emplace(mObj.match(Matcher(*this)));
+  }
+  return mIsTopLevelOpaqueAboutBlank.ref();
+}
+
 bool WindowShouldMatchActiveTab(nsPIDOMWindowOuter* aWin) {
-  for (WindowContext* wc = aWin->GetCurrentInnerWindow()->GetWindowContext();
-       wc; wc = wc->GetParentWindowContext()) {
+  WindowContext* wc = aWin->GetCurrentInnerWindow()->GetWindowContext();
+  if (wc && wc->SameOriginWithTop()) {
+    // If the frame is same-origin to top, accept the match regardless of
+    // whether the frame was populated dynamically.
+    return true;
+  }
+  for (; wc; wc = wc->GetParentWindowContext()) {
     BrowsingContext* bc = wc->GetBrowsingContext();
     if (bc->IsTopContent()) {
       return true;
@@ -1066,10 +1160,15 @@ nsIPrincipal* DocInfo::Principal() const {
         return doc->NodePrincipal();
       }
       nsIPrincipal* operator()(LoadInfo aLoadInfo) {
+        // This method tries to return a principal when the principal cannot be
+        // derived from URL(). See PrincipalURL().
         if (!(mThis.URL().InheritsPrincipal() ||
               aLoadInfo->GetForceInheritPrincipal())) {
+          // E.g. http(s):-URLs, data:, or any other arbitrary scheme.
           return nullptr;
         }
+        // E.g. about:srcdoc. In this case the principal cannot be derived from
+        // the URL, so we return the most likely principal here.
         if (auto principal = aLoadInfo->PrincipalToInherit()) {
           return principal;
         }
@@ -1082,16 +1181,46 @@ nsIPrincipal* DocInfo::Principal() const {
 }
 
 const URLInfo& DocInfo::PrincipalURL() const {
-  if (!(Principal() && Principal()->GetIsContentPrincipal())) {
+  if (!Principal()) {
+    // This is only possible via non-DOMWindow (see Principal()). We may end up
+    // here via ExtensionPolicyService::CheckRequest(), called before a network
+    // request ("http-on-opening-request" / "document-on-opening-request").
+    // In practice, http(s):, about:srcdoc, data:, and blob: may reach here.
+    // about:blank (and javascript:) does not enter this code path.
+    //
+    // Falling back to the URL is almost always correct, except in these cases:
+    // - documents that end up having a null principal. We cannot know for sure,
+    //   e.g. because it can be forced later by a http header (CSP sandbox).
+    //   In this case we may preload when we should not.
+    //
+    // - URLs that contain the principal such as blob:-URLs. In theory we could
+    //   extract the origin from the URL, but we do not for simplicity.
+    //   In this case we do not preload even though we could.
+    //   ( In practice, blob:-URLs can only be created and loaded by the same
+    //     origin, so it is likely that the content script had been preloaded
+    //     before for that document. )
     return URL();
   }
 
   if (mPrincipalURL.isNothing()) {
     nsIPrincipal* prin = Principal();
-    auto* basePrin = BasePrincipal::Cast(prin);
-    nsCOMPtr<nsIURI> uri;
-    if (NS_SUCCEEDED(basePrin->GetURI(getter_AddRefs(uri)))) {
-      MOZ_DIAGNOSTIC_ASSERT(uri);
+    nsCOMPtr<nsIPrincipal> precursor;
+    if (prin->GetIsContentPrincipal()) {
+      // Most common case.
+      nsCOMPtr<nsIURI> uri;
+      BasePrincipal::Cast(prin)->GetURI(getter_AddRefs(uri));
+      mPrincipalURL.emplace(uri);
+    } else if (prin->GetIsNullPrincipal() && !URL().IsNonOpaqueURL() &&
+               (precursor = prin->GetPrecursorPrincipal()) &&
+               precursor->GetIsContentPrincipal()) {
+      // Use precursor from null principal, unless the URL itself is not opaque.
+      // We want to use URL() when IsNonOpaqueURL() because the URL may have
+      // more details such as path and query components, whereas the precursor
+      // URI only has an origin.
+      // This enables matching of sandboxed about:blank / about:srcdoc / blob:
+      // when match_origin_as_fallback:true is used.
+      nsCOMPtr<nsIURI> uri;
+      BasePrincipal::Cast(precursor)->GetURI(getter_AddRefs(uri));
       mPrincipalURL.emplace(uri);
     } else {
       mPrincipalURL.emplace(URL());
@@ -1099,6 +1228,18 @@ const URLInfo& DocInfo::PrincipalURL() const {
   }
 
   return mPrincipalURL.ref();
+}
+
+bool DocInfo::RequiresMatchOriginAsFallback() const {
+  if (mRequiresMatchOriginAsFallback.isNothing()) {
+    mRequiresMatchOriginAsFallback.emplace(
+        // Special-case blob:-URLs because their principal is indistinguishable
+        // from the principals that created them.
+        URL().Scheme() == nsGkAtoms::blob ||
+        (Principal() && Principal()->GetIsNullPrincipal() &&
+         !URL().IsNonOpaqueURL()));
+  }
+  return mRequiresMatchOriginAsFallback.ref();
 }
 
 }  // namespace extensions

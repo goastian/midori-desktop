@@ -9,7 +9,7 @@ var gBookmarksObserver = {
   expected: [],
   setup(expected) {
     this.expected = expected;
-    this.deferred = PromiseUtils.defer();
+    this.deferred = Promise.withResolvers();
     return this.deferred.promise;
   },
 
@@ -41,7 +41,7 @@ var gBookmarkSkipObserver = {
   expected: null,
   setup(expected) {
     this.expected = expected;
-    this.deferred = PromiseUtils.defer();
+    this.deferred = Promise.withResolvers();
     return this.deferred.promise;
   },
 
@@ -64,7 +64,7 @@ var gBookmarkSkipObserver = {
 };
 
 add_task(async function setup() {
-  gUnfiledFolderId = await PlacesUtils.promiseItemId(
+  gUnfiledFolderId = await PlacesTestUtils.promiseItemId(
     PlacesUtils.bookmarks.unfiledGuid
   );
   gBookmarksObserver.handlePlacesEvents =
@@ -125,6 +125,26 @@ add_task(async function bookmarkItemAdded_bookmark() {
             check: v =>
               Object.values(PlacesUtils.bookmarks.SOURCES).includes(v),
           },
+          {
+            name: "tags",
+            check: v => v === "",
+          },
+          {
+            name: "frecency",
+            check: v => v === 1,
+          },
+          {
+            name: "hidden",
+            check: v => v === false,
+          },
+          {
+            name: "visitCount",
+            check: v => v === 0,
+          },
+          {
+            name: "lastVisitDate",
+            check: v => v === null,
+          },
         ],
       },
     ]),
@@ -167,6 +187,26 @@ add_task(async function bookmarkItemAdded_separator() {
             check: v =>
               Object.values(PlacesUtils.bookmarks.SOURCES).includes(v),
           },
+          {
+            name: "tags",
+            check: v => v === "",
+          },
+          {
+            name: "frecency",
+            check: v => v === 0,
+          },
+          {
+            name: "hidden",
+            check: v => v === false,
+          },
+          {
+            name: "visitCount",
+            check: v => v === 0,
+          },
+          {
+            name: "lastVisitDate",
+            check: v => v === null,
+          },
         ],
       },
     ]),
@@ -208,6 +248,26 @@ add_task(async function bookmarkItemAdded_folder() {
             name: "source",
             check: v =>
               Object.values(PlacesUtils.bookmarks.SOURCES).includes(v),
+          },
+          {
+            name: "tags",
+            check: v => v === "",
+          },
+          {
+            name: "frecency",
+            check: v => v === 0,
+          },
+          {
+            name: "hidden",
+            check: v => v === false,
+          },
+          {
+            name: "visitCount",
+            check: v => v === 0,
+          },
+          {
+            name: "lastVisitDate",
+            check: v => v === null,
           },
         ],
       },
@@ -479,6 +539,30 @@ add_task(async function bookmarkItemMoved_bookmark() {
               Object.values(PlacesUtils.bookmarks.SOURCES).includes(v),
           },
           { name: "url", check: v => typeof v == "string" },
+          {
+            name: "title",
+            check: v => v == bm.title,
+          },
+          {
+            name: "tags",
+            check: v => v === "",
+          },
+          {
+            name: "frecency",
+            check: v => v === 1,
+          },
+          {
+            name: "hidden",
+            check: v => v === false,
+          },
+          {
+            name: "visitCount",
+            check: v => v === 0,
+          },
+          {
+            name: "lastVisitDate",
+            check: v => v === null,
+          },
         ],
       },
       {
@@ -509,6 +593,30 @@ add_task(async function bookmarkItemMoved_bookmark() {
               Object.values(PlacesUtils.bookmarks.SOURCES).includes(v),
           },
           { name: "url", check: v => typeof v == "string" },
+          {
+            name: "title",
+            check: v => v == bm.title,
+          },
+          {
+            name: "tags",
+            check: v => v === "",
+          },
+          {
+            name: "frecency",
+            check: v => v === 1,
+          },
+          {
+            name: "hidden",
+            check: v => v === false,
+          },
+          {
+            name: "visitCount",
+            check: v => v === 0,
+          },
+          {
+            name: "lastVisitDate",
+            check: v => v === null,
+          },
         ],
       },
     ]),
@@ -910,6 +1018,123 @@ add_task(async function bookmarkItemRemoved_folder_recursive() {
   });
 
   await PlacesUtils.bookmarks.remove(folder);
+  await promise;
+});
+
+add_task(async function bookmarkItemAdded_tagged_visited_bookmark() {
+  const now = new Date();
+  const uri = Services.io.newURI("http://tagged_visited.mozilla.org/");
+  const title = "Tagged and Visited";
+  const tags = ["a", "b", "c"];
+
+  const promise = Promise.all([
+    gBookmarkSkipObserver.setup(["bookmark-added"]),
+    gBookmarksObserver.setup([
+      {
+        eventType: "bookmark-added",
+        args: [
+          { name: "title", check: v => v === tags[0] },
+          { name: "url", check: v => v === "" },
+        ],
+      },
+      {
+        eventType: "bookmark-added", // This is the tag.
+        args: [
+          { name: "title", check: v => v === "" },
+          { name: "url", check: v => v === uri.spec },
+        ],
+      },
+      {
+        eventType: "bookmark-added",
+        args: [
+          { name: "title", check: v => v === tags[1] },
+          { name: "url", check: v => v === "" },
+        ],
+      },
+      {
+        eventType: "bookmark-added", // This is the tag.
+        args: [
+          { name: "title", check: v => v === "" },
+          { name: "url", check: v => v === uri.spec },
+        ],
+      },
+      {
+        eventType: "bookmark-added",
+        args: [
+          { name: "title", check: v => v === tags[2] },
+          { name: "url", check: v => v === "" },
+        ],
+      },
+      {
+        eventType: "bookmark-added", // This is the tag.
+        args: [
+          { name: "title", check: v => v === "" },
+          { name: "url", check: v => v === uri.spec },
+        ],
+      },
+      {
+        eventType: "bookmark-added",
+        args: [
+          { name: "id", check: v => typeof v == "number" && v > 0 },
+          { name: "parentId", check: v => v === gUnfiledFolderId },
+          { name: "index", check: v => v === 0 },
+          {
+            name: "itemType",
+            check: v => v === PlacesUtils.bookmarks.TYPE_BOOKMARK,
+          },
+          { name: "url", check: v => v == uri.spec },
+          { name: "title", check: v => v === title },
+          { name: "dateAdded", check: v => typeof v == "number" && v > 0 },
+          {
+            name: "guid",
+            check: v => typeof v == "string" && PlacesUtils.isValidGuid(v),
+          },
+          {
+            name: "parentGuid",
+            check: v => typeof v == "string" && PlacesUtils.isValidGuid(v),
+          },
+          {
+            name: "source",
+            check: v =>
+              Object.values(PlacesUtils.bookmarks.SOURCES).includes(v),
+          },
+          {
+            name: "tags",
+            check: v => v === tags.join(),
+          },
+          {
+            name: "frecency",
+            check: v => v > 1,
+          },
+          {
+            name: "hidden",
+            check: v => v === false,
+          },
+          {
+            name: "visitCount",
+            check: v => v === 1,
+          },
+          {
+            name: "lastVisitDate",
+            check: v => v === now.getTime(),
+          },
+        ],
+      },
+    ]),
+  ]);
+
+  PlacesUtils.tagging.tagURI(uri, tags);
+  await PlacesUtils.history.insert({
+    url: uri.spec,
+    title,
+    visits: [{ date: now }],
+  });
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    url: uri,
+    title,
+  });
+
   await promise;
 });
 

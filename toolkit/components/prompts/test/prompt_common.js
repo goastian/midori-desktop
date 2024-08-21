@@ -17,14 +17,6 @@ function propBagToObject(bag) {
 }
 
 var modalType;
-var tabSubDialogsEnabled = SpecialPowers.Services.prefs.getBoolPref(
-  "prompts.tabChromePromptSubDialog",
-  false
-);
-var contentSubDialogsEnabled = SpecialPowers.Services.prefs.getBoolPref(
-  "prompts.contentPromptSubDialog",
-  false
-);
 var isSelectDialog = false;
 var isOSX = "nsILocalFileMac" in SpecialPowers.Ci;
 var isE10S = SpecialPowers.Services.appinfo.processType == 2;
@@ -164,7 +156,7 @@ function onloadPromiseFor(id) {
   return new Promise(resolve => {
     iframe.addEventListener(
       "load",
-      function (e) {
+      function () {
         resolve(true);
       },
       { once: true }
@@ -200,20 +192,7 @@ function checkPromptState(promptState, expectedState) {
   // XXX check title? OS X has title in content
   is(promptState.msg, expectedState.msg, "Checking expected message");
 
-  let isOldContentPrompt =
-    !promptState.isSubDialogPrompt &&
-    modalType === Ci.nsIPrompt.MODAL_TYPE_CONTENT;
-
-  if (isOldContentPrompt && !promptState.showCallerOrigin) {
-    ok(
-      promptState.titleHidden,
-      "The title should be hidden for content prompts opened with tab modal prompt."
-    );
-  } else if (
-    isOSX ||
-    promptState.isSubDialogPrompt ||
-    promptState.showCallerOrigin
-  ) {
+  if (isOSX || promptState.isSubDialogPrompt || promptState.showCallerOrigin) {
     ok(
       !promptState.titleHidden,
       "Checking title always visible on OS X or when opened with common dialog"
@@ -244,7 +223,7 @@ function checkPromptState(promptState, expectedState) {
   is(promptState.checked, expectedState.checked, "Checking checkbox checked");
   if (
     modalType === Ci.nsIPrompt.MODAL_TYPE_WINDOW ||
-    (modalType === Ci.nsIPrompt.MODAL_TYPE_TAB && tabSubDialogsEnabled)
+    modalType === Ci.nsIPrompt.MODAL_TYPE_TAB
   ) {
     is(
       promptState.iconClass,
@@ -383,7 +362,7 @@ function PrompterProxy(chromeScript) {
   return new Proxy(
     {},
     {
-      get(target, prop, receiver) {
+      get(target, prop) {
         return (...args) => {
           // Array of indices of out/inout params to copy from the parent back to the caller.
           let outParams = [];

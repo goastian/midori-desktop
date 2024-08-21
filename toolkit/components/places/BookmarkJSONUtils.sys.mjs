@@ -21,27 +21,7 @@ const OLD_BOOKMARK_QUERY_TRANSLATIONS = {
   MOBILE_BOOKMARKS: PlacesUtils.bookmarks.mobileGuid,
 };
 
-/**
- * Generates an hash for the given string.
- *
- * @note The generated hash is returned in base64 form.  Mind the fact base64
- * is case-sensitive if you are going to reuse this code.
- */
-function generateHash(aString) {
-  let cryptoHash = Cc["@mozilla.org/security/hash;1"].createInstance(
-    Ci.nsICryptoHash
-  );
-  cryptoHash.init(Ci.nsICryptoHash.MD5);
-  let stringStream = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(
-    Ci.nsIStringInputStream
-  );
-  stringStream.setUTF8Data(aString);
-  cryptoHash.updateFromStream(stringStream, -1);
-  // base64 allows the '/' char, but we can't use it for filenames.
-  return cryptoHash.finish(true).replace(/\//g, "-");
-}
-
-export var BookmarkJSONUtils = Object.freeze({
+export var BookmarkJSONUtils = {
   /**
    * Import bookmarks from a url.
    *
@@ -76,7 +56,7 @@ export var BookmarkJSONUtils = Object.freeze({
 
       notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_SUCCESS, aReplace);
     } catch (ex) {
-      console.error("Failed to restore bookmarks from " + aSpec + ": " + ex);
+      console.error(`Failed to restore bookmarks from ${aSpec}:`, ex);
       notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_FAILED, aReplace);
       throw ex;
     }
@@ -126,9 +106,7 @@ export var BookmarkJSONUtils = Object.freeze({
       }
       notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_SUCCESS, aReplace);
     } catch (ex) {
-      console.error(
-        "Failed to restore bookmarks from " + aFilePath + ": " + ex
-      );
+      console.error(`Failed to restore bookmarks from ${aFilePath}:`, ex);
       notifyObservers(PlacesUtils.TOPIC_BOOKMARKS_RESTORE_FAILED, aReplace);
       throw ex;
     }
@@ -166,7 +144,8 @@ export var BookmarkJSONUtils = Object.freeze({
       console.error("Unable to report telemetry.");
     }
 
-    let hash = generateHash(jsonString);
+    // Use "base64url" as this may be part of a filename.
+    let hash = PlacesUtils.sha256(jsonString, { format: "base64url" });
 
     if (hash === aOptions.failIfHashIs) {
       let e = new Error("Hash conflict");
@@ -183,7 +162,7 @@ export var BookmarkJSONUtils = Object.freeze({
     });
     return { count, hash };
   },
-});
+};
 
 function BookmarkImporter(aReplace, aSource) {
   this._replace = aReplace;
@@ -314,7 +293,7 @@ BookmarkImporter.prototype = {
       try {
         insertFaviconsForTree(node);
       } catch (ex) {
-        console.error(`Failed to insert favicons: ${ex}`);
+        console.error("Failed to insert favicons:", ex);
       }
     }
     return bookmarkCount;
@@ -426,7 +405,7 @@ function translateTreeTypes(node) {
   }
 
   switch (node.type) {
-    case PlacesUtils.TYPE_X_MOZ_PLACE_CONTAINER:
+    case PlacesUtils.TYPE_X_MOZ_PLACE_CONTAINER: {
       node.type = PlacesUtils.bookmarks.TYPE_FOLDER;
 
       // Older type mobile folders have a random guid with an annotation. We need
@@ -445,6 +424,7 @@ function translateTreeTypes(node) {
       // queries later.
       folderIdToGuidMap[node.id] = node.guid;
       break;
+    }
     case PlacesUtils.TYPE_X_MOZ_PLACE:
       node.type = PlacesUtils.bookmarks.TYPE_BOOKMARK;
       break;
@@ -456,7 +436,7 @@ function translateTreeTypes(node) {
       break;
     default:
       // No need to throw/reject here, insertTree will remove this node automatically.
-      console.error(`Unexpected bookmark type ${node.type}`);
+      console.error("Unexpected bookmark type", node.type);
       break;
   }
 
@@ -524,24 +504,14 @@ function translateTreeTypes(node) {
 function insertFaviconForNode(node) {
   if (node.icon) {
     try {
-      // Create a fake faviconURI to use (FIXME: bug 523932)
-      let faviconURI = Services.io.newURI("fake-favicon-uri:" + node.url);
-      PlacesUtils.favicons.replaceFaviconDataFromDataURL(
-        faviconURI,
-        node.icon,
-        0,
-        Services.scriptSecurityManager.getSystemPrincipal()
-      );
-      PlacesUtils.favicons.setAndFetchFaviconForPage(
+      PlacesUtils.favicons.setFaviconForPage(
         Services.io.newURI(node.url),
-        faviconURI,
-        false,
-        PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,
-        null,
-        Services.scriptSecurityManager.getSystemPrincipal()
+        // Create a fake faviconURI to use (FIXME: bug 523932)
+        Services.io.newURI("fake-favicon-uri:" + node.url),
+        Services.io.newURI(node.icon)
       );
     } catch (ex) {
-      console.error("Failed to import favicon data:" + ex);
+      console.error("Failed to import favicon data:", ex);
     }
   }
 

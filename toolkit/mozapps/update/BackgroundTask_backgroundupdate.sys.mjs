@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { BackgroundUpdate } from "resource://gre/modules/BackgroundUpdate.sys.mjs";
+import { DevToolsSocketStatus } from "resource://devtools/shared/security/DevToolsSocketStatus.sys.mjs";
 
 const { EXIT_CODE } = BackgroundUpdate;
 
@@ -16,7 +17,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   AppUpdater: "resource://gre/modules/AppUpdater.sys.mjs",
   BackgroundTasksUtils: "resource://gre/modules/BackgroundTasksUtils.sys.mjs",
   ExtensionUtils: "resource://gre/modules/ExtensionUtils.sys.mjs",
-  FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+  NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   UpdateUtils: "resource://gre/modules/UpdateUtils.sys.mjs",
 });
 
@@ -27,7 +28,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIApplicationUpdateService"
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -53,22 +54,14 @@ export const backgroundTaskTimeoutSec = Services.prefs.getIntPref(
  *
  * This means checking for, downloading, and potentially applying updates.
  *
- * @returns {boolean} - `true` if an update loop was completed.
+ * @returns {any} - Returns AppUpdater status upon update loop exit.
  */
 async function _attemptBackgroundUpdate() {
   let SLUG = "_attemptBackgroundUpdate";
 
-  // Here's where we do `post-update-processing`.  Creating the stub invokes the
-  // `UpdateServiceStub()` constructor, which handles various migrations (which should not be
-  // necessary, but we want to run for consistency and any migrations added in the future) and then
-  // dispatches `post-update-processing` (if appropriate).  We want to do this very early, so that
-  // the real update service is in its fully initialized state before any usage.
-  lazy.log.debug(
-    `${SLUG}: creating UpdateServiceStub() for "post-update-processing"`
-  );
-  Cc["@mozilla.org/updates/update-service-stub;1"].createInstance(
-    Ci.nsISupports
-  );
+  // Most likely we will implicitly initialize update at some point, but make
+  // sure post update processing gets run, just in case.
+  await lazy.UpdateService.init();
 
   lazy.log.debug(
     `${SLUG}: checking for preconditions necessary to update this installation`
@@ -98,7 +91,7 @@ async function _attemptBackgroundUpdate() {
       )}'`
     );
 
-    return false;
+    return lazy.AppUpdater.STATUS.NEVER_CHECKED;
   }
 
   let result = new Promise(resolve => {
@@ -115,7 +108,7 @@ async function _attemptBackgroundUpdate() {
         );
         appUpdater.removeListener(_appUpdaterListener);
         appUpdater.stop();
-        resolve(true);
+        resolve(status);
       } else if (status == lazy.AppUpdater.STATUS.CHECKING) {
         // The usual initial flow for the Background Update Task is to kick off
         // the update download and immediately exit. For consistency, we are
@@ -152,7 +145,7 @@ async function _attemptBackgroundUpdate() {
 
           appUpdater.removeListener(_appUpdaterListener);
           appUpdater.stop();
-          resolve(true);
+          resolve(status);
         } else {
           lazy.log.debug(`${SLUG}: Download has completed!`);
         }
@@ -194,6 +187,14 @@ export async function maybeSubmitBackgroundUpdatePing() {
 export async function runBackgroundTask(commandLine) {
   let SLUG = "runBackgroundTask";
   lazy.log.error(`${SLUG}: backgroundupdate`);
+  let automaticRestartFound =
+    -1 != commandLine.findFlag("automatic-restart", false);
+
+  // Modify Glean metrics for a successful automatic restart.
+  if (automaticRestartFound) {
+    Glean.backgroundUpdate.automaticRestartSuccess.set(true);
+    lazy.log.debug(`${SLUG}: application automatic restart completed`);
+  }
 
   // Help debugging.  This is a pared down version of
   // `dataProviders.application` in `Troubleshoot.sys.mjs`.  When adding to this
@@ -229,7 +230,11 @@ export async function runBackgroundTask(commandLine) {
   let syncManager = Cc["@mozilla.org/updates/update-sync-manager;1"].getService(
     Ci.nsIUpdateSyncManager
   );
-  if (syncManager.isOtherInstanceRunning()) {
+  if (DevToolsSocketStatus.hasSocketOpened()) {
+    lazy.log.warn(
+      `${SLUG}: Ignoring the 'multiple instances' check because a DevTools server is listening.`
+    );
+  } else if (syncManager.isOtherInstanceRunning()) {
     lazy.log.error(`${SLUG}: another instance is running`);
     return EXIT_CODE.OTHER_INSTANCE;
   }
@@ -320,16 +325,19 @@ export async function runBackgroundTask(commandLine) {
   // time we might send (built-in) pings.
   await BackgroundUpdate.recordUpdateEnvironment();
 
-  // The final leaf is for the benefit of `FileUtils`.  To help debugging, use
-  // the `GLEAN_LOG_PINGS` and `GLEAN_DEBUG_VIEW_TAG` environment variables: see
+  // To help debugging, use the `GLEAN_LOG_PINGS` and `GLEAN_DEBUG_VIEW_TAG`
+  // environment variables: see
   // https://mozilla.github.io/glean/book/user/debugging/index.html.
-  let gleanRoot = lazy.FileUtils.getFile("UpdRootD", [
+  let gleanRoot = await IOUtils.getDirectory(
+    Services.dirsvc.get("UpdRootD", Ci.nsIFile).path,
     "backgroundupdate",
     "datareporting",
-    "glean",
-    "__dummy__",
-  ]).parent.path;
-  Services.fog.initializeFOG(gleanRoot, "firefox.desktop.background.update");
+    "glean"
+  );
+  Services.fog.initializeFOG(
+    gleanRoot.path,
+    "firefox.desktop.background.update"
+  );
 
   // For convenience, mirror our loglevel.
   let logLevel = Services.prefs.getCharPref(
@@ -365,8 +373,11 @@ export async function runBackgroundTask(commandLine) {
   Glean.backgroundUpdate.states.add(stringStatus);
   Glean.backgroundUpdate.finalState.set(stringStatus);
 
+  let updateStatus = lazy.AppUpdater.STATUS.NEVER_CHECKED;
   try {
-    await _attemptBackgroundUpdate();
+    // Return AppUpdater status from _attemptBackgroundUpdate() to
+    // check if the status is STATUS.READY_FOR_RESTART.
+    updateStatus = await _attemptBackgroundUpdate();
 
     lazy.log.info(`${SLUG}: attempted background update`);
     Glean.backgroundUpdate.exitCodeSuccess.set(true);
@@ -411,6 +422,41 @@ export async function runBackgroundTask(commandLine) {
   // TODO: ensure the update service has persisted its state before we exit.  Bug 1700846.
   // TODO: ensure that Glean's upload mechanism is aware of Gecko shutdown.  Bug 1703572.
   await lazy.ExtensionUtils.promiseTimeout(500);
+
+  // If we're in a staged background update, we need to restart Firefox to complete the update.
+  lazy.log.debug(
+    `${SLUG}: Checking if staged background update is ready for restart`
+  );
+  // If a restart loop is occurring then automaticRestartFound will be true.
+  if (
+    lazy.NimbusFeatures.backgroundUpdateAutomaticRestart.getVariable(
+      "enabled"
+    ) &&
+    updateStatus === lazy.AppUpdater.STATUS.READY_FOR_RESTART &&
+    !automaticRestartFound
+  ) {
+    lazy.log.debug(
+      `${SLUG}: Starting Firefox restart after staged background update`
+    );
+
+    // We need to restart Firefox with the same arguments to ensure
+    // the background update continues from where it was before the restart.
+    try {
+      Cc["@mozilla.org/updates/update-processor;1"]
+        .createInstance(Ci.nsIUpdateProcessor)
+        .attemptAutomaticApplicationRestartWithLaunchArgs([
+          "-automatic-restart",
+        ]);
+      // Report an attempted automatic restart.
+      Glean.backgroundUpdate.automaticRestartAttempted.set(true);
+      lazy.log.debug(`${SLUG}: automatic application restart queued`);
+    } catch (e) {
+      lazy.log.error(
+        `${SLUG}: caught exception; failed to queue automatic application restart`,
+        e
+      );
+    }
+  }
 
   return result;
 }

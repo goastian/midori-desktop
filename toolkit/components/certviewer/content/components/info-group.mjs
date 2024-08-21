@@ -14,20 +14,22 @@ export class InfoGroup extends HTMLElement {
   }
 
   connectedCallback() {
-    let infoGroupTemplate = document.getElementById("info-group-template");
-    this.attachShadow({ mode: "open" }).appendChild(
-      infoGroupTemplate.content.cloneNode(true)
-    );
+    // Attach and connect before adding the template, or fluent
+    // won't translate the template copy we insert into the
+    // shadowroot.
+    this.attachShadow({ mode: "open" });
     document.l10n.connectRoot(this.shadowRoot);
-    document.l10n.translateFragment(this.shadowRoot);
+
+    let infoGroupTemplate = document.getElementById("info-group-template");
+    this.shadowRoot.appendChild(infoGroupTemplate.content.cloneNode(true));
     this.render();
   }
 
   render() {
     let title = this.shadowRoot.querySelector(".info-group-title");
-    title.setAttribute(
-      "data-l10n-id",
-      "certificate-viewer-" + this.item.sectionId
+    document.l10n.setAttributes(
+      title,
+      `certificate-viewer-${this.item.sectionId}`
     );
 
     // Adds a class with the section title's name, to make

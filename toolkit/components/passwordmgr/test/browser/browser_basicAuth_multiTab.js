@@ -47,7 +47,7 @@ async function openTabWithAuthPrompt(origin, authOptions) {
     url.toString()
   );
   info("Loading " + url.toString());
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, url.toString());
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, url.toString());
   return { origin, tab, authOptions, loadPromise, promptPromise };
 }
 
@@ -87,13 +87,6 @@ async function testTabAuthed(expectAuthed, { tab, loadPromise, authOptions }) {
     "Sent correct password"
   );
 }
-
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    // This test relies on tab auth prompts.
-    set: [["prompts.modalType.httpAuth", Services.prompt.MODAL_TYPE_TAB]],
-  });
-});
 
 add_task(async function test() {
   let tabA = await openTabWithAuthPrompt(ORIGIN1, {

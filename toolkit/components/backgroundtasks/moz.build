@@ -58,14 +58,15 @@ LOCAL_INCLUDES += [
     "../../profile",
 ]
 
-BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.ini"]
-XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell/xpcshell.ini"]
+BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
+XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell/xpcshell.toml"]
 
 TESTING_JS_MODULES += [
     "BackgroundTasksTestUtils.sys.mjs",
 ]
 
 TESTING_JS_MODULES.backgroundtasks += [
+    "tests/BackgroundTask_automaticrestart.sys.mjs",
     "tests/BackgroundTask_backgroundtask_specific_pref.sys.mjs",
     "tests/BackgroundTask_crash.sys.mjs",
     "tests/BackgroundTask_file_exists.sys.mjs",
@@ -90,11 +91,11 @@ if CONFIG["MOZ_BUILD_APP"] == "browser":
         "tests/BackgroundTask_targeting.sys.mjs",
     ]
 
-    FINAL_TARGET_FILES.browser.defaults.backgroundtasks += [
+    FINAL_TARGET_PP_FILES.browser.defaults.backgroundtasks += [
         "defaults/backgroundtasks_browser.js",
     ]
 
-FINAL_TARGET_FILES.defaults.backgroundtasks += [
+FINAL_TARGET_PP_FILES.defaults.backgroundtasks += [
     "defaults/backgroundtasks.js",
 ]
 

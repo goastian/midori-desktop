@@ -39,6 +39,10 @@ function test_ntp_theme(browser, theme, isBrightText) {
         doc.documentElement.hasAttribute("lwt-newtab"),
         "New tab page should have lwt-newtab attribute"
       );
+      ok(
+        doc.documentElement.hasAttribute("lwtheme"),
+        "New tab page should have lwtheme attribute"
+      );
       is(
         doc.documentElement.hasAttribute("lwt-newtab-brighttext"),
         isBrightText,
@@ -71,10 +75,9 @@ function test_ntp_theme(browser, theme, isBrightText) {
  * Test whether a given browser has the default theme applied
  *
  * @param {object} browser to test against
- * @param {string} url being tested
  * @returns {Promise} The task as a promise
  */
-function test_ntp_default_theme(browser, url) {
+function test_ntp_default_theme(browser) {
   Services.ppmm.sharedData.flush();
   return SpecialPowers.spawn(
     browser,
@@ -89,6 +92,10 @@ function test_ntp_default_theme(browser, url) {
       ok(
         !doc.documentElement.hasAttribute("lwt-newtab"),
         "New tab page should not have lwt-newtab attribute"
+      );
+      ok(
+        !doc.documentElement.hasAttribute("lwtheme"),
+        "New tab page should not have lwtheme attribute"
       );
       ok(
         !doc.documentElement.hasAttribute("lwt-newtab-brighttext"),

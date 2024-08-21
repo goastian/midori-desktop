@@ -5,20 +5,25 @@
 
 add_task(async function test_about_translations_dropdowns() {
   let languagePairs = [
-    { fromLang: "en", toLang: "es", isBeta: false },
-    { fromLang: "es", toLang: "en", isBeta: false },
+    { fromLang: "en", toLang: "es" },
+    { fromLang: "es", toLang: "en" },
     // This is not a bi-directional translation.
-    { fromLang: "is", toLang: "en", isBeta: true },
+    { fromLang: "is", toLang: "en" },
   ];
   await openAboutTranslations({
     languagePairs,
     dataForContent: languagePairs,
-    runInPage: async ({ dataForContent: languagePairs, selectors }) => {
+    runInPage: async ({ selectors }) => {
       const { document } = content;
 
-      await ContentTaskUtils.waitForCondition(() => {
-        return document.body.hasAttribute("ready");
-      }, "Waiting for the document to be ready.");
+      await ContentTaskUtils.waitForCondition(
+        () => {
+          return document.body.hasAttribute("ready");
+        },
+        "Waiting for the document to be ready.",
+        100,
+        200
+      );
 
       /**
        * Some languages can be marked as hidden in the dropbdown. This function
@@ -37,30 +42,6 @@ add_task(async function test_about_translations_dropdowns() {
         selectedValue,
       }) {
         const options = [...select.options];
-        const betaL10nId = "about-translations-displayname-beta";
-        for (const option of options) {
-          for (const languagePair of languagePairs) {
-            if (
-              languagePair.fromLang === option.value ||
-              languagePair.toLang === option.value
-            ) {
-              if (option.getAttribute("data-l10n-id") === betaL10nId) {
-                is(
-                  languagePair.isBeta,
-                  true,
-                  `Since data-l10n-id was ${betaL10nId} for ${option.value}, then it must be part of a beta language pair, but it was not.`
-                );
-              }
-              if (!languagePair.isBeta) {
-                is(
-                  option.getAttribute("data-l10n-id") === betaL10nId,
-                  false,
-                  `Since the languagePair is non-beta, the language option ${option.value} should not have a data-l10-id of ${betaL10nId}, but it does.`
-                );
-              }
-            }
-          }
-        }
         info(message);
         Assert.deepEqual(
           options.filter(option => !option.hidden).map(option => option.value),

@@ -5,6 +5,7 @@ add_task(async function test_value_structure_conflict() {
   let buf = await openMirror("value_structure_conflict");
 
   info("Set up mirror");
+  let dateAdded = new Date();
   await PlacesUtils.bookmarks.insertTree({
     guid: PlacesUtils.bookmarks.menuGuid,
     children: [
@@ -17,11 +18,13 @@ add_task(async function test_value_structure_conflict() {
             guid: "bookmarkBBBB",
             url: "http://example.com/b",
             title: "B",
+            dateAdded,
           },
           {
             guid: "bookmarkCCCC",
             url: "http://example.com/c",
             title: "C",
+            dateAdded,
           },
         ],
       },
@@ -34,6 +37,7 @@ add_task(async function test_value_structure_conflict() {
             guid: "bookmarkEEEE",
             url: "http://example.com/e",
             title: "E",
+            dateAdded,
           },
         ],
       },
@@ -141,7 +145,7 @@ add_task(async function test_value_structure_conflict() {
     "Should upload records for merged and new local items"
   );
 
-  let localItemIds = await PlacesUtils.promiseManyItemIds([
+  let localItemIds = await PlacesTestUtils.promiseManyItemIds([
     "folderAAAAAA",
     "bookmarkEEEE",
     "bookmarkBBBB",
@@ -161,6 +165,13 @@ add_task(async function test_value_structure_conflict() {
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
         urlHref: "http://example.com/e",
         isTagging: false,
+        title: "E",
+        tags: "",
+        frecency: 1,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: dateAdded.getTime(),
+        lastVisitDate: null,
       },
     },
     {
@@ -176,6 +187,13 @@ add_task(async function test_value_structure_conflict() {
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
         urlHref: "http://example.com/b",
         isTagging: false,
+        title: "B",
+        tags: "",
+        frecency: 1,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: dateAdded.getTime(),
+        lastVisitDate: null,
       },
     },
     {
@@ -383,7 +401,7 @@ add_task(async function test_move() {
     "Should not upload records for remotely moved items"
   );
 
-  let localItemIds = await PlacesUtils.promiseManyItemIds([
+  let localItemIds = await PlacesTestUtils.promiseManyItemIds([
     "devFolder___",
     "mozFolder___",
     "bzBmk_______",
@@ -406,6 +424,13 @@ add_task(async function test_move() {
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
         urlHref: "",
         isTagging: false,
+        title: "Dev",
+        tags: "",
+        frecency: 0,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: 0,
+        lastVisitDate: null,
       },
     },
     {
@@ -421,6 +446,13 @@ add_task(async function test_move() {
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
         urlHref: "",
         isTagging: false,
+        title: "Mozilla",
+        tags: "",
+        frecency: 0,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: 0,
+        lastVisitDate: null,
       },
     },
     {
@@ -436,6 +468,13 @@ add_task(async function test_move() {
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
         urlHref: "https://bugzilla.mozilla.org/",
         isTagging: false,
+        title: "Bugzilla",
+        tags: "",
+        frecency: 1,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: 0,
+        lastVisitDate: null,
       },
     },
     {
@@ -451,6 +490,13 @@ add_task(async function test_move() {
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
         urlHref: "https://webmaker.org/",
         isTagging: false,
+        title: "Webmaker",
+        tags: "",
+        frecency: 1,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: 0,
+        lastVisitDate: null,
       },
     },
     {
@@ -466,6 +512,13 @@ add_task(async function test_move() {
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
         urlHref: "https://nightly.mozilla.org/",
         isTagging: false,
+        title: "Nightly",
+        tags: "",
+        frecency: 1,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: 0,
+        lastVisitDate: null,
       },
     },
     {
@@ -481,6 +534,13 @@ add_task(async function test_move() {
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
         urlHref: "https://developer.mozilla.org/",
         isTagging: false,
+        title: "MDN",
+        tags: "",
+        frecency: 1,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: 0,
+        lastVisitDate: null,
       },
     },
     {
@@ -496,6 +556,13 @@ add_task(async function test_move() {
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
         urlHref: "http://getfirefox.com/",
         isTagging: false,
+        title: "Get Firefox!",
+        tags: "",
+        frecency: 1,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: 0,
+        lastVisitDate: null,
       },
     },
   ]);
@@ -696,7 +763,7 @@ add_task(async function test_move_into_parent_sibling() {
     "Should not upload records for remote-only structure changes"
   );
 
-  let localItemIds = await PlacesUtils.promiseManyItemIds([
+  let localItemIds = await PlacesTestUtils.promiseManyItemIds([
     "folderCCCCCC",
     "bookmarkBBBB",
     "folderAAAAAA",
@@ -715,6 +782,10 @@ add_task(async function test_move_into_parent_sibling() {
         guid: "folderCCCCCC",
         parentGuid: PlacesUtils.bookmarks.menuGuid,
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
+        tags: "",
+        frecency: 0,
+        hidden: false,
+        visitCount: 0,
       },
     },
     {
@@ -730,6 +801,13 @@ add_task(async function test_move_into_parent_sibling() {
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
         urlHref: "http://example.com/b",
         isTagging: false,
+        title: "B",
+        tags: "",
+        frecency: 1,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: 0,
+        lastVisitDate: null,
       },
     },
   ]);
@@ -915,7 +993,7 @@ add_task(async function test_complex_move_with_additions() {
     "Should upload new records for (A D)"
   );
 
-  let localItemIds = await PlacesUtils.promiseManyItemIds([
+  let localItemIds = await PlacesTestUtils.promiseManyItemIds([
     "bookmarkEEEE",
     "folderAAAAAA",
     "bookmarkCCCC",
@@ -933,6 +1011,10 @@ add_task(async function test_complex_move_with_additions() {
         guid: "bookmarkEEEE",
         parentGuid: "folderAAAAAA",
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
+        tags: "",
+        frecency: 1,
+        hidden: false,
+        visitCount: 0,
       },
     },
     {
@@ -948,6 +1030,13 @@ add_task(async function test_complex_move_with_additions() {
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
         urlHref: "http://example.com/c",
         isTagging: false,
+        title: "C",
+        tags: "",
+        frecency: 1,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: 0,
+        lastVisitDate: null,
       },
     },
     {
@@ -963,6 +1052,13 @@ add_task(async function test_complex_move_with_additions() {
         source: PlacesUtils.bookmarks.SOURCES.SYNC,
         urlHref: "",
         isTagging: false,
+        title: "A",
+        tags: "",
+        frecency: 0,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: 0,
+        lastVisitDate: null,
       },
     },
   ]);

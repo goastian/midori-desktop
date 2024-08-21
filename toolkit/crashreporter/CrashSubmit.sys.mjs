@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { FileUtils } from "resource://gre/modules/FileUtils.sys.mjs";
-
 const SUCCESS = "success";
 const FAILED = "failed";
 const SUBMITTING = "submitting";
@@ -12,81 +10,6 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SUBMISSION_REGEX =
   /^bp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// TODO: this is still synchronous; need an async INI parser to make it async
-function parseINIStrings(path) {
-  let file = new FileUtils.File(path);
-  let factory = Cc["@mozilla.org/xpcom/ini-parser-factory;1"].getService(
-    Ci.nsIINIParserFactory
-  );
-  let parser = factory.createINIParser(file);
-  let obj = {};
-  for (let key of parser.getKeys("Strings")) {
-    obj[key] = parser.getString("Strings", key);
-  }
-  return obj;
-}
-
-// Since we're basically re-implementing (with async) part of the crashreporter
-// client here, we'll just steal the strings we need from crashreporter.ini
-async function getL10nStrings() {
-  let path = PathUtils.join(
-    Services.dirsvc.get("GreD", Ci.nsIFile).path,
-    "crashreporter.ini"
-  );
-  let pathExists = await IOUtils.exists(path);
-
-  if (!pathExists) {
-    // we if we're on a mac
-    let parentDir = PathUtils.parent(path);
-    path = PathUtils.join(
-      parentDir,
-      "MacOS",
-      "crashreporter.app",
-      "Contents",
-      "Resources",
-      "crashreporter.ini"
-    );
-
-    let pathExists = await IOUtils.exists(path);
-
-    if (!pathExists) {
-      // This happens on Android where everything is in an APK.
-      // Android users can't see the contents of the submitted files
-      // anyway, so just hardcode some fallback strings.
-      return {
-        crashid: "Crash ID: %s",
-        reporturl: "You can view details of this crash at %s",
-      };
-    }
-  }
-
-  let crstrings = parseINIStrings(path);
-  let strings = {
-    crashid: crstrings.CrashID,
-    reporturl: crstrings.CrashDetailsURL,
-  };
-
-  path = PathUtils.join(
-    Services.dirsvc.get("XCurProcD", Ci.nsIFile).path,
-    "crashreporter-override.ini"
-  );
-  pathExists = await IOUtils.exists(path);
-
-  if (pathExists) {
-    crstrings = parseINIStrings(path);
-
-    if ("CrashID" in crstrings) {
-      strings.crashid = crstrings.CrashID;
-    }
-
-    if ("CrashDetailsURL" in crstrings) {
-      strings.reporturl = crstrings.CrashDetailsURL;
-    }
-  }
-
-  return strings;
-}
 
 function getDir(name) {
   let uAppDataPath = Services.dirsvc.get("UAppData", Ci.nsIFile).path;
@@ -109,11 +32,17 @@ function getPendingMinidump(id) {
 }
 
 async function writeSubmittedReportAsync(crashID, viewURL) {
-  let strings = await getL10nStrings();
-  let data = strings.crashid.replace("%s", crashID);
-
+  // Since we're basically re-implementing (with async) part of the
+  // crashreporter client here, we'll use the strings we need from the
+  // crashreporter fluent file.
+  const l10n = new Localization(["crashreporter/crashreporter.ftl"]);
+  let data = await l10n.formatValue("crashreporter-crash-identifier", {
+    id: crashID,
+  });
   if (viewURL) {
-    data += "\n" + strings.reporturl.replace("%s", viewURL);
+    data +=
+      "\n" +
+      (await l10n.formatValue("crashreporter-crash-details", { url: viewURL }));
   }
 
   await writeFileAsync("submitted", `${crashID}.txt`, data);
@@ -259,10 +188,29 @@ Submitter.prototype = {
     let manager = Services.crashmanager;
     let submissionID = manager.generateSubmissionID();
 
-    xhr.addEventListener("readystatechange", evt => {
+    xhr.addEventListener("readystatechange", () => {
       if (xhr.readyState == 4) {
         let ret =
           xhr.status === 200 ? this.parseResponse(xhr.responseText) : {};
+        if (xhr.status !== 200) {
+          const xhrStatus = code => {
+            switch (code) {
+              case 400:
+                return xhr.responseText;
+
+              case 413:
+                return "Discarded=post_body_too_large";
+
+              default:
+                return "Discarded=unknown_error";
+            }
+          };
+          let err = xhrStatus(xhr.status);
+          if (err.length && err.startsWith("Discarded=")) {
+            const errMsg = err.split("Discarded=")[1];
+            Glean.crashSubmission.collectorErrors[errMsg].add();
+          }
+        }
         let submitted = !!ret.CrashID;
         let p = Promise.resolve();
 
@@ -328,9 +276,11 @@ Submitter.prototype = {
     switch (status) {
       case SUCCESS:
         this.resolveSubmitStatusPromise(ret.CrashID);
+        Glean.crashSubmission.success.add(1);
         break;
       case FAILED:
         this.rejectSubmitStatusPromise(FAILED);
+        Glean.crashSubmission.failure.add(1);
         break;
       default:
       // no callbacks invoked.

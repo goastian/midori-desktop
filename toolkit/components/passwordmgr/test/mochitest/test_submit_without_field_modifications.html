@@ -18,9 +18,6 @@
 
 <pre id="test"></pre>
 <script>
-const { TestUtils } = SpecialPowers.ChromeUtils.import(
-  "resource://testing-common/TestUtils.jsm"
-);
 SimpleTest.requestFlakyTimeout("Giving a chance for the unexpected popup to show");
 
 const EXAMPLE_COM = window.location.origin + "/tests/toolkit/components/passwordmgr/test/mochitest/";
@@ -40,10 +37,11 @@ function waitForLoad() {
 
 async function setupWithOneLogin(pageUrl) {
   let origin = window.location.origin;
-  addLoginsInParent([origin, origin, null, "user1", "pass1"]);
+  await setStoredLoginsAsync([origin, origin, null, "user1", "pass1"]);
 
-  let chromeScript = runInParent(function testSetup() {
-    for (let l of Services.logins.getAllLogins()) {
+  let chromeScript = runInParent(async function testSetup() {
+    let logins = await Services.logins.getAllLogins();
+    for (let l of logins) {
       info("Got login: " + l.username + ", " + l.password);
     }
   });
@@ -141,9 +139,7 @@ add_task(async function test_no_message_on_navigation() {
   await setup(PREFILLED_FORM_URL);
 
   let submitMessageSent = false;
-  getSubmitMessage().then(value => {
-    submitMessageSent = true;
-  });
+  getSubmitMessage().then(_value => submitMessageSent = true);
   await navigateWithoutUserInteraction();
 
   // allow time to pass before concluding no onFormSubmit message was sent
@@ -199,9 +195,7 @@ add_task(async function test_no_message_on_autofill_without_user_interaction() {
   );
   ok(!(await checkDocumentUserHasInteracted()), "document.userHasInteracted should be initially false");
   let submitMessageSent = false;
-  getSubmitMessage().then(value => {
-    submitMessageSent = true;
-  });
+  getSubmitMessage().then(_value => submitMessageSent = true);
   info("Navigating the page")
   await navigateWithoutUserInteraction();
 

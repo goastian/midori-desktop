@@ -185,7 +185,6 @@ add_task(async function test_remote_fetch_and_ready() {
       REMOTE_CONFIGURATION_FOO.branches[0].slug,
       {
         type: "nimbus-rollout",
-        enrollmentId: sinon.match.string,
       }
     ),
     "should call setExperimentActive with `foo` feature"
@@ -196,7 +195,6 @@ add_task(async function test_remote_fetch_and_ready() {
       REMOTE_CONFIGURATION_BAR.branches[0].slug,
       {
         type: "nimbus-rollout",
-        enrollmentId: sinon.match.string,
       }
     ),
     "should call setExperimentActive with `bar` feature"
@@ -321,23 +319,29 @@ add_task(async function test_finalizeRemoteConfigs_cleanup() {
     featureBar
   );
 
-  let fooCleanup = await ExperimentFakes.enrollWithRollout(
+  let fooCleanup = await ExperimentFakes.enrollWithFeatureConfig(
     {
       featureId: "foo",
       isEarlyStartup: true,
       value: { foo: true },
     },
     {
+      slug: "foo-rollout",
+      branchSlug: REMOTE_CONFIGURATION_FOO.branches[0].slug,
+      isRollout: true,
       source: "rs-loader",
     }
   );
-  await ExperimentFakes.enrollWithRollout(
+  await ExperimentFakes.enrollWithFeatureConfig(
     {
       featureId: "bar",
       isEarlyStartup: true,
       value: { bar: true },
     },
     {
+      slug: "bar-rollout",
+      branchSlug: REMOTE_CONFIGURATION_BAR.branches[0].slug,
+      isRollout: true,
       source: "rs-loader",
     }
   );
@@ -405,7 +409,7 @@ add_task(async function test_finalizeRemoteConfigs_cleanup() {
     "Pref was cleared"
   );
 
-  await fooCleanup();
+  fooCleanup();
   // This will also remove the inactive recipe from the store
   // the previous update (from recipe not seen code path)
   // only sets the recipe as inactive
@@ -546,11 +550,14 @@ add_task(async function remote_defaults_variables_storage() {
     enabled: true,
   };
 
-  let doCleanup = await ExperimentFakes.enrollWithRollout({
-    featureId: "bar",
-    isEarlyStartup: true,
-    value: rolloutValue,
-  });
+  let doCleanup = await ExperimentFakes.enrollWithFeatureConfig(
+    {
+      featureId: "bar",
+      isEarlyStartup: true,
+      value: rolloutValue,
+    },
+    { isRollout: true }
+  );
 
   Assert.ok(
     Services.prefs.getStringPref(`${SYNC_DEFAULTS_PREF_BRANCH}bar`, ""),
@@ -571,7 +578,7 @@ add_task(async function remote_defaults_variables_storage() {
     "Test types are returned correctly"
   );
 
-  await doCleanup();
+  doCleanup();
 
   Assert.equal(
     Services.prefs.getIntPref(`${SYNC_DEFAULTS_PREF_BRANCH}bar.storage`, -1),

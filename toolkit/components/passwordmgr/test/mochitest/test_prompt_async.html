@@ -10,18 +10,18 @@
     <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 
     <script class="testbody" type="text/javascript">
-      const { NetUtil } = SpecialPowers.ChromeUtils.import(
-        "resource://gre/modules/NetUtil.jsm"
+      const { NetUtil } = SpecialPowers.ChromeUtils.importESModule(
+        "resource://gre/modules/NetUtil.sys.mjs"
       );
-      const { TestUtils } = SpecialPowers.ChromeUtils.import(
-        "resource://testing-common/TestUtils.jsm"
+      const { TestUtils } = SpecialPowers.ChromeUtils.importESModule(
+        "resource://testing-common/TestUtils.sys.mjs"
       );
       const EXAMPLE_COM = "http://example.com/tests/toolkit/components/passwordmgr/test/mochitest/";
       const EXAMPLE_ORG = "http://example.org/tests/toolkit/components/passwordmgr/test/mochitest/";
       let mozproxyOrigin;
 
-      // Let prompt_common know what kind of modal type is enabled for auth prompts.
-      modalType = authPromptModalType;
+      // Let prompt_common know what kind of modal type is used for auth prompts.
+      modalType = Ci.nsIPrompt.MODAL_TYPE_TAB;
 
       // These are magically defined on the window due to the iframe IDs
       /* global iframe1, iframe2a, iframe2b */
@@ -58,9 +58,7 @@
 
       function promiseLoadedContentDoc(frame) {
         return new Promise(resolve => {
-          frame.addEventListener("load", function onLoad(evt) {
-            resolve(SpecialPowers.wrap(frame).contentDocument);
-          }, { once: true });
+          frame.addEventListener("load", _e => resolve(SpecialPowers.wrap(frame).contentDocument), { once: true });
         });
       }
 
@@ -98,7 +96,7 @@
               return this;
             },
 
-            onProxyAvailable(req, uri, pi, status) {
+            onProxyAvailable(req, uri, pi, _status) {
               // Add logins using the proxy host and port used by the mochitest harness.
               mozproxyOrigin = "moz-proxy://" + SpecialPowers.wrap(pi).host + ":" +
                 SpecialPowers.wrap(pi).port;

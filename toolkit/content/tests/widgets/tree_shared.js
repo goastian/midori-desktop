@@ -321,11 +321,7 @@ function testtag_tree_columns(tree, expectedColumns, testid) {
     // check the view's getColumnProperties method
     var properties = tree.view.getColumnProperties(column);
     var expectedProperties = expectedColumn.properties;
-    is(
-      properties,
-      expectedProperties ? expectedProperties : "",
-      adjtestid + "getColumnProperties"
-    );
+    is(properties, expectedProperties || "", adjtestid + "getColumnProperties");
   }
 
   is(columns.getFirstColumn(), columns[0], testid + "getFirstColumn");
@@ -574,10 +570,10 @@ function testtag_tree_TreeSelection_UI(tree, testid, multiple) {
 
   var keydownFired = 0;
   var keypressFired = 0;
-  function keydownListener(event) {
+  function keydownListener() {
     keydownFired++;
   }
-  function keypressListener(event) {
+  function keypressListener() {
     keypressFired++;
   }
 
@@ -1307,7 +1303,7 @@ function testtag_tree_TreeView_rows(tree, testid, rowInfo, startRow) {
     isContainer(row) {
       return row.container;
     },
-    isContainerOpen(row) {
+    isContainerOpen() {
       return false;
     },
     isContainerEmpty(row) {
@@ -1325,7 +1321,7 @@ function testtag_tree_TreeView_rows(tree, testid, rowInfo, startRow) {
     getParentIndex(row) {
       return row.parent;
     },
-    hasNextSibling(row) {
+    hasNextSibling() {
       return r < startRow + length - 1;
     },
   };
@@ -1433,7 +1429,7 @@ function testtag_tree_TreeView_rows(tree, testid, rowInfo, startRow) {
   }
 }
 
-function testtag_tree_TreeView_rows_sort(tree, testid, rowInfo) {
+function testtag_tree_TreeView_rows_sort(tree) {
   // check if cycleHeader sorts the columns
   var columnIndex = 0;
   var view = tree.view;
@@ -1734,7 +1730,7 @@ function testtag_tree_wheel(aTree) {
 
   var defaultPrevented = 0;
 
-  function wheelListener(event) {
+  function wheelListener() {
     defaultPrevented++;
   }
   window.addEventListener("wheel", wheelListener);
@@ -1958,14 +1954,15 @@ async function doScrollTest({
 async function nativeScroll(component, offsetX, offsetY, scrollDelta) {
   const utils = SpecialPowers.getDOMWindowUtils(window);
   const x = component.screenX + offsetX;
-  const y = component.screenY + offsetX;
+  const y = component.screenY + offsetY;
 
   // Mouse move event.
   await new Promise(resolve => {
+    info("waiting for mousemove");
     window.addEventListener("mousemove", resolve, { once: true });
     utils.sendNativeMouseEvent(
-      x,
-      y,
+      x * window.devicePixelRatio,
+      y * window.devicePixelRatio,
       utils.NATIVE_MOUSE_MESSAGE_MOVE,
       0,
       {},
@@ -1975,10 +1972,11 @@ async function nativeScroll(component, offsetX, offsetY, scrollDelta) {
 
   // Wheel event.
   await new Promise(resolve => {
+    info("waiting for wheel");
     window.addEventListener("wheel", resolve, { once: true });
     utils.sendNativeMouseScrollEvent(
-      x,
-      y,
+      x * window.devicePixelRatio,
+      y * window.devicePixelRatio,
       // nativeVerticalWheelEventMsg is defined in apz_test_native_event_utils.js
       // eslint-disable-next-line no-undef
       nativeVerticalWheelEventMsg(),
@@ -1993,6 +1991,7 @@ async function nativeScroll(component, offsetX, offsetY, scrollDelta) {
     );
   });
 
+  info("waiting for apz");
   // promiseApzFlushedRepaints is defined in apz_test_utils.js
   // eslint-disable-next-line no-undef
   await promiseApzFlushedRepaints();
@@ -2106,7 +2105,7 @@ function mouseClickOnColumnHeader(
   }
 }
 
-function mouseDblClickOnCell(tree, row, column, testname) {
+function mouseDblClickOnCell(tree, row, column) {
   // select the row we will edit
   var selection = tree.view.selection;
   selection.select(row);
@@ -2148,12 +2147,12 @@ function convertDOMtoTreeRowInfo(treechildren, level, rowidx) {
       for (var c = 0; c < treerow.childNodes.length; c++) {
         var cell = treerow.childNodes[c];
         cellInfo.push({
-          label: "" + cell.getAttribute("label"),
-          value: cell.getAttribute("value"),
-          properties: cell.getAttribute("properties"),
+          label: cell.getAttribute("label") || "",
+          value: cell.getAttribute("value") || "",
+          properties: cell.getAttribute("properties") || "",
           editable: cell.getAttribute("editable") != "false",
           selectable: cell.getAttribute("selectable") != "false",
-          image: cell.getAttribute("src"),
+          image: cell.getAttribute("src") || "",
           mode: cell.hasAttribute("mode")
             ? parseInt(cell.getAttribute("mode"))
             : 3,
@@ -2167,7 +2166,7 @@ function convertDOMtoTreeRowInfo(treechildren, level, rowidx) {
           : convertDOMtoTreeRowInfo(descendants, level + 1, rowidx);
       obj.rows.push({
         cells: cellInfo,
-        properties: treerow.getAttribute("properties"),
+        properties: treerow.getAttribute("properties") || "",
         container: treeitem.getAttribute("container") == "true",
         separator: treeitem.localName == "treeseparator",
         children,

@@ -17,12 +17,6 @@
   }
 }
 
-:root {
-  background-color: -moz-Dialog;
-  color: -moz-DialogText;
-  font: message-box;
-}
-
 /* ::::: Alert icons :::::*/
 
 .message-icon {
@@ -83,10 +77,6 @@ xul|separator.groove[orient="vertical"] {
 }
 
 /* Other margins */
-
-html|input {
-  margin: 2px 4px;
-}
 
 xul|notification > xul|hbox > xul|button {
   margin-block: 0;

@@ -10,6 +10,7 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.sys.mjs",
+  NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
 });
 
 XPCOMUtils.defineLazyServiceGetter(
@@ -68,7 +69,7 @@ export var UpdateListener = {
     return Services.prefs.getIntPref("app.update.badgeWaitTime", 4 * 24 * 3600); // 4 days
   },
 
-  get suppressedPromptDelay() {
+  async getSuppressedPromptDelay() {
     // Return the time (in milliseconds) after which a suppressed prompt should
     // be shown. Either 14 days from the last build time, or 7 days from the
     // last update time; whichever comes sooner. If build time is not available
@@ -90,7 +91,8 @@ export var UpdateListener = {
         buildId.slice(10, 12),
         buildId.slice(12, 14)
       ).getTime() ?? 0;
-    let updateTime = lazy.UpdateManager.getUpdateAt(0)?.installDate ?? 0;
+    const updateHistory = await lazy.UpdateManager.getHistory();
+    let updateTime = updateHistory[0]?.installDate ?? 0;
     // Check that update/build times are at most 24 hours after now.
     if (buildTime - now > this.promptMaxFutureVariation) {
       buildTime = 0;
@@ -121,8 +123,11 @@ export var UpdateListener = {
     // update is found this pref is cleared and the notification won't be shown.
     let url = Services.prefs.getCharPref(PREF_APP_UPDATE_UNSUPPORTED_URL, null);
     if (url) {
-      this.showUpdateNotification("unsupported", true, true, win =>
-        this.openUnsupportedUpdateUrl(win, url)
+      this.showUpdateNotification(
+        "unsupported",
+        win => this.openUnsupportedUpdateUrl(win, url),
+        true,
+        { dismissed: true }
       );
     }
   },
@@ -181,13 +186,38 @@ export var UpdateListener = {
     win.openURL(detailsURL);
   },
 
-  showUpdateNotification(
-    type,
-    mainActionDismiss,
-    dismissed,
-    mainAction,
-    beforeShowDoorhanger
-  ) {
+  getReleaseNotesUrl(update) {
+    try {
+      // Release notes are enabled by default for EN locales only, but can be
+      // enabled for other locales within an experiment.
+      if (
+        !Services.locale.appLocaleAsBCP47.startsWith("en") &&
+        !lazy.NimbusFeatures.updatePrompt.getVariable("showReleaseNotesLink")
+      ) {
+        return null;
+      }
+      // The release notes URL is set in the pref app.releaseNotesURL.prompt,
+      // but can also be overridden by an experiment.
+      let url = lazy.NimbusFeatures.updatePrompt.getVariable("releaseNotesURL");
+      if (url) {
+        let versionString = update.appVersion;
+        switch (update.channel) {
+          case "aurora":
+          case "beta":
+            versionString += "beta";
+            break;
+        }
+        url = Services.urlFormatter.formatURL(
+          url.replace("%VERSION%", versionString)
+        );
+      }
+      return url || null;
+    } catch (error) {
+      return null;
+    }
+  },
+
+  showUpdateNotification(type, mainAction, mainActionDismiss, options = {}) {
     const addTelemetry = id => {
       // No telemetry for the "downloading" state.
       if (type !== "downloading") {
@@ -218,9 +248,9 @@ export var UpdateListener = {
       "update-" + type,
       action,
       secondaryAction,
-      { dismissed, beforeShowDoorhanger }
+      options
     );
-    if (dismissed) {
+    if (options.dismissed) {
       addTelemetry("UPDATE_NOTIFICATION_BADGE_SHOWN");
     } else {
       addTelemetry("UPDATE_NOTIFICATION_SHOWN");
@@ -234,22 +264,35 @@ export var UpdateListener = {
     if (!dismissed) {
       this.restartDoorhangerShown = true;
     }
-    this.showUpdateNotification(notification, true, dismissed, () =>
-      this.requestRestart()
+    this.showUpdateNotification(
+      notification,
+      () => this.requestRestart(),
+      true,
+      { dismissed }
     );
   },
 
   showUpdateAvailableNotification(update, dismissed) {
-    this.showUpdateNotification("available", false, dismissed, () => {
+    let learnMoreURL = this.getReleaseNotesUrl(update);
+    this.showUpdateNotification(
+      "available",
       // This is asynchronous, but we are just going to kick it off.
-      lazy.AppUpdateService.downloadUpdate(update, true);
-    });
+      () => lazy.AppUpdateService.downloadUpdate(update, true),
+      false,
+      { dismissed, learnMoreURL }
+    );
+    lazy.NimbusFeatures.updatePrompt.recordExposureEvent({ once: true });
   },
 
   showManualUpdateNotification(update, dismissed) {
-    this.showUpdateNotification("manual", false, dismissed, win =>
-      this.openManualUpdateUrl(win)
+    let learnMoreURL = this.getReleaseNotesUrl(update);
+    this.showUpdateNotification(
+      "manual",
+      win => this.openManualUpdateUrl(win),
+      false,
+      { dismissed, learnMoreURL }
     );
+    lazy.NimbusFeatures.updatePrompt.recordExposureEvent({ once: true });
   },
 
   showUnsupportedUpdateNotification(update, dismissed) {
@@ -265,22 +308,28 @@ export var UpdateListener = {
       url != Services.prefs.getCharPref(PREF_APP_UPDATE_UNSUPPORTED_URL, null)
     ) {
       Services.prefs.setCharPref(PREF_APP_UPDATE_UNSUPPORTED_URL, url);
-      this.showUpdateNotification("unsupported", true, dismissed, win =>
-        this.openUnsupportedUpdateUrl(win, url)
+      this.showUpdateNotification(
+        "unsupported",
+        win => this.openUnsupportedUpdateUrl(win, url),
+        true,
+        { dismissed }
       );
     }
   },
 
   showUpdateDownloadingNotification() {
-    this.showUpdateNotification("downloading", true, true, () => {
+    this.showUpdateNotification(
+      "downloading",
       // The user clicked on the "Downloading update" app menu item.
       // Code in browser/components/customizableui/content/panelUI.js
       // receives the following notification and opens the about dialog.
-      Services.obs.notifyObservers(null, "show-update-progress");
-    });
+      () => Services.obs.notifyObservers(null, "show-update-progress"),
+      true,
+      { dismissed: true }
+    );
   },
 
-  scheduleUpdateAvailableNotification(update) {
+  async scheduleUpdateAvailableNotification(update) {
     // Show a badge/banner-only notification immediately.
     this.showUpdateAvailableNotification(update, true);
     // Track the latest update, since we will almost certainly have a new update
@@ -294,12 +343,13 @@ export var UpdateListener = {
     // doorhanger would be scheduled at least once per day. If the user
     // downloads the first update, we don't want to keep alerting them.
     if (!this.availablePromptScheduled) {
-      this.addTimeout(Math.max(0, this.suppressedPromptDelay), () => {
+      const suppressedPromptDelay = await this.getSuppressedPromptDelay();
+      this.addTimeout(Math.max(0, suppressedPromptDelay), () => {
         // If we downloaded or installed an update via the badge or banner
         // while the timer was running, bail out of showing the doorhanger.
         if (
-          lazy.UpdateManager.downloadingUpdate ||
-          lazy.UpdateManager.readyUpdate
+          lazy.AppUpdateService.currentState !=
+          Ci.nsIApplicationUpdateService.STATE_IDLE
         ) {
           return;
         }
@@ -395,13 +445,13 @@ export var UpdateListener = {
     }
   },
 
-  handleUpdateAvailable(update, status) {
+  async handleUpdateAvailable(update, status) {
     switch (status) {
       case "show-prompt":
         // If an update is available, show an update available doorhanger unless
         // PREF_APP_UPDATE_SUPPRESS_PROMPTS is true (only on Nightly).
         if (AppConstants.NIGHTLY_BUILD && lazy.SUPPRESS_PROMPTS) {
-          this.scheduleUpdateAvailableNotification(update);
+          await this.scheduleUpdateAvailableNotification(update);
         } else {
           this.showUpdateAvailableNotification(update, false);
         }
@@ -443,7 +493,7 @@ export var UpdateListener = {
     this.clearPendingAndActiveNotifications();
   },
 
-  observe(subject, topic, status) {
+  async observe(subject, topic, status) {
     let update = subject && subject.QueryInterface(Ci.nsIUpdate);
 
     switch (topic) {
@@ -453,7 +503,7 @@ export var UpdateListener = {
           // in case it is set.
           Services.prefs.clearUserPref(PREF_APP_UPDATE_UNSUPPORTED_URL);
         }
-        this.handleUpdateAvailable(update, status);
+        await this.handleUpdateAvailable(update, status);
         break;
       case "update-downloading":
         this.handleUpdateDownloading(status);

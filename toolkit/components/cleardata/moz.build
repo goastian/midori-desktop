@@ -24,9 +24,11 @@ XPCOM_MANIFESTS += [
     "components.conf",
 ]
 
-XPCSHELL_TESTS_MANIFESTS += ["tests/unit/xpcshell.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["tests/unit/xpcshell.toml"]
 
-BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.ini"]
+BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
+
+MARIONETTE_MANIFESTS += ["tests/marionette/manifest.toml"]
 
 include("/ipc/chromium/chromium-config.mozbuild")
 

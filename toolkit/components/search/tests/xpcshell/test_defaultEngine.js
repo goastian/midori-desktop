@@ -20,10 +20,10 @@ add_setup(async () => {
 
   await Services.search.init();
 
-  engine1 = await SearchTestUtils.promiseNewSearchEngine({
+  engine1 = await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}engine.xml`,
   });
-  engine2 = await SearchTestUtils.promiseNewSearchEngine({
+  engine2 = await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}engine2.xml`,
   });
 });
@@ -83,11 +83,10 @@ add_task(async function test_defaultEngine() {
 });
 
 add_task(async function test_telemetry_empty_submission_url() {
-  let engine = await Services.search.addOpenSearchEngine(
-    gDataUrl + "../opensearch/simple.xml",
-    null
-  );
-  Services.search.defaultPrivateEngine = engine;
+  await SearchTestUtils.installOpenSearchEngine({
+    url: `${gDataUrl}../opensearch/simple.xml`,
+    setAsDefaultPrivate: true,
+  });
 
   await assertGleanDefaultEngine({
     normal: {

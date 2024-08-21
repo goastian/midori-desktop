@@ -4,6 +4,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+// @ts-nocheck TODO: Many references to old types which don't exist anymore.
+
 import { ExtensionUtils } from "resource://gre/modules/ExtensionUtils.sys.mjs";
 
 const { DefaultMap } = ExtensionUtils;
@@ -49,7 +51,7 @@ export class MessageManagerProxy {
     Services.obs.removeObserver(this, "message-manager-close");
   }
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     if (topic === "message-manager-close") {
       if (subject === this.messageManager) {
         this.closed = true;
@@ -158,7 +160,7 @@ export class MessageManagerProxy {
   /**
    * Adds docShell swap listeners to the message manager owner.
    *
-   * @param {Element} target
+   * @param {Browser} target
    *        The target element.
    * @private
    */

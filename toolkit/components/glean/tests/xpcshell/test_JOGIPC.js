@@ -226,10 +226,7 @@ add_task(
     // but we can assert there are only two samples.
     Assert.equal(
       2,
-      Object.entries(times.values).reduce(
-        (acc, [bucket, count]) => acc + count,
-        0
-      )
+      Object.entries(times.values).reduce((acc, [, count]) => acc + count, 0)
     );
 
     const labeledCounter = Glean.jogIpc.jogLabeledCounter;
@@ -238,7 +235,7 @@ add_task(
 
     Assert.throws(
       () => Glean.jogIpc.jogLabeledCounterErr.__other__.testGetValue(),
-      /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+      /DataError/,
       "Invalid labels record errors, which throw"
     );
 
@@ -250,7 +247,7 @@ add_task(
     /*Assert.throws(
       () =>
         Glean.jogIpc.jogLabeledCounterWithLabelsErr.__other__.testGetValue(),
-      /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+      /DataError/,
       "Invalid labels record errors, which throw"
     );*/
     Assert.equal(

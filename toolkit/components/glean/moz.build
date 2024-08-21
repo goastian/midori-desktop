@@ -28,6 +28,7 @@ EXPORTS.mozilla.glean.bindings += [
     "!ScalarGIFFTMap.h",
     "bindings/Category.h",
     "bindings/Glean.h",
+    "bindings/GleanMetric.h",
     "bindings/GleanPings.h",
     "bindings/MetricTypes.h",
     "bindings/private/Boolean.h",
@@ -41,6 +42,7 @@ EXPORTS.mozilla.glean.bindings += [
     "bindings/private/Labeled.h",
     "bindings/private/MemoryDistribution.h",
     "bindings/private/Numerator.h",
+    "bindings/private/Object.h",
     "bindings/private/Ping.h",
     "bindings/private/Quantity.h",
     "bindings/private/Rate.h",
@@ -74,6 +76,7 @@ if CONFIG["COMPILE_ENVIRONMENT"]:
 UNIFIED_SOURCES += [
     "bindings/Category.cpp",
     "bindings/Glean.cpp",
+    "bindings/GleanMetric.cpp",
     "bindings/GleanPings.cpp",
     "bindings/jog/JOG.cpp",
     "bindings/private/Boolean.cpp",
@@ -86,6 +89,7 @@ UNIFIED_SOURCES += [
     "bindings/private/Labeled.cpp",
     "bindings/private/MemoryDistribution.cpp",
     "bindings/private/Numerator.cpp",
+    "bindings/private/Object.cpp",
     "bindings/private/Ping.cpp",
     "bindings/private/Quantity.cpp",
     "bindings/private/Rate.cpp",
@@ -108,33 +112,25 @@ SOURCES += [
 
 # Provides us the list of dependent metrics|pings.yaml.
 include("metrics_index.py")
+
+# Allow defining metrics/pings/tags elsewhere (like for Thunderbird).
+if CONFIG["MOZ_GLEAN_EXTRA_METRICS_FILES"]:
+    metrics_yamls.extend(CONFIG["MOZ_GLEAN_EXTRA_METRICS_FILES"])
+    metrics_yamls = sorted(metrics_yamls)
+
+if CONFIG["MOZ_GLEAN_EXTRA_PINGS_FILES"]:
+    pings_yamls.extend(CONFIG["MOZ_GLEAN_EXTRA_PINGS_FILES"])
+    pings_yamls = sorted(pings_yamls)
+
+if CONFIG["MOZ_GLEAN_EXTRA_TAGS_FILES"]:
+    tags_yamls.extend(CONFIG["MOZ_GLEAN_EXTRA_TAGS_FILES"])
+    tags_yamls = sorted(tags_yamls)
+
 # GeneratedFile's `inputs` are relative to our dir.
 # The yamls arrays are relative to topsrcdir, so we need to transform:
 metrics_yamls = ["../../../" + x for x in metrics_yamls]
 pings_yamls = ["../../../" + x for x in pings_yamls]
 tags_yamls = ["../../../" + x for x in tags_yamls]
-# If you change the length of this deps list, update DEPS_LEN in run_glean_parser.py
-deps = [
-    "metrics_index.py",
-    "build_scripts/glean_parser_ext/cpp.py",
-    "build_scripts/glean_parser_ext/jog.py",
-    "build_scripts/glean_parser_ext/js.py",
-    "build_scripts/glean_parser_ext/run_glean_parser.py",
-    "build_scripts/glean_parser_ext/rust.py",
-    "build_scripts/glean_parser_ext/string_table.py",
-    "build_scripts/glean_parser_ext/util.py",
-    "build_scripts/glean_parser_ext/templates/cpp.jinja2",
-    "build_scripts/glean_parser_ext/templates/cpp_pings.jinja2",
-    "build_scripts/glean_parser_ext/templates/gifft.jinja2",
-    "build_scripts/glean_parser_ext/templates/gifft_events.jinja2",
-    "build_scripts/glean_parser_ext/templates/jog_factory.jinja2",
-    "build_scripts/glean_parser_ext/templates/js.jinja2",
-    "build_scripts/glean_parser_ext/templates/js_h.jinja2",
-    "build_scripts/glean_parser_ext/templates/js_pings.jinja2",
-    "build_scripts/glean_parser_ext/templates/js_pings_h.jinja2",
-    "build_scripts/glean_parser_ext/templates/rust.jinja2",
-    "build_scripts/glean_parser_ext/templates/rust_pings.jinja2",
-]
 
 GeneratedFile(
     "GleanMetrics.h",
@@ -148,7 +144,7 @@ GeneratedFile(
         "GleanJSMetricsLookup.cpp",
         "api/src/metrics.rs",
     ],
-    inputs=deps + metrics_yamls + tags_yamls,
+    inputs=metrics_yamls + tags_yamls,
 )
 
 GeneratedFile(
@@ -163,7 +159,7 @@ GeneratedFile(
         "GleanJSPingsLookup.cpp",
         "api/src/pings.rs",
     ],
-    inputs=deps + pings_yamls + tags_yamls,
+    inputs=pings_yamls + tags_yamls,
 )
 
 # Glean Interface For Firefox Telemetry Maps from Glean MetricId to Telemetry ProbeId
@@ -173,7 +169,7 @@ GeneratedFile(
     script="build_scripts/glean_parser_ext/run_glean_parser.py",
     entry_point="gifft_map",
     flags=[CONFIG["MOZ_APP_VERSION"], "Event"],
-    inputs=deps + metrics_yamls + tags_yamls,
+    inputs=metrics_yamls + tags_yamls,
 )
 
 GeneratedFile(
@@ -181,7 +177,7 @@ GeneratedFile(
     script="build_scripts/glean_parser_ext/run_glean_parser.py",
     entry_point="gifft_map",
     flags=[CONFIG["MOZ_APP_VERSION"], "Histogram"],
-    inputs=deps + metrics_yamls + tags_yamls,
+    inputs=metrics_yamls + tags_yamls,
 )
 
 GeneratedFile(
@@ -189,7 +185,7 @@ GeneratedFile(
     script="build_scripts/glean_parser_ext/run_glean_parser.py",
     entry_point="gifft_map",
     flags=[CONFIG["MOZ_APP_VERSION"], "Scalar"],
-    inputs=deps + metrics_yamls + tags_yamls,
+    inputs=metrics_yamls + tags_yamls,
 )
 
 # JOG provides both the Rust factory for building runtime-registered metrics
@@ -201,7 +197,7 @@ GeneratedFile(
     script="build_scripts/glean_parser_ext/run_glean_parser.py",
     entry_point="jog_factory",
     flags=[CONFIG["MOZ_APP_VERSION"]],
-    inputs=deps + pings_yamls + metrics_yamls + tags_yamls,
+    inputs=pings_yamls + metrics_yamls + tags_yamls,
 )
 
 # Only generate jogfile.json in Artifact Builds since
@@ -212,10 +208,21 @@ if CONFIG["MOZ_ARTIFACT_BUILDS"]:
         script="build_scripts/glean_parser_ext/run_glean_parser.py",
         entry_point="jog_file",
         flags=[CONFIG["MOZ_APP_VERSION"]],
-        inputs=deps + pings_yamls + metrics_yamls + tags_yamls,
+        inputs=pings_yamls + metrics_yamls + tags_yamls,
     )
     # Once generated, it needs to be placed in GreD so it can be found.
     FINAL_TARGET_FILES += ["!jogfile.json"]
+
+# OHTTP support requires the fog_control crate know which pings wish to be sent
+# using OHTTP. fog_control has no access to the firefox_on_glean crate, so it
+# needs its own codegen.
+GeneratedFile(
+    "src/ohttp_pings.rs",
+    script="build_scripts/glean_parser_ext/run_glean_parser.py",
+    entry_point="ohttp_pings",
+    flags=[CONFIG["MOZ_APP_VERSION"]],
+    inputs=pings_yamls + tags_yamls,
+)
 
 DIRS += [
     "tests",  # Must be in DIRS, not TEST_DIRS or python-test won't find it.

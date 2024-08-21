@@ -100,7 +100,7 @@ SessionStoreChangeListener::HandleEvent(dom::Event* aEvent) {
     return NS_OK;
   }
 
-  nsPIDOMWindowInner* inner = global->AsInnerWindow();
+  nsPIDOMWindowInner* inner = global->GetAsInnerWindow();
   if (!inner) {
     return NS_OK;
   }
@@ -134,8 +134,7 @@ SessionStoreChangeListener::HandleEvent(dom::Event* aEvent) {
 
 /* static */ already_AddRefed<SessionStoreChangeListener>
 SessionStoreChangeListener::Create(BrowsingContext* aBrowsingContext) {
-  MOZ_RELEASE_ASSERT(
-      StaticPrefs::browser_sessionstore_platform_collection_AtStartup());
+  MOZ_RELEASE_ASSERT(SessionStorePlatformCollection());
   if (!aBrowsingContext) {
     return nullptr;
   }
@@ -203,8 +202,8 @@ static void GetZoom(BrowsingContext* aBrowsingContext,
 
   LayoutDeviceIntSize displaySize;
 
-  if (!nsLayoutUtils::GetContentViewerSize(presShell->GetPresContext(),
-                                           displaySize)) {
+  if (!nsLayoutUtils::GetDocumentViewerSize(presShell->GetPresContext(),
+                                            displaySize)) {
     return;
   }
 
@@ -356,9 +355,7 @@ void SessionStoreChangeListener::AddEventListeners() {
   if (EventTarget* target = GetEventTarget()) {
     target->AddSystemEventListener(kInput, this, false);
     target->AddSystemEventListener(kScroll, this, false);
-    if (StaticPrefs::browser_sessionstore_collect_zoom_AtStartup()) {
-      target->AddSystemEventListener(kResize, this, false);
-    }
+    target->AddSystemEventListener(kResize, this, false);
     mCurrentEventTarget = target;
   }
 }
@@ -367,9 +364,7 @@ void SessionStoreChangeListener::RemoveEventListeners() {
   if (mCurrentEventTarget) {
     mCurrentEventTarget->RemoveSystemEventListener(kInput, this, false);
     mCurrentEventTarget->RemoveSystemEventListener(kScroll, this, false);
-    if (StaticPrefs::browser_sessionstore_collect_zoom_AtStartup()) {
-      mCurrentEventTarget->RemoveSystemEventListener(kResize, this, false);
-    }
+    mCurrentEventTarget->RemoveSystemEventListener(kResize, this, false);
   }
 
   mCurrentEventTarget = nullptr;

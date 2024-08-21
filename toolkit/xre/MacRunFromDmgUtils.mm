@@ -32,7 +32,6 @@
 #ifdef MOZ_UPDATER
 #  include "nsUpdateDriver.h"
 #endif
-#include "SDKDeclarations.h"
 
 // For IOKit docs, see:
 // https://developer.apple.com/documentation/iokit
@@ -59,30 +58,37 @@ static bool AskUserIfWeShouldLaunchExistingInstall() {
 
   ErrorResult rv;
   nsAutoCString mozTitle, mozMessage, mozLaunchExisting, mozLaunchFromDMG;
-  l10n->FormatValueSync("prompt-to-launch-existing-app-title"_ns, {}, mozTitle, rv);
+  l10n->FormatValueSync("prompt-to-launch-existing-app-title"_ns, {}, mozTitle,
+                        rv);
   if (rv.Failed()) {
     return false;
   }
-  l10n->FormatValueSync("prompt-to-launch-existing-app-message"_ns, {}, mozMessage, rv);
+  l10n->FormatValueSync("prompt-to-launch-existing-app-message"_ns, {},
+                        mozMessage, rv);
   if (rv.Failed()) {
     return false;
   }
-  l10n->FormatValueSync("prompt-to-launch-existing-app-yes-button"_ns, {}, mozLaunchExisting, rv);
+  l10n->FormatValueSync("prompt-to-launch-existing-app-yes-button"_ns, {},
+                        mozLaunchExisting, rv);
   if (rv.Failed()) {
     return false;
   }
-  l10n->FormatValueSync("prompt-to-launch-existing-app-no-button"_ns, {}, mozLaunchFromDMG, rv);
+  l10n->FormatValueSync("prompt-to-launch-existing-app-no-button"_ns, {},
+                        mozLaunchFromDMG, rv);
   if (rv.Failed()) {
     return false;
   }
 
-  NSString* title = [NSString stringWithUTF8String:reinterpret_cast<const char*>(mozTitle.get())];
-  NSString* message =
-      [NSString stringWithUTF8String:reinterpret_cast<const char*>(mozMessage.get())];
+  NSString* title = [NSString
+      stringWithUTF8String:reinterpret_cast<const char*>(mozTitle.get())];
+  NSString* message = [NSString
+      stringWithUTF8String:reinterpret_cast<const char*>(mozMessage.get())];
   NSString* launchExisting =
-      [NSString stringWithUTF8String:reinterpret_cast<const char*>(mozLaunchExisting.get())];
+      [NSString stringWithUTF8String:reinterpret_cast<const char*>(
+                                         mozLaunchExisting.get())];
   NSString* launchFromDMG =
-      [NSString stringWithUTF8String:reinterpret_cast<const char*>(mozLaunchFromDMG.get())];
+      [NSString stringWithUTF8String:reinterpret_cast<const char*>(
+                                         mozLaunchFromDMG.get())];
 
   NSAlert* alert = [[[NSAlert alloc] init] autorelease];
 
@@ -144,18 +150,20 @@ static bool AskUserIfWeShouldInstall() {
   if (rv.Failed()) {
     return false;
   }
-  l10n->FormatValueSync("prompt-to-install-no-button"_ns, {}, mozDontInstall, rv);
+  l10n->FormatValueSync("prompt-to-install-no-button"_ns, {}, mozDontInstall,
+                        rv);
   if (rv.Failed()) {
     return false;
   }
 
-  NSString* title = [NSString stringWithUTF8String:reinterpret_cast<const char*>(mozTitle.get())];
-  NSString* message =
-      [NSString stringWithUTF8String:reinterpret_cast<const char*>(mozMessage.get())];
-  NSString* install =
-      [NSString stringWithUTF8String:reinterpret_cast<const char*>(mozInstall.get())];
-  NSString* dontInstall =
-      [NSString stringWithUTF8String:reinterpret_cast<const char*>(mozDontInstall.get())];
+  NSString* title = [NSString
+      stringWithUTF8String:reinterpret_cast<const char*>(mozTitle.get())];
+  NSString* message = [NSString
+      stringWithUTF8String:reinterpret_cast<const char*>(mozMessage.get())];
+  NSString* install = [NSString
+      stringWithUTF8String:reinterpret_cast<const char*>(mozInstall.get())];
+  NSString* dontInstall = [NSString
+      stringWithUTF8String:reinterpret_cast<const char*>(mozDontInstall.get())];
 
   NSAlert* alert = [[[NSAlert alloc] init] autorelease];
 
@@ -179,15 +187,15 @@ static bool AskUserIfWeShouldInstall() {
   // AskUserIfWeShouldInstall
   //          |
   //          | ---> [NSApp run]
-  //          |          |
-  //          |          | -----> task
-  //          |          |          | -----------> [alert runModal]
-  //          |          |          |                     | (User selects button)
-  //          |          |          | <---------------   done
-  //          |          |          |
-  //          |          |          | -----------> [NSApp stop:nil]
-  //          |          |          | <-----------
-  //          |          | <--------
+  //          |         |
+  //          |         | ---> task
+  //          |         |       | ----> [alert runModal]
+  //          |         |       |               | (User selects button)
+  //          |         |       | <---------   done
+  //          |         |       |
+  //          |         |       | -----> [NSApp stop:nil]
+  //          |         |       | <-----
+  //          |         | <-----
   //          | <-------
   //        done
   __block NSInteger result = -1;
@@ -225,9 +233,10 @@ static void ShowInstallFailedDialog() {
     return;
   }
 
-  NSString* title = [NSString stringWithUTF8String:reinterpret_cast<const char*>(mozTitle.get())];
-  NSString* message =
-      [NSString stringWithUTF8String:reinterpret_cast<const char*>(mozMessage.get())];
+  NSString* title = [NSString
+      stringWithUTF8String:reinterpret_cast<const char*>(mozTitle.get())];
+  NSString* message = [NSString
+      stringWithUTF8String:reinterpret_cast<const char*>(mozMessage.get())];
 
   NSAlert* alert = [[[NSAlert alloc] init] autorelease];
 
@@ -254,21 +263,13 @@ static void ShowInstallFailedDialog() {
  * Helper to launch macOS tasks via NSTask.
  */
 static void LaunchTask(NSString* aPath, NSArray* aArguments) {
-  if (@available(macOS 10.13, *)) {
-    NSTask* task = [[NSTask alloc] init];
-    [task setExecutableURL:[NSURL fileURLWithPath:aPath]];
-    if (aArguments) {
-      [task setArguments:aArguments];
-    }
-    [task launchAndReturnError:nil];
-    [task release];
-  } else {
-    NSArray* arguments = aArguments;
-    if (!arguments) {
-      arguments = @[];
-    }
-    [NSTask launchedTaskWithLaunchPath:aPath arguments:arguments];
+  NSTask* task = [[NSTask alloc] init];
+  [task setExecutableURL:[NSURL fileURLWithPath:aPath]];
+  if (aArguments) {
+    [task setArguments:aArguments];
   }
+  [task launchAndReturnError:nil];
+  [task release];
 }
 
 static void LaunchInstalledApp(NSString* aBundlePath) {
@@ -289,27 +290,16 @@ static void StripQuarantineBit(NSString* aBundlePath) {
 
 #ifdef MOZ_UPDATER
 bool LaunchElevatedDmgInstall(NSString* aBundlePath, NSArray* aArguments) {
-  NSTask* task;
-  if (@available(macOS 10.13, *)) {
-    task = [[NSTask alloc] init];
-    [task setExecutableURL:[NSURL fileURLWithPath:aBundlePath]];
-    if (aArguments) {
-      [task setArguments:aArguments];
-    }
-    [task launchAndReturnError:nil];
-  } else {
-    NSArray* arguments = aArguments;
-    if (!arguments) {
-      arguments = @[];
-    }
-    task = [NSTask launchedTaskWithLaunchPath:aBundlePath arguments:arguments];
+  NSTask* task = [[NSTask alloc] init];
+  [task setExecutableURL:[NSURL fileURLWithPath:aBundlePath]];
+  if (aArguments) {
+    [task setArguments:aArguments];
   }
+  [task launchAndReturnError:nil];
 
   bool didSucceed = InstallPrivilegedHelper();
   [task waitUntilExit];
-  if (@available(macOS 10.13, *)) {
-    [task release];
-  }
+  [task release];
   if (!didSucceed) {
     AbortElevatedUpdate();
   }
@@ -341,8 +331,9 @@ static bool InstallFromPath(NSString* aBundlePath, NSString* aDestPath) {
   NSString* destDir = [aDestPath stringByDeletingLastPathComponent];
   if (!installSuccessful && ![fileManager isWritableFileAtPath:destDir]) {
     NSString* updaterBinPath = [NSString pathWithComponents:@[
-      aBundlePath, @"Contents", @"MacOS", [NSString stringWithUTF8String:UPDATER_APP], @"Contents",
-      @"MacOS", [NSString stringWithUTF8String:UPDATER_BIN]
+      aBundlePath, @"Contents", @"MacOS",
+      [NSString stringWithUTF8String:UPDATER_APP], @"Contents", @"MacOS",
+      [NSString stringWithUTF8String:UPDATER_BIN]
     ]];
 
     NSArray* arguments = @[ @"-dmgInstall", aBundlePath, aDestPath ];
@@ -373,7 +364,8 @@ static bool InstallFromPath(NSString* aBundlePath, NSString* aDestPath) {
 bool IsAppRunningFromDmg() {
   NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
 
-  const char* path = [[[NSBundle mainBundle] bundlePath] fileSystemRepresentation];
+  const char* path =
+      [[[NSBundle mainBundle] bundlePath] fileSystemRepresentation];
 
   struct statfs statfsBuf;
   if (statfs(path, &statfsBuf) != 0) {
@@ -407,11 +399,13 @@ bool IsAppRunningFromDmg() {
 
   // Get the IOMedia object:
   // (Note: IOServiceGetMatchingServices takes ownership of serviceDict's ref.)
-  CFMutableDictionaryRef serviceDict = IOBSDNameMatching(kIOMasterPortDefault, 0, bsdDeviceName);
+  CFMutableDictionaryRef serviceDict =
+      IOBSDNameMatching(kIOMasterPortDefault, 0, bsdDeviceName);
   if (!serviceDict) {
     return false;
   }
-  io_service_t media = IOServiceGetMatchingService(kIOMasterPortDefault, serviceDict);
+  io_service_t media =
+      IOServiceGetMatchingService(kIOMasterPortDefault, serviceDict);
   if (!media || !IOObjectConformsTo(media, "IOMedia")) {
     return false;
   }
@@ -420,14 +414,16 @@ bool IsAppRunningFromDmg() {
   // (taking care to start with `media` itself):
   io_service_t imageDrive = IO_OBJECT_NULL;
   io_iterator_t iter;
-  if (IORegistryEntryCreateIterator(media, kIOServicePlane,
-                                    kIORegistryIterateRecursively | kIORegistryIterateParents,
-                                    &iter) != KERN_SUCCESS) {
+  if (IORegistryEntryCreateIterator(
+          media, kIOServicePlane,
+          kIORegistryIterateRecursively | kIORegistryIterateParents,
+          &iter) != KERN_SUCCESS) {
     IOObjectRelease(media);
     return false;
   }
-  const char* imageClass =
-      nsCocoaFeatures::OnMontereyOrLater() ? "AppleDiskImageDevice" : "IOHDIXHDDrive";
+  const char* imageClass = nsCocoaFeatures::OnMontereyOrLater()
+                               ? "AppleDiskImageDevice"
+                               : "IOHDIXHDDrive";
   for (imageDrive = media; imageDrive; imageDrive = IOIteratorNext(iter)) {
     if (IOObjectConformsTo(imageDrive, imageClass)) {
       break;
@@ -465,20 +461,22 @@ bool MaybeInstallAndRelaunch() {
     // The Applications directory may not be at /Applications, although in
     // practice we're unlikely to encounter since run-from-.dmg is really an
     // issue with novice mac users. Still, look it up correctly:
-    NSArray* applicationsDirs =
-        NSSearchPathForDirectoriesInDomains(NSApplicationDirectory, NSLocalDomainMask, YES);
+    NSArray* applicationsDirs = NSSearchPathForDirectoriesInDomains(
+        NSApplicationDirectory, NSLocalDomainMask, YES);
     NSString* applicationsDir = applicationsDirs[0];
 
     // Sanity check dir exists
     NSFileManager* fileManager = [NSFileManager defaultManager];
     BOOL isDir;
-    if (![fileManager fileExistsAtPath:applicationsDir isDirectory:&isDir] || !isDir) {
+    if (![fileManager fileExistsAtPath:applicationsDir isDirectory:&isDir] ||
+        !isDir) {
       return false;
     }
 
     NSString* bundlePath = [[NSBundle mainBundle] bundlePath];
     NSString* appName = [bundlePath lastPathComponent];
-    NSString* destPath = [applicationsDir stringByAppendingPathComponent:appName];
+    NSString* destPath =
+        [applicationsDir stringByAppendingPathComponent:appName];
 
     // If the app (an app of the same name) is already installed we can't really
     // tell without asking if we're dealing with the edge case of an

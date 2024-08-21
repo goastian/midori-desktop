@@ -21,9 +21,6 @@ var { ExtensionPreferencesManager } = ChromeUtils.importESModule(
 var { ExtensionError } = ExtensionUtils;
 
 const CONTAINER_PREF_INSTALL_DEFAULTS = {
-  "privacy.userContext.enabled": true,
-  "privacy.userContext.ui.enabled": true,
-  "privacy.usercontext.about_newtab_segregation.enabled": true,
   "privacy.userContext.extension": undefined,
 };
 
@@ -129,7 +126,7 @@ ExtensionPreferencesManager.addSetting(CONTAINERS_ENABLED_SETTING_NAME, {
 this.contextualIdentities = class extends ExtensionAPIPersistent {
   eventRegistrar(eventName) {
     return ({ fire }) => {
-      let observer = (subject, topic) => {
+      let observer = subject => {
         let convertedIdentity = convertIdentityFromObserver(subject);
         if (convertedIdentity) {
           fire.async({ contextualIdentity: convertedIdentity });
@@ -158,6 +155,11 @@ this.contextualIdentities = class extends ExtensionAPIPersistent {
     let { extension } = this;
 
     if (extension.hasPermission("contextualIdentities")) {
+      // Turn on contextual identities, and never turn it off.  We handle
+      // this here to ensure prefs are set when an addon is enabled.
+      Services.prefs.setBoolPref("privacy.userContext.enabled", true);
+      Services.prefs.setBoolPref("privacy.userContext.ui.enabled", true);
+
       ExtensionPreferencesManager.setSetting(
         extension.id,
         CONTAINERS_ENABLED_SETTING_NAME,
@@ -260,6 +262,47 @@ this.contextualIdentities = class extends ExtensionAPIPersistent {
           }
 
           return convertIdentity(identity);
+        },
+
+        async move(cookieStoreIds, position) {
+          checkAPIEnabled();
+          if (!Array.isArray(cookieStoreIds)) {
+            cookieStoreIds = [cookieStoreIds];
+          }
+
+          if (!cookieStoreIds.length) {
+            return;
+          }
+
+          const totalIds =
+            ContextualIdentityService.getPublicIdentities().length;
+          if (position < -1 || position > totalIds - cookieStoreIds.length) {
+            throw new ExtensionError(`Moving to invalid position ${position}`);
+          }
+
+          let userContextIds = [];
+          cookieStoreIds.forEach((cookieStoreId, index) => {
+            if (cookieStoreIds.indexOf(cookieStoreId) !== index) {
+              throw new ExtensionError(
+                `Duplicate contextual identity: ${cookieStoreId}`
+              );
+            }
+
+            let containerId = getContainerForCookieStoreId(cookieStoreId);
+            if (!containerId) {
+              throw new ExtensionError(
+                `Invalid contextual identity: ${cookieStoreId}`
+              );
+            }
+
+            userContextIds.push(containerId);
+          });
+
+          if (!ContextualIdentityService.move(userContextIds, position)) {
+            throw new ExtensionError(
+              `Contextual identities failed to move: ${cookieStoreIds}`
+            );
+          }
         },
 
         async remove(cookieStoreId) {

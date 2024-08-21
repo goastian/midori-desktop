@@ -307,6 +307,7 @@ export class FfiConverterString extends FfiConverter {
 
 
 
+
 export class ArithmeticError extends Error {}
 
 
@@ -328,7 +329,7 @@ export class FfiConverterTypeArithmeticError extends FfiConverterArrayBuffer {
             case 1:
                 return new IntegerOverflow(FfiConverterString.read(dataStream));
             default:
-                throw new Error("Unknown ArithmeticError variant");
+                throw new UniFFITypeError("Unknown ArithmeticError variant");
         }
     }
     static computeSize(value) {
@@ -337,14 +338,14 @@ export class FfiConverterTypeArithmeticError extends FfiConverterArrayBuffer {
         if (value instanceof IntegerOverflow) {
             return totalSize;
         }
-        throw new Error("Unknown ArithmeticError variant");
+        throw new UniFFITypeError("Unknown ArithmeticError variant");
     }
     static write(dataStream, value) {
         if (value instanceof IntegerOverflow) {
             dataStream.writeInt32(1);
             return;
         }
-        throw new Error("Unknown ArithmeticError variant");
+        throw new UniFFITypeError("Unknown ArithmeticError variant");
     }
 
     static errorClass = ArithmeticError;
@@ -376,41 +377,7 @@ export function add(a,b) {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                22, // arithmetic:arithmetic_fd12_add
-                FfiConverterU64.lower(a),
-                FfiConverterU64.lower(b),
-            )
-        }
-        try {
-            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
-        }  catch (error) {
-            return Promise.reject(error)
-        }
-}
-
-export function sub(a,b) {
-
-        const liftResult = (result) => FfiConverterU64.lift(result);
-        const liftError = (data) => FfiConverterTypeArithmeticError.lift(data);
-        const functionCall = () => {
-            try {
-                FfiConverterU64.checkType(a)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("a");
-                }
-                throw e;
-            }
-            try {
-                FfiConverterU64.checkType(b)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("b");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                23, // arithmetic:arithmetic_fd12_sub
+                57, // arithmetic:uniffi_arithmetical_fn_func_add
                 FfiConverterU64.lower(a),
                 FfiConverterU64.lower(b),
             )
@@ -444,7 +411,7 @@ export function div(dividend,divisor) {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                24, // arithmetic:arithmetic_fd12_div
+                58, // arithmetic:uniffi_arithmetical_fn_func_div
                 FfiConverterU64.lower(dividend),
                 FfiConverterU64.lower(divisor),
             )
@@ -478,7 +445,41 @@ export function equal(a,b) {
                 throw e;
             }
             return UniFFIScaffolding.callAsync(
-                25, // arithmetic:arithmetic_fd12_equal
+                59, // arithmetic:uniffi_arithmetical_fn_func_equal
+                FfiConverterU64.lower(a),
+                FfiConverterU64.lower(b),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+}
+
+export function sub(a,b) {
+
+        const liftResult = (result) => FfiConverterU64.lift(result);
+        const liftError = (data) => FfiConverterTypeArithmeticError.lift(data);
+        const functionCall = () => {
+            try {
+                FfiConverterU64.checkType(a)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("a");
+                }
+                throw e;
+            }
+            try {
+                FfiConverterU64.checkType(b)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("b");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsync(
+                60, // arithmetic:uniffi_arithmetical_fn_func_sub
                 FfiConverterU64.lower(a),
                 FfiConverterU64.lower(b),
             )

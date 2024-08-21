@@ -1,7 +1,3 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
-
 [
   {
     "namespace": "manifest",
@@ -13,6 +9,7 @@
             "type": "string",
             "enum": [
               "webRequest",
+              "webRequestAuthProvider",
               "webRequestBlocking",
               "webRequestFilterResponse",
               "webRequestFilterResponse.serviceWorkerScript"
@@ -86,7 +83,7 @@
         "id": "OnAuthRequiredOptions",
         "type": "string",
         "enum": ["responseHeaders", "blocking", "asyncBlocking"],
-        "postprocess": "webRequestBlockingPermissionRequired"
+        "postprocess": "webRequestBlockingOrAuthProviderPermissionRequired"
       },
       {
         "id": "OnResponseStartedOptions",
@@ -1019,7 +1016,7 @@
           {
             "type": "function",
             "optional": true,
-            "name": "callback",
+            "name": "asyncCallback",
             "parameters": [{ "name": "response", "$ref": "BlockingResponse" }]
           }
         ],
@@ -1033,6 +1030,7 @@
             "type": "array",
             "optional": true,
             "name": "extraInfoSpec",
+            "postprocess": "mutuallyExclusiveBlockingOrAsyncBlocking",
             "description": "Array of extra information that should be passed to the listener function.",
             "items": {
               "$ref": "OnAuthRequiredOptions"

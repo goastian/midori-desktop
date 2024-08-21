@@ -40,12 +40,14 @@ static Maybe<MetricIdToCallbackMutex::AutoLock> GetCallbackMapLock() {
 
 void Ping::Submit(const nsACString& aReason) const {
   {
-    GetCallbackMapLock().apply([&](auto& lock) {
-      auto callback = lock.ref()->Extract(mId);
-      if (callback) {
-        callback.extract()(aReason);
-      }
-    });
+    auto callback = Maybe<PingTestCallback>();
+    GetCallbackMapLock().apply(
+        [&](const auto& lock) { callback = lock.ref()->Extract(mId); });
+    // Calling the callback outside of the lock allows it to register a new
+    // callback itself.
+    if (callback) {
+      callback.extract()(aReason);
+    }
   }
   fog_submit_ping_by_id(mId, &aReason);
 }
@@ -53,7 +55,7 @@ void Ping::Submit(const nsACString& aReason) const {
 void Ping::TestBeforeNextSubmit(PingTestCallback&& aCallback) const {
   {
     GetCallbackMapLock().apply(
-        [&](auto& lock) { lock.ref()->InsertOrUpdate(mId, aCallback); });
+        [&](const auto& lock) { lock.ref()->InsertOrUpdate(mId, aCallback); });
   }
 }
 

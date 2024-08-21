@@ -34,13 +34,13 @@ function test() {
     })
   );
   gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser);
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     gBrowser,
     xpipath + "installtrigger.html?" + triggers
   );
 }
 
-function allow_blocked(installInfo) {
+function allow_blocked() {
   ok(true, "Seen blocked");
   return false;
 }

@@ -56,14 +56,18 @@ add_task(async function test_defaultPrivateEngine() {
     normal: {
       engineId: "engine",
       displayName: "Test search engine",
-      loadPath: "[addon]engine@search.mozilla.org",
+      loadPath: SearchUtils.newSearchConfigEnabled
+        ? "[app]engine@search.mozilla.org"
+        : "[addon]engine@search.mozilla.org",
       submissionUrl: "https://www.google.com/search?q=",
       verified: "default",
     },
     private: {
       engineId: "engine-pref",
       displayName: "engine-pref",
-      loadPath: "[addon]engine-pref@search.mozilla.org",
+      loadPath: SearchUtils.newSearchConfigEnabled
+        ? "[app]engine-pref@search.mozilla.org"
+        : "[addon]engine-pref@search.mozilla.org",
       submissionUrl: "https://www.google.com/search?q=",
       verified: "default",
     },
@@ -92,15 +96,21 @@ add_task(async function test_defaultPrivateEngine() {
     normal: {
       engineId: "engine",
       displayName: "Test search engine",
-      loadPath: "[addon]engine@search.mozilla.org",
+      loadPath: SearchUtils.newSearchConfigEnabled
+        ? "[app]engine@search.mozilla.org"
+        : "[addon]engine@search.mozilla.org",
       submissionUrl: "https://www.google.com/search?q=",
       verified: "default",
     },
     private: {
       engineId: "engine-rel-searchform-purpose",
       displayName: "engine-rel-searchform-purpose",
-      loadPath: "[addon]engine-rel-searchform-purpose@search.mozilla.org",
-      submissionUrl: "https://www.google.com/search?q=&channel=sb",
+      loadPath: SearchUtils.newSearchConfigEnabled
+        ? "[app]engine-rel-searchform-purpose@search.mozilla.org"
+        : "[addon]engine-rel-searchform-purpose@search.mozilla.org",
+      submissionUrl: SearchUtils.newSearchConfigEnabled
+        ? "https://www.google.com/search?channel=sb&q="
+        : "https://www.google.com/search?q=&channel=sb",
       verified: "default",
     },
   });
@@ -139,14 +149,18 @@ add_task(async function test_defaultPrivateEngine() {
     normal: {
       engineId: "engine",
       displayName: "Test search engine",
-      loadPath: "[addon]engine@search.mozilla.org",
+      loadPath: SearchUtils.newSearchConfigEnabled
+        ? "[app]engine@search.mozilla.org"
+        : "[addon]engine@search.mozilla.org",
       submissionUrl: "https://www.google.com/search?q=",
       verified: "default",
     },
     private: {
       engineId: "engine-chromeicon",
       displayName: "engine-chromeicon",
-      loadPath: "[addon]engine-chromeicon@search.mozilla.org",
+      loadPath: SearchUtils.newSearchConfigEnabled
+        ? "[app]engine-chromeicon@search.mozilla.org"
+        : "[addon]engine-chromeicon@search.mozilla.org",
       submissionUrl: "https://www.google.com/search?q=",
       verified: "default",
     },
@@ -219,11 +233,10 @@ add_task(async function test_defaultPrivateEngine() {
 });
 
 add_task(async function test_telemetry_private_empty_submission_url() {
-  let engine = await Services.search.addOpenSearchEngine(
-    gDataUrl + "simple.xml",
-    null
-  );
-  Services.search.defaultPrivateEngine = engine;
+  await SearchTestUtils.installOpenSearchEngine({
+    url: `${gDataUrl}simple.xml`,
+    setAsDefaultPrivate: true,
+  });
 
   await assertGleanDefaultEngine({
     normal: {

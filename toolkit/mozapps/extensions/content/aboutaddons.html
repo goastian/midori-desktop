@@ -13,9 +13,6 @@
       content="default-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome: file: jar: https: http:; connect-src chrome: data: https: http:; object-src 'none'"
     />
     <meta name="color-scheme" content="light dark" />
-    <link rel="stylesheet" href="chrome://global/content/tabprompts.css" />
-    <link rel="stylesheet" href="chrome://global/skin/tabprompts.css" />
-
     <link rel="stylesheet" href="chrome://global/skin/in-content/common.css" />
     <link
       rel="stylesheet"
@@ -31,10 +28,9 @@
       href="chrome://mozapps/skin/extensions/extension.svg"
     />
 
-    <link rel="localization" href="branding/brand.ftl">
-    <link rel="localization" href="browser/floorp.ftl">
-    <link rel="localization" href="toolkit/about/aboutAddons.ftl">
-    <link rel="localization" href="toolkit/about/abuseReports.ftl">
+    <link rel="localization" href="branding/brand.ftl" />
+    <link rel="localization" href="toolkit/about/aboutAddons.ftl" />
+    <link rel="localization" href="browser/floorp.ftl" />
 
     <!-- Defer scripts so all the templates are loaded by the time they run. -->
     <script
@@ -63,11 +59,19 @@
     ></script>
     <script
       type="module"
+      src="chrome://global/content/elements/moz-message-bar.mjs"
+    ></script>
+    <script
+      type="module"
       src="chrome://global/content/elements/moz-toggle.mjs"
     ></script>
     <script
       type="module"
       src="chrome://global/content/elements/moz-support-link.mjs"
+    ></script>
+    <script
+      type="module"
+      src="chrome://global/content/elements/moz-five-star.mjs"
     ></script>
   </head>
   <body>
@@ -159,13 +163,6 @@
         ></addon-page-header>
         <addon-page-options id="page-options"></addon-page-options>
 
-        <message-bar-stack
-          id="abuse-reports-messages"
-          reverse
-          max-message-bar-count="3"
-        >
-        </message-bar-stack>
-
         <div id="main"></div>
       </div>
     </div>
@@ -175,10 +172,6 @@
     <template name="addon-page-header">
       <div class="sticky-container">
         <div class="main-search">
-          <label
-            data-l10n-id="floorp-extensions-label"
-            class="extensions-text"
-          ></label>
           <label
             for="search-addons"
             class="search-label"
@@ -257,15 +250,37 @@
 
     <template name="addon-options">
       <panel-list>
-        <panel-item data-l10n-id="remove-addon-button" action="remove"></panel-item>
-        <panel-item data-l10n-id="dual-theme-enable-addon-button" action="dual_theme_enable"></panel-item>
-        <panel-item data-l10n-id="dual-theme-disable-addon-button" action="dual_theme_disable"></panel-item>
-        <panel-item data-l10n-id="install-update-button" action="install-update" badged></panel-item>
-        <panel-item data-l10n-id="preferences-addon-button" action="preferences"></panel-item>
-        <hr>
-        <panel-item data-l10n-id="report-addon-button" action="report"></panel-item>
-        <hr>
-        <panel-item data-l10n-id="manage-addon-button" action="expand"></panel-item>
+        <panel-item
+          data-l10n-id="remove-addon-button"
+          action="remove"
+        ></panel-item>
+        <panel-item
+          data-l10n-id="dual-theme-enable-addon-button"
+          action="dual_theme_enable"
+        ></panel-item>
+        <panel-item
+          data-l10n-id="dual-theme-disable-addon-button"
+          action="dual_theme_disable"
+        ></panel-item>
+        <panel-item
+          data-l10n-id="install-update-button"
+          action="install-update"
+          badged
+        ></panel-item>
+        <panel-item
+          data-l10n-id="preferences-addon-button"
+          action="preferences"
+        ></panel-item>
+        <hr />
+        <panel-item
+          data-l10n-id="report-addon-button"
+          action="report"
+        ></panel-item>
+        <hr />
+        <panel-item
+          data-l10n-id="manage-addon-button"
+          action="expand"
+        ></panel-item>
       </panel-list>
     </template>
 
@@ -402,20 +417,22 @@
             <span class="addon-description" tabindex="-1"></span>
           </div>
         </div>
-        <message-bar class="update-postponed-bar" align="center" hidden>
-          <span
-            class="description"
-            data-l10n-id="install-postponed-message"
-          ></span>
+        <moz-message-bar
+          class="update-postponed-bar"
+          data-l10n-id="install-postponed-message2"
+          data-l10n-attrs="message"
+          align="center"
+          hidden
+        >
           <button
+            slot="actions"
             action="install-postponed"
             data-l10n-id="install-postponed-button"
           ></button>
-        </message-bar>
-        <message-bar class="addon-card-message" align="center" hidden>
-          <span></span>
+        </moz-message-bar>
+        <moz-message-bar class="addon-card-message" align="center" hidden>
           <button action="link"></button>
-        </message-bar>
+        </moz-message-bar>
       </div>
     </template>
 
@@ -439,7 +456,7 @@
         <span class="disco-description-main"></span>
       </div>
       <div class="disco-description-statistics">
-        <five-star-rating></five-star-rating>
+        <moz-five-star></moz-five-star>
         <span class="disco-user-count"></span>
       </div>
     </template>
@@ -497,8 +514,12 @@
           <div class="addon-detail-sitepermissions">
             <addon-sitepermissions-list></addon-sitepermissions-list>
           </div>
-          <div class="addon-detail-row addon-detail-row-updates">
-            <label data-l10n-id="addon-detail-updates-label"></label>
+          <div
+            class="addon-detail-row addon-detail-row-updates"
+            role="group"
+            data-l10n-id="addon-detail-group-label-updates"
+          >
+            <span data-l10n-id="addon-detail-updates-label"></span>
             <div class="addon-detail-actions">
               <button
                 class="button-link"
@@ -522,9 +543,11 @@
           </div>
           <div
             class="addon-detail-row addon-detail-row-has-help addon-detail-row-private-browsing"
+            role="group"
+            data-l10n-id="addon-detail-group-label-private-browsing"
             hidden
           >
-            <label data-l10n-id="detail-private-browsing-label"></label>
+            <span data-l10n-id="detail-private-browsing-label"></span>
             <div class="addon-detail-actions">
               <label class="radio-container-with-text">
                 <input type="radio" name="private-browsing" value="1" />
@@ -586,6 +609,40 @@
               support-page="extensions-pb"
             ></a>
           </div>
+          <div
+            class="addon-detail-row addon-detail-row-has-help addon-detail-row-quarantined-domains"
+            role="group"
+            data-l10n-id="addon-detail-group-label-quarantined-domains"
+            hidden
+          >
+            <span data-l10n-id="addon-detail-quarantined-domains-label"></span>
+            <div class="addon-detail-actions">
+              <label class="radio-container-with-text">
+                <input
+                  type="radio"
+                  name="quarantined-domains-user-allowed"
+                  value="1"
+                />
+                <span
+                  data-l10n-id="addon-detail-quarantined-domains-allow"
+                ></span>
+              </label>
+              <label class="radio-container-with-text">
+                <input
+                  type="radio"
+                  name="quarantined-domains-user-allowed"
+                  value="0"
+                />
+                <span
+                  data-l10n-id="addon-detail-quarantined-domains-disallow"
+                ></span>
+              </label>
+            </div>
+          </div>
+          <div class="addon-detail-row addon-detail-help-row" hidden>
+            <span data-l10n-id="addon-detail-quarantined-domains-help"></span>
+            <a is="moz-support-link" support-page="quarantined-domains"></a>
+          </div>
           <div class="addon-detail-row addon-detail-row-author">
             <label data-l10n-id="addon-detail-author-label"></label>
             <a target="_blank"></a>
@@ -604,7 +661,7 @@
           <div class="addon-detail-row addon-detail-row-rating">
             <label data-l10n-id="addon-detail-rating-label"></label>
             <div class="addon-detail-rating">
-              <five-star-rating></five-star-rating>
+              <moz-five-star></moz-five-star>
               <a target="_blank"></a>
             </div>
           </div>
@@ -615,30 +672,21 @@
       </named-deck>
     </template>
 
-    <template name="five-star-rating">
-      <link
-        rel="stylesheet"
-        href="chrome://mozapps/content/extensions/rating-star.css"
-      />
-      <span class="rating-star"></span>
-      <span class="rating-star"></span>
-      <span class="rating-star"></span>
-      <span class="rating-star"></span>
-      <span class="rating-star"></span>
-    </template>
-
     <template name="taar-notice">
-      <message-bar class="discopane-notice" dismissable>
-        <div class="discopane-notice-content">
-          <span data-l10n-id="discopane-notice-recommendations"></span>
-          <a
-            is="moz-support-link"
-            support-page="personalized-addons"
-            data-l10n-id="discopane-notice-learn-more"
-            action="notice-learn-more"
-          ></a>
-        </div>
-      </message-bar>
+      <moz-message-bar
+        class="discopane-notice"
+        data-l10n-id="discopane-notice-recommendations2"
+        data-l10n-attrs="message"
+        dismissable
+      >
+        <a
+          is="moz-support-link"
+          support-page="personalized-addons"
+          data-l10n-id="discopane-notice-learn-more"
+          action="notice-learn-more"
+          slot="support-link"
+        ></a>
+      </moz-message-bar>
     </template>
 
     <template name="recommended-footer">
@@ -749,7 +797,11 @@
           type="text"
           readonly
         />
-        <button class="shortcut-remove-button ghost-button"></button>
+        <button
+          class="shortcut-remove-button ghost-button"
+          data-l10n-id="shortcuts-remove-button"
+          data-l10n-attrs="aria-label"
+        ></button>
       </div>
     </template>
 

@@ -11,40 +11,39 @@ namespace mozilla::uniffi {
 
 using dom::ArrayBuffer;
 
-OwnedRustBuffer::OwnedRustBuffer(const RustBuffer& aBuf) {
-  mBuf = aBuf;
+OwnedRustBuffer::OwnedRustBuffer(const RustBuffer& aBuf) : mBuf(aBuf) {
   MOZ_ASSERT(IsValid());
 }
 
 Result<OwnedRustBuffer, nsCString> OwnedRustBuffer::FromArrayBuffer(
     const ArrayBuffer& aArrayBuffer) {
-  if (aArrayBuffer.Length() > INT32_MAX) {
-    return Err("Input ArrayBuffer is too large"_ns);
-  }
+  return aArrayBuffer.ProcessData(
+      [](const Span<uint8_t>& aData,
+         JS::AutoCheckCannotGC&&) -> Result<OwnedRustBuffer, nsCString> {
+        uint64_t bufLen = aData.Length();
+        RustCallStatus status{};
+        RustBuffer buf =
+            uniffi_rustbuffer_alloc(static_cast<uint64_t>(bufLen), &status);
+        buf.len = bufLen;
+        if (status.code != 0) {
+          if (status.error_buf.data) {
+            auto message = nsCString("uniffi_rustbuffer_alloc: ");
+            message.Append(nsDependentCSubstring(
+                reinterpret_cast<char*>(status.error_buf.data),
+                status.error_buf.len));
+            RustCallStatus status2{};
+            uniffi_rustbuffer_free(status.error_buf, &status2);
+            MOZ_RELEASE_ASSERT(status2.code == 0,
+                               "Freeing a rustbuffer should never fail");
+            return Err(message);
+          }
 
-  RustCallStatus status{};
-  RustBuffer buf = uniffi_rustbuffer_alloc(
-      static_cast<int32_t>(aArrayBuffer.Length()), &status);
-  buf.len = aArrayBuffer.Length();
-  if (status.code != 0) {
-    if (status.error_buf.data) {
-      auto message = nsCString("uniffi_rustbuffer_alloc: ");
-      message.Append(
-          nsDependentCSubstring(reinterpret_cast<char*>(status.error_buf.data),
-                                status.error_buf.len));
-      RustCallStatus status2{};
-      uniffi_rustbuffer_free(status.error_buf, &status2);
-      MOZ_RELEASE_ASSERT(status2.code == 0,
-                         "Freeing a rustbuffer should never fail");
-      return Err(message);
+          return Err("Unknown error allocating rust buffer"_ns);
+        }
 
-    } else {
-      return Err("Unknown error allocating rust buffer"_ns);
-    }
-  }
-
-  memcpy(buf.data, aArrayBuffer.Data(), buf.len);
-  return OwnedRustBuffer(buf);
+        memcpy(buf.data, aData.Elements(), bufLen);
+        return OwnedRustBuffer(buf);
+      });
 }
 
 OwnedRustBuffer::OwnedRustBuffer(OwnedRustBuffer&& aOther) : mBuf(aOther.mBuf) {
@@ -79,11 +78,16 @@ RustBuffer OwnedRustBuffer::IntoRustBuffer() {
 }
 
 JSObject* OwnedRustBuffer::IntoArrayBuffer(JSContext* cx) {
-  int32_t len = mBuf.len;
-  void* data = mBuf.data;
-  auto userData = MakeUnique<OwnedRustBuffer>(std::move(*this));
-  return JS::NewExternalArrayBuffer(cx, len, data, &ArrayBufferFreeFunc,
-                                    userData.release());
+  JS::Rooted<JSObject*> obj(cx);
+  {
+    auto len = mBuf.len;
+    void* data = mBuf.data;
+    auto userData = MakeUnique<OwnedRustBuffer>(std::move(*this));
+    UniquePtr<void, JS::BufferContentsDeleter> dataPtr{
+        data, {&ArrayBufferFreeFunc, userData.release()}};
+    obj = JS::NewExternalArrayBuffer(cx, len, std::move(dataPtr));
+  }
+  return obj;
 }
 
 void OwnedRustBuffer::ArrayBufferFreeFunc(void* contents, void* userData) {

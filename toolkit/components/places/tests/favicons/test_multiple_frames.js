@@ -14,9 +14,15 @@ add_task(async function () {
   let faviconURI = NetUtil.newURI("http://places.test/icon/favicon-multi.ico");
   // Fake window.
   let win = { devicePixelRatio: 1.0 };
-  let icoData = readFileData(do_get_file("favicon-multi.ico"));
-  PlacesUtils.favicons.replaceFaviconData(faviconURI, icoData, "image/x-icon");
-  await setFaviconForPage(pageURI, faviconURI);
+  let icoDataURL = await readFileDataAsDataURL(
+    do_get_file("favicon-multi.ico"),
+    "image/x-icon"
+  );
+  await PlacesTestUtils.setFaviconForPage(
+    pageURI.spec,
+    faviconURI.spec,
+    icoDataURL
+  );
 
   for (let size of [16, 32, 64]) {
     let file = do_get_file(`favicon-multi-frame${size}.png`);
@@ -27,7 +33,7 @@ add_task(async function () {
     Assert.equal(icon.mimeType, "image/png");
     Assert.deepEqual(icon.data, data);
 
-    info("Check moz-anno:favicon protocol");
+    info("Check cached-favicon protocol");
     await compareFavicons(
       Services.io.newFileURI(file),
       PlacesUtils.urlWithSizeRef(

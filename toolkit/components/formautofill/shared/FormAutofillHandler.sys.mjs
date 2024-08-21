@@ -4,7 +4,6 @@
 
 import { FormAutofill } from "resource://autofill/FormAutofill.sys.mjs";
 import { FormAutofillUtils } from "resource://gre/modules/shared/FormAutofillUtils.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -27,9 +26,6 @@ export class FormAutofillHandler {
   // The window to which this form belongs
   window = null;
 
-  // A WindowUtils reference of which Window the form belongs
-  winUtils = null;
-
   // DOM Form element to which this object is attached
   form = null;
 
@@ -42,8 +38,10 @@ export class FormAutofillHandler {
   // Caches the element to section mapping
   #cachedSectionByElement = new WeakMap();
 
-  // Keeps track of filled state for all identified elements
+  // Keeps track of filled state for all identified elements,
+  // used only for telemetry.
   #filledStateByElement = new WeakMap();
+
   /**
    * Array of collected data about relevant form fields.  Each item is an object
    * storing the identifying details of the field and a reference to the
@@ -66,9 +64,10 @@ export class FormAutofillHandler {
    * @param {FormLike} form Form that need to be auto filled
    * @param {Function} onFormSubmitted Function that can be invoked
    *                   to simulate form submission. Function is passed
-   *                   three arguments: (1) a FormLike for the form being
-   *                   submitted, (2) the corresponding Window, and (3) the
-   *                   responsible FormAutofillHandler.
+   *                   four arguments: (1) a FormLike for the form being
+   *                   submitted, (2) the reason for infering the form
+   *                   submission (3) the corresponding Window, and (4)
+   *                   the responsible FormAutofillHandler.
    * @param {Function} onAutofillCallback Function that can be invoked
    *                   when we want to suggest autofill on a form.
    */
@@ -76,29 +75,18 @@ export class FormAutofillHandler {
     this._updateForm(form);
 
     this.window = this.form.rootElement.ownerGlobal;
-    this.winUtils = this.window.windowUtils;
-
-    // Enum for form autofill MANUALLY_MANAGED_STATES values
-    this.FIELD_STATE_ENUM = {
-      // not themed
-      [FIELD_STATES.NORMAL]: null,
-      // highlighted
-      [FIELD_STATES.AUTO_FILLED]: "autofill",
-      // highlighted && grey color text
-      [FIELD_STATES.PREVIEW]: "-moz-autofill-preview",
-    };
 
     /**
      * This function is used if the form handler (or one of its sections)
      * determines that it needs to act as if the form had been submitted.
      */
-    this.onFormSubmitted = () => {
-      onFormSubmitted(this.form, this.window, this);
+    this.onFormSubmitted = formSubmissionReason => {
+      onFormSubmitted(this.form, formSubmissionReason, this.window, this);
     };
 
     this.onAutofillCallback = onAutofillCallback;
 
-    XPCOMUtils.defineLazyGetter(this, "log", () =>
+    ChromeUtils.defineLazyGetter(this, "log", () =>
       FormAutofill.defineLogGetter(this, "FormAutofillHandler")
     );
   }
@@ -125,14 +113,15 @@ export class FormAutofillHandler {
           this.onAutofillCallback();
         }
 
+        // This uses the #filledStateByElement map instead of
+        // autofillState as the state has already been cleared by the time
+        // the input event fires.
         if (this.getFilledStateByElement(target) == FIELD_STATES.NORMAL) {
           return;
         }
 
         this.changeFieldState(targetFieldDetail, FIELD_STATES.NORMAL);
-        const section = this.getSectionByElement(
-          targetFieldDetail.elementWeakRef.get()
-        );
+        const section = this.getSectionByElement(targetFieldDetail.element);
         section?.clearFilled(targetFieldDetail);
       }
     }
@@ -238,20 +227,33 @@ export class FormAutofillHandler {
     const sections = lazy.FormAutofillHeuristics.getFormInfo(this.form);
     const allValidDetails = [];
     for (const section of sections) {
+      // We don't support csc field, so remove csc fields from section
+      const fieldDetails = section.fieldDetails.filter(
+        f => !["cc-csc"].includes(f.fieldName)
+      );
+      if (!fieldDetails.length) {
+        continue;
+      }
+
       let autofillableSection;
       if (section.type == lazy.FormSection.ADDRESS) {
         autofillableSection = new lazy.FormAutofillAddressSection(
-          section,
+          fieldDetails,
           this
         );
       } else {
         autofillableSection = new lazy.FormAutofillCreditCardSection(
-          section,
+          fieldDetails,
           this
         );
       }
 
-      if (ignoreInvalid && !autofillableSection.isValidSection()) {
+      // Do not include section that is either disabled or invalid.
+      // We only include invalid section for testing purpose.
+      if (
+        !autofillableSection.isEnabled() ||
+        (ignoreInvalid && !autofillableSection.isValidSection())
+      ) {
         continue;
       }
 
@@ -276,11 +278,11 @@ export class FormAutofillHandler {
    *
    * @param {object} fieldDetail
    *        A fieldDetail of which its element is about to update the state.
-   * @param {string} nextState
-   *        Used to determine the next state
+   * @param {string} state
+   *        The state to apply.
    */
-  changeFieldState(fieldDetail, nextState) {
-    const element = fieldDetail.elementWeakRef.get();
+  changeFieldState(fieldDetail, state) {
+    const element = fieldDetail.element;
     if (!element) {
       this.log.warn(
         fieldDetail.fieldName,
@@ -288,7 +290,8 @@ export class FormAutofillHandler {
       );
       return;
     }
-    if (!(nextState in this.FIELD_STATE_ENUM)) {
+
+    if (!Object.values(FIELD_STATES).includes(state)) {
       this.log.warn(
         fieldDetail.fieldName,
         "is trying to change to an invalid state"
@@ -296,34 +299,12 @@ export class FormAutofillHandler {
       return;
     }
 
-    if (this.#filledStateByElement.get(element) == nextState) {
-      return;
-    }
+    element.autofillState = state;
+    this.#filledStateByElement.set(element, state);
 
-    let nextStateValue = null;
-    for (const [state, mmStateValue] of Object.entries(this.FIELD_STATE_ENUM)) {
-      // The NORMAL state is simply the absence of other manually
-      // managed states so we never need to add or remove it.
-      if (!mmStateValue) {
-        continue;
-      }
-
-      if (state == nextState) {
-        nextStateValue = mmStateValue;
-      } else {
-        this.winUtils.removeManuallyManagedState(element, mmStateValue);
-      }
-    }
-
-    if (nextStateValue) {
-      this.winUtils.addManuallyManagedState(element, nextStateValue);
-    }
-
-    if (nextState == FIELD_STATES.AUTO_FILLED) {
+    if (state == FIELD_STATES.AUTO_FILLED) {
       element.addEventListener("input", this, { mozSystemGroup: true });
     }
-
-    this.#filledStateByElement.set(element, nextState);
   }
 
   /**

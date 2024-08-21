@@ -18,6 +18,8 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
+  PdfJsTelemetry: "resource://pdf.js/PdfJsTelemetry.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   SetClipboardSearchString: "resource://gre/modules/Finder.sys.mjs",
 });
@@ -58,10 +60,6 @@ export class PdfjsParent extends JSWindowActorParent {
 
   receiveMessage(aMsg) {
     switch (aMsg.name) {
-      case "PDFJS:Parent:displayWarning":
-        this._displayWarning(aMsg);
-        break;
-
       case "PDFJS:Parent:updateControlState":
         return this._updateControlState(aMsg);
       case "PDFJS:Parent:updateMatchesCount":
@@ -70,6 +68,10 @@ export class PdfjsParent extends JSWindowActorParent {
         return this._addEventListener();
       case "PDFJS:Parent:saveURL":
         return this._saveURL(aMsg);
+      case "PDFJS:Parent:recordExposure":
+        return this._recordExposure();
+      case "PDFJS:Parent:reportTelemetry":
+        return this._reportTelemetry(aMsg);
     }
     return undefined;
   }
@@ -80,6 +82,14 @@ export class PdfjsParent extends JSWindowActorParent {
 
   get browser() {
     return this.browsingContext.top.embedderElement;
+  }
+
+  _recordExposure() {
+    lazy.NimbusFeatures.pdfjs.recordExposureEvent({ once: true });
+  }
+
+  _reportTelemetry(aMsg) {
+    lazy.PdfJsTelemetry.report(aMsg.data);
   }
 
   _saveURL(aMsg) {
@@ -177,7 +187,7 @@ export class PdfjsParent extends JSWindowActorParent {
       let newBrowser = aEvent.detail;
       newBrowser.addEventListener(
         "EndSwapDocShells",
-        evt => {
+        () => {
           this._hookupEventListeners(newBrowser);
         },
         { once: true }
@@ -276,64 +286,5 @@ export class PdfjsParent extends JSWindowActorParent {
 
     // Clean up any SwapDocShells event listeners.
     browser?.removeEventListener("SwapDocShells", this);
-  }
-
-  /*
-   * Display a notification warning when the renderer isn't sure
-   * a pdf displayed correctly.
-   */
-  _displayWarning(aMsg) {
-    let data = aMsg.data;
-    let browser = this.browser;
-
-    let tabbrowser = browser.getTabBrowser();
-    let notificationBox = tabbrowser.getNotificationBox(browser);
-
-    // Flag so we don't send the message twice, since if the user clicks
-    // "open with different viewer" both the button callback and
-    // eventCallback will be called.
-    let messageSent = false;
-    let sendMessage = download => {
-      // Don't send a response again if we already responded when the button was
-      // clicked.
-      if (messageSent) {
-        return;
-      }
-      try {
-        this.sendAsyncMessage("PDFJS:Child:fallbackDownload", { download });
-        messageSent = true;
-      } catch (ex) {
-        // Ignore any exception if it is related to the child
-        // getting destroyed before the message can be sent.
-        if (!/JSWindowActorParent cannot send at the moment/.test(ex.message)) {
-          throw ex;
-        }
-      }
-    };
-    let buttons = [
-      {
-        label: data.label,
-        accessKey: data.accessKey,
-        callback() {
-          sendMessage(true);
-        },
-      },
-    ];
-    notificationBox.appendNotification(
-      "pdfjs-fallback",
-      {
-        label: data.message,
-        priority: notificationBox.PRIORITY_INFO_MEDIUM,
-        eventCallback: eventType => {
-          // Currently there is only one event "removed" but if there are any other
-          // added in the future we still only care about removed at the moment.
-          if (eventType !== "removed") {
-            return;
-          }
-          sendMessage(false);
-        },
-      },
-      buttons
-    );
   }
 }

@@ -2,18 +2,35 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/**
+ * PRIVACY WARNING
+ * ===============
+ *
+ * Database file names can be exposed through telemetry and in crash reports on
+ * the https://crash-stats.mozilla.org site, to allow recognizing the affected
+ * database.
+ * if your database name may contain privacy sensitive information, e.g. an
+ * URL origin, you should use openDatabaseWithFileURL and pass an explicit
+ * TelemetryFilename to it. That name will be used both for telemetry and for
+ * thread names in crash reports.
+ * If you have different needs (e.g. using the javascript module or an async
+ * connection from the main thread) please coordinate with the mozStorage peers.
+ */
+
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 import { setTimeout } from "resource://gre/modules/Timer.sys.mjs";
 
 const lazy = {};
 
-ChromeUtils.defineESModuleGetters(lazy, {
-  AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
-  FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
-  Log: "resource://gre/modules/Log.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
-});
+ChromeUtils.defineESModuleGetters(
+  lazy,
+  {
+    AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
+    FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+  },
+  { global: "contextual" }
+);
 
 XPCOMUtils.defineLazyServiceGetter(
   lazy,
@@ -159,7 +176,7 @@ function convertStorageErrorResult(result) {
  * Barriers used to ensure that Sqlite.sys.mjs is shutdown after all
  * its clients.
  */
-XPCOMUtils.defineLazyGetter(lazy, "Barriers", () => {
+ChromeUtils.defineLazyGetter(lazy, "Barriers", () => {
   let Barriers = {
     /**
      * Public barrier that clients may use to add blockers to the
@@ -293,6 +310,18 @@ function unregisterVacuumParticipant(connectionData) {
 }
 
 /**
+ * Create a ConsoleInstance logger with a given prefix.
+ * @param {string} prefix The prefix to use when logging.
+ * @returns {ConsoleInstance} a console logger.
+ */
+function createLoggerWithPrefix(prefix) {
+  return console.createInstance({
+    prefix: `SQLite JSM (${prefix})`,
+    maxLogLevelPref: "toolkit.sqlitejsm.loglevel",
+  });
+}
+
+/**
  * Connection data with methods necessary for closing the connection.
  *
  * To support auto-closing in the event of garbage collection, this
@@ -311,12 +340,8 @@ function unregisterVacuumParticipant(connectionData) {
  * dispatch its method calls here.
  */
 function ConnectionData(connection, identifier, options = {}) {
-  this._log = lazy.Log.repository.getLoggerWithMessagePrefix(
-    "Sqlite.sys.mjs",
-    `Connection ${identifier}: `
-  );
-  this._log.manageLevelFromPref("toolkit.sqlitejsm.loglevel");
-  this._log.debug("Opened");
+  this._logger = createLoggerWithPrefix(`Connection ${identifier}`);
+  this._logger.debug("Opened");
 
   this._dbConn = connection;
 
@@ -364,7 +389,7 @@ function ConnectionData(connection, identifier, options = {}) {
 
   // Deferred whose promise is resolved when the connection closing procedure
   // is complete.
-  this._deferredClose = lazy.PromiseUtils.defer();
+  this._deferredClose = Promise.withResolvers();
   this._closeRequested = false;
 
   // An AsyncShutdown barrier used to make sure that we wait until clients
@@ -396,25 +421,27 @@ function ConnectionData(connection, identifier, options = {}) {
 
   this._useIncrementalVacuum = !!options.incrementalVacuum;
   if (this._useIncrementalVacuum) {
-    this._log.debug("Set auto_vacuum INCREMENTAL");
+    this._logger.debug("Set auto_vacuum INCREMENTAL");
     this.execute("PRAGMA auto_vacuum = 2").catch(ex => {
-      this._log.error("Setting auto_vacuum to INCREMENTAL failed.");
+      this._logger.error("Setting auto_vacuum to INCREMENTAL failed.");
       console.error(ex);
     });
   }
 
   this._expectedPageSize = options.pageSize ?? 0;
   if (this._expectedPageSize) {
-    this._log.debug("Set page_size to " + this._expectedPageSize);
+    this._logger.debug("Set page_size to " + this._expectedPageSize);
     this.execute("PRAGMA page_size = " + this._expectedPageSize).catch(ex => {
-      this._log.error(`Setting page_size to ${this._expectedPageSize} failed.`);
+      this._logger.error(
+        `Setting page_size to ${this._expectedPageSize} failed.`
+      );
       console.error(ex);
     });
   }
 
   this._vacuumOnIdle = options.vacuumOnIdle;
   if (this._vacuumOnIdle) {
-    this._log.debug("Register as vacuum participant");
+    this._logger.debug("Register as vacuum participant");
     this.QueryInterface = ChromeUtils.generateQI([
       Ci.mozIStorageVacuumParticipant,
     ]);
@@ -456,12 +483,12 @@ ConnectionData.prototype = Object.freeze({
 
   onBeginVacuum() {
     let granted = !this.transactionInProgress;
-    this._log.debug("Begin Vacuum - " + granted ? "granted" : "denied");
+    this._logger.debug("Begin Vacuum - " + granted ? "granted" : "denied");
     return granted;
   },
 
   onEndVacuum(succeeded) {
-    this._log.debug("End Vacuum - " + succeeded ? "success" : "failure");
+    this._logger.debug("End Vacuum - " + succeeded ? "success" : "failure");
   },
 
   /**
@@ -583,11 +610,11 @@ ConnectionData.prototype = Object.freeze({
       return this._deferredClose.promise;
     }
 
-    this._log.debug("Request to close connection.");
+    this._logger.debug("Request to close connection.");
     this._clearIdleShrinkTimer();
 
     if (this._vacuumOnIdle) {
-      this._log.debug("Unregister as vacuum participant");
+      this._logger.debug("Unregister as vacuum participant");
       unregisterVacuumParticipant(this);
     }
 
@@ -602,7 +629,7 @@ ConnectionData.prototype = Object.freeze({
   clone(readOnly = false) {
     this.ensureOpen();
 
-    this._log.debug("Request to clone connection.");
+    this._logger.debug("Request to clone connection.");
 
     let options = {
       connection: this._dbConn,
@@ -618,7 +645,7 @@ ConnectionData.prototype = Object.freeze({
     return this._operationsCounter++;
   },
   _finalize() {
-    this._log.debug("Finalizing connection.");
+    this._logger.debug("Finalizing connection.");
     // Cancel any pending statements.
     for (let [, /* k */ statement] of this._pendingStatements) {
       statement.cancel();
@@ -646,7 +673,7 @@ ConnectionData.prototype = Object.freeze({
     // We must always close the connection at the Sqlite.sys.mjs-level, not
     // necessarily at the mozStorage-level.
     let markAsClosed = () => {
-      this._log.debug("Closed");
+      this._logger.debug("Closed");
       // Now that the connection is closed, no need to keep
       // a blocker for Barriers.connections.
       lazy.Barriers.connections.client.removeBlocker(
@@ -659,7 +686,7 @@ ConnectionData.prototype = Object.freeze({
       this._dbConn = null;
       markAsClosed();
     } else {
-      this._log.debug("Calling asyncClose().");
+      this._logger.debug("Calling asyncClose().");
       try {
         this._dbConn.asyncClose(markAsClosed);
       } catch (ex) {
@@ -756,7 +783,7 @@ ConnectionData.prototype = Object.freeze({
       .pop()
       .match(/^([^@]*@).*\/([^\/:]+)[:0-9]*$/);
     caller = caller[1] + caller[2];
-    this._log.debug(`Transaction (type ${type}) requested by: ${caller}`);
+    this._logger.debug(`Transaction (type ${type}) requested by: ${caller}`);
 
     if (type == OpenedConnection.prototype.TRANSACTION_DEFAULT) {
       type = this.defaultTransactionType;
@@ -780,7 +807,7 @@ ConnectionData.prototype = Object.freeze({
         // At this point we should never have an in progress transaction, since
         // they are enqueued.
         if (this._initiatedTransaction) {
-          this._log.error(
+          this._logger.error(
             "Unexpected transaction in progress when trying to start a new one."
           );
         }
@@ -788,7 +815,7 @@ ConnectionData.prototype = Object.freeze({
           // We catch errors in statement execution to detect nested transactions.
           try {
             await this.execute("BEGIN " + type + " TRANSACTION");
-            this._log.debug(`Begin transaction`);
+            this._logger.debug(`Begin transaction`);
             this._initiatedTransaction = true;
           } catch (ex) {
             // Unfortunately, if we are wrapping an existing connection, a
@@ -797,12 +824,12 @@ ConnectionData.prototype = Object.freeze({
             // The best we can do is proceed without a transaction and hope
             // things won't break.
             if (wrappedConnections.has(this._identifier)) {
-              this._log.warn(
+              this._logger.warn(
                 "A new transaction could not be started cause the wrapped connection had one in progress",
                 ex
               );
             } else {
-              this._log.warn(
+              this._logger.warn(
                 "A transaction was already in progress, likely a nested transaction",
                 ex
               );
@@ -817,7 +844,7 @@ ConnectionData.prototype = Object.freeze({
             // It's possible that the exception has been caused by trying to
             // close the connection in the middle of a transaction.
             if (this._closeRequested) {
-              this._log.warn(
+              this._logger.warn(
                 "Connection closed while performing a transaction",
                 ex
               );
@@ -831,12 +858,12 @@ ConnectionData.prototype = Object.freeze({
                   caller_module,
                   1
                 );
-                this._log.error(
+                this._logger.error(
                   `The transaction requested by ${caller} timed out. Rolling back`,
                   ex
                 );
               } else {
-                this._log.error(
+                this._logger.error(
                   `Error during transaction requested by ${caller}. Rolling back`,
                   ex
                 );
@@ -846,9 +873,9 @@ ConnectionData.prototype = Object.freeze({
                 try {
                   await this.execute("ROLLBACK TRANSACTION");
                   this._initiatedTransaction = false;
-                  this._log.debug(`Roll back transaction`);
+                  this._logger.debug(`Roll back transaction`);
                 } catch (inner) {
-                  this._log.error("Could not roll back transaction", inner);
+                  this._logger.error("Could not roll back transaction", inner);
                 }
               }
             }
@@ -858,7 +885,7 @@ ConnectionData.prototype = Object.freeze({
 
           // See comment above about connection being closed during transaction.
           if (this._closeRequested) {
-            this._log.warn(
+            this._logger.warn(
               "Connection closed before committing the transaction."
             );
             throw new Error(
@@ -870,9 +897,9 @@ ConnectionData.prototype = Object.freeze({
           if (this._initiatedTransaction) {
             try {
               await this.execute("COMMIT TRANSACTION");
-              this._log.debug(`Commit transaction`);
+              this._logger.debug(`Commit transaction`);
             } catch (ex) {
-              this._log.warn("Error committing transaction", ex);
+              this._logger.warn("Error committing transaction", ex);
               throw ex;
             }
           }
@@ -888,7 +915,7 @@ ConnectionData.prototype = Object.freeze({
     // Atomically update the queue before anyone else has a chance to enqueue
     // further transactions.
     this._transactionQueue = promise.catch(ex => {
-      this._log.error(ex);
+      this._logger.error(ex);
     });
 
     // Make sure that we do not shutdown the connection during a transaction.
@@ -900,7 +927,7 @@ ConnectionData.prototype = Object.freeze({
   },
 
   shrinkMemory() {
-    this._log.debug("Shrinking memory usage.");
+    this._logger.debug("Shrinking memory usage.");
     return this.execute("PRAGMA shrink_memory").finally(() => {
       this._clearIdleShrinkTimer();
     });
@@ -913,12 +940,12 @@ ConnectionData.prototype = Object.freeze({
       statement.finalize();
     }
     this._cachedStatements.clear();
-    this._log.debug("Discarded " + count + " cached statements.");
+    this._logger.debug("Discarded " + count + " cached statements.");
     return count;
   },
 
   interrupt() {
-    this._log.debug("Trying to interrupt.");
+    this._logger.debug("Trying to interrupt.");
     this.ensureOpen();
     this._dbConn.interrupt();
   },
@@ -996,7 +1023,7 @@ ConnectionData.prototype = Object.freeze({
 
     let index = this._statementCounter++;
 
-    let deferred = lazy.PromiseUtils.defer();
+    let deferred = Promise.withResolvers();
     let userCancelled = false;
     let errors = [];
     let rows = [];
@@ -1004,15 +1031,15 @@ ConnectionData.prototype = Object.freeze({
 
     // Don't incur overhead for serializing params unless the messages go
     // somewhere.
-    if (this._log.level <= lazy.Log.Level.Trace) {
+    if (this._logger.shouldLog("Trace")) {
       let msg = "Stmt #" + index + " " + sql;
 
       if (params) {
         msg += " - " + JSON.stringify(params);
       }
-      this._log.trace(msg);
+      this._logger.trace(msg);
     } else {
-      this._log.debug("Stmt #" + index + " starting");
+      this._logger.debug("Stmt #" + index + " starting");
     }
 
     let self = this;
@@ -1038,20 +1065,20 @@ ConnectionData.prototype = Object.freeze({
               pending.cancel();
             });
           } catch (e) {
-            self._log.warn("Exception when calling onRow callback", e);
+            self._logger.warn("Exception when calling onRow callback", e);
           }
         }
       },
 
       handleError(error) {
-        self._log.warn(
+        self._logger.warn(
           "Error when executing SQL (" + error.result + "): " + error.message
         );
         errors.push(error);
       },
 
       handleCompletion(reason) {
-        self._log.debug("Stmt #" + index + " finished.");
+        self._logger.debug("Stmt #" + index + " finished.");
         self._pendingStatements.delete(index);
 
         switch (reason) {
@@ -1149,6 +1176,44 @@ ConnectionData.prototype = Object.freeze({
       Cu.now() + Sqlite.TRANSACTIONS_TIMEOUT_MS * 0.2;
     return this._timeoutPromise;
   },
+
+  /**
+   * Asynchronously makes a copy of the SQLite database while there may still be
+   * open connections on it.
+   *
+   * @param {string} destFilePath
+   *   The path on the local filesystem to write the database copy. Any existing
+   *   file at this path will be overwritten.
+   * @param {number} [pagesPerStep=0]
+   *   The number of pages to copy per step. If not supplied or is 0, falls back
+   *   to the platform default which is currently 5.
+   * @param {number} [stepDelayMs=0]
+   *   The number of milliseconds to wait between copying step. If not supplied
+   *   or is 0, falls back to the platform default which is currently 250.
+   * @return Promise<undefined, nsresult>
+   */
+  async backupToFile(destFilePath, pagesPerStep = 0, stepDelayMs = 0) {
+    if (!this._dbConn) {
+      return Promise.reject(
+        new Error("No opened database connection to create a backup from.")
+      );
+    }
+    let destFile = await IOUtils.getFile(destFilePath);
+    return new Promise((resolve, reject) => {
+      this._dbConn.backupToFileAsync(
+        destFile,
+        result => {
+          if (Components.isSuccessCode(result)) {
+            resolve();
+          } else {
+            reject(result);
+          }
+        },
+        pagesPerStep,
+        stepDelayMs
+      );
+    });
+  },
 });
 
 /**
@@ -1215,11 +1280,7 @@ ConnectionData.prototype = Object.freeze({
  * @return Promise<OpenedConnection>
  */
 function openConnection(options) {
-  let log = lazy.Log.repository.getLoggerWithMessagePrefix(
-    "Sqlite.sys.mjs",
-    `ConnectionOpener: `
-  );
-  log.manageLevelFromPref("toolkit.sqlitejsm.loglevel");
+  let logger = createLoggerWithPrefix("ConnectionOpener");
 
   if (!options.path) {
     throw new Error("path not specified in connection options.");
@@ -1309,7 +1370,7 @@ function openConnection(options) {
 
   let identifier = getIdentifierByFileName(PathUtils.filename(path));
 
-  log.debug("Opening database: " + path + " (" + identifier + ")");
+  logger.debug("Opening database: " + path + " (" + identifier + ")");
 
   return new Promise((resolve, reject) => {
     let dbOpenOptions = Ci.mozIStorageService.OPEN_DEFAULT;
@@ -1332,7 +1393,7 @@ function openConnection(options) {
       dbConnectionOptions,
       async (status, connection) => {
         if (!connection) {
-          log.error(`Could not open connection to ${path}: ${status}`);
+          logger.error(`Could not open connection to ${path}: ${status}`);
           let error = new Components.Exception(
             `Could not open connection to ${path}: ${status}`,
             status
@@ -1340,7 +1401,7 @@ function openConnection(options) {
           reject(error);
           return;
         }
-        log.debug("Connection opened");
+        logger.debug("Connection opened");
 
         if (options.testDelayedOpenPromise) {
           await options.testDelayedOpenPromise;
@@ -1366,7 +1427,7 @@ function openConnection(options) {
             )
           );
         } catch (ex) {
-          log.error("Could not open database", ex);
+          logger.error("Could not open database", ex);
           connection.asyncClose();
           reject(ex);
         }
@@ -1405,11 +1466,7 @@ function openConnection(options) {
  * @return Promise<OpenedConnection>
  */
 function cloneStorageConnection(options) {
-  let log = lazy.Log.repository.getLoggerWithMessagePrefix(
-    "Sqlite.sys.mjs",
-    `ConnectionCloner: `
-  );
-  log.manageLevelFromPref("toolkit.sqlitejsm.loglevel");
+  let logger = createLoggerWithPrefix("ConnectionCloner");
 
   let source = options && options.connection;
   if (!source) {
@@ -1443,16 +1500,16 @@ function cloneStorageConnection(options) {
   let path = source.databaseFile.path;
   let identifier = getIdentifierByFileName(PathUtils.filename(path));
 
-  log.debug("Cloning database: " + path + " (" + identifier + ")");
+  logger.debug("Cloning database: " + path + " (" + identifier + ")");
 
   return new Promise((resolve, reject) => {
     source.asyncClone(!!options.readOnly, (status, connection) => {
       if (!connection) {
-        log.error("Could not clone connection: " + status);
+        logger.error("Could not clone connection: " + status);
         reject(new Error("Could not clone connection: " + status));
         return;
       }
-      log.debug("Connection cloned");
+      logger.debug("Connection cloned");
 
       if (isClosed()) {
         connection.QueryInterface(Ci.mozIStorageAsyncConnection).asyncClose();
@@ -1469,7 +1526,7 @@ function cloneStorageConnection(options) {
         let conn = connection.QueryInterface(Ci.mozIStorageAsyncConnection);
         resolve(new OpenedConnection(conn, identifier, openedOptions));
       } catch (ex) {
-        log.error("Could not clone database", ex);
+        logger.error("Could not clone database", ex);
         connection.asyncClose();
         reject(ex);
       }
@@ -1496,11 +1553,7 @@ function cloneStorageConnection(options) {
  * @return Promise<OpenedConnection>
  */
 function wrapStorageConnection(options) {
-  let log = lazy.Log.repository.getLoggerWithMessagePrefix(
-    "Sqlite.sys.mjs",
-    `ConnectionCloner: `
-  );
-  log.manageLevelFromPref("toolkit.sqlitejsm.loglevel");
+  let logger = createLoggerWithPrefix("ConnectionWrapper");
 
   let connection = options && options.connection;
   if (!connection || !(connection instanceof Ci.mozIStorageAsyncConnection)) {
@@ -1516,7 +1569,7 @@ function wrapStorageConnection(options) {
 
   let identifier = getIdentifierByFileName(connection.databaseFile.leafName);
 
-  log.debug("Wrapping database: " + identifier);
+  logger.debug("Wrapping database: " + identifier);
   return new Promise(resolve => {
     try {
       let conn = connection.QueryInterface(Ci.mozIStorageAsyncConnection);
@@ -1526,7 +1579,7 @@ function wrapStorageConnection(options) {
       wrappedConnections.add(identifier);
       resolve(wrapper);
     } catch (ex) {
-      log.error("Could not wrap database", ex);
+      logger.error("Could not wrap database", ex);
       throw ex;
     }
   });
@@ -1646,10 +1699,21 @@ OpenedConnection.prototype = Object.freeze({
    * Returns the maximum number of bound parameters for statements executed
    * on this connection.
    *
-   * @type {number}
+   * @returns {number} The bound parameters limit.
    */
   get variableLimit() {
     return this.unsafeRawConnection.variableLimit;
+  },
+
+  /**
+   * Set the the maximum number of bound parameters for statements executed
+   * on this connection. If the passed-in value is higher than the maximum
+   * default value, it will be silently truncated.
+   *
+   * @param {number} newLimit The bound parameters limit.
+   */
+  set variableLimit(newLimit) {
+    this.unsafeRawConnection.variableLimit = newLimit;
   },
 
   /**
@@ -1940,6 +2004,29 @@ OpenedConnection.prototype = Object.freeze({
    */
   interrupt() {
     this._connectionData.interrupt();
+  },
+
+  /**
+   * Asynchronously makes a copy of the SQLite database while there may still be
+   * open connections on it.
+   *
+   * @param {string} destFilePath
+   *   The path on the local filesystem to write the database copy. Any existing
+   *   file at this path will be overwritten.
+   * @param {number} [pagesPerStep=0]
+   *   The number of pages to copy per step. If not supplied or is 0, falls back
+   *   to the platform default which is currently 5.
+   * @param {number} [stepDelayMs=0]
+   *   The number of milliseconds to wait between copying step. If not supplied
+   *   or is 0, falls back to the platform default which is currently 250.
+   * @return Promise<undefined, nsresult>
+   */
+  backup(destFilePath, pagesPerStep = 0, stepDelayMs = 0) {
+    return this._connectionData.backupToFile(
+      destFilePath,
+      pagesPerStep,
+      stepDelayMs
+    );
   },
 });
 

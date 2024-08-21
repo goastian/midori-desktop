@@ -26,17 +26,20 @@ async function test_ntp_theme(theme, isBrightText) {
   });
 
   let browser = gBrowser.selectedBrowser;
-
   let { originalBackground, originalCardBackground, originalColor } =
     await SpecialPowers.spawn(browser, [], function () {
       let doc = content.document;
       ok(
         !doc.documentElement.hasAttribute("lwt-newtab"),
-        "New tab page should not have lwt-newtab attribute"
+        `New tab page should not have lwt-newtab attribute`
+      );
+      ok(
+        !doc.documentElement.hasAttribute("lwtheme"),
+        `New tab page should not have lwtheme attribute`
       );
       ok(
         !doc.documentElement.hasAttribute("lwt-newtab-brighttext"),
-        `New tab page should not have lwt-newtab-brighttext attribute`
+        `New tab page not should have lwt-newtab-brighttext attribute`
       );
 
       return {
@@ -64,21 +67,38 @@ async function test_ntp_theme(theme, isBrightText) {
 
   Services.ppmm.sharedData.flush();
 
+  let hasNtpColors = !!(
+    theme.colors.ntp_background ||
+    theme.colors.ntp_text ||
+    theme.colors.ntp_card_background
+  );
   await SpecialPowers.spawn(
     browser,
     [
       {
         isBrightText,
+        hasNtpColors,
         background: hexToCSS(theme.colors.ntp_background),
         card_background: hexToCSS(theme.colors.ntp_card_background),
         color: hexToCSS(theme.colors.ntp_text),
       },
     ],
-    async function ({ isBrightText, background, card_background, color }) {
+    async function ({
+      isBrightText,
+      hasNtpColors,
+      background,
+      card_background,
+      color,
+    }) {
       let doc = content.document;
-      ok(
+      is(
         doc.documentElement.hasAttribute("lwt-newtab"),
+        hasNtpColors,
         "New tab page should have lwt-newtab attribute"
+      );
+      ok(
+        doc.documentElement.hasAttribute("lwtheme"),
+        "New tab page should have lwtheme attribute"
       );
       is(
         doc.documentElement.hasAttribute("lwt-newtab-brighttext"),
@@ -88,22 +108,24 @@ async function test_ntp_theme(theme, isBrightText) {
         } have lwt-newtab-brighttext attribute`
       );
 
-      is(
-        content.getComputedStyle(doc.body).backgroundColor,
-        background,
-        "New tab page background should be set."
-      );
-      is(
-        content.getComputedStyle(doc.querySelector(".top-site-outer .tile"))
-          .backgroundColor,
-        card_background,
-        "New tab page card background should be set."
-      );
-      is(
-        content.getComputedStyle(doc.querySelector(".outer-wrapper")).color,
-        color,
-        "New tab page text color should be set."
-      );
+      if (hasNtpColors) {
+        is(
+          content.getComputedStyle(doc.body).backgroundColor,
+          background,
+          "New tab page background should be set."
+        );
+        is(
+          content.getComputedStyle(doc.querySelector(".top-site-outer .tile"))
+            .backgroundColor,
+          card_background,
+          "New tab page card background should be set."
+        );
+        is(
+          content.getComputedStyle(doc.querySelector(".outer-wrapper")).color,
+          color,
+          "New tab page text color should be set."
+        );
+      }
     }
   );
 
@@ -125,6 +147,10 @@ async function test_ntp_theme(theme, isBrightText) {
       ok(
         !doc.documentElement.hasAttribute("lwt-newtab"),
         "New tab page should not have lwt-newtab attribute"
+      );
+      ok(
+        !doc.documentElement.hasAttribute("lwtheme"),
+        "New tab page should not have lwtheme attribute"
       );
       ok(
         !doc.documentElement.hasAttribute("lwt-newtab-brighttext"),
@@ -151,6 +177,17 @@ async function test_ntp_theme(theme, isBrightText) {
   );
 }
 
+async function waitForDarkMode(value) {
+  info(`waiting for dark mode: ${value}`);
+  const mq = matchMedia("(prefers-color-scheme: dark)");
+  if (mq.matches == value) {
+    return;
+  }
+  await new Promise(r => {
+    mq.addEventListener("change", r, { once: true });
+  });
+}
+
 add_task(async function test_support_ntp_colors() {
   await SpecialPowers.pushPrefEnv({
     set: [
@@ -163,11 +200,13 @@ add_task(async function test_support_ntp_colors() {
       ["layout.css.prefers-color-scheme.content-override", 1],
       // Override the system color scheme to light so this test passes on
       // machines with dark system color scheme.
+      // FIXME(emilio): This doesn't seem working reliably, at least on macOS.
       ["ui.systemUsesDarkTheme", 0],
     ],
   });
   NewTabPagePreloading.removePreloadedBrowser(window);
   for (let url of ["about:newtab", "about:home"]) {
+    await waitForDarkMode(false);
     info("Opening url: " + url);
     await BrowserTestUtils.withNewTab({ gBrowser, url }, async browser => {
       await waitForAboutNewTabReady(browser, url);
@@ -185,6 +224,7 @@ add_task(async function test_support_ntp_colors() {
         url
       );
 
+      await waitForDarkMode(false);
       await test_ntp_theme(
         {
           colors: {
@@ -196,6 +236,19 @@ add_task(async function test_support_ntp_colors() {
           },
         },
         true,
+        url
+      );
+
+      // Test a theme without any new tab page colors
+      await waitForDarkMode(false);
+      await test_ntp_theme(
+        {
+          colors: {
+            frame: ACCENT_COLOR,
+            tab_background_text: TEXT_COLOR,
+          },
+        },
+        false,
         url
       );
     });

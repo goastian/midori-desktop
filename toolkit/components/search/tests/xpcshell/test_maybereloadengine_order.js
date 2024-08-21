@@ -1,21 +1,14 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
+/*
+ * Test engine order is not set after engine reload.
+ */
+
 "use strict";
 
-const TEST_CONFIG = [
-  {
-    webExtension: { id: "plainengine@search.mozilla.org" },
-    appliesTo: [{ included: { everywhere: true } }],
-  },
-  {
-    webExtension: { id: "special-engine@search.mozilla.org" },
-    appliesTo: [{ default: "yes", included: { regions: ["FR"] } }],
-  },
-];
-
-add_task(async function setup() {
-  await SearchTestUtils.useTestEngines("test-extensions", null, TEST_CONFIG);
+add_setup(async function () {
+  await SearchTestUtils.useTestEngines("test-extensions");
   await AddonTestUtils.promiseStartupManager();
 
   registerCleanupFunction(AddonTestUtils.promiseShutdownManager);
@@ -24,7 +17,7 @@ add_task(async function setup() {
 add_task(async function basic_multilocale_test() {
   let resolver;
   let initPromise = new Promise(resolve => (resolver = resolve));
-  useCustomGeoServer("FR", initPromise);
+  useCustomGeoServer("TR", initPromise);
 
   await Services.search.init();
   await Services.search.getAppProvidedEngines();

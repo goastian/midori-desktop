@@ -13,7 +13,8 @@ Services.policies; // Load policy engine
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "2");
 
-let distroDir = FileUtils.getDir("ProfD", ["sysfeatures", "empty"], true);
+let distroDir = FileUtils.getDir("ProfD", ["sysfeatures", "empty"]);
+distroDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 registerDirectory("XREAppFeat", distroDir);
 add_task(() => initSystemAddonDirs());
 
@@ -43,11 +44,31 @@ const TEST_CONDITIONS = {
 add_task(async function test_update_disabled_by_policy() {
   await setupSystemAddonConditions(TEST_CONDITIONS, distroDir);
 
+  const TEST_POLICY_DATA = {
+    DisableSystemAddonUpdate: true,
+  };
   await EnterprisePolicyTesting.setupPolicyEngineWithJson({
-    policies: {
-      DisableSystemAddonUpdate: true,
-    },
+    policies: TEST_POLICY_DATA,
   });
+
+  Assert.deepEqual(
+    Services.policies.getActivePolicies(),
+    TEST_POLICY_DATA,
+    "Got the expected test policy data as the active policy " +
+      "(if this assertions fails, check your system for enterprise policies installed at system level)"
+  );
+
+  Assert.equal(
+    Services.policies.isAllowed("SysAddonUpdate"),
+    false,
+    "Expected SysAddonUpdate feature to be disabled by policies"
+  );
+
+  Assert.equal(
+    Services.prefs.getBoolPref("extensions.systemAddon.update.enabled"),
+    true,
+    "Expected system addon updates to not be already disabled through prefs"
+  );
 
   await updateAllSystemAddons(
     buildSystemAddonUpdates([

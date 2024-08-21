@@ -187,12 +187,16 @@ void ClearSiteData::ClearDataFromChannel(nsIHttpChannel* aChannel) {
 
   if (flags & eCookies) {
     LogOpToConsole(aChannel, uri, eCookies);
-    cleanFlags |= nsIClearDataService::CLEAR_COOKIES;
+    cleanFlags |= nsIClearDataService::CLEAR_COOKIES |
+                  nsIClearDataService::CLEAR_COOKIE_BANNER_EXECUTED_RECORD |
+                  nsIClearDataService::CLEAR_FINGERPRINTING_PROTECTION_STATE;
   }
 
   if (flags & eStorage) {
     LogOpToConsole(aChannel, uri, eStorage);
-    cleanFlags |= nsIClearDataService::CLEAR_DOM_STORAGES;
+    cleanFlags |= nsIClearDataService::CLEAR_DOM_STORAGES |
+                  nsIClearDataService::CLEAR_COOKIE_BANNER_EXECUTED_RECORD |
+                  nsIClearDataService::CLEAR_FINGERPRINTING_PROTECTION_STATE;
   }
 
   if (cleanFlags) {

@@ -12,7 +12,7 @@ const CONTENT_CREATED = "ipc:content-created";
 async function waitForProcessesScalars(
   aProcesses,
   aKeyed,
-  aAdditionalCondition = data => true
+  aAdditionalCondition = () => true
 ) {
   await TestUtils.waitForCondition(() => {
     const scalars = aKeyed
@@ -79,7 +79,11 @@ add_task(async function test_recording() {
       // promise should have already resolved by this point.
       await processCreated;
       let newPid = browser.frameLoader.remoteTab.osPid;
-      ok(currentPid != newPid, "The new tab must spawn its own process");
+      Assert.notEqual(
+        currentPid,
+        newPid,
+        "The new tab must spawn its own process"
+      );
 
       // Register test scalars after spawning the content process: the scalar
       // definitions will propagate to it.

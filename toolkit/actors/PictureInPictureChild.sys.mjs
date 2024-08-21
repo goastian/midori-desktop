@@ -86,11 +86,11 @@ var gWeakIntersectingVideosForTesting = new WeakSet();
 // content process, so we set this as a lazy process global.
 // See PictureInPictureToggleChild.getSiteOverrides for a
 // sense of what the return types are.
-XPCOMUtils.defineLazyGetter(lazy, "gSiteOverrides", () => {
+ChromeUtils.defineLazyGetter(lazy, "gSiteOverrides", () => {
   return PictureInPictureToggleChild.getSiteOverrides();
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logConsole", () => {
+ChromeUtils.defineLazyGetter(lazy, "logConsole", () => {
   return console.createInstance({
     prefix: "PictureInPictureChild",
     maxLogLevel: Services.prefs.getBoolPref(
@@ -139,6 +139,7 @@ export class PictureInPictureLauncherChild extends JSWindowActorChild {
           this.togglePictureInPicture({
             video: event.target,
             reason: event.detail?.reason,
+            eventExtraKeys: event.detail?.eventExtraKeys,
           });
         }
         break;
@@ -161,15 +162,17 @@ export class PictureInPictureLauncherChild extends JSWindowActorChild {
    * Picture-in-Picture window existing, this tells the parent to
    * close it before opening the new one.
    *
-   * @param {Object} pipObject An object containing the video and reason
-   * for toggling the PiP video
+   * @param {Object} pipObject
+   * @param {HTMLVideoElement} pipObject.video
+   * @param {String} pipObject.reason What toggled PiP, e.g. "shortcut"
+   * @param {Object} pipObject.eventExtraKeys Extra telemetry keys to record
    *
    * @return {Promise}
    * @resolves {undefined} Once the new Picture-in-Picture window
    * has been requested.
    */
   async togglePictureInPicture(pipObject) {
-    let { video, reason } = pipObject;
+    let { video, reason, eventExtraKeys = {} } = pipObject;
     if (video.isCloningElementVisually) {
       // The only way we could have entered here for the same video is if
       // we are toggling via the context menu or via the urlbar button,
@@ -227,18 +230,17 @@ export class PictureInPictureLauncherChild extends JSWindowActorChild {
       volume: PictureInPictureChild.videoWrapper.getVolume(video),
     });
 
-    let args = {
-      firstTimeToggle: (!Services.prefs.getBoolPref(
-        TOGGLE_HAS_USED_PREF
-      )).toString(),
-    };
-
     Services.telemetry.recordEvent(
       "pictureinpicture",
       "opened_method",
       reason,
       null,
-      args
+      {
+        firstTimeToggle: (!Services.prefs.getBoolPref(
+          TOGGLE_HAS_USED_PREF
+        )).toString(),
+        ...eventExtraKeys,
+      }
     );
   }
 
@@ -307,7 +309,7 @@ export class PictureInPictureToggleChild extends JSWindowActorChild {
   receiveMessage(message) {
     switch (message.name) {
       case "PictureInPicture:UrlbarToggle": {
-        this.urlbarToggle();
+        this.urlbarToggle(message.data);
         break;
       }
     }
@@ -630,10 +632,7 @@ export class PictureInPictureToggleChild extends JSWindowActorChild {
       pipCount: videos.length,
       pipDisabledCount: videos.reduce(
         (accumulator, currentVal) =>
-          accumulator +
-          (currentVal.getAttribute("disablePictureInPicture") === "true"
-            ? 1
-            : 0),
+          accumulator + (currentVal.disablePictureInPicture ? 1 : 0),
         0
       ),
     });
@@ -653,16 +652,13 @@ export class PictureInPictureToggleChild extends JSWindowActorChild {
       pipCount: videos.length,
       pipDisabledCount: videos.reduce(
         (accumulator, currentVal) =>
-          accumulator +
-          (currentVal.getAttribute("disablePictureInPicture") === "true"
-            ? 1
-            : 0),
+          accumulator + (currentVal.disablePictureInPicture ? 1 : 0),
         0
       ),
     });
   }
 
-  urlbarToggle() {
+  urlbarToggle(eventExtraKeys) {
     let video = ChromeUtils.nondeterministicGetWeakSetKeys(
       this.eligiblePipVideos
     )[0];
@@ -671,7 +667,7 @@ export class PictureInPictureToggleChild extends JSWindowActorChild {
         "MozTogglePictureInPicture",
         {
           bubbles: true,
-          detail: { reason: "urlBar" },
+          detail: { reason: "urlBar", eventExtraKeys },
         }
       );
       video.dispatchEvent(pipEvent);
@@ -951,11 +947,8 @@ export class PictureInPictureToggleChild extends JSWindowActorChild {
    * tear out or in. If we happened to be tracking videos before the tear
    * occurred, we re-add the mouse event listeners so that they're attached to
    * the right WindowRoot.
-   *
-   * @param {Event} event The pageshow event fired when completing a tab tear
-   * out or in.
    */
-  onPageShow(event) {
+  onPageShow() {
     let state = this.docState;
     if (state.isTrackingVideos) {
       this.addMouseButtonListeners();
@@ -967,11 +960,8 @@ export class PictureInPictureToggleChild extends JSWindowActorChild {
    * tear out or in. If we happened to be tracking videos before the tear
    * occurred, we remove the mouse event listeners. We'll re-add them when the
    * pageshow event fires.
-   *
-   * @param {Event} event The pagehide event fired when starting a tab tear
-   * out or in.
    */
-  onPageHide(event) {
+  onPageHide() {
     let state = this.docState;
     if (state.isTrackingVideos) {
       this.removeMouseButtonListeners();
@@ -1053,7 +1043,7 @@ export class PictureInPictureToggleChild extends JSWindowActorChild {
     }
   }
 
-  startPictureInPicture(event, video, toggle) {
+  startPictureInPicture(event, video) {
     Services.telemetry.keyedScalarAdd(
       "pictureinpicture.opened_method",
       "toggle",
@@ -1229,11 +1219,11 @@ export class PictureInPictureToggleChild extends JSWindowActorChild {
     let shadowRoot = video.openOrClosedShadowRoot;
 
     if (shadowRoot.firstChild && video != oldOverVideo) {
-      if (video.getTransformToViewport().a == -1) {
-        shadowRoot.firstChild.setAttribute("flipped", true);
-      } else {
-        shadowRoot.firstChild.removeAttribute("flipped");
-      }
+      // TODO: Maybe this should move to videocontrols.js somehow.
+      shadowRoot.firstChild.toggleAttribute(
+        "flipped",
+        video.getTransformToViewport().a == -1
+      );
     }
 
     // It seems from automated testing that if it's still very early on in the
@@ -1531,7 +1521,7 @@ export class PictureInPictureToggleChild extends JSWindowActorChild {
       this.sendAsyncMessage("PictureInPicture:OpenToggleContextMenu", {
         screenXDevPx: event.screenX * devicePixelRatio,
         screenYDevPx: event.screenY * devicePixelRatio,
-        mozInputSource: event.mozInputSource,
+        inputSource: event.inputSource,
       });
       event.stopImmediatePropagation();
       event.preventDefault();
@@ -1816,7 +1806,7 @@ export class PictureInPictureChild extends JSWindowActorChild {
    *  4) all active cues with VTTCue.line integer have VTTCue.snapToLines = true
    *  5) all active cues with VTTCue.line percentage have VTTCue.snapToLines = false
    *
-   * vtt.jsm currently sets snapToLines to false if line is a percentage value, but
+   * vtt.sys.mjs currently sets snapToLines to false if line is a percentage value, but
    * cues are still ordered by line. In most cases, snapToLines is set to true by default,
    * unless intentionally overridden.
    * @param allCuesArray {Array<VTTCue>} array of active cues
@@ -2449,7 +2439,7 @@ export class PictureInPictureChild extends JSWindowActorChild {
     }
   }
 
-  onCueChange(e) {
+  onCueChange() {
     if (!lazy.DISPLAY_TEXT_TRACKS_PREF) {
       this.updateWebVTTTextTracksDisplay(null);
     } else {
@@ -3114,10 +3104,10 @@ class PictureInPictureChildVideoWrapper {
    * a cue change is triggered {@see updatePiPTextTracks()}.
    * @param {HTMLVideoElement} video
    *  The originating video source element
-   * @param {Function} callback
+   * @param {Function} _callback
    *  The callback function to be executed when cue changes are detected
    */
-  setCaptionContainerObserver(video, callback) {
+  setCaptionContainerObserver(video, _callback) {
     return this.#callWrapperMethod({
       name: "setCaptionContainerObserver",
       args: [

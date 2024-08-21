@@ -15,9 +15,9 @@ const ASYNC_STACKS_ENABLED = Services.prefs.getBoolPref(
 
 var { ExtensionError } = ExtensionUtils;
 
-XPCOMUtils.defineLazyGetter(this, "symbolicationService", () => {
-  let { createLocalSymbolicationService } = ChromeUtils.import(
-    "resource://devtools/client/performance-new/shared/symbolication.jsm.js"
+ChromeUtils.defineLazyGetter(this, "symbolicationService", () => {
+  let { createLocalSymbolicationService } = ChromeUtils.importESModule(
+    "resource://devtools/client/performance-new/shared/symbolication.sys.mjs"
   );
   return createLocalSymbolicationService(Services.profiler.sharedLibraries, []);
 });
@@ -25,7 +25,7 @@ XPCOMUtils.defineLazyGetter(this, "symbolicationService", () => {
 const isRunningObserver = {
   _observers: new Set(),
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     switch (topic) {
       case "profiler-started":
       case "profiler-stopped":

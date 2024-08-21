@@ -19,7 +19,7 @@ class NoopAction extends BaseAction {
     this._testPreExecutionFlag = true;
   }
 
-  _run(recipe) {
+  _run() {
     this._testRunFlag = true;
   }
 
@@ -37,7 +37,7 @@ class FailPreExecutionAction extends NoopAction {
 }
 
 class FailRunAction extends NoopAction {
-  _run(recipe) {
+  _run() {
     throw NoopAction._errorToThrow;
   }
 }
@@ -136,8 +136,9 @@ decorate_task(
   async function ({ reportActionStub }) {
     const action = new NoopAction();
     await action.finalize();
-    ok(
-      action.state == NoopAction.STATE_FINALIZED,
+    Assert.equal(
+      action.state,
+      NoopAction.STATE_FINALIZED,
       "Action should be marked as finalized"
     );
     Assert.deepEqual(

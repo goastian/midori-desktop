@@ -9,15 +9,9 @@
 </head>
 <body>
 <script type="application/javascript">
-const { LoginManagerChild } = SpecialPowers.ChromeUtils.import(
-  "resource://gre/modules/LoginManagerChild.jsm"
-);
-
 let loadPromise = new Promise(resolve => {
-  document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("loginFrame").addEventListener("load", (evt) => {
-      resolve();
-    });
+  document.addEventListener("DOMContentLoaded", _event => {
+    document.getElementById("loginFrame").addEventListener("load", _e => resolve());
   });
 });
 
@@ -167,7 +161,7 @@ const TESTCASES = [
   },
   /*
  XXX - Bug 1698498 :
- This test case fails because when we call querySelector in LoginRecipes.jsm
+ This test case fails because when we call querySelector in LoginRecipes.sys.mjs
  after the form is removed, querySelector can't find the element.
   {
     document: `<!-- recipe field override -->
@@ -191,16 +185,14 @@ const TESTCASES = [
   },*/
 ];
 
-function filterFormSubmissions({ origin, data }) {
+function filterFormSubmissions({ data }) {
   return data.newPasswordField.value != "ignore-form-submission";
 }
 
 async function testFormlesSubmitFormRemoval(tc, testDoc, scriptName) {
   let loginFrame = document.getElementById("loginFrame");
-  let loadedPromise = new Promise((resolve) => {
-    loginFrame.addEventListener("load", function() {
-      resolve();
-    }, {once: true});
+  let loadedPromise = new Promise(resolve => {
+    loginFrame.addEventListener("load", _e => resolve(), {once: true});
   });
   loginFrame.src = DEFAULT_ORIGIN + "/tests/toolkit/components/passwordmgr/test/mochitest/blank.html";
   await loadedPromise;
@@ -208,7 +200,6 @@ async function testFormlesSubmitFormRemoval(tc, testDoc, scriptName) {
   let frameDoc = SpecialPowers.wrap(loginFrame.contentWindow).document;
 
   let formsProcessed = promiseFormsProcessed(tc.expectedFormsCount);
-  // eslint-disable-next-line no-unsanitized/property
   frameDoc.documentElement.innerHTML = testDoc;
   await formsProcessed;
   // We eliminate no user input as a reason for not capturing by modifying the value

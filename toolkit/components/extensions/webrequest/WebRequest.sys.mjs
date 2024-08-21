@@ -1,33 +1,33 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+// @ts-nocheck Defer for now.
 
 const { nsIHttpActivityObserver, nsISocketTransport } = Ci;
-
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  ExtensionDNR: "resource://gre/modules/ExtensionDNR.sys.mjs",
   ExtensionParent: "resource://gre/modules/ExtensionParent.sys.mjs",
   ExtensionUtils: "resource://gre/modules/ExtensionUtils.sys.mjs",
   SecurityInfo: "resource://gre/modules/SecurityInfo.sys.mjs",
   WebRequestUpload: "resource://gre/modules/WebRequestUpload.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  ExtensionDNR: "resource://gre/modules/ExtensionDNR.jsm",
-});
-
-// WebRequest.jsm's only consumer is ext-webRequest.js, so we can depend on
+// WebRequest.sys.mjs's only consumer is ext-webRequest.js, so we can depend on
 // the apiManager.global being initialized.
-XPCOMUtils.defineLazyGetter(lazy, "tabTracker", () => {
+ChromeUtils.defineLazyGetter(lazy, "tabTracker", () => {
   return lazy.ExtensionParent.apiManager.global.tabTracker;
 });
-XPCOMUtils.defineLazyGetter(lazy, "getCookieStoreIdForOriginAttributes", () => {
-  return lazy.ExtensionParent.apiManager.global
-    .getCookieStoreIdForOriginAttributes;
-});
+ChromeUtils.defineLazyGetter(
+  lazy,
+  "getCookieStoreIdForOriginAttributes",
+  () => {
+    return lazy.ExtensionParent.apiManager.global
+      .getCookieStoreIdForOriginAttributes;
+  }
+);
 
 // URI schemes that service workers are allowed to load scripts from (any other
 // scheme is not allowed by the specs and it is not expected by the service workers
@@ -85,6 +85,14 @@ function parseExtra(extra, allowed = [], optionsObj = {}) {
     if (extra && extra.includes(al)) {
       result[al] = true;
     }
+  }
+  // From a parent process perspective an asyncBlocking listener
+  // will be the same as a blocking listener that returned a
+  // promise in the child process (because the callback used
+  // by asyncBlocking listeners is a difference only visible
+  // in the child process where the listener runs).
+  if (result.asyncBlocking) {
+    result.blocking = true;
   }
   return result;
 }
@@ -166,7 +174,6 @@ class HeaderChanger {
 
   applyChanges(headers, opts = {}) {
     if (!this.validateHeaders(headers)) {
-      /* globals uneval */
       Cu.reportError(`Invalid header array: ${uneval(headers)}`);
       return;
     }
@@ -858,8 +865,9 @@ HttpObserverManager = {
       // Figure out if this is an urgent request that shouldn't be batched.
       urgentSend: (cos.classFlags & URGENT_CLASSES) > 0,
 
-      browserElement: channel.browserElement || undefined,
-      bmsUseragent: channel.browserElement?.ownerDocument.documentURI.split("?")[3] == "true" || undefined,
+      // Floorp Injections
+      bmsUseragent:
+        channel.browserElement?.ownerGlobal?.window?.gBmsWindow?.userAgent,
     };
 
     if (originAttributes) {
@@ -1230,7 +1238,7 @@ HttpObserverManager = {
     return false;
   },
 
-  examine(channel, topic, data) {
+  examine(channel) {
     if (this.listeners.onHeadersReceived.size || this.dnrActive) {
       this.runChannelListener(channel, "onHeadersReceived");
     }
@@ -1294,6 +1302,7 @@ var onHeadersReceived = new HttpEvent("onHeadersReceived", [
   "responseHeaders",
 ]);
 var onAuthRequired = new HttpEvent("onAuthRequired", [
+  "asyncBlocking",
   "blocking",
   "responseHeaders",
 ]);

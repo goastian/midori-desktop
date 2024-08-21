@@ -14,7 +14,7 @@ AddonTestUtils.createAppInfo(
   "42"
 );
 
-function getExtension(background = undefined) {
+function getExtension() {
   let manifest = {
     permissions: ["dns", "proxy"],
   };
@@ -123,8 +123,9 @@ add_task(async function test_dns_resolve() {
       // testing difficult. We're going to rely on other existing dns tests to validate
       // the dns service itself works and only validate that we're getting generally
       // expected results in the webext api.
-      ok(
-        result.addresses.length >= test.expect.addresses.length,
+      Assert.greaterOrEqual(
+        result.addresses.length,
+        test.expect.addresses.length,
         "expected number of addresses returned"
       );
       if (test.expect.addresses.length && result.addresses.length) {
@@ -162,7 +163,11 @@ add_task(async function test_dns_resolve_socks() {
   );
   ok(
     Services.prefs.getBoolPref("network.proxy.socks_remote_dns"),
-    "socks remote dns"
+    "socks4 remote dns"
+  );
+  ok(
+    Services.prefs.getBoolPref("network.proxy.socks5_remote_dns"),
+    "socks5 remote dns"
   );
   extension.sendMessage("resolve", {
     hostname: "mozilla.org",

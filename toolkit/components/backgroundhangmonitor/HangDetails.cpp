@@ -5,21 +5,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "HangDetails.h"
+
 #include "nsIHangDetails.h"
 #include "nsPrintfCString.h"
 #include "js/Array.h"               // JS::NewArrayObject
 #include "js/PropertyAndElement.h"  // JS_DefineElement
+#include "mozilla/FileUtils.h"
 #include "mozilla/gfx/GPUParent.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"  // For RemoteTypePrefix
+#include "mozilla/FileUtils.h"
 #include "mozilla/SchedulerGroup.h"
 #include "mozilla/Unused.h"
 #include "mozilla/GfxMessageUtils.h"  // For ParamTraits<GeckoProcessType>
 #include "mozilla/ResultExtensions.h"
-
-#ifdef MOZ_GECKO_PROFILER
-#  include "shared-libraries.h"
-#endif
+#include "mozilla/Try.h"
+#include "shared-libraries.h"
 
 static const char MAGIC[] = "permahangsavev1";
 
@@ -323,8 +324,7 @@ void nsHangDetails::Submit() {
         }
       });
 
-  nsresult rv =
-      SchedulerGroup::Dispatch(TaskCategory::Other, notifyObservers.forget());
+  nsresult rv = SchedulerGroup::Dispatch(notifyObservers.forget());
   MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
 }
 
@@ -577,8 +577,10 @@ Result<Ok, nsresult> ReadEntry(PRFileDesc* aFile, HangStack& aStack) {
 }
 
 Result<HangDetails, nsresult> ReadHangDetailsFromFile(nsIFile* aFile) {
-  AutoFDClose fd;
-  nsresult rv = aFile->OpenNSPRFileDesc(PR_RDONLY, 0644, &fd.rwget());
+  AutoFDClose raiiFd;
+  nsresult rv =
+      aFile->OpenNSPRFileDesc(PR_RDONLY, 0644, getter_Transfers(raiiFd));
+  const auto fd = raiiFd.get();
   if (NS_FAILED(rv)) {
     return Err(rv);
   }
@@ -651,9 +653,11 @@ Result<Ok, nsresult> WriteHangDetailsToFile(HangDetails& aDetails,
     return Err(NS_ERROR_INVALID_POINTER);
   }
 
-  AutoFDClose fd;
+  AutoFDClose raiiFd;
   nsresult rv = aFile->OpenNSPRFileDesc(
-      PR_WRONLY | PR_CREATE_FILE | PR_TRUNCATE, 0644, &fd.rwget());
+      PR_WRONLY | PR_CREATE_FILE | PR_TRUNCATE, 0644, getter_Transfers(raiiFd));
+  const auto fd = raiiFd.get();
+
   if (NS_FAILED(rv)) {
     return Err(rv);
   }

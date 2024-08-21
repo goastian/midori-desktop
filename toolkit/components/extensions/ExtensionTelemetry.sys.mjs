@@ -4,20 +4,35 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { ExtensionUtils } from "resource://gre/modules/ExtensionUtils.sys.mjs";
+
+const { DefaultWeakMap } = ExtensionUtils;
+
 // Map of the base histogram ids for the metrics recorded for the extensions.
-const histograms = {
-  extensionStartup: "WEBEXT_EXTENSION_STARTUP_MS",
+const HISTOGRAMS_IDS = {
   backgroundPageLoad: "WEBEXT_BACKGROUND_PAGE_LOAD_MS",
   browserActionPopupOpen: "WEBEXT_BROWSERACTION_POPUP_OPEN_MS",
   browserActionPreloadResult: "WEBEXT_BROWSERACTION_POPUP_PRELOAD_RESULT_COUNT",
   contentScriptInjection: "WEBEXT_CONTENT_SCRIPT_INJECTION_MS",
   eventPageRunningTime: "WEBEXT_EVENTPAGE_RUNNING_TIME_MS",
   eventPageIdleResult: "WEBEXT_EVENTPAGE_IDLE_RESULT_COUNT",
+  extensionStartup: "WEBEXT_EXTENSION_STARTUP_MS",
   pageActionPopupOpen: "WEBEXT_PAGEACTION_POPUP_OPEN_MS",
-  storageLocalGetJSON: "WEBEXT_STORAGE_LOCAL_GET_MS",
-  storageLocalSetJSON: "WEBEXT_STORAGE_LOCAL_SET_MS",
-  storageLocalGetIDB: "WEBEXT_STORAGE_LOCAL_IDB_GET_MS",
-  storageLocalSetIDB: "WEBEXT_STORAGE_LOCAL_IDB_SET_MS",
+  storageLocalGetIdb: "WEBEXT_STORAGE_LOCAL_IDB_GET_MS",
+  storageLocalSetIdb: "WEBEXT_STORAGE_LOCAL_IDB_SET_MS",
+};
+
+const GLEAN_METRICS_TYPES = {
+  backgroundPageLoad: "timing_distribution",
+  browserActionPopupOpen: "timing_distribution",
+  browserActionPreloadResult: "labeled_counter",
+  contentScriptInjection: "timing_distribution",
+  eventPageRunningTime: "custom_distribution",
+  eventPageIdleResult: "labeled_counter",
+  extensionStartup: "timing_distribution",
+  pageActionPopupOpen: "timing_distribution",
+  storageLocalGetIdb: "timing_distribution",
+  storageLocalSetIdb: "timing_distribution",
 };
 
 /**
@@ -49,7 +64,7 @@ export function getTrimmedString(str) {
  * If the resulting string is longer than 80 characters it is going to be
  * trimmed using the `getTrimmedString` helper function.
  *
- * @param {Error | DOMException | Components.Exception} error
+ * @param {Error | DOMException | ReturnType<typeof Components.Exception>} error
  *        The error object to convert into a string representation.
  *
  * @returns {string}
@@ -85,19 +100,33 @@ export function getErrorNameForTelemetry(error) {
 class ExtensionTelemetryMetric {
   constructor(metric) {
     this.metric = metric;
+    this.gleanTimerIdsMap = new DefaultWeakMap(() => new WeakMap());
   }
 
   // Stopwatch methods.
   stopwatchStart(extension, obj = extension) {
     this._wrappedStopwatchMethod("start", this.metric, extension, obj);
+    this._wrappedTimingDistributionMethod("start", this.metric, extension, obj);
   }
 
   stopwatchFinish(extension, obj = extension) {
     this._wrappedStopwatchMethod("finish", this.metric, extension, obj);
+    this._wrappedTimingDistributionMethod(
+      "stopAndAccumulate",
+      this.metric,
+      extension,
+      obj
+    );
   }
 
   stopwatchCancel(extension, obj = extension) {
     this._wrappedStopwatchMethod("cancel", this.metric, extension, obj);
+    this._wrappedTimingDistributionMethod(
+      "cancel",
+      this.metric,
+      extension,
+      obj
+    );
   }
 
   // Histogram counters methods.
@@ -106,25 +135,89 @@ class ExtensionTelemetryMetric {
   }
 
   /**
+   * Wraps a call to Glean timing_distribution methods for a given metric and extension.
+   *
+   * @param {string} method
+   *        The Glean timing_distribution method to call ("start", "stopAndAccumulate" or "cancel").
+   * @param {string} metric
+   *        The Glean timing_distribution metric to record (used to retrieve the Glean metric type from the
+   *        GLEAN_METRICS_TYPES map).
+   * @param {Extension | ExtensionChild} extension
+   *        The extension to record the telemetry for.
+   * @param {any | undefined} [obj = extension]
+   *        An optional object the timing_distribution method call should be related to
+   *        (defaults to the extension parameter when missing).
+   */
+  _wrappedTimingDistributionMethod(method, metric, extension, obj = extension) {
+    if (!extension) {
+      Cu.reportError(`Mandatory extension parameter is undefined`);
+      return;
+    }
+
+    const gleanMetricType = GLEAN_METRICS_TYPES[metric];
+    if (!gleanMetricType) {
+      Cu.reportError(`Unknown metric ${metric}`);
+      return;
+    }
+
+    if (gleanMetricType !== "timing_distribution") {
+      Cu.reportError(
+        `Glean metric ${metric} is of type ${gleanMetricType}, expected timing_distribution`
+      );
+      return;
+    }
+
+    switch (method) {
+      case "start": {
+        const timerId = Glean.extensionsTiming[metric].start();
+        this.gleanTimerIdsMap.get(extension).set(obj, timerId);
+        break;
+      }
+      case "stopAndAccumulate": // Intentional fall-through.
+      case "cancel": {
+        if (
+          !this.gleanTimerIdsMap.has(extension) ||
+          !this.gleanTimerIdsMap.get(extension).has(obj)
+        ) {
+          Cu.reportError(
+            `timerId not found for Glean timing_distribution ${metric}`
+          );
+          return;
+        }
+        const timerId = this.gleanTimerIdsMap.get(extension).get(obj);
+        this.gleanTimerIdsMap.get(extension).delete(obj);
+        Glean.extensionsTiming[metric][method](timerId);
+        break;
+      }
+      default:
+        Cu.reportError(
+          `Unknown method ${method} call for Glean metric ${metric}`
+        );
+    }
+  }
+
+  /**
    * Wraps a call to a TelemetryStopwatch method for a given metric and extension.
    *
    * @param {string} method
    *        The stopwatch method to call ("start", "finish" or "cancel").
    * @param {string} metric
-   *        The stopwatch metric to record (used to retrieve the base histogram id from the _histogram object).
-   * @param {Extension | BrowserExtensionContent} extension
+   *        The stopwatch metric to record (used to retrieve the base histogram id from the HISTOGRAMS_IDS object).
+   * @param {Extension | ExtensionChild} extension
    *        The extension to record the telemetry for.
    * @param {any | undefined} [obj = extension]
    *        An optional telemetry stopwatch object (which defaults to the extension parameter when missing).
    */
   _wrappedStopwatchMethod(method, metric, extension, obj = extension) {
     if (!extension) {
-      throw new Error(`Mandatory extension parameter is undefined`);
+      Cu.reportError(`Mandatory extension parameter is undefined`);
+      return;
     }
 
-    const baseId = histograms[metric];
+    const baseId = HISTOGRAMS_IDS[metric];
     if (!baseId) {
-      throw new Error(`Unknown metric ${metric}`);
+      Cu.reportError(`Unknown metric ${metric}`);
+      return;
     }
 
     // Record metric in the general histogram.
@@ -145,7 +238,7 @@ class ExtensionTelemetryMetric {
    * @param {string} metric
    *        The metric to record (used to retrieve the base histogram id from the _histogram object).
    * @param {object}                              options
-   * @param {Extension | BrowserExtensionContent} options.extension
+   * @param {Extension | ExtensionChild} options.extension
    *        The extension to record the telemetry for.
    * @param {string | undefined}                  [options.category]
    *        An optional histogram category.
@@ -154,12 +247,14 @@ class ExtensionTelemetryMetric {
    */
   _histogramAdd(metric, { category, extension, value }) {
     if (!extension) {
-      throw new Error(`Mandatory extension parameter is undefined`);
+      Cu.reportError(`Mandatory extension parameter is undefined`);
+      return;
     }
 
-    const baseId = histograms[metric];
+    const baseId = HISTOGRAMS_IDS[metric];
     if (!baseId) {
-      throw new Error(`Unknown metric ${metric}`);
+      Cu.reportError(`Unknown metric ${metric}`);
+      return;
     }
 
     const histogram = Services.telemetry.getHistogramById(baseId);
@@ -179,25 +274,61 @@ class ExtensionTelemetryMetric {
     } else {
       keyedHistogram.add(extensionId, value);
     }
+
+    switch (GLEAN_METRICS_TYPES[metric]) {
+      case "custom_distribution": {
+        if (typeof category === "string") {
+          Cu.reportError(
+            `Unexpected unsupported category parameter set on Glean metric ${metric}`
+          );
+          return;
+        }
+        // NOTE: extensionsTiming may become a property of the GLEAN_METRICS_TYPES
+        // map once we may introduce new histograms that are not part of the
+        // extensionsTiming Glean metrics category.
+        Glean.extensionsTiming[metric].accumulateSingleSample(value);
+        break;
+      }
+      case "labeled_counter": {
+        if (typeof category !== "string") {
+          Cu.reportError(
+            `Missing mandatory category on adding data to labeled Glean metric ${metric}`
+          );
+          return;
+        }
+        Glean.extensionsCounters[metric][category].add(value ?? 1);
+        break;
+      }
+      default:
+        Cu.reportError(
+          `Unexpected unsupported Glean metric type "${GLEAN_METRICS_TYPES[metric]}" for metric ${metric}`
+        );
+    }
   }
 }
 
 // Cache of the ExtensionTelemetryMetric instances that has been lazily created by the
 // Extension Telemetry Proxy.
+/** @type {Map<string|symbol, ExtensionTelemetryMetric>} */
 const metricsCache = new Map();
 
 /**
  * This proxy object provides the telemetry helpers for the currently supported metrics (the ones listed in
- * ExtensionTelemetryHelpers._histograms), the telemetry helpers for a particular metric are lazily created
+ * HISTOGRAMS_IDS), the telemetry helpers for a particular metric are lazily created
  * when the related property is being accessed on this object for the first time, e.g.:
  *
  *      ExtensionTelemetry.extensionStartup.stopwatchStart(extension);
  *      ExtensionTelemetry.browserActionPreloadResult.histogramAdd({category: "Shown", extension});
  */
+/** @type {Record<string, ExtensionTelemetryMetric>} */
+// @ts-ignore no easy way in TS to say Proxy is a different type from target.
 export var ExtensionTelemetry = new Proxy(metricsCache, {
-  get(target, prop, receiver) {
-    if (!(prop in histograms)) {
-      throw new Error(`Unknown metric ${prop}`);
+  get(target, prop) {
+    // NOTE: if we would be start adding glean probes that do not have a unified
+    // telemetry histogram counterpart, we would need to change this check
+    // accordingly.
+    if (!(prop in HISTOGRAMS_IDS)) {
+      throw new Error(`Unknown metric ${String(prop)}`);
     }
 
     // Lazily create and cache the metric result object.

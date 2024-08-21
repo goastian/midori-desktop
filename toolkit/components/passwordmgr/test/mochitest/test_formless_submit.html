@@ -9,11 +9,11 @@
 </head>
 <body>
 <script type="application/javascript">
-const { LoginFormFactory } = SpecialPowers.ChromeUtils.import(
-  "resource://gre/modules/LoginFormFactory.jsm"
+const { LoginFormFactory } = SpecialPowers.ChromeUtils.importESModule(
+  "resource://gre/modules/LoginFormFactory.sys.mjs"
 );
-const { LoginManagerChild } = SpecialPowers.ChromeUtils.import(
-  "resource://gre/modules/LoginManagerChild.jsm"
+const { LoginManagerChild } = SpecialPowers.ChromeUtils.importESModule(
+  "resource://gre/modules/LoginManagerChild.sys.mjs"
 );
 
 function loadFrame() {
@@ -182,7 +182,6 @@ async function testFormlessSubmit(tc) {
   info("Starting testcase: " + JSON.stringify(tc));
 
   let formsProcessed = promiseFormsProcessedInSameProcess(tc.expectedFormsCount);
-  // eslint-disable-next-line no-unsanitized/property
   frameDoc.documentElement.innerHTML = tc.document;
   await formsProcessed;
   // We eliminate no user input as a reason for not capturing by modifying the value

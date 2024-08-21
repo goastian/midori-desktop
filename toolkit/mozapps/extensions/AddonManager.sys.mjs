@@ -26,7 +26,6 @@ const MOZ_COMPATIBILITY_NIGHTLY = ![
 
 const INTL_LOCALES_CHANGED = "intl:app-locales-changed";
 
-const PREF_AMO_ABUSEREPORT = "extensions.abuseReport.amWebAPI.enabled";
 const PREF_BLOCKLIST_PINGCOUNTVERSION = "extensions.blocklist.pingCountVersion";
 const PREF_EM_UPDATE_ENABLED = "extensions.update.enabled";
 const PREF_EM_LAST_APP_VERSION = "extensions.lastAppVersion";
@@ -36,6 +35,7 @@ const PREF_EM_STRICT_COMPATIBILITY = "extensions.strictCompatibility";
 const PREF_EM_CHECK_UPDATE_SECURITY = "extensions.checkUpdateSecurity";
 const PREF_SYS_ADDON_UPDATE_ENABLED = "extensions.systemAddon.update.enabled";
 const PREF_REMOTESETTINGS_DISABLED = "extensions.remoteSettings.disabled";
+const PREF_USE_REMOTE = "extensions.webextensions.remote";
 
 const PREF_MIN_WEBEXT_PLATFORM_VERSION =
   "extensions.webExtensionsMinPlatformVersion";
@@ -76,8 +76,6 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { AsyncShutdown as realAsyncShutdown } from "resource://gre/modules/AsyncShutdown.sys.mjs";
 
 var AsyncShutdown = realAsyncShutdown;
-
-import { PromiseUtils } from "resource://gre/modules/PromiseUtils.sys.mjs";
 
 const lazy = {};
 
@@ -161,7 +159,7 @@ var PrefObserver = {
     this.observe(null, NS_PREFBRANCH_PREFCHANGE_TOPIC_ID, PREF_LOGGING_ENABLED);
   },
 
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     if (aTopic == "xpcom-shutdown") {
       Services.prefs.removeObserver(PREF_LOGGING_ENABLED, this);
       Services.obs.removeObserver(this, "xpcom-shutdown");
@@ -340,7 +338,7 @@ BrowserListener.prototype = {
     }
   },
 
-  observe(subject, topic, data) {
+  observe(subject) {
     if (subject != this.messageManager) {
       return;
     }
@@ -350,7 +348,7 @@ BrowserListener.prototype = {
     this.cancelInstall();
   },
 
-  onLocationChange(webProgress, request, location) {
+  onLocationChange() {
     if (
       this.browser.contentPrincipal &&
       this.principal.subsumes(this.browser.contentPrincipal)
@@ -362,19 +360,19 @@ BrowserListener.prototype = {
     this.cancelInstall();
   },
 
-  onDownloadCancelled(install) {
+  onDownloadCancelled() {
     this.unregister();
   },
 
-  onDownloadFailed(install) {
+  onDownloadFailed() {
     this.unregister();
   },
 
-  onInstallFailed(install) {
+  onInstallFailed() {
     this.unregister();
   },
 
-  onInstallEnded(install) {
+  onInstallEnded() {
     this.unregister();
   },
 
@@ -472,7 +470,7 @@ AddonScreenshot.prototype = {
 };
 
 var gStarted = false;
-var gStartedPromise = PromiseUtils.defer();
+var gStartedPromise = Promise.withResolvers();
 var gStartupComplete = false;
 var gCheckCompatibility = true;
 var gStrictCompatibility = true;
@@ -489,6 +487,7 @@ var gBrowserUpdated = null;
 
 export var AMTelemetry;
 export var AMRemoteSettings;
+export var AMBrowserExtensionsImport;
 
 /**
  * This is the real manager, kept here rather than in AddonManager to keep its
@@ -553,7 +552,7 @@ var AddonManagerInternal = {
           this.pendingProviders.add(aProvider);
         }
 
-        return new Promise((resolve, reject) => {
+        return new Promise(resolve => {
           logger.debug("Calling shutdown blocker for " + name);
           resolve(aProvider.shutdown());
         }).catch(err => {
@@ -693,10 +692,17 @@ var AddonManagerInternal = {
       // Watch for language changes, refresh the addon cache when it changes.
       Services.obs.addObserver(this, INTL_LOCALES_CHANGED);
 
-      // Ensure all default providers have had a chance to register themselves
-      ({ XPIProvider: gXPIProvider } = ChromeUtils.import(
-        "resource://gre/modules/addons/XPIProvider.jsm"
-      ));
+      // Watch for changes in the `AMBrowserExtensionsImport` singleton.
+      Services.obs.addObserver(this, AMBrowserExtensionsImport.TOPIC_CANCELLED);
+      Services.obs.addObserver(this, AMBrowserExtensionsImport.TOPIC_COMPLETE);
+      Services.obs.addObserver(this, AMBrowserExtensionsImport.TOPIC_PENDING);
+
+      // Ensure all default providers have had a chance to register themselves.
+      const { XPIExports } = ChromeUtils.importESModule(
+        "resource://gre/modules/addons/XPIExports.sys.mjs"
+      );
+      gXPIProvider = XPIExports.XPIProvider;
+      gXPIProvider.registerProvider();
 
       // Load any providers registered in the category manager
       for (let { entry, value: url } of Services.catMan.enumerateCategory(
@@ -779,6 +785,14 @@ var AddonManagerInternal = {
         "Disabled quarantined domains because the system add-on was disabled"
       );
     }
+
+    Glean.extensions.useRemotePolicy.set(
+      WebExtensionPolicy.useRemoteWebExtensions
+    );
+    Glean.extensions.useRemotePref.set(
+      Services.prefs.getBoolPref(PREF_USE_REMOTE)
+    );
+    Services.prefs.addObserver(PREF_USE_REMOTE, this);
 
     logger.debug("Completed startup sequence");
     this.callManagerListeners("onStartup");
@@ -978,6 +992,13 @@ var AddonManagerInternal = {
 
     Services.obs.removeObserver(this, INTL_LOCALES_CHANGED);
 
+    Services.obs.removeObserver(
+      this,
+      AMBrowserExtensionsImport.TOPIC_CANCELLED
+    );
+    Services.obs.removeObserver(this, AMBrowserExtensionsImport.TOPIC_COMPLETE);
+    Services.obs.removeObserver(this, AMBrowserExtensionsImport.TOPIC_PENDING);
+
     AMRemoteSettings.shutdown();
 
     let savedError = null;
@@ -1021,7 +1042,7 @@ var AddonManagerInternal = {
       delete this.startupChanges[type];
     }
     gStarted = false;
-    gStartedPromise = PromiseUtils.defer();
+    gStartedPromise = Promise.withResolvers();
     gStartupComplete = false;
     gFinalShutdownBarrier = null;
     gBeforeShutdownBarrier = null;
@@ -1041,6 +1062,12 @@ var AddonManagerInternal = {
         lazy.AddonRepository.backgroundUpdateCheck();
         return;
       }
+
+      case AMBrowserExtensionsImport.TOPIC_CANCELLED:
+      case AMBrowserExtensionsImport.TOPIC_COMPLETE:
+      case AMBrowserExtensionsImport.TOPIC_PENDING:
+        this.callManagerListeners("onBrowserExtensionsImportChanged");
+        return;
     }
 
     switch (aData) {
@@ -1119,6 +1146,12 @@ var AddonManagerInternal = {
         } else {
           AMRemoteSettings.init();
         }
+        break;
+      }
+      case PREF_USE_REMOTE: {
+        Glean.extensions.useRemotePref.set(
+          Services.prefs.getBoolPref(PREF_USE_REMOTE)
+        );
         break;
       }
     }
@@ -1277,7 +1310,7 @@ var AddonManagerInternal = {
           }
 
           updates.push(
-            new Promise((resolve, reject) => {
+            new Promise(resolve => {
               addon.findUpdates(
                 {
                   onUpdateAvailable(aAddon, aInstall) {
@@ -1576,10 +1609,10 @@ var AddonManagerInternal = {
 
     // Temporary hack until bug 520124 lands.
     // We can get here during synchronous startup, at which point it's
-    // considered unsafe (and therefore disallowed by AddonManager.jsm) to
+    // considered unsafe (and therefore disallowed by AddonManager.sys.mjs) to
     // access providers that haven't been initialized yet. Since this is when
     // XPIProvider is starting up, XPIProvider can't access itself via APIs
-    // going through AddonManager.jsm. Thankfully, this is the only use
+    // going through AddonManager.sys.mjs. Thankfully, this is the only use
     // of this API, and we know it's safe to use this API with both
     // providers; so we have this hack to allow bypassing the normal
     // safetey guard.
@@ -2352,18 +2385,10 @@ var AddonManagerInternal = {
 
     // When a chrome in-content UI has loaded a <browser> inside to host a
     // website we want to do our security checks on the inner-browser but
-    // notify front-end that install events came from the outer-browser (the
-    // main tab's browser). Check this by seeing if the browser we've been
-    // passed is in a content type docshell and if so get the outer-browser.
-    let topBrowser = aBrowser;
-    // GeckoView does not pass a browser.
-    if (aBrowser) {
-      let docShell = aBrowser.ownerGlobal.docShell;
-      if (docShell.itemType == Ci.nsIDocShellTreeItem.typeContent) {
-        topBrowser = docShell.chromeEventHandler;
-      }
-    }
-
+    // notify front-end that install events came from the top browser (the
+    // main tab's browser).
+    // aBrowser is null in GeckoView.
+    let topBrowser = aBrowser?.browsingContext.top.embedderElement;
     try {
       // Use fullscreenElement to check for DOM fullscreen, while still allowing
       // macOS fullscreen, which still has a browser chrome.
@@ -3254,7 +3279,7 @@ var AddonManagerInternal = {
             // the customConfirmationUI preference and responding to the
             // "addon-install-confirmation" notification.  If the application
             // does not implement its own prompt, use the built-in xul dialog.
-            if (info.addon.userPermissions) {
+            if (info.addon.installPermissions) {
               let subject = {
                 wrappedJSObject: {
                   target: browser,
@@ -3262,7 +3287,7 @@ var AddonManagerInternal = {
                 },
               };
               subject.wrappedJSObject.info.permissions =
-                info.addon.userPermissions;
+                info.addon.installPermissions;
               Services.obs.notifyObservers(
                 subject,
                 "webextension-permission-prompt"
@@ -3529,6 +3554,10 @@ var AddonManagerInternal = {
       });
     },
 
+    async sendAbuseReport(target, addonId, data, options) {
+      return lazy.AbuseReporter.sendAbuseReport(addonId, data, options);
+    },
+
     async addonUninstall(target, id) {
       let addon = await AddonManager.getAddonByID(id);
       if (!addon) {
@@ -3601,54 +3630,6 @@ var AddonManagerInternal = {
           this.forgetInstall(id);
         }
       }
-    },
-
-    async addonReportAbuse(target, id) {
-      if (!Services.prefs.getBoolPref(PREF_AMO_ABUSEREPORT, false)) {
-        return Promise.reject({
-          message: "amWebAPI reportAbuse not supported",
-        });
-      }
-
-      let existingDialog = lazy.AbuseReporter.getOpenDialog();
-      if (existingDialog) {
-        existingDialog.close();
-      }
-
-      const dialog = await lazy.AbuseReporter.openDialog(
-        id,
-        "amo",
-        target
-      ).catch(err => {
-        Cu.reportError(err);
-        return Promise.reject({
-          message: "Error creating abuse report",
-        });
-      });
-
-      return dialog.promiseReport.then(
-        async report => {
-          if (!report) {
-            return false;
-          }
-
-          await report.submit().catch(err => {
-            Cu.reportError(err);
-            return Promise.reject({
-              message: "Error submitting abuse report",
-            });
-          });
-
-          return true;
-        },
-        err => {
-          Cu.reportError(err);
-          dialog.close();
-          return Promise.reject({
-            message: "Error creating abuse report",
-          });
-        }
-      );
     },
   },
 };
@@ -3866,7 +3847,7 @@ export var AddonManagerPrivate = {
    * This can be used as an implementation for Addon.findUpdates() when
    * no update mechanism is available.
    */
-  callNoUpdateListeners(addon, listener, reason, appVersion, platformVersion) {
+  callNoUpdateListeners(addon, listener) {
     if ("onNoCompatibilityUpdateAvailable" in listener) {
       safeCall(listener.onNoCompatibilityUpdateAvailable.bind(listener), addon);
     }
@@ -4019,6 +4000,14 @@ export var AddonManager = {
     ["ERROR_INVALID_DOMAIN", -8],
     // Updates only: The downloaded add-on had a different version than expected.
     ["ERROR_UNEXPECTED_ADDON_VERSION", -9],
+    // The add-on is blocklisted.
+    ["ERROR_BLOCKLISTED", -10],
+    // The add-on is incompatible (w.r.t. the compatibility range).
+    ["ERROR_INCOMPATIBLE", -11],
+    // The add-on type is not supported by the platform.
+    ["ERROR_UNSUPPORTED_ADDON_TYPE", -12],
+    // The add-on can only be installed via enterprise policy.
+    ["ERROR_ADMIN_INSTALL_ONLY", -13],
   ]),
   // The update check timed out
   ERROR_TIMEOUT: -1,
@@ -4638,6 +4627,12 @@ AMRemoteSettings = {
           default:
             throw new Error(`Unexpected type ${typeof prefValue}`);
         }
+
+        // Notify observers about the pref set from AMRemoteSettings.
+        Services.obs.notifyObservers(
+          { entryId, groupName, prefName, prefValue },
+          "am-remote-settings-setpref"
+        );
       } catch (e) {
         logger.error(
           `Failed to process AddonManager RemoteSettings "${entryId}" - "${groupName}": ${prefName}`,
@@ -4701,7 +4696,7 @@ AMTelemetry = {
 
   // Observer Service notification callback.
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     switch (topic) {
       case "addon-install-blocked": {
         const { installs } = subject.wrappedJSObject;
@@ -5019,6 +5014,17 @@ AMTelemetry = {
     }
 
     this.recordEvent({ method, object, value: install.hashedAddonId, extra });
+    Glean.addonsManager.installStats.record(
+      this.formatExtraVars({
+        addon_id: extra.addon_id,
+        addon_type: object,
+        taar_based: extra.taar_based,
+        utm_campaign: extra.utm_campaign,
+        utm_content: extra.utm_content,
+        utm_medium: extra.utm_medium,
+        utm_source: extra.utm_source,
+      })
+    );
   },
 
   /**
@@ -5121,6 +5127,21 @@ AMTelemetry = {
     extra = this.formatExtraVars({ ...extraVars, ...extra });
 
     this.recordEvent({ method: eventMethod, object, value: installId, extra });
+    Glean.addonsManager[eventMethod]?.record(
+      this.formatExtraVars({
+        addon_id: extra.addon_id,
+        addon_type: object,
+        install_id: installId,
+        download_time: extra.download_time,
+        error: extra.error,
+        source: extra.source,
+        source_method: extra.method,
+        num_strings: extra.num_strings,
+        updated_from: extra.updated_from,
+        install_origins: extra.install_origins,
+        step: extra.step,
+      })
+    );
   },
 
   /**
@@ -5174,32 +5195,33 @@ AMTelemetry = {
       value,
       extra: hasExtraVars ? extra : null,
     });
+    Glean.addonsManager.manage.record(
+      this.formatExtraVars({
+        method,
+        addon_id: value,
+        addon_type: object,
+        source: extra.source,
+        source_method: extra.method,
+        num_strings: extra.num_strings,
+      })
+    );
   },
 
   /**
-   * Record an event on abuse report submissions.
-   *
    * @params {object} opts
-   * @params {string} opts.addonId
-   *         The id of the addon being reported.
-   * @params {string} [opts.addonType]
-   *         The type of the addon being reported  (only present for an existing
-   *         addonId).
-   * @params {string} [opts.errorType]
-   *         The AbuseReport errorType for a submission failure.
-   * @params {string} opts.reportEntryPoint
-   *         The entry point of the abuse report.
+   * @params {nsIURI} opts.displayURI
    */
-  recordReportEvent({ addonId, addonType, errorType, reportEntryPoint }) {
+  recordSuspiciousSiteEvent({ displayURI }) {
+    let site = displayURI?.displayHost ?? "(unknown)";
     this.recordEvent({
-      method: "report",
-      object: reportEntryPoint,
-      value: addonId,
-      extra: this.formatExtraVars({
-        addon_type: addonType,
-        error_type: errorType,
-      }),
+      method: "reportSuspiciousSite",
+      object: "suspiciousSite",
+      value: site,
+      extra: {},
     });
+    Glean.addonsManager.reportSuspiciousSite.record(
+      this.formatExtraVars({ suspiciousSite: site })
+    );
   },
 
   recordEvent({ method, object, value, extra }) {
@@ -5221,6 +5243,212 @@ AMTelemetry = {
       // functionality.
       Cu.reportError(err);
     }
+  },
+};
+
+/**
+ * AMBrowserExtensionsImport is used by the migration wizard to import/install
+ * Firefox add-ons based on a set of non-Firefox browser extensions.
+ */
+AMBrowserExtensionsImport = {
+  TELEMETRY_SOURCE: "browser-import",
+  TOPIC_CANCELLED: "webextension-imported-addons-cancelled",
+  TOPIC_COMPLETE: "webextension-imported-addons-complete",
+  TOPIC_PENDING: "webextension-imported-addons-pending",
+
+  // AddonId => AddonInstall
+  _pendingInstallsMap: new Map(),
+  _importInProgress: false,
+  _canCompleteOrCancelInstalls: false,
+  // Prompt handler set on the AddonInstall instances part of the imports
+  // (which currently makes sure we are not prompting for permissions when the
+  // imported addons are being downloaded, staged and then installed).
+  _installPromptHandler: () => {},
+  // Optionally override the `AddonRepository`, mainly for testing purposes.
+  _addonRepository: null,
+
+  get hasPendingImportedAddons() {
+    return !!this._pendingInstallsMap.size;
+  },
+
+  get importedAddonIDs() {
+    return Array.from(this._pendingInstallsMap.keys());
+  },
+
+  get canCompleteOrCancelInstalls() {
+    return this._canCompleteOrCancelInstalls && this.hasPendingImportedAddons;
+  },
+
+  get addonRepository() {
+    return this._addonRepository || lazy.AddonRepository;
+  },
+
+  /**
+   * Stage an install for each add-on mapped to a browser extension ID in the
+   * list of IDs passed to this method.
+   *
+   * @param {string} browserId A browser identifier.
+   * @param {Array<string} extensionIDs A list of non-Firefox extension IDs.
+   * @returns {Promise<object>} The return value is an object with data for
+   *                            the caller.
+   * @throws {Error} When there are pending imported add-ons.
+   */
+  async stageInstalls(browserId, extensionIDs) {
+    // In case we have an import in progress, we throw so that the caller knows
+    // that there is already an import in progress, which it may want to either
+    // cancel or complete.
+    if (this._importInProgress) {
+      throw new Error(
+        "Cannot stage installs because there are pending imported add-ons"
+      );
+    }
+    this._importInProgress = true;
+    this._canCompleteOrCancelInstalls = false;
+
+    let importedAddons = [];
+    // We first retrieve a list of `AddonSearchResult`, which are the Firefox
+    // add-ons mapped to the list of extension IDs passed to this method. We
+    // might not have as many mapped add-ons as extension IDs because not all
+    // browser extensions will be mapped to Firefox add-ons.
+    try {
+      let matchedIDs = [];
+      let unmatchedIDs = [];
+
+      ({
+        addons: importedAddons,
+        matchedIDs,
+        unmatchedIDs,
+      } = await this.addonRepository.getMappedAddons(browserId, extensionIDs));
+
+      Glean.browserMigration.matchedExtensions.set(matchedIDs);
+      Glean.browserMigration.unmatchedExtensions.set(unmatchedIDs);
+    } catch (err) {
+      Cu.reportError(err);
+    }
+
+    const alreadyInstalledIDs = (await AddonManager.getAllAddons()).map(
+      addon => addon.id
+    );
+
+    const { _pendingInstallsMap } = this;
+
+    const results = await Promise.allSettled(
+      // For each add-on to import, we create an `AddonInstall` instance and we
+      // start the install process until we reach the "downloaded ended" step.
+      // At this point, we call `postpone()`, and we are done when the add-on
+      // install has been postponed.
+      importedAddons
+        // Do not import add-ons already installed.
+        .filter(({ id }) => !alreadyInstalledIDs.includes(id))
+        .map(async ({ id, sourceURI, name, version, icons }) => {
+          let addonInstall;
+
+          try {
+            addonInstall = await AddonManager.getInstallForURL(sourceURI.spec, {
+              name,
+              version,
+              icons,
+              telemetryInfo: { source: this.TELEMETRY_SOURCE },
+              promptHandler: this._installPromptHandler,
+            });
+          } catch (err) {
+            return Promise.reject(err);
+          }
+
+          return new Promise((resolve, reject) => {
+            const rejectWithMessage = err => () => reject(new Error(err));
+
+            addonInstall.addListener({
+              onDownloadEnded(install) {
+                install
+                  .postpone(null, /* requiresRestart */ false)
+                  .then(_pendingInstallsMap.set(id, install));
+              },
+
+              onInstallPostponed() {
+                resolve();
+              },
+
+              onDownloadCancelled: rejectWithMessage("Download cancelled"),
+              onDownloadFailed: rejectWithMessage("Download failed"),
+              onInstallCancelled: rejectWithMessage("Install cancelled"),
+              onInstallFailed: rejectWithMessage("Install failed"),
+            });
+
+            addonInstall.install();
+          });
+        })
+    );
+    this._reportErrors(results);
+
+    // All the imported add-ons should have been staged for install at this
+    // point, unless there was no add-on mapped OR some errors.
+    const { importedAddonIDs } = this;
+
+    this._canCompleteOrCancelInstalls = !!importedAddonIDs.length;
+    this._importInProgress = !!importedAddonIDs.length;
+
+    if (importedAddonIDs.length) {
+      Services.obs.notifyObservers(null, this.TOPIC_PENDING);
+    }
+
+    return { importedAddonIDs };
+  },
+
+  /**
+   * Finalize the installation of the add-ons for which we staged their install.
+   *
+   * @returns {Promise<void>}
+   * @throws {Error} When there is no import in progress.
+   */
+  async completeInstalls() {
+    if (!this._importInProgress) {
+      throw new Error("No import in progress");
+    }
+
+    const results = await Promise.allSettled(
+      Array.from(this._pendingInstallsMap.values()).map(install => {
+        return install.continuePostponedInstall();
+      })
+    );
+    this._reportErrors(results);
+    this._clearInternalState();
+
+    Services.obs.notifyObservers(null, this.TOPIC_COMPLETE);
+  },
+
+  /**
+   * Cancel the installation of the add-ons for which we staged their install.
+   *
+   * @returns {Promise<void>}
+   * @throws {Error} When there is no import in progress.
+   */
+  async cancelInstalls() {
+    if (!this._importInProgress) {
+      throw new Error("No import in progress");
+    }
+
+    const results = await Promise.allSettled(
+      Array.from(this._pendingInstallsMap.values()).map(install => {
+        return install.cancel();
+      })
+    );
+    this._reportErrors(results);
+    this._clearInternalState();
+
+    Services.obs.notifyObservers(null, this.TOPIC_CANCELLED);
+  },
+
+  _reportErrors(results) {
+    results
+      .filter(result => result.status === "rejected")
+      .forEach(result => Cu.reportError(result.reason));
+  },
+
+  _clearInternalState() {
+    this._pendingInstallsMap.clear();
+    this._importInProgress = false;
+    this._canCompleteOrCancelInstalls = false;
   },
 };
 

@@ -26,7 +26,7 @@
     RemoteWebNavigation: "resource://gre/modules/RemoteWebNavigation.sys.mjs",
   });
 
-  XPCOMUtils.defineLazyGetter(lazy, "blankURI", () =>
+  ChromeUtils.defineLazyGetter(lazy, "blankURI", () =>
     Services.io.newURI("about:blank")
   );
 
@@ -43,9 +43,9 @@
       // available, in which case we return null. We replace this getter
       // when the module becomes available (should be on delayed startup
       // when the first browser window loads, via BrowserGlue.sys.mjs).
-      const kURL = "resource:///modules/ProcessHangMonitor.jsm";
-      if (Cu.isModuleLoaded(kURL)) {
-        let { ProcessHangMonitor } = ChromeUtils.import(kURL);
+      const kURL = "resource:///modules/ProcessHangMonitor.sys.mjs";
+      if (Cu.isESModuleLoaded(kURL)) {
+        let { ProcessHangMonitor } = ChromeUtils.importESModule(kURL);
         // eslint-disable-next-line mozilla/valid-lazy
         Object.defineProperty(lazy, "ProcessHangMonitor", {
           value: ProcessHangMonitor,
@@ -118,7 +118,7 @@
       this.mIconURL = null;
       this.lastURI = null;
 
-      XPCOMUtils.defineLazyGetter(this, "popupBlocker", () => {
+      ChromeUtils.defineLazyGetter(this, "popupBlocker", () => {
         return new lazy.PopupBlocker(this);
       });
 
@@ -277,8 +277,6 @@
 
       this.mPrefs = Services.prefs;
 
-      this._mStrBundle = null;
-
       this._audioMuted = false;
 
       this._hasAnyPlayingMediaBeenBlocked = false;
@@ -413,11 +411,13 @@
     }
 
     set docShellIsActive(val) {
-      this.browsingContext.isActive = val;
+      // Floorp Injections
+      this.browsingContext.isActive = val || this.spliting;
       if (this.isRemoteBrowser) {
         let remoteTab = this.frameLoader?.remoteTab;
         if (remoteTab) {
-          remoteTab.renderLayers = val;
+          // Floorp Injections
+          remoteTab.renderLayers = val || this.spliting;
         }
       }
     }
@@ -687,17 +687,6 @@
       return !!this.browsingContext.opener;
     }
 
-    get mStrBundle() {
-      if (!this._mStrBundle) {
-        // need to create string bundle manually instead of using <xul:stringbundle/>
-        // see bug 63370 for details
-        this._mStrBundle = Services.strings.createBundle(
-          "chrome://global/locale/browser.properties"
-        );
-      }
-      return this._mStrBundle;
-    }
-
     get audioMuted() {
       return this._audioMuted;
     }
@@ -885,7 +874,7 @@
       this.webProgress.removeProgressListener(aListener);
     }
 
-    onPageHide(aEvent) {
+    onPageHide() {
       // If we're browsing from the tab crashed UI to a URI that keeps
       // this browser non-remote, we'll handle that here.
       lazy.SessionStore?.maybeExitCrashedState(this);
@@ -1228,7 +1217,7 @@
       }
     }
 
-    createAboutBlankContentViewer(aPrincipal, aPartitionedPrincipal) {
+    createAboutBlankDocumentViewer(aPrincipal, aPartitionedPrincipal) {
       let principal = lazy.BrowserUtils.principalWithMatchingOA(
         aPrincipal,
         this.contentPrincipal
@@ -1239,12 +1228,12 @@
       );
 
       if (this.isRemoteBrowser) {
-        this.frameLoader.remoteTab.createAboutBlankContentViewer(
+        this.frameLoader.remoteTab.createAboutBlankDocumentViewer(
           principal,
           partitionedPrincipal
         );
       } else {
-        this.docShell.createAboutBlankContentViewer(
+        this.docShell.createAboutBlankDocumentViewer(
           principal,
           partitionedPrincipal
         );
@@ -1610,6 +1599,7 @@
             "_contentPartitionedPrincipal",
             "_isSyntheticDocument",
             "_originalURI",
+            "_userTypedValue",
           ]
         );
       }
@@ -1676,11 +1666,11 @@
         return;
       }
 
-      if (!this.docShell || !this.docShell.contentViewer) {
+      if (!this.docShell || !this.docShell.docViewer) {
         aCallback(false);
         return;
       }
-      aCallback(this.docShell.contentViewer.inPermitUnload);
+      aCallback(this.docShell.docViewer.inPermitUnload);
     }
 
     async asyncPermitUnload(action) {
@@ -1752,11 +1742,11 @@
         throw result;
       }
 
-      if (!this.docShell || !this.docShell.contentViewer) {
+      if (!this.docShell || !this.docShell.docViewer) {
         return { permitUnload: true };
       }
       return {
-        permitUnload: this.docShell.contentViewer.permitUnload(),
+        permitUnload: this.docShell.docViewer.permitUnload(),
       };
     }
 
@@ -1931,7 +1921,7 @@
     // Called immediately after changing remoteness.  If this method returns
     // `true`, Gecko will assume frontend handled resuming the load, and will
     // not attempt to resume the load itself.
-    afterChangeRemoteness(browser, redirectLoadSwitchId) {
+    afterChangeRemoteness() {
       /* no-op unless replaced */
       return false;
     }

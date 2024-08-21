@@ -161,6 +161,11 @@ server.registerFile(
   })
 );
 
+add_setup(() => {
+  do_get_profile();
+  Services.fog.initializeFOG();
+});
+
 function testInstallEvent(expectTelemetry) {
   const snapshot = Services.telemetry.snapshotEvents(
     Ci.nsITelemetry.DATASET_PRERELEASE_CHANNELS,
@@ -174,7 +179,7 @@ function testInstallEvent(expectTelemetry) {
 
   let events = snapshot.parent
     .filter(
-      ([timestamp, category, method, object, value, extra]) =>
+      ([, category, method, , , extra]) =>
         category === "addonsManager" &&
         method == "install" &&
         extra.step == expectTelemetry.step
@@ -182,6 +187,15 @@ function testInstallEvent(expectTelemetry) {
     .map(event => event[5]);
   equal(events.length, 1, "one event for install completion");
   Assert.deepEqual(events[0], expectTelemetry, "telemetry matches");
+
+  let gleanEvents = AddonTestUtils.getAMGleanEvents("install", {
+    step: expectTelemetry.step,
+  });
+  Services.fog.testResetFOG();
+
+  equal(gleanEvents.length, 1, "One glean event for install completion.");
+  delete gleanEvents[0].addon_type;
+  Assert.deepEqual(gleanEvents[0], expectTelemetry, "Glean telemetry matches.");
 }
 
 function promiseCompleteWebInstall(
@@ -215,15 +229,13 @@ function promiseCompleteWebInstall(
         installInfo.install();
       });
 
-      TestUtils.topicObserved("addon-install-confirmation").then(
-        (subject, data) => {
-          info(`==== test got addon-install-confirmation`);
-          let installInfo = subject.wrappedJSObject;
-          for (let installer of installInfo.installs) {
-            installer.install();
-          }
+      TestUtils.topicObserved("addon-install-confirmation").then(subject => {
+        info(`==== test got addon-install-confirmation`);
+        let installInfo = subject.wrappedJSObject;
+        for (let installer of installInfo.installs) {
+          installer.install();
         }
-      );
+      });
       TestUtils.topicObserved("webextension-permission-prompt").then(
         ([subject]) => {
           const { info } = subject.wrappedJSObject || {};

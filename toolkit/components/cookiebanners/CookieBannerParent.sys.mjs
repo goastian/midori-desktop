@@ -22,6 +22,19 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "cookiebanners.service.mode.privateBrowsing",
   Ci.nsICookieBannerService.MODE_DISABLED
 );
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "maxTriesPerSiteAndSession",
+  "cookiebanners.bannerClicking.maxTriesPerSiteAndSession",
+  3
+);
+
+ChromeUtils.defineLazyGetter(lazy, "CookieBannerL10n", () => {
+  return new Localization([
+    "branding/brand.ftl",
+    "toolkit/global/cookieBannerHandling.ftl",
+  ]);
+});
 
 export class CookieBannerParent extends JSWindowActorParent {
   /**
@@ -39,12 +52,24 @@ export class CookieBannerParent extends JSWindowActorParent {
     return topBC.embedderElement;
   }
 
-  #isPrivateBrowsing() {
+  get #isTopLevel() {
+    return !this.manager.browsingContext.parent;
+  }
+
+  #isPrivateBrowsingCached;
+  get #isPrivateBrowsing() {
+    if (this.#isPrivateBrowsingCached !== undefined) {
+      return this.#isPrivateBrowsingCached;
+    }
     let browser = this.#browserElement;
     if (!browser) {
       return false;
     }
-    return lazy.PrivateBrowsingUtils.isBrowserPrivate(browser);
+
+    this.#isPrivateBrowsingCached =
+      lazy.PrivateBrowsingUtils.isBrowserPrivate(browser);
+
+    return this.#isPrivateBrowsingCached;
   }
 
   /**
@@ -69,6 +94,33 @@ export class CookieBannerParent extends JSWindowActorParent {
     windowUtils.dispatchEventToChromeOnly(chromeWin, event);
   }
 
+  /**
+   * Logs a warning to the web console that a cookie banner has been handled.
+   */
+  async #logCookieBannerHandledToWebConsole() {
+    let consoleMsg = Cc["@mozilla.org/scripterror;1"].createInstance(
+      Ci.nsIScriptError
+    );
+    let [message] = await lazy.CookieBannerL10n.formatMessages([
+      { id: "cookie-banner-handled-webconsole" },
+    ]);
+
+    if (!this.manager?.innerWindowId) {
+      return;
+    }
+    consoleMsg.initWithWindowID(
+      message.value,
+      this.manager.documentURI?.spec,
+      null,
+      null,
+      null,
+      Ci.nsIScriptError.warningFlag,
+      "cookiebannerhandling",
+      this.manager?.innerWindowId
+    );
+    Services.console.logMessage(consoleMsg);
+  }
+
   async receiveMessage(message) {
     if (message.name == "CookieBanner::Test-FinishClicking") {
       Services.obs.notifyObservers(
@@ -88,6 +140,22 @@ export class CookieBannerParent extends JSWindowActorParent {
     // Forwards cookie banner handled signals to frontend consumers.
     if (message.name == "CookieBanner::HandledBanner") {
       this.#notifyCookieBannerState("cookiebannerhandled");
+      this.#logCookieBannerHandledToWebConsole();
+      return undefined;
+    }
+
+    let domain = this.manager.documentPrincipal?.baseDomain;
+
+    if (message.name == "CookieBanner::MarkSiteExecuted") {
+      if (!domain) {
+        return undefined;
+      }
+
+      Services.cookieBanners.markSiteExecuted(
+        domain,
+        this.#isTopLevel,
+        this.#isPrivateBrowsing
+      );
       return undefined;
     }
 
@@ -97,8 +165,7 @@ export class CookieBannerParent extends JSWindowActorParent {
 
     // TODO: Bug 1790688: consider moving this logic to the cookie banner service.
     let mode;
-    let isPrivateBrowsing = this.#isPrivateBrowsing();
-    if (isPrivateBrowsing) {
+    if (this.#isPrivateBrowsing) {
       mode = lazy.serviceModePBM;
     } else {
       mode = lazy.serviceMode;
@@ -115,7 +182,7 @@ export class CookieBannerParent extends JSWindowActorParent {
       try {
         let perDomainMode = Services.cookieBanners.getDomainPref(
           topURI,
-          isPrivateBrowsing
+          this.#isPrivateBrowsing
         );
 
         if (perDomainMode != Ci.nsICookieBannerService.MODE_UNSET) {
@@ -133,44 +200,58 @@ export class CookieBannerParent extends JSWindowActorParent {
       }
     }
 
-    // Service is disabled for current context (normal or private browsing),
-    // return empty array.
-    if (mode == Ci.nsICookieBannerService.MODE_DISABLED) {
-      return [];
+    // Check if we previously executed banner clicking for the site. If the pref
+    // instructs to always execute banner clicking, we will set it to
+    // false.
+    let hasExecuted = false;
+    if (lazy.maxTriesPerSiteAndSession > 0) {
+      hasExecuted = Services.cookieBanners.shouldStopBannerClickingForSite(
+        domain,
+        this.#isTopLevel,
+        this.#isPrivateBrowsing
+      );
     }
 
-    let domain = this.manager.documentPrincipal?.baseDomain;
+    // If we have previously executed banner clicking or the service is disabled
+    // for current context (normal or private browsing), return empty array.
+    if (hasExecuted || mode == Ci.nsICookieBannerService.MODE_DISABLED) {
+      return { rules: [], hasExecuted };
+    }
 
     if (!domain) {
-      return [];
+      return { rules: [], hasExecuted };
     }
 
-    let isTopLevel = !this.manager.browsingContext.parent;
     let rules = Services.cookieBanners.getClickRulesForDomain(
       domain,
-      isTopLevel
+      this.#isTopLevel
     );
 
     if (!rules.length) {
-      return [];
+      return { rules: [], hasExecuted };
     }
 
     // Determine whether we can fall back to opt-in rules. This includes the
     // detect-only mode where don't interact with the banner.
     let modeAllowsOptIn =
       mode == Ci.nsICookieBannerService.MODE_REJECT_OR_ACCEPT;
-    return rules.map(rule => {
+
+    rules = rules.map(rule => {
       let target = rule.optOut;
 
       if (modeAllowsOptIn && !target) {
         target = rule.optIn;
       }
       return {
+        id: rule.id,
         hide: rule.hide ?? rule.presence,
         presence: rule.presence,
         skipPresenceVisibilityCheck: rule.skipPresenceVisibilityCheck,
         target,
+        isGlobalRule: rule.isGlobalRule,
       };
     });
+
+    return { rules, hasExecuted };
   }
 }

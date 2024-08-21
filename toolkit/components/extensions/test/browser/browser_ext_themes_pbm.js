@@ -13,13 +13,25 @@ const { PromptTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/PromptTestUtils.sys.mjs"
 );
 
-const IS_LINUX = AppConstants.platform == "linux";
-
 const LIGHT_THEME_ID = "firefox-compact-light@mozilla.org";
 const DARK_THEME_ID = "firefox-compact-dark@mozilla.org";
 
 // This tests opens many chrome windows which is slow on debug builds.
 requestLongerTimeout(2);
+
+async function testIsDark(win, expectDark) {
+  let mql = win.matchMedia("(prefers-color-scheme: dark)");
+  if (mql.matches != expectDark) {
+    // The color scheme change might not have been processed yet, since that
+    // happens on a refresh driver tick.
+    await new Promise(r => mql.addEventListener("change", r, { once: true }));
+  }
+  is(
+    mql.matches,
+    expectDark,
+    `Window should${expectDark ? "" : " not"} be dark.`
+  );
+}
 
 /**
  * Test a window's theme color scheme.
@@ -30,24 +42,11 @@ requestLongerTimeout(2);
  * is dark (true) or light (false).
  * @param {boolean} options.expectLWTAttributes - Whether the window  should
  * have the LWT attributes set matching the color scheme.
- * @param {boolean} options.expectDefaultDarkAttribute - Whether the window
- * should have the "lwt-default-theme-in-dark-mode" attribute.
  */
-async function testWindowColorScheme({
-  win,
-  expectDark,
-  expectLWTAttributes,
-  expectDefaultDarkAttribute,
-}) {
+async function testWindowColorScheme({ win, expectDark, expectLWTAttributes }) {
   let docEl = win.document.documentElement;
 
-  is(
-    docEl.hasAttribute("lwt-default-theme-in-dark-mode"),
-    expectDefaultDarkAttribute,
-    `Window should${
-      expectDefaultDarkAttribute ? "" : " not"
-    } have lwt-default-theme-in-dark-mode attribute.`
-  );
+  await testIsDark(win, expectDark);
 
   if (expectLWTAttributes) {
     ok(docEl.hasAttribute("lwtheme"), "Window should have LWT attribute.");
@@ -130,7 +129,6 @@ add_task(async function test_default_theme_light() {
     win: window,
     expectDark: false,
     expectLWTAttributes: false,
-    expectDefaultDarkAttribute: false,
   });
 
   let windowB = await BrowserTestUtils.openNewBrowserWindow();
@@ -140,7 +138,6 @@ add_task(async function test_default_theme_light() {
     win: windowB,
     expectDark: false,
     expectLWTAttributes: false,
-    expectDefaultDarkAttribute: false,
   });
 
   let pbmWindowA = await BrowserTestUtils.openNewBrowserWindow({
@@ -152,7 +149,6 @@ add_task(async function test_default_theme_light() {
     win: pbmWindowA,
     expectDark: true,
     expectLWTAttributes: true,
-    expectDefaultDarkAttribute: true,
   });
 
   let prefersColorScheme = await getPrefersColorSchemeInfo({ win: pbmWindowA });
@@ -169,7 +165,6 @@ add_task(async function test_default_theme_light() {
     win: pbmWindowB,
     expectDark: true,
     expectLWTAttributes: true,
-    expectDefaultDarkAttribute: true,
   });
 
   await BrowserTestUtils.closeWindow(windowB);
@@ -188,8 +183,7 @@ add_task(async function test_default_theme_dark() {
   await testWindowColorScheme({
     win: window,
     expectDark: true,
-    expectLWTAttributes: !IS_LINUX,
-    expectDefaultDarkAttribute: !IS_LINUX,
+    expectLWTAttributes: false,
   });
 
   let pbmWindow = await BrowserTestUtils.openNewBrowserWindow({
@@ -200,8 +194,7 @@ add_task(async function test_default_theme_dark() {
   await testWindowColorScheme({
     win: pbmWindow,
     expectDark: true,
-    expectLWTAttributes: !IS_LINUX,
-    expectDefaultDarkAttribute: !IS_LINUX,
+    expectLWTAttributes: false,
   });
 
   await BrowserTestUtils.closeWindow(pbmWindow);
@@ -220,7 +213,6 @@ add_task(async function test_light_theme_builtin() {
     win: window,
     expectDark: false,
     expectLWTAttributes: true,
-    expectDefaultDarkAttribute: false,
   });
 
   let pbmWindow = await BrowserTestUtils.openNewBrowserWindow({
@@ -231,7 +223,6 @@ add_task(async function test_light_theme_builtin() {
     win: pbmWindow,
     expectDark: false,
     expectLWTAttributes: true,
-    expectDefaultDarkAttribute: false,
   });
 
   await BrowserTestUtils.closeWindow(pbmWindow);
@@ -249,7 +240,6 @@ add_task(async function test_dark_theme_builtin() {
     win: window,
     expectDark: true,
     expectLWTAttributes: true,
-    expectDefaultDarkAttribute: false,
   });
 
   let pbmWindow = await BrowserTestUtils.openNewBrowserWindow({
@@ -261,7 +251,6 @@ add_task(async function test_dark_theme_builtin() {
     win: pbmWindow,
     expectDark: true,
     expectLWTAttributes: true,
-    expectDefaultDarkAttribute: false,
   });
 
   await BrowserTestUtils.closeWindow(pbmWindow);
@@ -281,7 +270,6 @@ add_task(async function test_theme_switch_updates_existing_pbm_win() {
     win: window,
     expectDark: false,
     expectLWTAttributes: false,
-    expectDefaultDarkAttribute: false,
   });
 
   info("Private browsing window should be in dark mode.");
@@ -289,7 +277,6 @@ add_task(async function test_theme_switch_updates_existing_pbm_win() {
     win: pbmWindow,
     expectDark: true,
     expectLWTAttributes: true,
-    expectDefaultDarkAttribute: true,
   });
 
   info("Enabling light theme.");
@@ -301,7 +288,6 @@ add_task(async function test_theme_switch_updates_existing_pbm_win() {
     win: window,
     expectDark: false,
     expectLWTAttributes: true,
-    expectDefaultDarkAttribute: false,
   });
 
   info("Private browsing window should not be in dark mode.");
@@ -309,7 +295,6 @@ add_task(async function test_theme_switch_updates_existing_pbm_win() {
     win: pbmWindow,
     expectDark: false,
     expectLWTAttributes: true,
-    expectDefaultDarkAttribute: false,
   });
 
   await lightTheme.disable();
@@ -323,7 +308,6 @@ add_task(async function test_theme_switch_updates_existing_pbm_win() {
     win: window,
     expectDark: true,
     expectLWTAttributes: true,
-    expectDefaultDarkAttribute: false,
   });
 
   info("Private browsing window should be in dark mode.");
@@ -331,7 +315,6 @@ add_task(async function test_theme_switch_updates_existing_pbm_win() {
     win: pbmWindow,
     expectDark: true,
     expectLWTAttributes: true,
-    expectDefaultDarkAttribute: false,
   });
 
   await darkTheme.disable();
@@ -353,7 +336,7 @@ add_task(async function test_pbm_dark_page_info() {
     await BrowserTestUtils.withNewTab(
       { gBrowser: win.gBrowser, url: "https://example.com" },
       async () => {
-        let pageInfo = win.BrowserPageInfo(null, "securityTab");
+        let pageInfo = win.BrowserCommands.pageInfo(null, "securityTab");
         await BrowserTestUtils.waitForEvent(pageInfo, "page-info-init");
 
         let prefersColorScheme = await getPrefersColorSchemeInfo({

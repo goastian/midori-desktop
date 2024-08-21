@@ -213,6 +213,7 @@ export var PageThumbs = {
    *   isImage - indicate that this should be treated as an image url.
    *   backgroundColor - background color to draw behind images.
    *   targetWidth - desired width for images.
+   *   preserveAspectRatio - resize image height based on targetWidth
    *   isBackgroundThumb - true if request is from the background thumb service.
    *   fullViewport - request that a screenshot for the viewport be
    *     captured. This makes it possible to get a screenshot that reflects
@@ -228,6 +229,7 @@ export var PageThumbs = {
         aArgs?.backgroundColor ?? lazy.PageThumbUtils.THUMBNAIL_BG_COLOR,
       targetWidth:
         aArgs?.targetWidth ?? lazy.PageThumbUtils.THUMBNAIL_DEFAULT_SIZE,
+      preserveAspectRatio: aArgs?.preserveAspectRatio ?? false,
       isBackgroundThumb: aArgs ? aArgs.isBackgroundThumb : false,
       fullViewport: aArgs?.fullViewport ?? false,
     };
@@ -262,7 +264,7 @@ export var PageThumbs = {
           aBrowser.browsingContext.currentWindowGlobal.getActor("Thumbnails");
         return thumbnailsActor
           .sendQuery("Browser:Thumbnail:CheckState")
-          .catch(err => {
+          .catch(() => {
             return false;
           });
       }
@@ -313,6 +315,7 @@ export var PageThumbs = {
    *   isImage - indicate that this should be treated as an image url.
    *   backgroundColor - background color to draw behind images.
    *   targetWidth - desired width for images.
+   *   preserveAspectRatio - resize image height based on targetWidth
    *   isBackgroundThumb - true if request is from the background thumb service.
    *   fullViewport - request that a screenshot for the viewport be
    *     captured. This makes it possible to get a screenshot that reflects
@@ -341,6 +344,7 @@ export var PageThumbs = {
     if (contentWidth == 0 || contentHeight == 0) {
       throw new Error("IMAGE_ZERO_DIMENSION");
     }
+    let aspectRatio = contentWidth / contentHeight;
 
     if (!aBrowser.isConnected) {
       return null;
@@ -363,9 +367,21 @@ export var PageThumbs = {
       });
     } else {
       let fullScale = aArgs ? aArgs.fullScale : false;
-      let scale = fullScale
-        ? 1
-        : Math.min(Math.max(aWidth / contentWidth, aHeight / contentHeight), 1);
+      let targetWidth = aArgs.targetWidth ? aArgs.targetWidth : aWidth;
+      let preserveAspectRatio = aArgs ? aArgs.preserveAspectRatio : false;
+      let scale = 1;
+      if (!fullScale) {
+        let targetScale;
+        if (preserveAspectRatio) {
+          targetScale = targetWidth / contentWidth;
+        } else {
+          targetScale = Math.max(
+            aWidth / contentWidth,
+            aHeight / contentHeight
+          );
+        }
+        scale = Math.min(targetScale, 1);
+      }
 
       image = await aBrowser.drawSnapshot(
         0,
@@ -380,8 +396,13 @@ export var PageThumbs = {
         return null;
       }
 
-      thumbnail.width = fullScale ? contentWidth : aWidth;
-      thumbnail.height = fullScale ? contentHeight : aHeight;
+      if (preserveAspectRatio) {
+        thumbnail.width = targetWidth;
+        thumbnail.height = targetWidth / aspectRatio;
+      } else {
+        thumbnail.width = fullScale ? contentWidth : aWidth;
+        thumbnail.height = fullScale ? contentHeight : aHeight;
+      }
     }
 
     thumbnail.getContext("2d").drawImage(image, 0, 0);
@@ -423,7 +444,7 @@ export var PageThumbs = {
       let buffer = await TaskUtils.readBlob(blob);
       await this._store(originalURL, url, buffer, channelError);
     } catch (ex) {
-      console.error("Exception thrown during thumbnail capture: '", ex, "'");
+      console.error("Exception thrown during thumbnail capture:", ex);
     }
   },
 
@@ -835,7 +856,7 @@ export var PageThumbsExpiration = {
     }
   },
 
-  notify: function Expiration_notify(aTimer) {
+  notify: function Expiration_notify() {
     let urls = [];
     let filtersToWaitFor = this._filters.length;
 
@@ -883,5 +904,5 @@ export var PageThumbsExpiration = {
  * Interface to a dedicated thread handling I/O
  */
 var PageThumbsWorker = new BasePromiseWorker(
-  "resource://gre/modules/PageThumbsWorker.js"
+  "resource://gre/modules/PageThumbs.worker.js"
 );

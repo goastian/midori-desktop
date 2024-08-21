@@ -7,12 +7,12 @@
 #ifndef mozilla_glean_Labeled_h
 #define mozilla_glean_Labeled_h
 
-#include "nsIGleanMetrics.h"
 #include "nsISupports.h"
 #include "nsWrapperCache.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/glean/bindings/Boolean.h"
 #include "mozilla/glean/bindings/Counter.h"
+#include "mozilla/glean/bindings/GleanMetric.h"
 #include "mozilla/glean/bindings/ScalarGIFFTMap.h"
 #include "mozilla/glean/bindings/String.h"
 #include "mozilla/glean/fog_ffi_generated.h"
@@ -60,7 +60,7 @@ class Labeled {
 static inline void UpdateLabeledMirror(Telemetry::ScalarID aMirrorId,
                                        uint32_t aSubmetricId,
                                        const nsACString& aLabel) {
-  GetLabeledMirrorLock().apply([&](auto& lock) {
+  GetLabeledMirrorLock().apply([&](const auto& lock) {
     auto tuple = std::make_tuple<Telemetry::ScalarID, nsString>(
         std::move(aMirrorId), NS_ConvertUTF8toUTF16(aLabel));
     lock.ref()->InsertOrUpdate(aSubmetricId, std::move(tuple));
@@ -112,11 +112,7 @@ class Labeled<CounterMetric, E> {
     // to the label string and mirrored scalar so we can mirror its operations.
     auto mirrorId = ScalarIdForMetric(mId);
     if (mirrorId) {
-      GetLabeledMirrorLock().apply([&](auto& lock) {
-        auto tuple = std::make_tuple<Telemetry::ScalarID, nsString>(
-            mirrorId.extract(), NS_ConvertUTF8toUTF16(aLabel));
-        lock.ref()->InsertOrUpdate(submetricId, std::move(tuple));
-      });
+      UpdateLabeledMirror(mirrorId.extract(), submetricId, aLabel);
     }
     return CounterMetric(submetricId);
   }
@@ -196,11 +192,7 @@ class Labeled<CounterMetric, DynamicLabel> {
     // to the label string and mirrored scalar so we can mirror its operations.
     auto mirrorId = ScalarIdForMetric(mId);
     if (mirrorId) {
-      GetLabeledMirrorLock().apply([&](auto& lock) {
-        auto tuple = std::make_tuple<Telemetry::ScalarID, nsString>(
-            mirrorId.extract(), NS_ConvertUTF8toUTF16(aLabel));
-        lock.ref()->InsertOrUpdate(submetricId, std::move(tuple));
-      });
+      UpdateLabeledMirror(mirrorId.extract(), submetricId, aLabel);
     }
     return CounterMetric(submetricId);
   }
@@ -231,19 +223,15 @@ class Labeled<StringMetric, DynamicLabel> {
 
 }  // namespace impl
 
-class GleanLabeled final : public nsISupports, public nsWrapperCache {
+class GleanLabeled final : public GleanMetric {
  public:
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_WRAPPERCACHE_CLASS(GleanLabeled)
+  explicit GleanLabeled(uint32_t aId, uint32_t aTypeId, nsISupports* aParent)
+      : GleanMetric(aParent), mId(aId), mTypeId(aTypeId) {}
 
   JSObject* WrapObject(JSContext* aCx,
-                       JS::Handle<JSObject*> aGivenProto) override;
-  nsISupports* GetParentObject() { return nullptr; }
+                       JS::Handle<JSObject*> aGivenProto) override final;
 
-  explicit GleanLabeled(uint32_t aId, uint32_t aTypeId)
-      : mId(aId), mTypeId(aTypeId){};
-
-  already_AddRefed<nsISupports> NamedGetter(const nsAString& aName,
+  already_AddRefed<GleanMetric> NamedGetter(const nsAString& aName,
                                             bool& aFound);
   bool NameIsEnumerable(const nsAString& aName);
   void GetSupportedNames(nsTArray<nsString>& aNames);

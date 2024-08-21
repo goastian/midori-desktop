@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Log } from "resource://gre/modules/Log.sys.mjs";
-import { PromiseUtils } from "resource://gre/modules/PromiseUtils.sys.mjs";
 import { setTimeout } from "resource://gre/modules/Timer.sys.mjs";
 
 const lazy = {};
@@ -23,7 +22,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "resource://nimbus/lib/RemoteSettingsExperimentLoader.sys.mjs",
   ShieldPreferences: "resource://normandy/lib/ShieldPreferences.sys.mjs",
   TelemetryEvents: "resource://normandy/lib/TelemetryEvents.sys.mjs",
-  TelemetryUtils: "resource://gre/modules/TelemetryUtils.sys.mjs",
 });
 
 const UI_AVAILABLE_NOTIFICATION = "sessionstore-windows-restored";
@@ -42,20 +40,14 @@ log.level = Services.prefs.getIntPref(PREF_LOGGING_LEVEL, Log.Level.Warn);
 export var Normandy = {
   studyPrefsChanged: {},
   rolloutPrefsChanged: {},
-  defaultPrefsHaveBeenApplied: PromiseUtils.defer(),
-  uiAvailableNotificationObserved: PromiseUtils.defer(),
+  defaultPrefsHaveBeenApplied: Promise.withResolvers(),
+  uiAvailableNotificationObserved: Promise.withResolvers(),
 
   /** Initialization that needs to happen before the first paint on startup. */
   async init({ runAsync = true } = {}) {
     // It is important to register the listener for the UI before the first
     // await, to avoid missing it.
     Services.obs.addObserver(this, UI_AVAILABLE_NOTIFICATION);
-
-    // Listen for when Telemetry is disabled or re-enabled.
-    Services.obs.addObserver(
-      this,
-      lazy.TelemetryUtils.TELEMETRY_UPLOAD_DISABLED_TOPIC
-    );
 
     // It is important this happens before the first `await`. Note that this
     // also happens before migrations are applied.
@@ -86,19 +78,10 @@ export var Normandy = {
     await this.finishInit();
   },
 
-  async observe(subject, topic, data) {
+  async observe(subject, topic) {
     if (topic === UI_AVAILABLE_NOTIFICATION) {
       Services.obs.removeObserver(this, UI_AVAILABLE_NOTIFICATION);
       this.uiAvailableNotificationObserved.resolve();
-    } else if (topic === lazy.TelemetryUtils.TELEMETRY_UPLOAD_DISABLED_TOPIC) {
-      await Promise.all(
-        [
-          lazy.PreferenceExperiments,
-          lazy.PreferenceRollouts,
-          lazy.AddonStudies,
-          lazy.AddonRollouts,
-        ].map(service => service.onTelemetryDisabled())
-      );
     }
   },
 
@@ -182,15 +165,11 @@ export var Normandy = {
       PREF_LOGGING_LEVEL,
       lazy.LogManager.configure
     );
-    for (const topic of [
-      lazy.TelemetryUtils.TELEMETRY_UPLOAD_DISABLED_TOPIC,
-      UI_AVAILABLE_NOTIFICATION,
-    ]) {
-      try {
-        Services.obs.removeObserver(this, topic);
-      } catch (e) {
-        // topic must have already been removed or never added
-      }
+
+    try {
+      Services.obs.removeObserver(this, UI_AVAILABLE_NOTIFICATION);
+    } catch (e) {
+      // topic must have already been removed or never added
     }
   },
 

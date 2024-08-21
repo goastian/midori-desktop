@@ -91,11 +91,15 @@ async function waitForStableLayout(win) {
 }
 
 function isLayoutStable(win) {
-  // <message-bar> elements may affect the layout of a page, and therefore we
-  // should check whether its embedded style sheet has finished loading.
-  for (let bar of win.document.querySelectorAll("message-bar")) {
-    // Check for the existence of a CSS property from message-bar.css.
-    if (!win.getComputedStyle(bar).getPropertyValue("--message-bar-icon-url")) {
+  // <moz-message-bar> elements may affect the layout of a page, and therefore
+  // we should check whether its embedded style sheet has finished loading.
+  for (let bar of win.document.querySelectorAll("moz-message-bar")) {
+    // Check for the existence of a CSS property from moz-message-bar.css.
+    if (
+      !win
+        .getComputedStyle(bar)
+        .getPropertyValue("--message-bar-background-color")
+    ) {
       return false;
     }
   }
@@ -136,10 +140,10 @@ add_task(async function test_scroll_restoration() {
   // the first load, so we only need to wait once, at the start of the test.
   await win.document.querySelector("recommended-addon-list").cardsReady;
 
-  // Force scrollbar to appear, by adding enough space at the top and left.
-  win.document.body.style.paddingTop = "200vh";
-  win.document.body.style.paddingLeft = "100vw";
-  win.document.body.style.width = "200vw";
+  // Force scrollbar to appear, by adding enough space around the content.
+  win.document.body.style.paddingBlock = "100vh";
+  win.document.body.style.paddingInline = "100vw";
+  win.document.body.style.width = "300vw";
 
   checkScrollOffset(win, { top: 0, left: 0 }, "initial page load");
 
@@ -159,7 +163,11 @@ add_task(async function test_scroll_restoration() {
   // Switch from extension list to details view.
 
   let loaded = waitForViewLoad(win);
-  getAddonCard(win, EXT_ID_EXTENSION).click();
+  const addonCard = getAddonCard(win, EXT_ID_EXTENSION);
+  // Ensure that we send a click on the control that is accessible (while a
+  // mouse user could also activate a card by clicking on the entire container):
+  const addonCardLink = addonCard.querySelector(".addon-name-link");
+  addonCardLink.click();
   await loaded;
 
   checkScrollOffset(win, { top: 0, left: 0 }, "initial details view");
@@ -219,5 +227,7 @@ add_task(async function test_scroll_restoration() {
   await switchToView(win, "list", "theme");
   checkScrollOffset(win, { top: 0, left: 0 }, "initial theme list");
 
+  let tabClosed = BrowserTestUtils.waitForTabClosing(gBrowser.selectedTab);
   await closeView(win);
+  await tabClosed;
 });

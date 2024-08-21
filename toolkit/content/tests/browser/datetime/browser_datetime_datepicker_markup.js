@@ -42,11 +42,11 @@ add_task(async function test_datepicker_markup() {
     "Month picker view toggle is a live region when it's not expanded"
   );
   Assert.ok(
-    BrowserTestUtils.is_hidden(helper.getElement(MONTH_YEAR_VIEW)),
+    BrowserTestUtils.isHidden(helper.getElement(MONTH_YEAR_VIEW)),
     "Month-year selection spinner is not visible"
   );
   Assert.ok(
-    BrowserTestUtils.is_hidden(helper.getElement(MONTH_YEAR_VIEW)),
+    BrowserTestUtils.isHidden(helper.getElement(MONTH_YEAR_VIEW)),
     "Month-year selection spinner is programmatically hidden"
   );
   Assert.equal(
@@ -351,7 +351,7 @@ add_task(async function test_calendar_button_markup_date() {
 
     Assert.equal(calendarBtn.tagName, "BUTTON", "Calendar control is a button");
     Assert.ok(
-      ContentTaskUtils.is_visible(calendarBtn),
+      ContentTaskUtils.isVisible(calendarBtn),
       "The Calendar button is visible"
     );
 
@@ -398,7 +398,7 @@ add_task(async function test_calendar_button_markup_datetime() {
 
     Assert.equal(calendarBtn.tagName, "BUTTON", "Calendar control is a button");
     Assert.ok(
-      ContentTaskUtils.is_visible(calendarBtn),
+      ContentTaskUtils.isVisible(calendarBtn),
       "The Calendar button is visible"
     );
 
@@ -441,7 +441,7 @@ add_task(async function test_calendar_button_markup_time() {
     const calendarBtn = shadowRoot.getElementById("calendar-button");
 
     Assert.ok(
-      ContentTaskUtils.is_hidden(calendarBtn),
+      ContentTaskUtils.isHidden(calendarBtn),
       "The Calendar control within a type=time input field is programmatically hidden"
     );
   });

@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 // Android tests don't import these properly, so guard against that
 let shortURL = {};
 let searchShortcuts = {};
 let didSuccessfulImport = false;
 try {
-  shortURL = ChromeUtils.import("resource://activity-stream/lib/ShortURL.jsm");
+  shortURL = ChromeUtils.importESModule(
+    "resource://activity-stream/lib/ShortURL.sys.mjs"
+  );
   searchShortcuts = ChromeUtils.importESModule(
     "resource://activity-stream/lib/SearchShortcuts.sys.mjs"
   );
@@ -30,8 +30,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 let BrowserWindowTracker;
 try {
-  BrowserWindowTracker = ChromeUtils.import(
-    "resource:///modules/BrowserWindowTracker.jsm"
+  BrowserWindowTracker = ChromeUtils.importESModule(
+    "resource:///modules/BrowserWindowTracker.sys.mjs"
   ).BrowserWindowTracker;
 } catch (e) {
   // BrowserWindowTracker is used to determine devicePixelRatio in
@@ -39,7 +39,7 @@ try {
   // so it's safe to do nothing with this here.
 }
 
-XPCOMUtils.defineLazyGetter(lazy, "gCryptoHash", function () {
+ChromeUtils.defineLazyGetter(lazy, "gCryptoHash", function () {
   return Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
 });
 
@@ -89,7 +89,7 @@ function toHash(aValue) {
 /**
  * Singleton that provides storage functionality.
  */
-XPCOMUtils.defineLazyGetter(lazy, "Storage", function () {
+ChromeUtils.defineLazyGetter(lazy, "Storage", function () {
   return new LinksStorage();
 });
 
@@ -602,12 +602,12 @@ var PlacesProvider = {
         }
       },
 
-      handleError(aError) {
+      handleError() {
         // Should we somehow handle this error?
         aCallback([]);
       },
 
-      handleCompletion(aReason) {
+      handleCompletion() {
         // The Places query breaks ties in frecency by place ID descending, but
         // that's different from how Links.compareLinks breaks ties, because
         // compareLinks doesn't have access to place IDs.  It's very important
@@ -2101,7 +2101,7 @@ var Links = {
    * Implements the nsIObserver interface to get notified about browser history
    * sanitization.
    */
-  observe: function Links_observe(aSubject, aTopic, aData) {
+  observe: function Links_observe() {
     // Make sure to update open about:newtab instances. If there are no opened
     // pages we can just wait for the next new tab to populate the cache again.
     if (AllPages.length && AllPages.enabled) {
@@ -2182,7 +2182,7 @@ var Telemetry = {
   /**
    * Listens for gather telemetry topic.
    */
-  observe: function Telemetry_observe(aSubject, aTopic, aData) {
+  observe: function Telemetry_observe() {
     this._collect();
   },
 };

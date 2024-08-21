@@ -8,7 +8,11 @@ async function loadDetail(win, id) {
   let loaded = waitForViewLoad(win);
   // Check the detail view.
   let card = win.document.querySelector(`addon-card[addon-id="${id}"]`);
-  EventUtils.synthesizeMouseAtCenter(card, {}, win);
+  EventUtils.synthesizeMouseAtCenter(
+    card.querySelector(".addon-name-link"),
+    {},
+    win
+  );
   await loaded;
 }
 
@@ -17,7 +21,11 @@ function checkMessageShown(win, type, hasButton) {
   is(stack.childElementCount, 1, "There is one message");
   let messageBar = stack.firstElementChild;
   ok(messageBar, "There is a message bar");
-  is(messageBar.localName, "message-bar", "The message bar is a message-bar");
+  is(
+    messageBar.localName,
+    "moz-message-bar",
+    "The message bar is a moz-message-bar"
+  );
   is_element_visible(messageBar, "Message bar is visible");
   is(messageBar.getAttribute("warning-type"), type);
   if (hasButton) {

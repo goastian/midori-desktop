@@ -3,30 +3,31 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * nsILoginManagerStorage implementation for GeckoView
+ * LoginManagerStorage implementation for GeckoView
  */
-
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 import { LoginManagerStorage_json } from "resource://gre/modules/storage-json.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  GeckoViewAutocomplete: "resource://gre/modules/GeckoViewAutocomplete.sys.mjs",
+  LoginEntry: "resource://gre/modules/GeckoViewAutocomplete.sys.mjs",
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  GeckoViewAutocomplete: "resource://gre/modules/GeckoViewAutocomplete.jsm",
-  LoginEntry: "resource://gre/modules/GeckoViewAutocomplete.jsm",
-});
+export class LoginManagerStorage extends LoginManagerStorage_json {
+  static #storage = null;
 
-export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
-  get classID() {
-    return Components.ID("{337f317f-f713-452a-962d-db831c785fec}");
-  }
-  get QueryInterface() {
-    return ChromeUtils.generateQI(["nsILoginManagerStorage"]);
+  static create(callback) {
+    if (!LoginManagerStorage.#storage) {
+      LoginManagerStorage.#storage = new LoginManagerStorage();
+      LoginManagerStorage.#storage.initialize().then(callback);
+    } else if (callback) {
+      callback();
+    }
+
+    return LoginManagerStorage.#storage;
   }
 
   get _crypto() {
@@ -48,20 +49,15 @@ export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
    */
   terminate() {}
 
-  addLogin(
-    login,
-    preEncrypted = false,
-    plaintextUsername = null,
-    plaintextPassword = null
-  ) {
+  async addLoginsAsync(_logins, _continueOnDuplicates = false) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
-  removeLogin(login) {
+  removeLogin(_login) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
-  modifyLogin(oldLogin, newLoginData) {
+  modifyLogin(_oldLogin, _newLoginData) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
@@ -71,24 +67,20 @@ export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
     );
   }
 
-  getAllLogins() {
-    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
-  }
-
   /**
-   * Returns an array of all saved logins that can be decrypted.
+   * Returns a promise resolving to an array of all saved logins that can be decrypted.
    *
    * @resolve {nsILoginInfo[]}
    */
-  async getAllLoginsAsync() {
-    return this._getLoginsAsync({});
+  getAllLogins(includeDeleted) {
+    return this._getLoginsAsync({}, includeDeleted);
   }
 
-  async searchLoginsAsync(matchData) {
+  async searchLoginsAsync(matchData, includeDeleted) {
     this.log(
       `Searching for matching saved logins for origin: ${matchData.origin}`
     );
-    return this._getLoginsAsync(matchData);
+    return this._getLoginsAsync(matchData, includeDeleted);
   }
 
   _baseHostnameFromOrigin(origin) {
@@ -111,7 +103,7 @@ export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
     }
   }
 
-  async _getLoginsAsync(matchData) {
+  async _getLoginsAsync(matchData, includeDeleted) {
     let baseHostname = this._baseHostnameFromOrigin(matchData.origin);
 
     // Query all logins for the eTLD+1 and then filter the logins in _searchLogins
@@ -158,6 +150,7 @@ export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
 
     const [logins] = this._searchLogins(
       realMatchData,
+      includeDeleted,
       options,
       candidateLogins.map(this._vanillaLoginToStorageLogin)
     );
@@ -187,7 +180,7 @@ export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
   /**
    * Use `searchLoginsAsync` instead.
    */
-  searchLogins(matchData) {
+  searchLogins(_matchData) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
@@ -198,7 +191,7 @@ export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
-  countLogins(origin, formActionOrigin, httpRealm) {
+  countLogins(_origin, _formActionOrigin, _httpRealm) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
@@ -233,7 +226,7 @@ export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
-  async setSyncID(syncID) {
+  async setSyncID(_syncID) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
@@ -241,16 +234,12 @@ export class LoginManagerStorage_geckoview extends LoginManagerStorage_json {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
-  async setLastSync(timestamp) {
+  async setLastSync(_timestamp) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 }
 
-XPCOMUtils.defineLazyGetter(
-  LoginManagerStorage_geckoview.prototype,
-  "log",
-  () => {
-    let logger = lazy.LoginHelper.createLogger("Login storage");
-    return logger.log.bind(logger);
-  }
-);
+ChromeUtils.defineLazyGetter(LoginManagerStorage.prototype, "log", () => {
+  let logger = lazy.LoginHelper.createLogger("Login storage");
+  return logger.log.bind(logger);
+});

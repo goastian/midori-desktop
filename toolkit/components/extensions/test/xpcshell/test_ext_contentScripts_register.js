@@ -305,7 +305,7 @@ add_task(async function test_contentscripts_unregister_on_context_unload() {
 add_task(async function test_contentscripts_register_js() {
   async function background() {
     browser.runtime.onMessage.addListener(
-      ([msg, expectedStates, readyState], sender) => {
+      ([msg, expectedStates, readyState]) => {
         if (msg == "chrome-namespace-ok") {
           browser.test.sendMessage(msg);
           return;
@@ -532,6 +532,7 @@ add_task(async function test_contentscripts_register_all_options() {
       allFrames: true,
       matchAboutBlank: true,
       runAt: "document_start",
+      world: "MAIN",
     });
 
     browser.test.sendMessage("background-ready", window.location.origin);
@@ -570,7 +571,9 @@ add_task(async function test_contentscripts_register_all_options() {
     cssPaths,
     jsPaths,
     matchAboutBlank,
+    matchOriginAsFallback,
     runAt,
+    world,
     originAttributesPatterns,
   } = script;
 
@@ -580,7 +583,9 @@ add_task(async function test_contentscripts_register_all_options() {
       cssPaths,
       jsPaths,
       matchAboutBlank,
+      matchOriginAsFallback,
       runAt,
+      world,
       originAttributesPatterns,
     },
     {
@@ -588,7 +593,9 @@ add_task(async function test_contentscripts_register_all_options() {
       cssPaths: [`${baseExtURL}/content_style.css`],
       jsPaths: [`${baseExtURL}/content_script.js`],
       matchAboutBlank: true,
+      matchOriginAsFallback: false, // Default value when not specified.
       runAt: "document_start",
+      world: "MAIN",
       originAttributesPatterns: null,
     },
     "Got the expected content script properties"
@@ -608,6 +615,31 @@ add_task(async function test_contentscripts_register_all_options() {
     !script.matchesURI(Services.io.newURI("http://localhost/ok_exclude.html")),
     "exclude globs should not match"
   );
+
+  await extension.unload();
+});
+
+add_task(async function test_contentscripts_register_matchOriginAsFallback() {
+  async function background() {
+    await browser.contentScripts.register({
+      js: [{ file: "cs.js" }],
+      matches: ["http://localhost/*"],
+      matchOriginAsFallback: true,
+    });
+    browser.test.sendMessage("ready");
+  }
+
+  const extension = ExtensionTestUtils.loadExtension({
+    manifest: { permissions: ["http://localhost/*"] },
+    background,
+    files: { "cs.js": "" },
+  });
+  await extension.startup();
+  await extension.awaitMessage("ready");
+  const script = extension.extension.policy.contentScripts[0];
+
+  equal(script.matchOriginAsFallback, true, "matchOriginAsFallback set");
+  equal(script.matchAboutBlank, true, "matchAboutBlank implied to be true");
 
   await extension.unload();
 });
@@ -785,10 +817,24 @@ add_task(async function test_contentscripts_register_cookieStoreId() {
     const script = policy.contentScripts[contentScriptIndex];
 
     deepEqual(script.originAttributesPatterns, originAttributesPatternExpected);
+
+    info("Loading initial page to preload styles and scripts");
     let contentPage = await ExtensionTestUtils.loadContentPage(
-      `about:blank`,
+      `${BASE_URL}/file_sample_registered_styles.html`,
       contentPageOptions
     );
+    // Because the scripts have been registered independently, there is no
+    // guarantee that the CSS has applied before the JS executes. So we discard
+    // the initial result (under the assumption that the result may be unstable
+    // due to the styles still loading when we run the JS).
+    await extension.awaitMessage("registered-styles-results");
+
+    // Now that we have triggered compilation and caching of the CSS and JS,
+    // reload the page, with the expectation of getting stable results:
+    // once compiled, the styles apply immediately and there should not be any
+    // intermittent test failures due to missing CSS.
+
+    info("Loading page again, to verify CSS and JS");
     await contentPage.loadURL(`${BASE_URL}/file_sample_registered_styles.html`);
 
     let registeredStylesResults = await extension.awaitMessage(

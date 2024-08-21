@@ -12,7 +12,9 @@
 <script type="text/javascript">
 "use strict";
 
-const {FileUtils} = ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+const {FileUtils} = ChromeUtils.importESModule(
+  "resource://gre/modules/FileUtils.sys.mjs"
+);
 
 const PROMPTLESS_DOWNLOAD_PREF = "browser.download.useDownloadDir";
 
@@ -76,7 +78,7 @@ add_task(async function test_downloads_saveAs() {
   defaultFile.append(DOWNLOAD_FILENAME);
 
   const {MockFilePicker} = SpecialPowers;
-  MockFilePicker.init(window);
+  MockFilePicker.init(SpecialPowers.wrap(window).browsingContext);
 
   function mockFilePickerCallback(expectedStartingDir, pickedFile) {
     return fp => {

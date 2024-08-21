@@ -56,7 +56,7 @@ export const AsanReporter = {
     processDirectory();
   },
 
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     if (aTopic == "ipc:content-shutdown") {
       aSubject.QueryInterface(Ci.nsIPropertyBag2);
       if (!aSubject.get("abnormal")) {
@@ -135,7 +135,7 @@ function submitToServer(data) {
       tool: "asan-nightly-program",
     };
 
-    var xhr = new XMLHttpRequest();
+    var xhr = new XMLHttpRequest({ mozAnon: !auth_token });
     xhr.open("POST", api_url, true);
     xhr.setRequestHeader("Content-Type", "application/json");
 

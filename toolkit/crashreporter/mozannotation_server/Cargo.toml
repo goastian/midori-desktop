@@ -1,0 +1,17 @@
+[package]
+name = "mozannotation_server"
+version = "0.1.0"
+authors = ["Gabriele Svelto"]
+edition = "2018"
+license = "MPL-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mozannotation_client = { path = "../mozannotation_client/" }
+process_reader = { path = "../process_reader/" }
+thin-vec = { version = "0.2.7", features = ["gecko-ffi"] }
+thiserror = "1.0.38"
+
+[target."cfg(any(target_os = \"linux\", target_os = \"android\"))".dependencies]
+memoffset = "0.8"

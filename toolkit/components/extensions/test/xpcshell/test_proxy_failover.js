@@ -13,7 +13,7 @@ AddonTestUtils.createAppInfo(
 Services.prefs.setBoolPref("network.proxy.allow_hijacking_localhost", true);
 
 // Pref is not builtin if direct failover is disabled in compile config.
-XPCOMUtils.defineLazyGetter(this, "directFailoverDisabled", () => {
+ChromeUtils.defineLazyGetter(this, "directFailoverDisabled", () => {
   return (
     Services.prefs.getPrefType("network.proxy.failover_direct") ==
     Ci.nsIPrefBranch.PREF_INVALID
@@ -25,7 +25,9 @@ const { ServiceRequest } = ChromeUtils.importESModule(
 );
 
 // Prevent the request from reaching out to the network.
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 // No hosts defined to avoid the default proxy filter setup.
 const nonProxiedServer = createHttpServer();
@@ -93,7 +95,7 @@ add_task(async function setup() {
 async function getProxyExtension(proxyDetails) {
   async function background(proxyDetails) {
     browser.proxy.onRequest.addListener(
-      details => {
+      () => {
         return proxyDetails;
       },
       { urls: ["<all_urls>"] }
@@ -163,7 +165,7 @@ add_task(
       contentUrl,
       `${contentUrl}?t=${Math.random()}`
     )
-      .then(text => {
+      .then(() => {
         ok(false, "xhr unexpectedly completed");
       })
       .catch(e => {
@@ -194,7 +196,7 @@ add_task(
         equal(req.proxy.type, "direct", "proxy failover to direct");
         equal(req.text, "ok!", "xhr completed");
       })
-      .catch(req => {
+      .catch(() => {
         ok(false, "xhr failed");
       });
 

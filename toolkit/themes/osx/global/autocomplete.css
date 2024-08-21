@@ -13,10 +13,12 @@ html|input[nomatch="true"][highlightnonmatches="true"] {
 
 panel[type="autocomplete-richlistbox"] {
   appearance: none;
+  background-color: transparent;
   font: icon;
   --panel-padding: 0px;
   --panel-color: FieldText;
   --panel-background: Field;
+  --panel-border-color: ThreeDShadow;
 }
 
 /* ::::: richlistbox autocomplete ::::: */
@@ -44,7 +46,6 @@ panel[type="autocomplete-richlistbox"] {
   max-height: 16px;
   margin-inline-start: 6px;
   margin-inline-end: 8px;
-  list-style-image: url("chrome://global/skin/icons/defaultFavicon.svg");
   -moz-context-properties: fill;
   fill: currentColor;
 }
@@ -76,4 +77,10 @@ panel[type="autocomplete-richlistbox"] {
 .ac-text-overflow-container {
   padding: 0 !important;
   margin: 0 !important;
+}
+
+/* On Mac, the autocomplete panel changes color in system dark mode. We need
+   to change the contrast on warning-background-color accordingly. */
+#PopupAutoComplete > richlistbox > richlistitem {
+  --status-background-color: light-dark(rgba(248,232,28,.2), rgba(248,232,28,.6)) !important;
 }

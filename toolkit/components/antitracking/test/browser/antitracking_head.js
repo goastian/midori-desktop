@@ -36,7 +36,8 @@ this.AntiTracking = {
       .STATE_COOKIES_BLOCKED_TRACKER,
     iframeSandbox = null,
     accessRemoval = null,
-    callbackAfterRemoval = null
+    callbackAfterRemoval = null,
+    iframeAllow = null
   ) {
     // Normal mode
     this.runTest(
@@ -51,7 +52,8 @@ this.AntiTracking = {
       false,
       iframeSandbox,
       accessRemoval,
-      callbackAfterRemoval
+      callbackAfterRemoval,
+      iframeAllow
     );
 
     // Private mode
@@ -67,7 +69,8 @@ this.AntiTracking = {
       true,
       iframeSandbox,
       accessRemoval,
-      callbackAfterRemoval
+      callbackAfterRemoval,
+      iframeAllow
     );
   },
 
@@ -84,7 +87,8 @@ this.AntiTracking = {
     runInPrivateWindow = false,
     iframeSandbox = null,
     accessRemoval = null,
-    callbackAfterRemoval = null
+    callbackAfterRemoval = null,
+    iframeAllow = null
   ) {
     let runExtraTests = true;
     let options = {};
@@ -128,6 +132,7 @@ this.AntiTracking = {
       iframeSandbox,
       accessRemoval,
       callbackAfterRemoval,
+      iframeAllow,
     });
     this._createCleanupTask(cleanupFunction);
 
@@ -152,6 +157,7 @@ this.AntiTracking = {
           iframeSandbox,
           accessRemoval: null, // only passed with non-blocking callback
           callbackAfterRemoval: null,
+          iframeAllow,
         });
         this._createCleanupTask(cleanupFunction);
 
@@ -166,6 +172,7 @@ this.AntiTracking = {
           iframeSandbox,
           accessRemoval: null, // only passed with non-blocking callback
           callbackAfterRemoval: null,
+          iframeAllow,
         });
         this._createCleanupTask(cleanupFunction);
 
@@ -182,6 +189,7 @@ this.AntiTracking = {
           iframeSandbox,
           accessRemoval: null, // only passed with non-blocking callback
           callbackAfterRemoval: null,
+          iframeAllow,
         });
         this._createCleanupTask(cleanupFunction);
 
@@ -196,23 +204,7 @@ this.AntiTracking = {
           iframeSandbox,
           accessRemoval: null, // only passed with non-blocking callback
           callbackAfterRemoval: null,
-        });
-        this._createCleanupTask(cleanupFunction);
-
-        this._createTask({
-          name: name + " reject foreign without exception",
-          cookieBehavior: BEHAVIOR_REJECT_FOREIGN,
-          allowList: true,
-          callback: callbackNonTracking,
-          extraPrefs: [
-            ["network.cookie.rejectForeignWithExceptions.enabled", false],
-            ...(extraPrefs || []),
-          ],
-          expectedBlockingNotifications: 0,
-          runInPrivateWindow,
-          iframeSandbox,
-          accessRemoval: null, // only passed with non-blocking callback
-          callbackAfterRemoval: null,
+          iframeAllow,
         });
         this._createCleanupTask(cleanupFunction);
 
@@ -221,15 +213,13 @@ this.AntiTracking = {
           cookieBehavior: BEHAVIOR_REJECT_FOREIGN,
           allowList: true,
           callback: callbackNonTracking,
-          extraPrefs: [
-            ["network.cookie.rejectForeignWithExceptions.enabled", true],
-            ...(extraPrefs || []),
-          ],
+          extraPrefs: [...(extraPrefs || [])],
           expectedBlockingNotifications: 0,
           runInPrivateWindow,
           iframeSandbox,
           accessRemoval,
           callbackAfterRemoval,
+          iframeAllow,
         });
         this._createCleanupTask(cleanupFunction);
 
@@ -238,10 +228,7 @@ this.AntiTracking = {
           cookieBehavior: BEHAVIOR_REJECT_FOREIGN,
           allowList: false,
           callback: callbackTracking,
-          extraPrefs: [
-            ["network.cookie.rejectForeignWithExceptions.enabled", false],
-            ...(extraPrefs || []),
-          ],
+          extraPrefs: [...(extraPrefs || [])],
           expectedBlockingNotifications: expectedBlockingNotifications
             ? Ci.nsIWebProgressListener.STATE_COOKIES_BLOCKED_FOREIGN
             : 0,
@@ -249,24 +236,7 @@ this.AntiTracking = {
           iframeSandbox,
           accessRemoval,
           callbackAfterRemoval,
-        });
-        this._createCleanupTask(cleanupFunction);
-
-        this._createTask({
-          name,
-          cookieBehavior: BEHAVIOR_REJECT_FOREIGN,
-          allowList: false,
-          callback: callbackNonTracking,
-          extraPrefs: [
-            ["network.cookie.rejectForeignWithExceptions.enabled", true],
-            ...(extraPrefs || []),
-          ],
-          expectedBlockingNotifications: false,
-          runInPrivateWindow,
-          iframeSandbox,
-          accessRemoval: null, // only passed with non-blocking callback
-          callbackAfterRemoval: null,
-          thirdPartyPage: TEST_ANOTHER_3RD_PARTY_PAGE,
+          iframeAllow,
         });
         this._createCleanupTask(cleanupFunction);
 
@@ -281,6 +251,7 @@ this.AntiTracking = {
           iframeSandbox,
           accessRemoval,
           callbackAfterRemoval,
+          iframeAllow,
         });
         this._createCleanupTask(cleanupFunction);
 
@@ -296,6 +267,7 @@ this.AntiTracking = {
           accessRemoval: null, // only passed with non-blocking callback
           callbackAfterRemoval: null,
           thirdPartyPage: TEST_ANOTHER_3RD_PARTY_PAGE,
+          iframeAllow,
         });
         this._createCleanupTask(cleanupFunction);
       } else {
@@ -311,6 +283,7 @@ this.AntiTracking = {
           iframeSandbox,
           accessRemoval: options.accessRemoval,
           callbackAfterRemoval: options.callbackAfterRemoval,
+          iframeAllow,
         });
         this._createCleanupTask(cleanupFunction);
       }
@@ -326,22 +299,8 @@ this.AntiTracking = {
           runInPrivateWindow,
           iframeSandbox,
           false,
-          extraPrefs
-        );
-        this._createCleanupTask(cleanupFunction);
-
-        this._createWindowOpenTask(
-          name,
-          BEHAVIOR_REJECT_FOREIGN,
-          callbackTracking,
-          callbackNonTracking,
-          runInPrivateWindow,
-          iframeSandbox,
-          false,
-          [
-            ["network.cookie.rejectForeignWithExceptions.enabled", true],
-            ...(extraPrefs || []),
-          ]
+          extraPrefs,
+          iframeAllow
         );
         this._createCleanupTask(cleanupFunction);
 
@@ -354,22 +313,8 @@ this.AntiTracking = {
           runInPrivateWindow,
           iframeSandbox,
           true,
-          extraPrefs
-        );
-        this._createCleanupTask(cleanupFunction);
-
-        this._createWindowOpenTask(
-          name,
-          BEHAVIOR_REJECT_FOREIGN,
-          callbackTracking,
-          callbackNonTracking,
-          runInPrivateWindow,
-          iframeSandbox,
-          true,
-          [
-            ["network.cookie.rejectForeignWithExceptions.enabled", true],
-            ...(extraPrefs || []),
-          ]
+          extraPrefs,
+          iframeAllow
         );
         this._createCleanupTask(cleanupFunction);
       }
@@ -385,22 +330,8 @@ this.AntiTracking = {
           runInPrivateWindow,
           iframeSandbox,
           false,
-          extraPrefs
-        );
-        this._createCleanupTask(cleanupFunction);
-
-        this._createUserInteractionTask(
-          name,
-          BEHAVIOR_REJECT_FOREIGN,
-          callbackTracking,
-          callbackNonTracking,
-          runInPrivateWindow,
-          iframeSandbox,
-          false,
-          [
-            ["network.cookie.rejectForeignWithExceptions.enabled", true],
-            ...(extraPrefs || []),
-          ]
+          extraPrefs,
+          iframeAllow
         );
         this._createCleanupTask(cleanupFunction);
 
@@ -413,22 +344,8 @@ this.AntiTracking = {
           runInPrivateWindow,
           iframeSandbox,
           true,
-          extraPrefs
-        );
-        this._createCleanupTask(cleanupFunction);
-
-        this._createUserInteractionTask(
-          name,
-          BEHAVIOR_REJECT_FOREIGN,
-          callbackTracking,
-          callbackNonTracking,
-          runInPrivateWindow,
-          iframeSandbox,
-          true,
-          [
-            ["network.cookie.rejectForeignWithExceptions.enabled", true],
-            ...(extraPrefs || []),
-          ]
+          extraPrefs,
+          iframeAllow
         );
         this._createCleanupTask(cleanupFunction);
       }
@@ -439,7 +356,7 @@ this.AntiTracking = {
     let cnt = 0;
 
     return new Promise(resolve => {
-      Services.obs.addObserver(function observer(subject, topic, data) {
+      Services.obs.addObserver(function observer(subject, topic) {
         if (topic != targetTopic) {
           return;
         }
@@ -572,6 +489,8 @@ this.AntiTracking = {
           " window " +
           " with iframe sandbox set to " +
           options.iframeSandbox +
+          " and iframe allow set to " +
+          options.iframeAllow +
           " and access removal set to " +
           options.accessRemoval +
           (typeof options.thirdPartyPage == "string"
@@ -727,6 +646,7 @@ this.AntiTracking = {
               : null,
             accessRemoval: options.accessRemoval,
             iframeSandbox: options.iframeSandbox,
+            iframeAllow: options.iframeAllow,
             allowList: options.allowList,
             doAccessRemovalChecks,
           },
@@ -743,6 +663,9 @@ this.AntiTracking = {
             };
             if (typeof obj.iframeSandbox == "string") {
               ifr.setAttribute("sandbox", obj.iframeSandbox);
+            }
+            if (typeof obj.iframeAllow == "string") {
+              ifr.setAttribute("allow", obj.iframeAllow);
             }
 
             content.addEventListener("message", function msg(event) {
@@ -782,6 +705,9 @@ this.AntiTracking = {
                   };
                   if (typeof obj.iframeSandbox == "string") {
                     ifr.setAttribute("sandbox", obj.iframeSandbox);
+                  }
+                  if (typeof obj.iframeAllow == "string") {
+                    ifr.setAttribute("allow", obj.iframeAllow);
                   }
 
                   content.addEventListener("message", function msg(event) {
@@ -825,7 +751,7 @@ this.AntiTracking = {
         doAccessRemovalChecks &&
         options.accessRemoval == "navigate-topframe"
       ) {
-        BrowserTestUtils.loadURIString(browser, TEST_4TH_PARTY_PAGE);
+        BrowserTestUtils.startLoadingURIString(browser, TEST_4TH_PARTY_PAGE);
         await BrowserTestUtils.browserLoaded(browser);
 
         let pageshow = BrowserTestUtils.waitForContentEvent(
@@ -844,6 +770,7 @@ this.AntiTracking = {
                 ? options.callbackAfterRemoval.toString()
                 : null,
               iframeSandbox: options.iframeSandbox,
+              iframeAllow: options.iframeAllow,
             },
           ],
           async function (obj) {
@@ -856,6 +783,9 @@ this.AntiTracking = {
             };
             if (typeof obj.iframeSandbox == "string") {
               ifr.setAttribute("sandbox", obj.iframeSandbox);
+            }
+            if (typeof obj.iframeAllow == "string") {
+              ifr.setAttribute("allow", obj.iframeAllow);
             }
 
             content.addEventListener("message", function msg(event) {
@@ -1002,7 +932,8 @@ this.AntiTracking = {
     runInPrivateWindow,
     iframeSandbox,
     testInSubIFrame,
-    extraPrefs
+    extraPrefs,
+    iframeAllow
   ) {
     add_task(async function () {
       info(
@@ -1067,6 +998,7 @@ this.AntiTracking = {
             blockingCallback: blockingCallback.toString(),
             nonBlockingCallback: nonBlockingCallback.toString(),
             iframeSandbox,
+            iframeAllow,
           },
         ],
         async function (obj) {
@@ -1078,6 +1010,9 @@ this.AntiTracking = {
             };
             if (typeof obj.iframeSandbox == "string") {
               ifr.setAttribute("sandbox", obj.iframeSandbox);
+            }
+            if (typeof obj.iframeAllow == "string") {
+              ifr.setAttribute("allow", obj.iframeAllow);
             }
 
             content.addEventListener("message", function msg(event) {
@@ -1123,7 +1058,8 @@ this.AntiTracking = {
     runInPrivateWindow,
     iframeSandbox,
     testInSubIFrame,
-    extraPrefs
+    extraPrefs,
+    iframeAllow
   ) {
     add_task(async function () {
       info(
@@ -1188,6 +1124,7 @@ this.AntiTracking = {
             popup: TEST_POPUP_PAGE,
             blockingCallback: blockingCallback.toString(),
             iframeSandbox,
+            iframeAllow,
           },
         ],
         async function (obj) {
@@ -1197,6 +1134,9 @@ this.AntiTracking = {
           });
           if (typeof obj.iframeSandbox == "string") {
             ifr.setAttribute("sandbox", obj.iframeSandbox);
+          }
+          if (typeof obj.iframeAllow == "string") {
+            ifr.setAttribute("allow", obj.iframeAllow);
           }
           content.document.body.appendChild(ifr);
           ifr.src = obj.page;
@@ -1234,8 +1174,7 @@ this.AntiTracking = {
           let windowClosed = new content.Promise(resolve => {
             Services.ww.registerNotification(function notification(
               aSubject,
-              aTopic,
-              aData
+              aTopic
             ) {
               if (aTopic == "domwindowclosed") {
                 Services.ww.unregisterNotification(notification);
@@ -1318,6 +1257,7 @@ this.AntiTracking = {
             popup: TEST_POPUP_PAGE,
             nonBlockingCallback: nonBlockingCallback.toString(),
             iframeSandbox,
+            iframeAllow,
           },
         ],
         async function (obj) {
@@ -1328,6 +1268,9 @@ this.AntiTracking = {
           if (typeof obj.iframeSandbox == "string") {
             ifr.setAttribute("sandbox", obj.iframeSandbox);
           }
+          if (typeof obj.iframeAllow == "string") {
+            ifr.setAttribute("allow", obj.iframeAllow);
+          }
           content.document.body.appendChild(ifr);
           ifr.src = obj.page;
           await loading;
@@ -1335,8 +1278,7 @@ this.AntiTracking = {
           let windowClosed = new content.Promise(resolve => {
             Services.ww.registerNotification(function notification(
               aSubject,
-              aTopic,
-              aData
+              aTopic
             ) {
               if (aTopic == "domwindowclosed") {
                 Services.ww.unregisterNotification(notification);
@@ -1422,12 +1364,12 @@ this.AntiTracking = {
 
       function Listener() {}
       Listener.prototype = {
-        onStartRequest(request) {},
+        onStartRequest() {},
         onDataAvailable(request, stream, off, cnt) {
           // Consume the data to prevent hitting the assertion.
           NetUtil.readInputStreamToString(stream, cnt);
         },
-        onStopRequest(request, st) {
+        onStopRequest(request) {
           let status = request.QueryInterface(Ci.nsIHttpChannel).responseStatus;
           if (status == 200) {
             resolve();

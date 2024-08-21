@@ -13,12 +13,12 @@ function initProxy() {
     let proxyCallback = {
       QueryInterface: ChromeUtils.generateQI(["nsIProtocolProxyCallback"]),
 
-      onProxyAvailable(req, uri, pi, status) {
+      onProxyAvailable(_req, _uri, _pi, _status) {
         class ProxyChannelListener {
-          onStartRequest(request) {
+          onStartRequest(_request) {
             resolve(proxyChannel);
           }
-          onStopRequest(request, status) {}
+          onStopRequest(_request, _status) {}
         }
         // I'm cheating a bit here... We should probably do some magic foo to get
         // something implementing nsIProxiedProtocolHandler and then call
@@ -60,10 +60,6 @@ function initProxy() {
 }
 
 add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    // This test relies on tab auth prompts.
-    set: [["prompts.modalType.httpAuth", Services.prompt.MODAL_TYPE_TAB]],
-  });
   proxyChannel = await initProxy();
 });
 
@@ -81,7 +77,7 @@ function getAuthPromptCallback() {
     callbackResolver = resolve;
   });
   let callback = {
-    onAuthAvailable(context, authInfo) {
+    onAuthAvailable(_context, authInfo) {
       callbackResolver(authInfo);
     },
   };

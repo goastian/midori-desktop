@@ -18,13 +18,16 @@
 // strings like `foo.bar[123]["key"]`
 export class UniFFITypeError extends TypeError {
   constructor(reason) {
-    super();
+    // our `message` getter isn't invoked in all cases, so we supply a default
+    // to the `TypeError` constructor.
+    super(reason);
     this.reason = reason;
     this.itemDescriptionParts = [];
   }
 
   addItemDescriptionPart(part) {
     this.itemDescriptionParts.push(part);
+    this.updateMessage();
   }
 
   itemDescription() {
@@ -33,7 +36,7 @@ export class UniFFITypeError extends TypeError {
     return itemDescriptionParts.join("");
   }
 
-  get message() {
-    return `${this.itemDescription()}: ${this.reason}`;
+  updateMessage() {
+    this.message = `${this.itemDescription()}: ${this.reason}`;
   }
 }

@@ -213,7 +213,7 @@ impl<'s> Store<'s> {
                         let title = String::from_utf16(&*raw_title)?;
                         url.map(|url| Content::Bookmark {
                             title,
-                            url_href: url.into_string(),
+                            url_href: url.into(),
                         })
                     }
                     Kind::Folder | Kind::Livemark => {
@@ -551,11 +551,6 @@ fn update_local_items_in_places<'t>(
         statement.execute()?;
     }
 
-    // Trigger frecency updates for all new origins.
-    debug!(driver, "Updating origins for new URLs");
-    controller.err_if_aborted()?;
-    db.exec("DELETE FROM moz_updateoriginsinsert_temp")?;
-
     // Build a table of new and updated items.
     debug!(driver, "Staging apply remote item ops");
     for chunk in ops.apply_remote_items.chunks(db.variable_limit()? / 3) {
@@ -746,11 +741,6 @@ fn update_local_items_in_places<'t>(
 
     debug!(driver, "Applying remote items");
     apply_remote_items(db, driver, controller)?;
-
-    // Trigger frecency updates for all affected origins.
-    debug!(driver, "Updating origins for changed URLs");
-    controller.err_if_aborted()?;
-    db.exec("DELETE FROM moz_updateoriginsupdate_temp")?;
 
     // Fires the `applyNewLocalStructure` trigger.
     debug!(driver, "Applying new local structure");
@@ -1104,7 +1094,8 @@ fn stage_items_to_upload(
         "INSERT OR IGNORE INTO itemsToUpload(id, guid, syncChangeCounter,
                                              parentGuid, parentTitle, dateAdded,
                                              type, title, placeId, isQuery, url,
-                                             keyword, position, tagFolderName)
+                                             keyword, position, tagFolderName,
+                                             unknownFields)
          {}
          JOIN itemsToApply n ON n.mergedGuid = b.guid
          WHERE n.localDateAddedMicroseconds < n.remoteDateAddedMicroseconds",
@@ -1118,7 +1109,8 @@ fn stage_items_to_upload(
                                                  parentGuid, parentTitle,
                                                  dateAdded, type, title,
                                                  placeId, isQuery, url, keyword,
-                                                 position, tagFolderName)
+                                                 position, tagFolderName,
+                                                 unknownFields)
              {}
              WHERE b.guid IN ({})",
             UploadItemsFragment("b"),
@@ -1227,7 +1219,6 @@ trait Column<T> {
     fn from_column(raw: T) -> Result<Self>
     where
         Self: Sized;
-    fn into_column(self) -> T;
 }
 
 impl Column<i64> for Kind {
@@ -1241,16 +1232,6 @@ impl Column<i64> for Kind {
             _ => return Err(Error::UnknownItemKind(raw)),
         })
     }
-
-    fn into_column(self) -> i64 {
-        match self {
-            Kind::Bookmark => mozISyncedBookmarksMerger::KIND_BOOKMARK as i64,
-            Kind::Query => mozISyncedBookmarksMerger::KIND_QUERY as i64,
-            Kind::Folder => mozISyncedBookmarksMerger::KIND_FOLDER as i64,
-            Kind::Livemark => mozISyncedBookmarksMerger::KIND_LIVEMARK as i64,
-            Kind::Separator => mozISyncedBookmarksMerger::KIND_SEPARATOR as i64,
-        }
-    }
 }
 
 impl Column<i64> for Validity {
@@ -1261,14 +1242,6 @@ impl Column<i64> for Validity {
             Ok(mozISyncedBookmarksMerger::VALIDITY_REPLACE) => Validity::Replace,
             _ => return Err(Error::UnknownItemValidity(raw).into()),
         })
-    }
-
-    fn into_column(self) -> i64 {
-        match self {
-            Validity::Valid => mozISyncedBookmarksMerger::VALIDITY_VALID as i64,
-            Validity::Reupload => mozISyncedBookmarksMerger::VALIDITY_REUPLOAD as i64,
-            Validity::Replace => mozISyncedBookmarksMerger::VALIDITY_REPLACE as i64,
-        }
     }
 }
 
@@ -1304,10 +1277,12 @@ impl fmt::Display for UploadItemsFragment {
                        (SELECT keyword FROM moz_keywords WHERE place_id = h.id),
                        {0}.position,
                        (SELECT get_query_param(substr(url, 7), 'tag')
-                        WHERE substr(h.url, 1, 6) = 'place:') AS tagFolderName
+                        WHERE substr(h.url, 1, 6) = 'place:') AS tagFolderName,
+                        v.unknownFields
                 FROM moz_bookmarks {0}
                 JOIN moz_bookmarks p ON p.id = {0}.parent
-                LEFT JOIN moz_places h ON h.id = {0}.fk",
+                LEFT JOIN moz_places h ON h.id = {0}.fk
+                LEFT JOIN items v ON v.guid = {0}.guid",
             self.0
         )
     }

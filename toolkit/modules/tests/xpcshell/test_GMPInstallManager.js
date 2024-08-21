@@ -14,7 +14,9 @@ const { setTimeout } = ChromeUtils.importESModule(
 const { FileUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/FileUtils.sys.mjs"
 );
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 const { Preferences } = ChromeUtils.importESModule(
   "resource://gre/modules/Preferences.sys.mjs"
 );
@@ -126,7 +128,10 @@ add_test(function test_checkForAddons_uninitWithoutInstall() {
     () => installManager.checkForAddons()
   );
   promise.then(res => {
-    Assert.ok(res.usedFallback);
+    Assert.equal(res.addons.length, 2);
+    for (let addon of res.addons) {
+      Assert.ok(addon.usedFallback);
+    }
     installManager.uninit();
     run_next_test();
   });
@@ -143,7 +148,10 @@ add_test(function test_checkForAddons_noResponse() {
     () => installManager.checkForAddons()
   );
   promise.then(res => {
-    Assert.ok(res.usedFallback);
+    Assert.equal(res.addons.length, 2);
+    for (let addon of res.addons) {
+      Assert.ok(addon.usedFallback);
+    }
     installManager.uninit();
     run_next_test();
   });
@@ -191,7 +199,10 @@ add_test(function test_checkForAddons_wrongResponseXML() {
     () => installManager.checkForAddons()
   );
   promise.then(res => {
-    Assert.ok(res.usedFallback);
+    Assert.equal(res.addons.length, 2);
+    for (let addon of res.addons) {
+      Assert.ok(addon.usedFallback);
+    }
     installManager.uninit();
     run_next_test();
   });
@@ -208,7 +219,10 @@ add_test(function test_checkForAddons_404Error() {
     () => installManager.checkForAddons()
   );
   promise.then(res => {
-    Assert.ok(res.usedFallback);
+    Assert.equal(res.addons.length, 2);
+    for (let addon of res.addons) {
+      Assert.ok(addon.usedFallback);
+    }
     installManager.uninit();
     run_next_test();
   });
@@ -237,7 +251,10 @@ add_test(function test_checkForAddons_abort() {
   }, 100);
 
   promise.then(res => {
-    Assert.ok(res.usedFallback);
+    Assert.equal(res.addons.length, 2);
+    for (let addon of res.addons) {
+      Assert.ok(addon.usedFallback);
+    }
     installManager.uninit();
     run_next_test();
   });
@@ -257,7 +274,10 @@ add_test(function test_checkForAddons_timeout() {
     () => installManager.checkForAddons()
   );
   promise.then(res => {
-    Assert.ok(res.usedFallback);
+    Assert.equal(res.addons.length, 2);
+    for (let addon of res.addons) {
+      Assert.ok(addon.usedFallback);
+    }
     installManager.uninit();
     run_next_test();
   });
@@ -290,7 +310,10 @@ add_test(function test_checkForAddons_bad_ssl() {
     () => installManager.checkForAddons()
   );
   promise.then(res => {
-    Assert.ok(res.usedFallback);
+    Assert.equal(res.addons.length, 2);
+    for (let addon of res.addons) {
+      Assert.ok(addon.usedFallback);
+    }
     installManager.uninit();
     if (PREF_KEY_URL_OVERRIDE_BACKUP) {
       Preferences.set(GMPPrefs.KEY_URL_OVERRIDE, PREF_KEY_URL_OVERRIDE_BACKUP);
@@ -314,7 +337,10 @@ add_test(function test_checkForAddons_notXML() {
   );
 
   promise.then(res => {
-    Assert.ok(res.usedFallback);
+    Assert.equal(res.addons.length, 2);
+    for (let addon of res.addons) {
+      Assert.ok(addon.usedFallback);
+    }
     installManager.uninit();
     run_next_test();
   });
@@ -551,12 +577,15 @@ add_task(async function test_checkForAddons_contentSignatureSuccess() {
     // Smoke test the results are as expected.
     // If the checkForAddons fails we'll get a fallback config,
     // so we'll get incorrect addons and these asserts will fail.
-    Assert.equal(res.usedFallback, false);
     Assert.equal(res.addons.length, 5);
     Assert.equal(res.addons[0].id, "test1");
+    Assert.equal(res.addons[0].usedFallback, false);
     Assert.equal(res.addons[1].id, "test2");
+    Assert.equal(res.addons[1].usedFallback, false);
     Assert.equal(res.addons[2].id, "test3");
+    Assert.equal(res.addons[2].usedFallback, false);
     Assert.equal(res.addons[3].id, "test4");
+    Assert.equal(res.addons[3].usedFallback, false);
     Assert.equal(res.addons[4].id, undefined);
   } catch (e) {
     Assert.ok(false, "checkForAddons should succeed");
@@ -611,15 +640,21 @@ add_task(async function test_checkForAddons_contentSignatureFailure() {
     // Smoke test the results are as expected.
     // Check addons will succeed above, but it will have fallen back to local
     // config. So the results will not be those from the HTTP server.
-    Assert.equal(res.usedFallback, true);
     // Some platforms don't have fallback config for all GMPs, but we should
     // always get at least 1.
     Assert.greaterOrEqual(res.addons.length, 1);
     if (res.addons.length == 1) {
       Assert.equal(res.addons[0].id, "gmp-widevinecdm");
+      Assert.equal(res.addons[0].usedFallback, true);
     } else {
       Assert.equal(res.addons[0].id, "gmp-gmpopenh264");
+      Assert.equal(res.addons[0].usedFallback, true);
       Assert.equal(res.addons[1].id, "gmp-widevinecdm");
+      Assert.equal(res.addons[1].usedFallback, true);
+      if (res.addons.length >= 3) {
+        Assert.equal(res.addons[2].id, "gmp-widevinecdm-l1");
+        Assert.equal(res.addons[2].usedFallback, true);
+      }
     }
   } catch (e) {
     Assert.ok(false, "checkForAddons should succeed");
@@ -996,7 +1031,7 @@ async function test_checkForAddons_installAddon(
       wantInstallReject
   );
   let httpServer = new HttpServer();
-  let dir = FileUtils.getDir("TmpD", [], true);
+  let dir = FileUtils.getDir("TmpD", []);
   httpServer.registerDirectory("/", dir);
   httpServer.start(-1);
   let testserverPort = httpServer.identity.primaryPort;
@@ -1194,7 +1229,7 @@ add_test(function test_installAddon_noServer() {
       GMPInstallManager.overrideLeaveDownloadedZip = true;
       let installPromise = installManager.installAddon(gmpAddon);
       installPromise.then(
-        extractedPaths => {
+        () => {
           do_throw("No server for install should reject");
         },
         err => {
@@ -1238,7 +1273,8 @@ add_task(async function test_GMPExtractor_paths() {
     "dummy_gmp.zip"
   );
   let tempDirName = "TmpDir#猫";
-  let tempDir = FileUtils.getDir("TmpD", [tempDirName], true);
+  let tempDir = FileUtils.getDir("TmpD", [tempDirName]);
+  tempDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
   let zipPath = PathUtils.join(tempDir.path, "dummy_gmp.zip");
   await IOUtils.copy(srcPath, zipPath);
   // The path inside the profile dir we'll extract to. Make sure we handle
@@ -1275,7 +1311,7 @@ add_task(async function test_GMPExtractor_paths() {
   if (AppConstants.platform == "macosx") {
     await Assert.rejects(
       IOUtils.getMacXAttr(extractedFile, "com.apple.quarantine"),
-      /NotFoundError: The file `.+' does not have an extended attribute `com.apple.quarantine'/,
+      /NotFoundError: Could not get extended attribute `com.apple.quarantine' from `.+': the file does not have the attribute/,
       "The 'com.apple.quarantine' attribute should not be present"
     );
   }
@@ -1342,8 +1378,8 @@ function mockRequest(inputStatus, inputResponse, options) {
   this._options = options || {};
 }
 mockRequest.prototype = {
-  overrideMimeType(aMimetype) {},
-  setRequestHeader(aHeader, aValue) {},
+  overrideMimeType() {},
+  setRequestHeader() {},
   status: null,
   channel: { set notificationCallbacks(aVal) {} },
   open(aMethod, aUrl) {
@@ -1357,7 +1393,7 @@ mockRequest.prototype = {
   },
   responseXML: null,
   responseText: null,
-  send(aBody) {
+  send() {
     executeSoon(() => {
       try {
         if (this._options.dropRequest) {
@@ -1445,9 +1481,8 @@ mockRequest.prototype = {
       }
     }
   },
-  addEventListener(aEvent, aValue, aCapturing) {
-    // eslint-disable-next-line no-eval
-    eval("this._on" + aEvent + " = aValue");
+  addEventListener(aEvent, aValue) {
+    this[`_on${aEvent}`] = aValue;
   },
   get wrappedJSObject() {
     return this;
@@ -1468,7 +1503,7 @@ function createNewZipFile(zipName, data) {
   let zipWriter = Cc["@mozilla.org/zipwriter;1"].createInstance(
     Ci.nsIZipWriter
   );
-  let zipFile = FileUtils.getFile("TmpD", [zipName]);
+  let zipFile = new FileUtils.File(PathUtils.join(PathUtils.tempDir, zipName));
   if (zipFile.exists()) {
     zipFile.remove(false);
   }

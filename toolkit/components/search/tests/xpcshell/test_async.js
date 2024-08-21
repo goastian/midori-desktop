@@ -1,7 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-add_task(async function setup() {
+add_setup(async function () {
   await AddonTestUtils.promiseStartupManager();
   await SearchTestUtils.useTestEngines("simple-engines");
   Services.fog.initializeFOG();
@@ -26,10 +26,6 @@ add_task(async function test_async() {
   engine = Services.search.getEngineByName("Simple Engine");
   Assert.notEqual(engine, null);
   Assert.ok(engine.isAppProvided, "Should be shown as an app-provided engine");
-
-  // Check the hidden engine is not loaded.
-  engine = Services.search.getEngineByName("hidden");
-  Assert.equal(engine, null);
 
   // Check if there is a value for startup_time
   Assert.notEqual(

@@ -117,7 +117,7 @@ add_task(function test_gifft_memory_dist() {
   Glean.testOnlyIpc.aMemoryDist.accumulate(Math.pow(2, 31));
   Assert.throws(
     () => Glean.testOnlyIpc.aMemoryDist.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Did not accumulate correctly"
   );
 });
@@ -176,10 +176,7 @@ add_task(async function test_gifft_timing_dist() {
   // But we can guarantee it's only two samples.
   Assert.equal(
     2,
-    Object.entries(data.values).reduce(
-      (acc, [bucket, count]) => acc + count,
-      0
-    ),
+    Object.entries(data.values).reduce((acc, [, count]) => acc + count, 0),
     "Only two buckets with samples"
   );
 
@@ -188,10 +185,7 @@ add_task(async function test_gifft_timing_dist() {
   Assert.greaterOrEqual(data.sum, 13, "Histogram's in milliseconds");
   Assert.equal(
     2,
-    Object.entries(data.values).reduce(
-      (acc, [bucket, count]) => acc + count,
-      0
-    ),
+    Object.entries(data.values).reduce((acc, [, count]) => acc + count, 0),
     "Only two samples"
   );
 });
@@ -232,7 +226,15 @@ add_task(function test_gifft_events() {
   Assert.equal("test_only.ipc", events[0].category);
   Assert.equal("no_extra_event", events[0].name);
 
-  let extra = { extra1: "can set extras", extra2: "passing more data" };
+  let extra = {
+    value: "a value for Telemetry",
+    extra1: "can set extras",
+    extra2: "passing more data",
+  };
+  // Since `value` will be stripped and used for the value in the Legacy Telemetry API, we need
+  // a copy without it in order to test with `assertEvents` later.
+  let { extra1, extra2 } = extra;
+  let telExtra = { extra1, extra2 };
   Glean.testOnlyIpc.anEvent.record(extra);
   events = Glean.testOnlyIpc.anEvent.testGetValue();
   Assert.equal(1, events.length);
@@ -243,7 +245,7 @@ add_task(function test_gifft_events() {
   TelemetryTestUtils.assertEvents(
     [
       ["telemetry.test", "not_expired_optout", "object1", undefined, undefined],
-      ["telemetry.test", "mirror_with_extra", "object1", null, extra],
+      ["telemetry.test", "mirror_with_extra", "object1", extra.value, telExtra],
     ],
     { category: "telemetry.test" }
   );
@@ -278,7 +280,7 @@ add_task(function test_gifft_labeled_counter() {
   Glean.testOnlyIpc.aLabeledCounter["1".repeat(72)].add(3);
   Assert.throws(
     () => Glean.testOnlyIpc.aLabeledCounter.__other__.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Can't get the value when you're error'd"
   );
 
@@ -345,7 +347,7 @@ add_task(async function test_gifft_labeled_boolean() {
   Glean.testOnly.mirrorsForLabeledBools["1".repeat(72)].set(true);
   Assert.throws(
     () => Glean.testOnly.mirrorsForLabeledBools.__other__.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Should throw because of a recording error."
   );
 
@@ -380,141 +382,126 @@ add_task(function test_gifft_rate() {
   );
 });
 
-add_task(
-  {
-    // bug 1670259 to see if we can implement `testResetFOG` on Android.
-    skip_if: () => AppConstants.platform == "android",
-  },
-  function test_gifft_numeric_limits() {
-    // Glean and Telemetry don't share the same storage sizes or signedness.
-    // Check the edges.
+add_task(function test_gifft_numeric_limits() {
+  // Glean and Telemetry don't share the same storage sizes or signedness.
+  // Check the edges.
 
-    // 0) Reset everything
-    Services.fog.testResetFOG();
-    Services.telemetry.getSnapshotForHistograms("main", true /* aClearStore */);
-    Services.telemetry.getSnapshotForScalars("main", true /* aClearStore */);
-    Services.telemetry.getSnapshotForKeyedScalars(
-      "main",
-      true /* aClearStore */
-    );
+  // 0) Reset everything
+  Services.fog.testResetFOG();
+  Services.telemetry.getSnapshotForHistograms("main", true /* aClearStore */);
+  Services.telemetry.getSnapshotForScalars("main", true /* aClearStore */);
+  Services.telemetry.getSnapshotForKeyedScalars("main", true /* aClearStore */);
 
-    // 1) Counter: i32 (saturates), mirrored to uint Scalar: u32 (overflows)
-    // 1.1) Negative parameters refused.
-    Glean.testOnlyIpc.aCounter.add(-20);
-    // Unfortunately we can't check what the error was, due to API design.
-    // (chutten blames chutten for his shortsightedness)
-    Assert.throws(
-      () => Glean.testOnlyIpc.aCounter.testGetValue(),
-      /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
-      "Can't get the value when you're error'd"
-    );
-    Assert.equal(undefined, scalarValue("telemetry.test.mirror_for_counter"));
-    // Clear the error state
-    Services.fog.testResetFOG();
+  // 1) Counter: i32 (saturates), mirrored to uint Scalar: u32 (overflows)
+  // 1.1) Negative parameters refused.
+  Glean.testOnlyIpc.aCounter.add(-20);
+  // Unfortunately we can't check what the error was, due to API design.
+  // (chutten blames chutten for his shortsightedness)
+  Assert.throws(
+    () => Glean.testOnlyIpc.aCounter.testGetValue(),
+    /DataError/,
+    "Can't get the value when you're error'd"
+  );
+  Assert.equal(undefined, scalarValue("telemetry.test.mirror_for_counter"));
+  // Clear the error state
+  Services.fog.testResetFOG();
 
-    // 1.2) Values that sum larger than u32::max saturate (counter) and overflow (Scalar)
-    // Sums to 2^32 + 1
-    Glean.testOnlyIpc.aCounter.add(Math.pow(2, 31) - 1);
-    Glean.testOnlyIpc.aCounter.add(1);
-    Glean.testOnlyIpc.aCounter.add(Math.pow(2, 31) - 1);
-    Glean.testOnlyIpc.aCounter.add(2);
-    // Glean doesn't actually throw on saturation (bug 1751469),
-    // so we can just check the saturation value.
-    Assert.equal(
-      Math.pow(2, 31) - 1,
-      Glean.testOnlyIpc.aCounter.testGetValue()
-    );
-    // Telemetry will have wrapped around to 1
-    Assert.equal(1, scalarValue("telemetry.test.mirror_for_counter"));
+  // 1.2) Values that sum larger than u32::max saturate (counter) and overflow (Scalar)
+  // Sums to 2^32 + 1
+  Glean.testOnlyIpc.aCounter.add(Math.pow(2, 31) - 1);
+  Glean.testOnlyIpc.aCounter.add(1);
+  Glean.testOnlyIpc.aCounter.add(Math.pow(2, 31) - 1);
+  Glean.testOnlyIpc.aCounter.add(2);
+  // Glean doesn't actually throw on saturation (bug 1751469),
+  // so we can just check the saturation value.
+  Assert.equal(Math.pow(2, 31) - 1, Glean.testOnlyIpc.aCounter.testGetValue());
+  // Telemetry will have wrapped around to 1
+  Assert.equal(1, scalarValue("telemetry.test.mirror_for_counter"));
 
-    // 2) Quantity: i64 (saturates), mirrored to uint Scalar: u32 (overflows)
-    // 2.1) Negative parameters refused.
-    Glean.testOnly.meaningOfLife.set(-42);
-    // Glean will error on this.
-    Assert.throws(
-      () => Glean.testOnly.meaningOfLife.testGetValue(),
-      /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
-      "Can't get the value when you're error'd"
-    );
-    // GIFFT doesn't tell Telemetry about the weird value at all.
-    Assert.equal(undefined, scalarValue("telemetry.test.mirror_for_quantity"));
-    // Clear the error state
-    Services.fog.testResetFOG();
+  // 2) Quantity: i64 (saturates), mirrored to uint Scalar: u32 (overflows)
+  // 2.1) Negative parameters refused.
+  Glean.testOnly.meaningOfLife.set(-42);
+  // Glean will error on this.
+  Assert.throws(
+    () => Glean.testOnly.meaningOfLife.testGetValue(),
+    /DataError/,
+    "Can't get the value when you're error'd"
+  );
+  // GIFFT doesn't tell Telemetry about the weird value at all.
+  Assert.equal(undefined, scalarValue("telemetry.test.mirror_for_quantity"));
+  // Clear the error state
+  Services.fog.testResetFOG();
 
-    // 2.2) A parameter larger than u32::max is passed to Glean unchanged,
-    //      but is clamped to u32::max before being passed to Telemetry.
-    Glean.testOnly.meaningOfLife.set(Math.pow(2, 32));
-    Assert.equal(Math.pow(2, 32), Glean.testOnly.meaningOfLife.testGetValue());
-    Assert.equal(
-      Math.pow(2, 32) - 1,
-      scalarValue("telemetry.test.mirror_for_quantity")
-    );
+  // 2.2) A parameter larger than u32::max is passed to Glean unchanged,
+  //      but is clamped to u32::max before being passed to Telemetry.
+  Glean.testOnly.meaningOfLife.set(Math.pow(2, 32));
+  Assert.equal(Math.pow(2, 32), Glean.testOnly.meaningOfLife.testGetValue());
+  Assert.equal(
+    Math.pow(2, 32) - 1,
+    scalarValue("telemetry.test.mirror_for_quantity")
+  );
 
-    // 3) Rate: two i32 (saturates), mirrored to keyed uint Scalar: u32s (overflow)
-    // 3.1) Negative parameters refused.
-    Glean.testOnlyIpc.irate.addToNumerator(-22);
-    Glean.testOnlyIpc.irate.addToDenominator(7);
-    Assert.throws(
-      () => Glean.testOnlyIpc.irate.testGetValue(),
-      /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
-      "Can't get the value when you're error'd"
-    );
-    Assert.deepEqual(
-      { denominator: 7 },
-      keyedScalarValue("telemetry.test.mirror_for_rate")
-    );
-    // Clear the error state
-    Services.fog.testResetFOG();
-    // Clear the partial Telemetry value
-    Services.telemetry.getSnapshotForKeyedScalars(
-      "main",
-      true /* aClearStore */
-    );
+  // 3) Rate: two i32 (saturates), mirrored to keyed uint Scalar: u32s (overflow)
+  // 3.1) Negative parameters refused.
+  Glean.testOnlyIpc.irate.addToNumerator(-22);
+  Glean.testOnlyIpc.irate.addToDenominator(7);
+  Assert.throws(
+    () => Glean.testOnlyIpc.irate.testGetValue(),
+    /DataError/,
+    "Can't get the value when you're error'd"
+  );
+  Assert.deepEqual(
+    { denominator: 7 },
+    keyedScalarValue("telemetry.test.mirror_for_rate")
+  );
+  // Clear the error state
+  Services.fog.testResetFOG();
+  // Clear the partial Telemetry value
+  Services.telemetry.getSnapshotForKeyedScalars("main", true /* aClearStore */);
 
-    // Now the denominator:
-    Glean.testOnlyIpc.irate.addToNumerator(22);
-    Glean.testOnlyIpc.irate.addToDenominator(-7);
-    Assert.throws(
-      () => Glean.testOnlyIpc.irate.testGetValue(),
-      /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
-      "Can't get the value when you're error'd"
-    );
-    Assert.deepEqual(
-      { numerator: 22 },
-      keyedScalarValue("telemetry.test.mirror_for_rate")
-    );
+  // Now the denominator:
+  Glean.testOnlyIpc.irate.addToNumerator(22);
+  Glean.testOnlyIpc.irate.addToDenominator(-7);
+  Assert.throws(
+    () => Glean.testOnlyIpc.irate.testGetValue(),
+    /DataError/,
+    "Can't get the value when you're error'd"
+  );
+  Assert.deepEqual(
+    { numerator: 22 },
+    keyedScalarValue("telemetry.test.mirror_for_rate")
+  );
 
-    // 4) Timespan
-    // ( Can't overflow time without finding a way to get TimeStamp to think
-    // we're 2^32 milliseconds later without waiting a month )
+  // 4) Timespan
+  // ( Can't overflow time without finding a way to get TimeStamp to think
+  // we're 2^32 milliseconds later without waiting a month )
 
-    // 5) TimingDistribution
-    // ( Can't overflow time with start() and stopAndAccumulate() without
-    // waiting for ages. But we _do_ have a test-only raw API...)
-    // The max sample for timing_distribution is 600000000000.
-    // The type for timing_distribution samples is i64.
-    // This means when we explore the edges of GIFFT's limits, we're well past
-    // Glean's limits. All we can get out of Glean is errors.
-    // (Which is good for data, difficult for tests.)
-    // But GIFFT should properly saturate in Telemetry at i32::max,
-    // so we shall test that.
-    Glean.testOnlyIpc.aTimingDist.testAccumulateRawMillis(Math.pow(2, 31) + 1);
-    Glean.testOnlyIpc.aTimingDist.testAccumulateRawMillis(Math.pow(2, 32) + 1);
-    Assert.throws(
-      () => Glean.testOnlyIpc.aTimingDist.testGetValue(),
-      /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
-      "Can't get the value when you're error'd"
-    );
-    let snapshot = Telemetry.getHistogramById(
-      "TELEMETRY_TEST_EXPONENTIAL"
-    ).snapshot();
-    Assert.equal(
-      snapshot.values["2147483646"],
-      2,
-      "samples > i32::max should end up in the top bucket"
-    );
-  }
-);
+  // 5) TimingDistribution
+  // ( Can't overflow time with start() and stopAndAccumulate() without
+  // waiting for ages. But we _do_ have a test-only raw API...)
+  // The max sample for timing_distribution is 600000000000.
+  // The type for timing_distribution samples is i64.
+  // This means when we explore the edges of GIFFT's limits, we're well past
+  // Glean's limits. All we can get out of Glean is errors.
+  // (Which is good for data, difficult for tests.)
+  // But GIFFT should properly saturate in Telemetry at i32::max,
+  // so we shall test that.
+  Glean.testOnlyIpc.aTimingDist.testAccumulateRawMillis(Math.pow(2, 31) + 1);
+  Glean.testOnlyIpc.aTimingDist.testAccumulateRawMillis(Math.pow(2, 32) + 1);
+  Assert.throws(
+    () => Glean.testOnlyIpc.aTimingDist.testGetValue(),
+    /DataError/,
+    "Can't get the value when you're error'd"
+  );
+  let snapshot = Telemetry.getHistogramById(
+    "TELEMETRY_TEST_EXPONENTIAL"
+  ).snapshot();
+  Assert.equal(
+    snapshot.values["2147483646"],
+    2,
+    "samples > i32::max should end up in the top bucket"
+  );
+});
 
 add_task(function test_gifft_url() {
   const value = "https://www.example.com";

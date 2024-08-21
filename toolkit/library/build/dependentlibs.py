@@ -28,7 +28,7 @@ def dependentlibs_win32_objdump(lib):
     )
     deps = []
     for line in proc.stdout:
-        match = re.match("\s+DLL Name: (\S+)", line)
+        match = re.match(r"\s+DLL Name: (\S+)", line)
         if match:
             # The DLL Name found might be mixed-case or upper-case. When cross-compiling,
             # the actual DLLs in dist/bin are all lowercase, whether they are produced
@@ -61,7 +61,7 @@ def dependentlibs_readelf(lib):
             # 0x00000001 (NEEDED)             Shared library: [libname]
             # or with BSD readelf:
             # 0x00000001 NEEDED               Shared library: [libname]
-            match = re.search("\[(.*)\]", tmp[3])
+            match = re.search(r"\[(.*)\]", tmp[3])
             if match:
                 deps.append(match.group(1))
     proc.wait()
@@ -90,7 +90,7 @@ def dependentlibs_mac_objdump(lib):
         if tmp[0] == "cmd":
             cmd = tmp[1]
         elif cmd == "LC_LOAD_DYLIB" and tmp[0] == "name":
-            deps.append(re.sub("^@executable_path/", "", tmp[1]))
+            deps.append(re.sub("@(?:rpath|executable_path)/", "", tmp[1]))
     proc.wait()
     return deps
 
@@ -110,10 +110,8 @@ def dependentlibs(lib, libpaths, func):
                 deps.update(dependentlibs(deppath, libpaths, func))
                 # Black list the ICU data DLL because preloading it at startup
                 # leads to startup performance problems because of its excessive
-                # size (around 10MB).  Same thing with d3dcompiler_47.dll, but
-                # to a lesser extent, and we were going to dynamically load it
-                # anyway.
-                if not dep.startswith(("icu", "d3dcompiler_47")):
+                # size (around 10MB).
+                if not dep.startswith(("icu")):
                     deps[dep] = deppath
                 break
 

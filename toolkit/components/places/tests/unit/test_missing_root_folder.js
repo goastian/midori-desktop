@@ -17,25 +17,22 @@ const ALL_ROOT_GUIDS = [
 ];
 
 add_task(async function setup() {
-  // This file has no root folder.
-  await setupPlacesDatabase("noRoot.sqlite");
+  await setupPlacesDatabase([
+    "migration",
+    `places_v${Ci.nsINavHistoryService.DATABASE_SCHEMA_VERSION}.sqlite`,
+  ]);
 
-  // Check database contents to be migrated.
+  // Prepare database contents by removing the root folder.
   let path = PathUtils.join(PathUtils.profileDir, DB_FILENAME);
   let db = await Sqlite.openConnection({ path });
-
-  let rows = await db.execute(
+  await db.execute(
     `
-    SELECT guid FROM moz_bookmarks
-    WHERE guid = :guid
-  `,
+    DELETE FROM moz_bookmarks WHERE guid = :guid
+    `,
     {
       guid: PlacesUtils.bookmarks.rootGuid,
     }
   );
-
-  Assert.equal(rows.length, 0, "Root folder should not exist");
-
   await db.close();
 });
 
@@ -77,12 +74,12 @@ add_task(async function test_database_recreates_roots() {
 
   let id = rows[0].getResultByName("id");
   Assert.equal(
-    await PlacesUtils.promiseItemId(PlacesUtils.bookmarks.rootGuid),
+    await PlacesTestUtils.promiseItemId(PlacesUtils.bookmarks.rootGuid),
     id,
     "Should return the correct id from promiseItemId"
   );
   Assert.equal(
-    await PlacesUtils.promiseItemGuid(id),
+    await PlacesTestUtils.promiseItemGuid(id),
     PlacesUtils.bookmarks.rootGuid,
     "Should return the correct guid from promiseItemGuid"
   );

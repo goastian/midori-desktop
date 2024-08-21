@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -11,56 +9,12 @@ ChromeUtils.defineESModuleGetters(lazy, {
   SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
 });
 
-const USER_LOCALE = "$USER_LOCALE";
-const USER_REGION = "$USER_REGION";
-
-XPCOMUtils.defineLazyGetter(lazy, "logConsole", () => {
+ChromeUtils.defineLazyGetter(lazy, "logConsole", () => {
   return console.createInstance({
     prefix: "SearchEngineSelector",
     maxLogLevel: lazy.SearchUtils.loggingEnabled ? "Debug" : "Warn",
   });
 });
-
-function hasAppKey(config, key) {
-  return "application" in config && key in config.application;
-}
-
-function sectionExcludes(config, key, value) {
-  return hasAppKey(config, key) && !config.application[key].includes(value);
-}
-
-function sectionIncludes(config, key, value) {
-  return hasAppKey(config, key) && config.application[key].includes(value);
-}
-
-function isDistroExcluded(config, key, distroID) {
-  // Should be excluded when:
-  // - There's a distroID and that is not in the non-empty distroID list.
-  // - There's no distroID and the distroID list is not empty.
-  const appKey = hasAppKey(config, key);
-  if (!appKey) {
-    return false;
-  }
-  const distroList = config.application[key];
-  if (distroID) {
-    return distroList.length && !distroList.includes(distroID);
-  }
-  return !!distroList.length;
-}
-
-function belowMinVersion(config, version) {
-  return (
-    hasAppKey(config, "minVersion") &&
-    Services.vc.compare(version, config.application.minVersion) < 0
-  );
-}
-
-function aboveMaxVersion(config, version) {
-  return (
-    hasAppKey(config, "maxVersion") &&
-    Services.vc.compare(version, config.application.maxVersion) > 0
-  );
-}
 
 /**
  * SearchEngineSelector parses the JSON configuration for
@@ -73,11 +27,29 @@ export class SearchEngineSelector {
    *   A listener for configuration update changes.
    */
   constructor(listener) {
-    this.QueryInterface = ChromeUtils.generateQI(["nsIObserver"]);
-    this._remoteConfig = lazy.RemoteSettings(lazy.SearchUtils.SETTINGS_KEY);
+    this._remoteConfig = lazy.RemoteSettings(lazy.SearchUtils.NEW_SETTINGS_KEY);
+    this._remoteConfigOverrides = lazy.RemoteSettings(
+      lazy.SearchUtils.NEW_SETTINGS_OVERRIDES_KEY
+    );
     this._listenerAdded = false;
     this._onConfigurationUpdated = this._onConfigurationUpdated.bind(this);
+    this._onConfigurationOverridesUpdated =
+      this._onConfigurationOverridesUpdated.bind(this);
     this._changeListener = listener;
+  }
+
+  /**
+   * Resets the remote settings listeners.
+   */
+  reset() {
+    if (this._listenerAdded) {
+      this._remoteConfig.off("sync", this._onConfigurationUpdated);
+      this._remoteConfigOverrides.off(
+        "sync",
+        this._onConfigurationOverridesUpdated
+      );
+      this._listenerAdded = false;
+    }
   }
 
   /**
@@ -88,8 +60,13 @@ export class SearchEngineSelector {
       return this._getConfigurationPromise;
     }
 
-    this._configuration = await (this._getConfigurationPromise =
-      this._getConfiguration());
+    this._getConfigurationPromise = Promise.all([
+      this._getConfiguration(),
+      this._getConfigurationOverrides(),
+    ]);
+    let remoteSettingsData = await this._getConfigurationPromise;
+    this._configuration = remoteSettingsData[0];
+    this._configurationOverrides = remoteSettingsData[1];
     delete this._getConfigurationPromise;
 
     if (!this._configuration?.length) {
@@ -101,10 +78,22 @@ export class SearchEngineSelector {
 
     if (!this._listenerAdded) {
       this._remoteConfig.on("sync", this._onConfigurationUpdated);
+      this._remoteConfigOverrides.on(
+        "sync",
+        this._onConfigurationOverridesUpdated
+      );
       this._listenerAdded = true;
     }
 
     return this._configuration;
+  }
+
+  /**
+   * Used by tests to get the configuration overrides.
+   */
+  async getEngineConfigurationOverrides() {
+    await this.getEngineConfiguration();
+    return this._configurationOverrides;
   }
 
   /**
@@ -167,6 +156,42 @@ export class SearchEngineSelector {
   }
 
   /**
+   * Handles updating of the configuration. Note that the search service is
+   * only updated after a period where the user is observed to be idle.
+   *
+   * @param {object} options
+   *   The options object
+   * @param {object} options.data
+   *   The data to update
+   * @param {Array} options.data.current
+   *   The new configuration object
+   */
+  _onConfigurationOverridesUpdated({ data: { current } }) {
+    this._configurationOverrides = current;
+    lazy.logConsole.debug("Search configuration overrides updated remotely");
+    if (this._changeListener) {
+      this._changeListener();
+    }
+  }
+
+  /**
+   * Obtains the configuration overrides from remote settings.
+   *
+   * @returns {Array}
+   *   An array of objects in the database, or an empty array if none
+   *   could be obtained.
+   */
+  async _getConfigurationOverrides() {
+    let result = [];
+    try {
+      result = await this._remoteConfigOverrides.get();
+    } catch (ex) {
+      // This data is remote only, so we just return an empty array if it fails.
+    }
+    return result;
+  }
+
+  /**
    * @param {object} options
    *   The options object
    * @param {string} options.locale
@@ -179,7 +204,7 @@ export class SearchEngineSelector {
    *   The distribution ID of the application.
    * @param {string} [options.experiment]
    *   Any associated experiment id.
-   * @param {string} [options.name]
+   * @param {string} [options.appName]
    *   The name of the application.
    * @param {string} [options.version]
    *   The version of the application.
@@ -194,161 +219,111 @@ export class SearchEngineSelector {
     channel = "default",
     distroID,
     experiment,
-    name = Services.appinfo.name ?? "",
+    appName = Services.appinfo.name ?? "",
     version = Services.appinfo.version ?? "",
   }) {
     if (!this._configuration) {
       await this.getEngineConfiguration();
     }
+
     lazy.logConsole.debug(
-      `fetchEngineConfiguration ${locale}:${region}:${channel}:${distroID}:${experiment}:${name}:${version}`
+      `fetchEngineConfiguration ${locale}:${region}:${channel}:${distroID}:${experiment}:${appName}:${version}`
     );
+
+    appName = appName.toLowerCase();
+    version = version.toLowerCase();
+    locale = locale.toLowerCase();
+    region = region.toLowerCase();
+
     let engines = [];
-    const lcName = name.toLowerCase();
-    const lcVersion = version.toLowerCase();
-    const lcLocale = locale.toLowerCase();
-    const lcRegion = region.toLowerCase();
+    let defaultsConfig;
+    let engineOrders;
+    let userEnv = {
+      appName,
+      version,
+      locale,
+      region,
+      channel,
+      distroID,
+      experiment,
+    };
+
     for (let config of this._configuration) {
-      const appliesTo = config.appliesTo || [];
-      const applies = appliesTo.filter(section => {
-        if ("experiment" in section) {
-          if (experiment != section.experiment) {
-            return false;
-          }
-          if (section.override) {
-            return true;
-          }
+      if (config.recordType == "defaultEngines") {
+        defaultsConfig = config;
+      }
+
+      if (config.recordType == "engineOrders") {
+        engineOrders = config;
+      }
+
+      if (config.recordType !== "engine") {
+        continue;
+      }
+
+      let variant = config.variants?.findLast(variant =>
+        this.#matchesUserEnvironment(variant, userEnv)
+      );
+
+      if (!variant) {
+        continue;
+      }
+
+      let subVariant = variant.subVariants?.findLast(subVariant =>
+        this.#matchesUserEnvironment(subVariant, userEnv)
+      );
+
+      let engine = structuredClone(config.base);
+      engine.identifier = config.identifier;
+      engine = this.#deepCopyObject(engine, variant);
+
+      if (subVariant) {
+        engine = this.#deepCopyObject(engine, subVariant);
+      }
+
+      for (let override of this._configurationOverrides) {
+        if (override.identifier == engine.identifier) {
+          engine = this.#deepCopyObject(engine, override);
         }
+      }
 
-        let shouldInclude = () => {
-          let included =
-            "included" in section &&
-            this._isInSection(lcRegion, lcLocale, section.included);
-          let excluded =
-            "excluded" in section &&
-            this._isInSection(lcRegion, lcLocale, section.excluded);
-          return included && !excluded;
-        };
+      engines.push(engine);
+    }
 
-        const distroExcluded =
-          (distroID &&
-            sectionIncludes(section, "excludedDistributions", distroID)) ||
-          isDistroExcluded(section, "distributions", distroID);
+    let { defaultEngine, privateDefault } = this.#defaultEngines(
+      engines,
+      defaultsConfig,
+      userEnv
+    );
 
-        if (distroID && !distroExcluded && section.override) {
-          if ("included" in section || "excluded" in section) {
-            return shouldInclude();
-          }
-          return true;
-        }
+    for (const orderData of engineOrders.orders) {
+      let environment = orderData.environment;
 
-        if (
-          sectionExcludes(section, "channel", channel) ||
-          sectionExcludes(section, "name", lcName) ||
-          distroExcluded ||
-          belowMinVersion(section, lcVersion) ||
-          aboveMaxVersion(section, lcVersion)
-        ) {
-          return false;
-        }
-        return shouldInclude();
-      });
-
-      let baseConfig = this._copyObject({}, config);
-
-      // Don't include any engines if every section is an override
-      // entry, these are only supposed to override otherwise
-      // included engine configurations.
-      let allOverrides = applies.every(e => "override" in e && e.override);
-      // Loop through all the appliedTo sections that apply to
-      // this configuration.
-      if (applies.length && !allOverrides) {
-        for (let section of applies) {
-          this._copyObject(baseConfig, section);
-        }
-
-        if (
-          "webExtension" in baseConfig &&
-          "locales" in baseConfig.webExtension
-        ) {
-          for (const webExtensionLocale of baseConfig.webExtension.locales) {
-            const engine = { ...baseConfig };
-            engine.webExtension = { ...baseConfig.webExtension };
-            delete engine.webExtension.locales;
-            engine.webExtension.locale = webExtensionLocale
-              .replace(USER_LOCALE, locale)
-              .replace(USER_REGION, lcRegion);
-            engines.push(engine);
-          }
-        } else {
-          const engine = { ...baseConfig };
-          (engine.webExtension = engine.webExtension || {}).locale =
-            lazy.SearchUtils.DEFAULT_TAG;
-          engines.push(engine);
-        }
+      if (this.#matchesUserEnvironment({ environment }, userEnv)) {
+        this.#setEngineOrders(engines, orderData.order);
       }
     }
 
-    let defaultEngine;
-    let privateEngine;
-
-    function shouldPrefer(setting, hasCurrentDefault, currentDefaultSetting) {
-      if (
-        setting == "yes" &&
-        (!hasCurrentDefault || currentDefaultSetting == "yes-if-no-other")
-      ) {
-        return true;
-      }
-      return setting == "yes-if-no-other" && !hasCurrentDefault;
-    }
-
-    for (const engine of engines) {
-      engine.telemetryId = engine.telemetryId
-        ?.replace(USER_LOCALE, locale)
-        .replace(USER_REGION, lcRegion);
-      if (
-        "default" in engine &&
-        shouldPrefer(
-          engine.default,
-          !!defaultEngine,
-          defaultEngine && defaultEngine.default
-        )
-      ) {
-        defaultEngine = engine;
-      }
-      if (
-        "defaultPrivate" in engine &&
-        shouldPrefer(
-          engine.defaultPrivate,
-          !!privateEngine,
-          privateEngine && privateEngine.defaultPrivate
-        )
-      ) {
-        privateEngine = engine;
-      }
-    }
-
-    engines.sort(this._sort.bind(this, defaultEngine, privateEngine));
+    engines.sort(this._sort.bind(this, defaultEngine, privateDefault));
 
     let result = { engines };
 
-    if (privateEngine) {
-      result.privateDefault = privateEngine;
+    if (privateDefault) {
+      result.privateDefault = privateDefault;
     }
 
     if (lazy.SearchUtils.loggingEnabled) {
       lazy.logConsole.debug(
-        "fetchEngineConfiguration: " +
-          result.engines.map(e => e.webExtension.id)
+        "fetchEngineConfiguration: " + result.engines.map(e => e.identifier)
       );
     }
     return result;
   }
 
-  _sort(defaultEngine, privateEngine, a, b) {
+  _sort(defaultEngine, defaultPrivateEngine, a, b) {
     return (
-      this._sortIndex(b, defaultEngine, privateEngine) -
-      this._sortIndex(a, defaultEngine, privateEngine)
+      this._sortIndex(b, defaultEngine, defaultPrivateEngine) -
+      this._sortIndex(a, defaultEngine, defaultPrivateEngine)
     );
   }
 
@@ -357,91 +332,436 @@ export class SearchEngineSelector {
    * engines are ordered correctly.
    *
    * @param {object} obj
-   *   Object representing the engine configation.
+   *   Object representing the engine configuration.
    * @param {object} defaultEngine
    *   The default engine, for comparison to obj.
-   * @param {object} privateEngine
-   *   The private engine, for comparison to obj.
+   * @param {object} defaultPrivateEngine
+   *   The default private engine, for comparison to obj.
    * @returns {integer}
    *  Number indicating how this engine should be sorted.
    */
-  _sortIndex(obj, defaultEngine, privateEngine) {
+  _sortIndex(obj, defaultEngine, defaultPrivateEngine) {
     if (obj == defaultEngine) {
       return Number.MAX_SAFE_INTEGER;
     }
-    if (obj == privateEngine) {
+    if (obj == defaultPrivateEngine) {
       return Number.MAX_SAFE_INTEGER - 1;
     }
     return obj.orderHint || 0;
   }
 
   /**
-   * Is the engine marked to be the default search engine.
-   *
-   * @param {object} obj - Object representing the engine configation.
-   * @returns {boolean} - Whether the engine should be default.
-   */
-  _isDefault(obj) {
-    return "default" in obj && obj.default === "yes";
-  }
-
-  /**
-   * Object.assign but ignore some keys
+   * Deep copies an object to the target object and ignores some keys.
    *
    * @param {object} target - Object to copy to.
-   * @param {object} source - Object top copy from.
+   * @param {object} source - Object to copy from.
    * @returns {object} - The source object.
    */
-  _copyObject(target, source) {
+  #deepCopyObject(target, source) {
     for (let key in source) {
-      if (["included", "excluded", "appliesTo"].includes(key)) {
+      if (["environment"].includes(key)) {
         continue;
       }
-      if (key == "webExtension") {
+
+      if (["subVariants"].includes(key)) {
+        continue;
+      }
+
+      if (typeof source[key] == "object" && !Array.isArray(source[key])) {
         if (key in target) {
-          this._copyObject(target[key], source[key]);
+          this.#deepCopyObject(target[key], source[key]);
         } else {
-          target[key] = { ...source[key] };
+          target[key] = structuredClone(source[key]);
         }
       } else {
-        target[key] = source[key];
+        target[key] = structuredClone(source[key]);
       }
     }
+
     return target;
   }
 
   /**
-   * Determines wether the section of the config applies to a user
-   * given what region + locale they are using.
+   * Matches the user's environment against the engine config's environment.
    *
-   * @param {string} region - The region the user is in.
-   * @param {string} locale - The language the user has configured.
-   * @param {object} config - Section of configuration.
-   * @returns {boolean} - Does the section apply for the region + locale.
+   * @param {object} config
+   *   The config for the given base or variant engine.
+   * @param {object} user
+   *   The user's environment we use to match with the engine's environment.
+   * @param {string} user.appName
+   *   The name of the application.
+   * @param {string} user.version
+   *   The version of the application.
+   * @param {string} user.locale
+   *   The locale of the user.
+   * @param {string} user.region
+   *   The region of the user.
+   * @param {string} user.channel
+   *   The channel the application is running on.
+   * @param {string} user.distroID
+   *   The distribution ID of the application.
+   * @param {string} user.experiment
+   *   Any associated experiment id.
+   * @returns {boolean}
+   *   True if the engine config's environment matches the user's environment.
    */
-  _isInSection(region, locale, config) {
-    if (!config) {
+  #matchesUserEnvironment(config, user = {}) {
+    if ("experiment" in config.environment) {
+      if (user.experiment != config.environment.experiment) {
+        return false;
+      }
+    }
+
+    if ("excludedDistributions" in config.environment) {
+      if (config.environment.excludedDistributions.includes(user.distroID)) {
+        return false;
+      }
+    }
+
+    // Skip the optional flag for Desktop, it's a feature only on Android.
+    if (config.optional) {
       return false;
     }
-    if (config.everywhere) {
+
+    return (
+      this.#matchesRegionAndLocale(
+        user.region,
+        user.locale,
+        config.environment
+      ) &&
+      this.#matchesDistribution(
+        user.distroID,
+        config.environment.distributions
+      ) &&
+      this.#matchesVersions(
+        config.environment.minVersion,
+        config.environment.maxVersion,
+        user.version
+      ) &&
+      this.#matchesChannel(config.environment.channels, user.channel) &&
+      this.#matchesApplication(config.environment.applications, user.appName) &&
+      !this.#hasDeviceType(config.environment)
+    );
+  }
+
+  /**
+   * @param {string} userDistro
+   *  The distribution from the user's environment.
+   * @param {string[]} configDistro
+   *  An array of distributions for the particular environment in the config.
+   * @returns {boolean}
+   *  True if the user's distribution is included in the config distribution
+   *  list.
+   */
+  #matchesDistribution(userDistro, configDistro) {
+    // If there's no distribution for this engineConfig, ignore the check.
+    if (!configDistro) {
       return true;
     }
-    let locales = config.locales || {};
-    let inLocales =
-      "matches" in locales &&
-      !!locales.matches.find(e => e.toLowerCase() == locale);
-    let inRegions =
-      "regions" in config &&
-      !!config.regions.find(e => e.toLowerCase() == region);
+
+    return configDistro?.includes(userDistro);
+  }
+
+  /**
+   * @param {string} min
+   *  The minimum version supported.
+   * @param {string} max
+   *  The maximum version supported.
+   * @param {string} userVersion
+   *  The user's version.
+   * @returns {boolean}
+   *  True if the user's version is within the range of the min and max versions
+   *  supported.
+   */
+  #matchesVersions(min, max, userVersion) {
+    // If there's no versions for this engineConfig, ignore the check.
+    if (!min && !max) {
+      return true;
+    }
+
+    if (!userVersion) {
+      return false;
+    }
+
+    if (min && !max) {
+      return this.#isAboveOrEqualMin(userVersion, min);
+    }
+
+    if (!min && max) {
+      return this.#isBelowOrEqualMax(userVersion, max);
+    }
+
+    return (
+      this.#isAboveOrEqualMin(userVersion, min) &&
+      this.#isBelowOrEqualMax(userVersion, max)
+    );
+  }
+
+  #isAboveOrEqualMin(userVersion, min) {
+    return Services.vc.compare(userVersion, min) >= 0;
+  }
+
+  #isBelowOrEqualMax(userVersion, max) {
+    return Services.vc.compare(userVersion, max) <= 0;
+  }
+
+  /**
+   * @param {string[]} configChannels
+   *  Release channels such as nightly, beta, release, esr.
+   * @param {string} userChannel
+   *  The user's channel.
+   * @returns {boolean}
+   *  True if the user's channel is included in the config channels.
+   */
+  #matchesChannel(configChannels, userChannel) {
+    // If there's no channels for this engineConfig, ignore the check.
+    if (!configChannels) {
+      return true;
+    }
+
+    return configChannels.includes(userChannel);
+  }
+
+  /**
+   * @param {string[]} configApps
+   *  The applications such as firefox, firefox-android, firefox-ios,
+   *  focus-android, and focus-ios.
+   * @param {string} userApp
+   *  The user's application.
+   * @returns {boolean}
+   *  True if the user's application is included in the config applications.
+   */
+  #matchesApplication(configApps, userApp) {
+    // If there's no config Applications for this engineConfig, ignore the check.
+    if (!configApps) {
+      return true;
+    }
+
+    return configApps.includes(userApp);
+  }
+
+  /**
+   * Generally the device type option should only be used when the application
+   * is selected to be on an android or iOS based product. However, we support
+   * rejecting if this is non-empty in case of future requirements that we haven't
+   * predicted.
+   *
+   * @param {object} environment
+   *   An environment section from the engine configuration.
+   * @returns {boolean}
+   *   Returns true if there is a device type section and it is not empty.
+   */
+  #hasDeviceType(environment) {
+    return !!environment.deviceType?.length;
+  }
+
+  /**
+   * Determines whether the region and locale constraints in the config
+   * environment  applies to a user given what region and locale they are using.
+   *
+   * @param {string} region
+   *   The region the user is in.
+   * @param {string} locale
+   *   The language the user has configured.
+   * @param {object} configEnv
+   *   The environment of the engine configuration.
+   * @returns {boolean}
+   *   True if the user's region and locale matches the config's region and
+   *   locale contraints. Otherwise false.
+   */
+  #matchesRegionAndLocale(region, locale, configEnv) {
     if (
-      locales.startsWith &&
-      locales.startsWith.some(key => locale.startsWith(key))
+      this.#doesConfigInclude(configEnv.excludedLocales, locale) ||
+      this.#doesConfigInclude(configEnv.excludedRegions, region)
     ) {
-      inLocales = true;
+      return false;
     }
-    if (config.locales && config.regions) {
-      return inLocales && inRegions;
+
+    if (configEnv.allRegionsAndLocales) {
+      return true;
     }
-    return inLocales || inRegions;
+
+    // When none of the regions and locales are set. This implies its available
+    // everywhere.
+    if (
+      !Object.hasOwn(configEnv, "allRegionsAndLocales") &&
+      !Object.hasOwn(configEnv, "regions") &&
+      !Object.hasOwn(configEnv, "locales")
+    ) {
+      return true;
+    }
+
+    if (
+      this.#doesConfigInclude(configEnv?.locales, locale) &&
+      this.#doesConfigInclude(configEnv?.regions, region)
+    ) {
+      return true;
+    }
+
+    if (
+      this.#doesConfigInclude(configEnv?.locales, locale) &&
+      !Object.hasOwn(configEnv, "regions")
+    ) {
+      return true;
+    }
+
+    if (
+      this.#doesConfigInclude(configEnv?.regions, region) &&
+      !Object.hasOwn(configEnv, "locales")
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * This function converts the characters in the config to lowercase and
+   * checks if the user's locale or region is included in config the
+   * environment.
+   *
+   * @param {Array} configArray
+   *   An Array of locales or regions from the config environment.
+   * @param {string} compareItem
+   *   The user's locale or region.
+   * @returns {boolean}
+   *   True if user's region or locale is found in the config environment.
+   *   Otherwise false.
+   */
+  #doesConfigInclude(configArray, compareItem) {
+    if (!configArray) {
+      return false;
+    }
+
+    return configArray.find(
+      configItem => configItem.toLowerCase() === compareItem
+    );
+  }
+
+  /**
+   * Gets the default engine and default private engine based on the user's
+   * environment.
+   *
+   * @param {Array} engines
+   *   An array that contains the engines for the user environment.
+   * @param {object} defaultsConfig
+   *   The defaultEngines record type from the search config.
+   * @param {object} userEnv
+   *   The user's environment.
+   * @returns {object}
+   *   An object with default engine and default private engine.
+   */
+  #defaultEngines(engines, defaultsConfig, userEnv) {
+    let defaultEngine, privateDefault;
+
+    for (let data of defaultsConfig.specificDefaults) {
+      let environment = data.environment;
+
+      if (this.#matchesUserEnvironment({ environment }, userEnv)) {
+        defaultEngine = this.#findDefault(engines, data) ?? defaultEngine;
+        privateDefault =
+          this.#findDefault(engines, data, "private") ?? privateDefault;
+      }
+    }
+
+    defaultEngine ??= this.#findGlobalDefault(engines, defaultsConfig);
+    privateDefault ??= this.#findGlobalDefault(
+      engines,
+      defaultsConfig,
+      "private"
+    );
+
+    return { defaultEngine, privateDefault };
+  }
+
+  /**
+   * Finds the global default engine or global default private engine.
+   *
+   * @param {Array} engines
+   *   The engines for the user environment.
+   * @param {string} config
+   *   The defaultEngines record from the config.
+   * @param {string} [engineType]
+   *   A string to identify default or default private.
+   * @returns {object}
+   *   The global default engine or global default private engine.
+   */
+  #findGlobalDefault(engines, config, engineType = "default") {
+    let engine;
+    if (config.globalDefault && engineType == "default") {
+      engine = engines.find(e => e.identifier == config.globalDefault);
+    }
+
+    if (config.globalDefaultPrivate && engineType == "private") {
+      engine = engines.find(e => e.identifier == config.globalDefaultPrivate);
+    }
+
+    return engine;
+  }
+
+  /**
+   * Finds the default engine or default private engine from the list of
+   * engines that match the user's environment.
+   *
+   * @param {Array} engines
+   *   The engines for the user environment.
+   * @param {string} config
+   *   The specific defaults record that contains the default engine or default
+   *   private engine identifer for the environment.
+   * @param {string} [engineType]
+   *   A string to identify default engine or default private engine.
+   * @returns {object|undefined}
+   *   The default engine or default private engine. Undefined if none can be
+   *   found.
+   */
+  #findDefault(engines, config, engineType = "default") {
+    let defaultMatch =
+      engineType == "default" ? config.default : config.defaultPrivate;
+
+    if (!defaultMatch) {
+      return undefined;
+    }
+
+    return this.#findEngineWithMatch(engines, defaultMatch);
+  }
+
+  /**
+   * Sets the orderHint number for the engines.
+   *
+   * @param {Array} engines
+   *  The engines for the user environment.
+   * @param {Array} orderedEngines
+   *  The ordering of engines. Engines in the beginning of the list get a higher
+   *  orderHint number.
+   */
+  #setEngineOrders(engines, orderedEngines) {
+    let orderNumber = orderedEngines.length;
+
+    for (const engine of orderedEngines) {
+      let foundEngine = this.#findEngineWithMatch(engines, engine);
+      if (foundEngine) {
+        foundEngine.orderHint = orderNumber;
+        orderNumber -= 1;
+      }
+    }
+  }
+
+  /**
+   * Finds an engine with the given match.
+   *
+   * @param {object[]} engines
+   *   An array of search engine configurations.
+   * @param {string} match
+   *   A string to match against the engine identifier. This will be an exact
+   *   match, unless the string ends with `*`, in which case it will use a
+   *   startsWith match.
+   * @returns {object|undefined}
+   */
+  #findEngineWithMatch(engines, match) {
+    if (match.endsWith("*")) {
+      let matchNoStar = match.slice(0, -1);
+      return engines.find(e => e.identifier.startsWith(matchNoStar));
+    }
+    return engines.find(e => e.identifier == match);
   }
 }

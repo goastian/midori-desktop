@@ -11,8 +11,8 @@
 
 // Put any other stuff relative to this test folder below.
 
-var { CanonicalJSON } = ChromeUtils.import(
-  "resource://gre/modules/CanonicalJSON.jsm"
+var { CanonicalJSON } = ChromeUtils.importESModule(
+  "resource://gre/modules/CanonicalJSON.sys.mjs"
 );
 var { Log } = ChromeUtils.importESModule("resource://gre/modules/Log.sys.mjs");
 
@@ -54,7 +54,7 @@ var {
   HTTP_505,
   HttpError,
   HttpServer,
-} = ChromeUtils.import("resource://testing-common/httpd.js");
+} = ChromeUtils.importESModule("resource://testing-common/httpd.sys.mjs");
 
 // These titles are defined in Database::CreateBookmarkRoots
 const BookmarksMenuTitle = "menu";
@@ -116,7 +116,7 @@ function makeRecord(cleartext) {
   return new Proxy(
     { cleartext },
     {
-      get(target, property, receiver) {
+      get(target, property) {
         if (property == "cleartext") {
           return target.cleartext;
         }
@@ -125,7 +125,7 @@ function makeRecord(cleartext) {
         }
         return target.cleartext[property];
       },
-      set(target, property, value, receiver) {
+      set(target, property, value) {
         if (property == "cleartext") {
           target.cleartext = value;
         } else if (property != "cleartextToString") {
@@ -135,7 +135,7 @@ function makeRecord(cleartext) {
       has(target, property) {
         return property == "cleartext" || property in target.cleartext;
       },
-      deleteProperty(target, property) {},
+      deleteProperty() {},
       ownKeys(target) {
         return ["cleartext", ...Reflect.ownKeys(target)];
       },
@@ -310,9 +310,14 @@ BookmarkObserver.prototype = {
             guid: event.guid,
             parentGuid: event.parentGuid,
             source: event.source,
+            tags: event.tags,
+            frecency: event.frecency,
+            hidden: event.hidden,
+            visitCount: event.visitCount,
           };
           if (!this.ignoreDates) {
             params.dateAdded = event.dateAdded;
+            params.lastVisitDate = event.lastVisitDate;
           }
           this.notifications.push({ name: "bookmark-added", params });
           break;
@@ -356,6 +361,13 @@ BookmarkObserver.prototype = {
             oldIndex: event.oldIndex,
             oldParentGuid: event.oldParentGuid,
             isTagging: event.isTagging,
+            title: event.title,
+            tags: event.tags,
+            frecency: event.frecency,
+            hidden: event.hidden,
+            visitCount: event.visitCount,
+            dateAdded: event.dateAdded,
+            lastVisitDate: event.lastVisitDate,
           };
           this.notifications.push({ name: "bookmark-moved", params });
           break;

@@ -1,3 +1,9 @@
+let { ForgetAboutSite } = ChromeUtils.importESModule(
+  "resource://gre/modules/ForgetAboutSite.sys.mjs"
+);
+
+requestLongerTimeout(2);
+
 const TEST_DOMAIN = "https://example.com";
 const TEST_DOMAIN_ANOTHER = "https://example.org";
 const TEST_DOMAIN_THIRD = "https://example.net";
@@ -159,53 +165,14 @@ async function getRandomKeyHexFromBrowser(
 }
 
 // Test accessing the fingerprinting randomization key will throw if
-// fingerprinting randomization is disabled.
-add_task(async function test_randomization_disabled() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["privacy.resistFingerprinting.randomization.enabled", false]],
-  });
-
-  // Ensure accessing the fingerprinting randomization key of the browser
-  // element will throw if fingerprinting randomization is disabled.
-  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, TEST_PAGE);
-
-  try {
-    let key =
-      tab.linkedBrowser.cookieJarSettings.fingerprintingRandomizationKey;
-    ok(
-      false,
-      `Accessing the fingerprinting randomization key should throw when randomization is disabled. ${key}`
-    );
-  } catch (e) {
-    ok(
-      true,
-      "It should throw when getting the key when randomization is disabled."
-    );
-  }
-
-  // Ensure accessing the fingerprinting randomization key of the top-level
-  // document will throw if fingerprinting randomization is disabled.
-  try {
-    await SpecialPowers.spawn(tab.linkedBrowser, [], _ => {
-      return content.document.cookieJarSettings.fingerprintingRandomizationKey;
-    });
-  } catch (e) {
-    ok(
-      true,
-      "It should throw when getting the key when randomization is disabled."
-    );
-  }
-
-  BrowserTestUtils.removeTab(tab);
-});
-
-// Test accessing the fingerprinting randomization key will throw if
 // fingerprinting resistance is disabled.
 add_task(async function test_randomization_disabled_with_rfp_disabled() {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["privacy.resistFingerprinting.randomization.enabled", true],
       ["privacy.resistFingerprinting", false],
+      ["privacy.resistFingerprinting.pbmode", false],
+      ["privacy.fingerprintingProtection", false],
+      ["privacy.fingerprintingProtection.pbmode", false],
     ],
   });
 
@@ -246,10 +213,7 @@ add_task(async function test_randomization_disabled_with_rfp_disabled() {
 // Test the fingerprinting randomization key generation.
 add_task(async function test_generate_randomization_key() {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["privacy.resistFingerprinting.randomization.enabled", true],
-      ["privacy.resistFingerprinting", true],
-    ],
+    set: [["privacy.resistFingerprinting", true]],
   });
 
   for (let testPrivateWin of [true, false]) {
@@ -340,10 +304,7 @@ add_task(async function test_generate_randomization_key() {
 // ends.
 add_task(async function test_reset_key_after_pbm_session_ends() {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["privacy.resistFingerprinting.randomization.enabled", true],
-      ["privacy.resistFingerprinting", true],
-    ],
+    set: [["privacy.resistFingerprinting", true]],
   });
 
   let privateWin = await BrowserTestUtils.openNewBrowserWindow({
@@ -364,7 +325,10 @@ add_task(async function test_reset_key_after_pbm_session_ends() {
 
   // Close the window and open another private window.
   BrowserTestUtils.removeTab(tab);
+
+  let promisePBExit = TestUtils.topicObserved("last-pb-context-exited");
   await BrowserTestUtils.closeWindow(privateWin);
+  await promisePBExit;
 
   privateWin = await BrowserTestUtils.openNewBrowserWindow({
     private: true,
@@ -394,9 +358,10 @@ add_task(async function test_reset_key_after_pbm_session_ends() {
 add_task(async function test_randomization_with_exempted_normal_window() {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["privacy.resistFingerprinting.randomization.enabled", true],
-      ["privacy.resistFingerprinting", true],
-      ["privacy.resistFingerprinting.testGranularityMask", 2],
+      ["privacy.resistFingerprinting", false],
+      ["privacy.resistFingerprinting.pbmode", true],
+      ["privacy.fingerprintingProtection", false],
+      ["privacy.fingerprintingProtection.pbmode", false],
     ],
   });
 
@@ -455,4 +420,71 @@ add_task(async function test_randomization_with_exempted_normal_window() {
 
   BrowserTestUtils.removeTab(tab);
   await BrowserTestUtils.closeWindow(privateWin);
+});
+
+// Test that the random key gets reset when the site data gets cleared.
+add_task(async function test_reset_random_key_when_clear_site_data() {
+  // Enable fingerprinting randomization key generation.
+  await SpecialPowers.pushPrefEnv({
+    set: [["privacy.resistFingerprinting", true]],
+  });
+
+  // Open a tab and get randomization key from the test domain.
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, TEST_PAGE);
+
+  let keyHex = await getRandomKeyHexFromBrowser(
+    tab.linkedBrowser,
+    TEST_PAGE,
+    TEST_DOMAIN_THIRD_PAGE
+  );
+
+  // Open another tab and get randomization key from another domain.
+  let anotherTab = await BrowserTestUtils.openNewForegroundTab(
+    gBrowser,
+    TEST_DOMAIN_ANOTHER_PAGE
+  );
+
+  let keyHexAnother = await getRandomKeyHexFromBrowser(
+    anotherTab.linkedBrowser,
+    TEST_PAGE,
+    TEST_DOMAIN_THIRD_PAGE
+  );
+
+  BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(anotherTab);
+
+  // Call ForgetAboutSite for the test domain.
+  await ForgetAboutSite.removeDataFromDomain("example.com");
+
+  // Open the tab for the test domain again and verify the key is reset.
+  tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, TEST_PAGE);
+  let keyHexNew = await getRandomKeyHexFromBrowser(
+    tab.linkedBrowser,
+    TEST_PAGE,
+    TEST_DOMAIN_THIRD_PAGE
+  );
+
+  // Open the tab for another domain again and verify the key is intact.
+  anotherTab = await BrowserTestUtils.openNewForegroundTab(
+    gBrowser,
+    TEST_DOMAIN_ANOTHER_PAGE
+  );
+  let keyHexAnotherNew = await getRandomKeyHexFromBrowser(
+    anotherTab.linkedBrowser,
+    TEST_PAGE,
+    TEST_DOMAIN_THIRD_PAGE
+  );
+
+  // Ensure the keys are different for the test domain.
+  isnot(keyHexNew, keyHex, "Ensure the new key is different from the old one.");
+
+  // Ensure the key for another domain isn't changed.
+  is(
+    keyHexAnother,
+    keyHexAnotherNew,
+    "Ensure the key of another domain isn't reset."
+  );
+
+  BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(anotherTab);
 });

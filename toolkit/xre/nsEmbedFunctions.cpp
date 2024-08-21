@@ -188,7 +188,6 @@ void XRE_SetAndroidChildFds(JNIEnv* env, const XRE_AndroidChildFds& fds) {
   mozilla::ipc::SetPrefMapFd(fds.mPrefMapFd);
   IPC::Channel::SetClientChannelFd(fds.mIpcFd);
   CrashReporter::SetNotificationPipeForChild(fds.mCrashFd);
-  CrashReporter::SetCrashAnnotationPipeForChild(fds.mCrashAnnotationFd);
 }
 #endif  // defined(MOZ_WIDGET_ANDROID)
 
@@ -208,13 +207,13 @@ void SetTaskbarGroupId(const nsString& aId) {
 #if defined(MOZ_SANDBOX)
 void AddContentSandboxLevelAnnotation() {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
-    int level = GetEffectiveContentSandboxLevel();
-    CrashReporter::AnnotateCrashReport(
-        CrashReporter::Annotation::ContentSandboxLevel, level);
+    uint32_t contentSandboxLevel = GetEffectiveContentSandboxLevel();
+    CrashReporter::RecordAnnotationU32(
+        CrashReporter::Annotation::ContentSandboxLevel, contentSandboxLevel);
   } else if (XRE_GetProcessType() == GeckoProcessType_GPU) {
-    int level = GetEffectiveGpuSandboxLevel();
-    CrashReporter::AnnotateCrashReport(
-        CrashReporter::Annotation::GpuSandboxLevel, level);
+    uint32_t gpuSandboxLevel = GetEffectiveGpuSandboxLevel();
+    CrashReporter::RecordAnnotationU32(
+        CrashReporter::Annotation::GpuSandboxLevel, gpuSandboxLevel);
   }
 }
 #endif /* MOZ_SANDBOX */
@@ -226,15 +225,15 @@ int GetDebugChildPauseTime() {
   if (pauseStr && *pauseStr) {
     int pause = atoi(pauseStr);
     if (pause != 1) {  // must be !=1 since =1 enables the default pause time
-#if defined(OS_WIN)
+#if defined(XP_WIN)
       pause *= 1000;  // convert to ms
 #endif
       return pause;
     }
   }
-#ifdef OS_POSIX
+#ifdef XP_UNIX
   return 30;  // seconds
-#elif defined(OS_WIN)
+#elif defined(XP_WIN)
   return 10000;  // milliseconds
 #else
   return 0;
@@ -384,20 +383,12 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
 
   bool exceptionHandlerIsSet = false;
   if (!CrashReporter::IsDummy()) {
-    CrashReporter::FileHandle crashTimeAnnotationFile =
-        CrashReporter::kInvalidFileHandle;
-#if defined(XP_WIN)
-    const char* const crashTimeAnnotationArg = aArgv[--aArgc];
-    crashTimeAnnotationFile = reinterpret_cast<CrashReporter::FileHandle>(
-        std::stoul(std::string(crashTimeAnnotationArg)));
-#endif
-
     if (aArgc < 1) return NS_ERROR_FAILURE;
     const char* const crashReporterArg = aArgv[--aArgc];
 
     if (IsCrashReporterEnabled(crashReporterArg)) {
-      exceptionHandlerIsSet = CrashReporter::SetRemoteExceptionHandler(
-          crashReporterArg, crashTimeAnnotationFile);
+      exceptionHandlerIsSet =
+          CrashReporter::SetRemoteExceptionHandler(crashReporterArg);
       MOZ_ASSERT(exceptionHandlerIsSet,
                  "Should have been able to set remote exception handler");
 
@@ -425,7 +416,7 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
   g_set_prgname(aArgv[0]);
 #endif
 
-#ifdef OS_POSIX
+#ifdef XP_UNIX
   if (PR_GetEnv("MOZ_DEBUG_CHILD_PROCESS") ||
       PR_GetEnv("MOZ_DEBUG_CHILD_PAUSE")) {
 #  if defined(XP_LINUX) && defined(DEBUG)
@@ -438,7 +429,7 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
         XRE_GetProcessTypeString(), base::GetCurrentProcId());
     sleep(GetDebugChildPauseTime());
   }
-#elif defined(OS_WIN)
+#elif defined(XP_WIN)
   if (PR_GetEnv("MOZ_DEBUG_CHILD_PROCESS")) {
     NS_DebugBreak(NS_DEBUG_BREAK,
                   "Invoking NS_DebugBreak() to debug child process", nullptr,
@@ -518,6 +509,11 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
       uiLoopType = MessageLoop::TYPE_MOZILLA_CHILD;
       break;
     case GeckoProcessType_GMPlugin:
+      gmp::GMPProcessChild::InitStatics(aArgc, aArgv);
+      uiLoopType = gmp::GMPProcessChild::UseXPCOM()
+                       ? MessageLoop::TYPE_MOZILLA_CHILD
+                       : MessageLoop::TYPE_DEFAULT;
+      break;
     case GeckoProcessType_RemoteSandboxBroker:
       uiLoopType = MessageLoop::TYPE_DEFAULT;
       break;
@@ -546,7 +542,7 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
     // spurious warnings about XPCOM objects being destroyed from a
     // static context.
 
-    Maybe<IOInterposerInit> ioInterposerGuard;
+    AutoIOInterposer ioInterposerGuard;
 
     // Associate this thread with a UI MessageLoop
     MessageLoop uiMessageLoop(uiLoopType);
@@ -558,7 +554,7 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
           break;
 
         case GeckoProcessType_Content:
-          ioInterposerGuard.emplace();
+          ioInterposerGuard.Init();
           process = MakeUnique<ContentProcess>(parentPID, messageChannelId);
           break;
 
@@ -589,7 +585,7 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
           break;
 
         case GeckoProcessType_Socket:
-          ioInterposerGuard.emplace();
+          ioInterposerGuard.Init();
           process =
               MakeUnique<net::SocketProcessImpl>(parentPID, messageChannelId);
           break;
@@ -641,7 +637,6 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
         // these...
         mozilla::FilePreferences::InitDirectoriesAllowlist();
         mozilla::FilePreferences::InitPrefs();
-        OverrideDefaultLocaleIfNeeded();
       }
 
 #if defined(MOZ_SANDBOX)

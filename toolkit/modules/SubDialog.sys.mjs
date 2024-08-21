@@ -13,6 +13,8 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIDragService"
 );
 
+const HTML_NS = "http://www.w3.org/1999/xhtml";
+
 /**
  * The SubDialog resize callback.
  * @callback SubDialog~resizeCallback
@@ -108,11 +110,29 @@ SubDialog.prototype = {
     this._titleElement.textContent = this._frame.contentDocument.title;
   },
 
-  injectXMLStylesheet(aStylesheetURL) {
+  injectStylesheet(aStylesheetURL) {
     const doc = this._frame.contentDocument;
     if ([...doc.styleSheets].find(s => s.href === aStylesheetURL)) {
       return;
     }
+
+    // Attempt to insert the stylesheet as a link element into the same place in
+    // the document as other link elements. It is almost certain that any
+    // document will already have a localization or other stylesheet link
+    // present.
+    let links = doc.getElementsByTagNameNS(HTML_NS, "link");
+    if (links.length) {
+      let stylesheetLink = doc.createElementNS(HTML_NS, "link");
+      stylesheetLink.setAttribute("rel", "stylesheet");
+      stylesheetLink.setAttribute("href", aStylesheetURL);
+
+      // Insert after the last found link element.
+      links[links.length - 1].after(stylesheetLink);
+
+      return;
+    }
+
+    // In the odd case just insert at the top as a processing instruction.
     let contentStylesheet = doc.createProcessingInstruction(
       "xml-stylesheet",
       'href="' + aStylesheetURL + '" type="text/css"'
@@ -153,24 +173,8 @@ SubDialog.prototype = {
     // Wait until frame is ready to prevent browser crash in tests
     await this._frameCreated;
 
-    if (!this._frame.contentWindow) {
-      // Given the binding constructor execution is asynchronous, and "load"
-      // event can be dispatched before the browser element is shown, the
-      // browser binding might not be constructed at this point.  Forcibly
-      // construct the frame and construct the binding.
-      // FIXME: Remove this (bug 1437247)
-      this._frame.getBoundingClientRect();
-    }
-
-    // If we're open on some (other) URL or we're closing, open when closing has finished.
-    if (this._openedURL || this._isClosing) {
-      if (!this._isClosing) {
-        this.close();
-      }
-      let args = Array.from(arguments);
-      this._closingPromise.then(() => {
-        this.open.apply(this, args);
-      });
+    // If we're closing now that we've waited for the dialog to load, abort.
+    if (this._isClosing) {
       return;
     }
     this._addDialogEventListeners();
@@ -225,7 +229,7 @@ SubDialog.prototype = {
       bubbles: true,
       detail: { dialog: this, abort: true },
     });
-    this._frame.contentWindow.close();
+    this._frame.contentWindow?.close();
     // It's possible that we're aborting this dialog before we've had a
     // chance to set up the contentWindow.close function override in
     // _onContentLoaded. If so, call this.close() directly to clean things
@@ -365,7 +369,7 @@ SubDialog.prototype = {
     }
 
     for (let styleSheetURL of this._injectedStyleSheets) {
-      this.injectXMLStylesheet(styleSheetURL);
+      this.injectStylesheet(styleSheetURL);
     }
 
     let { contentDocument } = this._frame;
@@ -413,6 +417,11 @@ SubDialog.prototype = {
         resizeByWidth,
         resizeByHeight
       );
+    };
+
+    // Defining resizeDialog on the contentWindow object to resize dialogs when prompted
+    this._frame.contentWindow.resizeDialog = () => {
+      return this.resizeDialog();
     };
 
     // Make window.close calls work like dialog closing.
@@ -480,6 +489,33 @@ SubDialog.prototype = {
   },
 
   async resizeDialog() {
+    this.resizeHorizontally();
+    this.resizeVertically();
+
+    this._overlay.dispatchEvent(
+      new CustomEvent("dialogopen", {
+        bubbles: true,
+        detail: { dialog: this },
+      })
+    );
+    this._overlay.style.visibility = "inherit";
+    this._overlay.style.opacity = ""; // XXX: focus hack continued from _onContentLoaded
+
+    if (this._box.getAttribute("resizable") == "true") {
+      this._onResize = this._onResize.bind(this);
+      this._resizeObserver = new this._window.MutationObserver(this._onResize);
+      this._resizeObserver.observe(this._box, { attributes: true });
+    }
+
+    this._trapFocus();
+
+    this._resizeCallback?.({
+      title: this._titleElement,
+      frame: this._frame,
+    });
+  },
+
+  resizeHorizontally() {
     // Do this on load to wait for the CSS to load and apply before calculating the size.
     let docEl = this._frame.contentDocument.documentElement;
 
@@ -525,30 +561,6 @@ SubDialog.prototype = {
       boxMinWidth = `min(80vw, ${boxMinWidth})`;
     }
     this._box.style.minWidth = boxMinWidth;
-
-    this.resizeVertically();
-
-    this._overlay.dispatchEvent(
-      new CustomEvent("dialogopen", {
-        bubbles: true,
-        detail: { dialog: this },
-      })
-    );
-    this._overlay.style.visibility = "inherit";
-    this._overlay.style.opacity = ""; // XXX: focus hack continued from _onContentLoaded
-
-    if (this._box.getAttribute("resizable") == "true") {
-      this._onResize = this._onResize.bind(this);
-      this._resizeObserver = new this._window.MutationObserver(this._onResize);
-      this._resizeObserver.observe(this._box, { attributes: true });
-    }
-
-    this._trapFocus();
-
-    this._resizeCallback?.({
-      title: this._titleElement,
-      frame: this._frame,
-    });
   },
 
   resizeVertically() {

@@ -80,6 +80,13 @@ function expectPlacesObserverNotifications(
             oldParentGuid: event.oldParentGuid,
             oldIndex: event.oldIndex,
             isTagging: event.isTagging,
+            title: event.title,
+            tags: event.tags,
+            frecency: event.frecency,
+            hidden: event.hidden,
+            visitCount: event.visitCount,
+            dateAdded: event.dateAdded,
+            lastVisitDate: event.lastVisitDate,
           });
           break;
         case "bookmark-tags-changed":

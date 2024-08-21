@@ -47,23 +47,25 @@ class nsAlertsIconListener : public nsIAlertNotificationImageListener,
    * libnotify.so.4 and four in libnotify.so.1. Passing the fourth argument as
    * NULL is binary compatible.
    */
-  typedef void (*NotifyActionCallback)(NotifyNotification*, char*, gpointer);
-  typedef bool (*notify_is_initted_t)(void);
-  typedef bool (*notify_init_t)(const char*);
-  typedef GList* (*notify_get_server_caps_t)(void);
-  typedef NotifyNotification* (*notify_notification_new_t)(const char*,
-                                                           const char*,
-                                                           const char*,
-                                                           const char*);
-  typedef bool (*notify_notification_show_t)(void*, GError**);
-  typedef void (*notify_notification_set_icon_from_pixbuf_t)(void*, GdkPixbuf*);
-  typedef void (*notify_notification_add_action_t)(void*, const char*,
-                                                   const char*,
-                                                   NotifyActionCallback,
-                                                   gpointer, GFreeFunc);
-  typedef bool (*notify_notification_close_t)(void*, GError**);
-  typedef void (*notify_notification_set_hint_t)(NotifyNotification*,
-                                                 const char*, GVariant*);
+  using NotifyActionCallback = void (*)(NotifyNotification*, char*, gpointer);
+  using notify_is_initted_t = bool (*)();
+  using notify_init_t = bool (*)(const char*);
+  using notify_get_server_caps_t = GList* (*)();
+  using notify_notification_new_t = NotifyNotification* (*)(const char*,
+                                                            const char*,
+                                                            const char*,
+                                                            const char*);
+  using notify_notification_show_t = bool (*)(void*, GError**);
+  using notify_notification_set_icon_from_pixbuf_t = void (*)(void*,
+                                                              GdkPixbuf*);
+  using notify_notification_add_action_t = void (*)(void*, const char*,
+                                                    const char*,
+                                                    NotifyActionCallback,
+                                                    gpointer, GFreeFunc);
+  using notify_notification_close_t = bool (*)(void*, GError**);
+  using notify_notification_set_hint_t = void (*)(NotifyNotification*,
+                                                  const char*, GVariant*);
+  using notify_notification_set_timeout_t = void (*)(NotifyNotification*, gint);
 
   nsCOMPtr<nsICancelable> mIconRequest;
   nsCString mAlertTitle;
@@ -77,6 +79,7 @@ class nsAlertsIconListener : public nsIAlertNotificationImageListener,
 
   bool mAlertHasAction;
   bool mAlertIsSilent;
+  bool mAlertRequiresInteraction;
 
   static void* libNotifyHandle;
   static bool libNotifyNotAvail;
@@ -90,6 +93,7 @@ class nsAlertsIconListener : public nsIAlertNotificationImageListener,
   static notify_notification_add_action_t notify_notification_add_action;
   static notify_notification_close_t notify_notification_close;
   static notify_notification_set_hint_t notify_notification_set_hint;
+  static notify_notification_set_timeout_t notify_notification_set_timeout;
   NotifyNotification* mNotification;
   gulong mClosureHandler;
 

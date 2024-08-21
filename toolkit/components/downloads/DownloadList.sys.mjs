@@ -50,6 +50,7 @@ const FILE_EXTENSIONS = [
   "jpg",
   "jpeg",
   "json",
+  "jxl",
   "m4a",
   "mdb",
   "mid",
@@ -416,7 +417,8 @@ export class DownloadCombinedList extends DownloadList {
       );
     } catch (ex) {
       console.error(
-        `DownloadsCommon: error recording telemetry event. ${ex.message}`
+        "DownloadsCommon: error recording telemetry event.",
+        ex.message
       );
     }
 
@@ -652,7 +654,7 @@ export class DownloadSummary {
   }
 
   // DownloadList callback
-  onDownloadChanged(download) {
+  onDownloadChanged() {
     this._onListChanged();
   }
 

@@ -54,6 +54,10 @@ known_ping_args = [
     "name",
     "include_client_id",
     "send_if_empty",
+    "precise_timestamps",
+    "include_info_sections",
+    "enabled",
+    "schedules_pings",
     "reason_codes",
 ]
 
@@ -81,6 +85,7 @@ def load_monkeypatches():
     Monkeypatch jinja template loading because we're not glean_parser.
     We're glean_parser_ext.
     """
+
     # Monkeypatch util.get_jinja2_template to find templates nearby
     def get_local_template(template_name, filters=()):
         env = jinja2.Environment(

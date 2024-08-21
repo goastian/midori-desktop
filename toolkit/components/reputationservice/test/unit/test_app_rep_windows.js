@@ -10,13 +10,9 @@
 
 // Globals
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "NetUtil",
-  "resource://gre/modules/NetUtil.jsm"
-);
 ChromeUtils.defineESModuleGetters(this, {
   FileTestUtils: "resource://testing-common/FileTestUtils.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
 });
 
 const BackgroundFileSaverOutputStream = Components.Constructor(
@@ -216,7 +212,7 @@ add_task(async function test_setup() {
     return blob;
   }
 
-  gHttpServer.registerPathHandler("/throw", function (request, response) {
+  gHttpServer.registerPathHandler("/throw", function () {
     do_throw("We shouldn't be getting here");
   });
 

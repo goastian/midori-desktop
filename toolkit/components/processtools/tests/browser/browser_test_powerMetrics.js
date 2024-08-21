@@ -12,7 +12,7 @@ function GetTestWebBasedURL(fileName) {
   return (
     getRootDirectory(gTestPath).replace(
       "chrome://mochitests/content",
-      "http://example.org"
+      "https://example.org"
     ) + fileName
   );
 }
@@ -87,16 +87,12 @@ add_task(async () => {
       let initalCpuTime = await getChildCpuTime(pid);
       let afterCpuTime;
       do {
-        await SpecialPowers.spawn(
-          firstBrowser,
-          [kBusyWaitForMs],
-          async kBusyWaitForMs => {
-            let startTime = Date.now();
-            while (Date.now() - startTime < 10) {
-              // Burn CPU time...
-            }
+        await SpecialPowers.spawn(firstBrowser, [kBusyWaitForMs], async () => {
+          let startTime = Date.now();
+          while (Date.now() - startTime < 10) {
+            // Burn CPU time...
           }
-        );
+        });
         afterCpuTime = await getChildCpuTime(pid);
       } while (afterCpuTime - initalCpuTime < kBusyWaitForMs * kNS_PER_MS);
       cpuTimeSpentOnBackgroundTab = Math.floor(
@@ -161,8 +157,8 @@ add_task(async () => {
     .forEach(label => {
       Assert.strictEqual(
         cpuTimeByType[label],
-        undefined,
-        `no media was played so the CPU time for ${label} should be undefined`
+        null,
+        `no media was played so the CPU time for ${label} should be null`
       );
     });
 
@@ -211,25 +207,42 @@ add_task(async () => {
       );
     }
     if (beforeProcInfo.children.some(p => p.type == label)) {
-      Assert.greaterOrEqual(
-        cpuTimeByType[label],
-        Math.floor(
-          beforeProcInfo.children.find(p => p.type == label).cpuTime /
-            kNS_PER_MS
-        ),
-        "reported cpu time for " +
-          label +
-          " process should be at least what the first requestProcInfo returned."
-      );
-      Assert.lessOrEqual(
-        cpuTimeByType[label],
-        Math.ceil(
-          afterProcInfo.children.find(p => p.type == label).cpuTime / kNS_PER_MS
-        ),
-        "reported cpu time for " +
-          label +
-          " process should be at most what the second requestProcInfo returned."
-      );
+      function getCpuTime(procInfo) {
+        return (
+          procInfo.children.find(p => p.type == label).cpuTime / kNS_PER_MS
+        );
+      }
+      let beforeCpuTime = Math.floor(getCpuTime(beforeProcInfo));
+      let afterCpuTime = Math.ceil(getCpuTime(afterProcInfo));
+      let cpuTime = cpuTimeByType[label];
+      if (afterCpuTime == 0) {
+        Assert.equal(
+          cpuTime,
+          null,
+          "The " + label + " process used less than 1ms of CPU time."
+        );
+      } else if (beforeCpuTime == 0 && cpuTime === null) {
+        info(
+          "The " +
+            label +
+            " process might have used used less than 1ms of CPU time."
+        );
+      } else {
+        Assert.greaterOrEqual(
+          cpuTime,
+          beforeCpuTime,
+          "reported cpu time for " +
+            label +
+            " process should be at least what the first requestProcInfo returned."
+        );
+        Assert.lessOrEqual(
+          cpuTime,
+          afterCpuTime,
+          "reported cpu time for " +
+            label +
+            " process should be at most what the second requestProcInfo returned."
+        );
+      }
     } else {
       info(
         "no " +
@@ -255,21 +268,21 @@ add_task(async () => {
   // played in a background tab.
   Assert.strictEqual(
     cpuTimeByType["web.background-perceivable"],
-    undefined,
+    null,
     "CPU time should only be recorded in the web.background-perceivable label"
   );
 
-  // __other__ should be undefined, if it is not, we have a missing label in the metrics.yaml file.
+  // __other__ should be null, if it is not, we have a missing label in the metrics.yaml file.
   Assert.strictEqual(
     cpuTimeByType.__other__,
-    undefined,
+    null,
     "no CPU time should be recorded in the __other__ label"
   );
 
   info("GPU time for each label:");
   let totalGpuTimeByType = undefined;
   for (let label of kGleanProcessTypeLabels) {
-    if (gpuTimeByType[label] !== undefined) {
+    if (gpuTimeByType[label] !== null) {
       totalGpuTimeByType = (totalGpuTimeByType || 0) + gpuTimeByType[label];
     }
     info(`  ${label} = ${gpuTimeByType[label]}`);
@@ -281,10 +294,10 @@ add_task(async () => {
     "The sum of GPU time used by all process types should match totalGpuTimeMs"
   );
 
-  // __other__ should be undefined, if it is not, we have a missing label in the metrics.yaml file.
+  // __other__ should be null, if it is not, we have a missing label in the metrics.yaml file.
   Assert.strictEqual(
     gpuTimeByType.__other__,
-    undefined,
+    null,
     "no GPU time should be recorded in the __other__ label"
   );
 
@@ -318,12 +331,12 @@ add_task(async () => {
     for (let processType of processTypes) {
       Assert.equal(
         Glean.powerCpuMsPerThread[processType][kThreadName].testGetValue(),
-        undefined,
+        null,
         `no CPU time should have been recorded for the ${processType} main thread`
       );
       Assert.equal(
         Glean.powerWakeupsPerThread[processType][kThreadName].testGetValue(),
-        undefined,
+        null,
         `no thread wake ups should have been recorded for the ${processType} main thread`
       );
     }
@@ -359,7 +372,7 @@ add_task(async function test_tracker_power() {
         [
           GetTestWebBasedURL("dummy.html").replace(
             "example.org",
-            "trackertest.org"
+            "itisatracker.org"
           ),
         ],
         async frameUrl => {

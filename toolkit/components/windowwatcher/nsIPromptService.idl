@@ -12,6 +12,7 @@ interface nsICancelable;
 interface nsIChannel;
 
 webidl BrowsingContext;
+webidl WindowGlobalParent;
 
 /**
  * This is the interface to the embeddable prompt service; the service that
@@ -260,6 +261,11 @@ interface nsIPromptService : nsISupports
    * this flag.
    */
   const unsigned long BUTTON_DELAY_ENABLE        = 1 << 26;
+
+  /**
+   * Causes a spinner to be displayed next to the title in the dialog box.
+   */
+  const unsigned long SHOW_SPINNER               = 1 << 27;
 
   /**
    * Selects the standard set of OK/Cancel buttons.
@@ -612,4 +618,17 @@ interface nsIPromptService : nsISupports
                       in nsIChannel aChannel,
                       in uint32_t level,
                       in nsIAuthInformation authInfo);
+
+  /**
+   * Displays a contextmenu to get user confirmation for clipboard read. Only
+   * one context menu can be opened at a time.
+   *
+   * @param aWindow
+   *        The window context that initiates the clipboard operation.
+   *
+   * @return A promise which resolves when the contextmenu is dismissed.
+   *
+   * @resolves nsIPropertyBag { ok: boolean }
+   */
+  Promise confirmUserPaste(in WindowGlobalParent aWindow);
 };

@@ -248,7 +248,7 @@ add_task(
       "lookupApplication returns the correct path with platform-native slash"
     );
     // Side note: manifest.path does not contain a platform-native path,
-    // but it is normalized when used in NativeMessaging.jsm.
+    // but it is normalized when used in NativeMessaging.sys.mjs.
     deepEqual(
       result.manifest,
       manifest,
@@ -308,23 +308,25 @@ add_task(async function test_manifest_with_invalid_utf_8() {
       USER_TEST_JSON
     );
   }
-  // Note: most content failures (malformed JSON, etc.) do not result in a
-  // rejection, but in the manifest file being ignored (and on non-Windows:
-  // looking for manifests in the next location).
-  //
-  // It is inconsistent to reject instead of be returning null here, but that
-  // behavior seems long-standing in Firefox.
-  await Assert.rejects(
-    lookupApplication("test", context),
-    /NotReadableError: Could not read file.* because it is not UTF-8 encoded/,
-    "lookupApplication should reject file with invalid UTF8"
+  let { messages, result } = await promiseConsoleOutput(() =>
+    lookupApplication("test", context)
   );
+  equal(result, null, "lookupApplication should reject file with invalid UTF8");
+  let errorPattern =
+    /NotReadableError: Could not read `.*': file is not UTF-8 encoded/;
+  let utf8Errors = messages.filter(({ message }) => errorPattern.test(message));
+  equal(utf8Errors.length, 1, "lookupApplication logs error about UTF-8");
 });
 
 add_task(async function test_invalid_json() {
   await writeManifest(USER_TEST_JSON, "this is not valid json");
-  let result = await lookupApplication("test", context);
+  let { messages, result } = await promiseConsoleOutput(() =>
+    lookupApplication("test", context)
+  );
   equal(result, null, "lookupApplication ignores bad json");
+  let errorPattern = /Error parsing native manifest .*test.json: JSON\.parse:/;
+  let jsonErrors = messages.filter(({ message }) => errorPattern.test(message));
+  equal(jsonErrors.length, 1, "lookupApplication logs JSON error");
 });
 
 add_task(async function test_invalid_name() {

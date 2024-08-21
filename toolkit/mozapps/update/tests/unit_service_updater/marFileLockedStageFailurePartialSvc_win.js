@@ -13,7 +13,7 @@ async function run_test() {
   gTestDirs = gTestDirsPartialSuccess;
   setTestFilesAndDirsForFailure();
   await setupUpdaterTest(FILE_PARTIAL_MAR, false);
-  await runHelperLockFile(gTestFiles[2]);
+  await runHelperLockFile(getTestFileByName("searchpluginspng1.png"));
   await stageUpdate(STATE_AFTER_STAGE, true);
   checkPostUpdateRunningFile(false);
   // Files aren't checked after staging since this test locks a file which
@@ -22,12 +22,12 @@ async function run_test() {
   // Switch the application to the staged application that was updated.
   runUpdate(STATE_FAILED_READ_ERROR, false, 1, false);
   await waitForHelperExit();
-  standardInit();
+  await testPostUpdateProcessing();
   checkPostUpdateRunningFile(false);
   checkFilesAfterUpdateFailure(getApplyDirFile);
   checkUpdateLogContains(ERR_UNABLE_OPEN_DEST);
   checkUpdateLogContains(STATE_FAILED_READ_ERROR + "\n" + CALL_QUIT);
   await waitForUpdateXMLFiles();
-  checkUpdateManager(STATE_NONE, false, STATE_FAILED, READ_ERROR, 1);
+  await checkUpdateManager(STATE_NONE, false, STATE_FAILED, READ_ERROR, 1);
   checkCallbackLog();
 }

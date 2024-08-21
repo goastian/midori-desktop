@@ -4,25 +4,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { computeSha1HashAsString } from "resource://gre/modules/addons/crypto-utils.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
+/** @type {Lazy} */
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
+  AddonManagerPrivate: "resource://gre/modules/AddonManager.sys.mjs",
+  Extension: "resource://gre/modules/Extension.sys.mjs",
   ExtensionParent: "resource://gre/modules/ExtensionParent.sys.mjs",
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
   JSONFile: "resource://gre/modules/JSONFile.sys.mjs",
   KeyValueService: "resource://gre/modules/kvstore.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(
+ChromeUtils.defineLazyGetter(
   lazy,
   "StartupCache",
   () => lazy.ExtensionParent.StartupCache
 );
 
-XPCOMUtils.defineLazyGetter(
+ChromeUtils.defineLazyGetter(
   lazy,
   "Management",
   () => lazy.ExtensionParent.apiManager
@@ -130,9 +135,10 @@ class PermissionStore {
     const storePath = lazy.FileUtils.getDir("ProfD", [RKV_DIRNAME]).path;
     // Make sure the folder exists
     await IOUtils.makeDirectory(storePath, { ignoreExisting: true });
-    this._store = await lazy.KeyValueService.getOrCreate(
+    this._store = await lazy.KeyValueService.getOrCreateWithOptions(
       storePath,
-      "permissions"
+      "permissions",
+      { strategy: lazy.KeyValueService.RecoveryStrategy.RENAME }
     );
     if (!(await this._store.has(VERSION_KEY))) {
       // If _shouldMigrateFromOldKVStorePath is true (default only on Nightly channel
@@ -343,6 +349,50 @@ export var ExtensionPermissions = {
     return this._getCached(extensionId);
   },
 
+  /**
+   * Validate and normalize passed in `perms`, including a fixup to
+   * include all possible "all sites" permissions when appropriate.
+   *
+   * @throws if an origin or permission is not part of optional permissions.
+   *
+   * @typedef {object} Perms
+   * @property {string[]} origins
+   * @property {string[]} permissions
+   *
+   * @param {Perms} perms api permissions and origins to be added/removed.
+   * @param {Perms} optional permissions and origins from the manifest.
+   * @returns {Perms} normalized
+   */
+  normalizeOptional(perms, optional) {
+    let allSites = false;
+    let patterns = new MatchPatternSet(optional.origins, { ignorePath: true });
+    let normalized = Object.assign({}, perms);
+
+    for (let o of perms.origins) {
+      if (!patterns.subsumes(new MatchPattern(o))) {
+        throw new Error(`${o} was not declared in the manifest`);
+      }
+      // If this is one of the "all sites" permissions
+      allSites ||= lazy.Extension.isAllSitesPermission(o);
+    }
+
+    if (allSites) {
+      // Grant/revoke ALL "all sites" optional permissions from the manifest.
+      let origins = perms.origins.concat(
+        optional.origins.filter(o => lazy.Extension.isAllSitesPermission(o))
+      );
+      normalized.origins = Array.from(new Set(origins));
+    }
+
+    for (let p of perms.permissions) {
+      if (!optional.permissions.includes(p)) {
+        throw new Error(`${p} was not declared in optional_permissions`);
+      }
+    }
+
+    return normalized;
+  },
+
   _fixupAllUrlsPerms(perms) {
     // Unfortunately, we treat <all_urls> as an API permission as well.
     // If it is added to either, ensure it is added to both.
@@ -357,9 +407,11 @@ export var ExtensionPermissions = {
    * Add new permissions for the given extension.  `permissions` is
    * in the format that is passed to browser.permissions.request().
    *
+   * @typedef {import("ExtensionCommon.sys.mjs").EventEmitter} EventEmitter
+   *
    * @param {string} extensionId The extension id
-   * @param {object} perms Object with permissions and origins array.
-   * @param {EventEmitter} emitter optional object implementing emitter interfaces
+   * @param {Perms} perms Object with permissions and origins array.
+   * @param {EventEmitter} [emitter] optional object implementing emitter interfaces
    */
   async add(extensionId, perms, emitter) {
     let { permissions, origins } = await this._get(extensionId);
@@ -397,8 +449,8 @@ export var ExtensionPermissions = {
    * in the format that is passed to browser.permissions.request().
    *
    * @param {string} extensionId The extension id
-   * @param {object} perms Object with permissions and origins array.
-   * @param {EventEmitter} emitter optional object implementing emitter interfaces
+   * @param {Perms} perms Object with permissions and origins array.
+   * @param {EventEmitter} [emitter] optional object implementing emitter interfaces
    */
   async remove(extensionId, perms, emitter) {
     let { permissions, origins } = await this._get(extensionId);
@@ -566,13 +618,35 @@ export var OriginControls = {
     };
   },
 
-  // Whether to show the attention indicator for extension on current tab.
-  getAttention(policy, window) {
+  /**
+   * Whether to show the attention indicator for extension on current tab. We
+   * usually show attention when:
+   *
+   * - some permissions are needed (in MV3+)
+   * - the extension is not allowed on the domain (quarantined)
+   *
+   * @param {WebExtensionPolicy} policy an extension's policy
+   * @param {Window} window The window for which we can get the attention state
+   * @returns {{attention: boolean, quarantined: boolean}}
+   */
+  getAttentionState(policy, window) {
     if (policy?.manifestVersion >= 3) {
-      let state = this.getState(policy, window.gBrowser.selectedTab);
-      return !!state.whenClicked && !state.hasAccess && !state.temporaryAccess;
+      const state = this.getState(policy, window.gBrowser.selectedTab);
+      // quarantined is always false when the feature is disabled.
+      const quarantined = !!state.quarantined;
+      const attention =
+        quarantined ||
+        (!!state.whenClicked && !state.hasAccess && !state.temporaryAccess);
+
+      return { attention, quarantined };
     }
-    return false;
+
+    // No need to check whether the Quarantined Domains feature is enabled
+    // here, it's already done in `getState()`.
+    const state = this.getState(policy, window.gBrowser.selectedTab);
+    const attention = !!state.quarantined;
+    // If it needs attention, it's because of the quarantined domains.
+    return { attention, quarantined: attention };
   },
 
   // Grant extension host permission to always run on this host.
@@ -655,6 +729,119 @@ export var OriginControls = {
     return null;
   },
 };
+
+export var QuarantinedDomains = {
+  getUserAllowedAddonIdPrefName(addonId) {
+    return `${this.PREF_ADDONS_BRANCH_NAME}${addonId}`;
+  },
+  isUserAllowedAddonId(addonId) {
+    return Services.prefs.getBoolPref(
+      this.getUserAllowedAddonIdPrefName(addonId),
+      false
+    );
+  },
+  setUserAllowedAddonIdPref(addonId, userAllowed) {
+    Services.prefs.setBoolPref(
+      this.getUserAllowedAddonIdPrefName(addonId),
+      userAllowed
+    );
+  },
+  clearUserPref(addonId) {
+    Services.prefs.clearUserPref(this.getUserAllowedAddonIdPrefName(addonId));
+  },
+
+  // Implementation internals.
+
+  PREF_ADDONS_BRANCH_NAME: `extensions.quarantineIgnoredByUser.`,
+  PREF_DOMAINSLIST_NAME: `extensions.quarantinedDomains.list`,
+  _initialized: false,
+  _init() {
+    if (this._initialized) {
+      return;
+    }
+
+    const onUserAllowedPrefChanged = this._onUserAllowedPrefChanged.bind(this);
+    Services.prefs.addObserver(
+      this.PREF_ADDONS_BRANCH_NAME,
+      onUserAllowedPrefChanged
+    );
+
+    const onUpdatedDomainsListTelemetry =
+      this._onUpdatedDomainsListTelemetry.bind(this);
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this,
+      "currentDomainsList",
+      this.PREF_DOMAINSLIST_NAME,
+      "",
+      onUpdatedDomainsListTelemetry,
+      value => this._transformDomainsListPrefValue(value || "")
+    );
+    // Collect it at least once per session (and update it when the pref value changes).
+    onUpdatedDomainsListTelemetry();
+
+    const onAMRemoteSettingsSetPref =
+      this._onAMRemoteSettingsSetPref.bind(this);
+    Services.obs.addObserver(
+      onAMRemoteSettingsSetPref,
+      "am-remote-settings-setpref"
+    );
+
+    this._initialized = true;
+  },
+  async _onAMRemoteSettingsSetPref(subject, _topic) {
+    const { prefName, prefValue } = subject?.wrappedJSObject ?? {};
+    if (prefName !== this.PREF_DOMAINSLIST_NAME) {
+      return;
+    }
+    Glean.extensionsQuarantinedDomains.remotehash.set(
+      computeSha1HashAsString(prefValue || "")
+    );
+  },
+  async _onUserAllowedPrefChanged(_subject, _topic, prefName) {
+    let addonId = prefName.slice(this.PREF_ADDONS_BRANCH_NAME.length);
+    // Sanity check.
+    if (!addonId || prefName !== this.getUserAllowedAddonIdPrefName(addonId)) {
+      return;
+    }
+
+    // Notify listeners, e.g. to update details in TelemetryEnvironment.
+    const addon = await lazy.AddonManager.getAddonByID(addonId);
+    // Do not call onPropertyChanged listeners if the addon cannot be found
+    // anymore (e.g. it has been uninstalled).
+    if (addon) {
+      lazy.AddonManagerPrivate.callAddonListeners("onPropertyChanged", addon, [
+        "quarantineIgnoredByUser",
+      ]);
+    }
+  },
+  _onUpdatedDomainsListTelemetry(_subject, _topic, _prefName) {
+    Glean.extensionsQuarantinedDomains.listsize.set(
+      this.currentDomainsList.set.size
+    );
+    Glean.extensionsQuarantinedDomains.listhash.set(
+      this.currentDomainsList.hash
+    );
+  },
+  _transformDomainsListPrefValue(value) {
+    try {
+      return {
+        // NOTE: using a sha1 hash to make sure the resulting string will fit into the
+        // unified telemetry scalar string the glean metrics is mirrored to (which is
+        // limited to 50 characters).
+        hash: computeSha1HashAsString(value || ""),
+        set: new Set(
+          value
+            .split(",")
+            .map(v => v.trim())
+            .filter(v => v.length)
+        ),
+      };
+    } catch (err) {
+      return { hash: "unexpected-error", set: new Set() };
+    }
+  },
+};
+QuarantinedDomains._init();
 
 // Constants exported for testing purpose.
 export {

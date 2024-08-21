@@ -4,16 +4,13 @@
 "use strict";
 
 async function testAppliedFilters(ext, expectedFilter, expectedFilterCount) {
-  let tempDir = FileUtils.getDir(
-    "TmpD",
-    [`testDownloadDir-${Math.random()}`],
-    true
-  );
+  let tempDir = FileUtils.getDir("TmpD", [`testDownloadDir-${Math.random()}`]);
+  tempDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 
   let filterCount = 0;
 
   let MockFilePicker = SpecialPowers.MockFilePicker;
-  MockFilePicker.init(window);
+  MockFilePicker.init(window.browsingContext);
   MockFilePicker.displayDirectory = tempDir;
   MockFilePicker.returnValue = MockFilePicker.returnCancel;
   MockFilePicker.appendFiltersCallback = function (fp, val) {
@@ -107,6 +104,10 @@ add_task(async function testDownload_tif_Images() {
 
 add_task(async function testDownload_webp_Images() {
   await testAppliedFilters(".webp", Ci.nsIFilePicker.filterImages, 2);
+});
+
+add_task(async function testDownload_heic_Images() {
+  await testAppliedFilters(".heic", Ci.nsIFilePicker.filterImages, 2);
 });
 
 add_task(async function testDownload_xml_XML() {

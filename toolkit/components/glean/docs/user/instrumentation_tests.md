@@ -34,6 +34,9 @@ you're going to want to write some automated tests.
 * You may see values from previous tests persist across tests because the profile directory was shared between test cases.
     * You can reset Glean before your test by calling
       `Services.fog.testResetFOG()` (in JS).
+        * If your instrumentation isn't on the parent process,
+          you should call `await Services.fog.testFlushAllChildren()` before `testResetFOG`.
+          That will ensure all pending data makes it to the parent process to be cleared.
     * You shouldn't have to do this in C++ or Rust since there you should use the
       `FOGFixture` test fixture.
 * If your metric is based on timing (`timespan`, `timing_distribution`),
@@ -42,7 +45,10 @@ you're going to want to write some automated tests.
   do not expect the values to be predictable.
     * Instead, check that a value is `> 0` or that the number of samples is expected.
     * You might be able to assert that the value is at least as much as a known, timed value,
-    but beware of rounding.
+      but beware of rounding.
+    * If your metric is a `timing_distribution` mirroring to a Telemetry probe via [GIFFT](./gifft.md),
+      there may be [small observed differences between systems](./gifft.md#timing-distribution-mirrors-samples-and-sums-might-be-different)
+      that can cause equality assertions to fail.
 * Errors in instrumentation APIs do not panic, throw, or crash.
   But Glean remembers that the errors happened.
     * Test APIs, on the other hand, are permitted
@@ -51,6 +57,42 @@ you're going to want to write some automated tests.
     * If you call a test API and it panics, throws, or crashes,
       that means your instrumentation did something wrong.
       Check your test logs for details about what went awry.
+
+### Tests and Artifact Builds
+
+Artifact build support is provided by [the JOG subsystem](../dev/jog).
+It is able to register the latest versions of all metrics and pings at runtime.
+However, the compiled code is still running against the
+version of those metrics and pings that was current at the time the artifacts were compiled.
+
+This isn't a problem unless:
+* You are changing a metric or ping that is used in instrumentation in the compiled code, or
+* You are using `testBeforeNextSubmit` in JavaScript for a ping submitted in the compiled code.
+
+When in doubt, simply test your new test in artifact mode
+(by e.g. passing `--enable-artifact-builds` to `mach try`)
+before submitting it.
+If it doesn't pass in artifact mode because of one of these two cases,
+you may need to skip your test whenever FOG's artifact build support is enabled:
+* xpcshell:
+```js
+add_task(
+  { skip_if: () => Services.prefs.getBoolPref("telemetry.fog.artifact_build", false) },
+  function () {
+    // ... your test ...
+  }
+);
+```
+* mochitest:
+```js
+add_task(function () {
+  if (Services.prefs.getBoolPref("telemetry.fog.artifact_build", false)) {
+    Assert.ok(true, "Test skipped in artifact mode.");
+    return;
+  }
+  // ... your test ...
+});
+```
 
 ## The Usual Test Format
 
@@ -161,8 +203,15 @@ But your instrumentation might be on any process, so how do you test it?
 In this case there's a slight addition to the Usual Test Format:
 1) Assert no value in the metric
 2) Express behaviour
-3) _Flush all pending FOG IPC operations with `Services.fog.testFlushAllChildren()`_
+3) _Flush all pending FOG IPC operations with `await Services.fog.testFlushAllChildren()`_
 4) Assert correct value in the metric.
+
+**NOTE:** We learned in
+[bug 1843178](https://bugzilla.mozilla.org/show_bug.cgi?id=1843178)
+that the list of all content processes that `Services.fog.testFlushAllChildren()`
+uses is very quickly updated after the end of a call to `BrowserUtils.withNewTab(...)`.
+If you are using `withNewTab`, you should consider calling `testFlushAllChildren()`
+_within_ the callback.
 
 ## GTests/Google Tests
 

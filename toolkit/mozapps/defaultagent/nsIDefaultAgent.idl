@@ -1,0 +1,153 @@
+/* -*- Mode: IDL; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+ #include "nsISupports.idl"
+
+[scriptable, uuid(edc38cb5-b6f6-4aeb-bd45-7be8e00fc364)]
+interface nsIDefaultAgent : nsISupports
+{
+  /**
+  * Create a Windows scheduled task that will launch this binary with the
+  * do-task command every 24 hours, starting from 24 hours after register-task
+  * is run.
+  *
+  * @param {AString} aUniqueToken
+  *        A unique identifier for this installation; typically the install path
+  *        hash that's used for the update directory, the AppUserModelID, and
+  *        other related purposes.
+  */
+  void registerTask(in AString aUniqueToken);
+
+  /**
+  * Update an existing task registration, without changing its schedule. This
+  * should be called during updates of the application, in case this program
+  * has been updated and any of the task parameters have changed.
+  *
+  * @param {AString} aUniqueToken
+  *        A unique identifier for this installation; the same one provided when
+  *        the task was registered.
+  */
+  void updateTask(in AString aUniqueToken);
+
+  /**
+  * Removes the previously created task. The unique token argument is required
+  * and should be the same one that was passed in when the task was registered.
+  *
+  * @param {AString} aUniqueToken
+  *        A unique identifier for this installation; the same one provided when
+  *        the task was registered.
+  */
+  void unregisterTask(in AString aUniqueToken);
+
+  /**
+  * Removes the previously created task, and also removes all registry entries
+  * running the task may have created.
+  *
+  * @param {AString} aUniqueToken
+  *        A unique identifier for this installation; the same one provided when
+  *        the task was registered.
+  */
+  void uninstall(in AString aUniqueToken);
+
+  /**
+  * Checks that the main app ran recently.
+  *
+  * @return {boolean} true if the app ran recently.
+  */
+  boolean appRanRecently();
+
+  /**
+  * Returns a string for the default browser if known, binned to known browsers.
+  *
+  * @return {AString}
+  *         The current default browser.
+  */
+  AString getDefaultBrowser();
+
+  /**
+  * Gets and replaces the previously found default browser from the registry.
+  *
+  * @param {AString} aCurrentBrowser
+  *        The current known browser to save to the registry.
+  * @return {AString}
+  *         The previous known browser from the registry.
+  */
+  AString getReplacePreviousDefaultBrowser(in AString aCurrentBrowser);
+
+  /**
+  * Returns a string for the default PDF handler if known, binned to known
+  * PDF handlers.
+  *
+  * @return {AString}
+  *         The previous default PDF handler.
+  */
+  AString getDefaultPdfHandler();
+
+  /**
+  * Sends a Default Agent telemetry ping.
+  *
+  * @param {AString} aCurrentBrowser
+  *        The current known browser.
+  * @param {AString} aPreviousBrowser
+  *        The previous known browser.
+  * @param {AString} aPdfHandler
+  *        The current known PDF handler.
+  * @param {AString} aNotificationShown
+  *        If the notification was or wasn't shown. See
+  *        `toolkit/mozapps/defaultagent/Notification.h` for valid values.
+  * @param {AString} aNotificationAction
+  *        The notification action taken by the user. See
+  *        `toolkit/mozapps/defaultagent/Notification.h` for valid values.
+  *
+  */
+  void sendPing(in AString aCurrentBrowser, in AString aPreviousBrowser, in AString aPdfHandler, in AString aNotificationShown, in AString aNotificationAction);
+
+  /**
+  * Set the default browser and optionally additional file extensions via the
+  * UserChoice registry keys.
+  *
+  * @param {AString} aAumid
+  *        Suffix to be appended to ProgIDs when registering system defaults.
+  * @param {Array<AString>} aExtraFileExtensions
+  *        Additional optional file extensions to register specified as argument
+  *        pairs: the first element is the file extension, the second element is
+  *        the root of a ProgID, which will be suffixed with `-{aAumid}`.
+  */
+  void setDefaultBrowserUserChoice(in AString aAumid, in Array<AString> aExtraFileExtensions);
+
+  /**
+  * Set the default browser and optionally additional file extensions via the
+  * UserChoice registry keys, asynchronously. Does the actual work on a
+  * background thread.
+  *
+  * @param {AString} aAumid
+  *        Suffix to be appended to ProgIDs when registering system defaults.
+  * @param {Array<AString>} aExtraFileExtensions
+  *        Additional optional file extensions to register specified as argument
+  *        pairs: the first element is the file extension, the second element is
+  *        the root of a ProgID, which will be suffixed with `-{aAumid}`.
+  */
+  [implicit_jscontext]
+  Promise setDefaultBrowserUserChoiceAsync(in AString aAumid, in Array<AString> aExtraFileExtensions);
+
+  /**
+  * Sets file extensions via the UserChoice registry keys.
+  *
+  * @param {AString} aAumid
+  *        Suffix to be appended to ProgIDs when registering system defaults.
+  * @param {Array<AString>} aExtraFileExtensions
+  *        File extensions to register specified as argument pairs: the first
+  *        element is the file extension, the second element is the root of a
+  *        ProgID, which will be suffixed with `-{aAumid}`.
+  */
+  void setDefaultExtensionHandlersUserChoice(in AString aAumid, in Array<AString> aFileExtensions);
+
+  /**
+  * Checks if the default agent has been disabled.
+  *
+  * @return {boolean} true if the default agent is disabled.
+  */
+  boolean agentDisabled();
+};

@@ -97,12 +97,11 @@
 #include "common/linux/eintr_wrapper.h"
 #include "third_party/lss/linux_syscall_support.h"
 #if defined(MOZ_OXIDIZED_BREAKPAD)
-#include "nsString.h"
 #include "mozilla/toolkit/crashreporter/rust_minidump_writer_linux_ffi_generated.h"
 #endif
 
 #ifdef MOZ_PHC
-#include "replace_malloc_bridge.h"
+#include "PHC.h"
 #endif
 
 #if defined(__ANDROID__)
@@ -458,7 +457,7 @@ static void GetPHCAddrInfo(siginfo_t* siginfo,
                            mozilla::phc::AddrInfo* addr_info) {
   // Is this a crash involving a PHC allocation?
   if (siginfo->si_signo == SIGSEGV || siginfo->si_signo == SIGBUS) {
-    ReplaceMalloc::IsPHCAllocation(siginfo->si_addr, addr_info);
+    mozilla::phc::IsPHCAllocation(siginfo->si_addr, addr_info);
   }
 }
 #endif
@@ -466,9 +465,10 @@ static void GetPHCAddrInfo(siginfo_t* siginfo,
 // This function runs in a compromised context: see the top of the file.
 // Runs on the crashing thread.
 bool ExceptionHandler::HandleSignal(int /*sig*/, siginfo_t* info, void* uc) {
-  mozilla::phc::AddrInfo addr_info;
+  mozilla::phc::AddrInfo* addr_info = nullptr;
 #ifdef MOZ_PHC
-  GetPHCAddrInfo(info, &addr_info);
+  addr_info = &mozilla::phc::gAddrInfo;
+  GetPHCAddrInfo(info, addr_info);
 #endif
 
   if (filter_ && !filter_(callback_context_))
@@ -512,7 +512,7 @@ bool ExceptionHandler::HandleSignal(int /*sig*/, siginfo_t* info, void* uc) {
     }
   }
 
-  return GenerateDump(&g_crash_context_, &addr_info);
+  return GenerateDump(&g_crash_context_, addr_info);
 }
 
 // This is a public interface to HandleSignal that allows the client to
@@ -579,6 +579,13 @@ bool ExceptionHandler::GenerateDump(
     fdes[0] = fdes[1] = -1;
   }
 
+  static const char attempt_msg[] = "ExceptionHandler::GenerateDump attempting "
+                                    "to generate:";
+  logger::write(attempt_msg, sizeof(attempt_msg));
+  logger::write(minidump_descriptor_.path(),
+                my_strlen(minidump_descriptor_.path()));
+  logger::write("\n", 1);
+
   const pid_t child = sys_clone(
       ThreadEntry, stack, CLONE_FS | CLONE_UNTRACED, &thread_arg, NULL, NULL,
       NULL);
@@ -623,6 +630,19 @@ bool ExceptionHandler::GenerateDump(
   }
 
   bool success = r != -1 && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+
+  static const char generate_msg[] = "ExceptionHandler::GenerateDump minidump "
+                                     "generation ";
+  static const char success_msg[] = "succeeded\n";
+  static const char fail_msg[] = "succeeded\n";
+
+  logger::write(generate_msg, sizeof(generate_msg));
+  if (success) {
+    logger::write(success_msg, sizeof(success_msg));
+  } else {
+    logger::write(fail_msg, sizeof(fail_msg));
+  }
+
   if (callback_)
     success =
       callback_(minidump_descriptor_, callback_context_, addr_info, success);
@@ -853,9 +873,10 @@ bool ExceptionHandler::WriteMinidumpForChild(pid_t child,
   MinidumpDescriptor descriptor(dump_path);
   descriptor.UpdatePath();
 #if defined(MOZ_OXIDIZED_BREAKPAD)
-  nsCString error_msg;
-  if (!write_minidump_linux(descriptor.path(), child, child_blamed_thread, &error_msg))
+  char* error_msg;
+  if (!write_minidump_linux(descriptor.path(), child, child_blamed_thread, &error_msg)) {
       return false;
+  }
 #else
   if (!google_breakpad::WriteMinidump(descriptor.path(),
                                       child,

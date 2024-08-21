@@ -36,17 +36,14 @@ if (LoginHelper.improvedPasswordRulesEnabled) {
 }
 
 /**
- * Init with a common login
- * If selfFilling is true or non-undefined, fires an event at the page so that
- * the test can start checking filled-in values. Tests that check observer
- * notifications might be confused by this.
+ * Init with a common login.
  */
-async function commonInit(selfFilling, testDependsOnDeprecatedLogin) {
+async function commonInit(testDependsOnDeprecatedLogin) {
   var pwmgr = Services.logins;
   assert.ok(pwmgr != null, "Access LoginManager");
 
   // Check that initial state has no logins
-  var logins = pwmgr.getAllLogins();
+  var logins = await pwmgr.getAllLogins();
   assert.equal(logins.length, 0, "Not expecting logins to be present");
   var disabledHosts = pwmgr.getAllDisabledHosts();
   if (disabledHosts.length) {
@@ -74,7 +71,7 @@ async function commonInit(selfFilling, testDependsOnDeprecatedLogin) {
   }
 
   // Last sanity check
-  logins = pwmgr.getAllLogins();
+  logins = await pwmgr.getAllLogins();
   assert.equal(
     logins.length,
     testDependsOnDeprecatedLogin ? 1 : 0,
@@ -82,17 +79,10 @@ async function commonInit(selfFilling, testDependsOnDeprecatedLogin) {
   );
   disabledHosts = pwmgr.getAllDisabledHosts();
   assert.equal(disabledHosts.length, 0, "Checking for no disabled hosts");
-
-  if (selfFilling) {
-    return;
-  }
-
-  // Notify the content side that initialization is done and tests can start.
-  sendAsyncMessage("registerRunTests");
 }
 
-function dumpLogins() {
-  let logins = Services.logins.getAllLogins();
+async function dumpLogins() {
+  let logins = await Services.logins.getAllLogins();
   assert.ok(true, "----- dumpLogins: have " + logins.length + " logins. -----");
   for (var i = 0; i < logins.length; i++) {
     dumpLogin("login #" + i + " --- ", logins[i]);
@@ -118,27 +108,39 @@ function dumpLogin(label, login) {
   assert.ok(true, label + loginText);
 }
 
-function onStorageChanged(subject, topic, data) {
-  sendAsyncMessage("storageChanged", {
-    topic,
-    data,
-  });
-}
-Services.obs.addObserver(onStorageChanged, "passwordmgr-storage-changed");
+addMessageListener("storageChanged", async function ({ expectedChangeTypes }) {
+  return new Promise(resolve => {
+    function storageChanged(_subject, _topic, data) {
+      let changeType = expectedChangeTypes.shift();
+      if (data != changeType) {
+        resolve("Unexpected change type " + data + ", expected " + changeType);
+      } else if (expectedChangeTypes.length === 0) {
+        Services.obs.removeObserver(
+          storageChanged,
+          "passwordmgr-storage-changed"
+        );
+        resolve();
+      }
+    }
 
-function onPrompt(subject, topic, data) {
-  sendAsyncMessage("promptShown", {
-    topic,
-    data,
+    Services.obs.addObserver(storageChanged, "passwordmgr-storage-changed");
   });
-}
-Services.obs.addObserver(onPrompt, "passwordmgr-prompt-change");
-Services.obs.addObserver(onPrompt, "passwordmgr-prompt-save");
+});
+
+addMessageListener("promptShown", async function () {
+  return new Promise(resolve => {
+    function promptShown(_subject, topic, _data) {
+      Services.obs.removeObserver(promptShown, "passwordmgr-prompt-change");
+      Services.obs.removeObserver(promptShown, "passwordmgr-prompt-save");
+      resolve(topic);
+    }
+
+    Services.obs.addObserver(promptShown, "passwordmgr-prompt-change");
+    Services.obs.addObserver(promptShown, "passwordmgr-prompt-save");
+  });
+});
 
 addMessageListener("cleanup", () => {
-  Services.obs.removeObserver(onStorageChanged, "passwordmgr-storage-changed");
-  Services.obs.removeObserver(onPrompt, "passwordmgr-prompt-change");
-  Services.obs.removeObserver(onPrompt, "passwordmgr-prompt-save");
   Services.logins.removeAllUserFacingLogins();
 });
 
@@ -146,25 +148,20 @@ addMessageListener("cleanup", () => {
 
 addMessageListener(
   "setupParent",
-  async ({
-    selfFilling = false,
-    testDependsOnDeprecatedLogin = false,
-  } = {}) => {
-    await commonInit(selfFilling, testDependsOnDeprecatedLogin);
-    sendAsyncMessage("doneSetup");
+  async ({ testDependsOnDeprecatedLogin = false } = {}) => {
+    return commonInit(testDependsOnDeprecatedLogin);
   }
 );
 
 addMessageListener("loadRecipes", async function (recipes) {
   var recipeParent = await LoginManagerParent.recipeParentPromise;
   await recipeParent.load(recipes);
-  sendAsyncMessage("loadedRecipes", recipes);
+  return recipes;
 });
 
 addMessageListener("resetRecipes", async function () {
   let recipeParent = await LoginManagerParent.recipeParentPromise;
   await recipeParent.reset();
-  sendAsyncMessage("recipesReset");
 });
 
 addMessageListener("getTelemetryEvents", options => {
@@ -195,10 +192,11 @@ addMessageListener("getTelemetryEvents", options => {
     }
     return true;
   });
-  sendAsyncMessage("getTelemetryEvents", events);
+
+  return events;
 });
 
-addMessageListener("proxyLoginManager", msg => {
+addMessageListener("proxyLoginManager", async msg => {
   // Recreate nsILoginInfo objects from vanilla JS objects.
   let recreatedArgs = msg.args.map((arg, index) => {
     if (msg.loginInfoIndices.includes(index)) {
@@ -208,7 +206,7 @@ addMessageListener("proxyLoginManager", msg => {
     return arg;
   });
 
-  let rv = Services.logins[msg.methodName](...recreatedArgs);
+  let rv = await Services.logins[msg.methodName](...recreatedArgs);
   if (rv instanceof Ci.nsILoginInfo) {
     rv = LoginHelper.loginToVanillaObject(rv);
   } else if (
@@ -240,7 +238,7 @@ LoginManagerParent.setListenerForTests((msg, { origin, data }) => {
   } else if (msg == "PasswordEditedOrGenerated") {
     sendAsyncMessage("passwordEditedOrGenerated", { origin, data });
   } else if (msg == "FormProcessed") {
-    sendAsyncMessage("formProcessed", {});
+    sendAsyncMessage("formProcessed", data);
   }
 });
 

@@ -16,13 +16,15 @@ EXTRA_PP_JS_MODULES += [
 ]
 
 EXTRA_JS_MODULES.reader = [
-    "JSDOMParser.js",
-    "Readability.js",
-    "ReaderWorker.js",
+    "readability/JSDOMParser.js",
+    "readability/Readability.js",
+    "Reader.worker.js",
     "ReaderWorker.sys.mjs",
 ]
 
-BROWSER_CHROME_MANIFESTS += ["test/browser.ini"]
+BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
+
+MOCHITEST_CHROME_MANIFESTS += ["tests/chrome/chrome.toml"]
 
 with Files("**"):
     BUG_COMPONENT = ("Toolkit", "Reader Mode")

@@ -5,7 +5,6 @@
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { AsyncShutdown } from "resource://gre/modules/AsyncShutdown.sys.mjs";
-import { PromiseUtils } from "resource://gre/modules/PromiseUtils.sys.mjs";
 import { DeferredTask } from "resource://gre/modules/DeferredTask.sys.mjs";
 
 import { TelemetryUtils } from "resource://gre/modules/TelemetryUtils.sys.mjs";
@@ -39,7 +38,6 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   ClientID: "resource://gre/modules/ClientID.sys.mjs",
   CoveragePing: "resource://gre/modules/CoveragePing.sys.mjs",
-  ProvenanceData: "resource:///modules/ProvenanceData.sys.mjs",
   TelemetryArchive: "resource://gre/modules/TelemetryArchive.sys.mjs",
   TelemetryEnvironment: "resource://gre/modules/TelemetryEnvironment.sys.mjs",
   TelemetryEventPing: "resource://gre/modules/EventPing.sys.mjs",
@@ -56,6 +54,16 @@ ChromeUtils.defineESModuleGetters(lazy, {
   UpdatePing: "resource://gre/modules/UpdatePing.sys.mjs",
   jwcrypto: "resource://services-crypto/jwcrypto.sys.mjs",
 });
+
+if (
+  AppConstants.platform === "win" &&
+  AppConstants.MOZ_APP_NAME !== "thunderbird"
+) {
+  ChromeUtils.defineESModuleGetters(lazy, {
+    // eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
+    BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.sys.mjs",
+  });
+}
 
 /**
  * This is a policy object used to override behavior for testing.
@@ -257,6 +265,15 @@ export var TelemetryController = Object.freeze({
    */
   promiseInitialized() {
     return Impl.promiseInitialized();
+  },
+
+  /**
+   * Allows to trigger TelemetryControllers delayed initialization now and waiting for its completion.
+   * The returned promise is guaranteed to resolve before TelemetryController is shutting down.
+   * @return {Promise} Resolved when delayed TelemetryController initialization completed.
+   */
+  ensureInitialized() {
+    return Impl.ensureInitialized();
   },
 });
 
@@ -668,7 +685,7 @@ var Impl = {
       // Previous aborted-session might have been with a canary client ID.
       // Don't send it.
       if (ping.clientId != Utils.knownClientID) {
-        await lazy.TelemetryStorage.addPendingPing(ping);
+        await lazy.TelemetryStorage.savePendingPing(ping);
         await lazy.TelemetryArchive.promiseArchivePing(ping);
       }
     } catch (e) {
@@ -791,7 +808,7 @@ var Impl = {
     // Delay full telemetry initialization to give the browser time to
     // run various late initializers. Otherwise our gathered memory
     // footprint and other numbers would be too optimistic.
-    this._delayedInitTaskDeferred = PromiseUtils.defer();
+    this._delayedInitTaskDeferred = Promise.withResolvers();
     this._delayedInitTask = new DeferredTask(
       async () => {
         try {
@@ -1160,6 +1177,18 @@ var Impl = {
     return this._delayedInitTaskDeferred.promise;
   },
 
+  /**
+   * Allows to trigger TelemetryControllers delayed initialization now and waiting for its completion.
+   * This will complete before TelemetryController is shutting down.
+   * @return {Promise} Resolved when delayed TelemetryController initialization completed.
+   */
+  ensureInitialized() {
+    if (this._delayedInitTask) {
+      return this._delayedInitTask.finalize();
+    }
+    return Promise.resolve();
+  },
+
   getCurrentPingData(aSubsession) {
     this._log.trace("getCurrentPingData - subsession: " + aSubsession);
 
@@ -1216,15 +1245,20 @@ var Impl = {
       NEWPROFILE_PING_DEFAULT_DELAY
     );
 
-    try {
-      // This is asynchronous, but we aren't going to await on it now. Just
-      // kick it off.
-      lazy.ProvenanceData.submitProvenanceTelemetry();
-    } catch (ex) {
-      this._log.warn(
-        "scheduleNewProfilePing - submitProvenanceTelemetry failed",
-        ex
-      );
+    if (
+      AppConstants.platform == "win" &&
+      AppConstants.MOZ_APP_NAME !== "thunderbird"
+    ) {
+      try {
+        // This is asynchronous, but we aren't going to await on it now. Just
+        // kick it off.
+        lazy.BrowserUsageTelemetry.reportInstallationTelemetry();
+      } catch (ex) {
+        this._log.warn(
+          "scheduleNewProfilePing - reportInstallationTelemetry failed",
+          ex
+        );
+      }
     }
 
     this._delayedNewPingTask = new DeferredTask(async () => {
@@ -1246,13 +1280,32 @@ var Impl = {
       "sendNewProfilePing - shutting down: " + this._shuttingDown
     );
 
-    try {
-      await lazy.ProvenanceData.submitProvenanceTelemetry();
-    } catch (ex) {
-      this._log.warn(
-        "sendNewProfilePing - submitProvenanceTelemetry failed",
-        ex
-      );
+    if (
+      AppConstants.platform == "win" &&
+      AppConstants.MOZ_APP_NAME !== "thunderbird"
+    ) {
+      try {
+        await lazy.BrowserUsageTelemetry.reportInstallationTelemetry();
+      } catch (ex) {
+        this._log.warn(
+          "sendNewProfilePing - reportInstallationTelemetry failed",
+          ex
+        );
+        if (!lazy.TelemetrySession.newProfilePingSent) {
+          Glean.installationFirstSeen.failureReason.set(ex.name);
+        }
+      } finally {
+        // No dataPathOverride here so we can check the default location
+        // for installation_telemetry.json
+        if (!lazy.TelemetrySession.newProfilePingSent) {
+          let dataPath = Services.dirsvc.get("GreD", Ci.nsIFile);
+          dataPath.append("installation_telemetry.json");
+          let fileExists = await IOUtils.exists(dataPath.path);
+          if (!fileExists) {
+            Glean.installationFirstSeen.failureReason.set("NotFoundError");
+          }
+        }
+      }
     }
 
     const scalars = Services.telemetry.getSnapshotForScalars(

@@ -5,13 +5,14 @@
 /* eslint no-shadow: error, mozilla/no-aArgs: error */
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
+  SearchSettings: "resource://gre/modules/SearchSettings.sys.mjs",
   SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
+  OpenSearchEngine: "resource://gre/modules/OpenSearchEngine.sys.mjs",
 });
 
 const BinaryInputStream = Components.Constructor(
@@ -20,7 +21,7 @@ const BinaryInputStream = Components.Constructor(
   "setInputStream"
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "logConsole", () => {
+ChromeUtils.defineLazyGetter(lazy, "logConsole", () => {
   return console.createInstance({
     prefix: "SearchEngine",
     maxLogLevel: lazy.SearchUtils.loggingEnabled ? "Debug" : "Warn",
@@ -60,6 +61,10 @@ var OS_UNSUPPORTED_PARAMS = [
   [OS_PARAM_START_INDEX, OS_PARAM_START_INDEX_DEF],
   [OS_PARAM_START_PAGE, OS_PARAM_START_PAGE_DEF],
 ];
+
+// An array of attributes that are saved in the engines `_metaData` object.
+// Attributes not in this array are considered as system attributes.
+const USER_ATTRIBUTES = ["alias", "order", "hideOneOffButton"];
 
 /**
  * Truncates big blobs of (data-)URIs to console-friendly sizes
@@ -149,8 +154,15 @@ const ParamPreferenceCache = {
   onNimbusUpdate() {
     let extraParams =
       lazy.NimbusFeatures.search.getVariable("extraParams") || [];
-    for (const { key, value } of extraParams) {
-      this.nimbusCache.set(key, value);
+    this.nimbusCache.clear();
+    // The try catch ensures that if the params were incorrect for some reason,
+    // the search service can still startup properly.
+    try {
+      for (const { key, value } of extraParams) {
+        this.nimbusCache.set(key, value);
+      }
+    } catch (ex) {
+      console.error("Failed to load nimbus variables for extraParams:", ex);
     }
   },
 
@@ -253,7 +265,7 @@ class QueryPreferenceParameter extends QueryParameter {
 }
 
 /**
- * Perform OpenSearch parameter substitution on aParamValue.
+ * Perform OpenSearch parameter substitution on a parameter value.
  *
  * @see http://opensearch.a9.com/spec/1.1/querysyntax/#core
  *
@@ -264,12 +276,12 @@ class QueryPreferenceParameter extends QueryParameter {
  *   paramValue as the value of the OS_PARAM_USER_DEFINED parameter.
  *   This value must already be escaped appropriately - it is inserted
  *   as-is.
- * @param {nsISearchEngine} engine
- *   The engine which owns the string being acted on.
+ * @param {string} queryCharset
+ *   The character set of the search engine to use for query encoding.
  * @returns {string}
  *   An updated parameter string.
  */
-function ParamSubstitution(paramValue, searchTerms, engine) {
+function ParamSubstitution(paramValue, searchTerms, queryCharset) {
   const PARAM_REGEXP = /\{((?:\w+:)?\w+)(\??)\}/g;
   return paramValue.replace(PARAM_REGEXP, function (match, name, optional) {
     // {searchTerms} is by far the most common param so handle it first.
@@ -279,27 +291,7 @@ function ParamSubstitution(paramValue, searchTerms, engine) {
 
     // {inputEncoding} is the second most common param.
     if (name == OS_PARAM_INPUT_ENCODING) {
-      return engine.queryCharset;
-    }
-
-    // moz: parameters are only available for default search engines.
-    if (name.startsWith("moz:") && engine.isAppProvided) {
-      // {moz:locale} is common.
-      if (name == lazy.SearchUtils.MOZ_PARAM.LOCALE) {
-        return Services.locale.requestedLocale;
-      }
-
-      // {moz:date}
-      if (name == lazy.SearchUtils.MOZ_PARAM.DATE) {
-        let date = new Date();
-        let pad = number => number.toString().padStart(2, "0");
-        return (
-          String(date.getFullYear()) +
-          pad(date.getMonth() + 1) +
-          pad(date.getDate()) +
-          pad(date.getHours())
-        );
-      }
+      return queryCharset;
     }
 
     // Handle the less common OpenSearch parameters we're confident about.
@@ -391,7 +383,7 @@ export class EngineURL {
           Cr.NS_ERROR_FAILURE
         );
     }
-    
+
     this.templateHost = templateURI.host;
   }
 
@@ -432,8 +424,21 @@ export class EngineURL {
     }
   }
 
-  getSubmission(searchTerms, engine, purpose) {
-    var url = ParamSubstitution(this.template, searchTerms, engine);
+  /**
+   * Returns a complete URL with parameter data that can be used for submitting
+   * a suggestion query or loading a search page.
+   *
+   * @param {string} searchTerms
+   *   The user's search terms.
+   * @param {string} queryCharset
+   *   The character set that is being used for the query.
+   * @param {string} purpose
+   *   The source of the search (e.g. searchbar, addressbar).
+   * @returns {Submission}
+   *   The submission data containing the URL and post data for the URL.
+   */
+  getSubmission(searchTerms, queryCharset, purpose) {
+    var url = ParamSubstitution(this.template, searchTerms, queryCharset);
     // Default to searchbar if the purpose is not provided
     var requestPurpose = purpose || "searchbar";
 
@@ -458,7 +463,7 @@ export class EngineURL {
 
       // Preference MozParams might not have a preferenced saved, or a valid value.
       if (param.value != null) {
-        var value = ParamSubstitution(param.value, searchTerms, engine);
+        var value = ParamSubstitution(param.value, searchTerms, queryCharset);
 
         dataArray.push(param.name + "=" + value);
       }
@@ -571,9 +576,6 @@ export class SearchEngine {
   _loadPath = null;
   // The engine's description
   _description = "";
-  // Used to store the engine to replace, if we're an update to an existing
-  // engine.
-  _engineToUpdate = null;
   // Set to true if the engine has a preferred icon (an icon that should not be
   // overridden by a non-preferred icon).
   _hasPreferredIcon = null;
@@ -583,8 +585,6 @@ export class SearchEngine {
   _queryCharset = null;
   // The engine's raw SearchForm value (URL string pointing to a search form).
   #cachedSearchForm = null;
-  // Whether or not to send an attribution request to the server.
-  _sendAttributionRequest = false;
   // The order hint from the configuration (if any).
   _orderHint = null;
   // The telemetry id from the configuration (if any).
@@ -688,7 +688,7 @@ export class SearchEngine {
   }
 
   /**
-   * Add an icon to the icon map used by getIconURIBySize() and getIcons().
+   * Add an icon to the icon map used by getIconURL().
    *
    * @param {number} width
    *   Width of the icon.
@@ -712,11 +712,11 @@ export class SearchEngine {
   /**
    * Sets the .iconURI property of the engine. If both aWidth and aHeight are
    * provided an entry will be added to _iconMapObj that will enable accessing
-   * icon's data through getIcons() and getIconURIBySize() APIs.
+   * icon's data through getIconURL() APIs.
    *
    * @param {string} iconURL
-   *   A URI string pointing to the engine's icon. Must have a http[s],
-   *   ftp, or data scheme. Icons with HTTP[S] or FTP schemes will be
+   *   A URI string pointing to the engine's icon. Must have a http[s]
+   *   or data scheme. Icons with HTTP[S] schemes will be
    *   downloaded and converted to data URIs for storage in the engine
    *   XML files, if the engine is not built-in.
    * @param {boolean} isPreferred
@@ -741,7 +741,7 @@ export class SearchEngine {
       "to",
       limitURILength(uri.spec)
     );
-    // Only accept remote icons from http[s] or ftp
+    // Only accept remote icons from http[s]
     switch (uri.scheme) {
       // Fall through to the data case
       case "moz-extension":
@@ -757,8 +757,7 @@ export class SearchEngine {
         }
         break;
       case "http":
-      case "https":
-      case "ftp":
+      case "https": {
         let iconLoadCallback = function (byteArray, contentType) {
           // This callback may run after we've already set a preferred icon,
           // so check again.
@@ -799,24 +798,25 @@ export class SearchEngine {
           if (this._engineAddedToStore) {
             lazy.SearchUtils.notifyAction(
               this,
-              lazy.SearchUtils.MODIFIED_TYPE.CHANGED
+              lazy.SearchUtils.MODIFIED_TYPE.ICON_CHANGED
             );
           }
           this._hasPreferredIcon = isPreferred;
         };
 
-        let chan = lazy.SearchUtils.makeChannel(uri);
+        let chan = lazy.SearchUtils.makeChannel(
+          uri,
+          Ci.nsIContentPolicy.TYPE_IMAGE
+        );
         let listener = new lazy.SearchUtils.LoadListener(
           chan,
           /^image\//,
-          // If we're currently acting as an "update engine", then the callback
-          // should set the icon on the engine we're updating and not us, since
-          // |this| might be gone by the time the callback runs.
-          iconLoadCallback.bind(this._engineToUpdate || this)
+          iconLoadCallback.bind(this)
         );
         chan.notificationCallbacks = listener;
         chan.asyncOpen(listener);
         break;
+      }
     }
   }
 
@@ -918,8 +918,6 @@ export class SearchEngine {
   _initWithDetails(details, configuration = {}) {
     this._orderHint = configuration.orderHint;
     this._name = details.name.trim();
-    this._sendAttributionRequest =
-      configuration.sendAttributionRequest ?? false;
 
     this._definedAliases = [];
     if (Array.isArray(details.keyword)) {
@@ -938,7 +936,7 @@ export class SearchEngine {
   /**
    * This sets the urls for the search engine based on the supplied parameters.
    * If you add anything here, please consider if it needs to be handled in the
-   * overrideWithExtension / removeExtensionOverride functions as well.
+   * overrideWithEngine / removeExtensionOverride functions as well.
    *
    * @param {object} details
    *   The details of the engine.
@@ -1019,6 +1017,10 @@ export class SearchEngine {
       this._urls.push(trending);
     }
 
+    if (configuration.clickUrl) {
+      this.clickUrl = configuration.clickUrl;
+    }
+
     if (details.encoding) {
       this._queryCharset = details.encoding;
     }
@@ -1040,36 +1042,54 @@ export class SearchEngine {
       }
     );
 
-    let existingSubmission = existingUrl.getSubmission("", this);
-    let newSubmission = newUrl.getSubmission("", this);
+    let existingSubmission = existingUrl.getSubmission("", this.queryCharset);
+    let newSubmission = newUrl.getSubmission("", this.queryCharset);
 
     return (
       existingSubmission.uri.equals(newSubmission.uri) &&
-      existingSubmission.postData == newSubmission.postData
+      existingSubmission.postData?.data.data ==
+        newSubmission.postData?.data.data
     );
   }
 
   /**
-   * Overrides the urls/parameters with those of the provided extension.
-   * The parameters are not saved to the search settings - the code handling
+   * Overrides the urls/parameters with those of the provided engine or extension.
+   * The url parameters are not saved to the search settings - the code handling
    * the extension should set these on every restart, this avoids potential
    * third party modifications and means that we can verify the WebExtension is
    * still in the allow list.
    *
-   * @param {string} extensionID
-   *   The WebExtension ID. For Policy engines, this is currently "set-via-policy".
-   * @param {object} manifest
-   *   An object representing the WebExtensions' manifest.
+   * @param {string} options
+   *   The options for this function.
+   * @param {AddonSearchEngine|OpenSearchEngine} [options.engine]
+   *   The search engine to override with this engine. If not specified, `manifest`
+   *   must be provided.
+   * @param {object} [options.extension]
+   *   An object representing the WebExtensions. If not specified,
+   *   `engine` must be provided
    */
-  overrideWithExtension(extensionID, manifest) {
+  overrideWithEngine({ engine, extension }) {
     this._overriddenData = {
       urls: this._urls,
       queryCharset: this._queryCharset,
       searchForm: this.#cachedSearchForm,
     };
-    this._urls = [];
-    this.setAttr("overriddenBy", extensionID);
-    this._setUrls(manifest.chrome_settings_overrides.search_provider);
+    if (engine) {
+      // Copy any saved user data (alias, order etc).
+      this.copyUserSettingsFrom(engine);
+
+      this._urls = engine._urls;
+      this.setAttr("overriddenBy", engine._extensionID ?? engine.id);
+      if (engine instanceof lazy.OpenSearchEngine) {
+        this.setAttr("overriddenByOpenSearch", engine.toJSON());
+      }
+    } else {
+      this._urls = [];
+      this.setAttr("overriddenBy", extension.id);
+      this._setUrls(
+        extension.manifest.chrome_settings_overrides.search_provider
+      );
+    }
     lazy.SearchUtils.notifyAction(this, lazy.SearchUtils.MODIFIED_TYPE.CHANGED);
   }
 
@@ -1095,6 +1115,22 @@ export class SearchEngine {
         this,
         lazy.SearchUtils.MODIFIED_TYPE.CHANGED
       );
+    }
+  }
+
+  /**
+   * Copies settings from the supplied search engine. Typically used for
+   * restoring settings when removing an override.
+   *
+   * @param {SearchEngine|object} engine
+   *   The engine to copy the settings from, or the engine settings from
+   *   the user's saved settings.
+   */
+  copyUserSettingsFrom(engine) {
+    for (let attribute of USER_ATTRIBUTES) {
+      if (attribute in engine._metaData) {
+        this._metaData[attribute] = engine._metaData[attribute];
+      }
     }
   }
 
@@ -1191,6 +1227,38 @@ export class SearchEngine {
   }
 
   /**
+   * Loads engine settings (_metaData) from the list of settings, finding
+   * the appropriate details for this engine.
+   *
+   * @param {object} [settings]
+   *   The saved settings for the user.
+   */
+  _loadSettings(settings) {
+    if (!settings) {
+      return;
+    }
+
+    let engineSettings = lazy.SearchSettings.findSettingsForEngine(
+      settings,
+      this.id,
+      this.name
+    );
+    if (engineSettings?._metaData) {
+      this._metaData = structuredClone(engineSettings._metaData);
+    }
+  }
+
+  /**
+   * Gets the order hint for this engine. This is determined from the search
+   * configuration when the engine is initialized.
+   *
+   * @type {number}
+   */
+  get orderHint() {
+    return this._orderHint;
+  }
+
+  /**
    * Get the user-defined alias.
    *
    * @type {string}
@@ -1271,11 +1339,18 @@ export class SearchEngine {
     }
   }
 
-  get iconURI() {
-    if (this._iconURI) {
-      return this._iconURI;
+  get hideOneOffButton() {
+    return this.getAttr("hideOneOffButton") || false;
+  }
+  set hideOneOffButton(val) {
+    const value = !!val;
+    if (value != this.hideOneOffButton) {
+      this.setAttr("hideOneOffButton", value);
+      lazy.SearchUtils.notifyAction(
+        this,
+        lazy.SearchUtils.MODIFIED_TYPE.CHANGED
+      );
     }
-    return null;
   }
 
   get _iconURL() {
@@ -1355,7 +1430,7 @@ export class SearchEngine {
       "searchform"
     );
     if (searchFormURL) {
-      let submission = searchFormURL.getSubmission("", this);
+      let submission = searchFormURL.getSubmission("", this.queryCharset);
 
       // If the rel=searchform URL is not type="get" (i.e. has postData),
       // ignore it, since we can only return a URL.
@@ -1377,11 +1452,7 @@ export class SearchEngine {
       this._searchForm = lazy.SearchUtils.makeURI(htmlUrl.template).prePath;
     }
 
-    return ParamSubstitution(this._searchForm, "", this);
-  }
-
-  get sendAttributionRequest() {
-    return this._sendAttributionRequest;
+    return ParamSubstitution(this._searchForm, "", this.queryCharset);
   }
 
   get queryCharset() {
@@ -1444,7 +1515,7 @@ export class SearchEngine {
         searchTerms
       );
     }
-    return url.getSubmission(submissionData, this, purpose);
+    return url.getSubmission(submissionData, this.queryCharset, purpose);
   }
 
   /**
@@ -1628,60 +1699,33 @@ export class SearchEngine {
   }
 
   /**
-   * Returns a string with the URL to an engine's icon matching both width and
-   * height. Returns null if icon with specified dimensions is not found.
+   * Retrieves the icon URL for this search engine, if any.
    *
-   * @param {number} width
-   *   Width of the requested icon.
-   * @param {number} height
-   *   Height of the requested icon.
-   * @returns {string|null}
+   * @param {number} preferredWidth
+   *   Width of the requested icon. If not specified, it is assumed that
+   *   16x16 is desired.
+   * @returns {Promise<string|undefined>}
    */
-  getIconURLBySize(width, height) {
-    if (width == 16 && height == 16) {
-      return this._iconURL;
+  async getIconURL(preferredWidth) {
+    // XPCOM interfaces pass optional number parameters as 0 and can't be
+    // handled in the same way.
+    if (!preferredWidth) {
+      preferredWidth = 16;
+    }
+
+    if (preferredWidth == 16) {
+      return this._iconURL || undefined;
     }
 
     if (!this._iconMapObj) {
-      return null;
+      return undefined;
     }
 
-    let key = this._getIconKey(width, height);
+    let key = this._getIconKey(preferredWidth, preferredWidth);
     if (key in this._iconMapObj) {
       return this._iconMapObj[key];
     }
-    return null;
-  }
-
-  /**
-   * Gets an array of all available icons. Each entry is an object with
-   * width, height and url properties. width and height are numeric and
-   * represent the icon's dimensions. url is a string with the URL for
-   * the icon.
-   *
-   * @returns {Array<object>}
-   *   An array of objects with width/height/url parameters.
-   */
-  getIcons() {
-    let result = [];
-    if (this._iconURL) {
-      result.push({ width: 16, height: 16, url: this._iconURL });
-    }
-
-    if (!this._iconMapObj) {
-      return result;
-    }
-
-    for (let key of Object.keys(this._iconMapObj)) {
-      let iconSize = JSON.parse(key);
-      result.push({
-        width: iconSize.width,
-        height: iconSize.height,
-        url: this._iconMapObj[key],
-      });
-    }
-
-    return result;
+    return undefined;
   }
 
   /**

@@ -5,7 +5,7 @@
 const PERMISSION_SAVE_LOGINS = "login-saving";
 const MAX_DATE_MS = 8640000000000000;
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+import { LoginManagerStorage } from "resource://passwordmgr/passwordstorage.sys.mjs";
 
 const lazy = {};
 
@@ -13,7 +13,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let logger = lazy.LoginHelper.createLogger("LoginManager");
   return logger;
 });
@@ -21,7 +21,7 @@ XPCOMUtils.defineLazyGetter(lazy, "log", () => {
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 if (Services.appinfo.processType !== Services.appinfo.PROCESS_TYPE_DEFAULT) {
-  throw new Error("LoginManager.jsm should only run in the parent process");
+  throw new Error("LoginManager.sys.mjs should only run in the parent process");
 }
 
 export function LoginManager() {
@@ -76,18 +76,18 @@ LoginManager.prototype = {
   },
 
   _initStorage() {
-    this._storage = Cc[
-      "@mozilla.org/login-manager/storage/default;1"
-    ].createInstance(Ci.nsILoginManagerStorage);
-    this.initializationPromise = this._storage.initialize();
-    this.initializationPromise.then(() => {
-      lazy.log.debug(
-        "initializationPromise is resolved, updating isPrimaryPasswordSet in sharedData"
-      );
-      Services.ppmm.sharedData.set(
-        "isPrimaryPasswordSet",
-        lazy.LoginHelper.isPrimaryPasswordSet()
-      );
+    this.initializationPromise = new Promise(resolve => {
+      this._storage = LoginManagerStorage.create(() => {
+        resolve();
+
+        lazy.log.debug(
+          "initializationPromise is resolved, updating isPrimaryPasswordSet in sharedData"
+        );
+        Services.ppmm.sharedData.set(
+          "isPrimaryPasswordSet",
+          lazy.LoginHelper.isPrimaryPasswordSet()
+        );
+      });
     });
   },
 
@@ -185,7 +185,7 @@ LoginManager.prototype = {
       return;
     }
 
-    let logins = await this.getAllLoginsAsync();
+    let logins = await this.getAllLogins();
 
     let usernamePresentHistogram = clearAndGetHistogram(
       "PWMGR_USERNAME_PRESENT"
@@ -251,7 +251,7 @@ LoginManager.prototype = {
       throw new Error("Can't add a login with a null or empty password.");
     }
 
-    // Duplicated from toolkit/components/passwordmgr/LoginHelper.jsm
+    // Duplicated from toolkit/components/passwordmgr/LoginHelper.sys.jms
     // TODO: move all validations into this function.
     //
     // In theory these nulls should just be rolled up into the encrypted
@@ -269,7 +269,7 @@ LoginManager.prototype = {
           "Can't add a login with both a httpRealm and formActionOrigin."
         );
       }
-    } else if (login.httpRealm) {
+    } else if (login.httpRealm || login.httpRealm == "") {
       // We have a HTTP realm. Can't have a form submit URL.
       if (login.formActionOrigin != null) {
         throw new Error(
@@ -303,114 +303,35 @@ LoginManager.prototype = {
 
   /**
    * Add a new login to login storage.
-   * @deprecated: use `addLoginAsync` instead.
-   */
-  addLogin(login) {
-    this._checkLogin(login);
-
-    // Look for an existing entry.
-    let logins = this.findLogins(
-      login.origin,
-      login.formActionOrigin,
-      login.httpRealm
-    );
-
-    let matchingLogin = logins.find(l => login.matches(l, true));
-    if (matchingLogin) {
-      throw lazy.LoginHelper.createLoginAlreadyExistsError(matchingLogin.guid);
-    }
-    lazy.log.debug("addLogin is DEPRECATED, please use addLoginAsync instead.");
-    return this._storage.addLogin(login);
-  },
-
-  /**
-   * Add a new login to login storage.
    */
   async addLoginAsync(login) {
     this._checkLogin(login);
 
-    const { origin, formActionOrigin, httpRealm } = login;
-    const existingLogins = this.findLogins(origin, formActionOrigin, httpRealm);
-    const matchingLogin = existingLogins.find(l => login.matches(l, true));
-    if (matchingLogin) {
-      throw lazy.LoginHelper.createLoginAlreadyExistsError(matchingLogin.guid);
-    }
-
-    const crypto = Cc["@mozilla.org/login-manager/crypto/SDR;1"].getService(
-      Ci.nsILoginManagerCrypto
-    );
-    const plaintexts = [login.username, login.password, login.unknownFields];
-    const [username, password, unknownFields] = await crypto.encryptMany(
-      plaintexts
-    );
-
-    const { username: plaintextUsername, password: plaintextPassword } = login;
-    login.username = username;
-    login.password = password;
-    login.unknownFields = unknownFields;
-
     lazy.log.debug("Adding login");
-    return this._storage.addLogin(
-      login,
-      true,
-      plaintextUsername,
-      plaintextPassword
-    );
+    const [resultLogin] = await this._storage.addLoginsAsync([login]);
+    return resultLogin;
   },
 
+  /**
+   * Add multiple logins to login storage.
+   * TODO: rename to `addLoginsAsync` https://bugzilla.mozilla.org/show_bug.cgi?id=1832757
+   */
   async addLogins(logins) {
     if (logins.length === 0) {
       return logins;
     }
 
-    const crypto = Cc["@mozilla.org/login-manager/crypto/SDR;1"].getService(
-      Ci.nsILoginManagerCrypto
-    );
-    const plaintexts = logins
-      .map(({ username }) => username)
-      .concat(logins.map(({ password }) => password));
-    const ciphertexts = await crypto.encryptMany(plaintexts);
-    const usernames = ciphertexts.slice(0, logins.length);
-    const passwords = ciphertexts.slice(logins.length);
-
-    const resultLogins = [];
-    for (const [i, login] of logins.entries()) {
+    const validLogins = logins.filter(login => {
       try {
         this._checkLogin(login);
+        return true;
       } catch (e) {
         console.error(e);
-        continue;
+        return false;
       }
-
-      const { origin, formActionOrigin, httpRealm } = login;
-      const existingLogins = this.findLogins(
-        origin,
-        formActionOrigin,
-        httpRealm
-      );
-      const matchingLogin = existingLogins.find(l => login.matches(l, true));
-      if (matchingLogin) {
-        console.error(
-          lazy.LoginHelper.createLoginAlreadyExistsError(matchingLogin.guid)
-        );
-        continue;
-      }
-
-      const { username: plaintextUsername, password: plaintextPassword } =
-        login;
-      login.username = usernames[i];
-      login.password = passwords[i];
-      lazy.log.debug("Adding login");
-      const resultLogin = this._storage.addLogin(
-        login,
-        true,
-        plaintextUsername,
-        plaintextPassword
-      );
-
-      resultLogins.push(resultLogin);
-    }
-    return resultLogins;
+    });
+    lazy.log.debug("Adding logins");
+    return this._storage.addLoginsAsync(validLogins, true);
   },
 
   /**
@@ -466,31 +387,21 @@ LoginManager.prototype = {
   },
 
   /**
-   * Get a dump of all stored logins. Used by the login manager UI.
-   *
-   * @return {nsILoginInfo[]} - If there are no logins, the array is empty.
-   */
-  getAllLogins() {
-    lazy.log.debug("Getting a list of all logins.");
-    return this._storage.getAllLogins();
-  },
-
-  /**
    * Get a dump of all stored logins asynchronously. Used by the login manager UI.
    *
    * @return {nsILoginInfo[]} - If there are no logins, the array is empty.
    */
-  async getAllLoginsAsync() {
+  async getAllLogins() {
     lazy.log.debug("Getting a list of all logins asynchronously.");
-    return this._storage.getAllLoginsAsync();
+    return this._storage.getAllLogins();
   },
 
   /**
    * Get a dump of all stored logins asynchronously. Used by the login detection service.
    */
-  getAllLoginsWithCallbackAsync(aCallback) {
+  getAllLoginsWithCallback(aCallback) {
     lazy.log.debug("Searching a list of all logins asynchronously.");
-    this._storage.getAllLoginsAsync().then(logins => {
+    this._storage.getAllLogins().then(logins => {
       aCallback.onSearchComplete(logins);
     });
   },
@@ -606,7 +517,7 @@ LoginManager.prototype = {
     return loginsCount;
   },
 
-  /* Sync metadata functions - see nsILoginManagerStorage for details */
+  /* Sync metadata functions */
   async getSyncID() {
     return this._storage.getSyncID();
   },

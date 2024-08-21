@@ -5,9 +5,7 @@
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { Log } from "resource://gre/modules/Log.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { TelemetryUtils } from "resource://gre/modules/TelemetryUtils.sys.mjs";
-import { Preferences } from "resource://gre/modules/Preferences.sys.mjs";
 
 const LOGGER_NAME = "Toolkit.Telemetry";
 const LOGGER_PREFIX = "TelemetryStorage::";
@@ -23,13 +21,13 @@ const SESSION_STATE_FILE_NAME = "session-state.json";
 
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "gDataReportingDir", function () {
+ChromeUtils.defineLazyGetter(lazy, "gDataReportingDir", function () {
   return PathUtils.join(PathUtils.profileDir, DATAREPORTING_DIR);
 });
-XPCOMUtils.defineLazyGetter(lazy, "gPingsArchivePath", function () {
+ChromeUtils.defineLazyGetter(lazy, "gPingsArchivePath", function () {
   return PathUtils.join(lazy.gDataReportingDir, PINGS_ARCHIVE_DIR);
 });
-XPCOMUtils.defineLazyGetter(lazy, "gAbortedSessionFilePath", function () {
+ChromeUtils.defineLazyGetter(lazy, "gAbortedSessionFilePath", function () {
   return PathUtils.join(lazy.gDataReportingDir, ABORTED_SESSION_FILE_NAME);
 });
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -408,17 +406,6 @@ export var TelemetryStorage = {
   },
 
   /**
-   * Add a ping to the saved pings directory so that it gets saved
-   * and sent along with other pings.
-   *
-   * @param {Object} pingData The ping object.
-   * @return {Promise} A promise resolved when the ping is saved to the pings directory.
-   */
-  addPendingPing(pingData) {
-    return TelemetryStorageImpl.addPendingPing(pingData);
-  },
-
-  /**
    * Remove the file for a ping
    *
    * @param {object} ping The ping.
@@ -677,10 +664,10 @@ var TelemetryStorageImpl = {
     let promise = this._saveArchivedPingTask(ping);
     this._activelyArchiving.add(promise);
     promise.then(
-      r => {
+      () => {
         this._activelyArchiving.delete(promise);
       },
-      e => {
+      () => {
         this._activelyArchiving.delete(promise);
       }
     );
@@ -1060,7 +1047,7 @@ var TelemetryStorageImpl = {
           ping.id,
           ping.timestampCreated,
           ping.type
-        ).catch(e =>
+        ).catch(() =>
           this._log.error(
             "_enforceArchiveQuota - failed to remove archived ping" + ping.id
           )
@@ -1470,18 +1457,6 @@ var TelemetryStorageImpl = {
     let file = pingFilePath(ping);
     await this.savePingToFile(ping, file, overwrite);
     return file;
-  },
-
-  /**
-   * Add a ping to the saved pings directory so that it gets saved
-   * and sent along with other pings.
-   * Note: that the original ping file will not be modified.
-   *
-   * @param {Object} ping The ping object.
-   * @return {Promise} A promise resolved when the ping is saved to the pings directory.
-   */
-  addPendingPing(ping) {
-    return this.savePendingPing(ping);
   },
 
   /**
@@ -2101,7 +2076,7 @@ var TelemetryStorageImpl = {
 
     // FHR could have used either the default DB file name or a custom one
     // through this preference.
-    const FHR_DB_CUSTOM_FILENAME = Preferences.get(
+    const FHR_DB_CUSTOM_FILENAME = Services.prefs.getStringPref(
       "datareporting.healthreport.dbName",
       undefined
     );

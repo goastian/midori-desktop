@@ -833,9 +833,10 @@ CalculateAltFrecencyFunction::OnFunctionCall(mozIStorageValueArray* aArguments,
       "  SELECT "
       "    v.visit_date / 86400000000, "
       "    (SELECT CASE "
-      "      WHEN IFNULL(s.visit_type, v.visit_type) = 3 "     // is a bookmark
-      "        OR  ( v.source <> 3 "                           // is a search
-      "          AND IFNULL(s.visit_type, v.visit_type) = 2 "  // is typed
+      "      WHEN IFNULL(s.visit_type, v.visit_type) = 3 "  // from a bookmark
+      "        OR v.source = 2 "                            // is a bookmark
+      "        OR  ( IFNULL(s.visit_type, v.visit_type) = 2 "  // is typed
+      "          AND v.source <> 3 "                           // not a search
       "          AND t.id IS NULL AND NOT :isRedirect "        // not a redirect
       "        ) "
       "      THEN :highWeight "
@@ -879,8 +880,7 @@ CalculateAltFrecencyFunction::OnFunctionCall(mozIStorageValueArray* aArguments,
       "ELSE "
       "  reference.days + CAST (( "
       "    ln( "
-      "      (sum(score) / samples_count * MAX(visit_count, samples_count)) * "
-      "        exp(-lambda) "
+      "      sum(score) / samples_count * MAX(visit_count, samples_count) "
       "    ) / lambda "
       "  ) AS INTEGER) "
       "END "
@@ -1134,16 +1134,15 @@ GetQueryParamFunction::OnFunctionCall(mozIStorageValueArray* aArguments,
 
   RefPtr<nsVariant> result = new nsVariant();
   if (!queryString.IsEmpty() && !paramName.IsEmpty()) {
-    URLParams::Parse(
-        queryString,
-        [&paramName, &result](const nsAString& aName, const nsAString& aValue) {
-          NS_ConvertUTF16toUTF8 name(aName);
-          if (!paramName.Equals(name)) {
-            return true;
-          }
-          result->SetAsAString(aValue);
-          return false;
-        });
+    URLParams::Parse(queryString, true,
+                     [&paramName, &result](const nsACString& aName,
+                                           const nsACString& aValue) {
+                       if (!paramName.Equals(aName)) {
+                         return true;
+                       }
+                       result->SetAsACString(aValue);
+                       return false;
+                     });
   }
 
   result.forget(_result);
@@ -1191,19 +1190,19 @@ HashFunction::OnFunctionCall(mozIStorageValueArray* aArguments,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-//// MD5 Function
+//// SHA256Hex Function
 
 /* static */
-nsresult MD5HexFunction::create(mozIStorageConnection* aDBConn) {
-  RefPtr<MD5HexFunction> function = new MD5HexFunction();
-  return aDBConn->CreateFunction("md5hex"_ns, -1, function);
+nsresult SHA256HexFunction::create(mozIStorageConnection* aDBConn) {
+  RefPtr<SHA256HexFunction> function = new SHA256HexFunction();
+  return aDBConn->CreateFunction("sha256hex"_ns, -1, function);
 }
 
-NS_IMPL_ISUPPORTS(MD5HexFunction, mozIStorageFunction)
+NS_IMPL_ISUPPORTS(SHA256HexFunction, mozIStorageFunction)
 
 NS_IMETHODIMP
-MD5HexFunction::OnFunctionCall(mozIStorageValueArray* aArguments,
-                               nsIVariant** _result) {
+SHA256HexFunction::OnFunctionCall(mozIStorageValueArray* aArguments,
+                                  nsIVariant** _result) {
   // Must have non-null function arguments.
   MOZ_ASSERT(aArguments);
 
@@ -1217,8 +1216,8 @@ MD5HexFunction::OnFunctionCall(mozIStorageValueArray* aArguments,
   nsCOMPtr<nsICryptoHash> hasher =
       do_CreateInstance(NS_CRYPTO_HASH_CONTRACTID, &rv);
   NS_ENSURE_SUCCESS(rv, rv);
-  // MD5 is not a secure hash function, but it's ok for this use.
-  rv = hasher->Init(nsICryptoHash::MD5);
+  // SHA256 is not super strong but fine for our mapping needs.
+  rv = hasher->Init(nsICryptoHash::SHA256);
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = hasher->Update(reinterpret_cast<const uint8_t*>(str.BeginReading()),
@@ -1475,6 +1474,45 @@ NS_IMETHODIMP
 InvalidateDaysOfHistoryFunction::OnFunctionCall(mozIStorageValueArray* aArgs,
                                                 nsIVariant** _result) {
   nsNavHistory::InvalidateDaysOfHistory();
+  return NS_OK;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// Target folder guid from places query Function
+
+/* static */
+nsresult TargetFolderGuidFunction::create(mozIStorageConnection* aDBConn) {
+  RefPtr<TargetFolderGuidFunction> function = new TargetFolderGuidFunction();
+  nsresult rv = aDBConn->CreateFunction("target_folder_guid"_ns, 1, function);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  return NS_OK;
+}
+
+NS_IMPL_ISUPPORTS(TargetFolderGuidFunction, mozIStorageFunction)
+
+NS_IMETHODIMP
+TargetFolderGuidFunction::OnFunctionCall(mozIStorageValueArray* aArguments,
+                                         nsIVariant** _result) {
+  // Must have non-null function arguments.
+  MOZ_ASSERT(aArguments);
+  // Must have one argument.
+  DebugOnly<uint32_t> numArgs = 0;
+  MOZ_ASSERT(NS_SUCCEEDED(aArguments->GetNumEntries(&numArgs)) && numArgs == 1,
+             "unexpected number of arguments");
+
+  nsDependentCString queryURI = getSharedUTF8String(aArguments, 0);
+  Maybe<nsCString> targetFolderGuid =
+      nsNavHistory::GetTargetFolderGuid(queryURI);
+
+  if (targetFolderGuid.isSome()) {
+    RefPtr<nsVariant> result = new nsVariant();
+    result->SetAsACString(*targetFolderGuid);
+    result.forget(_result);
+  } else {
+    *_result = MakeAndAddRef<NullVariant>().take();
+  }
+
   return NS_OK;
 }
 

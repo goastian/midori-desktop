@@ -8,9 +8,6 @@ const DUMMY_URL =
     "http://example.com"
   ) + "/dummy.html";
 
-const HAS_THREAD_NAMES =
-  AppConstants.platform != "win" ||
-  AppConstants.isPlatformAndVersionAtLeast("win", 10);
 const isFissionEnabled = SpecialPowers.useRemoteSubframes;
 
 const SAMPLE_SIZE = 10;
@@ -18,13 +15,20 @@ const NS_PER_MS = 1000000;
 
 function checkProcessCpuTime(proc) {
   Assert.greater(proc.cpuTime, 0, "Got some cpu time");
+  Assert.greater(proc.threads.length, 0, "Got some threads");
+  Assert.ok(
+    proc.threads.some(thread => thread.cpuTime > 0),
+    "Got some cpu time in the threads"
+  );
 
   let cpuThreads = 0;
   for (let thread of proc.threads) {
     cpuThreads += Math.floor(thread.cpuTime / NS_PER_MS);
   }
-  Assert.greater(cpuThreads, 0, "Got some cpu time in the threads");
-  let processCpuTime = Math.ceil(proc.cpuTime / NS_PER_MS);
+  // Add 1ms to the process CPU time because ProcInfo captures the CPU time for
+  // the whole process first and then for each of the threads, so the process
+  // CPU time might have increased slightly in the meantime.
+  let processCpuTime = Math.floor(proc.cpuTime / NS_PER_MS) + 1;
   if (AppConstants.platform == "win" && processCpuTime < cpuThreads) {
     // On Windows, our test jobs likely run in VMs without constant TSC,
     // so we might have low precision CPU time measurements.
@@ -54,7 +58,7 @@ add_task(async function test_proc_info() {
 
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: DUMMY_URL },
-    async function (browser) {
+    async function () {
       // We test `SAMPLE_SIZE` times to increase a tad the chance of encountering race conditions.
       for (let z = 0; z < SAMPLE_SIZE; z++) {
         let parentProc = await ChromeUtils.requestProcInfo();
@@ -67,13 +71,10 @@ add_task(async function test_proc_info() {
 
         checkProcessCpuTime(parentProc);
 
-        // Under Windows, thread names appeared with Windows 10.
-        if (HAS_THREAD_NAMES) {
-          Assert.ok(
-            parentProc.threads.some(thread => thread.name),
-            "At least one of the threads of the parent process is named"
-          );
-        }
+        Assert.ok(
+          parentProc.threads.some(thread => thread.name),
+          "At least one of the threads of the parent process is named"
+        );
 
         Assert.ok(parentProc.memory > 0, "Memory was set");
 

@@ -15,6 +15,7 @@
 #include "mozilla/Services.h"
 #include "mozilla/SimpleEnumerator.h"
 #include "mozilla/StaticPrefs_extensions.h"
+#include "mozilla/Try.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/BrowsingContextGroup.h"
 #include "mozilla/dom/ContentChild.h"
@@ -28,7 +29,7 @@
 #include "nsIChannel.h"
 #include "nsIContentPolicy.h"
 #include "mozilla/dom/Document.h"
-#include "nsGlobalWindowOuter.h"
+#include "nsGlobalWindowInner.h"
 #include "nsILoadInfo.h"
 #include "nsIXULRuntime.h"
 #include "nsImportModule.h"
@@ -83,9 +84,9 @@ mozIExtensionProcessScript& ExtensionPolicyService::ProcessScript() {
   MOZ_ASSERT(NS_IsMainThread());
 
   if (MOZ_UNLIKELY(!sProcessScript)) {
-    sProcessScript =
-        do_ImportModule("resource://gre/modules/ExtensionProcessScript.jsm",
-                        "ExtensionProcessScript");
+    sProcessScript = do_ImportESModule(
+        "resource://gre/modules/ExtensionProcessScript.sys.mjs",
+        "ExtensionProcessScript");
     ClearOnShutdown(&sProcessScript);
   }
   return *sProcessScript;
@@ -161,7 +162,8 @@ bool ExtensionPolicyService::IsExtensionProcess() const {
 }
 
 bool ExtensionPolicyService::GetQuarantinedDomainsEnabled() const {
-  return Preferences::GetBool(QUARANTINED_DOMAINS_ENABLED);
+  StaticAutoReadLock lock(sEPSLock);
+  return sQuarantinedDomains != nullptr;
 }
 
 WebExtensionPolicy* ExtensionPolicyService::GetByURL(const URLInfo& aURL) {
@@ -404,10 +406,9 @@ nsresult ExtensionPolicyService::InjectContentScripts(
     DocInfo docInfo(win);
 
     using RunAt = dom::ContentScriptRunAt;
-    namespace RunAtValues = dom::ContentScriptRunAtValues;
     using Scripts = AutoTArray<RefPtr<WebExtensionContentScript>, 8>;
 
-    Scripts scripts[RunAtValues::Count];
+    Scripts scripts[ContiguousEnumSize<RunAt>::value];
 
     auto GetScripts = [&](RunAt aRunAt) -> Scripts&& {
       static_assert(sizeof(aRunAt) == 1, "Our cast is wrong");
@@ -610,7 +611,7 @@ void ExtensionPolicyService::UpdateRestrictedDomains() {
 }
 
 void ExtensionPolicyService::UpdateQuarantinedDomains() {
-  if (!GetQuarantinedDomainsEnabled()) {
+  if (!Preferences::GetBool(QUARANTINED_DOMAINS_ENABLED)) {
     StaticAutoWriteLock lock(sEPSLock);
     sQuarantinedDomains = nullptr;
     return;

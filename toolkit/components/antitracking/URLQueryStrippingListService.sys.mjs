@@ -2,26 +2,98 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
 });
 
+import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+
 const COLLECTION_NAME = "query-stripping";
 const SHARED_DATA_KEY = "URLQueryStripping";
 const PREF_STRIP_LIST_NAME = "privacy.query_stripping.strip_list";
 const PREF_ALLOW_LIST_NAME = "privacy.query_stripping.allow_list";
 const PREF_TESTING_ENABLED = "privacy.query_stripping.testing";
+const PREF_STRIP_IS_TEST =
+  "privacy.query_stripping.strip_on_share.enableTestMode";
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () => {
+ChromeUtils.defineLazyGetter(lazy, "logger", () => {
   return console.createInstance({
     prefix: "URLQueryStrippingListService",
     maxLogLevelPref: "privacy.query_stripping.listService.logLevel",
   });
 });
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "testStripOnShare",
+  PREF_STRIP_IS_TEST
+);
+
+async function fetchList(fileName) {
+  let response = await fetch(
+    "chrome://global/content/antitracking/" + fileName
+  );
+  if (!response.ok) {
+    lazy.logger.error(
+      "Error fetching strip-on-share strip list" + response.status
+    );
+    throw new Error(
+      "Error fetching strip-on-share strip list" + response.status
+    );
+  }
+  return response.json();
+}
+
+// Lazy getter for the strip-on-share strip list.
+ChromeUtils.defineLazyGetter(lazy, "StripOnShareList", async () => {
+  let [stripOnShareList, stripOnShareLGPLParams] = await Promise.all([
+    fetchList("StripOnShare.json"),
+    fetchList("StripOnShareLGPL.json"),
+  ]);
+
+  if (!stripOnShareList || !stripOnShareLGPLParams) {
+    lazy.logger.error("Error strip-on-share strip list were not loaded");
+    throw new Error("Error fetching strip-on-share strip list were not loaded");
+  }
+
+  // Combines the mozilla licensed strip on share param
+  // list and the LGPL licensed strip on share param list
+  return combineAndParseLists(stripOnShareList, [stripOnShareLGPLParams]);
+});
+
+function combineAndParseLists(mainList, arrOfLists) {
+  arrOfLists.forEach(additionalList => {
+    for (let key in additionalList) {
+      if (Object.hasOwn(mainList, key)) {
+        mainList[key].queryParams.push(...additionalList[key].queryParams);
+
+        mainList[key].topLevelSites.push(...additionalList[key].topLevelSites);
+      } else {
+        mainList[key] = additionalList[key];
+      }
+    }
+  });
+
+  for (let key in mainList) {
+    mainList[key].queryParams = mainList[key].queryParams.map(param =>
+      param.toLowerCase()
+    );
+
+    mainList[key].topLevelSites = mainList[key].topLevelSites.map(param =>
+      param.toLowerCase()
+    );
+
+    // Removes duplicates topLevelSites
+    mainList[key].topLevelSites = [...new Set(mainList[key].topLevelSites)];
+
+    // Removes duplicates queryParams
+    mainList[key].queryParams = [...new Set(mainList[key].queryParams)];
+  }
+
+  return mainList;
+}
 
 export class URLQueryStrippingListService {
   classId = Components.ID("{afff16f0-3fd2-4153-9ccd-c6d9abd879e4}");
@@ -30,6 +102,7 @@ export class URLQueryStrippingListService {
   #isInitialized = false;
   #pendingInit = null;
   #initResolver;
+  #stripOnShareTestList = null;
 
   #rs;
   #onSyncCallback;
@@ -37,6 +110,8 @@ export class URLQueryStrippingListService {
   constructor() {
     lazy.logger.debug("constructor");
     this.observers = new Set();
+    this.stripOnShareObservers = new Set();
+    this.stripOnShareParams = null;
     this.prefStripList = new Set();
     this.prefAllowList = new Set();
     this.remoteStripList = new Set();
@@ -51,6 +126,19 @@ export class URLQueryStrippingListService {
       data: { current },
     } = event;
     this._onRemoteSettingsUpdate(current);
+  }
+
+  async testSetList(testList) {
+    this.#stripOnShareTestList = combineAndParseLists(testList, []);
+    await this._notifyStripOnShareObservers();
+  }
+
+  testHasStripOnShareObservers() {
+    return !!this.stripOnShareObservers.size;
+  }
+
+  testHasQPSObservers() {
+    return !!this.observers.size;
   }
 
   async #init() {
@@ -102,11 +190,11 @@ export class URLQueryStrippingListService {
     }
 
     // Get the list from pref.
-    this._onPrefUpdate(
+    await this._onPrefUpdate(
       PREF_STRIP_LIST_NAME,
       Services.prefs.getStringPref(PREF_STRIP_LIST_NAME, "")
     );
-    this._onPrefUpdate(
+    await this._onPrefUpdate(
       PREF_ALLOW_LIST_NAME,
       Services.prefs.getStringPref(PREF_ALLOW_LIST_NAME, "")
     );
@@ -145,6 +233,9 @@ export class URLQueryStrippingListService {
     Services.prefs.removeObserver(PREF_ALLOW_LIST_NAME, this);
   }
 
+  get hasObservers() {
+    return !this.observers.size && !this.stripOnShareObservers.size;
+  }
   _onRemoteSettingsUpdate(entries) {
     this.remoteStripList.clear();
     this.remoteAllowList.clear();
@@ -176,7 +267,7 @@ export class URLQueryStrippingListService {
     this._notifyObservers();
   }
 
-  _onPrefUpdate(pref, value) {
+  async _onPrefUpdate(pref, value) {
     switch (pref) {
       case PREF_STRIP_LIST_NAME:
         this.prefStripList = new Set(value ? value.split(" ") : []);
@@ -192,6 +283,7 @@ export class URLQueryStrippingListService {
     }
 
     this._notifyObservers();
+    await this._notifyStripOnShareObservers();
   }
 
   _getListFromSharedData() {
@@ -231,6 +323,55 @@ export class URLQueryStrippingListService {
     }
   }
 
+  async _notifyStripOnShareObservers(observer) {
+    this.stripOnShareParams = await lazy.StripOnShareList;
+
+    // Changing to different test list allows us to test
+    // site specific params as the websites that current have
+    // site specific params cannot be opened in a test env
+    if (lazy.testStripOnShare) {
+      this.stripOnShareParams = this.#stripOnShareTestList;
+    }
+
+    if (!this.stripOnShareParams) {
+      lazy.logger.error("StripOnShare list is undefined");
+      return;
+    }
+
+    // Add the qps params to the global rules of the strip-on-share list.
+    let qpsParams = [...this.prefStripList, ...this.remoteStripList].map(
+      param => param.toLowerCase()
+    );
+
+    this.stripOnShareParams.global.queryParams.push(...qpsParams);
+    // Getting rid of duplicates.
+    this.stripOnShareParams.global.queryParams = [
+      ...new Set(this.stripOnShareParams.global.queryParams),
+    ];
+
+    // Build an array of StripOnShareRules.
+    let rules = Object.values(this.stripOnShareParams);
+    let stringifiedRules = [];
+    // We need to stringify the rules so later we can initialise WebIDL dictionaries from them.
+    // The dictionaries init call needs stringified json.
+    rules.forEach(rule => {
+      stringifiedRules.push(JSON.stringify(rule));
+    });
+
+    let observers = observer ? new Set([observer]) : this.stripOnShareObservers;
+
+    if (observers.size) {
+      lazy.logger.debug("_notifyStripOnShareObservers", {
+        observerCount: observers.size,
+        runObserverAfterRegister: observer != null,
+        stringifiedRules,
+      });
+    }
+    for (let obs of observers) {
+      obs.onStripOnShareUpdate(stringifiedRules);
+    }
+  }
+
   async registerAndRunObserver(observer) {
     lazy.logger.debug("registerAndRunObserver", {
       isInitialized: this.#isInitialized,
@@ -242,10 +383,30 @@ export class URLQueryStrippingListService {
     this._notifyObservers(observer);
   }
 
+  async registerAndRunObserverStripOnShare(observer) {
+    lazy.logger.debug("registerAndRunObserverStripOnShare", {
+      isInitialized: this.#isInitialized,
+      pendingInit: this.#pendingInit,
+    });
+
+    await this.#init();
+    this.stripOnShareObservers.add(observer);
+    await this._notifyStripOnShareObservers(observer);
+  }
+
   async unregisterObserver(observer) {
     this.observers.delete(observer);
 
-    if (!this.observers.size) {
+    if (this.hasObservers) {
+      lazy.logger.debug("Last observer unregistered, shutting down...");
+      await this.#shutdown();
+    }
+  }
+
+  async unregisterStripOnShareObserver(observer) {
+    this.stripOnShareObservers.delete(observer);
+
+    if (this.hasObservers) {
       lazy.logger.debug("Last observer unregistered, shutting down...");
       await this.#shutdown();
     }

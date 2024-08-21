@@ -7,13 +7,10 @@
 const { BackgroundTasksUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/BackgroundTasksUtils.sys.mjs"
 );
-const { XPCOMUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/XPCOMUtils.sys.mjs"
-);
 
 const lazy = {};
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  ASRouterTargeting: "resource://activity-stream/lib/ASRouterTargeting.jsm",
+ChromeUtils.defineESModuleGetters(lazy, {
+  ASRouterTargeting: "resource:///modules/asrouter/ASRouterTargeting.sys.mjs",
 });
 
 setupProfileService();
@@ -181,7 +178,9 @@ add_task(
       ),
       firefoxVersion: lazy.ASRouterTargeting.Environment.firefoxVersion,
     };
-    let expected = await lazy.ASRouterTargeting.getEnvironmentSnapshot(target);
+    let expected = await lazy.ASRouterTargeting.getEnvironmentSnapshot({
+      targets: [target],
+    });
 
     let snapshotFile = profile.rootDir.clone();
     snapshotFile.append("targeting.snapshot.json");

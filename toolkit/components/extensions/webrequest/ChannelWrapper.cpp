@@ -20,6 +20,7 @@
 #include "mozilla/Components.h"
 #include "mozilla/ErrorNames.h"
 #include "mozilla/ResultExtensions.h"
+#include "mozilla/Try.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Event.h"
@@ -85,7 +86,7 @@ static const ClassificationStruct classificationArray[] = {
 namespace {
 class ChannelListHolder : public LinkedList<ChannelWrapper> {
  public:
-  ChannelListHolder() : LinkedList<ChannelWrapper>() {}
+  ChannelListHolder() = default;
 
   ~ChannelListHolder();
 };
@@ -179,7 +180,7 @@ already_AddRefed<ChannelWrapper> ChannelWrapper::GetRegisteredChannel(
   auto& webreq = WebRequestService::GetSingleton();
 
   nsCOMPtr<nsITraceableChannel> channel =
-      webreq.GetTraceableChannel(aChannelId, aAddon, contentParent);
+      webreq.GetTraceableChannel(aChannelId, aAddon.Id(), contentParent);
   if (!channel) {
     return nullptr;
   }
@@ -520,17 +521,10 @@ bool ChannelWrapper::IsSystemLoad() const {
       return IsSystemPrincipal(prin);
     }
 
-    if (RefPtr<BrowsingContext> bc = loadInfo->GetBrowsingContext();
-        !bc || bc->IsTop()) {
-      return false;
-    }
-
-    if (nsIPrincipal* prin = loadInfo->PrincipalToInherit()) {
-      return IsSystemPrincipal(prin);
-    }
-    if (nsIPrincipal* prin = loadInfo->TriggeringPrincipal()) {
-      return IsSystemPrincipal(prin);
-    }
+    // loadingPrincipal is only non-null for top-level loads.
+    // In practice we would never encounter a system principal for a top-level
+    // load that passes through ChannelWrapper, at least not for HTTP channels.
+    MOZ_ASSERT(Type() == MozContentPolicyType::Main_frame);
   }
   return false;
 }
@@ -820,15 +814,9 @@ void ChannelWrapper::RegisterTraceableChannel(const WebExtensionPolicy& aAddon,
 }
 
 already_AddRefed<nsITraceableChannel> ChannelWrapper::GetTraceableChannel(
-    const WebExtensionPolicy& aAddon,
-    dom::ContentParent* aContentParent) const {
+    nsAtom* aAddonId, dom::ContentParent* aContentParent) const {
   nsCOMPtr<nsIRemoteTab> remoteTab;
-  if (mAddonEntries.Get(aAddon.Id(), getter_AddRefs(remoteTab))) {
-    if (FinalURLInfo().URI() &&
-        !aAddon.CanAccessURI(FinalURLInfo(), false, true, true)) {
-      return nullptr;
-    }
-
+  if (mAddonEntries.Get(aAddonId, getter_AddRefs(remoteTab))) {
     ContentParent* contentParent = nullptr;
     if (remoteTab) {
       contentParent =
@@ -897,6 +885,8 @@ MozContentPolicyType GetContentPolicyType(ExtContentPolicyType aType) {
     case ExtContentPolicy::TYPE_INVALID:
     case ExtContentPolicy::TYPE_OTHER:
     case ExtContentPolicy::TYPE_SAVEAS_DOWNLOAD:
+    case ExtContentPolicy::TYPE_WEB_TRANSPORT:
+    case ExtContentPolicy::TYPE_WEB_IDENTITY:
       break;
       // Do not add default: so that compilers can catch the missing case.
   }
@@ -1207,6 +1197,18 @@ ChannelWrapper::RequestListener::CheckListenerChain() {
     return retargetableListener->CheckListenerChain();
   }
   return rv;
+}
+
+NS_IMETHODIMP
+ChannelWrapper::RequestListener::OnDataFinished(nsresult aStatus) {
+  MOZ_ASSERT(mOrigStreamListener, "Should have mOrigStreamListener");
+  nsCOMPtr<nsIThreadRetargetableStreamListener> retargetableListener =
+      do_QueryInterface(mOrigStreamListener);
+  if (retargetableListener) {
+    return retargetableListener->OnDataFinished(aStatus);
+  }
+
+  return NS_OK;
 }
 
 /*****************************************************************************

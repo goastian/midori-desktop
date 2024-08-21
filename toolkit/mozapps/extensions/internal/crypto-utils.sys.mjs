@@ -8,6 +8,21 @@ const CryptoHash = Components.Constructor(
   "initWithString"
 );
 
+const XPI_WEAK_SIGNATURES = [Ci.nsIAppSignatureInfo.PKCS7_WITH_SHA1];
+
+export function hasStrongSignature(addon) {
+  return !!addon.signedTypes?.filter(
+    algorithm => !XPI_WEAK_SIGNATURES.includes(algorithm)
+  ).length;
+}
+
+export function computeHashAsString(hashType, input) {
+  const data = new Uint8Array(new TextEncoder().encode(input));
+  const crypto = CryptoHash(hashType);
+  crypto.update(data, data.length);
+  return getHashStringForCrypto(crypto);
+}
+
 /**
  * Returns the string representation (hex) of the SHA256 hash of `input`.
  *
@@ -17,16 +32,25 @@ const CryptoHash = Components.Constructor(
  *          The hex representation of a SHA256 hash.
  */
 export function computeSha256HashAsString(input) {
-  const data = new Uint8Array(new TextEncoder().encode(input));
-  const crypto = CryptoHash("sha256");
-  crypto.update(data, data.length);
-  return getHashStringForCrypto(crypto);
+  return computeHashAsString("sha256", input);
+}
+
+/**
+ * Returns the string representation (hex) of the SHA1 hash of `input`.
+ *
+ * @param {string} input
+ *        The value to hash.
+ * @returns {string}
+ *          The hex representation of a SHA1 hash.
+ */
+export function computeSha1HashAsString(input) {
+  return computeHashAsString("sha1", input);
 }
 
 /**
  * Returns the string representation (hex) of a given CryptoHashInstance.
  *
- * @param {CryptoHash} aCrypto
+ * @param {nsICryptoHash} aCrypto
  * @returns {string}
  *          The hex representation of a SHA256 hash.
  */

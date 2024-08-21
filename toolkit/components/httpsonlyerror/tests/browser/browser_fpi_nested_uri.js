@@ -31,17 +31,12 @@ add_task(async function () {
 
   let loaded = BrowserTestUtils.waitForErrorPage(gBrowser.selectedBrowser);
   info(`Starting to load ${INSECURE_VIEW_SOURCE_URL}`);
-  BrowserTestUtils.loadURIString(gBrowser, INSECURE_VIEW_SOURCE_URL);
+  BrowserTestUtils.startLoadingURIString(gBrowser, INSECURE_VIEW_SOURCE_URL);
   await loaded;
   info(`${INSECURE_VIEW_SOURCE_URL} finished loading`);
 
   loaded = promiseIsErrorPage();
-  // click on exception-button and wait for page to load
-  await SpecialPowers.spawn(gBrowser.selectedBrowser, [], async function () {
-    let openInsecureButton = content.document.getElementById("openInsecure");
-    ok(openInsecureButton != null, "openInsecureButton should exist.");
-    openInsecureButton.click();
-  });
+  await waitForAndClickOpenInsecureButton(gBrowser.selectedBrowser);
   info(`Waiting for normal or error page to load`);
   const isErrorPage = await loaded;
 

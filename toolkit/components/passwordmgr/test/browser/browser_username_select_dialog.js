@@ -18,7 +18,7 @@ function getSelectDialogDoc() {
       if (childDocShell.busyFlags != Ci.nsIDocShell.BUSY_FLAGS_NONE) {
         continue;
       }
-      var childDoc = childDocShell.contentViewer.DOMDocument;
+      var childDoc = childDocShell.docViewer.DOMDocument;
 
       if (
         childDoc.location.href == "chrome://global/content/selectDialog.xhtml"
@@ -96,7 +96,7 @@ add_task(async function test_changeUPLoginOnPUpdateForm_accept() {
     }
   );
 
-  let logins = Services.logins.getAllLogins();
+  let logins = await Services.logins.getAllLogins();
   Assert.equal(logins.length, 2, "Should have 2 logins");
 
   let login = SpecialPowers.wrap(logins[0]).QueryInterface(Ci.nsILoginMetaInfo);
@@ -158,7 +158,7 @@ add_task(async function test_changeUPLoginOnPUpdateForm_cancel() {
     }
   );
 
-  let logins = Services.logins.getAllLogins();
+  let logins = await Services.logins.getAllLogins();
   Assert.equal(logins.length, 2, "Should have 2 logins");
 
   let login = SpecialPowers.wrap(logins[0]).QueryInterface(Ci.nsILoginMetaInfo);

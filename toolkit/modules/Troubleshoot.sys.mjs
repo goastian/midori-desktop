@@ -5,8 +5,6 @@
 import { AddonManager } from "resource://gre/modules/AddonManager.sys.mjs";
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
-import { FeatureGate } from "resource://featuregates/FeatureGate.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -22,6 +20,7 @@ const PREFS_FOR_DISPLAY = [
   "apz.",
   "browser.cache.",
   "browser.contentblocking.category",
+  "browser.contentanalysis.",
   "browser.display.",
   "browser.download.always_ask_before_handling_new_types",
   "browser.download.enable_spam_prevention",
@@ -52,6 +51,7 @@ const PREFS_FOR_DISPLAY = [
   "browser.startup.homepage",
   "browser.startup.page",
   "browser.tabs.",
+  "browser.toolbars.",
   "browser.urlbar.",
   "browser.zoom.",
   "doh-rollout.",
@@ -135,6 +135,7 @@ PREFS_GETTERS[Ci.nsIPrefBranch.PREF_BOOL] = (prefs, name) =>
 // session)
 const PREFS_UNIMPORTANT_LOCKED = [
   "dom.postMessage.sharedArrayBuffer.bypassCOOP_COEP.insecure.enabled",
+  "extensions.backgroundServiceWorkerEnabled.enabled",
   "privacy.restrict3rdpartystorage.url_decorations",
 ];
 
@@ -254,10 +255,21 @@ var dataProviders = {
       data.rosetta = Services.sysinfo.getProperty("rosettaStatus");
     } catch (e) {}
 
+    try {
+      // Windows - Get info about attached pointing devices
+      data.pointingDevices = Services.sysinfo
+        .getProperty("pointingDevices")
+        .split(",");
+    } catch (e) {}
+
     data.numTotalWindows = 0;
     data.numFissionWindows = 0;
     data.numRemoteWindows = 0;
-    for (let { docShell } of Services.wm.getEnumerator("navigator:browser")) {
+    for (let { docShell } of Services.wm.getEnumerator(
+      AppConstants.platform == "android"
+        ? "navigator:geckoview"
+        : "navigator:browser"
+    )) {
       docShell.QueryInterface(Ci.nsILoadContext);
       data.numTotalWindows++;
       if (docShell.useRemoteSubframes) {
@@ -310,6 +322,7 @@ var dataProviders = {
       "locale",
       "dictionary",
       "sitepermission",
+      "theme",
     ]);
     addons = addons.filter(e => !e.isSystem);
     addons.sort(function (a, b) {
@@ -403,6 +416,11 @@ var dataProviders = {
         remoteType = remoteType === "preallocated" ? "prealloc" : remoteType;
       } catch (e) {}
 
+      // We will split Utility by actor name, so do not do it now
+      if (remoteType === "utility") {
+        continue;
+      }
+
       // The parent process is also managed by the ppmm (because
       // of non-remote tabs), but it doesn't have a remoteType.
       if (!remoteType) {
@@ -413,6 +431,20 @@ var dataProviders = {
         remoteTypes[remoteType]++;
       } else {
         remoteTypes[remoteType] = 1;
+      }
+    }
+
+    for (let i = 0; i < processInfo.children.length; i++) {
+      if (processInfo.children[i].type === "utility") {
+        for (let utilityWithActor of processInfo.children[i].utilityActors.map(
+          e => `utility_${e.actorName}`
+        )) {
+          if (remoteTypes[utilityWithActor]) {
+            remoteTypes[utilityWithActor]++;
+          } else {
+            remoteTypes[utilityWithActor] = 1;
+          }
+        }
       }
     }
 
@@ -436,10 +468,14 @@ var dataProviders = {
   },
 
   async experimentalFeatures(done) {
-    if (AppConstants.platform == "android") {
+    if (AppConstants.MOZ_BUILD_APP != "browser") {
       done();
       return;
     }
+    let { FeatureGate } = ChromeUtils.importESModule(
+      "resource://featuregates/FeatureGate.sys.mjs"
+    );
+
     let gates = await FeatureGate.all();
     done(
       gates.map(gate => {
@@ -450,6 +486,25 @@ var dataProviders = {
         ];
       })
     );
+  },
+
+  async legacyUserStylesheets(done) {
+    if (AppConstants.platform == "android") {
+      done({ active: false, types: [] });
+      return;
+    }
+
+    let active = Services.prefs.getBoolPref(
+      "toolkit.legacyUserProfileCustomizations.stylesheets"
+    );
+    let types = [];
+    for (let name of ["userChrome.css", "userContent.css"]) {
+      let path = PathUtils.join(PathUtils.profileDir, "chrome", name);
+      if (await IOUtils.exists(path)) {
+        types.push(name);
+      }
+    }
+    done({ active, types });
   },
 
   async environmentVariables(done) {
@@ -630,6 +685,7 @@ var dataProviders = {
         cleartypeParameters: "clearTypeParameters",
         TargetFrameRate: "targetFrameRate",
         windowProtocol: null,
+        fontVisibilityDeterminationStr: "supportFontDetermination",
       };
 
       for (let prop in gfxInfoProps) {
@@ -950,6 +1006,24 @@ var dataProviders = {
     });
   },
 
+  contentAnalysis: async function contentAnalysis(done) {
+    const contentAnalysis = Cc["@mozilla.org/contentanalysis;1"].getService(
+      Ci.nsIContentAnalysis
+    );
+    if (!contentAnalysis.isActive) {
+      done({ active: false });
+      return;
+    }
+    let info = await contentAnalysis.getDiagnosticInfo();
+    done({
+      active: true,
+      connected: info.connectedToAgent,
+      agentPath: info.agentPath,
+      failedSignatureVerification: info.failedSignatureVerification,
+      requestCount: info.requestCount,
+    });
+  },
+
   async normandy(done) {
     if (!AppConstants.MOZ_NORMANDY) {
       done();
@@ -1006,6 +1080,32 @@ var dataProviders = {
       nimbusExperiments,
       nimbusRollouts,
     });
+  },
+
+  async remoteSettings(done) {
+    const { RemoteSettings } = ChromeUtils.importESModule(
+      "resource://services-settings/remote-settings.sys.mjs"
+    );
+
+    let inspected;
+    try {
+      inspected = await RemoteSettings.inspect({ localOnly: true });
+    } catch (error) {
+      console.error(error);
+      done({ isSynchronizationBroken: true, history: { "settings-sync": [] } });
+      return;
+    }
+
+    // Show last check in standard format.
+    inspected.lastCheck = inspected.lastCheck
+      ? new Date(inspected.lastCheck * 1000).toISOString()
+      : "";
+    // Trim history entries.
+    for (let h of Object.values(inspected.history)) {
+      h.splice(10, Infinity);
+    }
+
+    done(inspected);
   },
 };
 
@@ -1071,11 +1171,15 @@ if (AppConstants.MOZ_SANDBOX) {
       );
       data.effectiveContentSandboxLevel =
         sandboxSettings.effectiveContentSandboxLevel;
-      data.contentWin32kLockdownState =
-        sandboxSettings.contentWin32kLockdownStateString;
-      data.supportSandboxGpuLevel = Services.prefs.getIntPref(
-        "security.sandbox.gpu.level"
-      );
+
+      if (AppConstants.platform == "win") {
+        data.contentWin32kLockdownState =
+          sandboxSettings.contentWin32kLockdownStateString;
+
+        data.supportSandboxGpuLevel = Services.prefs.getIntPref(
+          "security.sandbox.gpu.level"
+        );
+      }
     }
 
     done(data);

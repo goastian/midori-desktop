@@ -53,14 +53,13 @@ add_task(async function test_experiment_enroll_unenroll_Telemetry() {
         extra: {
           experimentType: EXPERIMENT_TYPE,
           branch: experiment.branch.slug,
-          enrollmentId: experiment.enrollmentId,
         },
       },
     ],
     EVENT_FILTER
   );
 
-  await cleanup();
+  cleanup();
 
   TelemetryTestUtils.assertEvents(
     [
@@ -71,7 +70,6 @@ add_task(async function test_experiment_enroll_unenroll_Telemetry() {
         extra: {
           reason: "cleanup",
           branch: experiment.branch.slug,
-          enrollmentId: experiment.enrollmentId,
         },
       },
     ],
@@ -114,7 +112,7 @@ add_task(async function test_experiment_expose_Telemetry() {
     EVENT_FILTER
   );
 
-  await cleanup();
+  cleanup();
 });
 
 add_task(async function test_rollout_expose_Telemetry() {
@@ -122,10 +120,13 @@ add_task(async function test_rollout_expose_Telemetry() {
     description: "Test feature",
     exposureDescription: "Used in tests",
   };
-  const cleanup = await ExperimentFakes.enrollWithRollout({
-    featureId: "test-feature",
-    value: { enabled: false },
-  });
+  const cleanup = await ExperimentFakes.enrollWithFeatureConfig(
+    {
+      featureId: "test-feature",
+      value: { enabled: false },
+    },
+    { isRollout: true }
+  );
 
   let rollout = ExperimentAPI.getRolloutMetaData({
     featureId: "test-feature",
@@ -153,5 +154,5 @@ add_task(async function test_rollout_expose_Telemetry() {
     EVENT_FILTER
   );
 
-  await cleanup();
+  cleanup();
 });

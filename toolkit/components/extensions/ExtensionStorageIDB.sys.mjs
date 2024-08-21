@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-export let ExtensionStorageIDB;
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { IndexedDB } from "resource://gre/modules/IndexedDB.sys.mjs";
 
+/** @type {Lazy} */
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -90,15 +90,15 @@ var ErrorsTelemetry = {
    * @param {object} telemetryData
    * @param {string} telemetryData.backend
    *        The backend selected ("JSONFile" or "IndexedDB").
-   * @param {boolean} telemetryData.dataMigrated
+   * @param {boolean} [telemetryData.dataMigrated]
    *        Old extension data has been migrated successfully.
    * @param {string} telemetryData.extensionId
    *        The id of the extension migrated.
    * @param {Error | undefined} telemetryData.error
    *        The error raised during the data migration, if any.
-   * @param {boolean} telemetryData.hasJSONFile
+   * @param {boolean} [telemetryData.hasJSONFile]
    *        The extension has an existing JSONFile to migrate.
-   * @param {boolean} telemetryData.hasOldData
+   * @param {boolean} [telemetryData.hasOldData]
    *        The extension's JSONFile wasn't empty.
    * @param {string} telemetryData.histogramCategory
    *        The histogram category for the result ("success" or "failure").
@@ -136,13 +136,22 @@ var ErrorsTelemetry = {
         extra.error_name = this.getErrorName(error);
       }
 
+      let addon_id = lazy.getTrimmedString(extensionId);
       Services.telemetry.recordEvent(
         "extensions.data",
         "migrateResult",
         "storageLocal",
-        lazy.getTrimmedString(extensionId),
+        addon_id,
         extra
       );
+      Glean.extensionsData.migrateResult.record({
+        addon_id,
+        backend: extra.backend,
+        data_migrated: extra.data_migrated,
+        has_jsonfile: extra.has_jsonfile,
+        has_olddata: extra.has_olddata,
+        error_name: extra.error_name,
+      });
     } catch (err) {
       // Report any telemetry error on the browser console, but
       // we treat it as a non-fatal error and we don't re-throw
@@ -165,14 +174,21 @@ var ErrorsTelemetry = {
    */
   recordStorageLocalError({ extensionId, storageMethod, error }) {
     this.lazyInit();
+    let addon_id = lazy.getTrimmedString(extensionId);
+    let error_name = this.getErrorName(error);
 
     Services.telemetry.recordEvent(
       "extensions.data",
       "storageLocalError",
       storageMethod,
-      lazy.getTrimmedString(extensionId),
-      { error_name: this.getErrorName(error) }
+      addon_id,
+      { error_name }
     );
+    Glean.extensionsData.storageLocalError.record({
+      addon_id,
+      method: storageMethod,
+      error_name,
+    });
   },
 };
 
@@ -205,7 +221,7 @@ class ExtensionStorageLocalIDB extends IndexedDB {
    *        said object. Any values which are StructuredCloneHolder
    *        instances are deserialized before being stored.
    * @param {object}  options
-   * @param {Function} options.serialize
+   * @param {callback} [options.serialize]
    *        Set to a function which will be used to serialize the values into
    *        a StructuredCloneHolder object (if appropriate) and being sent
    *        across the processes (it is also used to detect data cloning errors
@@ -222,10 +238,7 @@ class ExtensionStorageLocalIDB extends IndexedDB {
     // Explicitly create a transaction, so that we can explicitly abort it
     // as soon as one of the put requests fails.
     const transaction = this.transaction(IDB_DATA_STORENAME, "readwrite");
-    const objectStore = transaction.objectStore(
-      IDB_DATA_STORENAME,
-      "readwrite"
-    );
+    const objectStore = transaction.objectStore(IDB_DATA_STORENAME);
     const transactionCompleted = transaction.promiseComplete();
 
     if (!serialize) {
@@ -245,7 +258,7 @@ class ExtensionStorageLocalIDB extends IndexedDB {
         };
         changed = true;
       } catch (err) {
-        transactionCompleted.catch(err => {
+        transactionCompleted.catch(() => {
           // We ignore this rejection because we are explicitly aborting the transaction,
           // the transaction.error will be null, and we throw the original error below.
         });
@@ -569,7 +582,7 @@ async function migrateJSONFileData(extension, storagePrincipal) {
  * This ExtensionStorage class implements a backend for the storage.local API which
  * uses IndexedDB to store the data.
  */
-ExtensionStorageIDB = {
+export var ExtensionStorageIDB = {
   BACKEND_ENABLED_PREF,
   IDB_MIGRATED_PREF_BRANCH,
   IDB_MIGRATE_RESULT_HISTOGRAM,
@@ -635,7 +648,7 @@ ExtensionStorageIDB = {
    * child context is going to ask the main process only once per child process, and on the
    * main process side the backend selection and data migration will happen only once.
    *
-   * @param {BaseContext} context
+   * @param {import("ExtensionPageChild.sys.mjs").ExtensionBaseContextChild} context
    *        The extension context that is selecting the storage backend.
    *
    * @returns {Promise<object>}
@@ -789,6 +802,8 @@ ExtensionStorageIDB = {
    * from the internal IndexedDB operations have to be converted into an ExtensionError
    * to be accessible to the extension code).
    *
+   * @typedef {import("ExtensionUtils.sys.mjs").ExtensionError} ExtensionError
+   *
    * @param {object} params
    * @param {Error|ExtensionError|DOMException} params.error
    *        The error object to normalize.
@@ -805,6 +820,7 @@ ExtensionStorageIDB = {
     const { ExtensionError } = lazy.ExtensionUtils;
 
     if (error instanceof ExtensionError) {
+      // @ts-ignore (will go away after `lazy` is properly typed)
       return error;
     }
 

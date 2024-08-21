@@ -50,6 +50,11 @@ async function testInstallTrigger(
   expectedTelemetryInfo,
   expectBlockedOrigin
 ) {
+  // Clear collected events before each test, otherwise the test would fail
+  // intermittently when Glean is going to submit the events and clear them
+  // after reaching the max events length limit.
+  Services.fog.testResetFOG();
+
   await BrowserTestUtils.withNewTab(tabURL, async browser => {
     if (expectBlockedOrigin) {
       const promiseOriginBlocked = TestUtils.topicObserved(
@@ -58,6 +63,17 @@ async function testInstallTrigger(
       await SpecialPowers.spawn(browser, contentFnArgs, contentFn);
       const [subject] = await promiseOriginBlocked;
       const installId = subject.wrappedJSObject.installs[0].installId;
+
+      let gleanEvents = AddonTestUtils.getAMGleanEvents("install", {
+        install_id: `${installId}`,
+        step: "site_blocked",
+      });
+      ok(!!gleanEvents.length, "Found Glean events for the blocked install.");
+      Assert.deepEqual(
+        { source: gleanEvents[0].source },
+        expectedTelemetryInfo,
+        `Got expected Glean telemetry on test case "${msg}"`
+      );
 
       // Select all telemetry events related to the installId.
       const telemetryEvents = AddonTestUtils.getAMTelemetryEvents().filter(
@@ -74,16 +90,12 @@ async function testInstallTrigger(
         "Found telemetry events for the blocked install"
       );
 
-      if (typeof expectedTelemetryInfo === "function") {
-        expectedTelemetryInfo(telemetryEvents);
-      } else {
-        const source = telemetryEvents[0]?.extra.source;
-        Assert.deepEqual(
-          { source },
-          expectedTelemetryInfo,
-          `Got expected telemetry on test case "${msg}"`
-        );
-      }
+      const source = telemetryEvents[0]?.extra.source;
+      Assert.deepEqual(
+        { source },
+        expectedTelemetryInfo,
+        `Got expected telemetry on test case "${msg}"`
+      );
       return;
     }
 
@@ -231,26 +243,21 @@ add_task(async function testInstallTriggerFromSubframe() {
 
   const testCases = [
     ["blank iframe with no attributes", SECURE_TESTROOT, {}, expected.http],
-
-    // These are blocked by a Firefox doorhanger and the user can't allow it neither.
+    ["iframe srcdoc=''", SECURE_TESTROOT, { srcdoc: "" }, expected.http],
     [
       "http page iframe src='blob:...'",
       SECURE_TESTROOT,
       { src: "blob:" },
-      expected.httpBlockedOnOrigin,
+      expected.httpBlob,
     ],
     [
       "file page iframe src='blob:...'",
       fileURL,
       { src: "blob:" },
-      expected.otherBlockedOnOrigin,
+      expected.fileBlob,
     ],
-    [
-      "iframe srcdoc=''",
-      SECURE_TESTROOT,
-      { srcdoc: "" },
-      expected.httpBlockedOnOrigin,
-    ],
+
+    // These are blocked by a Firefox doorhanger and the user can't allow it neither.
     [
       "blank iframe embedded into a top-level sandbox page",
       `${SECURE_TESTROOT}sandboxed.html`,
@@ -324,7 +331,7 @@ add_task(function testInstallBlankFrameNestedIntoBlobURLPage() {
     {
       source: "test-host",
     },
-    /* expectBlockedOrigin */ true
+    /* expectBlockedOrigin */ false
   );
 });
 

@@ -59,7 +59,7 @@ def Libxul(name, output_category=None):
     ]
 
     if CONFIG["ACCESSIBILITY"]:
-        DELAYLOAD_DLLS += ["oleacc.dll"]
+        DELAYLOAD_DLLS += ["oleacc.dll", "UIAutomationCore.dll"]
 
     if CONFIG["MOZ_WEBRTC"]:
         DELAYLOAD_DLLS += ["msdmo.dll"]
@@ -86,8 +86,7 @@ def Libxul(name, output_category=None):
 
     Libxul_defines()
 
-    if CONFIG["MOZ_NEEDS_LIBATOMIC"]:
-        OS_LIBS += ["atomic"]
+    OS_LIBS += CONFIG["LIBATOMIC_LIBS"]
 
     # TouchBar-related classes are only available in the 10.12.2 SDK and later.
     # We need to weak link these classes until we've upgraded our SDK to at
@@ -100,20 +99,15 @@ def Libxul(name, output_category=None):
         LDFLAGS += ["-Wl,-U,_OBJC_CLASS_$_NSCustomTouchBarItem"]
         LDFLAGS += ["-Wl,-U,_OBJC_CLASS_$_NSPopoverTouchBarItem"]
         LDFLAGS += ["-lresolv"]
+        LDFLAGS += ["-Wl,-rpath,@executable_path/../Frameworks/ChannelPrefs.framework"]
 
     if CONFIG["MOZ_DEBUG_SYMBOLS"] and CONFIG["CC_TYPE"] == "clang-cl":
         LDFLAGS += ["-NATVIS:%s/toolkit/library/gecko.natvis" % TOPSRCDIR]
     if CONFIG["RUSTC_NATVIS_LDFLAGS"]:
         LDFLAGS += CONFIG["RUSTC_NATVIS_LDFLAGS"]
 
-    if CONFIG["OS_ARCH"] == "Linux" and CONFIG["OS_TARGET"] != "Android":
-        GeneratedFile(
-            "symverscript",
-            script="/build/gen_symverscript.py",
-            inputs=["../symverscript.in"],
-            flags=["xul%s" % CONFIG["MOZILLA_SYMBOLVERSION"]],
-        )
-        SYMBOLS_FILE = "!symverscript"
+    if CONFIG["OS_TARGET"] != "Android" and name == "xul-real":
+        SYMBOLS_FILE = "../libxul.symbols"
 
 
 # The real libxul definition is in ./build/moz.build, but we define a
@@ -145,11 +139,9 @@ if CONFIG["OS_ARCH"] == "WINNT" and CONFIG["CC_TYPE"] not in ("clang", "gcc"):
 
 DIRS += [
     "build",
+    "buildid_reader",
     "gtest",
 ]
-
-if CONFIG["OS_ARCH"] == "WINNT":
-    DIRS += ["dummydll"]
 
 # js needs to come after xul for now, because it is an archive and its content
 # is discarded when it comes first.
@@ -158,6 +150,7 @@ USE_LIBS += [
 ]
 
 USE_LIBS += [
+    "gkcodecs",
     "lgpllibs",
     "nspr",
     "nss",
@@ -240,6 +233,9 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
         "-framework CoreSymbolication",
         "cups",
     ]
+    USE_LIBS += [
+        "ChannelPrefs",
+    ]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
     OS_LIBS += [
@@ -253,6 +249,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
         "-framework CoreVideo",
         "-framework OpenGLES",
         "-framework QuartzCore",
+        "-framework Security",
     ]
 
 if CONFIG["MOZ_WMF"]:
@@ -320,7 +317,7 @@ if CONFIG["OS_ARCH"] == "OpenBSD":
     ]
 
 if CONFIG["MOZ_ENABLE_DBUS"]:
-    OS_LIBS += CONFIG["MOZ_DBUS_GLIB_LIBS"]
+    OS_LIBS += CONFIG["MOZ_DBUS_LIBS"]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk" and CONFIG["COMPILE_ENVIRONMENT"]:
     OS_LIBS += [l for l in CONFIG["MOZ_GTK3_LIBS"] if l not in ("-lgtk-3", "-lgdk-3")]
@@ -384,6 +381,7 @@ if CONFIG["OS_ARCH"] == "WINNT":
     if CONFIG["ACCESSIBILITY"]:
         OS_LIBS += [
             "oleacc",
+            "uiautomationcore",
         ]
 
     # Prevent winapi-rs from statically linking
@@ -415,3 +413,7 @@ if CONFIG["COMPILE_ENVIRONMENT"]:
     GeneratedFile(
         "buildid.cpp", script="gen_buildid.py", inputs=["!build/%s.list" % libxul_list]
     )
+
+    EXPORTS += [
+        "buildid_section.h",
+    ]

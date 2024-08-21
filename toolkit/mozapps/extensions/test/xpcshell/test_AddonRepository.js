@@ -2,13 +2,14 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-// Tests AddonRepository.jsm
+// Tests AddonRepository.sys.mjs
 
 var gServer = createHttpServer({ hosts: ["example.com"] });
 
 const PREF_GETADDONS_BROWSEADDONS = "extensions.getAddons.browseAddons";
 const PREF_GETADDONS_BROWSESEARCHRESULTS =
   "extensions.getAddons.search.browseURL";
+const PREF_GET_BROWSER_MAPPINGS = "extensions.getAddons.browserMappings.url";
 
 const BASE_URL = "http://example.com";
 const DEFAULT_URL = "about:blank";
@@ -72,6 +73,7 @@ var ADDON_PROPERTIES = [
   "dailyUsers",
   "sourceURI",
   "updateDate",
+  "amoListingURL",
 ];
 
 // Results of getAddonsByIDs
@@ -118,6 +120,8 @@ var GET_RESULTS = [
     weeklyDownloads: 3333,
     sourceURI: BASE_URL + INSTALL_URL2,
     updateDate: new Date(1265033045000),
+    amoListingURL:
+      "https://addons.mozilla.org/en-US/firefox/addon/test1@tests.mozilla.org/",
   },
   {
     id: "test2@tests.mozilla.org",
@@ -157,6 +161,8 @@ var GET_TEST = {
     "%7B00000000-1111-2222-3333-444444444444%7D%2C" +
     "test_AddonRepository_1%40tests.mozilla.org",
 };
+
+const GET_BROWSER_MAPPINGS_URL = `${BASE_URL}/browser-mappings/%BROWSER%`;
 
 // Test that actual results and expected results are equal
 function check_results(aActualAddons, aExpectedAddons) {
@@ -199,6 +205,49 @@ add_task(async function setup() {
   gServer.registerFile(
     GET_TEST.successfulRTAURL,
     do_get_file("data/test_AddonRepository_getAddonsByIDs.json")
+  );
+
+  // Register some files/handlers for browser mapping tests.
+  gServer.registerFile(
+    // Keep in sync with `GET_BROWSER_MAPPINGS_URL`.
+    "/browser-mappings/valid-browser-id",
+    do_get_file("data/test_AddonRepository_getMappedAddons.json")
+  );
+  gServer.registerFile(
+    // This is used in `test_getMappedAddons_empty_mapping()` and should be
+    // updated if `GET_BROWSER_MAPPINGS_URL` is also updated.
+    "/browser-mappings/browser-id-empty-results",
+    do_get_file("data/test_AddonRepository_getMappedAddons_empty.json")
+  );
+  gServer.registerPrefixHandler(
+    // Keep in sync with the pref set in `test_getMappedAddons_with_paging()`.
+    "/browser-mappings/with-paging/valid-browser-id/",
+    // This handler parses the query string of the request it receives in order
+    // to force the `getMappedAddons()` method to call the same API endpoint a
+    // few times (by incrementing the integer value in the query string every
+    // time). After that, this handler returns a "next' URL that points to one
+    // of the valid endpoints registered above, which won't have a "next" URL.
+    // We do this to verify that `getMappedAddons()` supports paginated API
+    // results.
+    (request, response) => {
+      const page = parseInt(request.queryString, 10);
+      const nextPath =
+        page < 3
+          ? `with-paging/valid-browser-id/?${page + 1}`
+          : `valid-browser-id`;
+
+      response.setHeader("content-type", "application/json");
+      response.write(
+        JSON.stringify({
+          count: 0,
+          next: `${BASE_URL}/browser-mappings/${nextPath}`,
+          page_count: page,
+          page_size: 1,
+          previous: null,
+          results: [],
+        })
+      );
+    }
   );
 
   await promiseStartupManager();
@@ -314,3 +363,126 @@ add_task(async function test_getAddonsByID_rta() {
 
   check_results(result, GET_RESULTS);
 });
+
+add_task(
+  {
+    pref_set: [[PREF_GET_BROWSER_MAPPINGS, GET_BROWSER_MAPPINGS_URL]],
+  },
+  async function test_getMappedAddons() {
+    const {
+      addons: result,
+      matchedIDs,
+      unmatchedIDs,
+    } = await AddonRepository.getMappedAddons("valid-browser-id", [
+      "browser-extension-test-1",
+      "browser-extension-test-2",
+      // This one is mapped but the search API won't return any data.
+      "browser-extension-test-3",
+      "browser-extension-test-4",
+      // These ones are not mapped to any Firefox add-ons.
+      "browser-extension-test-5",
+      "browser-extension-test-6",
+    ]);
+    Assert.equal(result.length, 3, "expected 3 mapped add-ons");
+    check_results(result, GET_RESULTS);
+    Assert.deepEqual(matchedIDs, [
+      "browser-extension-test-1",
+      "browser-extension-test-2",
+      "browser-extension-test-3",
+      "browser-extension-test-4",
+    ]);
+    Assert.deepEqual(unmatchedIDs, [
+      "browser-extension-test-5",
+      "browser-extension-test-6",
+    ]);
+  }
+);
+
+add_task(
+  {
+    pref_set: [[PREF_GET_BROWSER_MAPPINGS, GET_BROWSER_MAPPINGS_URL]],
+  },
+  async function test_getMappedAddons_empty_list_of_ids() {
+    const {
+      addons: result,
+      matchedIDs,
+      unmatchedIDs,
+    } = await AddonRepository.getMappedAddons("valid-browser-id", []);
+    Assert.equal(result.length, 0, "expected 0 mapped add-ons");
+    Assert.equal(matchedIDs.length, 0, "expected 0 matched IDs");
+    Assert.equal(unmatchedIDs.length, 0, "expected 0 unmatched IDs");
+  }
+);
+
+add_task(
+  {
+    pref_set: [[PREF_GET_BROWSER_MAPPINGS, GET_BROWSER_MAPPINGS_URL]],
+  },
+  async function test_getMappedAddons_invalid_ids() {
+    const {
+      addons: result,
+      matchedIDs,
+      unmatchedIDs,
+    } = await AddonRepository.getMappedAddons("valid-browser-id", [
+      "",
+      null,
+      undefined,
+    ]);
+    Assert.equal(result.length, 0, "expected 0 mapped add-ons");
+    Assert.equal(matchedIDs.length, 0, "expected 0 matched IDs");
+    Assert.deepEqual(unmatchedIDs, ["", null, undefined]);
+  }
+);
+
+add_task(
+  {
+    pref_set: [[PREF_GET_BROWSER_MAPPINGS, GET_BROWSER_MAPPINGS_URL]],
+  },
+  async function test_getMappedAddons_empty_mapping() {
+    const {
+      addons: result,
+      matchedIDs,
+      unmatchedIDs,
+    } = await AddonRepository.getMappedAddons("browser-id-empty-results", [
+      "browser-extension-test-1",
+      "browser-extension-test-2",
+      "browser-extension-test-3",
+    ]);
+    Assert.equal(result.length, 0, "expected no mapped add-ons");
+    Assert.equal(matchedIDs.length, 0, "expected 0 matched IDs");
+    Assert.equal(unmatchedIDs.length, 3, "expected 3 unmatched IDs");
+  }
+);
+
+add_task(
+  {
+    pref_set: [
+      [
+        PREF_GET_BROWSER_MAPPINGS,
+        `${BASE_URL}/browser-mappings/with-paging/%BROWSER%/?1`,
+      ],
+    ],
+  },
+  async function test_getMappedAddons_with_paging() {
+    const {
+      addons: result,
+      matchedIDs,
+      unmatchedIDs,
+    } = await AddonRepository.getMappedAddons("valid-browser-id", [
+      "browser-extension-test-1",
+      "browser-extension-test-2",
+      // This one is mapped but the search API won't return any data.
+      "browser-extension-test-3",
+      "browser-extension-test-4",
+    ]);
+    Assert.equal(result.length, 3, "expected 3 mapped add-ons");
+    check_results(result, GET_RESULTS);
+    Assert.deepEqual(matchedIDs, [
+      "browser-extension-test-1",
+      "browser-extension-test-2",
+      "browser-extension-test-3",
+      "browser-extension-test-4",
+    ]);
+    Assert.deepEqual(unmatchedIDs, []);
+  }
+);

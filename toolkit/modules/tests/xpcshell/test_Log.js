@@ -362,7 +362,6 @@ add_task(async function log_template_literal_message() {
 
 /*
  * Check that we format JS Errors reasonably.
- * This needs to stay a generator to exercise Task.jsm's stack rewriting.
  */
 add_task(async function format_errors() {
   let pFormat = new Log.ParameterFormatter();
@@ -384,10 +383,8 @@ add_task(async function format_errors() {
     Assert.ok(str.includes("SyntaxError: unexpected token"));
     // Make sure we identified it as an Error and formatted the error location as
     // lineNumber:columnNumber.
-    Assert.ok(str.includes(":1:11)"));
+    Assert.ok(str.includes(":1:12)"));
     // Make sure that we use human-readable stack traces
-    // Check that the error doesn't contain any reference to "Task.jsm"
-    Assert.ok(!str.includes("Task.jsm"));
     Assert.ok(str.includes("format_errors"));
   }
 });

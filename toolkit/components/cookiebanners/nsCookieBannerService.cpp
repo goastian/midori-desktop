@@ -135,8 +135,7 @@ nsCookieBannerService::Observe(nsISupports* aSubject, const char* aTopic,
   // Report the daily telemetry for the cookie banner service on "idle-daily".
   if (nsCRT::strcmp(aTopic, "idle-daily") == 0) {
     DailyReportTelemetry();
-    ResetDomainTelemetryRecord(""_ns);
-    return NS_OK;
+    return ResetDomainTelemetryRecord(""_ns);
   }
 
   // Initializing the cookie banner service on startup on
@@ -156,6 +155,12 @@ nsCookieBannerService::Observe(nsISupports* aSubject, const char* aTopic,
 
   if (nsCRT::strcmp(aTopic, OBSERVER_TOPIC_BC_DISCARDED) == 0) {
     return RemoveWebProgressListener(aSubject);
+  }
+
+  // Clear the executed data for private session when the last private browsing
+  // session exits.
+  if (nsCRT::strcmp(aTopic, "last-pb-context-exited") == 0) {
+    return RemoveAllExecutedRecords(true);
   }
 
   return NS_OK;
@@ -193,7 +198,8 @@ nsresult nsCookieBannerService::Init() {
                                if (!mIsInitialized) {
                                  return;
                                }
-                               mListService->Init();
+                               nsresult rv = mListService->Init();
+                               NS_ENSURE_SUCCESS_VOID(rv);
                                mDomainPrefService->Init();
                              }),
       EventQueuePriority::Idle);
@@ -205,8 +211,13 @@ nsresult nsCookieBannerService::Init() {
   nsCOMPtr<nsIObserverService> obsSvc = mozilla::services::GetObserverService();
   NS_ENSURE_TRUE(obsSvc, NS_ERROR_FAILURE);
 
-  obsSvc->AddObserver(this, OBSERVER_TOPIC_BC_ATTACHED, false);
-  obsSvc->AddObserver(this, OBSERVER_TOPIC_BC_DISCARDED, false);
+  rv = obsSvc->AddObserver(this, OBSERVER_TOPIC_BC_ATTACHED, false);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = obsSvc->AddObserver(this, OBSERVER_TOPIC_BC_DISCARDED, false);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = obsSvc->AddObserver(this, "last-pb-context-exited", false);
+  NS_ENSURE_SUCCESS(rv, rv);
 
   return NS_OK;
 }
@@ -221,25 +232,40 @@ nsresult nsCookieBannerService::Shutdown() {
   if (!mIsInitialized) {
     return NS_OK;
   }
-  mIsInitialized = false;
 
   // Shut down the list service which will stop updating mRules.
-  mListService->Shutdown();
+  nsresult rv = mListService->Shutdown();
+  NS_ENSURE_SUCCESS(rv, rv);
 
   // Clear all stored cookie banner rules. They will be imported again on Init.
   mRules.Clear();
 
+  // Clear executed records for normal and private browsing.
+  rv = RemoveAllExecutedRecords(false);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = RemoveAllExecutedRecords(true);
+  NS_ENSURE_SUCCESS(rv, rv);
+
   nsCOMPtr<nsIObserverService> obsSvc = mozilla::services::GetObserverService();
   NS_ENSURE_TRUE(obsSvc, NS_ERROR_FAILURE);
 
-  obsSvc->RemoveObserver(this, OBSERVER_TOPIC_BC_ATTACHED);
-  obsSvc->RemoveObserver(this, OBSERVER_TOPIC_BC_DISCARDED);
+  rv = obsSvc->RemoveObserver(this, OBSERVER_TOPIC_BC_ATTACHED);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = obsSvc->RemoveObserver(this, OBSERVER_TOPIC_BC_DISCARDED);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = obsSvc->RemoveObserver(this, "last-pb-context-exited");
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  mIsInitialized = false;
 
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsCookieBannerService::GetIsEnabled(bool* aResult) {
+  NS_ENSURE_ARG_POINTER(aResult);
+
   *aResult = mIsInitialized;
 
   return NS_OK;
@@ -424,9 +450,13 @@ nsresult nsCookieBannerService::GetClickRulesForDomainInternal(
       aDomain, aIsTopLevel, getter_AddRefs(ruleForDomain), aReportTelemetry);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  bool useGlobalSubFrameRules =
+      StaticPrefs::cookiebanners_service_enableGlobalRules_subFrames();
+
   // Extract click rule from an nsICookieBannerRule and if found append it to
   // the array returned.
-  auto appendClickRule = [&](const nsCOMPtr<nsICookieBannerRule>& bannerRule) {
+  auto appendClickRule = [&](const nsCOMPtr<nsICookieBannerRule>& bannerRule,
+                             bool isGlobal) {
     nsCOMPtr<nsIClickRule> clickRule;
     rv = bannerRule->GetClickRule(getter_AddRefs(clickRule));
     NS_ENSURE_SUCCESS(rv, rv);
@@ -446,17 +476,33 @@ nsresult nsCookieBannerService::GetClickRulesForDomainInternal(
         (runContext == nsIClickRule::RUN_TOP && aIsTopLevel) ||
         (runContext == nsIClickRule::RUN_CHILD && !aIsTopLevel);
 
-    if (runContextMatchesRule) {
-      aRules.AppendElement(clickRule);
+    if (!runContextMatchesRule) {
+      return NS_OK;
     }
 
+    // If global sub-frame rules are disabled skip adding them.
+    if (!useGlobalSubFrameRules && isGlobal && !aIsTopLevel) {
+      if (MOZ_LOG_TEST(gCookieBannerLog, LogLevel::Debug)) {
+        nsAutoCString ruleId;
+        rv = bannerRule->GetId(ruleId);
+        NS_ENSURE_SUCCESS(rv, rv);
+
+        MOZ_LOG(gCookieBannerLog, LogLevel::Debug,
+                ("%s. Skip adding global sub-frame rule: %s.", __FUNCTION__,
+                 ruleId.get()));
+      }
+
+      return NS_OK;
+    }
+
+    aRules.AppendElement(clickRule);
     return NS_OK;
   };
 
   // If there is a domain-specific rule it takes precedence over the global
   // rules.
   if (ruleForDomain) {
-    return appendClickRule(ruleForDomain);
+    return appendClickRule(ruleForDomain, false);
   }
 
   if (!StaticPrefs::cookiebanners_service_enableGlobalRules()) {
@@ -466,7 +512,7 @@ nsresult nsCookieBannerService::GetClickRulesForDomainInternal(
 
   // Append all global click rules.
   for (nsICookieBannerRule* globalRule : mGlobalRules.Values()) {
-    rv = appendClickRule(globalRule);
+    rv = appendClickRule(globalRule, true);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -865,10 +911,7 @@ nsCookieBannerService::RemoveDomainPref(nsIURI* aTopLevelURI,
   rv = eTLDService->GetBaseDomain(aTopLevelURI, 0, baseDomain);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = mDomainPrefService->RemovePref(baseDomain, aIsPrivate);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  return NS_OK;
+  return mDomainPrefService->RemovePref(baseDomain, aIsPrivate);
 }
 
 NS_IMETHODIMP
@@ -877,8 +920,143 @@ nsCookieBannerService::RemoveAllDomainPrefs(const bool aIsPrivate) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  nsresult rv = mDomainPrefService->RemoveAll(aIsPrivate);
-  NS_ENSURE_SUCCESS(rv, rv);
+  return mDomainPrefService->RemoveAll(aIsPrivate);
+}
+
+NS_IMETHODIMP
+nsCookieBannerService::ShouldStopBannerClickingForSite(const nsACString& aSite,
+                                                       const bool aIsTopLevel,
+                                                       const bool aIsPrivate,
+                                                       bool* aShouldStop) {
+  if (!mIsInitialized) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  uint8_t threshold =
+      StaticPrefs::cookiebanners_bannerClicking_maxTriesPerSiteAndSession();
+
+  // Don't stop banner clicking if the pref is set to zero.
+  if (threshold == 0) {
+    *aShouldStop = false;
+    return NS_OK;
+  }
+
+  // Ensure we won't use an overflowed threshold.
+  threshold = std::min(threshold, std::numeric_limits<uint8_t>::max());
+
+  auto entry = mExecutedDataForSites.MaybeGet(aSite);
+
+  if (!entry) {
+    return NS_OK;
+  }
+
+  auto& data = entry.ref();
+  uint8_t cnt = 0;
+
+  if (aIsPrivate) {
+    cnt = aIsTopLevel ? data.countExecutedInTopPrivate
+                      : data.countExecutedInFramePrivate;
+  } else {
+    cnt = aIsTopLevel ? data.countExecutedInTop : data.countExecutedInFrame;
+  }
+
+  *aShouldStop = cnt >= threshold;
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsCookieBannerService::MarkSiteExecuted(const nsACString& aSite,
+                                        const bool aIsTopLevel,
+                                        const bool aIsPrivate) {
+  NS_ENSURE_TRUE(!aSite.IsEmpty(), NS_ERROR_INVALID_ARG);
+
+  if (!mIsInitialized) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  auto& data = mExecutedDataForSites.LookupOrInsert(aSite);
+  uint8_t* count = nullptr;
+
+  if (aIsPrivate) {
+    if (aIsTopLevel) {
+      count = &data.countExecutedInTopPrivate;
+    } else {
+      count = &data.countExecutedInFramePrivate;
+    }
+  } else {
+    if (aIsTopLevel) {
+      count = &data.countExecutedInTop;
+    } else {
+      count = &data.countExecutedInFrame;
+    }
+  }
+
+  MOZ_ASSERT(count);
+
+  // Ensure we never overflow.
+  if (*count < std::numeric_limits<uint8_t>::max()) {
+    (*count) += 1;
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsCookieBannerService::RemoveExecutedRecordForSite(const nsACString& aSite,
+                                                   const bool aIsPrivate) {
+  if (!mIsInitialized) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  auto entry = mExecutedDataForSites.Lookup(aSite);
+
+  if (!entry) {
+    return NS_OK;
+  }
+
+  auto data = entry.Data();
+
+  if (aIsPrivate) {
+    data.countExecutedInTopPrivate = 0;
+    data.countExecutedInFramePrivate = 0;
+  } else {
+    data.countExecutedInTop = 0;
+    data.countExecutedInFrame = 0;
+  }
+
+  // We can remove the entry if there is no flag set after removal.
+  if (!data.countExecutedInTop && !data.countExecutedInFrame &&
+      !data.countExecutedInTopPrivate && !data.countExecutedInFramePrivate) {
+    entry.Remove();
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsCookieBannerService::RemoveAllExecutedRecords(const bool aIsPrivate) {
+  if (!mIsInitialized) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  for (auto iter = mExecutedDataForSites.Iter(); !iter.Done(); iter.Next()) {
+    auto& data = iter.Data();
+    // Clear the flags.
+    if (aIsPrivate) {
+      data.countExecutedInTopPrivate = 0;
+      data.countExecutedInFramePrivate = 0;
+    } else {
+      data.countExecutedInTop = 0;
+      data.countExecutedInFrame = 0;
+    }
+
+    // Remove the entry if there is no flag set.
+    if (!data.countExecutedInTop && !data.countExecutedInFrame &&
+        !data.countExecutedInTopPrivate && !data.countExecutedInFramePrivate) {
+      iter.Remove();
+    }
+  }
 
   return NS_OK;
 }

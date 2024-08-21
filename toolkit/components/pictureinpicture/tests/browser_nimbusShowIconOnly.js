@@ -71,10 +71,6 @@ add_task(async function test_experiment_iconOnly() {
     },
   });
 
-  registerCleanupFunction(async function () {
-    await experimentCleanup();
-  });
-
   await BrowserTestUtils.withNewTab(
     {
       gBrowser,
@@ -100,15 +96,17 @@ add_task(async function test_experiment_iconOnly() {
         let pipIcon = shadowRoot.querySelector("div.pip-icon");
 
         Assert.ok(
-          ContentTaskUtils.is_hidden(pipExpanded),
+          ContentTaskUtils.isHidden(pipExpanded),
           "The PiP explainer hidden by the experiment"
         );
 
         Assert.ok(
-          ContentTaskUtils.is_visible(pipIcon),
+          ContentTaskUtils.isVisible(pipIcon),
           "The PiP icon is visible by the experiment"
         );
       });
     }
   );
+
+  experimentCleanup();
 });

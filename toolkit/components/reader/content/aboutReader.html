@@ -14,16 +14,27 @@
     <meta name="viewport" content="width=device-width; user-scalable=0" />
     <link
       rel="stylesheet"
-      href="chrome://global/skin/aboutReader.css"
-      type="text/css"
+      href="chrome://global/skin/design-system/tokens-brand.css"
     />
     <link
       rel="stylesheet"
-      href="chrome://global/skin/aboutReaderPocket.css"
+      href="chrome://global/skin/aboutReader.css"
       type="text/css"
     />
     <link rel="localization" href="toolkit/about/aboutReader.ftl" />
     <link rel="localization" href="toolkit/branding/brandings.ftl" />
+    <script
+      type="module"
+      src="chrome://global/content/reader/moz-slider.mjs"
+    ></script>
+    <script
+      type="module"
+      src="chrome://global/content/reader/color-input.mjs"
+    ></script>
+    <script
+      type="module"
+      src="chrome://global/content/elements/named-deck.js"
+    ></script>
   </head>
 
   <body>
@@ -43,7 +54,104 @@
               data-l10n-id="about-reader-toolbar-close"
             ></span>
           </button>
-          <ul class="dropdown style-dropdown">
+          <ul
+            class="dropdown improved-style-dropdown"
+            id="improved-text-menu"
+            hidden="true"
+          >
+            <li>
+              <button
+                class="dropdown-toggle toolbar-button improved-style-button"
+                aria-labelledby="toolbar-text-layout-controls"
+                data-telemetry-id="reader-text-layout-controls"
+              >
+                <span
+                  class="hover-label"
+                  id="toolbar-text-layout-controls"
+                  data-l10n-id="about-reader-toolbar-text-layout-controls"
+                ></span>
+              </button>
+            </li>
+            <li class="dropdown-popup" id="text-layout-controls">
+              <h2
+                data-l10n-id="about-reader-text-header"
+                id="about-reader-text-header"
+              ></h2>
+              <div id="text-size-controls">
+                <span
+                  data-l10n-id="about-reader-text-size-label"
+                  id="about-reader-text-size-label"
+                ></span>
+                <div class="text-size-buttons buttonrow">
+                  <button
+                    class="text-size-minus-button"
+                    data-l10n-id="about-reader-toolbar-minus"
+                  ></button>
+                  <button
+                    class="text-size-plus-button"
+                    data-l10n-id="about-reader-toolbar-plus"
+                  ></button>
+                </div>
+              </div>
+              <div id="font-controls">
+                <div id="font-type-dropdown" class="dropdown-selector">
+                  <label
+                    for="font-type-selector"
+                    data-l10n-id="about-reader-font-type-selector-label"
+                  ></label>
+                  <select
+                    name="font-type-selector"
+                    id="font-type-selector"
+                  ></select>
+                </div>
+                <div id="font-weight-dropdown" class="dropdown-selector">
+                  <label
+                    for="font-weight-selector"
+                    data-l10n-id="about-reader-font-weight-selector-label"
+                  ></label>
+                  <select
+                    name="font-weight-selector"
+                    id="font-weight-selector"
+                  ></select>
+                </div>
+              </div>
+              <hr />
+              <h2
+                data-l10n-id="about-reader-layout-header"
+                id="about-reader-layout-header"
+              ></h2>
+              <div id="content-width-slider" class="slider-container"></div>
+              <div id="line-spacing-slider" class="slider-container"></div>
+              <hr />
+              <details id="about-reader-advanced-layout">
+                <summary class="accordion-header">
+                  <h2
+                    data-l10n-id="about-reader-advanced-layout-header"
+                    id="about-reader-advanced-layout-header"
+                  ></h2>
+                  <span class="chevron-icon"></span>
+                </summary>
+                <div
+                  id="character-spacing-slider"
+                  class="slider-container"
+                ></div>
+                <div id="word-spacing-slider" class="slider-container"></div>
+                <label
+                  for="text-alignment-buttons"
+                  data-l10n-id="about-reader-text-alignment-label"
+                ></label>
+                <div
+                  class="text-alignment-buttons radiorow"
+                  id="text-alignment-buttons"
+                ></div>
+                <button
+                  class="text-layout-reset-button reset-button"
+                  data-l10n-id="about-reader-reset-button"
+                ></button>
+              </details>
+            </li>
+          </ul>
+          <ul class="dropdown style-dropdown" id="regular-text-menu">
             <li>
               <button
                 class="dropdown-toggle toolbar-button style-button"
@@ -58,7 +166,6 @@
               </button>
             </li>
             <li class="dropdown-popup">
-              <div class="dropdown-arrow"></div>
               <div class="font-type-buttons radiorow"></div>
               <div class="font-size-buttons buttonrow">
                 <button
@@ -93,7 +200,63 @@
                   data-l10n-id="about-reader-toolbar-lineheightplus"
                 ></button>
               </div>
-              <div class="color-scheme-buttons radiorow"></div>
+              <div
+                class="color-scheme-buttons radiorow"
+                id="regular-color-scheme"
+                hidden="false"
+              ></div>
+            </li>
+          </ul>
+          <ul
+            class="dropdown colors-dropdown"
+            id="custom-colors-color-scheme"
+            hidden="true"
+          >
+            <li>
+              <button
+                class="dropdown-toggle toolbar-button colors-button"
+                aria-labelledby="toolbar-color-controls"
+                data-telemetry-id="reader-color-controls"
+              >
+                <span
+                  class="hover-label"
+                  id="toolbar-color-controls"
+                  data-l10n-id="about-reader-toolbar-theme-controls"
+                ></span>
+              </button>
+            </li>
+            <li class="dropdown-popup" id="color-controls">
+              <h2
+                data-l10n-id="about-reader-colors-menu-header"
+                id="about-reader-colors-menu-header"
+              ></h2>
+              <button-group aria-labelledby="about-reader-colors-menu-header">
+                <button
+                  is="named-deck-button"
+                  deck="tabs-deck"
+                  name="fxtheme"
+                  data-l10n-id="about-reader-fxtheme-tab"
+                ></button>
+                <button
+                  is="named-deck-button"
+                  deck="tabs-deck"
+                  name="customtheme"
+                  data-l10n-id="about-reader-customtheme-tab"
+                ></button>
+              </button-group>
+              <named-deck id="tabs-deck" is-tabbed>
+                <div
+                  name="fxtheme"
+                  class="colors-menu-color-scheme-buttons radiorow"
+                ></div>
+                <div name="customtheme">
+                  <ul class="custom-colors-selection"></ul>
+                  <button
+                    class="custom-colors-reset-button reset-button"
+                    data-l10n-id="about-reader-reset-button"
+                  ></button>
+                </div>
+              </named-deck>
             </li>
           </ul>
         </div>
@@ -121,62 +284,6 @@
         <div class="reader-message"></div>
       </div>
       <div aria-owns="toolbar"></div>
-    </div>
-
-    <div id="pocket-cta-container" hidden>
-      <div class="pocket-cta-inner" id="pocket-cta-only">
-        <div class="pocket-cta">
-          <header class="pocket-cta-header">
-            Save anything from across the web in Pocket, your personal library.
-          </header>
-          <p class="pocket-cta-subhead">
-            As part of the Firefox family, Pocket provides a quiet, calm space
-            that’s perfect for reading. It strips away all the distractions of
-            the internet so you can really focus.
-          </p>
-          <a
-            href="https://getpocket.com/signup?utm_source=firefox_reader&utm_medium=variant_cta_only"
-            class="pocket-btn pocket-sign-up"
-            ><strong>Sign up</strong> - it’s free</a
-          >
-          <a
-            href="https://getpocket.com/explore?utm_source=firefox_reader&utm_medium=variant_cta_only"
-            class="pocket-btn pocket-discover-more"
-            ><strong>Discover more</strong></a
-          >
-        </div>
-        <button class="pocket-dismiss-cta" title="Dismiss"></button>
-      </div>
-
-      <div class="pocket-cta-inner" id="pocket-cta-and-recs">
-        <div class="pocket-recs-top">
-          <div class="col">
-            <header class="pocket-cta-header">
-              Discover the most thought-provoking stories out there, curated by
-              Pocket.
-            </header>
-            <p class="pocket-cta-subhead">
-              As part of the Firefox family, Pocket surfaces the best articles
-              out there—new perspectives, intriguing deep-dives, timeless
-              classics—and we do this with the same dedication to privacy you’ve
-              come to expect from Firefox and Mozilla.
-            </p>
-          </div>
-          <div class="col">
-            <button class="pocket-collapse-recs"></button>
-          </div>
-        </div>
-
-        <div class="pocket-recs"></div>
-
-        <div class="pocket-sign-up-wrapper">
-          <a
-            href="https://getpocket.com/explore?utm_source=firefox_reader&utm_medium=variant_cta_plus_recs"
-            class="pocket-btn pocket-sign-up"
-            ><strong>Discover more</strong></a
-          >
-        </div>
-      </div>
     </div>
   </body>
 </html>

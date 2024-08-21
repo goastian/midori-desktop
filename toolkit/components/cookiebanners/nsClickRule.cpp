@@ -12,6 +12,13 @@ namespace mozilla {
 NS_IMPL_ISUPPORTS(nsClickRule, nsIClickRule)
 
 NS_IMETHODIMP
+nsClickRule::GetId(nsACString& aId) {
+  MOZ_ASSERT(mCookieBannerRule);
+
+  return mCookieBannerRule->GetId(aId);
+}
+
+NS_IMETHODIMP
 nsClickRule::GetPresence(nsACString& aPresence) {
   aPresence.Assign(mPresence);
   return NS_OK;
@@ -51,6 +58,16 @@ nsClickRule::GetOptOut(nsACString& aOptOut) {
 NS_IMETHODIMP
 nsClickRule::GetOptIn(nsACString& aOptIn) {
   aOptIn.Assign(mOptIn);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsClickRule::GetIsGlobalRule(bool* aIsGlobalRule) {
+  NS_ENSURE_ARG_POINTER(aIsGlobalRule);
+  MOZ_ASSERT(mCookieBannerRule);
+
+  *aIsGlobalRule = mCookieBannerRule->GetIsGlobalRule();
+
   return NS_OK;
 }
 

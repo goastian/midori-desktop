@@ -26,16 +26,12 @@ const enterprisePolicy = {
   },
 };
 
-add_task(async function setup() {
+add_setup(async function () {
   // This initializes the policy engine for xpcshell tests
   let policies = Cc["@mozilla.org/enterprisepolicies;1"].getService(
     Ci.nsIObserver
   );
   policies.observe(null, "policies-startup", null);
-
-  Services.prefs
-    .getDefaultBranch(SearchUtils.BROWSER_SEARCH_PREF + "param.")
-    .setCharPref("test", "expected");
 
   await SearchTestUtils.useTestEngines("data1");
   await AddonTestUtils.promiseStartupManager();

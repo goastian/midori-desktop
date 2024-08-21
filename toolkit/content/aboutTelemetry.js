@@ -24,13 +24,9 @@ const { AppConstants } = ChromeUtils.importESModule(
   "resource://gre/modules/AppConstants.sys.mjs"
 );
 ChromeUtils.defineESModuleGetters(this, {
+  ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
   Preferences: "resource://gre/modules/Preferences.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  this,
-  "ObjectUtils",
-  "resource://gre/modules/ObjectUtils.jsm"
-);
 
 const Telemetry = Services.telemetry;
 
@@ -261,7 +257,7 @@ var PingPicker = {
       "mouseleave",
       () => (pingPickerNeedHide = true)
     );
-    document.addEventListener("click", ev => {
+    document.addEventListener("click", () => {
       if (pingPickerNeedHide) {
         pingPicker.classList.add("hidden");
       }
@@ -356,6 +352,12 @@ var PingPicker = {
   },
 
   _updateCurrentPingData() {
+    TelemetryController.ensureInitialized().then(() =>
+      this._doUpdateCurrentPingData()
+    );
+  },
+
+  _doUpdateCurrentPingData() {
     const subsession = document.getElementById("show-subsession-data").checked;
     let ping = TelemetryController.getCurrentPingData(subsession);
     if (!ping) {
@@ -970,7 +972,7 @@ var RawPayloadData = {
   attachObservers() {
     document
       .getElementById("payload-json-viewer")
-      .addEventListener("click", e => {
+      .addEventListener("click", () => {
         openJsonInFirefoxJsonViewer(JSON.stringify(gPingData.payload, null, 2));
       });
   },
@@ -1125,7 +1127,7 @@ var Histogram = {
     return outerDiv;
   },
 
-  processHistogram(aHgram, aName) {
+  processHistogram(aHgram) {
     const values = Object.keys(aHgram.values).map(k => aHgram.values[k]);
     if (!values.length) {
       // If we have no values collected for this histogram, just return

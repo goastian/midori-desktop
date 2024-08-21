@@ -8,11 +8,11 @@ server.registerPathHandler("/dummy", (request, response) => {
   response.write("<!DOCTYPE html><html></html>");
 });
 
-server.registerPathHandler("/script.js", (request, response) => {
+server.registerPathHandler("/script.js", () => {
   ok(false, "Unexpected request to /script.js");
 });
 
-/* eslint-disable no-unsanitized/method, no-eval, no-implied-eval */
+/* eslint-disable no-eval, no-implied-eval */
 
 const MODULE1 = `
   import {foo} from "./module2.js";

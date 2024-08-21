@@ -5,7 +5,7 @@
 
 "use strict";
 
-add_task(async function setup() {
+add_setup(async function () {
   await SearchTestUtils.useTestEngines();
 
   Services.locale.availableLocales = [
@@ -52,11 +52,6 @@ add_task(async function test_listJSONlocale() {
 
 // Check that switching locale switches search engines
 add_task(async function test_listJSONlocaleSwitch() {
-  let defaultBranch = Services.prefs.getDefaultBranch(
-    SearchUtils.BROWSER_SEARCH_PREF
-  );
-  defaultBranch.setCharPref("param.code", "good&id=unique");
-
   await promiseSetLocale("fr");
 
   Assert.ok(Services.search.isInitialized, "search initialized");

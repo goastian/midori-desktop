@@ -5,7 +5,7 @@ server.registerDirectory("/data/", do_get_file("data"));
 
 const BASE_URL = `http://localhost:${server.identity.primaryPort}/data`;
 
-// ExtensionContent.jsm needs to know when it's running from xpcshell, to use
+// ExtensionContent.sys.mjs needs to know when it's running from xpcshell, to use
 // the right timeout for content scripts executed at document_idle.
 ExtensionTestUtils.mockAppInfo();
 
@@ -99,7 +99,9 @@ add_task(async function test_registerContentScripts_runAt() {
             id: "script-idle",
             allFrames: false,
             matches: ["http://*/*/file_sample.html"],
+            matchOriginAsFallback: false,
             runAt: "document_idle",
+            world: "ISOLATED",
             persistAcrossSessions: false,
             js: ["script-idle.js"],
           },
@@ -107,7 +109,9 @@ add_task(async function test_registerContentScripts_runAt() {
             id: "script-idle-default",
             allFrames: false,
             matches: ["http://*/*/file_sample.html"],
+            matchOriginAsFallback: false,
             runAt: "document_idle",
+            world: "ISOLATED",
             persistAcrossSessions: false,
             js: ["script-idle-default.js"],
           },
@@ -115,7 +119,9 @@ add_task(async function test_registerContentScripts_runAt() {
             id: "script-end",
             allFrames: false,
             matches: ["http://*/*/file_sample.html"],
+            matchOriginAsFallback: false,
             runAt: "document_end",
+            world: "ISOLATED",
             persistAcrossSessions: false,
             js: ["script-end.js"],
           },
@@ -123,7 +129,9 @@ add_task(async function test_registerContentScripts_runAt() {
             id: "script-start",
             allFrames: false,
             matches: ["http://*/*/file_sample.html"],
+            matchOriginAsFallback: false,
             runAt: "document_start",
+            world: "ISOLATED",
             persistAcrossSessions: false,
             js: ["script-start.js"],
           },
@@ -201,6 +209,67 @@ add_task(async function test_registerContentScripts_runAt() {
     "got expected executed scripts"
   );
 
+  await contentPage.close();
+  await extension.unload();
+});
+
+add_task(async function test_registerContentScripts_world_MAIN() {
+  let extension = makeExtension({
+    async background() {
+      await browser.scripting.registerContentScripts([
+        {
+          id: "main-script-start",
+          js: ["main_start.js"],
+          matches: ["http://*/*/file_simple_inline_script.html"],
+          runAt: "document_start",
+          world: "MAIN",
+          persistAcrossSessions: false,
+        },
+        {
+          id: "main-script-end",
+          js: ["main_end.js"],
+          matches: ["http://*/*/file_simple_inline_script.html"],
+          runAt: "document_end",
+          world: "MAIN",
+          persistAcrossSessions: false,
+        },
+      ]);
+
+      let scripts = await browser.scripting.getRegisteredContentScripts();
+      browser.test.assertEq("MAIN", scripts[0]?.world, "registered world:MAIN");
+
+      browser.test.sendMessage("background-ready");
+    },
+    files: {
+      "main_start.js": () => {
+        // Sanity check: dynamically registered content script can run at
+        // document_start, at which point varInPage should still be undefined.
+        globalThis.varInPageAtDocumentStart = this.varInPage === "varInPage";
+      },
+      "main_end.js": () => {
+        // varInPage defined by file_simple_inline_script.html.
+        globalThis.varInPageAtDocumentEnd = this.varInPage === "varInPage";
+      },
+    },
+  });
+  await extension.startup();
+  await extension.awaitMessage("background-ready");
+
+  let contentPage = await ExtensionTestUtils.loadContentPage(
+    `${BASE_URL}/file_simple_inline_script.html`
+  );
+  let result = await contentPage.spawn([], () => {
+    const pageGlobal = content.wrappedJSObject;
+    return {
+      varInPageAtDocumentStart: pageGlobal.varInPageAtDocumentStart,
+      varInPageAtDocumentEnd: pageGlobal.varInPageAtDocumentEnd,
+    };
+  });
+  Assert.deepEqual(
+    result,
+    { varInPageAtDocumentStart: false, varInPageAtDocumentEnd: true },
+    "Expected MAIN world script to run"
+  );
   await contentPage.close();
   await extension.unload();
 });
@@ -363,7 +432,9 @@ add_task(async function test_register_update_and_unregister() {
             id: "a-script",
             allFrames: false,
             matches: ["http://*/*/file_sample.html"],
+            matchOriginAsFallback: false,
             runAt: "document_idle",
+            world: "ISOLATED",
             persistAcrossSessions: false,
             js: ["script-3.js"],
           },
@@ -410,3 +481,43 @@ add_task(async function test_register_update_and_unregister() {
 
   await extension.unload();
 });
+
+// The following test case is a regression test for Bug 1851173.
+add_task(
+  {
+    // contentScripts API not exposed to background service workers and
+    // Bug 1851173 can't be hit.
+    skip_if: () => ExtensionTestUtils.isInBackgroundServiceWorkerTests(),
+  },
+  async function test_contentScriptsAPI_vs_scriptingGetRegistered() {
+    let extension = ExtensionTestUtils.loadExtension({
+      manifest: {
+        manifest_version: 2,
+        permissions: ["scripting", "<all_urls>"],
+      },
+      async background() {
+        await browser.contentScripts.register({
+          runAt: "document_start",
+          js: [{ file: "testcs.js" }],
+          matches: ["<all_urls>"],
+        });
+
+        const scriptingScripts =
+          await browser.scripting.getRegisteredContentScripts();
+        browser.test.assertDeepEq(
+          [],
+          scriptingScripts,
+          "Expect an empty array"
+        );
+        browser.test.sendMessage("background-done");
+      },
+      files: {
+        "testcs.js": "",
+      },
+    });
+
+    await extension.startup();
+    await extension.awaitMessage("background-done");
+    await extension.unload();
+  }
+);

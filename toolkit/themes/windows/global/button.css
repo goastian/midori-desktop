@@ -18,15 +18,35 @@ button {
   text-shadow: none;
   border: 1px solid ThreeDLightShadow;
   padding: 2px 3px;
-  /* TODO: In Windows 11 perhaps we want some border-radius */
-}
 
-button:where(:hover) {
-  background-color: -moz-ButtonHoverFace;
-}
+  &:where(:hover) {
+    background-color: -moz-buttonhoverface;
+    color: -moz-buttonhovertext;
+  }
 
-button:where(:hover:active) {
-  background-color: -moz-ButtonActiveFace;
+  &:where(:hover:active) {
+    background-color: -moz-buttonactiveface;
+    color: -moz-buttonactivetext;
+  }
+
+  &:focus-visible {
+    outline: var(--default-focusring);
+    outline-offset: calc(-1 * var(--default-focusring-width) - 2px);
+    @media (prefers-color-scheme: dark) {
+      outline: 1px auto;
+      outline-offset: initial;
+    }
+  }
+
+  &:where([disabled="true"]) {
+    color: GrayText;
+    background-color: ButtonFace;
+  }
+
+  &.plain {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
 }
 
 .button-text {
@@ -34,75 +54,11 @@ button:where(:hover:active) {
   text-align: center;
 }
 
-/* .......... focused state .......... */
-
-button:focus-visible {
-  outline: var(--default-focusring);
-  outline-offset: calc(-1 * var(--default-focusring-width) - 2px);
-}
-
-@media (prefers-color-scheme: dark) {
-  button:focus-visible {
-    outline: 1px auto;
-    outline-offset: initial;
-  }
-}
-
-/* .......... default/hover/focused state .......... */
-
-@media (prefers-contrast) and (-moz-windows-compositor) {
-  /* This is for high-contrast black and white themes on Windows 8 and later,
-     where the native appearance renders a different background (which
-     appears to be equivalent to the Highlight color) if the button is in the
-     default, hovered or focused state. However, if these states overlap with
-     the active, disabled, open or checked state, the appearance reverts back
-     to the default background. */
-  button:where([default="true"],:hover,:focus):where(:not(:active,[disabled="true"],[open="true"],[checked="true"])) {
-    color: HighlightText;
-  }
-}
-
-/* .......... disabled state .......... */
-
-button:where([disabled="true"]) {
-  color: GrayText;
-  background-color: ButtonFace;
-}
-
-@media (-moz-windows-classic) {
-  button:where([disabled="true"]) {
-    color: ThreeDShadow;
-    text-shadow: 1px 1px ThreeDHighlight;
-  }
-}
-
 /* ::::: menu buttons ::::: */
 
 .button-menu-dropmarker {
   appearance: none;
-  list-style-image: url("chrome://global/skin/icons/arrow-down-12.svg");
+  content: url("chrome://global/skin/icons/arrow-down-12.svg");
   -moz-context-properties: fill;
   fill: currentColor;
-  width: 12px;
-  height: 12px;
-}
-
-/* ::::: plain buttons ::::: */
-
-button.plain {
-  margin: 0 !important;
-  padding: 0 !important;
-}
-
-button[type="disclosure"] {
-  margin: 0;
-  appearance: none;
-  list-style-image: url("chrome://global/skin/icons/arrow-right-12.svg");
-  -moz-context-properties: fill;
-  fill: currentColor;
-  min-width: 0;
-}
-
-button[type="disclosure"][open="true"] {
-  list-style-image: url("chrome://global/skin/icons/arrow-down-12.svg");
 }

@@ -11,6 +11,7 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/Result.h"
 #include "mozilla/ResultVariant.h"
+#include "mozilla/TimeStamp.h"
 
 #include "nsTArray.h"
 
@@ -20,6 +21,7 @@
 #include "prtime.h"
 
 using mozilla::Preferences;
+using mozilla::TimeDuration;
 using namespace mozilla::glean;
 using namespace mozilla::glean::impl;
 
@@ -181,6 +183,7 @@ TEST_F(FOGFixture, TestCppMemoryDistWorks) {
   // Sum is in bytes, test_only::do_you_remember is in megabytes. So
   // multiplication ahoy!
   ASSERT_EQ(data.sum, 24UL * 1024 * 1024);
+  ASSERT_EQ(data.count, 2UL);
   for (const auto& entry : data.values) {
     const uint64_t bucket = entry.GetKey();
     const uint64_t count = entry.GetData();
@@ -196,6 +199,7 @@ TEST_F(FOGFixture, TestCppCustomDistWorks) {
   DistributionData data =
       test_only_ipc::a_custom_dist.TestGetValue("store1"_ns).unwrap().ref();
   ASSERT_EQ(data.sum, 7UL + 268435458);
+  ASSERT_EQ(data.count, 2UL);
   for (const auto& entry : data.values) {
     const uint64_t bucket = entry.GetKey();
     const uint64_t count = entry.GetData();
@@ -253,6 +257,10 @@ TEST_F(FOGFixture, TestCppTimingDistWorks) {
 
   DistributionData data =
       test_only::what_time_is_it.TestGetValue().unwrap().ref();
+
+  // Cancelled timers should not increase count.
+  ASSERT_EQ(data.count, 2UL);
+
   const uint64_t NANOS_IN_MILLIS = 1e6;
 
   // bug 1701847 - Sleeps don't necessarily round up as you'd expect.
@@ -269,6 +277,15 @@ TEST_F(FOGFixture, TestCppTimingDistWorks) {
     sampleCount += value;
   }
   ASSERT_EQ(sampleCount, (uint64_t)2);
+}
+
+TEST_F(FOGFixture, TestCppTimingDistNegativeDuration) {
+  // Intentionally a negative duration to test the error case.
+  auto negDuration = TimeDuration::FromSeconds(-1);
+  test_only::what_time_is_it.AccumulateRawDuration(negDuration);
+
+  ASSERT_EQ(mozilla::Nothing(),
+            test_only::what_time_is_it.TestGetValue().unwrap());
 }
 
 TEST_F(FOGFixture, TestLabeledBooleanWorks) {
@@ -345,6 +362,9 @@ TEST_F(FOGFixture, TestLabeledCounterWithLabelsWorks) {
   test_only::mabels_labeled_counters
       .EnumGet(test_only::MabelsLabeledCountersLabel::eClean)
       .Add(2);
+  test_only::mabels_labeled_counters
+      .EnumGet(test_only::MabelsLabeledCountersLabel::e1stCounter)
+      .Add(3);
   ASSERT_EQ(
       1, test_only::mabels_labeled_counters
              .EnumGet(test_only::MabelsLabeledCountersLabel::eNextToTheFridge)
@@ -353,6 +373,11 @@ TEST_F(FOGFixture, TestLabeledCounterWithLabelsWorks) {
              .ref());
   ASSERT_EQ(2, test_only::mabels_labeled_counters
                    .EnumGet(test_only::MabelsLabeledCountersLabel::eClean)
+                   .TestGetValue()
+                   .unwrap()
+                   .ref());
+  ASSERT_EQ(3, test_only::mabels_labeled_counters
+                   .EnumGet(test_only::MabelsLabeledCountersLabel::e1stCounter)
                    .TestGetValue()
                    .unwrap()
                    .ref());
@@ -468,3 +493,6 @@ TEST_F(FOGFixture, TestRustInGTest) { Rust_TestRustInGTest(); }
 
 extern "C" void Rust_TestJogfile();
 TEST_F(FOGFixture, TestJogfile) { Rust_TestJogfile(); }
+
+extern "C" void Rust_TestRideAlongPing();
+TEST_F(FOGFixture, TestRustRideAlongPing) { Rust_TestRideAlongPing(); }

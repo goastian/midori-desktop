@@ -24,7 +24,7 @@
   white-space: normal !important;
 }
 
-.videocontrols[flipped="true"] {
+.videocontrols[flipped] {
   transform: scaleX(-1);
 }
 
@@ -571,7 +571,7 @@
   display: inline;
 }
 
-@media (-moz-platform: windows) and (-moz-windows-default-theme: 0) {
+@media (-moz-platform: windows) and (prefers-contrast) {
   .controlsSpacer,
   .clickToPlay {
     background-color: transparent;
@@ -583,4 +583,9 @@
   left: -10000px;
   width: 100px;
   height: 100px;
+}
+
+:host::cue {
+  font-size: var(--cue-font-size);
+  writing-mode: var(--cue-writing-mode, inherit);
 }

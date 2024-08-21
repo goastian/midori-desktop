@@ -4,11 +4,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { ExtensionUtils } from "resource://gre/modules/ExtensionUtils.sys.mjs";
 
 const { DefaultWeakMap, ExtensionError } = ExtensionUtils;
 
+/** @type {Lazy} */
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -90,7 +90,7 @@ function serialize(name, anonymizedName, value) {
 }
 
 export var ExtensionStorage = {
-  // Map<extension-id, Promise<JSONFile>>
+  /** @type {Map<string, Promise<typeof lazy.JSONFile>>} */
   jsonFilePromises: new Map(),
 
   listeners: new Map(),
@@ -101,7 +101,7 @@ export var ExtensionStorage = {
    *
    * @param {string} extensionId
    *        The ID of the extension for which to return a file.
-   * @returns {Promise<JSONFile>}
+   * @returns {Promise<InstanceType<Lazy['JSONFile']>>}
    */
   async _readFile(extensionId) {
     await IOUtils.makeDirectory(this.getExtensionDir(extensionId));
@@ -125,7 +125,7 @@ export var ExtensionStorage = {
    *
    * @param {string} extensionId
    *        The ID of the extension for which to return a file.
-   * @returns {Promise<JSONFile>}
+   * @returns {Promise<InstanceType<Lazy['JSONFile']>>}
    */
   getFile(extensionId) {
     let promise = this.jsonFilePromises.get(extensionId);
@@ -156,9 +156,9 @@ export var ExtensionStorage = {
    * Sanitizes the given value, and returns a JSON-compatible
    * representation of it, based on the privileges of the given global.
    *
-   * @param {value} value
+   * @param {any} value
    *        The value to sanitize.
-   * @param {Context} context
+   * @param {BaseContext} context
    *        The extension context in which to sanitize the value
    * @returns {value}
    *        The sanitized value.
@@ -399,7 +399,7 @@ export var ExtensionStorage = {
     Services.obs.addObserver(this, "xpcom-shutdown");
   },
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     if (topic == "xpcom-shutdown") {
       Services.obs.removeObserver(this, "extension-invalidate-storage-cache");
       Services.obs.removeObserver(this, "xpcom-shutdown");
@@ -478,7 +478,7 @@ export var ExtensionStorage = {
   },
 };
 
-XPCOMUtils.defineLazyGetter(ExtensionStorage, "extensionDir", () =>
+ChromeUtils.defineLazyGetter(ExtensionStorage, "extensionDir", () =>
   PathUtils.join(PathUtils.profileDir, "browser-extension-data")
 );
 
@@ -500,6 +500,7 @@ export var extensionStorageSession = {
     let bucket = this.buckets.get(extension);
 
     let result = {};
+    /** @type {Iterable<string>} */
     let keys = [];
 
     if (!items) {

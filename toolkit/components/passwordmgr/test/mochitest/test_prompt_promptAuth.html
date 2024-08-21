@@ -27,8 +27,8 @@ const authinfo = {
   realm: "",
 };
 
-// Let prompt_common know what kind of modal type is enabled for auth prompts.
-modalType = authPromptModalType;
+// Let prompt_common know what kind of modal type is used for auth prompts.
+modalType = Ci.nsIPrompt.MODAL_TYPE_TAB;
 
 const prompterParent = runInParent(() => {
   const promptFac = Cc["@mozilla.org/passwordmanager/authpromptfactory;1"].
@@ -77,7 +77,7 @@ const prompterParent = runInParent(() => {
 const prompter2 = new PrompterProxy(prompterParent);
 
 add_setup(async () => {
-  await addLoginsInParent(
+  await setStoredLoginsAsync(
     ["http://example.com", null, "http://example.com", "", "examplepass", "", ""],
     ["http://example2.com", null, "http://example2.com", "user1name", "user1pass", "", ""],
     ["http://example2.com", null, "http://example2.com", "user2name", "user2pass", "", ""],

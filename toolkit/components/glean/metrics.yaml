@@ -46,6 +46,39 @@ fog:
       - glean-team@mozilla.com
     expires: never
 
+  inits_during_shutdown:
+    type: counter
+    lifetime: ping
+    description: |
+      Counts the number of times init had to be called during shutdown.
+      Should never have a value for any session long enough to grow idle.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1839433
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1839433
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - chutten@mozilla.com
+      - glean-team@mozilla.com
+    expires: never
+
+  max_pings_per_minute:
+    type: quantity
+    unit: int
+    description: |
+      Value of the configurable rate limit, in pings per minute, for Glean pings as set at init.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1834792
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1834792
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - pmcmanis@mozilla.com
+      - glean-team@mozilla.com
+    expires: never
+
 fog.ipc:
   replay_failures:
     type: counter

@@ -57,8 +57,8 @@ about-glean-manual-testing =
 # This message is an option in a dropdown filled with untranslated names of pings.
 about-glean-no-ping-label = (don’t submit any ping)
 # An in-line text input field precedes this string.
-about-glean-label-for-tag-pings =
-  In the preceding field ensure there is a memorable debug tag so you can recognize your pings later.
+about-glean-label-for-tag-pings-with-requirements =
+  Set a memorable debug tag <span>(20 characters or fewer, alphanumerics and - only)</span> so you can recognize your pings later.
 # An in-line drop down list precedes this string.
 # Do not translate strings between <code> </code> tags.
 about-glean-label-for-ping-names =
@@ -85,13 +85,19 @@ about-glean-li-for-visit-gdpv =
   Sometimes it may take a small handful of minutes.
 
 # Do not translate strings between <code> </code> tags.
-about-glean-adhoc-explanation =
+about-glean-adhoc-explanation2 =
   For more <i>ad hoc</i> testing,
   you can also determine the current value of a particular piece of instrumentation
   by opening a devtools console here on <code>about:glean</code>
   and using the <code>testGetValue()</code> API like
-  <code>Glean.metricCategory.metricName.testGetValue()</code>.
+  <code>Glean.metricCategory.metricName.testGetValue()</code>
+  for a metric named <code>metric.category.metric_name</code>.
 
+# Do not translate strings between <code> </code> tags.
+about-glean-adhoc-note =
+  Please note that you are using the Glean JS API by using the devtools console.
+  This means the metric category and metric name are formatted in
+  <code>camelCase</code> unlike in the Rust and C++ APIs.
 
 controls-button-label-verbose = Apply settings and submit ping
 

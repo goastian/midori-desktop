@@ -5,7 +5,7 @@ server.registerDirectory("/data/", do_get_file("data"));
 
 const BASE_URL = `http://localhost:${server.identity.primaryPort}/data`;
 
-// ExtensionContent.jsm needs to know when it's running from xpcshell,
+// ExtensionContent.sys.mjs needs to know when it's running from xpcshell,
 // to use the right timeout for content scripts executed at document_idle.
 ExtensionTestUtils.mockAppInfo();
 
@@ -187,7 +187,7 @@ add_task(async function test_ExtensionPageContextChild_in_child_frame() {
   );
   await extension.awaitMessage("extensionPageLoaded");
 
-  await contentPage.legacySpawn(extension.id, async extensionId => {
+  await contentPage.legacySpawn(extension.id, async () => {
     let { ExtensionPageChild } = ChromeUtils.importESModule(
       "resource://gre/modules/ExtensionPageChild.sys.mjs"
     );
@@ -237,7 +237,7 @@ add_task(async function test_ExtensionPageContextChild_in_toplevel() {
   );
   await extension.awaitMessage("extensionPageLoaded");
 
-  await contentPage.legacySpawn(extension.id, async extensionId => {
+  await contentPage.legacySpawn(extension.id, async () => {
     let { ExtensionPageChild } = ChromeUtils.importESModule(
       "resource://gre/modules/ExtensionPageChild.sys.mjs"
     );

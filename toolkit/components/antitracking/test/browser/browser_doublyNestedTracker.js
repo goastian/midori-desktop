@@ -36,7 +36,7 @@ add_task(async function () {
     async function runChecks() {
       is(document.cookie, "", "No cookies for me");
       document.cookie = "name=value";
-      is(document.cookie, "name=value", "I have the cookies!");
+      is(document.cookie, "", "I don't have the cookies!");
     }
 
     await new Promise(resolve => {
@@ -123,7 +123,7 @@ add_task(async function () {
   info("Cleaning up.");
   SpecialPowers.clearUserPref("network.cookie.sameSite.laxByDefault");
   await new Promise(resolve => {
-    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
+    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, () =>
       resolve()
     );
   });

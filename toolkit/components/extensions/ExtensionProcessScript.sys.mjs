@@ -9,10 +9,9 @@
  * after startup, in *every* browser process live outside of this file.
  */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
+/** @type {Lazy} */
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -37,11 +36,11 @@ function getData(extension, key = "") {
 // We need to avoid touching Services.appinfo here in order to prevent
 // the wrong version from being cached during xpcshell test startup.
 // eslint-disable-next-line mozilla/use-services
-XPCOMUtils.defineLazyGetter(lazy, "isContentProcess", () => {
+ChromeUtils.defineLazyGetter(lazy, "isContentProcess", () => {
   return Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT;
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "isContentScriptProcess", () => {
+ChromeUtils.defineLazyGetter(lazy, "isContentScriptProcess", () => {
   return (
     lazy.isContentProcess ||
     !WebExtensionPolicy.useRemoteWebExtensions ||
@@ -51,7 +50,7 @@ XPCOMUtils.defineLazyGetter(lazy, "isContentScriptProcess", () => {
 });
 
 var extensions = new DefaultWeakMap(policy => {
-  return new lazy.ExtensionChild.BrowserExtensionContent(policy);
+  return new lazy.ExtensionChild(policy);
 });
 
 var pendingExtensions = new Map();
@@ -60,7 +59,7 @@ var ExtensionManager;
 
 ExtensionManager = {
   // WeakMap<WebExtensionPolicy, Map<number, WebExtensionContentScript>>
-  registeredContentScripts: new DefaultWeakMap(policy => new Map()),
+  registeredContentScripts: new DefaultWeakMap(() => new Map()),
 
   init() {
     Services.cpmm.addMessageListener("Extension:Startup", this);
@@ -73,6 +72,7 @@ ExtensionManager = {
     );
     Services.cpmm.addMessageListener("Extension:UpdateContentScripts", this);
     Services.cpmm.addMessageListener("Extension:UpdatePermissions", this);
+    Services.cpmm.addMessageListener("Extension:UpdateIgnoreQuarantine", this);
 
     this.updateStubExtensions();
 
@@ -326,7 +326,7 @@ ExtensionManager = {
           if (!policy) {
             break;
           }
-          // In the parent process, Extension.jsm updates the policy.
+          // In the parent process, Extension.sys.mjs updates the policy.
           if (lazy.isContentProcess) {
             lazy.ExtensionCommon.updateAllowedOrigins(
               policy,
@@ -343,13 +343,21 @@ ExtensionManager = {
                   perms.delete(perm);
                 }
               }
-              policy.permissions = perms;
+              policy.permissions = Array.from(perms);
             }
           }
 
           if (data.permissions.length && extensions.has(policy)) {
             // Notify ChildApiManager of permission changes.
             extensions.get(policy).emit("update-permissions");
+          }
+          break;
+        }
+
+        case "Extension:UpdateIgnoreQuarantine": {
+          let policy = WebExtensionPolicy.getByID(data.id);
+          if (policy?.active) {
+            policy.ignoreQuarantine = data.ignoreQuarantine;
           }
           break;
         }

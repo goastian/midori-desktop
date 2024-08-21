@@ -18,17 +18,24 @@ ChromeUtils.defineESModuleGetters(lazy, {
   OSKeyStore: "resource://gre/modules/OSKeyStore.sys.mjs",
 });
 
+XPCOMUtils.defineLazyServiceGetter(
+  lazy,
+  "Crypto",
+  "@mozilla.org/login-manager/crypto/SDR;1",
+  "nsILoginManagerCrypto"
+);
+
 export class ParentAutocompleteOption {
-  icon;
-  title;
-  subtitle;
+  image;
+  label;
+  secondary;
   fillMessageName;
   fillMessageData;
 
-  constructor(icon, title, subtitle, fillMessageName, fillMessageData) {
-    this.icon = icon;
-    this.title = title;
-    this.subtitle = subtitle;
+  constructor(image, label, secondary, fillMessageName, fillMessageData) {
+    this.image = image;
+    this.label = label;
+    this.secondary = secondary;
     this.fillMessageName = fillMessageName;
     this.fillMessageData = fillMessageData;
   }
@@ -171,14 +178,15 @@ class ImportRowProcessor {
    *        A login object.
    * @returns {boolean} True if the entry is similar or identical to another previously processed entry, false otherwise.
    */
-  checkConflictingWithExistingLogins(login) {
+  async checkConflictingWithExistingLogins(login) {
     // While here we're passing formActionOrigin and httpRealm, they could be empty/null and get
     // ignored in that case, leading to multiple logins for the same username.
-    let existingLogins = Services.logins.findLogins(
-      login.origin,
-      login.formActionOrigin,
-      login.httpRealm
-    );
+    let existingLogins = await Services.logins.searchLoginsAsync({
+      origin: login.origin,
+      formActionOrigin: login.formActionOrigin,
+      httpRealm: login.httpRealm,
+    });
+
     // Check for an existing login that matches *including* the password.
     // If such a login exists, we do not need to add a new login.
     if (
@@ -365,7 +373,7 @@ class ImportRowProcessor {
     return this.summary;
   }
 }
-
+const OS_AUTH_FOR_PASSWORDS_PREF = "signon.management.page.os-auth.optout";
 /**
  * Contains functions shared by different Login Manager components.
  */
@@ -390,10 +398,10 @@ export const LoginHelper = {
   schemeUpgrades: null,
   showAutoCompleteFooter: null,
   showAutoCompleteImport: null,
-  signupDectectionConfidenceThreshold: null,
   testOnlyUserHasInteractedWithDocument: null,
   userInputRequiredToCapture: null,
   captureInputChanges: null,
+  OS_AUTH_FOR_PASSWORDS_PREF,
 
   init() {
     // Watch for pref changes to update cached pref values.
@@ -401,6 +409,13 @@ export const LoginHelper = {
     this.updateSignonPrefs();
     Services.telemetry.setEventRecordingEnabled("pwmgr", true);
     Services.telemetry.setEventRecordingEnabled("form_autocomplete", true);
+
+    // Watch for FXA Logout to reset signon.firefoxRelay to 'available'
+    // Using hard-coded value for FxAccountsCommon.ONLOGOUT_NOTIFICATION because
+    // importing FxAccountsCommon here caused hard-to-diagnose crash.
+    Services.obs.addObserver(() => {
+      Services.prefs.clearUserPref("signon.firefoxRelay.feature");
+    }, "fxaccounts:onlogout");
   },
 
   updateSignonPrefs() {
@@ -455,12 +470,6 @@ export const LoginHelper = {
     this.showAutoCompleteImport = Services.prefs.getStringPref(
       "signon.showAutoCompleteImport",
       ""
-    );
-    this.signupDetectionConfidenceThreshold = parseFloat(
-      Services.prefs.getStringPref("signon.signupDetection.confidenceThreshold")
-    );
-    this.signupDetectionEnabled = Services.prefs.getBoolPref(
-      "signon.signupDetection.enabled"
     );
 
     this.storeWhenAutocompleteOff = Services.prefs.getBoolPref(
@@ -665,7 +674,6 @@ export const LoginHelper = {
    * Strip out things like the userPass portion and handle javascript:.
    */
   getLoginOrigin(uriString, allowJS = false) {
-    let realm = "";
     try {
       const mozProxyRegex = /^moz-proxy:\/\//i;
       const isMozProxy = !!uriString.match(mozProxyRegex);
@@ -678,26 +686,16 @@ export const LoginHelper = {
         );
       }
 
-      let uri = Services.io.newURI(uriString);
-
+      const uri = Services.io.newURI(uriString);
       if (allowJS && uri.scheme == "javascript") {
         return "javascript:";
       }
 
       // Build this manually instead of using prePath to avoid including the userPass portion.
-      realm = uri.scheme + "://" + uri.displayHostPort;
-    } catch (e) {
-      // bug 159484 - disallow url types that don't support a hostPort.
-      // (although we handle "javascript:..." as a special case above.)
-      if (uriString && !uriString.startsWith("data")) {
-        lazy.log.warn(
-          `Couldn't parse specified uri ${uriString} with error ${e.name}`
-        );
-      }
-      realm = null;
+      return uri.scheme + "://" + uri.displayHostPort;
+    } catch {
+      return null;
     }
-
-    return realm;
   },
 
   getFormActionOrigin(form) {
@@ -965,7 +963,7 @@ export const LoginHelper = {
           "Can't add a login with both a httpRealm and formActionOrigin."
         );
       }
-    } else if (newLogin.httpRealm) {
+    } else if (newLogin.httpRealm || newLogin.httpRealm == "") {
       // We have a HTTP realm. Can't have a form submit URL.
       if (newLogin.formActionOrigin != null) {
         throw new Error(
@@ -1264,7 +1262,6 @@ export const LoginHelper = {
     // Get currently active tab's origin
     const openedFrom =
       window.gBrowser?.selectedTab.linkedBrowser.currentURI.spec;
-
     // If no loginGuid is set, get sanitized origin, this will return null for about:* uris
     const preselectedLogin = loginGuid ?? this.getLoginOrigin(openedFrom);
 
@@ -1274,13 +1271,14 @@ export const LoginHelper = {
     });
 
     const paramsPart = params.toString() ? `?${params}` : "";
-    const fragmentsPart = preselectedLogin
-      ? `#${window.encodeURIComponent(preselectedLogin)}`
-      : "";
-    const destination = `about:logins${paramsPart}${fragmentsPart}`;
 
-    // We assume that managementURL has a '?' already
-    window.openTrustedLinkIn(destination, "tab");
+    const browser = window.gBrowser ?? window.opener?.gBrowser;
+
+    const tab = browser.addTrustedTab(`about:logins${paramsPart}`, {
+      inBackground: false,
+    });
+
+    tab.setAttribute("preselect-login", preselectedLogin);
   },
 
   /**
@@ -1356,6 +1354,7 @@ export const LoginHelper = {
     if (
       !(
         acFieldName == "username" ||
+        acFieldName == "webauthn" ||
         // Bug 1540154: Some sites use tel/email on their username fields.
         acFieldName == "email" ||
         acFieldName == "tel" ||
@@ -1380,7 +1379,7 @@ export const LoginHelper = {
    * @returns {boolean} True if any of the rules matches
    */
   isInferredLoginForm(formElement) {
-    // This is copied from 'loginFormAttrRegex' in NewPasswordModel.jsm
+    // This is copied from 'loginFormAttrRegex' in NewPasswordModel.sys.mjs
     const loginExpr =
       /login|log in|log on|log-on|sign in|sigin|sign\/in|sign-in|sign on|sign-on/i;
 
@@ -1502,7 +1501,7 @@ export const LoginHelper = {
         if (processor.checkConflictingOriginWithPreviousRows(login)) {
           continue;
         }
-        if (processor.checkConflictingWithExistingLogins(login)) {
+        if (await processor.checkConflictingWithExistingLogins(login)) {
           continue;
         }
         processor.addLoginToSummary(login, "added");
@@ -1512,6 +1511,7 @@ export const LoginHelper = {
       this.importing = false;
 
       Services.obs.notifyObservers(null, "passwordmgr-reload-all");
+      this.notifyStorageChanged("importLogins", []);
     }
   },
 
@@ -1591,6 +1591,96 @@ export const LoginHelper = {
   },
 
   /**
+   * Get the decrypted value for a string pref.
+   *
+   * @param {string} prefName -> The pref whose value is needed.
+   * @param {string} safeDefaultValue -> Value to be returned incase the pref is not yet set.
+   * @returns {string}
+   */
+  getSecurePref(prefName, safeDefaultValue) {
+    if (Services.prefs.getBoolPref("security.nocertdb", false)) {
+      return false;
+    }
+    try {
+      const encryptedValue = Services.prefs.getStringPref(prefName, "");
+      return encryptedValue === ""
+        ? safeDefaultValue
+        : lazy.Crypto.decrypt(encryptedValue);
+    } catch {
+      return safeDefaultValue;
+    }
+  },
+
+  /**
+   * Set the pref to the encrypted form of the value.
+   *
+   * @param {string} prefName -> The pref whose value is to be set.
+   * @param {string} value -> The value to be set in its encrypted form.
+   */
+  setSecurePref(prefName, value) {
+    if (Services.prefs.getBoolPref("security.nocertdb", false)) {
+      return;
+    }
+    if (value) {
+      const encryptedValue = lazy.Crypto.encrypt(value);
+      Services.prefs.setStringPref(prefName, encryptedValue);
+    } else {
+      Services.prefs.clearUserPref(prefName);
+    }
+  },
+
+  /**
+   * Get whether the OSAuth is enabled or not.
+   *
+   * @param {string} prefName -> The name of the pref (creditcards or addresses)
+   * @returns {boolean}
+   */
+  getOSAuthEnabled(prefName) {
+    return (
+      lazy.OSKeyStore.canReauth() &&
+      this.getSecurePref(prefName, "") !== "opt out"
+    );
+  },
+
+  /**
+   * Set whether the OSAuth is enabled or not.
+   *
+   * @param {string} prefName -> The pref to encrypt.
+   * @param {boolean} enable -> Whether the pref is to be enabled.
+   */
+  setOSAuthEnabled(prefName, enable) {
+    this.setSecurePref(prefName, enable ? null : "opt out");
+  },
+
+  async verifyUserOSAuth(
+    prefName,
+    promptMessage,
+    captionDialog = "",
+    parentWindow = null,
+    generateKeyIfNotAvailable = true
+  ) {
+    if (!this.getOSAuthEnabled(prefName)) {
+      promptMessage = false;
+    }
+    try {
+      return (
+        await lazy.OSKeyStore.ensureLoggedIn(
+          promptMessage,
+          captionDialog,
+          parentWindow,
+          generateKeyIfNotAvailable
+        )
+      ).authenticated;
+    } catch (ex) {
+      // Since Win throws an exception whereas Mac resolves to false upon cancelling.
+      if (ex.result !== Cr.NS_ERROR_FAILURE) {
+        throw ex;
+      }
+    }
+    return false;
+  },
+
+  /**
    * Shows the Primary Password prompt if enabled, or the
    * OS auth dialog otherwise.
    * @param {Element} browser
@@ -1645,18 +1735,21 @@ export const LoginHelper = {
     }
     // Use the OS auth dialog if there is no primary password
     if (!token.hasPassword && OSReauthEnabled) {
-      let result = await lazy.OSKeyStore.ensureLoggedIn(
+      let isAuthorized = await this.verifyUserOSAuth(
+        OS_AUTH_FOR_PASSWORDS_PREF,
         messageText,
         captionText,
         browser.ownerGlobal,
         false
       );
-      isAuthorized = result.authenticated;
+      let value = lazy.OSKeyStore.canReauth()
+        ? "success"
+        : "success_unsupported_platform";
+
       telemetryEvent = {
         object: "os_auth",
         method: "reauthenticate",
-        value: result.auth_details,
-        extra: result.auth_details_extra,
+        value: isAuthorized ? value : "fail",
       };
       return {
         isAuthorized,
@@ -1733,7 +1826,7 @@ export const LoginHelper = {
 
   async getAllUserFacingLogins() {
     try {
-      let logins = await Services.logins.getAllLoginsAsync();
+      let logins = await Services.logins.getAllLogins();
       return logins.filter(this.isUserFacingLogin);
     } catch (e) {
       if (e.result == Cr.NS_ERROR_ABORT) {
@@ -1791,7 +1884,7 @@ export const LoginHelper = {
   },
 };
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let processName =
     Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_DEFAULT
       ? "Main"

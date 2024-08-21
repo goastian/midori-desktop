@@ -18,13 +18,8 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
+  HomePage: "resource:///modules/HomePage.sys.mjs",
 });
-
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "HomePage",
-  "resource:///modules/HomePage.jsm"
-);
 
 class CaptivePortalObserver {
   constructor(actor) {
@@ -38,7 +33,7 @@ class CaptivePortalObserver {
     Services.obs.removeObserver(this, "captive-portal-login-success");
   }
 
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     switch (aTopic) {
       case "captive-portal-login-abort":
       case "captive-portal-login-success":
@@ -177,7 +172,7 @@ export class NetErrorParent extends JSWindowActorParent {
     request.channel.loadFlags |= Ci.nsIRequest.LOAD_BYPASS_CACHE;
     request.channel.loadFlags |= Ci.nsIRequest.INHIBIT_CACHING;
 
-    request.addEventListener("error", event => {
+    request.addEventListener("error", () => {
       // Make sure the user is still on the cert error page.
       if (!browser.documentURI.spec.startsWith("about:certerror")) {
         return;
@@ -282,12 +277,6 @@ export class NetErrorParent extends JSWindowActorParent {
         break;
       case "Browser:SSLErrorGoBack":
         this.goBackFromErrorPage(this.browser);
-        break;
-      case "Browser:SSLErrorReportTelemetry":
-        let reportStatus = message.data.reportStatus;
-        Services.telemetry
-          .getHistogramById("TLS_ERROR_REPORT_UI")
-          .add(reportStatus);
         break;
       case "GetChangedCertPrefs":
         let hasChangedCertPrefs = this.hasChangedCertPrefs();

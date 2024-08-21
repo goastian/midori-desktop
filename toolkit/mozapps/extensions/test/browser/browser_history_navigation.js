@@ -114,7 +114,10 @@ function is_in_discovery(aManager, canGoBack, canGoForward) {
 
 async function expand_addon_element(aManagerWin, aId) {
   var addon = getAddonCard(aManagerWin, aId);
-  addon.click();
+  // Ensure that we send a click on the control that is accessible (while a
+  // mouse user could also activate a card by clicking on the entire container):
+  const addonLink = addon.querySelector(".addon-name-link");
+  addonLink.click();
 }
 
 function wait_for_page_load(browser) {
@@ -182,7 +185,10 @@ add_task(async function test_navigate_between_webpage_and_aboutaddons() {
   ok(!gBrowser.canGoBack, "Should not be able to go back");
   ok(!gBrowser.canGoForward, "Should not be able to go forward");
 
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, "about:addons");
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    "about:addons"
+  );
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 
   let manager = await wait_for_manager_load(
@@ -355,7 +361,7 @@ add_task(async function test_navigate_back_from_website() {
   info("Part 1");
   is_in_list(aManager, "addons://list/plugin", false, false);
 
-  BrowserTestUtils.loadURIString(gBrowser, "http://example.com/");
+  BrowserTestUtils.startLoadingURIString(gBrowser, "http://example.com/");
   await wait_for_page_load(gBrowser.selectedBrowser);
 
   info("Part 2");

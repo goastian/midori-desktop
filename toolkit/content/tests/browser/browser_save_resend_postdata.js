@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 var MockFilePicker = SpecialPowers.MockFilePicker;
-MockFilePicker.init(window);
+MockFilePicker.init(window.browsingContext);
 
 /**
  * Test for bug 471962 <https://bugzilla.mozilla.org/show_bug.cgi?id=471962>:
@@ -17,7 +17,7 @@ MockFilePicker.init(window);
 function test() {
   waitForExplicitFinish();
 
-  BrowserTestUtils.loadURIString(
+  BrowserTestUtils.startLoadingURIString(
     gBrowser,
     "http://mochi.test:8888/browser/toolkit/content/tests/browser/data/post_form_outer.sjs"
   );
@@ -59,7 +59,7 @@ function test() {
     var file = destDir.clone();
     file.append("no_default_file_name");
     MockFilePicker.setFiles([file]);
-    MockFilePicker.showCallback = function (fp) {
+    MockFilePicker.showCallback = function () {
       MockFilePicker.filterIndex = 1; // kSaveAsType_URL
     };
 

@@ -29,7 +29,7 @@ const PREF_DISABLE_TEST_BACKOFF =
  *
  * @returns {function} A partially-applied form of the speficied function.
  */
-export function BindToObject(fn, self, opt_args) {
+export function BindToObject(fn, self) {
   var boundargs = fn.boundArgs_ || [];
   boundargs = boundargs.concat(
     Array.prototype.slice.call(arguments, 2, arguments.length)
@@ -198,7 +198,6 @@ RequestBackoff.prototype.isErrorStatus = function (status) {
 // since both listmanager and hashcompleter would use it.
 // Note that |maxRequests| and |requestPeriod| is still configurable
 // to throttle pending requests.
-/* exported RequestBackoffV4 */
 function RequestBackoffV4(maxRequests, requestPeriod, provider = null) {
   let rand = Math.random();
   let retryInterval = Math.floor(15 * 60 * 1000 * (rand + 1)); // 15 ~ 30 min.

@@ -2,7 +2,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 /**
- * Test that search suggestions from SearchSuggestionController.jsm operate
+ * Test that search suggestions from SearchSuggestionController.sys.mjs operate
  * correctly in private mode.
  */
 
@@ -14,7 +14,7 @@ const { SearchSuggestionController } = ChromeUtils.importESModule(
 
 let engine;
 
-add_task(async function setup() {
+add_setup(async function () {
   Services.prefs.setBoolPref("browser.search.suggest.enabled", true);
 
   let server = useHttpServer();
@@ -28,7 +28,7 @@ add_task(async function setup() {
     method: "GET",
   };
 
-  engine = await SearchTestUtils.promiseNewSearchEngine({
+  engine = await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}engineMaker.sjs?${JSON.stringify(engineData)}`,
   });
 });

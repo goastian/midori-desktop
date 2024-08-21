@@ -105,7 +105,11 @@ async function test_idletimeout_on_streamfilter({
   ).catch(err => {
     // This request is expected to be aborted when cleared after the test is exiting,
     // otherwise rethrow the error to trigger an explicit failure.
-    if (/The operation was aborted/.test(err.message)) {
+    if (
+      /Content-Length header of network response exceeds response Body/.test(
+        err.message
+      )
+    ) {
       info(`Test webRequest fetching "${testURL}" aborted`);
     } else {
       ok(
@@ -321,7 +325,9 @@ async function test_create_new_streamfilter_while_suspending({
   await extension.awaitMessage("suspend-listener");
 
   info("Simulated idle timeout canceled");
-  extension.extension.emit("background-script-reset-idle");
+  extension.extension.emit("background-script-reset-idle", {
+    reason: "other/simulate-idle-reset",
+  });
   await extension.awaitMessage("suspend-canceled-listener");
 
   await extension.unload();

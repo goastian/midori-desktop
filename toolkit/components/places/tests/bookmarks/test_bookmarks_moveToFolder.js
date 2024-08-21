@@ -3,6 +3,8 @@
 
 "use strict";
 
+const BOOKMARK_DATE_ADDED = new Date();
+
 function ensurePosition(info, parentGuid, index) {
   print(`Checking ${info.guid}`);
   checkBookmarkObject(info);
@@ -25,6 +27,7 @@ function insertChildren(folder, items) {
       children.push({
         title: `${i}`,
         url: "http://example.com",
+        dateAdded: BOOKMARK_DATE_ADDED,
       });
     } else {
       throw new Error(`Type ${items[i].type} is not supported.`);
@@ -256,7 +259,7 @@ async function testMoveToFolder(details) {
 
       expectedNotifications.push({
         type: "bookmark-moved",
-        id: await PlacesUtils.promiseItemId(origItem.guid),
+        id: await PlacesTestUtils.promiseItemId(origItem.guid),
         itemType: PlacesUtils.bookmarks.TYPE_BOOKMARK,
         url: origItem.url,
         guid: origItem.guid,
@@ -266,6 +269,13 @@ async function testMoveToFolder(details) {
         oldParentGuid: origItem.parentGuid,
         oldIndex: notification.originalIndex,
         isTagging: false,
+        title: origItem.title,
+        tags: "",
+        frecency: 1,
+        hidden: false,
+        visitCount: 0,
+        dateAdded: BOOKMARK_DATE_ADDED.getTime(),
+        lastVisitDate: null,
       });
     }
     observer.check(expectedNotifications);

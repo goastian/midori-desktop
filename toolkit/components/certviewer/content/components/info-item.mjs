@@ -11,14 +11,14 @@ export class InfoItem extends HTMLElement {
   }
 
   connectedCallback() {
-    let infoItemTemplate = document.getElementById("info-item-template");
-
-    this.attachShadow({ mode: "open" }).appendChild(
-      infoItemTemplate.content.cloneNode(true)
-    );
-
+    // Attach and connect before adding the template, or fluent
+    // won't translate the template copy we insert into the
+    // shadowroot.
+    this.attachShadow({ mode: "open" });
     document.l10n.connectRoot(this.shadowRoot);
-    document.l10n.translateFragment(this.shadowRoot);
+
+    let infoItemTemplate = document.getElementById("info-item-template");
+    this.shadowRoot.appendChild(infoItemTemplate.content.cloneNode(true));
 
     this.render();
   }
@@ -92,7 +92,7 @@ export class InfoItem extends HTMLElement {
     };
     let fluentID = stringMapping[labelId] || labelId;
 
-    label.setAttribute("data-l10n-id", "certificate-viewer-" + fluentID);
+    document.l10n.setAttributes(label, `certificate-viewer-${fluentID}`);
 
     this.classList.add(labelId);
 
@@ -102,7 +102,7 @@ export class InfoItem extends HTMLElement {
       return;
     }
     if (labelId === "other-name") {
-      info.setAttribute("data-l10n-id", "certificate-viewer-unsupported");
+      document.l10n.setAttributes(info, "certificate-viewer-unsupported");
       return;
     }
     if (typeof this.item.info === "boolean") {

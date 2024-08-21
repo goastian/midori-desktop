@@ -4,11 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include <functional>
-
 #include "nsExceptionHandler.h"
-#include "nsExceptionHandlerUtils.h"
-#include "prio.h"
 
 namespace CrashReporter {
 
@@ -39,41 +35,71 @@ nsresult SetupExtraData(nsIFile* aAppDataDirectory,
 
 nsresult UnsetExceptionHandler() { return NS_ERROR_NOT_IMPLEMENTED; }
 
-nsresult AnnotateCrashReport(Annotation key, bool data) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+const bool* RegisterAnnotationBool(Annotation aKey, const bool* aData) {
+  return nullptr;
 }
 
-nsresult AnnotateCrashReport(Annotation key, int data) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+const uint32_t* RegisterAnnotationU32(Annotation aKey, const uint32_t* aData) {
+  return nullptr;
 }
 
-nsresult AnnotateCrashReport(Annotation key, unsigned int data) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+const uint64_t* RegisterAnnotationU64(Annotation aKey, const uint64_t* aData) {
+  return nullptr;
 }
 
-nsresult AnnotateCrashReport(Annotation key, const nsACString& data) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+const size_t* RegisterAnnotationUSize(Annotation aKey, const size_t* aData) {
+  return nullptr;
 }
 
-nsresult AppendToCrashReportAnnotation(Annotation key, const nsACString& data) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+const char* RegisterAnnotationCString(Annotation aKey, const char* aData) {
+  return nullptr;
 }
 
-nsresult RemoveCrashReportAnnotation(Annotation key) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+const nsCString* RegisterAnnotationNSCString(Annotation aKey,
+                                             const nsCString* aData) {
+  return nullptr;
 }
 
-AutoAnnotateCrashReport::AutoAnnotateCrashReport(Annotation key, bool data) {}
+nsresult RecordAnnotationBool(Annotation aKey, bool aData) {
+  return NS_ERROR_FAILURE;
+}
 
-AutoAnnotateCrashReport::AutoAnnotateCrashReport(Annotation key, int data) {}
+nsresult RecordAnnotationU32(Annotation aKey, uint32_t aData) {
+  return NS_ERROR_FAILURE;
+}
 
-AutoAnnotateCrashReport::AutoAnnotateCrashReport(Annotation key,
-                                                 unsigned data) {}
+nsresult RecordAnnotationU64(Annotation aKey, uint64_t aData) {
+  return NS_ERROR_FAILURE;
+}
 
-AutoAnnotateCrashReport::AutoAnnotateCrashReport(Annotation key,
-                                                 const nsACString& data) {}
+nsresult RecordAnnotationUSize(Annotation aKey, size_t aData) {
+  return NS_ERROR_FAILURE;
+}
 
-AutoAnnotateCrashReport::~AutoAnnotateCrashReport() {}
+nsresult RecordAnnotationCString(Annotation aKey, const char* aData) {
+  return NS_ERROR_FAILURE;
+}
+
+nsresult RecordAnnotationNSCString(Annotation aKey, const nsACString& aData) {
+  return NS_ERROR_FAILURE;
+}
+
+nsresult RecordAnnotationNSString(Annotation aKey, const nsAString& aData) {
+  return NS_ERROR_FAILURE;
+}
+
+nsresult UnrecordAnnotation(Annotation aKey) { return NS_ERROR_FAILURE; }
+
+AutoRecordAnnotation::AutoRecordAnnotation(Annotation key, bool data) {}
+
+AutoRecordAnnotation::AutoRecordAnnotation(Annotation key, int data) {}
+
+AutoRecordAnnotation::AutoRecordAnnotation(Annotation key, unsigned data) {}
+
+AutoRecordAnnotation::AutoRecordAnnotation(Annotation key,
+                                           const nsACString& data) {}
+
+AutoRecordAnnotation::~AutoRecordAnnotation() {}
 
 void MergeCrashAnnotations(AnnotationTable& aDst, const AnnotationTable& aSrc) {
 }
@@ -92,7 +118,7 @@ nsresult AppendAppNotesToCrashReport(const nsACString& data) {
 
 bool GetAnnotation(const nsACString& key, nsACString& data) { return false; }
 
-void GetAnnotation(uint32_t childPid, Annotation annotation,
+void GetAnnotation(ProcessId childPid, Annotation annotation,
                    nsACString& outStr) {
   return;
 }
@@ -114,21 +140,6 @@ nsresult SetServerURL(const nsACString& aServerURL) {
 nsresult SetRestartArgs(int argc, char** argv) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
-
-#if !defined(XP_WIN)
-int GetAnnotationTimeCrashFd() { return 7; }
-#endif
-
-void RegisterChildCrashAnnotationFileDescriptor(ProcessId aProcess,
-                                                PRFileDesc* aFd) {
-  // The real implementation of this function takes ownership of aFd
-  // and closes it when the process exits; if we don't close it, it
-  // causes a leak.  With no crash reporter we'll never write to the
-  // pipe, so it's safe to close the read end immediately.
-  PR_Close(aFd);
-}
-
-void DeregisterChildCrashAnnotationFileDescriptor(ProcessId aProcess) {}
 
 #ifdef XP_WIN
 nsresult WriteMinidumpForException(EXCEPTION_POINTERS* aExceptionInfo) {
@@ -198,14 +209,6 @@ void OOPInit() {}
 const char* GetChildNotificationPipe() { return nullptr; }
 #endif
 
-#ifdef MOZ_CRASHREPORTER_INJECTOR
-void InjectCrashReporterIntoProcess(DWORD processID,
-                                    InjectorCrashCallback* cb) {}
-
-void UnregisterInjectorCallback(DWORD processID) {}
-
-#endif  // MOZ_CRASHREPORTER_INJECTOR
-
 bool GetLastRunCrashID(nsAString& id) { return false; }
 
 #if !defined(XP_WIN) && !defined(XP_MACOSX)
@@ -216,17 +219,14 @@ bool CreateNotificationPipeForChild(int* childCrashFd, int* childCrashRemapFd) {
 
 #endif  // !defined(XP_WIN) && !defined(XP_MACOSX)
 
-bool SetRemoteExceptionHandler(const char* aCrashPipe,
-                               FileHandle aCrashTimeAnnotationFile) {
+bool SetRemoteExceptionHandler(const char* aCrashPipe) { return false; }
+
+bool TakeMinidumpForChild(ProcessId childPid, nsIFile** dump,
+                          AnnotationTable& aAnnotations) {
   return false;
 }
 
-bool TakeMinidumpForChild(uint32_t childPid, nsIFile** dump,
-                          AnnotationTable& aAnnotations, uint32_t* aSequence) {
-  return false;
-}
-
-bool FinalizeOrphanedMinidump(uint32_t aChildPid, GeckoProcessType aType,
+bool FinalizeOrphanedMinidump(ProcessId aChildPid, GeckoProcessType aType,
                               nsString* aDumpId) {
   return false;
 }
@@ -253,8 +253,6 @@ bool UnsetRemoteExceptionHandler(bool wasSet) { return false; }
 
 #if defined(MOZ_WIDGET_ANDROID)
 void SetNotificationPipeForChild(FileHandle childCrashFd) {}
-
-void SetCrashAnnotationPipeForChild(FileHandle childCrashAnnotationFd) {}
 
 void AddLibraryMapping(const char* library_name, uintptr_t start_address,
                        size_t mapping_length, size_t file_offset) {}

@@ -47,7 +47,7 @@ add_task(async function test_permissions() {
 
   const frameScript = () => {
     const messageListener = {
-      async receiveMessage({ target, messageName, recipient, data, name }) {
+      async receiveMessage() {
         /* globals content */
         let doc = content.document;
         let iframe = doc.createElement("iframe");
@@ -113,11 +113,14 @@ add_task(async function test_permissions() {
   await contentPage.close();
 });
 
-add_task(async function test_no_webRequestBlocking_error() {
+add_task(async function test_missing_required_perm_for_blocking_error() {
   function background() {
     const expectedError =
       "Using webRequest.addListener with the blocking option " +
       "requires the 'webRequestBlocking' permission.";
+    const expectedErrorOnAuthRequired =
+      "Using webRequest.onAuthRequired.addListener with the blocking option " +
+      "requires either the 'webRequestBlocking' or 'webRequestAuthProvider' permission.";
 
     const blockingEvents = [
       "onBeforeRequest",
@@ -130,12 +133,14 @@ add_task(async function test_no_webRequestBlocking_error() {
       browser.test.assertThrows(
         () => {
           browser.webRequest[eventName].addListener(
-            details => {},
+            () => {},
             { urls: ["<all_urls>"] },
             ["blocking"]
           );
         },
-        expectedError,
+        eventName === "onAuthRequired"
+          ? expectedErrorOnAuthRequired
+          : expectedError,
         `Got the expected exception for a blocking webRequest.${eventName} listener`
       );
     }

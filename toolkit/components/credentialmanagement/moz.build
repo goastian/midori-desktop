@@ -11,11 +11,15 @@ EXPORTS.mozilla += [
     "IdentityCredentialStorageService.h",
 ]
 
-UNIFIED_SOURCES += ["IdentityCredentialStorageService.cpp"]
+UNIFIED_SOURCES += [
+    "IdentityCredentialStorageService.cpp",
+]
 
 FINAL_LIBRARY = "xul"
 
 XPIDL_SOURCES += [
+    "nsICredentialChooserService.idl",
+    "nsICredentialChosenCallback.idl",
     "nsIIdentityCredentialPromptService.idl",
     "nsIIdentityCredentialStorageService.idl",
 ]
@@ -23,12 +27,15 @@ XPIDL_SOURCES += [
 XPIDL_MODULE = "dom_identitycredential"
 
 EXTRA_JS_MODULES += [
+    "CredentialChooserService.sys.mjs",
     "IdentityCredentialPromptService.sys.mjs",
 ]
 
-BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.ini"]
-XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell/xpcshell.ini"]
+BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
+XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell/xpcshell.toml"]
 
 XPCOM_MANIFESTS += [
     "components.conf",
 ]
+
+include("/ipc/chromium/chromium-config.mozbuild")

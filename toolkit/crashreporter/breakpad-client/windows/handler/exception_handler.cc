@@ -40,7 +40,7 @@
 #include "common/windows/guid_string.h"
 
 #ifdef MOZ_PHC
-#include "replace_malloc_bridge.h"
+#include "PHC.h"
 #endif
 
 namespace google_breakpad {
@@ -903,18 +903,18 @@ static void GetPHCAddrInfo(EXCEPTION_POINTERS* exinfo,
     // operation it what, and rec->ExceptionInformation[1] contains the
     // virtual address of the inaccessible data.
     char* crashAddr = reinterpret_cast<char*>(rec->ExceptionInformation[1]);
-    ReplaceMalloc::IsPHCAllocation(crashAddr, addr_info);
+    mozilla::phc::IsPHCAllocation(crashAddr, addr_info);
   }
 }
 #endif
 
 ExceptionHandler::MinidumpResult ExceptionHandler::WriteMinidumpWithException(
-    DWORD requesting_thread_id,
-    EXCEPTION_POINTERS* exinfo,
+    DWORD requesting_thread_id, EXCEPTION_POINTERS* exinfo,
     MDRawAssertionInfo* assertion) {
-    mozilla::phc::AddrInfo addr_info;
+  mozilla::phc::AddrInfo* addr_info = nullptr;
 #ifdef MOZ_PHC
-    GetPHCAddrInfo(exinfo, &addr_info);
+  addr_info = &mozilla::phc::gAddrInfo;
+  GetPHCAddrInfo(exinfo, addr_info);
 #endif
 
   // Give user code a chance to approve or prevent writing a minidump.  If the
@@ -949,7 +949,7 @@ ExceptionHandler::MinidumpResult ExceptionHandler::WriteMinidumpWithException(
     // scenario, the server process ends up creating the dump path and dump
     // id so they are not known to the client.
     success = callback_(dump_path_c_, next_minidump_id_c_, callback_context_,
-                        exinfo, assertion, &addr_info, success);
+                        exinfo, assertion, addr_info, success);
   }
 
   return success ? MinidumpResult::Success : MinidumpResult::Failure;

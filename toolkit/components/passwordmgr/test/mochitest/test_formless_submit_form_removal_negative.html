@@ -13,9 +13,7 @@ SimpleTest.requestFlakyTimeout("Testing that a message doesn't arrive");
 
 let loadPromise = new Promise(resolve => {
   document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("loginFrame").addEventListener("load", (evt) => {
-      resolve();
-    });
+    document.getElementById("loginFrame").addEventListener("load", _e => resolve());
   });
 });
 
@@ -133,7 +131,6 @@ async function testFormlesSubmitNavigationNegative(tc, scriptName, heuristic) {
 
   let frameDoc = SpecialPowers.wrap(loginFrame.contentWindow).document;
   let formsProcessed = promiseFormsProcessed();
-  // eslint-disable-next-line no-unsanitized/property
   frameDoc.documentElement.innerHTML = tc.document;
   await formsProcessed;
 

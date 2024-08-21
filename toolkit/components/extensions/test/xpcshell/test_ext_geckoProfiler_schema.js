@@ -1,16 +1,6 @@
 "use strict";
 
 add_task(async function () {
-  // The startupCache is removed whenever the buildid changes by code that runs
-  // during Firefox startup but not during xpcshell startup, remove it by hand
-  // before running this test to avoid failures with --conditioned-profile
-  let file = PathUtils.join(
-    Services.dirsvc.get("ProfLD", Ci.nsIFile).path,
-    "startupCache",
-    "webext.sc.lz4"
-  );
-  await IOUtils.remove(file, { ignoreAbsent: true });
-
   const acceptedExtensionIdsPref =
     "extensions.geckoProfiler.acceptedExtensionIds";
   Services.prefs.setCharPref(
@@ -42,8 +32,9 @@ add_task(async function () {
   Services.prefs.clearUserPref(acceptedExtensionIdsPref);
 
   const allFeaturesAcceptedByProfiler = Services.profiler.GetAllFeatures();
-  ok(
-    allFeaturesAcceptedByProfiler.length >= 2,
+  Assert.greaterOrEqual(
+    allFeaturesAcceptedByProfiler.length,
+    2,
     "Either we've massively reduced the profiler's feature set, or something is wrong."
   );
 

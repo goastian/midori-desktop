@@ -7,13 +7,14 @@
 /**
  * This module contains utilities and base classes for logic which is
  * common between the parent and child process, and in particular
- * between ExtensionParent.jsm and ExtensionChild.jsm.
+ * between ExtensionParent.sys.mjs and ExtensionChild.sys.mjs.
  */
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
+/** @type {Lazy} */
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -53,10 +54,6 @@ function getConsole() {
     prefix: "WebExtensions",
   });
 }
-
-const BACKGROUND_SCRIPTS_VIEW_TYPES = ["background", "background_worker"];
-
-export var ExtensionCommon;
 
 // Run a function and report exceptions.
 function runSafeSyncWithoutClone(f, ...args) {
@@ -124,37 +121,48 @@ function withHandlingUserInput(window, callable) {
  * prototype will be invoked separately for each object instance that
  * it's accessed on.
  *
+ * Note: for better type inference, prefer redefineGetter() below.
+ *
  * @param {object} object
  *        The prototype object on which to define the getter.
  * @param {string | symbol} prop
  *        The property name for which to define the getter.
- * @param {Function} getter
+ * @param {callback} getter
  *        The function to call in order to generate the final property
  *        value.
  */
 function defineLazyGetter(object, prop, getter) {
-  let redefine = (obj, value) => {
-    Object.defineProperty(obj, prop, {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value,
-    });
-    return value;
-  };
-
   Object.defineProperty(object, prop, {
     enumerable: true,
     configurable: true,
-
     get() {
-      return redefine(this, getter.call(this));
+      return redefineGetter(this, prop, getter.call(this), true);
     },
-
     set(value) {
-      redefine(this, value);
+      redefineGetter(this, prop, value, true);
     },
   });
+}
+
+/**
+ * A more type-inference friendly version of defineLazyGetter() above.
+ * Call it from a real getter (and setter) for your class or object.
+ * On first run, it will redefine the property with the final value.
+ *
+ * @template Value
+ * @param {object} object
+ * @param {string | symbol} key
+ * @param {Value} value
+ * @returns {Value}
+ */
+function redefineGetter(object, key, value, writable = false) {
+  Object.defineProperty(object, key, {
+    enumerable: true,
+    configurable: true,
+    writable,
+    value,
+  });
+  return value;
 }
 
 function checkLoadURI(uri, principal, options) {
@@ -227,7 +235,7 @@ class NoCloneSpreadArgs {
 const LISTENERS = Symbol("listeners");
 const ONCE_MAP = Symbol("onceMap");
 
-class EventEmitter {
+export class EventEmitter {
   constructor() {
     this[LISTENERS] = new Map();
     this[ONCE_MAP] = new WeakMap();
@@ -253,7 +261,7 @@ class EventEmitter {
    *
    * @param {string} event
    *       The name of the event to listen for.
-   * @param {function(string, ...any)} listener
+   * @param {function(string, ...any): any} listener
    *        The listener to call when events are emitted.
    */
   on(event, listener) {
@@ -271,7 +279,7 @@ class EventEmitter {
    *
    * @param {string} event
    *       The name of the event to stop listening for.
-   * @param {function(string, ...any)} listener
+   * @param {function(string, ...any): any} listener
    *        The listener function to remove.
    */
   off(event, listener) {
@@ -290,15 +298,15 @@ class EventEmitter {
    *
    * @param {string} event
    *       The name of the event to listen for.
-   * @param {function(string, ...any)} listener
+   * @param {function(string, ...any): any} listener
    *        The listener to call when events are emitted.
    */
   once(event, listener) {
-    let wrapper = (...args) => {
+    let wrapper = (event, ...args) => {
       this.off(event, wrapper);
       this[ONCE_MAP].delete(listener);
 
-      return listener(...args);
+      return listener(event, ...args);
     };
     this[ONCE_MAP].set(listener, wrapper);
 
@@ -346,7 +354,7 @@ class EventEmitter {
  * that inherits from this class, the derived class is instantiated
  * once for each extension that uses the API.
  */
-class ExtensionAPI extends EventEmitter {
+export class ExtensionAPI extends EventEmitter {
   constructor(extension) {
     super();
 
@@ -362,11 +370,28 @@ class ExtensionAPI extends EventEmitter {
 
   destroy() {}
 
-  onManifestEntry(entry) {}
+  /** @param {string} _entryName */
+  onManifestEntry(_entryName) {}
 
-  getAPI(context) {
+  /** @param {boolean} _isAppShutdown */
+  onShutdown(_isAppShutdown) {}
+
+  /** @param {BaseContext} _context */
+  getAPI(_context) {
     throw new Error("Not Implemented");
   }
+
+  /** @param {string} _id */
+  static onDisable(_id) {}
+
+  /** @param {string} _id */
+  static onUninstall(_id) {}
+
+  /**
+   * @param {string} _id
+   * @param {object} _manifest
+   */
+  static onUpdate(_id, _manifest) {}
 }
 
 /**
@@ -376,6 +401,9 @@ class ExtensionAPI extends EventEmitter {
  * this.apiNamespace = class extends ExtensionAPIPersistent {};
  */
 class ExtensionAPIPersistent extends ExtensionAPI {
+  /** @type {Record<string, callback>} */
+  PERSISTENT_EVENTS;
+
   /**
    * Check for event entry.
    *
@@ -441,7 +469,12 @@ class ExtensionAPIPersistent extends ExtensionAPI {
  *
  * @abstract
  */
-class BaseContext {
+export class BaseContext {
+  /** @type {boolean} */
+  isTopContext;
+  /** @type {string} */
+  viewType;
+
   constructor(envType, extension) {
     this.envType = envType;
     this.onClose = new Set();
@@ -487,7 +520,14 @@ class BaseContext {
   }
 
   get isBackgroundContext() {
-    return BACKGROUND_SCRIPTS_VIEW_TYPES.includes(this.viewType);
+    if (this.viewType === "background") {
+      if (this.isProxyContextParent) {
+        return !!this.isTopContext; // Set in ExtensionPageContextParent.
+      }
+      const { contentWindow } = this;
+      return !!contentWindow && contentWindow.top === contentWindow;
+    }
+    return this.viewType === "background_worker";
   }
 
   /**
@@ -514,9 +554,7 @@ class BaseContext {
    * Opens a conduit linked to this context, populating related address fields.
    * Only available in child contexts with an associated contentWindow.
    *
-   * @param {object} subject
-   * @param {ConduitAddress} address
-   * @returns {PointConduit}
+   * @type {ConduitGen}
    */
   openConduit(subject, address) {
     let wgc = this.contentWindow.windowGlobalChild;
@@ -574,14 +612,16 @@ class BaseContext {
   // All child contexts must implement logActivity.  This is handled if the child
   // context subclasses ExtensionBaseContextChild.  ProxyContextParent overrides
   // this with a noop for parent contexts.
-  logActivity(type, name, data) {
+  logActivity(_type, _name, _data) {
     throw new Error(`Not implemented for ${this.envType}`);
   }
 
+  /** @type {object} */
   get cloneScope() {
     throw new Error("Not implemented");
   }
 
+  /** @type {nsIPrincipal} */
   get principal() {
     throw new Error("Not implemented");
   }
@@ -738,7 +778,7 @@ class BaseContext {
    * Safely call JSON.stringify() on an object that comes from an
    * extension.
    *
-   * @param {Array<any>} args Arguments for JSON.stringify()
+   * @param {[any, callback?, number?]} args for JSON.stringify()
    * @returns {string} The stringified representation of obj
    */
   jsonStringify(...args) {
@@ -780,7 +820,7 @@ class BaseContext {
    * exception error.
    *
    * @param {Error|object} error
-   * @param {SavedFrame?} [caller]
+   * @param {nsIStackFrame?} [caller]
    * @returns {Error}
    */
   normalizeError(error, caller) {
@@ -822,7 +862,7 @@ class BaseContext {
    *
    * @param {object} error An object with a `message` property. May
    *     optionally be an `Error` object belonging to the target scope.
-   * @param {SavedFrame?} caller
+   * @param {nsIStackFrame?} caller
    *        The optional caller frame which triggered this callback, to be used
    *        in error reporting.
    * @param {Function} callback The callback to call.
@@ -843,7 +883,7 @@ class BaseContext {
   /**
    * Captures the most recent stack frame which belongs to the extension.
    *
-   * @returns {SavedFrame?}
+   * @returns {nsIStackFrame?}
    */
   getCaller() {
     return ChromeUtils.getCallerLocation(this.principal);
@@ -991,19 +1031,19 @@ class BaseContext {
 
 /**
  * An object that runs the implementation of a schema API. Instantiations of
- * this interfaces are used by Schemas.jsm.
+ * this interfaces are used by Schemas.sys.mjs.
  *
  * @interface
  */
-class SchemaAPIInterface {
+export class SchemaAPIInterface {
   /**
    * Calls this as a function that returns its return value.
    *
    * @abstract
-   * @param {Array} args The parameters for the function.
+   * @param {Array} _args The parameters for the function.
    * @returns {*} The return value of the invoked function.
    */
-  callFunction(args) {
+  callFunction(_args) {
     throw new Error("Not implemented");
   }
 
@@ -1011,9 +1051,9 @@ class SchemaAPIInterface {
    * Calls this as a function and ignores its return value.
    *
    * @abstract
-   * @param {Array} args The parameters for the function.
+   * @param {Array} _args The parameters for the function.
    */
-  callFunctionNoReturn(args) {
+  callFunctionNoReturn(_args) {
     throw new Error("Not implemented");
   }
 
@@ -1021,15 +1061,15 @@ class SchemaAPIInterface {
    * Calls this as a function that completes asynchronously.
    *
    * @abstract
-   * @param {Array} args The parameters for the function.
-   * @param {function(*)} [callback] The callback to be called when the function
+   * @param {Array} _args The parameters for the function.
+   * @param {callback} [_callback] The callback to be called when the function
    *     completes.
-   * @param {boolean} [requireUserInput=false] If true, the function should
+   * @param {boolean} [_requireUserInput=false] If true, the function should
    *                  fail if the browser is not currently handling user input.
    * @returns {Promise|undefined} Must be void if `callback` is set, and a
    *     promise otherwise. The promise is resolved when the function completes.
    */
-  callAsyncFunction(args, callback, requireUserInput = false) {
+  callAsyncFunction(_args, _callback, _requireUserInput) {
     throw new Error("Not implemented");
   }
 
@@ -1047,9 +1087,9 @@ class SchemaAPIInterface {
    * Assigns the value to this as property.
    *
    * @abstract
-   * @param {string} value The new value of the property.
+   * @param {string} _value The new value of the property.
    */
-  setProperty(value) {
+  setProperty(_value) {
     throw new Error("Not implemented");
   }
 
@@ -1057,11 +1097,11 @@ class SchemaAPIInterface {
    * Registers a `listener` to this as an event.
    *
    * @abstract
-   * @param {Function} listener The callback to be called when the event fires.
-   * @param {Array} args Extra parameters for EventManager.addListener.
+   * @param {Function} _listener The callback to be called when the event fires.
+   * @param {Array} _args Extra parameters for EventManager.addListener.
    * @see EventManager.addListener
    */
-  addListener(listener, args) {
+  addListener(_listener, _args) {
     throw new Error("Not implemented");
   }
 
@@ -1069,11 +1109,11 @@ class SchemaAPIInterface {
    * Checks whether `listener` is listening to this as an event.
    *
    * @abstract
-   * @param {Function} listener The event listener.
+   * @param {Function} _listener The event listener.
    * @returns {boolean} Whether `listener` is registered with this as an event.
    * @see EventManager.hasListener
    */
-  hasListener(listener) {
+  hasListener(_listener) {
     throw new Error("Not implemented");
   }
 
@@ -1081,10 +1121,10 @@ class SchemaAPIInterface {
    * Unregisters `listener` from this as an event.
    *
    * @abstract
-   * @param {Function} listener The event listener.
+   * @param {Function} _listener The event listener.
    * @see EventManager.removeListener
    */
-  removeListener(listener) {
+  removeListener(_listener) {
     throw new Error("Not implemented");
   }
 
@@ -1441,7 +1481,7 @@ class SchemaAPIManager extends EventEmitter {
    *     "addon" - An addon process.
    *     "content" - A content process.
    *     "devtools" - A devtools process.
-   * @param {SchemaRoot} schema
+   * @param {import("Schemas.sys.mjs").SchemaInject} [schema]
    */
   constructor(processType, schema) {
     super();
@@ -1690,8 +1730,7 @@ class SchemaAPIManager extends EventEmitter {
    *
    * @param {string} name
    *        The name of the module to load.
-   *
-   * @returns {class}
+   * @returns {typeof ExtensionAPI}
    */
   loadModule(name) {
     let module = this.modules.get(name);
@@ -1716,7 +1755,7 @@ class SchemaAPIManager extends EventEmitter {
    * @param {string} name
    *        The name of the module to load.
    *
-   * @returns {Promise<class>}
+   * @returns {Promise<typeof ExtensionAPI>}
    */
   asyncLoadModule(name) {
     let module = this.modules.get(name);
@@ -1824,7 +1863,7 @@ class SchemaAPIManager extends EventEmitter {
       {
         wantXrays: false,
         wantGlobalProperties: ["ChromeUtils"],
-        sandboxName: `Namespace of ext-*.js scripts for ${this.processType} (from: resource://gre/modules/ExtensionCommon.jsm)`,
+        sandboxName: `Namespace of ext-*.js scripts for ${this.processType} (from: resource://gre/modules/ExtensionCommon.sys.mjs)`,
       }
     );
 
@@ -1838,6 +1877,8 @@ class SchemaAPIManager extends EventEmitter {
       ExtensionAPI,
       ExtensionAPIPersistent,
       ExtensionCommon,
+      Glean,
+      GleanPings,
       IOUtils,
       MatchGlob,
       MatchPattern,
@@ -1851,7 +1892,7 @@ class SchemaAPIManager extends EventEmitter {
       global,
     });
 
-    XPCOMUtils.defineLazyGetter(global, "console", getConsole);
+    ChromeUtils.defineLazyGetter(global, "console", getConsole);
     // eslint-disable-next-line mozilla/lazy-getter-object-name
     ChromeUtils.defineESModuleGetters(global, {
       ExtensionUtils: "resource://gre/modules/ExtensionUtils.sys.mjs",
@@ -1889,12 +1930,15 @@ class LazyAPIManager extends SchemaAPIManager {
   constructor(processType, moduleData, schemaURLs) {
     super(processType);
 
+    /** @type {Promise | boolean} */
     this.initialized = false;
 
     this.initModuleData(moduleData);
 
     this.schemaURLs = schemaURLs;
   }
+
+  lazyInit() {}
 }
 
 defineLazyGetter(LazyAPIManager.prototype, "schema", function () {
@@ -1973,16 +2017,20 @@ defineLazyGetter(MultiAPIManager.prototype, "schema", function () {
   return new lazy.SchemaRoot(bases, new Map());
 });
 
-function LocaleData(data) {
+export function LocaleData(data) {
   this.defaultLocale = data.defaultLocale;
   this.selectedLocale = data.selectedLocale;
   this.locales = data.locales || new Map();
   this.warnedMissingKeys = new Set();
 
-  // Map(locale-name -> Map(message-key -> localized-string))
-  //
-  // Contains a key for each loaded locale, each of which is a
-  // Map of message keys to their localized strings.
+  /**
+   * Map(locale-name -> Map(message-key -> localized-string))
+   *
+   * Contains a key for each loaded locale, each of which is a
+   * Map of message keys to their localized strings.
+   *
+   * @type {Map<string, Map<string, string>>}
+   */
   this.messages = data.messages || new Map();
 
   if (data.builtinMessages) {
@@ -2180,15 +2228,13 @@ LocaleData.prototype = {
   get uiLocale() {
     return Services.locale.appLocaleAsBCP47;
   },
-};
 
-defineLazyGetter(LocaleData.prototype, "availableLocales", function () {
-  return new Set(
-    [this.BUILTIN, this.selectedLocale, this.defaultLocale].filter(locale =>
-      this.messages.has(locale)
-    )
-  );
-});
+  get availableLocales() {
+    const locales = [this.BUILTIN, this.selectedLocale, this.defaultLocale];
+    const value = new Set(locales.filter(locale => this.messages.has(locale)));
+    return redefineGetter(this, "availableLocales", value);
+  },
+};
 
 /**
  * This is a generic class for managing event listeners.
@@ -2267,6 +2313,26 @@ class EventManager {
     this.register = register;
     this.inputHandling = inputHandling;
     this.resetIdleOnEvent = resetIdleOnEvent;
+
+    const isBackgroundParent =
+      this.context.envType === "addon_parent" &&
+      this.context.isBackgroundContext;
+
+    // TODO(Bug 1844041): ideally we should restrict resetIdleOnEvent to
+    // EventManager instances that belongs to the event page, but along
+    // with that we should consider if calling sendMessage from an event
+    // page should also reset idle timer, and so in the shorter term
+    // here we are allowing listeners from other extension pages to
+    // also reset the idle timer.
+    const isAddonContext = ["addon_parent", "addon_child"].includes(
+      this.context.envType
+    );
+
+    // Avoid resetIdleOnEvent overhead by only consider it when applicable.
+    if (!isAddonContext || context.extension.persistentBackground) {
+      this.resetIdleOnEvent = false;
+    }
+
     if (!name) {
       this.name = `${module}.${event}`;
     }
@@ -2285,11 +2351,7 @@ class EventManager {
       );
     }
 
-    this.canPersistEvents =
-      module &&
-      event &&
-      ["background", "background_worker"].includes(this.context.viewType) &&
-      this.context.envType == "addon_parent";
+    this.canPersistEvents = module && event && isBackgroundParent;
 
     if (this.canPersistEvents) {
       let { extension } = context;
@@ -2819,15 +2881,28 @@ class EventManager {
         listener.added = true;
 
         recordStartupData = false;
-        this.remove.set(callback, () => {
-          EventManager.clearPersistentListener(
-            extension,
-            module,
-            event,
-            uneval(args),
-            listener.primeId
-          );
-        });
+
+        // Do not clear the persistent listener for a non-persistent backgrond
+        // context on removeListener calls got after the background context
+        // was fully started. The persistent listener can instead be cleared
+        // by not re-registering it on the next background context startup.
+        //
+        // This check prevents that for listeners that were already persisted
+        // and primed (a separate one below prevents it for new listeners).
+        //
+        // TODO Bug 1899767: do not reprime if the listener has been
+        // unregistered.
+        if (extension.persistentBackground) {
+          this.remove.set(callback, () => {
+            EventManager.clearPersistentListener(
+              extension,
+              module,
+              event,
+              uneval(args),
+              listener.primeId
+            );
+          });
+        }
       }
     }
 
@@ -2843,15 +2918,28 @@ class EventManager {
     if (recordStartupData) {
       const [, , , /* _module */ /* _event */ /* _key */ primeId] =
         EventManager.savePersistentListener(extension, module, event, args);
-      this.remove.set(callback, () => {
-        EventManager.clearPersistentListener(
-          extension,
-          module,
-          event,
-          uneval(args),
-          primeId
-        );
-      });
+
+      // Do not clear the persistent listener for a non-persistent backgrond
+      // context on removeListener calls got after the background context
+      // was fully started. The persistent listener can instead be cleared
+      // by not re-registering it on the next background context startup.
+      //
+      // This check prevents that for new listeners that were not already persisted
+      // and primed.
+      //
+      // TODO Bug 1899767: do not reprime if the listener has been
+      // unregistered.
+      if (extension.persistentBackground) {
+        this.remove.set(callback, () => {
+          EventManager.clearPersistentListener(
+            extension,
+            module,
+            event,
+            uneval(args),
+            primeId
+          );
+        });
+      }
     }
   }
 
@@ -2910,7 +2998,7 @@ class EventManager {
 // Simple API for event listeners where events never fire.
 function ignoreEvent(context, name) {
   return {
-    addListener: function (callback) {
+    addListener: function () {
       let id = context.extension.id;
       let frame = Components.stack.caller;
       let msg = `In add-on ${id}, attempting to use listener "${name}", which is unimplemented.`;
@@ -2928,8 +3016,8 @@ function ignoreEvent(context, name) {
       );
       Services.console.logMessage(scriptError);
     },
-    removeListener: function (callback) {},
-    hasListener: function (callback) {},
+    removeListener: function () {},
+    hasListener: function () {},
   };
 }
 
@@ -2937,7 +3025,9 @@ const stylesheetMap = new DefaultMap(url => {
   let uri = Services.io.newURI(url);
   return lazy.styleSheetService.preloadSheet(
     uri,
-    lazy.styleSheetService.AGENT_SHEET
+    // Note: keep in sync with ext-browser-content.js. This used to be
+    // AGENT_SHEET, but changed to AUTHOR_SHEET, see bug 1873024.
+    lazy.styleSheetService.AUTHOR_SHEET
   );
 });
 
@@ -2990,7 +3080,7 @@ function updateAllowedOrigins(policy, origins, isAdd) {
   policy.allowedOrigins = new MatchPatternSet(Array.from(patternMap.values()));
 }
 
-ExtensionCommon = {
+export var ExtensionCommon = {
   BaseContext,
   CanOfAPIs,
   EventManager,
@@ -3006,6 +3096,7 @@ ExtensionCommon = {
   checkLoadURI,
   checkLoadURL,
   defineLazyGetter,
+  redefineGetter,
   getConsole,
   ignoreEvent,
   instanceOf,

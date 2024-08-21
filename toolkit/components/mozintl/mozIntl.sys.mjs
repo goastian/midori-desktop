@@ -143,7 +143,7 @@ function bestFit(absDiff) {
  * Thresholds to use for calculating the best unit for relative time fromatting.
  */
 const threshold = {
-  month: 2, // at least 2 months before using year.
+  month: 11, // at least 11 months before using year.
   week: 3, // at least 3 weeks before using month.
   day: 6, // at least 6 days before using week.
   hour: 6, // at least 6 hours before using day.
@@ -365,6 +365,7 @@ const availableLocaleDisplayNames = {
     "sh",
     "si",
     "sk",
+    "skr",
     "sl",
     "sm",
     "sn",
@@ -588,6 +589,7 @@ const availableLocaleDisplayNames = {
     "ru",
     "rw",
     "sa",
+    "sat",
     "sc",
     "sco",
     "sd",
@@ -735,10 +737,12 @@ const nativeLocaleNames = new Map(
     rm: "Rumantsch",
     ro: "Română",
     ru: "Русский",
+    sat: "ᱥᱟᱱᱛᱟᱲᱤ",
     sc: "Sardu",
     sco: "Scots",
     si: "සිංහල",
     sk: "Slovenčina",
+    skr: "سرائیکی",
     sl: "Slovenščina",
     son: "Soŋay",
     sq: "Shqip",
@@ -1051,6 +1055,10 @@ export class MozIntl {
       return "rtl";
     }
     return "ltr";
+  }
+
+  stringHasRTLChars(str) {
+    return mozIntlHelper.stringHasRTLChars(str);
   }
 
   get DateTimeFormat() {

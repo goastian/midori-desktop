@@ -6,9 +6,11 @@
 #include "Helpers.h"
 #include "mozIStorageError.h"
 #include "prio.h"
+#include "nsIFile.h"
 #include "nsReadableUtils.h"
 #include "nsString.h"
 #include "nsNavHistory.h"
+#include "nsNetUtil.h"
 #include "mozilla/Base64.h"
 #include "mozilla/HashFunctions.h"
 #include "mozilla/RandomNum.h"
@@ -347,6 +349,55 @@ void TokensToQueryString(const nsTArray<QueryKeyValuePair>& aTokens,
                      dst.AppendLiteral("=");
                      dst.Append(token.value);
                    });
+}
+
+nsresult BackupDatabaseFile(nsIFile* aDBFile, const nsAString& aBackupFileName,
+                            nsIFile* aBackupParentDirectory, nsIFile** backup) {
+  nsresult rv;
+  nsCOMPtr<nsIFile> parentDir = aBackupParentDirectory;
+  if (!parentDir) {
+    // This argument is optional, and defaults to the same parent directory
+    // as the current file.
+    rv = aDBFile->GetParent(getter_AddRefs(parentDir));
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  nsCOMPtr<nsIFile> backupDB;
+  rv = parentDir->Clone(getter_AddRefs(backupDB));
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = backupDB->Append(aBackupFileName);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = backupDB->CreateUnique(nsIFile::NORMAL_FILE_TYPE, 0600);
+  NS_ENSURE_SUCCESS(rv, rv);
+  nsAutoString fileName;
+  rv = backupDB->GetLeafName(fileName);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = backupDB->Remove(false);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  backupDB.forget(backup);
+  return aDBFile->CopyTo(parentDir, fileName);
+}
+
+already_AddRefed<nsIURI> GetExposableURI(nsIURI* aURI) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aURI);
+
+  nsresult rv;
+  nsCOMPtr<nsIIOService> ioService = do_GetIOService(&rv);
+  if (NS_FAILED(rv)) {
+    NS_WARNING("Failed to get nsIIOService");
+    return nsCOMPtr<nsIURI>(aURI).forget();
+  }
+
+  nsCOMPtr<nsIURI> uri;
+  rv = ioService->CreateExposableURI(aURI, getter_AddRefs(uri));
+  if (NS_FAILED(rv)) {
+    NS_WARNING("Failed to create exposable URI");
+    return nsCOMPtr<nsIURI>(aURI).forget();
+  }
+
+  return uri.forget();
 }
 
 }  // namespace places

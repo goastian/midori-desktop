@@ -2,7 +2,7 @@
  * https://creativecommons.org/publicdomain/zero/1.0/ */
 
 /**
- * Tests PlacesPreviews.jsm
+ * Tests PlacesPreviews.sys.mjs
  */
 const { PlacesPreviews } = ChromeUtils.importESModule(
   "resource://gre/modules/PlacesPreviews.sys.mjs"
@@ -11,8 +11,8 @@ const { PlacesTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/PlacesTestUtils.sys.mjs"
 );
 
-const TEST_URL1 = "http://example.com/";
-const TEST_URL2 = "http://example.org/";
+const TEST_URL1 = "https://example.com/";
+const TEST_URL2 = "https://example.org/";
 
 /**
  * Counts tombstone entries.

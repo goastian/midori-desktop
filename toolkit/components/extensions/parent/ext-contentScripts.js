@@ -6,9 +6,6 @@
 
 "use strict";
 
-/* exported registerContentScript, unregisterContentScript */
-/* global registerContentScript, unregisterContentScript */
-
 var { ExtensionUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/ExtensionUtils.sys.mjs"
 );
@@ -95,7 +92,9 @@ class ContentScriptParent {
       excludeGlobs: details.excludeGlobs,
       allFrames: details.allFrames,
       matchAboutBlank: details.matchAboutBlank,
+      matchOriginAsFallback: details.matchOriginAsFallback,
       runAt: details.runAt || "document_idle",
+      world: details.world || "ISOLATED",
       jsPaths: [],
       cssPaths: [],
       originAttributesPatterns: null,

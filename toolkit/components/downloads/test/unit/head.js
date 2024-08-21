@@ -25,16 +25,12 @@ ChromeUtils.defineESModuleGetters(this, {
   E10SUtils: "resource://gre/modules/E10SUtils.sys.mjs",
   FileTestUtils: "resource://testing-common/FileTestUtils.sys.mjs",
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+  HttpServer: "resource://testing-common/httpd.sys.mjs",
   MockRegistrar: "resource://testing-common/MockRegistrar.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.sys.mjs",
   TestUtils: "resource://testing-common/TestUtils.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  HttpServer: "resource://testing-common/httpd.js",
-  NetUtil: "resource://gre/modules/NetUtil.jsm",
 });
 
 XPCOMUtils.defineLazyServiceGetter(
@@ -722,7 +718,7 @@ async function promiseBlockedDownload({
   useLegacySaver,
   verdict = Downloads.Error.BLOCK_VERDICT_UNCOMMON,
 } = {}) {
-  let blockFn = base => ({
+  let blockFn = () => ({
     shouldBlockForReputationCheck: () =>
       Promise.resolve({
         shouldBlock: true,
@@ -792,7 +788,7 @@ function startFakeServer() {
 /**
  * This is an internal reference that should not be used directly by tests.
  */
-var _gDeferResponses = PromiseUtils.defer();
+var _gDeferResponses = Promise.withResolvers();
 
 /**
  * Ensures that all the interruptible requests started after this function is
@@ -820,7 +816,7 @@ function mustInterruptResponses() {
   _gDeferResponses.resolve();
 
   info("Interruptible responses will be blocked midway.");
-  _gDeferResponses = PromiseUtils.defer();
+  _gDeferResponses = Promise.withResolvers();
 }
 
 /**
@@ -1163,13 +1159,7 @@ add_setup(function test_common_initialize() {
   // saved to disk without asking for a destination interactively.
   let mock = {
     QueryInterface: ChromeUtils.generateQI(["nsIHelperAppLauncherDialog"]),
-    promptForSaveToFileAsync(
-      aLauncher,
-      aWindowContext,
-      aDefaultFileName,
-      aSuggestedFileExtension,
-      aForcePrompt
-    ) {
+    promptForSaveToFileAsync(aLauncher) {
       // The dialog should create the empty placeholder file.
       let file = getTempFile(TEST_TARGET_FILE_NAME);
       file.create(Ci.nsIFile.NORMAL_FILE_TYPE, FileUtils.PERMS_FILE);

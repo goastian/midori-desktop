@@ -1,19 +1,21 @@
 "use strict";
 
-const { ExperimentFakes } = ChromeUtils.importESModule(
+const { ExperimentFakes, ExperimentTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/NimbusTestUtils.sys.mjs"
 );
 const { FirstStartup } = ChromeUtils.importESModule(
   "resource://gre/modules/FirstStartup.sys.mjs"
 );
-const { NimbusFeatures } = ChromeUtils.importESModule(
-  "resource://nimbus/ExperimentAPI.sys.mjs"
-);
+const {
+  ExperimentAPI,
+  NimbusFeatures,
+  _ExperimentFeature: ExperimentFeature,
+} = ChromeUtils.importESModule("resource://nimbus/ExperimentAPI.sys.mjs");
 const { EnrollmentsContext } = ChromeUtils.importESModule(
   "resource://nimbus/lib/RemoteSettingsExperimentLoader.sys.mjs"
 );
 const { PanelTestProvider } = ChromeUtils.importESModule(
-  "resource://activity-stream/lib/PanelTestProvider.sys.mjs"
+  "resource:///modules/asrouter/PanelTestProvider.sys.mjs"
 );
 const { TelemetryTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/TelemetryTestUtils.sys.mjs"
@@ -37,7 +39,9 @@ add_task(async function test_updateRecipes_activeExperiments() {
     targeting: `"${recipe.slug}" in activeExperiments`,
   });
   const onRecipe = sandbox.stub(manager, "onRecipe");
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([PASS_FILTER_RECIPE]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([PASS_FILTER_RECIPE]);
   sandbox.stub(manager.store, "ready").resolves();
   sandbox.stub(manager.store, "getAllActiveExperiments").returns([recipe]);
 
@@ -56,7 +60,9 @@ add_task(async function test_updateRecipes_isFirstRun() {
   loader.manager = manager;
   const PASS_FILTER_RECIPE = { ...recipe, targeting: "isFirstStartup" };
   const onRecipe = sandbox.stub(manager, "onRecipe");
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([PASS_FILTER_RECIPE]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([PASS_FILTER_RECIPE]);
   sandbox.stub(manager.store, "ready").resolves();
   sandbox.stub(manager.store, "getAllActiveExperiments").returns([recipe]);
 
@@ -101,7 +107,9 @@ add_task(async function test_updateRecipes_invalidFeatureId() {
   });
 
   const onRecipe = sandbox.stub(manager, "onRecipe");
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([badRecipe]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([badRecipe]);
   sandbox.stub(manager.store, "ready").resolves();
   sandbox.stub(manager.store, "getAllActiveExperiments").returns([]);
 
@@ -147,7 +155,9 @@ add_task(async function test_updateRecipes_invalidFeatureValue() {
   });
 
   const onRecipe = sandbox.stub(manager, "onRecipe");
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([badRecipe]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([badRecipe]);
   sandbox.stub(manager.store, "ready").resolves();
   sandbox.stub(manager.store, "getAllActiveExperiments").returns([]);
 
@@ -167,7 +177,9 @@ add_task(async function test_updateRecipes_invalidRecipe() {
   delete badRecipe.slug;
 
   const onRecipe = sandbox.stub(manager, "onRecipe");
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([badRecipe]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([badRecipe]);
   sandbox.stub(manager.store, "ready").resolves();
   sandbox.stub(manager.store, "getAllActiveExperiments").returns([]);
 
@@ -192,7 +204,9 @@ add_task(async function test_updateRecipes_invalidRecipeAfterUpdate() {
   sinon.stub(manager, "onRecipe");
   sinon.stub(manager, "onFinalize");
 
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([recipe]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([recipe]);
   sinon.stub(manager.store, "ready").resolves();
   sinon.spy(loader, "updateRecipes");
 
@@ -222,7 +236,7 @@ add_task(async function test_updateRecipes_invalidRecipeAfterUpdate() {
 
   info("Replacing recipe with an invalid one");
 
-  loader.remoteSettingsClient.get.resolves([badRecipe]);
+  loader.remoteSettingsClients.experiments.get.resolves([badRecipe]);
 
   await loader.updateRecipes("timer");
   equal(
@@ -308,7 +322,9 @@ add_task(async function test_updateRecipes_invalidBranchAfterUpdate() {
   sinon.stub(manager, "onRecipe");
   sinon.stub(manager, "onFinalize");
 
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([recipe]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([recipe]);
   sinon.stub(manager.store, "ready").resolves();
   sinon.spy(loader, "updateRecipes");
 
@@ -337,7 +353,7 @@ add_task(async function test_updateRecipes_invalidBranchAfterUpdate() {
 
   info("Replacing recipe with an invalid one");
 
-  loader.remoteSettingsClient.get.resolves([badRecipe]);
+  loader.remoteSettingsClients.experiments.get.resolves([badRecipe]);
 
   await loader.updateRecipes("timer");
   equal(
@@ -418,7 +434,9 @@ add_task(async function test_updateRecipes_simpleFeatureInvalidAfterUpdate() {
   sinon.spy(loader, "updateRecipes");
   sinon.spy(EnrollmentsContext.prototype, "_generateVariablesOnlySchema");
   sinon.stub(loader, "setTimer");
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([recipe]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([recipe]);
 
   sinon.stub(manager, "onFinalize");
   sinon.stub(manager, "onRecipe");
@@ -459,7 +477,7 @@ add_task(async function test_updateRecipes_simpleFeatureInvalidAfterUpdate() {
 
   info("Replacing recipe with an invalid one");
 
-  loader.remoteSettingsClient.get.resolves([badRecipe]);
+  loader.remoteSettingsClients.experiments.get.resolves([badRecipe]);
 
   await loader.updateRecipes("timer");
   equal(
@@ -561,7 +579,9 @@ add_task(async function test_updateRecipes_validationTelemetry() {
     const manager = loader.manager;
 
     sinon.stub(loader, "setTimer");
-    sinon.stub(loader.remoteSettingsClient, "get").resolves([recipe]);
+    sinon
+      .stub(loader.remoteSettingsClients.experiments, "get")
+      .resolves([recipe]);
 
     sinon.stub(manager, "onRecipe");
     sinon.stub(manager.store, "ready").resolves();
@@ -657,7 +677,9 @@ add_task(async function test_updateRecipes_validationDisabled() {
     const manager = loader.manager;
 
     sinon.stub(loader, "setTimer");
-    sinon.stub(loader.remoteSettingsClient, "get").resolves([recipe]);
+    sinon
+      .stub(loader.remoteSettingsClients.experiments, "get")
+      .resolves([recipe]);
 
     sinon.stub(manager, "onRecipe");
     sinon.stub(manager.store, "ready").resolves();
@@ -714,7 +736,9 @@ add_task(async function test_updateRecipes_appId() {
   });
 
   sinon.stub(loader, "setTimer");
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([recipe]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([recipe]);
 
   sinon.stub(manager, "onRecipe");
   sinon.stub(manager, "onFinalize");
@@ -799,7 +823,9 @@ add_task(async function test_updateRecipes_withPropNotInManifest() {
   });
 
   const loader = ExperimentFakes.rsLoader();
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([PASS_FILTER_RECIPE]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([PASS_FILTER_RECIPE]);
   sinon.stub(loader.manager, "onRecipe").resolves();
   sinon.stub(loader.manager, "onFinalize");
 
@@ -837,7 +863,9 @@ add_task(async function test_updateRecipes_recipeAppId() {
   });
 
   sinon.stub(loader, "setTimer");
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([recipe]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([recipe]);
 
   sinon.stub(manager, "onRecipe");
   sinon.stub(manager, "onFinalize");
@@ -914,7 +942,7 @@ add_task(async function test_updateRecipes_featureValidationOptOut() {
 
     sinon.stub(loader, "setTimer");
     sinon
-      .stub(loader.remoteSettingsClient, "get")
+      .stub(loader.remoteSettingsClients.experiments, "get")
       .resolves([invalidRecipe, optOutRecipe]);
 
     sinon.stub(manager, "onRecipe");
@@ -974,7 +1002,9 @@ add_task(async function test_updateRecipes_invalidFeature_mismatch() {
   const manager = loader.manager;
 
   sinon.stub(loader, "setTimer");
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([recipe]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([recipe]);
 
   sinon.stub(manager, "onRecipe");
   sinon.stub(manager, "onFinalize");
@@ -1065,7 +1095,7 @@ add_task(async function test_updateRecipes_rollout_bucketing() {
   await manager.store.ready();
 
   sinon
-    .stub(loader.remoteSettingsClient, "get")
+    .stub(loader.remoteSettingsClients.experiments, "get")
     .resolves([experiment, rollout]);
 
   await loader.updateRecipes();
@@ -1151,7 +1181,9 @@ add_task(async function test_reenroll_rollout_resized() {
     total: 1000,
   };
 
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([rollout]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([rollout]);
 
   await loader.updateRecipes();
   Assert.equal(
@@ -1223,7 +1255,9 @@ add_task(async function test_experiment_reenroll() {
     "Should unenroll from experiment"
   );
 
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([experiment]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([experiment]);
 
   await loader.updateRecipes();
   Assert.ok(
@@ -1250,7 +1284,9 @@ add_task(async function test_rollout_reenroll_optout() {
     total: 1000,
   };
 
-  sinon.stub(loader.remoteSettingsClient, "get").resolves([rollout]);
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([rollout]);
   await loader.updateRecipes();
 
   Assert.ok(
@@ -1268,4 +1304,601 @@ add_task(async function test_rollout_reenroll_optout() {
   );
 
   await assertEmptyStore(manager.store, { cleanup: true });
+});
+
+add_task(async function test_active_and_past_experiment_targeting() {
+  const loader = ExperimentFakes.rsLoader();
+  const manager = loader.manager;
+
+  await loader.init();
+  await manager.onStartup();
+  await manager.store.ready();
+
+  const cleanupFeatures = ExperimentTestUtils.addTestFeatures(
+    new ExperimentFeature("feature-a", {
+      isEarlyStartup: false,
+      variables: {},
+    }),
+    new ExperimentFeature("feature-b", {
+      isEarlyStartup: false,
+      variables: {},
+    }),
+    new ExperimentFeature("feature-c", { isEarlyStartup: false, variables: {} })
+  );
+
+  const experimentA = ExperimentFakes.recipe("experiment-a", {
+    branches: [
+      {
+        ...ExperimentFakes.recipe.branches[0],
+        features: [{ featureId: "feature-a", value: {} }],
+      },
+    ],
+    bucketConfig: {
+      ...ExperimentFakes.recipe.bucketConfig,
+      count: 1000,
+    },
+  });
+  const experimentB = ExperimentFakes.recipe("experiment-b", {
+    branches: [
+      {
+        ...ExperimentFakes.recipe.branches[0],
+        features: [{ featureId: "feature-b", value: {} }],
+      },
+    ],
+    bucketConfig: experimentA.bucketConfig,
+    targeting: "'experiment-a' in activeExperiments",
+  });
+  const experimentC = ExperimentFakes.recipe("experiment-c", {
+    branches: [
+      {
+        ...ExperimentFakes.recipe.branches[0],
+        features: [{ featureId: "feature-c", value: {} }],
+      },
+    ],
+    bucketConfig: experimentA.bucketConfig,
+    targeting: "'experiment-a' in previousExperiments",
+  });
+
+  const rolloutA = ExperimentFakes.recipe("rollout-a", {
+    branches: [
+      {
+        ...ExperimentFakes.recipe.branches[0],
+        features: [{ featureId: "feature-a", value: {} }],
+      },
+    ],
+    bucketConfig: experimentA.bucketConfig,
+    isRollout: true,
+  });
+  const rolloutB = ExperimentFakes.recipe("rollout-b", {
+    branches: [
+      {
+        ...ExperimentFakes.recipe.branches[0],
+        features: [{ featureId: "feature-b", value: {} }],
+      },
+    ],
+    bucketConfig: experimentA.bucketConfig,
+    targeting: "'rollout-a' in activeRollouts",
+    isRollout: true,
+  });
+  const rolloutC = ExperimentFakes.recipe("rollout-c", {
+    branches: [
+      {
+        ...ExperimentFakes.recipe.branches[0],
+        features: [{ featureId: "feature-c", value: {} }],
+      },
+    ],
+    bucketConfig: experimentA.bucketConfig,
+    targeting: "'rollout-a' in previousRollouts",
+    isRollout: true,
+  });
+
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([experimentA, rolloutA]);
+
+  // Enroll in A.
+  await loader.updateRecipes();
+  Assert.equal(
+    manager.store.getExperimentForFeature("feature-a")?.slug,
+    "experiment-a"
+  );
+  Assert.ok(!manager.store.getExperimentForFeature("feature-b"));
+  Assert.ok(!manager.store.getExperimentForFeature("feature-c"));
+  Assert.equal(
+    manager.store.getRolloutForFeature("feature-a")?.slug,
+    "rollout-a"
+  );
+  Assert.ok(!manager.store.getRolloutForFeature("feature-b"));
+  Assert.ok(!manager.store.getRolloutForFeature("feature-c"));
+
+  loader.remoteSettingsClients.experiments.get.resolves([
+    experimentA,
+    experimentB,
+    experimentC,
+    rolloutA,
+    rolloutB,
+    rolloutC,
+  ]);
+
+  // B will enroll becuase A is enrolled.
+  await loader.updateRecipes();
+  Assert.equal(
+    manager.store.getExperimentForFeature("feature-a")?.slug,
+    "experiment-a"
+  );
+  Assert.equal(
+    manager.store.getExperimentForFeature("feature-b")?.slug,
+    "experiment-b"
+  );
+  Assert.ok(!manager.store.getExperimentForFeature("feature-c"));
+  Assert.equal(
+    manager.store.getRolloutForFeature("feature-a")?.slug,
+    "rollout-a"
+  );
+  Assert.equal(
+    manager.store.getRolloutForFeature("feature-b")?.slug,
+    "rollout-b"
+  );
+  Assert.ok(!manager.store.getRolloutForFeature("feature-c"));
+
+  // Remove experiment A and rollout A to cause them to unenroll. A will still
+  // be enrolled while B and C are evaluating targeting, so their enrollment
+  // won't change.
+  loader.remoteSettingsClients.experiments.get.resolves([
+    experimentB,
+    experimentC,
+    rolloutB,
+    rolloutC,
+  ]);
+  await loader.updateRecipes();
+  Assert.ok(!manager.store.getExperimentForFeature("feature-a"));
+  Assert.equal(
+    manager.store.getExperimentForFeature("feature-b")?.slug,
+    "experiment-b"
+  );
+  Assert.ok(!manager.store.getExperimentForFeature("feature-c"));
+  Assert.ok(!manager.store.getRolloutForFeature("feature-a"));
+  Assert.equal(
+    manager.store.getRolloutForFeature("feature-b")?.slug,
+    "rollout-b"
+  );
+  Assert.ok(!manager.store.getRolloutForFeature("feature-c"));
+
+  // Now A will be marked as unenrolled while evaluating B and C's targeting, so
+  // their enrollment will change.
+  await loader.updateRecipes();
+  Assert.ok(!manager.store.getExperimentForFeature("feature-a"));
+  Assert.ok(!manager.store.getExperimentForFeature("feature-b"));
+  Assert.equal(
+    manager.store.getExperimentForFeature("feature-c")?.slug,
+    "experiment-c"
+  );
+  Assert.ok(!manager.store.getRolloutForFeature("feature-a"));
+  Assert.ok(!manager.store.getRolloutForFeature("feature-b"));
+  Assert.equal(
+    manager.store.getRolloutForFeature("feature-c")?.slug,
+    "rollout-c"
+  );
+
+  manager.unenroll("experiment-c");
+  manager.unenroll("rollout-c");
+
+  await assertEmptyStore(manager.store, { cleanup: true });
+  cleanupFeatures();
+});
+
+add_task(async function test_enrollment_targeting() {
+  const loader = ExperimentFakes.rsLoader();
+  const manager = loader.manager;
+
+  await loader.init();
+  await manager.onStartup();
+  await manager.store.ready();
+
+  const cleanupFeatures = ExperimentTestUtils.addTestFeatures(
+    new ExperimentFeature("feature-a", {
+      isEarlyStartup: false,
+      variables: {},
+    }),
+    new ExperimentFeature("feature-b", {
+      isEarlyStartup: false,
+      variables: {},
+    }),
+    new ExperimentFeature("feature-c", {
+      isEarlyStartup: false,
+      variables: {},
+    }),
+    new ExperimentFeature("feature-d", {
+      isEarlyStartup: false,
+      variables: {},
+    })
+  );
+
+  function recipe(
+    name,
+    featureId,
+    { targeting = "true", isRollout = false } = {}
+  ) {
+    return ExperimentFakes.recipe(name, {
+      branches: [
+        {
+          ...ExperimentFakes.recipe.branches[0],
+          features: [{ featureId, value: {} }],
+        },
+      ],
+      bucketConfig: {
+        ...ExperimentFakes.recipe.bucketConfig,
+        count: 1000,
+      },
+      targeting,
+      isRollout,
+    });
+  }
+
+  const experimentA = recipe("experiment-a", "feature-a", {
+    targeting: "!('rollout-c' in enrollments)",
+  });
+  const experimentB = recipe("experiment-b", "feature-b", {
+    targeting: "'rollout-a' in enrollments",
+  });
+  const experimentC = recipe("experiment-c", "feature-c");
+
+  const rolloutA = recipe("rollout-a", "feature-a", {
+    targeting: "!('experiment-c' in enrollments)",
+    isRollout: true,
+  });
+  const rolloutB = recipe("rollout-b", "feature-b", {
+    targeting: "'experiment-a' in enrollments",
+    isRollout: true,
+  });
+  const rolloutC = recipe("rollout-c", "feature-c", { isRollout: true });
+
+  async function check(current, past, unenrolled) {
+    await loader.updateRecipes();
+
+    for (const slug of current) {
+      const enrollment = manager.store.get(slug);
+      Assert.equal(
+        enrollment?.active,
+        true,
+        `Enrollment exists for ${slug} and is active`
+      );
+    }
+
+    for (const slug of past) {
+      const enrollment = manager.store.get(slug);
+      Assert.equal(
+        enrollment?.active,
+        false,
+        `Enrollment exists for ${slug} and is inactive`
+      );
+    }
+
+    for (const slug of unenrolled) {
+      Assert.ok(
+        !manager.store.get(slug),
+        `Enrollment does not exist for ${slug}`
+      );
+    }
+  }
+
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([experimentB, rolloutB]);
+  await check(
+    [],
+    [],
+    [
+      "experiment-a",
+      "experiment-b",
+      "experiment-c",
+      "rollout-a",
+      "rollout-b",
+      "rollout-c",
+    ]
+  );
+
+  // Order matters -- B will be checked before A.
+  loader.remoteSettingsClients.experiments.get.resolves([
+    experimentB,
+    rolloutB,
+    experimentA,
+    rolloutA,
+  ]);
+  await check(
+    ["experiment-a", "rollout-a"],
+    [],
+    ["experiment-b", "experiment-c", "rollout-b", "rollout-c"]
+  );
+
+  // B will see A enrolled.
+  loader.remoteSettingsClients.experiments.get.resolves([
+    experimentB,
+    rolloutB,
+    experimentA,
+    rolloutA,
+  ]);
+  await check(
+    ["experiment-a", "experiment-b", "rollout-a", "rollout-b"],
+    [],
+    ["experiment-c", "rollout-c"]
+  );
+
+  // Order matters -- A will be checked before C.
+  loader.remoteSettingsClients.experiments.get.resolves([
+    experimentB,
+    rolloutB,
+    experimentA,
+    rolloutA,
+    experimentC,
+    rolloutC,
+  ]);
+  await check(
+    [
+      "experiment-a",
+      "experiment-b",
+      "experiment-c",
+      "rollout-a",
+      "rollout-b",
+      "rollout-c",
+    ],
+    [],
+    []
+  );
+
+  // A will see C has enrolled and unenroll. B will stay enrolled.
+  await check(
+    ["experiment-b", "experiment-c", "rollout-b", "rollout-c"],
+    ["experiment-a", "rollout-a"],
+    []
+  );
+
+  // A being unenrolled does not affect B. Rollout A will not re-enroll due to targeting.
+  await check(
+    ["experiment-b", "experiment-c", "rollout-b", "rollout-c"],
+    ["experiment-a", "rollout-a"],
+    []
+  );
+
+  for (const slug of [
+    "experiment-b",
+    "experiment-c",
+    "rollout-b",
+    "rollout-c",
+  ]) {
+    manager.unenroll(slug);
+  }
+
+  await assertEmptyStore(manager.store, { cleanup: true });
+  cleanupFeatures();
+});
+
+add_task(async function test_update_experiments_ordered_by_published_date() {
+  const manager = ExperimentFakes.manager();
+  const sandbox = sinon.createSandbox();
+  const loader = ExperimentFakes.rsLoader();
+  loader.manager = manager;
+  const RECIPE_NO_PUBLISHED_DATE_1 = ExperimentFakes.recipe("foo");
+  const RECIPE_NO_PUBLISHED_DATE_2 = ExperimentFakes.recipe("bar");
+  const RECIPE_PUBLISHED_DATE_1 = ExperimentFakes.recipe("baz", {
+    publishedDate: `2024-01-05T12:00:00Z`,
+  });
+  const RECIPE_PUBLISHED_DATE_2 = ExperimentFakes.recipe("qux", {
+    publishedDate: `2024-01-03T12:00:00Z`,
+  });
+  const onRecipe = sandbox.stub(manager, "onRecipe");
+  sinon
+    .stub(loader.remoteSettingsClients.experiments, "get")
+    .resolves([
+      RECIPE_NO_PUBLISHED_DATE_1,
+      RECIPE_PUBLISHED_DATE_1,
+      RECIPE_PUBLISHED_DATE_2,
+      RECIPE_NO_PUBLISHED_DATE_2,
+    ]);
+  sandbox.stub(manager.store, "ready").resolves();
+
+  await loader.init();
+
+  ok(onRecipe.getCall(0).calledWithMatch({ slug: "foo" }, "rs-loader"));
+  ok(onRecipe.getCall(1).calledWithMatch({ slug: "bar" }, "rs-loader"));
+  ok(onRecipe.getCall(2).calledWithMatch({ slug: "qux" }, "rs-loader"));
+  ok(onRecipe.getCall(3).calledWithMatch({ slug: "baz" }, "rs-loader"));
+
+  await assertEmptyStore(manager.store);
+});
+
+add_task(
+  async function test_record_is_ready_no_value_for_nimbus_is_ready_feature() {
+    const sandbox = sinon.createSandbox();
+    const loader = ExperimentFakes.rsLoader();
+    const manager = loader.manager;
+
+    sandbox.stub(ExperimentAPI, "_manager").get(() => manager);
+    sandbox.stub(ExperimentAPI, "_store").get(() => manager.store);
+
+    await loader.init();
+    await manager.onStartup();
+    await manager.store.ready();
+
+    sandbox.stub(loader.remoteSettingsClients.experiments, "get").resolves([]);
+
+    await Services.fog.testFlushAllChildren();
+    Services.fog.testResetFOG();
+    await loader.updateRecipes();
+
+    const isReadyEvents = Glean.nimbusEvents.isReady.testGetValue();
+
+    Assert.equal(isReadyEvents.length, 1);
+
+    await assertEmptyStore(manager.store);
+  }
+);
+
+add_task(
+  async function test_record_is_ready_set_value_for_nimbus_is_ready_feature() {
+    const sandbox = sinon.createSandbox();
+    const loader = ExperimentFakes.rsLoader();
+    const manager = loader.manager;
+
+    sandbox.stub(ExperimentAPI, "_manager").get(() => manager);
+    sandbox.stub(ExperimentAPI, "_store").get(() => manager.store);
+
+    const slug = "foo";
+    const EXPERIMENT = ExperimentFakes.recipe(slug, {
+      branches: [
+        {
+          slug: "wsup",
+          ratio: 1,
+          features: [
+            {
+              featureId: "nimbusIsReady",
+              value: { eventCount: 3 },
+            },
+          ],
+        },
+      ],
+      bucketConfig: {
+        ...ExperimentFakes.recipe.bucketConfig,
+        count: 1000,
+      },
+    });
+
+    await loader.init();
+    await manager.onStartup();
+    await manager.store.ready();
+
+    sandbox
+      .stub(loader.remoteSettingsClients.experiments, "get")
+      .resolves([EXPERIMENT]);
+
+    await Services.fog.testFlushAllChildren();
+    Services.fog.testResetFOG();
+    await loader.updateRecipes();
+
+    const enrollment = manager.store.get(slug);
+    Assert.equal(
+      enrollment?.active,
+      true,
+      `Enrollment exists for ${slug} and is active`
+    );
+
+    const isReadyEvents = Glean.nimbusEvents.isReady.testGetValue();
+
+    Assert.equal(isReadyEvents.length, 3);
+    manager.unenroll(EXPERIMENT.slug);
+    await assertEmptyStore(manager.store, { cleanup: true });
+
+    sandbox.restore();
+  }
+);
+
+add_task(async function test_updateRecipes_secure() {
+  // This recipe is allowed from the secure collection but not the regular collection.
+  const prefFlipRecipe = ExperimentFakes.recipe("pref-flip", {
+    bucketConfig: {
+      ...ExperimentFakes.recipe.bucketConfig,
+      count: 1000,
+    },
+    branches: [
+      {
+        ...ExperimentFakes.recipe.branches[0],
+        features: [
+          {
+            featureId: "prefFlips",
+            value: {
+              prefs: {},
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  const testFeatureRecipe = ExperimentFakes.recipe("test-feature", {
+    bucketConfig: {
+      ...ExperimentFakes.recipe.bucketConfig,
+      count: 1000,
+    },
+  });
+
+  const multiFeatureRecipe = ExperimentFakes.recipe("mutli-feature", {
+    bucketConfig: {
+      ...ExperimentFakes.recipe.bucketConfig,
+      count: 1000,
+    },
+    branches: [
+      {
+        ...ExperimentFakes.recipe.branches[0],
+        features: [
+          prefFlipRecipe.branches[0].features[0],
+          testFeatureRecipe.branches[0].features[0],
+        ],
+      },
+    ],
+  });
+
+  const TEST_CASES = [
+    {
+      experiments: [prefFlipRecipe],
+      secureExperiments: [testFeatureRecipe],
+      shouldEnroll: [],
+    },
+    {
+      experiments: [testFeatureRecipe],
+      secureExperiments: [prefFlipRecipe],
+      shouldEnroll: [testFeatureRecipe, prefFlipRecipe],
+    },
+    {
+      experiments: [multiFeatureRecipe],
+      secureExperiments: [],
+      shouldEnroll: [],
+    },
+    {
+      experiments: [],
+      secureExperiments: [multiFeatureRecipe],
+      shouldEnroll: [],
+    },
+  ];
+
+  for (const [
+    idx,
+    { experiments, secureExperiments, shouldEnroll },
+  ] of TEST_CASES.entries()) {
+    info(`Running test ${idx}`);
+
+    const loader = ExperimentFakes.rsLoader();
+    const manager = loader.manager;
+
+    const onRecipe = sinon.stub(manager, "onRecipe");
+
+    sinon.stub(loader, "setTimer");
+
+    await loader.init();
+    await manager.onStartup();
+    await manager.store.ready();
+
+    sinon
+      .stub(loader.remoteSettingsClients.experiments, "get")
+      .resolves(experiments);
+    sinon
+      .stub(loader.remoteSettingsClients.secureExperiments, "get")
+      .resolves(secureExperiments);
+    await loader.updateRecipes();
+
+    const enrolledSlugs = onRecipe.getCalls().map(call => call.args[0].slug);
+
+    Assert.equal(
+      onRecipe.callCount,
+      shouldEnroll.length,
+      `Should enroll in expected number of recipes (enrolled in ${enrolledSlugs})`
+    );
+
+    for (const expectedRecipe of shouldEnroll) {
+      onRecipe.calledWith(
+        expectedRecipe,
+        "rs-loader",
+        `Should enroll in ${expectedRecipe.slug}`
+      );
+    }
+  }
 });

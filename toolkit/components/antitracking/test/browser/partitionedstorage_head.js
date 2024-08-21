@@ -13,14 +13,22 @@ Services.scriptloader.loadSubScript(
 );
 
 this.PartitionedStorageHelper = {
-  runTestInNormalAndPrivateMode(name, callback, cleanupFunction, extraPrefs) {
+  runTestInNormalAndPrivateMode(
+    name,
+    callback,
+    cleanupFunction,
+    extraPrefs,
+    runInSecure = true
+  ) {
     // Normal mode
     this.runTest(name, callback, cleanupFunction, extraPrefs, {
+      runInSecureContext: runInSecure,
       runInPrivateWindow: false,
     });
 
     // Private mode
     this.runTest(name, callback, cleanupFunction, extraPrefs, {
+      runInSecureContext: runInSecure,
       runInPrivateWindow: true,
     });
   },
@@ -30,7 +38,7 @@ this.PartitionedStorageHelper = {
     callback,
     cleanupFunction,
     extraPrefs,
-    { runInPrivateWindow = false, runInSecureContext = false } = {}
+    { runInPrivateWindow = false, runInSecureContext = true } = {}
   ) {
     DynamicFPIHelper.runTest(
       name,
@@ -133,6 +141,8 @@ this.PartitionedStorageHelper = {
       await SpecialPowers.pushPrefEnv({
         set: [
           ["dom.storage_access.enabled", true],
+          ["network.cookie.cookieBehavior.optInPartitioning", true],
+          ["network.cookie.CHIPS.enabled", true],
           [
             "privacy.partition.always_partition_third_party_non_cookie_storage",
             true,
@@ -156,14 +166,14 @@ this.PartitionedStorageHelper = {
       }
 
       info("Creating the first tab");
-      let tab1 = BrowserTestUtils.addTab(win.gBrowser, TEST_TOP_PAGE);
+      let tab1 = BrowserTestUtils.addTab(win.gBrowser, TEST_TOP_PAGE_HTTPS);
       win.gBrowser.selectedTab = tab1;
 
       let browser1 = win.gBrowser.getBrowserForTab(tab1);
       await BrowserTestUtils.browserLoaded(browser1);
 
       info("Creating the second tab");
-      let tab2 = BrowserTestUtils.addTab(win.gBrowser, TEST_TOP_PAGE_6);
+      let tab2 = BrowserTestUtils.addTab(win.gBrowser, TEST_TOP_PAGE_9);
       win.gBrowser.selectedTab = tab2;
 
       let browser2 = win.gBrowser.getBrowserForTab(tab2);
@@ -172,7 +182,7 @@ this.PartitionedStorageHelper = {
       info("Creating the third tab");
       let tab3 = BrowserTestUtils.addTab(
         win.gBrowser,
-        TEST_4TH_PARTY_PARTITIONED_PAGE
+        TEST_4TH_PARTY_PARTITIONED_PAGE_HTTPS
       );
       win.gBrowser.selectedTab = tab3;
 
@@ -181,7 +191,7 @@ this.PartitionedStorageHelper = {
 
       // Use the same URL as first tab to check partitioned data
       info("Creating the forth tab");
-      let tab4 = BrowserTestUtils.addTab(win.gBrowser, TEST_TOP_PAGE);
+      let tab4 = BrowserTestUtils.addTab(win.gBrowser, TEST_TOP_PAGE_HTTPS);
       win.gBrowser.selectedTab = tab4;
 
       let browser4 = win.gBrowser.getBrowserForTab(tab4);
@@ -199,7 +209,8 @@ this.PartitionedStorageHelper = {
           browser,
           [
             {
-              page: TEST_4TH_PARTY_PARTITIONED_PAGE + "?variant=" + variant,
+              page:
+                TEST_4TH_PARTY_PARTITIONED_PAGE_HTTPS + "?variant=" + variant,
               getDataCallback: getDataCallback.toString(),
               result,
             },
@@ -281,7 +292,8 @@ this.PartitionedStorageHelper = {
           browser,
           [
             {
-              page: TEST_4TH_PARTY_PARTITIONED_PAGE + "?variant=" + variant,
+              page:
+                TEST_4TH_PARTY_PARTITIONED_PAGE_HTTPS + "?variant=" + variant,
               addDataCallback: addDataCallback.toString(),
               value,
             },
@@ -374,7 +386,7 @@ this.PartitionedStorageHelper = {
 
       async function setStorageAccessForThirdParty(browser) {
         info(`Setting permission for ${browser.currentURI.spec}`);
-        let type = "3rdPartyStorage^http://not-tracking.example.com";
+        let type = "3rdPartyStorage^https://not-tracking.example.com";
         let permission = Services.perms.ALLOW_ACTION;
         let expireType = Services.perms.EXPIRE_SESSION;
         Services.perms.addFromPrincipal(

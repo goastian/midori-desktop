@@ -8,7 +8,7 @@ use askama::Template;
 use extend::ext;
 use heck::{ToLowerCamelCase, ToShoutySnakeCase, ToUpperCamelCase};
 use uniffi_bindgen::interface::{
-    Argument, CallbackInterface, ComponentInterface, Constructor, Enum, Error, Field, Function,
+    Argument, AsType, CallbackInterface, ComponentInterface, Constructor, Enum, Field, Function,
     Literal, Method, Object, Radix, Record, Type,
 };
 
@@ -26,11 +26,11 @@ fn arg_names(args: &[&Argument]) -> String {
 }
 
 fn render_enum_literal(typ: &Type, variant_name: &str) -> String {
-    if let Type::Enum(enum_name) = typ {
+    if let Type::Enum { name, .. } = typ {
         // TODO: This does not support complex enum literals yet.
         return format!(
             "{}.{}",
-            enum_name.to_upper_camel_case(),
+            name.to_upper_camel_case(),
             variant_name.to_shouty_snake_case()
         );
     } else {
@@ -92,7 +92,8 @@ pub impl Literal {
             Literal::Enum(name, typ) => render_enum_literal(typ, name),
             Literal::EmptyMap => "{}".to_string(),
             Literal::EmptySequence => "[]".to_string(),
-            Literal::Null => "null".to_string(),
+            Literal::Some { inner } => inner.render(),
+            Literal::None => "null".to_string(),
         }
     }
 }
@@ -118,7 +119,8 @@ pub impl Record {
     }
 
     fn constructor_field_list(&self) -> String {
-        self.fields()
+        let o = self
+            .fields()
             .iter()
             .map(|field| {
                 if let Some(default_value) = field.default_value() {
@@ -128,7 +130,8 @@ pub impl Record {
                 }
             })
             .collect::<Vec<String>>()
-            .join(",")
+            .join(", ");
+        format!("{{ {o} }}")
     }
 }
 
@@ -150,27 +153,27 @@ pub impl Field {
     }
 
     fn lower_fn(&self) -> String {
-        self.type_().lower_fn()
+        self.as_type().lower_fn()
     }
 
     fn lift_fn(&self) -> String {
-        self.type_().lift_fn()
+        self.as_type().lift_fn()
     }
 
     fn write_datastream_fn(&self) -> String {
-        self.type_().write_datastream_fn()
+        self.as_type().write_datastream_fn()
     }
 
     fn read_datastream_fn(&self) -> String {
-        self.type_().read_datastream_fn()
+        self.as_type().read_datastream_fn()
     }
 
     fn compute_size_fn(&self) -> String {
-        self.type_().compute_size_fn()
+        self.as_type().compute_size_fn()
     }
 
     fn ffi_converter(&self) -> String {
-        self.type_().ffi_converter()
+        self.as_type().ffi_converter()
     }
 }
 
@@ -181,27 +184,27 @@ pub impl Argument {
     }
 
     fn lower_fn(&self) -> String {
-        self.type_().lower_fn()
+        self.as_type().lower_fn()
     }
 
     fn lift_fn(&self) -> String {
-        self.type_().lift_fn()
+        self.as_type().lift_fn()
     }
 
     fn write_datastream_fn(&self) -> String {
-        self.type_().write_datastream_fn()
+        self.as_type().write_datastream_fn()
     }
 
     fn read_datastream_fn(&self) -> String {
-        self.type_().read_datastream_fn()
+        self.as_type().read_datastream_fn()
     }
 
     fn compute_size_fn(&self) -> String {
-        self.type_().compute_size_fn()
+        self.as_type().compute_size_fn()
     }
 
     fn ffi_converter(&self) -> String {
-        self.type_().ffi_converter()
+        self.as_type().ffi_converter()
     }
 }
 
@@ -210,7 +213,7 @@ pub impl Type {
     // Render an expression to check if two instances of this type are equal
     fn equals(&self, first: &str, second: &str) -> String {
         match self {
-            Type::Record(_) => format!("{}.equals({})", first, second),
+            Type::Record { .. } => format!("{}.equals({})", first, second),
             _ => format!("{} == {}", first, second),
         }
     }
@@ -233,6 +236,41 @@ pub impl Type {
 
     fn compute_size_fn(&self) -> String {
         format!("{}.computeSize", self.ffi_converter())
+    }
+
+    fn canonical_name(&self) -> String {
+        match self {
+            Type::Int8 => "i8".into(),
+            Type::UInt8 => "u8".into(),
+            Type::Int16 => "i16".into(),
+            Type::UInt16 => "u16".into(),
+            Type::Int32 => "i32".into(),
+            Type::UInt32 => "u32".into(),
+            Type::Int64 => "i64".into(),
+            Type::UInt64 => "u64".into(),
+            Type::Float32 => "f32".into(),
+            Type::Float64 => "f64".into(),
+            Type::String => "string".into(),
+            Type::Bytes => "bytes".into(),
+            Type::Boolean => "bool".into(),
+            Type::Object { name, .. }
+            | Type::Enum { name, .. }
+            | Type::Record { name, .. }
+            | Type::CallbackInterface { name, .. } => format!("Type{name}"),
+            Type::Timestamp => "Timestamp".into(),
+            Type::Duration => "Duration".into(),
+            Type::Optional { inner_type } => format!("Optional{}", inner_type.canonical_name()),
+            Type::Sequence { inner_type } => format!("Sequence{}", inner_type.canonical_name()),
+            Type::Map {
+                key_type,
+                value_type,
+            } => format!(
+                "Map{}{}",
+                key_type.canonical_name().to_upper_camel_case(),
+                value_type.canonical_name().to_upper_camel_case()
+            ),
+            Type::External { name, .. } | Type::Custom { name, .. } => format!("Type{name}"),
+        }
     }
 
     fn ffi_converter(&self) -> String {
@@ -258,13 +296,6 @@ pub impl Function {
 
     fn nm(&self) -> String {
         self.name().to_lower_camel_case()
-    }
-}
-
-#[ext(name=ErrorJSExt)]
-pub impl Error {
-    fn nm(&self) -> String {
-        self.name().to_upper_camel_case()
     }
 }
 

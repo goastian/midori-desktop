@@ -104,6 +104,7 @@ Structure:
         creationDate: <integer>, // integer days since UNIX epoch, e.g. 16446
         resetDate: <integer>, // integer days since UNIX epoch, e.g. 16446 - optional
         firstUseDate: <integer>, // integer days since UNIX epoch, e.g. 16446 - optional
+        recoveredFromBackup: <integer>, // integer days since UNIX epoch, e.g. 16446 - optional
       },
       partner: { // This section may not be immediately available on startup
         distributionId: <string>, // pref "distribution.id", null on failure
@@ -186,6 +187,7 @@ Structure:
             DWriteEnabled: <bool>, // null on failure
             ContentBackend: <string> // One of "Cairo", "Skia", or "Direct2D 1.1"
             Headless: <bool>, // null on failure
+            TargetFrameRate: <number>, // frame rate in Hz, typically 60 or more
             //DWriteVersion: <string>, // temporarily removed, pending bug 1154500
             adapters: [
               {
@@ -280,7 +282,8 @@ Structure:
             hasBinaryComponents: <bool>,
             installDay: <number>, // days since UNIX epoch, 0 on failure
             updateDay: <number>, // days since UNIX epoch, 0 on failure
-            signedState: <integer>, // whether the add-on is signed by AMO, only present for extensions
+            signedState: <integer>, // whether the add-on is signed by AMO
+            signedTypes: <string>, // JSON-stringified array of signature types found (see nsIAppSignatureInfo's SignatureAlgorithm enum)
             isSystem: <bool>, // true if this is a System Add-on
             isWebExtension: <bool>, // true if this is a WebExtension
             multiprocessCompatible: <bool>, // true if this add-on does *not* require e10s shims
@@ -300,6 +303,8 @@ Structure:
           hasBinaryComponents: <bool>
           installDay: <number>, // days since UNIX epoch, 0 on failure
           updateDay: <number>, // days since UNIX epoch, 0 on failure
+          signedState: <integer>, // whether the add-on is signed by AMO
+          signedTypes: <string>, // JSON-stringified array of signature types found (see nsIAppSignatureInfo's SignatureAlgorithm enum)
         },
         activeGMPlugins: {
             <gmp id>: {
@@ -384,13 +389,15 @@ Each key in the object is the name of a preference. A key's value depends on the
 
 The following is a partial list of `collected preferences <https://searchfox.org/mozilla-central/search?q=const+DEFAULT_ENVIRONMENT_PREFS&path=>`_.
 
-- ``browser.fixup.alternate.enabled``: Whether the browser should try to modify unknown hosts by adding a prefix (e.g. www) and a suffix (.com). Defaults to false.
-
 - ``browser.migrate.interactions.bookmarks``: True if the user has imported bookmarks from another browser before. This preference gets transferred during profile resets.
+
+- ``browser.migrate.interactions.csvpasswords``: True if the user has imported passwords through the migration wizard from a CSV file. This preference gets transferred during profile resets.
 
 - ``browser.migrate.interactions.history``: True if the user has imported history from another browser before. This preference gets transferred during profile resets.
 
 - ``browser.migrate.interactions.passwords``: True if the user has imported passwords from another browser before. This preference gets transferred during profile resets.
+
+- ``browser.privatebrowsing.autostart``: True if the user has enabled the permanent private browsing mode. Defaults to false.
 
 - ``browser.search.suggest.enabled``: The "master switch" for search suggestions everywhere in Firefox (search bar, urlbar, etc.). Defaults to true.
 
@@ -405,8 +412,6 @@ The following is a partial list of `collected preferences <https://searchfox.org
 - ``browser.urlbar.quicksuggest.dataCollection.enabled``: Whether the user has opted in to data collection for Firefox Suggest. This pref is set to true when the user opts in to the Firefox Suggest onboarding dialog modal. The user can also toggle the pref using a toggle switch in the Firefox Suggest preferences UI.
 
 - ``browser.urlbar.showSearchTerms.enabled``: True if to show the search term in the urlbar while on a default search engine results page.
-
-- ``browser.urlbar.suggest.bestmatch``: True if to show best match result is enabled in the urlbar.
 
 - ``browser.urlbar.suggest.quicksuggest.nonsponsored``: True if non-sponsored Firefox Suggest suggestions are enabled in the urlbar.
 
@@ -469,6 +474,14 @@ The following is a partial list of `collected preferences <https://searchfox.org
 - ``nimbus.qa.pref-2``: Used to monitor the results of pref-setting test experiments.
 
 - ``signon.firefoxRelay.feature``: User choice regarding Firefox Relay integration with Firefox Password Manager. Can be one of undefined, "available", "offered", "enabled" or "disabled".
+
+- ``dom.popup_allowed_events``: Which events should allow popups. Only exposed with about:config.
+
+- ``intl.ime.use_composition_events_for_insert_text``: Whether a set of composition events is fired when user inserts text without keyboard events nor composing state of a composition (only on Linux and macOS).
+
+- ``xpinstall.signatures.required``: Whether XPI files cryptographic signatures are being verified and enforced.
+
+- ``xpinstall.signatures.weakSignaturesTemporarilyAllowed``: Whether new XPI files only signed with weak signature algorithms are still allowed to be installed
 
 attribution
 ~~~~~~~~~~~
@@ -535,6 +548,13 @@ firstUseDate
 
 The time of the first use of profile. If this is an old profile where we can't
 determine this this field will not be present.
+It's read from a file-stored timestamp from the client's profile directory.
+
+recoveredFromBackup
+~~~~~~~~~~~~~~~~~~~
+
+The time that this profile was recovered from a backup. If the profile was never
+recovered from a backup, this field will not be present.
 It's read from a file-stored timestamp from the client's profile directory.
 
 partner

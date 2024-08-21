@@ -1,5 +1,14 @@
+AddonTestUtils.overrideCertDB();
+AddonTestUtils.usePrivilegedSignatures = id => id.startsWith("privileged-");
+
+// Some tests in this test file can't run on android build because
+// theme addon type isn't supported.
+const skipOnAndroid = () => ({
+  skip_if: () => AppConstants.platform === "android",
+});
+
 let profileDir;
-add_task(async function setup() {
+add_setup(async function setup() {
   profileDir = gProfD.clone();
   profileDir.append("extensions");
 
@@ -11,13 +20,15 @@ add_task(async function setup() {
   await promiseStartupManager();
 });
 
+// Extension without id in the manifest file and signed with AMO prod root
+// (https://addons.mozilla.org/en-US/firefox/addon/reference-static-theme/).
 const IMPLICIT_ID_XPI = "data/webext-implicit-id.xpi";
-const IMPLICIT_ID_ID = "webext_implicit_id@tests.mozilla.org";
+const IMPLICIT_ID_ID = "{46607a7b-1b2a-40ce-9afe-91cda52c46a6}";
 
 // webext-implicit-id.xpi has a minimal manifest with no
 // applications or browser_specific_settings, so its id comes
 // from its signature, which should be the ID constant defined below.
-add_task(async function test_implicit_id() {
+add_task(skipOnAndroid(), async function test_implicit_id() {
   let addon = await promiseAddonByID(IMPLICIT_ID_ID);
   equal(addon, null, "Add-on is not installed");
 
@@ -32,7 +43,7 @@ add_task(async function test_implicit_id() {
 // We should also be able to install webext-implicit-id.xpi temporarily
 // and it should look just like the regular install (ie, the ID should
 // come from the signature)
-add_task(async function test_implicit_id_temp() {
+add_task(skipOnAndroid(), async function test_implicit_id_temp() {
   let addon = await promiseAddonByID(IMPLICIT_ID_ID);
   equal(addon, null, "Add-on is not installed");
 
@@ -117,12 +128,14 @@ add_task(async function test_unsigned_no_id_temp_install() {
   const addon = await AddonManager.installTemporaryAddon(addonDir);
 
   ok(addon.id, "ID should have been auto-generated");
-  ok(
-    Math.abs(addon.installDate - testDate) < 10000,
+  Assert.less(
+    Math.abs(addon.installDate - testDate),
+    10000,
     "addon has an expected installDate"
   );
-  ok(
-    Math.abs(addon.updateDate - testDate) < 10000,
+  Assert.less(
+    Math.abs(addon.updateDate - testDate),
+    10000,
     "addon has an expected updateDate"
   );
 
@@ -598,6 +611,187 @@ add_task(async function test_permissions_prompt() {
   await IOUtils.remove(xpi.path);
 });
 
+// Check normalized optional origins.
+add_task(async function test_normalized_optional_origins() {
+  const assertAddonWrapperPermissionsProperties = async (
+    manifest,
+    expected
+  ) => {
+    let xpi = ExtensionTestCommon.generateXPI({ manifest });
+
+    let install = await AddonManager.getInstallForFile(xpi);
+
+    let perminfo;
+    let installPromptCompletedDeferred = Promise.withResolvers();
+    let installPromptShownDeferred = Promise.withResolvers();
+    install.promptHandler = info => {
+      perminfo = info;
+      installPromptShownDeferred.resolve();
+      return installPromptCompletedDeferred.promise;
+    };
+
+    const promiseInstalled = install.install();
+    info("Wait for the install prompt");
+    await installPromptShownDeferred.promise;
+
+    equal(
+      await promiseAddonByID(perminfo.addon.id),
+      null,
+      "Extension should not be installed yet"
+    );
+    notEqual(perminfo, undefined, "Permission handler was invoked");
+    notEqual(perminfo.addon, null, "Permission info includes the new addon");
+    equal(
+      perminfo.addon.isPrivileged,
+      expected.isPrivileged,
+      `Expect the addon to be ${expected.isPrivileged ? "" : "non-"}privileged`
+    );
+    let addon = perminfo.addon;
+    deepEqual(
+      addon.userPermissions,
+      expected.userPermissions,
+      "userPermissions are correct"
+    );
+    deepEqual(
+      addon.optionalPermissions,
+      expected.optionalPermissions,
+      "optionalPermissions are correct"
+    );
+    info("Assert normalized optional origins on non-installed extension");
+    deepEqual(
+      addon.optionalOriginsNormalized,
+      expected.optionalOriginsNormalized,
+      "optionalOriginsNormalized are correct"
+    );
+
+    installPromptCompletedDeferred.resolve();
+    await promiseInstalled;
+    addon = await promiseAddonByID(perminfo.addon.id);
+    notEqual(addon, null, "Extension was installed successfully");
+
+    info("Assert normalized optional origins again on installed extension");
+    deepEqual(
+      addon.optionalOriginsNormalized,
+      expected.optionalOriginsNormalized,
+      "Normalized origin permissions are correct"
+    );
+
+    await addon.uninstall();
+    await IOUtils.remove(xpi.path);
+  };
+
+  info(
+    "Test normalized optional origins on non-privileged ManifestV2 extension"
+  );
+  const manifestV2 = {
+    name: "permissions test mv2",
+    manifest_version: 2,
+    // Include a permission that would trigger an install time prompt.
+    permissions: ["tabs"],
+    // Include optional origins to be normalized.
+    // NOTE: we expect the normalized origins to be deduplicated.
+    optional_permissions: [
+      "http://*.example.com/",
+      "http://*.example.com/somepath/",
+      "*://example.org/*",
+      "*://example.org/another-path/*",
+      "file://*/*",
+    ],
+  };
+
+  await assertAddonWrapperPermissionsProperties(manifestV2, {
+    isPrivileged: false,
+    userPermissions: { permissions: manifestV2.permissions, origins: [] },
+    optionalPermissions: {
+      permissions: [],
+      origins: manifestV2.optional_permissions,
+    },
+    optionalOriginsNormalized: [
+      "http://*.example.com/*",
+      "*://example.org/*",
+      "file://*/*",
+    ],
+  });
+
+  info(
+    "Test normalized optional origins on non-privileged ManifestV3 extension"
+  );
+  const manifestV3 = {
+    name: "permissions test mv3",
+    manifest_version: 3,
+    // Include a permission that would trigger an install time prompt.
+    permissions: ["tabs"],
+
+    // Content Scripts match patterns are also expected to be part
+    // of the optional host permissions (and to be deduplicated).
+    content_scripts: [
+      {
+        matches: ["*://*/*"],
+        js: ["script.js"],
+      },
+      {
+        matches: ["*://example.org/*"],
+        js: ["script2.js"],
+      },
+    ],
+
+    // Include optional origins to be normalized.
+    host_permissions: [
+      "http://*.example.com/",
+      "*://example.org/*",
+      "file://*/*",
+    ],
+  };
+
+  await assertAddonWrapperPermissionsProperties(manifestV3, {
+    isPrivileged: false,
+    userPermissions: { permissions: manifestV3.permissions, origins: [] },
+    optionalPermissions: {
+      permissions: [],
+      origins: [...manifestV3.host_permissions, "*://*/*"],
+    },
+    optionalOriginsNormalized: [
+      "http://*.example.com/*",
+      "*://example.org/*",
+      "file://*/*",
+      "*://*/*",
+    ],
+  });
+
+  info("Test normalized optional origins on privileged ManifestV2 extension");
+  const manifestV2Privileged = {
+    name: "permissions test privileged mv2",
+    manifest_version: 2,
+    browser_specific_settings: { gecko: { id: "privileged-mv2@ext" } },
+    // Include a permission that would trigger an install time prompt.
+    permissions: ["tabs", "mozillaAddons"],
+    optional_permissions: [
+      "http://*.example.com/",
+      "*://example.org/*",
+      "file://*/*",
+      "resource://gre/",
+    ],
+  };
+
+  await assertAddonWrapperPermissionsProperties(manifestV2Privileged, {
+    isPrivileged: true,
+    userPermissions: {
+      permissions: manifestV2Privileged.permissions,
+      origins: [],
+    },
+    optionalPermissions: {
+      permissions: [],
+      origins: manifestV2Privileged.optional_permissions,
+    },
+    optionalOriginsNormalized: [
+      "http://*.example.com/*",
+      "*://example.org/*",
+      "file://*/*",
+      "resource://gre/*",
+    ],
+  });
+});
+
 // Check permissions prompt cancellation
 add_task(async function test_permissions_prompt_cancel() {
   const manifest = {
@@ -627,41 +821,6 @@ add_task(async function test_permissions_prompt_cancel() {
   equal(addon, null, "Extension was not installed");
 
   await IOUtils.remove(xpi.path);
-});
-
-// Test that presence of 'edge' property in 'browser_specific_settings' doesn't prevent installation from completing successfully
-add_task(async function test_non_gecko_bss_install() {
-  const ID = "ms_edge@tests.mozilla.org";
-
-  const manifest = {
-    name: "MS Edge and unknown browser test",
-    description:
-      "extension with bss properties for 'edge', and 'unknown_browser'",
-    manifest_version: 2,
-    version: "1.0",
-    applications: { gecko: { id: ID } },
-    browser_specific_settings: {
-      edge: {
-        browser_action_next_to_addressbar: true,
-      },
-      unknown_browser: {
-        unknown_setting: true,
-      },
-    },
-  };
-
-  const extension = ExtensionTestUtils.loadExtension({
-    manifest,
-    useAddonManager: "temporary",
-  });
-  ExtensionTestUtils.failOnSchemaWarnings(false);
-  await extension.startup();
-  ExtensionTestUtils.failOnSchemaWarnings(true);
-
-  const addon = await promiseAddonByID(ID);
-  notEqual(addon, null, "Add-on is installed");
-
-  await extension.unload();
 });
 
 // Test that bss overrides applications if both are present.

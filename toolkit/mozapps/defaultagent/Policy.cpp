@@ -30,7 +30,9 @@
 // The Firefox policy engine hardcodes the string "Mozilla" in its registry
 // key accesses rather than using the configured vendor name, so we should do
 // the same here to be sure we're compatible with it.
-#define POLICY_REGKEY_NAME L"SOFTWARE\\Policies\\Astian\\" MOZ_APP_BASENAME
+#define POLICY_REGKEY_NAME L"SOFTWARE\\Policies\\Mozilla\\" MOZ_APP_BASENAME
+
+namespace mozilla::default_agent {
 
 // This enum is the return type for the functions that check policy values.
 enum class PolicyState {
@@ -156,3 +158,5 @@ bool IsAgentDisabled() {
 bool IsTelemetryDisabled() {
   return IsThingDisabled(TELEMETRY_POLICY_NAME, L"" TELEMETRY_POLICY_NAME);
 }
+
+}  // namespace mozilla::default_agent

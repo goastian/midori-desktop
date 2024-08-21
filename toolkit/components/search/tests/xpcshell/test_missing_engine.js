@@ -2,7 +2,8 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 // This test is designed to check the search service keeps working if there's
-// a built-in engine missing from the configuration.
+// an application provided WebExtension missing that is referenced from the
+// configuration. Only applies to the old search configuration.
 
 "use strict";
 
@@ -10,6 +11,28 @@ const GOOD_CONFIG = [
   {
     webExtension: {
       id: "engine@search.mozilla.org",
+      name: "Test search engine",
+      search_url: "https://www.google.com/search",
+      params: [
+        {
+          name: "q",
+          value: "{searchTerms}",
+        },
+        {
+          name: "channel",
+          condition: "purpose",
+          purpose: "contextmenu",
+          value: "rcs",
+        },
+        {
+          name: "channel",
+          condition: "purpose",
+          purpose: "keyword",
+          value: "fflb",
+        },
+      ],
+      suggest_url:
+        "https://suggestqueries.google.com/complete/search?output=firefox&client=firefox&q={searchTerms}",
     },
     appliesTo: [
       {
@@ -33,14 +56,12 @@ const BAD_CONFIG = [
   },
 ];
 
-add_task(async function setup() {
+add_setup(async function () {
   SearchTestUtils.useMockIdleService();
   await AddonTestUtils.promiseStartupManager();
 
   // This test purposely attempts to load a missing engine.
-  consoleAllowList.push(
-    "Could not load engine engine-missing@search.mozilla.org"
-  );
+  consoleAllowList.push("Could not load engine");
 });
 
 add_task(async function test_startup_with_missing() {

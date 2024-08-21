@@ -15,10 +15,8 @@ async function run_test() {
   gTestFiles = gTestFilesPartialSuccess;
   gTestDirs = gTestDirsPartialSuccess;
   await setupUpdaterTest(FILE_PARTIAL_MAR, false);
-  await runHelperFileInUse(
-    gTestFiles[11].relPathDir + gTestFiles[11].fileName,
-    false
-  );
+  const testFile = getTestFileByName("0exe0.exe");
+  await runHelperFileInUse(testFile.relPathDir + testFile.fileName, false);
   await stageUpdate(STATE_AFTER_STAGE, true);
   checkPostUpdateRunningFile(false);
   checkFilesAfterUpdateSuccess(getStageDirFile, true);
@@ -26,7 +24,7 @@ async function run_test() {
   // Switch the application to the staged application that was updated.
   runUpdate(STATE_AFTER_RUNUPDATE, true, 1, true);
   await waitForHelperExit();
-  standardInit();
+  await testPostUpdateProcessing();
   checkPostUpdateRunningFile(false);
   setTestFilesAndDirsForFailure();
   checkFilesAfterUpdateFailure(getApplyDirFile);
@@ -35,6 +33,6 @@ async function run_test() {
     ERR_MOVE_DESTDIR_7 + "\n" + STATE_FAILED_WRITE_ERROR + "\n" + CALL_QUIT
   );
   await waitForUpdateXMLFiles();
-  checkUpdateManager(STATE_NONE, false, STATE_AFTER_RUNUPDATE, 0, 1);
+  await checkUpdateManager(STATE_NONE, false, STATE_AFTER_RUNUPDATE, 0, 1);
   checkCallbackLog();
 }

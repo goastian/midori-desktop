@@ -10,7 +10,7 @@
  * - search.json.mozlz4 is created.
  */
 
-add_task(async function setup() {
+add_setup(async function () {
   useHttpServer();
   await AddonTestUtils.promiseStartupManager();
 });
@@ -30,7 +30,7 @@ add_task(async function test_nosettings() {
   settingsFile.append(SETTINGS_FILENAME);
   Assert.ok(settingsFile.exists());
 
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}engine.xml`,
   });
 
