@@ -10,6 +10,13 @@ const {
   isSupportedByConsoleTable,
 } = require("resource://devtools/shared/webconsole/messages.js");
 
+loader.lazyRequireGetter(
+  this,
+  "getAdHocFrontOrPrimitiveGrip",
+  "resource://devtools/client/fronts/object.js",
+  true
+);
+
 // URL Regex, common idioms:
 //
 // Lead-in (URL):
@@ -77,9 +84,9 @@ const {
   NetworkEventMessage,
 } = require("resource://devtools/client/webconsole/types.js");
 
-function prepareMessage(resource, idGenerator) {
+function prepareMessage(resource, idGenerator, persistLogs) {
   if (!resource.source) {
-    resource = transformResource(resource);
+    resource = transformResource(resource, persistLogs);
   }
 
   resource.id = idGenerator.getNextId(resource);
@@ -91,11 +98,12 @@ function prepareMessage(resource, idGenerator) {
  *
  * @param {Object} resource: This can be either a simple RDP packet or an object emitted
  *                           by the Resource API.
+ * @param {Boolean} persistLogs: Value of the "Persist logs" setting
  */
-function transformResource(resource) {
+function transformResource(resource, persistLogs) {
   switch (resource.resourceType || resource.type) {
     case ResourceCommand.TYPES.CONSOLE_MESSAGE: {
-      return transformConsoleAPICallResource(resource);
+      return transformConsoleAPICallResource(resource, persistLogs);
     }
 
     case ResourceCommand.TYPES.PLATFORM_MESSAGE: {
@@ -114,6 +122,14 @@ function transformResource(resource) {
       return transformNetworkEventResource(resource);
     }
 
+    case ResourceCommand.TYPES.JSTRACER_TRACE: {
+      return transformTraceResource(resource);
+    }
+
+    case ResourceCommand.TYPES.JSTRACER_STATE: {
+      return transformTracerStateResource(resource);
+    }
+
     case "will-navigate": {
       return transformNavigationMessagePacket(resource);
     }
@@ -126,7 +142,7 @@ function transformResource(resource) {
 }
 
 // eslint-disable-next-line complexity
-function transformConsoleAPICallResource(consoleMessageResource) {
+function transformConsoleAPICallResource(consoleMessageResource, persistLogs) {
   const { message, targetFront } = consoleMessageResource;
 
   let parameters = message.arguments;
@@ -139,7 +155,9 @@ function transformConsoleAPICallResource(consoleMessageResource) {
   switch (type) {
     case "clear":
       // We show a message to users when calls console.clear() is called.
-      parameters = [l10n.getStr("consoleCleared")];
+      parameters = [
+        l10n.getStr(persistLogs ? "preventedConsoleClear" : "consoleCleared"),
+      ];
       break;
     case "count":
     case "countReset":
@@ -343,6 +361,109 @@ function transformNetworkEventResource(networkEventResource) {
   return new NetworkEventMessage(networkEventResource);
 }
 
+function transformTraceResource(traceResource) {
+  const { targetFront, prefix, timeStamp } = traceResource;
+  if (traceResource.eventName) {
+    const { eventName } = traceResource;
+
+    return new ConsoleMessage({
+      targetFront,
+      source: MESSAGE_SOURCE.JSTRACER,
+      depth: 0,
+      eventName,
+      timeStamp,
+      prefix,
+      allowRepeating: false,
+    });
+  }
+  const {
+    depth,
+    implementation,
+    displayName,
+    filename,
+    lineNumber,
+    columnNumber,
+    args,
+    sourceId,
+
+    relatedTraceId,
+    why,
+
+    mutationType,
+    mutationElement,
+  } = traceResource;
+
+  const frame = {
+    source: filename,
+    sourceId,
+    line: lineNumber,
+    column: columnNumber,
+  };
+
+  return new ConsoleMessage({
+    targetFront,
+    source: MESSAGE_SOURCE.JSTRACER,
+    frame,
+    depth,
+    implementation,
+    displayName,
+    parameters: args
+      ? args.map(p => (p ? getAdHocFrontOrPrimitiveGrip(p, targetFront) : p))
+      : null,
+    returnedValue:
+      why && "returnedValue" in traceResource
+        ? getAdHocFrontOrPrimitiveGrip(traceResource.returnedValue, targetFront)
+        : undefined,
+    relatedTraceId,
+    why,
+    messageText: null,
+    timeStamp,
+    prefix,
+    mutationType,
+    mutationElement: mutationElement
+      ? getAdHocFrontOrPrimitiveGrip(mutationElement, targetFront)
+      : null,
+    // Allow the identical frames to be coallesced into a unique message
+    // with a repeatition counter so that we keep the output short in case of loops.
+    allowRepeating: true,
+  });
+}
+
+function transformTracerStateResource(stateResource) {
+  const { targetFront, enabled, logMethod, timeStamp, reason } = stateResource;
+  let message;
+  if (enabled) {
+    if (logMethod == "stdout") {
+      message = l10n.getStr("webconsole.message.commands.startTracingToStdout");
+    } else if (logMethod == "console") {
+      message = l10n.getStr(
+        "webconsole.message.commands.startTracingToWebConsole"
+      );
+    } else if (logMethod == "profiler") {
+      message = l10n.getStr(
+        "webconsole.message.commands.startTracingToProfiler"
+      );
+    } else {
+      throw new Error(`Unsupported tracer log method ${logMethod}`);
+    }
+  } else if (reason) {
+    message = l10n.getFormatStr(
+      "webconsole.message.commands.stopTracingWithReason",
+      [reason]
+    );
+  } else {
+    message = l10n.getStr("webconsole.message.commands.stopTracing");
+  }
+  return new ConsoleMessage({
+    targetFront,
+    source: MESSAGE_SOURCE.CONSOLE_API,
+    type: MESSAGE_TYPE.JSTRACER,
+    level: MESSAGE_LEVEL.LOG,
+    messageText: message,
+    timeStamp,
+  });
+}
+
 function transformEvaluationResultPacket(packet) {
   let {
     exceptionMessage,
@@ -444,7 +565,9 @@ function areMessagesSimilar(message1, message2) {
     message1.isPromiseRejection !== message2.isPromiseRejection ||
     message1.userProvidedStyles?.length !==
       message2.userProvidedStyles?.length ||
-    `${message1.userProvidedStyles}` !== `${message2.userProvidedStyles}`
+    `${message1.userProvidedStyles}` !== `${message2.userProvidedStyles}` ||
+    message1.mutationType !== message2.mutationType ||
+    message1.mutationElement != message2.mutationElement
   ) {
     return false;
   }

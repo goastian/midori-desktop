@@ -59,6 +59,23 @@ const {
 const CONNECTION_TIMING_OUT_DELAY = 3000;
 const CONNECTION_CANCEL_DELAY = 13000;
 
+async function getRuntimeIcon(runtime, channel) {
+  if (runtime.isFenix) {
+    switch (channel) {
+      case "release":
+      case "beta":
+        return "chrome://devtools/skin/images/aboutdebugging-fenix.svg";
+      case "aurora":
+      default:
+        return "chrome://devtools/skin/images/aboutdebugging-fenix-nightly.svg";
+    }
+  }
+
+  return channel === "release" || channel === "beta" || channel === "aurora"
+    ? `chrome://devtools/skin/images/aboutdebugging-firefox-${channel}.svg`
+    : "chrome://devtools/skin/images/aboutdebugging-firefox-nightly.svg";
+}
+
 function onRemoteDevToolsClientClosed() {
   window.AboutDebugging.onNetworkLocationsUpdated();
   window.AboutDebugging.onUSBRuntimesUpdated();
@@ -106,7 +123,7 @@ function connectRuntime(id) {
       const deviceDescription = await clientWrapper.getDeviceDescription();
       const compatibilityReport =
         await clientWrapper.checkVersionCompatibility();
-      const icon = "resource:///chrome/browser/content/branding/icon64.png"
+      const icon = await getRuntimeIcon(runtime, deviceDescription.channel);
 
       const {
         CONNECTION_PROMPT,
@@ -185,7 +202,7 @@ function connectRuntime(id) {
 }
 
 function createThisFirefoxRuntime() {
-  return ({ dispatch, getState }) => {
+  return ({ dispatch }) => {
     const thisFirefoxRuntime = {
       id: RUNTIMES.THIS_FIREFOX,
       isConnecting: false,
@@ -471,7 +488,7 @@ function updateRemoteRuntimes(runtimes, type) {
  * before leaving about:debugging.
  */
 function removeRuntimeListeners() {
-  return ({ dispatch, getState }) => {
+  return ({ getState }) => {
     const allRuntimes = getAllRuntimes(getState().runtimes);
     const remoteRuntimes = allRuntimes.filter(
       r => r.type !== RUNTIMES.THIS_FIREFOX

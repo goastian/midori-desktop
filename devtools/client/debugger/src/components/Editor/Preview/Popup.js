@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { Component } from "react";
-import PropTypes from "prop-types";
-import { connect } from "../../../utils/connect";
+import React, { Component } from "devtools/client/shared/vendor/react";
+import { div } from "devtools/client/shared/vendor/react-dom-factories";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
+import { connect } from "devtools/client/shared/vendor/react-redux";
 
 import Reps from "devtools/client/shared/components/reps/index";
 const {
-  REPS: { Rep },
+  REPS: { Grip },
   MODE,
   objectInspector,
 } = Reps;
@@ -16,17 +17,13 @@ const {
 const { ObjectInspector, utils } = objectInspector;
 
 const {
-  node: { nodeIsPrimitive, nodeIsFunction, nodeIsObject },
+  node: { nodeIsPrimitive },
 } = utils;
 
 import ExceptionPopup from "./ExceptionPopup";
 
-import actions from "../../../actions";
-import { getThreadContext } from "../../../selectors";
+import actions from "../../../actions/index";
 import Popover from "../../shared/Popover";
-import PreviewFunction from "../../shared/PreviewFunction";
-
-import "./Popup.css";
 
 export class Popup extends Component {
   constructor(props) {
@@ -36,7 +33,6 @@ export class Popup extends Component {
   static get propTypes() {
     return {
       clearPreview: PropTypes.func.isRequired,
-      cx: PropTypes.object.isRequired,
       editorRef: PropTypes.object.isRequired,
       highlightDomElement: PropTypes.func.isRequired,
       openElementInInspector: PropTypes.func.isRequired,
@@ -48,27 +44,39 @@ export class Popup extends Component {
   }
 
   componentDidMount() {
-    this.addHighlightToToken();
+    this.addHighlightToToken(this.props.preview.target);
   }
 
   componentWillUnmount() {
-    this.removeHighlightFromToken();
+    this.removeHighlightFromToken(this.props.preview.target);
   }
 
-  addHighlightToToken() {
+  componentDidUpdate(prevProps) {
     const { target } = this.props.preview;
-    if (target) {
-      target.classList.add("preview-token");
-      addHighlightToTargetSiblings(target, this.props);
+    if (prevProps.target == target) {
+      return;
     }
+
+    this.removeHighlightFromToken(prevProps.preview.target);
+    this.addHighlightToToken(target);
   }
 
-  removeHighlightFromToken() {
-    const { target } = this.props.preview;
-    if (target) {
-      target.classList.remove("preview-token");
-      removeHighlightForTargetSiblings(target);
+  addHighlightToToken(target) {
+    if (!target) {
+      return;
     }
+
+    target.classList.add("preview-token");
+    addHighlightToTargetSiblings(target, this.props);
+  }
+
+  removeHighlightFromToken(target) {
+    if (!target) {
+      return;
+    }
+
+    target.classList.remove("preview-token");
+    removeHighlightForTargetSiblings(target);
   }
 
   calculateMaxHeight = () => {
@@ -90,169 +98,71 @@ export class Popup extends Component {
     return document.createElement(element);
   }
 
-  renderFunctionPreview() {
-    const {
-      cx,
-      selectSourceURL,
-      preview: { resultGrip },
-    } = this.props;
-
-    if (!resultGrip) {
-      return null;
-    }
-
-    const { location } = resultGrip;
-
-    return (
-      <div
-        className="preview-popup"
-        onClick={() =>
-          location &&
-          selectSourceURL(cx, location.url, {
-            line: location.line,
-          })
-        }
-      >
-        <PreviewFunction func={resultGrip} />
-      </div>
-    );
+  renderExceptionPreview(exception) {
+    return React.createElement(ExceptionPopup, {
+      exception,
+      clearPreview: this.props.clearPreview,
+    });
   }
 
-  renderObjectPreview() {
+  renderPreview() {
     const {
-      preview: { root, properties },
-      openLink,
-      openElementInInspector,
-      highlightDomElement,
-      unHighlightDomElement,
+      preview: { root, exception, resultGrip },
     } = this.props;
 
     const usesCustomFormatter =
       root?.contents?.value?.useCustomFormatter ?? false;
 
-    if (!properties.length) {
-      return (
-        <div className="preview-popup">
-          <span className="label">{L10N.getStr("preview.noProperties")}</span>
-        </div>
-      );
-    }
-
-    const roots = usesCustomFormatter ? [root] : properties;
-
-    return (
-      <div
-        className="preview-popup"
-        style={{ maxHeight: this.calculateMaxHeight() }}
-      >
-        <ObjectInspector
-          roots={roots}
-          autoExpandDepth={0}
-          autoReleaseObjectActors={false}
-          mode={usesCustomFormatter ? MODE.LONG : null}
-          disableWrap={true}
-          focusable={false}
-          openLink={openLink}
-          createElement={this.createElement}
-          onDOMNodeClick={grip => openElementInInspector(grip)}
-          onInspectIconClick={grip => openElementInInspector(grip)}
-          onDOMNodeMouseOver={grip => highlightDomElement(grip)}
-          onDOMNodeMouseOut={grip => unHighlightDomElement(grip)}
-          mayUseCustomFormatter={true}
-        />
-      </div>
-    );
-  }
-
-  renderSimplePreview() {
-    const {
-      openLink,
-      preview: { resultGrip },
-    } = this.props;
-    return (
-      <div className="preview-popup">
-        {Rep({
-          object: resultGrip,
-          mode: MODE.LONG,
-          openLink,
-        })}
-      </div>
-    );
-  }
-
-  renderExceptionPreview(exception) {
-    return (
-      <ExceptionPopup
-        exception={exception}
-        mouseout={this.onMouseOutException}
-      />
-    );
-  }
-
-  renderPreview() {
-    // We don't have to check and
-    // return on `false`, `""`, `0`, `undefined` etc,
-    // these falsy simple typed value because we want to
-    // do `renderSimplePreview` on these values below.
-    const {
-      preview: { root, exception },
-    } = this.props;
-
-    if (nodeIsFunction(root)) {
-      return this.renderFunctionPreview();
-    }
-
-    if (nodeIsObject(root)) {
-      return <div>{this.renderObjectPreview()}</div>;
-    }
-
     if (exception) {
       return this.renderExceptionPreview(exception);
     }
 
-    return this.renderSimplePreview();
+    return div(
+      {
+        className: "preview-popup",
+        style: {
+          maxHeight: this.calculateMaxHeight(),
+        },
+      },
+      React.createElement(ObjectInspector, {
+        roots: [root],
+        autoExpandDepth: 1,
+        autoReleaseObjectActors: false,
+        mode: usesCustomFormatter ? MODE.LONG : MODE.SHORT,
+        disableWrap: true,
+        displayRootNodeAsHeader: true,
+        focusable: false,
+        openLink: this.props.openLink,
+        defaultRep: Grip,
+        createElement: this.createElement,
+        onDOMNodeClick: grip => this.props.openElementInInspector(grip),
+        onInspectIconClick: grip => this.props.openElementInInspector(grip),
+        onDOMNodeMouseOver: grip => this.props.highlightDomElement(grip),
+        onDOMNodeMouseOut: grip => this.props.unHighlightDomElement(grip),
+        mayUseCustomFormatter: true,
+        onViewSourceInDebugger: () => {
+          return (
+            resultGrip.location &&
+            this.props.selectSourceURL(resultGrip.location.url, {
+              line: resultGrip.location.line,
+              column: resultGrip.location.column,
+            })
+          );
+        },
+      })
+    );
   }
 
   getPreviewType() {
     const {
-      preview: { root, properties, exception },
+      preview: { root, exception },
     } = this.props;
-    if (
-      exception ||
-      nodeIsPrimitive(root) ||
-      nodeIsFunction(root) ||
-      !Array.isArray(properties) ||
-      properties.length === 0
-    ) {
+    if (exception || nodeIsPrimitive(root)) {
       return "tooltip";
     }
 
     return "popover";
   }
-
-  onMouseOut = () => {
-    const { clearPreview, cx } = this.props;
-
-    clearPreview(cx);
-  };
-
-  onMouseOutException = (shouldClearOnMouseout, isExceptionStactraceOpen) => {
-    // onMouseOutException can be called:
-    // a. when the mouse leaves Popover element
-    // b. when the mouse leaves ExceptionPopup element
-    // We want to prevent closing the popup when the stacktrace
-    // is expanded and the mouse leaves either the Popover element
-    // or the ExceptionPopup element.
-    const { clearPreview, cx } = this.props;
-
-    if (shouldClearOnMouseout) {
-      this.isExceptionStactraceOpen = isExceptionStactraceOpen;
-    }
-
-    if (!this.isExceptionStactraceOpen) {
-      clearPreview(cx);
-    }
-  };
 
   render() {
     const {
@@ -268,16 +178,16 @@ export class Popup extends Component {
     }
 
     const type = this.getPreviewType();
-    return (
-      <Popover
-        targetPosition={cursorPos}
-        type={type}
-        editorRef={editorRef}
-        target={this.props.preview.target}
-        mouseout={exception ? this.onMouseOutException : this.onMouseOut}
-      >
-        {this.renderPreview()}
-      </Popover>
+    return React.createElement(
+      Popover,
+      {
+        targetPosition: cursorPos,
+        type,
+        editorRef,
+        target: this.props.preview.target,
+        mouseout: this.props.clearPreview,
+      },
+      this.renderPreview()
     );
   }
 }
@@ -355,28 +265,13 @@ export function removeHighlightForTargetSiblings(target) {
   }
 }
 
-const mapStateToProps = state => ({
-  cx: getThreadContext(state),
-});
-
-const {
-  addExpression,
-  selectSourceURL,
-  openLink,
-  openElementInInspectorCommand,
-  highlightDomElement,
-  unHighlightDomElement,
-  clearPreview,
-} = actions;
-
 const mapDispatchToProps = {
-  addExpression,
-  selectSourceURL,
-  openLink,
-  openElementInInspector: openElementInInspectorCommand,
-  highlightDomElement,
-  unHighlightDomElement,
-  clearPreview,
+  addExpression: actions.addExpression,
+  selectSourceURL: actions.selectSourceURL,
+  openLink: actions.openLink,
+  openElementInInspector: actions.openElementInInspectorCommand,
+  highlightDomElement: actions.highlightDomElement,
+  unHighlightDomElement: actions.unHighlightDomElement,
 };
 
-export default connect(mapStateToProps, mapDispatchToProps)(Popup);
+export default connect(null, mapDispatchToProps)(Popup);

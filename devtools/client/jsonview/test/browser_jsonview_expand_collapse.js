@@ -3,7 +3,7 @@
 
 "use strict";
 
-XPCOMUtils.defineLazyGetter(this, "jsonViewStrings", () => {
+ChromeUtils.defineLazyGetter(this, "jsonViewStrings", () => {
   return Services.strings.createBundle(
     "chrome://devtools/locale/jsonview.properties"
   );
@@ -45,11 +45,12 @@ add_task(async function () {
   const json = JSON.stringify({
     data: Array(1e5)
       .fill()
-      .map(x => "hoot"),
+      .map(() => "hoot"),
     status: "ok",
   });
-  ok(
-    json.length > EXPAND_THRESHOLD,
+  Assert.greater(
+    json.length,
+    EXPAND_THRESHOLD,
     "The generated JSON must be larger than 100kB"
   );
   await addJsonViewTab("data:application/json," + json);

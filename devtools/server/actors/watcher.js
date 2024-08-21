@@ -9,39 +9,21 @@ const { watcherSpec } = require("resource://devtools/shared/specs/watcher.js");
 const Resources = require("resource://devtools/server/actors/resources/index.js");
 const { TargetActorRegistry } = ChromeUtils.importESModule(
   "resource://devtools/server/actors/targets/target-actor-registry.sys.mjs",
-  {
-    loadInDevToolsLoader: false,
-  }
+  { global: "shared" }
 );
-const { WatcherRegistry } = ChromeUtils.importESModule(
-  "resource://devtools/server/actors/watcher/WatcherRegistry.sys.mjs",
-  {
-    // WatcherRegistry needs to be a true singleton and loads ActorManagerParent
-    // which also has to be a true singleton.
-    loadInDevToolsLoader: false,
-  }
+const { ParentProcessWatcherRegistry } = ChromeUtils.importESModule(
+  "resource://devtools/server/actors/watcher/ParentProcessWatcherRegistry.sys.mjs",
+  // ParentProcessWatcherRegistry needs to be a true singleton and loads ActorManagerParent
+  // which also has to be a true singleton.
+  { global: "shared" }
 );
-const Targets = require("resource://devtools/server/actors/targets/index.js");
 const { getAllBrowsingContextsForContext } = ChromeUtils.importESModule(
-  "resource://devtools/server/actors/watcher/browsing-context-helpers.sys.mjs"
+  "resource://devtools/server/actors/watcher/browsing-context-helpers.sys.mjs",
+  { global: "contextual" }
 );
-
-const TARGET_HELPERS = {};
-loader.lazyRequireGetter(
-  TARGET_HELPERS,
-  Targets.TYPES.FRAME,
-  "resource://devtools/server/actors/watcher/target-helpers/frame-helper.js"
-);
-loader.lazyRequireGetter(
-  TARGET_HELPERS,
-  Targets.TYPES.PROCESS,
-  "resource://devtools/server/actors/watcher/target-helpers/process-helper.js"
-);
-loader.lazyRequireGetter(
-  TARGET_HELPERS,
-  Targets.TYPES.WORKER,
-  "resource://devtools/server/actors/watcher/target-helpers/worker-helper.js"
-);
+const {
+  SESSION_TYPES,
+} = require("resource://devtools/server/actors/watcher/session-context.js");
 
 loader.lazyRequireGetter(
   this,
@@ -101,7 +83,7 @@ exports.WatcherActor = class WatcherActor extends Actor {
   constructor(conn, sessionContext) {
     super(conn, watcherSpec);
     this._sessionContext = sessionContext;
-    if (sessionContext.type == "browser-element") {
+    if (sessionContext.type == SESSION_TYPES.BROWSER_ELEMENT) {
       // Retrieve the <browser> element for the given browser ID
       const browsingContext = BrowsingContext.getCurrentTopByBrowserId(
         sessionContext.browserId
@@ -132,6 +114,14 @@ exports.WatcherActor = class WatcherActor extends Actor {
     // but there are certain cases when a new target is available before the
     // old target is destroyed.
     this._currentWindowGlobalTargets = new Map();
+
+    // The Browser Toolbox requires to load modules in a distinct compartment in order
+    // to be able to debug system compartments modules (most of Firefox internal codebase).
+    // This is a requirement coming from SpiderMonkey Debugger API and relates to the thread actor.
+    this._jsActorName =
+      sessionContext.type == SESSION_TYPES.ALL
+        ? "BrowserToolboxDevToolsProcess"
+        : "DevToolsProcess";
   }
 
   get sessionContext() {
@@ -171,16 +161,33 @@ exports.WatcherActor = class WatcherActor extends Actor {
   }
 
   destroy() {
-    // Force unwatching for all types, even if we weren't watching.
-    // This is fine as unwatchTarget is NOOP if we weren't already watching for this target type.
-    for (const targetType of Object.values(Targets.TYPES)) {
-      this.unwatchTargets(targetType);
+    // Only try to notify content processes if the watcher was in the registry.
+    // Otherwise it means that it wasn't connected to any process and the JS Process Actor
+    // wouldn't be registered.
+    if (ParentProcessWatcherRegistry.getWatcher(this.actorID)) {
+      // Emit one IPC message on destroy to all the processes
+      const domProcesses = ChromeUtils.getAllDOMProcesses();
+      for (const domProcess of domProcesses) {
+        domProcess.getActor(this._jsActorName).destroyWatcher({
+          watcherActorID: this.actorID,
+        });
+      }
     }
-    this.unwatchResources(Object.values(Resources.TYPES));
 
-    WatcherRegistry.unregisterWatcher(this);
+    // Ensure destroying all Resource Watcher instantiated in the parent process
+    Resources.unwatchResources(
+      this,
+      Resources.getParentProcessResourceTypes(Object.values(Resources.TYPES))
+    );
 
-    // Destroy the actor at the end so that its actorID keeps being defined.
+    ParentProcessWatcherRegistry.unregisterWatcher(this.actorID);
+
+    // In case the watcher actor is leaked, prevent leaking the browser window
+    this._browserElement = null;
+
+    // Destroy the actor in order to ensure destroying all its children actors.
+    // As this actor is a pool with children actors, when the transport/connection closes
+    // we expect all actors and its children to be destroyed.
     super.destroy();
   }
 
@@ -191,7 +198,7 @@ exports.WatcherActor = class WatcherActor extends Actor {
    *         Returns the list of currently watched resource types.
    */
   get sessionData() {
-    return WatcherRegistry.getSessionData(this);
+    return ParentProcessWatcherRegistry.getSessionData(this);
   }
 
   form() {
@@ -220,11 +227,58 @@ exports.WatcherActor = class WatcherActor extends Actor {
    *        Type of context to observe. See Targets.TYPES object.
    */
   async watchTargets(targetType) {
-    WatcherRegistry.watchTargets(this, targetType);
+    ParentProcessWatcherRegistry.watchTargets(this, targetType);
 
-    const targetHelperModule = TARGET_HELPERS[targetType];
-    // Await the registration in order to ensure receiving the already existing targets
-    await targetHelperModule.createTargets(this);
+    // When debugging a tab, ensure processing the top level target first
+    // (for now, other session context types are instantiating the top level target
+    // from the descriptor's getTarget method instead of the Watcher)
+    let topLevelTargetProcess;
+    if (this.sessionContext.type == SESSION_TYPES.BROWSER_ELEMENT) {
+      topLevelTargetProcess =
+        this.browserElement.browsingContext.currentWindowGlobal?.domProcess;
+      if (topLevelTargetProcess) {
+        await topLevelTargetProcess.getActor(this._jsActorName).watchTargets({
+          watcherActorID: this.actorID,
+          targetType,
+        });
+        // Stop execution if we were destroyed in the meantime
+        if (this.isDestroyed()) {
+          return;
+        }
+      }
+    }
+
+    // We have to reach out all the content processes as the page may navigate
+    // to any other content process when navigating to another origin.
+    // It may even run in the parent process when loading about:robots.
+    const domProcesses = ChromeUtils.getAllDOMProcesses();
+    const promises = [];
+    for (const domProcess of domProcesses) {
+      if (domProcess == topLevelTargetProcess) {
+        continue;
+      }
+      promises.push(
+        domProcess
+          .getActor(this._jsActorName)
+          .watchTargets({
+            watcherActorID: this.actorID,
+            targetType,
+          })
+          .catch(e => {
+            // Ignore any process that got destroyed while trying to send the request
+            if (!domProcess.canSend) {
+              console.warn(
+                "Content process closed while requesting targets",
+                domProcess.name,
+                domProcess.remoteType
+              );
+              return;
+            }
+            throw e;
+          })
+      );
+    }
+    await Promise.all(promises);
   }
 
   /**
@@ -237,23 +291,21 @@ exports.WatcherActor = class WatcherActor extends Actor {
    *        true when this is called as the result of a change to the devtools.browsertoolbox.scope pref
    */
   unwatchTargets(targetType, options = {}) {
-    const isWatchingTargets = WatcherRegistry.unwatchTargets(
+    const isWatchingTargets = ParentProcessWatcherRegistry.unwatchTargets(
       this,
-      targetType,
-      options
+      targetType
     );
     if (!isWatchingTargets) {
       return;
     }
 
-    const targetHelperModule = TARGET_HELPERS[targetType];
-    targetHelperModule.destroyTargets(this, options);
-
-    // Unregister the JS Window Actor if there is no more DevTools code observing any target/resource,
-    // unless we're switching mode (having both condition at the same time should only
-    // happen in tests).
-    if (!options.isModeSwitching) {
-      WatcherRegistry.maybeUnregisteringJSWindowActor();
+    const domProcesses = ChromeUtils.getAllDOMProcesses();
+    for (const domProcess of domProcesses) {
+      domProcess.getActor(this._jsActorName).unwatchTargets({
+        watcherActorID: this.actorID,
+        targetType,
+        options,
+      });
     }
   }
 
@@ -294,6 +346,15 @@ exports.WatcherActor = class WatcherActor extends Actor {
       this.emit("target-available-form", actor);
       // Flush any existing early iframe targets
       this._flushIframeTargets(actor.innerWindowId);
+
+      if (this.sessionContext.type == SESSION_TYPES.BROWSER_ELEMENT) {
+        // Ignore any pending exception as this request may be pending
+        // while the toolbox closes. And we don't want to delay target emission
+        // on this as this is a implementation detail.
+        this.updateDomainSessionDataForServiceWorkers(actor.url).catch(
+          () => {}
+        );
+      }
     } else if (this._currentWindowGlobalTargets.has(actor.topInnerWindowId)) {
       // Emit the event immediately if the top-level target is already available
       this.emit("target-available-form", actor);
@@ -435,18 +496,18 @@ exports.WatcherActor = class WatcherActor extends Actor {
   }
 
   /**
-   * Try to retrieve a parent process TargetActor which is ignored by the
-   * TARGET_HELPERS. Examples:
-   * - top level target for the browser toolbox
-   * - xpcshell target for xpcshell debugging
+   * Try to retrieve Target Actors instantiated in the parent process which aren't
+   * instantiated via the Watcher actor (and its dependencies):
+   * - top level target for the browser toolboxes
+   * - xpcshell targets for xpcshell debugging
    *
    * See comment in `watchResources`.
    *
-   * @return {TargetActor|null} Matching target actor if any, null otherwise.
+   * @return {Set<TargetActor>} Matching target actors.
    */
-  getTargetActorInParentProcess() {
-    if (TargetActorRegistry.xpcShellTargetActor) {
-      return TargetActorRegistry.xpcShellTargetActor;
+  getTargetActorsInParentProcess() {
+    if (TargetActorRegistry.xpcShellTargetActors.size) {
+      return TargetActorRegistry.xpcShellTargetActors;
     }
 
     // Note: For browser-element debugging, the WindowGlobalTargetActor returned here is created
@@ -458,12 +519,18 @@ exports.WatcherActor = class WatcherActor extends Actor {
 
     switch (this.sessionContext.type) {
       case "all":
-        return actors.find(actor => actor.typeName === "parentProcessTarget");
+        const parentProcessTargetActor = actors.find(
+          actor => actor.typeName === "parentProcessTarget"
+        );
+        if (parentProcessTargetActor) {
+          return new Set([parentProcessTargetActor]);
+        }
+        return new Set();
       case "browser-element":
       case "webextension":
         // All target actors for browser-element and webextension sessions
         // should be created using the JS Window actors.
-        return null;
+        return new Set();
       default:
         throw new Error(
           "Unsupported session context type: " + this.sessionContext.type
@@ -488,40 +555,46 @@ exports.WatcherActor = class WatcherActor extends Actor {
     );
 
     // Bail out early if all resources were watched from parent process.
-    // In this scenario, we do not need to update these resource types in the WatcherRegistry
+    // In this scenario, we do not need to update these resource types in the ParentProcessWatcherRegistry
     // as targets do not care about them.
     if (!Resources.hasResourceTypesForTargets(resourceTypes)) {
       return;
     }
 
-    WatcherRegistry.watchResources(this, resourceTypes);
+    ParentProcessWatcherRegistry.watchResources(this, resourceTypes);
 
-    // Fetch resources from all existing targets
-    for (const targetType in TARGET_HELPERS) {
-      // We process frame targets even if we aren't watching them,
-      // because frame target helper codepath handles the top level target, if it runs in the *content* process.
-      // It will do another check to `isWatchingTargets(FRAME)` internally.
-      // Note that the workaround at the end of this method, using TargetActorRegistry
-      // is specific to top level target running in the *parent* process.
-      if (
-        !WatcherRegistry.isWatchingTargets(this, targetType) &&
-        targetType != Targets.TYPES.FRAME
-      ) {
-        continue;
-      }
-      const targetResourceTypes = Resources.getResourceTypesForTargetType(
-        resourceTypes,
-        targetType
+    const promises = [];
+    const domProcesses = ChromeUtils.getAllDOMProcesses();
+    for (const domProcess of domProcesses) {
+      promises.push(
+        domProcess
+          .getActor(this._jsActorName)
+          .addOrSetSessionDataEntry({
+            watcherActorID: this.actorID,
+            sessionContext: this.sessionContext,
+            type: "resources",
+            entries: resourceTypes,
+            updateType: "add",
+          })
+          .catch(e => {
+            // Ignore any process that got destroyed while trying to send the request
+            if (!domProcess.canSend) {
+              console.warn(
+                "Content process closed while requesting resources",
+                domProcess.name,
+                domProcess.remoteType
+              );
+              return;
+            }
+            throw e;
+          })
       );
-      if (!targetResourceTypes.length) {
-        continue;
-      }
-      const targetHelperModule = TARGET_HELPERS[targetType];
-      await targetHelperModule.addSessionDataEntry({
-        watcher: this,
-        type: "resources",
-        entries: targetResourceTypes,
-      });
+    }
+    await Promise.all(promises);
+
+    // Stop execution if we were destroyed in the meantime
+    if (this.isDestroyed()) {
+      return;
     }
 
     /*
@@ -541,15 +614,17 @@ exports.WatcherActor = class WatcherActor extends Actor {
      * We will eventually get rid of this code once all targets are properly supported by
      * the Watcher Actor and we have target helpers for all of them.
      */
-    const targetActor = this.getTargetActorInParentProcess();
-    if (targetActor) {
+    const targetActors = this.getTargetActorsInParentProcess();
+    for (const targetActor of targetActors) {
       const targetActorResourceTypes = Resources.getResourceTypesForTargetType(
         resourceTypes,
         targetActor.targetType
       );
-      await targetActor.addSessionDataEntry(
+      await targetActor.addOrSetSessionDataEntry(
         "resources",
-        targetActorResourceTypes
+        targetActorResourceTypes,
+        false,
+        "add"
       );
     }
   }
@@ -569,13 +644,13 @@ exports.WatcherActor = class WatcherActor extends Actor {
     );
 
     // Bail out early if all resources were all watched from parent process.
-    // In this scenario, we do not need to update these resource types in the WatcherRegistry
+    // In this scenario, we do not need to update these resource types in the ParentProcessWatcherRegistry
     // as targets do not care about them.
     if (!Resources.hasResourceTypesForTargets(resourceTypes)) {
       return;
     }
 
-    const isWatchingResources = WatcherRegistry.unwatchResources(
+    const isWatchingResources = ParentProcessWatcherRegistry.unwatchResources(
       this,
       resourceTypes
     );
@@ -586,43 +661,26 @@ exports.WatcherActor = class WatcherActor extends Actor {
     // Prevent trying to unwatch when the related BrowsingContext has already
     // been destroyed
     if (!this.isContextDestroyed()) {
-      for (const targetType in TARGET_HELPERS) {
-        // Frame target helper handles the top level target, if it runs in the content process
-        // so we should always process it. It does a second check to isWatchingTargets.
-        if (
-          !WatcherRegistry.isWatchingTargets(this, targetType) &&
-          targetType != Targets.TYPES.FRAME
-        ) {
-          continue;
-        }
-        const targetResourceTypes = Resources.getResourceTypesForTargetType(
-          resourceTypes,
-          targetType
-        );
-        if (!targetResourceTypes.length) {
-          continue;
-        }
-        const targetHelperModule = TARGET_HELPERS[targetType];
-        targetHelperModule.removeSessionDataEntry({
-          watcher: this,
+      const domProcesses = ChromeUtils.getAllDOMProcesses();
+      for (const domProcess of domProcesses) {
+        domProcess.getActor(this._jsActorName).removeSessionDataEntry({
+          watcherActorID: this.actorID,
+          sessionContext: this.sessionContext,
           type: "resources",
-          entries: targetResourceTypes,
+          entries: resourceTypes,
         });
       }
     }
 
     // See comment in watchResources.
-    const targetActor = this.getTargetActorInParentProcess();
-    if (targetActor) {
+    const targetActors = this.getTargetActorsInParentProcess();
+    for (const targetActor of targetActors) {
       const targetActorResourceTypes = Resources.getResourceTypesForTargetType(
         resourceTypes,
         targetActor.targetType
       );
       targetActor.removeSessionDataEntry("resources", targetActorResourceTypes);
     }
-
-    // Unregister the JS Window Actor if there is no more DevTools code observing any target/resource
-    WatcherRegistry.maybeUnregisteringJSWindowActor();
   }
 
   clearResources(resourceTypes) {
@@ -711,37 +769,62 @@ exports.WatcherActor = class WatcherActor extends Actor {
    * @param {String} type
    *        Data type to contribute to.
    * @param {Array<*>} entries
-   *        List of values to add for this data type.
+   *        List of values to add or set for this data type.
+   * @param {String} updateType
+   *        "add" will only add the new entries in the existing data set.
+   *        "set" will update the data set with the new entries.
    */
-  async addDataEntry(type, entries) {
-    WatcherRegistry.addSessionDataEntry(this, type, entries);
-
-    await Promise.all(
-      Object.values(Targets.TYPES)
-        .filter(
-          targetType =>
-            // We process frame targets even if we aren't watching them,
-            // because frame target helper codepath handles the top level target, if it runs in the *content* process.
-            // It will do another check to `isWatchingTargets(FRAME)` internally.
-            // Note that the workaround at the end of this method, using TargetActorRegistry
-            // is specific to top level target running in the *parent* process.
-            WatcherRegistry.isWatchingTargets(this, targetType) ||
-            targetType === Targets.TYPES.FRAME
-        )
-        .map(async targetType => {
-          const targetHelperModule = TARGET_HELPERS[targetType];
-          await targetHelperModule.addSessionDataEntry({
-            watcher: this,
-            type,
-            entries,
-          });
-        })
+  async addOrSetDataEntry(type, entries, updateType) {
+    ParentProcessWatcherRegistry.addOrSetSessionDataEntry(
+      this,
+      type,
+      entries,
+      updateType
     );
 
+    const promises = [];
+    const domProcesses = ChromeUtils.getAllDOMProcesses();
+    for (const domProcess of domProcesses) {
+      promises.push(
+        domProcess
+          .getActor(this._jsActorName)
+          .addOrSetSessionDataEntry({
+            watcherActorID: this.actorID,
+            sessionContext: this.sessionContext,
+            type,
+            entries,
+            updateType,
+          })
+          .catch(e => {
+            // Ignore any process that got destroyed while trying to send the request
+            if (!domProcess.canSend) {
+              console.warn(
+                "Content process closed while sending session data",
+                domProcess.name,
+                domProcess.remoteType
+              );
+              return;
+            }
+            throw e;
+          })
+      );
+    }
+    await Promise.all(promises);
+
+    // Stop execution if we were destroyed in the meantime
+    if (this.isDestroyed()) {
+      return;
+    }
+
     // See comment in watchResources
-    const targetActor = this.getTargetActorInParentProcess();
-    if (targetActor) {
-      await targetActor.addSessionDataEntry(type, entries);
+    const targetActors = this.getTargetActorsInParentProcess();
+    for (const targetActor of targetActors) {
+      await targetActor.addOrSetSessionDataEntry(
+        type,
+        entries,
+        false,
+        updateType
+      );
     }
   }
 
@@ -756,27 +839,21 @@ exports.WatcherActor = class WatcherActor extends Actor {
    *        List of values to remove from this data type.
    */
   removeDataEntry(type, entries) {
-    WatcherRegistry.removeSessionDataEntry(this, type, entries);
+    ParentProcessWatcherRegistry.removeSessionDataEntry(this, type, entries);
 
-    Object.values(Targets.TYPES)
-      .filter(
-        targetType =>
-          // See comment in addDataEntry
-          WatcherRegistry.isWatchingTargets(this, targetType) ||
-          targetType === Targets.TYPES.FRAME
-      )
-      .forEach(targetType => {
-        const targetHelperModule = TARGET_HELPERS[targetType];
-        targetHelperModule.removeSessionDataEntry({
-          watcher: this,
-          type,
-          entries,
-        });
+    const domProcesses = ChromeUtils.getAllDOMProcesses();
+    for (const domProcess of domProcesses) {
+      domProcess.getActor(this._jsActorName).removeSessionDataEntry({
+        watcherActorID: this.actorID,
+        sessionContext: this.sessionContext,
+        type,
+        entries,
       });
+    }
 
-    // See comment in addDataEntry
-    const targetActor = this.getTargetActorInParentProcess();
-    if (targetActor) {
+    // See comment in addOrSetDataEntry
+    const targetActors = this.getTargetActorsInParentProcess();
+    for (const targetActor of targetActors) {
       targetActor.removeSessionDataEntry(type, entries);
     }
   }
@@ -789,5 +866,30 @@ exports.WatcherActor = class WatcherActor extends Actor {
    */
   getSessionDataForType(type) {
     return this.sessionData?.[type];
+  }
+
+  /**
+   * Special code dedicated to Service Worker debugging.
+   * This will notify the Service Worker JS Process Actors about the new top level page domain.
+   * So that we start tracking that domain's workers.
+   *
+   * @param {String} newTargetUrl
+   */
+  async updateDomainSessionDataForServiceWorkers(newTargetUrl) {
+    let host = "";
+    // Accessing `host` can throw on some URLs with no valid host like about:home.
+    // In such scenario, reset the host to an empty string.
+    try {
+      host = new URL(newTargetUrl).host;
+    } catch (e) {}
+
+    ParentProcessWatcherRegistry.addOrSetSessionDataEntry(
+      this,
+      "browser-element-host",
+      [host],
+      "set"
+    );
+
+    return this.addOrSetDataEntry("browser-element-host", [host], "set");
   }
 };

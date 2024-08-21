@@ -2,14 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { PureComponent } from "react";
-import PropTypes from "prop-types";
+import React, { PureComponent } from "devtools/client/shared/vendor/react";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
 import AccessibleImage from "../AccessibleImage";
-import { CommandBarButton } from "./";
+import { CommandBarButton } from "./index";
 
-const classnames = require("devtools/client/shared/classnames.js");
-
-import "./styles/PaneToggleButton.css";
+const classnames = require("resource://devtools/client/shared/classnames.js");
 
 class PaneToggleButton extends PureComponent {
   static defaultProps = {
@@ -40,20 +38,19 @@ class PaneToggleButton extends PureComponent {
 
   render() {
     const { position, collapsed, horizontal, handleClick } = this.props;
-
-    return (
-      <CommandBarButton
-        className={classnames("toggle-button", position, {
+    return React.createElement(
+      CommandBarButton,
+      {
+        className: classnames("toggle-button", position, {
           collapsed,
           vertical: !horizontal,
-        })}
-        onClick={() => handleClick(position, !collapsed)}
-        title={this.label(position, collapsed)}
-      >
-        <AccessibleImage
-          className={collapsed ? "pane-expand" : "pane-collapse"}
-        />
-      </CommandBarButton>
+        }),
+        onClick: () => handleClick(position, !collapsed),
+        title: this.label(position, collapsed),
+      },
+      React.createElement(AccessibleImage, {
+        className: collapsed ? "pane-expand" : "pane-collapse",
+      })
     );
   }
 }

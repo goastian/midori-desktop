@@ -19,9 +19,15 @@ if (!isWorker) {
   );
 }
 const lazy = {};
-ChromeUtils.defineESModuleGetters(lazy, {
-  Reflect: "resource://gre/modules/reflect.sys.mjs",
-});
+if (!isWorker) {
+  ChromeUtils.defineESModuleGetters(
+    lazy,
+    {
+      Reflect: "resource://gre/modules/reflect.sys.mjs",
+    },
+    { global: "contextual" }
+  );
+}
 loader.lazyRequireGetter(
   this,
   [
@@ -95,7 +101,7 @@ const MAX_AUTOCOMPLETIONS = (exports.MAX_AUTOCOMPLETIONS = 1500);
  *            }
  */
 // eslint-disable-next-line complexity
-function JSPropertyProvider({
+function jsPropertyProvider({
   dbgObject,
   environment,
   frameActorId,
@@ -644,7 +650,7 @@ function getMatchedPropsImpl(obj, match, { chainIterator, getProperties }) {
       // This uses a trick: converting a string to a number yields NaN if
       // the operation failed, and NaN is not equal to itself.
       // eslint-disable-next-line no-self-compare
-      if (+prop != +prop) {
+      if (+prop != +prop || prop === "Infinity") {
         matches.add(prop);
       }
 
@@ -746,7 +752,7 @@ var DebuggerObjectSupport = {
     }
   },
 
-  getProperty(obj, name, rootObj) {
+  getProperty() {
     // This is left unimplemented in favor to DevToolsUtils.getProperty().
     throw new Error("Unimplemented!");
   },
@@ -797,7 +803,7 @@ var DebuggerEnvironmentSupport = {
   },
 };
 
-exports.JSPropertyProvider = DevToolsUtils.makeInfallible(JSPropertyProvider);
+exports.jsPropertyProvider = DevToolsUtils.makeInfallible(jsPropertyProvider);
 
 // Export a version that will throw (for tests)
-exports.FallibleJSPropertyProvider = JSPropertyProvider;
+exports.fallibleJsPropertyProvider = jsPropertyProvider;

@@ -4,8 +4,8 @@
 
 "use strict";
 
-const { BrowserLoader } = ChromeUtils.import(
-  "resource://devtools/shared/loader/browser-loader.js"
+const { BrowserLoader } = ChromeUtils.importESModule(
+  "resource://devtools/shared/loader/browser-loader.sys.mjs"
 );
 const require = BrowserLoader({
   baseURI: "resource://devtools/client/application/",
@@ -55,7 +55,7 @@ const {
  * called to start the UI for the panel.
  */
 window.Application = {
-  async bootstrap({ toolbox, commands, panel }) {
+  async bootstrap({ toolbox, commands }) {
     // bind event handlers to `this`
     this.updateDomain = this.updateDomain.bind(this);
 

@@ -19,6 +19,9 @@ const EXAMPLE_URL =
 const EXAMPLE_REMOTE_URL =
   "https://example.org/browser/devtools/client/debugger/test/mochitest/examples/";
 
+const EXAMPLE_URL_WITH_PORT =
+  "http://mochi.test:8888/browser/devtools/client/debugger/test/mochitest/examples/";
+
 // shared-head.js handles imports, constants, and utility functions
 Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
@@ -34,6 +37,12 @@ Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/client/webconsole/test/browser/shared-head.js",
   this
 );
+
+// Clear preferences that may be set during the course of tests.
+registerCleanupFunction(() => {
+  info("finish() was called, cleaning up and clearing debugger preferences...");
+  Services.prefs.clearUserPref("devtools.debugger.map-scopes-enabled");
+});
 
 /**
  * Helper function for `_loadAllIntegrationTests`.
@@ -252,4 +261,40 @@ function getRange(start, end) {
 function waitForSearchState(dbg) {
   const cm = getCM(dbg);
   return waitFor(() => cm.state.search);
+}
+
+/**
+ * Get the currently selected line number displayed in the editor's footer.
+ */
+function assertCursorPosition(dbg, expectedLine, expectedColumn, message) {
+  const cursorPosition = findElementWithSelector(dbg, ".cursor-position");
+  if (!cursorPosition) {
+    ok(false, message + " (no cursor displayed)");
+  }
+  // Cursor position text has the following shape: (L, C)
+  // where L is the line number, and C the column number
+  const match = cursorPosition.innerText.match(/\((\d+), (\d+)\)/);
+  if (!match) {
+    ok(
+      false,
+      message + ` (wrong cursor content : '${cursorPosition.innerText}')`
+    );
+  }
+  const [_, line, column] = match;
+  is(parseInt(line, 10), expectedLine, message + " (line)");
+  is(parseInt(column, 10), expectedColumn, message + " (column)");
+}
+
+async function waitForCursorPosition(dbg, expectedLine) {
+  return waitFor(() => {
+    const cursorPosition = findElementWithSelector(dbg, ".cursor-position");
+    if (!cursorPosition) {
+      return false;
+    }
+    const { innerText } = cursorPosition;
+    // Cursor position text has the following shape: (L, C)
+    // where L is the line number, and C the column number
+    const line = innerText.substring(1, innerText.indexOf(","));
+    return parseInt(line, 10) == expectedLine;
+  });
 }

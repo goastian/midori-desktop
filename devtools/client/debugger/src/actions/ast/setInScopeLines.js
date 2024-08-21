@@ -6,7 +6,7 @@ import {
   hasInScopeLines,
   getSourceTextContent,
   getVisibleSelectedFrame,
-} from "../../selectors";
+} from "../../selectors/index";
 
 import { getSourceLineCount } from "../../utils/source";
 
@@ -27,13 +27,7 @@ function getOutOfScopeLines(outOfScopeLocations) {
   return uniqueLines;
 }
 
-async function getInScopeLines(
-  cx,
-  location,
-  { dispatch, getState, parserWorker }
-) {
-  const sourceTextContent = getSourceTextContent(getState(), location);
-
+async function getInScopeLines(location, sourceTextContent, { parserWorker }) {
   let locations = null;
   if (location.line && parserWorker.isLocationSupported(location)) {
     locations = await parserWorker.findOutOfScopeLocations(location);
@@ -66,7 +60,7 @@ async function getInScopeLines(
   return sourceLines.filter(i => i != undefined);
 }
 
-export function setInScopeLines(cx) {
+export function setInScopeLines() {
   return async thunkArgs => {
     const { getState, dispatch } = thunkArgs;
     const visibleFrame = getVisibleSelectedFrame(getState());
@@ -78,15 +72,21 @@ export function setInScopeLines(cx) {
     const { location } = visibleFrame;
     const sourceTextContent = getSourceTextContent(getState(), location);
 
-    if (hasInScopeLines(getState(), location) || !sourceTextContent) {
+    // Ignore if in scope lines have already be computed, or if the selected location
+    // doesn't have its content already fully fetched.
+    // The ParserWorker will only have the source text content once the source text content is fulfilled.
+    if (
+      hasInScopeLines(getState(), location) ||
+      !sourceTextContent ||
+      !isFulfilled(sourceTextContent)
+    ) {
       return;
     }
 
-    const lines = await getInScopeLines(cx, location, thunkArgs);
+    const lines = await getInScopeLines(location, sourceTextContent, thunkArgs);
 
     dispatch({
       type: "IN_SCOPE_LINES",
-      cx,
       location,
       lines,
     });

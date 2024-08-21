@@ -7,20 +7,20 @@
  * @module actions/sources
  */
 
-import { isOriginalId } from "devtools/client/shared/source-map-loader/index";
-
 import { setSymbols } from "./symbols";
-import { setInScopeLines } from "../ast";
-import { togglePrettyPrint } from "./prettyPrint";
+import { setInScopeLines } from "../ast/index";
+import { prettyPrintAndSelectSource } from "./prettyPrint";
 import { addTab, closeTab } from "../tabs";
 import { loadSourceText } from "./loadSourceText";
-import { mapDisplayNames } from "../pause";
-import { setBreakableLines } from ".";
+import { setBreakableLines } from "./breakableLines";
 
 import { prefs } from "../../utils/prefs";
 import { isMinified } from "../../utils/source";
 import { createLocation } from "../../utils/location";
-import { getRelatedMapLocation } from "../../utils/source-maps";
+import {
+  getRelatedMapLocation,
+  getOriginalLocation,
+} from "../../utils/source-maps";
 
 import {
   getSource,
@@ -30,36 +30,42 @@ import {
   getSelectedLocation,
   getShouldSelectOriginalLocation,
   canPrettyPrintSource,
-  getIsCurrentThreadPaused,
   getSourceTextContent,
   tabExists,
-} from "../../selectors";
+  hasSource,
+  hasSourceActor,
+  hasPrettyTab,
+  isSourceActorWithSourceMap,
+} from "../../selectors/index";
 
 // This is only used by jest tests (and within this module)
 export const setSelectedLocation = (
-  cx,
-  location,
-  shouldSelectOriginalLocation
-) => ({
-  type: "SET_SELECTED_LOCATION",
-  cx,
   location,
   shouldSelectOriginalLocation,
+  shouldHighlightSelectedLocation
+) => ({
+  type: "SET_SELECTED_LOCATION",
+  location,
+  shouldSelectOriginalLocation,
+  shouldHighlightSelectedLocation,
 });
 
 // This is only used by jest tests (and within this module)
-export const setPendingSelectedLocation = (cx, url, options) => ({
+export const setPendingSelectedLocation = (url, options) => ({
   type: "SET_PENDING_SELECTED_LOCATION",
-  cx,
   url,
   line: options?.line,
   column: options?.column,
 });
 
 // This is only used by jest tests (and within this module)
-export const clearSelectedLocation = cx => ({
+export const clearSelectedLocation = () => ({
   type: "CLEAR_SELECTED_LOCATION",
-  cx,
+});
+
+export const setDefaultSelectedLocation = shouldSelectOriginalLocation => ({
+  type: "SET_DEFAULT_SELECTED_LOCATION",
+  shouldSelectOriginalLocation,
 });
 
 /**
@@ -70,15 +76,15 @@ export const clearSelectedLocation = cx => ({
  * This exists mostly for external things to interact with the
  * debugger.
  */
-export function selectSourceURL(cx, url, options) {
+export function selectSourceURL(url, options) {
   return async ({ dispatch, getState }) => {
     const source = getSourceByURL(getState(), url);
     if (!source) {
-      return dispatch(setPendingSelectedLocation(cx, url, options));
+      return dispatch(setPendingSelectedLocation(url, options));
     }
 
     const location = createLocation({ ...options, source });
-    return dispatch(selectLocation(cx, location));
+    return dispatch(selectLocation(location));
   };
 }
 
@@ -87,21 +93,90 @@ export function selectSourceURL(cx, url, options) {
  * Note that it ignores the currently selected source and will select
  * the precise generated/original source passed as argument.
  *
- * @param {Object} cx
  * @param {String} source
  *        The precise source to select.
  * @param {String} sourceActor
  *        The specific source actor of the source to
  *        select the source text. This is optional.
  */
-export function selectSource(cx, source, sourceActor) {
+export function selectSource(source, sourceActor) {
   return async ({ dispatch }) => {
     // `createLocation` requires a source object, but we may use selectSource to close the last tab,
     // where source will be null and the location will be an empty object.
     const location = source ? createLocation({ source, sourceActor }) : {};
 
-    return dispatch(selectSpecificLocation(cx, location));
+    return dispatch(selectSpecificLocation(location));
   };
+}
+
+/**
+ * Helper for `selectLocation`.
+ * Based on `keepContext` argument passed to `selectLocation`,
+ * this will automatically select the related mapped source (original or generated).
+ *
+ * @param {Object} location
+ *        The location to select.
+ * @param {Boolean} keepContext
+ *        If true, will try to select a mapped source.
+ * @param {Object} thunkArgs
+ * @return {Object}
+ *        Object with two attributes:
+ *         - `shouldSelectOriginalLocation`, to know if we should keep trying to select the original location
+ *         - `newLocation`, for the final location to select
+ */
+async function mayBeSelectMappedSource(location, keepContext, thunkArgs) {
+  const { getState, dispatch } = thunkArgs;
+  // Preserve the current source map context (original / generated)
+  // when navigating to a new location.
+  // i.e. if keepContext isn't manually overriden to false,
+  // we will convert the source we want to select to either
+  // original/generated in order to match the currently selected one.
+  // If the currently selected source is original, we will
+  // automatically map `location` to refer to the original source,
+  // even if that used to refer only to the generated source.
+  let shouldSelectOriginalLocation = getShouldSelectOriginalLocation(
+    getState()
+  );
+  if (keepContext) {
+    // Pretty print source may not be registered yet and getRelatedMapLocation may not return it.
+    // Wait for the pretty print source to be fully processed.
+    if (
+      !location.source.isOriginal &&
+      shouldSelectOriginalLocation &&
+      hasPrettyTab(getState(), location.source)
+    ) {
+      // Note that prettyPrintAndSelectSource has already been called a bit before when this generated source has been added
+      // but it is a slow operation and is most likely not resolved yet.
+      // prettyPrintAndSelectSource uses memoization to avoid doing the operation more than once, while waiting from both callsites.
+      await dispatch(prettyPrintAndSelectSource(location.source));
+    }
+    if (shouldSelectOriginalLocation != location.source.isOriginal) {
+      // Only try to map if the source is mapped. i.e. is original source or a bundle with a valid source map comment
+      if (
+        location.source.isOriginal ||
+        isSourceActorWithSourceMap(getState(), location.sourceActor.id)
+      ) {
+        // getRelatedMapLocation will convert to the related generated/original location.
+        // i.e if the original location is passed, the related generated location will be returned and vice versa.
+        location = await getRelatedMapLocation(location, thunkArgs);
+      }
+      // Note that getRelatedMapLocation may return the exact same location.
+      // For example, if the source-map is half broken, it may return a generated location
+      // while we were selecting original locations. So we may be seeing bundles intermittently
+      // when stepping through broken source maps. And we will see original sources when stepping
+      // through functional original sources.
+    }
+  } else if (
+    location.source.isOriginal ||
+    isSourceActorWithSourceMap(getState(), location.sourceActor.id)
+  ) {
+    // Only update this setting if the source is mapped. i.e. don't update if we select a regular source.
+    // The source is mapped when it is either:
+    //  - an original source,
+    //  - a bundle with a source map comment referencing a source map URL.
+    shouldSelectOriginalLocation = location.source.isOriginal;
+  }
+  return { shouldSelectOriginalLocation, newLocation: location };
 }
 
 /**
@@ -113,15 +188,20 @@ export function selectSource(cx, source, sourceActor) {
  * Note that by default, this may map your passed location to the original
  * or generated location based on the selected source state. (see keepContext)
  *
- * @param {Object} cx
  * @param {Object} location
  * @param {Object} options
  * @param {boolean} options.keepContext
  *        If false, this will ignore the currently selected source
  *        and select the generated or original location, even if we
  *        were currently selecting the other source type.
+ * @param {boolean} options.highlight
+ *        True by default. To be set to false in order to preveng highlighting the selected location in the editor.
+ *        We will only show the location, but do not put a special background on the line.
  */
-export function selectLocation(cx, location, { keepContext = true } = {}) {
+export function selectLocation(
+  location,
+  { keepContext = true, highlight = true } = {}
+) {
   return async thunkArgs => {
     const { dispatch, getState, client } = thunkArgs;
 
@@ -135,39 +215,32 @@ export function selectLocation(cx, location, { keepContext = true } = {}) {
 
     if (!source) {
       // If there is no source we deselect the current selected source
-      dispatch(clearSelectedLocation(cx));
+      dispatch(clearSelectedLocation());
       return;
     }
 
-    // Preserve the current source map context (original / generated)
-    // when navigating to a new location.
-    // i.e. if keepContext isn't manually overriden to false,
-    // we will convert the source we want to select to either
-    // original/generated in order to match the currently selected one.
-    // If the currently selected source is original, we will
-    // automatically map `location` to refer to the original source,
-    // even if that used to refer only to the generated source.
-    let shouldSelectOriginalLocation = getShouldSelectOriginalLocation(
-      getState()
-    );
-    if (keepContext) {
-      if (shouldSelectOriginalLocation != isOriginalId(location.sourceId)) {
-        // getRelatedMapLocation will convert to the related generated/original location.
-        // i.e if the original location is passed, the related generated location will be returned and vice versa.
-        location = await getRelatedMapLocation(location, thunkArgs);
-        // Note that getRelatedMapLocation may return the exact same location.
-        // For example, if the source-map is half broken, it may return a generated location
-        // while we were selecting original locations. So we may be seeing bundles intermittently
-        // when stepping through broken source maps. And we will see original sources when stepping
-        // through functional original sources.
-
-        source = location.source;
-      }
-    } else {
-      shouldSelectOriginalLocation = isOriginalId(location.sourceId);
+    let sourceActor = location.sourceActor;
+    if (!sourceActor) {
+      sourceActor = getFirstSourceActorForGeneratedSource(
+        getState(),
+        source.id
+      );
+      location = createLocation({ ...location, sourceActor });
     }
 
-    let sourceActor = location.sourceActor;
+    const lastSelectedLocation = getSelectedLocation(getState());
+    const { shouldSelectOriginalLocation, newLocation } =
+      await mayBeSelectMappedSource(location, keepContext, thunkArgs);
+
+    // Ignore the request if another location was selected while we were waiting for mayBeSelectMappedSource async completion
+    if (getSelectedLocation(getState()) != lastSelectedLocation) {
+      return;
+    }
+
+    // Update all local variables after mapping
+    location = newLocation;
+    source = location.source;
+    sourceActor = location.sourceActor;
     if (!sourceActor) {
       sourceActor = getFirstSourceActorForGeneratedSource(
         getState(),
@@ -180,11 +253,23 @@ export function selectLocation(cx, location, { keepContext = true } = {}) {
       dispatch(addTab(source, sourceActor));
     }
 
-    dispatch(setSelectedLocation(cx, location, shouldSelectOriginalLocation));
+    dispatch(
+      setSelectedLocation(location, shouldSelectOriginalLocation, highlight)
+    );
 
-    await dispatch(loadSourceText(cx, source, sourceActor));
+    await dispatch(loadSourceText(source, sourceActor));
 
-    await dispatch(setBreakableLines(cx, location));
+    // Stop the async work if we started selecting another location
+    if (getSelectedLocation(getState()) != location) {
+      return;
+    }
+
+    await dispatch(setBreakableLines(location));
+
+    // Stop the async work if we started selecting another location
+    if (getSelectedLocation(getState()) != location) {
+      return;
+    }
 
     const loadedSource = getSource(getState(), source.id);
 
@@ -202,15 +287,44 @@ export function selectLocation(cx, location, { keepContext = true } = {}) {
       canPrettyPrintSource(getState(), location) &&
       isMinified(source, sourceTextContent)
     ) {
-      await dispatch(togglePrettyPrint(cx, loadedSource.id));
-      dispatch(closeTab(cx, loadedSource));
+      await dispatch(prettyPrintAndSelectSource(loadedSource));
+      dispatch(closeTab(loadedSource));
     }
 
-    await dispatch(setSymbols({ cx, location }));
-    dispatch(setInScopeLines(cx));
+    await dispatch(setSymbols(location));
 
-    if (getIsCurrentThreadPaused(getState())) {
-      await dispatch(mapDisplayNames(cx));
+    // Stop the async work if we started selecting another location
+    if (getSelectedLocation(getState()) != location) {
+      return;
+    }
+
+    // /!\ we don't historicaly wait for this async action
+    dispatch(setInScopeLines());
+
+    // When we select a generated source which has a sourcemap,
+    // asynchronously fetch the related original location in order to display
+    // the mapped location in the editor's footer.
+    if (
+      !location.source.isOriginal &&
+      isSourceActorWithSourceMap(getState(), sourceActor.id)
+    ) {
+      let originalLocation = await getOriginalLocation(location, thunkArgs, {
+        looseSearch: true,
+      });
+      // We pass a null original location when the location doesn't map
+      // in order to know when we are done processing the source map.
+      // * `getOriginalLocation` would return the exact same location if it doesn't map
+      // * `getOriginalLocation` may also return a distinct location object,
+      //   but refering to the same `source` object (which is the bundle) when it doesn't
+      //   map to any known original location.
+      if (originalLocation.source === location.source) {
+        originalLocation = null;
+      }
+      dispatch({
+        type: "SET_ORIGINAL_SELECTED_LOCATION",
+        location,
+        originalLocation,
+      });
     }
   };
 }
@@ -220,13 +334,59 @@ export function selectLocation(cx, location, { keepContext = true } = {}) {
  * This will select the generated location even if the currently
  * select source is an original source. And the other way around.
  *
- * @param {Object} cx
  * @param {Object} location
  *        The location to select, object which includes enough
  *        information to specify a precise source, line and column.
  */
-export function selectSpecificLocation(cx, location) {
-  return selectLocation(cx, location, { keepContext: false });
+export function selectSpecificLocation(location) {
+  return selectLocation(location, { keepContext: false });
+}
+
+/**
+ * Similar to `selectSpecificLocation`, but if the precise Source object
+ * is missing, this will fallback to select any source having the same URL.
+ * In this fallback scenario, sources without a URL will be ignored.
+ *
+ * This is typically used when trying to select a source (e.g. in project search result)
+ * after reload, because the source objects are new on each new page load, but source
+ * with the same URL may still exist.
+ *
+ * @param {Object} location
+ *        The location to select.
+ * @return {function}
+ *        The action will return true if a matching source was found.
+ */
+export function selectSpecificLocationOrSameUrl(location) {
+  return async ({ dispatch, getState }) => {
+    // If this particular source no longer exists, open any matching URL.
+    // This will typically happen on reload.
+    if (!hasSource(getState(), location.source.id)) {
+      // Some sources, like evaled script won't have a URL attribute
+      // and can't be re-selected if we don't find the exact same source object.
+      if (!location.source.url) {
+        return false;
+      }
+      const source = getSourceByURL(getState(), location.source.url);
+      if (!source) {
+        return false;
+      }
+      // Also reset the sourceActor, as it won't match the same source.
+      const sourceActor = getFirstSourceActorForGeneratedSource(
+        getState(),
+        location.source.id
+      );
+      location = createLocation({ ...location, source, sourceActor });
+    } else if (!hasSourceActor(getState(), location.sourceActor.id)) {
+      // If the specific source actor no longer exists, match any still available.
+      const sourceActor = getFirstSourceActorForGeneratedSource(
+        getState(),
+        location.source.id
+      );
+      location = createLocation({ ...location, sourceActor });
+    }
+    await dispatch(selectSpecificLocation(location));
+    return true;
+  };
 }
 
 /**
@@ -237,7 +397,7 @@ export function selectSpecificLocation(cx, location) {
  * If the passed location is on an original source, select the
  * related location in the generated source.
  */
-export function jumpToMappedLocation(cx, location) {
+export function jumpToMappedLocation(location) {
   return async function (thunkArgs) {
     const { client, dispatch } = thunkArgs;
     if (!client) {
@@ -247,18 +407,23 @@ export function jumpToMappedLocation(cx, location) {
     // Map to either an original or a generated source location
     const pairedLocation = await getRelatedMapLocation(location, thunkArgs);
 
-    return dispatch(selectSpecificLocation(cx, pairedLocation));
+    // If we are on a non-mapped source, this will return the same location
+    // so ignore the request.
+    if (pairedLocation == location) {
+      return null;
+    }
+
+    return dispatch(selectSpecificLocation(pairedLocation));
   };
 }
 
-// This is only used by tests
-export function jumpToMappedSelectedLocation(cx) {
+export function jumpToMappedSelectedLocation() {
   return async function ({ dispatch, getState }) {
     const location = getSelectedLocation(getState());
     if (!location) {
       return;
     }
 
-    await dispatch(jumpToMappedLocation(cx, location));
+    await dispatch(jumpToMappedLocation(location));
   };
 }

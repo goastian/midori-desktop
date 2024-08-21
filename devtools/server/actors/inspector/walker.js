@@ -111,11 +111,9 @@ if (!isWorker) {
     () =>
       ChromeUtils.importESModule(
         "resource://gre/modules/ContentDOMReference.sys.mjs",
-        {
-          // ContentDOMReference needs to be retrieved from the shared global
-          // since it is a shared singleton.
-          loadInDevToolsLoader: false,
-        }
+        // ContentDOMReference needs to be retrieved from the shared global
+        // since it is a shared singleton.
+        { global: "shared" }
       ).ContentDOMReference
   );
 }
@@ -329,7 +327,7 @@ class WalkerActor extends Actor {
         const mutation = {
           type: "events",
           target: actor.actorID,
-          hasEventListeners: actor._hasEventListeners,
+          hasEventListeners: actor.hasEventListeners(/* refreshCache */ true),
         };
         this.queueMutation(mutation);
       }
@@ -382,7 +380,6 @@ class WalkerActor extends Actor {
       this.layoutHelpers = null;
       this._orphaned = null;
       this._retainedOrphans = null;
-      this._nodeActorsMap = null;
 
       this.targetActor.off("will-navigate", this.onFrameUnload);
       this.targetActor.off("window-ready", this.onFrameLoad);
@@ -431,6 +428,9 @@ class WalkerActor extends Actor {
         this._onEventListenerChange
       );
 
+      // Only nullify some key attributes after having removed all the listeners
+      // as they may still be used in the related listeners.
+      this._nodeActorsMap = null;
       this.onMutations = null;
 
       this.layoutActor = null;
@@ -524,7 +524,7 @@ class WalkerActor extends Actor {
    * When a custom element is defined, send a customElementDefined mutation for all the
    * NodeActors using this tag name.
    */
-  onCustomElementDefined({ name, actors }) {
+  onCustomElementDefined({ actors }) {
     actors.forEach(actor =>
       this.queueMutation({
         target: actor.actorID,
@@ -534,9 +534,10 @@ class WalkerActor extends Actor {
     );
   }
 
-  _onReflows(reflows) {
+  _onReflows() {
     // Going through the nodes the walker knows about, see which ones have had their
-    // display, scrollable or overflow state changed and send events if any.
+    // containerType, display, scrollable or overflow state changed and send events if any.
+    const containerTypeChanges = [];
     const displayTypeChanges = [];
     const scrollableStateChanges = [];
 
@@ -573,6 +574,12 @@ class WalkerActor extends Actor {
           currentOverflowCausingElementsMap
         );
       }
+
+      const containerType = actor.containerType;
+      if (containerType !== actor.currentContainerType) {
+        containerTypeChanges.push(actor);
+        actor.currentContainerType = containerType;
+      }
     }
 
     // Get the NodeActor for each node in the symmetric difference of
@@ -599,6 +606,10 @@ class WalkerActor extends Actor {
 
     if (scrollableStateChanges.length) {
       this.emit("scrollable-change", scrollableStateChanges);
+    }
+
+    if (containerTypeChanges.length) {
+      this.emit("container-type-change", containerTypeChanges);
     }
   }
 
@@ -1056,6 +1067,32 @@ class WalkerActor extends Actor {
     }
 
     return new NodeListActor(this, nodeList);
+  }
+
+  /**
+   * Return the node in the baseNode rootNode matching the passed id referenced in a
+   * idref/idreflist attribute, as those are scoped within a shadow root.
+   *
+   * @param NodeActor baseNode
+   * @param string id
+   */
+  getIdrefNode(baseNode, id) {
+    if (isNodeDead(baseNode)) {
+      return {};
+    }
+
+    // Get the document or the shadow root for baseNode
+    const rootNode = baseNode.rawNode.getRootNode({ composed: false });
+    if (!rootNode) {
+      return {};
+    }
+
+    const node = rootNode.getElementById(id);
+    if (!node) {
+      return {};
+    }
+
+    return this.attachElement(node);
   }
 
   /**

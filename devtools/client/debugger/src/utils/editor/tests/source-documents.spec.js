@@ -13,10 +13,8 @@ const defaultSymbolDeclarations = {
   classes: [],
   functions: [],
   memberExpressions: [],
-  callExpressions: [],
   objectProperties: [],
   identifiers: [],
-  imports: [],
   comments: [],
   literals: [],
   hasJsx: false,
@@ -26,7 +24,7 @@ const defaultSymbolDeclarations = {
 
 describe("source-documents", () => {
   describe("getMode", () => {
-    it("//     ", () => {
+    it("//", () => {
       const source = makeMockSourceWithContent(
         undefined,
         undefined,

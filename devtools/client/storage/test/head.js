@@ -59,7 +59,6 @@ const {
   LocalTabCommandsFactory,
 } = require("resource://devtools/client/framework/local-tab-commands-factory.js");
 const STORAGE_PREF = "devtools.storage.enabled";
-const DOM_CACHE = "dom.caches.enabled";
 const DUMPEMIT_PREF = "devtools.dump.emit";
 const DEBUGGERLOG_PREF = "devtools.debugger.log";
 
@@ -88,7 +87,6 @@ registerCleanupFunction(() => {
   gToolbox = gPanelWindow = gUI = null;
   Services.prefs.clearUserPref(CACHES_ON_HTTP_PREF);
   Services.prefs.clearUserPref(DEBUGGERLOG_PREF);
-  Services.prefs.clearUserPref(DOM_CACHE);
   Services.prefs.clearUserPref(DUMPEMIT_PREF);
   Services.prefs.clearUserPref(STORAGE_PREF);
 });
@@ -1010,9 +1008,17 @@ function sidebarToggleVisible() {
  */
 function sidebarParseTreeVisible(state) {
   if (state) {
-    ok(gUI.view._currHierarchy.size > 2, "Parse tree should be visible.");
+    Assert.greater(
+      gUI.view._currHierarchy.size,
+      2,
+      "Parse tree should be visible."
+    );
   } else {
-    ok(gUI.view._currHierarchy.size <= 2, "Parse tree should not be visible.");
+    Assert.lessOrEqual(
+      gUI.view._currHierarchy.size,
+      2,
+      "Parse tree should not be visible."
+    );
   }
 }
 
@@ -1021,6 +1027,7 @@ function sidebarParseTreeVisible(state) {
  * @param  {Array} store
  *         An array containing the path to the store to which we wish to add an
  *         item.
+ * @return {Promise} A Promise that resolves to the row id of the added item.
  */
 async function performAdd(store) {
   const storeName = store.join(" > ");
@@ -1037,7 +1044,7 @@ async function performAdd(store) {
       false,
       `performAdd called for ${storeName} but it is not supported`
     );
-    return;
+    return "";
   }
 
   const eventEdit = gUI.table.once("row-edit");
@@ -1052,6 +1059,8 @@ async function performAdd(store) {
   const value = getCellValue(rowId, key);
 
   is(rowId, value, `Row '${rowId}' was successfully added.`);
+
+  return rowId;
 }
 
 // Cell css selector that can be used to count or select cells.

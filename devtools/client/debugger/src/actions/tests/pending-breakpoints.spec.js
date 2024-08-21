@@ -39,7 +39,6 @@ import {
   selectors,
   actions,
   makeSource,
-  makeSourceURL,
   waitForState,
 } from "../../utils/test-head";
 
@@ -71,7 +70,7 @@ function mockSourceMaps() {
 
 describe("when adding breakpoints", () => {
   it("a corresponding pending breakpoint should be added", async () => {
-    const { dispatch, getState, cx } = createStore(
+    const { dispatch, getState } = createStore(
       mockClient({ 5: [1] }),
       loadInitialState(),
       mockSourceMaps()
@@ -85,11 +84,11 @@ describe("when adding breakpoints", () => {
       source.id
     );
 
-    await dispatch(actions.loadGeneratedSourceText({ cx, sourceActor }));
+    await dispatch(actions.loadGeneratedSourceText(sourceActor));
 
     const bp = generateBreakpoint("foo.js", 5, 1);
 
-    await dispatch(actions.addBreakpoint(cx, bp.location));
+    await dispatch(actions.addBreakpoint(bp.location));
 
     expect(selectors.getPendingBreakpointList(getState())).toHaveLength(2);
   });
@@ -107,7 +106,7 @@ describe("initializing when pending breakpoints exist in prefs", () => {
   });
 
   it("re-adding breakpoints update existing pending breakpoints", async () => {
-    const { dispatch, getState, cx } = createStore(
+    const { dispatch, getState } = createStore(
       mockClient({ 5: [1, 2] }),
       loadInitialState(),
       mockSourceMaps()
@@ -122,15 +121,15 @@ describe("initializing when pending breakpoints exist in prefs", () => {
       source.id
     );
 
-    await dispatch(actions.loadGeneratedSourceText({ cx, sourceActor }));
-    await dispatch(actions.addBreakpoint(cx, bar.location));
+    await dispatch(actions.loadGeneratedSourceText(sourceActor));
+    await dispatch(actions.addBreakpoint(bar.location));
 
     const bps = selectors.getPendingBreakpointList(getState());
     expect(bps).toHaveLength(2);
   });
 
   it("adding bps doesn't remove existing pending breakpoints", async () => {
-    const { dispatch, getState, cx } = createStore(
+    const { dispatch, getState } = createStore(
       mockClient({ 5: [0] }),
       loadInitialState(),
       mockSourceMaps()
@@ -145,9 +144,9 @@ describe("initializing when pending breakpoints exist in prefs", () => {
       source.id
     );
 
-    await dispatch(actions.loadGeneratedSourceText({ cx, sourceActor }));
+    await dispatch(actions.loadGeneratedSourceText(sourceActor));
 
-    await dispatch(actions.addBreakpoint(cx, bp.location));
+    await dispatch(actions.addBreakpoint(bp.location));
 
     const bps = selectors.getPendingBreakpointList(getState());
     expect(bps).toHaveLength(2);
@@ -162,7 +161,7 @@ describe("initializing with disabled pending breakpoints in prefs", () => {
       mockSourceMaps()
     );
 
-    const { getState, dispatch, cx } = store;
+    const { getState, dispatch } = store;
 
     const source = await dispatch(
       actions.newGeneratedSource(makeSource("bar.js"))
@@ -172,10 +171,10 @@ describe("initializing with disabled pending breakpoints in prefs", () => {
       source.id
     );
 
-    await dispatch(actions.loadGeneratedSourceText({ cx, sourceActor }));
+    await dispatch(actions.loadGeneratedSourceText(sourceActor));
 
     await waitForState(store, state => {
-      const bps = selectors.getBreakpointsForSource(state, source.id);
+      const bps = selectors.getBreakpointsForSource(state, source);
       return bps && !!Object.values(bps).length;
     });
 
@@ -183,14 +182,14 @@ describe("initializing with disabled pending breakpoints in prefs", () => {
       return (
         location.line == 5 &&
         location.column == 2 &&
-        location.sourceId == source.id
+        location.source.id == source.id
       );
     });
 
     if (!bp) {
       throw new Error("no bp");
     }
-    expect(bp.location.sourceId).toEqual(source.id);
+    expect(bp.location.source.id).toEqual(source.id);
     expect(bp.disabled).toEqual(true);
   });
 });
@@ -202,7 +201,7 @@ describe("adding sources", () => {
       loadInitialState({ disabled: true }),
       mockSourceMaps()
     );
-    const { getState, dispatch, cx } = store;
+    const { getState, dispatch } = store;
 
     expect(selectors.getBreakpointCount(getState())).toEqual(0);
 
@@ -214,45 +213,7 @@ describe("adding sources", () => {
       source.id
     );
 
-    await dispatch(actions.loadGeneratedSourceText({ cx, sourceActor }));
-
-    await waitForState(store, state => selectors.getBreakpointCount(state) > 0);
-
-    expect(selectors.getBreakpointCount(getState())).toEqual(1);
-  });
-
-  it("corresponding breakpoints are added to the original source", async () => {
-    const sourceURL = makeSourceURL("bar.js");
-    const store = createStore(mockClient({ 5: [2] }), loadInitialState(), {
-      getOriginalURLs: async source => [
-        {
-          id: sourceMapLoader.generatedToOriginalId(source.id, sourceURL),
-          url: sourceURL,
-        },
-      ],
-      getOriginalSourceText: async () => ({ text: "" }),
-      getGeneratedLocation: async location => location,
-      getOriginalLocation: async location => location,
-      getGeneratedRangesForOriginal: async () => [
-        { start: { line: 0, column: 0 }, end: { line: 10, column: 10 } },
-      ],
-      getOriginalLocations: async items =>
-        items.map(item => ({
-          ...item,
-          sourceId: sourceMapLoader.generatedToOriginalId(
-            item.sourceId,
-            sourceURL
-          ),
-        })),
-    });
-
-    const { getState, dispatch } = store;
-
-    expect(selectors.getBreakpointCount(getState())).toEqual(0);
-
-    await dispatch(
-      actions.newGeneratedSource(makeSource("bar.js", { sourceMapURL: "foo" }))
-    );
+    await dispatch(actions.loadGeneratedSourceText(sourceActor));
 
     await waitForState(store, state => selectors.getBreakpointCount(state) > 0);
 
@@ -265,7 +226,7 @@ describe("adding sources", () => {
       loadInitialState({ disabled: true }),
       mockSourceMaps()
     );
-    const { getState, dispatch, cx } = store;
+    const { getState, dispatch } = store;
 
     expect(selectors.getBreakpointCount(getState())).toEqual(0);
 
@@ -281,12 +242,8 @@ describe("adding sources", () => {
       source2.id
     );
 
-    await dispatch(
-      actions.loadGeneratedSourceText({ cx, sourceActor: sourceActor1 })
-    );
-    await dispatch(
-      actions.loadGeneratedSourceText({ cx, sourceActor: sourceActor2 })
-    );
+    await dispatch(actions.loadGeneratedSourceText(sourceActor1));
+    await dispatch(actions.loadGeneratedSourceText(sourceActor2));
 
     await waitForState(store, state => selectors.getBreakpointCount(state) > 0);
     expect(selectors.getBreakpointCount(getState())).toEqual(1);

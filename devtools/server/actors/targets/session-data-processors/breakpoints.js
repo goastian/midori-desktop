@@ -7,29 +7,47 @@
 const {
   STATES: THREAD_STATES,
 } = require("resource://devtools/server/actors/thread.js");
+const Targets = require("resource://devtools/server/actors/targets/index.js");
 
 module.exports = {
-  async addSessionDataEntry(targetActor, entries, isDocumentCreation) {
-    const isTargetCreation =
-      targetActor.threadActor.state == THREAD_STATES.DETACHED;
-    if (isTargetCreation && !targetActor.targetType.endsWith("worker")) {
-      // If addSessionDataEntry is called during target creation, attach the
+  async addOrSetSessionDataEntry(
+    targetActor,
+    entries,
+    isDocumentCreation,
+    updateType
+  ) {
+    // When debugging the whole browser (via the Browser Toolbox), we instantiate both content process and window global (FRAME) targets.
+    // But the debugger will only use the content process target's thread actor.
+    // Thread actor, Sources and Breakpoints have to be only managed for the content process target,
+    // and we should explicitly ignore the window global target.
+    if (
+      targetActor.sessionContext.type == "all" &&
+      targetActor.targetType === Targets.TYPES.FRAME &&
+      targetActor.typeName != "parentProcessTarget"
+    ) {
+      return;
+    }
+    const { threadActor } = targetActor;
+    if (updateType == "set") {
+      threadActor.removeAllBreakpoints();
+    }
+    const isTargetCreation = threadActor.state == THREAD_STATES.DETACHED;
+    if (isTargetCreation) {
+      // If addOrSetSessionDataEntry is called during target creation, attach the
       // thread actor automatically and pass the initial breakpoints.
-      // However, do not attach the thread actor for Workers. They use a codepath
-      // which releases the worker on `attach`. For them, the client will call `attach`. (bug 1691986)
-      await targetActor.threadActor.attach({ breakpoints: entries });
+      await threadActor.attach({ breakpoints: entries });
     } else {
-      // If addSessionDataEntry is called for an existing target, set the new
+      // If addOrSetSessionDataEntry is called for an existing target, set the new
       // breakpoints on the already running thread actor.
       await Promise.all(
         entries.map(({ location, options }) =>
-          targetActor.threadActor.setBreakpoint(location, options)
+          threadActor.setBreakpoint(location, options)
         )
       );
     }
   },
 
-  removeSessionDataEntry(targetActor, entries, isDocumentCreation) {
+  removeSessionDataEntry(targetActor, entries) {
     for (const { location } of entries) {
       targetActor.threadActor.removeBreakpoint(location);
     }

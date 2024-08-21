@@ -2,12 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
+import React from "devtools/client/shared/vendor/react";
 import { mount, shallow } from "enzyme";
 import Frames from "../index.js";
-// eslint-disable-next-line
-import { formatCallStackFrames } from "../../../../selectors/getCallStackFrames";
-import { makeMockFrame, makeMockSource } from "../../../../utils/test-mockup";
 
 function render(overrides = {}) {
   const defaultProps = {
@@ -21,9 +18,14 @@ function render(overrides = {}) {
   };
 
   const props = { ...defaultProps, ...overrides };
-  const component = shallow(<Frames.WrappedComponent {...props} />, {
-    context: { l10n: L10N },
-  });
+  const component = shallow(
+    React.createElement(Frames.WrappedComponent, props),
+    {
+      context: {
+        l10n: L10N,
+      },
+    }
+  );
 
   return component;
 }
@@ -100,10 +102,10 @@ describe("Frames", () => {
           id: 1,
           displayName: "renderFoo",
           location: {
+            source: {
+              url: "http://myfile.com/mahscripts.js",
+            },
             line: 55,
-          },
-          source: {
-            url: "http://myfile.com/mahscripts.js",
           },
         },
       ];
@@ -126,10 +128,10 @@ describe("Frames", () => {
           id: 1,
           displayName: "renderFoo",
           location: {
+            source: {
+              url: "http://myfile.com/mahscripts.js",
+            },
             line: 55,
-          },
-          source: {
-            url: "http://myfile.com/mahscripts.js",
           },
         },
       ];
@@ -146,10 +148,10 @@ describe("Frames", () => {
           id: 1,
           displayName: "renderFoo",
           location: {
+            source: {
+              url: "http://myfile.com/mahscripts.js",
+            },
             line: 55,
-          },
-          source: {
-            url: "http://myfile.com/mahscripts.js",
           },
         },
         {
@@ -157,10 +159,10 @@ describe("Frames", () => {
           library: "back",
           displayName: "a",
           location: {
+            source: {
+              url: "http://myfile.com/back.js",
+            },
             line: 55,
-          },
-          source: {
-            url: "http://myfile.com/back.js",
           },
         },
         {
@@ -168,10 +170,10 @@ describe("Frames", () => {
           library: "back",
           displayName: "b",
           location: {
+            source: {
+              url: "http://myfile.com/back.js",
+            },
             line: 55,
-          },
-          source: {
-            url: "http://myfile.com/back.js",
           },
         },
       ];
@@ -186,48 +188,13 @@ describe("Frames", () => {
     });
   });
 
-  describe("Blackboxed Frames", () => {
-    it("filters blackboxed frames", () => {
-      const source1 = makeMockSource("source1", "1");
-      const source2 = makeMockSource("source2", "2");
-      source2.isBlackBoxed = true;
-
-      const frames = [
-        makeMockFrame("1", source1),
-        makeMockFrame("2", source2),
-        makeMockFrame("3", source1),
-        makeMockFrame("8", source2),
-      ];
-
-      const blackboxedRanges = {
-        source2: [],
-      };
-
-      const processedFrames = formatCallStackFrames(
-        frames,
-        source1,
-        blackboxedRanges
-      );
-      const selectedFrame = frames[0];
-
-      const component = render({
-        frames: processedFrames,
-        frameworkGroupingOn: false,
-        selectedFrame,
-      });
-
-      expect(component.find("Frame")).toHaveLength(2);
-      expect(component).toMatchSnapshot();
-    });
-  });
-
   describe("Library Frames", () => {
     it("toggling framework frames", () => {
       const frames = [
-        { id: 1 },
-        { id: 2, library: "back" },
-        { id: 3, library: "back" },
-        { id: 8 },
+        { id: 1, location: { source: {} } },
+        { id: 2, library: "back", location: { source: {} } },
+        { id: 3, library: "back", location: { source: {} } },
+        { id: 8, location: { source: {} } },
       ];
 
       const selectedFrame = frames[0];
@@ -245,22 +212,30 @@ describe("Frames", () => {
 
     it("groups all the Webpack-related frames", () => {
       const frames = [
-        { id: "1-appFrame" },
+        { id: "1-appFrame", location: { source: {} } },
         {
           id: "2-webpackBootstrapFrame",
-          source: { url: "webpack:///webpack/bootstrap 01d88449ca6e9335a66f" },
+          location: {
+            source: {
+              url: "webpack:///webpack/bootstrap 01d88449ca6e9335a66f",
+            },
+          },
         },
         {
           id: "3-webpackBundleFrame",
-          source: { url: "https://foo.com/bundle.js" },
+          location: { source: { url: "https://foo.com/bundle.js" } },
         },
         {
           id: "4-webpackBootstrapFrame",
-          source: { url: "webpack:///webpack/bootstrap 01d88449ca6e9335a66f" },
+          location: {
+            source: {
+              url: "webpack:///webpack/bootstrap 01d88449ca6e9335a66f",
+            },
+          },
         },
         {
           id: "5-webpackBundleFrame",
-          source: { url: "https://foo.com/bundle.js" },
+          location: { source: { url: "https://foo.com/bundle.js" } },
         },
       ];
       const selectedFrame = frames[0];
@@ -272,10 +247,10 @@ describe("Frames", () => {
 
     it("selectable framework frames", () => {
       const frames = [
-        { id: 1 },
-        { id: 2, library: "back" },
-        { id: 3, library: "back" },
-        { id: 8 },
+        { id: 1, location: { source: {} } },
+        { id: 2, library: "back", location: { source: {} } },
+        { id: 3, library: "back", location: { source: {} } },
+        { id: 8, location: { source: {} } },
       ];
 
       const selectedFrame = frames[0];

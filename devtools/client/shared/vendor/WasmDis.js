@@ -90,18 +90,18 @@ function formatI8Array(bytes, count) {
 function memoryAddressToString(address, code) {
     var defaultAlignFlags;
     switch (code) {
-        case 64768 /* OperatorCode.v128_load */:
-        case 64769 /* OperatorCode.i16x8_load8x8_s */:
-        case 64770 /* OperatorCode.i16x8_load8x8_u */:
-        case 64771 /* OperatorCode.i32x4_load16x4_s */:
-        case 64772 /* OperatorCode.i32x4_load16x4_u */:
-        case 64773 /* OperatorCode.i64x2_load32x2_s */:
-        case 64774 /* OperatorCode.i64x2_load32x2_u */:
-        case 64775 /* OperatorCode.v8x16_load_splat */:
-        case 64776 /* OperatorCode.v16x8_load_splat */:
-        case 64777 /* OperatorCode.v32x4_load_splat */:
-        case 64778 /* OperatorCode.v64x2_load_splat */:
-        case 64779 /* OperatorCode.v128_store */:
+        case 1036288 /* OperatorCode.v128_load */:
+        case 1036289 /* OperatorCode.i16x8_load8x8_s */:
+        case 1036290 /* OperatorCode.i16x8_load8x8_u */:
+        case 1036291 /* OperatorCode.i32x4_load16x4_s */:
+        case 1036292 /* OperatorCode.i32x4_load16x4_u */:
+        case 1036293 /* OperatorCode.i64x2_load32x2_s */:
+        case 1036294 /* OperatorCode.i64x2_load32x2_u */:
+        case 1036295 /* OperatorCode.v8x16_load_splat */:
+        case 1036296 /* OperatorCode.v16x8_load_splat */:
+        case 1036297 /* OperatorCode.v32x4_load_splat */:
+        case 1036298 /* OperatorCode.v64x2_load_splat */:
+        case 1036299 /* OperatorCode.v128_store */:
             defaultAlignFlags = 4;
             break;
         case 41 /* OperatorCode.i64_load */:
@@ -118,7 +118,9 @@ function memoryAddressToString(address, code) {
         case 65083 /* OperatorCode.i64_atomic_rmw_xor */:
         case 65090 /* OperatorCode.i64_atomic_rmw_xchg */:
         case 65097 /* OperatorCode.i64_atomic_rmw_cmpxchg */:
-        case 64861 /* OperatorCode.v128_load64_zero */:
+        case 1036381 /* OperatorCode.v128_load64_zero */:
+        case 1036375 /* OperatorCode.v128_load64_lane */:
+        case 1036379 /* OperatorCode.v128_store64_lane */:
             defaultAlignFlags = 3;
             break;
         case 40 /* OperatorCode.i32_load */:
@@ -148,7 +150,9 @@ function memoryAddressToString(address, code) {
         case 65095 /* OperatorCode.i64_atomic_rmw32_xchg_u */:
         case 65096 /* OperatorCode.i32_atomic_rmw_cmpxchg */:
         case 65102 /* OperatorCode.i64_atomic_rmw32_cmpxchg_u */:
-        case 64860 /* OperatorCode.v128_load32_zero */:
+        case 1036380 /* OperatorCode.v128_load32_zero */:
+        case 1036374 /* OperatorCode.v128_load32_lane */:
+        case 1036378 /* OperatorCode.v128_store32_lane */:
             defaultAlignFlags = 2;
             break;
         case 46 /* OperatorCode.i32_load16_s */:
@@ -175,6 +179,8 @@ function memoryAddressToString(address, code) {
         case 65094 /* OperatorCode.i64_atomic_rmw16_xchg_u */:
         case 65099 /* OperatorCode.i32_atomic_rmw16_cmpxchg_u */:
         case 65101 /* OperatorCode.i64_atomic_rmw16_cmpxchg_u */:
+        case 1036373 /* OperatorCode.v128_load16_lane */:
+        case 1036377 /* OperatorCode.v128_store16_lane */:
             defaultAlignFlags = 1;
             break;
         case 44 /* OperatorCode.i32_load8_s */:
@@ -201,6 +207,8 @@ function memoryAddressToString(address, code) {
         case 65093 /* OperatorCode.i64_atomic_rmw8_xchg_u */:
         case 65098 /* OperatorCode.i32_atomic_rmw8_cmpxchg_u */:
         case 65100 /* OperatorCode.i64_atomic_rmw8_cmpxchg_u */:
+        case 1036372 /* OperatorCode.v128_load8_lane */:
+        case 1036376 /* OperatorCode.v128_store8_lane */:
             defaultAlignFlags = 0;
             break;
     }
@@ -248,7 +256,7 @@ var DefaultNameResolver = /** @class */ (function () {
         return "$elem".concat(index);
     };
     DefaultNameResolver.prototype.getTagName = function (index, isRef) {
-        return "$event".concat(index);
+        return "$tag".concat(index);
     };
     DefaultNameResolver.prototype.getFunctionName = function (index, isImport, isRef) {
         return (isImport ? "$import" : "$func") + index;
@@ -466,19 +474,26 @@ var WasmDisassembler = /** @class */ (function () {
                 return "any";
             case -19 /* TypeKind.eqref */:
                 return "eq";
-            case -22 /* TypeKind.i31ref */:
+            case -20 /* TypeKind.i31ref */:
                 return "i31";
-            case -25 /* TypeKind.structref */:
+            case -23 /* TypeKind.exnref */:
+                return "exnref";
+            case -21 /* TypeKind.structref */:
                 return "struct";
-            case -26 /* TypeKind.arrayref */:
+            case -22 /* TypeKind.arrayref */:
                 return "array";
-            case -24 /* TypeKind.nullfuncref */:
+            case -13 /* TypeKind.nullfuncref */:
                 return "nofunc";
-            case -23 /* TypeKind.nullexternref */:
+            case -14 /* TypeKind.nullexternref */:
                 return "noextern";
-            case -27 /* TypeKind.nullref */:
+            case -15 /* TypeKind.nullref */:
                 return "none";
+            case -12 /* TypeKind.nullexnref */:
+                return "noexnref";
         }
+    };
+    WasmDisassembler.prototype.refTypeToString = function (typeIndex, nullable) {
+        return this.typeToString(new WasmParser_js_1.RefType(nullable ? -29 /* TypeKind.ref_null */ : -28 /* TypeKind.ref */, typeIndex));
     };
     WasmDisassembler.prototype.typeToString = function (type) {
         switch (type.kind) {
@@ -492,33 +507,37 @@ var WasmDisassembler = /** @class */ (function () {
                 return "f64";
             case -5 /* TypeKind.v128 */:
                 return "v128";
-            case -6 /* TypeKind.i8 */:
+            case -8 /* TypeKind.i8 */:
                 return "i8";
-            case -7 /* TypeKind.i16 */:
+            case -9 /* TypeKind.i16 */:
                 return "i16";
             case -16 /* TypeKind.funcref */:
                 return "funcref";
             case -17 /* TypeKind.externref */:
                 return "externref";
+            case -23 /* TypeKind.exnref */:
+                return "exnref";
             case -18 /* TypeKind.anyref */:
                 return "anyref";
             case -19 /* TypeKind.eqref */:
                 return "eqref";
-            case -22 /* TypeKind.i31ref */:
+            case -20 /* TypeKind.i31ref */:
                 return "i31ref";
-            case -25 /* TypeKind.structref */:
+            case -21 /* TypeKind.structref */:
                 return "structref";
-            case -26 /* TypeKind.arrayref */:
+            case -22 /* TypeKind.arrayref */:
                 return "arrayref";
-            case -24 /* TypeKind.nullfuncref */:
+            case -13 /* TypeKind.nullfuncref */:
                 return "nullfuncref";
-            case -23 /* TypeKind.nullexternref */:
+            case -14 /* TypeKind.nullexternref */:
                 return "nullexternref";
-            case -27 /* TypeKind.nullref */:
+            case -12 /* TypeKind.nullexnref */:
+                return "nullexnref";
+            case -15 /* TypeKind.nullref */:
                 return "nullref";
-            case -21 /* TypeKind.ref */:
+            case -28 /* TypeKind.ref */:
                 return "(ref ".concat(this.typeIndexToString(type.ref_index), ")");
-            case -20 /* TypeKind.ref_null */:
+            case -29 /* TypeKind.ref_null */:
                 return "(ref null ".concat(this.typeIndexToString(type.ref_index), ")");
             default:
                 throw new Error("Unexpected type ".concat(JSON.stringify(type)));
@@ -639,6 +658,7 @@ var WasmDisassembler = /** @class */ (function () {
             case 3 /* OperatorCode.loop */:
             case 4 /* OperatorCode.if */:
             case 6 /* OperatorCode.try */:
+            case 31 /* OperatorCode.try_table */:
                 if (this._labelMode !== LabelMode.Depth) {
                     var backrefLabel_1 = {
                         line: this._lines.length,
@@ -657,6 +677,31 @@ var WasmDisassembler = /** @class */ (function () {
                     this._backrefLabels.push(backrefLabel_1);
                 }
                 this.printBlockType(operator.blockType);
+                if (operator.tryTable) {
+                    for (var i = 0; i < operator.tryTable.length; i++) {
+                        this.appendBuffer(" (");
+                        switch (operator.tryTable[i].kind) {
+                            case WasmParser_js_1.CatchHandlerKind.Catch:
+                                this.appendBuffer("catch ");
+                                break;
+                            case WasmParser_js_1.CatchHandlerKind.CatchRef:
+                                this.appendBuffer("catch_ref ");
+                                break;
+                            case WasmParser_js_1.CatchHandlerKind.CatchAll:
+                                this.appendBuffer("catch_all ");
+                                break;
+                            case WasmParser_js_1.CatchHandlerKind.CatchAllRef:
+                                this.appendBuffer("catch_all_ref ");
+                                break;
+                        }
+                        if (operator.tryTable[i].tagIndex != null) {
+                            var tagName = this._nameResolver.getTagName(operator.tryTable[i].tagIndex, true);
+                            this.appendBuffer("".concat(tagName, " "));
+                        }
+                        this.appendBuffer(this.useLabel(operator.tryTable[i].depth + 1));
+                        this.appendBuffer(")");
+                    }
+                }
                 break;
             case 11 /* OperatorCode.end */:
                 if (this._labelMode === LabelMode.Depth) {
@@ -670,22 +715,13 @@ var WasmDisassembler = /** @class */ (function () {
                 break;
             case 12 /* OperatorCode.br */:
             case 13 /* OperatorCode.br_if */:
-            case 212 /* OperatorCode.br_on_null */:
+            case 213 /* OperatorCode.br_on_null */:
             case 214 /* OperatorCode.br_on_non_null */:
                 this.appendBuffer(" ");
                 this.appendBuffer(this.useLabel(operator.brDepth));
                 break;
-            case 64322 /* OperatorCode.br_on_cast_ */:
-            case 64323 /* OperatorCode.br_on_cast_fail_ */:
-            case 64326 /* OperatorCode.br_on_cast__ */:
-            case 64327 /* OperatorCode.br_on_cast_fail__ */:
-                this.appendBuffer(" ");
-                this.appendBuffer(this.typeIndexToString(operator.refType));
-                this.appendBuffer(" ");
-                this.appendBuffer(this.useLabel(operator.brDepth));
-                break;
-            case 64334 /* OperatorCode.br_on_cast */:
-            case 64335 /* OperatorCode.br_on_cast_fail */:
+            case 64280 /* OperatorCode.br_on_cast */:
+            case 64281 /* OperatorCode.br_on_cast_fail */:
                 this.appendBuffer(" flags=" + operator.literal);
                 this.appendBuffer(" ");
                 this.appendBuffer(this.typeIndexToString(operator.srcType));
@@ -832,20 +868,20 @@ var WasmDisassembler = /** @class */ (function () {
             case 65100 /* OperatorCode.i64_atomic_rmw8_cmpxchg_u */:
             case 65101 /* OperatorCode.i64_atomic_rmw16_cmpxchg_u */:
             case 65102 /* OperatorCode.i64_atomic_rmw32_cmpxchg_u */:
-            case 64768 /* OperatorCode.v128_load */:
-            case 64769 /* OperatorCode.i16x8_load8x8_s */:
-            case 64770 /* OperatorCode.i16x8_load8x8_u */:
-            case 64771 /* OperatorCode.i32x4_load16x4_s */:
-            case 64772 /* OperatorCode.i32x4_load16x4_u */:
-            case 64773 /* OperatorCode.i64x2_load32x2_s */:
-            case 64774 /* OperatorCode.i64x2_load32x2_u */:
-            case 64775 /* OperatorCode.v8x16_load_splat */:
-            case 64776 /* OperatorCode.v16x8_load_splat */:
-            case 64777 /* OperatorCode.v32x4_load_splat */:
-            case 64778 /* OperatorCode.v64x2_load_splat */:
-            case 64779 /* OperatorCode.v128_store */:
-            case 64860 /* OperatorCode.v128_load32_zero */:
-            case 64861 /* OperatorCode.v128_load64_zero */:
+            case 1036288 /* OperatorCode.v128_load */:
+            case 1036289 /* OperatorCode.i16x8_load8x8_s */:
+            case 1036290 /* OperatorCode.i16x8_load8x8_u */:
+            case 1036291 /* OperatorCode.i32x4_load16x4_s */:
+            case 1036292 /* OperatorCode.i32x4_load16x4_u */:
+            case 1036293 /* OperatorCode.i64x2_load32x2_s */:
+            case 1036294 /* OperatorCode.i64x2_load32x2_u */:
+            case 1036295 /* OperatorCode.v8x16_load_splat */:
+            case 1036296 /* OperatorCode.v16x8_load_splat */:
+            case 1036297 /* OperatorCode.v32x4_load_splat */:
+            case 1036298 /* OperatorCode.v64x2_load_splat */:
+            case 1036299 /* OperatorCode.v128_store */:
+            case 1036380 /* OperatorCode.v128_load32_zero */:
+            case 1036381 /* OperatorCode.v128_load64_zero */:
                 var memoryAddress = memoryAddressToString(operator.memoryAddress, operator.code);
                 if (memoryAddress !== null) {
                     this.appendBuffer(" ");
@@ -867,26 +903,41 @@ var WasmDisassembler = /** @class */ (function () {
             case 68 /* OperatorCode.f64_const */:
                 this.appendBuffer(" ".concat(formatFloat64(operator.literal)));
                 break;
-            case 64780 /* OperatorCode.v128_const */:
+            case 1036300 /* OperatorCode.v128_const */:
                 this.appendBuffer(" i32x4 ".concat(formatI32Array(operator.literal, 4)));
                 break;
-            case 64781 /* OperatorCode.i8x16_shuffle */:
+            case 1036301 /* OperatorCode.i8x16_shuffle */:
                 this.appendBuffer(" ".concat(formatI8Array(operator.lines, 16)));
                 break;
-            case 64789 /* OperatorCode.i8x16_extract_lane_s */:
-            case 64790 /* OperatorCode.i8x16_extract_lane_u */:
-            case 64791 /* OperatorCode.i8x16_replace_lane */:
-            case 64792 /* OperatorCode.i16x8_extract_lane_s */:
-            case 64793 /* OperatorCode.i16x8_extract_lane_u */:
-            case 64794 /* OperatorCode.i16x8_replace_lane */:
-            case 64795 /* OperatorCode.i32x4_extract_lane */:
-            case 64796 /* OperatorCode.i32x4_replace_lane */:
-            case 64799 /* OperatorCode.f32x4_extract_lane */:
-            case 64800 /* OperatorCode.f32x4_replace_lane */:
-            case 64797 /* OperatorCode.i64x2_extract_lane */:
-            case 64798 /* OperatorCode.i64x2_replace_lane */:
-            case 64801 /* OperatorCode.f64x2_extract_lane */:
-            case 64802 /* OperatorCode.f64x2_replace_lane */:
+            case 1036309 /* OperatorCode.i8x16_extract_lane_s */:
+            case 1036310 /* OperatorCode.i8x16_extract_lane_u */:
+            case 1036311 /* OperatorCode.i8x16_replace_lane */:
+            case 1036312 /* OperatorCode.i16x8_extract_lane_s */:
+            case 1036313 /* OperatorCode.i16x8_extract_lane_u */:
+            case 1036314 /* OperatorCode.i16x8_replace_lane */:
+            case 1036315 /* OperatorCode.i32x4_extract_lane */:
+            case 1036316 /* OperatorCode.i32x4_replace_lane */:
+            case 1036319 /* OperatorCode.f32x4_extract_lane */:
+            case 1036320 /* OperatorCode.f32x4_replace_lane */:
+            case 1036317 /* OperatorCode.i64x2_extract_lane */:
+            case 1036318 /* OperatorCode.i64x2_replace_lane */:
+            case 1036321 /* OperatorCode.f64x2_extract_lane */:
+            case 1036322 /* OperatorCode.f64x2_replace_lane */:
+                this.appendBuffer(" ".concat(operator.lineIndex));
+                break;
+            case 1036372 /* OperatorCode.v128_load8_lane */:
+            case 1036373 /* OperatorCode.v128_load16_lane */:
+            case 1036374 /* OperatorCode.v128_load32_lane */:
+            case 1036375 /* OperatorCode.v128_load64_lane */:
+            case 1036376 /* OperatorCode.v128_store8_lane */:
+            case 1036377 /* OperatorCode.v128_store16_lane */:
+            case 1036378 /* OperatorCode.v128_store32_lane */:
+            case 1036379 /* OperatorCode.v128_store64_lane */:
+                var memoryAddress = memoryAddressToString(operator.memoryAddress, operator.code);
+                if (memoryAddress !== null) {
+                    this.appendBuffer(" ");
+                    this.appendBuffer(memoryAddress);
+                }
                 this.appendBuffer(" ".concat(operator.lineIndex));
                 break;
             case 64520 /* OperatorCode.memory_init */:
@@ -923,46 +974,51 @@ var WasmDisassembler = /** @class */ (function () {
                 this.appendBuffer(" ".concat(elementName_1));
                 break;
             }
-            case 64259 /* OperatorCode.struct_get */:
-            case 64260 /* OperatorCode.struct_get_s */:
-            case 64261 /* OperatorCode.struct_get_u */:
-            case 64262 /* OperatorCode.struct_set */: {
+            case 64258 /* OperatorCode.struct_get */:
+            case 64259 /* OperatorCode.struct_get_s */:
+            case 64260 /* OperatorCode.struct_get_u */:
+            case 64261 /* OperatorCode.struct_set */: {
                 var refType = this.typeIndexToString(operator.refType);
                 var fieldName = this._nameResolver.getFieldName(operator.refType, operator.fieldIndex, true);
                 this.appendBuffer(" ".concat(refType, " ").concat(fieldName));
                 break;
             }
-            case 64304 /* OperatorCode.rtt_canon */:
-            case 64305 /* OperatorCode.rtt_sub */:
-            case 64306 /* OperatorCode.rtt_fresh_sub */:
-            case 64321 /* OperatorCode.ref_cast */:
-            case 64329 /* OperatorCode.ref_cast_null */:
-            case 64320 /* OperatorCode.ref_test */:
-            case 64328 /* OperatorCode.ref_test_null */:
-            case 64264 /* OperatorCode.struct_new_default */:
-            case 64258 /* OperatorCode.struct_new_default_with_rtt */:
-            case 64263 /* OperatorCode.struct_new */:
-            case 64257 /* OperatorCode.struct_new_with_rtt */:
-            case 64284 /* OperatorCode.array_new_default */:
-            case 64274 /* OperatorCode.array_new_default_with_rtt */:
-            case 64283 /* OperatorCode.array_new */:
-            case 64273 /* OperatorCode.array_new_with_rtt */:
-            case 64275 /* OperatorCode.array_get */:
-            case 64276 /* OperatorCode.array_get_s */:
-            case 64277 /* OperatorCode.array_get_u */:
-            case 64278 /* OperatorCode.array_set */:
-            case 64279 /* OperatorCode.array_len_ */: {
+            case 64278 /* OperatorCode.ref_cast */:
+            case 64276 /* OperatorCode.ref_test */: {
+                var refType = this.refTypeToString(operator.refType, false);
+                this.appendBuffer(" ".concat(refType));
+                break;
+            }
+            case 64279 /* OperatorCode.ref_cast_null */:
+            case 64277 /* OperatorCode.ref_test_null */: {
+                var refType = this.refTypeToString(operator.refType, true);
+                this.appendBuffer(" ".concat(refType));
+                break;
+            }
+            case 64257 /* OperatorCode.struct_new_default */:
+            case 64256 /* OperatorCode.struct_new */:
+            case 64263 /* OperatorCode.array_new_default */:
+            case 64262 /* OperatorCode.array_new */:
+            case 64267 /* OperatorCode.array_get */:
+            case 64268 /* OperatorCode.array_get_s */:
+            case 64269 /* OperatorCode.array_get_u */:
+            case 64270 /* OperatorCode.array_set */: {
                 var refType = this.typeIndexToString(operator.refType);
                 this.appendBuffer(" ".concat(refType));
                 break;
             }
-            case 64280 /* OperatorCode.array_copy */: {
+            case 64272 /* OperatorCode.array_fill */: {
+                var dstType = this.typeIndexToString(operator.refType);
+                this.appendBuffer(" ".concat(dstType));
+                break;
+            }
+            case 64273 /* OperatorCode.array_copy */: {
                 var dstType = this.typeIndexToString(operator.refType);
                 var srcType = this.typeIndexToString(operator.srcType);
                 this.appendBuffer(" ".concat(dstType, " ").concat(srcType));
                 break;
             }
-            case 64282 /* OperatorCode.array_new_fixed */: {
+            case 64264 /* OperatorCode.array_new_fixed */: {
                 var refType = this.typeIndexToString(operator.refType);
                 var length_1 = operator.len;
                 this.appendBuffer(" ".concat(refType, " ").concat(length_1));
@@ -1485,7 +1541,6 @@ var WasmDisassembler = /** @class */ (function () {
                         case 5 /* OperatorCode.else */:
                         case 7 /* OperatorCode.catch */:
                         case 25 /* OperatorCode.catch_all */:
-                        case 10 /* OperatorCode.unwind */:
                         case 24 /* OperatorCode.delegate */:
                             this.decreaseIndent();
                             break;
@@ -1499,9 +1554,9 @@ var WasmDisassembler = /** @class */ (function () {
                         case 3 /* OperatorCode.loop */:
                         case 5 /* OperatorCode.else */:
                         case 6 /* OperatorCode.try */:
+                        case 31 /* OperatorCode.try_table */:
                         case 7 /* OperatorCode.catch */:
                         case 25 /* OperatorCode.catch_all */:
-                        case 10 /* OperatorCode.unwind */:
                             this.increaseIndent();
                             break;
                     }

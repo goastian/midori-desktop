@@ -8,8 +8,6 @@
 const TEST_URI = URL_ROOT_SSL + "doc_inspector_reload_xul.xhtml";
 
 add_task(async function () {
-  await pushPref("dom.allow_XUL_XBL_for_file", false);
-
   const { tab, inspector, toolbox } = await openInspectorForURL(TEST_URI);
   await testToolboxInitialization(tab, inspector, toolbox);
 });
@@ -31,7 +29,7 @@ async function testToolboxInitialization(tab, inspector, toolbox) {
   await toolbox.destroy();
 
   ok(true, "'destroyed' notification received.");
-  const toolboxForTab = await gDevTools.getToolboxForTab(tab);
+  const toolboxForTab = gDevTools.getToolboxForTab(tab);
   ok(!toolboxForTab, "Toolbox destroyed.");
 }
 

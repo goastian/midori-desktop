@@ -16,13 +16,14 @@ const DMB_TEST_URL =
   "https://example.com/browser/devtools/client/debugger/test/mochitest/examples/doc-dom-mutation.html";
 
 async function enableMutationBreakpoints() {
-  await pushPref("devtools.markup.mutationBreakpoints.enabled", true);
   await pushPref("devtools.debugger.dom-mutation-breakpoints-visible", true);
 }
 
 add_task(async function () {
   // Enable features
   await enableMutationBreakpoints();
+  await pushPref("devtools.debugger.map-scopes-enabled", true);
+
   info("Switches over to the inspector pane");
 
   const { inspector, toolbox } = await openInspectorForURL(DMB_TEST_URL);
@@ -145,9 +146,7 @@ add_task(async function () {
   await resume(dbg);
 
   info("Blackboxing the source prevents debugger pause");
-  await waitForSource(dbg, "dom-mutation.original.js");
-
-  const source = findSource(dbg, "dom-mutation.original.js");
+  const source = await waitForSource(dbg, "dom-mutation.original.js");
 
   await selectSource(dbg, source);
   await clickElement(dbg, "blackbox");

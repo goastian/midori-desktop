@@ -2,21 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { Component } from "react";
-import PropTypes from "prop-types";
-import { connect } from "../../utils/connect";
+import React, { Component } from "devtools/client/shared/vendor/react";
+import { div, span } from "devtools/client/shared/vendor/react-dom-factories";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
+import { connect } from "devtools/client/shared/vendor/react-redux";
 
-import actions from "../../actions";
-import { getCurrentThread, getIsPaused, getContext } from "../../selectors";
+import actions from "../../actions/index";
+import { getCurrentThread, getIsPaused } from "../../selectors/index";
 import AccessibleImage from "../shared/AccessibleImage";
 
-const classnames = require("devtools/client/shared/classnames.js");
+const classnames = require("resource://devtools/client/shared/classnames.js");
 
 export class Thread extends Component {
   static get propTypes() {
     return {
       currentThread: PropTypes.string.isRequired,
-      cx: PropTypes.object.isRequired,
       isPaused: PropTypes.bool.isRequired,
       selectThread: PropTypes.func.isRequired,
       thread: PropTypes.object.isRequired,
@@ -24,8 +24,7 @@ export class Thread extends Component {
   }
 
   onSelectThread = () => {
-    const { thread } = this.props;
-    this.props.selectThread(this.props.cx, thread.actor);
+    this.props.selectThread(this.props.thread.actor);
   };
 
   render() {
@@ -36,31 +35,43 @@ export class Thread extends Component {
     if (thread.serviceWorkerStatus) {
       label += ` (${thread.serviceWorkerStatus})`;
     }
-
-    return (
-      <div
-        className={classnames("thread", {
+    return div(
+      {
+        className: classnames("thread", {
           selected: thread.actor == currentThread,
-        })}
-        key={thread.actor}
-        onClick={this.onSelectThread}
-      >
-        <div className="icon">
-          <AccessibleImage className={isWorker ? "worker" : "window"} />
-        </div>
-        <div className="label">{label}</div>
-        {isPaused ? (
-          <div className="pause-badge">
-            <AccessibleImage className="pause" />
-          </div>
-        ) : null}
-      </div>
+          paused: isPaused,
+        }),
+        key: thread.actor,
+        onClick: this.onSelectThread,
+      },
+      div(
+        {
+          className: "icon",
+        },
+        React.createElement(AccessibleImage, {
+          className: isWorker ? "worker" : "window",
+        })
+      ),
+      div(
+        {
+          className: "label",
+        },
+        label
+      ),
+      isPaused
+        ? span(
+            {
+              className: "pause-badge",
+              role: "status",
+            },
+            L10N.getStr("pausedThread")
+          )
+        : null
     );
   }
 }
 
 const mapStateToProps = (state, props) => ({
-  cx: getContext(state),
   currentThread: getCurrentThread(state),
   isPaused: getIsPaused(state, props.thread.actor),
 });

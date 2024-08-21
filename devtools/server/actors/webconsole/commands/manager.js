@@ -1,4 +1,4 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
+/* This Smurce Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -6,10 +6,35 @@
 
 loader.lazyRequireGetter(
   this,
-  ["isCommand"],
+  ["getCommandAndArgs"],
   "resource://devtools/server/actors/webconsole/commands/parser.js",
   true
 );
+
+loader.lazyGetter(this, "l10n", () => {
+  return new Localization(
+    [
+      "devtools/shared/webconsole-commands.ftl",
+      "devtools/server/actors/webconsole/commands/experimental-commands.ftl",
+    ],
+    true
+  );
+});
+
+const lazy = {};
+ChromeUtils.defineESModuleGetters(
+  lazy,
+  {
+    JSTracer: "resource://devtools/server/tracer/tracer.sys.mjs",
+  },
+  { global: "contextual" }
+);
+
+const USAGE_STRING_MAPPING = {
+  block: "webconsole-commands-usage-block",
+  trace: "webconsole-commands-usage-trace3",
+  unblock: "webconsole-commands-usage-unblock",
+};
 
 /**
  * WebConsole commands manager.
@@ -19,25 +44,53 @@ loader.lazyRequireGetter(
  *
  */
 const WebConsoleCommandsManager = {
+  // Flag used by eager evaluation in order to allow the execution of commands
+  // which are side effect free and disallow all the others.
+  SIDE_EFFECT_FREE: Symbol("SIDE_EFFECT_FREE"),
+
+  // Map of command name to command function or property descriptor (see register method)
   _registeredCommands: new Map(),
+  // Map of command name to optional array of accepted argument names
+  _validArguments: new Map(),
+  // Set of command names that are side effect free
+  _sideEffectFreeCommands: new Set(),
 
   /**
    * Register a new command.
-   * @param {string} name The command name (exemple: "$")
-   * @param {(function|object)} command The command to register.
-   *  It can be a function so the command is a function (like "$()"),
-   *  or it can also be a property descriptor to describe a getter(like
-   *  "$0").
    *
-   *  The command function or the command getter are passed a owner object as
-   *  their first parameter (see the example below).
+   * @param {Object} options
+   * @param {string} options.name
+   *        The command name (exemple: "$", "screenshot",...))
+   * @param {Boolean} isSideEffectFree
+   *        Tells if the command is free of any side effect to know
+   *        if it can run in eager console evaluation.
+   * @param {function|object} options.command
+   *        The command to register.
+   *        It can be:
+   *          - a function for the command like "$()" or ":screenshot"
+   *            which triggers some code.
+   *          - a property descriptor for getters like "$0",
+   *            which only returns a value.
+   * @param {Array<string>} options.validArguments
+   *        Optional list of valid arguments.
+   *        If passed, we will assert that passed arguments are all valid on execution.
+   *
+   *  The command function or the command getter are passed a:
+   *   - "owner" object as their first parameter (see the example below).
+   *     See _createOwnerObject for definition.
+   *   - "args" object with all parameters when this is ran as a ":my-command" command.
+   *     See getCommandAndArgs for definition.
+   *
+   * Note that if you want to support `--help` argument, you need to provide a usage string in:
+   * devtools/shared/locales/en-US/webconsole-commands.properties
    *
    * @example
    *
-   *   WebConsoleCommandsManager.register("$", function JSTH_$(owner, selector)
+   *   WebConsoleCommandsManager.register("$", function (owner, selector)
    *   {
    *     return owner.window.document.querySelector(selector);
-   *   });
+   *   },
+   *   ["my-argument"]);
    *
    *   WebConsoleCommandsManager.register("$0", {
    *     get: function(owner) {
@@ -45,7 +98,7 @@ const WebConsoleCommandsManager = {
    *     }
    *   });
    */
-  register(name, command) {
+  register({ name, isSideEffectFree, command, validArguments }) {
     if (
       typeof command != "function" &&
       !(typeof command == "object" && typeof command.get == "function")
@@ -54,7 +107,18 @@ const WebConsoleCommandsManager = {
         "Invalid web console command. It can only be a function, or an object with a function as 'get' attribute"
       );
     }
+    if (typeof isSideEffectFree !== "boolean") {
+      throw new Error(
+        "Invalid web console command. 'isSideEffectFree' attribute should be set and be a boolean"
+      );
+    }
     this._registeredCommands.set(name, command);
+    if (validArguments) {
+      this._validArguments.set(name, validArguments);
+    }
+    if (isSideEffectFree) {
+      this._sideEffectFreeCommands.add(name);
+    }
   },
 
   /**
@@ -80,7 +144,7 @@ const WebConsoleCommandsManager = {
    * a string starting with ':' character.
    */
   getAllColonCommandNames() {
-    return ["block", "help", "history", "screenshot", "unblock"];
+    return ["block", "help", "history", "screenshot", "unblock", "trace"];
   },
 
   /**
@@ -88,7 +152,7 @@ const WebConsoleCommandsManager = {
    * and can only be used via `:command-name`.
    */
   getColonOnlyCommandNames() {
-    return ["screenshot"];
+    return ["screenshot", "trace"];
   },
 
   /**
@@ -103,15 +167,57 @@ const WebConsoleCommandsManager = {
 
   /**
    * Is the command name possibly overriding a symbol which
-   * already exists in the paused frame, or global into which
+   * already exists in the paused frame or the global into which
    * we are about to execute into?
    */
   _isCommandNameAlreadyInScope(name, frame, dbgGlobal) {
-    // Fallback on global scope when Debugger.Frame doesn't come along an Environment.
     if (frame && frame.environment) {
       return !!frame.environment.find(name);
     }
+
+    // Fallback on global scope when Debugger.Frame doesn't come along an
+    // Environment, or is not a frame.
+
+    try {
+      // This can throw in Browser Toolbox tests
+      const globalEnv = dbgGlobal.asEnvironment();
+      if (globalEnv) {
+        return !!dbgGlobal.asEnvironment().find(name);
+      }
+    } catch {}
+
     return !!dbgGlobal.getOwnPropertyDescriptor(name);
+  },
+
+  _createOwnerObject(
+    consoleActor,
+    debuggerGlobal,
+    evalInput,
+    selectedNodeActorID
+  ) {
+    const owner = {
+      window: consoleActor.evalGlobal,
+      makeDebuggeeValue: debuggerGlobal.makeDebuggeeValue.bind(debuggerGlobal),
+      createValueGrip: consoleActor.createValueGrip.bind(consoleActor),
+      preprocessDebuggerObject:
+        consoleActor.preprocessDebuggerObject.bind(consoleActor),
+      helperResult: null,
+      consoleActor,
+      evalInput,
+    };
+    if (selectedNodeActorID) {
+      const actor = consoleActor.conn.getActor(selectedNodeActorID);
+      if (actor) {
+        owner.selectedNode = actor.rawNode;
+      }
+    }
+    return owner;
+  },
+
+  _getCommandsForCurrentEnvironment() {
+    // Not supporting extra commands in workers yet.  This should be possible to
+    // add one by one as long as they don't require jsm/mjs, Cu, etc.
+    return isWorker ? new Map() : this.getAllCommands();
   },
 
   /**
@@ -130,6 +236,10 @@ const WebConsoleCommandsManager = {
    *        String to evaluate.
    * @param string selectedNodeActorID
    *        The Node actor ID of the currently selected DOM Element, if any is selected.
+   * @param bool preferConsoleCommandsOverLocalSymbols
+   *        If true, define all bindings even if there's conflicting existing
+   *        symbols.  This is for the case evaluating non-user code in frame
+   *        environment.
    *
    * @return object
    *         Object with two properties:
@@ -144,26 +254,17 @@ const WebConsoleCommandsManager = {
     debuggerGlobal,
     frame,
     evalInput,
-    selectedNodeActorID
+    selectedNodeActorID,
+    preferConsoleCommandsOverLocalSymbols
   ) {
     const bindings = Object.create(null);
 
-    const owner = {
-      window: consoleActor.evalGlobal,
-      makeDebuggeeValue: debuggerGlobal.makeDebuggeeValue.bind(debuggerGlobal),
-      createValueGrip: consoleActor.createValueGrip.bind(consoleActor),
-      preprocessDebuggerObject:
-        consoleActor.preprocessDebuggerObject.bind(consoleActor),
-      helperResult: null,
+    const owner = this._createOwnerObject(
       consoleActor,
+      debuggerGlobal,
       evalInput,
-    };
-    if (selectedNodeActorID) {
-      const actor = consoleActor.conn.getActor(selectedNodeActorID);
-      if (actor) {
-        owner.selectedNode = actor.rawNode;
-      }
-    }
+      selectedNodeActorID
+    );
 
     const evalGlobal = consoleActor.evalGlobal;
     function maybeExport(obj, name) {
@@ -182,24 +283,27 @@ const WebConsoleCommandsManager = {
       });
     }
 
-    // Not supporting extra commands in workers yet.  This should be possible to
-    // add one by one as long as they don't require jsm, Cu, etc.
-    const commands = isWorker ? [] : this.getAllCommands();
-
-    // Is it a command evaluation, starting with ':' prefix?
-    const isCmd = isCommand(evalInput);
+    const commands = this._getCommandsForCurrentEnvironment();
 
     const colonOnlyCommandNames = this.getColonOnlyCommandNames();
     for (const [name, command] of commands) {
-      // When we are running command via `:` prefix, no user code is being ran and only the command executes,
-      // so always expose the commands as the command will try to call its JavaScript method (see getEvalInput).
-      // Otherwise, when we run user code, we want to avoid overriding existing symbols with commands.
-      // Also ignore commands which can only be run with the `:` prefix.
+      // When we run user code in frame, we want to avoid overriding existing
+      // symbols with commands.
+      //
+      // When we run user code in global scope, all bindings are automatically
+      // shadowed, except for "help" function which is checked by getEvalInput.
+      //
+      // When preferConsoleCommandsOverLocalSymbols is true, ignore symbols in
+      // the current scope and always use commands ones.
       if (
-        !isCmd &&
-        (this._isCommandNameAlreadyInScope(name, frame, debuggerGlobal) ||
-          colonOnlyCommandNames.includes(name))
+        !preferConsoleCommandsOverLocalSymbols &&
+        (frame || name === "help") &&
+        this._isCommandNameAlreadyInScope(name, frame, debuggerGlobal)
       ) {
+        continue;
+      }
+      // Also ignore commands which can only be run with the `:` prefix.
+      if (colonOnlyCommandNames.includes(name)) {
         continue;
       }
 
@@ -214,12 +318,27 @@ const WebConsoleCommandsManager = {
         // Function commands
         descriptor.value = command.bind(undefined, owner);
         maybeExport(descriptor, "value");
+
+        // Unfortunately evalWithBindings will access all bindings values,
+        // which would trigger a debuggee native call because bindings's property
+        // is using Cu.exportFunction.
+        // Put a magic symbol attribute on them in order to carefully accept
+        // all bindings as being side effect safe by default.
+        if (this._sideEffectFreeCommands.has(name)) {
+          descriptor.value.isSideEffectFree = this.SIDE_EFFECT_FREE;
+        }
+
         // Make sure the helpers can be used during eval.
         descriptor.value = debuggerGlobal.makeDebuggeeValue(descriptor.value);
       } else if (typeof command?.get === "function") {
         // Getter commands
         descriptor.get = command.get.bind(undefined, owner);
         maybeExport(descriptor, "get");
+
+        // See comment in previous block.
+        if (this._sideEffectFreeCommands.has(name)) {
+          descriptor.get.isSideEffectFree = this.SIDE_EFFECT_FREE;
+        }
       }
       Object.defineProperty(bindings, name, descriptor);
     }
@@ -230,6 +349,80 @@ const WebConsoleCommandsManager = {
         return owner.helperResult;
       },
       bindings,
+    };
+  },
+
+  /**
+   * Create a function for given ':command'-style command.
+   *
+   * @param object consoleActor
+   *        The related web console actor evaluating some code.
+   * @param object debuggerGlobal
+   *        A Debugger.Object that wraps a content global. This is used for the
+   *        Web Console Commands.
+   * @param string selectedNodeActorID
+   *        The Node actor ID of the currently selected DOM Element, if any is selected.
+   * @param string evalInput
+   *        String to evaluate.
+   *
+   * @return object
+   *         Object with two properties:
+   *         - 'commandFunc', a function corresponds to the 'commandName'
+   *         - 'getHelperResult', a live getter returning the data the command
+   *           which executed want to convey to the frontend.
+   */
+  executeCommand(consoleActor, debuggerGlobal, selectedNodeActorID, evalInput) {
+    const { command, args } = getCommandAndArgs(evalInput);
+    const commands = this._getCommandsForCurrentEnvironment();
+    if (!commands.has(command)) {
+      throw new Error(`Unsupported command '${command}'`);
+    }
+
+    if (args.help || args.usage) {
+      const l10nKey = USAGE_STRING_MAPPING[command];
+      if (l10nKey) {
+        const message = l10n.formatValueSync(l10nKey);
+        if (message && message !== l10nKey) {
+          return {
+            result: null,
+            helperResult: {
+              type: "usage",
+              message,
+            },
+          };
+        }
+      }
+    }
+
+    const validArguments = this._validArguments.get(command);
+    if (validArguments) {
+      for (const key of Object.keys(args)) {
+        if (!validArguments.includes(key)) {
+          throw new Error(
+            `:${command} command doesn't support '${key}' argument.`
+          );
+        }
+      }
+    }
+
+    const owner = this._createOwnerObject(
+      consoleActor,
+      debuggerGlobal,
+      evalInput,
+      selectedNodeActorID
+    );
+
+    const commandFunction = commands.get(command);
+
+    // This is where we run the command passed to register method
+    const result = commandFunction(owner, args);
+
+    return {
+      result,
+
+      // commandFunction may mutate owner.helperResult which is used
+      // to convey additional data to the frontend.
+      helperResult: owner.helperResult,
     };
   },
 };
@@ -244,20 +437,35 @@ exports.WebConsoleCommandsManager = WebConsoleCommandsManager;
  */
 
 /**
- * Find a node by ID.
+ * Find the first node matching a CSS selector.
  *
- * @param string id
- *        The ID of the element you want.
+ * @param string selector
+ *        A string that is passed to window.document.querySelector
+ * @param [optional] Node element
+ *        An optional Node to replace window.document
  * @return Node or null
  *         The result of calling document.querySelector(selector).
  */
-WebConsoleCommandsManager.register("$", function (owner, selector) {
-  try {
-    return owner.window.document.querySelector(selector);
-  } catch (err) {
-    // Throw an error like `err` but that belongs to `owner.window`.
-    throw new owner.window.DOMException(err.message, err.name);
-  }
+WebConsoleCommandsManager.register({
+  name: "$",
+  isSideEffectFree: true,
+  command(owner, selector, element) {
+    try {
+      if (
+        element &&
+        element.querySelector &&
+        (element.nodeType == Node.ELEMENT_NODE ||
+          element.nodeType == Node.DOCUMENT_NODE ||
+          element.nodeType == Node.DOCUMENT_FRAGMENT_NODE)
+      ) {
+        return element.querySelector(selector);
+      }
+      return owner.window.document.querySelector(selector);
+    } catch (err) {
+      // Throw an error like `err` but that belongs to `owner.window`.
+      throw new owner.window.DOMException(err.message, err.name);
+    }
+  },
 });
 
 /**
@@ -265,25 +473,39 @@ WebConsoleCommandsManager.register("$", function (owner, selector) {
  *
  * @param string selector
  *        A string that is passed to window.document.querySelectorAll.
- * @return NodeList
- *         Returns the result of document.querySelectorAll(selector).
+ * @param [optional] Node element
+ *        An optional Node to replace window.document
+ * @return array of Node
+ *         The result of calling document.querySelector(selector) in an array.
  */
-WebConsoleCommandsManager.register("$$", function (owner, selector) {
-  let nodes;
-  try {
-    nodes = owner.window.document.querySelectorAll(selector);
-  } catch (err) {
-    // Throw an error like `err` but that belongs to `owner.window`.
-    throw new owner.window.DOMException(err.message, err.name);
-  }
-
-  // Calling owner.window.Array.from() doesn't work without accessing the
-  // wrappedJSObject, so just loop through the results instead.
-  const result = new owner.window.Array();
-  for (let i = 0; i < nodes.length; i++) {
-    result.push(nodes[i]);
-  }
-  return result;
+WebConsoleCommandsManager.register({
+  name: "$$",
+  isSideEffectFree: true,
+  command(owner, selector, element) {
+    let scope = owner.window.document;
+    try {
+      if (
+        element &&
+        element.querySelectorAll &&
+        (element.nodeType == Node.ELEMENT_NODE ||
+          element.nodeType == Node.DOCUMENT_NODE ||
+          element.nodeType == Node.DOCUMENT_FRAGMENT_NODE)
+      ) {
+        scope = element;
+      }
+      const nodes = scope.querySelectorAll(selector);
+      const result = new owner.window.Array();
+      // Calling owner.window.Array.from() doesn't work without accessing the
+      // wrappedJSObject, so just loop through the results instead.
+      for (let i = 0; i < nodes.length; i++) {
+        result.push(nodes[i]);
+      }
+      return result;
+    } catch (err) {
+      // Throw an error like `err` but that belongs to `owner.window`.
+      throw new owner.window.DOMException(err.message, err.name);
+    }
+  },
 });
 
 /**
@@ -292,9 +514,13 @@ WebConsoleCommandsManager.register("$$", function (owner, selector) {
  * @return object|undefined
  * Returns last console evaluation or undefined
  */
-WebConsoleCommandsManager.register("$_", {
-  get(owner) {
-    return owner.consoleActor.getLastConsoleInputEvaluation();
+WebConsoleCommandsManager.register({
+  name: "$_",
+  isSideEffectFree: true,
+  command: {
+    get(owner) {
+      return owner.consoleActor.getLastConsoleInputEvaluation();
+    },
   },
 });
 
@@ -309,9 +535,10 @@ WebConsoleCommandsManager.register("$_", {
           Specify the result type. Default value XPathResult.ANY_TYPE
  * @return array of Node
  */
-WebConsoleCommandsManager.register(
-  "$x",
-  function (
+WebConsoleCommandsManager.register({
+  name: "$x",
+  isSideEffectFree: true,
+  command(
     owner,
     xPath,
     context,
@@ -376,8 +603,8 @@ WebConsoleCommandsManager.register(
     }
 
     return nodes;
-  }
-);
+  },
+});
 
 /**
  * Returns the currently selected object in the highlighter.
@@ -385,28 +612,40 @@ WebConsoleCommandsManager.register(
  * @return Object representing the current selection in the
  *         Inspector, or null if no selection exists.
  */
-WebConsoleCommandsManager.register("$0", {
-  get(owner) {
-    return owner.makeDebuggeeValue(owner.selectedNode);
+WebConsoleCommandsManager.register({
+  name: "$0",
+  isSideEffectFree: true,
+  command: {
+    get(owner) {
+      return owner.makeDebuggeeValue(owner.selectedNode);
+    },
   },
 });
 
 /**
  * Clears the output of the WebConsole.
  */
-WebConsoleCommandsManager.register("clear", function (owner) {
-  owner.helperResult = {
-    type: "clearOutput",
-  };
+WebConsoleCommandsManager.register({
+  name: "clear",
+  isSideEffectFree: false,
+  command(owner) {
+    owner.helperResult = {
+      type: "clearOutput",
+    };
+  },
 });
 
 /**
  * Clears the input history of the WebConsole.
  */
-WebConsoleCommandsManager.register("clearHistory", function (owner) {
-  owner.helperResult = {
-    type: "clearHistory",
-  };
+WebConsoleCommandsManager.register({
+  name: "clearHistory",
+  isSideEffectFree: false,
+  command(owner) {
+    owner.helperResult = {
+      type: "clearHistory",
+    };
+  },
 });
 
 /**
@@ -416,9 +655,13 @@ WebConsoleCommandsManager.register("clearHistory", function (owner) {
  *        Object to return the property names from.
  * @return array of strings
  */
-WebConsoleCommandsManager.register("keys", function (owner, object) {
-  // Need to waive Xrays so we can iterate functions and accessor properties
-  return Cu.cloneInto(Object.keys(Cu.waiveXrays(object)), owner.window);
+WebConsoleCommandsManager.register({
+  name: "keys",
+  isSideEffectFree: true,
+  command(owner, object) {
+    // Need to waive Xrays so we can iterate functions and accessor properties
+    return Cu.cloneInto(Object.keys(Cu.waiveXrays(object)), owner.window);
+  },
 });
 
 /**
@@ -428,24 +671,32 @@ WebConsoleCommandsManager.register("keys", function (owner, object) {
  *        Object to display the values from.
  * @return array of string
  */
-WebConsoleCommandsManager.register("values", function (owner, object) {
-  const values = [];
-  // Need to waive Xrays so we can iterate functions and accessor properties
-  const waived = Cu.waiveXrays(object);
-  const names = Object.getOwnPropertyNames(waived);
+WebConsoleCommandsManager.register({
+  name: "values",
+  isSideEffectFree: true,
+  command(owner, object) {
+    const values = [];
+    // Need to waive Xrays so we can iterate functions and accessor properties
+    const waived = Cu.waiveXrays(object);
+    const names = Object.getOwnPropertyNames(waived);
 
-  for (const name of names) {
-    values.push(waived[name]);
-  }
+    for (const name of names) {
+      values.push(waived[name]);
+    }
 
-  return Cu.cloneInto(values, owner.window);
+    return Cu.cloneInto(values, owner.window);
+  },
 });
 
 /**
  * Opens a help window in MDN.
  */
-WebConsoleCommandsManager.register("help", function (owner) {
-  owner.helperResult = { type: "help" };
+WebConsoleCommandsManager.register({
+  name: "help",
+  isSideEffectFree: false,
+  command(owner) {
+    owner.helperResult = { type: "help" };
+  },
 });
 
 /**
@@ -454,9 +705,10 @@ WebConsoleCommandsManager.register("help", function (owner) {
  * @param object object
  *        Object to inspect.
  */
-WebConsoleCommandsManager.register(
-  "inspect",
-  function (owner, object, forceExpandInConsole = false) {
+WebConsoleCommandsManager.register({
+  name: "inspect",
+  isSideEffectFree: false,
+  command(owner, object, forceExpandInConsole = false) {
     const dbgObj = owner.preprocessDebuggerObject(
       owner.makeDebuggeeValue(object)
     );
@@ -468,8 +720,8 @@ WebConsoleCommandsManager.register(
       object: grip,
       forceExpandInConsole,
     };
-  }
-);
+  },
+});
 
 /**
  * Copy the String representation of a value to the clipboard.
@@ -478,28 +730,32 @@ WebConsoleCommandsManager.register(
  *        A value you want to copy as a string.
  * @return void
  */
-WebConsoleCommandsManager.register("copy", function (owner, value) {
-  let payload;
-  try {
-    if (Element.isInstance(value)) {
-      payload = value.outerHTML;
-    } else if (typeof value == "string") {
-      payload = value;
-    } else {
-      payload = JSON.stringify(value, null, "  ");
+WebConsoleCommandsManager.register({
+  name: "copy",
+  isSideEffectFree: false,
+  command(owner, value) {
+    let payload;
+    try {
+      if (Element.isInstance(value)) {
+        payload = value.outerHTML;
+      } else if (typeof value == "string") {
+        payload = value;
+      } else {
+        payload = JSON.stringify(value, null, "  ");
+      }
+    } catch (ex) {
+      owner.helperResult = {
+        type: "error",
+        message: "webconsole.error.commands.copyError",
+        messageArgs: [ex.toString()],
+      };
+      return;
     }
-  } catch (ex) {
     owner.helperResult = {
-      type: "error",
-      message: "webconsole.error.commands.copyError",
-      messageArgs: [ex.toString()],
+      type: "copyValueToClipboard",
+      value: payload,
     };
-    return;
-  }
-  owner.helperResult = {
-    type: "copyValueToClipboard",
-    value: payload,
-  };
+  },
 });
 
 /**
@@ -509,11 +765,15 @@ WebConsoleCommandsManager.register("copy", function (owner, value) {
  *               The arguments to be passed to the screenshot
  * @return void
  */
-WebConsoleCommandsManager.register("screenshot", function (owner, args = {}) {
-  owner.helperResult = {
-    type: "screenshotOutput",
-    args,
-  };
+WebConsoleCommandsManager.register({
+  name: "screenshot",
+  isSideEffectFree: false,
+  command(owner, args = {}) {
+    owner.helperResult = {
+      type: "screenshotOutput",
+      args,
+    };
+  },
 });
 
 /**
@@ -523,11 +783,15 @@ WebConsoleCommandsManager.register("screenshot", function (owner, args = {}) {
  *               The arguments to be passed to the history
  * @return void
  */
-WebConsoleCommandsManager.register("history", function (owner, args = {}) {
-  owner.helperResult = {
-    type: "historyOutput",
-    args,
-  };
+WebConsoleCommandsManager.register({
+  name: "history",
+  isSideEffectFree: false,
+  command(owner, args = {}) {
+    owner.helperResult = {
+      type: "historyOutput",
+      args,
+    };
+  },
 });
 
 /**
@@ -538,19 +802,26 @@ WebConsoleCommandsManager.register("history", function (owner, args = {}) {
  *
  * @return void
  */
-WebConsoleCommandsManager.register("block", function (owner, args = {}) {
-  if (!args.url) {
-    owner.helperResult = {
-      type: "error",
-      message: "webconsole.messages.commands.blockArgMissing",
-    };
-    return;
-  }
+WebConsoleCommandsManager.register({
+  name: "block",
+  isSideEffectFree: false,
+  command(owner, args = {}) {
+    // Note that this command is implemented in the frontend, from actions's input.js
+    // We only forward the command arguments back to the client.
+    if (!args.url) {
+      owner.helperResult = {
+        type: "error",
+        message: "webconsole.messages.commands.blockArgMissing",
+      };
+      return;
+    }
 
-  owner.helperResult = {
-    type: "blockURL",
-    args,
-  };
+    owner.helperResult = {
+      type: "blockURL",
+      args,
+    };
+  },
+  validArguments: ["url"],
 });
 
 /*
@@ -561,17 +832,104 @@ WebConsoleCommandsManager.register("block", function (owner, args = {}) {
  *
  * @return void
  */
-WebConsoleCommandsManager.register("unblock", function (owner, args = {}) {
-  if (!args.url) {
-    owner.helperResult = {
-      type: "error",
-      message: "webconsole.messages.commands.blockArgMissing",
-    };
-    return;
-  }
+WebConsoleCommandsManager.register({
+  name: "unblock",
+  isSideEffectFree: false,
+  command(owner, args = {}) {
+    // Note that this command is implemented in the frontend, from actions's input.js
+    // We only forward the command arguments back to the client.
+    if (!args.url) {
+      owner.helperResult = {
+        type: "error",
+        message: "webconsole.messages.commands.blockArgMissing",
+      };
+      return;
+    }
 
-  owner.helperResult = {
-    type: "unblockURL",
-    args,
-  };
+    owner.helperResult = {
+      type: "unblockURL",
+      args,
+    };
+  },
+  validArguments: ["url"],
+});
+
+/*
+ * Toggle JavaScript tracing
+ *
+ * @param object args
+ *        An object with various configuration only valid when starting the tracing.
+ *
+ * @return void
+ */
+WebConsoleCommandsManager.register({
+  name: "trace",
+  isSideEffectFree: false,
+  command(owner, args) {
+    if (isWorker) {
+      throw new Error(":trace command isn't supported in workers");
+    }
+    // Disable :trace command on worker until this feature is enabled by default
+    if (
+      !Services.prefs.getBoolPref(
+        "devtools.debugger.features.javascript-tracing",
+        false
+      )
+    ) {
+      throw new Error(
+        ":trace requires 'devtools.debugger.features.javascript-tracing' preference to be true"
+      );
+    }
+    const tracerActor =
+      owner.consoleActor.parentActor.getTargetScopedActor("tracer");
+    const logMethod = args.logMethod || "console";
+    let traceDOMMutations = null;
+    if ("dom-mutations" in args) {
+      // When no value is passed, track all types of mutations
+      if (args["dom-mutations"] === true) {
+        traceDOMMutations = ["add", "attributes", "remove"];
+      } else if (typeof args["dom-mutations"] == "string") {
+        // Otherwise consider the value as coma seperated list and remove any white space.
+        traceDOMMutations = args["dom-mutations"].split(",").map(e => e.trim());
+        const acceptedValues = Object.values(lazy.JSTracer.DOM_MUTATIONS);
+        if (!traceDOMMutations.every(e => acceptedValues.includes(e))) {
+          throw new Error(
+            `:trace --dom-mutations only accept a list of strings whose values can be: ${acceptedValues}`
+          );
+        }
+      } else {
+        throw new Error(
+          ":trace --dom-mutations accept only no arguments, or a list mutation type strings (add,attributes,remove)"
+        );
+      }
+    }
+    // Note that toggleTracing does some sanity checks and will throw meaningful error
+    // when the arguments are wrong.
+    const enabled = tracerActor.toggleTracing({
+      logMethod,
+      prefix: args.prefix || null,
+      traceFunctionReturn: !!args.returns,
+      traceValues: !!args.values,
+      traceOnNextInteraction: args["on-next-interaction"] || null,
+      traceDOMMutations,
+      maxDepth: args["max-depth"] || null,
+      maxRecords: args["max-records"] || null,
+    });
+
+    owner.helperResult = {
+      type: "traceOutput",
+      enabled,
+      logMethod,
+    };
+  },
+  validArguments: [
+    "logMethod",
+    "max-depth",
+    "max-records",
+    "on-next-interaction",
+    "dom-mutations",
+    "prefix",
+    "returns",
+    "values",
+  ],
 });

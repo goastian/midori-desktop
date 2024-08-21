@@ -77,7 +77,7 @@ add_task(async function () {
   assertBreakpointExists(dbg, entrySrc, 15);
 
   invokeInTab("keepMeAlive");
-  await waitForPaused(dbg);
+  await waitForPausedInOriginalFileAndToggleMapScopes(dbg);
   assertPausedAtSourceAndLine(dbg, entrySrc.id, 15);
 
   await stepIn(dbg);
@@ -98,11 +98,89 @@ add_task(async function () {
     "Pending selected location is the expected one"
   );
 
+  const footerButton = findElement(dbg, "sourceMapFooterButton");
+  is(
+    footerButton.textContent,
+    "original file",
+    "The source map button's label mention an original file"
+  );
+  ok(
+    footerButton.classList.contains("original"),
+    "The source map icon is original"
+  );
+  ok(
+    !footerButton.classList.contains("not-mapped"),
+    "The source map button isn't gray out"
+  );
+  ok(
+    !footerButton.classList.contains("loading"),
+    "The source map button isn't reporting in-process loading"
+  );
+
   info("Click on jump to generated source link from editor's footer");
-  findElement(dbg, "sourceMapLink").click();
+  let mappedSourceLink = findElement(dbg, "mappedSourceLink");
+  is(
+    mappedSourceLink.textContent,
+    "To bundle.js",
+    "The link to mapped source mentions the bundle"
+  );
+  mappedSourceLink.click();
 
   await waitForSelectedSource(dbg, bundleSrc);
   assertPausedAtSourceAndLine(dbg, bundleSrc.id, 62);
+  // The mapped source link is computed asynchronously when we are on the bundle
+  mappedSourceLink = await waitFor(() => findElement(dbg, "mappedSourceLink"));
+  mappedSourceLink = findElement(dbg, "mappedSourceLink");
+  is(
+    mappedSourceLink.textContent,
+    "From entry.js",
+    "The link to mapped source mentions the original source"
+  );
+  is(
+    footerButton.textContent,
+    "bundle file",
+    "When moved to the bundle, the source map button's label mention a bundle file"
+  );
+  ok(
+    !footerButton.classList.contains("original"),
+    "The source map icon isn't original"
+  );
+  ok(
+    !footerButton.classList.contains("not-mapped"),
+    "The source map button isn't gray out"
+  );
+  ok(
+    !footerButton.classList.contains("loading"),
+    "The source map button isn't reporting in-process loading"
+  );
+
+  info("Move the cursor within the bundle to another original source");
+  getCM(dbg).setCursor({ line: 70, ch: 0 });
+  mappedSourceLink = await waitFor(() => findElement(dbg, "mappedSourceLink"));
+  is(
+    mappedSourceLink.textContent,
+    "From times2.js",
+    "The link to mapped source updates to the newly selected original source within the bundle"
+  );
+
+  info("Move to the new original file via the source map button/menu");
+  await clickOnSourceMapMenuItem(dbg, ".debugger-jump-mapped-source");
+  is(
+    dbg.panel.panelWin.parent.document.querySelector(
+      ".debugger-jump-mapped-source"
+    ).textContent,
+    DEBUGGER_L10N.getStr("sourceFooter.sourceMapButton.jumpToOriginalSource"),
+    "assert jump to original menu label"
+  );
+  await waitForSelectedSource(dbg, "times2.js");
+
+  info("Open the related source map file and wait for a new tab to be opened");
+  const onTabLoaded = BrowserTestUtils.waitForNewTab(
+    gBrowser,
+    `view-source:${EXAMPLE_URL}sourcemaps/bundle.js.map`
+  );
+  await clickOnSourceMapMenuItem(dbg, ".debugger-source-map-link");
+  await onTabLoaded;
 });
 
 function assertBreakpointExists(dbg, source, line) {
@@ -120,5 +198,5 @@ async function waitForBreakpointCount(dbg, count) {
   const {
     selectors: { getBreakpointCount },
   } = dbg;
-  await waitForState(dbg, state => getBreakpointCount() == count);
+  await waitForState(dbg, () => getBreakpointCount() == count);
 }

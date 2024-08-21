@@ -2,11 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import { isOriginalId } from "devtools/client/shared/source-map-loader/index";
 import {
   getBreakableLines,
   getSourceActorBreakableLines,
-} from "../../selectors";
+} from "../../selectors/index";
 import { setBreakpointPositions } from "../breakpoints/breakpointPositions";
 
 function calculateBreakableLines(positions) {
@@ -23,16 +22,13 @@ function calculateBreakableLines(positions) {
 /**
  * Ensure that breakable lines for a given source are fetched.
  *
- * @param Object cx
  * @param Object location
  */
-export function setBreakableLines(cx, location) {
+export function setBreakableLines(location) {
   return async ({ getState, dispatch, client }) => {
     let breakableLines;
-    if (isOriginalId(location.source.id)) {
-      const positions = await dispatch(
-        setBreakpointPositions({ cx, location })
-      );
+    if (location.source.isOriginal) {
+      const positions = await dispatch(setBreakpointPositions(location));
       breakableLines = calculateBreakableLines(positions);
 
       const existingBreakableLines = getBreakableLines(
@@ -47,8 +43,7 @@ export function setBreakableLines(cx, location) {
 
       dispatch({
         type: "SET_ORIGINAL_BREAKABLE_LINES",
-        cx,
-        sourceId: location.source.id,
+        source: location.source,
         breakableLines,
       });
     } else {
@@ -65,7 +60,7 @@ export function setBreakableLines(cx, location) {
       );
       dispatch({
         type: "SET_SOURCE_ACTOR_BREAKABLE_LINES",
-        sourceActorId: location.sourceActor.id,
+        sourceActor: location.sourceActor,
         breakableLines,
       });
     }

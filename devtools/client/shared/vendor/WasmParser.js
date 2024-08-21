@@ -29,7 +29,7 @@ var __extends = (this && this.__extends) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.bytesToString = exports.BinaryReader = exports.Int64 = exports.TagAttribute = exports.ElementMode = exports.DataMode = exports.BinaryReaderState = exports.NameType = exports.LinkingType = exports.RelocType = exports.RefType = exports.Type = exports.FuncDef = exports.FieldDef = exports.TypeKind = exports.ExternalKind = exports.OperatorCodeNames = exports.OperatorCode = exports.SectionCode = void 0;
+exports.bytesToString = exports.BinaryReader = exports.Int64 = exports.TagAttribute = exports.ElementMode = exports.DataMode = exports.BinaryReaderState = exports.NameType = exports.LinkingType = exports.RelocType = exports.CatchHandler = exports.CatchHandlerKind = exports.RefType = exports.Type = exports.FuncDef = exports.FieldDef = exports.TypeKind = exports.ExternalKind = exports.OperatorCodeNames = exports.OperatorCode = exports.SectionCode = void 0;
 // See https://github.com/WebAssembly/design/blob/master/BinaryEncoding.md
 var WASM_MAGIC_NUMBER = 0x6d736100;
 var WASM_SUPPORTED_EXPERIMENTAL_VERSION = 0xd;
@@ -64,7 +64,7 @@ var OperatorCode;
     OperatorCode[OperatorCode["catch"] = 7] = "catch";
     OperatorCode[OperatorCode["throw"] = 8] = "throw";
     OperatorCode[OperatorCode["rethrow"] = 9] = "rethrow";
-    OperatorCode[OperatorCode["unwind"] = 10] = "unwind";
+    OperatorCode[OperatorCode["throw_ref"] = 10] = "throw_ref";
     OperatorCode[OperatorCode["end"] = 11] = "end";
     OperatorCode[OperatorCode["br"] = 12] = "br";
     OperatorCode[OperatorCode["br_if"] = 13] = "br_if";
@@ -82,6 +82,7 @@ var OperatorCode;
     OperatorCode[OperatorCode["drop"] = 26] = "drop";
     OperatorCode[OperatorCode["select"] = 27] = "select";
     OperatorCode[OperatorCode["select_with_type"] = 28] = "select_with_type";
+    OperatorCode[OperatorCode["try_table"] = 31] = "try_table";
     OperatorCode[OperatorCode["local_get"] = 32] = "local_get";
     OperatorCode[OperatorCode["local_set"] = 33] = "local_set";
     OperatorCode[OperatorCode["local_tee"] = 34] = "local_tee";
@@ -271,9 +272,9 @@ var OperatorCode;
     OperatorCode[OperatorCode["ref_null"] = 208] = "ref_null";
     OperatorCode[OperatorCode["ref_is_null"] = 209] = "ref_is_null";
     OperatorCode[OperatorCode["ref_func"] = 210] = "ref_func";
-    OperatorCode[OperatorCode["ref_as_non_null"] = 211] = "ref_as_non_null";
-    OperatorCode[OperatorCode["br_on_null"] = 212] = "br_on_null";
-    OperatorCode[OperatorCode["ref_eq"] = 213] = "ref_eq";
+    OperatorCode[OperatorCode["ref_eq"] = 211] = "ref_eq";
+    OperatorCode[OperatorCode["ref_as_non_null"] = 212] = "ref_as_non_null";
+    OperatorCode[OperatorCode["br_on_null"] = 213] = "br_on_null";
     OperatorCode[OperatorCode["br_on_non_null"] = 214] = "br_on_non_null";
     OperatorCode[OperatorCode["memory_atomic_notify"] = 65024] = "memory_atomic_notify";
     OperatorCode[OperatorCode["memory_atomic_wait32"] = 65025] = "memory_atomic_wait32";
@@ -342,308 +343,295 @@ var OperatorCode;
     OperatorCode[OperatorCode["i64_atomic_rmw8_cmpxchg_u"] = 65100] = "i64_atomic_rmw8_cmpxchg_u";
     OperatorCode[OperatorCode["i64_atomic_rmw16_cmpxchg_u"] = 65101] = "i64_atomic_rmw16_cmpxchg_u";
     OperatorCode[OperatorCode["i64_atomic_rmw32_cmpxchg_u"] = 65102] = "i64_atomic_rmw32_cmpxchg_u";
-    OperatorCode[OperatorCode["v128_load"] = 64768] = "v128_load";
-    OperatorCode[OperatorCode["i16x8_load8x8_s"] = 64769] = "i16x8_load8x8_s";
-    OperatorCode[OperatorCode["i16x8_load8x8_u"] = 64770] = "i16x8_load8x8_u";
-    OperatorCode[OperatorCode["i32x4_load16x4_s"] = 64771] = "i32x4_load16x4_s";
-    OperatorCode[OperatorCode["i32x4_load16x4_u"] = 64772] = "i32x4_load16x4_u";
-    OperatorCode[OperatorCode["i64x2_load32x2_s"] = 64773] = "i64x2_load32x2_s";
-    OperatorCode[OperatorCode["i64x2_load32x2_u"] = 64774] = "i64x2_load32x2_u";
-    OperatorCode[OperatorCode["v8x16_load_splat"] = 64775] = "v8x16_load_splat";
-    OperatorCode[OperatorCode["v16x8_load_splat"] = 64776] = "v16x8_load_splat";
-    OperatorCode[OperatorCode["v32x4_load_splat"] = 64777] = "v32x4_load_splat";
-    OperatorCode[OperatorCode["v64x2_load_splat"] = 64778] = "v64x2_load_splat";
-    OperatorCode[OperatorCode["v128_store"] = 64779] = "v128_store";
-    OperatorCode[OperatorCode["v128_const"] = 64780] = "v128_const";
-    OperatorCode[OperatorCode["i8x16_shuffle"] = 64781] = "i8x16_shuffle";
-    OperatorCode[OperatorCode["i8x16_swizzle"] = 64782] = "i8x16_swizzle";
-    OperatorCode[OperatorCode["i8x16_splat"] = 64783] = "i8x16_splat";
-    OperatorCode[OperatorCode["i16x8_splat"] = 64784] = "i16x8_splat";
-    OperatorCode[OperatorCode["i32x4_splat"] = 64785] = "i32x4_splat";
-    OperatorCode[OperatorCode["i64x2_splat"] = 64786] = "i64x2_splat";
-    OperatorCode[OperatorCode["f32x4_splat"] = 64787] = "f32x4_splat";
-    OperatorCode[OperatorCode["f64x2_splat"] = 64788] = "f64x2_splat";
-    OperatorCode[OperatorCode["i8x16_extract_lane_s"] = 64789] = "i8x16_extract_lane_s";
-    OperatorCode[OperatorCode["i8x16_extract_lane_u"] = 64790] = "i8x16_extract_lane_u";
-    OperatorCode[OperatorCode["i8x16_replace_lane"] = 64791] = "i8x16_replace_lane";
-    OperatorCode[OperatorCode["i16x8_extract_lane_s"] = 64792] = "i16x8_extract_lane_s";
-    OperatorCode[OperatorCode["i16x8_extract_lane_u"] = 64793] = "i16x8_extract_lane_u";
-    OperatorCode[OperatorCode["i16x8_replace_lane"] = 64794] = "i16x8_replace_lane";
-    OperatorCode[OperatorCode["i32x4_extract_lane"] = 64795] = "i32x4_extract_lane";
-    OperatorCode[OperatorCode["i32x4_replace_lane"] = 64796] = "i32x4_replace_lane";
-    OperatorCode[OperatorCode["i64x2_extract_lane"] = 64797] = "i64x2_extract_lane";
-    OperatorCode[OperatorCode["i64x2_replace_lane"] = 64798] = "i64x2_replace_lane";
-    OperatorCode[OperatorCode["f32x4_extract_lane"] = 64799] = "f32x4_extract_lane";
-    OperatorCode[OperatorCode["f32x4_replace_lane"] = 64800] = "f32x4_replace_lane";
-    OperatorCode[OperatorCode["f64x2_extract_lane"] = 64801] = "f64x2_extract_lane";
-    OperatorCode[OperatorCode["f64x2_replace_lane"] = 64802] = "f64x2_replace_lane";
-    OperatorCode[OperatorCode["i8x16_eq"] = 64803] = "i8x16_eq";
-    OperatorCode[OperatorCode["i8x16_ne"] = 64804] = "i8x16_ne";
-    OperatorCode[OperatorCode["i8x16_lt_s"] = 64805] = "i8x16_lt_s";
-    OperatorCode[OperatorCode["i8x16_lt_u"] = 64806] = "i8x16_lt_u";
-    OperatorCode[OperatorCode["i8x16_gt_s"] = 64807] = "i8x16_gt_s";
-    OperatorCode[OperatorCode["i8x16_gt_u"] = 64808] = "i8x16_gt_u";
-    OperatorCode[OperatorCode["i8x16_le_s"] = 64809] = "i8x16_le_s";
-    OperatorCode[OperatorCode["i8x16_le_u"] = 64810] = "i8x16_le_u";
-    OperatorCode[OperatorCode["i8x16_ge_s"] = 64811] = "i8x16_ge_s";
-    OperatorCode[OperatorCode["i8x16_ge_u"] = 64812] = "i8x16_ge_u";
-    OperatorCode[OperatorCode["i16x8_eq"] = 64813] = "i16x8_eq";
-    OperatorCode[OperatorCode["i16x8_ne"] = 64814] = "i16x8_ne";
-    OperatorCode[OperatorCode["i16x8_lt_s"] = 64815] = "i16x8_lt_s";
-    OperatorCode[OperatorCode["i16x8_lt_u"] = 64816] = "i16x8_lt_u";
-    OperatorCode[OperatorCode["i16x8_gt_s"] = 64817] = "i16x8_gt_s";
-    OperatorCode[OperatorCode["i16x8_gt_u"] = 64818] = "i16x8_gt_u";
-    OperatorCode[OperatorCode["i16x8_le_s"] = 64819] = "i16x8_le_s";
-    OperatorCode[OperatorCode["i16x8_le_u"] = 64820] = "i16x8_le_u";
-    OperatorCode[OperatorCode["i16x8_ge_s"] = 64821] = "i16x8_ge_s";
-    OperatorCode[OperatorCode["i16x8_ge_u"] = 64822] = "i16x8_ge_u";
-    OperatorCode[OperatorCode["i32x4_eq"] = 64823] = "i32x4_eq";
-    OperatorCode[OperatorCode["i32x4_ne"] = 64824] = "i32x4_ne";
-    OperatorCode[OperatorCode["i32x4_lt_s"] = 64825] = "i32x4_lt_s";
-    OperatorCode[OperatorCode["i32x4_lt_u"] = 64826] = "i32x4_lt_u";
-    OperatorCode[OperatorCode["i32x4_gt_s"] = 64827] = "i32x4_gt_s";
-    OperatorCode[OperatorCode["i32x4_gt_u"] = 64828] = "i32x4_gt_u";
-    OperatorCode[OperatorCode["i32x4_le_s"] = 64829] = "i32x4_le_s";
-    OperatorCode[OperatorCode["i32x4_le_u"] = 64830] = "i32x4_le_u";
-    OperatorCode[OperatorCode["i32x4_ge_s"] = 64831] = "i32x4_ge_s";
-    OperatorCode[OperatorCode["i32x4_ge_u"] = 64832] = "i32x4_ge_u";
-    OperatorCode[OperatorCode["f32x4_eq"] = 64833] = "f32x4_eq";
-    OperatorCode[OperatorCode["f32x4_ne"] = 64834] = "f32x4_ne";
-    OperatorCode[OperatorCode["f32x4_lt"] = 64835] = "f32x4_lt";
-    OperatorCode[OperatorCode["f32x4_gt"] = 64836] = "f32x4_gt";
-    OperatorCode[OperatorCode["f32x4_le"] = 64837] = "f32x4_le";
-    OperatorCode[OperatorCode["f32x4_ge"] = 64838] = "f32x4_ge";
-    OperatorCode[OperatorCode["f64x2_eq"] = 64839] = "f64x2_eq";
-    OperatorCode[OperatorCode["f64x2_ne"] = 64840] = "f64x2_ne";
-    OperatorCode[OperatorCode["f64x2_lt"] = 64841] = "f64x2_lt";
-    OperatorCode[OperatorCode["f64x2_gt"] = 64842] = "f64x2_gt";
-    OperatorCode[OperatorCode["f64x2_le"] = 64843] = "f64x2_le";
-    OperatorCode[OperatorCode["f64x2_ge"] = 64844] = "f64x2_ge";
-    OperatorCode[OperatorCode["v128_not"] = 64845] = "v128_not";
-    OperatorCode[OperatorCode["v128_and"] = 64846] = "v128_and";
-    OperatorCode[OperatorCode["v128_andnot"] = 64847] = "v128_andnot";
-    OperatorCode[OperatorCode["v128_or"] = 64848] = "v128_or";
-    OperatorCode[OperatorCode["v128_xor"] = 64849] = "v128_xor";
-    OperatorCode[OperatorCode["v128_bitselect"] = 64850] = "v128_bitselect";
-    OperatorCode[OperatorCode["v128_any_true"] = 64851] = "v128_any_true";
-    OperatorCode[OperatorCode["v128_load8_lane"] = 64852] = "v128_load8_lane";
-    OperatorCode[OperatorCode["v128_load16_lane"] = 64853] = "v128_load16_lane";
-    OperatorCode[OperatorCode["v128_load32_lane"] = 64854] = "v128_load32_lane";
-    OperatorCode[OperatorCode["v128_load64_lane"] = 64855] = "v128_load64_lane";
-    OperatorCode[OperatorCode["v128_store8_lane"] = 64856] = "v128_store8_lane";
-    OperatorCode[OperatorCode["v128_store16_lane"] = 64857] = "v128_store16_lane";
-    OperatorCode[OperatorCode["v128_store32_lane"] = 64858] = "v128_store32_lane";
-    OperatorCode[OperatorCode["v128_store64_lane"] = 64859] = "v128_store64_lane";
-    OperatorCode[OperatorCode["v128_load32_zero"] = 64860] = "v128_load32_zero";
-    OperatorCode[OperatorCode["v128_load64_zero"] = 64861] = "v128_load64_zero";
-    OperatorCode[OperatorCode["f32x4_demote_f64x2_zero"] = 64862] = "f32x4_demote_f64x2_zero";
-    OperatorCode[OperatorCode["f64x2_promote_low_f32x4"] = 64863] = "f64x2_promote_low_f32x4";
-    OperatorCode[OperatorCode["i8x16_abs"] = 64864] = "i8x16_abs";
-    OperatorCode[OperatorCode["i8x16_neg"] = 64865] = "i8x16_neg";
-    OperatorCode[OperatorCode["i8x16_popcnt"] = 64866] = "i8x16_popcnt";
-    OperatorCode[OperatorCode["i8x16_all_true"] = 64867] = "i8x16_all_true";
-    OperatorCode[OperatorCode["i8x16_bitmask"] = 64868] = "i8x16_bitmask";
-    OperatorCode[OperatorCode["i8x16_narrow_i16x8_s"] = 64869] = "i8x16_narrow_i16x8_s";
-    OperatorCode[OperatorCode["i8x16_narrow_i16x8_u"] = 64870] = "i8x16_narrow_i16x8_u";
-    OperatorCode[OperatorCode["f32x4_ceil"] = 64871] = "f32x4_ceil";
-    OperatorCode[OperatorCode["f32x4_floor"] = 64872] = "f32x4_floor";
-    OperatorCode[OperatorCode["f32x4_trunc"] = 64873] = "f32x4_trunc";
-    OperatorCode[OperatorCode["f32x4_nearest"] = 64874] = "f32x4_nearest";
-    OperatorCode[OperatorCode["i8x16_shl"] = 64875] = "i8x16_shl";
-    OperatorCode[OperatorCode["i8x16_shr_s"] = 64876] = "i8x16_shr_s";
-    OperatorCode[OperatorCode["i8x16_shr_u"] = 64877] = "i8x16_shr_u";
-    OperatorCode[OperatorCode["i8x16_add"] = 64878] = "i8x16_add";
-    OperatorCode[OperatorCode["i8x16_add_sat_s"] = 64879] = "i8x16_add_sat_s";
-    OperatorCode[OperatorCode["i8x16_add_sat_u"] = 64880] = "i8x16_add_sat_u";
-    OperatorCode[OperatorCode["i8x16_sub"] = 64881] = "i8x16_sub";
-    OperatorCode[OperatorCode["i8x16_sub_sat_s"] = 64882] = "i8x16_sub_sat_s";
-    OperatorCode[OperatorCode["i8x16_sub_sat_u"] = 64883] = "i8x16_sub_sat_u";
-    OperatorCode[OperatorCode["f64x2_ceil"] = 64884] = "f64x2_ceil";
-    OperatorCode[OperatorCode["f64x2_floor"] = 64885] = "f64x2_floor";
-    OperatorCode[OperatorCode["i8x16_min_s"] = 64886] = "i8x16_min_s";
-    OperatorCode[OperatorCode["i8x16_min_u"] = 64887] = "i8x16_min_u";
-    OperatorCode[OperatorCode["i8x16_max_s"] = 64888] = "i8x16_max_s";
-    OperatorCode[OperatorCode["i8x16_max_u"] = 64889] = "i8x16_max_u";
-    OperatorCode[OperatorCode["f64x2_trunc"] = 64890] = "f64x2_trunc";
-    OperatorCode[OperatorCode["i8x16_avgr_u"] = 64891] = "i8x16_avgr_u";
-    OperatorCode[OperatorCode["i16x8_extadd_pairwise_i8x16_s"] = 64892] = "i16x8_extadd_pairwise_i8x16_s";
-    OperatorCode[OperatorCode["i16x8_extadd_pairwise_i8x16_u"] = 64893] = "i16x8_extadd_pairwise_i8x16_u";
-    OperatorCode[OperatorCode["i32x4_extadd_pairwise_i16x8_s"] = 64894] = "i32x4_extadd_pairwise_i16x8_s";
-    OperatorCode[OperatorCode["i32x4_extadd_pairwise_i16x8_u"] = 64895] = "i32x4_extadd_pairwise_i16x8_u";
-    OperatorCode[OperatorCode["i16x8_abs"] = 64896] = "i16x8_abs";
-    OperatorCode[OperatorCode["i16x8_neg"] = 64897] = "i16x8_neg";
-    OperatorCode[OperatorCode["i16x8_q15mulr_sat_s"] = 64898] = "i16x8_q15mulr_sat_s";
-    OperatorCode[OperatorCode["i16x8_all_true"] = 64899] = "i16x8_all_true";
-    OperatorCode[OperatorCode["i16x8_bitmask"] = 64900] = "i16x8_bitmask";
-    OperatorCode[OperatorCode["i16x8_narrow_i32x4_s"] = 64901] = "i16x8_narrow_i32x4_s";
-    OperatorCode[OperatorCode["i16x8_narrow_i32x4_u"] = 64902] = "i16x8_narrow_i32x4_u";
-    OperatorCode[OperatorCode["i16x8_extend_low_i8x16_s"] = 64903] = "i16x8_extend_low_i8x16_s";
-    OperatorCode[OperatorCode["i16x8_extend_high_i8x16_s"] = 64904] = "i16x8_extend_high_i8x16_s";
-    OperatorCode[OperatorCode["i16x8_extend_low_i8x16_u"] = 64905] = "i16x8_extend_low_i8x16_u";
-    OperatorCode[OperatorCode["i16x8_extend_high_i8x16_u"] = 64906] = "i16x8_extend_high_i8x16_u";
-    OperatorCode[OperatorCode["i16x8_shl"] = 64907] = "i16x8_shl";
-    OperatorCode[OperatorCode["i16x8_shr_s"] = 64908] = "i16x8_shr_s";
-    OperatorCode[OperatorCode["i16x8_shr_u"] = 64909] = "i16x8_shr_u";
-    OperatorCode[OperatorCode["i16x8_add"] = 64910] = "i16x8_add";
-    OperatorCode[OperatorCode["i16x8_add_sat_s"] = 64911] = "i16x8_add_sat_s";
-    OperatorCode[OperatorCode["i16x8_add_sat_u"] = 64912] = "i16x8_add_sat_u";
-    OperatorCode[OperatorCode["i16x8_sub"] = 64913] = "i16x8_sub";
-    OperatorCode[OperatorCode["i16x8_sub_sat_s"] = 64914] = "i16x8_sub_sat_s";
-    OperatorCode[OperatorCode["i16x8_sub_sat_u"] = 64915] = "i16x8_sub_sat_u";
-    OperatorCode[OperatorCode["f64x2_nearest"] = 64916] = "f64x2_nearest";
-    OperatorCode[OperatorCode["i16x8_mul"] = 64917] = "i16x8_mul";
-    OperatorCode[OperatorCode["i16x8_min_s"] = 64918] = "i16x8_min_s";
-    OperatorCode[OperatorCode["i16x8_min_u"] = 64919] = "i16x8_min_u";
-    OperatorCode[OperatorCode["i16x8_max_s"] = 64920] = "i16x8_max_s";
-    OperatorCode[OperatorCode["i16x8_max_u"] = 64921] = "i16x8_max_u";
-    OperatorCode[OperatorCode["i16x8_avgr_u"] = 64923] = "i16x8_avgr_u";
-    OperatorCode[OperatorCode["i16x8_extmul_low_i8x16_s"] = 64924] = "i16x8_extmul_low_i8x16_s";
-    OperatorCode[OperatorCode["i16x8_extmul_high_i8x16_s"] = 64925] = "i16x8_extmul_high_i8x16_s";
-    OperatorCode[OperatorCode["i16x8_extmul_low_i8x16_u"] = 64926] = "i16x8_extmul_low_i8x16_u";
-    OperatorCode[OperatorCode["i16x8_extmul_high_i8x16_u"] = 64927] = "i16x8_extmul_high_i8x16_u";
-    OperatorCode[OperatorCode["i32x4_abs"] = 64928] = "i32x4_abs";
-    OperatorCode[OperatorCode["i32x4_neg"] = 64929] = "i32x4_neg";
-    OperatorCode[OperatorCode["i32x4_all_true"] = 64931] = "i32x4_all_true";
-    OperatorCode[OperatorCode["i32x4_bitmask"] = 64932] = "i32x4_bitmask";
-    OperatorCode[OperatorCode["i32x4_extend_low_i16x8_s"] = 64935] = "i32x4_extend_low_i16x8_s";
-    OperatorCode[OperatorCode["i32x4_extend_high_i16x8_s"] = 64936] = "i32x4_extend_high_i16x8_s";
-    OperatorCode[OperatorCode["i32x4_extend_low_i16x8_u"] = 64937] = "i32x4_extend_low_i16x8_u";
-    OperatorCode[OperatorCode["i32x4_extend_high_i16x8_u"] = 64938] = "i32x4_extend_high_i16x8_u";
-    OperatorCode[OperatorCode["i32x4_shl"] = 64939] = "i32x4_shl";
-    OperatorCode[OperatorCode["i32x4_shr_s"] = 64940] = "i32x4_shr_s";
-    OperatorCode[OperatorCode["i32x4_shr_u"] = 64941] = "i32x4_shr_u";
-    OperatorCode[OperatorCode["i32x4_add"] = 64942] = "i32x4_add";
-    OperatorCode[OperatorCode["i32x4_sub"] = 64945] = "i32x4_sub";
-    OperatorCode[OperatorCode["i32x4_mul"] = 64949] = "i32x4_mul";
-    OperatorCode[OperatorCode["i32x4_min_s"] = 64950] = "i32x4_min_s";
-    OperatorCode[OperatorCode["i32x4_min_u"] = 64951] = "i32x4_min_u";
-    OperatorCode[OperatorCode["i32x4_max_s"] = 64952] = "i32x4_max_s";
-    OperatorCode[OperatorCode["i32x4_max_u"] = 64953] = "i32x4_max_u";
-    OperatorCode[OperatorCode["i32x4_dot_i16x8_s"] = 64954] = "i32x4_dot_i16x8_s";
-    OperatorCode[OperatorCode["i32x4_extmul_low_i16x8_s"] = 64956] = "i32x4_extmul_low_i16x8_s";
-    OperatorCode[OperatorCode["i32x4_extmul_high_i16x8_s"] = 64957] = "i32x4_extmul_high_i16x8_s";
-    OperatorCode[OperatorCode["i32x4_extmul_low_i16x8_u"] = 64958] = "i32x4_extmul_low_i16x8_u";
-    OperatorCode[OperatorCode["i32x4_extmul_high_i16x8_u"] = 64959] = "i32x4_extmul_high_i16x8_u";
-    OperatorCode[OperatorCode["i64x2_abs"] = 64960] = "i64x2_abs";
-    OperatorCode[OperatorCode["i64x2_neg"] = 64961] = "i64x2_neg";
-    OperatorCode[OperatorCode["i64x2_all_true"] = 64963] = "i64x2_all_true";
-    OperatorCode[OperatorCode["i64x2_bitmask"] = 64964] = "i64x2_bitmask";
-    OperatorCode[OperatorCode["i64x2_extend_low_i32x4_s"] = 64967] = "i64x2_extend_low_i32x4_s";
-    OperatorCode[OperatorCode["i64x2_extend_high_i32x4_s"] = 64968] = "i64x2_extend_high_i32x4_s";
-    OperatorCode[OperatorCode["i64x2_extend_low_i32x4_u"] = 64969] = "i64x2_extend_low_i32x4_u";
-    OperatorCode[OperatorCode["i64x2_extend_high_i32x4_u"] = 64970] = "i64x2_extend_high_i32x4_u";
-    OperatorCode[OperatorCode["i64x2_shl"] = 64971] = "i64x2_shl";
-    OperatorCode[OperatorCode["i64x2_shr_s"] = 64972] = "i64x2_shr_s";
-    OperatorCode[OperatorCode["i64x2_shr_u"] = 64973] = "i64x2_shr_u";
-    OperatorCode[OperatorCode["i64x2_add"] = 64974] = "i64x2_add";
-    OperatorCode[OperatorCode["i64x2_sub"] = 64977] = "i64x2_sub";
-    OperatorCode[OperatorCode["i64x2_mul"] = 64981] = "i64x2_mul";
-    OperatorCode[OperatorCode["i64x2_eq"] = 64982] = "i64x2_eq";
-    OperatorCode[OperatorCode["i64x2_ne"] = 64983] = "i64x2_ne";
-    OperatorCode[OperatorCode["i64x2_lt_s"] = 64984] = "i64x2_lt_s";
-    OperatorCode[OperatorCode["i64x2_gt_s"] = 64985] = "i64x2_gt_s";
-    OperatorCode[OperatorCode["i64x2_le_s"] = 64986] = "i64x2_le_s";
-    OperatorCode[OperatorCode["i64x2_ge_s"] = 64987] = "i64x2_ge_s";
-    OperatorCode[OperatorCode["i64x2_extmul_low_i32x4_s"] = 64988] = "i64x2_extmul_low_i32x4_s";
-    OperatorCode[OperatorCode["i64x2_extmul_high_i32x4_s"] = 64989] = "i64x2_extmul_high_i32x4_s";
-    OperatorCode[OperatorCode["i64x2_extmul_low_i32x4_u"] = 64990] = "i64x2_extmul_low_i32x4_u";
-    OperatorCode[OperatorCode["i64x2_extmul_high_i32x4_u"] = 64991] = "i64x2_extmul_high_i32x4_u";
-    OperatorCode[OperatorCode["f32x4_abs"] = 64992] = "f32x4_abs";
-    OperatorCode[OperatorCode["f32x4_neg"] = 64993] = "f32x4_neg";
-    OperatorCode[OperatorCode["f32x4_sqrt"] = 64995] = "f32x4_sqrt";
-    OperatorCode[OperatorCode["f32x4_add"] = 64996] = "f32x4_add";
-    OperatorCode[OperatorCode["f32x4_sub"] = 64997] = "f32x4_sub";
-    OperatorCode[OperatorCode["f32x4_mul"] = 64998] = "f32x4_mul";
-    OperatorCode[OperatorCode["f32x4_div"] = 64999] = "f32x4_div";
-    OperatorCode[OperatorCode["f32x4_min"] = 65000] = "f32x4_min";
-    OperatorCode[OperatorCode["f32x4_max"] = 65001] = "f32x4_max";
-    OperatorCode[OperatorCode["f32x4_pmin"] = 65002] = "f32x4_pmin";
-    OperatorCode[OperatorCode["f32x4_pmax"] = 65003] = "f32x4_pmax";
-    OperatorCode[OperatorCode["f64x2_abs"] = 65004] = "f64x2_abs";
-    OperatorCode[OperatorCode["f64x2_neg"] = 65005] = "f64x2_neg";
-    OperatorCode[OperatorCode["f64x2_sqrt"] = 65007] = "f64x2_sqrt";
-    OperatorCode[OperatorCode["f64x2_add"] = 65008] = "f64x2_add";
-    OperatorCode[OperatorCode["f64x2_sub"] = 65009] = "f64x2_sub";
-    OperatorCode[OperatorCode["f64x2_mul"] = 65010] = "f64x2_mul";
-    OperatorCode[OperatorCode["f64x2_div"] = 65011] = "f64x2_div";
-    OperatorCode[OperatorCode["f64x2_min"] = 65012] = "f64x2_min";
-    OperatorCode[OperatorCode["f64x2_max"] = 65013] = "f64x2_max";
-    OperatorCode[OperatorCode["f64x2_pmin"] = 65014] = "f64x2_pmin";
-    OperatorCode[OperatorCode["f64x2_pmax"] = 65015] = "f64x2_pmax";
-    OperatorCode[OperatorCode["i32x4_trunc_sat_f32x4_s"] = 65016] = "i32x4_trunc_sat_f32x4_s";
-    OperatorCode[OperatorCode["i32x4_trunc_sat_f32x4_u"] = 65017] = "i32x4_trunc_sat_f32x4_u";
-    OperatorCode[OperatorCode["f32x4_convert_i32x4_s"] = 65018] = "f32x4_convert_i32x4_s";
-    OperatorCode[OperatorCode["f32x4_convert_i32x4_u"] = 65019] = "f32x4_convert_i32x4_u";
-    OperatorCode[OperatorCode["i32x4_trunc_sat_f64x2_s_zero"] = 65020] = "i32x4_trunc_sat_f64x2_s_zero";
-    OperatorCode[OperatorCode["i32x4_trunc_sat_f64x2_u_zero"] = 65021] = "i32x4_trunc_sat_f64x2_u_zero";
-    OperatorCode[OperatorCode["f64x2_convert_low_i32x4_s"] = 65022] = "f64x2_convert_low_i32x4_s";
-    OperatorCode[OperatorCode["f64x2_convert_low_i32x4_u"] = 65023] = "f64x2_convert_low_i32x4_u";
-    // GC proposal (milestone 6).
-    OperatorCode[OperatorCode["struct_new_with_rtt"] = 64257] = "struct_new_with_rtt";
-    OperatorCode[OperatorCode["struct_new_default_with_rtt"] = 64258] = "struct_new_default_with_rtt";
-    OperatorCode[OperatorCode["struct_get"] = 64259] = "struct_get";
-    OperatorCode[OperatorCode["struct_get_s"] = 64260] = "struct_get_s";
-    OperatorCode[OperatorCode["struct_get_u"] = 64261] = "struct_get_u";
-    OperatorCode[OperatorCode["struct_set"] = 64262] = "struct_set";
-    OperatorCode[OperatorCode["struct_new"] = 64263] = "struct_new";
-    OperatorCode[OperatorCode["struct_new_default"] = 64264] = "struct_new_default";
-    OperatorCode[OperatorCode["array_fill"] = 64271] = "array_fill";
-    OperatorCode[OperatorCode["array_new_with_rtt"] = 64273] = "array_new_with_rtt";
-    OperatorCode[OperatorCode["array_new_default_with_rtt"] = 64274] = "array_new_default_with_rtt";
-    OperatorCode[OperatorCode["array_get"] = 64275] = "array_get";
-    OperatorCode[OperatorCode["array_get_s"] = 64276] = "array_get_s";
-    OperatorCode[OperatorCode["array_get_u"] = 64277] = "array_get_u";
-    OperatorCode[OperatorCode["array_set"] = 64278] = "array_set";
-    OperatorCode[OperatorCode["array_len_"] = 64279] = "array_len_";
-    OperatorCode[OperatorCode["array_len"] = 64281] = "array_len";
-    OperatorCode[OperatorCode["array_copy"] = 64280] = "array_copy";
-    OperatorCode[OperatorCode["array_new_fixed"] = 64282] = "array_new_fixed";
-    OperatorCode[OperatorCode["array_new"] = 64283] = "array_new";
-    OperatorCode[OperatorCode["array_new_default"] = 64284] = "array_new_default";
-    OperatorCode[OperatorCode["array_new_data"] = 64285] = "array_new_data";
-    OperatorCode[OperatorCode["array_init_from_data"] = 64286] = "array_init_from_data";
-    OperatorCode[OperatorCode["array_new_elem"] = 64287] = "array_new_elem";
-    OperatorCode[OperatorCode["i31_new"] = 64288] = "i31_new";
-    OperatorCode[OperatorCode["i31_get_s"] = 64289] = "i31_get_s";
-    OperatorCode[OperatorCode["i31_get_u"] = 64290] = "i31_get_u";
-    OperatorCode[OperatorCode["rtt_canon"] = 64304] = "rtt_canon";
-    OperatorCode[OperatorCode["rtt_sub"] = 64305] = "rtt_sub";
-    OperatorCode[OperatorCode["rtt_fresh_sub"] = 64306] = "rtt_fresh_sub";
-    OperatorCode[OperatorCode["ref_test"] = 64320] = "ref_test";
-    OperatorCode[OperatorCode["ref_cast"] = 64321] = "ref_cast";
-    OperatorCode[OperatorCode["br_on_cast_"] = 64322] = "br_on_cast_";
-    OperatorCode[OperatorCode["br_on_cast_fail_"] = 64323] = "br_on_cast_fail_";
-    OperatorCode[OperatorCode["ref_test_"] = 64324] = "ref_test_";
-    OperatorCode[OperatorCode["ref_cast_"] = 64325] = "ref_cast_";
-    OperatorCode[OperatorCode["br_on_cast__"] = 64326] = "br_on_cast__";
-    OperatorCode[OperatorCode["br_on_cast_fail__"] = 64327] = "br_on_cast_fail__";
-    OperatorCode[OperatorCode["ref_test_null"] = 64328] = "ref_test_null";
-    OperatorCode[OperatorCode["ref_cast_null"] = 64329] = "ref_cast_null";
-    OperatorCode[OperatorCode["br_on_cast_null_"] = 64330] = "br_on_cast_null_";
-    OperatorCode[OperatorCode["br_on_cast_fail_null_"] = 64331] = "br_on_cast_fail_null_";
-    OperatorCode[OperatorCode["ref_cast_nop"] = 64332] = "ref_cast_nop";
-    OperatorCode[OperatorCode["br_on_cast"] = 64334] = "br_on_cast";
-    OperatorCode[OperatorCode["br_on_cast_fail"] = 64335] = "br_on_cast_fail";
-    OperatorCode[OperatorCode["ref_is_func_"] = 64336] = "ref_is_func_";
-    OperatorCode[OperatorCode["ref_is_data_"] = 64337] = "ref_is_data_";
-    OperatorCode[OperatorCode["ref_is_i31_"] = 64338] = "ref_is_i31_";
-    OperatorCode[OperatorCode["ref_is_array_"] = 64339] = "ref_is_array_";
-    OperatorCode[OperatorCode["array_init_data"] = 64340] = "array_init_data";
-    OperatorCode[OperatorCode["array_init_elem"] = 64341] = "array_init_elem";
-    OperatorCode[OperatorCode["ref_as_func_"] = 64344] = "ref_as_func_";
-    OperatorCode[OperatorCode["ref_as_data_"] = 64345] = "ref_as_data_";
-    OperatorCode[OperatorCode["ref_as_i31_"] = 64346] = "ref_as_i31_";
-    OperatorCode[OperatorCode["ref_as_array_"] = 64347] = "ref_as_array_";
-    OperatorCode[OperatorCode["br_on_func_"] = 64352] = "br_on_func_";
-    OperatorCode[OperatorCode["br_on_data_"] = 64353] = "br_on_data_";
-    OperatorCode[OperatorCode["br_on_i31_"] = 64354] = "br_on_i31_";
-    OperatorCode[OperatorCode["br_on_non_func_"] = 64355] = "br_on_non_func_";
-    OperatorCode[OperatorCode["br_on_non_data_"] = 64356] = "br_on_non_data_";
-    OperatorCode[OperatorCode["br_on_non_i31_"] = 64357] = "br_on_non_i31_";
-    OperatorCode[OperatorCode["br_on_array_"] = 64358] = "br_on_array_";
-    OperatorCode[OperatorCode["br_on_non_array_"] = 64359] = "br_on_non_array_";
-    OperatorCode[OperatorCode["extern_internalize"] = 64368] = "extern_internalize";
-    OperatorCode[OperatorCode["extern_externalize"] = 64369] = "extern_externalize";
+    OperatorCode[OperatorCode["v128_load"] = 1036288] = "v128_load";
+    OperatorCode[OperatorCode["i16x8_load8x8_s"] = 1036289] = "i16x8_load8x8_s";
+    OperatorCode[OperatorCode["i16x8_load8x8_u"] = 1036290] = "i16x8_load8x8_u";
+    OperatorCode[OperatorCode["i32x4_load16x4_s"] = 1036291] = "i32x4_load16x4_s";
+    OperatorCode[OperatorCode["i32x4_load16x4_u"] = 1036292] = "i32x4_load16x4_u";
+    OperatorCode[OperatorCode["i64x2_load32x2_s"] = 1036293] = "i64x2_load32x2_s";
+    OperatorCode[OperatorCode["i64x2_load32x2_u"] = 1036294] = "i64x2_load32x2_u";
+    OperatorCode[OperatorCode["v8x16_load_splat"] = 1036295] = "v8x16_load_splat";
+    OperatorCode[OperatorCode["v16x8_load_splat"] = 1036296] = "v16x8_load_splat";
+    OperatorCode[OperatorCode["v32x4_load_splat"] = 1036297] = "v32x4_load_splat";
+    OperatorCode[OperatorCode["v64x2_load_splat"] = 1036298] = "v64x2_load_splat";
+    OperatorCode[OperatorCode["v128_store"] = 1036299] = "v128_store";
+    OperatorCode[OperatorCode["v128_const"] = 1036300] = "v128_const";
+    OperatorCode[OperatorCode["i8x16_shuffle"] = 1036301] = "i8x16_shuffle";
+    OperatorCode[OperatorCode["i8x16_swizzle"] = 1036302] = "i8x16_swizzle";
+    OperatorCode[OperatorCode["i8x16_splat"] = 1036303] = "i8x16_splat";
+    OperatorCode[OperatorCode["i16x8_splat"] = 1036304] = "i16x8_splat";
+    OperatorCode[OperatorCode["i32x4_splat"] = 1036305] = "i32x4_splat";
+    OperatorCode[OperatorCode["i64x2_splat"] = 1036306] = "i64x2_splat";
+    OperatorCode[OperatorCode["f32x4_splat"] = 1036307] = "f32x4_splat";
+    OperatorCode[OperatorCode["f64x2_splat"] = 1036308] = "f64x2_splat";
+    OperatorCode[OperatorCode["i8x16_extract_lane_s"] = 1036309] = "i8x16_extract_lane_s";
+    OperatorCode[OperatorCode["i8x16_extract_lane_u"] = 1036310] = "i8x16_extract_lane_u";
+    OperatorCode[OperatorCode["i8x16_replace_lane"] = 1036311] = "i8x16_replace_lane";
+    OperatorCode[OperatorCode["i16x8_extract_lane_s"] = 1036312] = "i16x8_extract_lane_s";
+    OperatorCode[OperatorCode["i16x8_extract_lane_u"] = 1036313] = "i16x8_extract_lane_u";
+    OperatorCode[OperatorCode["i16x8_replace_lane"] = 1036314] = "i16x8_replace_lane";
+    OperatorCode[OperatorCode["i32x4_extract_lane"] = 1036315] = "i32x4_extract_lane";
+    OperatorCode[OperatorCode["i32x4_replace_lane"] = 1036316] = "i32x4_replace_lane";
+    OperatorCode[OperatorCode["i64x2_extract_lane"] = 1036317] = "i64x2_extract_lane";
+    OperatorCode[OperatorCode["i64x2_replace_lane"] = 1036318] = "i64x2_replace_lane";
+    OperatorCode[OperatorCode["f32x4_extract_lane"] = 1036319] = "f32x4_extract_lane";
+    OperatorCode[OperatorCode["f32x4_replace_lane"] = 1036320] = "f32x4_replace_lane";
+    OperatorCode[OperatorCode["f64x2_extract_lane"] = 1036321] = "f64x2_extract_lane";
+    OperatorCode[OperatorCode["f64x2_replace_lane"] = 1036322] = "f64x2_replace_lane";
+    OperatorCode[OperatorCode["i8x16_eq"] = 1036323] = "i8x16_eq";
+    OperatorCode[OperatorCode["i8x16_ne"] = 1036324] = "i8x16_ne";
+    OperatorCode[OperatorCode["i8x16_lt_s"] = 1036325] = "i8x16_lt_s";
+    OperatorCode[OperatorCode["i8x16_lt_u"] = 1036326] = "i8x16_lt_u";
+    OperatorCode[OperatorCode["i8x16_gt_s"] = 1036327] = "i8x16_gt_s";
+    OperatorCode[OperatorCode["i8x16_gt_u"] = 1036328] = "i8x16_gt_u";
+    OperatorCode[OperatorCode["i8x16_le_s"] = 1036329] = "i8x16_le_s";
+    OperatorCode[OperatorCode["i8x16_le_u"] = 1036330] = "i8x16_le_u";
+    OperatorCode[OperatorCode["i8x16_ge_s"] = 1036331] = "i8x16_ge_s";
+    OperatorCode[OperatorCode["i8x16_ge_u"] = 1036332] = "i8x16_ge_u";
+    OperatorCode[OperatorCode["i16x8_eq"] = 1036333] = "i16x8_eq";
+    OperatorCode[OperatorCode["i16x8_ne"] = 1036334] = "i16x8_ne";
+    OperatorCode[OperatorCode["i16x8_lt_s"] = 1036335] = "i16x8_lt_s";
+    OperatorCode[OperatorCode["i16x8_lt_u"] = 1036336] = "i16x8_lt_u";
+    OperatorCode[OperatorCode["i16x8_gt_s"] = 1036337] = "i16x8_gt_s";
+    OperatorCode[OperatorCode["i16x8_gt_u"] = 1036338] = "i16x8_gt_u";
+    OperatorCode[OperatorCode["i16x8_le_s"] = 1036339] = "i16x8_le_s";
+    OperatorCode[OperatorCode["i16x8_le_u"] = 1036340] = "i16x8_le_u";
+    OperatorCode[OperatorCode["i16x8_ge_s"] = 1036341] = "i16x8_ge_s";
+    OperatorCode[OperatorCode["i16x8_ge_u"] = 1036342] = "i16x8_ge_u";
+    OperatorCode[OperatorCode["i32x4_eq"] = 1036343] = "i32x4_eq";
+    OperatorCode[OperatorCode["i32x4_ne"] = 1036344] = "i32x4_ne";
+    OperatorCode[OperatorCode["i32x4_lt_s"] = 1036345] = "i32x4_lt_s";
+    OperatorCode[OperatorCode["i32x4_lt_u"] = 1036346] = "i32x4_lt_u";
+    OperatorCode[OperatorCode["i32x4_gt_s"] = 1036347] = "i32x4_gt_s";
+    OperatorCode[OperatorCode["i32x4_gt_u"] = 1036348] = "i32x4_gt_u";
+    OperatorCode[OperatorCode["i32x4_le_s"] = 1036349] = "i32x4_le_s";
+    OperatorCode[OperatorCode["i32x4_le_u"] = 1036350] = "i32x4_le_u";
+    OperatorCode[OperatorCode["i32x4_ge_s"] = 1036351] = "i32x4_ge_s";
+    OperatorCode[OperatorCode["i32x4_ge_u"] = 1036352] = "i32x4_ge_u";
+    OperatorCode[OperatorCode["f32x4_eq"] = 1036353] = "f32x4_eq";
+    OperatorCode[OperatorCode["f32x4_ne"] = 1036354] = "f32x4_ne";
+    OperatorCode[OperatorCode["f32x4_lt"] = 1036355] = "f32x4_lt";
+    OperatorCode[OperatorCode["f32x4_gt"] = 1036356] = "f32x4_gt";
+    OperatorCode[OperatorCode["f32x4_le"] = 1036357] = "f32x4_le";
+    OperatorCode[OperatorCode["f32x4_ge"] = 1036358] = "f32x4_ge";
+    OperatorCode[OperatorCode["f64x2_eq"] = 1036359] = "f64x2_eq";
+    OperatorCode[OperatorCode["f64x2_ne"] = 1036360] = "f64x2_ne";
+    OperatorCode[OperatorCode["f64x2_lt"] = 1036361] = "f64x2_lt";
+    OperatorCode[OperatorCode["f64x2_gt"] = 1036362] = "f64x2_gt";
+    OperatorCode[OperatorCode["f64x2_le"] = 1036363] = "f64x2_le";
+    OperatorCode[OperatorCode["f64x2_ge"] = 1036364] = "f64x2_ge";
+    OperatorCode[OperatorCode["v128_not"] = 1036365] = "v128_not";
+    OperatorCode[OperatorCode["v128_and"] = 1036366] = "v128_and";
+    OperatorCode[OperatorCode["v128_andnot"] = 1036367] = "v128_andnot";
+    OperatorCode[OperatorCode["v128_or"] = 1036368] = "v128_or";
+    OperatorCode[OperatorCode["v128_xor"] = 1036369] = "v128_xor";
+    OperatorCode[OperatorCode["v128_bitselect"] = 1036370] = "v128_bitselect";
+    OperatorCode[OperatorCode["v128_any_true"] = 1036371] = "v128_any_true";
+    OperatorCode[OperatorCode["v128_load8_lane"] = 1036372] = "v128_load8_lane";
+    OperatorCode[OperatorCode["v128_load16_lane"] = 1036373] = "v128_load16_lane";
+    OperatorCode[OperatorCode["v128_load32_lane"] = 1036374] = "v128_load32_lane";
+    OperatorCode[OperatorCode["v128_load64_lane"] = 1036375] = "v128_load64_lane";
+    OperatorCode[OperatorCode["v128_store8_lane"] = 1036376] = "v128_store8_lane";
+    OperatorCode[OperatorCode["v128_store16_lane"] = 1036377] = "v128_store16_lane";
+    OperatorCode[OperatorCode["v128_store32_lane"] = 1036378] = "v128_store32_lane";
+    OperatorCode[OperatorCode["v128_store64_lane"] = 1036379] = "v128_store64_lane";
+    OperatorCode[OperatorCode["v128_load32_zero"] = 1036380] = "v128_load32_zero";
+    OperatorCode[OperatorCode["v128_load64_zero"] = 1036381] = "v128_load64_zero";
+    OperatorCode[OperatorCode["f32x4_demote_f64x2_zero"] = 1036382] = "f32x4_demote_f64x2_zero";
+    OperatorCode[OperatorCode["f64x2_promote_low_f32x4"] = 1036383] = "f64x2_promote_low_f32x4";
+    OperatorCode[OperatorCode["i8x16_abs"] = 1036384] = "i8x16_abs";
+    OperatorCode[OperatorCode["i8x16_neg"] = 1036385] = "i8x16_neg";
+    OperatorCode[OperatorCode["i8x16_popcnt"] = 1036386] = "i8x16_popcnt";
+    OperatorCode[OperatorCode["i8x16_all_true"] = 1036387] = "i8x16_all_true";
+    OperatorCode[OperatorCode["i8x16_bitmask"] = 1036388] = "i8x16_bitmask";
+    OperatorCode[OperatorCode["i8x16_narrow_i16x8_s"] = 1036389] = "i8x16_narrow_i16x8_s";
+    OperatorCode[OperatorCode["i8x16_narrow_i16x8_u"] = 1036390] = "i8x16_narrow_i16x8_u";
+    OperatorCode[OperatorCode["f32x4_ceil"] = 1036391] = "f32x4_ceil";
+    OperatorCode[OperatorCode["f32x4_floor"] = 1036392] = "f32x4_floor";
+    OperatorCode[OperatorCode["f32x4_trunc"] = 1036393] = "f32x4_trunc";
+    OperatorCode[OperatorCode["f32x4_nearest"] = 1036394] = "f32x4_nearest";
+    OperatorCode[OperatorCode["i8x16_shl"] = 1036395] = "i8x16_shl";
+    OperatorCode[OperatorCode["i8x16_shr_s"] = 1036396] = "i8x16_shr_s";
+    OperatorCode[OperatorCode["i8x16_shr_u"] = 1036397] = "i8x16_shr_u";
+    OperatorCode[OperatorCode["i8x16_add"] = 1036398] = "i8x16_add";
+    OperatorCode[OperatorCode["i8x16_add_sat_s"] = 1036399] = "i8x16_add_sat_s";
+    OperatorCode[OperatorCode["i8x16_add_sat_u"] = 1036400] = "i8x16_add_sat_u";
+    OperatorCode[OperatorCode["i8x16_sub"] = 1036401] = "i8x16_sub";
+    OperatorCode[OperatorCode["i8x16_sub_sat_s"] = 1036402] = "i8x16_sub_sat_s";
+    OperatorCode[OperatorCode["i8x16_sub_sat_u"] = 1036403] = "i8x16_sub_sat_u";
+    OperatorCode[OperatorCode["f64x2_ceil"] = 1036404] = "f64x2_ceil";
+    OperatorCode[OperatorCode["f64x2_floor"] = 1036405] = "f64x2_floor";
+    OperatorCode[OperatorCode["i8x16_min_s"] = 1036406] = "i8x16_min_s";
+    OperatorCode[OperatorCode["i8x16_min_u"] = 1036407] = "i8x16_min_u";
+    OperatorCode[OperatorCode["i8x16_max_s"] = 1036408] = "i8x16_max_s";
+    OperatorCode[OperatorCode["i8x16_max_u"] = 1036409] = "i8x16_max_u";
+    OperatorCode[OperatorCode["f64x2_trunc"] = 1036410] = "f64x2_trunc";
+    OperatorCode[OperatorCode["i8x16_avgr_u"] = 1036411] = "i8x16_avgr_u";
+    OperatorCode[OperatorCode["i16x8_extadd_pairwise_i8x16_s"] = 1036412] = "i16x8_extadd_pairwise_i8x16_s";
+    OperatorCode[OperatorCode["i16x8_extadd_pairwise_i8x16_u"] = 1036413] = "i16x8_extadd_pairwise_i8x16_u";
+    OperatorCode[OperatorCode["i32x4_extadd_pairwise_i16x8_s"] = 1036414] = "i32x4_extadd_pairwise_i16x8_s";
+    OperatorCode[OperatorCode["i32x4_extadd_pairwise_i16x8_u"] = 1036415] = "i32x4_extadd_pairwise_i16x8_u";
+    OperatorCode[OperatorCode["i16x8_abs"] = 1036416] = "i16x8_abs";
+    OperatorCode[OperatorCode["i16x8_neg"] = 1036417] = "i16x8_neg";
+    OperatorCode[OperatorCode["i16x8_q15mulr_sat_s"] = 1036418] = "i16x8_q15mulr_sat_s";
+    OperatorCode[OperatorCode["i16x8_all_true"] = 1036419] = "i16x8_all_true";
+    OperatorCode[OperatorCode["i16x8_bitmask"] = 1036420] = "i16x8_bitmask";
+    OperatorCode[OperatorCode["i16x8_narrow_i32x4_s"] = 1036421] = "i16x8_narrow_i32x4_s";
+    OperatorCode[OperatorCode["i16x8_narrow_i32x4_u"] = 1036422] = "i16x8_narrow_i32x4_u";
+    OperatorCode[OperatorCode["i16x8_extend_low_i8x16_s"] = 1036423] = "i16x8_extend_low_i8x16_s";
+    OperatorCode[OperatorCode["i16x8_extend_high_i8x16_s"] = 1036424] = "i16x8_extend_high_i8x16_s";
+    OperatorCode[OperatorCode["i16x8_extend_low_i8x16_u"] = 1036425] = "i16x8_extend_low_i8x16_u";
+    OperatorCode[OperatorCode["i16x8_extend_high_i8x16_u"] = 1036426] = "i16x8_extend_high_i8x16_u";
+    OperatorCode[OperatorCode["i16x8_shl"] = 1036427] = "i16x8_shl";
+    OperatorCode[OperatorCode["i16x8_shr_s"] = 1036428] = "i16x8_shr_s";
+    OperatorCode[OperatorCode["i16x8_shr_u"] = 1036429] = "i16x8_shr_u";
+    OperatorCode[OperatorCode["i16x8_add"] = 1036430] = "i16x8_add";
+    OperatorCode[OperatorCode["i16x8_add_sat_s"] = 1036431] = "i16x8_add_sat_s";
+    OperatorCode[OperatorCode["i16x8_add_sat_u"] = 1036432] = "i16x8_add_sat_u";
+    OperatorCode[OperatorCode["i16x8_sub"] = 1036433] = "i16x8_sub";
+    OperatorCode[OperatorCode["i16x8_sub_sat_s"] = 1036434] = "i16x8_sub_sat_s";
+    OperatorCode[OperatorCode["i16x8_sub_sat_u"] = 1036435] = "i16x8_sub_sat_u";
+    OperatorCode[OperatorCode["f64x2_nearest"] = 1036436] = "f64x2_nearest";
+    OperatorCode[OperatorCode["i16x8_mul"] = 1036437] = "i16x8_mul";
+    OperatorCode[OperatorCode["i16x8_min_s"] = 1036438] = "i16x8_min_s";
+    OperatorCode[OperatorCode["i16x8_min_u"] = 1036439] = "i16x8_min_u";
+    OperatorCode[OperatorCode["i16x8_max_s"] = 1036440] = "i16x8_max_s";
+    OperatorCode[OperatorCode["i16x8_max_u"] = 1036441] = "i16x8_max_u";
+    OperatorCode[OperatorCode["i16x8_avgr_u"] = 1036443] = "i16x8_avgr_u";
+    OperatorCode[OperatorCode["i16x8_extmul_low_i8x16_s"] = 1036444] = "i16x8_extmul_low_i8x16_s";
+    OperatorCode[OperatorCode["i16x8_extmul_high_i8x16_s"] = 1036445] = "i16x8_extmul_high_i8x16_s";
+    OperatorCode[OperatorCode["i16x8_extmul_low_i8x16_u"] = 1036446] = "i16x8_extmul_low_i8x16_u";
+    OperatorCode[OperatorCode["i16x8_extmul_high_i8x16_u"] = 1036447] = "i16x8_extmul_high_i8x16_u";
+    OperatorCode[OperatorCode["i32x4_abs"] = 1036448] = "i32x4_abs";
+    OperatorCode[OperatorCode["i32x4_neg"] = 1036449] = "i32x4_neg";
+    OperatorCode[OperatorCode["i32x4_all_true"] = 1036451] = "i32x4_all_true";
+    OperatorCode[OperatorCode["i32x4_bitmask"] = 1036452] = "i32x4_bitmask";
+    OperatorCode[OperatorCode["i32x4_extend_low_i16x8_s"] = 1036455] = "i32x4_extend_low_i16x8_s";
+    OperatorCode[OperatorCode["i32x4_extend_high_i16x8_s"] = 1036456] = "i32x4_extend_high_i16x8_s";
+    OperatorCode[OperatorCode["i32x4_extend_low_i16x8_u"] = 1036457] = "i32x4_extend_low_i16x8_u";
+    OperatorCode[OperatorCode["i32x4_extend_high_i16x8_u"] = 1036458] = "i32x4_extend_high_i16x8_u";
+    OperatorCode[OperatorCode["i32x4_shl"] = 1036459] = "i32x4_shl";
+    OperatorCode[OperatorCode["i32x4_shr_s"] = 1036460] = "i32x4_shr_s";
+    OperatorCode[OperatorCode["i32x4_shr_u"] = 1036461] = "i32x4_shr_u";
+    OperatorCode[OperatorCode["i32x4_add"] = 1036462] = "i32x4_add";
+    OperatorCode[OperatorCode["i32x4_sub"] = 1036465] = "i32x4_sub";
+    OperatorCode[OperatorCode["i32x4_mul"] = 1036469] = "i32x4_mul";
+    OperatorCode[OperatorCode["i32x4_min_s"] = 1036470] = "i32x4_min_s";
+    OperatorCode[OperatorCode["i32x4_min_u"] = 1036471] = "i32x4_min_u";
+    OperatorCode[OperatorCode["i32x4_max_s"] = 1036472] = "i32x4_max_s";
+    OperatorCode[OperatorCode["i32x4_max_u"] = 1036473] = "i32x4_max_u";
+    OperatorCode[OperatorCode["i32x4_dot_i16x8_s"] = 1036474] = "i32x4_dot_i16x8_s";
+    OperatorCode[OperatorCode["i32x4_extmul_low_i16x8_s"] = 1036476] = "i32x4_extmul_low_i16x8_s";
+    OperatorCode[OperatorCode["i32x4_extmul_high_i16x8_s"] = 1036477] = "i32x4_extmul_high_i16x8_s";
+    OperatorCode[OperatorCode["i32x4_extmul_low_i16x8_u"] = 1036478] = "i32x4_extmul_low_i16x8_u";
+    OperatorCode[OperatorCode["i32x4_extmul_high_i16x8_u"] = 1036479] = "i32x4_extmul_high_i16x8_u";
+    OperatorCode[OperatorCode["i64x2_abs"] = 1036480] = "i64x2_abs";
+    OperatorCode[OperatorCode["i64x2_neg"] = 1036481] = "i64x2_neg";
+    OperatorCode[OperatorCode["i64x2_all_true"] = 1036483] = "i64x2_all_true";
+    OperatorCode[OperatorCode["i64x2_bitmask"] = 1036484] = "i64x2_bitmask";
+    OperatorCode[OperatorCode["i64x2_extend_low_i32x4_s"] = 1036487] = "i64x2_extend_low_i32x4_s";
+    OperatorCode[OperatorCode["i64x2_extend_high_i32x4_s"] = 1036488] = "i64x2_extend_high_i32x4_s";
+    OperatorCode[OperatorCode["i64x2_extend_low_i32x4_u"] = 1036489] = "i64x2_extend_low_i32x4_u";
+    OperatorCode[OperatorCode["i64x2_extend_high_i32x4_u"] = 1036490] = "i64x2_extend_high_i32x4_u";
+    OperatorCode[OperatorCode["i64x2_shl"] = 1036491] = "i64x2_shl";
+    OperatorCode[OperatorCode["i64x2_shr_s"] = 1036492] = "i64x2_shr_s";
+    OperatorCode[OperatorCode["i64x2_shr_u"] = 1036493] = "i64x2_shr_u";
+    OperatorCode[OperatorCode["i64x2_add"] = 1036494] = "i64x2_add";
+    OperatorCode[OperatorCode["i64x2_sub"] = 1036497] = "i64x2_sub";
+    OperatorCode[OperatorCode["i64x2_mul"] = 1036501] = "i64x2_mul";
+    OperatorCode[OperatorCode["i64x2_eq"] = 1036502] = "i64x2_eq";
+    OperatorCode[OperatorCode["i64x2_ne"] = 1036503] = "i64x2_ne";
+    OperatorCode[OperatorCode["i64x2_lt_s"] = 1036504] = "i64x2_lt_s";
+    OperatorCode[OperatorCode["i64x2_gt_s"] = 1036505] = "i64x2_gt_s";
+    OperatorCode[OperatorCode["i64x2_le_s"] = 1036506] = "i64x2_le_s";
+    OperatorCode[OperatorCode["i64x2_ge_s"] = 1036507] = "i64x2_ge_s";
+    OperatorCode[OperatorCode["i64x2_extmul_low_i32x4_s"] = 1036508] = "i64x2_extmul_low_i32x4_s";
+    OperatorCode[OperatorCode["i64x2_extmul_high_i32x4_s"] = 1036509] = "i64x2_extmul_high_i32x4_s";
+    OperatorCode[OperatorCode["i64x2_extmul_low_i32x4_u"] = 1036510] = "i64x2_extmul_low_i32x4_u";
+    OperatorCode[OperatorCode["i64x2_extmul_high_i32x4_u"] = 1036511] = "i64x2_extmul_high_i32x4_u";
+    OperatorCode[OperatorCode["f32x4_abs"] = 1036512] = "f32x4_abs";
+    OperatorCode[OperatorCode["f32x4_neg"] = 1036513] = "f32x4_neg";
+    OperatorCode[OperatorCode["f32x4_sqrt"] = 1036515] = "f32x4_sqrt";
+    OperatorCode[OperatorCode["f32x4_add"] = 1036516] = "f32x4_add";
+    OperatorCode[OperatorCode["f32x4_sub"] = 1036517] = "f32x4_sub";
+    OperatorCode[OperatorCode["f32x4_mul"] = 1036518] = "f32x4_mul";
+    OperatorCode[OperatorCode["f32x4_div"] = 1036519] = "f32x4_div";
+    OperatorCode[OperatorCode["f32x4_min"] = 1036520] = "f32x4_min";
+    OperatorCode[OperatorCode["f32x4_max"] = 1036521] = "f32x4_max";
+    OperatorCode[OperatorCode["f32x4_pmin"] = 1036522] = "f32x4_pmin";
+    OperatorCode[OperatorCode["f32x4_pmax"] = 1036523] = "f32x4_pmax";
+    OperatorCode[OperatorCode["f64x2_abs"] = 1036524] = "f64x2_abs";
+    OperatorCode[OperatorCode["f64x2_neg"] = 1036525] = "f64x2_neg";
+    OperatorCode[OperatorCode["f64x2_sqrt"] = 1036527] = "f64x2_sqrt";
+    OperatorCode[OperatorCode["f64x2_add"] = 1036528] = "f64x2_add";
+    OperatorCode[OperatorCode["f64x2_sub"] = 1036529] = "f64x2_sub";
+    OperatorCode[OperatorCode["f64x2_mul"] = 1036530] = "f64x2_mul";
+    OperatorCode[OperatorCode["f64x2_div"] = 1036531] = "f64x2_div";
+    OperatorCode[OperatorCode["f64x2_min"] = 1036532] = "f64x2_min";
+    OperatorCode[OperatorCode["f64x2_max"] = 1036533] = "f64x2_max";
+    OperatorCode[OperatorCode["f64x2_pmin"] = 1036534] = "f64x2_pmin";
+    OperatorCode[OperatorCode["f64x2_pmax"] = 1036535] = "f64x2_pmax";
+    OperatorCode[OperatorCode["i32x4_trunc_sat_f32x4_s"] = 1036536] = "i32x4_trunc_sat_f32x4_s";
+    OperatorCode[OperatorCode["i32x4_trunc_sat_f32x4_u"] = 1036537] = "i32x4_trunc_sat_f32x4_u";
+    OperatorCode[OperatorCode["f32x4_convert_i32x4_s"] = 1036538] = "f32x4_convert_i32x4_s";
+    OperatorCode[OperatorCode["f32x4_convert_i32x4_u"] = 1036539] = "f32x4_convert_i32x4_u";
+    OperatorCode[OperatorCode["i32x4_trunc_sat_f64x2_s_zero"] = 1036540] = "i32x4_trunc_sat_f64x2_s_zero";
+    OperatorCode[OperatorCode["i32x4_trunc_sat_f64x2_u_zero"] = 1036541] = "i32x4_trunc_sat_f64x2_u_zero";
+    OperatorCode[OperatorCode["f64x2_convert_low_i32x4_s"] = 1036542] = "f64x2_convert_low_i32x4_s";
+    OperatorCode[OperatorCode["f64x2_convert_low_i32x4_u"] = 1036543] = "f64x2_convert_low_i32x4_u";
+    // Relaxed SIMD
+    OperatorCode[OperatorCode["i8x16_relaxed_swizzle"] = 1036544] = "i8x16_relaxed_swizzle";
+    OperatorCode[OperatorCode["i32x4_relaxed_trunc_f32x4_s"] = 1036545] = "i32x4_relaxed_trunc_f32x4_s";
+    OperatorCode[OperatorCode["i32x4_relaxed_trunc_f32x4_u"] = 1036546] = "i32x4_relaxed_trunc_f32x4_u";
+    OperatorCode[OperatorCode["i32x4_relaxed_trunc_f64x2_s_zero"] = 1036547] = "i32x4_relaxed_trunc_f64x2_s_zero";
+    OperatorCode[OperatorCode["i32x4_relaxed_trunc_f64x2_u_zero"] = 1036548] = "i32x4_relaxed_trunc_f64x2_u_zero";
+    OperatorCode[OperatorCode["f32x4_relaxed_madd"] = 1036549] = "f32x4_relaxed_madd";
+    OperatorCode[OperatorCode["f32x4_relaxed_nmadd"] = 1036550] = "f32x4_relaxed_nmadd";
+    OperatorCode[OperatorCode["f64x2_relaxed_madd"] = 1036551] = "f64x2_relaxed_madd";
+    OperatorCode[OperatorCode["f64x2_relaxed_nmadd"] = 1036552] = "f64x2_relaxed_nmadd";
+    OperatorCode[OperatorCode["i8x16_relaxed_laneselect"] = 1036553] = "i8x16_relaxed_laneselect";
+    OperatorCode[OperatorCode["i16x8_relaxed_laneselect"] = 1036554] = "i16x8_relaxed_laneselect";
+    OperatorCode[OperatorCode["i32x4_relaxed_laneselect"] = 1036555] = "i32x4_relaxed_laneselect";
+    OperatorCode[OperatorCode["i64x2_relaxed_laneselect"] = 1036556] = "i64x2_relaxed_laneselect";
+    OperatorCode[OperatorCode["f32x4_relaxed_min"] = 1036557] = "f32x4_relaxed_min";
+    OperatorCode[OperatorCode["f32x4_relaxed_max"] = 1036558] = "f32x4_relaxed_max";
+    OperatorCode[OperatorCode["f64x2_relaxed_min"] = 1036559] = "f64x2_relaxed_min";
+    OperatorCode[OperatorCode["f64x2_relaxed_max"] = 1036560] = "f64x2_relaxed_max";
+    OperatorCode[OperatorCode["i16x8_relaxed_q15mulr_s"] = 1036561] = "i16x8_relaxed_q15mulr_s";
+    OperatorCode[OperatorCode["i16x8_relaxed_dot_i8x16_i7x16_s"] = 1036562] = "i16x8_relaxed_dot_i8x16_i7x16_s";
+    OperatorCode[OperatorCode["i32x4_relaxed_dot_i8x16_i7x16_add_s"] = 1036563] = "i32x4_relaxed_dot_i8x16_i7x16_add_s";
+    // GC proposal.
+    OperatorCode[OperatorCode["struct_new"] = 64256] = "struct_new";
+    OperatorCode[OperatorCode["struct_new_default"] = 64257] = "struct_new_default";
+    OperatorCode[OperatorCode["struct_get"] = 64258] = "struct_get";
+    OperatorCode[OperatorCode["struct_get_s"] = 64259] = "struct_get_s";
+    OperatorCode[OperatorCode["struct_get_u"] = 64260] = "struct_get_u";
+    OperatorCode[OperatorCode["struct_set"] = 64261] = "struct_set";
+    OperatorCode[OperatorCode["array_new"] = 64262] = "array_new";
+    OperatorCode[OperatorCode["array_new_default"] = 64263] = "array_new_default";
+    OperatorCode[OperatorCode["array_new_fixed"] = 64264] = "array_new_fixed";
+    OperatorCode[OperatorCode["array_new_data"] = 64265] = "array_new_data";
+    OperatorCode[OperatorCode["array_new_elem"] = 64266] = "array_new_elem";
+    OperatorCode[OperatorCode["array_get"] = 64267] = "array_get";
+    OperatorCode[OperatorCode["array_get_s"] = 64268] = "array_get_s";
+    OperatorCode[OperatorCode["array_get_u"] = 64269] = "array_get_u";
+    OperatorCode[OperatorCode["array_set"] = 64270] = "array_set";
+    OperatorCode[OperatorCode["array_len"] = 64271] = "array_len";
+    OperatorCode[OperatorCode["array_fill"] = 64272] = "array_fill";
+    OperatorCode[OperatorCode["array_copy"] = 64273] = "array_copy";
+    OperatorCode[OperatorCode["array_init_data"] = 64274] = "array_init_data";
+    OperatorCode[OperatorCode["array_init_elem"] = 64275] = "array_init_elem";
+    OperatorCode[OperatorCode["ref_test"] = 64276] = "ref_test";
+    OperatorCode[OperatorCode["ref_test_null"] = 64277] = "ref_test_null";
+    OperatorCode[OperatorCode["ref_cast"] = 64278] = "ref_cast";
+    OperatorCode[OperatorCode["ref_cast_null"] = 64279] = "ref_cast_null";
+    OperatorCode[OperatorCode["br_on_cast"] = 64280] = "br_on_cast";
+    OperatorCode[OperatorCode["br_on_cast_fail"] = 64281] = "br_on_cast_fail";
+    OperatorCode[OperatorCode["any_convert_extern"] = 64282] = "any_convert_extern";
+    OperatorCode[OperatorCode["extern_convert_any"] = 64283] = "extern_convert_any";
+    OperatorCode[OperatorCode["ref_i31"] = 64284] = "ref_i31";
+    OperatorCode[OperatorCode["i31_get_s"] = 64285] = "i31_get_s";
+    OperatorCode[OperatorCode["i31_get_u"] = 64286] = "i31_get_u";
 })(OperatorCode = exports.OperatorCode || (exports.OperatorCode = {}));
 exports.OperatorCodeNames = [
     "unreachable",
@@ -656,7 +644,7 @@ exports.OperatorCodeNames = [
     "catch",
     "throw",
     "rethrow",
-    "unwind",
+    "throw_ref",
     "end",
     "br",
     "br_if",
@@ -677,7 +665,7 @@ exports.OperatorCodeNames = [
     "select",
     undefined,
     undefined,
-    undefined,
+    "try_table",
     "local.get",
     "local.set",
     "local.tee",
@@ -857,9 +845,9 @@ exports.OperatorCodeNames = [
     "ref.null",
     "ref.is_null",
     "ref.func",
+    "ref.eq",
     "ref.as_non_null",
     "br_on_null",
-    "ref.eq",
     "br_on_non_null",
     undefined,
     undefined,
@@ -1182,8 +1170,28 @@ exports.OperatorCodeNames = [
     "i32x4.trunc_sat_f64x2_u_zero",
     "f64x2.convert_low_i32x4_s",
     "f64x2.convert_low_i32x4_u",
+    "i8x16.relaxed_swizzle",
+    "i32x4.relaxed_trunc_f32x4_s",
+    "i32x4.relaxed_trunc_f32x4_u",
+    "i32x4.relaxed_trunc_f64x2_s_zero",
+    "i32x4.relaxed_trunc_f64x2_u_zero",
+    "f32x4.relaxed_madd",
+    "f32x4.relaxed_nmadd",
+    "f64x2.relaxed_madd",
+    "f64x2.relaxed_nmadd",
+    "i8x16.relaxed_laneselect",
+    "i16x8.relaxed_laneselect",
+    "i32x4.relaxed_laneselect",
+    "i64x2.relaxed_laneselect",
+    "f32x4.relaxed_min",
+    "f32x4.relaxed_max",
+    "f64x2.relaxed_min",
+    "f64x2.relaxed_max",
+    "i16x8.relaxed_q15mulr_s",
+    "i16x8.relaxed_dot_i8x16_i7x16_s",
+    "i32x4.relaxed_dot_i8x16_i7x16_add_s",
 ].forEach(function (s, i) {
-    exports.OperatorCodeNames[0xfd00 | i] = s;
+    exports.OperatorCodeNames[0xfd000 | i] = s;
 });
 [
     "memory.atomic.notify",
@@ -1268,71 +1276,41 @@ exports.OperatorCodeNames = [
 ].forEach(function (s, i) {
     exports.OperatorCodeNames[0xfe00 | i] = s;
 });
-exports.OperatorCodeNames[0xfb01] = "struct.new_with_rtt";
-exports.OperatorCodeNames[0xfb02] = "struct.new_default_with_rtt";
-exports.OperatorCodeNames[0xfb03] = "struct.get";
-exports.OperatorCodeNames[0xfb04] = "struct.get_s";
-exports.OperatorCodeNames[0xfb05] = "struct.get_u";
-exports.OperatorCodeNames[0xfb06] = "struct.set";
-exports.OperatorCodeNames[0xfb07] = "struct.new";
-exports.OperatorCodeNames[0xfb08] = "struct.new_default";
-exports.OperatorCodeNames[0xfb0f] = "array.fill";
-exports.OperatorCodeNames[0xfb11] = "array.new_with_rtt";
-exports.OperatorCodeNames[0xfb12] = "array.new_default_with_rtt";
-exports.OperatorCodeNames[0xfb13] = "array.get";
-exports.OperatorCodeNames[0xfb14] = "array.get_s";
-exports.OperatorCodeNames[0xfb15] = "array.get_u";
-exports.OperatorCodeNames[0xfb16] = "array.set";
-exports.OperatorCodeNames[0xfb17] = "array.len"; // TODO remove
-exports.OperatorCodeNames[0xfb18] = "array.copy";
-exports.OperatorCodeNames[0xfb19] = "array.len";
-exports.OperatorCodeNames[0xfb1a] = "array.new_fixed";
-exports.OperatorCodeNames[0xfb1b] = "array.new";
-exports.OperatorCodeNames[0xfb1c] = "array.new_default";
-exports.OperatorCodeNames[0xfb1d] = "array.new_data";
-exports.OperatorCodeNames[0xfb1e] = "array.init_from_data";
-exports.OperatorCodeNames[0xfb1f] = "array.new_elem";
-exports.OperatorCodeNames[0xfb20] = "i31.new";
-exports.OperatorCodeNames[0xfb21] = "i31.get_s";
-exports.OperatorCodeNames[0xfb22] = "i31.get_u";
-exports.OperatorCodeNames[0xfb30] = "rtt.canon";
-exports.OperatorCodeNames[0xfb31] = "rtt.sub";
-exports.OperatorCodeNames[0xfb32] = "rtt.fresh_sub";
-exports.OperatorCodeNames[0xfb40] = "ref.test";
-exports.OperatorCodeNames[0xfb41] = "ref.cast";
-exports.OperatorCodeNames[0xfb42] = "br_on_cast";
-exports.OperatorCodeNames[0xfb43] = "br_on_cast_fail";
-exports.OperatorCodeNames[0xfb44] = "ref.test_static";
-exports.OperatorCodeNames[0xfb45] = "ref.cast_static";
-exports.OperatorCodeNames[0xfb46] = "br_on_cast_static";
-exports.OperatorCodeNames[0xfb47] = "br_on_cast_static_fail";
-exports.OperatorCodeNames[0xfb48] = "ref.test_null";
-exports.OperatorCodeNames[0xfb49] = "ref.cast_null";
-exports.OperatorCodeNames[0xfb4a] = "br_on_cast_null";
-exports.OperatorCodeNames[0xfb4b] = "br_on_cast_fail_null";
-exports.OperatorCodeNames[0xfb4c] = "ref.cast_nop";
-exports.OperatorCodeNames[0xfb4e] = "br_on_cast";
-exports.OperatorCodeNames[0xfb4f] = "br_on_cast_fail";
-exports.OperatorCodeNames[0xfb50] = "ref.is_func";
-exports.OperatorCodeNames[0xfb51] = "ref.is_data";
-exports.OperatorCodeNames[0xfb52] = "ref.is_i31";
-exports.OperatorCodeNames[0xfb53] = "ref.is_array";
-exports.OperatorCodeNames[0xfb54] = "array.init_data";
-exports.OperatorCodeNames[0xfb55] = "array.init_elem";
-exports.OperatorCodeNames[0xfb58] = "ref.as_func";
-exports.OperatorCodeNames[0xfb59] = "ref.as_data";
-exports.OperatorCodeNames[0xfb5a] = "ref.as_i31";
-exports.OperatorCodeNames[0xfb5b] = "ref.as_array";
-exports.OperatorCodeNames[0xfb60] = "br_on_func";
-exports.OperatorCodeNames[0xfb61] = "br_on_data";
-exports.OperatorCodeNames[0xfb62] = "br_on_i31";
-exports.OperatorCodeNames[0xfb63] = "br_on_non_func";
-exports.OperatorCodeNames[0xfb64] = "br_on_non_data";
-exports.OperatorCodeNames[0xfb65] = "br_on_non_i31";
-exports.OperatorCodeNames[0xfb66] = "br_on_array";
-exports.OperatorCodeNames[0xfb67] = "br_on_non_array";
-exports.OperatorCodeNames[0xfb70] = "extern.internalize";
-exports.OperatorCodeNames[0xfb71] = "extern.externalize";
+[
+    "struct.new",
+    "struct.new_default",
+    "struct.get",
+    "struct.get_s",
+    "struct.get_u",
+    "struct.set",
+    "array.new",
+    "array.new_default",
+    "array.new_fixed",
+    "array.new_data",
+    "array.new_elem",
+    "array.get",
+    "array.get_s",
+    "array.get_u",
+    "array.set",
+    "array.len",
+    "array.fill",
+    "array.copy",
+    "array.init_data",
+    "array.init_elem",
+    "ref.test",
+    "ref.test",
+    "ref.cast",
+    "ref.cast",
+    "br_on_cast",
+    "br_on_cast_fail",
+    "any.convert_extern",
+    "extern.convert_any",
+    "ref.i31",
+    "i31.get_s",
+    "i31.get_u",
+].forEach(function (s, i) {
+    exports.OperatorCodeNames[0xfb00 | i] = s;
+});
 var ExternalKind;
 (function (ExternalKind) {
     ExternalKind[ExternalKind["Function"] = 0] = "Function";
@@ -1349,26 +1327,28 @@ var TypeKind;
     TypeKind[TypeKind["f32"] = -3] = "f32";
     TypeKind[TypeKind["f64"] = -4] = "f64";
     TypeKind[TypeKind["v128"] = -5] = "v128";
-    TypeKind[TypeKind["i8"] = -6] = "i8";
-    TypeKind[TypeKind["i16"] = -7] = "i16";
+    TypeKind[TypeKind["i8"] = -8] = "i8";
+    TypeKind[TypeKind["i16"] = -9] = "i16";
+    TypeKind[TypeKind["nullexnref"] = -12] = "nullexnref";
+    TypeKind[TypeKind["nullfuncref"] = -13] = "nullfuncref";
+    TypeKind[TypeKind["nullref"] = -15] = "nullref";
+    TypeKind[TypeKind["nullexternref"] = -14] = "nullexternref";
     TypeKind[TypeKind["funcref"] = -16] = "funcref";
     TypeKind[TypeKind["externref"] = -17] = "externref";
     TypeKind[TypeKind["anyref"] = -18] = "anyref";
     TypeKind[TypeKind["eqref"] = -19] = "eqref";
-    TypeKind[TypeKind["ref_null"] = -20] = "ref_null";
-    TypeKind[TypeKind["ref"] = -21] = "ref";
-    TypeKind[TypeKind["i31ref"] = -22] = "i31ref";
-    TypeKind[TypeKind["nullexternref"] = -23] = "nullexternref";
-    TypeKind[TypeKind["nullfuncref"] = -24] = "nullfuncref";
-    TypeKind[TypeKind["structref"] = -25] = "structref";
-    TypeKind[TypeKind["arrayref"] = -26] = "arrayref";
-    TypeKind[TypeKind["nullref"] = -27] = "nullref";
+    TypeKind[TypeKind["i31ref"] = -20] = "i31ref";
+    TypeKind[TypeKind["structref"] = -21] = "structref";
+    TypeKind[TypeKind["arrayref"] = -22] = "arrayref";
+    TypeKind[TypeKind["exnref"] = -23] = "exnref";
+    TypeKind[TypeKind["ref"] = -28] = "ref";
+    TypeKind[TypeKind["ref_null"] = -29] = "ref_null";
     TypeKind[TypeKind["func"] = -32] = "func";
     TypeKind[TypeKind["struct"] = -33] = "struct";
     TypeKind[TypeKind["array"] = -34] = "array";
     TypeKind[TypeKind["subtype"] = -48] = "subtype";
-    TypeKind[TypeKind["rec_group"] = -49] = "rec_group";
-    TypeKind[TypeKind["subtype_final"] = -50] = "subtype_final";
+    TypeKind[TypeKind["subtype_final"] = -49] = "subtype_final";
+    TypeKind[TypeKind["rec_group"] = -50] = "rec_group";
     TypeKind[TypeKind["empty_block_type"] = -64] = "empty_block_type";
 })(TypeKind = exports.TypeKind || (exports.TypeKind = {}));
 var FieldDef = /** @class */ (function () {
@@ -1411,13 +1391,14 @@ var Type = exports.Type = /** @class */ (function () {
     // Convenience singletons.
     Type.funcref = new Type(-16 /* TypeKind.funcref */);
     Type.externref = new Type(-17 /* TypeKind.externref */);
+    Type.exnref = new Type(-23 /* TypeKind.exnref */);
     return Type;
 }());
 var RefType = /** @class */ (function (_super) {
     __extends(RefType, _super);
     function RefType(kind, ref_index) {
         var _this = this;
-        if (kind != -21 /* TypeKind.ref */ && kind !== -20 /* TypeKind.ref_null */) {
+        if (kind != -28 /* TypeKind.ref */ && kind !== -29 /* TypeKind.ref_null */) {
             throw new Error("Unexpected type kind: ".concat(kind, "}"));
         }
         _this = _super.call(this, kind) || this;
@@ -1426,7 +1407,7 @@ var RefType = /** @class */ (function (_super) {
     }
     Object.defineProperty(RefType.prototype, "isNullable", {
         get: function () {
-            return this.kind == -20 /* TypeKind.ref_null */;
+            return this.kind == -29 /* TypeKind.ref_null */;
         },
         enumerable: false,
         configurable: true
@@ -1434,6 +1415,19 @@ var RefType = /** @class */ (function (_super) {
     return RefType;
 }(Type));
 exports.RefType = RefType;
+var CatchHandlerKind;
+(function (CatchHandlerKind) {
+    CatchHandlerKind[CatchHandlerKind["Catch"] = 0] = "Catch";
+    CatchHandlerKind[CatchHandlerKind["CatchRef"] = 1] = "CatchRef";
+    CatchHandlerKind[CatchHandlerKind["CatchAll"] = 2] = "CatchAll";
+    CatchHandlerKind[CatchHandlerKind["CatchAllRef"] = 3] = "CatchAllRef";
+})(CatchHandlerKind = exports.CatchHandlerKind || (exports.CatchHandlerKind = {}));
+var CatchHandler = /** @class */ (function () {
+    function CatchHandler() {
+    }
+    return CatchHandler;
+}());
+exports.CatchHandler = CatchHandler;
 var RelocType;
 (function (RelocType) {
     RelocType[RelocType["FunctionIndex_LEB"] = 0] = "FunctionIndex_LEB";
@@ -1824,8 +1818,8 @@ var BinaryReader = /** @class */ (function () {
             return new Type(kind);
         }
         switch (kind) {
-            case -20 /* TypeKind.ref_null */:
-            case -21 /* TypeKind.ref */:
+            case -29 /* TypeKind.ref_null */:
+            case -28 /* TypeKind.ref */:
                 var index = this.readHeapType();
                 return new RefType(kind, index);
             case -1 /* TypeKind.i32 */:
@@ -1833,24 +1827,26 @@ var BinaryReader = /** @class */ (function () {
             case -3 /* TypeKind.f32 */:
             case -4 /* TypeKind.f64 */:
             case -5 /* TypeKind.v128 */:
-            case -6 /* TypeKind.i8 */:
-            case -7 /* TypeKind.i16 */:
+            case -8 /* TypeKind.i8 */:
+            case -9 /* TypeKind.i16 */:
             case -16 /* TypeKind.funcref */:
             case -17 /* TypeKind.externref */:
+            case -23 /* TypeKind.exnref */:
             case -18 /* TypeKind.anyref */:
             case -19 /* TypeKind.eqref */:
-            case -22 /* TypeKind.i31ref */:
-            case -23 /* TypeKind.nullexternref */:
-            case -24 /* TypeKind.nullfuncref */:
-            case -25 /* TypeKind.structref */:
-            case -26 /* TypeKind.arrayref */:
-            case -27 /* TypeKind.nullref */:
+            case -20 /* TypeKind.i31ref */:
+            case -14 /* TypeKind.nullexternref */:
+            case -13 /* TypeKind.nullfuncref */:
+            case -12 /* TypeKind.nullexnref */:
+            case -21 /* TypeKind.structref */:
+            case -22 /* TypeKind.arrayref */:
+            case -15 /* TypeKind.nullref */:
             case -32 /* TypeKind.func */:
             case -33 /* TypeKind.struct */:
             case -34 /* TypeKind.array */:
             case -48 /* TypeKind.subtype */:
-            case -49 /* TypeKind.rec_group */:
-            case -50 /* TypeKind.subtype_final */:
+            case -50 /* TypeKind.rec_group */:
+            case -49 /* TypeKind.subtype_final */:
             case -64 /* TypeKind.empty_block_type */:
                 return new Type(kind);
             default:
@@ -1994,7 +1990,7 @@ var BinaryReader = /** @class */ (function () {
             case -48 /* TypeKind.subtype */:
                 this.result = this.readSubtype(false);
                 break;
-            case -50 /* TypeKind.subtype_final */:
+            case -49 /* TypeKind.subtype_final */:
                 this.result = this.readSubtype(true);
                 break;
             case -33 /* TypeKind.struct */:
@@ -2008,10 +2004,11 @@ var BinaryReader = /** @class */ (function () {
             case -3 /* TypeKind.f32 */:
             case -4 /* TypeKind.f64 */:
             case -5 /* TypeKind.v128 */:
-            case -6 /* TypeKind.i8 */:
-            case -7 /* TypeKind.i16 */:
+            case -8 /* TypeKind.i8 */:
+            case -9 /* TypeKind.i16 */:
             case -16 /* TypeKind.funcref */:
             case -17 /* TypeKind.externref */:
+            case -23 /* TypeKind.exnref */:
             case -18 /* TypeKind.anyref */:
             case -19 /* TypeKind.eqref */:
                 this.result = {
@@ -2028,7 +2025,7 @@ var BinaryReader = /** @class */ (function () {
             return this.read();
         }
         var form = this.readVarInt7();
-        if (form == -49 /* TypeKind.rec_group */) {
+        if (form == -50 /* TypeKind.rec_group */) {
             this.state = 47 /* BinaryReaderState.BEGIN_REC_GROUP */;
             this.result = null;
             this._recGroupTypesLeft = this.readVarUint32();
@@ -2517,79 +2514,60 @@ var BinaryReader = /** @class */ (function () {
         var code, brDepth, refType, srcType, fieldIndex, segmentIndex, len, literal;
         code = this._data[this._pos++] | 0xfb00;
         switch (code) {
-            case 64334 /* OperatorCode.br_on_cast */:
-            case 64335 /* OperatorCode.br_on_cast_fail */:
+            case 64280 /* OperatorCode.br_on_cast */:
+            case 64281 /* OperatorCode.br_on_cast_fail */:
                 literal = this.readUint8();
                 brDepth = this.readVarUint32();
                 srcType = this.readHeapType();
                 refType = this.readHeapType();
                 break;
-            case 64322 /* OperatorCode.br_on_cast_ */:
-            case 64323 /* OperatorCode.br_on_cast_fail_ */:
-                brDepth = this.readVarUint32();
-                refType = this.readHeapType();
-                break;
-            case 64326 /* OperatorCode.br_on_cast__ */:
-            case 64327 /* OperatorCode.br_on_cast_fail__ */:
-                brDepth = this.readVarUint32();
+            case 64267 /* OperatorCode.array_get */:
+            case 64268 /* OperatorCode.array_get_s */:
+            case 64269 /* OperatorCode.array_get_u */:
+            case 64270 /* OperatorCode.array_set */:
+            case 64262 /* OperatorCode.array_new */:
+            case 64263 /* OperatorCode.array_new_default */:
+            case 64256 /* OperatorCode.struct_new */:
+            case 64257 /* OperatorCode.struct_new_default */:
                 refType = this.readVarUint32();
                 break;
-            case 64275 /* OperatorCode.array_get */:
-            case 64276 /* OperatorCode.array_get_s */:
-            case 64277 /* OperatorCode.array_get_u */:
-            case 64279 /* OperatorCode.array_len_ */:
-            case 64278 /* OperatorCode.array_set */:
-            case 64283 /* OperatorCode.array_new */:
-            case 64273 /* OperatorCode.array_new_with_rtt */:
-            case 64284 /* OperatorCode.array_new_default */:
-            case 64274 /* OperatorCode.array_new_default_with_rtt */:
-            case 64263 /* OperatorCode.struct_new */:
-            case 64257 /* OperatorCode.struct_new_with_rtt */:
-            case 64264 /* OperatorCode.struct_new_default */:
-            case 64258 /* OperatorCode.struct_new_default_with_rtt */:
-            case 64304 /* OperatorCode.rtt_canon */:
-            case 64305 /* OperatorCode.rtt_sub */:
-            case 64306 /* OperatorCode.rtt_fresh_sub */:
-                refType = this.readVarUint32();
-                break;
-            case 64282 /* OperatorCode.array_new_fixed */:
+            case 64264 /* OperatorCode.array_new_fixed */:
                 refType = this.readVarUint32();
                 len = this.readVarUint32();
                 break;
-            case 64280 /* OperatorCode.array_copy */:
+            case 64272 /* OperatorCode.array_fill */:
+                refType = this.readVarUint32();
+                break;
+            case 64273 /* OperatorCode.array_copy */:
                 refType = this.readVarUint32();
                 srcType = this.readVarUint32();
                 break;
-            case 64259 /* OperatorCode.struct_get */:
-            case 64260 /* OperatorCode.struct_get_s */:
-            case 64261 /* OperatorCode.struct_get_u */:
-            case 64262 /* OperatorCode.struct_set */:
+            case 64258 /* OperatorCode.struct_get */:
+            case 64259 /* OperatorCode.struct_get_s */:
+            case 64260 /* OperatorCode.struct_get_u */:
+            case 64261 /* OperatorCode.struct_set */:
                 refType = this.readVarUint32();
                 fieldIndex = this.readVarUint32();
                 break;
-            case 64285 /* OperatorCode.array_new_data */:
-            case 64287 /* OperatorCode.array_new_elem */:
-            case 64340 /* OperatorCode.array_init_data */:
-            case 64341 /* OperatorCode.array_init_elem */:
+            case 64265 /* OperatorCode.array_new_data */:
+            case 64266 /* OperatorCode.array_new_elem */:
+            case 64274 /* OperatorCode.array_init_data */:
+            case 64275 /* OperatorCode.array_init_elem */:
                 refType = this.readVarUint32();
                 segmentIndex = this.readVarUint32();
                 break;
-            case 64320 /* OperatorCode.ref_test */:
-            case 64328 /* OperatorCode.ref_test_null */:
-            case 64321 /* OperatorCode.ref_cast */:
-            case 64329 /* OperatorCode.ref_cast_null */:
+            case 64276 /* OperatorCode.ref_test */:
+            case 64277 /* OperatorCode.ref_test_null */:
+            case 64278 /* OperatorCode.ref_cast */:
+            case 64279 /* OperatorCode.ref_cast_null */:
                 refType = this.readHeapType();
                 break;
-            case 64324 /* OperatorCode.ref_test_ */:
-            case 64325 /* OperatorCode.ref_cast_ */:
-                refType = this.readVarUint32();
-                break;
-            case 64281 /* OperatorCode.array_len */:
-            case 64369 /* OperatorCode.extern_externalize */:
-            case 64368 /* OperatorCode.extern_internalize */:
-            case 64288 /* OperatorCode.i31_new */:
-            case 64289 /* OperatorCode.i31_get_s */:
-            case 64290 /* OperatorCode.i31_get_u */:
+            case 64271 /* OperatorCode.array_len */:
+            case 64283 /* OperatorCode.extern_convert_any */:
+            case 64282 /* OperatorCode.any_convert_extern */:
+            case 64284 /* OperatorCode.ref_i31 */:
+            case 64285 /* OperatorCode.i31_get_s */:
+            case 64286 /* OperatorCode.i31_get_u */:
                 break;
             default:
                 this.error = new Error("Unknown operator: 0x".concat(code.toString(16).padStart(4, "0")));
@@ -2702,252 +2680,284 @@ var BinaryReader = /** @class */ (function () {
         if (!this.hasVarIntBytes()) {
             return false;
         }
-        var code = this.readVarUint32() | 0xfd00;
+        var code = this.readVarUint32() | 0xfd000;
         var memoryAddress;
         var literal;
         var lineIndex;
         var lines;
         switch (code) {
-            case 64768 /* OperatorCode.v128_load */:
-            case 64769 /* OperatorCode.i16x8_load8x8_s */:
-            case 64770 /* OperatorCode.i16x8_load8x8_u */:
-            case 64771 /* OperatorCode.i32x4_load16x4_s */:
-            case 64772 /* OperatorCode.i32x4_load16x4_u */:
-            case 64773 /* OperatorCode.i64x2_load32x2_s */:
-            case 64774 /* OperatorCode.i64x2_load32x2_u */:
-            case 64775 /* OperatorCode.v8x16_load_splat */:
-            case 64776 /* OperatorCode.v16x8_load_splat */:
-            case 64777 /* OperatorCode.v32x4_load_splat */:
-            case 64778 /* OperatorCode.v64x2_load_splat */:
-            case 64779 /* OperatorCode.v128_store */:
-            case 64860 /* OperatorCode.v128_load32_zero */:
-            case 64861 /* OperatorCode.v128_load64_zero */:
+            case 1036288 /* OperatorCode.v128_load */:
+            case 1036289 /* OperatorCode.i16x8_load8x8_s */:
+            case 1036290 /* OperatorCode.i16x8_load8x8_u */:
+            case 1036291 /* OperatorCode.i32x4_load16x4_s */:
+            case 1036292 /* OperatorCode.i32x4_load16x4_u */:
+            case 1036293 /* OperatorCode.i64x2_load32x2_s */:
+            case 1036294 /* OperatorCode.i64x2_load32x2_u */:
+            case 1036295 /* OperatorCode.v8x16_load_splat */:
+            case 1036296 /* OperatorCode.v16x8_load_splat */:
+            case 1036297 /* OperatorCode.v32x4_load_splat */:
+            case 1036298 /* OperatorCode.v64x2_load_splat */:
+            case 1036299 /* OperatorCode.v128_store */:
+            case 1036380 /* OperatorCode.v128_load32_zero */:
+            case 1036381 /* OperatorCode.v128_load64_zero */:
                 memoryAddress = this.readMemoryImmediate();
                 break;
-            case 64780 /* OperatorCode.v128_const */:
+            case 1036300 /* OperatorCode.v128_const */:
                 literal = this.readBytes(16);
                 break;
-            case 64781 /* OperatorCode.i8x16_shuffle */:
+            case 1036301 /* OperatorCode.i8x16_shuffle */:
                 lines = new Uint8Array(16);
                 for (var i = 0; i < lines.length; i++) {
                     lines[i] = this.readUint8();
                 }
                 break;
-            case 64789 /* OperatorCode.i8x16_extract_lane_s */:
-            case 64790 /* OperatorCode.i8x16_extract_lane_u */:
-            case 64791 /* OperatorCode.i8x16_replace_lane */:
-            case 64792 /* OperatorCode.i16x8_extract_lane_s */:
-            case 64793 /* OperatorCode.i16x8_extract_lane_u */:
-            case 64794 /* OperatorCode.i16x8_replace_lane */:
-            case 64795 /* OperatorCode.i32x4_extract_lane */:
-            case 64796 /* OperatorCode.i32x4_replace_lane */:
-            case 64797 /* OperatorCode.i64x2_extract_lane */:
-            case 64798 /* OperatorCode.i64x2_replace_lane */:
-            case 64799 /* OperatorCode.f32x4_extract_lane */:
-            case 64800 /* OperatorCode.f32x4_replace_lane */:
-            case 64801 /* OperatorCode.f64x2_extract_lane */:
-            case 64802 /* OperatorCode.f64x2_replace_lane */:
+            case 1036309 /* OperatorCode.i8x16_extract_lane_s */:
+            case 1036310 /* OperatorCode.i8x16_extract_lane_u */:
+            case 1036311 /* OperatorCode.i8x16_replace_lane */:
+            case 1036312 /* OperatorCode.i16x8_extract_lane_s */:
+            case 1036313 /* OperatorCode.i16x8_extract_lane_u */:
+            case 1036314 /* OperatorCode.i16x8_replace_lane */:
+            case 1036315 /* OperatorCode.i32x4_extract_lane */:
+            case 1036316 /* OperatorCode.i32x4_replace_lane */:
+            case 1036317 /* OperatorCode.i64x2_extract_lane */:
+            case 1036318 /* OperatorCode.i64x2_replace_lane */:
+            case 1036319 /* OperatorCode.f32x4_extract_lane */:
+            case 1036320 /* OperatorCode.f32x4_replace_lane */:
+            case 1036321 /* OperatorCode.f64x2_extract_lane */:
+            case 1036322 /* OperatorCode.f64x2_replace_lane */:
                 lineIndex = this.readUint8();
                 break;
-            case 64782 /* OperatorCode.i8x16_swizzle */:
-            case 64783 /* OperatorCode.i8x16_splat */:
-            case 64784 /* OperatorCode.i16x8_splat */:
-            case 64785 /* OperatorCode.i32x4_splat */:
-            case 64786 /* OperatorCode.i64x2_splat */:
-            case 64787 /* OperatorCode.f32x4_splat */:
-            case 64788 /* OperatorCode.f64x2_splat */:
-            case 64803 /* OperatorCode.i8x16_eq */:
-            case 64804 /* OperatorCode.i8x16_ne */:
-            case 64805 /* OperatorCode.i8x16_lt_s */:
-            case 64806 /* OperatorCode.i8x16_lt_u */:
-            case 64807 /* OperatorCode.i8x16_gt_s */:
-            case 64808 /* OperatorCode.i8x16_gt_u */:
-            case 64809 /* OperatorCode.i8x16_le_s */:
-            case 64810 /* OperatorCode.i8x16_le_u */:
-            case 64811 /* OperatorCode.i8x16_ge_s */:
-            case 64812 /* OperatorCode.i8x16_ge_u */:
-            case 64813 /* OperatorCode.i16x8_eq */:
-            case 64814 /* OperatorCode.i16x8_ne */:
-            case 64815 /* OperatorCode.i16x8_lt_s */:
-            case 64816 /* OperatorCode.i16x8_lt_u */:
-            case 64817 /* OperatorCode.i16x8_gt_s */:
-            case 64818 /* OperatorCode.i16x8_gt_u */:
-            case 64819 /* OperatorCode.i16x8_le_s */:
-            case 64820 /* OperatorCode.i16x8_le_u */:
-            case 64821 /* OperatorCode.i16x8_ge_s */:
-            case 64822 /* OperatorCode.i16x8_ge_u */:
-            case 64823 /* OperatorCode.i32x4_eq */:
-            case 64824 /* OperatorCode.i32x4_ne */:
-            case 64825 /* OperatorCode.i32x4_lt_s */:
-            case 64826 /* OperatorCode.i32x4_lt_u */:
-            case 64827 /* OperatorCode.i32x4_gt_s */:
-            case 64828 /* OperatorCode.i32x4_gt_u */:
-            case 64829 /* OperatorCode.i32x4_le_s */:
-            case 64830 /* OperatorCode.i32x4_le_u */:
-            case 64831 /* OperatorCode.i32x4_ge_s */:
-            case 64832 /* OperatorCode.i32x4_ge_u */:
-            case 64833 /* OperatorCode.f32x4_eq */:
-            case 64834 /* OperatorCode.f32x4_ne */:
-            case 64835 /* OperatorCode.f32x4_lt */:
-            case 64836 /* OperatorCode.f32x4_gt */:
-            case 64837 /* OperatorCode.f32x4_le */:
-            case 64838 /* OperatorCode.f32x4_ge */:
-            case 64839 /* OperatorCode.f64x2_eq */:
-            case 64840 /* OperatorCode.f64x2_ne */:
-            case 64841 /* OperatorCode.f64x2_lt */:
-            case 64842 /* OperatorCode.f64x2_gt */:
-            case 64843 /* OperatorCode.f64x2_le */:
-            case 64844 /* OperatorCode.f64x2_ge */:
-            case 64845 /* OperatorCode.v128_not */:
-            case 64846 /* OperatorCode.v128_and */:
-            case 64847 /* OperatorCode.v128_andnot */:
-            case 64848 /* OperatorCode.v128_or */:
-            case 64849 /* OperatorCode.v128_xor */:
-            case 64850 /* OperatorCode.v128_bitselect */:
-            case 64851 /* OperatorCode.v128_any_true */:
-            case 64862 /* OperatorCode.f32x4_demote_f64x2_zero */:
-            case 64863 /* OperatorCode.f64x2_promote_low_f32x4 */:
-            case 64864 /* OperatorCode.i8x16_abs */:
-            case 64865 /* OperatorCode.i8x16_neg */:
-            case 64866 /* OperatorCode.i8x16_popcnt */:
-            case 64867 /* OperatorCode.i8x16_all_true */:
-            case 64868 /* OperatorCode.i8x16_bitmask */:
-            case 64869 /* OperatorCode.i8x16_narrow_i16x8_s */:
-            case 64870 /* OperatorCode.i8x16_narrow_i16x8_u */:
-            case 64871 /* OperatorCode.f32x4_ceil */:
-            case 64872 /* OperatorCode.f32x4_floor */:
-            case 64873 /* OperatorCode.f32x4_trunc */:
-            case 64874 /* OperatorCode.f32x4_nearest */:
-            case 64875 /* OperatorCode.i8x16_shl */:
-            case 64876 /* OperatorCode.i8x16_shr_s */:
-            case 64877 /* OperatorCode.i8x16_shr_u */:
-            case 64878 /* OperatorCode.i8x16_add */:
-            case 64879 /* OperatorCode.i8x16_add_sat_s */:
-            case 64880 /* OperatorCode.i8x16_add_sat_u */:
-            case 64881 /* OperatorCode.i8x16_sub */:
-            case 64882 /* OperatorCode.i8x16_sub_sat_s */:
-            case 64883 /* OperatorCode.i8x16_sub_sat_u */:
-            case 64884 /* OperatorCode.f64x2_ceil */:
-            case 64885 /* OperatorCode.f64x2_floor */:
-            case 64886 /* OperatorCode.i8x16_min_s */:
-            case 64887 /* OperatorCode.i8x16_min_u */:
-            case 64888 /* OperatorCode.i8x16_max_s */:
-            case 64889 /* OperatorCode.i8x16_max_u */:
-            case 64890 /* OperatorCode.f64x2_trunc */:
-            case 64891 /* OperatorCode.i8x16_avgr_u */:
-            case 64892 /* OperatorCode.i16x8_extadd_pairwise_i8x16_s */:
-            case 64893 /* OperatorCode.i16x8_extadd_pairwise_i8x16_u */:
-            case 64894 /* OperatorCode.i32x4_extadd_pairwise_i16x8_s */:
-            case 64895 /* OperatorCode.i32x4_extadd_pairwise_i16x8_u */:
-            case 64896 /* OperatorCode.i16x8_abs */:
-            case 64897 /* OperatorCode.i16x8_neg */:
-            case 64898 /* OperatorCode.i16x8_q15mulr_sat_s */:
-            case 64899 /* OperatorCode.i16x8_all_true */:
-            case 64900 /* OperatorCode.i16x8_bitmask */:
-            case 64901 /* OperatorCode.i16x8_narrow_i32x4_s */:
-            case 64902 /* OperatorCode.i16x8_narrow_i32x4_u */:
-            case 64903 /* OperatorCode.i16x8_extend_low_i8x16_s */:
-            case 64904 /* OperatorCode.i16x8_extend_high_i8x16_s */:
-            case 64905 /* OperatorCode.i16x8_extend_low_i8x16_u */:
-            case 64906 /* OperatorCode.i16x8_extend_high_i8x16_u */:
-            case 64907 /* OperatorCode.i16x8_shl */:
-            case 64908 /* OperatorCode.i16x8_shr_s */:
-            case 64909 /* OperatorCode.i16x8_shr_u */:
-            case 64910 /* OperatorCode.i16x8_add */:
-            case 64911 /* OperatorCode.i16x8_add_sat_s */:
-            case 64912 /* OperatorCode.i16x8_add_sat_u */:
-            case 64913 /* OperatorCode.i16x8_sub */:
-            case 64914 /* OperatorCode.i16x8_sub_sat_s */:
-            case 64915 /* OperatorCode.i16x8_sub_sat_u */:
-            case 64916 /* OperatorCode.f64x2_nearest */:
-            case 64917 /* OperatorCode.i16x8_mul */:
-            case 64918 /* OperatorCode.i16x8_min_s */:
-            case 64919 /* OperatorCode.i16x8_min_u */:
-            case 64920 /* OperatorCode.i16x8_max_s */:
-            case 64921 /* OperatorCode.i16x8_max_u */:
-            case 64923 /* OperatorCode.i16x8_avgr_u */:
-            case 64924 /* OperatorCode.i16x8_extmul_low_i8x16_s */:
-            case 64925 /* OperatorCode.i16x8_extmul_high_i8x16_s */:
-            case 64926 /* OperatorCode.i16x8_extmul_low_i8x16_u */:
-            case 64927 /* OperatorCode.i16x8_extmul_high_i8x16_u */:
-            case 64928 /* OperatorCode.i32x4_abs */:
-            case 64929 /* OperatorCode.i32x4_neg */:
-            case 64931 /* OperatorCode.i32x4_all_true */:
-            case 64932 /* OperatorCode.i32x4_bitmask */:
-            case 64935 /* OperatorCode.i32x4_extend_low_i16x8_s */:
-            case 64936 /* OperatorCode.i32x4_extend_high_i16x8_s */:
-            case 64937 /* OperatorCode.i32x4_extend_low_i16x8_u */:
-            case 64938 /* OperatorCode.i32x4_extend_high_i16x8_u */:
-            case 64939 /* OperatorCode.i32x4_shl */:
-            case 64940 /* OperatorCode.i32x4_shr_s */:
-            case 64941 /* OperatorCode.i32x4_shr_u */:
-            case 64942 /* OperatorCode.i32x4_add */:
-            case 64945 /* OperatorCode.i32x4_sub */:
-            case 64949 /* OperatorCode.i32x4_mul */:
-            case 64950 /* OperatorCode.i32x4_min_s */:
-            case 64951 /* OperatorCode.i32x4_min_u */:
-            case 64952 /* OperatorCode.i32x4_max_s */:
-            case 64953 /* OperatorCode.i32x4_max_u */:
-            case 64954 /* OperatorCode.i32x4_dot_i16x8_s */:
-            case 64956 /* OperatorCode.i32x4_extmul_low_i16x8_s */:
-            case 64957 /* OperatorCode.i32x4_extmul_high_i16x8_s */:
-            case 64958 /* OperatorCode.i32x4_extmul_low_i16x8_u */:
-            case 64959 /* OperatorCode.i32x4_extmul_high_i16x8_u */:
-            case 64960 /* OperatorCode.i64x2_abs */:
-            case 64961 /* OperatorCode.i64x2_neg */:
-            case 64963 /* OperatorCode.i64x2_all_true */:
-            case 64964 /* OperatorCode.i64x2_bitmask */:
-            case 64967 /* OperatorCode.i64x2_extend_low_i32x4_s */:
-            case 64968 /* OperatorCode.i64x2_extend_high_i32x4_s */:
-            case 64969 /* OperatorCode.i64x2_extend_low_i32x4_u */:
-            case 64970 /* OperatorCode.i64x2_extend_high_i32x4_u */:
-            case 64971 /* OperatorCode.i64x2_shl */:
-            case 64972 /* OperatorCode.i64x2_shr_s */:
-            case 64973 /* OperatorCode.i64x2_shr_u */:
-            case 64974 /* OperatorCode.i64x2_add */:
-            case 64977 /* OperatorCode.i64x2_sub */:
-            case 64981 /* OperatorCode.i64x2_mul */:
-            case 64982 /* OperatorCode.i64x2_eq */:
-            case 64983 /* OperatorCode.i64x2_ne */:
-            case 64984 /* OperatorCode.i64x2_lt_s */:
-            case 64985 /* OperatorCode.i64x2_gt_s */:
-            case 64986 /* OperatorCode.i64x2_le_s */:
-            case 64987 /* OperatorCode.i64x2_ge_s */:
-            case 64988 /* OperatorCode.i64x2_extmul_low_i32x4_s */:
-            case 64989 /* OperatorCode.i64x2_extmul_high_i32x4_s */:
-            case 64988 /* OperatorCode.i64x2_extmul_low_i32x4_s */:
-            case 64989 /* OperatorCode.i64x2_extmul_high_i32x4_s */:
-            case 64992 /* OperatorCode.f32x4_abs */:
-            case 64992 /* OperatorCode.f32x4_abs */:
-            case 64993 /* OperatorCode.f32x4_neg */:
-            case 64995 /* OperatorCode.f32x4_sqrt */:
-            case 64996 /* OperatorCode.f32x4_add */:
-            case 64997 /* OperatorCode.f32x4_sub */:
-            case 64998 /* OperatorCode.f32x4_mul */:
-            case 64999 /* OperatorCode.f32x4_div */:
-            case 65000 /* OperatorCode.f32x4_min */:
-            case 65001 /* OperatorCode.f32x4_max */:
-            case 65002 /* OperatorCode.f32x4_pmin */:
-            case 65003 /* OperatorCode.f32x4_pmax */:
-            case 65004 /* OperatorCode.f64x2_abs */:
-            case 65005 /* OperatorCode.f64x2_neg */:
-            case 65007 /* OperatorCode.f64x2_sqrt */:
-            case 65008 /* OperatorCode.f64x2_add */:
-            case 65009 /* OperatorCode.f64x2_sub */:
-            case 65010 /* OperatorCode.f64x2_mul */:
-            case 65011 /* OperatorCode.f64x2_div */:
-            case 65012 /* OperatorCode.f64x2_min */:
-            case 65013 /* OperatorCode.f64x2_max */:
-            case 65014 /* OperatorCode.f64x2_pmin */:
-            case 65015 /* OperatorCode.f64x2_pmax */:
-            case 65016 /* OperatorCode.i32x4_trunc_sat_f32x4_s */:
-            case 65017 /* OperatorCode.i32x4_trunc_sat_f32x4_u */:
-            case 65018 /* OperatorCode.f32x4_convert_i32x4_s */:
-            case 65019 /* OperatorCode.f32x4_convert_i32x4_u */:
-            case 65020 /* OperatorCode.i32x4_trunc_sat_f64x2_s_zero */:
-            case 65021 /* OperatorCode.i32x4_trunc_sat_f64x2_u_zero */:
-            case 65022 /* OperatorCode.f64x2_convert_low_i32x4_s */:
-            case 65023 /* OperatorCode.f64x2_convert_low_i32x4_u */:
+            case 1036372 /* OperatorCode.v128_load8_lane */:
+            case 1036373 /* OperatorCode.v128_load16_lane */:
+            case 1036374 /* OperatorCode.v128_load32_lane */:
+            case 1036375 /* OperatorCode.v128_load64_lane */:
+            case 1036376 /* OperatorCode.v128_store8_lane */:
+            case 1036377 /* OperatorCode.v128_store16_lane */:
+            case 1036378 /* OperatorCode.v128_store32_lane */:
+            case 1036379 /* OperatorCode.v128_store64_lane */:
+                memoryAddress = this.readMemoryImmediate();
+                lineIndex = this.readUint8();
+                break;
+            case 1036302 /* OperatorCode.i8x16_swizzle */:
+            case 1036303 /* OperatorCode.i8x16_splat */:
+            case 1036304 /* OperatorCode.i16x8_splat */:
+            case 1036305 /* OperatorCode.i32x4_splat */:
+            case 1036306 /* OperatorCode.i64x2_splat */:
+            case 1036307 /* OperatorCode.f32x4_splat */:
+            case 1036308 /* OperatorCode.f64x2_splat */:
+            case 1036323 /* OperatorCode.i8x16_eq */:
+            case 1036324 /* OperatorCode.i8x16_ne */:
+            case 1036325 /* OperatorCode.i8x16_lt_s */:
+            case 1036326 /* OperatorCode.i8x16_lt_u */:
+            case 1036327 /* OperatorCode.i8x16_gt_s */:
+            case 1036328 /* OperatorCode.i8x16_gt_u */:
+            case 1036329 /* OperatorCode.i8x16_le_s */:
+            case 1036330 /* OperatorCode.i8x16_le_u */:
+            case 1036331 /* OperatorCode.i8x16_ge_s */:
+            case 1036332 /* OperatorCode.i8x16_ge_u */:
+            case 1036333 /* OperatorCode.i16x8_eq */:
+            case 1036334 /* OperatorCode.i16x8_ne */:
+            case 1036335 /* OperatorCode.i16x8_lt_s */:
+            case 1036336 /* OperatorCode.i16x8_lt_u */:
+            case 1036337 /* OperatorCode.i16x8_gt_s */:
+            case 1036338 /* OperatorCode.i16x8_gt_u */:
+            case 1036339 /* OperatorCode.i16x8_le_s */:
+            case 1036340 /* OperatorCode.i16x8_le_u */:
+            case 1036341 /* OperatorCode.i16x8_ge_s */:
+            case 1036342 /* OperatorCode.i16x8_ge_u */:
+            case 1036343 /* OperatorCode.i32x4_eq */:
+            case 1036344 /* OperatorCode.i32x4_ne */:
+            case 1036345 /* OperatorCode.i32x4_lt_s */:
+            case 1036346 /* OperatorCode.i32x4_lt_u */:
+            case 1036347 /* OperatorCode.i32x4_gt_s */:
+            case 1036348 /* OperatorCode.i32x4_gt_u */:
+            case 1036349 /* OperatorCode.i32x4_le_s */:
+            case 1036350 /* OperatorCode.i32x4_le_u */:
+            case 1036351 /* OperatorCode.i32x4_ge_s */:
+            case 1036352 /* OperatorCode.i32x4_ge_u */:
+            case 1036353 /* OperatorCode.f32x4_eq */:
+            case 1036354 /* OperatorCode.f32x4_ne */:
+            case 1036355 /* OperatorCode.f32x4_lt */:
+            case 1036356 /* OperatorCode.f32x4_gt */:
+            case 1036357 /* OperatorCode.f32x4_le */:
+            case 1036358 /* OperatorCode.f32x4_ge */:
+            case 1036359 /* OperatorCode.f64x2_eq */:
+            case 1036360 /* OperatorCode.f64x2_ne */:
+            case 1036361 /* OperatorCode.f64x2_lt */:
+            case 1036362 /* OperatorCode.f64x2_gt */:
+            case 1036363 /* OperatorCode.f64x2_le */:
+            case 1036364 /* OperatorCode.f64x2_ge */:
+            case 1036365 /* OperatorCode.v128_not */:
+            case 1036366 /* OperatorCode.v128_and */:
+            case 1036367 /* OperatorCode.v128_andnot */:
+            case 1036368 /* OperatorCode.v128_or */:
+            case 1036369 /* OperatorCode.v128_xor */:
+            case 1036370 /* OperatorCode.v128_bitselect */:
+            case 1036371 /* OperatorCode.v128_any_true */:
+            case 1036382 /* OperatorCode.f32x4_demote_f64x2_zero */:
+            case 1036383 /* OperatorCode.f64x2_promote_low_f32x4 */:
+            case 1036384 /* OperatorCode.i8x16_abs */:
+            case 1036385 /* OperatorCode.i8x16_neg */:
+            case 1036386 /* OperatorCode.i8x16_popcnt */:
+            case 1036387 /* OperatorCode.i8x16_all_true */:
+            case 1036388 /* OperatorCode.i8x16_bitmask */:
+            case 1036389 /* OperatorCode.i8x16_narrow_i16x8_s */:
+            case 1036390 /* OperatorCode.i8x16_narrow_i16x8_u */:
+            case 1036391 /* OperatorCode.f32x4_ceil */:
+            case 1036392 /* OperatorCode.f32x4_floor */:
+            case 1036393 /* OperatorCode.f32x4_trunc */:
+            case 1036394 /* OperatorCode.f32x4_nearest */:
+            case 1036395 /* OperatorCode.i8x16_shl */:
+            case 1036396 /* OperatorCode.i8x16_shr_s */:
+            case 1036397 /* OperatorCode.i8x16_shr_u */:
+            case 1036398 /* OperatorCode.i8x16_add */:
+            case 1036399 /* OperatorCode.i8x16_add_sat_s */:
+            case 1036400 /* OperatorCode.i8x16_add_sat_u */:
+            case 1036401 /* OperatorCode.i8x16_sub */:
+            case 1036402 /* OperatorCode.i8x16_sub_sat_s */:
+            case 1036403 /* OperatorCode.i8x16_sub_sat_u */:
+            case 1036404 /* OperatorCode.f64x2_ceil */:
+            case 1036405 /* OperatorCode.f64x2_floor */:
+            case 1036406 /* OperatorCode.i8x16_min_s */:
+            case 1036407 /* OperatorCode.i8x16_min_u */:
+            case 1036408 /* OperatorCode.i8x16_max_s */:
+            case 1036409 /* OperatorCode.i8x16_max_u */:
+            case 1036410 /* OperatorCode.f64x2_trunc */:
+            case 1036411 /* OperatorCode.i8x16_avgr_u */:
+            case 1036412 /* OperatorCode.i16x8_extadd_pairwise_i8x16_s */:
+            case 1036413 /* OperatorCode.i16x8_extadd_pairwise_i8x16_u */:
+            case 1036414 /* OperatorCode.i32x4_extadd_pairwise_i16x8_s */:
+            case 1036415 /* OperatorCode.i32x4_extadd_pairwise_i16x8_u */:
+            case 1036416 /* OperatorCode.i16x8_abs */:
+            case 1036417 /* OperatorCode.i16x8_neg */:
+            case 1036418 /* OperatorCode.i16x8_q15mulr_sat_s */:
+            case 1036419 /* OperatorCode.i16x8_all_true */:
+            case 1036420 /* OperatorCode.i16x8_bitmask */:
+            case 1036421 /* OperatorCode.i16x8_narrow_i32x4_s */:
+            case 1036422 /* OperatorCode.i16x8_narrow_i32x4_u */:
+            case 1036423 /* OperatorCode.i16x8_extend_low_i8x16_s */:
+            case 1036424 /* OperatorCode.i16x8_extend_high_i8x16_s */:
+            case 1036425 /* OperatorCode.i16x8_extend_low_i8x16_u */:
+            case 1036426 /* OperatorCode.i16x8_extend_high_i8x16_u */:
+            case 1036427 /* OperatorCode.i16x8_shl */:
+            case 1036428 /* OperatorCode.i16x8_shr_s */:
+            case 1036429 /* OperatorCode.i16x8_shr_u */:
+            case 1036430 /* OperatorCode.i16x8_add */:
+            case 1036431 /* OperatorCode.i16x8_add_sat_s */:
+            case 1036432 /* OperatorCode.i16x8_add_sat_u */:
+            case 1036433 /* OperatorCode.i16x8_sub */:
+            case 1036434 /* OperatorCode.i16x8_sub_sat_s */:
+            case 1036435 /* OperatorCode.i16x8_sub_sat_u */:
+            case 1036436 /* OperatorCode.f64x2_nearest */:
+            case 1036437 /* OperatorCode.i16x8_mul */:
+            case 1036438 /* OperatorCode.i16x8_min_s */:
+            case 1036439 /* OperatorCode.i16x8_min_u */:
+            case 1036440 /* OperatorCode.i16x8_max_s */:
+            case 1036441 /* OperatorCode.i16x8_max_u */:
+            case 1036443 /* OperatorCode.i16x8_avgr_u */:
+            case 1036444 /* OperatorCode.i16x8_extmul_low_i8x16_s */:
+            case 1036445 /* OperatorCode.i16x8_extmul_high_i8x16_s */:
+            case 1036446 /* OperatorCode.i16x8_extmul_low_i8x16_u */:
+            case 1036447 /* OperatorCode.i16x8_extmul_high_i8x16_u */:
+            case 1036448 /* OperatorCode.i32x4_abs */:
+            case 1036449 /* OperatorCode.i32x4_neg */:
+            case 1036451 /* OperatorCode.i32x4_all_true */:
+            case 1036452 /* OperatorCode.i32x4_bitmask */:
+            case 1036455 /* OperatorCode.i32x4_extend_low_i16x8_s */:
+            case 1036456 /* OperatorCode.i32x4_extend_high_i16x8_s */:
+            case 1036457 /* OperatorCode.i32x4_extend_low_i16x8_u */:
+            case 1036458 /* OperatorCode.i32x4_extend_high_i16x8_u */:
+            case 1036459 /* OperatorCode.i32x4_shl */:
+            case 1036460 /* OperatorCode.i32x4_shr_s */:
+            case 1036461 /* OperatorCode.i32x4_shr_u */:
+            case 1036462 /* OperatorCode.i32x4_add */:
+            case 1036465 /* OperatorCode.i32x4_sub */:
+            case 1036469 /* OperatorCode.i32x4_mul */:
+            case 1036470 /* OperatorCode.i32x4_min_s */:
+            case 1036471 /* OperatorCode.i32x4_min_u */:
+            case 1036472 /* OperatorCode.i32x4_max_s */:
+            case 1036473 /* OperatorCode.i32x4_max_u */:
+            case 1036474 /* OperatorCode.i32x4_dot_i16x8_s */:
+            case 1036476 /* OperatorCode.i32x4_extmul_low_i16x8_s */:
+            case 1036477 /* OperatorCode.i32x4_extmul_high_i16x8_s */:
+            case 1036478 /* OperatorCode.i32x4_extmul_low_i16x8_u */:
+            case 1036479 /* OperatorCode.i32x4_extmul_high_i16x8_u */:
+            case 1036480 /* OperatorCode.i64x2_abs */:
+            case 1036481 /* OperatorCode.i64x2_neg */:
+            case 1036483 /* OperatorCode.i64x2_all_true */:
+            case 1036484 /* OperatorCode.i64x2_bitmask */:
+            case 1036487 /* OperatorCode.i64x2_extend_low_i32x4_s */:
+            case 1036488 /* OperatorCode.i64x2_extend_high_i32x4_s */:
+            case 1036489 /* OperatorCode.i64x2_extend_low_i32x4_u */:
+            case 1036490 /* OperatorCode.i64x2_extend_high_i32x4_u */:
+            case 1036491 /* OperatorCode.i64x2_shl */:
+            case 1036492 /* OperatorCode.i64x2_shr_s */:
+            case 1036493 /* OperatorCode.i64x2_shr_u */:
+            case 1036494 /* OperatorCode.i64x2_add */:
+            case 1036497 /* OperatorCode.i64x2_sub */:
+            case 1036501 /* OperatorCode.i64x2_mul */:
+            case 1036502 /* OperatorCode.i64x2_eq */:
+            case 1036503 /* OperatorCode.i64x2_ne */:
+            case 1036504 /* OperatorCode.i64x2_lt_s */:
+            case 1036505 /* OperatorCode.i64x2_gt_s */:
+            case 1036506 /* OperatorCode.i64x2_le_s */:
+            case 1036507 /* OperatorCode.i64x2_ge_s */:
+            case 1036508 /* OperatorCode.i64x2_extmul_low_i32x4_s */:
+            case 1036509 /* OperatorCode.i64x2_extmul_high_i32x4_s */:
+            case 1036510 /* OperatorCode.i64x2_extmul_low_i32x4_u */:
+            case 1036511 /* OperatorCode.i64x2_extmul_high_i32x4_u */:
+            case 1036512 /* OperatorCode.f32x4_abs */:
+            case 1036512 /* OperatorCode.f32x4_abs */:
+            case 1036513 /* OperatorCode.f32x4_neg */:
+            case 1036515 /* OperatorCode.f32x4_sqrt */:
+            case 1036516 /* OperatorCode.f32x4_add */:
+            case 1036517 /* OperatorCode.f32x4_sub */:
+            case 1036518 /* OperatorCode.f32x4_mul */:
+            case 1036519 /* OperatorCode.f32x4_div */:
+            case 1036520 /* OperatorCode.f32x4_min */:
+            case 1036521 /* OperatorCode.f32x4_max */:
+            case 1036522 /* OperatorCode.f32x4_pmin */:
+            case 1036523 /* OperatorCode.f32x4_pmax */:
+            case 1036524 /* OperatorCode.f64x2_abs */:
+            case 1036525 /* OperatorCode.f64x2_neg */:
+            case 1036527 /* OperatorCode.f64x2_sqrt */:
+            case 1036528 /* OperatorCode.f64x2_add */:
+            case 1036529 /* OperatorCode.f64x2_sub */:
+            case 1036530 /* OperatorCode.f64x2_mul */:
+            case 1036531 /* OperatorCode.f64x2_div */:
+            case 1036532 /* OperatorCode.f64x2_min */:
+            case 1036533 /* OperatorCode.f64x2_max */:
+            case 1036534 /* OperatorCode.f64x2_pmin */:
+            case 1036535 /* OperatorCode.f64x2_pmax */:
+            case 1036536 /* OperatorCode.i32x4_trunc_sat_f32x4_s */:
+            case 1036537 /* OperatorCode.i32x4_trunc_sat_f32x4_u */:
+            case 1036538 /* OperatorCode.f32x4_convert_i32x4_s */:
+            case 1036539 /* OperatorCode.f32x4_convert_i32x4_u */:
+            case 1036540 /* OperatorCode.i32x4_trunc_sat_f64x2_s_zero */:
+            case 1036541 /* OperatorCode.i32x4_trunc_sat_f64x2_u_zero */:
+            case 1036542 /* OperatorCode.f64x2_convert_low_i32x4_s */:
+            case 1036543 /* OperatorCode.f64x2_convert_low_i32x4_u */:
+                break;
+            case 1036544 /* OperatorCode.i8x16_relaxed_swizzle */:
+            case 1036545 /* OperatorCode.i32x4_relaxed_trunc_f32x4_s */:
+            case 1036546 /* OperatorCode.i32x4_relaxed_trunc_f32x4_u */:
+            case 1036547 /* OperatorCode.i32x4_relaxed_trunc_f64x2_s_zero */:
+            case 1036548 /* OperatorCode.i32x4_relaxed_trunc_f64x2_u_zero */:
+            case 1036549 /* OperatorCode.f32x4_relaxed_madd */:
+            case 1036550 /* OperatorCode.f32x4_relaxed_nmadd */:
+            case 1036551 /* OperatorCode.f64x2_relaxed_madd */:
+            case 1036552 /* OperatorCode.f64x2_relaxed_nmadd */:
+            case 1036553 /* OperatorCode.i8x16_relaxed_laneselect */:
+            case 1036554 /* OperatorCode.i16x8_relaxed_laneselect */:
+            case 1036555 /* OperatorCode.i32x4_relaxed_laneselect */:
+            case 1036556 /* OperatorCode.i64x2_relaxed_laneselect */:
+            case 1036557 /* OperatorCode.f32x4_relaxed_min */:
+            case 1036558 /* OperatorCode.f32x4_relaxed_max */:
+            case 1036559 /* OperatorCode.f64x2_relaxed_min */:
+            case 1036560 /* OperatorCode.f64x2_relaxed_max */:
+            case 1036561 /* OperatorCode.i16x8_relaxed_q15mulr_s */:
+            case 1036562 /* OperatorCode.i16x8_relaxed_dot_i8x16_i7x16_s */:
+            case 1036563 /* OperatorCode.i32x4_relaxed_dot_i8x16_i7x16_add_s */:
                 break;
             default:
                 this.error = new Error("Unknown operator: 0x".concat(code.toString(16).padStart(4, "0")));
@@ -3119,7 +3129,7 @@ var BinaryReader = /** @class */ (function () {
                 }
                 break;
         }
-        var code, blockType, selectType, refType, brDepth, brTable, relativeDepth, funcIndex, typeIndex, tableIndex, localIndex, globalIndex, tagIndex, memoryAddress, literal, reserved;
+        var code, blockType, selectType, refType, brDepth, brTable, tryTable, relativeDepth, funcIndex, typeIndex, tableIndex, localIndex, globalIndex, tagIndex, memoryAddress, literal, reserved;
         if (this.state === 26 /* BinaryReaderState.INIT_EXPRESSION_OPERATOR */ &&
             this._sectionId === 9 /* SectionCode.Element */ &&
             isExternvalElementSegmentType(this._segmentType)) {
@@ -3152,7 +3162,7 @@ var BinaryReader = /** @class */ (function () {
                     break;
                 case 12 /* OperatorCode.br */:
                 case 13 /* OperatorCode.br_if */:
-                case 212 /* OperatorCode.br_on_null */:
+                case 213 /* OperatorCode.br_on_null */:
                 case 214 /* OperatorCode.br_on_non_null */:
                     brDepth = this.readVarUint32();
                     break;
@@ -3180,6 +3190,38 @@ var BinaryReader = /** @class */ (function () {
                 case 7 /* OperatorCode.catch */:
                 case 8 /* OperatorCode.throw */:
                     tagIndex = this.readVarInt32();
+                    break;
+                case 31 /* OperatorCode.try_table */:
+                    blockType = this.readType();
+                    var tableCount = this.readVarUint32();
+                    if (!this.hasBytes(2 * tableCount)) {
+                        // We need at least (2 * tableCount) bytes
+                        this._pos = pos;
+                        return false;
+                    }
+                    tryTable = [];
+                    for (var i = 0; i < tableCount; i++) {
+                        if (!this.hasVarIntBytes()) {
+                            this._pos = pos;
+                            return false;
+                        }
+                        var kind = this.readVarUint32();
+                        var tagIndex;
+                        if (kind == CatchHandlerKind.Catch ||
+                            kind == CatchHandlerKind.CatchRef) {
+                            if (!this.hasVarIntBytes()) {
+                                this._pos = pos;
+                                return false;
+                            }
+                            tagIndex = this.readVarUint32();
+                        }
+                        if (!this.hasVarIntBytes()) {
+                            this._pos = pos;
+                            return false;
+                        }
+                        var depth = this.readVarUint32();
+                        tryTable.push({ kind: kind, depth: depth, tagIndex: tagIndex });
+                    }
                     break;
                 case 208 /* OperatorCode.ref_null */:
                     refType = this.readHeapType();
@@ -3288,7 +3330,6 @@ var BinaryReader = /** @class */ (function () {
                 case 0 /* OperatorCode.unreachable */:
                 case 1 /* OperatorCode.nop */:
                 case 5 /* OperatorCode.else */:
-                case 10 /* OperatorCode.unwind */:
                 case 11 /* OperatorCode.end */:
                 case 15 /* OperatorCode.return */:
                 case 25 /* OperatorCode.catch_all */:
@@ -3423,8 +3464,9 @@ var BinaryReader = /** @class */ (function () {
                 case 195 /* OperatorCode.i64_extend16_s */:
                 case 196 /* OperatorCode.i64_extend32_s */:
                 case 209 /* OperatorCode.ref_is_null */:
-                case 211 /* OperatorCode.ref_as_non_null */:
-                case 213 /* OperatorCode.ref_eq */:
+                case 212 /* OperatorCode.ref_as_non_null */:
+                case 211 /* OperatorCode.ref_eq */:
+                case 10 /* OperatorCode.throw_ref */:
                     break;
                 default:
                     this.error = new Error("Unknown operator: ".concat(code));
@@ -3440,6 +3482,7 @@ var BinaryReader = /** @class */ (function () {
             srcType: undefined,
             brDepth: brDepth,
             brTable: brTable,
+            tryTable: tryTable,
             relativeDepth: relativeDepth,
             tableIndex: tableIndex,
             funcIndex: funcIndex,

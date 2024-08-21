@@ -65,6 +65,16 @@ addIntegrationTask(async function testReloadingChangedGeneratedSource(
       expectedGeneratedFileContentOnBreakpointLine
     );
   }
+  info(
+    "Check that the source code snipper shown in the breakpoint panel is correct"
+  );
+  assertBreakpointSnippet(
+    dbg,
+    1,
+    isCompressed
+      ? `baabar(),console.log("YO")},foobar()}]);`
+      : `await baabar();`
+  );
 
   await closeTab(dbg, "bundle-with-another-original.js");
 
@@ -99,7 +109,7 @@ addIntegrationTask(async function testReloadingChangedGeneratedSource(
     assertTextContentOnLine(dbg, 5, "funcC();");
 
     info("Switch to generated source and assert that the location is correct");
-    await dbg.actions.jumpToMappedSelectedLocation(getContext(dbg));
+    await dbg.actions.jumpToMappedSelectedLocation();
     assertPausedAtSourceAndLine(
       dbg,
       findSource(dbg, "bundle-with-another-original.js").id,
@@ -109,7 +119,7 @@ addIntegrationTask(async function testReloadingChangedGeneratedSource(
     assertTextContentOnLine(dbg, 82, "funcC();");
 
     info("Switch back to original location before resuming");
-    await dbg.actions.jumpToMappedSelectedLocation(getContext(dbg));
+    await dbg.actions.jumpToMappedSelectedLocation();
     await resume(dbg);
     await waitForPaused(dbg);
 
@@ -126,6 +136,7 @@ addIntegrationTask(async function testReloadingChangedGeneratedSource(
     // Assert that it does not pause in commpressed files
     assertNotPaused(dbg);
   }
+  await waitForBreakpoint(dbg, "original-with-no-update.js", 6);
   await assertBreakpoint(dbg, 6);
 
   info(
@@ -169,6 +180,15 @@ addIntegrationTask(async function testReloadingChangedGeneratedSource(
   } else {
     is(breakpoint.generatedLocation.line, 103);
   }
+
+  info("Check that the breakpoint snippet is still the same");
+  assertBreakpointSnippet(
+    dbg,
+    1,
+    isCompressed
+      ? `baabar(),console.log("YO")},foobar()}]);`
+      : `await baabar();`
+  );
 
   if (!isCompressed) {
     await resume(dbg);

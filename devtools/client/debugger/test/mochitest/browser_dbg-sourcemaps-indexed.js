@@ -27,7 +27,7 @@ add_task(async function () {
   await selectSource(dbg, mainSrc);
 
   // Test that breakpoint is not off by a line.
-  await addBreakpoint(dbg, mainSrc, 4, 2);
+  await addBreakpoint(dbg, mainSrc, 4, 3);
   is(getBreakpointCount(), 1, "One breakpoint exists");
   ok(
     getBreakpoint(createLocation({ source: mainSrc, line: 4, column: 2 })),
@@ -37,15 +37,15 @@ add_task(async function () {
   await assertBreakpoint(dbg, 4);
   invokeInTab("logMessage");
 
-  await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, mainSrc.id, 4, 2);
+  await waitForPausedInOriginalFileAndToggleMapScopes(dbg);
+  assertPausedAtSourceAndLine(dbg, mainSrc.id, 4, 3);
 
   // Tests the existence of the sourcemap link in the original source.
-  ok(findElement(dbg, "sourceMapLink"), "Sourcemap link in original source");
+  ok(findElement(dbg, "mappedSourceLink"), "Sourcemap link in original source");
   await selectSource(dbg, "main.min.js");
 
   ok(
-    !findElement(dbg, "sourceMapLink"),
+    !findElement(dbg, "mappedSourceLink"),
     "No Sourcemap link exists in generated source"
   );
 });

@@ -136,7 +136,7 @@ async function checkResults() {
     const expected = DATA[i];
 
     // ignore timestamp
-    ok(timestamp > 0, "timestamp is greater than 0");
+    Assert.greater(timestamp, 0, "timestamp is greater than 0");
     is(category, expected.category, "category is correct");
     is(method, expected.method, "method is correct");
     is(object, expected.object, "object is correct");
@@ -144,7 +144,7 @@ async function checkResults() {
 
     // extras
     is(extra.host, expected.extra.host, "host is correct");
-    ok(extra.width > 0, "width is greater than 0");
+    Assert.greater(Number(extra.width), 0, "width is greater than 0");
     is(extra.start_state, expected.extra.start_state, "start_state is correct");
     is(extra.panel_name, expected.extra.panel_name, "panel_name is correct");
     is(extra.cold, expected.extra.cold, "cold is correct");

@@ -3,7 +3,7 @@
 
 "use strict";
 
-const { console, ConsoleAPI } = ChromeUtils.importESModule(
+const { ConsoleAPI } = ChromeUtils.importESModule(
   "resource://gre/modules/Console.sys.mjs"
 );
 const {
@@ -59,8 +59,8 @@ function createFakeAddonWindow({ addonId } = {}) {
   );
   const chromeWebNav = Services.appShell.createWindowlessBrowser(true);
   const { docShell } = chromeWebNav;
-  docShell.createAboutBlankContentViewer(principal, principal);
-  const addonWindow = docShell.contentViewer.DOMDocument.defaultView;
+  docShell.createAboutBlankDocumentViewer(principal, principal);
+  const addonWindow = docShell.docViewer.DOMDocument.defaultView;
 
   return { addonWindow, chromeWebNav };
 }

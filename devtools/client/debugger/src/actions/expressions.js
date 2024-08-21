@@ -5,15 +5,14 @@
 import {
   getExpression,
   getExpressions,
-  getSelectedFrame,
-  getSelectedFrameId,
   getSelectedSource,
   getSelectedScopeMappings,
   getSelectedFrameBindings,
-  getCurrentThread,
   getIsPaused,
+  getSelectedFrame,
+  getCurrentThread,
   isMapScopesEnabled,
-} from "../selectors";
+} from "../selectors/index";
 import { PROMISE } from "./utils/middleware/promise";
 import { wrapExpression } from "../utils/expressions";
 import { features } from "../utils/prefs";
@@ -21,43 +20,42 @@ import { features } from "../utils/prefs";
 /**
  * Add expression for debugger to watch
  *
- * @param {object} expression
- * @param {number} expression.id
- * @memberof actions/pause
- * @static
+ * @param {string} input
  */
-export function addExpression(cx, input) {
-  return async ({ dispatch, getState, parserWorker }) => {
+export function addExpression(input) {
+  return async ({ dispatch, getState }) => {
     if (!input) {
       return null;
     }
 
-    const expressionError = await parserWorker.hasSyntaxError(input);
+    // If the expression already exists, only update its evaluation
+    let expression = getExpression(getState(), input);
+    if (!expression) {
+      // This will only display the expression input,
+      // evaluateExpression will update its value.
+      dispatch({ type: "ADD_EXPRESSION", input });
 
-    const expression = getExpression(getState(), input);
-    if (expression) {
-      return dispatch(evaluateExpression(cx, expression));
+      expression = getExpression(getState(), input);
+      // When there is an expression error, we won't store the expression
+      if (!expression) {
+        return null;
+      }
     }
 
-    dispatch({ type: "ADD_EXPRESSION", cx, input, expressionError });
-
-    const newExpression = getExpression(getState(), input);
-    if (newExpression) {
-      return dispatch(evaluateExpression(cx, newExpression));
-    }
-
-    return null;
+    return dispatch(evaluateExpression(expression));
   };
 }
 
-export function autocomplete(cx, input, cursor) {
+export function autocomplete(input, cursor) {
   return async ({ dispatch, getState, client }) => {
     if (!input) {
       return;
     }
-    const frameId = getSelectedFrameId(getState(), cx.thread);
-    const result = await client.autocomplete(input, cursor, frameId);
-    dispatch({ type: "AUTOCOMPLETE", cx, input, result });
+    const thread = getCurrentThread(getState());
+    const selectedFrame = getSelectedFrame(getState(), thread);
+    const result = await client.autocomplete(input, cursor, selectedFrame?.id);
+    // Pass both selectedFrame and thread in case selectedFrame is null
+    dispatch({ type: "AUTOCOMPLETE", selectedFrame, thread, input, result });
   };
 }
 
@@ -65,98 +63,117 @@ export function clearAutocomplete() {
   return { type: "CLEAR_AUTOCOMPLETE" };
 }
 
-export function clearExpressionError() {
-  return { type: "CLEAR_EXPRESSION_ERROR" };
-}
-
-export function updateExpression(cx, input, expression) {
-  return async ({ dispatch, getState, parserWorker }) => {
+export function updateExpression(input, expression) {
+  return async ({ dispatch }) => {
     if (!input) {
       return;
     }
 
-    const expressionError = await parserWorker.hasSyntaxError(input);
     dispatch({
       type: "UPDATE_EXPRESSION",
-      cx,
       expression,
-      input: expressionError ? expression.input : input,
-      expressionError,
+      input,
     });
 
-    dispatch(evaluateExpressions(cx));
+    await dispatch(evaluateExpressionsForCurrentContext());
   };
 }
 
 /**
  *
  * @param {object} expression
- * @param {number} expression.id
- * @memberof actions/pause
- * @static
+ * @param {string} expression.input
  */
 export function deleteExpression(expression) {
-  return ({ dispatch }) => {
-    dispatch({
-      type: "DELETE_EXPRESSION",
-      input: expression.input,
-    });
+  return {
+    type: "DELETE_EXPRESSION",
+    input: expression.input,
+  };
+}
+
+export function evaluateExpressionsForCurrentContext() {
+  return async ({ getState, dispatch }) => {
+    const thread = getCurrentThread(getState());
+    const selectedFrame = getSelectedFrame(getState(), thread);
+    await dispatch(evaluateExpressions(selectedFrame));
   };
 }
 
 /**
+ * Update all the expressions by querying the server for updated values.
  *
- * @memberof actions/pause
- * @param {number} selectedFrameId
- * @static
+ * @param {object} selectedFrame
+ *        If defined, will evaluate the expression against this given frame,
+ *        otherwise it will use the global scope of the thread.
  */
-export function evaluateExpressions(cx) {
+export function evaluateExpressions(selectedFrame) {
   return async function ({ dispatch, getState, client }) {
     const expressions = getExpressions(getState());
     const inputs = expressions.map(({ input }) => input);
-    const frameId = getSelectedFrameId(getState(), cx.thread);
+    // Fallback to global scope of the current thread when selectedFrame is null
+    const thread = selectedFrame?.thread || getCurrentThread(getState());
     const results = await client.evaluateExpressions(inputs, {
-      frameId,
-      threadId: cx.thread,
+      // We will only have a specific frame when passing a Selected frame context.
+      frameId: selectedFrame?.id,
+      threadId: thread,
     });
-    dispatch({ type: "EVALUATE_EXPRESSIONS", cx, inputs, results });
+    // Pass both selectedFrame and thread in case selectedFrame is null
+    dispatch({
+      type: "EVALUATE_EXPRESSIONS",
+
+      selectedFrame,
+      // As `selectedFrame` can be null, pass `thread` to help
+      // the reducer know what is the related thread of this action.
+      thread,
+
+      inputs,
+      results,
+    });
   };
 }
 
-function evaluateExpression(cx, expression) {
-  return async function ({ dispatch, getState, client }) {
-    if (!expression.input) {
+function evaluateExpression(expression) {
+  return async function (thunkArgs) {
+    let { input } = expression;
+    if (!input) {
       console.warn("Expressions should not be empty");
       return null;
     }
 
-    let { input } = expression;
-    const frame = getSelectedFrame(getState(), cx.thread);
+    const { dispatch, getState, client } = thunkArgs;
+    const thread = getCurrentThread(getState());
+    const selectedFrame = getSelectedFrame(getState(), thread);
 
-    if (frame) {
-      const selectedSource = getSelectedSource(getState());
-
-      if (
-        selectedSource &&
-        frame.location.source.isOriginal &&
-        selectedSource.isOriginal
-      ) {
-        const mapResult = await dispatch(getMappedExpression(input));
-        if (mapResult) {
-          input = mapResult.expression;
-        }
+    const selectedSource = getSelectedSource(getState());
+    // Only map when we are paused and if the currently selected source is original,
+    // and the paused location is also original.
+    if (
+      selectedFrame &&
+      selectedSource &&
+      selectedFrame.location.source.isOriginal &&
+      selectedSource.isOriginal
+    ) {
+      const mapResult = await getMappedExpression(
+        input,
+        selectedFrame.thread,
+        thunkArgs
+      );
+      if (mapResult) {
+        input = mapResult.expression;
       }
     }
 
-    const frameId = getSelectedFrameId(getState(), cx.thread);
-
+    // Pass both selectedFrame and thread in case selectedFrame is null
     return dispatch({
       type: "EVALUATE_EXPRESSION",
-      cx,
-      thread: cx.thread,
+      selectedFrame,
+      // When we aren't passing a frame, we have to pass a thread to the pause reducer
+      thread: selectedFrame ? null : thread,
       input: expression.input,
       [PROMISE]: client.evaluate(wrapExpression(input), {
-        frameId,
+        // When evaluating against the global scope (when not paused)
+        // frameId will be null here.
+        frameId: selectedFrame?.id,
       }),
     });
   };
@@ -164,32 +181,30 @@ function evaluateExpression(cx, expression) {
 
 /**
  * Gets information about original variable names from the source map
- * and replaces all posible generated names.
+ * and replaces all possible generated names.
  */
-export function getMappedExpression(expression) {
-  return async function ({ dispatch, getState, parserWorker }) {
-    const thread = getCurrentThread(getState());
-    const mappings = getSelectedScopeMappings(getState(), thread);
-    const bindings = getSelectedFrameBindings(getState(), thread);
+export function getMappedExpression(expression, thread, thunkArgs) {
+  const { getState, parserWorker } = thunkArgs;
+  const mappings = getSelectedScopeMappings(getState(), thread);
+  const bindings = getSelectedFrameBindings(getState(), thread);
 
-    // We bail early if we do not need to map the expression. This is important
-    // because mapping an expression can be slow if the parserWorker
-    // worker is busy doing other work.
-    //
-    // 1. there are no mappings - we do not need to map original expressions
-    // 2. does not contain `await` - we do not need to map top level awaits
-    // 3. does not contain `=` - we do not need to map assignments
-    const shouldMapScopes = isMapScopesEnabled(getState()) && mappings;
-    if (!shouldMapScopes && !expression.match(/(await|=)/)) {
-      return null;
-    }
+  // We bail early if we do not need to map the expression. This is important
+  // because mapping an expression can be slow if the parserWorker
+  // worker is busy doing other work.
+  //
+  // 1. there are no mappings - we do not need to map original expressions
+  // 2. does not contain `await` - we do not need to map top level awaits
+  // 3. does not contain `=` - we do not need to map assignments
+  const shouldMapScopes = isMapScopesEnabled(getState()) && mappings;
+  if (!shouldMapScopes && !expression.match(/(await|=)/)) {
+    return null;
+  }
 
-    return parserWorker.mapExpression(
-      expression,
-      mappings,
-      bindings || [],
-      features.mapExpressionBindings && getIsPaused(getState(), thread),
-      features.mapAwaitExpression
-    );
-  };
+  return parserWorker.mapExpression(
+    expression,
+    mappings,
+    bindings || [],
+    features.mapExpressionBindings && getIsPaused(getState(), thread),
+    features.mapAwaitExpression
+  );
 }

@@ -18,9 +18,11 @@ SimpleTest.waitForExplicitFinish();
 
 let expectedConsoleCalls = [];
 
-function doConsoleCalls(aState)
+function doConsoleCalls()
 {
-  const { ConsoleAPI } = ChromeUtils.import("resource://gre/modules/Console.jsm");
+  const { ConsoleAPI } = ChromeUtils.importESModule(
+    "resource://gre/modules/Console.sys.mjs"
+  );
   const console = new ConsoleAPI({
     innerID: window.top.windowGlobalChild.innerWindowId
   });

@@ -195,29 +195,13 @@ DevTools.prototype = {
    * Removes all tools that match the given |toolId|
    * Needed so that add-ons can remove themselves when they are deactivated
    *
-   * @param {string|object} tool
-   *        Definition or the id of the tool to unregister. Passing the
-   *        tool id should be avoided as it is a temporary measure.
+   * @param {string} toolId
+   *        The id of the tool to unregister.
    * @param {boolean} isQuitApplication
    *        true to indicate that the call is due to app quit, so we should not
    *        cause a cascade of costly events
    */
-  unregisterTool(tool, isQuitApplication) {
-    let toolId = null;
-    if (typeof tool == "string") {
-      toolId = tool;
-      tool = this._tools.get(tool);
-    } else {
-      const { Deprecated } = ChromeUtils.importESModule(
-        "resource://gre/modules/Deprecated.sys.mjs"
-      );
-      Deprecated.warning(
-        "Deprecation WARNING: gDevTools.unregisterTool(tool) is " +
-          "deprecated. You should unregister a tool using its toolId: " +
-          "gDevTools.unregisterTool(toolId)."
-      );
-      toolId = tool.id;
-    }
+  unregisterTool(toolId, isQuitApplication) {
     this._tools.delete(toolId);
 
     if (!isQuitApplication) {
@@ -798,10 +782,16 @@ DevTools.prototype = {
   /**
    * Retrieve an existing toolbox for the provided tab if it was created before.
    * Returns null otherwise.
+   *
+   * @param {XULTab} tab
+   *        The browser tab.
+   * @return {Toolbox}
+   *        Returns tab's toolbox object.
    */
-  async getToolboxForTab(tab) {
-    const commands = await LocalTabCommandsFactory.getCommandsForTab(tab);
-    return this.getToolboxForCommands(commands);
+  getToolboxForTab(tab) {
+    return this.getToolboxes().find(
+      t => t.commands.descriptorFront.localTab === tab
+    );
   },
 
   /**
@@ -925,49 +915,6 @@ DevTools.prototype = {
     const onSelected = a11yPanel.once("new-accessible-front-selected");
     a11yPanel.selectAccessibleForNode(nodeFront, "browser-context-menu");
     await onSelected;
-  },
-
-  /**
-   * If DevTools and the debugger are opened, try to open the source
-   * at specified location in the debugger.
-   * Otherwise fallback by opening this location via view-source.
-   *
-   * @param {Window} window
-   *        The top level browser window into which we should open the URL.
-   * @param {String} url
-   * @param {Number} line
-   * @param {Number} column
-   */
-  async openSourceInDebugger(window, { url, line, column }) {
-    const toolbox = await gDevTools.getToolboxForTab(
-      window.gBrowser.selectedTab
-    );
-    if (toolbox) {
-      // Note that it will fallback to view-source when the source url isn't found in the debugger
-      await toolbox.viewSourceInDebugger(
-        url,
-        line,
-        column,
-        null,
-        "CommandLine"
-      );
-      // Nothing would try to focus the browser window and we might still focus the terminal
-      //
-      // When running tests, the toolbox may already be destroyed.
-      if (toolbox.win) {
-        toolbox.win.focus();
-      }
-      return;
-    }
-
-    // Otherwise, fallback to view-source
-    window.gViewSourceUtils.viewSource({
-      URL: url,
-      lineNumber: parseInt(line, 10),
-      columnNumber: parseInt(column, 10),
-    });
-    // Nothing would try to focus the browser window and we might still focus the terminal
-    window.focus();
   },
 
   /**

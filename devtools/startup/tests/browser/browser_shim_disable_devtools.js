@@ -134,13 +134,13 @@ add_task(async function () {
 
   info("Close the test window");
   const winClosed = BrowserTestUtils.windowClosed(win);
-  win.BrowserTryToCloseWindow();
+  win.BrowserCommands.tryToCloseWindow();
   await winClosed;
 });
 
 function waitForDelayedStartupFinished(win) {
   return new Promise(resolve => {
-    Services.obs.addObserver(function observer(subject, topic) {
+    Services.obs.addObserver(function observer(subject) {
       if (win == subject) {
         Services.obs.removeObserver(
           observer,

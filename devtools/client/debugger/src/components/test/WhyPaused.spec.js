@@ -2,13 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
+import React from "devtools/client/shared/vendor/react";
 import { shallow } from "enzyme";
 import WhyPaused from "../SecondaryPanes/WhyPaused.js";
 
 function render(why, delay) {
   const props = { why, delay };
-  const component = shallow(<WhyPaused.WrappedComponent {...props} />);
+  const component = shallow(
+    React.createElement(WhyPaused.WrappedComponent, props)
+  );
 
   return { component, props };
 }

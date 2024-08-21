@@ -9,9 +9,6 @@
  */
 
 :root {
-  --theme-focus-border-color-textbox: #0675d3;
-  --theme-textbox-box-shadow: rgba(97, 181, 255, 0.75);
-
   /* Text sizes */
   --theme-body-font-size: 11px;
   --theme-code-font-size: 11px;
@@ -23,8 +20,17 @@
 
   /* For accessibility purposes we want to enhance the focus styling. This
    * should improve keyboard navigation usability. */
-  --theme-focus-outline: 1px dotted var(--theme-focus-outline-color);
-  --theme-focus-box-shadow-textbox: 0 0 0 1px var(--theme-textbox-box-shadow);
+  --theme-focus-outline-color: var(--blue-50);
+  --theme-focus-outline-size: 2px;
+  --theme-focus-outline: var(--theme-focus-outline-size) solid var(--theme-focus-outline-color);
+  --theme-outline-offset: 0px;
+    /**
+   * we want the box shadow to be 2px bigger than the offset so we have a "double border"
+   * (without it impacting the element layout), which should work whatever
+   * the background-color is (e.g. a clickable element in a "selected" blue-background container)
+   **/
+  --theme-outline-box-shadow-size: calc(2px + var(--theme-focus-outline-size) + var(--theme-outline-offset));
+  --theme-outline-box-shadow: 0 0 0 var(--theme-outline-box-shadow-size) var(--theme-body-background);
 
   /* Standardizes the height of items in the Watch Expressions and XHR Breakpoints panes */
   --expression-item-height: 20.5px;
@@ -74,8 +80,11 @@
   --yellow-60: #d7b600;
   --yellow-65: #be9b00;
   --yellow-70: #a47f00;
+  /* interpolated from yellow-70 and yellow-80 */
+  --yellow-75: #8b6801;
   --yellow-80: #715100;
 
+  --red-05: #ffe6e8;
   --red-20: #ffb3d2;
   --red-40: #ff3b6b;
   --red-40-a90: rgba(255, 59, 107, 0.9);
@@ -84,7 +93,6 @@
   --red-70: #a4000f;
 
   --grey-10: #f9f9fa;
-  --grey-10-a15: rgba(249, 249, 250, 0.15);
   --grey-10-a20: rgba(249, 249, 250, 0.2);
   --grey-10-a25: rgba(249, 249, 250, 0.25);
   --grey-10-a30: rgba(249, 249, 250, 0.3);
@@ -102,9 +110,7 @@
   --grey-80: #2a2a2e;
   --grey-85: #1b1b1d;
   --grey-90: #0c0c0d;
-  --grey-90-a05: rgba(12, 12, 13, 0.05);
   --grey-90-a10: rgba(12, 12, 13, 0.1);
-  --grey-90-a15: rgba(12, 12, 13, 0.15);
   --grey-90-a20: rgba(12, 12, 13, 0.2);
   --grey-90-a30: rgba(12, 12, 13, 0.3);
 }
@@ -124,6 +130,7 @@
   --theme-toolbar-background-hover: rgba(221, 225, 228, 0.66);
   --theme-toolbar-background-alt: #f5f5f5;
   --theme-toolbar-background-highlighted: #b9dcff;
+  --theme-toolbar-error-background: var(--red-05);
   --theme-toolbar-hover: var(--grey-20);
   --theme-toolbar-hover-active: var(--grey-20);
   --theme-toolbar-separator: var(--grey-90-a10);
@@ -164,8 +171,9 @@
   --theme-icon-warning-color: var(--yellow-65);
 
   /* Text color */
-  --theme-comment: var(--grey-50);
+  --theme-comment: var(--grey-55);
   --theme-body-color: var(--grey-70);
+  --theme-link-color: var(--blue-60);
   --theme-text-color-alt: var(--grey-50);
   --theme-text-color-inactive: var(--grey-40);
   --theme-text-color-error: var(--red-60);
@@ -185,10 +193,6 @@
   --theme-highlight-pink: #b82ee5;
   --theme-highlight-gray: #dde1e4;
 
-  /* For accessibility purposes we want to enhance the focus styling. This
-   * should improve keyboard navigation usability. */
-  --theme-focus-outline-color: #000000;
-
   /* Colors that were used in Graphs in the old performance tools, which was removed.
    * They're also used on other panels and should be renamed (See Bug 1767617) */
   --theme-graphs-purple: #b693eb;
@@ -206,13 +210,18 @@
   /* Styling for devtool buttons */
   --theme-toolbarbutton-background: none;
   --theme-toolbarbutton-color: var(--grey-70);
-  --theme-toolbarbutton-hover-background: var(--grey-90-a05);
-  --theme-toolbarbutton-checked-background: var(--grey-90-a10);
-  --theme-toolbarbutton-checked-color: var(--grey-90);
-  --theme-toolbarbutton-checked-hover-background: var(--grey-90-a15);
-  --theme-toolbarbutton-checked-hover-color: var(--grey-90);
-  --theme-toolbarbutton-active-background: var(--grey-90-a20);
-  --theme-toolbarbutton-active-color: var(--grey-90);
+  --theme-toolbarbutton-hover-background: color-mix(in srgb, currentColor 14%, transparent);
+  --theme-toolbarbutton-checked-background: color-mix(
+      in srgb,
+      var(--theme-toolbarbutton-checked-color) 5%,
+      transparent);
+  --theme-toolbarbutton-checked-color: var(--blue-60);
+  --theme-toolbarbutton-checked-hover-background: var(--theme-toolbarbutton-hover-background);
+  --theme-toolbarbutton-checked-hover-color: var(--theme-toolbarbutton-color);
+  --theme-toolbarbutton-active-background: color-mix(
+      in srgb,
+      var(--theme-toolbarbutton-checked-color) 20%,
+      transparent);
 
   /* Used for select elements */
   /* Note: we don't use the pair of system properties Field/FieldText here (like
@@ -233,7 +242,8 @@
   --theme-contrast-background: #fff699; /* = Yellow 50-a40 on white */
   --theme-contrast-background-alpha: rgba(255, 233, 0, 0.4); /* Yellow 50-a40 */
   --theme-contrast-color: black;
-  --theme-contrast-border: var(--yellow-60);
+  /* This is used for search/filter results underline and need to have a 3:1 contrast against the background */
+  --theme-contrast-border: var(--yellow-70);
 }
 
 :root.theme-dark {
@@ -251,6 +261,7 @@
   --theme-toolbar-background-hover: #232327;
   --theme-toolbar-background-alt: var(--grey-85);
   --theme-toolbar-background-highlighted: var(--blue-60);
+  --theme-toolbar-error-background: var(--red-70);
   --theme-toolbar-hover: #232327;
   --theme-toolbar-hover-active: #252526;
   --theme-toolbar-separator: var(--grey-10-a20);
@@ -293,11 +304,12 @@
   /* Text color */
   --theme-comment: var(--grey-45);
   --theme-body-color: var(--grey-40);
+  --theme-link-color: #75bfff;
   --theme-text-color-alt: var(--grey-45);
   --theme-text-color-inactive: var(--grey-50);
-  --theme-text-color-error: var(--red-40);
+  --theme-text-color-error: var(--grey-10);
   --theme-text-color-strong: var(--grey-30);
-  --theme-stack-trace-text: var(--red-50);
+  --theme-stack-trace-text: var(--red-20);
 
   --theme-highlight-green: #86de74;
   --theme-highlight-blue: #75bfff;
@@ -311,10 +323,6 @@
   --theme-highlight-orange: #d96629;
   --theme-highlight-pink: #df80ff;
   --theme-highlight-gray: #e9f4fe;
-
-  /* For accessibility purposes we want to enhance the focus styling. This
-   * should improve keyboard navigation usability. */
-  --theme-focus-outline-color: #ced3d9;
 
     /* Colors that were used in Graphs in the old performance tools, which was removed.
    * They're also used on other panels and should be renamed (See Bug 1767617) */
@@ -333,13 +341,18 @@
   /* Styling for devtool buttons */
   --theme-toolbarbutton-background: none;
   --theme-toolbarbutton-color: var(--grey-40);
-  --theme-toolbarbutton-hover-background: var(--grey-10-a15);
-  --theme-toolbarbutton-checked-background: var(--grey-10-a20);
-  --theme-toolbarbutton-checked-color: var(--grey-30);
-  --theme-toolbarbutton-checked-hover-background: var(--grey-10-a25);
-  --theme-toolbarbutton-checked-hover-color: var(--grey-30);
-  --theme-toolbarbutton-active-background: var(--grey-10-a30);
-  --theme-toolbarbutton-active-color: var(--grey-30);
+  --theme-toolbarbutton-hover-background: color-mix(in srgb, currentColor 14%, transparent);
+  --theme-toolbarbutton-checked-background: color-mix(
+      in srgb,
+      var(--theme-toolbarbutton-checked-color) 5%,
+      transparent);
+  --theme-toolbarbutton-checked-color: var(--blue-30);
+  --theme-toolbarbutton-checked-hover-background: var(--theme-toolbarbutton-hover-background);
+  --theme-toolbarbutton-checked-hover-color: var(--theme-toolbarbutton-color);
+  --theme-toolbarbutton-active-background: color-mix(
+      in srgb,
+      var(--theme-toolbarbutton-checked-color) 25%,
+      transparent);
 
   /* Used for select elements */
   --theme-select-background: var(--grey-60);

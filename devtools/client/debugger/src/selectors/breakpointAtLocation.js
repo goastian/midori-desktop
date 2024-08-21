@@ -4,18 +4,17 @@
 
 import { getSelectedSource, getBreakpointPositionsForLine } from "./sources";
 import { getBreakpointsList } from "./breakpoints";
-import { isGenerated } from "../utils/source";
 
 function getColumn(column, selectedSource) {
   if (column) {
     return column;
   }
 
-  return isGenerated(selectedSource) ? undefined : 0;
+  return !selectedSource.isOriginal ? undefined : 0;
 }
 
 function getLocation(bp, selectedSource) {
-  return isGenerated(selectedSource)
+  return !selectedSource.isOriginal
     ? bp.generatedLocation || bp.location
     : bp.location;
 }
@@ -25,7 +24,7 @@ function getBreakpointsForSource(state, selectedSource) {
 
   return breakpoints.filter(bp => {
     const location = getLocation(bp, selectedSource);
-    return location.sourceId === selectedSource.id;
+    return location.source.id === selectedSource.id;
   });
 }
 

@@ -227,6 +227,7 @@ class ToolboxToolbar extends Component {
         disabled,
         onClick,
         isChecked,
+        isToggle,
         className: buttonClass,
         onKeyDown,
       } = command;
@@ -245,6 +246,7 @@ class ToolboxToolbar extends Component {
         id,
         title: description,
         disabled,
+        "aria-pressed": !isToggle ? null : isChecked,
         className: `devtools-tabbar-button command-button ${
           buttonClass || ""
         } ${isChecked ? "checked" : ""}`,
@@ -318,6 +320,10 @@ class ToolboxToolbar extends Component {
       errorCount = "99+";
     }
 
+    const errorIconTooltip = this.props.toolbox.isSplitConsoleEnabled()
+      ? this.props.L10N.getStr("toolbox.errorCountButton.tooltip")
+      : this.props.L10N.getStr("toolbox.errorCountButtonConsoleTab.tooltip");
+
     return button(
       {
         id,
@@ -328,9 +334,7 @@ class ToolboxToolbar extends Component {
           }
         },
         title:
-          this.props.currentToolId !== "webconsole"
-            ? this.props.L10N.getStr("toolbox.errorCountButton.tooltip")
-            : null,
+          this.props.currentToolId !== "webconsole" ? errorIconTooltip : null,
       },
       errorCount
     );
@@ -352,7 +356,7 @@ class ToolboxToolbar extends Component {
     }
 
     const items = [];
-    toolbox.frameMap.forEach((frame, index) => {
+    toolbox.frameMap.forEach(frame => {
       const label = toolbox.target.isWebExtension
         ? toolbox.target.getExtensionPathName(frame.url)
         : getUnicodeUrl(frame.url);

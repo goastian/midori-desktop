@@ -15,6 +15,7 @@ define(function (require, exports, module) {
 
   // Reps
   const {
+    appendRTLClassNameIfNeeded,
     cropString,
     wrapRender,
   } = require("devtools/client/shared/components/reps/reps/rep-utils");
@@ -46,7 +47,7 @@ define(function (require, exports, module) {
     const config = getElementConfig({ ...props, isInTree });
     const inspectIcon = getInspectIcon({ ...props, isInTree });
 
-    if (mode === MODE.TINY) {
+    if (mode === MODE.TINY || mode === MODE.HEADER) {
       return span(config, getTitle(grip), inspectIcon);
     }
 
@@ -71,13 +72,17 @@ define(function (require, exports, module) {
       shouldRenderTooltip,
     } = opts;
 
+    const text = getTextContent(object);
     const config = {
       "data-link-actor-id": object.actor,
       "data-link-content-dom-reference": JSON.stringify(
         object.contentDomReference
       ),
-      className: "objectBox objectBox-textNode",
-      title: shouldRenderTooltip ? `#text "${getTextContent(object)}"` : null,
+      className: appendRTLClassNameIfNeeded(
+        "objectBox objectBox-textNode",
+        text
+      ),
+      title: shouldRenderTooltip ? `#text "${text}"` : null,
     };
 
     if (isInTree) {
@@ -118,13 +123,13 @@ define(function (require, exports, module) {
     });
   }
 
-  function getTitle(grip) {
+  function getTitle() {
     const title = "#text";
     return span({}, title);
   }
 
   // Registration
-  function supportsObject(grip, noGrip = false) {
+  function supportsObject(grip) {
     return grip?.preview && grip?.class == "Text";
   }
 

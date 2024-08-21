@@ -22,8 +22,13 @@
 
 const IGNORED_URLS = ["debugger eval code", "XStringBundle"];
 const IGNORED_EXTENSIONS = ["css", "svg", "png"];
-import { isPretty } from "../utils/source";
+import { isPretty, getRawSourceURL } from "../utils/source";
 import { prefs } from "../utils/prefs";
+
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  BinarySearch: "resource://gre/modules/BinarySearch.sys.mjs",
+});
 
 export function initialSourcesTreeState() {
   return {
@@ -177,9 +182,12 @@ export default function update(state = initialSourcesTreeState(), action) {
     case "SET_FOCUSED_SOURCE_ITEM":
       return { ...state, focusedItem: action.item };
 
+    case "SET_SELECTED_LOCATION":
+      return updateSelectedLocation(state, action.location);
+
     case "SET_PROJECT_DIRECTORY_ROOT":
-      const { url, name } = action;
-      return updateProjectDirectoryRoot(state, url, name);
+      const { uniquePath, name } = action;
+      return updateProjectDirectoryRoot(state, uniquePath, name);
 
     case "BLACKBOX_WHOLE_SOURCES":
     case "BLACKBOX_SOURCE_RANGES": {
@@ -207,18 +215,25 @@ function addThread(state, thread) {
   });
   if (!threadItem) {
     threadItem = createThreadTreeItem(threadActorID);
-    state.threadItems = [...state.threadItems, threadItem];
+    state.threadItems = [...state.threadItems];
+    threadItem.thread = thread;
+    addSortedItem(state.threadItems, threadItem, sortThreadItems);
   } else {
     // We force updating the list to trigger mapStateToProps
     // as the getSourcesTreeSources selector is awaiting for the `thread` attribute
     // which we will set here.
     state.threadItems = [...state.threadItems];
+
+    // Inject the reducer thread object on Thread Tree Items
+    // (this is handy shortcut to have access to from React components)
+    // (this is also used by sortThreadItems to sort the thread as a Tree in the Browser Toolbox)
+    threadItem.thread = thread;
+
+    // We have to remove and re-insert the thread as its order will be based on the newly set `thread` attribute
+    state.threadItems = [...state.threadItems];
+    state.threadItems.splice(state.threadItems.indexOf(threadItem), 1);
+    addSortedItem(state.threadItems, threadItem, sortThreadItems);
   }
-  // Inject the reducer thread object on Thread Tree Items
-  // (this is handy shortcut to have access to from React components)
-  // (this is also used by sortThreadItems to sort the thread as a Tree in the Browser Toolbox)
-  threadItem.thread = thread;
-  state.threadItems.sort(sortThreadItems);
 }
 
 function updateBlackbox(state, sources, shouldBlackBox) {
@@ -227,8 +242,13 @@ function updateBlackbox(state, sources, shouldBlackBox) {
   for (const source of sources) {
     for (const threadItem of threadItems) {
       const sourceTreeItem = findSourceInThreadItem(source, threadItem);
-      if (sourceTreeItem) {
-        sourceTreeItem.isBlackBoxed = shouldBlackBox;
+      if (sourceTreeItem && sourceTreeItem.isBlackBoxed != shouldBlackBox) {
+        // Replace the Item with a clone so that we get the expected React updates
+        const { children } = sourceTreeItem.parent;
+        children.splice(children.indexOf(sourceTreeItem), 1, {
+          ...sourceTreeItem,
+          isBlackBoxed: shouldBlackBox,
+        });
       }
     }
   }
@@ -238,26 +258,28 @@ function updateBlackbox(state, sources, shouldBlackBox) {
 function updateExpanded(state, action) {
   // We receive the full list of all expanded items
   // (not only the one added/removed)
+  // Also assume that this action is called only if the Set changed.
   return {
     ...state,
-    expanded: new Set(action.expanded),
+    // Consider that the action already cloned the Set
+    expanded: action.expanded,
   };
 }
 
 /**
  * Update the project directory root
  */
-function updateProjectDirectoryRoot(state, root, name) {
+function updateProjectDirectoryRoot(state, uniquePath, name) {
   // Only persists root within the top level target.
   // Otherwise the thread actor ID will change on page reload and we won't match anything
-  if (!root || root.startsWith("top-level")) {
-    prefs.projectDirectoryRoot = root;
+  if (!uniquePath || uniquePath.startsWith("top-level")) {
+    prefs.projectDirectoryRoot = uniquePath;
     prefs.projectDirectoryRootName = name;
   }
 
   return {
     ...state,
-    projectDirectoryRoot: root,
+    projectDirectoryRoot: uniquePath,
     projectDirectoryRootName: name,
   };
 }
@@ -280,6 +302,23 @@ function isSourceVisibleInSourceTree(
   );
 }
 
+/**
+ * Generic Array helper to add a new value at the right position
+ * given that the array is already sorted.
+ *
+ * @param {Array} array
+ *        The already sorted into which a value should be added.
+ * @param {any} newValue
+ *        The value to add in the array while keeping the array sorted.
+ * @param {Function} comparator
+ *        A function to compare two array values and their ordering.
+ *        Follow same behavior as Array sorting function.
+ */
+function addSortedItem(array, newValue, comparator) {
+  const index = lazy.BinarySearch.insertionIndexOf(comparator, array, newValue);
+  array.splice(index, 0, newValue);
+}
+
 function addSource(threadItems, source, sourceActor) {
   // Ensure creating or fetching the related Thread Item
   let threadItem = threadItems.find(item => {
@@ -289,8 +328,7 @@ function addSource(threadItems, source, sourceActor) {
     threadItem = createThreadTreeItem(sourceActor.thread);
     // Note that threadItems will be cloned once to force a state update
     // by the callsite of `addSourceActor`
-    threadItems.push(threadItem);
-    threadItems.sort(sortThreadItems);
+    addSortedItem(threadItems, threadItem, sortThreadItems);
   }
 
   // Then ensure creating or fetching the related Group Item
@@ -306,9 +344,9 @@ function addSource(threadItems, source, sourceActor) {
     groupItem = createGroupTreeItem(group, threadItem, source);
     // Copy children in order to force updating react in case we picked
     // this directory as a project root
-    threadItem.children = [...threadItem.children, groupItem];
-    // As we add a new item, re-sort the groups in this thread
-    threadItem.children.sort(sortItems);
+    threadItem.children = [...threadItem.children];
+
+    addSortedItem(threadItem.children, groupItem, sortItems);
   }
 
   // Then ensure creating or fetching all possibly nested Directory Item(s)
@@ -330,9 +368,8 @@ function addSource(threadItems, source, sourceActor) {
   const sourceItem = createSourceTreeItem(source, sourceActor, directoryItem);
   // Copy children in order to force updating react in case we picked
   // this directory as a project root
-  directoryItem.children = [...directoryItem.children, sourceItem];
-  // Re-sort the items in this directory
-  directoryItem.children.sort(sortItems);
+  directoryItem.children = [...directoryItem.children];
+  addSortedItem(directoryItem.children, sourceItem, sortItems);
 
   return true;
 }
@@ -365,12 +402,12 @@ function sortItems(a, b) {
     return -1;
   } else if (b.type == "directory" && a.type == "source") {
     return 1;
+  } else if (a.type == "group" && b.type == "group") {
+    return a.groupName.localeCompare(b.groupName);
   } else if (a.type == "directory" && b.type == "directory") {
     return a.path.localeCompare(b.path);
   } else if (a.type == "source" && b.type == "source") {
-    return a.source.displayURL.filename.localeCompare(
-      b.source.displayURL.filename
-    );
+    return a.source.longName.localeCompare(b.source.longName);
   }
   return 0;
 }
@@ -416,7 +453,7 @@ function sortThreadItems(a, b) {
   if (a.thread.processID > b.thread.processID) {
     return 1;
   } else if (a.thread.processID < b.thread.processID) {
-    return 0;
+    return -1;
   }
 
   // Order the frame targets and the worker targets by their target name
@@ -466,9 +503,9 @@ function addOrGetParentDirectory(groupItem, path) {
   const directory = createDirectoryTreeItem(path, parentDirectory);
   // Copy children in order to force updating react in case we picked
   // this directory as a project root
-  parentDirectory.children = [...parentDirectory.children, directory];
-  // Re-sort the items in this directory
-  parentDirectory.children.sort(sortItems);
+  parentDirectory.children = [...parentDirectory.children];
+
+  addSortedItem(parentDirectory.children, directory, sortItems);
 
   // Also maintain the list of all group items,
   // Which helps speedup querying for existing items.
@@ -582,4 +619,92 @@ function createSourceTreeItem(source, sourceActor, parent) {
     source,
     sourceActor,
   };
+}
+
+/**
+ * Update `expanded` and `focusedItem` so that we show and focus
+ * the new selected source.
+ *
+ * @param {Object} state
+ * @param {Object} selectedLocation
+ *        The new location being selected.
+ */
+function updateSelectedLocation(state, selectedLocation) {
+  const sourceItem = getSourceItemForSelectedLocation(state, selectedLocation);
+  if (sourceItem) {
+    // Walk up the tree to expand all ancestor items up to the root of the tree.
+    const expanded = new Set(state.expanded);
+    let parentDirectory = sourceItem;
+    while (parentDirectory) {
+      expanded.add(parentDirectory.uniquePath);
+      parentDirectory = parentDirectory.parent;
+    }
+
+    return {
+      ...state,
+      expanded,
+      focusedItem: sourceItem,
+    };
+  }
+  return state;
+}
+
+/**
+ * Get the SourceItem displayed in the SourceTree for the currently selected location.
+ *
+ * @param {Object} state
+ * @param {Object} selectedLocation
+ * @return {SourceItem}
+ *        The directory source item where the given source is displayed.
+ */
+function getSourceItemForSelectedLocation(state, selectedLocation) {
+  const { source, sourceActor } = selectedLocation;
+
+  // Sources without URLs are not visible in the SourceTree
+  if (!source.url) {
+    return null;
+  }
+
+  // In the SourceTree, we never show the pretty printed sources and only
+  // the minified version, so if we are selecting a pretty file, fake selecting
+  // the minified version by looking up for the minified URL instead of the pretty one.
+  const sourceUrl = getRawSourceURL(source.url);
+
+  const { displayURL } = source;
+  function findSourceInItem(item, path) {
+    if (item.type == "source") {
+      if (item.source.url == sourceUrl) {
+        return item;
+      }
+      return null;
+    }
+    // Bail out if the current item doesn't match the source
+    if (item.type == "thread" && item.threadActorID != sourceActor?.thread) {
+      return null;
+    }
+    if (item.type == "group" && displayURL.group != item.groupName) {
+      return null;
+    }
+    if (item.type == "directory" && !path.startsWith(item.path)) {
+      return null;
+    }
+    // Otherwise, walk down the tree if this ancestor item seems to match
+    for (const child of item.children) {
+      const match = findSourceInItem(child, path);
+      if (match) {
+        return match;
+      }
+    }
+
+    return null;
+  }
+  for (const rootItem of state.threadItems) {
+    // Note that when we are setting a project root, rootItem
+    // may no longer be only Thread Item, but also be Group, Directory or Source Items.
+    const item = findSourceInItem(rootItem, displayURL.path);
+    if (item) {
+      return item;
+    }
+  }
+  return null;
 }

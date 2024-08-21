@@ -49,10 +49,10 @@ Menu.prototype.clear = function () {
 /**
  * Add an item to a specified position in the menu
  *
- * @param {int} pos
- * @param {MenuItem} menuItem
+ * @param {int} _pos
+ * @param {MenuItem} _menuItem
  */
-Menu.prototype.insert = function (pos, menuItem) {
+Menu.prototype.insert = function (_pos, _menuItem) {
   throw Error("Not implemented");
 };
 
@@ -215,7 +215,7 @@ Menu.buildFromTemplate = () => {
 
 function applyItemAttributesToNode(item, node) {
   if (item.l10nID) {
-    node.setAttribute("data-l10n-id", item.l10nID);
+    node.ownerDocument.l10n.setAttributes(node, item.l10nID);
   } else {
     node.setAttribute("label", item.label);
     if (item.accelerator) {

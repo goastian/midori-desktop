@@ -12,6 +12,7 @@
 const flags = require("resource://devtools/shared/flags.js");
 const {
   VIEW_NODE_CSS_QUERY_CONTAINER,
+  VIEW_NODE_CSS_SELECTOR_WARNINGS,
   VIEW_NODE_FONT_TYPE,
   VIEW_NODE_IMAGE_URL_TYPE,
   VIEW_NODE_INACTIVE_CSS,
@@ -61,12 +62,19 @@ loader.lazyRequireGetter(
   "resource://devtools/client/shared/widgets/tooltip/css-query-container-tooltip-helper.js",
   false
 );
+loader.lazyRequireGetter(
+  this,
+  "CssSelectorWarningsTooltipHelper",
+  "resource://devtools/client/shared/widgets/tooltip/css-selector-warnings-tooltip-helper.js",
+  false
+);
 
 const PREF_IMAGE_TOOLTIP_SIZE = "devtools.inspector.imagePreviewTooltipSize";
 
 // Types of existing tooltips
 const TOOLTIP_CSS_COMPATIBILITY = "css-compatibility";
 const TOOLTIP_CSS_QUERY_CONTAINER = "css-query-info";
+const TOOLTIP_CSS_SELECTOR_WARNINGS = "css-selector-warnings";
 const TOOLTIP_FONTFAMILY_TYPE = "font-family";
 const TOOLTIP_IMAGE_TYPE = "image";
 const TOOLTIP_INACTIVE_CSS = "inactive-css";
@@ -115,6 +123,8 @@ TooltipsOverlay.prototype = {
     this.inactiveCssTooltipHelper = new InactiveCssTooltipHelper();
     this.compatibilityTooltipHelper = new CssCompatibilityTooltipHelper();
     this.cssQueryContainerTooltipHelper = new CssQueryContainerTooltipHelper();
+    this.cssSelectorWarningsTooltipHelper =
+      new CssSelectorWarningsTooltipHelper();
 
     // Instantiate the interactiveTooltip and preview tooltip when the
     // rule/computed view is hovered over in order to call
@@ -258,7 +268,23 @@ TooltipsOverlay.prototype = {
       tooltipType = TOOLTIP_CSS_QUERY_CONTAINER;
     }
 
+    // Selector warnings info tooltip
+    if (type === VIEW_NODE_CSS_SELECTOR_WARNINGS) {
+      tooltipType = TOOLTIP_CSS_SELECTOR_WARNINGS;
+    }
+
     return tooltipType;
+  },
+
+  _removePreviousInstances() {
+    for (const tooltip of this._instances.values()) {
+      if (tooltip.isVisible()) {
+        if (tooltip.revert) {
+          tooltip.revert();
+        }
+        tooltip.hide();
+      }
+    }
   },
 
   /**
@@ -283,12 +309,7 @@ TooltipsOverlay.prototype = {
       return false;
     }
 
-    for (const [, tooltip] of this._instances) {
-      if (tooltip.isVisible()) {
-        tooltip.revert();
-        tooltip.hide();
-      }
-    }
+    this._removePreviousInstances();
 
     const inspector = this.view.inspector;
 
@@ -326,8 +347,8 @@ TooltipsOverlay.prototype = {
       type === TOOLTIP_VARIABLE_TYPE &&
       nodeInfo.value.value.startsWith("--")
     ) {
-      const variable = nodeInfo.value.variable;
-      await this._setVariablePreviewTooltip(variable);
+      const { variable, registeredProperty } = nodeInfo.value;
+      await this._setVariablePreviewTooltip(variable, registeredProperty);
 
       this.sendOpenScalarToTelemetry(type);
 
@@ -375,15 +396,7 @@ TooltipsOverlay.prototype = {
       return false;
     }
 
-    // Remove previous tooltip instances.
-    for (const [, tooltip] of this._instances) {
-      if (tooltip.isVisible()) {
-        if (tooltip.revert) {
-          tooltip.revert();
-        }
-        tooltip.hide();
-      }
-    }
+    this._removePreviousInstances();
 
     if (type === TOOLTIP_INACTIVE_CSS) {
       // Ensure this is the correct node and not a parent.
@@ -408,6 +421,17 @@ TooltipsOverlay.prototype = {
       }
 
       await this.cssQueryContainerTooltipHelper.setContent(
+        nodeInfo.value,
+        this.getTooltip("interactiveTooltip")
+      );
+
+      this.sendOpenScalarToTelemetry(type);
+
+      return true;
+    }
+
+    if (type === TOOLTIP_CSS_SELECTOR_WARNINGS) {
+      await this.cssSelectorWarningsTooltipHelper.setContent(
         nodeInfo.value,
         this.getTooltip("interactiveTooltip")
       );
@@ -519,9 +543,14 @@ TooltipsOverlay.prototype = {
    *        The text to display for the variable tooltip
    * @return {Promise} A promise that resolves when the preview tooltip content is ready
    */
-  async _setVariablePreviewTooltip(text) {
+  async _setVariablePreviewTooltip(text, registeredProperty) {
     const doc = this.view.inspector.panelDoc;
-    await setVariableTooltip(this.getTooltip("previewTooltip"), doc, text);
+    await setVariableTooltip(
+      this.getTooltip("previewTooltip"),
+      doc,
+      text,
+      registeredProperty
+    );
   },
 
   _onNewSelection() {

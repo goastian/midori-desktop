@@ -2,14 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import { PureComponent } from "react";
-import PropTypes from "prop-types";
-import { showMenu } from "../../context-menu/menu";
+import { PureComponent } from "devtools/client/shared/vendor/react";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
 
-import { getDocument } from "../../utils/editor";
-import { breakpointItems, createBreakpointItems } from "./menus/breakpoints";
-import { getSelectedLocation } from "../../utils/selected-location";
-const classnames = require("devtools/client/shared/classnames.js");
+import { getDocument } from "../../utils/editor/index";
+const classnames = require("resource://devtools/client/shared/classnames.js");
 
 // eslint-disable-next-line max-len
 
@@ -44,9 +41,7 @@ export default class ColumnBreakpoint extends PureComponent {
 
   static get propTypes() {
     return {
-      breakpointActions: PropTypes.object.isRequired,
       columnBreakpoint: PropTypes.object.isRequired,
-      cx: PropTypes.object.isRequired,
       source: PropTypes.object.isRequired,
     };
   }
@@ -79,46 +74,39 @@ export default class ColumnBreakpoint extends PureComponent {
   onClick = event => {
     event.stopPropagation();
     event.preventDefault();
-    const { cx, columnBreakpoint, breakpointActions } = this.props;
+    const {
+      columnBreakpoint,
+      toggleDisabledBreakpoint,
+      removeBreakpoint,
+      addBreakpoint,
+    } = this.props;
 
     // disable column breakpoint on shift-click.
     if (event.shiftKey) {
-      const breakpoint = columnBreakpoint.breakpoint;
-      breakpointActions.toggleDisabledBreakpoint(cx, breakpoint);
+      toggleDisabledBreakpoint(columnBreakpoint.breakpoint);
       return;
     }
 
     if (columnBreakpoint.breakpoint) {
-      breakpointActions.removeBreakpoint(cx, columnBreakpoint.breakpoint);
+      removeBreakpoint(columnBreakpoint.breakpoint);
     } else {
-      breakpointActions.addBreakpoint(cx, columnBreakpoint.location);
+      addBreakpoint(columnBreakpoint.location);
     }
   };
 
   onContextMenu = event => {
     event.stopPropagation();
     event.preventDefault();
+
     const {
-      cx,
       columnBreakpoint: { breakpoint, location },
-      source,
-      breakpointActions,
     } = this.props;
 
-    let items = createBreakpointItems(cx, location, breakpointActions);
-
     if (breakpoint) {
-      const selectedLocation = getSelectedLocation(breakpoint, source);
-
-      items = breakpointItems(
-        cx,
-        breakpoint,
-        selectedLocation,
-        breakpointActions
-      );
+      this.props.showEditorEditBreakpointContextMenu(event, breakpoint);
+    } else {
+      this.props.showEditorCreateBreakpointContextMenu(event, location);
     }
-
-    showMenu(event, items);
   };
 
   componentDidMount() {

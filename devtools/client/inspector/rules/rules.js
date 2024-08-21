@@ -16,6 +16,7 @@ const OutputParser = require("resource://devtools/client/shared/output-parser.js
 const { PrefObserver } = require("resource://devtools/client/shared/prefs.js");
 const ElementStyle = require("resource://devtools/client/inspector/rules/models/element-style.js");
 const RuleEditor = require("resource://devtools/client/inspector/rules/views/rule-editor.js");
+const RegisteredPropertyEditor = require("resource://devtools/client/inspector/rules/views/registered-property-editor.js");
 const TooltipsOverlay = require("resource://devtools/client/inspector/shared/tooltips-overlay.js");
 const {
   createChild,
@@ -23,7 +24,6 @@ const {
 } = require("resource://devtools/client/inspector/shared/utils.js");
 const { debounce } = require("resource://devtools/shared/debounce.js");
 const EventEmitter = require("resource://devtools/shared/event-emitter.js");
-const DOUBLESPACE = "  ";
 
 loader.lazyRequireGetter(
   this,
@@ -67,6 +67,8 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 const PREF_UA_STYLES = "devtools.inspector.showUserAgentStyles";
 const PREF_DEFAULT_COLOR_UNIT = "devtools.defaultColorUnit";
 const PREF_DRAGGABLE = "devtools.inspector.draggable_properties";
+const PREF_INPLACE_EDITOR_FOCUS_NEXT_ON_ENTER =
+  "devtools.inspector.rule-view.focusNextOnEnter";
 const FILTER_CHANGED_TIMEOUT = 150;
 // Removes the flash-out class from an element after 1 second.
 const PROPERTY_FLASHING_DURATION = 1000;
@@ -76,6 +78,10 @@ const FILTER_PROP_RE = /\s*([^:\s]*)\s*:\s*(.*?)\s*;?$/;
 // This is used to parse the filter search value to see if the filter
 // should be strict or not
 const FILTER_STRICT_RE = /\s*`(.*?)`\s*$/;
+
+const RULE_VIEW_HEADER_CLASSNAME = "ruleview-header";
+const PSEUDO_ELEMENTS_CONTAINER_ID = "pseudo-elements-container";
+const REGISTERED_PROPERTIES_CONTAINER_ID = "registered-properties-container";
 
 /**
  * Our model looks like this:
@@ -142,6 +148,7 @@ function CssRuleView(inspector, document, store) {
   this.childHasDragged = false;
 
   this._outputParser = new OutputParser(document, this.cssProperties);
+  this._abortController = new this.styleWindow.AbortController();
 
   this._onAddRule = this._onAddRule.bind(this);
   this._onContextMenu = this._onContextMenu.bind(this);
@@ -235,6 +242,8 @@ function CssRuleView(inspector, document, store) {
   this._handleDefaultColorUnitPrefChange =
     this._handleDefaultColorUnitPrefChange.bind(this);
   this._handleDraggablePrefChange = this._handleDraggablePrefChange.bind(this);
+  this._handleInplaceEditorFocusNextOnEnterPrefChange =
+    this._handleInplaceEditorFocusNextOnEnterPrefChange.bind(this);
 
   this._prefObserver = new PrefObserver("devtools.");
   this._prefObserver.on(PREF_UA_STYLES, this._handleUAStylePrefChange);
@@ -246,11 +255,20 @@ function CssRuleView(inspector, document, store) {
   // Initialize value of this.draggablePropertiesEnabled
   this._handleDraggablePrefChange();
 
+  this._prefObserver.on(
+    PREF_INPLACE_EDITOR_FOCUS_NEXT_ON_ENTER,
+    this._handleInplaceEditorFocusNextOnEnterPrefChange
+  );
+  // Initialize value of this.inplaceEditorFocusNextOnEnter
+  this._handleInplaceEditorFocusNextOnEnterPrefChange();
+
   this.pseudoClassCheckboxes = this._createPseudoClassCheckboxes();
   this.showUserAgentStyles = Services.prefs.getBoolPref(PREF_UA_STYLES);
 
   // Add the tooltips and highlighters to the view
   this.tooltips = new TooltipsOverlay(this);
+
+  this.cssRegisteredPropertiesByTarget = new Map();
 }
 
 CssRuleView.prototype = {
@@ -323,44 +341,55 @@ CssRuleView.prototype = {
   },
 
   /**
-   * Highlight/unhighlight all the nodes that match a given selector
+   * Highlight/unhighlight all the nodes that match a given rule's selector
    * inside the document of the current selected node.
    * Only one selector can be highlighted at a time, so calling the method a
-   * second time with a different selector will first unhighlight the previously
+   * second time with a different rule will first unhighlight the previously
    * highlighted nodes.
-   * Calling the method a second time with the same selector will just
+   * Calling the method a second time with the same rule will just
    * unhighlight the highlighted nodes.
    *
+   * @param {Rule} rule
    * @param {String} selector
    *        Elements matching this selector will be highlighted on the page.
+   * @param {Boolean} highlightFromRulesSelector
    */
-  async toggleSelectorHighlighter(selector) {
+  async toggleSelectorHighlighter(
+    rule,
+    selector,
+    highlightFromRulesSelector = true
+  ) {
     if (this.isSelectorHighlighted(selector)) {
       await this.inspector.highlighters.hideHighlighterType(
         this.inspector.highlighters.TYPES.SELECTOR
       );
     } else {
+      const options = {
+        hideInfoBar: true,
+        hideGuides: true,
+        // we still pass the selector (which can be the StyleRuleFront#computedSelector)
+        // even if highlightFromRulesSelector is set to true, as it's how we keep track
+        // of which selector is highlighted.
+        selector,
+      };
+      if (highlightFromRulesSelector) {
+        options.ruleActorID = rule.domRule.actorID;
+      }
       await this.inspector.highlighters.showHighlighterTypeForNode(
         this.inspector.highlighters.TYPES.SELECTOR,
         this.inspector.selection.nodeFront,
-        {
-          hideInfoBar: true,
-          hideGuides: true,
-          selector,
-        }
+        options
       );
     }
   },
 
   isPanelVisible() {
-    if (this.inspector.is3PaneModeEnabled) {
-      return true;
-    }
     return (
       this.inspector.toolbox &&
       this.inspector.sidebar &&
       this.inspector.toolbox.currentToolId === "inspector" &&
-      this.inspector.sidebar.getCurrentTabID() == "ruleview"
+      (this.inspector.sidebar.getCurrentTabID() == "ruleview" ||
+        this.inspector.is3PaneModeEnabled)
     );
   },
 
@@ -416,13 +445,15 @@ CssRuleView.prototype = {
     // Handle click on the icon next to a CSS selector.
     if (target.classList.contains("js-toggle-selector-highlighter")) {
       event.stopPropagation();
-      let selector = target.dataset.selector;
-      // dataset.selector will be empty for inline styles (inherited or not)
-      // Rules associated with a regular selector should have this data-attirbute
+      let selector = target.dataset.computedSelector;
+      const highlightFromRulesSelector =
+        !!selector && !target.dataset.isUniqueSelector;
+      // dataset.computedSelector will be initially empty for inline styles (inherited or not)
+      // Rules associated with a regular selector should have this data-attribute
       // set in devtools/client/inspector/rules/views/rule-editor.js
+      const rule = getRuleFromNode(target, this._elementStyle);
       if (selector === "") {
         try {
-          const rule = getRuleFromNode(target, this._elementStyle);
           if (rule.inherited) {
             // This is an inline style from an inherited rule. Need to resolve the
             // unique selector from the node which this rule is inherited from.
@@ -433,15 +464,19 @@ CssRuleView.prototype = {
               await this.inspector.selection.nodeFront.getUniqueSelector();
           }
 
-          // Now that the selector was computed, we can store it in
-          // dataset.selector for subsequent usage.
-          target.dataset.selector = selector;
+          // Now that the selector was computed, we can store it for subsequent usage.
+          target.dataset.computedSelector = selector;
+          target.dataset.isUniqueSelector = true;
         } finally {
           // Could not resolve a unique selector for the inline style.
         }
       }
 
-      this.toggleSelectorHighlighter(selector);
+      this.toggleSelectorHighlighter(
+        rule,
+        selector,
+        highlightFromRulesSelector
+      );
     }
 
     // Handle click on swatches next to flex and inline-flex CSS properties
@@ -485,12 +520,11 @@ CssRuleView.prototype = {
             return;
           }
 
-          const query = `.js-toggle-selector-highlighter[data-selector='${selector}']`;
+          const query = `.js-toggle-selector-highlighter[data-computed-selector='${selector}']`;
           for (const node of this.styleDocument.querySelectorAll(query)) {
-            node.classList.toggle(
-              "highlighted",
-              eventName == "highlighter-shown"
-            );
+            const isHighlighterDisplayed = eventName == "highlighter-shown";
+            node.classList.toggle("highlighted", isHighlighterDisplayed);
+            node.setAttribute("aria-pressed", isHighlighterDisplayed);
           }
         }
         break;
@@ -657,9 +691,6 @@ CssRuleView.prototype = {
 
         // Remove any double newlines.
         text = text.replace(/(\r?\n)\r?\n/g, "$1");
-
-        // Replace 4 space indentation with 2 Spaces.
-        text = text.replace(/\ {4}/g, DOUBLESPACE);
       }
 
       clipboardHelper.copyString(text);
@@ -671,28 +702,13 @@ CssRuleView.prototype = {
   /**
    * Add a new rule to the current element.
    */
-  _onAddRule() {
+  async _onAddRule() {
     const elementStyle = this._elementStyle;
     const element = elementStyle.element;
     const pseudoClasses = element.pseudoClassLocks;
 
-    // Adding a new rule with authored styles will cause the actor to
-    // emit an event, which will in turn cause the rule view to be
-    // updated.  So, we wait for this update and for the rule creation
-    // request to complete, and then focus the new rule's selector.
-    const eventPromise = this.once("ruleview-refreshed");
-    const newRulePromise = this.pageStyle.addNewRule(element, pseudoClasses);
-    Promise.all([eventPromise, newRulePromise]).then(values => {
-      const options = values[1];
-      // Be sure the reference the correct |rules| here.
-      for (const rule of this._elementStyle.rules) {
-        if (options.rule === rule.domRule) {
-          rule.editor.selectorText.click();
-          elementStyle._changed();
-          break;
-        }
-      }
-    });
+    this._focusNextUserAddedRule = true;
+    this.pageStyle.addNewRule(element, pseudoClasses);
   },
 
   /**
@@ -737,10 +753,22 @@ CssRuleView.prototype = {
     this.emit("draggable-preference-updated");
   },
 
+  _handleInplaceEditorFocusNextOnEnterPrefChange() {
+    this.inplaceEditorFocusNextOnEnter = Services.prefs.getBoolPref(
+      PREF_INPLACE_EDITOR_FOCUS_NEXT_ON_ENTER,
+      false
+    );
+    this._handlePrefChange(PREF_INPLACE_EDITOR_FOCUS_NEXT_ON_ENTER);
+  },
+
   _handlePrefChange(pref) {
     // Reselect the currently selected element
-    const refreshOnPrefs = [PREF_UA_STYLES, PREF_DEFAULT_COLOR_UNIT];
-    if (refreshOnPrefs.indexOf(pref) > -1) {
+    const refreshOnPrefs = [
+      PREF_UA_STYLES,
+      PREF_DEFAULT_COLOR_UNIT,
+      PREF_INPLACE_EDITOR_FOCUS_NEXT_ON_ENTER,
+    ];
+    if (this._viewedElement && refreshOnPrefs.includes(pref)) {
       this.selectElement(this._viewedElement, true);
     }
   },
@@ -858,6 +886,10 @@ CssRuleView.prototype = {
       this._handleDefaultColorUnitPrefChange
     );
     this._prefObserver.off(PREF_DRAGGABLE, this._handleDraggablePrefChange);
+    this._prefObserver.off(
+      PREF_INPLACE_EDITOR_FOCUS_NEXT_ON_ENTER,
+      this._handleInplaceEditorFocusNextOnEnterPrefChange
+    );
     this._prefObserver.destroy();
 
     this._outputParser = null;
@@ -898,6 +930,8 @@ CssRuleView.prototype = {
     this.tooltips.destroy();
 
     // Remove bound listeners
+    this._abortController.abort();
+    this._abortController = null;
     this.shortcuts.destroy();
     this.styleDocument.removeEventListener("click", this, { capture: true });
     this.element.removeEventListener("copy", this._onCopy);
@@ -1244,33 +1278,44 @@ CssRuleView.prototype = {
    *
    * @param  {String} label
    *         The label for the container header
+   * @param  {String} containerId
+   *         The id that will be set on the container
    * @param  {Boolean} isPseudo
    *         Whether or not the container will hold pseudo element rules
    * @return {DOMNode} The container element
    */
-  createExpandableContainer(label, isPseudo = false) {
+  createExpandableContainer(label, containerId, isPseudo = false) {
     const header = this.styleDocument.createElementNS(HTML_NS, "div");
-    header.className = this._getRuleViewHeaderClassName(true);
+    header.classList.add(
+      RULE_VIEW_HEADER_CLASSNAME,
+      "ruleview-expandable-header"
+    );
     header.setAttribute("role", "heading");
-    header.textContent = label;
+
+    const toggleButton = this.styleDocument.createElementNS(HTML_NS, "button");
+    toggleButton.setAttribute(
+      "title",
+      l10n("rule.expandableContainerToggleButton.title")
+    );
+    toggleButton.setAttribute("aria-expanded", "true");
+    toggleButton.setAttribute("aria-controls", containerId);
 
     const twisty = this.styleDocument.createElementNS(HTML_NS, "span");
     twisty.className = "ruleview-expander theme-twisty";
-    twisty.setAttribute("open", "true");
-    twisty.setAttribute("role", "button");
-    twisty.setAttribute("aria-label", l10n("rule.twistyCollapse.label"));
 
-    header.insertBefore(twisty, header.firstChild);
-    this.element.appendChild(header);
+    toggleButton.append(twisty, this.styleDocument.createTextNode(label));
+    header.append(toggleButton);
 
     const container = this.styleDocument.createElementNS(HTML_NS, "div");
+    container.id = containerId;
     container.classList.add("ruleview-expandable-container");
     container.hidden = false;
-    this.element.appendChild(container);
 
-    header.addEventListener("click", () => {
+    this.element.append(header, container);
+
+    toggleButton.addEventListener("click", () => {
       this._toggleContainerVisibility(
-        twisty,
+        toggleButton,
         container,
         isPseudo,
         !this.showPseudoElements
@@ -1278,10 +1323,8 @@ CssRuleView.prototype = {
     });
 
     if (isPseudo) {
-      container.id = "pseudo-elements-container";
-      twisty.id = "pseudo-elements-header-twisty";
       this._toggleContainerVisibility(
-        twisty,
+        toggleButton,
         container,
         isPseudo,
         this.showPseudoElements
@@ -1289,6 +1332,32 @@ CssRuleView.prototype = {
     }
 
     return container;
+  },
+
+  /**
+   * Create the `@property` expandable container
+   *
+   * @returns {Element}
+   */
+  createRegisteredPropertiesExpandableContainer() {
+    const el = this.createExpandableContainer(
+      "@property",
+      REGISTERED_PROPERTIES_CONTAINER_ID
+    );
+    el.classList.add("registered-properties");
+    return el;
+  },
+
+  /**
+   * Return the RegisteredPropertyEditor element for a given property name
+   *
+   * @param {String} registeredPropertyName
+   * @returns {Element|null}
+   */
+  getRegisteredPropertyElement(registeredPropertyName) {
+    return this.styleDocument.querySelector(
+      `#${REGISTERED_PROPERTIES_CONTAINER_ID} [data-name="${registeredPropertyName}"]`
+    );
   },
 
   /**
@@ -1303,8 +1372,8 @@ CssRuleView.prototype = {
    * @param  {Boolean}  showPseudo
    *         Whether or not pseudo element rules should be displayed
    */
-  _toggleContainerVisibility(twisty, container, isPseudo, showPseudo) {
-    let isOpen = twisty.getAttribute("open");
+  _toggleContainerVisibility(toggleButton, container, isPseudo, showPseudo) {
+    let isOpen = toggleButton.getAttribute("aria-expanded") === "true";
 
     if (isPseudo) {
       this._showPseudoElements = !!showPseudo;
@@ -1320,20 +1389,7 @@ CssRuleView.prototype = {
       container.hidden = !container.hidden;
     }
 
-    if (isOpen) {
-      twisty.removeAttribute("open");
-      twisty.setAttribute("aria-label", l10n("rule.twistyExpand.label"));
-    } else {
-      twisty.setAttribute("open", "true");
-      twisty.setAttribute("aria-label", l10n("rule.twistyCollapse.label"));
-    }
-  },
-
-  _getRuleViewHeaderClassName(isPseudo) {
-    const baseClassName = "ruleview-header";
-    return isPseudo
-      ? baseClassName + " ruleview-expandable-header"
-      : baseClassName;
+    toggleButton.setAttribute("aria-expanded", !isOpen);
   },
 
   /**
@@ -1379,7 +1435,7 @@ CssRuleView.prototype = {
       if (seenPseudoElement && !seenNormalElement && !rule.pseudoElement) {
         seenNormalElement = true;
         const div = this.styleDocument.createElementNS(HTML_NS, "div");
-        div.className = this._getRuleViewHeaderClassName();
+        div.className = RULE_VIEW_HEADER_CLASSNAME;
         div.setAttribute("role", "heading");
         div.textContent = this.selectedElementLabel;
         this.element.appendChild(div);
@@ -1388,7 +1444,10 @@ CssRuleView.prototype = {
       const inheritedSource = rule.inherited;
       if (inheritedSource && inheritedSource !== lastInheritedSource) {
         const div = this.styleDocument.createElementNS(HTML_NS, "div");
-        div.className = this._getRuleViewHeaderClassName();
+        div.classList.add(
+          RULE_VIEW_HEADER_CLASSNAME,
+          "ruleview-header-inherited"
+        );
         div.setAttribute("role", "heading");
         div.setAttribute("aria-level", "3");
         div.textContent = rule.inheritedSource;
@@ -1400,6 +1459,7 @@ CssRuleView.prototype = {
         seenPseudoElement = true;
         container = this.createExpandableContainer(
           this.pseudoElementLabel,
+          PSEUDO_ELEMENTS_CONTAINER_ID,
           true
         );
       }
@@ -1407,7 +1467,10 @@ CssRuleView.prototype = {
       const keyframes = rule.keyframes;
       if (keyframes && keyframes !== lastKeyframes) {
         lastKeyframes = keyframes;
-        container = this.createExpandableContainer(rule.keyframesName);
+        container = this.createExpandableContainer(
+          rule.keyframesName,
+          `keyframes-container-${keyframes.name}`
+        );
       }
 
       rule.editor.element.setAttribute("role", "article");
@@ -1415,6 +1478,35 @@ CssRuleView.prototype = {
         container.appendChild(rule.editor.element);
       } else {
         this.element.appendChild(rule.editor.element);
+      }
+
+      // Automatically select the selector input when we are adding a user-added rule
+      if (this._focusNextUserAddedRule && rule.domRule.userAdded) {
+        this._focusNextUserAddedRule = null;
+        rule.editor.selectorText.click();
+        this.emitForTests("new-rule-added");
+      }
+    }
+
+    const targetRegisteredProperties =
+      this.getRegisteredPropertiesForSelectedNodeTarget();
+    if (targetRegisteredProperties?.size) {
+      const registeredPropertiesContainer =
+        this.createRegisteredPropertiesExpandableContainer();
+
+      // Sort properties by their name, as we want to display them in alphabetical order
+      const propertyDefinitions = Array.from(
+        targetRegisteredProperties.values()
+      ).sort((a, b) => (a.name < b.name ? -1 : 1));
+      for (const propertyDefinition of propertyDefinitions) {
+        const registeredPropertyEditor = new RegisteredPropertyEditor(
+          this,
+          propertyDefinition
+        );
+
+        registeredPropertiesContainer.appendChild(
+          registeredPropertyEditor.element
+        );
       }
     }
 
@@ -1503,9 +1595,12 @@ CssRuleView.prototype = {
       return false;
     }
 
+    const ancestorSelectors = element.querySelectorAll(
+      ".ruleview-rule-ancestor-selectorcontainer"
+    );
+
     let isHighlighted = false;
-    for (let i = 0; i < element.childNodes.length; i++) {
-      const child = element.childNodes[i];
+    for (const child of ancestorSelectors) {
       const dataText = child.innerText.toLowerCase();
       const matches = this.searchData.strictSearchValue
         ? dataText === this.searchData.strictSearchValue
@@ -1733,7 +1828,7 @@ CssRuleView.prototype = {
   showPseudoClassPanel() {
     this.hideClassPanel();
 
-    this.pseudoClassToggle.classList.add("checked");
+    this.pseudoClassToggle.setAttribute("aria-pressed", "true");
     this.pseudoClassCheckboxes.forEach(checkbox => {
       checkbox.setAttribute("tabindex", "0");
     });
@@ -1741,7 +1836,7 @@ CssRuleView.prototype = {
   },
 
   hidePseudoClassPanel() {
-    this.pseudoClassToggle.classList.remove("checked");
+    this.pseudoClassToggle.setAttribute("aria-pressed", "false");
     this.pseudoClassCheckboxes.forEach(checkbox => {
       checkbox.setAttribute("tabindex", "-1");
     });
@@ -1772,14 +1867,14 @@ CssRuleView.prototype = {
   showClassPanel() {
     this.hidePseudoClassPanel();
 
-    this.classToggle.classList.add("checked");
+    this.classToggle.setAttribute("aria-pressed", "true");
     this.classPanel.hidden = false;
 
     this.classListPreviewer.focusAddClassField();
   },
 
   hideClassPanel() {
-    this.classToggle.classList.remove("checked");
+    this.classToggle.setAttribute("aria-pressed", "false");
     this.classPanel.hidden = true;
   },
 
@@ -1813,13 +1908,15 @@ CssRuleView.prototype = {
 
   async _onToggleLightColorSchemeSimulation() {
     const shouldSimulateLightScheme =
-      this.colorSchemeLightSimulationButton.classList.toggle("checked");
+      this.colorSchemeLightSimulationButton.getAttribute("aria-pressed") !==
+      "true";
 
-    const darkColorSchemeEnabled =
-      this.colorSchemeDarkSimulationButton.classList.contains("checked");
-    if (shouldSimulateLightScheme && darkColorSchemeEnabled) {
-      this.colorSchemeDarkSimulationButton.classList.toggle("checked");
-    }
+    this.colorSchemeLightSimulationButton.setAttribute(
+      "aria-pressed",
+      shouldSimulateLightScheme
+    );
+
+    this.colorSchemeDarkSimulationButton.setAttribute("aria-pressed", "false");
 
     await this.inspector.commands.targetConfigurationCommand.updateConfiguration(
       {
@@ -1832,13 +1929,15 @@ CssRuleView.prototype = {
 
   async _onToggleDarkColorSchemeSimulation() {
     const shouldSimulateDarkScheme =
-      this.colorSchemeDarkSimulationButton.classList.toggle("checked");
+      this.colorSchemeDarkSimulationButton.getAttribute("aria-pressed") !==
+      "true";
 
-    const lightColorSchemeEnabled =
-      this.colorSchemeLightSimulationButton.classList.contains("checked");
-    if (shouldSimulateDarkScheme && lightColorSchemeEnabled) {
-      this.colorSchemeLightSimulationButton.classList.toggle("checked");
-    }
+    this.colorSchemeDarkSimulationButton.setAttribute(
+      "aria-pressed",
+      shouldSimulateDarkScheme
+    );
+
+    this.colorSchemeLightSimulationButton.setAttribute("aria-pressed", "false");
 
     await this.inspector.commands.targetConfigurationCommand.updateConfiguration(
       {
@@ -1850,7 +1949,9 @@ CssRuleView.prototype = {
   },
 
   async _onTogglePrintSimulation() {
-    const enabled = this.printSimulationButton.classList.toggle("checked");
+    const enabled =
+      this.printSimulationButton.getAttribute("aria-pressed") !== "true";
+    this.printSimulationButton.setAttribute("aria-pressed", enabled);
     await this.inspector.commands.targetConfigurationCommand.updateConfiguration(
       {
         printSimulationEnabled: enabled,
@@ -1925,12 +2026,12 @@ CssRuleView.prototype = {
    */
   _togglePseudoElementRuleContainer() {
     const container = this.styleDocument.getElementById(
-      "pseudo-elements-container"
+      PSEUDO_ELEMENTS_CONTAINER_ID
     );
-    const twisty = this.styleDocument.getElementById(
-      "pseudo-elements-header-twisty"
+    const toggle = this.styleDocument.querySelector(
+      `[aria-controls="${PSEUDO_ELEMENTS_CONTAINER_ID}"]`
     );
-    this._toggleContainerVisibility(twisty, container, true, true);
+    this._toggleContainerVisibility(toggle, container, true, true);
   },
 
   /**
@@ -2054,54 +2155,124 @@ CssRuleView.prototype = {
 
     return false;
   },
+
+  /**
+   * Returns a Map (keyed by name) of the registered
+   * properties for the currently selected node document.
+   *
+   * @returns Map<String, Object>|null
+   */
+  getRegisteredPropertiesForSelectedNodeTarget() {
+    return this.cssRegisteredPropertiesByTarget.get(
+      this.inspector.selection.nodeFront.targetFront
+    );
+  },
 };
 
-function RuleViewTool(inspector, window) {
-  this.inspector = inspector;
-  this.document = window.document;
+class RuleViewTool {
+  constructor(inspector, window) {
+    this.inspector = inspector;
+    this.document = window.document;
 
-  this.view = new CssRuleView(this.inspector, this.document);
+    this.view = new CssRuleView(this.inspector, this.document);
 
-  this._onResourceAvailable = this._onResourceAvailable.bind(this);
-  this.refresh = this.refresh.bind(this);
-  this.onDetachedFront = this.onDetachedFront.bind(this);
-  this.onPanelSelected = this.onPanelSelected.bind(this);
-  this.onDetachedFront = this.onDetachedFront.bind(this);
-  this.onSelected = this.onSelected.bind(this);
-  this.onViewRefreshed = this.onViewRefreshed.bind(this);
+    this.refresh = this.refresh.bind(this);
+    this.onDetachedFront = this.onDetachedFront.bind(this);
+    this.onPanelSelected = this.onPanelSelected.bind(this);
+    this.onDetachedFront = this.onDetachedFront.bind(this);
+    this.onSelected = this.onSelected.bind(this);
+    this.onViewRefreshed = this.onViewRefreshed.bind(this);
 
-  this.view.on("ruleview-refreshed", this.onViewRefreshed);
-  this.inspector.selection.on("detached-front", this.onDetachedFront);
-  this.inspector.selection.on("new-node-front", this.onSelected);
-  this.inspector.selection.on("pseudoclass", this.refresh);
-  this.inspector.ruleViewSideBar.on("ruleview-selected", this.onPanelSelected);
-  this.inspector.sidebar.on("ruleview-selected", this.onPanelSelected);
-  this.inspector.styleChangeTracker.on("style-changed", this.refresh);
+    this.#abortController = new window.AbortController();
+    const { signal } = this.#abortController;
+    const baseEventConfig = { signal };
 
-  this.inspector.commands.resourceCommand.watchResources(
-    [this.inspector.commands.resourceCommand.TYPES.DOCUMENT_EVENT],
-    {
-      onAvailable: this._onResourceAvailable,
-      ignoreExistingResources: true,
-    }
-  );
+    this.view.on("ruleview-refreshed", this.onViewRefreshed, baseEventConfig);
+    this.inspector.selection.on(
+      "detached-front",
+      this.onDetachedFront,
+      baseEventConfig
+    );
+    this.inspector.selection.on(
+      "new-node-front",
+      this.onSelected,
+      baseEventConfig
+    );
+    this.inspector.selection.on("pseudoclass", this.refresh, baseEventConfig);
+    this.inspector.ruleViewSideBar.on(
+      "ruleview-selected",
+      this.onPanelSelected,
+      baseEventConfig
+    );
+    this.inspector.sidebar.on(
+      "ruleview-selected",
+      this.onPanelSelected,
+      baseEventConfig
+    );
+    this.inspector.toolbox.on(
+      "inspector-selected",
+      this.onPanelSelected,
+      baseEventConfig
+    );
+    this.inspector.styleChangeTracker.on(
+      "style-changed",
+      this.refresh,
+      baseEventConfig
+    );
 
-  // At the moment `readyPromise` is only consumed in tests (see `openRuleView`) to be
-  // notified when the ruleview was first populated to match the initial selected node.
-  this.readyPromise = this.onSelected();
-}
+    this.inspector.commands.resourceCommand.watchResources(
+      [
+        this.inspector.commands.resourceCommand.TYPES.DOCUMENT_EVENT,
+        this.inspector.commands.resourceCommand.TYPES.STYLESHEET,
+      ],
+      {
+        onAvailable: this.#onResourceAvailable,
+        ignoreExistingResources: true,
+      }
+    );
 
-RuleViewTool.prototype = {
+    // We do want to get already existing registered properties, so we need to watch
+    // them separately
+    this.inspector.commands.resourceCommand
+      .watchResources(
+        [
+          this.inspector.commands.resourceCommand.TYPES
+            .CSS_REGISTERED_PROPERTIES,
+        ],
+        {
+          onAvailable: this.#onResourceAvailable,
+          onUpdated: this.#onResourceUpdated,
+          onDestroyed: this.#onResourceDestroyed,
+          ignoreExistingResources: false,
+        }
+      )
+      .catch(e => {
+        // watchResources is async and even making it's resulting promise part of
+        // this.readyPromise still causes test failures, so simply ignore the rejection
+        // if the view was already destroyed.
+        if (!this.view) {
+          return;
+        }
+        throw e;
+      });
+
+    // At the moment `readyPromise` is only consumed in tests (see `openRuleView`) to be
+    // notified when the ruleview was first populated to match the initial selected node.
+    this.readyPromise = this.onSelected();
+  }
+
+  #abortController;
+
   isPanelVisible() {
     if (!this.view) {
       return false;
     }
     return this.view.isPanelVisible();
-  },
+  }
 
   onDetachedFront() {
     this.onSelected(false);
-  },
+  }
 
   onSelected(selectElement = true) {
     // Ignore the event if the view has been destroyed, or if it's inactive.
@@ -2133,32 +2304,228 @@ RuleViewTool.prototype = {
     return this.view
       .selectElement(this.inspector.selection.nodeFront)
       .then(done, done);
-  },
+  }
 
   refresh() {
     if (this.isPanelVisible()) {
       this.view.refreshPanel();
     }
-  },
+  }
 
-  _onResourceAvailable(resources) {
+  #onResourceAvailable = resources => {
+    if (!this.inspector) {
+      return;
+    }
+
+    let hasNewStylesheet = false;
+    const addedRegisteredProperties = [];
     for (const resource of resources) {
       if (
         resource.resourceType ===
           this.inspector.commands.resourceCommand.TYPES.DOCUMENT_EVENT &&
-        resource.name === "will-navigate" &&
-        resource.targetFront.isTopLevel
+        resource.name === "will-navigate"
       ) {
-        this.clearUserProperties();
+        this.view.cssRegisteredPropertiesByTarget.delete(resource.targetFront);
+        if (resource.targetFront.isTopLevel) {
+          this.clearUserProperties();
+        }
+        continue;
+      }
+
+      if (
+        resource.resourceType ===
+          this.inspector.commands.resourceCommand.TYPES.STYLESHEET &&
+        // resource.isNew is only true when the stylesheet was added from DevTools,
+        // for example when adding a rule in the rule view. In such cases, we're already
+        // updating the rule view, so ignore those.
+        !resource.isNew
+      ) {
+        hasNewStylesheet = true;
+      }
+
+      if (
+        resource.resourceType ===
+        this.inspector.commands.resourceCommand.TYPES.CSS_REGISTERED_PROPERTIES
+      ) {
+        if (
+          !this.view.cssRegisteredPropertiesByTarget.has(resource.targetFront)
+        ) {
+          this.view.cssRegisteredPropertiesByTarget.set(
+            resource.targetFront,
+            new Map()
+          );
+        }
+        this.view.cssRegisteredPropertiesByTarget
+          .get(resource.targetFront)
+          .set(resource.name, resource);
+        // Only add properties from the same target as the selected node
+        if (
+          this.view.inspector.selection?.nodeFront?.targetFront ===
+          resource.targetFront
+        ) {
+          addedRegisteredProperties.push(resource);
+        }
       }
     }
-  },
+
+    if (addedRegisteredProperties.length) {
+      // Retrieve @property container
+      let registeredPropertiesContainer =
+        this.view.styleDocument.getElementById(
+          REGISTERED_PROPERTIES_CONTAINER_ID
+        );
+      // create it if it didn't exist before
+      if (!registeredPropertiesContainer) {
+        registeredPropertiesContainer =
+          this.view.createRegisteredPropertiesExpandableContainer();
+      }
+
+      // Then add all new registered properties
+      const names = new Set();
+      for (const propertyDefinition of addedRegisteredProperties) {
+        const editor = new RegisteredPropertyEditor(
+          this.view,
+          propertyDefinition
+        );
+        names.add(propertyDefinition.name);
+
+        // We need to insert the element at the right position so we keep the list of
+        // properties alphabetically sorted.
+        let referenceNode = null;
+        for (const child of registeredPropertiesContainer.children) {
+          if (child.getAttribute("data-name") > propertyDefinition.name) {
+            referenceNode = child;
+            break;
+          }
+        }
+        registeredPropertiesContainer.insertBefore(
+          editor.element,
+          referenceNode
+        );
+      }
+
+      // Finally, update textProps that might rely on those new properties
+      this._updateElementStyleRegisteredProperties(names);
+    }
+
+    if (hasNewStylesheet) {
+      this.refresh();
+    }
+  };
+
+  #onResourceUpdated = updates => {
+    const updatedProperties = [];
+    for (const update of updates) {
+      if (
+        update.resource.resourceType ===
+        this.inspector.commands.resourceCommand.TYPES.CSS_REGISTERED_PROPERTIES
+      ) {
+        const { resource } = update;
+        if (
+          !this.view.cssRegisteredPropertiesByTarget.has(resource.targetFront)
+        ) {
+          continue;
+        }
+
+        this.view.cssRegisteredPropertiesByTarget
+          .get(resource.targetFront)
+          .set(resource.name, resource);
+
+        // Only consider properties from the same target as the selected node
+        if (
+          this.view.inspector.selection?.nodeFront?.targetFront ===
+          resource.targetFront
+        ) {
+          updatedProperties.push(resource);
+        }
+      }
+    }
+
+    const names = new Set();
+    if (updatedProperties.length) {
+      const registeredPropertiesContainer =
+        this.view.styleDocument.getElementById(
+          REGISTERED_PROPERTIES_CONTAINER_ID
+        );
+      for (const resource of updatedProperties) {
+        // Replace the existing registered property editor element with a new one,
+        // so we don't have to compute which elements should be updated.
+        const name = resource.name;
+        const el = this.view.getRegisteredPropertyElement(name);
+        const editor = new RegisteredPropertyEditor(this.view, resource);
+        registeredPropertiesContainer.replaceChild(editor.element, el);
+
+        names.add(resource.name);
+      }
+      // Finally, update textProps that might rely on those new properties
+      this._updateElementStyleRegisteredProperties(names);
+    }
+  };
+
+  #onResourceDestroyed = resources => {
+    const destroyedPropertiesNames = new Set();
+    for (const resource of resources) {
+      if (
+        resource.resourceType ===
+        this.inspector.commands.resourceCommand.TYPES.CSS_REGISTERED_PROPERTIES
+      ) {
+        if (
+          !this.view.cssRegisteredPropertiesByTarget.has(resource.targetFront)
+        ) {
+          continue;
+        }
+
+        const targetRegisteredProperties =
+          this.view.cssRegisteredPropertiesByTarget.get(resource.targetFront);
+        const resourceName = Array.from(
+          targetRegisteredProperties.entries()
+        ).find(
+          ([_, propDef]) => propDef.resourceId === resource.resourceId
+        )?.[0];
+        if (!resourceName) {
+          continue;
+        }
+
+        targetRegisteredProperties.delete(resourceName);
+
+        // Only consider properties from the same target as the selected node
+        if (
+          this.view.inspector.selection?.nodeFront?.targetFront ===
+          resource.targetFront
+        ) {
+          destroyedPropertiesNames.add(resourceName);
+        }
+      }
+    }
+    if (destroyedPropertiesNames.size > 0) {
+      for (const name of destroyedPropertiesNames) {
+        this.view.getRegisteredPropertyElement(name)?.remove();
+      }
+      // Finally, update textProps that were relying on those removed properties
+      this._updateElementStyleRegisteredProperties(destroyedPropertiesNames);
+    }
+  };
+
+  /**
+   * Update rules that reference registered properties whose name is in the passed Set,
+   * so the `var()` tooltip has up-to-date information.
+   *
+   * @param {Set<String>} registeredPropertyNames
+   */
+  _updateElementStyleRegisteredProperties(registeredPropertyNames) {
+    if (!this.view._elementStyle) {
+      return;
+    }
+    this.view._elementStyle.onRegisteredPropertiesChange(
+      registeredPropertyNames
+    );
+  }
 
   clearUserProperties() {
     if (this.view && this.view.store && this.view.store.userProperties) {
       this.view.store.userProperties.clear();
     }
-  },
+  }
 
   onPanelSelected() {
     if (this.inspector.selection.nodeFront === this.view._viewedElement) {
@@ -2166,34 +2533,46 @@ RuleViewTool.prototype = {
     } else {
       this.onSelected();
     }
-  },
+  }
 
   onViewRefreshed() {
     this.inspector.emit("rule-view-refreshed");
-  },
+  }
 
   destroy() {
-    this.inspector.styleChangeTracker.off("style-changed", this.refresh);
-    this.inspector.selection.off("detached-front", this.onDetachedFront);
-    this.inspector.selection.off("pseudoclass", this.refresh);
-    this.inspector.selection.off("new-node-front", this.onSelected);
-    this.inspector.currentTarget.off("navigate", this.clearUserProperties);
-    this.inspector.sidebar.off("ruleview-selected", this.onPanelSelected);
+    if (this.#abortController) {
+      this.#abortController.abort();
+    }
 
     this.inspector.commands.resourceCommand.unwatchResources(
-      [this.inspector.commands.resourceCommand.TYPES.DOCUMENT_EVENT],
+      [
+        this.inspector.commands.resourceCommand.TYPES.DOCUMENT_EVENT,
+        this.inspector.commands.resourceCommand.TYPES.STYLESHEET,
+      ],
       {
-        onAvailable: this._onResourceAvailable,
+        onAvailable: this.#onResourceAvailable,
       }
     );
 
-    this.view.off("ruleview-refreshed", this.onViewRefreshed);
+    this.inspector.commands.resourceCommand.unwatchResources(
+      [this.inspector.commands.resourceCommand.TYPES.CSS_REGISTERED_PROPERTIES],
+      {
+        onAvailable: this.#onResourceAvailable,
+        onUpdated: this.#onResourceUpdated,
+        onDestroyed: this.#onResourceDestroyed,
+      }
+    );
 
     this.view.destroy();
 
-    this.view = this.document = this.inspector = this.readyPromise = null;
-  },
-};
+    this.view =
+      this.document =
+      this.inspector =
+      this.readyPromise =
+      this.#abortController =
+        null;
+  }
+}
 
 exports.CssRuleView = CssRuleView;
 exports.RuleViewTool = RuleViewTool;

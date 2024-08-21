@@ -7,11 +7,19 @@
 const Resources = require("resource://devtools/server/actors/resources/index.js");
 
 module.exports = {
-  async addSessionDataEntry(targetActor, entries, isDocumentCreation) {
+  async addOrSetSessionDataEntry(
+    targetActor,
+    entries,
+    isDocumentCreation,
+    updateType
+  ) {
+    if (updateType == "set") {
+      Resources.unwatchAllResources(targetActor);
+    }
     await Resources.watchResources(targetActor, entries);
   },
 
-  removeSessionDataEntry(targetActor, entries, isDocumentCreation) {
+  removeSessionDataEntry(targetActor, entries) {
     Resources.unwatchResources(targetActor, entries);
   },
 };

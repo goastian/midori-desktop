@@ -27,9 +27,6 @@ const sandbox = Cu.Sandbox(systemPrincipal, {
 const { indexedDB } = sandbox;
 
 module.exports = Object.freeze({
-  /**
-   * Only the standard version of indexedDB.open is supported.
-   */
   open(name, version) {
     const options = {};
     if (typeof version === "number") {
@@ -38,9 +35,6 @@ module.exports = Object.freeze({
     return indexedDB.openForPrincipal(principal, name, options);
   },
 
-  /**
-   * Only the standard version of indexedDB.deleteDatabase is supported.
-   */
   deleteDatabase(name) {
     return indexedDB.deleteForPrincipal(principal, name);
   },

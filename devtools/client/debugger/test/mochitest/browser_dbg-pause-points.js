@@ -14,7 +14,7 @@ async function testCase(dbg, { name, steps }) {
   } = dbg;
   const locations = [];
 
-  const recordFrame = state => {
+  const recordFrame = () => {
     const { line, column } = getTopFrame(getCurrentThread()).location;
     locations.push([line, column]);
     info(`Break on ${line}:${column}`);
@@ -28,7 +28,7 @@ async function testCase(dbg, { name, steps }) {
 
   info("Start stepping over");
   for (let i = 0; i < steps.length - 1; i++) {
-    await dbg.actions.stepOver(getThreadContext(dbg));
+    await dbg.actions.stepOver();
     await waitForPaused(dbg);
     recordFrame();
   }

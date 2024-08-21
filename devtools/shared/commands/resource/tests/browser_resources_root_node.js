@@ -103,14 +103,18 @@ add_task(async function testRootNodeFrontIsCorrect() {
   browser.reload();
 
   const root2 = await rootNodePromise;
-  ok(
-    root1 !== root2,
+  Assert.notStrictEqual(
+    root1,
+    root2,
     "onAvailable has been called with a different node front after reload"
   );
 
   info("Navigate to another URL");
   rootNodePromise = new Promise(r => (rootNodeResolve = r));
-  BrowserTestUtils.loadURIString(browser, `data:text/html,<div id=div3>`);
+  BrowserTestUtils.startLoadingURIString(
+    browser,
+    `data:text/html,<div id=div3>`
+  );
   const root3 = await rootNodePromise;
   info("Check we can query an expected node under the retrieved root");
   const div3 = await root3.walkerFront.querySelector(root3, "div");

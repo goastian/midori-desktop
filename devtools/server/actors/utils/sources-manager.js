@@ -101,7 +101,8 @@ class SourcesManager extends EventEmitter {
     this._thread.threadLifetimePool.manage(actor);
 
     this._sourceActors.set(source, actor);
-    if (this._sourcesByInternalSourceId && source.id) {
+    // source.id can be 0 for WASM sources
+    if (this._sourcesByInternalSourceId && Number.isInteger(source.id)) {
       this._sourcesByInternalSourceId.set(source.id, source);
     }
 
@@ -157,7 +158,8 @@ class SourcesManager extends EventEmitter {
     if (!this._sourcesByInternalSourceId) {
       this._sourcesByInternalSourceId = new Map();
       for (const source of this._thread.dbg.findSources()) {
-        if (source.id) {
+        // source.id can be 0 for WASM sources
+        if (Number.isInteger(source.id)) {
           this._sourcesByInternalSourceId.set(source.id, source);
         }
       }
@@ -228,10 +230,14 @@ class SourcesManager extends EventEmitter {
    */
   getScriptOffsetLocation(script, offset) {
     const { lineNumber, columnNumber } = script.getOffsetMetadata(offset);
+    // NOTE: Debugger.Source.prototype.startColumn is 1-based.
+    //       Convert to 0-based, while keeping the wasm's column (1) as is.
+    //       (bug 1863878)
+    const columnBase = script.format === "wasm" ? 0 : 1;
     return new SourceLocation(
       this.createSourceActor(script.source),
       lineNumber,
-      columnNumber
+      columnNumber - columnBase
     );
   }
 
@@ -277,6 +283,10 @@ class SourcesManager extends EventEmitter {
   isFrameBlackBoxed(frame) {
     const { url, line, column } = this.getFrameLocation(frame);
     return this.isBlackBoxed(url, line, column);
+  }
+
+  clearAllBlackBoxing() {
+    this.blackBoxedSources.clear();
   }
 
   /**
@@ -333,8 +343,13 @@ class SourcesManager extends EventEmitter {
     return this.blackBoxedSources.set(url, ranges);
   }
 
+  /**
+   * List all currently registered source actors.
+   *
+   * @return Iterator<SourceActor>
+   */
   iter() {
-    return [...this._sourceActors.values()];
+    return this._sourceActors.values();
   }
 
   /**
@@ -421,15 +436,15 @@ class SourcesManager extends EventEmitter {
     // Without this check, the cache may return stale data that doesn't match
     // the document shown in the browser.
     let loadFromCache = canUseCache;
-    if (canUseCache && this._thread._parent.browsingContext) {
+    if (canUseCache && this._thread.targetActor.browsingContext) {
       loadFromCache = !(
-        this._thread._parent.browsingContext.defaultLoadFlags ===
+        this._thread.targetActor.browsingContext.defaultLoadFlags ===
         Ci.nsIRequest.LOAD_BYPASS_CACHE
       );
     }
 
     // Fetch the sources with the same principal as the original document
-    const win = this._thread._parent.window;
+    const win = this._thread.targetActor.window;
     let principal, cacheKey;
     // On xpcshell, we don't have a window but a Sandbox
     if (!isWorker && win instanceof Ci.nsIDOMWindow) {

@@ -7,8 +7,6 @@
  * @module reducers/tabs
  */
 
-import { isOriginalId } from "devtools/client/shared/source-map-loader/index";
-
 import { isSimilarTab } from "../utils/tabs";
 
 export function initialTabState() {
@@ -25,9 +23,6 @@ function update(state = initialTabState(), action) {
 
     case "MOVE_TAB_BY_SOURCE_ID":
       return moveTabInListBySourceId(state, action);
-
-    case "CLOSE_TAB":
-      return removeSourceFromTabList(state, action);
 
     case "CLOSE_TABS":
       return removeSourcesFromTabList(state, action);
@@ -56,7 +51,9 @@ function matchesSource(tab, source) {
 }
 
 function matchesUrl(tab, source) {
-  return tab.url === source.url && tab.isOriginal == isOriginalId(source.id);
+  return (
+    source.url && tab.url === source.url && tab.isOriginal == source.isOriginal
+  );
 }
 
 function addVisibleTabsForSourceActors(state, sourceActors) {
@@ -109,14 +106,6 @@ function addVisibleTabsForOriginalSources(
   return changed ? { tabs } : state;
 }
 
-function removeSourceFromTabList(state, { source }) {
-  const newTabs = state.tabs.filter(tab => !matchesSource(tab, source));
-  if (newTabs.length == state.tabs.length) {
-    return state;
-  }
-  return { tabs: newTabs };
-}
-
 function removeSourcesFromTabList(state, { sources }) {
   const newTabs = sources.reduce(
     (tabList, source) => tabList.filter(tab => !matchesSource(tab, source)),
@@ -156,7 +145,7 @@ function resetTabsForThread(state, threadActorID) {
  */
 function updateTabList(state, source, sourceActor) {
   const { url } = source;
-  const isOriginal = isOriginalId(source.id);
+  const isOriginal = source.isOriginal;
 
   let { tabs } = state;
   // Set currentIndex to -1 for URL-less tabs so that they aren't
@@ -182,19 +171,22 @@ function updateTabList(state, source, sourceActor) {
 }
 
 function moveTabInList(state, { url, tabIndex: newIndex }) {
-  const { tabs } = state;
-  const currentIndex = tabs.findIndex(tab => tab.url == url);
-  return moveTab(tabs, currentIndex, newIndex);
+  const currentIndex = state.tabs.findIndex(tab => tab.url == url);
+  return moveTab(state, currentIndex, newIndex);
 }
 
 function moveTabInListBySourceId(state, { sourceId, tabIndex: newIndex }) {
-  const { tabs } = state;
-  const currentIndex = tabs.findIndex(tab => tab.source?.id == sourceId);
-  return moveTab(tabs, currentIndex, newIndex);
+  const currentIndex = state.tabs.findIndex(tab => tab.source?.id == sourceId);
+  return moveTab(state, currentIndex, newIndex);
 }
 
-function moveTab(tabs, currentIndex, newIndex) {
+function moveTab(state, currentIndex, newIndex) {
+  const { tabs } = state;
   const item = tabs[currentIndex];
+  // Avoid any state change if we are on the same position or the new is invalid
+  if (currentIndex == newIndex || isNaN(newIndex)) {
+    return state;
+  }
 
   const newTabs = Array.from(tabs);
   // Remove the item from its current location

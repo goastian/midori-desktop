@@ -2,31 +2,36 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import { PureComponent } from "react";
-import PropTypes from "prop-types";
+import { PureComponent } from "devtools/client/shared/vendor/react";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
 import {
   toEditorPosition,
+  fromEditorLine,
   getDocument,
   hasDocument,
   startOperation,
   endOperation,
   getTokenEnd,
-} from "../../utils/editor";
-import { isException } from "../../utils/pause";
+} from "../../utils/editor/index";
+import { isException } from "../../utils/pause/index";
 import { getIndentation } from "../../utils/indentation";
-import { connect } from "../../utils/connect";
+import { connect } from "devtools/client/shared/vendor/react-redux";
 import {
   getVisibleSelectedFrame,
   getPauseReason,
   getSourceTextContent,
   getCurrentThread,
-} from "../../selectors";
+} from "../../selectors/index";
+import { isWasm } from "../../utils/wasm";
+import { features } from "../../utils/prefs";
 
 export class DebugLine extends PureComponent {
   debugExpression;
 
   static get propTypes() {
     return {
+      editor: PropTypes.object,
+      selectedSource: PropTypes.object,
       location: PropTypes.object,
       why: PropTypes.object,
     };
@@ -34,29 +39,76 @@ export class DebugLine extends PureComponent {
 
   componentDidMount() {
     const { why, location } = this.props;
+    if (features.codemirrorNext) {
+      return;
+    }
     this.setDebugLine(why, location);
   }
 
   componentWillUnmount() {
     const { why, location } = this.props;
+    if (features.codemirrorNext) {
+      return;
+    }
     this.clearDebugLine(why, location);
   }
 
   componentDidUpdate(prevProps) {
-    const { why, location } = this.props;
+    const { why, location, editor, selectedSource } = this.props;
 
-    startOperation();
-    this.clearDebugLine(prevProps.why, prevProps.location);
-    this.setDebugLine(why, location);
-    endOperation();
+    if (features.codemirrorNext) {
+      if (!selectedSource) {
+        return;
+      }
+
+      if (
+        prevProps.location == this.props.location &&
+        prevProps.selectedSource?.id == selectedSource?.id
+      ) {
+        return;
+      }
+
+      const { lineClass, markTextClass } = this.getTextClasses(why);
+      // Remove the debug line marker when no longer paused, or the selected source
+      // is no longer the source where the pause occured.
+      if (!location || location.source.id !== selectedSource.id) {
+        editor.removeLineContentMarker("debug-line-marker");
+        editor.removePositionContentMarker("debug-position-marker");
+      } else {
+        const isSourceWasm = isWasm(selectedSource.id);
+        editor.setLineContentMarker({
+          id: "debug-line-marker",
+          lineClassName: lineClass,
+          condition(line) {
+            const lineNumber = fromEditorLine(
+              selectedSource.id,
+              line,
+              isSourceWasm
+            );
+            const editorLocation = toEditorPosition(location);
+            return editorLocation.line == lineNumber;
+          },
+        });
+        const editorLocation = toEditorPosition(location);
+        editor.setPositionContentMarker({
+          id: "debug-position-marker",
+          positionClassName: markTextClass,
+          positions: [editorLocation],
+        });
+      }
+    } else {
+      startOperation();
+      this.clearDebugLine(prevProps.why, prevProps.location);
+      this.setDebugLine(why, location);
+      endOperation();
+    }
   }
 
   setDebugLine(why, location) {
     if (!location) {
       return;
     }
-    const { sourceId } = location;
-    const doc = getDocument(sourceId);
+    const doc = getDocument(location.source.id);
 
     let { line, column } = toEditorPosition(location);
     let { markTextClass, lineClass } = this.getTextClasses(why);
@@ -83,7 +135,7 @@ export class DebugLine extends PureComponent {
   clearDebugLine(why, location) {
     // Avoid clearing the line if we didn't set a debug line before,
     // or, if the document is no longer available
-    if (!location || !hasDocument(location.sourceId)) {
+    if (!location || !hasDocument(location.source.id)) {
       return;
     }
 
@@ -92,7 +144,7 @@ export class DebugLine extends PureComponent {
     }
 
     const { line } = toEditorPosition(location);
-    const doc = getDocument(location.sourceId);
+    const doc = getDocument(location.source.id);
     const { lineClass } = this.getTextClasses(why);
     doc.removeLineClass(line, "wrap", lineClass);
   }
@@ -114,7 +166,7 @@ export class DebugLine extends PureComponent {
 }
 
 function isDocumentReady(location, sourceTextContent) {
-  return location && sourceTextContent && hasDocument(location.sourceId);
+  return location && sourceTextContent && hasDocument(location.source.id);
 }
 
 const mapStateToProps = state => {
@@ -126,7 +178,10 @@ const mapStateToProps = state => {
     return {};
   }
   const sourceTextContent = getSourceTextContent(state, location);
-  if (!isDocumentReady(location, sourceTextContent)) {
+  if (
+    !features.codemirrorNext &&
+    !isDocumentReady(location, sourceTextContent)
+  ) {
     return {};
   }
   return {

@@ -52,8 +52,6 @@ const TEST_URI = `
 `;
 
 add_task(async function () {
-  await pushPref("layout.css.container-queries.enabled", true);
-
   await addTab(
     "https://example.com/document-builder.sjs?html=" +
       encodeURIComponent(TEST_URI)
@@ -65,11 +63,11 @@ add_task(async function () {
     { selector: "element", ancestorRulesData: null },
     {
       selector: `h1, [test-hint="container"]`,
-      ancestorRulesData: ["@container mycontainer (1px < width < 10000px)"],
+      ancestorRulesData: ["@container mycontainer (1px < width < 10000px) {"],
     },
     {
       selector: `h1, [test-hint="nocontainername"]`,
-      ancestorRulesData: ["@container (width > 0px)"],
+      ancestorRulesData: ["@container (width > 0px) {"],
     },
   ]);
 
@@ -108,11 +106,11 @@ add_task(async function () {
     { selector: "element", ancestorRulesData: null },
     {
       selector: `div, [test-hint="container-duplicate-name--section"]`,
-      ancestorRulesData: ["@container mycontainer (1px < width < 10000px)"],
+      ancestorRulesData: ["@container mycontainer (1px < width < 10000px) {"],
     },
     {
       selector: `section, [test-hint="container-duplicate-name--body"]`,
-      ancestorRulesData: ["@container mycontainer (1px < width < 10000px)"],
+      ancestorRulesData: ["@container mycontainer (1px < width < 10000px) {"],
     },
   ]);
 
@@ -166,7 +164,7 @@ function assertContainerQueryData(view, expectedRules) {
     info(`Checking rule #${i}: ${expectedRule.selector}`);
 
     const selector = rulesInView[i].querySelector(
-      ".ruleview-selectorcontainer"
+      ".ruleview-selectors-container"
     ).innerText;
     is(selector, expectedRule.selector, `Expected selector for ${selector}`);
 
@@ -184,9 +182,9 @@ function assertContainerQueryData(view, expectedRules) {
         expectedRule.ancestorRulesData.join("\n"),
         `Expected ancestor rules data displayed for ${selector}`
       );
-      ok(
-        ancestorDataEl.querySelector(".container-query .open-inspector") !==
-          null,
+      Assert.notStrictEqual(
+        ancestorDataEl.querySelector(".container-query .open-inspector"),
+        null,
         "An icon is displayed to select the container in the markup view"
       );
     }
@@ -244,7 +242,17 @@ async function assertJumpToContainerButton(
   );
 
   await onNodeUnhighlight;
-  ok("Highlighter was hidden when clicking on icon");
+  ok(true, "Highlighter was hidden when clicking on icon");
+
+  // Move mouse so it does stay in a position where it could hover something impacting
+  // the test.
+  EventUtils.synthesizeMouse(
+    selectContainerButton.closest("body"),
+    0,
+    0,
+    { type: "mouseover" },
+    selectContainerButton.ownerDocument.defaultView
+  );
 }
 
 async function assertQueryContainerTooltip({
@@ -254,13 +262,12 @@ async function assertQueryContainerTooltip({
   expectedHeaderText,
   expectedBodyText,
 }) {
-  const tooltipTriggerEl = getRuleViewAncestorRulesDataElementByIndex(
-    view,
-    ruleIndex
-  ).querySelector(".container-query-declaration");
+  const parent = getRuleViewAncestorRulesDataElementByIndex(view, ruleIndex);
+  const highlighterTriggerEl = parent.querySelector(".open-inspector");
+  const tooltipTriggerEl = parent.querySelector(".container-query-declaration");
 
   // Ensure that the element can be targetted from EventUtils.
-  tooltipTriggerEl.scrollIntoView();
+  parent.scrollIntoView();
 
   const { waitForHighlighterTypeShown, waitForHighlighterTypeHidden } =
     getHighlighterTestHelpers(inspector);
@@ -270,14 +277,35 @@ async function assertQueryContainerTooltip({
   );
 
   const tooltip = view.tooltips.getTooltip("interactiveTooltip");
+
+  info("synthesizing mousemove on open-inspector icon: " + tooltip.isVisible());
+  EventUtils.synthesizeMouseAtCenter(
+    highlighterTriggerEl,
+    { type: "mousemove" },
+    highlighterTriggerEl.ownerDocument.defaultView
+  );
+
+  await onNodeHighlight;
+  info("node was highlighted");
+
+  const onNodeUnhighlight = waitForHighlighterTypeHidden(
+    inspector.highlighters.TYPES.BOXMODEL
+  );
+
   const onTooltipReady = tooltip.once("shown");
+
+  info("synthesizing mousemove on tooltip el: " + tooltip.isVisible());
   EventUtils.synthesizeMouseAtCenter(
     tooltipTriggerEl,
     { type: "mousemove" },
     tooltipTriggerEl.ownerDocument.defaultView
   );
+
   await onTooltipReady;
-  await onNodeHighlight;
+  info("tooltip was shown");
+
+  await onNodeUnhighlight;
+  info("highlighter was hidden");
 
   is(
     tooltip.panel.querySelector("header").textContent,
@@ -292,9 +320,7 @@ async function assertQueryContainerTooltip({
 
   info("Hide the tooltip");
   const onHidden = tooltip.once("hidden");
-  const onNodeUnhighlight = waitForHighlighterTypeHidden(
-    inspector.highlighters.TYPES.BOXMODEL
-  );
+
   // Move the mouse elsewhere to hide the tooltip
   EventUtils.synthesizeMouse(
     tooltipTriggerEl.ownerDocument.body,
@@ -304,5 +330,4 @@ async function assertQueryContainerTooltip({
     tooltipTriggerEl.ownerDocument.defaultView
   );
   await onHidden;
-  await onNodeUnhighlight;
 }

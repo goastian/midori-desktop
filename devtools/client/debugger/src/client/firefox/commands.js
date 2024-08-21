@@ -3,7 +3,7 @@
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 import { createFrame } from "./create";
-import { makeBreakpointServerLocationId } from "../../utils/breakpoint";
+import { makeBreakpointServerLocationId } from "../../utils/breakpoint/index";
 
 import Reps from "devtools/client/shared/components/reps/index";
 
@@ -111,40 +111,11 @@ function forEachThread(iteratee) {
   return Promise.all(promises);
 }
 
-/**
- * Start JavaScript tracing for all targets.
- *
- * @param {String} logMethod
- *        Where to log the traces. Can be stdout or console.
- */
-async function startTracing(logMethod) {
-  const targets = commands.targetCommand.getAllTargets(
-    commands.targetCommand.ALL_TYPES
-  );
-  await Promise.all(
-    targets.map(async targetFront => {
-      const tracerFront = await targetFront.getFront("tracer");
-      return tracerFront.startTracing(logMethod);
-    })
-  );
+async function toggleTracing() {
+  return commands.tracerCommand.toggle();
 }
 
-/**
- * Stop JavaScript tracing for all targets.
- */
-async function stopTracing() {
-  const targets = commands.targetCommand.getAllTargets(
-    commands.targetCommand.ALL_TYPES
-  );
-  await Promise.all(
-    targets.map(async targetFront => {
-      const tracerFront = await targetFront.getFront("tracer");
-      return tracerFront.stopTracing();
-    })
-  );
-}
-
-function resume(thread, frameId) {
+function resume(thread) {
   return lookupThreadFront(thread).resume();
 }
 
@@ -315,6 +286,7 @@ async function evaluate(script, { frameId, threadId } = {}) {
   return commands.scriptCommand.execute(script, {
     frameActor: frameId,
     selectedTargetFront,
+    disableBreaks: true,
   });
 }
 
@@ -362,6 +334,12 @@ async function getFrames(thread) {
 async function getFrameScopes(frame) {
   const frameFront = lookupThreadFront(frame.thread).getActorByID(frame.id);
   return frameFront.getEnvironment();
+}
+
+async function pauseOnDebuggerStatement(shouldPauseOnDebuggerStatement) {
+  await commands.threadConfigurationCommand.updateConfiguration({
+    shouldPauseOnDebuggerStatement,
+  });
 }
 
 async function pauseOnExceptions(
@@ -497,8 +475,7 @@ const clientCommands = {
   loadObjectProperties,
   releaseActor,
   pauseGrip,
-  startTracing,
-  stopTracing,
+  toggleTracing,
   resume,
   stepIn,
   stepOut,
@@ -521,6 +498,7 @@ const clientCommands = {
   getProperties,
   getFrameScopes,
   getFrames,
+  pauseOnDebuggerStatement,
   pauseOnExceptions,
   toggleEventLogging,
   getMainThread,

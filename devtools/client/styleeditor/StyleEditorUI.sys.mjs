@@ -17,10 +17,12 @@ import {
 } from "resource://devtools/client/styleeditor/StyleEditorUtil.sys.mjs";
 import { StyleSheetEditor } from "resource://devtools/client/styleeditor/StyleSheetEditor.sys.mjs";
 
-const { PluralForm } = require("resource://devtools/shared/plural-form.js");
 const { PrefObserver } = require("resource://devtools/client/shared/prefs.js");
 
 const KeyShortcuts = require("resource://devtools/client/shared/key-shortcuts.js");
+const {
+  shortSource,
+} = require("resource://devtools/shared/inspector/css-logic.js");
 
 const lazy = {};
 
@@ -40,12 +42,8 @@ loader.lazyRequireGetter(
 
 ChromeUtils.defineESModuleGetters(lazy, {
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "NetUtil",
-  "resource://gre/modules/NetUtil.jsm"
-);
 loader.lazyRequireGetter(
   lazy,
   "ResponsiveUIManager",
@@ -102,6 +100,7 @@ export class StyleEditorUI extends EventEmitter {
   #optionsMenu;
   #panelDoc;
   #prefObserver;
+  #prettyPrintButton;
   #root;
   #seenSheets = new Map();
   #shortcuts;
@@ -220,6 +219,7 @@ export class StyleEditorUI extends EventEmitter {
       {
         onAvailable: this.#onResourceAvailable,
         onUpdated: this.#onResourceUpdated,
+        onDestroyed: this.#onResourceDestroyed,
       }
     );
     await this.#waitForLoadingStyleSheets();
@@ -265,6 +265,21 @@ export class StyleEditorUI extends EventEmitter {
       () => {
         this.#importFromFile(this._mockImportFile || null, this.#window);
         this.#clearFilterInput();
+      },
+      eventListenersConfig
+    );
+
+    this.#prettyPrintButton = this.#root.querySelector(
+      ".style-editor-prettyPrintButton"
+    );
+    this.#prettyPrintButton.addEventListener(
+      "click",
+      () => {
+        if (!this.selectedEditor) {
+          return;
+        }
+
+        this.selectedEditor.prettifySourceText();
       },
       eventListenersConfig
     );
@@ -550,60 +565,85 @@ export class StyleEditorUI extends EventEmitter {
   #addStyleSheet(resource) {
     if (!this.#seenSheets.has(resource)) {
       const promise = (async () => {
-        let editor = await this.#addStyleSheetEditor(resource);
-
-        const sourceMapLoader = this.#toolbox.sourceMapLoader;
-
-        if (
-          !sourceMapLoader ||
-          !Services.prefs.getBoolPref(PREF_ORIG_SOURCES)
-        ) {
-          return editor;
+        // When the StyleSheet is mapped to one or many original sources,
+        // do not create an editor for the minified StyleSheet.
+        const hasValidOriginalSource = await this.#tryAddingOriginalStyleSheets(
+          resource
+        );
+        if (hasValidOriginalSource) {
+          return null;
         }
-
-        const {
-          href,
-          nodeHref,
-          resourceId: id,
-          sourceMapURL,
-          sourceMapBaseURL,
-        } = resource;
-        const sources = await sourceMapLoader.getOriginalURLs({
-          id,
-          url: href || nodeHref,
-          sourceMapBaseURL,
-          sourceMapURL,
-        });
-        // A single generated sheet might map to multiple original
-        // sheets, so make editors for each of them.
-        if (sources && sources.length) {
-          const parentEditorName = editor.friendlyName;
-          this.#removeStyleSheetEditor(editor);
-          editor = null;
-
-          for (const { id: originalId, url: originalURL } of sources) {
-            const original = new lazy.OriginalSource(
-              originalURL,
-              originalId,
-              sourceMapLoader
-            );
-
-            // set so the first sheet will be selected, even if it's a source
-            original.styleSheetIndex = resource.styleSheetIndex;
-            original.relatedStyleSheet = resource;
-            original.relatedEditorName = parentEditorName;
-            original.resourceId = resource.resourceId;
-            original.targetFront = resource.targetFront;
-            original.atRules = resource.atRules;
-            await this.#addStyleSheetEditor(original);
-          }
-        }
-
-        return editor;
+        // Otherwise, if source-map failed or this is a non-source-map CSS
+        // create an editor for it.
+        return this.#addStyleSheetEditor(resource);
       })();
       this.#seenSheets.set(resource, promise);
     }
     return this.#seenSheets.get(resource);
+  }
+
+  /**
+   * Check if the given StyleSheet relates to an original StyleSheet (via source maps).
+   * If one is found, create an editor for the original one.
+   *
+   * @param  {Resource} resource
+   *         The STYLESHEET resource which is received from resource command.
+   * @return Boolean
+   *         Return true, when we found a viable related original StyleSheet.
+   */
+  async #tryAddingOriginalStyleSheets(resource) {
+    // Avoid querying the SourceMap if this feature is disabled.
+    if (!Services.prefs.getBoolPref(PREF_ORIG_SOURCES)) {
+      return false;
+    }
+
+    const sourceMapLoader = this.#toolbox.sourceMapLoader;
+    const {
+      href,
+      nodeHref,
+      resourceId: id,
+      sourceMapURL,
+      sourceMapBaseURL,
+    } = resource;
+    let sources;
+    try {
+      sources = await sourceMapLoader.getOriginalURLs({
+        id,
+        url: href || nodeHref,
+        sourceMapBaseURL,
+        sourceMapURL,
+      });
+    } catch (e) {
+      // Ignore any source map error, they will be logged
+      // via the SourceMapLoader and Toolbox into the Web Console.
+      return false;
+    }
+
+    // Return the generated CSS if the source-map failed to be parsed
+    // or did not generate any original source.
+    if (!sources || !sources.length) {
+      return false;
+    }
+
+    // A single generated sheet might map to multiple original
+    // sheets, so make editors for each of them.
+    for (const { id: originalId, url: originalURL } of sources) {
+      const original = new lazy.OriginalSource(
+        originalURL,
+        originalId,
+        sourceMapLoader
+      );
+
+      // set so the first sheet will be selected, even if it's a source
+      original.styleSheetIndex = resource.styleSheetIndex;
+      original.relatedStyleSheet = resource;
+      original.resourceId = resource.resourceId;
+      original.targetFront = resource.targetFront;
+      original.atRules = resource.atRules;
+      await this.#addStyleSheetEditor(original);
+    }
+
+    return true;
   }
 
   #removeStyleSheet(resource, editor) {
@@ -1241,6 +1281,13 @@ export class StyleEditorUI extends EventEmitter {
       ruleCount = "-";
     }
 
+    this.#panelDoc.l10n.setArgs(
+      summary.querySelector(".stylesheet-rule-count"),
+      {
+        ruleCount,
+      }
+    );
+
     summary.classList.toggle("disabled", !!editor.styleSheet.disabled);
     summary.classList.toggle("unsaved", !!editor.unsaved);
     summary.classList.toggle("linked-file-error", !!editor.linkedCSSFileError);
@@ -1254,22 +1301,40 @@ export class StyleEditorUI extends EventEmitter {
     let linkedCSSSource = "";
     if (editor.linkedCSSFile) {
       linkedCSSSource = PathUtils.filename(editor.linkedCSSFile);
-    } else if (editor.styleSheet.relatedEditorName) {
-      linkedCSSSource = editor.styleSheet.relatedEditorName;
+    } else if (editor.styleSheet.relatedStyleSheet) {
+      // Compute a friendly name for the related generated source
+      // (relatedStyleSheet is set on original CSS to refer to the generated one)
+      linkedCSSSource = shortSource(editor.styleSheet.relatedStyleSheet);
+      try {
+        linkedCSSSource = decodeURI(linkedCSSSource);
+      } catch (e) {}
     }
     text(summary, ".stylesheet-linked-file", linkedCSSSource);
     text(summary, ".stylesheet-title", editor.styleSheet.title || "");
-    text(
-      summary,
-      ".stylesheet-rule-count",
-      PluralForm.get(ruleCount, getString("ruleCount.label")).replace(
-        "#1",
-        ruleCount
-      )
-    );
 
     // We may need to change the summary visibility as a result of the changes.
     this.handleSummaryVisibility(summary);
+  }
+
+  /**
+   * Update the pretty print button.
+   * The button will be disabled if the selected file is an original file.
+   */
+  #updatePrettyPrintButton() {
+    const disable =
+      !this.selectedEditor || !!this.selectedEditor.styleSheet.isOriginalSource;
+
+    // Only update the button if its state needs it
+    if (disable !== this.#prettyPrintButton.hasAttribute("disabled")) {
+      this.#prettyPrintButton.toggleAttribute("disabled");
+      const l10nString = disable
+        ? "styleeditor-pretty-print-button-disabled"
+        : "styleeditor-pretty-print-button";
+      this.#window.document.l10n.setAttributes(
+        this.#prettyPrintButton,
+        l10nString
+      );
+    }
   }
 
   /**
@@ -1335,6 +1400,10 @@ export class StyleEditorUI extends EventEmitter {
         type.append(this.#panelDoc.createTextNode(`@${rule.type}\u00A0`));
         if (rule.type == "layer" && rule.layerName) {
           type.append(this.#panelDoc.createTextNode(`${rule.layerName}\u00A0`));
+        } else if (rule.type === "property") {
+          type.append(
+            this.#panelDoc.createTextNode(`${rule.propertyName}\u00A0`)
+          );
         }
 
         const cond = this.#panelDoc.createElementNS(HTML_NS, "span");
@@ -1484,6 +1553,7 @@ export class StyleEditorUI extends EventEmitter {
 
     this.#loadingStyleSheets = null;
     this.#root.classList.remove("loading");
+    this.emit("reloaded");
   }
 
   async #handleStyleSheetResource(resource) {
@@ -1511,7 +1581,7 @@ export class StyleEditorUI extends EventEmitter {
 
   // onAvailable is a mandatory argument for watchTargets,
   // but we don't do anything when a new target gets created.
-  #onTargetAvailable = ({ targetFront }) => {};
+  #onTargetAvailable = () => {};
 
   #onTargetDestroyed = ({ targetFront }) => {
     // Iterate over a copy of the list in order to prevent skipping
@@ -1587,6 +1657,25 @@ export class StyleEditorUI extends EventEmitter {
     }
   };
 
+  #onResourceDestroyed = resources => {
+    for (const resource of resources) {
+      if (
+        resource.resourceType !== this.#toolbox.resourceCommand.TYPES.STYLESHEET
+      ) {
+        continue;
+      }
+
+      const editorToRemove = this.editors.find(
+        editor => editor.styleSheet.resourceId == resource.resourceId
+      );
+
+      if (editorToRemove) {
+        const { styleSheet } = editorToRemove;
+        this.#removeStyleSheet(styleSheet, editorToRemove);
+      }
+    }
+  };
+
   /**
    * Set the active item's summary element.
    *
@@ -1642,6 +1731,8 @@ export class StyleEditorUI extends EventEmitter {
       }
 
       editor.onShow(options);
+
+      this.#updatePrettyPrintButton();
 
       this.emit("editor-selected", editor);
     } catch (e) {
@@ -1707,6 +1798,7 @@ export class StyleEditorUI extends EventEmitter {
       {
         onAvailable: this.#onResourceAvailable,
         onUpdated: this.#onResourceUpdated,
+        onDestroyed: this.#onResourceDestroyed,
       }
     );
     this.#commands.targetCommand.unwatchTargets({
@@ -1725,6 +1817,7 @@ export class StyleEditorUI extends EventEmitter {
     this.#filterInput = null;
     this.#filterInputClearButton = null;
     this.#nav = null;
+    this.#prettyPrintButton = null;
     this.#side = null;
     this.#tplDetails = null;
     this.#tplSummary = null;

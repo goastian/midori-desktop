@@ -93,7 +93,7 @@ async function setDisableCacheCheckboxChecked(tabX, state) {
 
   if (cbx.checked !== state) {
     info("Setting disable cache checkbox to " + state + " for " + tabX.title);
-    const onReconfigured = tabX.toolbox.once("cache-reconfigured");
+    const onReconfigured = tabX.toolbox.once("new-configuration-applied");
     cbx.click();
 
     // We have to wait for the reconfigure request to be finished before reloading
@@ -120,7 +120,7 @@ function reloadTab(tabX) {
 }
 
 async function destroyTab(tabX) {
-  const toolbox = await gDevTools.getToolboxForTab(tabX.tab);
+  const toolbox = gDevTools.getToolboxForTab(tabX.tab);
 
   let onceDestroyed;
   if (toolbox) {

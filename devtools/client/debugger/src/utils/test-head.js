@@ -7,10 +7,10 @@
  * @module utils/test-head
  */
 
-import { combineReducers } from "redux";
-import reducers from "../reducers";
-import actions from "../actions";
-import * as selectors from "../selectors";
+import { combineReducers } from "devtools/client/shared/vendor/redux";
+import reducers from "../reducers/index";
+import actions from "../actions/index";
+import * as selectors from "../selectors/index";
 import {
   searchWorker,
   prettyPrintWorker,
@@ -90,32 +90,27 @@ function makeFrame({ id, sourceId, thread }, opts = {}) {
     source: sourceId,
     sourceObject: source,
   };
+  const location = createLocation({ source, sourceActor, line: 4 });
   return {
     id,
     scope: { bindings: { variables: {}, arguments: [] } },
-    location: createLocation({ source, sourceActor, line: 4 }),
+    location,
+    generatedLocation: location,
     thread: thread || "FakeThread",
     ...opts,
   };
 }
 
-function createSourceObject(filename, props = {}) {
+function createSourceObject(filename) {
   return {
     id: filename,
     url: makeSourceURL(filename),
+    shortName: filename,
     isPrettyPrinted: false,
     isExtension: false,
     isOriginal: filename.includes("originalSource"),
+    displayURL: makeSourceURL(filename),
   };
-}
-
-function createOriginalSourceObject(generated) {
-  const rv = {
-    ...generated,
-    id: `${generated.id}/originalSource`,
-  };
-
-  return rv;
 }
 
 function makeSourceURL(filename) {
@@ -178,6 +173,7 @@ function makeOriginalSource(source) {
     id: `${source.id}/originalSource`,
     url: `${source.url}-original`,
     sourceActor: {
+      id: `${source.id}-1-actor`,
       thread: "FakeThread",
     },
   };
@@ -277,7 +273,6 @@ export {
   getTelemetryEvents,
   makeFrame,
   createSourceObject,
-  createOriginalSourceObject,
   createMakeSource,
   makeSourceURL,
   makeSource,

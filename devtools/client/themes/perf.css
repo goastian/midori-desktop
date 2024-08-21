@@ -2,15 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-:root.theme-light {
-  /**
-   * Override this variable to match the Photon guidelines and make sure the
-   * links have enough contrast on the background of the onboarding message.
-   * See Bug 1673582 to apply this back to devtools main variable.css file.
-   */
-  --theme-highlight-blue: var(--blue-60);
-}
-
 .perf {
   display: flex;
   flex-direction: column;
@@ -59,7 +50,7 @@
   padding: 0;
   background: none;
   border: none;
-  color: var(--theme-highlight-blue);
+  color: var(--theme-link-color);
   text-decoration: underline;
   white-space: nowrap;
   cursor: pointer;
@@ -105,6 +96,11 @@
   color: #fff;
 }
 
+.perf-photon-button-primary:focus-visible {
+  /* Avoid the outline to conflict with the blue background */
+  outline-offset: 2px;
+}
+
 .perf-photon-button-primary:hover:not([disabled]) {
   background-color: var(--blue-70);
 }
@@ -119,18 +115,6 @@
 
 .perf-photon-button.perf-button {
   margin: 10px;
-}
-
-button.perf-photon-button:focus,
-.perf-presets-select:focus {
-  box-shadow: 0 0 0 1px var(--blue-50) inset, 0 0 0 1px var(--blue-50),
-    0 0 0 4px var(--blue-50-a30);
-  outline: 0;
-}
-
-a.perf-photon-button:focus {
-  box-shadow: 0 0 0 2px var(--blue-50), 0 0 0 6px var(--blue-50-a30);
-  outline: 0;
 }
 
 .perf-photon-button-ghost {
@@ -206,13 +190,6 @@ a.perf-photon-button:focus {
 
 .perf-presets-select:hover {
   border: 1px solid var(--theme-select-hover-border-color);
-}
-
-.perf-presets-select:focus {
-  box-shadow:
-    0 0 0 2px var(--blue-50),
-    0 0 0 6px var(--blue-50-a30);
-  outline: 0;
 }
 
 .perf-presets-custom {

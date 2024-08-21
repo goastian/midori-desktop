@@ -16,6 +16,16 @@ const INACTIVE_CSS_ENABLED = Services.prefs.getBoolPref(
   false
 );
 
+const TEXT_WRAP_BALANCE_LIMIT = Services.prefs.getIntPref(
+  "layout.css.text-wrap-balance.limit",
+  10
+);
+
+const ALIGN_CONTENT_BLOCKS = Services.prefs.getBoolPref(
+  "layout.css.align-content.blocks.enabled",
+  false
+);
+
 const VISITED_MDN_LINK = "https://developer.mozilla.org/docs/Web/CSS/:visited";
 const VISITED_INVALID_PROPERTIES = allCssPropertiesExcept([
   "all",
@@ -70,6 +80,32 @@ const REPLACED_ELEMENTS_NAMES = new Set([
   "video",
 ]);
 
+const CUE_PSEUDO_ELEMENT_STYLING_SPEC_URL =
+  "https://developer.mozilla.org/docs/Web/CSS/::cue";
+
+const HIGHLIGHT_PSEUDO_ELEMENTS_STYLING_SPEC_URL =
+  "https://www.w3.org/TR/css-pseudo-4/#highlight-styling";
+const HIGHLIGHT_PSEUDO_ELEMENTS = [
+  "::highlight",
+  "::selection",
+  "::target-text",
+  // Below are properties not yet implemented in Firefox (Bug 1694053)
+  "::grammar-error",
+  "::spelling-error",
+];
+const REGEXP_HIGHLIGHT_PSEUDO_ELEMENTS = new RegExp(
+  `${HIGHLIGHT_PSEUDO_ELEMENTS.join("|")}`
+);
+
+const FIRST_LINE_PSEUDO_ELEMENT_STYLING_SPEC_URL =
+  "https://www.w3.org/TR/css-pseudo-4/#first-line-styling";
+
+const FIRST_LETTER_PSEUDO_ELEMENT_STYLING_SPEC_URL =
+  "https://www.w3.org/TR/css-pseudo-4/#first-letter-styling";
+
+const PLACEHOLDER_PSEUDO_ELEMENT_STYLING_SPEC_URL =
+  "https://www.w3.org/TR/css-pseudo-4/#placeholder-pseudo";
+
 class InactivePropertyHelper {
   /**
    * A list of rules for when CSS properties have no effect.
@@ -87,7 +123,7 @@ class InactivePropertyHelper {
    * properties:
    * {
    *   invalidProperties:
-   *     Array of CSS property names that are inactive if the rule matches.
+   *     Set of CSS property names that are inactive if the rule matches.
    *   when:
    *     The rule itself, a JS function used to identify the conditions
    *     indicating whether a property is valid or not.
@@ -119,7 +155,7 @@ class InactivePropertyHelper {
    * <ol> element, or even the <html> element) in order to concisely adjust the
    * rendering of a whole list (or all the lists in a document).
    */
-  get VALIDATORS() {
+  get INVALID_PROPERTIES_VALIDATORS() {
     return [
       // Flex container property used on non-flex container.
       {
@@ -196,12 +232,29 @@ class InactivePropertyHelper {
       // See https://bugzilla.mozilla.org/show_bug.cgi?id=1598730
       {
         invalidProperties: ["align-content"],
-        when: () =>
-          !this.style["align-content"].includes("baseline") &&
-          !this.gridContainer &&
-          !this.flexContainer,
-        fixId: "inactive-css-not-grid-or-flex-container-fix",
-        msgId: "inactive-css-not-grid-or-flex-container",
+        when: () => {
+          if (this.style["align-content"].includes("baseline")) {
+            return false;
+          }
+          const supportedDisplay = [
+            "flex",
+            "inline-flex",
+            "grid",
+            "inline-grid",
+            // Uncomment table-cell when Bug 1883357 is fixed.
+            // "table-cell"
+          ];
+          if (ALIGN_CONTENT_BLOCKS) {
+            supportedDisplay.push("block", "inline-block");
+          }
+          return !this.checkComputedStyle("display", supportedDisplay);
+        },
+        fixId: ALIGN_CONTENT_BLOCKS
+          ? "inactive-css-not-grid-or-flex-or-block-container-fix"
+          : "inactive-css-not-grid-or-flex-container-fix",
+        msgId: ALIGN_CONTENT_BLOCKS
+          ? "inactive-css-property-because-of-display"
+          : "inactive-css-not-grid-or-flex-container",
       },
       // column-gap and shorthands used on non-grid or non-flex or non-multi-col container.
       {
@@ -219,21 +272,73 @@ class InactivePropertyHelper {
           "inactive-css-not-grid-or-flex-container-or-multicol-container-fix",
         msgId: "inactive-css-not-grid-or-flex-container-or-multicol-container",
       },
+      // Multi-column related properties used on non-multi-column container.
+      {
+        invalidProperties: [
+          "column-fill",
+          "column-rule",
+          "column-rule-color",
+          "column-rule-style",
+          "column-rule-width",
+        ],
+        when: () => !this.multiColContainer,
+        fixId: "inactive-css-not-multicol-container-fix",
+        msgId: "inactive-css-not-multicol-container",
+      },
+      // column-span used within non-multi-column container.
+      {
+        invalidProperties: ["column-span"],
+        when: () => !this.inMultiColContainer,
+        fixId: "inactive-css-column-span-fix",
+        msgId: "inactive-css-column-span",
+      },
       // Inline properties used on non-inline-level elements.
       {
         invalidProperties: ["vertical-align"],
-        when: () => {
-          const { selectorText } = this.cssRule;
-
-          const isFirstLetter =
-            selectorText && selectorText.includes("::first-letter");
-          const isFirstLine =
-            selectorText && selectorText.includes("::first-line");
-
-          return !this.isInlineLevel() && !isFirstLetter && !isFirstLine;
-        },
+        when: () =>
+          !this.isInlineLevel() && !this.isFirstLetter && !this.isFirstLine,
         fixId: "inactive-css-not-inline-or-tablecell-fix",
         msgId: "inactive-css-not-inline-or-tablecell",
+      },
+      // Writing mode properties used on ::first-line pseudo-element.
+      {
+        invalidProperties: ["direction", "text-orientation", "writing-mode"],
+        when: () => this.isFirstLine,
+        fixId: "learn-more",
+        msgId: "inactive-css-first-line-pseudo-element-not-supported",
+        learnMoreURL: FIRST_LINE_PSEUDO_ELEMENT_STYLING_SPEC_URL,
+      },
+      // Content modifying properties used on ::first-letter pseudo-element.
+      {
+        invalidProperties: ["content"],
+        when: () => this.isFirstLetter,
+        fixId: "learn-more",
+        msgId: "inactive-css-first-letter-pseudo-element-not-supported",
+        learnMoreURL: FIRST_LETTER_PSEUDO_ELEMENT_STYLING_SPEC_URL,
+      },
+      // Writing mode or inline properties used on ::placeholder pseudo-element.
+      {
+        invalidProperties: [
+          "baseline-source",
+          "direction",
+          "dominant-baseline",
+          "line-height",
+          "text-orientation",
+          "vertical-align",
+          "writing-mode",
+          // Below are properties not yet implemented in Firefox (Bug 1312611)
+          "alignment-baseline",
+          "baseline-shift",
+          "initial-letter",
+          "text-box-trim",
+        ],
+        when: () => {
+          const { selectorText } = this.cssRule;
+          return selectorText && selectorText.includes("::placeholder");
+        },
+        fixId: "learn-more",
+        msgId: "inactive-css-placeholder-pseudo-element-not-supported",
+        learnMoreURL: PLACEHOLDER_PSEUDO_ELEMENT_STYLING_SPEC_URL,
       },
       // (max-|min-)width used on inline elements, table rows, or row groups.
       {
@@ -299,6 +404,13 @@ class InactivePropertyHelper {
         when: () => !this.isPositioned && !this.gridItem && !this.flexItem,
         fixId: "inactive-css-position-property-on-unpositioned-box-fix",
         msgId: "inactive-css-position-property-on-unpositioned-box",
+      },
+      // object-fit or object-position property used on non-replaced elements.
+      {
+        invalidProperties: ["object-fit", "object-position"],
+        when: () => !this.replaced,
+        fixId: "inactive-css-only-replaced-elements-fix",
+        msgId: "inactive-css-only-replaced-elements",
       },
       // text-overflow property used on elements for which 'overflow' is set to 'visible'
       // (the initial value) in the inline axis. Note that this validator only checks if
@@ -366,6 +478,13 @@ class InactivePropertyHelper {
         fixId: "inactive-css-not-table-fix",
         msgId: "inactive-css-not-table",
       },
+      // empty-cells property used on non-table-cell elements.
+      {
+        invalidProperties: ["empty-cells"],
+        when: () => !this.checkComputedStyle("display", ["table-cell"]),
+        fixId: "inactive-css-not-table-cell-fix",
+        msgId: "inactive-css-not-table-cell",
+      },
       // scroll-padding-* properties used on non-scrollable elements.
       {
         invalidProperties: [
@@ -415,8 +534,173 @@ class InactivePropertyHelper {
         fixId: "inactive-css-ruby-element-fix",
         msgId: "inactive-css-ruby-element",
       },
+      // text-wrap: balance; used on elements exceeding the threshold line number
+      {
+        invalidProperties: ["text-wrap"],
+        when: () => {
+          if (!this.checkComputedStyle("text-wrap", ["balance"])) {
+            return false;
+          }
+          const blockLineCounts = InspectorUtils.getBlockLineCounts(this.node);
+          // We only check the number of lines within the first block
+          // because the text-wrap: balance; property only applies to
+          // the first block. And fragmented elements (with multiple
+          // blocks) are excluded from line balancing for the time being.
+          return (
+            blockLineCounts && blockLineCounts[0] > TEXT_WRAP_BALANCE_LIMIT
+          );
+        },
+        fixId: "inactive-css-text-wrap-balance-lines-exceeded-fix",
+        msgId: "inactive-css-text-wrap-balance-lines-exceeded",
+        lineCount: TEXT_WRAP_BALANCE_LIMIT,
+      },
+      // text-wrap: balance; used on fragmented elements
+      {
+        invalidProperties: ["text-wrap"],
+        when: () => {
+          if (!this.checkComputedStyle("text-wrap", ["balance"])) {
+            return false;
+          }
+          const blockLineCounts = InspectorUtils.getBlockLineCounts(this.node);
+          const isFragmented = blockLineCounts && blockLineCounts.length > 1;
+          return isFragmented;
+        },
+        fixId: "inactive-css-text-wrap-balance-fragmented-fix",
+        msgId: "inactive-css-text-wrap-balance-fragmented",
+      },
     ];
   }
+
+  /**
+   * A list of rules for when CSS properties have no effect,
+   * based on an allow list of properties.
+   * We're setting this as a different array than INVALID_PROPERTIES_VALIDATORS as we
+   * need to check every properties, which we don't do for invalid properties ( see check
+   * on this.invalidProperties).
+   *
+   * This file contains "rules" in the form of objects with the following
+   * properties:
+   * {
+   *   acceptedProperties:
+   *     Array of CSS property names that are the only one accepted if the rule matches.
+   *   when:
+   *     The rule itself, a JS function used to identify the conditions
+   *     indicating whether a property is valid or not.
+   *   fixId:
+   *     A Fluent id containing a suggested solution to the problem that is
+   *     causing a property to be inactive.
+   *   msgId:
+   *     A Fluent id containing an error message explaining why a property is
+   *     inactive in this situation.
+   * }
+   *
+   * If you add a new rule, also add a test for it in:
+   * server/tests/chrome/test_inspector-inactive-property-helper.html
+   *
+   * The main export is `isPropertyUsed()`, which can be used to check if a
+   * property is used or not, and why.
+   */
+  ACCEPTED_PROPERTIES_VALIDATORS = [
+    // Constrained set of properties on highlight pseudo-elements
+    {
+      acceptedProperties: new Set([
+        // At the moment, for shorthand we don't look into each properties it covers,
+        // and so, although `background` might hold inactive values (e.g. background-image)
+        // we don't want to mark it as inactive if it sets a background-color (e.g. background: red).
+        "background",
+        "background-color",
+        "color",
+        "text-decoration",
+        "text-decoration-color",
+        "text-decoration-line",
+        "text-decoration-style",
+        "text-decoration-thickness",
+        "text-shadow",
+        "text-underline-offset",
+        "text-underline-position",
+        "-webkit-text-fill-color",
+        "-webkit-text-stroke-color",
+        "-webkit-text-stroke-width",
+        "-webkit-text-stroke",
+      ]),
+      when: () => {
+        const { selectorText } = this.cssRule;
+        return (
+          selectorText && REGEXP_HIGHLIGHT_PSEUDO_ELEMENTS.test(selectorText)
+        );
+      },
+      msgId: "inactive-css-highlight-pseudo-elements-not-supported",
+      fixId: "learn-more",
+      learnMoreURL: HIGHLIGHT_PSEUDO_ELEMENTS_STYLING_SPEC_URL,
+    },
+    // Constrained set of properties on ::cue pseudo-element
+    //
+    // Note that Gecko doesn't yet support the ::cue() pseudo-element
+    // taking a selector as argument. The properties accecpted by that
+    // partly differ from the ones accepted by the ::cue pseudo-element.
+    // See https://w3c.github.io/webvtt/#ref-for-selectordef-cue-selector⑧.
+    // See https://bugzilla.mozilla.org/show_bug.cgi?id=865395 and its
+    // dependencies for the implementation status.
+    {
+      acceptedProperties: new Set([
+        "background",
+        "background-attachment",
+        // The WebVTT spec. currently only allows all properties covered by
+        // the `background` shorthand and `background-blend-mode` is not
+        // part of that, though Gecko does support it, anyway.
+        // Therefore, there's also an issue pending to add it (and others)
+        // to the spec. See https://github.com/w3c/webvtt/issues/518.
+        "background-blend-mode",
+        "background-clip",
+        "background-color",
+        "background-image",
+        "background-origin",
+        "background-position",
+        "background-position-x",
+        "background-position-y",
+        "background-repeat",
+        "background-size",
+        "color",
+        "font",
+        "font-family",
+        "font-size",
+        "font-stretch",
+        "font-style",
+        "font-variant",
+        "font-variant-alternates",
+        "font-variant-caps",
+        "font-variant-east-asian",
+        "font-variant-ligatures",
+        "font-variant-numeric",
+        "font-variant-position",
+        "font-weight",
+        "line-height",
+        "opacity",
+        "outline",
+        "outline-color",
+        "outline-offset",
+        "outline-style",
+        "outline-width",
+        "ruby-position",
+        "text-combine-upright",
+        "text-decoration",
+        "text-decoration-color",
+        "text-decoration-line",
+        "text-decoration-style",
+        "text-decoration-thickness",
+        "text-shadow",
+        "visibility",
+        "white-space",
+      ]),
+      when: () => {
+        const { selectorText } = this.cssRule;
+        return selectorText && selectorText.includes("::cue");
+      },
+      msgId: "inactive-css-cue-pseudo-element-not-supported",
+      fixId: "learn-more",
+      learnMoreURL: CUE_PSEUDO_ELEMENT_STYLING_SPEC_URL,
+    },
+  ];
 
   /**
    * Get a list of unique CSS property names for which there are checks
@@ -427,7 +711,9 @@ class InactivePropertyHelper {
    */
   get invalidProperties() {
     if (!this._invalidProperties) {
-      const allProps = this.VALIDATORS.map(v => v.invalidProperties).flat();
+      const allProps = this.INVALID_PROPERTIES_VALIDATORS.map(
+        v => v.invalidProperties
+      ).flat();
       this._invalidProperties = new Set(allProps);
     }
 
@@ -464,24 +750,25 @@ class InactivePropertyHelper {
    *         true if the property is used.
    */
   isPropertyUsed(el, elStyle, cssRule, property) {
-    // Assume the property is used when:
-    // - the Inactive CSS pref is not enabled
-    // - the property is not in the list of properties to check
-    if (!INACTIVE_CSS_ENABLED || !this.invalidProperties.has(property)) {
+    // Assume the property is used when the Inactive CSS pref is not enabled
+    if (!INACTIVE_CSS_ENABLED) {
       return { used: true };
     }
 
     let fixId = "";
     let msgId = "";
     let learnMoreURL = null;
+    let lineCount = null;
     let used = true;
 
-    this.VALIDATORS.some(validator => {
+    const someFn = validator => {
       // First check if this rule cares about this property.
       let isRuleConcerned = false;
 
       if (validator.invalidProperties) {
         isRuleConcerned = validator.invalidProperties.includes(property);
+      } else if (validator.acceptedProperties) {
+        isRuleConcerned = !validator.acceptedProperties.has(property);
       }
 
       if (!isRuleConcerned) {
@@ -496,13 +783,31 @@ class InactivePropertyHelper {
         fixId = validator.fixId;
         msgId = validator.msgId;
         learnMoreURL = validator.learnMoreURL;
+        lineCount = validator.lineCount;
         used = false;
 
+        // We can bail out as soon as a validator reported an issue.
         return true;
       }
 
       return false;
-    });
+    };
+
+    // First run the accepted properties validators
+    const isNotAccepted = this.ACCEPTED_PROPERTIES_VALIDATORS.some(someFn);
+
+    // If the property is not in the list of properties to check and there was no issues
+    // in the accepted properties validators, assume the property is used.
+    if (!isNotAccepted && !this.invalidProperties.has(property)) {
+      this.unselect();
+      return { used: true };
+    }
+
+    // Otherwise, if there was no issue from the accepted properties validators,
+    // run the invalid properties validators.
+    if (!isNotAccepted) {
+      this.INVALID_PROPERTIES_VALIDATORS.some(someFn);
+    }
 
     this.unselect();
 
@@ -519,6 +824,7 @@ class InactivePropertyHelper {
       msgId,
       property,
       learnMoreURL,
+      lineCount,
       used,
     };
   }
@@ -661,6 +967,14 @@ class InactivePropertyHelper {
   }
 
   /**
+   * Check if the current node is in a multi-column container, i.e. a node element
+   * that has an ancestor with `column-width` or `column-count` property set to a value.
+   */
+  get inMultiColContainer() {
+    return !!this.getParentMultiColElement(this.node);
+  }
+
+  /**
    * Check if the current node is a table row.
    */
   get tableRow() {
@@ -792,6 +1106,22 @@ class InactivePropertyHelper {
       this.style &&
       this.style.display === "inline"
     );
+  }
+
+  /**
+   * Check if the current selector refers to a ::first-letter pseudo-element
+   */
+  get isFirstLetter() {
+    const { selectorText } = this.cssRule;
+    return selectorText && selectorText.includes("::first-letter");
+  }
+
+  /**
+   * Check if the current selector refers to a ::first-line pseudo-element
+   */
+  get isFirstLine() {
+    const { selectorText } = this.cssRule;
+    return selectorText && selectorText.includes("::first-line");
   }
 
   /**
@@ -937,11 +1267,8 @@ class InactivePropertyHelper {
 
   /**
    * Check if a node is a grid item.
-   *
-   * @param {DOMNode} node
-   *        The node to check.
    */
-  isGridItem(node) {
+  isGridItem() {
     return !!this.getParentGridElement(this.node);
   }
 
@@ -962,13 +1289,7 @@ class InactivePropertyHelper {
     for (let i = 0; i < selectors.length; i++) {
       if (
         !selectors[i].endsWith(":visited") &&
-        InspectorUtils.selectorMatchesElement(
-          bindingElement,
-          this.cssRule,
-          i,
-          pseudo,
-          true
-        )
+        this.cssRule.selectorMatchesElement(i, bindingElement, pseudo, true)
       ) {
         // Match non :visited selector.
         return false;
@@ -1023,6 +1344,57 @@ class InactivePropertyHelper {
         return null; // Not a grid item, for sure.
       }
       // display: contents, walk to the parent
+    }
+    return null;
+  }
+
+  /**
+   * Return the multi-column container for a node if it exists.
+   *
+   * @param {DOMNode} The node we want the container for
+   * @param {DOMNode|null} The container element, or null if there is none.
+   */
+  getParentMultiColElement(node) {
+    // The documentElement can't be an element in a multi-column container,
+    // only a container, so bail out.
+    if (node.flattenedTreeParentNode === node.ownerDocument) {
+      return null;
+    }
+
+    // Ignore nodes that are not elements nor text nodes
+    if (
+      node.nodeType !== node.ELEMENT_NODE &&
+      node.nodeType !== node.TEXT_NODE
+    ) {
+      return null;
+    }
+
+    if (node.nodeType === node.ELEMENT_NODE) {
+      const display = this.style ? this.style.display : null;
+
+      if (!display || display === "none" || display === "contents") {
+        // Doesn't generate a box, not an element in a multi-column container.
+        return null;
+      }
+      if (this.isAbsolutelyPositioned) {
+        // Out of flow, not an element in a multi-column container.
+        return null;
+      }
+    }
+
+    // Walk up the tree to find the nearest multi-column container.
+    // Loop over flattenedTreeParentNode instead of parentNode to reach the
+    // shadow host from the shadow DOM.
+    for (
+      let p = node.flattenedTreeParentNode;
+      p && p !== node.ownerDocument;
+      p = p.flattenedTreeParentNode
+    ) {
+      const style = computedStyle(p, node.ownerGlobal);
+      if (style.columnWidth !== "auto" || style.columnCount !== "auto") {
+        // It's a multi-column container!
+        return p;
+      }
     }
     return null;
   }

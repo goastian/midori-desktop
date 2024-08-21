@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
+import React from "devtools/client/shared/vendor/react";
 import { mount } from "enzyme";
 
 import Popover from "../Popover";
@@ -50,30 +50,34 @@ describe("Popover", () => {
     left: 200,
   };
   const popover = mount(
-    <Popover
-      onMouseLeave={onMouseLeave}
-      onKeyDown={onKeyDown}
-      editorRef={editorRef}
-      targetPosition={targetPosition}
-      mouseout={() => {}}
-      target={targetRef}
-    >
-      <h1>Poppy!</h1>
-    </Popover>
+    React.createElement(
+      Popover,
+      {
+        onMouseLeave,
+        onKeyDown,
+        editorRef,
+        targetPosition,
+        mouseout: () => {},
+        target: targetRef,
+      },
+      React.createElement("h1", null, "Poppy!")
+    )
   );
 
   const tooltip = mount(
-    <Popover
-      type="tooltip"
-      onMouseLeave={onMouseLeave}
-      onKeyDown={onKeyDown}
-      editorRef={editorRef}
-      targetPosition={targetPosition}
-      mouseout={() => {}}
-      target={targetRef}
-    >
-      <h1>Toolie!</h1>
-    </Popover>
+    React.createElement(
+      Popover,
+      {
+        type: "tooltip",
+        onMouseLeave,
+        onKeyDown,
+        editorRef,
+        targetPosition,
+        mouseout: () => {},
+        target: targetRef,
+      },
+      React.createElement("h1", null, "Toolie!")
+    )
   );
 
   beforeEach(() => {
@@ -87,33 +91,37 @@ describe("Popover", () => {
 
   it("mount popover", () => {
     const mountedPopover = mount(
-      <Popover
-        onMouseLeave={onMouseLeave}
-        onKeyDown={onKeyDown}
-        editorRef={editorRef}
-        targetPosition={targetPosition}
-        mouseout={() => {}}
-        target={targetRef}
-      >
-        <h1>Poppy!</h1>
-      </Popover>
+      React.createElement(
+        Popover,
+        {
+          onMouseLeave,
+          onKeyDown,
+          editorRef,
+          targetPosition,
+          mouseout: () => {},
+          target: targetRef,
+        },
+        React.createElement("h1", null, "Poppy!")
+      )
     );
     expect(mountedPopover).toMatchSnapshot();
   });
 
   it("mount tooltip", () => {
     const mountedTooltip = mount(
-      <Popover
-        type="tooltip"
-        onMouseLeave={onMouseLeave}
-        onKeyDown={onKeyDown}
-        editorRef={editorRef}
-        targetPosition={targetPosition}
-        mouseout={() => {}}
-        target={targetRef}
-      >
-        <h1>Toolie!</h1>
-      </Popover>
+      React.createElement(
+        Popover,
+        {
+          type: "tooltip",
+          onMouseLeave,
+          onKeyDown,
+          editorRef,
+          targetPosition,
+          mouseout: () => {},
+          target: targetRef,
+        },
+        React.createElement("h1", null, "Toolie!")
+      )
     );
     expect(mountedTooltip).toMatchSnapshot();
   });
@@ -141,17 +149,19 @@ describe("Popover", () => {
     };
 
     const mountedTooltip = mount(
-      <Popover
-        type="tooltip"
-        onMouseLeave={onMouseLeave}
-        onKeyDown={onKeyDown}
-        editorRef={editor}
-        targetPosition={target}
-        mouseout={() => {}}
-        target={targetRef}
-      >
-        <h1>Toolie!</h1>
-      </Popover>
+      React.createElement(
+        Popover,
+        {
+          type: "tooltip",
+          onMouseLeave,
+          onKeyDown,
+          editorRef: editor,
+          targetPosition: target,
+          mouseout: () => {},
+          target: targetRef,
+        },
+        React.createElement("h1", null, "Toolie!")
+      )
     );
 
     const toolTipTop = parseInt(mountedTooltip.getDOMNode().style.top, 10);
@@ -181,17 +191,19 @@ describe("Popover", () => {
     };
 
     const mountedTooltip = mount(
-      <Popover
-        type="tooltip"
-        onMouseLeave={onMouseLeave}
-        onKeyDown={onKeyDown}
-        editorRef={editor}
-        targetPosition={target}
-        mouseout={() => {}}
-        target={targetRef}
-      >
-        <h1>Toolie!</h1>
-      </Popover>
+      React.createElement(
+        Popover,
+        {
+          type: "tooltip",
+          onMouseLeave,
+          onKeyDown,
+          editorRef: editor,
+          targetPosition: target,
+          mouseout: () => {},
+          target: targetRef,
+        },
+        React.createElement("h1", null, "Toolie!")
+      )
     );
 
     const toolTipTop = parseInt(mountedTooltip.getDOMNode().style.top, 10);

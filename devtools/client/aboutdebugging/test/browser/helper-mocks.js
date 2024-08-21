@@ -242,9 +242,28 @@ const silenceWorkerUpdates = function () {
 
 async function createLocalClientWrapper() {
   info("Create a local DevToolsClient");
+
+  // First, instantiate a DevToolsServer, the same way it is being done when running
+  // firefox --start-debugger-server
   const {
-    DevToolsServer,
-  } = require("resource://devtools/server/devtools-server.js");
+    useDistinctSystemPrincipalLoader,
+    releaseDistinctSystemPrincipalLoader,
+  } = ChromeUtils.importESModule(
+    "resource://devtools/shared/loader/DistinctSystemPrincipalLoader.sys.mjs"
+  );
+  const requester = {};
+  const serverLoader = useDistinctSystemPrincipalLoader(requester);
+  registerCleanupFunction(() => {
+    releaseDistinctSystemPrincipalLoader(requester);
+  });
+  const { DevToolsServer } = serverLoader.require(
+    "resource://devtools/server/devtools-server.js"
+  );
+  DevToolsServer.init();
+  DevToolsServer.registerAllActors();
+  DevToolsServer.allowChromeProcess = true;
+
+  // Then spawn a DevToolsClient connected to this new DevToolsServer
   const {
     DevToolsClient,
   } = require("resource://devtools/client/devtools-client.js");
@@ -252,11 +271,31 @@ async function createLocalClientWrapper() {
     ClientWrapper,
   } = require("resource://devtools/client/aboutdebugging/src/modules/client-wrapper.js");
 
-  DevToolsServer.init();
-  DevToolsServer.registerAllActors();
   const client = new DevToolsClient(DevToolsServer.connectPipe());
 
   await client.connect();
   return new ClientWrapper(client);
 }
 /* exported createLocalClientWrapper */
+
+// Create a basic mock for this-firefox client, and setup a runtime-client-factory mock
+// to return our mock client when needed.
+function setupThisFirefoxMock() {
+  const runtimeClientFactoryMock = createRuntimeClientFactoryMock();
+  const thisFirefoxClient = createThisFirefoxClientMock();
+  runtimeClientFactoryMock.createClientForRuntime = runtime => {
+    if (runtime.id === RUNTIMES.THIS_FIREFOX) {
+      return thisFirefoxClient;
+    }
+    throw new Error("Unexpected runtime id " + runtime.id);
+  };
+
+  info("Enable mocks");
+  enableRuntimeClientFactoryMock(runtimeClientFactoryMock);
+  registerCleanupFunction(() => {
+    disableRuntimeClientFactoryMock();
+  });
+
+  return thisFirefoxClient;
+}
+/* exported setupThisFirefoxMock */

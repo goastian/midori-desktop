@@ -106,6 +106,7 @@ class NodeActor extends Actor {
     this.currentDisplayType = this.displayType;
     this.wasDisplayed = this.isDisplayed;
     this.wasScrollable = wasScrollable;
+    this.currentContainerType = this.containerType;
 
     if (wasScrollable) {
       this.walker.updateOverflowCausingElements(
@@ -184,13 +185,14 @@ class NodeActor extends Actor {
     const hostActor = shadowRoot
       ? this.walker.getNode(this.rawNode.host)
       : null;
+    const nodeType = this.rawNode.nodeType;
 
     const form = {
       actor: this.actorID,
       host: hostActor ? hostActor.actorID : undefined,
       baseURI: this.rawNode.baseURI,
       parent: parentNode ? parentNode.actorID : undefined,
-      nodeType: this.rawNode.nodeType,
+      nodeType,
       namespaceURI: this.rawNode.namespaceURI,
       nodeName: this.rawNode.nodeName,
       nodeValue: this.rawNode.nodeValue,
@@ -201,6 +203,7 @@ class NodeActor extends Actor {
       isScrollable: this.isScrollable,
       isTopLevelDocument: this.isTopLevelDocument,
       causesOverflow: this.walker.overflowCausingElementsMap.has(this.rawNode),
+      containerType: this.containerType,
 
       // doctype attributes
       name: this.rawNode.name,
@@ -225,9 +228,23 @@ class NodeActor extends Actor {
       isInHTMLDocument:
         this.rawNode.ownerDocument &&
         this.rawNode.ownerDocument.contentType === "text/html",
-      hasEventListeners: this._hasEventListeners,
       traits: {},
     };
+
+    // The event collector can be expensive, so only check for events on nodes that
+    // can display the `event` badge.
+    if (
+      nodeType !== Node.COMMENT_NODE &&
+      nodeType !== Node.TEXT_NODE &&
+      nodeType !== Node.CDATA_SECTION_NODE &&
+      nodeType !== Node.DOCUMENT_NODE &&
+      nodeType !== Node.DOCUMENT_TYPE_NODE &&
+      !form.isMarkerPseudoElement &&
+      !form.isBeforePseudoElement &&
+      !form.isAfterPseudoElement
+    ) {
+      form.hasEventListeners = this.hasEventListeners();
+    }
 
     if (this.isDocumentElement()) {
       form.isDocumentElement = true;
@@ -375,6 +392,22 @@ class NodeActor extends Actor {
   }
 
   /**
+   * Returns the computed containerType style property value of the node.
+   */
+  get containerType() {
+    // non-element nodes can't be containers
+    if (
+      isNodeDead(this) ||
+      this.rawNode.nodeType !== Node.ELEMENT_NODE ||
+      !this.computedStyle
+    ) {
+      return null;
+    }
+
+    return this.computedStyle.containerType;
+  }
+
+  /**
    * Check whether the node currently has scrollbars and is scrollable.
    */
   get isScrollable() {
@@ -404,12 +437,15 @@ class NodeActor extends Actor {
    * Are there event listeners that are listening on this node? This method
    * uses all parsers registered via event-parsers.js.registerEventParser() to
    * check if there are any event listeners.
+   *
+   * @returns {Boolean}
    */
-  get _hasEventListeners() {
-    // We need to pass a debugger instance from this compartment because
-    // otherwise we can't make use of it inside the event-collector module.
-    const dbg = this.getParent().targetActor.makeDebugger();
-    return this._eventCollector.hasEventListeners(this.rawNode, dbg);
+  hasEventListeners(refreshCache = false) {
+    if (this._hasEventListenersCached === undefined || refreshCache) {
+      const result = this._eventCollector.hasEventListeners(this.rawNode);
+      this._hasEventListenersCached = result;
+    }
+    return this._hasEventListenersCached;
   }
 
   writeAttrs() {
@@ -488,10 +524,15 @@ class NodeActor extends Actor {
       return undefined;
     }
 
+    // NOTE: Debugger.Script.prototype.startColumn is 1-based.
+    //       Convert to 0-based, while keeping the wasm's column (1) as is.
+    //       (bug 1863878)
+    const columnBase = customElementDO.script.format === "wasm" ? 0 : 1;
+
     return {
       url: customElementDO.script.url,
       line: customElementDO.script.startLine,
-      column: customElementDO.script.startColumn,
+      column: customElementDO.script.startColumn - columnBase,
     };
   }
 

@@ -58,30 +58,15 @@ define(function (require, exports, module) {
   function ErrorRep(props) {
     const { object, mode, shouldRenderTooltip, depth } = props;
     const preview = object.preview;
-    const customFormat = props.customFormat && mode !== MODE.TINY && !depth;
+    const customFormat =
+      props.customFormat &&
+      mode !== MODE.TINY &&
+      mode !== MODE.HEADER &&
+      !depth;
 
-    let name;
-    if (
-      preview &&
-      preview.name &&
-      typeof preview.name === "string" &&
-      preview.kind
-    ) {
-      switch (preview.kind) {
-        case "Error":
-          name = preview.name;
-          break;
-        case "DOMException":
-          name = preview.kind;
-          break;
-        default:
-          throw new Error("Unknown preview kind for the Error rep.");
-      }
-    } else {
-      name = "Error";
-    }
-
-    const errorTitle = mode === MODE.TINY ? name : `${name}: `;
+    const name = getErrorName(props);
+    const errorTitle =
+      mode === MODE.TINY || mode === MODE.HEADER ? name : `${name}: `;
     const content = [];
 
     if (customFormat) {
@@ -92,7 +77,7 @@ define(function (require, exports, module) {
       );
     }
 
-    if (mode !== MODE.TINY) {
+    if (mode !== MODE.TINY && mode !== MODE.HEADER) {
       const {
         Rep,
       } = require("devtools/client/shared/components/reps/reps/rep");
@@ -131,6 +116,29 @@ define(function (require, exports, module) {
     );
   }
 
+  function getErrorName(props) {
+    const { object } = props;
+    const preview = object.preview;
+
+    let name;
+    if (typeof preview?.name === "string" && preview.kind) {
+      switch (preview.kind) {
+        case "Error":
+          name = preview.name;
+          break;
+        case "DOMException":
+          name = preview.kind;
+          break;
+        default:
+          throw new Error("Unknown preview kind for the Error rep.");
+      }
+    } else {
+      name = "Error";
+    }
+
+    return name;
+  }
+
   /**
    * Returns a React element reprensenting the Error stacktrace, i.e.
    * transform error.stack from:
@@ -153,7 +161,7 @@ define(function (require, exports, module) {
       return stack;
     }
 
-    parseStackString(preview.stack).forEach((frame, index, frames) => {
+    parseStackString(preview.stack).forEach((frame, index) => {
       let onLocationClick;
       const { filename, lineNumber, columnNumber, functionName, location } =
         frame;

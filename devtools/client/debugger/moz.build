@@ -10,10 +10,11 @@ DIRS += [
 
 include("../shared/build/node-templates.mozbuild")
 
-XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.toml"]
 
 BROWSER_CHROME_MANIFESTS += [
-    "test/mochitest/browser.ini",
+    "test/mochitest/browser_aj.toml",
+    "test/mochitest/browser_kz.toml",
 ]
 
 DevToolsModules(

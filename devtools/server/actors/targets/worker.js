@@ -13,6 +13,9 @@ const {
 } = require("resource://devtools/server/actors/webconsole.js");
 const { ThreadActor } = require("resource://devtools/server/actors/thread.js");
 const { TracerActor } = require("resource://devtools/server/actors/tracer.js");
+const {
+  ObjectsManagerActor,
+} = require("resource://devtools/server/actors/objects-manager.js");
 
 const Targets = require("resource://devtools/server/actors/targets/index.js");
 
@@ -47,6 +50,15 @@ class WorkerTargetActor extends BaseTargetActor {
     this.workerGlobal = workerGlobal;
     this.sessionContext = sessionContext;
 
+    // We don't have access to Ci from worker thread
+    // 2 == nsIWorkerDebugger.TYPE_SERVICE
+    // 1 == nsIWorkerDebugger.TYPE_SHARED
+    if (workerDebuggerData.type == 2) {
+      this.targetType = Targets.TYPES.SERVICE_WORKER;
+    } else if (workerDebuggerData.type == 1) {
+      this.targetType = Targets.TYPES.SHARED_WORKER;
+    }
+
     this._workerDebuggerData = workerDebuggerData;
     this._sourcesManager = null;
     this.workerConsoleApiMessagesDispatchedToMainThread =
@@ -60,16 +72,18 @@ class WorkerTargetActor extends BaseTargetActor {
     });
 
     // needed by the console actor
-    this.threadActor = new ThreadActor(this, this.workerGlobal);
+    this.threadActor = new ThreadActor(this);
 
     // needed by the thread actor to communicate with the console when evaluating logpoints.
     this._consoleActor = new WebConsoleActor(this.conn, this);
 
     this.tracerActor = new TracerActor(this.conn, this);
+    this.objectsManagerActor = new ObjectsManagerActor(this.conn, this);
 
     this.manage(this.threadActor);
     this.manage(this._consoleActor);
     this.manage(this.tracerActor);
+    this.manage(this.objectsManagerActor);
   }
 
   // Expose the worker URL to the thread actor.
@@ -85,6 +99,7 @@ class WorkerTargetActor extends BaseTargetActor {
       consoleActor: this._consoleActor?.actorID,
       threadActor: this.threadActor?.actorID,
       tracerActor: this.tracerActor?.actorID,
+      objectsManagerActor: this.objectsManagerActor?.actorID,
 
       id: this._workerDebuggerData.id,
       type: this._workerDebuggerData.type,
@@ -109,12 +124,6 @@ class WorkerTargetActor extends BaseTargetActor {
     }
 
     return this._sourcesManager;
-  }
-
-  // This is called from the ThreadActor#onAttach method
-  onThreadAttached() {
-    // This isn't an RDP event and is only listened to from startup/worker.js.
-    this.emit("worker-thread-attached");
   }
 
   destroy() {

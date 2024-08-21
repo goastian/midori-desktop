@@ -56,7 +56,8 @@ const {
 } = require("resource://devtools/shared/specs/inspector.js");
 
 const { setTimeout } = ChromeUtils.importESModule(
-  "resource://gre/modules/Timer.sys.mjs"
+  "resource://gre/modules/Timer.sys.mjs",
+  { global: "contextual" }
 );
 const {
   LongStringActor,
@@ -181,7 +182,7 @@ class InspectorActor extends Actor {
       return this._pageStylePromise;
     }
 
-    this._pageStylePromise = this.getWalker().then(walker => {
+    this._pageStylePromise = this.getWalker().then(() => {
       const pageStyle = new PageStyleActor(this);
       this.manage(pageStyle);
       return pageStyle;
@@ -263,7 +264,7 @@ class InspectorActor extends Actor {
       return url;
     }
 
-    const baseURI = Services.io.newURI(document.location.href);
+    const baseURI = Services.io.newURI(document.baseURI);
     return Services.io.newURI(url, null, baseURI).spec;
   }
 

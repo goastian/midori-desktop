@@ -4,36 +4,46 @@
 
 import { isWasm, getWasmLineNumberFormatter, renderWasmText } from "../wasm";
 import { isMinified } from "../isMinified";
-import { resizeBreakpointGutter, resizeToggleButton } from "../ui";
+import {
+  resizeBreakpointGutter,
+  resizeToggleButton,
+  getLineNumberWidth,
+} from "../ui";
 import { javascriptLikeExtensions } from "../source";
 
-let sourceDocs = {};
+const sourceDocs = new Map();
 
 export function getDocument(key) {
-  return sourceDocs[key];
+  return sourceDocs.get(key);
 }
 
 export function hasDocument(key) {
-  return !!getDocument(key);
+  return sourceDocs.has(key);
 }
 
 export function setDocument(key, doc) {
-  sourceDocs[key] = doc;
+  sourceDocs.set(key, doc);
 }
 
 export function removeDocument(key) {
-  delete sourceDocs[key];
+  sourceDocs.delete(key);
 }
 
 export function clearDocuments() {
-  sourceDocs = {};
+  sourceDocs.clear();
 }
 
-function resetLineNumberFormat(editor) {
+export function clearDocumentsForSources(sources) {
+  for (const source of sources) {
+    sourceDocs.delete(source.id);
+  }
+}
+
+export function resetLineNumberFormat(editor) {
   const cm = editor.codeMirror;
   cm.setOption("lineNumberFormatter", number => number);
   resizeBreakpointGutter(cm);
-  resizeToggleButton(cm);
+  resizeToggleButton(getLineNumberWidth(cm));
 }
 
 function updateLineNumberFormat(editor, sourceId) {
@@ -45,59 +55,7 @@ function updateLineNumberFormat(editor, sourceId) {
   const lineNumberFormatter = getWasmLineNumberFormatter(sourceId);
   cm.setOption("lineNumberFormatter", lineNumberFormatter);
   resizeBreakpointGutter(cm);
-  resizeToggleButton(cm);
-}
-
-export function updateDocument(editor, source) {
-  if (!source) {
-    return;
-  }
-
-  const sourceId = source.id;
-  const doc = getDocument(sourceId) || editor.createDocument();
-  editor.replaceDocument(doc);
-
-  updateLineNumberFormat(editor, sourceId);
-}
-
-/* used to apply the context menu wrap line option change to all the docs */
-export function updateDocuments(updater) {
-  for (const key in sourceDocs) {
-    if (sourceDocs[key].cm == null) {
-      continue;
-    } else {
-      updater(sourceDocs[key]);
-    }
-  }
-}
-
-export function clearEditor(editor) {
-  const doc = editor.createDocument("", { name: "text" });
-  editor.replaceDocument(doc);
-  resetLineNumberFormat(editor);
-}
-
-export function showLoading(editor) {
-  let doc = getDocument("loading");
-
-  if (doc) {
-    editor.replaceDocument(doc);
-  } else {
-    doc = editor.createDocument(L10N.getStr("loadingText"), { name: "text" });
-    setDocument("loading", doc);
-  }
-}
-
-export function showErrorMessage(editor, msg) {
-  let error;
-  if (msg.includes("WebAssembly binary source is not available")) {
-    error = L10N.getStr("wasmIsNotAvailable");
-  } else {
-    error = L10N.getFormatStr("errorLoadingText3", msg);
-  }
-  const doc = editor.createDocument(error, { name: "text" });
-  editor.replaceDocument(doc);
-  resetLineNumberFormat(editor);
+  resizeToggleButton(getLineNumberWidth(cm));
 }
 
 const contentTypeModeMap = new Map([

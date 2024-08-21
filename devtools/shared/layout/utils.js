@@ -10,10 +10,12 @@ loader.lazyRequireGetter(
   "resource://devtools/shared/DevToolsUtils.js"
 );
 const lazy = {};
-ChromeUtils.defineModuleGetter(
+ChromeUtils.defineESModuleGetters(
   lazy,
-  "NetUtil",
-  "resource://gre/modules/NetUtil.jsm"
+  {
+    NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
+  },
+  { global: "contextual" }
 );
 
 const SHEET_TYPE = {
@@ -917,11 +919,10 @@ function isFrameBlockedByCSP(node) {
   const res = node.ownerDocument.csp.shouldLoad(
     Ci.nsIContentPolicy.TYPE_SUBDOCUMENT,
     null, // nsICSPEventListener
+    null, // nsILoadInfo
     uri,
     null, // aOriginalURIIfRedirect
-    false, // aSendViolationReports
-    null, // aNonce
-    false // aParserCreated
+    false // aSendViolationReports
   );
 
   return res !== Ci.nsIContentPolicy.ACCEPT;

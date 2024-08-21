@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
+import React from "devtools/client/shared/vendor/react";
 import { shallow } from "enzyme";
 import ResultList from "../ResultList";
 
@@ -29,19 +29,18 @@ const payload = {
 
 describe("Result list", () => {
   it("should call onClick function", () => {
-    const wrapper = shallow(<ResultList {...payload} />);
-
+    const wrapper = shallow(React.createElement(ResultList, payload));
     wrapper.childAt(selectedIndex).simulate("click");
     expect(selectItem).toHaveBeenCalled();
   });
 
   it("should render the component", () => {
-    const wrapper = shallow(<ResultList {...payload} />);
+    const wrapper = shallow(React.createElement(ResultList, payload));
     expect(wrapper).toMatchSnapshot();
   });
 
   it("selected index should have 'selected class'", () => {
-    const wrapper = shallow(<ResultList {...payload} />);
+    const wrapper = shallow(React.createElement(ResultList, payload));
     const childHasClass = wrapper.childAt(selectedIndex).hasClass("selected");
 
     expect(childHasClass).toEqual(true);

@@ -2,31 +2,38 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
-import { bindActionCreators, combineReducers } from "redux";
-import ReactDOM from "react-dom";
-const { Provider } = require("react-redux");
+import React from "devtools/client/shared/vendor/react";
+import {
+  bindActionCreators,
+  combineReducers,
+} from "devtools/client/shared/vendor/redux";
+import ReactDOM from "devtools/client/shared/vendor/react-dom";
+const {
+  Provider,
+} = require("resource://devtools/client/shared/vendor/react-redux.js");
 
 import ToolboxProvider from "devtools/client/framework/store-provider";
 import flags from "devtools/shared/flags";
 const {
   registerStoreObserver,
-} = require("devtools/client/shared/redux/subscriber");
+} = require("resource://devtools/client/shared/redux/subscriber.js");
 
 const { AppConstants } = ChromeUtils.importESModule(
   "resource://gre/modules/AppConstants.sys.mjs"
 );
 
-import { SearchDispatcher } from "../workers/search";
-import { PrettyPrintDispatcher } from "../workers/pretty-print";
+import { SearchDispatcher } from "../workers/search/index";
+import { PrettyPrintDispatcher } from "../workers/pretty-print/index";
 
 import configureStore from "../actions/utils/create-store";
-import reducers from "../reducers";
-import * as selectors from "../selectors";
+import reducers from "../reducers/index";
+import * as selectors from "../selectors/index";
 import App from "../components/App";
 import { asyncStore, prefs } from "./prefs";
 import { persistTabs } from "../utils/tabs";
-const { sanitizeBreakpoints } = require("devtools/client/shared/thread-utils");
+const {
+  sanitizeBreakpoints,
+} = require("resource://devtools/client/shared/thread-utils.js");
 
 let gWorkers;
 
@@ -35,7 +42,7 @@ export function bootstrapStore(client, workers, panel, initialState) {
   const createStore = configureStore({
     log: prefs.logging || flags.testing,
     timing: debugJsModules,
-    makeThunkArgs: (args, state) => {
+    makeThunkArgs: args => {
       return { ...args, client, ...workers, panel };
     },
   });
@@ -44,7 +51,7 @@ export function bootstrapStore(client, workers, panel, initialState) {
   registerStoreObserver(store, updatePrefs);
 
   const actions = bindActionCreators(
-    require("../actions").default,
+    require("../actions/index").default,
     store.dispatch
   );
 

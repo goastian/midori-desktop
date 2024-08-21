@@ -110,10 +110,46 @@ p:first-letter {
     color: purple;
 }
 
-dialog::backdrop {
-    background-color: tomato;
+:is(
+    dialog,
+    [popover],
+    :fullscreen,
+)::backdrop {
+    background-color: transparent;
 }
 
+.highlights-container {
+    &::highlight(search) {
+        background-color: tomato;
+        color: gold;
+    }
+
+    &::highlight(search) {
+        color: white;
+    }
+
+    &::highlight(filter) {
+        background-color: purple;
+    }
+
+    &::highlight(unused) {
+        background-color: cyan;
+    }
+}
+
+input::slider-fill {
+    background: tomato;
+}
+input::slider-thumb {
+    background: gold;
+}
+input::slider-track {
+    background: seagreen;
+}
+
+.url-fragment-text-directives::target-text {
+    background-color: salmon;
+}
     </style>
   </head>
   <body>
@@ -139,11 +175,41 @@ dialog::backdrop {
         <li id="list" class="box">List element</li>
     </ol>
 
-    <dialog>In dialog</dialog>
+    <dialog>
+        In dialog
+        <div id="in-dialog" popover>hello</div>
+    </dialog>
+
+    <label>Range <input type="range" class="slider"></label>
+    <label>Not range <input type="text" class="slider"></label>
+
+    <section class="highlights-container">
+        Firefox Developer Tools is a set of web developer tools built into Firefox.
+        You can use them to examine, edit, and debug HTML, CSS, and JavaScript.
+    </section>
+
+    <section class="url-fragment-text-directives">May the fox be with you</section>
+
+    <canvas></canvas>
+
     <script>
         "use strict";
         // This is the only way to have the ::backdrop style to be applied
         document.querySelector("dialog").showModal()
+        document.querySelector("#in-dialog").showPopover()
+
+        // Register highlights for ::highlight pseudo elements
+        const highlightsContainer = document.querySelector(".highlights-container");
+
+        const searchRange = new Range();
+        searchRange.setStart(highlightsContainer.firstChild, 0);
+        searchRange.setEnd(highlightsContainer.firstChild, 10);
+        CSS.highlights.set("search", new globalThis.Highlight(searchRange));
+
+        const filterRange = new Range();
+        filterRange.setStart(highlightsContainer.firstChild, 20);
+        filterRange.setEnd(highlightsContainer.firstChild, 100);
+        CSS.highlights.set("filter", new globalThis.Highlight(filterRange));
     </script>
   </body>
 </html>

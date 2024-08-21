@@ -3,29 +3,39 @@
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 export * from "./source-documents";
-export * from "./get-token-location";
 export * from "./source-search";
 export * from "../ui";
-export { onMouseOver } from "./token-events";
+export * from "./tokens";
 
 import { createEditor } from "./create-editor";
 
 import { isWasm, lineToWasmOffset, wasmOffsetToLine } from "../wasm";
 import { createLocation } from "../location";
+import { features } from "../prefs";
 
 let editor;
 
-export function getEditor() {
+export function getEditor(useCm6) {
   if (editor) {
     return editor;
   }
 
-  editor = createEditor();
+  editor = createEditor(useCm6);
   return editor;
 }
 
 export function removeEditor() {
   editor = null;
+}
+
+/**
+ *  Update line wrapping for the codemirror editor.
+ */
+export function updateEditorLineWrapping(value) {
+  if (!editor) {
+    return;
+  }
+  editor.setLineWrapping(value);
 }
 
 function getCodeMirror() {
@@ -56,6 +66,10 @@ export function toEditorLine(sourceId, lineOrOffset) {
     return wasmOffsetToLine(sourceId, lineOrOffset) || 0;
   }
 
+  if (features.codemirrorNext) {
+    return lineOrOffset;
+  }
+
   return lineOrOffset ? lineOrOffset - 1 : 1;
 }
 
@@ -64,105 +78,32 @@ export function fromEditorLine(sourceId, line, sourceIsWasm) {
     return lineToWasmOffset(sourceId, line) || 0;
   }
 
+  if (features.codemirrorNext) {
+    return line;
+  }
+
   return line + 1;
 }
 
 export function toEditorPosition(location) {
+  // Note that Spidermonkey, Debugger frontend and CodeMirror are all consistant regarding column
+  // and are 0-based. But only CodeMirror consider the line to be 0-based while the two others
+  // consider lines to be 1-based.
   return {
-    line: toEditorLine(location.sourceId, location.line),
-    column: isWasm(location.sourceId) || !location.column ? 0 : location.column,
-  };
-}
-
-export function toEditorRange(sourceId, location) {
-  const { start, end } = location;
-  return {
-    start: toEditorPosition({ ...start, sourceId }),
-    end: toEditorPosition({ ...end, sourceId }),
+    line: toEditorLine(location.source.id, location.line),
+    column:
+      isWasm(location.source.id) || (!location.column ? 0 : location.column),
   };
 }
 
 export function toSourceLine(sourceId, line) {
-  return isWasm(sourceId) ? lineToWasmOffset(sourceId, line) : line + 1;
-}
-
-export function scrollToColumn(codeMirror, line, column) {
-  const { top, left } = codeMirror.charCoords({ line, ch: column }, "local");
-
-  if (!isVisible(codeMirror, top, left)) {
-    const scroller = codeMirror.getScrollerElement();
-    const centeredX = Math.max(left - scroller.offsetWidth / 2, 0);
-    const centeredY = Math.max(top - scroller.offsetHeight / 2, 0);
-
-    codeMirror.scrollTo(centeredX, centeredY);
+  if (isWasm(sourceId)) {
+    return lineToWasmOffset(sourceId, line);
   }
-}
-
-function isVisible(codeMirror, top, left) {
-  function withinBounds(x, min, max) {
-    return x >= min && x <= max;
+  if (features.codemirrorNext) {
+    return line;
   }
-
-  const scrollArea = codeMirror.getScrollInfo();
-  const charWidth = codeMirror.defaultCharWidth();
-  const fontHeight = codeMirror.defaultTextHeight();
-  const { scrollTop, scrollLeft } = codeMirror.doc;
-
-  const inXView = withinBounds(
-    left,
-    scrollLeft,
-    scrollLeft + (scrollArea.clientWidth - 30) - charWidth
-  );
-
-  const inYView = withinBounds(
-    top,
-    scrollTop,
-    scrollTop + scrollArea.clientHeight - fontHeight
-  );
-
-  return inXView && inYView;
-}
-
-export function getLocationsInViewport(
-  { codeMirror },
-  // Offset represents an allowance of characters or lines offscreen to improve
-  // perceived performance of column breakpoint rendering
-  offsetHorizontalCharacters = 100,
-  offsetVerticalLines = 20
-) {
-  // Get scroll position
-  if (!codeMirror) {
-    return {
-      start: { line: 0, column: 0 },
-      end: { line: 0, column: 0 },
-    };
-  }
-  const charWidth = codeMirror.defaultCharWidth();
-  const scrollArea = codeMirror.getScrollInfo();
-  const { scrollLeft } = codeMirror.doc;
-  const rect = codeMirror.getWrapperElement().getBoundingClientRect();
-  const topVisibleLine =
-    codeMirror.lineAtHeight(rect.top, "window") - offsetVerticalLines;
-  const bottomVisibleLine =
-    codeMirror.lineAtHeight(rect.bottom, "window") + offsetVerticalLines;
-
-  const leftColumn = Math.floor(
-    scrollLeft > 0 ? scrollLeft / charWidth - offsetHorizontalCharacters : 0
-  );
-  const rightPosition = scrollLeft + (scrollArea.clientWidth - 30);
-  const rightCharacter =
-    Math.floor(rightPosition / charWidth) + offsetHorizontalCharacters;
-
-  return {
-    start: {
-      line: topVisibleLine || 0,
-      column: leftColumn || 0,
-    },
-    end: {
-      line: bottomVisibleLine || 0,
-      column: rightCharacter,
-    },
-  };
+  return line + 1;
 }
 
 export function markText({ codeMirror }, className, { start, end }) {
@@ -217,14 +158,4 @@ export function getCursorLine(codeMirror) {
 
 export function getCursorColumn(codeMirror) {
   return codeMirror.getCursor().ch;
-}
-
-export function getTokenEnd(codeMirror, line, column) {
-  const token = codeMirror.getTokenAt({
-    line,
-    ch: column + 1,
-  });
-  const tokenString = token.string;
-
-  return tokenString === "{" || tokenString === "[" ? null : token.end;
 }

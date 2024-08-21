@@ -56,8 +56,8 @@ const RELOAD_CONDITION_PREF_PREFIX = "devtools.responsive.reloadConditions.";
 const RELOAD_NOTIFICATION_PREF =
   "devtools.responsive.reloadNotification.enabled";
 
-function debug(msg) {
-  // console.log(`RDM manager: ${msg}`);
+function debug(_msg) {
+  // console.log(`RDM manager: ${_msg}`);
 }
 
 /**
@@ -97,8 +97,10 @@ class ResponsiveUI {
     this.onTargetAvailable = this.onTargetAvailable.bind(this);
 
     this.networkFront = null;
-    // Promise resovled when the UI init has completed.
-    this.inited = this.init();
+    // Promise resolved when the UI init has completed.
+    const { promise, resolve } = Promise.withResolvers();
+    this.initialized = promise;
+    this.resolveInited = resolve;
 
     EventEmitter.decorate(this);
   }
@@ -126,7 +128,7 @@ class ResponsiveUI {
   /**
    * Open RDM while preserving the state of the page.
    */
-  async init() {
+  async initialize() {
     debug("Init start");
 
     this.initRDMFrame();
@@ -160,6 +162,7 @@ class ResponsiveUI {
     message.post(this.toolWindow, "post-init");
 
     debug("Init done");
+    this.resolveInited();
   }
 
   /**
@@ -266,14 +269,14 @@ class ResponsiveUI {
     // gracefully, but that shouldn't be a problem since the tab will go away.
     // So, skip any waiting when we're about to close the tab.
     const isTabDestroyed =
-      !this.tab.linkedBrowser || this.responsiveFront.isDestroyed();
+      !this.tab.linkedBrowser || this.responsiveFront?.isDestroyed();
     const isWindowClosing = options?.reason === "unload" || isTabDestroyed;
     const isTabContentDestroying =
       isWindowClosing || options?.reason === "TabClose";
 
     // Ensure init has finished before starting destroy
     if (!isTabContentDestroying) {
-      await this.inited;
+      await this.initialized;
 
       // Restore screen orientation of physical device.
       await Promise.all([
@@ -355,7 +358,7 @@ class ResponsiveUI {
     this.browserStackEl = null;
     this.browserWindow = null;
     this.tab = null;
-    this.inited = null;
+    this.initialized = null;
     this.rdmFrame = null;
     this.resizeHandle = null;
     this.resizeHandleX = null;
@@ -858,7 +861,7 @@ class ResponsiveUI {
       await this.networkFront.clearNetworkThrottling();
       return false;
     }
-    const data = throttlingProfiles.find(({ id }) => id == profile);
+    const data = throttlingProfiles.profiles.find(({ id }) => id == profile);
     const { download, upload, latency } = data;
     await this.networkFront.setNetworkThrottling({
       downloadThroughput: download,
@@ -1000,7 +1003,7 @@ class ResponsiveUI {
    * Helper for tests, etc. Assumes a single viewport for now.
    */
   async setViewportSize(size) {
-    await this.inited;
+    await this.initialized;
 
     // Ensure that width and height are valid.
     let { width, height } = size;

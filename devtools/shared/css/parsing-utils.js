@@ -11,7 +11,9 @@
 
 "use strict";
 
-const { getCSSLexer } = require("resource://devtools/shared/css/lexer.js");
+const {
+  InspectorCSSParserWrapper,
+} = require("resource://devtools/shared/css/lexer.js");
 
 loader.lazyRequireGetter(
   this,
@@ -23,7 +25,6 @@ loader.lazyRequireGetter(
 const SELECTOR_ATTRIBUTE = (exports.SELECTOR_ATTRIBUTE = 1);
 const SELECTOR_ELEMENT = (exports.SELECTOR_ELEMENT = 2);
 const SELECTOR_PSEUDO_CLASS = (exports.SELECTOR_PSEUDO_CLASS = 3);
-const CSS_BLOCKS = { "(": ")", "[": "]", "{": "}" };
 
 // When commenting out a declaration, we put this character into the
 // comment opener so that future parses of the commented text know to
@@ -40,14 +41,14 @@ const COMMENT_PARSING_HEURISTIC_BYPASS_CHAR =
  * @see CSSToken for details about the returned tokens
  */
 function* cssTokenizer(string) {
-  const lexer = getCSSLexer(string);
+  const lexer = new InspectorCSSParserWrapper(string);
   while (true) {
     const token = lexer.nextToken();
     if (!token) {
       break;
     }
     // None of the existing consumers want comments.
-    if (token.tokenType !== "comment") {
+    if (token.tokenType !== "Comment") {
       yield token;
     }
   }
@@ -73,7 +74,7 @@ function* cssTokenizer(string) {
  *        line and column information.
  */
 function cssTokenizerWithLineColumn(string) {
-  const lexer = getCSSLexer(string);
+  const lexer = new InspectorCSSParserWrapper(string);
   const result = [];
   let prevToken = undefined;
   while (true) {
@@ -92,7 +93,7 @@ function cssTokenizerWithLineColumn(string) {
       break;
     }
 
-    if (token.tokenType === "comment") {
+    if (token.tokenType === "Comment") {
       // We've already dealt with the previous token's location.
       prevToken = undefined;
     } else {
@@ -296,7 +297,9 @@ function parseDeclarationsInternal(
     throw new Error("empty input string");
   }
 
-  const lexer = getCSSLexer(inputString);
+  const lexer = new InspectorCSSParserWrapper(inputString, {
+    trackEOFChars: true,
+  });
 
   let declarations = [getEmptyDeclaration()];
   let lastProp = declarations[0];
@@ -316,7 +319,22 @@ function parseDeclarationsInternal(
   // This is true if we saw whitespace or comments between the "!" and
   // the "important".
   let importantWS = false;
+
+  // This tracks the nesting parsing state
+  let isInNested = false;
+  let nestingLevel = 0;
+
   let current = "";
+
+  const resetStateForNextDeclaration = () => {
+    current = "";
+    currentBlocks = [];
+    importantState = 0;
+    importantWS = false;
+    declarations.push(getEmptyDeclaration());
+    lastProp = declarations.at(-1);
+  };
+
   while (true) {
     const token = lexer.nextToken();
     if (!token) {
@@ -325,7 +343,7 @@ function parseDeclarationsInternal(
 
     // Update the start and end offsets of the declaration, but only
     // when we see a significant token.
-    if (token.tokenType !== "whitespace" && token.tokenType !== "comment") {
+    if (token.tokenType !== "WhiteSpace" && token.tokenType !== "Comment") {
       if (lastProp.offsets[0] === undefined) {
         lastProp.offsets[0] = token.startOffset;
       }
@@ -344,21 +362,53 @@ function parseDeclarationsInternal(
     }
 
     if (
-      token.tokenType === "symbol" &&
-      currentBlocks[currentBlocks.length - 1] === token.text
+      // If we're not already in a nested rule
+      !isInNested &&
+      // and there's an opening curly bracket
+      token.tokenType === "CurlyBracketBlock" &&
+      // and we're not inside a function or an attribute
+      !currentBlocks.length
+    ) {
+      // Assume we're encountering a nested rule.
+      isInNested = true;
+      nestingLevel = 1;
+
+      continue;
+    } else if (isInNested) {
+      if (token.tokenType == "CurlyBracketBlock") {
+        nestingLevel++;
+      } else if (token.tokenType == "CloseCurlyBracket") {
+        nestingLevel--;
+      }
+
+      // If we were in a nested rule, and we saw the last closing curly bracket,
+      // reset the state to parse possible declarations declared after the nested rule.
+      if (nestingLevel === 0) {
+        isInNested = false;
+        // We need to remove the previous pending declaration and reset the state
+        declarations.pop();
+        resetStateForNextDeclaration();
+      }
+      continue;
+    } else if (
+      token.tokenType === "CloseParenthesis" ||
+      token.tokenType === "CloseSquareBracket"
     ) {
       // Closing the last block that was opened.
       currentBlocks.pop();
       current += token.text;
-    } else if (token.tokenType === "symbol" && CSS_BLOCKS[token.text]) {
+    } else if (
+      token.tokenType === "ParenthesisBlock" ||
+      token.tokenType === "SquareBracketBlock"
+    ) {
       // Opening a new block.
-      currentBlocks.push(CSS_BLOCKS[token.text]);
+      currentBlocks.push(token.text);
       current += token.text;
-    } else if (token.tokenType === "function") {
+    } else if (token.tokenType === "Function") {
       // Opening a function is like opening a new block, so push one to the stack.
-      currentBlocks.push(CSS_BLOCKS["("]);
-      current += token.text + "(";
-    } else if (token.tokenType === "symbol" && token.text === ":") {
+      currentBlocks.push("(");
+      current += token.text;
+    } else if (token.tokenType === "Colon") {
       // Either way, a "!important" we've seen is no longer valid now.
       importantState = 0;
       importantWS = false;
@@ -384,11 +434,7 @@ function parseDeclarationsInternal(
         // with colons)
         current += ":";
       }
-    } else if (
-      token.tokenType === "symbol" &&
-      token.text === ";" &&
-      !currentBlocks.length
-    ) {
+    } else if (token.tokenType === "Semicolon" && !currentBlocks.length) {
       lastProp.terminator = "";
       // When parsing a comment, if the name hasn't been set, then we
       // have probably just seen an ordinary semicolon used in text,
@@ -407,13 +453,8 @@ function parseDeclarationsInternal(
         }
       }
       lastProp.value = cssTrim(current);
-      current = "";
-      currentBlocks = [];
-      importantState = 0;
-      importantWS = false;
-      declarations.push(getEmptyDeclaration());
-      lastProp = declarations[declarations.length - 1];
-    } else if (token.tokenType === "ident") {
+      resetStateForNextDeclaration();
+    } else if (token.tokenType === "Ident") {
       if (token.text === "important" && importantState === 1) {
         importantState = 2;
       } else {
@@ -428,17 +469,15 @@ function parseDeclarationsInternal(
           importantState = 0;
           importantWS = false;
         }
-        // Re-escape the token to avoid dequoting problems.
-        // See bug 1287620.
-        current += CSS.escape(token.text);
+        current += token.text;
       }
-    } else if (token.tokenType === "symbol" && token.text === "!") {
+    } else if (token.tokenType === "Delim" && token.text === "!") {
       importantState = 1;
-    } else if (token.tokenType === "whitespace") {
+    } else if (token.tokenType === "WhiteSpace") {
       if (current !== "") {
-        current = current.trimRight() + " ";
+        current = current.trimEnd() + " ";
       }
-    } else if (token.tokenType === "comment") {
+    } else if (token.tokenType === "Comment") {
       if (parseComments && !lastProp.name && !lastProp.value) {
         const commentText = inputString.substring(
           token.startOffset + 2,
@@ -455,7 +494,7 @@ function parseDeclarationsInternal(
         const lastDecl = declarations.pop();
         declarations = [...declarations, ...newDecls, lastDecl];
       } else {
-        current = current.trimRight() + " ";
+        current = current.trimEnd() + " ";
       }
     } else {
       if (importantState > 0) {
@@ -475,7 +514,11 @@ function parseDeclarationsInternal(
 
   // Handle whatever trailing properties or values might still be there
   if (current) {
-    if (!lastProp.name) {
+    // If nested rule doesn't have closing bracket
+    if (isInNested && nestingLevel > 0) {
+      // We need to remove the previous (nested) pending declaration
+      declarations.pop();
+    } else if (!lastProp.name) {
       // Ignore this case in comments.
       if (!inComment) {
         // Trailing property found, e.g. p1:v1;p2:v2;p3
@@ -489,7 +532,7 @@ function parseDeclarationsInternal(
         current += "!";
       }
       lastProp.value = cssTrim(current);
-      const terminator = lexer.performEOFFixup("", true);
+      const terminator = lexer.performEOFFixup("");
       lastProp.terminator = terminator + ";";
       // If the input was unterminated, attribute the remainder to
       // this property.  This avoids some bad behavior when rewriting
@@ -597,15 +640,17 @@ function parsePseudoClassesAndAttributes(value) {
     throw new Error("empty input string");
   }
 
-  const tokens = cssTokenizer(value);
+  // See InspectorCSSToken dictionnary in InspectorUtils.webidl for more information
+  // about the tokens.
+  const tokensIterator = cssTokenizer(value);
   const result = [];
   let current = "";
   let functionCount = 0;
   let hasAttribute = false;
   let hasColon = false;
 
-  for (const token of tokens) {
-    if (token.tokenType === "ident") {
+  for (const token of tokensIterator) {
+    if (token.tokenType === "Ident") {
       current += value.substring(token.startOffset, token.endOffset);
 
       if (hasColon && !functionCount) {
@@ -616,7 +661,7 @@ function parsePseudoClassesAndAttributes(value) {
         current = "";
         hasColon = false;
       }
-    } else if (token.tokenType === "symbol" && token.text === ":") {
+    } else if (token.tokenType === "Colon") {
       if (!hasColon) {
         if (current) {
           result.push({ value: current, type: SELECTOR_ELEMENT });
@@ -627,10 +672,10 @@ function parsePseudoClassesAndAttributes(value) {
       }
 
       current += token.text;
-    } else if (token.tokenType === "function") {
+    } else if (token.tokenType === "Function") {
       current += value.substring(token.startOffset, token.endOffset);
       functionCount++;
-    } else if (token.tokenType === "symbol" && token.text === ")") {
+    } else if (token.tokenType === "CloseParenthesis") {
       current += token.text;
 
       if (hasColon && functionCount == 1) {
@@ -644,7 +689,7 @@ function parsePseudoClassesAndAttributes(value) {
       } else {
         functionCount--;
       }
-    } else if (token.tokenType === "symbol" && token.text === "[") {
+    } else if (token.tokenType === "SquareBracketBlock") {
       if (!hasAttribute && !functionCount) {
         if (current) {
           result.push({ value: current, type: SELECTOR_ELEMENT });
@@ -655,7 +700,7 @@ function parsePseudoClassesAndAttributes(value) {
       }
 
       current += token.text;
-    } else if (token.tokenType === "symbol" && token.text === "]") {
+    } else if (token.tokenType === "CloseSquareBracket") {
       current += token.text;
 
       if (hasAttribute && !functionCount) {

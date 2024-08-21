@@ -31,7 +31,9 @@ const {
   PRESETS,
   DEFAULT_PRESET_CATEGORY,
 } = require("resource://devtools/client/shared/widgets/CubicBezierPresets.js");
-const { getCSSLexer } = require("resource://devtools/shared/css/lexer.js");
+const {
+  InspectorCSSParserWrapper,
+} = require("resource://devtools/shared/css/lexer.js");
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
 /**
@@ -918,13 +920,13 @@ function parseTimingFunction(value) {
     return PREDEFINED[value];
   }
 
-  const tokenStream = getCSSLexer(value);
+  const tokenStream = new InspectorCSSParserWrapper(value);
   const getNextToken = () => {
     while (true) {
       const token = tokenStream.nextToken();
       if (
         !token ||
-        (token.tokenType !== "whitespace" && token.tokenType !== "comment")
+        (token.tokenType !== "WhiteSpace" && token.tokenType !== "Comment")
       ) {
         return token;
       }
@@ -932,24 +934,20 @@ function parseTimingFunction(value) {
   };
 
   let token = getNextToken();
-  if (token.tokenType !== "function" || token.text !== "cubic-bezier") {
+  if (token.tokenType !== "Function" || token.value !== "cubic-bezier") {
     return undefined;
   }
 
   const result = [];
   for (let i = 0; i < 4; ++i) {
     token = getNextToken();
-    if (!token || token.tokenType !== "number") {
+    if (!token || token.tokenType !== "Number") {
       return undefined;
     }
     result.push(token.number);
 
     token = getNextToken();
-    if (
-      !token ||
-      token.tokenType !== "symbol" ||
-      token.text !== (i == 3 ? ")" : ",")
-    ) {
+    if (!token || token.tokenType !== (i == 3 ? "CloseParenthesis" : "Comma")) {
       return undefined;
     }
   }

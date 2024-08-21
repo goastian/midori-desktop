@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import { isOriginalId } from "devtools/client/shared/source-map-loader/index";
 import {
   debuggerToSourceMapLocation,
   sourceMapToDebuggerLocation,
@@ -23,7 +22,7 @@ import { waitForSourceToBeRegisteredInStore } from "../client/firefox/create";
  *        The matching generated location.
  */
 export async function getGeneratedLocation(location, thunkArgs) {
-  if (!isOriginalId(location.sourceId)) {
+  if (!location.source.isOriginal) {
     return location;
   }
 
@@ -49,10 +48,14 @@ export async function getGeneratedLocation(location, thunkArgs) {
  * @param {Object} location
  * @param {Object} thunkArgs
  *        Redux action thunk arguments
- * @param {boolean} waitForSource
+ * @param {Object} options
+ * @param {boolean} options.waitForSource
  *        Default to false. If true is passed, this function will
  *        ensure waiting, possibly asynchronously for the related original source
  *        to be registered in the redux store.
+ * @param {boolean} options.looseSearch
+ *        Default to false. If true, this won't query an exact mapping,
+ *        but will also lookup for a loose match at the first column and next lines.
  *
  * @param {Object}
  *        The matching original location.
@@ -60,14 +63,15 @@ export async function getGeneratedLocation(location, thunkArgs) {
 export async function getOriginalLocation(
   location,
   thunkArgs,
-  waitForSource = false
+  { waitForSource = false, looseSearch = false } = {}
 ) {
-  if (isOriginalId(location.sourceId)) {
+  if (location.source.isOriginal) {
     return location;
   }
   const { getState, sourceMapLoader } = thunkArgs;
   const originalLocation = await sourceMapLoader.getOriginalLocation(
-    debuggerToSourceMapLocation(location)
+    debuggerToSourceMapLocation(location),
+    { looseSearch }
   );
   if (!originalLocation) {
     return location;
@@ -83,11 +87,7 @@ export async function getOriginalLocation(
 }
 
 export async function getMappedLocation(location, thunkArgs) {
-  if (!location.source) {
-    throw new Error(`no source ${location.sourceId}`);
-  }
-
-  if (isOriginalId(location.sourceId)) {
+  if (location.source.isOriginal) {
     const generatedLocation = await getGeneratedLocation(location, thunkArgs);
     return { location, generatedLocation };
   }
@@ -114,7 +114,7 @@ export async function getRelatedMapLocation(location, thunkArgs) {
     return location;
   }
 
-  if (isOriginalId(location.sourceId)) {
+  if (location.source.isOriginal) {
     return getGeneratedLocation(location, thunkArgs);
   }
 

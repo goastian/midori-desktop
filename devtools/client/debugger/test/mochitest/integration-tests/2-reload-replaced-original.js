@@ -48,7 +48,7 @@ addIntegrationTask(async function testReloadingRemovedOriginalSources(
   );
 
   let breakpoint = dbg.selectors.getBreakpointsList()[0];
-  is(breakpoint.location.sourceUrl, replacedSource.url);
+  is(breakpoint.location.source.url, replacedSource.url);
   is(breakpoint.location.line, 4);
   if (isCompressed) {
     is(breakpoint.generatedLocation.line, 1);
@@ -56,6 +56,10 @@ addIntegrationTask(async function testReloadingRemovedOriginalSources(
   } else {
     is(breakpoint.generatedLocation.line, 80);
   }
+  info(
+    "Assert that the breakpoint snippet is originaly set to the to-be-removed original source content"
+  );
+  assertBreakpointSnippet(dbg, 1, `console.log("Removed original");`);
 
   await resume(dbg);
 
@@ -85,7 +89,7 @@ addIntegrationTask(async function testReloadingRemovedOriginalSources(
   );
 
   breakpoint = dbg.selectors.getBreakpointsList()[0];
-  is(breakpoint.location.sourceUrl, newSource.url);
+  is(breakpoint.location.source.url, newSource.url);
   is(breakpoint.location.line, 4);
   if (isCompressed) {
     is(breakpoint.generatedLocation.line, 1);
@@ -93,6 +97,10 @@ addIntegrationTask(async function testReloadingRemovedOriginalSources(
   } else {
     is(breakpoint.generatedLocation.line, 80);
   }
+  info(
+    "Assert that the breakpoint snippet changed to the new original source content"
+  );
+  assertBreakpointSnippet(dbg, 1, `console.log("New original");`);
 
   await resume(dbg);
   info("Wait for reload to complete after resume");

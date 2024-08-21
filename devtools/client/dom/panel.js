@@ -147,7 +147,7 @@ DomPanel.prototype = {
     this.refresh();
   },
 
-  _onTargetSelected({ targetFront }) {
+  _onTargetSelected() {
     this.forceRefresh();
   },
 
@@ -218,7 +218,10 @@ DomPanel.prototype = {
 
   async getRootGrip() {
     const { result } = await this._toolbox.commands.scriptCommand.execute(
-      "window"
+      "window",
+      {
+        disableBreaks: true,
+      }
     );
     return result;
   },

@@ -57,7 +57,7 @@ struct DevTools : public ::testing::Test {
   static void reportError(JSContext* cx, const char* message,
                           JSErrorReport* report) {
     fprintf(stderr, "%s:%u:%s\n",
-            report->filename ? report->filename : "<no filename>",
+            report->filename ? report->filename.c_str() : "<no filename>",
             (unsigned int)report->lineno, message);
   }
 
@@ -70,6 +70,9 @@ struct DevTools : public ::testing::Test {
   JSObject* createGlobal() {
     /* Create the global object. */
     JS::RealmOptions options;
+    // dummy
+    options.behaviors().setReduceTimerPrecisionCallerType(
+        JS::RTPCallerTypeToken{0});
     return JS_NewGlobalObject(cx, getGlobalClass(), nullptr,
                               JS::FireOnNewGlobalHook, options);
   }
@@ -99,7 +102,7 @@ class MOZ_STACK_CLASS FakeNode {
   JS::Zone* zone;
   size_t size;
 
-  explicit FakeNode() : edges(), compartment(nullptr), zone(nullptr), size(1) {}
+  explicit FakeNode() : compartment(nullptr), zone(nullptr), size(1) {}
 };
 
 namespace JS {
@@ -199,7 +202,7 @@ MATCHER_P(EdgeTo, id, "") {
 // A mock `Writer` class to be used with testing `WriteHeapGraph`.
 class MockWriter : public CoreDumpWriter {
  public:
-  virtual ~MockWriter() override {}
+  virtual ~MockWriter() override = default;
   MOCK_METHOD2(writeNode,
                bool(const JS::ubi::Node&, CoreDumpWriter::EdgePolicy));
   MOCK_METHOD1(writeMetadata, bool(uint64_t));

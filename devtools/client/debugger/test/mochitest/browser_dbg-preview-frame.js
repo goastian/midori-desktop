@@ -18,13 +18,39 @@ add_task(async function () {
   info("Preview a variable in the second frame");
   clickElement(dbg, "frame", 2);
   await waitForSelectedFrame(dbg, "firstCall");
-  await assertFunctionPreview(dbg, 8, 4, "secondCall()");
+  await assertPreviews(dbg, [
+    {
+      line: 8,
+      column: 4,
+      header: `function secondCall()`,
+      fields: [["name", `"secondCall"`]],
+      expression: "secondCall",
+    },
+  ]);
 
   info("Preview should still work after selecting different locations");
   const frame = dbg.selectors.getVisibleSelectedFrame();
   const inScopeLines = dbg.selectors.getInScopeLines(frame.location);
   await selectSource(dbg, "script-switching-01.js");
-  await assertFunctionPreview(dbg, 8, 4, "secondCall()");
+  await assertPreviews(dbg, [
+    {
+      line: 6,
+      column: 12,
+      header: `function firstCall()`,
+      fields: [["name", `"firstCall"`]],
+      expression: "firstCall",
+    },
+  ]);
+  await assertPreviews(dbg, [
+    {
+      line: 8,
+      column: 4,
+      header: `function secondCall()`,
+      fields: [["name", `"secondCall"`]],
+      expression: "secondCall",
+    },
+  ]);
+
   is(
     dbg.selectors.getInScopeLines(frame.location),
     inScopeLines,
@@ -34,14 +60,9 @@ add_task(async function () {
 
 function waitForSelectedFrame(dbg, displayName) {
   const { getInScopeLines, getVisibleSelectedFrame } = dbg.selectors;
-  return waitForState(dbg, state => {
+  return waitForState(dbg, () => {
     const frame = getVisibleSelectedFrame();
 
     return frame?.displayName == displayName && getInScopeLines(frame.location);
   });
-}
-
-async function assertFunctionPreview(dbg, line, column, displayName) {
-  const previewEl = await tryHovering(dbg, line, column, "tooltip");
-  is(previewEl.innerText, displayName);
 }

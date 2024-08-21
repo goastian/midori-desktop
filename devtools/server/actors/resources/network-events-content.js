@@ -13,10 +13,14 @@ loader.lazyRequireGetter(
 
 const lazy = {};
 
-ChromeUtils.defineESModuleGetters(lazy, {
-  NetworkUtils:
-    "resource://devtools/shared/network-observer/NetworkUtils.sys.mjs",
-});
+ChromeUtils.defineESModuleGetters(
+  lazy,
+  {
+    NetworkUtils:
+      "resource://devtools/shared/network-observer/NetworkUtils.sys.mjs",
+  },
+  { global: "contextual" }
+);
 
 /**
  * Handles network events from the content process
@@ -64,7 +68,7 @@ class NetworkEventContentWatcher {
     this.networkEvents.clear();
   }
 
-  httpFailedOpeningRequest(subject, topic) {
+  httpFailedOpeningRequest(subject) {
     const channel = subject.QueryInterface(Ci.nsIHttpChannel);
 
     // Ignore preload requests to avoid duplicity request entries in
@@ -117,11 +121,12 @@ class NetworkEventContentWatcher {
     }
 
     this.onNetworkEventAvailable(channel, {
-      networkEventOptions: { fromCache: true },
+      fromCache: true,
+      networkEventOptions: {},
     });
   }
 
-  onNetworkEventAvailable(channel, { networkEventOptions }) {
+  onNetworkEventAvailable(channel, { fromCache, networkEventOptions }) {
     const actor = new NetworkEventActor(
       this.targetActor.conn,
       this.targetActor.sessionContext,
@@ -155,6 +160,8 @@ class NetworkEventContentWatcher {
     this.networkEvents.set(resource.resourceId, networkEvent);
 
     this.onAvailable([resource]);
+
+    actor.addCacheDetails({ fromCache });
     const isBlocked = !!resource.blockedReason;
     if (isBlocked) {
       this._emitUpdate(networkEvent);
@@ -165,6 +172,7 @@ class NetworkEventContentWatcher {
         {} /* timings */,
         {} /* offsets */
       );
+      actor.addServerTimings({});
       actor.addResponseContent(
         {
           mimeType: channel.contentType,
@@ -187,6 +195,10 @@ class NetworkEventContentWatcher {
     const { resourceUpdates, receivedUpdates } = networkEvent;
 
     switch (updateResource.updateType) {
+      case "cacheDetails":
+        resourceUpdates.fromCache = updateResource.fromCache;
+        resourceUpdates.fromServiceWorker = updateResource.fromServiceWorker;
+        break;
       case "responseStart":
         // For cached image requests channel.responseStatus is set to 200 as
         // expected. However responseStatusText is empty. In this case fallback

@@ -8,12 +8,18 @@ const Debugger = require("Debugger");
 const DevToolsUtils = require("resource://devtools/shared/DevToolsUtils.js");
 
 const lazy = {};
-ChromeUtils.defineESModuleGetters(lazy, {
-  Reflect: "resource://gre/modules/reflect.sys.mjs",
-});
+if (!isWorker) {
+  ChromeUtils.defineESModuleGetters(
+    lazy,
+    {
+      Reflect: "resource://gre/modules/reflect.sys.mjs",
+    },
+    { global: "contextual" }
+  );
+}
 loader.lazyRequireGetter(
   this,
-  ["formatCommand", "isCommand"],
+  ["isCommand"],
   "resource://devtools/server/actors/webconsole/commands/parser.js",
   true
 );
@@ -99,6 +105,8 @@ function isObject(value) {
  *        - eager: Set to true if you want the evaluation to bail if it may have side effects.
  *        - url: the url to evaluate the script as. Defaults to "debugger eval code",
  *        or "debugger eager eval code" if eager is true.
+ *        - preferConsoleCommandsOverLocalSymbols: Set to true if console commands
+ *        should override local symbols.
  * @param object webConsole
  *
  * @return object
@@ -108,26 +116,65 @@ function isObject(value) {
  *         - global: the Debugger.Object for the global where the string was evaluated in.
  *         - result: the result of the evaluation.
  */
-exports.evalWithDebugger = function (string, options = {}, webConsole) {
-  if (isCommand(string.trim()) && options.eager) {
+function evalWithDebugger(string, options = {}, webConsole) {
+  const trimmedString = string.trim();
+  // The help function needs to be easy to guess, so accept "?" as a shortcut
+  if (trimmedString === "?") {
+    return evalWithDebugger(":help", options, webConsole);
+  }
+
+  const isCmd = isCommand(trimmedString);
+
+  if (isCmd && options.eager) {
     return {
       result: null,
     };
   }
 
-  const evalString = getEvalInput(string);
   const { frame, dbg } = getFrameDbg(options, webConsole);
 
   const { dbgGlobal, bindSelf } = getDbgGlobal(options, dbg, webConsole);
+
+  // If the strings starts with a `:`, do not try to evaluate the strings
+  // and instead only call the related command function directly from
+  // the privileged codebase.
+  if (isCmd) {
+    try {
+      return WebConsoleCommandsManager.executeCommand(
+        webConsole,
+        dbgGlobal,
+        options.selectedNodeActor,
+        string
+      );
+    } catch (e) {
+      // Catch any exception and return a result similar to the output
+      // of executeCommand to notify the client about this unexpected error.
+      return {
+        helperResult: {
+          type: "exception",
+          message: e.message,
+        },
+      };
+    }
+  }
 
   const helpers = WebConsoleCommandsManager.getWebConsoleCommands(
     webConsole,
     dbgGlobal,
     frame,
     string,
-    options.selectedNodeActor
+    options.selectedNodeActor,
+    options.preferConsoleCommandsOverLocalSymbols
   );
   let { bindings } = helpers;
+
+  // Ease calling the help command by not requiring the "()".
+  // But wait for the bindings computation in order to know if "help" variable
+  // was overloaded by the page. If it is missing from bindings, it is overloaded and we should
+  // display its value by doing a regular evaluation.
+  if (trimmedString === "help" && bindings.help) {
+    return evalWithDebugger(":help", options, webConsole);
+  }
 
   // '_self' refers to the JS object references via options.selectedObjectActor.
   // This isn't exposed on typical console evaluation, but only when "Store As Global"
@@ -154,32 +201,29 @@ exports.evalWithDebugger = function (string, options = {}, webConsole) {
     evalOptions.lineNumber = options.lineNumber;
   }
 
+  if (options.disableBreaks || options.eager) {
+    // When we are disabling breakpoints for a given evaluation, or when we are doing an eager evaluation,
+    // also prevent spawning related Debugger.Source object to avoid showing it
+    // in the debugger UI
+    evalOptions.hideFromDebugger = true;
+  }
+
+  if (options.preferConsoleCommandsOverLocalSymbols) {
+    evalOptions.useInnerBindings = true;
+  }
+
   updateConsoleInputEvaluation(dbg, webConsole);
 
-  let noSideEffectDebugger = null;
-  if (options.eager) {
-    noSideEffectDebugger = makeSideeffectFreeDebugger();
-  }
-
-  let result;
-  try {
-    result = getEvalResult(
-      dbg,
-      evalString,
-      evalOptions,
-      bindings,
-      frame,
-      dbgGlobal,
-      noSideEffectDebugger
-    );
-  } finally {
-    // We need to be absolutely sure that the sideeffect-free debugger's
-    // debuggees are removed because otherwise we risk them terminating
-    // execution of later code in the case of unexpected exceptions.
-    if (noSideEffectDebugger) {
-      noSideEffectDebugger.removeAllDebuggees();
-    }
-  }
+  const evalString = getEvalInput(string, bindings);
+  const result = getEvalResult(
+    dbg,
+    evalString,
+    evalOptions,
+    bindings,
+    frame,
+    dbgGlobal,
+    options.eager
+  );
 
   // Attempt to initialize any declarations found in the evaluated string
   // since they may now be stuck in an "initializing" state due to the
@@ -199,8 +243,30 @@ exports.evalWithDebugger = function (string, options = {}, webConsole) {
     frame,
     dbgGlobal,
   };
-};
+}
+exports.evalWithDebugger = evalWithDebugger;
 
+/**
+ * Sub-function to reduce the complexity of evalWithDebugger.
+ * This focuses on calling Debugger.Frame or Debugger.Object eval methods.
+ *
+ * @param {Debugger} dbg
+ * @param {String} string
+ *        The string to evaluate.
+ * @param {Object} evalOptions
+ *        Spidermonkey options to pass to eval methods.
+ * @param {Object} bindings
+ *        Dictionary object with symbols to override in the evaluation.
+ * @param {Debugger.Frame} frame
+ *        If paused, the paused frame.
+ * @param {Debugger.Object} dbgGlobal
+ *        The target's global.
+ * @param {Boolean} eager
+ *        Is this an eager evaluation?
+ * @return {Object}
+ *        The evaluation result object.
+ *        See `Debugger.Ojbect.executeInGlobalWithBindings` definition.
+ */
 function getEvalResult(
   dbg,
   string,
@@ -208,21 +274,22 @@ function getEvalResult(
   bindings,
   frame,
   dbgGlobal,
-  noSideEffectDebugger
+  eager
 ) {
-  if (noSideEffectDebugger) {
-    // Bug 1637883 demonstrated an issue where dbgGlobal was somehow in the
-    // same compartment as the Debugger, meaning it could not be debugged
-    // and thus cannot handle eager evaluation. In that case we skip execution.
-    if (!noSideEffectDebugger.hasDebuggee(dbgGlobal.unsafeDereference())) {
-      return null;
-    }
+  // When we are doing an eager evaluation, we aren't using the target's Debugger object
+  // but a special one, dedicated to each evaluation.
+  let noSideEffectDebugger = null;
+  if (eager) {
+    noSideEffectDebugger = makeSideeffectFreeDebugger(dbg);
 
     // When a sideeffect-free debugger has been created, we need to eval
     // in the context of that debugger in order for the side-effect tracking
     // to apply.
-    frame = frame ? noSideEffectDebugger.adoptFrame(frame) : null;
-    dbgGlobal = noSideEffectDebugger.adoptDebuggeeValue(dbgGlobal);
+    if (frame) {
+      frame = noSideEffectDebugger.adoptFrame(frame);
+    } else {
+      dbgGlobal = noSideEffectDebugger.adoptDebuggeeValue(dbgGlobal);
+    }
     if (bindings) {
       bindings = Object.keys(bindings).reduce((acc, key) => {
         acc[key] = noSideEffectDebugger.adoptDebuggeeValue(bindings[key]);
@@ -231,25 +298,36 @@ function getEvalResult(
     }
   }
 
-  let result;
-  if (frame) {
-    result = frame.evalWithBindings(string, bindings, evalOptions);
-  } else {
-    result = dbgGlobal.executeInGlobalWithBindings(
-      string,
-      bindings,
-      evalOptions
-    );
-  }
-  if (noSideEffectDebugger && result) {
-    if ("return" in result) {
-      result.return = dbg.adoptDebuggeeValue(result.return);
+  try {
+    let result;
+    if (frame) {
+      result = frame.evalWithBindings(string, bindings, evalOptions);
+    } else {
+      result = dbgGlobal.executeInGlobalWithBindings(
+        string,
+        bindings,
+        evalOptions
+      );
     }
-    if ("throw" in result) {
-      result.throw = dbg.adoptDebuggeeValue(result.throw);
+    if (noSideEffectDebugger && result) {
+      if ("return" in result) {
+        result.return = dbg.adoptDebuggeeValue(result.return);
+      }
+      if ("throw" in result) {
+        result.throw = dbg.adoptDebuggeeValue(result.throw);
+      }
+    }
+    return result;
+  } finally {
+    // We need to be absolutely sure that the sideeffect-free debugger's
+    // debuggees are removed because otherwise we risk them terminating
+    // execution of later code in the case of unexpected exceptions.
+    if (noSideEffectDebugger) {
+      noSideEffectDebugger.removeAllDebuggees();
+      noSideEffectDebugger.onNativeCall = undefined;
+      noSideEffectDebugger.shouldAvoidSideEffects = false;
     }
   }
-  return result;
 }
 
 /**
@@ -346,28 +424,54 @@ function forceLexicalInitForVariableDeclarationsInThrowingExpression(
 }
 
 /**
- * Creates a side-effect-free debugger instance
+ * Creates a side-effect-free Debugger instance.
  *
- * @return object
- *         Side-effect-free debugger.
+ * @param {Debugger} targetActorDbg
+ *        The target actor's dbg object, crafted by make-debugger.js module.
+ * @return {Debugger}
+ *         Side-effect-free Debugger instance.
  */
-function makeSideeffectFreeDebugger() {
-  // We ensure that the metadata for native functions is loaded before we
-  // initialize sideeffect-prevention because the data is lazy-loaded, and this
-  // logic can run inside of debuggee compartments because the
-  // "addAllGlobalsAsDebuggees" considers the vast majority of realms
-  // valid debuggees. Without this, eager-eval runs the risk of failing
-  // because building the list of valid native functions is itself a
-  // side-effectful operation because it needs to populate a
-  // module cache, among any number of other things.
+function makeSideeffectFreeDebugger(targetActorDbg) {
+  // Populate the cached Map once before the evaluation
   ensureSideEffectFreeNatives();
 
   // Note: It is critical for debuggee performance that we implement all of
   // this debuggee tracking logic with a separate Debugger instance.
   // Bug 1617666 arises otherwise if we set an onEnterFrame hook on the
   // existing debugger object and then later clear it.
+  //
+  // Also note that we aren't registering any global to this debugger.
+  // We will only adopt values into it: the paused frame (if any) or the
+  // target's global (when not paused).
   const dbg = new Debugger();
-  dbg.addAllGlobalsAsDebuggees();
+
+  // Special flag in order to ensure that any evaluation or call being
+  // made via this debugger will be ignored by all debuggers except this one.
+  dbg.exclusiveDebuggerOnEval = true;
+
+  // We need to register all target actor's globals.
+  // In most cases, this will be only one global, except for the browser toolbox,
+  // where process target actors may interact with many.
+  // On the browser toolbox, we may have many debuggees and this is important to register
+  // them in order to detect native call made from/to these others globals.
+  for (const global of targetActorDbg.findDebuggees()) {
+    try {
+      dbg.addDebuggee(global);
+    } catch (e) {
+      // Ignore exceptions from the following cases:
+      //   * A global from the same compartment (happens with parent process)
+      //   * A dead wrapper (happens when the reference gets nuked after
+      //     findAllGlobals call)
+      if (
+        !e.message.includes(
+          "debugger and debuggee must be in different compartments"
+        ) &&
+        !e.message.includes("can't access dead object")
+      ) {
+        throw e;
+      }
+    }
+  }
 
   const timeoutDuration = 100;
   const endTime = Date.now() + timeoutDuration;
@@ -412,6 +516,7 @@ function makeSideeffectFreeDebugger() {
   // The debugger only calls onNativeCall handlers on the debugger that is
   // explicitly calling either eval, DebuggerObject.apply or DebuggerObject.call,
   // so we need to add this hook on "dbg" even though the rest of our hooks work via "newDbg".
+  const { SIDE_EFFECT_FREE } = WebConsoleCommandsManager;
   dbg.onNativeCall = (callee, reason) => {
     try {
       // Setters are always effectful. Natives called normally or called via
@@ -429,9 +534,22 @@ function makeSideeffectFreeDebugger() {
         new Error("Unable to validate native function against allowlist")
       );
     }
+
+    // The WebConsole Commands manager will use Cu.exportFunction which will force
+    // to call a native method which is hard to identify.
+    // getEvalResult will flag those getter methods with a magic attribute.
+    if (
+      reason == "call" &&
+      callee.unsafeDereference().isSideEffectFree === SIDE_EFFECT_FREE
+    ) {
+      // Returning undefined causes execution to continue normally.
+      return undefined;
+    }
+
     // Returning null terminates the current evaluation.
     return null;
   };
+  dbg.shouldAvoidSideEffects = true;
 
   return dbg;
 }
@@ -494,8 +612,12 @@ function nativeIsEagerlyEvaluateable(fn) {
       return true;
   }
 
+  // This needs to use isSameNativeWithJitInfo instead of isSameNative, given
+  // DOM methods share single native function with different JSJitInto,
+  // and isSameNative cannot distinguish between side-effect-free methods
+  // and others.
   const natives = gSideEffectFreeNatives.get(fn.name);
-  return natives && natives.some(n => fn.isSameNative(n));
+  return natives && natives.some(n => fn.isSameNativeWithJitInfo(n));
 }
 
 function updateConsoleInputEvaluation(dbg, webConsole) {
@@ -512,20 +634,6 @@ function updateConsoleInputEvaluation(dbg, webConsole) {
 
 function getEvalInput(string) {
   const trimmedString = string.trim();
-  // The help function needs to be easy to guess, so we make the () optional.
-  if (trimmedString === "help" || trimmedString === "?") {
-    return "help()";
-  }
-  // we support Unix like syntax for commands if it is preceeded by `:`
-  if (isCommand(string)) {
-    try {
-      return formatCommand(string);
-    } catch (e) {
-      console.log(e);
-      return `throw "${e}"`;
-    }
-  }
-
   // Add easter egg for console.mihai().
   if (
     trimmedString == "console.mihai()" ||

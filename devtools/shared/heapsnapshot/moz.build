@@ -10,9 +10,9 @@ with Files("**"):
 if CONFIG["ENABLE_TESTS"]:
     DIRS += ["tests/gtest"]
 
-XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell/xpcshell.ini"]
-MOCHITEST_CHROME_MANIFESTS += ["tests/chrome/chrome.ini"]
-BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell/xpcshell.toml"]
+MOCHITEST_CHROME_MANIFESTS += ["tests/chrome/chrome.toml"]
+BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
 
 EXPORTS.mozilla.devtools += [
     "AutoMemMap.h",
@@ -52,8 +52,8 @@ DevToolsModules(
     "census-tree-node.js",
     "CensusUtils.js",
     "DominatorTreeNode.js",
+    "HeapAnalyses.worker.js",
     "HeapAnalysesClient.js",
-    "HeapAnalysesWorker.js",
     "HeapSnapshotFileUtils.js",
     "shortest-paths.js",
 )

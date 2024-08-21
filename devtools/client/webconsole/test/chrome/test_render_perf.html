@@ -22,7 +22,9 @@
 
 const NUM_MESSAGES = 4000;
 const NUM_STREAMING = 100;
-const {FileUtils} = ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+const {FileUtils} = ChromeUtils.importESModule(
+  "resource://gre/modules/FileUtils.sys.mjs"
+);
 Services.prefs.setIntPref("devtools.hud.loglimit", NUM_MESSAGES);
 const WebConsoleWrapper = browserRequire("devtools/client/webconsole/webconsole-wrapper");
 const actions =
@@ -212,7 +214,7 @@ window.onload = async function() {
 
   ok(true, "Tests finished");
 
-  const file = FileUtils.getFile("TmpD", [`test_render_perf_${Date.now()}.json`]);
+  const file = new FileUtils.File(PathUtils.join(PathUtils.tempDir, `test_render_perf_${Date.now()}.json`));
   Services.profiler.dumpProfileToFile(file.path);
   Services.profiler.StopProfiler();
 

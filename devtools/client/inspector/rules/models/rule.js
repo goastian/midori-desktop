@@ -51,12 +51,21 @@ class Rule {
     this.elementStyle = elementStyle;
     this.domRule = options.rule;
     this.compatibilityIssues = null;
-    this.matchedSelectors = options.matchedSelectors || [];
+
+    if (this.domRule.hasMatchedSelectorIndexesTrait) {
+      this.matchedSelectorIndexes = options.matchedSelectorIndexes || [];
+    } else {
+      // @backward-compat { version 128 } this.matchedDesugaredSelectors can be removed
+      // once 128 hits release
+      this.matchedDesugaredSelectors = options.matchedDesugaredSelectors || [];
+    }
+
     this.pseudoElement = options.pseudoElement || "";
     this.isSystem = options.isSystem;
     this.isUnmatched = options.isUnmatched || false;
     this.inherited = options.inherited || null;
     this.keyframes = options.keyframes || null;
+    this.userAdded = options.rule.userAdded;
 
     this.cssProperties = this.elementStyle.ruleView.cssProperties;
     this.inspector = this.elementStyle.ruleView.inspector;
@@ -99,12 +108,23 @@ class Rule {
   }
 
   get selector() {
-    return {
+    const data = {
       getUniqueSelector: this.getUniqueSelector,
-      matchedSelectors: this.matchedSelectors,
       selectors: this.domRule.selectors,
+      selectorsSpecificity: this.domRule.selectorsSpecificity,
+      selectorWarnings: this.domRule.selectors,
       selectorText: this.keyframes ? this.domRule.keyText : this.selectorText,
     };
+
+    if (this.domRule.hasMatchedSelectorIndexesTrait) {
+      data.matchedSelectorIndexes = this.matchedSelectorIndexes;
+    } else {
+      // @backward-compat { version 128 } matchedDesugaredSelectors can be removed
+      // once 128 hits release
+      data.matchedDesugaredSelectors = this.matchedDesugaredSelectors;
+    }
+
+    return data;
   }
 
   get sourceMapURLService() {
@@ -575,7 +595,11 @@ class Rule {
       // However, we must keep all properties in order for rule
       // rewriting to work properly.  So, compute the "invisible"
       // property here.
-      const invisible = this.inherited && !this.cssProperties.isInherited(name);
+      const inherits = prop.isCustomProperty
+        ? prop.inherits
+        : this.cssProperties.isInherited(name);
+      const invisible = this.inherited && !inherits;
+
       const value = store.userProperties.getProperty(
         this.domRule,
         name,
@@ -628,7 +652,13 @@ class Rule {
    * properties as needed.
    */
   refresh(options) {
-    this.matchedSelectors = options.matchedSelectors || [];
+    if (this.domRule.hasMatchedSelectorIndexesTrait) {
+      this.matchedSelectorIndexes = options.matchedSelectorIndexes || [];
+    } else {
+      // @backward-compat { version 128 } this.matchedDesugaredSelectors can be removed
+      // once 128 hits release
+      this.matchedDesugaredSelectors = options.matchedDesugaredSelectors || [];
+    }
     const newTextProps = this._getTextProperties();
 
     // The element style rule behaves differently on refresh. We basically need to update
@@ -811,6 +841,43 @@ class Rule {
     }
 
     return selectorText + " {" + terminator + cssText + "}";
+  }
+
+  /**
+   * @returns {Boolean} Whether or not the rule is in a layer
+   */
+  isInLayer() {
+    return this.domRule.ancestorData.some(({ type }) => type === "layer");
+  }
+
+  /**
+   * Return whether this rule and the one passed are in the same layer,
+   * (as in described in the spec; this is not checking that the 2 rules are children
+   * of the same CSSLayerBlockRule)
+   *
+   * @param {Rule} otherRule: The rule we want to compare with
+   * @returns {Boolean}
+   */
+  isInDifferentLayer(otherRule) {
+    const filterLayer = ({ type }) => type === "layer";
+    const thisLayers = this.domRule.ancestorData.filter(filterLayer);
+    const otherRuleLayers = otherRule.domRule.ancestorData.filter(filterLayer);
+
+    if (thisLayers.length !== otherRuleLayers.length) {
+      return true;
+    }
+
+    return thisLayers.some((layer, i) => {
+      const otherRuleLayer = otherRuleLayers[i];
+      // For named layers, we can compare the layer name directly, since we want to identify
+      // the actual layer, not the specific CSSLayerBlockRule.
+      // For nameless layers though, we don't have a choice and we can only identify them
+      // via their CSSLayerBlockRule, so we're using the rule actorID.
+      return (
+        (layer.value || layer.actorID) !==
+        (otherRuleLayer.value || otherRuleLayer.actorID)
+      );
+    });
   }
 
   /**

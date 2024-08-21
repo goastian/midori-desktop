@@ -28,7 +28,8 @@ add_task(
 
     info("Test pausing on an original source");
     invokeInTab("foo");
-    await waitForPaused(dbg, "original.js");
+    await waitForPausedInOriginalFileAndToggleMapScopes(dbg, "original.js");
+
     assertPausedAtSourceAndLine(dbg, findSource(dbg, "original.js").id, 8);
 
     info("Then stepping into a generated source");
@@ -66,7 +67,7 @@ add_task(
 
     // We can't use the `stepIn` helper as this last step will resume
     // and the helper is expecting to pause again
-    await dbg.actions.stepIn(getThreadContext(dbg));
+    await dbg.actions.stepIn();
     await assertNotPaused(dbg);
   }
 );

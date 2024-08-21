@@ -161,7 +161,11 @@ Tools.inspector = {
   // that trigger the element picker.
   preventRaisingOnKey: true,
   onkey(panel, toolbox) {
-    toolbox.nodePicker.togglePicker();
+    if (
+      Services.prefs.getBoolPref("devtools.command-button-pick.enabled", false)
+    ) {
+      toolbox.nodePicker.togglePicker();
+    }
   },
 
   isToolSupported(toolbox) {
@@ -518,6 +522,7 @@ exports.ToolboxButtons = [
       }
       return ResponsiveUIManager.isActiveForTab(localTab);
     },
+    isToggle: true,
     setup(toolbox, onChange) {
       ResponsiveUIManager.on("on", onChange);
       ResponsiveUIManager.on("off", onChange);
@@ -629,6 +634,7 @@ function createHighlightButton(highlighters, id) {
         inspectorFront.getKnownHighlighter(name)?.isShown()
       );
     },
+    isToggle: true,
   };
 }
 

@@ -1,13 +1,13 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-/* eslint-env mozilla/chrome-worker */
+/* eslint-env worker */
 
 "use strict";
 
 console.log("Initializing worker.");
 
-self.onmessage = e => {
+self.onmessage = () => {
   console.log("Starting test.");
   try {
     const path = ChromeUtils.saveHeapSnapshot({ runtime: true });

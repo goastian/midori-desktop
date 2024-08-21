@@ -20,10 +20,12 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIResProtocolHandler"
 );
 
-ChromeUtils.defineModuleGetter(
+ChromeUtils.defineESModuleGetters(
   lazy,
-  "NetUtil",
-  "resource://gre/modules/NetUtil.jsm"
+  {
+    NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
+  },
+  { global: "contextual" }
 );
 
 // Define some shortcuts.
@@ -34,9 +36,6 @@ function* getOwnIdentifiers(x) {
 
 function isJSONURI(uri) {
   return uri.endsWith(".json");
-}
-function isJSMURI(uri) {
-  return uri.endsWith(".jsm");
 }
 function isSYSMJSURI(uri) {
   return uri.endsWith(".sys.mjs");
@@ -117,12 +116,14 @@ function Sandbox(options) {
       "ChromeUtils",
       "CSS",
       "CSSRule",
+      "CustomStateSet",
       "DOMParser",
       "Element",
       "Event",
       "FileReader",
       "FormData",
       "Headers",
+      "InspectorCSSParser",
       "InspectorUtils",
       "MIDIInputMap",
       "MIDIOutputMap",
@@ -215,7 +216,7 @@ function load(loader, module) {
 
 // Utility function to normalize module `uri`s so they have `.js` extension.
 function normalizeExt(uri) {
-  if (isJSURI(uri) || isJSONURI(uri) || isJSMURI(uri) || isSYSMJSURI(uri)) {
+  if (isJSURI(uri) || isJSONURI(uri) || isSYSMJSURI(uri)) {
     return uri;
   }
   return uri + ".js";
@@ -333,12 +334,11 @@ export function Require(loader, requirer) {
     // If module is already cached by loader then just use it.
     if (uri in modules) {
       module = modules[uri];
-    } else if (isJSMURI(uri)) {
-      module = modules[uri] = Module(requirement, uri);
-      module.exports = ChromeUtils.import(uri);
     } else if (isSYSMJSURI(uri)) {
       module = modules[uri] = Module(requirement, uri);
-      module.exports = ChromeUtils.importESModule(uri);
+      module.exports = ChromeUtils.importESModule(uri, {
+        global: "contextual",
+      });
     } else if (isJSONURI(uri)) {
       let data;
 

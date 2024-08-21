@@ -2,10 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import { PureComponent } from "react";
-import PropTypes from "prop-types";
+import { PureComponent } from "devtools/client/shared/vendor/react";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
 
-import { toEditorPosition, getTokenEnd, hasDocument } from "../../utils/editor";
+import {
+  toEditorPosition,
+  getTokenEnd,
+  hasDocument,
+} from "../../utils/editor/index";
 
 import { getIndentation } from "../../utils/indentation";
 import { createLocation } from "../../utils/location";
@@ -60,9 +64,11 @@ export default class Exception extends PureComponent {
     }
 
     const location = createLocation({
-      column: columnNumber - 1,
-      line: lineNumber,
       source: selectedSource,
+      line: lineNumber,
+      // Exceptions are reported with column being 1-based
+      // while the frontend uses 0-based column.
+      column: columnNumber - 1,
     });
 
     const { line, column } = toEditorPosition(location);

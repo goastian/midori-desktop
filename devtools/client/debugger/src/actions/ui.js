@@ -7,20 +7,15 @@ import {
   getPaneCollapse,
   getQuickOpenEnabled,
   getSource,
-  getSourceContent,
-  getMainThread,
+  getSourceTextContent,
   getIgnoreListSourceUrls,
   getSourceByURL,
   getBreakpointsForSource,
-} from "../selectors";
+} from "../selectors/index";
 import { selectSource } from "../actions/sources/select";
-import {
-  getEditor,
-  getLocationsInViewport,
-  updateDocuments,
-} from "../utils/editor";
+import { getEditor, updateEditorLineWrapping } from "../utils/editor/index";
 import { blackboxSourceActorsForSource } from "./sources/blackbox";
-import { toggleBreakpoints } from "./breakpoints";
+import { toggleBreakpoints } from "./breakpoints/index";
 import { copyToTheClipboard } from "../utils/clipboard";
 import { isFulfilled } from "../utils/async-value";
 import { primaryPaneTabs } from "../constants";
@@ -67,7 +62,7 @@ export function setActiveSearch(activeSearch) {
 }
 
 export function toggleFrameworkGrouping(toggleValue) {
-  return ({ dispatch, getState }) => {
+  return ({ dispatch }) => {
     dispatch({
       type: "TOGGLE_FRAMEWORK_GROUPING",
       value: toggleValue,
@@ -76,7 +71,7 @@ export function toggleFrameworkGrouping(toggleValue) {
 }
 
 export function toggleInlinePreview(toggleValue) {
-  return ({ dispatch, getState }) => {
+  return ({ dispatch }) => {
     dispatch({
       type: "TOGGLE_INLINE_PREVIEW",
       value: toggleValue,
@@ -85,8 +80,8 @@ export function toggleInlinePreview(toggleValue) {
 }
 
 export function toggleEditorWrapping(toggleValue) {
-  return ({ dispatch, getState }) => {
-    updateDocuments(doc => doc.cm.setOption("lineWrapping", toggleValue));
+  return ({ dispatch }) => {
+    updateEditorLineWrapping(toggleValue);
 
     dispatch({
       type: "TOGGLE_EDITOR_WRAPPING",
@@ -96,7 +91,7 @@ export function toggleEditorWrapping(toggleValue) {
 }
 
 export function toggleSourceMapsEnabled(toggleValue) {
-  return ({ dispatch, getState }) => {
+  return ({ dispatch }) => {
     dispatch({
       type: "TOGGLE_SOURCE_MAPS_ENABLED",
       value: toggleValue,
@@ -104,7 +99,7 @@ export function toggleSourceMapsEnabled(toggleValue) {
   };
 }
 
-export function showSource(cx, sourceId) {
+export function showSource(sourceId) {
   return ({ dispatch, getState }) => {
     const source = getSource(getState(), sourceId);
     if (!source) {
@@ -121,7 +116,7 @@ export function showSource(cx, sourceId) {
 
     dispatch(setPrimaryPaneTab("sources"));
 
-    dispatch(selectSource(cx, source));
+    dispatch(selectSource(source));
   };
 }
 
@@ -198,39 +193,11 @@ export function closeConditionalPanel() {
   };
 }
 
-export function clearProjectDirectoryRoot(cx) {
-  return {
-    type: "SET_PROJECT_DIRECTORY_ROOT",
-    cx,
-    url: "",
-    name: "",
-  };
-}
-
-export function setProjectDirectoryRoot(cx, newRoot, newName) {
-  return ({ dispatch, getState }) => {
-    // If the new project root is against the top level thread,
-    // replace its thread ID with "top-level", so that later,
-    // getDirectoryForUniquePath could match the project root,
-    // even after a page reload where the new top level thread actor ID
-    // will be different.
-    const mainThread = getMainThread(getState());
-    if (mainThread && newRoot.startsWith(mainThread.actor)) {
-      newRoot = newRoot.replace(mainThread.actor, "top-level");
-    }
-    dispatch({
-      type: "SET_PROJECT_DIRECTORY_ROOT",
-      cx,
-      url: newRoot,
-      name: newName,
-    });
-  };
-}
-
 export function updateViewport() {
+  const editor = getEditor();
   return {
     type: "SET_VIEWPORT",
-    viewport: getLocationsInViewport(getEditor()),
+    viewport: editor.getLocationsInViewport(),
   };
 }
 
@@ -247,8 +214,8 @@ export function setSearchOptions(searchKey, searchOptions) {
 }
 
 export function copyToClipboard(location) {
-  return ({ dispatch, getState }) => {
-    const content = getSourceContent(getState(), location);
+  return ({ getState }) => {
+    const content = getSourceTextContent(getState(), location);
     if (content && isFulfilled(content) && content.value.type === "text") {
       copyToTheClipboard(content.value.value);
     }
@@ -256,21 +223,43 @@ export function copyToClipboard(location) {
 }
 
 export function setJavascriptTracingLogMethod(value) {
-  return ({ dispatch, getState }) => {
-    dispatch({
-      type: "SET_JAVASCRIPT_TRACING_LOG_METHOD",
-      value,
-    });
+  return {
+    type: "SET_JAVASCRIPT_TRACING_LOG_METHOD",
+    value,
+  };
+}
+
+export function toggleJavascriptTracingValues() {
+  return {
+    type: "TOGGLE_JAVASCRIPT_TRACING_VALUES",
+  };
+}
+
+export function toggleJavascriptTracingOnNextInteraction() {
+  return {
+    type: "TOGGLE_JAVASCRIPT_TRACING_ON_NEXT_INTERACTION",
+  };
+}
+
+export function toggleJavascriptTracingFunctionReturn() {
+  return {
+    type: "TOGGLE_JAVASCRIPT_TRACING_FUNCTION_RETURN",
+  };
+}
+
+export function toggleJavascriptTracingOnNextLoad() {
+  return {
+    type: "TOGGLE_JAVASCRIPT_TRACING_ON_NEXT_LOAD",
   };
 }
 
 export function setHideOrShowIgnoredSources(shouldHide) {
-  return ({ dispatch, getState }) => {
+  return ({ dispatch }) => {
     dispatch({ type: "HIDE_IGNORED_SOURCES", shouldHide });
   };
 }
 
-export function toggleSourceMapIgnoreList(cx, shouldEnable) {
+export function toggleSourceMapIgnoreList(shouldEnable) {
   return async thunkArgs => {
     const { dispatch, getState } = thunkArgs;
     const ignoreListSourceUrls = getIgnoreListSourceUrls(getState());
@@ -279,8 +268,8 @@ export function toggleSourceMapIgnoreList(cx, shouldEnable) {
       const source = getSourceByURL(getState(), url);
       await blackboxSourceActorsForSource(thunkArgs, source, shouldEnable);
       // Disable breakpoints in sources on the ignore list
-      const breakpoints = getBreakpointsForSource(getState(), source.id);
-      await dispatch(toggleBreakpoints(cx, shouldEnable, breakpoints));
+      const breakpoints = getBreakpointsForSource(getState(), source);
+      await dispatch(toggleBreakpoints(shouldEnable, breakpoints));
     }
     await dispatch({
       type: "ENABLE_SOURCEMAP_IGNORELIST",

@@ -16,17 +16,18 @@ var {
 
 const lazy = {};
 
-ChromeUtils.defineESModuleGetters(lazy, {
-  FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
-  NetworkHelper:
-    "resource://devtools/shared/network-observer/NetworkHelper.sys.mjs",
-});
-
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "ObjectUtils",
-  "resource://gre/modules/ObjectUtils.jsm"
-);
+if (!isWorker) {
+  ChromeUtils.defineESModuleGetters(
+    lazy,
+    {
+      FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+      NetworkHelper:
+        "resource://devtools/shared/network-observer/NetworkHelper.sys.mjs",
+      ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
+    },
+    { global: "contextual" }
+  );
+}
 
 // Native getters which are considered to be side effect free.
 ChromeUtils.defineLazyGetter(lazy, "sideEffectFreeGetters", () => {
@@ -133,7 +134,7 @@ exports.waitForTime = function (delay) {
 };
 
 /**
- * Like XPCOMUtils.defineLazyGetter, but with a |this| sensitive getter that
+ * Like ChromeUtils.defineLazyGetter, but with a |this| sensitive getter that
  * allows the lazy getter to be defined on a prototype and work correctly with
  * instances.
  *
@@ -464,7 +465,8 @@ DevToolsUtils.defineLazyGetter(this, "AppConstants", () => {
     return {};
   }
   return ChromeUtils.importESModule(
-    "resource://gre/modules/AppConstants.sys.mjs"
+    "resource://gre/modules/AppConstants.sys.mjs",
+    { global: "contextual" }
   ).AppConstants;
 });
 
@@ -513,7 +515,9 @@ Object.defineProperty(exports, "assert", {
 });
 
 DevToolsUtils.defineLazyGetter(this, "NetUtil", () => {
-  return ChromeUtils.import("resource://gre/modules/NetUtil.jsm").NetUtil;
+  return ChromeUtils.importESModule("resource://gre/modules/NetUtil.sys.mjs", {
+    global: "contextual",
+  }).NetUtil;
 });
 
 /**
@@ -532,6 +536,7 @@ DevToolsUtils.defineLazyGetter(this, "NetUtil", () => {
  *        - principal: the principal to use, if omitted, the request is loaded
  *                     with a content principal corresponding to the url being
  *                     loaded, using the origin attributes of the window, if any.
+ *        - headers: extra headers
  *        - cacheKey: when loading from cache, use this key to retrieve a cache
  *                    specific to a given SHEntry. (Allows loading POST
  *                    requests from cache)
@@ -554,6 +559,7 @@ function mainThreadFetch(
     window: null,
     charset: null,
     principal: null,
+    headers: null,
     cacheKey: 0,
   }
 ) {
@@ -584,6 +590,12 @@ function mainThreadFetch(
       // SHEntry and offer ways to restore POST requests from cache.
       if (aOptions.cacheKey != 0) {
         channel.cacheKey = aOptions.cacheKey;
+      }
+    }
+
+    if (aOptions.headers && channel instanceof Ci.nsIHttpChannel) {
+      for (const h in aOptions.headers) {
+        channel.setRequestHeader(h, aOptions.headers[h], /* aMerge = */ false);
       }
     }
 
@@ -618,7 +630,7 @@ function mainThreadFetch(
             // If there was a real stream error, we would have already rejected above.
             resolve({
               content: "",
-              contentType: "text/plan",
+              contentType: "text/plain",
             });
             return;
           }
@@ -732,7 +744,7 @@ function newChannelForURL(url, { policy, window, principal }) {
     uri = Services.io.newURI("file://" + url);
   }
 
-    // In xpcshell tests on Windows, opening the channel
+  // In xpcshell tests on Windows, opening the channel
   // can throw NS_ERROR_UNKNOWN_PROTOCOL if the external protocol isn't
   // supported by Windows, so we also need to handle that case here if
   // parsing the URL above doesn't throw.
@@ -881,7 +893,7 @@ exports.showSaveFileDialog = function (
     fp.defaultString = suggestedFilename;
   }
 
-  fp.init(parentWindow, null, fp.modeSave);
+  fp.init(parentWindow.browsingContext, null, fp.modeSave);
   if (Array.isArray(filters) && filters.length) {
     for (const { pattern, label } of filters) {
       fp.appendFilter(label, pattern);

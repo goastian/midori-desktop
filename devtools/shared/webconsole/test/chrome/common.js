@@ -71,9 +71,6 @@ var _attachConsole = async function (listeners, attachToTab, attachToWorker) {
       }
     }
 
-    // Attach the Target and the target thread in order to instantiate the console client.
-    await target.attachThread();
-
     const webConsoleFront = await target.getFront("console");
 
     // By default the console isn't listening for anything,
@@ -249,7 +246,7 @@ function withActiveServiceWorker(win, url, scope) {
     // workers state change events to determine when its activated.
     return new Promise(resolve => {
       const sw = swr.waiting || swr.installing;
-      sw.addEventListener("statechange", function stateHandler(evt) {
+      sw.addEventListener("statechange", function stateHandler() {
         if (sw.state === "activated") {
           sw.removeEventListener("statechange", stateHandler);
           resolve(swr);

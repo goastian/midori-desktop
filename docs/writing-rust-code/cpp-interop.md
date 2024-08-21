@@ -23,6 +23,16 @@ and values) and transfer them separately.
 Other types can be handled with tools that generate bindings, as the following
 sections describe.
 
+## Heap allocation
+
+C++ and Rust code in Firefox all use the same heap allocator, so C++
+`malloc`, `free`, and friends interoperate with Rust's `std::alloc`
+functions: raw memory allocated on the heap by Rust can be freed by
+C++ and vice versa. For example, memory allocated by a Rust `Vec`
+could be freed in C++ by passing it to `std::free`. This is arranged
+via a global variable with the Rust `#[global_allocator]` attribute in
+the `mozglue-static` crate.
+
 ## Accessing C++ code and data from Rust
 
 To call a C++ function from Rust requires adding a function declaration to Rust.
@@ -56,7 +66,7 @@ bindings. The documentation is
 ## Accessing Rust code and data from C++
 
 A common option for accessing Rust code and data from C++ is to use
-[cbindgen](https://github.com/eqrion/cbindgen), which generates C++ header
+[cbindgen](https://github.com/mozilla/cbindgen), which generates C++ header
 files. for Rust crates that expose a public C API. cbindgen is a very powerful
 tool, and this section only covers some basic uses of it.
 
@@ -118,7 +128,7 @@ which will be placed in `$OBJDIR/dist/include/mozilla/intl/`.
 
 Finally, include the generated header into a C++ file and call the function.
 
-```c++
+```cpp
 #include "mozilla/intl/unic_langid_ffi_generated.h"
 
 using namespace mozilla::intl::ffi;
@@ -149,7 +159,7 @@ extern "C" {
 }
 ```
 
-```c++
+```cpp
 ffi::FluentPlatform FluentBuiltInGetPlatform() {
   return ffi::FluentPlatform::Linux;
 }
@@ -191,7 +201,7 @@ pub unsafe extern "C" fn unic_langid_as_string(
 
 Next, in a C++ header define a destructor via `DefaultDelete`.
 
-```c++
+```cpp
 #include "mozilla/intl/unic_langid_ffi_generated.h"
 #include "mozilla/UniquePtr.h"
 
@@ -214,7 +224,7 @@ free the code, which might lead to strange behaviour!)
 
 Finally, implement the class.
 
-```c++
+```cpp
 class Locale {
 public:
   explicit Locale(const nsACString& aLocale)

@@ -4,10 +4,12 @@
 
 "use strict";
 
-const { MultiLocalizationHelper } = require("devtools/shared/l10n");
+const {
+  MultiLocalizationHelper,
+} = require("resource://devtools/shared/l10n.js");
 const {
   FluentL10n,
-} = require("devtools/client/shared/fluent-l10n/fluent-l10n");
+} = require("resource://devtools/client/shared/fluent-l10n/fluent-l10n.js");
 
 loader.lazyRequireGetter(
   this,
@@ -39,12 +41,20 @@ loader.lazyRequireGetter(
   "resource://devtools/client/shared/redux/subscriber.js",
   true
 );
+loader.lazyRequireGetter(
+  this,
+  "getMappedExpression",
+  "resource://devtools/client/debugger/src/actions/expressions.js",
+  true
+);
 
 const DBG_STRINGS_URI = [
   "devtools/client/locales/debugger.properties",
   // These are used in the AppErrorBoundary component
   "devtools/client/locales/startup.properties",
   "devtools/client/locales/components.properties",
+  // Used by SourceMapLoader
+  "devtools/client/locales/toolbox.properties",
 ];
 const L10N = new MultiLocalizationHelper(...DBG_STRINGS_URI);
 
@@ -94,10 +104,10 @@ class DebuggerPanel {
     return this;
   }
 
-  _onDebuggerStateChange(state, oldState) {
+  async _onDebuggerStateChange(state, oldState) {
     const { getCurrentThread } = this._selectors;
-
     const currentThreadActorID = getCurrentThread(state);
+
     if (
       currentThreadActorID &&
       currentThreadActorID !== getCurrentThread(oldState)
@@ -106,6 +116,20 @@ class DebuggerPanel {
         this.commands.client.getFrontByID(currentThreadActorID);
       this.toolbox.selectTarget(threadFront?.targetFront.actorID);
     }
+
+    this.toolbox.emit(
+      "show-original-variable-mapping-warnings",
+      this.shouldShowOriginalVariableMappingWarnings()
+    );
+  }
+
+  shouldShowOriginalVariableMappingWarnings() {
+    const { getSelectedSource, isMapScopesEnabled } = this._selectors;
+    if (!this.isPaused() || isMapScopesEnabled(this._getState())) {
+      return false;
+    }
+    const selectedSource = getSelectedSource(this._getState());
+    return selectedSource?.isOriginal && !selectedSource?.isPrettyPrinted;
   }
 
   getVarsForTests() {
@@ -190,7 +214,11 @@ class DebuggerPanel {
   }
 
   getMappedExpression(expression) {
-    return this._actions.getMappedExpression(expression);
+    const thread = this._selectors.getCurrentThread(this._getState());
+    return getMappedExpression(expression, thread, {
+      getState: this._store.getState,
+      parserWorker: this.toolbox.parserWorker,
+    });
   }
 
   /**
@@ -212,8 +240,7 @@ class DebuggerPanel {
   }
 
   selectSourceURL(url, line, column) {
-    const cx = this._selectors.getContext(this._getState());
-    return this._actions.selectSourceURL(cx, url, { line, column });
+    return this._actions.selectSourceURL(url, { line, column });
   }
 
   /**
@@ -281,8 +308,7 @@ class DebuggerPanel {
     // But we might try to load display it early to improve user perception.
     await this.toolbox.selectTool("jsdebugger", reason);
 
-    const cx = this._selectors.getContext(this._getState());
-    await this._actions.selectSpecificLocation(cx, originalLocation);
+    await this._actions.selectSpecificLocation(originalLocation);
 
     // XXX: should this be moved to selectSpecificLocation??
     if (this._selectors.hasLogpoint(this._getState(), originalLocation)) {
@@ -292,9 +318,19 @@ class DebuggerPanel {
     return true;
   }
 
-  async selectWorker(workerDescriptorFront) {
-    const threadActorID = workerDescriptorFront.threadFront?.actorID;
+  async selectServiceWorker(workerDescriptorFront) {
+    // The descriptor used by the application panel isn't fetching the worker target,
+    // but the debugger will fetch it via the watcher actor and TargetCommand.
+    // So try to match the descriptor with its related target.
+    const targets = this.commands.targetCommand.getAllTargets([
+      this.commands.targetCommand.TYPES.SERVICE_WORKER,
+    ]);
+    const workerTarget = targets.find(
+      target => target.id == workerDescriptorFront.id
+    );
 
+    const threadFront = await workerTarget.getFront("thread");
+    const threadActorID = threadFront?.actorID;
     const isThreadAvailable = this._selectors
       .getThreads(this._getState())
       .find(x => x.actor === threadActorID);
@@ -324,19 +360,11 @@ class DebuggerPanel {
       source.id,
       threadActorID
     );
-    const cx = this._selectors.getContext(this._getState());
-    await this._actions.selectSource(cx, source, sourceActor);
+    await this._actions.selectSource(source, sourceActor);
   }
 
   selectThread(threadActorID) {
-    const cx = this._selectors.getContext(this._getState());
-    this._actions.selectThread(cx, threadActorID);
-  }
-
-  toggleJavascriptTracing() {
-    this._actions.toggleTracing(
-      this._selectors.getJavascriptTracingLogMethod(this._getState())
-    );
+    this._actions.selectThread(threadActorID);
   }
 
   destroy() {

@@ -12,7 +12,7 @@ add_task(async function () {
   await pushPref("devtools.debugger.features.map-await-expression", true);
 
   // Force the split console to be closed.
-  await pushPref("devtools.toolbox.splitconsoleEnabled", false);
+  await pushPref("devtools.toolbox.splitconsole.open", false);
   const hud = await openNewTabAndConsole(TEST_URI);
 
   const pauseExpression = `(() => {
@@ -24,7 +24,7 @@ add_task(async function () {
   execute(hud, pauseExpression);
 
   // wait for the debugger to be opened and paused.
-  const toolbox = await gDevTools.getToolboxForTab(gBrowser.selectedTab);
+  const toolbox = gDevTools.getToolboxForTab(gBrowser.selectedTab);
 
   await waitFor(() => toolbox.getPanel("jsdebugger"));
   const dbg = createDebuggerContext(toolbox);

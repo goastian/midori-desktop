@@ -248,40 +248,45 @@ class TextProperty {
   }
 
   /**
+   * Returns the associated StyleRule declaration if it exists
+   *
+   * @returns {Object|undefined}
+   */
+  #getDomRuleDeclaration() {
+    const selfIndex = this.rule.textProps.indexOf(this);
+    return this.rule.domRule.declarations?.[selfIndex];
+  }
+
+  /**
    * Validate this property. Does it make sense for this value to be assigned
    * to this property name?
    *
    * @return {Boolean} true if the whole CSS declaration is valid, false otherwise.
    */
   isValid() {
-    const selfIndex = this.rule.textProps.indexOf(this);
+    const declaration = this.#getDomRuleDeclaration();
 
     // When adding a new property in the rule-view, the TextProperty object is
     // created right away before the rule gets updated on the server, so we're
     // not going to find the corresponding declaration object yet. Default to
     // true.
-    if (!this.rule.domRule.declarations[selfIndex]) {
+    if (!declaration) {
       return true;
     }
 
-    return this.rule.domRule.declarations[selfIndex].isValid;
+    return declaration.isValid;
   }
 
   isUsed() {
-    const selfIndex = this.rule.textProps.indexOf(this);
-    const declarations = this.rule.domRule.declarations;
+    const declaration = this.#getDomRuleDeclaration();
 
     // StyleRuleActor's declarations may have a isUsed flag (if the server is the right
     // version). Just return true if the information is missing.
-    if (
-      !declarations ||
-      !declarations[selfIndex] ||
-      !declarations[selfIndex].isUsed
-    ) {
+    if (!declaration?.isUsed) {
       return { used: true };
     }
 
-    return declarations[selfIndex].isUsed;
+    return declaration.isUsed;
   }
 
   /**
@@ -371,17 +376,56 @@ class TextProperty {
    * @return {Boolean} true if the property name is valid, false otherwise.
    */
   isNameValid() {
-    const selfIndex = this.rule.textProps.indexOf(this);
+    const declaration = this.#getDomRuleDeclaration();
 
     // When adding a new property in the rule-view, the TextProperty object is
     // created right away before the rule gets updated on the server, so we're
     // not going to find the corresponding declaration object yet. Default to
     // true.
-    if (!this.rule.domRule.declarations[selfIndex]) {
+    if (!declaration) {
       return true;
     }
 
-    return this.rule.domRule.declarations[selfIndex].isNameValid;
+    return declaration.isNameValid;
+  }
+
+  /**
+   * Returns whether the property is invalid at computed-value time.
+   * For now, it's only computed on the server for declarations of
+   * registered properties.
+   *
+   * @return {Boolean}
+   */
+  isInvalidAtComputedValueTime() {
+    const declaration = this.#getDomRuleDeclaration();
+    // When adding a new property in the rule-view, the TextProperty object is
+    // created right away before the rule gets updated on the server, so we're
+    // not going to find the corresponding declaration object yet. Default to
+    // false.
+    if (!declaration) {
+      return false;
+    }
+
+    return declaration.invalidAtComputedValueTime;
+  }
+
+  /**
+   * Returns the expected syntax for this property.
+   * For now, it's only sent from the server for invalid at computed-value time declarations.
+   *
+   * @return {String|null} The expected syntax, or null.
+   */
+  getExpectedSyntax() {
+    const declaration = this.#getDomRuleDeclaration();
+    // When adding a new property in the rule-view, the TextProperty object is
+    // created right away before the rule gets updated on the server, so we're
+    // not going to find the corresponding declaration object yet. Default to
+    // null.
+    if (!declaration) {
+      return null;
+    }
+
+    return declaration.syntax;
   }
 
   /**

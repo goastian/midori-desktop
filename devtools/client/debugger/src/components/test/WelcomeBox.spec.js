@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
+import React from "devtools/client/shared/vendor/react";
 import { shallow } from "enzyme";
 
 import { WelcomeBox } from "../WelcomeBox";
@@ -18,8 +18,7 @@ function render(overrides = {}) {
     setPrimaryPaneTab: jest.fn(),
     ...overrides,
   };
-  const component = shallow(<WelcomeBox {...props} />);
-
+  const component = shallow(React.createElement(WelcomeBox, props));
   return { component, props };
 }
 

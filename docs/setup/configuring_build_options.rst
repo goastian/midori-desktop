@@ -131,7 +131,7 @@ Parallel compilation
 
 .. note::
 
-   **Note**: The build system automatically makes an intelligent guess
+   The build system automatically makes an intelligent guess
    for how many CPU cores to use when building. The option below is
    typically not needed.
 
@@ -163,7 +163,7 @@ Browser (Firefox)
 
    .. note::
 
-      **Note**: This is the default
+      This is the default
 
 Mail (Thunderbird)
    .. code::
@@ -219,6 +219,17 @@ supports `distributed compilation
 In order to enable ``sccache`` for Firefox builds, you can use
 ``ac_add_options --with-ccache=sccache``.
 
+From version 0.7.4, sccache local builds are using the ``preprocessor cache mode``
+by default. With a hot cache, it decreases the build time by a factor of 2 to 3
+compared the previous method. This feature works like the `direct mode in ccache
+<https://ccache.dev/manual/3.7.9.html#_the_direct_mode>`__,
+using a similar way to handle caching and dependencies.
+
+   .. note::
+
+      When using sccache, because of the operation on the files and storage,
+      the initial build of Firefox will be slower.
+
 Optimization
 ^^^^^^^^^^^^
 
@@ -227,7 +238,7 @@ Optimization
 
    .. note::
 
-      **Note**: This is enabled by default
+      This is enabled by default
 
 ``ac_add_options --enable-optimize=-O2``
    Chooses particular compiler optimization options. In most cases, this
@@ -257,6 +268,18 @@ Optimization
 
 You can make an optimized build with debugging symbols. See :ref:`Building
 with Debug Symbols <Building with Debug Symbols>`.
+
+Building as Beta or Release
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``ac_add_options --as-milestone=release``
+   This makes it easy to build nightly with a release or beta configuration to
+   test the different ifdef behaviors. To do a full beta simulation see
+   `Sheriffing/How To/Beta simulations <https://wiki.mozilla.org/Sheriffing/How_To/Beta_simulations>`__.
+
+   - ``early-beta``
+   - ``late-beta``
+   - ``release``
 
 Extensions
 ^^^^^^^^^^
@@ -304,14 +327,6 @@ Other Options
    to clobber and continue with the build instead of asking the user to
    manually clobber and exiting.
 
-``ac_add_options --enable-crashreporter``
-   This enables the machinery that allows Firefox to write out a
-   `minidump <https://docs.microsoft.com/en-us/windows/desktop/Debug/minidump-files>`__
-   files when crashing as well as the tools to process and submit crash
-   reports to Mozilla. After enabling the crash reporter in your local
-   build, you will need to run mach with the --enable-crash-reporter
-   (note the extra dash) to enable it at runtime, like so:
-   ``./mach run --enable-crash-reporter``
 ``ac_add_options --enable-warnings-as-errors``
    This makes compiler warnings into errors which fail the build. This
    can be useful since certain warnings coincide with reviewbot lints

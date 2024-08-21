@@ -9,13 +9,16 @@
     <script>
       "use strict";
 
+      const proxy = new Proxy({}, {foo: "bar"});
+
       const variables = [
         "string",
         1337,
         { noFormat: true },
         { customFormatHeader: "header" },
         { customFormatHeaderAndBody: "body" },
-        { customFormatObjectAndConfig: true }
+        { customFormatObjectAndConfig: true },
+        proxy,
       ];
 
       window.devtoolsFormatters = [
@@ -30,7 +33,7 @@
             }
             return null;
           },
-          hasBody: obj => false
+          hasBody: () => false
         },
         {
           header: obj => {
@@ -39,7 +42,7 @@
             }
             return null;
           },
-          hasBody: obj => true,
+          hasBody: () => true,
           body: obj => ["span", {"style": "font-family: serif; font-size: 2rem;"}, obj.customFormatHeaderAndBody]
         },
         {
@@ -103,7 +106,20 @@
               }
             ]
           ]}
-        }
+        },
+        {
+          header: (obj) => {
+            if (obj === proxy) {
+              return [
+                "span",
+                {"style": "font-weight: bold;"},
+                "Formatted Proxy",
+              ];
+            }
+            return null;
+          },
+          hasBody: () => false
+        },
       ];
 
       variables.forEach(variable => console.log(variable));

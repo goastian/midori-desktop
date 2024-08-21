@@ -1,6 +1,6 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`ConditionalPanel it should render at location of selected breakpoint 1`] = `
+exports[`ConditionalPanel should render at location of selected breakpoint 1`] = `
 <ConditionalPanel
   breakpoint={
     Object {
@@ -9,18 +9,48 @@ exports[`ConditionalPanel it should render at location of selected breakpoint 1`
         "column": 2,
         "line": 2,
         "source": Object {
+          "displayURL": Object {
+            "fileExtension": "",
+            "filename": "url",
+            "group": "",
+            "path": "url",
+            "search": "",
+          },
+          "extensionName": null,
           "id": "source",
+          "isExtension": false,
+          "isOriginal": false,
+          "isPrettyPrinted": false,
+          "isWasm": false,
+          "longName": "url",
+          "shortName": "url",
+          "thread": "FakeThread",
+          "url": "url",
         },
-        "sourceId": "source",
       },
       "id": "breakpoint",
       "location": Object {
         "column": 2,
         "line": 2,
         "source": Object {
+          "displayURL": Object {
+            "fileExtension": "",
+            "filename": "url",
+            "group": "",
+            "path": "url",
+            "search": "",
+          },
+          "extensionName": null,
           "id": "source",
+          "isExtension": false,
+          "isOriginal": false,
+          "isPrettyPrinted": false,
+          "isWasm": false,
+          "longName": "url",
+          "shortName": "url",
+          "thread": "FakeThread",
+          "url": "url",
         },
-        "sourceId": "source",
       },
       "options": Object {
         "condition": undefined,
@@ -178,9 +208,24 @@ exports[`ConditionalPanel it should render at location of selected breakpoint 1`
       "column": 2,
       "line": 2,
       "source": Object {
+        "displayURL": Object {
+          "fileExtension": "",
+          "filename": "url",
+          "group": "",
+          "path": "url",
+          "search": "",
+        },
+        "extensionName": null,
         "id": "source",
+        "isExtension": false,
+        "isOriginal": false,
+        "isPrettyPrinted": false,
+        "isWasm": false,
+        "longName": "url",
+        "shortName": "url",
+        "thread": "FakeThread",
+        "url": "url",
       },
-      "sourceId": "source",
     }
   }
   log={false}
@@ -200,6 +245,8 @@ exports[`ConditionalPanel it should render at location of selected breakpoint 1`
       "isOriginal": false,
       "isPrettyPrinted": false,
       "isWasm": false,
+      "longName": "url",
+      "shortName": "url",
       "thread": "FakeThread",
       "url": "url",
     }
@@ -207,7 +254,7 @@ exports[`ConditionalPanel it should render at location of selected breakpoint 1`
 />
 `;
 
-exports[`ConditionalPanel it should render with condition at selected breakpoint location 1`] = `
+exports[`ConditionalPanel should render with condition at selected breakpoint location 1`] = `
 <ConditionalPanel
   breakpoint={
     Object {
@@ -216,18 +263,48 @@ exports[`ConditionalPanel it should render with condition at selected breakpoint
         "column": 3,
         "line": 3,
         "source": Object {
+          "displayURL": Object {
+            "fileExtension": "",
+            "filename": "url",
+            "group": "",
+            "path": "url",
+            "search": "",
+          },
+          "extensionName": null,
           "id": "source",
+          "isExtension": false,
+          "isOriginal": false,
+          "isPrettyPrinted": false,
+          "isWasm": false,
+          "longName": "url",
+          "shortName": "url",
+          "thread": "FakeThread",
+          "url": "url",
         },
-        "sourceId": "source",
       },
       "id": "breakpoint",
       "location": Object {
         "column": 3,
         "line": 3,
         "source": Object {
+          "displayURL": Object {
+            "fileExtension": "",
+            "filename": "url",
+            "group": "",
+            "path": "url",
+            "search": "",
+          },
+          "extensionName": null,
           "id": "source",
+          "isExtension": false,
+          "isOriginal": false,
+          "isPrettyPrinted": false,
+          "isWasm": false,
+          "longName": "url",
+          "shortName": "url",
+          "thread": "FakeThread",
+          "url": "url",
         },
-        "sourceId": "source",
       },
       "options": Object {
         "condition": "I'm a condition",
@@ -389,9 +466,24 @@ exports[`ConditionalPanel it should render with condition at selected breakpoint
       "column": 3,
       "line": 3,
       "source": Object {
+        "displayURL": Object {
+          "fileExtension": "",
+          "filename": "url",
+          "group": "",
+          "path": "url",
+          "search": "",
+        },
+        "extensionName": null,
         "id": "source",
+        "isExtension": false,
+        "isOriginal": false,
+        "isPrettyPrinted": false,
+        "isWasm": false,
+        "longName": "url",
+        "shortName": "url",
+        "thread": "FakeThread",
+        "url": "url",
       },
-      "sourceId": "source",
     }
   }
   log={false}
@@ -411,6 +503,8 @@ exports[`ConditionalPanel it should render with condition at selected breakpoint
       "isOriginal": false,
       "isPrettyPrinted": false,
       "isWasm": false,
+      "longName": "url",
+      "shortName": "url",
       "thread": "FakeThread",
       "url": "url",
     }
@@ -418,7 +512,7 @@ exports[`ConditionalPanel it should render with condition at selected breakpoint
 />
 `;
 
-exports[`ConditionalPanel it should render with logpoint at selected breakpoint location 1`] = `
+exports[`ConditionalPanel should render with logpoint at selected breakpoint location 1`] = `
 <ConditionalPanel
   breakpoint={
     Object {
@@ -427,18 +521,48 @@ exports[`ConditionalPanel it should render with logpoint at selected breakpoint 
         "column": 4,
         "line": 4,
         "source": Object {
+          "displayURL": Object {
+            "fileExtension": "",
+            "filename": "url",
+            "group": "",
+            "path": "url",
+            "search": "",
+          },
+          "extensionName": null,
           "id": "source",
+          "isExtension": false,
+          "isOriginal": false,
+          "isPrettyPrinted": false,
+          "isWasm": false,
+          "longName": "url",
+          "shortName": "url",
+          "thread": "FakeThread",
+          "url": "url",
         },
-        "sourceId": "source",
       },
       "id": "breakpoint",
       "location": Object {
         "column": 4,
         "line": 4,
         "source": Object {
+          "displayURL": Object {
+            "fileExtension": "",
+            "filename": "url",
+            "group": "",
+            "path": "url",
+            "search": "",
+          },
+          "extensionName": null,
           "id": "source",
+          "isExtension": false,
+          "isOriginal": false,
+          "isPrettyPrinted": false,
+          "isWasm": false,
+          "longName": "url",
+          "shortName": "url",
+          "thread": "FakeThread",
+          "url": "url",
         },
-        "sourceId": "source",
       },
       "options": Object {
         "condition": "not a condition",
@@ -600,9 +724,24 @@ exports[`ConditionalPanel it should render with logpoint at selected breakpoint 
       "column": 4,
       "line": 4,
       "source": Object {
+        "displayURL": Object {
+          "fileExtension": "",
+          "filename": "url",
+          "group": "",
+          "path": "url",
+          "search": "",
+        },
+        "extensionName": null,
         "id": "source",
+        "isExtension": false,
+        "isOriginal": false,
+        "isPrettyPrinted": false,
+        "isWasm": false,
+        "longName": "url",
+        "shortName": "url",
+        "thread": "FakeThread",
+        "url": "url",
       },
-      "sourceId": "source",
     }
   }
   log={true}
@@ -622,6 +761,8 @@ exports[`ConditionalPanel it should render with logpoint at selected breakpoint 
       "isOriginal": false,
       "isPrettyPrinted": false,
       "isWasm": false,
+      "longName": "url",
+      "shortName": "url",
       "thread": "FakeThread",
       "url": "url",
     }

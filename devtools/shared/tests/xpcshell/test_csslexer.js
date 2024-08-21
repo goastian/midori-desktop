@@ -5,199 +5,282 @@
 
 "use strict";
 
-const jsLexer = require("resource://devtools/shared/css/lexer.js");
+const {
+  InspectorCSSParserWrapper,
+} = require("resource://devtools/shared/css/lexer.js");
 
-function test_lexer(cssText, tokenTypes) {
-  const lexer = jsLexer.getCSSLexer(cssText);
-  let reconstructed = "";
-  let lastTokenEnd = 0;
-  let i = 0;
-  while (true) {
-    const token = lexer.nextToken();
-    if (!token) {
-      break;
-    }
-    let combined = token.tokenType;
-    if (token.text) {
-      combined += ":" + token.text;
-    }
-    equal(combined, tokenTypes[i]);
-    ok(token.endOffset > token.startOffset);
-    equal(token.startOffset, lastTokenEnd);
-    lastTokenEnd = token.endOffset;
-    reconstructed += cssText.substring(token.startOffset, token.endOffset);
-    ++i;
-  }
-  // Ensure that we saw the correct number of tokens.
-  equal(i, tokenTypes.length);
-  // Ensure that the reported offsets cover all the text.
-  equal(reconstructed, cssText);
-}
-
-var LEX_TESTS = [
-  ["simple", ["ident:simple"]],
-  [
-    "simple: { hi; }",
+add_task(function test_lexer() {
+  const LEX_TESTS = [
+    ["simple", [{ tokenType: "Ident", text: "simple", value: "simple" }]],
     [
-      "ident:simple",
-      "symbol::",
-      "whitespace",
-      "symbol:{",
-      "whitespace",
-      "ident:hi",
-      "symbol:;",
-      "whitespace",
-      "symbol:}",
+      "simple: { hi; }",
+      [
+        { tokenType: "Ident", text: "simple", value: "simple" },
+        { tokenType: "Colon", text: ":" },
+        { tokenType: "WhiteSpace", text: " " },
+        { tokenType: "CurlyBracketBlock", text: "{" },
+        { tokenType: "WhiteSpace", text: " " },
+        { tokenType: "Ident", text: "hi", value: "hi" },
+        { tokenType: "Semicolon", text: ";" },
+        { tokenType: "WhiteSpace", text: " " },
+        { tokenType: "CloseCurlyBracket", text: "}" },
+      ],
     ],
-  ],
-  ["/* whatever */", ["comment"]],
-  ["'string'", ["string:string"]],
-  ['"string"', ["string:string"]],
-  [
-    "rgb(1,2,3)",
     [
-      "function:rgb",
-      "number",
-      "symbol:,",
-      "number",
-      "symbol:,",
-      "number",
-      "symbol:)",
+      "/* whatever */",
+      [{ tokenType: "Comment", text: "/* whatever */", value: " whatever " }],
     ],
-  ],
-  ["@media", ["at:media"]],
-  ["#hibob", ["id:hibob"]],
-  ["#123", ["hash:123"]],
-  ["23px", ["dimension:px"]],
-  ["23%", ["percentage"]],
-  ["url(http://example.com)", ["url:http://example.com"]],
-  ["url('http://example.com')", ["url:http://example.com"]],
-  ["url(  'http://example.com'  )", ["url:http://example.com"]],
-  // In CSS Level 3, this is an ordinary URL, not a BAD_URL.
-  ["url(http://example.com", ["url:http://example.com"]],
-  ["url(http://example.com @", ["bad_url:http://example.com"]],
-  ["quo\\ting", ["ident:quoting"]],
-  ["'bad string\n", ["bad_string:bad string", "whitespace"]],
-  ["~=", ["includes"]],
-  ["|=", ["dashmatch"]],
-  ["^=", ["beginsmatch"]],
-  ["$=", ["endsmatch"]],
-  ["*=", ["containsmatch"]],
-
-  // URANGE may be on the way out, and it isn't used by devutils, so
-  // let's skip it.
-
-  [
-    "<!-- html comment -->",
     [
-      "htmlcomment",
-      "whitespace",
-      "ident:html",
-      "whitespace",
-      "ident:comment",
-      "whitespace",
-      "htmlcomment",
+      "'string'",
+      [{ tokenType: "QuotedString", text: "'string'", value: "string" }],
     ],
-  ],
+    [
+      '"string"',
+      [{ tokenType: "QuotedString", text: `"string"`, value: "string" }],
+    ],
+    [
+      "rgb(1,2,3)",
+      [
+        { tokenType: "Function", text: "rgb(", value: "rgb" },
+        { tokenType: "Number", text: "1", number: 1 },
+        { tokenType: "Comma", text: "," },
+        { tokenType: "Number", text: "2", number: 2 },
+        { tokenType: "Comma", text: "," },
+        { tokenType: "Number", text: "3", number: 3 },
+        { tokenType: "CloseParenthesis", text: ")" },
+      ],
+    ],
+    ["@media", [{ tokenType: "AtKeyword", text: "@media", value: "media" }]],
+    ["#hibob", [{ tokenType: "IDHash", text: "#hibob", value: "hibob" }]],
+    ["#123", [{ tokenType: "Hash", text: "#123", value: "123" }]],
+    [
+      "23px",
+      [{ tokenType: "Dimension", text: "23px", number: 23, unit: "px" }],
+    ],
+    ["23%", [{ tokenType: "Percentage", text: "23%", number: 0.23 }]],
+    [
+      "url(http://example.com)",
+      [
+        {
+          tokenType: "UnquotedUrl",
+          text: "url(http://example.com)",
+          value: "http://example.com",
+        },
+      ],
+    ],
+    [
+      "url('http://example.com')",
+      [
+        { tokenType: "Function", text: "url(", value: "url" },
+        {
+          tokenType: "QuotedString",
+          text: "'http://example.com'",
+          value: "http://example.com",
+        },
+        { tokenType: "CloseParenthesis", text: ")" },
+      ],
+    ],
+    [
+      "url(  'http://example.com'  )",
+      [
+        { tokenType: "Function", text: "url(", value: "url" },
+        { tokenType: "WhiteSpace", text: "  " },
+        {
+          tokenType: "QuotedString",
+          text: "'http://example.com'",
+          value: "http://example.com",
+        },
+        { tokenType: "WhiteSpace", text: "  " },
+        { tokenType: "CloseParenthesis", text: ")" },
+      ],
+    ],
+    // In CSS Level 3, this is an ordinary URL, not a BAD_URL.
+    [
+      "url(http://example.com",
+      [
+        {
+          tokenType: "UnquotedUrl",
+          text: "url(http://example.com",
+          value: "http://example.com",
+        },
+      ],
+    ],
+    [
+      "url(http://example.com @",
+      [
+        {
+          tokenType: "BadUrl",
+          text: "url(http://example.com @",
+          value: "http://example.com @",
+        },
+      ],
+    ],
+    [
+      "quo\\ting",
+      [{ tokenType: "Ident", text: "quo\\ting", value: "quoting" }],
+    ],
+    [
+      "'bad string\n",
+      [
+        { tokenType: "BadString", text: "'bad string", value: "bad string" },
+        { tokenType: "WhiteSpace", text: "\n" },
+      ],
+    ],
+    ["~=", [{ tokenType: "IncludeMatch", text: "~=" }]],
+    ["|=", [{ tokenType: "DashMatch", text: "|=" }]],
+    ["^=", [{ tokenType: "PrefixMatch", text: "^=" }]],
+    ["$=", [{ tokenType: "SuffixMatch", text: "$=" }]],
+    ["*=", [{ tokenType: "SubstringMatch", text: "*=" }]],
 
-  // earlier versions of CSS had "bad comment" tokens, but in level 3,
-  // unterminated comments are just comments.
-  ["/* bad comment", ["comment"]],
-];
+    [
+      "<!-- html comment -->",
+      [
+        { tokenType: "CDO", text: "<!--" },
+        { tokenType: "WhiteSpace", text: " " },
+        { tokenType: "Ident", text: "html", value: "html" },
+        { tokenType: "WhiteSpace", text: " " },
+        { tokenType: "Ident", text: "comment", value: "comment" },
+        { tokenType: "WhiteSpace", text: " " },
+        { tokenType: "CDC", text: "-->" },
+      ],
+    ],
 
-function test_lexer_linecol(cssText, locations) {
-  const lexer = jsLexer.getCSSLexer(cssText);
-  let i = 0;
-  while (true) {
-    const token = lexer.nextToken();
-    const startLine = lexer.lineNumber;
-    const startColumn = lexer.columnNumber;
+    // earlier versions of CSS had "bad comment" tokens, but in level 3,
+    // unterminated comments are just comments.
+    [
+      "/* bad comment",
+      [{ tokenType: "Comment", text: "/* bad comment", value: " bad comment" }],
+    ],
+  ];
 
-    // We do this in a bit of a funny way so that we can also test the
-    // location of the EOF.
-    let combined = ":" + startLine + ":" + startColumn;
-    if (token) {
-      combined = token.tokenType + combined;
+  const test = (cssText, tokenTypes) => {
+    const lexer = new InspectorCSSParserWrapper(cssText);
+    let reconstructed = "";
+    let lastTokenEnd = 0;
+    let i = 0;
+    let token;
+    while ((token = lexer.nextToken())) {
+      const expectedToken = tokenTypes[i];
+      Assert.deepEqual(
+        {
+          tokenType: token.tokenType,
+          text: token.text,
+          value: token.value,
+          number: token.number,
+          unit: token.unit,
+        },
+        {
+          tokenType: expectedToken.tokenType,
+          text: expectedToken.text,
+          value: expectedToken.value ?? null,
+          number: expectedToken.number ?? null,
+          unit: expectedToken.unit ?? null,
+        },
+        `Got expected token #${i} for "${cssText}"`
+      );
+
+      Assert.greater(token.endOffset, token.startOffset);
+      equal(token.startOffset, lastTokenEnd);
+      lastTokenEnd = token.endOffset;
+      reconstructed += cssText.substring(token.startOffset, token.endOffset);
+      ++i;
+    }
+    // Ensure that we saw the correct number of tokens.
+    equal(i, tokenTypes.length);
+    // Ensure that the reported offsets cover all the text.
+    equal(reconstructed, cssText);
+  };
+
+  for (const [cssText, rustTokenTypes] of LEX_TESTS) {
+    info(`Test "${cssText}"`);
+    test(cssText, rustTokenTypes);
+  }
+});
+
+add_task(function test_lexer_linecol() {
+  const LINECOL_TESTS = [
+    ["simple", ["Ident:0:0", ":0:6"]],
+    ["\n    stuff", ["WhiteSpace:0:0", "Ident:1:4", ":1:9"]],
+    [
+      '"string with \\\nnewline"    \r\n',
+      ["QuotedString:0:0", "WhiteSpace:1:8", ":2:0"],
+    ],
+  ];
+
+  const test = (cssText, locations) => {
+    const lexer = new InspectorCSSParserWrapper(cssText);
+    let i = 0;
+    let token;
+    const testLocation = () => {
+      const startLine = lexer.parser.lineNumber;
+      const startColumn = lexer.parser.columnNumber;
+
+      // We do this in a bit of a funny way so that we can also test the
+      // location of the EOF.
+      let combined = ":" + startLine + ":" + startColumn;
+      if (token) {
+        combined = token.tokenType + combined;
+      }
+
+      equal(combined, locations[i]);
+      ++i;
+    };
+    while ((token = lexer.nextToken())) {
+      testLocation();
+    }
+    // Collect location after we consumed all the tokens
+    testLocation();
+    // Ensure that we saw the correct number of tokens.
+    equal(i, locations.length);
+  };
+
+  for (const [cssText, rustLocations] of LINECOL_TESTS) {
+    info(`Test "${cssText}"`);
+    test(cssText, rustLocations);
+  }
+});
+
+add_task(function test_lexer_eofchar() {
+  const EOFCHAR_TESTS = [
+    ["hello", "hello"],
+    ["hello \\", "hello \\\\"],
+    ["'hello", "'hello'"],
+    ['"hello', '"hello"'],
+    ["'hello\\", "'hello\\\\'"],
+    ['"hello\\', '"hello\\\\"'],
+    ["/*hello", "/*hello*/"],
+    ["/*hello*", "/*hello*/"],
+    ["/*hello\\", "/*hello\\*/"],
+    ["url(hello", "url(hello)"],
+    ["url('hello", "url('hello')"],
+    ['url("hello', 'url("hello")'],
+    ["url(hello\\", "url(hello\\\\)"],
+    ["url('hello\\", "url('hello\\\\')"],
+    ['url("hello\\', 'url("hello\\\\")'],
+    // Ensure that passing a different inputString to performEOFFixup
+    // doesn't cause an assertion trying to strip a backslash from the
+    // end of an empty string.
+    ["'\\", "\\'", ""],
+    // Check single-char quotes
+    [`"`, `""`],
+    [`'`, `''`],
+  ];
+
+  const test = (cssText, expectedAppend, argText) => {
+    const lexer = new InspectorCSSParserWrapper(cssText, {
+      trackEOFChars: true,
+    });
+    while (lexer.nextToken()) {
+      // We don't need to do anything with the tokens. We only want to consume the iterator
+      // so we can safely call performEOFFixup.
     }
 
-    equal(combined, locations[i]);
-    ++i;
+    info("EOF char test, input = " + cssText);
+    equal(lexer.performEOFFixup(argText), expectedAppend);
+  };
 
-    if (!token) {
-      break;
-    }
+  for (const [cssText, expectedAppend, argText = cssText] of EOFCHAR_TESTS) {
+    info(`Test "${cssText}"`);
+    test(cssText, expectedAppend, argText);
   }
-  // Ensure that we saw the correct number of tokens.
-  equal(i, locations.length);
-}
-
-function test_lexer_eofchar(
-  cssText,
-  argText,
-  expectedAppend,
-  expectedNoAppend
-) {
-  const lexer = jsLexer.getCSSLexer(cssText);
-  while (lexer.nextToken()) {
-    // Nothing.
-  }
-
-  info("EOF char test, input = " + cssText);
-
-  let result = lexer.performEOFFixup(argText, true);
-  equal(result, expectedAppend);
-
-  result = lexer.performEOFFixup(argText, false);
-  equal(result, expectedNoAppend);
-}
-
-var LINECOL_TESTS = [
-  ["simple", ["ident:0:0", ":0:6"]],
-  ["\n    stuff", ["whitespace:0:0", "ident:1:4", ":1:9"]],
-  [
-    '"string with \\\nnewline"    \r\n',
-    ["string:0:0", "whitespace:1:8", ":2:0"],
-  ],
-];
-
-var EOFCHAR_TESTS = [
-  ["hello", "hello"],
-  ["hello \\", "hello \\\\", "hello \\\uFFFD"],
-  ["'hello", "'hello'"],
-  ['"hello', '"hello"'],
-  ["'hello\\", "'hello\\\\'", "'hello'"],
-  ['"hello\\', '"hello\\\\"', '"hello"'],
-  ["/*hello", "/*hello*/"],
-  ["/*hello*", "/*hello*/"],
-  ["/*hello\\", "/*hello\\*/"],
-  ["url(hello", "url(hello)"],
-  ["url('hello", "url('hello')"],
-  ['url("hello', 'url("hello")'],
-  ["url(hello\\", "url(hello\\\\)", "url(hello\\\uFFFD)"],
-  ["url('hello\\", "url('hello\\\\')", "url('hello')"],
-  ['url("hello\\', 'url("hello\\\\")', 'url("hello")'],
-];
-
-function run_test() {
-  let text, result;
-  for ([text, result] of LEX_TESTS) {
-    test_lexer(text, result);
-  }
-
-  for ([text, result] of LINECOL_TESTS) {
-    test_lexer_linecol(text, result);
-  }
-
-  let expectedAppend, expectedNoAppend;
-  for ([text, expectedAppend, expectedNoAppend] of EOFCHAR_TESTS) {
-    if (!expectedNoAppend) {
-      expectedNoAppend = expectedAppend;
-    }
-    test_lexer_eofchar(text, text, expectedAppend, expectedNoAppend);
-  }
-
-  // Ensure that passing a different inputString to performEOFFixup
-  // doesn't cause an assertion trying to strip a backslash from the
-  // end of an empty string.
-  test_lexer_eofchar("'\\", "", "\\'", "'");
-}
+});

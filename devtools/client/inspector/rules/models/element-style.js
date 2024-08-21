@@ -25,7 +25,7 @@ loader.lazyRequireGetter(
 loader.lazyRequireGetter(
   this,
   "isCssVariable",
-  "resource://devtools/client/fronts/css-properties.js",
+  "resource://devtools/shared/inspector/css-logic.js",
   true
 );
 
@@ -57,7 +57,7 @@ class ElementStyle {
     this.ruleView = ruleView;
     this.store = store || {};
     this.pageStyle = pageStyle;
-    this.pseudoElements = [];
+    this.pseudoElementTypes = new Set();
     this.showUserAgentStyles = showUserAgentStyles;
     this.rules = [];
     this.cssProperties = this.ruleView.cssProperties;
@@ -90,7 +90,7 @@ class ElementStyle {
     }
 
     this.destroyed = true;
-    this.pseudoElements = [];
+    this.pseudoElementTypes.clear();
 
     for (const rule of this.rules) {
       if (rule.editor) {
@@ -141,9 +141,12 @@ class ElementStyle {
         }
 
         // Store a list of all pseudo-element types found in the matching rules.
-        this.pseudoElements = this.rules
-          .filter(r => r.pseudoElement)
-          .map(r => r.pseudoElement);
+        this.pseudoElementTypes = new Set();
+        for (const rule of this.rules) {
+          if (rule.pseudoElement) {
+            this.pseudoElementTypes.add(rule.pseudoElement);
+          }
+        }
 
         // Mark overridden computed styles.
         this.onRuleUpdated();
@@ -275,7 +278,7 @@ class ElementStyle {
     this.updateDeclarations();
 
     // Update declarations for matching rules for pseudo-elements.
-    for (const pseudo of this.pseudoElements) {
+    for (const pseudo of this.pseudoElementTypes) {
       this.updateDeclarations(pseudo);
     }
   }
@@ -299,11 +302,6 @@ class ElementStyle {
   updateDeclarations(pseudo = "") {
     // Gather all text properties applicable to the selected element or pseudo-element.
     const textProps = this._getDeclarations(pseudo);
-    // Gather all the computed properties applied by those text properties.
-    let computedProps = [];
-    for (const textProp of textProps) {
-      computedProps = computedProps.concat(textProp.computed);
-    }
 
     // CSS Variables inherits from the normal element in case of pseudo element.
     const variables = new Map(pseudo ? this.variablesMap.get("") : null);
@@ -322,47 +320,72 @@ class ElementStyle {
     //   If the new property is a lower or equal priority, mark it as
     //   overridden.
     //
+    //   Note that this is different if layers are involved: if both
+    //   old and new properties have a high priority, and if the new
+    //   property is in a rule belonging to a layer that is different
+    //   from the the one the old property rule might be in,
+    //   mark the old property overridden and mark the property name as
+    //   taken by the new property.
+    //
     // _overriddenDirty will be set on each prop, indicating whether its
     // dirty status changed during this pass.
-    const taken = {};
-    for (const computedProp of computedProps) {
-      const earlier = taken[computedProp.name];
+    const taken = new Map();
+    for (const textProp of textProps) {
+      for (const computedProp of textProp.computed) {
+        const earlier = taken.get(computedProp.name);
 
-      // Prevent -webkit-gradient from being selected after unchecking
-      // linear-gradient in this case:
-      //  -moz-linear-gradient: ...;
-      //  -webkit-linear-gradient: ...;
-      //  linear-gradient: ...;
-      if (!computedProp.textProp.isValid()) {
-        computedProp.overridden = true;
-        continue;
-      }
+        // Prevent -webkit-gradient from being selected after unchecking
+        // linear-gradient in this case:
+        //  -moz-linear-gradient: ...;
+        //  -webkit-linear-gradient: ...;
+        //  linear-gradient: ...;
+        if (!computedProp.textProp.isValid()) {
+          computedProp.overridden = true;
+          continue;
+        }
 
-      let overridden;
-      if (
-        earlier &&
-        computedProp.priority === "important" &&
-        earlier.priority !== "important" &&
-        // For !important only consider rules applying to the same parent node.
-        computedProp.textProp.rule.inherited == earlier.textProp.rule.inherited
-      ) {
-        // New property is higher priority. Mark the earlier property
-        // overridden (which will reverse its dirty state).
-        earlier._overriddenDirty = !earlier._overriddenDirty;
-        earlier.overridden = true;
-        overridden = false;
-      } else {
-        overridden = !!earlier;
-      }
+        let overridden;
+        if (
+          earlier &&
+          computedProp.priority === "important" &&
+          (earlier.priority !== "important" ||
+            // Even if the earlier property was important, if the current rule is in a layer
+            // it will take precedence, unless the earlier property rule was in the same layer.
+            (computedProp.textProp.rule?.isInLayer() &&
+              computedProp.textProp.rule.isInDifferentLayer(
+                earlier.textProp.rule
+              ))) &&
+          // For !important only consider rules applying to the same parent node.
+          computedProp.textProp.rule.inherited ==
+            earlier.textProp.rule.inherited
+        ) {
+          // New property is higher priority. Mark the earlier property
+          // overridden (which will reverse its dirty state).
+          earlier._overriddenDirty = !earlier._overriddenDirty;
+          earlier.overridden = true;
+          overridden = false;
+        } else {
+          overridden = !!earlier;
+        }
 
-      computedProp._overriddenDirty = !!computedProp.overridden !== overridden;
-      computedProp.overridden = overridden;
+        computedProp._overriddenDirty =
+          !!computedProp.overridden !== overridden;
+        computedProp.overridden = overridden;
 
-      if (!computedProp.overridden && computedProp.textProp.enabled) {
-        taken[computedProp.name] = computedProp;
+        if (!computedProp.overridden && computedProp.textProp.enabled) {
+          taken.set(computedProp.name, computedProp);
 
-        if (isCssVariable(computedProp.name)) {
-          variables.set(computedProp.name, computedProp.value);
+          // At this point, we can get CSS variable from "inherited" rules.
+          // When this is a registered custom property with `inherits` set to false,
+          // the text prop is "invisible" (i.e. not shown in the rule view).
+          // In such case, we don't want to get the value in the Map, and we'll rather
+          // get the initial value from the registered property definition.
+          if (
+            isCssVariable(computedProp.name) &&
+            !computedProp.textProp.invisible
+          ) {
+            variables.set(computedProp.name, computedProp.value);
+          }
         }
       }
     }
@@ -397,6 +420,23 @@ class ElementStyle {
       // For each editor show or hide the inactive CSS icon as needed.
       if (textProp.editor && this.unusedCssEnabled) {
         textProp.editor.updatePropertyState();
+      }
+    }
+  }
+
+  /**
+   * Update CSS variable tooltip information on textProp editor when registered property
+   * are added/modified/removed.
+   *
+   * @param {Set<String>} registeredPropertyNamesSet: A Set containing the name of the
+   *                      registered properties which were added/modified/removed.
+   */
+  onRegisteredPropertiesChange(registeredPropertyNamesSet) {
+    for (const rule of this.rules) {
+      for (const textProp of rule.textProps) {
+        if (this._hasUpdatedCSSVariable(textProp, registeredPropertyNamesSet)) {
+          textProp.updateEditor();
+        }
       }
     }
   }
@@ -455,7 +495,12 @@ class ElementStyle {
       // longer matches the node. This strict check avoids accidentally causing
       // declarations to be overridden in the remaining matching rules.
       const isStyleRule =
-        rule.pseudoElement === "" && !!rule.matchedSelectors.length;
+        rule.pseudoElement === "" &&
+        // @backward-compat { version 128 } When 128 hits release, we can remove the
+        // ternary and only check rule.matchedSelectorIndexes.length.
+        (rule.domRule.hasMatchedSelectorIndexesTrait
+          ? !!rule.matchedSelectorIndexes.length
+          : !!rule.matchedDesugaredSelectors.length);
 
       // Style rules for pseudo-elements must always be considered, regardless if their
       // selector matches the node. As a convenience, declarations in rules for
@@ -799,19 +844,71 @@ class ElementStyle {
   }
 
   /**
-   * Returns the current value of a CSS variable; or null if the
-   * variable is not defined.
+   * Returns data about a CSS variable.
    *
    * @param  {String} name
    *         The name of the variable.
    * @param  {String} pseudo
    *         The pseudo-element name of the rule.
-   * @return {String} the variable's value or null if the variable is
-   *         not defined.
+   * @return {Object} An object with the following properties:
+   *         - {String|undefined} value: The variable's value. Undefined if variable is not set.
+   *         - {RegisteredPropertyResource|undefined} registeredProperty: The registered
+   *           property data (syntax, initial value, inherits). Undefined if the variable
+   *           is not a registered property.
    */
-  getVariable(name, pseudo = "") {
+  getVariableData(name, pseudo = "") {
     const variables = this.variablesMap.get(pseudo);
-    return variables ? variables.get(name) : null;
+    const registeredPropertiesMap =
+      this.ruleView.getRegisteredPropertiesForSelectedNodeTarget();
+
+    const data = {};
+    if (variables?.has(name)) {
+      // XXX Check what to do in case the value doesn't match the registered property syntax.
+      // Will be handled in Bug 1866712
+      data.value = variables.get(name);
+    }
+    if (registeredPropertiesMap?.has(name)) {
+      data.registeredProperty = registeredPropertiesMap.get(name);
+    }
+
+    return data;
+  }
+
+  /**
+   * Get all custom properties.
+   *
+   * @param  {String} pseudo
+   *         The pseudo-element name of the rule.
+   * @returns Map<String, String> A map whose key is the custom property name and value is
+   *                              the custom property value (or registered property initial
+   *                              value if the property is not defined)
+   */
+  getAllCustomProperties(pseudo = "") {
+    let customProperties = this.variablesMap.get(pseudo);
+
+    const registeredPropertiesMap =
+      this.ruleView.getRegisteredPropertiesForSelectedNodeTarget();
+
+    // If there's no registered properties, we can return the Map as is
+    if (!registeredPropertiesMap || registeredPropertiesMap.size === 0) {
+      return customProperties;
+    }
+
+    let newMapCreated = false;
+    for (const [name, propertyDefinition] of registeredPropertiesMap) {
+      // Only set the registered property if it's not defined (i.e. not in this.variablesMap)
+      if (!customProperties.has(name)) {
+        // Since we want to return registered property, we need to create a new Map
+        // to not modify the one in this.variablesMap.
+        if (!newMapCreated) {
+          customProperties = new Map(customProperties);
+          newMapCreated = true;
+        }
+        customProperties.set(name, propertyDefinition.initialValue);
+      }
+    }
+
+    return customProperties;
   }
 }
 

@@ -81,14 +81,6 @@ export function getComments(ast) {
   }));
 }
 
-export function getSpecifiers(specifiers) {
-  if (!specifiers) {
-    return [];
-  }
-
-  return specifiers.map(specifier => specifier.local?.name);
-}
-
 export function isComputedExpression(expression) {
   return /^\[/m.test(expression);
 }
@@ -147,8 +139,18 @@ export function getVariables(dec) {
   ];
 }
 
-export function getPatternIdentifiers(pattern) {
-  let items = [];
+/**
+ * Add the identifiers for a given object pattern.
+ *
+ * @param {Array.<Object>} identifiers
+ *        the current list of identifiers where to push the new identifiers
+ *        related to this path.
+ * @param {Set<String>} identifiersKeys
+ *        List of currently registered identifier location key.
+ * @param {Object} pattern
+ */
+export function addPatternIdentifiers(identifiers, identifiersKeys, pattern) {
+  let items;
   if (t.isObjectPattern(pattern)) {
     items = pattern.properties.map(({ value }) => value);
   }
@@ -157,24 +159,25 @@ export function getPatternIdentifiers(pattern) {
     items = pattern.elements;
   }
 
-  return getIdentifiers(items);
+  if (items) {
+    addIdentifiers(identifiers, identifiersKeys, items);
+  }
 }
 
-function getIdentifiers(items) {
-  let ids = [];
-  items.forEach(function (item) {
+function addIdentifiers(identifiers, identifiersKeys, items) {
+  for (const item of items) {
     if (t.isObjectPattern(item) || t.isArrayPattern(item)) {
-      ids = ids.concat(getPatternIdentifiers(item));
+      addPatternIdentifiers(identifiers, identifiersKeys, item);
     } else if (t.isIdentifier(item)) {
-      const { start, end } = item.loc;
-      ids.push({
-        name: item.name,
-        expression: item.name,
-        location: { start, end },
-      });
+      if (!identifiersKeys.has(nodeLocationKey(item.loc))) {
+        identifiers.push({
+          name: item.name,
+          expression: item.name,
+          location: item.loc,
+        });
+      }
     }
-  });
-  return ids;
+  }
 }
 
 // Top Level checks the number of "body" nodes in the ancestor chain
@@ -183,8 +186,7 @@ export function isTopLevel(ancestors) {
   return ancestors.filter(ancestor => ancestor.key == "body").length == 1;
 }
 
-export function nodeLocationKey(a) {
-  const { start, end } = a.location;
+export function nodeLocationKey({ start, end }) {
   return `${start.line}:${start.column}:${end.line}:${end.column}`;
 }
 

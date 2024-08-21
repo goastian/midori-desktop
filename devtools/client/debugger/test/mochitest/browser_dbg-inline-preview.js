@@ -22,6 +22,7 @@ add_task(async function () {
     { identifier: "d:", value: "null" },
     { identifier: "e:", value: "Array []" },
     { identifier: "f:", value: "Object { }" },
+    { identifier: "reg:", value: "/^\\p{RGI_Emoji}$/v" },
     { identifier: "obj:", value: "Object { foo: 1 }" },
     {
       identifier: "bs:",
@@ -48,6 +49,11 @@ add_task(async function () {
     { identifier: "self:", value: `Object { x: 1, #privateVar: 2 }` },
   ]);
 
+  // Check inline previews for values within a module script
+  await checkInlinePreview(dbg, "runInModule", [
+    { identifier: "val:", value: "4" },
+  ]);
+
   // Checks that open in inspector button works in inline preview
   invokeInTab("btnClick");
   await checkInspectorIcon(dbg);
@@ -55,7 +61,7 @@ add_task(async function () {
   const { toolbox } = dbg;
   await toolbox.selectTool("jsdebugger");
 
-  await waitForPaused(dbg);
+  await waitForSelectedSource(dbg);
 
   // Check preview of event ( event.target should be clickable )
   // onBtnClick function in inline-preview.js

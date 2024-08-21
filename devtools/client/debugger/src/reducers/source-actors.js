@@ -25,6 +25,14 @@ function initialSourceActorsState() {
     // but this may be invalid. The source map URL or source map file content may be invalid.
     // In these scenarios we will remove the source actor from this set.
     mutableSourceActorsWithSourceMap: new Set(),
+
+    // Map(Source Actor ID: string => string)
+    // Store the exception message when processing the sourceMapURL field of the source actor.
+    mutableSourceMapErrors: new Map(),
+
+    // Map(Source Actor ID: string => string)
+    // When a bundle has a functional sourcemap, reports the resolved source map URL.
+    mutableResolvedSourceMapURL: new Map(),
   };
 }
 
@@ -61,30 +69,41 @@ export default function update(state = initialSourceActorsState(), action) {
     }
 
     case "SET_SOURCE_ACTOR_BREAKABLE_LINES":
-      return updateBreakableLines(state, action);
+      state.mutableBreakableLines.set(
+        action.sourceActor.id,
+        action.breakableLines
+      );
+
+      return {
+        ...state,
+      };
 
     case "CLEAR_SOURCE_ACTOR_MAP_URL":
-      if (state.mutableSourceActorsWithSourceMap.delete(action.sourceActorId)) {
+      if (
+        state.mutableSourceActorsWithSourceMap.delete(action.sourceActor.id)
+      ) {
         return {
           ...state,
         };
       }
       return state;
+
+    case "SOURCE_MAP_ERROR": {
+      state.mutableSourceMapErrors.set(
+        action.sourceActor.id,
+        action.errorMessage
+      );
+      return { ...state };
+    }
+
+    case "RESOLVED_SOURCEMAP_URL": {
+      state.mutableResolvedSourceMapURL.set(
+        action.sourceActor.id,
+        action.resolvedSourceMapURL
+      );
+      return { ...state };
+    }
   }
 
   return state;
-}
-
-function updateBreakableLines(state, action) {
-  const { sourceActorId } = action;
-
-  // Ignore breakable lines for source actors that aren't/no longer registered
-  if (!state.mutableSourceActors.has(sourceActorId)) {
-    return state;
-  }
-
-  state.mutableBreakableLines.set(sourceActorId, action.breakableLines);
-  return {
-    ...state,
-  };
 }

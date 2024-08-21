@@ -5,7 +5,8 @@
 "use strict";
 
 const { XPCOMUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/XPCOMUtils.sys.mjs"
+  "resource://gre/modules/XPCOMUtils.sys.mjs",
+  { global: "contextual" }
 );
 loader.lazyRequireGetter(
   this,
@@ -102,11 +103,11 @@ class ServiceWorkerRegistrationActorList {
     this._mustNotify = false;
   }
 
-  onRegister(registration) {
+  onRegister() {
     this._notifyListChanged();
   }
 
-  onUnregister(registration) {
+  onUnregister() {
     this._notifyListChanged();
   }
 }

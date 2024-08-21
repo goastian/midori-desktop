@@ -7,8 +7,8 @@
 "use strict";
 
 add_task(async function () {
+  await pushPref("devtools.debugger.map-scopes-enabled", true);
   const dbg = await initDebugger("doc-minified2.html", "sum.js");
-  dbg.actions.toggleMapScopes();
 
   await selectSource(dbg, "sum.js");
   await addBreakpoint(dbg, "sum.js", 2);
@@ -23,11 +23,3 @@ add_task(async function () {
   is(getScopeNodeValue(dbg, 3), "2", "check scope value");
   is(getScopeNodeLabel(dbg, 4), "Window", "check scope label");
 });
-
-function getScopeNodeLabel(dbg, index) {
-  return findElement(dbg, "scopeNode", index).innerText;
-}
-
-function getScopeNodeValue(dbg, index) {
-  return findElement(dbg, "scopeValue", index).innerText;
-}

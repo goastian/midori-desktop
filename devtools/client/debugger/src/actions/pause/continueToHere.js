@@ -7,18 +7,20 @@ import {
   getSelectedFrame,
   getClosestBreakpointPosition,
   getBreakpoint,
-} from "../../selectors";
+  getCurrentThread,
+} from "../../selectors/index";
 import { createLocation } from "../../utils/location";
-import { addHiddenBreakpoint } from "../breakpoints";
+import { addHiddenBreakpoint } from "../breakpoints/index";
 import { setBreakpointPositions } from "../breakpoints/breakpointPositions";
 
 import { resume } from "./commands";
 
-export function continueToHere(cx, location) {
+export function continueToHere(location) {
   return async function ({ dispatch, getState }) {
     const { line, column } = location;
+    const thread = getCurrentThread(getState());
     const selectedSource = getSelectedSource(getState());
-    const selectedFrame = getSelectedFrame(getState(), cx.thread);
+    const selectedFrame = getSelectedFrame(getState(), thread);
 
     if (!selectedFrame || !selectedSource) {
       return;
@@ -31,7 +33,7 @@ export function continueToHere(cx, location) {
       return;
     }
 
-    await dispatch(setBreakpointPositions({ cx, location }));
+    await dispatch(setBreakpointPositions(location));
     const position = getClosestBreakpointPosition(getState(), location);
 
     // If the user selects a location in the editor,
@@ -47,7 +49,6 @@ export function continueToHere(cx, location) {
     if (!getBreakpoint(getState(), pauseLocation)) {
       await dispatch(
         addHiddenBreakpoint(
-          cx,
           createLocation({
             source: selectedSource,
             line: pauseLocation.line,
@@ -57,6 +58,6 @@ export function continueToHere(cx, location) {
       );
     }
 
-    dispatch(resume(cx));
+    dispatch(resume());
   };
 }

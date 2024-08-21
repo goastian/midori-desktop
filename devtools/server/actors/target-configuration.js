@@ -9,11 +9,13 @@ const {
   targetConfigurationSpec,
 } = require("resource://devtools/shared/specs/target-configuration.js");
 
-const {
-  SessionDataHelpers,
-} = require("resource://devtools/server/actors/watcher/SessionDataHelpers.jsm");
+const { SessionDataHelpers } = ChromeUtils.importESModule(
+  "resource://devtools/server/actors/watcher/SessionDataHelpers.sys.mjs",
+  { global: "contextual" }
+);
 const { isBrowsingContextPartOfContext } = ChromeUtils.importESModule(
-  "resource://devtools/server/actors/watcher/browsing-context-helpers.sys.mjs"
+  "resource://devtools/server/actors/watcher/browsing-context-helpers.sys.mjs",
+  { global: "contextual" }
 );
 const { SUPPORTED_DATA } = SessionDataHelpers;
 const { TARGET_CONFIGURATION } = SUPPORTED_DATA;
@@ -47,8 +49,12 @@ const SUPPORTED_OPTIONS = {
   restoreFocus: true,
   // Enable service worker testing over HTTP (instead of HTTPS only).
   serviceWorkersTestingEnabled: true,
+  // Set the current tab offline
+  setTabOffline: true,
   // Enable touch events simulation
   touchEventsOverride: true,
+  // Used to configure and start/stop the JavaScript tracer
+  tracerOptions: true,
   // Use simplified highlighters when prefers-reduced-motion is enabled.
   useSimpleHighlightersForReducedMotion: true,
 };
@@ -213,7 +219,11 @@ class TargetConfigurationActor extends Actor {
       .map(key => ({ key, value: configuration[key] }));
 
     this._updateParentProcessConfiguration(configuration);
-    await this.watcherActor.addDataEntry(TARGET_CONFIGURATION, cfgArray);
+    await this.watcherActor.addOrSetDataEntry(
+      TARGET_CONFIGURATION,
+      cfgArray,
+      "add"
+    );
     return this._getConfiguration();
   }
 
@@ -266,6 +276,9 @@ class TargetConfigurationActor extends Actor {
         case "cacheDisabled":
           this._setCacheDisabled(value);
           break;
+        case "setTabOffline":
+          this._setTabOffline(value);
+          break;
       }
     }
 
@@ -282,6 +295,7 @@ class TargetConfigurationActor extends Actor {
     this._setServiceWorkersTestingEnabled(false);
     this._setPrintSimulationEnabled(false);
     this._setCacheDisabled(false);
+    this._setTabOffline(false);
 
     // Restore the color scheme simulation only if it was explicitly updated
     // by this actor. This will avoid side effects caused when destroying additional
@@ -453,6 +467,17 @@ class TargetConfigurationActor extends Actor {
     }
   }
 
+  /**
+   * Set the browsing context to offline.
+   *
+   * @param {Boolean} offline: Whether the network throttling is set to offline
+   */
+  _setTabOffline(offline) {
+    if (!this._browsingContext.isDiscarded) {
+      this._browsingContext.forceOffline = offline;
+    }
+  }
+
   destroy() {
     Services.obs.removeObserver(
       this._onBrowsingContextAttached,
@@ -462,7 +487,10 @@ class TargetConfigurationActor extends Actor {
       "bf-cache-navigation-pageshow",
       this._onBfCacheNavigation
     );
-    this._restoreParentProcessConfiguration();
+    // Avoid trying to restore if the related context is already being destroyed
+    if (this._browsingContext && !this._browsingContext.isDiscarded) {
+      this._restoreParentProcessConfiguration();
+    }
     super.destroy();
   }
 }

@@ -2,10 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import { createSelector } from "reselect";
+import { createSelector } from "devtools/client/shared/vendor/reselect";
 
-import { isGeneratedId } from "devtools/client/shared/source-map-loader/index";
-import { makeBreakpointId } from "../utils/breakpoint";
+import { makeBreakpointId } from "../utils/breakpoint/index";
 
 // This method is only used from the main test helper
 export function getBreakpointsMap(state) {
@@ -33,19 +32,18 @@ export function getBreakpoint(state, location) {
 /**
  * Gets the breakpoints on a line or within a range of lines
  * @param {Object} state
- * @param {Number} sourceId
+ * @param {Number} source
  * @param {Number|Object} lines - line or an object with a start and end range of lines
  * @returns {Array} breakpoints
  */
-export function getBreakpointsForSource(state, sourceId, lines) {
-  if (!sourceId) {
+export function getBreakpointsForSource(state, source, lines) {
+  if (!source) {
     return [];
   }
 
-  const isGeneratedSource = isGeneratedId(sourceId);
   const breakpoints = getBreakpointsList(state);
   return breakpoints.filter(bp => {
-    const location = isGeneratedSource ? bp.generatedLocation : bp.location;
+    const location = source.isOriginal ? bp.location : bp.generatedLocation;
 
     if (lines) {
       const isOnLineOrWithinRange =
@@ -53,9 +51,9 @@ export function getBreakpointsForSource(state, sourceId, lines) {
           ? location.line == lines
           : location.line >= lines.start.line &&
             location.line <= lines.end.line;
-      return location.sourceId === sourceId && isOnLineOrWithinRange;
+      return location.source === source && isOnLineOrWithinRange;
     }
-    return location.sourceId === sourceId;
+    return location.source === source;
   });
 }
 

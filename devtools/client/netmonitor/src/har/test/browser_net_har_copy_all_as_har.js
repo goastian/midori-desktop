@@ -7,7 +7,7 @@
  * Basic tests for exporting Network panel content into HAR format.
  */
 
-const EXPECTED_REQUEST_HEADER_COUNT = 9;
+const EXPECTED_REQUEST_HEADER_COUNT = 13;
 const EXPECTED_RESPONSE_HEADER_COUNT = 6;
 
 add_task(async function () {
@@ -15,7 +15,7 @@ add_task(async function () {
   // (bug 1352274). TCP Fast Open is not present on all platforms therefore the
   // number of response headers will vary depending on the platform.
   await pushPref("network.tcp.tcp_fastopen_enable", false);
-  const { tab, monitor, toolbox } = await initNetMonitor(SIMPLE_URL, {
+  const { tab, monitor, toolbox } = await initNetMonitor(HTTPS_SIMPLE_URL, {
     requestCount: 1,
   });
 
@@ -45,7 +45,7 @@ async function testSimpleReload({ tab, monitor, toolbox }) {
 
   const page = har.log.pages[0];
 
-  is(page.title, "Network Monitor test page", "There must be some page title");
+  is(page.title, HTTPS_SIMPLE_URL, "There must be some page title");
   ok("onContentLoad" in page.pageTimings, "There must be onContentLoad time");
   ok("onLoad" in page.pageTimings, "There must be onLoad time");
 
@@ -85,7 +85,11 @@ async function testManyReloads({ tab, monitor, toolbox }) {
   });
   // In most cases, we will have two requests, but sometimes,
   // the first one might be missing as we couldn't fetch any lazy data for it.
-  ok(har.log.entries.length >= 1, "There must be at least one request");
+  Assert.greaterOrEqual(
+    har.log.entries.length,
+    1,
+    "There must be at least one request"
+  );
   info(
     "Assert the first navigation request which has been cancelled by the second reload"
   );
@@ -94,7 +98,7 @@ async function testManyReloads({ tab, monitor, toolbox }) {
   if (entry) {
     ok(entry, "Found the cancelled request");
     is(entry.request.method, "GET", "Method is set");
-    is(entry.request.url, SIMPLE_URL, "URL is set");
+    is(entry.request.url, HTTPS_SIMPLE_URL, "URL is set");
     // We always get the following headers:
     // "Host", "User-agent", "Accept", "Accept-Language", "Accept-Encoding", "Connection"
     // but are missing the three last headers:
@@ -107,7 +111,7 @@ async function testManyReloads({ tab, monitor, toolbox }) {
   assertNavigationRequestEntry(entry);
 }
 
-async function testClearedRequests({ tab, monitor, toolbox }) {
+async function testClearedRequests({ tab, monitor }) {
   info("Navigate to an empty page");
   const topDocumentURL =
     "https://example.org/document-builder.sjs?html=empty-document";
@@ -167,9 +171,9 @@ async function testClearedRequests({ tab, monitor, toolbox }) {
 
 function assertNavigationRequestEntry(entry) {
   info("Assert that the entry relates to the navigation request");
-  ok(entry.time > 0, "Check the total time");
+  Assert.greater(entry.time, 0, "Check the total time");
   is(entry.request.method, "GET", "Check the method");
-  is(entry.request.url, SIMPLE_URL, "Check the URL");
+  is(entry.request.url, HTTPS_SIMPLE_URL, "Check the URL");
   is(
     entry.request.headers.length,
     EXPECTED_REQUEST_HEADER_COUNT,
@@ -192,7 +196,6 @@ function assertNavigationRequestEntry(entry) {
  * Reload the page and copy all as HAR.
  */
 async function reloadAndCopyAllAsHar({
-  tab,
   monitor,
   toolbox,
   reloadTwice = false,

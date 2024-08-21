@@ -53,7 +53,8 @@ body {
     * |  +----------------------+  ↔                 |
     * |  |  [EagerEvaluation]   |  ↔                 |
     * |  +----------------------+  ↔                 |
-    * |                            ↔                 |
+    * |  |  [EvalNotification]  |  ↔                 |
+    * |  +----------------------+  ↔                 |
     * +----------------------------↔                 |
     * |  [Reverse search input]    ↔                 |
     * +----------------------------------------------+
@@ -67,8 +68,9 @@ body {
                        "filter-toolbar           sidebar"
                        "filter-toolbar-secondary sidebar"
                        "output-input             sidebar"
+                       "eval-notification        sidebar"
                        "reverse-search           sidebar";
-  grid-template-rows: auto var(--primary-toolbar-height) auto 1fr auto;
+  grid-template-rows: auto var(--primary-toolbar-height) auto 1fr auto auto;
   grid-template-columns: minmax(200px, 1fr) minmax(0, auto);
   max-height: 100vh !important;
   height: 100vh !important;
@@ -122,6 +124,8 @@ body {
 }
 
 .devtools-button.webconsole-console-settings-menu-button {
+  /* adjust outline offset so it's not clipped */
+  --theme-outline-offset: -2px;
   height: 100%;
   margin: 0;
 }
@@ -179,6 +183,8 @@ body {
 }
 
 .webconsole-input-openEditorButton {
+    /* adjust outline offset so it's not clipped */
+  --theme-outline-offset: -2px;
   height: var(--console-row-height);
   margin: 0;
   padding-block: 0;
@@ -275,6 +281,8 @@ body {
      * +--------------------------↔                          ↔                 |
      * |    [Eager evaluation]    ↔                          ↔                 |
      * +--------------------------↔                          ↔                 |
+     * |   [Eval Notification]    ↔                          ↔                 |
+     * +--------------------------↔                          ↔                 |
      * |  [Reverse search input]  ↔                          ↔                 |
      * +-----------------------------------------------------+-----------------+
      *
@@ -289,6 +297,7 @@ body {
                        "editor                filter-toolbar-secondary  sidebar"
                        "editor                output                    sidebar"
                        "eager-evaluation      output                    sidebar"
+                       "eval-notification     output                    sidebar"
                        "reverse-search        output                    sidebar";
   grid-template-rows:
     auto
@@ -296,6 +305,7 @@ body {
     var(--primary-toolbar-height)
     auto
     1fr
+    auto
     auto
     auto;
   grid-template-columns: minmax(150px, auto) minmax(200px, 1fr) minmax(0, auto);
@@ -443,6 +453,17 @@ body {
   width: 0;
 }
 
+.evaluation-notification {
+  grid-area: eval-notification;
+  /* The next 2 lines make it so the element isn't impacting the grid column size, but
+    will still take the whole available space. */
+  min-width: 100%;
+  width: 0;
+  border: 1px solid;
+  display: flex;
+  padding: 0.5em;
+}
+
 .jsterm-editor .editor-resizer {
   grid-column: editor;
   /* We want the splitter to cover the whole column (minus self-xss message) */
@@ -495,7 +516,7 @@ body {
   padding: 2px;
   background: transparent;
   border: none;
-  color: var(--theme-highlight-blue);
+  color: var(--theme-link-color);
   font-family: inherit;
   cursor: pointer;
   font-size: inherit;

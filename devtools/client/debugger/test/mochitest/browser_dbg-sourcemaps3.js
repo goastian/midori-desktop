@@ -10,6 +10,7 @@ requestLongerTimeout(2);
 
 // This source map does not have source contents, so it's fetched separately
 add_task(async function () {
+  await pushPref("devtools.debugger.map-scopes-enabled", true);
   // NOTE: the CORS call makes the test run times inconsistent
   const dbg = await initDebugger(
     "doc-sourcemaps3.html",
@@ -17,7 +18,6 @@ add_task(async function () {
     "sorted.js",
     "test.js"
   );
-  dbg.actions.toggleMapScopes();
 
   ok(true, "Original sources exist");
   const sortedSrc = findSource(dbg, "sorted.js");
@@ -25,7 +25,7 @@ add_task(async function () {
   await selectSource(dbg, sortedSrc);
 
   // Test that breakpoint is not off by a line.
-  await addBreakpoint(dbg, sortedSrc, 9, 4);
+  await addBreakpoint(dbg, sortedSrc, 9, 5);
   is(dbg.selectors.getBreakpointCount(), 1, "One breakpoint exists");
   ok(
     dbg.selectors.getBreakpoint(
@@ -37,29 +37,58 @@ add_task(async function () {
   invokeInTab("test");
 
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, sortedSrc.id, 9, 4);
+  assertPausedAtSourceAndLine(dbg, sortedSrc.id, 9, 5);
 
-  is(getScopeLabel(dbg, 1), "Block");
-  is(getScopeLabel(dbg, 2), "na");
-  is(getScopeLabel(dbg, 3), "nb");
+  is(getScopeNodeLabel(dbg, 1), "Block");
+  is(getScopeNodeLabel(dbg, 2), "na");
+  is(getScopeNodeLabel(dbg, 3), "nb");
 
-  is(getScopeLabel(dbg, 4), "Function Body");
+  is(getScopeNodeLabel(dbg, 4), "Function Body");
 
   await toggleScopeNode(dbg, 4);
 
-  is(getScopeLabel(dbg, 5), "ma");
-  is(getScopeLabel(dbg, 6), "mb");
+  is(getScopeNodeLabel(dbg, 5), "ma");
+  is(getScopeNodeLabel(dbg, 6), "mb");
 
   await toggleScopeNode(dbg, 7);
 
-  is(getScopeLabel(dbg, 8), "a");
-  is(getScopeLabel(dbg, 9), "b");
+  is(getScopeNodeLabel(dbg, 8), "a");
+  is(getScopeNodeLabel(dbg, 9), "b");
 
-  is(getScopeLabel(dbg, 10), "Module");
+  is(getScopeNodeLabel(dbg, 10), "Module");
 
   await toggleScopeNode(dbg, 10);
 
-  is(getScopeLabel(dbg, 11), "binaryLookup:o(n, e, r)");
-  is(getScopeLabel(dbg, 12), "comparer:t(n, e)");
-  is(getScopeLabel(dbg, 13), "fancySort");
+  is(getScopeNodeLabel(dbg, 11), "binaryLookup:o(n, e, r)");
+  is(getScopeNodeLabel(dbg, 12), "comparer:t(n, e)");
+  is(getScopeNodeLabel(dbg, 13), "fancySort");
+
+  const frameLabels = [
+    ...findAllElementsWithSelector(dbg, ".pane.frames .frame .title"),
+  ].map(el => el.textContent);
+  // The frame display named are mapped to the original source.
+  // For example "fancySort" method is named "u" in the generated source.
+  Assert.deepEqual(frameLabels, [
+    "comparer",
+    "binaryLookup",
+    "fancySort",
+    "fancySort",
+    "originalTestName",
+  ]);
+
+  info(
+    "Verify that original function names are displayed in frames on source selection"
+  );
+  await selectSource(dbg, "test.js");
+
+  const frameLabelsAfterUpdate = [
+    ...findAllElementsWithSelector(dbg, ".pane.frames .frame .title"),
+  ].map(el => el.textContent);
+  Assert.deepEqual(frameLabelsAfterUpdate, [
+    "comparer",
+    "binaryLookup",
+    "fancySort",
+    "fancySort",
+    "originalTestName", // <== this frame was updated
+  ]);
 });

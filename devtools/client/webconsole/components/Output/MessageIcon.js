@@ -9,6 +9,9 @@ const dom = require("resource://devtools/client/shared/vendor/react-dom-factorie
 const {
   l10n,
 } = require("resource://devtools/client/webconsole/utils/messages.js");
+const {
+  MESSAGE_TYPE,
+} = require("resource://devtools/client/webconsole/constants.js");
 
 const l10nLevels = {
   error: "level.error",
@@ -16,6 +19,7 @@ const l10nLevels = {
   info: "level.info",
   log: "level.log",
   debug: "level.debug",
+  jstracer: "level.jstracer",
 };
 
 // Store common icons so they can be used without recreating the element
@@ -35,20 +39,23 @@ function getIconElement(level, type, title) {
   if (type === "logPoint") {
     title = l10n.getStr("logpoint.title");
     classnames.push("logpoint");
-  } else if (type === "logTrace") {
-    title = l10n.getStr("logtrace.title");
-    classnames.push("logtrace");
   } else if (type === "blockedReason") {
-    title = l10n.getStr("blockedrequest.label");
+    title = l10n.getStr("blockedrequest.label2");
+  } else if (type === MESSAGE_TYPE.COMMAND) {
+    title = l10n.getStr("command.title");
+  } else if (type === MESSAGE_TYPE.RESULT) {
+    title = l10n.getStr("result.title");
+  } else if (level == "level.jstracer" || type == MESSAGE_TYPE.JSTRACER) {
+    // Actual traces uses JSTracerTrace objects and `level` attribute,
+    // while log messages relating to tracing uses ConsoleApiCall, where level == "log" and so rather uses `type` attribute.
+    classnames.push("logtrace");
   }
 
-  {
-    return dom.span({
-      className: classnames.join(" "),
-      title,
-      "aria-live": "off",
-    });
-  }
+  return dom.span({
+    className: classnames.join(" "),
+    title,
+    "aria-live": "off",
+  });
 }
 
 MessageIcon.displayName = "MessageIcon";

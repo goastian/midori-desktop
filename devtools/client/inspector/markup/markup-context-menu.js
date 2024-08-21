@@ -371,6 +371,10 @@ class MarkupContextMenu {
 
     const res = await this.toolbox.commands.scriptCommand.execute(evalString, {
       selectedNodeActor: this.selection.nodeFront.actorID,
+      // Prevent any type of breakpoint when evaluating this code
+      disableBreaks: true,
+      // Ensure always overriding "$0" console command, even if the page implements its own "$0" variable.
+      preferConsoleCommandsOverLocalSymbols: true,
     });
     hud.setInputValue(res.result);
     this.inspector.emit("console-var-ready");
@@ -792,12 +796,7 @@ class MarkupContextMenu {
       })
     );
 
-    if (
-      Services.prefs.getBoolPref(
-        "devtools.markup.mutationBreakpoints.enabled"
-      ) &&
-      this.selection.nodeFront.mutationBreakpoints
-    ) {
+    if (this.selection.nodeFront.mutationBreakpoints) {
       menu.append(
         new MenuItem({
           label: INSPECTOR_L10N.getStr("inspectorBreakpointSubmenu.label"),

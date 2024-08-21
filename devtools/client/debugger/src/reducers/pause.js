@@ -28,10 +28,10 @@ export function initialPauseState(thread = "UnknownThread") {
       thread,
       pauseCounter: 0,
     },
-    highlightedCalls: null,
     threads: {},
     skipPausing: prefs.skipPausing,
     mapScopes: prefs.mapScopes,
+    shouldPauseOnDebuggerStatement: prefs.pauseOnDebuggerStatement,
     shouldPauseOnExceptions: prefs.pauseOnExceptions,
     shouldPauseOnCaughtExceptions: prefs.pauseOnCaughtExceptions,
   };
@@ -49,7 +49,6 @@ const resumedPauseState = {
   selectedFrameId: null,
   why: null,
   inlinePreview: {},
-  highlightedCalls: null,
 };
 
 const createInitialPauseState = () => ({
@@ -68,30 +67,42 @@ export function getThreadPauseState(state, thread) {
 }
 
 function update(state = initialPauseState(), action) {
-  // Actions need to specify any thread they are operating on. These helpers
-  // manage updating the pause state for that thread.
-  const threadState = () => {
-    if (!action.thread) {
+  // All the actions updating pause state must pass an object which designate
+  // the related thread.
+  const getActionThread = () => {
+    const thread =
+      action.thread || action.selectedFrame?.thread || action.frame?.thread;
+    if (!thread) {
       throw new Error(`Missing thread in action ${action.type}`);
     }
-    return getThreadPauseState(state, action.thread);
+    return thread;
   };
 
+  // `threadState` and `updateThreadState` help easily get and update
+  // the pause state for a given thread.
+  const threadState = () => {
+    return getThreadPauseState(state, getActionThread());
+  };
   const updateThreadState = newThreadState => {
-    if (!action.thread) {
-      throw new Error(`Missing thread in action ${action.type}`);
-    }
     return {
       ...state,
       threads: {
         ...state.threads,
-        [action.thread]: { ...threadState(), ...newThreadState },
+        [getActionThread()]: { ...threadState(), ...newThreadState },
       },
     };
   };
 
   switch (action.type) {
     case "SELECT_THREAD": {
+      // Ignore the action if the related thread doesn't exist.
+      if (!state.threads[action.thread]) {
+        console.warn(
+          `Trying to select a destroyed or non-existent thread '${action.thread}'`
+        );
+        return state;
+      }
+
       return {
         ...state,
         threadcx: {
@@ -116,9 +127,20 @@ function update(state = initialPauseState(), action) {
             thread: action.newThread.actor,
             pauseCounter: state.threadcx.pauseCounter + 1,
           },
+          threads: {
+            ...state.threads,
+            [action.newThread.actor]: createInitialPauseState(),
+          },
         };
       }
-      break;
+
+      return {
+        ...state,
+        threads: {
+          ...state.threads,
+          [action.newThread.actor]: createInitialPauseState(),
+        },
+      };
     }
 
     case "REMOVE_THREAD": {
@@ -152,7 +174,7 @@ function update(state = initialPauseState(), action) {
     }
 
     case "PAUSED": {
-      const { thread, frame, why } = action;
+      const { thread, topFrame, why } = action;
       state = {
         ...state,
         threadcx: {
@@ -164,9 +186,11 @@ function update(state = initialPauseState(), action) {
 
       return updateThreadState({
         isWaitingOnBreak: false,
-        selectedFrameId: frame ? frame.id : undefined,
+        selectedFrameId: topFrame.id,
         isPaused: true,
-        frames: frame ? [frame] : undefined,
+        // On pause, we only receive the top frame, all subsequent ones
+        // will be asynchronously populated via `fetchFrames` action
+        frames: [topFrame],
         framesLoading: true,
         frameScopes: { ...resumedPauseState.frameScopes },
         why,
@@ -198,14 +222,9 @@ function update(state = initialPauseState(), action) {
       return updateThreadState({ frames, selectedFrameId });
     }
 
-    case "MAP_FRAME_DISPLAY_NAMES": {
-      const { frames } = action;
-      return updateThreadState({ frames });
-    }
-
     case "ADD_SCOPES": {
-      const { frame, status, value } = action;
-      const selectedFrameId = frame.id;
+      const { status, value } = action;
+      const selectedFrameId = action.selectedFrame.id;
 
       const generated = {
         ...threadState().frameScopes.generated,
@@ -224,8 +243,8 @@ function update(state = initialPauseState(), action) {
     }
 
     case "MAP_SCOPES": {
-      const { frame, status, value } = action;
-      const selectedFrameId = frame.id;
+      const { status, value } = action;
+      const selectedFrameId = action.selectedFrame.id;
 
       const original = {
         ...threadState().frameScopes.original,
@@ -254,6 +273,17 @@ function update(state = initialPauseState(), action) {
 
     case "SELECT_FRAME":
       return updateThreadState({ selectedFrameId: action.frame.id });
+
+    case "PAUSE_ON_DEBUGGER_STATEMENT": {
+      const { shouldPauseOnDebuggerStatement } = action;
+
+      prefs.pauseOnDebuggerStatement = shouldPauseOnDebuggerStatement;
+
+      return {
+        ...state,
+        shouldPauseOnDebuggerStatement,
+      };
+    }
 
     case "PAUSE_ON_EXCEPTIONS": {
       const { shouldPauseOnExceptions, shouldPauseOnCaughtExceptions } = action;
@@ -352,26 +382,14 @@ function update(state = initialPauseState(), action) {
     }
 
     case "ADD_INLINE_PREVIEW": {
-      const { frame, previews } = action;
-      const selectedFrameId = frame.id;
+      const { selectedFrame, previews } = action;
+      const selectedFrameId = selectedFrame.id;
 
       return updateThreadState({
         inlinePreview: {
           ...threadState().inlinePreview,
           [selectedFrameId]: previews,
         },
-      });
-    }
-
-    case "HIGHLIGHT_CALLS": {
-      const { highlightedCalls } = action;
-      return updateThreadState({ ...threadState(), highlightedCalls });
-    }
-
-    case "UNHIGHLIGHT_CALLS": {
-      return updateThreadState({
-        ...threadState(),
-        highlightedCalls: null,
       });
     }
 

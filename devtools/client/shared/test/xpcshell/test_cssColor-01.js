@@ -23,6 +23,24 @@ const CLASSIFY_TESTS = [
   { input: "#FE01CB80", output: "hex" },
   { input: "blue", output: "name" },
   { input: "orange", output: "name" },
+  // // Once bug 1824400 is closed, these types should be recognized
+  // { input: "oklch(50% 0.3 180)", output: "oklch" },
+  // { input: "oklch(50% 0.3 180 / 0.5)", output: "oklch" },
+  // { input: "oklab(50% -0.3 0.3)", output: "oklab" },
+  // { input: "oklab(50% -0.3 0.3 / 0.5)", output: "oklab" },
+  // { input: "lch(50% 0.3 180)", output: "lch" },
+  // { input: "lch(50% 0.3 180 / 0.5)", output: "lch" },
+  // { input: "lab(50% -0.3 0.3)", output: "lab" },
+  // { input: "lab(50% -0.3 0.3 / 0.5)", output: "lab" },
+  // // But if they are not recognized, they should be classified as "authored"
+  { input: "oklch(50% 0.3 180)", output: "authored" },
+  { input: "oklch(50% 0.3 180 / 0.5)", output: "authored" },
+  { input: "oklab(50% -0.3 0.3)", output: "authored" },
+  { input: "oklab(50% -0.3 0.3 / 0.5)", output: "authored" },
+  { input: "lch(50% 0.3 180)", output: "authored" },
+  { input: "lch(50% 0.3 180 / 0.5)", output: "authored" },
+  { input: "lab(50% -0.3 0.3)", output: "authored" },
+  { input: "lab(50% -0.3 0.3 / 0.5)", output: "authored" },
 ];
 
 function run_test() {
@@ -30,24 +48,18 @@ function run_test() {
     const result = colorUtils.classifyColor(test.input);
     equal(result, test.output, "test classifyColor(" + test.input + ")");
 
-    const obj = new colorUtils.CssColor("purple");
-    obj.setAuthoredUnitFromColor(test.input);
-    equal(
-      obj.colorUnit,
-      test.output,
-      "test setAuthoredUnitFromColor(" + test.input + ")"
-    );
-
-    ok(
-      InspectorUtils.colorToRGBA(test.input) !== null,
+    Assert.notStrictEqual(
+      InspectorUtils.colorToRGBA(test.input),
+      null,
       "'" + test.input + "' is a color"
     );
 
     // check some obvious errors.
     const invalidColors = ["mumble" + test.input, test.input + "trailingstuff"];
     for (const invalidColor of invalidColors) {
-      ok(
-        InspectorUtils.colorToRGBA(invalidColor) == null,
+      Assert.equal(
+        InspectorUtils.colorToRGBA(invalidColor),
+        null,
         `'${invalidColor}' is not a color`
       );
     }
@@ -55,12 +67,9 @@ function run_test() {
 
   // Regression test for bug 1303826.
   const black = new colorUtils.CssColor("#000");
-  black.colorUnit = "name";
-  equal(black.toString(), "black", "test non-upper-case color cycling");
+  equal(black.toString("name"), "black", "test non-upper-case color cycling");
 
   const upper = new colorUtils.CssColor("BLACK");
-  upper.colorUnit = "hex";
-  equal(upper.toString(), "#000", "test upper-case color cycling");
-  upper.colorUnit = "name";
-  equal(upper.toString(), "BLACK", "test upper-case color preservation");
+  equal(upper.toString("hex"), "#000", "test upper-case color cycling");
+  equal(upper.toString("name"), "BLACK", "test upper-case color preservation");
 }

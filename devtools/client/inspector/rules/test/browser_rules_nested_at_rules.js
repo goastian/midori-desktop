@@ -5,6 +5,7 @@
 
 // Test that the rule-view content is correct when the page defines nested at-rules (@media, @layer, @supports, …)
 const TEST_URI = `
+  <body>
   <style type="text/css">
     body {
       container: mycontainer / inline-size;
@@ -15,8 +16,10 @@ const TEST_URI = `
         @container mycontainer (min-width: 1px) {
           @media screen {
             @container mycontainer (min-width: 2rem) {
-              h1, [test-hint="nested"] {
-                background: gold;
+              @scope (:scope) to (:scope > h1) {
+                h1, [test-hint="nested"] {
+                  background: gold;
+                }
               }
             }
           }
@@ -25,11 +28,11 @@ const TEST_URI = `
     }
   </style>
   <h1>Hello nested at-rules!</h1>
+  </body>
 `;
 
 add_task(async function () {
-  await pushPref("layout.css.container-queries.enabled", true);
-
+  await pushPref("layout.css.at-scope.enabled", true);
   await addTab(
     "https://example.com/document-builder.sjs?html=" +
       encodeURIComponent(TEST_URI)
@@ -43,11 +46,12 @@ add_task(async function () {
     {
       selector: `h1, [test-hint="nested"]`,
       ancestorRulesData: [
-        `@layer mylayer`,
-        `@supports (container-name: mycontainer)`,
-        `@container mycontainer (min-width: 1px)`,
-        `@media screen`,
-        `@container mycontainer (min-width: 2rem)`,
+        `@layer mylayer {`,
+        `  @supports (container-name: mycontainer) {`,
+        `    @container mycontainer (min-width: 1px) {`,
+        `      @media screen {`,
+        `        @container mycontainer (min-width: 2rem) {`,
+        `          @scope (:scope) to (:scope > h1) {`,
       ],
     },
   ];
@@ -64,7 +68,7 @@ add_task(async function () {
     info(`Checking rule #${i}: ${expectedRule.selector}`);
 
     const selector = rulesInView[i].querySelector(
-      ".ruleview-selectorcontainer"
+      ".ruleview-selectors-container"
     ).innerText;
     is(selector, expectedRule.selector, `Expected selector for ${selector}`);
 

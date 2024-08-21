@@ -4,7 +4,10 @@
 
 "use strict";
 
-const { l10n } = require("resource://devtools/shared/inspector/css-logic.js");
+const {
+  l10n,
+  l10nFormatStr,
+} = require("resource://devtools/shared/inspector/css-logic.js");
 const {
   InplaceEditor,
   editableField,
@@ -38,15 +41,16 @@ loader.lazyRequireGetter(
   "resource://devtools/shared/inspector/css-logic.js",
   true
 );
+loader.lazyGetter(this, "PROPERTY_NAME_INPUT_LABEL", function () {
+  return l10n("rule.propertyName.label");
+});
+
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
 });
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-const inlineCompatibilityWarningEnabled = Services.prefs.getBoolPref(
-  "devtools.inspector.ruleview.inline-compatibility-warning.enabled"
-);
 
 const SHARED_SWATCH_CLASS = "ruleview-swatch";
 const COLOR_SWATCH_CLASS = "ruleview-colorswatch";
@@ -188,7 +192,8 @@ TextPropertyEditor.prototype = {
    * Create the property editor's DOM.
    */
   _create() {
-    this.element = this.doc.createElementNS(HTML_NS, "li");
+    this.element = this.doc.createElementNS(HTML_NS, "div");
+    this.element.setAttribute("role", "listitem");
     this.element.classList.add("ruleview-property");
     this.element.dataset.declarationId = this.prop.id;
     this.element._textPropertyEditor = this;
@@ -197,12 +202,18 @@ TextPropertyEditor.prototype = {
       class: "ruleview-propertycontainer",
     });
 
+    const indent =
+      ((this.ruleEditor.rule.domRule.ancestorData.length || 0) + 1) * 2;
+    createChild(this.container, "span", {
+      class: "ruleview-rule-indent clipboard-only",
+      textContent: " ".repeat(indent),
+    });
+
     // The enable checkbox will disable or enable the rule.
     this.enable = createChild(this.container, "input", {
       type: "checkbox",
       class: "ruleview-enableproperty",
-      "aria-labelledby": this.prop.id,
-      tabindex: "-1",
+      title: l10nFormatStr("rule.propertyToggle.label", this.prop.name),
     });
 
     this.nameContainer = createChild(this.container, "span", {
@@ -253,21 +264,28 @@ TextPropertyEditor.prototype = {
       title: l10n("rule.warning.title"),
     });
 
+    this.invalidAtComputedValueTimeWarning = createChild(
+      this.container,
+      "div",
+      {
+        class: "ruleview-invalid-at-computed-value-time-warning",
+        hidden: "",
+      }
+    );
+
     this.unusedState = createChild(this.container, "div", {
       class: "ruleview-unused-warning",
       hidden: "",
     });
 
-    if (inlineCompatibilityWarningEnabled) {
-      this.compatibilityState = createChild(this.container, "div", {
-        class: "ruleview-compatibility-warning",
-        hidden: "",
-      });
-    }
+    this.compatibilityState = createChild(this.container, "div", {
+      class: "ruleview-compatibility-warning",
+      hidden: "",
+    });
 
     // Filter button that filters for the current property name and is
     // displayed when the property is overridden by another rule.
-    this.filterProperty = createChild(this.container, "div", {
+    this.filterProperty = createChild(this.container, "button", {
       class: "ruleview-overridden-rule-filter",
       hidden: "",
       title: l10n("rule.filterProperty.title"),
@@ -305,6 +323,10 @@ TextPropertyEditor.prototype = {
         }
       });
 
+      const cssVariables = this.rule.elementStyle.getAllCustomProperties(
+        this.rule.pseudoElement
+      );
+
       editableField({
         start: this._onStartEditing,
         element: this.nameSpan,
@@ -314,6 +336,17 @@ TextPropertyEditor.prototype = {
         contentType: InplaceEditor.CONTENT_TYPES.CSS_PROPERTY,
         popup: this.popup,
         cssProperties: this.cssProperties,
+        cssVariables,
+        // (Shift+)Tab will move the focus to the previous/next editable field (so property value
+        // or new selector).
+        focusEditableFieldAfterApply: true,
+        focusEditableFieldContainerSelector: ".ruleview-rule",
+        // We don't want Enter to trigger the next editable field, just to validate
+        // what the user entered, close the editor, and focus the span so the user can
+        // navigate with the keyboard as expected, unless the user has
+        // devtools.inspector.rule-view.focusNextOnEnter set to true
+        stopOnReturn: this.ruleView.inplaceEditorFocusNextOnEnter !== true,
+        inputAriaLabel: PROPERTY_NAME_INPUT_LABEL,
       });
 
       // Auto blur name field on multiple CSS rules get pasted in.
@@ -361,7 +394,7 @@ TextPropertyEditor.prototype = {
         }
       });
 
-      this.valueSpan.addEventListener("mouseup", event => {
+      this.valueSpan.addEventListener("mouseup", () => {
         // if we have dragged, we will handle the pending click in _draggingOnMouseUp instead
         if (this._hasDragged) {
           return;
@@ -402,11 +435,21 @@ TextPropertyEditor.prototype = {
         multiline: true,
         maxWidth: () => this.container.getBoundingClientRect().width,
         cssProperties: this.cssProperties,
-        cssVariables:
-          this.rule.elementStyle.variablesMap.get(this.rule.pseudoElement) ||
-          [],
+        cssVariables,
         getGridLineNames: this.getGridlineNames,
         showSuggestCompletionOnEmpty: true,
+        // (Shift+)Tab will move the focus to the previous/next editable field (so property name,
+        // or new property).
+        focusEditableFieldAfterApply: true,
+        focusEditableFieldContainerSelector: ".ruleview-rule",
+        // We don't want Enter to trigger the next editable field, just to validate
+        // what the user entered, close the editor, and focus the span so the user can
+        // navigate with the keyboard as expected, unless the user has
+        // devtools.inspector.rule-view.focusNextOnEnter set to true
+        stopOnReturn: this.ruleView.inplaceEditorFocusNextOnEnter !== true,
+        // Label the value input with the name span so screenreader users know what this
+        // applies to.
+        inputAriaLabelledBy: this.nameSpan.id,
       });
     }
   },
@@ -512,6 +555,10 @@ TextPropertyEditor.prototype = {
 
     const name = this.prop.name;
     this.nameSpan.textContent = name;
+    this.enable.setAttribute(
+      "title",
+      l10nFormatStr("rule.propertyToggle.label", name)
+    );
 
     // Combine the property's value and priority into one string for
     // the value.
@@ -552,14 +599,18 @@ TextPropertyEditor.prototype = {
       shapeSwatchClass: SHAPE_SWATCH_CLASS,
       // Only ask the parser to convert colors to the default color type specified by the
       // user if the property hasn't been changed yet.
-      defaultColorType: !propDirty,
+      useDefaultColorUnit: !propDirty,
+      defaultColorUnit: this.ruleView.inspector.defaultColorUnit,
       urlClass: "theme-link",
       fontFamilyClass: FONT_FAMILY_CLASS,
       baseURI: this.sheetHref,
       unmatchedVariableClass: "ruleview-unmatched-variable",
       matchedVariableClass: "ruleview-variable",
-      getVariableValue: varName =>
-        this.rule.elementStyle.getVariable(varName, this.rule.pseudoElement),
+      getVariableData: varName =>
+        this.rule.elementStyle.getVariableData(
+          varName,
+          this.rule.pseudoElement
+        ),
     };
     const frag = outputParser.parseCssProperty(name, val, parserOptions);
 
@@ -722,7 +773,7 @@ TextPropertyEditor.prototype = {
     );
     if (this.ruleEditor.isEditable) {
       for (const angleSpan of this.angleSwatchSpans) {
-        angleSpan.on("unit-change", this._onSwatchCommit);
+        angleSpan.addEventListener("unit-change", this._onSwatchCommit);
         const title = l10n("rule.angleSwatch.tooltip");
         angleSpan.setAttribute("title", title);
       }
@@ -842,6 +893,17 @@ TextPropertyEditor.prototype = {
       : l10n("rule.warning.title");
 
     this.warning.hidden = this.editing || this.isValid();
+
+    if (!this.editing && this.isInvalidAtComputedValueTime()) {
+      this.invalidAtComputedValueTimeWarning.title = l10nFormatStr(
+        "rule.warningInvalidAtComputedValueTime.title",
+        `"${this.prop.getExpectedSyntax()}"`
+      );
+      this.invalidAtComputedValueTimeWarning.hidden = false;
+    } else {
+      this.invalidAtComputedValueTimeWarning.hidden = true;
+    }
+
     this.filterProperty.hidden =
       this.editing ||
       !this.isValid() ||
@@ -862,10 +924,7 @@ TextPropertyEditor.prototype = {
     }
 
     this.updatePropertyUsedIndicator();
-
-    if (inlineCompatibilityWarningEnabled) {
-      this.updatePropertyCompatibilityIndicator();
-    }
+    this.updatePropertyCompatibilityIndicator();
   },
 
   updatePropertyUsedIndicator() {
@@ -1164,13 +1223,12 @@ TextPropertyEditor.prototype = {
     if (this._colorSwatchSpans && this._colorSwatchSpans.length) {
       for (const span of this._colorSwatchSpans) {
         this.ruleView.tooltips.getTooltip("colorPicker").removeSwatch(span);
-        span.off("unit-change", this._onSwatchCommit);
       }
     }
 
     if (this.angleSwatchSpans && this.angleSwatchSpans.length) {
       for (const span of this.angleSwatchSpans) {
-        span.off("unit-change", this._onSwatchCommit);
+        span.removeEventListener("unit-change", this._onSwatchCommit);
       }
     }
 
@@ -1555,6 +1613,10 @@ TextPropertyEditor.prototype = {
    */
   isNameValid() {
     return this.prop.isNameValid();
+  },
+
+  isInvalidAtComputedValueTime() {
+    return this.prop.isInvalidAtComputedValueTime();
   },
 
   /**

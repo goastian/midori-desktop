@@ -2,11 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { Component } from "react";
-import PropTypes from "prop-types";
-const classnames = require("devtools/client/shared/classnames.js");
-
-import "./OutlineFilter.css";
+import { Component } from "devtools/client/shared/vendor/react";
+import {
+  form,
+  div,
+  input,
+} from "devtools/client/shared/vendor/react-dom-factories";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
+const classnames = require("resource://devtools/client/shared/classnames.js");
 
 export default class OutlineFilter extends Component {
   state = { focused: false };
@@ -41,23 +44,25 @@ export default class OutlineFilter extends Component {
 
   render() {
     const { focused } = this.state;
-    return (
-      <div className="outline-filter">
-        <form>
-          <input
-            className={classnames("outline-filter-input devtools-filterinput", {
-              focused,
-            })}
-            onFocus={() => this.setFocus(true)}
-            onBlur={() => this.setFocus(false)}
-            placeholder={L10N.getStr("outline.placeholder")}
-            value={this.props.filter}
-            type="text"
-            onChange={this.onChange}
-            onKeyDown={this.onKeyDown}
-          />
-        </form>
-      </div>
+    return div(
+      {
+        className: "outline-filter",
+      },
+      form(
+        null,
+        input({
+          className: classnames("outline-filter-input devtools-filterinput", {
+            focused,
+          }),
+          onFocus: () => this.setFocus(true),
+          onBlur: () => this.setFocus(false),
+          placeholder: L10N.getStr("outline.placeholder"),
+          value: this.props.filter,
+          type: "text",
+          onChange: this.onChange,
+          onKeyDown: this.onKeyDown,
+        })
+      )
     );
   }
 }

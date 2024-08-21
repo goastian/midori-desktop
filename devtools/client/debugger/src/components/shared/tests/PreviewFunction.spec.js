@@ -2,12 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
+import React from "devtools/client/shared/vendor/react";
 import { shallow } from "enzyme";
 import PreviewFunction from "../PreviewFunction";
 
 function render(props) {
-  return shallow(<PreviewFunction {...props} />, { context: { l10n: L10N } });
+  return shallow(React.createElement(PreviewFunction, props), {
+    context: {
+      l10n: L10N,
+    },
+  });
 }
 
 describe("PreviewFunction", () => {
@@ -48,8 +52,7 @@ describe("PreviewFunction", () => {
     it("should be be set to userDisplayName if defined", () => {
       const item = {
         name: "",
-        userDisplayName: "chuck",
-        displayName: "norris",
+        displayName: "chuck",
       };
       const returnedSpan = render({ func: item });
       expect(returnedSpan.children().first().first().text()).toEqual("chuck");

@@ -4,6 +4,11 @@
 
 "use strict";
 
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
+});
+
 const {
   getTheme,
   addThemeObserver,
@@ -21,7 +26,7 @@ const BufferStream = Components.Constructor(
   "setData"
 );
 
-const kCSP = "default-src 'none' ; script-src resource:; ";
+const kCSP = "default-src 'none'; script-src resource:; img-src 'self';";
 
 // Localization
 loader.lazyGetter(this, "jsonViewStrings", () => {
@@ -60,14 +65,14 @@ Converter.prototype = {
    * 5. convert does nothing, it's just the synchronous version
    *    of asyncConvertData
    */
-  convert(fromStream, fromType, toType, ctx) {
+  convert(fromStream) {
     return fromStream;
   },
 
-  asyncConvertData(fromType, toType, listener, ctx) {
+  asyncConvertData(fromType, toType, listener) {
     this.listener = listener;
   },
-  getConvertedType(fromType, channel) {
+  getConvertedType() {
     return "text/html";
   },
 
@@ -83,6 +88,17 @@ Converter.prototype = {
     // and scripts. The JSON will be manually inserted as text.
     request.QueryInterface(Ci.nsIChannel);
     request.contentType = "text/html";
+
+    // Tweak the request's principal in order to allow the related HTML document
+    // used to display raw JSON to be able to load resource://devtools files
+    // from the jsonview document.
+    const uri = lazy.NetUtil.newURI("resource://devtools/client/jsonview/");
+    const resourcePrincipal =
+      Services.scriptSecurityManager.createContentPrincipal(
+        uri,
+        request.loadInfo.originAttributes
+      );
+    request.owner = resourcePrincipal;
 
     const headers = getHttpHeaders(request);
 
@@ -106,11 +122,6 @@ Converter.prototype = {
     // Changing the content type breaks saving functionality. Fix it.
     fixSave(request);
 
-    // Because content might still have a reference to this window,
-    // force setting it to a null principal to avoid it being same-
-    // origin with (other) content.
-    request.loadInfo.resetPrincipalToInheritToNullPrincipal();
-
     // Start the request.
     this.listener.onStartRequest(request);
 
@@ -123,7 +134,7 @@ Converter.prototype = {
     // We compare actual pointer identities here rather than using .equals(),
     // because if things went correctly then the document must have exactly
     // the principal we reset it to above. If not, something went wrong.
-    if (win.document.nodePrincipal != request.loadInfo.principalToInherit) {
+    if (win.document.nodePrincipal != resourcePrincipal) {
       // Whatever that document is, it's not ours.
       request.cancel(Cr.NS_BINDING_ABORTED);
       return;
@@ -319,7 +330,7 @@ function initialHTML(doc) {
     os = "linux";
   }
 
-  const baseURI = "resource://devtools-client-jsonview/";
+  const baseURI = "resource://devtools/client/jsonview/";
 
   return (
     "<!DOCTYPE html>\n" +
@@ -384,7 +395,7 @@ function keepThemeUpdated(win) {
   addThemeObserver(listener);
   win.addEventListener(
     "unload",
-    function (event) {
+    function () {
       removeThemeObserver(listener);
       win = null;
     },

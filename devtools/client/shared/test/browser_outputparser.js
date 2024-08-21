@@ -3,14 +3,8 @@
 
 "use strict";
 
-const {
-  getClientCssProperties,
-} = require("resource://devtools/client/fronts/css-properties.js");
-
 add_task(async function () {
   await pushPref("layout.css.backdrop-filter.enabled", true);
-  await pushPref("layout.css.individual-transform.enabled", true);
-  await pushPref("layout.css.color-mix.enabled", true);
   await addTab("about:blank");
   await performTest();
   gBrowser.removeCurrentTab();
@@ -20,6 +14,7 @@ async function performTest() {
   await SpecialPowers.pushPrefEnv({
     set: [["security.allow_unsafe_parent_loads", true]],
   });
+  await pushPref("layout.css.relative-color-syntax.enabled", true);
 
   const OutputParser = require("resource://devtools/client/shared/output-parser.js");
 
@@ -260,6 +255,65 @@ function testParseCssProperty(doc, parser) {
         ")",
       ]
     ),
+
+    makeColorTest("color", "light-dark(red, blue)", [
+      "light-dark(",
+      { name: "red", colorFunction: "light-dark" },
+      ", ",
+      { name: "blue", colorFunction: "light-dark" },
+      ")",
+    ]),
+
+    makeColorTest(
+      "background-image",
+      "linear-gradient(to top, light-dark(#008000, rgba(255, 255, 0, 0.9)), blue)",
+      [
+        "linear-gradient(to top, ",
+        "light-dark(",
+        { name: "#008000", colorFunction: "light-dark" },
+        ", ",
+        { name: "rgba(255, 255, 0, 0.9)", colorFunction: "light-dark" },
+        "), ",
+        { name: "blue", colorFunction: "linear-gradient" },
+        ")",
+      ]
+    ),
+
+    makeColorTest("color", "rgb(from gold r g b)", [
+      { name: "rgb(from gold r g b)" },
+    ]),
+
+    makeColorTest("color", "color(from hsl(0 100% 50%) xyz x y 0.5)", [
+      { name: "color(from hsl(0 100% 50%) xyz x y 0.5)" },
+    ]),
+
+    makeColorTest(
+      "color",
+      "oklab(from red calc(l - 1) calc(a * 2) calc(b + 3) / alpha)",
+      [{ name: "oklab(from red calc(l - 1) calc(a * 2) calc(b + 3) / alpha)" }]
+    ),
+
+    makeColorTest(
+      "color",
+      "rgb(from color-mix(in lch, plum 40%, pink) r g b)",
+      [{ name: "rgb(from color-mix(in lch, plum 40%, pink) r g b)" }]
+    ),
+
+    makeColorTest("color", "rgb(from rgb(from gold r g b) r g b)", [
+      { name: "rgb(from rgb(from gold r g b) r g b)" },
+    ]),
+
+    makeColorTest(
+      "background-image",
+      "linear-gradient(to right, #F60 10%, rgb(from gold r g b))",
+      [
+        "linear-gradient(to right, ",
+        { name: "#F60", colorFunction: "linear-gradient" },
+        " 10%, ",
+        { name: "rgb(from gold r g b)", colorFunction: "linear-gradient" },
+        ")",
+      ]
+    ),
   ];
 
   const target = doc.querySelector("div");
@@ -432,6 +486,13 @@ function testParseShape(doc, parser) {
       spanCount: 18,
     },
     {
+      desc: "POLYGON()",
+      definition:
+        "POLYGON(evenodd, 0px 0px, 10%200px,30%30% , calc(250px - 10px) 0 ,\n " +
+        "12em var(--variable), 100% 100%) margin-box",
+      spanCount: 18,
+    },
+    {
       desc: "Invalid polygon shape",
       definition: "polygon(0px 0px 100px 20px, 20% 20%)",
       spanCount: 0,
@@ -467,6 +528,11 @@ function testParseShape(doc, parser) {
       spanCount: 4,
     },
     {
+      desc: "CIRCLE",
+      definition: "CIRCLE(12em)",
+      spanCount: 1,
+    },
+    {
       desc: "Invalid circle shape",
       definition: "circle(25%at30%30%)",
       spanCount: 0,
@@ -495,6 +561,11 @@ function testParseShape(doc, parser) {
       desc: "Ellipse shape with no arguments",
       definition: "ellipse()",
       spanCount: 0,
+    },
+    {
+      desc: "ELLIPSE()",
+      definition: "ELLIPSE(200px 10em)",
+      spanCount: 2,
     },
     {
       desc: "Invalid ellipse shape",
@@ -526,11 +597,22 @@ function testParseShape(doc, parser) {
       definition: "inset()",
       spanCount: 0,
     },
+    {
+      desc: "INSET()",
+      definition: "INSET(200px)",
+      spanCount: 1,
+    },
+    {
+      desc: "offset-path property with inset shape value",
+      property: "offset-path",
+      definition: "inset(200px)",
+      spanCount: 1,
+    },
   ];
 
-  for (const { desc, definition, spanCount } of tests) {
+  for (const { desc, definition, property = "clip-path", spanCount } of tests) {
     info(desc);
-    const frag = parser.parseCssProperty("clip-path", definition, {
+    const frag = parser.parseCssProperty(property, definition, {
       shapeClass: "ruleview-shape",
     });
     const spans = frag.querySelectorAll(".ruleview-shape-point");
@@ -615,15 +697,186 @@ function testParseVariable(doc, parser) {
         colorSwatchClass: COLOR_TEST_CLASS,
       },
     },
+    {
+      text: "light-dark(var(--light), var(--dark))",
+      variables: { "--light": "yellow", "--dark": "gold" },
+      expected:
+        // prettier-ignore
+        `light-dark(` +
+        `<span data-color="yellow">` +
+          `<span class="test-class" style="background-color:yellow" tabindex="0" role="button" data-color-function="light-dark">` +
+          `</span>` +
+          `<span>var(<span data-variable="--light = yellow">--light</span>)</span>` +
+        `</span>` +
+        `, ` +
+        `<span data-color="gold">` +
+          `<span class="test-class" style="background-color:gold" tabindex="0" role="button" data-color-function="light-dark">` +
+          `</span>` +
+          `<span>var(<span data-variable="--dark = gold">--dark</span>)</span>` +
+        `</span>` +
+        `)`,
+      parserExtraOptions: {
+        colorSwatchClass: COLOR_TEST_CLASS,
+      },
+    },
+    {
+      text: "1px solid var(--seen, seagreen)",
+      variables: { "--seen": "chartreuse" },
+      expected:
+        // prettier-ignore
+        '1px solid ' +
+        '<span data-color="chartreuse">' +
+          "<span>var(" +
+            '<span data-variable="--seen = chartreuse">--seen</span>,' +
+            '<span class="unmatched-class"> ' +
+              '<span data-color="seagreen">' +
+                "<span>seagreen</span>" +
+              "</span>" +
+            "</span>)" +
+          "</span>" +
+        "</span>",
+    },
+    {
+      text: "1px solid var(--not-seen, seagreen)",
+      variables: {},
+      expected:
+        // prettier-ignore
+        `1px solid ` +
+        `<span>var(` +
+          `<span class="unmatched-class" data-variable="--not-seen is not set">--not-seen</span>,` +
+          `<span> ` +
+            `<span data-color="seagreen">` +
+              `<span>seagreen</span>` +
+            `</span>` +
+          `</span>)` +
+        `</span>`,
+    },
+    {
+      text: "rgba(var(--r), 0, 0, var(--a))",
+      variables: { "--r": "255", "--a": "0.5" },
+      expected:
+        // prettier-ignore
+        '<span data-color="rgba(255, 0, 0, 0.5)">' +
+          "<span>rgba("+
+            "<span>" +
+              'var(<span data-variable="--r = 255">--r</span>)' +
+            "</span>, 0, 0, " +
+            "<span>" +
+              'var(<span data-variable="--a = 0.5">--a</span>)' +
+            "</span>" +
+          ")</span>" +
+        "</span>",
+    },
+    {
+      text: "rgba(from var(--base) r g 0 / calc(var(--a) * 0.5))",
+      variables: { "--base": "red", "--a": "0.8" },
+      expected:
+        // prettier-ignore
+        '<span data-color="rgba(from red r g 0 / calc(0.8 * 0.5))">' +
+          "<span>rgba("+
+            "from " +
+            "<span>" +
+              'var(<span data-variable="--base = red">--base</span>)' +
+            "</span> r g 0 / " +
+            "calc(" +
+            "<span>" +
+              'var(<span data-variable="--a = 0.8">--a</span>)' +
+            "</span>" +
+            " * 0.5)" +
+          ")</span>" +
+        "</span>",
+    },
+    {
+      text: "rgb(var(--not-seen, 255), 0, 0)",
+      variables: {},
+      expected:
+        // prettier-ignore
+        '<span data-color="rgb( 255, 0, 0)">' +
+          "<span>rgb("+
+            "<span>var(" +
+              `<span class="unmatched-class" data-variable="--not-seen is not set">--not-seen</span>,` +
+              `<span> 255</span>` +
+            ")</span>, 0, 0" +
+          ")</span>" +
+        "</span>",
+    },
+    {
+      text: "rgb(var(--not-seen), 0, 0)",
+      variables: {},
+      expected:
+        // prettier-ignore
+        `rgb(` +
+          `<span>` +
+            `var(` +
+              `<span class="unmatched-class" data-variable="--not-seen is not set">` +
+                `--not-seen` +
+              `</span>` +
+            `)` +
+          `</span>` +
+          `, 0, 0` +
+        `)`,
+    },
+    {
+      text: "var(--registered)",
+      variables: {
+        "--registered": {
+          value: "chartreuse",
+          registeredProperty: {
+            syntax: "<color>",
+            inherits: true,
+            initialValue: "hotpink",
+          },
+        },
+      },
+      expected:
+        // prettier-ignore
+        '<span data-color="chartreuse">' +
+          "<span>var(" +
+            '<span ' +
+              'data-variable="--registered = chartreuse" ' +
+              'data-registered-property-initial-value="hotpink" ' +
+              'data-registered-property-syntax="<color>" ' +
+              'data-registered-property-inherits="true"' +
+            '>--registered</span>)' +
+          "</span>" +
+        "</span>",
+    },
+    {
+      text: "var(--registered-universal)",
+      variables: {
+        "--registered-universal": {
+          value: "chartreuse",
+          registeredProperty: {
+            syntax: "*",
+            inherits: false,
+          },
+        },
+      },
+      expected:
+        // prettier-ignore
+        '<span data-color="chartreuse">' +
+          "<span>var(" +
+            '<span ' +
+              'data-variable="--registered-universal = chartreuse" ' +
+              'data-registered-property-syntax="*" ' +
+              'data-registered-property-inherits="false"' +
+            '>--registered-universal</span>)' +
+          "</span>" +
+        "</span>",
+    },
   ];
 
   for (const test of TESTS) {
-    const getValue = function (varName) {
-      return test.variables[varName];
+    const getData = function (varName) {
+      if (typeof test.variables[varName] === "string") {
+        return { value: test.variables[varName] };
+      }
+
+      return test.variables[varName] || {};
     };
 
     const frag = parser.parseCssProperty("color", test.text, {
-      getVariableValue: getValue,
+      getVariableData: getData,
       unmatchedVariableClass: "unmatched-class",
       ...(test.parserExtraOptions || {}),
     });
@@ -768,4 +1021,33 @@ function testParseFontFamily(doc, parser) {
     const frag = parser.parseCssProperty("font-family", definition, {});
     is(frag.textContent, output, desc + " text content matches");
   }
+
+  info("Test font-family with custom properties");
+  const frag = parser.parseCssProperty(
+    "font-family",
+    "var(--family, Georgia, serif)",
+    {
+      getVariableData: () => ({}),
+      unmatchedVariableClass: "unmatched-class",
+      fontFamilyClass: "ruleview-font-family",
+    }
+  );
+  const target = doc.createElement("div");
+  target.appendChild(frag);
+  is(
+    target.innerHTML,
+    // prettier-ignore
+    `<span>var(` +
+      `<span class="unmatched-class" data-variable="--family is not set">` +
+        `--family` +
+      `</span>` +
+      `,` +
+      `<span> ` +
+        `<span class="ruleview-font-family">Georgia</span>` +
+        `, ` +
+        `<span class="ruleview-font-family">serif</span>` +
+      `</span>)` +
+    `</span>`,
+    "Got expected output for font-family with custom properties"
+  );
 }

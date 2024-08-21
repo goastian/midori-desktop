@@ -129,19 +129,30 @@ const AVAILABLE_BREAKPOINTS = [
   {
     name: "Control",
     items: [
-      generalEvent("control", "resize"),
-      generalEvent("control", "scroll"),
-      // The condition should be removed when "apz.scrollend-event.content.enabled" is removed
-      generalEvent("control", "scrollend", win => "onscrollend" in win),
-      generalEvent("control", "zoom"),
+      // The condition should be removed when "dom.element.popover.enabled" is removed
+      generalEvent("control", "beforetoggle", () =>
+        // Services.prefs isn't available on worker targets
+        Services.prefs?.getBoolPref("dom.element.popover.enabled")
+      ),
+      generalEvent("control", "blur"),
+      generalEvent("control", "change"),
       generalEvent("control", "focus"),
       generalEvent("control", "focusin"),
       generalEvent("control", "focusout"),
-      generalEvent("control", "blur"),
-      generalEvent("control", "select"),
-      generalEvent("control", "change"),
-      generalEvent("control", "submit"),
+      // The condition should be removed when "dom.element.invokers.enabled" is removed
+      generalEvent(
+        "control",
+        "invoke",
+        global => global && "InvokeEvent" in global
+      ),
       generalEvent("control", "reset"),
+      generalEvent("control", "resize"),
+      generalEvent("control", "scroll"),
+      generalEvent("control", "scrollend"),
+      generalEvent("control", "select"),
+      generalEvent("control", "toggle"),
+      generalEvent("control", "submit"),
+      generalEvent("control", "zoom"),
     ],
   },
   {
@@ -189,6 +200,10 @@ const AVAILABLE_BREAKPOINTS = [
     items: [
       generalEvent("keyboard", "beforeinput"),
       generalEvent("keyboard", "input"),
+      generalEvent("keyboard", "textInput", () =>
+        // Services.prefs isn't available on worker targets
+        Services.prefs?.getBoolPref("dom.events.textevent.enabled")
+      ),
       generalEvent("keyboard", "keydown"),
       generalEvent("keyboard", "keyup"),
       generalEvent("keyboard", "keypress"),
@@ -201,9 +216,8 @@ const AVAILABLE_BREAKPOINTS = [
     name: "Load",
     items: [
       globalEvent("load", "load"),
-      // TODO: Disabled pending fixes for bug 1569775.
-      // globalEvent("load", "beforeunload"),
-      // globalEvent("load", "unload"),
+      globalEvent("load", "beforeunload"),
+      globalEvent("load", "unload"),
       globalEvent("load", "abort"),
       globalEvent("load", "error"),
       globalEvent("load", "hashchange"),
@@ -478,17 +492,17 @@ exports.getAvailableEventBreakpoints = getAvailableEventBreakpoints;
 /**
  * Get all available event breakpoints
  *
- * @param {Window} window
+ * @param {Window|WorkerGlobalScope} global
  * @returns {Array<Object>} An array containing object with 2 properties, an id and a name,
  *          representing the event.
  */
-function getAvailableEventBreakpoints(window) {
+function getAvailableEventBreakpoints(global) {
   const available = [];
   for (const { name, items } of AVAILABLE_BREAKPOINTS) {
     available.push({
       name,
       events: items
-        .filter(item => !item.condition || item.condition(window))
+        .filter(item => !item.condition || item.condition(global))
         .map(item => ({
           id: item.id,
           name: item.name,

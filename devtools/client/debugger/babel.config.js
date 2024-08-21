@@ -4,8 +4,6 @@
 
 "use strict";
 
-/* global __dirname */
-
 /**
  * NOTE: This file does not apply to builds in MC. This config is used for
  * our Jest tests and for webpack bundle builds.
@@ -42,6 +40,7 @@ module.exports = {
         "@babel/plugin-proposal-nullish-coalescing-operator",
         "@babel/plugin-proposal-private-methods",
         "@babel/plugin-proposal-private-property-in-object",
+        "@babel/plugin-proposal-unicode-sets-regex",
         [
           "module-resolver",
           {

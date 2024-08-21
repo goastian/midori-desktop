@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import PropTypes from "prop-types";
-import { Component } from "react";
-import { toEditorLine, fromEditorLine } from "../../utils/editor";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
+import { Component } from "devtools/client/shared/vendor/react";
+import { toEditorLine, fromEditorLine } from "../../utils/editor/index";
 import { isLineBlackboxed } from "../../utils/source";
 import { isWasm } from "../../utils/wasm";
 
@@ -36,7 +36,8 @@ class BlackboxLines extends Component {
       editor.codeMirror.operation(() => {
         blackboxedRangesForSelectedSource.forEach(range => {
           const start = toEditorLine(selectedSource.id, range.start.line);
-          const end = toEditorLine(selectedSource.id, range.end.line);
+          // CodeMirror.eachLine doesn't include `end` line offset, so bump by one
+          const end = toEditorLine(selectedSource.id, range.end.line) + 1;
           editor.codeMirror.eachLine(start, end, lineHandle => {
             this.setBlackboxLine(editor, lineHandle);
           });

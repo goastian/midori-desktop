@@ -67,10 +67,10 @@ exports.menuitems = [
   {
     id: "menu_devToolbox",
     l10nKey: "webDeveloperToolsMenu",
-    async oncommand(event) {
+    oncommand(event) {
       try {
         const window = event.target.ownerDocument.defaultView;
-        await gDevToolsBrowser.toggleToolboxCommand(window.gBrowser, Cu.now());
+        gDevToolsBrowser.toggleToolboxCommand(window.gBrowser, Cu.now());
       } catch (e) {
         console.error(`Exception while opening the toolbox: ${e}\n${e.stack}`);
       }
@@ -179,7 +179,7 @@ exports.menuitems = [
     id: "extensionsForDevelopers",
     l10nKey: "extensionsForDevelopersCmd",
     appMenuL10nId: "appmenu-developer-tools-extensions",
-    oncommand(event) {
+    oncommand() {
       openDocLink(
         "https://addons.mozilla.org/firefox/collections/mozilla/webdeveloper/"
       );

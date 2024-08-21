@@ -20,7 +20,7 @@ add_task(async function () {
     ok(true, "This test is disabled without EFT");
     return;
   }
-
+  await pushPref("devtools.debugger.map-scopes-enabled", true);
   const dbg = await initDebuggerWithAbsoluteURL(TEST_URI);
 
   const frameBC = await SpecialPowers.spawn(
@@ -48,15 +48,16 @@ add_task(async function () {
   await waitForPaused(dbg, "original.js");
   assertPausedAtSourceAndLine(dbg, findSource(dbg, "original.js").id, 8);
   // Also open the genertated source to populate the reducer for original and generated sources
-  await dbg.actions.jumpToMappedSelectedLocation(getContext(dbg));
+  await dbg.actions.jumpToMappedSelectedLocation();
   await waitForSelectedSource(dbg, "bundle.js");
 
   // Assert that reducer do have some data before remove the target.
-  ok(dbg.selectors.getSourceCount() > 0, "Some sources exists");
+  Assert.greater(dbg.selectors.getSourceCount(), 0, "Some sources exists");
   is(dbg.selectors.getBreakpointCount(), 1, "There is one breakpoint");
   is(dbg.selectors.getSourceTabs().length, 2, "Two tabs are opened");
-  ok(
-    dbg.selectors.getAllThreads().length > 1,
+  Assert.greater(
+    dbg.selectors.getAllThreads().length,
+    1,
     "There is many targets/threads involved by the intergration test"
   );
   ok(
@@ -69,8 +70,9 @@ add_task(async function () {
     "The generated source is reporeted as selected"
   );
   ok(!!dbg.selectors.getFocusedSourceItem(), "Has a focused source tree item");
-  ok(
-    dbg.selectors.getExpandedState().size > 0,
+  Assert.greater(
+    dbg.selectors.getExpandedState().size,
+    0,
     "Has some expanded source tree items"
   );
 
@@ -86,20 +88,24 @@ add_task(async function () {
     "Some symbols for generated sources exists"
   );
   ok(!!Object.keys(state.ast.mutableInScopeLines).length, "Some scopes exists");
-  ok(
-    state.sourceActors.mutableSourceActors.size > 0,
+  Assert.greater(
+    state.sourceActors.mutableSourceActors.size,
+    0,
     "Some source actor exists"
   );
-  ok(
-    state.sourceActors.mutableBreakableLines.size > 0,
+  Assert.greater(
+    state.sourceActors.mutableBreakableLines.size,
+    0,
     "Some breakable line exists"
   );
-  ok(
-    state.sources.mutableBreakpointPositions.size > 0,
+  Assert.greater(
+    state.sources.mutableBreakpointPositions.size,
+    0,
     "Some breakable positions exists"
   );
-  ok(
-    state.sources.mutableOriginalBreakableLines.size > 0,
+  Assert.greater(
+    state.sources.mutableOriginalBreakableLines.size,
+    0,
     "Some original breakable lines exists"
   );
 
@@ -110,6 +116,9 @@ add_task(async function () {
 
   info("Wait for all sources to be removed");
   await waitFor(() => dbg.selectors.getSourceCount() == 0);
+  info("Wait for target to be removed");
+  await waitFor(() => dbg.selectors.getAllThreads().length == 1);
+
   // The pause thread being removed, we are no longer paused.
   assertNotPaused(dbg);
 

@@ -42,11 +42,12 @@ add_task(async function () {
     `${method} ${SIMPLE_URL.split("example.com")[1]} ${httpVersion}`,
     "Host: example.com",
     "User-Agent: " + navigator.userAgent + "",
-    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/png,image/svg+xml,*/*;q=0.8",
     "Accept-Language: " + navigator.languages.join(",") + ";q=0.5",
     "Accept-Encoding: gzip, deflate",
     "Connection: keep-alive",
     "Upgrade-Insecure-Requests: 1",
+    "Priority: u=0, i",
     "Pragma: no-cache",
     "Cache-Control: no-cache",
   ].join("\n");

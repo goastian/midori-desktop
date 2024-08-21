@@ -528,6 +528,7 @@ var focusEditableField = async function (
   yOffset = 1,
   options = {}
 ) {
+  editable.scrollIntoView();
   const onFocus = once(editable.parentNode, "focus", true);
   info("Clicking on editable field to turn to edit mode");
   if (options.type === undefined) {
@@ -588,7 +589,7 @@ function getRuleViewRule(view, selectorText, index = 0) {
   let pos = 0;
   for (const r of view.styleDocument.querySelectorAll(".ruleview-rule")) {
     const selector = r.querySelector(
-      ".ruleview-selectorcontainer, " + ".ruleview-selector-matched"
+      ".ruleview-selectors-container, .ruleview-selector.matched"
     );
     if (selector && selector.textContent === selectorText) {
       if (index == pos) {
@@ -675,7 +676,9 @@ function getRuleViewPropertyValue(view, selectorText, propertyName) {
  */
 function getRuleViewSelector(view, selectorText) {
   const rule = getRuleViewRule(view, selectorText);
-  return rule.querySelector(".ruleview-selector, .ruleview-selector-matched");
+  return rule.querySelector(
+    ".ruleview-selectors-container, .ruleview-selector.matched"
+  );
 }
 
 /**
@@ -840,7 +843,8 @@ async function waitUntilVisitedState(tab, selectors) {
       tab.linkedBrowser,
       selectors,
       args => {
-        const ELEMENT_STATE_VISITED = 1 << 19;
+        // ElementState::VISITED
+        const ELEMENT_STATE_VISITED = 1 << 18;
 
         for (const selector of args) {
           const target =
@@ -999,4 +1003,156 @@ async function removeContentPageElementAttribute(selector, attribute) {
       content.document.querySelector(_selector).removeAttribute(_attribute);
     }
   );
+}
+
+/**
+ * Get the rule editor from the rule-view given its index
+ *
+ * @param {CssRuleView} ruleView
+ *        The instance of the rule-view panel
+ * @param {Number} childrenIndex
+ *        The children index of the element to get
+ * @param {Number} nodeIndex
+ *        The child node index of the element to get
+ * @return {DOMNode} The rule editor if any at this index
+ */
+function getRuleViewRuleEditor(ruleView, childrenIndex, nodeIndex) {
+  const child = ruleView.element.children[childrenIndex];
+  if (!child) {
+    return null;
+  }
+
+  return nodeIndex !== undefined
+    ? child.childNodes[nodeIndex]?._ruleEditor
+    : child._ruleEditor;
+}
+
+/**
+ * Get the TextProperty instance corresponding to a CSS declaration
+ * from a CSS rule in the Rules view.
+ *
+ * @param  {RuleView} ruleView
+ *         Instance of RuleView.
+ * @param  {Number} ruleIndex
+ *         The index of the CSS rule where to find the declaration.
+ * @param  {Object} declaration
+ *         An object representing the target declaration e.g. { color: red }.
+ *         The first TextProperty instance which matches will be returned.
+ * @return {TextProperty}
+ */
+function getTextProperty(ruleView, ruleIndex, declaration) {
+  const ruleEditor = getRuleViewRuleEditor(ruleView, ruleIndex);
+  const [[name, value]] = Object.entries(declaration);
+  const textProp = ruleEditor.rule.textProps.find(prop => {
+    return prop.name === name && prop.value === value;
+  });
+
+  if (!textProp) {
+    throw Error(
+      `Declaration ${name}:${value} not found on rule at index ${ruleIndex}`
+    );
+  }
+
+  return textProp;
+}
+
+/**
+ * Simulate changing the value of a property in a rule in the rule-view.
+ *
+ * @param {CssRuleView} ruleView
+ *        The instance of the rule-view panel
+ * @param {TextProperty} textProp
+ *        The instance of the TextProperty to be changed
+ * @param {String} value
+ *        The new value to be used. If null is passed, then the value will be
+ *        deleted
+ * @param {Object} options
+ * @param {Boolean} options.blurNewProperty
+ *        After the value has been changed, a new property would have been
+ *        focused. This parameter is true by default, and that causes the new
+ *        property to be blurred. Set to false if you don't want this.
+ * @param {number} options.flushCount
+ *        The ruleview uses a manual flush for tests only, and some properties are
+ *        only updated after several flush. Allow tests to trigger several flushes
+ *        if necessary. Defaults to 1.
+ */
+async function setProperty(
+  ruleView,
+  textProp,
+  value,
+  { blurNewProperty = true, flushCount = 1 } = {}
+) {
+  info("Set property to: " + value);
+  await focusEditableField(ruleView, textProp.editor.valueSpan);
+
+  // Because of the manual flush approach used for tests, we might have an
+  // unknown number of debounced "preview" requests . Each preview should
+  // synchronously emit "start-preview-property-value".
+  // Listen to both this event and "ruleview-changed" which is emitted at the
+  // end of a preview and make sure each preview completes successfully.
+  let previewStartedCounter = 0;
+  const onStartPreview = () => previewStartedCounter++;
+  ruleView.on("start-preview-property-value", onStartPreview);
+
+  let previewCounter = 0;
+  const onPreviewApplied = () => previewCounter++;
+  ruleView.on("ruleview-changed", onPreviewApplied);
+
+  if (value === null) {
+    const onPopupOpened = once(ruleView.popup, "popup-opened");
+    EventUtils.synthesizeKey("VK_DELETE", {}, ruleView.styleWindow);
+    await onPopupOpened;
+  } else {
+    await wait(500);
+    EventUtils.sendString(value, ruleView.styleWindow);
+  }
+
+  info(`Flush debounced ruleview methods (remaining: ${flushCount})`);
+  ruleView.debounce.flush();
+  await waitFor(() => previewCounter >= previewStartedCounter);
+
+  flushCount--;
+
+  while (flushCount > 0) {
+    // Wait for some time before triggering a new flush to let new debounced
+    // functions queue in-between.
+    await wait(100);
+
+    info(`Flush debounced ruleview methods (remaining: ${flushCount})`);
+    ruleView.debounce.flush();
+    await waitFor(() => previewCounter >= previewStartedCounter);
+
+    flushCount--;
+  }
+
+  ruleView.off("start-preview-property-value", onStartPreview);
+  ruleView.off("ruleview-changed", onPreviewApplied);
+
+  const onValueDone = ruleView.once("ruleview-changed");
+  // In case the popup was opened, wait until it closes
+  let onPopupClosed;
+  if (ruleView.popup?.isOpen) {
+    // it might happen that the popup is still in the process of being opened,
+    // so wait until it's properly opened
+    await ruleView.popup._pendingShowPromise;
+    onPopupClosed = once(ruleView.popup, "popup-closed");
+  }
+
+  EventUtils.synthesizeKey(
+    blurNewProperty ? "VK_RETURN" : "VK_TAB",
+    {},
+    ruleView.styleWindow
+  );
+
+  info("Waiting for another ruleview-changed after setting property");
+  await onValueDone;
+
+  const focusNextOnEnter = Services.prefs.getBoolPref(
+    "devtools.inspector.rule-view.focusNextOnEnter"
+  );
+  if (blurNewProperty && !focusNextOnEnter) {
+    info("Force blur on the active element");
+    ruleView.styleDocument.activeElement.blur();
+  }
+  await onPopupClosed;
 }

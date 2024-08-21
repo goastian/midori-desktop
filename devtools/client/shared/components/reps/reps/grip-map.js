@@ -51,7 +51,7 @@ define(function (require, exports, module) {
     const title = getTitle(props, object);
     const isEmpty = getLength(object) === 0;
 
-    if (isEmpty || mode === MODE.TINY) {
+    if (isEmpty || mode === MODE.TINY || mode === MODE.HEADER) {
       return span(config, title);
     }
 
@@ -168,7 +168,7 @@ define(function (require, exports, module) {
       return a - b;
     });
 
-    return indexes.map((index, i) => {
+    return indexes.map(index => {
       const [key, entryValue] = entries[index];
       const value =
         entryValue.value !== undefined ? entryValue.value : entryValue;

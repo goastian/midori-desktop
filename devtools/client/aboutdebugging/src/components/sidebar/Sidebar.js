@@ -43,8 +43,7 @@ const RefreshDevicesButton = createFactory(
   require("resource://devtools/client/aboutdebugging/src/components/sidebar/RefreshDevicesButton.js")
 );
 const FIREFOX_ICON =
-const MIDORI_ICON =
-"chrome://browser/skin/midori.svg";
+  "chrome://devtools/skin/images/aboutdebugging-firefox-logo.svg";
 const CONNECT_ICON = "chrome://devtools/skin/images/settings.svg";
 const GLOBE_ICON =
   "chrome://devtools/skin/images/aboutdebugging-globe-icon.svg";
@@ -224,7 +223,7 @@ class Sidebar extends PureComponent {
         Localized(
           { id: "about-debugging-sidebar-this-firefox", attrs: { name: true } },
           SidebarFixedItem({
-            icon: MIDORI_ICON,
+            icon: FIREFOX_ICON,
             isSelected:
               PAGE_TYPES.RUNTIME === selectedPage &&
               selectedRuntimeId === RUNTIMES.THIS_FIREFOX,

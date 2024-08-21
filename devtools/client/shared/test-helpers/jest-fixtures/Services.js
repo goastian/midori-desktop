@@ -541,13 +541,16 @@ const Services = {
   appinfo: "",
   obs: { addObserver: () => {} },
   strings: {
-    createBundle(bundle) {
+    createBundle() {
       return {
-        GetStringFromName(str) {
+        GetStringFromName() {
           return "NodeTest";
         },
       };
     },
+  },
+  intl: {
+    stringHasRTLChars: () => false,
   },
 };
 

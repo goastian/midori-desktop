@@ -9,8 +9,6 @@ const {
   cssPropertiesSpec,
 } = require("resource://devtools/shared/specs/css-properties.js");
 
-const { cssColors } = require("resource://devtools/shared/css/color-db.js");
-
 loader.lazyRequireGetter(
   this,
   "CSS_TYPES",
@@ -19,15 +17,15 @@ loader.lazyRequireGetter(
 );
 
 class CssPropertiesActor extends Actor {
-  constructor(conn) {
+  constructor(conn, targetActor) {
     super(conn, cssPropertiesSpec);
+    this.targetActor = targetActor;
   }
 
   getCSSDatabase() {
-    const properties = generateCssProperties();
-    const pseudoElements = InspectorUtils.getCSSPseudoElementNames();
+    const properties = generateCssProperties(this.targetActor.window.document);
 
-    return { properties, pseudoElements };
+    return { properties };
   }
 }
 exports.CssPropertiesActor = CssPropertiesActor;
@@ -36,16 +34,16 @@ exports.CssPropertiesActor = CssPropertiesActor;
  * Generate the CSS properties object. Every key is the property name, while
  * the values are objects that contain information about that property.
  *
+ * @param {Document} doc
  * @return {Object}
  */
-function generateCssProperties() {
+function generateCssProperties(doc) {
   const properties = {};
   const propertyNames = InspectorUtils.getCSSPropertyNames({
     includeAliases: true,
   });
-  const colors = Object.keys(cssColors);
 
-  propertyNames.forEach(name => {
+  for (const name of propertyNames) {
     // Get the list of CSS types this property supports.
     const supports = [];
     for (const type in CSS_TYPES) {
@@ -54,22 +52,16 @@ function generateCssProperties() {
       }
     }
 
-    // Don't send colors over RDP, these will be re-attached by the front.
-    let values = InspectorUtils.getCSSValuesForProperty(name);
-    if (values.includes("aliceblue")) {
-      values = values.filter(x => !colors.includes(x));
-      values.unshift("COLOR");
-    }
-
+    const values = InspectorUtils.getCSSValuesForProperty(name);
     const subproperties = InspectorUtils.getSubpropertiesForCSSProperty(name);
 
     properties[name] = {
-      isInherited: InspectorUtils.isInheritedProperty(name),
+      isInherited: InspectorUtils.isInheritedProperty(doc, name),
       values,
       supports,
       subproperties,
     };
-  });
+  }
 
   return properties;
 }

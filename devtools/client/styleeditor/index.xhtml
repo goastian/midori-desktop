@@ -4,20 +4,26 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!DOCTYPE window>
 
-<?xml-stylesheet href="chrome://global/skin/global.css" type="text/css"?>
-<?xml-stylesheet href="chrome://devtools/content/shared/widgets/widgets.css" type="text/css"?>
-<?xml-stylesheet href="chrome://devtools/content/shared/toolbarbutton.css" type="text/css"?>
-<?xml-stylesheet href="chrome://devtools/skin/chart.css" type="text/css"?>
-<?xml-stylesheet href="chrome://devtools/skin/widgets.css" type="text/css"?>
-<?xml-stylesheet href="chrome://devtools/skin/splitview.css" type="text/css"?>
-<?xml-stylesheet href="chrome://devtools/skin/styleeditor.css" type="text/css"?>
-
 <window
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
   xmlns:html="http://www.w3.org/1999/xhtml"
   id="style-editor-chrome-window"
 >
   <linkset>
+    <html:link rel="stylesheet" href="chrome://global/skin/global.css" />
+    <html:link
+      rel="stylesheet"
+      href="chrome://devtools/content/shared/widgets/widgets.css"
+    />
+    <html:link
+      rel="stylesheet"
+      href="chrome://devtools/content/shared/toolbarbutton.css"
+    />
+    <html:link rel="stylesheet" href="chrome://devtools/skin/chart.css" />
+    <html:link rel="stylesheet" href="chrome://devtools/skin/widgets.css" />
+    <html:link rel="stylesheet" href="chrome://devtools/skin/splitview.css" />
+    <html:link rel="stylesheet" href="chrome://devtools/skin/styleeditor.css" />
+
     <html:link rel="localization" href="toolkit/global/textActions.ftl" />
     <html:link rel="localization" href="devtools/client/styleeditor.ftl" />
   </linkset>
@@ -181,7 +187,18 @@
       resizebefore="sibling"
       resizeafter="none"
     />
-    <box class="splitview-side-details devtools-main-content" />
+    <box>
+      <box class="splitview-side-details devtools-main-content" />
+      <html:footer
+        class="devtools-toolbar stylesheet-editor-status"
+        hidden="true"
+      >
+        <html:button
+          class="devtools-button style-editor-prettyPrintButton"
+          data-l10n-id="styleeditor-pretty-print-button"
+        />
+      </html:footer>
+    </box>
 
     <html:div id="splitview-templates" hidden="">
       <html:li id="splitview-tpl-summary-stylesheet" tabindex="0">
@@ -198,7 +215,11 @@
           <html:div class="stylesheet-more">
             <html:h3 class="stylesheet-title"></html:h3>
             <html:h3 class="stylesheet-linked-file"></html:h3>
-            <html:h3 class="stylesheet-rule-count"></html:h3>
+            <html:h3
+              class="stylesheet-rule-count"
+              data-l10n-id="styleeditor-stylesheet-rule-count"
+              data-l10n-args='{"ruleCount": 0}'
+            ></html:h3>
             <spacer />
             <html:h3
               ><label
@@ -212,10 +233,7 @@
 
       <box id="splitview-tpl-details-stylesheet" class="splitview-details">
         <hbox class="stylesheet-details-container">
-          <box
-            class="stylesheet-editor-input textbox"
-            data-l10n-id="styleeditor-editor-textbox"
-          />
+          <box class="stylesheet-editor-input textbox" />
           <splitter
             class="devtools-side-splitter"
             resizebefore="none"

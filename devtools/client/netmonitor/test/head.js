@@ -321,6 +321,7 @@ function initNetMonitor(
     expectedEventTimings,
     waitForLoad = true,
     enableCache = false,
+    openInPrivateWindow = false,
   }
 ) {
   info("Initializing a network monitor pane.");
@@ -341,7 +342,22 @@ function initNetMonitor(
       ],
     });
 
-    const tab = await addTab(url, { waitForLoad });
+    let tab = null;
+    let privateWindow = null;
+
+    if (openInPrivateWindow) {
+      privateWindow = await BrowserTestUtils.openNewBrowserWindow({
+        private: true,
+      });
+      ok(
+        PrivateBrowsingUtils.isContentWindowPrivate(privateWindow),
+        "window is private"
+      );
+      tab = BrowserTestUtils.addTab(privateWindow.gBrowser, url);
+    } else {
+      tab = await addTab(url, { waitForLoad });
+    }
+
     info("Net tab added successfully: " + url);
 
     const toolbox = await gDevTools.showToolboxForTab(tab, {
@@ -371,7 +387,7 @@ function initNetMonitor(
       await clearNetworkEvents(monitor);
     }
 
-    return { tab, monitor, toolbox };
+    return { tab, monitor, toolbox, privateWindow };
   })();
 }
 
@@ -408,7 +424,7 @@ async function clearNetworkEvents(monitor) {
   store.dispatch(Actions.clearRequests());
 }
 
-function teardown(monitor) {
+function teardown(monitor, privateWindow) {
   info("Destroying the specified network monitor.");
 
   return (async function () {
@@ -419,6 +435,12 @@ function teardown(monitor) {
 
     await monitor.toolbox.destroy();
     await removeTab(tab);
+
+    if (privateWindow) {
+      const closed = BrowserTestUtils.windowClosed(privateWindow);
+      privateWindow.BrowserCommands.tryToCloseWindow();
+      await closed;
+    }
   })();
 }
 
@@ -783,8 +805,16 @@ function verifyRequestItemTarget(
       .getAttribute("title");
     info("Displayed time: " + value);
     info("Tooltip time: " + tooltip);
-    ok(~~value.match(/[0-9]+/) >= 0, "The displayed time is correct.");
-    ok(~~tooltip.match(/[0-9]+/) >= 0, "The tooltip time is correct.");
+    Assert.greaterOrEqual(
+      ~~value.match(/[0-9]+/),
+      0,
+      "The displayed time is correct."
+    );
+    Assert.greaterOrEqual(
+      ~~tooltip.match(/[0-9]+/),
+      0,
+      "The tooltip time is correct."
+    );
   }
 
   if (visibleIndex !== -1) {
@@ -870,7 +900,7 @@ function testFilterButtonsCustom(monitor, isChecked) {
  *
  */
 function promiseXHR(data) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     const xhr = new content.XMLHttpRequest();
 
     const method = data.method || "GET";
@@ -883,7 +913,7 @@ function promiseXHR(data) {
 
     xhr.addEventListener(
       "loadend",
-      function (event) {
+      function () {
         resolve({ status: xhr.status, response: xhr.response });
       },
       { once: true }
@@ -917,7 +947,7 @@ function promiseXHR(data) {
  *
  */
 function promiseWS(data) {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     let url = data.url;
 
     if (data.nocache) {
@@ -928,7 +958,7 @@ function promiseWS(data) {
     const socket = new content.WebSocket(url);
 
     /* Since we only use HTTP server to mock websocket, so just ignore the error */
-    socket.onclose = e => {
+    socket.onclose = () => {
       socket.close();
       resolve({
         status: 101,
@@ -936,7 +966,7 @@ function promiseWS(data) {
       });
     };
 
-    socket.onerror = e => {
+    socket.onerror = () => {
       socket.close();
       resolve({
         status: 101,
@@ -1148,7 +1178,11 @@ function checkTelemetryEvent(expectedEvent, query) {
   is(events.length, 1, "There was only 1 event logged");
 
   const [event] = events;
-  ok(event.session_id > 0, "There is a valid session_id in the logged event");
+  Assert.greater(
+    Number(event.session_id),
+    0,
+    "There is a valid session_id in the logged event"
+  );
 
   const f = e => JSON.stringify(e, null, 2);
   is(
@@ -1220,8 +1254,9 @@ function validateRequests(requests, monitor, options = {}) {
 
     if (stack) {
       ok(stacktrace, `Request #${i} has a stacktrace`);
-      ok(
-        stackLen > 0,
+      Assert.greater(
+        stackLen,
+        0,
         `Request #${i} (${causeType}) has a stacktrace with ${stackLen} items`
       );
 
@@ -1382,7 +1417,7 @@ function clickElement(element, monitor) {
  *        Target browser to observe the favicon load.
  */
 function registerFaviconNotifier(browser) {
-  const listener = async (name, data) => {
+  const listener = async name => {
     if (name == "SetIcon" || name == "SetFailedIcon") {
       await SpecialPowers.spawn(browser, [], async () => {
         content.document
@@ -1490,4 +1525,48 @@ function typeInNetmonitor(string, monitor) {
   for (const ch of string) {
     EventUtils.synthesizeKey(ch, {}, monitor.panelWin);
   }
+}
+
+/**
+ * Opens/ closes the URL preview in the headers side panel
+ *
+ * @param {Boolean} shouldExpand
+ * @param {NetMonitorPanel} monitor
+ * @returns
+ */
+async function toggleUrlPreview(shouldExpand, monitor) {
+  const { document } = monitor.panelWin;
+  const wait = waitUntil(() => {
+    const rowSize = document.querySelectorAll(
+      "#headers-panel .url-preview tr.treeRow"
+    ).length;
+    return shouldExpand ? rowSize > 1 : rowSize == 1;
+  });
+
+  clickElement(
+    document.querySelector(
+      "#headers-panel .url-preview tr:first-child span.treeIcon.theme-twisty"
+    ),
+    monitor
+  );
+  return wait;
+}
+
+/**
+ * Wait for the eager evaluated result from the split console
+ * @param {Object} hud
+ * @param {String} text - expected evaluation result
+ */
+async function waitForEagerEvaluationResult(hud, text) {
+  await waitUntil(() => {
+    const elem = hud.ui.outputNode.querySelector(".eager-evaluation-result");
+    if (elem) {
+      if (text instanceof RegExp) {
+        return text.test(elem.innerText);
+      }
+      return elem.innerText == text;
+    }
+    return false;
+  });
+  ok(true, `Got eager evaluation result ${text}`);
 }

@@ -38,13 +38,13 @@ class ManifestIssue extends PureComponent {
     switch (level) {
       case MANIFEST_ISSUE_LEVELS.WARNING:
         return {
-          src: "chrome://devtools/skin/images/alert-small.svg",
+          src: "resource://devtools-shared-images/alert-small.svg",
           localizationId: "icon-warning",
         };
       case MANIFEST_ISSUE_LEVELS.ERROR:
       default:
         return {
-          src: "chrome://devtools/skin/images/error-small.svg",
+          src: "resource://devtools-shared-images/error-small.svg",
           localizationId: "icon-error",
         };
     }

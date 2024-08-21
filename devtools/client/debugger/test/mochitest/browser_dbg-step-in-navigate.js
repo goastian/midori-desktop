@@ -17,18 +17,17 @@ add_task(async function () {
 
   await clickElement(dbg, "blackbox");
   await waitForDispatch(dbg.store, "BLACKBOX_WHOLE_SOURCES");
-  await dbg.actions.stepIn(getThreadContext(dbg));
+  await dbg.actions.stepIn();
 
   // We should stop at this breakpoint, rather than the first executed script
   await selectSource(dbg, "long.js");
   await addBreakpoint(dbg, "long.js", 1);
 
   // Navigation should clear the stepping state
-  const reloaded = reload(dbg);
+  const reloaded = reload(dbg, "simple2.js");
   await waitForPaused(dbg);
   assertPausedAtSourceAndLine(dbg, findSource(dbg, "long.js").id, 1);
 
   await resume(dbg);
   await reloaded;
-  await waitForSource(dbg, "simple3.js");
 });

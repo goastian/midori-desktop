@@ -7,7 +7,9 @@
 
 requestLongerTimeout(2);
 
-const throttlingProfiles = require("resource://devtools/client/shared/components/throttling/profiles.js");
+const {
+  profiles,
+} = require("resource://devtools/client/shared/components/throttling/profiles.js");
 
 const httpServer = createTestHTTPServer();
 httpServer.registerPathHandler(`/`, function (request, response) {
@@ -39,7 +41,7 @@ add_task(async function () {
     "devtools/client/netmonitor/src/selectors/index"
   );
 
-  for (const profile of throttlingProfiles) {
+  for (const profile of profiles) {
     info(`Starting test for throttling profile ${JSON.stringify(profile)}`);
 
     info("sending throttle request");
@@ -57,10 +59,13 @@ add_task(async function () {
     await waitForRequestData(store, ["eventTimings"]);
 
     const requestItem = getSortedRequests(store.getState()).at(-1);
-    ok(
-      requestItem.eventTimings.timings.receive > 1000,
-      `Request was properly throttled for profile ${profile.id}`
-    );
+    if (requestItem.eventTimings) {
+      Assert.greater(
+        requestItem.eventTimings.timings.receive,
+        1000,
+        `Request was properly throttled for profile ${profile.id}`
+      );
+    }
   }
 
   await teardown(monitor);

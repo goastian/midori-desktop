@@ -4,9 +4,6 @@
 
 "use strict";
 
-var { XPCOMUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/XPCOMUtils.sys.mjs"
-);
 var EventEmitter = require("resource://devtools/shared/event-emitter.js");
 
 var { StyleEditorUI } = ChromeUtils.importESModule(
@@ -51,6 +48,7 @@ StyleEditorPanel.prototype = {
       cssProperties
     );
     this.UI.on("error", this._showError);
+    this.UI.on("reloaded", () => this.emit("reloaded"));
     await this.UI.initialize(options);
 
     return this;
@@ -164,8 +162,12 @@ StyleEditorPanel.prototype = {
   },
 };
 
-XPCOMUtils.defineLazyGetter(StyleEditorPanel.prototype, "strings", function () {
-  return Services.strings.createBundle(
-    "chrome://devtools/locale/styleeditor.properties"
-  );
-});
+ChromeUtils.defineLazyGetter(
+  StyleEditorPanel.prototype,
+  "strings",
+  function () {
+    return Services.strings.createBundle(
+      "chrome://devtools/locale/styleeditor.properties"
+    );
+  }
+);

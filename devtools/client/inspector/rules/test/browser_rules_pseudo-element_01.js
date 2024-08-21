@@ -5,11 +5,16 @@
 
 // Test that pseudoelements are displayed correctly in the rule view
 
-const TEST_URI = URL_ROOT + "doc_pseudoelement.html";
+const TEST_URI = URL_ROOT + "doc_pseudoelement.html?#:~:text=fox";
 const PSEUDO_PREF = "devtools.inspector.show_pseudo_elements";
 
 add_task(async function () {
   await pushPref(PSEUDO_PREF, true);
+  await pushPref("dom.customHighlightAPI.enabled", true);
+  await pushPref("dom.text_fragments.enabled", true);
+  await pushPref("layout.css.modern-range-pseudos.enabled", true);
+  await pushPref("full-screen-api.transition-duration.enter", "0 0");
+  await pushPref("full-screen-api.transition-duration.leave", "0 0");
 
   await addTab(TEST_URI);
   const { inspector, view } = await openRuleView();
@@ -21,7 +26,11 @@ add_task(async function () {
   await testParagraph(inspector, view);
   await testBody(inspector, view);
   await testList(inspector, view);
-  await testDialogBackdrop(inspector, view);
+  await testCustomHighlight(inspector, view);
+  await testSlider(inspector, view);
+  await testUrlFragmentTextDirective(inspector, view);
+  // keep this one last as it makes the browser go fullscreen and seem to impact other tests
+  await testBackdrop(inspector, view);
 });
 
 async function testTopLeft(inspector, view) {
@@ -284,17 +293,183 @@ async function testList(inspector, view) {
   assertGutters(view);
 }
 
-async function testDialogBackdrop(inspector, view) {
+async function testBackdrop(inspector, view) {
+  info("Test ::backdrop for dialog element");
   await assertPseudoElementRulesNumbers("dialog", inspector, view, {
     elementRulesNb: 3,
     backdropRules: 1,
   });
 
+  info("Test ::backdrop for popover element");
+  await assertPseudoElementRulesNumbers(
+    "#in-dialog[popover]",
+    inspector,
+    view,
+    {
+      elementRulesNb: 3,
+      backdropRules: 1,
+    }
+  );
+
+  assertGutters(view);
+
+  info("Test ::backdrop rules are displayed when elements is fullscreen");
+
+  // Wait for the document being activated, so that
+  // fullscreen request won't be denied.
+  const onTabFocused = SpecialPowers.spawn(gBrowser.selectedBrowser, [], () => {
+    return ContentTaskUtils.waitForCondition(
+      () => content.browsingContext.isActive && content.document.hasFocus(),
+      "document is active"
+    );
+  });
+  gBrowser.selectedBrowser.focus();
+  await onTabFocused;
+
+  info("Request fullscreen");
+  // Entering fullscreen is triggering an update, wait for it so it doesn't impact
+  // the rest of the test
+  let onInspectorUpdated = view.once("ruleview-refreshed");
+  await SpecialPowers.spawn(gBrowser.selectedBrowser, [], async () => {
+    const canvas = content.document.querySelector("canvas");
+    canvas.requestFullscreen();
+
+    await ContentTaskUtils.waitForCondition(
+      () => content.document.fullscreenElement === canvas,
+      "canvas is fullscreen"
+    );
+  });
+  await onInspectorUpdated;
+
+  await assertPseudoElementRulesNumbers("canvas", inspector, view, {
+    elementRulesNb: 3,
+    backdropRules: 1,
+  });
+
+  assertGutters(view);
+
+  // Exiting fullscreen is triggering an update, wait for it so it doesn't impact
+  // the rest of the test
+  onInspectorUpdated = view.once("ruleview-refreshed");
+  await SpecialPowers.spawn(gBrowser.selectedBrowser, [], async () => {
+    content.document.exitFullscreen();
+    await ContentTaskUtils.waitForCondition(
+      () => content.document.fullscreenElement === null,
+      "canvas is no longer fullscreen"
+    );
+  });
+  await onInspectorUpdated;
+
+  info(
+    "Test ::backdrop rules are not displayed when elements are not fullscreen"
+  );
+  await assertPseudoElementRulesNumbers("canvas", inspector, view, {
+    elementRulesNb: 3,
+    backdropRules: 0,
+  });
+}
+
+async function testCustomHighlight(inspector, view) {
+  const { highlightRules } = await assertPseudoElementRulesNumbers(
+    ".highlights-container",
+    inspector,
+    view,
+    {
+      elementRulesNb: 4,
+      highlightRulesNb: 3,
+    }
+  );
+
+  is(
+    highlightRules[0].pseudoElement,
+    "::highlight(filter)",
+    "First highlight rule is for the filter highlight"
+  );
+
+  is(
+    highlightRules[1].pseudoElement,
+    "::highlight(search)",
+    "Second highlight rule is for the search highlight"
+  );
+  is(
+    highlightRules[2].pseudoElement,
+    "::highlight(search)",
+    "Third highlight rule is also for the search highlight"
+  );
+  is(highlightRules.length, 3, "Got all 3 active rules, but not unused one");
+
+  // Check that properties are marked as overridden only when they're on the same Highlight
+  is(
+    convertTextPropsToString(highlightRules[0].textProps),
+    `background-color: purple`,
+    "Got expected properties for filter highlight"
+  );
+  is(
+    convertTextPropsToString(highlightRules[1].textProps),
+    `color: white`,
+    "Got expected properties for first search highlight"
+  );
+  is(
+    convertTextPropsToString(highlightRules[2].textProps),
+    `background-color: tomato; ~~color: gold~~`,
+    "Got expected properties for second search highlight, `color` is marked as overridden"
+  );
+
+  assertGutters(view);
+}
+
+async function testSlider(inspector, view) {
+  await assertPseudoElementRulesNumbers(
+    "input[type=range].slider",
+    inspector,
+    view,
+    {
+      elementRulesNb: 3,
+      sliderFillRulesNb: 1,
+      sliderThumbRulesNb: 1,
+      sliderTrackRulesNb: 1,
+    }
+  );
+  assertGutters(view);
+
+  info(
+    "Check that ::slider-* pseudo elements are not displayed for non-range inputs"
+  );
+  await assertPseudoElementRulesNumbers(
+    "input[type=text].slider",
+    inspector,
+    view,
+    {
+      elementRulesNb: 3,
+      sliderFillRulesNb: 0,
+      sliderThumbRulesNb: 0,
+      sliderTrackRulesNb: 0,
+    }
+  );
+}
+
+async function testUrlFragmentTextDirective(inspector, view) {
+  await assertPseudoElementRulesNumbers(
+    ".url-fragment-text-directives",
+    inspector,
+    view,
+    {
+      elementRulesNb: 3,
+      targetTextRulesNb: 1,
+    }
+  );
   assertGutters(view);
 }
 
 function convertTextPropsToString(textProps) {
-  return textProps.map(t => t.name + ": " + t.value).join("; ");
+  return textProps
+    .map(
+      t =>
+        `${t.overridden ? "~~" : ""}${t.name}: ${t.value}${
+          t.overridden ? "~~" : ""
+        }`
+    )
+    .join("; ");
 }
 
 async function testNode(selector, inspector, view) {
@@ -334,6 +509,21 @@ async function assertPseudoElementRulesNumbers(
     backdropRules: elementStyle.rules.filter(
       rule => rule.pseudoElement === "::backdrop"
     ),
+    highlightRules: elementStyle.rules.filter(rule =>
+      rule.pseudoElement?.startsWith("::highlight(")
+    ),
+    sliderFillRules: elementStyle.rules.filter(
+      rule => rule.pseudoElement === "::slider-fill"
+    ),
+    sliderThumbRules: elementStyle.rules.filter(
+      rule => rule.pseudoElement === "::slider-thumb"
+    ),
+    sliderTrackRules: elementStyle.rules.filter(
+      rule => rule.pseudoElement === "::slider-track"
+    ),
+    targetTextRules: elementStyle.rules.filter(
+      rule => rule.pseudoElement === "::target-text"
+    ),
   };
 
   is(
@@ -371,6 +561,54 @@ async function assertPseudoElementRulesNumbers(
     ruleNbs.afterRulesNb || 0,
     selector + " has the correct number of ::after rules"
   );
+  is(
+    rules.highlightRules.length,
+    ruleNbs.highlightRulesNb || 0,
+    selector + " has the correct number of ::highlight rules"
+  );
+  is(
+    rules.sliderFillRules.length,
+    ruleNbs.sliderFillRulesNb || 0,
+    selector + " has the correct number of ::slider-fill rules"
+  );
+  is(
+    rules.sliderThumbRules.length,
+    ruleNbs.sliderThumbRulesNb || 0,
+    selector + " has the correct number of ::slider-thumb rules"
+  );
+  is(
+    rules.sliderTrackRules.length,
+    ruleNbs.sliderTrackRulesNb || 0,
+    selector + " has the correct number of ::slider-track rules"
+  );
+  is(
+    rules.targetTextRules.length,
+    ruleNbs.targetTextRulesNb || 0,
+    selector + " has the correct number of ::target-text rules"
+  );
+
+  // If we do have pseudo element rules displayed, ensure we don't mark their selectors
+  // as matched or unmatched
+  if (
+    rules.elementRules.length &&
+    elementStyle.rules.length !== rules.elementRules.length
+  ) {
+    const pseudoElementContainer = view.styleWindow.document.getElementById(
+      "pseudo-elements-container"
+    );
+    const selectors = Array.from(
+      pseudoElementContainer.querySelectorAll(".ruleview-selector")
+    );
+    ok(selectors.length, "We do have selectors for pseudo element rules");
+    ok(
+      selectors.every(
+        selectorEl =>
+          !selectorEl.classList.contains("matched") &&
+          !selectorEl.classList.contains("unmatched")
+      ),
+      "Pseudo element selectors are not marked as matched nor unmatched"
+    );
+  }
 
   return rules;
 }

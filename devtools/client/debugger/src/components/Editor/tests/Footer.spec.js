@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
+import React from "devtools/client/shared/vendor/react";
 import { shallow } from "enzyme";
 
 import SourceFooter from "../Footer";
@@ -42,9 +42,12 @@ function render(overrides = {}, position = { line: 0, column: 0 }) {
   const doc = createMockDocument(clear, position);
   setDocument(props.selectedSource.id, doc);
 
-  const component = shallow(<SourceFooter.WrappedComponent {...props} />, {
-    lifecycleExperimental: true,
-  });
+  const component = shallow(
+    React.createElement(SourceFooter.WrappedComponent, props),
+    {
+      lifecycleExperimental: true,
+    }
+  );
   return { component, props, clear, doc };
 }
 

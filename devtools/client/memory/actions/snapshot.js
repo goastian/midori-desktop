@@ -3,9 +3,6 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { Preferences } = ChromeUtils.importESModule(
-  "resource://gre/modules/Preferences.sys.mjs"
-);
 const {
   assert,
   reportException,
@@ -418,10 +415,12 @@ const fetchIndividuals = (exports.fetchIndividuals = function (
           indices,
           censusBreakdown,
           labelBreakdown: labelDisplay.breakdown,
-          maxRetainingPaths: Preferences.get(
+          maxRetainingPaths: Services.prefs.getIntPref(
             "devtools.memory.max-retaining-paths"
           ),
-          maxIndividuals: Preferences.get("devtools.memory.max-individuals"),
+          maxIndividuals: Services.prefs.getIntPref(
+            "devtools.memory.max-individuals"
+          ),
         }));
       } catch (error) {
         reportException("actions/snapshot/fetchIndividuals", error);
@@ -627,7 +626,7 @@ const fetchDominatorTree = (exports.fetchDominatorTree =
           root = await heapWorker.getDominatorTree({
             dominatorTreeId: snapshot.dominatorTree.dominatorTreeId,
             breakdown: display.breakdown,
-            maxRetainingPaths: Preferences.get(
+            maxRetainingPaths: Services.prefs.getIntPref(
               "devtools.memory.max-retaining-paths"
             ),
           });
@@ -690,7 +689,7 @@ exports.fetchImmediatelyDominated = TaskCache.declareCacheableTask({
           breakdown: display.breakdown,
           nodeId: lazyChildren.parentNodeId(),
           startIndex: lazyChildren.siblingIndex(),
-          maxRetainingPaths: Preferences.get(
+          maxRetainingPaths: Services.prefs.getIntPref(
             "devtools.memory.max-retaining-paths"
           ),
         });
@@ -728,7 +727,7 @@ const computeAndFetchDominatorTree = (exports.computeAndFetchDominatorTree =
       return id;
     },
 
-    async task(heapWorker, id, removeFromCache, dispatch, getState) {
+    async task(heapWorker, id, removeFromCache, dispatch) {
       const dominatorTreeId = await dispatch(
         computeDominatorTree(heapWorker, id)
       );
@@ -844,7 +843,7 @@ exports.clearSnapshots = function (heapWorker) {
  * @param {snapshotModel} snapshot
  */
 exports.deleteSnapshot = function (heapWorker, snapshot) {
-  return async function ({ dispatch, getState }) {
+  return async function ({ dispatch }) {
     dispatch({ type: actions.DELETE_SNAPSHOTS_START, ids: [snapshot.id] });
 
     try {

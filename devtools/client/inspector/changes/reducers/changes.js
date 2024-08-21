@@ -74,11 +74,15 @@ function createRule(ruleData, rules) {
         // Ensure each rule has a selector text.
         // For the purpose of displaying in the UI, we treat at-rules as selectors.
         if (!rule.selectors || !rule.selectors.length) {
-          rule.selectors = [
-            `${rule.typeName} ${
-              rule.conditionText || rule.name || rule.keyText
-            }`,
-          ];
+          // Display the @type label if there's one
+          let selector = rule.typeName ? rule.typeName + " " : "";
+          selector +=
+            rule.conditionText ||
+            rule.name ||
+            rule.keyText ||
+            rule.selectorText;
+
+          rule.selectors = [selector];
         }
 
         return rule.id;
@@ -367,7 +371,7 @@ const reducers = {
     return state;
   },
 
-  [RESET_CHANGES](state) {
+  [RESET_CHANGES]() {
     return INITIAL_STATE;
   },
 };

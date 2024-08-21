@@ -758,7 +758,7 @@ class JSTerm extends Component {
   async _openFile() {
     const fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
     fp.init(
-      this.webConsoleUI.document.defaultView,
+      this.webConsoleUI.document.defaultView.browsingContext,
       l10n.getStr("webconsole.input.openJavaScriptFile"),
       Ci.nsIFilePicker.modeOpen
     );
@@ -891,9 +891,8 @@ class JSTerm extends Component {
    *
    * @param {CodeMirror} cm: codeMirror instance
    * @param {String} key: The key that was handled
-   * @param {Event} e: The keypress event
    */
-  _onEditorKeyHandled(cm, key, e) {
+  _onEditorKeyHandled(cm, key) {
     // The autocloseBracket addon handle closing brackets keys when they're typed, but
     // there's already an existing closing bracket.
     // ex:

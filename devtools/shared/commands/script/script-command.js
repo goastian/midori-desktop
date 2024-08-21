@@ -38,6 +38,11 @@ class ScriptCommand {
    *        entered by the users have been modified
    * @param {boolean} options.mapped.await: true if the expression was a top-level await
    *        expression that was wrapped in an async-iife
+   * @param {boolean} options.disableBreaks: Set to true to avoid triggering any
+   *        type of breakpoint when evaluating the source. Also, the evaluated source won't be
+   *        visible in the debugger UI.
+   * @param {boolean} options.preferConsoleCommandsOverLocalSymbols: Set to true to force
+   *        overriding local symbols defined by the page with same-name console commands.
    *
    * @return {Promise}: A promise that resolves with the response.
    */
@@ -103,6 +108,9 @@ class ScriptCommand {
           selectedNodeActor,
           selectedObjectActor,
           url: options.url,
+          disableBreaks: options.disableBreaks,
+          preferConsoleCommandsOverLocalSymbols:
+            options.preferConsoleCommandsOverLocalSymbols,
         })
         .then(packet => {
           resultID = packet.resultID;

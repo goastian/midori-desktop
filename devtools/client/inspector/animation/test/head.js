@@ -65,40 +65,6 @@ const closeAnimationInspector = async function () {
 };
 
 /**
- * Some animation features are not enabled by default in release/beta channels
- * yet including parts of the Web Animations API.
- */
-const enableAnimationFeatures = function () {
-  return new Promise(resolve => {
-    SpecialPowers.pushPrefEnv(
-      {
-        set: [
-          ["dom.animations-api.core.enabled", true],
-          ["dom.animations-api.getAnimations.enabled", true],
-          ["dom.animations-api.implicit-keyframes.enabled", true],
-          ["dom.animations-api.timelines.enabled", true],
-          ["layout.css.step-position-jump.enabled", true],
-        ],
-      },
-      resolve
-    );
-  });
-};
-
-/**
- * Add a new test tab in the browser and load the given url.
- *
- * @param {String} url
- *        The url to be loaded in the new tab
- * @return a promise that resolves to the tab object when the url is loaded
- */
-const _addTab = addTab;
-addTab = async function (url) {
-  await enableAnimationFeatures();
-  return _addTab(url);
-};
-
-/**
  * Remove animated elements from document except given selectors.
  *
  * @param {Array} selectors
@@ -676,7 +642,7 @@ const setStyles = async function (animationInspector, selector, properties) {
 };
 
 /**
- * Wait until curren time of animations will be changed to give currrent time.
+ * Wait until current time of animations will be changed to given current time.
  *
  * @param {AnimationInspector} animationInspector
  * @param {Number} currentTime
@@ -687,9 +653,9 @@ const waitUntilCurrentTimeChangedAt = async function (
 ) {
   info(`Wait until current time will be change to ${currentTime}`);
   await waitUntil(() =>
-    animationInspector.state.animations.every(
-      a => a.state.currentTime === currentTime
-    )
+    animationInspector.state.animations.every(a => {
+      return a.state.currentTime === currentTime;
+    })
   );
 };
 
@@ -1031,8 +997,9 @@ function checkAdjustingTheTime(animation1, animation2) {
     animation2.currentTime / animation2.playbackRate -
     animation1.currentTime / animation1.playbackRate;
   const createdTimeDiff = animation1.createdTime - animation2.createdTime;
-  ok(
-    Math.abs(adjustedCurrentTimeDiff - createdTimeDiff) < 0.1,
+  Assert.less(
+    Math.abs(adjustedCurrentTimeDiff - createdTimeDiff),
+    0.1,
     "Adjusted time is correct"
   );
 }

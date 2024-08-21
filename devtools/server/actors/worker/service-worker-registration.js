@@ -10,7 +10,8 @@ const {
 } = require("resource://devtools/shared/specs/worker/service-worker-registration.js");
 
 const { XPCOMUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/XPCOMUtils.sys.mjs"
+  "resource://gre/modules/XPCOMUtils.sys.mjs",
+  { global: "contextual" }
 );
 const {
   PushSubscriptionActor,
@@ -210,7 +211,7 @@ class ServiceWorkerRegistrationActor extends Actor {
     if (pushSubscriptionActor) {
       return Promise.resolve(pushSubscriptionActor);
     }
-    return new Promise((resolve, reject) => {
+    return new Promise(resolve => {
       PushService.getSubscription(
         registration.scope,
         registration.principal,

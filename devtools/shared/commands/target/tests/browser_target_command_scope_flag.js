@@ -27,6 +27,12 @@ add_task(async function () {
   const commands = await CommandsFactory.forMainProcess();
   const targetCommand = commands.targetCommand;
   await targetCommand.startListening();
+
+  // Pass any configuration, in order to ensure attaching all the thread actors
+  await commands.threadConfigurationCommand.updateConfiguration({
+    skipBreakpoints: false,
+  });
+
   const { TYPES } = targetCommand;
 
   const targets = new Set();
@@ -43,7 +49,7 @@ add_task(async function () {
     onAvailable,
     onDestroyed,
   });
-  ok(targets.size > 1, "We get many targets");
+  Assert.greater(targets.size, 1, "We get many targets");
 
   info("Open a tab in a new content process");
   await BrowserTestUtils.openNewForegroundTab({
@@ -52,10 +58,29 @@ add_task(async function () {
     forceNewProcess: true,
   });
 
-  const newTabProcessID =
+  // Verify that only PROCESS and top target have their thread actor attached.
+  // We especially care about having the FRAME targets to not be attached,
+  // otherwise we would have two thread actor debugging the same thread
+  // with the PROCESS target already debugging all FRAME documents.
+  for (const target of targets) {
+    const threadFront = await target.getFront("thread");
+    const isAttached = await threadFront.isAttached();
+    if (target.targetType == TYPES.PROCESS) {
+      ok(isAttached, "All process targets are attached");
+    } else if (target.isTopLevel) {
+      ok(isAttached, "The top level target is attached");
+    } else {
+      ok(
+        !isAttached,
+        "The frame targets should not be attached in multiprocess mode"
+      );
+    }
+  }
+
+  const firstTabProcessID =
     gBrowser.selectedTab.linkedBrowser.browsingContext.currentWindowGlobal
       .osPid;
-  const newTabInnerWindowId =
+  const firstTabInnerWindowId =
     gBrowser.selectedTab.linkedBrowser.browsingContext.currentWindowGlobal
       .innerWindowId;
 
@@ -64,7 +89,7 @@ add_task(async function () {
     [...targets].find(
       target =>
         target.targetType == TYPES.PROCESS &&
-        target.processID == newTabProcessID
+        target.processID == firstTabProcessID
     )
   );
 
@@ -73,11 +98,9 @@ add_task(async function () {
     [...targets].find(
       target =>
         target.targetType == TYPES.FRAME &&
-        target.innerWindowId == newTabInnerWindowId
+        target.innerWindowId == firstTabInnerWindowId
     )
   );
-
-  let multiprocessTargetCount = targets.size;
 
   info("Disable multiprocess debugging");
   await pushPref("devtools.browsertoolbox.scope", "parent-process");
@@ -108,6 +131,12 @@ add_task(async function () {
     url: TEST_URL,
     forceNewProcess: true,
   });
+  const secondTabProcessID =
+    gBrowser.selectedTab.linkedBrowser.browsingContext.currentWindowGlobal
+      .osPid;
+  const secondTabInnerWindowId =
+    gBrowser.selectedTab.linkedBrowser.browsingContext.currentWindowGlobal
+      .innerWindowId;
 
   await wait(1000);
   is(
@@ -119,33 +148,37 @@ add_task(async function () {
   info("Re-enable multiprocess debugging");
   await pushPref("devtools.browsertoolbox.scope", "everything");
 
-  // The second tab relates to one content process target and one window global target
-  multiprocessTargetCount += 2;
-
-  await waitFor(
-    () => targets.size == multiprocessTargetCount,
-    "Wait for all targets we used to have before disable multiprocess debugging"
-  );
-
-  info("Wait for the tab content process target to be available again");
-  ok(
-    [...targets].some(
+  await waitFor(() => {
+    return [...targets].some(
       target =>
         target.targetType == TYPES.PROCESS &&
-        target.processID == newTabProcessID
-    ),
-    "We have the tab content process target"
-  );
+        target.processID == firstTabProcessID
+    );
+  }, "Wait for the first tab content process target to be available again");
 
-  info("Wait for the tab window global target to be available again");
-  ok(
-    [...targets].some(
+  await waitFor(() => {
+    return [...targets].some(
       target =>
         target.targetType == TYPES.FRAME &&
-        target.innerWindowId == newTabInnerWindowId
-    ),
-    "We have the tab window global target"
-  );
+        target.innerWindowId == firstTabInnerWindowId
+    );
+  }, "Wait for the first tab frame target to be available again");
+
+  await waitFor(() => {
+    return [...targets].some(
+      target =>
+        target.targetType == TYPES.PROCESS &&
+        target.processID == secondTabProcessID
+    );
+  }, "Wait for the second tab content process target to be available again");
+
+  await waitFor(() => {
+    return [...targets].some(
+      target =>
+        target.targetType == TYPES.FRAME &&
+        target.innerWindowId == secondTabInnerWindowId
+    );
+  }, "Wait for the second tab frame target to be available again");
 
   info("Open a third tab in a new content process");
   await BrowserTestUtils.openNewForegroundTab({

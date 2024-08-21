@@ -12,6 +12,7 @@ const {
   SET_TERMINAL_INPUT,
   SET_TERMINAL_EAGER_RESULT,
   EDITOR_PRETTY_PRINT,
+  HELP_URL,
 } = require("resource://devtools/client/webconsole/constants.js");
 const {
   getAllPrefs,
@@ -66,9 +67,6 @@ loader.lazyRequireGetter(
   true
 );
 
-const HELP_URL =
-  "https://firefox-source-docs.mozilla.org/devtools-user/web_console/helpers/";
-
 async function getMappedExpression(hud, expression) {
   let mapResult;
   try {
@@ -85,7 +83,7 @@ async function getMappedExpression(hud, expression) {
 }
 
 function evaluateExpression(expression, from = "input") {
-  return async ({ dispatch, toolbox, webConsoleUI, hud, commands }) => {
+  return async ({ dispatch, webConsoleUI, hud, commands }) => {
     if (!expression) {
       expression = hud.getInputSelection() || hud.getInputValue();
     }
@@ -127,6 +125,8 @@ function evaluateExpression(expression, from = "input") {
           webConsoleUI.hud.commands.targetCommand.store.getState()
         ),
         mapped,
+        // Allow breakpoints to be triggerred and the evaluated source to be shown in debugger UI
+        disableBreaks: false,
       })
       .then(onSettled, onSettled);
 
@@ -193,6 +193,20 @@ function handleHelperResult(response) {
 
     if (helperResult?.type) {
       switch (helperResult.type) {
+        case "exception":
+          dispatch(
+            messagesActions.messagesAdd([
+              {
+                message: {
+                  level: "error",
+                  arguments: [helperResult.message],
+                  chromeContext: true,
+                },
+                resourceType: ResourceCommand.TYPES.CONSOLE_MESSAGE,
+              },
+            ])
+          );
+          break;
         case "clearOutput":
           dispatch(messagesActions.messagesClear());
           break;
@@ -332,6 +346,27 @@ function handleHelperResult(response) {
           );
           // early return as we already dispatched necessary messages.
           return;
+
+        // Sent when using ":command --help or :command --usage"
+        // to help discover command arguments.
+        //
+        // The remote runtime will tell us about the usage as it may
+        // be different from the client one.
+        case "usage":
+          dispatch(
+            messagesActions.messagesAdd([
+              {
+                resourceType: ResourceCommand.TYPES.PLATFORM_MESSAGE,
+                message: helperResult.message,
+              },
+            ])
+          );
+          break;
+
+        case "traceOutput":
+          // Nothing in particular to do.
+          // The JSTRACER_STATE resource will report the start/stop of the profiler.
+          break;
       }
     }
 

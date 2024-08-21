@@ -10,7 +10,7 @@
   --object-color: var(--theme-highlight-blue);
   --caption-color: var(--theme-highlight-blue);
   --location-color: var(--theme-comment);
-  --source-link-color: var(--theme-highlight-blue);
+  --source-link-color: var(--theme-link-color);
   --node-color: var(--theme-highlight-purple);
   --reference-color: var(--theme-highlight-blue);
   --comment-node-color: var(--theme-comment);
@@ -37,7 +37,13 @@
   white-space: pre-wrap;
 }
 
-.objectBox * {
+:is(
+  .objectBox-string,
+  .objectBox-textNode,
+  .objectBox > .nodeName,
+  .objectBox-node .tag-name,
+  .objectBox-node .attrName
+).has-rtl-char {
   unicode-bidi: isolate;
 }
 
@@ -302,23 +308,23 @@
 /******************************************************************************/
 /* Open DOMNode in inspector or Accessible in accessibility inspector button */
 
-button.open-accessibility-inspector {
+:is(button, [role="button"]).open-accessibility-inspector {
   background: url("chrome://devtools/content/shared/components/reps/images/open-a11y.svg")
     no-repeat;
 }
 
-button.open-inspector {
+:is(button, [role="button"]).open-inspector {
   background: url("chrome://devtools/content/shared/components/reps/images/open-inspector.svg")
     no-repeat;
 }
 
-button.highlight-node {
+:is(button, [role="button"]).highlight-node {
   background: url("chrome://devtools/skin/images/highlight-selector.svg")
     no-repeat;
 }
 
 
-button:is(.open-accessibility-inspector, .open-inspector, .highlight-node) {
+:is(button, [role="button"]):is(.open-accessibility-inspector, .open-inspector, .highlight-node) {
   display: inline-block;
   vertical-align: top;
   height: 15px;

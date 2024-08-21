@@ -31,7 +31,7 @@ const {
 
 const INITIAL_STATE = {
   defaultTargetBrowsers: [],
-  isSettingsVisibile: false,
+  isSettingsVisible: false,
   isTopLevelTargetProcessing: false,
   selectedNode: null,
   selectedNodeIssues: [],
@@ -108,7 +108,7 @@ const reducers = {
     return state;
   },
   [COMPATIBILITY_UPDATE_SETTINGS_VISIBILITY](state, { visibility }) {
-    return Object.assign({}, state, { isSettingsVisibile: visibility });
+    return Object.assign({}, state, { isSettingsVisible: visibility });
   },
   [COMPATIBILITY_UPDATE_TARGET_BROWSERS_START](state) {
     return Object.assign({}, state, {
@@ -139,7 +139,7 @@ const reducers = {
     _showError(COMPATIBILITY_UPDATE_TOP_LEVEL_TARGET_FAILURE, error);
     return state;
   },
-  [COMPATIBILITY_UPDATE_TOP_LEVEL_TARGET_COMPLETE](state, { target }) {
+  [COMPATIBILITY_UPDATE_TOP_LEVEL_TARGET_COMPLETE](state) {
     return Object.assign({}, state, { isTopLevelTargetProcessing: false });
   },
 };

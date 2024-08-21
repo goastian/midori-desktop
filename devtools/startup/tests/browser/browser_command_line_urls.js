@@ -44,30 +44,19 @@ add_task(async function ignoredUrls() {
 
 /**
  * With DevTools closed, but DevToolsStartup "initialized",
- * the url will be opened via view-source
+ * the url will be ignored
  */
 add_task(async function openingWithDevToolsClosed() {
   const url = URL_ROOT + "command-line.html:5:2";
 
-  const newTabOpened = BrowserTestUtils.waitForNewTab(gBrowser);
-  sendUrlViaCommandLine(url);
-  const newTab = await newTabOpened;
-  is(
-    newTab.linkedBrowser.documentURI.spec,
-    "view-source:" + URL_ROOT + "command-line.html"
-  );
+  const tabCount = gBrowser.tabs.length;
+  const ignoredUrl = sendUrlViaCommandLine(url);
+  ok(ignoredUrl, "The url is ignored when no devtools are opened");
 
-  await SpecialPowers.spawn(gBrowser.selectedBrowser, [], async function () {
-    // View source may not have updated the selection just yet
-    ContentTaskUtils.waitForCondition(() => !!content.getSelection());
-    const selection = content.getSelection();
-    Assert.equal(
-      selection.toString(),
-      "  <title>Command line test page</title>",
-      "The 5th line is selected in view-source"
-    );
-  });
-  await gBrowser.removeTab(newTab);
+  // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
+  await new Promise(r => setTimeout(r, 1000));
+
+  is(tabCount, gBrowser.tabs.length);
 });
 
 /**
@@ -81,8 +70,9 @@ add_task(async function openingWithDevToolsButUnknownSource() {
     gBrowser,
     "data:text/html;charset=utf-8,<title>foo</title>"
   );
+  gBrowser.selectedTab = tab;
 
-  const toolbox = await gDevTools.showToolboxForTab(gBrowser.selectedTab, {
+  const toolbox = await gDevTools.showToolboxForTab(tab, {
     toolId: "jsdebugger",
   });
 
@@ -95,6 +85,9 @@ add_task(async function openingWithDevToolsButUnknownSource() {
   );
 
   await SpecialPowers.spawn(gBrowser.selectedBrowser, [], async function () {
+    // View source may not have updated the selection just yet
+    ContentTaskUtils.waitForCondition(() => !!content.getSelection());
+
     const selection = content.getSelection();
     Assert.equal(
       selection.toString(),
@@ -113,7 +106,9 @@ add_task(async function openingWithDevToolsButUnknownSource() {
  * the url will be opened in the debugger.
  */
 add_task(async function openingWithDevToolsAndKnownSource() {
-  const url = URL_ROOT + "command-line.js:5:2";
+  const line = 5;
+  const column = 2;
+  const url = URL_ROOT + `command-line.js:${line}:${column}`;
 
   const tab = await BrowserTestUtils.openNewForegroundTab(
     gBrowser,
@@ -127,22 +122,26 @@ add_task(async function openingWithDevToolsAndKnownSource() {
   sendUrlViaCommandLine(url);
 
   const dbg = toolbox.getPanel("jsdebugger");
+  // Wait for the expected location to be selected and ignore any other default ones.
   const selectedLocation = await BrowserTestUtils.waitForCondition(() => {
-    return dbg._selectors.getSelectedLocation(dbg._getState());
+    const location = dbg._selectors.getSelectedLocation(dbg._getState());
+    return location?.line == line ? location : false;
   });
+
   is(selectedLocation.source.url, URL_ROOT + "command-line.js");
-  is(selectedLocation.line, 5);
-  is(selectedLocation.column, 2);
+  is(selectedLocation.line, line);
+  is(selectedLocation.column, column - 1);
 
   info("Open another URL with only a line");
-  const url2 = URL_ROOT + "command-line.js:6";
+  const secondLine = 6;
+  const url2 = URL_ROOT + `command-line.js:${secondLine}`;
   sendUrlViaCommandLine(url2);
   const selectedLocation2 = await BrowserTestUtils.waitForCondition(() => {
     const location = dbg._selectors.getSelectedLocation(dbg._getState());
-    return location.line == 6 ? location : false;
+    return location.line == secondLine ? location : false;
   });
   is(selectedLocation2.source.url, URL_ROOT + "command-line.js");
-  is(selectedLocation2.line, 6);
+  is(selectedLocation2.line, secondLine);
   is(selectedLocation2.column, 0);
 
   await toolbox.destroy();
@@ -158,4 +157,8 @@ function sendUrlViaCommandLine(url) {
     Ci.nsICommandLine.STATE_REMOTE_EXPLICIT
   );
   startup.handle(cmdLine);
+
+  // Return true if DevToolsStartup ignored the url
+  // and let it be in the command line object.
+  return cmdLine.findFlag("url", false) != -1;
 }

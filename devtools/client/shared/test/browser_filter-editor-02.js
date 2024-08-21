@@ -9,7 +9,6 @@ const {
   CSSFilterEditorWidget,
 } = require("resource://devtools/client/shared/widgets/FilterWidget.js");
 
-const { LocalizationHelper } = require("resource://devtools/shared/l10n.js");
 const STRINGS_URI = "devtools/client/locales/filterwidget.properties";
 const L10N = new LocalizationHelper(STRINGS_URI);
 
@@ -81,12 +80,14 @@ add_task(async function () {
 
     if (cssValue === "none") {
       const text = container.querySelector("#filters").textContent;
-      ok(
-        text.indexOf(L10N.getStr("emptyFilterList")) > -1,
+      Assert.greater(
+        text.indexOf(L10N.getStr("emptyFilterList")),
+        -1,
         "Contains |emptyFilterList| string when given value 'none'"
       );
-      ok(
-        text.indexOf(L10N.getStr("addUsingList")) > -1,
+      Assert.greater(
+        text.indexOf(L10N.getStr("addUsingList")),
+        -1,
         "Contains |addUsingList| string when given value 'none'"
       );
       continue;

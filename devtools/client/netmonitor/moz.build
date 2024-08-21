@@ -6,11 +6,11 @@ DIRS += ["src"]
 
 DevToolsModules("initializer.js", "panel.js")
 
-XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.toml"]
 
 BROWSER_CHROME_MANIFESTS += [
-    "test/browser.ini",
-    "test/browser_http3.ini",
+    "test/browser.toml",
+    "test/browser_http3.toml",
 ]
 
 with Files("**"):

@@ -13,7 +13,7 @@ function setMocksInGlobal() {
   global.Cc = new Proxy(
     {},
     {
-      get(target, prop, receiver) {
+      get(target, prop) {
         if (prop.startsWith("@mozilla.org")) {
           return { getService: () => ({}) };
         }
@@ -123,6 +123,17 @@ function setMocksInGlobal() {
   if (typeof global.TextDecoder === "undefined") {
     const { TextDecoder } = require("util");
     global.TextDecoder = TextDecoder;
+  }
+
+  if (!Promise.withResolvers) {
+    Promise.withResolvers = function () {
+      let resolve, reject;
+      const promise = new Promise(function (res, rej) {
+        resolve = res;
+        reject = rej;
+      });
+      return { resolve, reject, promise };
+    };
   }
 }
 

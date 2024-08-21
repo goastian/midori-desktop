@@ -3,8 +3,8 @@
 
 "use strict";
 
-const { BrowserLoader } = ChromeUtils.import(
-  "resource://devtools/shared/loader/browser-loader.js"
+const { BrowserLoader } = ChromeUtils.importESModule(
+  "resource://devtools/shared/loader/browser-loader.sys.mjs"
 );
 
 const {
@@ -53,8 +53,9 @@ function testWithChromeScheme() {
   );
 
   const { methodToMock: requiredMethod } = browserRequire(CHROME_URI);
-  ok(
-    requiredMethod() === MOCKED_VALUE_1,
+  Assert.strictEqual(
+    requiredMethod(),
+    MOCKED_VALUE_1,
     "Mocked method returns the expected value when imported with destructuring"
   );
 

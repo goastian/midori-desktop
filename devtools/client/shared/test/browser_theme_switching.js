@@ -4,6 +4,8 @@
 "use strict";
 
 add_task(async function () {
+  await pushPref("devtools.theme", "light");
+
   // For some reason, mochitest spawn a very special default tab,
   // whose WindowGlobal is still the initial about:blank document.
   // This seems to be specific to mochitest, this doesn't reproduce
@@ -28,23 +30,10 @@ add_task(async function () {
     ":root has " + className + " class (current theme)"
   );
 
-  // Convert the xpath result into an array of strings
-  // like `href="{URL}" type="text/css"`
-  const sheetsIterator = doc.evaluate(
-    "processing-instruction('xml-stylesheet')",
-    doc,
-    null,
-    XPathResult.ANY_TYPE,
-    null
+  const sheetsInDOM = Array.from(
+    doc.querySelectorAll("link[rel='stylesheet']"),
+    l => l.href
   );
-  const sheetsInDOM = [];
-
-  /* eslint-disable no-cond-assign */
-  let sheet;
-  while ((sheet = sheetsIterator.iterateNext())) {
-    sheetsInDOM.push(sheet.data);
-  }
-  /* eslint-enable no-cond-assign */
 
   const sheetsFromTheme = gDevTools.getThemeDefinition(theme).stylesheets;
   info("Checking for existence of " + sheetsInDOM.length + " sheets");

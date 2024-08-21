@@ -8,7 +8,6 @@ import { features } from "../utils/prefs";
 
 import { recordEvent } from "../utils/telemetry";
 import sourceQueue from "../utils/source-queue";
-import { getContext } from "../selectors";
 
 let actions;
 let commands;
@@ -27,7 +26,6 @@ export async function onConnect(_commands, _resourceCommand, _actions, store) {
   sourceQueue.initialize(actions);
 
   const { descriptorFront } = commands;
-  const { targetFront } = targetCommand;
 
   // For tab, browser and webextension toolboxes, we want to enable watching for
   // worker targets as soon as the debugger is opened.
@@ -40,7 +38,6 @@ export async function onConnect(_commands, _resourceCommand, _actions, store) {
     targetCommand.listenForWorkers = true;
     if (descriptorFront.isLocalTab && features.windowlessServiceWorkers) {
       targetCommand.listenForServiceWorkers = true;
-      targetCommand.destroyServiceWorkersOnNavigation = true;
     }
     await targetCommand.startListening();
   }
@@ -61,12 +58,6 @@ export async function onConnect(_commands, _resourceCommand, _actions, store) {
   };
   await commands.threadConfigurationCommand.updateConfiguration(options);
 
-  // Select the top level target by default
-  await actions.selectThread(
-    getContext(store.getState()),
-    targetFront.threadFront.actor
-  );
-
   await targetCommand.watchTargets({
     types: targetCommand.ALL_TYPES,
     onAvailable: onTargetAvailable,
@@ -81,7 +72,7 @@ export async function onConnect(_commands, _resourceCommand, _actions, store) {
   await resourceCommand.watchResources([resourceCommand.TYPES.THREAD_STATE], {
     onAvailable: onThreadStateAvailable,
   });
-  await resourceCommand.watchResources([resourceCommand.TYPES.TRACING_STATE], {
+  await resourceCommand.watchResources([resourceCommand.TYPES.JSTRACER_STATE], {
     onAvailable: onTracingStateAvailable,
   });
 
@@ -107,7 +98,7 @@ export function onDisconnect() {
   resourceCommand.unwatchResources([resourceCommand.TYPES.THREAD_STATE], {
     onAvailable: onThreadStateAvailable,
   });
-  resourceCommand.unwatchResources([resourceCommand.TYPES.TRACING_STATE], {
+  resourceCommand.unwatchResources([resourceCommand.TYPES.JSTRACER_STATE], {
     onAvailable: onTracingStateAvailable,
   });
   resourceCommand.unwatchResources([resourceCommand.TYPES.ERROR_MESSAGE], {
@@ -119,7 +110,7 @@ export function onDisconnect() {
   sourceQueue.clear();
 }
 
-async function onTargetAvailable({ targetFront, isTargetSwitching }) {
+async function onTargetAvailable({ targetFront }) {
   const isBrowserToolbox = commands.descriptorFront.isBrowserProcessDescriptor;
   const isNonTopLevelFrameTarget =
     !targetFront.isTopLevel &&
@@ -170,7 +161,7 @@ async function onThreadStateAvailable(resources) {
     }
     const threadFront = await resource.targetFront.getFront("thread");
     if (resource.state == "paused") {
-      const pause = await createPause(threadFront.actor, resource);
+      const pause = await createPause(threadFront.actorID, resource);
       await actions.paused(pause);
       recordEvent("pause", { reason: resource.why.type });
     } else if (resource.state == "resumed") {

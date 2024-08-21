@@ -7,17 +7,22 @@
 
 "use strict";
 
+// Use an URL with a specific port to check that Bug 1876533 is fixed
+// We're using URL without port in other tests, like browser_dbg-windowless-service-workers-reload.js
+const SW_URL = EXAMPLE_URL_WITH_PORT + "service-worker.sjs";
+
 add_task(async function () {
   info("Subtest #1");
   await pushPref("devtools.debugger.features.windowless-service-workers", true);
   await pushPref("devtools.debugger.threads-visible", true);
-  await pushPref("dom.serviceWorkers.enabled", true);
   await pushPref("dom.serviceWorkers.testing.enabled", true);
-  const dbg = await initDebugger("doc-service-workers.html");
+
+  const dbg = await initDebuggerWithAbsoluteURL(
+    EXAMPLE_URL_WITH_PORT + "doc-service-workers.html"
+  );
 
   invokeInTab("registerWorker");
-  await waitForSource(dbg, "service-worker.sjs");
-  const workerSource = findSource(dbg, "service-worker.sjs");
+  const workerSource = await waitForSource(dbg, "service-worker.sjs");
 
   await addBreakpoint(dbg, "service-worker.sjs", 13);
 
@@ -36,32 +41,31 @@ add_task(async function () {
   info("Subtest #2");
 
   const toolbox = await openNewTabAndToolbox(
-    `${EXAMPLE_URL}doc-service-workers.html`,
+    `${EXAMPLE_URL_WITH_PORT}doc-service-workers.html`,
     "jsdebugger"
   );
   const dbg = createDebuggerContext(toolbox);
 
-  await checkWorkerThreads(dbg, 1);
+  await checkAdditionalThreadCount(dbg, 1);
 
   // The test page will immediately fetch from the service worker if registered.
   const onReloaded = reload(dbg);
 
-  await waitForSource(dbg, "service-worker.sjs");
-  const workerSource = findSource(dbg, "service-worker.sjs");
+  const workerSource = await waitForSource(dbg, "service-worker.sjs");
 
   await waitForPaused(dbg);
   assertPausedAtSourceAndLine(dbg, workerSource.id, 13);
-  await checkWorkerThreads(dbg, 1);
+  await checkAdditionalThreadCount(dbg, 1);
 
   await resume(dbg);
-  await dbg.actions.removeAllBreakpoints(getContext(dbg));
+  await dbg.actions.removeAllBreakpoints();
 
   info("Wait for reload to complete after resume");
   await onReloaded;
 
-  invokeInTab("unregisterWorker");
+  await unregisterServiceWorker(SW_URL);
 
-  await checkWorkerThreads(dbg, 0);
+  await checkAdditionalThreadCount(dbg, 0);
   await waitForRequestsToSettle(dbg);
   await removeTab(gBrowser.selectedTab);
 });
@@ -71,24 +75,28 @@ add_task(async function () {
   info("Subtest #3");
 
   const toolbox = await openNewTabAndToolbox(
-    `${EXAMPLE_URL}doc-service-workers.html`,
+    `${EXAMPLE_URL_WITH_PORT}doc-service-workers.html`,
     "jsdebugger"
   );
   const dbg = createDebuggerContext(toolbox);
 
   invokeInTab("registerWorker");
-  await checkWorkerThreads(dbg, 1);
+  await checkAdditionalThreadCount(dbg, 1);
   await checkWorkerStatus(dbg, "activated");
 
   const firstTab = gBrowser.selectedTab;
 
-  await addTab(`${EXAMPLE_URL}service-worker.sjs?setStatus=newServiceWorker`);
+  await addTab(
+    `${EXAMPLE_URL_WITH_PORT}service-worker.sjs?setStatus=newServiceWorker`
+  );
   await removeTab(gBrowser.selectedTab);
 
-  const secondTab = await addTab(`${EXAMPLE_URL}doc-service-workers.html`);
+  const secondTab = await addTab(
+    `${EXAMPLE_URL_WITH_PORT}doc-service-workers.html`
+  );
 
   await gBrowser.selectTabAtIndex(gBrowser.tabs.indexOf(firstTab));
-  await checkWorkerThreads(dbg, 2);
+  await checkAdditionalThreadCount(dbg, 2);
 
   const sources = await waitFor(() => {
     const list = dbg.selectors
@@ -101,15 +109,15 @@ add_task(async function () {
   // Add a breakpoint for the next subtest.
   await addBreakpoint(dbg, "service-worker.sjs", 2);
 
-  invokeInTab("unregisterWorker");
+  await unregisterServiceWorker(SW_URL);
 
-  await checkWorkerThreads(dbg, 0);
+  await checkAdditionalThreadCount(dbg, 0);
   await waitForRequestsToSettle(dbg);
   await removeTab(firstTab);
   await removeTab(secondTab);
 
   // Reset the SJS in case we will be repeating the test.
-  await addTab(`${EXAMPLE_URL}service-worker.sjs?setStatus=`);
+  await addTab(`${EXAMPLE_URL_WITH_PORT}service-worker.sjs?setStatus=`);
   await removeTab(gBrowser.selectedTab);
 });
 
@@ -122,16 +130,15 @@ add_task(async function () {
   }
 
   const toolbox = await openNewTabAndToolbox(
-    `${EXAMPLE_URL}doc-service-workers.html`,
+    `${EXAMPLE_URL_WITH_PORT}doc-service-workers.html`,
     "jsdebugger"
   );
   const dbg = createDebuggerContext(toolbox);
 
   invokeInTab("registerWorker");
-  await checkWorkerThreads(dbg, 1);
+  await checkAdditionalThreadCount(dbg, 1);
 
-  await waitForSource(dbg, "service-worker.sjs");
-  const workerSource = findSource(dbg, "service-worker.sjs");
+  const workerSource = await waitForSource(dbg, "service-worker.sjs");
 
   await waitForBreakpointCount(dbg, 1);
   await waitForPaused(dbg);
@@ -151,19 +158,14 @@ add_task(async function () {
   await checkWorkerStatus(dbg, "activating");
 
   await resume(dbg);
-  invokeInTab("unregisterWorker");
+  await unregisterServiceWorker(SW_URL);
 
-  await checkWorkerThreads(dbg, 0);
+  await checkAdditionalThreadCount(dbg, 0);
   await waitForRequestsToSettle(dbg);
   await removeTab(gBrowser.selectedTab);
 });
 
-async function checkWorkerThreads(dbg, count) {
-  await waitUntil(() => dbg.selectors.getThreads().length == count);
-  ok(true, `Have ${count} threads`);
-}
-
-async function checkWorkerStatus(dbg, status) {
+async function checkWorkerStatus(_dbg, _status) {
   /* TODO: Re-Add support for showing service worker status (Bug 1641099)
   await waitUntil(() => {
     const threads = dbg.selectors.getThreads();

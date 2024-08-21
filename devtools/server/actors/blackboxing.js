@@ -9,9 +9,10 @@ const {
   blackboxingSpec,
 } = require("resource://devtools/shared/specs/blackboxing.js");
 
-const {
-  SessionDataHelpers,
-} = require("resource://devtools/server/actors/watcher/SessionDataHelpers.jsm");
+const { SessionDataHelpers } = ChromeUtils.importESModule(
+  "resource://devtools/server/actors/watcher/SessionDataHelpers.sys.mjs",
+  { global: "contextual" }
+);
 const { SUPPORTED_DATA } = SessionDataHelpers;
 const { BLACKBOXING } = SUPPORTED_DATA;
 
@@ -47,18 +48,21 @@ class BlackboxingActor extends Actor {
    */
   blackbox(url, ranges) {
     if (!ranges.length) {
-      return this.watcherActor.addDataEntry(BLACKBOXING, [
-        { url, range: null },
-      ]);
+      return this.watcherActor.addOrSetDataEntry(
+        BLACKBOXING,
+        [{ url, range: null }],
+        "add"
+      );
     }
-    return this.watcherActor.addDataEntry(
+    return this.watcherActor.addOrSetDataEntry(
       BLACKBOXING,
       ranges.map(range => {
         return {
           url,
           range,
         };
-      })
+      }),
+      "add"
     );
   }
 

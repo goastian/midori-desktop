@@ -27,8 +27,6 @@ const kDebuggerPrefs = [
 
 const DEVTOOLS_POLICY_DISABLED_PREF = "devtools.policy.disabled";
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const lazy = {};
@@ -37,17 +35,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
   CustomizableWidgets: "resource:///modules/CustomizableWidgets.sys.mjs",
   PanelMultiView: "resource:///modules/PanelMultiView.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+  ProfilerMenuButton:
+    "resource://devtools/client/performance-new/popup/menu-button.sys.mjs",
   WebChannel: "resource://gre/modules/WebChannel.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "ProfilerMenuButton",
-  "resource://devtools/client/performance-new/popup/menu-button.jsm.js"
-);
 
 // We don't want to spend time initializing the full loader here so we create
 // our own lazy require.
-XPCOMUtils.defineLazyGetter(lazy, "Telemetry", function () {
+ChromeUtils.defineLazyGetter(lazy, "Telemetry", function () {
   const { require } = ChromeUtils.importESModule(
     "resource://devtools/shared/loader/Loader.sys.mjs"
   );
@@ -57,7 +52,7 @@ XPCOMUtils.defineLazyGetter(lazy, "Telemetry", function () {
   return Telemetry;
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "KeyShortcutsBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "KeyShortcutsBundle", function () {
   return new Localization(["devtools/startup/key-shortcuts.ftl"], true);
 });
 
@@ -83,7 +78,7 @@ function getLocalizedKeyShortcut(id) {
   }
 }
 
-XPCOMUtils.defineLazyGetter(lazy, "KeyShortcuts", function () {
+ChromeUtils.defineLazyGetter(lazy, "KeyShortcuts", function () {
   const isMac = AppConstants.platform == "macosx";
 
   // Common modifier shared by most key shortcuts
@@ -242,6 +237,20 @@ function getProfilerKeyShortcuts() {
       shortcut: getLocalizedKeyShortcut("devtools-commandkey-profiler-capture"),
       modifiers: "control,shift",
     },
+    // Because it's not uncommon for content or extension to bind this
+    // shortcut, allow using alt as well for starting and stopping the profiler
+    {
+      id: "profilerStartStopAlternate",
+      shortcut: getLocalizedKeyShortcut(
+        "devtools-commandkey-profiler-start-stop"
+      ),
+      modifiers: "control,shift,alt",
+    },
+    {
+      id: "profilerCaptureAlternate",
+      shortcut: getLocalizedKeyShortcut("devtools-commandkey-profiler-capture"),
+      modifiers: "control,shift,alt",
+    },
   ];
 }
 
@@ -291,9 +300,9 @@ export function validateProfilerWebChannelUrl(targetUrl) {
   return frontEndUrl;
 }
 
-XPCOMUtils.defineLazyGetter(lazy, "ProfilerPopupBackground", function () {
-  return ChromeUtils.import(
-    "resource://devtools/client/performance-new/shared/background.jsm.js"
+ChromeUtils.defineLazyGetter(lazy, "ProfilerPopupBackground", function () {
+  return ChromeUtils.importESModule(
+    "resource://devtools/client/performance-new/shared/background.sys.mjs"
   );
 });
 
@@ -444,12 +453,26 @@ DevToolsStartup.prototype = {
       }
     }
 
+    // line and column are supposed to be 1-based.
     const { url, line, column } = match.groups;
+
+    // Debugger internal uses 0-based column number.
+    // NOTE: Non-debugger view-source doesn't use column number.
+    const columnOneBased = parseInt(column || 0, 10);
+    const columnZeroBased = columnOneBased > 0 ? columnOneBased - 1 : 0;
 
     // If for any reason the final url is invalid, ignore it
     try {
       Services.io.newURI(url);
     } catch (e) {
+      return;
+    }
+
+    const require = this.initDevTools("CommandLine");
+    const { gDevTools } = require("devtools/client/framework/devtools");
+    const toolbox = gDevTools.getToolboxForTab(window.gBrowser.selectedTab);
+    // Ignore the url if there is no devtools currently opened for the current tab
+    if (!toolbox) {
       return;
     }
 
@@ -465,30 +488,20 @@ DevToolsStartup.prototype = {
       cmdLine.preventDefault = true;
     }
 
+    // Immediately focus the browser window in order, to focus devtools, or the view-source tab.
+    // Otherwise, without this, the terminal would still be the topmost window.
+    toolbox.win.focus();
+
     // Note that the following method is async and returns a promise.
     // But the current method has to be synchronous because of cmdLine.removeArguments.
-    this.openSourceInDebugger(window, {
+    // Also note that it will fallback to view-source when the source url isn't found in the debugger
+    toolbox.viewSourceInDebugger(
       url,
-      line: parseInt(line, 10),
-      column: parseInt(column || 0, 10),
-    });
-  },
-
-  /**
-   * If DevTools and the debugger are opened, try to open the source
-   * at specified location in the debugger.
-   * Otherwise fallback by opening this location via view-source.
-   *
-   * @param {Window} window
-   *        The top level browser window into which we should open the URL.
-   * @param {String} url
-   * @param {Number} line
-   * @param {Number} column
-   */
-  async openSourceInDebugger(window, { url, line, column }) {
-    const require = this.initDevTools("CommandLine");
-    const { gDevTools } = require("devtools/client/framework/devtools");
-    await gDevTools.openSourceInDebugger(window, { url, line, column });
+      parseInt(line, 10),
+      columnZeroBased,
+      null,
+      "CommandLine"
+    );
   },
 
   readCommandLineFlags(cmdLine) {
@@ -860,11 +873,13 @@ DevToolsStartup.prototype = {
       // The profiler doesn't care if DevTools is loaded, so provide a quick check
       // first to bail out of checking if DevTools is available.
       switch (key.id) {
-        case "profilerStartStop": {
+        case "profilerStartStop":
+        case "profilerStartStopAlternate": {
           lazy.ProfilerPopupBackground.toggleProfiler("aboutprofiling");
           return;
         }
-        case "profilerCapture": {
+        case "profilerCapture":
+        case "profilerCaptureAlternate": {
           lazy.ProfilerPopupBackground.captureProfile("aboutprofiling");
           return;
         }
@@ -995,7 +1010,7 @@ DevToolsStartup.prototype = {
     let devtoolsThreadResumed = false;
     const pauseOnStartup = cmdLine.handleFlag("wait-for-jsdebugger", false);
     if (pauseOnStartup) {
-      const observe = function (subject, topic, data) {
+      const observe = function () {
         devtoolsThreadResumed = true;
         Services.obs.removeObserver(observe, "devtools-thread-ready");
       };
@@ -1076,7 +1091,8 @@ DevToolsStartup.prototype = {
       useDistinctSystemPrincipalLoader,
       releaseDistinctSystemPrincipalLoader,
     } = ChromeUtils.importESModule(
-      "resource://devtools/shared/loader/DistinctSystemPrincipalLoader.sys.mjs"
+      "resource://devtools/shared/loader/DistinctSystemPrincipalLoader.sys.mjs",
+      { global: "shared" }
     );
 
     try {
@@ -1345,8 +1361,8 @@ const JsonView = {
       chrome.saveBrowser(browser);
     } else {
       if (
-        !message.data.startsWith("blob:null") ||
-        !browser.contentPrincipal.isNullPrincipal
+        !message.data.startsWith("blob:resource://devtools/") ||
+        browser.contentPrincipal.origin != "resource://devtools"
       ) {
         console.error("Got invalid request to save JSON data");
         return;
@@ -1384,7 +1400,7 @@ const JsonView = {
             Services.scriptSecurityManager.getSystemPrincipal()
           );
         },
-        onError(status) {
+        onError() {
           throw new Error("JSON Viewer's onSave failed in startPersistence");
         },
       });

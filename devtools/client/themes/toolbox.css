@@ -276,6 +276,8 @@
   text-overflow: ellipsis;
   color: var(--theme-toolbar-color);
   background-color: transparent;
+    /* adjust outline offset so it's not clipped */
+  --theme-outline-offset: -2px;
 }
 
 .devtools-tab-label {
@@ -301,8 +303,7 @@
   min-width: 26px;
 }
 
-.devtools-tab:hover,
-.devtools-tab:focus {
+.devtools-tab:hover {
   background-color: var(--theme-toolbar-hover);
 }
 
@@ -357,6 +358,8 @@
   line-height: 16px;
   color: var(--theme-icon-color);
   background-color: transparent;
+  /* adjust outline offset so it's not clipped */
+  --theme-outline-offset: -2px;
 }
 
 /* Button icon style */
@@ -375,11 +378,6 @@
 
 .devtools-tabbar-button::-moz-focus-inner {
   border: none;
-}
-
-.devtools-tabbar-button:focus {
-  outline: none;
-  background-color: var(--theme-toolbar-hover);
 }
 
 .devtools-tabbar-button:hover,
@@ -473,7 +471,7 @@
 }
 
 .toolbox-error::before {
-  background-image: url("chrome://devtools/skin/images/error-small.svg");
+  background-image: url("resource://devtools-shared-images/error-small.svg");
   fill: var(--theme-icon-error-color) !important;
 }
 
@@ -488,7 +486,7 @@
 }
 
 #command-button-pick::before {
-  background-image: url("chrome://devtools/content/shared/images/command-pick.svg");
+  background-image: url("resource://devtools-shared-images/command-pick.svg");
 }
 
 #command-button-pick.accessibility::before {
@@ -496,7 +494,7 @@
 }
 
 #command-button-pick.remote-fenix::before {
-  background-image: url("chrome://devtools/content/shared/images/command-pick-remote-touch.svg");
+  background-image: url("resource://devtools-shared-images/command-pick-remote-touch.svg");
 }
 
 /* Command button images */

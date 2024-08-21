@@ -10,6 +10,7 @@ const TYPES = {
   CONSOLE_MESSAGE: "console-message",
   CSS_CHANGE: "css-change",
   CSS_MESSAGE: "css-message",
+  CSS_REGISTERED_PROPERTIES: "css-registered-properties",
   DOCUMENT_EVENT: "document-event",
   ERROR_MESSAGE: "error-message",
   LAST_PRIVATE_CONTEXT_EXIT: "last-private-context-exit",
@@ -21,7 +22,8 @@ const TYPES = {
   SOURCE: "source",
   STYLESHEET: "stylesheet",
   THREAD_STATE: "thread-state",
-  TRACING_STATE: "tracing-state",
+  JSTRACER_TRACE: "jstracer-trace",
+  JSTRACER_STATE: "jstracer-state",
   WEBSOCKET: "websocket",
 
   // storage types
@@ -66,11 +68,20 @@ const FrameTargetResources = augmentResourceDictionary({
   [TYPES.CSS_MESSAGE]: {
     path: "devtools/server/actors/resources/css-messages",
   },
+  [TYPES.CSS_REGISTERED_PROPERTIES]: {
+    path: "devtools/server/actors/resources/css-registered-properties",
+  },
   [TYPES.DOCUMENT_EVENT]: {
     path: "devtools/server/actors/resources/document-event",
   },
   [TYPES.ERROR_MESSAGE]: {
     path: "devtools/server/actors/resources/error-messages",
+  },
+  [TYPES.JSTRACER_STATE]: {
+    path: "devtools/server/actors/resources/jstracer-state",
+  },
+  [TYPES.JSTRACER_TRACE]: {
+    path: "devtools/server/actors/resources/jstracer-trace",
   },
   [TYPES.LOCAL_STORAGE]: {
     path: "devtools/server/actors/resources/storage-local-storage",
@@ -99,9 +110,6 @@ const FrameTargetResources = augmentResourceDictionary({
   [TYPES.THREAD_STATE]: {
     path: "devtools/server/actors/resources/thread-states",
   },
-  [TYPES.TRACING_STATE]: {
-    path: "devtools/server/actors/resources/tracing-state",
-  },
   [TYPES.SERVER_SENT_EVENT]: {
     path: "devtools/server/actors/resources/server-sent-events",
   },
@@ -118,6 +126,12 @@ const ProcessTargetResources = augmentResourceDictionary({
   [TYPES.CONSOLE_MESSAGE]: {
     path: "devtools/server/actors/resources/console-messages",
   },
+  [TYPES.JSTRACER_TRACE]: {
+    path: "devtools/server/actors/resources/jstracer-trace",
+  },
+  [TYPES.JSTRACER_STATE]: {
+    path: "devtools/server/actors/resources/jstracer-state",
+  },
   [TYPES.ERROR_MESSAGE]: {
     path: "devtools/server/actors/resources/error-messages",
   },
@@ -129,9 +143,6 @@ const ProcessTargetResources = augmentResourceDictionary({
   },
   [TYPES.THREAD_STATE]: {
     path: "devtools/server/actors/resources/thread-states",
-  },
-  [TYPES.TRACING_STATE]: {
-    path: "devtools/server/actors/resources/tracing-state",
   },
 });
 
@@ -148,14 +159,17 @@ const WorkerTargetResources = augmentResourceDictionary({
   [TYPES.CONSOLE_MESSAGE]: {
     path: "devtools/server/actors/resources/console-messages",
   },
+  [TYPES.JSTRACER_TRACE]: {
+    path: "devtools/server/actors/resources/jstracer-trace",
+  },
+  [TYPES.JSTRACER_STATE]: {
+    path: "devtools/server/actors/resources/jstracer-state",
+  },
   [TYPES.SOURCE]: {
     path: "devtools/server/actors/resources/sources",
   },
   [TYPES.THREAD_STATE]: {
     path: "devtools/server/actors/resources/thread-states",
-  },
-  [TYPES.TRACING_STATE]: {
-    path: "devtools/server/actors/resources/tracing-state",
   },
 });
 
@@ -240,6 +254,10 @@ function getResourceTypeDictionaryForTargetType(targetType) {
       return ProcessTargetResources;
     case Targets.TYPES.WORKER:
       return WorkerTargetResources;
+    case Targets.TYPES.SERVICE_WORKER:
+      return WorkerTargetResources;
+    case Targets.TYPES.SHARED_WORKER:
+      return WorkerTargetResources;
     default:
       throw new Error(`Unsupported target actor typeName '${targetType}'`);
   }
@@ -297,6 +315,7 @@ async function watchResources(rootOrWatcherOrTargetActor, resourceTypes) {
   if (targetType) {
     resourceTypes = getResourceTypesForTargetType(resourceTypes, targetType);
   }
+  const promises = [];
   for (const resourceType of resourceTypes) {
     const { watchers, WatcherClass } = getResourceTypeEntry(
       rootOrWatcherOrTargetActor,
@@ -319,22 +338,25 @@ async function watchResources(rootOrWatcherOrTargetActor, resourceTypes) {
     }
 
     const watcher = new WatcherClass();
-    await watcher.watch(rootOrWatcherOrTargetActor, {
-      onAvailable: rootOrWatcherOrTargetActor.notifyResources.bind(
-        rootOrWatcherOrTargetActor,
-        "available"
-      ),
-      onUpdated: rootOrWatcherOrTargetActor.notifyResources.bind(
-        rootOrWatcherOrTargetActor,
-        "updated"
-      ),
-      onDestroyed: rootOrWatcherOrTargetActor.notifyResources.bind(
-        rootOrWatcherOrTargetActor,
-        "destroyed"
-      ),
-    });
+    promises.push(
+      watcher.watch(rootOrWatcherOrTargetActor, {
+        onAvailable: rootOrWatcherOrTargetActor.notifyResources.bind(
+          rootOrWatcherOrTargetActor,
+          "available"
+        ),
+        onUpdated: rootOrWatcherOrTargetActor.notifyResources.bind(
+          rootOrWatcherOrTargetActor,
+          "updated"
+        ),
+        onDestroyed: rootOrWatcherOrTargetActor.notifyResources.bind(
+          rootOrWatcherOrTargetActor,
+          "destroyed"
+        ),
+      })
+    );
     watchers.set(rootOrWatcherOrTargetActor, watcher);
   }
+  await Promise.all(promises);
 }
 exports.watchResources = watchResources;
 
@@ -370,6 +392,14 @@ exports.hasResourceTypesForTargets = hasResourceTypesForTargets;
  *        List of all type of resource to stop listening to.
  */
 function unwatchResources(rootOrWatcherOrTargetActor, resourceTypes) {
+  // If we are given a target actor, filter out the resource types supported by the target.
+  // When using sharedData to pass types between processes, we are passing them for all target types.
+  const { targetType } = rootOrWatcherOrTargetActor;
+  // Only target actors usecase will have a target type.
+  // For Root and Watcher we process the `resourceTypes` list unfiltered.
+  if (targetType) {
+    resourceTypes = getResourceTypesForTargetType(resourceTypes, targetType);
+  }
   for (const resourceType of resourceTypes) {
     // Pull all info about this resource type from `Resources` global object
     const { watchers } = getResourceTypeEntry(
@@ -395,6 +425,14 @@ exports.unwatchResources = unwatchResources;
  *        List of all type of resource to clear.
  */
 function clearResources(rootOrWatcherOrTargetActor, resourceTypes) {
+  // If we are given a target actor, filter out the resource types supported by the target.
+  // When using sharedData to pass types between processes, we are passing them for all target types.
+  const { targetType } = rootOrWatcherOrTargetActor;
+  // Only target actors usecase will have a target type.
+  // For Root and Watcher we process the `resourceTypes` list unfiltered.
+  if (targetType) {
+    resourceTypes = getResourceTypesForTargetType(resourceTypes, targetType);
+  }
   for (const resourceType of resourceTypes) {
     const { watchers } = getResourceTypeEntry(
       rootOrWatcherOrTargetActor,

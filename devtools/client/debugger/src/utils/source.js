@@ -7,18 +7,19 @@
  * @module utils/source
  */
 
-const { getUnicodeUrl } = require("devtools/client/shared/unicode-url");
+const {
+  getUnicodeUrl,
+} = require("resource://devtools/client/shared/unicode-url.js");
 const {
   micromatch,
-} = require("devtools/client/shared/vendor/micromatch/micromatch.js");
+} = require("resource://devtools/client/shared/vendor/micromatch/micromatch.js");
 
 import { getRelativePath } from "../utils/sources-tree/utils";
 import { endTruncateStr } from "./utils";
 import { truncateMiddleText } from "../utils/text";
-import { parse as parseURL } from "../utils/url";
 import { memoizeLast } from "../utils/memoizeLast";
 import { renderWasmText } from "./wasm";
-import { toEditorLine } from "./editor";
+import { toEditorLine } from "./editor/index";
 export { isMinified } from "./isMinified";
 
 import { isFulfilled } from "./async-value";
@@ -76,11 +77,11 @@ export function shouldBlackbox(source) {
  *                  or not.
  */
 export function isFrameBlackBoxed(frame, blackboxedRanges) {
+  const { source } = frame.location;
   return (
-    frame.source &&
-    !!blackboxedRanges[frame.source.url] &&
-    (!blackboxedRanges[frame.source.url].length ||
-      !!findBlackBoxRange(frame.source, blackboxedRanges, {
+    !!blackboxedRanges[source.url] &&
+    (!blackboxedRanges[source.url].length ||
+      !!findBlackBoxRange(source, blackboxedRanges, {
         start: frame.location.line,
         end: frame.location.line,
       }))
@@ -208,37 +209,23 @@ function resolveFileURL(
 }
 
 export function getFormattedSourceId(id) {
+  if (typeof id != "string") {
+    console.error(
+      "Expected source id to be a string, got",
+      typeof id,
+      " | id:",
+      id
+    );
+    return "";
+  }
   return id.substring(id.lastIndexOf("/") + 1);
 }
 
 /**
- * Gets a readable filename from a source URL for display purposes.
- * If the source does not have a URL, the source ID will be returned instead.
- *
- * @memberof utils/source
- * @static
+ * Provides a middle-truncated filename displayed in Tab titles
  */
-export function getFilename(
-  source,
-  rawSourceURL = getRawSourceURL(source.url)
-) {
-  const { id } = source;
-  if (!rawSourceURL) {
-    return getFormattedSourceId(id);
-  }
-
-  const { filename } = source.displayURL;
-  return getRawSourceURL(filename);
-}
-
-/**
- * Provides a middle-trunated filename
- *
- * @memberof utils/source
- * @static
- */
-export function getTruncatedFileName(source, querystring = "", length = 30) {
-  return truncateMiddleText(`${getFilename(source)}${querystring}`, length);
+export function getTruncatedFileName(source) {
+  return truncateMiddleText(source.longName, 30);
 }
 
 /* Gets path for files with same filename for editor tabs, breakpoints, etc.
@@ -250,15 +237,13 @@ export function getTruncatedFileName(source, querystring = "", length = 30) {
 
 export function getDisplayPath(mySource, sources) {
   const rawSourceURL = getRawSourceURL(mySource.url);
-  const filename = getFilename(mySource, rawSourceURL);
+  const filename = mySource.shortName;
 
   // Find sources that have the same filename, but different paths
   // as the original source
   const similarSources = sources.filter(source => {
     const rawSource = getRawSourceURL(source.url);
-    return (
-      rawSourceURL != rawSource && filename == getFilename(source, rawSource)
-    );
+    return rawSourceURL != rawSource && filename == source.shortName;
   });
 
   if (!similarSources.length) {
@@ -312,16 +297,6 @@ export function getFileURL(source, truncate = true) {
   return resolveFileURL(url, getUnicodeUrl, truncate);
 }
 
-export function getSourcePath(url) {
-  if (!url) {
-    return "";
-  }
-
-  const { path, href } = parseURL(url);
-  // for URLs like "about:home" the path is null so we pass the full href
-  return path || href;
-}
-
 /**
  * Returns amount of lines in the source. If source is a WebAssembly binary,
  * the function returns amount of bytes.
@@ -341,10 +316,6 @@ export function getSourceLineCount(content) {
   }
 
   return count + 1;
-}
-
-export function isInlineScript(source) {
-  return source.introductionType === "scriptElement";
 }
 
 function getNthLine(str, lineNum) {
@@ -450,55 +421,6 @@ export function getRelativeUrl(source, root) {
   // + 1 removes the leading "/"
   const url = group + path;
   return url.slice(url.indexOf(root) + root.length + 1);
-}
-
-/**
- * source.url doesn't include thread actor ID, so before calling underRoot(), the thread actor ID
- * must be removed from the root, which this function handles.
- * @param {string} root The root url to be cleaned
- * @param {Set<Thread>} threads The list of threads
- * @returns {string} The root url with thread actor IDs removed
- */
-export function removeThreadActorId(root, threads) {
-  threads.forEach(thread => {
-    if (root.includes(thread.actor)) {
-      root = root.slice(thread.actor.length + 1);
-    }
-  });
-  return root;
-}
-
-/**
- * Checks if the source is descendant of the root identified by the
- * root url specified. The root might likely be projectDirectoryRoot which
- * is a defined by a pref that allows users restrict the source tree to
- * a subset of sources.
- *
- * @param {Object} source
- *                  The source object
- * @param {String} rootUrlWithoutThreadActor
- *                 The url for the root node, without the thread actor ID. This can be obtained
- *                 by calling removeThreadActorId()
- */
-export function isDescendantOfRoot(source, rootUrlWithoutThreadActor) {
-  if (source.url && source.url.includes("chrome://")) {
-    const { group, path } = source.displayURL;
-    return (group + path).includes(rootUrlWithoutThreadActor);
-  }
-
-  return !!source.url && source.url.includes(rootUrlWithoutThreadActor);
-}
-
-export function isGenerated(source) {
-  return !source.isOriginal;
-}
-
-export function getSourceQueryString(source) {
-  if (!source) {
-    return "";
-  }
-
-  return parseURL(getRawSourceURL(source.url)).search;
 }
 
 export function isUrlExtension(url) {

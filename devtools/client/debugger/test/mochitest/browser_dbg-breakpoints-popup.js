@@ -23,7 +23,7 @@ const POPUP_DEBUGGER_STATEMENT_URL = `https://example.com/document-builder.sjs?h
 `)}`;
 
 function isPopupPaused(popupBrowsingContext) {
-  return SpecialPowers.spawn(popupBrowsingContext, [], function (url) {
+  return SpecialPowers.spawn(popupBrowsingContext, [], function () {
     return content.wrappedJSObject.paused;
   });
 }
@@ -70,8 +70,7 @@ add_task(async function testPausedByBreakpoint() {
   info("Open the popup in order to be able to set a breakpoint");
   const firstPopupBrowsingContext = await openPopup(POPUP_URL);
 
-  await waitForSource(dbg, POPUP_URL);
-  const source = findSource(dbg, POPUP_URL);
+  let source = await waitForSource(dbg, POPUP_URL);
 
   await selectSource(dbg, source);
   await addBreakpoint(dbg, source, 4);
@@ -88,7 +87,7 @@ add_task(async function testPausedByBreakpoint() {
     "The popup is really paused"
   );
 
-  await waitForSource(dbg, POPUP_URL);
+  source = await waitForSource(dbg, POPUP_URL);
   assertPausedAtSourceAndLine(dbg, source.id, 4);
 
   await resume(dbg);
@@ -131,8 +130,7 @@ add_task(async function testPausedInTwoPopups() {
   const browser = gBrowser.selectedBrowser;
   const popupBrowsingContext = await openPopup(POPUP_URL);
 
-  await waitForSource(dbg, POPUP_URL);
-  const source = findSource(dbg, POPUP_URL);
+  const source = await waitForSource(dbg, POPUP_URL);
 
   await selectSource(dbg, source);
   await addBreakpoint(dbg, source, 4);
@@ -219,7 +217,7 @@ add_task(async function testPausedInTwoPopups() {
   );
 
   info("Resume the execution of the first popup");
-  await dbg.actions.selectThread(getContext(dbg), firstThread);
+  await dbg.actions.selectThread(firstThread);
   await resume(dbg);
   is(
     await isPopupPaused(firstPopupBrowsingContext),

@@ -8,24 +8,32 @@
 "use strict";
 
 add_task(async function () {
+  // Make sure the toolbox is tall enough to be able to display the whole popup.
+  await pushPref("devtools.toolbox.footer.height", 500);
+
   const dbg = await initDebugger(
     "doc-preview-getter.html",
     "preview-getter.js"
   );
 
-  await loadAndAddBreakpoint(dbg, "preview-getter.js", 5, 4);
+  await loadAndAddBreakpoint(dbg, "preview-getter.js", 5, 5);
   invokeInTab("funcA");
   await waitForPaused(dbg);
 
   info("Hovers over 'this' token to display the preview.");
-  await tryHovering(dbg, 5, 8, "previewPopup");
+  const { tokenEl } = await tryHovering(dbg, 5, 5, "previewPopup");
+
+  info("Wait for properties to be loaded");
+  await waitUntil(
+    () => dbg.win.document.querySelectorAll(".preview-popup .node").length > 1
+  );
 
   info("Invokes getter and waits for the element to be rendered");
   await clickElement(dbg, "previewPopupInvokeGetterButton");
   await waitForAllElements(dbg, "previewPopupObjectNumber", 2);
 
   await clickElement(dbg, "previewPopupInvokeGetterButton");
-  await waitForAllElements(dbg, "previewPopupObjectObject", 3);
+  await waitForAllElements(dbg, "previewPopupObjectObject", 4);
 
   const getterButtonEls = findAllElements(
     dbg,
@@ -48,9 +56,9 @@ add_task(async function () {
   );
   is(
     previewObjectObjectEls.length,
-    3,
+    4,
     "Getters were invoked and three object values are displayed as expected."
   );
 
-  await closePreviewAtPos(dbg, 5, 8);
+  await closePreviewForToken(dbg, tokenEl);
 });

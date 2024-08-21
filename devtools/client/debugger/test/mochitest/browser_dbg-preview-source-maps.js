@@ -17,8 +17,7 @@ add_task(async function () {
   await addBreakpoint(dbg, "times2.js", 2);
 
   invokeInTab("keepMeAlive");
-  await waitForPaused(dbg);
-  await waitForSelectedSource(dbg, "times2.js");
+  await waitForPausedInOriginalFileAndToggleMapScopes(dbg, "times2.js");
 
   info("Test previewing in the original location");
   await assertPreviews(dbg, [
@@ -26,7 +25,7 @@ add_task(async function () {
   ]);
 
   info("Test previewing in the generated location");
-  await dbg.actions.jumpToMappedSelectedLocation(getContext(dbg));
+  await dbg.actions.jumpToMappedSelectedLocation();
   await waitForSelectedSource(dbg, "bundle.js");
   await assertPreviews(dbg, [
     { line: 70, column: 11, result: 4, expression: "x" },
@@ -34,12 +33,6 @@ add_task(async function () {
 
   info("Test that you can not preview in another original file");
   await selectSource(dbg, "output.js");
-  await hoverAtPos(dbg, { line: 2, ch: 16 });
+  await hoverAtPos(dbg, { line: 2, column: 17 });
   await assertNoTooltip(dbg);
 });
-
-async function assertNoTooltip(dbg) {
-  await wait(200);
-  const el = findElement(dbg, "tooltip");
-  is(el, null, "Tooltip should not exist");
-}

@@ -469,6 +469,10 @@ class NodeFront extends FrontClassWithSpec(nodeSpec) {
     return this._form.causesOverflow;
   }
 
+  get containerType() {
+    return this._form.containerType;
+  }
+
   get isTreeDisplayed() {
     let parent = this;
     while (parent) {
@@ -581,7 +585,7 @@ class NodeFront extends FrontClassWithSpec(nodeSpec) {
    * and is only intended as a stopgap during the transition to the remote
    * protocol.  If you depend on this you're likely to break soon.
    */
-  rawNode(rawNode) {
+  rawNode() {
     if (!this.isLocalToBeDeprecated()) {
       console.warn("Tried to use rawNode on a remote connection.");
       return null;

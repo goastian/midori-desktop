@@ -58,7 +58,7 @@
   margin-inline-start: -3px;
 }
 
-.layout-content .open-inspector {
+.layout-content button.open-inspector {
   vertical-align: middle;
 }
 
@@ -71,6 +71,7 @@
   cursor: pointer;
   display: inline-block;
   vertical-align: middle;
+  outline-offset: 2px;
 }
 
 .layout-color-value {
@@ -215,6 +216,7 @@ html[dir="rtl"] .flex-header-button-prev::before {
   margin: 0;
   padding-inline: 28px 16px;
   position: relative;
+  outline-offset: -2px;
 }
 
 .flex-item-list .devtools-button::after {

@@ -3,6 +3,7 @@
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 .source-header {
+  grid-area: editor-header;
   display: flex;
   width: 100%;
   height: var(--editor-header-height);
@@ -24,9 +25,11 @@
 .source-tabs {
   flex: auto;
   align-self: flex-start;
-  align-items: flex-start;
   /* Reserve space for the overflow button (even if not visible) */
   padding-inline-end: 28px;
+  /* Make sure that overflowing tabs don't show through other elements (see Bug 1855458) */
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .source-tab {
@@ -118,8 +121,7 @@
   background-color: currentColor;
 }
 
-.source-tab .close-btn:hover,
-.source-tab .close-btn:focus {
+.source-tab .close-btn:hover {
   color: var(--theme-selection-color);
   background-color: var(--theme-selection-background);
 }

@@ -19,7 +19,7 @@ add_task(async function () {
     dbg,
     findSource(dbg, "pause-points.js").id,
     31,
-    4
+    5
   );
   await resume(dbg);
 
@@ -28,12 +28,12 @@ add_task(async function () {
   await waitForPaused(dbg);
   await waitForInlinePreviews(dbg);
 
-  await continueToColumn(dbg, { line: 31, ch: 7 });
+  await continueToColumn(dbg, { line: 31, column: 8 });
   assertPausedAtSourceAndLine(
     dbg,
     findSource(dbg, "pause-points.js").id,
     31,
-    4
+    5
   );
   await resume(dbg);
 });

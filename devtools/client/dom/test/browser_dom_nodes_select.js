@@ -12,7 +12,7 @@ add_task(async function () {
   info("Test DOM panel node highlight started");
 
   const { panel, tab } = await addTestTab(TEST_PAGE_URL);
-  const toolbox = await gDevTools.getToolboxForTab(tab);
+  const toolbox = gDevTools.getToolboxForTab(tab);
   const node = getRowByIndex(panel, 0);
 
   // Loading the inspector panel at first, to make it possible to listen for
@@ -22,7 +22,7 @@ add_task(async function () {
   const inspector = toolbox.getPanel("inspector");
 
   const openInInspectorIcon = node.querySelector(".open-inspector");
-  ok(node !== null, "Node was logged as expected");
+  Assert.notStrictEqual(node, null, "Node was logged as expected");
 
   info(
     "Clicking on the inspector icon and waiting for the " +

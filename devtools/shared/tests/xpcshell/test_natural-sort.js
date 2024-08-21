@@ -36,6 +36,12 @@ function run_test() {
       ["01/01/1991", "01/01/1992", "01/01/2008", "01/10/2008"],
       "similar dates"
     );
+    // Years should expand to 0100, 2001, 2010
+    runTest(
+      ["1/1/100", "1/1/1", "1/1/10"],
+      ["1/1/100", "1/1/1", "1/1/10"],
+      "dates with short year formatting"
+    );
     runTest(
       [
         "Wed Jan 01 2010 00:00:00 GMT-0800 (Pacific Standard Time)",
@@ -274,6 +280,48 @@ function run_test() {
         "myrelease-1.2.3",
       ],
       "string first"
+    );
+    runTest(
+      [
+        "1.1.3",
+        "a-release-1.1.3",
+        "b-release-1.1.3",
+        "1.2.3",
+        "a-release-1.2.3",
+        "b-release-1.2.3",
+        "1.1.4",
+        "a-release-1.1.4",
+        "b-release-1.1.4",
+        "1.1.1",
+        "a-release-1.1.1",
+        "b-release-1.1.1",
+        "1.0.5",
+        "a-release-1.0.5",
+        "b-release-1.0.5",
+      ],
+      [
+        "1.0.5",
+        "1.1.1",
+        "1.1.3",
+        "1.1.4",
+        "1.2.3",
+        "a-release-1.0.5",
+        "a-release-1.1.1",
+        "a-release-1.1.3",
+        "a-release-1.1.4",
+        "a-release-1.2.3",
+        "b-release-1.0.5",
+        "b-release-1.1.1",
+        "b-release-1.1.3",
+        "b-release-1.1.4",
+        "b-release-1.2.3",
+      ],
+      "string first, different names"
+    );
+    runTest(
+      ["zstring", "astring", "release-1.1.3"],
+      ["astring", "release-1.1.3", "zstring"],
+      "string first, mixed with regular strings"
     );
   });
 

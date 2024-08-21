@@ -45,8 +45,9 @@ add_task(async () => {
 
   // Explicit tests
   is(har2.log.entries.length, 3, "There must be expected number of requests");
-  ok(
-    har2.log.pages[0].title.endsWith("Network Monitor Test Page"),
+  is(
+    har2.log.pages[0].title,
+    HAR_EXAMPLE_URL + "html_har_import-test-page.html",
     "There must be some page title"
   );
   ok(
@@ -64,7 +65,7 @@ add_task(async () => {
   );
   is(
     har2.log.entries[1]._securityState,
-    "insecure",
+    "secure",
     "There must be expected security state"
   );
   is(har2.log.entries[2].response.status, 304, "There must be expected status");

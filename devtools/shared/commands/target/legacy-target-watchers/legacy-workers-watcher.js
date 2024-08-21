@@ -59,8 +59,8 @@ class LegacyWorkersWatcher {
     //   line 37: NetworkError: WorkerDebuggerGlobalScope.loadSubScript: Failed to load worker script at resource://devtools/shared/worker/loader.js (nsresult = 0x805e0006)
     return (
       workerTarget.isDedicatedWorker &&
-      !workerTarget.url.startsWith(
-        "resource://gre/modules/subprocess/subprocess_worker"
+      !/resource:\/\/gre\/modules\/subprocess\/subprocess_.*\.worker\.js/.test(
+        workerTarget.url
       )
     );
   }
@@ -215,13 +215,9 @@ class LegacyWorkersWatcher {
         const listener = this.targetsListeners.get(targetFront);
         targetFront.off("workerListChanged", listener);
 
-        // When unlisten is called from a target switch and service workers targets are not
-        // destroyed on navigation, we don't want to remove the targets from targetsByProcess
-        if (
-          !isTargetSwitching ||
-          !this._isServiceWorkerWatcher ||
-          this.targetCommand.destroyServiceWorkersOnNavigation
-        ) {
+        // When unlisten is called from a target switch or when we observe service workers targets
+        // we don't want to remove the targets from targetsByProcess
+        if (!isTargetSwitching || !this._isServiceWorkerWatcher) {
           this.targetsByProcess.delete(targetFront);
         }
         this.targetsListeners.delete(targetFront);

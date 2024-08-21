@@ -34,24 +34,32 @@ function logEvent({ threadActor, frame, level, expression, bindings }) {
 
   // TODO remove this branch when (#1592584) lands (#1609540)
   if (isWorker) {
-    threadActor._parent._consoleActor.evaluateJS({
+    threadActor.targetActor._consoleActor.evaluateJS({
       text: `console.log(...${expression})`,
       bindings: { displayName, ...bindings },
       url: sourceActor.url,
       lineNumber: line,
+      disableBreaks: true,
     });
 
     return undefined;
   }
 
-  const completion = frame.evalWithBindings(
-    expression,
-    {
-      displayName,
-      ...bindings,
-    },
-    { hideFromDebugger: true }
-  );
+  let completion;
+  // Ensure disabling all types of breakpoints for all sources while evaluating the log points
+  threadActor.insideClientEvaluation = { disableBreaks: true };
+  try {
+    completion = frame.evalWithBindings(
+      expression,
+      {
+        displayName,
+        ...bindings,
+      },
+      { hideFromDebugger: true }
+    );
+  } finally {
+    threadActor.insideClientEvaluation = null;
+  }
 
   let value;
   if (!completion) {
@@ -68,7 +76,7 @@ function logEvent({ threadActor, frame, level, expression, bindings }) {
     value = value.unsafeDereference();
   }
 
-  const targetActor = threadActor._parent;
+  const targetActor = threadActor.targetActor;
   const message = {
     filename: sourceActor.url,
     lineNumber: line,

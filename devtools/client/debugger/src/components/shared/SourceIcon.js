@@ -2,17 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { PureComponent } from "react";
-import PropTypes from "prop-types";
+import React, { PureComponent } from "devtools/client/shared/vendor/react";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
 
-import { connect } from "../../utils/connect";
+import { connect } from "devtools/client/shared/vendor/react-redux";
 
 import AccessibleImage from "./AccessibleImage";
 
 import { getSourceClassnames } from "../../utils/source";
-import { getSymbols, isSourceBlackBoxed, hasPrettyTab } from "../../selectors";
-
-import "./SourceIcon.css";
+import {
+  getSymbols,
+  isSourceBlackBoxed,
+  hasPrettyTab,
+} from "../../selectors/index";
 
 class SourceIcon extends PureComponent {
   static get propTypes() {
@@ -35,8 +37,9 @@ class SourceIcon extends PureComponent {
       }
       iconClass = modified;
     }
-
-    return <AccessibleImage className={`source-icon ${iconClass}`} />;
+    return React.createElement(AccessibleImage, {
+      className: `source-icon ${iconClass}`,
+    });
   }
 }
 
@@ -51,8 +54,7 @@ export default connect((state, props) => {
   const symbols = getSymbols(state, location);
   const isBlackBoxed = isSourceBlackBoxed(state, location.source);
   // For the tab icon, we don't want to show the pretty icon for the non-pretty tab
-  const hasMatchingPrettyTab =
-    !forTab && hasPrettyTab(state, location.source.url);
+  const hasMatchingPrettyTab = !forTab && hasPrettyTab(state, location.source);
 
   // This is the key function that will compute the icon type,
   // In addition to the "modifier" implemented by each callsite.

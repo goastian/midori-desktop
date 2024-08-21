@@ -25,6 +25,11 @@ async function getWebConsoleWrapper() {
   const hud = {
     currentTarget: { client: {}, getFront: () => {} },
     getMappedExpression: () => {},
+    commands: {
+      objectCommand: {
+        releaseObjects: async () => {},
+      },
+    },
   };
   const webConsoleUi = getWebConsoleUiMock(hud);
 

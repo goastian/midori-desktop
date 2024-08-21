@@ -2,31 +2,36 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { PureComponent } from "react";
-import PropTypes from "prop-types";
+import React, { PureComponent } from "devtools/client/shared/vendor/react";
+import {
+  div,
+  button,
+  span,
+} from "devtools/client/shared/vendor/react-dom-factories";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
+import AccessibleImage from "../shared/AccessibleImage";
 import { showMenu } from "../../context-menu/menu";
-import { connect } from "../../utils/connect";
-import actions from "../../actions";
+import { connect } from "devtools/client/shared/vendor/react-redux";
+import actions from "../../actions/index";
 
 import {
-  getSelectedSource,
   getSelectedFrame,
+  getCurrentThread,
+  getSelectedSource,
   getGeneratedFrameScope,
   getOriginalFrameScope,
   getPauseReason,
   isMapScopesEnabled,
-  getThreadContext,
   getLastExpandedScopes,
   getIsCurrentThreadPaused,
-} from "../../selectors";
-import { getScopes } from "../../utils/pause/scopes";
-import { getScopeItemPath } from "../../utils/pause/scopes/utils";
+} from "../../selectors/index";
+import {
+  getScopesItemsForSelectedFrame,
+  getScopeItemPath,
+} from "../../utils/pause/scopes";
 import { clientCommands } from "../../client/firefox";
 
 import { objectInspector } from "devtools/client/shared/components/reps/index";
-
-import "./Scopes.css";
-
 const { ObjectInspector } = objectInspector;
 
 class Scopes extends PureComponent {
@@ -37,16 +42,22 @@ class Scopes extends PureComponent {
     super(props);
 
     this.state = {
-      originalScopes: getScopes(why, selectedFrame, originalFrameScopes),
-      generatedScopes: getScopes(why, selectedFrame, generatedFrameScopes),
-      showOriginal: true,
+      originalScopes: getScopesItemsForSelectedFrame(
+        why,
+        selectedFrame,
+        originalFrameScopes
+      ),
+      generatedScopes: getScopesItemsForSelectedFrame(
+        why,
+        selectedFrame,
+        generatedFrameScopes
+      ),
     };
   }
 
   static get propTypes() {
     return {
       addWatchpoint: PropTypes.func.isRequired,
-      cx: PropTypes.object.isRequired,
       expandedScopes: PropTypes.array.isRequired,
       generatedFrameScopes: PropTypes.object,
       highlightDomElement: PropTypes.func.isRequired,
@@ -57,11 +68,12 @@ class Scopes extends PureComponent {
       openLink: PropTypes.func.isRequired,
       originalFrameScopes: PropTypes.object,
       removeWatchpoint: PropTypes.func.isRequired,
-      selectedFrame: PropTypes.object.isRequired,
       setExpandedScope: PropTypes.func.isRequired,
-      toggleMapScopes: PropTypes.func.isRequired,
       unHighlightDomElement: PropTypes.func.isRequired,
       why: PropTypes.object.isRequired,
+      selectedFrame: PropTypes.object,
+      toggleMapScopes: PropTypes.func.isRequired,
+      selectedSource: PropTypes.object.isRequired,
     };
   }
 
@@ -72,6 +84,7 @@ class Scopes extends PureComponent {
       originalFrameScopes,
       generatedFrameScopes,
       isPaused,
+      selectedSource,
     } = this.props;
     const isPausedChanged = isPaused !== nextProps.isPaused;
     const selectedFrameChanged = selectedFrame !== nextProps.selectedFrame;
@@ -79,20 +92,22 @@ class Scopes extends PureComponent {
       originalFrameScopes !== nextProps.originalFrameScopes;
     const generatedFrameScopesChanged =
       generatedFrameScopes !== nextProps.generatedFrameScopes;
+    const selectedSourceChanged = selectedSource !== nextProps.selectedSource;
 
     if (
       isPausedChanged ||
       selectedFrameChanged ||
       originalFrameScopesChanged ||
-      generatedFrameScopesChanged
+      generatedFrameScopesChanged ||
+      selectedSourceChanged
     ) {
       this.setState({
-        originalScopes: getScopes(
+        originalScopes: getScopesItemsForSelectedFrame(
           nextProps.why,
           nextProps.selectedFrame,
           nextProps.originalFrameScopes
         ),
-        generatedScopes: getScopes(
+        generatedScopes: getScopesItemsForSelectedFrame(
           nextProps.why,
           nextProps.selectedFrame,
           nextProps.generatedFrameScopes
@@ -100,10 +115,6 @@ class Scopes extends PureComponent {
       });
     }
   }
-
-  onToggleMapScopes = () => {
-    this.props.toggleMapScopes();
-  };
 
   onContextMenu = (event, item) => {
     const { addWatchpoint, removeWatchpoint } = this.props;
@@ -184,21 +195,18 @@ class Scopes extends PureComponent {
     }
 
     const { watchpoint } = item.contents;
-    return (
-      <button
-        className={`remove-watchpoint-${watchpoint}`}
-        title={L10N.getStr("watchpoints.removeWatchpointTooltip")}
-        onClick={e => {
-          e.stopPropagation();
-          removeWatchpoint(item);
-        }}
-      />
-    );
+    return button({
+      className: `remove-watchpoint-${watchpoint}`,
+      title: L10N.getStr("watchpoints.removeWatchpointTooltip"),
+      onClick: e => {
+        e.stopPropagation();
+        removeWatchpoint(item);
+      },
+    });
   };
 
   renderScopesList() {
     const {
-      cx,
       isLoading,
       openLink,
       openElementInInspector,
@@ -208,94 +216,188 @@ class Scopes extends PureComponent {
       selectedFrame,
       setExpandedScope,
       expandedScopes,
+      selectedSource,
     } = this.props;
-    const { originalScopes, generatedScopes, showOriginal } = this.state;
 
-    const scopes =
-      (showOriginal && mapScopesEnabled && originalScopes) || generatedScopes;
+    if (!selectedSource) {
+      return div(
+        { className: "pane scopes-list" },
+        div({ className: "pane-info" }, L10N.getStr("scopes.notAvailable"))
+      );
+    }
+
+    const { originalScopes, generatedScopes } = this.state;
+    let scopes = null;
+
+    if (
+      selectedSource.isOriginal &&
+      !selectedSource.isPrettyPrinted &&
+      !selectedFrame.generatedLocation?.source.isWasm
+    ) {
+      if (!mapScopesEnabled) {
+        return div(
+          { className: "pane scopes-list" },
+          div(
+            {
+              className: "pane-info no-original-scopes-info",
+              "aria-role": "status",
+            },
+            span(
+              { className: "info icon" },
+              React.createElement(AccessibleImage, { className: "sourcemap" })
+            ),
+            L10N.getFormatStr(
+              "scopes.noOriginalScopes",
+              L10N.getStr("scopes.showOriginalScopes")
+            )
+          )
+        );
+      }
+      if (isLoading) {
+        return div(
+          {
+            className: "pane scopes-list",
+          },
+          div(
+            { className: "pane-info" },
+            span(
+              { className: "info icon" },
+              React.createElement(AccessibleImage, { className: "loader" })
+            ),
+            L10N.getStr("scopes.loadingOriginalScopes")
+          )
+        );
+      }
+      scopes = originalScopes;
+    } else {
+      if (isLoading) {
+        return div(
+          {
+            className: "pane scopes-list",
+          },
+          div(
+            { className: "pane-info" },
+            span(
+              { className: "info icon" },
+              React.createElement(AccessibleImage, { className: "loader" })
+            ),
+            L10N.getStr("loadingText")
+          )
+        );
+      }
+      scopes = generatedScopes;
+    }
 
     function initiallyExpanded(item) {
       return expandedScopes.some(path => path == getScopeItemPath(item));
     }
 
-    if (scopes && !!scopes.length && !isLoading) {
-      return (
-        <div className="pane scopes-list">
-          <ObjectInspector
-            roots={scopes}
-            autoExpandAll={false}
-            autoExpandDepth={1}
-            client={clientCommands}
-            createElement={tagName => document.createElement(tagName)}
-            disableWrap={true}
-            dimTopLevelWindow={true}
-            frame={selectedFrame}
-            mayUseCustomFormatter={true}
-            openLink={openLink}
-            onDOMNodeClick={grip => openElementInInspector(grip)}
-            onInspectIconClick={grip => openElementInInspector(grip)}
-            onDOMNodeMouseOver={grip => highlightDomElement(grip)}
-            onDOMNodeMouseOut={grip => unHighlightDomElement(grip)}
-            onContextMenu={this.onContextMenu}
-            setExpanded={(path, expand) => setExpandedScope(cx, path, expand)}
-            initiallyExpanded={initiallyExpanded}
-            renderItemActions={this.renderWatchpointButton}
-            shouldRenderTooltip={true}
-          />
-        </div>
+    if (scopes && !!scopes.length) {
+      return div(
+        {
+          className: "pane scopes-list",
+        },
+        React.createElement(ObjectInspector, {
+          roots: scopes,
+          autoExpandAll: false,
+          autoExpandDepth: 1,
+          client: clientCommands,
+          createElement: tagName => document.createElement(tagName),
+          disableWrap: true,
+          dimTopLevelWindow: true,
+          frame: selectedFrame,
+          mayUseCustomFormatter: true,
+          openLink,
+          onDOMNodeClick: grip => openElementInInspector(grip),
+          onInspectIconClick: grip => openElementInInspector(grip),
+          onDOMNodeMouseOver: grip => highlightDomElement(grip),
+          onDOMNodeMouseOut: grip => unHighlightDomElement(grip),
+          onContextMenu: this.onContextMenu,
+          setExpanded: (path, expand) =>
+            setExpandedScope(selectedFrame, path, expand),
+          initiallyExpanded,
+          renderItemActions: this.renderWatchpointButton,
+          shouldRenderTooltip: true,
+        })
       );
     }
 
-    let stateText = L10N.getStr("scopes.notPaused");
-    if (this.props.isPaused) {
-      if (isLoading) {
-        stateText = L10N.getStr("loadingText");
-      } else {
-        stateText = L10N.getStr("scopes.notAvailable");
-      }
-    }
-
-    return (
-      <div className="pane scopes-list">
-        <div className="pane-info">{stateText}</div>
-      </div>
+    return div(
+      {
+        className: "pane scopes-list",
+      },
+      div(
+        {
+          className: "pane-info",
+        },
+        L10N.getStr("scopes.notAvailable")
+      )
     );
   }
 
   render() {
-    return <div className="scopes-content">{this.renderScopesList()}</div>;
+    return div(
+      {
+        className: "scopes-content",
+      },
+      this.renderScopesList()
+    );
   }
 }
 
 const mapStateToProps = state => {
-  const cx = getThreadContext(state);
-  const selectedFrame = getSelectedFrame(state, cx.thread);
+  // This component doesn't need any prop when we are not paused
+  const selectedFrame = getSelectedFrame(state, getCurrentThread(state));
+  if (!selectedFrame) {
+    return {};
+  }
+  const why = getPauseReason(state, selectedFrame.thread);
+  const expandedScopes = getLastExpandedScopes(state, selectedFrame.thread);
+  const isPaused = getIsCurrentThreadPaused(state);
   const selectedSource = getSelectedSource(state);
 
-  const { scope: originalFrameScopes, pending: originalPending } =
-    getOriginalFrameScope(
-      state,
-      cx.thread,
-      selectedSource?.id,
-      selectedFrame?.id
-    ) || { scope: null, pending: false };
+  let originalFrameScopes;
+  let generatedFrameScopes;
+  let isLoading;
+  let mapScopesEnabled;
 
-  const { scope: generatedFrameScopes, pending: generatedPending } =
-    getGeneratedFrameScope(state, cx.thread, selectedFrame?.id) || {
+  if (
+    selectedSource?.isOriginal &&
+    !selectedSource?.isPrettyPrinted &&
+    !selectedFrame.generatedLocation?.source.isWasm
+  ) {
+    const { scope, pending: originalPending } = getOriginalFrameScope(
+      state,
+      selectedFrame
+    ) || {
       scope: null,
       pending: false,
     };
+    originalFrameScopes = scope;
+    isLoading = originalPending;
+    mapScopesEnabled = isMapScopesEnabled(state);
+  } else {
+    const { scope, pending: generatedPending } = getGeneratedFrameScope(
+      state,
+      selectedFrame
+    ) || {
+      scope: null,
+      pending: false,
+    };
+    generatedFrameScopes = scope;
+    isLoading = generatedPending;
+  }
 
   return {
-    cx,
-    selectedFrame,
-    mapScopesEnabled: isMapScopesEnabled(state),
-    isLoading: generatedPending || originalPending,
-    why: getPauseReason(state, cx.thread),
     originalFrameScopes,
     generatedFrameScopes,
-    expandedScopes: getLastExpandedScopes(state, cx.thread),
-    isPaused: getIsCurrentThreadPaused(state),
+    mapScopesEnabled,
+    selectedFrame,
+    isLoading,
+    why,
+    expandedScopes,
+    isPaused,
+    selectedSource,
   };
 };
 
@@ -304,8 +406,8 @@ export default connect(mapStateToProps, {
   openElementInInspector: actions.openElementInInspectorCommand,
   highlightDomElement: actions.highlightDomElement,
   unHighlightDomElement: actions.unHighlightDomElement,
-  toggleMapScopes: actions.toggleMapScopes,
   setExpandedScope: actions.setExpandedScope,
   addWatchpoint: actions.addWatchpoint,
   removeWatchpoint: actions.removeWatchpoint,
+  toggleMapScopes: actions.toggleMapScopes,
 })(Scopes);

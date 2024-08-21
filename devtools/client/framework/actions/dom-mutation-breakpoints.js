@@ -14,6 +14,21 @@ function registerWalkerListeners(store, walker) {
   walker.on("mutations", mutations => handleWalkerMutations(mutations, store));
 }
 
+/**
+ * Called when a target is destroyed. This will allow the reducer to remove breakpoints on
+ * nodeFront associated with the passed target
+ *
+ * @param {ToolboxStore} store: The toolbox redux store
+ * @param {TargetFront} targetFront
+ */
+function removeTarget(store, targetFront) {
+  store.dispatch({
+    type: "REMOVE_TARGET",
+    targetFront,
+  });
+}
+exports.removeTarget = removeTarget;
+
 function handleWalkerMutations(mutations, store) {
   // If we got BP updates for detach/unload, we want to drop those nodes from
   // the list of active DOM mutation breakpoints. We explicitly check these
@@ -32,7 +47,7 @@ function createDOMMutationBreakpoint(nodeFront, mutationType) {
   assert(typeof nodeFront === "object" && nodeFront);
   assert(typeof mutationType === "string");
 
-  return async function ({ dispatch, getState }) {
+  return async function ({ dispatch }) {
     const walker = nodeFront.walkerFront;
 
     dispatch({
@@ -52,7 +67,7 @@ function deleteDOMMutationBreakpoint(nodeFront, mutationType) {
   assert(typeof nodeFront === "object" && nodeFront);
   assert(typeof mutationType === "string");
 
-  return async function ({ dispatch, getState }) {
+  return async function ({ dispatch }) {
     const walker = nodeFront.walkerFront;
     await walker.setMutationBreakpoints(nodeFront, {
       [mutationType]: false,
@@ -126,7 +141,7 @@ function toggleDOMMutationBreakpointState(id, enabled) {
   assert(typeof id === "string");
   assert(typeof enabled === "boolean");
 
-  return async function ({ dispatch, getState }) {
+  return async function ({ getState }) {
     const bp = getDOMMutationBreakpoint(getState(), id);
     if (!bp) {
       throw new Error(`No DOM mutation BP with ID ${id}`);

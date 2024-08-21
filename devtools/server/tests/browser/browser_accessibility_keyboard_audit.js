@@ -16,7 +16,6 @@ const {
       [KEYBOARD]: {
         FOCUSABLE_NO_SEMANTICS,
         FOCUSABLE_POSITIVE_TABINDEX,
-        INTERACTIVE_NO_ACTION,
         INTERACTIVE_NOT_FOCUSABLE,
         MOUSE_INTERACTIVE_ONLY,
         NO_FOCUS_VISIBLE,
@@ -61,10 +60,7 @@ add_task(async function () {
     [
       "Interactive accesible (link with no attributes) with no accessible actions.",
       "#link-1",
-      {
-        score: FAIL,
-        issue: INTERACTIVE_NO_ACTION,
-      },
+      null,
     ],
     ["Interactive accessible (link with valid href).", "#link-2", null],
     ["Interactive accessible (link with # as href).", "#link-3", null],
@@ -190,7 +186,11 @@ add_task(async function () {
       null,
     ],
     ["Interactive grid that is not focusable.", "#grid-1", null],
-    ["Focusable interactive grid.", "#grid-2", null],
+    [
+      "Focusable interactive grid.",
+      "#grid-2",
+      { score: "WARNING", issue: "FOCUSABLE_NO_SEMANTICS" },
+    ],
     [
       "Non interactive ARIA table does not need to be focusable.",
       "#table-1",

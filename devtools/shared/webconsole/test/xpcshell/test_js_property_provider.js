@@ -3,7 +3,7 @@
 
 "use strict";
 const {
-  FallibleJSPropertyProvider: JSPropertyProvider,
+  fallibleJsPropertyProvider: jsPropertyProvider,
 } = require("resource://devtools/shared/webconsole/js-property-provider.js");
 
 const { addDebuggerToGlobal } = ChromeUtils.importESModule(
@@ -115,7 +115,7 @@ function run_test() {
 
 function runChecks(dbgObject, environment, sandbox) {
   const propertyProvider = (inputValue, options) =>
-    JSPropertyProvider({
+    jsPropertyProvider({
       dbgObject,
       environment,
       inputValue,
@@ -164,6 +164,7 @@ function runChecks(dbgObject, environment, sandbox) {
   info("Test that suggestions are given for '(globalThis).'");
   results = propertyProvider("(globalThis).");
   test_has_result(results, "testObject");
+  test_has_result(results, "Infinity");
 
   info(
     "Test that suggestions are given for deep 'globalThis' properties access"
@@ -705,12 +706,16 @@ function runChecks(dbgObject, environment, sandbox) {
   results = propertyProvider(`testSelfPrototypeProxy.`);
   test_has_result(results, `hello`);
   test_has_result(results, `hasOwnProperty`);
+
+  info("Test suggestion for Infinity");
+  results = propertyProvider("Inf");
+  test_has_result(results, "Infinity");
 }
 
 /**
  * A helper that ensures an empty array of results were found.
  * @param Object results
- *        The results returned by JSPropertyProvider.
+ *        The results returned by jsPropertyProvider.
  */
 function test_has_no_results(results) {
   Assert.notEqual(results, null);
@@ -719,7 +724,7 @@ function test_has_no_results(results) {
 /**
  * A helper that ensures (required) results were found.
  * @param Object results
- *        The results returned by JSPropertyProvider.
+ *        The results returned by jsPropertyProvider.
  * @param String requiredSuggestion
  *        A suggestion that must be found from the results.
  */
@@ -737,9 +742,9 @@ function test_has_result(results, requiredSuggestion) {
 /**
  * A helper that ensures results are the expected ones.
  * @param Object results
- *        The results returned by JSPropertyProvider.
+ *        The results returned by jsPropertyProvider.
  * @param Array expectedMatches
- *        An array of the properties that should be returned by JsPropertyProvider.
+ *        An array of the properties that should be returned by jsPropertyProvider.
  */
 function test_has_exact_results(results, expectedMatches) {
   Assert.deepEqual([...results.matches], expectedMatches);

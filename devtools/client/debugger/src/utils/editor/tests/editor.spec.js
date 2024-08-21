@@ -5,9 +5,7 @@
 import {
   toEditorLine,
   toEditorPosition,
-  toEditorRange,
   toSourceLine,
-  scrollToColumn,
   markText,
   lineAtHeight,
   getSourceLocationFromMouseEvent,
@@ -34,20 +32,6 @@ describe("toEditorPosition", () => {
     expect(toEditorPosition(loc)).toEqual({
       line: 99,
       column: 25,
-    });
-  });
-});
-
-describe("toEditorRange", () => {
-  it("returns an editor range", () => {
-    const testId = "test-123";
-    const loc = {
-      start: { source: { id: testId }, line: 100, column: 25 },
-      end: { source: { id: testId }, line: 200, column: 0 },
-    };
-    expect(toEditorRange(testId, loc)).toEqual({
-      start: { line: 99, column: 25 },
-      end: { line: 199, column: 0 },
     });
   });
 });
@@ -97,17 +81,6 @@ const codeMirror = {
 
 const editor = { codeMirror };
 
-describe("scrollToColumn", () => {
-  it("calls codemirror APIs charCoords, getScrollerElement, scrollTo", () => {
-    scrollToColumn(codeMirror, 60, 123);
-    expect(codeMirror.charCoords).toHaveBeenCalledWith(
-      { line: 60, ch: 123 },
-      "local"
-    );
-    expect(codeMirror.scrollTo).toHaveBeenCalledWith(0, 50);
-  });
-});
-
 describe("markText", () => {
   it("calls codemirror API markText & returns marker", () => {
     const loc = {
@@ -137,12 +110,10 @@ describe("getSourceLocationFromMouseEvent", () => {
     const e = { clientX: 30, clientY: 60 };
     expect(getSourceLocationFromMouseEvent(editor, source, e)).toEqual({
       source,
-      sourceId: source.id,
       line: 7,
       column: 31,
       sourceActorId: undefined,
       sourceActor: null,
-      sourceUrl: "",
     });
     expect(editor.codeMirror.coordsChar).toHaveBeenCalledWith({
       left: 30,

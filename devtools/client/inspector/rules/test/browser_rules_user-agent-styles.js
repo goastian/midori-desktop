@@ -119,11 +119,11 @@ async function userAgentStylesVisible(inspector, view) {
     userRules = view._elementStyle.rules.filter(rule => rule.editor.isEditable);
     uaRules = view._elementStyle.rules.filter(rule => !rule.editor.isEditable);
     is(userRules.length, data.numUserRules, "Correct number of user rules");
-    ok(uaRules.length > data.numUARules, "Has UA rules");
+    Assert.greater(uaRules.length, data.numUARules, "Has UA rules");
   }
 
   ok(
-    userRules.some(rule => rule.matchedSelectors.length === 1),
+    userRules.some(rule => rule.matchedSelectorIndexes.length === 1),
     "There is an inline style for element in user styles"
   );
 
@@ -131,19 +131,25 @@ async function userAgentStylesVisible(inspector, view) {
   // TEST_DATA.
   ok(
     uaRules.some(rule => {
-      return rule.matchedSelectors.includes(":any-link");
+      const matchedSelectors = rule.matchedSelectorIndexes.map(
+        index => rule.selector.selectors[index]
+      );
+      return matchedSelectors.includes(":any-link");
     }),
     "There is a rule for :any-link"
   );
   ok(
     uaRules.some(rule => {
-      return rule.matchedSelectors.includes(":link");
+      const matchedSelectors = rule.matchedSelectorIndexes.map(
+        index => rule.selector.selectors[index]
+      );
+      return matchedSelectors.includes(":link");
     }),
     "There is a rule for :link"
   );
   ok(
     uaRules.some(rule => {
-      return rule.matchedSelectors.length === 1;
+      return rule.matchedSelectorIndexes.length === 1;
     }),
     "Inline styles for ua styles"
   );
@@ -185,6 +191,7 @@ async function compareAppliedStylesWithUI(inspector, view, filter) {
   entries = [...entryMap.values()];
 
   const elementStyle = view._elementStyle;
+  await waitFor(() => elementStyle.rules.length === entries.length);
   is(
     elementStyle.rules.length,
     entries.length,

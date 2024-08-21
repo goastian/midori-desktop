@@ -159,9 +159,10 @@ function getWatcherSupportedTargets(type) {
   return {
     [Targets.TYPES.FRAME]: true,
     [Targets.TYPES.PROCESS]: true,
-    [Targets.TYPES.WORKER]:
-      type == SESSION_TYPES.BROWSER_ELEMENT ||
-      type == SESSION_TYPES.WEBEXTENSION,
+    [Targets.TYPES.WORKER]: true,
+    [Targets.TYPES.SERVICE_WORKER]:
+      type == SESSION_TYPES.BROWSER_ELEMENT || type == SESSION_TYPES.ALL,
+    [Targets.TYPES.SHARED_WORKER]: type == SESSION_TYPES.ALL,
   };
 }
 
@@ -184,6 +185,7 @@ function getWatcherSupportedResources(type) {
     [Resources.TYPES.CONSOLE_MESSAGE]: true,
     [Resources.TYPES.CSS_CHANGE]: isTabOrWebExtensionToolbox,
     [Resources.TYPES.CSS_MESSAGE]: true,
+    [Resources.TYPES.CSS_REGISTERED_PROPERTIES]: true,
     [Resources.TYPES.DOCUMENT_EVENT]: true,
     [Resources.TYPES.CACHE_STORAGE]: true,
     [Resources.TYPES.COOKIE]: true,
@@ -201,7 +203,8 @@ function getWatcherSupportedResources(type) {
     [Resources.TYPES.THREAD_STATE]: true,
     [Resources.TYPES.SERVER_SENT_EVENT]: true,
     [Resources.TYPES.WEBSOCKET]: true,
-    [Resources.TYPES.TRACING_STATE]: true,
+    [Resources.TYPES.JSTRACER_TRACE]: true,
+    [Resources.TYPES.JSTRACER_STATE]: true,
     [Resources.TYPES.LAST_PRIVATE_CONTEXT_EXIT]: true,
   };
 }
@@ -212,4 +215,5 @@ module.exports = {
   createWebExtensionSessionContext,
   createContentProcessSessionContext,
   createWorkerSessionContext,
+  SESSION_TYPES,
 };

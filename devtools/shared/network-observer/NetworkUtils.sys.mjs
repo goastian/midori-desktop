@@ -2,16 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
-ChromeUtils.defineESModuleGetters(lazy, {
-  NetworkHelper:
-    "resource://devtools/shared/network-observer/NetworkHelper.sys.mjs",
-});
+ChromeUtils.defineESModuleGetters(
+  lazy,
+  {
+    NetworkHelper:
+      "resource://devtools/shared/network-observer/NetworkHelper.sys.mjs",
+  },
+  { global: "contextual" }
+);
 
-XPCOMUtils.defineLazyGetter(lazy, "tpFlagsMask", () => {
+ChromeUtils.defineLazyGetter(lazy, "tpFlagsMask", () => {
   const trackingProtectionLevel2Enabled = Services.prefs
     .getStringPref("urlclassifier.trackingTable")
     .includes("content-track-digest256");
@@ -88,10 +90,10 @@ function isChannelFromSystemPrincipal(channel) {
   // WindowGlobal which is available on the BrowsingContext
   if (!principal) {
     principal = CanonicalBrowsingContext.isInstance(browsingContext)
-      ? browsingContext.currentWindowGlobal.documentPrincipal
+      ? browsingContext.currentWindowGlobal?.documentPrincipal
       : browsingContext.window.document.nodePrincipal;
   }
-  return principal.isSystemPrincipal;
+  return principal?.isSystemPrincipal;
 }
 
 /**
@@ -101,6 +103,13 @@ function isChannelFromSystemPrincipal(channel) {
  * @returns {number}
  */
 function getChannelBrowsingContextID(channel) {
+  // `frameBrowsingContextID` is non-0 if the channel is loading an iframe.
+  // If available, use it instead of `browsingContextID` which is exceptionally
+  // set to the parent's BrowsingContext id for such channels.
+  if (channel.loadInfo.frameBrowsingContextID) {
+    return channel.loadInfo.frameBrowsingContextID;
+  }
+
   if (channel.loadInfo.browsingContextID) {
     return channel.loadInfo.browsingContextID;
   }
@@ -405,6 +414,12 @@ function fetchRequestHeadersAndCookies(channel) {
   // Copy the request header data.
   channel.visitRequestHeaders({
     visitHeader(name, value) {
+      // The `Proxy-Authorization` header even though it appears on the channel is not
+      // actually sent to the server for non CONNECT requests after the HTTP/HTTPS tunnel
+      // is setup by the proxy.
+      if (name == "Proxy-Authorization") {
+        return;
+      }
       if (name == "Cookie") {
         cookieHeader = value;
       }
@@ -455,7 +470,7 @@ function fetchResponseHeadersAndCookies(channel) {
  * Check if a given network request should be logged by a network monitor
  * based on the specified filters.
  *
- * @param nsIHttpChannel channel
+ * @param {(nsIHttpChannel|nsIFileChannel)} channel
  *        Request to check.
  * @param filters
  *        NetworkObserver filters to match against. An object with one of the following attributes:
@@ -486,6 +501,13 @@ function matchRequest(channel, filters) {
         Services.scriptSecurityManager.getSystemPrincipal() ||
         channel.loadInfo.isInDevToolsContext)
     ) {
+      return false;
+    }
+
+    // When a page fails loading in top level or in iframe, an error page is shown
+    // which will trigger a request to about:neterror (which is translated into a file:// URI request).
+    // Ignore this request in regular toolbox (but not in the browser toolbox).
+    if (channel.loadInfo?.loadErrorPage) {
       return false;
     }
 
@@ -599,7 +621,7 @@ function legacyMatchRequest(channel, filters) {
   return false;
 }
 
-function getBlockedReason(channel) {
+function getBlockedReason(channel, fromCache = false) {
   let blockingExtension, blockedReason;
   const { status } = channel;
 
@@ -621,7 +643,7 @@ function getBlockedReason(channel) {
   // usually the requests (with these errors) might be displayed with various
   // other status codes.
   const ignoreList = [
-    // This is emited when the request is already in the cache.
+    // These are emited when the request is already in the cache.
     "NS_ERROR_PARSED_DATA_CACHED",
     // This is emited when there is some issues around images e.g When the img.src
     // links to a non existent url. This is typically shown as a 404 request.
@@ -631,6 +653,12 @@ function getBlockedReason(channel) {
     // E.g Emited by send beacon requests.
     "NS_ERROR_ABORT",
   ];
+
+  // NS_BINDING_ABORTED are emmited when request are abruptly halted, these are valid and should not be ignored.
+  // They can also be emmited for requests already cache which have the `cached` status, these should be ignored.
+  if (fromCache) {
+    ignoreList.push("NS_BINDING_ABORTED");
+  }
 
   // If the request has not failed or is not blocked by a web extension, check for
   // any errors not on the ignore list. e.g When a host is not found (NS_ERROR_UNKNOWN_HOST).
@@ -643,6 +671,11 @@ function getBlockedReason(channel) {
   }
 
   return { blockingExtension, blockedReason };
+}
+
+function getCharset(channel) {
+  const win = lazy.NetworkHelper.getWindowForRequest(channel);
+  return win ? win.document.characterSet : null;
 }
 
 export const NetworkUtils = {
@@ -667,4 +700,5 @@ export const NetworkUtils = {
   matchRequest,
   stringToCauseType,
   getBlockedReason,
+  getCharset,
 };

@@ -2,18 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { Component } from "react";
-import PropTypes from "prop-types";
-import { connect } from "../../utils/connect";
-import actions from "../../actions";
+import React, { Component } from "devtools/client/shared/vendor/react";
+import {
+  div,
+  form,
+  input,
+  li,
+  label,
+  ul,
+  option,
+  select,
+} from "devtools/client/shared/vendor/react-dom-factories";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
+import { connect } from "devtools/client/shared/vendor/react-redux";
+import actions from "../../actions/index";
 
-import { CloseButton } from "../shared/Button";
+import { CloseButton } from "../shared/Button/index";
 
-import "./XHRBreakpoints.css";
-import { getXHRBreakpoints, shouldPauseOnAnyXHR } from "../../selectors";
+import { getXHRBreakpoints, shouldPauseOnAnyXHR } from "../../selectors/index";
 import ExceptionOption from "./Breakpoints/ExceptionOption";
 
-const classnames = require("devtools/client/shared/classnames.js");
+const classnames = require("resource://devtools/client/shared/classnames.js");
 
 // At present, the "Pause on any URL" checkbox creates an xhrBreakpoint
 // of "ANY" with no path, so we can remove that before creating the list
@@ -72,17 +81,17 @@ class XHRBreakpoints extends Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
-    const input = this._input;
+    const _input = this._input;
 
-    if (!input) {
+    if (!_input) {
       return;
     }
 
     if (!prevState.editing && this.state.editing) {
-      input.setSelectionRange(0, input.value.length);
-      input.focus();
+      _input.setSelectionRange(0, _input.value.length);
+      _input.focus();
     } else if (this.props.showInput && !this.state.focused) {
-      input.focus();
+      _input.focus();
     }
   }
 
@@ -155,7 +164,7 @@ class XHRBreakpoints extends Component {
     this.setState({ focused: true, editing: true });
   };
 
-  onMouseDown = e => {
+  onMouseDown = () => {
     this.setState({ editing: false, clickedOnFormElement: true });
   };
 
@@ -190,29 +199,32 @@ class XHRBreakpoints extends Component {
   renderXHRInput(onSubmit) {
     const { focused, inputValue } = this.state;
     const placeholder = L10N.getStr("xhrBreakpoints.placeholder");
-
-    return (
-      <form
-        key="xhr-input-container"
-        className={classnames("xhr-input-container xhr-input-form", {
+    return form(
+      {
+        key: "xhr-input-container",
+        className: classnames("xhr-input-container xhr-input-form", {
           focused,
-        })}
-        onSubmit={onSubmit}
-      >
-        <input
-          className="xhr-input-url"
-          type="text"
-          placeholder={placeholder}
-          onChange={this.handleChange}
-          onBlur={this.hideInput}
-          onFocus={this.onFocus}
-          value={inputValue}
-          onKeyDown={this.handleTab}
-          ref={c => (this._input = c)}
-        />
-        {this.renderMethodSelectElement()}
-        <input type="submit" style={{ display: "none" }} />
-      </form>
+        }),
+        onSubmit,
+      },
+      input({
+        className: "xhr-input-url",
+        type: "text",
+        placeholder,
+        onChange: this.handleChange,
+        onBlur: this.hideInput,
+        onFocus: this.onFocus,
+        value: inputValue,
+        onKeyDown: this.handleTab,
+        ref: c => (this._input = c),
+      }),
+      this.renderMethodSelectElement(),
+      input({
+        type: "submit",
+        style: {
+          display: "none",
+        },
+      })
     );
   }
 
@@ -245,103 +257,113 @@ class XHRBreakpoints extends Component {
     if (index === editIndex) {
       return this.renderXHRInput(this.handleExistingSubmit);
     }
-
-    return (
-      <li
-        className="xhr-container"
-        key={`${path}-${method}`}
-        title={path}
-        onDoubleClick={(items, options) => this.editExpression(index)}
-      >
-        <label>
-          <input
-            type="checkbox"
-            className="xhr-checkbox"
-            checked={!disabled}
-            onChange={() => this.handleCheckbox(index)}
-            onClick={ev => ev.stopPropagation()}
-          />
-          <div className="xhr-label-method">{method}</div>
-          <div className="xhr-label-url">{path}</div>
-          <div className="xhr-container__close-btn">
-            <CloseButton handleClick={e => removeXHRBreakpoint(index)} />
-          </div>
-        </label>
-      </li>
+    return li(
+      {
+        className: "xhr-container",
+        key: `${path}-${method}`,
+        title: path,
+        onDoubleClick: () => this.editExpression(index),
+      },
+      label(
+        null,
+        React.createElement("input", {
+          type: "checkbox",
+          className: "xhr-checkbox",
+          checked: !disabled,
+          onChange: () => this.handleCheckbox(index),
+          onClick: ev => ev.stopPropagation(),
+        }),
+        div(
+          {
+            className: "xhr-label-method",
+          },
+          method
+        ),
+        div(
+          {
+            className: "xhr-label-url",
+          },
+          path
+        ),
+        div(
+          {
+            className: "xhr-container__close-btn",
+          },
+          React.createElement(CloseButton, {
+            handleClick: () => removeXHRBreakpoint(index),
+          })
+        )
+      )
     );
   };
 
   renderBreakpoints = explicitXhrBreakpoints => {
     const { showInput } = this.props;
-
-    return (
-      <>
-        <ul className="pane expressions-list">
-          {explicitXhrBreakpoints.map(this.renderBreakpoint)}
-        </ul>
-        {showInput && this.renderXHRInput(this.handleNewSubmit)}
-      </>
+    return React.createElement(
+      React.Fragment,
+      null,
+      ul(
+        {
+          className: "pane expressions-list",
+        },
+        explicitXhrBreakpoints.map(this.renderBreakpoint)
+      ),
+      showInput && this.renderXHRInput(this.handleNewSubmit)
     );
   };
 
   renderCheckbox = explicitXhrBreakpoints => {
     const { shouldPauseOnAny, togglePauseOnAny } = this.props;
-
-    return (
-      <div
-        className={classnames("breakpoints-exceptions-options", {
+    return div(
+      {
+        className: classnames("breakpoints-options", {
           empty: explicitXhrBreakpoints.length === 0,
-        })}
-      >
-        <ExceptionOption
-          className="breakpoints-exceptions"
-          label={L10N.getStr("pauseOnAnyXHR")}
-          isChecked={shouldPauseOnAny}
-          onChange={() => togglePauseOnAny()}
-        />
-      </div>
+        }),
+      },
+      React.createElement(ExceptionOption, {
+        className: "breakpoints-exceptions",
+        label: L10N.getStr("pauseOnAnyXHR"),
+        isChecked: shouldPauseOnAny,
+        onChange: () => togglePauseOnAny(),
+      })
     );
   };
-
   renderMethodOption = method => {
-    return (
-      <option
-        key={method}
-        value={method}
+    return option(
+      {
+        key: method,
+        value: method,
         // e.stopPropagation() required here since otherwise Firefox triggers 2x
         // onMouseDown events on <select> upon clicking on an <option>
-        onMouseDown={e => e.stopPropagation()}
-      >
-        {method}
-      </option>
+        onMouseDown: e => e.stopPropagation(),
+      },
+      method
     );
   };
 
   renderMethodSelectElement = () => {
-    return (
-      <select
-        value={this.state.inputMethod}
-        className="xhr-input-method"
-        onChange={this.handleMethodChange}
-        onMouseDown={this.onMouseDown}
-        onKeyDown={this.handleTab}
-      >
-        {xhrMethods.map(this.renderMethodOption)}
-      </select>
+    return select(
+      {
+        value: this.state.inputMethod,
+        className: "xhr-input-method",
+        onChange: this.handleMethodChange,
+        onMouseDown: this.onMouseDown,
+        onKeyDown: this.handleTab,
+      },
+      xhrMethods.map(this.renderMethodOption)
     );
   };
 
   render() {
     const { xhrBreakpoints } = this.props;
     const explicitXhrBreakpoints = getExplicitXHRBreakpoints(xhrBreakpoints);
-
-    return (
-      <>
-        {this.renderCheckbox(explicitXhrBreakpoints)}
-        {explicitXhrBreakpoints.length === 0
-          ? this.renderXHRInput(this.handleNewSubmit)
-          : this.renderBreakpoints(explicitXhrBreakpoints)}
-      </>
+    return React.createElement(
+      React.Fragment,
+      null,
+      this.renderCheckbox(explicitXhrBreakpoints),
+      explicitXhrBreakpoints.length === 0
+        ? this.renderXHRInput(this.handleNewSubmit)
+        : this.renderBreakpoints(explicitXhrBreakpoints)
     );
   }
 }

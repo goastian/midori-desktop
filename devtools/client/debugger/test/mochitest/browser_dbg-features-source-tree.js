@@ -124,10 +124,10 @@ add_task(async function testSimpleSourcesWithManualClickExpand() {
   info("Test the download file context menu");
   // Before trigerring the menu, mock the file picker
   const MockFilePicker = SpecialPowers.MockFilePicker;
-  MockFilePicker.init(window);
-  const nsiFile = FileUtils.getFile("TmpD", [
-    `export_source_content_${Date.now()}.log`,
-  ]);
+  MockFilePicker.init(window.browsingContext);
+  const nsiFile = new FileUtils.File(
+    PathUtils.join(PathUtils.tempDir, `export_source_content_${Date.now()}.log`)
+  );
   MockFilePicker.setFiles([nsiFile]);
   const path = nsiFile.path;
 
@@ -341,7 +341,7 @@ add_task(async function testSourceTreeOnTheIntegrationTestPage() {
 
   const workerThread = dbg.selectors
     .getAllThreads()
-    .find(thread => thread.name == testServer.urlFor("same-url.sjs"));
+    .find(thread => thread.url == testServer.urlFor("same-url.sjs"));
 
   is(
     sourceActors.filter(actor => actor.thread == workerThread.actor).length,

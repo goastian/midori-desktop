@@ -44,16 +44,11 @@ const testData = [
   ["checkPopupOffset"],
 ];
 
-const mockGetCSSPropertyList = function () {
-  return ["clear", "color", "direction", "display"];
-};
-
-const mockGetCSSValuesForPropertyName = function (propertyName) {
-  const values = {
-    color: ["blue", "red"],
-    display: ["block", "flex", "none"],
-  };
-  return values[propertyName] || [];
+const mockValues = {
+  clear: [],
+  color: ["blue", "red"],
+  direction: [],
+  display: ["block", "flex", "none"],
 };
 
 add_task(async function () {
@@ -73,6 +68,10 @@ add_task(async function () {
         contentType: InplaceEditor.CONTENT_TYPES.CSS_MIXED,
         done: resolve,
         popup,
+        cssProperties: {
+          getNames: () => Object.keys(mockValues),
+          getValues: propertyName => mockValues[propertyName] || [],
+        },
       },
       doc
     );
@@ -85,9 +84,6 @@ add_task(async function () {
 
 const runAutocompletionTest = async function (editor) {
   info("Starting autocomplete test for inplace-editor popup offset");
-  editor._getCSSPropertyList = mockGetCSSPropertyList;
-  editor._getCSSValuesForPropertyName = mockGetCSSValuesForPropertyName;
-
   let previousOffset = -1;
   for (const data of testData) {
     if (data[0] === "checkPopupOffset") {
@@ -96,8 +92,9 @@ const runAutocompletionTest = async function (editor) {
       // want to ensure the popup tries to match the position of the query in the editor
       // input.
       const offset = getPopupOffset(editor);
-      ok(
-        offset > previousOffset,
+      Assert.greater(
+        offset,
+        previousOffset,
         "New popup offset is greater than the previous one"
       );
       previousOffset = offset;

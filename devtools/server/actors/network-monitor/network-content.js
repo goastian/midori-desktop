@@ -10,13 +10,9 @@ const {
 } = require("resource://devtools/shared/specs/network-content.js");
 
 const lazy = {};
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "NetUtil",
-  "resource://gre/modules/NetUtil.jsm"
-);
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   NetworkUtils:
     "resource://devtools/shared/network-observer/NetworkUtils.sys.mjs",
 });
@@ -69,7 +65,7 @@ class NetworkContentActor extends Actor {
         uri: lazy.NetUtil.newURI(url),
         loadingNode: doc,
         securityFlags:
-          Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_SEC_CONTEXT_IS_NULL,
+          Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_INHERITS_SEC_CONTEXT,
         contentPolicyType:
           lazy.NetworkUtils.stringToCauseType(cause.type) ||
           Ci.nsIContentPolicy.TYPE_OTHER,

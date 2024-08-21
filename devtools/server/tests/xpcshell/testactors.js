@@ -8,6 +8,9 @@ const {
   createExtraActors,
 } = require("resource://devtools/shared/protocol/lazy-pool.js");
 const { RootActor } = require("resource://devtools/server/actors/root.js");
+const {
+  WatcherActor,
+} = require("resource://devtools/server/actors/watcher.js");
 const { ThreadActor } = require("resource://devtools/server/actors/thread.js");
 const {
   DevToolsServer,
@@ -30,6 +33,14 @@ const Targets = require("resource://devtools/server/actors/targets/index.js");
 const {
   createContentProcessSessionContext,
 } = require("resource://devtools/server/actors/watcher/session-context.js");
+const { TargetActorRegistry } = ChromeUtils.importESModule(
+  "resource://devtools/server/actors/targets/target-actor-registry.sys.mjs",
+  { global: "shared" }
+);
+const {
+  BaseTargetActor,
+} = require("resource://devtools/server/actors/targets/base-target-actor.js");
+const Resources = require("resource://devtools/server/actors/resources/index.js");
 
 var gTestGlobals = new Set();
 DevToolsServer.addTestGlobal = function (global) {
@@ -77,6 +88,9 @@ function TestTabList(connection) {
   for (const global of gTestGlobals) {
     const actor = new TestTargetActor(connection, global);
     this._descriptorActorPool.manage(actor);
+
+    // Register the target actor, so that the Watcher actor can have access to it.
+    TargetActorRegistry.registerXpcShellTargetActor(actor);
 
     const descriptorActor = new TestDescriptorActor(connection, actor);
     this._descriptorActorPool.manage(descriptorActor);
@@ -134,13 +148,29 @@ class TestDescriptorActor extends protocol.Actor {
   form() {
     const form = {
       actor: this.actorID,
-      traits: {},
+      traits: {
+        watcher: true,
+      },
       selected: this.selected,
       title: this._targetActor.title,
       url: this._targetActor.url,
     };
 
     return form;
+  }
+
+  getWatcher() {
+    const sessionContext = {
+      type: "all",
+      supportedTargets: {},
+      supportedResources: [
+        Resources.TYPES.SOURCE,
+        Resources.TYPES.CONSOLE_MESSAGE,
+        Resources.TYPES.THREAD_STATE,
+      ],
+    };
+    const watcherActor = new WatcherActor(this.conn, sessionContext);
+    return watcherActor;
   }
 
   getFavicon() {
@@ -152,9 +182,9 @@ class TestDescriptorActor extends protocol.Actor {
   }
 }
 
-class TestTargetActor extends protocol.Actor {
+class TestTargetActor extends BaseTargetActor {
   constructor(conn, global) {
-    super(conn, windowGlobalTargetSpec);
+    super(conn, Targets.TYPES.FRAME, windowGlobalTargetSpec);
 
     this.sessionContext = createContentProcessSessionContext();
     this._global = global;
@@ -166,7 +196,7 @@ class TestTargetActor extends protocol.Actor {
     this._extraActors.threadActor = this.threadActor;
     this.makeDebugger = makeDebugger.bind(null, {
       findDebuggees: () => [this._global],
-      shouldAddNewGlobalAsDebuggee: g => gAllowNewThreadGlobals,
+      shouldAddNewGlobalAsDebuggee: () => gAllowNewThreadGlobals,
     });
     this.dbg = this.makeDebugger();
     this.notifyResources = this.notifyResources.bind(this);
@@ -216,12 +246,12 @@ class TestTargetActor extends protocol.Actor {
     return { ...response, ...actors };
   }
 
-  detach(request) {
+  detach() {
     this.threadActor.destroy();
     return { type: "detached" };
   }
 
-  reload(request) {
+  reload() {
     this.sourcesManager.reset();
     this.threadActor.clearDebuggees();
     this.threadActor.dbg.addDebuggees();

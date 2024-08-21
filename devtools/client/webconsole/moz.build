@@ -28,17 +28,17 @@ DevToolsModules(
 )
 
 BROWSER_CHROME_MANIFESTS += [
-    "test/browser/_browser_console.ini",
-    "test/browser/_jsterm.ini",
-    "test/browser/_webconsole.ini",
-    "test/node/fixtures/stubs/stubs.ini",
+    "test/browser/_browser_console.toml",
+    "test/browser/_jsterm.toml",
+    "test/browser/_webconsole.toml",
+    "test/node/fixtures/stubs/stubs.toml",
 ]
 
 MOCHITEST_CHROME_MANIFESTS += [
-    "test/chrome/chrome.ini",
+    "test/chrome/chrome.toml",
 ]
 
-XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.toml"]
 
 with Files("**"):
     BUG_COMPONENT = ("DevTools", "Console")

@@ -32,7 +32,8 @@ if (DEBUG_ALLOCATIONS) {
     useDistinctSystemPrincipalLoader,
     releaseDistinctSystemPrincipalLoader,
   } = ChromeUtils.importESModule(
-    "resource://devtools/shared/loader/DistinctSystemPrincipalLoader.sys.mjs"
+    "resource://devtools/shared/loader/DistinctSystemPrincipalLoader.sys.mjs",
+    { global: "shared" }
   );
   const requester = {};
   const loader = useDistinctSystemPrincipalLoader(requester);
@@ -51,6 +52,70 @@ if (DEBUG_ALLOCATIONS) {
       tracker.logAllocationSites();
     }
     tracker.stop();
+  });
+}
+
+// When DEBUG_STEP environment variable is set,
+// automatically start a tracer which will log all line being executed
+// in the running test (and nothing else) and also pause its execution
+// for the given amount of milliseconds.
+//
+// Be careful that these pause have significant side effect.
+// This will pause the test script event loop and allow running the other
+// tasks queued in the parent process's main thread event loop queue.
+//
+// Passing any non-number value, like `DEBUG_STEP=true` will still
+// log the executed lines without any pause, and without this side effect.
+//
+// For now, the tracer can only work once per thread.
+// So when using this feature you will not be able to use the JS tracer
+// in any other way on parent process's main thread.
+const DEBUG_STEP = Services.env.get("DEBUG_STEP");
+if (DEBUG_STEP) {
+  // Use a custom loader with `invisibleToDebugger` flag for the allocation tracker
+  // as it instantiates custom Debugger API instances and has to be running in a distinct
+  // compartments from DevTools and system scopes (JSMs, XPCOM,...)
+  const {
+    useDistinctSystemPrincipalLoader,
+    releaseDistinctSystemPrincipalLoader,
+  } = ChromeUtils.importESModule(
+    "resource://devtools/shared/loader/DistinctSystemPrincipalLoader.sys.mjs",
+    { global: "shared" }
+  );
+  const requester = {};
+  const loader = useDistinctSystemPrincipalLoader(requester);
+
+  const stepper = loader.require(
+    "resource://devtools/shared/test-helpers/test-stepper.js"
+  );
+  stepper.start(globalThis, gTestPath, DEBUG_STEP);
+  registerCleanupFunction(() => {
+    stepper.stop();
+    releaseDistinctSystemPrincipalLoader(requester);
+  });
+}
+
+const DEBUG_TRACE_LINE = Services.env.get("DEBUG_TRACE_LINE");
+if (DEBUG_TRACE_LINE) {
+  // Use a custom loader with `invisibleToDebugger` flag for the allocation tracker
+  // as it instantiates custom Debugger API instances and has to be running in a distinct
+  // compartments from DevTools and system scopes (ESMs, XPCOM,...)
+  const {
+    useDistinctSystemPrincipalLoader,
+    releaseDistinctSystemPrincipalLoader,
+  } = ChromeUtils.importESModule(
+    "resource://devtools/shared/loader/DistinctSystemPrincipalLoader.sys.mjs"
+  );
+  const requester = {};
+  const loader = useDistinctSystemPrincipalLoader(requester);
+
+  const lineTracer = loader.require(
+    "resource://devtools/shared/test-helpers/test-line-tracer.js"
+  );
+  lineTracer.start(globalThis, gTestPath, DEBUG_TRACE_LINE);
+  registerCleanupFunction(() => {
+    lineTracer.stop();
+    releaseDistinctSystemPrincipalLoader(requester);
   });
 }
 
@@ -75,6 +140,8 @@ const {
 const DevToolsUtils = require("resource://devtools/shared/DevToolsUtils.js");
 
 const KeyShortcuts = require("resource://devtools/client/shared/key-shortcuts.js");
+
+const { LocalizationHelper } = require("resource://devtools/shared/l10n.js");
 
 loader.lazyRequireGetter(
   this,
@@ -235,7 +302,7 @@ registerCleanupFunction(() => {
   Services.prefs.clearUserPref("dom.ipc.processPrelaunch.enabled");
   Services.prefs.clearUserPref("devtools.toolbox.host");
   Services.prefs.clearUserPref("devtools.toolbox.previousHost");
-  Services.prefs.clearUserPref("devtools.toolbox.splitconsoleEnabled");
+  Services.prefs.clearUserPref("devtools.toolbox.splitconsole.open");
   Services.prefs.clearUserPref("devtools.toolbox.splitconsoleHeight");
   Services.prefs.clearUserPref(
     "javascript.options.asyncstack_capture_debuggee_only"
@@ -578,7 +645,7 @@ async function navigateTo(
   if (uri === browser.currentURI.spec) {
     gBrowser.reloadTab(gBrowser.getTabForBrowser(browser));
   } else {
-    BrowserTestUtils.loadURIString(browser, uri);
+    BrowserTestUtils.startLoadingURIString(browser, uri);
   }
 
   if (waitForLoad) {
@@ -654,7 +721,7 @@ async function _watchForToolboxReload(
 ) {
   const tab = gBrowser.getTabForBrowser(browser);
 
-  const toolbox = await gDevTools.getToolboxForTab(tab);
+  const toolbox = gDevTools.getToolboxForTab(tab);
 
   if (!toolbox) {
     // No toolbox to wait for
@@ -955,8 +1022,8 @@ async function openInspectorForURL(url, hostType) {
   return { tab, inspector, toolbox, highlighterTestFront };
 }
 
-async function getActiveInspector() {
-  const toolbox = await gDevTools.getToolboxForTab(gBrowser.selectedTab);
+function getActiveInspector() {
+  const toolbox = gDevTools.getToolboxForTab(gBrowser.selectedTab);
   return toolbox.getPanel("inspector");
 }
 
@@ -1175,10 +1242,8 @@ function loadHelperScript(filePath) {
 async function openToolboxForTab(tab, toolId, hostType) {
   info("Opening the toolbox");
 
-  let toolbox;
-
   // Check if the toolbox is already loaded.
-  toolbox = await gDevTools.getToolboxForTab(tab);
+  let toolbox = gDevTools.getToolboxForTab(tab);
   if (toolbox) {
     if (!toolId || (toolId && toolbox.getPanel(toolId))) {
       info("Toolbox is already opened");
@@ -1385,8 +1450,8 @@ function isWindows() {
  * @returns {HttpServer}
  */
 function createTestHTTPServer() {
-  const { HttpServer } = ChromeUtils.import(
-    "resource://testing-common/httpd.js"
+  const { HttpServer } = ChromeUtils.importESModule(
+    "resource://testing-common/httpd.sys.mjs"
   );
   const server = new HttpServer();
 
@@ -2206,4 +2271,119 @@ function logCssCompatDataPropertiesWithoutMDNUrl() {
     }
   }
   walk(cssPropertiesCompatData);
+}
+
+/**
+ * Craft a CssProperties instance without involving RDP for tests
+ * manually spawning OutputParser, CssCompleter, Editor...
+ *
+ * Otherwise this should instead be fetched from CssPropertiesFront.
+ *
+ * @return {CssProperties}
+ */
+function getClientCssProperties() {
+  const {
+    generateCssProperties,
+  } = require("resource://devtools/server/actors/css-properties.js");
+  const {
+    CssProperties,
+    normalizeCssData,
+  } = require("resource://devtools/client/fronts/css-properties.js");
+  return new CssProperties(
+    normalizeCssData({ properties: generateCssProperties(document) })
+  );
+}
+
+/**
+ * Helper method to stop a Service Worker promptly.
+ *
+ * @param {String} workerUrl
+ *        Absolute Worker URL to stop.
+ */
+async function stopServiceWorker(workerUrl) {
+  info(`Stop Service Worker: ${workerUrl}\n`);
+
+  // Help the SW to be immediately destroyed after unregistering it.
+  Services.prefs.setIntPref("dom.serviceWorkers.idle_timeout", 0);
+
+  const swm = Cc["@mozilla.org/serviceworkers/manager;1"].getService(
+    Ci.nsIServiceWorkerManager
+  );
+  // Unfortunately we can't use swm.getRegistrationByPrincipal, as it requires a "scope", which doesn't seem to be the worker URL.
+  // So let's use getAllRegistrations to find the nsIServiceWorkerInfo in order to:
+  // - retrieve its active worker,
+  // - call attach+detachDebugger,
+  // - reset the idle timeout.
+  // This way, the unregister instruction is immediate, thanks to the 0 dom.serviceWorkers.idle_timeout we set at the beginning of the function
+  const registrations = swm.getAllRegistrations();
+  let matchedInfo;
+  for (let i = 0; i < registrations.length; i++) {
+    const info = registrations.queryElementAt(
+      i,
+      Ci.nsIServiceWorkerRegistrationInfo
+    );
+    // Lookup for an exact URL match.
+    if (info.scriptSpec === workerUrl) {
+      matchedInfo = info;
+      break;
+    }
+  }
+  ok(!!matchedInfo, "Found the service worker info");
+
+  info("Wait for the worker to be active");
+  await waitFor(() => matchedInfo.activeWorker, "Wait for the SW to be active");
+
+  // We need to attach+detach the debugger in order to reset the idle timeout.
+  // Otherwise the worker would still be waiting for a previously registered timeout
+  // which would be the 0ms one we set by tweaking the preference.
+  function resetWorkerTimeout(worker) {
+    worker.attachDebugger();
+    worker.detachDebugger();
+  }
+  resetWorkerTimeout(matchedInfo.activeWorker);
+  // Also reset all the other possible worker instances
+  if (matchedInfo.evaluatingWorker) {
+    resetWorkerTimeout(matchedInfo.evaluatingWorker);
+  }
+  if (matchedInfo.installingWorker) {
+    resetWorkerTimeout(matchedInfo.installingWorker);
+  }
+  if (matchedInfo.waitingWorker) {
+    resetWorkerTimeout(matchedInfo.waitingWorker);
+  }
+  // Reset this preference in order to ensure other SW are not immediately destroyed.
+  Services.prefs.clearUserPref("dom.serviceWorkers.idle_timeout");
+
+  // Spin the event loop to ensure the worker had time to really be shut down.
+  await wait(0);
+
+  return matchedInfo;
+}
+
+/**
+ * Helper method to stop and unregister a Service Worker promptly.
+ *
+ * @param {String} workerUrl
+ *        Absolute Worker URL to unregister.
+ */
+async function unregisterServiceWorker(workerUrl) {
+  const swInfo = await stopServiceWorker(workerUrl);
+
+  info(`Unregister Service Worker: ${workerUrl}\n`);
+  // Now call unregister on that worker so that it can be destroyed immediately
+  const swm = Cc["@mozilla.org/serviceworkers/manager;1"].getService(
+    Ci.nsIServiceWorkerManager
+  );
+  const unregisterSuccess = await new Promise(resolve => {
+    swm.unregister(
+      swInfo.principal,
+      {
+        unregisterSucceeded(success) {
+          resolve(success);
+        },
+      },
+      swInfo.scope
+    );
+  });
+  ok(unregisterSuccess, "Service worker successfully unregistered");
 }

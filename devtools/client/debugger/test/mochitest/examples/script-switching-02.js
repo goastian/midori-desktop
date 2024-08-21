@@ -8,7 +8,11 @@ function secondCall() {
   if (x) {
     foo();
   }
+  return 44;
 }
 
 var x = true;
+// For testing that anonymous functions do not show up in the
+// quick open panel browser_dbg-quick-open.js
+() => { }
 console.log("hi")

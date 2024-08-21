@@ -28,35 +28,26 @@ const COMMAND_DEFAULT_FLAG = {
 
 /**
  * When given a string that begins with `:` and a unix style string,
- * format a JS like object.
+ * returns the command name and the arguments.
+ * Throws if the command doesn't exist.
  * This is intended to be used by the WebConsole actor only.
  *
  * @param String string
  *        A string to format that begins with `:`.
  *
- * @returns String formatted as `command({ ..args })`
+ * @returns Object The command name and the arguments
+ *                 { command: String, args: Object }
  */
-function formatCommand(string) {
+function getCommandAndArgs(string) {
   if (!isCommand(string)) {
-    throw Error("formatCommand was called without `:`");
+    throw Error("getCommandAndArgs was called without `:`");
   }
-  const tokens = string.trim().split(/\s+/).map(createToken);
-  const { command, args } = parseCommand(tokens);
-  const argsString = formatArgs(args);
-  return `${command}(${argsString})`;
-}
-
-/**
- * collapses the array of arguments from the parsed command into
- * a single string
- *
- * @param Object tree
- *               A tree object produced by parseCommand
- *
- * @returns String formatted as ` { key: value, ... } ` or an empty string
- */
-function formatArgs(args) {
-  return Object.keys(args).length ? JSON.stringify(args) : "";
+  string = string.trim();
+  if (string === ":") {
+    throw Error("Missing a command name after ':'");
+  }
+  const tokens = string.split(/\s+/).map(createToken);
+  return parseCommand(tokens);
 }
 
 /**
@@ -72,10 +63,10 @@ function formatArgs(args) {
 function createToken(string) {
   if (isCommand(string)) {
     const value = string.replace(COMMAND_PREFIX, "");
-    if (
-      !value ||
-      !WebConsoleCommandsManager.getAllColonCommandNames().includes(value)
-    ) {
+    if (!value) {
+      throw Error("Missing a command name after ':'");
+    }
+    if (!WebConsoleCommandsManager.getAllColonCommandNames().includes(value)) {
       throw Error(`'${value}' is not a valid command`);
     }
     return { type: COMMAND, value };
@@ -98,7 +89,7 @@ function createToken(string) {
  *                     An array of Token objects
  *
  * @returns Object Tree Object, with the following shape
- *                 { command: String, args: Array of Strings }
+ *                 { command: String, args: Object }
  */
 function parseCommand(tokens) {
   let command = null;
@@ -110,7 +101,9 @@ function parseCommand(tokens) {
       if (command) {
         // we are throwing here because two commands have been passed and it is unclear
         // what the user's intention was
-        throw Error("Invalid command");
+        throw Error(
+          "Executing multiple commands in one evaluation is not supported"
+        );
       }
       command = token.value;
     }
@@ -152,6 +145,13 @@ function parseCommand(tokens) {
     const defaultFlag = COMMAND_DEFAULT_FLAG[command];
     if (token.type === ARG && !args[defaultFlag]) {
       const { value, offset } = collectString(token, tokens, i);
+      // Throw if the command isn't registered in COMMAND_DEFAULT_FLAG
+      // as this command may not expect any argument without an explicit argument name like "-name arg"
+      if (!defaultFlag) {
+        throw new Error(
+          `:${command} command doesn't support unnamed '${value}' argument.`
+        );
+      }
       args[defaultFlag] = getTypedValue(value);
       i = i + offset;
     }
@@ -245,5 +245,5 @@ function getTypedValue(value) {
   return value;
 }
 
-exports.formatCommand = formatCommand;
+exports.getCommandAndArgs = getCommandAndArgs;
 exports.isCommand = isCommand;

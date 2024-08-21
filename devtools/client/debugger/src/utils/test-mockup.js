@@ -20,6 +20,8 @@ function makeMockSource(url = "url", id = "source", thread = "FakeThread") {
   return {
     id,
     url,
+    shortName: getDisplayURL(url).filename,
+    longName: getDisplayURL(url).filename + getDisplayURL(url).search,
     displayURL: getDisplayURL(url),
     thread,
     isPrettyPrinted: false,
@@ -136,9 +138,7 @@ function mockScopeAddVariable(scope, name) {
 }
 
 function makeMockBreakpoint(source = makeMockSource(), line = 1, column) {
-  const location = column
-    ? { sourceId: source.id, source: { id: source.id }, line, column }
-    : { sourceId: source.id, source: { id: source.id }, line };
+  const location = column ? { source, line, column } : { source, line };
   return {
     id: "breakpoint",
     location,

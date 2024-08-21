@@ -10,30 +10,31 @@
 add_task(async function () {
   await pushPref("devtools.debugger.threads-visible", true);
 
-  const dbg = await initDebugger("doc-windowless-workers.html");
+  const dbg = await initDebugger(
+    "doc-windowless-workers.html",
+    "simple-worker.js"
+  );
   const mainThread = dbg.toolbox.threadFront.actor;
 
   await waitForThreadCount(dbg, 2);
   const workers = dbg.selectors.getThreads();
-  ok(workers.length == 2, "Got two workers");
+  Assert.equal(workers.length, 2, "Got two workers");
   const thread1 = workers[0].actor;
   const thread2 = workers[1].actor;
 
   const mainThreadSource = findSource(dbg, "doc-windowless-workers.html");
 
-  await waitForSource(dbg, "simple-worker.js");
-
   info("Pause in the main thread");
   assertNotPaused(dbg);
-  await dbg.actions.breakOnNext(getThreadContext(dbg));
+  await dbg.actions.breakOnNext();
   await waitForPaused(dbg, "doc-windowless-workers.html");
   assertPausedAtSourceAndLine(dbg, mainThreadSource.id, 10);
   threadIsSelected(dbg, 1);
 
   info("Pause in the first worker");
-  await dbg.actions.selectThread(getContext(dbg), thread1);
+  await dbg.actions.selectThread(thread1);
   assertNotPaused(dbg);
-  await dbg.actions.breakOnNext(getThreadContext(dbg));
+  await dbg.actions.breakOnNext();
   await waitForPaused(dbg, "simple-worker.js");
   threadIsSelected(dbg, 2);
   const workerSource2 = dbg.selectors.getSelectedSource();
@@ -43,7 +44,7 @@ add_task(async function () {
   await addExpression(dbg, "count");
   is(getWatchExpressionLabel(dbg, 1), "count");
   const v = getWatchExpressionValue(dbg, 1);
-  ok(v == `${+v}`, "Value of count should be a number");
+  Assert.equal(v, `${+v}`, "Value of count should be a number");
 
   info("StepOver in the first worker");
   await stepOver(dbg);
@@ -60,7 +61,7 @@ add_task(async function () {
   assertNotPaused(dbg);
 
   info("StepOver in the main thread");
-  dbg.actions.selectThread(getContext(dbg), mainThread);
+  dbg.actions.selectThread(mainThread);
   await stepOver(dbg);
   assertPausedAtSourceAndLine(dbg, mainThreadSource.id, 11);
 
@@ -81,12 +82,12 @@ add_task(async function () {
   threadIsPaused(dbg, 3);
 
   info("View the first paused thread");
-  dbg.actions.selectThread(getContext(dbg), thread1);
+  dbg.actions.selectThread(thread1);
   await waitForPaused(dbg);
   assertPausedAtSourceAndLine(dbg, workerSource2.id, 10);
 
   info("View the second paused thread");
-  await dbg.actions.selectThread(getContext(dbg), thread2);
+  await dbg.actions.selectThread(thread2);
   threadIsSelected(dbg, 3);
   await waitForPaused(dbg);
   const workerSource3 = dbg.selectors.getSelectedSource();
@@ -100,13 +101,15 @@ add_task(async function () {
   info("StepOver in second worker and not the first");
   await stepOver(dbg);
   assertPausedAtSourceAndLine(dbg, workerSource3.id, 11);
-  await dbg.actions.selectThread(getContext(dbg), thread1);
+  await dbg.actions.selectThread(thread1);
   assertPausedAtSourceAndLine(dbg, workerSource2.id, 10);
 
   info("Resume both worker execution");
   await resume(dbg);
-  await dbg.actions.selectThread(getContext(dbg), thread2);
+  assertNotPaused(dbg);
+  await dbg.actions.selectThread(thread2);
   await resume(dbg);
+  assertNotPaused(dbg);
 
   let sourceActors = dbg.selectors.getSourceActorsForSource(workerSource3.id);
   is(
@@ -157,7 +160,10 @@ function assertClass(dbg, selector, className, ...args) {
 }
 
 function threadIsPaused(dbg, index) {
-  return ok(findElement(dbg, "threadsPaneItemPause", index));
+  return ok(
+    findElement(dbg, "threadsPaneItemPause", index),
+    `Thread ${index} is paused`
+  );
 }
 
 function threadIsSelected(dbg, index) {

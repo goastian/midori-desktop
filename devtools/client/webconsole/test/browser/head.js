@@ -868,7 +868,7 @@ async function openDebugger(options = {}) {
     options.tab = gBrowser.selectedTab;
   }
 
-  let toolbox = await gDevTools.getToolboxForTab(options.tab);
+  let toolbox = gDevTools.getToolboxForTab(options.tab);
   const dbgPanelAlreadyOpen = toolbox && toolbox.getPanel("jsdebugger");
   if (dbgPanelAlreadyOpen) {
     await toolbox.selectTool("jsdebugger");
@@ -913,7 +913,7 @@ async function openInspector(options = {}) {
  */
 async function openNetMonitor(tab) {
   tab = tab || gBrowser.selectedTab;
-  let toolbox = await gDevTools.getToolboxForTab(tab);
+  let toolbox = gDevTools.getToolboxForTab(tab);
   if (!toolbox) {
     toolbox = await gDevTools.showToolboxForTab(tab);
   }
@@ -948,7 +948,7 @@ async function openConsole(tab) {
  *         A promise that is resolved once the web console is closed.
  */
 async function closeConsole(tab = gBrowser.selectedTab) {
-  const toolbox = await gDevTools.getToolboxForTab(tab);
+  const toolbox = gDevTools.getToolboxForTab(tab);
   if (toolbox) {
     await toolbox.destroy();
   }
@@ -1442,13 +1442,13 @@ function isConfirmDialogOpened(toolbox) {
 
 async function selectFrame(dbg, frame) {
   const onScopes = waitForDispatch(dbg.store, "ADD_SCOPES");
-  await dbg.actions.selectFrame(dbg.selectors.getThreadContext(), frame);
+  await dbg.actions.selectFrame(frame);
   await onScopes;
 }
 
-async function pauseDebugger(dbg) {
+async function pauseDebugger(dbg, options = { shouldWaitForLoadScopes: true }) {
   info("Waiting for debugger to pause");
-  const onPaused = waitForPaused(dbg);
+  const onPaused = waitForPaused(dbg, null, options);
   SpecialPowers.spawn(gBrowser.selectedBrowser, [], function () {
     content.wrappedJSObject.firstCall();
   }).catch(() => {});
@@ -1838,7 +1838,11 @@ async function getImageSizeFromClipboard() {
   trans.init(null);
   trans.addDataFlavor(flavor);
 
-  clip.getData(trans, clipid.kGlobalClipboard);
+  clip.getData(
+    trans,
+    clipid.kGlobalClipboard,
+    SpecialPowers.wrap(window).browsingContext.currentWindowContext
+  );
   const data = {};
   trans.getTransferData(flavor, data);
 

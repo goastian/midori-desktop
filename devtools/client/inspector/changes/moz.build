@@ -17,8 +17,8 @@ DevToolsModules(
     "ChangesView.js",
 )
 
-BROWSER_CHROME_MANIFESTS += ["test/browser.ini"]
-XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.ini"]
+BROWSER_CHROME_MANIFESTS += ["test/browser.toml"]
+XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.toml"]
 
 with Files("**"):
     BUG_COMPONENT = ("DevTools", "Inspector: Changes")

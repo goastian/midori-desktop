@@ -105,6 +105,7 @@ async function openProfilerTab(profilerViewMode) {
       forceNonPrivate: true,
       resolveOnContentBrowserCreated,
       userContextId: win.gBrowser?.contentPrincipal.userContextId,
+      relatedToCurrent: true,
     })
   );
   return contentBrowser;
@@ -152,7 +153,11 @@ function openFilePickerForObjdir(window, objdirs, changeObjdirs) {
   const FilePicker = Cc["@mozilla.org/filepicker;1"].createInstance(
     Ci.nsIFilePicker
   );
-  FilePicker.init(window, "Pick build directory", FilePicker.modeGetFolder);
+  FilePicker.init(
+    window.browsingContext,
+    "Pick build directory",
+    FilePicker.modeGetFolder
+  );
   FilePicker.open(rv => {
     if (rv == FilePicker.returnOK) {
       const path = FilePicker.file.path;

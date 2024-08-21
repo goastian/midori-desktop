@@ -22,11 +22,13 @@ appInfo.updateAppInfo({
 const { require, loader } = ChromeUtils.importESModule(
   "resource://devtools/shared/loader/Loader.sys.mjs"
 );
-const { worker } = ChromeUtils.import(
-  "resource://devtools/shared/loader/worker-loader.js"
+const { worker } = ChromeUtils.importESModule(
+  "resource://devtools/shared/loader/worker-loader.sys.mjs"
 );
 
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+const { NetUtil } = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
+);
 
 // Always log packets when running tests. runxpcshelltests.py will throw
 // the output away anyway, unless you give it the --verbose flag.
@@ -87,7 +89,8 @@ function getDistinctDevToolsServer() {
     useDistinctSystemPrincipalLoader,
     releaseDistinctSystemPrincipalLoader,
   } = ChromeUtils.importESModule(
-    "resource://devtools/shared/loader/DistinctSystemPrincipalLoader.sys.mjs"
+    "resource://devtools/shared/loader/DistinctSystemPrincipalLoader.sys.mjs",
+    { global: "shared" }
   );
   const requester = {};
   const distinctLoader = useDistinctSystemPrincipalLoader(requester);
@@ -246,11 +249,6 @@ function waitForNewSource(threadFront, url) {
   return waitForEvent(threadFront, "newSource", function (packet) {
     return packet.source.url === url;
   });
-}
-
-function attachThread(targetFront, options = {}) {
-  dump("Attaching to thread.\n");
-  return targetFront.attachThread(options);
 }
 
 function resume(threadFront) {
@@ -443,10 +441,14 @@ async function attachTestTab(client, title) {
 async function attachTestThread(client, title) {
   const commands = await attachTestTab(client, title);
   const targetFront = commands.targetCommand.targetFront;
-  const threadFront = await targetFront.getFront("thread");
-  await targetFront.attachThread({
-    autoBlackBox: true,
+
+  // Pass any configuration, in order to ensure starting all the thread actors
+  // and have them to handle debugger statements.
+  await commands.threadConfigurationCommand.updateConfiguration({
+    skipBreakpoints: false,
   });
+
+  const threadFront = await targetFront.getFront("thread");
   Assert.equal(threadFront.state, "attached", "Thread front is attached");
   return { targetFront, threadFront, commands };
 }
@@ -854,7 +856,15 @@ async function setupTestFromUrl(url) {
 
   const targetFront = await descriptorFront.getTarget();
 
-  const threadFront = await attachThread(targetFront);
+  const commands = await createCommandsDictionary(descriptorFront);
+
+  // Pass any configuration, in order to ensure starting all the thread actor
+  // and have it to notify about all sources
+  await commands.threadConfigurationCommand.updateConfiguration({
+    skipBreakpoints: false,
+  });
+
+  const threadFront = await targetFront.getFront("thread");
 
   const sourceUrl = getFileUrl(url);
   const promise = waitForNewSource(threadFront, sourceUrl);

@@ -2,56 +2,81 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { Component, memo } from "react";
-import PropTypes from "prop-types";
+import React, { Component, memo } from "devtools/client/shared/vendor/react";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
 
 import AccessibleImage from "../../shared/AccessibleImage";
-import { formatDisplayName } from "../../../utils/pause/frames";
-import { getFilename, getFileURL } from "../../../utils/source";
-import FrameMenu from "./FrameMenu";
+import { formatDisplayName } from "../../../utils/pause/frames/index";
+import { getFileURL } from "../../../utils/source";
 import FrameIndent from "./FrameIndent";
-const classnames = require("devtools/client/shared/classnames.js");
+const classnames = require("resource://devtools/client/shared/classnames.js");
 
 function FrameTitle({ frame, options = {}, l10n }) {
   const displayName = formatDisplayName(frame, options, l10n);
-  return <span className="title">{displayName}</span>;
+  return React.createElement(
+    "span",
+    {
+      className: "title",
+    },
+    displayName
+  );
 }
 
 FrameTitle.propTypes = {
   frame: PropTypes.object.isRequired,
   options: PropTypes.object.isRequired,
   l10n: PropTypes.object.isRequired,
+  showFrameContextMenu: PropTypes.func.isRequired,
 };
 
-const FrameLocation = memo(({ frame, displayFullUrl = false }) => {
-  if (!frame.source) {
-    return null;
+function getFrameLocation(frame, shouldDisplayOriginalLocation) {
+  if (shouldDisplayOriginalLocation) {
+    return frame.location;
   }
-
-  if (frame.library) {
-    return (
-      <span className="location">
-        {frame.library}
-        <AccessibleImage
-          className={`annotation-logo ${frame.library.toLowerCase()}`}
-        />
-      </span>
+  return frame.generatedLocation || frame.location;
+}
+const FrameLocation = memo(
+  ({ frame, displayFullUrl = false, shouldDisplayOriginalLocation }) => {
+    if (frame.library) {
+      return React.createElement(
+        "span",
+        {
+          className: "location",
+        },
+        frame.library,
+        React.createElement(AccessibleImage, {
+          className: `annotation-logo ${frame.library.toLowerCase()}`,
+        })
+      );
+    }
+    const location = getFrameLocation(frame, shouldDisplayOriginalLocation);
+    const filename = displayFullUrl
+      ? getFileURL(location.source, false)
+      : location.source.shortName;
+    return React.createElement(
+      "span",
+      {
+        className: "location",
+        title: location.source.url,
+      },
+      React.createElement(
+        "span",
+        {
+          className: "filename",
+        },
+        filename
+      ),
+      ":",
+      React.createElement(
+        "span",
+        {
+          className: "line",
+        },
+        location.line
+      )
     );
   }
-
-  const { location, source } = frame;
-  const filename = displayFullUrl
-    ? getFileURL(source, false)
-    : getFilename(source);
-
-  return (
-    <span className="location" title={source.url}>
-      <span className="filename">{filename}</span>:
-      <span className="line">{location.line}</span>
-    </span>
-  );
-});
-
+);
 FrameLocation.displayName = "FrameLocation";
 
 FrameLocation.propTypes = {
@@ -68,21 +93,18 @@ export default class FrameComponent extends Component {
 
   static get propTypes() {
     return {
-      copyStackTrace: PropTypes.func.isRequired,
-      cx: PropTypes.object,
       disableContextMenu: PropTypes.bool.isRequired,
       displayFullUrl: PropTypes.bool.isRequired,
       frame: PropTypes.object.isRequired,
-      frameworkGroupingOn: PropTypes.bool.isRequired,
       getFrameTitle: PropTypes.func,
       hideLocation: PropTypes.bool.isRequired,
+      isInGroup: PropTypes.bool,
       panel: PropTypes.oneOf(["debugger", "webconsole"]).isRequired,
-      restart: PropTypes.func,
       selectFrame: PropTypes.func.isRequired,
       selectedFrame: PropTypes.object,
       shouldMapDisplayName: PropTypes.bool.isRequired,
-      toggleBlackBox: PropTypes.func,
-      toggleFrameworkGrouping: PropTypes.func.isRequired,
+      shouldDisplayOriginalLocation: PropTypes.bool.isRequired,
+      showFrameContextMenu: PropTypes.func.isRequired,
     };
   }
 
@@ -95,38 +117,27 @@ export default class FrameComponent extends Component {
   }
 
   onContextMenu(event) {
-    const {
-      frame,
-      copyStackTrace,
-      toggleFrameworkGrouping,
-      toggleBlackBox,
-      frameworkGroupingOn,
-      cx,
-      restart,
-    } = this.props;
-    FrameMenu(
-      frame,
-      frameworkGroupingOn,
-      { copyStackTrace, toggleFrameworkGrouping, toggleBlackBox, restart },
-      event,
-      cx
-    );
+    event.stopPropagation();
+    event.preventDefault();
+
+    const { frame } = this.props;
+    this.props.showFrameContextMenu(event, frame);
   }
 
-  onMouseDown(e, frame, selectedFrame) {
+  onMouseDown(e, frame) {
     if (e.button !== 0) {
       return;
     }
 
-    this.props.selectFrame(this.props.cx, frame);
+    this.props.selectFrame(frame);
   }
 
-  onKeyUp(event, frame, selectedFrame) {
+  onKeyUp(event, frame) {
     if (event.key != "Enter") {
       return;
     }
 
-    this.props.selectFrame(this.props.cx, frame);
+    this.props.selectFrame(frame);
   }
 
   render() {
@@ -138,6 +149,8 @@ export default class FrameComponent extends Component {
       displayFullUrl,
       getFrameTitle,
       disableContextMenu,
+      shouldDisplayOriginalLocation,
+      isInGroup,
     } = this.props;
     const { l10n } = this.context;
 
@@ -145,50 +158,72 @@ export default class FrameComponent extends Component {
       selected: selectedFrame && selectedFrame.id === frame.id,
     });
 
-    if (!frame.source) {
-      throw new Error("no frame source");
-    }
-
+    const location = getFrameLocation(frame, shouldDisplayOriginalLocation);
     const title = getFrameTitle
-      ? getFrameTitle(
-          `${getFileURL(frame.source, false)}:${frame.location.line}`
-        )
+      ? getFrameTitle(`${getFileURL(location.source, false)}:${location.line}`)
       : undefined;
-
-    return (
-      <div
-        role="listitem"
-        key={frame.id}
-        className={className}
-        onMouseDown={e => this.onMouseDown(e, frame, selectedFrame)}
-        onKeyUp={e => this.onKeyUp(e, frame, selectedFrame)}
-        onContextMenu={disableContextMenu ? null : e => this.onContextMenu(e)}
-        tabIndex={0}
-        title={title}
-      >
-        {frame.asyncCause && (
-          <span className="location-async-cause">
-            {this.isSelectable && <FrameIndent />}
-            {this.isDebugger ? (
-              <span className="async-label">{frame.asyncCause}</span>
-            ) : (
-              l10n.getFormatStr("stacktrace.asyncStack", frame.asyncCause)
-            )}
-            {this.isSelectable && <br className="clipboard-only" />}
-          </span>
-        )}
-        {this.isSelectable && <FrameIndent />}
-        <FrameTitle
-          frame={frame}
-          options={{ shouldMapDisplayName }}
-          l10n={l10n}
-        />
-        {!hideLocation && <span className="clipboard-only"> </span>}
-        {!hideLocation && (
-          <FrameLocation frame={frame} displayFullUrl={displayFullUrl} />
-        )}
-        {this.isSelectable && <br className="clipboard-only" />}
-      </div>
+    return React.createElement(
+      "div",
+      {
+        role: "listitem",
+        key: frame.id,
+        className,
+        onMouseDown: e => this.onMouseDown(e, frame, selectedFrame),
+        onKeyUp: e => this.onKeyUp(e, frame, selectedFrame),
+        onContextMenu: disableContextMenu ? null : e => this.onContextMenu(e),
+        tabIndex: 0,
+        title,
+      },
+      frame.asyncCause &&
+        React.createElement(
+          "span",
+          {
+            className: "location-async-cause",
+          },
+          this.isSelectable && React.createElement(FrameIndent, null),
+          this.isDebugger
+            ? React.createElement(
+                "span",
+                {
+                  className: "async-label",
+                },
+                frame.asyncCause
+              )
+            : l10n.getFormatStr("stacktrace.asyncStack", frame.asyncCause),
+          this.isSelectable &&
+            React.createElement("br", {
+              className: "clipboard-only",
+            })
+        ),
+      this.isSelectable &&
+        React.createElement(FrameIndent, {
+          indentLevel: isInGroup ? 2 : 1,
+        }),
+      React.createElement(FrameTitle, {
+        frame,
+        options: {
+          shouldMapDisplayName,
+        },
+        l10n,
+      }),
+      !hideLocation &&
+        React.createElement(
+          "span",
+          {
+            className: "clipboard-only",
+          },
+          " "
+        ),
+      !hideLocation &&
+        React.createElement(FrameLocation, {
+          frame,
+          displayFullUrl,
+          shouldDisplayOriginalLocation,
+        }),
+      this.isSelectable &&
+        React.createElement("br", {
+          className: "clipboard-only",
+        })
     );
   }
 }

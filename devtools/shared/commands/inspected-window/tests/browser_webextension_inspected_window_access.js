@@ -137,6 +137,12 @@ add_task(async function test_eval_at_https() {
     url: "https://example.com/",
   });
 
+  await checkEvalAllowed({
+    extension,
+    description: "https:-URL with opaque origin (CSP sandbox)",
+    url: URL_ROOT_SSL + "csp_sandbox.sjs",
+  });
+
   await checkEvalDenied({
     extension,
     description: "a restricted domain",
@@ -311,5 +317,36 @@ add_task(async function test_eval_at_file() {
     `eval result for devtools.inspectedWindow.eval at ${fileUrl}`
   );
 
+  await extension.unload();
+});
+
+add_task(async function test_eval_at_view_source() {
+  const extension = ExtensionTestUtils.loadExtension({});
+  await extension.startup();
+  const otherExt = ExtensionTestUtils.loadExtension({});
+  await otherExt.startup();
+
+  await checkEvalDenied({
+    extension,
+    description: "view-source at https:-URL",
+    url: "view-source:https://example.com/?somepage",
+  });
+  await checkEvalDenied({
+    extension,
+    description: "view-source at https:-URL with opaque origin (CSP sandbox)",
+    url: `view-source:${URL_ROOT_SSL}csp_sandbox.sjs`,
+  });
+  await checkEvalDenied({
+    extension,
+    description: "view-source from own extension",
+    url: `view-source:moz-extension://${extension.uuid}/manifest.json?`,
+  });
+  await checkEvalDenied({
+    extension,
+    description: "view-source from another extension",
+    url: `view-source:moz-extension://${otherExt.uuid}/manifest.json?`,
+  });
+
+  await otherExt.unload();
   await extension.unload();
 });

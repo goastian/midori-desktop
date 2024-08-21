@@ -8,7 +8,6 @@
 
 /* Devtools imports */
 @import url("chrome://devtools/content/debugger/src/components/variables.css");
-@import url("chrome://devtools/content/debugger/src/components/A11yIntention.css");
 @import url("chrome://devtools/content/debugger/src/components/App.css");
 @import url("chrome://devtools/content/debugger/src/components/shared/AccessibleImage.css");
 @import url("chrome://devtools/content/debugger/src/components/shared/Accordion.css");
@@ -32,7 +31,6 @@
 @import url("chrome://devtools/content/debugger/src/components/Editor/InlinePreview.css");
 @import url("chrome://devtools/content/debugger/src/components/Editor/Preview.css");
 @import url("chrome://devtools/content/debugger/src/components/Editor/Preview/Popup.css");
-@import url("chrome://devtools/content/debugger/src/components/Editor/HighlightCalls.css");
 @import url("chrome://devtools/content/debugger/src/components/Editor/SearchInFileBar.css");
 @import url("chrome://devtools/content/debugger/src/components/Editor/Tabs.css");
 @import url("chrome://devtools/content/debugger/src/components/PrimaryPanes/Outline.css");

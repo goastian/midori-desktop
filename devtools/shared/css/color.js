@@ -5,7 +5,6 @@
 "use strict";
 
 const COLOR_UNIT_PREF = "devtools.defaultColorUnit";
-
 const SPECIALVALUES = new Set([
   "currentcolor",
   "initial",
@@ -49,94 +48,45 @@ const SPECIALVALUES = new Set([
  *
  *   color.toString() === "#f00"; // Outputs the color type determined in the
  *                                   COLOR_UNIT_PREF constant (above).
- *   // Color objects can be reused
- *   color.newColor("green") === "#0f0"; // true
  *
  *   Valid values for COLOR_UNIT_PREF are contained in CssColor.COLORUNIT.
  */
-
-function CssColor(colorValue) {
-  this.newColor(colorValue);
-}
-
-module.exports.colorUtils = {
-  CssColor,
-  rgbToHsl,
-  rgbToHwb,
-  rgbToLab,
-  setAlpha,
-  classifyColor,
-  calculateContrastRatio,
-  calculateDeltaE,
-  calculateLuminance,
-  blendColors,
-};
-
-/**
- * Values used in COLOR_UNIT_PREF
- */
-CssColor.COLORUNIT = {
-  authored: "authored",
-  hex: "hex",
-  name: "name",
-  rgb: "rgb",
-  hsl: "hsl",
-  hwb: "hwb",
-};
-
-CssColor.prototype = {
-  _colorUnit: null,
-  _colorUnitUppercase: false,
-
-  // The value as-authored.
-  authored: null,
-  // A lower-cased copy of |authored|.
-  lowerCased: null,
-
-  _setColorUnitUppercase(color) {
-    // Specifically exclude the case where the color is
-    // case-insensitive.  This makes it so that "#000" isn't
-    // considered "upper case" for the purposes of color cycling.
-    this._colorUnitUppercase =
-      color === color.toUpperCase() && color !== color.toLowerCase();
-  },
-
-  get colorUnit() {
-    if (this._colorUnit === null) {
-      const defaultUnit = Services.prefs.getCharPref(COLOR_UNIT_PREF);
-      this._colorUnit = CssColor.COLORUNIT[defaultUnit];
-      this._setColorUnitUppercase(this.authored);
-    }
-    return this._colorUnit;
-  },
-
-  set colorUnit(unit) {
-    this._colorUnit = unit;
-  },
+class CssColor {
+  /**
+   * @param  {String} colorValue: Any valid color string
+   */
+  constructor(colorValue) {
+    // Store a lower-cased version of the color to help with format
+    // testing.  The original text is kept as well so it can be
+    // returned when needed.
+    this.#lowerCased = colorValue.toLowerCase();
+    this.#authored = colorValue;
+  }
 
   /**
-   * If the current color unit pref is "authored", then set the
-   * default color unit from the given color.  Otherwise, leave the
-   * color unit untouched.
-   *
-   * @param {String} color The color to use
+   * Values used in COLOR_UNIT_PREF
    */
-  setAuthoredUnitFromColor(color) {
-    if (
-      Services.prefs.getCharPref(COLOR_UNIT_PREF) ===
-      CssColor.COLORUNIT.authored
-    ) {
-      this._colorUnit = classifyColor(color);
-      this._setColorUnitUppercase(color);
-    }
-  },
+  static COLORUNIT = {
+    authored: "authored",
+    hex: "hex",
+    name: "name",
+    rgb: "rgb",
+    hsl: "hsl",
+    hwb: "hwb",
+  };
+
+  // The value as-authored.
+  #authored = null;
+  #currentFormat;
+  // A lower-cased copy of |authored|.
+  #lowerCased = null;
 
   get hasAlpha() {
     if (!this.valid) {
       return false;
     }
     return this.getRGBATuple().a !== 1;
-  },
+  }
 
   /**
    * Return true if the color is a valid color and we can get rgba tuples from it.
@@ -145,8 +95,8 @@ CssColor.prototype = {
     // We can't use InspectorUtils.isValidCSSColor as colors can be valid but we can't have
     // their rgba tuples (e.g. currentColor, accentColor, … whose actual values depends on
     // additional context we don't have here).
-    return InspectorUtils.colorToRGBA(this.authored) !== null;
-  },
+    return InspectorUtils.colorToRGBA(this.#authored) !== null;
+  }
 
   /**
    * Not a real color type but used to preserve accuracy when converting between
@@ -154,18 +104,18 @@ CssColor.prototype = {
    * 0 - 255 but rgba alpha values are only 0.0 to 1.0).
    */
   get highResTuple() {
-    const type = classifyColor(this.authored);
+    const type = classifyColor(this.#authored);
 
     if (type === CssColor.COLORUNIT.hex) {
-      return hexToRGBA(this.authored.substring(1), true);
+      return hexToRGBA(this.#authored.substring(1), true);
     }
 
     // If we reach this point then the alpha value must be in the range
     // 0.0 - 1.0 so we need to multiply it by 255.
-    const tuple = InspectorUtils.colorToRGBA(this.authored);
+    const tuple = InspectorUtils.colorToRGBA(this.#authored);
     tuple.a *= 255;
     return tuple;
-  },
+  }
 
   /**
    * Return true for all transparent values e.g. rgba(0, 0, 0, 0).
@@ -177,14 +127,14 @@ CssColor.prototype = {
     } catch (e) {
       return false;
     }
-  },
+  }
 
   get specialValue() {
-    return SPECIALVALUES.has(this.lowerCased) ? this.authored : null;
-  },
+    return SPECIALVALUES.has(this.#lowerCased) ? this.#authored : null;
+  }
 
   get name() {
-    const invalidOrSpecialValue = this._getInvalidOrSpecialValue();
+    const invalidOrSpecialValue = this.#getInvalidOrSpecialValue();
     if (invalidOrSpecialValue !== false) {
       return invalidOrSpecialValue;
     }
@@ -196,10 +146,10 @@ CssColor.prototype = {
     }
     const { r, g, b } = tuple;
     return InspectorUtils.rgbToColorName(r, g, b) || this.hex;
-  },
+  }
 
   get hex() {
-    const invalidOrSpecialValue = this._getInvalidOrSpecialValue();
+    const invalidOrSpecialValue = this.#getInvalidOrSpecialValue();
     if (invalidOrSpecialValue !== false) {
       return invalidOrSpecialValue;
     }
@@ -216,10 +166,10 @@ CssColor.prototype = {
       hex = "#" + hex.charAt(1) + hex.charAt(3) + hex.charAt(5);
     }
     return hex;
-  },
+  }
 
   get alphaHex() {
-    const invalidOrSpecialValue = this._getInvalidOrSpecialValue();
+    const invalidOrSpecialValue = this.#getInvalidOrSpecialValue();
     if (invalidOrSpecialValue !== false) {
       return invalidOrSpecialValue;
     }
@@ -239,10 +189,10 @@ CssColor.prototype = {
         alphaHex.charAt(7);
     }
     return alphaHex;
-  },
+  }
 
   get longHex() {
-    const invalidOrSpecialValue = this._getInvalidOrSpecialValue();
+    const invalidOrSpecialValue = this.#getInvalidOrSpecialValue();
     if (invalidOrSpecialValue !== false) {
       return invalidOrSpecialValue;
     }
@@ -257,10 +207,10 @@ CssColor.prototype = {
         .toString(16)
         .substr(-6)
     );
-  },
+  }
 
   get longAlphaHex() {
-    const invalidOrSpecialValue = this._getInvalidOrSpecialValue();
+    const invalidOrSpecialValue = this.#getInvalidOrSpecialValue();
     if (invalidOrSpecialValue !== false) {
       return invalidOrSpecialValue;
     }
@@ -274,32 +224,32 @@ CssColor.prototype = {
         .substr(-6) +
       Math.round(tuple.a).toString(16).padStart(2, "0")
     );
-  },
+  }
 
   get rgb() {
-    const invalidOrSpecialValue = this._getInvalidOrSpecialValue();
+    const invalidOrSpecialValue = this.#getInvalidOrSpecialValue();
     if (invalidOrSpecialValue !== false) {
       return invalidOrSpecialValue;
     }
     if (!this.hasAlpha) {
-      if (this.lowerCased.startsWith("rgb(")) {
+      if (this.#lowerCased.startsWith("rgb(")) {
         // The color is valid and begins with rgb(.
-        return this.authored;
+        return this.#authored;
       }
       const tuple = this.getRGBATuple();
       return "rgb(" + tuple.r + ", " + tuple.g + ", " + tuple.b + ")";
     }
     return this.rgba;
-  },
+  }
 
   get rgba() {
-    const invalidOrSpecialValue = this._getInvalidOrSpecialValue();
+    const invalidOrSpecialValue = this.#getInvalidOrSpecialValue();
     if (invalidOrSpecialValue !== false) {
       return invalidOrSpecialValue;
     }
-    if (this.lowerCased.startsWith("rgba(")) {
+    if (this.#lowerCased.startsWith("rgba(")) {
       // The color is valid and begins with rgba(.
-      return this.authored;
+      return this.#authored;
     }
     const components = this.getRGBATuple();
     return (
@@ -313,54 +263,54 @@ CssColor.prototype = {
       components.a +
       ")"
     );
-  },
+  }
 
   get hsl() {
-    const invalidOrSpecialValue = this._getInvalidOrSpecialValue();
+    const invalidOrSpecialValue = this.#getInvalidOrSpecialValue();
     if (invalidOrSpecialValue !== false) {
       return invalidOrSpecialValue;
     }
-    if (this.lowerCased.startsWith("hsl(")) {
+    if (this.#lowerCased.startsWith("hsl(")) {
       // The color is valid and begins with hsl(.
-      return this.authored;
+      return this.#authored;
     }
     if (this.hasAlpha) {
       return this.hsla;
     }
-    return this._hsl();
-  },
+    return this.#hsl();
+  }
 
   get hsla() {
-    const invalidOrSpecialValue = this._getInvalidOrSpecialValue();
+    const invalidOrSpecialValue = this.#getInvalidOrSpecialValue();
     if (invalidOrSpecialValue !== false) {
       return invalidOrSpecialValue;
     }
-    if (this.lowerCased.startsWith("hsla(")) {
+    if (this.#lowerCased.startsWith("hsla(")) {
       // The color is valid and begins with hsla(.
-      return this.authored;
+      return this.#authored;
     }
     if (this.hasAlpha) {
       const a = this.getRGBATuple().a;
-      return this._hsl(a);
+      return this.#hsl(a);
     }
-    return this._hsl(1);
-  },
+    return this.#hsl(1);
+  }
 
   get hwb() {
-    const invalidOrSpecialValue = this._getInvalidOrSpecialValue();
+    const invalidOrSpecialValue = this.#getInvalidOrSpecialValue();
     if (invalidOrSpecialValue !== false) {
       return invalidOrSpecialValue;
     }
-    if (this.lowerCased.startsWith("hwb(")) {
+    if (this.#lowerCased.startsWith("hwb(")) {
       // The color is valid and begins with hwb(.
-      return this.authored;
+      return this.#authored;
     }
     if (this.hasAlpha) {
       const a = this.getRGBATuple().a;
-      return this._hwb(a);
+      return this.#hwb(a);
     }
-    return this._hwb();
-  },
+    return this.#hwb();
+  }
 
   /**
    * Check whether the current color value is in the special list e.g.
@@ -376,7 +326,7 @@ CssColor.prototype = {
    *         - If the color is a regular color e.g. #F06 so we return false
    *           to indicate that the color is neither invalid or special.
    */
-  _getInvalidOrSpecialValue() {
+  #getInvalidOrSpecialValue() {
     if (this.specialValue) {
       return this.specialValue;
     }
@@ -384,23 +334,7 @@ CssColor.prototype = {
       return "";
     }
     return false;
-  },
-
-  /**
-   * Change color
-   *
-   * @param  {String} color
-   *         Any valid color string
-   */
-  newColor(color) {
-    // Store a lower-cased version of the color to help with format
-    // testing.  The original text is kept as well so it can be
-    // returned when needed.
-    this.lowerCased = color.toLowerCase();
-    this.authored = color;
-    this._setColorUnitUppercase(color);
-    return this;
-  },
+  }
 
   nextColorUnit() {
     // Reorder the formats array to have the current format at the
@@ -408,31 +342,44 @@ CssColor.prototype = {
     // Put "name" at the end as that provides a hex value if there's
     // no name for the color.
     let formats = ["hex", "hsl", "rgb", "hwb", "name"];
-    const currentFormat = classifyColor(this.toString());
+
+    let currentFormat = this.#currentFormat;
+    // If we don't have determined the current format yet
+    if (!currentFormat) {
+      // If the pref value is COLORUNIT.authored, get the actual unit from the authored color,
+      // otherwise use the pref value.
+      const defaultFormat = Services.prefs.getCharPref(COLOR_UNIT_PREF);
+      currentFormat =
+        defaultFormat === CssColor.COLORUNIT.authored
+          ? classifyColor(this.#authored)
+          : defaultFormat;
+    }
     const putOnEnd = formats.splice(0, formats.indexOf(currentFormat));
     formats = [...formats, ...putOnEnd];
 
     const currentDisplayedColor = this[formats[0]];
 
+    let colorUnit;
     for (const format of formats) {
       if (this[format].toLowerCase() !== currentDisplayedColor.toLowerCase()) {
-        this.colorUnit = CssColor.COLORUNIT[format];
+        colorUnit = CssColor.COLORUNIT[format];
         break;
       }
     }
 
-    return this.toString();
-  },
+    this.#currentFormat = colorUnit;
+    return this.toString(colorUnit);
+  }
 
   /**
    * Return a string representing a color of type defined in COLOR_UNIT_PREF.
    */
-  toString() {
+  toString(colorUnit, forceUppercase) {
     let color;
 
-    switch (this.colorUnit) {
+    switch (colorUnit) {
       case CssColor.COLORUNIT.authored:
-        color = this.authored;
+        color = this.#authored;
         break;
       case CssColor.COLORUNIT.hex:
         color = this.hex;
@@ -454,48 +401,32 @@ CssColor.prototype = {
     }
 
     if (
-      this._colorUnitUppercase &&
-      this.colorUnit != CssColor.COLORUNIT.authored
+      forceUppercase ||
+      (colorUnit != CssColor.COLORUNIT.authored &&
+        colorIsUppercase(this.#authored))
     ) {
       color = color.toUpperCase();
     }
 
     return color;
-  },
+  }
 
   /**
    * Returns a RGBA 4-Tuple representation of a color or transparent as
    * appropriate.
    */
   getRGBATuple() {
-    const tuple = InspectorUtils.colorToRGBA(this.authored);
+    const tuple = InspectorUtils.colorToRGBA(this.#authored);
 
     tuple.a = parseFloat(tuple.a.toFixed(2));
 
     return tuple;
-  },
+  }
 
-  /**
-   * Returns a HSLA 4-Tuple representation of a color or transparent as
-   * appropriate.
-   */
-  _getHSLATuple() {
-    const { r, g, b, a } = InspectorUtils.colorToRGBA(this.authored);
-
-    const [h, s, l] = rgbToHsl([r, g, b]);
-
-    return {
-      h,
-      s,
-      l,
-      a: parseFloat(a.toFixed(2)),
-    };
-  },
-
-  _hsl(maybeAlpha) {
-    if (this.lowerCased.startsWith("hsl(") && maybeAlpha === undefined) {
+  #hsl(maybeAlpha) {
+    if (this.#lowerCased.startsWith("hsl(") && maybeAlpha === undefined) {
       // We can use it as-is.
-      return this.authored;
+      return this.#authored;
     }
 
     const { r, g, b } = this.getRGBATuple();
@@ -504,12 +435,12 @@ CssColor.prototype = {
       return "hsla(" + h + ", " + s + "%, " + l + "%, " + maybeAlpha + ")";
     }
     return "hsl(" + h + ", " + s + "%, " + l + "%)";
-  },
+  }
 
-  _hwb(maybeAlpha) {
-    if (this.lowerCased.startsWith("hwb(") && maybeAlpha === undefined) {
+  #hwb(maybeAlpha) {
+    if (this.#lowerCased.startsWith("hwb(") && maybeAlpha === undefined) {
       // We can use it as-is.
-      return this.authored;
+      return this.#authored;
     }
 
     const { r, g, b } = this.getRGBATuple();
@@ -517,14 +448,14 @@ CssColor.prototype = {
     return `hwb(${hue} ${white}% ${black}%${
       maybeAlpha !== undefined ? " / " + maybeAlpha : ""
     })`;
-  },
+  }
 
   /**
    * This method allows comparison of CssColor objects using ===.
    */
   valueOf() {
     return this.rgba;
-  },
+  }
 
   /**
    * Check whether the color is fully transparent (alpha === 0).
@@ -533,8 +464,8 @@ CssColor.prototype = {
    */
   isTransparent() {
     return this.getRGBATuple().a === 0;
-  },
-};
+  }
+}
 
 /**
  * Convert rgb value to hsl
@@ -667,42 +598,14 @@ function roundTo(number, digits) {
 }
 
 /**
- * Takes a color value of any type (hex, hsl, hsla, rgb, rgba, hwb)
- * and an alpha value to generate an rgba string with the correct
- * alpha value.
- *
- * @param  {String} colorValue
- *         Color in the form of hex, hsl, hsla, rgb, rgba.
- * @param  {Number} alpha
- *         Alpha value for the color, between 0 and 1.
- * @return {String}
- *         Converted color with `alpha` value in rgba form.
- */
-function setAlpha(colorValue, alpha) {
-  const color = new CssColor(colorValue);
-
-  // Throw if the color supplied is not valid.
-  if (!color.valid) {
-    throw new Error("Invalid color.");
-  }
-
-  // If an invalid alpha valid, just set to 1.
-  if (!(alpha >= 0 && alpha <= 1)) {
-    alpha = 1;
-  }
-
-  const { r, g, b } = color.getRGBATuple();
-  return "rgba(" + r + ", " + g + ", " + b + ", " + alpha + ")";
-}
-
-/**
  * Given a color, classify its type as one of the possible color
- * units, as known by |CssColor.colorUnit|.
+ * units, as known by |CssColor.COLORUNIT|.
  *
  * @param  {String} value
  *         The color, in any form accepted by CSS.
  * @return {String}
- *         The color classification, one of "rgb", "hsl", "hex", or "name".
+ *         The color classification, one of "rgb", "hsl", "hwb",
+ *         "hex", "name", or if no format is recognized, "authored".
  */
 function classifyColor(value) {
   value = value.toLowerCase();
@@ -714,8 +617,10 @@ function classifyColor(value) {
     return CssColor.COLORUNIT.hwb;
   } else if (/^#[0-9a-f]+$/.exec(value)) {
     return CssColor.COLORUNIT.hex;
+  } else if (/^[a-z\-]+$/.exec(value)) {
+    return CssColor.COLORUNIT.name;
   }
-  return CssColor.COLORUNIT.name;
+  return CssColor.COLORUNIT.authored;
 }
 
 /**
@@ -839,3 +744,23 @@ function calculateContrastRatio(backgroundColor, textColor) {
 
   return ratio > 1.0 ? ratio : 1 / ratio;
 }
+
+function colorIsUppercase(color) {
+  // Specifically exclude the case where the color is
+  // case-insensitive.  This makes it so that "#000" isn't
+  // considered "upper case" for the purposes of color cycling.
+  return color === color.toUpperCase() && color !== color.toLowerCase();
+}
+
+module.exports.colorUtils = {
+  CssColor,
+  rgbToHsl,
+  rgbToHwb,
+  rgbToLab,
+  classifyColor,
+  calculateContrastRatio,
+  calculateDeltaE,
+  calculateLuminance,
+  blendColors,
+  colorIsUppercase,
+};

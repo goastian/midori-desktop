@@ -57,7 +57,6 @@
 }
 
 .treeTable .treeValueCell.inputEnabled input:focus {
-  border-color: var(--theme-textbox-box-shadow);
   transition: all 150ms ease-in-out;
 }
 
@@ -113,7 +112,7 @@
 /* Learn More link */
 .treeTable .treeValueCell .learn-more-link {
   user-select: none;
-  color: var(--theme-highlight-blue);
+  color: var(--theme-link-color);
   cursor: pointer;
   margin: 0 5px;
 }

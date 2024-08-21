@@ -9,9 +9,6 @@ const STRINGS_URI = "devtools/client/locales/memory.properties";
 const L10N = (exports.L10N = new LocalizationHelper(STRINGS_URI));
 
 const { assert } = require("resource://devtools/shared/DevToolsUtils.js");
-const { Preferences } = ChromeUtils.importESModule(
-  "resource://gre/modules/Preferences.sys.mjs"
-);
 const CUSTOM_CENSUS_DISPLAY_PREF = "devtools.memory.custom-census-displays";
 const CUSTOM_LABEL_DISPLAY_PREF = "devtools.memory.custom-label-displays";
 const CUSTOM_TREE_MAP_DISPLAY_PREF = "devtools.memory.custom-tree-map-displays";
@@ -57,7 +54,8 @@ exports.getSnapshotTitle = function (snapshot) {
 function getCustomDisplaysHelper(pref) {
   let customDisplays = Object.create(null);
   try {
-    customDisplays = JSON.parse(Preferences.get(pref)) || Object.create(null);
+    customDisplays =
+      JSON.parse(Services.prefs.getStringPref(pref)) || Object.create(null);
   } catch (e) {
     DevToolsUtils.reportException(
       `String stored in "${pref}" pref cannot be parsed by \`JSON.parse()\`.`
@@ -436,7 +434,7 @@ exports.openFilePicker = function ({ title, filters, defaultName, mode }) {
   }
 
   const fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
-  fp.init(window, title, fpMode);
+  fp.init(window.browsingContext, title, fpMode);
 
   for (const filter of filters || []) {
     fp.appendFilter(filter[0], filter[1]);

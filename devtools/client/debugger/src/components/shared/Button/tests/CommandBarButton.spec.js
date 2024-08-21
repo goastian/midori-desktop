@@ -2,20 +2,28 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
+import React from "devtools/client/shared/vendor/react";
 import { shallow } from "enzyme";
 import { CommandBarButton, debugBtn } from "../";
 
 describe("CommandBarButton", () => {
   it("renders", () => {
-    const wrapper = shallow(<CommandBarButton children={[]} className={""} />);
+    const wrapper = shallow(
+      React.createElement(CommandBarButton, {
+        children: [],
+        className: "",
+      })
+    );
     expect(wrapper).toMatchSnapshot();
   });
 
   it("renders children", () => {
     const children = [1, 2, 3, 4];
     const wrapper = shallow(
-      <CommandBarButton children={children} className={""} />
+      React.createElement(CommandBarButton, {
+        children,
+        className: "",
+      })
     );
     expect(wrapper.find("button").children()).toHaveLength(4);
   });

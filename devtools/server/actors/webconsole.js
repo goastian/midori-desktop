@@ -42,7 +42,7 @@ loader.lazyRequireGetter(
 );
 loader.lazyRequireGetter(
   this,
-  "JSPropertyProvider",
+  "jsPropertyProvider",
   "resource://devtools/shared/webconsole/js-property-provider.js",
   true
 );
@@ -860,7 +860,6 @@ class WebConsoleActor extends Actor {
           startTime,
           ...response,
         });
-        return;
       } catch (e) {
         const message = `Encountered error while waiting for Helper Result: ${e}\n${e.stack}`;
         DevToolsUtils.reportException("evaluateJSAsync", Error(message));
@@ -929,17 +928,32 @@ class WebConsoleActor extends Actor {
       eager: request.eager,
       bindings: request.bindings,
       lineNumber: request.lineNumber,
+      // This flag is set to true in most cases as we consider most evaluations as internal and:
+      // * prevent any breakpoint from being triggerred when evaluating the JS input
+      // * prevent spawning Debugger.Source for the evaluated JS and showing it in Debugger UI
+      // This is only set to false when evaluating the console input.
+      disableBreaks: !!request.disableBreaks,
+      // Optional flag, to be set to true when Console Commands should override local symbols with
+      // the same name. Like if the page defines `$`, the evaluated string will use the `$` implemented
+      // by the console command instead of the page's function.
+      preferConsoleCommandsOverLocalSymbols:
+        !!request.preferConsoleCommandsOverLocalSymbols,
     };
 
     const { mapped } = request;
 
     // Set a flag on the thread actor which indicates an evaluation is being
-    // done for the client. This can affect how debugger handlers behave.
+    // done for the client. This is used to disable all types of breakpoints for all sources
+    // via `disabledBreaks`. When this flag is used, `reportExceptionsWhenBreaksAreDisabled`
+    // allows to still pause on exceptions.
     this.parentActor.threadActor.insideClientEvaluation = evalOptions;
 
-    const evalInfo = evalWithDebugger(input, evalOptions, this);
-
-    this.parentActor.threadActor.insideClientEvaluation = null;
+    let evalInfo;
+    try {
+      evalInfo = evalWithDebugger(input, evalOptions, this);
+    } finally {
+      this.parentActor.threadActor.insideClientEvaluation = null;
+    }
 
     return new Promise((resolve, reject) => {
       // Queue up a task to run in the next tick so any microtask created by the evaluated
@@ -1206,7 +1220,7 @@ class WebConsoleActor extends Actor {
         dbgObject = this.dbg.addDebuggee(this.evalGlobal);
       }
 
-      const result = JSPropertyProvider({
+      const result = jsPropertyProvider({
         dbgObject,
         environment,
         frameActorId,
@@ -1690,7 +1704,7 @@ class WebConsoleActor extends Actor {
    * The "will-navigate" progress listener. This is used to clear the current
    * eval scope.
    */
-  _onWillNavigate({ window, isTopLevel }) {
+  _onWillNavigate({ isTopLevel }) {
     if (isTopLevel) {
       this._evalGlobal = null;
       EventEmitter.off(this.parentActor, "will-navigate", this._onWillNavigate);

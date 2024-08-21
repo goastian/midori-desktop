@@ -294,18 +294,11 @@ add_task(async function test_change_in_about_profiling() {
         "The new value should have the same count of threads as the old value, please double check the test code."
       );
       setThreadInputValue(newThreadValue);
-      checkDevtoolsCustomPresetContent(
-        devtoolsDocument,
-        `
-          Interval: 2 ms
-          Threads: GeckoMain, Dummy
-          JavaScript
-          Native Stacks
-          CPU Utilization
-          Audio Callback Tracing
-          IPC Messages
-          Process CPU Utilization
-        `
+      ok(
+        getDevtoolsCustomPresetContent(devtoolsDocument).includes(
+          "Threads: GeckoMain, Dummy\n"
+        ),
+        "Threads list should match the changed value"
       );
     }
   );

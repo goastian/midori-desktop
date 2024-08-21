@@ -26,12 +26,17 @@ httpServer.registerPathHandler(`/`, function (request, response) {
 
 const TEST_URI = `data:text/html,<!DOCTYPE html><meta charset=utf8>
   <style>
-    button {
-      cursor: unknownCursor;
+    main {
+      & button {
+        cursor: unknownCursor;
+      }
     }
   </style>
-  <button id=1>Button 1</button>
-  <button id=2>Button 2</button>
+  <main>
+    <button id=1>Button 1</button>
+    <button id=2>Button 2</button>
+  </main>
+  <button id=out>Button 3</button>
   <iframe src="http://localhost:${httpServer.identity.primaryPort}/"></iframe>
   `;
 
@@ -54,17 +59,28 @@ add_task(async function () {
   info("Click on the expand arrow");
   messageNode.querySelector(".arrow").click();
 
-  await waitFor(
-    () => messageNode.querySelectorAll(".objectBox-node").length == 2
+  const impactedElementsLabel = await waitFor(() =>
+    messageNode.querySelector(".elements-label")
   );
-  ok(
-    messageNode.textContent.includes("NodeList [ button#1, button#2 ]"),
-    "The message was expanded and shows the impacted elements"
+  is(
+    impactedElementsLabel.innerText,
+    "Elements matching selector: :is(main) button",
+    "The message was expanded and shows the expected selector"
   );
 
-  let node = messageNode.querySelector(".objectBox-node");
+  const objectInspector = messageNode.querySelector(".object-inspector");
+  ok(
+    objectInspector.textContent.includes("NodeList [ button#1, button#2 ]"),
+    `The message shows the impacted elements (got "${objectInspector.textContent}")`
+  );
+
+  let node = objectInspector.querySelector(".objectBox-node");
   let openInInspectorIcon = node.querySelector(".open-inspector");
-  ok(openInInspectorIcon !== null, "The is an open in inspector icon");
+  Assert.notStrictEqual(
+    openInInspectorIcon,
+    null,
+    "The is an open in inspector icon"
+  );
 
   info(
     "Clicking on the inspector icon and waiting for the inspector to be selected"
@@ -105,7 +121,11 @@ add_task(async function () {
   );
   node = messageNode.querySelectorAll(".objectBox-node")[2];
   openInInspectorIcon = node.querySelector(".open-inspector");
-  ok(openInInspectorIcon !== null, "The is an open in inspector icon");
+  Assert.notStrictEqual(
+    openInInspectorIcon,
+    null,
+    "The is an open in inspector icon"
+  );
 
   info(
     "Clicking on the inspector icon and waiting for the inspector to be selected"

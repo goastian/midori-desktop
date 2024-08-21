@@ -41,8 +41,6 @@ const TEST_URI = `
 `;
 
 add_task(async function () {
-  await pushPref("layout.css.color-mix.enabled", true);
-
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
   const { inspector, view } = await openRuleView();
 
@@ -124,11 +122,7 @@ async function checkColorPickerConstrastData({
   expectedContrastValueScore,
   expectContrastRange = false,
   expectedMinContrastValueResult,
-  expectedMinContrastValueTitle,
-  expectedMinContrastValueScore,
   expectedMaxContrastValueResult,
-  expectedMaxContrastValueTitle,
-  expectedMaxContrastValueScore,
 }) {
   info(`Checking color picker: "${label}"`);
   const cPicker = view.tooltips.getTooltip("colorPicker");

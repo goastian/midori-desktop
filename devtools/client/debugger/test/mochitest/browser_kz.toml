@@ -1,0 +1,336 @@
+[DEFAULT]
+tags = "devtools"
+subsuite = "devtools"
+skip-if = [
+  "asan", # Frequent failures when opening tabs due to OOM issues, bug 1760260
+]
+support-files = [
+  "examples/*",
+  "integration-tests/*",
+  "head.js",
+  "shared-head.js",
+  "!/devtools/client/framework/browser-toolbox/test/helpers-browser-toolbox.js",
+  "!/devtools/client/inspector/test/head.js",
+  "!/devtools/client/inspector/test/shared-head.js",
+  "!/devtools/client/shared/test/shared-head.js",
+  "!/devtools/client/shared/test/telemetry-test-helpers.js",
+  "!/devtools/client/shared/test/highlighter-test-actor.js",
+  "!/devtools/client/webconsole/test/browser/shared-head.js",
+]
+prefs = [
+ "dom.ipc.processPrelaunch.enabled=false", # Disable randomly spawning processes during tests. After enabling windowless service workers, a process spawning will trigger an update of the service workers list which can fail the test if it occurs during shutdown (unhandled promise rejection).
+ "devtools.debugger.features.javascript-tracing=true", # This pref has to be set before the process starts
+]
+
+["browser_dbg-keyboard-navigation.js"]
+
+["browser_dbg-keyboard-shortcuts-modal.js"]
+
+["browser_dbg-keyboard-shortcuts.js"]
+
+["browser_dbg-layout-changes.js"]
+
+["browser_dbg-link-reload.js"]
+skip-if = [
+  "os == 'linux' && asan", # Bug 1715866
+  "os == 'win' && bits == 64", # Bug 1715866
+]
+
+["browser_dbg-log-events.js"]
+
+["browser_dbg-log-point-mapping.js"]
+
+["browser_dbg-log-points-workers.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-log-points.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-many-breakpoints-same-line.js"]
+
+["browser_dbg-merge-scopes.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-message-run-to-completion.js"]
+
+["browser_dbg-minified.js"]
+
+["browser_dbg-navigation-when-paused.js"]
+
+["browser_dbg-navigation.js"]
+skip-if = [
+  "verify && debug && os == 'mac'", # Bug 1307249
+  "os == 'linux' && debug && bits == 64", # Bug 1307249
+  "os == 'mac' && debug", # Bug 1307249
+]
+
+["browser_dbg-no-duplicate-breakpoints-on-frame-reload.js"]
+
+["browser_dbg-old-breakpoint.js"]
+skip-if = [
+  "os == 'linux'", #Bug 1644044
+  "os == 'mac'", #Bug 1644044
+]
+
+["browser_dbg-outline-filter.js"]
+
+["browser_dbg-outline-focus.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+skip-if = ["verify"]
+
+["browser_dbg-outline-pretty.js"]
+
+["browser_dbg-outline.js"]
+
+["browser_dbg-overrides.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-pause-exceptions.js"]
+
+["browser_dbg-pause-on-next.js"]
+
+["browser_dbg-pause-on-unload.js"]
+
+["browser_dbg-pause-points.js"]
+
+["browser_dbg-pause-ux.js"]
+skip-if = ["os == 'win'"]
+
+["browser_dbg-paused-overlay-iframe.js"]
+
+["browser_dbg-paused-overlay-loading.js"]
+
+["browser_dbg-paused-overlay.js"]
+
+["browser_dbg-pretty-print-breakpoints-columns.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-pretty-print-breakpoints-delete.js"]
+
+["browser_dbg-pretty-print-breakpoints.js"]
+
+["browser_dbg-pretty-print-console.js"]
+
+["browser_dbg-pretty-print-flow.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-pretty-print-inline-scripts.js"]
+skip-if = ["a11y_checks"] # Bug 1858041 and 1849028 intermittent a11y_checks results (fails on Try, passes on Autoland)
+
+["browser_dbg-pretty-print-paused-anonymous.js"]
+
+["browser_dbg-pretty-print-paused.js"]
+
+["browser_dbg-pretty-print-sourcemap.js"]
+
+["browser_dbg-pretty-print.js"]
+
+["browser_dbg-preview-frame.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+skip-if = ["os == 'win'"]
+
+["browser_dbg-preview-getter.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-preview-module.js"]
+skip-if = ["os == 'win'"]
+
+["browser_dbg-preview-source-maps.js"]
+skip-if = ["os == 'win'"]
+
+["browser_dbg-preview-wrapped-lines.js"]
+fail-if = ["a11y_checks"] # Bug 1860733 splitter element is not focusable
+
+["browser_dbg-preview.js"]
+skip-if = [
+  "os == 'win'",
+  "os == 'linux'",
+  "os == 'mac' && !debug",
+]
+
+["browser_dbg-project-root.js"]
+
+["browser_dbg-project-search.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-quick-open.js"]
+skip-if = [
+  "os == 'win'",
+  "os == 'linux' && bits == 64 && debug", # Bug 1721999
+]
+
+["browser_dbg-react-app.js"]
+skip-if = [
+  "os == 'win'",
+  "os == 'linux' && tsan", # Bug 1813196
+]
+
+["browser_dbg-react-jsx.js"]
+
+["browser_dbg-reducer-cleanup-on-target-removal.js"]
+skip-if = ["os == 'linux' && (debug || tsan)"] # Bug 1835255
+
+["browser_dbg-reloading.js"]
+skip-if = ["true"]
+
+["browser_dbg-remember-expanded-scopes.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-restart-frame.js"]
+
+["browser_dbg-returnvalues.js"]
+
+["browser_dbg-scopes-duplicated.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-scopes-mutations.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-scopes-xrays.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-scopes.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-scroll-run-to-completion.js"]
+
+["browser_dbg-search-file-paused.js"]
+skip-if = ["os == 'win'"] # Bug 1393121
+
+["browser_dbg-search-file-retains-query.js"]
+skip-if = ["os == 'win'"] # Bug 1393121
+
+["browser_dbg-search-file.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+skip-if = ["os == 'win'"] # Bug 1393121
+
+["browser_dbg-settings-disable-javascript.js"]
+
+["browser_dbg-slow-script.js"]
+
+["browser_dbg-source-pragma.js"]
+
+["browser_dbg-sourceURL-breakpoint.js"]
+
+["browser_dbg-sourcemapped-breakpoint-console.js"]
+skip-if = ["os == 'win' && ccov"] # Bug 1453549
+
+["browser_dbg-sourcemapped-preview.js"]
+skip-if = ["os == 'win'"] # Bug 1448523, Bug 1448450
+
+["browser_dbg-sourcemapped-scopes.js"]
+# Bug 1441545, 1536253 - very slow on debug
+skip-if = [
+  "ccov",
+  "debug",
+  "tsan",
+  "verify && debug && os == 'linux'",
+  "a11y_checks", # Bugs 1858041 and 1849028 intermittent results (fails on Try, passes on Autoland)
+]
+
+["browser_dbg-sourcemapped-stepping.js"]
+skip-if = ["true"] # original stepping is currently disabled
+
+["browser_dbg-sourcemapped-toggle.js"]
+
+["browser_dbg-sourcemaps-bogus.js"]
+skip-if = ["os == 'linux' && !asan"] # bug 1447118
+
+["browser_dbg-sourcemaps-breakpoints.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-sourcemaps-credentials.js"]
+
+["browser_dbg-sourcemaps-disabled.js"]
+
+["browser_dbg-sourcemaps-ignorelist.js"]
+
+["browser_dbg-sourcemaps-indexed.js"]
+skip-if = [
+  "os == 'win'", # Bug 1434792
+  "verify", # Bug 1434792
+]
+
+["browser_dbg-sourcemaps-redirect.js"]
+
+["browser_dbg-sourcemaps-reloading-quickly.js"]
+
+["browser_dbg-sourcemaps-reloading.js"]
+
+["browser_dbg-sourcemaps.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-sourcemaps2.js"]
+
+["browser_dbg-sourcemaps3.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-sources-project-search.js"]
+
+["browser_dbg-state-based-panels.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-step-in-navigate.js"]
+
+["browser_dbg-step-in-uninitialized.js"]
+
+["browser_dbg-stepping.js"]
+skip-if = [
+  "debug",
+  "verify && os == 'win'",
+]
+
+["browser_dbg-tabs-keyboard.js"]
+skip-if = ["os == 'win'"]
+
+["browser_dbg-tabs-pretty-print.js"]
+
+["browser_dbg-tabs-without-urls-selected.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-tabs-without-urls.js"]
+
+["browser_dbg-tabs.js"]
+
+["browser_dbg-toggling-tools.js"]
+
+["browser_dbg-ua-widgets.js"]
+
+["browser_dbg-unselected-pause.js"]
+
+["browser_dbg-watchpoints.js"]
+skip-if = ["true"] # Bug 1814093
+
+["browser_dbg-windowless-service-workers-reload.js"]
+skip-if = [
+  "!serviceworker_e10s", # parent intercept mode required.
+  "os == 'linux'", # Bug 1767716
+  "win11_2009 && !debug", # Bug 1767716
+]
+
+["browser_dbg-windowless-service-workers.js"]
+skip-if = [
+  "!serviceworker_e10s", # parent intercept mode is needed bug 1588154. Bug 1613543, the test consistently timeouts on Linux coverage builds and WR debug builds.
+  "os == 'linux'", # Bug 1732486, # Bug 1767717
+  "win11_2009 && !debug", # Bug 1767717
+]
+
+["browser_dbg-windowless-workers-early-breakpoint.js"]
+
+["browser_dbg-windowless-workers.js"]
+
+["browser_dbg-worker-exception.js"]
+
+["browser_dbg-worker-module.js"]
+
+["browser_dbg-worker-nested.js"]
+
+["browser_dbg-worker-scopes.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-wrong-fetch.js"]
+
+["browser_dbg-xhr-breakpoints.js"]
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+
+["browser_dbg-xhr-run-to-completion.js"]

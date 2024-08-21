@@ -35,9 +35,13 @@ async function evaluateJSAndCheckResult(commands, input, expected) {
 
 async function registerNewCommand(commands) {
   await ContentTask.spawn(gBrowser.selectedBrowser, null, function () {
-    this.WebConsoleCommandsManager.register("setFoo", (owner, value) => {
-      owner.window.foo = value;
-      return "ok";
+    this.WebConsoleCommandsManager.register({
+      name: "setFoo",
+      isSideEffectFree: false,
+      command(owner, value) {
+        owner.window.foo = value;
+        return "ok";
+      },
     });
   });
 
@@ -54,10 +58,14 @@ async function registerNewCommand(commands) {
 
 async function registerAccessor(commands) {
   await ContentTask.spawn(gBrowser.selectedBrowser, null, function () {
-    this.WebConsoleCommandsManager.register("$foo", {
-      get(owner) {
-        const foo = owner.window.document.getElementById("quack");
-        return owner.makeDebuggeeValue(foo);
+    this.WebConsoleCommandsManager.register({
+      name: "$foo",
+      isSideEffectFree: true,
+      command: {
+        get(owner) {
+          const foo = owner.window.document.getElementById("quack");
+          return owner.makeDebuggeeValue(foo);
+        },
       },
     });
   });

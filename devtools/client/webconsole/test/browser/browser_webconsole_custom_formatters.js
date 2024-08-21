@@ -9,8 +9,6 @@ const TEST_URI =
   "test/browser/test-console-custom-formatters.html";
 
 add_task(async function () {
-  // ToDo: This preference can be removed once the custom formatters feature is stable enough
-  await pushPref("devtools.custom-formatters", true);
   await pushPref("devtools.custom-formatters.enabled", true);
 
   const hud = await openNewTabAndConsole(TEST_URI);
@@ -24,6 +22,7 @@ add_task(async function () {
   await testObjectWithFormattedHeader(hud);
   await testObjectWithFormattedHeaderAndBody(hud);
   await testCustomFormatterWithObjectTag(hud);
+  await testProxyObject(hud);
 });
 
 async function testString(hud) {
@@ -132,12 +131,25 @@ async function testCustomFormatterWithObjectTag(hud) {
   );
 }
 
+async function testProxyObject(hud) {
+  info("Test that Proxy objects can be handled by custom formatter");
+  await testCustomFormatting(hud, {
+    hasCustomFormatter: true,
+    messageText: "Formatted Proxy",
+    headerStyles: "font-weight: bold;",
+  });
+}
+
 async function testCustomFormatting(
   hud,
   { hasCustomFormatter, messageText, headerStyles, bodyText, bodyStyles }
 ) {
   const node = await waitFor(() => {
-    return findConsoleAPIMessage(hud, messageText);
+    return findMessageVirtualizedByType({
+      hud,
+      text: messageText,
+      typeSelector: ".console-api",
+    });
   });
 
   const headerJsonMlNode = node.querySelector(".objectBox-jsonml");

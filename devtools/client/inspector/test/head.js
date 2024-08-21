@@ -22,7 +22,6 @@ Services.scriptloader.loadSubScript(
   this
 );
 
-const { LocalizationHelper } = require("resource://devtools/shared/l10n.js");
 const INSPECTOR_L10N = new LocalizationHelper(
   "devtools/client/locales/inspector.properties"
 );
@@ -132,10 +131,12 @@ function pickElement(inspector, selector, x, y) {
  *        X-offset from the top-left corner of the element matching the provided selector
  * @param {Number} y
  *        Y-offset from the top-left corner of the element matching the provided selector
+ * @param {Object} eventOptions
+ *        Options that will be passed to synthesizeMouse
  * @return {Promise} promise that resolves when both the "picker-node-hovered" and
  *                   "highlighter-shown" events are emitted.
  */
-async function hoverElement(inspector, selector, x, y) {
+async function hoverElement(inspector, selector, x, y, eventOptions = {}) {
   const { waitForHighlighterTypeShown } = getHighlighterTestHelpers(inspector);
   info(`Waiting for element "${selector}" to be hovered`);
   const onHovered = inspector.toolbox.nodePicker.once("picker-node-hovered");
@@ -160,7 +161,7 @@ async function hoverElement(inspector, selector, x, y) {
   if (isNaN(x) || isNaN(y)) {
     BrowserTestUtils.synthesizeMouseAtCenter(
       selector,
-      { type: "mousemove" },
+      { ...eventOptions, type: "mousemove" },
       browsingContext
     );
   } else {
@@ -168,7 +169,7 @@ async function hoverElement(inspector, selector, x, y) {
       selector,
       x,
       y,
-      { type: "mousemove" },
+      { ...eventOptions, type: "mousemove" },
       browsingContext
     );
   }
@@ -815,6 +816,11 @@ function waitForStyleEditor(toolbox, href) {
       // A helper that resolves the promise once it receives an editor that
       // matches the expected href. Returns false if the editor was not correct.
       const gotEditor = editor => {
+        if (!editor) {
+          info("Editor went away after selected?");
+          return false;
+        }
+
         const currentHref = editor.styleSheet.href;
         if (!href || (href && currentHref.endsWith(href))) {
           info("Stylesheet editor selected");
@@ -990,23 +996,6 @@ async function assertTooltipHiddenOnMouseOut(tooltip, target) {
   await tooltip.once("hidden");
 
   ok(!tooltip.isVisible(), "The tooltip is hidden on mouseout");
-}
-
-/**
- * Get the rule editor from the rule-view given its index
- *
- * @param {CssRuleView} view
- *        The instance of the rule-view panel
- * @param {Number} childrenIndex
- *        The children index of the element to get
- * @param {Number} nodeIndex
- *        The child node index of the element to get
- * @return {DOMNode} The rule editor if any at this index
- */
-function getRuleViewRuleEditor(view, childrenIndex, nodeIndex) {
-  return nodeIndex !== undefined
-    ? view.element.children[childrenIndex].childNodes[nodeIndex]._ruleEditor
-    : view.element.children[childrenIndex]._ruleEditor;
 }
 
 /**
@@ -1456,4 +1445,57 @@ async function isNodeCorrectlyHighlighted(highlighterTestFront, selector) {
       );
     }
   }
+}
+
+/**
+ * Get the position and size of the measuring tool.
+ *
+ * @param {Object} Object returned by getHighlighterHelperFor()
+ * @return {Promise<Object>} A promise that resolves with an object containing
+ *    the x, y, width, and height properties of the measuring tool which has
+ *    been drawn on-screen
+ */
+async function getAreaRect({ getElementAttribute }) {
+  // The 'box-path' element holds the width and height of the
+  // measuring area as well as the position relative to its
+  // parent <g> element.
+  const d = await getElementAttribute("box-path", "d");
+  // The tool element itself is a <g> element grouping all paths.
+  // Though <g> elements do not have coordinates by themselves,
+  // therefore it is positioned using the 'transform' CSS property.
+  // So, in order to get the position of the measuring area, the
+  // coordinates need to be read from the translate() function.
+  const transform = await getElementAttribute("tool", "transform");
+  const reDir = /(\d+) (\d+)/g;
+  const reTransform = /(\d+),(\d+)/;
+  const coords = {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+  };
+  let match;
+  while ((match = reDir.exec(d))) {
+    let [, x, y] = match;
+    x = Number(x);
+    y = Number(y);
+    if (x < coords.x) {
+      coords.x = x;
+    }
+    if (y < coords.y) {
+      coords.y = y;
+    }
+    if (x > coords.width) {
+      coords.width = x;
+    }
+    if (y > coords.height) {
+      coords.height = y;
+    }
+  }
+
+  match = reTransform.exec(transform);
+  coords.x += Number(match[1]);
+  coords.y += Number(match[2]);
+
+  return coords;
 }

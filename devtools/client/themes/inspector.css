@@ -4,6 +4,11 @@
 
 :root {
   --min-container-width: 300px;
+  --pseudo-class-text-color: var(--yellow-75);
+
+  &.theme-dark {
+    --pseudo-class-text-color: var(--yellow-50);
+  }
 }
 
 * {
@@ -129,7 +134,7 @@ window {
 
 #inspector-breadcrumbs {
   display: flex;
-
+  outline-offset: -2px;
   /* Break out of the XUL flexbox, so the splitter can still shrink the
      markup view even if the contents of the breadcrumbs are wider than
      the new width. */

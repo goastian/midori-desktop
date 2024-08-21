@@ -12,6 +12,10 @@ const {
 } = require("resource://devtools/client/shared/vendor/react.js");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const {
+  getFormatStr,
+  getStr,
+} = require("resource://devtools/client/inspector/layout/utils/l10n.js");
 
 loader.lazyGetter(this, "Rep", function () {
   return require("resource://devtools/client/shared/components/reps/index.js")
@@ -141,6 +145,7 @@ class GridItem extends PureComponent {
             type: "checkbox",
             value: grid.id,
             onChange: this.onGridCheckboxClick,
+            title: getStr("layout.toggleGridHighlighter"),
           }),
           Rep({
             defaultRep: Rep.ElementNode,
@@ -155,14 +160,14 @@ class GridItem extends PureComponent {
             },
           })
         ),
-        dom.div({
+        dom.button({
           className: "layout-color-swatch",
           "data-color": grid.color,
           ref: this.swatchEl,
           style: {
             backgroundColor: grid.color,
           },
-          title: grid.color,
+          title: getFormatStr("layout.colorSwatch.tooltip", grid.color),
         })
       ),
       this.renderSubgrids()

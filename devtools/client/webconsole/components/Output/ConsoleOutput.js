@@ -84,7 +84,7 @@ class ConsoleOutput extends Component {
     this.ref = createRef();
     this.lazyMessageListRef = createRef();
 
-    this.resizeObserver = new ResizeObserver(entries => {
+    this.resizeObserver = new ResizeObserver(() => {
       // If we don't have the outputNode reference, or if the outputNode isn't connected
       // anymore, we disconnect the resize observer (componentWillUnmount is never called
       // on this component, so we have to do it here).
@@ -141,7 +141,7 @@ class ConsoleOutput extends Component {
   }
 
   // FIXME: https://bugzilla.mozilla.org/show_bug.cgi?id=1774507
-  UNSAFE_componentWillUpdate(nextProps, nextState) {
+  UNSAFE_componentWillUpdate(nextProps) {
     this.isUpdating = true;
     if (nextProps.cacheGeneration !== this.props.cacheGeneration) {
       this.messageIdsToKeepAlive = new Set();
@@ -164,13 +164,6 @@ class ConsoleOutput extends Component {
     const bottomBuffer = this.lazyMessageListRef.current.bottomBuffer;
     this.scrollDetectionIntersectionObserver.unobserve(bottomBuffer);
 
-    // We need to scroll to the bottom if:
-    // - we are reacting to "initialize" action, and we are already scrolled to the bottom
-    // - the number of messages displayed changed and we are already scrolled to the
-    //   bottom, but not if we are reacting to a group opening.
-    // - the number of messages in the store changed and the new message is an evaluation
-    //   result.
-
     const visibleMessagesDelta =
       nextProps.visibleMessages.length - this.props.visibleMessages.length;
     const messagesDelta = nextProps.messageCount - this.props.messageCount;
@@ -182,24 +175,34 @@ class ConsoleOutput extends Component {
       nextProps.mutableMessages.get(nextProps.lastMessageId)?.type ===
         MESSAGE_TYPE.RESULT;
 
-    const messagesUiDelta =
-      nextProps.messagesUi.length - this.props.messagesUi.length;
-    const isOpeningGroup =
-      messagesUiDelta > 0 &&
-      nextProps.messagesUi.some(
-        id =>
-          !this.props.messagesUi.includes(id) &&
-          nextProps.messagesUi.includes(id) &&
-          this.props.visibleMessages.includes(id) &&
-          nextProps.visibleMessages.includes(id)
+    // Use an inline function in order to avoid executing the expensive Array.some()
+    // unless condition are meant to do this additional check.
+    const isOpeningGroup = () => {
+      const messagesUiDelta =
+        nextProps.messagesUi.length - this.props.messagesUi.length;
+      return (
+        messagesUiDelta > 0 &&
+        nextProps.messagesUi.some(
+          id =>
+            !this.props.messagesUi.includes(id) &&
+            this.props.visibleMessages.includes(id) &&
+            nextProps.visibleMessages.includes(id)
+        )
       );
+    };
 
+    // We need to scroll to the bottom if:
     this.shouldScrollBottom =
+      // - we are reacting to "initialize" action, and we are already scrolled to the bottom
       (!this.props.initialized &&
         nextProps.initialized &&
         this.scrolledToBottom) ||
+      // - the number of messages in the store changed and the new message is an evaluation
+      //   result.
       isNewMessageEvaluationResult ||
-      (this.scrolledToBottom && visibleMessagesDelta > 0 && !isOpeningGroup);
+      // - the number of messages displayed changed and we are already scrolled to the
+      //   bottom, but not if we are reacting to a group opening.
+      (this.scrolledToBottom && visibleMessagesDelta > 0 && !isOpeningGroup());
   }
 
   componentDidUpdate(prevProps) {
@@ -353,7 +356,7 @@ class ConsoleOutput extends Component {
   }
 }
 
-function mapStateToProps(state, props) {
+function mapStateToProps(state) {
   const mutableMessages = getMutableMessagesById(state);
   return {
     initialized: state.ui.initialized,

@@ -30,9 +30,13 @@ loader.lazyGetter(this, "indexedDBForStorage", () => {
   }
 });
 const lazy = {};
-ChromeUtils.defineESModuleGetters(lazy, {
-  Sqlite: "resource://gre/modules/Sqlite.sys.mjs",
-});
+ChromeUtils.defineESModuleGetters(
+  lazy,
+  {
+    Sqlite: "resource://gre/modules/Sqlite.sys.mjs",
+  },
+  { global: "contextual" }
+);
 
 /**
  * An async method equivalent to setTimeout but using Promises
@@ -882,7 +886,7 @@ class IndexedDBStorageActor extends BaseStorageActor {
     const { name } = this.splitNameAndStorage(dbName);
     const request = this.openWithPrincipal(principal, name, storage);
 
-    return new Promise((resolve, reject) => {
+    return new Promise(resolve => {
       let { objectStore, id, index, offset, size } = requestOptions;
       const data = [];
       let db;

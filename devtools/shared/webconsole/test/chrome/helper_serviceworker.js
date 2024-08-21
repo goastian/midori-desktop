@@ -1,12 +1,13 @@
 "use strict";
 
 console.log("script evaluation");
+console.log("Here is a SAB", new SharedArrayBuffer(1024));
 
-addEventListener("install", function (evt) {
+addEventListener("install", function () {
   console.log("install event");
 });
 
-addEventListener("activate", function (evt) {
+addEventListener("activate", function () {
   console.log("activate event");
 });
 

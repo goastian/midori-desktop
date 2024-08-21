@@ -33,12 +33,11 @@ var makeDebugger = require("resource://devtools/server/actors/utils/make-debugge
 const Targets = require("resource://devtools/server/actors/targets/index.js");
 const { TargetActorRegistry } = ChromeUtils.importESModule(
   "resource://devtools/server/actors/targets/target-actor-registry.sys.mjs",
-  {
-    loadInDevToolsLoader: false,
-  }
+  { global: "shared" }
 );
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/PrivateBrowsingUtils.sys.mjs"
+  "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+  { global: "contextual" }
 );
 
 const EXTENSION_CONTENT_SYS_MJS =
@@ -82,7 +81,7 @@ loader.lazyGetter(lazy, "ExtensionContent", () => {
     // main loader. Note that the user of lazy.ExtensionContent elsewhere in
     // this file (at webextensionsContentScriptGlobals) looks up the module
     // via Cu.isESModuleLoaded, which also uses the main loader as desired.
-    loadInDevToolsLoader: false,
+    global: "shared",
   }).ExtensionContent;
 });
 
@@ -382,6 +381,15 @@ class WindowGlobalTargetActor extends BaseTargetActor {
     // (This is also probably meant to disappear once EFT is the only supported codepath)
     this._docShellsObserved = false;
     DevToolsUtils.executeSoon(() => this._watchDocshells());
+
+    // The `watchedByDevTools` enables gecko behavior tied to this flag, such as:
+    //  - reporting the contents of HTML loaded in the docshells,
+    //  - or capturing stacks for the network monitor.
+    //
+    // This flag can only be set on top level BrowsingContexts.
+    if (!this.browsingContext.parent) {
+      this.browsingContext.watchedByDevTools = true;
+    }
   }
 
   get docShell() {
@@ -481,6 +489,10 @@ class WindowGlobalTargetActor extends BaseTargetActor {
     return this.browsingContext?.id;
   }
 
+  get innerWindowId() {
+    return this.window?.windowGlobalChild.innerWindowId;
+  }
+
   get browserId() {
     return this.browsingContext?.browserId;
   }
@@ -509,9 +521,15 @@ class WindowGlobalTargetActor extends BaseTargetActor {
    * @return {Array}
    */
   get windows() {
-    return this.docShells.map(docShell => {
-      return docShell.domWindow;
-    });
+    const windows = [];
+    for (const docShell of this.docShells) {
+      try {
+        windows.push(docShell.domWindow);
+      } catch (e) {
+        // Ignore destroying docshells which may throw when accessing domWindow property.
+      }
+    }
+    return windows;
   }
 
   /**
@@ -688,6 +706,11 @@ class WindowGlobalTargetActor extends BaseTargetActor {
       response.outerWindowID = this.outerWindowID;
     }
 
+    // If the actor is already being destroyed, avoid re-registering the target scoped actors
+    if (this.destroying) {
+      return response;
+    }
+
     const actors = this._createExtraActors();
     Object.assign(response, actors);
 
@@ -730,6 +753,17 @@ class WindowGlobalTargetActor extends BaseTargetActor {
     if (this._touchSimulator) {
       this._touchSimulator.stop();
       this._touchSimulator = null;
+    }
+
+    // The watchedByDevTools flag is only set on top level BrowsingContext
+    // (as it then cascades to all its children),
+    // and when destroying the target, we should tell the platform we no longer
+    // observe this BrowsingContext and set this attribute to false.
+    if (
+      this.browsingContext?.watchedByDevTools &&
+      !this.browsingContext.parent
+    ) {
+      this.browsingContext.watchedByDevTools = false;
     }
 
     // Check for `docShell` availability, as it can be already gone during
@@ -888,7 +922,7 @@ class WindowGlobalTargetActor extends BaseTargetActor {
     return {};
   }
 
-  listFrames(request) {
+  listFrames() {
     const windows = this._docShellsToWindows(this.docShells);
     return { frames: windows };
   }
@@ -912,7 +946,7 @@ class WindowGlobalTargetActor extends BaseTargetActor {
     );
   }
 
-  listWorkers(request) {
+  listWorkers() {
     return this.ensureWorkerDescriptorActorList()
       .getList()
       .then(actors => {
@@ -960,7 +994,7 @@ class WindowGlobalTargetActor extends BaseTargetActor {
     this.emit("workerListChanged");
   }
 
-  _onConsoleApiProfilerEvent(subject, topic, data) {
+  _onConsoleApiProfilerEvent() {
     // TODO: We will receive console-api-profiler events for any browser running
     // in the same process as this target. We should filter irrelevant events,
     // but console-api-profiler currently doesn't emit any information to identify
@@ -977,7 +1011,7 @@ class WindowGlobalTargetActor extends BaseTargetActor {
     });
   }
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     // Ignore any event that comes before/after the actor is attached.
     // That typically happens during Firefox shutdown.
     if (this.isDestroyed()) {
@@ -1165,7 +1199,7 @@ class WindowGlobalTargetActor extends BaseTargetActor {
    * This sets up the content window for being debugged
    */
   _createThreadActor() {
-    this.threadActor = new ThreadActor(this, this.window);
+    this.threadActor = new ThreadActor(this);
     this.manage(this.threadActor);
   }
 
@@ -1187,7 +1221,7 @@ class WindowGlobalTargetActor extends BaseTargetActor {
 
   // Protocol Request Handlers
 
-  detach(request) {
+  detach() {
     // Destroy the actor in the next event loop in order
     // to ensure responding to the `detach` request.
     DevToolsUtils.executeSoon(() => {
@@ -1308,13 +1342,12 @@ class WindowGlobalTargetActor extends BaseTargetActor {
       return;
     }
 
+    // Also update configurations which applies to all target types
+    super.updateTargetConfiguration(options, calledFromDocumentCreation);
+
     let reload = false;
     if (typeof options.touchEventsOverride !== "undefined") {
       const enableTouchSimulator = options.touchEventsOverride === "enabled";
-
-      this.docShell.metaViewportOverride = enableTouchSimulator
-        ? Ci.nsIDocShell.META_VIEWPORT_OVERRIDE_ENABLED
-        : Ci.nsIDocShell.META_VIEWPORT_OVERRIDE_NONE;
 
       // We want to reload the document if it's an "existing" top level target on which
       // the touch simulator will be toggled and the user has turned the
@@ -1382,7 +1415,14 @@ class WindowGlobalTargetActor extends BaseTargetActor {
    */
   _restoreTargetConfiguration() {
     if (this._restoreFocus && this.browsingContext?.isActive) {
-      this.window.focus();
+      try {
+        this.window.focus();
+      } catch (e) {
+        // When closing devtools while navigating, focus() may throw NS_ERROR_XPC_SECURITY_MANAGER_VETO
+        if (e.result != Cr.NS_ERROR_XPC_SECURITY_MANAGER_VETO) {
+          throw e;
+        }
+      }
     }
   }
 
@@ -1686,17 +1726,6 @@ class DebuggerProgressListener {
       this._knownWindowIDs.set(getWindowID(win), win);
     }
 
-    // The `watchedByDevTools` enables gecko behavior tied to this flag, such as:
-    //  - reporting the contents of HTML loaded in the docshells,
-    //  - or capturing stacks for the network monitor.
-    //
-    // This flag is also set in frame-helper but in the case of the browser toolbox, we
-    // don't have the watcher enabled by default yet, and as a result we need to set it
-    // here for the parent process window global.
-    // This should be removed as part of Bug 1709529.
-    if (this._targetActor.typeName === "parentProcessTarget") {
-      docShell.browsingContext.watchedByDevTools = true;
-    }
     // Immediately enable CSS error reports on new top level docshells, if this was already enabled.
     // This is specific to MBT and WebExtension targets (so the isRootActor check).
     if (
@@ -1738,12 +1767,6 @@ class DebuggerProgressListener {
       : this._getWindowsInDocShell(docShell);
     for (const win of windows) {
       this._knownWindowIDs.delete(getWindowID(win));
-    }
-
-    // We only reset it for parent process target actor as the flag should be set in parent
-    // process, and thus is set elsewhere for other type of BrowsingContextActor.
-    if (this._targetActor.typeName === "parentProcessTarget") {
-      docShell.browsingContext.watchedByDevTools = false;
     }
   }
 
@@ -1821,7 +1844,7 @@ class DebuggerProgressListener {
     this._knownWindowIDs.delete(getWindowID(window));
   }, "DebuggerProgressListener.prototype.onWindowHidden");
 
-  observe = DevToolsUtils.makeInfallible(function (subject, topic) {
+  observe = DevToolsUtils.makeInfallible(function (subject) {
     if (this._targetActor.isDestroyed()) {
       return;
     }
@@ -1856,8 +1879,7 @@ class DebuggerProgressListener {
   onStateChange = DevToolsUtils.makeInfallible(function (
     progress,
     request,
-    flag,
-    status
+    flag
   ) {
     if (this._targetActor.isDestroyed()) {
       return;

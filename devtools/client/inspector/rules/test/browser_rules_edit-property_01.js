@@ -100,6 +100,11 @@ async function testEditProperty(view, rule, name, value, isValid) {
     "The property name editor got focused"
   );
   let input = editor.input;
+  is(
+    input.getAttribute("aria-label"),
+    "Property name",
+    "Property name input has expected aria-label"
+  );
 
   info(
     "Entering a new property name, including : to commit and " +
@@ -152,7 +157,7 @@ function checkResults() {
     const expected = DATA[i];
 
     // ignore timestamp
-    ok(timestamp > 0, "timestamp is greater than 0");
+    Assert.greater(timestamp, 0, "timestamp is greater than 0");
     is(category, expected.category, "category is correct");
     is(method, expected.method, "method is correct");
     is(object, expected.object, "object is correct");

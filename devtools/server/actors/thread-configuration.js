@@ -9,34 +9,42 @@ const {
   threadConfigurationSpec,
 } = require("resource://devtools/shared/specs/thread-configuration.js");
 
-const {
-  SessionDataHelpers,
-} = require("resource://devtools/server/actors/watcher/SessionDataHelpers.jsm");
+const { SessionDataHelpers } = ChromeUtils.importESModule(
+  "resource://devtools/server/actors/watcher/SessionDataHelpers.sys.mjs",
+  { global: "contextual" }
+);
 const {
   SUPPORTED_DATA: { THREAD_CONFIGURATION },
 } = SessionDataHelpers;
 
 // List of options supported by this thread configuration actor.
+/* eslint sort-keys: "error" */
 const SUPPORTED_OPTIONS = {
-  // Enable pausing on exceptions.
-  pauseOnExceptions: true,
   // Disable pausing on caught exceptions.
   ignoreCaughtExceptions: true,
-  // Include previously saved stack frames when paused.
-  shouldIncludeSavedFrames: true,
-  // Include async stack frames when paused.
-  shouldIncludeAsyncLiveFrames: true,
-  // Stop pausing on breakpoints.
-  skipBreakpoints: true,
   // Log the event break points.
   logEventBreakpoints: true,
   // Enable debugging asm & wasm.
   // See https://searchfox.org/mozilla-central/source/js/src/doc/Debugger/Debugger.md#16-26
   observeAsmJS: true,
   observeWasm: true,
+  // Enable pausing on exceptions.
+  pauseOnExceptions: true,
+  // Boolean to know if we should display the overlay when pausing
+  pauseOverlay: true,
   // Should pause all the workers untill thread has attached.
   pauseWorkersUntilAttach: true,
+  // Include async stack frames when paused.
+  shouldIncludeAsyncLiveFrames: true,
+  // Include previously saved stack frames when paused.
+  shouldIncludeSavedFrames: true,
+  // Controls pausing on debugger statement.
+  // (This is enabled by default if omitted)
+  shouldPauseOnDebuggerStatement: true,
+  // Stop pausing on breakpoints.
+  skipBreakpoints: true,
 };
+/* eslint-disable sort-keys */
 
 /**
  * This actor manages the configuration options which apply to thread actor for all the targets.
@@ -66,7 +74,11 @@ class ThreadConfigurationActor extends Actor {
       })
       .map(key => ({ key, value: configuration[key] }));
 
-    await this.watcherActor.addDataEntry(THREAD_CONFIGURATION, configArray);
+    await this.watcherActor.addOrSetDataEntry(
+      THREAD_CONFIGURATION,
+      configArray,
+      "add"
+    );
   }
 }
 

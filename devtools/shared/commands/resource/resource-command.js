@@ -27,6 +27,9 @@ class ResourceCommand {
   constructor({ commands }) {
     this.targetCommand = commands.targetCommand;
 
+    // Public attribute set by tests to disable throttling
+    this.throttlingDisabled = false;
+
     this._onTargetAvailable = this._onTargetAvailable.bind(this);
     this._onTargetDestroyed = this._onTargetDestroyed.bind(this);
 
@@ -175,6 +178,10 @@ class ResourceCommand {
         );
       }
     }
+
+    // Copy the array in order to avoid the callsite to modify the list of watched resources by mutating the array.
+    // You have to call (un)watchResources to update the list of resources being watched!
+    resources = [...resources];
 
     // Pending watchers are used in unwatchResources to remove watchers which
     // are not fully registered yet. Store `onAvailable` which is the unique key
@@ -411,9 +418,15 @@ class ResourceCommand {
   async _startLegacyListenersForExistingTargets(resourceType) {
     // If we were already listening to targets, we want to start the legacy listeners
     // for all already existing targets.
+    //
+    // Only try instantiating the legacy listener, if this resource type:
+    //   - has legacy listener implementation
+    // (new resource types may not be supported by old runtime and just not be received without breaking anything)
+    //   - isn't supported by the server, or, the target type requires the a legacy listener implementation.
     const shouldRunLegacyListeners =
-      !this.hasResourceCommandSupport(resourceType) ||
-      this._shouldRunLegacyListenerEvenWithWatcherSupport(resourceType);
+      resourceType in LegacyListeners &&
+      (!this.hasResourceCommandSupport(resourceType) ||
+        this._shouldRunLegacyListenerEvenWithWatcherSupport(resourceType));
     if (shouldRunLegacyListeners) {
       const promises = [];
       const targets = this.targetCommand.getAllTargets(
@@ -709,7 +722,8 @@ class ResourceCommand {
     if (
       includesDocumentEventWillNavigate ||
       (includesDocumentEventDomLoading &&
-        !this.targetCommand.hasTargetWatcherSupport("service_worker"))
+        !this.targetCommand.hasTargetWatcherSupport("service_worker")) ||
+      this.throttlingDisabled
     ) {
       this._notifyWatchers();
     } else {
@@ -816,10 +830,13 @@ class ResourceCommand {
    * Called everytime a resource is destroyed in the remote target.
    * See _onResourceAvailable for the argument description.
    */
-  async _onResourceDestroyed({ targetFront, watcherFront }, resources) {
+  async _onResourceDestroyed({ targetFront }, resources) {
     for (const resource of resources) {
       const { resourceType, resourceId } = resource;
       this._cache.delete(cacheKey(resourceType, resourceId));
+      if (!resource.targetFront) {
+        resource.targetFront = targetFront;
+      }
       this._queueResourceEvent("destroyed", resourceType, resource);
     }
     this._throttledNotifyWatchers();
@@ -910,7 +927,7 @@ class ResourceCommand {
     return null;
   }
 
-  _onWillNavigate(targetFront) {
+  _onWillNavigate() {
     // Special case for toolboxes debugging a document,
     // purge the cache entirely when we start navigating to a new document.
     // Other toolboxes and additional target for remote iframes or content process
@@ -1188,6 +1205,7 @@ ResourceCommand.TYPES = ResourceCommand.prototype.TYPES = {
   CONSOLE_MESSAGE: "console-message",
   CSS_CHANGE: "css-change",
   CSS_MESSAGE: "css-message",
+  CSS_REGISTERED_PROPERTIES: "css-registered-properties",
   ERROR_MESSAGE: "error-message",
   PLATFORM_MESSAGE: "platform-message",
   DOCUMENT_EVENT: "document-event",
@@ -1205,7 +1223,8 @@ ResourceCommand.TYPES = ResourceCommand.prototype.TYPES = {
   REFLOW: "reflow",
   SOURCE: "source",
   THREAD_STATE: "thread-state",
-  TRACING_STATE: "tracing-state",
+  JSTRACER_TRACE: "jstracer-trace",
+  JSTRACER_STATE: "jstracer-state",
   SERVER_SENT_EVENT: "server-sent-event",
   LAST_PRIVATE_CONTEXT_EXIT: "last-private-context-exit",
 };
@@ -1228,11 +1247,7 @@ const WORKER_RESOURCE_TYPES = [
 // Each section added here should eventually be removed once the equivalent server
 // code is implement in Firefox, in its release channel.
 const LegacyListeners = {
-  async [ResourceCommand.TYPES.DOCUMENT_EVENT]({
-    targetCommand,
-    targetFront,
-    onAvailable,
-  }) {
+  async [ResourceCommand.TYPES.DOCUMENT_EVENT]({ targetFront, onAvailable }) {
     // DocumentEventsListener of webconsole handles only top level document.
     if (!targetFront.isTopLevel) {
       return;

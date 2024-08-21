@@ -21,10 +21,7 @@ add_task(async function () {
   const Actions = windowRequire("devtools/client/netmonitor/src/actions/index");
   store.dispatch(Actions.batchEnable(false));
 
-  const waitForEvents = waitForNetworkEvents(monitor, 2, {
-    expectedEventTimings: 0,
-    expectedPayloadReady: 1,
-  });
+  const waitForEvents = waitForNetworkEvents(monitor, 2);
 
   // Using `BrowserTestUtils.loadURI` instead of `navigateTo` because
   // `navigateTo` would use `gBrowser.reloadTab` to reload the tab
@@ -33,7 +30,10 @@ add_task(async function () {
   // flag will be applied to the loadgroup, such that the sub resources
   // are forced to be revalidated. So we use `BrowserTestUtils.loadURI` to
   // avoid having `VALIDATE_ALWAYS` applied.
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, IMAGE_CACHE_URL);
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    IMAGE_CACHE_URL
+  );
   await waitForEvents;
 
   const requests = document.querySelectorAll(".request-list-item");

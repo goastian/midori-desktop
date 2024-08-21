@@ -60,7 +60,7 @@ add_task(async function () {
   // With that, we were chasing a precise race, where a second call to ProcessDescriptor.getTarget()
   // happens between the instantiation of ContentProcessTarget and its call to attach() from getTarget
   // function.
-  await testGetTargetWithConcurrentCalls(processes, processTarget => {
+  await testGetTargetWithConcurrentCalls(processes, () => {
     // We only call ContentProcessTargetFront.attach and not TargetMixin.attachAndInitThread.
     // So nothing is done for content process targets.
     return true;
@@ -109,13 +109,18 @@ add_task(async function () {
       // related to a previous test which is being destroyed.
       if (
         e.message.includes("nsIWorkerDebugger.initialize") ||
-        targetFront.isDestroyed() ||
+        workerDescriptorFront.isDestroyed() ||
         !workerDescriptorFront.name
       ) {
         info("Failed to connect to " + workerDescriptorFront.url);
         continue;
       }
       throw e;
+    }
+    // Bug 1767760: name might be null on some worker which are probably initializing or destroying.
+    if (!workerDescriptorFront.name) {
+      info("Failed to connect to " + workerDescriptorFront.url);
+      continue;
     }
 
     is(
@@ -125,7 +130,8 @@ add_task(async function () {
     );
     // Check that accessing descriptor#name getter doesn't throw (See Bug 1714974).
     ok(
-      workerDescriptorFront.name.includes(".js"),
+      workerDescriptorFront.name.includes(".js") ||
+        workerDescriptorFront.name.includes(".mjs"),
       `worker descriptor front holds the worker file name (${workerDescriptorFront.name})`
     );
     is(

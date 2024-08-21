@@ -39,6 +39,7 @@ add_task(async function () {
       value: "bar",
     },
     { name: "baz", value: "42" },
+    { name: "valueWithEqualSign", value: "hijk=123=mnop" },
     { name: "type", value: "urlencoded" },
   ];
 
@@ -97,7 +98,7 @@ add_task(async function () {
   );
   is(
     urlParametersValues.length,
-    3,
+    4,
     "The URL Parameters length in the form should match the request we clicked"
   );
 
@@ -120,8 +121,9 @@ add_task(async function () {
   const headersValues = document.querySelectorAll(
     "#http-custom-headers .tabpanel-summary-container.http-custom-input"
   );
-  ok(
-    headersValues.length >= 6,
+  Assert.greaterOrEqual(
+    headersValues.length,
+    6,
     "The headers length in the form should match the request we clicked"
   );
 

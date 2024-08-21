@@ -25,6 +25,7 @@ const {
 const assert = require("resource://devtools/client/shared/source-map-loader/utils/assert.js");
 const {
   fetchSourceMap,
+  resolveSourceMapURL,
   hasOriginalURL,
   clearOriginalURLs,
 } = require("resource://devtools/client/shared/source-map-loader/utils/fetchSourceMap.js");
@@ -45,15 +46,87 @@ const {
   clearWasmXScopes,
 } = require("resource://devtools/client/shared/source-map-loader/wasm-dwarf/wasmXScopes.js");
 
-async function getOriginalURLs(generatedSource) {
-  await fetchSourceMap(generatedSource);
-  const data = await getSourceMapWithMetadata(generatedSource.id);
-  return data ? data.sources : null;
+/**
+ * Create "original source info" objects being handed over to the main thread
+ * to describe original sources referenced in a source map
+ */
+function mapToOriginalSourceInfos(generatedId, urls) {
+  return urls.map(url => {
+    return {
+      id: generatedToOriginalId(generatedId, url),
+      url,
+    };
+  });
 }
 
-async function getSourceMapIgnoreList(generatedSourceId) {
-  const data = await getSourceMapWithMetadata(generatedSourceId);
-  return data ? data.ignoreListUrls : [];
+/**
+ * Load the source map and retrieved infos about all the original sources
+ * referenced in that source map.
+ *
+ * @param {Object} generatedSource
+ *        Source object for a bundle referencing a source map
+ * @return {Array<Object>|null}
+ *        List of object with id and url attributes describing the original sources.
+ */
+async function getOriginalURLs(generatedSource) {
+  const { resolvedSourceMapURL, baseURL } =
+    resolveSourceMapURL(generatedSource);
+  const map = await fetchSourceMap(
+    generatedSource,
+    resolvedSourceMapURL,
+    baseURL
+  );
+  return map ? mapToOriginalSourceInfos(generatedSource.id, map.sources) : null;
+}
+
+/**
+ * Load the source map for a given bundle and return information
+ * about the related original sources and the source map itself.
+ *
+ * @param {Object} generatedSource
+ *        Source object for the bundle.
+ * @return {Object}
+ *  - {Array<Object>} sources
+ *    Object with id and url attributes, refering to the related original sources
+ *    referenced in the source map.
+ *  - [String} resolvedSourceMapURL
+ *    Absolute URL for the source map file.
+ *  - {Array<String>} ignoreListUrls
+ *    List of URLs of sources, designated by the source map, to be ignored in the debugger.
+ *  - {String} exception
+ *    In case of error, a string describing the situation.
+ */
+async function loadSourceMap(generatedSource) {
+  const { resolvedSourceMapURL, baseURL } =
+    resolveSourceMapURL(generatedSource);
+  try {
+    const map = await fetchSourceMap(
+      generatedSource,
+      resolvedSourceMapURL,
+      baseURL
+    );
+    if (!map.sources.length) {
+      throw new Error("No sources are declared in this source map.");
+    }
+    let ignoreListUrls = [];
+    if (map.x_google_ignoreList?.length) {
+      ignoreListUrls = map.x_google_ignoreList.map(
+        sourceIndex => map.sources[sourceIndex]
+      );
+    }
+    return {
+      sources: mapToOriginalSourceInfos(generatedSource.id, map.sources),
+      resolvedSourceMapURL,
+      ignoreListUrls,
+    };
+  } catch (e) {
+    return {
+      sources: [],
+      resolvedSourceMapURL,
+      ignoreListUrls: [],
+      exception: e.message,
+    };
+  }
 }
 
 const COMPUTED_SPANS = new WeakSet();
@@ -216,48 +289,90 @@ async function getGeneratedLocation(location) {
   };
 }
 
-async function getOriginalLocations(locations, options = {}) {
-  const maps = {};
-
-  const results = [];
-  for (const location of locations) {
-    let map = maps[location.sourceId];
-    if (map === undefined) {
-      map = await getSourceMap(location.sourceId);
-      maps[location.sourceId] = map || null;
-    }
-
-    results.push(map ? getOriginalLocationSync(map, location, options) : null);
+/**
+ * Map the breakable positions (line and columns) from generated to original locations.
+ *
+ * @param {Object} breakpointPositions
+ *        List of columns per line refering to the breakable columns per line
+ *        for a given source:
+ *        {
+ *           1: [2, 6], // On line 1, column 2 and 6 are breakable.
+ *           ...
+ *        }
+ * @param {string} sourceId
+ *        The ID for the generated source.
+ */
+async function getOriginalLocations(breakpointPositions, sourceId) {
+  const map = await getSourceMap(sourceId);
+  if (!map) {
+    return null;
   }
-  return results;
+  for (const line in breakpointPositions) {
+    const breakableColumnsPerLine = breakpointPositions[line];
+    for (let i = 0; i < breakableColumnsPerLine.length; i++) {
+      const column = breakableColumnsPerLine[i];
+      const mappedLocation = getOriginalLocationSync(map, {
+        sourceId,
+        line: parseInt(line, 10),
+        column,
+      });
+      if (mappedLocation) {
+        // As we replace the `column` with the mappedLocation,
+        // also transfer the generated column so that we can compute both original and generated locations
+        // in the main thread.
+        mappedLocation.generatedColumn = column;
+        breakableColumnsPerLine[i] = mappedLocation;
+      }
+    }
+  }
+  return breakpointPositions;
 }
 
-function getOriginalLocationSync(map, location, { search } = {}) {
+/**
+ * Query the source map for a mapping from bundle location to original location.
+ *
+ * @param {SourceMapConsumer} map
+ *        The source map for the bundle source.
+ * @param {Object} location
+ *        A location within a bundle to map to an original location.
+ * @param {Object} options
+ * @param {Boolean} options.looseSearch
+ *        Optional, if true, will do a loose search on first column and next lines
+ *        until a mapping is found.
+ * @return {location}
+ *        The mapped location in the original source.
+ */
+function getOriginalLocationSync(map, location, { looseSearch = false } = {}) {
   // First check for an exact match
   let match = map.originalPositionFor({
     line: location.line,
     column: location.column == null ? 0 : location.column,
   });
 
-  // If there is not an exact match, look for a match with a bias at the
-  // current location and then on subsequent lines
-  if (search) {
+  // Then check for a loose match by sliding to first column and next lines
+  if (match.sourceUrl == null && looseSearch) {
     let line = location.line;
-    let column = location.column == null ? 0 : location.column;
+    // if a non-0 column was passed, we want to do the search from the beginning of the line,
+    // otherwise, we can start looking into next lines
+    let firstLineChecked = (location.column || 0) !== 0;
 
-    while (match.source === null) {
+    // Avoid looping through the whole file and limit the sliding search to the next 10 lines.
+    while (match.sourceUrl === null && line < location.line + 10) {
+      if (firstLineChecked) {
+        line++;
+      } else {
+        firstLineChecked = true;
+      }
       match = map.originalPositionFor({
         line,
-        column,
-        bias: SourceMapConsumer[search],
+        column: 0,
+        bias: SourceMapConsumer.LEAST_UPPER_BOUND,
       });
-
-      line += search == "LEAST_UPPER_BOUND" ? 1 : -1;
-      column = search == "LEAST_UPPER_BOUND" ? 0 : Infinity;
     }
   }
 
   const { source: sourceUrl, line, column } = match;
+
   if (sourceUrl == null) {
     // No url means the location didn't map.
     return null;
@@ -271,7 +386,17 @@ function getOriginalLocationSync(map, location, { search } = {}) {
   };
 }
 
-async function getOriginalLocation(location, options = {}) {
+/**
+ * Map a bundle location to an original one.
+ *
+ * @param {Object} location
+ *        Bundle location
+ * @param {Object} options
+ *        See getORiginalLocationSync.
+ * @return {Object}
+ *        Original location
+ */
+async function getOriginalLocation(location, options) {
   if (!isGeneratedId(location.sourceId)) {
     return null;
   }
@@ -506,6 +631,7 @@ function clearSourceMaps() {
 
 module.exports = {
   getOriginalURLs,
+  loadSourceMap,
   hasOriginalURL,
   getOriginalRanges,
   getGeneratedRanges,
@@ -515,7 +641,6 @@ module.exports = {
   getOriginalSourceText,
   getGeneratedRangesForOriginal,
   getFileGeneratedRange,
-  getSourceMapIgnoreList,
   setSourceMapForGeneratedSources,
   clearSourceMaps,
 };

@@ -7,7 +7,7 @@
 const { AddonManager } = ChromeUtils.importESModule(
   "resource://gre/modules/AddonManager.sys.mjs",
   // AddonManager is a singleton, never create two instances of it.
-  { loadInDevToolsLoader: false }
+  { global: "shared" }
 );
 const {
   remoteClientManager,
@@ -133,7 +133,7 @@ function installTemporaryExtension() {
   const message = l10n.getString(
     "about-debugging-tmp-extension-install-message"
   );
-  return async ({ dispatch, getState }) => {
+  return async ({ dispatch }) => {
     dispatch({ type: TEMPORARY_EXTENSION_INSTALL_START });
     const file = await openTemporaryExtension(window, message);
     try {
@@ -146,7 +146,7 @@ function installTemporaryExtension() {
 }
 
 function pushServiceWorker(id, registrationFront) {
-  return async ({ dispatch, getState }) => {
+  return async () => {
     try {
       // The push button is only available if canDebugServiceWorkers is true.
       // With this configuration, `push` should always be called on the
@@ -258,8 +258,8 @@ function requestExtensions() {
 
       dispatch({
         type: REQUEST_EXTENSIONS_SUCCESS,
-        installedExtensions,
-        temporaryExtensions,
+        installedExtensions: sortTargetsByName(installedExtensions),
+        temporaryExtensions: sortTargetsByName(temporaryExtensions),
       });
     } catch (e) {
       dispatch({ type: REQUEST_EXTENSIONS_FAILURE, error: e });
@@ -310,9 +310,9 @@ function requestWorkers() {
 
       dispatch({
         type: REQUEST_WORKERS_SUCCESS,
-        otherWorkers,
-        serviceWorkers,
-        sharedWorkers,
+        otherWorkers: sortTargetsByName(otherWorkers),
+        serviceWorkers: sortTargetsByName(serviceWorkers),
+        sharedWorkers: sortTargetsByName(sharedWorkers),
       });
     } catch (e) {
       dispatch({ type: REQUEST_WORKERS_FAILURE, error: e });
@@ -328,6 +328,15 @@ function startServiceWorker(registrationFront) {
       console.error(e);
     }
   };
+}
+
+function sortTargetsByName(targets) {
+  return targets.sort((target1, target2) => {
+    // Fallback to empty string in case some targets don't have a valid name.
+    const name1 = target1.name || "";
+    const name2 = target2.name || "";
+    return name1.localeCompare(name2);
+  });
 }
 
 function unregisterServiceWorker(registrationFront) {

@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
+import React from "devtools/client/shared/vendor/react";
 import { shallow } from "enzyme";
 
 import DebugLine from "../DebugLine";
@@ -15,7 +15,7 @@ function createMockDocument(clear) {
     addLineClass: jest.fn(),
     removeLineClass: jest.fn(),
     markText: jest.fn(() => ({ clear })),
-    getLine: line => "",
+    getLine: () => "",
   };
 
   return doc;
@@ -52,9 +52,12 @@ function render(overrides = {}) {
   const doc = createMockDocument(clear);
   setDocument("foo", doc);
 
-  const component = shallow(<DebugLine.WrappedComponent {...props} />, {
-    lifecycleExperimental: true,
-  });
+  const component = shallow(
+    React.createElement(DebugLine.WrappedComponent, props),
+    {
+      lifecycleExperimental: true,
+    }
+  );
   return { component, props, clear, editor, doc };
 }
 

@@ -415,6 +415,13 @@ const featureDescriptions = [
     recommended: true,
   },
   {
+    name: "Memory Tracking",
+    value: "memory",
+    title:
+      "Track the memory allocations and deallocations per process over time.",
+    recommended: true,
+  },
+  {
     name: "Java",
     value: "java",
     title: "Profile Java code",
@@ -497,7 +504,7 @@ const featureDescriptions = [
     name: "CPU Utilization - All Threads",
     value: "cpuallthreads",
     title:
-      "Record how much CPU has been used between samples by ALL registered thread.",
+      "Record CPU usage of all known threads, even threads which are not being profiled.",
     experimental: true,
   },
   {
@@ -551,6 +558,20 @@ const featureDescriptions = [
       }
     })(),
     experimental: true,
+  },
+  {
+    name: "CPU Frequency",
+    value: "cpufreq",
+    title:
+      "Record the clock frequency of every CPU core for every profiler sample.",
+    experimental: true,
+    disabledReason:
+      "This feature is only available on Windows, Linux and Android.",
+  },
+  {
+    name: "Network Bandwidth",
+    value: "bandwidth",
+    title: "Record the network bandwidth used between every profiler sample.",
   },
 ];
 

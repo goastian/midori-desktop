@@ -10,14 +10,17 @@ const {
   l10n,
 } = require("resource://devtools/client/webconsole/utils/messages.js");
 
-const { BrowserLoader } = ChromeUtils.import(
-  "resource://devtools/shared/loader/browser-loader.js"
+const { BrowserLoader } = ChromeUtils.importESModule(
+  "resource://devtools/shared/loader/browser-loader.sys.mjs"
 );
 const {
   getAdHocFrontOrPrimitiveGrip,
 } = require("resource://devtools/client/fronts/object.js");
 
-const { PREFS } = require("resource://devtools/client/webconsole/constants.js");
+const {
+  PREFS,
+  FILTERS,
+} = require("resource://devtools/client/webconsole/constants.js");
 
 const FirefoxDataProvider = require("resource://devtools/client/netmonitor/src/connector/firefox-data-provider.js");
 
@@ -68,6 +71,7 @@ class WebConsoleUI {
     this._onResourceAvailable = this._onResourceAvailable.bind(this);
     this._onNetworkResourceUpdated = this._onNetworkResourceUpdated.bind(this);
     this._onScopePrefChanged = this._onScopePrefChanged.bind(this);
+    this._onShowConsoleEvaluation = this._onShowConsoleEvaluation.bind(this);
 
     if (this.isBrowserConsole) {
       Services.prefs.addObserver(
@@ -127,6 +131,7 @@ class WebConsoleUI {
       // console is initialized. Otherwise `showToolbox` will resolve before
       // all already existing console messages are displayed.
       await this.wrapper.waitAsyncDispatches();
+      this._initNotifications();
     })();
 
     return this._initializer;
@@ -156,6 +161,10 @@ class WebConsoleUI {
       toolbox.off("webconsole-selected", this._onPanelSelected);
       toolbox.off("split-console", this._onChangeSplitConsoleState);
       toolbox.off("select", this._onChangeSplitConsoleState);
+      toolbox.off(
+        "show-original-variable-mapping-warnings",
+        this._onShowConsoleEvaluation
+      );
     }
 
     if (this.isBrowserConsole) {
@@ -173,19 +182,11 @@ class WebConsoleUI {
     });
 
     const resourceCommand = this.hud.resourceCommand;
-    resourceCommand.unwatchResources(
-      [
-        resourceCommand.TYPES.CONSOLE_MESSAGE,
-        resourceCommand.TYPES.ERROR_MESSAGE,
-        resourceCommand.TYPES.PLATFORM_MESSAGE,
-        resourceCommand.TYPES.DOCUMENT_EVENT,
-        resourceCommand.TYPES.LAST_PRIVATE_CONTEXT_EXIT,
-      ],
-      { onAvailable: this._onResourceAvailable }
-    );
-    resourceCommand.unwatchResources([resourceCommand.TYPES.CSS_MESSAGE], {
-      onAvailable: this._onResourceAvailable,
-    });
+    if (this._watchedResources) {
+      resourceCommand.unwatchResources(this._watchedResources, {
+        onAvailable: this._onResourceAvailable,
+      });
+    }
 
     this.stopWatchingNetworkResources();
 
@@ -324,16 +325,26 @@ class WebConsoleUI {
       onDestroyed: this._onTargetDestroyed,
     });
 
-    await resourceCommand.watchResources(
-      [
-        resourceCommand.TYPES.CONSOLE_MESSAGE,
-        resourceCommand.TYPES.ERROR_MESSAGE,
-        resourceCommand.TYPES.PLATFORM_MESSAGE,
-        resourceCommand.TYPES.DOCUMENT_EVENT,
-        resourceCommand.TYPES.LAST_PRIVATE_CONTEXT_EXIT,
-      ],
-      { onAvailable: this._onResourceAvailable }
-    );
+    this._watchedResources = [
+      resourceCommand.TYPES.CONSOLE_MESSAGE,
+      resourceCommand.TYPES.ERROR_MESSAGE,
+      resourceCommand.TYPES.PLATFORM_MESSAGE,
+      resourceCommand.TYPES.DOCUMENT_EVENT,
+      resourceCommand.TYPES.LAST_PRIVATE_CONTEXT_EXIT,
+      resourceCommand.TYPES.JSTRACER_TRACE,
+      resourceCommand.TYPES.JSTRACER_STATE,
+    ];
+
+    // CSS Warnings are only enabled when the user explicitely requested to show them
+    // as it can slow down page load.
+    const shouldShowCssWarnings = this.wrapper.getFilterState(FILTERS.CSS);
+    if (shouldShowCssWarnings) {
+      this._watchedResources.push(resourceCommand.TYPES.CSS_MESSAGE);
+    }
+
+    await resourceCommand.watchResources(this._watchedResources, {
+      onAvailable: this._onResourceAvailable,
+    });
 
     if (this.isBrowserConsole || this.isBrowserToolboxConsole) {
       const shouldEnableNetworkMonitoring = Services.prefs.getBoolPref(
@@ -441,11 +452,18 @@ class WebConsoleUI {
     this.wrapper.dispatchTabWillNavigate({ timeStamp, url });
   }
 
+  /**
+   * Called when the CSS Warning filter is enabled, in order to start observing for them in the backend.
+   */
   async watchCssMessages() {
     const { resourceCommand } = this.hud;
+    if (this._watchedResources.includes(resourceCommand.TYPES.CSS_MESSAGE)) {
+      return;
+    }
     await resourceCommand.watchResources([resourceCommand.TYPES.CSS_MESSAGE], {
       onAvailable: this._onResourceAvailable,
     });
+    this._watchedResources.push(resourceCommand.TYPES.CSS_MESSAGE);
   }
 
   _onResourceAvailable(resources) {
@@ -525,12 +543,8 @@ class WebConsoleUI {
    * i.e. it was already existing or has just been created.
    *
    * @private
-   * @param Front targetFront
-   *        The Front of the target that is available.
-   *        This Front inherits from TargetMixin and is typically
-   *        composed of a WindowGlobalTargetFront or ContentProcessTargetFront.
    */
-  async _onTargetAvailable({ targetFront }) {
+  async _onTargetAvailable() {
     // onTargetAvailable is a mandatory argument for watchTargets,
     // we still define it solely for being able to use onTargetDestroyed.
   }
@@ -624,6 +638,20 @@ class WebConsoleUI {
     );
   }
 
+  _initNotifications() {
+    if (this.hud.toolbox) {
+      this.wrapper.toggleOriginalVariableMappingEvaluationNotification(
+        !!this.hud.toolbox
+          .getPanel("jsdebugger")
+          ?.shouldShowOriginalVariableMappingWarnings()
+      );
+      this.hud.toolbox.on(
+        "show-original-variable-mapping-warnings",
+        this._onShowConsoleEvaluation
+      );
+    }
+  }
+
   _initShortcuts() {
     const shortcuts = new KeyShortcuts({
       window: this.window,
@@ -663,7 +691,7 @@ class WebConsoleUI {
         this.hud.commands.targetCommand.reloadTopLevelTarget();
       });
     } else if (Services.prefs.getBoolPref(PREF_SIDEBAR_ENABLED)) {
-      shortcuts.on("Esc", event => {
+      shortcuts.on("Esc", () => {
         this.wrapper.dispatchSidebarClose();
         if (this.jsterm) {
           this.jsterm.focus();
@@ -693,6 +721,12 @@ class WebConsoleUI {
     if (this.isBrowserConsole) {
       this.hud.updateWindowTitle();
     }
+  }
+
+  _onShowConsoleEvaluation(isOriginalVariableMappingEnabled) {
+    this.wrapper.toggleOriginalVariableMappingEvaluationNotification(
+      isOriginalVariableMappingEnabled
+    );
   }
 
   getInputCursor() {

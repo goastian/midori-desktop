@@ -58,7 +58,7 @@ function setupStore(
   }
   const store = configureStore(webConsoleUI, {
     ...storeOptions,
-    thunkArgs: { toolbox: {} },
+    thunkArgs: { toolbox: {}, webConsoleUI },
     telemetry: new Telemetry(),
   });
 
@@ -142,7 +142,17 @@ function getWebConsoleUiMock(hud) {
   return {
     emit: () => {},
     emitForTests: () => {},
-    hud,
+    hud: {
+      commands: {
+        client: {
+          mainRoot: {},
+        },
+        objectCommand: {
+          releaseObjects: async () => {},
+        },
+      },
+      ...hud,
+    },
     clearNetworkRequests: () => {},
     clearMessagesCache: () => {},
     inspectObjectActor: () => {},

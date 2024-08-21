@@ -12,11 +12,6 @@
 
 "use strict";
 
-const EXPRESSION_SELECTORS = {
-  plusIcon: ".watch-expressions-pane button.plus",
-  input: "input.input-expression",
-};
-
 add_task(async function () {
   const dbg = await initDebugger("doc-script-switching.html");
 
@@ -26,26 +21,13 @@ add_task(async function () {
   info(`Adding location`);
   await addExpression(dbg, "location");
   await addExpression(dbg, "foo.bar");
-  await addExpression(dbg, "foo.batt");
+  await addExpression(dbg, "foo)(");
   await addExpression(dbg, "2");
   // check the value of
   is(getWatchExpressionValue(dbg, 2), "(unavailable)");
-  is(getWatchExpressionValue(dbg, 3), "(unavailable)");
+  is(getWatchExpressionValue(dbg, 3), "\"SyntaxError: unexpected token: ')'\"");
   is(getWatchExpressionValue(dbg, 4), "2");
 
   await toggleExpressionNode(dbg, 1);
   is(findAllElements(dbg, "expressionNodes").length, 37);
 });
-
-async function addExpression(dbg, input) {
-  const plusIcon = findElementWithSelector(dbg, EXPRESSION_SELECTORS.plusIcon);
-  if (plusIcon) {
-    plusIcon.click();
-  }
-
-  const evaluation = waitForDispatch(dbg.store, "EVALUATE_EXPRESSION");
-  findElementWithSelector(dbg, EXPRESSION_SELECTORS.input).focus();
-  type(dbg, input);
-  pressKey(dbg, "Enter");
-  await evaluation;
-}

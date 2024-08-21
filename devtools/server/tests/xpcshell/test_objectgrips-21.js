@@ -213,6 +213,8 @@ async function test_unsafe_grips(
   tests
 ) {
   debuggee.eval(
+    // These arguments are tested.
+    // eslint-disable-next-line no-unused-vars
     function stopMe(arg1, arg2) {
       debugger;
     }.toString()
@@ -276,8 +278,6 @@ async function test_unsafe_grips(
 
       response = await objClient.getPrototype();
       check_prototype(response.prototype, data, isUnsafe, isWorkerServer);
-
-      await objClient.release();
     }
 
     await threadFront.resume();

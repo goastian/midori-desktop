@@ -3,12 +3,14 @@ http://creativecommons.org/publicdomain/zero/1.0/ */
 
 "use strict";
 
-const throttlingProfiles = require("resource://devtools/client/shared/components/throttling/profiles.js");
+const {
+  profiles,
+} = require("resource://devtools/client/shared/components/throttling/profiles.js");
 
 // Tests changing network throttling
 const TEST_URL = "data:text/html;charset=utf-8,Network throttling test";
 
-addRDMTask(TEST_URL, async function ({ ui, manager }) {
+addRDMTask(TEST_URL, async function ({ ui }) {
   // Test defaults
   testNetworkThrottlingSelectorLabel(ui, "No Throttling", "No Throttling");
   await testNetworkThrottlingState(ui, null);
@@ -65,7 +67,7 @@ var testNetworkThrottlingState = async function (ui, expected) {
 var testThrottlingProfile = async function (ui, profile, tooltip) {
   await selectNetworkThrottling(ui, profile);
   testNetworkThrottlingSelectorLabel(ui, profile, tooltip);
-  const data = throttlingProfiles.find(({ id }) => id == profile);
+  const data = profiles.find(({ id }) => id == profile);
   const { download, upload, latency } = data;
   await testNetworkThrottlingState(ui, {
     downloadThroughput: download,

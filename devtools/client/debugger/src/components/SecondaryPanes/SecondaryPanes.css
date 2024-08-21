@@ -11,6 +11,13 @@
   white-space: nowrap;
   background-color: var(--theme-sidebar-background);
   --breakpoint-expression-right-clear-space: 36px;
+  --paused-background-color: hsl(54, 100%, 92%);
+  --paused-color: var(--theme-body-color);
+
+  .theme-dark & {
+    --paused-background-color: hsl(42, 37%, 19%);
+    --paused-color: hsl(43, 94%, 81%);
+  }
 }
 
 .secondary-panes .controlled > div {
@@ -46,11 +53,16 @@
 }
 
 .pane .pane-info {
-  font-style: italic;
-  text-align: center;
+  text-align: start;
   padding: 0.5em;
-  user-select: none;
-  cursor: default;
+  gap: 8px;
+  display: flex;
+  white-space: normal;
+}
+
+.pane .pane-info.no-original-scopes-info {
+  background-color: var(--theme-warning-background);
+  color: var(--theme-warning-color);
 }
 
 .secondary-panes .breakpoints-buttons {
@@ -65,7 +77,7 @@
 .secondary-panes input[type="checkbox"] {
   margin: 0;
   margin-inline-end: 4px;
-  vertical-align: middle;
+  vertical-align: text-top;
 }
 
 .secondary-panes-wrapper .command-bar.bottom {

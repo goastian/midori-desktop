@@ -37,7 +37,7 @@ class ContentProcessStartup {
     this.maybeCreateExistingTargetActors();
   }
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     switch (topic) {
       case "xpcom-shutdown": {
         this.destroy();
@@ -67,7 +67,7 @@ class ContentProcessStartup {
       this.receiveMessage
     );
     Services.cpmm.addMessageListener(
-      "debug:add-session-data-entry",
+      "debug:add-or-set-session-data-entry",
       this.receiveMessage
     );
     Services.cpmm.addMessageListener(
@@ -92,7 +92,7 @@ class ContentProcessStartup {
       this.receiveMessage
     );
     Services.cpmm.removeMessageListener(
-      "debug:add-session-data-entry",
+      "debug:add-or-set-session-data-entry",
       this.receiveMessage
     );
     Services.cpmm.removeMessageListener(
@@ -118,11 +118,12 @@ class ContentProcessStartup {
       case "debug:destroy-target":
         this.destroyTarget(msg.data.watcherActorID);
         break;
-      case "debug:add-session-data-entry":
-        this.addSessionDataEntry(
+      case "debug:add-or-set-session-data-entry":
+        this.addOrSetSessionDataEntry(
           msg.data.watcherActorID,
           msg.data.type,
-          msg.data.entries
+          msg.data.entries,
+          msg.data.updateType
         );
         break;
       case "debug:remove-session-data-entry":
@@ -142,7 +143,7 @@ class ContentProcessStartup {
 
   /**
    * Called when the content process just started.
-   * This will start creating ContentProcessTarget actors, but only if DevTools code (WatcherActor / WatcherRegistry.jsm)
+   * This will start creating ContentProcessTarget actors, but only if DevTools code (WatcherActor / ParentProcessWatcherRegistry.sys.mjs)
    * put some data in `sharedData` telling us to do so.
    */
   maybeCreateExistingTargetActors() {
@@ -186,7 +187,7 @@ class ContentProcessStartup {
    *        The prefix of the DevToolsServerConnection of the Watcher Actor.
    *        This is used to compute a unique ID for the target actor.
    * @param Object sessionData
-   *        All data managed by the Watcher Actor and WatcherRegistry.jsm, containing
+   *        All data managed by the Watcher Actor and ParentProcessWatcherRegistry.jsm, containing
    *        target types, resources types to be listened as well as breakpoints and any
    *        other data meant to be shared across processes and threads.
    * @param Object options Dictionary with optional values:
@@ -234,7 +235,7 @@ class ContentProcessStartup {
 
     // Pass initialization data to the target actor
     for (const type in sessionData) {
-      actor.addSessionDataEntry(type, sessionData[type]);
+      actor.addOrSetSessionDataEntry(type, sessionData[type], false, "set");
     }
   }
 
@@ -250,7 +251,7 @@ class ContentProcessStartup {
     this._connections.delete(watcherActorID);
   }
 
-  async addSessionDataEntry(watcherActorID, type, entries) {
+  async addOrSetSessionDataEntry(watcherActorID, type, entries, updateType) {
     const connectionInfo = this._connections.get(watcherActorID);
     if (!connectionInfo) {
       throw new Error(
@@ -258,8 +259,8 @@ class ContentProcessStartup {
       );
     }
     const { actor } = connectionInfo;
-    await actor.addSessionDataEntry(type, entries);
-    Services.cpmm.sendAsyncMessage("debug:add-session-data-entry-done", {
+    await actor.addOrSetSessionDataEntry(type, entries, false, updateType);
+    Services.cpmm.sendAsyncMessage("debug:add-or-set-session-data-entry-done", {
       watcherActorID,
     });
   }

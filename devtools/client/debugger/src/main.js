@@ -21,7 +21,9 @@ import { initialSourcesState } from "./reducers/sources";
 import { initialUIState } from "./reducers/ui";
 import { initialSourceBlackBoxState } from "./reducers/source-blackbox";
 
-const { sanitizeBreakpoints } = require("devtools/client/shared/thread-utils");
+const {
+  sanitizeBreakpoints,
+} = require("resource://devtools/client/shared/thread-utils.js");
 
 async function syncBreakpoints() {
   const breakpoints = await asyncStore.pendingBreakpoints;
@@ -49,6 +51,13 @@ async function syncXHRBreakpoints() {
   );
 }
 
+function setPauseOnDebuggerStatement() {
+  const { pauseOnDebuggerStatement } = prefs;
+  return firefox.clientCommands.pauseOnDebuggerStatement(
+    pauseOnDebuggerStatement
+  );
+}
+
 function setPauseOnExceptions() {
   const { pauseOnExceptions, pauseOnCaughtException } = prefs;
   return firefox.clientCommands.pauseOnExceptions(
@@ -57,7 +66,7 @@ function setPauseOnExceptions() {
   );
 }
 
-async function loadInitialState(commands, toolbox) {
+async function loadInitialState() {
   const pendingBreakpoints = sanitizeBreakpoints(
     await asyncStore.pendingBreakpoints
   );
@@ -90,7 +99,11 @@ export async function bootstrap({
 }) {
   verifyPrefSchema();
 
-  const initialState = await loadInitialState(commands, panel.toolbox);
+  // Set telemetry at the very beginning as some actions fired from this function might
+  // record events.
+  setToolboxTelemetry(panel.toolbox.telemetry);
+
+  const initialState = await loadInitialState();
   const workers = bootstrapWorkers(panelWorkers);
 
   const { store, actions, selectors } = bootstrapStore(
@@ -109,6 +122,7 @@ export async function bootstrap({
 
   await syncBreakpoints();
   await syncXHRBreakpoints();
+  await setPauseOnDebuggerStatement();
   await setPauseOnExceptions();
 
   setupHelper({
@@ -119,8 +133,6 @@ export async function bootstrap({
     targetCommand: commands.targetCommand,
     client: firefox.clientCommands,
   });
-
-  setToolboxTelemetry(panel.toolbox.telemetry);
 
   bootstrapApp(store, panel.getToolboxStore(), {
     fluentBundles,

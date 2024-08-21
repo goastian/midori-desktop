@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { PureComponent } from "react";
-import PropTypes from "prop-types";
+import React, { PureComponent } from "devtools/client/shared/vendor/react";
+import { span } from "devtools/client/shared/vendor/react-dom-factories";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
 import Reps from "devtools/client/shared/components/reps/index";
 
 const {
@@ -26,7 +27,7 @@ class InlinePreview extends PureComponent {
     };
   }
 
-  showInScopes(variable) {
+  showInScopes() {
     // TODO: focus on variable value in the scopes sidepanel
     // we will need more info from parent comp
   }
@@ -41,24 +42,31 @@ class InlinePreview extends PureComponent {
     } = this.props;
 
     const mode = isElement(value) ? MODE.TINY : MODE.SHORT;
-
-    return (
-      <span
-        className="inline-preview-outer"
-        onClick={() => this.showInScopes(variable)}
-      >
-        <span className="inline-preview-label">{variable}:</span>
-        <span className="inline-preview-value">
-          <Rep
-            object={value}
-            mode={mode}
-            onDOMNodeClick={grip => openElementInInspector(grip)}
-            onInspectIconClick={grip => openElementInInspector(grip)}
-            onDOMNodeMouseOver={grip => highlightDomElement(grip)}
-            onDOMNodeMouseOut={grip => unHighlightDomElement(grip)}
-          />
-        </span>
-      </span>
+    return span(
+      {
+        className: "inline-preview-outer",
+        onClick: () => this.showInScopes(variable),
+      },
+      span(
+        {
+          className: "inline-preview-label",
+        },
+        variable,
+        ":"
+      ),
+      span(
+        {
+          className: "inline-preview-value",
+        },
+        React.createElement(Rep, {
+          object: value,
+          mode,
+          onDOMNodeClick: grip => openElementInInspector(grip),
+          onInspectIconClick: grip => openElementInInspector(grip),
+          onDOMNodeMouseOver: grip => highlightDomElement(grip),
+          onDOMNodeMouseOut: grip => unHighlightDomElement(grip),
+        })
+      )
     );
   }
 }

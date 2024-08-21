@@ -9,7 +9,7 @@ import cases from "jest-in-case";
 
 cases(
   "Parser.getSymbols",
-  ({ name, file, original, type }) => {
+  ({ file, original, type }) => {
     const source = original
       ? populateOriginalSource(file, type)
       : populateSource(file, type);
@@ -45,5 +45,7 @@ cases(
     { name: "flow", file: "flow", original: true },
     { name: "jsx", file: "jsx", original: true },
     { name: "destruct", file: "destructuring" },
+
+    { name: "regexp", file: "regexp" },
   ]
 );

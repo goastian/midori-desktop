@@ -14,6 +14,7 @@ const {
 } = require("resource://devtools/client/shared/inplace-editor.js");
 const {
   parseAttribute,
+  ATTRIBUTE_TYPES,
 } = require("resource://devtools/client/shared/node-attribute-parser.js");
 
 loader.lazyRequireGetter(
@@ -339,6 +340,7 @@ ElementEditor.prototype = {
     this.updateDisplayBadge();
     this.updateCustomBadge();
     this.updateScrollableBadge();
+    this.updateContainerBadge();
     this.updateTextEditor();
     this.updateUnavailableChildren();
     this.updateOverflowBadge();
@@ -356,13 +358,14 @@ ElementEditor.prototype = {
   },
 
   _createEventBadge() {
-    this._eventBadge = this.doc.createElement("div");
+    this._eventBadge = this.doc.createElement("button");
     this._eventBadge.className = "inspector-badge interactive";
     this._eventBadge.dataset.event = "true";
     this._eventBadge.textContent = "event";
     this._eventBadge.title = INSPECTOR_L10N.getStr(
-      "markupView.event.tooltiptext"
+      "markupView.event.tooltiptext2"
     );
+    this._eventBadge.setAttribute("aria-pressed", "false");
     // Badges order is [event][display][custom], insert event badge before others.
     this.elt.insertBefore(
       this._eventBadge,
@@ -387,7 +390,9 @@ ElementEditor.prototype = {
       // overflow causing elements is not supported.
       !this.node.isDocumentElement;
 
-    this._scrollableBadge = this.doc.createElement("div");
+    this._scrollableBadge = this.doc.createElement(
+      isInteractive ? "button" : "div"
+    );
     this._scrollableBadge.className = `inspector-badge scrollable-badge ${
       isInteractive ? "interactive" : ""
     }`;
@@ -406,6 +411,7 @@ ElementEditor.prototype = {
         "click",
         this.onScrollableBadgeClick
       );
+      this._scrollableBadge.setAttribute("aria-pressed", "false");
     }
     this.elt.insertBefore(this._scrollableBadge, this._customBadge);
   },
@@ -430,7 +436,7 @@ ElementEditor.prototype = {
   },
 
   _createDisplayBadge() {
-    this._displayBadge = this.doc.createElement("div");
+    this._displayBadge = this.doc.createElement("button");
     this._displayBadge.className = "inspector-badge";
     this._displayBadge.addEventListener("click", this.onDisplayBadgeClick);
     // Badges order is [event][display][custom], insert display badge before custom.
@@ -454,6 +460,18 @@ ElementEditor.prototype = {
       (isGrid && this.highlighters.canGridHighlighterToggle(this.node));
 
     this._displayBadge.classList.toggle("interactive", isInteractive);
+
+    // Since the badge is a <button>, if it's not interactive we need to indicate
+    // to screen readers that it shouldn't behave like a button.
+    // It's easier to have the badge being a button and "downgrading" it like this,
+    // than having it as a div and adding interactivity.
+    if (isInteractive) {
+      this._displayBadge.removeAttribute("role");
+      this._displayBadge.setAttribute("aria-pressed", "false");
+    } else {
+      this._displayBadge.setAttribute("role", "presentation");
+      this._displayBadge.removeAttribute("aria-pressed");
+    }
   },
 
   updateOverflowBadge() {
@@ -495,7 +513,7 @@ ElementEditor.prototype = {
   },
 
   _createCustomBadge() {
-    this._customBadge = this.doc.createElement("div");
+    this._customBadge = this.doc.createElement("button");
     this._customBadge.className = "inspector-badge interactive";
     this._customBadge.dataset.custom = "true";
     this._customBadge.textContent = "custom…";
@@ -505,6 +523,32 @@ ElementEditor.prototype = {
     this._customBadge.addEventListener("click", this.onCustomBadgeClick);
     // Badges order is [event][display][custom], insert custom badge at the end.
     this.elt.appendChild(this._customBadge);
+  },
+
+  updateContainerBadge() {
+    const showContainerBadge =
+      this.node.containerType === "inline-size" ||
+      this.node.containerType === "size";
+
+    if (this._containerBadge && !showContainerBadge) {
+      this._containerBadge.remove();
+      this._containerBadge = null;
+    } else if (showContainerBadge && !this._containerBadge) {
+      this._createContainerBadge();
+    }
+  },
+
+  _createContainerBadge() {
+    this._containerBadge = this.doc.createElement("div");
+    this._containerBadge.classList.add("inspector-badge");
+    this._containerBadge.dataset.container = "true";
+    this._containerBadge.title = `container-type: ${this.node.containerType}`;
+
+    this._containerBadge.append(this.doc.createTextNode("container"));
+    // TODO: Move the logic to handle badges position in a dedicated helper (See Bug 1837921).
+    // Ideally badges order should be [event][display][container][custom]
+    this.elt.insertBefore(this._containerBadge, this._customBadge);
+    this.markup.emit("badge-added-event");
   },
 
   /**
@@ -832,10 +876,9 @@ ElementEditor.prototype = {
 
     attributeValueEl.innerHTML = "";
 
-    // Create links in the attribute value, and truncate long attribute values if
-    // needed.
+    // Create links in the attribute value, and truncate long attribute values if needed.
     for (const token of parsedLinksData) {
-      if (token.type === "string") {
+      if (token.type === "string" || token.value?.trim() === "") {
         attributeValueEl.appendChild(
           this.doc.createTextNode(this._truncateAttributeValue(token.value))
         );
@@ -845,7 +888,24 @@ ElementEditor.prototype = {
         link.setAttribute("data-type", token.type);
         link.setAttribute("data-link", token.value);
         link.textContent = this._truncateAttributeValue(token.value);
-        attributeValueEl.appendChild(link);
+        attributeValueEl.append(link);
+
+        // Add a "select node" button when we reference element ids
+        if (
+          token.type === ATTRIBUTE_TYPES.TYPE_IDREF ||
+          token.type === ATTRIBUTE_TYPES.TYPE_IDREF_LIST
+        ) {
+          const button = this.doc.createElement("button");
+          button.classList.add("select-node");
+          button.setAttribute(
+            "title",
+            INSPECTOR_L10N.getFormatStr(
+              "inspector.menu.selectElement.label",
+              token.value
+            )
+          );
+          link.append(button);
+        }
       }
     }
   },
@@ -1075,6 +1135,10 @@ ElementEditor.prototype = {
   async onScrollableBadgeClick() {
     this.highlightingOverflowCausingElements =
       this._scrollableBadge.classList.toggle("active");
+    this._scrollableBadge.setAttribute(
+      "aria-pressed",
+      this.highlightingOverflowCausingElements
+    );
 
     const { nodes } = await this.node.walkerFront.getOverflowCausingElements(
       this.node

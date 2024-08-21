@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
+import React from "devtools/client/shared/vendor/react";
 import { shallow } from "enzyme";
 
 import ExceptionOption from "../ExceptionOption";
@@ -10,12 +10,12 @@ import ExceptionOption from "../ExceptionOption";
 describe("ExceptionOption renders", () => {
   it("with values", () => {
     const component = shallow(
-      <ExceptionOption
-        label="testLabel"
-        isChecked={true}
-        onChange={() => null}
-        className="testClassName"
-      />
+      React.createElement(ExceptionOption, {
+        label: "testLabel",
+        isChecked: true,
+        onChange: () => null,
+        className: "testClassName",
+      })
     );
     expect(component).toMatchSnapshot();
   });

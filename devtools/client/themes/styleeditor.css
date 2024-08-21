@@ -27,10 +27,45 @@ li:hover > hgroup > .stylesheet-more > h3 > .stylesheet-saveButton {
   list-style-image: url(images/import.svg);
 }
 
+/* Filter input */
+#style-editor-chrome toolbar .devtools-searchbox {
+  /* Adjust default focused styling as it looks a bit off */
+  outline-offset: -2px;
+
+  & > .devtools-filterinput {
+    box-shadow: none;
+  }
+}
+
 .stylesheet-details-container {
   flex: 1;
   min-width: 0;
   min-height: 0;
+}
+
+.stylesheet-editor-status {
+  display: flex;
+  align-items: center;
+  border-block-start: 1px solid var(--theme-splitter-color) !important;
+  border-block-end: none !important;
+
+  /* Only show the editor toolbar if there's a stylesheet editor */
+  .devtools-main-content:empty + & {
+    display: none;
+  }
+
+  .style-editor-prettyPrintButton.devtools-button {
+    margin: 0;
+    /*
+     * common.css sets a pointer-events:none on disabled button,
+     * but here we want the title to be displayed since it gives extra information.
+     */
+    pointer-events: all;
+
+    &::before {
+      background-image: url(chrome://devtools/content/debugger/images/prettyPrint.svg);
+    }
+  }
 }
 
 .stylesheet-at-rules-container {
@@ -64,6 +99,10 @@ li.error > .stylesheet-info > .stylesheet-more  > .stylesheet-error-message {
 
 .stylesheet-info > h1 {
   flex: 1;
+}
+
+.stylesheet-info a.stylesheet-name:focus-visible {
+  outline-offset: -2px;
 }
 
 .splitview-nav > li > hgroup.stylesheet-info {
@@ -280,4 +319,8 @@ h3 {
   .stylesheet-more > spacer {
     flex: none;
   }
+}
+
+.source-editor-frame {
+  flex: 1;
 }

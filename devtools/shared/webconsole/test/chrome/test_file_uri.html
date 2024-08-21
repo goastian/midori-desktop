@@ -16,8 +16,12 @@
 
 SimpleTest.waitForExplicitFinish();
 
-const {NetUtil} = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
-const {FileUtils} = ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+const {NetUtil} = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
+);
+const {FileUtils} = ChromeUtils.importESModule(
+  "resource://gre/modules/FileUtils.sys.mjs"
+);
 
 let gState;
 let gTmpFile;
@@ -27,7 +31,7 @@ function doFileActivity()
   info("doFileActivity");
   const fileContent = "<p>hello world from bug 798764";
 
-  gTmpFile = FileUtils.getFile("TmpD", ["bug798764.html"]);
+  gTmpFile = new FileUtils.File(PathUtils.join(PathUtils.tempDir, "bug798764.html"));
   gTmpFile.createUnique(Ci.nsIFile.NORMAL_FILE_TYPE, FileUtils.PERMS_FILE);
 
   const fout = FileUtils.openSafeFileOutputStream(gTmpFile,

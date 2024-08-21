@@ -9,10 +9,10 @@
 "use strict";
 
 add_task(async function () {
-  Services.prefs.setBoolPref("devtools.toolbox.splitconsoleEnabled", true);
+  Services.prefs.setBoolPref("devtools.toolbox.splitconsole.open", true);
+  await pushPref("devtools.debugger.map-scopes-enabled", true);
 
   const dbg = await initDebugger("doc-sourcemaps3.html", "test.js");
-  dbg.actions.toggleMapScopes();
 
   const source = findSource(dbg, "test.js");
   await selectSource(dbg, "test.js");
@@ -22,11 +22,10 @@ add_task(async function () {
   await addBreakpoint(dbg, "test.js", 6);
   await waitForBreakpoint(dbg, "test.js", 6);
 
-  await dbg.actions.addBreakpoint(
-    getContext(dbg),
-    createLocation({ line: 5, source }),
-    { logValue: "`value: ${JSON.stringify(test)}`", requiresMapping: true }
-  );
+  await dbg.actions.addBreakpoint(createLocation({ line: 5, source }), {
+    logValue: "`value: ${JSON.stringify(test)}`",
+    requiresMapping: true,
+  });
   await waitForBreakpoint(dbg, "test.js", 5);
 
   invokeInTab("test");

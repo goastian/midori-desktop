@@ -10,7 +10,7 @@ const TEST_URI = TEST_PATH + TEST_FILE;
 
 registerCleanupFunction(async function () {
   await new Promise(resolve => {
-    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
+    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, () =>
       resolve()
     );
   });
@@ -22,7 +22,7 @@ add_task(async function task() {
   await openNewTabAndToolbox(TEST_URI, "netmonitor");
 
   const currentTab = gBrowser.selectedTab;
-  const toolbox = await gDevTools.getToolboxForTab(currentTab);
+  const toolbox = gDevTools.getToolboxForTab(currentTab);
   const panel = toolbox.getCurrentPanel().panelWin;
 
   const netReady = panel.api.once("NetMonitor:PayloadReady");

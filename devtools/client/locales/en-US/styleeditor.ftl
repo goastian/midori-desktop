@@ -21,8 +21,6 @@ styleeditor-save-button = Save
 styleeditor-options-button =
     .tooltiptext = Style Editor options
 styleeditor-at-rules = At-rules
-styleeditor-editor-textbox =
-    .data-placeholder = Type CSS here.
 styleeditor-no-stylesheet = This page has no style sheet.
 styleeditor-no-stylesheet-tip = Perhaps you’d like to <a data-l10n-name="append-new-stylesheet">append a new style sheet</a>?
 styleeditor-open-link-new-tab =
@@ -40,3 +38,20 @@ styleeditor-go-to-line =
     .accesskey = J
 # Label displayed when searching a term that is not found in any stylesheet path
 styleeditor-stylesheet-all-filtered = No matching style sheet has been found.
+
+# This string is shown in the style sheets list
+# Variables:
+#   $ruleCount (Integer) - The number of rules in the stylesheet.
+styleeditor-stylesheet-rule-count =
+    { $ruleCount ->
+        [one] { $ruleCount } rule.
+       *[other] { $ruleCount } rules.
+    }
+
+# Title for the pretty print button in the editor footer.
+styleeditor-pretty-print-button =
+    .title = Pretty print style sheet
+
+# Title for the pretty print button in the editor footer, when it's disabled
+styleeditor-pretty-print-button-disabled =
+    .title = Can only pretty print CSS files

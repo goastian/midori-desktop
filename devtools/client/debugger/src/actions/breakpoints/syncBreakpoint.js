@@ -6,19 +6,16 @@ import { setBreakpointPositions } from "./breakpointPositions";
 import {
   findPosition,
   makeBreakpointServerLocation,
-} from "../../utils/breakpoint";
+} from "../../utils/breakpoint/index";
 
 import { comparePosition, createLocation } from "../../utils/location";
 
-import {
-  originalToGeneratedId,
-  isOriginalId,
-} from "devtools/client/shared/source-map-loader/index";
-import { getSource } from "../../selectors";
-import { addBreakpoint, removeBreakpointAtGeneratedLocation } from ".";
+import { originalToGeneratedId } from "devtools/client/shared/source-map-loader/index";
+import { getSource } from "../../selectors/index";
+import { addBreakpoint, removeBreakpointAtGeneratedLocation } from "./modify";
 
-async function findBreakpointPosition(cx, { getState, dispatch }, location) {
-  const positions = await dispatch(setBreakpointPositions({ cx, location }));
+async function findBreakpointPosition({ dispatch }, location) {
+  const positions = await dispatch(setBreakpointPositions(location));
 
   const position = findPosition(positions, location);
   return position;
@@ -41,15 +38,13 @@ async function findBreakpointPosition(cx, { getState, dispatch }, location) {
 //   has changed, we need to make sure that only a single breakpoint is added
 //   to the reducer for the new location corresponding to the original location
 //   in the pending breakpoint.
-export function syncPendingBreakpoint(cx, sourceId, pendingBreakpoint) {
+export function syncPendingBreakpoint(source, pendingBreakpoint) {
   return async thunkArgs => {
     const { getState, client, dispatch } = thunkArgs;
 
-    const source = getSource(getState(), sourceId);
-
-    const generatedSourceId = isOriginalId(sourceId)
-      ? originalToGeneratedId(sourceId)
-      : sourceId;
+    const generatedSourceId = source.isOriginal
+      ? originalToGeneratedId(source.id)
+      : source.id;
 
     const generatedSource = getSource(getState(), generatedSourceId);
 
@@ -78,7 +73,6 @@ export function syncPendingBreakpoint(cx, sourceId, pendingBreakpoint) {
       );
       return dispatch(
         addBreakpoint(
-          cx,
           sourceGeneratedLocation,
           pendingBreakpoint.options,
           pendingBreakpoint.disabled,
@@ -93,7 +87,6 @@ export function syncPendingBreakpoint(cx, sourceId, pendingBreakpoint) {
     });
 
     const newPosition = await findBreakpointPosition(
-      cx,
       thunkArgs,
       originalLocation
     );
@@ -105,9 +98,7 @@ export function syncPendingBreakpoint(cx, sourceId, pendingBreakpoint) {
       // breakpoint moved. If the old generated location still maps to an
       // original location then we don't want to add a breakpoint for it.
       if (isPendingBreakpointWithSourceMap) {
-        dispatch(
-          removeBreakpointAtGeneratedLocation(cx, sourceGeneratedLocation)
-        );
+        dispatch(removeBreakpointAtGeneratedLocation(sourceGeneratedLocation));
       }
       return null;
     }
@@ -121,14 +112,11 @@ export function syncPendingBreakpoint(cx, sourceId, pendingBreakpoint) {
     // breakpoint, remove any breakpoint associated with the old generated
     // location.
     if (!isSameLocation) {
-      dispatch(
-        removeBreakpointAtGeneratedLocation(cx, sourceGeneratedLocation)
-      );
+      dispatch(removeBreakpointAtGeneratedLocation(sourceGeneratedLocation));
     }
 
     return dispatch(
       addBreakpoint(
-        cx,
         newGeneratedLocation,
         pendingBreakpoint.options,
         pendingBreakpoint.disabled

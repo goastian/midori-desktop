@@ -3,14 +3,11 @@
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 import {
-  getFilename,
   getTruncatedFileName,
   getFileURL,
   getDisplayPath,
   getSourceLineCount,
   isJavaScript,
-  isDescendantOfRoot,
-  removeThreadActorId,
   isUrlExtension,
   getLineText,
 } from "../source.js";
@@ -20,7 +17,6 @@ import {
   makeMockSourceWithContent,
   makeMockSourceAndContent,
   makeMockWasmSourceWithContent,
-  makeMockThread,
   makeFullfilledMockSourceContent,
 } from "../test-mockup";
 import { isFulfilled } from "../async-value.js";
@@ -29,66 +25,20 @@ describe("sources", () => {
   const unicode = "\u6e2c";
   const encodedUnicode = encodeURIComponent(unicode);
 
-  describe("getFilename", () => {
-    it("should give us a default of (index)", () => {
-      expect(
-        getFilename(makeMockSource("http://localhost.com:7999/increment/"))
-      ).toBe("(index)");
-    });
-    it("should give us the filename", () => {
-      expect(
-        getFilename(
-          makeMockSource("http://localhost.com:7999/increment/hello.html")
-        )
-      ).toBe("hello.html");
-    });
-    it("should give us the readable Unicode filename if encoded", () => {
-      expect(
-        getFilename(
-          makeMockSource(
-            `http://localhost.com:7999/increment/${encodedUnicode}.html`
-          )
-        )
-      ).toBe(`${unicode}.html`);
-    });
-    it("should give us the filename excluding the query strings", () => {
-      expect(
-        getFilename(
-          makeMockSource(
-            "http://localhost.com:7999/increment/hello.html?query_strings"
-          )
-        )
-      ).toBe("hello.html");
-    });
-    it("should give us the proper filename for pretty files", () => {
-      expect(
-        getFilename(
-          makeMockSource(
-            "http://localhost.com:7999/increment/hello.html:formatted"
-          )
-        )
-      ).toBe("hello.html");
-    });
-  });
-
   describe("getTruncatedFileName", () => {
     it("should truncate the file name when it is more than 30 chars", () => {
       expect(
         getTruncatedFileName(
           makeMockSource(
             "really-really-really-really-really-really-long-name.html"
-          ),
-          "",
-          30
+          )
         )
       ).toBe("really-really…long-name.html");
     });
     it("should first decode the filename and then truncate it", () => {
       expect(
         getTruncatedFileName(
-          makeMockSource(`${encodedUnicode.repeat(30)}.html`),
-          "",
-          30
+          makeMockSource(`${encodedUnicode.repeat(30)}.html`)
         )
       ).toBe("測測測測測測測測測測測測測…測測測測測測測測測.html");
     });
@@ -271,42 +221,6 @@ describe("sources", () => {
         throw new Error("Unexpected content value");
       }
       expect(getSourceLineCount(content.value)).toEqual(2);
-    });
-  });
-
-  describe("isDescendantOfRoot", () => {
-    const threads = [
-      makeMockThread({ actor: "server0.conn1.child1/thread19" }),
-    ];
-
-    it("should detect normal source urls", () => {
-      const source = makeMockSource(
-        "resource://activity-stream/vendor/react.js"
-      );
-      const rootWithoutThreadActor = removeThreadActorId(
-        "resource://activity-stream",
-        threads
-      );
-      expect(isDescendantOfRoot(source, rootWithoutThreadActor)).toBe(true);
-    });
-
-    it("should detect source urls under chrome:// as root", () => {
-      const source = makeMockSource(
-        "chrome://browser/content/contentSearchUI.js"
-      );
-      const rootWithoutThreadActor = removeThreadActorId("chrome://", threads);
-      expect(isDescendantOfRoot(source, rootWithoutThreadActor)).toBe(true);
-    });
-
-    it("should detect source urls if root is a thread actor Id", () => {
-      const source = makeMockSource(
-        "resource://activity-stream/vendor/react-dom.js"
-      );
-      const rootWithoutThreadActor = removeThreadActorId(
-        "server0.conn1.child1/thread19",
-        threads
-      );
-      expect(isDescendantOfRoot(source, rootWithoutThreadActor)).toBe(true);
     });
   });
 

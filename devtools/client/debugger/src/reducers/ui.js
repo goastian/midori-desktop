@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-/* eslint complexity: ["error", 35]*/
+/* eslint-disable complexity */
 
 /**
  * UI reducer
@@ -35,7 +35,12 @@ export const initialUIState = () => ({
   inlinePreviewEnabled: features.inlinePreview,
   editorWrappingEnabled: prefs.editorWrapping,
   javascriptEnabled: true,
+  javascriptTracingEnabled: false,
   javascriptTracingLogMethod: prefs.javascriptTracingLogMethod,
+  javascriptTracingValues: prefs.javascriptTracingValues,
+  javascriptTracingOnNextInteraction: prefs.javascriptTracingOnNextInteraction,
+  javascriptTracingOnNextLoad: prefs.javascriptTracingOnNextLoad,
+  javascriptTracingFunctionReturn: prefs.javascriptTracingFunctionReturn,
   mutableSearchOptions: prefs.searchOptions || {
     [searchKeys.FILE_SEARCH]: {
       regexMatch: false,
@@ -56,7 +61,9 @@ export const initialUIState = () => ({
       excludePatterns: "",
     },
   },
+  projectSearchQuery: "",
   hideIgnoredSources: prefs.hideIgnoredSources,
+  sourceMapsEnabled: prefs.clientSourceMapsEnabled,
   sourceMapIgnoreListEnabled: prefs.sourceMapIgnoreListEnabled,
 });
 
@@ -87,7 +94,7 @@ function update(state = initialUIState(), action) {
 
     case "TOGGLE_SOURCE_MAPS_ENABLED": {
       prefs.clientSourceMapsEnabled = action.value;
-      return { ...state };
+      return { ...state, sourceMapsEnabled: action.value };
     }
 
     case "SET_ORIENTATION": {
@@ -144,7 +151,7 @@ function update(state = initialUIState(), action) {
     }
 
     case "NAVIGATE": {
-      return { ...state, activeSearch: null, highlightedLineRange: null };
+      return { ...state, highlightedLineRange: null };
     }
 
     case "REMOVE_THREAD": {
@@ -156,9 +163,51 @@ function update(state = initialUIState(), action) {
       return state;
     }
 
+    case "TOGGLE_TRACING": {
+      if (action.status === "start") {
+        return { ...state, javascriptTracingEnabled: action.enabled };
+      }
+      return state;
+    }
+
     case "SET_JAVASCRIPT_TRACING_LOG_METHOD": {
       prefs.javascriptTracingLogMethod = action.value;
       return { ...state, javascriptTracingLogMethod: action.value };
+    }
+
+    case "TOGGLE_JAVASCRIPT_TRACING_VALUES": {
+      prefs.javascriptTracingValues = !prefs.javascriptTracingValues;
+      return {
+        ...state,
+        javascriptTracingValues: prefs.javascriptTracingValues,
+      };
+    }
+
+    case "TOGGLE_JAVASCRIPT_TRACING_ON_NEXT_INTERACTION": {
+      prefs.javascriptTracingOnNextInteraction =
+        !prefs.javascriptTracingOnNextInteraction;
+      return {
+        ...state,
+        javascriptTracingOnNextInteraction:
+          prefs.javascriptTracingOnNextInteraction,
+      };
+    }
+
+    case "TOGGLE_JAVASCRIPT_TRACING_ON_NEXT_LOAD": {
+      prefs.javascriptTracingOnNextLoad = !prefs.javascriptTracingOnNextLoad;
+      return {
+        ...state,
+        javascriptTracingOnNextLoad: prefs.javascriptTracingOnNextLoad,
+      };
+    }
+
+    case "TOGGLE_JAVASCRIPT_TRACING_FUNCTION_RETURN": {
+      prefs.javascriptTracingFunctionReturn =
+        !prefs.javascriptTracingFunctionReturn;
+      return {
+        ...state,
+        javascriptTracingFunctionReturn: prefs.javascriptTracingFunctionReturn,
+      };
     }
 
     case "SET_SEARCH_OPTIONS": {
@@ -168,6 +217,14 @@ function update(state = initialUIState(), action) {
       };
       prefs.searchOptions = state.mutableSearchOptions;
       return { ...state };
+    }
+
+    case "SET_PROJECT_SEARCH_QUERY": {
+      if (action.query != state.projectSearchQuery) {
+        state.projectSearchQuery = action.query;
+        return { ...state };
+      }
+      return state;
     }
 
     case "HIDE_IGNORED_SOURCES": {

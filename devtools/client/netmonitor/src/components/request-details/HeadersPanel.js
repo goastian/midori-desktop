@@ -1,3 +1,4 @@
+/* eslint-disable complexity */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -88,6 +89,14 @@ loader.lazyRequireGetter(
   true
 );
 
+loader.lazyGetter(this, "HEADERS_PROXY_STATUS", function () {
+  return L10N.getStr("netmonitor.headers.proxyStatus");
+});
+
+loader.lazyGetter(this, "HEADERS_PROXY_VERSION", function () {
+  return L10N.getStr("netmonitor.headers.proxyVersion");
+});
+
 const { div, input, label, span, textarea, tr, td, button } = dom;
 
 const RESEND = L10N.getStr("netmonitor.context.resend.label");
@@ -113,7 +122,7 @@ const HEADERS_ETP = L10N.getStr(
   "netmonitor.trackingResource.enhancedTrackingProtection"
 );
 const HEADERS_PRIORITY = L10N.getStr("netmonitor.headers.requestPriority");
-
+const HEADERS_DNS = L10N.getStr("netmonitor.headers.dns");
 /**
  * Headers panel component
  * Lists basic information about the request
@@ -286,11 +295,11 @@ class HeadersPanel extends Component {
   /**
    * Renders the top part of the headers detail panel - Summary.
    */
-  renderSummary(summaryLabel, value) {
+  renderSummary(summaryLabel, value, summaryClass = "") {
     return div(
       {
         key: summaryLabel,
-        className: "tabpanel-summary-container headers-summary",
+        className: "tabpanel-summary-container headers-summary " + summaryClass,
       },
       span(
         { className: "tabpanel-summary-label headers-summary-label" },
@@ -556,6 +565,10 @@ class HeadersPanel extends Component {
         isThirdPartyTrackingResource,
         contentSize,
         transferredSize,
+        isResolvedByTRR,
+        proxyHttpVersion,
+        proxyStatus,
+        proxyStatusText,
       },
       openRequestBlockingAndAddUrl,
       openHTTPCustomRequestTab,
@@ -716,6 +729,42 @@ class HeadersPanel extends Component {
       );
     }
 
+    let summaryProxyStatus;
+    if (proxyStatus) {
+      summaryProxyStatus = div(
+        {
+          key: "headers-summary ",
+          className:
+            "tabpanel-summary-container headers-summary headers-proxy-status",
+        },
+        span(
+          {
+            className: "tabpanel-summary-label headers-summary-label",
+          },
+          HEADERS_PROXY_STATUS
+        ),
+        span(
+          {
+            className: "tabpanel-summary-value status",
+            "data-code": proxyStatus,
+          },
+          StatusCode({
+            item: {
+              fromCache,
+              fromServiceWorker,
+              status: proxyStatus,
+              statusText: proxyStatusText,
+            },
+          }),
+          proxyStatusText,
+          MDNLink({
+            url: getHTTPStatusCodeURL(proxyStatus),
+            title: SUMMARY_STATUS_LEARN_MORE,
+          })
+        )
+      );
+    }
+
     let trackingProtectionStatus;
     let trackingProtectionDetails = "";
     if (isThirdPartyTrackingResource) {
@@ -747,6 +796,14 @@ class HeadersPanel extends Component {
       ? this.renderSummary(HEADERS_VERSION, httpVersion)
       : null;
 
+    const summaryProxyHttpVersion = proxyHttpVersion
+      ? this.renderSummary(
+          HEADERS_PROXY_VERSION,
+          proxyHttpVersion,
+          "headers-proxy-version"
+        )
+      : null;
+
     const summaryReferrerPolicy = referrerPolicy
       ? this.renderSummary(HEADERS_REFERRER, referrerPolicy)
       : null;
@@ -755,12 +812,24 @@ class HeadersPanel extends Component {
       ? this.renderSummary(HEADERS_PRIORITY, getRequestPriorityAsText(priority))
       : null;
 
+    const summaryDNS = this.renderSummary(
+      HEADERS_DNS,
+      L10N.getStr(
+        isResolvedByTRR
+          ? "netmonitor.headers.dns.overHttps"
+          : "netmonitor.headers.dns.basic"
+      )
+    );
+
     const summaryItems = [
       summaryStatus,
+      summaryProxyStatus,
       summaryVersion,
+      summaryProxyHttpVersion,
       summarySize,
       summaryReferrerPolicy,
       summaryPriority,
+      summaryDNS,
       trackingProtectionStatus,
       trackingProtectionDetails,
     ].filter(summaryItem => summaryItem !== null);
@@ -818,6 +887,7 @@ class HeadersPanel extends Component {
               : null,
             shouldExpandPreview,
             onTogglePreview: expanded => setHeadersUrlPreviewExpanded(expanded),
+            proxyStatus,
           }),
           div(
             {
@@ -837,7 +907,7 @@ module.exports = connect(
   state => ({
     shouldExpandPreview: state.ui.shouldExpandHeadersUrlPreview,
   }),
-  (dispatch, props) => ({
+  dispatch => ({
     setHeadersUrlPreviewExpanded: expanded =>
       dispatch(Actions.setHeadersUrlPreviewExpanded(expanded)),
     openRequestBlockingAndAddUrl: url =>

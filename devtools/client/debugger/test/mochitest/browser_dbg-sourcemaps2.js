@@ -27,7 +27,7 @@ add_task(async function () {
   await selectSource(dbg, mainSrc);
 
   // Test that breakpoint is not off by a line.
-  await addBreakpoint(dbg, mainSrc, 4, 2);
+  await addBreakpoint(dbg, mainSrc, 4, 3);
   is(getBreakpointCount(), 1, "One breakpoint exists");
   ok(
     getBreakpoint(createLocation({ source: mainSrc, line: 4, column: 2 })),
@@ -37,15 +37,24 @@ add_task(async function () {
   await assertBreakpoint(dbg, 4);
   invokeInTab("logMessage");
 
-  await waitForPaused(dbg);
+  await waitForPausedInOriginalFileAndToggleMapScopes(dbg);
   assertPausedAtSourceAndLine(dbg, mainSrc.id, 4);
 
   // Tests the existence of the sourcemap link in the original source.
-  ok(findElement(dbg, "sourceMapLink"), "Sourcemap link in original source");
+  let sourceMapLink = findElement(dbg, "mappedSourceLink");
+  is(
+    sourceMapLink.textContent,
+    "To main.min.js",
+    "Sourcemap link in original source refers to the bundle"
+  );
+
   await selectSource(dbg, "main.min.js");
 
-  ok(
-    !findElement(dbg, "sourceMapLink"),
-    "No Sourcemap link exists in generated source"
+  // The mapped source link is computed asynchronously when we are on the bundle
+  sourceMapLink = await waitFor(() => findElement(dbg, "mappedSourceLink"));
+  is(
+    sourceMapLink.textContent,
+    "From main.js",
+    "Sourcemap link in bundle refers to the original source"
   );
 });

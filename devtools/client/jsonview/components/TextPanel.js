@@ -4,7 +4,7 @@
 
 "use strict";
 
-define(function (require, exports, module) {
+define(function (require, exports) {
   const { Component } = require("devtools/client/shared/vendor/react");
   const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
   const dom = require("devtools/client/shared/vendor/react-dom-factories");
@@ -26,6 +26,7 @@ define(function (require, exports, module) {
       return {
         isValidJson: PropTypes.bool,
         actions: PropTypes.object,
+        errorMessage: PropTypes.string,
         data: PropTypes.instanceOf(Text),
       };
     }
@@ -42,6 +43,9 @@ define(function (require, exports, module) {
           actions: this.props.actions,
           isValidJson: this.props.isValidJson,
         }),
+        this.props.errorMessage
+          ? div({ className: "jsonParseError" }, this.props.errorMessage)
+          : null,
         div({ className: "panelContent" }, LiveText({ data: this.props.data }))
       );
     }

@@ -4,8 +4,9 @@
 "use strict";
 
 const asyncStoreHelper = require("resource://devtools/client/shared/async-store-helper.js");
-const { validateBreakpointLocation } = ChromeUtils.import(
-  "resource://devtools/shared/validate-breakpoint.jsm"
+const { validateBreakpointLocation } = ChromeUtils.importESModule(
+  "resource://devtools/shared/validate-breakpoint.sys.mjs",
+  { global: "contextual" }
 );
 
 const asyncStore = asyncStoreHelper("debugger", {
@@ -19,6 +20,9 @@ exports.asyncStore = asyncStore;
 
 exports.getThreadOptions = async function () {
   return {
+    shouldPauseOnDebuggerStatement: Services.prefs.getBoolPref(
+      "devtools.debugger.pause-on-debugger-statement"
+    ),
     pauseOnExceptions: Services.prefs.getBoolPref(
       "devtools.debugger.pause-on-exceptions"
     ),

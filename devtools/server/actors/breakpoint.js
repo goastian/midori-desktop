@@ -90,7 +90,7 @@ class BreakpointActor {
   /**
    * Called on changes to this breakpoint's script offsets or options.
    */
-  _newOffsetsOrOptions(script, offsets, oldOptions) {
+  _newOffsetsOrOptions(script, offsets) {
     // Clear any existing handler first in case this is called multiple times
     // after options change.
     for (const offset of offsets) {
@@ -118,7 +118,28 @@ class BreakpointActor {
    *            If the condition throws, this is the thrown message.
    */
   checkCondition(frame, condition) {
-    const completion = frame.eval(condition, { hideFromDebugger: true });
+    // Ensure disabling breakpoint while evaluating the condition.
+    // All but exception breakpoint to report any exception when running the condition.
+    this.threadActor.insideClientEvaluation = {
+      disableBreaks: true,
+      reportExceptionsWhenBreaksAreDisabled: true,
+    };
+    let completion;
+
+    // Temporarily enable pause on exception when evaluating the condition.
+    const hadToEnablePauseOnException =
+      !this.threadActor.isPauseOnExceptionsEnabled();
+    try {
+      if (hadToEnablePauseOnException) {
+        this.threadActor.setPauseOnExceptions(true);
+      }
+      completion = frame.eval(condition, { hideFromDebugger: true });
+    } finally {
+      this.threadActor.insideClientEvaluation = null;
+      if (hadToEnablePauseOnException) {
+        this.threadActor.setPauseOnExceptions(false);
+      }
+    }
     if (completion) {
       if (completion.throw) {
         // The evaluation failed and threw
@@ -144,14 +165,14 @@ class BreakpointActor {
    */
   // eslint-disable-next-line complexity
   hit(frame) {
+    if (this.threadActor.shouldSkipAnyBreakpoint) {
+      return undefined;
+    }
+
     // Don't pause if we are currently stepping (in or over) or the frame is
     // black-boxed.
     const location = this.threadActor.sourcesManager.getFrameLocation(frame);
-
-    if (
-      this.threadActor.sourcesManager.isFrameBlackBoxed(frame) ||
-      this.threadActor.skipBreakpointsOption
-    ) {
+    if (this.threadActor.sourcesManager.isFrameBlackBoxed(frame)) {
       return undefined;
     }
 
@@ -182,11 +203,6 @@ class BreakpointActor {
       }
 
       if (message) {
-        // Don't pause if there is an exception message and POE is false
-        if (!this.threadActor._options.pauseOnExceptions) {
-          return undefined;
-        }
-
         reason.type = "breakpointConditionThrown";
         reason.message = message;
       }

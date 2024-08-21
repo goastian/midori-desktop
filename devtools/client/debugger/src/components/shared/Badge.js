@@ -2,16 +2,29 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
-import PropTypes from "prop-types";
-import "./Badge.css";
+import React from "devtools/client/shared/vendor/react";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
 
-const Badge = ({ children }) => (
-  <span className="badge text-white text-center">{children}</span>
-);
+class Badge extends React.Component {
+  constructor(props) {
+    super(props);
+  }
 
-Badge.propTypes = {
-  children: PropTypes.node.isRequired,
-};
+  static get propTypes() {
+    return {
+      badgeText: PropTypes.node.isRequired,
+    };
+  }
+
+  render() {
+    return React.createElement(
+      "span",
+      {
+        className: "badge text-white text-center",
+      },
+      this.props.badgeText
+    );
+  }
+}
 
 export default Badge;

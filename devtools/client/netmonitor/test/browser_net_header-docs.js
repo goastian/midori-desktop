@@ -48,9 +48,9 @@ add_task(async function () {
    * Tests that a "Learn More" button is only shown if
    * and only if a header is documented in MDN.
    */
-  function testShowLearnMore(data) {
+  function testShowLearnMore() {
     const selector = ".properties-view .treeRow.stringRow";
-    document.querySelectorAll(selector).forEach((rowEl, index) => {
+    document.querySelectorAll(selector).forEach(rowEl => {
       const headerName = rowEl.querySelectorAll(".treeLabelCell .treeLabel")[0]
         .textContent;
       const headerDocURL = getHeadersURL(headerName);
@@ -59,13 +59,15 @@ add_task(async function () {
       );
 
       if (headerDocURL === null) {
-        ok(
-          learnMoreEl.length === 0,
+        Assert.strictEqual(
+          learnMoreEl.length,
+          0,
           'undocumented header does not include a "Learn More" button'
         );
       } else {
-        ok(
-          learnMoreEl[0].getAttribute("title") === headerDocURL,
+        Assert.strictEqual(
+          learnMoreEl[0].getAttribute("title"),
+          headerDocURL,
           'documented header includes a "Learn More" button with a link to MDN'
         );
       }
