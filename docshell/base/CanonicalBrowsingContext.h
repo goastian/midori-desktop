@@ -38,6 +38,7 @@ class nsITimer;
 
 namespace mozilla {
 enum class CallState;
+class BounceTrackingState;
 
 namespace embedding {
 class PrintData;
@@ -119,14 +120,15 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   // content/chrome boundaries.
   already_AddRefed<WindowGlobalParent> GetEmbedderWindowGlobal() const;
 
-  already_AddRefed<CanonicalBrowsingContext> GetParentCrossChromeBoundary();
-
-  already_AddRefed<CanonicalBrowsingContext> TopCrossChromeBoundary();
+  CanonicalBrowsingContext* GetParentCrossChromeBoundary();
+  CanonicalBrowsingContext* TopCrossChromeBoundary();
   Nullable<WindowProxyHolder> GetTopChromeWindow();
 
   nsISHistory* GetSessionHistory();
   SessionHistoryEntry* GetActiveSessionHistoryEntry();
   void SetActiveSessionHistoryEntry(SessionHistoryEntry* aEntry);
+
+  bool ManuallyManagesActiveness() const;
 
   UniquePtr<LoadingSessionHistoryInfo> CreateLoadingSessionHistoryEntryForLoad(
       nsDocShellLoadState* aLoadState, SessionHistoryEntry* aExistingEntry,
@@ -135,17 +137,24 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   UniquePtr<LoadingSessionHistoryInfo> ReplaceLoadingSessionHistoryEntryForLoad(
       LoadingSessionHistoryInfo* aInfo, nsIChannel* aNewChannel);
 
-  using PrintPromise = MozPromise</* unused */ bool, nsresult, false>;
+  using PrintPromise =
+      MozPromise<MaybeDiscardedBrowsingContext, nsresult, false>;
   MOZ_CAN_RUN_SCRIPT RefPtr<PrintPromise> Print(nsIPrintSettings*);
   MOZ_CAN_RUN_SCRIPT already_AddRefed<Promise> PrintJS(nsIPrintSettings*,
                                                        ErrorResult&);
-
+  MOZ_CAN_RUN_SCRIPT RefPtr<PrintPromise> PrintWithNoContentAnalysis(
+      nsIPrintSettings* aPrintSettings, bool aForceStaticDocument,
+      const MaybeDiscardedBrowsingContext& aClonedStaticBrowsingContext);
+  MOZ_CAN_RUN_SCRIPT void ReleaseClonedPrint(
+      const MaybeDiscardedBrowsingContext& aClonedStaticBrowsingContext);
   // Call the given callback on all top-level descendant BrowsingContexts.
-  // Return Callstate::Stop from the callback to stop calling
-  // further children.
+  // Return Callstate::Stop from the callback to stop calling further children.
+  //
+  // If aIncludeNestedBrowsers is true, then all top descendants are included,
+  // even those inside a nested top browser.
   void CallOnAllTopDescendants(
-      const std::function<mozilla::CallState(CanonicalBrowsingContext*)>&
-          aCallback);
+      const FunctionRef<CallState(CanonicalBrowsingContext*)>& aCallback,
+      bool aIncludeNestedBrowsers);
 
   void SessionHistoryCommit(uint64_t aLoadId, const nsID& aChangeID,
                             uint32_t aLoadType, bool aPersist,
@@ -346,6 +355,19 @@ class CanonicalBrowsingContext final : public BrowsingContext {
     mPriorityActive = aIsActive;
   }
 
+  void SetIsActive(bool aIsActive, ErrorResult& aRv) {
+    MOZ_ASSERT(ManuallyManagesActiveness(),
+               "Shouldn't be setting active status of this browsing context if "
+               "not manually managed");
+    SetIsActiveInternal(aIsActive, aRv);
+  }
+
+  void SetIsActiveInternal(bool aIsActive, ErrorResult& aRv) {
+    SetExplicitActive(aIsActive ? ExplicitActiveStatus::Active
+                                : ExplicitActiveStatus::Inactive,
+                      aRv);
+  }
+
   void SetTouchEventsOverride(dom::TouchEventsOverride, ErrorResult& aRv);
   void SetTargetTopLevelLinkClicksToBlank(bool aTargetTopLevelLinkClicksToBlank,
                                           ErrorResult& aRv);
@@ -385,6 +407,8 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   void RecomputeAppWindowVisibility();
 
   already_AddRefed<nsISHEntry> GetMostRecentLoadingSessionHistoryEntry();
+
+  already_AddRefed<BounceTrackingState> GetBounceTrackingState();
 
  protected:
   // Called when the browsing context is being discarded.

@@ -14,8 +14,8 @@
 #include "nsDocShell.h"
 #include "nsFrameLoaderOwner.h"
 #include "nsHashKeys.h"
-#include "nsIContentViewer.h"
 #include "nsIDocShell.h"
+#include "nsIDocumentViewer.h"
 #include "nsDocShellLoadState.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsILayoutHistoryState.h"
@@ -65,9 +65,9 @@ using namespace mozilla::dom;
 // Default this to time out unused content viewers after 30 minutes
 #define CONTENT_VIEWER_TIMEOUT_SECONDS_DEFAULT (30 * 60)
 
-static const char* kObservedPrefs[] = {PREF_SHISTORY_SIZE,
-                                       PREF_SHISTORY_MAX_TOTAL_VIEWERS,
-                                       PREF_FISSION_BFCACHEINPARENT, nullptr};
+static constexpr const char* kObservedPrefs[] = {
+    PREF_SHISTORY_SIZE, PREF_SHISTORY_MAX_TOTAL_VIEWERS,
+    PREF_FISSION_BFCACHEINPARENT, nullptr};
 
 static int32_t gHistoryMaxSize = 50;
 
@@ -197,7 +197,7 @@ void nsSHistoryObserver::PrefChanged(const char* aPref, void* aSelf) {
 
 void nsSHistoryObserver::PrefChanged(const char* aPref) {
   nsSHistory::UpdatePrefs();
-  nsSHistory::GloballyEvictContentViewers();
+  nsSHistory::GloballyEvictDocumentViewers();
 }
 
 NS_IMETHODIMP
@@ -205,14 +205,14 @@ nsSHistoryObserver::Observe(nsISupports* aSubject, const char* aTopic,
                             const char16_t* aData) {
   if (!strcmp(aTopic, "cacheservice:empty-cache") ||
       !strcmp(aTopic, "memory-pressure")) {
-    nsSHistory::GloballyEvictAllContentViewers();
+    nsSHistory::GloballyEvictAllDocumentViewers();
   }
 
   return NS_OK;
 }
 
-void nsSHistory::EvictContentViewerForEntry(nsISHEntry* aEntry) {
-  nsCOMPtr<nsIContentViewer> viewer = aEntry->GetContentViewer();
+void nsSHistory::EvictDocumentViewerForEntry(nsISHEntry* aEntry) {
+  nsCOMPtr<nsIDocumentViewer> viewer = aEntry->GetDocumentViewer();
   if (viewer) {
     LOG_SHENTRY_SPEC(("Evicting content viewer 0x%p for "
                       "owning SHEntry 0x%p at %s.",
@@ -221,8 +221,8 @@ void nsSHistory::EvictContentViewerForEntry(nsISHEntry* aEntry) {
 
     // Drop the presentation state before destroying the viewer, so that
     // document teardown is able to correctly persist the state.
-    NotifyListenersContentViewerEvicted(1);
-    aEntry->SetContentViewer(nullptr);
+    NotifyListenersDocumentViewerEvicted(1);
+    aEntry->SetDocumentViewer(nullptr);
     aEntry->SyncPresentationState();
     viewer->Destroy();
   } else if (nsCOMPtr<SessionHistoryEntry> she = do_QueryInterface(aEntry)) {
@@ -237,9 +237,9 @@ void nsSHistory::EvictContentViewerForEntry(nsISHEntry* aEntry) {
       // Only destroy non-current frameloader when evicting from the bfcache.
       if (currentFrameLoader != frameLoader) {
         MOZ_LOG(gSHIPBFCacheLog, LogLevel::Debug,
-                ("nsSHistory::EvictContentViewerForEntry "
+                ("nsSHistory::EvictDocumentViewerForEntry "
                  "destroying an nsFrameLoader."));
-        NotifyListenersContentViewerEvicted(1);
+        NotifyListenersDocumentViewerEvicted(1);
         she->SetFrameLoader(nullptr);
         frameLoader->Destroy();
       }
@@ -1108,9 +1108,9 @@ nsSHistory::AddSHistoryListener(nsISHistoryListener* aListener) {
   return NS_OK;
 }
 
-void nsSHistory::NotifyListenersContentViewerEvicted(uint32_t aNumEvicted) {
+void nsSHistory::NotifyListenersDocumentViewerEvicted(uint32_t aNumEvicted) {
   NotifyListeners(mListeners, [aNumEvicted](auto l) {
-    l->OnContentViewerEvicted(aNumEvicted);
+    l->OnDocumentViewerEvicted(aNumEvicted);
   });
 }
 
@@ -1177,25 +1177,25 @@ nsSHistory::NotifyOnHistoryReload(bool* aCanReload) {
 }
 
 NS_IMETHODIMP
-nsSHistory::EvictOutOfRangeContentViewers(int32_t aIndex) {
+nsSHistory::EvictOutOfRangeDocumentViewers(int32_t aIndex) {
   MOZ_LOG(gSHIPBFCacheLog, LogLevel::Debug,
-          ("nsSHistory::EvictOutOfRangeContentViewers %i", aIndex));
+          ("nsSHistory::EvictOutOfRangeDocumentViewers %i", aIndex));
 
   // Check our per SHistory object limit in the currently navigated SHistory
-  EvictOutOfRangeWindowContentViewers(aIndex);
+  EvictOutOfRangeWindowDocumentViewers(aIndex);
   // Check our total limit across all SHistory objects
-  GloballyEvictContentViewers();
+  GloballyEvictDocumentViewers();
   return NS_OK;
 }
 
 NS_IMETHODIMP_(void)
-nsSHistory::EvictContentViewersOrReplaceEntry(nsISHEntry* aNewSHEntry,
-                                              bool aReplace) {
+nsSHistory::EvictDocumentViewersOrReplaceEntry(nsISHEntry* aNewSHEntry,
+                                               bool aReplace) {
   if (!aReplace) {
     int32_t curIndex;
     GetIndex(&curIndex);
     if (curIndex > -1) {
-      EvictOutOfRangeContentViewers(curIndex);
+      EvictOutOfRangeDocumentViewers(curIndex);
     }
   } else {
     nsCOMPtr<nsISHEntry> rootSHEntry = nsSHistory::GetRootSHEntry(aNewSHEntry);
@@ -1208,11 +1208,11 @@ nsSHistory::EvictContentViewersOrReplaceEntry(nsISHEntry* aNewSHEntry,
 }
 
 NS_IMETHODIMP
-nsSHistory::EvictAllContentViewers() {
+nsSHistory::EvictAllDocumentViewers() {
   // XXXbz we don't actually do a good job of evicting things as we should, so
   // we might have viewers quite far from mIndex.  So just evict everything.
   for (int32_t i = 0; i < Length(); i++) {
-    EvictContentViewerForEntry(mEntries[i]);
+    EvictDocumentViewerForEntry(mEntries[i]);
   }
 
   return NS_OK;
@@ -1306,11 +1306,11 @@ static void FinishRestore(CanonicalBrowsingContext* aBrowsingContext,
     // disabled everywhere.
 
     frameLoaderOwner->RestoreFrameLoaderFromBFCache(aFrameLoader);
-    // EvictOutOfRangeContentViewers is called here explicitly to
+    // EvictOutOfRangeDocumentViewers is called here explicitly to
     // possibly evict the now in the bfcache document.
     // HistoryCommitIndexAndLength might not have evicted that before the
     // FrameLoader swap.
-    shistory->EvictOutOfRangeContentViewers(indexOfHistoryLoad);
+    shistory->EvictOutOfRangeDocumentViewers(indexOfHistoryLoad);
 
     // The old page can't be stored in the bfcache,
     // destroy the nsFrameLoader.
@@ -1484,8 +1484,8 @@ nsresult nsSHistory::ReloadCurrentEntry(
                    /* aUserActivation */ false);
 }
 
-void nsSHistory::EvictOutOfRangeWindowContentViewers(int32_t aIndex) {
-  // XXX rename method to EvictContentViewersExceptAroundIndex, or something.
+void nsSHistory::EvictOutOfRangeWindowDocumentViewers(int32_t aIndex) {
+  // XXX rename method to EvictDocumentViewersExceptAroundIndex, or something.
 
   // We need to release all content viewers that are no longer in the range
   //
@@ -1530,17 +1530,17 @@ void nsSHistory::EvictOutOfRangeWindowContentViewers(int32_t aIndex) {
   WindowIndices(aIndex, &startSafeIndex, &endSafeIndex);
 
   LOG(
-      ("EvictOutOfRangeWindowContentViewers(index=%d), "
+      ("EvictOutOfRangeWindowDocumentViewers(index=%d), "
        "Length()=%d. Safe range [%d, %d]",
        aIndex, Length(), startSafeIndex, endSafeIndex));
 
   // The content viewers in range aIndex -/+ VIEWER_WINDOW will not be
   // evicted.  Collect a set of them so we don't accidentally evict one of them
   // if it appears outside this range.
-  nsCOMArray<nsIContentViewer> safeViewers;
+  nsCOMArray<nsIDocumentViewer> safeViewers;
   nsTArray<RefPtr<nsFrameLoader>> safeFrameLoaders;
   for (int32_t i = startSafeIndex; i <= endSafeIndex; i++) {
-    nsCOMPtr<nsIContentViewer> viewer = mEntries[i]->GetContentViewer();
+    nsCOMPtr<nsIDocumentViewer> viewer = mEntries[i]->GetDocumentViewer();
     if (viewer) {
       safeViewers.AppendObject(viewer);
     } else if (nsCOMPtr<SessionHistoryEntry> she =
@@ -1557,17 +1557,17 @@ void nsSHistory::EvictOutOfRangeWindowContentViewers(int32_t aIndex) {
   // copy of Length(), because the length might change between iterations.)
   for (int32_t i = 0; i < Length(); i++) {
     nsCOMPtr<nsISHEntry> entry = mEntries[i];
-    nsCOMPtr<nsIContentViewer> viewer = entry->GetContentViewer();
+    nsCOMPtr<nsIDocumentViewer> viewer = entry->GetDocumentViewer();
     if (viewer) {
       if (safeViewers.IndexOf(viewer) == -1) {
-        EvictContentViewerForEntry(entry);
+        EvictDocumentViewerForEntry(entry);
       }
     } else if (nsCOMPtr<SessionHistoryEntry> she =
                    do_QueryInterface(mEntries[i])) {
       nsFrameLoader* frameLoader = she->GetFrameLoader();
       if (frameLoader) {
         if (!safeFrameLoaders.Contains(frameLoader)) {
-          EvictContentViewerForEntry(entry);
+          EvictDocumentViewerForEntry(entry);
         }
       }
     }
@@ -1581,7 +1581,7 @@ class EntryAndDistance {
   EntryAndDistance(nsSHistory* aSHistory, nsISHEntry* aEntry, uint32_t aDist)
       : mSHistory(aSHistory),
         mEntry(aEntry),
-        mViewer(aEntry->GetContentViewer()),
+        mViewer(aEntry->GetDocumentViewer()),
         mLastTouched(mEntry->GetLastTouched()),
         mDistance(aDist) {
     nsCOMPtr<SessionHistoryEntry> she = do_QueryInterface(aEntry);
@@ -1611,7 +1611,7 @@ class EntryAndDistance {
 
   RefPtr<nsSHistory> mSHistory;
   nsCOMPtr<nsISHEntry> mEntry;
-  nsCOMPtr<nsIContentViewer> mViewer;
+  nsCOMPtr<nsIDocumentViewer> mViewer;
   RefPtr<nsFrameLoader> mFrameLoader;
   uint32_t mLastTouched;
   int32_t mDistance;
@@ -1620,7 +1620,7 @@ class EntryAndDistance {
 }  // namespace
 
 // static
-void nsSHistory::GloballyEvictContentViewers() {
+void nsSHistory::GloballyEvictDocumentViewers() {
   // First, collect from each SHistory object the entries which have a cached
   // content viewer. Associate with each entry its distance from its SHistory's
   // current index.
@@ -1641,8 +1641,8 @@ void nsSHistory::GloballyEvictContentViewers() {
     //   * history.pushState or hash navigations, in which case a copy of the
     //     content viewer should exist within the range, or
     //
-    //   * bugs which cause us not to call nsSHistory::EvictContentViewers()
-    //     often enough.  Once we do call EvictContentViewers() for the
+    //   * bugs which cause us not to call nsSHistory::EvictDocumentViewers()
+    //     often enough.  Once we do call EvictDocumentViewers() for the
     //     SHistory object in question, we'll do a full search of its history
     //     and evict the out-of-range content viewers, so we don't bother here.
     //
@@ -1650,19 +1650,19 @@ void nsSHistory::GloballyEvictContentViewers() {
     shist->WindowIndices(shist->mIndex, &startIndex, &endIndex);
     for (int32_t i = startIndex; i <= endIndex; i++) {
       nsCOMPtr<nsISHEntry> entry = shist->mEntries[i];
-      nsCOMPtr<nsIContentViewer> contentViewer = entry->GetContentViewer();
+      nsCOMPtr<nsIDocumentViewer> viewer = entry->GetDocumentViewer();
 
       bool found = false;
-      bool hasContentViewerOrFrameLoader = false;
-      if (contentViewer) {
-        hasContentViewerOrFrameLoader = true;
+      bool hasDocumentViewerOrFrameLoader = false;
+      if (viewer) {
+        hasDocumentViewerOrFrameLoader = true;
         // Because one content viewer might belong to multiple SHEntries, we
         // have to search through shEntries to see if we already know
         // about this content viewer.  If we find the viewer, update its
         // distance from the SHistory's index and continue.
         for (uint32_t j = 0; j < shEntries.Length(); j++) {
           EntryAndDistance& container = shEntries[j];
-          if (container.mViewer == contentViewer) {
+          if (container.mViewer == viewer) {
             container.mDistance =
                 std::min(container.mDistance, DeprecatedAbs(i - shist->mIndex));
             found = true;
@@ -1671,7 +1671,7 @@ void nsSHistory::GloballyEvictContentViewers() {
         }
       } else if (nsCOMPtr<SessionHistoryEntry> she = do_QueryInterface(entry)) {
         if (RefPtr<nsFrameLoader> frameLoader = she->GetFrameLoader()) {
-          hasContentViewerOrFrameLoader = true;
+          hasDocumentViewerOrFrameLoader = true;
           // Similar search as above but using frameloader.
           for (uint32_t j = 0; j < shEntries.Length(); j++) {
             EntryAndDistance& container = shEntries[j];
@@ -1687,7 +1687,7 @@ void nsSHistory::GloballyEvictContentViewers() {
 
       // If we didn't find a EntryAndDistance for this content viewer /
       // frameloader, make a new one.
-      if (hasContentViewerOrFrameLoader && !found) {
+      if (hasDocumentViewerOrFrameLoader && !found) {
         EntryAndDistance container(shist, entry,
                                    DeprecatedAbs(i - shist->mIndex));
         shEntries.AppendElement(container);
@@ -1712,7 +1712,7 @@ void nsSHistory::GloballyEvictContentViewers() {
   entries.Sort();
 
   for (int32_t i = entries.Length() - 1; i >= sHistoryMaxTotalViewers; --i) {
-    (entries[i].mSHistory)->EvictContentViewerForEntry(entries[i].mEntry);
+    (entries[i].mSHistory)->EvictDocumentViewerForEntry(entries[i].mEntry);
   }
 }
 
@@ -1739,7 +1739,7 @@ nsresult nsSHistory::FindEntryForBFCache(SHEntrySharedParentState* aEntry,
 }
 
 NS_IMETHODIMP_(void)
-nsSHistory::EvictExpiredContentViewerForEntry(
+nsSHistory::EvictExpiredDocumentViewerForEntry(
     SHEntrySharedParentState* aEntry) {
   int32_t index;
   nsCOMPtr<nsISHEntry> shEntry;
@@ -1750,7 +1750,7 @@ nsSHistory::EvictExpiredContentViewerForEntry(
   }
 
   if (shEntry) {
-    EvictContentViewerForEntry(shEntry);
+    EvictDocumentViewerForEntry(shEntry);
   }
 }
 
@@ -1782,10 +1782,10 @@ nsSHistory::RemoveFromExpirationTracker(SHEntrySharedParentState* aEntry) {
 // infrequently -- only when the disk or memory cache is cleared.
 
 // static
-void nsSHistory::GloballyEvictAllContentViewers() {
+void nsSHistory::GloballyEvictAllDocumentViewers() {
   int32_t maxViewers = sHistoryMaxTotalViewers;
   sHistoryMaxTotalViewers = 0;
-  GloballyEvictContentViewers();
+  GloballyEvictDocumentViewers();
   sHistoryMaxTotalViewers = maxViewers;
 }
 
@@ -2274,7 +2274,7 @@ void nsSHistory::InitiateLoad(nsISHEntry* aFrameEntry,
   // At the time we initiate a history entry load we already know if https-first
   // was able to upgrade the request from http to https. There is no point in
   // re-retrying to upgrade.
-  loadState->SetIsExemptFromHTTPSOnlyMode(true);
+  loadState->SetIsExemptFromHTTPSFirstMode(true);
 
   /* Set the loadType in the SHEntry too to  what was passed on.
    * This will be passed on to child subframes later in nsDocShell,

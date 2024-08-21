@@ -51,7 +51,7 @@ class nsSHistory : public mozilla::LinkedListElement<nsSHistory>,
     virtual void NotifyExpired(
         mozilla::dom::SHEntrySharedParentState* aObj) override {
       RemoveObject(aObj);
-      mSHistory->EvictExpiredContentViewerForEntry(aObj);
+      mSHistory->EvictExpiredDocumentViewerForEntry(aObj);
     }
 
    private:
@@ -170,7 +170,7 @@ class nsSHistory : public mozilla::LinkedListElement<nsSHistory>,
 
   void WindowIndices(int32_t aIndex, int32_t* aOutStartIndex,
                      int32_t* aOutEndIndex);
-  void NotifyListenersContentViewerEvicted(uint32_t aNumEvicted);
+  void NotifyListenersDocumentViewerEvicted(uint32_t aNumEvicted);
 
   int32_t Length() { return int32_t(mEntries.Length()); }
   int32_t Index() { return mIndex; }
@@ -249,10 +249,10 @@ class nsSHistory : public mozilla::LinkedListElement<nsSHistory>,
 
   // Evict content viewers in this window which don't lie in the "safe" range
   // around aIndex.
-  virtual void EvictOutOfRangeWindowContentViewers(int32_t aIndex);
-  void EvictContentViewerForEntry(nsISHEntry* aEntry);
-  static void GloballyEvictContentViewers();
-  static void GloballyEvictAllContentViewers();
+  virtual void EvictOutOfRangeWindowDocumentViewers(int32_t aIndex);
+  void EvictDocumentViewerForEntry(nsISHEntry* aEntry);
+  static void GloballyEvictDocumentViewers();
+  static void GloballyEvictAllDocumentViewers();
 
   // Calculates a max number of total
   // content viewers to cache, based on amount of total memory

@@ -13,8 +13,8 @@
 #include "nsDocShellLoadState.h"
 #include "nsDocShellLoadTypes.h"
 #include "nsIContentSecurityPolicy.h"
-#include "nsIContentViewer.h"
 #include "nsIDocShellTreeItem.h"
+#include "nsIDocumentViewer.h"
 #include "nsIInputStream.h"
 #include "nsILayoutHistoryState.h"
 #include "nsIMutableArray.h"
@@ -955,7 +955,7 @@ nsSHEntry::CreateLoadInfo(nsDocShellLoadState** aLoadState) {
   // When we create a load state from the history entry we already know if
   // https-first was able to upgrade the request from http to https. There is no
   // point in re-retrying to upgrade.
-  loadState->SetIsExemptFromHTTPSOnlyMode(true);
+  loadState->SetIsExemptFromHTTPSFirstMode(true);
 
   loadState.forget(aLoadState);
   return NS_OK;
@@ -990,33 +990,33 @@ nsSHEntry::SyncTreesForSubframeNavigation(
   }
 }
 
-void nsSHEntry::EvictContentViewer() {
-  nsCOMPtr<nsIContentViewer> viewer = GetContentViewer();
+void nsSHEntry::EvictDocumentViewer() {
+  nsCOMPtr<nsIDocumentViewer> viewer = GetDocumentViewer();
   if (viewer) {
-    mShared->NotifyListenersContentViewerEvicted();
+    mShared->NotifyListenersDocumentViewerEvicted();
     // Drop the presentation state before destroying the viewer, so that
     // document teardown is able to correctly persist the state.
-    SetContentViewer(nullptr);
+    SetDocumentViewer(nullptr);
     SyncPresentationState();
     viewer->Destroy();
   }
 }
 
 NS_IMETHODIMP
-nsSHEntry::SetContentViewer(nsIContentViewer* aViewer) {
-  return GetState()->SetContentViewer(aViewer);
+nsSHEntry::SetDocumentViewer(nsIDocumentViewer* aViewer) {
+  return GetState()->SetDocumentViewer(aViewer);
 }
 
 NS_IMETHODIMP
-nsSHEntry::GetContentViewer(nsIContentViewer** aResult) {
-  *aResult = GetState()->mContentViewer;
+nsSHEntry::GetDocumentViewer(nsIDocumentViewer** aResult) {
+  *aResult = GetState()->mDocumentViewer;
   NS_IF_ADDREF(*aResult);
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsSHEntry::GetIsInBFCache(bool* aResult) {
-  *aResult = !!GetState()->mContentViewer;
+  *aResult = !!GetState()->mDocumentViewer;
   return NS_OK;
 }
 

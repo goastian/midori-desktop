@@ -42,8 +42,8 @@ class ClientSource;
 
 interface nsIURI;
 interface nsIChannel;
-interface nsIContentViewer;
 interface nsIContentSecurityPolicy;
+interface nsIDocumentViewer;
 interface nsIEditor;
 interface nsIEditingSession;
 interface nsIInputStream;
@@ -70,6 +70,21 @@ webidl ContentFrameMessageManager;
 webidl EventTarget;
 webidl Document;
 
+/**
+ * nsIDocShell is an interface corresponding to the native nsDocShell object,
+ * which is a legacy in-process object roughly corresponding to a 'browsing
+ * context', as created for a browser tab or an iframe, for example.
+ *
+ * nsIDocShell has a 1:1 relationship with its paired dom::BrowsingContext and
+ * nsGlobalWindowOuter. It may be replaced during navigation.
+ *
+ * See also the comment documenting dom::BrowsingContext and the documentation
+ * at:
+ *
+ * https://html.spec.whatwg.org/multipage/document-sequences.html#browsing-context
+ * https://firefox-source-docs.mozilla.org/dom/navigation/embedding.html
+ * https://firefox-source-docs.mozilla.org/dom/navigation/nav_replace.html
+ */
 [scriptable, builtinclass, uuid(049234fe-da10-478b-bc5d-bc6f9a1ba63d)]
 interface nsIDocShell : nsIDocShellTreeItem
 {
@@ -135,10 +150,10 @@ interface nsIDocShell : nsIDocShellTreeItem
   [notxpcom,nostdcall] readonly attribute PresShell eldestPresShell;
 
   /**
-   * Content Viewer that is currently loaded for this DocShell.  This may
+   * Document Viewer that is currently loaded for this DocShell.  This may
    * change as the underlying content changes.
    */
-  [infallible] readonly attribute nsIContentViewer contentViewer;
+  [infallible] readonly attribute nsIDocumentViewer docViewer;
 
   /**
    * Get the id of the outer window that is or will be in this docshell.
@@ -160,11 +175,6 @@ interface nsIDocShell : nsIDocShellTreeItem
    * Whether CSS error reporting is enabled.
    */
   attribute boolean cssErrorReportingEnabled;
-
-  /**
-   * Whether to allow plugin execution
-   */
-  attribute boolean allowPlugins;
 
   /**
    * Attribute stating if refresh based redirects can be allowed
@@ -261,16 +271,6 @@ interface nsIDocShell : nsIDocShellTreeItem
    */
   attribute float zoom;
 
-  /*
-   * Tells the docshell to offer focus to its tree owner.
-   * This is currently only necessary for embedding chrome.
-   * If forDocumentNavigation is true, then document navigation should be
-   * performed, where only the root of documents are selected. Otherwise, the
-   * next element in the parent should be returned. Returns true if focus was
-   * successfully taken by the tree owner.
-   */
-  bool tabToTreeOwner(in boolean forward, in boolean forDocumentNavigation);
-
   /**
    * Current busy state for DocShell
    */
@@ -352,7 +352,7 @@ interface nsIDocShell : nsIDocShellTreeItem
    * is called for child docshells.  This method will post an event to
    * complete the simulated load after returning to the event loop.
    */
-  void beginRestore(in nsIContentViewer viewer, in boolean top);
+  void beginRestore(in nsIDocumentViewer viewer, in boolean top);
 
   /**
    * Finish firing WebProgressListener notifications and DOM events for
@@ -454,7 +454,7 @@ interface nsIDocShell : nsIDocShellTreeItem
    *        document.
    * @param aCsp the CSP to use for the new document.
    */
-  void createAboutBlankContentViewer(in nsIPrincipal aPrincipal,
+  void createAboutBlankDocumentViewer(in nsIPrincipal aPrincipal,
                                      in nsIPrincipal aPartitionedPrincipal,
                                      [optional] in nsIContentSecurityPolicy aCSP);
 
@@ -479,23 +479,12 @@ interface nsIDocShell : nsIDocShellTreeItem
     out nsIPrincipal parentCharsetPrincipal);
 
   /**
-   * Whether the docShell records profile timeline markers at the moment
-   */
-  [infallible] attribute boolean recordProfileTimelineMarkers;
-
-  /**
    * Return a DOMHighResTimeStamp representing the number of
    * milliseconds from an arbitrary point in time.  The reference
    * point is shared by all DocShells and is also used by timestamps
    * on markers.
    */
   DOMHighResTimeStamp now();
-
-  /**
-   * Returns and flushes the profile timeline markers gathered by the docShell
-   */
-  [implicit_jscontext]
-  jsval popProfileTimelineMarkers();
 
   /**
    * Add an observer to the list of parties to be notified when this docshell's
@@ -523,7 +512,7 @@ interface nsIDocShell : nsIDocShellTreeItem
    * @param end           timestamp when reflow ended, in milliseconds since
    *                      navigationStart (accurate to 1/1000 of a ms)
    */
-  [noscript] void notifyReflowObservers(in bool interruptible,
+  [noscript] void notifyReflowObservers(in boolean interruptible,
                                         in DOMHighResTimeStamp start,
                                         in DOMHighResTimeStamp end);
 
@@ -551,26 +540,10 @@ interface nsIDocShell : nsIDocShellTreeItem
   [infallible] readonly attribute boolean isTopLevelContentDocShell;
 
   /**
-   * Like nsIDocShellTreeItem::GetSameTypeParent, except this ignores <iframe
-   * mozbrowser> boundaries. Which no longer exist.
-   *
-   * @deprecated: Use `BrowsingContext::GetParent()` in the future.
-   */
-  nsIDocShell getSameTypeInProcessParentIgnoreBrowserBoundaries();
-
-  /**
    * True iff asynchronous panning and zooming is enabled for this
    * docshell.
    */
-  readonly attribute bool asyncPanZoomEnabled;
-
-  /**
-   * Are plugins allowed in the current document loaded in this docshell ?
-   * (if there is one). This depends on whether plugins are allowed by this
-   * docshell itself or if the document is sandboxed and hence plugins should
-   * not be allowed.
-   */
-  [noscript, notxpcom] bool pluginsAllowedInCurrentDoc();
+  readonly attribute boolean asyncPanZoomEnabled;
 
   /**
    * Indicates whether the UI may enable the character encoding menu. The UI
@@ -612,8 +585,8 @@ interface nsIDocShell : nsIDocShellTreeItem
    * without any actual visual representation. They have to be marked
    * at construction time, to avoid any painting activity.
    */
-  [noscript, notxpcom] bool IsInvisible();
-  [noscript, notxpcom] void SetInvisible(in bool aIsInvisibleDocshell);
+  [noscript, notxpcom] boolean IsInvisible();
+  [noscript, notxpcom] void SetInvisible(in boolean aIsInvisibleDocshell);
 
 /**
  * Get the script global for the document in this docshell.
@@ -621,19 +594,6 @@ interface nsIDocShell : nsIDocShellTreeItem
   [noscript,notxpcom,nostdcall] nsIScriptGlobalObject GetScriptGlobalObject();
 
   [noscript,notxpcom,nostdcall] Document getExtantDocument();
-
-  /**
-   * Notify DocShell when the browser is about to start executing JS, and after
-   * that execution has stopped.  This only occurs when the Timeline devtool
-   * is collecting information.
-   */
-  [noscript,notxpcom,nostdcall] void notifyJSRunToCompletionStart(in string aReason,
-                                                                  in AString functionName,
-                                                                  in AString fileName,
-                                                                  in unsigned long lineNumber,
-                                                                  in jsval asyncStack,
-                                                                  in string asyncCause);
-  [noscript,notxpcom,nostdcall] void notifyJSRunToCompletionStop();
 
   /**
    * This attribute determines whether a document which is not about:blank has
@@ -676,31 +636,6 @@ interface nsIDocShell : nsIDocShellTreeItem
 
   [noscript,nostdcall,notxpcom] nsCommandManager GetCommandManager();
 
-  cenum MetaViewportOverride: 8 {
-    /**
-     * Override platform/pref default behaviour and force-disable support for
-     * <meta name="viewport">.
-     */
-    META_VIEWPORT_OVERRIDE_DISABLED = 0,
-    /**
-     * Override platform/pref default behaviour and force-enable support for
-     * <meta name="viewport">.
-     */
-    META_VIEWPORT_OVERRIDE_ENABLED = 1,
-    /**
-     * Don't override the platform/pref default behaviour for support for
-     * <meta name="viewport">.
-     */
-    META_VIEWPORT_OVERRIDE_NONE = 2,
-  };
-
-  /**
-   * This allows chrome to override the default choice of whether the
-   * <meta name="viewport"> tag is respected in a specific docshell.
-   * Possible values are listed above.
-   */
-  [infallible, setter_can_run_script] attribute nsIDocShell_MetaViewportOverride metaViewportOverride;
-
   /**
    * Attribute that determines whether tracking protection is enabled.
    */
@@ -734,7 +669,7 @@ interface nsIDocShell : nsIDocShellTreeItem
    * Returns true if the current load is a forced reload,
    * e.g. started by holding shift whilst triggering reload.
    */
-  readonly attribute bool isForceReloading;
+  readonly attribute boolean isForceReloading;
 
   Array<float> getColorMatrix();
 

@@ -8,14 +8,11 @@ var { XPCOMUtils } = ChromeUtils.importESModule(
 
 ChromeUtils.defineESModuleGetters(this, {
   AddonTestUtils: "resource://testing-common/AddonTestUtils.sys.mjs",
+  HttpServer: "resource://testing-common/httpd.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   SearchTestUtils: "resource://testing-common/SearchTestUtils.sys.mjs",
   SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
   TestUtils: "resource://testing-common/TestUtils.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  HttpServer: "resource://testing-common/httpd.js",
-  NetUtil: "resource://gre/modules/NetUtil.jsm",
 });
 
 var profileDir = do_get_profile();
@@ -45,6 +42,36 @@ const SEARCH_CONFIG = [
   },
 ];
 
+const CONFIG_V2 = [
+  {
+    recordType: "engine",
+    identifier: "test_urifixup_search_engine_app_provided",
+    base: {
+      name: "test_urifixup_search_engine_app_provided",
+      urls: {
+        search: {
+          base: "https://www.example.org/",
+          searchTermParamName: "search",
+        },
+      },
+    },
+    variants: [
+      {
+        environment: { allRegionsAndLocales: true },
+      },
+    ],
+  },
+  {
+    recordType: "defaultEngines",
+    globalDefault: "test_urifixup_search_engine_app_provided",
+    specificDefaults: [],
+  },
+  {
+    recordType: "engineOrders",
+    orders: [],
+  },
+];
+
 async function setupSearchService() {
   SearchTestUtils.init(this);
 
@@ -57,7 +84,11 @@ async function setupSearchService() {
     "42"
   );
 
-  await SearchTestUtils.useTestEngines(".", null, SEARCH_CONFIG);
+  await SearchTestUtils.useTestEngines(
+    ".",
+    null,
+    SearchUtils.newSearchConfigEnabled ? CONFIG_V2 : SEARCH_CONFIG
+  );
   await AddonTestUtils.promiseStartupManager();
   await Services.search.init();
 }
@@ -94,13 +125,13 @@ async function addTestEngines() {
   // This is a hack, ideally we should be setting up a configuration with
   // built-in engines, but the `chrome_settings_overrides` section that
   // WebExtensions need is only defined for browser/
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}/engine.xml`,
   });
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}/enginePrivate.xml`,
   });
-  await SearchTestUtils.promiseNewSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: `${gDataUrl}/enginePost.xml`,
   });
 }

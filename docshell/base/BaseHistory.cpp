@@ -23,10 +23,11 @@ BaseHistory::BaseHistory() : mTrackedURIs(kTrackedUrisInitialSize) {}
 BaseHistory::~BaseHistory() = default;
 
 static constexpr nsLiteralCString kDisallowedSchemes[] = {
-    "about"_ns,         "blob"_ns,       "data"_ns,     "chrome"_ns,
-    "imap"_ns,          "javascript"_ns, "mailbox"_ns,  "moz-anno"_ns,
-    "news"_ns,          "page-icon"_ns,  "resource"_ns, "view-source"_ns,
-    "moz-extension"_ns,
+    "about"_ns,         "blob"_ns,           "cached-favicon"_ns,
+    "chrome"_ns,        "data"_ns,           "imap"_ns,
+    "javascript"_ns,    "mailbox"_ns,        "news"_ns,
+    "page-icon"_ns,     "resource"_ns,       "view-source"_ns,
+    "moz-extension"_ns, "moz-page-thumb"_ns, "x-moz-ews"_ns,
 };
 
 bool BaseHistory::CanStore(nsIURI* aURI) {
@@ -93,8 +94,15 @@ void BaseHistory::RegisterVisitedCallback(nsIURI* aURI, Link* aLink) {
       mTrackedURIs.WithEntryHandle(aURI, [&](auto&& entry) -> ObservingLinks* {
         MOZ_DIAGNOSTIC_ASSERT(!entry || !entry->mLinks.IsEmpty(),
                               "An empty key was kept around in our hashtable!");
+
         if (!entry) {
-          ScheduleVisitedQuery(aURI, nullptr);
+          // If the URI has userpass, skip the visit query scheduling, because
+          // these URIs are not stored by history, and their status is only
+          // updated at the time of a visit.
+          bool hasUserPass;
+          if (NS_FAILED(aURI->GetHasUserPass(&hasUserPass)) || !hasUserPass) {
+            ScheduleVisitedQuery(aURI, nullptr);
+          }
         }
 
         return &entry.OrInsertWith([] { return ObservingLinks{}; });

@@ -35,7 +35,7 @@ function test() {
       this.callback();
     },
 
-    onStateChange (webProgress, req, flags, status) {
+    onStateChange (webProgress, req, flags) {
       if (req.name.startsWith("data:application/vnd.mozilla.xul")) {
         if (flags & Ci.nsIWebProgressListener.STATE_STOP)
           this.finish();
@@ -52,8 +52,8 @@ function test() {
                           .getService(Ci.nsIPrincipal);
   var webNav = SpecialPowers.Services.appShell.createWindowlessBrowser(true);
   var docShell = webNav.docShell;
-  docShell.createAboutBlankContentViewer(systemPrincipal, systemPrincipal);
-  var win = docShell.contentViewer.DOMDocument.defaultView;
+  docShell.createAboutBlankDocumentViewer(systemPrincipal, systemPrincipal);
+  var win = docShell.docViewer.DOMDocument.defaultView;
 
   progressListener.add(docShell, function(){
     is(win.document.documentURI, "data:application/xhtml+xml;charset=utf-8,<window/>");

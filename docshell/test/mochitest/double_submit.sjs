@@ -13,7 +13,7 @@ const BinaryInputStream = CC(
   "setInputStream"
 );
 
-function log(str) {
+function log() {
   //  dump(`LOG: ${str}\n`);
 }
 
@@ -33,7 +33,6 @@ function now() {
 
 async function handleRequest(request, response) {
   log("Get query parameters");
-  Cu.importGlobalProperties(["URLSearchParams"]);
   let params = new URLSearchParams(request.queryString);
 
   let start = now();

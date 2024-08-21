@@ -197,19 +197,19 @@ interface nsISHistory: nsISupports
    *                         history, aIndex should be the index history was
    *                         navigated to.
    */
-  void evictOutOfRangeContentViewers(in long aIndex);
+  void evictOutOfRangeDocumentViewers(in long aIndex);
 
   /**
    * Evict the content viewer associated with a bfcache entry that has timed
    * out.
    */
   [noscript, notxpcom]
-  void evictExpiredContentViewerForEntry(in SHEntrySharedParentStatePtr aEntry);
+  void evictExpiredDocumentViewerForEntry(in SHEntrySharedParentStatePtr aEntry);
 
   /**
    * Evict all the content viewers in this session history
    */
-  void evictAllContentViewers();
+  void evictAllDocumentViewers();
 
   /**
    * Add a BFCache entry to expiration tracker so it gets evicted on
@@ -273,19 +273,19 @@ interface nsISHistory: nsISupports
 
   [notxpcom] void EnsureCorrectEntryAtCurrIndex(in nsISHEntry aEntry);
 
-  [notxpcom] void EvictContentViewersOrReplaceEntry(in nsISHEntry aNewSHEntry, in bool aReplace);
+  [notxpcom] void EvictDocumentViewersOrReplaceEntry(in nsISHEntry aNewSHEntry, in boolean aReplace);
 
   nsISHEntry createEntry();
 
-  [noscript] void AddToRootSessionHistory(in bool aCloneChildren, in nsISHEntry aOSHE,
+  [noscript] void AddToRootSessionHistory(in boolean aCloneChildren, in nsISHEntry aOSHE,
                                           in BrowsingContext aRootBC, in nsISHEntry aEntry,
                                           in unsigned long aLoadType,
-                                          in bool aShouldPersist,
+                                          in boolean aShouldPersist,
                                           out MaybeInt32 aPreviousEntryIndex,
                                           out MaybeInt32 aLoadedEntryIndex);
 
   [noscript] void AddChildSHEntryHelper(in nsISHEntry aCloneRef, in nsISHEntry aNewEntry,
-                                        in BrowsingContext aRootBC, in bool aCloneChildren);
+                                        in BrowsingContext aRootBC, in boolean aCloneChildren);
 
   [noscript, notxpcom] boolean isEmptyOrHasEntriesForSingleTopLevelPage();
 };

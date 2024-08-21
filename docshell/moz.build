@@ -17,23 +17,23 @@ DIRS += [
 ]
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "test/unit/xpcshell.ini",
-    "test/unit_ipc/xpcshell.ini",
+    "test/unit/xpcshell.toml",
+    "test/unit_ipc/xpcshell.toml",
 ]
 
 MOCHITEST_MANIFESTS += [
-    "test/iframesandbox/mochitest.ini",
-    "test/mochitest/mochitest.ini",
-    "test/navigation/mochitest.ini",
+    "test/iframesandbox/mochitest.toml",
+    "test/mochitest/mochitest.toml",
+    "test/navigation/mochitest.toml",
 ]
 
 MOCHITEST_CHROME_MANIFESTS += [
-    "test/chrome/chrome.ini",
+    "test/chrome/chrome.toml",
 ]
 
 BROWSER_CHROME_MANIFESTS += [
-    "test/browser/browser.ini",
-    "test/navigation/browser.ini",
+    "test/browser/browser.toml",
+    "test/navigation/browser.toml",
 ]
 
 TEST_HARNESS_FILES.testing.mochitest.tests.docshell.test.chrome += [

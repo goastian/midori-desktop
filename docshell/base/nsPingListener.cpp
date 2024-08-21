@@ -253,7 +253,7 @@ static void ForEachPing(nsIContent* aContent, ForEachPingCallback aCallback,
   }
 
   nsAutoString value;
-  aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::ping, value);
+  aContent->AsElement()->GetAttr(nsGkAtoms::ping, value);
   if (value.IsEmpty()) {
     return;
   }
@@ -319,7 +319,7 @@ nsresult nsPingListener::StartTimeout(DocGroup* aDocGroup) {
   return NS_NewTimerWithFuncCallback(
       getter_AddRefs(mTimer), OnPingTimeout, mLoadGroup, PING_TIMEOUT,
       nsITimer::TYPE_ONE_SHOT, "nsPingListener::StartTimeout",
-      aDocGroup->EventTargetFor(TaskCategory::Network));
+      GetMainThreadSerialEventTarget());
 }
 
 NS_IMETHODIMP

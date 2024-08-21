@@ -230,6 +230,12 @@ function doPageNavigation(params) {
         observers: observers.keys(),
       },
       allFrames: true,
+      // We avoid messages from system addons event pages here, as
+      // the tests test_bug321671.xhtml and test_bug690056.xhtml do
+      // not expect those events, and so will intermittently fail.
+      // They require messages from "browsers", "test", and "" to pass.
+      // See bug 1784831 and bug 1883434 for more context.
+      messageManagerGroups: ["browsers", "test", ""],
     });
     DocShellHelpersParent.eventsToListenFor = eventsToListenFor;
     DocShellHelpersParent.observers = observers;
@@ -269,11 +275,7 @@ function doPageNavigation(params) {
   if (cleanup) {
     // Register a cleanup function on domwindowclosed, to avoid contaminating
     // other tests if we bail out early because of an error.
-    Services.ww.registerNotification(function windowClosed(
-      subject,
-      topic,
-      data
-    ) {
+    Services.ww.registerNotification(function windowClosed(subject, topic) {
       if (topic == "domwindowclosed" && subject == window) {
         Services.ww.unregisterNotification(windowClosed);
         cleanup();
@@ -293,7 +295,7 @@ function doPageNavigation(params) {
     TestWindow.getBrowser().gotoIndex(gotoIndex);
   } else if (uri) {
     gNavType = NAV_URI;
-    BrowserTestUtils.loadURIString(TestWindow.getBrowser(), uri);
+    BrowserTestUtils.startLoadingURIString(TestWindow.getBrowser(), uri);
   } else if (reload) {
     gNavType = NAV_RELOAD;
     TestWindow.getBrowser().reload();
@@ -596,7 +598,7 @@ function finish() {
   let SimpleTest = opener.wrappedJSObject.SimpleTest;
 
   // Wait for the window to be closed before finishing the test
-  Services.ww.registerNotification(function observer(subject, topic, data) {
+  Services.ww.registerNotification(function observer(subject, topic) {
     if (topic == "domwindowclosed") {
       Services.ww.unregisterNotification(observer);
       SimpleTest.waitForFocus(SimpleTest.finish, opener);

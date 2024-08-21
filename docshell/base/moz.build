@@ -28,17 +28,13 @@ with Files("nsAboutRedirector.*"):
 with Files("nsIScrollObserver.*"):
     BUG_COMPONENT = ("Core", "Panning and Zooming")
 
-DIRS += [
-    "timeline",
-]
-
 XPIDL_SOURCES += [
-    "nsIContentViewer.idl",
-    "nsIContentViewerEdit.idl",
     "nsIDocShell.idl",
     "nsIDocShellTreeItem.idl",
     "nsIDocShellTreeOwner.idl",
     "nsIDocumentLoaderFactory.idl",
+    "nsIDocumentViewer.idl",
+    "nsIDocumentViewerEdit.idl",
     "nsILoadContext.idl",
     "nsILoadURIDelegate.idl",
     "nsIPrivacyTransitionObserver.idl",

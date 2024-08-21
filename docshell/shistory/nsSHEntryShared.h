@@ -23,8 +23,8 @@ class nsSHEntry;
 class nsISHEntry;
 class nsISHistory;
 class nsIContentSecurityPolicy;
-class nsIContentViewer;
 class nsIDocShellTreeItem;
+class nsIDocumentViewer;
 class nsILayoutHistoryState;
 class nsIPrincipal;
 class nsDocShellEditorData;
@@ -102,7 +102,7 @@ class SHEntrySharedParentState : public SHEntrySharedState {
 
   nsFrameLoader* GetFrameLoader();
 
-  void NotifyListenersContentViewerEvicted();
+  void NotifyListenersDocumentViewerEvicted();
 
   nsExpirationState* GetExpirationState() { return &mExpirationState; }
 
@@ -164,7 +164,7 @@ class SHEntrySharedChildState {
 
   // These members aren't copied by SHEntrySharedChildState::CopyFrom() because
   // they're specific to a particular content viewer.
-  nsCOMPtr<nsIContentViewer> mContentViewer;
+  nsCOMPtr<nsIDocumentViewer> mDocumentViewer;
   RefPtr<mozilla::dom::Document> mDocument;
   nsCOMPtr<nsISupports> mWindowState;
   // FIXME Move to parent?
@@ -213,7 +213,7 @@ class nsSHEntryShared final : public nsIBFCacheEntry,
   void SyncPresentationState();
   void DropPresentationState();
 
-  nsresult SetContentViewer(nsIContentViewer* aViewer);
+  nsresult SetDocumentViewer(nsIDocumentViewer* aViewer);
 };
 
 #endif

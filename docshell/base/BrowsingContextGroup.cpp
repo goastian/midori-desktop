@@ -19,8 +19,7 @@
 #include "nsFocusManager.h"
 #include "nsTHashMap.h"
 
-namespace mozilla {
-namespace dom {
+namespace mozilla::dom {
 
 // Maximum number of successive dialogs before we prompt users to disable
 // dialogs for this window.
@@ -373,43 +372,36 @@ JSObject* BrowsingContextGroup::WrapObject(JSContext* aCx,
   return BrowsingContextGroup_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsresult BrowsingContextGroup::QueuePostMessageEvent(
-    already_AddRefed<nsIRunnable>&& aRunnable) {
-  if (StaticPrefs::dom_separate_event_queue_for_post_message_enabled()) {
-    if (!mPostMessageEventQueue) {
-      nsCOMPtr<nsISerialEventTarget> target = GetMainThreadSerialEventTarget();
-      mPostMessageEventQueue = ThrottledEventQueue::Create(
-          target, "PostMessage Queue",
-          nsIRunnablePriority::PRIORITY_DEFERRED_TIMERS);
-      nsresult rv = mPostMessageEventQueue->SetIsPaused(false);
-      MOZ_ALWAYS_SUCCEEDS(rv);
-    }
+nsresult BrowsingContextGroup::QueuePostMessageEvent(nsIRunnable* aRunnable) {
+  MOZ_ASSERT(StaticPrefs::dom_separate_event_queue_for_post_message_enabled());
 
-    // Ensure the queue is enabled
-    if (mPostMessageEventQueue->IsPaused()) {
-      nsresult rv = mPostMessageEventQueue->SetIsPaused(false);
-      MOZ_ALWAYS_SUCCEEDS(rv);
-    }
-
-    if (mPostMessageEventQueue) {
-      mPostMessageEventQueue->Dispatch(std::move(aRunnable),
-                                       NS_DISPATCH_NORMAL);
-      return NS_OK;
-    }
+  if (!mPostMessageEventQueue) {
+    nsCOMPtr<nsISerialEventTarget> target = GetMainThreadSerialEventTarget();
+    mPostMessageEventQueue = ThrottledEventQueue::Create(
+        target, "PostMessage Queue",
+        nsIRunnablePriority::PRIORITY_DEFERRED_TIMERS);
+    nsresult rv = mPostMessageEventQueue->SetIsPaused(false);
+    MOZ_ALWAYS_SUCCEEDS(rv);
   }
-  return NS_ERROR_FAILURE;
+
+  // Ensure the queue is enabled
+  if (mPostMessageEventQueue->IsPaused()) {
+    nsresult rv = mPostMessageEventQueue->SetIsPaused(false);
+    MOZ_ALWAYS_SUCCEEDS(rv);
+  }
+
+  return mPostMessageEventQueue->Dispatch(aRunnable, NS_DISPATCH_NORMAL);
 }
 
 void BrowsingContextGroup::FlushPostMessageEvents() {
-  if (StaticPrefs::dom_separate_event_queue_for_post_message_enabled()) {
-    if (mPostMessageEventQueue) {
-      nsresult rv = mPostMessageEventQueue->SetIsPaused(true);
-      MOZ_ALWAYS_SUCCEEDS(rv);
-      nsCOMPtr<nsIRunnable> event;
-      while ((event = mPostMessageEventQueue->GetEvent())) {
-        NS_DispatchToMainThread(event.forget());
-      }
-    }
+  if (!mPostMessageEventQueue) {
+    return;
+  }
+  nsresult rv = mPostMessageEventQueue->SetIsPaused(true);
+  MOZ_ALWAYS_SUCCEEDS(rv);
+  nsCOMPtr<nsIRunnable> event;
+  while ((event = mPostMessageEventQueue->GetEvent())) {
+    NS_DispatchToMainThread(event.forget());
   }
 }
 
@@ -575,5 +567,4 @@ NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(BrowsingContextGroup, mContexts,
                                       mTimerEventQueue, mWorkerEventQueue,
                                       mDocGroups)
 
-}  // namespace dom
-}  // namespace mozilla
+}  // namespace mozilla::dom

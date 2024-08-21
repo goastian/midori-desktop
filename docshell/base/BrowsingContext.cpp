@@ -11,7 +11,6 @@
 #ifdef ACCESSIBILITY
 #  include "mozilla/a11y/DocAccessibleParent.h"
 #  include "mozilla/a11y/Platform.h"
-#  include "mozilla/a11y/RemoteAccessibleBase.h"
 #  include "nsAccessibilityService.h"
 #  if defined(XP_WIN)
 #    include "mozilla/a11y/AccessibleWrap.h"
@@ -21,6 +20,7 @@
 #endif
 #include "mozilla/AppShutdown.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
+#include "mozilla/dom/BindingIPCUtils.h"
 #include "mozilla/dom/BrowserHost.h"
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/BrowserParent.h"
@@ -72,6 +72,7 @@
 #include "nsDocShell.h"
 #include "nsDocShellLoadState.h"
 #include "nsFocusManager.h"
+#include "nsGlobalWindowInner.h"
 #include "nsGlobalWindowOuter.h"
 #include "PresShell.h"
 #include "nsIObserverService.h"
@@ -96,23 +97,17 @@ namespace IPC {
 // Allow serialization and deserialization of OrientationType over IPC
 template <>
 struct ParamTraits<mozilla::dom::OrientationType>
-    : public ContiguousEnumSerializer<
-          mozilla::dom::OrientationType,
-          mozilla::dom::OrientationType::Portrait_primary,
-          mozilla::dom::OrientationType::EndGuard_> {};
+    : public mozilla::dom::WebIDLEnumSerializer<mozilla::dom::OrientationType> {
+};
 
 template <>
 struct ParamTraits<mozilla::dom::DisplayMode>
-    : public ContiguousEnumSerializer<mozilla::dom::DisplayMode,
-                                      mozilla::dom::DisplayMode::Browser,
-                                      mozilla::dom::DisplayMode::EndGuard_> {};
+    : public mozilla::dom::WebIDLEnumSerializer<mozilla::dom::DisplayMode> {};
 
 template <>
 struct ParamTraits<mozilla::dom::PrefersColorSchemeOverride>
-    : public ContiguousEnumSerializer<
-          mozilla::dom::PrefersColorSchemeOverride,
-          mozilla::dom::PrefersColorSchemeOverride::None,
-          mozilla::dom::PrefersColorSchemeOverride::EndGuard_> {};
+    : public mozilla::dom::WebIDLEnumSerializer<
+          mozilla::dom::PrefersColorSchemeOverride> {};
 
 template <>
 struct ParamTraits<mozilla::dom::ExplicitActiveStatus>
@@ -124,10 +119,8 @@ struct ParamTraits<mozilla::dom::ExplicitActiveStatus>
 // Allow serialization and deserialization of TouchEventsOverride over IPC
 template <>
 struct ParamTraits<mozilla::dom::TouchEventsOverride>
-    : public ContiguousEnumSerializer<
-          mozilla::dom::TouchEventsOverride,
-          mozilla::dom::TouchEventsOverride::Disabled,
-          mozilla::dom::TouchEventsOverride::EndGuard_> {};
+    : public mozilla::dom::WebIDLEnumSerializer<
+          mozilla::dom::TouchEventsOverride> {};
 
 template <>
 struct ParamTraits<mozilla::dom::EmbedderColorSchemes> {
@@ -167,6 +160,9 @@ typedef nsTHashMap<nsUint64HashKey, BrowsingContext*> BrowsingContextMap;
 static StaticAutoPtr<BrowsingContextMap> sBrowsingContexts;
 // Top-level Content BrowsingContexts only, indexed by BrowserId instead of Id
 static StaticAutoPtr<BrowsingContextMap> sCurrentTopByBrowserId;
+
+static bool gIPCEnabledAnnotation = false;
+static bool gFissionEnabledAnnotation = false;
 
 static void UnregisterBrowserId(BrowsingContext* aBrowsingContext) {
   if (!aBrowsingContext->IsTopContent() || !sCurrentTopByBrowserId) {
@@ -255,6 +251,11 @@ void BrowsingContext::Init() {
     sCurrentTopByBrowserId = new BrowsingContextMap();
     ClearOnShutdown(&sBrowsingContexts);
     ClearOnShutdown(&sCurrentTopByBrowserId);
+    CrashReporter::RegisterAnnotationBool(
+        CrashReporter::Annotation::DOMIPCEnabled, &gIPCEnabledAnnotation);
+    CrashReporter::RegisterAnnotationBool(
+        CrashReporter::Annotation::DOMFissionEnabled,
+        &gFissionEnabledAnnotation);
   }
 }
 
@@ -324,7 +325,7 @@ bool BrowsingContext::SameOriginWithTop() {
 already_AddRefed<BrowsingContext> BrowsingContext::CreateDetached(
     nsGlobalWindowInner* aParent, BrowsingContext* aOpener,
     BrowsingContextGroup* aSpecificGroup, const nsAString& aName, Type aType,
-    bool aIsPopupRequested, bool aCreatedDynamically) {
+    CreateDetachedOptions aOptions) {
   if (aParent) {
     MOZ_DIAGNOSTIC_ASSERT(aParent->GetWindowContext());
     MOZ_DIAGNOSTIC_ASSERT(aParent->GetBrowsingContext()->mType == aType);
@@ -365,6 +366,12 @@ already_AddRefed<BrowsingContext> BrowsingContext::CreateDetached(
     MOZ_DIAGNOSTIC_ASSERT(aOpener->mType == aType);
     fields.Get<IDX_OpenerId>() = aOpener->Id();
     fields.Get<IDX_HadOriginalOpener>() = true;
+
+    if (aType == Type::Chrome && !aParent) {
+      // See SetOpener for why we do this inheritance.
+      fields.Get<IDX_PrefersColorSchemeOverride>() =
+          aOpener->Top()->GetPrefersColorSchemeOverride();
+    }
   }
 
   if (aParent) {
@@ -416,14 +423,12 @@ already_AddRefed<BrowsingContext> BrowsingContext::CreateDetached(
 
   fields.Get<IDX_HistoryID>() = nsID::GenerateUUID();
   fields.Get<IDX_ExplicitActive>() = [&] {
-    if (parentBC) {
+    if (parentBC || aType == Type::Content) {
       // Non-root browsing-contexts inherit their status from its parent.
+      // Top-content either gets managed by the top chrome, or gets manually
+      // managed by the front-end (see ManuallyManagesActiveness). In any case
+      // we want to start off as inactive.
       return ExplicitActiveStatus::None;
-    }
-    if (aType == Type::Content) {
-      // Content gets managed by the chrome front-end / embedder element and
-      // starts as inactive.
-      return ExplicitActiveStatus::Inactive;
     }
     // Chrome starts as active.
     return ExplicitActiveStatus::Active;
@@ -441,8 +446,6 @@ already_AddRefed<BrowsingContext> BrowsingContext::CreateDetached(
   // Subframes start with it false unless otherwise noted in SetEmbedderElement.
   fields.Get<IDX_FullscreenAllowedByOwner>() = !aParent;
 
-  fields.Get<IDX_AllowPlugins>() = inherit ? inherit->GetAllowPlugins() : true;
-
   fields.Get<IDX_DefaultLoadFlags>() =
       inherit ? inherit->GetDefaultLoadFlags() : nsIRequest::LOAD_NORMAL;
 
@@ -458,7 +461,10 @@ already_AddRefed<BrowsingContext> BrowsingContext::CreateDetached(
   fields.Get<IDX_AllowJavascript>() =
       inherit ? inherit->GetAllowJavascript() : true;
 
-  fields.Get<IDX_IsPopupRequested>() = aIsPopupRequested;
+  fields.Get<IDX_IsPopupRequested>() = aOptions.isPopupRequested;
+
+  fields.Get<IDX_TopLevelCreatedByWebContent>() =
+      aOptions.topLevelCreatedByWebContent;
 
   if (!parentBC) {
     fields.Get<IDX_ShouldDelayMediaFromStart>() =
@@ -477,7 +483,7 @@ already_AddRefed<BrowsingContext> BrowsingContext::CreateDetached(
   }
 
   context->mEmbeddedByThisProcess = XRE_IsParentProcess() || aParent;
-  context->mCreatedDynamically = aCreatedDynamically;
+  context->mCreatedDynamically = aOptions.createdDynamically;
   if (inherit) {
     context->mPrivateBrowsingId = inherit->mPrivateBrowsingId;
     context->mUseRemoteTabs = inherit->mUseRemoteTabs;
@@ -504,7 +510,7 @@ already_AddRefed<BrowsingContext> BrowsingContext::CreateIndependent(
                         "BCs created in the content process must be related to "
                         "some BrowserChild");
   RefPtr<BrowsingContext> bc(
-      CreateDetached(nullptr, nullptr, nullptr, u""_ns, aType, false));
+      CreateDetached(nullptr, nullptr, nullptr, u""_ns, aType, {}));
   bc->mWindowless = bc->IsContent();
   bc->mEmbeddedByThisProcess = true;
   bc->EnsureAttached();
@@ -617,6 +623,7 @@ void BrowsingContext::SetDocShell(nsIDocShell* aDocShell) {
   }
 
   RecomputeCanExecuteScripts();
+  ClearCachedValuesOfLocations();
 }
 
 // This class implements a callback that will return the remote window proxy for
@@ -686,9 +693,9 @@ bool BrowsingContext::GetIsActiveBrowserWindow() {
   // chrome:// urls loaded in the parent won't receive
   // their own activation so we defer to the top chrome
   // Browsing Context when in the parent process.
-  RefPtr<CanonicalBrowsingContext> chromeTop =
-      Canonical()->TopCrossChromeBoundary();
-  return chromeTop->GetIsActiveBrowserWindowInternal();
+  return Canonical()
+      ->TopCrossChromeBoundary()
+      ->GetIsActiveBrowserWindowInternal();
 }
 
 void BrowsingContext::SetIsActiveBrowserWindow(bool aActive) {
@@ -734,21 +741,24 @@ void BrowsingContext::SetEmbedderElement(Element* aEmbedder) {
       txn.SetEmbedderInnerWindowId(inner->WindowID());
     }
     txn.SetFullscreenAllowedByOwner(OwnerAllowsFullscreen(*aEmbedder));
-    if (XRE_IsParentProcess() && IsTopContent()) {
+    if (XRE_IsParentProcess() && aEmbedder->IsXULElement() && IsTopContent()) {
       nsAutoString messageManagerGroup;
-      if (aEmbedder->IsXULElement()) {
-        aEmbedder->GetAttr(nsGkAtoms::messagemanagergroup, messageManagerGroup);
-        if (!aEmbedder->AttrValueIs(kNameSpaceID_None,
-                                    nsGkAtoms::initiallyactive,
-                                    nsGkAtoms::_false, eIgnoreCase)) {
-          txn.SetExplicitActive(ExplicitActiveStatus::Active);
+      aEmbedder->GetAttr(nsGkAtoms::messagemanagergroup, messageManagerGroup);
+      txn.SetMessageManagerGroup(messageManagerGroup);
+      txn.SetUseGlobalHistory(
+          !aEmbedder->HasAttr(nsGkAtoms::disableglobalhistory));
+      if (!aEmbedder->HasAttr(nsGkAtoms::manualactiveness)) {
+        // We're active iff the parent cross-chrome-boundary is active. Note we
+        // can't just use this->Canonical()->GetParentCrossChromeBoundary here,
+        // since mEmbedderElement is still null at this point.
+        RefPtr bc = aEmbedder->OwnerDoc()->GetBrowsingContext();
+        const bool isActive = bc && bc->IsActive();
+        txn.SetExplicitActive(isActive ? ExplicitActiveStatus::Active
+                                       : ExplicitActiveStatus::Inactive);
+        if (auto* bp = Canonical()->GetBrowserParent()) {
+          bp->SetRenderLayers(isActive);
         }
       }
-      txn.SetMessageManagerGroup(messageManagerGroup);
-
-      bool useGlobalHistory =
-          !aEmbedder->HasAttr(nsGkAtoms::disableglobalhistory);
-      txn.SetUseGlobalHistory(useGlobalHistory);
     }
 
     MOZ_ALWAYS_SUCCEEDS(txn.Commit(this));
@@ -766,8 +776,7 @@ void BrowsingContext::SetEmbedderElement(Element* aEmbedder) {
                                 "browsing-context-did-set-embedder", nullptr);
     }
 
-    if (nsContentUtils::ShouldHideObjectOrEmbedImageDocument() &&
-        IsEmbedderTypeObjectOrEmbed()) {
+    if (IsEmbedderTypeObjectOrEmbed()) {
       Unused << SetSyntheticDocumentContainer(true);
     }
   }
@@ -1048,6 +1057,8 @@ void BrowsingContext::PrepareForProcessChange() {
   mIsInProcess = false;
   mUserGestureStart = TimeStamp();
 
+  ClearCachedValuesOfLocations();
+
   // NOTE: For now, clear our nsDocShell reference, as we're primarily in a
   // different process now. This may need to change in the future with
   // Cross-Process BFCache.
@@ -1071,6 +1082,23 @@ void BrowsingContext::PrepareForProcessChange() {
 
 bool BrowsingContext::IsTargetable() const {
   return !GetClosed() && AncestorsAreCurrent();
+}
+
+void BrowsingContext::SetOpener(BrowsingContext* aOpener) {
+  MOZ_DIAGNOSTIC_ASSERT(!aOpener || aOpener->Group() == Group());
+  MOZ_DIAGNOSTIC_ASSERT(!aOpener || aOpener->mType == mType);
+
+  MOZ_ALWAYS_SUCCEEDS(SetOpenerId(aOpener ? aOpener->Id() : 0));
+
+  if (IsChrome() && IsTop() && aOpener) {
+    // Inherit color scheme overrides from parent window. This is to inherit the
+    // color scheme of dark themed PBM windows in dialogs opened by such
+    // windows.
+    auto openerOverride = aOpener->Top()->PrefersColorSchemeOverride();
+    if (openerOverride != PrefersColorSchemeOverride()) {
+      MOZ_ALWAYS_SUCCEEDS(SetPrefersColorSchemeOverride(openerOverride));
+    }
+  }
 }
 
 bool BrowsingContext::HasOpener() const {
@@ -1414,6 +1442,9 @@ BrowsingContext::~BrowsingContext() {
     sBrowsingContexts->Remove(Id());
   }
   UnregisterBrowserId(this);
+
+  ClearCachedValuesOfLocations();
+  mLocations.clear();
 }
 
 /* static */
@@ -1638,11 +1669,8 @@ NS_IMETHODIMP BrowsingContext::SetRemoteTabs(bool aUseRemoteTabs) {
     return NS_ERROR_FAILURE;
   }
 
-  static bool annotated = false;
-  if (aUseRemoteTabs && !annotated) {
-    annotated = true;
-    CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::DOMIPCEnabled,
-                                       true);
+  if (aUseRemoteTabs && !gIPCEnabledAnnotation) {
+    gIPCEnabledAnnotation = true;
   }
 
   // Don't allow non-remote tabs with remote subframes.
@@ -1666,11 +1694,8 @@ NS_IMETHODIMP BrowsingContext::SetRemoteSubframes(bool aUseRemoteSubframes) {
     return NS_ERROR_FAILURE;
   }
 
-  static bool annotated = false;
-  if (aUseRemoteSubframes && !annotated) {
-    annotated = true;
-    CrashReporter::AnnotateCrashReport(
-        CrashReporter::Annotation::DOMFissionEnabled, true);
+  if (aUseRemoteSubframes && !gFissionEnabledAnnotation) {
+    gFissionEnabledAnnotation = true;
   }
 
   // Don't allow non-remote tabs with remote subframes.
@@ -1931,6 +1956,7 @@ nsresult BrowsingContext::LoadURI(nsDocShellLoadState* aLoadState,
 
   MOZ_DIAGNOSTIC_ASSERT(aLoadState->TargetBrowsingContext().IsNull(),
                         "Targeting occurs in InternalLoad");
+  aLoadState->AssertProcessCouldTriggerLoadIfSystem();
 
   if (mDocShell) {
     nsCOMPtr<nsIDocShell> docShell = mDocShell;
@@ -2028,6 +2054,7 @@ nsresult BrowsingContext::InternalLoad(nsDocShellLoadState* aLoadState) {
                         "should have target bc set");
   MOZ_DIAGNOSTIC_ASSERT(aLoadState->TargetBrowsingContext() == this,
                         "must be targeting this BrowsingContext");
+  aLoadState->AssertProcessCouldTriggerLoadIfSystem();
 
   if (mDocShell) {
     RefPtr<nsDocShell> docShell = nsDocShell::Cast(mDocShell);
@@ -2141,12 +2168,28 @@ void BrowsingContext::Close(CallerType aCallerType, ErrorResult& aError) {
   }
 }
 
-/*
- * Examine the current document state to see if we're in a way that is
- * typically abused by web designers. The window.open code uses this
- * routine to determine whether to allow the new window.
- * Returns a value from the PopupControlState enum.
- */
+template <typename FuncT>
+inline bool ApplyToDocumentsForPopup(Document* doc, FuncT func) {
+  // HACK: Some pages using bogus library + UA sniffing call window.open()
+  // from a blank iframe, only on Firefox, see bug 1685056.
+  //
+  // This is a hack-around to preserve behavior in that particular and
+  // specific case, by consuming activation on the parent document, so we
+  // don't care about the InProcessParent bits not being fission-safe or what
+  // not.
+  if (func(doc)) {
+    return true;
+  }
+  if (!doc->IsInitialDocument()) {
+    return false;
+  }
+  Document* parentDoc = doc->GetInProcessParentDocument();
+  if (!parentDoc || !parentDoc->NodePrincipal()->Equals(doc->NodePrincipal())) {
+    return false;
+  }
+  return func(parentDoc);
+}
+
 PopupBlocker::PopupControlState BrowsingContext::RevisePopupAbuseLevel(
     PopupBlocker::PopupControlState aControl) {
   if (!IsContent()) {
@@ -2189,27 +2232,11 @@ PopupBlocker::PopupControlState BrowsingContext::RevisePopupAbuseLevel(
   // If we're currently in-process, attempt to consume transient user gesture
   // activations.
   if (doc) {
-    // HACK: Some pages using bogus library + UA sniffing call window.open()
-    // from a blank iframe, only on Firefox, see bug 1685056.
-    //
-    // This is a hack-around to preserve behavior in that particular and
-    // specific case, by consuming activation on the parent document, so we
-    // don't care about the InProcessParent bits not being fission-safe or what
-    // not.
     auto ConsumeTransientUserActivationForMultiplePopupBlocking =
         [&]() -> bool {
-      if (doc->ConsumeTransientUserGestureActivation()) {
-        return true;
-      }
-      if (!doc->IsInitialDocument()) {
-        return false;
-      }
-      Document* parentDoc = doc->GetInProcessParentDocument();
-      if (!parentDoc ||
-          !parentDoc->NodePrincipal()->Equals(doc->NodePrincipal())) {
-        return false;
-      }
-      return parentDoc->ConsumeTransientUserGestureActivation();
+      return ApplyToDocumentsForPopup(doc, [](Document* doc) {
+        return doc->ConsumeTransientUserGestureActivation();
+      });
     };
 
     // If this popup is allowed, let's block any other for this event, forcing
@@ -2226,6 +2253,18 @@ PopupBlocker::PopupControlState BrowsingContext::RevisePopupAbuseLevel(
   }
 
   return abuse;
+}
+
+void BrowsingContext::GetUserActivationModifiersForPopup(
+    UserActivation::Modifiers* aModifiers) {
+  RefPtr<Document> doc = GetExtantDocument();
+  if (doc) {
+    // Unlike RevisePopupAbuseLevel, modifiers can always be used regardless
+    // of PopupControlState.
+    (void)ApplyToDocumentsForPopup(doc, [&](Document* doc) {
+      return doc->GetTransientUserGestureActivationModifiers(aModifiers);
+    });
+  }
 }
 
 void BrowsingContext::IncrementHistoryEntryCountForBrowsingContext() {
@@ -2257,12 +2296,11 @@ std::tuple<bool, bool> BrowsingContext::CanFocusCheck(CallerType aCallerType) {
 
   bool isActive = false;
   if (XRE_IsParentProcess()) {
-    RefPtr<CanonicalBrowsingContext> chromeTop =
-        Canonical()->TopCrossChromeBoundary();
+    CanonicalBrowsingContext* chromeTop = Canonical()->TopCrossChromeBoundary();
     nsCOMPtr<nsPIDOMWindowOuter> activeWindow = fm->GetActiveWindow();
-    isActive = (activeWindow == chromeTop->GetDOMWindow());
+    isActive = activeWindow == chromeTop->GetDOMWindow();
   } else {
-    isActive = (fm->GetActiveBrowsingContext() == Top());
+    isActive = fm->GetActiveBrowsingContext() == Top();
   }
 
   return {canFocus, isActive};
@@ -2595,8 +2633,16 @@ void BrowsingContext::DidSet(FieldIndex<IDX_GVInaudibleAutoplayRequestStatus>) {
              "browsing context");
 }
 
+bool BrowsingContext::CanSet(FieldIndex<IDX_ExplicitActive>,
+                             const ExplicitActiveStatus&,
+                             ContentParent* aSource) {
+  return XRE_IsParentProcess() && IsTop() && !aSource;
+}
+
 void BrowsingContext::DidSet(FieldIndex<IDX_ExplicitActive>,
                              ExplicitActiveStatus aOldValue) {
+  MOZ_ASSERT(IsTop());
+
   const bool isActive = IsActive();
   const bool wasActive = [&] {
     if (aOldValue != ExplicitActiveStatus::None) {
@@ -2609,32 +2655,43 @@ void BrowsingContext::DidSet(FieldIndex<IDX_ExplicitActive>,
     return;
   }
 
-  if (IsTop()) {
-    Group()->UpdateToplevelsSuspendedIfNeeded();
-
-    if (XRE_IsParentProcess()) {
-      auto* bc = Canonical();
-      if (BrowserParent* bp = bc->GetBrowserParent()) {
-        bp->RecomputeProcessPriority();
+  Group()->UpdateToplevelsSuspendedIfNeeded();
+  if (XRE_IsParentProcess()) {
+    if (BrowserParent* bp = Canonical()->GetBrowserParent()) {
+      bp->RecomputeProcessPriority();
 #if defined(XP_WIN) && defined(ACCESSIBILITY)
-        if (a11y::Compatibility::IsDolphin()) {
-          // update active accessible documents on windows
-          if (a11y::DocAccessibleParent* tabDoc =
-                  bp->GetTopLevelDocAccessible()) {
-            HWND window = tabDoc->GetEmulatedWindowHandle();
-            MOZ_ASSERT(window);
-            if (window) {
-              if (isActive) {
-                a11y::nsWinUtils::ShowNativeWindow(window);
-              } else {
-                a11y::nsWinUtils::HideNativeWindow(window);
-              }
+      if (a11y::Compatibility::IsDolphin()) {
+        // update active accessible documents on windows
+        if (a11y::DocAccessibleParent* tabDoc =
+                bp->GetTopLevelDocAccessible()) {
+          HWND window = tabDoc->GetEmulatedWindowHandle();
+          MOZ_ASSERT(window);
+          if (window) {
+            if (isActive) {
+              a11y::nsWinUtils::ShowNativeWindow(window);
+            } else {
+              a11y::nsWinUtils::HideNativeWindow(window);
             }
           }
         }
-#endif
       }
+#endif
     }
+
+    // NOTE(emilio): Ideally we'd want to reuse the ExplicitActiveStatus::None
+    // set-up, but that's non-trivial to do because in content processes we
+    // can't access the top-cross-chrome-boundary bc.
+    auto manageTopDescendant = [&](auto* aChild) {
+      if (!aChild->ManuallyManagesActiveness()) {
+        aChild->SetIsActiveInternal(isActive, IgnoreErrors());
+        if (BrowserParent* bp = aChild->GetBrowserParent()) {
+          bp->SetRenderLayers(isActive);
+        }
+      }
+      return CallState::Continue;
+    };
+    Canonical()->CallOnAllTopDescendants(manageTopDescendant,
+                                         /* aIncludeNestedBrowsers = */ false);
   }
 
   PreOrderWalk([&](BrowsingContext* aContext) {
@@ -2991,7 +3048,8 @@ void BrowsingContext::DidSet(FieldIndex<IDX_IsActiveBrowserWindowInternal>,
           // the context is the top of a sub-tree of in-process
           // contexts.
           nsContentUtils::DispatchEventOnlyToChrome(
-              doc, win, isActivateEvent ? u"activate"_ns : u"deactivate"_ns,
+              doc, nsGlobalWindowInner::Cast(win),
+              isActivateEvent ? u"activate"_ns : u"deactivate"_ns,
               CanBubble::eYes, Cancelable::eYes, nullptr);
         }
       }
@@ -3023,12 +3081,6 @@ auto BrowsingContext::CanSet(FieldIndex<IDX_AllowContentRetargeting>,
 auto BrowsingContext::CanSet(FieldIndex<IDX_AllowContentRetargetingOnChildren>,
                              const bool& aAllowContentRetargetingOnChildren,
                              ContentParent* aSource) -> CanSetResult {
-  return LegacyRevertIfNotOwningOrParentProcess(aSource);
-}
-
-auto BrowsingContext::CanSet(FieldIndex<IDX_AllowPlugins>,
-                             const bool& aAllowPlugins, ContentParent* aSource)
-    -> CanSetResult {
   return LegacyRevertIfNotOwningOrParentProcess(aSource);
 }
 
@@ -3113,8 +3165,8 @@ bool BrowsingContext::CanSet(FieldIndex<IDX_UseGlobalHistory>,
 }
 
 auto BrowsingContext::CanSet(FieldIndex<IDX_UserAgentOverride>,
-                             const nsString& aUserAgent, ContentParent* aSource)
-    -> CanSetResult {
+                             const nsString& aUserAgent,
+                             ContentParent* aSource) -> CanSetResult {
   if (!IsTop()) {
     return CanSetResult::Deny;
   }
@@ -3123,8 +3175,8 @@ auto BrowsingContext::CanSet(FieldIndex<IDX_UserAgentOverride>,
 }
 
 auto BrowsingContext::CanSet(FieldIndex<IDX_PlatformOverride>,
-                             const nsString& aPlatform, ContentParent* aSource)
-    -> CanSetResult {
+                             const nsString& aPlatform,
+                             ContentParent* aSource) -> CanSetResult {
   if (!IsTop()) {
     return CanSetResult::Deny;
   }
@@ -3158,8 +3210,8 @@ bool BrowsingContext::CanSet(FieldIndex<IDX_EmbedderElementType>,
 }
 
 auto BrowsingContext::CanSet(FieldIndex<IDX_CurrentInnerWindowId>,
-                             const uint64_t& aValue, ContentParent* aSource)
-    -> CanSetResult {
+                             const uint64_t& aValue,
+                             ContentParent* aSource) -> CanSetResult {
   // Generally allow clearing this. We may want to be more precise about this
   // check in the future.
   if (aValue == 0) {
@@ -3275,8 +3327,7 @@ void BrowsingContext::DidSet(FieldIndex<IDX_Loading>) {
     NS_DispatchToCurrentThread(runner.forget());
   }
 
-  if (StaticPrefs::dom_separate_event_queue_for_post_message_enabled() &&
-      Top() == this) {
+  if (IsTop()) {
     Group()->FlushPostMessageEvents();
   }
 }
@@ -3440,7 +3491,7 @@ ChildSHistory* BrowsingContext::GetChildSessionHistory() {
 void BrowsingContext::CreateChildSHistory() {
   MOZ_ASSERT(IsTop());
   MOZ_ASSERT(GetHasSessionHistory());
-  MOZ_DIAGNOSTIC_ASSERT(!mChildSessionHistory);
+  MOZ_ASSERT(!mChildSessionHistory);
 
   // Because session history is global in a browsing context tree, every process
   // that has access to a browsing context tree needs access to its session
@@ -3486,6 +3537,12 @@ bool BrowsingContext::CanSet(FieldIndex<IDX_PendingInitialization>,
   return IsTop() && GetPendingInitialization() && !aNewValue;
 }
 
+bool BrowsingContext::CanSet(FieldIndex<IDX_TopLevelCreatedByWebContent>,
+                             const bool& aNewValue, ContentParent* aSource) {
+  // Should only be set after creation in the parent process.
+  return XRE_IsParentProcess() && !aSource && IsTop();
+}
+
 bool BrowsingContext::CanSet(FieldIndex<IDX_HasRestoreData>, bool aNewValue,
                              ContentParent* aSource) {
   return IsTop();
@@ -3497,17 +3554,26 @@ bool BrowsingContext::CanSet(FieldIndex<IDX_IsUnderHiddenEmbedderElement>,
   return true;
 }
 
+bool BrowsingContext::CanSet(FieldIndex<IDX_ForceOffline>, bool aNewValue,
+                             ContentParent* aSource) {
+  return XRE_IsParentProcess() && !aSource;
+}
+
 void BrowsingContext::DidSet(FieldIndex<IDX_IsUnderHiddenEmbedderElement>,
                              bool aOldValue) {
   nsIDocShell* shell = GetDocShell();
   if (!shell) {
     return;
   }
-
   const bool newValue = IsUnderHiddenEmbedderElement();
   if (NS_WARN_IF(aOldValue == newValue)) {
     return;
   }
+
+  if (auto* bc = BrowserChild::GetFrom(shell)) {
+    bc->UpdateVisibility();
+  }
+
   if (PresShell* presShell = shell->GetPresShell()) {
     presShell->SetIsUnderHiddenEmbedderElement(newValue);
   }
@@ -3526,7 +3592,7 @@ void BrowsingContext::DidSet(FieldIndex<IDX_IsUnderHiddenEmbedderElement>,
     }
 
     bool embedderFrameIsHidden = true;
-    if (auto embedderFrame = embedderElement->GetPrimaryFrame()) {
+    if (auto* embedderFrame = embedderElement->GetPrimaryFrame()) {
       embedderFrameIsHidden = !embedderFrame->StyleVisibility()->IsVisible();
     }
 
@@ -3754,6 +3820,17 @@ void BrowsingContext::ResetLocationChangeRateLimit() {
   // Resetting the timestamp object will cause the check function to
   // init again and reset the rate limit.
   mLocationChangeRateLimitSpanStart = TimeStamp();
+}
+
+void BrowsingContext::LocationCreated(dom::Location* aLocation) {
+  MOZ_ASSERT(!aLocation->isInList());
+  mLocations.insertBack(aLocation);
+}
+
+void BrowsingContext::ClearCachedValuesOfLocations() {
+  for (dom::Location* loc = mLocations.getFirst(); loc; loc = loc->getNext()) {
+    loc->ClearCachedValues();
+  }
 }
 
 }  // namespace dom

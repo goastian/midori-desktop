@@ -68,6 +68,7 @@ class ChildSHistory;
 class ContentParent;
 class Element;
 struct LoadingSessionHistoryInfo;
+class Location;
 template <typename>
 struct Nullable;
 template <typename T>
@@ -134,6 +135,10 @@ struct EmbedderColorSchemes {
   FIELD(EmbedderInnerWindowId, uint64_t)                                      \
   FIELD(CurrentInnerWindowId, uint64_t)                                       \
   FIELD(HadOriginalOpener, bool)                                              \
+  /* Was this window created by a webpage through window.open or an anchor    \
+   * link? In general, windows created this way may be manipulated (e.g.      \
+   * closed, resized or moved) by content JS. */                              \
+  FIELD(TopLevelCreatedByWebContent, bool)                                    \
   FIELD(IsPopupSpam, bool)                                                    \
   /* Hold the audio muted state and should be used on top level browsing      \
    * contexts only */                                                         \
@@ -176,7 +181,6 @@ struct EmbedderColorSchemes {
    * We use it exclusively to block navigation for both of these cases. */    \
   FIELD(IsPrinting, bool)                                                     \
   FIELD(AncestorLoading, bool)                                                \
-  FIELD(AllowPlugins, bool)                                                   \
   FIELD(AllowContentRetargeting, bool)                                        \
   FIELD(AllowContentRetargetingOnChildren, bool)                              \
   FIELD(ForceEnableTrackingProtection, bool)                                  \
@@ -228,7 +232,7 @@ struct EmbedderColorSchemes {
    * and non-initial about:blank are not considered to be initial             \
    * documents. */                                                            \
   FIELD(HasLoadedNonInitialDocument, bool)                                    \
-  /* Default value for nsIContentViewer::authorStyleDisabled in any new       \
+  /* Default value for nsIDocumentViewer::authorStyleDisabled in any new      \
    * browsing contexts created as a descendant of this one.  Valid only for   \
    * top BCs. */                                                              \
   FIELD(AuthorStyleDisabledDefault, bool)                                     \
@@ -266,7 +270,9 @@ struct EmbedderColorSchemes {
    * a content process. */                                                    \
   FIELD(EmbeddedInContentDocument, bool)                                      \
   /* If true, this browsing context is within a hidden embedded document. */  \
-  FIELD(IsUnderHiddenEmbedderElement, bool)
+  FIELD(IsUnderHiddenEmbedderElement, bool)                                   \
+  /* If true, this browsing context is offline */                             \
+  FIELD(ForceOffline, bool)
 
 // BrowsingContext, in this context, is the cross process replicated
 // environment in which information about documents is stored. In
@@ -329,6 +335,13 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
   // it.
   static already_AddRefed<BrowsingContext> CreateIndependent(Type aType);
 
+  // Options which can be passed to CreateDetached.
+  struct CreateDetachedOptions {
+    bool isPopupRequested = false;
+    bool createdDynamically = false;
+    bool topLevelCreatedByWebContent = false;
+  };
+
   // Create a brand-new BrowsingContext object, but does not immediately attach
   // it. State such as OriginAttributes and PrivateBrowsingId may be customized
   // to configure the BrowsingContext before it is attached.
@@ -338,7 +351,7 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
   static already_AddRefed<BrowsingContext> CreateDetached(
       nsGlobalWindowInner* aParent, BrowsingContext* aOpener,
       BrowsingContextGroup* aSpecificGroup, const nsAString& aName, Type aType,
-      bool aIsPopupRequested, bool aCreatedDynamically = false);
+      CreateDetachedOptions aOptions);
 
   void EnsureAttached();
 
@@ -485,13 +498,7 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
     }
     return nullptr;
   }
-  void SetOpener(BrowsingContext* aOpener) {
-    MOZ_DIAGNOSTIC_ASSERT(!aOpener || aOpener->Group() == Group());
-    MOZ_DIAGNOSTIC_ASSERT(!aOpener || aOpener->mType == mType);
-
-    MOZ_ALWAYS_SUCCEEDS(SetOpenerId(aOpener ? aOpener->Id() : 0));
-  }
-
+  void SetOpener(BrowsingContext* aOpener);
   bool HasOpener() const;
 
   bool HadOriginalOpener() const { return GetHadOriginalOpener(); }
@@ -610,11 +617,7 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
   }
 
   bool IsActive() const;
-  void SetIsActive(bool aIsActive, mozilla::ErrorResult& aRv) {
-    SetExplicitActive(aIsActive ? ExplicitActiveStatus::Active
-                                : ExplicitActiveStatus::Inactive,
-                      aRv);
-  }
+  bool ForceOffline() const { return GetForceOffline(); }
 
   bool ForceDesktopViewport() const { return GetForceDesktopViewport(); }
 
@@ -907,8 +910,18 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
 
   bool CanBlurCheck(CallerType aCallerType);
 
+  // Examine the current document state to see if we're in a way that is
+  // typically abused by web designers. The window.open code uses this
+  // routine to determine whether to allow the new window.
+  // Returns a value from the PopupControlState enum.
   PopupBlocker::PopupControlState RevisePopupAbuseLevel(
       PopupBlocker::PopupControlState aControl);
+
+  // Get the modifiers associated with the user activation for relevant
+  // documents. The window.open code uses this routine to determine where the
+  // new window should be located.
+  void GetUserActivationModifiersForPopup(
+      UserActivation::Modifiers* aModifiers);
 
   void IncrementHistoryEntryCountForBrowsingContext();
 
@@ -947,6 +960,9 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
   bool IsUnderHiddenEmbedderElement() const {
     return GetIsUnderHiddenEmbedderElement();
   }
+
+  void LocationCreated(dom::Location* aLocation);
+  void ClearCachedValuesOfLocations();
 
  protected:
   virtual ~BrowsingContext();
@@ -1023,7 +1039,7 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
           uintptr_t(this) - offsetof(BrowsingContext, mLocation));
     }
 
-    already_AddRefed<nsIDocShell> GetDocShell() override { return nullptr; }
+    nsIDocShell* GetDocShell() override { return nullptr; }
   };
 
   // Send a given `BaseTransaction` object to the correct remote.
@@ -1104,6 +1120,8 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
 
   void DidSet(FieldIndex<IDX_DisplayMode>, enum DisplayMode aOldValue);
 
+  bool CanSet(FieldIndex<IDX_ExplicitActive>, const ExplicitActiveStatus&,
+              ContentParent* aSource);
   void DidSet(FieldIndex<IDX_ExplicitActive>, ExplicitActiveStatus aOldValue);
 
   bool CanSet(FieldIndex<IDX_IsActiveBrowserWindowInternal>, const bool& aValue,
@@ -1176,8 +1194,6 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
   CanSetResult CanSet(FieldIndex<IDX_AllowContentRetargetingOnChildren>,
                       const bool& aAllowContentRetargetingOnChildren,
                       ContentParent* aSource);
-  CanSetResult CanSet(FieldIndex<IDX_AllowPlugins>, const bool& aAllowPlugins,
-                      ContentParent* aSource);
   bool CanSet(FieldIndex<IDX_FullscreenAllowedByOwner>, const bool&,
               ContentParent*);
   bool CanSet(FieldIndex<IDX_WatchedByDevToolsInternal>,
@@ -1206,6 +1222,9 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
   bool CanSet(FieldIndex<IDX_PendingInitialization>, bool aNewValue,
               ContentParent* aSource);
 
+  bool CanSet(FieldIndex<IDX_TopLevelCreatedByWebContent>,
+              const bool& aNewValue, ContentParent* aSource);
+
   bool CanSet(FieldIndex<IDX_PageAwakeRequestCount>, uint32_t aNewValue,
               ContentParent* aSource);
   void DidSet(FieldIndex<IDX_PageAwakeRequestCount>, uint32_t aOldValue);
@@ -1229,6 +1248,9 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
 
   bool CanSet(FieldIndex<IDX_IsUnderHiddenEmbedderElement>,
               const bool& aIsUnderHiddenEmbedderElement,
+              ContentParent* aSource);
+
+  bool CanSet(FieldIndex<IDX_ForceOffline>, bool aNewValue,
               ContentParent* aSource);
 
   bool CanSet(FieldIndex<IDX_EmbeddedInContentDocument>, bool,
@@ -1406,6 +1428,8 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
   // Used by CheckLocationChangeRateLimit. Do not apply cross-process.
   uint32_t mLocationChangeRateLimitCount;
   mozilla::TimeStamp mLocationChangeRateLimitSpanStart;
+
+  mozilla::LinkedList<dom::Location> mLocations;
 };
 
 /**
@@ -1419,7 +1443,8 @@ class BrowsingContext : public nsILoadContext, public nsWrapperCache {
  *
  * If aTransplantTo is non-null, then the WindowProxy object will eventually be
  * transplanted onto it. Therefore it should be used as the value in the remote
- * proxy map.
+ * proxy map. We assume that in this case the failure is unrecoverable, so we
+ * crash immediately rather than return false.
  */
 extern bool GetRemoteOuterWindowProxy(JSContext* aCx, BrowsingContext* aContext,
                                       JS::Handle<JSObject*> aTransplantTo,

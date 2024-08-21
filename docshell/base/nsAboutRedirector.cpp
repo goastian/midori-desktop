@@ -12,6 +12,8 @@
 #include "nsIProtocolHandler.h"
 #include "nsXULAppAPI.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/dom/ContentParent.h"
+#include "mozilla/dom/RemoteType.h"
 #include "mozilla/gfx/GPUProcessManager.h"
 
 #define ABOUT_CONFIG_ENABLED_PREF "general.aboutConfig.enable"
@@ -45,6 +47,19 @@ class CrashChannel final : public nsBaseChannel {
 
     if (spec.EqualsASCII("about:crashcontent") && XRE_IsContentProcess()) {
       MOZ_CRASH("Crash via about:crashcontent");
+    }
+
+    if (spec.EqualsASCII("about:crashextensions") && XRE_IsParentProcess()) {
+      using ContentParent = mozilla::dom::ContentParent;
+      nsTArray<RefPtr<ContentParent>> toKill;
+      for (auto* cp : ContentParent::AllProcesses(ContentParent::eLive)) {
+        if (cp->GetRemoteType() == EXTENSION_REMOTE_TYPE) {
+          toKill.AppendElement(cp);
+        }
+      }
+      for (auto& cp : toKill) {
+        cp->KillHard("Killed via about:crashextensions");
+      }
     }
 
     NS_WARNING("Unhandled about:crash* URI or wrong process");
@@ -93,6 +108,12 @@ static const RedirEntry kRedirMap[] = {
     {"credits", "https://www.mozilla.org/credits/",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::URI_MUST_LOAD_IN_CHILD},
+    {"fingerprintingprotection",
+     "chrome://global/content/usercharacteristics/usercharacteristics.html",
+     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+         nsIAboutModule::HIDE_FROM_ABOUTABOUT | nsIAboutModule::ALLOW_SCRIPT |
+         nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
+         nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS},
     {"httpsonlyerror", "chrome://global/content/httpsonlyerror/errorpage.html",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::URI_CAN_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
@@ -116,19 +137,19 @@ static const RedirEntry kRedirMap[] = {
          nsIAboutModule::IS_SECURE_CHROME_UI},
     {"mozilla", "chrome://global/content/mozilla.html",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT},
-    {"neterror", "chrome://global/content/aboutNetError.xhtml",
+#if !defined(ANDROID) && !defined(XP_WIN)
+    {"webauthn", "chrome://global/content/aboutWebauthn.html",
+     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI},
+#endif
+    {"neterror", "chrome://global/content/aboutNetError.html",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::URI_CAN_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
          nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"networking", "chrome://global/content/aboutNetworking.html",
      nsIAboutModule::ALLOW_SCRIPT},
-    {"performance", "chrome://global/content/aboutPerformance.html",
-     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI},
-#ifndef ANDROID
-    {"plugins", "chrome://global/content/plugins.html",
-     nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
-         nsIAboutModule::IS_SECURE_CHROME_UI},
-#endif
+    {"performance", "about:processes",
+     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI |
+         nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"processes", "chrome://global/content/aboutProcesses.html",
      nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI},
     // about:serviceworkers always wants to load in the parent process because
@@ -173,6 +194,7 @@ static const RedirEntry kRedirMap[] = {
      nsIAboutModule::ALLOW_SCRIPT |
          nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
+         nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS |
          nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"url-classifier", "chrome://global/content/aboutUrlClassifier.xhtml",
      nsIAboutModule::ALLOW_SCRIPT},
@@ -181,9 +203,11 @@ static const RedirEntry kRedirMap[] = {
     {"crashparent", "about:blank", nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"crashcontent", "about:blank",
      nsIAboutModule::HIDE_FROM_ABOUTABOUT |
+         nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::URI_CAN_LOAD_IN_CHILD |
          nsIAboutModule::URI_MUST_LOAD_IN_CHILD},
-    {"crashgpu", "about:blank", nsIAboutModule::HIDE_FROM_ABOUTABOUT}};
+    {"crashgpu", "about:blank", nsIAboutModule::HIDE_FROM_ABOUTABOUT},
+    {"crashextensions", "about:blank", nsIAboutModule::HIDE_FROM_ABOUTABOUT}};
 static const int kRedirTotal = mozilla::ArrayLength(kRedirMap);
 
 NS_IMETHODIMP
@@ -201,10 +225,11 @@ nsAboutRedirector::NewChannel(nsIURI* aURI, nsILoadInfo* aLoadInfo,
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (path.EqualsASCII("crashparent") || path.EqualsASCII("crashcontent") ||
-      path.EqualsASCII("crashgpu")) {
+      path.EqualsASCII("crashgpu") || path.EqualsASCII("crashextensions")) {
     bool isExternal;
     aLoadInfo->GetLoadTriggeredFromExternal(&isExternal);
-    if (isExternal) {
+    if (isExternal || !aLoadInfo->TriggeringPrincipal() ||
+        !aLoadInfo->TriggeringPrincipal()->IsSystemPrincipal()) {
       return NS_ERROR_NOT_AVAILABLE;
     }
 

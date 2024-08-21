@@ -17,7 +17,6 @@
 #include "nsError.h"
 #include "nsContentSecurityManager.h"
 #include "nsDocShellLoadTypes.h"
-#include "nsGlobalWindowOuter.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIMultiPartChannel.h"
 #include "nsWebNavigationInfo.h"
@@ -165,7 +164,8 @@ nsDSURIContentListener::DoContent(const nsACString& aContentType,
     copy.forget(aContentHandler);
     rv = NS_OK;
   } else {
-    rv = docShell->CreateContentViewer(aContentType, aRequest, aContentHandler);
+    rv =
+        docShell->CreateDocumentViewer(aContentType, aRequest, aContentHandler);
     if (NS_SUCCEEDED(rv) && reuseCV) {
       mExistingJPEGStreamListener = *aContentHandler;
     } else {

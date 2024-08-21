@@ -35,10 +35,10 @@ uint32_t nsWebNavigationInfo::IsTypeSupported(const nsACString& aType) {
 }
 
 uint32_t nsWebNavigationInfo::IsTypeSupportedInternal(const nsCString& aType) {
-  nsContentUtils::ContentViewerType vtype = nsContentUtils::TYPE_UNSUPPORTED;
+  nsContentUtils::DocumentViewerType vtype = nsContentUtils::TYPE_UNSUPPORTED;
 
   nsCOMPtr<nsIDocumentLoaderFactory> docLoaderFactory =
-      nsContentUtils::FindInternalContentViewer(aType, &vtype);
+      nsContentUtils::FindInternalDocumentViewer(aType, &vtype);
 
   switch (vtype) {
     case nsContentUtils::TYPE_UNSUPPORTED:

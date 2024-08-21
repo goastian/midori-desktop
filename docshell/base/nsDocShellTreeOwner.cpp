@@ -18,7 +18,7 @@
 #include "nsAtom.h"
 #include "nsReadableUtils.h"
 #include "nsUnicharUtils.h"
-#include "mozilla/LookAndFeel.h"
+#include "mozilla/StaticPrefs_ui.h"
 
 // Interfaces needed to be included
 #include "nsPresContext.h"
@@ -39,7 +39,6 @@
 #include "nsIRemoteTab.h"
 #include "nsIBrowserChild.h"
 #include "nsRect.h"
-#include "nsIWebBrowserChromeFocus.h"
 #include "nsIContent.h"
 #include "nsServiceManagerUtils.h"
 #include "nsViewManager.h"
@@ -48,6 +47,7 @@
 #include "nsIConstraintValidation.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EventListenerManager.h"
+#include "mozilla/Try.h"
 #include "mozilla/dom/DragEvent.h"
 #include "mozilla/dom/Event.h"     // for Event
 #include "mozilla/dom/File.h"      // for input type=file
@@ -193,13 +193,6 @@ nsDocShellTreeOwner::GetInterface(const nsIID& aIID, void** aSink) {
 
   if (NS_SUCCEEDED(QueryInterface(aIID, aSink))) {
     return NS_OK;
-  }
-
-  if (aIID.Equals(NS_GET_IID(nsIWebBrowserChromeFocus))) {
-    if (mWebBrowserChromeWeak != nullptr) {
-      return mWebBrowserChromeWeak->QueryReferent(aIID, aSink);
-    }
-    return mOwnerWin->QueryInterface(aIID, aSink);
   }
 
   if (aIID.Equals(NS_GET_IID(nsIPrompt))) {
@@ -1176,20 +1169,15 @@ nsresult ChromeTooltipListener::MouseMove(Event* aMouseEvent) {
   }
 
   if (!mShowingTooltip) {
-    nsIEventTarget* target = nullptr;
-    if (nsCOMPtr<EventTarget> eventTarget = aMouseEvent->GetComposedTarget()) {
+    if (nsCOMPtr<EventTarget> eventTarget = aMouseEvent->GetOriginalTarget()) {
       mPossibleTooltipNode = nsINode::FromEventTarget(eventTarget);
-      nsCOMPtr<nsIGlobalObject> global(eventTarget->GetOwnerGlobal());
-      if (global) {
-        target = global->EventTargetFor(TaskCategory::UI);
-      }
     }
 
     if (mPossibleTooltipNode) {
       nsresult rv = NS_NewTimerWithFuncCallback(
           getter_AddRefs(mTooltipTimer), sTooltipCallback, this,
-          LookAndFeel::GetInt(LookAndFeel::IntID::TooltipDelay, 500),
-          nsITimer::TYPE_ONE_SHOT, "ChromeTooltipListener::MouseMove", target);
+          StaticPrefs::ui_tooltip_delay_ms(), nsITimer::TYPE_ONE_SHOT,
+          "ChromeTooltipListener::MouseMove", GetMainThreadSerialEventTarget());
       if (NS_FAILED(rv)) {
         mPossibleTooltipNode = nullptr;
         NS_WARNING("Could not create a timer for tooltip tracking");
