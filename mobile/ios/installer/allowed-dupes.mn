@@ -1,0 +1,20 @@
+# Known duplicate files
+# This file is ideally removed, but some existing files will be allowed exceptions
+# See bug 1303184
+#
+# PLEASE DO NOT ADD MORE EXCEPTIONS TO THIS LIST
+#
+
+# Row and column icons are duplicated
+res/table-remove-column-active.gif
+res/table-remove-row-active.gif
+res/table-remove-column-hover.gif
+res/table-remove-row-hover.gif
+res/table-remove-column.gif
+res/table-remove-row.gif
+
+res/multilocale.txt
+update.locale
+
+components/httpd.sys.mjs
+chrome/remote/content/server/httpd.sys.mjs

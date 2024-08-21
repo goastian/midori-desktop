@@ -1,0 +1,63 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+pluginManagement {
+    apply from: file('../gradle/mozconfig.gradle')
+
+    repositories {
+        gradle.mozconfig.substs.GRADLE_MAVEN_REPOSITORIES.each { repository ->
+            maven {
+                url repository
+                if (gradle.mozconfig.substs.ALLOW_INSECURE_GRADLE_REPOSITORIES) {
+                    allowInsecureProtocol = true
+                }
+            }
+        }
+    }
+
+    includeBuild("../android-components/plugins/publicsuffixlist")
+    includeBuild("../android-components/plugins/dependencies")
+    includeBuild("../android-components/plugins/config")
+    includeBuild("./plugins/focusdependencies")
+}
+
+plugins {
+    id "mozac.ConfigPlugin"
+    id 'mozac.DependenciesPlugin'
+    id 'FocusDependenciesPlugin'
+}
+
+ext.topsrcdir = rootProject.projectDir.absolutePath.minus("mobile/android/focus-android")
+
+apply from: file('../shared-settings.gradle')
+apply from: file('../autopublish-settings.gradle')
+
+include ':app'
+
+gradle.projectsLoaded { ->
+    // Disables A-C tests and lint when building Focus.
+    gradle.allprojects { project ->
+        if (project.projectDir.absolutePath.contains("/android-components/")) {
+            project.tasks.withType(Test).configureEach {
+                enabled = false
+            }
+            project.tasks.configureEach { task ->
+                if (task.name.contains("lint")) {
+                    task.enabled = false
+                }
+            }
+        }
+    }
+}
+
+def projectLocalProperties = file("local.properties").with { localPropertiesFile ->
+    def localProperties = new Properties()
+    if (localPropertiesFile.canRead()) {
+        localPropertiesFile.withInputStream { localProperties.load(it) }
+    }
+    localProperties
+}
+projectLocalProperties.each { prop ->
+    gradle.ext."localProperties.${prop.key}" = prop.value
+}
