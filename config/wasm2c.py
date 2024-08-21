@@ -10,5 +10,5 @@ def wasm2c(output, wasm2c_bin, wasm_lib):
     output.close()
     module_name = os.path.basename(os.path.splitext(wasm_lib)[0])
     return subprocess.run(
-        [wasm2c_bin, "-n", module_name, "-o", output.name, "--disable-simd", wasm_lib]
+        [wasm2c_bin, "-n", module_name, "-o", output.name, wasm_lib]
     ).returncode

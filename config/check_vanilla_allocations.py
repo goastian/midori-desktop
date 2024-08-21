@@ -147,6 +147,10 @@ def main():
         "Decimal.o",
         # Ignore use of std::string in regexp AST debug output.
         "regexp-ast.o",
+        # mozglue/misc/Debug.cpp contains a call to `printf_stderr("%s", aStr.str().c_str())`
+        # where `aStr` is a `std::stringstream`. In inlined opt builds, this calls
+        # `operator new()` and `operator delete` for a temporary.
+        "Debug.o",
     ]
     all_ignored_files = set((f, 1) for f in ignored_files)
 
@@ -208,7 +212,7 @@ def main():
         if f in ignored_files and (f, 2) in functions:
             fail(f"There should be only one {f} file")
 
-    for (filename, n) in sorted(functions):
+    for filename, n in sorted(functions):
         for fn in functions[(filename, n)]:
             # An allocation is present in a non-special file.  Fail!
             fail("'" + fn + "' present in " + filename)

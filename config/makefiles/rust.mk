@@ -147,6 +147,14 @@ PASS_ONLY_BASE_CFLAGS_TO_RUST=1
 endif # MOZ_CODE_COVERAGE
 endif # WINNT
 
+ifeq (WINNT,$(HOST_OS_ARCH))
+# //?/ is the long path prefix which seems to confuse make, so we remove it
+# (things should work without it).
+normalize_sep = $(patsubst //?/%,%,$(subst \,/,$(1)))
+else
+normalize_sep = $(1)
+endif
+
 # We start with host variables because the rust host and the rust target might be the same,
 # in which case we want the latter to take priority.
 
@@ -173,6 +181,8 @@ export AR_$(rust_cc_env_name)=$(AR)
 ifeq (WINNT,$(HOST_OS_ARCH))
 HOST_CC_BASE_FLAGS += -DUNICODE
 HOST_CXX_BASE_FLAGS += -DUNICODE
+endif
+ifeq (WINNT,$(OS_ARCH))
 CC_BASE_FLAGS += -DUNICODE
 CXX_BASE_FLAGS += -DUNICODE
 endif
@@ -244,12 +254,18 @@ ifeq ($(OS_ARCH), Darwin)
 ifdef MACOS_SDK_DIR
 export COREAUDIO_SDK_PATH=$(MACOS_SDK_DIR)
 endif
+ifdef IPHONEOS_SDK_DIR
+export COREAUDIO_SDK_PATH=$(IPHONEOS_SDK_DIR)
+# export for build/macosx/xcrun
+export IPHONEOS_SDK_DIR
+PATH := $(topsrcdir)/build/macosx:$(PATH)
+endif
 endif
 
 ifndef RUSTC_BOOTSTRAP
 RUSTC_BOOTSTRAP := mozglue_static,qcms
 ifdef MOZ_RUST_SIMD
-RUSTC_BOOTSTRAP := $(RUSTC_BOOTSTRAP),encoding_rs,packed_simd
+RUSTC_BOOTSTRAP := $(RUSTC_BOOTSTRAP),encoding_rs,any_all_workaround
 endif
 export RUSTC_BOOTSTRAP
 endif
@@ -259,12 +275,7 @@ target_rust_nonltoable := force-cargo-test-run force-cargo-program-build
 
 ifdef MOZ_PGO_RUST
 ifdef MOZ_PROFILE_GENERATE
-# Our top-level Cargo.toml sets panic to abort, so we technically don't need -C panic=abort,
-# but the autocfg crate takes RUSTFLAGS verbatim and runs its compiler tests without
-# -C panic=abort (because it doesn't know it's what cargo uses), which fail on Windows
-# because -C panic=unwind (the compiler default) is not compatible with -C profile-generate
-# (https://github.com/rust-lang/rust/issues/61002).
-rust_pgo_flags := -C panic=abort -C profile-generate=$(topobjdir)
+rust_pgo_flags := -C profile-generate=$(topobjdir)
 ifeq (1,$(words $(filter 5.% 6.% 7.% 8.% 9.% 10.% 11.%,$(CC_VERSION) $(RUSTC_LLVM_VERSION))))
 # Disable value profiling when:
 # (RUSTC_LLVM_VERSION < 12 and CC_VERSION >= 12) or (RUSTC_LLVM_VERSION >= 12 and CC_VERSION < 12)
@@ -277,6 +288,14 @@ endif
 rust_pgo_flags += $(patsubst -mllvm:%,-C llvm-args=%,$(filter -mllvm:%,$(subst -mllvm ,-mllvm:,$(PROFILE_GEN_CFLAGS))))
 else # MOZ_PROFILE_USE
 rust_pgo_flags := -C profile-use=$(PGO_PROFILE_PATH)
+endif
+endif
+
+# Work around https://github.com/rust-lang/rust/issues/112480
+ifdef MOZ_DEBUG_RUST
+ifneq (,$(filter i686-pc-windows-%,$(RUST_TARGET)))
+RUSTFLAGS += -Zmir-enable-passes=-CheckAlignment
+RUSTC_BOOTSTRAP := 1
 endif
 endif
 
@@ -325,7 +344,7 @@ endif
 #
 #   $(call CARGO_BUILD)
 define CARGO_BUILD
-$(call RUN_CARGO,rustc)
+$(call RUN_CARGO,rustc$(if $(BUILDSTATUS), --timings)$(if $(findstring k,$(filter-out --%, $(MAKEFLAGS))), --keep-going))
 endef
 
 cargo_host_linker_env_var := CARGO_TARGET_$(call varize,$(RUST_HOST_TARGET))_LINKER
@@ -361,7 +380,15 @@ endif
 # but not the final libraries. Filter those out because they
 # cause problems on macOS 10.7; see bug 1365993 for details.
 # Also, we don't want to pass PGO flags until cargo supports them.
-$(TARGET_RECIPES): MOZ_CARGO_WRAP_LDFLAGS:=$(filter-out -fsanitize=cfi% -framework Cocoa -lobjc AudioToolbox ExceptionHandling -fprofile-%,$(LDFLAGS))
+# Finally, we also remove the -Wl,--build-id=uuid flag when it's in
+# the LDFLAGS. The flag was chosen over the default (build-id=sha1)
+# in developer builds, because for libxul, it's faster. But it's also
+# non-deterministic. So when the rust compiler produces procedural
+# macros as libraries, they're not reproducible. Those procedural
+# macros then end up as dependencies of other crates, and their
+# non-reproducibility leads to sccache transitively having cache
+# misses.
+$(TARGET_RECIPES): MOZ_CARGO_WRAP_LDFLAGS:=$(filter-out -fsanitize=cfi% -framework Cocoa -lobjc AudioToolbox ExceptionHandling -fprofile-% -Wl$(COMMA)--build-id=uuid,$(LDFLAGS))
 
 # When building with sanitizer, rustc links its own runtime, which conflicts
 # with the one that passing -fsanitize=* to the linker would add.
@@ -418,11 +445,41 @@ $(TARGET_RECIPES) $(HOST_RECIPES): MOZ_CARGO_WRAP_HOST_LD:=$(HOST_LINKER)
 $(TARGET_RECIPES) $(HOST_RECIPES): MOZ_CARGO_WRAP_HOST_LD_CXX:=$(HOST_LINKER)
 endif
 
+define make_default_rule
+$(1):
+
+endef
+
+# make_cargo_rule(target, real-target [, extra-deps])
+# Generates a rule suitable to rebuild $(target) only if its dependencies are
+# obsolete.
+# It relies on the fact that upon build, cargo generates a dependency file named
+# `$(target).d'. Unfortunately the lhs of the rule has an absolute path,
+# so we extract it under the name $(target)_deps below.
+#
+# If the dependencies are empty, the file was not created so we force a rebuild.
+# Otherwise we add it to the dependency list.
+#
+# The actual rule is a bit tricky. The `+' prefix allow for recursive parallel
+# make, and it's skipped (`:') if we already triggered a rebuild as part of the
+# dependency chain.
+#
+# Another tricky thing: some dependencies may contain escaped spaces, and they
+# need to be preserved, but $(foreach) splits on spaces, so we replace escaped
+# spaces with some unlikely string for the foreach, and replace them back in the
+# loop itself.
+define make_cargo_rule
+$(notdir $(1))_deps := $$(call normalize_sep,$$(wordlist 2, 10000000, $$(if $$(wildcard $(basename $(1)).d),$$(shell cat $(basename $(1)).d))))
+$(1): $(CARGO_FILE) $(3) $(topsrcdir)/Cargo.lock $$(if $$($(notdir $(1))_deps),$$($(notdir $(1))_deps),$(2))
+	$$(REPORT_BUILD)
+	$$(if $$($(notdir $(1))_deps),+$(MAKE) $(2),:)
+
+$$(foreach dep, $$(subst \ ,_^_^_^_,$$($(notdir $(1))_deps)),$$(eval $$(call make_default_rule,$$(subst _^_^_^_,\ ,$$(dep)))))
+endef
+
 ifdef RUST_LIBRARY_FILE
 
-ifdef RUST_LIBRARY_FEATURES
-rust_features_flag := --features '$(RUST_LIBRARY_FEATURES)'
-endif
+rust_features_flag := --features '$(if $(RUST_LIBRARY_FEATURES),$(RUST_LIBRARY_FEATURES) )mozilla-central-workspace-hack'
 
 ifeq (WASI,$(OS_ARCH))
 # The rust wasi target defaults to statically link the wasi crt, but when we
@@ -437,13 +494,9 @@ endif
 # has full visibility into how changes in Rust sources might affect the final
 # build.
 force-cargo-library-build:
-	$(REPORT_BUILD)
+	$(call BUILDSTATUS,START_Rust $(notdir $(RUST_LIBRARY_FILE)))
 	$(call CARGO_BUILD) --lib $(cargo_target_flag) $(rust_features_flag) -- $(cargo_rustc_flags)
-
-RUST_LIBRARY_DEP_FILE := $(basename $(RUST_LIBRARY_FILE)).d
-RUST_LIBRARY_DEPS := $(wordlist 2, 10000000, $(if $(wildcard $(RUST_LIBRARY_DEP_FILE)),$(shell cat $(RUST_LIBRARY_DEP_FILE))))
-$(RUST_LIBRARY_FILE): $(CARGO_FILE) $(if $(RUST_LIBRARY_DEPS),$(RUST_LIBRARY_DEPS), force-cargo-library-build)
-	$(if $(RUST_LIBRARY_DEPS),+$(MAKE) force-cargo-library-build,:)
+	$(call BUILDSTATUS,END_Rust $(notdir $(RUST_LIBRARY_FILE)))
 # When we are building in --enable-release mode; we add an additional check to confirm
 # that we are not importing any networking-related functions in rust code. This reduces
 # the chance of proxy bypasses originating from rust code.
@@ -454,19 +507,14 @@ ifeq ($(OS_ARCH), Linux)
 ifeq (,$(rustflags_sancov)$(MOZ_ASAN)$(MOZ_TSAN)$(MOZ_UBSAN))
 ifndef MOZ_LTO_RUST_CROSS
 ifneq (,$(filter -Clto,$(cargo_rustc_flags)))
-	$(call py_action,check_binary,--target --networking $@)
+	$(call py_action,check_binary $(@F),--networking $(RUST_LIBRARY_FILE))
 endif
 endif
 endif
 endif
 endif
 
-define make_default_rule
-$(1):
-
-endef
-$(foreach dep, $(filter %.h,$(RUST_LIBRARY_DEPS)),$(eval $(call make_default_rule,$(dep))))
-
+$(eval $(call make_cargo_rule,$(RUST_LIBRARY_FILE),force-cargo-library-build))
 
 SUGGEST_INSTALL_ON_FAILURE = (ret=$$?; if [ $$ret = 101 ]; then echo If $1 is not installed, install it using: cargo install $1; fi; exit $$ret)
 
@@ -488,9 +536,7 @@ ifdef RUST_TESTS
 
 rust_test_options := $(foreach test,$(RUST_TESTS),-p $(test))
 
-ifdef RUST_TEST_FEATURES
-rust_test_features_flag := --features '$(RUST_TEST_FEATURES)'
-endif
+rust_test_features_flag := --features '$(if $(RUST_TEST_FEATURES),$(RUST_TEST_FEATURES) )mozilla-central-workspace-hack'
 
 # Don't stop at the first failure. We want to list all failures together.
 rust_test_flag := --no-fail-fast
@@ -502,15 +548,14 @@ endif # RUST_TESTS
 
 ifdef HOST_RUST_LIBRARY_FILE
 
-ifdef HOST_RUST_LIBRARY_FEATURES
-host_rust_features_flag := --features '$(HOST_RUST_LIBRARY_FEATURES)'
-endif
+host_rust_features_flag := --features '$(if $(HOST_RUST_LIBRARY_FEATURES),$(HOST_RUST_LIBRARY_FEATURES) )mozilla-central-workspace-hack'
 
 force-cargo-host-library-build:
-	$(REPORT_BUILD)
+	$(call BUILDSTATUS,START_Rust $(notdir $(HOST_RUST_LIBRARY_FILE)))
 	$(call CARGO_BUILD) --lib $(cargo_host_flag) $(host_rust_features_flag)
+	$(call BUILDSTATUS,END_Rust $(notdir $(HOST_RUST_LIBRARY_FILE)))
 
-$(HOST_RUST_LIBRARY_FILE): force-cargo-host-library-build ;
+$(eval $(call make_cargo_rule,$(HOST_RUST_LIBRARY_FILE),force-cargo-host-library-build))
 
 ifndef CARGO_NO_AUTO_ARG
 force-cargo-host-library-%:
@@ -527,36 +572,18 @@ endif # HOST_RUST_LIBRARY_FILE
 
 ifdef RUST_PROGRAMS
 
+program_features_flag := --features mozilla-central-workspace-hack
+
 force-cargo-program-build: $(call resfile,module)
-	$(REPORT_BUILD)
-	$(call CARGO_BUILD) $(addprefix --bin ,$(RUST_CARGO_PROGRAMS)) $(cargo_target_flag) -- $(addprefix -C link-arg=$(CURDIR)/,$(call resfile,module)) $(CARGO_RUSTCFLAGS)
+	$(call BUILDSTATUS,START_Rust $(RUST_CARGO_PROGRAMS))
+	$(call CARGO_BUILD) $(addprefix --bin ,$(RUST_CARGO_PROGRAMS)) $(cargo_target_flag) $(program_features_flag) -- $(addprefix -C link-arg=$(CURDIR)/,$(call resfile,module)) $(CARGO_RUSTCFLAGS)
+	$(call BUILDSTATUS,END_Rust $(RUST_CARGO_PROGRAMS))
 
-# RUST_PROGRAM_DEPENDENCIES(RUST_PROGRAM)
-# Generates a rule suitable to rebuild RUST_PROGRAM only if its dependencies are
-# obsolete.
-# It relies on the fact that upon build, cargo generates a dependency file named
-# `$(RUST_PROGRAM).d'. Unfortunately the lhs of the rule has an absolute path,
-# so we extract it under the name $(RUST_PROGRAM)_deps below.
-#
-# If the dependencies are empty, the file was not created so we force a rebuild.
-# Otherwise we add it to the dependency list.
-#
-# The actual rule is a bit tricky. The `+' prefix allow for recursive parallel
-# make, and it's skipped (`:') if we already triggered a rebuild as part of the
-# dependency chain.
-#
-define RUST_PROGRAM_DEPENDENCIES
-$(1)_deps := $(wordlist 2, 10000000, $(if $(wildcard $(1).d),$(shell cat $(1).d)))
-$(1): $(CARGO_FILE) $(call resfile,module) $(if $$($(1)_deps),$$($(1)_deps),force-cargo-program-build)
-	$(if $$($(1)_deps),+$(MAKE) force-cargo-program-build,:)
-$(foreach dep,$(filter %.h,$$($(1)_deps)),$(eval $(call make_default_rule,$(dep))))
-endef
-
-$(foreach RUST_PROGRAM,$(RUST_PROGRAMS), $(eval $(call RUST_PROGRAM_DEPENDENCIES,$(RUST_PROGRAM))))
+$(foreach RUST_PROGRAM,$(RUST_PROGRAMS), $(eval $(call make_cargo_rule,$(RUST_PROGRAM),force-cargo-program-build,$(call resfile,module))))
 
 ifndef CARGO_NO_AUTO_ARG
 force-cargo-program-%:
-	$(call RUN_CARGO,$*) $(addprefix --bin ,$(RUST_CARGO_PROGRAMS)) $(cargo_target_flag)
+	$(call RUN_CARGO,$*) $(addprefix --bin ,$(RUST_CARGO_PROGRAMS)) $(cargo_target_flag) $(program_features_flag)
 else
 force-cargo-program-%:
 	$(call RUN_CARGO,$*)
@@ -568,16 +595,20 @@ force-cargo-program-%:
 endif # RUST_PROGRAMS
 ifdef HOST_RUST_PROGRAMS
 
-force-cargo-host-program-build:
-	$(REPORT_BUILD)
-	$(call CARGO_BUILD) $(addprefix --bin ,$(HOST_RUST_CARGO_PROGRAMS)) $(cargo_host_flag)
+host_program_features_flag := --features mozilla-central-workspace-hack
 
-$(HOST_RUST_PROGRAMS): force-cargo-host-program-build ;
+force-cargo-host-program-build:
+	$(call BUILDSTATUS,START_Rust $(HOST_RUST_CARGO_PROGRAMS))
+	$(call CARGO_BUILD) $(addprefix --bin ,$(HOST_RUST_CARGO_PROGRAMS)) $(cargo_host_flag) $(host_program_features_flag)
+	$(call BUILDSTATUS,END_Rust $(HOST_RUST_CARGO_PROGRAMS))
+
+$(foreach HOST_RUST_PROGRAM,$(HOST_RUST_PROGRAMS), $(eval $(call make_cargo_rule,$(HOST_RUST_PROGRAM),force-cargo-host-program-build)))
 
 ifndef CARGO_NO_AUTO_ARG
 force-cargo-host-program-%:
-	$(REPORT_BUILD)
-	$(call RUN_CARGO,$*) $(addprefix --bin ,$(HOST_RUST_CARGO_PROGRAMS)) $(cargo_host_flag)
+	$(call BUILDSTATUS,START_Rust $(HOST_RUST_CARGO_PROGRAMS))
+	$(call RUN_CARGO,$*) $(addprefix --bin ,$(HOST_RUST_CARGO_PROGRAMS)) $(cargo_host_flag) $(host_program_features_flag)
+	$(call BUILDSTATUS,END_Rust $(HOST_RUST_CARGO_PROGRAMS))
 else
 force-cargo-host-program-%:
 	$(call RUN_CARGO,$*) $(addprefix --bin ,$(HOST_RUST_CARGO_PROGRAMS)) $(filter-out --release $(cargo_target_flag))

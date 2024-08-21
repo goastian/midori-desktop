@@ -1,5 +1,6 @@
 import os
 import os.path
+import subprocess
 import sys
 import time
 import unittest
@@ -9,7 +10,6 @@ from tempfile import mkdtemp
 import mozunit
 import nsinstall as nsinstall_module
 import six
-from mozprocess import processhandler
 from nsinstall import nsinstall
 
 NSINSTALL_PATH = nsinstall_module.__file__
@@ -146,9 +146,9 @@ class TestNsinstall(unittest.TestCase):
     @unittest.skipIf(not RUN_NON_ASCII_TESTS, "Skipping non ascii tests")
     def test_nsinstall_non_ascii(self):
         "Test that nsinstall handles non-ASCII files"
-        filename = u"\u2325\u3452\u2415\u5081"
+        filename = "\u2325\u3452\u2415\u5081"
         testfile = self.touch(filename)
-        testdir = self.mkdirs(u"\u4241\u1D04\u1414")
+        testdir = self.mkdirs("\u4241\u1D04\u1414")
         self.assertEqual(
             nsinstall([testfile.encode("utf-8"), testdir.encode("utf-8")]), 0
         )
@@ -162,16 +162,10 @@ class TestNsinstall(unittest.TestCase):
     )
     def test_nsinstall_non_ascii_subprocess(self):
         "Test that nsinstall as a subprocess handles non-ASCII files"
-        filename = u"\u2325\u3452\u2415\u5081"
+        filename = "\u2325\u3452\u2415\u5081"
         testfile = self.touch(filename)
-        testdir = self.mkdirs(u"\u4241\u1D04\u1414")
-        # We don't use subprocess because it can't handle Unicode on
-        # Windows <http://bugs.python.org/issue1759845>. mozprocess calls
-        # CreateProcessW directly so it's perfect.
-        p = processhandler.ProcessHandlerMixin(
-            [sys.executable, NSINSTALL_PATH, testfile, testdir]
-        )
-        p.run()
+        testdir = self.mkdirs("\u4241\u1D04\u1414")
+        p = subprocess.Popen([sys.executable, NSINSTALL_PATH, testfile, testdir])
         rv = p.wait()
 
         self.assertEqual(rv, 0)
