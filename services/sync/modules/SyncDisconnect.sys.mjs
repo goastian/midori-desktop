@@ -5,26 +5,21 @@
 // This module provides a facility for disconnecting Sync and FxA, optionally
 // sanitizing profile data as part of the process.
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
   Log: "resource://gre/modules/Log.sys.mjs",
+  PREF_LAST_FXA_USER: "resource://gre/modules/FxAccountsCommon.sys.mjs",
   Sanitizer: "resource:///modules/Sanitizer.sys.mjs",
   Utils: "resource://services-sync/util.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "fxAccounts", () => {
+ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
   return ChromeUtils.importESModule(
     "resource://gre/modules/FxAccounts.sys.mjs"
   ).getFxAccountsSingleton();
-});
-
-XPCOMUtils.defineLazyGetter(lazy, "FxAccountsCommon", function () {
-  return ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
 });
 
 export const SyncDisconnectInternal = {
@@ -105,7 +100,7 @@ export const SyncDisconnectInternal = {
       // Reset the pref which is used to show a warning when a different user
       // signs in - this is no longer a concern now that we've removed the
       // data from the profile.
-      Services.prefs.clearUserPref(lazy.FxAccountsCommon.PREF_LAST_FXA_USER);
+      Services.prefs.clearUserPref(lazy.PREF_LAST_FXA_USER);
 
       log.info("Finished wiping sync data");
     } catch (ex) {

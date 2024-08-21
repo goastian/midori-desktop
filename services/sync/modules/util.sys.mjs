@@ -16,13 +16,10 @@ import {
   WEAVE_VERSION,
 } from "resource://services-sync/constants.sys.mjs";
 
-import { Preferences } from "resource://gre/modules/Preferences.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
-const FxAccountsCommon = ChromeUtils.import(
-  "resource://gre/modules/FxAccountsCommon.js"
-);
+import * as FxAccountsCommon from "resource://gre/modules/FxAccountsCommon.sys.mjs";
 
 XPCOMUtils.defineLazyServiceGetter(
   lazy,
@@ -686,11 +683,11 @@ export var Utils = {
    * Foo.prototype = {
    *   ...
    *   get syncID() {
-   *     let syncID = Svc.Prefs.get("client.syncID", "");
+   *     let syncID = Svc.PrefBranch.getStringPref("client.syncID", "");
    *     return syncID == "" ? this.syncID = Utils.makeGUID() : syncID;
    *   },
    *   set syncID(value) {
-   *     Svc.Prefs.set("client.syncID", value);
+   *     Svc.PrefBranch.setStringPref("client.syncID", value);
    *   },
    *   ...
    * };
@@ -758,7 +755,7 @@ export class SerializableSet extends Set {
   }
 }
 
-XPCOMUtils.defineLazyGetter(Utils, "_utf8Converter", function () {
+ChromeUtils.defineLazyGetter(Utils, "_utf8Converter", function () {
   let converter = Cc[
     "@mozilla.org/intl/scriptableunicodeconverter"
   ].createInstance(Ci.nsIScriptableUnicodeConverter);
@@ -766,14 +763,14 @@ XPCOMUtils.defineLazyGetter(Utils, "_utf8Converter", function () {
   return converter;
 });
 
-XPCOMUtils.defineLazyGetter(Utils, "utf8Encoder", () => new TextEncoder());
+ChromeUtils.defineLazyGetter(Utils, "utf8Encoder", () => new TextEncoder());
 
 /*
  * Commonly-used services
  */
 export var Svc = {};
 
-Svc.Prefs = new Preferences(PREFS_BRANCH);
+Svc.PrefBranch = Services.prefs.getBranch(PREFS_BRANCH);
 Svc.Obs = Observers;
 
 Svc.Obs.add("xpcom-shutdown", function () {

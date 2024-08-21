@@ -171,7 +171,7 @@ Observers.add("weave:service:quota:remaining", function (subject) {
 function run_test() {
   Log.repository.rootLogger.addAppender(new Log.DumpAppender());
 
-  Svc.Prefs.set("network.numRetries", 1); // speed up test
+  Svc.PrefBranch.setIntPref("network.numRetries", 1); // speed up test
   run_next_test();
 }
 
@@ -480,7 +480,7 @@ add_task(async function test_post_override_content_type() {
 add_task(async function test_weave_backoff() {
   _("X-Weave-Backoff header notifies observer");
   let backoffInterval;
-  function onBackoff(subject, data) {
+  function onBackoff(subject) {
     backoffInterval = subject;
   }
   Observers.add("weave:service:backoff:interval", onBackoff);

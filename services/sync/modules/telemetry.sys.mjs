@@ -12,8 +12,6 @@
 // for ensuring that we can delete those pings upon user request, by plumbing its
 // identifiers into the "deletion-request" ping.
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { Log } from "resource://gre/modules/Log.sys.mjs";
 
 const lazy = {};
@@ -22,6 +20,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Async: "resource://services-common/async.sys.mjs",
   AuthenticationError: "resource://services-sync/sync_auth.sys.mjs",
   FxAccounts: "resource://gre/modules/FxAccounts.sys.mjs",
+  ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
   Observers: "resource://services-common/observers.sys.mjs",
   Resource: "resource://services-sync/resource.sys.mjs",
   Status: "resource://services-sync/status.sys.mjs",
@@ -32,11 +31,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Weave: "resource://services-sync/main.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
-});
-
-XPCOMUtils.defineLazyGetter(lazy, "fxAccounts", () => {
+ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
   return ChromeUtils.importESModule(
     "resource://gre/modules/FxAccounts.sys.mjs"
   ).getFxAccountsSingleton();
@@ -44,7 +39,7 @@ XPCOMUtils.defineLazyGetter(lazy, "fxAccounts", () => {
 
 import * as constants from "resource://services-sync/constants.sys.mjs";
 
-XPCOMUtils.defineLazyGetter(
+ChromeUtils.defineLazyGetter(
   lazy,
   "WeaveService",
   () => Cc["@mozilla.org/weave/service;1"].getService().wrappedJSObject
@@ -238,57 +233,27 @@ export class ErrorSanitizer {
   // still sanitize ones that aren't in these maps to remove the translations etc - eg,
   // `ERROR_SHARING_VIOLATION` doesn't really have a unix equivalent, so doesn't appear here, but
   // we still strip the translations to avoid the variants.
-  static E_NO_SPACE_ON_DEVICE = "OS error [No space left on device]";
   static E_PERMISSION_DENIED = "OS error [Permission denied]";
   static E_NO_FILE_OR_DIR = "OS error [File/Path not found]";
-  static E_NO_MEM = "OS error [No memory]";
-
-  static WindowsErrorSubstitutions = {
-    2: this.E_NO_FILE_OR_DIR, // ERROR_FILE_NOT_FOUND
-    3: this.E_NO_FILE_OR_DIR, // ERROR_PATH_NOT_FOUND
-    5: this.E_PERMISSION_DENIED, // ERROR_ACCESS_DENIED
-    8: this.E_NO_MEM, // ERROR_NOT_ENOUGH_MEMORY
-    112: this.E_NO_SPACE_ON_DEVICE, // ERROR_DISK_FULL
-  };
-
-  static UnixErrorSubstitutions = {
-    2: this.E_NO_FILE_OR_DIR, // ENOENT
-    12: this.E_NO_MEM, // ENOMEM
-    13: this.E_PERMISSION_DENIED, // EACCESS
-    28: this.E_NO_SPACE_ON_DEVICE, // ENOSPC
-  };
 
   static DOMErrorSubstitutions = {
     NotFoundError: this.E_NO_FILE_OR_DIR,
     NotAllowedError: this.E_PERMISSION_DENIED,
   };
 
-  static reWinError =
-    /^(?<head>Win error (?<errno>\d+))(?<detail>.*) \(.*\r?\n?\)$/m;
-  static reUnixError =
-    /^(?<head>Unix error (?<errno>\d+))(?<detail>.*) \(.*\)$/;
+  // IOUtils error messages include the specific nsresult error code that caused them.
+  static NS_ERROR_RE = new RegExp(/ \(NS_ERROR_.*\)$/);
 
   static #cleanOSErrorMessage(message, error = undefined) {
     if (DOMException.isInstance(error)) {
       const sub = this.DOMErrorSubstitutions[error.name];
       message = message.replaceAll("\\", "/");
+      message = message.replace(this.NS_ERROR_RE, "");
       if (sub) {
         return `${sub} ${message}`;
       }
     }
 
-    let match = this.reWinError.exec(message);
-    if (match) {
-      let head =
-        this.WindowsErrorSubstitutions[match.groups.errno] || match.groups.head;
-      return head + match.groups.detail.replaceAll("\\", "/");
-    }
-    match = this.reUnixError.exec(message);
-    if (match) {
-      let head =
-        this.UnixErrorSubstitutions[match.groups.errno] || match.groups.head;
-      return head + match.groups.detail;
-    }
     return message;
   }
 
@@ -736,10 +701,15 @@ class SyncTelemetryImpl {
     this.events = [];
     this.histograms = {};
     this.migrations = [];
-    this.maxEventsCount = lazy.Svc.Prefs.get("telemetry.maxEventsCount", 1000);
-    this.maxPayloadCount = lazy.Svc.Prefs.get("telemetry.maxPayloadCount");
+    this.maxEventsCount = lazy.Svc.PrefBranch.getIntPref(
+      "telemetry.maxEventsCount",
+      1000
+    );
+    this.maxPayloadCount = lazy.Svc.PrefBranch.getIntPref(
+      "telemetry.maxPayloadCount"
+    );
     this.submissionInterval =
-      lazy.Svc.Prefs.get("telemetry.submissionInterval") * 1000;
+      lazy.Svc.PrefBranch.getIntPref("telemetry.submissionInterval") * 1000;
     this.lastSubmissionTime = Services.telemetry.msSinceProcessStart();
     this.lastUID = EMPTY_UID;
     this.lastSyncNodeType = null;

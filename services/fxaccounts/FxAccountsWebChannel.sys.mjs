@@ -11,10 +11,11 @@
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-const {
+import {
   COMMAND_PROFILE_CHANGE,
   COMMAND_LOGIN,
   COMMAND_LOGOUT,
+  COMMAND_OAUTH,
   COMMAND_DELETE,
   COMMAND_CAN_LINK_ACCOUNT,
   COMMAND_SYNC_PREFERENCES,
@@ -27,13 +28,14 @@ const {
   COMMAND_PAIR_COMPLETE,
   COMMAND_PAIR_PREFERENCES,
   COMMAND_FIREFOX_VIEW,
-  FX_OAUTH_CLIENT_ID,
+  OAUTH_CLIENT_ID,
   ON_PROFILE_CHANGE_NOTIFICATION,
   PREF_LAST_FXA_USER,
   WEBCHANNEL_ID,
   log,
   logPII,
-} = ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+} from "resource://gre/modules/FxAccountsCommon.sys.mjs";
+import { SyncDisconnect } from "resource://services-sync/SyncDisconnect.sys.mjs";
 
 const lazy = {};
 
@@ -46,7 +48,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Weave: "resource://services-sync/main.sys.mjs",
   WebChannel: "resource://gre/modules/WebChannel.sys.mjs",
 });
-XPCOMUtils.defineLazyGetter(lazy, "fxAccounts", () => {
+ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
   return ChromeUtils.importESModule(
     "resource://gre/modules/FxAccounts.sys.mjs"
   ).getFxAccountsSingleton();
@@ -79,10 +81,30 @@ XPCOMUtils.defineLazyPreferenceGetter(
   val => Services.io.newURI(val)
 );
 
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "oauthEnabled",
+  "identity.fxaccounts.oauth.enabled",
+  false
+);
+
 // These engines were added years after Sync had been introduced, they need
 // special handling since they are system add-ons and are un-available on
 // older versions of Firefox.
 const EXTRA_ENGINES = ["addresses", "creditcards"];
+
+// These engines will be displayed to the user to pick which they would like to
+// use
+const CHOOSE_WHAT_TO_SYNC = [
+  "addons",
+  "addresses",
+  "bookmarks",
+  "creditcards",
+  "history",
+  "passwords",
+  "preferences",
+  "tabs",
+];
 
 /**
  * A helper function that extracts the message and stack from an error object.
@@ -136,7 +158,7 @@ export function FxAccountsWebChannel(options) {
   this._webChannelId = options.channel_id;
 
   // options.helpers is only specified by tests.
-  XPCOMUtils.defineLazyGetter(this, "_helpers", () => {
+  ChromeUtils.defineLazyGetter(this, "_helpers", () => {
     return options.helpers || new FxAccountsWebChannelHelpers(options);
   });
 
@@ -218,6 +240,11 @@ FxAccountsWebChannel.prototype = {
       case COMMAND_LOGIN:
         this._helpers
           .login(data)
+          .catch(error => this._sendError(error, message, sendingContext));
+        break;
+      case COMMAND_OAUTH:
+        this._helpers
+          .oauthLogin(data)
           .catch(error => this._sendError(error, message, sendingContext));
         break;
       case COMMAND_LOGOUT:
@@ -361,7 +388,7 @@ FxAccountsWebChannel.prototype = {
     let listener = (webChannelId, message, sendingContext) => {
       if (message) {
         log.debug("FxAccountsWebChannel message received", message.command);
-        if (logPII) {
+        if (logPII()) {
           log.debug("FxAccountsWebChannel message details", message);
         }
         try {
@@ -408,12 +435,47 @@ FxAccountsWebChannelHelpers.prototype = {
     );
   },
 
+  async _initializeSync() {
+    // A sync-specific hack - we want to ensure sync has been initialized
+    // before we set the signed-in user.
+    // XXX - probably not true any more, especially now we have observerPreloads
+    // in FxAccounts.sys.mjs?
+    let xps =
+      this._weaveXPCOM ||
+      Cc["@mozilla.org/weave/service;1"].getService(Ci.nsISupports)
+        .wrappedJSObject;
+    await xps.whenLoaded();
+    return xps;
+  },
+
+  _setEnabledEngines(offeredEngines, declinedEngines) {
+    if (offeredEngines && declinedEngines) {
+      EXTRA_ENGINES.forEach(engine => {
+        if (
+          offeredEngines.includes(engine) &&
+          !declinedEngines.includes(engine)
+        ) {
+          // These extra engines are disabled by default.
+          Services.prefs.setBoolPref(`services.sync.engine.${engine}`, true);
+        }
+      });
+      log.debug("Received declined engines", declinedEngines);
+      lazy.Weave.Service.engineManager.setDeclined(declinedEngines);
+      declinedEngines.forEach(engine => {
+        Services.prefs.setBoolPref(`services.sync.engine.${engine}`, false);
+      });
+    }
+  },
   /**
    * stores sync login info it in the fxaccounts service
    *
    * @param accountData the user's account data and credentials
    */
   async login(accountData) {
+    const signedInUser = await this._fxAccounts.getSignedInUser();
+    if (signedInUser) {
+      await this._disconnect();
+    }
     // We don't act on customizeSync anymore, it used to open a dialog inside
     // the browser to selecte the engines to sync but we do it on the web now.
     log.debug("Webchannel is logging a user in.");
@@ -437,44 +499,60 @@ FxAccountsWebChannelHelpers.prototype = {
       "webchannel"
     );
 
-    // A sync-specific hack - we want to ensure sync has been initialized
-    // before we set the signed-in user.
-    // XXX - probably not true any more, especially now we have observerPreloads
-    // in FxAccounts.jsm?
-    let xps =
-      this._weaveXPCOM ||
-      Cc["@mozilla.org/weave/service;1"].getService(Ci.nsISupports)
-        .wrappedJSObject;
-    await xps.whenLoaded();
-    await this._fxAccounts._internal.setSignedInUser(accountData);
+    if (lazy.oauthEnabled) {
+      await this._fxAccounts._internal.setSignedInUser(accountData);
+    } else {
+      const xps = await this._initializeSync();
+      await this._fxAccounts._internal.setSignedInUser(accountData);
 
-    if (requestedServices) {
-      // User has enabled Sync.
-      if (requestedServices.sync) {
-        const { offeredEngines, declinedEngines } = requestedServices.sync;
-        if (offeredEngines && declinedEngines) {
-          EXTRA_ENGINES.forEach(engine => {
-            if (
-              offeredEngines.includes(engine) &&
-              !declinedEngines.includes(engine)
-            ) {
-              // These extra engines are disabled by default.
-              Services.prefs.setBoolPref(
-                `services.sync.engine.${engine}`,
-                true
-              );
-            }
-          });
-          log.debug("Received declined engines", declinedEngines);
-          lazy.Weave.Service.engineManager.setDeclined(declinedEngines);
-          declinedEngines.forEach(engine => {
-            Services.prefs.setBoolPref(`services.sync.engine.${engine}`, false);
-          });
+      if (requestedServices) {
+        // User has enabled Sync.
+        if (requestedServices.sync) {
+          const { offeredEngines, declinedEngines } = requestedServices.sync;
+          this._setEnabledEngines(offeredEngines, declinedEngines);
+          log.debug("Webchannel is enabling sync");
+          await xps.Weave.Service.configure();
         }
-        log.debug("Webchannel is enabling sync");
-        await xps.Weave.Service.configure();
       }
     }
+  },
+
+  /**
+   * Disconnects the user from Sync and FxA
+   *
+   */
+  _disconnect() {
+    return SyncDisconnect.disconnect(false);
+  },
+
+  /**
+   * Logins in to sync by completing an OAuth flow
+   * @param { Object } oauthData: The oauth code and state as returned by the server */
+  async oauthLogin(oauthData) {
+    log.debug("Webchannel is completing the oauth flow");
+    const xps = await this._initializeSync();
+    const { code, state, declinedSyncEngines, offeredSyncEngines } = oauthData;
+    const { sessionToken } =
+      await this._fxAccounts._internal.getUserAccountData(["sessionToken"]);
+    // First we finish the ongoing oauth flow
+    const { scopedKeys, refreshToken } =
+      await this._fxAccounts._internal.completeOAuthFlow(
+        sessionToken,
+        code,
+        state
+      );
+
+    // We don't currently use the refresh token in Firefox Desktop, lets be good citizens and revoke it.
+    await this._fxAccounts._internal.destroyOAuthToken({ token: refreshToken });
+
+    // Then, we persist the sync keys
+    await this._fxAccounts._internal.setScopedKeys(scopedKeys);
+
+    // Now that we have the scoped keys, we set our status to verified
+    await this._fxAccounts._internal.setUserVerified();
+    this._setEnabledEngines(offeredSyncEngines, declinedSyncEngines);
+    log.debug("Webchannel is enabling sync");
+    xps.Weave.Service.configure();
   },
 
   /**
@@ -565,14 +643,27 @@ FxAccountsWebChannelHelpers.prototype = {
       }
     }
 
+    const capabilities = this._getCapabilities();
+
     return {
       signedInUser,
-      clientId: FX_OAUTH_CLIENT_ID,
-      capabilities: {
+      clientId: OAUTH_CLIENT_ID,
+      capabilities,
+    };
+  },
+  _getCapabilities() {
+    if (lazy.oauthEnabled) {
+      return {
         multiService: true,
         pairing: lazy.pairingEnabled,
-        engines: this._getAvailableExtraEngines(),
-      },
+        choose_what_to_sync: true,
+        engines: CHOOSE_WHAT_TO_SYNC,
+      };
+    }
+    return {
+      multiService: true,
+      pairing: lazy.pairingEnabled,
+      engines: this._getAvailableExtraEngines(),
     };
   },
 
@@ -663,10 +754,9 @@ FxAccountsWebChannelHelpers.prototype = {
    * Open Firefox View in the browser's window
    *
    * @param {Object} browser the browser in whose window we'll open Firefox View
-   * @param {String} [entryPoint] entryPoint Optional string to use for logging
    */
-  openFirefoxView(browser, entryPoint) {
-    browser.ownerGlobal.FirefoxViewHandler.openTab(entryPoint);
+  openFirefoxView(browser) {
+    browser.ownerGlobal.FirefoxViewHandler.openTab("syncedtabs");
   },
 
   /**

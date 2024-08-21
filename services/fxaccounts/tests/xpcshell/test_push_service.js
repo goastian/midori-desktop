@@ -19,7 +19,9 @@ const {
   ON_PROFILE_UPDATED_NOTIFICATION,
   ON_VERIFY_LOGIN_NOTIFICATION,
   log,
-} = ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+} = ChromeUtils.importESModule(
+  "resource://gre/modules/FxAccountsCommon.sys.mjs"
+);
 
 const { FxAccountsPushService } = ChromeUtils.importESModule(
   "resource://gre/modules/FxAccountsPush.sys.mjs"
@@ -177,7 +179,7 @@ add_test(function observePushTopicDeviceConnected() {
       return this;
     },
   };
-  let obs = (subject, topic, data) => {
+  let obs = (subject, topic) => {
     Services.obs.removeObserver(obs, topic);
     run_next_test();
   };
@@ -390,7 +392,7 @@ add_test(function observePushTopicProfileUpdated() {
       return this;
     },
   };
-  let obs = (subject, topic, data) => {
+  let obs = (subject, topic) => {
     Services.obs.removeObserver(obs, topic);
     run_next_test();
   };

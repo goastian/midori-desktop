@@ -15,8 +15,8 @@ var nsLoginInfo = new Components.Constructor(
   "init"
 );
 
-export var DumpPasswords = function TPS__Passwords__DumpPasswords() {
-  let logins = Services.logins.getAllLogins();
+export var DumpPasswords = async function TPS__Passwords__DumpPasswords() {
+  let logins = await Services.logins.getAllLogins();
   Logger.logInfo("\ndumping password list\n", true);
   for (var i = 0; i < logins.length; i++) {
     Logger.logInfo(
@@ -112,12 +112,12 @@ Password.prototype = {
    *
    * @return the guid of the password if found, otherwise -1
    */
-  Find() {
-    let logins = Services.logins.findLogins(
-      this.props.hostname,
-      this.props.submitURL,
-      this.props.realm
-    );
+  async Find() {
+    let logins = await Services.logins.searchLoginsAsync({
+      origin: this.props.hostname,
+      formActionOrigin: this.props.submitURL,
+      httpRealm: this.props.realm,
+    });
     for (var i = 0; i < logins.length; i++) {
       if (
         logins[i].username == this.props.username &&

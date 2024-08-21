@@ -81,7 +81,9 @@ class SteamValidationProblemData {
 
 async function cleanAndGo(engine, server) {
   await engine._tracker.clearChangedIDs();
-  Svc.Prefs.resetBranch("");
+  for (const pref of Svc.PrefBranch.getChildList("")) {
+    Svc.PrefBranch.clearUserPref(pref);
+  }
   syncTestLogging();
   Service.recordManager.clearCache();
   await promiseStopServer(server);
@@ -140,7 +142,9 @@ add_task(async function test_basic() {
   ok("version" in ping.os, "there is an OS version");
   ok("locale" in ping.os, "there is an OS locale");
 
-  Svc.Prefs.resetBranch("");
+  for (const pref of Svc.PrefBranch.getChildList("")) {
+    Svc.PrefBranch.clearUserPref(pref);
+  }
   await promiseStopServer(server);
 });
 
@@ -675,17 +679,28 @@ add_task(async function test_clean_errors() {
     "resource://services-sync/telemetry.sys.mjs"
   );
 
-  for (let [original, expected] of [
+  for (let [message, name, expected] of [
     [
-      "Win error 112 during operation write on file [profileDir]\\weave\\addonsreconciler.json (Espacio en disco insuficiente. )",
-      "OS error [No space left on device] during operation write on file [profileDir]/weave/addonsreconciler.json",
+      `Could not open the file at ${PathUtils.join(
+        PathUtils.profileDir,
+        "weave",
+        "addonsreconciler.json"
+      )} for writing`,
+      "NotFoundError",
+      "OS error [File/Path not found] Could not open the file at [profileDir]/weave/addonsreconciler.json for writing",
     ],
     [
-      "Unix error 28 during operation write on file [profileDir]/weave/addonsreconciler.json (No space left on device)",
-      "OS error [No space left on device] during operation write on file [profileDir]/weave/addonsreconciler.json",
+      `Could not get info for the file at ${PathUtils.join(
+        PathUtils.profileDir,
+        "weave",
+        "addonsreconciler.json"
+      )}`,
+      "NotAllowedError",
+      "OS error [Permission denied] Could not get info for the file at [profileDir]/weave/addonsreconciler.json",
     ],
   ]) {
-    const sanitized = ErrorSanitizer.cleanErrorMessage(original);
+    const error = new DOMException(message, name);
+    const sanitized = ErrorSanitizer.cleanErrorMessage(message, error);
     Assert.equal(sanitized, expected);
   }
 });
@@ -719,7 +734,7 @@ add_task(async function test_clean_real_os_error() {
       equal(failureReason.name, "unexpectederror");
       equal(
         failureReason.error,
-        "OS error [File/Path not found] Could not open the file at [profileDir]/no/such/path.json"
+        "OS error [File/Path not found] Could not open `[profileDir]/no/such/path.json': file does not exist"
       );
     });
   } finally {
@@ -1336,7 +1351,7 @@ add_task(async function test_no_node_type() {
   await configureIdentity(null, server);
 
   await sync_and_validate_telem(ping => {
-    ok(ping.syncNodeType === undefined);
+    Assert.strictEqual(ping.syncNodeType, undefined);
   }, true);
   await promiseStopServer(server);
 });

@@ -177,9 +177,17 @@ It is possible to package a dump of the server records that will be loaded into 
 
 The JSON dump will serve as the default dataset for ``.get()``, instead of doing a round-trip to pull the latest data. It will also reduce the amount of data to be downloaded on the first synchronization.
 
-#. Place the JSON dump of the server records in the ``services/settings/dumps/main/`` folder
-#. Add the filename to the ``FINAL_TARGET_FILES`` list in ``services/settings/dumps/main/moz.build``
-#. Add the filename to the ``[browser]`` section of ``mobile/android/installer/package-manifest.in`` IF the file should be bundled with Android.
+#. Place the JSON dump of the server records in the ``services/settings/dumps/main/`` folder. Using this command:
+   ::
+
+      CID="your-collection"
+      curl "https://firefox.settings.services.mozilla.com/v1/buckets/main/collections/${CID}/changeset?_expected=0" | jq '{"data": .changes, "timestamp": .timestamp}' > services/settings/dumps/main/${CID}.json``
+
+#. Add the filename to the relevant ``FINAL_TARGET_FILES`` list in ``services/settings/dumps/main/moz.build``
+
+  * Please consider the application(s) where the collection is used and only include the dump file in the relevant builds.
+  * If it is only for Firefox desktop, i.e. ``browser/``, then add it to a build-specific browser section.
+  * If it is for all applications, i.e. outside of ``browser/`` are other specific area, then add it to the global section.
 
 Now, when ``RemoteSettings("some-key").get()`` is called from an empty profile, the ``some-key.json`` file is going to be loaded before the results are returned.
 
@@ -382,7 +390,7 @@ In order to enable verbose logging, set the log level preference to ``debug``.
 
 .. code-block:: javascript
 
-    Services.prefs.setCharPref("services.settings.loglevel", "debug");
+    Services.prefs.setStringPref("services.settings.loglevel", "debug");
 
 Remote Settings Dev Tools
 -------------------------
@@ -527,12 +535,14 @@ For example, they leverage advanced customization options (bucket, content-signa
 
 .. code-block:: js
 
-    const {RemoteSecuritySettings} = ChromeUtils.import("resource://gre/modules/psm/RemoteSecuritySettings.jsm");
+    const {RemoteSecuritySettings} =
+      ChromeUtils.importESModule("resource://gre/modules/psm/RemoteSecuritySettings.sys.mjs");
 
     RemoteSecuritySettings.init();
 
 
-    const {BlocklistPrivate} = ChromeUtils.import("resource://gre/modules/Blocklist.jsm");
+    const {BlocklistPrivate} =
+      ChromeUtils.importESModule("resource://gre/modules/Blocklist.sys.mjs");
 
     BlocklistPrivate.ExtensionBlocklistRS._ensureInitialized();
     BlocklistPrivate.PluginBlocklistRS._ensureInitialized();

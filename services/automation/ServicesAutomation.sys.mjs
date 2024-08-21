@@ -22,7 +22,6 @@
  *    await triggerSync(username, password, "https://accounts.stage.mozaws.net");
  *
  */
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
@@ -36,7 +35,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "fxAccounts", () => {
+ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
   return ChromeUtils.importESModule(
     "resource://gre/modules/FxAccounts.sys.mjs"
   ).getFxAccountsSingleton();
@@ -140,11 +139,11 @@ export var Authentication = {
     let mainWindow = Services.wm.getMostRecentWindow("navigator:browser");
     let newtab = mainWindow.gBrowser.addWebTab(uri);
     let win = mainWindow.gBrowser.getBrowserForTab(newtab);
-    win.addEventListener("load", function (e) {
+    win.addEventListener("load", function () {
       LOG("load");
     });
 
-    win.addEventListener("loadstart", function (e) {
+    win.addEventListener("loadstart", function () {
       LOG("loadstart");
     });
 
@@ -292,15 +291,15 @@ export var Sync = {
     lazy.Svc.Obs.add("weave:service:setup-complete", this);
     lazy.Svc.Obs.add("weave:service:tracking-started", this);
     // Delay the automatic sync operations, so we can trigger it manually
-    lazy.Weave.Svc.Prefs.set("scheduler.immediateInterval", 7200);
-    lazy.Weave.Svc.Prefs.set("scheduler.idleInterval", 7200);
-    lazy.Weave.Svc.Prefs.set("scheduler.activeInterval", 7200);
-    lazy.Weave.Svc.Prefs.set("syncThreshold", 10000000);
+    lazy.Weave.Svc.PrefBranch.setIntPref("scheduler.immediateInterval", 7200);
+    lazy.Weave.Svc.PrefBranch.setIntPref("scheduler.idleInterval", 7200);
+    lazy.Weave.Svc.PrefBranch.setIntPref("scheduler.activeInterval", 7200);
+    lazy.Weave.Svc.PrefBranch.setIntPref("syncThreshold", 10000000);
     // Wipe all the logs
     await this.wipeLogs();
   },
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     LOG("Event received " + topic);
   },
 
@@ -393,7 +392,7 @@ export var Sync = {
 };
 
 export function initConfig(autoconfig) {
-  Services.prefs.setCharPref(AUTOCONFIG_PREF, autoconfig);
+  Services.prefs.setStringPref(AUTOCONFIG_PREF, autoconfig);
 }
 
 export async function triggerSync(username, password, autoconfig) {

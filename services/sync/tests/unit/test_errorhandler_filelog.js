@@ -6,14 +6,15 @@
 const { Service } = ChromeUtils.importESModule(
   "resource://services-sync/service.sys.mjs"
 );
-const { logManager } = ChromeUtils.import(
-  "resource://gre/modules/FxAccountsCommon.js"
+const { logManager } = ChromeUtils.importESModule(
+  "resource://gre/modules/FxAccountsCommon.sys.mjs"
 );
 const { FileUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/FileUtils.sys.mjs"
 );
 
-const logsdir = FileUtils.getDir("ProfD", ["weave", "logs"], true);
+const logsdir = FileUtils.getDir("ProfD", ["weave", "logs"]);
+logsdir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 
 // Delay to wait before cleanup, to allow files to age.
 // This is so large because the file timestamp granularity is per-second, and
@@ -32,18 +33,20 @@ add_test(function test_noOutput() {
   logManager._fileAppender.level = Log.Level.Fatal + 1;
 
   // Clear log output from startup.
-  Svc.Prefs.set("log.appender.file.logOnSuccess", false);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnSuccess", false);
   Svc.Obs.notify("weave:service:sync:finish");
   Svc.Obs.add("weave:service:reset-file-log", function onResetFileLogOuter() {
     Svc.Obs.remove("weave:service:reset-file-log", onResetFileLogOuter);
     // Clear again without having issued any output.
-    Svc.Prefs.set("log.appender.file.logOnSuccess", true);
+    Svc.PrefBranch.setBoolPref("log.appender.file.logOnSuccess", true);
 
     Svc.Obs.add("weave:service:reset-file-log", function onResetFileLogInner() {
       Svc.Obs.remove("weave:service:reset-file-log", onResetFileLogInner);
 
       logManager._fileAppender.level = Log.Level.Trace;
-      Svc.Prefs.resetBranch("");
+      for (const pref of Svc.PrefBranch.getChildList("")) {
+        Svc.PrefBranch.clearUserPref(pref);
+      }
       run_next_test();
     });
 
@@ -53,7 +56,7 @@ add_test(function test_noOutput() {
 });
 
 add_test(function test_logOnSuccess_false() {
-  Svc.Prefs.set("log.appender.file.logOnSuccess", false);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnSuccess", false);
 
   let log = Log.repository.getLogger("Sync.Test.FileLog");
   log.info("this won't show up");
@@ -63,7 +66,9 @@ add_test(function test_logOnSuccess_false() {
     // No log file was written.
     Assert.ok(!logsdir.directoryEntries.hasMoreElements());
 
-    Svc.Prefs.resetBranch("");
+    for (const pref of Svc.PrefBranch.getChildList("")) {
+      Svc.PrefBranch.clearUserPref(pref);
+    }
     run_next_test();
   });
 
@@ -77,7 +82,7 @@ function readFile(file, callback) {
       uri: NetUtil.newURI(file),
       loadUsingSystemPrincipal: true,
     },
-    function (inputStream, statusCode, request) {
+    function (inputStream, statusCode) {
       let data = NetUtil.readInputStreamToString(
         inputStream,
         inputStream.available()
@@ -88,7 +93,7 @@ function readFile(file, callback) {
 }
 
 add_test(function test_logOnSuccess_true() {
-  Svc.Prefs.set("log.appender.file.logOnSuccess", true);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnSuccess", true);
 
   let log = Log.repository.getLogger("Sync.Test.FileLog");
   const MESSAGE = "this WILL show up";
@@ -118,7 +123,9 @@ add_test(function test_logOnSuccess_true() {
         // Stupid Windows box.
       }
 
-      Svc.Prefs.resetBranch("");
+      for (const pref of Svc.PrefBranch.getChildList("")) {
+        Svc.PrefBranch.clearUserPref(pref);
+      }
       run_next_test();
     });
   });
@@ -128,7 +135,7 @@ add_test(function test_logOnSuccess_true() {
 });
 
 add_test(function test_sync_error_logOnError_false() {
-  Svc.Prefs.set("log.appender.file.logOnError", false);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnError", false);
 
   let log = Log.repository.getLogger("Sync.Test.FileLog");
   log.info("this won't show up");
@@ -138,7 +145,9 @@ add_test(function test_sync_error_logOnError_false() {
     // No log file was written.
     Assert.ok(!logsdir.directoryEntries.hasMoreElements());
 
-    Svc.Prefs.resetBranch("");
+    for (const pref of Svc.PrefBranch.getChildList("")) {
+      Svc.PrefBranch.clearUserPref(pref);
+    }
     run_next_test();
   });
 
@@ -147,7 +156,7 @@ add_test(function test_sync_error_logOnError_false() {
 });
 
 add_test(function test_sync_error_logOnError_true() {
-  Svc.Prefs.set("log.appender.file.logOnError", true);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnError", true);
 
   let log = Log.repository.getLogger("Sync.Test.FileLog");
   const MESSAGE = "this WILL show up";
@@ -177,7 +186,9 @@ add_test(function test_sync_error_logOnError_true() {
         // Stupid Windows box.
       }
 
-      Svc.Prefs.resetBranch("");
+      for (const pref of Svc.PrefBranch.getChildList("")) {
+        Svc.PrefBranch.clearUserPref(pref);
+      }
       run_next_test();
     });
   });
@@ -187,7 +198,7 @@ add_test(function test_sync_error_logOnError_true() {
 });
 
 add_test(function test_login_error_logOnError_false() {
-  Svc.Prefs.set("log.appender.file.logOnError", false);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnError", false);
 
   let log = Log.repository.getLogger("Sync.Test.FileLog");
   log.info("this won't show up");
@@ -197,7 +208,9 @@ add_test(function test_login_error_logOnError_false() {
     // No log file was written.
     Assert.ok(!logsdir.directoryEntries.hasMoreElements());
 
-    Svc.Prefs.resetBranch("");
+    for (const pref of Svc.PrefBranch.getChildList("")) {
+      Svc.PrefBranch.clearUserPref(pref);
+    }
     run_next_test();
   });
 
@@ -206,7 +219,7 @@ add_test(function test_login_error_logOnError_false() {
 });
 
 add_test(function test_login_error_logOnError_true() {
-  Svc.Prefs.set("log.appender.file.logOnError", true);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnError", true);
 
   let log = Log.repository.getLogger("Sync.Test.FileLog");
   const MESSAGE = "this WILL show up";
@@ -236,7 +249,9 @@ add_test(function test_login_error_logOnError_true() {
         // Stupid Windows box.
       }
 
-      Svc.Prefs.resetBranch("");
+      for (const pref of Svc.PrefBranch.getChildList("")) {
+        Svc.PrefBranch.clearUserPref(pref);
+      }
       run_next_test();
     });
   });
@@ -246,15 +261,17 @@ add_test(function test_login_error_logOnError_true() {
 });
 
 add_test(function test_noNewFailed_noErrorLog() {
-  Svc.Prefs.set("log.appender.file.logOnError", true);
-  Svc.Prefs.set("log.appender.file.logOnSuccess", false);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnError", true);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnSuccess", false);
 
   Svc.Obs.add("weave:service:reset-file-log", function onResetFileLog() {
     Svc.Obs.remove("weave:service:reset-file-log", onResetFileLog);
     // No log file was written.
     Assert.ok(!logsdir.directoryEntries.hasMoreElements());
 
-    Svc.Prefs.resetBranch("");
+    for (const pref of Svc.PrefBranch.getChildList("")) {
+      Svc.PrefBranch.clearUserPref(pref);
+    }
     run_next_test();
   });
   // failed is nonzero and newFailed is zero -- shouldn't write a log.
@@ -270,8 +287,8 @@ add_test(function test_noNewFailed_noErrorLog() {
 });
 
 add_test(function test_newFailed_errorLog() {
-  Svc.Prefs.set("log.appender.file.logOnError", true);
-  Svc.Prefs.set("log.appender.file.logOnSuccess", false);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnError", true);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnSuccess", false);
 
   let log = Log.repository.getLogger("Sync.Test.FileLog");
   const MESSAGE = "this WILL show up 2";
@@ -301,7 +318,9 @@ add_test(function test_newFailed_errorLog() {
         // Stupid Windows box.
       }
 
-      Svc.Prefs.resetBranch("");
+      for (const pref of Svc.PrefBranch.getChildList("")) {
+        Svc.PrefBranch.clearUserPref(pref);
+      }
       run_next_test();
     });
   });
@@ -319,8 +338,8 @@ add_test(function test_newFailed_errorLog() {
 });
 
 add_test(function test_errorLog_dumpAddons() {
-  Svc.Prefs.set("log.logger", "Trace");
-  Svc.Prefs.set("log.appender.file.logOnError", true);
+  Svc.PrefBranch.setStringPref("log.logger", "Trace");
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnError", true);
 
   Svc.Obs.add("weave:service:reset-file-log", function onResetFileLog() {
     Svc.Obs.remove("weave:service:reset-file-log", onResetFileLog);
@@ -345,7 +364,9 @@ add_test(function test_errorLog_dumpAddons() {
         // Stupid Windows box.
       }
 
-      Svc.Prefs.resetBranch("");
+      for (const pref of Svc.PrefBranch.getChildList("")) {
+        Svc.PrefBranch.clearUserPref(pref);
+      }
       run_next_test();
     });
   });
@@ -362,8 +383,8 @@ add_test(async function test_logErrorCleanup_age() {
   let numLogs = 10;
   let errString = "some error log\n";
 
-  Svc.Prefs.set("log.appender.file.logOnError", true);
-  Svc.Prefs.set("log.appender.file.maxErrorAge", maxAge);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnError", true);
+  Svc.PrefBranch.setIntPref("log.appender.file.maxErrorAge", maxAge);
 
   _("Making some files.");
   const logsDir = PathUtils.join(PathUtils.profileDir, "weave", "logs");
@@ -406,7 +427,9 @@ add_test(async function test_logErrorCleanup_age() {
         // Stupid Windows box.
       }
 
-      Svc.Prefs.resetBranch("");
+      for (const pref of Svc.PrefBranch.getChildList("")) {
+        Svc.PrefBranch.clearUserPref(pref);
+      }
       run_next_test();
     }
   );
@@ -425,7 +448,7 @@ add_test(async function test_logErrorCleanup_age() {
 });
 
 add_task(async function test_remove_log_on_startOver() {
-  Svc.Prefs.set("log.appender.file.logOnError", true);
+  Svc.PrefBranch.setBoolPref("log.appender.file.logOnError", true);
 
   let log = Log.repository.getLogger("Sync.Test.FileLog");
   const MESSAGE = "this WILL show up";

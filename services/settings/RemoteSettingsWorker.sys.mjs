@@ -20,13 +20,8 @@ XPCOMUtils.defineLazyPreferenceGetter(
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
+  SharedUtils: "resource://services-settings/SharedUtils.sys.mjs",
 });
-
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "SharedUtils",
-  "resource://services-settings/SharedUtils.jsm"
-);
 
 // Note: we currently only ever construct one instance of Worker.
 // If it stops being a singleton, the AsyncShutdown code at the bottom
@@ -67,7 +62,7 @@ class Worker {
     const { mustComplete = false } = options;
     // (Re)instantiate the worker if it was terminated.
     if (!this.worker) {
-      this.worker = new ChromeWorker(this.source);
+      this.worker = new ChromeWorker(this.source, { type: "module" });
       this.worker.onmessage = this._onWorkerMessage.bind(this);
       this.worker.onerror = error => {
         // Worker crashed. Reject each pending callback.
@@ -234,5 +229,5 @@ try {
 }
 
 export var RemoteSettingsWorker = new Worker(
-  "resource://services-settings/RemoteSettingsWorker.js"
+  "resource://services-settings/RemoteSettings.worker.mjs"
 );

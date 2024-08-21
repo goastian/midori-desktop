@@ -34,14 +34,16 @@ var {
   HTTP_505,
   HttpError,
   HttpServer,
-} = ChromeUtils.import("resource://testing-common/httpd.js");
+} = ChromeUtils.importESModule("resource://testing-common/httpd.sys.mjs");
 var { getTestLogger, initTestLogging } = ChromeUtils.importESModule(
   "resource://testing-common/services/common/logging.sys.mjs"
 );
 var { MockRegistrar } = ChromeUtils.importESModule(
   "resource://testing-common/MockRegistrar.sys.mjs"
 );
-var { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+var { NetUtil } = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
+);
 
 function do_check_empty(obj) {
   do_check_attribute_count(obj, 0);
@@ -89,7 +91,7 @@ function do_check_throws_message(aFunc, aResult) {
  * @usage _("Hello World") -> prints "Hello World"
  * @usage _(1, 2, 3) -> prints "1 2 3"
  */
-var _ = function (some, debug, text, to) {
+var _ = function () {
   print(Array.from(arguments).join(" "));
 };
 
@@ -190,7 +192,7 @@ var PACSystemSettings = {
   // each test gets a completely fresh setup.
   mainThreadOnly: true,
   PACURI: null,
-  getProxyForURI: function getProxyForURI(aURI) {
+  getProxyForURI: function getProxyForURI() {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 };
@@ -219,7 +221,7 @@ function getUptakeTelemetrySnapshot(component, source) {
   return (
     parentEvents
       // Transform raw event data to objects.
-      .map(([i, category, method, object, value, extras]) => {
+      .map(([, category, method, object, value, extras]) => {
         return { category, method, object, value, extras };
       })
       // Keep only for the specified component and source.

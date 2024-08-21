@@ -12,7 +12,9 @@ const {
   ERROR_NETWORK,
   ERROR_PARSE,
   ERROR_UNKNOWN,
-} = ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+} = ChromeUtils.importESModule(
+  "resource://gre/modules/FxAccountsCommon.sys.mjs"
+);
 const { FxAccountsProfileClient, FxAccountsProfileClientError } =
   ChromeUtils.importESModule(
     "resource://gre/modules/FxAccountsProfileClient.sys.mjs"
@@ -37,7 +39,7 @@ let mockResponse = function (response) {
           Request.ifNoneMatchSet = true;
         }
       },
-      async dispatch(method, payload) {
+      async dispatch() {
         this.response = response;
         return this.response;
       },
@@ -72,7 +74,7 @@ let mockResponseError = function (error) {
   return function () {
     return {
       setHeader() {},
-      async dispatch(method, payload) {
+      async dispatch() {
         throw error;
       },
     };
@@ -219,7 +221,7 @@ add_test(function server401ResponseThenSuccess() {
   let numRequests = 0;
   let numAuthHeaders = 0;
   // Like mockResponse but we want access to headers etc.
-  client._Request = function (requestUri) {
+  client._Request = function () {
     return {
       setHeader(name, value) {
         if (name == "Authorization") {
@@ -227,7 +229,7 @@ add_test(function server401ResponseThenSuccess() {
           Assert.equal(value, "Bearer " + lastToken);
         }
       },
-      async dispatch(method, payload) {
+      async dispatch() {
         this.response = responses[numRequests];
         ++numRequests;
         return this.response;
@@ -281,7 +283,7 @@ add_test(function server401ResponsePersists() {
 
   let numRequests = 0;
   let numAuthHeaders = 0;
-  client._Request = function (requestUri) {
+  client._Request = function () {
     return {
       setHeader(name, value) {
         if (name == "Authorization") {
@@ -289,7 +291,7 @@ add_test(function server401ResponsePersists() {
           Assert.equal(value, "Bearer " + lastToken);
         }
       },
-      async dispatch(method, payload) {
+      async dispatch() {
         this.response = response;
         ++numRequests;
         return this.response;

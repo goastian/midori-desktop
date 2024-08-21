@@ -327,7 +327,7 @@ ServerCollection.prototype = {
    * Insert a record, which may either an object with a cleartext property, or
    * the cleartext property itself.
    */
-  insertRecord(record, timestamp = Date.now() / 1000) {
+  insertRecord(record, timestamp = Math.round(Date.now() / 10) / 100) {
     if (typeof timestamp != "number") {
       throw new TypeError("insertRecord: Timestamp is not a number.");
     }
@@ -687,8 +687,8 @@ function track_collections_helper() {
  * prototype, and override as appropriate.
  */
 var SyncServerCallback = {
-  onCollectionDeleted: function onCollectionDeleted(user, collection) {},
-  onItemDeleted: function onItemDeleted(user, collection, wboID) {},
+  onCollectionDeleted: function onCollectionDeleted() {},
+  onItemDeleted: function onItemDeleted() {},
 
   /**
    * Called at the top of every request.
@@ -699,7 +699,7 @@ var SyncServerCallback = {
    * must be taken to not screw with the response body or headers that may
    * conflict with normal operation of this server.
    */
-  onRequest: function onRequest(request, response) {},
+  onRequest: function onRequest() {},
 };
 
 /**

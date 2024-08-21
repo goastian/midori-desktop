@@ -37,7 +37,7 @@ add_task(async function test_processIncoming_abort() {
   );
   meta_global.payload.engines = { rotary: { version: engine.version, syncID } };
   _("Fake applyIncoming to abort.");
-  engine._store.applyIncoming = async function (record) {
+  engine._store.applyIncoming = async function () {
     let ex = {
       code: SyncEngine.prototype.eEngineAbortApplyIncoming,
       cause: "Nooo",
@@ -69,7 +69,9 @@ add_task(async function test_processIncoming_abort() {
   Assert.equal(err, undefined);
 
   await promiseStopServer(server);
-  Svc.Prefs.resetBranch("");
+  for (const pref of Svc.PrefBranch.getChildList("")) {
+    Svc.PrefBranch.clearUserPref(pref);
+  }
   Service.recordManager.clearCache();
 
   await engine._tracker.clearChangedIDs();

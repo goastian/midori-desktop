@@ -8,7 +8,7 @@ import { HawkClient } from "resource://services-common/hawkclient.sys.mjs";
 import { deriveHawkCredentials } from "resource://services-common/hawkrequest.sys.mjs";
 import { CryptoUtils } from "resource://services-crypto/utils.sys.mjs";
 
-const {
+import {
   ERRNO_ACCOUNT_DOES_NOT_EXIST,
   ERRNO_INCORRECT_EMAIL_CASE,
   ERRNO_INCORRECT_PASSWORD,
@@ -16,7 +16,8 @@ const {
   ERRNO_INVALID_AUTH_TIMESTAMP,
   ERRNO_INVALID_AUTH_TOKEN,
   log,
-} = ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+} from "resource://gre/modules/FxAccountsCommon.sys.mjs";
+
 import { Credentials } from "resource://gre/modules/Credentials.sys.mjs";
 
 const HOST_PREF = "identity.fxaccounts.auth.uri";
@@ -27,7 +28,7 @@ const SIGNUP = "/account/create";
 const DEVICES_FILTER_DAYS = 21;
 
 export var FxAccountsClient = function (
-  host = Services.prefs.getCharPref(HOST_PREF)
+  host = Services.prefs.getStringPref(HOST_PREF)
 ) {
   this.host = host;
 
@@ -58,7 +59,7 @@ FxAccountsClient.prototype = {
   /*
    * Return current time in milliseconds
    *
-   * Not used by this module, but made available to the FxAccounts.jsm
+   * Not used by this module, but made available to the FxAccounts.sys.mjs
    * that uses this client.
    */
   now() {
@@ -281,7 +282,30 @@ FxAccountsClient.prototype = {
     }
     return this._request("/oauth/authorization", "POST", credentials, body);
   },
-
+  /**
+   * Exchanges an OAuth authorization code with a refresh token, access tokens and an optional JWE representing scoped keys
+   *  Takes in the sessionToken to tie the device record associated with the session, with the device record associated with the refreshToken
+   *
+   * @param string sessionTokenHex: The session token encoded in hex
+   * @param String code: OAuth authorization code
+   * @param String verifier: OAuth PKCE verifier
+   * @param String clientId: OAuth client ID
+   *
+   * @returns { Object } object containing `refresh_token`, `access_token` and `keys_jwe`
+   **/
+  async oauthToken(sessionTokenHex, code, verifier, clientId) {
+    const credentials = await deriveHawkCredentials(
+      sessionTokenHex,
+      "sessionToken"
+    );
+    const body = {
+      grant_type: "authorization_code",
+      code,
+      client_id: clientId,
+      code_verifier: verifier,
+    };
+    return this._request("/oauth/token", "POST", credentials, body);
+  },
   /**
    * Destroy an OAuth access token or refresh token.
    *
@@ -474,7 +498,7 @@ FxAccountsClient.prototype = {
    */
   accountExists(email) {
     return this.signIn(email, "").then(
-      cantHappen => {
+      () => {
         throw new Error("How did I sign in with an empty password?");
       },
       expectedError => {

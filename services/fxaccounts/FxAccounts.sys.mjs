@@ -2,15 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { PromiseUtils } from "resource://gre/modules/PromiseUtils.sys.mjs";
-
 import { CryptoUtils } from "resource://services-crypto/utils.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { clearTimeout, setTimeout } from "resource://gre/modules/Timer.sys.mjs";
 
 import { FxAccountsStorageManager } from "resource://gre/modules/FxAccountsStorage.sys.mjs";
 
-const {
+import {
   ERRNO_INVALID_AUTH_TOKEN,
   ERROR_AUTH_ERROR,
   ERROR_INVALID_PARAMETER,
@@ -21,7 +19,7 @@ const {
   FXA_PWDMGR_PLAINTEXT_FIELDS,
   FXA_PWDMGR_REAUTH_ALLOWLIST,
   FXA_PWDMGR_SECURE_FIELDS,
-  FX_OAUTH_CLIENT_ID,
+  OAUTH_CLIENT_ID,
   ON_ACCOUNT_STATE_CHANGE_NOTIFICATION,
   ONLOGIN_NOTIFICATION,
   ONLOGOUT_NOTIFICATION,
@@ -35,7 +33,7 @@ const {
   log,
   logPII,
   logManager,
-} = ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+} from "resource://gre/modules/FxAccountsCommon.sys.mjs";
 
 const lazy = {};
 
@@ -45,17 +43,17 @@ ChromeUtils.defineESModuleGetters(lazy, {
   FxAccountsConfig: "resource://gre/modules/FxAccountsConfig.sys.mjs",
   FxAccountsDevice: "resource://gre/modules/FxAccountsDevice.sys.mjs",
   FxAccountsKeys: "resource://gre/modules/FxAccountsKeys.sys.mjs",
+  FxAccountsOAuth: "resource://gre/modules/FxAccountsOAuth.sys.mjs",
   FxAccountsProfile: "resource://gre/modules/FxAccountsProfile.sys.mjs",
   FxAccountsTelemetry: "resource://gre/modules/FxAccountsTelemetry.sys.mjs",
-  Preferences: "resource://gre/modules/Preferences.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "mpLocked", () => {
+ChromeUtils.defineLazyGetter(lazy, "mpLocked", () => {
   return ChromeUtils.importESModule("resource://services-sync/util.sys.mjs")
     .Utils.mpLocked;
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "ensureMPUnlocked", () => {
+ChromeUtils.defineLazyGetter(lazy, "ensureMPUnlocked", () => {
   return ChromeUtils.importESModule("resource://services-sync/util.sys.mjs")
     .Utils.ensureMPUnlocked;
 });
@@ -66,6 +64,15 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "identity.fxaccounts.enabled",
   true
 );
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "oauthEnabled",
+  "identity.fxaccounts.oauth.enabled",
+  true
+);
+
+export const ERROR_INVALID_ACCOUNT_STATE = "ERROR_INVALID_ACCOUNT_STATE";
 
 // An AccountState object holds all state related to one specific account.
 // It is considered "private" to the FxAccounts modules.
@@ -172,7 +179,7 @@ AccountState.prototype = {
       delete updatedFields.uid;
     }
     if (!this.isCurrent) {
-      return Promise.reject(new Error("Another user has signed in"));
+      return Promise.reject(new Error(ERROR_INVALID_ACCOUNT_STATE));
     }
     return this.storageManager.updateAccountData(updatedFields);
   },
@@ -181,11 +188,11 @@ AccountState.prototype = {
     if (!this.isCurrent) {
       log.info(
         "An accountState promise was resolved, but was actually rejected" +
-          " due to a different user being signed in. Originally resolved" +
-          " with",
+          " due to the account state changing. This can happen if a new account signed in, or" +
+          " the account was signed out. Originally resolved with, ",
         result
       );
-      return Promise.reject(new Error("A different user signed in"));
+      return Promise.reject(new Error(ERROR_INVALID_ACCOUNT_STATE));
     }
     return Promise.resolve(result);
   },
@@ -197,12 +204,13 @@ AccountState.prototype = {
     // problems.
     if (!this.isCurrent) {
       log.info(
-        "An accountState promise was rejected, but we are ignoring that " +
-          "reason and rejecting it due to a different user being signed in. " +
-          "Originally rejected with",
+        "An accountState promise was rejected, but we are ignoring that" +
+          " reason and rejecting it due to the account state changing. This can happen if" +
+          " a different account signed in or the account was signed out" +
+          " originally resolved with, ",
         error
       );
-      return Promise.reject(new Error("A different user signed in"));
+      return Promise.reject(new Error(ERROR_INVALID_ACCOUNT_STATE));
     }
     return Promise.reject(error);
   },
@@ -217,7 +225,7 @@ AccountState.prototype = {
   // A preamble for the cache helpers...
   _cachePreamble() {
     if (!this.isCurrent) {
-      throw new Error("Another user has signed in");
+      throw new Error(ERROR_INVALID_ACCOUNT_STATE);
     }
   },
 
@@ -468,6 +476,37 @@ export class FxAccounts {
     }
   }
 
+  /** Gets both the OAuth token and the users scoped keys for that token
+   * and verifies that both operations were done for the same user,
+   * preventing race conditions where a caller
+   * can get the key for one user, and the id of another if the user
+   * is rapidly switching between accounts
+   *
+   * @param options
+   *        {
+   *          scope: string the oauth scope being requested. This must
+   *          be a scope with an associated key, otherwise an error
+   *          will be thrown that the key is not available.
+   *          ttl: (number) OAuth token TTL in seconds
+   *        }
+   *
+   * @return Promise.<Object | Error>
+   * The promise resolve to both the access token being requested, and the scoped key
+   *        {
+   *         token: (string) access token
+   *         key: (object) the scoped key object
+   *        }
+   * The promise can reject, with one of the errors `getOAuthToken`, `FxAccountKeys.getKeyForScope`, or
+   * error if the user changed in-between operations
+   */
+  getOAuthTokenAndKey(options = {}) {
+    return this._withCurrentAccountState(async () => {
+      const key = await this.keys.getKeyForScope(options.scope);
+      const token = await this.getOAuthToken(options);
+      return { token, key };
+    });
+  }
+
   /**
    * Remove an OAuth token from the token cache. Callers should call this
    * after they determine a token is invalid, so a new token will be fetched
@@ -518,7 +557,7 @@ export class FxAccounts {
         await this.signOut();
         return null;
       }
-      if (!this._internal.isUserEmailVerified(data)) {
+      if (!this._internal.isUserEmailVerified(data) && !lazy.oauthEnabled) {
         // If the email is not verified, start polling for verification,
         // but return null right away.  We don't want to return a promise
         // that might not be fulfilled for a long time.
@@ -707,7 +746,7 @@ FxAccountsInternal.prototype = {
   // All significant initialization should be done in this initialize() method
   // to help with our mocking story.
   initialize() {
-    XPCOMUtils.defineLazyGetter(this, "fxaPushService", function () {
+    ChromeUtils.defineLazyGetter(this, "fxaPushService", function () {
       return Cc["@mozilla.org/fxaccounts/push;1"].getService(
         Ci.nsISupports
       ).wrappedJSObject;
@@ -830,12 +869,32 @@ FxAccountsInternal.prototype = {
     return this._device;
   },
 
+  _oauth: null,
+  get oauth() {
+    if (!this._oauth) {
+      this._oauth = new lazy.FxAccountsOAuth(this.fxAccountsClient, this.keys);
+    }
+    return this._oauth;
+  },
+
   _telemetry: null,
   get telemetry() {
     if (!this._telemetry) {
       this._telemetry = new lazy.FxAccountsTelemetry(this);
     }
     return this._telemetry;
+  },
+
+  beginOAuthFlow(scopes) {
+    return this.oauth.beginOAuthFlow(scopes);
+  },
+
+  completeOAuthFlow(sessionToken, code, state) {
+    return this.oauth.completeOAuthFlow(sessionToken, code, state);
+  },
+
+  setScopedKeys(scopedKeys) {
+    return this.keys.setScopedKeys(scopedKeys);
   },
 
   // A hook-point for tests who may want a mocked AccountState or mocked storage.
@@ -931,7 +990,9 @@ FxAccountsInternal.prototype = {
     if (!lazy.FXA_ENABLED) {
       throw new Error("Cannot call setSignedInUser when FxA is disabled.");
     }
-    lazy.Preferences.resetBranch(PREF_ACCOUNT_ROOT);
+    for (const pref of Services.prefs.getChildList(PREF_ACCOUNT_ROOT)) {
+      Services.prefs.clearUserPref(pref);
+    }
     log.debug("setSignedInUser - aborting any existing flows");
     const signedInUser = await this.currentAccountState.getUserAccountData();
     if (signedInUser) {
@@ -941,16 +1002,17 @@ FxAccountsInternal.prototype = {
       );
     }
     await this.abortExistingFlow();
-    let currentAccountState = (this.currentAccountState = this.newAccountState(
-      Cu.cloneInto(credentials, {}) // Pass a clone of the credentials object.
-    ));
+    const currentAccountState = (this.currentAccountState =
+      this.newAccountState(
+        Cu.cloneInto(credentials, {}) // Pass a clone of the credentials object.
+      ));
     // This promise waits for storage, but not for verification.
     // We're telling the caller that this is durable now (although is that
     // really something we should commit to? Why not let the write happen in
     // the background? Already does for updateAccountData ;)
     await currentAccountState.promiseInitialized;
     // Starting point for polling if new user
-    if (!this.isUserEmailVerified(credentials)) {
+    if (!this.isUserEmailVerified(credentials) && !lazy.oauthEnabled) {
       this.startVerifiedCheck(credentials);
     }
     await this.notifyObservers(ONLOGIN_NOTIFICATION);
@@ -971,7 +1033,7 @@ FxAccountsInternal.prototype = {
       "updateUserAccountData called with fields",
       Object.keys(credentials)
     );
-    if (logPII) {
+    if (logPII()) {
       log.debug("updateUserAccountData called with data", credentials);
     }
     let currentAccountState = this.currentAccountState;
@@ -1023,11 +1085,11 @@ FxAccountsInternal.prototype = {
     return this.startPollEmailStatus(state, data.sessionToken, "push");
   },
 
-  _destroyOAuthToken(tokenData) {
-    return this.fxAccountsClient.oauthDestroy(
-      FX_OAUTH_CLIENT_ID,
-      tokenData.token
-    );
+  /** Destroyes an OAuth Token by sending a request to the FxA server
+   * @param { Object } tokenData: The token's data, with `tokenData.token` being the token itself
+   **/
+  destroyOAuthToken(tokenData) {
+    return this.fxAccountsClient.oauthDestroy(OAUTH_CLIENT_ID, tokenData.token);
   },
 
   _destroyAllOAuthTokens(tokenInfos) {
@@ -1037,7 +1099,7 @@ FxAccountsInternal.prototype = {
     // let's just destroy them all in parallel...
     let promises = [];
     for (let tokenInfo of Object.values(tokenInfos)) {
-      promises.push(this._destroyOAuthToken(tokenInfo));
+      promises.push(this.destroyOAuthToken(tokenInfo));
     }
     return Promise.all(promises);
   },
@@ -1070,7 +1132,9 @@ FxAccountsInternal.prototype = {
   },
 
   async _signOutLocal() {
-    lazy.Preferences.resetBranch(PREF_ACCOUNT_ROOT);
+    for (const pref of Services.prefs.getChildList(PREF_ACCOUNT_ROOT)) {
+      Services.prefs.clearUserPref(pref);
+    }
     await this.currentAccountState.signOut();
     // this "aborts" this.currentAccountState but doesn't make a new one.
     await this.abortExistingFlow();
@@ -1132,7 +1196,7 @@ FxAccountsInternal.prototype = {
 
   startVerifiedCheck(data) {
     log.debug("startVerifiedCheck", data && data.verified);
-    if (logPII) {
+    if (logPII()) {
       log.debug("startVerifiedCheck with user data", data);
     }
 
@@ -1187,7 +1251,7 @@ FxAccountsInternal.prototype = {
 
     this.pollStartDate = Date.now();
     if (!currentState.whenVerifiedDeferred) {
-      currentState.whenVerifiedDeferred = PromiseUtils.defer();
+      currentState.whenVerifiedDeferred = Promise.withResolvers();
       // This deferred might not end up with any handlers (eg, if sync
       // is yet to start up.)  This might cause "A promise chain failed to
       // handle a rejection" messages, so add an error handler directly
@@ -1311,7 +1375,7 @@ FxAccountsInternal.prototype = {
   async _doTokenFetchWithSessionToken(sessionToken, scopeString, ttl) {
     const result = await this.fxAccountsClient.accessTokenWithSessionToken(
       sessionToken,
-      FX_OAUTH_CLIENT_ID,
+      OAUTH_CLIENT_ID,
       scopeString,
       ttl
     );
@@ -1409,11 +1473,24 @@ FxAccountsInternal.prototype = {
       let existing = currentState.removeCachedToken(options.token);
       if (existing) {
         // background destroy.
-        this._destroyOAuthToken(existing).catch(err => {
+        this.destroyOAuthToken(existing).catch(err => {
           log.warn("FxA failed to revoke a cached token", err);
         });
       }
     });
+  },
+
+  /** Sets the user to be verified in the account state,
+   * This prevents any polling for the user's verification state from the FxA server
+   **/
+  async setUserVerified() {
+    await this.withCurrentAccountState(async currentState => {
+      const userData = await currentState.getUserAccountData();
+      if (!userData.verified) {
+        await currentState.updateUserAccountData({ verified: true });
+      }
+    });
+    await this.notifyObservers(ONVERIFIED_NOTIFICATION);
   },
 
   async _getVerifiedAccountOrReject() {

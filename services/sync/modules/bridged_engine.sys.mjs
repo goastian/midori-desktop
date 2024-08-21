@@ -43,7 +43,7 @@ class BridgedStore {
     this._batchChunkSize = 500;
   }
 
-  async applyIncomingBatch(records, countTelemetry) {
+  async applyIncomingBatch(records) {
     for (let chunk of lazy.PlacesUtils.chunkArray(
       records,
       this._batchChunkSize
@@ -145,7 +145,7 @@ class InterruptedError extends Error {
 
 /**
  * Adapts a `Log.sys.mjs` logger to a `mozIServicesLogSink`. This class is copied
- * from `SyncedBookmarksMirror.jsm`.
+ * from `SyncedBookmarksMirror.sys.mjs`.
  */
 export class LogAdapter {
   constructor(log) {

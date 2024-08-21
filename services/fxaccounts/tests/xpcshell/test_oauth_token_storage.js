@@ -94,7 +94,7 @@ Object.setPrototypeOf(
   FxAccountsClient.prototype
 );
 
-function MockFxAccounts(device = {}) {
+function MockFxAccounts() {
   return new FxAccounts({
     fxAccountsClient: new MockFxAccountsClient(),
     newAccountState(credentials) {
@@ -124,10 +124,13 @@ async function createMockFxA() {
     email: "foo@example.com",
     uid: "1234@lcip.org",
     sessionToken: "dead",
-    kSync: "beef",
-    kXCS: "cafe",
-    kExtSync: "bacon",
-    kExtKbHash: "cheese",
+    scopedKeys: {
+      [SCOPE_OLD_SYNC]: {
+        kid: "key id for sync key",
+        k: "key material for sync key",
+        kty: "oct",
+      },
+    },
     verified: true,
   };
   await fxa._internal.setSignedInUser(credentials);

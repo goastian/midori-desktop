@@ -10,9 +10,11 @@
  * the user's profile in open browser tabs, and cacheing/invalidating profile data.
  */
 
-const { ON_PROFILE_CHANGE_NOTIFICATION, log } = ChromeUtils.import(
-  "resource://gre/modules/FxAccountsCommon.js"
-);
+import {
+  ON_PROFILE_CHANGE_NOTIFICATION,
+  log,
+} from "resource://gre/modules/FxAccountsCommon.sys.mjs";
+
 import { getFxAccountsSingleton } from "resource://gre/modules/FxAccounts.sys.mjs";
 
 const fxAccounts = getFxAccountsSingleton();
@@ -50,7 +52,7 @@ FxAccountsProfile.prototype = {
   // making another request to determine if it is fresh or not.
   PROFILE_FRESHNESS_THRESHOLD: 120000, // 2 minutes
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     // If we get a profile change notification from our webchannel it means
     // the user has just changed their profile via the web, so we want to
     // ignore our "freshness threshold"

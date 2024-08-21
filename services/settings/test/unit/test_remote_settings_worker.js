@@ -1,24 +1,3 @@
-/* import-globals-from ../../../common/tests/unit/head_helpers.js */
-
-const { AppConstants } = ChromeUtils.importESModule(
-  "resource://gre/modules/AppConstants.sys.mjs"
-);
-const { TestUtils } = ChromeUtils.importESModule(
-  "resource://testing-common/TestUtils.sys.mjs"
-);
-
-const { RemoteSettingsWorker } = ChromeUtils.importESModule(
-  "resource://services-settings/RemoteSettingsWorker.sys.mjs"
-);
-const { RemoteSettingsClient } = ChromeUtils.importESModule(
-  "resource://services-settings/RemoteSettingsClient.sys.mjs"
-);
-const { Database } = ChromeUtils.importESModule(
-  "resource://services-settings/Database.sys.mjs"
-);
-
-XPCOMUtils.defineLazyGlobalGetters(this, ["indexedDB"]);
-
 const IS_ANDROID = AppConstants.platform == "android";
 
 add_task(async function test_canonicaljson() {
@@ -84,8 +63,8 @@ add_task(async function test_throws_error_if_worker_fails_async() {
   // should be reported to the caller.
   await new Promise((resolve, reject) => {
     const request = indexedDB.deleteDatabase("remote-settings");
-    request.onsuccess = event => resolve();
-    request.onblocked = event => reject(new Error("Cannot delete DB"));
+    request.onsuccess = () => resolve();
+    request.onblocked = () => reject(new Error("Cannot delete DB"));
     request.onerror = event => reject(event.target.error);
   });
   let error;

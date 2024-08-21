@@ -17,13 +17,13 @@ EXTRA_COMPONENTS += [
 EXTRA_JS_MODULES["services-settings"] += [
     "Attachments.sys.mjs",
     "Database.sys.mjs",
-    "IDBHelpers.jsm",
+    "IDBHelpers.sys.mjs",
     "remote-settings.sys.mjs",
+    "RemoteSettings.worker.mjs",
     "RemoteSettingsClient.sys.mjs",
     "RemoteSettingsComponents.sys.mjs",
-    "RemoteSettingsWorker.js",
     "RemoteSettingsWorker.sys.mjs",
-    "SharedUtils.jsm",
+    "SharedUtils.sys.mjs",
     "SyncHistory.sys.mjs",
     "Utils.sys.mjs",
 ]
@@ -32,6 +32,6 @@ XPCOM_MANIFESTS += [
     "components.conf",
 ]
 
-XPCSHELL_TESTS_MANIFESTS += ["test/unit/xpcshell.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["test/unit/xpcshell.toml"]
 
 SPHINX_TREES["/services/settings"] = "docs"

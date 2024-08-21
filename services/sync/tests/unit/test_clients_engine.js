@@ -63,7 +63,9 @@ add_task(async function setup() {
 });
 
 async function cleanup() {
-  Svc.Prefs.resetBranch("");
+  for (const pref of Svc.PrefBranch.getChildList("")) {
+    Svc.PrefBranch.clearUserPref(pref);
+  }
   await engine._tracker.clearChangedIDs();
   await engine._resetClient();
   // un-cleanup the logs (the resetBranch will have reset their levels), since
@@ -123,7 +125,7 @@ add_task(async function test_bad_hmac() {
     check_clients_count(0);
     await syncClientsEngine(server);
     check_clients_count(1);
-    ok(engine.lastRecordUpload > 0);
+    Assert.greater(engine.lastRecordUpload, 0);
     ok(!engine.isFirstSync);
 
     // Our uploaded record has a version.
@@ -216,7 +218,10 @@ add_task(async function test_bad_hmac() {
 add_task(async function test_properties() {
   _("Test lastRecordUpload property");
   try {
-    equal(Svc.Prefs.get("clients.lastRecordUpload"), undefined);
+    equal(
+      Svc.PrefBranch.getPrefType("clients.lastRecordUpload"),
+      Ci.nsIPrefBranch.PREF_INVALID
+    );
     equal(engine.lastRecordUpload, 0);
 
     let now = Date.now();
@@ -270,7 +275,7 @@ add_task(async function test_full_sync() {
     strictEqual(engine.lastRecordUpload, 0);
     ok(engine.isFirstSync);
     await syncClientsEngine(server);
-    ok(engine.lastRecordUpload > 0);
+    Assert.greater(engine.lastRecordUpload, 0);
     ok(!engine.isFirstSync);
     deepEqual(
       user.collection("clients").keys().sort(),
@@ -328,7 +333,7 @@ add_task(async function test_sync() {
     ok(engine.isFirstSync);
     await syncClientsEngine(server);
     ok(!!clientWBO().payload);
-    ok(engine.lastRecordUpload > 0);
+    Assert.greater(engine.lastRecordUpload, 0);
     ok(!engine.isFirstSync);
 
     _(
@@ -339,7 +344,7 @@ add_task(async function test_sync() {
     clientWBO().payload = undefined;
     await syncClientsEngine(server);
     ok(!!clientWBO().payload);
-    ok(engine.lastRecordUpload > lastweek);
+    Assert.greater(engine.lastRecordUpload, lastweek);
     ok(!engine.isFirstSync);
 
     _("Remove client record.");
@@ -389,8 +394,8 @@ add_task(async function test_client_name_change() {
   changedIDs = await tracker.getChangedIDs();
   equal(Object.keys(changedIDs).length, 1);
   ok(engine.localID in changedIDs);
-  ok(tracker.score > initialScore);
-  ok(tracker.score >= SCORE_INCREMENT_XLARGE);
+  Assert.greater(tracker.score, initialScore);
+  Assert.greaterOrEqual(tracker.score, SCORE_INCREMENT_XLARGE);
 
   await tracker.stop();
 
@@ -420,8 +425,8 @@ add_task(async function test_fxa_device_id_change() {
   changedIDs = await tracker.getChangedIDs();
   equal(Object.keys(changedIDs).length, 1);
   ok(engine.localID in changedIDs);
-  ok(tracker.score > initialScore);
-  ok(tracker.score >= SINGLE_USER_THRESHOLD);
+  Assert.greater(tracker.score, initialScore);
+  Assert.greaterOrEqual(tracker.score, SINGLE_USER_THRESHOLD);
 
   await tracker.stop();
 
@@ -472,7 +477,10 @@ add_task(async function test_last_modified() {
     await engine._uploadOutgoing();
 
     _("Local record should have updated timestamp");
-    ok(engine._store._remoteClients[activeID].serverLastModified >= now);
+    Assert.greaterOrEqual(
+      engine._store._remoteClients[activeID].serverLastModified,
+      now
+    );
 
     _("Record on the server should have new name but not serverLastModified");
     let payload = collection.cleartext(activeID);
@@ -727,7 +735,7 @@ add_task(async function test_filter_duplicate_names() {
     strictEqual(engine.lastRecordUpload, 0);
     ok(engine.isFirstSync);
     await syncClientsEngine(server);
-    ok(engine.lastRecordUpload > 0);
+    Assert.greater(engine.lastRecordUpload, 0);
     ok(!engine.isFirstSync);
     deepEqual(
       user.collection("clients").keys().sort(),
@@ -771,7 +779,7 @@ add_task(async function test_filter_duplicate_names() {
 
     // Check that a subsequent Sync doesn't report anything as being processed.
     let counts;
-    Svc.Obs.add("weave:engine:sync:applied", function observe(subject, data) {
+    Svc.Obs.add("weave:engine:sync:applied", function observe(subject) {
       Svc.Obs.remove("weave:engine:sync:applied", observe);
       counts = subject;
     });
@@ -910,12 +918,12 @@ add_task(async function test_command_sync() {
 
     _("Checking record was uploaded.");
     notEqual(clientWBO(engine.localID).payload, undefined);
-    ok(engine.lastRecordUpload > 0);
+    Assert.greater(engine.lastRecordUpload, 0);
     ok(!engine.isFirstSync);
 
     notEqual(clientWBO(remoteId).payload, undefined);
 
-    Svc.Prefs.set("client.GUID", remoteId);
+    Svc.PrefBranch.setStringPref("client.GUID", remoteId);
     await engine._resetClient();
     equal(engine.localID, remoteId);
     _("Performing sync on resetted client.");

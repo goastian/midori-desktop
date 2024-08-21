@@ -54,7 +54,9 @@ async function fetchAllRecordIds() {
 async function cleanupEngine(engine) {
   await engine.resetClient();
   await engine._store.wipe();
-  Svc.Prefs.resetBranch("");
+  for (const pref of Svc.PrefBranch.getChildList("")) {
+    Svc.PrefBranch.clearUserPref(pref);
+  }
   Service.recordManager.clearCache();
   // Note we don't finalize the engine here as add_bookmark_test() does.
 }
@@ -323,21 +325,6 @@ add_bookmark_test(async function test_delete_invalid_roots_from_server(engine) {
         "fetchLocalChangeRecords",
       ],
       "Bookmarks engine should report all merge steps"
-    );
-
-    await Assert.rejects(
-      PlacesUtils.promiseItemId("readinglist"),
-      /no item found for the given GUID/,
-      "Should not apply Reading List root"
-    );
-    await Assert.rejects(
-      PlacesUtils.promiseItemId(listBmk.id),
-      /no item found for the given GUID/,
-      "Should not apply items in Reading List"
-    );
-    ok(
-      (await PlacesUtils.promiseItemId(newBmk.id)) > 0,
-      "Should apply new bookmark"
     );
 
     deepEqual(
@@ -706,18 +693,13 @@ add_task(async function test_mismatched_types() {
     await store.applyIncoming(oldR);
     await engine._apply();
     _("Applied old. It's a folder.");
-    let oldID = await PlacesUtils.promiseItemId(oldR.id);
+    let oldID = await PlacesTestUtils.promiseItemId(oldR.id);
     _("Old ID: " + oldID);
     let oldInfo = await PlacesUtils.bookmarks.fetch(oldR.id);
     Assert.equal(oldInfo.type, PlacesUtils.bookmarks.TYPE_FOLDER);
 
     await store.applyIncoming(newR);
     await engine._apply();
-    await Assert.rejects(
-      PlacesUtils.promiseItemId(newR.id),
-      /no item found for the given GUID/,
-      "Should not apply Livemark"
-    );
   } finally {
     await cleanup(engine, server);
     await engine.finalize();
@@ -739,7 +721,7 @@ add_bookmark_test(async function test_misreconciled_root(engine) {
 
   // Let's find out where the toolbar is right now.
   let toolbarBefore = await store.createRecord("toolbar", "bookmarks");
-  let toolbarIDBefore = await PlacesUtils.promiseItemId(
+  let toolbarIDBefore = await PlacesTestUtils.promiseItemId(
     PlacesUtils.bookmarks.toolbarGuid
   );
   Assert.notEqual(-1, toolbarIDBefore);
@@ -747,7 +729,7 @@ add_bookmark_test(async function test_misreconciled_root(engine) {
   let parentRecordIDBefore = toolbarBefore.parentid;
   let parentGUIDBefore =
     PlacesSyncUtils.bookmarks.recordIdToGuid(parentRecordIDBefore);
-  let parentIDBefore = await PlacesUtils.promiseItemId(parentGUIDBefore);
+  let parentIDBefore = await PlacesTestUtils.promiseItemId(parentGUIDBefore);
   Assert.equal("string", typeof parentGUIDBefore);
 
   _("Current parent: " + parentGUIDBefore + " (" + parentIDBefore + ").");
@@ -766,7 +748,7 @@ add_bookmark_test(async function test_misreconciled_root(engine) {
 
   _("Applying record.");
   let countTelemetry = new SyncedRecordsTelemetry();
-  store.applyIncomingBatch([rec], countTelemetry);
+  await store.applyIncomingBatch([rec], countTelemetry);
 
   // Ensure that afterwards, toolbar is still there.
   // As of 2012-12-05, this only passes because Places doesn't use "toolbar" as
@@ -775,13 +757,56 @@ add_bookmark_test(async function test_misreconciled_root(engine) {
   let parentRecordIDAfter = toolbarAfter.parentid;
   let parentGUIDAfter =
     PlacesSyncUtils.bookmarks.recordIdToGuid(parentRecordIDAfter);
-  let parentIDAfter = await PlacesUtils.promiseItemId(parentGUIDAfter);
+  let parentIDAfter = await PlacesTestUtils.promiseItemId(parentGUIDAfter);
   Assert.equal(
-    await PlacesUtils.promiseItemGuid(toolbarIDBefore),
+    await PlacesTestUtils.promiseItemGuid(toolbarIDBefore),
     PlacesUtils.bookmarks.toolbarGuid
   );
   Assert.equal(parentGUIDBefore, parentGUIDAfter);
   Assert.equal(parentIDBefore, parentIDAfter);
+
+  await cleanup(engine, server);
+});
+
+add_bookmark_test(async function test_invalid_url(engine) {
+  _("Ensure an incoming invalid bookmark URL causes an outgoing tombstone.");
+
+  let server = await serverForFoo(engine);
+  let collection = server.user("foo").collection("bookmarks");
+
+  await SyncTestingInfrastructure(server);
+  await engine._syncStartup();
+
+  // check the URL really is invalid.
+  let url = "https://www.42registry.42/";
+  Assert.throws(() => Services.io.newURI(url), /invalid/);
+
+  let guid = "abcdefabcdef";
+
+  let toolbar = new BookmarkFolder("bookmarks", "toolbar");
+  toolbar.title = "toolbar";
+  toolbar.parentName = "";
+  toolbar.parentid = "places";
+  toolbar.children = [guid];
+  collection.insert("toolbar", encryptPayload(toolbar.cleartext));
+
+  let item1 = new Bookmark("bookmarks", guid);
+  item1.bmkUri = "https://www.42registry.42/";
+  item1.title = "invalid url";
+  item1.parentName = "Bookmarks Toolbar";
+  item1.parentid = "toolbar";
+  item1.dateAdded = 1234;
+  collection.insert(guid, encryptPayload(item1.cleartext));
+
+  _("syncing.");
+  await sync_engine_and_validate_telem(engine, false);
+
+  // We should find the record now exists on the server as a tombstone.
+  let updated = collection.cleartext(guid);
+  Assert.ok(updated.deleted, "record was deleted");
+
+  let local = await PlacesUtils.bookmarks.fetch(guid);
+  Assert.deepEqual(local, null, "no local bookmark exists");
 
   await cleanup(engine, server);
 });
@@ -915,7 +940,7 @@ add_bookmark_test(async function test_sync_dateAdded(engine) {
     // Make sure it's within 24 hours of the right timestamp... This is a little
     // dodgey but we only really care that it's basically accurate and has the
     // right day.
-    ok(Math.abs(Date.now() - record3.dateAdded) < 24 * 60 * 60 * 1000);
+    Assert.less(Math.abs(Date.now() - record3.dateAdded), 24 * 60 * 60 * 1000);
 
     let record4 = await store.createRecord(item4GUID);
     equal(
@@ -1403,6 +1428,127 @@ add_bookmark_test(async function test_livemarks(engine) {
       ],
       "Should keep A and remove B locally"
     );
+  } finally {
+    await cleanup(engine, server);
+  }
+});
+
+add_bookmark_test(async function test_unknown_fields(engine) {
+  let store = engine._store;
+  let server = await serverForFoo(engine);
+  await SyncTestingInfrastructure(server);
+  let collection = server.user("foo").collection("bookmarks");
+  try {
+    let folder1 = await PlacesUtils.bookmarks.insert({
+      parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+      type: PlacesUtils.bookmarks.TYPE_FOLDER,
+      title: "Folder 1",
+    });
+    let bmk1 = await PlacesUtils.bookmarks.insert({
+      parentGuid: folder1.guid,
+      url: "http://getfirefox.com/",
+      title: "Get Firefox!",
+    });
+    let bmk2 = await PlacesUtils.bookmarks.insert({
+      parentGuid: folder1.guid,
+      url: "http://getthunderbird.com/",
+      title: "Get Thunderbird!",
+    });
+    let toolbar_record = await store.createRecord("toolbar");
+    collection.insert("toolbar", encryptPayload(toolbar_record.cleartext));
+
+    let folder1_record_without_unknown_fields = await store.createRecord(
+      folder1.guid
+    );
+    collection.insert(
+      folder1.guid,
+      encryptPayload(folder1_record_without_unknown_fields.cleartext)
+    );
+
+    // First bookmark record has an unknown string field
+    let bmk1_record = await store.createRecord(bmk1.guid);
+    console.log("bmk1_record: ", bmk1_record);
+    bmk1_record.cleartext.unknownStrField =
+      "an unknown field from another client";
+    collection.insert(bmk1.guid, encryptPayload(bmk1_record.cleartext));
+
+    // Second bookmark record as an unknown object field
+    let bmk2_record = await store.createRecord(bmk2.guid);
+    bmk2_record.cleartext.unknownObjField = {
+      name: "an unknown object from another client",
+    };
+    collection.insert(bmk2.guid, encryptPayload(bmk2_record.cleartext));
+
+    // Sync the two bookmarks
+    await sync_engine_and_validate_telem(engine, true);
+
+    // Add a folder could also have an unknown field
+    let folder1_record = await store.createRecord(folder1.guid);
+    folder1_record.cleartext.unknownStrField =
+      "a folder could also have an unknown field!";
+    collection.insert(folder1.guid, encryptPayload(folder1_record.cleartext));
+
+    // sync the new updates
+    await engine.setLastSync(1);
+    await sync_engine_and_validate_telem(engine, true);
+
+    let payloads = collection.payloads();
+    // Validate the server has the unknown fields at the top level (and now unknownFields)
+    let server_bmk1 = payloads.find(payload => payload.id == bmk1.guid);
+    deepEqual(
+      server_bmk1.unknownStrField,
+      "an unknown field from another client",
+      "unknown fields correctly on the record"
+    );
+    Assert.equal(server_bmk1.unknownFields, null);
+
+    // Check that the mirror table has unknown fields
+    let db = await PlacesUtils.promiseDBConnection();
+    let rows = await db.executeCached(
+      `
+      SELECT guid, title, unknownFields from items WHERE guid IN 
+      (:bmk1, :bmk2, :folder1)`,
+      { bmk1: bmk1.guid, bmk2: bmk2.guid, folder1: folder1.guid }
+    );
+    // We should have 3 rows that came from the server
+    Assert.equal(rows.length, 3);
+
+    // Bookmark 1 - unknown string field
+    let remote_bmk1 = rows.find(
+      row => row.getResultByName("guid") == bmk1.guid
+    );
+    Assert.equal(remote_bmk1.getResultByName("title"), "Get Firefox!");
+    deepEqual(JSON.parse(remote_bmk1.getResultByName("unknownFields")), {
+      unknownStrField: "an unknown field from another client",
+    });
+
+    // Bookmark 2 - unknown object field
+    let remote_bmk2 = rows.find(
+      row => row.getResultByName("guid") == bmk2.guid
+    );
+    Assert.equal(remote_bmk2.getResultByName("title"), "Get Thunderbird!");
+    deepEqual(JSON.parse(remote_bmk2.getResultByName("unknownFields")), {
+      unknownObjField: {
+        name: "an unknown object from another client",
+      },
+    });
+
+    // Folder with unknown field
+
+    // check the server still has the unknown field
+    deepEqual(
+      payloads.find(payload => payload.id == folder1.guid).unknownStrField,
+      "a folder could also have an unknown field!",
+      "Server still has the unknown field"
+    );
+
+    let remote_folder = rows.find(
+      row => row.getResultByName("guid") == folder1.guid
+    );
+    Assert.equal(remote_folder.getResultByName("title"), "Folder 1");
+    deepEqual(JSON.parse(remote_folder.getResultByName("unknownFields")), {
+      unknownStrField: "a folder could also have an unknown field!",
+    });
   } finally {
     await cleanup(engine, server);
   }

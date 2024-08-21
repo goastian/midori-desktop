@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const {
+import {
   DATA_FORMAT_VERSION,
   DEFAULT_STORAGE_FILENAME,
   FXA_PWDMGR_HOST,
@@ -10,7 +10,7 @@ const {
   FXA_PWDMGR_REALM,
   FXA_PWDMGR_SECURE_FIELDS,
   log,
-} = ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+} from "resource://gre/modules/FxAccountsCommon.sys.mjs";
 
 // A helper function so code can check what fields are able to be stored by
 // the storage manager without having a reference to a manager instance.
@@ -498,11 +498,10 @@ LoginManagerStorage.prototype = {
       if (!this._isLoggedIn) {
         return false;
       }
-      let logins = Services.logins.findLogins(
-        FXA_PWDMGR_HOST,
-        null,
-        FXA_PWDMGR_REALM
-      );
+      let logins = await Services.logins.searchLoginsAsync({
+        origin: FXA_PWDMGR_HOST,
+        httpRealm: FXA_PWDMGR_REALM,
+      });
       for (let login of logins) {
         Services.logins.removeLogin(login);
       }
@@ -554,11 +553,10 @@ LoginManagerStorage.prototype = {
         ""
       ); // aPasswordField
 
-      let existingLogins = Services.logins.findLogins(
-        FXA_PWDMGR_HOST,
-        null,
-        FXA_PWDMGR_REALM
-      );
+      let existingLogins = await Services.logins.searchLoginsAsync({
+        origin: FXA_PWDMGR_HOST,
+        httpRealm: FXA_PWDMGR_REALM,
+      });
       if (existingLogins.length) {
         Services.logins.modifyLogin(existingLogins[0], login);
       } else {
@@ -590,11 +588,10 @@ LoginManagerStorage.prototype = {
         throw new this.STORAGE_LOCKED();
       }
 
-      let logins = Services.logins.findLogins(
-        FXA_PWDMGR_HOST,
-        null,
-        FXA_PWDMGR_REALM
-      );
+      let logins = await Services.logins.searchLoginsAsync({
+        origin: FXA_PWDMGR_HOST,
+        httpRealm: FXA_PWDMGR_REALM,
+      });
       if (!logins.length) {
         // This could happen if the MP was locked when we wrote the data.
         log.info("Can't find any credentials in the login manager");

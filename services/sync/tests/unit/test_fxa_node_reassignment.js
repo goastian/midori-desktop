@@ -19,9 +19,6 @@ const { Status } = ChromeUtils.importESModule(
 const { SyncAuthManager } = ChromeUtils.importESModule(
   "resource://services-sync/sync_auth.sys.mjs"
 );
-const { PromiseUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/PromiseUtils.sys.mjs"
-);
 
 add_task(async function setup() {
   // Disables all built-in engines. Important for avoiding errors thrown by the
@@ -49,7 +46,7 @@ function prepareServer(cbAfterTokenFetch) {
   // A server callback to ensure we don't accidentally hit the wrong endpoint
   // after a node reassignment.
   let callback = {
-    onRequest(req, resp) {
+    onRequest(req) {
       let full = `${req.scheme}://${req.host}:${req.port}${req.path}`;
       let expected = config.fxaccount.token.endpoint;
       Assert.ok(
@@ -120,7 +117,7 @@ async function syncAndExpectNodeReassignment(
   url
 ) {
   _("Starting syncAndExpectNodeReassignment\n");
-  let deferred = PromiseUtils.defer();
+  let deferred = Promise.withResolvers();
   async function onwards() {
     let numTokenRequestsBefore;
     function onFirstSync() {

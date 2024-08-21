@@ -24,7 +24,10 @@ const {
   ERRNO_INVALID_AUTH_TOKEN,
   ONLOGIN_NOTIFICATION,
   ONVERIFIED_NOTIFICATION,
-} = ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+  SCOPE_APP_SYNC,
+} = ChromeUtils.importESModule(
+  "resource://gre/modules/FxAccountsCommon.sys.mjs"
+);
 const { Service } = ChromeUtils.importESModule(
   "resource://services-sync/service.sys.mjs"
 );
@@ -35,9 +38,8 @@ const { TokenServerClient, TokenServerClientServerError } =
   ChromeUtils.importESModule(
     "resource://services-common/tokenserverclient.sys.mjs"
   );
-const { AccountState } = ChromeUtils.importESModule(
-  "resource://gre/modules/FxAccounts.sys.mjs"
-);
+const { AccountState, ERROR_INVALID_ACCOUNT_STATE } =
+  ChromeUtils.importESModule("resource://gre/modules/FxAccounts.sys.mjs");
 
 const SECOND_MS = 1000;
 const MINUTE_MS = SECOND_MS * 60;
@@ -65,8 +67,8 @@ MockFxAccountsClient.prototype = {
   },
   getScopedKeyData() {
     return Promise.resolve({
-      "https://identity.mozilla.com/apps/oldsync": {
-        identifier: "https://identity.mozilla.com/apps/oldsync",
+      [SCOPE_APP_SYNC]: {
+        identifier: SCOPE_APP_SYNC,
         keyRotationSecret:
           "0000000000000000000000000000000000000000000000000000000000000000",
         keyRotationTimestamp: 1234567890123,
@@ -190,8 +192,11 @@ add_task(async function test_initialializeWithAuthErrorAndDeletedAccount() {
 
   await Assert.rejects(
     syncAuthManager._ensureValidToken(),
-    AuthenticationError,
-    "should reject due to an auth error"
+    err => {
+      Assert.equal(err.message, ERROR_INVALID_ACCOUNT_STATE);
+      return true; // expected error
+    },
+    "should reject because the account was deleted"
   );
 
   Assert.ok(accessTokenWithSessionTokenCalled);
@@ -599,12 +604,8 @@ add_task(async function test_getKeysErrorWithBackoff() {
   _("Arrange for a 503 with a X-Backoff header.");
 
   let config = makeIdentityConfig();
-  // We want no kSync, kXCS, kExtSync or kExtKbHash so we attempt to fetch them.
+  // We want no scopedKeys so we attempt to fetch them.
   delete config.fxaccount.user.scopedKeys;
-  delete config.fxaccount.user.kSync;
-  delete config.fxaccount.user.kXCS;
-  delete config.fxaccount.user.kExtSync;
-  delete config.fxaccount.user.kExtKbHash;
   config.fxaccount.user.keyFetchToken = "keyfetchtoken";
   await initializeIdentityWithHAWKResponseFactory(
     config,
@@ -641,12 +642,8 @@ add_task(async function test_getKeysErrorWithRetry() {
   _("Arrange for a 503 with a Retry-After header.");
 
   let config = makeIdentityConfig();
-  // We want no kSync, kXCS, kExtSync or kExtKbHash so we attempt to fetch them.
+  // We want no scopedKeys so we attempt to fetch them.
   delete config.fxaccount.user.scopedKeys;
-  delete config.fxaccount.user.kSync;
-  delete config.fxaccount.user.kXCS;
-  delete config.fxaccount.user.kExtSync;
-  delete config.fxaccount.user.kExtKbHash;
   config.fxaccount.user.keyFetchToken = "keyfetchtoken";
   await initializeIdentityWithHAWKResponseFactory(
     config,
@@ -735,12 +732,8 @@ add_task(async function test_getGetKeysFailing401() {
 
   _("Arrange for a 401 - Sync should reflect an auth error.");
   let config = makeIdentityConfig();
-  // We want no kSync, kXCS, kExtSync or kExtKbHash so we attempt to fetch them.
+  // We want no scopedKeys so we attempt to fetch them.
   delete config.fxaccount.user.scopedKeys;
-  delete config.fxaccount.user.kSync;
-  delete config.fxaccount.user.kXCS;
-  delete config.fxaccount.user.kExtSync;
-  delete config.fxaccount.user.kExtKbHash;
   config.fxaccount.user.keyFetchToken = "keyfetchtoken";
   await initializeIdentityWithHAWKResponseFactory(
     config,
@@ -762,12 +755,8 @@ add_task(async function test_getGetKeysFailing503() {
 
   _("Arrange for a 503 - Sync should reflect a network error.");
   let config = makeIdentityConfig();
-  // We want no kSync, kXCS, kExtSync or kExtKbHash so we attempt to fetch them.
+  // We want no scopedKeys so we attempt to fetch them.
   delete config.fxaccount.user.scopedKeys;
-  delete config.fxaccount.user.kSync;
-  delete config.fxaccount.user.kXCS;
-  delete config.fxaccount.user.kExtSync;
-  delete config.fxaccount.user.kExtKbHash;
   config.fxaccount.user.keyFetchToken = "keyfetchtoken";
   await initializeIdentityWithHAWKResponseFactory(
     config,
@@ -795,13 +784,9 @@ add_task(async function test_getKeysMissing() {
 
   let syncAuthManager = new SyncAuthManager();
   let identityConfig = makeIdentityConfig();
-  // our mock identity config already has kSync, kXCS, kExtSync and kExtKbHash - remove them or we never
+  // our mock identity config already has scopedKeys remove them or we never
   // try and fetch them.
   delete identityConfig.fxaccount.user.scopedKeys;
-  delete identityConfig.fxaccount.user.kSync;
-  delete identityConfig.fxaccount.user.kXCS;
-  delete identityConfig.fxaccount.user.kExtSync;
-  delete identityConfig.fxaccount.user.kExtKbHash;
   identityConfig.fxaccount.user.keyFetchToken = "keyFetchToken";
 
   configureFxAccountIdentity(syncAuthManager, identityConfig);
@@ -819,14 +804,11 @@ add_task(async function test_getKeysMissing() {
       storageManager.initialize(identityConfig.fxaccount.user);
       return new AccountState(storageManager);
     },
-    // And the keys object with a mock that returns no keys.
-    keys: {
-      getKeyForScope() {
-        return Promise.resolve(null);
-      },
-    },
   });
-
+  fxa.getOAuthTokenAndKey = () => {
+    // And the keys object with a mock that returns no keys.
+    return Promise.resolve({ key: null, token: "fake token" });
+  };
   syncAuthManager._fxaService = fxa;
 
   await Assert.rejects(
@@ -842,13 +824,9 @@ add_task(async function test_getKeysUnexpecedError() {
 
   let syncAuthManager = new SyncAuthManager();
   let identityConfig = makeIdentityConfig();
-  // our mock identity config already has kSync, kXCS, kExtSync and kExtKbHash - remove them or we never
+  // our mock identity config already has scopedKeys - remove them or we never
   // try and fetch them.
   delete identityConfig.fxaccount.user.scopedKeys;
-  delete identityConfig.fxaccount.user.kSync;
-  delete identityConfig.fxaccount.user.kXCS;
-  delete identityConfig.fxaccount.user.kExtSync;
-  delete identityConfig.fxaccount.user.kExtKbHash;
   identityConfig.fxaccount.user.keyFetchToken = "keyFetchToken";
 
   configureFxAccountIdentity(syncAuthManager, identityConfig);
@@ -866,13 +844,11 @@ add_task(async function test_getKeysUnexpecedError() {
       storageManager.initialize(identityConfig.fxaccount.user);
       return new AccountState(storageManager);
     },
-    // And the keys object with a mock that returns no keys.
-    keys: {
-      async getKeyForScope() {
-        throw new Error("well that was unexpected");
-      },
-    },
   });
+
+  fxa.getOAuthTokenAndKey = () => {
+    return Promise.reject("well that was unexpected");
+  };
 
   syncAuthManager._fxaService = fxa;
 
@@ -890,10 +866,6 @@ add_task(async function test_signedInUserMissing() {
   let syncAuthManager = new SyncAuthManager();
   // Delete stored keys and the key fetch token.
   delete globalIdentityConfig.fxaccount.user.scopedKeys;
-  delete globalIdentityConfig.fxaccount.user.kSync;
-  delete globalIdentityConfig.fxaccount.user.kXCS;
-  delete globalIdentityConfig.fxaccount.user.kExtSync;
-  delete globalIdentityConfig.fxaccount.user.kExtKbHash;
   delete globalIdentityConfig.fxaccount.user.keyFetchToken;
 
   configureFxAccountIdentity(syncAuthManager, globalIdentityConfig);
@@ -1031,7 +1003,7 @@ function mockTokenServer(func) {
     requestLog.addAppender(new Log.DumpAppender());
     requestLog.level = Log.Level.Trace;
   }
-  function MockRESTRequest(url) {}
+  function MockRESTRequest() {}
   MockRESTRequest.prototype = {
     _log: requestLog,
     setHeader() {},

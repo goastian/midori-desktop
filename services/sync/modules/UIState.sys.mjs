@@ -87,7 +87,7 @@ const UIStateInternal = {
     this._initialized = false;
   },
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     switch (topic) {
       case "weave:service:sync:start":
         this.toggleSyncActivity(true);
@@ -185,14 +185,14 @@ const UIStateInternal = {
       // The most likely scenario is a user logged out, so reflect that.
       // Bug 995134 calls for better errors so we could retry if we were
       // sure this was the failure reason.
-      console.error("Error updating FxA account info: " + e);
+      console.error("Error updating FxA account info:", e);
       return null;
     }
   },
 
   _setLastSyncTime(state) {
     if (state?.status == UIState.STATUS_SIGNED_IN) {
-      const lastSync = Services.prefs.getCharPref(
+      const lastSync = Services.prefs.getStringPref(
         "services.sync.lastSync",
         null
       );
@@ -230,9 +230,7 @@ const UIStateInternal = {
   },
 };
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
-XPCOMUtils.defineLazyGetter(UIStateInternal, "fxAccounts", () => {
+ChromeUtils.defineLazyGetter(UIStateInternal, "fxAccounts", () => {
   return ChromeUtils.importESModule(
     "resource://gre/modules/FxAccounts.sys.mjs"
   ).getFxAccountsSingleton();

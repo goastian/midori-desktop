@@ -19,11 +19,9 @@ AddonTestUtils.createAppInfo(
 );
 AddonTestUtils.overrideCertDB();
 
-Services.prefs.setCharPref("extensions.minCompatibleAppVersion", "0");
-Services.prefs.setCharPref("extensions.minCompatiblePlatformVersion", "0");
 Services.prefs.setBoolPref("extensions.experiments.enabled", true);
 
-Svc.Prefs.set("engine.addons", true);
+Svc.PrefBranch.setBoolPref("engine.addons", true);
 
 let reconciler;
 let tracker;

@@ -1,19 +1,6 @@
 /* import-globals-from ../../../common/tests/unit/head_helpers.js */
 "use strict";
 
-const { RemoteSettings } = ChromeUtils.importESModule(
-  "resource://services-settings/remote-settings.sys.mjs"
-);
-const { RemoteSettingsClient } = ChromeUtils.importESModule(
-  "resource://services-settings/RemoteSettingsClient.sys.mjs"
-);
-const { UptakeTelemetry, Policy } = ChromeUtils.importESModule(
-  "resource://services-common/uptake-telemetry.sys.mjs"
-);
-const { TelemetryTestUtils } = ChromeUtils.importESModule(
-  "resource://testing-common/TelemetryTestUtils.sys.mjs"
-);
-
 const PREF_SETTINGS_SERVER = "services.settings.server";
 const SIGNER_NAME = "onecrl.content-signature.mozilla.org";
 const TELEMETRY_COMPONENT = "remotesettings";
@@ -42,12 +29,12 @@ function getCertChain() {
 let server;
 let client;
 
-function run_test() {
+add_setup(() => {
   // Signature verification is enabled by default. We use a custom signer
   // because these tests were originally written for OneCRL.
   client = RemoteSettings("signed", { signerName: SIGNER_NAME });
 
-  Services.prefs.setCharPref("services.settings.loglevel", "debug");
+  Services.prefs.setStringPref("services.settings.loglevel", "debug");
 
   // Set up an HTTP Server
   server = new HttpServer();
@@ -57,13 +44,11 @@ function run_test() {
   let oldGetChannel = Policy.getChannel;
   Policy.getChannel = () => "nightly";
 
-  run_next_test();
-
   registerCleanupFunction(() => {
     Policy.getChannel = oldGetChannel;
     server.stop(() => {});
   });
-}
+});
 
 add_task(async function test_check_signatures() {
   // First, perform a signature verification with known data and signature
@@ -148,7 +133,7 @@ add_task(async function test_check_synchronization_with_signatures() {
   }
 
   // set up prefs so the kinto updater talks to the test server
-  Services.prefs.setCharPref(
+  Services.prefs.setStringPref(
     PREF_SETTINGS_SERVER,
     `http://localhost:${server.identity.primaryPort}/v1`
   );
@@ -487,7 +472,7 @@ add_task(async function test_check_synchronization_with_signatures() {
   );
 
   let syncEventSent = false;
-  client.on("sync", ({ data }) => {
+  client.on("sync", () => {
     syncEventSent = true;
   });
 
@@ -542,7 +527,7 @@ add_task(async function test_check_synchronization_with_signatures() {
   registerHandlers(badSigGoodOldResponses);
 
   syncEventSent = false;
-  client.on("sync", ({ data }) => {
+  client.on("sync", () => {
     syncEventSent = true;
   });
 
@@ -783,7 +768,7 @@ add_task(async function test_check_synchronization_with_signatures() {
   const sigCalls = [];
   let i = 0;
   client._verifier = {
-    async asyncVerifyContentSignature(serialized, signature) {
+    async asyncVerifyContentSignature(serialized) {
       sigCalls.push(serialized);
       console.log(`verify call ${i}`);
       return [

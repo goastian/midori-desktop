@@ -36,8 +36,8 @@ var { PlacesUtils } = ChromeUtils.importESModule(
 var { PlacesSyncUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PlacesSyncUtils.sys.mjs"
 );
-var { ObjectUtils } = ChromeUtils.import(
-  "resource://gre/modules/ObjectUtils.jsm"
+var { ObjectUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/ObjectUtils.sys.mjs"
 );
 var {
   MockFxaStorageManager,
@@ -70,11 +70,13 @@ add_setup(async function head_setup() {
   }
 });
 
-XPCOMUtils.defineLazyGetter(this, "SyncPingSchema", function () {
+ChromeUtils.defineLazyGetter(this, "SyncPingSchema", function () {
   let { FileUtils } = ChromeUtils.importESModule(
     "resource://gre/modules/FileUtils.sys.mjs"
   );
-  let { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+  let { NetUtil } = ChromeUtils.importESModule(
+    "resource://gre/modules/NetUtil.sys.mjs"
+  );
   let stream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(
     Ci.nsIFileInputStream
   );
@@ -95,7 +97,7 @@ XPCOMUtils.defineLazyGetter(this, "SyncPingSchema", function () {
   return schema;
 });
 
-XPCOMUtils.defineLazyGetter(this, "SyncPingValidator", function () {
+ChromeUtils.defineLazyGetter(this, "SyncPingValidator", function () {
   const { JsonSchema } = ChromeUtils.importESModule(
     "resource://gre/modules/JsonSchema.sys.mjs"
   );
@@ -528,8 +530,8 @@ async function sync_engine_and_validate_telem(
 
 // Returns a promise that resolves once the specified observer notification
 // has fired.
-function promiseOneObserver(topic, callback) {
-  return new Promise((resolve, reject) => {
+function promiseOneObserver(topic) {
+  return new Promise(resolve => {
     let observer = function (subject, data) {
       Svc.Obs.remove(topic, observer);
       resolve({ subject, data });
@@ -555,10 +557,13 @@ async function registerRotaryEngine() {
 // Set the validation prefs to attempt validation every time to avoid non-determinism.
 function enableValidationPrefs(engines = ["bookmarks"]) {
   for (let engine of engines) {
-    Svc.Prefs.set(`engine.${engine}.validation.interval`, 0);
-    Svc.Prefs.set(`engine.${engine}.validation.percentageChance`, 100);
-    Svc.Prefs.set(`engine.${engine}.validation.maxRecords`, -1);
-    Svc.Prefs.set(`engine.${engine}.validation.enabled`, true);
+    Svc.PrefBranch.setIntPref(`engine.${engine}.validation.interval`, 0);
+    Svc.PrefBranch.setIntPref(
+      `engine.${engine}.validation.percentageChance`,
+      100
+    );
+    Svc.PrefBranch.setIntPref(`engine.${engine}.validation.maxRecords`, -1);
+    Svc.PrefBranch.setBoolPref(`engine.${engine}.validation.enabled`, true);
   }
 }
 

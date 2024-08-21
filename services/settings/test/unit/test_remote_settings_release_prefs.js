@@ -1,9 +1,5 @@
 "use strict";
 
-const { AppConstants } = ChromeUtils.importESModule(
-  "resource://gre/modules/AppConstants.sys.mjs"
-);
-
 var nextUniqId = 0;
 function getNewUtils() {
   const { Utils } = ChromeUtils.importESModule(
@@ -12,7 +8,21 @@ function getNewUtils() {
   return Utils;
 }
 
-function clear_state() {
+// A collection with a dump that's packaged on all builds where this test runs,
+// including on Android at mobile/android/installer/package-manifest.in
+const TEST_BUCKET = "main";
+const TEST_COLLECTION = "password-recipes";
+
+async function importData(records) {
+  await RemoteSettingsWorker._execute("_test_only_import", [
+    TEST_BUCKET,
+    TEST_COLLECTION,
+    records,
+    records[0]?.last_modified || 0,
+  ]);
+}
+
+async function clear_state() {
   Services.env.set("MOZ_REMOTE_SETTINGS_DEVTOOLS", "0");
   Services.prefs.clearUserPref("services.settings.server");
   Services.prefs.clearUserPref("services.settings.preview_enabled");
@@ -21,7 +31,7 @@ function clear_state() {
 add_setup(async function () {
   // Set this env vars in order to test the code path where the
   // server URL can only be overridden from Dev Tools.
-  // See `isRunningTests` in `services/settings/Utils.jsm`.
+  // See `isRunningTests` in `services/settings/Utils.sys.mjs`.
   const before = Services.env.get("MOZ_DISABLE_NONLOCAL_CONNECTIONS");
   Services.env.set("MOZ_DISABLE_NONLOCAL_CONNECTIONS", "0");
 
@@ -38,7 +48,7 @@ add_task(
     skip_if: () => !AppConstants.RELEASE_OR_BETA,
   },
   async function test_server_url_cannot_be_toggled_in_release() {
-    Services.prefs.setCharPref(
+    Services.prefs.setStringPref(
       "services.settings.server",
       "http://localhost:8888/v1"
     );
@@ -58,7 +68,7 @@ add_task(
     skip_if: () => AppConstants.RELEASE_OR_BETA,
   },
   async function test_server_url_cannot_be_toggled_in_dev_nightly() {
-    Services.prefs.setCharPref(
+    Services.prefs.setStringPref(
       "services.settings.server",
       "http://localhost:8888/v1"
     );
@@ -107,7 +117,7 @@ add_task(
     skip_if: () => !AppConstants.RELEASE_OR_BETA,
   },
   async function test_load_dumps_will_always_be_loaded_in_release() {
-    Services.prefs.setCharPref(
+    Services.prefs.setStringPref(
       "services.settings.server",
       "http://localhost:8888/v1"
     );
@@ -128,7 +138,7 @@ add_task(
     skip_if: () => AppConstants.RELEASE_OR_BETA,
   },
   async function test_load_dumps_can_be_disabled_in_dev_nightly() {
-    Services.prefs.setCharPref(
+    Services.prefs.setStringPref(
       "services.settings.server",
       "http://localhost:8888/v1"
     );
@@ -148,7 +158,7 @@ add_task(clear_state);
 add_task(
   async function test_server_url_can_be_changed_in_all_versions_if_running_for_devtools() {
     Services.env.set("MOZ_REMOTE_SETTINGS_DEVTOOLS", "1");
-    Services.prefs.setCharPref(
+    Services.prefs.setStringPref(
       "services.settings.server",
       "http://localhost:8888/v1"
     );
@@ -179,13 +189,49 @@ add_task(clear_state);
 add_task(
   async function test_dumps_are_not_loaded_if_server_is_not_prod_if_running_for_devtools() {
     Services.env.set("MOZ_REMOTE_SETTINGS_DEVTOOLS", "1");
-    Services.prefs.setCharPref(
+    Services.prefs.setStringPref(
       "services.settings.server",
       "http://localhost:8888/v1"
     );
 
     const Utils = getNewUtils();
     Assert.ok(!Utils.LOAD_DUMPS, "Dumps won't be loaded");
+
+    // The section below ensures that the LOAD_DUMPS flag properly takes effect.
+    // The client is set up here rather than add_setup to avoid triggering the
+    // lazy getters that are behind the global Utils.LOAD_DUMPS. If they are
+    // triggered too early, then they will potentially cache different values
+    // for the server urls and environment variables and this test then won't be
+    // testing what we expect it to.
+
+    let client = new RemoteSettingsClient(TEST_COLLECTION);
+
+    const dump = await SharedUtils.loadJSONDump(TEST_BUCKET, TEST_COLLECTION);
+    let DUMP_LAST_MODIFIED = dump.timestamp;
+
+    // Dump is updated regularly, verify that the dump matches our expectations
+    // before running the test.
+    Assert.greater(
+      DUMP_LAST_MODIFIED,
+      1234,
+      "Assuming dump to be newer than dummy 1234"
+    );
+
+    await client.db.clear();
+    await importData([{ last_modified: 1234, id: "dummy" }]);
+
+    const after = await client.get();
+    Assert.deepEqual(
+      after,
+      [{ last_modified: 1234, id: "dummy" }],
+      "Should have kept the original import"
+    );
+    Assert.equal(
+      await client.getLastModified(),
+      1234,
+      "Should have kept the import's timestamp"
+    );
+    await client.db.clear();
   }
 );
 add_task(clear_state);
@@ -193,7 +239,7 @@ add_task(clear_state);
 add_task(
   async function test_dumps_are_loaded_if_server_is_prod_if_running_for_devtools() {
     Services.env.set("MOZ_REMOTE_SETTINGS_DEVTOOLS", "1");
-    Services.prefs.setCharPref(
+    Services.prefs.setStringPref(
       "services.settings.server",
       AppConstants.REMOTE_SETTINGS_SERVER_URL
     );

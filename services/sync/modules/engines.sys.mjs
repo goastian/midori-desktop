@@ -17,6 +17,7 @@ import {
   ENGINE_DOWNLOAD_FAIL,
   ENGINE_UPLOAD_FAIL,
   VERSION_OUT_OF_DATE,
+  PREFS_BRANCH,
 } from "resource://services-sync/constants.sys.mjs";
 
 import {
@@ -112,12 +113,12 @@ Tracker.prototype = {
   },
 
   // Also unsupported.
-  async addChangedID(id, when) {
+  async addChangedID() {
     throw new TypeError("Can't add changed ID to this tracker");
   },
 
   // Ditto.
-  async removeChangedID(...ids) {
+  async removeChangedID() {
     throw new TypeError("Can't remove changed IDs from this tracker");
   },
 
@@ -154,7 +155,7 @@ Tracker.prototype = {
   // Override these in your subclasses.
   onStart() {},
   onStop() {},
-  async observe(subject, topic, data) {},
+  async observe() {},
 
   engineIsEnabled() {
     if (!this.engine) {
@@ -355,7 +356,7 @@ export function Store(name, engine) {
 
   this._log = Log.repository.getLogger(`Sync.Engine.${name}.Store`);
 
-  XPCOMUtils.defineLazyGetter(this, "_timer", function () {
+  ChromeUtils.defineLazyGetter(this, "_timer", function () {
     return Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
   });
 }
@@ -436,7 +437,7 @@ Store.prototype = {
    * @param record
    *        The store record to create an item from
    */
-  async create(record) {
+  async create() {
     throw new Error("override create in a subclass");
   },
 
@@ -449,7 +450,7 @@ Store.prototype = {
    * @param record
    *        The store record to delete an item from
    */
-  async remove(record) {
+  async remove() {
     throw new Error("override remove in a subclass");
   },
 
@@ -462,7 +463,7 @@ Store.prototype = {
    * @param record
    *        The record to use to update an item from
    */
-  async update(record) {
+  async update() {
     throw new Error("override update in a subclass");
   },
 
@@ -476,7 +477,7 @@ Store.prototype = {
    *         string record ID
    * @return boolean indicating whether record exists locally
    */
-  async itemExists(id) {
+  async itemExists() {
     throw new Error("override itemExists in a subclass");
   },
 
@@ -494,7 +495,7 @@ Store.prototype = {
    *         constructor for the newly-created record.
    * @return record type for this engine
    */
-  async createRecord(id, collection) {
+  async createRecord() {
     throw new Error("override createRecord in a subclass");
   },
 
@@ -506,7 +507,7 @@ Store.prototype = {
    * @param  newID
    *         string new record ID
    */
-  async changeItemID(oldID, newID) {
+  async changeItemID() {
     throw new Error("override changeItemID in a subclass");
   },
 
@@ -646,7 +647,10 @@ EngineManager.prototype = {
   },
 
   persistDeclined() {
-    Svc.Prefs.set("declinedEngines", [...this._declined].join(","));
+    Svc.PrefBranch.setStringPref(
+      "declinedEngines",
+      [...this._declined].join(",")
+    );
   },
 
   /**
@@ -872,7 +876,11 @@ SyncEngine.prototype = {
   async initialize() {
     await this._toFetchStorage.load();
     await this._previousFailedStorage.load();
-    Svc.Prefs.observe(`engine.${this.prefName}`, this.asyncObserver);
+    Services.prefs.addObserver(
+      `${PREFS_BRANCH}engine.${this.prefName}`,
+      this.asyncObserver,
+      true
+    );
     this._log.debug("SyncEngine initialized", this.name);
   },
 
@@ -886,7 +894,7 @@ SyncEngine.prototype = {
 
   set enabled(val) {
     if (!!val != this._enabled) {
-      Svc.Prefs.set("engine." + this.prefName, !!val);
+      Svc.PrefBranch.setBoolPref("engine." + this.prefName, !!val);
     }
   },
 
@@ -994,9 +1002,12 @@ SyncEngine.prototype = {
     if (existingSyncID == newSyncID) {
       return existingSyncID;
     }
-    this._log.debug("Engine syncIDs: " + [newSyncID, existingSyncID]);
-    Svc.Prefs.set(this.name + ".syncID", newSyncID);
-    Svc.Prefs.set(this.name + ".lastSync", "0");
+    this._log.debug(
+      `Engine syncIDs differ (old="${existingSyncID}", new="${newSyncID}") - resetting the engine`
+    );
+    await this.resetClient();
+    Svc.PrefBranch.setStringPref(this.name + ".syncID", newSyncID);
+    Svc.PrefBranch.setStringPref(this.name + ".lastSync", "0");
     return newSyncID;
   },
 
@@ -1029,7 +1040,7 @@ SyncEngine.prototype = {
    * Note: Overriding engines must take resyncs into account -- score will not
    * be cleared.
    */
-  shouldSkipSync(syncReason) {
+  shouldSkipSync() {
     return false;
   },
 
@@ -1041,7 +1052,7 @@ SyncEngine.prototype = {
   },
   async setLastSync(lastSync) {
     // Store the value as a string to keep floating point precision
-    Svc.Prefs.set(this.name + ".lastSync", lastSync.toString());
+    Svc.PrefBranch.setStringPref(this.name + ".lastSync", lastSync.toString());
   },
   async resetLastSync() {
     this._log.debug("Resetting " + this.name + " last sync time");
@@ -1539,7 +1550,7 @@ SyncEngine.prototype = {
   // Indicates whether an incoming item should be deleted from the server at
   // the end of the sync. Engines can override this method to clean up records
   // that shouldn't be on the server.
-  _shouldDeleteRemotely(remoteItem) {
+  _shouldDeleteRemotely() {
     return false;
   },
 
@@ -1549,7 +1560,7 @@ SyncEngine.prototype = {
    *
    * @return GUID of the similar item; falsy otherwise
    */
-  async _findDupe(item) {
+  async _findDupe() {
     // By default, assume there's no dupe items for the engine
   },
 
@@ -1557,7 +1568,7 @@ SyncEngine.prototype = {
    * Called before a remote record is discarded due to failed reconciliation.
    * Used by bookmark sync to merge folder child orders.
    */
-  beforeRecordDiscard(localRecord, remoteRecord, remoteIsNewer) {},
+  beforeRecordDiscard() {},
 
   // Called when the server has a record marked as deleted, but locally we've
   // changed it more recently than the deletion. If we return false, the
@@ -1565,7 +1576,7 @@ SyncEngine.prototype = {
   // record to the server -- any extra work that's needed as part of this
   // process should be done at this point (such as mark the record's parent
   // for reuploading in the case of bookmarks).
-  async _shouldReviveRemotelyDeletedRecord(remoteItem) {
+  async _shouldReviveRemotelyDeletedRecord() {
     return true;
   },
 
@@ -1937,7 +1948,7 @@ SyncEngine.prototype = {
     }
   },
 
-  async _onRecordsWritten(succeeded, failed, serverModifiedTime) {
+  async _onRecordsWritten() {
     // Implement this method to take specific actions against successfully
     // uploaded records and failed records.
   },
@@ -2173,7 +2184,10 @@ SyncEngine.prototype = {
   },
 
   async finalize() {
-    Svc.Prefs.ignore(`engine.${this.prefName}`, this.asyncObserver);
+    Services.prefs.removeObserver(
+      `${PREFS_BRANCH}engine.${this.prefName}`,
+      this.asyncObserver
+    );
     await this.asyncObserver.promiseObserversComplete();
     await this._tracker.finalize();
     await this._toFetchStorage.finalize();

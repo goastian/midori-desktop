@@ -3,9 +3,6 @@
 
 "use strict";
 
-const { Preferences } = ChromeUtils.importESModule(
-  "resource://gre/modules/Preferences.sys.mjs"
-);
 const { AddonUtils } = ChromeUtils.importESModule(
   "resource://services-sync/addonutils.sys.mjs"
 );
@@ -13,9 +10,7 @@ const { AddonUtils } = ChromeUtils.importESModule(
 const HTTP_PORT = 8888;
 const SERVER_ADDRESS = "http://127.0.0.1:8888";
 
-var prefs = new Preferences();
-
-prefs.set(
+Services.prefs.setStringPref(
   "extensions.getAddons.get.url",
   SERVER_ADDRESS + "/search/guid:%IDS%"
 );
@@ -124,7 +119,7 @@ add_task(async function test_source_uri_rewrite() {
 
   let installCalled = false;
   Object.getPrototypeOf(AddonUtils).installAddonFromSearchResult =
-    async function testInstallAddon(addon, metadata) {
+    async function testInstallAddon(addon) {
       Assert.equal(
         SERVER_ADDRESS + "/require.xpi?src=sync",
         addon.sourceURI.spec

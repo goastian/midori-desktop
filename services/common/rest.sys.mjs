@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+import { NetUtil } from "resource://gre/modules/NetUtil.sys.mjs";
+
 import { Log } from "resource://gre/modules/Log.sys.mjs";
-import { PromiseUtils } from "resource://gre/modules/PromiseUtils.sys.mjs";
 
 import { CommonUtils } from "resource://services-common/utils.sys.mjs";
 
@@ -86,7 +86,7 @@ export function RESTRequest(uri) {
   this.uri = uri;
 
   this._headers = {};
-  this._deferred = PromiseUtils.defer();
+  this._deferred = Promise.withResolvers();
   this._log = Log.repository.getLogger(this._logName);
   this._log.manageLevelFromPref("services.common.log.logger.rest.request");
 }

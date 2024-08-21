@@ -1,13 +1,3 @@
-const { RemoteSettingsClient } = ChromeUtils.importESModule(
-  "resource://services-settings/RemoteSettingsClient.sys.mjs"
-);
-const { RemoteSettingsWorker } = ChromeUtils.importESModule(
-  "resource://services-settings/RemoteSettingsWorker.sys.mjs"
-);
-const { SharedUtils } = ChromeUtils.import(
-  "resource://services-settings/SharedUtils.jsm"
-);
-
 // A collection with a dump that's packaged on all builds where this test runs,
 // including on Android at mobile/android/installer/package-manifest.in
 const TEST_BUCKET = "main";
@@ -17,7 +7,7 @@ let client;
 let DUMP_RECORDS;
 let DUMP_LAST_MODIFIED;
 
-add_task(async function setup() {
+add_setup(async () => {
   // "services.settings.server" pref is not set.
   // Test defaults to an unreachable server,
   // and will only load from the dump if any.
@@ -107,7 +97,11 @@ add_task(clear_state);
 add_task(async function test_load_dump_after_non_empty_import() {
   // Dump is updated regularly, verify that the dump matches our expectations
   // before running the test.
-  ok(DUMP_LAST_MODIFIED > 1234, "Assuming dump to be newer than dummy 1234");
+  Assert.greater(
+    DUMP_LAST_MODIFIED,
+    1234,
+    "Assuming dump to be newer than dummy 1234"
+  );
 
   await importData([{ last_modified: 1234, id: "dummy" }]);
 
@@ -120,7 +114,11 @@ add_task(clear_state);
 add_task(async function test_load_dump_after_import_from_broken_distro() {
   // Dump is updated regularly, verify that the dump matches our expectations
   // before running the test.
-  ok(DUMP_LAST_MODIFIED > 1234, "Assuming dump to be newer than dummy 1234");
+  Assert.greater(
+    DUMP_LAST_MODIFIED,
+    1234,
+    "Assuming dump to be newer than dummy 1234"
+  );
 
   // No last_modified time.
   await importData([{ id: "dummy" }]);

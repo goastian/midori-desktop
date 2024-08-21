@@ -25,9 +25,6 @@ const PREF_SYNC_PREFS_PREFIX = "services.sync.prefs.sync.";
 // this special control pref at the same time they flip the default.
 const PREF_SYNC_SEEN_PREFIX = "services.sync.prefs.sync-seen.";
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-import { Preferences } from "resource://gre/modules/Preferences.sys.mjs";
-
 import {
   Store,
   SyncEngine,
@@ -40,7 +37,7 @@ import { CommonUtils } from "resource://services-common/utils.sys.mjs";
 
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "PREFS_GUID", () =>
+ChromeUtils.defineLazyGetter(lazy, "PREFS_GUID", () =>
   CommonUtils.encodeBase64URL(Services.appinfo.ID)
 );
 
@@ -49,37 +46,18 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 // In bug 1538015, we decided that it isn't always safe to allow all "incoming"
-// preferences to be applied locally. So we have introduced another preference,
-// which if false (the default) will ignore all incoming preferences which don't
-// already have the "control" preference locally set. If this new
-// preference is set to true, then we continue our old behavior of allowing all
-// preferences to be updated, even those which don't already have a local
-// "control" pref.
+// preferences to be applied locally. So we introduced another preference to control
+// this for backward compatibility. We removed that capability in bug 1854698, but in the
+// interests of working well between different versions of Firefox, we still forever
+// want to prevent this preference from syncing.
+// This was the name of the "control" pref.
 const PREF_SYNC_PREFS_ARBITRARY =
   "services.sync.prefs.dangerously_allow_arbitrary";
-
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "ALLOW_ARBITRARY",
-  PREF_SYNC_PREFS_ARBITRARY
-);
-
-// The SUMO supplied URL we log with more information about how custom prefs can
-// continue to be synced. SUMO have told us that this URL will remain "stable".
-const PREFS_DOC_URL_TEMPLATE =
-  "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/sync-custom-preferences";
-XPCOMUtils.defineLazyGetter(lazy, "PREFS_DOC_URL", () =>
-  Services.urlFormatter.formatURL(PREFS_DOC_URL_TEMPLATE)
-);
 
 // Check for a local control pref or PREF_SYNC_PREFS_ARBITRARY
 function isAllowedPrefName(prefName) {
   if (prefName == PREF_SYNC_PREFS_ARBITRARY) {
     return false; // never allow this.
-  }
-  if (lazy.ALLOW_ARBITRARY) {
-    // user has set the "dangerous" pref, so everything is allowed.
-    return true;
   }
   // The pref must already have a control pref set, although it doesn't matter
   // here whether that value is true or false. We can't use prefHasUserValue
@@ -140,6 +118,14 @@ PrefsEngine.prototype = {
     return SyncEngine.prototype._reconcile.call(this, item);
   },
 
+  async _uploadOutgoing() {
+    try {
+      await SyncEngine.prototype._uploadOutgoing.call(this);
+    } finally {
+      this._store._incomingPrefs = null;
+    }
+  },
+
   async trackRemainingChanges() {
     if (this._modified.count() > 0) {
       this._tracker.modified = true;
@@ -173,9 +159,11 @@ function PrefStore(name, engine) {
 }
 PrefStore.prototype = {
   __prefs: null,
+  // used just for logging so we can work out why we chose to re-upload
+  _incomingPrefs: null,
   get _prefs() {
     if (!this.__prefs) {
-      this.__prefs = new Preferences();
+      this.__prefs = Services.prefs.getBranch("");
     }
     return this.__prefs;
   },
@@ -200,10 +188,24 @@ PrefStore.prototype = {
 
     // This is the pref itself - it must be both allowed, and have a control
     // pref which is true.
-    if (!this._prefs.get(PREF_SYNC_PREFS_PREFIX + pref, false)) {
+    if (!this._prefs.getBoolPref(PREF_SYNC_PREFS_PREFIX + pref, false)) {
       return false;
     }
     return isAllowedPrefName(pref);
+  },
+
+  // Given a preference name, returns either a string, bool, number or null.
+  _getPrefValue(pref) {
+    switch (this._prefs.getPrefType(pref)) {
+      case Ci.nsIPrefBranch.PREF_STRING:
+        return this._prefs.getStringPref(pref);
+      case Ci.nsIPrefBranch.PREF_INT:
+        return this._prefs.getIntPref(pref);
+      case Ci.nsIPrefBranch.PREF_BOOL:
+        return this._prefs.getBoolPref(pref);
+      //  case Ci.nsIPrefBranch.PREF_INVALID: handled by the fallthrough
+    }
+    return null;
   },
 
   _getAllPrefs() {
@@ -213,28 +215,57 @@ PrefStore.prototype = {
       // us not to apply (syncable) changes to preferences that are set locally
       // which have unsyncable urls.
       if (this._isSynced(pref) && !isUnsyncableURLPref(pref)) {
-        let isSet = this._prefs.isSet(pref);
+        let isSet = this._prefs.prefHasUserValue(pref);
         // Missing and default prefs get the null value, unless that `seen`
         // pref is set, in which case it always gets the value.
-        let forceValue = this._prefs.get(PREF_SYNC_SEEN_PREFIX + pref, false);
-        values[pref] = isSet || forceValue ? this._prefs.get(pref, null) : null;
+        let forceValue = this._prefs.getBoolPref(
+          PREF_SYNC_SEEN_PREFIX + pref,
+          false
+        );
+        if (isSet || forceValue) {
+          values[pref] = this._getPrefValue(pref);
+        } else {
+          values[pref] = null;
+        }
+        // If incoming and outgoing don't match then either the user toggled a
+        // pref that doesn't match an incoming non-default value for that pref
+        // during a sync (unlikely!) or it refused to stick and is behaving oddly.
+        if (this._incomingPrefs) {
+          let inValue = this._incomingPrefs[pref];
+          let outValue = values[pref];
+          if (inValue != null && outValue != null && inValue != outValue) {
+            this._log.debug(`Incoming pref '${pref}' refused to stick?`);
+            this._log.trace(`Incoming: '${inValue}', outgoing: '${outValue}'`);
+          }
+        }
         // If this is a special "sync-seen" pref, and it's not the default value,
         // set the seen pref to true.
         if (
           isSet &&
-          this._prefs.get(PREF_SYNC_SEEN_PREFIX + pref, false) === false
+          this._prefs.getBoolPref(PREF_SYNC_SEEN_PREFIX + pref, false) === false
         ) {
           this._log.trace(`toggling sync-seen pref for '${pref}' to true`);
-          this._prefs.set(PREF_SYNC_SEEN_PREFIX + pref, true);
+          this._prefs.setBoolPref(PREF_SYNC_SEEN_PREFIX + pref, true);
         }
       }
     }
     return values;
   },
 
+  _maybeLogPrefChange(pref, incomingValue, existingValue) {
+    if (incomingValue != existingValue) {
+      this._log.debug(`Adjusting preference "${pref}" to the incoming value`);
+      // values are PII, so must only be logged at trace.
+      this._log.trace(`Existing: ${existingValue}. Incoming: ${incomingValue}`);
+    }
+  },
+
   _setAllPrefs(values) {
     const selectedThemeIDPref = "extensions.activeThemeID";
-    let selectedThemeIDBefore = this._prefs.get(selectedThemeIDPref, null);
+    let selectedThemeIDBefore = this._prefs.getStringPref(
+      selectedThemeIDPref,
+      null
+    );
     let selectedThemeIDAfter = selectedThemeIDBefore;
 
     // Update 'services.sync.prefs.sync.foo.pref' before 'foo.pref', otherwise
@@ -245,40 +276,9 @@ PrefStore.prototype = {
     for (let pref of prefs) {
       let value = values[pref];
       if (!this._isSynced(pref)) {
-        // An extra complication just so we can warn when we decline to sync a
-        // preference due to no local control pref.
-        if (!pref.startsWith(PREF_SYNC_PREFS_PREFIX)) {
-          // this is an incoming pref - if the incoming value is not null and
-          // there's no local control pref, then it means we would have previously
-          // applied a value, but now will decline to.
-          // We need to check this here rather than in _isSynced because the
-          // default list of prefs we sync has changed, so we don't want to report
-          // this message when we wouldn't have actually applied a value.
-          // We should probably remove all of this in ~ Firefox 80.
-          if (value !== null) {
-            // null means "use the default value"
-            let controlPref = PREF_SYNC_PREFS_PREFIX + pref;
-            let controlPrefExists;
-            try {
-              Services.prefs.getBoolPref(controlPref);
-              controlPrefExists = true;
-            } catch (ex) {
-              controlPrefExists = false;
-            }
-            if (!controlPrefExists) {
-              // This is a long message and written to both the sync log and the
-              // console, but note that users who have not customized the control
-              // prefs will never see this.
-              let msg =
-                `Not syncing the preference '${pref}' because it has no local ` +
-                `control preference (${PREF_SYNC_PREFS_PREFIX}${pref}) and ` +
-                `the preference ${PREF_SYNC_PREFS_ARBITRARY} isn't true. ` +
-                `See ${lazy.PREFS_DOC_URL} for more information`;
-              console.warn(msg);
-              this._log.warn(msg);
-            }
-          }
-        }
+        // It's unusual for us to find an incoming preference (ie, a pref some other
+        // instance thinks is syncable) which we don't think is syncable.
+        this._log.trace(`Ignoring incoming unsyncable preference "${pref}"`);
         continue;
       }
 
@@ -297,10 +297,43 @@ PrefStore.prototype = {
         default:
           if (value == null) {
             // Pref has gone missing. The best we can do is reset it.
-            this._prefs.reset(pref);
+            if (this._prefs.prefHasUserValue(pref)) {
+              this._log.debug(`Clearing existing local preference "${pref}"`);
+              this._log.trace(
+                `Existing local value for preference: ${this._getPrefValue(
+                  pref
+                )}`
+              );
+            }
+            this._prefs.clearUserPref(pref);
           } else {
             try {
-              this._prefs.set(pref, value);
+              switch (typeof value) {
+                case "string":
+                  this._maybeLogPrefChange(
+                    pref,
+                    value,
+                    this._prefs.getStringPref(pref, undefined)
+                  );
+                  this._prefs.setStringPref(pref, value);
+                  break;
+                case "number":
+                  this._maybeLogPrefChange(
+                    pref,
+                    value,
+                    this._prefs.getIntPref(pref, undefined)
+                  );
+                  this._prefs.setIntPref(pref, value);
+                  break;
+                case "boolean":
+                  this._maybeLogPrefChange(
+                    pref,
+                    value,
+                    this._prefs.getBoolPref(pref, undefined)
+                  );
+                  this._prefs.setBoolPref(pref, value);
+                  break;
+              }
             } catch (ex) {
               this._log.trace(`Failed to set pref: ${pref}`, ex);
             }
@@ -308,8 +341,10 @@ PrefStore.prototype = {
           // If there's a "sync-seen" pref for this it gets toggled to true
           // regardless of the value.
           let seenPref = PREF_SYNC_SEEN_PREFIX + pref;
-          if (this._prefs.get(seenPref, undefined) === false) {
-            this._prefs.set(PREF_SYNC_SEEN_PREFIX + pref, true);
+          if (
+            this._prefs.getPrefType(seenPref) != Ci.nsIPrefBranch.PREF_INVALID
+          ) {
+            this._prefs.setBoolPref(PREF_SYNC_SEEN_PREFIX + pref, true);
           }
       }
     }
@@ -351,7 +386,7 @@ PrefStore.prototype = {
     return allprefs;
   },
 
-  async changeItemID(oldID, newID) {
+  async changeItemID() {
     this._log.trace("PrefStore GUID is constant!");
   },
 
@@ -371,11 +406,11 @@ PrefStore.prototype = {
     return record;
   },
 
-  async create(record) {
+  async create() {
     this._log.trace("Ignoring create request");
   },
 
-  async remove(record) {
+  async remove() {
     this._log.trace("Ignoring remove request");
   },
 
@@ -386,6 +421,7 @@ PrefStore.prototype = {
     }
 
     this._log.trace("Received pref updates, applying...");
+    this._incomingPrefs = record.value;
     this._setAllPrefs(record.value);
   },
 
@@ -410,10 +446,10 @@ PrefTracker.prototype = {
   },
 
   get modified() {
-    return Svc.Prefs.get("engine.prefs.modified", false);
+    return Svc.PrefBranch.getBoolPref("engine.prefs.modified", false);
   },
   set modified(value) {
-    Svc.Prefs.set("engine.prefs.modified", value);
+    Svc.PrefBranch.setBoolPref("engine.prefs.modified", value);
   },
 
   clearChangedIDs: function clearChangedIDs() {
@@ -423,7 +459,7 @@ PrefTracker.prototype = {
   __prefs: null,
   get _prefs() {
     if (!this.__prefs) {
-      this.__prefs = new Preferences();
+      this.__prefs = Services.prefs.getBranch("");
     }
     return this.__prefs;
   },
@@ -450,7 +486,7 @@ PrefTracker.prototype = {
         // which prefs are synced or a regular pref change.
         if (
           data.indexOf(PREF_SYNC_PREFS_PREFIX) == 0 ||
-          this._prefs.get(PREF_SYNC_PREFS_PREFIX + data, false)
+          this._prefs.getBoolPref(PREF_SYNC_PREFS_PREFIX + data, false)
         ) {
           this.score += SCORE_INCREMENT_XLARGE;
           this.modified = true;

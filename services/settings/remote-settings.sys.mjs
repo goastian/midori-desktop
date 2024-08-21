@@ -11,15 +11,12 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Database: "resource://services-settings/Database.sys.mjs",
   FilterExpressions:
     "resource://gre/modules/components-utils/FilterExpressions.sys.mjs",
+  pushBroadcastService: "resource://gre/modules/PushBroadcastService.sys.mjs",
   RemoteSettingsClient:
     "resource://services-settings/RemoteSettingsClient.sys.mjs",
   SyncHistory: "resource://services-settings/SyncHistory.sys.mjs",
   UptakeTelemetry: "resource://services-common/uptake-telemetry.sys.mjs",
   Utils: "resource://services-settings/Utils.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  pushBroadcastService: "resource://gre/modules/PushBroadcastService.jsm",
 });
 
 const PREF_SETTINGS_BRANCH = "services.settings.";
@@ -42,12 +39,12 @@ const BROADCAST_ID = "remote-settings/monitor_changes";
 // Signer to be used when not specified (see Ci.nsIContentSignatureVerifier).
 const DEFAULT_SIGNER = "remote-settings.content-signature.mozilla.org";
 
-XPCOMUtils.defineLazyGetter(lazy, "gPrefs", () => {
+ChromeUtils.defineLazyGetter(lazy, "gPrefs", () => {
   return Services.prefs.getBranch(PREF_SETTINGS_BRANCH);
 });
-XPCOMUtils.defineLazyGetter(lazy, "console", () => lazy.Utils.log);
+ChromeUtils.defineLazyGetter(lazy, "console", () => lazy.Utils.log);
 
-XPCOMUtils.defineLazyGetter(lazy, "gSyncHistory", () => {
+ChromeUtils.defineLazyGetter(lazy, "gSyncHistory", () => {
   const prefSize = lazy.gPrefs.getIntPref(PREF_SETTINGS_SYNC_HISTORY_SIZE, 100);
   const size = Math.min(Math.max(prefSize, 1000), 10);
   return new lazy.SyncHistory(TELEMETRY_SOURCE_SYNC, { size });
@@ -197,6 +194,9 @@ function remoteSettingsFunction() {
     trigger = "manual",
     full = false,
   } = {}) => {
+    if (lazy.Utils.shouldSkipRemoteActivityDueToTests) {
+      return;
+    }
     // When running in full mode, we ignore last polling status.
     if (full) {
       lazy.gPrefs.clearUserPref(PREF_SETTINGS_SERVER_BACKOFF);
@@ -223,7 +223,7 @@ function remoteSettingsFunction() {
 
     // Check if the server backoff time is elapsed.
     if (lazy.gPrefs.prefHasUserValue(PREF_SETTINGS_SERVER_BACKOFF)) {
-      const backoffReleaseTime = lazy.gPrefs.getCharPref(
+      const backoffReleaseTime = lazy.gPrefs.getStringPref(
         PREF_SETTINGS_SERVER_BACKOFF
       );
       const remainingMilliseconds =
@@ -288,7 +288,7 @@ function remoteSettingsFunction() {
     // Every time we register a new client, we have to fetch the whole list again.
     const lastEtag = _invalidatePolling
       ? ""
-      : lazy.gPrefs.getCharPref(PREF_SETTINGS_LAST_ETAG, "");
+      : lazy.gPrefs.getStringPref(PREF_SETTINGS_LAST_ETAG, "");
 
     let pollResult;
     try {
@@ -352,7 +352,10 @@ function remoteSettingsFunction() {
         "Server asks clients to backoff for ${backoffSeconds} seconds"
       );
       const backoffReleaseTime = Date.now() + backoffSeconds * 1000;
-      lazy.gPrefs.setCharPref(PREF_SETTINGS_SERVER_BACKOFF, backoffReleaseTime);
+      lazy.gPrefs.setStringPref(
+        PREF_SETTINGS_SERVER_BACKOFF,
+        backoffReleaseTime
+      );
     }
 
     // Record new update time and the difference between local and server time.
@@ -450,7 +453,7 @@ function remoteSettingsFunction() {
     }
 
     // Save current Etag for next poll.
-    lazy.gPrefs.setCharPref(PREF_SETTINGS_LAST_ETAG, currentEtag);
+    lazy.gPrefs.setStringPref(PREF_SETTINGS_LAST_ETAG, currentEtag);
 
     // Report the global synchronization success.
     const status = lazy.UptakeTelemetry.STATUS.SUCCESS;
@@ -487,15 +490,22 @@ function remoteSettingsFunction() {
   /**
    * Returns an object with polling status information and the list of
    * known remote settings collections.
+   * @param {Object} options
+   * @param {boolean?} options.localOnly (optional) If set to `true`, do not contact the server.
    */
-  remoteSettings.inspect = async () => {
-    // Make sure we fetch the latest server info, use a random cache bust value.
-    const randomCacheBust = 99990000 + Math.floor(Math.random() * 9999);
-    const { changes, currentEtag: serverTimestamp } =
-      await lazy.Utils.fetchLatestChanges(lazy.Utils.SERVER_URL, {
-        expected: randomCacheBust,
-      });
+  remoteSettings.inspect = async (options = {}) => {
+    const { localOnly = false } = options;
 
+    let changes = [];
+    let serverTimestamp = null;
+    if (!localOnly) {
+      // Make sure we fetch the latest server info, use a random cache bust value.
+      const randomCacheBust = 99990000 + Math.floor(Math.random() * 9999);
+      ({ changes, currentEtag: serverTimestamp } =
+        await lazy.Utils.fetchLatestChanges(lazy.Utils.SERVER_URL, {
+          expected: randomCacheBust,
+        }));
+    }
     const collections = await Promise.all(
       changes.map(async change => {
         const { bucket, collection, last_modified: serverTimestamp } = change;
@@ -523,7 +533,7 @@ function remoteSettingsFunction() {
       serverURL: lazy.Utils.SERVER_URL,
       pollingEndpoint: lazy.Utils.SERVER_URL + lazy.Utils.CHANGES_PATH,
       serverTimestamp,
-      localTimestamp: lazy.gPrefs.getCharPref(PREF_SETTINGS_LAST_ETAG, null),
+      localTimestamp: lazy.gPrefs.getStringPref(PREF_SETTINGS_LAST_ETAG, null),
       lastCheck: lazy.gPrefs.getIntPref(PREF_SETTINGS_LAST_UPDATE, 0),
       mainBucket: lazy.Utils.actualBucketName(
         AppConstants.REMOTE_SETTINGS_DEFAULT_BUCKET
@@ -534,6 +544,7 @@ function remoteSettingsFunction() {
       history: {
         [TELEMETRY_SOURCE_SYNC]: await lazy.gSyncHistory.list(),
       },
+      isSynchronizationBroken: await isSynchronizationBroken(),
     };
   };
 

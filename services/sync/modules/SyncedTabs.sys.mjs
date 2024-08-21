@@ -3,18 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-import { Log } from "resource://gre/modules/Log.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   CLIENT_NOT_CONFIGURED: "resource://services-sync/constants.sys.mjs",
-  Preferences: "resource://gre/modules/Preferences.sys.mjs",
   Weave: "resource://services-sync/main.sys.mjs",
 });
 
 // The Sync XPCOM service
-XPCOMUtils.defineLazyGetter(lazy, "weaveXPCService", function () {
+ChromeUtils.defineLazyGetter(lazy, "weaveXPCService", function () {
   return Cc["@mozilla.org/weave/service;1"].getService(
     Ci.nsISupports
   ).wrappedJSObject;
@@ -35,11 +33,29 @@ const TOPIC_TABS_CHANGED = "services.sync.tabs.changed";
 // of tabs "fresh enough" and don't force a new sync.
 const TABS_FRESH_ENOUGH_INTERVAL_SECONDS = 30;
 
-XPCOMUtils.defineLazyGetter(lazy, "log", function () {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
+  const { Log } = ChromeUtils.importESModule(
+    "resource://gre/modules/Log.sys.mjs"
+  );
   let log = Log.repository.getLogger("Sync.RemoteTabs");
   log.manageLevelFromPref("services.sync.log.logger.tabs");
   return log;
 });
+
+// We allow some test preferences to simulate many and inactive tabs.
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "NUM_FAKE_INACTIVE_TABS",
+  "services.sync.syncedTabs.numFakeInactiveTabs",
+  0
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "NUM_FAKE_ACTIVE_TABS",
+  "services.sync.syncedTabs.numFakeActiveTabs",
+  0
+);
 
 // A private singleton that does the work.
 let SyncedTabsInternal = {
@@ -62,6 +78,7 @@ let SyncedTabsInternal = {
       icon,
       client: client.id,
       lastUsed: tab.lastUsed,
+      inactive: tab.inactive,
     };
   },
 
@@ -82,17 +99,26 @@ let SyncedTabsInternal = {
     return reFilter.test(tab.url) || reFilter.test(tab.title);
   },
 
-  _createRecentTabsList(clients, maxCount) {
+  _createRecentTabsList(
+    clients,
+    maxCount,
+    extraParams = { removeAllDupes: true, removeDeviceDupes: false }
+  ) {
     let tabs = [];
 
     for (let client of clients) {
+      if (extraParams.removeDeviceDupes) {
+        client.tabs = this._filterRecentTabsDupes(client.tabs);
+      }
       for (let tab of client.tabs) {
         tab.device = client.name;
         tab.deviceType = client.clientType;
       }
       tabs = [...tabs, ...client.tabs.reverse()];
     }
-    tabs = this._filterRecentTabsDupes(tabs);
+    if (extraParams.removeAllDupes) {
+      tabs = this._filterRecentTabsDupes(tabs);
+    }
     tabs = tabs.sort((a, b) => b.lastUsed - a.lastUsed).slice(0, maxCount);
     return tabs;
   },
@@ -118,7 +144,7 @@ let SyncedTabsInternal = {
     }
 
     // A boolean that controls whether we should show the icon from the remote tab.
-    const showRemoteIcons = lazy.Preferences.get(
+    const showRemoteIcons = Services.prefs.getBoolPref(
       "services.sync.syncedTabs.showRemoteIcons",
       true
     );
@@ -134,7 +160,27 @@ let SyncedTabsInternal = {
       let clientRepr = await this._makeClient(client);
       lazy.log.debug("Processing client", clientRepr);
 
-      for (let tab of client.tabs) {
+      let tabs = Array.from(client.tabs); // avoid modifying in-place.
+      // For QA, UX, etc, we allow "fake tabs" to be added to each device.
+      for (let i = 0; i < lazy.NUM_FAKE_INACTIVE_TABS; i++) {
+        tabs.push({
+          icon: null,
+          lastUsed: 1000,
+          title: `Fake inactive tab ${i}`,
+          urlHistory: [`https://example.com/inactive/${i}`],
+          inactive: true,
+        });
+      }
+      for (let i = 0; i < lazy.NUM_FAKE_ACTIVE_TABS; i++) {
+        tabs.push({
+          icon: null,
+          lastUsed: Date.now() - 1000 + i,
+          title: `Fake tab ${i}`,
+          urlHistory: [`https://example.com/${i}`],
+        });
+      }
+
+      for (let tab of tabs) {
         let url = tab.urlHistory[0];
         lazy.log.trace("remote tab", url);
 
@@ -161,7 +207,10 @@ let SyncedTabsInternal = {
   async syncTabs(force) {
     if (!force) {
       // Don't bother refetching tabs if we already did so recently
-      let lastFetch = lazy.Preferences.get("services.sync.lastTabFetch", 0);
+      let lastFetch = Services.prefs.getIntPref(
+        "services.sync.lastTabFetch",
+        0
+      );
       let now = Math.floor(Date.now() / 1000);
       if (now - lastFetch < TABS_FRESH_ENOUGH_INTERVAL_SECONDS) {
         lazy.log.info("_refetchTabs was done recently, do not doing it again");
@@ -206,7 +255,7 @@ let SyncedTabsInternal = {
         // The tabs engine just finished syncing
         // Set our lastTabFetch pref here so it tracks both explicit sync calls
         // and normally scheduled ones.
-        lazy.Preferences.set(
+        Services.prefs.setIntPref(
           "services.sync.lastTabFetch",
           Math.floor(Date.now() / 1000)
         );
@@ -214,7 +263,7 @@ let SyncedTabsInternal = {
         break;
       case "weave:service:start-over":
         // start-over needs to notify so consumers find no tabs.
-        lazy.Preferences.reset("services.sync.lastTabFetch");
+        Services.prefs.clearUserPref("services.sync.lastTabFetch");
         Services.obs.notifyObservers(null, TOPIC_TABS_CHANGED);
         break;
       case "nsPref:changed":
@@ -289,6 +338,10 @@ export var SyncedTabs = {
     return this._internal.syncTabs(force);
   },
 
+  createRecentTabsList(clients, maxCount, extraParams) {
+    return this._internal._createRecentTabsList(clients, maxCount, extraParams);
+  },
+
   sortTabClientsByLastUsed(clients) {
     // First sort the list of tabs for each client. Note that
     // this module promises that the objects it returns are never
@@ -325,8 +378,8 @@ export var SyncedTabs = {
   // Get list of synced tabs across all devices/clients
   // truncated by value of maxCount param, sorted by
   // lastUsed value, and filtered for duplicate URLs
-  async getRecentTabs(maxCount) {
+  async getRecentTabs(maxCount, extraParams) {
     let clients = await this.getTabClients();
-    return this._internal._createRecentTabsList(clients, maxCount);
+    return this._internal._createRecentTabsList(clients, maxCount, extraParams);
   },
 };

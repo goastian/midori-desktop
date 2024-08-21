@@ -4,14 +4,16 @@
 
 import { RESTRequest } from "resource://services-common/rest.sys.mjs";
 
-const { log } = ChromeUtils.import(
-  "resource://gre/modules/FxAccountsCommon.js"
-);
+import {
+  log,
+  SCOPE_APP_SYNC,
+  SCOPE_PROFILE,
+} from "resource://gre/modules/FxAccountsCommon.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "fxAccounts", () => {
+ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
   return ChromeUtils.importESModule(
     "resource://gre/modules/FxAccounts.sys.mjs"
   ).getFxAccountsSingleton();
@@ -53,26 +55,26 @@ const SYNC_PARAM = "sync";
 
 export var FxAccountsConfig = {
   async promiseEmailURI(email, entrypoint, extraParams = {}) {
-    return this._buildURL("", {
-      extraParams: { entrypoint, email, service: SYNC_PARAM, ...extraParams },
-    });
-  },
-
-  async promiseConnectAccountURI(entrypoint, extraParams = {}) {
+    const authParams = await this._getAuthParams();
     return this._buildURL("", {
       extraParams: {
         entrypoint,
-        action: "email",
-        service: SYNC_PARAM,
+        email,
+        ...authParams,
         ...extraParams,
       },
     });
   },
 
-  async promiseForceSigninURI(entrypoint, extraParams = {}) {
-    return this._buildURL("force_auth", {
-      extraParams: { entrypoint, service: SYNC_PARAM, ...extraParams },
-      addAccountIdentifiers: true,
+  async promiseConnectAccountURI(entrypoint, extraParams = {}) {
+    const authParams = await this._getAuthParams();
+    return this._buildURL("", {
+      extraParams: {
+        entrypoint,
+        action: "email",
+        ...authParams,
+        ...extraParams,
+      },
     });
   },
 
@@ -176,7 +178,7 @@ export var FxAccountsConfig = {
 
   resetConfigURLs() {
     let autoconfigURL = this.getAutoConfigURL();
-    if (!autoconfigURL) {
+    if (autoconfigURL) {
       return;
     }
     // They have the autoconfig uri pref set, so we clear all the prefs that we
@@ -189,7 +191,7 @@ export var FxAccountsConfig = {
   },
 
   getAutoConfigURL() {
-    let pref = Services.prefs.getCharPref(
+    let pref = Services.prefs.getStringPref(
       "identity.fxaccounts.autoconfig.uri",
       ""
     );
@@ -253,31 +255,31 @@ export var FxAccountsConfig = {
       if (!authServerBase.endsWith("/v1")) {
         authServerBase += "/v1";
       }
-      Services.prefs.setCharPref(
+      Services.prefs.setStringPref(
         "identity.fxaccounts.auth.uri",
         authServerBase
       );
-      Services.prefs.setCharPref(
+      Services.prefs.setStringPref(
         "identity.fxaccounts.remote.oauth.uri",
         config.oauth_server_base_url + "/v1"
       );
       // At the time of landing this, our servers didn't yet answer with pairing_server_base_uri.
       // Remove this condition check once Firefox 68 is stable.
       if (config.pairing_server_base_uri) {
-        Services.prefs.setCharPref(
+        Services.prefs.setStringPref(
           "identity.fxaccounts.remote.pairing.uri",
           config.pairing_server_base_uri
         );
       }
-      Services.prefs.setCharPref(
+      Services.prefs.setStringPref(
         "identity.fxaccounts.remote.profile.uri",
         config.profile_server_base_url + "/v1"
       );
-      Services.prefs.setCharPref(
+      Services.prefs.setStringPref(
         "identity.sync.tokenserver.uri",
         config.sync_tokenserver_base_url + "/1.0/sync/1.5"
       );
-      Services.prefs.setCharPref("identity.fxaccounts.remote.root", rootURL);
+      Services.prefs.setStringPref("identity.fxaccounts.remote.root", rootURL);
 
       // Ensure the webchannel is pointed at the correct uri
       lazy.EnsureFxAccountsWebChannel();
@@ -331,5 +333,20 @@ export var FxAccountsConfig = {
   // For test purposes, returns a Promise.
   getSignedInUser() {
     return lazy.fxAccounts.getSignedInUser();
+  },
+
+  _isOAuthFlow() {
+    return Services.prefs.getBoolPref(
+      "identity.fxaccounts.oauth.enabled",
+      false
+    );
+  },
+
+  async _getAuthParams() {
+    if (this._isOAuthFlow()) {
+      const scopes = [SCOPE_APP_SYNC, SCOPE_PROFILE];
+      return lazy.fxAccounts._internal.beginOAuthFlow(scopes);
+    }
+    return { service: SYNC_PARAM };
   },
 };

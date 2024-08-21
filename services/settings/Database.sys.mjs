@@ -2,21 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
   CommonUtils: "resource://services-common/utils.sys.mjs",
+  IDBHelpers: "resource://services-settings/IDBHelpers.sys.mjs",
+  ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
   Utils: "resource://services-settings/Utils.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  IDBHelpers: "resource://services-settings/IDBHelpers.jsm",
-  ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
-});
-XPCOMUtils.defineLazyGetter(lazy, "console", () => lazy.Utils.log);
+ChromeUtils.defineLazyGetter(lazy, "console", () => lazy.Utils.log);
 
 /**
  * Database is a tiny wrapper with the objective
@@ -305,8 +301,6 @@ export class Database {
             request.onsuccess = e => resolve(e.target.result);
             request.onerror = e => reject(e);
           });
-
-          console.error("allRecords", allRecords);
 
           // Compare known records IDs to those stored along the attachments.
           const currentRecordsIDs = new Set(allRecords.map(r => r.id));

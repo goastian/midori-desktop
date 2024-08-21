@@ -3,20 +3,6 @@ http://creativecommons.org/publicdomain/zero/1.0/ */
 
 "use strict";
 
-const { TestUtils } = ChromeUtils.importESModule(
-  "resource://testing-common/TestUtils.sys.mjs"
-);
-
-const { Database } = ChromeUtils.importESModule(
-  "resource://services-settings/Database.sys.mjs"
-);
-const { RemoteSettingsWorker } = ChromeUtils.importESModule(
-  "resource://services-settings/RemoteSettingsWorker.sys.mjs"
-);
-const { RemoteSettingsClient } = ChromeUtils.importESModule(
-  "resource://services-settings/RemoteSettingsClient.sys.mjs"
-);
-
 add_task(async function test_shutdown_abort_after_start() {
   // Start a forever transaction:
   let counter = 0;
@@ -41,7 +27,7 @@ add_task(async function test_shutdown_abort_after_start() {
         const request = store
           .index("cid")
           .openCursor(IDBKeyRange.only("foopydoo/foo"));
-        request.onsuccess = event => {
+        request.onsuccess = () => {
           makeRequest();
         };
       }
@@ -74,7 +60,7 @@ add_task(async function test_shutdown_immediate_abort() {
       let request = store
         .index("cid")
         .openCursor(IDBKeyRange.only("foopydoo/foo"));
-      request.onsuccess = event => {
+      request.onsuccess = () => {
         // Abort immediately.
         Database._shutdownHandler();
         request = store

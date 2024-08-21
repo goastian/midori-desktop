@@ -43,7 +43,9 @@ async function assertChildGuids(folderGuid, expectedChildGuids, message) {
 async function cleanup(engine, server) {
   await engine._tracker.stop();
   await engine._store.wipe();
-  Svc.Prefs.resetBranch("");
+  for (const pref of Svc.PrefBranch.getChildList("")) {
+    Svc.PrefBranch.clearUserPref(pref);
+  }
   Service.recordManager.clearCache();
   await promiseStopServer(server);
 }
@@ -217,7 +219,7 @@ add_task(async function test_prefs_change_during_sync() {
     } finally {
       _("Updating local pref value");
       // Change the value of a synced pref.
-      Services.prefs.setCharPref(TEST_PREF, "hello");
+      Services.prefs.setStringPref(TEST_PREF, "hello");
       await engine._tracker.asyncObserver.promiseObserversComplete();
     }
   };

@@ -1,9 +1,6 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const { PromiseUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/PromiseUtils.sys.mjs"
-);
 const { Observers } = ChromeUtils.importESModule(
   "resource://services-common/observers.sys.mjs"
 );
@@ -66,7 +63,9 @@ Observers.add("weave:engine:sync:start", engineObserver);
 Observers.add("weave:engine:sync:finish", engineObserver);
 
 async function cleanup(engine) {
-  Svc.Prefs.resetBranch("");
+  for (const pref of Svc.PrefBranch.getChildList("")) {
+    Svc.PrefBranch.clearUserPref(pref);
+  }
   engine.wasReset = false;
   engine.wasSynced = false;
   engineObserver.reset();
@@ -170,11 +169,11 @@ add_task(async function test_enabled() {
   await engine.initialize();
   try {
     Assert.ok(!engine.enabled);
-    Svc.Prefs.set("engine.steam", true);
+    Svc.PrefBranch.setBoolPref("engine.steam", true);
     Assert.ok(engine.enabled);
 
     engine.enabled = false;
-    Assert.ok(!Svc.Prefs.get("engine.steam"));
+    Assert.ok(!Svc.PrefBranch.getBoolPref("engine.steam"));
   } finally {
     await cleanup(engine);
   }
@@ -220,7 +219,7 @@ add_task(async function test_disabled_no_track() {
   changes = await tracker.getChangedIDs();
   do_check_empty(changes);
 
-  let promisePrefChangeHandled = PromiseUtils.defer();
+  let promisePrefChangeHandled = Promise.withResolvers();
   const origMethod = tracker.onEngineEnabledChanged;
   tracker.onEngineEnabledChanged = async (...args) => {
     await origMethod.apply(tracker, args);
@@ -236,8 +235,8 @@ add_task(async function test_disabled_no_track() {
   await tracker.addChangedID("abcdefghijkl");
   changes = await tracker.getChangedIDs();
   Assert.ok(0 < changes.abcdefghijkl);
-  promisePrefChangeHandled = PromiseUtils.defer();
-  Svc.Prefs.set("engine." + engine.prefName, false);
+  promisePrefChangeHandled = Promise.withResolvers();
+  Svc.PrefBranch.setBoolPref("engine." + engine.prefName, false);
   await promisePrefChangeHandled.promise;
   Assert.ok(!tracker._isTracking);
   changes = await tracker.getChangedIDs();

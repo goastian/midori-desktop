@@ -1,0 +1,770 @@
+{
+  "data": [
+    {
+      "schema": 1719499481119,
+      "imageSize": 24,
+      "attachment": {
+        "hash": "fd9539fe7f711e5174917605a638868b065773622803d270128dc89cd28e13a7",
+        "size": 1054,
+        "filename": "Icon%2024x24.svg",
+        "location": "main-workspace/search-config-icons/c88379f9-f020-47a2-9ef8-c7699d65e410.svg",
+        "mimetype": "image/svg+xml"
+      },
+      "engineIdentifiers": [
+        "qwant"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\" && env.version|versionCompare(\"128.0a1\") > 0",
+      "id": "39979158-80cf-4f0c-8bd6-9220eb09e751",
+      "last_modified": 1719504277655
+    },
+    {
+      "schema": 1719499575129,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "912d20feefcba57d43bffff5e245b8c1e3865155ed686d8ad253bbab71116e83",
+        "size": 1054,
+        "filename": "Icon%2016x16.svg",
+        "location": "main-workspace/search-config-icons/59fbd815-ba40-494a-b56a-40b3531dd10b.svg",
+        "mimetype": "image/svg+xml"
+      },
+      "engineIdentifiers": [
+        "qwant"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\" && env.version|versionCompare(\"128.0a1\") > 0",
+      "id": "7bf4ca37-e2b8-4d31-a1c3-979bc0e85131",
+      "last_modified": 1719504277653
+    },
+    {
+      "schema": 1719398670645,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "eab887d630aef83a06bdcc6af914eccc7e7d9bccb4bd5e0d120f8a26f2cfbe79",
+        "size": 970,
+        "filename": "qwant-16-firefox.png",
+        "location": "main-workspace/search-config-icons/46a495f4-9091-42c5-b7f7-a24d59477ae5.png",
+        "mimetype": "image/png"
+      },
+      "engineIdentifiers": [
+        "qwant"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\" && env.version|versionCompare(\"128.0a1\") <= 0",
+      "id": "6a83583a-f0ba-fd39-2fdb-fd2b6990ea3b",
+      "last_modified": 1719504277650
+    },
+    {
+      "schema": 1707265339663,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "617dec5d635efb0a12d0de935c6999ef0249f4a63c62bdcb96551518bc3d1812",
+        "size": 2672,
+        "filename": "yahoo-jp-auctions-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/d424ae0b-82e7-42fc-a10a-a607bba3642a.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "yahoo-jp-auctions"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "a06db97d-1210-ea2e-5474-0e2f7d295bfd",
+      "last_modified": 1707330724491
+    },
+    {
+      "schema": 1707265325417,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "ca8f102ac4f35189ebcb786d080843b603b234f89b8d8b1c0ef27a0ab7148182",
+        "size": 5430,
+        "filename": "yahoo-jp-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/b071a229-712f-4e13-99f4-61283d1c3fb4.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "yahoo-jp"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "74793ce1-a918-a5eb-d3c0-2aadaff3c88c",
+      "last_modified": 1707330724489
+    },
+    {
+      "schema": 1707265314687,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "809697f48848e7c3638d5f3e0b224ea60b3800504e7bd8417854d55989b85196",
+        "size": 304,
+        "filename": "wolnelektury-pl-16-firefox.png",
+        "location": "main-workspace/search-config-icons/4665f707-e315-4ac0-a12e-2455f0123758.png",
+        "mimetype": "image/png"
+      },
+      "engineIdentifiers": [
+        "wolnelektury-pl"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "e718e983-09aa-e8f6-b25f-cd4b395d4785",
+      "last_modified": 1707330724487
+    },
+    {
+      "schema": 1707265299492,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "5d53ef1866a08cc29011f5f2a9ce99bbf37cf42e80de7f0e8cc30d13337e8187",
+        "size": 318,
+        "filename": "wiktionary-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/22d846d9-468d-457b-9e3a-01166e4cc404.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "wiktionary*"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "91a9672d-e945-8e1e-0996-aefdb0190716",
+      "last_modified": 1707330724485
+    },
+    {
+      "schema": 1707265280786,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "62d2faa3a8322b1f643aab6e045837500ebe3049c5cb140cb44c4dfc7290337a",
+        "size": 884,
+        "filename": "wikipedia-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/bcdcafec-9b52-4f8b-82fe-abdb2c533cdb.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "wikipedia*"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "101ce01d-2691-b729-7f16-9d389803384b",
+      "last_modified": 1707330724482
+    },
+    {
+      "schema": 1707265270195,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "dd5cab3711f778677859e86000a127ed07a6175e8e58aecb0fba71b825ce76d7",
+        "size": 3638,
+        "filename": "webde-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/45da3463-8c66-4b48-a422-00c54f44a96b.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "webde"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "6f4da442-d31e-28f8-03af-797d16bbdd27",
+      "last_modified": 1707330724480
+    },
+    {
+      "schema": 1707265259585,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "9cd3da38e3938549434d1c3cba6fed249ffa7d91d9a6d7ffb5f4184f527cac76",
+        "size": 5430,
+        "filename": "vatera-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/c7aa740f-cef2-45da-aaba-331a74425985.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "vatera"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "5e03d6f4-6ee9-8bc8-cf22-7a5f2cf55c41",
+      "last_modified": 1707330724478
+    },
+    {
+      "schema": 1707265244672,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "1bf68aca7bfc75ca8485c3dac9a1daa13c1a3eb480688c32262096af6076adfa",
+        "size": 379,
+        "filename": "tyda-sv-SE-16-firefox.png",
+        "location": "main-workspace/search-config-icons/7d783537-313f-46db-bb4b-8878118884e4.png",
+        "mimetype": "image/png"
+      },
+      "engineIdentifiers": [
+        "tyda-sv-SE"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "a2c7d4e9-f770-51e1-0963-3c2c8401631d",
+      "last_modified": 1707330724476
+    },
+    {
+      "schema": 1707265228699,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "a1fd5d127a5f2590ddcd439b7a2abb3456b48217ea11daf0345b26e108f520e6",
+        "size": 1743,
+        "filename": "seznam-cz-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/aae88ab5-7f9e-4bd6-80cd-9bb0f6638a19.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "seznam-cz"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "84bb4962-e571-227a-9ef6-2ac5f2aac361",
+      "last_modified": 1707330724473
+    },
+    {
+      "schema": 1707265210999,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "c4d88cfa5262f6d2cf76b167281d25821c9e1770684b739ed6ad3cf7277a121b",
+        "size": 3638,
+        "filename": "salidzinilv-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/bc06c6d4-019c-4aa8-8958-813dc644452a.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "salidzinilv"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "fca3e3ee-56cd-f474-dc31-307fd24a891d",
+      "last_modified": 1707330724471
+    },
+    {
+      "schema": 1707265199776,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "247aa26993083705ce99a8e5612cdf262aca98cde86ba19afc964329ba95986a",
+        "size": 2468,
+        "filename": "readmoo-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/46bf2594-7779-42b7-be7b-212232ba2ba0.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "readmoo"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "e02f23df-8d48-2b1b-3b5c-6dd27302c61c",
+      "last_modified": 1707330724468
+    },
+    {
+      "schema": 1707265187818,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "b75ef04a805325e303c4195833cdd077d3d406f360b25b72502fc55880b9150b",
+        "size": 2053,
+        "filename": "rakuten-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/3d9337c7-0654-475b-bc03-710e0400b35e.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "rakuten"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "06cf7432-efd7-f244-927b-5e423005e1ea",
+      "last_modified": 1707330724466
+    },
+    {
+      "schema": 1707265170689,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "91d17ba44192a6430ffdb447ff3a11533ef964628f67c13480cc9470212d3d65",
+        "size": 5430,
+        "filename": "qwantjr-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/360f7074-bda7-4906-bd66-db38d4770056.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "qwantjr"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "f312610a-ebfb-a106-ea92-fd643c5d3636",
+      "last_modified": 1707330724464
+    },
+    {
+      "schema": 1707265148215,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "3b88f3ef3cbfaed127d679ec7e44a44fe8dcad688feb89a70a1a9447c1460d15",
+        "size": 1406,
+        "filename": "prisjakt-sv-SE-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/84ce4b9c-3998-4ca7-9856-3c9cb019da95.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "prisjakt-sv-SE"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "177aba42-9bed-4078-e36b-580e8794cd7f",
+      "last_modified": 1707330724459
+    },
+    {
+      "schema": 1707265137087,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "64800e32b24b2c8c0582750e1657426d56abd74b65682e20e892f82710d120b6",
+        "size": 790,
+        "filename": "priberam-16-firefox.png",
+        "location": "main-workspace/search-config-icons/e9432c7b-e80b-49ad-9c4f-8a69df8a63b4.png",
+        "mimetype": "image/png"
+      },
+      "engineIdentifiers": [
+        "priberam"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "0eec5640-6fde-d6fe-322a-c72c6d5bd5a2",
+      "last_modified": 1707330724457
+    },
+    {
+      "schema": 1707265120610,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "b0c6d1850265e3c946917232ca6c6ace3dad23347bfab4f81351eac569326d34",
+        "size": 2584,
+        "filename": "pazaruvaj-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/2951bdf6-b440-4543-83ba-4ca1318db69e.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "pazaruvaj"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "7efbed51-813c-581d-d8d3-f8758434e451",
+      "last_modified": 1707330724454
+    },
+    {
+      "schema": 1707265108111,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "189ed3031a2cefd3150c9e5b37bee1ffbc1f7850f7ac0621e4b8d262f2c1048c",
+        "size": 2639,
+        "filename": "odpiralni-16-firefox.png",
+        "location": "main-workspace/search-config-icons/2323c216-89f9-43e7-a519-9a23a256aa45.png",
+        "mimetype": "image/png"
+      },
+      "engineIdentifiers": [
+        "odpiralni"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "4e271681-3e0f-91ac-9750-03f665efc171",
+      "last_modified": 1707330724452
+    },
+    {
+      "schema": 1707265094264,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "723ac3228124926537d5a61284d60e198a52895195f9f69b967c578ef7a012ad",
+        "size": 5430,
+        "filename": "naver-kr-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/4111bef2-7258-4c9b-9f64-77cf545b697f.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "naver-kr"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "2bbe48f4-d3b8-c9e0-86e3-a54c37ec3335",
+      "last_modified": 1707330724449
+    },
+    {
+      "schema": 1707265073846,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "d7fdfd971d874f2ec6f209df6f6b8173d126cd3f7a25daacb94de4259efbcf16",
+        "size": 5430,
+        "filename": "mercadolivre-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/f8d4c276-9b04-4c70-8ff9-5c1faf55978c.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "mercadolivre"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "fed4f021-ff3e-942a-010e-afa43fda2136",
+      "last_modified": 1707330724446
+    },
+    {
+      "schema": 1707265061966,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "d7fdfd971d874f2ec6f209df6f6b8173d126cd3f7a25daacb94de4259efbcf16",
+        "size": 5430,
+        "filename": "mercadolibre-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/33e52a1d-1883-4a4b-aaf6-7e4f5b52cdfb.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "mercadolibre*"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "47da97b5-600f-c450-fd15-a52bb2169c11",
+      "last_modified": 1707330724443
+    },
+    {
+      "schema": 1707265027259,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "1474c93e49c209aca2a2df2acb61b64574805106bead6edebd67287de21920e0",
+        "size": 1812,
+        "filename": "mapy-cz-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/e94ddd93-1c38-42c0-847a-741f49305d7b.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "mapy-cz"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "b8ca5a94-8fff-27ad-6e00-96e244a32e21",
+      "last_modified": 1707330724440
+    },
+    {
+      "schema": 1707265012766,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "33ca72f1eac56793d1fd811189cedef98004a067c85b1143083b564814a4b0db",
+        "size": 1150,
+        "filename": "mailcom-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/4c43dc1a-e163-4560-9713-fae61c9c59b9.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "mailcom"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "87ac4cde-f581-398b-1e32-eb4079183b36",
+      "last_modified": 1707330724438
+    },
+    {
+      "schema": 1707264998628,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "a64f553b79fbb8c45734310dac401ad253ccd05aeabfa58bb5541daa6d8caf70",
+        "size": 252,
+        "filename": "longdo-16-firefox.png",
+        "location": "main-workspace/search-config-icons/9526a092-69d3-4010-bf09-d426f5574c5b.png",
+        "mimetype": "image/png"
+      },
+      "engineIdentifiers": [
+        "longdo"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "32d26d19-aeb0-5c01-32e8-f8970be9246f",
+      "last_modified": 1707330724435
+    },
+    {
+      "schema": 1707264911347,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "c3e8300801c5c585662f14fd8e819d635efd9830783dc3c631212927866e9898",
+        "size": 749,
+        "filename": "leo_ende_de-16-firefox.png",
+        "location": "main-workspace/search-config-icons/57b3cf6a-9cb2-4d3a-8839-54a3e62f49ec.png",
+        "mimetype": "image/png"
+      },
+      "engineIdentifiers": [
+        "leo_ende_de"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "b64f09fd-52d1-c48e-af23-4ce918e7bf3b",
+      "last_modified": 1707330724432
+    },
+    {
+      "schema": 1707264735197,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "c971ee33b8c0a57349669d957bf73070b0632b128c94748e845b57d5e15221a4",
+        "size": 1150,
+        "filename": "gulesider-NO-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/f3a89a46-c15c-4622-9035-cdf6773139cb.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "gulesider-NO"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "e7547f62-187b-b641-d462-e54a3f813d9a",
+      "last_modified": 1707330724429
+    },
+    {
+      "schema": 1707264399810,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "6da5620880159634213e197fafca1dde0272153be3e4590818533fab8d040770",
+        "size": 5430,
+        "filename": "google-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/644faa05-4deb-491b-ae95-0962aefabe55.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "google"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "fa0fc42c-d91d-fca7-34eb-806ff46062dc",
+      "last_modified": 1707330724427
+    },
+    {
+      "schema": 1707264398352,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "828c3ca82e9be483ae583e5a705dde57b24fd8431e192e3a2d0809871992afa5",
+        "size": 1122,
+        "filename": "gmx-16-firefox.png",
+        "location": "main-workspace/search-config-icons/a0cb1b08-4911-4db8-90f3-ee87da5bb9b5.png",
+        "mimetype": "image/png"
+      },
+      "engineIdentifiers": [
+        "gmx*"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "25de0352-aabb-d31f-15f7-bf9299fb004c",
+      "last_modified": 1707330724424
+    },
+    {
+      "schema": 1707264396942,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "f895a965b68d02e7391cc4504d9be75e1ba7f9b50a1dd59af77bb44a7769c08c",
+        "size": 1091,
+        "filename": "faclair-beag-16-firefox.jpg",
+        "location": "main-workspace/search-config-icons/d0e5c407-7b88-4030-8870-f44498141ec7.jpg",
+        "mimetype": "image/jpeg"
+      },
+      "engineIdentifiers": [
+        "faclair-beag"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "6d10d702-7bd6-1452-90a5-3df665a38f66",
+      "last_modified": 1707330724421
+    },
+    {
+      "schema": 1707264395634,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "150765e8e9b985ba5b820ac9b8e7623023d5a0e24f94663d5e9203d8d7598059",
+        "size": 1785,
+        "filename": "eudict-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/93c06725-f10f-44f6-b7db-05e22a6ab676.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "eudict"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "c411adc1-9661-4fb5-a4c1-8cfe74911943",
+      "last_modified": 1707330724418
+    },
+    {
+      "schema": 1707264394199,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "fdadf15c6eae7933c3d254ae6311112e0bc8a422c38c758189dbe6a4d7f6b718",
+        "size": 5430,
+        "filename": "ecosia-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/d0ab8a9e-0dc4-476b-bdb0-81b1d9b8f6cf.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "ecosia"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "001500a9-1a6c-3f5a-ba15-a5f5a075d256",
+      "last_modified": 1707330724415
+    },
+    {
+      "schema": 1707264392809,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "31a793dad95b5ffd02d39ebf14fc40877596f418f5926247487265034181dc8f",
+        "size": 1455,
+        "filename": "ebay-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/5a9068cd-a4fa-4600-97fc-59f380e3d651.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "ebay*"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "70fdd651-6c50-b7bb-09ec-7e85da259173",
+      "last_modified": 1707330724412
+    },
+    {
+      "schema": 1707264391458,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "d994f806b1e4225b50be5ab681b2cecf845cc216a19a432d878cea3cb815bafd",
+        "size": 2799,
+        "filename": "ddg-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/c6ae7df5-0396-4892-b76a-b35a00044a13.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "ddg"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "a06dc3fd-4bdb-41f3-2ebc-4cbed06a9bd3",
+      "last_modified": 1707330724410
+    },
+    {
+      "schema": 1707264390072,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "ca3cc8786977f6ffeb0546ff8f3bb2b7fd240d1956fbf86777dbf0e8bec9c03b",
+        "size": 5430,
+        "filename": "daum-kr-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/3ce9df7f-3e0a-4b26-add1-18e2857f6213.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "daum-kr"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "8831ce10-b1e4-6eb4-4975-83c67457288e",
+      "last_modified": 1707330724407
+    },
+    {
+      "schema": 1707264388636,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "7042293af6b04e421cb7b68dc599ac644b76939cdcf5970159e44f658dd6a0cc",
+        "size": 5430,
+        "filename": "coccoc-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/82083e19-25c5-4c3c-b269-3d8c0173e4e2.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "coccoc"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "0d7668a8-c3f4-cfee-cbc8-536511528937",
+      "last_modified": 1707330724404
+    },
+    {
+      "schema": 1707264387232,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "9140bd1b30953f41bc758d2c0ecc873f5163e4f51126c278991eccd38589c541",
+        "size": 283,
+        "filename": "ceneji-16-firefox.png",
+        "location": "main-workspace/search-config-icons/1e37d101-2191-45e3-8d61-9c1bea44ebce.png",
+        "mimetype": "image/png"
+      },
+      "engineIdentifiers": [
+        "ceneji"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "50f6171f-8e7a-b41b-862e-f97397038fb2",
+      "last_modified": 1707330724401
+    },
+    {
+      "schema": 1707264385889,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "6ba1f0fd1d12014cab32f74daab24dfa16fb26613ace20a1e595267621038a07",
+        "size": 530,
+        "filename": "bok-NO-16-firefox.png",
+        "location": "main-workspace/search-config-icons/bcf53867-215e-40f1-9a6e-bc4c5768c5c4.png",
+        "mimetype": "image/png"
+      },
+      "engineIdentifiers": [
+        "bok-NO"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "890de5c4-0941-a116-473a-5d240e79497a",
+      "last_modified": 1707330724398
+    },
+    {
+      "schema": 1707264384393,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "5b2c34b3c4e8dd898b664dba6c3786e2ff9869eff55d673aa48361f11325ed07",
+        "size": 4286,
+        "filename": "bing-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/5ed361f5-5b94-4899-896a-747d107f7392.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "bing"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "cbf9e891-d079-2b28-5617-283450d463dd",
+      "last_modified": 1707330724395
+    },
+    {
+      "schema": 1707264382904,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "877fb3aca13d2a7c656df1f94df3fa052afbb40b65c99ba5382392ff5499016e",
+        "size": 5430,
+        "filename": "baidu-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/4ffe56b6-6f76-4841-9f79-cd5e7dac0e10.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "baidu"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "5ded611d-44b2-dc46-fd67-fb116888d75d",
+      "last_modified": 1707330724392
+    },
+    {
+      "schema": 1707264381509,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "24daa27a3234d01b5add42e027b0a34000d0ab47c17fe3924c2ca267b7b61c19",
+        "size": 5430,
+        "filename": "azerdict-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/4d6f988d-8905-4aa7-aeea-5b04a6197767.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "azerdict"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "7bbe6c5c-fdb8-2845-a4f4-e1382e708a0e",
+      "last_modified": 1707330724389
+    },
+    {
+      "schema": 1707264380172,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "16ea89d4baa39529d7a84d5152867a4c6ed6867198c4dfa1648b1f43ce6a3f6f",
+        "size": 1407,
+        "filename": "amazon-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/9b60e56c-34cc-4447-a20d-21b4ecad7e8a.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "amazon*"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "2e835b0e-9709-d1bb-9725-87f59f3445ca",
+      "last_modified": 1707330724387
+    },
+    {
+      "schema": 1707264378878,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "ca6e972004f62355c1ea97656bc2328e1643971bdecab9c6b563d45593b8122e",
+        "size": 1150,
+        "filename": "allegro-pl-16-firefox.ico",
+        "location": "main-workspace/search-config-icons/26f2abe5-ac6b-4375-822e-b86fb75637a3.ico",
+        "mimetype": "image/x-icon"
+      },
+      "engineIdentifiers": [
+        "allegro-pl"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "96327a73-c433-5eb4-a16d-b090cadfb80b",
+      "last_modified": 1707330724384
+    },
+    {
+      "schema": 1707264328903,
+      "imageSize": 16,
+      "attachment": {
+        "hash": "865d76c8175a8f11dedc93f0bc212242a97a8a76adac870e8249368cecc81402",
+        "size": 159,
+        "filename": "1und1-16-firefox.gif",
+        "location": "main-workspace/search-config-icons/d4eeae67-e96c-4fd0-bbbd-c05ff235f622.gif",
+        "mimetype": "image/gif"
+      },
+      "engineIdentifiers": [
+        "1und1"
+      ],
+      "filter_expression": "env.appinfo.ID == \"{ec8030f7-c20a-464f-9b0e-13a3a9e97384}\"",
+      "id": "d87f251c-3e12-a8bf-e2d0-afd43d36c5f9",
+      "last_modified": 1707330724381
+    }
+  ],
+  "timestamp": 1719504277655
+}

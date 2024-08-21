@@ -3,17 +3,14 @@
 
 "use strict";
 
-const { ON_PROFILE_CHANGE_NOTIFICATION, log } = ChromeUtils.import(
-  "resource://gre/modules/FxAccountsCommon.js"
+const { ON_PROFILE_CHANGE_NOTIFICATION, log } = ChromeUtils.importESModule(
+  "resource://gre/modules/FxAccountsCommon.sys.mjs"
 );
 const { FxAccountsProfileClient } = ChromeUtils.importESModule(
   "resource://gre/modules/FxAccountsProfileClient.sys.mjs"
 );
 const { FxAccountsProfile } = ChromeUtils.importESModule(
   "resource://gre/modules/FxAccountsProfile.sys.mjs"
-);
-const { PromiseUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/PromiseUtils.sys.mjs"
 );
 const { setTimeout } = ChromeUtils.importESModule(
   "resource://gre/modules/Timer.sys.mjs"
@@ -145,10 +142,10 @@ add_test(function fetchAndCacheProfile_always_bumps_cachedAt() {
   profile._cachedAt = 12345;
 
   return profile._fetchAndCacheProfile().then(
-    result => {
+    () => {
       do_throw("Should not succeed");
     },
-    err => {
+    () => {
       Assert.notEqual(profile._cachedAt, 12345, "cachedAt has been bumped");
       run_next_test();
     }
@@ -167,7 +164,7 @@ add_test(function fetchAndCacheProfile_sendsETag() {
   };
   let profile = CreateFxAccountsProfile(fxa, client);
 
-  return profile._fetchAndCacheProfile().then(result => {
+  return profile._fetchAndCacheProfile().then(() => {
     run_next_test();
   });
 });
@@ -285,7 +282,7 @@ add_test(function fetchAndCacheProfile_alreadyCached() {
   };
 
   let profile = CreateFxAccountsProfile(fxa, client);
-  profile._cacheProfile = function (toCache) {
+  profile._cacheProfile = function () {
     do_throw("This method should not be called.");
   };
 
@@ -339,7 +336,7 @@ add_task(async function fetchAndCacheProfileAfterThreshold() {
   });
 
   let origFetchAndCatch = profile._fetchAndCacheProfile;
-  let backgroundFetchDone = PromiseUtils.defer();
+  let backgroundFetchDone = Promise.withResolvers();
   profile._fetchAndCacheProfile = async () => {
     await origFetchAndCatch.call(profile);
     backgroundFetchDone.resolve();
@@ -543,7 +540,7 @@ add_task(async function fetchAndCacheProfileBeforeThresholdOnNotification() {
   Services.obs.notifyObservers(null, ON_PROFILE_CHANGE_NOTIFICATION);
 
   let origFetchAndCatch = profile._fetchAndCacheProfile;
-  let backgroundFetchDone = PromiseUtils.defer();
+  let backgroundFetchDone = Promise.withResolvers();
   profile._fetchAndCacheProfile = async () => {
     await origFetchAndCatch.call(profile);
     backgroundFetchDone.resolve();
@@ -617,7 +614,7 @@ add_test(function getProfile_has_cached_fetch_deleted() {
 
   // instead of checking this in a mocked "save" function, just check after the
   // observer
-  makeObserver(ON_PROFILE_CHANGE_NOTIFICATION, function (subject, topic, data) {
+  makeObserver(ON_PROFILE_CHANGE_NOTIFICATION, function () {
     profile.getProfile().then(profileData => {
       Assert.equal(null, profileData.avatar);
       run_next_test();

@@ -13,13 +13,16 @@ const { FxAccountsDevice } = ChromeUtils.importESModule(
   "resource://gre/modules/FxAccountsDevice.sys.mjs"
 );
 const {
+  CLIENT_IS_THUNDERBIRD,
   ERRNO_DEVICE_SESSION_CONFLICT,
   ERRNO_TOO_MANY_CLIENT_REQUESTS,
   ERRNO_UNKNOWN_DEVICE,
   ON_DEVICE_CONNECTED_NOTIFICATION,
   ON_DEVICE_DISCONNECTED_NOTIFICATION,
   ON_DEVICELIST_UPDATED,
-} = ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+} = ChromeUtils.importESModule(
+  "resource://gre/modules/FxAccountsCommon.sys.mjs"
+);
 var { AccountState } = ChromeUtils.importESModule(
   "resource://gre/modules/FxAccounts.sys.mjs"
 );
@@ -33,7 +36,7 @@ const BOGUS_PUBLICKEY =
   "BBXOKjUb84pzws1wionFpfCBjDuCh4-s_1b52WA46K5wYL2gCWEOmFKWn_NkS5nmJwTBuO8qxxdjAIDtNeklvQc";
 const BOGUS_AUTHKEY = "GSsIiaD2Mr83iPqwFNK4rw";
 
-Services.prefs.setCharPref("identity.fxaccounts.loglevel", "Trace");
+Services.prefs.setStringPref("identity.fxaccounts.loglevel", "Trace");
 
 const DEVICE_REGISTRATION_VERSION = 42;
 
@@ -78,7 +81,7 @@ function MockFxAccountsClient(device) {
 
   // mock calls up to the auth server to determine whether the
   // user account has been verified
-  this.recoveryEmailStatus = function (sessionToken) {
+  this.recoveryEmailStatus = function () {
     // simulate a call to /recovery_email/status
     return Promise.resolve({
       email: this._email,
@@ -102,8 +105,7 @@ function MockFxAccountsClient(device) {
     return Promise.resolve(!!uid && !this._deletedOnServer);
   };
 
-  this.registerDevice = (st, name, type) =>
-    Promise.resolve({ id: device.id, name });
+  this.registerDevice = (st, name) => Promise.resolve({ id: device.id, name });
   this.updateDevice = (st, id, name) => Promise.resolve({ id, name });
   this.signOut = () => Promise.resolve({});
   this.getDeviceList = st =>
@@ -624,48 +626,50 @@ add_task(
   }
 );
 
-add_task(async function test_verification_updates_registration() {
-  const deviceName = "foo";
+add_task(
+  { skip_if: () => CLIENT_IS_THUNDERBIRD },
+  async function test_verification_updates_registration() {
+    const deviceName = "foo";
 
-  const credentials = getTestUser("baz");
-  const fxa = await MockFxAccounts(credentials, {
-    id: "device-id",
-    name: deviceName,
-  });
+    const credentials = getTestUser("baz");
+    const fxa = await MockFxAccounts(credentials, {
+      id: "device-id",
+      name: deviceName,
+    });
 
-  // We should already have a device registration, but without send-tab due to
-  // our inability to fetch keys for an unverified users.
-  const state = fxa._internal.currentAccountState;
-  const { device } = await state.getUserAccountData();
-  Assert.equal(device.registeredCommandsKeys.length, 0);
+    // We should already have a device registration, but without send-tab due to
+    // our inability to fetch keys for an unverified users.
+    const state = fxa._internal.currentAccountState;
+    const { device } = await state.getUserAccountData();
+    Assert.equal(device.registeredCommandsKeys.length, 0);
 
-  let updatePromise = new Promise(resolve => {
-    const old_registerOrUpdateDevice = fxa.device._registerOrUpdateDevice.bind(
-      fxa.device
-    );
-    fxa.device._registerOrUpdateDevice = async function (
-      currentState,
-      signedInUser
-    ) {
-      await old_registerOrUpdateDevice(currentState, signedInUser);
-      fxa.device._registerOrUpdateDevice = old_registerOrUpdateDevice;
-      resolve();
+    let updatePromise = new Promise(resolve => {
+      const old_registerOrUpdateDevice =
+        fxa.device._registerOrUpdateDevice.bind(fxa.device);
+      fxa.device._registerOrUpdateDevice = async function (
+        currentState,
+        signedInUser
+      ) {
+        await old_registerOrUpdateDevice(currentState, signedInUser);
+        fxa.device._registerOrUpdateDevice = old_registerOrUpdateDevice;
+        resolve();
+      };
+    });
+
+    fxa._internal.checkEmailStatus = async function () {
+      credentials.verified = true;
+      return credentials;
     };
-  });
 
-  fxa._internal.checkEmailStatus = async function (sessionToken) {
-    credentials.verified = true;
-    return credentials;
-  };
+    await updatePromise;
 
-  await updatePromise;
-
-  const { device: newDevice, encryptedSendTabKeys } =
-    await state.getUserAccountData();
-  Assert.equal(newDevice.registeredCommandsKeys.length, 1);
-  Assert.notEqual(encryptedSendTabKeys, null);
-  await fxa.signOut(true);
-});
+    const { device: newDevice, encryptedSendTabKeys } =
+      await state.getUserAccountData();
+    Assert.equal(newDevice.registeredCommandsKeys.length, 1);
+    Assert.notEqual(encryptedSendTabKeys, null);
+    await fxa.signOut(true);
+  }
+);
 
 add_task(async function test_devicelist_pushendpointexpired() {
   const deviceId = "mydeviceid";
@@ -790,7 +794,7 @@ add_task(async function test_refreshDeviceList() {
   };
   const deviceListUpdateObserver = {
     count: 0,
-    observe(subject, topic, data) {
+    observe() {
       this.count++;
     },
   };
