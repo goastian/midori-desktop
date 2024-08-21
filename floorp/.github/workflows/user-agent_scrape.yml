@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Clone User-Agent_Scraper 🧬
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: Floorp-Projects/User-Agent_Scraper
           path: User-Agent_Scraper
@@ -134,22 +134,26 @@ jobs:
           '  "linux": "${{ needs.linux.outputs.msedge_stable_ua }}",'
           "  \"mac\": \"$(echo "${{ needs.linux.outputs.msedge_stable_ua }}" | sed "s/X11; Linux x86_64/Macintosh; Intel Mac OS X 10_15_7/")\","
           '};'
+          "// ESM Migration"
+          "window.FIREFOX_STABLE_UA = FIREFOX_STABLE_UA;"
+          "window.CHROME_STABLE_UA = CHROME_STABLE_UA;"
+          "window.MSEDGE_STABLE_UA = MSEDGE_STABLE_UA;"
           )
           for line in "${msedge_stable_ua_jsonp_text[@]}" ; do echo $line >> ~/ua_data.js ; done
 
       - name: Upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ua_data
           path: ~/ua_data.js
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         name: Clone 🧬
 
       - name: Commit & Push
         run: |
           cp ~/ua_data.js browser/extensions/webextensions/floorp-system/shared/ua_data.js
-          cp ~/ua_data.js browser/base/content/ua_data.js
+          cp ~/ua_data.js browser/base/content/browser-ua-data.mjs
           if [ "$(git diff HEAD)" != "" ]; then
             git config --global user.name "github-actions[bot]"
             git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
