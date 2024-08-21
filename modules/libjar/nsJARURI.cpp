@@ -170,6 +170,14 @@ nsJARURI::GetDisplayHost(nsACString& aUnicodeHost) {
 NS_IMETHODIMP
 nsJARURI::GetHasRef(bool* result) { return mJAREntry->GetHasRef(result); }
 
+NS_IMETHODIMP
+nsJARURI::GetHasUserPass(bool* result) {
+  return mJAREntry->GetHasUserPass(result);
+}
+
+NS_IMETHODIMP
+nsJARURI::GetHasQuery(bool* result) { return mJAREntry->GetHasQuery(result); }
+
 nsresult nsJARURI::SetSpecInternal(const nsACString& aSpec) {
   return SetSpecWithBase(aSpec, nullptr);
 }

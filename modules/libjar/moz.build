@@ -10,9 +10,9 @@ with Files("**"):
 if CONFIG["MOZ_ZIPWRITER"]:
     DIRS += ["zipwriter"]
 
-MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.ini"]
+MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.toml"]
 
-XPCSHELL_TESTS_MANIFESTS += ["test/unit/xpcshell.ini"]
+XPCSHELL_TESTS_MANIFESTS += ["test/unit/xpcshell.toml"]
 
 XPIDL_SOURCES += [
     "nsIJARChannel.idl",
@@ -43,5 +43,6 @@ XPCOM_MANIFESTS += [
 ]
 
 include("/ipc/chromium/chromium-config.mozbuild")
+include("/tools/fuzzing/libfuzzer-config.mozbuild")
 
 FINAL_LIBRARY = "xul"

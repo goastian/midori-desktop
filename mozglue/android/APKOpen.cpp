@@ -38,6 +38,7 @@
 #include "mozilla/Printf.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/Try.h"
 #include "mozilla/UniquePtr.h"
 #include "XREChildData.h"
 
@@ -288,7 +289,8 @@ Java_org_mozilla_gecko_mozglue_GeckoLoader_loadGeckoLibsNative(
 
   auto msg = errorInfo.match(
       [](const nsresult& aRv) {
-        return Smprintf("Error loading Gecko libraries: nsresult 0x%08X", aRv);
+        return Smprintf("Error loading Gecko libraries: nsresult 0x%08X",
+                        uint32_t(aRv));
       },
       [](const DLErrorType& aErr) {
         return Smprintf("Error loading Gecko libraries: %s", aErr.get());
@@ -362,8 +364,7 @@ static void FreeArgv(char** argv, int argc) {
 extern "C" APKOPEN_EXPORT void MOZ_JNICALL
 Java_org_mozilla_gecko_mozglue_GeckoLoader_nativeRun(
     JNIEnv* jenv, jclass jc, jobjectArray jargs, int prefsFd, int prefMapFd,
-    int ipcFd, int crashFd, int crashAnnotationFd, bool xpcshell,
-    jstring outFilePath) {
+    int ipcFd, int crashFd, bool xpcshell, jstring outFilePath) {
   EnsureBaseProfilerInitialized();
 
   int argc = 0;
@@ -392,8 +393,8 @@ Java_org_mozilla_gecko_mozglue_GeckoLoader_nativeRun(
     ElfLoader::Singleton.ExpectShutdown(true);
 #endif
   } else {
-    gBootstrap->XRE_SetAndroidChildFds(
-        jenv, {prefsFd, prefMapFd, ipcFd, crashFd, crashAnnotationFd});
+    gBootstrap->XRE_SetAndroidChildFds(jenv,
+                                       {prefsFd, prefMapFd, ipcFd, crashFd});
     gBootstrap->XRE_SetProcessType(argv[argc - 1]);
 
     XREChildData childData;

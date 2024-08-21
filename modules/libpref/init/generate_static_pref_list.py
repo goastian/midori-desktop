@@ -8,8 +8,9 @@ from collections import defaultdict
 
 import buildconfig
 import yaml
+from mozbuild.dirutils import ensureParentDir
 from mozbuild.preprocessor import Preprocessor
-from mozbuild.util import FileAvoidWrite, ensureParentDir
+from mozbuild.util import FileAvoidWrite
 from six import StringIO
 
 VALID_KEYS = {
@@ -20,6 +21,7 @@ VALID_KEYS = {
     "do_not_use_directly",
     "include",
     "rust",
+    "set_spidermonkey_pref",
 }
 
 # Each key is a C++ type; its value is the equivalent non-atomic C++ type.
@@ -420,7 +422,7 @@ def emit_code(fd, pref_list_filename):
     if buildconfig.substs.get("MOZ_DEBUG"):
         pp.context["DEBUG"] = "1"
 
-    if buildconfig.substs.get("CPU_ARCH") == "aarch64":
+    if buildconfig.substs.get("TARGET_CPU") == "aarch64":
         pp.context["MOZ_AARCH64"] = True
 
     if buildconfig.substs.get("MOZ_ANDROID_CONTENT_SERVICE_ISOLATED_PROCESS"):

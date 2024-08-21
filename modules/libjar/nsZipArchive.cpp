@@ -17,6 +17,7 @@
 #include "mozilla/MemUtils.h"
 #include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/StaticMutex.h"
+#include "mozilla/StaticPrefs_network.h"
 #include "stdlib.h"
 #include "nsDirectoryService.h"
 #include "nsWildCard.h"
@@ -190,13 +191,13 @@ nsresult nsZipHandle::Init(nsIFile* file, nsZipHandle** ret, PRFileDesc** aFd) {
   flags |= nsIFile::OS_READAHEAD;
 #endif
   LOG(("ZipHandle::Init %s", file->HumanReadablePath().get()));
-  nsresult rv = file->OpenNSPRFileDesc(flags, 0000, &fd.rwget());
+  nsresult rv = file->OpenNSPRFileDesc(flags, 0000, getter_Transfers(fd));
   if (NS_FAILED(rv)) return rv;
 
-  int64_t size = PR_Available64(fd);
+  int64_t size = PR_Available64(fd.get());
   if (size >= INT32_MAX) return NS_ERROR_FILE_TOO_BIG;
 
-  PRFileMap* map = PR_CreateFileMap(fd, size, PR_PROT_READONLY);
+  PRFileMap* map = PR_CreateFileMap(fd.get(), size, PR_PROT_READONLY);
   if (!map) return NS_ERROR_FAILURE;
 
   uint8_t* buf = (uint8_t*)PR_MemMap(map, 0, (uint32_t)size);
@@ -216,10 +217,10 @@ nsresult nsZipHandle::Init(nsIFile* file, nsZipHandle** ret, PRFileDesc** aFd) {
 
 #if defined(XP_WIN)
   if (aFd) {
-    *aFd = fd.forget();
+    *aFd = fd.release();
   }
 #else
-  handle->mNSPRFileDesc = fd.forget();
+  handle->mNSPRFileDesc = std::move(fd);
 #endif
   handle->mFile.Init(file);
   handle->mTotalLen = (uint32_t)size;
@@ -242,6 +243,15 @@ nsresult nsZipHandle::Init(nsZipArchive* zip, const char* entry,
   if (!handle) return NS_ERROR_OUT_OF_MEMORY;
 
   LOG(("ZipHandle::Init entry %s", entry));
+
+  nsZipItem* item = zip->GetItem(entry);
+  if (item && item->Compression() == DEFLATED &&
+      StaticPrefs::network_jar_max_entry_size()) {
+    if (item->RealSize() > StaticPrefs::network_jar_max_entry_size()) {
+      return NS_ERROR_OUT_OF_MEMORY;
+    }
+  }
+
   handle->mBuf = MakeUnique<nsZipItemPtr<uint8_t>>(zip, entry);
   if (!handle->mBuf) return NS_ERROR_OUT_OF_MEMORY;
 
@@ -259,10 +269,25 @@ nsresult nsZipHandle::Init(nsZipArchive* zip, const char* entry,
   return NS_OK;
 }
 
+nsresult nsZipHandle::Init(const uint8_t* aData, uint32_t aLen,
+                           nsZipHandle** aRet) {
+  RefPtr<nsZipHandle> handle = new nsZipHandle();
+
+  handle->mFileStart = aData;
+  handle->mTotalLen = aLen;
+  nsresult rv = handle->findDataStart();
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  handle.forget(aRet);
+  return NS_OK;
+}
+
 // This function finds the start of the ZIP data. If the file is a regular ZIP,
 // this is just the start of the file. If the file is a CRX file, the start of
 // the data is after the CRX header.
-// CRX header reference: (CRX version 2)
+//
+// CRX header reference, version 2:
 //    Header requires little-endian byte ordering with 4-byte alignment.
 //    32 bits       : magicNumber   - Defined as a |char m[] = "Cr24"|.
 //                                    Equivilant to |uint32_t m = 0x34327243|.
@@ -276,6 +301,16 @@ nsresult nsZipHandle::Init(nsZipArchive* zip, const char* entry,
 //    sigLength     : signature     - Signature of the ZIP content.
 //                                    Signature is created using the RSA
 //                                    algorithm with the SHA-1 hash function.
+//
+// CRX header reference, version 3:
+//    Header requires little-endian byte ordering with 4-byte alignment.
+//    32 bits       : magicNumber   - Defined as a |char m[] = "Cr24"|.
+//                                    Equivilant to |uint32_t m = 0x34327243|.
+//    32 bits       : version       - Unsigned integer representing the CRX file
+//                                    format version. Currently equal to 3.
+//    32 bits       : headerLength  - Unsigned integer representing the length
+//                                    of the CRX header in bytes.
+//    headerLength  : header        - CRXv3 header.
 nsresult nsZipHandle::findDataStart() {
   // In the CRX header, integers are 32 bits. Our pointer to the file is of
   // type |uint8_t|, which is guaranteed to be 8 bits.
@@ -284,11 +319,21 @@ nsresult nsZipHandle::findDataStart() {
   MMAP_FAULT_HANDLER_BEGIN_HANDLE(this)
   if (mTotalLen > CRXIntSize * 4 && xtolong(mFileStart) == kCRXMagic) {
     const uint8_t* headerData = mFileStart;
-    headerData += CRXIntSize * 2;  // Skip magic number and version number
-    uint32_t pubKeyLength = xtolong(headerData);
-    headerData += CRXIntSize;
-    uint32_t sigLength = xtolong(headerData);
-    uint32_t headerSize = CRXIntSize * 4 + pubKeyLength + sigLength;
+    headerData += CRXIntSize;  // Skip magic number
+    uint32_t version = xtolong(headerData);
+    headerData += CRXIntSize;  // Skip version
+    uint32_t headerSize = CRXIntSize * 2;
+    if (version == 3) {
+      uint32_t subHeaderSize = xtolong(headerData);
+      headerSize += CRXIntSize + subHeaderSize;
+    } else if (version < 3) {
+      uint32_t pubKeyLength = xtolong(headerData);
+      headerData += CRXIntSize;
+      uint32_t sigLength = xtolong(headerData);
+      headerSize += CRXIntSize * 2 + pubKeyLength + sigLength;
+    } else {
+      return NS_ERROR_FILE_CORRUPTED;
+    }
     if (mTotalLen > headerSize) {
       mLen = mTotalLen - headerSize;
       mFileData = mFileStart + headerSize;
@@ -309,7 +354,7 @@ nsresult nsZipHandle::GetNSPRFileDesc(PRFileDesc** aNSPRFileDesc) {
     return NS_ERROR_ILLEGAL_VALUE;
   }
 
-  *aNSPRFileDesc = mNSPRFileDesc;
+  *aNSPRFileDesc = mNSPRFileDesc.get();
   if (!mNSPRFileDesc) {
     return NS_ERROR_NOT_AVAILABLE;
   }
@@ -352,7 +397,8 @@ already_AddRefed<nsZipArchive> nsZipArchive::OpenArchive(nsIFile* aFile) {
   RefPtr<nsZipHandle> handle;
 #if defined(XP_WIN)
   mozilla::AutoFDClose fd;
-  nsresult rv = nsZipHandle::Init(aFile, getter_AddRefs(handle), &fd.rwget());
+  nsresult rv =
+      nsZipHandle::Init(aFile, getter_AddRefs(handle), getter_Transfers(fd));
 #else
   nsresult rv = nsZipHandle::Init(aFile, getter_AddRefs(handle));
 #endif
@@ -680,7 +726,7 @@ nsresult nsZipArchive::BuildFileList(PRFileDesc* aFd)
     sig = 0;
   } /* while reading central directory records */
 
-  if (sig != ENDSIG) {
+  if (sig != ENDSIG && sig != ENDSIG64) {
     return NS_ERROR_FILE_CORRUPTED;
   }
 

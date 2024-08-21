@@ -24,6 +24,7 @@ enum class StackCaptureOptions {
 
 }
 
+#include "BaseProfileJSONWriter.h"
 #include "BaseProfilingCategory.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/ProfileChunkedBuffer.h"
@@ -351,6 +352,13 @@ class MarkerTiming {
   [[nodiscard]] const TimeStamp& StartTime() const { return mStartTime; }
   [[nodiscard]] const TimeStamp& EndTime() const { return mEndTime; }
 
+  // The phase differentiates Instant markers from Interval markers.
+  // Interval markers can either carry both timestamps on a single marker,
+  // or they can be split into individual Start and End markers, which are
+  // associated with each other via the marker name.
+  //
+  // The numeric representation of this enum value is also exposed in the
+  // ETW trace event's Phase field.
   enum class Phase : uint8_t {
     Instant = 0,
     Interval = 1,
@@ -684,6 +692,20 @@ class JSONWriter;
 // marker type definition, see Add/Set functions.
 class MarkerSchema {
  public:
+  // This is used to describe a C++ type that is expected to be specified to
+  // the marker and used in PayloadField. This type is the expected input type
+  // to the marker data.
+  enum class InputType {
+    Uint64,
+    Uint32,
+    Uint8,
+    Boolean,
+    CString,
+    String,
+    TimeStamp,
+    TimeDuration
+  };
+
   enum class Location : unsigned {
     MarkerChart,
     MarkerTable,
@@ -714,11 +736,17 @@ class MarkerSchema {
     Url,
     // Show the file path, and handle PII sanitization.
     FilePath,
+    // Show arbitrary string and handle PII sanitization
+    SanitizedString,
     // Important, do not put URL or file path information here, as it will not
     // be sanitized. Please be careful with including other types of PII here as
     // well.
     // e.g. "Label: Some String"
     String,
+
+    // Show a string from a UniqueStringArray given an index in the profile.
+    // e.g. 1, given string table ["hello", "world"] will show "world"
+    UniqueString,
 
     // ----------------------------------------------------
     // Numeric types
@@ -750,7 +778,50 @@ class MarkerSchema {
     Decimal
   };
 
+  // This represents groups of markers which MarkerTypes can expose to indicate
+  // what group they belong to (multiple groups are allowed combined in bitwise
+  // or). This is currently only used for ETW filtering. In the long run this
+  // should be generalized to gecko markers.
+  enum class ETWMarkerGroup : uint64_t {
+    Generic = 1,
+    UserMarkers = 1 << 1,
+    Memory = 1 << 2,
+    Scheduling = 1 << 3,
+    Text = 1 << 4,
+    Tracing = 1 << 5
+  };
+
+  // Flags which describe additional information for a PayloadField.
+  enum class PayloadFlags : uint32_t { None = 0, Searchable = 1 };
+
+  // This is one field of payload to be used for additional marker data.
+  struct PayloadField {
+    // Key identifying the marker.
+    const char* Key;
+    // Input type, this represents the data type specified.
+    InputType InputTy;
+    // Label, additional description.
+    const char* Label = nullptr;
+    // Format as written to the JSON.
+    Format Fmt = Format::String;
+    // Optional PayloadFlags.
+    PayloadFlags Flags = PayloadFlags::None;
+  };
+
   enum class Searchable { NotSearchable, Searchable };
+  enum class GraphType { Line, Bar, FilledLine };
+  enum class GraphColor {
+    Blue,
+    Green,
+    Grey,
+    Ink,
+    Magenta,
+    Orange,
+    Purple,
+    Red,
+    Teal,
+    Yellow
+  };
 
   // Marker schema, with a non-empty list of locations where markers should be
   // shown.
@@ -850,12 +921,28 @@ class MarkerSchema {
     return *this;
   }
 
+  // Markers can be shown as timeline tracks.
+
+  MarkerSchema& AddChart(std::string aKey, GraphType aType) {
+    mGraphs.emplace_back(GraphData{std::move(aKey), aType, mozilla::Nothing{}});
+    return *this;
+  }
+
+  MarkerSchema& AddChartColor(std::string aKey, GraphType aType,
+                              GraphColor aColor) {
+    mGraphs.emplace_back(
+        GraphData{std::move(aKey), aType, mozilla::Some(aColor)});
+    return *this;
+  }
+
   // Internal streaming function.
   MFBT_API void Stream(JSONWriter& aWriter, const Span<const char>& aName) &&;
 
  private:
   MFBT_API static Span<const char> LocationToStringSpan(Location aLocation);
   MFBT_API static Span<const char> FormatToStringSpan(Format aFormat);
+  MFBT_API static Span<const char> GraphTypeToStringSpan(GraphType aType);
+  MFBT_API static Span<const char> GraphColorToStringSpan(GraphColor aColor);
 
   // List of marker display locations. Empty for SpecialFrontendLocation.
   std::vector<Location> mLocations;
@@ -879,8 +966,126 @@ class MarkerSchema {
   using DataRowVector = std::vector<DataRow>;
 
   DataRowVector mData;
+
+  struct GraphData {
+    std::string mKey;
+    GraphType mType;
+    mozilla::Maybe<GraphColor> mColor;
+  };
+  std::vector<GraphData> mGraphs;
 };
 
+namespace detail {
+// GCC doesn't allow this to live inside the class.
+template <typename PayloadType>
+static void StreamPayload(baseprofiler::SpliceableJSONWriter& aWriter,
+                          const Span<const char> aKey,
+                          const PayloadType& aPayload) {
+  aWriter.StringProperty(aKey, aPayload);
+}
+
+template <typename PayloadType>
+inline void StreamPayload(baseprofiler::SpliceableJSONWriter& aWriter,
+                          const Span<const char> aKey,
+                          const Maybe<PayloadType>& aPayload) {
+  if (aPayload.isSome()) {
+    StreamPayload(aWriter, aKey, *aPayload);
+  } else {
+    aWriter.NullProperty(aKey);
+  }
+}
+
+template <>
+inline void StreamPayload<bool>(baseprofiler::SpliceableJSONWriter& aWriter,
+                                const Span<const char> aKey,
+                                const bool& aPayload) {
+  aWriter.BoolProperty(aKey, aPayload);
+}
+
+template <>
+inline void StreamPayload<ProfilerString8View>(
+    baseprofiler::SpliceableJSONWriter& aWriter, const Span<const char> aKey,
+    const ProfilerString8View& aPayload) {
+  aWriter.StringProperty(aKey, aPayload);
+}
+}  // namespace detail
+
+// This helper class is used by MarkerTypes that want to support the general
+// MarkerType object schema. When using this the markers will also transmit
+// their payload to the ETW tracer as well as requiring less inline code.
+// This is a curiously recurring template, the template argument is the child
+// class itself.
+template <typename T>
+struct BaseMarkerType {
+  static constexpr const char* AllLabels = nullptr;
+  static constexpr const char* ChartLabel = nullptr;
+  static constexpr const char* TableLabel = nullptr;
+  static constexpr const char* TooltipLabel = nullptr;
+
+  // This indicates whether this marker type wants the names passed to the
+  // individual marker calls stores along with the marker.
+  static constexpr bool StoreName = false;
+
+  static constexpr MarkerSchema::ETWMarkerGroup Group =
+      MarkerSchema::ETWMarkerGroup::Generic;
+
+  static MarkerSchema MarkerTypeDisplay() {
+    using MS = MarkerSchema;
+    MS schema{T::Locations, std::size(T::Locations)};
+    if (T::AllLabels) {
+      schema.SetAllLabels(T::AllLabels);
+    }
+    if (T::ChartLabel) {
+      schema.SetChartLabel(T::ChartLabel);
+    }
+    if (T::TableLabel) {
+      schema.SetTableLabel(T::TableLabel);
+    }
+    if (T::TooltipLabel) {
+      schema.SetTooltipLabel(T::TooltipLabel);
+    }
+    for (const MS::PayloadField field : T::PayloadFields) {
+      if (field.Label) {
+        if (uint32_t(field.Flags) & uint32_t(MS::PayloadFlags::Searchable)) {
+          schema.AddKeyLabelFormatSearchable(field.Key, field.Label, field.Fmt,
+                                             MS::Searchable::Searchable);
+        } else {
+          schema.AddKeyLabelFormat(field.Key, field.Label, field.Fmt);
+        }
+      } else {
+        if (uint32_t(field.Flags) & uint32_t(MS::PayloadFlags::Searchable)) {
+          schema.AddKeyFormatSearchable(field.Key, field.Fmt,
+                                        MS::Searchable::Searchable);
+        } else {
+          schema.AddKeyFormat(field.Key, field.Fmt);
+        }
+      }
+    }
+    if (T::Description) {
+      schema.AddStaticLabelValue("Description", T::Description);
+    }
+    return schema;
+  }
+
+  static constexpr Span<const char> MarkerTypeName() {
+    return MakeStringSpan(T::Name);
+  }
+
+  // This is called by the child class since the child class version of this
+  // function is used to infer the argument types by the profile buffer and
+  // allows the child to do any special data conversion it needs to do.
+  // Optionally the child can opt not to use this at all and write the data
+  // out itself.
+  template <typename... PayloadArguments>
+  static void StreamJSONMarkerDataImpl(
+      baseprofiler::SpliceableJSONWriter& aWriter,
+      const PayloadArguments&... aPayloadArguments) {
+    size_t i = 0;
+    (detail::StreamPayload(aWriter, MakeStringSpan(T::PayloadFields[i++].Key),
+                           aPayloadArguments),
+     ...);
+  }
+};
 }  // namespace mozilla
 
 #endif  // BaseProfilerMarkersPrerequisites_h

@@ -11,11 +11,11 @@ if CONFIG["ENABLE_TESTS"]:
     DIRS += ["test/gtest"]
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "test/unit/xpcshell.ini",
-    "test/unit_ipc/xpcshell.ini",
+    "test/unit/xpcshell.toml",
+    "test/unit_ipc/xpcshell.toml",
 ]
 
-BROWSER_CHROME_MANIFESTS += ["test/browser/browser.ini"]
+BROWSER_CHROME_MANIFESTS += ["test/browser/browser.toml"]
 
 XPIDL_SOURCES += [
     "nsIPrefBranch.idl",
@@ -33,7 +33,6 @@ pref_groups = [
     "beacon",
     "bidi",
     "browser",
-    "canvas",
     "channelclassifier",
     "clipboard",
     "content",
@@ -60,8 +59,10 @@ pref_groups = [
     "javascript",
     "layers",
     "layout",
+    "logging",
     "mathml",
     "media",
+    "memory",
     "midi",
     "mousewheel",
     "mozilla",
@@ -136,7 +137,7 @@ GeneratedFile(
 )
 
 PYTHON_UNITTEST_MANIFESTS += [
-    "test/python.ini",
+    "test/python.toml",
 ]
 
 XPCOM_MANIFESTS += [
@@ -157,6 +158,9 @@ if CONFIG["MOZ_SERVICES_SYNC"]:
 
 if CONFIG["MOZ_BUILD_APP"] == "browser":
     DEFINES["MOZ_BUILD_APP_IS_BROWSER"] = True
+
+if CONFIG["MOZ_WEBEXT_WEBIDL_ENABLED"]:
+    DEFINES["MOZ_WEBEXT_WEBIDL_ENABLED"] = True
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
     if not CONFIG["MOZ_ANDROID_FAT_AAR_ARCHITECTURES"]:

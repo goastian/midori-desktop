@@ -12,7 +12,6 @@
 #include "mozilla/RefCounted.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtr.h"
-#include "Zip.h"
 #include "Elfxx.h"
 #include "Mappable.h"
 
@@ -35,30 +34,12 @@ typedef struct {
 #endif
 int __wrap_dladdr(const void* addr, Dl_info* info);
 
-struct dl_phdr_info {
-  Elf::Addr dlpi_addr;
-  const char* dlpi_name;
-  const Elf::Phdr* dlpi_phdr;
-  Elf::Half dlpi_phnum;
-};
-
 typedef int (*dl_phdr_cb)(struct dl_phdr_info*, size_t, void*);
 int __wrap_dl_iterate_phdr(dl_phdr_cb callback, void* data);
 
 #ifdef __ARM_EABI__
 const void* __wrap___gnu_Unwind_Find_exidx(void* pc, int* pcount);
 #endif
-
-/**
- * faulty.lib public API
- */
-MFBT_API size_t __dl_get_mappable_length(void* handle);
-
-MFBT_API void* __dl_mmap(void* handle, void* addr, size_t length, off_t offset);
-
-MFBT_API void __dl_munmap(void* handle, void* addr, size_t length);
-
-MFBT_API bool IsSignalHandlingBroken();
 }
 
 /* Forward declarations for use in LibHandle */
@@ -169,24 +150,6 @@ class LibHandle : public mozilla::external::AtomicRefCounted<LibHandle> {
    */
   MozRefCountType DirectRefCount() { return directRefCnt; }
 
-  /**
-   * Returns the complete size of the file or stream behind the library
-   * handle.
-   */
-  size_t GetMappableLength() const;
-
-  /**
-   * Returns a memory mapping of the file or stream behind the library
-   * handle.
-   */
-  void* MappableMMap(void* addr, size_t length, off_t offset) const;
-
-  /**
-   * Unmaps a memory mapping of the file or stream behind the library
-   * handle.
-   */
-  void MappableMUnmap(void* addr, size_t length) const;
-
 #ifdef __ARM_EABI__
   /**
    * Find the address and entry count of the ARM.exidx section
@@ -196,11 +159,6 @@ class LibHandle : public mozilla::external::AtomicRefCounted<LibHandle> {
 #endif
 
  protected:
-  /**
-   * Returns a mappable object for use by MappableMMap and related functions.
-   */
-  virtual Mappable* GetMappable() const = 0;
-
   /**
    * Returns the instance, casted as the wanted type. Returns nullptr if
    * that's not the actual type. (short of a better way to do this without
@@ -277,8 +235,6 @@ class SystemElf : public LibHandle {
 #endif
 
  protected:
-  virtual Mappable* GetMappable() const;
-
   /**
    * Returns the instance, casted as SystemElf. (short of a better way to do
    * this without RTTI)
@@ -315,8 +271,6 @@ class SEGVHandler {
     if (!initialized) FinishInitialization();
     return registeredHandler;
   }
-
-  bool isSignalHandlingBroken() { return signalHandlingBroken; }
 
   static int __wrap_sigaction(int signum, const struct sigaction* act,
                               struct sigaction* oldact);
@@ -366,7 +320,6 @@ class SEGVHandler {
 
   bool initialized;
   bool registeredHandler;
-  bool signalHandlingBroken;
   bool signalHandlingSlow;
 };
 
@@ -447,17 +400,6 @@ class ElfLoader : public SEGVHandler {
   /* System loader handle for the library/program containing our code. This
    * is used to resolve wrapped functions. */
   RefPtr<LibHandle> self_elf;
-
-#if defined(ANDROID)
-  /* System loader handle for the libc. This is used to resolve weak symbols
-   * that some libcs contain that the Android linker won't dlsym(). Normally,
-   * we wouldn't treat non-Android differently, but glibc uses versioned
-   * symbols which this linker doesn't support. */
-  RefPtr<LibHandle> libc;
-
-  /* And for libm. */
-  RefPtr<LibHandle> libm;
-#endif
 
   /* Bookkeeping */
   typedef std::vector<LibHandle*> LibHandleList;

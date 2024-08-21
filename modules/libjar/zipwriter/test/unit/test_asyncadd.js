@@ -3,7 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+const { NetUtil } = ChromeUtils.importESModule(
+  "resource://gre/modules/NetUtil.sys.mjs"
+);
 
 // Values taken from using zipinfo to list the test.zip contents
 var TESTS = [
@@ -22,7 +24,7 @@ var TESTS = [
 var size = 0;
 
 var observer = {
-  onStartRequest(request) {},
+  onStartRequest() {},
 
   onStopRequest(request, status) {
     Assert.equal(status, Cr.NS_OK);

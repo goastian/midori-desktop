@@ -9,6 +9,7 @@ DEFINES["IMPL_MFBT"] = True
 
 UNIFIED_SOURCES += [
     "env_interposer.cpp",
+    "getline_interposer.cpp",
 ]
 
 if CONFIG["MOZ_CRASHREPORTER"]:
@@ -16,9 +17,11 @@ if CONFIG["MOZ_CRASHREPORTER"]:
         "pthread_create_interposer.cpp",
     ]
 
-if CONFIG["MOZ_LINKER"] and CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
+if CONFIG["MOZ_LINKER"]:
     LOCAL_INCLUDES += [
         "/mozglue/linker",
     ]
+
+OS_LIBS += CONFIG["DL_LIBS"]
 
 FINAL_LIBRARY = "mozglue"
