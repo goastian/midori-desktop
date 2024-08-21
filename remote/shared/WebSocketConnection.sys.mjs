@@ -15,7 +15,16 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "chrome://remote/content/server/WebSocketTransport.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
+ChromeUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "truncateLog",
+  "remote.log.truncate",
+  false
+);
+
+const MAX_LOG_LENGTH = 2500;
 
 export class WebSocketConnection {
   /**
@@ -36,7 +45,7 @@ export class WebSocketConnection {
     lazy.logger.debug(`${this.constructor.name} ${this.id} accepted`);
   }
 
-  _log(direction, data) {
+  #log(direction, data) {
     if (lazy.Log.isDebugLevelOrMore) {
       function replacer(key, value) {
         if (typeof value === "string") {
@@ -45,11 +54,19 @@ export class WebSocketConnection {
         return value;
       }
 
-      const payload = JSON.stringify(
+      let payload = JSON.stringify(
         data,
         replacer,
         lazy.Log.verbose ? "\t" : null
       );
+
+      if (lazy.truncateLog && payload.length > MAX_LOG_LENGTH) {
+        // Even if we truncate individual values, the resulting message might be
+        // huge if we are serializing big objects with many properties or items.
+        // Truncate the overall message to avoid issues in logs.
+        const truncated = payload.substring(0, MAX_LOG_LENGTH);
+        payload = `${truncated} [... truncated after ${MAX_LOG_LENGTH} characters]`;
+      }
 
       lazy.logger.debug(
         `${this.constructor.name} ${this.id} ${direction} ${payload}`
@@ -62,22 +79,14 @@ export class WebSocketConnection {
    */
   close() {
     this.transport.close();
-
-    // In addition to the WebSocket transport, we also have to close the
-    // connection used internally within httpd.js. Otherwise the server doesn't
-    // shut down correctly, and keeps these Connection instances alive.
-    this.httpdConnection.close();
   }
 
   /**
    * Register a new Session to forward the messages to.
    *
    * Needs to be implemented in the sub class.
-   *
-   * @param {Session} session
-   *     The session to register.
    */
-  registerSession(session) {
+  registerSession() {
     throw new Error("Not implemented");
   }
 
@@ -88,7 +97,7 @@ export class WebSocketConnection {
    *     The object to be sent.
    */
   send(data) {
-    this._log("<-", data);
+    this.#log("<-", data);
     this.transport.send(data);
   }
 
@@ -128,8 +137,18 @@ export class WebSocketConnection {
   /**
    * Called by the `transport` when the connection is closed.
    */
-  onClosed(status) {
+  onConnectionClose() {
     lazy.logger.debug(`${this.constructor.name} ${this.id} closed`);
+  }
+
+  /**
+   * Called when the socket is closed.
+   */
+  onSocketClose() {
+    // In addition to the WebSocket transport, we also have to close the
+    // connection used internally within httpd.js. Otherwise the server doesn't
+    // shut down correctly, and keeps these Connection instances alive.
+    this.httpdConnection.close();
   }
 
   /**
@@ -144,6 +163,6 @@ export class WebSocketConnection {
    *     JSON-serializable object sent by the client.
    */
   async onPacket(packet) {
-    this._log("->", packet);
+    this.#log("->", packet);
   }
 }

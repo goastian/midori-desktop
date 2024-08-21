@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   addDebuggerToGlobal: "resource://gre/modules/jsdebugger.sys.mjs",
@@ -11,7 +9,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   generateUUID: "chrome://remote/content/shared/UUID.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "dbg", () => {
+ChromeUtils.defineLazyGetter(lazy, "dbg", () => {
   // eslint-disable-next-line mozilla/reject-globalThis-modification
   lazy.addDebuggerToGlobal(globalThis);
   return new Debugger();
@@ -150,7 +148,9 @@ export class WindowRealm extends Realm {
   #realmAutomationFeaturesEnabled;
   #globalObject;
   #globalObjectReference;
+  #isSandbox;
   #sandboxName;
+  #userActivationEnabled;
   #window;
 
   static type = RealmType.Window;
@@ -168,14 +168,15 @@ export class WindowRealm extends Realm {
 
     super();
 
+    this.#isSandbox = sandboxName !== null;
     this.#sandboxName = sandboxName;
     this.#window = window;
-    this.#globalObject =
-      sandboxName === null ? this.#window : this.#createSandbox();
+    this.#globalObject = this.#isSandbox ? this.#createSandbox() : this.#window;
     this.#globalObjectReference = lazy.dbg.makeGlobalObjectReference(
       this.#globalObject
     );
     this.#realmAutomationFeaturesEnabled = false;
+    this.#userActivationEnabled = false;
   }
 
   destroy() {
@@ -200,8 +201,31 @@ export class WindowRealm extends Realm {
     return this.#globalObjectReference;
   }
 
+  get isSandbox() {
+    return this.#isSandbox;
+  }
+
   get origin() {
     return this.#window.origin;
+  }
+
+  get userActivationEnabled() {
+    return this.#userActivationEnabled;
+  }
+
+  set userActivationEnabled(enable) {
+    if (enable === this.#userActivationEnabled) {
+      return;
+    }
+
+    const document = this.#window.document;
+    if (enable) {
+      document.notifyUserGestureActivation();
+    } else {
+      document.clearUserGestureActivation();
+    }
+
+    this.#userActivationEnabled = enable;
   }
 
   #createDebuggerObject(obj) {
@@ -311,17 +335,22 @@ export class WindowRealm extends Realm {
    *     - context {BrowsingContext} The browsing context, associated with the realm.
    *     - id {string} The realm unique identifier.
    *     - origin {string} The serialization of an origin.
-   *     - sandbox {string|null} The name of the sandbox.
+   *     - sandbox {string=} The name of the sandbox.
    *     - type {RealmType.Window} The window realm type.
    */
   getInfo() {
     const baseInfo = super.getInfo();
-    return {
+    const info = {
       ...baseInfo,
       context: this.#window.browsingContext,
-      sandbox: this.#sandboxName,
       type: WindowRealm.type,
     };
+
+    if (this.#isSandbox) {
+      info.sandbox = this.#sandboxName;
+    }
+
+    return info;
   }
 
   /**

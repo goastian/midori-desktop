@@ -3,26 +3,24 @@
 
 "use strict";
 
-add_task(async function raisesWithoutArguments({ client, tab }) {
+add_task(async function raisesWithoutArguments({ client }) {
   const { Target } = client;
-  let errorThrown = false;
-  try {
-    await Target.activateTarget();
-  } catch (e) {
-    errorThrown = true;
-  }
-  ok(errorThrown, "activateTarget raised error without an argument");
+
+  await Assert.rejects(
+    Target.activateTarget(),
+    err => err.message.includes(`Unable to find target with id`),
+    "activateTarget raised error without an argument"
+  );
 });
 
-add_task(async function raisesWithUnknownTargetId({ client, tab }) {
+add_task(async function raisesWithUnknownTargetId({ client }) {
   const { Target } = client;
-  let errorThrown = false;
-  try {
-    await Target.activateTarget({ targetId: "-1" });
-  } catch (e) {
-    errorThrown = true;
-  }
-  ok(errorThrown, "activateTarget raised error with unkown target id");
+
+  await Assert.rejects(
+    Target.activateTarget({ targetId: "-1" }),
+    err => err.message.includes(`Unable to find target with id`),
+    "activateTarget raised error with unkown target id"
+  );
 });
 
 add_task(async function selectTabInOtherWindow({ client, tab }) {

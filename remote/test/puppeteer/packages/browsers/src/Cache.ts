@@ -1,33 +1,102 @@
 /**
- * Copyright 2023 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2023 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
-import {Browser, BrowserPlatform} from './browser-data/browser-data.js';
+import debug from 'debug';
+
+import {
+  Browser,
+  type BrowserPlatform,
+  executablePathByBrowser,
+  getVersionComparator,
+} from './browser-data/browser-data.js';
+import {detectBrowserPlatform} from './detectPlatform.js';
+
+const debugCache = debug('puppeteer:browsers:cache');
 
 /**
  * @public
  */
-export type InstalledBrowser = {
-  path: string;
+export class InstalledBrowser {
   browser: Browser;
   buildId: string;
   platform: BrowserPlatform;
-};
+  readonly executablePath: string;
+
+  #cache: Cache;
+
+  /**
+   * @internal
+   */
+  constructor(
+    cache: Cache,
+    browser: Browser,
+    buildId: string,
+    platform: BrowserPlatform
+  ) {
+    this.#cache = cache;
+    this.browser = browser;
+    this.buildId = buildId;
+    this.platform = platform;
+    this.executablePath = cache.computeExecutablePath({
+      browser,
+      buildId,
+      platform,
+    });
+  }
+
+  /**
+   * Path to the root of the installation folder. Use
+   * {@link computeExecutablePath} to get the path to the executable binary.
+   */
+  get path(): string {
+    return this.#cache.installationDir(
+      this.browser,
+      this.platform,
+      this.buildId
+    );
+  }
+
+  readMetadata(): Metadata {
+    return this.#cache.readMetadata(this.browser);
+  }
+
+  writeMetadata(metadata: Metadata): void {
+    this.#cache.writeMetadata(this.browser, metadata);
+  }
+}
+
+/**
+ * @internal
+ */
+export interface ComputeExecutablePathOptions {
+  /**
+   * Determines which platform the browser will be suited for.
+   *
+   * @defaultValue **Auto-detected.**
+   */
+  platform?: BrowserPlatform;
+  /**
+   * Determines which browser to launch.
+   */
+  browser: Browser;
+  /**
+   * Determines which buildId to download. BuildId should uniquely identify
+   * binaries and they are used for caching.
+   */
+  buildId: string;
+}
+
+export interface Metadata {
+  // Maps an alias (canary/latest/dev/etc.) to a buildId.
+  aliases: Record<string, string>;
+}
 
 /**
  * The cache used by Puppeteer relies on the following structure:
@@ -50,8 +119,48 @@ export class Cache {
     this.#rootDir = rootDir;
   }
 
+  /**
+   * @internal
+   */
+  get rootDir(): string {
+    return this.#rootDir;
+  }
+
   browserRoot(browser: Browser): string {
     return path.join(this.#rootDir, browser);
+  }
+
+  metadataFile(browser: Browser): string {
+    return path.join(this.browserRoot(browser), '.metadata');
+  }
+
+  readMetadata(browser: Browser): Metadata {
+    const metatadaPath = this.metadataFile(browser);
+    if (!fs.existsSync(metatadaPath)) {
+      return {aliases: {}};
+    }
+    // TODO: add type-safe parsing.
+    const data = JSON.parse(fs.readFileSync(metatadaPath, 'utf8'));
+    if (typeof data !== 'object') {
+      throw new Error('.metadata is not an object');
+    }
+    return data;
+  }
+
+  writeMetadata(browser: Browser, metadata: Metadata): void {
+    const metatadaPath = this.metadataFile(browser);
+    fs.mkdirSync(path.dirname(metatadaPath), {recursive: true});
+    fs.writeFileSync(metatadaPath, JSON.stringify(metadata, null, 2));
+  }
+
+  resolveAlias(browser: Browser, alias: string): string | undefined {
+    const metadata = this.readMetadata(browser);
+    if (alias === 'latest') {
+      return Object.values(metadata.aliases || {})
+        .sort(getVersionComparator(browser))
+        .at(-1);
+    }
+    return metadata.aliases[alias];
   }
 
   installationDir(
@@ -64,6 +173,25 @@ export class Cache {
 
   clear(): void {
     fs.rmSync(this.#rootDir, {
+      force: true,
+      recursive: true,
+      maxRetries: 10,
+      retryDelay: 500,
+    });
+  }
+
+  uninstall(
+    browser: Browser,
+    platform: BrowserPlatform,
+    buildId: string
+  ): void {
+    const metadata = this.readMetadata(browser);
+    for (const alias of Object.keys(metadata.aliases)) {
+      if (metadata.aliases[alias] === buildId) {
+        delete metadata.aliases[alias];
+      }
+    }
+    fs.rmSync(this.installationDir(browser, platform, buildId), {
       force: true,
       recursive: true,
       maxRetries: 10,
@@ -89,17 +217,44 @@ export class Cache {
           if (!result) {
             return null;
           }
-          return {
-            path: path.join(this.browserRoot(browser), file),
+          return new InstalledBrowser(
+            this,
             browser,
-            platform: result.platform,
-            buildId: result.buildId,
-          };
+            result.buildId,
+            result.platform as BrowserPlatform
+          );
         })
-        .filter((item): item is InstalledBrowser => {
+        .filter((item: InstalledBrowser | null): item is InstalledBrowser => {
           return item !== null;
         });
     });
+  }
+
+  computeExecutablePath(options: ComputeExecutablePathOptions): string {
+    options.platform ??= detectBrowserPlatform();
+    if (!options.platform) {
+      throw new Error(
+        `Cannot download a binary for the provided platform: ${os.platform()} (${os.arch()})`
+      );
+    }
+    try {
+      options.buildId =
+        this.resolveAlias(options.browser, options.buildId) ?? options.buildId;
+    } catch {
+      debugCache('could not read .metadata file for the browser');
+    }
+    const installationDir = this.installationDir(
+      options.browser,
+      options.platform,
+      options.buildId
+    );
+    return path.join(
+      installationDir,
+      executablePathByBrowser[options.browser](
+        options.platform,
+        options.buildId
+      )
+    );
   }
 }
 

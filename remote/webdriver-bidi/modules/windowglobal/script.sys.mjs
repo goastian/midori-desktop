@@ -7,12 +7,10 @@ import { WindowGlobalBiDiModule } from "chrome://remote/content/webdriver-bidi/m
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  deserialize: "chrome://remote/content/webdriver-bidi/RemoteValue.sys.mjs",
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
   getFramesFromStack: "chrome://remote/content/shared/Stack.sys.mjs",
   isChromeFrame: "chrome://remote/content/shared/Stack.sys.mjs",
   OwnershipModel: "chrome://remote/content/webdriver-bidi/RemoteValue.sys.mjs",
-  serialize: "chrome://remote/content/webdriver-bidi/RemoteValue.sys.mjs",
   setDefaultSerializationOptions:
     "chrome://remote/content/webdriver-bidi/RemoteValue.sys.mjs",
   stringify: "chrome://remote/content/webdriver-bidi/RemoteValue.sys.mjs",
@@ -64,7 +62,13 @@ class ScriptModule extends WindowGlobalBiDiModule {
     }
   }
 
-  #buildExceptionDetails(exception, stack, realm, resultOwnership, options) {
+  #buildExceptionDetails(
+    exception,
+    stack,
+    realm,
+    resultOwnership,
+    seenNodeIds
+  ) {
     exception = this.#toRawObject(exception);
 
     // A stacktrace is mandatory to build exception details and a missing stack
@@ -94,13 +98,12 @@ class ScriptModule extends WindowGlobalBiDiModule {
 
     return {
       columnNumber: stack.column - 1,
-      exception: lazy.serialize(
+      exception: this.serialize(
         exception,
         lazy.setDefaultSerializationOptions(),
         resultOwnership,
-        new Map(),
         realm,
-        options
+        { seenNodeIds }
       ),
       lineNumber: stack.line - 1,
       stackTrace: { callFrames },
@@ -113,8 +116,7 @@ class ScriptModule extends WindowGlobalBiDiModule {
     realm,
     awaitPromise,
     resultOwnership,
-    serializationOptions,
-    options
+    serializationOptions
   ) {
     let evaluationStatus, exception, result, stack;
 
@@ -155,31 +157,37 @@ class ScriptModule extends WindowGlobalBiDiModule {
       stack = rv.stack;
     }
 
+    const seenNodeIds = new Map();
     switch (evaluationStatus) {
       case EvaluationStatus.Normal:
+        const dataSuccess = this.serialize(
+          this.#toRawObject(result),
+          serializationOptions,
+          resultOwnership,
+          realm,
+          { seenNodeIds }
+        );
+
         return {
           evaluationStatus,
-          result: lazy.serialize(
-            this.#toRawObject(result),
-            serializationOptions,
-            resultOwnership,
-            new Map(),
-            realm,
-            options
-          ),
           realmId: realm.id,
+          result: dataSuccess,
+          _extraData: { seenNodeIds },
         };
       case EvaluationStatus.Throw:
+        const dataThrow = this.#buildExceptionDetails(
+          exception,
+          stack,
+          realm,
+          resultOwnership,
+          seenNodeIds
+        );
+
         return {
           evaluationStatus,
-          exceptionDetails: this.#buildExceptionDetails(
-            exception,
-            stack,
-            realm,
-            resultOwnership,
-            options
-          ),
+          exceptionDetails: dataThrow,
           realmId: realm.id,
+          _extraData: { seenNodeIds },
         };
       default:
         throw new lazy.error.UnsupportedOperationError(
@@ -202,18 +210,20 @@ class ScriptModule extends WindowGlobalBiDiModule {
       serializationOptions,
     } = channelProperties;
 
-    const data = lazy.serialize(
+    const seenNodeIds = new Map();
+    const data = this.serialize(
       this.#toRawObject(message),
       lazy.setDefaultSerializationOptions(serializationOptions),
       ownershipType,
-      new Map(),
-      realm
+      realm,
+      { seenNodeIds }
     );
 
     this.emitEvent("script.message", {
       channel,
       data,
       source: this.#getSource(realm),
+      _extraData: { seenNodeIds },
     });
   };
 
@@ -233,7 +243,7 @@ class ScriptModule extends WindowGlobalBiDiModule {
       } = script;
       const realm = this.messageHandler.getRealm({ sandboxName: sandbox });
       const deserializedArguments = commandArguments.map(arg =>
-        lazy.deserialize(realm, arg, {
+        this.deserialize(arg, realm, {
           emitScriptMessage: this.#emitScriptMessage,
         })
       );
@@ -280,7 +290,7 @@ class ScriptModule extends WindowGlobalBiDiModule {
       const rawObject = maybeDebuggerObject.unsafeDereference();
 
       // TODO: Getters for Maps and Sets iterators return "Opaque" objects and
-      // are not iterable. RemoteValue.jsm' serializer should handle calling
+      // are not iterable. RemoteValue.sys.mjs' serializer should handle calling
       // waiveXrays on Maps/Sets/... and then unwaiveXrays on entries but since
       // we serialize with maxDepth=1, calling waiveXrays once on the root
       // object allows to return correctly serialized values.
@@ -314,6 +324,8 @@ class ScriptModule extends WindowGlobalBiDiModule {
    *     in case of ECMAScript objects should be serialized.
    * @param {RemoteValue=} options.thisParameter
    *     The value of the this keyword for the function call.
+   * @param {boolean=} options.userActivation
+   *     Determines whether execution should be treated as initiated by user.
    *
    * @returns {object}
    *     - evaluationStatus {EvaluationStatus} One of "normal", "throw".
@@ -332,28 +344,28 @@ class ScriptModule extends WindowGlobalBiDiModule {
       sandbox: sandboxName = null,
       serializationOptions,
       thisParameter = null,
+      userActivation,
     } = options;
 
     const realm = this.messageHandler.getRealm({ realmId, sandboxName });
-    const nodeCache = this.nodeCache;
 
     const deserializedArguments =
       commandArguments !== null
         ? commandArguments.map(arg =>
-            lazy.deserialize(realm, arg, {
+            this.deserialize(arg, realm, {
               emitScriptMessage: this.#emitScriptMessage,
-              nodeCache,
             })
           )
         : [];
 
     const deserializedThis =
       thisParameter !== null
-        ? lazy.deserialize(realm, thisParameter, {
+        ? this.deserialize(thisParameter, realm, {
             emitScriptMessage: this.#emitScriptMessage,
-            nodeCache,
           })
         : null;
+
+    realm.userActivationEnabled = userActivation;
 
     const rv = realm.executeInGlobalWithBindings(
       functionDeclaration,
@@ -366,10 +378,7 @@ class ScriptModule extends WindowGlobalBiDiModule {
       realm,
       awaitPromise,
       resultOwnership,
-      serializationOptions,
-      {
-        nodeCache,
-      }
+      serializationOptions
     );
   }
 
@@ -408,6 +417,8 @@ class ScriptModule extends WindowGlobalBiDiModule {
    *     The ownership model to use for the results of this evaluation.
    * @param {string=} options.sandbox
    *     The name of the sandbox.
+   * @param {boolean=} options.userActivation
+   *     Determines whether execution should be treated as initiated by user.
    *
    * @returns {object}
    *     - evaluationStatus {EvaluationStatus} One of "normal", "throw".
@@ -424,9 +435,12 @@ class ScriptModule extends WindowGlobalBiDiModule {
       resultOwnership,
       sandbox: sandboxName = null,
       serializationOptions,
+      userActivation,
     } = options;
 
     const realm = this.messageHandler.getRealm({ realmId, sandboxName });
+
+    realm.userActivationEnabled = userActivation;
 
     const rv = realm.executeInGlobal(expression);
 
@@ -435,10 +449,7 @@ class ScriptModule extends WindowGlobalBiDiModule {
       realm,
       awaitPromise,
       resultOwnership,
-      serializationOptions,
-      {
-        nodeCache: this.nodeCache,
-      }
+      serializationOptions
     );
   }
 
@@ -464,8 +475,7 @@ class ScriptModule extends WindowGlobalBiDiModule {
    */
 
   _applySessionData(params) {
-    // We only care about updates coming on context creation.
-    if (params.category === "preload-script" && params.initial) {
+    if (params.category === "preload-script") {
       this.#preloadScripts = new Set();
       for (const item of params.sessionData) {
         if (this.messageHandler.matchesContext(item.contextDescriptor)) {

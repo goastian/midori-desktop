@@ -1,27 +1,17 @@
 /**
- * Copyright 2023 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2023 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import fs from 'fs';
 import path from 'path';
 
-import {httpRequest} from '../httpUtil.js';
+import {getJSON} from '../httpUtil.js';
 
-import {BrowserPlatform, ProfileOptions} from './types.js';
+import {BrowserPlatform, type ProfileOptions} from './types.js';
 
-function archive(platform: BrowserPlatform, buildId: string): string {
+function archiveNightly(platform: BrowserPlatform, buildId: string): string {
   switch (platform) {
     case BrowserPlatform.LINUX:
       return `firefox-${buildId}.en-US.${platform}-x86_64.tar.bz2`;
@@ -34,67 +24,146 @@ function archive(platform: BrowserPlatform, buildId: string): string {
   }
 }
 
+function archive(platform: BrowserPlatform, buildId: string): string {
+  switch (platform) {
+    case BrowserPlatform.LINUX:
+      return `firefox-${buildId}.tar.bz2`;
+    case BrowserPlatform.MAC_ARM:
+    case BrowserPlatform.MAC:
+      return `Firefox ${buildId}.dmg`;
+    case BrowserPlatform.WIN32:
+    case BrowserPlatform.WIN64:
+      return `Firefox Setup ${buildId}.exe`;
+  }
+}
+
+function platformName(platform: BrowserPlatform): string {
+  switch (platform) {
+    case BrowserPlatform.LINUX:
+      return `linux-x86_64`;
+    case BrowserPlatform.MAC_ARM:
+    case BrowserPlatform.MAC:
+      return `mac`;
+    case BrowserPlatform.WIN32:
+    case BrowserPlatform.WIN64:
+      return platform;
+  }
+}
+
+function parseBuildId(buildId: string): [FirefoxChannel, string] {
+  for (const value of Object.values(FirefoxChannel)) {
+    if (buildId.startsWith(value + '_')) {
+      buildId = buildId.substring(value.length + 1);
+      return [value, buildId];
+    }
+  }
+  // Older versions do not have channel as the prefix.«
+  return [FirefoxChannel.NIGHTLY, buildId];
+}
+
 export function resolveDownloadUrl(
   platform: BrowserPlatform,
   buildId: string,
-  baseUrl = 'https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central'
+  baseUrl?: string
 ): string {
-  return `${baseUrl}/${resolveDownloadPath(platform, buildId).join('/')}`;
+  const [channel, resolvedBuildId] = parseBuildId(buildId);
+  switch (channel) {
+    case FirefoxChannel.NIGHTLY:
+      baseUrl ??=
+        'https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central';
+      break;
+    case FirefoxChannel.DEVEDITION:
+      baseUrl ??= 'https://archive.mozilla.org/pub/devedition/releases';
+      break;
+    case FirefoxChannel.BETA:
+    case FirefoxChannel.STABLE:
+    case FirefoxChannel.ESR:
+      baseUrl ??= 'https://archive.mozilla.org/pub/firefox/releases';
+      break;
+  }
+  switch (channel) {
+    case FirefoxChannel.NIGHTLY:
+      return `${baseUrl}/${resolveDownloadPath(platform, resolvedBuildId).join('/')}`;
+    case FirefoxChannel.DEVEDITION:
+    case FirefoxChannel.BETA:
+    case FirefoxChannel.STABLE:
+    case FirefoxChannel.ESR:
+      return `${baseUrl}/${resolvedBuildId}/${platformName(platform)}/en-US/${archive(platform, resolvedBuildId)}`;
+  }
 }
 
 export function resolveDownloadPath(
   platform: BrowserPlatform,
   buildId: string
 ): string[] {
-  return [archive(platform, buildId)];
+  return [archiveNightly(platform, buildId)];
 }
 
 export function relativeExecutablePath(
   platform: BrowserPlatform,
-  _buildId: string
+  buildId: string
 ): string {
-  switch (platform) {
-    case BrowserPlatform.MAC_ARM:
-    case BrowserPlatform.MAC:
-      return path.join('Firefox Nightly.app', 'Contents', 'MacOS', 'firefox');
-    case BrowserPlatform.LINUX:
-      return path.join('firefox', 'firefox');
-    case BrowserPlatform.WIN32:
-    case BrowserPlatform.WIN64:
-      return path.join('firefox', 'firefox.exe');
+  const [channel] = parseBuildId(buildId);
+  switch (channel) {
+    case FirefoxChannel.NIGHTLY:
+      switch (platform) {
+        case BrowserPlatform.MAC_ARM:
+        case BrowserPlatform.MAC:
+          return path.join(
+            'Firefox Nightly.app',
+            'Contents',
+            'MacOS',
+            'firefox'
+          );
+        case BrowserPlatform.LINUX:
+          return path.join('firefox', 'firefox');
+        case BrowserPlatform.WIN32:
+        case BrowserPlatform.WIN64:
+          return path.join('firefox', 'firefox.exe');
+      }
+    case FirefoxChannel.BETA:
+    case FirefoxChannel.DEVEDITION:
+    case FirefoxChannel.ESR:
+    case FirefoxChannel.STABLE:
+      switch (platform) {
+        case BrowserPlatform.MAC_ARM:
+        case BrowserPlatform.MAC:
+          return path.join('Firefox.app', 'Contents', 'MacOS', 'firefox');
+        case BrowserPlatform.LINUX:
+          return path.join('firefox', 'firefox');
+        case BrowserPlatform.WIN32:
+        case BrowserPlatform.WIN64:
+          return path.join('core', 'firefox.exe');
+      }
   }
 }
 
+export enum FirefoxChannel {
+  STABLE = 'stable',
+  ESR = 'esr',
+  DEVEDITION = 'devedition',
+  BETA = 'beta',
+  NIGHTLY = 'nightly',
+}
+
 export async function resolveBuildId(
-  channel: 'FIREFOX_NIGHTLY' = 'FIREFOX_NIGHTLY'
+  channel: FirefoxChannel = FirefoxChannel.NIGHTLY
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const request = httpRequest(
-      new URL('https://product-details.mozilla.org/1.0/firefox_versions.json'),
-      'GET',
-      response => {
-        let data = '';
-        if (response.statusCode && response.statusCode >= 400) {
-          return reject(new Error(`Got status code ${response.statusCode}`));
-        }
-        response.on('data', chunk => {
-          data += chunk;
-        });
-        response.on('end', () => {
-          try {
-            const versions = JSON.parse(data);
-            return resolve(versions[channel]);
-          } catch {
-            return reject(new Error('Firefox version not found'));
-          }
-        });
-      },
-      false
-    );
-    request.on('error', err => {
-      reject(err);
-    });
-  });
+  const channelToVersionKey = {
+    [FirefoxChannel.ESR]: 'FIREFOX_ESR',
+    [FirefoxChannel.STABLE]: 'LATEST_FIREFOX_VERSION',
+    [FirefoxChannel.DEVEDITION]: 'FIREFOX_DEVEDITION',
+    [FirefoxChannel.BETA]: 'FIREFOX_DEVEDITION',
+    [FirefoxChannel.NIGHTLY]: 'FIREFOX_NIGHTLY',
+  };
+  const versions = (await getJSON(
+    new URL('https://product-details.mozilla.org/1.0/firefox_versions.json')
+  )) as Record<string, string>;
+  const version = versions[channelToVersionKey[channel]];
+  if (!version) {
+    throw new Error(`Channel ${channel} is not found.`);
+  }
+  return channel + '_' + version;
 }
 
 export async function createProfile(options: ProfileOptions): Promise<void> {
@@ -149,7 +218,6 @@ function defaultProfilePreferences(
     'browser.safebrowsing.blockedURIs.enabled': false,
     'browser.safebrowsing.downloads.enabled': false,
     'browser.safebrowsing.malware.enabled': false,
-    'browser.safebrowsing.passwords.enabled': false,
     'browser.safebrowsing.phishing.enabled': false,
 
     // Disable updates to search engines.
@@ -175,9 +243,8 @@ function defaultProfilePreferences(
     // Do not warn when multiple tabs will be opened
     'browser.tabs.warnOnOpen': false,
 
-    // Disable page translations, which can cause issues with tests.
-    // See https://bugzilla.mozilla.org/show_bug.cgi?id=1836093.
-    'browser.translations.enable': false,
+    // Do not automatically offer translations, as tests do not expect this.
+    'browser.translations.automaticallyPopup': false,
 
     // Disable the UI tour.
     'browser.uitour.enabled': false,
@@ -241,31 +308,30 @@ function defaultProfilePreferences(
     // Make sure opening about:addons will not hit the network
     'extensions.webservice.discoverURL': `http://${server}/dummy/discoveryURL`,
 
-    // Temporarily force disable BFCache in parent (https://bit.ly/bug-1732263)
-    'fission.bfcacheInParent': false,
-
-    // Force all web content to use a single content process
-    'fission.webContentIsolationStrategy': 0,
-
     // Allow the application to have focus even it runs in the background
     'focusmanager.testmode': true,
+
     // Disable useragent updates
     'general.useragent.updates.enabled': false,
+
     // Always use network provider for geolocation tests so we bypass the
     // macOS dialog raised by the corelocation provider
     'geo.provider.testing': true,
+
     // Do not scan Wifi
     'geo.wifi.scan': false,
+
     // No hang monitor
     'hangmonitor.timeout': 0,
+
     // Show chrome errors and warnings in the error console
     'javascript.options.showInConsole': true,
 
     // Disable download and usage of OpenH264: and Widevine plugins
     'media.gmp-manager.updateEnabled': false,
-    // Prevent various error message on the console
-    // jest-puppeteer asserts that no error message is emitted by the console
-    'network.cookie.cookieBehavior': 0,
+
+    // Disable the GFX sanity window
+    'media.sanity-test.disabled': true,
 
     // Disable experimental feature that is only available in Nightly
     'network.cookie.sameSite.laxByDefault': false,
@@ -294,9 +360,11 @@ function defaultProfilePreferences(
 
     // Don't do network connections for mitm priming
     'security.certerrors.mitm.priming.enabled': false,
+
     // Local documents have access to all other local documents,
     // including directory listings
     'security.fileuri.strict_origin_policy': false,
+
     // Do not wait for the notification button security delay
     'security.notification_enable_delay': 0,
 
@@ -306,6 +374,7 @@ function defaultProfilePreferences(
     // Do not automatically fill sign-in forms with known usernames and
     // passwords
     'signon.autofillForms': false,
+
     // Disable password capture, so that tests that include forms are not
     // influenced by the presence of the persistent doorhanger notification
     'signon.rememberSignons': false,
@@ -337,19 +406,34 @@ function defaultProfilePreferences(
  * @param profilePath - Firefox profile to write the preferences to.
  */
 async function writePreferences(options: ProfileOptions): Promise<void> {
+  const prefsPath = path.join(options.path, 'prefs.js');
   const lines = Object.entries(options.preferences).map(([key, value]) => {
     return `user_pref(${JSON.stringify(key)}, ${JSON.stringify(value)});`;
   });
 
-  await fs.promises.writeFile(
-    path.join(options.path, 'user.js'),
-    lines.join('\n')
-  );
-
-  // Create a backup of the preferences file if it already exitsts.
-  const prefsPath = path.join(options.path, 'prefs.js');
-  if (fs.existsSync(prefsPath)) {
-    const prefsBackupPath = path.join(options.path, 'prefs.js.puppeteer');
-    await fs.promises.copyFile(prefsPath, prefsBackupPath);
+  // Use allSettled to prevent corruption
+  const result = await Promise.allSettled([
+    fs.promises.writeFile(path.join(options.path, 'user.js'), lines.join('\n')),
+    // Create a backup of the preferences file if it already exitsts.
+    fs.promises.access(prefsPath, fs.constants.F_OK).then(
+      async () => {
+        await fs.promises.copyFile(
+          prefsPath,
+          path.join(options.path, 'prefs.js.puppeteer')
+        );
+      },
+      // Swallow only if file does not exist
+      () => {}
+    ),
+  ]);
+  for (const command of result) {
+    if (command.status === 'rejected') {
+      throw command.reason;
+    }
   }
+}
+
+export function compareVersions(a: string, b: string): number {
+  // TODO: this is a not very reliable check.
+  return parseInt(a.replace('.', ''), 16) - parseInt(b.replace('.', ''), 16);
 }

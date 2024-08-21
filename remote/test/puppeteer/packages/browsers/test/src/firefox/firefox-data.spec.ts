@@ -1,17 +1,7 @@
 /**
- * Copyright 2023 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2023 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import assert from 'assert';
@@ -21,13 +11,14 @@ import path from 'path';
 
 import {BrowserPlatform} from '../../../lib/cjs/browser-data/browser-data.js';
 import {
+  compareVersions,
   createProfile,
   relativeExecutablePath,
   resolveDownloadUrl,
 } from '../../../lib/cjs/browser-data/firefox.js';
 
 describe('Firefox', () => {
-  it('should resolve download URLs', () => {
+  it('should resolve download URLs for Nightly', () => {
     assert.strictEqual(
       resolveDownloadUrl(BrowserPlatform.LINUX, '111.0a1'),
       'https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-111.0a1.en-US.linux-x86_64.tar.bz2'
@@ -47,6 +38,75 @@ describe('Firefox', () => {
     assert.strictEqual(
       resolveDownloadUrl(BrowserPlatform.WIN64, '111.0a1'),
       'https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central/firefox-111.0a1.en-US.win64.zip'
+    );
+  });
+
+  it('should resolve download URLs for beta', () => {
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.LINUX, 'beta_115.0b8'),
+      'https://archive.mozilla.org/pub/firefox/releases/115.0b8/linux-x86_64/en-US/firefox-115.0b8.tar.bz2'
+    );
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.MAC, 'beta_115.0b8'),
+      'https://archive.mozilla.org/pub/firefox/releases/115.0b8/mac/en-US/Firefox 115.0b8.dmg'
+    );
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.MAC_ARM, 'beta_115.0b8'),
+      'https://archive.mozilla.org/pub/firefox/releases/115.0b8/mac/en-US/Firefox 115.0b8.dmg'
+    );
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.WIN32, 'beta_115.0b8'),
+      'https://archive.mozilla.org/pub/firefox/releases/115.0b8/win32/en-US/Firefox Setup 115.0b8.exe'
+    );
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.WIN64, 'beta_115.0b8'),
+      'https://archive.mozilla.org/pub/firefox/releases/115.0b8/win64/en-US/Firefox Setup 115.0b8.exe'
+    );
+  });
+
+  it('should resolve download URLs for stable', () => {
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.LINUX, 'stable_111.0.1'),
+      'https://archive.mozilla.org/pub/firefox/releases/111.0.1/linux-x86_64/en-US/firefox-111.0.1.tar.bz2'
+    );
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.MAC, 'stable_111.0.1'),
+      'https://archive.mozilla.org/pub/firefox/releases/111.0.1/mac/en-US/Firefox 111.0.1.dmg'
+    );
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.MAC_ARM, 'stable_111.0.1'),
+      'https://archive.mozilla.org/pub/firefox/releases/111.0.1/mac/en-US/Firefox 111.0.1.dmg'
+    );
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.WIN32, 'stable_111.0.1'),
+      'https://archive.mozilla.org/pub/firefox/releases/111.0.1/win32/en-US/Firefox Setup 111.0.1.exe'
+    );
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.WIN64, 'stable_111.0.1'),
+      'https://archive.mozilla.org/pub/firefox/releases/111.0.1/win64/en-US/Firefox Setup 111.0.1.exe'
+    );
+  });
+
+  it('should resolve download URLs for devedition', () => {
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.LINUX, 'devedition_115.0b8'),
+      'https://archive.mozilla.org/pub/devedition/releases/115.0b8/linux-x86_64/en-US/firefox-115.0b8.tar.bz2'
+    );
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.MAC, 'devedition_115.0b8'),
+      'https://archive.mozilla.org/pub/devedition/releases/115.0b8/mac/en-US/Firefox 115.0b8.dmg'
+    );
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.MAC_ARM, 'devedition_115.0b8'),
+      'https://archive.mozilla.org/pub/devedition/releases/115.0b8/mac/en-US/Firefox 115.0b8.dmg'
+    );
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.WIN32, 'devedition_115.0b8'),
+      'https://archive.mozilla.org/pub/devedition/releases/115.0b8/win32/en-US/Firefox Setup 115.0b8.exe'
+    );
+    assert.strictEqual(
+      resolveDownloadUrl(BrowserPlatform.WIN64, 'devedition_115.0b8'),
+      'https://archive.mozilla.org/pub/devedition/releases/115.0b8/win64/en-US/Firefox Setup 115.0b8.exe'
     );
   });
 
@@ -103,5 +163,11 @@ describe('Firefox', () => {
       ); // default preference.
       assert.ok(text.includes(`user_pref("test", 1);`)); // custom preference.
     });
+  });
+
+  it('should compare versions', async () => {
+    assert.ok(compareVersions('111.0a1', '110.0a1') >= 1);
+    assert.ok(compareVersions('110.0a1', '111.0a1') <= -1);
+    assert.ok(compareVersions('111.0a1', '111.0a1') === 0);
   });
 });

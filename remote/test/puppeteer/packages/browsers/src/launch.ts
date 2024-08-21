@@ -1,31 +1,19 @@
 /**
- * Copyright 2023 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2023 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import childProcess from 'child_process';
 import {accessSync} from 'fs';
 import os from 'os';
-import path from 'path';
 import readline from 'readline';
 
 import {
-  Browser,
-  BrowserPlatform,
-  executablePathByBrowser,
+  type Browser,
+  type BrowserPlatform,
   resolveSystemExecutablePath,
-  ChromeReleaseChannel,
+  type ChromeReleaseChannel,
 } from './browser-data/browser-data.js';
 import {Cache} from './Cache.js';
 import {debug} from './debug.js';
@@ -64,21 +52,7 @@ export interface ComputeExecutablePathOptions {
 export function computeExecutablePath(
   options: ComputeExecutablePathOptions
 ): string {
-  options.platform ??= detectBrowserPlatform();
-  if (!options.platform) {
-    throw new Error(
-      `Cannot download a binary for the provided platform: ${os.platform()} (${os.arch()})`
-    );
-  }
-  const installationDir = new Cache(options.cacheDir).installationDir(
-    options.browser,
-    options.platform,
-    options.buildId
-  );
-  return path.join(
-    installationDir,
-    executablePathByBrowser[options.browser](options.platform, options.buildId)
-  );
+  return new Cache(options.cacheDir).computeExecutablePath(options);
 }
 
 /**
@@ -129,7 +103,7 @@ export function computeSystemExecutablePath(options: SystemOptions): string {
 /**
  * @public
  */
-export type LaunchOptions = {
+export interface LaunchOptions {
   executablePath: string;
   pipe?: boolean;
   dumpio?: boolean;
@@ -140,7 +114,7 @@ export type LaunchOptions = {
   handleSIGHUP?: boolean;
   detached?: boolean;
   onExit?: () => Promise<void>;
-};
+}
 
 /**
  * @public
@@ -160,6 +134,59 @@ export const CDP_WEBSOCKET_ENDPOINT_REGEX =
  */
 export const WEBDRIVER_BIDI_WEBSOCKET_ENDPOINT_REGEX =
   /^WebDriver BiDi listening on (ws:\/\/.*)$/;
+
+type EventHandler = (...args: any[]) => void;
+const processListeners = new Map<string, EventHandler[]>();
+const dispatchers = {
+  exit: (...args: any[]) => {
+    processListeners.get('exit')?.forEach(handler => {
+      return handler(...args);
+    });
+  },
+  SIGINT: (...args: any[]) => {
+    processListeners.get('SIGINT')?.forEach(handler => {
+      return handler(...args);
+    });
+  },
+  SIGHUP: (...args: any[]) => {
+    processListeners.get('SIGHUP')?.forEach(handler => {
+      return handler(...args);
+    });
+  },
+  SIGTERM: (...args: any[]) => {
+    processListeners.get('SIGTERM')?.forEach(handler => {
+      return handler(...args);
+    });
+  },
+};
+
+function subscribeToProcessEvent(
+  event: 'exit' | 'SIGINT' | 'SIGHUP' | 'SIGTERM',
+  handler: EventHandler
+): void {
+  const listeners = processListeners.get(event) || [];
+  if (listeners.length === 0) {
+    process.on(event, dispatchers[event]);
+  }
+  listeners.push(handler);
+  processListeners.set(event, listeners);
+}
+
+function unsubscribeFromProcessEvent(
+  event: 'exit' | 'SIGINT' | 'SIGHUP' | 'SIGTERM',
+  handler: EventHandler
+): void {
+  const listeners = processListeners.get(event) || [];
+  const existingListenerIdx = listeners.indexOf(handler);
+  if (existingListenerIdx === -1) {
+    return;
+  }
+  listeners.splice(existingListenerIdx, 1);
+  processListeners.set(event, listeners);
+  if (listeners.length === 0) {
+    process.off(event, dispatchers[event]);
+  }
+}
 
 /**
  * @public
@@ -196,9 +223,19 @@ export class Process {
       dumpio: opts.dumpio,
     });
 
+    const env = opts.env || {};
+
     debugLaunch(`Launching ${this.#executablePath} ${this.#args.join(' ')}`, {
       detached: opts.detached,
-      env: opts.env,
+      env: Object.keys(env).reduce<Record<string, string | undefined>>(
+        (res, key) => {
+          if (key.toLowerCase().startsWith('puppeteer_')) {
+            res[key] = env[key];
+          }
+          return res;
+        },
+        {}
+      ),
       stdio,
     });
 
@@ -207,7 +244,7 @@ export class Process {
       this.#args,
       {
         detached: opts.detached,
-        env: opts.env,
+        env,
         stdio,
       }
     );
@@ -217,15 +254,15 @@ export class Process {
       this.#browserProcess.stderr?.pipe(process.stderr);
       this.#browserProcess.stdout?.pipe(process.stdout);
     }
-    process.on('exit', this.#onDriverProcessExit);
+    subscribeToProcessEvent('exit', this.#onDriverProcessExit);
     if (opts.handleSIGINT) {
-      process.on('SIGINT', this.#onDriverProcessSignal);
+      subscribeToProcessEvent('SIGINT', this.#onDriverProcessSignal);
     }
     if (opts.handleSIGTERM) {
-      process.on('SIGTERM', this.#onDriverProcessSignal);
+      subscribeToProcessEvent('SIGTERM', this.#onDriverProcessSignal);
     }
     if (opts.handleSIGHUP) {
-      process.on('SIGHUP', this.#onDriverProcessSignal);
+      subscribeToProcessEvent('SIGHUP', this.#onDriverProcessSignal);
     }
     if (opts.onExit) {
       this.#onExitHook = opts.onExit;
@@ -278,10 +315,10 @@ export class Process {
   }
 
   #clearListeners(): void {
-    process.off('exit', this.#onDriverProcessExit);
-    process.off('SIGINT', this.#onDriverProcessSignal);
-    process.off('SIGTERM', this.#onDriverProcessSignal);
-    process.off('SIGHUP', this.#onDriverProcessSignal);
+    unsubscribeFromProcessEvent('exit', this.#onDriverProcessExit);
+    unsubscribeFromProcessEvent('SIGINT', this.#onDriverProcessSignal);
+    unsubscribeFromProcessEvent('SIGTERM', this.#onDriverProcessSignal);
+    unsubscribeFromProcessEvent('SIGHUP', this.#onDriverProcessSignal);
   }
 
   #onDriverProcessExit = (_code: number) => {
@@ -305,7 +342,7 @@ export class Process {
     if (!this.#exited) {
       this.kill();
     }
-    return this.#browserProcessExiting;
+    return await this.#browserProcessExiting;
   }
 
   hasClosed(): Promise<void> {
@@ -368,7 +405,7 @@ export class Process {
     this.#clearListeners();
   }
 
-  waitForLineOutput(regex: RegExp, timeout?: number): Promise<string> {
+  waitForLineOutput(regex: RegExp, timeout = 0): Promise<string> {
     if (!this.#browserProcess.stderr) {
       throw new Error('`browserProcess` does not have stderr.');
     }
@@ -380,7 +417,8 @@ export class Process {
       rl.on('close', onClose);
       this.#browserProcess.on('exit', onClose);
       this.#browserProcess.on('error', onClose);
-      const timeoutId = timeout ? setTimeout(onTimeout, timeout) : 0;
+      const timeoutId =
+        timeout > 0 ? setTimeout(onTimeout, timeout) : undefined;
 
       const cleanup = (): void => {
         if (timeoutId) {

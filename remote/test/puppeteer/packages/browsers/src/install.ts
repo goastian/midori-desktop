@@ -1,17 +1,7 @@
 /**
- * Copyright 2017 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2017 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import assert from 'assert';
@@ -29,7 +19,7 @@ import {Cache, InstalledBrowser} from './Cache.js';
 import {debug} from './debug.js';
 import {detectBrowserPlatform} from './detectPlatform.js';
 import {unpackArchive} from './fileUtil.js';
-import {downloadFile, headHttpRequest} from './httpUtil.js';
+import {downloadFile, getJSON, headHttpRequest} from './httpUtil.js';
 
 const debugInstall = debug('puppeteer:browsers:install');
 
@@ -68,10 +58,17 @@ export interface InstallOptions {
    */
   browser: Browser;
   /**
-   * Determines which buildId to dowloand. BuildId should uniquely identify
+   * Determines which buildId to download. BuildId should uniquely identify
    * binaries and they are used for caching.
    */
   buildId: string;
+  /**
+   * An alias for the provided `buildId`. It will be used to maintain local
+   * metadata to support aliases in the `launch` command.
+   *
+   * @example 'canary'
+   */
+  buildIdAlias?: string;
   /**
    * Provides information about the progress of the download.
    */
@@ -84,7 +81,7 @@ export interface InstallOptions {
    *
    * @defaultValue Either
    *
-   * - https://storage.googleapis.com/chromium-browser-snapshots or
+   * - https://storage.googleapis.com/chrome-for-testing-public or
    * - https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central
    *
    */
@@ -95,14 +92,28 @@ export interface InstallOptions {
    * @defaultValue `true`
    */
   unpack?: boolean;
+  /**
+   * @internal
+   * @defaultValue `false`
+   */
+  forceFallbackForTesting?: boolean;
 }
 
 /**
  * @public
  */
+export function install(
+  options: InstallOptions & {unpack?: true}
+): Promise<InstalledBrowser>;
+/**
+ * @public
+ */
+export function install(
+  options: InstallOptions & {unpack: false}
+): Promise<string>;
 export async function install(
   options: InstallOptions
-): Promise<InstalledBrowser> {
+): Promise<InstalledBrowser | string> {
   options.platform ??= detectBrowserPlatform();
   options.unpack ??= true;
   if (!options.platform) {
@@ -116,50 +127,113 @@ export async function install(
     options.buildId,
     options.baseUrl
   );
+  try {
+    return await installUrl(url, options);
+  } catch (err) {
+    // If custom baseUrl is provided, do not fall back to CfT dashboard.
+    if (options.baseUrl && !options.forceFallbackForTesting) {
+      throw err;
+    }
+    debugInstall(`Error downloading from ${url}.`);
+    switch (options.browser) {
+      case Browser.CHROME:
+      case Browser.CHROMEDRIVER:
+      case Browser.CHROMEHEADLESSSHELL: {
+        debugInstall(
+          `Trying to find download URL via https://googlechromelabs.github.io/chrome-for-testing.`
+        );
+        interface Version {
+          downloads: Record<string, Array<{platform: string; url: string}>>;
+        }
+        const version = (await getJSON(
+          new URL(
+            `https://googlechromelabs.github.io/chrome-for-testing/${options.buildId}.json`
+          )
+        )) as Version;
+        let platform = '';
+        switch (options.platform) {
+          case BrowserPlatform.LINUX:
+            platform = 'linux64';
+            break;
+          case BrowserPlatform.MAC_ARM:
+            platform = 'mac-arm64';
+            break;
+          case BrowserPlatform.MAC:
+            platform = 'mac-x64';
+            break;
+          case BrowserPlatform.WIN32:
+            platform = 'win32';
+            break;
+          case BrowserPlatform.WIN64:
+            platform = 'win64';
+            break;
+        }
+        const url = version.downloads[options.browser]?.find(link => {
+          return link['platform'] === platform;
+        })?.url;
+        if (url) {
+          debugInstall(`Falling back to downloading from ${url}.`);
+          return await installUrl(new URL(url), options);
+        }
+        throw err;
+      }
+      default:
+        throw err;
+    }
+  }
+}
+
+async function installUrl(
+  url: URL,
+  options: InstallOptions
+): Promise<InstalledBrowser | string> {
+  options.platform ??= detectBrowserPlatform();
+  if (!options.platform) {
+    throw new Error(
+      `Cannot download a binary for the provided platform: ${os.platform()} (${os.arch()})`
+    );
+  }
   const fileName = url.toString().split('/').pop();
   assert(fileName, `A malformed download URL was found: ${url}.`);
-  const structure = new Cache(options.cacheDir);
-  const browserRoot = structure.browserRoot(options.browser);
-  const archivePath = path.join(browserRoot, fileName);
+  const cache = new Cache(options.cacheDir);
+  const browserRoot = cache.browserRoot(options.browser);
+  const archivePath = path.join(browserRoot, `${options.buildId}-${fileName}`);
   if (!existsSync(browserRoot)) {
     await mkdir(browserRoot, {recursive: true});
   }
 
   if (!options.unpack) {
     if (existsSync(archivePath)) {
-      return {
-        path: archivePath,
-        browser: options.browser,
-        platform: options.platform,
-        buildId: options.buildId,
-      };
+      return archivePath;
     }
     debugInstall(`Downloading binary from ${url}`);
     debugTime('download');
     await downloadFile(url, archivePath, options.downloadProgressCallback);
     debugTimeEnd('download');
-    return {
-      path: archivePath,
-      browser: options.browser,
-      platform: options.platform,
-      buildId: options.buildId,
-    };
+    return archivePath;
   }
 
-  const outputPath = structure.installationDir(
+  const outputPath = cache.installationDir(
     options.browser,
     options.platform,
     options.buildId
   );
-  if (existsSync(outputPath)) {
-    return {
-      path: outputPath,
-      browser: options.browser,
-      platform: options.platform,
-      buildId: options.buildId,
-    };
-  }
+
   try {
+    if (existsSync(outputPath)) {
+      const installedBrowser = new InstalledBrowser(
+        cache,
+        options.browser,
+        options.buildId,
+        options.platform
+      );
+      if (!existsSync(installedBrowser.executablePath)) {
+        throw new Error(
+          `The browser folder (${outputPath}) exists but the executable (${installedBrowser.executablePath}) is missing`
+        );
+      }
+      return installedBrowser;
+    }
     debugInstall(`Downloading binary from ${url}`);
     try {
       debugTime('download');
@@ -175,17 +249,87 @@ export async function install(
     } finally {
       debugTimeEnd('extract');
     }
+    const installedBrowser = new InstalledBrowser(
+      cache,
+      options.browser,
+      options.buildId,
+      options.platform
+    );
+    if (options.buildIdAlias) {
+      const metadata = installedBrowser.readMetadata();
+      metadata.aliases[options.buildIdAlias] = options.buildId;
+      installedBrowser.writeMetadata(metadata);
+    }
+    return installedBrowser;
   } finally {
     if (existsSync(archivePath)) {
       await unlink(archivePath);
     }
   }
-  return {
-    path: outputPath,
-    browser: options.browser,
-    platform: options.platform,
-    buildId: options.buildId,
-  };
+}
+
+/**
+ * @public
+ */
+export interface UninstallOptions {
+  /**
+   * Determines the platform for the browser binary.
+   *
+   * @defaultValue **Auto-detected.**
+   */
+  platform?: BrowserPlatform;
+  /**
+   * The path to the root of the cache directory.
+   */
+  cacheDir: string;
+  /**
+   * Determines which browser to uninstall.
+   */
+  browser: Browser;
+  /**
+   * The browser build to uninstall
+   */
+  buildId: string;
+}
+
+/**
+ *
+ * @public
+ */
+export async function uninstall(options: UninstallOptions): Promise<void> {
+  options.platform ??= detectBrowserPlatform();
+  if (!options.platform) {
+    throw new Error(
+      `Cannot detect the browser platform for: ${os.platform()} (${os.arch()})`
+    );
+  }
+
+  new Cache(options.cacheDir).uninstall(
+    options.browser,
+    options.platform,
+    options.buildId
+  );
+}
+
+/**
+ * @public
+ */
+export interface GetInstalledBrowsersOptions {
+  /**
+   * The path to the root of the cache directory.
+   */
+  cacheDir: string;
+}
+
+/**
+ * Returns metadata about browsers installed in the cache directory.
+ *
+ * @public
+ */
+export async function getInstalledBrowsers(
+  options: GetInstalledBrowsersOptions
+): Promise<InstalledBrowser[]> {
+  return new Cache(options.cacheDir).getInstalledBrowsers();
 }
 
 /**

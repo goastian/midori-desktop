@@ -4,26 +4,41 @@
 
 /* eslint-disable no-restricted-globals */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 
-  accessibility: "chrome://remote/content/marionette/accessibility.sys.mjs",
+  accessibility:
+    "chrome://remote/content/shared/webdriver/Accessibility.sys.mjs",
   atom: "chrome://remote/content/marionette/atom.sys.mjs",
-  element: "chrome://remote/content/marionette/element.sys.mjs",
+  dom: "chrome://remote/content/shared/DOM.sys.mjs",
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
-  event: "chrome://remote/content/marionette/event.sys.mjs",
+  event: "chrome://remote/content/shared/webdriver/Event.sys.mjs",
   Log: "chrome://remote/content/shared/Log.sys.mjs",
   pprint: "chrome://remote/content/shared/Format.sys.mjs",
   TimedPromise: "chrome://remote/content/marionette/sync.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.Log.get(lazy.Log.TYPES.MARIONETTE)
 );
+
+// dragService may be null if it's in the headless mode (e.g., on Linux).
+// It depends on the platform, though.
+ChromeUtils.defineLazyGetter(lazy, "dragService", () => {
+  try {
+    return Cc["@mozilla.org/widget/dragservice;1"].getService(
+      Ci.nsIDragService
+    );
+  } catch (e) {
+    // If we're in the headless mode, the drag service may be never
+    // instantiated.  In this case, an exception is thrown.  Let's ignore
+    // any exceptions since without the drag service, nobody can create a
+    // drag session.
+    return null;
+  }
+});
 
 /** XUL elements that support disabled attribute. */
 const DISABLED_ATTRIBUTE_SUPPORTED_XUL = new Set([
@@ -115,7 +130,7 @@ interaction.clickElement = async function (
   specCompat = false
 ) {
   const a11y = lazy.accessibility.get(strict);
-  if (lazy.element.isXULElement(el)) {
+  if (lazy.dom.isXULElement(el)) {
     await chromeClick(el, a11y);
   } else if (specCompat) {
     await webdriverClickElement(el, a11y);
@@ -135,11 +150,11 @@ async function webdriverClickElement(el, a11y) {
     );
   }
 
-  let containerEl = lazy.element.getContainer(el);
+  let containerEl = lazy.dom.getContainer(el);
 
   // step 4
-  if (!lazy.element.isInView(containerEl)) {
-    lazy.element.scrollIntoView(containerEl);
+  if (!lazy.dom.isInView(containerEl)) {
+    lazy.dom.scrollIntoView(containerEl);
   }
 
   // step 5
@@ -148,7 +163,7 @@ async function webdriverClickElement(el, a11y) {
   // step 6
   // if we cannot bring the container element into the viewport
   // there is no point in checking if it is pointer-interactable
-  if (!lazy.element.isInView(containerEl)) {
+  if (!lazy.dom.isInView(containerEl)) {
     throw new lazy.error.ElementNotInteractableError(
       lazy.pprint`Element ${el} could not be scrolled into view`
     );
@@ -156,9 +171,9 @@ async function webdriverClickElement(el, a11y) {
 
   // step 7
   let rects = containerEl.getClientRects();
-  let clickPoint = lazy.element.getInViewCentrePoint(rects[0], win);
+  let clickPoint = lazy.dom.getInViewCentrePoint(rects[0], win);
 
-  if (lazy.element.isObscured(containerEl)) {
+  if (lazy.dom.isObscured(containerEl)) {
     throw new lazy.error.ElementClickInterceptedError(
       null,
       {},
@@ -176,23 +191,44 @@ async function webdriverClickElement(el, a11y) {
   if (el.localName == "option") {
     interaction.selectOption(el);
   } else {
-    // step 9
-    let clicked = interaction.flushEventLoop(containerEl);
-
     // Synthesize a pointerMove action.
     lazy.event.synthesizeMouseAtPoint(
       clickPoint.x,
       clickPoint.y,
       {
         type: "mousemove",
+        allowToHandleDragDrop: true,
       },
       win
     );
 
-    // Synthesize a pointerDown + pointerUp action.
-    lazy.event.synthesizeMouseAtPoint(clickPoint.x, clickPoint.y, {}, win);
+    if (lazy.dragService?.getCurrentSession()) {
+      // Special handling is required if the mousemove started a drag session.
+      // In this case, mousedown event shouldn't be fired, and the mouseup should
+      // end the session.  Therefore, we should synthesize only mouseup.
+      lazy.event.synthesizeMouseAtPoint(
+        clickPoint.x,
+        clickPoint.y,
+        {
+          type: "mouseup",
+          allowToHandleDragDrop: true,
+        },
+        win
+      );
+    } else {
+      // step 9
+      let clicked = interaction.flushEventLoop(containerEl);
 
-    await clicked;
+      // Synthesize a pointerDown + pointerUp action.
+      lazy.event.synthesizeMouseAtPoint(
+        clickPoint.x,
+        clickPoint.y,
+        { allowToHandleDragDrop: true },
+        win
+      );
+
+      await clicked;
+    }
   }
 
   // step 10
@@ -201,7 +237,7 @@ async function webdriverClickElement(el, a11y) {
 }
 
 async function chromeClick(el, a11y) {
-  if (!lazy.atom.isElementEnabled(el)) {
+  if (!(await lazy.dom.isEnabled(el))) {
     throw new lazy.error.InvalidElementStateError("Element is not enabled");
   }
 
@@ -222,14 +258,14 @@ async function seleniumClickElement(el, a11y) {
 
   let visibilityCheckEl = el;
   if (el.localName == "option") {
-    visibilityCheckEl = lazy.element.getContainer(el);
+    visibilityCheckEl = lazy.dom.getContainer(el);
   }
 
-  if (!lazy.element.isVisible(visibilityCheckEl)) {
+  if (!(await lazy.dom.isVisible(visibilityCheckEl))) {
     throw new lazy.error.ElementNotInteractableError();
   }
 
-  if (!lazy.atom.isElementEnabled(el)) {
+  if (!(await lazy.dom.isEnabled(el))) {
     throw new lazy.error.InvalidElementStateError("Element is not enabled");
   }
 
@@ -242,7 +278,7 @@ async function seleniumClickElement(el, a11y) {
     interaction.selectOption(el);
   } else {
     let rects = el.getClientRects();
-    let centre = lazy.element.getInViewCentrePoint(rects[0], win);
+    let centre = lazy.dom.getInViewCentrePoint(rects[0], win);
     let opts = {};
     lazy.event.synthesizeMouseAtPoint(centre.x, centre.y, opts, win);
   }
@@ -269,14 +305,14 @@ async function seleniumClickElement(el, a11y) {
  *     element.
  */
 interaction.selectOption = function (el) {
-  if (lazy.element.isXULElement(el)) {
+  if (lazy.dom.isXULElement(el)) {
     throw new TypeError("XUL dropdowns not supported");
   }
   if (el.localName != "option") {
     throw new TypeError(lazy.pprint`Expected <option> element, got ${el}`);
   }
 
-  let containerEl = lazy.element.getContainer(el);
+  let containerEl = lazy.dom.getContainer(el);
 
   lazy.event.mouseover(containerEl);
   lazy.event.mousemove(containerEl);
@@ -322,32 +358,32 @@ interaction.selectOption = function (el) {
  *     element or not an editing host, or cannot be scrolled into view.
  */
 interaction.clearElement = function (el) {
-  if (lazy.element.isDisabled(el)) {
+  if (lazy.dom.isDisabled(el)) {
     throw new lazy.error.InvalidElementStateError(
       lazy.pprint`Element is disabled: ${el}`
     );
   }
-  if (lazy.element.isReadOnly(el)) {
+  if (lazy.dom.isReadOnly(el)) {
     throw new lazy.error.InvalidElementStateError(
       lazy.pprint`Element is read-only: ${el}`
     );
   }
-  if (!lazy.element.isEditable(el)) {
+  if (!lazy.dom.isEditable(el)) {
     throw new lazy.error.InvalidElementStateError(
       lazy.pprint`Unable to clear element that cannot be edited: ${el}`
     );
   }
 
-  if (!lazy.element.isInView(el)) {
-    lazy.element.scrollIntoView(el);
+  if (!lazy.dom.isInView(el)) {
+    lazy.dom.scrollIntoView(el);
   }
-  if (!lazy.element.isInView(el)) {
+  if (!lazy.dom.isInView(el)) {
     throw new lazy.error.ElementNotInteractableError(
       lazy.pprint`Element ${el} could not be scrolled into view`
     );
   }
 
-  if (lazy.element.isEditingHost(el)) {
+  if (lazy.dom.isEditingHost(el)) {
     clearContentEditableElement(el);
   } else {
     clearResettableElement(el);
@@ -364,7 +400,7 @@ function clearContentEditableElement(el) {
 }
 
 function clearResettableElement(el) {
-  if (!lazy.element.isMutableFormControl(el)) {
+  if (!lazy.dom.isMutableFormControl(el)) {
     throw new lazy.error.InvalidElementStateError(
       lazy.pprint`Not an editable form control: ${el}`
     );
@@ -447,7 +483,7 @@ interaction.flushEventLoop = async function (el) {
  *     Element to potential move the caret in.
  */
 interaction.moveCaretToEnd = function (el) {
-  if (!lazy.element.isDOMElement(el)) {
+  if (!lazy.dom.isDOMElement(el)) {
     return;
   }
 
@@ -622,9 +658,9 @@ async function webdriverSendKeysToElement(
   const win = getWindow(el);
 
   if (el.type !== "file" || strictFileInteractability) {
-    let containerEl = lazy.element.getContainer(el);
+    let containerEl = lazy.dom.getContainer(el);
 
-    lazy.element.scrollIntoView(containerEl);
+    lazy.dom.scrollIntoView(containerEl);
 
     // TODO: Wait for element to be keyboard-interactible
     if (!interaction.isKeyboardInteractable(containerEl)) {
@@ -670,10 +706,10 @@ async function legacySendKeysToElement(el, value, a11y) {
   } else {
     let visibilityCheckEl = el;
     if (el.localName == "option") {
-      visibilityCheckEl = lazy.element.getContainer(el);
+      visibilityCheckEl = lazy.dom.getContainer(el);
     }
 
-    if (!lazy.element.isVisible(visibilityCheckEl)) {
+    if (!(await lazy.dom.isVisible(visibilityCheckEl))) {
       throw new lazy.error.ElementNotInteractableError(
         "Element is not visible"
       );
@@ -699,9 +735,9 @@ async function legacySendKeysToElement(el, value, a11y) {
  * @returns {boolean}
  *     True if element is displayed, false otherwise.
  */
-interaction.isElementDisplayed = function (el, strict = false) {
+interaction.isElementDisplayed = async function (el, strict = false) {
   let win = getWindow(el);
-  let displayed = lazy.atom.isElementDisplayed(el, win);
+  let displayed = await lazy.atom.isElementDisplayed(el, win);
 
   let a11y = lazy.accessibility.get(strict);
   return a11y.assertAccessible(el).then(acc => {
@@ -719,11 +755,11 @@ interaction.isElementDisplayed = function (el, strict = false) {
  * @returns {boolean}
  *     True if enabled, false otherwise.
  */
-interaction.isElementEnabled = function (el, strict = false) {
+interaction.isElementEnabled = async function (el, strict = false) {
   let enabled = true;
   let win = getWindow(el);
 
-  if (lazy.element.isXULElement(el)) {
+  if (lazy.dom.isXULElement(el)) {
     // check if XUL element supports disabled attribute
     if (DISABLED_ATTRIBUTE_SUPPORTED_XUL.has(el.tagName.toUpperCase())) {
       if (
@@ -738,7 +774,7 @@ interaction.isElementEnabled = function (el, strict = false) {
   ) {
     enabled = false;
   } else {
-    enabled = lazy.atom.isElementEnabled(el, { frame: win });
+    enabled = await lazy.dom.isEnabled(el);
   }
 
   let a11y = lazy.accessibility.get(strict);
@@ -767,7 +803,7 @@ interaction.isElementEnabled = function (el, strict = false) {
  *     If <var>el</var> is not accessible when <var>strict</var> is true.
  */
 interaction.isElementSelected = function (el, strict = false) {
-  let selected = lazy.element.isSelected(el);
+  let selected = lazy.dom.isSelected(el);
 
   let a11y = lazy.accessibility.get(strict);
   return a11y.assertAccessible(el).then(acc => {

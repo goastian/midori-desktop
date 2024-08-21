@@ -6,15 +6,44 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AppInfo: "chrome://remote/content/shared/AppInfo.sys.mjs",
+  BrowsingContextListener:
+    "chrome://remote/content/shared/listeners/BrowsingContextListener.sys.mjs",
   EventPromise: "chrome://remote/content/shared/Sync.sys.mjs",
   generateUUID: "chrome://remote/content/shared/UUID.sys.mjs",
   MobileTabBrowser: "chrome://remote/content/shared/MobileTabBrowser.sys.mjs",
+  UserContextManager:
+    "chrome://remote/content/shared/UserContextManager.sys.mjs",
 });
 
-// Maps browser's permanentKey to uuid: WeakMap.<Object, string>
-const browserUniqueIds = new WeakMap();
+class TabManagerClass {
+  #browserUniqueIds;
+  #contextListener;
+  #navigableIds;
 
-export var TabManager = {
+  constructor() {
+    // Maps browser's permanentKey to uuid: WeakMap.<Object, string>
+    this.#browserUniqueIds = new WeakMap();
+
+    // Maps browsing contexts to uuid: WeakMap.<BrowsingContext, string>.
+    // It's required as a fallback, since in the case when a context was discarded
+    // embedderElement is gone, and we cannot retrieve
+    // the context id from this.#browserUniqueIds.
+    this.#navigableIds = new WeakMap();
+
+    this.#contextListener = new lazy.BrowsingContextListener();
+    this.#contextListener.on("attached", this.#onContextAttached);
+    this.#contextListener.startListening();
+
+    this.browsers.forEach(browser => {
+      if (this.isValidCanonicalBrowsingContext(browser.browsingContext)) {
+        this.#navigableIds.set(
+          browser.browsingContext,
+          this.getIdForBrowsingContext(browser.browsingContext)
+        );
+      }
+    });
+  }
+
   /**
    * Retrieve all the browser elements from tabs as contained in open windows.
    *
@@ -26,22 +55,20 @@ export var TabManager = {
     const browsers = [];
 
     for (const win of this.windows) {
-      const tabBrowser = this.getTabBrowser(win);
-
-      if (tabBrowser && tabBrowser.tabs) {
-        const contentBrowsers = tabBrowser.tabs.map(tab => {
-          return this.getBrowserForTab(tab);
-        });
-        browsers.push(...contentBrowsers);
+      for (const tab of this.getTabsForWindow(win)) {
+        const contentBrowser = this.getBrowserForTab(tab);
+        if (contentBrowser !== null) {
+          browsers.push(contentBrowser);
+        }
       }
     }
 
     return browsers;
-  },
+  }
 
   get windows() {
     return Services.wm.getEnumerator(null);
-  },
+  }
 
   /**
    * Array of unique browser ids (UUIDs) for all content browsers of all
@@ -57,22 +84,18 @@ export var TabManager = {
     const browserIds = [];
 
     for (const win of this.windows) {
-      const tabBrowser = this.getTabBrowser(win);
-
       // Only return handles for browser windows
-      if (tabBrowser && tabBrowser.tabs) {
-        for (const tab of tabBrowser.tabs) {
-          const contentBrowser = this.getBrowserForTab(tab);
-          const winId = this.getIdForBrowser(contentBrowser);
-          if (winId !== null) {
-            browserIds.push(winId);
-          }
+      for (const tab of this.getTabsForWindow(win)) {
+        const contentBrowser = this.getBrowserForTab(tab);
+        const winId = this.getIdForBrowser(contentBrowser);
+        if (winId !== null) {
+          browserIds.push(winId);
         }
       }
     }
 
     return browserIds;
-  },
+  }
 
   /**
    * Get the <code>&lt;xul:browser&gt;</code> for the specified tab.
@@ -89,7 +112,7 @@ export var TabManager = {
     }
 
     return null;
-  },
+  }
 
   /**
    * Return the tab browser for the specified chrome window.
@@ -108,7 +131,7 @@ export var TabManager = {
     }
 
     return null;
-  },
+  }
 
   /**
    * Create a new tab.
@@ -116,13 +139,14 @@ export var TabManager = {
    * @param {object} options
    * @param {boolean=} options.focus
    *     Set to true if the new tab should be focused (selected). Defaults to
-   *     false.
+   *     false. `false` value is not properly supported on Android, additional
+   *     focus of previously selected tab is required after initial navigation.
    * @param {Tab=} options.referenceTab
    *     The reference tab after which the new tab will be added. If no
    *     reference tab is provided, the new tab will be added after all the
    *     other tabs.
-   * @param {number} options.userContextId
-   *     The user context (container) id.
+   * @param {string=} options.userContextId
+   *     A user context id from UserContextManager.
    * @param {window=} options.window
    *     The window where the new tab will open. Defaults to Services.wm.getMostRecentWindow
    *     if no window is provided. Will be ignored if referenceTab is provided.
@@ -131,7 +155,7 @@ export var TabManager = {
     let {
       focus = false,
       referenceTab = null,
-      userContextId,
+      userContextId = null,
       window = Services.wm.getMostRecentWindow(null),
     } = options;
 
@@ -139,18 +163,19 @@ export var TabManager = {
     if (referenceTab != null) {
       // If a reference tab was specified, the window should be the window
       // owning the reference tab.
-      window = this._getWindowForTab(referenceTab);
+      window = this.getWindowForTab(referenceTab);
+    }
+
+    if (referenceTab != null) {
+      index = this.getTabsForWindow(window).indexOf(referenceTab) + 1;
     }
 
     const tabBrowser = this.getTabBrowser(window);
-    if (referenceTab != null) {
-      index = tabBrowser.tabs.indexOf(referenceTab) + 1;
-    }
 
     const tab = await tabBrowser.addTab("about:blank", {
       index,
       triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
-      userContextId,
+      userContextId: lazy.UserContextManager.getInternalIdById(userContextId),
     });
 
     if (focus) {
@@ -158,7 +183,7 @@ export var TabManager = {
     }
 
     return tab;
-  },
+  }
 
   /**
    * Retrieve the browser element corresponding to the provided unique id,
@@ -176,18 +201,15 @@ export var TabManager = {
    */
   getBrowserById(id) {
     for (const win of this.windows) {
-      const tabBrowser = this.getTabBrowser(win);
-      if (tabBrowser && tabBrowser.tabs) {
-        for (let i = 0; i < tabBrowser.tabs.length; ++i) {
-          const contentBrowser = this.getBrowserForTab(tabBrowser.tabs[i]);
-          if (this.getIdForBrowser(contentBrowser) == id) {
-            return contentBrowser;
-          }
+      for (const tab of this.getTabsForWindow(win)) {
+        const contentBrowser = this.getBrowserForTab(tab);
+        if (this.getIdForBrowser(contentBrowser) == id) {
+          return contentBrowser;
         }
       }
     }
     return null;
-  },
+  }
 
   /**
    * Retrieve the browsing context corresponding to the provided unique id.
@@ -204,7 +226,7 @@ export var TabManager = {
     }
 
     return BrowsingContext.get(id);
-  },
+  }
 
   /**
    * Retrieve the unique id for the given xul browser element. The id is a
@@ -223,11 +245,15 @@ export var TabManager = {
     }
 
     const key = browserElement.permanentKey;
-    if (!browserUniqueIds.has(key)) {
-      browserUniqueIds.set(key, lazy.generateUUID());
+    if (key === undefined) {
+      return null;
     }
-    return browserUniqueIds.get(key);
-  },
+
+    if (!this.#browserUniqueIds.has(key)) {
+      this.#browserUniqueIds.set(key, lazy.generateUUID());
+    }
+    return this.#browserUniqueIds.get(key);
+  }
 
   /**
    * Retrieve the id of a Browsing Context.
@@ -247,25 +273,53 @@ export var TabManager = {
 
     if (!browsingContext.parent) {
       // Top-level browsing contexts have their own custom unique id.
-      return this.getIdForBrowser(browsingContext.embedderElement);
+      // If a context was discarded, embedderElement is already gone,
+      // so use navigable id instead.
+      return browsingContext.embedderElement
+        ? this.getIdForBrowser(browsingContext.embedderElement)
+        : this.#navigableIds.get(browsingContext);
     }
 
     return browsingContext.id.toString();
-  },
+  }
+
+  /**
+   * Get the navigable for the given browsing context.
+   *
+   * Because Gecko doesn't support the Navigable concept in content
+   * scope the content browser could be used to uniquely identify
+   * top-level browsing contexts.
+   *
+   * @param {BrowsingContext} browsingContext
+   *
+   * @returns {BrowsingContext|XULBrowser} The navigable
+   *
+   * @throws {TypeError}
+   *     If `browsingContext` is not a CanonicalBrowsingContext instance.
+   */
+  getNavigableForBrowsingContext(browsingContext) {
+    if (!this.isValidCanonicalBrowsingContext(browsingContext)) {
+      throw new TypeError(
+        `Expected browsingContext to be a CanonicalBrowsingContext, got ${browsingContext}`
+      );
+    }
+
+    if (browsingContext.isContent && browsingContext.parent === null) {
+      return browsingContext.embedderElement;
+    }
+
+    return browsingContext;
+  }
 
   getTabCount() {
     let count = 0;
     for (const win of this.windows) {
       // For browser windows count the tabs. Otherwise take the window itself.
-      const tabbrowser = this.getTabBrowser(win);
-      if (tabbrowser?.tabs) {
-        count += tabbrowser.tabs.length;
-      } else {
-        count += 1;
-      }
+      const tabsLength = this.getTabsForWindow(win).length;
+      count += tabsLength ? tabsLength : 1;
     }
     return count;
-  },
+  }
 
   /**
    * Retrieve the tab owning a Browsing Context.
@@ -284,7 +338,51 @@ export var TabManager = {
 
     const tabBrowser = this.getTabBrowser(browser.ownerGlobal);
     return tabBrowser.getTabForBrowser(browser);
-  },
+  }
+
+  /**
+   * Retrieve the list of tabs for a given window.
+   *
+   * @param {ChromeWindow} win
+   *     Window whose <code>tabs</code> need to be returned.
+   *
+   * @returns {Array<Tab>}
+   *     The list of tabs. Will return an empty list if tab browser is not available
+   *     or tabs are undefined.
+   */
+  getTabsForWindow(win) {
+    const tabBrowser = this.getTabBrowser(win);
+    // For web-platform reftests a faked tabbrowser is used,
+    // which does not actually have tabs.
+    if (tabBrowser && tabBrowser.tabs) {
+      return tabBrowser.tabs;
+    }
+    return [];
+  }
+
+  getWindowForTab(tab) {
+    // `.linkedBrowser.ownerGlobal` works both with Firefox Desktop and Mobile.
+    // Other accessors (eg `.ownerGlobal` or `.browser.ownerGlobal`) fail on one
+    // of the platforms.
+    return tab.linkedBrowser.ownerGlobal;
+  }
+
+  /**
+   * Check if the given argument is a valid canonical browsing context and was not
+   * discarded.
+   *
+   * @param {BrowsingContext} browsingContext
+   *     The browsing context to check.
+   *
+   * @returns {boolean}
+   *     True if the browsing context is valid, false otherwise.
+   */
+  isValidCanonicalBrowsingContext(browsingContext) {
+    return (
+      CanonicalBrowsingContext.isInstance(browsingContext) &&
+      !browsingContext.isDiscarded
+    );
+  }
 
   /**
    * Remove the given tab.
@@ -297,10 +395,10 @@ export var TabManager = {
       return;
     }
 
-    const ownerWindow = this._getWindowForTab(tab);
+    const ownerWindow = this.getWindowForTab(tab);
     const tabBrowser = this.getTabBrowser(ownerWindow);
     await tabBrowser.removeTab(tab);
-  },
+  }
 
   /**
    * Select the given tab.
@@ -311,12 +409,12 @@ export var TabManager = {
    * @returns {Promise}
    *     Promise that resolves when the given tab has been selected.
    */
-  selectTab(tab) {
+  async selectTab(tab) {
     if (!tab) {
       return Promise.resolve();
     }
 
-    const ownerWindow = this._getWindowForTab(tab);
+    const ownerWindow = this.getWindowForTab(tab);
     const tabBrowser = this.getTabBrowser(ownerWindow);
 
     if (tab === tabBrowser.selectedTab) {
@@ -325,17 +423,33 @@ export var TabManager = {
 
     const selected = new lazy.EventPromise(ownerWindow, "TabSelect");
     tabBrowser.selectedTab = tab;
-    return selected;
-  },
+
+    await selected;
+
+    // Sometimes at that point window is not focused.
+    if (Services.focus.activeWindow != ownerWindow) {
+      const activated = new lazy.EventPromise(ownerWindow, "activate");
+      ownerWindow.focus();
+      return activated;
+    }
+
+    return Promise.resolve();
+  }
 
   supportsTabs() {
     return lazy.AppInfo.isAndroid || lazy.AppInfo.isFirefox;
-  },
+  }
 
-  _getWindowForTab(tab) {
-    // `.linkedBrowser.ownerGlobal` works both with Firefox Desktop and Mobile.
-    // Other accessors (eg `.ownerGlobal` or `.browser.ownerGlobal`) fail on one
-    // of the platforms.
-    return tab.linkedBrowser.ownerGlobal;
-  },
-};
+  #onContextAttached = (eventName, data = {}) => {
+    const { browsingContext } = data;
+    if (this.isValidCanonicalBrowsingContext(browsingContext)) {
+      this.#navigableIds.set(
+        browsingContext,
+        this.getIdForBrowsingContext(browsingContext)
+      );
+    }
+  };
+}
+
+// Expose a shared singleton.
+export const TabManager = new TabManagerClass();

@@ -1,19 +1,10 @@
 /**
- * Copyright 2023 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2023 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
+import * as chromeHeadlessShell from './chrome-headless-shell.js';
 import * as chrome from './chrome.js';
 import * as chromedriver from './chromedriver.js';
 import * as chromium from './chromium.js';
@@ -23,13 +14,14 @@ import {
   BrowserPlatform,
   BrowserTag,
   ChromeReleaseChannel,
-  ProfileOptions,
+  type ProfileOptions,
 } from './types.js';
 
-export {ProfileOptions};
+export type {ProfileOptions};
 
 export const downloadUrls = {
   [Browser.CHROMEDRIVER]: chromedriver.resolveDownloadUrl,
+  [Browser.CHROMEHEADLESSSHELL]: chromeHeadlessShell.resolveDownloadUrl,
   [Browser.CHROME]: chrome.resolveDownloadUrl,
   [Browser.CHROMIUM]: chromium.resolveDownloadUrl,
   [Browser.FIREFOX]: firefox.resolveDownloadUrl,
@@ -37,6 +29,7 @@ export const downloadUrls = {
 
 export const downloadPaths = {
   [Browser.CHROMEDRIVER]: chromedriver.resolveDownloadPath,
+  [Browser.CHROMEHEADLESSSHELL]: chromeHeadlessShell.resolveDownloadPath,
   [Browser.CHROME]: chrome.resolveDownloadPath,
   [Browser.CHROMIUM]: chromium.resolveDownloadPath,
   [Browser.FIREFOX]: firefox.resolveDownloadPath,
@@ -44,12 +37,130 @@ export const downloadPaths = {
 
 export const executablePathByBrowser = {
   [Browser.CHROMEDRIVER]: chromedriver.relativeExecutablePath,
+  [Browser.CHROMEHEADLESSSHELL]: chromeHeadlessShell.relativeExecutablePath,
   [Browser.CHROME]: chrome.relativeExecutablePath,
   [Browser.CHROMIUM]: chromium.relativeExecutablePath,
   [Browser.FIREFOX]: firefox.relativeExecutablePath,
 };
 
+export const versionComparators = {
+  [Browser.CHROMEDRIVER]: chromedriver.compareVersions,
+  [Browser.CHROMEHEADLESSSHELL]: chromeHeadlessShell.compareVersions,
+  [Browser.CHROME]: chrome.compareVersions,
+  [Browser.CHROMIUM]: chromium.compareVersions,
+  [Browser.FIREFOX]: firefox.compareVersions,
+};
+
 export {Browser, BrowserPlatform, ChromeReleaseChannel};
+
+/**
+ * @internal
+ */
+async function resolveBuildIdForBrowserTag(
+  browser: Browser,
+  platform: BrowserPlatform,
+  tag: BrowserTag
+): Promise<string> {
+  switch (browser) {
+    case Browser.FIREFOX:
+      switch (tag) {
+        case BrowserTag.LATEST:
+          return await firefox.resolveBuildId(firefox.FirefoxChannel.NIGHTLY);
+        case BrowserTag.BETA:
+          return await firefox.resolveBuildId(firefox.FirefoxChannel.BETA);
+        case BrowserTag.NIGHTLY:
+          return await firefox.resolveBuildId(firefox.FirefoxChannel.NIGHTLY);
+        case BrowserTag.DEVEDITION:
+          return await firefox.resolveBuildId(
+            firefox.FirefoxChannel.DEVEDITION
+          );
+        case BrowserTag.STABLE:
+          return await firefox.resolveBuildId(firefox.FirefoxChannel.STABLE);
+        case BrowserTag.ESR:
+          return await firefox.resolveBuildId(firefox.FirefoxChannel.ESR);
+        case BrowserTag.CANARY:
+        case BrowserTag.DEV:
+          throw new Error(`${tag.toUpperCase()} is not available for Firefox`);
+      }
+    case Browser.CHROME: {
+      switch (tag) {
+        case BrowserTag.LATEST:
+          return await chrome.resolveBuildId(ChromeReleaseChannel.CANARY);
+        case BrowserTag.BETA:
+          return await chrome.resolveBuildId(ChromeReleaseChannel.BETA);
+        case BrowserTag.CANARY:
+          return await chrome.resolveBuildId(ChromeReleaseChannel.CANARY);
+        case BrowserTag.DEV:
+          return await chrome.resolveBuildId(ChromeReleaseChannel.DEV);
+        case BrowserTag.STABLE:
+          return await chrome.resolveBuildId(ChromeReleaseChannel.STABLE);
+        case BrowserTag.NIGHTLY:
+        case BrowserTag.DEVEDITION:
+        case BrowserTag.ESR:
+          throw new Error(`${tag.toUpperCase()} is not available for Chrome`);
+      }
+    }
+    case Browser.CHROMEDRIVER: {
+      switch (tag) {
+        case BrowserTag.LATEST:
+        case BrowserTag.CANARY:
+          return await chromedriver.resolveBuildId(ChromeReleaseChannel.CANARY);
+        case BrowserTag.BETA:
+          return await chromedriver.resolveBuildId(ChromeReleaseChannel.BETA);
+        case BrowserTag.DEV:
+          return await chromedriver.resolveBuildId(ChromeReleaseChannel.DEV);
+        case BrowserTag.STABLE:
+          return await chromedriver.resolveBuildId(ChromeReleaseChannel.STABLE);
+        case BrowserTag.NIGHTLY:
+        case BrowserTag.DEVEDITION:
+        case BrowserTag.ESR:
+          throw new Error(
+            `${tag.toUpperCase()} is not available for ChromeDriver`
+          );
+      }
+    }
+    case Browser.CHROMEHEADLESSSHELL: {
+      switch (tag) {
+        case BrowserTag.LATEST:
+        case BrowserTag.CANARY:
+          return await chromeHeadlessShell.resolveBuildId(
+            ChromeReleaseChannel.CANARY
+          );
+        case BrowserTag.BETA:
+          return await chromeHeadlessShell.resolveBuildId(
+            ChromeReleaseChannel.BETA
+          );
+        case BrowserTag.DEV:
+          return await chromeHeadlessShell.resolveBuildId(
+            ChromeReleaseChannel.DEV
+          );
+        case BrowserTag.STABLE:
+          return await chromeHeadlessShell.resolveBuildId(
+            ChromeReleaseChannel.STABLE
+          );
+        case BrowserTag.NIGHTLY:
+        case BrowserTag.DEVEDITION:
+        case BrowserTag.ESR:
+          throw new Error(`${tag} is not available for chrome-headless-shell`);
+      }
+    }
+    case Browser.CHROMIUM:
+      switch (tag) {
+        case BrowserTag.LATEST:
+          return await chromium.resolveBuildId(platform);
+        case BrowserTag.NIGHTLY:
+        case BrowserTag.CANARY:
+        case BrowserTag.DEV:
+        case BrowserTag.DEVEDITION:
+        case BrowserTag.BETA:
+        case BrowserTag.STABLE:
+        case BrowserTag.ESR:
+          throw new Error(
+            `${tag} is not supported for Chromium. Use 'latest' instead.`
+          );
+      }
+  }
+}
 
 /**
  * @public
@@ -59,31 +170,36 @@ export async function resolveBuildId(
   platform: BrowserPlatform,
   tag: string
 ): Promise<string> {
+  const browserTag = tag as BrowserTag;
+  if (Object.values(BrowserTag).includes(browserTag)) {
+    return await resolveBuildIdForBrowserTag(browser, platform, browserTag);
+  }
+
   switch (browser) {
     case Browser.FIREFOX:
-      switch (tag as BrowserTag) {
-        case BrowserTag.LATEST:
-          return await firefox.resolveBuildId('FIREFOX_NIGHTLY');
-      }
+      return tag;
     case Browser.CHROME:
-      switch (tag as BrowserTag) {
-        case BrowserTag.LATEST:
-          // In CfT beta is the latest version.
-          return await chrome.resolveBuildId(platform, 'beta');
+      const chromeResult = await chrome.resolveBuildId(tag);
+      if (chromeResult) {
+        return chromeResult;
       }
+      return tag;
     case Browser.CHROMEDRIVER:
-      switch (tag as BrowserTag) {
-        case BrowserTag.LATEST:
-          return await chromedriver.resolveBuildId('latest');
+      const chromeDriverResult = await chromedriver.resolveBuildId(tag);
+      if (chromeDriverResult) {
+        return chromeDriverResult;
       }
+      return tag;
+    case Browser.CHROMEHEADLESSSHELL:
+      const chromeHeadlessShellResult =
+        await chromeHeadlessShell.resolveBuildId(tag);
+      if (chromeHeadlessShellResult) {
+        return chromeHeadlessShellResult;
+      }
+      return tag;
     case Browser.CHROMIUM:
-      switch (tag as BrowserTag) {
-        case BrowserTag.LATEST:
-          return await chromium.resolveBuildId(platform, 'latest');
-      }
+      return tag;
   }
-  // We assume the tag is the buildId if it didn't match any keywords.
-  return tag;
 }
 
 /**
@@ -112,13 +228,25 @@ export function resolveSystemExecutablePath(
 ): string {
   switch (browser) {
     case Browser.CHROMEDRIVER:
+    case Browser.CHROMEHEADLESSSHELL:
     case Browser.FIREFOX:
+    case Browser.CHROMIUM:
       throw new Error(
         `System browser detection is not supported for ${browser} yet.`
       );
     case Browser.CHROME:
-      return chromium.resolveSystemExecutablePath(platform, channel);
-    case Browser.CHROMIUM:
       return chrome.resolveSystemExecutablePath(platform, channel);
   }
+}
+
+/**
+ * Returns a version comparator for the given browser that can be used to sort
+ * browser versions.
+ *
+ * @public
+ */
+export function getVersionComparator(
+  browser: Browser
+): (a: string, b: string) => number {
+  return versionComparators[browser];
 }

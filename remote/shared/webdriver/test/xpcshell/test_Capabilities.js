@@ -4,10 +4,6 @@
 
 "use strict";
 
-const { Preferences } = ChromeUtils.importESModule(
-  "resource://gre/modules/Preferences.sys.mjs"
-);
-
 const { AppInfo } = ChromeUtils.importESModule(
   "chrome://remote/content/shared/AppInfo.sys.mjs"
 );
@@ -16,10 +12,12 @@ const { error } = ChromeUtils.importESModule(
 );
 const {
   Capabilities,
+  mergeCapabilities,
   PageLoadStrategy,
+  processCapabilities,
   Proxy,
   Timeouts,
-  UnhandledPromptBehavior,
+  validateCapabilities,
 } = ChromeUtils.importESModule(
   "chrome://remote/content/shared/webdriver/Capabilities.sys.mjs"
 );
@@ -52,7 +50,7 @@ add_task(function test_Timeouts_fromJSON() {
   equal(ts.script, json.script);
 });
 
-add_task(function test_Timeouts_fromJSON_unrecognised_field() {
+add_task(function test_Timeouts_fromJSON_unrecognized_field() {
   let json = {
     sessionId: "foobar",
   };
@@ -60,7 +58,7 @@ add_task(function test_Timeouts_fromJSON_unrecognised_field() {
     Timeouts.fromJSON(json);
   } catch (e) {
     equal(e.name, error.InvalidArgumentError.name);
-    equal(e.message, "Unrecognised timeout: sessionId");
+    equal(e.message, "Unrecognized timeout: sessionId");
   }
 });
 
@@ -109,16 +107,16 @@ add_task(function test_Proxy_init() {
 
   // no changed made, and 5 (system) is default
   equal(p.init(), false);
-  equal(Preferences.get("network.proxy.type"), 5);
+  equal(Services.prefs.getIntPref("network.proxy.type"), 5);
 
   // pac
   p.proxyType = "pac";
   p.proxyAutoconfigUrl = "http://localhost:1234";
   ok(p.init());
 
-  equal(Preferences.get("network.proxy.type"), 2);
+  equal(Services.prefs.getIntPref("network.proxy.type"), 2);
   equal(
-    Preferences.get("network.proxy.autoconfig_url"),
+    Services.prefs.getStringPref("network.proxy.autoconfig_url"),
     "http://localhost:1234"
   );
 
@@ -126,19 +124,19 @@ add_task(function test_Proxy_init() {
   p = new Proxy();
   p.proxyType = "direct";
   ok(p.init());
-  equal(Preferences.get("network.proxy.type"), 0);
+  equal(Services.prefs.getIntPref("network.proxy.type"), 0);
 
   // autodetect
   p = new Proxy();
   p.proxyType = "autodetect";
   ok(p.init());
-  equal(Preferences.get("network.proxy.type"), 4);
+  equal(Services.prefs.getIntPref("network.proxy.type"), 4);
 
   // system
   p = new Proxy();
   p.proxyType = "system";
   ok(p.init());
-  equal(Preferences.get("network.proxy.type"), 5);
+  equal(Services.prefs.getIntPref("network.proxy.type"), 5);
 
   // manual
   for (let proxy of ["http", "ssl", "socks"]) {
@@ -152,12 +150,15 @@ add_task(function test_Proxy_init() {
     }
 
     ok(p.init());
-    equal(Preferences.get("network.proxy.type"), 1);
-    equal(Preferences.get("network.proxy.no_proxies_on"), "foo, bar");
-    equal(Preferences.get(`network.proxy.${proxy}`), "foo");
-    equal(Preferences.get(`network.proxy.${proxy}_port`), 42);
+    equal(Services.prefs.getIntPref("network.proxy.type"), 1);
+    equal(
+      Services.prefs.getStringPref("network.proxy.no_proxies_on"),
+      "foo, bar"
+    );
+    equal(Services.prefs.getStringPref(`network.proxy.${proxy}`), "foo");
+    equal(Services.prefs.getIntPref(`network.proxy.${proxy}_port`), 42);
     if (proxy === "socks") {
-      equal(Preferences.get(`network.proxy.${proxy}_version`), 4);
+      equal(Services.prefs.getIntPref(`network.proxy.${proxy}_version`), 4);
     }
   }
 
@@ -166,7 +167,7 @@ add_task(function test_Proxy_init() {
   p.proxyType = "manual";
   p.noProxy = [];
   ok(p.init());
-  equal(Preferences.get("network.proxy.no_proxies_on"), "");
+  equal(Services.prefs.getStringPref("network.proxy.no_proxies_on"), "");
 });
 
 add_task(function test_Proxy_toString() {
@@ -368,16 +369,15 @@ add_task(function test_Proxy_fromJSON() {
   deepEqual(p, Proxy.fromJSON(manual));
 });
 
-add_task(function test_UnhandledPromptBehavior() {
-  equal(UnhandledPromptBehavior.Accept, "accept");
-  equal(UnhandledPromptBehavior.AcceptAndNotify, "accept and notify");
-  equal(UnhandledPromptBehavior.Dismiss, "dismiss");
-  equal(UnhandledPromptBehavior.DismissAndNotify, "dismiss and notify");
-  equal(UnhandledPromptBehavior.Ignore, "ignore");
+add_task(function test_Capabilities_ctor_http_default() {
+  const caps = new Capabilities();
+
+  equal(true, caps.get("moz:webdriverClick"));
 });
 
-add_task(function test_Capabilities_ctor() {
-  let caps = new Capabilities();
+add_task(function test_Capabilities_ctor_http() {
+  const caps = new Capabilities(false);
+
   ok(caps.has("browserName"));
   ok(caps.has("browserVersion"));
   ok(caps.has("platformName"));
@@ -396,8 +396,34 @@ add_task(function test_Capabilities_ctor() {
   ok(caps.has("moz:platformVersion"));
   ok(caps.has("moz:processID"));
   ok(caps.has("moz:profile"));
-  equal(false, caps.get("moz:useNonSpecCompliantPointerOrigin"));
   equal(true, caps.get("moz:webdriverClick"));
+});
+
+add_task(function test_Capabilities_ctor_bidi() {
+  const caps = new Capabilities(true);
+
+  ok(caps.has("browserName"));
+  ok(caps.has("browserVersion"));
+  ok(caps.has("platformName"));
+  ok(["linux", "mac", "windows", "android"].includes(caps.get("platformName")));
+  equal(undefined, caps.get("pageLoadStrategy"));
+  equal(false, caps.get("acceptInsecureCerts"));
+  ok(!caps.has("timeouts"));
+  ok(caps.get("proxy") instanceof Proxy);
+  ok(!caps.has("setWindowRect"));
+  ok(!caps.has("strictFileInteractability"));
+  ok(!caps.has("webSocketUrl"));
+
+  ok(!caps.has("moz:accessibilityChecks"));
+  ok(caps.has("moz:buildID"));
+  ok(!caps.has("moz:debuggerAddress"));
+  ok(caps.has("moz:platformVersion"));
+  ok(caps.has("moz:processID"));
+  ok(caps.has("moz:profile"));
+  ok(!caps.has("moz:webdriverClick"));
+
+  // No longer supported capabilities
+  ok(!caps.has("moz:useNonSpecCompliantPointerOrigin"));
 });
 
 add_task(function test_Capabilities_toString() {
@@ -425,132 +451,290 @@ add_task(function test_Capabilities_toJSON() {
   equal(caps.get("moz:platformVersion"), json["moz:platformVersion"]);
   equal(caps.get("moz:processID"), json["moz:processID"]);
   equal(caps.get("moz:profile"), json["moz:profile"]);
-  equal(
-    caps.get("moz:useNonSpecCompliantPointerOrigin"),
-    json["moz:useNonSpecCompliantPointerOrigin"]
-  );
   equal(caps.get("moz:webdriverClick"), json["moz:webdriverClick"]);
 });
 
-add_task(function test_Capabilities_fromJSON() {
+add_task(function test_Capabilities_fromJSON_http() {
   const { fromJSON } = Capabilities;
 
   // plain
-  for (let typ of [{}, null, undefined]) {
-    ok(fromJSON(typ).has("browserName"));
-  }
-  for (let typ of [true, 42, "foo", []]) {
-    Assert.throws(() => fromJSON(typ), /InvalidArgumentError/);
+  for (const type of [{}, null, undefined]) {
+    ok(fromJSON(type, false).has("browserName"));
   }
 
-  // matching
-  let caps = new Capabilities();
+  let caps;
 
-  caps = fromJSON({ acceptInsecureCerts: true });
+  // Capabilities supported by HTTP and BiDi
+  caps = fromJSON({ acceptInsecureCerts: true }, false);
   equal(true, caps.get("acceptInsecureCerts"));
-  caps = fromJSON({ acceptInsecureCerts: false });
-  equal(false, caps.get("acceptInsecureCerts"));
-  Assert.throws(
-    () => fromJSON({ acceptInsecureCerts: "foo" }),
-    /InvalidArgumentError/
-  );
-
-  for (let strategy of Object.values(PageLoadStrategy)) {
-    caps = fromJSON({ pageLoadStrategy: strategy });
-    equal(strategy, caps.get("pageLoadStrategy"));
-  }
-  Assert.throws(
-    () => fromJSON({ pageLoadStrategy: "foo" }),
-    /InvalidArgumentError/
-  );
-  Assert.throws(
-    () => fromJSON({ pageLoadStrategy: null }),
-    /InvalidArgumentError/
-  );
 
   let proxyConfig = { proxyType: "manual" };
-  caps = fromJSON({ proxy: proxyConfig });
+  caps = fromJSON({ proxy: proxyConfig }, false);
   equal("manual", caps.get("proxy").proxyType);
 
+  // WebDriver HTTP-only capabilities
+  for (let strategy of Object.values(PageLoadStrategy)) {
+    caps = fromJSON({ pageLoadStrategy: strategy }, false);
+    equal(strategy, caps.get("pageLoadStrategy"));
+  }
+
   let timeoutsConfig = { implicit: 123 };
-  caps = fromJSON({ timeouts: timeoutsConfig });
+  caps = fromJSON({ timeouts: timeoutsConfig }, false);
   equal(123, caps.get("timeouts").implicit);
 
-  if (!AppInfo.isAndroid) {
-    caps = fromJSON({ setWindowRect: true });
-    equal(true, caps.get("setWindowRect"));
+  caps = fromJSON({ strictFileInteractability: true }, false);
+  equal(true, caps.get("strictFileInteractability"));
+
+  caps = fromJSON({ webSocketUrl: true }, false);
+  equal(true, caps.get("webSocketUrl"));
+
+  // Mozilla specific capabilities
+  caps = fromJSON({ "moz:accessibilityChecks": true }, false);
+  equal(true, caps.get("moz:accessibilityChecks"));
+
+  caps = fromJSON({ "moz:webdriverClick": true }, false);
+  equal(true, caps.get("moz:webdriverClick"));
+
+  // capability is always populated with null if remote agent is not listening
+  caps = fromJSON({}, false);
+  equal(null, caps.get("moz:debuggerAddress"));
+  caps = fromJSON({ "moz:debuggerAddress": "foo" }, false);
+  equal(null, caps.get("moz:debuggerAddress"));
+  caps = fromJSON({ "moz:debuggerAddress": true }, false);
+  equal(null, caps.get("moz:debuggerAddress"));
+
+  // Extension capabilities
+  caps = fromJSON({ "webauthn:virtualAuthenticators": true }, false);
+  equal(true, caps.get("webauthn:virtualAuthenticators"));
+  Assert.throws(
+    () => fromJSON({ "webauthn:virtualAuthenticators": "foo" }, false),
+    /InvalidArgumentError/
+  );
+
+  caps = fromJSON({ "webauthn:extension:uvm": true }, false);
+  equal(true, caps.get("webauthn:extension:uvm"));
+  Assert.throws(
+    () => fromJSON({ "webauthn:extension:uvm": "foo" }, false),
+    /InvalidArgumentError/
+  );
+
+  caps = fromJSON({ "webauthn:extension:prf": true }, false);
+  equal(true, caps.get("webauthn:extension:prf"));
+  Assert.throws(
+    () => fromJSON({ "webauthn:extension:prf": "foo" }, false),
+    /InvalidArgumentError/
+  );
+
+  caps = fromJSON({ "webauthn:extension:largeBlob": true }, false);
+  equal(true, caps.get("webauthn:extension:largeBlob"));
+  Assert.throws(
+    () => fromJSON({ "webauthn:extension:largeBlob": "foo" }, false),
+    /InvalidArgumentError/
+  );
+
+  caps = fromJSON({ "webauthn:extension:credBlob": true }, false);
+  equal(true, caps.get("webauthn:extension:credBlob"));
+  Assert.throws(
+    () => fromJSON({ "webauthn:extension:credBlob": "foo" }, false),
+    /InvalidArgumentError/
+  );
+
+  // No longer supported capabilities
+  Assert.throws(
+    () => fromJSON({ "moz:useNonSpecCompliantPointerOrigin": true }, false),
+    /InvalidArgumentError/
+  );
+});
+
+add_task(function test_Capabilities_fromJSON_bidi() {
+  const { fromJSON } = Capabilities;
+
+  // plain
+  for (const type of [{}, null, undefined]) {
+    ok(fromJSON(type, true).has("browserName"));
+  }
+
+  let caps;
+
+  // Capabilities supported by HTTP and BiDi
+  caps = fromJSON({ acceptInsecureCerts: true }, true);
+  equal(true, caps.get("acceptInsecureCerts"));
+
+  let proxyConfig = { proxyType: "manual" };
+  caps = fromJSON({ proxy: proxyConfig }, true);
+  equal("manual", caps.get("proxy").proxyType);
+
+  // HTTP capabilities are ignored for BiDi-only sessions
+  for (let strategy of Object.values(PageLoadStrategy)) {
+    caps = fromJSON({ pageLoadStrategy: strategy }, true);
+    ok(!caps.has("pageLoadStrategy"));
+  }
+
+  let timeoutsConfig = { implicit: 123 };
+  caps = fromJSON({ timeouts: timeoutsConfig }, true);
+  ok(!caps.has("timeouts"));
+
+  caps = fromJSON({ strictFileInteractability: true }, true);
+  ok(!caps.has("strictFileInteractability"));
+
+  caps = fromJSON({ webSocketUrl: true }, true);
+  ok(!caps.has("webSocketUrl"));
+
+  // Mozilla specific capabilities
+  caps = fromJSON({ "moz:accessibilityChecks": true }, true);
+  ok(!caps.has("moz:accessibilityChecks"));
+
+  caps = fromJSON({ "moz:webdriverClick": true }, true);
+  equal(undefined, caps.get("moz:webdriverClick"));
+
+  // capability is always populated with null if remote agent is not listening
+  caps = fromJSON({}, true);
+  equal(null, caps.get("moz:debuggerAddress"));
+  caps = fromJSON({ "moz:debuggerAddress": "foo" }, true);
+  equal(null, caps.get("moz:debuggerAddress"));
+  caps = fromJSON({ "moz:debuggerAddress": true }, true);
+  equal(null, caps.get("moz:debuggerAddress"));
+
+  // Extension capabilities
+  caps = fromJSON({ "webauthn:virtualAuthenticators": true }, true);
+  ok(!caps.has("webauthn:virtualAuthenticators"));
+
+  caps = fromJSON({ "webauthn:extension:uvm": true }, true);
+  ok(!caps.has("webauthn:extension:uvm"));
+
+  caps = fromJSON({ "webauthn:extension:prf": true }, true);
+  ok(!caps.has("webauthn:extension:prf"));
+
+  caps = fromJSON({ "webauthn:extension:largeBlob": true }, true);
+  ok(!caps.has("webauthn:extension:largeBlob"));
+
+  caps = fromJSON({ "webauthn:extension:credBlob": true }, true);
+  ok(!caps.has("webauthn:extension:credBlob"));
+});
+
+add_task(function test_mergeCapabilities() {
+  // Shadowed values.
+  Assert.throws(
+    () =>
+      mergeCapabilities(
+        { acceptInsecureCerts: true },
+        { acceptInsecureCerts: false }
+      ),
+    /InvalidArgumentError/
+  );
+
+  deepEqual(
+    { acceptInsecureCerts: true },
+    mergeCapabilities({ acceptInsecureCerts: true }, undefined)
+  );
+  deepEqual(
+    { acceptInsecureCerts: true, browserName: "Firefox" },
+    mergeCapabilities({ acceptInsecureCerts: true }, { browserName: "Firefox" })
+  );
+});
+
+add_task(function test_validateCapabilities_invalid() {
+  const invalidCapabilities = [
+    true,
+    42,
+    "foo",
+    [],
+    { acceptInsecureCerts: "foo" },
+    { browserName: true },
+    { browserVersion: true },
+    { platformName: true },
+    { pageLoadStrategy: "foo" },
+    { proxy: false },
+    { strictFileInteractability: "foo" },
+    { timeouts: false },
+    { unhandledPromptBehavior: false },
+    { webSocketUrl: false },
+    { webSocketUrl: "foo" },
+    { "moz:firefoxOptions": "foo" },
+    { "moz:accessibilityChecks": "foo" },
+    { "moz:webdriverClick": "foo" },
+    { "moz:webdriverClick": 1 },
+    { "moz:useNonSpecCompliantPointerOrigin": false },
+    { "moz:debuggerAddress": "foo" },
+    { "moz:someRandomString": {} },
+  ];
+  for (const capabilities of invalidCapabilities) {
     Assert.throws(
-      () => fromJSON({ setWindowRect: false }),
+      () => validateCapabilities(capabilities),
       /InvalidArgumentError/
     );
-  } else {
+  }
+});
+
+add_task(function test_validateCapabilities_valid() {
+  // Ignore null value.
+  deepEqual({}, validateCapabilities({ test: null }));
+
+  const validCapabilities = [
+    { acceptInsecureCerts: true },
+    { browserName: "firefox" },
+    { browserVersion: "12" },
+    { platformName: "linux" },
+    { pageLoadStrategy: "eager" },
+    { proxy: { proxyType: "manual", httpProxy: "test.com" } },
+    { strictFileInteractability: true },
+    { timeouts: { pageLoad: 500 } },
+    { unhandledPromptBehavior: "accept" },
+    { webSocketUrl: true },
+    { "moz:firefoxOptions": {} },
+    { "moz:accessibilityChecks": true },
+    { "moz:webdriverClick": true },
+    { "moz:debuggerAddress": true },
+    { "test:extension": "foo" },
+  ];
+  for (const validCapability of validCapabilities) {
+    deepEqual(validCapability, validateCapabilities(validCapability));
+  }
+});
+
+add_task(function test_processCapabilities() {
+  for (const invalidValue of [
+    { capabilities: null },
+    { capabilities: undefined },
+    { capabilities: "foo" },
+    { capabilities: true },
+    { capabilities: [] },
+    { capabilities: { alwaysMatch: null } },
+    { capabilities: { alwaysMatch: "foo" } },
+    { capabilities: { alwaysMatch: true } },
+    { capabilities: { alwaysMatch: [] } },
+    { capabilities: { firstMatch: null } },
+    { capabilities: { firstMatch: "foo" } },
+    { capabilities: { firstMatch: true } },
+    { capabilities: { firstMatch: {} } },
+    { capabilities: { firstMatch: [] } },
+  ]) {
     Assert.throws(
-      () => fromJSON({ setWindowRect: true }),
+      () => processCapabilities(invalidValue),
       /InvalidArgumentError/
     );
   }
 
-  caps = fromJSON({ strictFileInteractability: false });
-  equal(false, caps.get("strictFileInteractability"));
-  caps = fromJSON({ strictFileInteractability: true });
-  equal(true, caps.get("strictFileInteractability"));
-
-  caps = fromJSON({ webSocketUrl: true });
-  equal(true, caps.get("webSocketUrl"));
-  Assert.throws(
-    () => fromJSON({ webSocketUrl: false }),
-    /InvalidArgumentError/
+  deepEqual(
+    { acceptInsecureCerts: true },
+    processCapabilities({
+      capabilities: { alwaysMatch: { acceptInsecureCerts: true } },
+    })
   );
-  Assert.throws(
-    () => fromJSON({ webSocketUrl: "foo" }),
-    /InvalidArgumentError/
+  deepEqual(
+    { browserName: "Firefox" },
+    processCapabilities({
+      capabilities: { firstMatch: [{ browserName: "Firefox" }] },
+    })
   );
-
-  caps = fromJSON({ "moz:accessibilityChecks": true });
-  equal(true, caps.get("moz:accessibilityChecks"));
-  caps = fromJSON({ "moz:accessibilityChecks": false });
-  equal(false, caps.get("moz:accessibilityChecks"));
-  Assert.throws(
-    () => fromJSON({ "moz:accessibilityChecks": "foo" }),
-    /InvalidArgumentError/
-  );
-  Assert.throws(
-    () => fromJSON({ "moz:accessibilityChecks": 1 }),
-    /InvalidArgumentError/
-  );
-
-  // capability is always populated with null if remote agent is not listening
-  caps = fromJSON({});
-  equal(null, caps.get("moz:debuggerAddress"));
-  caps = fromJSON({ "moz:debuggerAddress": "foo" });
-  equal(null, caps.get("moz:debuggerAddress"));
-  caps = fromJSON({ "moz:debuggerAddress": true });
-  equal(null, caps.get("moz:debuggerAddress"));
-
-  caps = fromJSON({ "moz:useNonSpecCompliantPointerOrigin": false });
-  equal(false, caps.get("moz:useNonSpecCompliantPointerOrigin"));
-  caps = fromJSON({ "moz:useNonSpecCompliantPointerOrigin": true });
-  equal(true, caps.get("moz:useNonSpecCompliantPointerOrigin"));
-  Assert.throws(
-    () => fromJSON({ "moz:useNonSpecCompliantPointerOrigin": "foo" }),
-    /InvalidArgumentError/
-  );
-  Assert.throws(
-    () => fromJSON({ "moz:useNonSpecCompliantPointerOrigin": 1 }),
-    /InvalidArgumentError/
-  );
-
-  caps = fromJSON({ "moz:webdriverClick": true });
-  equal(true, caps.get("moz:webdriverClick"));
-  caps = fromJSON({ "moz:webdriverClick": false });
-  equal(false, caps.get("moz:webdriverClick"));
-  Assert.throws(
-    () => fromJSON({ "moz:webdriverClick": "foo" }),
-    /InvalidArgumentError/
-  );
-  Assert.throws(
-    () => fromJSON({ "moz:webdriverClick": 1 }),
-    /InvalidArgumentError/
+  deepEqual(
+    { acceptInsecureCerts: true, browserName: "Firefox" },
+    processCapabilities({
+      capabilities: {
+        alwaysMatch: { acceptInsecureCerts: true },
+        firstMatch: [{ browserName: "Firefox" }],
+      },
+    })
   );
 });
 

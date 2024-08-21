@@ -4,8 +4,12 @@
 
 "use strict";
 
-const { action } = ChromeUtils.importESModule(
+const { action, CLICK_INTERVAL, ClickTracker } = ChromeUtils.importESModule(
   "chrome://remote/content/shared/webdriver/Actions.sys.mjs"
+);
+
+const { setTimeout } = ChromeUtils.importESModule(
+  "resource://gre/modules/Timer.sys.mjs"
 );
 
 const XHTMLNS = "http://www.w3.org/1999/xhtml";
@@ -46,7 +50,7 @@ add_task(function test_defaultPointerParameters() {
 
 add_task(function test_processPointerParameters() {
   for (let subtype of ["pointerDown", "pointerUp"]) {
-    for (let pointerType of ["foo", "", "get", "Get", 2, {}]) {
+    for (let pointerType of [2, true, {}, []]) {
       const inputTickActions = [
         {
           type: "pointer",
@@ -56,7 +60,28 @@ add_task(function test_processPointerParameters() {
         },
       ];
       let message = `Action sequence with parameters: {pointerType: ${pointerType} subtype: ${subtype}}`;
-      checkFromJSONErrors(inputTickActions, /Unknown pointerType/, message);
+      checkFromJSONErrors(
+        inputTickActions,
+        /Expected "pointerType" to be a string/,
+        message
+      );
+    }
+
+    for (let pointerType of ["", "foo"]) {
+      const inputTickActions = [
+        {
+          type: "pointer",
+          parameters: { pointerType },
+          subtype,
+          button: 0,
+        },
+      ];
+      let message = `Action sequence with parameters: {pointerType: ${pointerType} subtype: ${subtype}}`;
+      checkFromJSONErrors(
+        inputTickActions,
+        /Expected "pointerType" to be one of/,
+        message
+      );
     }
   }
 
@@ -86,7 +111,7 @@ add_task(function test_processPointerDownAction() {
     ];
     checkFromJSONErrors(
       inputTickActions,
-      /Expected 'button' .* to be >= 0/,
+      /Expected "button" to be a positive integer/,
       `pointerDown with {button: ${button}}`
     );
   }
@@ -107,7 +132,7 @@ add_task(function test_validateActionDurationAndCoordinates() {
       const inputTickActions = [{ type, subtype, duration }];
       checkFromJSONErrors(
         inputTickActions,
-        /Expected 'duration' .* to be >= 0/,
+        /Expected "duration" to be a positive integer/,
         `{subtype} with {duration: ${duration}}`
       );
     }
@@ -121,7 +146,7 @@ add_task(function test_validateActionDurationAndCoordinates() {
     actionItem[name] = "a";
     checkFromJSONErrors(
       [actionItem],
-      /Expected '.*' \(.*\) to be an Integer/,
+      /Expected ".*" to be an integer/,
       `${name}: "a", subtype: pointerMove`
     );
   }
@@ -134,20 +159,20 @@ add_task(function test_processPointerMoveActionOriginValidation() {
     ];
     checkFromJSONErrors(
       inputTickActions,
-      /Expected \'origin\' to be undefined, "viewport", "pointer", or an element/,
+      /Expected "origin" to be undefined, "viewport", "pointer", or an element/,
       `actionItem.origin: (${getTypeString(origin)})`
     );
   }
 });
 
 add_task(function test_processPointerMoveActionOriginStringValidation() {
-  for (let origin of ["a", "", "get", "Get"]) {
+  for (let origin of ["", "viewports", "pointers"]) {
     const inputTickActions = [
       { type: "pointer", duration: 5000, subtype: "pointerMove", origin },
     ];
     checkFromJSONErrors(
       inputTickActions,
-      /Expected 'origin' to be undefined, "viewport", "pointer", or an element/,
+      /Expected "origin" to be undefined, "viewport", "pointer", or an element/,
       `actionItem.origin: ${origin}`
     );
   }
@@ -176,7 +201,7 @@ add_task(function test_processPointerMoveActionDefaultOrigin() {
   ];
   const chain = action.Chain.fromJSON(state, chainForTick(inputTickActions));
   // The default is viewport coordinates which have an origin at [0,0] and don't depend on inputSource
-  deepEqual(chain[0][0].origin.getOriginCoordinates(state, null, null), {
+  deepEqual(chain[0][0].origin.getOriginCoordinates(null, null), {
     x: 0,
     y: 0,
   });
@@ -251,7 +276,6 @@ add_task(function test_computePointerDestinationViewport() {
   inputSource.x = "99";
   inputSource.y = "10";
   const target = actionItem.origin.getTargetCoordinates(
-    state,
     inputSource,
     [actionItem.x, actionItem.y],
     null
@@ -277,7 +301,6 @@ add_task(function test_computePointerDestinationPointer() {
   inputSource.x = 10;
   inputSource.y = 99;
   const target = actionItem.origin.getTargetCoordinates(
-    state,
     inputSource,
     [actionItem.x, actionItem.y],
     null
@@ -366,7 +389,7 @@ add_task(function test_processActionSubtypeValidation() {
     const inputTickActions = [{ type, subtype: "dancing" }];
     checkFromJSONErrors(
       inputTickActions,
-      new RegExp(`Unknown subtype dancing for type ${type}`),
+      new RegExp(`Expected known subtype for type`),
       message
     );
   }
@@ -378,7 +401,7 @@ add_task(function test_processKeyActionDown() {
     const message = `actionItem.value: (${getTypeString(value)})`;
     checkFromJSONErrors(
       inputTickActions,
-      /Expected 'value' to be a string that represents single code point/,
+      /Expected "value" to be a string that represents single code point/,
       message
     );
   }
@@ -400,19 +423,19 @@ add_task(function test_processKeyActionDown() {
 add_task(function test_processInputSourceActionSequenceValidation() {
   checkFromJSONErrors(
     [{ type: "swim", subtype: "pause", id: "some id" }],
-    /Unknown action type/,
+    /Expected known action type/,
     "actionSequence type: swim"
   );
 
   checkFromJSONErrors(
     [{ type: "none", subtype: "pause", id: -1 }],
-    /Expected 'id' to be a string/,
+    /Expected "id" to be a string/,
     "actionSequence id: -1"
   );
 
   checkFromJSONErrors(
     [{ type: "none", subtype: "pause", id: undefined }],
-    /Expected 'id' to be a string/,
+    /Expected "id" to be a string/,
     "actionSequence id: undefined"
   );
 
@@ -420,7 +443,7 @@ add_task(function test_processInputSourceActionSequenceValidation() {
   const actionSequence = [
     { type: "none", subtype: "pause", id: "some_id", actions: -1 },
   ];
-  const errorRegex = /Expected 'actionSequence.actions' to be an array/;
+  const errorRegex = /Expected "actionSequence.actions" to be an array/;
   const message = "actionSequence actions: -1";
 
   Assert.throws(
@@ -531,7 +554,7 @@ add_task(function test_processInputSourceActionSequenceInputStateMap() {
   );
   Assert.throws(
     () => action.Chain.fromJSON(state, [actionSequence]),
-    /Expected input source 1 to be type pointer, got key/,
+    /Expected input source \[object String\] "1" to be type pointer/,
     message
   );
 });
@@ -547,7 +570,7 @@ add_task(function test_extractActionChainValidation() {
     );
     Assert.throws(
       () => action.Chain.fromJSON(state, actions),
-      /Expected 'actions' to be an array/,
+      /Expected "actions" to be an array/,
       message
     );
   }
@@ -660,6 +683,35 @@ add_task(function test_computeTickDuration_noDurations() {
   ];
   const chain = action.Chain.fromJSON(state, chainForTick(inputTickActions));
   equal(0, chain[0].getDuration());
+});
+
+add_task(function test_ClickTracker_setClick() {
+  const clickTracker = new ClickTracker();
+  const button1 = 1;
+  const button2 = 2;
+
+  clickTracker.setClick(button1);
+  equal(1, clickTracker.count);
+
+  // Make sure that clicking different mouse buttons doesn't increase the count.
+  clickTracker.setClick(button2);
+  equal(1, clickTracker.count);
+
+  clickTracker.setClick(button2);
+  equal(2, clickTracker.count);
+
+  clickTracker.reset();
+  equal(0, clickTracker.count);
+});
+
+add_task(function test_ClickTracker_reset_after_timeout() {
+  const clickTracker = new ClickTracker();
+
+  clickTracker.setClick(1);
+  equal(1, clickTracker.count);
+
+  // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
+  setTimeout(() => equal(0, clickTracker.count), CLICK_INTERVAL + 10);
 });
 
 // helpers

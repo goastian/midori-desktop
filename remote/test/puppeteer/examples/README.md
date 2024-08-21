@@ -1,6 +1,18 @@
 # Running the examples
 
-Assuming you have a checkout of the Puppeteer repo and have run npm i (or yarn) to install the dependencies, the examples can be run from the root folder like so:
+Assuming you have a checkout of the Puppeteer repo and install the dependencies:
+
+```bash npm2yarn
+npm install
+```
+
+Build the project:
+
+```bash npm2yarn
+npm run build
+```
+
+The examples can be run from the root folder like so:
 
 ```bash
 NODE_PATH=../ node examples/search.js
@@ -12,7 +24,7 @@ More complex and use case driven examples can be found at [github.com/GoogleChro
 
 # Other resources
 
-> Other useful tools, articles, and projects that use Puppeteer.
+Other useful tools, articles, and projects that use Puppeteer.
 
 ## Rendering and web scraping
 
@@ -36,7 +48,4 @@ More complex and use case driven examples can be found at [github.com/GoogleChro
 - [puppeteer-loadtest](https://github.com/svenkatreddy/puppeteer-loadtest) - commandline interface for performing load test on puppeteer scripts.
 - [cucumber-puppeteer-example](https://github.com/mlampedx/cucumber-puppeteer-example) - Example repository demonstrating how to use Puppeeteer and Cucumber for integration testing.
 
-## Services
-
-- [Checkly](https://checklyhq.com) - Monitoring SaaS that uses Puppeteer to check availability and correctness of web pages and apps.
-- [Doppio](https://doppio.sh) - SaaS API to create screenshots or PDFs from HTML/CSS/JS
+Also, see the [community list of Puppeteer resources](https://github.com/transitive-bullshit/awesome-puppeteer) for more examples.

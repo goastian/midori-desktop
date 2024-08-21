@@ -1,24 +1,11 @@
 /**
- * Copyright 2022 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2022 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import {assert} from '../util/assert.js';
-import {
-  createDeferredPromise,
-  DeferredPromise,
-} from '../util/DeferredPromise.js';
+import {Deferred} from '../util/Deferred.js';
 
 /**
  * @internal
@@ -38,17 +25,17 @@ export class MutationPoller<T> implements Poller<T> {
   #root: Node;
 
   #observer?: MutationObserver;
-  #promise?: DeferredPromise<T>;
+  #deferred?: Deferred<T>;
   constructor(fn: () => Promise<T>, root: Node) {
     this.#fn = fn;
     this.#root = root;
   }
 
   async start(): Promise<void> {
-    const promise = (this.#promise = createDeferredPromise<T>());
+    const deferred = (this.#deferred = Deferred.create<T>());
     const result = await this.#fn();
     if (result) {
-      promise.resolve(result);
+      deferred.resolve(result);
       return;
     }
 
@@ -57,7 +44,7 @@ export class MutationPoller<T> implements Poller<T> {
       if (!result) {
         return;
       }
-      promise.resolve(result);
+      deferred.resolve(result);
       await this.stop();
     });
     this.#observer.observe(this.#root, {
@@ -68,9 +55,9 @@ export class MutationPoller<T> implements Poller<T> {
   }
 
   async stop(): Promise<void> {
-    assert(this.#promise, 'Polling never started.');
-    if (!this.#promise.finished()) {
-      this.#promise.reject(new Error('Polling stopped'));
+    assert(this.#deferred, 'Polling never started.');
+    if (!this.#deferred.finished()) {
+      this.#deferred.reject(new Error('Polling stopped'));
     }
     if (this.#observer) {
       this.#observer.disconnect();
@@ -79,8 +66,8 @@ export class MutationPoller<T> implements Poller<T> {
   }
 
   result(): Promise<T> {
-    assert(this.#promise, 'Polling never started.');
-    return this.#promise;
+    assert(this.#deferred, 'Polling never started.');
+    return this.#deferred.valueOrThrow();
   }
 }
 
@@ -89,21 +76,21 @@ export class MutationPoller<T> implements Poller<T> {
  */
 export class RAFPoller<T> implements Poller<T> {
   #fn: () => Promise<T>;
-  #promise?: DeferredPromise<T>;
+  #deferred?: Deferred<T>;
   constructor(fn: () => Promise<T>) {
     this.#fn = fn;
   }
 
   async start(): Promise<void> {
-    const promise = (this.#promise = createDeferredPromise<T>());
+    const deferred = (this.#deferred = Deferred.create<T>());
     const result = await this.#fn();
     if (result) {
-      promise.resolve(result);
+      deferred.resolve(result);
       return;
     }
 
     const poll = async () => {
-      if (promise.finished()) {
+      if (deferred.finished()) {
         return;
       }
       const result = await this.#fn();
@@ -111,22 +98,22 @@ export class RAFPoller<T> implements Poller<T> {
         window.requestAnimationFrame(poll);
         return;
       }
-      promise.resolve(result);
+      deferred.resolve(result);
       await this.stop();
     };
     window.requestAnimationFrame(poll);
   }
 
   async stop(): Promise<void> {
-    assert(this.#promise, 'Polling never started.');
-    if (!this.#promise.finished()) {
-      this.#promise.reject(new Error('Polling stopped'));
+    assert(this.#deferred, 'Polling never started.');
+    if (!this.#deferred.finished()) {
+      this.#deferred.reject(new Error('Polling stopped'));
     }
   }
 
   result(): Promise<T> {
-    assert(this.#promise, 'Polling never started.');
-    return this.#promise;
+    assert(this.#deferred, 'Polling never started.');
+    return this.#deferred.valueOrThrow();
   }
 }
 
@@ -138,18 +125,18 @@ export class IntervalPoller<T> implements Poller<T> {
   #fn: () => Promise<T>;
   #ms: number;
 
-  #interval?: NodeJS.Timer;
-  #promise?: DeferredPromise<T>;
+  #interval?: NodeJS.Timeout;
+  #deferred?: Deferred<T>;
   constructor(fn: () => Promise<T>, ms: number) {
     this.#fn = fn;
     this.#ms = ms;
   }
 
   async start(): Promise<void> {
-    const promise = (this.#promise = createDeferredPromise<T>());
+    const deferred = (this.#deferred = Deferred.create<T>());
     const result = await this.#fn();
     if (result) {
-      promise.resolve(result);
+      deferred.resolve(result);
       return;
     }
 
@@ -158,15 +145,15 @@ export class IntervalPoller<T> implements Poller<T> {
       if (!result) {
         return;
       }
-      promise.resolve(result);
+      deferred.resolve(result);
       await this.stop();
     }, this.#ms);
   }
 
   async stop(): Promise<void> {
-    assert(this.#promise, 'Polling never started.');
-    if (!this.#promise.finished()) {
-      this.#promise.reject(new Error('Polling stopped'));
+    assert(this.#deferred, 'Polling never started.');
+    if (!this.#deferred.finished()) {
+      this.#deferred.reject(new Error('Polling stopped'));
     }
     if (this.#interval) {
       clearInterval(this.#interval);
@@ -175,7 +162,7 @@ export class IntervalPoller<T> implements Poller<T> {
   }
 
   result(): Promise<T> {
-    assert(this.#promise, 'Polling never started.');
-    return this.#promise;
+    assert(this.#deferred, 'Polling never started.');
+    return this.#deferred.valueOrThrow();
   }
 }

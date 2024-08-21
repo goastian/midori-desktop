@@ -2,12 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  accessibility: "chrome://remote/content/marionette/accessibility.sys.mjs",
+  accessibility:
+    "chrome://remote/content/shared/webdriver/Accessibility.sys.mjs",
   allowAllCerts: "chrome://remote/content/marionette/cert.sys.mjs",
   Capabilities: "chrome://remote/content/shared/webdriver/Capabilities.sys.mjs",
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
@@ -19,6 +18,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "chrome://remote/content/shared/messagehandler/RootMessageHandler.sys.mjs",
   RootMessageHandlerRegistry:
     "chrome://remote/content/shared/messagehandler/RootMessageHandlerRegistry.sys.mjs",
+  TabManager: "chrome://remote/content/shared/TabManager.sys.mjs",
   unregisterProcessDataActor:
     "chrome://remote/content/shared/webdriver/process-actors/WebDriverProcessDataParent.sys.mjs",
   WebDriverBiDiConnection:
@@ -27,12 +27,40 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "chrome://remote/content/server/WebSocketHandshake.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
+ChromeUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
+
+// Global singleton that holds active WebDriver sessions
+const webDriverSessions = new Map();
+
+/**
+ * @typedef {Set} SessionConfigurationFlags
+ *     A set of flags defining the features of a WebDriver session. It can be
+ *     empty or contain entries as listed below. External specifications may
+ *     define additional flags, or create sessions without the HTTP flag.
+ *
+ *     <dl>
+ *       <dt><code>"bidi"</code> (string)
+ *       <dd>Flag indicating a WebDriver BiDi session.
+ *       <dt><code>"http"</code> (string)
+ *       <dd>Flag indicating a WebDriver classic (HTTP) session.
+ *     </dl>
+ */
 
 /**
  * Representation of WebDriver session.
  */
 export class WebDriverSession {
+  #bidi;
+  #capabilities;
+  #connections;
+  #http;
+  #id;
+  #messageHandler;
+  #path;
+
+  static SESSION_FLAG_BIDI = "bidi";
+  static SESSION_FLAG_HTTP = "http";
+
   /**
    * Construct a new WebDriver session.
    *
@@ -49,21 +77,21 @@ export class WebDriverSession {
    *   are implicitly trusted on navigation for the duration of the session.
    *
    *  <dt><code>pageLoadStrategy</code> (string)
-   *  <dd>The page load strategy to use for the current session.  Must be
+   *  <dd>(HTTP only) The page load strategy to use for the current session.  Must be
    *   one of "<tt>none</tt>", "<tt>eager</tt>", and "<tt>normal</tt>".
    *
    *  <dt><code>proxy</code> (Proxy object)
    *  <dd>Defines the proxy configuration.
    *
    *  <dt><code>setWindowRect</code> (boolean)
-   *  <dd>Indicates whether the remote end supports all of the resizing
+   *  <dd>(HTTP only) Indicates whether the remote end supports all of the resizing
    *   and repositioning commands.
    *
-   *  <dt><code>timeouts</code> (Timeouts object)
-   *  <dd>Describes the timeouts imposed on certian session operations.
-   *
    *  <dt><code>strictFileInteractability</code> (boolean)
-   *  <dd>Defines the current session’s strict file interactability.
+   *  <dd>(HTTP only) Defines the current session’s strict file interactability.
+   *
+   *  <dt><code>timeouts</code> (Timeouts object)
+   *  <dd>(HTTP only) Describes the timeouts imposed on certain session operations.
    *
    *  <dt><code>unhandledPromptBehavior</code> (string)
    *  <dd>Describes the current session’s user prompt handler.  Must be one of
@@ -72,17 +100,37 @@ export class WebDriverSession {
    *   "<tt>dismiss and notify</tt>" state.
    *
    *  <dt><code>moz:accessibilityChecks</code> (boolean)
-   *  <dd>Run a11y checks when clicking elements.
+   *  <dd>(HTTP only) Run a11y checks when clicking elements.
    *
    *  <dt><code>moz:debuggerAddress</code> (boolean)
    *  <dd>Indicate that the Chrome DevTools Protocol (CDP) has to be enabled.
    *
-   *  <dt><code>moz:useNonSpecCompliantPointerOrigin</code> (boolean)
-   *  <dd>Use the not WebDriver conforming calculation of the pointer origin
-   *   when the origin is an element, and the element center point is used.
-   *
    *  <dt><code>moz:webdriverClick</code> (boolean)
-   *  <dd>Use a WebDriver conforming <i>WebDriver::ElementClick</i>.
+   *  <dd>(HTTP only) Use a WebDriver conforming <i>WebDriver::ElementClick</i>.
+   * </dl>
+   *
+   * <h4>WebAuthn</h4>
+   *
+   * <dl>
+   *  <dt><code>webauthn:virtualAuthenticators</code> (boolean)
+   *  <dd>Indicates whether the endpoint node supports all Virtual
+   *   Authenticators commands.
+   *
+   *  <dt><code>webauthn:extension:uvm</code> (boolean)
+   *  <dd>Indicates whether the endpoint node WebAuthn WebDriver
+   *   implementation supports the User Verification Method extension.
+   *
+   *  <dt><code>webauthn:extension:prf</code> (boolean)
+   *  <dd>Indicates whether the endpoint node WebAuthn WebDriver
+   *   implementation supports the prf extension.
+   *
+   *  <dt><code>webauthn:extension:largeBlob</code> (boolean)
+   *  <dd>Indicates whether the endpoint node WebAuthn WebDriver implementation
+   *   supports the largeBlob extension.
+   *
+   *  <dt><code>webauthn:extension:credBlob</code> (boolean)
+   *  <dd>Indicates whether the endpoint node WebAuthn WebDriver implementation
+   *   supports the credBlob extension.
    * </dl>
    *
    * <h4>Timeouts object</h4>
@@ -116,7 +164,7 @@ export class WebDriverSession {
    *   <code>proxyType</code> is "<tt>manual</tt>".
    *
    *  <dt><code>noProxy</code> (string)
-   *  <dd>Lists the adress for which the proxy should be bypassed when
+   *  <dd>Lists the address for which the proxy should be bypassed when
    *   the <code>proxyType</code> is "<tt>manual</tt>".  Must be a JSON
    *   List containing any number of any of domains, IPv4 addresses, or IPv6
    *   addresses.
@@ -144,9 +192,10 @@ export class WebDriverSession {
    * </code></pre>
    *
    * @param {Object<string, *>=} capabilities
-   *     JSON Object containing any of the recognised capabilities listed
+   *     JSON Object containing any of the recognized capabilities listed
    *     above.
-   *
+   * @param {SessionConfigurationFlags} flags
+   *     Session configuration flags.
    * @param {WebDriverBiDiConnection=} connection
    *     An optional existing WebDriver BiDi connection to associate with the
    *     new session.
@@ -154,34 +203,48 @@ export class WebDriverSession {
    * @throws {SessionNotCreatedError}
    *     If, for whatever reason, a session could not be created.
    */
-  constructor(capabilities, connection) {
+  constructor(capabilities, flags, connection) {
     // WebSocket connections that use this session. This also accounts for
     // possible disconnects due to network outages, which require clients
     // to reconnect.
-    this._connections = new Set();
+    this.#connections = new Set();
 
-    this.id = lazy.generateUUID();
+    this.#id = lazy.generateUUID();
+
+    // Flags for WebDriver session features
+    this.#bidi = flags.has(WebDriverSession.SESSION_FLAG_BIDI);
+    this.#http = flags.has(WebDriverSession.SESSION_FLAG_HTTP);
+
+    if (this.#bidi == this.#http) {
+      // Initially a WebDriver session can either be HTTP or BiDi. An upgrade of a
+      // HTTP session to offer BiDi features is done after the constructor is run.
+      throw new lazy.error.SessionNotCreatedError(
+        `Initially the WebDriver session needs to be either HTTP or BiDi (bidi=${
+          this.#bidi
+        }, http=${this.#http})`
+      );
+    }
 
     // Define the HTTP path to query this session via WebDriver BiDi
-    this.path = `/session/${this.id}`;
+    this.#path = `/session/${this.#id}`;
 
     try {
-      this.capabilities = lazy.Capabilities.fromJSON(capabilities, this.path);
+      this.#capabilities = lazy.Capabilities.fromJSON(capabilities, this.#bidi);
     } catch (e) {
       throw new lazy.error.SessionNotCreatedError(e);
     }
 
-    if (this.capabilities.get("acceptInsecureCerts")) {
+    if (this.proxy.init()) {
+      lazy.logger.info(
+        `Proxy settings initialized: ${JSON.stringify(this.proxy)}`
+      );
+    }
+
+    if (this.acceptInsecureCerts) {
       lazy.logger.warn(
         "TLS certificate errors will be ignored for this session"
       );
       lazy.allowAllCerts.enable();
-    }
-
-    if (this.proxy.init()) {
-      lazy.logger.info(
-        `Proxy settings initialised: ${JSON.stringify(this.proxy)}`
-      );
     }
 
     // If we are testing accessibility with marionette, start a11y service in
@@ -195,33 +258,118 @@ export class WebDriverSession {
     // immediately register the newly created session for it.
     if (connection) {
       connection.registerSession(this);
-      this._connections.add(connection);
+      this.#connections.add(connection);
     }
 
+    // Maps a Navigable (browsing context or content browser for top-level
+    // browsing contexts) to a Set of nodeId's.
+    this.navigableSeenNodes = new WeakMap();
+
     lazy.registerProcessDataActor();
+
+    webDriverSessions.set(this.#id, this);
   }
 
   destroy() {
+    webDriverSessions.delete(this.#id);
+
+    lazy.unregisterProcessDataActor();
+
+    this.navigableSeenNodes = null;
+
     lazy.allowAllCerts.disable();
 
     // Close all open connections which unregister themselves.
-    this._connections.forEach(connection => connection.close());
-    if (this._connections.size > 0) {
+    this.#connections.forEach(connection => connection.close());
+    if (this.#connections.size > 0) {
       lazy.logger.warn(
-        `Failed to close ${this._connections.size} WebSocket connections`
+        `Failed to close ${this.#connections.size} WebSocket connections`
       );
     }
 
     // Destroy the dedicated MessageHandler instance if we created one.
-    if (this._messageHandler) {
-      this._messageHandler.off(
+    if (this.#messageHandler) {
+      this.#messageHandler.off(
         "message-handler-protocol-event",
         this._onMessageHandlerProtocolEvent
       );
-      this._messageHandler.destroy();
+      this.#messageHandler.destroy();
+    }
+  }
+
+  get a11yChecks() {
+    return this.#capabilities.get("moz:accessibilityChecks");
+  }
+
+  get acceptInsecureCerts() {
+    return this.#capabilities.get("acceptInsecureCerts");
+  }
+
+  get bidi() {
+    return this.#bidi;
+  }
+
+  set bidi(value) {
+    this.#bidi = value;
+  }
+
+  get capabilities() {
+    return this.#capabilities;
+  }
+
+  get http() {
+    return this.#http;
+  }
+
+  get id() {
+    return this.#id;
+  }
+
+  get messageHandler() {
+    if (!this.#messageHandler) {
+      this.#messageHandler =
+        lazy.RootMessageHandlerRegistry.getOrCreateMessageHandler(this.#id);
+      this._onMessageHandlerProtocolEvent =
+        this._onMessageHandlerProtocolEvent.bind(this);
+      this.#messageHandler.on(
+        "message-handler-protocol-event",
+        this._onMessageHandlerProtocolEvent
+      );
     }
 
-    lazy.unregisterProcessDataActor();
+    return this.#messageHandler;
+  }
+
+  get pageLoadStrategy() {
+    return this.#capabilities.get("pageLoadStrategy");
+  }
+
+  get path() {
+    return this.#path;
+  }
+
+  get proxy() {
+    return this.#capabilities.get("proxy");
+  }
+
+  get strictFileInteractability() {
+    return this.#capabilities.get("strictFileInteractability");
+  }
+
+  get timeouts() {
+    return this.#capabilities.get("timeouts");
+  }
+
+  set timeouts(timeouts) {
+    this.#capabilities.set("timeouts", timeouts);
+  }
+
+  get userPromptHandler() {
+    return this.#capabilities.get("unhandledPromptBehavior");
+  }
+
+  get webSocketUrl() {
+    return this.#capabilities.get("webSocketUrl");
   }
 
   async execute(module, command, params) {
@@ -247,64 +395,21 @@ export class WebDriverSession {
     });
   }
 
-  get a11yChecks() {
-    return this.capabilities.get("moz:accessibilityChecks");
-  }
-
-  get messageHandler() {
-    if (!this._messageHandler) {
-      this._messageHandler =
-        lazy.RootMessageHandlerRegistry.getOrCreateMessageHandler(this.id);
-      this._onMessageHandlerProtocolEvent =
-        this._onMessageHandlerProtocolEvent.bind(this);
-      this._messageHandler.on(
-        "message-handler-protocol-event",
-        this._onMessageHandlerProtocolEvent
-      );
-    }
-
-    return this._messageHandler;
-  }
-
-  get pageLoadStrategy() {
-    return this.capabilities.get("pageLoadStrategy");
-  }
-
-  get proxy() {
-    return this.capabilities.get("proxy");
-  }
-
-  get strictFileInteractability() {
-    return this.capabilities.get("strictFileInteractability");
-  }
-
-  get timeouts() {
-    return this.capabilities.get("timeouts");
-  }
-
-  set timeouts(timeouts) {
-    this.capabilities.set("timeouts", timeouts);
-  }
-
-  get unhandledPromptBehavior() {
-    return this.capabilities.get("unhandledPromptBehavior");
-  }
-
   /**
    * Remove the specified WebDriver BiDi connection.
    *
    * @param {WebDriverBiDiConnection} connection
    */
   removeConnection(connection) {
-    if (this._connections.has(connection)) {
-      this._connections.delete(connection);
+    if (this.#connections.has(connection)) {
+      this.#connections.delete(connection);
     } else {
       lazy.logger.warn("Trying to remove a connection that doesn't exist.");
     }
   }
 
   toString() {
-    return `[object ${this.constructor.name} ${this.id}]`;
+    return `[object ${this.constructor.name} ${this.#id}]`;
   }
 
   // nsIHttpRequestHandler
@@ -328,12 +433,12 @@ export class WebDriverSession {
       response._connection
     );
     conn.registerSession(this);
-    this._connections.add(conn);
+    this.#connections.add(conn);
   }
 
   _onMessageHandlerProtocolEvent(eventName, messageHandlerEvent) {
     const { name, data } = messageHandlerEvent;
-    this._connections.forEach(connection => connection.sendEvent(name, data));
+    this.#connections.forEach(connection => connection.sendEvent(name, data));
   }
 
   // XPCOM
@@ -341,4 +446,46 @@ export class WebDriverSession {
   get QueryInterface() {
     return ChromeUtils.generateQI(["nsIHttpRequestHandler"]);
   }
+}
+
+/**
+ * Get the list of seen nodes for the given browsing context unique to a
+ * WebDriver session.
+ *
+ * @param {string} sessionId
+ *     The id of the WebDriver session to use.
+ * @param {BrowsingContext} browsingContext
+ *     Browsing context the node is part of.
+ *
+ * @returns {Set}
+ *     The list of seen nodes.
+ */
+export function getSeenNodesForBrowsingContext(sessionId, browsingContext) {
+  if (!lazy.TabManager.isValidCanonicalBrowsingContext(browsingContext)) {
+    // If browsingContext is not a valid Browsing Context, return an empty set.
+    return new Set();
+  }
+
+  const navigable =
+    lazy.TabManager.getNavigableForBrowsingContext(browsingContext);
+  const session = getWebDriverSessionById(sessionId);
+
+  if (!session.navigableSeenNodes.has(navigable)) {
+    // The navigable hasn't been seen yet.
+    session.navigableSeenNodes.set(navigable, new Set());
+  }
+
+  return session.navigableSeenNodes.get(navigable);
+}
+
+/**
+ *
+ * @param {string} sessionId
+ *     The ID of the WebDriver session to retrieve.
+ *
+ * @returns {WebDriverSession|undefined}
+ *     The WebDriver session or undefined if the id is not known.
+ */
+export function getWebDriverSessionById(sessionId) {
+  return webDriverSessions.get(sessionId);
 }

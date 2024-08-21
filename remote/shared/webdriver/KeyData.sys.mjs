@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const KEY_DATA = {
   " ": { code: "Space" },
   "!": { code: "Digit1", shifted: true },
@@ -134,7 +132,7 @@ const KEY_DATA = {
     modifier: "altKey",
     printable: false,
   },
-  "\uE00B": { code: "", key: "Pause", printable: false },
+  "\uE00B": { code: "Pause", key: "Pause", printable: false },
   "\uE00C": { code: "Escape", key: "Escape", printable: false },
   "\uE00D": { code: "Space", key: " ", shifted: true },
   "\uE00E": { code: "PageUp", key: "PageUp", printable: false },
@@ -148,7 +146,7 @@ const KEY_DATA = {
   "\uE016": { code: "Insert", key: "Insert", printable: false },
   "\uE017": { code: "Delete", key: "Delete", printable: false },
   "\uE018": { code: "", key: ";" },
-  "\uE019": { code: "", key: "=" },
+  "\uE019": { code: "NumpadEqual", key: "=", location: 3 },
   "\uE01A": { code: "Numpad0", key: "0", location: 3 },
   "\uE01B": { code: "Numpad1", key: "1", location: 3 },
   "\uE01C": { code: "Numpad2", key: "2", location: 3 },
@@ -178,7 +176,7 @@ const KEY_DATA = {
   "\uE03B": { code: "F11", key: "F11", printable: false },
   "\uE03C": { code: "F12", key: "F12", printable: false },
   "\uE03D": {
-    code: "OSLeft",
+    code: "MetaLeft",
     key: "Meta",
     location: 1,
     modifier: "metaKey",
@@ -207,7 +205,7 @@ const KEY_DATA = {
     printable: false,
   },
   "\uE053": {
-    code: "OSRight",
+    code: "MetaRight",
     key: "Meta",
     location: 2,
     modifier: "metaKey",
@@ -287,7 +285,7 @@ const KEY_DATA = {
 
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "SHIFT_DATA", () => {
+ChromeUtils.defineLazyGetter(lazy, "SHIFT_DATA", () => {
   // Initalize the shift mapping
   const shiftData = new Map();
   const byCode = new Map();

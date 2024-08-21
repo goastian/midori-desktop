@@ -4,16 +4,13 @@
 
 /* eslint-disable no-restricted-globals */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  event: "chrome://remote/content/marionette/event.sys.mjs",
   Log: "chrome://remote/content/shared/Log.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.Log.get(lazy.Log.TYPES.MARIONETTE)
 );
 
@@ -68,16 +65,6 @@ export class MarionetteEventsChild extends JSWindowActorChild {
           type,
           windowId: this.innerWindowId,
         });
-        break;
-
-      // Listen for click event to indicate one click has happened, so actions
-      // code can send dblclick event
-      case "click":
-        lazy.event.DoubleClickTracker.setClick();
-        break;
-      case "dblclick":
-      case "unload":
-        lazy.event.DoubleClickTracker.resetClick();
         break;
     }
   }

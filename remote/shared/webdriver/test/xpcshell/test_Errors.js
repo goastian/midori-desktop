@@ -25,7 +25,9 @@ const errors = [
   error.NoSuchElementError,
   error.NoSuchFrameError,
   error.NoSuchHandleError,
+  error.NoSuchInterceptError,
   error.NoSuchNodeError,
+  error.NoSuchRequestError,
   error.NoSuchScriptError,
   error.NoSuchShadowRootError,
   error.NoSuchWindowError,
@@ -34,6 +36,7 @@ const errors = [
   error.StaleElementReferenceError,
   error.TimeoutError,
   error.UnableToSetCookieError,
+  error.UnableToSetFileInputError,
   error.UnexpectedAlertOpenError,
   error.UnknownCommandError,
   error.UnknownError,
@@ -404,11 +407,35 @@ add_task(function test_NoSuchFrameError() {
   ok(err instanceof error.WebDriverError);
 });
 
+add_task(function test_NoSuchHandleError() {
+  let err = new error.NoSuchHandleError("foo");
+  equal("NoSuchHandleError", err.name);
+  equal("foo", err.message);
+  equal("no such handle", err.status);
+  ok(err instanceof error.WebDriverError);
+});
+
+add_task(function test_NoSuchInterceptError() {
+  let err = new error.NoSuchInterceptError("foo");
+  equal("NoSuchInterceptError", err.name);
+  equal("foo", err.message);
+  equal("no such intercept", err.status);
+  ok(err instanceof error.WebDriverError);
+});
+
 add_task(function test_NoSuchNodeError() {
   let err = new error.NoSuchNodeError("foo");
   equal("NoSuchNodeError", err.name);
   equal("foo", err.message);
   equal("no such node", err.status);
+  ok(err instanceof error.WebDriverError);
+});
+
+add_task(function test_NoSuchRequestError() {
+  let err = new error.NoSuchRequestError("foo");
+  equal("NoSuchRequestError", err.name);
+  equal("foo", err.message);
+  equal("no such request", err.status);
   ok(err instanceof error.WebDriverError);
 });
 
@@ -425,6 +452,14 @@ add_task(function test_NoSuchShadowRootError() {
   equal("NoSuchShadowRootError", err.name);
   equal("foo", err.message);
   equal("no such shadow root", err.status);
+  ok(err instanceof error.WebDriverError);
+});
+
+add_task(function test_NoSuchUserContextError() {
+  let err = new error.NoSuchUserContextError("foo");
+  equal("NoSuchUserContextError", err.name);
+  equal("foo", err.message);
+  equal("no such user context", err.status);
   ok(err instanceof error.WebDriverError);
 });
 
@@ -473,6 +508,14 @@ add_task(function test_UnableToSetCookieError() {
   equal("UnableToSetCookieError", err.name);
   equal("foo", err.message);
   equal("unable to set cookie", err.status);
+  ok(err instanceof error.WebDriverError);
+});
+
+add_task(function test_UnableToSetFileInputError() {
+  let err = new error.UnableToSetFileInputError("foo");
+  equal("UnableToSetFileInputError", err.name);
+  equal("foo", err.message);
+  equal("unable to set file input", err.status);
   ok(err instanceof error.WebDriverError);
 });
 

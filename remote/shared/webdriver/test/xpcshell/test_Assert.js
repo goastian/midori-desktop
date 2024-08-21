@@ -3,7 +3,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
-/* eslint-disable no-array-constructor, no-new-object */
+/* eslint-disable no-array-constructor, no-object-constructor */
 
 const { assert } = ChromeUtils.importESModule(
   "chrome://remote/content/shared/webdriver/Assert.sys.mjs"
@@ -148,6 +148,20 @@ add_task(function test_object() {
   }
 
   Assert.throws(() => assert.object(null, "custom"), /custom/);
+});
+
+add_task(function test_isInstance() {
+  class Foo {
+    static isInstance(obj) {
+      return obj instanceof Foo;
+    }
+  }
+  assert.isInstance(new Foo(), Foo);
+  for (let typ of [{}, 42, "foo", true, null, undefined]) {
+    Assert.throws(() => assert.isInstance(typ, Foo), /InvalidArgumentError/);
+  }
+
+  Assert.throws(() => assert.isInstance(null, null, "custom"), /custom/);
 });
 
 add_task(function test_in() {

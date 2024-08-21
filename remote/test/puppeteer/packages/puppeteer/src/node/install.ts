@@ -1,17 +1,7 @@
 /**
- * Copyright 2020 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2020 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import {
@@ -21,7 +11,7 @@ import {
   makeProgressCallback,
   detectBrowserPlatform,
 } from '@puppeteer/browsers';
-import {Product} from 'puppeteer-core';
+import type {Product} from 'puppeteer-core';
 import {PUPPETEER_REVISIONS} from 'puppeteer-core/internal/revisions.js';
 
 import {getConfiguration} from '../getConfiguration.js';
@@ -46,7 +36,7 @@ export async function downloadBrowser(): Promise<void> {
     return;
   }
 
-  const downloadHost = configuration.downloadHost;
+  const downloadBaseUrl = configuration.downloadBaseUrl;
 
   const platform = detectBrowserPlatform();
   if (!platform) {
@@ -58,28 +48,96 @@ export async function downloadBrowser(): Promise<void> {
 
   const unresolvedBuildId =
     configuration.browserRevision || PUPPETEER_REVISIONS[product] || 'latest';
+  const unresolvedShellBuildId =
+    configuration.browserRevision ||
+    PUPPETEER_REVISIONS['chrome-headless-shell'] ||
+    'latest';
 
-  const buildId = await resolveBuildId(browser, platform, unresolvedBuildId);
+  const cacheDir = configuration.cacheDirectory!;
 
   try {
-    const result = await install({
-      browser,
-      cacheDir: configuration.cacheDirectory!,
-      platform,
-      buildId,
-      downloadProgressCallback: makeProgressCallback(browser, buildId),
-      // TODO: remove downloadHost in favour of baseDownloadUrl. The "host" of
-      // Firefox is already a URL and not a host. This would be a breaking change.
-      baseUrl: downloadHost,
-    });
+    const installationJobs = [];
 
-    logPolitely(
-      `${supportedProducts[product]} (${result.buildId}) downloaded to ${result.path}`
-    );
+    if (configuration.skipChromeDownload) {
+      logPolitely('**INFO** Skipping Chrome download as instructed.');
+    } else {
+      const buildId = await resolveBuildId(
+        browser,
+        platform,
+        unresolvedBuildId
+      );
+      installationJobs.push(
+        install({
+          browser,
+          cacheDir,
+          platform,
+          buildId,
+          downloadProgressCallback: makeProgressCallback(browser, buildId),
+          baseUrl: downloadBaseUrl,
+          buildIdAlias:
+            buildId !== unresolvedBuildId ? unresolvedBuildId : undefined,
+        })
+          .then(result => {
+            logPolitely(
+              `${supportedProducts[product]} (${result.buildId}) downloaded to ${result.path}`
+            );
+          })
+          .catch(error => {
+            throw new Error(
+              `ERROR: Failed to set up ${supportedProducts[product]} v${buildId}! Set "PUPPETEER_SKIP_DOWNLOAD" env variable to skip download.`,
+              {
+                cause: error,
+              }
+            );
+          })
+      );
+    }
+
+    if (browser === Browser.CHROME) {
+      if (configuration.skipChromeHeadlessShellDownload) {
+        logPolitely('**INFO** Skipping Chrome download as instructed.');
+      } else {
+        const shellBuildId = await resolveBuildId(
+          browser,
+          platform,
+          unresolvedShellBuildId
+        );
+
+        installationJobs.push(
+          install({
+            browser: Browser.CHROMEHEADLESSSHELL,
+            cacheDir,
+            platform,
+            buildId: shellBuildId,
+            downloadProgressCallback: makeProgressCallback(
+              browser,
+              shellBuildId
+            ),
+            baseUrl: downloadBaseUrl,
+            buildIdAlias:
+              shellBuildId !== unresolvedShellBuildId
+                ? unresolvedShellBuildId
+                : undefined,
+          })
+            .then(result => {
+              logPolitely(
+                `${Browser.CHROMEHEADLESSSHELL} (${result.buildId}) downloaded to ${result.path}`
+              );
+            })
+            .catch(error => {
+              throw new Error(
+                `ERROR: Failed to set up ${Browser.CHROMEHEADLESSSHELL} v${shellBuildId}! Set "PUPPETEER_SKIP_DOWNLOAD" env variable to skip download.`,
+                {
+                  cause: error,
+                }
+              );
+            })
+        );
+      }
+    }
+
+    await Promise.all(installationJobs);
   } catch (error) {
-    console.error(
-      `ERROR: Failed to set up ${supportedProducts[product]} r${buildId}! Set "PUPPETEER_SKIP_DOWNLOAD" env variable to skip download.`
-    );
     console.error(error);
     process.exit(1);
   }

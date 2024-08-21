@@ -1,24 +1,17 @@
 /**
- * Copyright 2020 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2020 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
-import {Protocol} from 'devtools-protocol';
+import type {Protocol} from 'devtools-protocol';
 
-import {CDPSession} from '../common/Connection.js';
-import {Frame} from '../common/Frame.js';
+import type {ProtocolError} from '../common/Errors.js';
+import {debugError} from '../common/util.js';
+import {assert} from '../util/assert.js';
 
-import {HTTPResponse} from './HTTPResponse.js';
+import type {CDPSession} from './CDPSession.js';
+import type {Frame} from './Frame.js';
+import type {HTTPResponse} from './HTTPResponse.js';
 
 /**
  * @public
@@ -101,11 +94,12 @@ export const DEFAULT_INTERCEPT_RESOLUTION_PRIORITY = 0;
  *
  * @public
  */
-export class HTTPRequest {
+export abstract class HTTPRequest {
   /**
    * @internal
    */
-  _requestId = '';
+  abstract get id(): string;
+
   /**
    * @internal
    */
@@ -128,13 +122,34 @@ export class HTTPRequest {
   _redirectChain: HTTPRequest[] = [];
 
   /**
+   * @internal
+   */
+  protected interception: {
+    enabled: boolean;
+    handled: boolean;
+    handlers: Array<() => void | PromiseLike<any>>;
+    resolutionState: InterceptResolutionState;
+    requestOverrides: ContinueRequestOverrides;
+    response: Partial<ResponseForRequest> | null;
+    abortReason: Protocol.Network.ErrorReason | null;
+  } = {
+    enabled: false,
+    handled: false,
+    handlers: [],
+    resolutionState: {
+      action: InterceptResolutionAction.None,
+    },
+    requestOverrides: {},
+    response: null,
+    abortReason: null,
+  };
+
+  /**
    * Warning! Using this client can break Puppeteer. Use with caution.
    *
    * @experimental
    */
-  get client(): CDPSession {
-    throw new Error('Not implemented');
-  }
+  abstract get client(): CDPSession;
 
   /**
    * @internal
@@ -144,9 +159,7 @@ export class HTTPRequest {
   /**
    * The URL of the request
    */
-  url(): string {
-    throw new Error('Not implemented');
-  }
+  abstract url(): string;
 
   /**
    * The `ContinueRequestOverrides` that will be used
@@ -154,7 +167,8 @@ export class HTTPRequest {
    * `respond()` aren't called).
    */
   continueRequestOverrides(): ContinueRequestOverrides {
-    throw new Error('Not implemented');
+    assert(this.interception.enabled, 'Request Interception is not enabled!');
+    return this.interception.requestOverrides;
   }
 
   /**
@@ -162,14 +176,16 @@ export class HTTPRequest {
    * interception is allowed to respond (ie, `abort()` is not called).
    */
   responseForRequest(): Partial<ResponseForRequest> | null {
-    throw new Error('Not implemented');
+    assert(this.interception.enabled, 'Request Interception is not enabled!');
+    return this.interception.response;
   }
 
   /**
    * The most recent reason for aborting the request
    */
   abortErrorReason(): Protocol.Network.ErrorReason | null {
-    throw new Error('Not implemented');
+    assert(this.interception.enabled, 'Request Interception is not enabled!');
+    return this.interception.abortReason;
   }
 
   /**
@@ -184,7 +200,13 @@ export class HTTPRequest {
    * `disabled`, `none`, or `already-handled`.
    */
   interceptResolutionState(): InterceptResolutionState {
-    throw new Error('Not implemented');
+    if (!this.interception.enabled) {
+      return {action: InterceptResolutionAction.Disabled};
+    }
+    if (this.interception.handled) {
+      return {action: InterceptResolutionAction.AlreadyHandled};
+    }
+    return {...this.interception.resolutionState};
   }
 
   /**
@@ -192,7 +214,7 @@ export class HTTPRequest {
    * `false` otherwise.
    */
   isInterceptResolutionHandled(): boolean {
-    throw new Error('Not implemented');
+    return this.interception.handled;
   }
 
   /**
@@ -203,78 +225,106 @@ export class HTTPRequest {
    */
   enqueueInterceptAction(
     pendingHandler: () => void | PromiseLike<unknown>
-  ): void;
-  enqueueInterceptAction(): void {
-    throw new Error('Not implemented');
+  ): void {
+    this.interception.handlers.push(pendingHandler);
   }
+
+  /**
+   * @internal
+   */
+  abstract _abort(
+    errorReason: Protocol.Network.ErrorReason | null
+  ): Promise<void>;
+
+  /**
+   * @internal
+   */
+  abstract _respond(response: Partial<ResponseForRequest>): Promise<void>;
+
+  /**
+   * @internal
+   */
+  abstract _continue(overrides: ContinueRequestOverrides): Promise<void>;
 
   /**
    * Awaits pending interception handlers and then decides how to fulfill
    * the request interception.
    */
   async finalizeInterceptions(): Promise<void> {
-    throw new Error('Not implemented');
+    await this.interception.handlers.reduce((promiseChain, interceptAction) => {
+      return promiseChain.then(interceptAction);
+    }, Promise.resolve());
+    this.interception.handlers = []; // TODO: verify this is correct top let gc run
+    const {action} = this.interceptResolutionState();
+    switch (action) {
+      case 'abort':
+        return await this._abort(this.interception.abortReason);
+      case 'respond':
+        if (this.interception.response === null) {
+          throw new Error('Response is missing for the interception');
+        }
+        return await this._respond(this.interception.response);
+      case 'continue':
+        return await this._continue(this.interception.requestOverrides);
+    }
   }
 
   /**
    * Contains the request's resource type as it was perceived by the rendering
    * engine.
    */
-  resourceType(): ResourceType {
-    throw new Error('Not implemented');
-  }
+  abstract resourceType(): ResourceType;
 
   /**
    * The method used (`GET`, `POST`, etc.)
    */
-  method(): string {
-    throw new Error('Not implemented');
-  }
+  abstract method(): string;
 
   /**
    * The request's post body, if any.
    */
-  postData(): string | undefined {
-    throw new Error('Not implemented');
-  }
+  abstract postData(): string | undefined;
+
+  /**
+   * True when the request has POST data. Note that {@link HTTPRequest.postData}
+   * might still be undefined when this flag is true when the data is too long
+   * or not readily available in the decoded form. In that case, use
+   * {@link HTTPRequest.fetchPostData}.
+   */
+  abstract hasPostData(): boolean;
+
+  /**
+   * Fetches the POST data for the request from the browser.
+   */
+  abstract fetchPostData(): Promise<string | undefined>;
 
   /**
    * An object with HTTP headers associated with the request. All
    * header names are lower-case.
    */
-  headers(): Record<string, string> {
-    throw new Error('Not implemented');
-  }
+  abstract headers(): Record<string, string>;
 
   /**
    * A matching `HTTPResponse` object, or null if the response has not
    * been received yet.
    */
-  response(): HTTPResponse | null {
-    throw new Error('Not implemented');
-  }
+  abstract response(): HTTPResponse | null;
 
   /**
    * The frame that initiated the request, or null if navigating to
    * error pages.
    */
-  frame(): Frame | null {
-    throw new Error('Not implemented');
-  }
+  abstract frame(): Frame | null;
 
   /**
    * True if the request is the driver of the current frame's navigation.
    */
-  isNavigationRequest(): boolean {
-    throw new Error('Not implemented');
-  }
+  abstract isNavigationRequest(): boolean;
 
   /**
    * The initiator of the request.
    */
-  initiator(): Protocol.Network.Initiator | undefined {
-    throw new Error('Not implemented');
-  }
+  abstract initiator(): Protocol.Network.Initiator | undefined;
 
   /**
    * A `redirectChain` is a chain of requests initiated to fetch a resource.
@@ -303,9 +353,7 @@ export class HTTPRequest {
    * @returns the chain of requests - if a server responds with at least a
    * single redirect, this chain will contain all requests that were redirected.
    */
-  redirectChain(): HTTPRequest[] {
-    throw new Error('Not implemented');
-  }
+  abstract redirectChain(): HTTPRequest[];
 
   /**
    * Access information about the request's failure.
@@ -327,19 +375,10 @@ export class HTTPRequest {
    * message, e.g. `net::ERR_FAILED`. It is not guaranteed that there will be
    * failure text if the request fails.
    */
-  failure(): {errorText: string} | null {
-    throw new Error('Not implemented');
-  }
+  abstract failure(): {errorText: string} | null;
 
   /**
    * Continues request with optional request overrides.
-   *
-   * @remarks
-   *
-   * To use this, request
-   * interception should be enabled with {@link Page.setRequestInterception}.
-   *
-   * Exception is immediately thrown if the request interception is not enabled.
    *
    * @example
    *
@@ -356,27 +395,55 @@ export class HTTPRequest {
    * ```
    *
    * @param overrides - optional overrides to apply to the request.
-   * @param priority - If provided, intercept is resolved using
-   * cooperative handling rules. Otherwise, intercept is resolved
-   * immediately.
+   * @param priority - If provided, intercept is resolved using cooperative
+   * handling rules. Otherwise, intercept is resolved immediately.
+   *
+   * @remarks
+   *
+   * To use this, request interception should be enabled with
+   * {@link Page.setRequestInterception}.
+   *
+   * Exception is immediately thrown if the request interception is not enabled.
    */
   async continue(
-    overrides?: ContinueRequestOverrides,
+    overrides: ContinueRequestOverrides = {},
     priority?: number
-  ): Promise<void>;
-  async continue(): Promise<void> {
-    throw new Error('Not implemented');
+  ): Promise<void> {
+    // Request interception is not supported for data: urls.
+    if (this.url().startsWith('data:')) {
+      return;
+    }
+    assert(this.interception.enabled, 'Request Interception is not enabled!');
+    assert(!this.interception.handled, 'Request is already handled!');
+    if (priority === undefined) {
+      return await this._continue(overrides);
+    }
+    this.interception.requestOverrides = overrides;
+    if (
+      this.interception.resolutionState.priority === undefined ||
+      priority > this.interception.resolutionState.priority
+    ) {
+      this.interception.resolutionState = {
+        action: InterceptResolutionAction.Continue,
+        priority,
+      };
+      return;
+    }
+    if (priority === this.interception.resolutionState.priority) {
+      if (
+        this.interception.resolutionState.action === 'abort' ||
+        this.interception.resolutionState.action === 'respond'
+      ) {
+        return;
+      }
+      this.interception.resolutionState.action =
+        InterceptResolutionAction.Continue;
+    }
+    return;
   }
 
   /**
    * Fulfills a request with the given response.
-   *
-   * @remarks
-   *
-   * To use this, request
-   * interception should be enabled with {@link Page.setRequestInterception}.
-   *
-   * Exception is immediately thrown if the request interception is not enabled.
    *
    * @example
    * An example of fulfilling all requests with 404 responses:
@@ -399,31 +466,87 @@ export class HTTPRequest {
    * @param priority - If provided, intercept is resolved using
    * cooperative handling rules. Otherwise, intercept is resolved
    * immediately.
+   *
+   * @remarks
+   *
+   * To use this, request
+   * interception should be enabled with {@link Page.setRequestInterception}.
+   *
+   * Exception is immediately thrown if the request interception is not enabled.
    */
   async respond(
     response: Partial<ResponseForRequest>,
     priority?: number
-  ): Promise<void>;
-  async respond(): Promise<void> {
-    throw new Error('Not implemented');
+  ): Promise<void> {
+    // Mocking responses for dataURL requests is not currently supported.
+    if (this.url().startsWith('data:')) {
+      return;
+    }
+    assert(this.interception.enabled, 'Request Interception is not enabled!');
+    assert(!this.interception.handled, 'Request is already handled!');
+    if (priority === undefined) {
+      return await this._respond(response);
+    }
+    this.interception.response = response;
+    if (
+      this.interception.resolutionState.priority === undefined ||
+      priority > this.interception.resolutionState.priority
+    ) {
+      this.interception.resolutionState = {
+        action: InterceptResolutionAction.Respond,
+        priority,
+      };
+      return;
+    }
+    if (priority === this.interception.resolutionState.priority) {
+      if (this.interception.resolutionState.action === 'abort') {
+        return;
+      }
+      this.interception.resolutionState.action =
+        InterceptResolutionAction.Respond;
+    }
   }
 
   /**
    * Aborts a request.
    *
-   * @remarks
-   * To use this, request interception should be enabled with
-   * {@link Page.setRequestInterception}. If it is not enabled, this method will
-   * throw an exception immediately.
-   *
    * @param errorCode - optional error code to provide.
    * @param priority - If provided, intercept is resolved using
    * cooperative handling rules. Otherwise, intercept is resolved
    * immediately.
+   *
+   * @remarks
+   *
+   * To use this, request interception should be enabled with
+   * {@link Page.setRequestInterception}. If it is not enabled, this method will
+   * throw an exception immediately.
    */
-  async abort(errorCode?: ErrorCode, priority?: number): Promise<void>;
-  async abort(): Promise<void> {
-    throw new Error('Not implemented');
+  async abort(
+    errorCode: ErrorCode = 'failed',
+    priority?: number
+  ): Promise<void> {
+    // Request interception is not supported for data: urls.
+    if (this.url().startsWith('data:')) {
+      return;
+    }
+    const errorReason = errorReasons[errorCode];
+    assert(errorReason, 'Unknown error code: ' + errorCode);
+    assert(this.interception.enabled, 'Request Interception is not enabled!');
+    assert(!this.interception.handled, 'Request is already handled!');
+    if (priority === undefined) {
+      return await this._abort(errorReason);
+    }
+    this.interception.abortReason = errorReason;
+    if (
+      this.interception.resolutionState.priority === undefined ||
+      priority >= this.interception.resolutionState.priority
+    ) {
+      this.interception.resolutionState = {
+        action: InterceptResolutionAction.Abort,
+        priority,
+      };
+      return;
+    }
   }
 }
 
@@ -438,13 +561,6 @@ export enum InterceptResolutionAction {
   None = 'none',
   AlreadyHandled = 'already-handled',
 }
-
-/**
- * @public
- *
- * @deprecated please use {@link InterceptResolutionAction} instead.
- */
-export type InterceptResolutionStrategy = InterceptResolutionAction;
 
 /**
  * @public
@@ -500,7 +616,7 @@ export function headersArray(
  * List taken from {@link https://www.iana.org/assignments/http-status-codes/http-status-codes.xhtml}
  * with extra 306 and 418 codes.
  */
-export const STATUS_TEXTS: {[key: string]: string | undefined} = {
+export const STATUS_TEXTS: Record<string, string> = {
   '100': 'Continue',
   '101': 'Switching Protocols',
   '102': 'Processing',
@@ -565,3 +681,33 @@ export const STATUS_TEXTS: {[key: string]: string | undefined} = {
   '510': 'Not Extended',
   '511': 'Network Authentication Required',
 } as const;
+
+const errorReasons: Record<ErrorCode, Protocol.Network.ErrorReason> = {
+  aborted: 'Aborted',
+  accessdenied: 'AccessDenied',
+  addressunreachable: 'AddressUnreachable',
+  blockedbyclient: 'BlockedByClient',
+  blockedbyresponse: 'BlockedByResponse',
+  connectionaborted: 'ConnectionAborted',
+  connectionclosed: 'ConnectionClosed',
+  connectionfailed: 'ConnectionFailed',
+  connectionrefused: 'ConnectionRefused',
+  connectionreset: 'ConnectionReset',
+  internetdisconnected: 'InternetDisconnected',
+  namenotresolved: 'NameNotResolved',
+  timedout: 'TimedOut',
+  failed: 'Failed',
+} as const;
+
+/**
+ * @internal
+ */
+export function handleError(error: ProtocolError): void {
+  if (error.originalMessage.includes('Invalid header')) {
+    throw error;
+  }
+  // In certain cases, protocol will return error if the request was
+  // already canceled or the page was closed. We should tolerate these
+  // errors.
+  debugError(error);
+}

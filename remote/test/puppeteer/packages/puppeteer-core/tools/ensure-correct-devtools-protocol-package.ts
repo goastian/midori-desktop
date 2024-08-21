@@ -1,17 +1,7 @@
 /**
- * Copyright 2020 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2020 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /**
@@ -33,10 +23,9 @@
  * find the one closest to our Chrome revision.
  */
 
-// eslint-disable-next-line import/extensions
 import {execSync} from 'child_process';
 
-import packageJson from '../package.json';
+import packageJson from '../package.json' assert {type: 'json'};
 import {PUPPETEER_REVISIONS} from '../src/revisions.js';
 
 async function main() {
@@ -56,12 +45,12 @@ async function main() {
   const chromeVersion = PUPPETEER_REVISIONS.chrome;
   // find the right revision for our Chrome version.
   const req = await fetch(
-    `https://chromiumdash.appspot.com/fetch_releases?channel=stable`
+    `https://googlechromelabs.github.io/chrome-for-testing/known-good-versions.json`
   );
-  const stableReleases = await req.json();
-  const chromeRevision = stableReleases.find(release => {
+  const releases = await req.json();
+  const chromeRevision = releases.versions.find(release => {
     return release.version === chromeVersion;
-  }).chromium_main_branch_position;
+  }).revision;
   console.log(`Revisions for ${chromeVersion}: ${chromeRevision}`);
 
   const command = `npm view "devtools-protocol@<=0.0.${chromeRevision}" version | tail -1`;

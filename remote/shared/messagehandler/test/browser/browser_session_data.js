@@ -181,12 +181,14 @@ add_task(async function test_sessionDataRootOnlyModule() {
   const rootMessageHandler = createRootMessageHandler(sessionId);
   ok(rootMessageHandler, "Valid ROOT MessageHandler created");
 
-  await BrowserTestUtils.loadURIString(
-    gBrowser,
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
     "https://example.com/document-builder.sjs?html=tab"
   );
 
-  const windowGlobalCreated = rootMessageHandler.once("message-handler-event");
+  const windowGlobalCreated = rootMessageHandler.once(
+    "window-global-handler-created"
+  );
 
   info("Test that adding SessionData items works the root module");
   // Updating the session data on the root message handler should not cause

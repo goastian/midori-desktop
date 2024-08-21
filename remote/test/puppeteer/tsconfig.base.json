@@ -8,8 +8,8 @@
     "declarationMap": true,
     "esModuleInterop": true,
     "incremental": true,
-    "module": "ESNext",
-    "moduleResolution": "node",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
     "noFallthroughCasesInSwitch": true,
     "noImplicitAny": true,
     "noImplicitOverride": true,
@@ -26,7 +26,8 @@
     "strictFunctionTypes": true,
     "strictNullChecks": true,
     "strictPropertyInitialization": true,
-    "target": "ES2019",
-    "useUnknownInCatchVariables": true
+    "target": "ES2022",
+    "useUnknownInCatchVariables": true,
+    "skipLibCheck": true
   }
 }

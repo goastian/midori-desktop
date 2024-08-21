@@ -1,34 +1,38 @@
 {
   "name": "@puppeteer/ng-schematics",
-  "version": "0.2.0",
+  "version": "0.6.0",
   "description": "Puppeteer Angular schematics",
   "scripts": {
     "build": "wireit",
-    "clean": "tsc -b --clean && rm -rf lib && rm -rf test/build",
+    "clean": "../../tools/clean.mjs",
     "dev:test": "npm run test --watch",
     "dev": "npm run build --watch",
-    "test": "wireit",
-    "sandbox": "node tools/sandbox.js"
+    "unit": "wireit"
   },
   "wireit": {
     "build": {
-      "command": "tsc -b && node tools/copySchemaFiles.js",
+      "command": "tsc -b && node tools/copySchemaFiles.mjs",
       "clean": "if-file-deleted",
       "files": [
         "tsconfig.json",
-        "tsconfig.spec.json",
+        "tsconfig.test.json",
         "src/**",
         "test/src/**"
       ],
       "output": [
         "lib/**",
-        "test/build/**"
+        "test/build/**",
+        "*.tsbuildinfo"
       ]
     },
-    "test": {
-      "command": "mocha",
+    "build:test": {
+      "command": "tsc -b test/tsconfig.json"
+    },
+    "unit": {
+      "command": "node --test --test-reporter spec test/build",
       "dependencies": [
-        "build"
+        "build",
+        "build:test"
       ]
     }
   },
@@ -44,17 +48,16 @@
   "author": "The Chromium Authors",
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18"
   },
   "dependencies": {
-    "@angular-devkit/architect": "^0.1502.7",
-    "@angular-devkit/core": "^15.2.7",
-    "@angular-devkit/schematics": "^15.2.7"
+    "@angular-devkit/architect": "0.1702.2",
+    "@angular-devkit/core": "17.2.2",
+    "@angular-devkit/schematics": "17.2.2"
   },
   "devDependencies": {
-    "@types/node": "^14.15.0",
-    "@schematics/angular": "^14.2.8",
-    "@angular/cli": "^15.2.2"
+    "@schematics/angular": "17.2.2",
+    "@angular/cli": "17.2.2"
   },
   "files": [
     "lib",

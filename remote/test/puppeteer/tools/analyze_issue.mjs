@@ -1,13 +1,21 @@
 #!/usr/bin/env node
+/**
+ * @license
+ * Copyright 2024 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // @ts-check
 
 'use strict';
 
 import {writeFile, mkdir, copyFile} from 'fs/promises';
 import {dirname, join} from 'path';
-import semver from 'semver';
 import {fileURLToPath} from 'url';
+
 import core from '@actions/core';
+import semver from 'semver';
+
 import packageJson from '../packages/puppeteer-core/package.json' assert {type: 'json'};
 
 const codifyAndJoinValues = values => {
@@ -28,9 +36,7 @@ const LAST_PUPPETEER_VERSION = packageJson.version;
 if (!LAST_PUPPETEER_VERSION) {
   core.setFailed('No maintained version found.');
 }
-const LAST_SUPPORTED_NODE_VERSION = removeVersionPrefix(
-  packageJson.engines.node.slice(2).trim()
-);
+const LAST_SUPPORTED_NODE_VERSION = packageJson.engines.node;
 
 const SUPPORTED_OSES = ['windows', 'macos', 'linux'];
 const SUPPORTED_PACKAGE_MANAGERS = ['yarn', 'npm', 'pnpm'];
@@ -57,7 +63,7 @@ This issue has an invalid package manager version: \`${value}\`. Versions must f
   },
   unsupportedNodeVersion(value) {
     return formatMessage(`
-This issue has an unsupported Node.js version: \`${value}\`. Only versions above \`v${LAST_SUPPORTED_NODE_VERSION}\` are supported. Please verify the issue on a supported version of Node.js and update the form.
+This issue has an unsupported Node.js version: \`${value}\`. Only versions satisfying \`${LAST_SUPPORTED_NODE_VERSION}\` are supported. Please verify the issue on a supported version of Node.js and update the form.
 `);
   },
   invalidNodeVersion(value) {
@@ -79,7 +85,6 @@ This issue has an invalid Puppeteer version: \`${value}\`. Versions must follow 
 
 (async () => {
   let input = '';
-  // @ts-expect-error: `iterator` is new and experimental.
   for await (const chunk of process.stdin.iterator({
     destroyOnReturn: false,
   })) {
@@ -102,8 +107,8 @@ This issue has an invalid Puppeteer version: \`${value}\`. Versions must follow 
     let set = () => {
       return void 0;
     };
-    let j = 1;
-    let i = 1;
+    let j = 0;
+    let i = 0;
     for (; i < lines.length; ++i) {
       if (lines[i].startsWith('### Bug behavior')) {
         set(lines.slice(j, i).join('\n').trim());
@@ -179,7 +184,7 @@ This issue has an invalid Puppeteer version: \`${value}\`. Versions must follow 
       runsOn = 'windows-latest';
       break;
     case 'macos':
-      runsOn = 'macos-latest';
+      runsOn = 'macos-13';
       break;
     case 'linux':
       runsOn = 'ubuntu-latest';
@@ -204,7 +209,7 @@ This issue has an invalid Puppeteer version: \`${value}\`. Versions must follow 
     );
     core.setFailed('Invalid Node version');
   }
-  if (semver.lt(nodeVersion, LAST_SUPPORTED_NODE_VERSION)) {
+  if (!semver.satisfies(nodeVersion, LAST_SUPPORTED_NODE_VERSION)) {
     core.setOutput(
       'errorMessage',
       ERROR_MESSAGES.unsupportedNodeVersion(nodeVersion)

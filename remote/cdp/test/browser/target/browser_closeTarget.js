@@ -3,29 +3,27 @@
 
 "use strict";
 
-add_task(async function raisesWithoutArguments({ client, tab }) {
+add_task(async function raisesWithoutArguments({ client }) {
   const { Target } = client;
-  let exceptionThrown = false;
-  try {
-    await Target.closeTarget();
-  } catch (e) {
-    exceptionThrown = true;
-  }
-  ok(exceptionThrown, "closeTarget raised error without an argument");
+
+  await Assert.rejects(
+    Target.closeTarget(),
+    err => err.message.includes(`Unable to find target with id `),
+    "closeTarget raised error without an argument"
+  );
 });
 
-add_task(async function raisesWithUnknownTargetId({ client, tab }) {
+add_task(async function raisesWithUnknownTargetId({ client }) {
   const { Target } = client;
-  let exceptionThrown = false;
-  try {
-    await Target.closeTarget({ targetId: "-1" });
-  } catch (e) {
-    exceptionThrown = true;
-  }
-  ok(exceptionThrown, "closeTarget raised error with unkown target id");
+
+  await Assert.rejects(
+    Target.closeTarget({ targetId: "-1" }),
+    err => err.message.includes(`Unable to find target with id `),
+    "closeTarget raised error with unkown target id"
+  );
 });
 
-add_task(async function triggersTargetDestroyed({ client, tab }) {
+add_task(async function triggersTargetDestroyed({ client }) {
   const { Target } = client;
   const { targetInfo, newTab } = await openTab(Target);
 

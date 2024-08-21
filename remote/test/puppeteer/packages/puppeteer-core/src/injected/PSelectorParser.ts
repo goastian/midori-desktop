@@ -1,26 +1,16 @@
 /**
- * Copyright 2023 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2023 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
-import {Token, tokenize, TOKENS, stringify} from 'parsel-js';
+import {type Token, tokenize, TOKENS, stringify} from 'parsel-js';
 
 export type CSSSelector = string;
-export type PPseudoSelector = {
+export interface PPseudoSelector {
   name: string;
   value: string;
-};
+}
 export const enum PCombinator {
   Descendent = '>>>',
   Child = '>>>>',
@@ -33,19 +23,15 @@ TOKENS['combinator'] = /\s*(>>>>?|[\s>+~])\s*/g;
 
 const ESCAPE_REGEXP = /\\[\s\S]/g;
 const unquote = (text: string): string => {
-  if (text.length > 1) {
-    for (const char of ['"', "'"]) {
-      if (!text.startsWith(char) || !text.endsWith(char)) {
-        continue;
-      }
-      return text
-        .slice(char.length, -char.length)
-        .replace(ESCAPE_REGEXP, match => {
-          return match.slice(1);
-        });
-    }
+  if (text.length <= 1) {
+    return text;
   }
-  return text;
+  if ((text[0] === '"' || text[0] === "'") && text.endsWith(text[0])) {
+    text = text.slice(1, -1);
+  }
+  return text.replace(ESCAPE_REGEXP, match => {
+    return match[1] as string;
+  });
 };
 
 export function parsePSelectors(

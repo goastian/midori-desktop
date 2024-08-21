@@ -178,9 +178,10 @@ async function runPageLifecycleTest(client, expectedEventSets, callback) {
 
     // Check data as exposed by each of these events
     let lastTimestamp = frameEvents[0].payload.timestamp;
-    frameEvents.forEach(({ payload }, index) => {
-      ok(
-        payload.timestamp >= lastTimestamp,
+    frameEvents.forEach(({ payload }) => {
+      Assert.greaterOrEqual(
+        payload.timestamp,
+        lastTimestamp,
         "timestamp succeeds the one from the former event"
       );
       lastTimestamp = payload.timestamp;

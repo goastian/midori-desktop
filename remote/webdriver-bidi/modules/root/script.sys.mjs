@@ -13,7 +13,11 @@ ChromeUtils.defineESModuleGetters(lazy, {
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
   generateUUID: "chrome://remote/content/shared/UUID.sys.mjs",
   OwnershipModel: "chrome://remote/content/webdriver-bidi/RemoteValue.sys.mjs",
+  processExtraData:
+    "chrome://remote/content/webdriver-bidi/modules/Intercept.sys.mjs",
   RealmType: "chrome://remote/content/shared/Realm.sys.mjs",
+  SessionDataMethod:
+    "chrome://remote/content/shared/messagehandler/sessiondata/SessionData.sys.mjs",
   setDefaultAndAssertSerializationOptions:
     "chrome://remote/content/webdriver-bidi/RemoteValue.sys.mjs",
   TabManager: "chrome://remote/content/shared/TabManager.sys.mjs",
@@ -38,6 +42,7 @@ const ScriptEvaluateResultType = {
 
 class ScriptModule extends Module {
   #preloadScriptMap;
+  #subscribedEvents;
 
   constructor(messageHandler) {
     super(messageHandler);
@@ -46,10 +51,14 @@ class ScriptModule extends Module {
     // with an item named expression, which is a string,
     // and an item named sandbox which is a string or null.
     this.#preloadScriptMap = new Map();
+
+    // Set of event names which have active subscriptions.
+    this.#subscribedEvents = new Set();
   }
 
   destroy() {
     this.#preloadScriptMap = null;
+    this.#subscribedEvents = null;
   }
 
   /**
@@ -91,6 +100,8 @@ class ScriptModule extends Module {
    * @param {object=} options
    * @param {Array<ChannelValue>=} options.arguments
    *     The arguments to pass to the function call.
+   * @param {Array<string>=} options.contexts
+   *     The list of the browsing context ids.
    * @param {string} options.functionDeclaration
    *     The expression to evaluate.
    * @param {string=} options.sandbox
@@ -105,9 +116,39 @@ class ScriptModule extends Module {
   async addPreloadScript(options = {}) {
     const {
       arguments: commandArguments = [],
+      contexts: contextIds = null,
       functionDeclaration,
       sandbox = null,
     } = options;
+    let contexts = null;
+
+    if (contextIds != null) {
+      lazy.assert.array(
+        contextIds,
+        `Expected "contexts" to be an array, got ${contextIds}`
+      );
+      lazy.assert.that(
+        contexts => !!contexts.length,
+        `Expected "contexts" array to have at least one item, got ${contextIds}`
+      )(contextIds);
+
+      contexts = new Set();
+      for (const contextId of contextIds) {
+        lazy.assert.string(
+          contextId,
+          `Expected elements of "contexts" to be a string, got ${contextId}`
+        );
+        const context = this.#getBrowsingContext(contextId);
+
+        if (context.parent) {
+          throw new lazy.error.InvalidArgumentError(
+            `Context with id ${contextId} is not a top-level browsing context`
+          );
+        }
+
+        contexts.add(context.browserId);
+      }
+    }
 
     lazy.assert.string(
       functionDeclaration,
@@ -140,13 +181,14 @@ class ScriptModule extends Module {
     const script = lazy.generateUUID();
     const preloadScript = {
       arguments: commandArguments,
+      contexts,
       functionDeclaration,
       sandbox,
     };
 
     this.#preloadScriptMap.set(script, preloadScript);
 
-    await this.messageHandler.addSessionDataItem({
+    const preloadScriptDataItem = {
       category: "preload-script",
       moduleName: "script",
       values: [
@@ -155,10 +197,30 @@ class ScriptModule extends Module {
           script,
         },
       ],
-      contextDescriptor: {
-        type: lazy.ContextDescriptorType.All,
-      },
-    });
+    };
+
+    if (contexts === null) {
+      await this.messageHandler.addSessionDataItem({
+        ...preloadScriptDataItem,
+        contextDescriptor: {
+          type: lazy.ContextDescriptorType.All,
+        },
+      });
+    } else {
+      const preloadScriptDataItems = [];
+      for (const id of contexts) {
+        preloadScriptDataItems.push({
+          ...preloadScriptDataItem,
+          contextDescriptor: {
+            type: lazy.ContextDescriptorType.TopBrowsingContext,
+            id,
+          },
+          method: lazy.SessionDataMethod.Add,
+        });
+      }
+
+      await this.messageHandler.updateSessionData(preloadScriptDataItems);
+    }
 
     return { script };
   }
@@ -246,6 +308,9 @@ class ScriptModule extends Module {
    *     a RealmTarget or for ContextTarget.
    * @param {RemoteValue=} options.this
    *     The value of the this keyword for the function call.
+   * @param {boolean=} options.userActivation
+   *     Determines whether execution should be treated as initiated by user.
+   *     Defaults to `false`.
    *
    * @returns {ScriptEvaluateResult}
    *
@@ -263,6 +328,7 @@ class ScriptModule extends Module {
       serializationOptions,
       target = {},
       this: thisParameter = null,
+      userActivation = false,
     } = options;
 
     lazy.assert.string(
@@ -273,6 +339,11 @@ class ScriptModule extends Module {
     lazy.assert.boolean(
       awaitPromise,
       `Expected "awaitPromise" to be a boolean, got ${awaitPromise}`
+    );
+
+    lazy.assert.boolean(
+      userActivation,
+      `Expected "userActivation" to be a boolean, got ${userActivation}`
     );
 
     this.#assertResultOwnership(resultOwnership);
@@ -309,6 +380,7 @@ class ScriptModule extends Module {
         sandbox,
         serializationOptions: serializationOptionsWithDefaults,
         thisParameter,
+        userActivation,
       },
     });
 
@@ -377,6 +449,9 @@ class ScriptModule extends Module {
    * @param {object} options.target
    *     The target for the evaluation, which either matches the definition for
    *     a RealmTarget or for ContextTarget.
+   * @param {boolean=} options.userActivation
+   *     Determines whether execution should be treated as initiated by user.
+   *     Defaults to `false`.
    *
    * @returns {ScriptEvaluateResult}
    *
@@ -392,6 +467,7 @@ class ScriptModule extends Module {
       resultOwnership = lazy.OwnershipModel.None,
       serializationOptions,
       target = {},
+      userActivation = false,
     } = options;
 
     lazy.assert.string(
@@ -402,6 +478,11 @@ class ScriptModule extends Module {
     lazy.assert.boolean(
       awaitPromise,
       `Expected "awaitPromise" to be a boolean, got ${awaitPromise}`
+    );
+
+    lazy.assert.boolean(
+      userActivation,
+      `Expected "userActivation" to be a boolean, got ${userActivation}`
     );
 
     this.#assertResultOwnership(resultOwnership);
@@ -424,6 +505,7 @@ class ScriptModule extends Module {
         resultOwnership,
         sandbox,
         serializationOptions: serializationOptionsWithDefaults,
+        userActivation,
       },
     });
 
@@ -560,8 +642,7 @@ class ScriptModule extends Module {
     }
 
     const preloadScript = this.#preloadScriptMap.get(script);
-
-    await this.messageHandler.removeSessionDataItem({
+    const sessionDataItem = {
       category: "preload-script",
       moduleName: "script",
       values: [
@@ -570,10 +651,30 @@ class ScriptModule extends Module {
           script,
         },
       ],
-      contextDescriptor: {
-        type: lazy.ContextDescriptorType.All,
-      },
-    });
+    };
+
+    if (preloadScript.contexts === null) {
+      await this.messageHandler.removeSessionDataItem({
+        ...sessionDataItem,
+        contextDescriptor: {
+          type: lazy.ContextDescriptorType.All,
+        },
+      });
+    } else {
+      const sessionDataItemToUpdate = [];
+      for (const id of preloadScript.contexts) {
+        sessionDataItemToUpdate.push({
+          ...sessionDataItem,
+          contextDescriptor: {
+            type: lazy.ContextDescriptorType.TopBrowsingContext,
+            id,
+          },
+          method: lazy.SessionDataMethod.Remove,
+        });
+      }
+
+      await this.messageHandler.updateSessionData(sessionDataItemToUpdate);
+    }
 
     this.#preloadScriptMap.delete(script);
   }
@@ -620,17 +721,8 @@ class ScriptModule extends Module {
       `Expected "target" to be an object, got ${target}`
     );
 
-    const {
-      context: contextId = null,
-      realm: realmId = null,
-      sandbox = null,
-    } = target;
-
-    if (realmId != null && (contextId != null || sandbox != null)) {
-      throw new lazy.error.InvalidArgumentError(
-        `A context and a realm reference are mutually exclusive`
-      );
-    }
+    const { context: contextId = null, sandbox = null } = target;
+    let { realm: realmId = null } = target;
 
     if (contextId != null) {
       lazy.assert.string(
@@ -644,6 +736,9 @@ class ScriptModule extends Module {
           `Expected "sandbox" to be a string, got ${sandbox}`
         );
       }
+
+      // Ignore realm if context is provided.
+      realmId = null;
     } else if (realmId != null) {
       lazy.assert.string(
         realmId,
@@ -657,6 +752,11 @@ class ScriptModule extends Module {
   }
 
   #buildReturnValue(evaluationResult) {
+    evaluationResult = lazy.processExtraData(
+      this.messageHandler.sessionId,
+      evaluationResult
+    );
+
     const rv = { realm: evaluationResult.realmId };
     switch (evaluationResult.evaluationStatus) {
       // TODO: Compare with EvaluationStatus.Normal after Bug 1774444 is fixed.
@@ -739,8 +839,120 @@ class ScriptModule extends Module {
       .filter(realm => realm.context !== null);
   }
 
+  #onRealmCreated = (eventName, { realmInfo }) => {
+    // This event is emitted from the parent process but for a given browsing
+    // context. Set the event's contextInfo to the message handler corresponding
+    // to this browsing context.
+    const contextInfo = {
+      contextId: realmInfo.context.id,
+      type: lazy.WindowGlobalMessageHandler.type,
+    };
+
+    // Resolve browsing context to a TabManager id.
+    const context = lazy.TabManager.getIdForBrowsingContext(realmInfo.context);
+
+    // Don not emit the event, if the browsing context is gone.
+    if (context === null) {
+      return;
+    }
+
+    realmInfo.context = context;
+    this.emitEvent("script.realmCreated", realmInfo, contextInfo);
+  };
+
+  #onRealmDestroyed = (eventName, { realm, context }) => {
+    // This event is emitted from the parent process but for a given browsing
+    // context. Set the event's contextInfo to the message handler corresponding
+    // to this browsing context.
+    const contextInfo = {
+      contextId: context.id,
+      type: lazy.WindowGlobalMessageHandler.type,
+    };
+
+    this.emitEvent("script.realmDestroyed", { realm }, contextInfo);
+  };
+
+  #startListingOnRealmCreated() {
+    if (!this.#subscribedEvents.has("script.realmCreated")) {
+      this.messageHandler.on("realm-created", this.#onRealmCreated);
+    }
+  }
+
+  #stopListingOnRealmCreated() {
+    if (this.#subscribedEvents.has("script.realmCreated")) {
+      this.messageHandler.off("realm-created", this.#onRealmCreated);
+    }
+  }
+
+  #startListingOnRealmDestroyed() {
+    if (!this.#subscribedEvents.has("script.realmDestroyed")) {
+      this.messageHandler.on("realm-destroyed", this.#onRealmDestroyed);
+    }
+  }
+
+  #stopListingOnRealmDestroyed() {
+    if (this.#subscribedEvents.has("script.realmDestroyed")) {
+      this.messageHandler.off("realm-destroyed", this.#onRealmDestroyed);
+    }
+  }
+
+  #subscribeEvent(event) {
+    switch (event) {
+      case "script.realmCreated": {
+        this.#startListingOnRealmCreated();
+        this.#subscribedEvents.add(event);
+        break;
+      }
+      case "script.realmDestroyed": {
+        this.#startListingOnRealmDestroyed();
+        this.#subscribedEvents.add(event);
+        break;
+      }
+    }
+  }
+
+  #unsubscribeEvent(event) {
+    switch (event) {
+      case "script.realmCreated": {
+        this.#stopListingOnRealmCreated();
+        this.#subscribedEvents.delete(event);
+        break;
+      }
+      case "script.realmDestroyed": {
+        this.#stopListingOnRealmDestroyed();
+        this.#subscribedEvents.delete(event);
+        break;
+      }
+    }
+  }
+
+  _applySessionData(params) {
+    // TODO: Bug 1775231. Move this logic to a shared module or an abstract
+    // class.
+    const { category } = params;
+    if (category === "event") {
+      const filteredSessionData = params.sessionData.filter(item =>
+        this.messageHandler.matchesContext(item.contextDescriptor)
+      );
+      for (const event of this.#subscribedEvents.values()) {
+        const hasSessionItem = filteredSessionData.some(
+          item => item.value === event
+        );
+        // If there are no session items for this context, we should unsubscribe from the event.
+        if (!hasSessionItem) {
+          this.#unsubscribeEvent(event);
+        }
+      }
+
+      // Subscribe to all events, which have an item in SessionData.
+      for (const { value } of filteredSessionData) {
+        this.#subscribeEvent(value);
+      }
+    }
+  }
+
   static get supportedEvents() {
-    return ["script.message"];
+    return ["script.message", "script.realmCreated", "script.realmDestroyed"];
   }
 }
 

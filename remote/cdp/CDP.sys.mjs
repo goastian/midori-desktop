@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -14,10 +12,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
   TargetList: "chrome://remote/content/cdp/targets/TargetList.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.Log.get(lazy.Log.TYPES.CDP)
 );
-XPCOMUtils.defineLazyGetter(lazy, "textEncoder", () => new TextEncoder());
+ChromeUtils.defineLazyGetter(lazy, "textEncoder", () => new TextEncoder());
 
 // Map of CDP-specific preferences that should be set via
 // RecommendedPreferences.
@@ -28,8 +26,6 @@ const RECOMMENDED_PREFS = new Map([
     "browser.contentblocking.features.standard",
     "-tp,tpPrivate,cookieBehavior0,-cm,-fp",
   ],
-  // Accept all cookies (see behavior definitions in nsICookieService.idl)
-  ["network.cookie.cookieBehavior", 0],
 ]);
 
 /**
@@ -101,14 +97,15 @@ export class CDP {
 
     Cu.printStderr(`DevTools listening on ${this.address}\n`);
 
-    // Write connection details to DevToolsActivePort file within the profile.
-    this._activePortPath = PathUtils.join(
-      PathUtils.profileDir,
-      "DevToolsActivePort"
-    );
-
-    const data = `${this.agent.port}\n${this.mainTargetPath}`;
     try {
+      // Write connection details to DevToolsActivePort file within the profile.
+      this._activePortPath = PathUtils.join(
+        PathUtils.profileDir,
+        "DevToolsActivePort"
+      );
+
+      const data = `${this.agent.port}\n${this.mainTargetPath}`;
+
       await IOUtils.write(this._activePortPath, lazy.textEncoder.encode(data));
     } catch (e) {
       lazy.logger.warn(

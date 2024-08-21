@@ -1,17 +1,7 @@
 /**
- * Copyright 2022 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2022 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 import crypto from 'crypto';
 import {mkdtemp, rm, writeFile} from 'fs/promises';
@@ -62,7 +52,11 @@ declare module 'mocha' {
      */
     sandbox: string;
     env: NodeJS.ProcessEnv | undefined;
-    runScript: (content: string, type: 'cjs' | 'mjs') => Promise<void>;
+    runScript: (
+      content: string,
+      type: 'cjs' | 'mjs',
+      args?: string[]
+    ) => Promise<void>;
   }
 }
 
@@ -72,6 +66,7 @@ declare module 'mocha' {
  */
 export const configureSandbox = (options: SandboxOptions): void => {
   before(async function (): Promise<void> {
+    console.time('before');
     const sandbox = await mkdtemp(join(tmpdir(), 'puppeteer-'));
     const dependencies = (options.dependencies ?? []).map(module => {
       switch (module) {
@@ -120,18 +115,25 @@ export const configureSandbox = (options: SandboxOptions): void => {
 
     this.sandbox = sandbox;
     this.env = env;
-    this.runScript = async (content: string, type: 'cjs' | 'mjs') => {
+    this.runScript = async (
+      content: string,
+      type: 'cjs' | 'mjs',
+      args?: string[]
+    ) => {
       const script = join(sandbox, `script-${crypto.randomUUID()}.${type}`);
       await writeFile(script, content);
-      await execFile('node', [script], {cwd: sandbox, env});
+      await execFile('node', [script, ...(args ?? [])], {cwd: sandbox, env});
     };
+    console.timeEnd('before');
   });
 
   after(async function () {
+    console.time('after');
     if (!process.env['KEEP_SANDBOX']) {
       await rm(this.sandbox, {recursive: true, force: true, maxRetries: 5});
     } else {
       console.log('sandbox saved in', this.sandbox);
     }
+    console.timeEnd('after');
   });
 };

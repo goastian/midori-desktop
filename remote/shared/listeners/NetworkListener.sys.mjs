@@ -44,11 +44,19 @@ ChromeUtils.defineESModuleGetters(lazy, {
 export class NetworkListener {
   #devtoolsNetworkObserver;
   #listening;
+  #navigationManager;
+  #networkEventsMap;
 
-  constructor() {
+  constructor(navigationManager) {
     lazy.EventEmitter.decorate(this);
 
     this.#listening = false;
+    this.#navigationManager = navigationManager;
+
+    // This map is going to be used in NetworkEventRecord,
+    // but because we need to have one instance of the map per session,
+    // we have to create and store it here (since each session has a dedicated NetworkListener).
+    this.#networkEventsMap = new Map();
   }
 
   destroy() {
@@ -61,9 +69,14 @@ export class NetworkListener {
     }
 
     this.#devtoolsNetworkObserver = new lazy.NetworkObserver({
+      earlyEvents: true,
       ignoreChannelFunction: this.#ignoreChannelFunction,
       onNetworkEvent: this.#onNetworkEvent,
     });
+
+    // Enable the auth prompt listening to support the auth-required event and
+    // phase.
+    this.#devtoolsNetworkObserver.setAuthPromptListenerEnabled(true);
 
     this.#listening = true;
   }
@@ -80,6 +93,12 @@ export class NetworkListener {
   }
 
   #ignoreChannelFunction = channel => {
+    // Bug 1826210: Ignore file channels which don't support the same APIs as
+    // regular HTTP channels.
+    if (channel instanceof Ci.nsIFileChannel) {
+      return true;
+    }
+
     // Ignore chrome-privileged or DevTools-initiated requests
     if (
       channel.loadInfo?.loadingDocument === null &&
@@ -94,6 +113,12 @@ export class NetworkListener {
   };
 
   #onNetworkEvent = (networkEvent, channel) => {
-    return new lazy.NetworkEventRecord(networkEvent, channel, this);
+    return new lazy.NetworkEventRecord(
+      networkEvent,
+      channel,
+      this,
+      this.#navigationManager,
+      this.#networkEventsMap
+    );
   };
 }

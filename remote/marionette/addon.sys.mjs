@@ -13,10 +13,19 @@ ChromeUtils.defineESModuleGetters(lazy, {
 // from https://developer.mozilla.org/en-US/Add-ons/Add-on_Manager/AddonManager#AddonInstall_errors
 const ERRORS = {
   [-1]: "ERROR_NETWORK_FAILURE: A network error occured.",
-  [-2]: "ERROR_INCORECT_HASH: The downloaded file did not match the expected hash.",
+  [-2]: "ERROR_INCORRECT_HASH: The downloaded file did not match the expected hash.",
   [-3]: "ERROR_CORRUPT_FILE: The file appears to be corrupt.",
   [-4]: "ERROR_FILE_ACCESS: There was an error accessing the filesystem.",
   [-5]: "ERROR_SIGNEDSTATE_REQUIRED: The addon must be signed and isn't.",
+  [-6]: "ERROR_UNEXPECTED_ADDON_TYPE: The downloaded add-on had a different type than expected (during an update).",
+  [-7]: "ERROR_INCORRECT_ID: The addon did not have the expected ID (during an update).",
+  [-8]: "ERROR_INVALID_DOMAIN: The addon install_origins does not list the 3rd party domain.",
+  [-9]: "ERROR_UNEXPECTED_ADDON_VERSION: The downloaded add-on had a different version than expected (during an update).",
+  [-10]: "ERROR_BLOCKLISTED: The add-on is blocklisted.",
+  [-11]:
+    "ERROR_INCOMPATIBLE: The add-on is incompatible (w.r.t. the compatibility range).",
+  [-12]:
+    "ERROR_UNSUPPORTED_ADDON_TYPE: The add-on type is not supported by the platform.",
 };
 
 async function installAddon(file) {
@@ -28,7 +37,7 @@ async function installAddon(file) {
     throw new lazy.error.UnknownError(ERRORS[install.error]);
   }
 
-  return install.install().catch(err => {
+  return install.install().catch(() => {
     throw new lazy.error.UnknownError(ERRORS[install.error]);
   });
 }

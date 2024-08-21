@@ -1,3 +1,31 @@
+/**
+ * @license
+ * Copyright 2023 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+const {readdirSync} = require('fs');
+const {join} = require('path');
+
+const rulesDirPlugin = require('eslint-plugin-rulesdir');
+
+rulesDirPlugin.RULES_DIR = 'tools/eslint/lib';
+
+function getThirdPartyPackages() {
+  return readdirSync(join(__dirname, 'packages/puppeteer-core/third_party'), {
+    withFileTypes: true,
+  })
+    .filter(dirent => {
+      return dirent.isDirectory();
+    })
+    .map(({name}) => {
+      return {
+        name,
+        message: `Import \`${name}\` from the vendored location: third_party/${name}/index.js`,
+      };
+    });
+}
+
 module.exports = {
   root: true,
   env: {
@@ -7,9 +35,15 @@ module.exports = {
 
   parser: '@typescript-eslint/parser',
 
-  plugins: ['mocha', '@typescript-eslint', 'import'],
+  plugins: ['mocha', '@typescript-eslint', 'import', 'rulesdir'],
 
-  extends: ['plugin:prettier/recommended'],
+  extends: ['plugin:prettier/recommended', 'plugin:import/typescript'],
+
+  settings: {
+    'import/resolver': {
+      typescript: true,
+    },
+  },
 
   rules: {
     // Brackets keep code readable.
@@ -95,21 +129,6 @@ module.exports = {
     // ensure we don't have any it.only or describe.only in prod
     'mocha/no-exclusive-tests': 'error',
 
-    'no-restricted-imports': [
-      'error',
-      {
-        patterns: ['*Events'],
-        paths: [
-          {
-            name: 'mitt',
-            message:
-              'Import `mitt` from the vendored location: third_party/mitt/index.js',
-          },
-        ],
-      },
-    ],
-    'import/extensions': ['error', 'ignorePackages'],
-
     'import/order': [
       'error',
       {
@@ -118,11 +137,20 @@ module.exports = {
       },
     ],
 
+    'import/no-cycle': ['error', {maxDepth: Infinity}],
+
     'no-restricted-syntax': [
       'error',
       // Don't allow underscored declarations on camelCased variables/properties.
       // ...RESTRICTED_UNDERSCORED_IDENTIFIERS,
     ],
+
+    // Keeps comments formatted.
+    'rulesdir/prettier-comments': 'error',
+    // Enforces consistent file extension
+    'rulesdir/extensions': 'error',
+    // Enforces license headers on files
+    'rulesdir/check-license': 'error',
   },
   overrides: [
     {
@@ -134,23 +162,22 @@ module.exports = {
       extends: [
         'plugin:@typescript-eslint/eslint-recommended',
         'plugin:@typescript-eslint/recommended',
+        'plugin:@typescript-eslint/stylistic',
       ],
-      plugins: ['eslint-plugin-tsdoc', 'local'],
+      plugins: ['eslint-plugin-tsdoc'],
       rules: {
-        // Keeps comments formatted.
-        'local/prettier-comments': 'error',
+        // Enforces clean up of used resources.
+        'rulesdir/use-using': 'error',
         // Brackets keep code readable.
         curly: ['error', 'all'],
         // Brackets keep code readable and `return` intentions clear.
         'arrow-body-style': ['error', 'always'],
-        // Error if comments do not adhere to `tsdoc`.
-        'tsdoc/syntax': 'error',
         // Keeps array types simple only when they are simple for readability.
         '@typescript-eslint/array-type': ['error', {default: 'array-simple'}],
         'no-unused-vars': 'off',
         '@typescript-eslint/no-unused-vars': [
           'error',
-          {argsIgnorePattern: '^_'},
+          {argsIgnorePattern: '^_', varsIgnorePattern: '^_'},
         ],
         'func-call-spacing': 'off',
         '@typescript-eslint/func-call-spacing': 'error',
@@ -165,6 +192,7 @@ module.exports = {
         '@typescript-eslint/explicit-function-return-type': 'off',
         // We allow non-null assertions if the value was asserted using `assert` API.
         '@typescript-eslint/no-non-null-assertion': 'off',
+        '@typescript-eslint/no-useless-template-literals': 'error',
         /**
          * This is the default options (as per
          * https://github.com/typescript-eslint/typescript-eslint/blob/HEAD/packages/eslint-plugin/docs/rules/ban-types.md),
@@ -194,11 +222,66 @@ module.exports = {
             selector: "CallExpression[callee.name='require']",
             message: '`require` statements are not allowed. Use `import`.',
           },
+          {
+            // We need this as NodeJS will run until all the timers have resolved
+            message: 'Use method `Deferred.race()` instead.',
+            selector:
+              'MemberExpression[object.name="Promise"][property.name="race"]',
+          },
+          {
+            message:
+              'Deferred `valueOrThrow` should not be called in `Deferred.race()` pass deferred directly',
+            selector:
+              'CallExpression[callee.object.name="Deferred"][callee.property.name="race"] > ArrayExpression > CallExpression[callee.property.name="valueOrThrow"]',
+          },
         ],
         '@typescript-eslint/no-floating-promises': [
           'error',
           {ignoreVoid: true, ignoreIIFE: true},
         ],
+        '@typescript-eslint/prefer-ts-expect-error': 'error',
+        // This is more performant; see https://v8.dev/blog/fast-async.
+        '@typescript-eslint/return-await': ['error', 'always'],
+        // This optimizes the dependency tracking for type-only files.
+        '@typescript-eslint/consistent-type-imports': 'error',
+        // So type-only exports get elided.
+        '@typescript-eslint/consistent-type-exports': 'error',
+        // Don't want to trigger unintended side-effects.
+        '@typescript-eslint/no-import-type-side-effects': 'error',
+      },
+      overrides: [
+        {
+          files: 'packages/puppeteer-core/src/**/*.ts',
+          rules: {
+            'no-restricted-imports': [
+              'error',
+              {
+                patterns: ['*Events', '*.test.js'],
+                paths: [...getThirdPartyPackages()],
+              },
+            ],
+          },
+        },
+        {
+          files: [
+            'packages/puppeteer-core/src/**/*.test.ts',
+            'tools/mocha-runner/src/test.ts',
+          ],
+          rules: {
+            // With the Node.js test runner, `describe` and `it` are technically
+            // promises, but we don't need to await them.
+            '@typescript-eslint/no-floating-promises': 'off',
+          },
+        },
+      ],
+    },
+
+    {
+      // Applies to only published packages
+      files: ['packages/**/*.ts'],
+      rules: {
+        // Error if comments do not adhere to `tsdoc`.
+        'tsdoc/syntax': 'error',
       },
     },
   ],

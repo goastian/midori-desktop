@@ -1,5 +1,11 @@
-import type {NodeFor} from 'puppeteer';
+/**
+ * @license
+ * Copyright 2024 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import {expectType, expectNotType} from 'tsd';
+
+import type {NodeFor} from 'puppeteer';
 
 declare const nodeFor: <Selector extends string>(
   selector: Selector

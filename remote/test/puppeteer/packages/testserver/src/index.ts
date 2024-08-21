@@ -1,40 +1,30 @@
 /**
- * Copyright 2017 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2017 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import assert from 'assert';
 import {readFile, readFileSync} from 'fs';
 import {
   createServer as createHttpServer,
-  IncomingMessage,
-  RequestListener,
-  Server as HttpServer,
-  ServerResponse,
+  type IncomingMessage,
+  type RequestListener,
+  type Server as HttpServer,
+  type ServerResponse,
 } from 'http';
 import {
   createServer as createHttpsServer,
-  Server as HttpsServer,
-  ServerOptions as HttpsServerOptions,
+  type Server as HttpsServer,
+  type ServerOptions as HttpsServerOptions,
 } from 'https';
-import {AddressInfo} from 'net';
+import type {AddressInfo} from 'net';
 import {join} from 'path';
-import {Duplex} from 'stream';
+import type {Duplex} from 'stream';
 import {gzip} from 'zlib';
 
 import {getType as getMimeType} from 'mime';
-import {Server as WebSocketServer, WebSocket} from 'ws';
+import {Server as WebSocketServer, type WebSocket} from 'ws';
 
 interface Subscriber {
   resolve: (msg: IncomingMessage) => void;
@@ -66,6 +56,7 @@ export class TestServer {
   #csp = new Map<string, string>();
   #gzipRoutes = new Set<string>();
   #requestSubscribers = new Map<string, Subscriber>();
+  #requests = new Set<ServerResponse>();
 
   static async create(dirPath: string): Promise<TestServer> {
     let res!: (value: unknown) => void;
@@ -104,6 +95,18 @@ export class TestServer {
       this.#server = createHttpServer(this.#onRequest);
     }
     this.#server.on('connection', this.#onServerConnection);
+    // Disable this as sometimes the socket will timeout
+    // We rely on the fact that we will close the server at the end
+    this.#server.keepAliveTimeout = 0;
+    this.#server.on('clientError', err => {
+      if (
+        'code' in err &&
+        err.code === 'ERR_SSL_SSLV3_ALERT_CERTIFICATE_UNKNOWN'
+      ) {
+        return;
+      }
+      console.error('test-server client error', err);
+    });
     this.#wsServer = new WebSocketServer({server: this.#server});
     this.#wsServer.on('connection', this.#onWebSocketConnection);
   }
@@ -192,12 +195,20 @@ export class TestServer {
       subscriber.reject.call(undefined, error);
     }
     this.#requestSubscribers.clear();
+    for (const request of this.#requests.values()) {
+      if (!request.writableEnded) {
+        request.destroy();
+      }
+    }
+    this.#requests.clear();
   }
 
   #onRequest: RequestListener = (
     request: TestIncomingMessage,
     response
   ): void => {
+    this.#requests.add(response);
+
     request.on('error', (error: {code: string}) => {
       if (error.code === 'ECONNRESET') {
         response.end();
@@ -271,6 +282,12 @@ export class TestServer {
     }
 
     readFile(filePath, (err, data) => {
+      // This can happen if the request is not awaited but started
+      // in the test and get clean via `reset()`
+      if (response.writableEnded) {
+        return;
+      }
+
       if (err) {
         response.statusCode = 404;
         response.end(`File not found: ${filePath}`);

@@ -146,12 +146,10 @@ export class Network extends Domain {
    *
    * Depending on the backend support, will return detailed cookie information in the cookies field.
    *
-   * @param {object} options
-   *
    * @returns {Array<Cookie>}
    *     Array of cookie objects.
    */
-  async getAllCookies(options = {}) {
+  async getAllCookies() {
     const cookies = [];
     for (const cookie of Services.cookies.cookies) {
       cookies.push(_buildCookie(cookie));

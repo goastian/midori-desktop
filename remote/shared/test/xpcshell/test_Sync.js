@@ -9,6 +9,10 @@ const { setTimeout } = ChromeUtils.importESModule(
 const { AnimationFramePromise, Deferred, EventPromise, PollPromise } =
   ChromeUtils.importESModule("chrome://remote/content/shared/Sync.sys.mjs");
 
+const { Log } = ChromeUtils.importESModule(
+  "resource://gre/modules/Log.sys.mjs"
+);
+
 /**
  * Mimic a DOM node for listening for events.
  */
@@ -46,20 +50,35 @@ class MockElement {
     }
   }
 
-  dispatchEvent(event) {
+  dispatchEvent() {
     if (this.wantUntrusted) {
       this.untrusted = true;
     }
     this.click();
   }
 
-  removeEventListener(name, func) {
+  removeEventListener() {
     this.capture = false;
     this.eventName = null;
     this.func = null;
     this.mozSystemGroup = false;
     this.untrusted = false;
     this.wantUntrusted = false;
+  }
+}
+
+class MockAppender extends Log.Appender {
+  constructor(formatter) {
+    super(formatter);
+    this.messages = [];
+  }
+
+  append(message) {
+    this.doAppend(message);
+  }
+
+  doAppend(message) {
+    this.messages.push(message);
   }
 }
 
@@ -194,12 +213,12 @@ add_task(async function test_EventPromise_checkFnCallback() {
     { checkFn: null, expected_count: 0 },
     { checkFn: undefined, expected_count: 0 },
     {
-      checkFn: event => {
+      checkFn: () => {
         throw new Error("foo");
       },
       expected_count: 0,
     },
-    { checkFn: event => count++ > 0, expected_count: 2 },
+    { checkFn: () => count++ > 0, expected_count: 2 },
   ];
 
   for (const { checkFn, expected_count } of data) {
@@ -386,4 +405,32 @@ add_task(async function test_PollPromise_interval() {
     { timeout: 100, interval: 100 }
   );
   equal(2, nevals);
+});
+
+add_task(async function test_PollPromise_resolve() {
+  const log = Log.repository.getLogger("RemoteAgent");
+  const appender = new MockAppender(new Log.BasicFormatter());
+  appender.level = Log.Level.Info;
+  log.addAppender(appender);
+
+  const errorMessage = "PollingFailed";
+  const timeout = 100;
+
+  await new PollPromise(
+    resolve => {
+      resolve();
+    },
+    { timeout, errorMessage }
+  );
+  Assert.equal(appender.messages.length, 0);
+
+  await new PollPromise(
+    (resolve, reject) => {
+      reject();
+    },
+    { timeout, errorMessage: "PollingFailed" }
+  );
+  Assert.equal(appender.messages.length, 1);
+  Assert.equal(appender.messages[0].level, Log.Level.Warn);
+  Assert.equal(appender.messages[0].message, "PollingFailed after 100 ms");
 });

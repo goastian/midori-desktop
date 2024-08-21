@@ -1,30 +1,17 @@
 /**
- * Copyright 2023 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2023 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import assert from 'assert';
 import path from 'path';
 
-import {
-  BrowserPlatform,
-  ChromeReleaseChannel,
-} from '../../../lib/cjs/browser-data/browser-data.js';
+import {BrowserPlatform} from '../../../lib/cjs/browser-data/browser-data.js';
 import {
   resolveDownloadUrl,
   relativeExecutablePath,
-  resolveSystemExecutablePath,
+  compareVersions,
 } from '../../../lib/cjs/browser-data/chromium.js';
 
 describe('Chromium', () => {
@@ -74,35 +61,9 @@ describe('Chromium', () => {
     );
   });
 
-  it('should resolve system executable path', () => {
-    process.env['PROGRAMFILES'] = 'C:\\ProgramFiles';
-    try {
-      assert.strictEqual(
-        resolveSystemExecutablePath(
-          BrowserPlatform.WIN32,
-          ChromeReleaseChannel.DEV
-        ),
-        'C:\\ProgramFiles\\Google\\Chrome Dev\\Application\\chrome.exe'
-      );
-    } finally {
-      delete process.env['PROGRAMFILES'];
-    }
-
-    assert.strictEqual(
-      resolveSystemExecutablePath(
-        BrowserPlatform.MAC,
-        ChromeReleaseChannel.BETA
-      ),
-      '/Applications/Google Chrome Beta.app/Contents/MacOS/Google Chrome Beta'
-    );
-    assert.throws(() => {
-      assert.strictEqual(
-        resolveSystemExecutablePath(
-          BrowserPlatform.LINUX,
-          ChromeReleaseChannel.CANARY
-        ),
-        path.join('chrome-linux', 'chrome')
-      );
-    }, new Error(`Unable to detect browser executable path for 'canary' on linux.`));
+  it('should compare versions', async () => {
+    assert.ok(compareVersions('12372323', '12372322') >= 1);
+    assert.ok(compareVersions('12372322', '12372323') <= -1);
+    assert.ok(compareVersions('12372323', '12372323') === 0);
   });
 });

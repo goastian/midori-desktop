@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -11,7 +9,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   NodeCache: "chrome://remote/content/shared/webdriver/NodeCache.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
+ChromeUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
 
 // Observer to clean-up element references for closed browsing contexts.
 class BrowsingContextObserver {
@@ -19,7 +17,7 @@ class BrowsingContextObserver {
     this.actor = actor;
   }
 
-  async observe(subject, topic, data) {
+  async observe(subject, topic) {
     if (topic === "browsing-context-discarded") {
       this.actor.cleanUp({ browsingContext: subject });
     }

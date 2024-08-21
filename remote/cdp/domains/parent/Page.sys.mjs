@@ -672,12 +672,8 @@ export class Page extends Domain {
    * When file chooser interception is enabled,
    * the native file chooser dialog is not shown.
    * Instead, a protocol event Page.fileChooserOpened is emitted.
-   *
-   * @param {object} options
-   * @param {boolean=} options.enabled
-   *     Enabled state of file chooser interception.
    */
-  setInterceptFileChooserDialog(options = {}) {}
+  setInterceptFileChooserDialog() {}
 
   _getCurrentHistoryIndex() {
     const { window } = this.session.target;
@@ -719,7 +715,7 @@ export class Page extends Domain {
    */
   _onDialogLoaded(e, data) {
     const { message, type } = data;
-    // XXX: We rely on the tabmodal-dialog-loaded event (see DialogHandler.jsm)
+    // XXX: We rely on the common-dialog-loaded event (see DialogHandler.sys.mjs)
     // which is inconsistent with the name "javascriptDialogOpening".
     // For correctness we should rely on an event fired _before_ the prompt is
     // visible, such as DOMWillOpenModalDialog. However the payload of this

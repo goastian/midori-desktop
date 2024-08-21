@@ -21,15 +21,14 @@ Marionette is written in JavaScript and ships
 as part of Firefox.  We have access to all the latest ECMAScript
 features currently in development, usually before it ships in the
 wild and we try to make use of new features when appropriate,
-especially when they move us off legacy internal replacements
-(such as Promise.jsm and Task.jsm).
+especially when they move us off legacy internal replacements.
 
 One of the peculiarities of working on JavaScript code that ships as
 part of a runtime platform is, that unlike in a regular web document,
 we share a single global state with the rest of Firefox.  This means
 we have to be responsible and not leak resources unnecessarily.
 
-JS code in Gecko is organised into _modules_ carrying _.js_ or _.jsm_
+JS code in Gecko is organised into _modules_ carrying _.js_ or _.sys.mjs_
 file extensions.  Depending on the area of Gecko you’re working on,
 you may find they have different techniques for exporting symbols,
 varying indentation and code style, as well as varying linting
@@ -38,42 +37,52 @@ requirements.
 To export symbols to other Marionette modules, remember to assign
 your exported symbols to the shared global `this`:
 
-    const EXPORTED_SYMBOLS = ["PollPromise", "TimedPromise"];
+```javascript
+const EXPORTED_SYMBOLS = ["PollPromise", "TimedPromise"];
+```
 
 When importing symbols in Marionette code, try to be specific about
 what you need:
 
-    const { TimedPromise } = ChromeUtils.import(
-      "chrome://remote/content/marionette/sync.js"
-    );
+```javascript
+const { TimedPromise } = ChromeUtils.import(
+  "chrome://remote/content/marionette/sync.js"
+);
+```
 
 We prefer object assignment shorthands when redefining names,
 for example when you use functionality from the `Components` global:
 
-    const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+```javascript
+const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+```
 
 When using symbols by their own name, the assignment name can be
 omitted:
 
-    const {TYPE_ONE_SHOT, TYPE_REPEATING_SLACK} = Ci.nsITimer;
+```javascript
+const {TYPE_ONE_SHOT, TYPE_REPEATING_SLACK} = Ci.nsITimer;
+```
 
 In addition to the default [Mozilla eslint rules], we have [our
 own specialisations] that are stricter and enforce more security.
 A few notable examples are that we disallow fallthrough `case`
 statements unless they are explicitly grouped together:
 
-    switch (x) {
-      case "foo":
-        doSomething();
+```javascript
+switch (x) {
+  case "foo":
+    doSomething();
 
-      case "bar":  // <-- disallowed!
-        doSomethingElse();
-        break;
+  case "bar":  // <-- disallowed!
+    doSomethingElse();
+    break;
 
-      case "baz":
-      case "bah":  // <-- allowed (-:
-        doCrazyThings();
-    }
+  case "baz":
+  case "bah":  // <-- allowed (-:
+    doCrazyThings();
+}
+```
 
 We disallow the use of `var`, for which we always prefer `let` and
 `const` as replacements.  Do be aware that `const` does not mean
@@ -87,9 +96,9 @@ which includes switch-statement `case`s, and limit the maximum
 line length to 78 columns.  When you need to wrap a statement to
 the next line, the second line is indented with four spaces, like this:
 
-    throw new TypeError(
-        "Expected an element or WindowProxy, " +
-        pprint`got: ${el}`);
+```javascript
+throw new TypeError(pprint`Expected an element or WindowProxy, got: ${el}`);
+```
 
 This is not normally something you have to think to deeply about as
 it is enforced by the [linter].  The linter also has an automatic
@@ -101,41 +110,49 @@ split into multiple lines.  This is also a helpful tip to make the
 code easier to read.  Assigning transitive values to descriptive
 variable names can serve as self-documentation:
 
-    let location = event.target.documentURI || event.target.location.href;
-    log.debug(`Received DOM event ${event.type} for ${location}`);
+```javascript
+let location = event.target.documentURI || event.target.location.href;
+log.debug(`Received DOM event ${event.type} for ${location}`);
+```
 
 On the topic of variable naming the opinions are as many as programmers
 writing code, but it is often helpful to keep the input and output
 arguments to functions descriptive (longer), and let transitive
 internal values to be described more succinctly:
 
-    /** Prettifies instance of Error and its stacktrace to a string. */
-    function stringify(error) {
-      try {
-        let s = error.toString();
-        if ("stack" in error) {
-          s += "\n" + error.stack;
-        }
-        return s;
-      } catch (e) {
-        return "<unprintable error>";
-      }
+```javascript
+/** Prettifies instance of Error and its stacktrace to a string. */
+function stringify(error) {
+  try {
+    let s = error.toString();
+    if ("stack" in error) {
+      s += "\n" + error.stack;
     }
+    return s;
+  } catch (e) {
+    return "<unprintable error>";
+  }
+}
+```
 
 When we can, we try to extract the relevant object properties in
 the arguments to an event handler or a function:
 
-    const responseListener = ({name, target, json, data}) => { … };
+```javascript
+const responseListener = ({name, target, json, data}) => { … };
+```
 
 Instead of:
 
-    const responseListener = msg => {
-      let name = msg.name;
-      let target = msg.target;
-      let json = msg.json;
-      let data = msg.data;
-      …
-    };
+```javascript
+const responseListener = msg => {
+  let name = msg.name;
+  let target = msg.target;
+  let json = msg.json;
+  let data = msg.data;
+  …
+};
+```
 
 All source files should have `"use strict";` as the first directive
 so that the file is parsed in [strict mode].
@@ -143,9 +160,11 @@ so that the file is parsed in [strict mode].
 Every source code file that ships as part of the Firefox bundle
 must also have a [copying header], such as this:
 
+```javascript
     /* This Source Code Form is subject to the terms of the Mozilla Public
      * License, v. 2.0. If a copy of the MPL was not distributed with this file,
      * You can obtain one at http://mozilla.org/MPL/2.0/. */
+```
 
 New xpcshell test files _should not_ have a license header as all
 new Mozilla tests should be in the [public domain] so that they can
@@ -158,7 +177,7 @@ The practical details of working on the Marionette code is outlined
 in [Contributing.md], but generally you do not have to re-build
 Firefox when changing code.  Any change to remote/marionette/*.js
 will be picked up on restarting Firefox.  The only notable exception
-is remote/components/Marionette.jsm, which does require
+is remote/components/Marionette.sys.mjs, which does require
 a re-build.
 
 [strict mode]: https://developer.mozilla.org/docs/Web/JavaScript/Reference/Strict_mode
@@ -204,13 +223,17 @@ which harmonises the output from [eslint] and [ruff].
 
 To run the linter with a sensible output:
 
-    % ./mach lint -funix remote/marionette
+```shell
+% ./mach lint -funix remote/marionette
+```
 
 For certain classes of style violations the eslint linter has
 an automatic mode for fixing and formatting your code.  This is
 particularly useful to keep to whitespace and indentation rules:
 
-    % ./mach eslint --fix remote/marionette
+```shell
+% ./mach eslint --fix remote/marionette
+```
 
 The linter is also run as a try job (shorthand `ES`) which means
 any style violations will automatically block a patch from landing

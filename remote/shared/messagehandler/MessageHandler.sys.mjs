@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { EventEmitter } from "resource://gre/modules/EventEmitter.sys.mjs";
 
 const lazy = {};
@@ -17,7 +15,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "chrome://remote/content/shared/messagehandler/ModuleCache.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
+ChromeUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
 
 /**
  * A ContextDescriptor object provides information to decide if a broadcast or
@@ -217,7 +215,7 @@ export class MessageHandler extends EventEmitter {
 
   /**
    * Retrieve all module classes matching the moduleName and destination.
-   * See `getAllModuleClasses` (ModuleCache.jsm) for more details.
+   * See `getAllModuleClasses` (ModuleCache.sys.mjs) for more details.
    *
    * @param {string} moduleName
    *     The name of the module.
@@ -265,15 +263,12 @@ export class MessageHandler extends EventEmitter {
   }
 
   /**
-   * Apply the initial session data items provided to this MessageHandler on
-   * startup. Implementation is specific to each MessageHandler class.
+   * Execute the required initialization steps, inlcluding apply the initial session data items
+   * provided to this MessageHandler on startup. Implementation is specific to each MessageHandler class.
    *
    * By default the implementation is a no-op.
-   *
-   * @param {Array<SessionDataItem>} sessionDataItems
-   *     Initial session data items for this MessageHandler.
    */
-  async applyInitialSessionDataItems(sessionDataItems) {}
+  async initialize() {}
 
   /**
    * Returns the module path corresponding to this MessageHandler class.
@@ -299,7 +294,7 @@ export class MessageHandler extends EventEmitter {
    *
    * Needs to be implemented in the sub class.
    */
-  static getIdFromContext(context) {
+  static getIdFromContext() {
     throw new Error("Not implemented");
   }
 
@@ -308,7 +303,7 @@ export class MessageHandler extends EventEmitter {
    *
    * Needs to be implemented in the sub class.
    */
-  forwardCommand(command) {
+  forwardCommand() {
     throw new Error("Not implemented");
   }
 
@@ -318,7 +313,7 @@ export class MessageHandler extends EventEmitter {
    *
    * Needs to be implemented in the sub class.
    */
-  matchesContext(contextDescriptor) {
+  matchesContext() {
     throw new Error("Not implemented");
   }
 

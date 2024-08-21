@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -11,7 +9,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Log: "chrome://remote/content/shared/Log.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
+ChromeUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
 
 export const print = {
   maxScaleValue: 2.0,
@@ -99,6 +97,7 @@ print.getPrintSettings = function (settings) {
   printSettings.paperSizeUnit = Ci.nsIPrintSettings.kPaperSizeInches;
   printSettings.paperWidth = cmToInches(settings.page.width);
   printSettings.paperHeight = cmToInches(settings.page.height);
+  printSettings.usePageRuleSizeAsPaperSize = true;
 
   printSettings.marginBottom = cmToInches(settings.margin.bottom);
   printSettings.marginLeft = cmToInches(settings.margin.left);

@@ -12,9 +12,12 @@ test/puppeteer/experimental/
 test/puppeteer/node_modules/
 test/puppeteer/package-lock.json
 test/puppeteer/packages/ng-schematics/test/build
+test/puppeteer/packages/puppeteer-core/src/generated
 test/puppeteer/test/installation/puppeteer*.tgz
 test/puppeteer/src/generated
 test/puppeteer/test/**/build
 test/puppeteer/test/output-firefox
 test/puppeteer/test/output-chromium
+test/puppeteer/tools/internal/
+test/puppeteer/tools/mocha-runner/bin/
 test/puppeteer/website

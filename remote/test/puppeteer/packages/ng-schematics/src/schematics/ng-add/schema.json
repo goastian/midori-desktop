@@ -4,25 +4,13 @@
   "title": "Puppeteer Install Schema",
   "type": "object",
   "properties": {
-    "isDefaultTester": {
-      "description": "",
-      "type": "boolean",
-      "default": true,
-      "x-prompt": "Use Puppeteer as default `ng e2e` command?"
-    },
-    "exportConfig": {
-      "description": "",
-      "type": "boolean",
-      "default": false,
-      "x-prompt": "Export default Puppeteer config file?"
-    },
-    "testingFramework": {
-      "description": "",
+    "testRunner": {
       "type": "string",
       "enum": ["jasmine", "jest", "mocha", "node"],
       "default": "jasmine",
+      "alias": "t",
       "x-prompt": {
-        "message": "With what Testing Library do you wish to integrate?",
+        "message": "Which test runners do you wish to use?",
         "type": "list",
         "items": [
           {
@@ -39,7 +27,7 @@
           },
           {
             "value": "node",
-            "label": "Use Node Test Runner (Experimental: Node v18) [https://nodejs.org/api/test.html]"
+            "label": "Use Node Test Runner [https://nodejs.org/api/test.html]"
           }
         ]
       }

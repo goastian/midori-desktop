@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -13,7 +11,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 const { TYPE_ONE_SHOT, TYPE_REPEATING_SLACK } = Ci.nsITimer;
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.Log.get(lazy.Log.TYPES.REMOTE_AGENT)
 );
 
@@ -240,6 +238,9 @@ export function executeSoon(fn) {
  * @param {Condition} func
  *     Function to run off the main thread.
  * @param {object=} options
+ * @param {string=} options.errorMessage
+ *     Message to use to send a warning if ``timeout`` is over.
+ *     Defaults to `PollPromise timed out`.
  * @param {number=} options.timeout
  *     Desired timeout if wanted.  If 0 or less than the runtime evaluation
  *     time of ``func``, ``func`` is guaranteed to run at least once.
@@ -259,8 +260,14 @@ export function executeSoon(fn) {
  * @throws {RangeError}
  *     If `timeout` or `interval` are not unsigned integers.
  */
-export function PollPromise(func, { timeout = null, interval = 10 } = {}) {
+export function PollPromise(func, options = {}) {
+  const {
+    errorMessage = "PollPromise timed out",
+    interval = 10,
+    timeout = null,
+  } = options;
   const timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+  let didTimeOut = false;
 
   if (typeof func != "function") {
     throw new TypeError();
@@ -300,6 +307,7 @@ export function PollPromise(func, { timeout = null, interval = 10 } = {}) {
             typeof end != "undefined" &&
             (start == end || new Date().getTime() >= end)
           ) {
+            didTimeOut = true;
             resolve(rejected);
           }
         })
@@ -313,6 +321,9 @@ export function PollPromise(func, { timeout = null, interval = 10 } = {}) {
     timer.init(evalFn, interval, TYPE_REPEATING_SLACK);
   }).then(
     res => {
+      if (didTimeOut) {
+        lazy.logger.warn(`${errorMessage} after ${timeout} ms`);
+      }
       timer.cancel();
       return res;
     },

@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     function generatePalette(amount) {
@@ -28,6 +29,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <style>
 
+:root {
+  scrollbar-width: none;
+}
+
 body {
     margin: 0;
     padding: 0;
@@ -45,8 +50,3 @@ body {
     box-sizing: border-box;
     border: 1px solid darkgray;
 }
-
-::-webkit-scrollbar {
-    display: none;
-}
-</style>

@@ -1,29 +1,20 @@
 /**
- * Copyright 2022 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2022 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
-import {ElementHandle} from '../api/ElementHandle.js';
-import {JSHandle} from '../api/JSHandle.js';
+import type {ElementHandle} from '../api/ElementHandle.js';
+import type {JSHandle} from '../api/JSHandle.js';
+import type {Realm} from '../api/Realm.js';
 import type {Poller} from '../injected/Poller.js';
-import {createDeferredPromise} from '../util/DeferredPromise.js';
+import {Deferred} from '../util/Deferred.js';
+import {isErrorLike} from '../util/ErrorLike.js';
 import {stringifyFunction} from '../util/Function.js';
 
 import {TimeoutError} from './Errors.js';
-import {IsolatedWorld} from './IsolatedWorld.js';
 import {LazyArg} from './LazyArg.js';
-import {HandleFor} from './types.js';
+import type {HandleFor} from './types.js';
 
 /**
  * @internal
@@ -39,7 +30,7 @@ export interface WaitTaskOptions {
  * @internal
  */
 export class WaitTask<T = unknown> {
-  #world: IsolatedWorld;
+  #world: Realm;
   #polling: 'raf' | 'mutation' | number;
   #root?: ElementHandle<Node>;
 
@@ -47,14 +38,16 @@ export class WaitTask<T = unknown> {
   #args: unknown[];
 
   #timeout?: NodeJS.Timeout;
+  #timeoutError?: TimeoutError;
 
-  #result = createDeferredPromise<HandleFor<T>>();
+  #result = Deferred.create<HandleFor<T>>();
 
   #poller?: JSHandle<Poller<T>>;
   #signal?: AbortSignal;
+  #reruns: AbortController[] = [];
 
   constructor(
-    world: IsolatedWorld,
+    world: Realm,
     options: WaitTaskOptions,
     fn: ((...args: unknown[]) => Promise<T>) | string,
     ...args: unknown[]
@@ -86,10 +79,11 @@ export class WaitTask<T = unknown> {
     this.#world.taskManager.add(this);
 
     if (options.timeout) {
+      this.#timeoutError = new TimeoutError(
+        `Waiting failed: ${options.timeout}ms exceeded`
+      );
       this.#timeout = setTimeout(() => {
-        void this.terminate(
-          new TimeoutError(`Waiting failed: ${options.timeout}ms exceeded`)
-        );
+        void this.terminate(this.#timeoutError);
       }, options.timeout);
     }
 
@@ -97,10 +91,16 @@ export class WaitTask<T = unknown> {
   }
 
   get result(): Promise<HandleFor<T>> {
-    return this.#result;
+    return this.#result.valueOrThrow();
   }
 
   async rerun(): Promise<void> {
+    for (const prev of this.#reruns) {
+      prev.abort();
+    }
+    this.#reruns.length = 0;
+    const controller = new AbortController();
+    this.#reruns.push(controller);
     try {
       switch (this.#polling) {
         case 'raf':
@@ -163,6 +163,9 @@ export class WaitTask<T = unknown> {
 
       await this.terminate();
     } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
       const badError = this.getBadError(error);
       if (badError) {
         await this.terminate(badError);
@@ -170,12 +173,10 @@ export class WaitTask<T = unknown> {
     }
   }
 
-  async terminate(error?: unknown): Promise<void> {
+  async terminate(error?: Error): Promise<void> {
     this.#world.taskManager.delete(this);
 
-    if (this.#timeout) {
-      clearTimeout(this.#timeout);
-    }
+    clearTimeout(this.#timeout);
 
     if (error && !this.#result.finished()) {
       this.#result.reject(error);
@@ -199,8 +200,8 @@ export class WaitTask<T = unknown> {
   /**
    * Not all errors lead to termination. They usually imply we need to rerun the task.
    */
-  getBadError(error: unknown): unknown {
-    if (error instanceof Error) {
+  getBadError(error: unknown): Error | undefined {
+    if (isErrorLike(error)) {
       // When frame is detached the task should have been terminated by the IsolatedWorld.
       // This can fail if we were adding this task while the frame was detached,
       // so we terminate here instead.
@@ -223,9 +224,23 @@ export class WaitTask<T = unknown> {
       if (error.message.includes('Cannot find context with specified id')) {
         return;
       }
+
+      // Errors coming from WebDriver BiDi. TODO: Adjust messages after
+      // https://github.com/w3c/webdriver-bidi/issues/540 is resolved.
+      if (
+        error.message.includes(
+          "AbortError: Actor 'MessageHandlerFrame' destroyed"
+        )
+      ) {
+        return;
+      }
+
+      return error;
     }
 
-    return error;
+    return new Error('WaitTask failed with an error', {
+      cause: error,
+    });
   }
 }
 

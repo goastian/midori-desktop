@@ -1,25 +1,17 @@
 /**
- * Copyright 2022 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2022 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
-import mitt, {Emitter, EventHandlerMap} from '../../third_party/mitt/index.js';
+import mitt, {type Emitter} from '../../third_party/mitt/mitt.js';
+import {disposeSymbol} from '../util/disposable.js';
 
 /**
  * @public
  */
 export type EventType = string | symbol;
+
 /**
  * @public
  */
@@ -28,21 +20,29 @@ export type Handler<T = unknown> = (event: T) => void;
 /**
  * @public
  */
-export interface CommonEventEmitter {
-  on(event: EventType, handler: Handler): CommonEventEmitter;
-  off(event: EventType, handler: Handler): CommonEventEmitter;
-  /* To maintain parity with the built in NodeJS event emitter which uses removeListener
-   * rather than `off`.
-   * If you're implementing new code you should use `off`.
-   */
-  addListener(event: EventType, handler: Handler): CommonEventEmitter;
-  removeListener(event: EventType, handler: Handler): CommonEventEmitter;
-  emit(event: EventType, eventData?: unknown): boolean;
-  once(event: EventType, handler: Handler): CommonEventEmitter;
-  listenerCount(event: string): number;
+export interface CommonEventEmitter<Events extends Record<EventType, unknown>> {
+  on<Key extends keyof Events>(type: Key, handler: Handler<Events[Key]>): this;
+  off<Key extends keyof Events>(
+    type: Key,
+    handler?: Handler<Events[Key]>
+  ): this;
+  emit<Key extends keyof Events>(type: Key, event: Events[Key]): boolean;
+  once<Key extends keyof Events>(
+    type: Key,
+    handler: Handler<Events[Key]>
+  ): this;
+  listenerCount(event: keyof Events): number;
 
-  removeAllListeners(event?: EventType): CommonEventEmitter;
+  removeAllListeners(event?: keyof Events): this;
 }
+
+/**
+ * @public
+ */
+export type EventsWithWildcard<Events extends Record<EventType, unknown>> =
+  Events & {
+    '*': Events[keyof Events];
+  };
 
 /**
  * The EventEmitter class that many Puppeteer classes extend.
@@ -56,110 +56,162 @@ export interface CommonEventEmitter {
  *
  * @public
  */
-export class EventEmitter implements CommonEventEmitter {
-  private emitter: Emitter<Record<string | symbol, any>>;
-  private eventsMap: EventHandlerMap<Record<string | symbol, any>> = new Map();
+export class EventEmitter<Events extends Record<EventType, unknown>>
+  implements CommonEventEmitter<EventsWithWildcard<Events>>
+{
+  #emitter: Emitter<EventsWithWildcard<Events>> | EventEmitter<Events>;
+  #handlers = new Map<keyof Events | '*', Array<Handler<any>>>();
 
   /**
+   * If you pass an emitter, the returned emitter will wrap the passed emitter.
+   *
    * @internal
    */
-  constructor() {
-    this.emitter = mitt(this.eventsMap);
+  constructor(
+    emitter: Emitter<EventsWithWildcard<Events>> | EventEmitter<Events> = mitt(
+      new Map()
+    )
+  ) {
+    this.#emitter = emitter;
   }
 
   /**
    * Bind an event listener to fire when an event occurs.
-   * @param event - the event type you'd like to listen to. Can be a string or symbol.
+   * @param type - the event type you'd like to listen to. Can be a string or symbol.
    * @param handler - the function to be called when the event occurs.
    * @returns `this` to enable you to chain method calls.
    */
-  on(event: EventType, handler: Handler<any>): EventEmitter {
-    this.emitter.on(event, handler);
+  on<Key extends keyof EventsWithWildcard<Events>>(
+    type: Key,
+    handler: Handler<EventsWithWildcard<Events>[Key]>
+  ): this {
+    const handlers = this.#handlers.get(type);
+    if (handlers === undefined) {
+      this.#handlers.set(type, [handler]);
+    } else {
+      handlers.push(handler);
+    }
+
+    this.#emitter.on(type, handler);
     return this;
   }
 
   /**
    * Remove an event listener from firing.
-   * @param event - the event type you'd like to stop listening to.
+   * @param type - the event type you'd like to stop listening to.
    * @param handler - the function that should be removed.
    * @returns `this` to enable you to chain method calls.
    */
-  off(event: EventType, handler: Handler<any>): EventEmitter {
-    this.emitter.off(event, handler);
-    return this;
-  }
-
-  /**
-   * Remove an event listener.
-   * @deprecated please use {@link EventEmitter.off} instead.
-   */
-  removeListener(event: EventType, handler: Handler<any>): EventEmitter {
-    this.off(event, handler);
-    return this;
-  }
-
-  /**
-   * Add an event listener.
-   * @deprecated please use {@link EventEmitter.on} instead.
-   */
-  addListener(event: EventType, handler: Handler<any>): EventEmitter {
-    this.on(event, handler);
+  off<Key extends keyof EventsWithWildcard<Events>>(
+    type: Key,
+    handler?: Handler<EventsWithWildcard<Events>[Key]>
+  ): this {
+    const handlers = this.#handlers.get(type) ?? [];
+    if (handler === undefined) {
+      for (const handler of handlers) {
+        this.#emitter.off(type, handler);
+      }
+      this.#handlers.delete(type);
+      return this;
+    }
+    const index = handlers.lastIndexOf(handler);
+    if (index > -1) {
+      this.#emitter.off(type, ...handlers.splice(index, 1));
+    }
     return this;
   }
 
   /**
    * Emit an event and call any associated listeners.
    *
-   * @param event - the event you'd like to emit
+   * @param type - the event you'd like to emit
    * @param eventData - any data you'd like to emit with the event
    * @returns `true` if there are any listeners, `false` if there are not.
    */
-  emit(event: EventType, eventData?: unknown): boolean {
-    this.emitter.emit(event, eventData);
-    return this.eventListenersCount(event) > 0;
+  emit<Key extends keyof EventsWithWildcard<Events>>(
+    type: Key,
+    event: EventsWithWildcard<Events>[Key]
+  ): boolean {
+    this.#emitter.emit(type, event);
+    return this.listenerCount(type) > 0;
   }
 
   /**
    * Like `on` but the listener will only be fired once and then it will be removed.
-   * @param event - the event you'd like to listen to
+   * @param type - the event you'd like to listen to
    * @param handler - the handler function to run when the event occurs
    * @returns `this` to enable you to chain method calls.
    */
-  once(event: EventType, handler: Handler<any>): EventEmitter {
-    const onceHandler: Handler<any> = eventData => {
+  once<Key extends keyof EventsWithWildcard<Events>>(
+    type: Key,
+    handler: Handler<EventsWithWildcard<Events>[Key]>
+  ): this {
+    const onceHandler: Handler<EventsWithWildcard<Events>[Key]> = eventData => {
       handler(eventData);
-      this.off(event, onceHandler);
+      this.off(type, onceHandler);
     };
 
-    return this.on(event, onceHandler);
+    return this.on(type, onceHandler);
   }
 
   /**
    * Gets the number of listeners for a given event.
    *
-   * @param event - the event to get the listener count for
+   * @param type - the event to get the listener count for
    * @returns the number of listeners bound to the given event
    */
-  listenerCount(event: EventType): number {
-    return this.eventListenersCount(event);
+  listenerCount(type: keyof EventsWithWildcard<Events>): number {
+    return this.#handlers.get(type)?.length || 0;
   }
 
   /**
    * Removes all listeners. If given an event argument, it will remove only
    * listeners for that event.
-   * @param event - the event to remove listeners for.
+   *
+   * @param type - the event to remove listeners for.
    * @returns `this` to enable you to chain method calls.
    */
-  removeAllListeners(event?: EventType): EventEmitter {
-    if (event) {
-      this.eventsMap.delete(event);
-    } else {
-      this.eventsMap.clear();
+  removeAllListeners(type?: keyof EventsWithWildcard<Events>): this {
+    if (type !== undefined) {
+      return this.off(type);
     }
+    this[disposeSymbol]();
     return this;
   }
 
-  private eventListenersCount(event: EventType): number {
-    return this.eventsMap.get(event)?.length || 0;
+  /**
+   * @internal
+   */
+  [disposeSymbol](): void {
+    for (const [type, handlers] of this.#handlers) {
+      for (const handler of handlers) {
+        this.#emitter.off(type, handler);
+      }
+    }
+    this.#handlers.clear();
+  }
+}
+
+/**
+ * @internal
+ */
+export class EventSubscription<
+  Target extends CommonEventEmitter<Record<Type, Event>>,
+  Type extends EventType = EventType,
+  Event = unknown,
+> {
+  #target: Target;
+  #type: Type;
+  #handler: Handler<Event>;
+
+  constructor(target: Target, type: Type, handler: Handler<Event>) {
+    this.#target = target;
+    this.#type = type;
+    this.#handler = handler;
+    this.#target.on(this.#type, this.#handler);
+  }
+
+  [disposeSymbol](): void {
+    this.#target.off(this.#type, this.#handler);
   }
 }

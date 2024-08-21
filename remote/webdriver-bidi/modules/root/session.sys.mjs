@@ -11,6 +11,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ContextDescriptorType:
     "chrome://remote/content/shared/messagehandler/MessageHandler.sys.mjs",
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
+  Marionette: "chrome://remote/content/components/Marionette.sys.mjs",
   RootMessageHandler:
     "chrome://remote/content/shared/messagehandler/RootMessageHandler.sys.mjs",
   TabManager: "chrome://remote/content/shared/TabManager.sys.mjs",
@@ -46,6 +47,19 @@ class SessionModule extends Module {
    */
 
   /**
+   * End the current session.
+   *
+   * Session clean up will happen later in WebDriverBiDiConnection class.
+   */
+  async end() {
+    if (lazy.Marionette.running) {
+      throw new lazy.error.UnsupportedOperationError(
+        "Ending session which was started with Webdriver classic is not supported, use Webdriver classic delete command instead."
+      );
+    }
+  }
+
+  /**
    * Enable certain events either globally, or for a list of browsing contexts.
    *
    * @param {object=} params
@@ -62,16 +76,10 @@ class SessionModule extends Module {
     const { events, contexts: contextIds = null } = params;
 
     // Check input types until we run schema validation.
-    lazy.assert.array(events, "events: array value expected");
-    events.forEach(name => {
-      lazy.assert.string(name, `${name}: string value expected`);
-    });
+    this.#assertNonEmptyArrayWithStrings(events, "events");
 
     if (contextIds !== null) {
-      lazy.assert.array(contextIds, "contexts: array value expected");
-      contextIds.forEach(contextId => {
-        lazy.assert.string(contextId, `${contextId}: string value expected`);
-      });
+      this.#assertNonEmptyArrayWithStrings(contextIds, "contexts");
     }
 
     const listeners = this.#updateEventMap(events, contextIds, true);
@@ -99,15 +107,9 @@ class SessionModule extends Module {
     const { events, contexts: contextIds = null } = params;
 
     // Check input types until we run schema validation.
-    lazy.assert.array(events, "events: array value expected");
-    events.forEach(name => {
-      lazy.assert.string(name, `${name}: string value expected`);
-    });
+    this.#assertNonEmptyArrayWithStrings(events, "events");
     if (contextIds !== null) {
-      lazy.assert.array(contextIds, "contexts: array value expected");
-      contextIds.forEach(contextId => {
-        lazy.assert.string(contextId, `${contextId}: string value expected`);
-      });
+      this.#assertNonEmptyArrayWithStrings(contextIds, "contexts");
     }
 
     const listeners = this.#updateEventMap(events, contextIds, false);
@@ -123,6 +125,23 @@ class SessionModule extends Module {
         `${event} is not a valid event name`
       );
     }
+  }
+
+  #assertNonEmptyArrayWithStrings(array, variableName) {
+    lazy.assert.array(
+      array,
+      `Expected "${variableName}" to be an array, got ${array}`
+    );
+    lazy.assert.that(
+      array => !!array.length,
+      `Expected "${variableName}" array to have at least one item`
+    )(array);
+    array.forEach(item => {
+      lazy.assert.string(
+        item,
+        `Expected elements of "${variableName}" to be a string, got ${item}`
+      );
+    });
   }
 
   #getBrowserIdForContextId(contextId) {

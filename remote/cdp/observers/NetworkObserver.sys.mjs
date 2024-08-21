@@ -9,13 +9,10 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   CommonUtils: "resource://services-common/utils.sys.mjs",
   EventEmitter: "resource://gre/modules/EventEmitter.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
 
   ChannelEventSinkFactory:
     "chrome://remote/content/cdp/observers/ChannelEventSink.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  NetUtil: "resource://gre/modules/NetUtil.jsm",
 });
 
 XPCOMUtils.defineLazyServiceGetter(
@@ -27,7 +24,7 @@ XPCOMUtils.defineLazyServiceGetter(
 
 const CC = Components.Constructor;
 
-XPCOMUtils.defineLazyGetter(lazy, "BinaryInputStream", () => {
+ChromeUtils.defineLazyGetter(lazy, "BinaryInputStream", () => {
   return CC(
     "@mozilla.org/binaryinputstream;1",
     "nsIBinaryInputStream",
@@ -35,7 +32,7 @@ XPCOMUtils.defineLazyGetter(lazy, "BinaryInputStream", () => {
   );
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "BinaryOutputStream", () => {
+ChromeUtils.defineLazyGetter(lazy, "BinaryOutputStream", () => {
   return CC(
     "@mozilla.org/binaryoutputstream;1",
     "nsIBinaryOutputStream",
@@ -43,7 +40,7 @@ XPCOMUtils.defineLazyGetter(lazy, "BinaryOutputStream", () => {
   );
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "StorageStream", () => {
+ChromeUtils.defineLazyGetter(lazy, "StorageStream", () => {
   return CC("@mozilla.org/storagestream;1", "nsIStorageStream", "init");
 });
 
@@ -189,7 +186,7 @@ export class NetworkObserver {
     this._redirectMap.set(newChannel, oldChannel);
   }
 
-  _onRequest(channel, topic) {
+  _onRequest(channel) {
     const httpChannel = channel.QueryInterface(Ci.nsIHttpChannel);
     const loadContext = getLoadContext(httpChannel);
     const browser = loadContext?.topFrameElement;
@@ -245,7 +242,7 @@ export class NetworkObserver {
     });
   }
 
-  _onResponse(fromCache, httpChannel, topic) {
+  _onResponse(fromCache, httpChannel) {
     const loadContext = getLoadContext(httpChannel);
     if (
       !loadContext ||

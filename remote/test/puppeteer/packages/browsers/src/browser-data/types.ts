@@ -1,21 +1,8 @@
 /**
- * Copyright 2023 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2023 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
-
-import * as chrome from './chrome.js';
-import * as firefox from './firefox.js';
 
 /**
  * Supported browsers.
@@ -24,13 +11,14 @@ import * as firefox from './firefox.js';
  */
 export enum Browser {
   CHROME = 'chrome',
+  CHROMEHEADLESSSHELL = 'chrome-headless-shell',
   CHROMIUM = 'chromium',
   FIREFOX = 'firefox',
   CHROMEDRIVER = 'chromedriver',
 }
 
 /**
- * Platform names used to identify a OS platfrom x architecture combination in the way
+ * Platform names used to identify a OS platform x architecture combination in the way
  * that is relevant for the browser download.
  *
  * @public
@@ -43,16 +31,17 @@ export enum BrowserPlatform {
   WIN64 = 'win64',
 }
 
-export const downloadUrls = {
-  [Browser.CHROME]: chrome.resolveDownloadUrl,
-  [Browser.CHROMIUM]: chrome.resolveDownloadUrl,
-  [Browser.FIREFOX]: firefox.resolveDownloadUrl,
-};
-
 /**
  * @public
  */
 export enum BrowserTag {
+  CANARY = 'canary',
+  NIGHTLY = 'nightly',
+  BETA = 'beta',
+  DEV = 'dev',
+  DEVEDITION = 'devedition',
+  STABLE = 'stable',
+  ESR = 'esr',
   LATEST = 'latest',
 }
 

@@ -2,15 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   Log: "chrome://remote/content/shared/Log.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.Log.get(lazy.Log.TYPES.CDP)
 );
 
@@ -46,8 +44,8 @@ export class RemoteAgentError extends Error {
    * The error must be of this form:
    *
    *     {"message": "TypeError: foo is not a function\n
-   *     execute@chrome://remote/content/cdp/sessions/Session.jsm:73:39\n
-   *     onMessage@chrome://remote/content/cdp/sessions/TabSession.jsm:65:20"}
+   *     execute@chrome://remote/content/cdp/sessions/Session.sys.mjs:73:39\n
+   *     onMessage@chrome://remote/content/cdp/sessions/TabSession.sys.mjs:65:20"}
    *
    * This approach has the notable deficiency that it cannot deal
    * with causes to errors because of the unstructured nature of CDP

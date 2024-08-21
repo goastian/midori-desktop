@@ -1,41 +1,26 @@
 /**
- * Copyright 2018 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2018 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import fs from 'fs';
-import {ServerResponse} from 'http';
+import type {ServerResponse} from 'http';
 import path from 'path';
 
 import expect from 'expect';
-import {HTTPRequest} from 'puppeteer-core/internal/api/HTTPRequest.js';
-import {HTTPResponse} from 'puppeteer-core/internal/api/HTTPResponse.js';
+import type {HTTPRequest} from 'puppeteer-core/internal/api/HTTPRequest.js';
+import type {HTTPResponse} from 'puppeteer-core/internal/api/HTTPResponse.js';
 
-import {
-  getTestState,
-  setupTestBrowserHooks,
-  setupTestPageAndContextHooks,
-} from './mocha-utils.js';
+import {getTestState, launch, setupTestBrowserHooks} from './mocha-utils.js';
 import {attachFrame, isFavicon, waitEvent} from './utils.js';
 
 describe('network', function () {
   setupTestBrowserHooks();
-  setupTestPageAndContextHooks();
 
   describe('Page.Events.Request', function () {
     it('should fire for navigation requests', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const requests: HTTPRequest[] = [];
       page.on('request', request => {
@@ -45,7 +30,7 @@ describe('network', function () {
       expect(requests).toHaveLength(1);
     });
     it('should fire for iframes', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const requests: HTTPRequest[] = [];
       page.on('request', request => {
@@ -56,7 +41,7 @@ describe('network', function () {
       expect(requests).toHaveLength(2);
     });
     it('should fire for fetches', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const requests: HTTPRequest[] = [];
       page.on('request', request => {
@@ -71,7 +56,7 @@ describe('network', function () {
   });
   describe('Request.frame', function () {
     it('should work for main frame navigation request', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const requests: HTTPRequest[] = [];
       page.on('request', request => {
@@ -82,7 +67,7 @@ describe('network', function () {
       expect(requests[0]!.frame()).toBe(page.mainFrame());
     });
     it('should work for subframe navigation request', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       await page.goto(server.EMPTY_PAGE);
       const requests: HTTPRequest[] = [];
@@ -94,7 +79,7 @@ describe('network', function () {
       expect(requests[0]!.frame()).toBe(page.frames()[1]);
     });
     it('should work for fetch requests', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       await page.goto(server.EMPTY_PAGE);
       let requests: HTTPRequest[] = [];
@@ -113,23 +98,22 @@ describe('network', function () {
   });
 
   describe('Request.headers', function () {
-    it('should define Chrome as user agent header', async () => {
-      const {page, server} = getTestState();
+    it('should define Browser in user agent header', async () => {
+      const {page, server, isChrome} = await getTestState();
       const response = (await page.goto(server.EMPTY_PAGE))!;
-      expect(response.request().headers()['user-agent']).toContain('Chrome');
-    });
+      const userAgent = response.request().headers()['user-agent'];
 
-    it('should define Firefox as user agent header', async () => {
-      const {page, server} = getTestState();
-
-      const response = (await page.goto(server.EMPTY_PAGE))!;
-      expect(response.request().headers()['user-agent']).toContain('Firefox');
+      if (isChrome) {
+        expect(userAgent).toContain('Chrome');
+      } else {
+        expect(userAgent).toContain('Firefox');
+      }
     });
   });
 
   describe('Response.headers', function () {
     it('should work', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       server.setRoute('/empty.html', (_req, res) => {
         res.setHeader('foo', 'bar');
@@ -142,7 +126,7 @@ describe('network', function () {
 
   describe('Request.initiator', () => {
     it('should return the initiator', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const initiators = new Map();
       page.on('request', request => {
@@ -187,14 +171,14 @@ describe('network', function () {
 
   describe('Response.fromCache', function () {
     it('should return |false| for non-cached content', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const response = (await page.goto(server.EMPTY_PAGE))!;
       expect(response.fromCache()).toBe(false);
     });
 
     it('should work', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const responses = new Map();
       page.on('response', r => {
@@ -217,14 +201,14 @@ describe('network', function () {
 
   describe('Response.fromServiceWorker', function () {
     it('should return |false| for non-service-worker content', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const response = (await page.goto(server.EMPTY_PAGE))!;
       expect(response.fromServiceWorker()).toBe(false);
     });
 
     it('Response.fromServiceWorker', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const responses = new Map();
       page.on('response', r => {
@@ -236,7 +220,7 @@ describe('network', function () {
         waitUntil: 'networkidle2',
       });
       await page.evaluate(async () => {
-        return await (globalThis as any).activationPromise;
+        return (globalThis as any).activationPromise;
       });
       await page.reload();
 
@@ -250,7 +234,7 @@ describe('network', function () {
 
   describe('Request.postData', function () {
     it('should work', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       await page.goto(server.EMPTY_PAGE);
       server.setRoute('/post', (_req, res) => {
@@ -272,24 +256,53 @@ describe('network', function () {
       expect(request).toBeTruthy();
       expect(request.postData()).toBe('{"foo":"bar"}');
     });
+
     it('should be |undefined| when there is no post data', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const response = (await page.goto(server.EMPTY_PAGE))!;
       expect(response.request().postData()).toBe(undefined);
+    });
+
+    it('should work with blobs', async () => {
+      const {page, server} = await getTestState();
+
+      await page.goto(server.EMPTY_PAGE);
+      server.setRoute('/post', (_req, res) => {
+        return res.end();
+      });
+
+      const [request] = await Promise.all([
+        waitEvent<HTTPRequest>(page, 'request', r => {
+          return !isFavicon(r);
+        }),
+        page.evaluate(() => {
+          return fetch('./post', {
+            method: 'POST',
+            body: new Blob([JSON.stringify({foo: 'bar'})], {
+              type: 'application/json',
+            }),
+          });
+        }),
+      ]);
+
+      expect(request).toBeTruthy();
+      expect(request.postData()).toBe(undefined);
+      expect(request.hasPostData()).toBe(true);
+      expect(await request.fetchPostData()).toBe('{"foo":"bar"}');
     });
   });
 
   describe('Response.text', function () {
     it('should work', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const response = (await page.goto(server.PREFIX + '/simple.json'))!;
       const responseText = (await response.text()).trimEnd();
       expect(responseText).toBe('{"foo": "bar"}');
     });
     it('should return uncompressed text', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       server.enableGzip('/simple.json');
       const response = (await page.goto(server.PREFIX + '/simple.json'))!;
@@ -298,7 +311,7 @@ describe('network', function () {
       expect(responseText).toBe('{"foo": "bar"}');
     });
     it('should throw when requesting body of redirected response', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       server.setRedirect('/foo.html', '/empty.html');
       const response = (await page.goto(server.PREFIX + '/foo.html'))!;
@@ -315,7 +328,7 @@ describe('network', function () {
       );
     });
     it('should wait until response completes', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       await page.goto(server.EMPTY_PAGE);
       // Setup server to trap request.
@@ -365,7 +378,7 @@ describe('network', function () {
 
   describe('Response.json', function () {
     it('should work', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const response = (await page.goto(server.PREFIX + '/simple.json'))!;
       expect(await response.json()).toEqual({foo: 'bar'});
@@ -374,7 +387,7 @@ describe('network', function () {
 
   describe('Response.buffer', function () {
     it('should work', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const response = (await page.goto(server.PREFIX + '/pptr.png'))!;
       const imageBuffer = fs.readFileSync(
@@ -384,7 +397,7 @@ describe('network', function () {
       expect(responseBuffer.equals(imageBuffer)).toBe(true);
     });
     it('should work with compression', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       server.enableGzip('/pptr.png');
       const response = (await page.goto(server.PREFIX + '/pptr.png'))!;
@@ -395,7 +408,7 @@ describe('network', function () {
       expect(responseBuffer.equals(imageBuffer)).toBe(true);
     });
     it('should throw if the response does not have a body', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       await page.goto(server.PREFIX + '/empty.html');
 
@@ -434,7 +447,7 @@ describe('network', function () {
 
   describe('Response.statusText', function () {
     it('should work', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       server.setRoute('/cool', (_req, res) => {
         res.writeHead(200, 'cool!');
@@ -445,7 +458,7 @@ describe('network', function () {
     });
 
     it('handles missing status text', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       server.setRoute('/nostatus', (_req, res) => {
         res.writeHead(200, '');
@@ -458,7 +471,7 @@ describe('network', function () {
 
   describe('Response.timing', function () {
     it('returns timing information', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
       const responses: HTTPResponse[] = [];
       page.on('response', response => {
         return responses.push(response);
@@ -471,23 +484,23 @@ describe('network', function () {
 
   describe('Network Events', function () {
     it('Page.Events.Request', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const requests: HTTPRequest[] = [];
       page.on('request', request => {
-        return requests.push(request);
+        return !isFavicon(request) && requests.push(request);
       });
       await page.goto(server.EMPTY_PAGE);
       expect(requests).toHaveLength(1);
-      expect(requests[0]!.url()).toBe(server.EMPTY_PAGE);
-      expect(requests[0]!.resourceType()).toBe('document');
-      expect(requests[0]!.method()).toBe('GET');
-      expect(requests[0]!.response()).toBeTruthy();
-      expect(requests[0]!.frame() === page.mainFrame()).toBe(true);
-      expect(requests[0]!.frame()!.url()).toBe(server.EMPTY_PAGE);
+      const request = requests[0]!;
+      expect(request.url()).toBe(server.EMPTY_PAGE);
+      expect(request.method()).toBe('GET');
+      expect(request.response()).toBeTruthy();
+      expect(request.frame() === page.mainFrame()).toBe(true);
+      expect(request.frame()!.url()).toBe(server.EMPTY_PAGE);
     });
     it('Page.Events.RequestServedFromCache', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const cached: string[] = [];
       page.on('requestservedfromcache', r => {
@@ -496,40 +509,37 @@ describe('network', function () {
 
       await page.goto(server.PREFIX + '/cached/one-style.html');
       expect(cached).toEqual([]);
-
+      await new Promise(res => {
+        setTimeout(res, 1000);
+      });
       await page.reload();
       expect(cached).toEqual(['one-style.css']);
     });
     it('Page.Events.Response', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const responses: HTTPResponse[] = [];
       page.on('response', response => {
-        return responses.push(response);
+        return !isFavicon(response) && responses.push(response);
       });
       await page.goto(server.EMPTY_PAGE);
       expect(responses).toHaveLength(1);
-      expect(responses[0]!.url()).toBe(server.EMPTY_PAGE);
-      expect(responses[0]!.status()).toBe(200);
-      expect(responses[0]!.ok()).toBe(true);
-      expect(responses[0]!.request()).toBeTruthy();
-      const remoteAddress = responses[0]!.remoteAddress();
-      // Either IPv6 or IPv4, depending on environment.
-      expect(
-        remoteAddress.ip!.includes('::1') || remoteAddress.ip === '127.0.0.1'
-      ).toBe(true);
-      expect(remoteAddress.port).toBe(server.PORT);
+      const response = responses[0]!;
+      expect(response.url()).toBe(server.EMPTY_PAGE);
+      expect(response.status()).toBe(200);
+      expect(response.ok()).toBe(true);
+      expect(response.request()).toBeTruthy();
     });
 
     it('Page.Events.RequestFailed', async () => {
-      const {page, server, isChrome} = getTestState();
+      const {page, server, isChrome} = await getTestState();
 
       await page.setRequestInterception(true);
       page.on('request', request => {
         if (request.url().endsWith('css')) {
-          request.abort();
+          void request.abort();
         } else {
-          request.continue();
+          void request.continue();
         }
       });
       const failedRequests: HTTPRequest[] = [];
@@ -538,34 +548,33 @@ describe('network', function () {
       });
       await page.goto(server.PREFIX + '/one-style.html');
       expect(failedRequests).toHaveLength(1);
-      expect(failedRequests[0]!.url()).toContain('one-style.css');
-      expect(failedRequests[0]!.response()).toBe(null);
-      expect(failedRequests[0]!.resourceType()).toBe('stylesheet');
+      const failedRequest = failedRequests[0]!;
+      expect(failedRequest.url()).toContain('one-style.css');
+      expect(failedRequest.response()).toBe(null);
+      expect(failedRequest.frame()).toBeTruthy();
       if (isChrome) {
-        expect(failedRequests[0]!.failure()!.errorText).toBe('net::ERR_FAILED');
+        expect(failedRequest.failure()!.errorText).toBe('net::ERR_FAILED');
       } else {
-        expect(failedRequests[0]!.failure()!.errorText).toBe(
-          'NS_ERROR_FAILURE'
-        );
+        expect(failedRequest.failure()!.errorText).toBe('NS_ERROR_FAILURE');
       }
-      expect(failedRequests[0]!.frame()).toBeTruthy();
     });
     it('Page.Events.RequestFinished', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const requests: HTTPRequest[] = [];
       page.on('requestfinished', request => {
-        return requests.push(request);
+        return !isFavicon(request) && requests.push(request);
       });
       await page.goto(server.EMPTY_PAGE);
       expect(requests).toHaveLength(1);
-      expect(requests[0]!.url()).toBe(server.EMPTY_PAGE);
-      expect(requests[0]!.response()).toBeTruthy();
-      expect(requests[0]!.frame() === page.mainFrame()).toBe(true);
-      expect(requests[0]!.frame()!.url()).toBe(server.EMPTY_PAGE);
+      const request = requests[0]!;
+      expect(request.url()).toBe(server.EMPTY_PAGE);
+      expect(request.response()).toBeTruthy();
+      expect(request.frame() === page.mainFrame()).toBe(true);
+      expect(request.frame()!.url()).toBe(server.EMPTY_PAGE);
     });
     it('should fire events in proper order', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const events: string[] = [];
       page.on('request', () => {
@@ -578,23 +587,30 @@ describe('network', function () {
         return events.push('requestfinished');
       });
       await page.goto(server.EMPTY_PAGE);
-      expect(events).toEqual(['request', 'response', 'requestfinished']);
+      // Events can sneak in after the page has navigate
+      expect(events.slice(0, 3)).toEqual([
+        'request',
+        'response',
+        'requestfinished',
+      ]);
     });
     it('should support redirects', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const events: string[] = [];
       page.on('request', request => {
-        return events.push(`${request.method()} ${request.url()}`);
+        !isFavicon(request) &&
+          events.push(`${request.method()} ${request.url()}`);
       });
       page.on('response', response => {
-        return events.push(`${response.status()} ${response.url()}`);
+        !isFavicon(response) &&
+          events.push(`${response.status()} ${response.url()}`);
       });
       page.on('requestfinished', request => {
-        return events.push(`DONE ${request.url()}`);
+        !isFavicon(request) && events.push(`DONE ${request.url()}`);
       });
       page.on('requestfailed', request => {
-        return events.push(`FAIL ${request.url()}`);
+        !isFavicon(request) && events.push(`FAIL ${request.url()}`);
       });
       server.setRedirect('/foo.html', '/empty.html');
       const FOO_URL = server.PREFIX + '/foo.html';
@@ -612,15 +628,12 @@ describe('network', function () {
       const redirectChain = response.request().redirectChain();
       expect(redirectChain).toHaveLength(1);
       expect(redirectChain[0]!.url()).toContain('/foo.html');
-      expect(redirectChain[0]!.response()!.remoteAddress().port).toBe(
-        server.PORT
-      );
     });
   });
 
   describe('Request.isNavigationRequest', () => {
     it('should work', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const requests = new Map();
       page.on('request', request => {
@@ -635,12 +648,12 @@ describe('network', function () {
       expect(requests.get('style.css').isNavigationRequest()).toBe(false);
     });
     it('should work with request interception', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const requests = new Map();
       page.on('request', request => {
         requests.set(request.url().split('/').pop(), request);
-        request.continue();
+        void request.continue();
       });
       await page.setRequestInterception(true);
       server.setRedirect('/rrredirect', '/frames/one-frame.html');
@@ -652,20 +665,19 @@ describe('network', function () {
       expect(requests.get('style.css').isNavigationRequest()).toBe(false);
     });
     it('should work when navigating to image', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
-      const requests: HTTPRequest[] = [];
-      page.on('request', request => {
-        return requests.push(request);
-      });
-      await page.goto(server.PREFIX + '/pptr.png');
-      expect(requests[0]!.isNavigationRequest()).toBe(true);
+      const [request] = await Promise.all([
+        waitEvent<HTTPRequest>(page, 'request'),
+        page.goto(server.PREFIX + '/pptr.png'),
+      ]);
+      expect(request.isNavigationRequest()).toBe(true);
     });
   });
 
   describe('Page.setExtraHTTPHeaders', function () {
     it('should work', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       await page.setExtraHTTPHeaders({
         foo: 'bar',
@@ -677,7 +689,7 @@ describe('network', function () {
       expect(request.headers['foo']).toBe('bar');
     });
     it('should throw for non-string header values', async () => {
-      const {page} = getTestState();
+      const {page} = await getTestState();
 
       let error!: Error;
       try {
@@ -694,7 +706,7 @@ describe('network', function () {
 
   describe('Page.authenticate', function () {
     it('should work', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       server.setAuth('/empty.html', 'user', 'pass');
       let response;
@@ -704,7 +716,7 @@ describe('network', function () {
       } catch (error) {
         // In headful, an error is thrown instead of 401.
         if (
-          !(error as Error).message.startsWith(
+          !(error as Error).message?.includes(
             'net::ERR_INVALID_AUTH_CREDENTIALS'
           )
         ) {
@@ -719,7 +731,7 @@ describe('network', function () {
       expect(response.status()).toBe(200);
     });
     it('should fail if wrong credentials', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       // Use unique user/password since Chrome caches credentials per origin.
       server.setAuth('/empty.html', 'user2', 'pass2');
@@ -731,7 +743,7 @@ describe('network', function () {
       expect(response.status()).toBe(401);
     });
     it('should allow disable authentication', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       // Use unique user/password since Chrome caches credentials per origin.
       server.setAuth('/empty.html', 'user3', 'pass3');
@@ -754,7 +766,7 @@ describe('network', function () {
       } catch (error) {
         // In headful, an error is thrown instead of 401.
         if (
-          !(error as Error).message.startsWith(
+          !(error as Error).message?.includes(
             'net::ERR_INVALID_AUTH_CREDENTIALS'
           )
         ) {
@@ -763,7 +775,7 @@ describe('network', function () {
       }
     });
     it('should not disable caching', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       // Use unique user/password since Chrome caches credentials per origin.
       server.setAuth('/cached/one-style.css', 'user4', 'pass4');
@@ -789,9 +801,9 @@ describe('network', function () {
     });
   });
 
-  describe('raw network headers', async () => {
+  describe('raw network headers', () => {
     it('Same-origin set-cookie navigation', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
 
       const setCookieString = 'foo=bar';
       server.setRoute('/empty.html', (_req, res) => {
@@ -803,7 +815,7 @@ describe('network', function () {
     });
 
     it('Same-origin set-cookie subresource', async () => {
-      const {page, server} = getTestState();
+      const {page, server} = await getTestState();
       await page.goto(server.EMPTY_PAGE);
 
       const setCookieString = 'foo=bar';
@@ -812,26 +824,23 @@ describe('network', function () {
         res.end('hello world');
       });
 
-      const responsePromise = waitEvent<HTTPResponse>(page, 'response');
-      page.evaluate(() => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('GET', '/foo');
-        xhr.send();
-      });
-      const subresourceResponse = await responsePromise;
-      expect(subresourceResponse.headers()['set-cookie']).toBe(setCookieString);
+      const [response] = await Promise.all([
+        waitEvent<HTTPResponse>(page, 'response', res => {
+          return !isFavicon(res);
+        }),
+        page.evaluate(() => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('GET', '/foo');
+          xhr.send();
+        }),
+      ]);
+      expect(response.headers()['set-cookie']).toBe(setCookieString);
     });
 
     it('Cross-origin set-cookie', async () => {
-      const {httpsServer, puppeteer, defaultBrowserOptions} = getTestState();
-
-      const browser = await puppeteer.launch({
-        ...defaultBrowserOptions,
+      const {page, httpsServer, close} = await launch({
         ignoreHTTPSErrors: true,
       });
-
-      const page = await browser.newPage();
-
       try {
         await page.goto(httpsServer.PREFIX + '/empty.html');
 
@@ -855,9 +864,104 @@ describe('network', function () {
         ]);
         expect(response.headers()['set-cookie']).toBe(setCookieString);
       } finally {
-        await page.close();
-        await browser.close();
+        await close();
       }
+    });
+  });
+
+  describe('Page.setBypassServiceWorker', () => {
+    it('bypass for network', async () => {
+      const {page, server} = await getTestState();
+
+      const responses = new Map();
+      page.on('response', r => {
+        return !isFavicon(r) && responses.set(r.url().split('/').pop(), r);
+      });
+
+      // Load and re-load to make sure serviceworker is installed and running.
+      await page.goto(server.PREFIX + '/serviceworkers/fetch/sw.html', {
+        waitUntil: 'networkidle2',
+      });
+      await page.evaluate(async () => {
+        return (globalThis as any).activationPromise;
+      });
+      await page.reload({
+        waitUntil: 'networkidle2',
+      });
+
+      expect(page.isServiceWorkerBypassed()).toBe(false);
+      expect(responses.size).toBe(2);
+      expect(responses.get('sw.html').status()).toBe(200);
+      expect(responses.get('sw.html').fromServiceWorker()).toBe(true);
+      expect(responses.get('style.css').status()).toBe(200);
+      expect(responses.get('style.css').fromServiceWorker()).toBe(true);
+
+      await page.setBypassServiceWorker(true);
+      await page.reload({
+        waitUntil: 'networkidle2',
+      });
+
+      expect(page.isServiceWorkerBypassed()).toBe(true);
+      expect(responses.get('sw.html').status()).toBe(200);
+      expect(responses.get('sw.html').fromServiceWorker()).toBe(false);
+      expect(responses.get('style.css').status()).toBe(200);
+      expect(responses.get('style.css').fromServiceWorker()).toBe(false);
+    });
+  });
+
+  describe('Request.resourceType', () => {
+    it('should work for document type', async () => {
+      const {page, server} = await getTestState();
+
+      const response = await page.goto(server.EMPTY_PAGE);
+      const request = response!.request();
+      expect(request.resourceType()).toBe('document');
+    });
+
+    it('should work for stylesheets', async () => {
+      const {page, server} = await getTestState();
+
+      const cssRequests: HTTPRequest[] = [];
+      page.on('request', request => {
+        if (request.url().endsWith('css')) {
+          cssRequests.push(request);
+        }
+      });
+      await page.goto(server.PREFIX + '/one-style.html');
+      expect(cssRequests).toHaveLength(1);
+      const request = cssRequests[0]!;
+      expect(request.url()).toContain('one-style.css');
+      expect(request.resourceType()).toBe('stylesheet');
+    });
+  });
+
+  describe('Response.remoteAddress', () => {
+    it('should work', async () => {
+      const {page, server} = await getTestState();
+
+      const response = (await page.goto(server.EMPTY_PAGE))!;
+      const remoteAddress = response.remoteAddress();
+      // Either IPv6 or IPv4, depending on environment.
+      expect(
+        remoteAddress.ip!.includes('::1') || remoteAddress.ip === '127.0.0.1'
+      ).toBe(true);
+      expect(remoteAddress.port).toBe(server.PORT);
+    });
+
+    it('should support redirects', async () => {
+      const {page, server} = await getTestState();
+
+      server.setRedirect('/foo.html', '/empty.html');
+      const FOO_URL = server.PREFIX + '/foo.html';
+      const response = (await page.goto(FOO_URL))!;
+
+      // Check redirect chain
+      const redirectChain = response.request().redirectChain();
+      expect(redirectChain).toHaveLength(1);
+      expect(redirectChain[0]!.url()).toContain('/foo.html');
+      expect(redirectChain[0]!.response()!.remoteAddress().port).toBe(
+        server.PORT
+      );
     });
   });
 });

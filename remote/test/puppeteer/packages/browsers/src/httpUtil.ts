@@ -1,26 +1,15 @@
 /**
- * Copyright 2023 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2023 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import {createWriteStream} from 'fs';
 import * as http from 'http';
 import * as https from 'https';
-import {URL} from 'url';
+import {URL, urlToHttpOptions} from 'url';
 
-import createHttpsProxyAgent from 'https-proxy-agent';
-import {getProxyForUrl} from 'proxy-from-env';
+import {ProxyAgent} from 'proxy-agent';
 
 export function headHttpRequest(url: URL): Promise<boolean> {
   return new Promise(resolve => {
@@ -28,6 +17,8 @@ export function headHttpRequest(url: URL): Promise<boolean> {
       url,
       'HEAD',
       response => {
+        // consume response data free node process
+        response.resume();
         resolve(response.statusCode === 200);
       },
       false
@@ -51,28 +42,9 @@ export function httpRequest(
     path: url.pathname + url.search,
     method,
     headers: keepAlive ? {Connection: 'keep-alive'} : undefined,
+    auth: urlToHttpOptions(url).auth,
+    agent: new ProxyAgent(),
   };
-
-  const proxyURL = getProxyForUrl(url.toString());
-  if (proxyURL) {
-    const proxy = new URL(proxyURL);
-    if (proxy.protocol === 'http:') {
-      options.path = url.href;
-      options.hostname = proxy.hostname;
-      options.protocol = proxy.protocol;
-      options.port = proxy.port;
-      options.headers ??= {};
-      options.headers['Host'] ||= url.host;
-    } else {
-      options.agent = createHttpsProxyAgent({
-        host: proxy.host,
-        path: proxy.pathname,
-        port: proxy.port,
-        secureProxy: proxy.protocol === 'https:',
-        headers: options.headers,
-      });
-    }
-  }
 
   const requestCallback = (res: http.IncomingMessage): void => {
     if (
@@ -82,6 +54,9 @@ export function httpRequest(
       res.headers.location
     ) {
       httpRequest(new URL(res.headers.location), method, response);
+      // consume response data to free up memory
+      // And prevents the connection from being kept alive
+      res.resume();
     } else {
       response(res);
     }
@@ -136,6 +111,44 @@ export function downloadFile(
     });
     request.on('error', error => {
       return reject(error);
+    });
+  });
+}
+
+export async function getJSON(url: URL): Promise<unknown> {
+  const text = await getText(url);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error('Could not parse JSON from ' + url.toString());
+  }
+}
+
+export function getText(url: URL): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(
+      url,
+      'GET',
+      response => {
+        let data = '';
+        if (response.statusCode && response.statusCode >= 400) {
+          return reject(new Error(`Got status code ${response.statusCode}`));
+        }
+        response.on('data', chunk => {
+          data += chunk;
+        });
+        response.on('end', () => {
+          try {
+            return resolve(String(data));
+          } catch {
+            return reject(new Error('Chrome version not found'));
+          }
+        });
+      },
+      false
+    );
+    request.on('error', err => {
+      reject(err);
     });
   });
 }

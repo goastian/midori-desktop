@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const ID_FIREFOX = "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}";
 const ID_THUNDERBIRD = "{3550f703-e582-4d05-9a08-453d09bdfdc6}";
@@ -24,7 +24,7 @@ const ID_THUNDERBIRD = "{3550f703-e582-4d05-9a08-453d09bdfdc6}";
 export const AppInfo = new Proxy(
   {},
   {
-    get(target, prop, receiver) {
+    get(target, prop) {
       if (target.hasOwnProperty(prop)) {
         return target[prop];
       }
@@ -36,28 +36,43 @@ export const AppInfo = new Proxy(
 
 // Platform support
 
-XPCOMUtils.defineLazyGetter(AppInfo, "isAndroid", () => {
+ChromeUtils.defineLazyGetter(AppInfo, "isAndroid", () => {
   return Services.appinfo.OS === "Android";
 });
 
-XPCOMUtils.defineLazyGetter(AppInfo, "isLinux", () => {
+ChromeUtils.defineLazyGetter(AppInfo, "isLinux", () => {
   return Services.appinfo.OS === "Linux";
 });
 
-XPCOMUtils.defineLazyGetter(AppInfo, "isMac", () => {
+ChromeUtils.defineLazyGetter(AppInfo, "isMac", () => {
   return Services.appinfo.OS === "Darwin";
 });
 
-XPCOMUtils.defineLazyGetter(AppInfo, "isWindows", () => {
+ChromeUtils.defineLazyGetter(AppInfo, "isWindows", () => {
   return Services.appinfo.OS === "WINNT";
 });
 
 // Application type
 
-XPCOMUtils.defineLazyGetter(AppInfo, "isFirefox", () => {
+ChromeUtils.defineLazyGetter(AppInfo, "isFirefox", () => {
   return Services.appinfo.ID == ID_FIREFOX;
 });
 
-XPCOMUtils.defineLazyGetter(AppInfo, "isThunderbird", () => {
+ChromeUtils.defineLazyGetter(AppInfo, "isThunderbird", () => {
   return Services.appinfo.ID == ID_THUNDERBIRD;
 });
+
+export function getTimeoutMultiplier() {
+  if (
+    AppConstants.DEBUG ||
+    AppConstants.MOZ_CODE_COVERAGE ||
+    AppConstants.ASAN
+  ) {
+    return 4;
+  }
+  if (AppConstants.TSAN) {
+    return 8;
+  }
+
+  return 1;
+}

@@ -21,9 +21,7 @@ add_task(async function test_getBrowsingContextById() {
   is(TabManager.getBrowsingContextById("wrong-id"), null);
 
   info(`Navigate to ${TEST_URL}`);
-  const loaded = BrowserTestUtils.browserLoaded(browser);
-  BrowserTestUtils.loadURIString(browser, TEST_URL);
-  await loaded;
+  await loadURL(browser, TEST_URL);
 
   const contexts = browser.browsingContext.getAllBrowsingContextsInSubtree();
   is(contexts.length, 2, "Top context has 1 child");
@@ -128,15 +126,47 @@ add_task(async function test_addTab_window() {
   }
 });
 
+add_task(async function test_getNavigableForBrowsingContext() {
+  const browser = gBrowser.selectedBrowser;
+
+  info(`Navigate to ${TEST_URL}`);
+  await loadURL(browser, TEST_URL);
+
+  const contexts = browser.browsingContext.getAllBrowsingContextsInSubtree();
+  is(contexts.length, 2, "Top context has 1 child");
+
+  // For a top-level browsing context the content browser is returned.
+  const topContext = contexts[0];
+  is(
+    TabManager.getNavigableForBrowsingContext(topContext),
+    browser,
+    "Top-Level browsing context has the content browser as navigable"
+  );
+
+  // For child browsing contexts the browsing context itself is returned.
+  const childContext = contexts[1];
+  is(
+    TabManager.getNavigableForBrowsingContext(childContext),
+    childContext,
+    "Child browsing context has itself as navigable"
+  );
+
+  const invalidValues = [undefined, null, 1, "test", {}, []];
+  for (const invalidValue of invalidValues) {
+    Assert.throws(
+      () => TabManager.getNavigableForBrowsingContext(invalidValue),
+      /Expected browsingContext to be a CanonicalBrowsingContext/
+    );
+  }
+});
+
 add_task(async function test_getTabForBrowsingContext() {
   const tab = await TabManager.addTab();
   try {
     const browser = tab.linkedBrowser;
 
     info(`Navigate to ${TEST_URL}`);
-    const loaded = BrowserTestUtils.browserLoaded(browser);
-    BrowserTestUtils.loadURIString(browser, TEST_URL);
-    await loaded;
+    await loadURL(browser, TEST_URL);
 
     const contexts = browser.browsingContext.getAllBrowsingContextsInSubtree();
     is(TabManager.getTabForBrowsingContext(contexts[0]), tab);

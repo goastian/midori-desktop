@@ -145,23 +145,6 @@ browser.Context = class {
   }
 
   /**
-   * Retrieves the current tabmodal UI object.  According to the browser
-   * associated with the currently selected tab.
-   */
-  getTabModal() {
-    let br = this.contentBrowser;
-    if (!br.hasAttribute("tabmodalPromptShowing")) {
-      return null;
-    }
-
-    // The modal is a direct sibling of the browser element.
-    // See tabbrowser.xml's getTabModalPromptBox.
-    let modalElements = br.parentNode.getElementsByTagName("tabmodalprompt");
-
-    return br.tabModalPromptBox.getPrompt(modalElements[0]);
-  }
-
-  /**
    * Close the current window.
    *
    * @returns {Promise}
@@ -254,7 +237,7 @@ browser.Context = class {
       tab = await lazy.TabManager.addTab({ focus, window: this.window });
     } else if (lazy.AppInfo.isFirefox) {
       const opened = new lazy.EventPromise(this.window, "TabOpen");
-      this.window.BrowserOpenTab({ url: "about:blank" });
+      this.window.BrowserCommands.openTab({ url: "about:blank" });
       await opened;
 
       tab = this.tabBrowser.selectedTab;
@@ -324,11 +307,8 @@ browser.Context = class {
    * Registers a new frame, and sets its current frame id to this frame
    * if it is not already assigned, and if a) we already have a session
    * or b) we're starting a new session and it is the right start frame.
-   *
-   * @param {XULBrowser} target
-   *     The <xul:browser> that was the target of the originating message.
    */
-  register(target) {
+  register() {
     if (!this.tabBrowser) {
       return;
     }
@@ -353,10 +333,10 @@ export const WindowState = {
   Fullscreen: "fullscreen",
 
   /**
-   * Converts {@link nsIDOMChromeWindow.windowState} to WindowState.
+   * Converts {@link Window.windowState} to WindowState.
    *
    * @param {number} windowState
-   *     Attribute from {@link nsIDOMChromeWindow.windowState}.
+   *     Attribute from {@link Window.windowState}.
    *
    * @returns {WindowState}
    *     JSON representation.

@@ -1,22 +1,40 @@
 /**
- * Copyright 2020 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2020 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 const versionsPerRelease = new Map([
   // This is a mapping from Chrome version => Puppeteer version.
   // In Chrome roll patches, use `NEXT` for the Puppeteer version.
+  ['125.0.6422.60', 'v22.9.0'],
+  ['124.0.6367.207', 'v22.8.2'],
+  ['124.0.6367.201', 'v22.8.1'],
+  ['124.0.6367.91', 'v22.8.0'],
+  ['124.0.6367.78', 'v22.7.1'],
+  ['124.0.6367.60', 'v22.7.0'],
+  ['123.0.6312.122', 'v22.6.4'],
+  ['123.0.6312.105', 'v22.6.3'],
+  ['123.0.6312.86', 'v22.6.2'],
+  ['123.0.6312.58', 'v22.6.0'],
+  ['122.0.6261.128', 'v22.5.0'],
+  ['122.0.6261.111', 'v22.4.1'],
+  ['122.0.6261.94', 'v22.4.0'],
+  ['122.0.6261.69', 'v22.3.0'],
+  ['122.0.6261.57', 'v22.2.0'],
+  ['121.0.6167.85', 'v21.9.0'],
+  ['120.0.6099.109', 'v21.8.0'],
+  ['119.0.6045.105', 'v21.5.0'],
+  ['118.0.5993.70', 'v21.4.0'],
+  ['117.0.5938.149', 'v21.3.7'],
+  ['117.0.5938.92', 'v21.3.2'],
+  ['117.0.5938.62', 'v21.3.0'],
+  ['116.0.5845.96', 'v21.1.0'],
+  ['115.0.5790.170', 'v21.0.2'],
+  ['115.0.5790.102', 'v21.0.0'],
+  ['115.0.5790.98', 'v20.9.0'],
+  ['114.0.5735.133', 'v20.7.2'],
+  ['114.0.5735.90', 'v20.6.0'],
   ['113.0.5672.63', 'v20.1.0'],
   ['112.0.5615.121', 'v20.0.0'],
   ['112.0.5614.0', 'v19.8.0'],
@@ -59,7 +77,7 @@ const versionsPerRelease = new Map([
 ]);
 
 // Should not be more than 2 major versions behind Chrome Stable (https://chromestatus.com/roadmap).
-const lastMaintainedChromeVersion = '109.0.5412.0';
+const lastMaintainedChromeVersion = '122.0.6261.128';
 
 if (!versionsPerRelease.has(lastMaintainedChromeVersion)) {
   throw new Error(
