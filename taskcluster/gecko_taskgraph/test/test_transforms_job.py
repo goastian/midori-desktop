@@ -37,7 +37,7 @@ TASK_DEFAULTS = {
 
 @pytest.fixture(scope="module")
 def config():
-    graph_config = load_graph_config(os.path.join(GECKO, "taskcluster", "ci"))
+    graph_config = load_graph_config(os.path.join(GECKO, "taskcluster"))
     params = FakeParameters(
         {
             "base_repository": "http://hg.example.com",
@@ -105,45 +105,6 @@ def test_worker_caches(task, transform):
     # Create a new schema object with just the part relevant to caches.
     partial_schema = Schema(payload_builders[impl].schema.schema[key])
     validate_schema(partial_schema, taskdesc["worker"][key], "validation error")
-
-
-@pytest.mark.parametrize(
-    "workerfn", [fn for fn, *_ in job.registry["run-task"].values()]
-)
-@pytest.mark.parametrize(
-    "task",
-    (
-        {
-            "worker-type": "b-linux",
-            "run": {
-                "checkout": True,
-                "comm-checkout": False,
-                "command": "echo '{output}'",
-                "command-context": {"output": "hello", "extra": None},
-                "run-as-root": False,
-                "sparse-profile": False,
-                "tooltool-downloads": False,
-            },
-        },
-    ),
-)
-def test_run_task_command_context(task, transform, workerfn):
-    config, job_, taskdesc, _ = transform(task)
-    job_ = deepcopy(job_)
-
-    def assert_cmd(expected):
-        cmd = taskdesc["worker"]["command"]
-        while isinstance(cmd, list):
-            cmd = cmd[-1]
-        assert cmd == expected
-
-    workerfn(config, job_, taskdesc)
-    assert_cmd("echo 'hello'")
-
-    job_copy = job_.copy()
-    del job_copy["run"]["command-context"]
-    workerfn(config, job_copy, taskdesc)
-    assert_cmd("echo '{output}'")
 
 
 if __name__ == "__main__":

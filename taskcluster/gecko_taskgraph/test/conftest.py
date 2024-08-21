@@ -13,10 +13,10 @@ from taskgraph.generator import Kind, TaskGraphGenerator
 from taskgraph.optimize import base as optimize_mod
 from taskgraph.optimize.base import OptimizationStrategy
 from taskgraph.parameters import Parameters
+from taskgraph.util.templates import merge
 
 from gecko_taskgraph import GECKO
 from gecko_taskgraph.actions import render_actions_json
-from gecko_taskgraph.util.templates import merge
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ def enable_logging():
 
 @pytest.fixture(scope="session")
 def graph_config():
-    return load_graph_config(os.path.join(GECKO, "taskcluster", "ci"))
+    return load_graph_config(os.path.join(GECKO, "taskcluster"))
 
 
 @pytest.fixture(scope="session")
@@ -74,8 +74,8 @@ def fake_loader(kind, path, config, parameters, loaded_tasks):
             },
             "dependencies": dependencies,
         }
-        if "job-defaults" in config:
-            task = merge(config["job-defaults"], task)
+        if "task-defaults" in config:
+            task = merge(config["task-defaults"], task)
         yield task
 
 
@@ -114,7 +114,7 @@ class FakeKind(Kind):
 
 
 class WithFakeKind(TaskGraphGenerator):
-    def _load_kinds(self, graph_config, target_kind=None):
+    def _load_kinds(self, graph_config, target_kinds=None):
         for kind_name, cfg in self.parameters["_kinds"]:
             yield FakeKind.create(kind_name, cfg, graph_config)
 
@@ -149,6 +149,20 @@ class FakeOptimization(OptimizationStrategy):
         if self.mode == "odd":
             return task.task["i"] % 2 != 0
         return False
+
+
+class FakeTransformConfig:
+    kind = "fake-kind"
+    path = "/root/ci/fake-kind"
+    config = {}
+    params = FakeParameters()
+    kind_dependencies_tasks = {}
+    graph_config = {}
+    write_artifacts = False
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
 
 @pytest.fixture
@@ -194,21 +208,23 @@ def maketgg(monkeypatch):
 
 @pytest.fixture
 def run_transform():
-
     graph_config = fake_load_graph_config("/root")
-    kind = FakeKind.create("fake", {}, graph_config)
+    config = FakeTransformConfig(graph_config=graph_config)
 
-    def inner(xform, tasks):
+    def inner(xform, tasks, **extra_config):
+        if extra_config:
+            for k, v in extra_config.items():
+                setattr(config, k, v)
+
         if isinstance(tasks, dict):
             tasks = [tasks]
-        return xform(kind.config, tasks)
+        return xform(config, tasks)
 
     return inner
 
 
 @pytest.fixture
 def run_full_config_transform():
-
     graph_config = fake_load_graph_config("/root")
     kind = FakeKind.create("fullfake", {}, graph_config)
 

@@ -18,20 +18,22 @@ from gecko_taskgraph.util.backstop import (
     is_backstop,
 )
 
-LAST_BACKSTOP_ID = 0
+LAST_BACKSTOP_PUSHID = 1
 LAST_BACKSTOP_PUSHDATE = mktime(datetime.now().timetuple())
 DEFAULT_RESPONSES = {
     "index": {
         "status": 200,
-        "json": {"taskId": LAST_BACKSTOP_ID},
+        "json": {"taskId": LAST_BACKSTOP_PUSHID},
     },
     "artifact": {
         "status": 200,
         "body": dedent(
             """
             pushdate: {}
+            pushlog_id: "{}"
         """.format(
-                LAST_BACKSTOP_PUSHDATE
+                LAST_BACKSTOP_PUSHDATE,
+                LAST_BACKSTOP_PUSHID,
             )
         ),
     },
@@ -50,7 +52,8 @@ def params():
         "head_rev": "abcdef",
         "project": "autoland",
         "pushdate": LAST_BACKSTOP_PUSHDATE + 1,
-        "pushlog_id": LAST_BACKSTOP_ID + 1,
+        "pushlog_id": f"{LAST_BACKSTOP_PUSHID + 1}",
+        "target_tasks_method": "default",
     }
 
 
@@ -61,7 +64,7 @@ def params():
             {
                 "index": {"status": 404},
             },
-            {"pushlog_id": 1},
+            {"pushlog_id": "1"},
             True,
             id="no previous backstop",
         ),
@@ -78,8 +81,8 @@ def params():
         pytest.param(
             DEFAULT_RESPONSES,
             {
-                "pushlog_id": LAST_BACKSTOP_ID + 1,
-                "pushdate": LAST_BACKSTOP_PUSHDATE + 1,
+                "pushlog_id": f"{LAST_BACKSTOP_PUSHID + BACKSTOP_PUSH_INTERVAL - 1}",
+                "pushdate": LAST_BACKSTOP_PUSHDATE + (BACKSTOP_TIME_INTERVAL * 60) - 1,
             },
             False,
             id="not a backstop",
@@ -87,10 +90,26 @@ def params():
         pytest.param(
             {},
             {
-                "pushlog_id": BACKSTOP_PUSH_INTERVAL,
+                "target_tasks_method": "nothing",
+            },
+            False,
+            id="dontbuild",
+        ),
+        pytest.param(
+            DEFAULT_RESPONSES,
+            {
+                "pushlog_id": f"{LAST_BACKSTOP_PUSHID + BACKSTOP_PUSH_INTERVAL}",
             },
             True,
-            id="backstop interval",
+            id="interval",
+        ),
+        pytest.param(
+            DEFAULT_RESPONSES,
+            {
+                "pushlog_id": f"{LAST_BACKSTOP_PUSHID + BACKSTOP_PUSH_INTERVAL + 1}",
+            },
+            True,
+            id="greater than interval",
         ),
         pytest.param(
             DEFAULT_RESPONSES,
@@ -104,7 +123,7 @@ def params():
             {},
             {
                 "project": "try",
-                "pushlog_id": BACKSTOP_PUSH_INTERVAL,
+                "pushlog_id": f"{BACKSTOP_PUSH_INTERVAL}",
             },
             False,
             id="try not a backstop",
@@ -138,13 +157,12 @@ def test_is_backstop(responses, params, response_args, extra_params, expected):
                 **{"trust-domain": "gecko", "project": params["project"]}
             )
         ),
-        "artifact": get_artifact_url(LAST_BACKSTOP_ID, "public/parameters.yml"),
-        "status": get_task_url(LAST_BACKSTOP_ID) + "/status",
+        "artifact": get_artifact_url(LAST_BACKSTOP_PUSHID, "public/parameters.yml"),
+        "status": get_task_url(LAST_BACKSTOP_PUSHID) + "/status",
     }
 
     for key in ("index", "status", "artifact"):
         if key in response_args:
-            print(urls[key])
             responses.add(responses.GET, urls[key], **response_args[key])
 
     params.update(extra_params)

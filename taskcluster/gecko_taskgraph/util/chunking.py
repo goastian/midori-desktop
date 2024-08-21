@@ -14,6 +14,7 @@ from manifestparser import TestManifest
 from manifestparser.filters import chunk_by_runtime, tags
 from mozbuild.util import memoize
 from moztest.resolve import TEST_SUITES, TestManifestLoader, TestResolver
+from taskgraph.util.yaml import load_yaml
 
 from gecko_taskgraph import GECKO
 from gecko_taskgraph.util.bugbug import CT_LOW, BugbugTimeoutException, push_schedules
@@ -21,6 +22,17 @@ from gecko_taskgraph.util.bugbug import CT_LOW, BugbugTimeoutException, push_sch
 logger = logging.getLogger(__name__)
 here = os.path.abspath(os.path.dirname(__file__))
 resolver = TestResolver.from_environment(cwd=here, loader_cls=TestManifestLoader)
+
+TEST_VARIANTS = {}
+if os.path.exists(os.path.join(GECKO, "taskcluster", "kinds", "test", "variants.yml")):
+    TEST_VARIANTS = load_yaml(GECKO, "taskcluster", "kinds", "test", "variants.yml")
+
+WPT_SUBSUITES = {
+    "canvas": "html/canvas",
+    "webgpu": "_mozilla/webgpu",
+    "privatebrowsing": "/service-workers/cache-storage",
+    "webcodecs": "webcodecs",
+}
 
 
 def guess_mozinfo_from_task(task, repo=""):
@@ -37,6 +49,7 @@ def guess_mozinfo_from_task(task, repo=""):
         A dict that can be used as a mozinfo replacement.
     """
     setting = task["test-setting"]
+    runtime_keys = setting["runtime"].keys()
     arch = setting["platform"]["arch"]
     p_os = setting["platform"]["os"]
 
@@ -45,21 +58,10 @@ def guess_mozinfo_from_task(task, repo=""):
         "bits": 32 if "32" in arch else 64,
         "ccov": setting["build"].get("ccov", False),
         "debug": setting["build"]["type"] in ("debug", "debug-isolated-process"),
-        "e10s": not setting["runtime"].get("1proc", False),
-        "no-fission": "no-fission" in setting["runtime"].keys(),
-        "fission": any(
-            "1proc" not in key or "no-fission" not in key
-            for key in setting["runtime"].keys()
-        ),
-        "headless": "-headless" in task["test-name"],
-        "condprof": "conditioned_profile" in setting["runtime"].keys(),
         "tsan": setting["build"].get("tsan", False),
-        "xorigin": any("xorigin" in key for key in setting["runtime"].keys()),
-        "socketprocess_networking": "socketprocess_networking"
-        in setting["runtime"].keys(),
         "nightly_build": repo in ["mozilla-central", "autoland", "try", ""],  # trunk
-        "http3": "http3" in setting["runtime"].keys(),
     }
+
     for platform in ("android", "linux", "mac", "win"):
         if p_os["name"].startswith(platform):
             info["os"] = platform
@@ -100,14 +102,42 @@ def guess_mozinfo_from_task(task, repo=""):
         ("linux", "1804"): "18.04",
         ("macosx", "1015"): "10.15",
         ("macosx", "1100"): "11.00",
-        ("windows", "7"): "6.1",
         ("windows", "10"): "10.0",
+        ("windows", "11"): "11.0",
     }
     for (name, old_ver), new_ver in os_versions.items():
         if p_os["name"] == name and p_os["version"] == old_ver:
             info["os_version"] = new_ver
             break
 
+    for variant in TEST_VARIANTS:
+        tag = TEST_VARIANTS[variant].get("mozinfo", "")
+        if tag == "":
+            continue
+
+        value = variant in runtime_keys
+
+        if variant == "1proc":
+            value = not value
+        elif "fission" in variant:
+            value = any(
+                "1proc" not in key or "no-fission" not in key for key in runtime_keys
+            )
+            if "no-fission" not in variant:
+                value = not value
+        elif tag == "xorigin":
+            value = any("xorigin" in key for key in runtime_keys)
+
+        info[tag] = value
+
+    # wpt has canvas and webgpu as tags, lets find those
+    for tag in WPT_SUBSUITES.keys():
+        if tag in task["test-name"]:
+            info[tag] = True
+        else:
+            info[tag] = False
+
+    info["automation"] = True
     return info
 
 
@@ -143,18 +173,19 @@ def chunk_manifests(suite, platform, chunks, manifests):
         A list of length `chunks` where each item contains a list of manifests
         that run in that chunk.
     """
-    manifests = set(manifests)
+    ini_manifests = set([x.replace(".toml", ".ini") for x in manifests])
 
     if "web-platform-tests" not in suite:
         runtimes = {
-            k: v for k, v in get_runtimes(platform, suite).items() if k in manifests
+            k: v for k, v in get_runtimes(platform, suite).items() if k in ini_manifests
         }
-        return [
-            c[1]
-            for c in chunk_by_runtime(None, chunks, runtimes).get_chunked_manifests(
-                manifests
+        retVal = []
+        for c in chunk_by_runtime(None, chunks, runtimes).get_chunked_manifests(
+            ini_manifests
+        ):
+            retVal.append(
+                [m if m in manifests else m.replace(".ini", ".toml") for m in c[1]]
             )
-        ]
 
     # Keep track of test paths for each chunk, and the runtime information.
     chunked_manifests = [[] for _ in range(chunks)]
@@ -221,8 +252,16 @@ class DefaultLoader(BaseManifestLoader):
         # TODO: the only exception here is we schedule webgpu as that is a --tag
         if "web-platform-tests" in suite:
             manifests = set()
+            subsuite = [x for x in WPT_SUBSUITES.keys() if mozinfo[x]]
             for t in tests:
-                manifests.add(t["manifest"])
+                if subsuite:
+                    # add specific directories
+                    if WPT_SUBSUITES[subsuite[0]] in t["manifest"]:
+                        manifests.add(t["manifest"])
+                else:
+                    if any(x in t["manifest"] for x in WPT_SUBSUITES.values()):
+                        continue
+                    manifests.add(t["manifest"])
             return {
                 "active": list(manifests),
                 "skipped": [],

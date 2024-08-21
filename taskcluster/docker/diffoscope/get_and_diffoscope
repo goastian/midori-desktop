@@ -15,12 +15,17 @@ export PATH=/builds/worker/bin:$PATH
 # implemented, it's better to first manually extract the data.
 # Plus dmg files are not supported yet.
 
+RESOURCE_DIR=firefox
 case "$ORIG_URL" in
 *.zip|*.apk)
 	curl -L "$ORIG_URL" > a.zip
 	curl -L "$NEW_URL" > b.zip
 	unzip -d a a.zip
 	unzip -d b b.zip
+	;;
+*.tar.zst)
+	curl -L "$ORIG_URL" | tar -C a --zstd -xf -
+	curl -L "$NEW_URL" | tar -C b --zstd -xf -
 	;;
 *.tar.bz2)
 	curl -L "$ORIG_URL" | tar -C a -jxf -
@@ -40,6 +45,7 @@ case "$ORIG_URL" in
 		$MOZ_FETCHES_DIR/dmg/dmg extract $i.dmg $i.hfs
 		$MOZ_FETCHES_DIR/dmg/hfsplus $i.hfs extractall / $i
 	done
+	RESOURCE_DIR=$(cd b; echo */Contents/Resources)
 	;;
 *)
 	ARTIFACT=$(basename "${ORIG_URL}")
@@ -72,7 +78,7 @@ for option; do
 		for dir in a b; do
 			# Need to run mach python from inside the gecko source.
 			# See bug #1533642.
-			(cd $GECKO_PATH && ./mach python toolkit/mozapps/installer/unpack.py --omnijar $OMNIJAR $CURDIR/$dir)
+			(cd $GECKO_PATH && ./mach python toolkit/mozapps/installer/unpack.py --omnijar $OMNIJAR "$CURDIR/$dir/$RESOURCE_DIR")
 		done
 		;;
 	--fail)
@@ -88,7 +94,7 @@ if [ -n "$PRE_DIFF" ]; then
 	eval $PRE_DIFF
 fi
 
-if diffoscope \
+if eval diffoscope \
 	--html diff.html \
 	--text diff.txt \
 	--progress \

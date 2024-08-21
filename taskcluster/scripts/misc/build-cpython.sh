@@ -13,19 +13,20 @@ set -x
 clang_bindir=${MOZ_FETCHES_DIR}/clang/bin
 clang_libdir=${MOZ_FETCHES_DIR}/clang/lib
 python_src=${MOZ_FETCHES_DIR}/cpython-source
+xz_prefix=${MOZ_FETCHES_DIR}/xz
 
 # Make the compiler-rt available to clang.
 env UPLOAD_DIR= $GECKO_PATH/taskcluster/scripts/misc/repack-clang.sh
 
-# Setup environment
-export PATH=${clang_bindir}:${PATH}
-export CC=clang
-export CXX=clang++
-export LDFLAGS=-fuse-ld=lld
-
-# Extra setup for OSX
+# Extra setup per platform
 case `uname -s` in
     Darwin)
+        # Use taskcluster clang instead of host compiler on OSX
+        export PATH=${clang_bindir}:${PATH}
+        export CC=clang
+        export CXX=clang++
+        export LDFLAGS=-fuse-ld=lld
+
         case `uname -m` in
             aarch64)
                 macosx_version_min=11.0
@@ -34,17 +35,25 @@ case `uname -s` in
                 macosx_version_min=10.12
                 ;;
         esac
-        macosx_sdk=13.3
+        macosx_sdk=14.4
         # NOTE: both CFLAGS and CPPFLAGS need to be set here, otherwise
         # configure step fails.
         sysroot_flags="-isysroot ${MOZ_FETCHES_DIR}/MacOSX${macosx_sdk}.sdk -mmacosx-version-min=${macosx_version_min}"
-        export CPPFLAGS=${sysroot_flags}
+        export CPPFLAGS="${sysroot_flags} -I${xz_prefix}/include"
         export CFLAGS=${sysroot_flags}
-        export LDFLAGS="${LDFLAGS} ${sysroot_flags}"
+        export LDFLAGS="${LDFLAGS} ${sysroot_flags} -L${xz_prefix}/lib"
         configure_flags_extra=--with-openssl=/usr/local/opt/openssl
+
+        # see https://bugs.python.org/issue22490
+        unset __PYVENV_LAUNCHER__
 
         # see https://bugs.python.org/issue44065
         sed -i -e 's,$CC --print-multiarch,:,' ${python_src}/configure
+        export LDFLAGS="${LDFLAGS} -Wl,-rpath -Wl,@loader_path/../.."
+        ;;
+    Linux)
+        # Use host gcc on Linux
+        export LDFLAGS="${LDFLAGS} -Wl,-rpath,\\\$ORIGIN/../.."
         ;;
 esac
 
@@ -58,7 +67,8 @@ work_dir=`pwd`
 tardir=python
 
 cd `mktemp -d`
-${python_src}/configure --prefix=/${tardir} --enable-optimizations ${configure_flags_extra} || { exit_status=$? && cat config.log && exit $exit_status ; }
+${python_src}/configure --prefix=/${tardir} --enable-optimizations --with-lto ${configure_flags_extra} || { exit_status=$? && cat config.log && exit $exit_status ; }
+
 export MAKEFLAGS=-j`nproc`
 make
 make DESTDIR=${work_dir} install
@@ -66,5 +76,41 @@ cd ${work_dir}
 
 ${work_dir}/python/bin/python3 -m pip install --upgrade pip==23.0
 ${work_dir}/python/bin/python3 -m pip install -r ${GECKO_PATH}/build/psutil_requirements.txt -r ${GECKO_PATH}/build/zstandard_requirements.txt
+
+case `uname -s` in
+    Darwin)
+
+        cp /usr/local/opt/openssl/lib/libssl*.dylib ${work_dir}/python/lib/
+        cp /usr/local/opt/openssl/lib/libcrypto*.dylib ${work_dir}/python/lib/
+        cp ${xz_prefix}/lib/liblzma.dylib ${work_dir}/python/lib/
+
+        # Instruct the loader to search for the lib in rpath instead of the one used during linking
+        install_name_tool -change /usr/local/opt/openssl@1.1/lib/libssl.1.1.dylib @rpath/libssl.1.1.dylib ${work_dir}/python/lib/python3.*/lib-dynload/_ssl.cpython-3*-darwin.so
+        install_name_tool -change /usr/local/opt/openssl@1.1/lib/libcrypto.1.1.dylib @rpath/libcrypto.1.1.dylib ${work_dir}/python/lib/python3.*/lib-dynload/_ssl.cpython-3*-darwin.so
+        otool -L ${work_dir}/python/lib/python3.*/lib-dynload/_ssl.cpython-3*-darwin.so | grep @rpath/libssl.1.1.dylib
+
+
+        install_name_tool -change /xz/lib/liblzma.5.dylib @rpath/liblzma.5.dylib ${work_dir}/python/lib/python3.*/lib-dynload/_lzma.cpython-3*-darwin.so
+        otool -L ${work_dir}/python/lib/python3.*/lib-dynload/_lzma.cpython-3*-darwin.so | grep @rpath/liblzma.5.dylib
+
+        # Also modify the shipped libssl to use the shipped libcrypto
+        install_name_tool -change /usr/local/Cellar/openssl@1.1/1.1.1h/lib/libcrypto.1.1.dylib @rpath/libcrypto.1.1.dylib ${work_dir}/python/lib/libssl.1.1.dylib
+        otool -L ${work_dir}/python/lib/libssl.1.1.dylib | grep @rpath/libcrypto.1.1.dylib
+
+        # sanity check
+        ${work_dir}/python/bin/python3 -c "import ssl"
+        ${work_dir}/python/bin/python3 -c "import lzma"
+
+        # We may not have access to system certificate on OSX
+        ${work_dir}/python/bin/python3 -m pip install certifi==2024.2.2
+        ;;
+    Linux)
+        cp /usr/lib/x86_64-linux-gnu/libffi.so.* ${work_dir}/python/lib/
+        cp /usr/lib/x86_64-linux-gnu/libssl.so.* ${work_dir}/python/lib/
+        cp /usr/lib/x86_64-linux-gnu/libcrypto.so.* ${work_dir}/python/lib/
+        cp /lib/x86_64-linux-gnu/libncursesw.so.* ${work_dir}/python/lib/
+        cp /lib/x86_64-linux-gnu/libtinfo.so.* ${work_dir}/python/lib/
+        ;;
+esac
 
 $(dirname $0)/pack.sh ${tardir}

@@ -19,7 +19,8 @@ from gecko_taskgraph.optimize.bugbug import (
     DisperseGroups,
     SkipUnlessDebug,
 )
-from gecko_taskgraph.optimize.strategies import IndexSearch, SkipUnlessSchedules
+from gecko_taskgraph.optimize.mozlint import SkipUnlessMozlint
+from gecko_taskgraph.optimize.strategies import SkipUnlessSchedules
 from gecko_taskgraph.util.backstop import BACKSTOP_PUSH_INTERVAL
 from gecko_taskgraph.util.bugbug import (
     BUGBUG_BASE_URL,
@@ -168,42 +169,6 @@ def idfn(param):
 def test_optimization_strategy_remove(params, opt, tasks, arg, expected):
     labels = [t.label for t in tasks if not opt.should_remove_task(t, params, arg)]
     assert sorted(labels) == sorted(expected)
-
-
-@pytest.mark.parametrize(
-    "state,expires,expected",
-    (
-        ("completed", "2021-06-06T14:53:16.937Z", False),
-        ("completed", "2021-06-08T14:53:16.937Z", "abc"),
-        ("exception", "2021-06-08T14:53:16.937Z", False),
-        ("failed", "2021-06-08T14:53:16.937Z", False),
-    ),
-)
-def test_index_search(responses, params, state, expires, expected):
-    taskid = "abc"
-    index_path = "foo.bar.latest"
-    responses.add(
-        responses.GET,
-        f"https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/{index_path}",
-        json={"taskId": taskid},
-        status=200,
-    )
-
-    responses.add(
-        responses.GET,
-        f"https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/{taskid}/status",
-        json={
-            "status": {
-                "state": state,
-                "expires": expires,
-            }
-        },
-        status=200,
-    )
-
-    opt = IndexSearch()
-    deadline = "2021-06-07T19:03:20.482Z"
-    assert opt.should_replace_task({}, params, deadline, (index_path,)) == expected
 
 
 @pytest.mark.parametrize(
@@ -545,6 +510,80 @@ def test_project_autoland_test(monkeypatch, responses, params):
         t.label for t in default_tasks if not opt.should_remove_task(t, params, {})
     }
     assert scheduled == {"task-0-label", "task-1-label"}
+
+
+@pytest.mark.parametrize(
+    "pushed_files,to_lint,expected",
+    [
+        pytest.param(
+            ["a/b/c.txt"],
+            [],
+            True,
+        ),
+        pytest.param(
+            ["python/mozlint/a/support_file.txt", "b/c/d.txt"],
+            ["python/mozlint/a/support_file.txt"],
+            False,
+        ),
+    ],
+    ids=idfn,
+)
+def test_mozlint_should_remove_task(
+    monkeypatch, params, pushed_files, to_lint, expected
+):
+    import mozlint.pathutils
+
+    class MockParser:
+        def __call__(self, *args, **kwargs):
+            return []
+
+    def mock_filterpaths(*args, **kwargs):
+        return to_lint, None
+
+    monkeypatch.setattr(mozlint.pathutils, "filterpaths", mock_filterpaths)
+
+    opt = SkipUnlessMozlint("")
+    monkeypatch.setattr(opt, "mozlint_parser", MockParser())
+    params["files_changed"] = pushed_files
+
+    result = opt.should_remove_task(default_tasks[0], params, "")
+    assert result == expected
+
+
+@pytest.mark.parametrize(
+    "pushed_files,linter_config,expected",
+    [
+        pytest.param(
+            ["a/b/c.txt"],
+            [{"include": ["b/c"]}],
+            True,
+        ),
+        pytest.param(
+            ["a/b/c.txt"],
+            [{"include": ["a/b"], "exclude": ["a/b/c.txt"]}],
+            True,
+        ),
+        pytest.param(
+            ["python/mozlint/a/support_file.txt", "b/c/d.txt"],
+            [{}],
+            False,
+        ),
+    ],
+    ids=idfn,
+)
+def test_mozlint_should_remove_task2(
+    monkeypatch, params, pushed_files, linter_config, expected
+):
+    class MockParser:
+        def __call__(self, *args, **kwargs):
+            return linter_config
+
+    opt = SkipUnlessMozlint("")
+    monkeypatch.setattr(opt, "mozlint_parser", MockParser())
+    params["files_changed"] = pushed_files
+
+    result = opt.should_remove_task(default_tasks[0], params, "")
+    assert result == expected
 
 
 if __name__ == "__main__":

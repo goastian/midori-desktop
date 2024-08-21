@@ -12,8 +12,8 @@ VOLUME /builds/worker/checkouts
 
 RUN apt-get update && \
     apt-get install --no-install-recommends -y \
-        binutils build-essential cpio curl elfutils jq libxml2-utils \
-        python3-pip rpm2cpio squashfs-tools unzip wget zip && \
+        file 7zip binutils build-essential cpio curl debuginfod elfutils flatpak jq \
+        libxml2-utils python3-pip rpm2cpio squashfs-tools unzip wget zip && \
     apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 COPY run.sh /builds/worker/run.sh
@@ -22,7 +22,7 @@ COPY SHA256SUMS.txt /builds/worker/
 
 RUN chown -R worker:worker /builds/worker
 
-RUN pip3 install crashstats-tools==1.3.0
+RUN pip3 install --break-system-packages crashstats-tools==1.4.0
 
 # Set a default command useful for debugging
 CMD ["/bin/bash", "--login"]

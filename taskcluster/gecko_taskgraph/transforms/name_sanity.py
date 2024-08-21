@@ -3,10 +3,11 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
 Generate labels for tasks without names, consistently.
-Uses attributes from `primary-dependency`.
+Uses attributes from primary dependency.
 """
 
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.util.dependencies import get_primary_dependency
 
 transforms = TransformSequence()
 
@@ -16,7 +17,9 @@ def make_label(config, jobs):
     """Generate a sane label for a new task constructed from a dependency
     Using attributes from the dependent job and the current task kind"""
     for job in jobs:
-        dep_job = job["primary-dependency"]
+        dep_job = get_primary_dependency(config, job)
+        assert dep_job
+
         attr = dep_job.attributes.get
 
         if attr("locale", job.get("locale")):

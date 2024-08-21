@@ -5,20 +5,16 @@ import datetime
 
 import jsone
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.util.copy import deepcopy
 from taskgraph.util.schema import Schema, validate_schema
+from taskgraph.util.templates import merge
 from taskgraph.util.treeherder import join_symbol, split_symbol
-from taskgraph.util.yaml import load_yaml
 from voluptuous import Any, Optional, Required
 
-import gecko_taskgraph
-from gecko_taskgraph.util.copy_task import copy_task
-from gecko_taskgraph.util.templates import merge
+from gecko_taskgraph.util.chunking import TEST_VARIANTS
 
 transforms = TransformSequence()
 
-TEST_VARIANTS = load_yaml(
-    gecko_taskgraph.GECKO, "taskcluster", "ci", "test", "variants.yml"
-)
 """List of available test variants defined."""
 
 
@@ -27,6 +23,7 @@ variant_description_schema = Schema(
         str: {
             Required("description"): str,
             Required("suffix"): str,
+            Optional("mozinfo"): str,
             Required("component"): str,
             Required("expiration"): str,
             Optional("when"): {Any("$eval", "$if"): str},
@@ -63,7 +60,6 @@ def split_variants(config, tasks):
 
         today = datetime.datetime.today()
         for variant in variants:
-
             expiration = variants[variant]["expiration"]
             if len(expiration.split("-")) == 1:
                 continue
@@ -75,12 +71,20 @@ def split_variants(config, tasks):
     def remove_expired(variants, expired):
         remaining_variants = []
         for name in variants:
-            parts = [p for p in name.split("+") if p not in expired]
-            if len(parts) == 0:
+            parts = [p for p in name.split("+") if p in expired]
+            if len(parts) > 0:
                 continue
 
             remaining_variants.append(name)
         return remaining_variants
+
+    def replace_task_items(task_key, variant_key):
+        for item in variant_key:
+            if isinstance(variant_key[item], dict):
+                task_key[item] = replace_task_items(task_key[item], variant_key[item])
+            else:
+                task_key[item] = variant_key[item]
+        return task_key
 
     def apply_variant(variant, task):
         task["description"] = variant["description"].format(**task)
@@ -98,7 +102,9 @@ def split_variants(config, tasks):
         task["variant-suffix"] += suffix
 
         # Replace and/or merge the configuration.
-        task.update(variant.get("replace", {}))
+
+        # we only want to update the leaf node, the the entire top level dict
+        task = replace_task_items(task, variant.get("replace", {}))
         return merge(task, variant.get("merge", {}))
 
     expired_variants = find_expired_variants(TEST_VARIANTS)
@@ -107,12 +113,12 @@ def split_variants(config, tasks):
         variants = remove_expired(variants, expired_variants)
 
         if task.pop("run-without-variant"):
-            yield copy_task(task)
+            yield deepcopy(task)
 
         for name in variants:
             # Apply composite variants (joined by '+') in order.
             parts = name.split("+")
-            taskv = copy_task(task)
+            taskv = deepcopy(task)
             for part in parts:
                 variant = TEST_VARIANTS[part]
 

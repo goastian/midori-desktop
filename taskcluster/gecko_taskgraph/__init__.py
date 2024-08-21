@@ -38,6 +38,9 @@ schema.EXCEPTED_SCHEMA_IDENTIFIERS.extend(
         "test_name",
         "json_location",
         "video_location",
+        "profile_name",
+        "target_path",
+        "try_task_config",
     ]
 )
 
@@ -48,13 +51,25 @@ def register(graph_config):
     Args:
         graph_config: The graph configuration object.
     """
+    import android_taskgraph
     from taskgraph import generator
+
+    # TODO: Remove along with
+    # `gecko_taskgraph.optimize.strategies.SkipUnlessChanged`
+    # (see comment over there)
+    from taskgraph.optimize.base import registry
+
+    del registry["skip-unless-changed"]
 
     from gecko_taskgraph import (  # noqa: trigger target task method registration
         morph,  # noqa: trigger morph registration
         target_tasks,
     )
+
+    android_taskgraph.register(graph_config)
+
     from gecko_taskgraph.parameters import register_parameters
+    from gecko_taskgraph.util import dependencies  # noqa: trigger group_by registration
     from gecko_taskgraph.util.verify import verifications
 
     # Don't use the upstream verifications, and replace them with our own.

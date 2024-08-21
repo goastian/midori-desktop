@@ -21,9 +21,8 @@ RUN apt-get update && apt-get install \
     libatk-bridge2.0-0-dbgsym \
     libatk1.0-0-dbgsym \
     libcairo2-dbgsym \
-    libdbus-glib-1-2-dbgsym \
     libdrm2-dbgsym \
-    libffi7-dbgsym \
+    libffi8-dbgsym \
     libfontconfig1-dbgsym \
     libglx-mesa0-dbgsym \
     libglapi-mesa-dbgsym \
@@ -31,7 +30,7 @@ RUN apt-get update && apt-get install \
     libgdk-pixbuf-2.0-0-dbgsym \
     libgtk-3-0-dbgsym \
     libice6-dbgsym \
-    libicu67-dbgsym \
+    libicu72-dbgsym \
     libpango-1.0-0-dbgsym \
     libpcre3-dbg \
     libpixman-1-0-dbgsym \
@@ -50,7 +49,7 @@ RUN apt-get update && apt-get install \
     libxcursor1-dbgsym \
     libxdamage1-dbgsym \
     libxdmcp6-dbg \
-    libxext6-dbg \
+    libxext6-dbgsym \
     libxfixes3-dbgsym \
     libxi6-dbgsym \
     libxinerama1-dbgsym \
@@ -61,6 +60,8 @@ RUN apt-get update && apt-get install \
     valgrind-dbgsym \
     xvfb \
     zlib1g-dbgsym
+
+RUN /usr/local/sbin/clean_packages.sh $DOCKER_IMAGE_PACKAGES
 
 # %include taskcluster/docker/recipes/xvfb.sh
 COPY topsrcdir/taskcluster/docker/recipes/xvfb.sh /builds/worker/scripts/xvfb.sh

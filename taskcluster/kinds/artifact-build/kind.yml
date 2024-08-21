@@ -1,0 +1,106 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+loader: taskgraph.loader.transform:loader
+
+kind-dependencies:
+    - fetch
+    - toolchain
+
+transforms:
+    - gecko_taskgraph.transforms.build_attrs:transforms
+    - gecko_taskgraph.transforms.build_schedules:transforms
+    - gecko_taskgraph.transforms.build_lints:transforms
+    - gecko_taskgraph.transforms.job:transforms
+    - gecko_taskgraph.transforms.artifact:transforms
+    - gecko_taskgraph.transforms.task:transforms
+
+task-defaults:
+    index:
+        product: firefox
+    treeherder:
+        kind: build
+        symbol: AB
+        tier: 1
+    run-on-projects: ['mozilla-central']
+    worker-type: b-linux-gcp
+    worker:
+        max-run-time: 3600
+        env:
+            PERFHERDER_EXTRA_OPTIONS: artifact
+            MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE: system
+            USE_ARTIFACT: '1'
+    run:
+        using: mozharness
+        actions: [get-secrets, build]
+        config:
+            - builds/releng_base_firefox.py
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        tooltool-downloads: public
+        keep-artifacts: false
+    use-python: default
+
+tasks:
+    linux64-artifact/opt:
+        description: "Linux64 Opt Artifact Build"
+        index:
+            job-name: linux64-artifact-opt
+        treeherder:
+            platform: linux64/opt
+        worker:
+            env:
+                MOZ_ARTIFACT_TASK: {task-reference: '<linux64-opt>'}
+        run:
+            config:
+                - builds/releng_base_linux_64_builds.py
+        dependencies:
+            linux64-opt: build-linux64/opt
+        fetches:
+            toolchain:
+                - linux64-node
+
+    macosx64-artifact/opt:
+        description: "MacOS X x64 Opt Artifact Build"
+        index:
+            job-name: macosx64-artifact-opt
+        treeherder:
+            platform: osx-cross/opt
+        worker:
+            env:
+                MOZ_ARTIFACT_TASK: {task-reference: '<macosx64-opt>'}
+        run:
+            config:
+                - builds/releng_base_mac_64_cross_builds.py
+        dependencies:
+            macosx64-opt: build-macosx64/opt
+        fetches:
+            toolchain:
+                - linux64-hfsplus
+                - linux64-libdmg
+                - linux64-node
+
+    win64-artifact/opt:
+        description: "Win64 Opt Artifact Build"
+        index:
+            job-name: win64-artifact-opt
+        treeherder:
+            platform: windows2012-64/opt
+        worker:
+            env:
+                MOZ_ARTIFACT_TASK: {task-reference: '<win64-opt>'}
+        run:
+            config:
+                - builds/releng_base_linux_64_builds.py
+            extra-config:
+                mozconfig_platform: win64
+        dependencies:
+            win64-opt: build-win64/opt
+        fetches:
+            toolchain:
+                - linux64-node
+                - linux64-wine
+                - nsis
+            fetch:
+                - upx-3.95-win

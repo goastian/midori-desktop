@@ -203,7 +203,15 @@ def new_label(label, tasks):
     For instance, we try to backfill chunk #3, however, a previous push does not contain such
     chunk, thus, we try to reuse another task/label.
     """
+    logger.info(f"Extracting new label for {label}")
+
+    if "-" not in label:
+        raise Exception(
+            f"Expected '-' was not found in label {label}, cannot extract new label."
+        )
+
     begining_label, ending = label.rsplit("-", 1)
+
     if ending.isdigit():
         # We assume that the taskgraph has chunk #1 OR unnumbered chunk and we hijack it
         if begining_label in tasks:
@@ -278,7 +286,7 @@ def add_task_with_original_manifests(
     """
     # This step takes a lot of time when executed locally
     logger.info("Retreving the full task graph and labels.")
-    decision_task_id, full_task_graph, label_to_taskid = fetch_graph_and_labels(
+    decision_task_id, full_task_graph, label_to_taskid, _ = fetch_graph_and_labels(
         parameters, graph_config
     )
 
@@ -358,12 +366,19 @@ def backfill_all_browsertime(parameters, graph_config, input, task_group_id, tas
             sys.exit(1)
 
 
-def filter_raptor_jobs(full_task_graph, label_to_taskid):
+def filter_raptor_jobs(full_task_graph, label_to_taskid, project):
+    # Late import to prevent impacting other backfill action tasks
+    from ..util.attributes import match_run_on_projects
+
     to_run = []
     for label, entry in full_task_graph.tasks.items():
         if entry.kind != "test":
             continue
         if entry.task.get("extra", {}).get("suite", "") != "raptor":
+            continue
+        if not match_run_on_projects(
+            project, entry.attributes.get("run_on_projects", [])
+        ):
             continue
         if "browsertime" not in entry.attributes.get("raptor_try_name", ""):
             continue
@@ -409,11 +424,11 @@ def add_all_browsertime(parameters, graph_config, input, task_group_id, task_id)
     https://firefox-source-docs.mozilla.org/taskcluster/actions.html#testing-the-action-locally
     """
     logger.info("Retreving the full task graph and labels.")
-    decision_task_id, full_task_graph, label_to_taskid = fetch_graph_and_labels(
+    decision_task_id, full_task_graph, label_to_taskid, _ = fetch_graph_and_labels(
         parameters, graph_config
     )
 
-    to_run = filter_raptor_jobs(full_task_graph, label_to_taskid)
+    to_run = filter_raptor_jobs(full_task_graph, label_to_taskid, parameters["project"])
 
     create_tasks(
         graph_config,

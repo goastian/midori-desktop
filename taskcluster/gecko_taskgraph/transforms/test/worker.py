@@ -15,21 +15,6 @@ LINUX_WORKER_TYPES = {
 
 # windows worker types keyed by test-platform and virtualization
 WINDOWS_WORKER_TYPES = {
-    "windows7-32-qr": {
-        "virtual": "t-win7-32",
-        "virtual-with-gpu": "t-win7-32-gpu",
-        "hardware": "t-win10-64-1803-hw",
-    },
-    "windows7-32-shippable-qr": {
-        "virtual": "t-win7-32",
-        "virtual-with-gpu": "t-win7-32-gpu",
-        "hardware": "t-win10-64-1803-hw",
-    },
-    "windows7-32-devedition-qr": {  # build only, tests have no value
-        "virtual": "t-win7-32",
-        "virtual-with-gpu": "t-win7-32-gpu",
-        "hardware": "t-win10-64-1803-hw",
-    },
     "windows10-64": {  # source-test
         "virtual": "t-win10-64",
         "virtual-with-gpu": "t-win10-64-gpu-s",
@@ -40,10 +25,15 @@ WINDOWS_WORKER_TYPES = {
         "virtual-with-gpu": "t-win10-64-gpu-s",
         "hardware": "t-win10-64-1803-hw",
     },
-    "windows10-64-ref-hw-2017": {
-        "virtual": "t-win10-64",
-        "virtual-with-gpu": "t-win10-64-gpu-s",
-        "hardware": "t-win10-64-ref-hw",
+    "windows11-64-2009-hw-ref-shippable": {
+        "virtual": "win11-64-2009-hw-ref",
+        "virtual-with-gpu": "win11-64-2009-hw-ref",
+        "hardware": "win11-64-2009-hw-ref",
+    },
+    "windows11-64-2009-hw-ref": {
+        "virtual": "win11-64-2009-hw-ref",
+        "virtual-with-gpu": "win11-64-2009-hw-ref",
+        "hardware": "win11-64-2009-hw-ref",
     },
     "windows10-64-2009-qr": {
         "virtual": "win10-64-2009",
@@ -109,9 +99,9 @@ WINDOWS_WORKER_TYPES = {
 
 # os x worker types keyed by test-platform
 MACOSX_WORKER_TYPES = {
-    "macosx1015-64-power": "t-osx-1015-power",
     "macosx1015-64": "t-osx-1015-r8",
     "macosx1100-64": "t-osx-1100-m1",
+    "macosx1400-64": "t-osx-1400-m2",
 }
 
 transforms = TransformSequence()
@@ -129,19 +119,18 @@ def set_worker_type(config, tasks):
             # Unless the value is set to "default", in that case ignore it.
             pass
         elif test_platform.startswith("macosx1015-64"):
-            if "--power-test" in task["mozharness"]["extra-options"]:
-                task["worker-type"] = MACOSX_WORKER_TYPES["macosx1015-64-power"]
-            else:
-                task["worker-type"] = MACOSX_WORKER_TYPES["macosx1015-64"]
+            task["worker-type"] = MACOSX_WORKER_TYPES["macosx1015-64"]
         elif test_platform.startswith("macosx1100-64"):
             task["worker-type"] = MACOSX_WORKER_TYPES["macosx1100-64"]
+        elif test_platform.startswith("macosx1400-64"):
+            task["worker-type"] = MACOSX_WORKER_TYPES["macosx1400-64"]
         elif test_platform.startswith("win"):
             # figure out what platform the job needs to run on
             if task["virtualization"] == "hardware":
-                # some jobs like talos and reftest run on real h/w - those are all win10
-                if test_platform.startswith("windows10-64-ref-hw-2017"):
+                # some jobs like talos and reftest run on real h/w
+                if test_platform.startswith("windows11-64-2009-hw-ref"):
                     win_worker_type_platform = WINDOWS_WORKER_TYPES[
-                        "windows10-64-ref-hw-2017"
+                        "windows11-64-2009-hw-ref"
                     ]
                 else:
                     win_worker_type_platform = WINDOWS_WORKER_TYPES["windows10-64"]
@@ -153,21 +142,28 @@ def set_worker_type(config, tasks):
                 if task[
                     "virtualization"
                 ] == "virtual-with-gpu" and test_platform.startswith("windows1"):
-                    # add in `--requires-gpu` to the mozharness options
-                    task["mozharness"]["extra-options"].append("--requires-gpu")
+                    # some unittests can run on hardware, no need for --requires-gpu
+                    if not test_platform.startswith("windows11-64-2009-hw-ref"):
+                        # add in `--requires-gpu` to the mozharness options
+                        task["mozharness"]["extra-options"].append("--requires-gpu")
 
             # now we have the right platform set the worker type accordingly
             task["worker-type"] = win_worker_type_platform[task["virtualization"]]
-        elif test_platform.startswith("android-hw-g5"):
-            if task["suite"] != "raptor":
-                task["worker-type"] = "t-bitbar-gw-unit-g5"
-            else:
-                task["worker-type"] = "t-bitbar-gw-perf-g5"
         elif test_platform.startswith("android-hw-p5"):
             if task["suite"] != "raptor":
                 task["worker-type"] = "t-bitbar-gw-unit-p5"
             else:
                 task["worker-type"] = "t-bitbar-gw-perf-p5"
+        elif test_platform.startswith("android-hw-p6"):
+            if task["suite"] != "raptor":
+                task["worker-type"] = "t-bitbar-gw-unit-p6"
+            else:
+                task["worker-type"] = "t-bitbar-gw-perf-p6"
+        elif test_platform.startswith("android-hw-s21"):
+            if task["suite"] != "raptor":
+                task["worker-type"] = "t-bitbar-gw-unit-s21"
+            else:
+                task["worker-type"] = "t-bitbar-gw-perf-s21"
         elif test_platform.startswith("android-hw-a51"):
             if task["suite"] != "raptor":
                 task["worker-type"] = "t-bitbar-gw-unit-a51"
@@ -177,7 +173,10 @@ def set_worker_type(config, tasks):
             task["worker-type"] = "t-linux-kvm"
         elif test_platform.startswith("linux") or test_platform.startswith("android"):
             if "wayland" in test_platform:
-                task["worker-type"] = "t-linux-wayland"
+                if task["instance-size"].startswith("xlarge"):
+                    task["worker-type"] = "t-linux-xlarge-wayland"
+                else:
+                    task["worker-type"] = "t-linux-wayland"
             elif task.get("suite", "") in ["talos", "raptor"] and not task[
                 "build-platform"
             ].startswith("linux64-ccov"):
@@ -193,7 +192,7 @@ def set_worker_type(config, tasks):
 @transforms.add
 def set_wayland_env(config, tasks):
     for task in tasks:
-        if task["worker-type"] != "t-linux-wayland":
+        if "wayland" not in task["test-platform"]:
             yield task
             continue
 

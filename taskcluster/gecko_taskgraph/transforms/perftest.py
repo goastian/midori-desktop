@@ -1,3 +1,4 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
@@ -289,7 +290,6 @@ def setup_perftest_test_date(config, jobs):
 def setup_regression_detector(config, jobs):
     for job in jobs:
         if "change-detector" in job.get("name"):
-
             tasks_to_analyze = []
             for task in config.params["try_task_config"].get("tasks", []):
                 # Explicitly skip these tasks since they're
@@ -348,4 +348,12 @@ def setup_regression_detector(config, jobs):
                     new_revision=config.params["head_rev"],
                 )
 
+        yield job
+
+
+@transforms.add
+def apply_perftest_tier_optimization(config, jobs):
+    for job in jobs:
+        job["optimization"] = {"skip-unless-backstop": None}
+        job["treeherder"]["tier"] = max(job["treeherder"]["tier"], 2)
         yield job

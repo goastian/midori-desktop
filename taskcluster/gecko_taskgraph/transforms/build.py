@@ -32,9 +32,6 @@ def set_defaults(config, jobs):
         worker = job.setdefault("worker", {})
         worker.setdefault("env", {})
         worker["chain-of-trust"] = True
-        if worker_os == "linux":
-            worker.setdefault("docker-image", {"in-tree": "debian11-amd64-build"})
-
         yield job
 
 
@@ -142,6 +139,10 @@ def use_artifact(config, jobs):
             and job.get("index", {}).get("job-name") in ARTIFACT_JOBS
             # If tests aren't packaged, then we are not able to rebuild all the packages
             and job["worker"]["env"].get("MOZ_AUTOMATION_PACKAGE_TESTS") == "1"
+            # Android shippable artifact builds are not supported
+            and not (
+                "android" in job["name"] and job["attributes"].get("shippable", False)
+            )
         ):
             job["treeherder"]["symbol"] = add_suffix(job["treeherder"]["symbol"], "a")
             job["worker"]["env"]["USE_ARTIFACT"] = "1"

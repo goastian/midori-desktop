@@ -5,39 +5,38 @@
 Transform the beetmover task into an actual task description.
 """
 
-from collections import defaultdict
-from copy import deepcopy
-
 from taskgraph.transforms.base import TransformSequence
-from taskgraph.util.schema import optionally_keyed_by, resolve_keyed_by
+from taskgraph.util.dependencies import get_primary_dependency
+from taskgraph.util.schema import Schema
 from taskgraph.util.taskcluster import get_artifact_prefix
-from voluptuous import Any, Optional, Required
+from voluptuous import Optional, Required
 
-from gecko_taskgraph.loader.single_dep import schema
 from gecko_taskgraph.transforms.beetmover import craft_release_properties
 from gecko_taskgraph.transforms.task import task_description_schema
 from gecko_taskgraph.util.attributes import (
     copy_attributes_from_dependent_job,
-    release_level,
 )
 from gecko_taskgraph.util.partners import (
     apply_partner_priority,
-    get_partner_config_by_kind,
 )
 from gecko_taskgraph.util.scriptworker import (
     add_scope_prefix,
     get_beetmover_bucket_scope,
 )
 
-beetmover_description_schema = schema.extend(
+beetmover_description_schema = Schema(
     {
+        # from the loader:
+        Optional("task-from"): str,
+        Optional("name"): str,
+        # from the from_deps transforms:
+        Optional("attributes"): task_description_schema["attributes"],
+        Optional("dependencies"): task_description_schema["dependencies"],
         # depname is used in taskref's to identify the taskID of the unsigned things
         Required("depname", default="build"): str,
         # unique label to describe this beetmover task, defaults to {dep.label}-beetmover
         Optional("label"): str,
-        Required("partner-bucket-scope"): optionally_keyed_by("release-level", str),
-        Required("partner-public-path"): Any(None, str),
-        Required("partner-private-path"): Any(None, str),
+        Required("partner-path"): str,
         Optional("extra"): object,
         Required("shipping-phase"): task_description_schema["shipping-phase"],
         Optional("shipping-product"): task_description_schema["shipping-product"],
@@ -51,48 +50,23 @@ transforms.add(apply_partner_priority)
 
 
 @transforms.add
-def resolve_keys(config, jobs):
+def populate_scopes_and_upstream_artifacts(config, jobs):
     for job in jobs:
-        resolve_keyed_by(
-            job,
-            "partner-bucket-scope",
-            item_name=job["label"],
-            **{"release-level": release_level(config.params["project"])},
-        )
-        yield job
+        dep_job = get_primary_dependency(config, job)
+        assert dep_job
 
-
-@transforms.add
-def split_public_and_private(config, jobs):
-    # we need to separate private vs public destinations because beetmover supports one
-    # in a single task. Only use a single task for each type though.
-    partner_config = get_partner_config_by_kind(config, config.kind)
-    for job in jobs:
-        upstream_artifacts = job["primary-dependency"].attributes.get(
-            "release_artifacts"
-        )
-        attribution_task_ref = "<{}>".format(job["primary-dependency"].label)
-        prefix = get_artifact_prefix(job["primary-dependency"])
-        artifacts = defaultdict(list)
+        upstream_artifacts = dep_job.attributes["release_artifacts"]
+        attribution_task_ref = "<{}>".format(dep_job.label)
+        prefix = get_artifact_prefix(dep_job)
+        artifacts = []
         for artifact in upstream_artifacts:
             partner, sub_partner, platform, locale, _ = artifact.replace(
                 prefix + "/", ""
             ).split("/", 4)
-            destination = "private"
-            this_config = [
-                p
-                for p in partner_config["configs"]
-                if (p["campaign"] == partner and p["content"] == sub_partner)
-            ]
-            if this_config[0].get("upload_to_candidates"):
-                destination = "public"
-            artifacts[destination].append(
-                (artifact, partner, sub_partner, platform, locale)
-            )
+            artifacts.append((artifact, partner, sub_partner, platform, locale))
 
         action_scope = add_scope_prefix(config, "beetmover:action:push-to-partner")
-        public_bucket_scope = get_beetmover_bucket_scope(config)
-        partner_bucket_scope = add_scope_prefix(config, job["partner-bucket-scope"])
+        bucket_scope = get_beetmover_bucket_scope(config)
         repl_dict = {
             "build_number": config.params["build_number"],
             "release_partner_build_number": config.params[
@@ -104,31 +78,21 @@ def split_public_and_private(config, jobs):
             "platform": "{platform}",
             "locale": "{locale}",
         }
-        for destination, destination_artifacts in artifacts.items():
-            this_job = deepcopy(job)
+        job["scopes"] = [bucket_scope, action_scope]
 
-            if destination == "public":
-                this_job["scopes"] = [public_bucket_scope, action_scope]
-                this_job["partner_public"] = True
-            else:
-                this_job["scopes"] = [partner_bucket_scope, action_scope]
-                this_job["partner_public"] = False
+        partner_path = job["partner-path"].format(**repl_dict)
+        job.setdefault("worker", {})[
+            "upstream-artifacts"
+        ] = generate_upstream_artifacts(attribution_task_ref, artifacts, partner_path)
 
-            partner_path_key = f"partner-{destination}-path"
-            partner_path = this_job[partner_path_key].format(**repl_dict)
-            this_job.setdefault("worker", {})[
-                "upstream-artifacts"
-            ] = generate_upstream_artifacts(
-                attribution_task_ref, destination_artifacts, partner_path
-            )
-
-            yield this_job
+        yield job
 
 
 @transforms.add
 def make_task_description(config, jobs):
     for job in jobs:
-        dep_job = job["primary-dependency"]
+        dep_job = get_primary_dependency(config, job)
+        assert dep_job
 
         attributes = dep_job.attributes
         build_platform = attributes.get("build_platform")
@@ -137,12 +101,6 @@ def make_task_description(config, jobs):
 
         label = config.kind
         description = "Beetmover for partner attribution"
-        if job["partner_public"]:
-            label = f"{label}-public"
-            description = f"{description} public"
-        else:
-            label = f"{label}-private"
-            description = f"{description} private"
         attributes = copy_attributes_from_dependent_job(dep_job)
 
         task = {
@@ -153,7 +111,6 @@ def make_task_description(config, jobs):
             "run-on-projects": dep_job.attributes.get("run_on_projects"),
             "shipping-phase": job["shipping-phase"],
             "shipping-product": job.get("shipping-product"),
-            "partner_public": job["partner_public"],
             "worker": job["worker"],
             "scopes": job["scopes"],
         }
@@ -194,9 +151,7 @@ def make_task_worker(config, jobs):
         worker = {
             "implementation": "beetmover",
             "release-properties": craft_release_properties(config, job),
-            "partner-public": job["partner_public"],
         }
         job["worker"].update(worker)
-        del job["partner_public"]
 
         yield job

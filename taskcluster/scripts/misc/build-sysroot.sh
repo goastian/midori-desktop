@@ -42,7 +42,7 @@ jessie)
   repo_url=https://archive.debian.org/debian
   ;;
 *)
-  SNAPSHOT=20210208T213147Z
+  SNAPSHOT=20230611T210420Z
   repo_url=http://snapshot.debian.org/archive/debian/$SNAPSHOT
   ;;
 esac
@@ -51,7 +51,6 @@ packages="
   linux-libc-dev
   libasound2-dev
   libstdc++-${gcc_version}-dev
-  libdbus-glib-1-dev
   libfontconfig1-dev
   libfreetype6-dev
   libgconf2-dev

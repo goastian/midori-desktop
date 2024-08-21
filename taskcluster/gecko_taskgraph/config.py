@@ -4,6 +4,7 @@
 
 from taskgraph.util.schema import Schema, optionally_keyed_by
 from voluptuous import Any, Optional, Required
+from voluptuous.validators import Length
 
 graph_config_schema = Schema(
     {
@@ -20,7 +21,7 @@ graph_config_schema = Schema(
         Required("product-dir"): str,
         Required("treeherder"): {
             # Mapping of treeherder group symbols to descriptive names
-            Required("group-names"): {str: str}
+            Required("group-names"): {str: Length(max=100)}
         },
         Required("index"): {Required("products"): [str]},
         Required("try"): {
@@ -42,6 +43,7 @@ graph_config_schema = Schema(
                     Optional("partial-updates"): bool,
                 }
             },
+            Optional("rebuild-kinds"): [str],
         },
         Required("merge-automation"): {
             Required("behaviors"): {
@@ -104,11 +106,25 @@ graph_config_schema = Schema(
                 }
             },
         },
-        Required("mac-notarization"): {
-            Required("mac-entitlements"): optionally_keyed_by(
-                "platform", "release-level", str
-            ),
+        Required("mac-signing"): {
             Required("mac-requirements"): optionally_keyed_by("platform", str),
+            Required("hardened-sign-config"): optionally_keyed_by(
+                "hardened-signing-type",
+                [
+                    {
+                        Optional("deep"): bool,
+                        Optional("runtime"): bool,
+                        Optional("force"): bool,
+                        Optional("requirements"): optionally_keyed_by(
+                            "release-product", "release-level", str
+                        ),
+                        Optional("entitlements"): optionally_keyed_by(
+                            "build-platform", "project", str
+                        ),
+                        Required("globs"): [str],
+                    }
+                ],
+            ),
         },
         Required("taskgraph"): {
             Optional(

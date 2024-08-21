@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import textwrap
 from contextlib import contextmanager
 
@@ -247,9 +248,21 @@ def fetch_std(manifest, targets):
     stds = []
     for target in targets:
         stds.append(fetch_package(manifest, "rust-std", target))
-        # not available for i686
-        if target != "i686-unknown-linux-musl":
-            stds.append(fetch_package(manifest, "rust-analysis", target))
+        analysis = fetch_optional(manifest, "rust-analysis", target)
+        if analysis:
+            stds.append(analysis)
+        else:
+            log(f"Missing rust-analysis for {target}")
+            # If it's missing for one of the searchfox targets, explicitly
+            # error out.
+            if target in (
+                "x86_64-unknown-linux-gnu",
+                "x86_64-apple-darwin",
+                "x86_64-pc-windows-msvc",
+                "thumbv7neon-linux-androideabi",
+            ):
+                raise AssertionError
+
     return stds
 
 
@@ -399,18 +412,15 @@ def build_src(install_dir, host, targets, patches):
     # `sysconfdir` is overloaded to be relative instead of absolute.
     # This is the default of `install.sh`, but for whatever reason
     # `x.py install` has its own default of `/etc` which we don't want.
-    #
-    # `missing-tools` is set so `rustfmt` is allowed to fail. This means
-    # we can "succeed" at building Rust while failing to build, say, Cargo.
-    # Ideally the build system would have better granularity:
-    # https://github.com/rust-lang/rust/issues/79249
     base_config = textwrap.dedent(
         """
         [build]
         docs = false
         sanitizers = true
+        profiler = true
         extended = true
         tools = ["analysis", "cargo", "rustfmt", "clippy", "src", "rust-analyzer"]
+        cargo-native-static = true
 
         [rust]
         {omit_git_hash} = false
@@ -419,9 +429,6 @@ def build_src(install_dir, host, targets, patches):
         [install]
         prefix = "{prefix}"
         sysconfdir = "etc"
-
-        [dist]
-        missing-tools = true
 
         [llvm]
         download-ci-llvm = false
@@ -453,22 +460,35 @@ def build_src(install_dir, host, targets, patches):
     clang = os.path.join(fetches, "clang")
     clang_bin = os.path.join(clang, "bin")
     clang_lib = os.path.join(clang, "lib")
+    sysroot = os.path.join(fetches, "sysroot")
 
-    env = os.environ.copy()
-    env.update(
-        {
-            "PATH": os.pathsep.join((clang_bin, os.environ["PATH"])),
-            "LD_LIBRARY_PATH": clang_lib,
-        }
-    )
+    # The rust build doesn't offer much in terms of overriding compiler flags
+    # when it builds LLVM's compiler-rt, but we want to build with a sysroot.
+    # So, we create wrappers for clang and clang++ that add the sysroot to the
+    # command line.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for exe in ("clang", "clang++"):
+            tmp_exe = os.path.join(tmpdir, exe)
+            with open(tmp_exe, "w") as fh:
+                fh.write("#!/bin/sh\n")
+                fh.write(f'exec {clang_bin}/{exe} --sysroot={sysroot} "$@"\n')
+            os.chmod(tmp_exe, 0o755)
 
-    # x.py install does everything we need for us.
-    # If you're running into issues, consider using `-vv` to debug it.
-    command = ["python3", "x.py", "install", "-v", "--host", host]
-    for target in targets:
-        command.extend(["--target", target])
+        env = os.environ.copy()
+        env.update(
+            {
+                "PATH": os.pathsep.join((tmpdir, clang_bin, os.environ["PATH"])),
+                "LD_LIBRARY_PATH": clang_lib,
+            }
+        )
 
-    subprocess.check_call(command, stderr=subprocess.STDOUT, env=env, cwd=rust_dir)
+        # x.py install does everything we need for us.
+        # If you're running into issues, consider using `-vv` to debug it.
+        command = ["python3", "x.py", "install", "-v", "--host", host]
+        for target in targets:
+            command.extend(["--target", target])
+
+        subprocess.check_call(command, stderr=subprocess.STDOUT, env=env, cwd=rust_dir)
 
 
 def repack(
@@ -597,6 +617,11 @@ def args():
         required=True,
     )
     parser.add_argument(
+        "--allow-generic-channel",
+        action="store_true",
+        help='Allow to use e.g. "nightly" without a date as a channel.',
+    )
+    parser.add_argument(
         "--patch",
         dest="patches",
         action="append",
@@ -631,12 +656,14 @@ def args():
     args = parser.parse_args()
     if not args.cargo_channel:
         args.cargo_channel = args.channel
-    validate_channel(args.channel)
-    validate_channel(args.cargo_channel)
+    if not args.allow_generic_channel:
+        validate_channel(args.channel)
+        validate_channel(args.cargo_channel)
     if not args.host:
         args.host = "linux64"
     args.host = expand_platform(args.host)
     args.targets = [expand_platform(t) for t in args.targets]
+    delattr(args, "allow_generic_channel")
 
     return args
 

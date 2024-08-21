@@ -62,6 +62,8 @@ platform_names:
             linux64-shippable: 'linux-x86_64'
             linux64-devedition: 'linux-x86_64'
             linux64-asan-reporter-shippable: 'linux-x86_64-asan-reporter'
+            linux64-aarch64-shippable: 'linux-aarch64'
+            linux64-aarch64-devedition: 'linux-aarch64'
             macosx64-shippable: 'mac'
             macosx64-devedition: 'mac'
             win32-shippable: 'win32'
@@ -78,6 +80,8 @@ platform_names:
             linux64-shippable: 'linux64'
             linux64-devedition: 'linux64-devedition'
             linux64-asan-reporter-shippable: 'linux-x86_64-asan-reporter'
+            linux64-aarch64-shippable: 'linux64-aarch64'
+            linux64-aarch64-devedition: 'linux64-aarch64-devedition'
             macosx64-shippable: 'macosx64'
             macosx64-devedition: 'macosx64-devedition'
             win32-shippable: 'win32'
@@ -94,6 +98,8 @@ platform_names:
             linux64-shippable: 'linux64'
             linux64-devedition: 'linux64'
             linux64-asan-reporter-shippable: 'linux-x86_64-asan-reporter'
+            linux64-aarch64-shippable: 'linux64-aarch64'
+            linux64-aarch64-devedition: 'linux64-aarch64'
             macosx64-shippable: 'macosx64'
             macosx64-devedition: 'macosx64'
             win32-shippable: 'win32'
@@ -313,8 +319,11 @@ mapping:
         <<: *default
         description: "Main package disk image for Mac OS X platforms"
         all_locales: true
+        # Attribution-l10n jobs don't have locale in the artifact path
+        source_path_modifier: ""
         from:
-            - repackage
+            - attribution
+            - attribution-l10n
         only_for_platforms:
             - macosx64-shippable
             - macosx64-devedition
@@ -388,6 +397,8 @@ mapping:
             - win32-shippable
             - win64-devedition
             - win32-devedition
+            - win64-aarch64-shippable
+            - win64-aarch64-devedition
         locale_prefix: 'multi/'
         pretty_name: Firefox Setup ${version}.msix
         checksums_path: ${path_platform}/multi/Firefox Setup ${version}.msix

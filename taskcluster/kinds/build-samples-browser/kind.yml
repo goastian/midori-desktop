@@ -1,0 +1,64 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+loader: taskgraph.loader.transform:loader
+
+transforms:
+    - android_taskgraph.transforms.build_components:transforms
+    - gecko_taskgraph.transforms.build_schedules:transforms
+    - gecko_taskgraph.transforms.job:transforms
+    - gecko_taskgraph.transforms.task:transforms
+
+kind-dependencies:
+    - toolchain
+    - build-fat-aar
+
+
+task-defaults:
+    attributes:
+        build_platform: android
+        build-type: regular
+        component: samples-browser
+    dependencies:
+        build-fat-aar: build-fat-aar-android-geckoview-fat-aar/opt
+    description: Execute Gradle tasks for component "{component}"
+    fetches:
+        toolchain:
+            - android-sdk-linux
+            - android-gradle-dependencies
+            - linux64-jdk
+        build-fat-aar:
+            - target.maven.tar.xz
+    include-coverage: true
+    run:
+        pre-gradlew:
+            - ["cd", "mobile/android/android-components"]
+        using: gradlew
+        use-caches: false
+    treeherder:
+        kind: build
+        platform: AC-android-all/opt
+        tier: 1
+        symbol: 'samples-browser(B)'
+    worker-type: b-linux-medium-gcp
+    worker:
+        chain-of-trust: true
+        docker-image: {in-tree: android-components}
+        max-run-time: 1200
+        env:
+            ANDROID_SDK_ROOT: /builds/worker/fetches/android-sdk-linux
+
+tasks:
+    gecko:
+        run:
+            gradlew:
+                - ':samples-browser:assembleGecko'
+                - ':samples-browser:testGeckoDebugUnitTest'
+                - ':samples-browser:lintGeckoDebug'
+
+    system:
+        run:
+            gradlew: [':samples-browser:assembleSystem']
+        treeherder:
+            symbol: 'samples-browser-system(B)'

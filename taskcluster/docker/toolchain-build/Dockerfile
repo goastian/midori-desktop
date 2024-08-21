@@ -44,7 +44,6 @@ RUN apt-get update && \
       p7zip-full \
       pkg-config \
       procps \
-      python3-distutils-extra \
       python3-requests \
       python3-toml \
       scons \
@@ -56,6 +55,8 @@ RUN apt-get update && \
       wget \
       zip \
       zlib1g-dev
+
+RUN /usr/local/sbin/clean_packages.sh $DOCKER_IMAGE_PACKAGES
 
 # mmdebstrap is not available in jessie, but we only need it in the buster-based image.
 # We also want zstd when available.

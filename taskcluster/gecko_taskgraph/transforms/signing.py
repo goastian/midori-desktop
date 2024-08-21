@@ -6,16 +6,13 @@ Transform the signing task into an actual task description.
 """
 
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.util.dependencies import get_primary_dependency
 from taskgraph.util.keyed_by import evaluate_keyed_by
-from taskgraph.util.schema import taskref_or_string
+from taskgraph.util.schema import Schema, taskref_or_string
 from voluptuous import Optional, Required
 
-from gecko_taskgraph.loader.single_dep import schema
 from gecko_taskgraph.transforms.task import task_description_schema
-from gecko_taskgraph.util.attributes import (
-    copy_attributes_from_dependent_job,
-    release_level,
-)
+from gecko_taskgraph.util.attributes import copy_attributes_from_dependent_job
 from gecko_taskgraph.util.scriptworker import (
     add_scope_prefix,
     get_signing_cert_scope_per_platform,
@@ -23,7 +20,7 @@ from gecko_taskgraph.util.scriptworker import (
 
 transforms = TransformSequence()
 
-signing_description_schema = schema.extend(
+signing_description_schema = Schema(
     {
         # Artifacts from dep task to sign - Sync with taskgraph/transforms/task.py
         # because this is passed directly into the signingscript worker
@@ -39,8 +36,6 @@ signing_description_schema = schema.extend(
                 Required("formats"): [str],
             }
         ],
-        # depname is used in taskref's to identify the taskID of the unsigned things
-        Required("depname"): str,
         # attributes for this task
         Optional("attributes"): {str: object},
         # unique label to describe this signing task, defaults to {dep.label}-signing
@@ -53,7 +48,7 @@ signing_description_schema = schema.extend(
         Optional("routes"): [str],
         Optional("shipping-phase"): task_description_schema["shipping-phase"],
         Optional("shipping-product"): task_description_schema["shipping-product"],
-        Optional("dependent-tasks"): {str: object},
+        Required("dependencies"): task_description_schema["dependencies"],
         # Optional control for how long a task may run (aka maxRunTime)
         Optional("max-run-time"): int,
         Optional("extra"): {str: object},
@@ -61,16 +56,25 @@ signing_description_schema = schema.extend(
         Optional("repacks-per-chunk"): int,
         # Override the default priority for the project
         Optional("priority"): task_description_schema["priority"],
+        Optional("task-from"): task_description_schema["task-from"],
     }
 )
 
 
+def get_locales_description(attributes, default):
+    """Returns the [list] of locales for task description usage"""
+    chunk_locales = attributes.get("chunk_locales")
+    if chunk_locales:
+        return ", ".join(chunk_locales)
+    return attributes.get("locale", default)
+
+
 @transforms.add
-def set_defaults(config, jobs):
+def delete_name(config, jobs):
+    """Delete the 'name' key if it exists, we don't use it."""
     for job in jobs:
-        if not job.get("depname"):
-            dep_job = job["primary-dependency"]
-            job["depname"] = dep_job.kind
+        if "name" in job:
+            del job["name"]
         yield job
 
 
@@ -78,31 +82,15 @@ transforms.add_validate(signing_description_schema)
 
 
 @transforms.add
-def add_entitlements_link(config, jobs):
-    for job in jobs:
-        entitlements_path = evaluate_keyed_by(
-            config.graph_config["mac-notarization"]["mac-entitlements"],
-            "mac entitlements",
-            {
-                "platform": job["primary-dependency"].attributes.get("build_platform"),
-                "release-level": release_level(config.params["project"]),
-            },
-        )
-        if entitlements_path:
-            job["entitlements-url"] = config.params.file_url(
-                entitlements_path,
-            )
-        yield job
-
-
-@transforms.add
 def add_requirements_link(config, jobs):
     for job in jobs:
+        dep_job = get_primary_dependency(config, job)
+        assert dep_job
         requirements_path = evaluate_keyed_by(
-            config.graph_config["mac-notarization"]["mac-requirements"],
+            config.graph_config["mac-signing"]["mac-requirements"],
             "mac requirements",
             {
-                "platform": job["primary-dependency"].attributes.get("build_platform"),
+                "platform": dep_job.attributes.get("build_platform"),
             },
         )
         if requirements_path:
@@ -115,7 +103,8 @@ def add_requirements_link(config, jobs):
 @transforms.add
 def make_task_description(config, jobs):
     for job in jobs:
-        dep_job = job["primary-dependency"]
+        dep_job = get_primary_dependency(config, job)
+        assert dep_job
         attributes = dep_job.attributes
 
         signing_format_scopes = []
@@ -126,6 +115,7 @@ def make_task_description(config, jobs):
 
         is_shippable = dep_job.attributes.get("shippable", False)
         build_platform = dep_job.attributes.get("build_platform")
+        assert build_platform
         treeherder = None
         if "partner" not in config.kind and "eme-free" not in config.kind:
             treeherder = job.get("treeherder", {})
@@ -160,9 +150,9 @@ def make_task_description(config, jobs):
 
         label = job["label"]
         description = (
-            "Initial Signing for locale '{locale}' for build '"
+            "Signing of locale(s) '{locale}' for build '"
             "{build_platform}/{build_type}'".format(
-                locale=attributes.get("locale", "en-US"),
+                locale=get_locales_description(attributes, "en-US"),
                 build_platform=build_platform,
                 build_type=attributes.get("build_type"),
             )
@@ -195,7 +185,7 @@ def make_task_description(config, jobs):
                 "max-run-time": job.get("max-run-time", 3600),
             },
             "scopes": [signing_cert_scope] + signing_format_scopes,
-            "dependencies": _generate_dependencies(job),
+            "dependencies": job["dependencies"],
             "attributes": attributes,
             "run-on-projects": dep_job.attributes.get("run_on_projects"),
             "optimization": dep_job.optimization,
@@ -208,10 +198,16 @@ def make_task_description(config, jobs):
 
         # build-mac-{signing,notarization} uses signingscript instead of iscript
         if "macosx" in build_platform and config.kind.endswith("-mac-notarization"):
-            task["worker"]["mac-behavior"] = "apple_notarization"
             task["scopes"] = [
                 add_scope_prefix(config, "signing:cert:release-apple-notarization")
             ]
+            task[
+                "description"
+            ] = "Notarization of '{}' locales for build '{}/{}'".format(
+                get_locales_description(attributes, "en-US"),
+                build_platform,
+                attributes.get("build_type"),
+            )
         elif "macosx" in build_platform:
             # iscript overrides
             task["worker"]["mac-behavior"] = "mac_sign_and_pkg"
@@ -240,15 +236,6 @@ def make_task_description(config, jobs):
             task["priority"] = job["priority"]
 
         yield task
-
-
-def _generate_dependencies(job):
-    if isinstance(job.get("dependent-tasks"), dict):
-        deps = {}
-        for k, v in job["dependent-tasks"].items():
-            deps[k] = v.label
-        return deps
-    return {job["depname"]: job["primary-dependency"].label}
 
 
 def _generate_treeherder_platform(dep_th_platform, build_platform, build_type):

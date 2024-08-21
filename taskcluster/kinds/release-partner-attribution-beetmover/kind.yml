@@ -1,0 +1,22 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+loader: taskgraph.loader.transform:loader
+
+transforms:
+    - taskgraph.transforms.from_deps
+    - gecko_taskgraph.transforms.name_sanity
+    - gecko_taskgraph.transforms.partner_attribution_beetmover
+    - gecko_taskgraph.transforms.task
+
+kind-dependencies:
+    - release-partner-attribution
+
+tasks:
+    release-partner-attribution-beetmover:
+        from-deps:
+            group-by: single-with-filters
+        shipping-product: firefox
+        shipping-phase: promote
+        partner-path: "partner-repacks/{partner}/{subpartner}/v{release_partner_build_number}/{platform}/{locale}"

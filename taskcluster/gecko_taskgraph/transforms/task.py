@@ -19,6 +19,7 @@ import attr
 from mozbuild.util import memoize
 from taskcluster.utils import fromNow
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.util.copy import deepcopy
 from taskgraph.util.keyed_by import evaluate_keyed_by
 from taskgraph.util.schema import (
     Schema,
@@ -35,7 +36,6 @@ from gecko_taskgraph.optimize.schema import OptimizationSchema
 from gecko_taskgraph.transforms.job.common import get_expiration
 from gecko_taskgraph.util import docker as dockerutil
 from gecko_taskgraph.util.attributes import TRUNK_PROJECTS, is_try, release_level
-from gecko_taskgraph.util.copy_task import copy_task
 from gecko_taskgraph.util.hash import hash_path
 from gecko_taskgraph.util.partners import get_partners_to_be_published
 from gecko_taskgraph.util.scriptworker import BALROG_ACTIONS, get_release_config
@@ -71,7 +71,7 @@ task_description_schema = Schema(
         # attributes for this task
         Optional("attributes"): {str: object},
         # relative path (from config.path) to the file task was defined in
-        Optional("job-from"): str,
+        Optional("task-from"): str,
         # dependencies of this task, keyed by name; these are passed through
         # verbatim and subject to the interpretation of the Task's get_dependencies
         # method.
@@ -208,7 +208,7 @@ TC_TREEHERDER_SCHEMA_URL = (
 
 
 UNKNOWN_GROUP_NAME = (
-    "Treeherder group {} (from {}) has no name; " "add it to taskcluster/ci/config.yml"
+    "Treeherder group {} (from {}) has no name; " "add it to taskcluster/config.yml"
 )
 
 V2_ROUTE_TEMPLATES = [
@@ -291,6 +291,7 @@ def payload_builder(name, schema):
     )
 
     def wrap(func):
+        assert name not in payload_builders, f"duplicate payload builder name {name}"
         payload_builders[name] = PayloadBuilder(schema, func)
         return func
 
@@ -303,6 +304,7 @@ index_builders = {}
 
 def index_builder(name):
     def wrap(func):
+        assert name not in index_builders, f"duplicate index builder name {name}"
         index_builders[name] = func
         return func
 
@@ -311,7 +313,7 @@ def index_builder(name):
 
 UNSUPPORTED_INDEX_PRODUCT_ERROR = """\
 The gecko-v2 product {product} is not in the list of configured products in
-`taskcluster/ci/config.yml'.
+`taskcluster/config.yml'.
 """
 
 
@@ -345,6 +347,7 @@ def verify_index(config, index):
         Required("loopback-audio"): bool,
         Required("docker-in-docker"): bool,  # (aka 'dind')
         Required("privileged"): bool,
+        Optional("kvm"): bool,
         # Paths to Docker volumes.
         #
         # For in-tree Docker images, volumes can be parsed from Dockerfile.
@@ -487,6 +490,11 @@ def build_docker_worker_payload(config, task, task_def):
             devices = capabilities.setdefault("devices", {})
             devices[capitalized] = True
             task_def["scopes"].append("docker-worker:capability:device:" + capitalized)
+
+    if worker.get("kvm"):
+        devices = capabilities.setdefault("devices", {})
+        devices["kvm"] = True
+        task_def["scopes"].append("docker-worker:capability:device:kvm")
 
     if worker.get("privileged"):
         capabilities["privileged"] = True
@@ -764,7 +772,7 @@ def build_generic_worker_payload(config, task, task_def):
     #   * 'cache-name' -> 'cacheName'
     #   * 'task-id'    -> 'taskId'
     # All other key names are already suitable, and don't need renaming.
-    mounts = copy_task(worker.get("mounts", []))
+    mounts = deepcopy(worker.get("mounts", []))
     for mount in mounts:
         if "cache-name" in mount:
             mount["cacheName"] = "{trust_domain}-level-{level}-{name}".format(
@@ -834,7 +842,9 @@ def build_generic_worker_payload(config, task, task_def):
         # behavior for mac iscript
         Optional("mac-behavior"): Any(
             "apple_notarization",
+            "apple_notarization_stacked",
             "mac_sign_and_pkg",
+            "mac_sign_and_pkg_hardened",
             "mac_geckodriver",
             "mac_notarize_geckodriver",
             "mac_single_file",
@@ -842,6 +852,22 @@ def build_generic_worker_payload(config, task, task_def):
         ),
         Optional("entitlements-url"): str,
         Optional("requirements-plist-url"): str,
+        Optional("provisioning-profile-config"): [
+            {
+                Required("profile_name"): str,
+                Required("target_path"): str,
+            }
+        ],
+        Optional("hardened-sign-config"): [
+            {
+                Optional("deep"): bool,
+                Optional("runtime"): bool,
+                Optional("force"): bool,
+                Optional("entitlements"): str,
+                Optional("requirements"): str,
+                Required("globs"): [str],
+            }
+        ],
     },
 )
 def build_scriptworker_signing_payload(config, task, task_def):
@@ -853,7 +879,12 @@ def build_scriptworker_signing_payload(config, task, task_def):
     }
     if worker.get("mac-behavior"):
         task_def["payload"]["behavior"] = worker["mac-behavior"]
-        for attribute in ("entitlements-url", "requirements-plist-url"):
+        for attribute in (
+            "entitlements-url",
+            "requirements-plist-url",
+            "hardened-sign-config",
+            "provisioning-profile-config",
+        ):
             if worker.get(attribute):
                 task_def["payload"][attribute] = worker[attribute]
 
@@ -877,7 +908,6 @@ def build_scriptworker_signing_payload(config, task, task_def):
         Required("max-run-time"): int,
         # locale key, if this is a locale beetmover job
         Optional("locale"): str,
-        Optional("partner-public"): bool,
         Required("release-properties"): {
             "app-name": str,
             "app-version": str,
@@ -924,8 +954,6 @@ def build_beetmover_payload(config, task, task_def):
         task_def["payload"]["locale"] = worker["locale"]
     if worker.get("artifact-map"):
         task_def["payload"]["artifactMap"] = worker["artifact-map"]
-    if worker.get("partner-public"):
-        task_def["payload"]["is_partner_repack_public"] = worker["partner-public"]
     if release_config:
         task_def["payload"].update(release_config)
 
@@ -1307,22 +1335,41 @@ def build_push_addons_payload(config, task, task_def):
         Optional("push"): bool,
         Optional("source-repo"): str,
         Optional("ssh-user"): str,
-        Optional("l10n-bump-info"): {
-            Required("name"): str,
-            Required("path"): str,
-            Required("version-path"): str,
-            Optional("l10n-repo-url"): str,
-            Optional("l10n-repo-target-branch"): str,
-            Optional("ignore-config"): object,
-            Required("platform-configs"): [
+        Optional("l10n-bump-info"): [
+            {
+                Required("name"): str,
+                Required("path"): str,
+                Required("version-path"): str,
+                Optional("l10n-repo-url"): str,
+                Optional("l10n-repo-target-branch"): str,
+                Optional("ignore-config"): object,
+                Required("platform-configs"): [
+                    {
+                        Required("platforms"): [str],
+                        Required("path"): str,
+                        Optional("format"): str,
+                    }
+                ],
+            }
+        ],
+        Optional("merge-info"): object,
+        Optional("android-l10n-import-info"): {
+            Required("from-repo-url"): str,
+            Required("toml-info"): [
                 {
-                    Required("platforms"): [str],
-                    Required("path"): str,
-                    Optional("format"): str,
+                    Required("toml-path"): str,
+                    Required("dest-path"): str,
                 }
             ],
         },
-        Optional("merge-info"): object,
+        Optional("android-l10n-sync-info"): {
+            Required("from-repo-url"): str,
+            Required("toml-info"): [
+                {
+                    Required("toml-path"): str,
+                }
+            ],
+        },
     },
 )
 def build_treescript_payload(config, task, task_def):
@@ -1364,17 +1411,26 @@ def build_treescript_payload(config, task, task_def):
         actions.append("version_bump")
 
     if worker.get("l10n-bump-info"):
-        l10n_bump_info = {}
-        for k, v in worker["l10n-bump-info"].items():
-            l10n_bump_info[k.replace("-", "_")] = worker["l10n-bump-info"][k]
-        task_def["payload"]["l10n_bump_info"] = [l10n_bump_info]
-         if (
-            "l10n_repo_url" in l10n_bump_info
-            and "github.com" in l10n_bump_info["l10n_repo_url"]
-        ):
-            actions.append("l10n_bump_github")
-        else:
-            actions.append("l10n_bump")
+        l10n_bump_info = []
+        l10n_repo_urls = set()
+        for lbi in worker["l10n-bump-info"]:
+            new_lbi = {}
+            if "l10n-repo-url" in lbi:
+                l10n_repo_urls.add(lbi["l10n-repo-url"])
+            for k, v in lbi.items():
+                new_lbi[k.replace("-", "_")] = lbi[k]
+            l10n_bump_info.append(new_lbi)
+
+        task_def["payload"]["l10n_bump_info"] = l10n_bump_info
+        if len(l10n_repo_urls) > 1:
+            raise Exception(
+                "Must use the same l10n-repo-url for all files in the same task!"
+            )
+        elif len(l10n_repo_urls) == 1:
+            if "github.com" in l10n_repo_urls.pop():
+                actions.append("l10n_bump_github")
+            else:
+                actions.append("l10n_bump")
 
     if worker.get("merge-info"):
         merge_info = {
@@ -1391,6 +1447,38 @@ def build_treescript_payload(config, task, task_def):
         ]
         task_def["payload"]["merge_info"] = merge_info
         actions.append("merge_day")
+
+    if worker.get("android-l10n-import-info"):
+        android_l10n_import_info = {}
+        for k, v in worker["android-l10n-import-info"].items():
+            android_l10n_import_info[k.replace("-", "_")] = worker[
+                "android-l10n-import-info"
+            ][k]
+        android_l10n_import_info["toml_info"] = [
+            {
+                param_name.replace("-", "_"): param_value
+                for param_name, param_value in entry.items()
+            }
+            for entry in worker["android-l10n-import-info"]["toml-info"]
+        ]
+        task_def["payload"]["android_l10n_import_info"] = android_l10n_import_info
+        actions.append("android_l10n_import")
+
+    if worker.get("android-l10n-sync-info"):
+        android_l10n_sync_info = {}
+        for k, v in worker["android-l10n-sync-info"].items():
+            android_l10n_sync_info[k.replace("-", "_")] = worker[
+                "android-l10n-sync-info"
+            ][k]
+        android_l10n_sync_info["toml_info"] = [
+            {
+                param_name.replace("-", "_"): param_value
+                for param_name, param_value in entry.items()
+            }
+            for entry in worker["android-l10n-sync-info"]["toml-info"]
+        ]
+        task_def["payload"]["android_l10n_sync_info"] = android_l10n_sync_info
+        actions.append("android_l10n_sync")
 
     if worker["push"]:
         actions.append("push")
@@ -1443,6 +1531,7 @@ def set_implementation(config, tasks):
     Set the worker implementation based on the worker-type alias.
     """
     for task in tasks:
+        worker = task.setdefault("worker", {})
         if "implementation" in task["worker"]:
             yield task
             continue
@@ -1456,7 +1545,6 @@ def set_implementation(config, tasks):
         if os:
             tags["os"] = os
 
-        worker = task.setdefault("worker", {})
         worker["implementation"] = impl
         if os:
             worker["os"] = os
@@ -1543,7 +1631,7 @@ def task_name_from_label(config, tasks):
 
 UNSUPPORTED_SHIPPING_PRODUCT_ERROR = """\
 The shipping product {product} is not in the list of configured products in
-`taskcluster/ci/config.yml'.
+`taskcluster/config.yml'.
 """
 
 
@@ -1852,16 +1940,18 @@ def set_task_and_artifact_expiry(config, jobs):
                     f'expiration-policy "{policy}" is larger than {cap} '
                     f'for {config.params["project"]}'
                 )
-
     for job in jobs:
         expires = get_expiration(config, job.get("expiration-policy", "default"))
         job_expiry = job.setdefault("expires-after", expires)
         job_expiry_from_now = fromNow(job_expiry, now)
         if cap and job_expiry_from_now > cap_from_now:
             job_expiry, job_expiry_from_now = cap, cap_from_now
+        # If the task has no explicit expiration-policy, but has an expires-after,
+        # we use that as the default artifact expiry.
+        artifact_expires = expires if "expiration-policy" in job else job_expiry
 
         for artifact in job["worker"].get("artifacts", ()):
-            artifact_expiry = artifact.setdefault("expires-after", expires)
+            artifact_expiry = artifact.setdefault("expires-after", artifact_expires)
 
             # By using > instead of >=, there's a chance of mismatch
             #   where the artifact expires sooner than the task.
@@ -1916,7 +2006,7 @@ def build_task(config, tasks):
             if groupSymbol != "?":
                 treeherder["groupSymbol"] = groupSymbol
                 if groupSymbol not in group_names:
-                    path = os.path.join(config.path, task.get("job-from", ""))
+                    path = os.path.join(config.path, task.get("task-from", ""))
                     raise Exception(UNKNOWN_GROUP_NAME.format(groupSymbol, path))
                 treeherder["groupName"] = group_names[groupSymbol]
             treeherder["symbol"] = symbol

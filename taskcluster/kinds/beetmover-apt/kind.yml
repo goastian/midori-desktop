@@ -1,0 +1,31 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+loader: taskgraph.loader.transform:loader
+
+transforms:
+    - taskgraph.transforms.from_deps
+    - gecko_taskgraph.transforms.release:run_on_releases
+    - gecko_taskgraph.transforms.beetmover_apt
+    - gecko_taskgraph.transforms.task
+
+kind-dependencies:
+    - beetmover-repackage
+
+only-for-build-platforms:
+    - linux-shippable/opt
+    - linux64-shippable/opt
+    - linux64-aarch64-shippable/opt
+    - linux-devedition/opt
+    - linux64-devedition/opt
+
+tasks:
+    beetmover-apt:
+        from-deps:
+            group-by: single-with-filters
+        run-on-releases:
+            - nightly
+            - beta
+            - release
+            - esr128

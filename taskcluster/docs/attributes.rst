@@ -45,7 +45,7 @@ Project names are the repositories.  They can be:
 * `mozilla-central`
 * `mozilla-beta`
 * `mozilla-release`
-* `mozilla-esr102`
+* `mozilla-esr128`
 * ... A partial list can be found in taskcluster/gecko_taskgraph/util/attributes.py
 
 For try, this attribute applies only if ``-p all`` is specified.  All jobs can
@@ -257,7 +257,7 @@ toolchain-command
 =================
 An extra attribute used to communicate to the build system bootstrap code the
 command used to build the toolchain. This is useful because the commands are
-formatted differently depending on the worker type, sometimes unconveniently
+formatted differently depending on the worker type, sometimes inconveniently
 to parse afterwards.
 
 always_target
@@ -459,3 +459,78 @@ supports-artifact-builds
 ========================
 
 If false, the task requires a compiled build and will not work with artifact builds.
+
+primary-kind-dependency
+=======================
+
+For tasks that were derived from a group of dependencies, this attribute
+denotes which dependent kind is the `primary one`_.
+
+Typically this is set by the ``taskgraph.transforms.from_deps`` transforms.
+
+snap_test_type
+==============
+
+For Snap tests tasks, used to disambiguate task label
+
+.. _primary one: https://taskcluster-taskgraph.readthedocs.io/en/latest/reference/transforms/from_deps.html#primary-kind
+
+build-type
+==========
+For android builds, the type of build: typically debug, nightly, beta, release.
+
+component
+=========
+For android-components builds, the name of the component.
+
+apks
+====
+For android apk build tasks, the list of apk artifact names.
+
+aab
+===
+For android aab build tasks, the aab artifact names.
+
+release-type
+============
+For android builds, the type of release: typically debug, nightly, beta, release.
+
+shipping-product
+================
+For android tasks, the shipping product: Fenix, Focus, or an android-component name.
+
+artifacts
+=========
+For android-components tasks, a dictionary mapping extensions to artifact names.
+
+is_final_chunked_task
+=====================
+Used by taskcluster.android_taskgraph.transforms.chunk to mark the last task in a chunk group.
+
+legacy
+======
+Used by Fenix UI tests to select UI tests on legacy Android devices and API levels.
+
+nightly-test
+============
+Used by Fenix browsertime tests to mark the task as part of the nightly-test graph.
+
+screenshots
+===========
+Used by Fenix UI tests to mark the task as part of the screenshots graph.
+
+abi
+===
+Used by android browsertime tasks to track the abi of the product under test.
+
+apk
+===
+Used by android browsertime tasks to track the path to the apk of the product under test.
+
+test-manifests
+==============
+A list of the test manifests that run in this task.
+
+lull-schedule
+=============
+Used by performance tasks to schedule them at a specified frequency in a best-effort method. Schedules them when the overall CI load is low for a given platform. Use "w" for weeks, "d" for days, "h" for hours, and "m" for minutes in a string like so to specify the scheduling frequency: 1d, 1w 4h, 2w 4d 1h.

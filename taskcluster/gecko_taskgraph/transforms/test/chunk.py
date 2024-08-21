@@ -7,17 +7,18 @@ import json
 import taskgraph
 from taskgraph.transforms.base import TransformSequence
 from taskgraph.util.attributes import keymatch
+from taskgraph.util.copy import deepcopy
 from taskgraph.util.treeherder import join_symbol, split_symbol
 
 from gecko_taskgraph.util.attributes import is_try
 from gecko_taskgraph.util.chunking import (
+    WPT_SUBSUITES,
     DefaultLoader,
     chunk_manifests,
     get_manifest_loader,
     get_runtimes,
     guess_mozinfo_from_task,
 )
-from gecko_taskgraph.util.copy_task import copy_task
 from gecko_taskgraph.util.perfile import perfile_number_of_chunks
 
 DYNAMIC_CHUNK_DURATION = 20 * 60  # seconds
@@ -30,7 +31,6 @@ DYNAMIC_CHUNK_MULTIPLIER = {
     "^(?!android).*-xpcshell.*": 0.2,
 }
 """A multiplication factor to tweak the total duration per platform / suite."""
-
 
 transforms = TransformSequence()
 
@@ -45,8 +45,7 @@ def set_test_verify_chunks(config, tasks):
             task["chunks"] = perfile_number_of_chunks(
                 is_try(config.params),
                 env.get("MOZHARNESS_TEST_PATHS", ""),
-                config.params.get("head_repository", ""),
-                config.params.get("head_rev", ""),
+                frozenset(config.params["files_changed"]),
                 task["test-name"],
             )
 
@@ -124,9 +123,16 @@ def set_test_manifests(config, tasks):
             # if we have web-platform tests incoming, just yield task
             for m in input_paths:
                 if m.startswith("testing/web-platform/tests/"):
-                    if not isinstance(loader, DefaultLoader):
-                        task["chunks"] = "dynamic"
-                    yield task
+                    found_subsuite = [
+                        key for key in WPT_SUBSUITES if key in task["test-name"]
+                    ]
+                    if found_subsuite:
+                        if WPT_SUBSUITES[found_subsuite[0]] in m:
+                            yield task
+                    else:
+                        if not isinstance(loader, DefaultLoader):
+                            task["chunks"] = "dynamic"
+                        yield task
                     break
 
             # input paths can exist in other directories (i.e. [../../dir/test.js])
@@ -228,6 +234,14 @@ def split_chunks(config, tasks):
         # the algorithm more than once.
         chunked_manifests = None
         if "test-manifests" in task:
+            # TODO: hardcoded to "2", ideally this should be centralized somewhere
+            if (
+                config.params["try_task_config"].get("new-test-config", False)
+                and task["chunks"] > 1
+            ):
+                task["chunks"] *= 2
+                task["max-run-time"] = int(task["max-run-time"] * 2)
+
             manifests = task["test-manifests"]
             chunked_manifests = chunk_manifests(
                 task["suite"],
@@ -240,14 +254,18 @@ def split_chunks(config, tasks):
             # so they still show up in the logs. They won't impact runtime much
             # and this way tools like ActiveData are still aware that they
             # exist.
-            if config.params["backstop"] and manifests["active"]:
+            if (
+                config.params["backstop"]
+                and manifests["active"]
+                and "skipped" in manifests
+            ):
                 chunked_manifests[0].extend(manifests["skipped"])
 
         for i in range(task["chunks"]):
             this_chunk = i + 1
 
             # copy the test and update with the chunk number
-            chunked = copy_task(task)
+            chunked = deepcopy(task)
             chunked["this-chunk"] = this_chunk
 
             if chunked_manifests is not None:

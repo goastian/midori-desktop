@@ -9,8 +9,11 @@ CMD ["/bin/bash", "--login"]
 
 # %include taskcluster/docker/recipes/setup_packages.sh
 COPY topsrcdir/taskcluster/docker/recipes/setup_packages.sh /usr/local/sbin/
+# %include taskcluster/docker/recipes/clean_packages.sh
+COPY topsrcdir/taskcluster/docker/recipes/clean_packages.sh /usr/local/sbin/
 
 COPY taskcluster-hack.sh /usr/local/sbin
+COPY snapshot-hack.py /usr/local/sbin
 COPY gpgvnoexpkeysig /usr/local/sbin
 
 ARG DIST
@@ -38,6 +41,7 @@ RUN if [ -n "$DIST" ]; then for s in debian_$DIST debian_$DIST-updates debian_$D
           ;; \
       esac; \
     done > /etc/apt/sources.list ; fi && \
+    rm -f /etc/apt/sources.list.d/* && \
     ( echo 'quiet "true";'; \
       echo 'APT::Get::Assume-Yes "true";'; \
       echo 'APT::Install-Recommends "false";'; \
@@ -56,6 +60,10 @@ RUN if [ -n "$DIST" ]; then for s in debian_$DIST debian_$DIST-updates debian_$D
     ) > /etc/apt/preferences.d/99taskcluster
 
 RUN apt-get update && \
+    if grep -q snapshot.debian.org /etc/apt/sources.list; then \
+      apt-get install python3-minimal libpython3-stdlib; \
+      echo 'dir::bin::methods::http "/usr/local/sbin/snapshot-hack.py";' >> /etc/apt/apt.conf.d/99taskcluster; \
+    fi && \
     apt-get dist-upgrade && \
     apt-get install \
       apt-transport-https \

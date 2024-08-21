@@ -54,6 +54,9 @@ Push Information
 ``head_tag``
    The tag attached to the revision, if any.
 
+``files_changed``
+   The list of all files added or modified by the push.
+
 ``owner``
    Email address indicating the person who made the push.  Note that this
    value may be forged and *must not* be relied on for authentication.
@@ -135,20 +138,25 @@ specified programmatically using one of a variety of methods (e.g., parsing try
 syntax or reading a project-specific configuration file).
 
 ``enable_always_target``
-    When ``True``, any task with the ``always_target`` attribute will be
-    included in the ``target_task_graph`` regardless of whether they were
-    filtered out by the ``target_tasks_method`` or not. Because they are not
-    part of the ``target_set``, they will still be eligible for optimization
-    when the ``optimize_target_tasks`` parameter is ``False``.
+   Can either be a boolean or a list of kinds.
+
+   When ``True``, any task with the ``always_target`` attribute will be included
+   in the ``target_task_graph`` regardless of whether they were filtered out by
+   the ``target_tasks_method`` or not. Because they are not part of the
+   ``target_set``, they will still be eligible for optimization when the
+   ``optimize_target_tasks`` parameter is ``False``.
+
+   When specified as a list of kinds, only tasks with a matching kind will be
+   eligible for addition to the graph.
 
 ``filters``
-    List of filter functions (from ``taskcluster/gecko_taskgraph/filter_tasks.py``) to
-    apply. This is usually defined internally, as filters are typically
-    global.
+   List of filter functions (from ``taskcluster/gecko_taskgraph/filter_tasks.py``) to
+   apply. This is usually defined internally, as filters are typically
+   global.
 
 ``target_tasks_method``
-    The method to use to determine the target task set.  This is the suffix of
-    one of the functions in ``taskcluster/gecko_taskgraph/target_tasks.py``.
+   The method to use to determine the target task set.  This is the suffix of
+   one of the functions in ``taskcluster/gecko_taskgraph/target_tasks.py``.
 
 ``release_history``
    History of recent releases by platform and locale, used when generating
@@ -192,7 +200,7 @@ Release Promotion
    Specify the next version for version bump tasks.
 
 ``release_type``
-   The type of release being promoted. One of "nightly", "beta", "esr102", "esr115", "release-rc", or "release".
+   The type of release being promoted. One of "nightly", "beta", "esr115", "esr128", "release-rc", or "release".
 
 ``release_eta``
    The time and date when a release is scheduled to live. This value is passed to Balrog.
@@ -257,6 +265,6 @@ Code Review
 Local configuration
 -------------------
 
-``target-kind``
-  Generate only the given kind and its kind-dependencies. This is used for local inspection of the graph
+``target-kinds``
+  Generate only the given kinds and their kind-dependencies. This is used for local inspection of the graph
   and is not supported at run-time.

@@ -38,14 +38,14 @@ RUN /usr/local/sbin/setup_packages.sh $TASKCLUSTER_ROOT_URL $DOCKER_IMAGE_PACKAG
       mercurial \
       patch \
       python3 \
-      python3-distutils-extra \
       python3-minimal \
       python3-zstandard \
       python3-psutil \
       python3-venv \
       vim-tiny \
       xz-utils \
-      zstd
+      zstd \
+    && /usr/local/sbin/clean_packages.sh $DOCKER_IMAGE_PACKAGES
 
 # %include testing/mozharness/external_tools/robustcheckout.py
 COPY topsrcdir/testing/mozharness/external_tools/robustcheckout.py /usr/local/mercurial/robustcheckout.py

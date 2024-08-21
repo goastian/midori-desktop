@@ -1,0 +1,37 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+loader: taskgraph.loader.transform:loader
+
+transforms:
+    - taskgraph.transforms.from_deps
+    - gecko_taskgraph.transforms.mac_notarization
+    - gecko_taskgraph.transforms.name_sanity
+    - gecko_taskgraph.transforms.geckodriver_mac_notarization
+    - gecko_taskgraph.transforms.task
+
+kind-dependencies:
+    - geckodriver-signing
+
+only-for-build-platforms:
+    - macosx64-geckodriver/opt
+    - macosx64-aarch64-geckodriver/opt
+
+tasks:
+    geckodriver-mac-notarization:
+        from-deps:
+            group-by: single-with-filters
+        worker-type: linux-signing
+        treeherder:
+            symbol: TM(gd-n)
+        worker:
+            implementation: scriptworker-signing
+            max-run-time: 3600
+            upstream-artifacts:
+                - taskType: signing
+                  paths:
+                      - public/build/geckodriver.tar.gz
+                  formats: ["apple_notarization_geckodriver"]
+                  taskId:
+                      task-reference: <geckodriver-signing>

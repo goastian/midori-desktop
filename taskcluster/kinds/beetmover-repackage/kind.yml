@@ -1,0 +1,66 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+loader: taskgraph.loader.transform:loader
+
+transforms:
+    - taskgraph.transforms.from_deps
+    - gecko_taskgraph.transforms.name_sanity
+    - gecko_taskgraph.transforms.beetmover_repackage_l10n
+    - gecko_taskgraph.transforms.beetmover_repackage
+    - gecko_taskgraph.transforms.task
+
+kind-dependencies:
+    # Primary dependencies
+    - repackage
+    - repackage-l10n
+    # Other dependencies
+    - build
+    - build-signing
+    - build-mac-signing
+    - build-mac-notarization
+    - repackage-signing
+    - shippable-l10n
+    - shippable-l10n-signing
+    - shippable-l10n-mac-signing
+    - shippable-l10n-mac-notarization
+    - repackage-signing-l10n
+    - partials
+    - partials-signing
+    - repackage-signing-msi
+    - repackage-signing-shippable-l10n-msix
+    - mar-signing
+    - mar-signing-l10n
+    - attribution
+    - attribution-l10n
+    - repackage-deb
+    - repackage-deb-l10n
+
+only-for-build-platforms:
+    - linux-shippable/opt
+    - linux64-shippable/opt
+    - linux64-aarch64-shippable/opt
+    - macosx64-shippable/opt
+    - win32-shippable/opt
+    - win64-shippable/opt
+    - win64-aarch64-shippable/opt
+    - linux-devedition/opt
+    - linux64-devedition/opt
+    - macosx64-devedition/opt
+    - win32-devedition/opt
+    - win64-devedition/opt
+    - win64-aarch64-devedition/opt
+    - linux64-asan-reporter-shippable/opt
+    - win64-asan-reporter-shippable/opt
+
+tasks:
+    beetmover-repackage:
+        from-deps:
+            group-by: single-locale
+        shipping-phase: promote
+        attributes:
+            artifact_map:
+                by-release-type:
+                    beta|release.*|esr.*: taskcluster/gecko_taskgraph/manifests/firefox_candidates.yml
+                    default: taskcluster/gecko_taskgraph/manifests/firefox_nightly.yml

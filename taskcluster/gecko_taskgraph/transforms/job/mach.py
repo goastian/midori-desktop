@@ -27,10 +27,6 @@ mach_schema = Schema(
         Required("comm-checkout"): bool,
         # Base work directory used to set up the task.
         Optional("workdir"): str,
-        # Context to substitute into the command using format string
-        # substitution (e.g {value}). This is useful if certain aspects of the
-        # command need to be generated in transforms.
-        Optional("command-context"): dict,
     }
 )
 
@@ -54,8 +50,9 @@ def configure_mach(config, job, taskdesc):
     if python:
         del run["python-version"]
 
-        if worker["os"] == "macosx" and python == 3:
-            python = "/usr/local/bin/python3"
+        if taskdesc.get("use-python", "system") == "system":
+            if worker["os"] == "macosx" and python == 3:
+                python = "/usr/local/bin/python3"
 
         python = str(python)
         try:

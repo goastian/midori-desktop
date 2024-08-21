@@ -30,7 +30,7 @@ FETCH_SCHEMA = Schema(
         Required("name"): str,
         # Relative path (from config.path) to the file the task was defined
         # in.
-        Optional("job-from"): str,
+        Optional("task-from"): str,
         # Description of the task.
         Required("description"): str,
         Optional(
@@ -117,6 +117,7 @@ def make_task(config, jobs):
         env = job.get("env", {})
         env.update({"UPLOAD_DIR": "/builds/worker/artifacts"})
         attributes = job.get("attributes", {})
+        attributes["artifact_prefix"] = artifact_prefix
         attributes["fetch-artifact"] = mozpath.join(
             artifact_prefix, job["artifact_name"]
         )
@@ -381,6 +382,41 @@ def create_chromium_fetch_task(config, name, fetch):
         "artifact_name": artifact_name,
         "digest_data": [
             f"revision={revision}",
+            f"platform={platform}",
+            f"artifact_name={artifact_name}",
+        ],
+    }
+
+
+@fetch_builder(
+    "cft-chromedriver-fetch",
+    schema={
+        Required("script"): str,
+        # Platform type for chromium build
+        Required("platform"): str,
+        # The name to give to the generated artifact.
+        Required("artifact-name"): str,
+    },
+)
+def create_cft_canary_fetch_task(config, name, fetch):
+    artifact_name = fetch.get("artifact-name")
+
+    workdir = "/builds/worker"
+
+    platform = fetch.get("platform")
+
+    args = "--platform " + shell_quote(platform)
+
+    cmd = [
+        "bash",
+        "-c",
+        "cd {} && " "/usr/bin/python3 {} {}".format(workdir, fetch["script"], args),
+    ]
+
+    return {
+        "command": cmd,
+        "artifact_name": artifact_name,
+        "digest_data": [
             f"platform={platform}",
             f"artifact_name={artifact_name}",
         ],

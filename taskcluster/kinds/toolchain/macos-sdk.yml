@@ -1,0 +1,84 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+task-defaults:
+    attributes:
+        local-toolchain: true
+    worker-type: b-linux-gcp
+    worker:
+        max-run-time: 1800
+        env:
+            PATH: "/usr/local/bin:/bin:/sbin:/usr/bin:/usr/sbin"
+    run:
+        script: unpack-sdk.py
+        resources:
+            - python/mozbuild/mozpack/macpkg.py
+            - taskcluster/scripts/misc/unpack-sdk.py
+        tooltool-downloads: internal
+    # Expiry similar to that of fetches
+    expires-after: 1000 years
+
+macosx64-sdk-13.3:
+    description: "MacOSX13.3 SDK"
+    treeherder:
+        symbol: TM(sdk13.3)
+    run:
+        arguments:
+            - https://swcdn.apple.com/content/downloads/15/62/032-84673-A_7A1TG1RF8Z/xpc8q44ggn2pkn82iwr0fi1zeb9cxi8ath/CLTools_macOSNMOS_SDK.pkg
+            - 8de3306508dca31040b3b49ff370e96c94f4546bcf22cb4069abbb18e2d6bce8e20d40a6903f00ae75558175b624a979ea0444f54bc6d9d67e841f2000b0d863
+            - Library/Developer/CommandLineTools/SDKs/MacOSX13.3.sdk
+        toolchain-artifact: project/gecko/mac-sdk/MacOSX13.3.sdk.tar.zst
+        toolchain-alias:
+            - MacOSX13.3.sdk
+
+macosx64-sdk-14.4:
+    description: "MacOSX14.4 SDK"
+    treeherder:
+        symbol: TM(sdk14.4)
+    run:
+        arguments:
+            - https://swcdn.apple.com/content/downloads/14/48/052-59890-A_I0F5YGAY0Y/p9n40hio7892gou31o1v031ng6fnm9sb3c/CLTools_macOSNMOS_SDK.pkg
+            - a4e05d2a051027620c86f72694da126a2ceed59b8740270426c4ca3adb38e16fe981b536a373a7f0cdcc84bbe9d9149608ccd03967dbd94262548ccadbfa0f5d
+            - Library/Developer/CommandLineTools/SDKs/MacOSX14.4.sdk
+        toolchain-artifact: project/gecko/mac-sdk/MacOSX14.4.sdk.tar.zst
+        toolchain-alias:
+            - macosx64-sdk
+            - macosx64-sdk-toolchain
+            - MacOSX14.4.sdk
+
+ios-sdk-17.4:
+    description: "iPhoneOS17.4 SDK"
+    treeherder:
+        symbol: TM(ios17.4)
+    # Because it's using an internal tooltool artifact, it can't be used as a local-toolchain for
+    # bootstrap. But we still want to use the same script as local-toolchains.
+    attributes:
+        local-toolchain: false
+    run:
+        script: private_local_toolchain.sh
+        arguments:
+            - unpack-sdk.py
+            - http://taskcluster/tooltool.mozilla-releng.net/sha512/7d9f1f1e0d4963fbafc8ec20ee604665e99d66699db2515f388b3b061aaab83349815e1ef862922f4f46ffbe1ac2d86fb00701802c7a9994c74f6e1d32894c34
+            - 7d9f1f1e0d4963fbafc8ec20ee604665e99d66699db2515f388b3b061aaab83349815e1ef862922f4f46ffbe1ac2d86fb00701802c7a9994c74f6e1d32894c34
+            - Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk
+        toolchain-artifact: project/gecko/mac-sdk/iPhoneOS17.4.sdk.tar.zst
+        toolchain-alias: ios-sdk
+
+ios-sim-sdk-17.4:
+    description: "iPhoneSimulator17.4 SDK"
+    treeherder:
+        symbol: TM(ios-sim-17.4)
+    # Because it's using an internal tooltool artifact, it can't be used as a local-toolchain for
+    # bootstrap. But we still want to use the same script as local-toolchains.
+    attributes:
+        local-toolchain: false
+    run:
+        script: private_local_toolchain.sh
+        arguments:
+            - unpack-sdk.py
+            - http://taskcluster/tooltool.mozilla-releng.net/sha512/7d9f1f1e0d4963fbafc8ec20ee604665e99d66699db2515f388b3b061aaab83349815e1ef862922f4f46ffbe1ac2d86fb00701802c7a9994c74f6e1d32894c34
+            - 7d9f1f1e0d4963fbafc8ec20ee604665e99d66699db2515f388b3b061aaab83349815e1ef862922f4f46ffbe1ac2d86fb00701802c7a9994c74f6e1d32894c34
+            - Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk
+        toolchain-artifact: project/gecko/mac-sdk/iPhoneSimulator17.4.sdk.tar.zst
+        toolchain-alias: ios-sim-sdk

@@ -1,0 +1,31 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+loader: taskgraph.loader.transform:loader
+
+transforms:
+    - taskgraph.transforms.from_deps
+    - gecko_taskgraph.transforms.name_sanity
+    - gecko_taskgraph.transforms.shippable_l10n_signing
+    - gecko_taskgraph.transforms.signing
+    - gecko_taskgraph.transforms.hardened_signing
+    - gecko_taskgraph.transforms.task
+
+kind-dependencies:
+    - shippable-l10n
+
+only-for-build-platforms:
+    - macosx64-shippable/opt
+    - macosx64-devedition/opt
+    - macosx64/opt
+    - macosx64/debug
+
+tasks:
+    shippable-l10n-mac-signing:
+        from-deps:
+            group-by: chunk-locales
+        treeherder:
+            symbol: BMS
+        attributes:
+            shipping_phase: promote

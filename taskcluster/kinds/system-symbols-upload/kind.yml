@@ -1,0 +1,34 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+loader: taskgraph.loader.transform:loader
+
+transforms:
+    - taskgraph.transforms.from_deps
+    - gecko_taskgraph.transforms.upload_symbols
+    - gecko_taskgraph.transforms.job
+    - gecko_taskgraph.transforms.task
+
+kind-dependencies:
+    - system-symbols
+
+tasks:
+    system-symbols-upload:
+        description: Upload Symbols
+        from-deps: {}
+        attributes:
+            cron: true
+        worker-type: b-linux-gcp
+        worker:
+            docker-image: {in-tree: "lint"}
+            max-run-time: 1200
+            env:
+                # {level} gets replaced in the upload_symbols transform
+                SYMBOL_SECRET: "project/releng/gecko/build/level-{level}/gecko-symbol-upload"
+        run:
+            using: mach
+            mach: {task-reference: "python toolkit/crashreporter/tools/upload_symbols.py --task-id <system-symbols> --ignore-missing"}
+            sparse-profile: upload-symbols
+        scopes:
+            - secrets:get:project/releng/gecko/build/level-{level}/gecko-symbol-upload

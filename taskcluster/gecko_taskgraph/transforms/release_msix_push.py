@@ -16,7 +16,7 @@ from gecko_taskgraph.util.scriptworker import add_scope_prefix
 push_msix_description_schema = Schema(
     {
         Required("name"): str,
-        Required("job-from"): task_description_schema["job-from"],
+        Required("task-from"): task_description_schema["task-from"],
         Required("dependencies"): task_description_schema["dependencies"],
         Required("description"): task_description_schema["description"],
         Required("treeherder"): task_description_schema["treeherder"],
@@ -38,7 +38,6 @@ transforms.add_validate(push_msix_description_schema)
 @transforms.add
 def make_task_description(config, jobs):
     for job in jobs:
-
         job["worker"]["upstream-artifacts"] = generate_upstream_artifacts(
             job["dependencies"]
         )

@@ -1,0 +1,69 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+loader: taskgraph.loader.transform:loader
+
+transforms:
+    - gecko_taskgraph.transforms.source_test:transforms
+    - taskgraph.transforms.task_context
+    - gecko_taskgraph.transforms.job:transforms
+    - gecko_taskgraph.transforms.task:transforms
+
+kind-dependencies:
+    - fetch
+    - toolchain
+    - build
+
+task-defaults:
+    worker-type: b-linux-gcp
+    worker:
+        max-run-time: 3600
+        docker-image: {in-tree: debian12-amd64-build}
+    use-python: default
+    treeherder:
+        kind: test
+        tier: 3
+    task-context:
+        from-object: {}
+        substitution-fields: []
+    if-dependencies: [build]
+
+tasks:
+    simple:
+        platform: linux64/opt
+        require-build:
+            linux64/opt: build-linux64/opt
+        description: Simple Fuzzing Test
+        treeherder:
+            symbol: simple-fuzzing
+        fetches:
+            build:
+                - target.jsshell.zip
+                - target.fuzztest.tests.tar.gz
+        worker:
+            env:
+                LD_LIBRARY_PATH: /builds/worker/fetches
+                JSSHELL: ./js
+        run:
+            using: run-task
+            command: >-
+                cd $MOZ_FETCHES_DIR &&
+                python3 tools/fuzzing/smoke/smoke.py
+
+    python:
+        platform: linux64-asan-fuzzing/opt
+        require-build:
+            linux64-asan-fuzzing/opt: build-linux64-asan-fuzzing/opt
+        description: Python Fuzzing Smoke Tests
+        treeherder:
+            symbol: fuzzing-python
+        fetches:
+            build:
+                - target.tar.bz2
+        run:
+            using: run-task
+            cwd: '{checkout}'
+            command: >
+                export GECKO_BINARY_PATH=$MOZ_FETCHES_DIR/firefox/firefox &&
+                ./mach python-test --subsuite fuzzing

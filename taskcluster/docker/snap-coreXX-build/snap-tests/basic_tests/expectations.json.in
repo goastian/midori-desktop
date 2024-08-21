@@ -1,0 +1,18 @@
+{
+    "test_about_support": {
+        "version_box": "#RUNTIME_VERSION#",
+        "distribution_id": "canonical-002"
+    },
+    "test_about_buildconfig": {
+        "source_repo": "https://hg.mozilla.org/",
+        "official": "MOZILLA_OFFICIAL=1"
+    },
+    "test_youtube": {
+        "duration": 1,
+        "playback": 2
+    },
+    "test_youtube_film": {
+        "duration": 1,
+        "playback": 2
+    }
+}

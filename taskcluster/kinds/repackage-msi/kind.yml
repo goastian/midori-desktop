@@ -1,0 +1,49 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+loader: taskgraph.loader.transform:loader
+
+transforms:
+    - taskgraph.transforms.from_deps
+    - gecko_taskgraph.transforms.name_sanity
+    - gecko_taskgraph.transforms.repackage
+    - gecko_taskgraph.transforms.job
+    - gecko_taskgraph.transforms.task
+
+kind-dependencies:
+    - repackage-signing
+    - repackage-signing-l10n
+    - fetch
+
+only-for-build-platforms:
+    - win32-shippable/opt
+    - win64-shippable/opt
+    - win32-devedition/opt
+    - win64-devedition/opt
+
+tasks:
+    repackage-msi:
+        worker-type: 'b-win2022'
+        from-deps:
+            group-by: single-with-filters
+        mozharness:
+            use-magic-mh-args: false
+            config:
+                by-build-platform:
+                    win32\b.*:
+                        - repackage/base.py
+                        - repackage/win32_sfx_stub.py
+                        - repackage/win32_signed.py
+                    win64(?!-aarch64)\b.*:
+                        - repackage/base.py
+                        - repackage/win32_sfx_stub.py
+                        - repackage/win64_signed.py
+                    win64-aarch64\b.*:
+                        - repackage/base.py
+                        - repackage/win64-aarch64_sfx_stub.py
+                        - repackage/win64_signed.py
+        package-formats: [msi]
+        fetches:
+            fetch:
+                - wix-3.14.0

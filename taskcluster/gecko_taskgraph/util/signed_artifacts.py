@@ -57,7 +57,7 @@ def generate_specifications_of_artifacts_to_sign(
     elif "macosx" in build_platform:
         langpack_formats = []
         if is_notarization_kind(config.kind):
-            formats = ["apple_notarization"]
+            formats = ["apple_notarization_stacked"]
             artifacts_specifications = [
                 {
                     "artifacts": [
@@ -98,14 +98,14 @@ def generate_specifications_of_artifacts_to_sign(
                 "artifacts": [
                     get_artifact_path(job, "{locale}/setup.exe"),
                 ],
-                "formats": ["autograph_authenticode_sha2"],
+                "formats": ["autograph_authenticode_202404"],
             },
             {
                 "artifacts": [
                     get_artifact_path(job, "{locale}/target.zip"),
                 ],
                 "formats": [
-                    "autograph_authenticode_sha2",
+                    "autograph_authenticode_202404",
                     "autograph_widevine",
                     "autograph_omnija",
                 ],

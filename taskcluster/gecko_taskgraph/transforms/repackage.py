@@ -6,23 +6,25 @@ Transform the repackage task into an actual task description.
 """
 
 from taskgraph.transforms.base import TransformSequence
-from taskgraph.util.schema import optionally_keyed_by, resolve_keyed_by
+from taskgraph.util.copy import deepcopy
+from taskgraph.util.dependencies import get_primary_dependency
+from taskgraph.util.schema import Schema, optionally_keyed_by, resolve_keyed_by
 from taskgraph.util.taskcluster import get_artifact_prefix
 from voluptuous import Extra, Optional, Required
 
-from gecko_taskgraph.loader.single_dep import schema
 from gecko_taskgraph.transforms.job import job_description_schema
 from gecko_taskgraph.util.attributes import copy_attributes_from_dependent_job
-from gecko_taskgraph.util.copy_task import copy_task
 from gecko_taskgraph.util.platforms import architecture, archive_format
 from gecko_taskgraph.util.workertypes import worker_type_implementation
 
-packaging_description_schema = schema.extend(
+packaging_description_schema = Schema(
     {
         # unique label to describe this repackaging task
         Optional("label"): str,
         Optional("worker-type"): str,
         Optional("worker"): object,
+        Optional("attributes"): job_description_schema["attributes"],
+        Optional("dependencies"): job_description_schema["dependencies"],
         # treeherder is allowed here to override any defaults we use for repackaging.  See
         # taskcluster/gecko_taskgraph/transforms/task.py for the schema details, and the
         # below transforms for defaults of various values.
@@ -40,7 +42,7 @@ packaging_description_schema = schema.extend(
         Optional("shipping-product"): job_description_schema["shipping-product"],
         Optional("shipping-phase"): job_description_schema["shipping-phase"],
         Required("package-formats"): optionally_keyed_by(
-            "build-platform", "release-type", [str]
+            "build-platform", "release-type", "build-type", [str]
         ),
         Optional("msix"): {
             Optional("channel"): optionally_keyed_by(
@@ -91,6 +93,7 @@ packaging_description_schema = schema.extend(
             Optional("run-as-root"): bool,
             Optional("use-caches"): bool,
         },
+        Optional("task-from"): job_description_schema["task-from"],
     }
 )
 
@@ -201,6 +204,17 @@ PACKAGE_FORMATS = {
         },
         "output": "target.dmg",
     },
+    "dmg-attrib": {
+        "args": [
+            "dmg",
+            "--attribution_sentinel",
+            "__MOZCUSTOM__",
+        ],
+        "inputs": {
+            "input": "target{archive_format}",
+        },
+        "output": "target.dmg",
+    },
     "pkg": {
         "args": ["pkg"],
         "inputs": {
@@ -267,6 +281,8 @@ PACKAGE_FORMATS = {
             "{build_number}",
             "--templates",
             "browser/installer/linux/langpack/debian",
+            "--release-product",
+            "{release_product}",
         ],
         "inputs": {
             "input-xpi-file": "target.langpack.xpi",
@@ -285,6 +301,16 @@ MOZHARNESS_EXPANSIONS = [
 ]
 
 transforms = TransformSequence()
+
+
+@transforms.add
+def remove_name(config, jobs):
+    for job in jobs:
+        if "name" in job:
+            del job["name"]
+        yield job
+
+
 transforms.add_validate(packaging_description_schema)
 
 
@@ -292,9 +318,12 @@ transforms.add_validate(packaging_description_schema)
 def copy_in_useful_magic(config, jobs):
     """Copy attributes from upstream task to be used for keyed configuration."""
     for job in jobs:
-        dep = job["primary-dependency"]
+        dep = get_primary_dependency(config, job)
+        assert dep
+
         job["build-platform"] = dep.attributes.get("build_platform")
         job["shipping-product"] = dep.attributes.get("shipping_product")
+        job["build-type"] = dep.attributes.get("build_type")
         yield job
 
 
@@ -309,7 +338,7 @@ def handle_keyed_by(config, jobs):
         "worker.max-run-time",
     ]
     for job in jobs:
-        job = copy_task(job)  # don't overwrite dict values here
+        job = deepcopy(job)  # don't overwrite dict values here
         for field in fields:
             resolve_keyed_by(
                 item=job,
@@ -326,7 +355,8 @@ def handle_keyed_by(config, jobs):
 @transforms.add
 def make_repackage_description(config, jobs):
     for job in jobs:
-        dep_job = job["primary-dependency"]
+        dep_job = get_primary_dependency(config, job)
+        assert dep_job
 
         label = job.get("label", dep_job.label.replace("signing-", "repackage-"))
         job["label"] = label
@@ -337,7 +367,9 @@ def make_repackage_description(config, jobs):
 @transforms.add
 def make_job_description(config, jobs):
     for job in jobs:
-        dep_job = job["primary-dependency"]
+        dep_job = get_primary_dependency(config, job)
+        assert dep_job
+
         dependencies = {dep_job.kind: dep_job.label}
 
         attributes = copy_attributes_from_dependent_job(dep_job)
@@ -457,7 +489,7 @@ def make_job_description(config, jobs):
             # if repackage_signing_task doesn't exists, generate the stub installer
             package_formats += ["installer-stub"]
         for format in package_formats:
-            command = copy_task(PACKAGE_FORMATS[format])
+            command = deepcopy(PACKAGE_FORMATS[format])
             substs = {
                 "archive_format": archive_format(build_platform),
                 "_locale": _fetch_subst_locale,
@@ -474,7 +506,7 @@ def make_job_description(config, jobs):
 
             # We need to resolve `msix.*` values keyed by `package-format` for each format, not
             # just once, so we update a temporary copy just for extracting these values.
-            temp_job = copy_task(job)
+            temp_job = deepcopy(job)
             for msix_key in (
                 "channel",
                 "identity-name",

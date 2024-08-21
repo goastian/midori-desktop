@@ -11,6 +11,7 @@ apt_packages=()
 apt_packages+=('curl')
 apt_packages+=('iproute2')
 apt_packages+=('locales')
+apt_packages+=('m4')
 apt_packages+=('graphviz')
 apt_packages+=('python3-pip')
 apt_packages+=('python-is-python3')
@@ -78,7 +79,7 @@ mv fzf /usr/local/bin
 
 cd /setup
 
-pip3 install --require-hashes -r /tmp/codespell_requirements.txt
+pip3 install --break-system-packages --require-hashes -r /tmp/codespell_requirements.txt
 
 ###
 # tox Setup
@@ -86,7 +87,7 @@ pip3 install --require-hashes -r /tmp/codespell_requirements.txt
 
 cd /setup
 
-pip3 install --require-hashes -r /tmp/tox_requirements.txt
+pip3 install --break-system-packages --require-hashes -r /tmp/tox_requirements.txt
 
 cd /
 rm -rf /setup

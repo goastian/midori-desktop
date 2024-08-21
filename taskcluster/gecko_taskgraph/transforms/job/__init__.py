@@ -14,15 +14,16 @@ import json
 import logging
 
 import mozpack.path as mozpath
+from packaging.version import Version
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.util.copy import deepcopy
 from taskgraph.util.python_path import import_sibling_modules
 from taskgraph.util.schema import Schema, validate_schema
 from taskgraph.util.taskcluster import get_artifact_prefix
-from voluptuous import Any, Exclusive, Extra, Optional, Required
+from voluptuous import Any, Coerce, Exclusive, Extra, Optional, Required
 
 from gecko_taskgraph.transforms.cached_tasks import order_tasks
 from gecko_taskgraph.transforms.task import task_description_schema
-from gecko_taskgraph.util.copy_task import copy_task
 from gecko_taskgraph.util.workertypes import worker_type_implementation
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ job_description_schema = Schema(
         # taskcluster/gecko_taskgraph/transforms/task.py for the schema details.
         Required("description"): task_description_schema["description"],
         Optional("attributes"): task_description_schema["attributes"],
-        Optional("job-from"): task_description_schema["job-from"],
+        Optional("task-from"): task_description_schema["task-from"],
         Optional("dependencies"): task_description_schema["dependencies"],
         Optional("if-dependencies"): task_description_schema["if-dependencies"],
         Optional("soft-dependencies"): task_description_schema["soft-dependencies"],
@@ -62,7 +63,7 @@ job_description_schema = Schema(
             "optimization"
         ],
         Optional("use-sccache"): task_description_schema["use-sccache"],
-        Optional("use-system-python"): bool,
+        Optional("use-python"): Any("system", "default", Coerce(Version)),
         Optional("priority"): task_description_schema["priority"],
         # The "when" section contains descriptions of the circumstances under which
         # this task should be included in the task graph.  This will be converted
@@ -212,7 +213,7 @@ def make_task_description(config, jobs):
         if job["worker"]["implementation"] == "docker-worker":
             job["run"].setdefault("workdir", "/builds/worker")
 
-        taskdesc = copy_task(job)
+        taskdesc = deepcopy(job)
 
         # fill in some empty defaults to make run implementations easier
         taskdesc.setdefault("attributes", {})
@@ -245,13 +246,17 @@ def get_attribute(dict, key, attributes, attribute_name):
 @transforms.add
 def use_system_python(config, jobs):
     for job in jobs:
-        if job.pop("use-system-python", True):
+        taskcluster_python = job.pop("use-python", "system")
+        if taskcluster_python == "system":
             yield job
         else:
+            if taskcluster_python == "default":
+                python_version = "python"  # the taskcluster default alias
+            else:
+                python_version = f"python-{taskcluster_python}"
+
             fetches = job.setdefault("fetches", {})
             toolchain = fetches.setdefault("toolchain", [])
-
-            moz_python_home = mozpath.join("fetches", "python")
             if "win" in job["worker"]["os"]:
                 platform = "win64"
             elif "linux" in job["worker"]["os"]:
@@ -261,10 +266,13 @@ def use_system_python(config, jobs):
             else:
                 raise ValueError("unexpected worker.os value {}".format(platform))
 
-            toolchain.append("{}-python".format(platform))
+            toolchain.append(f"{platform}-{python_version}")
 
             worker = job.setdefault("worker", {})
             env = worker.setdefault("env", {})
+
+            moz_fetches_dir = env.get("MOZ_FETCHES_DIR", "fetches")
+            moz_python_home = mozpath.join(moz_fetches_dir, "python")
             env["MOZ_PYTHON_HOME"] = moz_python_home
 
             yield job
@@ -286,7 +294,7 @@ def use_fetches(config, jobs):
         for task in config.kind_dependencies_tasks.values()
         if task.kind in ("fetch", "toolchain")
     )
-    for (kind, task) in tasks:
+    for kind, task in tasks:
         get_attribute(
             artifact_names, task["label"], task["attributes"], f"{kind}-artifact"
         )
@@ -454,7 +462,9 @@ def run_job_using(worker_implementation, run_using, schema=None, defaults={}):
         if worker_implementation in for_run_using:
             raise Exception(
                 "run_job_using({!r}, {!r}) already exists: {!r}".format(
-                    run_using, worker_implementation, for_run_using[run_using]
+                    run_using,
+                    worker_implementation,
+                    for_run_using[worker_implementation],
                 )
             )
         for_run_using[worker_implementation] = (func, schema, defaults)

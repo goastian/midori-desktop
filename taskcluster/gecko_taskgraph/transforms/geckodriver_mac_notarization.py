@@ -2,35 +2,50 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-Transform the repackage signing task into an actual task description.
+Transform the geckodriver notarization task into an actual task description.
 """
 
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.util.dependencies import get_primary_dependency
+from taskgraph.util.schema import Schema
 from voluptuous import Optional
 
-from gecko_taskgraph.loader.single_dep import schema
 from gecko_taskgraph.transforms.task import task_description_schema
 from gecko_taskgraph.util.attributes import copy_attributes_from_dependent_job
 from gecko_taskgraph.util.scriptworker import add_scope_prefix
 
-repackage_signing_description_schema = schema.extend(
+geckodriver_notarization_description_schema = Schema(
     {
         Optional("label"): str,
         Optional("treeherder"): task_description_schema["treeherder"],
         Optional("shipping-phase"): task_description_schema["shipping-phase"],
         Optional("worker"): task_description_schema["worker"],
         Optional("worker-type"): task_description_schema["worker-type"],
+        Optional("task-from"): task_description_schema["task-from"],
+        Optional("attributes"): task_description_schema["attributes"],
+        Optional("dependencies"): task_description_schema["dependencies"],
     }
 )
 
 transforms = TransformSequence()
-transforms.add_validate(repackage_signing_description_schema)
+
+
+@transforms.add
+def remove_name(config, jobs):
+    for job in jobs:
+        if "name" in job:
+            del job["name"]
+        yield job
+
+
+transforms.add_validate(geckodriver_notarization_description_schema)
 
 
 @transforms.add
 def geckodriver_mac_notarization(config, jobs):
     for job in jobs:
-        dep_job = job["primary-dependency"]
+        dep_job = get_primary_dependency(config, job)
+        assert dep_job
 
         attributes = copy_attributes_from_dependent_job(dep_job)
         treeherder = job.get("treeherder", {})

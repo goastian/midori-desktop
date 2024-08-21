@@ -272,7 +272,7 @@ class ImagePathsMap(Mapping):
 
     def __init__(self, config_path, image_dir=IMAGE_DIR):
         config = load_yaml(GECKO, config_path)
-        self.__update_image_paths(config["jobs"], image_dir)
+        self.__update_image_paths(config["tasks"], image_dir)
 
     def __getitem__(self, key):
         return self.__dict__[key]
@@ -298,7 +298,7 @@ class ImagePathsMap(Mapping):
         self.__update_image_paths(jobs, image_dir)
 
 
-image_paths = ImagePathsMap("taskcluster/ci/docker-image/kind.yml")
+image_paths = ImagePathsMap("taskcluster/kinds/docker-image/kind.yml")
 
 
 def image_path(name):

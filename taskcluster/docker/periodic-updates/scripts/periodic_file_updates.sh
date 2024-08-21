@@ -14,7 +14,7 @@ Usage: $(basename "$0") [-p product]
            # Use archive.m.o instead of the taskcluster index to get xpcshell
            [--use-ftp-builds]
            # One (or more) of the following actions must be specified.
-           --hsts | --hpkp | --remote-settings | --suffix-list
+           --hsts | --hpkp | --remote-settings | --suffix-list | --mobile-experiments
            -b branch
 
 EOF
@@ -75,12 +75,19 @@ HG_SUFFIX_LOCAL="effective_tld_names.dat"
 HG_SUFFIX_PATH="/netwerk/dns/${HG_SUFFIX_LOCAL}"
 SUFFIX_LIST_UPDATED=false
 
+DO_MOBILE_EXPERIMENTS=false
+EXPERIMENTER_URL="https://experimenter.services.mozilla.com/api/v6/experiments-first-run/"
+FENIX_INITIAL_EXPERIMENTS="mobile/android/fenix/app/src/main/res/raw/initial_experiments.json"
+FOCUS_INITIAL_EXPERIMENTS="mobile/android/focus-android/app/src/main/res/raw/initial_experiments.json"
+MOBILE_EXPERIMENTS_UPDATED=false
+
 ARTIFACTS_DIR="${ARTIFACTS_DIR:-.}"
 # Defaults
 HSTS_DIFF_ARTIFACT="${ARTIFACTS_DIR}/${HSTS_DIFF_ARTIFACT:-"nsSTSPreloadList.diff"}"
 HPKP_DIFF_ARTIFACT="${ARTIFACTS_DIR}/${HPKP_DIFF_ARTIFACT:-"StaticHPKPins.h.diff"}"
 REMOTE_SETTINGS_DIFF_ARTIFACT="${ARTIFACTS_DIR}/${REMOTE_SETTINGS_DIFF_ARTIFACT:-"remote-settings.diff"}"
 SUFFIX_LIST_DIFF_ARTIFACT="${ARTIFACTS_DIR}/${SUFFIX_LIST_DIFF_ARTIFACT:-"effective_tld_names.diff"}"
+EXPERIMENTER_DIFF_ARTIFACT="${ARTIFACTS_DIR}/initial_experiments.diff"
 
 # duplicate the functionality of taskcluster-lib-urls, but in bash..
 queue_base="$TASKCLUSTER_ROOT_URL/api/queue/v1"
@@ -311,11 +318,17 @@ function compare_remote_settings_files {
     remote_records_url="$REMOTE_SETTINGS_SERVER/buckets/${bucket}/collections/${collection}/changeset?_expected=${last_modified}"
     local_location_output="$REMOTE_SETTINGS_OUTPUT/${bucket}/${collection}.json"
     mkdir -p "$REMOTE_SETTINGS_OUTPUT/${bucket}"
-    ${WGET} -qO- "$remote_records_url" | ${JQ} '{"data": .changes, "timestamp": .timestamp}' > "${local_location_output}"
+    # We sort both the keys and the records in search-config-v2 to make it
+    # easier to read and to experiment with making changes via the dump file.
+    if [ "${collection}" = "search-config-v2" ]; then
+      ${WGET} -qO- "$remote_records_url" | ${JQ} --sort-keys '{"data": .changes | sort_by(.recordType, .identifier), "timestamp": .timestamp}' > "${local_location_output}"
+    else
+      ${WGET} -qO- "$remote_records_url" | ${JQ} '{"data": .changes, "timestamp": .timestamp}' > "${local_location_output}"
+    fi
 
     # 5. Download attachments if needed.
     if [ "${bucket}" = "blocklists" ] && [ "${collection}" = "addons-bloomfilters" ]; then
-      # Find the attachment with the most recent generation_time, like _updateMLBF in Blocklist.jsm.
+      # Find the attachment with the most recent generation_time, like _updateMLBF in Blocklist.sys.mjs.
       # The server should return one "bloomfilter-base" record, but in case it returns multiple,
       # return the most recent one. The server may send multiple entries if we ever decide to use
       # the "filter_expression" feature of Remote Settings to send different records to specific
@@ -325,8 +338,16 @@ function compare_remote_settings_files {
       update_remote_settings_attachment "${bucket}" "${collection}" addons-mlbf.bin \
         'map(select(.attachment_type == "bloomfilter-base")) | sort_by(.generation_time) | last'
     fi
-    # Here is an example to download an attachment with record identifier "ID":
-    # update_remote_settings_attachment "${bucket}" "${collection}" ID '.[] | select(.id == "ID")'
+    # TODO: Bug 1873448. This cannot handle new/removed files currently, due to the
+    # build system making it difficult.
+    if [ "${bucket}" = "main" ] && [ "${collection}" = "search-config-icons" ]; then
+      ${JQ} -r '.data[] | .id' < "${local_location_output}" |\
+      while read -r id; do
+        # We do not want quotes around ${id}
+        # shellcheck disable=SC2086
+        update_remote_settings_attachment "${bucket}" "${collection}" ${id} ".[] | select(.id == \"${id}\")"
+      done
+    fi
     # NOTE: The downloaded data is not validated. xpcshell should be used for that.
   done
 
@@ -349,7 +370,7 @@ function update_remote_settings_attachment() {
   # $4 is a jq filter on the arrays that should return one record with the attachment
   local jq_attachment_selector=".data | map(select(.attachment)) | $4"
 
-  # These paths match _readAttachmentDump in services/settings/Attachments.jsm.
+  # These paths match _readAttachmentDump in services/settings/Attachments.sys.mjs.
   local path_to_attachment="${bucket}/${collection}/${attachment_id}"
   local path_to_meta="${bucket}/${collection}/${attachment_id}.meta.json"
   local old_meta="$REMOTE_SETTINGS_INPUT/${path_to_meta}"
@@ -387,6 +408,26 @@ function update_remote_settings_attachment() {
   ${WGET} -qO "${REMOTE_SETTINGS_OUTPUT}/${path_to_attachment}" "${ATTACHMENT_BASE_URL}${attachment_path_from_meta}"
 }
 
+function compare_mobile_experiments() {
+  echo "INFO ${WGET} ${EXPERIMENTER_URL}"
+  ${WGET} -O experiments.json "${EXPERIMENTER_URL}"
+  ${WGET} -O fenix-experiments-old.json "${HGREPO}/raw-file/default/${FENIX_INITIAL_EXPERIMENTS}"
+  ${WGET} -O focus-experiments-old.json "${HGREPO}/raw-file/default/${FOCUS_INITIAL_EXPERIMENTS}"
+
+  # shellcheck disable=SC2016
+  ${JQ} --arg APP_NAME fenix '{"data":map(select(.appName == $APP_NAME))}' < experiments.json > fenix-experiments-new.json
+  # shellcheck disable=SC2016
+  ${JQ} --arg APP_NAME focus_android '{"data":map(select(.appName == $APP_NAME))}' < experiments.json > focus-experiments-new.json
+
+  ( ${DIFF} fenix-experiments-old.json fenix-experiments-new.json; ${DIFF} focus-experiments-old.json focus-experiments-new.json ) > "${EXPERIMENTER_DIFF_ARTIFACT}"
+  if [ -s "${EXPERIMENTER_DIFF_ARTIFACT}" ]; then
+    return 0
+  else
+    # no change
+    return 1
+  fi
+}
+
 # Clones an hg repo
 function clone_repo {
   cd "${BASEDIR}"
@@ -419,6 +460,13 @@ function stage_tld_suffix_files {
   cp -a "${GITHUB_SUFFIX_LOCAL}" "${REPODIR}/${HG_SUFFIX_PATH}"
 }
 
+function stage_mobile_experiments_files {
+  cd "${BASEDIR}"
+
+  cp fenix-experiments-new.json "${REPODIR}/${FENIX_INITIAL_EXPERIMENTS}"
+  cp focus-experiments-new.json "${REPODIR}/${FOCUS_INITIAL_EXPERIMENTS}"
+}
+
 # Push all pending commits to Phabricator
 function push_repo {
   cd "${REPODIR}"
@@ -426,7 +474,7 @@ function push_repo {
   then
     return 1
   fi
-  if ! ARC=$(command -v arc)
+  if ! ARC=$(command -v arc) && ! ARC=$(command -v arcanist)
   then
     return 1
   fi
@@ -466,6 +514,7 @@ while [ $# -gt 0 ]; do
     --hpkp) DO_HPKP=true ;;
     --remote-settings) DO_REMOTE_SETTINGS=true ;;
     --suffix-list) DO_SUFFIX_LIST=true ;;
+    --mobile-experiments) DO_MOBILE_EXPERIMENTS=true ;;
     -r) REPODIR="$2"; shift ;;
     --use-mozilla-central) USE_MC=true ;;
     --use-ftp-builds) USE_TC=false ;;
@@ -484,7 +533,7 @@ if [ "${BRANCH}" == "" ]; then
 fi
 
 # Must choose at least one update action.
-if [ "$DO_HSTS" == "false" ] && [ "$DO_HPKP" == "false" ] && [ "$DO_REMOTE_SETTINGS" == "false" ] && [ "$DO_SUFFIX_LIST" == "false" ]
+if [ "$DO_HSTS" == "false" ] && [ "$DO_HPKP" == "false" ] && [ "$DO_REMOTE_SETTINGS" == "false" ] && [ "$DO_SUFFIX_LIST" == "false" ] && [ "$DO_MOBILE_EXPERIMENTS" == false ]
 then
   echo "Error: you must specify at least one action from: --hsts, --hpkp, --remote-settings, or --suffix-list" >&2
   usage
@@ -559,9 +608,15 @@ if [ "${DO_SUFFIX_LIST}" == "true" ]; then
     SUFFIX_LIST_UPDATED=true
   fi
 fi
+if [ "${DO_MOBILE_EXPERIMENTS}" == "true" ]; then
+  if compare_mobile_experiments
+  then
+    MOBILE_EXPERIMENTS_UPDATED=true
+  fi
+fi
 
 
-if [ "${HSTS_UPDATED}" == "false" ] && [ "${HPKP_UPDATED}" == "false" ] && [ "${REMOTE_SETTINGS_UPDATED}" == "false" ] && [ "${SUFFIX_LIST_UPDATED}" == "false" ]; then
+if [ "${HSTS_UPDATED}" == "false" ] && [ "${HPKP_UPDATED}" == "false" ] && [ "${REMOTE_SETTINGS_UPDATED}" == "false" ] && [ "${SUFFIX_LIST_UPDATED}" == "false" ] && [ "${MOBILE_EXPERIMENTS_UPDATED}" == "false" ]; then
   echo "INFO: no updates required. Exiting."
   exit 0
 else
@@ -598,6 +653,11 @@ then
   COMMIT_MESSAGE="${COMMIT_MESSAGE} tld-suffixes"
 fi
 
+if [ "${MOBILE_EXPERIMENTS_UPDATED}" == "true" ]
+then
+  stage_mobile_experiments_files
+  COMMIT_MESSAGE="${COMMIT_MESSAGE} mobile-experiments"
+fi
 
 if [ ${DONTBUILD} == true ]; then
   COMMIT_MESSAGE="${COMMIT_MESSAGE} - (DONTBUILD)"

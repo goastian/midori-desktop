@@ -9,11 +9,11 @@ Transform the repackage task into an actual task description.
 import copy
 
 from taskgraph.transforms.base import TransformSequence
-from taskgraph.util.schema import optionally_keyed_by, resolve_keyed_by
+from taskgraph.util.dependencies import get_primary_dependency
+from taskgraph.util.schema import Schema, optionally_keyed_by, resolve_keyed_by
 from taskgraph.util.taskcluster import get_artifact_prefix
 from voluptuous import Optional, Required
 
-from gecko_taskgraph.loader.single_dep import schema
 from gecko_taskgraph.transforms.repackage import (
     PACKAGE_FORMATS as PACKAGE_FORMATS_VANILLA,
 )
@@ -23,18 +23,13 @@ from gecko_taskgraph.util.partners import get_partner_config_by_kind
 from gecko_taskgraph.util.platforms import archive_format, executable_extension
 from gecko_taskgraph.util.workertypes import worker_type_implementation
 
-
-def _by_platform(arg):
-    return optionally_keyed_by("build-platform", arg)
-
-
 # When repacking the stub installer we need to pass a zip file and package name to the
 # repackage task. This is not needed for vanilla stub but analogous to the full installer.
 PACKAGE_FORMATS = copy.deepcopy(PACKAGE_FORMATS_VANILLA)
 PACKAGE_FORMATS["installer-stub"]["inputs"]["package"] = "target-stub{archive_format}"
 PACKAGE_FORMATS["installer-stub"]["args"].extend(["--package-name", "{package-name}"])
 
-packaging_description_schema = schema.extend(
+packaging_description_schema = Schema(
     {
         # unique label to describe this repackaging task
         Optional("label"): str,
@@ -45,11 +40,13 @@ packaging_description_schema = schema.extend(
         # Shipping product and phase
         Optional("shipping-product"): task_description_schema["shipping-product"],
         Optional("shipping-phase"): task_description_schema["shipping-phase"],
-        Required("package-formats"): _by_platform([str]),
+        Required("package-formats"): optionally_keyed_by(
+            "build-platform", "build-type", [str]
+        ),
         # All l10n jobs use mozharness
         Required("mozharness"): {
             # Config files passed to the mozharness script
-            Required("config"): _by_platform([str]),
+            Required("config"): optionally_keyed_by("build-platform", [str]),
             # Additional paths to look for mozharness configs in. These should be
             # relative to the base of the source checkout
             Optional("config-paths"): [str],
@@ -59,10 +56,23 @@ packaging_description_schema = schema.extend(
         },
         # Override the default priority for the project
         Optional("priority"): task_description_schema["priority"],
+        Optional("task-from"): task_description_schema["task-from"],
+        Optional("attributes"): task_description_schema["attributes"],
+        Optional("dependencies"): task_description_schema["dependencies"],
     }
 )
 
 transforms = TransformSequence()
+
+
+@transforms.add
+def remove_name(config, jobs):
+    for job in jobs:
+        if "name" in job:
+            del job["name"]
+        yield job
+
+
 transforms.add_validate(packaging_description_schema)
 
 
@@ -70,7 +80,9 @@ transforms.add_validate(packaging_description_schema)
 def copy_in_useful_magic(config, jobs):
     """Copy attributes from upstream task to be used for keyed configuration."""
     for job in jobs:
-        dep = job["primary-dependency"]
+        dep = get_primary_dependency(config, job)
+        assert dep
+
         job["build-platform"] = dep.attributes.get("build_platform")
         yield job
 
@@ -92,7 +104,8 @@ def handle_keyed_by(config, jobs):
 @transforms.add
 def make_repackage_description(config, jobs):
     for job in jobs:
-        dep_job = job["primary-dependency"]
+        dep_job = get_primary_dependency(config, job)
+        assert dep_job
 
         label = job.get("label", dep_job.label.replace("signing-", "repackage-"))
         job["label"] = label
@@ -103,7 +116,9 @@ def make_repackage_description(config, jobs):
 @transforms.add
 def make_job_description(config, jobs):
     for job in jobs:
-        dep_job = job["primary-dependency"]
+        dep_job = get_primary_dependency(config, job)
+        assert dep_job
+
         attributes = copy_attributes_from_dependent_job(dep_job)
         build_platform = attributes["build_platform"]
 
@@ -173,7 +188,6 @@ def make_job_description(config, jobs):
         }
 
         worker_type = "b-linux-gcp"
-        worker["docker-image"] = {"in-tree": "debian11-amd64-build"}
 
         worker["artifacts"] = _generate_task_output_files(
             dep_job,

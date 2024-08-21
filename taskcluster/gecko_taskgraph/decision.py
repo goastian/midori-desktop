@@ -26,14 +26,13 @@ from taskgraph.generator import TaskGraphGenerator
 from taskgraph.parameters import Parameters
 from taskgraph.taskgraph import TaskGraph
 from taskgraph.util.python_path import find_object
-from taskgraph.util.schema import Schema, validate_schema
 from taskgraph.util.taskcluster import get_artifact
 from taskgraph.util.vcs import get_repository
 from taskgraph.util.yaml import load_yaml
-from voluptuous import Any, Optional, Required
 
 from . import GECKO
 from .actions import render_actions_json
+from .files_changed import get_changed_files
 from .parameters import get_app_version, get_version
 from .try_option_syntax import parse_message
 from .util.backstop import BACKSTOP_INDEX, is_backstop
@@ -54,6 +53,7 @@ PER_PROJECT_PARAMETERS = {
     "try": {
         "enable_always_target": True,
         "target_tasks_method": "try_tasks",
+        "release_type": "nightly",
     },
     "kaios-try": {
         "target_tasks_method": "try_tasks",
@@ -92,16 +92,20 @@ PER_PROJECT_PARAMETERS = {
         "target_tasks_method": "mozilla_release_tasks",
         "release_type": "release",
     },
-    "mozilla-esr102": {
-        "target_tasks_method": "mozilla_esr102_tasks",
-        "release_type": "esr102",
-    },
-    "mozilla-esr115": {
-        "target_tasks_method": "mozilla_esr115_tasks",
-        "release_type": "esr115",
+    "mozilla-esr128": {
+        "target_tasks_method": "mozilla_esr128_tasks",
+        "release_type": "esr128",
     },
     "pine": {
         "target_tasks_method": "pine_tasks",
+        "release_type": "nightly-pine",
+    },
+    "cypress": {
+        "target_tasks_method": "cypress_tasks",
+    },
+    "larch": {
+        "target_tasks_method": "larch_tasks",
+        "release_type": "nightly-larch",
     },
     "kaios": {
         "target_tasks_method": "kaios_tasks",
@@ -114,56 +118,6 @@ PER_PROJECT_PARAMETERS = {
         "target_tasks_method": "default",
     },
 }
-
-try_task_config_schema = Schema(
-    {
-        Required("tasks"): [str],
-        Optional("browsertime"): bool,
-        Optional("chemspill-prio"): bool,
-        Optional("disable-pgo"): bool,
-        Optional("env"): {str: str},
-        Optional("gecko-profile"): bool,
-        Optional("gecko-profile-interval"): float,
-        Optional("gecko-profile-entries"): int,
-        Optional("gecko-profile-features"): str,
-        Optional("gecko-profile-threads"): str,
-        Optional(
-            "perftest-options",
-            description="Options passed from `mach perftest` to try.",
-        ): object,
-        Optional(
-            "pernosco",
-             description="Record an rr trace on supported tasks using the Pernosco debugging "
-             "service.",
-        ): bool,
-        Optional(
-            "optimize-strategies",
-            description="Alternative optimization strategies to use instead of the default. "
-            "A module path pointing to a dict to be use as the `strategy_override` "
-            "argument in `taskgraph.optimize.base.optimize_task_graph`.",
-        ): str,
-        Optional("rebuild"): int,
-        Optional("tasks-regex"): {
-            "include": Any(None, [str]),
-            "exclude": Any(None, [str]),
-        },
-        Optional("use-artifact-builds"): bool,
-        Optional(
-            "worker-overrides",
-            description="Mapping of worker alias to worker pools to use for those aliases.",
-        ): {str: str},
-        Optional("routes"): [str],
-    }
-)
-"""
-Schema for try_task_config.json files.
-"""
-
-try_task_config_schema_v2 = Schema(
-    {
-        Optional("parameters"): {str: object},
-    }
-)
 
 
 def full_task_graph_to_runnable_jobs(full_task_json):
@@ -278,9 +232,7 @@ def taskgraph_decision(options, parameters=None):
         write_artifact("bugbug-push-schedules.json", push_schedules.popitem()[1])
 
     # cache run-task & misc/fetch-content
-    scripts_root_dir = os.path.join(
-        "/builds/worker/checkouts/gecko/taskcluster/scripts"
-    )
+    scripts_root_dir = os.path.join(GECKO, "taskcluster/scripts")
     run_task_file_path = os.path.join(scripts_root_dir, "run-task")
     fetch_content_file_path = os.path.join(scripts_root_dir, "misc/fetch-content")
     shutil.copy2(run_task_file_path, ARTIFACTS_DIR)
@@ -350,7 +302,7 @@ def get_decision_parameters(graph_config, options):
     parameters["filters"] = [
         "target_tasks_method",
     ]
-    parameters["enable_always_target"] = False
+    parameters["enable_always_target"] = ["docker-image"]
     parameters["existing_tasks"] = {}
     parameters["do_not_optimize"] = []
     parameters["build_number"] = 1
@@ -359,6 +311,9 @@ def get_decision_parameters(graph_config, options):
     parameters["message"] = try_syntax_from_message(commit_message)
     parameters["hg_branch"] = get_hg_revision_branch(
         GECKO, revision=parameters["head_rev"]
+    )
+    parameters["files_changed"] = sorted(
+        get_changed_files(parameters["head_repository"], parameters["head_rev"])
     )
     parameters["next_version"] = None
     parameters["optimize_strategies"] = None
@@ -480,21 +435,11 @@ def set_try_config(parameters, task_config_file):
             task_config = json.load(fh)
         task_config_version = task_config.pop("version", 1)
         if task_config_version == 1:
-            validate_schema(
-                try_task_config_schema,
-                task_config,
-                "Invalid v1 `try_task_config.json`.",
-            )
             parameters["try_mode"] = "try_task_config"
             parameters["try_task_config"] = task_config
         elif task_config_version == 2:
-            validate_schema(
-                try_task_config_schema_v2,
-                task_config,
-                "Invalid v2 `try_task_config.json`.",
-            )
             parameters.update(task_config["parameters"])
-            return
+            parameters["try_mode"] = "try_task_config"
         else:
             raise Exception(
                 f"Unknown `try_task_config.json` version: {task_config_version}"
@@ -506,28 +451,21 @@ def set_try_config(parameters, task_config_file):
     else:
         parameters["try_options"] = None
 
-    if parameters["try_mode"] == "try_task_config":
-        # The user has explicitly requested a set of jobs, so run them all
-        # regardless of optimization.  Their dependencies can be optimized,
-        # though.
-        parameters["optimize_target_tasks"] = False
-    else:
-        # For a try push with no task selection, apply the default optimization
-        # process to all of the tasks.
-        parameters["optimize_target_tasks"] = True
-
 
 def set_decision_indexes(decision_task_id, params, graph_config):
     index_paths = []
     if params["backstop"]:
-        index_paths.append(BACKSTOP_INDEX)
+        # When two Decision tasks run at nearly the same time, it's possible
+        # they both end up being backstops if the second checks the backstop
+        # index before the first inserts it. Insert this index first to reduce
+        # the chances of that happening.
+        index_paths.insert(0, BACKSTOP_INDEX)
 
     subs = params.copy()
     subs["trust-domain"] = graph_config["trust-domain"]
 
-    index_paths = [i.format(**subs) for i in index_paths]
     for index_path in index_paths:
-        insert_index(index_path, decision_task_id, use_proxy=True)
+        insert_index(index_path.format(**subs), decision_task_id, use_proxy=True)
 
 
 def write_artifact(filename, data):

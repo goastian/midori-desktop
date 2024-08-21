@@ -21,6 +21,9 @@ from typing import Any, List
 import appdirs
 import yaml
 
+from gecko_taskgraph import GECKO
+from gecko_taskgraph.files_changed import get_locally_changed_files
+
 Command = namedtuple("Command", ["func", "args", "kwargs", "defaults"])
 commands = {}
 
@@ -60,36 +63,60 @@ def format_taskgraph_json(taskgraph):
 
 
 def format_taskgraph_yaml(taskgraph):
-    return yaml.safe_dump(taskgraph.to_json(), default_flow_style=False)
+    from taskgraph.util.readonlydict import ReadOnlyDict
+
+    class TGDumper(yaml.SafeDumper):
+        def ignore_aliases(self, data):
+            return True
+
+        def represent_ro_dict(self, data):
+            return self.represent_dict(dict(data))
+
+    TGDumper.add_representer(ReadOnlyDict, TGDumper.represent_ro_dict)
+
+    return yaml.dump(taskgraph.to_json(), Dumper=TGDumper, default_flow_style=False)
 
 
-def get_filtered_taskgraph(taskgraph, tasksregex):
+def get_filtered_taskgraph(taskgraph, tasksregex, exclude_keys):
     """
     Filter all the tasks on basis of a regular expression
     and returns a new TaskGraph object
     """
     from taskgraph.graph import Graph
+    from taskgraph.task import Task
     from taskgraph.taskgraph import TaskGraph
 
-    # return original taskgraph if no regular expression is passed
-    if not tasksregex:
-        return taskgraph
-    named_links_dict = taskgraph.graph.named_links_dict()
-    filteredtasks = {}
-    filterededges = set()
-    regexprogram = re.compile(tasksregex)
+    if tasksregex:
+        named_links_dict = taskgraph.graph.named_links_dict()
+        filteredtasks = {}
+        filterededges = set()
+        regexprogram = re.compile(tasksregex)
 
-    for key in taskgraph.graph.visit_postorder():
-        task = taskgraph.tasks[key]
-        if regexprogram.match(task.label):
-            filteredtasks[key] = task
-            for depname, dep in named_links_dict[key].items():
-                if regexprogram.match(dep):
-                    filterededges.add((key, dep, depname))
-    filtered_taskgraph = TaskGraph(
-        filteredtasks, Graph(set(filteredtasks), filterededges)
-    )
-    return filtered_taskgraph
+        for key in taskgraph.graph.visit_postorder():
+            task = taskgraph.tasks[key]
+            if regexprogram.match(task.label):
+                filteredtasks[key] = task
+                for depname, dep in named_links_dict[key].items():
+                    if regexprogram.match(dep):
+                        filterededges.add((key, dep, depname))
+
+        taskgraph = TaskGraph(filteredtasks, Graph(set(filteredtasks), filterededges))
+
+    if exclude_keys:
+        for label, task in taskgraph.tasks.items():
+            task_dict = task.to_json()
+            for key in exclude_keys:
+                obj = task_dict
+                attrs = key.split(".")
+                while obj and attrs[0] in obj:
+                    if len(attrs) == 1:
+                        del obj[attrs[0]]
+                        break
+                    obj = obj[attrs[0]]
+                    attrs = attrs[1:]
+            taskgraph.tasks[label] = Task.from_json(task_dict)
+
+    return taskgraph
 
 
 FORMAT_METHODS = {
@@ -106,7 +133,7 @@ def get_taskgraph_generator(root, parameters):
     return TaskGraphGenerator(root_dir=root, parameters=parameters)
 
 
-def format_taskgraph(options, parameters, logfile=None):
+def format_taskgraph(options, parameters, overrides, logfile=None):
     import taskgraph
     from taskgraph.parameters import parameters_loader
 
@@ -124,14 +151,14 @@ def format_taskgraph(options, parameters, logfile=None):
     if isinstance(parameters, str):
         parameters = parameters_loader(
             parameters,
-            overrides={"target-kind": options.get("target_kind")},
+            overrides=overrides,
             strict=False,
         )
 
     tgg = get_taskgraph_generator(options.get("root"), parameters)
 
     tg = getattr(tgg, options["graph_attr"])
-    tg = get_filtered_taskgraph(tg, options["tasks_regex"])
+    tg = get_filtered_taskgraph(tg, options["tasks_regex"], options["exclude_keys"])
     format_method = FORMAT_METHODS[options["format"] or "labels"]
     return format_method(tg)
 
@@ -158,7 +185,7 @@ def dump_output(out, path=None, params_spec=None):
     print(out + "\n", file=fh)
 
 
-def generate_taskgraph(options, parameters, logdir):
+def generate_taskgraph(options, parameters, overrides, logdir):
     from taskgraph.parameters import Parameters
 
     def logfile(spec):
@@ -174,14 +201,16 @@ def generate_taskgraph(options, parameters, logdir):
     # tracebacks a little more readable and avoids additional process overhead.
     if len(parameters) == 1:
         spec = parameters[0]
-        out = format_taskgraph(options, spec, logfile(spec))
+        out = format_taskgraph(options, spec, overrides, logfile(spec))
         dump_output(out, options["output_file"])
         return
 
     futures = {}
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=options["max_workers"]) as executor:
         for spec in parameters:
-            f = executor.submit(format_taskgraph, options, spec, logfile(spec))
+            f = executor.submit(
+                format_taskgraph, options, spec, overrides, logfile(spec)
+            )
             futures[f] = spec
 
     for future in as_completed(futures):
@@ -275,6 +304,15 @@ def generate_taskgraph(options, parameters, logdir):
     "specified).",
 )
 @argument(
+    "--force-local-files-changed",
+    default=False,
+    action="store_true",
+    help="Compute the 'files-changed' parameter from local version control, "
+    "even when explicitly using a parameter set that already has it defined. "
+    "Note that this is already the default behaviour when no parameters are "
+    "specified.",
+)
+@argument(
     "--no-optimize",
     dest="optimize",
     action="store_false",
@@ -295,8 +333,19 @@ def generate_taskgraph(options, parameters, logdir):
     help="only return tasks with labels matching this regular " "expression.",
 )
 @argument(
-    "--target-kind",
+    "--exclude-key",
     default=None,
+    dest="exclude_keys",
+    action="append",
+    help="Exclude the specified key (using dot notation) from the final result. "
+    "This is mainly useful with '--diff' to filter out expected differences.",
+)
+@argument(
+    "-k",
+    "--target-kind",
+    dest="target_kinds",
+    action="append",
+    default=[],
     help="only return tasks that are of the given kind, or their dependencies.",
 )
 @argument(
@@ -315,6 +364,15 @@ def generate_taskgraph(options, parameters, logdir):
     "Without args the base revision will be used. A revision specifier such as "
     "the hash or `.~1` (hg) or `HEAD~1` (git) can be used as well.",
 )
+@argument(
+    "-j",
+    "--max-workers",
+    dest="max_workers",
+    default=None,
+    type=int,
+    help="The maximum number of workers to use for parallel operations such as"
+    "when multiple parameters files are passed.",
+)
 def show_taskgraph(options):
     from mozversioncontrol import get_repository_object as get_repository
     from taskgraph.parameters import Parameters, parameters_loader
@@ -328,7 +386,11 @@ def show_taskgraph(options):
     output_file = options["output_file"]
 
     if options["diff"]:
-        repo = get_repository(os.getcwd())
+        # --root argument is taskgraph's config at <repo>/taskcluster
+        repo_root = os.getcwd()
+        if options["root"]:
+            repo_root = f"{options['root']}/.."
+        repo = get_repository(repo_root)
 
         if not repo.working_directory_clean():
             print(
@@ -352,14 +414,20 @@ def show_taskgraph(options):
         )
         print(f"Generating {options['graph_attr']} @ {cur_ref}", file=sys.stderr)
 
+    overrides = {
+        "target-kinds": options.get("target_kinds"),
+    }
     parameters: List[Any[str, Parameters]] = options.pop("parameters")
     if not parameters:
-        overrides = {
-            "target-kind": options.get("target_kind"),
-        }
         parameters = [
             parameters_loader(None, strict=False, overrides=overrides)
         ]  # will use default values
+
+        # This is the default behaviour anyway, so no need to re-compute.
+        options["force_local_files_changed"] = False
+
+    elif options["force_local_files_changed"]:
+        overrides["files-changed"] = sorted(get_locally_changed_files(GECKO))
 
     for param in parameters[:]:
         if isinstance(param, str) and os.path.isdir(param):
@@ -386,7 +454,7 @@ def show_taskgraph(options):
         # to setup its `mach` based logging.
         setup_logging()
 
-    generate_taskgraph(options, parameters, logdir)
+    generate_taskgraph(options, parameters, overrides, logdir)
 
     if options["diff"]:
         assert diffdir is not None
@@ -416,7 +484,7 @@ def show_taskgraph(options):
                 diffdir, f"{options['graph_attr']}_{base_ref}"
             )
             print(f"Generating {options['graph_attr']} @ {base_ref}", file=sys.stderr)
-            generate_taskgraph(options, parameters, logdir)
+            generate_taskgraph(options, parameters, overrides, logdir)
         finally:
             repo.update(cur_ref)
 
@@ -639,7 +707,7 @@ def decision(options):
 @argument(
     "--root",
     "-r",
-    default="taskcluster/ci",
+    default="taskcluster",
     help="root of the taskgraph definition relative to topsrcdir",
 )
 def action_callback(options):
@@ -675,7 +743,7 @@ def action_callback(options):
 @argument(
     "--root",
     "-r",
-    default="taskcluster/ci",
+    default="taskcluster",
     help="root of the taskgraph definition relative to topsrcdir",
 )
 @argument(

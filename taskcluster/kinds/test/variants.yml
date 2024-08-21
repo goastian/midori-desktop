@@ -1,0 +1,436 @@
+---
+1proc:
+    description: "{description} with e10s disabled"
+    component: "Testing::General"
+    expiration: "never"
+    suffix: "1proc"
+    mozinfo: "e10s"
+    merge:
+        mozharness:
+            extra-options:
+                - "--disable-e10s"
+                - "--disable-fission"
+
+headless:
+    description: "{description} without a window"
+    component: "Firefox::Headless"
+    expiration: "never"
+    suffix: "headless"
+    mozinfo: "headless"
+    replace:
+        tier: 2
+    when:
+        $eval: '(
+                    "linux" in task["test-platform"]
+                    && (
+                        "mochitest-plain" in task["try-name"]
+                        || "marionette" in task["try-name"]
+                    )
+                )
+                || "web-platform-tests-wdspec" == task["try-name"]'
+    merge:
+        mozharness:
+            extra-options:
+                - "--headless"
+
+a11y-checks:
+    description: "{description} with accessibility checks enabled"
+    component: "Core::Disability Access APIs"
+    expiration: "2024-09-01"
+    suffix: "a11y-checks"
+    mozinfo: "a11y_checks"
+    replace:
+        tier: 2
+    when:
+        $eval: '(
+                    "linux" in task["test-platform"]
+                    && "opt" in task["test-platform"]
+                    && !(
+                        "asan" in task["test-platform"]
+                        || "tsan" in task["test-platform"]
+                        || "ccov" in task["test-platform"]
+                    )
+                ) && (
+                    "mochitest-devtools-chrome" == task["try-name"]
+                    || "mochitest-browser-chrome" == task["try-name"]
+                )'
+    merge:
+        mozharness:
+            extra-options:
+                - "--enable-a11y-checks"
+
+aab:
+    description: "{description} with aab test_runner"
+    component: "GeckoView::General"
+    expiration: "2024-09-01"
+    when: &gv_e10s_filter
+        $eval: '"android" in task["test-platform"]'
+    suffix: "aab"
+    # Need to add jdk but there isn't a good way to do that
+    # so we just replace the toolchain list
+    merge:
+        fetches:
+            toolchain:
+                - android-system-image-x86_64-linux
+                - android-avd-x86_64-linux
+                - android-emulator-linux
+                - linux64-minidump-stackwalk
+                - linux64-fix-stacks
+                - linux64-jdk
+                - linux64-hostutils
+    replace:
+        target: "geckoview-test_runner.aab"
+
+geckoview-no-fission:
+    description: "{description} without fission enabled"
+    component: "GeckoView::Sandboxing"
+    expiration: "2024-09-01"
+    when:
+        <<: *gv_e10s_filter
+    suffix: "nofis"
+    mozinfo: "fission"
+    merge:
+        mozharness:
+            extra-options:
+                - "--disable-fission"
+
+geckoview-fission:
+    description: "{description} with fission enabled and default isolation strategy"
+    component: "GeckoView::Sandboxing"
+    expiration: "2024-09-01"
+    when:
+        <<: *gv_e10s_filter
+    suffix: "fis"
+    mozinfo: "fission"
+
+geckoview-fission-isolate-high-value:
+    description: "{description} with fission enabled and isolation strategy isolateHighValue"
+    component: "GeckoView::Sandboxing"
+    expiration: "2024-09-01"
+    when:
+        <<: *gv_e10s_filter
+    suffix: "fis-hv"
+    mozinfo: "fission-high-value"
+    merge:
+        mozharness:
+            extra-options:
+                - "--setpref=fission.webContentIsolationStrategy=2"
+
+no-fission:
+    description: "{description} without fission enabled"
+    component: "Core::DOM: Content Processes"
+    expiration: "2024-09-01"
+    suffix: "nofis"
+    mozinfo: "fission"
+    when:
+        $eval: '
+                "linux" in task["test-platform"]
+                || "android" in task["test-platform"]
+                '
+    merge:
+        mozharness:
+            extra-options:
+                - "--disable-fission"
+
+geckoview-no-fission-ship:
+    description: "{description} with fission disabled and ship enabled"
+    component: "GeckoView::Sandboxing"
+    expiration: "2024-09-01"
+    suffix: "nofis-ship"
+    when:
+        <<: *gv_e10s_filter
+    merge:
+        mozharness:
+            extra-options:
+                - "--disable-fission"
+                - "--setpref=fission.disableSessionHistoryInParent=false"
+
+xorigin:
+    description: "{description} with cross-origin"
+    component: "Core::DOM: Content Processes"
+    expiration: "never"
+    suffix: "xorig"
+    mozinfo: "xorigin"
+    replace:
+        e10s: true
+    when:
+        $eval: '"mochitest-plain" in task["try-name"]'
+    merge:
+        mozharness:
+            extra-options:
+                - "--enable-xorigin-tests"
+                - "--setpref=privacy.partition.always_partition_third_party_non_cookie_storage=false"
+
+conditioned_profile:
+    description: "{description} with conditioned profile"
+    component: "Testing::General"
+    expiration: "2024-09-01"
+    suffix: "condprof"
+    mozinfo: "condprof"
+    when:
+        $eval: '
+                (
+                    "linux" in task["test-platform"]
+                    || "windows" in task["test-platform"]
+                ) && (
+                    "opt" in task["test-platform"]
+                    && !(
+                        "asan" in task["test-platform"]
+                        || "tsan" in task["test-platform"]
+                        || "ccov" in task["test-platform"]
+                    )
+                ) && (
+                    "mochitest-plain" == task["try-name"]
+                    || "xpcshell" == task["try-name"]
+                )'
+    merge:
+        mozharness:
+            extra-options:
+                - "--conditioned-profile"
+    replace:
+        chunks: 8
+
+socketprocess:
+    description: "{description} with socket process enabled"
+    component: "Core::Networking"
+    expiration: "2024-09-01"
+    suffix: "spi"
+    mozinfo: "socketprocess_e10s"
+    when:
+        $eval: '"mochitest-media" in task["try-name"]'
+    merge:
+        mozharness:
+            extra-options:
+                - "--setpref=media.peerconnection.mtransport_process=true"
+                - "--setpref=network.process.enabled=true"
+
+socketprocess_networking:
+    description: "{description} with networking on socket process enabled"
+    component: "Core::Networking"
+    expiration: "2024-09-01"
+    suffix: "spi-nw"
+    mozinfo: "socketprocess_networking"
+    when:
+        $eval: '
+                (
+                    "linux" in task["test-platform"]
+                    || "windows" in task["test-platform"]
+                    || "macosx" in task["test-platform"]
+                ) && (
+                    "mochitest" in task["try-name"]
+                    || "xpcshell" == task["try-name"]
+                )'
+    merge:
+        mozharness:
+            extra-options:
+                - "--setpref=network.process.enabled=true"
+                - "--setpref=network.http.network_access_on_socket_process.enabled=true"
+
+# -
+# Webrender DComp variants for Win10
+
+webrender-dcomp-disabled:
+    description: "{description} with dcomp disabled"
+    component: "Core::Graphics: WebRender"
+    expiration: "2024-09-01"
+    suffix: "wr-dc0"
+    when:
+        $eval: '"windows1" in task["test-platform"]'
+    merge:
+        mozharness:
+            extra-options:
+                - "--setpref=gfx.webrender.dcomp-win.enabled=false"
+                - "--setpref=gfx.webrender.dcomp-video-overlay-win=false"
+                - "--setpref=gfx.webrender.dcomp-video-overlay-win.force-enabled=false"
+                - "--setpref=gfx.webrender.compositor=false"
+                - "--setpref=gfx.webrender.compositor.force-enabled=false"
+
+webrender-dcomp-present:  # Default variant ends up like this.
+    description: "{description} with dcomp present but not overlays"
+    component: "Core::Graphics: WebRender"
+    expiration: "2024-09-01"
+    suffix: "wr-dc1-p"
+    when:
+        $eval: '"windows1" in task["test-platform"]'
+    merge:
+        mozharness:
+            extra-options:
+                - "--setpref=gfx.webrender.dcomp-win.enabled=true"
+                - "--setpref=gfx.webrender.dcomp-video-overlay-win=false"
+                - "--setpref=gfx.webrender.dcomp-video-overlay-win.force-enabled=false"
+                - "--setpref=gfx.webrender.compositor=false"
+                - "--setpref=gfx.webrender.compositor.force-enabled=false"
+
+webrender-dcomp-overlays:
+    description: "{description} with dcomp overlays but not compositing"
+    component: "Core::Graphics: WebRender"
+    expiration: "2024-09-01"
+    suffix: "wr-dc2-o"
+    when:
+        $eval: '"windows1" in task["test-platform"]'
+    merge:
+        mozharness:
+            extra-options:
+                - "--setpref=gfx.webrender.dcomp-win.enabled=true"
+                - "--setpref=gfx.webrender.dcomp-video-overlay-win=true"
+                - "--setpref=gfx.webrender.dcomp-video-overlay-win.force-enabled=true"
+                - "--setpref=gfx.webrender.compositor=false"
+                - "--setpref=gfx.webrender.compositor.force-enabled=false"
+
+webrender-dcomp-compositing:
+    description: "{description} with dcomp compositing"
+    component: "Core::Graphics: WebRender"
+    expiration: "2024-09-01"
+    suffix: "wr-dc3-c"
+    when:
+        $eval: '"windows1" in task["test-platform"]'
+    merge:
+        mozharness:
+            extra-options:
+                - "--setpref=gfx.webrender.dcomp-win.enabled=true"
+                - "--setpref=gfx.webrender.dcomp-video-overlay-win=true"
+                - "--setpref=gfx.webrender.dcomp-video-overlay-win.force-enabled=true"
+                - "--setpref=gfx.webrender.compositor=true"
+                - "--setpref=gfx.webrender.compositor.force-enabled=true"
+
+# -
+
+webrender-sw:
+    description: "{description} with software webrender enabled"
+    component: "Core::Graphics: WebRender"
+    expiration: "never"
+    suffix: "swr"
+    mozinfo: "swgl"
+    merge:
+        webrender: true
+        mozharness:
+            extra-options:
+                - "--setpref=gfx.webrender.software=true"
+
+webgl-ipc:
+    description: "{description} with WebGL IPC process enabled"
+    component: "Core::Graphics: CanvasWebGL"
+    expiration: "2024-09-01"
+    suffix: "gli"
+    merge:
+        mozharness:
+            extra-options:
+                - "--setpref=webgl.out-of-process=true"
+                - "--setpref=security.sandbox.content.headless=true"
+
+wmf-media-engine:
+    description: "{description} with Windows Media Foundation media engine enabled"
+    component: "Core::Audio/Video: Playback"
+    expiration: "2024-10-10"
+    when:
+        $eval: '"windows1" in task["test-platform"]'
+    suffix: "wmfme"
+    mozinfo: "wmfme"
+    replace:
+        tier: 2
+    merge:
+        mozharness:
+            extra-options:
+                - "--tag=media-engine-compatible"
+                - "--setpref=media.wmf.media-engine.enabled=1"
+                - "--setpref=media.wmf.media-engine.channel-decoder.enabled=true"
+                - "--setpref=media.eme.wmf.clearkey.enabled=true"
+                - "--setpref=media.wmf.media-engine.bypass-gfx-blocklist=true"
+
+media-gpu:
+    description: "{description} for running media tests on the GPU worker"
+    component: "Core::Audio/Video: Playback"
+    expiration: "2024-11-15"
+    suffix: "mda-gpu"
+    mozinfo: "mda_gpu"
+    when:
+        $eval: '
+                    "windows" in task["test-platform"]
+                    || "macosx" in task["test-platform"]
+                '
+    merge:
+        virtualization: virtual-with-gpu
+        mozharness:
+            extra-options:
+                - "--tag=media-gpu"
+                - "--setpref=media.hardware-video-decoding.force-enabled=true"
+
+msix:
+    description: "{description} from msix packages"
+    component: "Firefox:Installer"
+    expiration: "never"
+    suffix: "msix"
+    mozinfo: "msix"
+    when:
+        $eval: '
+                    "windows1" in task["test-platform"]
+                    && "-64" in task["test-platform"]
+                    && (
+                        "opt" in task["test-platform"]
+                        || "debug" in task["test-platform"]
+                    ) && !(
+                        "asan" in task["test-platform"]
+                        || "ccov" in task["test-platform"]
+                    )
+                '
+    replace:
+        mozharness:
+            extra-options:
+                - "--variant=msix"
+                - "--installer-path installer.msix"
+
+http3:
+    description: "{description} with http3 server"
+    component: "Core::Networking"
+    expiration: "2024-09-01"
+    suffix: "http3"
+    mozinfo: "http3"
+    when:
+        $eval: '(
+                    "linux" in task["test-platform"]
+                    && "debug" in task["test-platform"]
+                ) && (
+                    "mochitest-plain" == task["try-name"]
+                    || "mochitest-devtools-chrome" == task["try-name"]
+                )'
+    merge:
+        mozharness:
+            extra-options:
+                - "--use-http3-server"
+
+http2:
+    description: "{description} with http2 server"
+    component: "Core::Networking"
+    expiration: "2024-09-01"
+    suffix: "http2"
+    mozinfo: "http2"
+    when:
+        $eval: '(
+                    "linux" in task["test-platform"]
+                    && "debug" in task["test-platform"]
+                )
+                    && "mochitest-plain" == task["try-name"]
+                '
+    merge:
+        mozharness:
+            extra-options:
+                - "--use-http2-server"
+
+draw-snapshot:
+    description: "{description} with draw snapshot"
+    component: "Core::Graphics"
+    suffix: "s"
+    mozinfo: "snapshot"
+    expiration: "never"
+    when:
+        $eval: '(
+                    "linux" in task["test-platform"]
+                    && "debug" in task["test-platform"]
+                )
+                    && "reftest" == task["try-name"]
+                '
+    replace:
+        virtualization: virtual
+        mozharness:
+            extra-options:
+                - "--setpref=reftest.use-draw-snapshot=true"

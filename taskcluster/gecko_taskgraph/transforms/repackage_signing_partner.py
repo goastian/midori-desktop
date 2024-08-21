@@ -6,10 +6,11 @@ Transform the repackage signing task into an actual task description.
 """
 
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.util.dependencies import get_primary_dependency
+from taskgraph.util.schema import Schema
 from taskgraph.util.taskcluster import get_artifact_path
 from voluptuous import Optional
 
-from gecko_taskgraph.loader.single_dep import schema
 from gecko_taskgraph.transforms.task import task_description_schema
 from gecko_taskgraph.util.attributes import copy_attributes_from_dependent_job
 from gecko_taskgraph.util.partners import get_partner_config_by_kind
@@ -17,15 +18,27 @@ from gecko_taskgraph.util.scriptworker import get_signing_cert_scope_per_platfor
 
 transforms = TransformSequence()
 
-repackage_signing_description_schema = schema.extend(
+repackage_signing_description_schema = Schema(
     {
         Optional("label"): str,
         Optional("extra"): object,
+        Optional("attributes"): task_description_schema["attributes"],
+        Optional("dependencies"): task_description_schema["dependencies"],
         Optional("shipping-product"): task_description_schema["shipping-product"],
         Optional("shipping-phase"): task_description_schema["shipping-phase"],
         Optional("priority"): task_description_schema["priority"],
+        Optional("task-from"): task_description_schema["task-from"],
     }
 )
+
+
+@transforms.add
+def remove_name(config, jobs):
+    for job in jobs:
+        if "name" in job:
+            del job["name"]
+        yield job
+
 
 transforms.add_validate(repackage_signing_description_schema)
 
@@ -33,7 +46,9 @@ transforms.add_validate(repackage_signing_description_schema)
 @transforms.add
 def make_repackage_signing_description(config, jobs):
     for job in jobs:
-        dep_job = job["primary-dependency"]
+        dep_job = get_primary_dependency(config, job)
+        assert dep_job
+
         repack_id = dep_job.task["extra"]["repack_id"]
         attributes = dep_job.attributes
         build_platform = dep_job.attributes.get("build_platform")
@@ -43,10 +58,13 @@ def make_repackage_signing_description(config, jobs):
         label = dep_job.label.replace("repackage-", "repackage-signing-")
         # Linux
         label = label.replace("chunking-dummy-", "repackage-signing-")
-        description = "Signing of repackaged artifacts for partner repack id '{repack_id}' for build '" "{build_platform}/{build_type}'".format(  # NOQA: E501
-            repack_id=repack_id,
-            build_platform=attributes.get("build_platform"),
-            build_type=attributes.get("build_type"),
+        description = (
+            "Signing of repackaged artifacts for partner repack id '{repack_id}' for build '"
+            "{build_platform}/{build_type}'".format(  # NOQA: E501
+                repack_id=repack_id,
+                build_platform=attributes.get("build_platform"),
+                build_type=attributes.get("build_type"),
+            )
         )
 
         if "linux" in build_platform:
@@ -75,7 +93,7 @@ def make_repackage_signing_description(config, jobs):
                     "paths": [
                         get_artifact_path(dep_job, f"{repack_id}/target.installer.exe"),
                     ],
-                    "formats": ["autograph_authenticode_sha2", "autograph_gpg"],
+                    "formats": ["autograph_authenticode_202404", "autograph_gpg"],
                 }
             ]
 
@@ -95,7 +113,7 @@ def make_repackage_signing_description(config, jobs):
                                 f"{repack_id}/target.stub-installer.exe",
                             ),
                         ],
-                        "formats": ["autograph_authenticode_sha2", "autograph_gpg"],
+                        "formats": ["autograph_authenticode_202404", "autograph_gpg"],
                     }
                 )
         elif "mac" in build_platform:
