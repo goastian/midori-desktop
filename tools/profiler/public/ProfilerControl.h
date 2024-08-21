@@ -40,6 +40,8 @@ static inline void profiler_init(void* stackTop) {}
 static inline void profiler_shutdown(
     IsFastShutdown aIsFastShutdown = IsFastShutdown::No) {}
 
+static inline void profiler_lookup_download_directory() {}
+
 #else  // !MOZ_GECKO_PROFILER
 
 #  include "BaseProfiler.h"
@@ -58,6 +60,9 @@ static constexpr mozilla::PowerOfTwo32 PROFILER_DEFAULT_ENTRIES =
 
 static constexpr mozilla::PowerOfTwo32 PROFILER_DEFAULT_STARTUP_ENTRIES =
     mozilla::baseprofiler::BASE_PROFILER_DEFAULT_STARTUP_ENTRIES;
+
+static constexpr mozilla::PowerOfTwo32 PROFILER_DEFAULT_SIGHANDLE_ENTRIES =
+    mozilla::MakePowerOfTwo32<64 * 1024 * 1024>();  // 64M entries = 512MiB
 
 #  define PROFILER_DEFAULT_INTERVAL BASE_PROFILER_DEFAULT_INTERVAL
 #  define PROFILER_MAX_INTERVAL BASE_PROFILER_MAX_INTERVAL
@@ -122,6 +127,18 @@ void profiler_ensure_started(
     mozilla::PowerOfTwo32 aCapacity, double aInterval, uint32_t aFeatures,
     const char** aFilters, uint32_t aFilterCount, uint64_t aActiveTabID,
     const mozilla::Maybe<double>& aDuration = mozilla::Nothing());
+
+// Tell the profiler to look up the download directory for writing profiles.
+// With some features, such as signal control, we need to know the location of
+// a directory where we can save profiles to disk. Because we start the
+// profiler before we start the directory service, we can't access the
+// download directory at profiler startup. Similarly, when we need to get the
+// directory, we often can't, as we're running in non-main-thread contexts
+// that don't have access to the directory service. This function gives us a
+// third option, by giving us a hook to look for the download directory when
+// the time is right. This might be triggered internally (e.g. when we start
+// profiling), or externally, e.g. after the directory service is initialised.
+void profiler_lookup_download_directory();
 
 //---------------------------------------------------------------------------
 // Control the profiler

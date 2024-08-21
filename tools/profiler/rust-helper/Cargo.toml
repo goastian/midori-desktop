@@ -5,12 +5,12 @@ authors = ["Markus Stange <mstange@themasta.com>"]
 license = "MPL-2.0"
 
 [dependencies]
-memmap2 = "0.5"
+memmap2 = "0.9"
 rustc-demangle = "0.1"
 uuid = "1.0"
 
 [dependencies.object]
-version = "0.30"
+version = "0.32.0"
 optional = true
 default-features = false
 features = ["std", "read_core", "elf"]

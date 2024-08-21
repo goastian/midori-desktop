@@ -14,7 +14,10 @@ var helpers = require("../helpers");
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/var-only-at-top-level.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/var-only-at-top-level.html",
+    },
+    messages: {
+      unexpectedVar: "Unexpected var, use let or const instead.",
     },
     schema: [],
     type: "suggestion",
@@ -30,7 +33,7 @@ module.exports = {
 
           context.report({
             node,
-            message: "Unexpected var, use let or const instead.",
+            messageId: "unexpectedVar",
           });
         }
       },

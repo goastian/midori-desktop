@@ -8,7 +8,7 @@ eslint:
     extensions: ['mjs', 'js', 'jsm', 'json', 'jsx', 'html', 'sjs', 'xhtml']
     support-files:
         - '**/.eslintrc.js'
-        - '.eslintrc-test-paths.js'
+        - '.eslintrc*.js'
         - '.eslintignore'
         - 'tools/lint/eslint/**'
         # Files that can influence global variables
@@ -26,7 +26,6 @@ eslint:
         - 'toolkit/content/contentAreaUtils.js'
         - 'toolkit/content/editMenuOverlay.js'
         - 'toolkit/content/globalOverlay.js'
-        - 'toolkit/modules/Services.jsm'
     type: external
     payload: eslint:lint
     setup: eslint:setup

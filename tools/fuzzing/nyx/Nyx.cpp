@@ -19,7 +19,12 @@
 namespace mozilla {
 namespace fuzzing {
 
-Nyx::Nyx() {}
+Nyx::Nyx() {
+  char* testFilePtr = getenv("MOZ_FUZZ_TESTFILE");
+  if (testFilePtr) {
+    mReplayMode = true;
+  }
+}
 
 // static
 Nyx& Nyx::instance() {
@@ -31,10 +36,14 @@ extern "C" {
 MOZ_EXPORT __attribute__((weak)) void nyx_start(void);
 MOZ_EXPORT __attribute__((weak)) uint32_t nyx_get_next_fuzz_data(void*,
                                                                  uint32_t);
+MOZ_EXPORT __attribute__((weak)) uint32_t nyx_get_raw_fuzz_data(void*,
+                                                                uint32_t);
 MOZ_EXPORT __attribute__((weak)) void nyx_release(uint32_t);
 MOZ_EXPORT __attribute__((weak)) void nyx_handle_event(const char*, const char*,
                                                        int, const char*);
 MOZ_EXPORT __attribute__((weak)) void nyx_puts(const char*);
+MOZ_EXPORT __attribute__((weak)) void nyx_dump_file(void* buffer, size_t len,
+                                                    const char* filename);
 }
 
 /*
@@ -59,38 +68,33 @@ void Nyx::start(void) {
   // Check if we are in replay mode.
   char* testFilePtr = getenv("MOZ_FUZZ_TESTFILE");
   if (testFilePtr) {
-    mReplayMode = true;
-
     MOZ_FUZZING_NYX_PRINT("[Replay Mode] Reading data file...\n");
 
     std::string testFile(testFilePtr);
     std::ifstream is;
     is.open(testFile, std::ios::binary);
 
-    uint64_t chksum, num_ops, num_data, op_offset, data_offset;
-
-    // If only C++ supported streaming operators on binary files...
-    is.read(reinterpret_cast<char*>(&chksum), sizeof(uint64_t));
-    is.read(reinterpret_cast<char*>(&num_ops), sizeof(uint64_t));
-    is.read(reinterpret_cast<char*>(&num_data), sizeof(uint64_t));
-    is.read(reinterpret_cast<char*>(&op_offset), sizeof(uint64_t));
-    is.read(reinterpret_cast<char*>(&data_offset), sizeof(uint64_t));
-
-    if (!is.good()) {
-      MOZ_FUZZING_NYX_PRINT("[Replay Mode] Error reading input file.\n");
-      _exit(1);
-    }
-
-    is.seekg(data_offset);
-
     // The data chunks we receive through Nyx are stored in the data
     // section of the testfile as chunks prefixed with a 16-bit data
-    // length. We read all chunks and store them away to simulate how
-    // we originally received the data via Nyx.
+    // length that we mask down to 11-bit. We read all chunks and
+    // store them away to simulate how we originally received the data
+    // via Nyx.
+
+    if (is.good()) {
+      mRawReplayBuffer = new Vector<uint8_t>();
+      is.seekg(0, is.end);
+      int rawLength = is.tellg();
+      mozilla::Unused << mRawReplayBuffer->initLengthUninitialized(rawLength);
+      is.seekg(0, is.beg);
+      is.read(reinterpret_cast<char*>(mRawReplayBuffer->begin()), rawLength);
+      is.seekg(0, is.beg);
+    }
 
     while (is.good()) {
       uint16_t pktsize;
       is.read(reinterpret_cast<char*>(&pktsize), sizeof(uint16_t));
+
+      pktsize &= 0x7ff;
 
       if (!is.good()) {
         break;
@@ -124,9 +128,11 @@ void Nyx::start(void) {
 
   NYX_CHECK_API(nyx_start);
   NYX_CHECK_API(nyx_get_next_fuzz_data);
+  NYX_CHECK_API(nyx_get_raw_fuzz_data);
   NYX_CHECK_API(nyx_release);
   NYX_CHECK_API(nyx_handle_event);
   NYX_CHECK_API(nyx_puts);
+  NYX_CHECK_API(nyx_dump_file);
 
   nyx_start();
 }
@@ -165,6 +171,18 @@ uint32_t Nyx::get_data(uint8_t* data, uint32_t size) {
   return nyx_get_next_fuzz_data(data, size);
 }
 
+uint32_t Nyx::get_raw_data(uint8_t* data, uint32_t size) {
+  MOZ_RELEASE_ASSERT(mInited);
+
+  if (mReplayMode) {
+    size = std::min(size, (uint32_t)mRawReplayBuffer->length());
+    memcpy(data, mRawReplayBuffer->begin(), size);
+    return size;
+  }
+
+  return nyx_get_raw_fuzz_data(data, size);
+}
+
 void Nyx::release(uint32_t iterations) {
   MOZ_RELEASE_ASSERT(mInited);
 
@@ -199,6 +217,12 @@ void Nyx::handle_event(const char* type, const char* file, int line,
     MOZ_FUZZING_NYX_PRINTF(
         "[ERROR] PRE SNAPSHOT Nyx::handle_event() called: %s at %s:%d : %s\n",
         type, file, line, reason);
+  }
+}
+
+void Nyx::dump_file(void* buffer, size_t len, const char* filename) {
+  if (!mReplayMode) {
+    nyx_dump_file(buffer, len, filename);
   }
 }
 

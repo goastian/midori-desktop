@@ -7,6 +7,7 @@ from taskgraph.util.python_path import find_object
 
 from ..cli import BaseTryParser
 from ..push import push_to_try
+from ..util.dicttools import merge
 
 TRY_AUTO_PARAMETERS = {
     "optimize_strategies": "gecko_taskgraph.optimize:tryselect.bugbug_reduced_manifests_config_selection_medium",  # noqa
@@ -84,14 +85,15 @@ def run(
     strategy=None,
     tasks_regex=None,
     tasks_regex_exclude=None,
-    try_config=None,
+    try_config_params=None,
+    push_to_lando=False,
     **ignored
 ):
     msg = message.format(msg="Tasks automatically selected.")
 
     params = TRY_AUTO_PARAMETERS.copy()
-    if try_config:
-        params["try_task_config"] = try_config
+    if try_config_params:
+        params = merge(params, try_config_params)
 
     if strategy:
         params["optimize_strategies"] = strategy
@@ -112,4 +114,5 @@ def run(
         stage_changes=stage_changes,
         dry_run=dry_run,
         closed_tree=closed_tree,
+        push_to_lando=push_to_lando,
     )

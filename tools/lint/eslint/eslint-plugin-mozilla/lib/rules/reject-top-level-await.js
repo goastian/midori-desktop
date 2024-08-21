@@ -13,7 +13,7 @@ var helpers = require("../helpers");
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/reject-top-level-await.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/reject-top-level-await.html",
     },
     messages: {
       rejectTopLevelAwait:
@@ -26,7 +26,7 @@ module.exports = {
   create(context) {
     return {
       AwaitExpression(node) {
-        if (!helpers.getIsTopLevelScript(context.getAncestors())) {
+        if (!helpers.getIsTopLevelScript(helpers.getAncestors(context, node))) {
           return;
         }
         context.report({ node, messageId: "rejectTopLevelAwait" });
@@ -34,7 +34,7 @@ module.exports = {
       ForOfStatement(node) {
         if (
           !node.await ||
-          !helpers.getIsTopLevelScript(context.getAncestors())
+          !helpers.getIsTopLevelScript(helpers.getAncestors(context, node))
         ) {
           return;
         }

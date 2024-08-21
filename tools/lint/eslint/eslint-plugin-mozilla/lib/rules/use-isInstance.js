@@ -11,6 +11,7 @@
 const fs = require("fs");
 
 const { maybeGetMemberPropertyName } = require("../helpers");
+const helpers = require("../helpers");
 
 const privilegedGlobals = Object.keys(
   require("../environments/privileged.js").globals
@@ -82,9 +83,7 @@ function pointsToDOMInterface(currentScope, node) {
 function isChromeContext(context) {
   const filename = context.getFilename();
   const isChromeFileName =
-    filename.endsWith(".sys.mjs") ||
-    filename.endsWith(".jsm") ||
-    filename.endsWith(".jsm.js");
+    filename.endsWith(".sys.mjs") || filename.endsWith(".jsm");
   if (isChromeFileName) {
     return true;
   }
@@ -111,9 +110,14 @@ function isChromeContext(context) {
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/use-isInstance.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/use-isInstance.html",
     },
     fixable: "code",
+    messages: {
+      preferIsInstance:
+        "Please prefer .isInstance() in chrome scripts over the standard instanceof operator for DOM interfaces, " +
+        "since the latter will return false when the object is created from a different context.",
+    },
     schema: [],
     type: "problem",
   },
@@ -130,13 +134,11 @@ module.exports = {
         const { operator, right } = node;
         if (
           operator === "instanceof" &&
-          pointsToDOMInterface(context.getScope(), right)
+          pointsToDOMInterface(helpers.getScope(context, node), right)
         ) {
           context.report({
             node,
-            message:
-              "Please prefer .isInstance() in chrome scripts over the standard instanceof operator for DOM interfaces, " +
-              "since the latter will return false when the object is created from a different context.",
+            messageId: "preferIsInstance",
             fix(fixer) {
               const sourceCode = context.getSourceCode();
               return fixer.replaceText(

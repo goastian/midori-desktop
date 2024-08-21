@@ -6,13 +6,13 @@
  */
 "use strict";
 
-const parser = require("@babel/eslint-parser");
+const parser = require("espree");
 const { analyze } = require("eslint-scope");
 const { KEYS: defaultVisitorKeys } = require("eslint-visitor-keys");
 const estraverse = require("estraverse");
 const path = require("path");
 const fs = require("fs");
-const ini = require("multi-ini");
+const toml = require("toml-eslint-parser");
 const recommendedConfig = require("./configs/recommended");
 
 var gRootDir = null;
@@ -21,13 +21,6 @@ var directoryManifests = new Map();
 let xpidlData;
 
 module.exports = {
-  get iniParser() {
-    if (!this._iniParser) {
-      this._iniParser = new ini.Parser();
-    }
-    return this._iniParser;
-  },
-
   get servicesData() {
     return require("./services.json");
   },
@@ -103,18 +96,19 @@ module.exports = {
     // can parse.
     let config = { ...this.getPermissiveConfig(configOptions), ...astOptions };
 
-    let parseResult =
-      "parseForESLint" in parser
-        ? parser.parseForESLint(sourceText, config)
-        : { ast: parser.parse(sourceText, config) };
+    let parseResult = parser.parse(sourceText, config);
 
     let visitorKeys = parseResult.visitorKeys || defaultVisitorKeys;
-    visitorKeys.ExperimentalRestProperty = visitorKeys.RestElement;
-    visitorKeys.ExperimentalSpreadProperty = visitorKeys.SpreadElement;
+
+    // eslint-scope doesn't support "latest" as a version, so we pass a really
+    // big number to ensure this always reads as the latest.
+    // xref https://github.com/eslint/eslint-scope/issues/74
+    config.ecmaVersion =
+      config.ecmaVersion == "latest" ? 1e8 : config.ecmaVersion;
 
     return {
-      ast: parseResult.ast,
-      scopeManager: parseResult.scopeManager || analyze(parseResult.ast),
+      ast: parseResult,
+      scopeManager: parseResult.scopeManager || analyze(parseResult, config),
       visitorKeys,
     };
   },
@@ -197,13 +191,13 @@ module.exports = {
     let parents = [];
 
     estraverse.traverse(ast, {
-      enter(node, parent) {
+      enter(node) {
         listener(node.type, node, parents);
 
         parents.push(node);
       },
 
-      leave(node, parent) {
+      leave() {
         if (!parents.length) {
           throw new Error("Left more nodes than entered.");
         }
@@ -291,34 +285,15 @@ module.exports = {
    * @return {Object}
    *         Espree compatible permissive config.
    */
-  getPermissiveConfig({ useBabel = true } = {}) {
-    const config = {
+  getPermissiveConfig() {
+    return {
       range: true,
-      requireConfigFile: false,
-      babelOptions: {
-        // configFile: path.join(gRootDir, ".babel-eslint.rc.js"),
-        // parserOpts: {
-        //   plugins: [
-        //     "@babel/plugin-proposal-class-static-block",
-        //     "@babel/plugin-syntax-class-properties",
-        //     "@babel/plugin-syntax-jsx",
-        //   ],
-        // },
-      },
       loc: true,
       comment: true,
       attachComment: true,
       ecmaVersion: this.getECMAVersion(),
       sourceType: "script",
     };
-
-    if (useBabel && this.isMozillaCentralBased()) {
-      config.babelOptions.configFile = path.join(
-        gRootDir,
-        ".babel-eslint.rc.js"
-      );
-    }
-    return config;
   },
 
   /**
@@ -516,19 +491,36 @@ module.exports = {
     }
 
     for (let name of names) {
-      if (!name.endsWith(".ini")) {
-        continue;
+      if (name.endsWith(".toml")) {
+        try {
+          const ast = toml.parseTOML(
+            fs.readFileSync(path.join(dir, name), "utf8")
+          );
+          var manifest = {};
+          ast.body.forEach(top => {
+            if (top.type == "TOMLTopLevelTable") {
+              top.body.forEach(obj => {
+                if (obj.type == "TOMLTable") {
+                  manifest[obj.resolvedKey] = {};
+                }
+              });
+            }
+          });
+          manifests.push({
+            file: path.join(dir, name),
+            manifest,
+          });
+        } catch (e) {
+          console.error(
+            "TOML ERROR: " +
+              e.message +
+              " @line: " +
+              e.lineNumber +
+              ", column: " +
+              e.column
+          );
+        }
       }
-
-      try {
-        let manifest = this.iniParser.parse(
-          fs.readFileSync(path.join(dir, name), "utf8").split("\n")
-        );
-        manifests.push({
-          file: path.join(dir, name),
-          manifest,
-        });
-      } catch (e) {}
     }
 
     directoryManifests.set(dir, manifests);
@@ -801,5 +793,39 @@ module.exports = {
       return node.name;
     }
     return null;
+  },
+
+  /**
+   * Gets the scope for a node taking account of where the scope function
+   * is available (supports node versions earlier than 8.37.0).
+   *
+   * @param {object} context
+   *   The context passed from ESLint.
+   * @param {object} node
+   *   The node to get the scope for.
+   * returns {function}
+   *   The getScope function object.
+   */
+  getScope(context, node) {
+    return context.sourceCode?.getScope
+      ? context.sourceCode.getScope(node)
+      : context.getScope();
+  },
+
+  /**
+   * Gets the ancestors for a node taking account of where the ancestors function
+   * is available (supports node versions earlier than 8.38.0).
+   *
+   * @param {object} context
+   *   The context passed from ESLint.
+   * @param {object} node
+   *   The node to get the scope for.
+   * returns {function}
+   *   The getScope function object.
+   */
+  getAncestors(context, node) {
+    return context.sourceCode?.getAncestors
+      ? context.sourceCode.getAncestors(node)
+      : context.getAncestors();
   },
 };

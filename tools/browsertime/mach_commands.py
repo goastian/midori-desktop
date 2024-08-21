@@ -44,7 +44,7 @@ import time
 import mozpack.path as mozpath
 from mach.decorators import Command, CommandArgument
 from mozbuild.base import BinaryNotFoundException, MachCommandBase
-from mozbuild.util import mkdir
+from mozbuild.dirutils import mkdir
 from six import StringIO
 
 AUTOMATION = "MOZ_AUTOMATION" in os.environ
@@ -58,9 +58,10 @@ OPENCV_VERSION = "4.5.4.60"
 
 py3_minor = sys.version_info.minor
 if py3_minor > 7:
-    SCIPY_VERSION = "1.7.3"
-    NUMPY_VERSION = "1.22.0"
-    PILLOW_VERSION = "9.0.0"
+    SCIPY_VERSION = "1.9.3"
+    NUMPY_VERSION = "1.23.5"
+    PILLOW_VERSION = "9.2.0"
+    OPENCV_VERSION = "4.6.0.66"
 
 MIN_NODE_VERSION = "16.0.0"
 
@@ -151,11 +152,11 @@ def browsertime_path():
 
 def visualmetrics_path():
     """The path to the `visualmetrics.py` script."""
-    return mozpath.join(package_path(), "browsertime", "visualmetrics-portable.py")
+    return mozpath.join(package_path(), "visualmetrics", "visualmetrics-portable.py")
 
 
 def host_platform():
-    is_64bits = sys.maxsize > 2 ** 32
+    is_64bits = sys.maxsize > 2**32
 
     if sys.platform.startswith("win"):
         if is_64bits:
@@ -308,7 +309,7 @@ def setup_browsertime(
 
         existing_body["devDependencies"]["browsertime"] = new_upstream_url
 
-        updated_body = json.dumps(existing_body)
+        updated_body = json.dumps(existing_body, indent=2)
 
         with open(package_json_path, "w") as f:
             f.write(updated_body)
@@ -500,7 +501,7 @@ def extra_default_args(command_context, args=[]):
         "Extracts the browser name if any"
         # These are BT arguments, it's BT job to check them
         # here we just want to extract the browser name
-        res = re.findall("(--browser|-b)[= ]([\w]+)", " ".join(args))
+        res = re.findall(r"(--browser|-b)[= ]([\w]+)", " ".join(args))
         if res == []:
             return None
         return res[0][-1]

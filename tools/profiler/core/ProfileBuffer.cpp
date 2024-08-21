@@ -7,6 +7,7 @@
 #include "ProfileBuffer.h"
 
 #include "BaseProfiler.h"
+#include "js/ColumnNumber.h"  // JS::LimitedColumnNumberOneOrigin
 #include "js/GCAPI.h"
 #include "jsfriendapi.h"
 #include "mozilla/MathAlgorithms.h"
@@ -192,9 +193,10 @@ void ProfileBufferCollector::CollectJitReturnAddr(void* aAddr) {
   mBuf.AddEntry(ProfileBufferEntry::JitReturnAddr(aAddr));
 }
 
-void ProfileBufferCollector::CollectWasmFrame(const char* aLabel) {
+void ProfileBufferCollector::CollectWasmFrame(
+    JS::ProfilingCategoryPair aCategory, const char* aLabel) {
   mBuf.CollectCodeLocation("", aLabel, 0, 0, Nothing(), Nothing(),
-                           Some(JS::ProfilingCategoryPair::JS_Wasm));
+                           Some(aCategory));
 }
 
 void ProfileBufferCollector::CollectProfilingStackFrame(
@@ -224,9 +226,9 @@ void ProfileBufferCollector::CollectProfilingStackFrame(
       // a local variable in order -- to avoid rooting hazards.
       if (aFrame.script()) {
         if (aFrame.pc()) {
-          unsigned col = 0;
+          JS::LimitedColumnNumberOneOrigin col;
           line = Some(JS_PCToLineNumber(aFrame.script(), aFrame.pc(), &col));
-          column = Some(col);
+          column = Some(col.oneOriginValue());
         }
       }
 

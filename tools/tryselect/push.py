@@ -13,6 +13,7 @@ from mach.util import get_state_dir
 from mozbuild.base import MozbuildObject
 from mozversioncontrol import MissingVCSExtension, get_repository_object
 
+from .lando import push_to_lando_try
 from .util.estimates import duration_summary
 from .util.manage_estimates import (
     download_task_history_data,
@@ -88,26 +89,39 @@ def check_working_directory(push=True):
         sys.exit(1)
 
 
-def generate_try_task_config(method, labels, try_config=None, routes=None):
-    try_task_config = try_config or {}
-    try_task_config.setdefault("env", {})["TRY_SELECTOR"] = method
-    try_task_config.update(
-        {
-            "version": 1,
-            "tasks": sorted(labels),
-        }
-    )
-    if routes:
-        try_task_config["routes"] = routes
+def generate_try_task_config(method, labels, params=None, routes=None):
+    params = params or {}
 
+    # The user has explicitly requested a set of jobs, so run them all
+    # regardless of optimization (unless the selector explicitly sets this to
+    # True). Their dependencies can be optimized though.
+    params.setdefault("optimize_target_tasks", False)
+
+    # Remove selected labels from 'existing_tasks' parameter if present
+    if "existing_tasks" in params:
+        params["existing_tasks"] = {
+            label: tid
+            for label, tid in params["existing_tasks"].items()
+            if label not in labels
+        }
+
+    try_config = params.setdefault("try_task_config", {})
+    try_config.setdefault("env", {})["TRY_SELECTOR"] = method
+
+    try_config["tasks"] = sorted(labels)
+
+    if routes:
+        try_config["routes"] = routes
+
+    try_task_config = {"version": 2, "parameters": params}
     return try_task_config
 
 
 def task_labels_from_try_config(try_task_config):
     if try_task_config["version"] == 2:
         parameters = try_task_config.get("parameters", {})
-        if parameters.get("try_mode") == "try_task_config":
-            return parameters["try_task_config"]["tasks"]
+        if "try_task_config" in parameters:
+            return parameters["try_task_config"].get("tasks")
         else:
             return None
     elif try_task_config["version"] == 1:
@@ -156,17 +170,32 @@ def display_push_estimates(try_task_config):
         )
     )
     if "percentile" in durations:
-        print(
-            "estimates: In the top {}% of durations".format(
-                100 - durations["percentile"]
-            )
-        )
+        percentile = durations["percentile"]
+        if percentile > 50:
+            print("estimates: In the longest {}% of durations".format(100 - percentile))
+        else:
+            print("estimates: In the shortest {}% of durations".format(percentile))
     print(
         "estimates: Should take about {} (Finished around {})".format(
             durations["wall_duration_seconds"],
             durations["eta_datetime"].strftime("%Y-%m-%d %H:%M"),
         )
     )
+
+
+# improves on `" ".join(sys.argv[:])` by requoting argv items containing spaces or single quotes
+def get_sys_argv(injected_argv=None):
+    argv_to_use = injected_argv or sys.argv[:]
+
+    formatted_argv = []
+    for item in argv_to_use:
+        if " " in item or "'" in item:
+            formatted_item = f'"{item}"'
+        else:
+            formatted_item = item
+        formatted_argv.append(formatted_item)
+
+    return " ".join(formatted_argv)
 
 
 def push_to_try(
@@ -178,6 +207,7 @@ def push_to_try(
     closed_tree=False,
     files_to_change=None,
     allow_log_capture=False,
+    push_to_lando=False,
 ):
     push = not stage_changes and not dry_run
     check_working_directory(push)
@@ -191,9 +221,12 @@ def push_to_try(
 
     # Format the commit message
     closed_tree_string = " ON A CLOSED TREE" if closed_tree else ""
-    commit_message = "{}{}\n\nPushed via `mach try {}`".format(
+    the_cmdline = get_sys_argv()
+    full_commandline_entry = f"mach try command: `{the_cmdline}`"
+    commit_message = "{}{}\n\n{}\n\nPushed via `mach try {}`".format(
         msg,
         closed_tree_string,
+        full_commandline_entry,
         method,
     )
 
@@ -225,7 +258,10 @@ def push_to_try(
         vcs.add_remove_files(*changed_files)
 
         try:
-            vcs.push_to_try(commit_message, allow_log_capture=allow_log_capture)
+            if push_to_lando:
+                push_to_lando_try(vcs, commit_message)
+            else:
+                vcs.push_to_try(commit_message, allow_log_capture=allow_log_capture)
         except MissingVCSExtension as e:
             if e.ext == "push-to-try":
                 print(HG_PUSH_TO_TRY_NOT_FOUND)

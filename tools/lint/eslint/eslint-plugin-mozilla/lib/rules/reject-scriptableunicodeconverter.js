@@ -16,7 +16,11 @@ function isIdentifier(node, id) {
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/reject-scriptableunicodeconverter.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/reject-scriptableunicodeconverter.html",
+    },
+    messages: {
+      rejectScriptableUnicodeConverter:
+        "Ci.nsIScriptableUnicodeConverter is deprecated. You should use TextEncoder or TextDecoder instead.",
     },
     schema: [],
     type: "problem",
@@ -31,8 +35,7 @@ module.exports = {
         ) {
           context.report({
             node,
-            message:
-              "Ci.nsIScriptableUnicodeConverter is deprecated. You should use TextEncoder or TextDecoder instead.",
+            messageId: "rejectScriptableUnicodeConverter",
           });
         }
       },

@@ -7,36 +7,52 @@ Test fuzzy selector
   Commit message:
   Fuzzy query='foo
   
+  mach try command: `./mach try fuzzy --no-push --no-artifact -q "'foo"`
+  
   Pushed via `mach try fuzzy`
   Calculated try_task_config.json:
   {
-      "env": {
-          "TRY_SELECTOR": "fuzzy"
+      "parameters": {
+          "optimize_target_tasks": false,
+          "try_task_config": {
+              "env": {
+                  "TRY_SELECTOR": "fuzzy"
+              },
+              "tasks": [
+                  "test/foo-debug",
+                  "test/foo-opt"
+              ]
+          }
       },
-      "tasks": [
-          "test/foo-debug",
-          "test/foo-opt"
-      ],
-      "version": 1
+      "version": 2
   }
   
+
+
   $ ./mach try fuzzy $testargs -q "'bar"
   no tasks selected
   $ ./mach try fuzzy $testargs --full -q "'bar"
   Commit message:
   Fuzzy query='bar
   
+  mach try command: `./mach try fuzzy --no-push --no-artifact --full -q "'bar"`
+  
   Pushed via `mach try fuzzy`
   Calculated try_task_config.json:
   {
-      "env": {
-          "TRY_SELECTOR": "fuzzy"
+      "parameters": {
+          "optimize_target_tasks": false,
+          "try_task_config": {
+              "env": {
+                  "TRY_SELECTOR": "fuzzy"
+              },
+              "tasks": [
+                  "test/bar-debug",
+                  "test/bar-opt"
+              ]
+          }
       },
-      "tasks": [
-          "test/bar-debug",
-          "test/bar-opt"
-      ],
-      "version": 1
+      "version": 2
   }
   
 
@@ -46,19 +62,26 @@ Test multiple selectors
   Commit message:
   Fuzzy query='foo&query='bar
   
+  mach try command: `./mach try fuzzy --no-push --no-artifact --full -q "'foo" -q "'bar"`
+  
   Pushed via `mach try fuzzy`
   Calculated try_task_config.json:
   {
-      "env": {
-          "TRY_SELECTOR": "fuzzy"
+      "parameters": {
+          "optimize_target_tasks": false,
+          "try_task_config": {
+              "env": {
+                  "TRY_SELECTOR": "fuzzy"
+              },
+              "tasks": [
+                  "test/bar-debug",
+                  "test/bar-opt",
+                  "test/foo-debug",
+                  "test/foo-opt"
+              ]
+          }
       },
-      "tasks": [
-          "test/bar-debug",
-          "test/bar-opt",
-          "test/foo-debug",
-          "test/foo-opt"
-      ],
-      "version": 1
+      "version": 2
   }
   
 
@@ -68,16 +91,23 @@ Test query intersection
   Commit message:
   Fuzzy query='foo&query='opt
   
+  mach try command: `./mach try fuzzy --no-push --no-artifact --and -q "'foo" -q "'opt"`
+  
   Pushed via `mach try fuzzy`
   Calculated try_task_config.json:
   {
-      "env": {
-          "TRY_SELECTOR": "fuzzy"
+      "parameters": {
+          "optimize_target_tasks": false,
+          "try_task_config": {
+              "env": {
+                  "TRY_SELECTOR": "fuzzy"
+              },
+              "tasks": [
+                  "test/foo-opt"
+              ]
+          }
       },
-      "tasks": [
-          "test/foo-opt"
-      ],
-      "version": 1
+      "version": 2
   }
   
 
@@ -90,34 +120,48 @@ Test intersection with preset containing multiple queries
   Commit message:
   Fuzzy query='test&query='opt&query='test
   
+  mach try command: `./mach try fuzzy --no-push --no-artifact --preset foo -xq "'test"`
+  
   Pushed via `mach try fuzzy`
   Calculated try_task_config.json:
   {
-      "env": {
-          "TRY_SELECTOR": "fuzzy"
+      "parameters": {
+          "optimize_target_tasks": false,
+          "try_task_config": {
+              "env": {
+                  "TRY_SELECTOR": "fuzzy"
+              },
+              "tasks": [
+                  "test/foo-debug",
+                  "test/foo-opt"
+              ]
+          }
       },
-      "tasks": [
-          "test/foo-debug",
-          "test/foo-opt"
-      ],
-      "version": 1
+      "version": 2
   }
   
   $ ./mach try $testargs --preset foo -xq "'test"
   Commit message:
   Fuzzy query='test&query='opt&query='test
   
+  mach try command: `./mach try --no-push --no-artifact --preset foo -xq "'test"`
+  
   Pushed via `mach try fuzzy`
   Calculated try_task_config.json:
   {
-      "env": {
-          "TRY_SELECTOR": "fuzzy"
+      "parameters": {
+          "optimize_target_tasks": false,
+          "try_task_config": {
+              "env": {
+                  "TRY_SELECTOR": "fuzzy"
+              },
+              "tasks": [
+                  "test/foo-debug",
+                  "test/foo-opt"
+              ]
+          }
       },
-      "tasks": [
-          "test/foo-debug",
-          "test/foo-opt"
-      ],
-      "version": 1
+      "version": 2
   }
   
 
@@ -127,37 +171,50 @@ Test exact match
   Commit message:
   Fuzzy query=testfoo | 'testbar
   
+  mach try command: `./mach try fuzzy --no-push --no-artifact --full -q "testfoo | 'testbar"`
+  
   Pushed via `mach try fuzzy`
   Calculated try_task_config.json:
   {
-      "env": {
-          "TRY_SELECTOR": "fuzzy"
+      "parameters": {
+          "optimize_target_tasks": false,
+          "try_task_config": {
+              "env": {
+                  "TRY_SELECTOR": "fuzzy"
+              },
+              "tasks": [
+                  "test/foo-debug",
+                  "test/foo-opt"
+              ]
+          }
       },
-      "tasks": [
-          "test/foo-debug",
-          "test/foo-opt"
-      ],
-      "version": 1
+      "version": 2
   }
   
   $ ./mach try fuzzy $testargs --full --exact -q "testfoo | 'testbar"
   Commit message:
   Fuzzy query=testfoo | 'testbar
   
+  mach try command: `./mach try fuzzy --no-push --no-artifact --full --exact -q "testfoo | 'testbar"`
+  
   Pushed via `mach try fuzzy`
   Calculated try_task_config.json:
   {
-      "env": {
-          "TRY_SELECTOR": "fuzzy"
+      "parameters": {
+          "optimize_target_tasks": false,
+          "try_task_config": {
+              "env": {
+                  "TRY_SELECTOR": "fuzzy"
+              },
+              "tasks": [
+                  "test/bar-debug",
+                  "test/bar-opt"
+              ]
+          }
       },
-      "tasks": [
-          "test/bar-debug",
-          "test/bar-opt"
-      ],
-      "version": 1
+      "version": 2
   }
   
-
 
 Test task config 
 
@@ -165,37 +222,51 @@ Test task config
   Commit message:
   Fuzzy query='foo
   
+  mach try command: `./mach try fuzzy --no-push --artifact -q "'foo"`
+  
   Pushed via `mach try fuzzy`
   Calculated try_task_config.json:
   {
-      "disable-pgo": true,
-      "env": {
-          "TRY_SELECTOR": "fuzzy"
+      "parameters": {
+          "optimize_target_tasks": false,
+          "try_task_config": {
+              "disable-pgo": true,
+              "env": {
+                  "TRY_SELECTOR": "fuzzy"
+              },
+              "tasks": [
+                  "test/foo-debug",
+                  "test/foo-opt"
+              ],
+              "use-artifact-builds": true
+          }
       },
-      "tasks": [
-          "test/foo-debug",
-          "test/foo-opt"
-      ],
-      "use-artifact-builds": true,
-      "version": 1
+      "version": 2
   }
   
   $ ./mach try fuzzy $testargs --env FOO=1 --env BAR=baz -q "'foo"
   Commit message:
   Fuzzy query='foo
   
+  mach try command: `./mach try fuzzy --no-push --no-artifact --env FOO=1 --env BAR=baz -q "'foo"`
+  
   Pushed via `mach try fuzzy`
   Calculated try_task_config.json:
   {
-      "env": {
-          "BAR": "baz",
-          "FOO": "1",
-          "TRY_SELECTOR": "fuzzy"
+      "parameters": {
+          "optimize_target_tasks": false,
+          "try_task_config": {
+              "env": {
+                  "BAR": "baz",
+                  "FOO": "1",
+                  "TRY_SELECTOR": "fuzzy"
+              },
+              "tasks": [
+                  "test/foo-debug",
+                  "test/foo-opt"
+              ]
+          }
       },
-      "tasks": [
-          "test/foo-debug",
-          "test/foo-opt"
-      ],
-      "version": 1
+      "version": 2
   }
   

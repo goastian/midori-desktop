@@ -28,7 +28,13 @@ function calleeToString(node) {
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/reject-globalThis-modification.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/reject-globalThis-modification.html",
+    },
+    messages: {
+      rejectModifyGlobalThis:
+        "`globalThis` shouldn't be modified. `globalThis` is the shared global inside the system module, and properties defined on it is visible from all modules.",
+      rejectPassingGlobalThis:
+        "`globalThis` shouldn't be passed to function that can modify it. `globalThis` is the shared global inside the system module, and properties defined on it is visible from all modules.",
     },
     schema: [],
     type: "problem",
@@ -36,7 +42,7 @@ module.exports = {
 
   create(context) {
     return {
-      AssignmentExpression(node, parents) {
+      AssignmentExpression(node) {
         let target = node.left;
         while (target.type === "MemberExpression") {
           target = target.object;
@@ -44,8 +50,7 @@ module.exports = {
         if (isIdentifier(target, "globalThis")) {
           context.report({
             node,
-            message:
-              "`globalThis` shouldn't be modified. `globalThis` is the shared global inside the system module, and properties defined on it is visible from all modules.",
+            messageId: "rejectModifyGlobalThis",
           });
         }
       },
@@ -59,8 +64,7 @@ module.exports = {
           if (isIdentifier(arg, "globalThis")) {
             context.report({
               node,
-              message:
-                "`globalThis` shouldn't be passed to function that can modify it. `globalThis` is the shared global inside the system module, and properties defined on it is visible from all modules.",
+              messageId: "rejectPassingGlobalThis",
             });
           }
         }

@@ -11,7 +11,10 @@
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/use-includes-instead-of-indexOf.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/use-includes-instead-of-indexOf.html",
+    },
+    messages: {
+      useIncludes: "use .includes instead of .indexOf",
     },
     schema: [],
     type: "suggestion",
@@ -41,7 +44,7 @@ module.exports = {
         ) {
           context.report({
             node,
-            message: "use .includes instead of .indexOf",
+            messageId: "useIncludes",
           });
         }
       },

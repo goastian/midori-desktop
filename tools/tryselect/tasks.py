@@ -78,9 +78,30 @@ def generate_tasks(params=None, full=False, disable_target_task_filter=False):
             "target_tasks_method": target_tasks_method,
         },
     )
-    root = os.path.join(build.topsrcdir, "taskcluster", "ci")
+    root = os.path.join(build.topsrcdir, "taskcluster")
     taskgraph.fast = True
     generator = TaskGraphGenerator(root_dir=root, parameters=params)
+
+    def add_chunk_patterns(tg):
+        for task_name, task in tg.tasks.items():
+            chunk_index = -1
+            if task_name.endswith("-cf"):
+                chunk_index = -2
+
+            chunks = task.task.get("extra", {}).get("chunks", {})
+            if isinstance(chunks, int):
+                task.chunk_pattern = "{}-*/{}".format(
+                    "-".join(task_name.split("-")[:chunk_index]), chunks
+                )
+            else:
+                assert isinstance(chunks, dict)
+                if chunks.get("total", 1) == 1:
+                    task.chunk_pattern = task_name
+                else:
+                    task.chunk_pattern = "{}-*".format(
+                        "-".join(task_name.split("-")[:chunk_index])
+                    )
+        return tg
 
     cache_dir = os.path.join(
         get_state_dir(specific_to_topsrcdir=True), "cache", "taskgraph"
@@ -91,7 +112,7 @@ def generate_tasks(params=None, full=False, disable_target_task_filter=False):
     invalidate(cache)
     if os.path.isfile(cache):
         with open(cache) as fh:
-            return TaskGraph.from_json(json.load(fh))[1]
+            return add_chunk_patterns(TaskGraph.from_json(json.load(fh))[1])
 
     if not os.path.isdir(cache_dir):
         os.makedirs(cache_dir)
@@ -112,7 +133,7 @@ def generate_tasks(params=None, full=False, disable_target_task_filter=False):
         key = cache_key(attr, generator.parameters, disable_target_task_filter)
         with open(os.path.join(cache_dir, key), "w") as fh:
             json.dump(tg.to_json(), fh)
-        return tg
+        return add_chunk_patterns(tg)
 
     # Cache both full_task_set and target_task_set regardless of whether or not
     # --full was requested. Caching is cheap and can potentially save a lot of
@@ -129,6 +150,17 @@ def generate_tasks(params=None, full=False, disable_target_task_filter=False):
     if full:
         return tg_full
     return tg_target
+
+
+def filter_tasks_by_worker_type(tasks, params):
+    worker_types = params.get("try_task_config", {}).get("worker-types", [])
+    if worker_types:
+        retVal = {}
+        for t in tasks:
+            if tasks[t].task["workerType"] in worker_types:
+                retVal[t] = tasks[t]
+        return retVal
+    return tasks
 
 
 def filter_tasks_by_paths(tasks, paths):
@@ -152,7 +184,9 @@ def filter_tasks_by_paths(tasks, paths):
     def match_task(task):
         return any(re.search(pattern, task) for pattern in task_regexes)
 
-    return filter(match_task, tasks)
+    return {
+        task_name: task for task_name, task in tasks.items() if match_task(task_name)
+    }
 
 
 def resolve_tests_by_suite(paths):

@@ -111,7 +111,17 @@
   MACRO(20, "processcpu", ProcessCPU,                                      \
         "Sample the CPU utilization of each process")                      \
                                                                            \
-  MACRO(21, "power", Power, POWER_HELP)
+  MACRO(21, "power", Power, POWER_HELP)                                    \
+                                                                           \
+  MACRO(22, "cpufreq", CPUFrequency,                                       \
+        "Record the clock frequency of "                                   \
+        "every CPU core for every profiler sample.")                       \
+                                                                           \
+  MACRO(23, "bandwidth", Bandwidth,                                        \
+        "Record the network bandwidth used for every profiler sample.")    \
+  MACRO(                                                                   \
+      24, "memory", Memory,                                                \
+      "Track the memory allocations and deallocations per process over time.")
 // *** Synchronize with lists in BaseProfilerState.h and geckoProfiler.json ***
 
 struct ProfilerFeature {
@@ -131,6 +141,12 @@ struct ProfilerFeature {
   PROFILER_FOR_EACH_FEATURE(DECLARE)
 
 #undef DECLARE
+
+  [[nodiscard]] static constexpr bool ShouldInstallMemoryHooks(
+      uint32_t aFeatures) {
+    return ProfilerFeature::HasMemory(aFeatures) ||
+           ProfilerFeature::HasNativeAllocations(aFeatures);
+  }
 };
 
 // clang-format off
@@ -192,6 +208,8 @@ using ProfilingStateChangeCallback = std::function<void(ProfilingState)>;
 
 [[nodiscard]] inline bool profiler_is_active() { return false; }
 [[nodiscard]] inline bool profiler_is_active_and_unpaused() { return false; }
+[[nodiscard]] inline bool profiler_is_collecting_markers() { return false; }
+[[nodiscard]] inline bool profiler_is_etw_collecting_markers() { return false; }
 [[nodiscard]] inline bool profiler_feature_active(uint32_t aFeature) {
   return false;
 }
@@ -228,6 +246,14 @@ class RacyFeatures {
     sActiveAndFeatures = Active | aFeatures;
   }
 
+  static void SetETWCollectionActive() {
+    sActiveAndFeatures |= ETWCollectionEnabled;
+  }
+
+  static void SetETWCollectionInactive() {
+    sActiveAndFeatures &= ~ETWCollectionEnabled;
+  }
+
   static void SetInactive() { sActiveAndFeatures = 0; }
 
   static void SetPaused() { sActiveAndFeatures |= Paused; }
@@ -238,7 +264,7 @@ class RacyFeatures {
 
   static void SetSamplingUnpaused() { sActiveAndFeatures &= ~SamplingPaused; }
 
-  [[nodiscard]] static mozilla::Maybe<uint32_t> FeaturesIfActive() {
+  [[nodiscard]] static Maybe<uint32_t> FeaturesIfActive() {
     if (uint32_t af = sActiveAndFeatures; af & Active) {
       // Active, remove the Active&Paused bits to get all features.
       return Some(af & ~(Active | Paused | SamplingPaused));
@@ -246,7 +272,7 @@ class RacyFeatures {
     return Nothing();
   }
 
-  [[nodiscard]] static mozilla::Maybe<uint32_t> FeaturesIfActiveAndUnpaused() {
+  [[nodiscard]] static Maybe<uint32_t> FeaturesIfActiveAndUnpaused() {
     if (uint32_t af = sActiveAndFeatures; (af & (Active | Paused)) == Active) {
       // Active but not fully paused, remove the Active and sampling-paused bits
       // to get all features.
@@ -287,10 +313,21 @@ class RacyFeatures {
     return (af & Active) && !(af & (Paused | SamplingPaused));
   }
 
+  [[nodiscard]] static bool IsCollectingMarkers() {
+    uint32_t af = sActiveAndFeatures;  // copy it first
+    return ((af & Active) && !(af & Paused)) || (af & ETWCollectionEnabled);
+  }
+
+  [[nodiscard]] static bool IsETWCollecting() {
+    uint32_t af = sActiveAndFeatures;  // copy it first
+    return (af & ETWCollectionEnabled);
+  }
+
  private:
   static constexpr uint32_t Active = 1u << 31;
   static constexpr uint32_t Paused = 1u << 30;
   static constexpr uint32_t SamplingPaused = 1u << 29;
+  static constexpr uint32_t ETWCollectionEnabled = 1u << 28;
 
 // Ensure Active/Paused don't overlap with any of the feature bits.
 #  define NO_OVERLAP(n_, str_, Name_, desc_)                \
@@ -302,10 +339,8 @@ class RacyFeatures {
 #  undef NO_OVERLAP
 
   // We combine the active bit with the feature bits so they can be read or
-  // written in a single atomic operation. Accesses to this atomic are not
-  // recorded by web replay as they may occur at non-deterministic points.
-  static mozilla::Atomic<uint32_t, mozilla::MemoryOrdering::Relaxed>
-      sActiveAndFeatures;
+  // written in a single atomic operation.
+  static Atomic<uint32_t, MemoryOrdering::Relaxed> sActiveAndFeatures;
 };
 
 }  // namespace mozilla::profiler::detail
@@ -337,6 +372,17 @@ class RacyFeatures {
 // Same as profiler_is_active(), but also checks if the profiler is not paused.
 [[nodiscard]] inline bool profiler_is_active_and_unpaused() {
   return mozilla::profiler::detail::RacyFeatures::IsActiveAndUnpaused();
+}
+
+// Same as profiler_is_active_and_unpaused(), but also checks if the  ETW is
+// collecting markers.
+[[nodiscard]] inline bool profiler_is_collecting_markers() {
+  return mozilla::profiler::detail::RacyFeatures::IsCollectingMarkers();
+}
+
+// Reports if our ETW tracelogger is running.
+[[nodiscard]] inline bool profiler_is_etw_collecting_markers() {
+  return mozilla::profiler::detail::RacyFeatures::IsETWCollecting();
 }
 
 // Is the profiler active and paused? Returns false if the profiler is inactive.

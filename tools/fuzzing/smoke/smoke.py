@@ -6,7 +6,7 @@
 This script can be used to perform simple calls using `jsshell`
 or whatever other tools you may add.
 
-The call is done via `taskcluster/ci/fuzzing/kind.yml` and
+The call is done via `taskcluster/kinds/fuzzing/kind.yml` and
 files contained in the `target.jsshell.zip` and `target.fuzztest.tests.tar.gz`
 build artifacts are downloaded to run things.
 
@@ -18,9 +18,9 @@ same directory structure than the source tree.
 import os
 import os.path
 import shlex
+import shutil
 import subprocess
 import sys
-from distutils.spawn import find_executable
 
 
 def run_jsshell(command, label=None):
@@ -31,7 +31,7 @@ def run_jsshell(command, label=None):
     """
     shell = os.environ.get("JSSHELL")
     if shell is None:
-        shell = find_executable("js")
+        shell = shutil.which("js")
         if shell is None:
             raise FileNotFoundError(shell)
     else:

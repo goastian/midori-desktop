@@ -256,38 +256,34 @@ nsProfiler::WaitOnePeriodicSampling(JSContext* aCx, Promise** aPromise) {
                new nsMainThreadPtrHolder<Promise>(
                    "WaitOnePeriodicSampling promise for Sampler", promise))](
               SamplingState aSamplingState) mutable {
-            SchedulerGroup::Dispatch(
-                TaskCategory::Other,
-                NS_NewRunnableFunction(
-                    "nsProfiler::WaitOnePeriodicSampling result on main thread",
-                    [promiseHandleInMT = std::move(promiseHandleInSampler),
-                     aSamplingState]() mutable {
-                      switch (aSamplingState) {
-                        case SamplingState::JustStopped:
-                        case SamplingState::SamplingPaused:
-                          promiseHandleInMT->MaybeReject(NS_ERROR_FAILURE);
-                          break;
+            SchedulerGroup::Dispatch(NS_NewRunnableFunction(
+                "nsProfiler::WaitOnePeriodicSampling result on main thread",
+                [promiseHandleInMT = std::move(promiseHandleInSampler),
+                 aSamplingState]() mutable {
+                  switch (aSamplingState) {
+                    case SamplingState::JustStopped:
+                    case SamplingState::SamplingPaused:
+                      promiseHandleInMT->MaybeReject(NS_ERROR_FAILURE);
+                      break;
 
-                        case SamplingState::NoStackSamplingCompleted:
-                        case SamplingState::SamplingCompleted:
-                          // The parent process has succesfully done a sampling,
-                          // check the child processes (if any).
-                          ProfilerParent::WaitOnePeriodicSampling()->Then(
-                              GetMainThreadSerialEventTarget(), __func__,
-                              [promiseHandleInMT =
-                                   std::move(promiseHandleInMT)](
-                                  GenericPromise::ResolveOrRejectValue&&) {
-                                promiseHandleInMT->MaybeResolveWithUndefined();
-                              });
-                          break;
+                    case SamplingState::NoStackSamplingCompleted:
+                    case SamplingState::SamplingCompleted:
+                      // The parent process has succesfully done a sampling,
+                      // check the child processes (if any).
+                      ProfilerParent::WaitOnePeriodicSampling()->Then(
+                          GetMainThreadSerialEventTarget(), __func__,
+                          [promiseHandleInMT = std::move(promiseHandleInMT)](
+                              GenericPromise::ResolveOrRejectValue&&) {
+                            promiseHandleInMT->MaybeResolveWithUndefined();
+                          });
+                      break;
 
-                        default:
-                          MOZ_ASSERT(false, "Unexpected SamplingState value");
-                          promiseHandleInMT->MaybeReject(
-                              NS_ERROR_DOM_UNKNOWN_ERR);
-                          break;
-                      }
-                    }));
+                    default:
+                      MOZ_ASSERT(false, "Unexpected SamplingState value");
+                      promiseHandleInMT->MaybeReject(NS_ERROR_DOM_UNKNOWN_ERR);
+                      break;
+                  }
+                }));
           })) {
     // Callback was not added (e.g., profiler is not running) and will never be
     // invoked, so we need to resolve the promise here.
@@ -482,14 +478,14 @@ nsProfiler::GetProfileDataAsArrayBuffer(double aSinceTime, JSContext* aCx,
             }
 
             JSContext* cx = jsapi.cx();
-            JSObject* typedArray = dom::ArrayBuffer::Create(
-                cx, aResult.mProfile.Length(),
-                reinterpret_cast<const uint8_t*>(aResult.mProfile.Data()));
-            if (typedArray) {
+            ErrorResult error;
+            JSObject* typedArray =
+                dom::ArrayBuffer::Create(cx, aResult.mProfile, error);
+            if (!error.Failed()) {
               JS::Rooted<JS::Value> val(cx, JS::ObjectValue(*typedArray));
               promise->MaybeResolve(val);
             } else {
-              promise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
+              promise->MaybeReject(std::move(error));
             }
           },
           [promise](nsresult aRv) { promise->MaybeReject(aRv); });
@@ -586,10 +582,10 @@ nsProfiler::GetProfileDataAsGzippedArrayBuffer(double aSinceTime,
 
             JSContext* cx = jsapi.cx();
             // Get the profile typedArray.
-            JSObject* typedArray = dom::ArrayBuffer::Create(
-                cx, outBuff.Length(), outBuff.Elements());
-            if (!typedArray) {
-              promise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
+            ErrorResult error;
+            JSObject* typedArray = dom::ArrayBuffer::Create(cx, outBuff, error);
+            if (error.Failed()) {
+              promise->MaybeReject(std::move(error));
               return;
             }
             JS::Rooted<JS::Value> typedArrayValue(cx,
@@ -709,25 +705,33 @@ nsProfiler::GetSymbolTable(const nsACString& aDebugPath,
 
             JSContext* cx = jsapi.cx();
 
+            ErrorResult error;
             JS::Rooted<JSObject*> addrsArray(
-                cx, dom::Uint32Array::Create(cx, aSymbolTable.mAddrs.Length(),
-                                             aSymbolTable.mAddrs.Elements()));
-            JS::Rooted<JSObject*> indexArray(
-                cx, dom::Uint32Array::Create(cx, aSymbolTable.mIndex.Length(),
-                                             aSymbolTable.mIndex.Elements()));
-            JS::Rooted<JSObject*> bufferArray(
-                cx, dom::Uint8Array::Create(cx, aSymbolTable.mBuffer.Length(),
-                                            aSymbolTable.mBuffer.Elements()));
-
-            if (addrsArray && indexArray && bufferArray) {
-              JS::Rooted<JSObject*> tuple(cx, JS::NewArrayObject(cx, 3));
-              JS_SetElement(cx, tuple, 0, addrsArray);
-              JS_SetElement(cx, tuple, 1, indexArray);
-              JS_SetElement(cx, tuple, 2, bufferArray);
-              promise->MaybeResolve(tuple);
-            } else {
-              promise->MaybeReject(NS_ERROR_FAILURE);
+                cx, dom::Uint32Array::Create(cx, aSymbolTable.mAddrs, error));
+            if (error.Failed()) {
+              promise->MaybeReject(std::move(error));
+              return;
             }
+
+            JS::Rooted<JSObject*> indexArray(
+                cx, dom::Uint32Array::Create(cx, aSymbolTable.mIndex, error));
+            if (error.Failed()) {
+              promise->MaybeReject(std::move(error));
+              return;
+            }
+
+            JS::Rooted<JSObject*> bufferArray(
+                cx, dom::Uint8Array::Create(cx, aSymbolTable.mBuffer, error));
+            if (error.Failed()) {
+              promise->MaybeReject(std::move(error));
+              return;
+            }
+
+            JS::Rooted<JSObject*> tuple(cx, JS::NewArrayObject(cx, 3));
+            JS_SetElement(cx, tuple, 0, addrsArray);
+            JS_SetElement(cx, tuple, 1, indexArray);
+            JS_SetElement(cx, tuple, 2, bufferArray);
+            promise->MaybeResolve(tuple);
           },
           [promise](nsresult aRv) { promise->MaybeReject(aRv); });
 

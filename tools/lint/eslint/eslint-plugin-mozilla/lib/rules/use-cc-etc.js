@@ -18,9 +18,12 @@ const componentsMap = {
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/use-cc-etc.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/use-cc-etc.html",
     },
     fixable: "code",
+    messages: {
+      useCcEtc: "Use {{ shortName }} rather than Components.{{ oldName }}",
+    },
     schema: [],
     type: "suggestion",
   },
@@ -36,9 +39,11 @@ module.exports = {
         ) {
           context.report({
             node,
-            message: `Use ${
-              componentsMap[node.property.name]
-            } rather than Components.${node.property.name}`,
+            messageId: "useCcEtc",
+            data: {
+              shortName: componentsMap[node.property.name],
+              oldName: node.property.name,
+            },
             fix: fixer =>
               fixer.replaceTextRange(
                 [node.range[0], node.range[1]],

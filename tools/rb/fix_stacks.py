@@ -16,7 +16,7 @@ from subprocess import PIPE, Popen
 
 # Matches lines produced by MozFormatCodeAddress(), e.g.
 # `#01: ???[tests/example +0x43a0]`.
-line_re = re.compile("#\d+: .+\[.+ \+0x[0-9A-Fa-f]+\]")
+line_re = re.compile(r"#\d+: .+\[.+ \+0x[0-9A-Fa-f]+\]")
 
 fix_stacks = None
 
@@ -35,9 +35,6 @@ def autobootstrap():
     )
     moz_configure = os.path.join(buildconfig.topsrcdir, "build", "moz.configure")
     sandbox.include_file(os.path.join(moz_configure, "init.configure"))
-    # bootstrap_search_path_order has a dependency on developer_options, which
-    # is not defined in init.configure. Its value doesn't matter for us, though.
-    sandbox["developer_options"] = sandbox["always"]
     sandbox.include_file(os.path.join(moz_configure, "bootstrap.configure"))
     # Expand the `bootstrap_path` template for "fix-stacks", and execute the
     # expanded function via `_value_for`, which will trigger autobootstrap.

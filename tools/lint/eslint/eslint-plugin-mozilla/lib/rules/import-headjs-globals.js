@@ -13,7 +13,7 @@ var fs = require("fs");
 var helpers = require("../helpers");
 var globals = require("../globals");
 
-function importHead(context, path, node) {
+function importHead(context, path) {
   try {
     let stats = fs.statSync(path);
     if (!stats.isFile()) {
@@ -32,7 +32,7 @@ module.exports = {
   // eslint-disable-next-line eslint-plugin/prefer-message-ids
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/import-headjs-globals.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/import-headjs-globals.html",
     },
     schema: [],
     type: "problem",

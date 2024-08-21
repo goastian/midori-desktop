@@ -13,7 +13,10 @@ var helpers = require("../helpers");
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/reject-some-requires.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/reject-some-requires.html",
+    },
+    messages: {
+      rejectRequire: `require({{path}}) is not allowed`,
     },
     schema: [
       {
@@ -33,7 +36,7 @@ module.exports = {
       CallExpression(node) {
         const path = helpers.getDevToolsRequirePath(node);
         if (path && RX.test(path)) {
-          context.report({ node, message: `require(${path}) is not allowed` });
+          context.report({ node, messageId: "rejectRequire", data: { path } });
         }
       },
     };

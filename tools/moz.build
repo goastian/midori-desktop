@@ -13,14 +13,11 @@ with Files("code-coverage/**"):
 with Files("compare-locales/mach_commands.py"):
     BUG_COMPONENT = ("Localization Infrastructure and Tools", "compare-locales")
 
-with Files("github-sync/**"):
-    BUG_COMPONENT = ("Core", "Graphics")
-
 with Files("lint/**"):
     BUG_COMPONENT = ("Developer Infrastructure", "Lint and Formatting")
 
 with Files("moztreedocs/**"):
-    BUG_COMPONENT = ("Firefox Build System", "Generated Documentation")
+    BUG_COMPONENT = ("Developer Infrastructure", "Source Documentation")
     SCHEDULES.exclusive = ["docs"]
 
 with Files("profiler/**"):
@@ -69,11 +66,11 @@ with Files("tryselect/docs/**"):
     SCHEDULES.exclusive = ["docs"]
 
 CRAMTEST_MANIFESTS += [
-    "tryselect/test/cram.ini",
+    "tryselect/test/cram.toml",
 ]
 
 PYTHON_UNITTEST_MANIFESTS += [
-    "fuzzing/smoke/python.ini",
-    "lint/test/python.ini",
-    "tryselect/test/python.ini",
+    "fuzzing/smoke/python.toml",
+    "lint/test/python.toml",
+    "tryselect/test/python.toml",
 ]

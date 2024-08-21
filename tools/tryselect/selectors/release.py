@@ -81,11 +81,12 @@ def run(
     migrations,
     limit_locales,
     tasks,
-    try_config=None,
+    try_config_params=None,
     stage_changes=False,
     dry_run=False,
     message="{msg}",
     closed_tree=False,
+    push_to_lando=False,
 ):
     app_version = attr.evolve(version, beta_number=None, is_esr=False)
 
@@ -93,6 +94,7 @@ def run(
         "browser/config/version.txt": "{}\n".format(app_version),
         "browser/config/version_display.txt": "{}\n".format(version),
         "config/milestone.txt": "{}\n".format(app_version),
+        "mobile/android/version.txt": "{}\n".format(version),
     }
     with open("browser/config/version.txt") as f:
         current_version = FirefoxVersion.parse(f.read())
@@ -115,22 +117,20 @@ def run(
         )
     elif release_type == "esr":
         release_type += str(version.major_number)
-    task_config = {
-        "version": 2,
-        "parameters": {
+    task_config = {"version": 2, "parameters": try_config_params or {}}
+    task_config["parameters"].update(
+        {
             "target_tasks_method": TARGET_TASKS[tasks],
             "optimize_target_tasks": True,
             "release_type": release_type,
-        },
-    }
-    if try_config:
-        task_config["parameters"]["try_task_config"] = try_config
+        }
+    )
 
-    with open(os.path.join(vcs.path, "taskcluster/ci/config.yml")) as f:
+    with open(os.path.join(vcs.path, "taskcluster/config.yml")) as f:
         migration_configs = yaml.safe_load(f)
     for migration in migrations:
         migration_config = migration_configs["merge-automation"]["behaviors"][migration]
-        for (path, from_, to) in migration_config["replacements"]:
+        for path, from_, to in migration_config["replacements"]:
             if path in files_to_change:
                 contents = files_to_change[path]
             else:
@@ -156,4 +156,5 @@ def run(
         closed_tree=closed_tree,
         try_task_config=task_config,
         files_to_change=files_to_change,
+        push_to_lando=push_to_lando,
     )

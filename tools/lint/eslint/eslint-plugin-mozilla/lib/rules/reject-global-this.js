@@ -17,7 +17,10 @@ const helpers = require("../helpers");
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/reject-global-this.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/reject-global-this.html",
+    },
+    messages: {
+      avoidGlobalThis: "JSM should not use the global this",
     },
     schema: [],
     type: "problem",
@@ -26,13 +29,13 @@ module.exports = {
   create(context) {
     return {
       ThisExpression(node) {
-        if (!helpers.getIsGlobalThis(context.getAncestors())) {
+        if (!helpers.getIsGlobalThis(helpers.getAncestors(context, node))) {
           return;
         }
 
         context.report({
           node,
-          message: `JSM should not use the global this`,
+          messageId: "avoidGlobalThis",
         });
       },
     };

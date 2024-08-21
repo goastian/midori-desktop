@@ -21,13 +21,6 @@ function isMemberExpression(node, object, member) {
   );
 }
 
-const MSG_NO_JS_QUERY_INTERFACE =
-  "Please use ChromeUtils.generateQI rather than manually creating " +
-  "JavaScript QueryInterface functions";
-
-const MSG_NO_XPCOMUTILS_GENERATEQI =
-  "Please use ChromeUtils.generateQI instead of XPCOMUtils.generateQI";
-
 function funcToGenerateQI(context, node) {
   const sourceCode = context.getSourceCode();
   const text = sourceCode.getText(node);
@@ -50,9 +43,16 @@ function funcToGenerateQI(context, node) {
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/use-chromeutils-generateqi.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/use-chromeutils-generateqi.html",
     },
     fixable: "code",
+    messages: {
+      noJSQueryInterface:
+        "Please use ChromeUtils.generateQI rather than " +
+        "manually creating JavaScript QueryInterface functions",
+      noXpcomUtilsGenerateQI:
+        "Please use ChromeUtils.generateQI instead of XPCOMUtils.generateQI",
+    },
     schema: [],
     type: "suggestion",
   },
@@ -64,7 +64,7 @@ module.exports = {
         if (isMemberExpression(callee, "XPCOMUtils", "generateQI")) {
           context.report({
             node,
-            message: MSG_NO_XPCOMUTILS_GENERATEQI,
+            messageId: "noXpcomUtilsGenerateQI",
             fix(fixer) {
               return fixer.replaceText(callee, "ChromeUtils.generateQI");
             },
@@ -78,7 +78,7 @@ module.exports = {
           if (right.type === "FunctionExpression") {
             context.report({
               node: node.parent,
-              message: MSG_NO_JS_QUERY_INTERFACE,
+              messageId: "noJSQueryInterface",
               fix(fixer) {
                 return fixer.replaceText(
                   right,
@@ -93,7 +93,7 @@ module.exports = {
         function (node) {
           context.report({
             node,
-            message: MSG_NO_JS_QUERY_INTERFACE,
+            messageId: "noJSQueryInterface",
             fix(fixer) {
               let generateQI = funcToGenerateQI(context, node.value);
               return fixer.replaceText(node, `QueryInterface: ${generateQI}`);

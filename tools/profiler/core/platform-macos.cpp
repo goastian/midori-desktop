@@ -15,7 +15,6 @@
 #include <semaphore.h>
 #include <signal.h>
 #include <libkern/OSAtomic.h>
-#include <libproc.h>
 #include <mach/mach.h>
 #include <mach/semaphore.h>
 #include <mach/task.h>
@@ -83,13 +82,12 @@ static RunningTimes GetProcessRunningTimesDiff(
   {
     AUTO_PROFILER_STATS(GetProcessRunningTimes_task_info);
 
-    static const auto pid = getpid();
-    struct proc_taskinfo pti;
-    if ((unsigned long)proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &pti,
-                                    PROC_PIDTASKINFO_SIZE) >=
-        PROC_PIDTASKINFO_SIZE) {
-      newRunningTimes.SetThreadCPUDelta(pti.pti_total_user +
-                                        pti.pti_total_system);
+    task_power_info_data_t task_power_info;
+    mach_msg_type_number_t count = TASK_POWER_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_POWER_INFO,
+                  (task_info_t)&task_power_info, &count) == KERN_SUCCESS) {
+      newRunningTimes.SetThreadCPUDelta(task_power_info.total_user +
+                                        task_power_info.total_system);
     }
     newRunningTimes.SetPostMeasurementTimeStamp(TimeStamp::Now());
   };
@@ -205,12 +203,14 @@ void Sampler::SuspendAndSampleAndResumeThread(
     regs.mPC = reinterpret_cast<Address>(state.REGISTER_FIELD(ip));
     regs.mSP = reinterpret_cast<Address>(state.REGISTER_FIELD(sp));
     regs.mFP = reinterpret_cast<Address>(state.REGISTER_FIELD(bp));
-    regs.mLR = 0;
+    regs.mR10 = reinterpret_cast<Address>(state.REGISTER_FIELD(10));
+    regs.mR12 = reinterpret_cast<Address>(state.REGISTER_FIELD(12));
 #elif defined(__aarch64__)
     regs.mPC = reinterpret_cast<Address>(state.REGISTER_FIELD(pc));
     regs.mSP = reinterpret_cast<Address>(state.REGISTER_FIELD(sp));
     regs.mFP = reinterpret_cast<Address>(state.REGISTER_FIELD(fp));
     regs.mLR = reinterpret_cast<Address>(state.REGISTER_FIELD(lr));
+    regs.mR11 = reinterpret_cast<Address>(state.REGISTER_FIELD(x[11]));
 #else
 #  error "unknown architecture"
 #endif
@@ -256,7 +256,11 @@ SamplerThread::SamplerThread(PSLockRef aLock, uint32_t aActivityGeneration,
 }
 
 SamplerThread::~SamplerThread() {
-  pthread_join(mThread, nullptr);
+  if (pthread_equal(mThread, pthread_self())) {
+    pthread_detach(mThread);
+  } else {
+    pthread_join(mThread, nullptr);
+  }
   // Just in the unlikely case some callbacks were added between the end of the
   // thread and now.
   InvokePostSamplingCallbacks(std::move(mPostSamplingCallbackList),
@@ -291,7 +295,6 @@ static void PlatformInit(PSLockRef aLock) {}
     regs.mFP = reinterpret_cast<Address>(__builtin_frame_address(1));         \
     _Pragma("GCC diagnostic pop")                                             \
     regs.mPC = reinterpret_cast<Address>(                                     \
-        __builtin_extract_return_addr(__builtin_return_address(0)));          \
-    regs.mLR = 0;
+        __builtin_extract_return_addr(__builtin_return_address(0)));
 #endif
 // clang-format on

@@ -23,7 +23,7 @@ function isIdentifier(node, id) {
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/reject-multiple-getters-calls.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/reject-multiple-getters-calls.html",
     },
     messages: {
       rejectMultipleCalls:
@@ -54,6 +54,24 @@ module.exports = {
             target = helpers.getASTSource(node.arguments[0]);
           } catch (e) {
             return;
+          }
+
+          if (node.arguments.length >= 3) {
+            const options = node.arguments[2];
+            let globalOption = null;
+            if (options.type == "ObjectExpression") {
+              for (const prop of options.properties) {
+                if (
+                  prop.type == "Property" &&
+                  isIdentifier(prop.key, "global")
+                ) {
+                  globalOption = helpers.getASTSource(prop.value);
+                }
+              }
+            }
+            if (globalOption) {
+              target += "+" + globalOption;
+            }
           }
 
           const parent = stmt.parent;

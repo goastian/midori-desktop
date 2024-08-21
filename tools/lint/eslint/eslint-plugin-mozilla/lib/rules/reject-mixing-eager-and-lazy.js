@@ -37,7 +37,7 @@ function checkMixed(loadedModules, context, node, type, resourceURI) {
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/tools/lint/eslint/eslint-plugin-mozilla/lib/rules/reject-mixed-eager-and-lazy.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/tools/lint/eslint/eslint-plugin-mozilla/lib/rules/reject-mixed-eager-and-lazy.html",
     },
     messages: {
       mixedEagerAndLazy:
@@ -71,7 +71,7 @@ module.exports = {
           (callerSource === "ChromeUtils.import" ||
             callerSource === "ChromeUtils.importESModule") &&
           helpers.getIsTopLevelAndUnconditionallyExecuted(
-            context.getAncestors()
+            helpers.getAncestors(context, node)
           )
         ) {
           if (node.arguments.length < 1) {
@@ -90,10 +90,7 @@ module.exports = {
           );
         }
 
-        if (
-          callerSource === "XPCOMUtils.defineLazyModuleGetter" ||
-          callerSource === "ChromeUtils.defineModuleGetter"
-        ) {
+        if (callerSource === "ChromeUtils.defineModuleGetter") {
           if (node.arguments.length < 3) {
             return;
           }

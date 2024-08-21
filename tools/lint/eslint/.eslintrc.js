@@ -15,6 +15,8 @@ module.exports = {
   },
   parser: "espree",
   parserOptions: {
+    // This should match with the minimum node version that the ESLint CI
+    // process uses (check the linux64-node toolchain).
     ecmaVersion: 12,
   },
 
@@ -25,6 +27,5 @@ module.exports = {
     "no-undef-init": "error",
     "one-var": ["error", "never"],
     strict: ["error", "global"],
-    "eslint-plugin/prefer-message-ids": "off",
   },
 };

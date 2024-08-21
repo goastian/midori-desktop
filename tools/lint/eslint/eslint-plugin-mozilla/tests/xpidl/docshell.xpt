@@ -394,7 +394,7 @@
               "in"
             ],
             "type": {
-              "name": "nsIContentViewer",
+              "name": "nsIDocumentViewer",
               "tag": "TD_INTERFACE_TYPE"
             }
           }
@@ -834,9 +834,9 @@
         "params": []
       }
     ],
-    "name": "nsIContentViewer",
+    "name": "nsIDocumentViewer",
     "parent": "nsISupports",
-    "uuid": "2da17016-7851-4a45-a7a8-00b360e01595"
+    "uuid": "48118355-e9a5-4452-ab18-59cc426fb817"
   },
   {
     "consts": [
@@ -1023,7 +1023,7 @@
         ]
       }
     ],
-    "name": "nsIContentViewerEdit",
+    "name": "nsIDocumentViewerEdit",
     "parent": "nsISupports",
     "uuid": "35be2d7e-f29b-48ec-bf7e-80a30a724de3"
   },
@@ -1292,14 +1292,14 @@
           "getter",
           "hasretval"
         ],
-        "name": "contentViewer",
+        "name": "docViewer",
         "params": [
           {
             "flags": [
               "out"
             ],
             "type": {
-              "name": "nsIContentViewer",
+              "name": "nsIDocumentViewer",
               "tag": "TD_INTERFACE_TYPE"
             }
           }
@@ -2079,7 +2079,7 @@
               "in"
             ],
             "type": {
-              "name": "nsIContentViewer",
+              "name": "nsIDocumentViewer",
               "tag": "TD_INTERFACE_TYPE"
             }
           },
@@ -2381,7 +2381,7 @@
       },
       {
         "flags": [],
-        "name": "createAboutBlankContentViewer",
+        "name": "createAboutBlankDocumentViewer",
         "params": [
           {
             "flags": [
@@ -2503,39 +2503,6 @@
       },
       {
         "flags": [
-          "getter",
-          "hasretval"
-        ],
-        "name": "recordProfileTimelineMarkers",
-        "params": [
-          {
-            "flags": [
-              "out"
-            ],
-            "type": {
-              "tag": "TD_BOOL"
-            }
-          }
-        ]
-      },
-      {
-        "flags": [
-          "setter"
-        ],
-        "name": "recordProfileTimelineMarkers",
-        "params": [
-          {
-            "flags": [
-              "in"
-            ],
-            "type": {
-              "tag": "TD_BOOL"
-            }
-          }
-        ]
-      },
-      {
-        "flags": [
           "hasretval"
         ],
         "name": "now",
@@ -2546,23 +2513,6 @@
             ],
             "type": {
               "tag": "TD_DOUBLE"
-            }
-          }
-        ]
-      },
-      {
-        "flags": [
-          "jscontext",
-          "hasretval"
-        ],
-        "name": "popProfileTimelineMarkers",
-        "params": [
-          {
-            "flags": [
-              "out"
-            ],
-            "type": {
-              "tag": "TD_JSVAL"
             }
           }
         ]
@@ -2698,23 +2648,6 @@
             ],
             "type": {
               "tag": "TD_BOOL"
-            }
-          }
-        ]
-      },
-      {
-        "flags": [
-          "hasretval"
-        ],
-        "name": "getSameTypeInProcessParentIgnoreBrowserBoundaries",
-        "params": [
-          {
-            "flags": [
-              "out"
-            ],
-            "type": {
-              "name": "nsIDocShell",
-              "tag": "TD_INTERFACE_TYPE"
             }
           }
         ]
@@ -2998,69 +2931,6 @@
             }
           }
         ]
-      },
-      {
-        "flags": [
-          "hidden"
-        ],
-        "name": "notifyJSRunToCompletionStart",
-        "params": [
-          {
-            "flags": [
-              "in"
-            ],
-            "type": {
-              "tag": "TD_PSTRING"
-            }
-          },
-          {
-            "flags": [
-              "in"
-            ],
-            "type": {
-              "tag": "TD_ASTRING"
-            }
-          },
-          {
-            "flags": [
-              "in"
-            ],
-            "type": {
-              "tag": "TD_ASTRING"
-            }
-          },
-          {
-            "flags": [
-              "in"
-            ],
-            "type": {
-              "tag": "TD_UINT32"
-            }
-          },
-          {
-            "flags": [
-              "in"
-            ],
-            "type": {
-              "tag": "TD_JSVAL"
-            }
-          },
-          {
-            "flags": [
-              "in"
-            ],
-            "type": {
-              "tag": "TD_PSTRING"
-            }
-          }
-        ]
-      },
-      {
-        "flags": [
-          "hidden"
-        ],
-        "name": "notifyJSRunToCompletionStop",
-        "params": []
       },
       {
         "flags": [
@@ -4245,7 +4115,7 @@
               "out"
             ],
             "type": {
-              "name": "nsIContentViewer",
+              "name": "nsIDocumentViewer",
               "tag": "TD_INTERFACE_TYPE"
             }
           }
@@ -4290,7 +4160,7 @@
               "out"
             ],
             "type": {
-              "name": "nsIContentViewer",
+              "name": "nsIDocumentViewer",
               "tag": "TD_INTERFACE_TYPE"
             }
           }
@@ -5299,13 +5169,6 @@
           "tag": "TD_UINT32"
         },
         "value": 8
-      },
-      {
-        "name": "FIXUP_FLAG_FORCE_ALTERNATE_URI",
-        "type": {
-          "tag": "TD_UINT32"
-        },
-        "value": 16
       }
     ],
     "flags": [],

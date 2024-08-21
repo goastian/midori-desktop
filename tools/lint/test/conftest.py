@@ -260,6 +260,7 @@ def perfdocs_sample():
         DYNAMIC_SAMPLE_CONFIG,
         SAMPLE_CONFIG,
         SAMPLE_INI,
+        SAMPLE_METRICS_CONFIG,
         SAMPLE_TEST,
         temp_dir,
         temp_file,
@@ -279,7 +280,7 @@ def perfdocs_sample():
         raptor_another_suitedir.mkdir(parents=True, exist_ok=True)
 
         with temp_file(
-            "perftest.ini", tempdir=suite_dir, content="[perftest_sample.js]"
+            "perftest.toml", tempdir=suite_dir, content='["perftest_sample.js"]'
         ) as tmpmanifest, temp_file(
             "raptor_example1.ini", tempdir=raptor_suitedir, content=SAMPLE_INI
         ) as tmpexample1manifest, temp_file(
@@ -291,7 +292,11 @@ def perfdocs_sample():
         ) as tmpconfig, temp_file(
             "config_2.yml", tempdir=perfdocs_dir, content=DYNAMIC_SAMPLE_CONFIG
         ) as tmpconfig_2, temp_file(
-            "index.rst", tempdir=perfdocs_dir, content="{documentation}"
+            "config_metrics.yml", tempdir=perfdocs_dir, content=SAMPLE_METRICS_CONFIG
+        ) as tmpconfig_metrics, temp_file(
+            "index.rst",
+            tempdir=perfdocs_dir,
+            content="{metrics_rst_name}{documentation}",
         ) as tmpindex:
             yield {
                 "top_dir": tmpdir,
@@ -301,5 +306,6 @@ def perfdocs_sample():
                 "test": tmptest,
                 "config": tmpconfig,
                 "config_2": tmpconfig_2,
+                "config_metrics": tmpconfig_metrics,
                 "index": tmpindex,
             }

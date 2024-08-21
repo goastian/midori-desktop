@@ -8,12 +8,10 @@ import signal
 import subprocess
 from collections import namedtuple
 
-import six
 from mozboot.util import get_tools_dir
 from mozfile import which
 from mozlint import result
 from mozlint.pathutils import expand_exclusions
-from mozprocess import ProcessHandler
 from packaging.version import Version
 
 RUSTFMT_NOT_FOUND = """
@@ -47,16 +45,18 @@ def parse_issues(config, output, paths):
     file = ""
     line_no = 0
     diff = ""
-    for line in output:
-        line = six.ensure_text(line)
-        match = diff_line.match(line)
+    for line in output.split(b"\n"):
+        processed_line = (
+            line.decode("utf-8", "replace") if isinstance(line, bytes) else line
+        ).rstrip("\r\n")
+        match = diff_line.match(processed_line)
         if match:
             if diff:
                 issues.append(RustfmtDiff(file, line_no, diff.rstrip("\n")))
                 diff = ""
             file, line_no = match.groups()
         else:
-            diff += line + "\n"
+            diff += processed_line + "\n"
     # the algorithm above will always skip adding the last issue
     issues.append(RustfmtDiff(file, line_no, diff))
     file = os.path.normcase(os.path.normpath(file))
@@ -77,27 +77,18 @@ def parse_issues(config, output, paths):
     return {"results": results, "fixed": 0}
 
 
-class RustfmtProcess(ProcessHandler):
-    def __init__(self, config, *args, **kwargs):
-        self.config = config
-        kwargs["stream"] = False
-        ProcessHandler.__init__(self, *args, **kwargs)
-
-    def run(self, *args, **kwargs):
-        orig = signal.signal(signal.SIGINT, signal.SIG_IGN)
-        ProcessHandler.run(self, *args, **kwargs)
-        signal.signal(signal.SIGINT, orig)
-
-
 def run_process(config, cmd):
-    proc = RustfmtProcess(config, cmd)
-    proc.run()
+    orig = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    signal.signal(signal.SIGINT, orig)
+
     try:
+        output, _ = proc.communicate()
         proc.wait()
     except KeyboardInterrupt:
         proc.kill()
 
-    return proc.output
+    return output
 
 
 def get_rustfmt_binary():

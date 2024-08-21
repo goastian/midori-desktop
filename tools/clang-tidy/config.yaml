@@ -19,7 +19,7 @@ platforms:
 # Minimum clang-tidy version that is required for all the following checkers
 # to work properly.
 # This is also used by 'mach clang-format'
-package_version: "16.0.4"
+package_version: "18.1.5"
 clang_checkers:
   - name: -*
     publish: !!bool no
@@ -62,6 +62,8 @@ clang_checkers:
   - name: bugprone-suspicious-string-compare
     reliability: high
   - name: bugprone-swapped-arguments
+    reliability: high
+  - name: bugprone-switch-missing-default-case
     reliability: high
   - name: bugprone-too-small-loop-variable
     reliability: high
@@ -134,6 +136,10 @@ clang_checkers:
     reliability: high
   - name: cppcoreguidelines-pro-type-member-init
     reliability: medium
+  - name: misc-include-cleaner
+    # Disable this checker until we move to before/after
+    reliability: high
+    publish: !!bool no
   - name: misc-non-copyable-objects
     reliability: high
   - name: misc-redundant-expression
@@ -182,6 +188,11 @@ clang_checkers:
     reliability: high
   - name: mozilla-*
     reliability: high
+  - name: performance-avoid-endl
+    reliability: high
+    # enable from clang 18
+    #  - name: performance-enum-size
+    #    reliability: high
   - name: performance-faster-string-find
     reliability: high
   - name: performance-for-range-copy
@@ -216,6 +227,11 @@ clang_checkers:
     reliability: high
   - name: performance-unnecessary-value-param
     reliability: high
+    config:
+      - key: AllowedTypes
+        # Allow EnumSet because it only has a non-trivial copy constructor
+        # in debug builds.
+        value: ::mozilla::EnumSet
   - name: readability-braces-around-statements
     reliability: high
     config:
@@ -264,6 +280,8 @@ clang_checkers:
   - name: readability-qualified-auto
     reliability: high
   - name: readability-redundant-control-flow
+    reliability: high
+  - name: readability-redundant-member-init
     reliability: high
   - name: readability-redundant-preprocessor
     reliability: high

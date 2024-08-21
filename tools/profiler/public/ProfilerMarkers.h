@@ -36,6 +36,8 @@
 #include "mozilla/ProfilerMarkersDetail.h"
 #include "mozilla/ProfilerLabels.h"
 #include "nsJSUtils.h"  // for nsJSUtils::GetCurrentlyRunningCodeInnerWindowID
+#include "nsString.h"
+#include "ETWTools.h"
 
 class nsIDocShell;
 
@@ -123,14 +125,25 @@ inline mozilla::ProfileBufferBlockIndex AddMarkerToBuffer(
 }
 #endif
 
+// Internally we need to check specifically if gecko is collecting markers.
+[[nodiscard]] inline bool profiler_thread_is_being_gecko_profiled_for_markers(
+    const ProfilerThreadId& aThreadId) {
+  return profiler_thread_is_being_profiled(aThreadId,
+                                           ThreadProfilingFeatures::Markers);
+}
+
+// ETW collects on all threads. So when it is collecting these should always
+// return true.
 [[nodiscard]] inline bool profiler_thread_is_being_profiled_for_markers() {
-  return profiler_thread_is_being_profiled(ThreadProfilingFeatures::Markers);
+  return profiler_thread_is_being_profiled(ThreadProfilingFeatures::Markers) ||
+         profiler_is_etw_collecting_markers();
 }
 
 [[nodiscard]] inline bool profiler_thread_is_being_profiled_for_markers(
     const ProfilerThreadId& aThreadId) {
   return profiler_thread_is_being_profiled(aThreadId,
-                                           ThreadProfilingFeatures::Markers);
+                                           ThreadProfilingFeatures::Markers) ||
+         profiler_is_etw_collecting_markers();
 }
 
 // Add a marker to the Gecko Profiler buffer.
@@ -142,14 +155,19 @@ inline mozilla::ProfileBufferBlockIndex AddMarkerToBuffer(
 // - aPayloadArguments: Arguments expected by this marker type's
 // ` StreamJSONMarkerData` function.
 template <typename MarkerType, typename... PayloadArguments>
-mozilla::ProfileBufferBlockIndex profiler_add_marker(
+mozilla::ProfileBufferBlockIndex profiler_add_marker_impl(
     const mozilla::ProfilerString8View& aName,
     const mozilla::MarkerCategory& aCategory, mozilla::MarkerOptions&& aOptions,
     MarkerType aMarkerType, const PayloadArguments&... aPayloadArguments) {
 #ifndef MOZ_GECKO_PROFILER
   return {};
 #else
-  if (!profiler_thread_is_being_profiled_for_markers(
+#  ifndef RUST_BINDGEN
+  // Bindgen can't take Windows.h and as such can't parse this.
+  ETW::EmitETWMarker(aName, aCategory, aOptions, aMarkerType,
+                     aPayloadArguments...);
+#  endif
+  if (!profiler_thread_is_being_gecko_profiled_for_markers(
           aOptions.ThreadId().ThreadId())) {
     return {};
   }
@@ -161,31 +179,49 @@ mozilla::ProfileBufferBlockIndex profiler_add_marker(
 }
 
 // Add a marker (without payload) to the Gecko Profiler buffer.
-inline mozilla::ProfileBufferBlockIndex profiler_add_marker(
+inline mozilla::ProfileBufferBlockIndex profiler_add_marker_impl(
     const mozilla::ProfilerString8View& aName,
     const mozilla::MarkerCategory& aCategory,
     mozilla::MarkerOptions&& aOptions = {}) {
-  return profiler_add_marker(aName, aCategory, std::move(aOptions),
-                             mozilla::baseprofiler::markers::NoPayload{});
+  return profiler_add_marker_impl(aName, aCategory, std::move(aOptions),
+                                  mozilla::baseprofiler::markers::NoPayload{});
 }
+
+// `profiler_add_marker` is a macro rather than a function so that arguments to
+// it aren't unconditionally evaluated when not profiled. Some of the arguments
+// might be non-trivial, see bug 1843534.
+//
+// The check used around `::profiler_add_marker_impl()` is a bit subtle.
+// Naively, you might want to do
+// `profiler_thread_is_being_profiled_for_markers()`, but markers can be
+// targeted to different threads.
+// So we do a cheaper `profiler_is_collecting_markers()` check instead to
+// avoid any marker overhead when not profiling. This also allows us to do a
+// single check that also checks if ETW is enabled.
+#define profiler_add_marker(...)               \
+  do {                                         \
+    if (profiler_is_collecting_markers()) {    \
+      ::profiler_add_marker_impl(__VA_ARGS__); \
+    }                                          \
+  } while (false)
 
 // Same as `profiler_add_marker()` (without payload). This macro is safe to use
 // even if MOZ_GECKO_PROFILER is not #defined.
-#define PROFILER_MARKER_UNTYPED(markerName, categoryName, ...)                 \
-  do {                                                                         \
-    AUTO_PROFILER_STATS(PROFILER_MARKER_UNTYPED);                              \
-    ::profiler_add_marker(markerName, ::geckoprofiler::category::categoryName, \
-                          ##__VA_ARGS__);                                      \
+#define PROFILER_MARKER_UNTYPED(markerName, categoryName, ...)               \
+  do {                                                                       \
+    AUTO_PROFILER_STATS(PROFILER_MARKER_UNTYPED);                            \
+    profiler_add_marker(markerName, ::geckoprofiler::category::categoryName, \
+                        ##__VA_ARGS__);                                      \
   } while (false)
 
 // Same as `profiler_add_marker()` (with payload). This macro is safe to use
 // even if MOZ_GECKO_PROFILER is not #defined.
-#define PROFILER_MARKER(markerName, categoryName, options, MarkerType, ...)    \
-  do {                                                                         \
-    AUTO_PROFILER_STATS(PROFILER_MARKER_with_##MarkerType);                    \
-    ::profiler_add_marker(markerName, ::geckoprofiler::category::categoryName, \
-                          options, ::geckoprofiler::markers::MarkerType{},     \
-                          ##__VA_ARGS__);                                      \
+#define PROFILER_MARKER(markerName, categoryName, options, MarkerType, ...)  \
+  do {                                                                       \
+    AUTO_PROFILER_STATS(PROFILER_MARKER_with_##MarkerType);                  \
+    profiler_add_marker(markerName, ::geckoprofiler::category::categoryName, \
+                        options, ::geckoprofiler::markers::MarkerType{},     \
+                        ##__VA_ARGS__);                                      \
   } while (false)
 
 namespace geckoprofiler::markers {
@@ -196,12 +232,12 @@ using Tracing = mozilla::baseprofiler::markers::Tracing;
 
 // Add a text marker. This macro is safe to use even if MOZ_GECKO_PROFILER is
 // not #defined.
-#define PROFILER_MARKER_TEXT(markerName, categoryName, options, text)          \
-  do {                                                                         \
-    AUTO_PROFILER_STATS(PROFILER_MARKER_TEXT);                                 \
-    ::profiler_add_marker(markerName, ::geckoprofiler::category::categoryName, \
-                          options, ::geckoprofiler::markers::TextMarker{},     \
-                          text);                                               \
+#define PROFILER_MARKER_TEXT(markerName, categoryName, options, text)        \
+  do {                                                                       \
+    AUTO_PROFILER_STATS(PROFILER_MARKER_TEXT);                               \
+    profiler_add_marker(markerName, ::geckoprofiler::category::categoryName, \
+                        options, ::geckoprofiler::markers::TextMarker{},     \
+                        text);                                               \
   } while (false)
 
 // RAII object that adds a PROFILER_MARKER_TEXT when destroyed; the marker's
@@ -336,20 +372,34 @@ extern template mozilla::ProfileBufferBlockIndex AddMarkerToBuffer(
     const mozilla::MarkerCategory&, mozilla::MarkerOptions&&,
     mozilla::baseprofiler::markers::TextMarker, const std::string&);
 
-extern template mozilla::ProfileBufferBlockIndex profiler_add_marker(
+extern template mozilla::ProfileBufferBlockIndex profiler_add_marker_impl(
     const mozilla::ProfilerString8View&, const mozilla::MarkerCategory&,
     mozilla::MarkerOptions&&, mozilla::baseprofiler::markers::TextMarker,
     const std::string&);
 
-extern template mozilla::ProfileBufferBlockIndex profiler_add_marker(
+extern template mozilla::ProfileBufferBlockIndex profiler_add_marker_impl(
     const mozilla::ProfilerString8View&, const mozilla::MarkerCategory&,
     mozilla::MarkerOptions&&, mozilla::baseprofiler::markers::TextMarker,
     const nsCString&);
 
-extern template mozilla::ProfileBufferBlockIndex profiler_add_marker(
+extern template mozilla::ProfileBufferBlockIndex profiler_add_marker_impl(
     const mozilla::ProfilerString8View&, const mozilla::MarkerCategory&,
     mozilla::MarkerOptions&&, mozilla::baseprofiler::markers::Tracing,
     const mozilla::ProfilerString8View&);
 #endif  // MOZ_GECKO_PROFILER
 
+namespace mozilla {
+namespace detail {
+
+// Implement this here to prevent BaseProfilerMarkersPrerequisites from pulling
+// in nsString.h
+template <>
+inline void StreamPayload<ProfilerString16View>(
+    baseprofiler::SpliceableJSONWriter& aWriter, const Span<const char> aKey,
+    const ProfilerString16View& aPayload) {
+  aWriter.StringProperty(aKey, NS_ConvertUTF16toUTF8(aPayload));
+}
+
+}  // namespace detail
+}  // namespace mozilla
 #endif  // ProfilerMarkers_h

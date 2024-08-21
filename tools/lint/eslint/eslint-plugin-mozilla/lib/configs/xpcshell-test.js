@@ -10,6 +10,16 @@ module.exports = {
 
   overrides: [
     {
+      // Some directories have multiple kinds of tests, and some rules
+      // don't work well for plain mochitests, so disable those.
+      files: ["*.html", "*.xhtml"],
+      // plain/chrome mochitests don't automatically include Assert, so
+      // autofixing `ok()` to Assert.something is bad.
+      rules: {
+        "mozilla/no-comparison-or-assignment-inside-ok": "off",
+      },
+    },
+    {
       // If it is a head file, we turn off global unused variable checks, as it
       // would require searching the other test files to know if they are used or not.
       // This would be expensive and slow, and it isn't worth it for head files.
@@ -19,7 +29,7 @@ module.exports = {
         "no-unused-vars": [
           "error",
           {
-            args: "none",
+            argsIgnorePattern: "^_",
             vars: "local",
           },
         ],
@@ -32,7 +42,7 @@ module.exports = {
         "no-unused-vars": [
           "error",
           {
-            args: "none",
+            argsIgnorePattern: "^_",
             vars: "all",
           },
         ],
@@ -41,10 +51,19 @@ module.exports = {
   ],
 
   rules: {
+    // Turn off no-insecure-url as it is not considered necessary for xpcshell
+    // level tests.
+    "@microsoft/sdl/no-insecure-url": "off",
+
     "mozilla/import-headjs-globals": "error",
     "mozilla/mark-test-function-used": "error",
     "mozilla/no-arbitrary-setTimeout": "error",
+    "mozilla/no-comparison-or-assignment-inside-ok": "error",
     "mozilla/no-useless-run-test": "error",
     "no-shadow": "error",
+    // Turn off no-unsanitized for tests, as we do want to be able to use
+    // these for testing.
+    "no-unsanitized/method": "off",
+    "no-unsanitized/property": "off",
   },
 };

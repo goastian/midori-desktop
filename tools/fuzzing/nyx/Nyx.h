@@ -34,15 +34,18 @@ class Nyx {
   bool is_enabled(const char* identifier);
   bool is_replay();
   uint32_t get_data(uint8_t* data, uint32_t size);
+  uint32_t get_raw_data(uint8_t* data, uint32_t size);
   void release(uint32_t iterations = 1);
   void handle_event(const char* type, const char* file, int line,
                     const char* reason);
+  void dump_file(void* buffer, size_t len, const char* filename);
 
  private:
   std::atomic<bool> mInited;
 
   std::atomic<bool> mReplayMode;
   std::list<Vector<uint8_t, 0, MallocAllocPolicy>*> mReplayBuffers;
+  Vector<uint8_t, 0, MallocAllocPolicy>* mRawReplayBuffer;
 
   Nyx();
   NYX_DISALLOW_COPY_AND_ASSIGN(Nyx);

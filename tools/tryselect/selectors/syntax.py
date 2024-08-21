@@ -285,7 +285,6 @@ def parse_arg(arg):
 
 
 class AutoTry:
-
     # Maps from flavors to the job names needed to run that flavour
     flavor_jobs = {
         "mochitest": ["mochitest-1", "mochitest-e10s-1"],
@@ -700,6 +699,7 @@ class AutoTry:
             stage_changes=kwargs["stage_changes"],
             dry_run=kwargs["dry_run"],
             closed_tree=kwargs["closed_tree"],
+            push_to_lando=kwargs["push_to_lando"],
         )
 
 

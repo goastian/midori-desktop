@@ -23,7 +23,7 @@ if os.path.exists(thunderbird_excludes):
 
 GLOBAL_EXCLUDES = ["**/node_modules", "tools/lint/test/files", ".hg", ".git"]
 
-VALID_FORMATTERS = {"black", "clang-format", "rustfmt", "isort"}
+VALID_FORMATTERS = {"black", "clang-format", "rustfmt"}
 VALID_ANDROID_FORMATTERS = {"android-format"}
 
 # Code-review bot must index issues from the whole codebase when pushing
@@ -56,7 +56,7 @@ def get_global_excludes(**lintargs):
         ]
     )
 
-    if lintargs.get("include_thirdparty"):
+    if lintargs.get("include_third-party"):
         # For some linters, we want to include the thirdparty code too.
         # Example: trojan-source linter should run also on third party code.
         return excludes

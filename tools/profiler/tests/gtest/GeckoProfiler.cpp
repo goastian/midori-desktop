@@ -33,10 +33,6 @@
 #  include <mach/thread_act.h>
 #endif
 
-#ifdef XP_WIN
-#include "mozilla/WindowsVersion.h"
-#endif
-
 #ifdef MOZ_GECKO_PROFILER
 
 #  include "GeckoProfiler.h"
@@ -52,7 +48,6 @@
 #  include "jsapi.h"
 #  include "json/json.h"
 #  include "mozilla/Atomics.h"
-#  include "mozilla/BlocksRingBuffer.h"
 #  include "mozilla/DataMutex.h"
 #  include "mozilla/ProfileBufferEntrySerializationGeckoExtensions.h"
 #  include "mozilla/ProfileJSONWriter.h"
@@ -145,8 +140,10 @@ TEST(GeckoProfiler, ThreadRegistrationInfo)
     EXPECT_STREQ(trInfoHere.Name(), "Here");
     EXPECT_NE(trInfoHere.Name(), "Here")
         << "ThreadRegistrationInfo should keep its own copy of the name";
-    TimeStamp baseRegistrationTime =
-        baseprofiler::detail::GetThreadRegistrationTime();
+    TimeStamp baseRegistrationTime;
+#ifdef MOZ_GECKO_PROFILER
+    baseRegistrationTime = baseprofiler::detail::GetThreadRegistrationTime();
+#endif
     if (baseRegistrationTime) {
       EXPECT_EQ(trInfoHere.RegisterTime(), baseRegistrationTime);
     } else {
@@ -1212,49 +1209,6 @@ TEST(GeckoProfiler, ThreadRegistration_RegistrationEdgeCases)
 
 #ifdef MOZ_GECKO_PROFILER
 
-TEST(BaseProfiler, BlocksRingBuffer)
-{
-  constexpr uint32_t MBSize = 256;
-  uint8_t buffer[MBSize * 3];
-  for (size_t i = 0; i < MBSize * 3; ++i) {
-    buffer[i] = uint8_t('A' + i);
-  }
-  BlocksRingBuffer rb(BlocksRingBuffer::ThreadSafety::WithMutex,
-                      &buffer[MBSize], MakePowerOfTwo32<MBSize>());
-
-  {
-    nsCString cs("nsCString"_ns);
-    nsString s(u"nsString"_ns);
-    nsAutoCString acs("nsAutoCString"_ns);
-    nsAutoString as(u"nsAutoString"_ns);
-    nsAutoCStringN<8> acs8("nsAutoCStringN"_ns);
-    nsAutoStringN<8> as8(u"nsAutoStringN"_ns);
-    JS::UniqueChars jsuc = JS_smprintf("%s", "JS::UniqueChars");
-
-    rb.PutObjects(cs, s, acs, as, acs8, as8, jsuc);
-  }
-
-  rb.ReadEach([](ProfileBufferEntryReader& aER) {
-    ASSERT_EQ(aER.ReadObject<nsCString>(), "nsCString"_ns);
-    ASSERT_EQ(aER.ReadObject<nsString>(), u"nsString"_ns);
-    ASSERT_EQ(aER.ReadObject<nsAutoCString>(), "nsAutoCString"_ns);
-    ASSERT_EQ(aER.ReadObject<nsAutoString>(), u"nsAutoString"_ns);
-    ASSERT_EQ(aER.ReadObject<nsAutoCStringN<8>>(), "nsAutoCStringN"_ns);
-    ASSERT_EQ(aER.ReadObject<nsAutoStringN<8>>(), u"nsAutoStringN"_ns);
-    auto jsuc2 = aER.ReadObject<JS::UniqueChars>();
-    ASSERT_TRUE(!!jsuc2);
-    ASSERT_TRUE(strcmp(jsuc2.get(), "JS::UniqueChars") == 0);
-  });
-
-  // Everything around the sub-buffer should be unchanged.
-  for (size_t i = 0; i < MBSize; ++i) {
-    ASSERT_EQ(buffer[i], uint8_t('A' + i));
-  }
-  for (size_t i = MBSize * 2; i < MBSize * 3; ++i) {
-    ASSERT_EQ(buffer[i], uint8_t('A' + i));
-  }
-}
-
 // Common JSON checks.
 
 // Check that the given JSON string include no JSON whitespace characters
@@ -1429,8 +1383,6 @@ static void JSONRootCheck(const Json::Value& aRoot,
 
   EXPECT_HAS_JSON(aRoot["pages"], Array);
 
-  EXPECT_HAS_JSON(aRoot["profilerOverhead"], Object);
-
   // "counters" is only present if there is any data to report.
   // Test that expect "counters" should test for its presence first.
   if (aRoot.isMember("counters")) {
@@ -1441,30 +1393,24 @@ static void JSONRootCheck(const Json::Value& aRoot,
       EXPECT_HAS_JSON(counter["name"], String);
       EXPECT_HAS_JSON(counter["category"], String);
       EXPECT_HAS_JSON(counter["description"], String);
-      GET_JSON(sampleGroups, counter["sample_groups"], Array);
-      for (const Json::Value& sampleGroup : sampleGroups) {
-        ASSERT_TRUE(sampleGroup.isObject());
-        EXPECT_HAS_JSON(sampleGroup["id"], UInt);
-
-        GET_JSON(samples, sampleGroup["samples"], Object);
-        GET_JSON(samplesSchema, samples["schema"], Object);
-        EXPECT_GE(samplesSchema.size(), 3u);
-        GET_JSON_VALUE(samplesTime, samplesSchema["time"], UInt);
-        GET_JSON_VALUE(samplesNumber, samplesSchema["number"], UInt);
-        GET_JSON_VALUE(samplesCount, samplesSchema["count"], UInt);
-        GET_JSON(samplesData, samples["data"], Array);
-        double previousTime = 0.0;
-        for (const Json::Value& sample : samplesData) {
-          ASSERT_TRUE(sample.isArray());
-          GET_JSON_VALUE(time, sample[samplesTime], Double);
-          EXPECT_GE(time, previousTime);
-          previousTime = time;
-          if (sample.isValidIndex(samplesNumber)) {
-            EXPECT_HAS_JSON(sample[samplesNumber], UInt64);
-          }
-          if (sample.isValidIndex(samplesCount)) {
-            EXPECT_HAS_JSON(sample[samplesCount], Int64);
-          }
+      GET_JSON(samples, counter["samples"], Object);
+      GET_JSON(samplesSchema, samples["schema"], Object);
+      EXPECT_GE(samplesSchema.size(), 3u);
+      GET_JSON_VALUE(samplesTime, samplesSchema["time"], UInt);
+      GET_JSON_VALUE(samplesNumber, samplesSchema["number"], UInt);
+      GET_JSON_VALUE(samplesCount, samplesSchema["count"], UInt);
+      GET_JSON(samplesData, samples["data"], Array);
+      double previousTime = 0.0;
+      for (const Json::Value& sample : samplesData) {
+        ASSERT_TRUE(sample.isArray());
+        GET_JSON_VALUE(time, sample[samplesTime], Double);
+        EXPECT_GE(time, previousTime);
+        previousTime = time;
+        if (sample.isValidIndex(samplesNumber)) {
+          EXPECT_HAS_JSON(sample[samplesNumber], UInt64);
+        }
+        if (sample.isValidIndex(samplesCount)) {
+          EXPECT_HAS_JSON(sample[samplesCount], Int64);
         }
       }
     }
@@ -2393,9 +2339,9 @@ TEST(GeckoProfiler, Markers)
   longstrCut[kMax - 1] = '\0';
 
   // Test basic markers 2.0.
-  EXPECT_TRUE(
-      profiler_add_marker("default-templated markers 2.0 with empty options",
-                          geckoprofiler::category::OTHER, {}));
+  EXPECT_TRUE(profiler_add_marker_impl(
+      "default-templated markers 2.0 with empty options",
+      geckoprofiler::category::OTHER, {}));
 
   PROFILER_MARKER_UNTYPED(
       "default-templated markers 2.0 with option", OTHER,
@@ -2404,7 +2350,7 @@ TEST(GeckoProfiler, Markers)
   PROFILER_MARKER("explicitly-default-templated markers 2.0 with empty options",
                   OTHER, {}, NoPayload);
 
-  EXPECT_TRUE(profiler_add_marker(
+  EXPECT_TRUE(profiler_add_marker_impl(
       "explicitly-default-templated markers 2.0 with option",
       geckoprofiler::category::OTHER, {},
       ::geckoprofiler::markers::NoPayload{}));
@@ -2425,10 +2371,10 @@ TEST(GeckoProfiler, Markers)
 
   // Keep this one first! (It's used to record `ts1` and `ts2`, to compare
   // to serialized numbers in other markers.)
-  EXPECT_TRUE(profiler_add_marker("FirstMarker", geckoprofiler::category::OTHER,
-                                  MarkerTiming::Interval(ts1, ts2),
-                                  geckoprofiler::markers::TextMarker{},
-                                  "First Marker"));
+  EXPECT_TRUE(profiler_add_marker_impl(
+      "FirstMarker", geckoprofiler::category::OTHER,
+      MarkerTiming::Interval(ts1, ts2), geckoprofiler::markers::TextMarker{},
+      "First Marker"));
 
   // User-defined marker type with different properties, and fake schema.
   struct GtestMarker {
@@ -2483,13 +2429,17 @@ TEST(GeckoProfiler, Markers)
       schema.AddKeyFormat("key with integer", MS::Format::Integer);
       schema.AddKeyFormat("key with decimal", MS::Format::Decimal);
       schema.AddStaticLabelValue("static label", "static value");
+      schema.AddKeyFormat("key with unique string", MS::Format::UniqueString);
+      schema.AddKeyFormatSearchable("key with sanitized string",
+                                    MS::Format::SanitizedString,
+                                    MS::Searchable::Searchable);
       return schema;
     }
   };
-  EXPECT_TRUE(
-      profiler_add_marker("Gtest custom marker", geckoprofiler::category::OTHER,
-                          MarkerTiming::Interval(ts1, ts2), GtestMarker{}, 42,
-                          43.0, "gtest text", "gtest unique text", ts1));
+  EXPECT_TRUE(profiler_add_marker_impl(
+      "Gtest custom marker", geckoprofiler::category::OTHER,
+      MarkerTiming::Interval(ts1, ts2), GtestMarker{}, 42, 43.0, "gtest text",
+      "gtest unique text", ts1));
 
   // User-defined marker type with no data, special frontend schema.
   struct GtestSpecialMarker {
@@ -2502,9 +2452,9 @@ TEST(GeckoProfiler, Markers)
       return mozilla::MarkerSchema::SpecialFrontendLocation{};
     }
   };
-  EXPECT_TRUE(profiler_add_marker("Gtest special marker",
-                                  geckoprofiler::category::OTHER, {},
-                                  GtestSpecialMarker{}));
+  EXPECT_TRUE(profiler_add_marker_impl("Gtest special marker",
+                                       geckoprofiler::category::OTHER, {},
+                                       GtestSpecialMarker{}));
 
   // User-defined marker type that is never used, so it shouldn't appear in the
   // output.
@@ -2696,11 +2646,11 @@ TEST(GeckoProfiler, Markers)
       /* uint64_t aRedirectChannelId = 0 */
   );
 
-  EXPECT_TRUE(profiler_add_marker(
+  EXPECT_TRUE(profiler_add_marker_impl(
       "Text in main thread with stack", geckoprofiler::category::OTHER,
       {MarkerStack::Capture(), MarkerTiming::Interval(ts1, ts2)},
       geckoprofiler::markers::TextMarker{}, ""));
-  EXPECT_TRUE(profiler_add_marker(
+  EXPECT_TRUE(profiler_add_marker_impl(
       "Text from main thread with stack", geckoprofiler::category::OTHER,
       MarkerOptions(MarkerThreadId::MainThread(), MarkerStack::Capture()),
       geckoprofiler::markers::TextMarker{}, ""));
@@ -2708,11 +2658,11 @@ TEST(GeckoProfiler, Markers)
   std::thread registeredThread([]() {
     AUTO_PROFILER_REGISTER_THREAD("Marker test sub-thread");
     // Marker in non-profiled thread won't be stored.
-    EXPECT_FALSE(profiler_add_marker(
+    EXPECT_FALSE(profiler_add_marker_impl(
         "Text in registered thread with stack", geckoprofiler::category::OTHER,
         MarkerStack::Capture(), geckoprofiler::markers::TextMarker{}, ""));
     // Marker will be stored in main thread, with stack from registered thread.
-    EXPECT_TRUE(profiler_add_marker(
+    EXPECT_TRUE(profiler_add_marker_impl(
         "Text from registered thread with stack",
         geckoprofiler::category::OTHER,
         MarkerOptions(MarkerThreadId::MainThread(), MarkerStack::Capture()),
@@ -2722,13 +2672,13 @@ TEST(GeckoProfiler, Markers)
 
   std::thread unregisteredThread([]() {
     // Marker in unregistered thread won't be stored.
-    EXPECT_FALSE(profiler_add_marker("Text in unregistered thread with stack",
-                                     geckoprofiler::category::OTHER,
-                                     MarkerStack::Capture(),
-                                     geckoprofiler::markers::TextMarker{}, ""));
+    EXPECT_FALSE(profiler_add_marker_impl(
+        "Text in unregistered thread with stack",
+        geckoprofiler::category::OTHER, MarkerStack::Capture(),
+        geckoprofiler::markers::TextMarker{}, ""));
     // Marker will be stored in main thread, but stack cannot be captured in an
     // unregistered thread.
-    EXPECT_TRUE(profiler_add_marker(
+    EXPECT_TRUE(profiler_add_marker_impl(
         "Text from unregistered thread with stack",
         geckoprofiler::category::OTHER,
         MarkerOptions(MarkerThreadId::MainThread(), MarkerStack::Capture()),
@@ -2736,22 +2686,22 @@ TEST(GeckoProfiler, Markers)
   });
   unregisteredThread.join();
 
-  EXPECT_TRUE(profiler_add_marker("Tracing", geckoprofiler::category::OTHER, {},
-                                  geckoprofiler::markers::Tracing{},
-                                  "category"));
+  EXPECT_TRUE(
+      profiler_add_marker_impl("Tracing", geckoprofiler::category::OTHER, {},
+                               geckoprofiler::markers::Tracing{}, "category"));
 
-  EXPECT_TRUE(profiler_add_marker("Text", geckoprofiler::category::OTHER, {},
-                                  geckoprofiler::markers::TextMarker{},
-                                  "Text text"));
+  EXPECT_TRUE(profiler_add_marker_impl("Text", geckoprofiler::category::OTHER,
+                                       {}, geckoprofiler::markers::TextMarker{},
+                                       "Text text"));
 
   // Ensure that we evaluate to false for markers with very long texts by
   // testing against a ~3mb string. A string of this size should exceed the
   // available buffer chunks (max: 2) that are available and be discarded.
-  EXPECT_FALSE(profiler_add_marker("Text", geckoprofiler::category::OTHER, {},
-                                   geckoprofiler::markers::TextMarker{},
-                                   std::string(3 * 1024 * 1024, 'x')));
+  EXPECT_FALSE(profiler_add_marker_impl(
+      "Text", geckoprofiler::category::OTHER, {},
+      geckoprofiler::markers::TextMarker{}, std::string(3 * 1024 * 1024, 'x')));
 
-  EXPECT_TRUE(profiler_add_marker(
+  EXPECT_TRUE(profiler_add_marker_impl(
       "MediaSample", geckoprofiler::category::OTHER, {},
       geckoprofiler::markers::MediaSampleMarker{}, 123, 456, 789));
 
@@ -3246,11 +3196,11 @@ TEST(GeckoProfiler, Markers)
                   EXPECT_EQ_JSON(payload["name"], String, "");
                 }
               }  // marker with payload
-            }    // for (marker : data)
-          }      // markers.data
-        }        // markers
-      }          // thread0
-    }            // threads
+            }  // for (marker : data)
+          }  // markers.data
+        }  // markers
+      }  // thread0
+    }  // threads
     // We should have read all expected markers.
     EXPECT_EQ(state, S_LAST);
 
@@ -3281,12 +3231,14 @@ TEST(GeckoProfiler, Markers)
             EXPECT_EQ(display[0u].asString(), "marker-chart");
             EXPECT_EQ(display[1u].asString(), "marker-table");
 
-            ASSERT_EQ(data.size(), 1u);
+            ASSERT_EQ(data.size(), 2u);
 
             ASSERT_TRUE(data[0u].isObject());
             EXPECT_EQ_JSON(data[0u]["key"], String, "name");
             EXPECT_EQ_JSON(data[0u]["label"], String, "Details");
             EXPECT_EQ_JSON(data[0u]["format"], String, "string");
+            EXPECT_EQ_JSON(data[1u]["label"], String, "Description");
+            EXPECT_EQ_JSON(data[1u]["value"], String, "Generic text marker");
 
           } else if (nameString == "NoPayloadUserData") {
             // TODO: Remove this when bug 1646714 lands.
@@ -3305,12 +3257,14 @@ TEST(GeckoProfiler, Markers)
             EXPECT_EQ(display[1u].asString(), "marker-table");
             EXPECT_EQ(display[2u].asString(), "timeline-overview");
 
-            ASSERT_EQ(data.size(), 1u);
+            ASSERT_EQ(data.size(), 2u);
 
             ASSERT_TRUE(data[0u].isObject());
             EXPECT_EQ_JSON(data[0u]["key"], String, "category");
             EXPECT_EQ_JSON(data[0u]["label"], String, "Type");
             EXPECT_EQ_JSON(data[0u]["format"], String, "string");
+            EXPECT_EQ_JSON(data[1u]["label"], String, "Description");
+            EXPECT_EQ_JSON(data[1u]["value"], String, "Generic tracing marker");
 
           } else if (nameString == "BHR-detected hang") {
             EXPECT_EQ(display.size(), 2u);
@@ -3407,7 +3361,7 @@ TEST(GeckoProfiler, Markers)
             EXPECT_EQ_JSON(schema["tooltipLabel"], String, "tooltip label");
             EXPECT_EQ_JSON(schema["tableLabel"], String, "table label");
 
-            ASSERT_EQ(data.size(), 14u);
+            ASSERT_EQ(data.size(), 16u);
 
             ASSERT_TRUE(data[0u].isObject());
             EXPECT_EQ_JSON(data[0u]["key"], String, "key with url");
@@ -3493,6 +3447,18 @@ TEST(GeckoProfiler, Markers)
             EXPECT_EQ_JSON(data[13u]["label"], String, "static label");
             EXPECT_EQ_JSON(data[13u]["value"], String, "static value");
 
+            ASSERT_TRUE(data[14u].isObject());
+            EXPECT_EQ_JSON(data[14u]["key"], String, "key with unique string");
+            EXPECT_TRUE(data[14u]["label"].isNull());
+            EXPECT_EQ_JSON(data[14u]["format"], String, "unique-string");
+            EXPECT_TRUE(data[14u]["searchable"].isNull());
+
+            ASSERT_TRUE(data[15u].isObject());
+            EXPECT_EQ_JSON(data[15u]["key"], String,
+                           "key with sanitized string");
+            EXPECT_TRUE(data[15u]["label"].isNull());
+            EXPECT_EQ_JSON(data[15u]["format"], String, "sanitized-string");
+            EXPECT_EQ_JSON(data[15u]["searchable"], Bool, true);
           } else if (nameString == "markers-gtest-special") {
             EXPECT_EQ(display.size(), 0u);
             ASSERT_EQ(data.size(), 0u);
@@ -3512,7 +3478,7 @@ TEST(GeckoProfiler, Markers)
         EXPECT_TRUE(testedSchemaNames.find("MediaSample") !=
                     testedSchemaNames.end());
       }  // markerSchema
-    }    // meta
+    }  // meta
   });
 
   Maybe<ProfilerBufferInfo> info = profiler_get_buffer_info();
@@ -3613,56 +3579,42 @@ TEST(GeckoProfiler, Counters)
       if (name == "TestCounter") {
         EXPECT_EQ_JSON(counter["category"], String, COUNTER_NAME);
         EXPECT_EQ_JSON(counter["description"], String, COUNTER_DESCRIPTION);
-        GET_JSON(sampleGroups, counter["sample_groups"], Array);
-        for (const Json::Value& sampleGroup : sampleGroups) {
-          ASSERT_TRUE(sampleGroup.isObject());
-          EXPECT_EQ_JSON(sampleGroup["id"], UInt, 0u);
-
-          GET_JSON(samples, sampleGroup["samples"], Object);
-          GET_JSON(samplesSchema, samples["schema"], Object);
-          EXPECT_GE(samplesSchema.size(), 3u);
-          GET_JSON_VALUE(samplesNumber, samplesSchema["number"], UInt);
-          GET_JSON_VALUE(samplesCount, samplesSchema["count"], UInt);
-          GET_JSON(samplesData, samples["data"], Array);
-          for (const Json::Value& sample : samplesData) {
-            ASSERT_TRUE(sample.isArray());
-            ASSERT_LT(nextExpectedTestCounter, expectedTestCountersCount);
-            EXPECT_EQ_JSON(
-                sample[samplesNumber], UInt64,
-                expectedTestCounters[nextExpectedTestCounter].mNumber);
-            EXPECT_EQ_JSON(
-                sample[samplesCount], Int64,
-                expectedTestCounters[nextExpectedTestCounter].mCount);
-            ++nextExpectedTestCounter;
-          }
+        GET_JSON(samples, counter["samples"], Object);
+        GET_JSON(samplesSchema, samples["schema"], Object);
+        EXPECT_GE(samplesSchema.size(), 3u);
+        GET_JSON_VALUE(samplesNumber, samplesSchema["number"], UInt);
+        GET_JSON_VALUE(samplesCount, samplesSchema["count"], UInt);
+        GET_JSON(samplesData, samples["data"], Array);
+        for (const Json::Value& sample : samplesData) {
+          ASSERT_TRUE(sample.isArray());
+          ASSERT_LT(nextExpectedTestCounter, expectedTestCountersCount);
+          EXPECT_EQ_JSON(sample[samplesNumber], UInt64,
+                         expectedTestCounters[nextExpectedTestCounter].mNumber);
+          EXPECT_EQ_JSON(sample[samplesCount], Int64,
+                         expectedTestCounters[nextExpectedTestCounter].mCount);
+          ++nextExpectedTestCounter;
         }
       } else if (name == "TestCounter2") {
         EXPECT_TRUE(expectCounter2);
 
         EXPECT_EQ_JSON(counter["category"], String, COUNTER_NAME2);
         EXPECT_EQ_JSON(counter["description"], String, COUNTER_DESCRIPTION2);
-        GET_JSON(sampleGroups, counter["sample_groups"], Array);
-        for (const Json::Value& sampleGroup : sampleGroups) {
-          ASSERT_TRUE(sampleGroup.isObject());
-          EXPECT_EQ_JSON(sampleGroup["id"], UInt, 0u);
-
-          GET_JSON(samples, sampleGroup["samples"], Object);
-          GET_JSON(samplesSchema, samples["schema"], Object);
-          EXPECT_GE(samplesSchema.size(), 3u);
-          GET_JSON_VALUE(samplesNumber, samplesSchema["number"], UInt);
-          GET_JSON_VALUE(samplesCount, samplesSchema["count"], UInt);
-          GET_JSON(samplesData, samples["data"], Array);
-          for (const Json::Value& sample : samplesData) {
-            ASSERT_TRUE(sample.isArray());
-            ASSERT_LT(nextExpectedTestCounter2, expectedTestCounters2Count);
-            EXPECT_EQ_JSON(
-                sample[samplesNumber], UInt64,
-                expectedTestCounters2[nextExpectedTestCounter2].mNumber);
-            EXPECT_EQ_JSON(
-                sample[samplesCount], Int64,
-                expectedTestCounters2[nextExpectedTestCounter2].mCount);
-            ++nextExpectedTestCounter2;
-          }
+        GET_JSON(samples, counter["samples"], Object);
+        GET_JSON(samplesSchema, samples["schema"], Object);
+        EXPECT_GE(samplesSchema.size(), 3u);
+        GET_JSON_VALUE(samplesNumber, samplesSchema["number"], UInt);
+        GET_JSON_VALUE(samplesCount, samplesSchema["count"], UInt);
+        GET_JSON(samplesData, samples["data"], Array);
+        for (const Json::Value& sample : samplesData) {
+          ASSERT_TRUE(sample.isArray());
+          ASSERT_LT(nextExpectedTestCounter2, expectedTestCounters2Count);
+          EXPECT_EQ_JSON(
+              sample[samplesNumber], UInt64,
+              expectedTestCounters2[nextExpectedTestCounter2].mNumber);
+          EXPECT_EQ_JSON(
+              sample[samplesCount], Int64,
+              expectedTestCounters2[nextExpectedTestCounter2].mCount);
+          ++nextExpectedTestCounter2;
         }
       }
     }
@@ -3974,7 +3926,10 @@ class GTestStackCollector final : public ProfilerStackCollector {
 
   virtual void CollectNativeLeafAddr(void* aAddr) { mFrames++; }
   virtual void CollectJitReturnAddr(void* aAddr) { mFrames++; }
-  virtual void CollectWasmFrame(const char* aLabel) { mFrames++; }
+  virtual void CollectWasmFrame(JS::ProfilingCategoryPair aCategory,
+                                const char* aLabel) {
+    mFrames++;
+  }
   virtual void CollectProfilingStackFrame(
       const js::ProfilingStackFrame& aFrame) {
     mFrames++;
@@ -4319,13 +4274,6 @@ static std::string_view GetFeatureName(uint32_t feature) {
 
 TEST(GeckoProfiler, FeatureCombinations)
 {
-  // Bug 1845606
-  #ifdef XP_WIN
-  if (!IsWin8OrLater()) {
-    return;
-  }
-  #endif
-
   const char* filters[] = {"*"};
 
   // List of features to test. Every combination of up to 3 of them will be
@@ -4694,13 +4642,6 @@ TEST(GeckoProfiler, CPUUsage)
 
 TEST(GeckoProfiler, AllThreads)
 {
-  // Bug 1845606
-  #ifdef XP_WIN
-  if (!IsWin8OrLater()) {
-    return;
-  }
-  #endif
-
   profiler_init_main_thread_id();
   ASSERT_TRUE(profiler_is_main_thread())
   << "This test assumes it runs on the main thread";
@@ -4958,9 +4899,9 @@ TEST(GeckoProfiler, FailureHandling)
       return mozilla::MarkerSchema::SpecialFrontendLocation{};
     }
   };
-  EXPECT_TRUE(profiler_add_marker("Gtest failing marker",
-                                  geckoprofiler::category::OTHER, {},
-                                  GtestFailingMarker{}));
+  EXPECT_TRUE(profiler_add_marker_impl("Gtest failing marker",
+                                       geckoprofiler::category::OTHER, {},
+                                       GtestFailingMarker{}));
 
   ASSERT_EQ(WaitForSamplingState(), SamplingState::SamplingCompleted);
   profiler_pause();
@@ -5033,7 +4974,7 @@ TEST(GeckoProfiler, NoMarkerStacks)
   ASSERT_TRUE(!profiler_capture_backtrace());
 
   // Add a marker with a stack to test.
-  EXPECT_TRUE(profiler_add_marker(
+  EXPECT_TRUE(profiler_add_marker_impl(
       "Text with stack", geckoprofiler::category::OTHER, MarkerStack::Capture(),
       geckoprofiler::markers::TextMarker{}, ""));
 

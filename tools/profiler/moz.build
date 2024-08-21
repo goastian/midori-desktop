@@ -14,7 +14,6 @@ if CONFIG["MOZ_GECKO_PROFILER"]:
         "public/GeckoProfilerReporter.h",
         "public/ProfilerChild.h",
         "public/ProfilerCodeAddressService.h",
-        "public/shared-libraries.h",
     ]
     UNIFIED_SOURCES += [
         "core/PageInformation.cpp",
@@ -52,8 +51,12 @@ if CONFIG["MOZ_GECKO_PROFILER"]:
             "gecko/nsProfiler.cpp",
         ]
 
+    if CONFIG["OS_TARGET"] in ("Android", "Linux"):
+        UNIFIED_SOURCES += [
+            "core/ProfilerCPUFreq-linux-android.cpp",
+        ]
     if CONFIG["OS_TARGET"] in ("Android", "Linux", "FreeBSD"):
-        if CONFIG["CPU_ARCH"] in ("arm", "aarch64", "x86", "x86_64", "mips64"):
+        if CONFIG["TARGET_CPU"] in ("arm", "aarch64", "x86", "x86_64", "mips64"):
             UNIFIED_SOURCES += [
                 "lul/AutoObjectMapper.cpp",
                 "lul/LulCommon.cpp",
@@ -78,11 +81,15 @@ if CONFIG["MOZ_GECKO_PROFILER"]:
                 SOURCES += [
                     "/toolkit/crashreporter/google-breakpad/src/common/linux/breakpad_getcontext.S"
                 ]
-        if CONFIG["CPU_ARCH"] == "x86_64" and CONFIG["OS_TARGET"] == "Linux":
+        if CONFIG["TARGET_CPU"] == "x86_64" and CONFIG["OS_TARGET"] == "Linux":
             UNIFIED_SOURCES += [
                 "core/PowerCounters-linux.cpp",
             ]
-        if CONFIG["CPU_ARCH"] == "arm" and CONFIG["OS_TARGET"] != "FreeBSD":
+        elif CONFIG["TARGET_CPU"] == "aarch64" and CONFIG["OS_TARGET"] == "Android":
+            SOURCES += [
+                "core/PowerCounters-android.cpp",
+            ]
+        if CONFIG["TARGET_CPU"] == "arm" and CONFIG["OS_TARGET"] != "FreeBSD":
             SOURCES += [
                 "core/EHABIStackWalk.cpp",
             ]
@@ -90,11 +97,11 @@ if CONFIG["MOZ_GECKO_PROFILER"]:
         UNIFIED_SOURCES += [
             "core/shared-libraries-macos.cc",
         ]
-        if CONFIG["CPU_ARCH"] == "aarch64":
+        if CONFIG["TARGET_CPU"] == "aarch64":
             UNIFIED_SOURCES += [
                 "core/PowerCounters-mac-arm64.cpp",
             ]
-        if CONFIG["CPU_ARCH"] == "x86_64":
+        if CONFIG["TARGET_CPU"] == "x86_64":
             UNIFIED_SOURCES += [
                 "core/PowerCounters-mac-amd64.cpp",
             ]
@@ -103,7 +110,11 @@ if CONFIG["MOZ_GECKO_PROFILER"]:
             UNIFIED_SOURCES += [
                 "core/PowerCounters-win.cpp",
             ]
+            SOURCES += {
+                "core/ETWTools.cpp",
+            }
         SOURCES += [
+            "core/ProfilerCPUFreq-win.cpp",
             "core/shared-libraries-win32.cc",
         ]
 
@@ -135,9 +146,9 @@ if CONFIG["MOZ_GECKO_PROFILER"]:
             "core/VTuneProfiler.cpp",
         ]
 
-    XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell/xpcshell.ini"]
-    MOCHITEST_CHROME_MANIFESTS += ["tests/chrome/chrome.ini"]
-    BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.ini"]
+    XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell/xpcshell.toml"]
+    MOCHITEST_CHROME_MANIFESTS += ["tests/chrome/chrome.toml"]
+    BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
 
 UNIFIED_SOURCES += [
     "core/MicroGeckoProfiler.cpp",
@@ -159,6 +170,7 @@ include("/ipc/chromium/chromium-config.mozbuild")
 
 EXPORTS += [
     "public/ChildProfilerController.h",
+    "public/ETWTools.h",
     "public/GeckoProfiler.h",
     "public/MicroGeckoProfiler.h",
     "public/ProfileAdditionalInformation.h",
@@ -166,11 +178,13 @@ EXPORTS += [
     "public/ProfilerControl.h",
     "public/ProfilerParent.h",
     "public/ProfilerRustBindings.h",
+    "public/shared-libraries.h",
 ]
 
 EXPORTS.mozilla += [
     "public/ProfileBufferEntrySerializationGeckoExtensions.h",
     "public/ProfileJSONWriter.h",
+    "public/ProfilerBandwidthCounter.h",
     "public/ProfilerCounts.h",
     "public/ProfilerLabels.h",
     "public/ProfilerMarkers.h",

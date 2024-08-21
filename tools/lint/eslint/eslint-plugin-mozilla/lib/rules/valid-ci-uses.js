@@ -17,12 +17,17 @@ const helpers = require("../helpers");
 const platformSpecificInterfaces = new Map([
   ["nsIAboutThirdParty", "windows"],
   ["nsIAboutWindowsMessages", "windows"],
-  ["nsIJumpListItem", "windows"],
-  ["nsIJumpListLink", "windows"],
-  ["nsIJumpListSeparator", "windows"],
-  ["nsIJumpListShortcut", "windows"],
+  ["nsIDefaultAgent", "windows"],
+  ["nsIJumpListBuilder", "windows"],
+  ["nsILegacyJumpListBuilder", "windows"],
+  ["nsILegacyJumpListItem", "windows"],
+  ["nsILegacyJumpListLink", "windows"],
+  ["nsILegacyJumpListSeparator", "windows"],
+  ["nsILegacyJumpListShortcut", "windows"],
   ["nsITaskbarWindowPreview", "windows"],
   ["nsIWindowsAlertsService", "windows"],
+  ["nsIWindowsAlertNotification", "windows"],
+  ["nsIWindowsMutexFactory", "windows"],
   ["nsIWinAppHelper", "windows"],
   ["nsIWinTaskbar", "windows"],
   ["nsIWinTaskSchedulerService", "windows"],
@@ -91,7 +96,7 @@ function interfaceHasProperty(interfaceName, propertyName) {
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/valid-ci-uses.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/valid-ci-uses.html",
     },
     messages: {
       missingInterface:

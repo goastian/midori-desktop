@@ -47,13 +47,23 @@
   MACRO(HttpChannelAsyncOpenToTransactionPending) \
   MACRO(HttpChannelResponseStartParentToContent)  \
   MACRO(HttpChannelResponseEndParentToContent)    \
+  MACRO(HttpTransactionWaitTime)                  \
+  MACRO(ResponseEndSocketToParent)                \
+  MACRO(OnStartRequestSocketToParent)             \
+  MACRO(OnDataAvailableSocketToParent)            \
+  MACRO(OnStopRequestSocketToParent)              \
+  MACRO(OnStartRequestToContent)                  \
+  MACRO(OnDataAvailableToContent)                 \
+  MACRO(OnStopRequestToContent)                   \
   MACRO(JSBC_Compression)                         \
   MACRO(JSBC_Decompression)                       \
   MACRO(JSBC_IO_Read)                             \
   MACRO(JSBC_IO_Write)                            \
   MACRO(MinorGC)                                  \
   MACRO(MajorGC)                                  \
-  MACRO(NonIdleMajorGC)
+  MACRO(NonIdleMajorGC)                           \
+  MACRO(A11Y_DoInitialUpdate)                     \
+  MACRO(A11Y_ProcessQueuedCacheUpdate)
 
 namespace mozilla {
 

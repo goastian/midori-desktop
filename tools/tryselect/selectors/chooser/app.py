@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import multiprocessing
 from abc import ABCMeta, abstractproperty
 from collections import defaultdict
 
@@ -106,6 +107,23 @@ class Test(Section):
 
 
 @register_section
+class Android(Section):
+    name = "android"
+    kind = (
+        "build-apk,build-bundle,build-components,test-apk,test-components,ui-test-apk"
+    )
+    title = "Firefox for Android"
+    attrs = ["kind", "build-type", "component", "shipping-product"]
+
+    def labelfn(self, task):
+        if task["kind"] in ("build-components", "test-components"):
+            label = "{}-{}".format(task["kind"], task.get("component"))
+        else:
+            label = "{}-{}".format(task["kind"], task.get("build-type"))
+        return label
+
+
+@register_section
 class Perf(Section):
     name = "perf"
     kind = "test"
@@ -133,7 +151,7 @@ class Perf(Section):
 @register_section
 class Analysis(Section):
     name = "analysis"
-    kind = "build,static-analysis-autotest"
+    kind = "build,static-analysis-autotest,hazard"
     title = "Analysis"
     attrs = ["build_platform"]
 
@@ -148,7 +166,7 @@ class Analysis(Section):
         return True
 
 
-def create_application(tg):
+def create_application(tg, queue: multiprocessing.Queue):
     tasks = {l: t for l, t in tg.tasks.items() if t.kind in SUPPORTED_KINDS}
     sections = [s.get_context(tasks) for s in SECTIONS]
     context = {
@@ -169,9 +187,7 @@ def create_application(tg):
             labels = request.form["selected-tasks"].splitlines()
             app.tasks.extend(labels)
 
-        shutdown = request.environ.get("werkzeug.server.shutdown")
-        if shutdown:
-            shutdown()
+        queue.put(app.tasks)
         return render_template("close.html")
 
     return app

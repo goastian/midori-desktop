@@ -8,7 +8,6 @@ import platform
 import shutil
 import subprocess
 import sys
-from distutils.spawn import find_executable
 
 import mozfile
 import six
@@ -208,7 +207,7 @@ def clean_up_state_dir():
         shutil.rmtree(fzf_path, ignore_errors=True)
 
     # Also delete any existing fzf binary
-    fzf_bin = find_executable("fzf", fzf_path)
+    fzf_bin = shutil.which("fzf", path=fzf_path)
     if fzf_bin:
         mozfile.remove(fzf_bin)
 
@@ -270,9 +269,9 @@ def fzf_bootstrap(update=False):
     """
     fzf_path = get_fzf_state_dir()
 
-    fzf_bin = find_executable("fzf")
+    fzf_bin = shutil.which("fzf")
     if not fzf_bin:
-        fzf_bin = find_executable("fzf", fzf_path)
+        fzf_bin = shutil.which("fzf", path=fzf_path)
 
     if fzf_bin and should_force_fzf_update(fzf_bin):  # Case (1)
         update = True
@@ -308,7 +307,7 @@ def fzf_bootstrap(update=False):
 
         # Case 3a and 3b-fall-through
         download_and_install_fzf()
-        fzf_bin = find_executable("fzf", fzf_path)
+        fzf_bin = shutil.which("fzf", path=fzf_path)
         print("Installed fzf to {}".format(fzf_path))
 
     return fzf_bin
@@ -390,7 +389,9 @@ def setup_tasks_for_fzf(
     return all_tasks, dep_cache, cache_dir
 
 
-def build_base_cmd(fzf, dep_cache, cache_dir, show_estimates=True):
+def build_base_cmd(
+    fzf, dep_cache, cache_dir, show_estimates=True, preview_script=PREVIEW_SCRIPT
+):
     key_shortcuts = [k + ":" + v for k, v in fzf_shortcuts.items()]
     base_cmd = [
         fzf,
@@ -408,7 +409,7 @@ def build_base_cmd(fzf, dep_cache, cache_dir, show_estimates=True):
             [
                 "--preview",
                 '{} {} -g {} -s -c {} -t "{{+f}}"'.format(
-                    sys.executable, PREVIEW_SCRIPT, dep_cache, cache_dir
+                    sys.executable, preview_script, dep_cache, cache_dir
                 ),
             ]
         )
@@ -416,7 +417,7 @@ def build_base_cmd(fzf, dep_cache, cache_dir, show_estimates=True):
         base_cmd.extend(
             [
                 "--preview",
-                '{} {} -t "{{+f}}"'.format(sys.executable, PREVIEW_SCRIPT),
+                '{} {} -t "{{+f}}"'.format(sys.executable, preview_script),
             ]
         )
 
