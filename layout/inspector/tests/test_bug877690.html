@@ -35,13 +35,24 @@ function testValues(values, expected) {
 }
 
 function do_test() {
-  var allColors = [ "COLOR", "currentColor", "transparent", "rgb", "rgba", "hsl", "hsla", "hwb" ];
-  if (SpecialPowers.getBoolPref("layout.css.color-mix.enabled")) {
-    allColors.push("color-mix");
-  }
-  if (SpecialPowers.getBoolPref("layout.css.more_color_4.enabled", true)) {
-    allColors.push("color", "lab", "lch", "oklab", "oklch");
-  }
+  var allColors = [
+    "COLOR",
+    "currentColor",
+    "transparent",
+    "rgb",
+    "rgba",
+    "hsl",
+    "hsla",
+    "hwb",
+    "color-mix",
+    "color",
+    "lab",
+    "lch",
+    "light-dark",
+    "oklab",
+    "oklch"
+  ];
+
   var allGradients = [
     "linear-gradient",
     "-webkit-linear-gradient",
@@ -72,7 +83,7 @@ function do_test() {
   var expected = [ "auto", "initial", "inherit", "unset", "revert", "revert-layer", ...allColors, "no-repeat", "repeat",
       "repeat-x", "repeat-y", "space", "round", "fixed", "scroll", "local", "center", "top", "bottom", "left", "right",
       "border-box", "padding-box", "content-box", "text", "contain",
-      "cover", "none", "-moz-element", "-moz-image-rect", "url", ...allGradients, "image-set" ];
+      "cover", "none", "-moz-element", "url", ...allGradients, "image-set" ];
 
   if(SpecialPowers.getBoolPref("layout.css.cross-fade.enabled")) {
     expected.push("cross-fade");
@@ -131,12 +142,12 @@ function do_test() {
   ok(testValues(values, expected), "property font-style's values.");
 
   // Test property with "cubic-bezier" and "step".
-  var prop = "-moz-transition";
+  var prop = "transition";
   var values = InspectorUtils.getCSSValuesForProperty(prop);
   var expected = [ "initial", "all", "unset", "cubic-bezier", "ease", "ease-in", "ease-in-out",
                    "ease-out", "inherit", "revert", "revert-layer", "linear", "none", "step-end", "step-start",
-                   "steps" ];
-  ok(testValues(values, expected), "property -moz-transition's values.");
+                   "steps", "normal", "allow-discrete" ];
+  ok(testValues(values, expected), "property transition's values.");
 
   // test invalid property
   var prop = "invalidProperty";
@@ -152,7 +163,7 @@ function do_test() {
   var prop = "border-image";
   var values = InspectorUtils.getCSSValuesForProperty(prop);
   var expected = [ "auto", "inherit", "revert", "revert-layer", "initial", "unset", "repeat", "stretch",
-                   "-moz-element", "-moz-image-rect", "url", ...allGradients,
+                   "-moz-element", "url", ...allGradients,
                    "fill", "none", "round", "space", "image-set" ];
 
   if(SpecialPowers.getBoolPref("layout.css.cross-fade.enabled")) {
@@ -207,10 +218,13 @@ function do_test() {
   ok(testValues(values, expected), "property box-shadow's values");
 
   // Regression test for bug 1255379.
-  var expected = [ "inherit", "initial", "unset", "revert", "revert-layer", "none", "url",
-                   "polygon", "circle", "ellipse", "inset", "path",
-                   "fill-box", "stroke-box", "view-box", "margin-box",
-                   "border-box", "padding-box", "content-box" ];
+  var shapeFunction = [ "close", "evenodd", "nonzero", "by", "to", "cw", "ccw",
+                        "small", "large" ];
+  var expected = [ "inherit", "initial", "unset", "revert", "revert-layer",
+                   "none", "url", "polygon", "circle", "ellipse", "inset",
+                   "path", "rect", "xywh", "fill-box", "stroke-box",
+                   "view-box", "margin-box", "border-box", "padding-box",
+                   "content-box", ...shapeFunction ];
   var values = InspectorUtils.getCSSValuesForProperty("clip-path");
   ok(testValues(values, expected), "property clip-path's values");
 
@@ -222,7 +236,7 @@ function do_test() {
   var expected = [ "normal", "none", "counter", "counters",
                    "attr", "open-quote", "close-quote", "no-open-quote",
                    "no-close-quote", "inherit", "initial", "unset", "revert",
-                   "revert-layer", "-moz-alt-content", "-moz-label-content", "image-set", "url", "-moz-element", "-moz-image-rect" ]
+                   "revert-layer", "-moz-alt-content", "-moz-label-content", "image-set", "url", "-moz-element" ]
     .concat(allGradients);
   var values = InspectorUtils.getCSSValuesForProperty("content");
   ok(testValues(values, expected), "property content's values");

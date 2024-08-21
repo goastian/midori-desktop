@@ -31,11 +31,6 @@ class nsPageContentFrame final : public mozilla::ViewportFrame {
               const ReflowInput& aReflowInput,
               nsReflowStatus& aStatus) override;
 
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    return ViewportFrame::IsFrameOfType(
-        aFlags & ~(nsIFrame::eCanContainOverflowContainers));
-  }
-
   const nsAtom* GetPageName() const { return mPageName; }
 
   void SetSharedPageData(nsSharedPageData* aPD) { mPD = aPD; }
@@ -50,13 +45,6 @@ class nsPageContentFrame final : public mozilla::ViewportFrame {
   void AppendDirectlyOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult) override;
 
   void EnsurePageName();
-
-  // The default implementation of FirstContinuation in nsSplittableFrame is
-  // implemented in linear time, walking back through the linked list of
-  // continuations via mPrevContinuation.
-  // For nsPageContentFrames, we can find the first continuation through the
-  // frame tree structure in constant time.
-  nsIFrame* FirstContinuation() const final;
 
 #ifdef DEBUG_FRAME_DUMP
   // Debugging

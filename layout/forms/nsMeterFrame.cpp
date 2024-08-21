@@ -14,12 +14,9 @@
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
 #include "nsGkAtoms.h"
-#include "nsNameSpaceManager.h"
 #include "nsNodeInfoManager.h"
 #include "nsContentCreatorFunctions.h"
 #include "nsFontMetrics.h"
-#include "nsCSSPseudoElements.h"
-#include "nsStyleConsts.h"
 #include <algorithm>
 
 using namespace mozilla;
@@ -54,8 +51,13 @@ nsresult nsMeterFrame::CreateAnonymousContent(
   // Create the div.
   mBarDiv = doc->CreateHTMLElement(nsGkAtoms::div);
 
-  // Associate ::-moz-meter-bar pseudo-element to the anonymous child.
-  mBarDiv->SetPseudoElementType(PseudoStyleType::mozMeterBar);
+  // Associate the right pseudo-element to the anonymous child.
+  if (StaticPrefs::layout_css_modern_range_pseudos_enabled()) {
+    // TODO(emilio): Create also a slider-track pseudo-element.
+    mBarDiv->SetPseudoElementType(PseudoStyleType::sliderFill);
+  } else {
+    mBarDiv->SetPseudoElementType(PseudoStyleType::mozMeterBar);
+  }
 
   aElements.AppendElement(mBarDiv);
 
@@ -80,7 +82,6 @@ void nsMeterFrame::Reflow(nsPresContext* aPresContext,
                           nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsMeterFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   NS_ASSERTION(mBarDiv, "Meter bar div must exist!");
@@ -91,13 +92,19 @@ void nsMeterFrame::Reflow(nsPresContext* aPresContext,
   nsIFrame* barFrame = mBarDiv->GetPrimaryFrame();
   NS_ASSERTION(barFrame, "The meter frame should have a child with a frame!");
 
-  ReflowBarFrame(barFrame, aPresContext, aReflowInput, aStatus);
-
   const auto wm = aReflowInput.GetWritingMode();
-  aDesiredSize.SetSize(wm, aReflowInput.ComputedSizeWithBorderPadding(wm));
-
+  const auto contentBoxSize = aReflowInput.ComputedSizeWithBSizeFallback([&] {
+    nscoord em = OneEmInAppUnits();
+    return ResolvedOrientationIsVertical() == wm.IsVertical() ? em : 5 * em;
+  });
+  aDesiredSize.SetSize(
+      wm,
+      contentBoxSize + aReflowInput.ComputedLogicalBorderPadding(wm).Size(wm));
   aDesiredSize.SetOverflowAreasToDesiredBounds();
+
+  ReflowBarFrame(barFrame, aPresContext, aReflowInput, contentBoxSize, aStatus);
   ConsiderChildOverflow(aDesiredSize.mOverflowAreas, barFrame);
+
   FinishAndStoreOverflow(&aDesiredSize);
 
   aStatus.Reset();  // This type of frame can't be split.
@@ -106,14 +113,19 @@ void nsMeterFrame::Reflow(nsPresContext* aPresContext,
 void nsMeterFrame::ReflowBarFrame(nsIFrame* aBarFrame,
                                   nsPresContext* aPresContext,
                                   const ReflowInput& aReflowInput,
+                                  const LogicalSize& aParentContentBoxSize,
                                   nsReflowStatus& aStatus) {
   bool vertical = ResolvedOrientationIsVertical();
-  WritingMode wm = aBarFrame->GetWritingMode();
-  LogicalSize availSize = aReflowInput.ComputedSize(wm);
+  const WritingMode wm = aBarFrame->GetWritingMode();
+  const LogicalSize parentSizeInChildWM =
+      aParentContentBoxSize.ConvertTo(wm, aReflowInput.GetWritingMode());
+  const nsSize parentPhysicalSize = parentSizeInChildWM.GetPhysicalSize(wm);
+  LogicalSize availSize = parentSizeInChildWM;
   availSize.BSize(wm) = NS_UNCONSTRAINEDSIZE;
-  ReflowInput reflowInput(aPresContext, aReflowInput, aBarFrame, availSize);
+  ReflowInput reflowInput(aPresContext, aReflowInput, aBarFrame, availSize,
+                          Some(parentSizeInChildWM));
   nscoord size =
-      vertical ? aReflowInput.ComputedHeight() : aReflowInput.ComputedWidth();
+      vertical ? parentPhysicalSize.Height() : parentPhysicalSize.Width();
   nscoord xoffset = aReflowInput.ComputedPhysicalBorderPadding().left;
   nscoord yoffset = aReflowInput.ComputedPhysicalBorderPadding().top;
 
@@ -121,14 +133,13 @@ void nsMeterFrame::ReflowBarFrame(nsIFrame* aBarFrame,
   size = NSToCoordRound(size * meterElement->Position());
 
   if (!vertical && wm.IsPhysicalRTL()) {
-    xoffset += aReflowInput.ComputedWidth() - size;
+    xoffset += parentPhysicalSize.Width() - size;
   }
 
   // The bar position is *always* constrained.
   if (vertical) {
     // We want the bar to begin at the bottom.
-    yoffset += aReflowInput.ComputedHeight() - size;
-
+    yoffset += parentPhysicalSize.Height() - size;
     size -= reflowInput.ComputedPhysicalMargin().TopBottom() +
             reflowInput.ComputedPhysicalBorderPadding().TopBottom();
     size = std::max(size, 0);
@@ -167,39 +178,12 @@ nsresult nsMeterFrame::AttributeChanged(int32_t aNameSpaceID,
   return nsContainerFrame::AttributeChanged(aNameSpaceID, aAttribute, aModType);
 }
 
-LogicalSize nsMeterFrame::ComputeAutoSize(
-    gfxContext* aRenderingContext, WritingMode aWM, const LogicalSize& aCBSize,
-    nscoord aAvailableISize, const LogicalSize& aMargin,
-    const LogicalSize& aBorderPadding, const StyleSizeOverrides& aSizeOverrides,
-    ComputeSizeFlags aFlags) {
-  RefPtr<nsFontMetrics> fontMet =
-      nsLayoutUtils::GetFontMetricsForFrame(this, 1.0f);
-
-  const WritingMode wm = GetWritingMode();
-  LogicalSize autoSize(wm);
-  autoSize.BSize(wm) = autoSize.ISize(wm) =
-      fontMet->Font().size.ToAppUnits();  // 1em
-
-  if (ResolvedOrientationIsVertical() == wm.IsVertical()) {
-    autoSize.ISize(wm) *= 5;  // 5em
-  } else {
-    autoSize.BSize(wm) *= 5;  // 5em
-  }
-
-  return autoSize.ConvertTo(aWM, wm);
-}
-
 nscoord nsMeterFrame::GetMinISize(gfxContext* aRenderingContext) {
-  RefPtr<nsFontMetrics> fontMet =
-      nsLayoutUtils::GetFontMetricsForFrame(this, 1.0f);
-
-  nscoord minISize = fontMet->Font().size.ToAppUnits();  // 1em
-
+  nscoord minISize = OneEmInAppUnits();
   if (ResolvedOrientationIsVertical() == GetWritingMode().IsVertical()) {
     // The orientation is inline
-    minISize *= 5;  // 5em
+    minISize *= 5;
   }
-
   return minISize;
 }
 

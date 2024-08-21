@@ -24,16 +24,19 @@ class SVGSymbolFrame final : public SVGViewportFrame {
 
  protected:
   explicit SVGSymbolFrame(ComputedStyle* aStyle, nsPresContext* aPresContext)
-      : SVGViewportFrame(aStyle, aPresContext, kClassID) {}
+      : SVGViewportFrame(aStyle, aPresContext, kClassID) {
+    AddStateBits(NS_STATE_SVG_RENDERING_OBSERVER_CONTAINER);
+  }
 
  public:
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(SVGSymbolFrame)
 
-#ifdef DEBUG
   void Init(nsIContent* aContent, nsContainerFrame* aParent,
             nsIFrame* aPrevInFlow) override;
-#endif
+
+  void BuildDisplayList(nsDisplayListBuilder* aBuilder,
+                        const nsDisplayListSet& aLists) override;
 
 #ifdef DEBUG_FRAME_DUMP
   nsresult GetFrameName(nsAString& aResult) const override {

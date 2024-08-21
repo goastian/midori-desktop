@@ -17,6 +17,7 @@ namespace mozilla {
 enum class ScrollSnapTargetId : uintptr_t {
   None = 0,
 };
+inline constexpr bool IsEnumCase(ScrollSnapTargetId) { return true; }
 
 struct ScrollSnapTargetIds {
   CopyableTArray<ScrollSnapTargetId> mIdsOnX;
@@ -26,12 +27,12 @@ struct ScrollSnapTargetIds {
   }
 };
 
-struct SnapTarget {
+struct SnapDestination {
   nsPoint mPosition;
   ScrollSnapTargetIds mTargetIds;
 };
 
-struct CSSSnapTarget {
+struct CSSSnapDestination {
   CSSPoint mPosition;
   ScrollSnapTargetIds mTargetIds;
 };

@@ -17,7 +17,7 @@
 #include "nsXULElement.h"
 #include "nsIDOMXULCommandDispatcher.h"
 #include "nsCSSFrameConstructor.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsIContentInlines.h"
 #include "nsLayoutUtils.h"
 #include "nsViewManager.h"
@@ -49,13 +49,14 @@
 #include "mozilla/dom/XULMenuElement.h"
 #include "mozilla/dom/XULMenuBarElement.h"
 #include "mozilla/dom/XULPopupElement.h"
+#include "mozilla/AutoRestore.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/MouseEvents.h"
+#include "mozilla/PointerLockManager.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/Services.h"
-#include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/StaticPrefs_ui.h"
 #include "mozilla/widget/nsAutoRollup.h"
 #include "mozilla/widget/NativeMenuSupport.h"
@@ -540,7 +541,7 @@ bool nsXULPopupManager::ShouldRollupOnMouseWheelEvent() {
     return false;
 
   nsAutoString value;
-  element->GetAttr(kNameSpaceID_None, nsGkAtoms::type, value);
+  element->GetAttr(nsGkAtoms::type, value);
   return StringBeginsWith(value, u"autocomplete"_ns);
 }
 
@@ -987,6 +988,7 @@ bool nsXULPopupManager::ShowPopupAsNativeMenu(Element* aPopup, int32_t aXPos,
     EventStateManager::ClearGlobalActiveContent(activeESM);
     activeESM->StopTrackingDragGesture(true);
   }
+  PointerLockManager::Unlock();
   PresShell::ReleaseCapturingContent();
 
   return true;
@@ -1167,7 +1169,7 @@ void nsXULPopupManager::ShowPopupCallback(Element* aPopup,
   // attribute may be used to disable adding these event listeners for popups
   // that want to handle their own keyboard events.
   nsAutoString ignorekeys;
-  aPopup->GetAttr(kNameSpaceID_None, nsGkAtoms::ignorekeys, ignorekeys);
+  aPopup->GetAttr(nsGkAtoms::ignorekeys, ignorekeys);
   if (ignorekeys.EqualsLiteral("true")) {
     item->SetIgnoreKeys(eIgnoreKeys_True);
   } else if (ignorekeys.EqualsLiteral("shortcuts")) {
@@ -1201,6 +1203,10 @@ void nsXULPopupManager::ShowPopupCallback(Element* aPopup,
   // Caret visibility may have been affected, ensure that
   // the caret isn't now drawn when it shouldn't be.
   CheckCaretDrawingState();
+
+  if (popupType != PopupType::Tooltip) {
+    PointerLockManager::Unlock();
+  }
 }
 
 nsMenuChainItem* nsXULPopupManager::FindPopup(Element* aPopup) const {
@@ -1318,7 +1324,7 @@ void nsXULPopupManager::HidePopup(Element* aPopup, HidePopupOptions aOptions,
     nsCOMPtr<nsIRunnable> event =
         new nsXULPopupHidingEvent(popupToHide, nextPopup, lastPopup,
                                   popupFrame->GetPopupType(), aOptions);
-    aPopup->OwnerDoc()->Dispatch(TaskCategory::Other, event.forget());
+    aPopup->OwnerDoc()->Dispatch(event.forget());
   } else {
     RefPtr<nsPresContext> presContext = popupFrame->PresContext();
     FirePopupHidingEvent(popupToHide, nextPopup, lastPopup, presContext,
@@ -1465,8 +1471,7 @@ void nsXULPopupManager::HidePopupAfterDelay(nsMenuPopupFrame* aPopup,
   KillMenuTimer();
 
   // Kick off the timer.
-  nsIEventTarget* target =
-      aPopup->PopupElement().OwnerDoc()->EventTargetFor(TaskCategory::Other);
+  nsIEventTarget* target = GetMainThreadSerialEventTarget();
   NS_NewTimerWithFuncCallback(
       getter_AddRefs(mCloseTimer),
       [](nsITimer* aTimer, void* aClosure) {
@@ -1592,7 +1597,7 @@ void nsXULPopupManager::ExecuteMenu(nsIContent* aMenu,
   HideOpenMenusBeforeExecutingMenu(cmm);
   aEvent->SetCloseMenuMode(cmm);
   nsCOMPtr<nsIRunnable> event = aEvent;
-  aMenu->OwnerDoc()->Dispatch(TaskCategory::Other, event.forget());
+  aMenu->OwnerDoc()->Dispatch(event.forget());
 }
 
 bool nsXULPopupManager::ActivateNativeMenuItem(nsIContent* aItem,
@@ -1851,8 +1856,17 @@ nsIContent* nsXULPopupManager::GetTopActiveMenuItemContent() {
   return nullptr;
 }
 
-void nsXULPopupManager::GetVisiblePopups(nsTArray<nsIFrame*>& aPopups) {
+void nsXULPopupManager::GetVisiblePopups(nsTArray<nsMenuPopupFrame*>& aPopups,
+                                         bool aIncludeNativeMenu) {
   aPopups.Clear();
+  if (aIncludeNativeMenu && mNativeMenu) {
+    nsCOMPtr<nsIContent> popup = mNativeMenu->Element();
+    nsMenuPopupFrame* popupFrame = GetPopupFrameForContent(popup, true);
+    if (popupFrame && popupFrame->IsVisible() &&
+        !popupFrame->IsMouseTransparent()) {
+      aPopups.AppendElement(popupFrame);
+    }
+  }
   for (nsMenuChainItem* item = mPopups.get(); item; item = item->GetParent()) {
     // Skip panels which are not visible as well as popups that are transparent
     // to mouse events.
@@ -2133,16 +2147,14 @@ void nsXULPopupManager::UpdateMenuItems(Element* aPopup) {
       // See if we have a command attribute.
       Element* grandChildElement = grandChild->AsElement();
       nsAutoString command;
-      grandChildElement->GetAttr(kNameSpaceID_None, nsGkAtoms::command,
-                                 command);
+      grandChildElement->GetAttr(nsGkAtoms::command, command);
       if (!command.IsEmpty()) {
         // We do! Look it up in our document
         RefPtr<dom::Element> commandElement = document->GetElementById(command);
         if (commandElement) {
           nsAutoString commandValue;
           // The menu's disabled state needs to be updated to match the command.
-          if (commandElement->GetAttr(kNameSpaceID_None, nsGkAtoms::disabled,
-                                      commandValue))
+          if (commandElement->GetAttr(nsGkAtoms::disabled, commandValue))
             grandChildElement->SetAttr(kNameSpaceID_None, nsGkAtoms::disabled,
                                        commandValue, true);
           else
@@ -2153,23 +2165,19 @@ void nsXULPopupManager::UpdateMenuItems(Element* aPopup) {
           // updated to match the command. Note that unlike the disabled state
           // if the command has *no* value, we assume the menu is supplying its
           // own.
-          if (commandElement->GetAttr(kNameSpaceID_None, nsGkAtoms::label,
-                                      commandValue))
+          if (commandElement->GetAttr(nsGkAtoms::label, commandValue))
             grandChildElement->SetAttr(kNameSpaceID_None, nsGkAtoms::label,
                                        commandValue, true);
 
-          if (commandElement->GetAttr(kNameSpaceID_None, nsGkAtoms::accesskey,
-                                      commandValue))
+          if (commandElement->GetAttr(nsGkAtoms::accesskey, commandValue))
             grandChildElement->SetAttr(kNameSpaceID_None, nsGkAtoms::accesskey,
                                        commandValue, true);
 
-          if (commandElement->GetAttr(kNameSpaceID_None, nsGkAtoms::checked,
-                                      commandValue))
+          if (commandElement->GetAttr(nsGkAtoms::checked, commandValue))
             grandChildElement->SetAttr(kNameSpaceID_None, nsGkAtoms::checked,
                                        commandValue, true);
 
-          if (commandElement->GetAttr(kNameSpaceID_None, nsGkAtoms::hidden,
-                                      commandValue))
+          if (commandElement->GetAttr(nsGkAtoms::hidden, commandValue))
             grandChildElement->SetAttr(kNameSpaceID_None, nsGkAtoms::hidden,
                                        commandValue, true);
         }
@@ -2770,7 +2778,7 @@ bool nsXULPopupPositionedEvent::DispatchIfNeeded(Element* aPopup) {
   if (aPopup->AttrValueIs(kNameSpaceID_None, nsGkAtoms::type, nsGkAtoms::arrow,
                           eCaseMatters)) {
     nsCOMPtr<nsIRunnable> event = new nsXULPopupPositionedEvent(aPopup);
-    aPopup->OwnerDoc()->Dispatch(TaskCategory::Other, event.forget());
+    aPopup->OwnerDoc()->Dispatch(event.forget());
     return true;
   }
 
@@ -2804,6 +2812,33 @@ static void AlignmentPositionToString(nsMenuPopupFrame* aFrame,
       return aString.AssignLiteral("after_pointer");
     case POPUPPOSITION_SELECTION:
       return aString.AssignLiteral("selection");
+    default:
+      // Leave as an empty string.
+      break;
+  }
+}
+
+static void PopupAlignmentToString(nsMenuPopupFrame* aFrame,
+                                   nsAString& aString) {
+  aString.Truncate();
+  int alignment = aFrame->GetPopupAlignment();
+  switch (alignment) {
+    case POPUPALIGNMENT_TOPLEFT:
+      return aString.AssignLiteral("topleft");
+    case POPUPALIGNMENT_TOPRIGHT:
+      return aString.AssignLiteral("topright");
+    case POPUPALIGNMENT_BOTTOMLEFT:
+      return aString.AssignLiteral("bottomleft");
+    case POPUPALIGNMENT_BOTTOMRIGHT:
+      return aString.AssignLiteral("bottomright");
+    case POPUPALIGNMENT_LEFTCENTER:
+      return aString.AssignLiteral("leftcenter");
+    case POPUPALIGNMENT_RIGHTCENTER:
+      return aString.AssignLiteral("rightcenter");
+    case POPUPALIGNMENT_TOPCENTER:
+      return aString.AssignLiteral("topcenter");
+    case POPUPALIGNMENT_BOTTOMCENTER:
+      return aString.AssignLiteral("bottomcenter");
     default:
       // Leave as an empty string.
       break;
@@ -2846,6 +2881,7 @@ nsXULPopupPositionedEvent::Run() {
   init.mIsAnchored = popupFrame->IsAnchored();
   init.mAlignmentOffset = popupOffset;
   AlignmentPositionToString(popupFrame, init.mAlignmentPosition);
+  PopupAlignmentToString(popupFrame, init.mPopupAlignment);
   RefPtr<PopupPositionedEvent> event =
       PopupPositionedEvent::Constructor(mPopup, u"popuppositioned"_ns, init);
   event->SetTrusted(true);

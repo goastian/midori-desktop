@@ -134,7 +134,7 @@ class ReftestRunner(MozbuildObject):
 
         hyphenation_path = os.path.join(self.topsrcdir, "intl", "locales")
 
-        for (dirpath, dirnames, filenames) in os.walk(hyphenation_path):
+        for dirpath, dirnames, filenames in os.walk(hyphenation_path):
             for filename in filenames:
                 if filename.endswith(".dic"):
                     args.extraProfileFiles.append(os.path.join(dirpath, filename))
@@ -159,10 +159,6 @@ class ReftestRunner(MozbuildObject):
         if "geckoview" not in args.app:
             args.e10s = False
             print("using e10s=False for non-geckoview app")
-
-        # Disable fission until geckoview supports fission by default.
-        # Need fission on Android? Use '--setpref fission.autostart=true'
-        args.disableFission = True
 
         # A symlink and some path manipulations are required so that test
         # manifests can be found both locally and remotely (via a url)

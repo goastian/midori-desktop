@@ -45,25 +45,12 @@ is(e.style.border, "", "should not be able to serialize border");
 
 // Test suppression of currentcolor in border shorthands.
 e.setAttribute("style", "border: medium solid");
-ok(e.style.border == "medium solid" ||
-   e.style.border == "solid medium",
-   "implied default color omitted serializing border");
-ok(e.style.borderLeft == "medium solid" ||
-   e.style.borderLeft == "solid medium",
-   "implied default color omitted serializing border-left");
-ok(e.style.cssText == "border: medium solid;" ||
-   e.style.cssText == "border: solid medium;",
-   "implied default color omitted serializing declaration");
+is(e.style.border, "solid", "implied default color omitted serializing border");
+is(e.style.borderLeft, "solid", "implied default color omitted serializing border-left");
+is(e.style.cssText, "border: solid;", "implied default color omitted serializing declaration");
 e.setAttribute("style", "border-right: medium solid");
-ok(e.style.borderRight == "medium solid" ||
-   e.style.borderRight == "solid medium",
-   "implied default color omitted serializing border-right");
-ok(e.style.borderRight == "medium solid" ||
-   e.style.borderRight == "solid medium",
-   "implied default color omitted serializing border-right");
-ok(e.style.cssText == "border-right: medium solid;" ||
-   e.style.cssText == "border-right: solid medium;",
-   "implied default color omitted serializing declaration");
+is(e.style.borderRight, "solid", "implied default color omitted serializing border-right");
+is(e.style.cssText, "border-right: solid;", "implied default color omitted serializing declaration");
 
 // Test that we shorten box properties to the shortest possible.
 e.setAttribute("style", "margin: 7px");
@@ -196,17 +183,19 @@ e.setAttribute("style", "background-position-x: 0px; background-position-y: top 
 is(e.style.backgroundPosition, "left 0px top 0px", "should serialize to 4-value form if 3-value form would only have one edge");
 
 // Check that we only serialize transition when the lists are the same length.
-e.setAttribute("style", "transition-property: color, width; transition-duration: 1s, 200ms; transition-timing-function: ease-in, linear; transition-delay: 0s, 1s");
+e.setAttribute("style", "transition-property: color, width; transition-duration: 1s, 200ms; transition-timing-function: ease-in, linear; transition-delay: 0s, 1s; transition-behavior: normal, allow-discrete;");
 isnot(e.style.transition, "", "should have transition shorthand (lists same length)");
-e.setAttribute("style", "transition-property: color, width, left; transition-duration: 1s, 200ms; transition-timing-function: ease-in, linear; transition-delay: 0s, 1s");
+e.setAttribute("style", "transition-property: color, width, left; transition-duration: 1s, 200ms; transition-timing-function: ease-in, linear; transition-delay: 0s, 1s; transition-behavior: normal, allow-discrete;");
 is(e.style.transition, "", "should not have transition shorthand (lists different lengths)");
-e.setAttribute("style", "transition-property: all; transition-duration: 1s, 200ms; transition-timing-function: ease-in, linear; transition-delay: 0s, 1s");
+e.setAttribute("style", "transition-property: all; transition-duration: 1s, 200ms; transition-timing-function: ease-in, linear; transition-delay: 0s, 1s; transition-behavior: normal, allow-discrete;");
 is(e.style.transition, "", "should not have transition shorthand (lists different lengths)");
-e.setAttribute("style", "transition-property: color, width; transition-duration: 1s, 200ms, 300ms; transition-timing-function: ease-in, linear; transition-delay: 0s, 1s");
+e.setAttribute("style", "transition-property: color, width; transition-duration: 1s, 200ms, 300ms; transition-timing-function: ease-in, linear; transition-delay: 0s, 1s; transition-behavior: normal, allow-discrete;");
 is(e.style.transition, "", "should not have transition shorthand (lists different lengths)");
-e.setAttribute("style", "transition-property: color, width; transition-duration: 1s, 200ms; transition-timing-function: ease-in, linear, ease-out; transition-delay: 0s, 1s");
+e.setAttribute("style", "transition-property: color, width; transition-duration: 1s, 200ms; transition-timing-function: ease-in, linear, ease-out; transition-delay: 0s, 1s; transition-behavior: normal, allow-discrete;");
 is(e.style.transition, "", "should not have transition shorthand (lists different lengths)");
-e.setAttribute("style", "transition-property: color, width; transition-duration: 1s, 200ms; transition-timing-function: ease-in, linear; transition-delay: 0s, 1s, 0s");
+e.setAttribute("style", "transition-property: color, width; transition-duration: 1s, 200ms; transition-timing-function: ease-in, linear; transition-delay: 0s, 1s, 0s; transition-behavior: normal, allow-discrete;");
+is(e.style.transition, "", "should not have transition shorthand (lists different lengths)");
+e.setAttribute("style", "transition-property: color, width; transition-duration: 1s, 200ms; transition-timing-function: ease-in, linear; transition-delay: 0s, 1s; transition-behavior: normal, allow-discrete, normal;");
 is(e.style.transition, "", "should not have transition shorthand (lists different lengths)");
 e.setAttribute("style", "transition: color, width; transition-delay: 0s");
 is(e.style.transition, "", "should not have transition shorthand (lists different lengths)");
@@ -239,12 +228,10 @@ is(e.style.animation, "", "should not have animation shorthand (lists different 
 // (bug 482692).
 e.setAttribute("style", 'border-image: url("foo.png") 5 5 5 5 / 5 5 5 5 / 5 5 5 5 repeat repeat; border-left: medium solid green');
 is(e.style.cssText,
-   'border-image: url("foo.png") 5 / 5 / 5 repeat; border-left: medium solid green;',
+   'border-image: url("foo.png") 5 / 5 / 5 repeat; border-left: solid green;',
    "border-left does NOT reset border-image");
-e.setAttribute("style", 'border-image: url("foo.png") 5 5 5 5; border: medium solid green');
-is(e.style.cssText,
-   'border: medium solid green;',
-   "border DOES reset border-image");
+e.setAttribute("style", 'border-image: url("foo.png") 5 5 5 5; border: solid green');
+is(e.style.cssText, 'border: solid green;', "border DOES reset border-image");
 
 // Test that the color goes at the beginning of the last item of the
 // background shorthand.

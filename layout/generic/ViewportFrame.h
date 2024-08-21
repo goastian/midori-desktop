@@ -6,7 +6,7 @@
 
 /*
  * rendering object that is the root of the frame tree, which contains
- * the document's scrollbars and contains fixed-positioned elements
+ * contains fixed-positioned elements
  */
 
 #ifndef mozilla_ViewportFrame_h
@@ -23,9 +23,10 @@ class nsDisplayWrapList;
 class ServoRestyleState;
 
 /**
- * ViewportFrame is the parent of a single child - the doc root frame or a
- * scroll frame containing the doc root frame. ViewportFrame stores this child
- * in its primary child list.
+ * ViewportFrame is the parent of a single child -- the root canvas frame or a
+ * scroll container frame containing the root canvas frame. See
+ * nsCSSFrameConstructor::SetUpDocElementContainingBlock() for the root frame
+ * hierarchy. ViewportFrame stores this child in its primary child list.
  */
 class ViewportFrame : public nsContainerFrame {
  public:
@@ -96,9 +97,9 @@ class ViewportFrame : public nsContainerFrame {
   /**
    * Calculate how much room is available for fixed frames. That means
    * determining if the viewport is scrollable and whether the vertical and/or
-   * horizontal scrollbars are visible.  Adjust the computed width/height and
-   * available width for aReflowInput accordingly.
-   * @return the current scroll position, or 0,0 if not scrollable
+   * horizontal scrollbars are visible. Adjust the computed isize/bsize and
+   * available isize for aReflowInput accordingly.
+   * @return the current scroll position, or (0,0) if not scrollable.
    */
   nsPoint AdjustReflowInputForScrollbars(ReflowInput* aReflowInput) const;
 

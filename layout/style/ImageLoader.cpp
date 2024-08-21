@@ -12,6 +12,7 @@
 
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/DocumentInlines.h"
+#include "mozilla/dom/LargestContentfulPaint.h"
 #include "mozilla/dom/ImageTracker.h"
 #include "nsContentUtils.h"
 #include "nsIReflowCallback.h"
@@ -294,7 +295,7 @@ void ImageLoader::RemoveRequestToFrameMapping(imgIRequest* aRequest,
                                      FrameOnlyComparator());
     if (found) {
       UnblockOnloadIfNeeded(frameSet->ElementAt(i - 1));
-      frameSet->RemoveElementAt(i - 1);
+      frameSet->RemoveElementAtUnsafe(i - 1);
     }
 
     if (frameSet->IsEmpty()) {
@@ -519,7 +520,7 @@ static void InvalidateImages(nsIFrame* aFrame, imgIRequest* aRequest,
     return;
   }
 
-  if (aFrame->IsFrameOfType(nsIFrame::eTablePart)) {
+  if (aFrame->IsTablePart()) {
     // Tables don't necessarily build border/background display items
     // for the individual table part frames, so IterateRetainedDataFor
     // might not find the right display item.
@@ -564,6 +565,16 @@ static void InvalidateImages(nsIFrame* aFrame, imgIRequest* aRequest,
       }
     }
   }
+#ifdef XP_MACOSX
+  else if (aFrame->HasAnyStateBits(NS_FRAME_IN_POPUP)) {
+    // On macOS popups are painted with fallback rendering so they don't have
+    // webrender user data to tell us if the frame was painted last time, so we
+    // just have to invalidate always. Bug 1754796 tracks making popups on macOS
+    // use webrender. (On other platforms tooltips type popups are still
+    // rendered with fallback, but we don't expect them to have images.)
+    invalidateFrame = true;
+  }
+#endif
 
   // Update ancestor rendering observers (-moz-element etc)
   //
@@ -818,10 +829,16 @@ void ImageLoader::OnLoadComplete(imgIRequest* aRequest) {
       // may happen during other network events.
       UnblockOnloadIfNeeded(fwf);
     }
-    if (fwf.mFrame->StyleVisibility()->IsVisible()) {
-      fwf.mFrame->SchedulePaint();
+    nsIFrame* frame = fwf.mFrame;
+    if (frame->StyleVisibility()->IsVisible()) {
+      frame->SchedulePaint();
+    }
+
+    if (StaticPrefs::dom_enable_largest_contentful_paint()) {
+      LargestContentfulPaint::MaybeProcessImageForElementTiming(
+          static_cast<imgRequestProxy*>(aRequest),
+          frame->GetContent()->AsElement());
     }
   }
 }
-
 }  // namespace mozilla::css

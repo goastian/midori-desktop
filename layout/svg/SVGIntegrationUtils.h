@@ -35,6 +35,11 @@ namespace mozilla {
 class nsDisplayList;
 class nsDisplayListBuilder;
 
+/**
+ * Whether we're dealing with a backdrop-filter or a filter.
+ */
+enum class StyleFilterType : uint8_t { BackdropFilter, Filter };
+
 namespace gfx {
 class DrawTarget;
 }  // namespace gfx
@@ -59,17 +64,6 @@ class SVGIntegrationUtils final {
    * Returns true if SVG effects are currently applied to this frame.
    */
   static bool UsingEffectsForFrame(const nsIFrame* aFrame);
-
-  /**
-   * Returns true if mask or clippath are currently applied to this frame.
-   */
-  static bool UsingMaskOrClipPathForFrame(const nsIFrame* aFrame);
-
-  /**
-   * Returns true if the element has a clippath that is simple enough to
-   * be represented without a mask in WebRender.
-   */
-  static bool UsingSimpleClipPathForFrame(const nsIFrame* aFrame);
 
   /**
    * Returns the size of the union of the border-box rects of all of
@@ -208,6 +202,7 @@ class SVGIntegrationUtils final {
    */
   static bool BuildWebRenderFilters(nsIFrame* aFilteredFrame,
                                     Span<const StyleFilter> aFilters,
+                                    StyleFilterType aStyleFilterType,
                                     WrFiltersHolder& aWrFilters,
                                     bool& aInitialized);
 

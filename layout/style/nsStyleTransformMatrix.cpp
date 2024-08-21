@@ -5,7 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /*
- * A class used for intermediate representations of the -moz-transform property.
+ * A class used for intermediate representations of the transform and
+ * transform-like properties.
  */
 
 #include "nsStyleTransformMatrix.h"
@@ -13,6 +14,7 @@
 #include "nsPresContext.h"
 #include "mozilla/MotionPathUtils.h"
 #include "mozilla/ServoBindings.h"
+#include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/StyleAnimationValue.h"
 #include "mozilla/SVGUtils.h"
 #include "gfxMatrix.h"
@@ -38,6 +40,83 @@ namespace nsStyleTransformMatrix {
 // and consequently get the wrong value.
 // #define UNIFIED_CONTINUATIONS
 
+static nsRect GetSVGBox(const nsIFrame* aFrame) {
+  auto computeViewBox = [&]() {
+    // Percentages in transforms resolve against the width/height of the
+    // nearest viewport (or its viewBox if one is applied), and the
+    // transform is relative to {0,0} in current user space.
+    CSSSize size = CSSSize::FromUnknownSize(SVGUtils::GetContextSize(aFrame));
+    return nsRect(-aFrame->GetPosition(), CSSPixel::ToAppUnits(size));
+  };
+
+  auto transformBox = aFrame->StyleDisplay()->mTransformBox;
+  if ((transformBox == StyleTransformBox::StrokeBox ||
+       transformBox == StyleTransformBox::BorderBox) &&
+      aFrame->StyleSVGReset()->HasNonScalingStroke()) {
+    // To calculate stroke bounds for an element with `non-scaling-stroke` we
+    // need to resolve its transform to its outer-svg, but to resolve that
+    // transform when it has `transform-box:stroke-box` (or `border-box`)
+    // may require its stroke bounds. There's no ideal way to break this
+    // cyclical dependency, but we break it by converting to
+    // `transform-box:fill-box` here.
+    // https://github.com/w3c/csswg-drafts/issues/9640
+    transformBox = StyleTransformBox::FillBox;
+  }
+
+  // For SVG elements without associated CSS layout box, the used value for
+  // content-box is fill-box and for border-box is stroke-box.
+  // https://drafts.csswg.org/css-transforms-1/#transform-box
+  switch (transformBox) {
+    case StyleTransformBox::ContentBox:
+    case StyleTransformBox::FillBox: {
+      // Percentages in transforms resolve against the SVG bbox, and the
+      // transform is relative to the top-left of the SVG bbox.
+      nsRect bboxInAppUnits = nsLayoutUtils::ComputeSVGReferenceRect(
+          const_cast<nsIFrame*>(aFrame), StyleGeometryBox::FillBox);
+      // The mRect of an SVG nsIFrame is its user space bounds *including*
+      // stroke and markers, whereas bboxInAppUnits is its user space bounds
+      // including fill only.  We need to note the offset of the reference box
+      // from the frame's mRect in mX/mY.
+      return {bboxInAppUnits.x - aFrame->GetPosition().x,
+              bboxInAppUnits.y - aFrame->GetPosition().y, bboxInAppUnits.width,
+              bboxInAppUnits.height};
+    }
+    case StyleTransformBox::BorderBox:
+      if (!StaticPrefs::layout_css_transform_box_content_stroke_enabled()) {
+        // If stroke-box is disabled, we shouldn't use it and fall back to
+        // view-box.
+        return computeViewBox();
+      }
+      [[fallthrough]];
+    case StyleTransformBox::StrokeBox: {
+      // We are using SVGUtils::PathExtentsToMaxStrokeExtents() to compute the
+      // bbox contribution for stroke box (if it doesn't have simple bounds),
+      // so the |strokeBox| here may be larger than the author's expectation.
+      // Using Moz2D to compute the tighter bounding box is another way but it
+      // has some potential issues (see SVGGeometryFrame::GetBBoxContribution()
+      // for more details), and its result depends on the drawing backend. So
+      // for now we still rely on our default calcuclation for SVG geometry
+      // frame reflow code. At least this works for the shape elements which
+      // have simple bounds.
+      // FIXME: Bug 1849054. We may have to update
+      // SVGGeometryFrame::GetBBoxContribution() to get tighter stroke bounds.
+      nsRect strokeBox = nsLayoutUtils::ComputeSVGReferenceRect(
+          const_cast<nsIFrame*>(aFrame), StyleGeometryBox::StrokeBox,
+          nsLayoutUtils::MayHaveNonScalingStrokeCyclicDependency::Yes);
+      // The |nsIFrame::mRect| includes markers, so we have to compute the
+      // offsets without markers.
+      return nsRect{strokeBox.x - aFrame->GetPosition().x,
+                    strokeBox.y - aFrame->GetPosition().y, strokeBox.width,
+                    strokeBox.height};
+    }
+    case StyleTransformBox::ViewBox:
+      return computeViewBox();
+  }
+
+  MOZ_ASSERT_UNREACHABLE("All transform box should be handled.");
+  return {};
+}
+
 void TransformReferenceBox::EnsureDimensionsAreCached() {
   if (mIsCached) {
     return;
@@ -48,74 +127,50 @@ void TransformReferenceBox::EnsureDimensionsAreCached() {
   mIsCached = true;
 
   if (mFrame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT)) {
-    if (mFrame->StyleDisplay()->mTransformBox == StyleGeometryBox::FillBox) {
-      // Percentages in transforms resolve against the SVG bbox, and the
-      // transform is relative to the top-left of the SVG bbox.
-      nsRect bboxInAppUnits = nsLayoutUtils::ComputeGeometryBox(
-          const_cast<nsIFrame*>(mFrame), StyleGeometryBox::FillBox);
-      // The mRect of an SVG nsIFrame is its user space bounds *including*
-      // stroke and markers, whereas bboxInAppUnits is its user space bounds
-      // including fill only.  We need to note the offset of the reference box
-      // from the frame's mRect in mX/mY.
-      mX = bboxInAppUnits.x - mFrame->GetPosition().x;
-      mY = bboxInAppUnits.y - mFrame->GetPosition().y;
-      mWidth = bboxInAppUnits.width;
-      mHeight = bboxInAppUnits.height;
-    } else {
-      // The value 'border-box' is treated as 'view-box' for SVG content.
-      MOZ_ASSERT(
-          mFrame->StyleDisplay()->mTransformBox == StyleGeometryBox::ViewBox ||
-              mFrame->StyleDisplay()->mTransformBox ==
-                  StyleGeometryBox::BorderBox,
-          "Unexpected value for 'transform-box'");
-      // Percentages in transforms resolve against the width/height of the
-      // nearest viewport (or its viewBox if one is applied), and the
-      // transform is relative to {0,0} in current user space.
-      mX = -mFrame->GetPosition().x;
-      mY = -mFrame->GetPosition().y;
-      Size contextSize = SVGUtils::GetContextSize(mFrame);
-      mWidth = nsPresContext::CSSPixelsToAppUnits(contextSize.width);
-      mHeight = nsPresContext::CSSPixelsToAppUnits(contextSize.height);
-    }
+    mBox = GetSVGBox(mFrame);
     return;
   }
 
-  // If UNIFIED_CONTINUATIONS is not defined, this is simply the frame's
-  // bounding rectangle, translated to the origin.  Otherwise, it is the
-  // smallest rectangle containing a frame and all of its continuations.  For
-  // example, if there is a <span> element with several continuations split
-  // over several lines, this function will return the rectangle containing all
-  // of those continuations.
+  // For elements with associated CSS layout box, the used value for fill-box is
+  // content-box and for stroke-box and view-box is border-box.
+  // https://drafts.csswg.org/css-transforms-1/#transform-box
+  switch (mFrame->StyleDisplay()->mTransformBox) {
+    case StyleTransformBox::FillBox:
+    case StyleTransformBox::ContentBox: {
+      mBox = mFrame->GetContentRectRelativeToSelf();
+      return;
+    }
+    case StyleTransformBox::StrokeBox:
+      // TODO: Implement this in the following patches.
+      return;
+    case StyleTransformBox::ViewBox:
+    case StyleTransformBox::BorderBox: {
+      // If UNIFIED_CONTINUATIONS is not defined, this is simply the frame's
+      // bounding rectangle, translated to the origin.  Otherwise, it is the
+      // smallest rectangle containing a frame and all of its continuations. For
+      // example, if there is a <span> element with several continuations split
+      // over several lines, this function will return the rectangle containing
+      // all of those continuations.
 
-  nsRect rect;
+      nsRect rect;
 
 #ifndef UNIFIED_CONTINUATIONS
-  rect = mFrame->GetRect();
+      rect = mFrame->GetRect();
 #else
-  // Iterate the continuation list, unioning together the bounding rects:
-  for (const nsIFrame* currFrame = mFrame->FirstContinuation();
-       currFrame != nullptr; currFrame = currFrame->GetNextContinuation()) {
-    // Get the frame rect in local coordinates, then translate back to the
-    // original coordinates:
-    rect.UnionRect(
-        result, nsRect(currFrame->GetOffsetTo(mFrame), currFrame->GetSize()));
-  }
+      // Iterate the continuation list, unioning together the bounding rects:
+      for (const nsIFrame* currFrame = mFrame->FirstContinuation();
+           currFrame != nullptr; currFrame = currFrame->GetNextContinuation()) {
+        // Get the frame rect in local coordinates, then translate back to the
+        // original coordinates:
+        rect.UnionRect(result, nsRect(currFrame->GetOffsetTo(mFrame),
+                                      currFrame->GetSize()));
+      }
 #endif
 
-  mX = 0;
-  mY = 0;
-  mWidth = rect.Width();
-  mHeight = rect.Height();
-}
-
-void TransformReferenceBox::Init(const nsRect& aDimensions) {
-  MOZ_ASSERT(!mFrame && !mIsCached);
-
-  mX = aDimensions.x;
-  mY = aDimensions.y;
-  mWidth = aDimensions.width;
-  mHeight = aDimensions.height;
-  mIsCached = true;
+      mBox = {0, 0, rect.Width(), rect.Height()};
+      return;
+    }
+  }
 }
 
 float ProcessTranslatePart(
@@ -530,7 +585,7 @@ static void ProcessScale(Matrix4x4& aMatrix, const StyleScale& aScale) {
 
 Matrix4x4 ReadTransforms(const StyleTranslate& aTranslate,
                          const StyleRotate& aRotate, const StyleScale& aScale,
-                         const Maybe<ResolvedMotionPathData>& aMotion,
+                         const ResolvedMotionPathData* aMotion,
                          const StyleTransform& aTransform,
                          TransformReferenceBox& aRefBox,
                          float aAppUnitsPerMatrixUnit) {
@@ -540,7 +595,7 @@ Matrix4x4 ReadTransforms(const StyleTranslate& aTranslate,
   ProcessRotate(result, aRotate);
   ProcessScale(result, aScale);
 
-  if (aMotion.isSome()) {
+  if (aMotion) {
     // Create the equivalent translate and rotate function, according to the
     // order in spec. We combine the translate and then the rotate.
     // https://drafts.fxtf.org/motion-1/#calculating-path-transform
@@ -594,280 +649,6 @@ Point Convert2DPosition(const LengthPercentage& aX, const LengthPercentage& aY,
   float scale = mozilla::AppUnitsPerCSSPixel() / float(aAppUnitsPerPixel);
   CSSPoint p = Convert2DPosition(aX, aY, aRefBox);
   return {p.x * scale, p.y * scale};
-}
-
-/*
- * The relevant section of the transitions specification:
- * http://dev.w3.org/csswg/css3-transitions/#animation-of-property-types-
- * defers all of the details to the 2-D and 3-D transforms specifications.
- * For the 2-D transforms specification (all that's relevant for us, right
- * now), the relevant section is:
- * http://dev.w3.org/csswg/css3-2d-transforms/#animation
- * This, in turn, refers to the unmatrix program in Graphics Gems,
- * available from http://tog.acm.org/resources/GraphicsGems/ , and in
- * particular as the file GraphicsGems/gemsii/unmatrix.c
- * in http://tog.acm.org/resources/GraphicsGems/AllGems.tar.gz
- *
- * The unmatrix reference is for general 3-D transform matrices (any of the
- * 16 components can have any value).
- *
- * For CSS 2-D transforms, we have a 2-D matrix with the bottom row constant:
- *
- * [ A C E ]
- * [ B D F ]
- * [ 0 0 1 ]
- *
- * For that case, I believe the algorithm in unmatrix reduces to:
- *
- *  (1) If A * D - B * C == 0, the matrix is singular.  Fail.
- *
- *  (2) Set translation components (Tx and Ty) to the translation parts of
- *      the matrix (E and F) and then ignore them for the rest of the time.
- *      (For us, E and F each actually consist of three constants:  a
- *      length, a multiplier for the width, and a multiplier for the
- *      height.  This actually requires its own decomposition, but I'll
- *      keep that separate.)
- *
- *  (3) Let the X scale (Sx) be sqrt(A^2 + B^2).  Then divide both A and B
- *      by it.
- *
- *  (4) Let the XY shear (K) be A * C + B * D.  From C, subtract A times
- *      the XY shear.  From D, subtract B times the XY shear.
- *
- *  (5) Let the Y scale (Sy) be sqrt(C^2 + D^2).  Divide C, D, and the XY
- *      shear (K) by it.
- *
- *  (6) At this point, A * D - B * C is either 1 or -1.  If it is -1,
- *      negate the XY shear (K), the X scale (Sx), and A, B, C, and D.
- *      (Alternatively, we could negate the XY shear (K) and the Y scale
- *      (Sy).)
- *
- *  (7) Let the rotation be R = atan2(B, A).
- *
- * Then the resulting decomposed transformation is:
- *
- *   translate(Tx, Ty) rotate(R) skewX(atan(K)) scale(Sx, Sy)
- *
- * An interesting result of this is that all of the simple transform
- * functions (i.e., all functions other than matrix()), in isolation,
- * decompose back to themselves except for:
- *   'skewY(φ)', which is 'matrix(1, tan(φ), 0, 1, 0, 0)', which decomposes
- *   to 'rotate(φ) skewX(φ) scale(sec(φ), cos(φ))' since (ignoring the
- *   alternate sign possibilities that would get fixed in step 6):
- *     In step 3, the X scale factor is sqrt(1+tan²(φ)) = sqrt(sec²(φ)) =
- * sec(φ). Thus, after step 3, A = 1/sec(φ) = cos(φ) and B = tan(φ) / sec(φ) =
- * sin(φ). In step 4, the XY shear is sin(φ). Thus, after step 4, C =
- * -cos(φ)sin(φ) and D = 1 - sin²(φ) = cos²(φ). Thus, in step 5, the Y scale is
- * sqrt(cos²(φ)(sin²(φ) + cos²(φ)) = cos(φ). Thus, after step 5, C = -sin(φ), D
- * = cos(φ), and the XY shear is tan(φ). Thus, in step 6, A * D - B * C =
- * cos²(φ) + sin²(φ) = 1. In step 7, the rotation is thus φ.
- *
- *   skew(θ, φ), which is matrix(1, tan(φ), tan(θ), 1, 0, 0), which decomposes
- *   to 'rotate(φ) skewX(θ + φ) scale(sec(φ), cos(φ))' since (ignoring
- *   the alternate sign possibilities that would get fixed in step 6):
- *     In step 3, the X scale factor is sqrt(1+tan²(φ)) = sqrt(sec²(φ)) =
- * sec(φ). Thus, after step 3, A = 1/sec(φ) = cos(φ) and B = tan(φ) / sec(φ) =
- * sin(φ). In step 4, the XY shear is cos(φ)tan(θ) + sin(φ). Thus, after step 4,
- *     C = tan(θ) - cos(φ)(cos(φ)tan(θ) + sin(φ)) = tan(θ)sin²(φ) - cos(φ)sin(φ)
- *     D = 1 - sin(φ)(cos(φ)tan(θ) + sin(φ)) = cos²(φ) - sin(φ)cos(φ)tan(θ)
- *     Thus, in step 5, the Y scale is sqrt(C² + D²) =
- *     sqrt(tan²(θ)(sin⁴(φ) + sin²(φ)cos²(φ)) -
- *          2 tan(θ)(sin³(φ)cos(φ) + sin(φ)cos³(φ)) +
- *          (sin²(φ)cos²(φ) + cos⁴(φ))) =
- *     sqrt(tan²(θ)sin²(φ) - 2 tan(θ)sin(φ)cos(φ) + cos²(φ)) =
- *     cos(φ) - tan(θ)sin(φ) (taking the negative of the obvious solution so
- *     we avoid flipping in step 6).
- *     After step 5, C = -sin(φ) and D = cos(φ), and the XY shear is
- *     (cos(φ)tan(θ) + sin(φ)) / (cos(φ) - tan(θ)sin(φ)) =
- *     (dividing both numerator and denominator by cos(φ))
- *     (tan(θ) + tan(φ)) / (1 - tan(θ)tan(φ)) = tan(θ + φ).
- *     (See http://en.wikipedia.org/wiki/List_of_trigonometric_identities .)
- *     Thus, in step 6, A * D - B * C = cos²(φ) + sin²(φ) = 1.
- *     In step 7, the rotation is thus φ.
- *
- *     To check this result, we can multiply things back together:
- *
- *     [ cos(φ) -sin(φ) ] [ 1 tan(θ + φ) ] [ sec(φ)    0   ]
- *     [ sin(φ)  cos(φ) ] [ 0      1     ] [   0    cos(φ) ]
- *
- *     [ cos(φ)      cos(φ)tan(θ + φ) - sin(φ) ] [ sec(φ)    0   ]
- *     [ sin(φ)      sin(φ)tan(θ + φ) + cos(φ) ] [   0    cos(φ) ]
- *
- *     but since tan(θ + φ) = (tan(θ) + tan(φ)) / (1 - tan(θ)tan(φ)),
- *     cos(φ)tan(θ + φ) - sin(φ)
- *      = cos(φ)(tan(θ) + tan(φ)) - sin(φ) + sin(φ)tan(θ)tan(φ)
- *      = cos(φ)tan(θ) + sin(φ) - sin(φ) + sin(φ)tan(θ)tan(φ)
- *      = cos(φ)tan(θ) + sin(φ)tan(θ)tan(φ)
- *      = tan(θ) (cos(φ) + sin(φ)tan(φ))
- *      = tan(θ) sec(φ) (cos²(φ) + sin²(φ))
- *      = tan(θ) sec(φ)
- *     and
- *     sin(φ)tan(θ + φ) + cos(φ)
- *      = sin(φ)(tan(θ) + tan(φ)) + cos(φ) - cos(φ)tan(θ)tan(φ)
- *      = tan(θ) (sin(φ) - sin(φ)) + sin(φ)tan(φ) + cos(φ)
- *      = sec(φ) (sin²(φ) + cos²(φ))
- *      = sec(φ)
- *     so the above is:
- *     [ cos(φ)  tan(θ) sec(φ) ] [ sec(φ)    0   ]
- *     [ sin(φ)     sec(φ)     ] [   0    cos(φ) ]
- *
- *     [    1   tan(θ) ]
- *     [ tan(φ)    1   ]
- */
-
-/*
- * Decompose2DMatrix implements the above decomposition algorithm.
- */
-
-bool Decompose2DMatrix(const Matrix& aMatrix, Point3D& aScale,
-                       ShearArray& aShear, gfxQuaternion& aRotate,
-                       Point3D& aTranslate) {
-  float A = aMatrix._11, B = aMatrix._12, C = aMatrix._21, D = aMatrix._22;
-  if (A * D == B * C) {
-    // singular matrix
-    return false;
-  }
-
-  float scaleX = sqrt(A * A + B * B);
-  A /= scaleX;
-  B /= scaleX;
-
-  float XYshear = A * C + B * D;
-  C -= A * XYshear;
-  D -= B * XYshear;
-
-  float scaleY = sqrt(C * C + D * D);
-  C /= scaleY;
-  D /= scaleY;
-  XYshear /= scaleY;
-
-  float determinant = A * D - B * C;
-  // Determinant should now be 1 or -1.
-  if (0.99 > Abs(determinant) || Abs(determinant) > 1.01) {
-    return false;
-  }
-
-  if (determinant < 0) {
-    A = -A;
-    B = -B;
-    C = -C;
-    D = -D;
-    XYshear = -XYshear;
-    scaleX = -scaleX;
-  }
-
-  float rotate = atan2f(B, A);
-  aRotate = gfxQuaternion(0, 0, sin(rotate / 2), cos(rotate / 2));
-  aShear[ShearType::XY] = XYshear;
-  aScale.x = scaleX;
-  aScale.y = scaleY;
-  aTranslate.x = aMatrix._31;
-  aTranslate.y = aMatrix._32;
-  return true;
-}
-
-/**
- * Implementation of the unmatrix algorithm, specified by:
- *
- * http://dev.w3.org/csswg/css3-2d-transforms/#unmatrix
- *
- * This, in turn, refers to the unmatrix program in Graphics Gems,
- * available from http://tog.acm.org/resources/GraphicsGems/ , and in
- * particular as the file GraphicsGems/gemsii/unmatrix.c
- * in http://tog.acm.org/resources/GraphicsGems/AllGems.tar.gz
- */
-bool Decompose3DMatrix(const Matrix4x4& aMatrix, Point3D& aScale,
-                       ShearArray& aShear, gfxQuaternion& aRotate,
-                       Point3D& aTranslate, Point4D& aPerspective) {
-  Matrix4x4 local = aMatrix;
-
-  if (local[3][3] == 0) {
-    return false;
-  }
-
-  /* Normalize the matrix */
-  local.Normalize();
-
-  /**
-   * perspective is used to solve for perspective, but it also provides
-   * an easy way to test for singularity of the upper 3x3 component.
-   */
-  Matrix4x4 perspective = local;
-  Point4D empty(0, 0, 0, 1);
-  perspective.SetTransposedVector(3, empty);
-
-  if (perspective.Determinant() == 0.0) {
-    return false;
-  }
-
-  /* First, isolate perspective. */
-  if (local[0][3] != 0 || local[1][3] != 0 || local[2][3] != 0) {
-    /* aPerspective is the right hand side of the equation. */
-    aPerspective = local.TransposedVector(3);
-
-    /**
-     * Solve the equation by inverting perspective and multiplying
-     * aPerspective by the inverse.
-     */
-    perspective.Invert();
-    aPerspective = perspective.TransposeTransform4D(aPerspective);
-
-    /* Clear the perspective partition */
-    local.SetTransposedVector(3, empty);
-  } else {
-    aPerspective = Point4D(0, 0, 0, 1);
-  }
-
-  /* Next take care of translation */
-  for (int i = 0; i < 3; i++) {
-    aTranslate[i] = local[3][i];
-    local[3][i] = 0;
-  }
-
-  /* Now get scale and shear. */
-
-  /* Compute X scale factor and normalize first row. */
-  aScale.x = local[0].Length();
-  local[0] /= aScale.x;
-
-  /* Compute XY shear factor and make 2nd local orthogonal to 1st. */
-  aShear[ShearType::XY] = local[0].DotProduct(local[1]);
-  local[1] -= local[0] * aShear[ShearType::XY];
-
-  /* Now, compute Y scale and normalize 2nd local. */
-  aScale.y = local[1].Length();
-  local[1] /= aScale.y;
-  aShear[ShearType::XY] /= aScale.y;
-
-  /* Compute XZ and YZ shears, make 3rd local orthogonal */
-  aShear[ShearType::XZ] = local[0].DotProduct(local[2]);
-  local[2] -= local[0] * aShear[ShearType::XZ];
-  aShear[ShearType::YZ] = local[1].DotProduct(local[2]);
-  local[2] -= local[1] * aShear[ShearType::YZ];
-
-  /* Next, get Z scale and normalize 3rd local. */
-  aScale.z = local[2].Length();
-  local[2] /= aScale.z;
-
-  aShear[ShearType::XZ] /= aScale.z;
-  aShear[ShearType::YZ] /= aScale.z;
-
-  /**
-   * At this point, the matrix (in locals) is orthonormal.
-   * Check for a coordinate system flip.  If the determinant
-   * is -1, then negate the matrix and the scaling factors.
-   */
-  if (local[0].DotProduct(local[1].CrossProduct(local[2])) < 0) {
-    aScale *= -1;
-    for (int i = 0; i < 3; i++) {
-      local[i] *= -1;
-    }
-  }
-
-  /* Now, get the rotations out */
-  aRotate = gfxQuaternion(local);
-
-  return true;
 }
 
 }  // namespace nsStyleTransformMatrix

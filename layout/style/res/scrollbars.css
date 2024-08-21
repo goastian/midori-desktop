@@ -5,7 +5,8 @@
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 
 /* Rules required for style caching of anonymous content scrollbar parts */
-@supports -moz-bool-pref("layout.css.cached-scrollbar-styles.enabled") {
+/* stylelint-disable-next-line media-query-no-invalid */
+@media (-moz-bool-pref: "layout.css.cached-scrollbar-styles.enabled") {
   :is(scrollcorner, resizer, scrollbar, scrollbarbutton, slider):where(:-moz-native-anonymous) {
     /* All scrollbar parts must not inherit any properties from the scrollable
      * element (except for visibility and pointer-events), for the anonymous
@@ -18,9 +19,12 @@
     /* These properties are not included in 'all'. */
     -moz-context-properties: initial;
     -moz-control-character-visibility: initial;
-    -moz-font-smoothing-background-color: initial;
     -moz-min-font-size-ratio: initial;
     -moz-box-collapse: initial;
+    -moz-theme: initial;
+
+    /* We don't want zoom on our ancestors to affect our styles. */
+    zoom: document;
 
     math-depth: initial;
     /* As long as inert implies pointer-events: none as it does now, we're
@@ -130,7 +134,7 @@ thumb[orient="vertical"] {
   -moz-default-appearance: scrollbarthumb-vertical;
 }
 
-scrollbar[disabled="true"] thumb {
+scrollbar[disabled] thumb {
   visibility: hidden;
 }
 
@@ -150,14 +154,20 @@ scrollbar[orient="vertical"] {
   -moz-default-appearance: scrollbar-vertical;
 }
 
-scrollbar[root="true"] {
+scrollbar[root] {
   position: relative;
   z-index: 2147483647; /* largest positive value of a signed 32-bit integer */
 }
 
 @media (-moz-overlay-scrollbars) {
-  scrollbar:not([active="true"]),
-  scrollbar[disabled="true"] {
+  scrollbar {
+    opacity: 1;
+    will-change: opacity;
+    transition-property: opacity;
+    transition-duration: env(-moz-overlay-scrollbar-fade-duration);
+  }
+  scrollbar:not([active]),
+  scrollbar[disabled] {
     pointer-events: none;
     opacity: 0;
   }

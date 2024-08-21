@@ -36,10 +36,10 @@ void nsFrameList::Delete(mozilla::PresShell* aPresShell) {
 }
 
 void nsFrameList::DestroyFrames(FrameDestroyContext& aContext) {
-  while (nsIFrame* frame = RemoveFirstChild()) {
+  while (nsIFrame* frame = RemoveLastChild()) {
     frame->Destroy(aContext);
   }
-  mLastChild = nullptr;
+  MOZ_ASSERT(!mFirstChild && !mLastChild, "We should've destroyed all frames!");
 }
 
 void nsFrameList::RemoveFrame(nsIFrame* aFrame) {
@@ -91,6 +91,15 @@ nsIFrame* nsFrameList::RemoveFirstChild() {
     nsIFrame* firstChild = mFirstChild;
     RemoveFrame(firstChild);
     return firstChild;
+  }
+  return nullptr;
+}
+
+nsIFrame* nsFrameList::RemoveLastChild() {
+  if (mLastChild) {
+    nsIFrame* lastChild = mLastChild;
+    RemoveFrame(lastChild);
+    return lastChild;
   }
   return nullptr;
 }
@@ -434,8 +443,6 @@ const char* ChildListName(FrameChildListID aListID) {
   switch (aListID) {
     case FrameChildListID::Principal:
       return "";
-    case FrameChildListID::Popup:
-      return "PopupList";
     case FrameChildListID::Caption:
       return "CaptionList";
     case FrameChildListID::ColGroup:

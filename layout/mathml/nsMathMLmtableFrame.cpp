@@ -325,7 +325,7 @@ static void ParseFrameAttribute(nsIFrame* aFrame, nsAtom* aAttribute,
   nsAutoString attrValue;
 
   Element* frameElement = aFrame->GetContent()->AsElement();
-  frameElement->GetAttr(kNameSpaceID_None, aAttribute, attrValue);
+  frameElement->GetAttr(aAttribute, attrValue);
 
   if (!attrValue.IsEmpty()) {
     nsTArray<int8_t>* valueList =
@@ -465,11 +465,11 @@ static void ParseSpacingAttribute(nsMathMLmtableFrame* aFrame,
 
   nsAutoString attrValue;
   Element* frameElement = aFrame->GetContent()->AsElement();
-  frameElement->GetAttr(kNameSpaceID_None, aAttribute, attrValue);
+  frameElement->GetAttr(aAttribute, attrValue);
 
   if (nsGkAtoms::framespacing_ == aAttribute) {
     nsAutoString frame;
-    frameElement->GetAttr(kNameSpaceID_None, nsGkAtoms::frame, frame);
+    frameElement->GetAttr(nsGkAtoms::frame, frame);
     if (frame.IsEmpty() || frame.EqualsLiteral("none")) {
       aFrame->SetFrameSpacing(0, 0);
       return;
@@ -497,14 +497,14 @@ static void ParseSpacingAttribute(nsMathMLmtableFrame* aFrame,
   ExtractSpacingValues(attrValue, aAttribute, valueList, aFrame, value, value2,
                        fontSizeInflation);
   if (valueList.Length() == 0) {
-    if (frameElement->HasAttr(kNameSpaceID_None, aAttribute)) {
+    if (frameElement->HasAttr(aAttribute)) {
       ReportParseError(aFrame, aAttribute->GetUTF16String(), attrValue.get());
     }
     valueList.AppendElement(value);
   }
   if (aAttribute == nsGkAtoms::framespacing_) {
     if (valueList.Length() == 1) {
-      if (frameElement->HasAttr(kNameSpaceID_None, aAttribute)) {
+      if (frameElement->HasAttr(aAttribute)) {
         ReportParseError(aFrame, aAttribute->GetUTF16String(), attrValue.get());
       }
       valueList.AppendElement(value2);
@@ -622,23 +622,6 @@ static void ParseAlignAttribute(nsString& aValue, eAlign& aAlign,
   }
 }
 
-#ifdef DEBUG_rbs_off
-// call ListMathMLTree(mParent) to get the big picture
-static void ListMathMLTree(nsIFrame* atLeast) {
-  // climb up to <math> or <body> if <math> isn't there
-  nsIFrame* f = atLeast;
-  for (; f; f = f->GetParent()) {
-    nsIContent* c = f->GetContent();
-    if (!c || c->IsMathMLElement(nsGkAtoms::math) ||
-        // XXXbaku which kind of body tag?
-        c->NodeInfo()->NameAtom(nsGkAtoms::body))
-      break;
-  }
-  if (!f) f = atLeast;
-  f->List(stdout, 0);
-}
-#endif
-
 // --------
 // implementation of nsMathMLmtableWrapperFrame
 
@@ -703,7 +686,6 @@ nsresult nsMathMLmtableWrapperFrame::AttributeChanged(int32_t aNameSpaceID,
 
   // ...and the other attributes affect rows or columns in one way or another
 
-  nsPresContext* presContext = tableFrame->PresContext();
   if (aAttribute == nsGkAtoms::rowspacing_ ||
       aAttribute == nsGkAtoms::columnspacing_ ||
       aAttribute == nsGkAtoms::framespacing_) {
@@ -726,7 +708,7 @@ nsresult nsMathMLmtableWrapperFrame::AttributeChanged(int32_t aNameSpaceID,
   }
 
   // Explicitly request a reflow in our subtree to pick up any changes
-  presContext->PresShell()->FrameNeedsReflow(
+  PresShell()->FrameNeedsReflow(
       this, IntrinsicDirty::FrameAncestorsAndDescendants, NS_FRAME_IS_DIRTY);
 
   return NS_OK;
@@ -780,7 +762,7 @@ void nsMathMLmtableWrapperFrame::Reflow(nsPresContext* aPresContext,
   // see if the user has set the align attribute on the <mtable>
   int32_t rowIndex = 0;
   eAlign tableAlign = eAlign_axis;
-  mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::align, value);
+  mContent->AsElement()->GetAttr(nsGkAtoms::align, value);
   if (!value.IsEmpty()) {
     ParseAlignAttribute(value, tableAlign, rowIndex);
   }
@@ -1011,12 +993,10 @@ nscoord nsMathMLmtableFrame::GetRowSpacing(int32_t aStartRowIndex,
 }
 
 void nsMathMLmtableFrame::SetUseCSSSpacing() {
-  mUseCSSSpacing = !(mContent->AsElement()->HasAttr(kNameSpaceID_None,
-                                                    nsGkAtoms::rowspacing_) ||
+  mUseCSSSpacing = !(mContent->AsElement()->HasAttr(nsGkAtoms::rowspacing_) ||
                      mContent->AsElement()->HasAttr(
                          kNameSpaceID_None, nsGkAtoms::columnspacing_) ||
-                     mContent->AsElement()->HasAttr(kNameSpaceID_None,
-                                                    nsGkAtoms::framespacing_));
+                     mContent->AsElement()->HasAttr(nsGkAtoms::framespacing_));
 }
 
 NS_QUERYFRAME_HEAD(nsMathMLmtableFrame)
@@ -1044,8 +1024,6 @@ nsresult nsMathMLmtrFrame::AttributeChanged(int32_t aNameSpaceID,
   // rowalign    : Here
   // columnalign : Here
 
-  nsPresContext* presContext = PresContext();
-
   if (aAttribute != nsGkAtoms::rowalign_ &&
       aAttribute != nsGkAtoms::columnalign_) {
     return NS_OK;
@@ -1059,7 +1037,7 @@ nsresult nsMathMLmtrFrame::AttributeChanged(int32_t aNameSpaceID,
   ParseFrameAttribute(this, aAttribute, allowMultiValues);
 
   // Explicitly request a reflow in our subtree to pick up any changes
-  presContext->PresShell()->FrameNeedsReflow(
+  PresShell()->FrameNeedsReflow(
       this, IntrinsicDirty::FrameAncestorsAndDescendants, NS_FRAME_IS_DIRTY);
 
   return NS_OK;
@@ -1137,11 +1115,10 @@ StyleVerticalAlignKeyword nsMathMLmtdFrame::GetVerticalAlign() const {
   return alignment;
 }
 
-nsresult nsMathMLmtdFrame::ProcessBorders(nsTableFrame* aFrame,
-                                          nsDisplayListBuilder* aBuilder,
-                                          const nsDisplayListSet& aLists) {
+void nsMathMLmtdFrame::ProcessBorders(nsTableFrame* aFrame,
+                                      nsDisplayListBuilder* aBuilder,
+                                      const nsDisplayListSet& aLists) {
   aLists.BorderBackground()->AppendNewToTop<nsDisplaymtdBorder>(aBuilder, this);
-  return NS_OK;
 }
 
 LogicalMargin nsMathMLmtdFrame::GetBorderWidth(WritingMode aWM) const {

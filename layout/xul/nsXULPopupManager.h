@@ -184,10 +184,10 @@ using HidePopupOptions = mozilla::EnumSet<HidePopupOption>;
  */
 extern const nsNavigationDirection DirectionFromKeyCodeTable[2][6];
 
-#define NS_DIRECTION_FROM_KEY_CODE(frame, keycode) \
-  (DirectionFromKeyCodeTable[static_cast<uint8_t>( \
-      (frame)->StyleVisibility()->mDirection)][(   \
-      keycode)-mozilla::dom::KeyboardEvent_Binding::DOM_VK_END])
+#define NS_DIRECTION_FROM_KEY_CODE(frame, keycode)                    \
+  (DirectionFromKeyCodeTable                                          \
+       [static_cast<uint8_t>((frame)->StyleVisibility()->mDirection)] \
+       [(keycode) - mozilla::dom::KeyboardEvent_Binding::DOM_VK_END])
 
 // Used to hold information about a popup that is about to be opened.
 struct PendingPopup {
@@ -601,8 +601,10 @@ class nsXULPopupManager final : public nsIDOMEventListener,
   /**
    * Return an array of all the open and visible popup frames for
    * menus, in order from top to bottom.
+   * XXX should we always include native menu?
    */
-  void GetVisiblePopups(nsTArray<nsIFrame*>& aPopups);
+  void GetVisiblePopups(nsTArray<nsMenuPopupFrame*>& aPopups,
+                        bool aIncludeNativeMenu = false);
 
   /**
    * Get the node that last triggered a popup or tooltip in the document

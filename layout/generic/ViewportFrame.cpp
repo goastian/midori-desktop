@@ -15,13 +15,12 @@
 #include "mozilla/PresShell.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/RestyleManager.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "nsGkAtoms.h"
-#include "nsIScrollableFrame.h"
 #include "nsAbsoluteContainingBlock.h"
 #include "nsCanvasFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsSubDocumentFrame.h"
-#include "nsIMozBrowserFrame.h"
 #include "nsPlaceholderFrame.h"
 #include "MobileViewportManager.h"
 
@@ -67,7 +66,7 @@ void ViewportFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
 
   // If we have a scrollframe then it takes care of creating the display list
   // for the top layer, but otherwise we need to do it here.
-  if (!kid->IsScrollFrame()) {
+  if (!kid->IsScrollContainerFrame()) {
     bool isOpaque = false;
     if (auto* list = BuildDisplayListForTopLayer(aBuilder, &isOpaque)) {
       if (isOpaque) {
@@ -86,14 +85,7 @@ void ViewportFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
  * fullscreen. This function should matches the CSS rule in ua.css.
  */
 static bool ShouldInTopLayerForFullscreen(dom::Element* aElement) {
-  if (!aElement->GetParent()) {
-    return false;
-  }
-  nsCOMPtr<nsIMozBrowserFrame> browserFrame = do_QueryInterface(aElement);
-  if (browserFrame && browserFrame->GetReallyIsBrowser()) {
-    return false;
-  }
-  return true;
+  return !!aElement->GetParent();
 }
 #endif  // DEBUG
 
@@ -279,37 +271,27 @@ void ViewportFrame::RemoveFrame(DestroyContext& aContext, ChildListID aListID,
 
 /* virtual */
 nscoord ViewportFrame::GetMinISize(gfxContext* aRenderingContext) {
-  nscoord result;
-  DISPLAY_MIN_INLINE_SIZE(this, result);
-  if (mFrames.IsEmpty())
-    result = 0;
-  else
-    result = mFrames.FirstChild()->GetMinISize(aRenderingContext);
-
-  return result;
+  return mFrames.IsEmpty()
+             ? 0
+             : mFrames.FirstChild()->GetMinISize(aRenderingContext);
 }
 
 /* virtual */
 nscoord ViewportFrame::GetPrefISize(gfxContext* aRenderingContext) {
-  nscoord result;
-  DISPLAY_PREF_INLINE_SIZE(this, result);
-  if (mFrames.IsEmpty())
-    result = 0;
-  else
-    result = mFrames.FirstChild()->GetPrefISize(aRenderingContext);
-
-  return result;
+  return mFrames.IsEmpty()
+             ? 0
+             : mFrames.FirstChild()->GetPrefISize(aRenderingContext);
 }
 
 nsPoint ViewportFrame::AdjustReflowInputForScrollbars(
     ReflowInput* aReflowInput) const {
   // Get our prinicpal child frame and see if we're scrollable
   nsIFrame* kidFrame = mFrames.FirstChild();
-  nsIScrollableFrame* scrollingFrame = do_QueryFrame(kidFrame);
 
-  if (scrollingFrame) {
+  if (ScrollContainerFrame* scrollContainerFrame = do_QueryFrame(kidFrame)) {
     WritingMode wm = aReflowInput->GetWritingMode();
-    LogicalMargin scrollbars(wm, scrollingFrame->GetActualScrollbarSizes());
+    LogicalMargin scrollbars(wm,
+                             scrollContainerFrame->GetActualScrollbarSizes());
     aReflowInput->SetComputedISize(
         aReflowInput->ComputedISize() - scrollbars.IStartEnd(wm),
         ReflowInput::ResetResizeFlags::No);
@@ -325,19 +307,8 @@ nsPoint ViewportFrame::AdjustReflowInputForScrollbars(
 
 nsRect ViewportFrame::AdjustReflowInputAsContainingBlock(
     ReflowInput* aReflowInput) const {
-#ifdef DEBUG
-  nsPoint offset =
-#endif
-      AdjustReflowInputForScrollbars(aReflowInput);
-
-  NS_ASSERTION(GetAbsoluteContainingBlock()->GetChildList().IsEmpty() ||
-                   (offset.x == 0 && offset.y == 0),
-               "We don't handle correct positioning of fixed frames with "
-               "scrollbars in odd positions");
-
-  nsRect rect(0, 0, aReflowInput->ComputedWidth(),
-              aReflowInput->ComputedHeight());
-
+  const nsPoint origin = AdjustReflowInputForScrollbars(aReflowInput);
+  nsRect rect(origin, aReflowInput->ComputedPhysicalSize());
   rect.SizeTo(AdjustViewportSizeForFixedPosition(rect));
 
   return rect;
@@ -349,7 +320,6 @@ void ViewportFrame::Reflow(nsPresContext* aPresContext,
                            nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("ViewportFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
   NS_FRAME_TRACE_REFLOW_IN("ViewportFrame::Reflow");
 
@@ -360,7 +330,7 @@ void ViewportFrame::Reflow(nsPresContext* aPresContext,
   // Set our size up front, since some parts of reflow depend on it
   // being already set.  Note that the computed height may be
   // unconstrained; that's ok.  Consumers should watch out for that.
-  SetSize(nsSize(aReflowInput.ComputedWidth(), aReflowInput.ComputedHeight()));
+  SetSize(aReflowInput.ComputedPhysicalSize());
 
   // Reflow the main content first so that the placeholders of the
   // fixed-position frames will be in the right places on an initial

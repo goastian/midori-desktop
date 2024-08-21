@@ -124,8 +124,9 @@ gfx::IntRectTyped<TargetUnits> ViewAs(
 template <class TargetUnits, class SourceUnits>
 gfx::MarginTyped<TargetUnits> ViewAs(
     const gfx::MarginTyped<SourceUnits>& aMargin, PixelCastJustification) {
-  return gfx::MarginTyped<TargetUnits>(aMargin.top, aMargin.right,
-                                       aMargin.bottom, aMargin.left);
+  return gfx::MarginTyped<TargetUnits>(aMargin.top.value, aMargin.right.value,
+                                       aMargin.bottom.value,
+                                       aMargin.left.value);
 }
 template <class TargetUnits, class SourceUnits>
 gfx::IntMarginTyped<TargetUnits> ViewAs(
@@ -173,7 +174,7 @@ template <class TargetMatrix, class SourceMatrixSourceUnits,
 TargetMatrix ViewAs(const gfx::Matrix4x4Typed<SourceMatrixSourceUnits,
                                               SourceMatrixTargetUnits>& aMatrix,
                     PixelCastJustification) {
-  return TargetMatrix::FromUnknownMatrix(aMatrix.ToUnknownMatrix());
+  return aMatrix.template Cast<TargetMatrix>();
 }
 template <class TargetMatrix, class SourceMatrixSourceUnits,
           class SourceMatrixTargetUnits>
@@ -182,7 +183,7 @@ Maybe<TargetMatrix> ViewAs(
                                     SourceMatrixTargetUnits>>& aMatrix,
     PixelCastJustification) {
   if (aMatrix.isSome()) {
-    return Some(TargetMatrix::FromUnknownMatrix(aMatrix->ToUnknownMatrix()));
+    return Some(aMatrix->template Cast<TargetMatrix>());
   }
   return Nothing();
 }
@@ -208,6 +209,10 @@ Maybe<gfx::Matrix4x4> ToUnknownMatrix(
 // Convenience functions for casting untyped entities to typed entities.
 // Using these functions does not require a justification, but once we convert
 // all code to use strongly typed units they should not be needed any longer.
+template <class TargetUnits>
+gfx::CoordTyped<TargetUnits> ViewAs(const gfx::Coord& aCoord) {
+  return gfx::CoordTyped<TargetUnits>(aCoord.value);
+}
 template <class TargetUnits>
 gfx::PointTyped<TargetUnits> ViewAs(const gfxPoint& aPoint) {
   return gfx::PointTyped<TargetUnits>(aPoint.x, aPoint.y);

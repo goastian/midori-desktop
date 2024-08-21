@@ -207,7 +207,11 @@ void nsContainerFrame::SafelyDestroyFrameListProp(
   // delete the property -- that's why we fetch the property again before
   // removing each frame rather than fetching it once and iterating the list.
   while (nsFrameList* frameList = GetProperty(aProp)) {
-    nsIFrame* frame = frameList->RemoveFirstChild();
+    // Note: Similar to nsFrameList::DestroyFrames(), we remove the frames in
+    // reverse order to avoid unnecessary updates to the first-continuation and
+    // first-in-flow cache. If we delete them from front to back, updating the
+    // cache has a O(n^2) time complexity.
+    nsIFrame* frame = frameList->RemoveLastChild();
     if (MOZ_LIKELY(frame)) {
       frame->Destroy(aContext);
     } else {
@@ -270,15 +274,13 @@ void nsContainerFrame::Destroy(DestroyContext& aContext) {
     });
 
     // Destroy frames on the auxiliary frame lists and delete the lists.
-    nsPresContext* pc = PresContext();
-    mozilla::PresShell* presShell = pc->PresShell();
+    mozilla::PresShell* presShell = PresShell();
     if (hasO) {
       SafelyDestroyFrameListProp(aContext, presShell, OverflowProperty());
     }
 
-    MOZ_ASSERT(
-        IsFrameOfType(eCanContainOverflowContainers) || !(hasOC || hasEOC),
-        "this type of frame shouldn't have overflow containers");
+    MOZ_ASSERT(CanContainOverflowContainers() || !(hasOC || hasEOC),
+               "this type of frame shouldn't have overflow containers");
     if (hasOC) {
       SafelyDestroyFrameListProp(aContext, presShell,
                                  OverflowContainersProperty());
@@ -339,13 +341,13 @@ void nsContainerFrame::GetChildLists(nsTArray<ChildList>* aLists) const {
       reinterpret_cast<L>(aValue)->AppendIfNonempty(aLists,
                                                     FrameChildListID::Overflow);
     } else if (aProp == OverflowContainersProperty()) {
-      MOZ_ASSERT(IsFrameOfType(nsIFrame::eCanContainOverflowContainers),
+      MOZ_ASSERT(CanContainOverflowContainers(),
                  "found unexpected OverflowContainersProperty");
       Unused << this;  // silence clang -Wunused-lambda-capture in opt builds
       reinterpret_cast<L>(aValue)->AppendIfNonempty(
           aLists, FrameChildListID::OverflowContainers);
     } else if (aProp == ExcessOverflowContainersProperty()) {
-      MOZ_ASSERT(IsFrameOfType(nsIFrame::eCanContainOverflowContainers),
+      MOZ_ASSERT(CanContainOverflowContainers(),
                  "found unexpected ExcessOverflowContainersProperty");
       Unused << this;  // silence clang -Wunused-lambda-capture in opt builds
       reinterpret_cast<L>(aValue)->AppendIfNonempty(
@@ -782,7 +784,7 @@ void nsContainerFrame::SyncFrameViewAfterReflow(nsPresContext* aPresContext,
   if (!(aFlags & ReflowChildFlags::NoSizeView)) {
     nsViewManager* vm = aView->GetViewManager();
 
-    vm->ResizeView(aView, aInkOverflowArea, true);
+    vm->ResizeView(aView, aInkOverflowArea);
   }
 }
 
@@ -816,9 +818,7 @@ LogicalSize nsContainerFrame::ComputeAutoSize(
   LogicalSize result(aWM, 0xdeadbeef, NS_UNCONSTRAINEDSIZE);
   nscoord availBased =
       aAvailableISize - aMargin.ISize(aWM) - aBorderPadding.ISize(aWM);
-  // replaced elements always shrink-wrap
-  if (aFlags.contains(ComputeSizeFlag::ShrinkWrap) ||
-      IsFrameOfType(eReplaced)) {
+  if (aFlags.contains(ComputeSizeFlag::ShrinkWrap)) {
     // Only bother computing our 'auto' ISize if the result will be used.
     const auto& styleISize = aSizeOverrides.mStyleISize
                                  ? *aSizeOverrides.mStyleISize
@@ -960,9 +960,6 @@ void nsContainerFrame::PositionChildViews(nsIFrame* aFrame) {
   // Currently only nsMenuFrame has a popupList and during layout will adjust
   // the view manually to position the popup.
   for (const auto& [list, listID] : aFrame->ChildLists()) {
-    if (listID == FrameChildListID::Popup) {
-      continue;
-    }
     for (nsIFrame* childFrame : list) {
       // Position the frame's view (if it has one) otherwise recursively
       // process its children
@@ -975,20 +972,13 @@ void nsContainerFrame::PositionChildViews(nsIFrame* aFrame) {
   }
 }
 
-/**
- * De-optimize function to work around a VC2017 15.5+ compiler bug:
- * https://bugzil.la/1424281#c12
- */
-#if defined(_MSC_VER) && !defined(__clang__) && defined(_M_AMD64)
-#  pragma optimize("g", off)
-#endif
 void nsContainerFrame::FinishReflowChild(
     nsIFrame* aKidFrame, nsPresContext* aPresContext,
     const ReflowOutput& aDesiredSize, const ReflowInput* aReflowInput,
     const WritingMode& aWM, const LogicalPoint& aPos,
     const nsSize& aContainerSize, nsIFrame::ReflowChildFlags aFlags) {
   MOZ_ASSERT(!aReflowInput || aReflowInput->mFrame == aKidFrame);
-  MOZ_ASSERT(aReflowInput || aKidFrame->IsFrameOfType(eMathML) ||
+  MOZ_ASSERT(aReflowInput || aKidFrame->IsMathMLFrame() ||
                  aKidFrame->IsTableCellFrame(),
              "aReflowInput should be passed in almost all cases");
 
@@ -1134,7 +1124,6 @@ void nsContainerFrame::ReflowOverflowContainerChildren(
     // isn't dirty.
     if (shouldReflowAllKids || frame->IsSubtreeDirty() ||
         ScrollableOverflowExceedsAvailableBSize(frame)) {
-      // Get prev-in-flow
       nsIFrame* prevInFlow = frame->GetPrevInFlow();
       NS_ASSERTION(prevInFlow,
                    "overflow container frame must have a prev-in-flow");
@@ -1142,38 +1131,45 @@ void nsContainerFrame::ReflowOverflowContainerChildren(
           frame->HasAnyStateBits(NS_FRAME_IS_OVERFLOW_CONTAINER),
           "overflow container frame must have overflow container bit set");
       WritingMode wm = frame->GetWritingMode();
-      nsSize containerSize =
-          aContainerSize ? *aContainerSize
-                         : aReflowInput.AvailableSize(wm).GetPhysicalSize(wm);
-      LogicalRect prevRect = prevInFlow->GetLogicalRect(wm, containerSize);
-
-      // Initialize reflow params
-      LogicalSize availSpace(wm, prevRect.ISize(wm),
-                             aReflowInput.AvailableSize(wm).BSize(wm));
-      ReflowOutput desiredSize(aReflowInput);
+      // Note: aReflowInput's available inline-size is technically wrong for us
+      // to hand off to children here, because it doesn't account for the space
+      // that's been used for the container's margin/border/padding (and some
+      // other space that a concrete container type, e.g. fieldset and grid [1],
+      // might reserve before setting up the available space for their
+      // children). Since we don't have a way to query the specific available
+      // inline-size each container type used, nor do we know how the container
+      // computes its non-overflow-container children's inline-size, we just
+      // unconditionally override the frame's inline-size, so that the available
+      // inline-size for the children doesn't really matter anyway.
+      //
+      // [1] For example, fieldset uses its computed inline-size with padding as
+      // the available inline-size to reflow its inner child frame.
+      // https://searchfox.org/mozilla-central/rev/04f7743d94691fa24212fb43099f9d84c3bfc890/layout/forms/nsFieldSetFrame.cpp#535-536
+      const LogicalSize availSpace = aReflowInput.AvailableSize(wm);
 
       StyleSizeOverrides sizeOverride;
-      if (frame->IsFlexItem()) {
-        // A flex item's size is determined by the flex algorithm, not solely by
-        // its style. Thus, the following overrides are necessary.
-        //
-        // Use the overflow container flex item's prev-in-flow inline-size since
-        // this continuation's inline-size is the same.
-        sizeOverride.mStyleISize.emplace(
-            StyleSize::LengthPercentage(LengthPercentage::FromAppUnits(
-                frame->StylePosition()->mBoxSizing == StyleBoxSizing::Border
-                    ? prevRect.ISize(wm)
-                    : prevInFlow->ContentSize(wm).ISize(wm))));
+      // We override current continuation's inline-size by using the
+      // prev-in-flow's inline-size since both should be the same.
+      sizeOverride.mStyleISize.emplace(
+          StyleSize::LengthPercentage(LengthPercentage::FromAppUnits(
+              frame->StylePosition()->mBoxSizing == StyleBoxSizing::Border
+                  ? prevInFlow->ISize(wm)
+                  : prevInFlow->ContentISize(wm))));
 
+      if (frame->IsFlexItem()) {
         // An overflow container's block-size must be 0.
         sizeOverride.mStyleBSize.emplace(
             StyleSize::LengthPercentage(LengthPercentage::FromAppUnits(0)));
       }
+      ReflowOutput desiredSize(wm);
       ReflowInput reflowInput(aPresContext, aReflowInput, frame, availSpace,
                               Nothing(), {}, sizeOverride);
-
-      LogicalPoint pos(wm, prevRect.IStart(wm), 0);
+      const nsSize containerSize =
+          aContainerSize ? *aContainerSize
+                         : aReflowInput.AvailableSize(wm).GetPhysicalSize(wm);
+      const LogicalPoint pos(wm, prevInFlow->IStart(wm, containerSize), 0);
       nsReflowStatus frameStatus;
+
       ReflowChild(frame, aPresContext, desiredSize, reflowInput, wm, pos,
                   containerSize, aFlags, frameStatus, &tracker);
       FinishReflowChild(frame, aPresContext, desiredSize, &reflowInput, wm, pos,
@@ -1410,33 +1406,6 @@ void nsContainerFrame::PushChildrenToOverflow(nsIFrame* aFromChild,
   // Add the frames to our overflow list (let our next in flow drain
   // our overflow list when it is ready)
   SetOverflowFrames(mFrames.TakeFramesAfter(aPrevSibling));
-}
-
-void nsContainerFrame::PushChildren(nsIFrame* aFromChild,
-                                    nsIFrame* aPrevSibling) {
-  MOZ_ASSERT(aFromChild, "null pointer");
-  MOZ_ASSERT(aPrevSibling, "pushing first child");
-  MOZ_ASSERT(aPrevSibling->GetNextSibling() == aFromChild, "bad prev sibling");
-
-  // Disconnect aFromChild from its previous sibling
-  nsFrameList tail = mFrames.TakeFramesAfter(aPrevSibling);
-
-  nsContainerFrame* nextInFlow =
-      static_cast<nsContainerFrame*>(GetNextInFlow());
-  if (nextInFlow) {
-    // XXX This is not a very good thing to do. If it gets removed
-    // then remove the copy of this routine that doesn't do this from
-    // nsInlineFrame.
-    // When pushing and pulling frames we need to check for whether any
-    // views need to be reparented.
-    for (nsIFrame* f = aFromChild; f; f = f->GetNextSibling()) {
-      nsContainerFrame::ReparentFrameView(f, this, nextInFlow);
-    }
-    nextInFlow->mFrames.InsertFrames(nextInFlow, nullptr, std::move(tail));
-  } else {
-    // Add the frames to our overflow list
-    SetOverflowFrames(std::move(tail));
-  }
 }
 
 bool nsContainerFrame::PushIncompleteChildren(
@@ -1948,8 +1917,8 @@ void nsContainerFrame::MergeSortedFrameLists(nsFrameList& aDest,
     }
     nsIContent* srcContent = FrameForDOMPositionComparison(src)->GetContent();
     nsIContent* destContent = FrameForDOMPositionComparison(dest)->GetContent();
-    int32_t result = nsLayoutUtils::CompareTreePosition(srcContent, destContent,
-                                                        aCommonAncestor);
+    int32_t result = nsContentUtils::CompareTreePosition<TreeKind::Flat>(
+        srcContent, destContent, aCommonAncestor);
     if (MOZ_UNLIKELY(result == 0)) {
       // NOTE: we get here when comparing ::before/::after for the same element.
       if (MOZ_UNLIKELY(srcContent->IsGeneratedContentContainerForBefore())) {
@@ -2232,9 +2201,9 @@ LogicalSize nsContainerFrame::ComputeSizeWithIntrinsicDimensions(
   // This variable only gets meaningfully set if isFlexItem is true.  It
   // indicates which axis (in this frame's own WM) corresponds to its
   // flex container's main axis.
-  LogicalAxis flexMainAxis = eLogicalAxisBlock;
+  LogicalAxis flexMainAxis = LogicalAxis::Block;
   if (isFlexItem && nsFlexContainerFrame::IsItemInlineAxisMainAxis(this)) {
-    flexMainAxis = eLogicalAxisInline;
+    flexMainAxis = LogicalAxis::Inline;
   }
 
   // Handle intrinsic sizes and their interaction with
@@ -2294,8 +2263,8 @@ LogicalSize nsContainerFrame::ComputeSizeWithIntrinsicDimensions(
                               aSizeOverrides, aFlags)
                 .mISize;
   } else if (MOZ_UNLIKELY(isGridItem) &&
-             !parentFrame->IsMasonry(isOrthogonal ? eLogicalAxisBlock
-                                                  : eLogicalAxisInline)) {
+             !parentFrame->IsMasonry(isOrthogonal ? LogicalAxis::Block
+                                                  : LogicalAxis::Inline)) {
     MOZ_ASSERT(!IsTrueOverflowContainer());
     // 'auto' inline-size for grid-level box - apply 'stretch' as needed:
     auto cbSize = aCBSize.ISize(aWM);
@@ -2322,7 +2291,7 @@ LogicalSize nsContainerFrame::ComputeSizeWithIntrinsicDimensions(
   const auto& maxISizeCoord = stylePos->MaxISize(aWM);
 
   if (!maxISizeCoord.IsNone() &&
-      !(isFlexItem && flexMainAxis == eLogicalAxisInline)) {
+      !(isFlexItem && flexMainAxis == LogicalAxis::Inline)) {
     maxISize = ComputeISizeValue(aRenderingContext, aWM, aCBSize,
                                  boxSizingAdjust, boxSizingToMarginEdgeISize,
                                  maxISizeCoord, aSizeOverrides, aFlags)
@@ -2338,7 +2307,7 @@ LogicalSize nsContainerFrame::ComputeSizeWithIntrinsicDimensions(
   const auto& minISizeCoord = stylePos->MinISize(aWM);
 
   if (!minISizeCoord.IsAuto() &&
-      !(isFlexItem && flexMainAxis == eLogicalAxisInline)) {
+      !(isFlexItem && flexMainAxis == LogicalAxis::Inline)) {
     minISize = ComputeISizeValue(aRenderingContext, aWM, aCBSize,
                                  boxSizingAdjust, boxSizingToMarginEdgeISize,
                                  minISizeCoord, aSizeOverrides, aFlags)
@@ -2357,8 +2326,8 @@ LogicalSize nsContainerFrame::ComputeSizeWithIntrinsicDimensions(
                                              boxSizingAdjust.BSize(aWM),
                                              styleBSize.AsLengthPercentage());
   } else if (MOZ_UNLIKELY(isGridItem) &&
-             !parentFrame->IsMasonry(isOrthogonal ? eLogicalAxisInline
-                                                  : eLogicalAxisBlock)) {
+             !parentFrame->IsMasonry(isOrthogonal ? LogicalAxis::Inline
+                                                  : LogicalAxis::Block)) {
     MOZ_ASSERT(!IsTrueOverflowContainer());
     // 'auto' block-size for grid-level box - apply 'stretch' as needed:
     auto cbSize = aCBSize.BSize(aWM);
@@ -2385,7 +2354,7 @@ LogicalSize nsContainerFrame::ComputeSizeWithIntrinsicDimensions(
   const auto& maxBSizeCoord = stylePos->MaxBSize(aWM);
 
   if (!nsLayoutUtils::IsAutoBSize(maxBSizeCoord, aCBSize.BSize(aWM)) &&
-      !(isFlexItem && flexMainAxis == eLogicalAxisBlock)) {
+      !(isFlexItem && flexMainAxis == LogicalAxis::Block)) {
     maxBSize = nsLayoutUtils::ComputeBSizeValue(
         aCBSize.BSize(aWM), boxSizingAdjust.BSize(aWM),
         maxBSizeCoord.AsLengthPercentage());
@@ -2396,7 +2365,7 @@ LogicalSize nsContainerFrame::ComputeSizeWithIntrinsicDimensions(
   const auto& minBSizeCoord = stylePos->MinBSize(aWM);
 
   if (!nsLayoutUtils::IsAutoBSize(minBSizeCoord, aCBSize.BSize(aWM)) &&
-      !(isFlexItem && flexMainAxis == eLogicalAxisBlock)) {
+      !(isFlexItem && flexMainAxis == LogicalAxis::Block)) {
     minBSize = nsLayoutUtils::ComputeBSizeValue(
         aCBSize.BSize(aWM), boxSizingAdjust.BSize(aWM),
         minBSizeCoord.AsLengthPercentage());
@@ -2420,8 +2389,7 @@ LogicalSize nsContainerFrame::ComputeSizeWithIntrinsicDimensions(
         tentISize = intrinsicISize;
       } else if (hasIntrinsicBSize && aspectRatio) {
         tentISize = aspectRatio.ComputeRatioDependentSize(
-            LogicalAxis::eLogicalAxisInline, aWM, intrinsicBSize,
-            boxSizingAdjust);
+            LogicalAxis::Inline, aWM, intrinsicBSize, boxSizingAdjust);
       } else if (aspectRatio) {
         tentISize =
             aCBSize.ISize(aWM) - boxSizingToMarginEdgeISize;  // XXX scrollbar?
@@ -2444,7 +2412,7 @@ LogicalSize nsContainerFrame::ComputeSizeWithIntrinsicDimensions(
         tentBSize = intrinsicBSize;
       } else if (aspectRatio) {
         tentBSize = aspectRatio.ComputeRatioDependentSize(
-            LogicalAxis::eLogicalAxisBlock, aWM, tentISize, boxSizingAdjust);
+            LogicalAxis::Block, aWM, tentISize, boxSizingAdjust);
       } else {
         tentBSize = fallbackIntrinsicSize.BSize(aWM);
       }
@@ -2462,29 +2430,29 @@ LogicalSize nsContainerFrame::ComputeSizeWithIntrinsicDimensions(
         } else if (stretchB == eStretchPreservingRatio && aspectRatio) {
           // 'normal' / 'stretch'
           tentBSize = aspectRatio.ComputeRatioDependentSize(
-              LogicalAxis::eLogicalAxisBlock, aWM, iSize, boxSizingAdjust);
+              LogicalAxis::Block, aWM, iSize, boxSizingAdjust);
         }
       } else if (stretchB == eStretch) {
         tentBSize = bSize;  // 'stretch' / * (except 'stretch')
         if (stretchI == eStretchPreservingRatio && aspectRatio) {
           // 'stretch' / 'normal'
           tentISize = aspectRatio.ComputeRatioDependentSize(
-              LogicalAxis::eLogicalAxisInline, aWM, bSize, boxSizingAdjust);
+              LogicalAxis::Inline, aWM, bSize, boxSizingAdjust);
         }
       } else if (stretchI == eStretchPreservingRatio && aspectRatio) {
         tentISize = iSize;  // * (except 'stretch') / 'normal'
         tentBSize = aspectRatio.ComputeRatioDependentSize(
-            LogicalAxis::eLogicalAxisBlock, aWM, iSize, boxSizingAdjust);
+            LogicalAxis::Block, aWM, iSize, boxSizingAdjust);
         if (stretchB == eStretchPreservingRatio && tentBSize > bSize) {
           // Stretch within the CB size with preserved intrinsic ratio.
           tentBSize = bSize;  // 'normal' / 'normal'
           tentISize = aspectRatio.ComputeRatioDependentSize(
-              LogicalAxis::eLogicalAxisInline, aWM, bSize, boxSizingAdjust);
+              LogicalAxis::Inline, aWM, bSize, boxSizingAdjust);
         }
       } else if (stretchB == eStretchPreservingRatio && aspectRatio) {
         tentBSize = bSize;  // 'normal' / * (except 'normal' and 'stretch')
         tentISize = aspectRatio.ComputeRatioDependentSize(
-            LogicalAxis::eLogicalAxisInline, aWM, bSize, boxSizingAdjust);
+            LogicalAxis::Inline, aWM, bSize, boxSizingAdjust);
       }
 
       // ComputeAutoSizeWithIntrinsicDimensions preserves the ratio when
@@ -2511,7 +2479,7 @@ LogicalSize nsContainerFrame::ComputeSizeWithIntrinsicDimensions(
       if (stretchI != eStretch) {
         if (aspectRatio) {
           iSize = aspectRatio.ComputeRatioDependentSize(
-              LogicalAxis::eLogicalAxisInline, aWM, bSize, boxSizingAdjust);
+              LogicalAxis::Inline, aWM, bSize, boxSizingAdjust);
         } else if (hasIntrinsicISize) {
           if (!(aFlags.contains(ComputeSizeFlag::IClampMarginBoxMinSize) &&
                 intrinsicISize > iSize)) {
@@ -2529,8 +2497,8 @@ LogicalSize nsContainerFrame::ComputeSizeWithIntrinsicDimensions(
       iSize = NS_CSS_MINMAX(iSize, minISize, maxISize);
       if (stretchB != eStretch) {
         if (aspectRatio) {
-          bSize = aspectRatio.ComputeRatioDependentSize(
-              LogicalAxis::eLogicalAxisBlock, aWM, iSize, boxSizingAdjust);
+          bSize = aspectRatio.ComputeRatioDependentSize(LogicalAxis::Block, aWM,
+                                                        iSize, boxSizingAdjust);
         } else if (hasIntrinsicBSize) {
           if (!(aFlags.contains(ComputeSizeFlag::BClampMarginBoxMinSize) &&
                 intrinsicBSize > bSize)) {
@@ -2651,8 +2619,7 @@ bool nsContainerFrame::ShouldAvoidBreakInside(
 
 void nsContainerFrame::ConsiderChildOverflow(OverflowAreas& aOverflowAreas,
                                              nsIFrame* aChildFrame) {
-  if (StyleDisplay()->IsContainLayout() &&
-      IsFrameOfType(eSupportsContainLayoutAndPaint)) {
+  if (StyleDisplay()->IsContainLayout() && SupportsContainLayoutAndPaint()) {
     // If we have layout containment and are not a non-atomic, inline-level
     // principal box, we should only consider our child's ink overflow,
     // leaving the scrollable regions of the parent unaffected.

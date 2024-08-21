@@ -90,7 +90,7 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
                               nsIContent** aContent) final;
   nsresult HandleEvent(nsPresContext*, mozilla::WidgetGUIEvent*,
                        nsEventStatus*) override;
-  mozilla::Maybe<Cursor> GetCursor(const nsPoint&) override;
+  Cursor GetCursor(const nsPoint&) override;
   nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
                             int32_t aModType) final;
 
@@ -114,11 +114,6 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
 #ifdef ACCESSIBILITY
   mozilla::a11y::AccType AccessibleType() override;
 #endif
-
-  bool IsFrameOfType(uint32_t aFlags) const final {
-    return nsAtomicContainerFrame::IsFrameOfType(
-        aFlags & ~(nsIFrame::eReplaced | nsIFrame::eReplacedSizing));
-  }
 
 #ifdef DEBUG_FRAME_DUMP
   nsresult GetFrameName(nsAString& aResult) const override;
@@ -204,6 +199,9 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
   // Creates a suitable continuing frame for this frame.
   nsImageFrame* CreateContinuingFrame(mozilla::PresShell*,
                                       ComputedStyle*) const;
+
+  mozilla::AspectRatio ComputeIntrinsicRatioForImage(
+      imgIContainer*, bool aIgnoreContainment = false) const;
 
  private:
   friend nsIFrame* NS_NewImageFrame(mozilla::PresShell*, ComputedStyle*);
@@ -296,6 +294,11 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
   void OnSizeAvailable(imgIRequest* aRequest, imgIContainer* aImage);
   void OnFrameUpdate(imgIRequest* aRequest, const nsIntRect* aRect);
   void OnLoadComplete(imgIRequest* aRequest, nsresult aStatus);
+  mozilla::IntrinsicSize ComputeIntrinsicSize(
+      bool aIgnoreContainment = false) const;
+  // Whether the image frame should use the mapped aspect ratio from width=""
+  // and height="".
+  bool ShouldUseMappedAspectRatio() const;
 
   /**
    * Notification that aRequest will now be the current request.
@@ -313,20 +316,16 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
 #endif
 
   /**
-   * Computes the predicted dest rect that we'll draw into, in app units, based
-   * upon the provided frame content box. (The content box is what
-   * nsDisplayImage::GetBounds() returns.)
-   * The result is not necessarily contained in the frame content box.
+   * Computes the dest rect that we'll draw into, in app units, based upon the
+   * provided frame content box. The result is not necessarily contained in the
+   * frame content box.
    */
-  nsRect PredictedDestRect(const nsRect& aFrameContentBox);
+  nsRect GetDestRect(const nsRect& aFrameContentBox,
+                     nsPoint* aAnchorPoint = nullptr);
 
  private:
   nscoord GetContinuationOffset() const;
   bool ShouldDisplaySelection();
-
-  // Whether the image frame should use the mapped aspect ratio from width=""
-  // and height="".
-  bool ShouldUseMappedAspectRatio() const;
 
   // Recalculate mIntrinsicSize from the image.
   bool UpdateIntrinsicSize();

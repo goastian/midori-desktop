@@ -37,9 +37,7 @@ class nsMathMLContainerFrame : public nsContainerFrame, public nsMathMLFrame {
  public:
   nsMathMLContainerFrame(ComputedStyle* aStyle, nsPresContext* aPresContext,
                          ClassID aID)
-      : nsContainerFrame(aStyle, aPresContext, aID),
-        mIntrinsicWidth(NS_INTRINSIC_ISIZE_UNKNOWN),
-        mBlockStartAscent(0) {}
+      : nsContainerFrame(aStyle, aPresContext, aID) {}
 
   NS_DECL_QUERYFRAME_TARGET(nsMathMLContainerFrame)
   NS_DECL_QUERYFRAME
@@ -64,13 +62,6 @@ class nsMathMLContainerFrame : public nsContainerFrame, public nsMathMLFrame {
 
   // --------------------------------------------------------------------------
   // Overloaded nsContainerFrame methods -- see documentation in nsIFrame.h
-
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    if (aFlags & (eLineParticipant | eSupportsContainLayoutAndPaint)) {
-      return false;
-    }
-    return nsContainerFrame::IsFrameOfType(aFlags & ~eMathML);
-  }
 
   void AppendFrames(ChildListID aListID, nsFrameList&& aFrameList) override;
 
@@ -206,16 +197,13 @@ class nsMathMLContainerFrame : public nsContainerFrame, public nsMathMLFrame {
 
  public:
   /*
-   * Helper to render the frame as a default mrow-like container or as a visual
-   * feedback to the user when an error (typically invalid markup) was
-   * encountered during reflow. Parameters are the same as Place().
+   * Helper to render the frame as a default mrow-like container when an error
+   * (typically invalid markup) was encountered during reflow. Parameters are
+   * the same as Place().
    */
-  nsresult PlaceForError(DrawTarget* aDrawTarget, bool aPlaceOrigin,
-                         ReflowOutput& aDesiredSize);
+  nsresult PlaceAsMrow(DrawTarget* aDrawTarget, bool aPlaceOrigin,
+                       ReflowOutput& aDesiredSize);
 
-  // error handlers to provide a visual feedback to the user when an error
-  // (typically invalid markup) was encountered during reflow.
-  nsresult ReflowError(DrawTarget* aDrawTarget, ReflowOutput& aDesiredSize);
   /*
    * Helper to call ReportErrorToConsole for parse errors involving
    * attribute/value pairs.
@@ -351,13 +339,13 @@ class nsMathMLContainerFrame : public nsContainerFrame, public nsMathMLFrame {
   static void DidReflowChildren(nsIFrame* aFirst, nsIFrame* aStop = nullptr);
 
   /**
-   * Recompute mIntrinsicWidth if it's not already up to date.
+   * Recompute mIntrinsicISize if it's not already up to date.
    */
-  void UpdateIntrinsicWidth(gfxContext* aRenderingContext);
+  void UpdateIntrinsicISize(gfxContext* aRenderingContext);
 
-  nscoord mIntrinsicWidth;
+  nscoord mIntrinsicISize = NS_INTRINSIC_ISIZE_UNKNOWN;
 
-  nscoord mBlockStartAscent;
+  nscoord mBlockStartAscent = 0;
 
  private:
   class RowChildFrameIterator;
@@ -431,10 +419,6 @@ class nsMathMLmathBlockFrame final : public nsBlockFrame {
     }
   }
 
-  virtual bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsBlockFrame::IsFrameOfType(aFlags & ~nsIFrame::eMathML);
-  }
-
   // See nsIMathMLFrame.h
   bool IsMrowLike() {
     return mFrames.FirstChild() != mFrames.LastChild() || !mFrames.FirstChild();
@@ -443,12 +427,7 @@ class nsMathMLmathBlockFrame final : public nsBlockFrame {
  protected:
   explicit nsMathMLmathBlockFrame(ComputedStyle* aStyle,
                                   nsPresContext* aPresContext)
-      : nsBlockFrame(aStyle, aPresContext, kClassID) {
-    // We should always have a float manager.  Not that things can really try
-    // to float out of us anyway, but we need one for line layout.
-    // Bug 1301881: Do we still need to set NS_BLOCK_FLOAT_MGR?
-    // AddStateBits(NS_BLOCK_FLOAT_MGR);
-  }
+      : nsBlockFrame(aStyle, aPresContext, kClassID) {}
   virtual ~nsMathMLmathBlockFrame() = default;
 };
 
@@ -504,10 +483,6 @@ class nsMathMLmathInlineFrame final : public nsInlineFrame,
     if (MOZ_LIKELY(aListID == mozilla::FrameChildListID::Principal)) {
       nsMathMLContainerFrame::ReLayoutChildren(this);
     }
-  }
-
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsInlineFrame::IsFrameOfType(aFlags & ~nsIFrame::eMathML);
   }
 
   bool IsMrowLike() override {

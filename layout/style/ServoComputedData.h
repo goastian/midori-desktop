@@ -21,8 +21,9 @@ struct ServoWritingMode {
   uint8_t mBits;
 };
 
-struct ServoCustomPropertiesMap {
-  uintptr_t mPtr;
+struct ServoComputedCustomProperties {
+  uintptr_t mInherited;
+  uintptr_t mNonInherited;
 };
 
 struct ServoRuleNode {
@@ -72,8 +73,18 @@ class ServoComputedData {
   mozilla::ServoWritingMode WritingMode() const { return writing_mode; }
 
  private:
-  mozilla::ServoCustomPropertiesMap custom_properties;
+  mozilla::ServoComputedCustomProperties custom_properties;
   mozilla::ServoWritingMode writing_mode;
+  /// The effective zoom (as in, the CSS zoom property) of this style.
+  ///
+  /// zoom is a non-inherited property, yet changes to it propagate through in
+  /// an inherited fashion, and all length resolution code need to access it.
+  /// This could, in theory, be stored in any other inherited struct, but it's
+  /// weird to have an inherited struct field depend on a non inherited
+  /// property.
+  ///
+  /// So the style object itself is probably a reasonable place to store it.
+  mozilla::StyleZoom effective_zoom;
   mozilla::StyleComputedValueFlags flags;
   /// The rule node representing the ordered list of rules matched for this
   /// node.  Can be None for default values and text nodes.  This is

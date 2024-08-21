@@ -67,7 +67,7 @@ class SVGFilterInstance {
   using IntRect = gfx::IntRect;
   using SourceSurface = gfx::SourceSurface;
   using FilterPrimitiveDescription = gfx::FilterPrimitiveDescription;
-  using SVGFE = dom::SVGFE;
+  using SVGFilterPrimitiveElement = dom::SVGFilterPrimitiveElement;
   using UserSpaceMetrics = dom::UserSpaceMetrics;
 
  public:
@@ -80,7 +80,7 @@ class SVGFilterInstance {
    *   the caller. The caller may decide to override the actual SVG bbox.
    */
   SVGFilterInstance(
-      const StyleFilter& aFilter, nsIFrame* aTargetFrame,
+      const StyleFilter& aFilter, SVGFilterFrame* aFilterFrame,
       nsIContent* aTargetContent, const UserSpaceMetrics& aMetrics,
       const gfxRect& aTargetBBox,
       const gfx::MatrixScalesDouble& aUserSpaceToFilterSpaceScale);
@@ -131,15 +131,10 @@ class SVGFilterInstance {
 
  private:
   /**
-   * Finds the filter frame associated with this SVG filter.
-   */
-  SVGFilterFrame* GetFilterFrame(nsIFrame* aTargetFrame);
-
-  /**
    * Computes the filter primitive subregion for the given primitive.
    */
   IntRect ComputeFilterPrimitiveSubregion(
-      SVGFE* aFilterElement,
+      SVGFilterPrimitiveElement* aFilterElement,
       const nsTArray<FilterPrimitiveDescription>& aPrimitiveDescrs,
       const nsTArray<int32_t>& aInputIndices);
 
@@ -184,7 +179,7 @@ class SVGFilterInstance {
    * FilterPrimitiveDescription representing "another-primitive".
    */
   nsresult GetSourceIndices(
-      SVGFE* aPrimitiveElement,
+      SVGFilterPrimitiveElement* aPrimitiveElement,
       nsTArray<FilterPrimitiveDescription>& aPrimitiveDescrs,
       const nsTHashMap<nsStringHashKey, int32_t>& aImageTable,
       nsTArray<int32_t>& aSourceIndices);

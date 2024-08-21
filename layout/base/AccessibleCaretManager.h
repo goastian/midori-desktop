@@ -115,10 +115,6 @@ class AccessibleCaretManager {
   MOZ_CAN_RUN_SCRIPT
   virtual void OnKeyboardEvent();
 
-  // The canvas frame holding the accessible caret anonymous content elements
-  // was reconstructed, resulting in the content elements getting cloned.
-  virtual void OnFrameReconstruction();
-
   // Update the manager with the last input source that was observed. This
   // is used in part to determine if the carets should be shown or hidden.
   void SetLastInputSource(uint16_t aInputSource);
@@ -213,7 +209,7 @@ class AccessibleCaretManager {
   MOZ_CAN_RUN_SCRIPT void SetSelectionDragState(bool aState) const;
 
   // Return true if the candidate string is a phone number.
-  bool IsPhoneNumber(nsAString& aCandidate) const;
+  bool IsPhoneNumber(const nsAString& aCandidate) const;
 
   // Extend the current selection forwards and backwards if it's already a
   // phone number.

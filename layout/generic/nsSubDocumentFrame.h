@@ -44,12 +44,6 @@ class nsSubDocumentFrame final : public nsAtomicContainerFrame,
 
   NS_DECL_QUERYFRAME
 
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsAtomicContainerFrame::IsFrameOfType(
-        aFlags & ~(nsIFrame::eReplaced | nsIFrame::eReplacedSizing |
-                   nsIFrame::eReplacedContainsBlock));
-  }
-
   void Init(nsIContent* aContent, nsContainerFrame* aParent,
             nsIFrame* aPrevInFlow) override;
 
@@ -99,15 +93,23 @@ class nsSubDocumentFrame final : public nsAtomicContainerFrame,
   mozilla::a11y::AccType AccessibleType() override;
 #endif
 
+  mozilla::IntrinsicSize ComputeIntrinsicSize(
+      bool aIgnoreContainment = false) const;
+
   nsIDocShell* GetDocShell() const;
   nsresult BeginSwapDocShells(nsIFrame* aOther);
   void EndSwapDocShells(nsIFrame* aOther);
+
+  static void InsertViewsInReverseOrder(nsView* aSibling, nsView* aParent);
+  static void EndSwapDocShellsForViews(nsView* aView);
+
   nsView* EnsureInnerView();
   nsPoint GetExtraOffset() const;
   nsIFrame* GetSubdocumentRootFrame();
   enum { IGNORE_PAINT_SUPPRESSION = 0x1 };
   mozilla::PresShell* GetSubdocumentPresShellForPainting(uint32_t aFlags);
   nsRect GetDestRect();
+  nsRect GetDestRect(const nsRect& aConstraintRect);
   mozilla::ScreenIntSize GetSubdocumentSize();
 
   // nsIReflowCallback
@@ -132,12 +134,6 @@ class nsSubDocumentFrame final : public nsAtomicContainerFrame,
   void ResetFrameLoader(RetainPaintData);
   void ClearRetainedPaintData();
 
-  void MaybeUpdateEmbedderColorScheme();
-
-  void MaybeUpdateRemoteStyle(ComputedStyle* aOldComputedStyle = nullptr);
-  void PropagateIsUnderHiddenEmbedderElementToSubView(
-      bool aIsUnderHiddenEmbedderElement);
-
   void ClearDisplayItems();
 
   void SubdocumentIntrinsicSizeOrRatioChanged();
@@ -153,7 +149,12 @@ class nsSubDocumentFrame final : public nsAtomicContainerFrame,
  protected:
   friend class AsyncFrameInit;
 
-  bool IsInline() { return mIsInline; }
+  void MaybeUpdateEmbedderColorScheme();
+  void MaybeUpdateRemoteStyle(ComputedStyle* aOldComputedStyle = nullptr);
+  void PropagateIsUnderHiddenEmbedderElement(bool aValue);
+  void UpdateEmbeddedBrowsingContextDependentData();
+
+  bool IsInline() const { return mIsInline; }
 
   nscoord GetIntrinsicBSize() {
     auto size = GetIntrinsicSize();

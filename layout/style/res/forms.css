@@ -15,6 +15,7 @@
   text-overflow: inherit;
   overflow: inherit;
   overflow-clip-box: inherit;
+  resize: inherit;
   /* Need to inherit border-radius too, so when the fieldset has rounded
      borders we don't leak out the corners for hit-testing purposes. */
   border-radius: inherit;
@@ -72,6 +73,8 @@ fieldset {
 
 label {
   cursor: default;
+  /* If you add declarations here, consider whether the select > label and file
+   * input label need them as well. */
 }
 
 /* Default inputs, text inputs, and selects */
@@ -84,9 +87,9 @@ input {
   appearance: auto;
   -moz-default-appearance: textfield;
   /* The sum of border and padding on block-start and block-end
-     must be the same here, for buttons, and for <select> (including its
-     internal padding magic) */
-  padding: 1px;
+     must be the same here, for buttons, and for <select> */
+  padding-block: 1px;
+  padding-inline: 2px;
   border: 2px inset ButtonBorder;
   background-color: Field;
   color: FieldText;
@@ -94,12 +97,6 @@ input {
   text-rendering: optimizeLegibility;
   cursor: text;
   overflow-clip-box: padding-box content-box;
-}
-
-@media (-moz-non-native-content-theme) {
-  input {
-    padding-inline: 2px;
-  }
 }
 
 textarea {
@@ -152,15 +149,9 @@ input, textarea, select, button, ::file-selector-button {
 ::placeholder,
 ::-moz-text-control-preview {
   /*
-   * Changing display to inline can leads to broken behaviour and will assert.
-   */
-  display: inline-block;
-
-  /*
    * Changing resize would display a broken behaviour and will assert.
    */
   resize: none;
-
   overflow: hidden;
 
   /*
@@ -177,6 +168,7 @@ input, textarea, select, button, ::file-selector-button {
 }
 
 ::placeholder {
+  -webkit-text-security: none;
   opacity: 0.54;
 }
 
@@ -189,10 +181,16 @@ input, textarea, select, button, ::file-selector-button {
 input::placeholder,
 input::-moz-text-control-editing-root,
 input::-moz-text-control-preview {
+  scrollbar-width: none;
+  resize: none;
   word-wrap: normal;
   white-space: pre;
   /* Make the line-height equal to the available height */
   line-height: -moz-block-height !important;
+}
+
+input[type=password] {
+  -moz-default-appearance: password-input;
 }
 
 input[type=password]::-moz-text-control-editing-root,
@@ -264,41 +262,39 @@ select:-moz-select-list-box {
 }
 
 select > button {
-  inline-size: 12px;
-  white-space: nowrap;
-  position: static;
+  padding: 0;
+  border: 0;
   appearance: auto;
   -moz-default-appearance: -moz-menulist-arrow-button;
+  pointer-events: none;
 
-  /* Make sure to size correctly if the combobox has a non-auto height. */
-  block-size: 100%;
-  box-sizing: border-box;
+  /* Draw the arrow in the select's color */
+  color: inherit;
 
-  /*
-    Make sure to align properly with the display frame.  Note that we
-    want the baseline of the combobox to match the baseline of the
-    display frame, so the dropmarker is what gets the vertical-align.
-  */
+  /* We don't want the button to grow the line-height */
+  font: inherit;
+  max-block-size: 100%;
+
+  /* Make sure to align properly with the display frame.  Note that we want the
+   * baseline of the combobox to match the baseline of the label, so the
+   * dropmarker is what gets the vertical-align. */
   vertical-align: top;
 }
 
-*|*::-moz-display-comboboxcontrol-frame {
-  content: inherit;
+select > label {
+  display: inline-block;
   overflow: clip;
-  color: unset;
-  white-space: nowrap;
-  text-align: unset;
-  user-select: none;
-  /* Make sure to size correctly if the combobox has a non-auto block-size. */
-  block-size: 100%;
-  /* Try to always display our own text */
-  min-inline-size: max-content;
-  box-sizing: border-box;
-  line-height: -moz-block-height;
+  pointer-events: none;
+  cursor: unset;
 }
 
 option[label]::before {
   content: attr(label);
+}
+
+select:-moz-select-list-box option,
+select:-moz-select-list-box optgroup {
+  line-height: normal !important;
 }
 
 option {
@@ -310,18 +306,15 @@ option {
 
   min-block-size: 1em;
   padding-block: 2px;
+  user-select: none;
   /*
    * Note that the "UA !important" tests in
    * layout/style/test/test_animations.html depend on this rule, because
    * they need some UA !important rule to test.  If this changes, use a
    * different one there.
    */
-  line-height: normal !important;
-  user-select: none;
-  text-indent: 0;
   white-space: nowrap !important;
   word-wrap: normal !important;
-  text-align: match-parent;
 }
 
 select > option {
@@ -333,7 +326,7 @@ option:checked {
   color: -moz-cellhighlighttext;
 }
 
-select:focus option:checked {
+select:-moz-select-list-box:focus option:checked {
   background-color: SelectedItem !important;
   color: SelectedItemText !important;
 }
@@ -342,13 +335,10 @@ optgroup {
   display: block;
   float: none !important;
   position: static !important;
-  font: -moz-list;
-  line-height: normal !important;
   font-style: italic;
   font-weight: bold;
   font-size: unset;
   user-select: none;
-  text-indent: 0;
   white-space: nowrap !important;
   word-wrap: normal !important;
 }
@@ -361,7 +351,7 @@ optgroup > option {
 
 optgroup:before {
   display: block;
-  content: attr(label);
+  content: "\200b" attr(label);
 }
 
 @media (-moz-platform: android) {
@@ -509,6 +499,7 @@ input:is([type=color], [type=reset], [type=button], [type=submit]) {
   cursor: default;
   box-sizing: border-box;
   user-select: none;
+  overflow-clip-box: padding-box;
 }
 
 /* Text-related properties for buttons: these ones are not shared with
@@ -520,31 +511,25 @@ input:is([type=reset], [type=button], [type=submit]) {
   font: -moz-button;
   white-space: pre;
   text-align: center;
-  overflow-clip-box: padding-box;
+  padding-inline: 4px;
 }
 
 input[type=color] {
   inline-size: 64px;
   block-size: 32px;
+  padding: 4px;
 }
 
-@media (-moz-non-native-content-theme) {
-  button,
-  ::file-selector-button,
-  input:is([type=reset], [type=button], [type=submit]) {
-    padding-inline: 4px;
-  }
-
-  input[type=color] {
-    padding: 4px;
-  }
+/* https://github.com/whatwg/html/issues/9976 */
+input:not([type=image i], [type=range i], [type=checkbox i], [type=radio i]) {
+  overflow: clip !important;
+  overflow-clip-margin: 0px !important;
 }
 
 button,
 ::file-selector-button {
   /* Buttons should lay out like "normal" html, mostly */
   white-space: unset;
-  text-indent: 0;
   /* But no text-decoration reaching inside, by default */
   display: inline-block;
 }
@@ -629,7 +614,6 @@ select:is(:disabled, :disabled:active) > button {
 /* file selector */
 input[type=file] {
   white-space: nowrap !important;
-  overflow: hidden !important;
   overflow-clip-box: padding-box;
   color: unset;
 
@@ -648,10 +632,7 @@ input[type=file] > label {
   min-inline-size: 12em;
   text-align: match-parent;
 
-  color: unset;
-  font-size: unset;
-  letter-spacing: unset;
-
+  cursor: unset;
   user-select: none;
   unicode-bidi: plaintext;
 }
@@ -677,24 +658,17 @@ input[type=file] > label {
   *  inherit into the ':-moz-button-content' pseudo-element.
   *
   * <select>:
-  *  inherit into the ':-moz-display-comboboxcontrol-frame' pseudo-element and
-  *  the <optgroup>'s ':before' pseudo-element, which is where the label of
-  *  the <optgroup> gets displayed. The <option>s don't use anonymous boxes,
-  *  so they need no special rules.
+  *  inherit into the label and the <optgroup>'s ':before' pseudo-element,
+  *  which is where the label of the <optgroup> gets displayed. The <option>s
+  *  don't use anonymous boxes, so they need no special rules.
   */
 ::placeholder,
 ::-moz-text-control-editing-root,
 *|*::-moz-button-content,
-*|*::-moz-display-comboboxcontrol-frame,
-optgroup:before {
+select > label,
+optgroup::before {
   unicode-bidi: inherit;
   text-overflow: inherit;
-}
-
-@media print {
-  input, textarea, select, button {
-    -moz-user-input: none !important;
-  }
 }
 
 progress {
@@ -712,7 +686,8 @@ progress {
   overflow: clip;
 }
 
-::-moz-progress-bar {
+progress::-moz-progress-bar,
+progress::slider-fill {
   /* Prevent styling that would change the type of frame we construct. */
   display: inline-block !important;
   float: none !important;
@@ -738,7 +713,8 @@ meter {
   overflow: clip;
 }
 
-::-moz-meter-bar {
+meter::-moz-meter-bar,
+meter::slider-fill {
   /* Block styles that would change the type of frame we construct. */
   display: inline-block !important;
   float: none !important;
@@ -751,15 +727,18 @@ meter {
   width: 100%;
 }
 
-:-moz-meter-optimum::-moz-meter-bar {
+meter:-moz-meter-optimum::-moz-meter-bar,
+meter:-moz-meter-optimum::slider-fill {
   /* green. */
   background: linear-gradient(#ad7, #ad7, #cea 20%, #7a3 45%, #7a3 55%);
 }
-:-moz-meter-sub-optimum::-moz-meter-bar {
+meter:-moz-meter-sub-optimum::-moz-meter-bar,
+meter:-moz-meter-sub-optimum::slider-fill {
   /* orange. */
   background: linear-gradient(#fe7, #fe7, #ffc 20%, #db3 45%, #db3 55%);
 }
-:-moz-meter-sub-sub-optimum::-moz-meter-bar {
+meter:-moz-meter-sub-sub-optimum::-moz-meter-bar,
+meter:-moz-meter-sub-sub-optimum::slider-fill {
   /* red. */
   background: linear-gradient(#f77, #f77, #fcc 20%, #d44 45%, #d44 55%);
 }
@@ -784,8 +763,12 @@ input[type=range] {
  *
  * If content authors want to have a vertical range, they will also need to
  * set the width/height of this pseudo-element.
+ *
+ * TODO(emilio, bug 1663819): Losen these restrictions once these
+ * pseudo-elements are better spec'd out.
  */
-input[type=range]::-moz-range-track {
+input[type=range]::-moz-range-track,
+input[type=range]::slider-track {
   /* Prevent styling that would change the type of frame we construct. */
   display: block !important;
   float: none !important;
@@ -797,7 +780,8 @@ input[type=range]::-moz-range-track {
   user-select: none !important;
 }
 
-input[type=range][orient=vertical]::-moz-range-track {
+input[type=range][orient=vertical]::-moz-range-track,
+input[type=range][orient=vertical]::slider-track {
   inline-size: 0.2em; /* same as block-size above */
   block-size: 100%;
 }
@@ -810,7 +794,8 @@ input[type=range][orient=vertical]::-moz-range-track {
  * property is ignored, and if the range range is vertical, the height property
  * is ignored.
  */
-input[type=range]::-moz-range-progress {
+input[type=range]::-moz-range-progress,
+input[type=range]::slider-fill {
   /* Prevent styling that would change the type of frame we construct. */
   display: block !important;
   float: none !important;
@@ -818,8 +803,7 @@ input[type=range]::-moz-range-progress {
   writing-mode: unset !important;
   direction: unset !important;
   /* Since one of width/height will be ignored, this just sets the "other"
-     dimension.
-   */
+     dimension. */
   width: 0.2em;
   height: 0.2em;
   /* Prevent nsIFrame::HandlePress setting mouse capture to this element. */
@@ -832,7 +816,8 @@ input[type=range]::-moz-range-progress {
  * logic to position it). Specifically the 'margin', 'top' and 'left'
  * properties are ignored.
  */
-input[type=range]::-moz-range-thumb {
+input[type=range]::-moz-range-thumb,
+input[type=range]::slider-thumb {
   /* Native theming is atomic for range. Set appearance on the range
    * to get rid of it. The thumb's appearance is fixed.
    */
@@ -855,7 +840,6 @@ input[type=range]::-moz-range-thumb {
 }
 
 input[type=number] {
-  appearance: auto;
   -moz-default-appearance: number-input;
 }
 
@@ -884,11 +868,6 @@ input[type=number]::-moz-number-spin-down {
 
 input[type=number]::-moz-number-spin-down {
   -moz-default-appearance: spinner-downbutton;
-}
-
-input[type=number] > div > div > div:hover {
-  /* Give some indication of hover state for the up/down buttons */
-  background-color: lightblue;
 }
 
 input::-moz-search-clear-button,
@@ -922,7 +901,6 @@ input:-moz-value-empty::-moz-search-clear-button {
 }
 
 input:is([type=date], [type=time], [type=datetime-local]) {
-  overflow: hidden !important;
   font-family: -moz-fixed;
   cursor: default;
 }
@@ -932,11 +910,7 @@ input:is([type=date], [type=time], [type=datetime-local]):is(:disabled, :read-on
 }
 
 input:autofill, select:autofill {
-  /* The idea behind using background-image instead of plain background-color
-   * is that it's less likely to be overridden by the page. */
-  background-image: linear-gradient(-moz-autofill-background, -moz-autofill-background);
-}
-
-input:-moz-autofill-preview, select:-moz-autofill-preview {
-  color: GrayText;
+  background-color: -moz-autofill-background !important;
+  background-image: none !important;
+  color: FieldText !important;
 }

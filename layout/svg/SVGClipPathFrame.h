@@ -36,7 +36,8 @@ class SVGClipPathFrame final : public SVGContainerFrame {
       : SVGContainerFrame(aStyle, aPresContext, kClassID),
         mIsBeingProcessed(false) {
     AddStateBits(NS_FRAME_IS_NONDISPLAY | NS_STATE_SVG_CLIPPATH_CHILD |
-                 NS_FRAME_MAY_BE_TRANSFORMED);
+                 NS_FRAME_MAY_BE_TRANSFORMED |
+                 NS_STATE_SVG_RENDERING_OBSERVER_CONTAINER);
   }
 
  public:
@@ -110,8 +111,6 @@ class SVGClipPathFrame final : public SVGContainerFrame {
   // mask based clipping.
   bool IsTrivial(ISVGDisplayableFrame** aSingleChild = nullptr);
 
-  bool IsValid();
-
   // nsIFrame interface:
   nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
                             int32_t aModType) override;
@@ -150,6 +149,8 @@ class SVGClipPathFrame final : public SVGContainerFrame {
 
   void PaintChildren(gfxContext& aMaskContext, nsIFrame* aClippedFrame,
                      const gfxMatrix& aMatrix);
+
+  bool IsValid();
 
   // Set, during a GetClipMask() call, to the transform that still needs to be
   // concatenated to the transform of the DrawTarget that was passed to

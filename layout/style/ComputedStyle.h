@@ -125,6 +125,11 @@ class ComputedStyle {
     return bool(Flags() & Flag::HAS_AUTHOR_SPECIFIED_BORDER_BACKGROUND);
   }
 
+  // Whether there are author-specific rules for text color.
+  bool HasAuthorSpecifiedTextColor() const {
+    return bool(Flags() & Flag::HAS_AUTHOR_SPECIFIED_TEXT_COLOR);
+  }
+
   // Does this ComputedStyle or any of its ancestors have text
   // decoration lines?
   // Differs from nsStyleTextReset::HasTextDecorationLines, which tests
@@ -326,6 +331,8 @@ class ComputedStyle {
   void AddSizeOfIncludingThis(nsWindowSizes& aSizes, size_t* aCVsSize) const;
 
   StyleWritingMode WritingMode() const { return {mSource.WritingMode().mBits}; }
+
+  const StyleZoom& EffectiveZoom() const { return mSource.effective_zoom; }
 
  protected:
   // Needs to be friend so that it can call the destructor without making it

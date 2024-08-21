@@ -35,7 +35,6 @@ void nsPageContentFrame::Reflow(nsPresContext* aPresContext,
                                 nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsPageContentFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aReflowOutput, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
   MOZ_ASSERT(mPD, "Need a pointer to nsSharedPageData before reflow starts");
 
@@ -51,8 +50,7 @@ void nsPageContentFrame::Reflow(nsPresContext* aPresContext,
   // Set our size up front, since some parts of reflow depend on it
   // being already set.  Note that the computed height may be
   // unconstrained; that's ok.  Consumers should watch out for that.
-  const nsSize maxSize(aReflowInput.ComputedWidth(),
-                       aReflowInput.ComputedHeight());
+  const nsSize maxSize = aReflowInput.ComputedPhysicalSize();
   SetSize(maxSize);
 
   // Writing mode for the page content frame.
@@ -414,28 +412,11 @@ void nsPageContentFrame::EnsurePageName() {
   mPageName = ComputePageValue();
 
   MOZ_ASSERT(mPageName, "Page name should never be null");
-  // We don't need to resolve any further styling if the page name is empty.
-  if (mPageName == nsGkAtoms::_empty) {
-    return;
-  }
+  // Resolve the computed style given this page-name and the :first pseudo.
   RefPtr<ComputedStyle> pageContentPseudoStyle =
-      PresShell()->StyleSet()->ResolvePageContentStyle(mPageName);
+      PresShell()->StyleSet()->ResolvePageContentStyle(
+          mPageName, StylePagePseudoClassFlags::FIRST);
   SetComputedStyleWithoutNotification(pageContentPseudoStyle);
-}
-
-nsIFrame* nsPageContentFrame::FirstContinuation() const {
-  const nsContainerFrame* const parent = GetParent();
-  MOZ_ASSERT(parent && parent->IsPageFrame(),
-             "Parent of nsPageContentFrame should be nsPageFrame");
-  // static cast so the compiler has a chance to devirtualize the call.
-  const auto* const pageFrameParent = static_cast<const nsPageFrame*>(parent);
-  nsPageContentFrame* const pageContentFrame =
-      static_cast<const nsPageFrame*>(pageFrameParent->FirstContinuation())
-          ->PageContentFrame();
-  MOZ_ASSERT(pageContentFrame && !pageContentFrame->GetPrevContinuation(),
-             "First descendent of nsPageSequenceFrame should not have a "
-             "previous continuation");
-  return pageContentFrame;
 }
 
 #ifdef DEBUG_FRAME_DUMP

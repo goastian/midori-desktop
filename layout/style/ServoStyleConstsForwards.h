@@ -47,6 +47,7 @@ struct nsCSSValueSharedList;
 
 class gfxFontFeatureValueSet;
 struct gfxFontFeature;
+struct GeckoFontMetrics;
 namespace mozilla {
 namespace gfx {
 struct FontVariation;
@@ -82,23 +83,25 @@ struct PropertyStyleAnimationValuePair;
 using ComputedKeyframeValues = nsTArray<PropertyStyleAnimationValuePair>;
 
 class ComputedStyle;
-enum LogicalAxis : uint8_t;
+enum class LogicalAxis : uint8_t;
 class SeenPtrs;
 class SharedFontList;
 class StyleSheet;
 class WritingMode;
 class ServoElementSnapshotTable;
+class StyleParserState;
 
 template <typename T>
 struct StyleForgottenArcSlicePtr;
 
+struct AnimatedPropertyID;
 struct AnimationPropertySegment;
 struct AspectRatio;
 struct ComputedTiming;
 struct URLExtraData;
 
 enum HalfCorner : uint8_t;
-enum LogicalSide : uint8_t;
+enum class LogicalSide : uint8_t;
 enum class PseudoStyleType : uint8_t;
 enum class OriginFlags : uint8_t;
 enum class UseBoxSizing : uint8_t;
@@ -221,7 +224,6 @@ using StyleAtomicUsize = std::atomic<size_t>;
     uint16_t UnsignedRaw() const { return uint16_t(Raw()); }                   \
     float ToFloat() const { return Raw() * kInverseScale; }                    \
     RawT ToIntRounded() const { return (Raw() + kPointFive) >> FractionBits; } \
-    bool IsNormal() const { return *this == NORMAL; }                          \
     inline void ToString(nsACString&) const;
 
 }  // namespace mozilla

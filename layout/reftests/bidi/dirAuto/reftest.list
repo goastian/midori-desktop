@@ -42,7 +42,7 @@
 == dynamicDirAuto-setLTR-InvalidDir5.html dynamicDirAuto-refLTR-LTR.html
 == dynamicDirAuto-setLTR-InvalidDir6.html dynamicDirAuto-refLTR-LTR.html
 == dynamicDirAuto-setLTR-InvalidDir7.html dynamicDirAuto-refLTR-LTR.html
-== dynamicDirAuto-setLTR-InvalidDir7.html dynamicDirAuto-refLTR-LTR.html
+== dynamicDirAuto-setLTR-InvalidDir8.html dynamicDirAuto-refLTR-LTR.html
 == dynamicDirAuto-setRTL-Auto1.html dynamicDirAuto-refRTL-RTL.html
 fuzzy-if(Android,0-1,0-1) == dynamicDirAuto-setRTL-Auto2.html dynamicDirAuto-refRTL-RTL.html # android fuzz: bug 1461573
 == dynamicDirAuto-setRTL-Auto3.html dynamicDirAuto-refRTL-RTL.html
@@ -112,7 +112,6 @@ fuzzy-if(Android,0-3,0-2) == dynamicDirAuto-DeleteText-LTR3.html dynamicDirAuto-
 == 839886-1.html 839886-1-ref.html
 == 859093-1.html 859093-1-ref.html
 == 889742-1.html 889742-1-ref.html
-== 1103348-1.html 1103348-1-ref.html
 == 1169267-delete-add-1a.html 1169267-delete-add-1-ref.html
 == 1169267-delete-add-1b.html 1169267-delete-add-1-ref.html
 == 1169267-delete-add-2a.html 1169267-delete-add-2-ref.html

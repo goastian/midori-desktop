@@ -92,9 +92,10 @@ class FontFaceSetImpl : public nsISupports, public gfxUserFontSet {
   virtual void DispatchToOwningThread(const char* aName,
                                       std::function<void()>&& aFunc) = 0;
 
-  // Called by nsFontFaceLoader when the loader has completed normally.
+  // Called by nsFontFaceLoader when the loader has completed normally,
+  // or by gfxUserFontSet if it cancels the loader.
   // It's removed from the mLoaders set.
-  virtual void RemoveLoader(nsFontFaceLoader* aLoader);
+  void RemoveLoader(nsFontFaceLoader* aLoader) override;
 
   virtual bool UpdateRules(const nsTArray<nsFontFaceRuleContainer>& aRules) {
     MOZ_ASSERT_UNREACHABLE("Not implemented!");
@@ -227,7 +228,7 @@ class FontFaceSetImpl : public nsISupports, public gfxUserFontSet {
   nsresult CheckFontLoad(const gfxFontFaceSrc* aFontFaceSrc,
                          gfxFontSrcPrincipal** aPrincipal, bool* aBypassCache);
 
-  void InsertNonRuleFontFace(FontFaceImpl* aFontFace, bool& aFontSetModified);
+  void InsertNonRuleFontFace(FontFaceImpl* aFontFace);
 
   /**
    * Returns whether we have any loading FontFace objects in the FontFaceSet.
@@ -246,8 +247,6 @@ class FontFaceSetImpl : public nsISupports, public gfxUserFontSet {
                                      FontSlantStyle& aStyle, ErrorResult& aRv);
 
   virtual TimeStamp GetNavigationStartTimeStamp() = 0;
-
-  mutable RecursiveMutex mMutex;
 
   FontFaceSet* MOZ_NON_OWNING_REF mOwner MOZ_GUARDED_BY(mMutex);
 

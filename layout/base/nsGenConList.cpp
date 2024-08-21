@@ -7,17 +7,18 @@
 /* base class for nsCounterList and nsQuoteList */
 
 #include "nsGenConList.h"
-#include "nsLayoutUtils.h"
+#include "nsContentUtils.h"
 #include "nsIContent.h"
 #include "nsIFrame.h"
 
 void nsGenConNode::CheckFrameAssertions() {
-  NS_ASSERTION(
-      mContentIndex < int32_t(mPseudoFrame->StyleContent()->ContentCount()) ||
-          // Special-case for the USE node created for the legacy markers,
-          // which don't use the content property.
-          mContentIndex == 0,
-      "index out of range");
+  NS_ASSERTION(mContentIndex < int32_t(mPseudoFrame->StyleContent()
+                                           ->NonAltContentItems()
+                                           .Length()) ||
+                   // Special-case for the USE node created for the legacy
+                   // markers, which don't use the content property.
+                   mContentIndex == 0,
+               "index out of range");
   // We allow negative values of mContentIndex for 'counter-reset' and
   // 'counter-increment'.
 
@@ -120,7 +121,8 @@ bool nsGenConList::NodeAfter(const nsGenConNode* aNode1,
   content1 = frame1->GetContent();
   content2 = frame2->GetContent();
 
-  int32_t cmp = nsLayoutUtils::CompareTreePosition(content1, content2);
+  int32_t cmp = nsContentUtils::CompareTreePosition<TreeKind::Flat>(
+      content1, content2, /* aCommonAncestor = */ nullptr);
   MOZ_ASSERT(cmp != 0, "same content, different frames");
   return cmp > 0;
 }

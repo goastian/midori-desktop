@@ -41,11 +41,6 @@ nsNumberControlFrame::nsNumberControlFrame(ComputedStyle* aStyle,
                                            nsPresContext* aPresContext)
     : nsTextControlFrame(aStyle, aPresContext, kClassID) {}
 
-void nsNumberControlFrame::Destroy(DestroyContext& aContext) {
-  aContext.AddAnonymousContent(mSpinBox.forget());
-  nsTextControlFrame::Destroy(aContext);
-}
-
 nsresult nsNumberControlFrame::CreateAnonymousContent(
     nsTArray<ContentInfo>& aElements) {
   // We create an anonymous tree for our input element that is structured as
@@ -64,22 +59,29 @@ nsresult nsNumberControlFrame::CreateAnonymousContent(
 
   nsTextControlFrame::CreateAnonymousContent(aElements);
 
+#if defined(MOZ_WIDGET_ANDROID)
+  // We don't want spin buttons on Android
+  return NS_OK;
+#else
   // The author has elected to hide the spinner by setting this
   // -moz-appearance. We will reframe if it changes.
-  if (StyleDisplay()->EffectiveAppearance() != StyleAppearance::Textfield) {
-    // Create the ::-moz-number-spin-box pseudo-element:
-    mSpinBox = MakeAnonElement(PseudoStyleType::mozNumberSpinBox);
-
-    // Create the ::-moz-number-spin-up pseudo-element:
-    mSpinUp = MakeAnonElement(PseudoStyleType::mozNumberSpinUp, mSpinBox);
-
-    // Create the ::-moz-number-spin-down pseudo-element:
-    mSpinDown = MakeAnonElement(PseudoStyleType::mozNumberSpinDown, mSpinBox);
-
-    aElements.AppendElement(mSpinBox);
+  if (StyleDisplay()->EffectiveAppearance() == StyleAppearance::Textfield) {
+    return NS_OK;
   }
 
+  // Create the ::-moz-number-spin-box pseudo-element:
+  mButton = MakeAnonElement(PseudoStyleType::mozNumberSpinBox);
+
+  // Create the ::-moz-number-spin-up pseudo-element:
+  mSpinUp = MakeAnonElement(PseudoStyleType::mozNumberSpinUp, mButton);
+
+  // Create the ::-moz-number-spin-down pseudo-element:
+  mSpinDown = MakeAnonElement(PseudoStyleType::mozNumberSpinDown, mButton);
+
+  aElements.AppendElement(mButton);
+
   return NS_OK;
+#endif
 }
 
 /* static */
@@ -106,7 +108,7 @@ int32_t nsNumberControlFrame::GetSpinButtonForPointerEvent(
     WidgetGUIEvent* aEvent) const {
   MOZ_ASSERT(aEvent->mClass == eMouseEventClass, "Unexpected event type");
 
-  if (!mSpinBox) {
+  if (!mButton) {
     // we don't have a spinner
     return eSpinButtonNone;
   }
@@ -116,7 +118,7 @@ int32_t nsNumberControlFrame::GetSpinButtonForPointerEvent(
   if (aEvent->mOriginalTarget == mSpinDown) {
     return eSpinButtonDown;
   }
-  if (aEvent->mOriginalTarget == mSpinBox) {
+  if (aEvent->mOriginalTarget == mButton) {
     // In the case that the up/down buttons are hidden (display:none) we use
     // just the spin box element, spinning up if the pointer is over the top
     // half of the element, or down if it's over the bottom half. This is
@@ -124,9 +126,9 @@ int32_t nsNumberControlFrame::GetSpinButtonForPointerEvent(
     // default UA style sheet. See the comment in forms.css for why.
     LayoutDeviceIntPoint absPoint = aEvent->mRefPoint;
     nsPoint point = nsLayoutUtils::GetEventCoordinatesRelativeTo(
-        aEvent, absPoint, RelativeTo{mSpinBox->GetPrimaryFrame()});
+        aEvent, absPoint, RelativeTo{mButton->GetPrimaryFrame()});
     if (point != nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE)) {
-      if (point.y < mSpinBox->GetPrimaryFrame()->GetSize().height / 2) {
+      if (point.y < mButton->GetPrimaryFrame()->GetSize().height / 2) {
         return eSpinButtonUp;
       }
       return eSpinButtonDown;
@@ -158,14 +160,6 @@ bool nsNumberControlFrame::SpinnerUpButtonIsDepressed() const {
 bool nsNumberControlFrame::SpinnerDownButtonIsDepressed() const {
   return HTMLInputElement::FromNode(mContent)
       ->NumberSpinnerDownButtonIsDepressed();
-}
-
-void nsNumberControlFrame::AppendAnonymousContentTo(
-    nsTArray<nsIContent*>& aElements, uint32_t aFilter) {
-  nsTextControlFrame::AppendAnonymousContentTo(aElements, aFilter);
-  if (mSpinBox) {
-    aElements.AppendElement(mSpinBox);
-  }
 }
 
 #ifdef ACCESSIBILITY

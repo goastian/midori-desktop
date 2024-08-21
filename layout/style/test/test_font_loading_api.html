@@ -6,7 +6,7 @@
 
 <script src=descriptor_database.js></script>
 
-<body onload="start()">
+<body onload="runTest()">
 <iframe id=v src="file_font_loading_api_vframe.html"></iframe>
 <iframe id=n style="display: none"></iframe>
 
@@ -152,13 +152,9 @@ function setTimeoutZero() {
 }
 
 function awaitRefresh() {
-  function awaitOneRefresh() {
-    return new Promise(function(aResolve, aReject) {
-      requestAnimationFrame(aResolve);
-    });
-  }
-
-  return awaitOneRefresh().then(awaitOneRefresh);
+  return new Promise(r => {
+    requestAnimationFrame(() => requestAnimationFrame(r));
+  });
 }
 
 function flushStyles() {
@@ -952,8 +948,7 @@ function runTest() {
     });
     return p;
 
-  }).then(function() {
-
+  }).then(async function() {
     // (TEST 32) Test that pending restyles prevent document.fonts.status
     // from becoming loaded.
     var face = new FontFace("test", "url(neverending_font_load.sjs)");
@@ -963,7 +958,11 @@ function runTest() {
     is(document.fonts.status, "loading", "FontFaceSet.status after adding a loading FontFace (TEST 32)");
 
     document.fonts.clear();
+
+    is(document.fonts.status, "loading", "FontFaceSet.status after clearing, but still waiting for styles (TEST 32)");
+
     flushStyles();
+    await awaitRefresh();
 
     is(document.fonts.status, "loaded", "FontFaceSet.status after clearing (TEST 32)");
 
@@ -977,12 +976,10 @@ function runTest() {
     document.fonts.clear();
     is(document.fonts.status, "loading", "FontFaceSet.status after clearing but when there is a pending restyle (TEST 32)");
 
-    return awaitRefresh()  // wait for a refresh driver tick
-        .then(function() {
-          is(document.fonts.status, "loaded", "FontFaceSet.status after clearing and the restyle has been flushed (TEST 32)");
-          return document.fonts.ready;
-        });
+    await awaitRefresh();
 
+    is(document.fonts.status, "loaded", "FontFaceSet.status after clearing and the restyle has been flushed (TEST 32)");
+    await document.fonts.ready;
   }).then(function() {
 
     // (TEST 33) Test that CSS-connected FontFace objects are created
@@ -1884,15 +1881,6 @@ function runTest() {
     SimpleTest.finish();
 
   });
-}
-
-function start() {
-  if (SpecialPowers.getBoolPref("layout.css.font-loading-api.enabled")) {
-    SpecialPowers.pushPrefEnv({ set: [["layout.css.font-display.enabled", true]] },
-                              runTest);
-  } else {
-    ok(true, "CSS Font Loading API is not enabled.");
-  }
 }
 
 SimpleTest.waitForExplicitFinish();

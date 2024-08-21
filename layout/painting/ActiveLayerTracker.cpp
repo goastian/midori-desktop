@@ -76,7 +76,7 @@ class LayerActivity {
       case eCSSProperty_offset_distance:
       case eCSSProperty_offset_rotate:
       case eCSSProperty_offset_anchor:
-        // TODO: Bug 1559232: Add offset-position.
+      case eCSSProperty_offset_position:
         return ACTIVITY_TRANSFORM;
       default:
         MOZ_ASSERT(false);
@@ -218,23 +218,47 @@ void ActiveLayerTracker::TransferActivityToFrame(nsIContent* aContent,
 
 static void IncrementScaleRestyleCountIfNeeded(nsIFrame* aFrame,
                                                LayerActivity* aActivity) {
+  // This function is basically a simplified copy of
+  // nsDisplayTransform::GetResultingTransformMatrixInternal.
+
+  Matrix svgTransform, parentsChildrenOnlyTransform;
+  const bool hasSVGTransforms =
+      aFrame->HasAnyStateBits(NS_FRAME_MAY_BE_TRANSFORMED) &&
+      aFrame->IsSVGTransformed(&svgTransform, &parentsChildrenOnlyTransform);
+
   const nsStyleDisplay* display = aFrame->StyleDisplay();
-  if (!display->HasTransformProperty() && !display->HasIndividualTransform() &&
-      display->mOffsetPath.IsNone()) {
-    // The transform was removed.
-    aActivity->mPreviousTransformScale = Nothing();
-    IncrementMutationCount(
-        &aActivity->mRestyleCounts[LayerActivity::ACTIVITY_SCALE]);
+  if (!aFrame->HasAnyStateBits(NS_FRAME_MAY_BE_TRANSFORMED) ||
+      (!display->HasTransformProperty() && !display->HasIndividualTransform() &&
+       display->mOffsetPath.IsNone() && !hasSVGTransforms)) {
+    if (aActivity->mPreviousTransformScale.isSome()) {
+      // The transform was removed.
+      aActivity->mPreviousTransformScale = Nothing();
+      IncrementMutationCount(
+          &aActivity->mRestyleCounts[LayerActivity::ACTIVITY_SCALE]);
+    }
+
     return;
   }
 
-  // Compute the new scale due to the CSS transform property.
-  // Note: Motion path doesn't contribute to scale factor. (It only has 2d
-  // translate and 2d rotate, so we use Nothing() for it.)
-  nsStyleTransformMatrix::TransformReferenceBox refBox(aFrame);
-  Matrix4x4 transform = nsStyleTransformMatrix::ReadTransforms(
-      display->mTranslate, display->mRotate, display->mScale, Nothing(),
-      display->mTransform, refBox, AppUnitsPerCSSPixel());
+  Matrix4x4 transform;
+  if (aFrame->IsCSSTransformed()) {
+    // Compute the new scale due to the CSS transform property.
+    // Note: Motion path doesn't contribute to scale factor. (It only has 2d
+    // translate and 2d rotate, so we use Nothing() for it.)
+    nsStyleTransformMatrix::TransformReferenceBox refBox(aFrame);
+    transform = nsStyleTransformMatrix::ReadTransforms(
+        display->mTranslate, display->mRotate, display->mScale, nullptr,
+        display->mTransform, refBox, AppUnitsPerCSSPixel());
+  } else if (hasSVGTransforms) {
+    transform = Matrix4x4::From2D(svgTransform);
+  }
+
+  const bool parentHasChildrenOnlyTransform =
+      hasSVGTransforms && !parentsChildrenOnlyTransform.IsIdentity();
+  if (parentHasChildrenOnlyTransform) {
+    transform *= Matrix4x4::From2D(parentsChildrenOnlyTransform);
+  }
+
   Matrix transform2D;
   if (!transform.Is2D(&transform2D)) {
     // We don't attempt to handle 3D transforms; just assume the scale changed.
@@ -309,9 +333,9 @@ static bool IsMotionPathAnimated(nsDisplayListBuilder* aBuilder,
          (!aFrame->StyleDisplay()->mOffsetPath.IsNone() &&
           ActiveLayerTracker::IsStyleAnimated(
               aBuilder, aFrame,
-              nsCSSPropertyIDSet{eCSSProperty_offset_distance,
-                                 eCSSProperty_offset_rotate,
-                                 eCSSProperty_offset_anchor}));
+              nsCSSPropertyIDSet{
+                  eCSSProperty_offset_distance, eCSSProperty_offset_rotate,
+                  eCSSProperty_offset_anchor, eCSSProperty_offset_position}));
 }
 
 /* static */

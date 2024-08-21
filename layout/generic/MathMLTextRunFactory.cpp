@@ -171,7 +171,8 @@ static uint32_t MathvarMappingSearch(uint32_t aKey,
   http://lists.w3.org/Archives/Public/www-math/2013Sep/0012.html and
   https://en.wikipedia.org/wiki/Mathematical_Alphanumeric_Symbols
 */
-static uint32_t MathVariant(uint32_t aCh, StyleMathVariant aMathVar) {
+/*static */ uint32_t MathMLTextRunFactory::MathVariant(
+    uint32_t aCh, StyleMathVariant aMathVar) {
   uint32_t baseChar;
   enum CharacterType {
     kIsLatin,
@@ -457,8 +458,9 @@ void MathMLTextRunFactory::RebuildTextRun(
       }
       if (mSSTYScriptLevel && !foundSSTY) {
         uint8_t sstyLevel = 0;
+        // FIXME: Use the same logic as scale_factor_for_math_depth_change?
         float scriptScaling =
-            pow(styles[0]->mScriptSizeMultiplier, mSSTYScriptLevel);
+            pow(kMathMLDefaultScriptSizeMultiplier, mSSTYScriptLevel);
         static_assert(kMathMLDefaultScriptSizeMultiplier < 1,
                       "Shouldn't it make things smaller?");
         /*
@@ -524,7 +526,9 @@ void MathMLTextRunFactory::RebuildTextRun(
     int extraChars = 0;
     mathVar = styles[i]->mMathVariant;
 
-    if (singleCharMI && mathVar == StyleMathVariant::None) {
+    if (singleCharMI && mathVar == StyleMathVariant::None &&
+        (!StaticPrefs::mathml_legacy_mathvariant_attribute_disabled() ||
+         styles[i]->mTextTransform & StyleTextTransform::MATH_AUTO)) {
       mathVar = StyleMathVariant::Italic;
     }
 

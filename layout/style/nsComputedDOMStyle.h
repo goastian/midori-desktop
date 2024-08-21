@@ -70,8 +70,9 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
       nsComputedDOMStyle, nsICSSDeclaration)
 
   NS_DECL_NSIDOMCSSSTYLEDECLARATION_HELPER
-  nsresult GetPropertyValue(const nsCSSPropertyID aPropID,
-                            nsACString& aValue) override;
+
+  void GetPropertyValue(const nsCSSPropertyID aPropID,
+                        nsACString& aValue) override;
   void SetPropertyValue(const nsCSSPropertyID aPropID, const nsACString& aValue,
                         nsIPrincipal* aSubjectPrincipal,
                         mozilla::ErrorResult& aRv) override;
@@ -87,7 +88,8 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
   // In some cases, for legacy reasons, we forcefully return an empty style.
   enum class AlwaysReturnEmptyStyle : bool { No, Yes };
 
-  nsComputedDOMStyle(Element*, PseudoStyleType, Document*, StyleType,
+  nsComputedDOMStyle(Element*, PseudoStyleType,
+                     nsAtom* aFunctionalPseudoParameter, Document*, StyleType,
                      AlwaysReturnEmptyStyle = AlwaysReturnEmptyStyle::No);
 
   nsINode* GetAssociatedNode() const override { return mElement; }
@@ -95,26 +97,30 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
 
   static already_AddRefed<const ComputedStyle> GetComputedStyle(
       Element* aElement, PseudoStyleType = PseudoStyleType::NotPseudo,
-      StyleType = StyleType::All);
+      nsAtom* aFunctionalPseudoParameter = nullptr, StyleType = StyleType::All);
 
   static already_AddRefed<const ComputedStyle> GetComputedStyleNoFlush(
       const Element* aElement,
       PseudoStyleType aPseudo = PseudoStyleType::NotPseudo,
+      nsAtom* aFunctionalPseudoParameter = nullptr,
       StyleType aStyleType = StyleType::All) {
     return DoGetComputedStyleNoFlush(
-        aElement, aPseudo, nsContentUtils::GetPresShellForContent(aElement),
-        aStyleType);
+        aElement, aPseudo, aFunctionalPseudoParameter,
+        nsContentUtils::GetPresShellForContent(aElement), aStyleType);
   }
 
   static already_AddRefed<const ComputedStyle>
   GetUnanimatedComputedStyleNoFlush(
-      Element*, PseudoStyleType = PseudoStyleType::NotPseudo);
+      Element*, PseudoStyleType = PseudoStyleType::NotPseudo,
+      nsAtom* aFunctionalPseudoParameter = nullptr);
 
   // Helper for nsDOMWindowUtils::GetVisitedDependentComputedStyle
   void SetExposeVisitedStyle(bool aExpose) {
     NS_ASSERTION(aExpose != mExposeVisitedStyle, "should always be changing");
     mExposeVisitedStyle = aExpose;
   }
+
+  float UsedFontSize() final;
 
   void GetCSSImageURLs(const nsACString& aPropertyName,
                        nsTArray<nsCString>& aImageURLs,
@@ -127,7 +133,7 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
       Operation aOperation, mozilla::DeclarationBlock** aCreated) final;
   virtual nsresult SetCSSDeclaration(mozilla::DeclarationBlock*,
                                      mozilla::MutationClosureData*) override;
-  virtual mozilla::dom::Document* DocToUpdate() override;
+  virtual mozilla::dom::Document* DocToUpdate() final;
 
   nsDOMCSSDeclaration::ParsingEnvironment GetParsingEnvironment(
       nsIPrincipal* aSubjectPrincipal) const final;
@@ -142,9 +148,14 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
   NS_DECL_NSIMUTATIONOBSERVER_PARENTCHAINCHANGED
 
  private:
-  nsresult GetPropertyValue(const nsCSSPropertyID aPropID,
-                            const nsACString& aMaybeCustomPropertyNme,
-                            nsACString& aValue);
+  already_AddRefed<nsROCSSPrimitiveValue> AppUnitsToCSSValue(nscoord);
+  already_AddRefed<nsROCSSPrimitiveValue> PixelsToCSSValue(float);
+  void SetValueToPixels(nsROCSSPrimitiveValue*, float);
+
+  void GetPropertyValue(const nsCSSPropertyID aPropID,
+                        const nsACString& aMaybeCustomPropertyNme,
+                        nsACString& aValue);
+  using nsDOMCSSDeclaration::GetPropertyValue;
 
   virtual ~nsComputedDOMStyle();
 
@@ -166,7 +177,8 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
   void SetFrameComputedStyle(ComputedStyle* aStyle, uint64_t aGeneration);
 
   static already_AddRefed<const ComputedStyle> DoGetComputedStyleNoFlush(
-      const Element*, PseudoStyleType, mozilla::PresShell*, StyleType);
+      const Element*, PseudoStyleType, nsAtom* aFunctionalPseudoParameter,
+      mozilla::PresShell*, StyleType);
 
 #define STYLE_STRUCT(name_)                \
   const nsStyle##name_* Style##name_() {   \
@@ -274,8 +286,6 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
   /* Helper functions */
   void SetValueToPosition(const mozilla::Position& aPosition,
                           nsDOMCSSValueList* aValueList);
-  void SetValueToURLValue(const mozilla::StyleComputedUrl* aURL,
-                          nsROCSSPrimitiveValue* aValue);
 
   void SetValueFromFitContentFunction(nsROCSSPrimitiveValue* aValue,
                                       const mozilla::LengthPercentage&);
@@ -308,6 +318,10 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
   // Find out if we need to flush layout of the document, depending on the
   // property that was requested.
   bool NeedsToFlushLayout(nsCSSPropertyID) const;
+  // Find out if we need to flush layout of the document due to container
+  // query being made before relevant query containers are reflowed at least
+  // once.
+  bool NeedsToFlushLayoutForContainerQuery() const;
   // Flushes the given document, which must be our document, and potentially the
   // mElement's document.
   void Flush(Document&, mozilla::FlushType);
@@ -318,7 +332,7 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
   // We don't really have a good immutable representation of "presentation".
   // Given the way GetComputedStyle is currently used, we should just grab the
   // presshell, if any, from the document.
-  nsWeakPtr mDocumentWeak;
+  mozilla::WeakPtr<mozilla::dom::Document> mDocumentWeak;
   RefPtr<Element> mElement;
 
   /**
@@ -355,6 +369,7 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
   mozilla::PresShell* mPresShell;
 
   PseudoStyleType mPseudo;
+  RefPtr<nsAtom> mFunctionalPseudoParameter;
 
   /* The kind of styles we should be returning. */
   StyleType mStyleType;

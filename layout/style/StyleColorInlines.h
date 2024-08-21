@@ -16,28 +16,26 @@
 namespace mozilla {
 
 inline StyleAbsoluteColor StyleAbsoluteColor::FromColor(nscolor aColor) {
-  return StyleAbsoluteColor::Srgb(
+  return StyleAbsoluteColor::SrgbLegacy(
       NS_GET_R(aColor) / 255.0f, NS_GET_G(aColor) / 255.0f,
       NS_GET_B(aColor) / 255.0f, NS_GET_A(aColor) / 255.0f);
 }
 
 // static
-inline StyleAbsoluteColor StyleAbsoluteColor::Srgb(float red, float green,
-                                                   float blue, float alpha) {
-  return StyleAbsoluteColor{StyleColorComponents{red, green, blue}, alpha,
-                            StyleColorSpace::Srgb, StyleColorFlags{0}};
-}
+inline StyleAbsoluteColor StyleAbsoluteColor::SrgbLegacy(float red, float green,
+                                                         float blue,
+                                                         float alpha) {
+  const auto ToLegacyComponent = [](float aF) {
+    if (MOZ_UNLIKELY(!std::isfinite(aF))) {
+      return 0.0f;
+    }
+    return aF;
+  };
 
-inline StyleAbsoluteColor StyleAbsoluteColor::Transparent() {
-  return StyleAbsoluteColor::Srgb(0.0f, 0.0f, 0.0f, 0.0f);
-}
-
-inline StyleAbsoluteColor StyleAbsoluteColor::Black() {
-  return StyleAbsoluteColor::Srgb(0.0f, 0.0f, 0.0f, 1.0f);
-}
-
-inline StyleAbsoluteColor StyleAbsoluteColor::White() {
-  return StyleAbsoluteColor::Srgb(1.0f, 1.0f, 1.0f, 1.0f);
+  return StyleAbsoluteColor{
+      StyleColorComponents{ToLegacyComponent(red), ToLegacyComponent(green),
+                           ToLegacyComponent(blue)},
+      alpha, StyleColorSpace::Srgb, StyleColorFlags::IS_LEGACY_SRGB};
 }
 
 template <>
@@ -46,18 +44,18 @@ inline StyleColor StyleColor::FromColor(nscolor aColor) {
 }
 
 template <>
+inline StyleColor StyleColor::Transparent() {
+  return StyleColor::Absolute(StyleAbsoluteColor::TRANSPARENT_BLACK);
+}
+
+template <>
 inline StyleColor StyleColor::Black() {
-  return FromColor(NS_RGB(0, 0, 0));
+  return StyleColor::Absolute(StyleAbsoluteColor::BLACK);
 }
 
 template <>
 inline StyleColor StyleColor::White() {
-  return FromColor(NS_RGB(255, 255, 255));
-}
-
-template <>
-inline StyleColor StyleColor::Transparent() {
-  return FromColor(NS_RGBA(0, 0, 0, 0));
+  return StyleColor::Absolute(StyleAbsoluteColor::WHITE);
 }
 
 template <>

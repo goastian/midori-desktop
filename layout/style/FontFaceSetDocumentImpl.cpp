@@ -5,7 +5,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "FontFaceSetDocumentImpl.h"
-#include "FontPreloader.h"
+#include "mozilla/FontLoaderUtils.h"
 #include "mozilla/LoadInfo.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/PresShellInlines.h"
@@ -20,6 +20,7 @@
 #include "nsFontFaceLoader.h"
 #include "nsIDocShell.h"
 #include "nsINetworkPredictor.h"
+#include "nsISupportsPriority.h"
 #include "nsIWebNavigation.h"
 #include "nsPresContext.h"
 
@@ -130,8 +131,8 @@ void FontFaceSetDocumentImpl::DispatchToOwningThread(
     std::function<void()> mFunc;
   };
 
-  RefPtr<FontFaceSetDocumentRunnable> runnable =
-      new FontFaceSetDocumentRunnable(aName, std::move(aFunc));
+  auto runnable =
+      MakeRefPtr<FontFaceSetDocumentRunnable>(aName, std::move(aFunc));
   NS_DispatchToMainThread(runnable.forget());
 }
 
@@ -282,10 +283,11 @@ nsresult FontFaceSetDocumentImpl::StartLoad(gfxUserFontEntry* aUserFontEntry,
   nsCOMPtr<nsILoadGroup> loadGroup(mDocument->GetDocumentLoadGroup());
   if (NS_FAILED(rv)) {
     nsCOMPtr<nsIChannel> channel;
-    rv = FontPreloader::BuildChannel(
+    rv = FontLoaderUtils::BuildChannel(
         getter_AddRefs(channel), src.mURI->get(), CORS_ANONYMOUS,
         dom::ReferrerPolicy::_empty /* not used */, aUserFontEntry, &src,
-        mDocument, loadGroup, nullptr, false);
+        mDocument, loadGroup, nullptr, false,
+        nsISupportsPriority::PRIORITY_HIGH);
     NS_ENSURE_SUCCESS(rv, rv);
 
     fontLoader = new nsFontFaceLoader(aUserFontEntry, aSrcIndex, this, channel);
@@ -361,10 +363,9 @@ bool FontFaceSetDocumentImpl::IsFontLoadAllowed(const gfxFontFaceSrc& aSrc) {
       nsIContentPolicy::TYPE_FONT);
 
   int16_t shouldLoad = nsIContentPolicy::ACCEPT;
-  nsresult rv = NS_CheckContentLoadPolicy(aSrc.mURI->get(), secCheckLoadInfo,
-                                          ""_ns,  // mime type
-                                          &shouldLoad,
-                                          nsContentUtils::GetContentPolicy());
+  nsresult rv =
+      NS_CheckContentLoadPolicy(aSrc.mURI->get(), secCheckLoadInfo, &shouldLoad,
+                                nsContentUtils::GetContentPolicy());
 
   return NS_SUCCEEDED(rv) && NS_CP_ACCEPTED(shouldLoad);
 }
@@ -452,7 +453,7 @@ bool FontFaceSetDocumentImpl::UpdateRules(
 
   for (size_t i = 0, i_end = mNonRuleFaces.Length(); i < i_end; ++i) {
     // Do the same for the non rule backed FontFace objects.
-    InsertNonRuleFontFace(mNonRuleFaces[i].mFontFace, modified);
+    InsertNonRuleFontFace(mNonRuleFaces[i].mFontFace);
   }
 
   // Remove any residual families that have no font entries (i.e., they were
@@ -495,7 +496,7 @@ bool FontFaceSetDocumentImpl::UpdateRules(
   }
 
   if (modified) {
-    IncrementGeneration(true);
+    IncrementGenerationLocked(true);
     mHasLoadingFontFacesIsDirty = true;
     CheckLoadingStarted();
     CheckLoadingFinished();
@@ -691,24 +692,26 @@ bool FontFaceSetDocumentImpl::MightHavePendingFontLoads() {
     return true;
   }
 
+  if (!mDocument) {
+    return false;
+  }
+
   // Check for pending restyles or reflows, as they might cause fonts to
   // load as new styles apply and text runs are rebuilt.
-  nsPresContext* presContext = GetPresContext();
-  if (presContext && presContext->HasPendingRestyleOrReflow()) {
+  PresShell* ps = mDocument->GetPresShell();
+  if (ps && ps->MightHavePendingFontLoads()) {
     return true;
   }
 
-  if (mDocument) {
-    // We defer resolving mReady until the document as fully loaded.
-    if (!mDocument->DidFireDOMContentLoaded()) {
-      return true;
-    }
+  // We defer resolving mReady until the document as fully loaded.
+  if (!mDocument->DidFireDOMContentLoaded()) {
+    return true;
+  }
 
-    // And we also wait for any CSS style sheets to finish loading, as their
-    // styles might cause new fonts to load.
-    if (mDocument->CSSLoader()->HasPendingLoads()) {
-      return true;
-    }
+  // And we also wait for any CSS style sheets to finish loading, as their
+  // styles might cause new fonts to load.
+  if (mDocument->CSSLoader()->HasPendingLoads()) {
+    return true;
   }
 
   return false;

@@ -338,6 +338,10 @@ FRAME_STATE_BIT(FlexContainer, 23, NS_STATE_FLEX_DID_PUSH_ITEMS)
 // We've merged some OverflowList children since last reflow.
 FRAME_STATE_BIT(FlexContainer, 24, NS_STATE_FLEX_HAS_CHILD_NIFS)
 
+// True if the next reflow of this frame should generate computed info metrics.
+// These are used by devtools to reveal details of the layout process.
+FRAME_STATE_BIT(FlexContainer, 25, NS_STATE_FLEX_COMPUTED_INFO)
+
 // == Frame state bits that apply to grid container frames ====================
 
 FRAME_STATE_GROUP(GridContainer, nsGridContainerFrame)
@@ -379,6 +383,10 @@ FRAME_STATE_BIT(GridContainer, 28, NS_STATE_GRID_IS_COL_MASONRY)
 // True if the container has masonry layout in its block axis.
 // (mutually exclusive with NS_STATE_GRID_IS_COL_MASONRY)
 FRAME_STATE_BIT(GridContainer, 29, NS_STATE_GRID_IS_ROW_MASONRY)
+
+// True if the next reflow of this frame should generate computed info metrics.
+// These are used by devtools to reveal details of the layout process.
+FRAME_STATE_BIT(GridContainer, 30, NS_STATE_GRID_COMPUTED_INFO)
 
 // == Frame state bits that apply to SVG frames ===============================
 
@@ -428,6 +436,10 @@ FRAME_STATE_BIT(SVG, 23, NS_STATE_SVG_TEXT_IN_REFLOW)
 // TextNodeCorrespondenceRecorder::RecordCorrespondence call
 // to update the cached nsTextNode indexes that they correspond to.
 FRAME_STATE_BIT(SVG, 24, NS_STATE_SVG_TEXT_CORRESPONDENCE_DIRTY)
+
+// We can stop ancestor traversal of rendering observers when we hit
+// one a frame with this state bit.
+FRAME_STATE_BIT(SVG, 25, NS_STATE_SVG_RENDERING_OBSERVER_CONTAINER)
 
 // == Frame state bits that apply to text frames ==============================
 
@@ -516,50 +528,43 @@ FRAME_STATE_BIT(Block, 20, NS_BLOCK_NEEDS_BIDI_RESOLUTION)
 
 FRAME_STATE_BIT(Block, 21, NS_BLOCK_HAS_PUSHED_FLOATS)
 
-// This indicates that this is a frame from which child margins can be
+// This indicates that the frame establishes a block formatting context i.e.
+//
+// 1. This indicates that this is a frame from which child margins can be
 // calculated. The absence of this flag implies that child margin calculations
 // should ignore the frame and look further up the parent chain. Used in
 // nsBlockReflowContext::ComputeCollapsedBStartMargin() via
 // nsBlockFrame::IsMarginRoot().
-//
 // This causes the BlockReflowState's constructor to set the
 // mIsBStartMarginRoot and mIsBEndMarginRoot flags.
-FRAME_STATE_BIT(Block, 22, NS_BLOCK_MARGIN_ROOT)
+//
+// 2. This indicates that a block frame should create its own float manager.
+// This is required by each block frame that can contain floats. The float
+// manager is used to reserve space for the floated frames.
+FRAME_STATE_BIT(Block, 22, NS_BLOCK_BFC)
 
-// This indicates that a block frame should create its own float manager. This
-// is required by each block frame that can contain floats. The float manager is
-// used to reserve space for the floated frames.
-FRAME_STATE_BIT(Block, 23, NS_BLOCK_FLOAT_MGR)
+FRAME_STATE_BIT(Block, 23, NS_BLOCK_HAS_LINE_CURSOR)
 
-// For setting the relevant bits on a block formatting context:
-#define NS_BLOCK_FORMATTING_CONTEXT_STATE_BITS \
-(NS_BLOCK_FLOAT_MGR | NS_BLOCK_MARGIN_ROOT)
+FRAME_STATE_BIT(Block, 24, NS_BLOCK_HAS_OVERFLOW_LINES)
 
-FRAME_STATE_BIT(Block, 24, NS_BLOCK_HAS_LINE_CURSOR)
-
-FRAME_STATE_BIT(Block, 25, NS_BLOCK_HAS_OVERFLOW_LINES)
-
-FRAME_STATE_BIT(Block, 26, NS_BLOCK_HAS_OVERFLOW_OUT_OF_FLOWS)
+FRAME_STATE_BIT(Block, 25, NS_BLOCK_HAS_OVERFLOW_OUT_OF_FLOWS)
 
 // Set on any block that has descendant frames in the normal
 // flow with 'clear' set to something other than 'none'
 // (including <BR CLEAR="..."> frames)
-FRAME_STATE_BIT(Block, 27, NS_BLOCK_HAS_CLEAR_CHILDREN)
-
-// NS_BLOCK_CLIP_PAGINATED_OVERFLOW is only set in paginated prescontexts, on
-// blocks which were forced to not have scrollframes but still need to clip
-// the display of their kids.
-FRAME_STATE_BIT(Block, 28, NS_BLOCK_CLIP_PAGINATED_OVERFLOW)
+FRAME_STATE_BIT(Block, 26, NS_BLOCK_HAS_CLEAR_CHILDREN)
 
 // NS_BLOCK_HAS_FIRST_LETTER_STYLE means that the block has first-letter style,
 // even if it has no actual first-letter frame among its descendants.
-FRAME_STATE_BIT(Block, 29, NS_BLOCK_HAS_FIRST_LETTER_STYLE)
+FRAME_STATE_BIT(Block, 27, NS_BLOCK_HAS_FIRST_LETTER_STYLE)
 
 // NS_BLOCK_FRAME_HAS_OUTSIDE_MARKER and NS_BLOCK_FRAME_HAS_INSIDE_MARKER
 // means the block has an associated ::marker frame, they are mutually
 // exclusive.
-FRAME_STATE_BIT(Block, 30, NS_BLOCK_FRAME_HAS_OUTSIDE_MARKER)
-FRAME_STATE_BIT(Block, 31, NS_BLOCK_FRAME_HAS_INSIDE_MARKER)
+FRAME_STATE_BIT(Block, 28, NS_BLOCK_FRAME_HAS_OUTSIDE_MARKER)
+FRAME_STATE_BIT(Block, 29, NS_BLOCK_FRAME_HAS_INSIDE_MARKER)
+
+// bits 30 and 31 free.
 
 // NS_BLOCK_HAS_LINE_CLAMP_ELLIPSIS indicates that exactly one line in this
 // block has the LineClampEllipsis flag set, and that such a line must be found

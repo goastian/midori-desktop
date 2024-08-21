@@ -16,7 +16,6 @@ ServoElementSnapshot::ServoElementSnapshot(const Element& aElement)
     : mState(0),
       mContains(Flags(0)),
       mIsTableBorderNonzero(false),
-      mIsMozBrowserFrame(false),
       mIsSelectListBox(false),
       mClassAttributeChanged(false),
       mIdAttributeChanged(false) {
@@ -32,7 +31,6 @@ void ServoElementSnapshot::AddOtherPseudoClassState(const Element& aElement) {
   }
 
   mIsTableBorderNonzero = Gecko_IsTableBorderNonzero(&aElement);
-  mIsMozBrowserFrame = Gecko_IsBrowserFrame(&aElement);
   mIsSelectListBox = Gecko_IsSelectListBox(&aElement);
 
   mContains |= Flags::OtherPseudoClassState;
@@ -84,4 +82,11 @@ void ServoElementSnapshot::AddAttrs(const Element& aElement,
   }
 }
 
+void ServoElementSnapshot::AddCustomStates(Element& aElement) {
+  if (mContains & Flags::CustomState) {
+    return;
+  }
+  mCustomStates = aElement.EnsureCustomStates().Clone();
+  mContains |= Flags::CustomState;
+}
 }  // namespace mozilla

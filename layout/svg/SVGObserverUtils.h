@@ -8,6 +8,7 @@
 #define LAYOUT_SVG_SVGOBSERVERUTILS_H_
 
 #include "mozilla/Attributes.h"
+#include "mozilla/SVGIntegrationUtils.h"
 #include "mozilla/dom/IDTracker.h"
 #include "FrameProperties.h"
 #include "nsID.h"
@@ -19,9 +20,9 @@
 #include "nsStringFwd.h"
 #include "nsStubMutationObserver.h"
 #include "nsStyleStruct.h"
-#include "nsCycleCollectionParticipant.h"
 
 class nsAtom;
+class nsCycleCollectionTraversalCallback;
 class nsIFrame;
 class nsIURI;
 
@@ -36,6 +37,7 @@ namespace dom {
 class CanvasRenderingContext2D;
 class Element;
 class SVGGeometryElement;
+class SVGMPathElement;
 }  // namespace dom
 }  // namespace mozilla
 
@@ -100,7 +102,12 @@ class SVGRenderingObserver : public nsStubMutationObserver {
  public:
   using Element = dom::Element;
 
-  SVGRenderingObserver() : mInObserverSet(false) {}
+  SVGRenderingObserver(uint32_t aCallbacks = kAttributeChanged |
+                                             kContentAppended |
+                                             kContentInserted |
+                                             kContentRemoved) {
+    SetEnabledCallbacks(aCallbacks);
+  }
 
   // nsIMutationObserver
   NS_DECL_NSIMUTATIONOBSERVER_ATTRIBUTECHANGED
@@ -160,7 +167,7 @@ class SVGRenderingObserver : public nsStubMutationObserver {
 #endif
 
   // Whether we're in our observed element's observer set at this time.
-  bool mInObserverSet;
+  bool mInObserverSet = false;
 };
 
 class SVGObserverUtils {
@@ -192,6 +199,11 @@ class SVGObserverUtils {
    * XXX rename to something more meaningful like RefreshResourceReferences?
    */
   static void UpdateEffects(nsIFrame* aFrame);
+
+  /*
+   * Returns true if the frame or any of its ancestors have rendering observers.
+   */
+  static bool SelfOrAncestorHasRenderingObservers(const nsIFrame* aFrame);
 
   /**
    * @param aFrame must be a first-continuation.
@@ -265,6 +277,8 @@ class SVGObserverUtils {
    * NOTE! A return value of eHasNoRefs does NOT mean that there are no filters
    * to be applied, only that there are no references to SVG filter elements.
    *
+   * @param aIsBackdrop whether we're observing a backdrop-filter or a filter.
+   *
    * XXX Callers other than ComputePostEffectsInkOverflowRect and
    * SVGUtils::GetPostFilterInkOverflowRect should not need to initiate
    * observing.  If we have a bug that causes invalidation (which would remove
@@ -274,7 +288,15 @@ class SVGObserverUtils {
    * that behavior just yet due to the regression potential.
    */
   static ReferenceState GetAndObserveFilters(
-      nsIFrame* aFilteredFrame, nsTArray<SVGFilterFrame*>* aFilterFrames);
+      nsIFrame* aFilteredFrame, nsTArray<SVGFilterFrame*>* aFilterFrames,
+      StyleFilterType aStyleFilterType = StyleFilterType::Filter);
+
+  /*
+   * NOTE! canvas doesn't have backdrop-filters so there's no StyleFilterType
+   * parameter.
+   */
+  static ReferenceState GetAndObserveFilters(
+      nsISupports* aObserverList, nsTArray<SVGFilterFrame*>* aFilterFrames);
 
   /**
    * If the given frame is already observing SVG filters, this function gets
@@ -335,6 +357,16 @@ class SVGObserverUtils {
       nsIFrame* aClippedFrame, SVGClipPathFrame** aClipPathFrame);
 
   /**
+   * Get the element of the SVG Shape element, if any, and set up |aFrame| as a
+   * rendering observer of the geometry frame, to post a restyle if it changes.
+   *
+   * We use this function to resolve offset-path:url() and build the equivalent
+   * path from this shape element, and generate the transformation from for CSS
+   * Motion.
+   */
+  static SVGGeometryElement* GetAndObserveGeometry(nsIFrame* aFrame);
+
+  /**
    * If masking is applied to aMaskedFrame, gets an array of any SVG masks
    * that are referenced, setting up aMaskFrames as a rendering observer of
    * those masks (if any).
@@ -361,6 +393,16 @@ class SVGObserverUtils {
    * SVGGeometryElement that it references, if any.
    */
   static void RemoveTextPathObserver(nsIFrame* aTextPathFrame);
+
+  /**
+   * Get the SVGGeometryElement that is referenced by aSVGMPathElement, and
+   * make aSVGMPathElement start observing rendering changes to that element.
+   */
+  static SVGGeometryElement* GetAndObserveMPathsPath(
+      dom::SVGMPathElement* aSVGMPathElement);
+
+  static void TraverseMPathObserver(dom::SVGMPathElement* aSVGMPathElement,
+                                    nsCycleCollectionTraversalCallback* aCB);
 
   /**
    * Gets the nsIFrame of a referenced SVG "template" element, if any, and
@@ -395,24 +437,6 @@ class SVGObserverUtils {
    * invalidation changes for background-clip:text.
    */
   static Element* GetAndObserveBackgroundClip(nsIFrame* aFrame);
-
-  /**
-   * A helper function to resolve filter URL.
-   */
-  static already_AddRefed<URLAndReferrerInfo> GetFilterURI(
-      nsIFrame* aFrame, const StyleFilter& aFilter);
-
-  /**
-   * Return a baseURL for resolving a local-ref URL.
-   *
-   * @param aContent an element which uses a local-ref property. Here are some
-   *                 examples:
-   *                   <rect fill=url(#foo)>
-   *                   <circle clip-path=url(#foo)>
-   *                   <use xlink:href="#foo">
-   */
-  static already_AddRefed<nsIURI> GetBaseURLForLocalRef(nsIContent* aContent,
-                                                        nsIURI* aDocURI);
 };
 
 }  // namespace mozilla

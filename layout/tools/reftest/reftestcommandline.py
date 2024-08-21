@@ -386,7 +386,7 @@ class ReftestArgumentsParser(argparse.ArgumentParser):
                 return
 
         for test_path in options.tests:
-            for manifest_file, suite in manifests.iteritems():
+            for manifest_file, suite in manifests.items():
                 if os.path.exists(os.path.join(test_path, manifest_file)):
                     options.suite = suite
                     return
@@ -477,11 +477,6 @@ class DesktopArgumentsParser(ReftestArgumentsParser):
             dest="runTestsInParallel",
             help="run tests in parallel if possible",
         )
-
-    def _prefs_gpu(self):
-        if mozinfo.os != "win":
-            return ["layers.acceleration.force-enabled=true"]
-        return []
 
     def validate(self, options, reftest):
         super(DesktopArgumentsParser, self).validate(options, reftest)

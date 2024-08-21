@@ -56,7 +56,7 @@ nscoord CSSAlignUtils::AlignJustifySelf(const StyleAlignFlags& aAlignment,
   WritingMode wm = aRI.GetWritingMode();
   const LogicalMargin margin = aRI.ComputedLogicalMargin(wm);
   const auto startSide = MakeLogicalSide(
-      aAxis, MOZ_LIKELY(isSameSide) ? eLogicalEdgeStart : eLogicalEdgeEnd);
+      aAxis, MOZ_LIKELY(isSameSide) ? LogicalEdge::Start : LogicalEdge::End);
   const nscoord marginStart = margin.Side(startSide, wm);
   const auto endSide = GetOppositeSide(startSide);
   const nscoord marginEnd = margin.Side(endSide, wm);
@@ -68,10 +68,10 @@ nscoord CSSAlignUtils::AlignJustifySelf(const StyleAlignFlags& aAlignment,
     // (Note: ReflowInput will have treated "auto" margins as 0, so we
     // don't need to do anything special to avoid expanding them.)
     hasAutoMarginStart = hasAutoMarginEnd = false;
-  } else if (aAxis == eLogicalAxisBlock) {
+  } else if (aAxis == LogicalAxis::Block) {
     hasAutoMarginStart = styleMargin.GetBStart(wm).IsAuto();
     hasAutoMarginEnd = styleMargin.GetBEnd(wm).IsAuto();
-  } else { /* aAxis == eLogicalAxisInline */
+  } else { /* aAxis == LogicalAxis::Inline */
     hasAutoMarginStart = styleMargin.GetIStart(wm).IsAuto();
     hasAutoMarginEnd = styleMargin.GetIEnd(wm).IsAuto();
   }

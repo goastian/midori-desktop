@@ -29,7 +29,8 @@ nsIFrame* NS_NewSVGContainerFrame(mozilla::PresShell* aPresShell,
   // If we were called directly, then the frame is for a <defs> or
   // an unknown element type. In both cases we prevent the content
   // from displaying directly.
-  frame->AddStateBits(NS_FRAME_IS_NONDISPLAY);
+  frame->AddStateBits(NS_FRAME_IS_NONDISPLAY |
+                      NS_STATE_SVG_RENDERING_OBSERVER_CONTAINER);
   return frame;
 }
 
@@ -105,19 +106,17 @@ void SVGContainerFrame::ReflowSVGNonDisplayText(nsIFrame* aContainer) {
     return;
   }
   MOZ_ASSERT(aContainer->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY) ||
-                 !aContainer->IsFrameOfType(nsIFrame::eSVG),
+                 !aContainer->IsSVGFrame(),
              "it is wasteful to call ReflowSVGNonDisplayText on a container "
              "frame that is not NS_FRAME_IS_NONDISPLAY or not SVG");
   for (nsIFrame* kid : aContainer->PrincipalChildList()) {
     LayoutFrameType type = kid->Type();
     if (type == LayoutFrameType::SVGText) {
       static_cast<SVGTextFrame*>(kid)->ReflowSVGNonDisplayText();
-    } else {
-      if (kid->IsFrameOfType(nsIFrame::eSVG | nsIFrame::eSVGContainer) ||
-          type == LayoutFrameType::SVGForeignObject ||
-          !kid->IsFrameOfType(nsIFrame::eSVG)) {
-        ReflowSVGNonDisplayText(kid);
-      }
+    } else if (kid->IsSVGContainerFrame() ||
+               type == LayoutFrameType::SVGForeignObject ||
+               !kid->IsSVGFrame()) {
+      ReflowSVGNonDisplayText(kid);
     }
   }
 }
@@ -164,9 +163,7 @@ void SVGDisplayContainerFrame::InsertFrames(
     for (nsIFrame* kid = firstNewFrame; kid != nextFrame;
          kid = kid->GetNextSibling()) {
       ISVGDisplayableFrame* SVGFrame = do_QueryFrame(kid);
-      if (SVGFrame) {
-        MOZ_ASSERT(!kid->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY),
-                   "Check for this explicitly in the |if|, then");
+      if (SVGFrame && !kid->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
         bool isFirstReflow = kid->HasAnyStateBits(NS_FRAME_FIRST_REFLOW);
         // Remove bits so that ScheduleBoundsUpdate will work:
         kid->RemoveStateBits(NS_FRAME_FIRST_REFLOW | NS_FRAME_IS_DIRTY |
@@ -192,8 +189,10 @@ void SVGDisplayContainerFrame::RemoveFrame(DestroyContext& aContext,
   // nsContainerFrame::RemoveFrame, so it doesn't call FrameNeedsReflow. We
   // need to schedule a repaint and schedule an update to our overflow rects.
   SchedulePaint();
-  PresContext()->RestyleManager()->PostRestyleEvent(
-      mContent->AsElement(), RestyleHint{0}, nsChangeHint_UpdateOverflow);
+  if (!HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
+    PresContext()->RestyleManager()->PostRestyleEvent(
+        mContent->AsElement(), RestyleHint{0}, nsChangeHint_UpdateOverflow);
+  }
 
   SVGContainerFrame::RemoveFrame(aContext, aListID, aOldFrame);
 }
@@ -225,7 +224,7 @@ void SVGDisplayContainerFrame::PaintSVG(gfxContext& aContext,
     }
   }
 
-  for (nsIFrame* kid = mFrames.FirstChild(); kid; kid = kid->GetNextSibling()) {
+  for (auto* kid : mFrames) {
     gfxMatrix m = matrix;
     // PaintFrameWithEffects() expects the transform that is passed to it to
     // include the transform to the passed frame's user space, so add it:
@@ -332,11 +331,9 @@ void SVGDisplayContainerFrame::ReflowSVG() {
 
   OverflowAreas overflowRects;
 
-  for (nsIFrame* kid = mFrames.FirstChild(); kid; kid = kid->GetNextSibling()) {
+  for (auto* kid : mFrames) {
     ISVGDisplayableFrame* SVGFrame = do_QueryFrame(kid);
-    if (SVGFrame) {
-      MOZ_ASSERT(!kid->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY),
-                 "Check for this explicitly in the |if|, then");
+    if (SVGFrame && !kid->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
       SVGFrame->ReflowSVG();
 
       // We build up our child frame overflows here instead of using
@@ -348,8 +345,7 @@ void SVGDisplayContainerFrame::ReflowSVG() {
       // SVGTextFrames.  We need to cause those to get reflowed in
       // case they are the target of a rendering observer.
       MOZ_ASSERT(
-          kid->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY) ||
-              !kid->IsFrameOfType(nsIFrame::eSVG),
+          kid->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY) || !kid->IsSVGFrame(),
           "expected kid to be a NS_FRAME_IS_NONDISPLAY frame or not SVG");
       if (kid->HasAnyStateBits(NS_FRAME_IS_DIRTY)) {
         SVGContainerFrame* container = do_QueryFrame(kid);

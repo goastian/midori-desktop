@@ -141,10 +141,6 @@ class nsBlockFrame : public nsContainerFrame {
   bool IsFloatContainingBlock() const override;
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         const nsDisplayListSet& aLists) override;
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsContainerFrame::IsFrameOfType(
-        aFlags & ~(nsIFrame::eCanContainOverflowContainers));
-  }
 
   void InvalidateFrame(uint32_t aDisplayItemKey = 0,
                        bool aRebuildDisplayItems = true) override;
@@ -198,12 +194,17 @@ class nsBlockFrame : public nsContainerFrame {
       ClearLineCursorForQuery();
       RemoveStateBits(NS_BLOCK_HAS_LINE_CURSOR);
     }
-    RemoveProperty(LineIteratorProperty());
+    ClearLineIterator();
   }
   void ClearLineCursorForDisplay() {
     RemoveProperty(LineCursorPropertyDisplay());
   }
   void ClearLineCursorForQuery() { RemoveProperty(LineCursorPropertyQuery()); }
+
+  // Clear just the line-iterator property; this is used if we need to get a
+  // LineIterator temporarily during reflow, when using a persisted iterator
+  // would be invalid. So we clear the stored property immediately after use.
+  void ClearLineIterator() { RemoveProperty(LineIteratorProperty()); }
 
   // Get the first line that might contain y-coord 'y', or nullptr if you must
   // search all lines. If nonnull is returned then we guarantee that the lines'
@@ -274,6 +275,9 @@ class nsBlockFrame : public nsContainerFrame {
   void MarkIntrinsicISizesDirty() override;
 
  private:
+  // Whether CSS text-indent should be applied to the given line.
+  bool TextIndentAppliesTo(const LineIterator& aLine) const;
+
   void CheckIntrinsicCacheAgainstShrinkWrapState();
 
   template <typename LineIteratorType>
@@ -418,6 +422,8 @@ class nsBlockFrame : public nsContainerFrame {
 
   virtual ~nsBlockFrame();
 
+  void DidSetComputedStyle(ComputedStyle* aOldStyle) override;
+
 #ifdef DEBUG
   already_AddRefed<ComputedStyle> GetFirstLetterStyle(
       nsPresContext* aPresContext);
@@ -481,9 +487,17 @@ class nsBlockFrame : public nsContainerFrame {
   // helper for SlideLine and UpdateLineContainerSize
   void MoveChildFramesOfLine(nsLineBox* aLine, nscoord aDeltaBCoord);
 
-  void ComputeFinalSize(const ReflowInput& aReflowInput,
-                        BlockReflowState& aState, ReflowOutput& aMetrics,
-                        nscoord* aBEndEdgeOfChildren);
+  // Returns block-end edge of children.
+  nscoord ComputeFinalSize(const ReflowInput& aReflowInput,
+                           BlockReflowState& aState, ReflowOutput& aMetrics);
+
+  /**
+   * Calculates the necessary shift to honor 'align-content' and applies it.
+   */
+  void AlignContent(BlockReflowState& aState, ReflowOutput& aMetrics,
+                    nscoord aBEndEdgeOfChildren);
+  // Stash the effective align-content shift value between reflows
+  NS_DECLARE_FRAME_PROPERTY_SMALL_VALUE(AlignContentShift, nscoord)
 
   /**
    * Helper method for Reflow(). Computes the overflow areas created by our
@@ -533,6 +547,74 @@ class nsBlockFrame : public nsContainerFrame {
    * @return whether the frame is a BIDI form control
    */
   bool IsVisualFormControl(nsPresContext* aPresContext);
+
+  /** Whether this block has an effective align-content property */
+  bool IsAligned() const {
+    return StylePosition()->mAlignContent.primary !=
+           mozilla::StyleAlignFlags::NORMAL;
+  }
+
+  nscoord GetAlignContentShift() const {
+    return IsAligned() ? GetProperty(AlignContentShift()) : 0;
+  }
+
+  /**
+   * For text-wrap:balance, we iteratively try reflowing with adjusted inline
+   * size to find the "best" result (the tightest size that can be applied
+   * without increasing the total line count of the block).
+   * This record is used to manage the state of these "trial reflows", and
+   * return results from the final trial.
+   */
+  struct TrialReflowState {
+    // Values pre-computed at start of Reflow(), constant across trials.
+    const nscoord mConsumedBSize;
+    const nscoord mEffectiveContentBoxBSize;
+    bool mNeedFloatManager;
+    // [out] Whether reflowing resulted in use of an overflow-wrap break.
+    bool mUsedOverflowWrap = false;
+    // Settings for the current trial.
+    bool mBalancing = false;
+    nscoord mInset = 0;
+    // Results computed during the trial reflow. Values from the final trial
+    // will be used by the remainder of Reflow().
+    mozilla::OverflowAreas mOcBounds;
+    mozilla::OverflowAreas mFcBounds;
+    nscoord mBlockEndEdgeOfChildren = 0;
+    nscoord mContainerWidth = 0;
+
+    // Initialize for the initial trial reflow, with zero inset.
+    TrialReflowState(nscoord aConsumedBSize, nscoord aEffectiveContentBoxBSize,
+                     bool aNeedFloatManager)
+        : mConsumedBSize(aConsumedBSize),
+          mEffectiveContentBoxBSize(aEffectiveContentBoxBSize),
+          mNeedFloatManager(aNeedFloatManager) {}
+
+    // Adjust the inset amount, and reset state for a new trial.
+    void ResetForBalance(nscoord aInsetDelta) {
+      // Tells the reflow-lines loop we must consider all lines "dirty" (as we
+      // are modifying the effective inline-size to be used).
+      mBalancing = true;
+      // Adjust inset to apply.
+      mInset += aInsetDelta;
+      // Re-initialize state that the reflow loop will compute.
+      mOcBounds.Clear();
+      mFcBounds.Clear();
+      mBlockEndEdgeOfChildren = 0;
+      mContainerWidth = 0;
+      mUsedOverflowWrap = false;
+    }
+  };
+
+  /**
+   * Internal helper for Reflow(); may be called repeatedly during a single
+   * Reflow() in order to implement text-wrap:balance.
+   * This method applies aTrialState.mInset during line-breaking to reduce
+   * the effective available inline-size (without affecting alignment).
+   */
+  nsReflowStatus TrialReflow(nsPresContext* aPresContext,
+                             ReflowOutput& aMetrics,
+                             const ReflowInput& aReflowInput,
+                             TrialReflowState& aTrialState);
 
  public:
   /**
@@ -595,13 +677,6 @@ class nsBlockFrame : public nsContainerFrame {
    */
   bool IsInLineClampContext() const;
 
- protected:
-  /** grab overflow lines from this block's prevInFlow, and make them
-   * part of this block's mLines list.
-   * @return true if any lines were drained.
-   */
-  bool DrainOverflowLines();
-
   /**
    * @return false iff this block does not have a float on any child list.
    * This function is O(1).
@@ -620,6 +695,13 @@ class nsBlockFrame : public nsContainerFrame {
     // a mix of out-of-flow frames, so that's why the method name has "Maybe".
     return HasAnyStateBits(NS_BLOCK_HAS_OVERFLOW_OUT_OF_FLOWS);
   }
+
+ protected:
+  /** grab overflow lines from this block's prevInFlow, and make them
+   * part of this block's mLines list.
+   * @return true if any lines were drained.
+   */
+  bool DrainOverflowLines();
 
   /**
    * Moves frames from our PushedFloats list back into our mFloats list.
@@ -675,8 +757,11 @@ class nsBlockFrame : public nsContainerFrame {
    */
   void PrepareResizeReflow(BlockReflowState& aState);
 
-  /** reflow all lines that have been marked dirty */
-  void ReflowDirtyLines(BlockReflowState& aState);
+  /**
+   * Reflow all lines that have been marked dirty.
+   * Returns whether an overflow-wrap break was used anywhere.
+   */
+  bool ReflowDirtyLines(BlockReflowState& aState);
 
   /** Mark a given line dirty due to reflow being interrupted on or before it */
   void MarkLineDirtyForInterrupt(nsLineBox* aLine);
@@ -693,8 +778,10 @@ class nsBlockFrame : public nsContainerFrame {
    *   more inline frames.
    * @param aKeepReflowGoing [OUT]
    *   indicates whether the caller should continue to reflow more lines
+   * @returns
+   *   whether an overflow-wrap breakpoint was used
    */
-  void ReflowLine(BlockReflowState& aState, LineIterator aLine,
+  bool ReflowLine(BlockReflowState& aState, LineIterator aLine,
                   bool* aKeepReflowGoing);
 
   // Return false if it needs another reflow because of reduced space
@@ -737,7 +824,8 @@ class nsBlockFrame : public nsContainerFrame {
   void ReflowBlockFrame(BlockReflowState& aState, LineIterator aLine,
                         bool* aKeepGoing);
 
-  void ReflowInlineFrames(BlockReflowState& aState, LineIterator aLine,
+  // Returns whether an overflow-wrap break was used.
+  bool ReflowInlineFrames(BlockReflowState& aState, LineIterator aLine,
                           bool* aKeepLineGoing);
 
   void DoReflowInlineFrames(
@@ -779,12 +867,23 @@ class nsBlockFrame : public nsContainerFrame {
                                       bool* aKeepReflowGoing);
 
   /**
+   * Indicates if we need to compute a page name for the next page when pushing
+   * a truncated line.
+   *
+   * Using a value of No saves work when a new page name has already been set
+   * with nsCSSFrameConstructor::SetNextPageContentFramePageName.
+   */
+  enum class ComputeNewPageNameIfNeeded : uint8_t { Yes, No };
+
+  /**
    * Push aLine (and any after it), since it cannot be placed on this
    * page/column.  Set aKeepReflowGoing to false and set
    * flag aState.mReflowStatus as incomplete.
    */
   void PushTruncatedLine(BlockReflowState& aState, LineIterator aLine,
-                         bool* aKeepReflowGoing);
+                         bool* aKeepReflowGoing,
+                         ComputeNewPageNameIfNeeded aComputeNewPageName =
+                             ComputeNewPageNameIfNeeded::Yes);
 
   void SplitLine(BlockReflowState& aState, nsLineLayout& aLineLayout,
                  LineIterator aLine, nsIFrame* aFrame,

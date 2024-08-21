@@ -6,6 +6,7 @@
 
 #include "mozilla/DisplayPortUtils.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/Services.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/VisualViewport.h"
@@ -14,7 +15,6 @@
 #include "nsIDOMEventListener.h"
 #include "nsIFrame.h"
 #include "nsIObserverService.h"
-#include "nsIScrollableFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsPIDOMWindow.h"
 #include "nsPresContext.h"
@@ -90,11 +90,11 @@ bool GeckoMVMContext::SubjectMatchesDocument(nsISupports* aSubject) const {
 
 Maybe<CSSRect> GeckoMVMContext::CalculateScrollableRectForRSF() const {
   MOZ_ASSERT(mPresShell);
-  if (nsIScrollableFrame* rootScrollableFrame =
-          mPresShell->GetRootScrollFrameAsScrollable()) {
+  if (ScrollContainerFrame* rootScrollContainerFrame =
+          mPresShell->GetRootScrollContainerFrame()) {
     return Some(
         CSSRect::FromAppUnits(nsLayoutUtils::CalculateScrollableRectForFrame(
-            rootScrollableFrame, nullptr)));
+            rootScrollContainerFrame, nullptr)));
   }
   return Nothing();
 }
@@ -109,15 +109,15 @@ GeckoMVMContext::ScrollbarAreaToExcludeFromCompositionBounds() const {
   MOZ_ASSERT(mPresShell);
   return LayoutDeviceMargin::FromAppUnits(
       nsLayoutUtils::ScrollbarAreaToExcludeFromCompositionBoundsFor(
-          mPresShell->GetRootScrollFrame()),
+          mPresShell->GetRootScrollContainerFrame()),
       mPresShell->GetPresContext()->AppUnitsPerDevPixel());
 }
 
-Maybe<LayoutDeviceIntSize> GeckoMVMContext::GetContentViewerSize() const {
+Maybe<LayoutDeviceIntSize> GeckoMVMContext::GetDocumentViewerSize() const {
   MOZ_ASSERT(mPresShell);
   LayoutDeviceIntSize result;
-  if (nsLayoutUtils::GetContentViewerSize(mPresShell->GetPresContext(),
-                                          result)) {
+  if (nsLayoutUtils::GetDocumentViewerSize(mPresShell->GetPresContext(),
+                                           result)) {
     return Some(result);
   }
   return Nothing();
@@ -169,7 +169,7 @@ void GeckoMVMContext::PostVisualViewportResizeEventByDynamicToolbar() {
 
 void GeckoMVMContext::UpdateDisplayPortMargins() {
   MOZ_ASSERT(mPresShell);
-  if (nsIFrame* root = mPresShell->GetRootScrollFrame()) {
+  if (ScrollContainerFrame* root = mPresShell->GetRootScrollContainerFrame()) {
     nsIContent* content = root->GetContent();
     bool hasDisplayPort = DisplayPortUtils::HasNonMinimalDisplayPort(content);
     bool hasResolution = mPresShell->GetResolution() != 1.0f;
@@ -187,9 +187,8 @@ void GeckoMVMContext::UpdateDisplayPortMargins() {
     MOZ_ASSERT(
         mPresShell->GetPresContext()->IsRootContentDocumentCrossProcess());
     DisplayPortUtils::SetDisplayPortBaseIfNotSet(content, displayportBase);
-    nsIScrollableFrame* scrollable = do_QueryFrame(root);
     DisplayPortUtils::CalculateAndSetDisplayPortMargins(
-        scrollable, DisplayPortUtils::RepaintMode::Repaint);
+        root, DisplayPortUtils::RepaintMode::Repaint);
   }
 }
 
@@ -204,6 +203,14 @@ void GeckoMVMContext::Reflow(const CSSSize& aNewSize) {
                                      CSSPixel::ToAppUnits(aNewSize.height))) {
     doc->FlushPendingNotifications(FlushType::InterruptibleLayout);
   }
+}
+
+ScreenIntCoord GeckoMVMContext::GetDynamicToolbarOffset() {
+  const nsPresContext* presContext = mPresShell->GetPresContext();
+  return presContext->HasDynamicToolbar()
+             ? presContext->GetDynamicToolbarMaxHeight() -
+                   presContext->GetDynamicToolbarHeight()
+             : ScreenIntCoord(0);
 }
 
 }  // namespace mozilla

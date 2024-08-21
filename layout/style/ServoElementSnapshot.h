@@ -33,6 +33,7 @@ enum class ServoElementSnapshotFlags : uint8_t {
   Id = 1 << 2,
   MaybeClass = 1 << 3,
   OtherPseudoClassState = 1 << 4,
+  CustomState = 1 << 5,
 };
 
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(ServoElementSnapshotFlags)
@@ -89,6 +90,11 @@ class ServoElementSnapshot {
   void AddAttrs(const Element&, int32_t aNameSpaceID, nsAtom* aAttribute);
 
   /**
+   * Captures the given element custom states.
+   */
+  void AddCustomStates(Element&);
+
+  /**
    * Captures some other pseudo-class matching state not included in
    * ElementState.
    */
@@ -143,11 +149,6 @@ class ServoElementSnapshot {
     return mIsTableBorderNonzero;
   }
 
-  bool IsMozBrowserFrame() const {
-    MOZ_ASSERT(HasOtherPseudoClassState());
-    return mIsMozBrowserFrame;
-  }
-
   bool IsSelectListBox() const {
     MOZ_ASSERT(HasOtherPseudoClassState());
     return mIsSelectListBox;
@@ -160,13 +161,13 @@ class ServoElementSnapshot {
   // snapshots.
   nsTArray<AttrArray::InternalAttr> mAttrs;
   nsTArray<RefPtr<nsAtom>> mChangedAttrNames;
+  nsTArray<RefPtr<nsAtom>> mCustomStates;
   nsAttrValue mClass;
   ServoStateType mState;
   Flags mContains;
   bool mIsInChromeDocument : 1;
   bool mSupportsLangAttr : 1;
   bool mIsTableBorderNonzero : 1;
-  bool mIsMozBrowserFrame : 1;
   bool mIsSelectListBox : 1;
   bool mClassAttributeChanged : 1;
   bool mIdAttributeChanged : 1;

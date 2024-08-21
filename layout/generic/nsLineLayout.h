@@ -48,9 +48,15 @@ class nsLineLayout {
   void BeginLineReflow(nscoord aICoord, nscoord aBCoord, nscoord aISize,
                        nscoord aBSize, bool aImpactedByFloats,
                        bool aIsTopOfPage, mozilla::WritingMode aWritingMode,
-                       const nsSize& aContainerSize);
+                       const nsSize& aContainerSize,
+                       // aInset is used during text-wrap:balance to reduce
+                       // the effective available space on the line.
+                       nscoord aInset = 0);
 
-  void EndLineReflow();
+  /**
+   * Returns true if the line had to use an overflow-wrap break position.
+   */
+  bool EndLineReflow();
 
   /**
    * Called when a float has been placed. This method updates the
@@ -327,6 +333,11 @@ class nsLineLayout {
 
   void SetSuppressLineWrap(bool aEnabled) { mSuppressLineWrap = aEnabled; }
 
+  /**
+   * Record that the line had to resort to an overflow-wrap break.
+   */
+  void SetUsedOverflowWrap() { mUsedOverflowWrap = true; }
+
  protected:
   // This state is constant for a given block frame doing line layout
 
@@ -494,6 +505,7 @@ class nsLineLayout {
     nscoord mIStart;
     nscoord mICoord;
     nscoord mIEnd;
+    nscoord mInset;
 
     nscoord mBStartLeading, mBEndLeading;
     nscoord mLogicalBSize;
@@ -581,6 +593,7 @@ class nsLineLayout {
   bool mLineAtStart : 1;
   bool mHasRuby : 1;
   bool mSuppressLineWrap : 1;
+  bool mUsedOverflowWrap : 1;
 
   int32_t mSpanDepth;
 #ifdef DEBUG
@@ -688,6 +701,9 @@ class nsLineLayout {
 #ifdef DEBUG
   void DumpPerSpanData(PerSpanData* psd, int32_t aIndent);
 #endif
+
+ private:
+  static bool ShouldApplyLineHeightInPreserveWhiteSpace(const PerSpanData* psd);
 };
 
 #endif /* nsLineLayout_h___ */

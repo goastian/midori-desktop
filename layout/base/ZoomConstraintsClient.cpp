@@ -12,11 +12,11 @@
 #include "mozilla/layers/ZoomConstraints.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/StaticPrefs_apz.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Event.h"
 #include "nsIFrame.h"
-#include "nsIScrollableFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsPoint.h"
 #include "nsView.h"
@@ -53,7 +53,14 @@ static nsIWidget* GetWidget(PresShell* aPresShell) {
     return nullptr;
   }
   if (nsIFrame* rootFrame = aPresShell->GetRootFrame()) {
-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+#if defined(MOZ_WIDGET_ANDROID)
+    // On Android in cases of about:XX pages loaded in the browser parent
+    // process we need to return the nearest widget since it's the widget owning
+    // an IAPZCTreeManager to communicate with the APZCTreeManager for the
+    // browser.
+    // In bug 1648427 we will apply this code to desktops as well to make
+    // about pages zoomable on desktops, but it will be involving more works,
+    // see https://bugzilla.mozilla.org/show_bug.cgi?id=1648427#c7 .
     return rootFrame->GetNearestWidget();
 #else
     if (nsView* view = rootFrame->GetView()) {
@@ -167,7 +174,7 @@ ZoomConstraintsClient::Observe(nsISupports* aSubject, const char* aTopic,
     RefPtr<nsRunnableMethod<ZoomConstraintsClient>> event =
         NewRunnableMethod("ZoomConstraintsClient::RefreshZoomConstraints", this,
                           &ZoomConstraintsClient::RefreshZoomConstraints);
-    mDocument->Dispatch(TaskCategory::Other, event.forget());
+    mDocument->Dispatch(event.forget());
   }
   return NS_OK;
 }
@@ -203,6 +210,11 @@ void ZoomConstraintsClient::RefreshZoomConstraints() {
     return;
   }
 
+  // Ignore documents which has been removed from the doc shell.
+  if (!mDocument->IsActive()) {
+    return;
+  }
+
   uint32_t presShellId = 0;
   ScrollableLayerGuid::ViewID viewId = ScrollableLayerGuid::NULL_SCROLL_ID;
   bool scrollIdentifiersValid =
@@ -213,8 +225,8 @@ void ZoomConstraintsClient::RefreshZoomConstraints() {
   }
 
   LayoutDeviceIntSize screenSize;
-  if (!nsLayoutUtils::GetContentViewerSize(mPresShell->GetPresContext(),
-                                           screenSize)) {
+  if (!nsLayoutUtils::GetDocumentViewerSize(mPresShell->GetPresContext(),
+                                            screenSize)) {
     return;
   }
 
@@ -263,8 +275,8 @@ void ZoomConstraintsClient::RefreshZoomConstraints() {
   // We only ever create a ZoomConstraintsClient for an RCD, so the RSF of
   // the presShell must be the RCD-RSF (if it exists).
   MOZ_ASSERT(mPresShell->GetPresContext()->IsRootContentDocumentCrossProcess());
-  if (nsIScrollableFrame* rcdrsf =
-          mPresShell->GetRootScrollFrameAsScrollable()) {
+  if (ScrollContainerFrame* rcdrsf =
+          mPresShell->GetRootScrollContainerFrame()) {
     ZCC_LOG("Notifying RCD-RSF that it is zoomable: %d\n",
             mZoomConstraints.mAllowZoom);
     rcdrsf->SetZoomableByAPZ(mZoomConstraints.mAllowZoom);

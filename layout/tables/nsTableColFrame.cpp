@@ -37,9 +37,6 @@ nsTableColFrame::nsTableColFrame(ComputedStyle* aStyle,
       mColIndex(0),
       mIStartBorderWidth(0),
       mIEndBorderWidth(0),
-      mBStartContBorderWidth(0),
-      mIEndContBorderWidth(0),
-      mBEndContBorderWidth(0),
       mHasSpecifiedCoord(false) {
   SetColType(eColContent);
   ResetIntrinsics();
@@ -79,30 +76,12 @@ void nsTableColFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle) {
   }
 }
 
-void nsTableColFrame::SetContinuousBCBorderWidth(LogicalSide aForSide,
-                                                 BCPixelSize aPixelValue) {
-  switch (aForSide) {
-    case eLogicalSideBStart:
-      mBStartContBorderWidth = aPixelValue;
-      return;
-    case eLogicalSideIEnd:
-      mIEndContBorderWidth = aPixelValue;
-      return;
-    case eLogicalSideBEnd:
-      mBEndContBorderWidth = aPixelValue;
-      return;
-    default:
-      NS_ERROR("invalid side arg");
-  }
-}
-
 void nsTableColFrame::Reflow(nsPresContext* aPresContext,
                              ReflowOutput& aDesiredSize,
                              const ReflowInput& aReflowInput,
                              nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsTableColFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
   aDesiredSize.ClearSize();
   const nsStyleVisibility* colVis = StyleVisibility();

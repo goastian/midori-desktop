@@ -103,12 +103,12 @@ class ReftestServer:
         args = [
             "-g",
             self.xrePath,
-            "-f",
-            os.path.join(self.httpdPath, "httpd.js"),
             "-e",
             "const _PROFILE_PATH = '%(profile)s';const _SERVER_PORT = "
-            "'%(port)s'; const _SERVER_ADDR ='%(server)s';"
+            "'%(port)s'; const _SERVER_ADDR ='%(server)s'; "
+            "const _HTTPD_PATH = '%(httpdPath)s';"
             % {
+                "httpdPath": self.httpdPath.replace("\\", "\\\\"),
                 "profile": self.profileDir.replace("\\", "\\\\"),
                 "port": self.httpPort,
                 "server": self.webServer,
@@ -336,7 +336,6 @@ class RemoteReftest(RefTest):
         )
         profileDir = profile.profile
         prefs = {}
-        prefs["app.update.url.android"] = ""
         prefs["reftest.remote"] = True
         prefs["datareporting.policy.dataSubmissionPolicyBypassAcceptance"] = True
         # move necko cache to a location that can be cleaned up

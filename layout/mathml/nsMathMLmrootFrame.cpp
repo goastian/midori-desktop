@@ -7,7 +7,6 @@
 #include "nsMathMLmrootFrame.h"
 
 #include "mozilla/PresShell.h"
-#include "mozilla/StaticPrefs_mathml.h"
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
 #include <algorithm>
@@ -31,9 +30,7 @@ NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmrootFrame)
 
 nsMathMLmrootFrame::nsMathMLmrootFrame(ComputedStyle* aStyle,
                                        nsPresContext* aPresContext)
-    : nsMathMLContainerFrame(aStyle, aPresContext, kClassID),
-      mSqrChar(),
-      mBarRect() {}
+    : nsMathMLContainerFrame(aStyle, aPresContext, kClassID) {}
 
 nsMathMLmrootFrame::~nsMathMLmrootFrame() = default;
 
@@ -48,9 +45,6 @@ void nsMathMLmrootFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
 }
 
 bool nsMathMLmrootFrame::ShouldUseRowFallback() {
-  if (!StaticPrefs::mathml_error_message_layout_for_invalid_markup_disabled()) {
-    return false;
-  }
   nsIFrame* baseFrame = mFrames.FirstChild();
   if (!baseFrame) {
     return true;
@@ -86,20 +80,18 @@ void nsMathMLmrootFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
 
   /////////////
   // paint the sqrt symbol
-  if (!NS_MATHML_HAS_ERROR(mPresentationData.flags)) {
-    mSqrChar.Display(aBuilder, this, aLists, 0);
+  mSqrChar.Display(aBuilder, this, aLists, 0);
 
-    DisplayBar(aBuilder, this, mBarRect, aLists);
+  DisplayBar(aBuilder, this, mBarRect, aLists);
 
 #if defined(DEBUG) && defined(SHOW_BOUNDING_BOX)
-    // for visual debug
-    nsRect rect;
-    mSqrChar.GetRect(rect);
-    nsBoundingMetrics bm;
-    mSqrChar.GetBoundingMetrics(bm);
-    DisplayBoundingMetrics(aBuilder, this, rect.TopLeft(), bm, aLists);
+  // for visual debug
+  nsRect rect;
+  mSqrChar.GetRect(rect);
+  nsBoundingMetrics bm;
+  mSqrChar.GetBoundingMetrics(bm);
+  DisplayBoundingMetrics(aBuilder, this, rect.TopLeft(), bm, aLists);
 #endif
-  }
 }
 
 void nsMathMLmrootFrame::GetRadicalXOffsets(nscoord aIndexWidth,
@@ -168,7 +160,6 @@ void nsMathMLmrootFrame::Reflow(nsPresContext* aPresContext,
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   nsReflowStatus childStatus;
-  mPresentationData.flags &= ~NS_MATHML_ERROR;
   aDesiredSize.ClearSize();
   aDesiredSize.SetBlockStartAscent(0);
 
@@ -208,16 +199,6 @@ void nsMathMLmrootFrame::Reflow(nsPresContext* aPresContext,
     }
     count++;
     childFrame = childFrame->GetNextSibling();
-  }
-  // FIXME: Bug 1788223: Remove this code when the preference
-  // mathml.error_message_layout_for_invalid_markup.disabled no longer needed.
-  if (2 != count) {
-    // report an error, encourage people to get their markups in order
-    ReportChildCountError();
-    ReflowError(drawTarget, aDesiredSize);
-    // Call DidReflow() for the child frames we successfully did reflow.
-    DidReflowChildren(mFrames.FirstChild(), childFrame);
-    return;
   }
 
   ////////////
@@ -364,13 +345,12 @@ void nsMathMLmrootFrame::GetIntrinsicISizeMetrics(gfxContext* aRenderingContext,
     return;
   }
 
+  // ShouldUseRowFallback() returned false so there are exactly two children.
   nsIFrame* baseFrame = mFrames.FirstChild();
-  nsIFrame* indexFrame = nullptr;
-  if (baseFrame) indexFrame = baseFrame->GetNextSibling();
-  if (!indexFrame || indexFrame->GetNextSibling()) {
-    ReflowError(aRenderingContext->GetDrawTarget(), aDesiredSize);
-    return;
-  }
+  MOZ_ASSERT(baseFrame);
+  nsIFrame* indexFrame = baseFrame->GetNextSibling();
+  MOZ_ASSERT(indexFrame);
+  MOZ_ASSERT(!indexFrame->GetNextSibling());
 
   float fontSizeInflation = nsLayoutUtils::FontSizeInflationFor(this);
   nscoord baseWidth = nsLayoutUtils::IntrinsicForContainer(

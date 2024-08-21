@@ -8,7 +8,7 @@ def _assign_slots(obj, args):
 
 
 class Longhand(object):
-    __slots__ = ["name", "method", "id", "rules", "flags", "pref"]
+    __slots__ = ["name", "method", "id", "rules", "flags", "pref", "aliases"]
 
     def __init__(self, *args):
         _assign_slots(self, args)
@@ -19,7 +19,7 @@ class Longhand(object):
 
 
 class Shorthand(object):
-    __slots__ = ["name", "method", "id", "rules", "flags", "pref", "subprops"]
+    __slots__ = ["name", "method", "id", "rules", "flags", "pref", "subprops", "aliases"]
 
     def __init__(self, *args):
         _assign_slots(self, args)
@@ -112,6 +112,13 @@ def exposed_on_getcs(prop):
 def rules(prop):
     return ", ".join('"{}"'.format(rule) for rule in prop.rule_types_allowed_names())
 
+RUST_TO_CPP_FLAGS = {
+  "CAN_ANIMATE_ON_COMPOSITOR": "CanAnimateOnCompositor",
+  "AFFECTS_LAYOUT": "AffectsLayout",
+  "AFFECTS_PAINT": "AffectsPaint",
+  "AFFECTS_OVERFLOW": "AffectsOverflow",
+}
+
 def flags(prop):
     result = []
     if prop.explicitly_enabled_in_chrome():
@@ -122,12 +129,11 @@ def flags(prop):
         result.append("Internal")
     if prop.enabled_in == "":
         result.append("Inaccessible")
-    if "CAN_ANIMATE_ON_COMPOSITOR" in prop.flags:
-        result.append("CanAnimateOnCompositor")
+    for (k, v) in RUST_TO_CPP_FLAGS.items():
+        if k in prop.flags:
+            result.append(v)
     if exposed_on_getcs(prop):
         result.append("ExposedOnGetCS")
-        if prop.type() == "shorthand" and "SHORTHAND_IN_GETCS" in prop.flags:
-            result.append("ShorthandUnconditionallyExposedOnGetCS")
         if serialized_by_servo(prop):
             result.append("SerializedByServo")
     if prop.type() == "longhand" and prop.logical:
@@ -141,19 +147,21 @@ def pref(prop):
 
 def sub_properties(prop):
     return ", ".join('"{}"'.format(p.ident) for p in prop.sub_properties)
+
+def aliases(prop):
+    return ", ".join('"{}"'.format(p.ident) for p in prop.aliases)
 %>
 
-data = [
-    % for prop in data.longhands:
-    Longhand("${prop.name}", "${method(prop)}", "${prop.ident}", [${rules(prop)}], [${flags(prop)}], ${pref(prop)}),
-    % endfor
+data = {
+% for prop in data.longhands:
+    "${prop.ident}": Longhand("${prop.name}", "${method(prop)}", "${prop.ident}", [${rules(prop)}], [${flags(prop)}], ${pref(prop)}, [${aliases(prop)}]),
+% endfor
 
-    % for prop in data.shorthands:
-    Shorthand("${prop.name}", "${prop.camel_case}", "${prop.ident}", [${rules(prop)}], [${flags(prop)}], ${pref(prop)},
-              [${sub_properties(prop)}]),
-    % endfor
+% for prop in data.shorthands:
+    "${prop.ident}": Shorthand("${prop.name}", "${prop.camel_case}", "${prop.ident}", [${rules(prop)}], [${flags(prop)}], ${pref(prop)}, [${sub_properties(prop)}], [${aliases(prop)}]),
+% endfor
 
-    % for prop in data.all_aliases():
-    Alias("${prop.name}", "${prop.camel_case}", "${prop.ident}", "${prop.original.ident}", [${rules(prop)}], [${flags(prop)}], ${pref(prop)}),
-    % endfor
-]
+% for prop in data.all_aliases():
+    "${prop.ident}": Alias("${prop.name}", "${prop.camel_case}", "${prop.ident}", "${prop.original.ident}", [${rules(prop)}], [${flags(prop)}], ${pref(prop)}),
+% endfor
+}

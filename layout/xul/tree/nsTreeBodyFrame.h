@@ -32,6 +32,7 @@ class nsTreeImageListener;
 
 namespace mozilla {
 class PresShell;
+class ScrollContainerFrame;
 namespace layout {
 class ScrollbarActivity;
 }  // namespace layout
@@ -159,7 +160,7 @@ class nsTreeBodyFrame final : public mozilla::SimpleXULLeafFrame,
             nsIFrame* aPrevInFlow) override;
   void Destroy(DestroyContext&) override;
 
-  mozilla::Maybe<Cursor> GetCursor(const nsPoint&) override;
+  Cursor GetCursor(const nsPoint&) override;
 
   nsresult HandleEvent(nsPresContext* aPresContext,
                        mozilla::WidgetGUIEvent* aEvent,
@@ -179,7 +180,7 @@ class nsTreeBodyFrame final : public mozilla::SimpleXULLeafFrame,
     nsScrollbarFrame* mHScrollbar;
     RefPtr<mozilla::dom::Element> mHScrollbarContent;
     nsIFrame* mColumnsFrame;
-    nsIScrollableFrame* mColumnsScrollFrame;
+    mozilla::ScrollContainerFrame* mColumnsScrollFrame;
   };
 
   ImgDrawResult PaintTreeBody(gfxContext& aRenderingContext,
@@ -295,10 +296,10 @@ class nsTreeBodyFrame final : public mozilla::SimpleXULLeafFrame,
                  nsCSSAnonBoxPseudoStaticAtom** aChildElt);
 
   // Retrieve the area for the twisty for a cell.
-  nsITheme* GetTwistyRect(int32_t aRowIndex, nsTreeColumn* aColumn,
-                          nsRect& aImageRect, nsRect& aTwistyRect,
-                          nsPresContext* aPresContext,
-                          ComputedStyle* aTwistyContext);
+  void GetTwistyRect(int32_t aRowIndex, nsTreeColumn* aColumn,
+                     nsRect& aImageRect, nsRect& aTwistyRect,
+                     nsPresContext* aPresContext,
+                     ComputedStyle* aTwistyContext);
 
   // Fetch an image from the image cache.
   nsresult GetImage(int32_t aRowIndex, nsTreeColumn* aCol, bool aUseContext,

@@ -114,6 +114,7 @@ void SVGGeometryFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle) {
 
   if (element->IsGeometryChangedViaCSS(*Style(), *aOldComputedStyle)) {
     element->ClearAnyCachedPath();
+    SVGObserverUtils::InvalidateRenderingObservers(this);
   }
 }
 
@@ -132,7 +133,7 @@ void SVGGeometryFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
     if (!IsVisibleForPainting()) {
       return;
     }
-    if (StyleEffects()->IsTransparent()) {
+    if (StyleEffects()->IsTransparent() && SVGUtils::CanOptimizeOpacity(this)) {
       return;
     }
     const auto* styleSVG = StyleSVG();
@@ -358,13 +359,31 @@ SVGBBox SVGGeometryFrame::GetBBoxContribution(const Matrix& aToBBoxUserspace,
 
   SVGGeometryElement* element = static_cast<SVGGeometryElement*>(GetContent());
 
-  bool getFill = (aFlags & SVGUtils::eBBoxIncludeFillGeometry) ||
-                 ((aFlags & SVGUtils::eBBoxIncludeFill) &&
-                  !StyleSVG()->mFill.kind.IsNone());
+  const bool getFill = (aFlags & SVGUtils::eBBoxIncludeFillGeometry) ||
+                       ((aFlags & SVGUtils::eBBoxIncludeFill) &&
+                        !StyleSVG()->mFill.kind.IsNone());
 
-  bool getStroke =
-      (aFlags & SVGUtils::eBBoxIncludeStrokeGeometry) ||
-      ((aFlags & SVGUtils::eBBoxIncludeStroke) && SVGUtils::HasStroke(this));
+  const bool getStroke =
+      ((aFlags & SVGUtils::eBBoxIncludeStrokeGeometry) ||
+       ((aFlags & SVGUtils::eBBoxIncludeStroke) &&
+        SVGUtils::HasStroke(this))) &&
+      // If this frame has non-scaling-stroke and we would like to compute its
+      // stroke, it may cause a potential cyclical dependency if the caller is
+      // for transform. In this case, we have to fall back to fill-box, so make
+      // |getStroke| be false.
+      // https://github.com/w3c/csswg-drafts/issues/9640
+      //
+      // Note:
+      // 1. We don't care about the computation of the markers below in this
+      //    function because we know the callers don't set
+      //    SVGUtils::eBBoxIncludeMarkers.
+      //    See nsStyleTransformMatrix::GetSVGBox() and
+      //    MotionPathUtils::GetRayContainReferenceSize() for more details.
+      // 2. We have to break the dependency here *again* because the geometry
+      //    frame may be in the subtree of a SVGContainerFrame, which may not
+      //    set non-scaling-stroke.
+      !(StyleSVGReset()->HasNonScalingStroke() &&
+        (aFlags & SVGUtils::eAvoidCycleIfNonScalingStroke));
 
   SVGContentUtils::AutoStrokeOptions strokeOptions;
   if (getStroke) {
@@ -659,7 +678,8 @@ bool SVGGeometryFrame::IsInvisible() const {
   // Anything below will round to zero later down the pipeline.
   constexpr float opacity_threshold = 1.0 / 128.0;
 
-  if (StyleEffects()->mOpacity <= opacity_threshold) {
+  if (StyleEffects()->mOpacity <= opacity_threshold &&
+      SVGUtils::CanOptimizeOpacity(this)) {
     return true;
   }
 
@@ -754,7 +774,12 @@ bool SVGGeometryFrame::CreateWebRenderCommands(
     // At the moment this code path doesn't support strokes so it fine to
     // combine the rectangle's opacity (which has to be applied on the result)
     // of (filling + stroking) with the fill opacity.
-    float elemOpacity = StyleEffects()->mOpacity;
+
+    float elemOpacity = 1.0f;
+    if (SVGUtils::CanOptimizeOpacity(this)) {
+      elemOpacity = StyleEffects()->mOpacity;
+    }
+
     float fillOpacity = SVGUtils::GetOpacity(style->mFillOpacity, contextPaint);
     float opacity = elemOpacity * fillOpacity;
 

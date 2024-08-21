@@ -20,9 +20,7 @@ struct nsSize;
 
 namespace mozilla {
 
-namespace layers {
 struct ScrollSnapInfo;
-}
 
 struct ScrollSnapUtils {
   /**
@@ -39,8 +37,8 @@ struct ScrollSnapUtils {
    *                 not to touch main-thread-only data structures without
    *                 appropriate locking.
    */
-  static Maybe<SnapTarget> GetSnapPointForDestination(
-      const layers::ScrollSnapInfo& aSnapInfo, ScrollUnit aUnit,
+  static Maybe<SnapDestination> GetSnapPointForDestination(
+      const ScrollSnapInfo& aSnapInfo, ScrollUnit aUnit,
       ScrollSnapFlags aSnapFlags, const nsRect& aScrollRange,
       const nsPoint& aStartPos, const nsPoint& aDestination);
 
@@ -54,8 +52,8 @@ struct ScrollSnapUtils {
    * Other parameters are same as GetSnapPointForDestination.
    */
 
-  static mozilla::Maybe<mozilla::SnapTarget> GetSnapPointForResnap(
-      const layers::ScrollSnapInfo& aSnapInfo, const nsRect& aScrollRange,
+  static mozilla::Maybe<SnapDestination> GetSnapPointForResnap(
+      const ScrollSnapInfo& aSnapInfo, const nsRect& aScrollRange,
       const nsPoint& aCurrentPosition,
       const UniquePtr<ScrollSnapTargetIds>& aLastSnapTargetIds,
       const nsIContent* aFocusedContent);

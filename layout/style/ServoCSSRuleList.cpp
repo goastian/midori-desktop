@@ -17,11 +17,14 @@
 #include "mozilla/dom/CSSLayerStatementRule.h"
 #include "mozilla/dom/CSSKeyframesRule.h"
 #include "mozilla/dom/CSSContainerRule.h"
+#include "mozilla/dom/CSSMarginRule.h"
 #include "mozilla/dom/CSSMediaRule.h"
 #include "mozilla/dom/CSSMozDocumentRule.h"
 #include "mozilla/dom/CSSNamespaceRule.h"
 #include "mozilla/dom/CSSPageRule.h"
 #include "mozilla/dom/CSSPropertyRule.h"
+#include "mozilla/dom/CSSScopeRule.h"
+#include "mozilla/dom/CSSStartingStyleRule.h"
 #include "mozilla/dom/CSSStyleRule.h"
 #include "mozilla/dom/CSSSupportsRule.h"
 #include "mozilla/IntegerRange.h"
@@ -86,6 +89,7 @@ css::Rule* ServoCSSRuleList::GetRule(uint32_t aIndex) {
       CASE_RULE_LOCKED(Keyframes, Keyframes)
       CASE_RULE_UNLOCKED(Media, Media)
       CASE_RULE_UNLOCKED(Namespace, Namespace)
+      CASE_RULE_UNLOCKED(Margin, Margin)
       CASE_RULE_LOCKED(Page, Page)
       CASE_RULE_UNLOCKED(Property, Property)
       CASE_RULE_UNLOCKED(Supports, Supports)
@@ -98,12 +102,11 @@ css::Rule* ServoCSSRuleList::GetRule(uint32_t aIndex) {
       CASE_RULE_UNLOCKED(LayerBlock, LayerBlock)
       CASE_RULE_UNLOCKED(LayerStatement, LayerStatement)
       CASE_RULE_UNLOCKED(Container, Container)
+      CASE_RULE_UNLOCKED(Scope, Scope)
+      CASE_RULE_UNLOCKED(StartingStyle, StartingStyle)
 #undef CASE_RULE_LOCKED
 #undef CASE_RULE_UNLOCKED
 #undef CASE_RULE_WITH_PREFIX
-      case StyleCssRuleType::Viewport:
-        MOZ_ASSERT_UNREACHABLE("viewport is not implemented in Gecko");
-        return nullptr;
       case StyleCssRuleType::Keyframe:
         MOZ_ASSERT_UNREACHABLE("keyframe rule cannot be here");
         return nullptr;
@@ -193,7 +196,6 @@ nsresult ServoCSSRuleList::InsertRule(const nsACString& aRule,
 
   mStyleSheet->WillDirty();
 
-  bool nested = !!mParentRule;
   css::Loader* loader = nullptr;
   auto allowImportRules = mStyleSheet->SelfOrAncestorIsConstructed()
                               ? StyleAllowImportRules::No
@@ -208,12 +210,23 @@ nsresult ServoCSSRuleList::InsertRule(const nsACString& aRule,
     loader = doc->CSSLoader();
   }
   StyleCssRuleType type;
-  nsresult rv = Servo_CssRules_InsertRule(mRawRules, mStyleSheet->RawContents(),
-                                          &aRule, aIndex, nested, loader,
-                                          allowImportRules, mStyleSheet, &type);
-  if (NS_FAILED(rv)) {
-    return rv;
+  uint32_t containingTypes = 0;
+  Maybe<StyleCssRuleType> parseRelativeRuleType;
+  for (css::Rule* rule = mParentRule; rule; rule = rule->GetParentRule()) {
+    const auto ruleType = rule->Type();
+    containingTypes |= (1 << uint32_t(ruleType));
+    if (parseRelativeRuleType.isNothing() &&
+        (ruleType == StyleCssRuleType::Style ||
+         ruleType == StyleCssRuleType::Scope)) {
+      // Only the closest applicable type to this rule matters.
+      parseRelativeRuleType = Some(ruleType);
+    }
   }
+  nsresult rv = Servo_CssRules_InsertRule(
+      mRawRules, mStyleSheet->RawContents(), &aRule, aIndex, containingTypes,
+      parseRelativeRuleType.ptrOr(nullptr), loader, allowImportRules,
+      mStyleSheet, &type);
+  NS_ENSURE_SUCCESS(rv, rv);
   mRules.InsertElementAt(aIndex, uintptr_t(type));
   return rv;
 }
@@ -263,6 +276,7 @@ void ServoCSSRuleList::SetRawContents(RefPtr<StyleLockedCssRules> aNewRules,
       RULE_CASE_LOCKED(Keyframes, Keyframes)
       RULE_CASE_UNLOCKED(Media, Media)
       RULE_CASE_UNLOCKED(Namespace, Namespace)
+      RULE_CASE_UNLOCKED(Margin, Margin)
       RULE_CASE_LOCKED(Page, Page)
       RULE_CASE_UNLOCKED(Property, Property)
       RULE_CASE_UNLOCKED(Supports, Supports)
@@ -275,11 +289,10 @@ void ServoCSSRuleList::SetRawContents(RefPtr<StyleLockedCssRules> aNewRules,
       RULE_CASE_UNLOCKED(LayerBlock, LayerBlock)
       RULE_CASE_UNLOCKED(LayerStatement, LayerStatement)
       RULE_CASE_UNLOCKED(Container, Container)
+      RULE_CASE_UNLOCKED(Scope, Scope)
+      RULE_CASE_UNLOCKED(StartingStyle, StartingStyle)
       case StyleCssRuleType::Keyframe:
         MOZ_ASSERT_UNREACHABLE("keyframe rule cannot be here");
-        break;
-      case StyleCssRuleType::Viewport:
-        MOZ_ASSERT_UNREACHABLE("Gecko doesn't implemente @viewport?");
         break;
     }
 #undef RULE_CASE_WITH_PREFIX

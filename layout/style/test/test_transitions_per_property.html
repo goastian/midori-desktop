@@ -303,6 +303,9 @@ var supported_properties = {
     "transform-origin": [ test_length_pair_transition,
                           test_length_percent_pair_transition,
                           test_length_percent_pair_unclamped ],
+    "rotate": [ test_rotate_transition ],
+    "scale": [ test_scale_transition ],
+    "translate": [ test_translate_transition ],
     "vertical-align": [ test_length_transition, test_percent_transition,
                         test_length_unclamped, test_percent_unclamped ],
     "visibility": [ test_visibility_transition ],
@@ -350,80 +353,15 @@ var supported_properties = {
       test_length_transition, test_percent_transition,
       test_length_clamped, test_percent_clamped,
     ],
+    "scrollbar-color": [ test_scrollbar_color_transition ],
 };
 
 if (IsCSSPropertyPrefEnabled("layout.css.backdrop-filter.enabled")) {
   supported_properties["backdrop-filter"] = [ test_filter_transition ];
 }
 
-if (IsCSSPropertyPrefEnabled("layout.css.motion-path.enabled")) {
-  supported_properties["offset-path"] = [ test_path_function ];
-  supported_properties["offset-distance"] =
-    [ test_length_transition,
-      test_percent_transition,
-      test_length_unclamped,
-      test_percent_unclamped,
-      test_calc_wrapped_calc_transition ];
-
-  function test_offset_rotate_transition(prop) {
-    [
-      // No transition between a keyword and a fixed angle.
-      { start: "auto", end: "0deg",
-        expected: "0deg" },
-      // "auto 45deg" to "auto 145 deg".
-      { start: "auto 45deg", end: "auto 145deg",
-        expected: "auto 70deg" },
-      // "auto 130deg" to "auto 90deg".
-      { start: "auto 130deg", end: "100grad auto",
-        expected: "auto 120deg" },
-      // "auto 0deg" to "auto 180deg".
-      { start: "auto", end: "reverse",
-        expected: "auto 45deg" },
-      // "auto 45deg" to "auto 225deg".
-      { start: "auto 45deg", end: "45deg reverse",
-        expected: "auto 90deg" },
-      // "auto -60deg" to "auto -360deg".
-      { start: "auto -60deg",
-        end: "auto calc(90deg - 0.5turn - 300grad + 0rad)",
-        expected: "auto -135deg" },
-    ].forEach(test => {
-      div.style.transitionProperty = 'none';
-      div.style[prop] = test.start;
-      is(cs[prop], test.start,
-         `offset-rotate: computed value before transition`);
-      div.style.transitionProperty = prop;
-      div.style[prop] = test.end;
-      is(cs[prop], test.expected,
-         `offset-rotate: interpolation of offset-rotate`);
-      // We check distance only if there is a transition.
-      if (test.end != test.expected) {
-        check_distance(prop, test.start, test.expected, test.end);
-      }
-    });
-  }
-  supported_properties["offset-rotate"] =
-    [ test_angle_transition,
-      test_offset_rotate_transition ];
-
-  // Note: offset-anchor supports "auto | <position>", and the tests for
-  // `auto` are already in wpt, so we don't test it here again.
-  supported_properties["offset-anchor"] =
-    [ test_background_position_transition ];
-}
-
-if (IsCSSPropertyPrefEnabled("layout.css.motion-path-offset-position.enabled")) {
-  supported_properties["offset-position"] =
-    [ test_background_position_transition ];
-}
-
 if (IsCSSPropertyPrefEnabled("layout.css.font-variations.enabled")) {
   supported_properties["font-variation-settings"] = [ test_font_variations_transition ];
-}
-
-if (IsCSSPropertyPrefEnabled("layout.css.individual-transform.enabled")) {
-  supported_properties["rotate"] = [ test_rotate_transition ];
-  supported_properties["scale"] = [ test_scale_transition ];
-  supported_properties["translate"] = [ test_translate_transition ];
 }
 
 if (IsCSSPropertyPrefEnabled("layout.css.contain-intrinsic-size.enabled")) {
@@ -431,9 +369,15 @@ if (IsCSSPropertyPrefEnabled("layout.css.contain-intrinsic-size.enabled")) {
   supported_properties["contain-intrinsic-height"] = supported_properties["contain-intrinsic-width"];
 }
 
-supported_properties["scrollbar-color"] = [
-  test_scrollbar_color_transition,
-];
+if (IsCSSPropertyPrefEnabled("layout.css.content-visibility.enabled")) {
+  supported_properties["content-visibility"] = [test_content_visibility_transition];
+}
+
+if (IsCSSPropertyPrefEnabled("layout.css.zoom.enabled")) {
+  Object.assign(supported_properties, {
+    "zoom": [ test_number_transition, test_percent_transition ],
+  });
+}
 
 // For properties which are well-tested by web-platform-tests, we don't need to
 // test animations/transitions again on them.
@@ -444,6 +388,11 @@ var skipped_transitionable_properties = [
   "font-style",  // Tests being added in https://github.com/web-platform-tests/wpt/pull/37570
   "grid-template-columns",
   "grid-template-rows",
+  "offset-path",
+  "offset-distance",
+  "offset-rotate",
+  "offset-anchor",
+  "offset-position",
 ]
 
 // Logical properties.
@@ -774,111 +723,110 @@ var transformTests = [
     expected_uncomputed: 'skewX(-30deg) rotate(90deg) translate(0)' },
 ];
 
-// Even if the default reference-box of shape-outside is margin-box, which is
-// different from the default reference-box of clip-path, we still can reuse
-// these tests for both properties because we always explicitly assign a
-// reference-box (i.e. border-box or content-box) if needed.
+// We intentionally use a non-default reference-box so we always serialize it.
+// Therefore, we can reuse these tests for clip-path and shape-outside.
 // Bug 1313619: Add some tests for two basic shapes with an explicit
-// reference-box and a default one.
+// reference-box and a default one, for each property (because they use
+// different default reference-box).
 const basicShapesTests = [
   { start: "none", end: "none",
     expected: ["none"] },
   // none to shape
   { start: "none",
-    end: "circle(500px at 500px 500px) border-box",
-    expected: ["circle", ["500px at 500px 500px"], "border-box"]
+    end: "circle(500px at 500px 500px) content-box",
+    expected: ["circle", ["500px at 500px 500px"], "content-box"]
   },
   { start: "none",
-    end: "ellipse(500px 500px at 500px 500px) border-box",
-    expected: ["ellipse", ["500px 500px at 500px 500px"], "border-box"]
+    end: "ellipse(500px 500px at 500px 500px) content-box",
+    expected: ["ellipse", ["500px 500px at 500px 500px"], "content-box"]
   },
   { start: "none",
-    end: "polygon(evenodd, 500px 500px, 500px 500px) border-box",
-    expected: ["polygon", ["evenodd, 500px 500px, 500px 500px"], "border-box"]
+    end: "polygon(evenodd, 500px 500px, 500px 500px) content-box",
+    expected: ["polygon", ["evenodd, 500px 500px, 500px 500px"], "content-box"]
   },
   { start: "none",
-    end: "inset(500px 500px 500px 500px round 500px 500px) border-box",
-    expected: ["inset", ["500px round 500px"], "border-box"]
+    end: "inset(500px 500px 500px 500px round 500px 500px) content-box",
+    expected: ["inset", ["500px round 500px"], "content-box"]
   },
   // matching functions
   { start: "circle(100px)", end: "circle(500px)",
-    expected: ["circle", ["200px at 50% 50%"]] },
+    expected: ["circle", ["200px"]] },
   { start: "ellipse(100px 100px)", end: "ellipse(500px 500px)",
-    expected: ["ellipse", ["200px 200px at 50% 50%"]] },
-  { start: "circle(100px at 100px 100px) border-box",
-    end: "circle(500px at 500px 500px) border-box",
-    expected: ["circle", ["200px at 200px 200px"], "border-box"]
+    expected: ["ellipse", ["200px 200px"]] },
+  { start: "circle(100px at 100px 100px) content-box",
+    end: "circle(500px at 500px 500px) content-box",
+    expected: ["circle", ["200px at 200px 200px"], "content-box"]
   },
-  { start: "ellipse(100px 100px at 100px 100px) border-box",
-    end: "ellipse(500px 500px at 500px 500px) border-box",
-    expected: ["ellipse", ["200px 200px at 200px 200px"], "border-box"]
+  { start: "ellipse(100px 100px at 100px 100px) content-box",
+    end: "ellipse(500px 500px at 500px 500px) content-box",
+    expected: ["ellipse", ["200px 200px at 200px 200px"], "content-box"]
   },
-  { start: "polygon(evenodd, 100px 100px, 100px 100px) border-box",
-    end: "polygon(evenodd, 500px 500px, 500px 500px) border-box",
-    expected: ["polygon", ["evenodd, 200px 200px, 200px 200px"], "border-box"]
+  { start: "polygon(evenodd, 100px 100px, 100px 100px) content-box",
+    end: "polygon(evenodd, 500px 500px, 500px 500px) content-box",
+    expected: ["polygon", ["evenodd, 200px 200px, 200px 200px"], "content-box"]
   },
-  { start: "inset(100px 100px 100px 100px round 100px 100px) border-box",
-    end: "inset(500px 500px 500px 500px round 500px 500px) border-box",
-    expected: ["inset", ["200px round 200px"], "border-box"]
+  { start: "inset(100px 100px 100px 100px round 100px 100px) content-box",
+    end: "inset(500px 500px 500px 500px round 500px 500px) content-box",
+    expected: ["inset", ["200px round 200px"], "content-box"]
   },
   // matching functions percentage
   { start: "circle(100%)", end: "circle(500%)",
-    expected: ["circle", ["200% at 50% 50%"]] },
+    expected: ["circle", ["200%"]] },
   { start: "ellipse(100% 100%)", end: "ellipse(500% 500%)",
-    expected: ["ellipse", ["200% 200% at 50% 50%"]] },
-  { start: "circle(100% at 100% 100%) border-box",
-    end: "circle(500% at 500% 500%) border-box",
-    expected: ["circle", ["200% at 200% 200%"], "border-box"]
+    expected: ["ellipse", ["200% 200%"]] },
+  { start: "circle(100% at 100% 100%) content-box",
+    end: "circle(500% at 500% 500%) content-box",
+    expected: ["circle", ["200% at 200% 200%"], "content-box"]
   },
-  { start: "ellipse(100% 100% at 100% 100%) border-box",
-    end: "ellipse(500% 500% at 500% 500%) border-box",
-    expected: ["ellipse", ["200% 200% at 200% 200%"], "border-box"]
+  { start: "ellipse(100% 100% at 100% 100%) content-box",
+    end: "ellipse(500% 500% at 500% 500%) content-box",
+    expected: ["ellipse", ["200% 200% at 200% 200%"], "content-box"]
   },
-  { start: "polygon(evenodd, 100% 100%, 100% 100%) border-box",
-    end: "polygon(evenodd, 500% 500%, 500% 500%) border-box",
-    expected: ["polygon", ["evenodd, 200% 200%, 200% 200%"], "border-box"]
+  { start: "polygon(evenodd, 100% 100%, 100% 100%) content-box",
+    end: "polygon(evenodd, 500% 500%, 500% 500%) content-box",
+    expected: ["polygon", ["evenodd, 200% 200%, 200% 200%"], "content-box"]
   },
-  { start: "inset(100% 100% 100% 100% round 100% 100%) border-box",
-    end: "inset(500% 500% 500% 500% round 500% 500%) border-box",
-    expected: ["inset", ["200% round 200%"], "border-box"] },
+  { start: "inset(100% 100% 100% 100% round 100% 100%) content-box",
+    end: "inset(500% 500% 500% 500% round 500% 500%) content-box",
+    expected: ["inset", ["200% round 200%"], "content-box"] },
   // matching functions with calc() values
   { start: "circle(calc(80px + 20px))", end: "circle(calc(200px + 300px))",
-    expected: ["circle", ["200px at 50% 50%"]] },
+    expected: ["circle", ["200px"]] },
   { start: "circle(calc(80% + 20%))", end: "circle(calc(200% + 300%))",
-    expected: ["circle", ["200% at 50% 50%"]] },
+    expected: ["circle", ["200%"]] },
   { start: "circle(calc(10px + 20%))", end: "circle(calc(50px + 40%))",
-    expected: ["circle", ["calc(25% + 20px) at 50% 50%"]] },
+    expected: ["circle", ["calc(25% + 20px)"]] },
   // matching functions with interpolation between percentage/pixel values
   { start: "circle(20px)", end: "circle(100%)",
-    expected: ["circle", ["calc(25% + 15px) at 50% 50%"]] },
-  { start: "ellipse(100% 100px at 8px 20%) border-box",
-    end:   "ellipse(40px 4%    at 80% 60px) border-box",
+    expected: ["circle", ["calc(25% + 15px)"]] },
+  { start: "ellipse(100% 100px at 8px 20%) content-box",
+    end:   "ellipse(40px 4%    at 80% 60px) content-box",
     expected: ["ellipse", ["calc(75% + 10px) calc(1% + 75px) at " +
                            "calc(20% + 6px) calc(15% + 15px)"],
-               "border-box"] },
+               "content-box"] },
   // no interpolation for keywords
   { start: "circle()", end: "circle(50px)",
-    expected: ["circle", ["50px at 50% 50%"]] },
+    expected: ["circle", ["50px"]] },
   { start: "circle(closest-side)", end: "circle(500px)",
-    expected: ["circle", ["500px at 50% 50%"]] },
+    expected: ["circle", ["500px"]] },
   { start: "circle(farthest-side)", end: "circle(500px)",
-    expected: ["circle", ["500px at 50% 50%"]] },
+    expected: ["circle", ["500px"]] },
   { start: "circle(500px)", end: "circle(farthest-side)",
-    expected: ["circle", ["farthest-side at 50% 50%"]]},
+    expected: ["circle", ["farthest-side"]]},
   { start: "circle(500px)", end: "circle(closest-side)",
-    expected: ["circle", ["at 50% 50%"]]},
+    expected: ["circle", [""]]},
   { start: "ellipse()", end: "ellipse(50px 50px)",
-    expected: ["ellipse", ["50px 50px at 50% 50%"]] },
+    expected: ["ellipse", ["50px 50px"]] },
   { start: "ellipse(closest-side closest-side)", end: "ellipse(500px 500px)",
-    expected: ["ellipse", ["500px 500px at 50% 50%"]] },
+    expected: ["ellipse", ["500px 500px"]] },
   { start: "ellipse(farthest-side closest-side)", end: "ellipse(500px 500px)",
-    expected: ["ellipse", ["500px 500px at 50% 50%"]] },
+    expected: ["ellipse", ["500px 500px"]] },
   { start: "ellipse(farthest-side farthest-side)", end: "ellipse(500px 500px)",
-    expected: ["ellipse", ["500px 500px at 50% 50%"]] },
+    expected: ["ellipse", ["500px 500px"]] },
   { start: "ellipse(500px 500px)", end: "ellipse(farthest-side farthest-side)",
-    expected: ["ellipse", ["farthest-side farthest-side at 50% 50%"]] },
+    expected: ["ellipse", ["farthest-side farthest-side"]] },
   { start: "ellipse(500px 500px)", end: "ellipse(closest-side closest-side)",
-    expected: ["ellipse", ["at 50% 50%"]] },
+    expected: ["ellipse", [""]] },
   // mismatching boxes
   { start: "circle(100px at 100px 100px) border-box",
     end: "circle(500px at 500px 500px) content-box",
@@ -897,19 +845,19 @@ const basicShapesTests = [
     expected: ["inset", ["500px round 500px"], "content-box"]
   },
   // mismatching functions
-  { start: "circle(100px at 100px 100px) border-box",
-    end: "ellipse(500px 500px at 500px 500px) border-box",
-    expected: ["ellipse", ["500px 500px at 500px 500px"], "border-box"]
+  { start: "circle(100px at 100px 100px) content-box",
+    end: "ellipse(500px 500px at 500px 500px) content-box",
+    expected: ["ellipse", ["500px 500px at 500px 500px"], "content-box"]
   },
   { start: "inset(0px round 20px)", end: "ellipse(500px 500px)",
-    expected: ["ellipse", ["500px 500px at 50% 50%"]]
+    expected: ["ellipse", ["500px 500px"]]
   },
   // shape to reference box
   { start: "circle(20px)", end: "content-box", expected: ["content-box"] },
-  { start: "content-box", end: "circle(20px)", expected: ["circle", ["20px at 50% 50%"]] },
+  { start: "content-box", end: "circle(20px)", expected: ["circle", ["20px"]] },
   // url to shape
   { start: "circle(20px)", end: "url(http://localhost/a.png)", expected: ["url", ["\"http://localhost/a.png\""]] },
-  { start: "url(http://localhost/a.png)", end: "circle(20px)", expected: ["circle", ["20px at 50% 50%"]] },
+  { start: "url(http://localhost/a.png)", end: "circle(20px)", expected: ["circle", ["20px"]] },
   // url to none
   { start: "none", end: "url(http://localhost/a.png)", expected: ["url", ["\"http://localhost/a.png\""]] },
   { start: "http://localhost/a.png", end: "none", expected: ["none"] },
@@ -918,7 +866,7 @@ const basicShapesTests = [
 const basicShapesWithFragmentUrlTests = [
   // Fragment url to shape
   { start: "circle(20px)", end: "url('#a')", expected: ["url", ["\"#a\""]] },
-  { start: "url('#a')", end: "circle(20px)", expected: ["circle", ["20px at 50% 50%"]] },
+  { start: "url('#a')", end: "circle(20px)", expected: ["circle", ["20px"]] },
   // Fragment url to none
   { start: "none", end: "url('#a')", expected: ["url", ["\"#a\""]] },
   { start: "url('#a')", end: "none", expected: ["none"] },
@@ -1557,7 +1505,7 @@ function test_length_percent_calc_transition(prop) {
 }
 
 // This can deal well with properties for which the computed value
-// is not the used value, e.g. offset-distance, translate.
+// is not the used value, e.g. translate.
 function test_calc_wrapped_calc_transition(prop) {
   // Test interpolation that computes to calc() (transition from % to px)
   div.style.setProperty("transition-property", "none", "");
@@ -2540,73 +2488,114 @@ function test_rect_transition(prop) {
   div.style.setProperty("transition-timing-function", "linear", "");
 }
 
-function test_visibility_transition(prop) {
-  function do_test(from_value, to_value, interp_value) {
-    div.style.setProperty("transition-property", "none", "");
-    div.style.setProperty(prop, from_value, "");
-    is(cs.getPropertyValue(prop), from_value,
-       "visibility property " + prop + ": computed value before transition");
-    div.style.setProperty("transition-property", prop, "");
-    div.style.setProperty(prop, to_value, "");
-    is(cs.getPropertyValue(prop), interp_value,
-       "visibility property " + prop + ": interpolation of visibility");
-  }
+function do_test(prop, from_value, to_value, interp_value) {
+  div.style.setProperty("transition-property", "none", "");
+  div.style.setProperty(prop, from_value, "");
+  is(cs.getPropertyValue(prop), from_value,
+      "property " + prop + ": computed value before transition");
+  div.style.setProperty("transition-property", prop, "");
+  div.style.setProperty(prop, to_value, "");
+  is(cs.getPropertyValue(prop), interp_value,
+      "property " + prop + ": interpolation of " + prop);
+}
 
-  do_test("visible", "hidden", "visible");
-  do_test("hidden", "visible", "visible");
-  do_test("hidden", "collapse", "collapse"); /* not interpolable */
-  do_test("collapse", "hidden", "hidden"); /* not interpolable */
-  do_test("visible", "collapse", "visible");
-  do_test("collapse", "visible", "visible");
+function do_negative_test(prop, from_value, to_value, interpolable) {
+  div.style.setProperty("transition-property", "none", "");
+  div.style.setProperty(prop, from_value, "");
+  is(cs.getPropertyValue(prop), from_value,
+      "property " + prop + ": flush before clamping test");
+  div.style.setProperty("transition-property", prop, "");
+  div.style.setProperty(prop, to_value, "");
+  is(cs.getPropertyValue(prop), interpolable ? from_value : to_value,
+      "property " + prop + ": clamping of negatives");
+}
+
+function do_overone_test(prop, from_value, to_value) {
+  div.style.setProperty("transition-property", "none", "");
+  div.style.setProperty(prop, from_value, "");
+  is(cs.getPropertyValue(prop), from_value,
+      "property " + prop + ": flush before clamping test");
+  div.style.setProperty("transition-property", prop, "");
+  div.style.setProperty(prop, to_value, "");
+  is(cs.getPropertyValue(prop), to_value,
+      "property " + prop + ": clamping of over-ones");
+}
+
+function test_visibility_transition(prop) {
+  do_test(prop, "visible", "hidden", "visible");
+  do_test(prop, "hidden", "visible", "visible");
+  do_test(prop, "hidden", "collapse", "collapse"); /* not interpolable */
+  do_test(prop, "collapse", "hidden", "hidden"); /* not interpolable */
+  do_test(prop, "visible", "collapse", "visible");
+  do_test(prop, "collapse", "visible", "visible");
 
   isnot(get_distance(prop, "visible", "hidden"), 0,
         "distance between visible and hidden should not be zero");
   isnot(get_distance(prop, "visible", "collapse"), 0,
         "distance between visible and collapse should not be zero");
   is(get_distance(prop, "visible", "visible"), 0,
-     "distance between visible and visible should not be zero");
+     "distance between visible and visible should be zero");
   is(get_distance(prop, "hidden", "hidden"), 0,
-     "distance between hidden and hidden should not be zero");
+     "distance between hidden and hidden should be zero");
   is(get_distance(prop, "collapse", "collapse"), 0,
-     "distance between collapse and collapse should not be zero");
+     "distance between collapse and collapse should be zero");
 
   div.style.setProperty("transition-timing-function", FUNC_NEGATIVE, "");
-  function do_negative_test(from_value, to_value, interpolable) {
-    div.style.setProperty("transition-property", "none", "");
-    div.style.setProperty(prop, from_value, "");
-    is(cs.getPropertyValue(prop), from_value,
-       "visibility property " + prop + ": flush before clamping test");
-    div.style.setProperty("transition-property", prop, "");
-    div.style.setProperty(prop, to_value, "");
-    is(cs.getPropertyValue(prop), interpolable ? from_value : to_value,
-       "visibility property " + prop + ": clamping of negatives");
-  }
-  do_negative_test("visible", "hidden", true);
-  do_negative_test("hidden", "visible", true);
-  do_negative_test("hidden", "collapse", false);
-  do_negative_test("collapse", "hidden", false);
-  do_negative_test("visible", "collapse", true);
-  do_negative_test("collapse", "visible", true);
+  do_negative_test(prop, "visible", "hidden", true);
+  do_negative_test(prop, "hidden", "visible", true);
+  do_negative_test(prop, "hidden", "collapse", false);
+  do_negative_test(prop, "collapse", "hidden", false);
+  do_negative_test(prop, "visible", "collapse", true);
+  do_negative_test(prop, "collapse", "visible", true);
 
   div.style.setProperty("transition-delay", "-3s", "");
   div.style.setProperty("transition-timing-function", FUNC_OVERONE, "");
+  do_overone_test(prop, "visible", "hidden");
+  do_overone_test(prop, "hidden", "visible");
+  do_overone_test(prop, "hidden", "collapse");
+  do_overone_test(prop, "collapse", "hidden");
+  do_overone_test(prop, "visible", "collapse");
+  do_overone_test(prop, "collapse", "visible");
 
-  function do_overone_test(from_value, to_value) {
-    div.style.setProperty("transition-property", "none", "");
-    div.style.setProperty(prop, from_value, "");
-    is(cs.getPropertyValue(prop), from_value,
-       "visibility property " + prop + ": flush before clamping test");
-    div.style.setProperty("transition-property", prop, "");
-    div.style.setProperty(prop, to_value, "");
-    is(cs.getPropertyValue(prop), to_value,
-       "visibility property " + prop + ": clamping of over-ones");
-  }
-  do_overone_test("visible", "hidden");
-  do_overone_test("hidden", "visible");
-  do_overone_test("hidden", "collapse");
-  do_overone_test("collapse", "hidden");
-  do_overone_test("visible", "collapse");
-  do_overone_test("collapse", "visible");
+  div.style.setProperty("transition-delay", "-1s", "");
+  div.style.setProperty("transition-timing-function", "linear", "");
+}
+
+function test_content_visibility_transition(prop) {
+  do_test(prop, "visible", "hidden", "visible");
+  do_test(prop, "hidden", "visible", "visible");
+  do_test(prop, "hidden", "auto", "auto");
+  do_test(prop, "auto", "hidden", "auto");
+  do_test(prop, "visible", "auto", "auto"); /* not interpolable */
+  do_test(prop, "auto", "visible", "visible"); /* not interpolable */
+
+  isnot(get_distance(prop, "visible", "hidden"), 0,
+        "distance between visible and hidden should not be zero");
+  isnot(get_distance(prop, "auto", "hidden"), 0,
+        "distance between auto and hidden should not be zero");
+  is(get_distance(prop, "visible", "visible"), 0,
+     "distance between visible and visible should be zero");
+  is(get_distance(prop, "hidden", "hidden"), 0,
+     "distance between hidden and hidden should be zero");
+  is(get_distance(prop, "auto", "auto"), 0,
+     "distance between auto and auto should be zero");
+
+  div.style.setProperty("transition-timing-function", FUNC_NEGATIVE, "");
+  do_negative_test(prop, "visible", "hidden", true);
+  do_negative_test(prop, "hidden", "visible", true);
+  do_negative_test(prop, "hidden", "auto", true);
+  do_negative_test(prop, "auto", "hidden", true);
+  do_negative_test(prop, "visible", "auto", false);
+  do_negative_test(prop, "auto", "visible", false);
+
+  div.style.setProperty("transition-delay", "-3s", "");
+  div.style.setProperty("transition-timing-function", FUNC_OVERONE, "");
+  do_overone_test(prop, "visible", "hidden");
+  do_overone_test(prop, "hidden", "visible");
+  do_overone_test(prop, "hidden", "auto");
+  do_overone_test(prop, "auto", "hidden");
+  do_overone_test(prop, "visible", "auto");
+  do_overone_test(prop, "auto", "visible");
 
   div.style.setProperty("transition-delay", "-1s", "");
   div.style.setProperty("transition-timing-function", "linear", "");

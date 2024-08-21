@@ -26,7 +26,7 @@ struct URLExtraData;
  * Struct for data common to CSSStyleSheetInner and ServoStyleSheet.
  */
 struct StyleSheetInfo final {
-  typedef dom::ReferrerPolicy ReferrerPolicy;
+  using ReferrerPolicy = dom::ReferrerPolicy;
 
   StyleSheetInfo(CORSMode aCORSMode, const dom::SRIMetadata& aIntegrity,
                  css::SheetParsingMode aParsingMode);
@@ -49,7 +49,7 @@ struct StyleSheetInfo final {
   nsCOMPtr<nsIURI> mOriginalSheetURI;  // for GetHref.  Can be null.
   nsCOMPtr<nsIURI> mBaseURI;           // for resolving relative URIs
   nsCOMPtr<nsIPrincipal> mPrincipal;
-  CORSMode mCORSMode;
+  const CORSMode mCORSMode;
   // The ReferrerInfo of a stylesheet is used for its child sheets and loads
   // come from this stylesheet, so it is stored here.
   nsCOMPtr<nsIReferrerInfo> mReferrerInfo;
@@ -67,15 +67,7 @@ struct StyleSheetInfo final {
   // If a SourceMap or X-SourceMap response header is seen, this is
   // the value.  If both are seen, SourceMap is preferred.  If neither
   // is seen, this will be an empty string.
-  nsString mSourceMapURL;
-  // This stores any source map URL that might have been seen in a
-  // comment in the style sheet.  This is separate from mSourceMapURL
-  // so that the value does not overwrite any value that might have
-  // come from a response header.
-  nsString mSourceMapURLFromComment;
-  // This stores any source URL that might have been seen in a comment
-  // in the style sheet.
-  nsString mSourceURL;
+  nsCString mSourceMapURL;
 
   RefPtr<const StyleStylesheetContents> mContents;
 
@@ -91,7 +83,7 @@ struct StyleSheetInfo final {
   RefPtr<URLExtraData> mURLData;
 
 #ifdef DEBUG
-  bool mPrincipalSet;
+  bool mPrincipalSet = false;
 #endif
 };
 

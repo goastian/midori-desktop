@@ -44,14 +44,6 @@ nsContainerFrame* NS_NewRubyFrame(PresShell* aPresShell,
 // nsRubyFrame Method Implementations
 // ==================================
 
-/* virtual */
-bool nsRubyFrame::IsFrameOfType(uint32_t aFlags) const {
-  if (aFlags & eBidiInlineContainer) {
-    return false;
-  }
-  return nsInlineFrame::IsFrameOfType(aFlags);
-}
-
 #ifdef DEBUG_FRAME_DUMP
 nsresult nsRubyFrame::GetFrameName(nsAString& aResult) const {
   return MakeFrameName(u"Ruby"_ns, aResult);
@@ -86,7 +78,7 @@ void nsRubyFrame::AddInlinePrefISize(gfxContext* aRenderingContext,
 static nsRubyBaseContainerFrame* FindRubyBaseContainerAncestor(
     nsIFrame* aFrame) {
   for (nsIFrame* ancestor = aFrame->GetParent();
-       ancestor && ancestor->IsFrameOfType(nsIFrame::eLineParticipant);
+       ancestor && ancestor->IsLineParticipant();
        ancestor = ancestor->GetParent()) {
     if (ancestor->IsRubyBaseContainerFrame()) {
       return static_cast<nsRubyBaseContainerFrame*>(ancestor);
@@ -102,7 +94,6 @@ void nsRubyFrame::Reflow(nsPresContext* aPresContext,
                          nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsRubyFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   if (!aReflowInput.mLineLayout) {
@@ -309,25 +300,25 @@ void nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
     Maybe<LineRelativeDir> lineSide;
     switch (textContainer->StyleText()->mRubyPosition) {
       case StyleRubyPosition::Over:
-        lineSide.emplace(eLineRelativeDirOver);
+        lineSide.emplace(LineRelativeDir::Over);
         break;
       case StyleRubyPosition::Under:
-        lineSide.emplace(eLineRelativeDirUnder);
+        lineSide.emplace(LineRelativeDir::Under);
         break;
       case StyleRubyPosition::AlternateOver:
         if (lastLineSide.isSome() &&
-            lastLineSide.value() == eLineRelativeDirOver) {
-          lineSide.emplace(eLineRelativeDirUnder);
+            lastLineSide.value() == LineRelativeDir::Over) {
+          lineSide.emplace(LineRelativeDir::Under);
         } else {
-          lineSide.emplace(eLineRelativeDirOver);
+          lineSide.emplace(LineRelativeDir::Over);
         }
         break;
       case StyleRubyPosition::AlternateUnder:
         if (lastLineSide.isSome() &&
-            lastLineSide.value() == eLineRelativeDirUnder) {
-          lineSide.emplace(eLineRelativeDirOver);
+            lastLineSide.value() == LineRelativeDir::Under) {
+          lineSide.emplace(LineRelativeDir::Over);
         } else {
-          lineSide.emplace(eLineRelativeDirUnder);
+          lineSide.emplace(LineRelativeDir::Under);
         }
         break;
       default:
@@ -342,7 +333,7 @@ void nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
           lineWM.LogicalSideForLineRelativeDir(lineSide.value());
       if (StaticPrefs::layout_css_ruby_intercharacter_enabled() &&
           rtcWM.IsVerticalRL() &&
-          lineWM.GetInlineDir() == WritingMode::eInlineLTR) {
+          lineWM.GetInlineDir() == WritingMode::InlineDir::LTR) {
         // Inter-character ruby annotations are only supported for vertical-rl
         // in ltr horizontal writing. Fall back to non-inter-character behavior
         // otherwise.
@@ -353,11 +344,11 @@ void nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
                 : 0);
         position = offsetRect.Origin(lineWM) + offset;
         aReflowInput.mLineLayout->AdvanceICoord(size.ISize(lineWM));
-      } else if (logicalSide == eLogicalSideBStart) {
+      } else if (logicalSide == LogicalSide::BStart) {
         offsetRect.BStart(lineWM) -= size.BSize(lineWM);
         offsetRect.BSize(lineWM) += size.BSize(lineWM);
         position = offsetRect.Origin(lineWM);
-      } else if (logicalSide == eLogicalSideBEnd) {
+      } else if (logicalSide == LogicalSide::BEnd) {
         position = offsetRect.Origin(lineWM) +
                    LogicalPoint(lineWM, 0, offsetRect.BSize(lineWM));
         offsetRect.BSize(lineWM) += size.BSize(lineWM);

@@ -40,17 +40,9 @@ class SVGViewFrame final : public nsIFrame {
   NS_DECL_FRAMEARENA_HELPERS(SVGViewFrame)
 
 #ifdef DEBUG
-  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
-                    nsIFrame* aPrevInFlow) override;
+  void Init(nsIContent* aContent, nsContainerFrame* aParent,
+            nsIFrame* aPrevInFlow) override;
 #endif
-
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    if (aFlags & eSupportsContainLayoutAndPaint) {
-      return false;
-    }
-
-    return nsIFrame::IsFrameOfType(aFlags & ~(nsIFrame::eSVG));
-  }
 
 #ifdef DEBUG_FRAME_DUMP
   nsresult GetFrameName(nsAString& aResult) const override {
@@ -58,8 +50,8 @@ class SVGViewFrame final : public nsIFrame {
   }
 #endif
 
-  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
-                                    int32_t aModType) override;
+  nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                            int32_t aModType) override;
 
   bool ComputeCustomOverflow(OverflowAreas& aOverflowAreas) override {
     // We don't maintain a ink overflow rect
@@ -104,7 +96,7 @@ nsresult SVGViewFrame::AttributeChanged(int32_t aNameSpaceID,
         static_cast<SVGSVGElement*>(outerSVGFrame->GetContent());
 
     nsAutoString viewID;
-    mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::id, viewID);
+    mContent->AsElement()->GetAttr(nsGkAtoms::id, viewID);
 
     if (svgElement->IsOverriddenBy(viewID)) {
       // We're the view that's providing overrides, so pretend that the frame

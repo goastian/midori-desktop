@@ -5,7 +5,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "FontFaceSetWorkerImpl.h"
-#include "FontPreloader.h"
+#include "mozilla/FontLoaderUtils.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerRef.h"
 #include "mozilla/dom/WorkerRunnable.h"
@@ -177,11 +177,12 @@ void FontFaceSetWorkerImpl::DispatchToOwningThread(
     return;
   }
 
-  class FontFaceSetWorkerRunnable final : public WorkerRunnable {
+  class FontFaceSetWorkerRunnable final : public WorkerThreadRunnable {
    public:
     FontFaceSetWorkerRunnable(WorkerPrivate* aWorkerPrivate,
                               std::function<void()>&& aFunc)
-        : WorkerRunnable(aWorkerPrivate), mFunc(std::move(aFunc)) {}
+        : WorkerThreadRunnable("FontFaceSetWorkerRunnable"),
+          mFunc(std::move(aFunc)) {}
 
     bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
       mFunc();
@@ -192,9 +193,9 @@ void FontFaceSetWorkerImpl::DispatchToOwningThread(
     std::function<void()> mFunc;
   };
 
-  RefPtr<FontFaceSetWorkerRunnable> runnable =
-      new FontFaceSetWorkerRunnable(workerPrivate, std::move(aFunc));
-  runnable->Dispatch();
+  auto runnable =
+      MakeRefPtr<FontFaceSetWorkerRunnable>(workerPrivate, std::move(aFunc));
+  runnable->Dispatch(workerPrivate);
 }
 
 uint64_t FontFaceSetWorkerImpl::GetInnerWindowID() {
@@ -211,11 +212,11 @@ void FontFaceSetWorkerImpl::FlushUserFontSet() {
 
   // If there was a change to the mNonRuleFaces array, then there could
   // have been a modification to the user font set.
-  bool modified = mNonRuleFacesDirty;
+  const bool modified = mNonRuleFacesDirty;
   mNonRuleFacesDirty = false;
 
   for (size_t i = 0, i_end = mNonRuleFaces.Length(); i < i_end; ++i) {
-    InsertNonRuleFontFace(mNonRuleFaces[i].mFontFace, modified);
+    InsertNonRuleFontFace(mNonRuleFaces[i].mFontFace);
   }
 
   // Remove any residual families that have no font entries.
@@ -226,7 +227,7 @@ void FontFaceSetWorkerImpl::FlushUserFontSet() {
   }
 
   if (modified) {
-    IncrementGeneration(true);
+    IncrementGenerationLocked(true);
     mHasLoadingFontFacesIsDirty = true;
     CheckLoadingStarted();
     CheckLoadingFinished();
@@ -255,14 +256,14 @@ nsresult FontFaceSetWorkerImpl::StartLoad(gfxUserFontEntry* aUserFontEntry,
 
   nsCOMPtr<nsILoadGroup> loadGroup(mWorkerRef->Private()->GetLoadGroup());
   nsCOMPtr<nsIChannel> channel;
-  rv = FontPreloader::BuildChannel(
+  rv = FontLoaderUtils::BuildChannel(
       getter_AddRefs(channel), src.mURI->get(), CORS_ANONYMOUS,
       dom::ReferrerPolicy::_empty /* not used */, aUserFontEntry, &src,
-      mWorkerRef->Private(), loadGroup, nullptr, false);
+      mWorkerRef->Private(), loadGroup, nullptr);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  RefPtr<nsFontFaceLoader> fontLoader =
-      new nsFontFaceLoader(aUserFontEntry, aSrcIndex, this, channel);
+  auto fontLoader =
+      MakeRefPtr<nsFontFaceLoader>(aUserFontEntry, aSrcIndex, this, channel);
 
   if (LOG_ENABLED()) {
     nsCOMPtr<nsIURI> referrer =
@@ -322,10 +323,9 @@ bool FontFaceSetWorkerImpl::IsFontLoadAllowed(const gfxFontFaceSrc& aSrc) {
       nsIContentPolicy::TYPE_FONT);
 
   int16_t shouldLoad = nsIContentPolicy::ACCEPT;
-  nsresult rv = NS_CheckContentLoadPolicy(aSrc.mURI->get(), secCheckLoadInfo,
-                                          ""_ns,  // mime type
-                                          &shouldLoad,
-                                          nsContentUtils::GetContentPolicy());
+  nsresult rv =
+      NS_CheckContentLoadPolicy(aSrc.mURI->get(), secCheckLoadInfo, &shouldLoad,
+                                nsContentUtils::GetContentPolicy());
 
   return NS_SUCCEEDED(rv) && NS_CP_ACCEPTED(shouldLoad);
 }

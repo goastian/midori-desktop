@@ -14,6 +14,7 @@
 #include "mozilla/ArrayUtils.h"
 // For COMPOSITOR_ANIMATABLE_PROPERTY_LIST and
 // COMPOSITOR_ANIMATABLE_PROPERTY_LIST_LENGTH
+#include "mozilla/AnimatedPropertyID.h"
 #include "mozilla/CompositorAnimatableProperties.h"
 #include "nsCSSProps.h"  // For operator<< for nsCSSPropertyID
 #include "nsCSSPropertyID.h"
@@ -25,7 +26,7 @@
  */
 class nsCSSPropertyIDSet {
  public:
-  nsCSSPropertyIDSet() { Empty(); }
+  constexpr nsCSSPropertyIDSet() : mProperties{0} {}
   // auto-generated copy-constructor OK
 
   explicit constexpr nsCSSPropertyIDSet(
@@ -39,8 +40,9 @@ class nsCSSPropertyIDSet {
   }
 
   void AssertInSetRange(nsCSSPropertyID aProperty) const {
-    NS_ASSERTION(0 <= aProperty && aProperty < eCSSProperty_COUNT_no_shorthands,
-                 "out of bounds");
+    MOZ_DIAGNOSTIC_ASSERT(
+        0 <= aProperty && aProperty < eCSSProperty_COUNT_no_shorthands,
+        "out of bounds");
   }
 
   // Conversion of aProperty to |size_t| after AssertInSetRange
@@ -57,6 +59,10 @@ class nsCSSPropertyIDSet {
     size_t p = aProperty;
     mProperties[p / kBitsInChunk] &=
         ~(property_set_type(1) << (p % kBitsInChunk));
+  }
+
+  bool HasProperty(const mozilla::AnimatedPropertyID& aProperty) const {
+    return !aProperty.IsCustom() && HasProperty(aProperty.mID);
   }
 
   bool HasProperty(nsCSSPropertyID aProperty) const {
@@ -77,9 +83,9 @@ class nsCSSPropertyIDSet {
   }
 
   static constexpr size_t CompositorAnimatableDisplayItemCount() {
-    // We have 3 individual transforms and 4 motion path properties, and they
+    // We have 3 individual transforms and 5 motion path properties, and they
     // also use DisplayItemType::TYPE_TRANSFORM.
-    return COMPOSITOR_ANIMATABLE_PROPERTY_LIST_LENGTH - 7;
+    return COMPOSITOR_ANIMATABLE_PROPERTY_LIST_LENGTH - 8;
   }
 
   static constexpr nsCSSPropertyIDSet CSSTransformProperties() {
@@ -88,19 +94,19 @@ class nsCSSPropertyIDSet {
   }
 
   static constexpr nsCSSPropertyIDSet MotionPathProperties() {
-    // FIXME: Bug 1559232: Add offset-position.
     return nsCSSPropertyIDSet{
         eCSSProperty_offset_path, eCSSProperty_offset_distance,
-        eCSSProperty_offset_rotate, eCSSProperty_offset_anchor};
+        eCSSProperty_offset_rotate, eCSSProperty_offset_anchor,
+        eCSSProperty_offset_position};
   }
 
   static constexpr nsCSSPropertyIDSet TransformLikeProperties() {
-    // FIXME: Bug 1559232: Add offset-position.
     return nsCSSPropertyIDSet{
-        eCSSProperty_transform,     eCSSProperty_translate,
-        eCSSProperty_rotate,        eCSSProperty_scale,
-        eCSSProperty_offset_path,   eCSSProperty_offset_distance,
-        eCSSProperty_offset_rotate, eCSSProperty_offset_anchor};
+        eCSSProperty_transform,      eCSSProperty_translate,
+        eCSSProperty_rotate,         eCSSProperty_scale,
+        eCSSProperty_offset_path,    eCSSProperty_offset_distance,
+        eCSSProperty_offset_rotate,  eCSSProperty_offset_anchor,
+        eCSSProperty_offset_position};
   }
 
   static constexpr nsCSSPropertyIDSet OpacityProperties() {
@@ -141,15 +147,6 @@ class nsCSSPropertyIDSet {
     return this->Intersect(aOther).Equals(*this);
   }
 
-  // Return a new nsCSSPropertyIDSet which is the inverse of this set.
-  nsCSSPropertyIDSet Inverse() const {
-    nsCSSPropertyIDSet result;
-    for (size_t i = 0; i < mozilla::ArrayLength(mProperties); ++i) {
-      result.mProperties[i] = ~mProperties[i];
-    }
-    return result;
-  }
-
   // Returns a new nsCSSPropertyIDSet with all properties that are both in
   // this set and |aOther|.
   nsCSSPropertyIDSet Intersect(const nsCSSPropertyIDSet& aOther) const {
@@ -160,7 +157,7 @@ class nsCSSPropertyIDSet {
     return result;
   }
 
-  // Return a new nsCSSPropertyIDSet with all properties that are in either
+  // Returns a new nsCSSPropertyIDSet with all properties that are in either
   // this set or |aOther| but not both.
   nsCSSPropertyIDSet Xor(const nsCSSPropertyIDSet& aOther) const {
     nsCSSPropertyIDSet result;

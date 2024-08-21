@@ -150,6 +150,7 @@
 
 :any-link {
   cursor: pointer;
+  text-decoration: underline;
 }
 
 :link {
@@ -162,6 +163,13 @@
 
 :visited {
   color: VisitedText;
+}
+
+/* stylelint-disable-next-line media-query-no-invalid */
+@media (-moz-bool-pref: "layout.css.always_underline_links") {
+  :any-link {
+    text-decoration: underline !important;
+  }
 }
 
 :focus-visible {
@@ -179,7 +187,11 @@
   display: block;
   unicode-bidi: inherit;
   text-overflow: inherit;
+  overflow: inherit;
   overflow-clip-box: inherit;
+  resize: inherit;
+  padding: inherit;
+  box-decoration-break: inherit;
 }
 
 *|*::-moz-block-inside-inline-wrapper {
@@ -207,7 +219,8 @@
   z-index: inherit;
 }
 
-*|*::-moz-scrolled-content, *|*::-moz-scrolled-canvas {
+*|*::-moz-scrolled-content,
+*|*::-moz-scrolled-canvas {
   /* e.g., text inputs, select boxes */
   padding: inherit;
   /* The display doesn't affect the kind of frame constructed here.  This just
@@ -344,11 +357,9 @@
 }
 
 :fullscreen:not(:root) {
+  -moz-top-layer: top !important;
   position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
+  inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
   margin: 0 !important;
@@ -359,14 +370,6 @@
   box-sizing: border-box !important;
   object-fit: contain;
   transform: none !important;
-}
-
-xul|*:fullscreen:not(:root, [hidden="true"]) {
-  /* The position: fixed; property above used to force the computed display
-   * value to block. It is no longer the case now, so we manually set it here to
-   * maintain the old behaviour. We should probably not do this, but we don't
-   * fullscreen XUL element that frequently either. */
-  display: block;
 }
 
 /* This pseudo-class is used to remove the inertness for the topmost modal
@@ -395,18 +398,11 @@ xul|*:fullscreen:not(:root, [hidden="true"]) {
   color: CanvasText;
 }
 
-/* Selectors here should match the check in
- * nsViewportFrame.cpp:ShouldInTopLayerForFullscreen() */
-:fullscreen:not(:root, :-moz-browser-frame) {
-  -moz-top-layer: top !important;
-}
-
 ::backdrop {
   -moz-top-layer: top !important;
   display: block;
   position: fixed;
-  top: 0; left: 0;
-  right: 0; bottom: 0;
+  inset: 0;
   /* This prevents undesired interactions with the selection code. */
   user-select: none;
 }
@@ -443,108 +439,9 @@ parsererror|sourcetext {
   font-size: 12pt;
 }
 
-div:-moz-native-anonymous.moz-accessiblecaret {
-  /* Add transition effect to make caret size changing smoother. */
-  transition-property: width, height, margin-left;
-
-  position: absolute;
-  z-index: 2147483647;
-}
-
-div:-moz-native-anonymous.moz-accessiblecaret > :is(#text-overlay, #image) {
-  width: 100%;
-
-  /* Override this property in moz-custom-content-container to make dummy touch
-   * listener work. */
-  pointer-events: auto;
-}
-
-div:-moz-native-anonymous.moz-accessiblecaret > #image {
-  background-position: center top;
-  background-size: 100%;
-  background-repeat: no-repeat;
-  background-origin: content-box;
-}
-
-div:-moz-native-anonymous.moz-accessiblecaret.normal > #image {
-  background-image: image-set(
-    url("resource://gre-resources/accessiblecaret-normal@1x.png"),
-    url("resource://gre-resources/accessiblecaret-normal@1.5x.png") 1.5x,
-    url("resource://gre-resources/accessiblecaret-normal@2x.png") 2x,
-    url("resource://gre-resources/accessiblecaret-normal@2.25x.png") 2.25x
-  );
-}
-
-div:-moz-native-anonymous.moz-accessiblecaret.left > :is(#text-overlay, #image) {
-  margin-left: -39%;
-}
-
-div:-moz-native-anonymous.moz-accessiblecaret.left > #image {
-  background-image: image-set(
-    url("resource://gre-resources/accessiblecaret-tilt-left@1x.png"),
-    url("resource://gre-resources/accessiblecaret-tilt-left@1.5x.png") 1.5x,
-    url("resource://gre-resources/accessiblecaret-tilt-left@2x.png") 2x,
-    url("resource://gre-resources/accessiblecaret-tilt-left@2.25x.png") 2.25x
-  );
-}
-
-div:-moz-native-anonymous.moz-accessiblecaret.right > :is(#text-overlay, #image) {
-  margin-left: 41%;
-}
-
-div:-moz-native-anonymous.moz-accessiblecaret.right > #image {
-  background-image: image-set(
-    url("resource://gre-resources/accessiblecaret-tilt-right@1x.png"),
-    url("resource://gre-resources/accessiblecaret-tilt-right@1.5x.png") 1.5x,
-    url("resource://gre-resources/accessiblecaret-tilt-right@2x.png") 2x,
-    url("resource://gre-resources/accessiblecaret-tilt-right@2.25x.png") 2.25x
-  );
-}
-
-div:-moz-native-anonymous.moz-accessiblecaret.none {
-  display: none;
-}
-
-div:-moz-native-anonymous.moz-accessiblecaret.hidden {
-  visibility: hidden;
-}
-
-@media (-moz-platform: android) {
-  div:-moz-native-anonymous.moz-accessiblecaret > :is(#text-overlay, #image) {
-    /* border: 0.1px solid red; */ /* Uncomment border to see the touch target. */
-    padding-left: 59%; /* Enlarge the touch area. ((48-22)/2)px / 22px ~= 59% */
-    padding-right: 59%; /* Enlarge the touch area. */
-    margin-left: -59%;
-  }
-
-  div:-moz-native-anonymous.moz-accessiblecaret > #image {
-    padding-bottom: 59%; /* Enlarge the touch area. */
-  }
-
-  div:-moz-native-anonymous.moz-accessiblecaret.normal > #image {
-    background-image: url("chrome://geckoview/skin/images/accessiblecaret-normal.svg");
-  }
-
-  div:-moz-native-anonymous.moz-accessiblecaret.left > :is(#text-overlay, #image) {
-    margin-left: -109%;
-  }
-
-  div:-moz-native-anonymous.moz-accessiblecaret.left > #image {
-    background-image: url("chrome://geckoview/skin/images/accessiblecaret-tilt-left.svg");
-  }
-
-  div:-moz-native-anonymous.moz-accessiblecaret.right > :is(#text-overlay, #image) {
-    margin-left: -12%;
-  }
-
-  div:-moz-native-anonymous.moz-accessiblecaret.right > #image {
-    background-image: url("chrome://geckoview/skin/images/accessiblecaret-tilt-right.svg");
-  }
-}
-
 /* Custom content container in the CanvasFrame, positioned on top of everything
    everything else, not reacting to pointer events. */
-div:-moz-native-anonymous.moz-custom-content-container {
+.moz-custom-content-container:-moz-native-anonymous {
   pointer-events: none;
   user-select: none;
   -moz-top-layer: top;
@@ -553,4 +450,6 @@ div:-moz-native-anonymous.moz-custom-content-container {
   left: 0;
   width: 100%;
   height: 100%;
+  /* Initial direction depends on the document, make sure to reset it */
+  direction: ltr;
 }

@@ -188,7 +188,7 @@ void LangGroupFontPrefs::Initialize(nsStaticAtom* aLangGroupAtom) {
     Preferences::GetCString(pref.get(), cvalue);
     if (!cvalue.IsEmpty()) {
       font->sizeAdjust =
-          StyleFontSizeAdjust::ExHeight((float)atof(cvalue.get()));
+          StyleFontSizeAdjust::ExHeight(float(atof(cvalue.get())));
     }
 
 #ifdef DEBUG_rbs

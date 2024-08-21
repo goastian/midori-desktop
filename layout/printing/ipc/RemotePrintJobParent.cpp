@@ -10,6 +10,7 @@
 
 #include "gfxContext.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/ProfilerMarkers.h"
 #include "mozilla/Unused.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsComponentManagerUtils.h"
@@ -34,6 +35,9 @@ RemotePrintJobParent::RemotePrintJobParent(nsIPrintSettings* aPrintSettings)
 mozilla::ipc::IPCResult RemotePrintJobParent::RecvInitializePrint(
     const nsAString& aDocumentTitle, const int32_t& aStartPage,
     const int32_t& aEndPage) {
+  PROFILER_MARKER_TEXT("RemotePrintJobParent", LAYOUT_Printing, {},
+                       "RemotePrintJobParent::RecvInitializePrint"_ns);
+
   nsresult rv = InitializePrintDevice(aDocumentTitle, aStartPage, aEndPage);
   if (NS_FAILED(rv)) {
     Unused << SendPrintInitializationResult(rv, FileDescriptor());
@@ -59,6 +63,9 @@ mozilla::ipc::IPCResult RemotePrintJobParent::RecvInitializePrint(
 nsresult RemotePrintJobParent::InitializePrintDevice(
     const nsAString& aDocumentTitle, const int32_t& aStartPage,
     const int32_t& aEndPage) {
+  AUTO_PROFILER_MARKER_TEXT("RemotePrintJobParent", LAYOUT_Printing, {},
+                            "RemotePrintJobParent::InitializePrintDevice"_ns);
+
   nsresult rv;
   nsCOMPtr<nsIDeviceContextSpec> deviceContextSpec =
       do_CreateInstance("@mozilla.org/gfx/devicecontextspec;1", &rv);
@@ -94,6 +101,9 @@ nsresult RemotePrintJobParent::InitializePrintDevice(
 }
 
 nsresult RemotePrintJobParent::PrepareNextPageFD(FileDescriptor* aFd) {
+  AUTO_PROFILER_MARKER_TEXT("RemotePrintJobParent", LAYOUT_Printing, {},
+                            "RemotePrintJobParent::PrepareNextPageFD"_ns);
+
   PRFileDesc* prFd = nullptr;
   nsresult rv = NS_OpenAnonymousTemporaryFile(&prFd);
   if (NS_FAILED(rv)) {
@@ -106,15 +116,20 @@ nsresult RemotePrintJobParent::PrepareNextPageFD(FileDescriptor* aFd) {
 }
 
 mozilla::ipc::IPCResult RemotePrintJobParent::RecvProcessPage(
+    const int32_t& aWidthInPoints, const int32_t& aHeightInPoints,
     nsTArray<uint64_t>&& aDeps) {
+  PROFILER_MARKER_TEXT("RemotePrintJobParent", LAYOUT_Printing, {},
+                       "RemotePrintJobParent::RecvProcessPage"_ns);
   if (!mCurrentPageStream.IsOpen()) {
     Unused << SendAbortPrint(NS_ERROR_FAILURE);
     return IPC_OK();
   }
   mCurrentPageStream.Seek(0, PR_SEEK_SET);
 
+  gfx::IntSize pageSizeInPoints(aWidthInPoints, aHeightInPoints);
+
   if (aDeps.IsEmpty()) {
-    FinishProcessingPage();
+    FinishProcessingPage(pageSizeInPoints);
     return IPC_OK();
   }
 
@@ -126,20 +141,21 @@ mozilla::ipc::IPCResult RemotePrintJobParent::RecvProcessPage(
   gfx::CrossProcessPaint::Start(std::move(deps))
       ->Then(
           GetCurrentSerialEventTarget(), __func__,
-          [self = RefPtr{this}](
+          [self = RefPtr{this}, pageSizeInPoints](
               gfx::CrossProcessPaint::ResolvedFragmentMap&& aFragments) {
-            self->FinishProcessingPage(&aFragments);
+            self->FinishProcessingPage(pageSizeInPoints, &aFragments);
           },
-          [self = RefPtr{this}](const nsresult& aRv) {
-            self->FinishProcessingPage();
+          [self = RefPtr{this}, pageSizeInPoints](const nsresult& aRv) {
+            self->FinishProcessingPage(pageSizeInPoints);
           });
 
   return IPC_OK();
 }
 
 void RemotePrintJobParent::FinishProcessingPage(
+    const gfx::IntSize& aSizeInPoints,
     gfx::CrossProcessPaint::ResolvedFragmentMap* aFragments) {
-  nsresult rv = PrintPage(mCurrentPageStream, aFragments);
+  nsresult rv = PrintPage(aSizeInPoints, mCurrentPageStream, aFragments);
 
   mCurrentPageStream.Close();
 
@@ -147,11 +163,13 @@ void RemotePrintJobParent::FinishProcessingPage(
 }
 
 nsresult RemotePrintJobParent::PrintPage(
-    PRFileDescStream& aRecording,
+    const gfx::IntSize& aSizeInPoints, PRFileDescStream& aRecording,
     gfx::CrossProcessPaint::ResolvedFragmentMap* aFragments) {
   MOZ_ASSERT(mPrintDeviceContext);
+  AUTO_PROFILER_MARKER_TEXT("RemotePrintJobParent", LAYOUT_Printing, {},
+                            "RemotePrintJobParent::PrintPage"_ns);
 
-  nsresult rv = mPrintDeviceContext->BeginPage();
+  nsresult rv = mPrintDeviceContext->BeginPage(aSizeInPoints);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -229,6 +247,9 @@ static void Cleanup(const nsCOMArray<nsIWebProgressListener>& aListeners,
 }
 
 mozilla::ipc::IPCResult RemotePrintJobParent::RecvFinalizePrint() {
+  PROFILER_MARKER_TEXT("RemotePrintJobParent", LAYOUT_Printing, {},
+                       "RemotePrintJobParent::RecvFinalizePrint"_ns);
+
   // EndDocument is sometimes called in the child even when BeginDocument has
   // not been called. See bug 1223332.
   if (mPrintDeviceContext) {
@@ -259,6 +280,9 @@ mozilla::ipc::IPCResult RemotePrintJobParent::RecvFinalizePrint() {
 
 mozilla::ipc::IPCResult RemotePrintJobParent::RecvAbortPrint(
     const nsresult& aRv) {
+  PROFILER_MARKER_TEXT("RemotePrintJobParent", LAYOUT_Printing, {},
+                       "RemotePrintJobParent::RecvAbortPrint"_ns);
+
   // Leave the cleanup to `ActorDestroy()`.
   Unused << Send__delete__(this);
   return IPC_OK();
@@ -267,6 +291,8 @@ mozilla::ipc::IPCResult RemotePrintJobParent::RecvAbortPrint(
 mozilla::ipc::IPCResult RemotePrintJobParent::RecvProgressChange(
     const long& aCurSelfProgress, const long& aMaxSelfProgress,
     const long& aCurTotalProgress, const long& aMaxTotalProgress) {
+  PROFILER_MARKER_TEXT("RemotePrintJobParent", LAYOUT_Printing, {},
+                       "RemotePrintJobParent::RecvProgressChange"_ns);
   // Our progress follows that of `RemotePrintJobChild` closely enough - forward
   // it instead of keeping more state variables here.
   for (auto* listener : mPrintProgressListeners) {
@@ -279,6 +305,8 @@ mozilla::ipc::IPCResult RemotePrintJobParent::RecvProgressChange(
 
 mozilla::ipc::IPCResult RemotePrintJobParent::RecvStatusChange(
     const nsresult& aStatus) {
+  PROFILER_MARKER_TEXT("RemotePrintJobParent", LAYOUT_Printing, {},
+                       "RemotePrintJobParent::RecvProgressChange"_ns);
   if (NS_FAILED(aStatus)) {
     // Remember the failure status for cleanup to forward to listeners.
     mStatus = aStatus;

@@ -92,18 +92,14 @@ class LayerManager;
 namespace dom {
 class Document;
 class Element;
+class PerformanceMainThread;
 enum class PrefersColorSchemeOverride : uint8_t;
 }  // namespace dom
 namespace gfx {
 class FontPaletteValueSet;
+class PaletteCache;
 }  // namespace gfx
 }  // namespace mozilla
-
-// supported values for cached integer pref types
-enum nsPresContext_CachedIntPrefType {
-  kPresContext_ScrollbarSide = 1,
-  kPresContext_BidiDirection
-};
 
 // IDs for the default variable and fixed fonts (not to be changed, see
 // nsFont.h) To be used for Get/SetDefaultFont(). The other IDs in nsFont.h are
@@ -160,7 +156,7 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
    */
   nsresult Init(nsDeviceContext* aDeviceContext);
 
-  /*
+  /**
    * Initialize the font cache if it hasn't been initialized yet.
    * (Needed for stylo)
    */
@@ -168,7 +164,18 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
 
   void UpdateFontCacheUserFonts(gfxUserFontSet* aUserFontSet);
 
+  /**
+   * Return the font visibility level to be applied to this context,
+   * potentially blocking user-installed or non-standard fonts from being
+   * used by web content.
+   * Note that depending on ResistFingerprinting options, the caller may
+   * override this value when resolving CSS <generic-family> keywords.
+   */
   FontVisibility GetFontVisibility() const { return mFontVisibility; }
+
+  /**
+   * Log a message to the console about a font request being blocked.
+   */
   void ReportBlockedFontFamily(const mozilla::fontlist::Family& aFamily);
   void ReportBlockedFontFamily(const gfxFontFamily& aFamily);
 
@@ -214,6 +221,7 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
 
   void DocumentCharSetChanged(NotNull<const Encoding*> aCharSet);
 
+  mozilla::dom::PerformanceMainThread* GetPerformanceMainThread() const;
   /**
    * Returns the parent prescontext for this one. Returns null if this is a
    * root.
@@ -364,23 +372,6 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
    * If passed null, it stops emulating.
    */
   void EmulateMedium(nsAtom* aMediaType);
-
-  /** Get a cached integer pref, by its type */
-  // *  - initially created for bugs 30910, 61883, 74186, 84398
-  int32_t GetCachedIntPref(nsPresContext_CachedIntPrefType aPrefType) const {
-    // If called with a constant parameter, the compiler should optimize
-    // this switch statement away.
-    switch (aPrefType) {
-      case kPresContext_ScrollbarSide:
-        return mPrefScrollbarSide;
-      case kPresContext_BidiDirection:
-        return mPrefBidiDirection;
-      default:
-        NS_ERROR("invalid arg passed to GetCachedIntPref");
-    }
-
-    return false;
-  }
 
   const mozilla::PreferenceSheet::Prefs& PrefSheetPrefs() const {
     return mozilla::PreferenceSheet::PrefsFor(*mDocument);
@@ -577,10 +568,6 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
    * Sets the effective color scheme override, and invalidate stuff as needed.
    */
   void SetColorSchemeOverride(mozilla::dom::PrefersColorSchemeOverride);
-
-  mozilla::CSSCoord GetAutoQualityMinFontSize() const {
-    return DevPixelsToFloatCSSPixels(mAutoQualityMinFontSizePixelsPref);
-  }
 
   /**
    * Return the device's screen size in inches, for font size
@@ -866,9 +853,13 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
 
   void ConstructedFrame() { ++mFramesConstructed; }
   void ReflowedFrame() { ++mFramesReflowed; }
+  void TriggeredAnimationRestyle() { ++mAnimationTriggeredRestyles; }
 
-  uint64_t FramesConstructedCount() { return mFramesConstructed; }
-  uint64_t FramesReflowedCount() { return mFramesReflowed; }
+  uint64_t FramesConstructedCount() const { return mFramesConstructed; }
+  uint64_t FramesReflowedCount() const { return mFramesReflowed; }
+  uint64_t AnimationTriggeredRestylesCount() const {
+    return mAnimationTriggeredRestyles;
+  }
 
   static nscoord GetBorderWidthForKeyword(unsigned int aBorderWidthKeyword) {
     // This table maps border-width enums 'thin', 'medium', 'thick'
@@ -919,6 +910,8 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   void FlushFontPaletteValues();
   void MarkFontPaletteValuesDirty() { mFontPaletteValuesDirty = true; }
 
+  mozilla::gfx::PaletteCache& FontPaletteCache();
+
   // Ensure that it is safe to hand out CSS rules outside the layout
   // engine by ensuring that all CSS style sheets have unique inners
   // and, if necessary, synchronously rebuilding all style data.
@@ -947,11 +940,6 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
    */
   uint64_t GetRestyleGeneration() const;
   uint64_t GetUndisplayedRestyleGeneration() const;
-
-  /**
-   * Returns whether there are any pending restyles or reflows.
-   */
-  bool HasPendingRestyleOrReflow();
 
   /**
    * Notify the prescontext that the presshell is about to reflow a reflow root.
@@ -1040,6 +1028,7 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
 
   bool HadNonBlankPaint() const { return mHadNonBlankPaint; }
   bool HadFirstContentfulPaint() const { return mHadFirstContentfulPaint; }
+  bool HasStoppedGeneratingLCP() const;
   void NotifyNonBlankPaint();
   void NotifyContentfulPaint();
   void NotifyPaintStatusReset();
@@ -1076,7 +1065,20 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
     return mFontPaletteValueSet;
   }
 
+  bool NeedsToUpdateHiddenByContentVisibilityForAnimations() const {
+    return mNeedsToUpdateHiddenByContentVisibilityForAnimations;
+  }
+  void SetNeedsToUpdateHiddenByContentVisibilityForAnimations() {
+    mNeedsToUpdateHiddenByContentVisibilityForAnimations = true;
+  }
+  void UpdateHiddenByContentVisibilityForAnimationsIfNeeded() {
+    if (mNeedsToUpdateHiddenByContentVisibilityForAnimations) {
+      DoUpdateHiddenByContentVisibilityForAnimations();
+    }
+  }
+
  protected:
+  void DoUpdateHiddenByContentVisibilityForAnimations();
   friend class nsRunnableMethod<nsPresContext>;
   void ThemeChangedInternal();
   void RefreshSystemMetrics();
@@ -1120,6 +1122,10 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
     if (mNextFrameRateMultiplier < 8) {
       ++mNextFrameRateMultiplier;
     }
+  }
+
+  mozilla::TimeStamp GetMarkPaintTimingStart() const {
+    return mMarkPaintTimingStart;
   }
 
  protected:
@@ -1179,6 +1185,8 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   const nsStaticAtom* mMedium;
   RefPtr<gfxFontFeatureValueSet> mFontFeatureValuesLookup;
   RefPtr<mozilla::gfx::FontPaletteValueSet> mFontPaletteValueSet;
+
+  mozilla::UniquePtr<mozilla::gfx::PaletteCache> mFontPaletteCache;
 
   // TODO(emilio): Maybe lazily create and put under a UniquePtr if this grows a
   // lot?
@@ -1241,8 +1249,12 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   uint64_t mElementsRestyled;
   uint64_t mFramesConstructed;
   uint64_t mFramesReflowed;
+  uint64_t mAnimationTriggeredRestyles;
 
   mozilla::TimeStamp mReflowStartTime;
+
+  // Defined in https://w3c.github.io/paint-timing/#mark-paint-timing step 2.
+  mozilla::TimeStamp mMarkPaintTimingStart;
 
   Maybe<TransactionId> mFirstContentfulPaintTransactionId;
 
@@ -1310,7 +1322,6 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   unsigned mHasEverBuiltInvisibleText : 1;
   unsigned mPendingInterruptFromTest : 1;
   unsigned mInterruptsEnabled : 1;
-  unsigned mSendAfterPaintToContent : 1;
   unsigned mDrawImageBackground : 1;
   unsigned mDrawColorBackground : 1;
   unsigned mNeverAnimate : 1;
@@ -1318,8 +1329,6 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   unsigned mCanPaginatedScroll : 1;
   unsigned mDoScaledTwips : 1;
   unsigned mIsRootPaginatedDocument : 1;
-  unsigned mPrefBidiDirection : 1;
-  unsigned mPrefScrollbarSide : 2;
   unsigned mPendingThemeChanged : 1;
   // widget::ThemeChangeKind
   unsigned mPendingThemeChangeKind : kThemeChangeKindBits;
@@ -1360,6 +1369,9 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   // Has NotifyDidPaintForSubtree been called for a contentful paint?
   unsigned mHadContentfulPaintComposite : 1;
 
+  // Whether we might need to update c-v state for animations.
+  unsigned mNeedsToUpdateHiddenByContentVisibilityForAnimations : 1;
+
   unsigned mUserInputEventsAllowed : 1;
 #ifdef DEBUG
   unsigned mInitialized : 1;
@@ -1380,7 +1392,8 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
 #ifdef DEBUG
  private:
   friend struct nsAutoLayoutPhase;
-  mozilla::EnumeratedArray<nsLayoutPhase, nsLayoutPhase::COUNT, uint32_t>
+  mozilla::EnumeratedArray<nsLayoutPhase, uint32_t,
+                           size_t(nsLayoutPhase::COUNT)>
       mLayoutPhaseCount;
 
  public:

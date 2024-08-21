@@ -8,7 +8,7 @@ defaults pref(gfx.font_rendering.fallback.async,false)
 # (First attempt is random-if(windows 7), due to intermittent failure with a
 # single missing character - see bug 1451723 & more generally bug 1392106.)
 pref(font.default.zh-CN,"serif") pref(font.default.zh-TW,"serif") pref(font.default.ja,"serif") pref(font.default.ko,"serif") == 1394311.htm 1394311-ref.htm
-pref(font.default.zh-CN,"sans-serif") pref(font.default.zh-TW,"sans-serif") pref(font.default.ja,"sans-serif") pref(font.default.ko,"sans-serif") skip-if(winWidget&&/^Windows\x20NT\x206\.1/.test(http.oscpu)) == 1394311.htm 1394311-ref.htm
+pref(font.default.zh-CN,"sans-serif") pref(font.default.zh-TW,"sans-serif") pref(font.default.ja,"sans-serif") pref(font.default.ko,"sans-serif") == 1394311.htm 1394311-ref.htm
 
 # tests for bug 1367860 (correct default generic font based on language)
 == 1367860-1.htm 1367860-ref.htm
@@ -63,9 +63,9 @@ random-if(cocoaWidget) != impact-bold.html impact.html # bug 539418
 == arial-variations-6.html arial-variations-6-ref.html
 
 # localized font family names should always match just as English names do
-fuzzy-if(/^Windows\x20NT\x206\.1/.test(http.oscpu),255-255,400-400) == localized-family-names-001.html localized-family-names-001-ref.html # Bug 1392106
+== localized-family-names-001.html localized-family-names-001-ref.html # Bug 1392106
 == localized-family-names-002.html localized-family-names-002-ref.html
-fuzzy-if(/^Windows\x20NT\x206\.1/.test(http.oscpu),255-255,2725-2725) == localized-family-names-003.html localized-family-names-003-ref.html # Bug 1392106
+== localized-family-names-003.html localized-family-names-003-ref.html # Bug 1392106
 == localized-family-names-004.html localized-family-names-004-ref.html
 
 # family names with escaped spaces shouldn't match the names without the spaces
@@ -134,11 +134,11 @@ skip-if(!cocoaWidget) != apple-symbols-1.html apple-symbols-1-notref.html
 # GTK and Windows 7 don't have full emoji and symbol font, so emoji-fallback-2
 # don't work well.
 == emoji-fallback-1.html emoji-fallback-1-ref.html
-skip-if(gtkWidget||/^Windows\x20NT\x206\.1/.test(http.oscpu)) == emoji-fallback-2.html emoji-fallback-2-ref.html
+skip-if(gtkWidget) == emoji-fallback-2.html emoji-fallback-2-ref.html
 == emoji-fallback-3.html emoji-fallback-3-ref.html
-skip-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) != emoji-keycap.html emoji-keycap-notref.html
+!= emoji-keycap.html emoji-keycap-notref.html
 # Dependent on Windows emoji font names, so not expected to be meaningful on other platforms:
-skip-if(!winWidget||/^Windows\x20NT\x206\.1/.test(http.oscpu)) != emoji-keycap-2.html emoji-keycap-2-notref.html
+skip-if(!winWidget) != emoji-keycap-2.html emoji-keycap-2-notref.html
 == emoji-skintone.html emoji-skintone-ref.html
 # Random on Android because font availability varies depending on the version/device.
 random-if(Android) != emoji-subregion-flag.html emoji-subregion-flag-notref.html
@@ -147,14 +147,14 @@ random-if(Android) != emoji-subregion-flag.html emoji-subregion-flag-notref.html
 # Bug 1212731 - initial implementation caused startup regression and
 # regression with full-width digits display in UI elements. Disable
 # tests until these problems are corrected.
-# random-if(!OSX) == system-generic-fallback-1.html system-generic-fallback-1-ref.html
-# random-if(!OSX) == system-generic-fallback-2.html system-generic-fallback-2-ref.html
-# random-if(!OSX) == system-generic-fallback-3.html system-generic-fallback-3-ref.html
-# random-if(!OSX) == system-generic-fallback-4.html system-generic-fallback-4-ref.html
-# random-if(!OSX) != system-generic-fallback-ko.html system-generic-fallback-ja.html
-# random-if(!OSX) != system-generic-fallback-zh-tw.html system-generic-fallback-ja.html
-# random-if(!OSX) != system-generic-fallback-zh-cn.html system-generic-fallback-ja.html
-# random-if(!OSX) != system-generic-fallback-zh-tw.html system-generic-fallback-zh-cn.html
+# random-if(!cocoaWidget) == system-generic-fallback-1.html system-generic-fallback-1-ref.html
+# random-if(!cocoaWidget) == system-generic-fallback-2.html system-generic-fallback-2-ref.html
+# random-if(!cocoaWidget) == system-generic-fallback-3.html system-generic-fallback-3-ref.html
+# random-if(!cocoaWidget) == system-generic-fallback-4.html system-generic-fallback-4-ref.html
+# random-if(!cocoaWidget) != system-generic-fallback-ko.html system-generic-fallback-ja.html
+# random-if(!cocoaWidget) != system-generic-fallback-zh-tw.html system-generic-fallback-ja.html
+# random-if(!cocoaWidget) != system-generic-fallback-zh-cn.html system-generic-fallback-ja.html
+# random-if(!cocoaWidget) != system-generic-fallback-zh-tw.html system-generic-fallback-zh-cn.html
 
 # Tests for legacy font family name (GDI-model families) matching;
 # these depend on specific fonts that are available as standard on macOS and Windows,
@@ -193,5 +193,15 @@ pref(ui.font.menu,"serif") test-pref(ui.font.menu.italic,true) != system-font-pr
 pref(ui.font.menu,"serif") test-pref(ui.font.menu.size,"2.0") != system-font-pref.html system-font-pref.html
 pref(ui.font.menu,"serif") test-pref(ui.font.menu.weight,"800") != system-font-pref.html system-font-pref.html
 
+# Check that localized font name works, even when visibility level is restricted.
+# (Assumes Windows has Yu Gothic present.)
+skip-if(!winWidget) pref(layout.css.font-visibility,1) == 1850672-1.html 1850672-1-ref.html
+
+# Check that "ja-JP" in accept_languages uses the same font prefs as "ja".
+test-pref(intl.accept_languages,"ja-JP,zh-CN,en") ref-pref(intl.accept_languages,"ja,zh-CN,en") == 1892363-lang-prefs.html 1892363-lang-prefs.html
+
 # Reset default prefs.
 defaults
+
+# Bug 1787790 - Normalize system fonts when using RFP
+test-pref(privacy.resistFingerprinting,true) == system-font-rfp.html system-font-rfp-ref.html

@@ -29,10 +29,6 @@ EXPORTS += [
     "WindowRenderer.h",
 ]
 
-EXPORTS.mozilla += [
-    "PaintTracker.h",
-]
-
 UNIFIED_SOURCES += [
     "ActiveLayerTracker.cpp",
     "DashedCornerFinder.cpp",
@@ -41,14 +37,12 @@ UNIFIED_SOURCES += [
     "DisplayListClipState.cpp",
     "DottedCornerFinder.cpp",
     "HitTestInfo.cpp",
-    "MaskLayerImageCache.cpp",
     "nsCSSRendering.cpp",
     "nsCSSRenderingBorders.cpp",
     "nsCSSRenderingGradients.cpp",
     "nsDisplayList.cpp",
     "nsDisplayListInvalidation.cpp",
     "nsImageRenderer.cpp",
-    "PaintTracker.cpp",
     "RetainedDisplayListBuilder.cpp",
     "WindowRenderer.cpp",
 ]

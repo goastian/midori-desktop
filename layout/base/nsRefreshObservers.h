@@ -43,17 +43,21 @@ class nsARefreshObserver {
   NS_INLINE_DECL_PURE_VIRTUAL_REFCOUNTING
 
   MOZ_CAN_RUN_SCRIPT virtual void WillRefresh(mozilla::TimeStamp aTime) = 0;
-};
 
-/**
- * An abstract base class to be implemented by callers wanting to be notified
- * when the observing refresh driver updated mMostRecentRefresh due to active
- * timer changes. Callers must ensure an observer is removed before it is
- * destroyed.
- */
-class nsATimerAdjustmentObserver {
- public:
-  virtual void NotifyTimerAdjusted(mozilla::TimeStamp aTime) = 0;
+#ifdef DEBUG
+  // Count of the active registrations we currently have with nsRefreshDrivers.
+  // This is incremented in nsRefreshDriver::AddRefreshObserver, decremented in
+  // nsRefreshDriver::RemoveRefreshObserver. No other code should modify this.
+  // We expect this to be 0 when we're destructed.
+  int32_t mRegistrationCount = 0;
+
+  // Virtual destructor to enforce the mRegistrationCount invariant.
+  virtual ~nsARefreshObserver() {
+    MOZ_ASSERT(mRegistrationCount == 0,
+               "Refresh observer AddRefreshObserver/RemoveRefreshObserver "
+               "calls should have balanced out to zero");
+  }
+#endif  // DEBUG
 };
 
 /**

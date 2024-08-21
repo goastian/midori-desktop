@@ -51,10 +51,12 @@ class MiddleCroppingBlockFrame : public nsBlockFrame,
   /**
    * Updates the displayed value by using aValue.
    */
-  void UpdateDisplayedValue(const nsAString& aValue, bool aNotify);
+  void UpdateDisplayedValue(const nsAString& aValue, bool aIsCropped,
+                            bool aNotify);
   void Destroy(DestroyContext&) override;
 
   RefPtr<dom::Text> mTextNode;
+  bool mCropped = false;
 };
 
 }  // namespace mozilla

@@ -1,5 +1,5 @@
 # sanity checks:
-!= not-other-type-unthemed-1.html not-other-type-unthemed-1a-notref.html
+fails-if(Android) != not-other-type-unthemed-1.html not-other-type-unthemed-1a-notref.html
 != not-other-type-unthemed-1.html not-other-type-unthemed-1b-notref.html
 
 # should look the same as type=text, except for the spin box
@@ -17,7 +17,7 @@ fuzzy(0-2,0-13) == show-value.html show-value-ref.html
 
 # disabled
 == number-disabled.html number-disabled-ref.html
-!= number-spinbox-disabled.html number-spinbox-disabled-notref.html
+fails-if(Android) != number-spinbox-disabled.html number-spinbox-disabled-notref.html
 
 # auto width:
 == number-auto-width-1.html number-auto-width-1-ref.html
@@ -57,6 +57,8 @@ fuzzy(0-128,0-4) == number-reframe-anon-text-field.html number-reframe-anon-text
 
 # l10n
 != number-localized.html number-localized-notref.html
+== number-localized-dynamic.html number-localized.html
+== number-localized-dynamic-asnumber.html number-localized.html
 
 == padding-001.html padding-001-ref.html
 != padding-001.html padding-001-notref.html

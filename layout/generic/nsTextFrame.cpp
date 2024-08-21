@@ -12,6 +12,7 @@
 
 #include "gfxUtils.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/CaretAssociationHint.h"
 #include "mozilla/ComputedStyle.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/gfx/2D.h"
@@ -27,6 +28,7 @@
 #include "mozilla/IntegerRange.h"
 #include "mozilla/Unused.h"
 #include "mozilla/PodOperations.h"
+#include "mozilla/dom/PerformanceMainThread.h"
 
 #include "nsCOMPtr.h"
 #include "nsBlockFrame.h"
@@ -213,6 +215,7 @@ struct nsTextFrame::PaintTextSelectionParams : nsTextFrame::PaintTextParams {
 
 struct nsTextFrame::DrawTextRunParams {
   gfxContext* context;
+  mozilla::gfx::PaletteCache& paletteCache;
   PropertyProvider* provider = nullptr;
   gfxFloat* advanceWidth = nullptr;
   mozilla::SVGContextPaint* contextPaint = nullptr;
@@ -220,10 +223,13 @@ struct nsTextFrame::DrawTextRunParams {
   nscolor textColor = NS_RGBA(0, 0, 0, 0);
   nscolor textStrokeColor = NS_RGBA(0, 0, 0, 0);
   nsAtom* fontPalette = nullptr;
-  gfx::FontPaletteValueSet* paletteValueSet = nullptr;
   float textStrokeWidth = 0.0f;
   bool drawSoftHyphen = false;
-  explicit DrawTextRunParams(gfxContext* aContext) : context(aContext) {}
+  bool hasTextShadow = false;
+  bool paintingShadows = false;
+  DrawTextRunParams(gfxContext* aContext,
+                    mozilla::gfx::PaletteCache& aPaletteCache)
+      : context(aContext), paletteCache(aPaletteCache) {}
 };
 
 struct nsTextFrame::ClipEdges {
@@ -260,7 +266,9 @@ struct nsTextFrame::DrawTextParams : nsTextFrame::DrawTextRunParams {
   const ClipEdges* clipEdges = nullptr;
   const nscolor* decorationOverrideColor = nullptr;
   Range glyphRange;
-  explicit DrawTextParams(gfxContext* aContext) : DrawTextRunParams(aContext) {}
+  DrawTextParams(gfxContext* aContext,
+                 mozilla::gfx::PaletteCache& aPaletteCache)
+      : DrawTextRunParams(aContext, aPaletteCache) {}
 };
 
 struct nsTextFrame::PaintShadowParams {
@@ -269,6 +277,7 @@ struct nsTextFrame::PaintShadowParams {
   Point framePt;
   Point textBaselinePt;
   gfxContext* context;
+  DrawPathCallbacks* callbacks = nullptr;
   nscolor foregroundColor = NS_RGBA(0, 0, 0, 0);
   const ClipEdges* clipEdges = nullptr;
   PropertyProvider* provider = nullptr;
@@ -774,7 +783,8 @@ static bool IsTrimmableSpace(const nsTextFragment* aFrag, uint32_t aPos,
              !IsSpaceCombiningSequenceTail(aFrag, aPos + 1);
     case '\n':
       return !aStyleText->NewlineIsSignificantStyle() &&
-             aStyleText->mWhiteSpace != mozilla::StyleWhiteSpace::PreSpace;
+             aStyleText->mWhiteSpaceCollapse !=
+                 StyleWhiteSpaceCollapse::PreserveSpaces;
     case '\t':
     case '\r':
     case '\f':
@@ -1079,9 +1089,6 @@ class BuildTextRunsScanner {
     }
 
     void Finish(gfxMissingFontRecorder* aMFR) {
-      MOZ_ASSERT(
-          !(mTextRun->GetFlags2() & nsTextFrameUtils::Flags::UnusedFlags),
-          "Flag set that should never be set! (memory safety error?)");
       if (mTextRun->GetFlags2() & nsTextFrameUtils::Flags::IsTransformed) {
         nsTransformedTextRun* transformedTextRun =
             static_cast<nsTransformedTextRun*>(mTextRun.get());
@@ -1126,8 +1133,8 @@ class BuildTextRunsScanner {
 };
 
 static nsIFrame* FindLineContainer(nsIFrame* aFrame) {
-  while (aFrame && (aFrame->IsFrameOfType(nsIFrame::eLineParticipant) ||
-                    aFrame->CanContinueTextRun())) {
+  while (aFrame &&
+         (aFrame->IsLineParticipant() || aFrame->CanContinueTextRun())) {
     aFrame = aFrame->GetParent();
   }
   return aFrame;
@@ -1167,27 +1174,23 @@ static bool TextContainsLineBreakerWhiteSpace(const void* aText,
 
 static nsTextFrameUtils::CompressionMode GetCSSWhitespaceToCompressionMode(
     nsTextFrame* aFrame, const nsStyleText* aStyleText) {
-  switch (aStyleText->mWhiteSpace) {
-    case StyleWhiteSpace::Normal:
-    case StyleWhiteSpace::Nowrap:
+  switch (aStyleText->mWhiteSpaceCollapse) {
+    case StyleWhiteSpaceCollapse::Collapse:
       return nsTextFrameUtils::COMPRESS_WHITESPACE_NEWLINE;
-    case StyleWhiteSpace::Pre:
-    case StyleWhiteSpace::PreWrap:
-    case StyleWhiteSpace::BreakSpaces:
+    case StyleWhiteSpaceCollapse::PreserveBreaks:
+      return nsTextFrameUtils::COMPRESS_WHITESPACE;
+    case StyleWhiteSpaceCollapse::Preserve:
+    case StyleWhiteSpaceCollapse::PreserveSpaces:
+    case StyleWhiteSpaceCollapse::BreakSpaces:
       if (!aStyleText->NewlineIsSignificant(aFrame)) {
         // If newline is set to be preserved, but then suppressed,
         // transform newline to space.
         return nsTextFrameUtils::COMPRESS_NONE_TRANSFORM_TO_SPACE;
       }
       return nsTextFrameUtils::COMPRESS_NONE;
-    case StyleWhiteSpace::PreSpace:
-      return nsTextFrameUtils::COMPRESS_NONE_TRANSFORM_TO_SPACE;
-    case StyleWhiteSpace::PreLine:
-      return nsTextFrameUtils::COMPRESS_WHITESPACE;
-    default:
-      MOZ_ASSERT_UNREACHABLE("Unknown white-space value");
-      return nsTextFrameUtils::COMPRESS_WHITESPACE_NEWLINE;
   }
+  MOZ_ASSERT_UNREACHABLE("Unknown white-space-collapse value");
+  return nsTextFrameUtils::COMPRESS_WHITESPACE_NEWLINE;
 }
 
 struct FrameTextTraversal {
@@ -1926,8 +1929,8 @@ bool BuildTextRunsScanner::ContinueTextRunAcrossFrames(nsTextFrame* aFrame1,
 
     // Map inline-end and inline-start to physical sides for checking presence
     // of non-zero margin/border/padding.
-    Side side1 = wm.PhysicalSide(eLogicalSideIEnd);
-    Side side2 = wm.PhysicalSide(eLogicalSideIStart);
+    Side side1 = wm.PhysicalSide(LogicalSide::IEnd);
+    Side side2 = wm.PhysicalSide(LogicalSide::IStart);
     // If the frames have an embedding level that is opposite to the writing
     // mode, we need to swap which sides we're checking.
     if (aFrame1->GetEmbeddingLevel().IsRTL() == wm.IsBidiLTR()) {
@@ -2763,7 +2766,7 @@ void BuildTextRunsScanner::SetupBreakSinksForTextRun(gfxTextRun* aTextRun,
     if (aTextRun->GetFlags2() & nsTextFrameUtils::Flags::NoBreaks) {
       flags |= nsLineBreaker::BREAK_SKIP_SETTING_NO_BREAKS;
     }
-    if (textStyle->mTextTransform.case_ == StyleTextTransformCase::Capitalize) {
+    if (textStyle->mTextTransform & StyleTextTransform::CAPITALIZE) {
       flags |= nsLineBreaker::BREAK_NEED_CAPITALIZATION;
     }
     if (textStyle->mHyphens == StyleHyphens::Auto &&
@@ -3113,7 +3116,7 @@ static bool IsJustifiableCharacter(const nsStyleText* aTextStyle,
 
   const char16_t ch = aFrag->CharAt(AssertedCast<uint32_t>(aPos));
   if (ch == '\n' || ch == '\t' || ch == '\r') {
-    return true;
+    return !aTextStyle->WhiteSpaceIsSignificant();
   }
   if (ch == ' ' || ch == CH_NBSP) {
     // Don't justify spaces that are combined with diacriticals
@@ -3344,6 +3347,152 @@ static void FindClusterEnd(const gfxTextRun* aTextRun, int32_t aOriginalEnd,
   aPos->AdvanceOriginal(-1);
 }
 
+// Get the line number of aFrame in the lines referenced by aLineIter, if
+// known (returning -1 if we don't find it).
+static int32_t GetFrameLineNum(nsIFrame* aFrame, nsILineIterator* aLineIter) {
+  if (!aLineIter) {
+    return -1;
+  }
+  int32_t n = aLineIter->FindLineContaining(aFrame);
+  if (n >= 0) {
+    return n;
+  }
+  // If we didn't find the frame directly, but its parent is an inline,
+  // we want the line that the inline ancestor is on.
+  nsIFrame* ancestor = aFrame->GetParent();
+  while (ancestor && ancestor->IsInlineFrame()) {
+    n = aLineIter->FindLineContaining(ancestor);
+    if (n >= 0) {
+      return n;
+    }
+    ancestor = ancestor->GetParent();
+  }
+  return -1;
+}
+
+// Get the position of the first preserved newline in aFrame, if any,
+// returning -1 if none.
+static int32_t FindFirstNewlinePosition(const nsTextFrame* aFrame) {
+  MOZ_ASSERT(aFrame->StyleText()->NewlineIsSignificantStyle(),
+             "how did the HasNewline flag get set?");
+  const auto* textFragment = aFrame->TextFragment();
+  for (auto i = aFrame->GetContentOffset(); i < aFrame->GetContentEnd(); ++i) {
+    if (textFragment->CharAt(i) == '\n') {
+      return i;
+    }
+  }
+  return -1;
+}
+
+// Get the position of the last preserved tab in aFrame that is before the
+// preserved newline at aNewlinePos.
+// Passing -1 for aNewlinePos means there is no preserved newline, so we look
+// for the last preserved tab in the whole content.
+// Returns -1 if no such preserved tab is present.
+static int32_t FindLastTabPositionBeforeNewline(const nsTextFrame* aFrame,
+                                                int32_t aNewlinePos) {
+  // We only call this if white-space is not being collapsed.
+  MOZ_ASSERT(aFrame->StyleText()->WhiteSpaceIsSignificant(),
+             "how did the HasTab flag get set?");
+  const auto* textFragment = aFrame->TextFragment();
+  // If a non-negative newline position was given, we only need to search the
+  // text before that offset.
+  for (auto i = aNewlinePos < 0 ? aFrame->GetContentEnd() : aNewlinePos;
+       i > aFrame->GetContentOffset(); --i) {
+    if (textFragment->CharAt(i - 1) == '\t') {
+      return i;
+    }
+  }
+  return -1;
+}
+
+// Look for preserved tab or newline in the given frame or its following
+// siblings on the same line, to determine whether justification should be
+// suppressed in order to avoid disrupting tab-stop positions.
+// Returns the first such preserved whitespace char, or 0 if none found.
+static char NextPreservedWhiteSpaceOnLine(nsIFrame* aSibling,
+                                          nsILineIterator* aLineIter,
+                                          int32_t aLineNum) {
+  while (aSibling) {
+    // If we find a <br>, treat it like a newline.
+    if (aSibling->IsBrFrame()) {
+      return '\n';
+    }
+    // If we've moved on to a later line, stop searching.
+    if (GetFrameLineNum(aSibling, aLineIter) > aLineNum) {
+      return 0;
+    }
+    // If we encounter an inline frame, recurse into it.
+    if (aSibling->IsInlineFrame()) {
+      auto* child = aSibling->PrincipalChildList().FirstChild();
+      char result = NextPreservedWhiteSpaceOnLine(child, aLineIter, aLineNum);
+      if (result) {
+        return result;
+      }
+    }
+    // If we have a text frame, and whitespace is not collapsed, we need to
+    // check its contents.
+    if (aSibling->IsTextFrame()) {
+      const auto* textStyle = aSibling->StyleText();
+      if (textStyle->WhiteSpaceOrNewlineIsSignificant()) {
+        const auto* textFrame = static_cast<nsTextFrame*>(aSibling);
+        const auto* textFragment = textFrame->TextFragment();
+        for (auto i = textFrame->GetContentOffset();
+             i < textFrame->GetContentEnd(); ++i) {
+          const char16_t ch = textFragment->CharAt(i);
+          if (ch == '\n' && textStyle->NewlineIsSignificantStyle()) {
+            return '\n';
+          }
+          if (ch == '\t' && textStyle->WhiteSpaceIsSignificant()) {
+            return '\t';
+          }
+        }
+      }
+    }
+    aSibling = aSibling->GetNextSibling();
+  }
+  return 0;
+}
+
+static bool HasPreservedTabInFollowingSiblingOnLine(nsTextFrame* aFrame) {
+  bool foundTab = false;
+
+  nsIFrame* lineContainer = FindLineContainer(aFrame);
+  nsILineIterator* iter = lineContainer->GetLineIterator();
+  int32_t line = GetFrameLineNum(aFrame, iter);
+  char ws = NextPreservedWhiteSpaceOnLine(aFrame->GetNextSibling(), iter, line);
+  if (ws == '\t') {
+    foundTab = true;
+  } else if (!ws) {
+    // Didn't find a preserved tab or newline in our siblings; if our parent
+    // (and its parent, etc) is an inline, we need to look at their following
+    // siblings, too, as long as they're on the same line.
+    const nsIFrame* maybeInline = aFrame->GetParent();
+    while (maybeInline && maybeInline->IsInlineFrame()) {
+      ws = NextPreservedWhiteSpaceOnLine(maybeInline->GetNextSibling(), iter,
+                                         line);
+      if (ws == '\t') {
+        foundTab = true;
+        break;
+      }
+      if (ws == '\n') {
+        break;
+      }
+      maybeInline = maybeInline->GetParent();
+    }
+  }
+
+  // We called lineContainer->GetLineIterator() above, but we mustn't
+  // allow a block frame to retain this iterator if we're currently in
+  // reflow, as it will become invalid as the line list is reflowed.
+  if (lineContainer->HasAnyStateBits(NS_FRAME_IN_REFLOW) &&
+      lineContainer->IsBlockFrameOrSubclass()) {
+    static_cast<nsBlockFrame*>(lineContainer)->ClearLineIterator();
+  }
+
+  return foundTab;
+}
+
 JustificationInfo nsTextFrame::PropertyProvider::ComputeJustification(
     Range aRange, nsTArray<JustificationAssignment>* aAssignments) {
   JustificationInfo info;
@@ -3355,6 +3504,34 @@ JustificationInfo nsTextFrame::PropertyProvider::ComputeJustification(
   // character, the sides of this frame are not justifiable either.
   if (mFrame->Style()->IsTextCombined()) {
     return info;
+  }
+
+  int32_t lastTab = -1;
+  if (StaticPrefs::layout_css_text_align_justify_only_after_last_tab()) {
+    // If there is a preserved tab on the line, we don't apply justification
+    // until we're past its position.
+    if (mTextStyle->WhiteSpaceIsSignificant()) {
+      // If there is a preserved newline within the text, we don't need to look
+      // beyond this frame, as following frames will not be on the same line.
+      int32_t newlinePos =
+          (mTextRun->GetFlags2() & nsTextFrameUtils::Flags::HasNewline)
+              ? FindFirstNewlinePosition(mFrame)
+              : -1;
+      if (newlinePos < 0) {
+        // There's no preserved newline within this frame; if there's a tab
+        // in a later sibling frame on the same line, we won't apply any
+        // justification to this one.
+        if (HasPreservedTabInFollowingSiblingOnLine(mFrame)) {
+          return info;
+        }
+      }
+
+      if (mTextRun->GetFlags2() & nsTextFrameUtils::Flags::HasTab) {
+        // Find last tab character in the content; we won't justify anything
+        // before that position, so that tab alignment remains correct.
+        lastTab = FindLastTabPositionBeforeNewline(mFrame, newlinePos);
+      }
+    }
   }
 
   bool isCJ = IsChineseOrJapanese(mFrame);
@@ -3374,7 +3551,8 @@ JustificationInfo nsTextFrame::PropertyProvider::ComputeJustification(
     gfxSkipCharsIterator iter = run.GetPos();
     for (uint32_t i = 0; i < length; ++i) {
       uint32_t offset = originalOffset + i;
-      if (!IsJustifiableCharacter(mTextStyle, mFrag, offset, isCJ)) {
+      if (!IsJustifiableCharacter(mTextStyle, mFrag, offset, isCJ) ||
+          (lastTab >= 0 && offset <= uint32_t(lastTab))) {
         continue;
       }
 
@@ -3433,16 +3611,33 @@ void nsTextFrame::PropertyProvider::GetSpacing(Range aRange,
       !(mTextRun->GetFlags2() & nsTextFrameUtils::Flags::HasTab));
 }
 
+static bool CanAddSpacingBefore(const gfxTextRun* aTextRun, uint32_t aOffset,
+                                bool aNewlineIsSignificant) {
+  const auto* g = aTextRun->GetCharacterGlyphs();
+  MOZ_ASSERT(aOffset < aTextRun->GetLength());
+  if (aNewlineIsSignificant && g[aOffset].CharIsNewline()) {
+    return false;
+  }
+  if (!aOffset) {
+    return true;
+  }
+  return g[aOffset].IsClusterStart() && g[aOffset].IsLigatureGroupStart() &&
+         !g[aOffset - 1].CharIsFormattingControl() && !g[aOffset].CharIsTab();
+}
+
 static bool CanAddSpacingAfter(const gfxTextRun* aTextRun, uint32_t aOffset,
                                bool aNewlineIsSignificant) {
+  const auto* g = aTextRun->GetCharacterGlyphs();
+  MOZ_ASSERT(aOffset < aTextRun->GetLength());
+  if (aNewlineIsSignificant && g[aOffset].CharIsNewline()) {
+    return false;
+  }
   if (aOffset + 1 >= aTextRun->GetLength()) {
     return true;
   }
-  const auto* g = aTextRun->GetCharacterGlyphs();
   return g[aOffset + 1].IsClusterStart() &&
          g[aOffset + 1].IsLigatureGroupStart() &&
-         !g[aOffset].CharIsFormattingControl() && !g[aOffset].CharIsTab() &&
-         !(aNewlineIsSignificant && g[aOffset].CharIsNewline());
+         !g[aOffset].CharIsFormattingControl() && !g[aOffset].CharIsTab();
 }
 
 static gfxFloat ComputeTabWidthAppUnits(const nsIFrame* aFrame) {
@@ -3461,11 +3656,18 @@ static gfxFloat ComputeTabWidthAppUnits(const nsIFrame* aFrame) {
   const auto* styleText = cb->StyleText();
 
   // Round the space width when converting to appunits the same way textruns do.
-  RefPtr<nsFontMetrics> fm = nsLayoutUtils::GetFontMetricsForFrame(cb, 1.0f);
+  // We don't use GetFirstFontMetrics here because that may return a font that
+  // does not actually have the <space> character, yet is considered the "first
+  // available font" per CSS Fonts. Here, we want the font that would be used
+  // to render <space>, even if that means looking further down the font-family
+  // list.
+  RefPtr fm = nsLayoutUtils::GetFontMetricsForFrame(cb, 1.0f);
   bool vertical = cb->GetWritingMode().IsCentralBaseline();
-  nscoord spaceWidth = nscoord(NS_round(
-      GetFirstFontMetrics(fm->GetThebesFontGroup(), vertical).spaceWidth *
-      cb->PresContext()->AppUnitsPerDevPixel()));
+  RefPtr font = fm->GetThebesFontGroup()->GetFirstValidFont(' ');
+  auto metrics = font->GetMetrics(vertical ? nsFontMetrics::eVertical
+                                           : nsFontMetrics::eHorizontal);
+  nscoord spaceWidth = nscoord(
+      NS_round(metrics.spaceWidth * cb->PresContext()->AppUnitsPerDevPixel()));
   return spaces * (spaceWidth + styleText->mLetterSpacing.ToAppUnits() +
                    styleText->mWordSpacing.Resolve(spaceWidth));
 }
@@ -3495,14 +3697,45 @@ void nsTextFrame::PropertyProvider::GetSpacingInternal(Range aRange,
     nsSkipCharsRunIterator run(
         start, nsSkipCharsRunIterator::LENGTH_UNSKIPPED_ONLY, aRange.Length());
     bool newlineIsSignificant = mTextStyle->NewlineIsSignificant(mFrame);
+    // Which letter-spacing model are we using?
+    //   0 - Gecko legacy model, spacing added to trailing side of letter
+    //   1 - WebKit/Blink-compatible, spacing added to right-hand side
+    //   2 - Symmetrical spacing, half added to each side
+    gfxFloat before, after;
+    switch (StaticPrefs::layout_css_letter_spacing_model()) {
+      default:  // use Gecko legacy behavior if pref value is unknown
+      case 0:
+        before = 0.0;
+        after = mLetterSpacing;
+        break;
+      case 1:
+        if (mTextRun->IsRightToLeft()) {
+          before = mLetterSpacing;
+          after = 0.0;
+        } else {
+          before = 0.0;
+          after = mLetterSpacing;
+        }
+        break;
+      case 2:
+        before = mLetterSpacing / 2.0;
+        after = mLetterSpacing - before;
+        break;
+    }
     while (run.NextRun()) {
       uint32_t runOffsetInSubstring = run.GetSkippedOffset() - aRange.start;
       gfxSkipCharsIterator iter = run.GetPos();
       for (int32_t i = 0; i < run.GetRunLength(); ++i) {
-        if (CanAddSpacingAfter(mTextRun, run.GetSkippedOffset() + i,
+        if (before != 0.0 &&
+            CanAddSpacingBefore(mTextRun, run.GetSkippedOffset() + i,
+                                newlineIsSignificant)) {
+          aSpacing[runOffsetInSubstring + i].mBefore += before;
+        }
+        if (after != 0.0 &&
+            CanAddSpacingAfter(mTextRun, run.GetSkippedOffset() + i,
                                newlineIsSignificant)) {
           // End of a cluster, not in a ligature: put letter-spacing after it
-          aSpacing[runOffsetInSubstring + i].mAfter += mLetterSpacing;
+          aSpacing[runOffsetInSubstring + i].mAfter += after;
         }
         if (IsCSSWordSpacingSpace(mFrag, i + run.GetOriginalOffset(), mFrame,
                                   mTextStyle)) {
@@ -3938,25 +4171,7 @@ class nsContinuingTextFrame final : public nsTextFrame {
         "creating a loop in continuation chain!");
     mPrevContinuation = static_cast<nsTextFrame*>(aPrevContinuation);
     RemoveStateBits(NS_FRAME_IS_FLUID_CONTINUATION);
-    nsTextFrame* prevFirst = mFirstContinuation;
-    if (mPrevContinuation) {
-      mFirstContinuation = mPrevContinuation->FirstContinuation();
-      if (mFirstContinuation) {
-        mFirstContinuation->ClearCachedContinuations();
-      }
-    } else {
-      mFirstContinuation = nullptr;
-    }
-    if (mFirstContinuation != prevFirst) {
-      if (prevFirst) {
-        prevFirst->ClearCachedContinuations();
-      }
-      auto* f = static_cast<nsContinuingTextFrame*>(mNextContinuation);
-      while (f) {
-        f->mFirstContinuation = mFirstContinuation;
-        f = static_cast<nsContinuingTextFrame*>(f->mNextContinuation);
-      }
-    }
+    UpdateCachedContinuations();
   }
 
   nsTextFrame* GetPrevInFlow() const final {
@@ -3972,6 +4187,11 @@ class nsContinuingTextFrame final : public nsTextFrame {
         "creating a loop in continuation chain!");
     mPrevContinuation = static_cast<nsTextFrame*>(aPrevInFlow);
     AddStateBits(NS_FRAME_IS_FLUID_CONTINUATION);
+    UpdateCachedContinuations();
+  }
+
+  // Call this helper to update cache after mPrevContinuation is changed.
+  void UpdateCachedContinuations() {
     nsTextFrame* prevFirst = mFirstContinuation;
     if (mPrevContinuation) {
       mFirstContinuation = mPrevContinuation->FirstContinuation();
@@ -4027,7 +4247,7 @@ class nsContinuingTextFrame final : public nsTextFrame {
                                  nsPresContext* aPresContext)
       : nsTextFrame(aStyle, aPresContext, kClassID) {}
 
-  nsTextFrame* mPrevContinuation;
+  nsTextFrame* mPrevContinuation = nullptr;
   nsTextFrame* mFirstContinuation = nullptr;
 };
 
@@ -4195,7 +4415,7 @@ NS_IMPL_FRAMEARENA_HELPERS(nsContinuingTextFrame)
 
 nsTextFrame::~nsTextFrame() = default;
 
-Maybe<nsIFrame::Cursor> nsTextFrame::GetCursor(const nsPoint& aPoint) {
+nsIFrame::Cursor nsTextFrame::GetCursor(const nsPoint& aPoint) {
   StyleCursorKind kind = StyleUI()->Cursor().keyword;
   if (kind == StyleCursorKind::Auto) {
     if (!IsSelectable(nullptr)) {
@@ -4205,7 +4425,7 @@ Maybe<nsIFrame::Cursor> nsTextFrame::GetCursor(const nsPoint& aPoint) {
                                            : StyleCursorKind::Text;
     }
   }
-  return Some(Cursor{kind, AllowCustomCursorImage::Yes});
+  return Cursor{kind, AllowCustomCursorImage::Yes};
 }
 
 nsTextFrame* nsTextFrame::LastInFlow() const {
@@ -4395,7 +4615,7 @@ nsresult nsTextFrame::CharacterDataChanged(
   // dirty bit without bothering to call FrameNeedsReflow again.)
   nsIFrame* lastDirtiedFrameParent = nullptr;
 
-  mozilla::PresShell* presShell = PresContext()->GetPresShell();
+  mozilla::PresShell* presShell = PresShell();
   do {
     // textFrame contained deleted text (or the insertion point,
     // if this was a pure insertion).
@@ -4737,10 +4957,10 @@ void nsTextFrame::GetTextDecorations(
     // If we're on a ruby frame other than ruby text container, we
     // should continue.
     mozilla::StyleDisplay display = f->GetDisplay();
-    if (!nsStyleDisplay::IsInlineFlow(display) &&
-        (!nsStyleDisplay::IsRubyDisplayType(display) ||
+    if (!display.IsInlineFlow() &&
+        (!display.IsRuby() ||
          display == mozilla::StyleDisplay::RubyTextContainer) &&
-        nsStyleDisplay::IsDisplayTypeInlineOutside(display)) {
+        display.IsInlineOutside()) {
       break;
     }
 
@@ -4831,8 +5051,7 @@ static already_AddRefed<gfxTextRun> GenerateTextRunForEmphasisMarks(
 static nsRubyFrame* FindFurthestInlineRubyAncestor(nsTextFrame* aFrame) {
   nsRubyFrame* rubyFrame = nullptr;
   for (nsIFrame* frame = aFrame->GetParent();
-       frame && frame->IsFrameOfType(nsIFrame::eLineParticipant);
-       frame = frame->GetParent()) {
+       frame && frame->IsLineParticipant(); frame = frame->GetParent()) {
     if (frame->IsRubyFrame()) {
       rubyFrame = static_cast<nsRubyFrame*>(frame);
     }
@@ -4876,25 +5095,25 @@ nsRect nsTextFrame::UpdateTextEmphasis(WritingMode aWM,
           : do_AddRef(aProvider.GetFontMetrics());
   // When the writing mode is vertical-lr the line is inverted, and thus
   // the ascent and descent are swapped.
-  nscoord absOffset = (side == eLogicalSideBStart) != aWM.IsLineInverted()
+  nscoord absOffset = (side == LogicalSide::BStart) != aWM.IsLineInverted()
                           ? baseFontMetrics->MaxAscent() + fm->MaxDescent()
                           : baseFontMetrics->MaxDescent() + fm->MaxAscent();
   RubyBlockLeadings leadings;
   if (nsRubyFrame* ruby = FindFurthestInlineRubyAncestor(this)) {
     leadings = ruby->GetBlockLeadings();
   }
-  if (side == eLogicalSideBStart) {
+  if (side == LogicalSide::BStart) {
     info->baselineOffset = -absOffset - leadings.mStart;
     overflowRect.BStart(aWM) = -overflowRect.BSize(aWM) - leadings.mStart;
   } else {
-    MOZ_ASSERT(side == eLogicalSideBEnd);
+    MOZ_ASSERT(side == LogicalSide::BEnd);
     info->baselineOffset = absOffset + leadings.mEnd;
     overflowRect.BStart(aWM) = frameSize.BSize(aWM) + leadings.mEnd;
   }
   // If text combined, fix the gap between the text frame and its parent.
   if (isTextCombined) {
     nscoord gap = (baseFontMetrics->MaxHeight() - frameSize.BSize(aWM)) / 2;
-    overflowRect.BStart(aWM) += gap * (side == eLogicalSideBStart ? -1 : 1);
+    overflowRect.BStart(aWM) += gap * (side == LogicalSide::BStart ? -1 : 1);
   }
 
   SetProperty(EmphasisMarkProperty(), info);
@@ -5202,9 +5421,8 @@ void nsTextFrame::UnionAdditionalOverflow(nsPresContext* aPresContext,
 
   // Text-shadow overflows
   if (aIncludeShadows) {
-    nsRect shadowRect =
+    *aInkOverflowRect =
         nsLayoutUtils::GetTextShadowRectsUnion(*aInkOverflowRect, this);
-    aInkOverflowRect->UnionRect(*aInkOverflowRect, shadowRect);
   }
 
   // When this frame is not selected, the text-decoration area must be in
@@ -5288,6 +5506,7 @@ struct nsTextFrame::PaintDecorationLineParams
   gfxFloat baselineOffset = 0.0f;
   DecorationType decorationType = DecorationType::Normal;
   DrawPathCallbacks* callbacks = nullptr;
+  bool paintingShadows = false;
 };
 
 void nsTextFrame::PaintDecorationLine(
@@ -5302,9 +5521,11 @@ void nsTextFrame::PaintDecorationLine(
   if (aParams.callbacks) {
     Rect path = nsCSSRendering::DecorationLineToPath(params);
     if (aParams.decorationType == DecorationType::Normal) {
-      aParams.callbacks->PaintDecorationLine(path, params.color);
+      aParams.callbacks->PaintDecorationLine(path, aParams.paintingShadows,
+                                             params.color);
     } else {
-      aParams.callbacks->PaintSelectionDecorationLine(path, params.color);
+      aParams.callbacks->PaintSelectionDecorationLine(
+          path, aParams.paintingShadows, params.color);
     }
   } else {
     nsCSSRendering::PaintDecorationLine(this, *aParams.context->GetDrawTarget(),
@@ -5369,7 +5590,7 @@ void nsTextFrame::DrawSelectionDecorations(
     case SelectionType::eIMESelectedClause:
     case SelectionType::eSpellCheck:
     case SelectionType::eHighlight: {
-      int32_t index = nsTextPaintStyle::GetUnderlineStyleIndexForSelectionType(
+      auto index = nsTextPaintStyle::GetUnderlineStyleIndexForSelectionType(
           aSelectionType);
       bool weDefineSelectionUnderline =
           aTextPaintStyle.GetSelectionUnderlineForPaint(
@@ -5480,7 +5701,7 @@ void nsTextFrame::DrawSelectionDecorations(
 
 /* static */
 bool nsTextFrame::GetSelectionTextColors(SelectionType aSelectionType,
-                                         const nsAtom* aHighlightName,
+                                         nsAtom* aHighlightName,
                                          nsTextPaintStyle& aTextPaintStyle,
                                          const TextRangeStyle& aRangeStyle,
                                          nscolor* aForeground,
@@ -5491,9 +5712,19 @@ bool nsTextFrame::GetSelectionTextColors(SelectionType aSelectionType,
     case SelectionType::eFind:
       aTextPaintStyle.GetHighlightColors(aForeground, aBackground);
       return true;
-    case SelectionType::eHighlight:
-      return aTextPaintStyle.GetCustomHighlightColors(aHighlightName,
-                                                      aForeground, aBackground);
+    case SelectionType::eHighlight: {
+      // Intentionally not short-cutting here because the called methods have
+      // side-effects that affect outparams.
+      bool hasForeground = aTextPaintStyle.GetCustomHighlightTextColor(
+          aHighlightName, aForeground);
+      bool hasBackground = aTextPaintStyle.GetCustomHighlightBackgroundColor(
+          aHighlightName, aBackground);
+      return hasForeground || hasBackground;
+    }
+    case SelectionType::eTargetText: {
+      aTextPaintStyle.GetTargetTextColors(aForeground, aBackground);
+      return true;
+    }
     case SelectionType::eURLSecondary:
       aTextPaintStyle.GetURLSecondaryColor(aForeground);
       *aBackground = NS_RGBA(0, 0, 0, 0);
@@ -5566,25 +5797,27 @@ void nsTextFrame::GetSelectionTextShadow(
  */
 class MOZ_STACK_CLASS SelectionRangeIterator {
   using PropertyProvider = nsTextFrame::PropertyProvider;
-  using SelectionRange = nsTextFrame::SelectionRange;
+  using CombinedSelectionRange = nsTextFrame::PriorityOrderedSelectionsForRange;
 
  public:
   // aSelectionRanges and aRange are according to the original string.
-  SelectionRangeIterator(const nsTArray<SelectionRange>& aSelectionRanges,
-                         gfxTextRun::Range aRange, PropertyProvider& aProvider,
-                         gfxTextRun* aTextRun, gfxFloat aXOffset);
+  SelectionRangeIterator(
+      const nsTArray<CombinedSelectionRange>& aSelectionRanges,
+      gfxTextRun::Range aRange, PropertyProvider& aProvider,
+      gfxTextRun* aTextRun, gfxFloat aXOffset);
 
   bool GetNextSegment(gfxFloat* aXOffset, gfxTextRun::Range* aRange,
-                      gfxFloat* aHyphenWidth, SelectionType* aSelectionType,
-                      RefPtr<const nsAtom>* aHighlightName,
-                      TextRangeStyle* aStyle);
+                      gfxFloat* aHyphenWidth,
+                      nsTArray<SelectionType>& aSelectionType,
+                      nsTArray<RefPtr<nsAtom>>& aHighlightName,
+                      nsTArray<TextRangeStyle>& aStyle);
 
   void UpdateWithAdvance(gfxFloat aAdvance) {
     mXOffset += aAdvance * mTextRun->GetDirection();
   }
 
  private:
-  const nsTArray<SelectionRange>& mSelectionRanges;
+  const nsTArray<CombinedSelectionRange>& mSelectionRanges;
   PropertyProvider& mProvider;
   gfxTextRun* mTextRun;
   gfxSkipCharsIterator mIterator;
@@ -5594,7 +5827,8 @@ class MOZ_STACK_CLASS SelectionRangeIterator {
 };
 
 SelectionRangeIterator::SelectionRangeIterator(
-    const nsTArray<nsTextFrame::SelectionRange>& aSelectionRanges,
+    const nsTArray<nsTextFrame::PriorityOrderedSelectionsForRange>&
+        aSelectionRanges,
     gfxTextRun::Range aRange, PropertyProvider& aProvider, gfxTextRun* aTextRun,
     gfxFloat aXOffset)
     : mSelectionRanges(aSelectionRanges),
@@ -5609,8 +5843,9 @@ SelectionRangeIterator::SelectionRangeIterator(
 
 bool SelectionRangeIterator::GetNextSegment(
     gfxFloat* aXOffset, gfxTextRun::Range* aRange, gfxFloat* aHyphenWidth,
-    SelectionType* aSelectionType, RefPtr<const nsAtom>* aHighlightName,
-    TextRangeStyle* aStyle) {
+    nsTArray<SelectionType>& aSelectionType,
+    nsTArray<RefPtr<nsAtom>>& aHighlightName,
+    nsTArray<TextRangeStyle>& aStyle) {
   if (mIterator.GetOriginalOffset() >= int32_t(mOriginalRange.end)) {
     return false;
   }
@@ -5618,22 +5853,28 @@ bool SelectionRangeIterator::GetNextSegment(
   uint32_t runOffset = mIterator.GetSkippedOffset();
   uint32_t segmentEnd = mOriginalRange.end;
 
+  aSelectionType.Clear();
+  aHighlightName.Clear();
+  aStyle.Clear();
+
   if (mIndex == mSelectionRanges.Length() ||
       mIterator.GetOriginalOffset() <
           int32_t(mSelectionRanges[mIndex].mRange.start)) {
     // There's an unselected segment before the next range (or at the end).
-    *aSelectionType = SelectionType::eNone;
-    *aHighlightName = nullptr;
-    *aStyle = TextRangeStyle();
+    aSelectionType.AppendElement(SelectionType::eNone);
+    aHighlightName.AppendElement();
+    aStyle.AppendElement(TextRangeStyle());
     if (mIndex < mSelectionRanges.Length()) {
       segmentEnd = mSelectionRanges[mIndex].mRange.start;
     }
   } else {
     // Get the selection details for the next segment, and increment index.
-    const SelectionDetails* sdptr = mSelectionRanges[mIndex].mDetails;
-    *aSelectionType = sdptr->mSelectionType;
-    *aHighlightName = sdptr->mHighlightName;
-    *aStyle = sdptr->mTextRangeStyle;
+    for (const SelectionDetails* sdptr :
+         mSelectionRanges[mIndex].mSelectionRanges) {
+      aSelectionType.AppendElement(sdptr->mSelectionType);
+      aHighlightName.AppendElement(sdptr->mHighlightData.mHighlightName);
+      aStyle.AppendElement(sdptr->mTextRangeStyle);
+    }
     segmentEnd = mSelectionRanges[mIndex].mRange.end;
     ++mIndex;
   }
@@ -5749,7 +5990,8 @@ void nsTextFrame::PaintOneShadow(const PaintShadowParams& aParams,
   // need to translate any coordinates to fit on the surface.
   gfxFloat advanceWidth;
   nsTextPaintStyle textPaintStyle(this);
-  DrawTextParams params(shadowContext);
+  DrawTextParams params(shadowContext, PresContext()->FontPaletteCache());
+  params.paintingShadows = true;
   params.advanceWidth = &advanceWidth;
   params.dirtyRect = aParams.dirtyRect;
   params.framePt = aParams.framePt + shadowGfxOffset;
@@ -5757,13 +5999,13 @@ void nsTextFrame::PaintOneShadow(const PaintShadowParams& aParams,
   params.textStyle = &textPaintStyle;
   params.textColor =
       aParams.context == shadowContext ? shadowColor : NS_RGB(0, 0, 0);
+  params.callbacks = aParams.callbacks;
   params.clipEdges = aParams.clipEdges;
   params.drawSoftHyphen = HasAnyStateBits(TEXT_HYPHEN_BREAK);
-  // Multi-color shadow is not allowed, so we use the same color of the text
+  // Multi-color shadow is not allowed, so we use the same color as the text
   // color.
   params.decorationOverrideColor = &params.textColor;
   params.fontPalette = StyleFont()->GetFontPaletteAtom();
-  params.paletteValueSet = PresContext()->GetFontPaletteValueSet();
 
   DrawText(aParams.range, aParams.textBaselinePt + shadowGfxOffset, params);
 
@@ -5771,20 +6013,19 @@ void nsTextFrame::PaintOneShadow(const PaintShadowParams& aParams,
   aParams.context->Restore();
 }
 
-SelectionTypeMask nsTextFrame::ResolveSelections(
-    const PaintTextSelectionParams& aParams, const SelectionDetails* aDetails,
-    nsTArray<SelectionRange>& aResult, SelectionType aSelectionType,
-    bool* aAnyBackgrounds) const {
-  const gfxTextRun::Range& contentRange = aParams.contentRange;
-
+/* static */
+SelectionTypeMask nsTextFrame::CreateSelectionRangeList(
+    const SelectionDetails* aDetails, SelectionType aSelectionType,
+    const PaintTextSelectionParams& aParams,
+    nsTArray<SelectionRange>& aSelectionRanges, bool* aAnyBackgrounds) {
   SelectionTypeMask allTypes = 0;
   bool anyBackgrounds = false;
 
-  uint32_t i = 0;
+  uint32_t priorityOfInsertionOrder = 0;
   for (const SelectionDetails* sd = aDetails; sd; sd = sd->mNext.get()) {
     MOZ_ASSERT(sd->mStart >= 0 && sd->mEnd >= 0);  // XXX make unsigned?
-    uint32_t start = std::max(contentRange.start, uint32_t(sd->mStart));
-    uint32_t end = std::min(contentRange.end, uint32_t(sd->mEnd));
+    uint32_t start = std::max(aParams.contentRange.start, uint32_t(sd->mStart));
+    uint32_t end = std::min(aParams.contentRange.end, uint32_t(sd->mEnd));
     if (start < end) {
       // The PaintTextWithSelectionColors caller passes SelectionType::eNone,
       // so we collect all selections that set colors, and prioritize them
@@ -5792,33 +6033,176 @@ SelectionTypeMask nsTextFrame::ResolveSelections(
       if (aSelectionType == SelectionType::eNone) {
         allTypes |= ToSelectionTypeMask(sd->mSelectionType);
         // Ignore selections that don't set colors.
-        nscolor foreground, background;
-        if (GetSelectionTextColors(sd->mSelectionType, sd->mHighlightName,
+        nscolor foreground(0), background(0);
+        if (GetSelectionTextColors(sd->mSelectionType,
+                                   sd->mHighlightData.mHighlightName,
                                    *aParams.textPaintStyle, sd->mTextRangeStyle,
                                    &foreground, &background)) {
           if (NS_GET_A(background) > 0) {
             anyBackgrounds = true;
           }
-          uint32_t prio = kSelectionTypeCount - uint32_t(sd->mSelectionType);
-          aResult.AppendElement(SelectionRange{sd, {start, end}, prio});
+          aSelectionRanges.AppendElement(
+              SelectionRange{sd, {start, end}, priorityOfInsertionOrder++});
         }
       } else if (sd->mSelectionType == aSelectionType) {
         // The PaintSelectionTextDecorations caller passes a specific type,
         // so we include only ranges of that type, and keep them in order
         // so that later ones take precedence over earlier.
-        aResult.AppendElement(SelectionRange{sd, {start, end}, i++});
+        aSelectionRanges.AppendElement(
+            SelectionRange{sd, {start, end}, priorityOfInsertionOrder++});
       }
     }
   }
   if (aAnyBackgrounds) {
     *aAnyBackgrounds = anyBackgrounds;
   }
+  return allTypes;
+}
 
-  if (aResult.Length() < 1) {
+/* static */
+void nsTextFrame::CombineSelectionRanges(
+    const nsTArray<SelectionRange>& aSelectionRanges,
+    nsTArray<PriorityOrderedSelectionsForRange>& aCombinedSelectionRanges) {
+  struct SelectionRangeEndCmp {
+    bool Equals(const SelectionRange* a, const SelectionRange* b) const {
+      return a->mRange.end == b->mRange.end;
+    }
+    bool LessThan(const SelectionRange* a, const SelectionRange* b) const {
+      return a->mRange.end < b->mRange.end;
+    }
+  };
+
+  struct SelectionRangePriorityCmp {
+    bool Equals(const SelectionRange* a, const SelectionRange* b) const {
+      const SelectionDetails* aDetails = a->mDetails;
+      const SelectionDetails* bDetails = b->mDetails;
+      if (aDetails->mSelectionType != bDetails->mSelectionType) {
+        return false;
+      }
+      if (aDetails->mSelectionType != SelectionType::eHighlight) {
+        return a->mPriority == b->mPriority;
+      }
+      if (aDetails->mHighlightData.mHighlight->Priority() !=
+          bDetails->mHighlightData.mHighlight->Priority()) {
+        return false;
+      }
+      return a->mPriority == b->mPriority;
+    }
+
+    bool LessThan(const SelectionRange* a, const SelectionRange* b) const {
+      if (a->mDetails->mSelectionType != b->mDetails->mSelectionType) {
+        // Even though this looks counter-intuitive,
+        // this is intended, as values in `SelectionType` are inverted:
+        // a lower value indicates a higher priority.
+        return a->mDetails->mSelectionType > b->mDetails->mSelectionType;
+      }
+
+      if (a->mDetails->mSelectionType != SelectionType::eHighlight) {
+        // for non-highlights, the selection which was added later
+        // has a higher priority.
+        return a->mPriority < b->mPriority;
+      }
+
+      if (a->mDetails->mHighlightData.mHighlight->Priority() !=
+          b->mDetails->mHighlightData.mHighlight->Priority()) {
+        // For highlights, first compare the priorities set by the user.
+        return a->mDetails->mHighlightData.mHighlight->Priority() <
+               b->mDetails->mHighlightData.mHighlight->Priority();
+      }
+      // only if the user priorities are equal, let the highlight that was added
+      // later take precedence.
+      return a->mPriority < b->mPriority;
+    }
+  };
+
+  uint32_t currentOffset = 0;
+  AutoTArray<const SelectionRange*, 1> activeSelectionsForCurrentSegment;
+  size_t rangeIndex = 0;
+
+  // Divide the given selection ranges into segments which share the same
+  // set of selections.
+  // The following algorithm iterates `aSelectionRanges`, assuming
+  // that its elements are sorted by their start offset.
+  // Each time a new selection starts, it is pushed into an array of
+  // "currently present" selections, sorted by their *end* offset.
+  // For each iteration the next segment end offset is determined,
+  // which is either the start offset of the next selection or
+  // the next end offset of all "currently present" selections
+  // (which is always the first element of the array because of its order).
+  // Then, a `CombinedSelectionRange` can be constructed, which describes
+  // the text segment until its end offset (as determined above), and contains
+  // all elements of the "currently present" selection list, now sorted
+  // by their priority.
+  // If a range ends at the given offset, it is removed from the array.
+  while (rangeIndex < aSelectionRanges.Length() ||
+         !activeSelectionsForCurrentSegment.IsEmpty()) {
+    uint32_t currentSegmentEndOffset =
+        activeSelectionsForCurrentSegment.IsEmpty()
+            ? -1
+            : activeSelectionsForCurrentSegment[0]->mRange.end;
+    uint32_t nextRangeStartOffset =
+        rangeIndex < aSelectionRanges.Length()
+            ? aSelectionRanges[rangeIndex].mRange.start
+            : -1;
+    uint32_t nextOffset =
+        std::min(currentSegmentEndOffset, nextRangeStartOffset);
+    if (!activeSelectionsForCurrentSegment.IsEmpty() &&
+        currentOffset != nextOffset) {
+      auto activeSelectionRangesSortedByPriority =
+          activeSelectionsForCurrentSegment.Clone();
+      activeSelectionRangesSortedByPriority.Sort(SelectionRangePriorityCmp());
+
+      AutoTArray<const SelectionDetails*, 1> selectionDetails;
+      selectionDetails.SetCapacity(
+          activeSelectionRangesSortedByPriority.Length());
+      // ensure that overlapping highlights which have the same name
+      // are only added once. If added each time, they would be painted
+      // several times (see wpt
+      // /css/css-highlight-api/painting/custom-highlight-painting-003.html)
+      // Comparing the highlight name with the previous one is
+      // sufficient here because selections are already sorted
+      // in a way that ensures that highlights of the same name are
+      // grouped together.
+      nsAtom* currentHighlightName = nullptr;
+      for (const auto* selectionRange : activeSelectionRangesSortedByPriority) {
+        if (selectionRange->mDetails->mSelectionType ==
+            SelectionType::eHighlight) {
+          if (selectionRange->mDetails->mHighlightData.mHighlightName ==
+              currentHighlightName) {
+            continue;
+          }
+          currentHighlightName =
+              selectionRange->mDetails->mHighlightData.mHighlightName;
+        }
+        selectionDetails.AppendElement(selectionRange->mDetails);
+      }
+      aCombinedSelectionRanges.AppendElement(PriorityOrderedSelectionsForRange{
+          std::move(selectionDetails), {currentOffset, nextOffset}});
+    }
+    currentOffset = nextOffset;
+
+    if (nextRangeStartOffset < currentSegmentEndOffset) {
+      activeSelectionsForCurrentSegment.InsertElementSorted(
+          &aSelectionRanges[rangeIndex++], SelectionRangeEndCmp());
+    } else {
+      activeSelectionsForCurrentSegment.RemoveElementAt(0);
+    }
+  }
+}
+
+SelectionTypeMask nsTextFrame::ResolveSelections(
+    const PaintTextSelectionParams& aParams, const SelectionDetails* aDetails,
+    nsTArray<PriorityOrderedSelectionsForRange>& aResult,
+    SelectionType aSelectionType, bool* aAnyBackgrounds) const {
+  AutoTArray<SelectionRange, 4> selectionRanges;
+
+  SelectionTypeMask allTypes = CreateSelectionRangeList(
+      aDetails, aSelectionType, aParams, selectionRanges, aAnyBackgrounds);
+
+  if (selectionRanges.IsEmpty()) {
     return allTypes;
   }
 
-  // Sort by starting offset.
   struct SelectionRangeStartCmp {
     bool Equals(const SelectionRange& a, const SelectionRange& b) const {
       return a.mRange.start == b.mRange.start;
@@ -5827,55 +6211,9 @@ SelectionTypeMask nsTextFrame::ResolveSelections(
       return a.mRange.start < b.mRange.start;
     }
   };
-  aResult.Sort(SelectionRangeStartCmp());
+  selectionRanges.Sort(SelectionRangeStartCmp());
 
-  // Resolve overlapping selections according to priority.
-  uint32_t currentIndex = 0;
-  while (currentIndex < aResult.Length() - 1) {
-    auto& current = aResult[currentIndex];
-    uint32_t probeIndex = currentIndex + 1;
-    while (probeIndex < aResult.Length()) {
-      auto& probe = aResult[probeIndex];
-      if (probe.mRange.start >= current.mRange.end) {
-        break;
-      }
-      // TODO: ordering of highlight selections
-      if (current.mDetails->mSelectionType <= probe.mDetails->mSelectionType) {
-        // current overwrites (beginning or all of) probe
-        if (current.mRange.end >= probe.mRange.end) {
-          aResult.RemoveElementAt(probeIndex);
-        } else {
-          probe.mRange.start = current.mRange.end;
-          ++probeIndex;
-        }
-      } else {
-        // probe overwrites current (possibly splitting it)
-        if (probe.mRange.start > current.mRange.start) {
-          uint32_t prevEnd = current.mRange.end;
-          current.mRange.end = probe.mRange.start;
-          if (probe.mRange.end < prevEnd) {
-            aResult.InsertElementSorted(
-                SelectionRange{current.mDetails,
-                               {probe.mRange.end, prevEnd},
-                               current.mPriority},
-                SelectionRangeStartCmp());
-          }
-          break;
-        }
-        if (probe.mRange.end < current.mRange.end) {
-          aResult.InsertElementSorted(
-              SelectionRange{current.mDetails,
-                             {probe.mRange.end, current.mRange.end},
-                             current.mPriority},
-              SelectionRangeStartCmp());
-        }
-        aResult.RemoveElementAt(currentIndex);
-        --currentIndex;  // This is OK even when currentIndex is zero, because
-                         // unsigned under/overflow is defined as wrapping.
-      }
-    }
-    ++currentIndex;
-  }
+  CombineSelectionRanges(selectionRanges, aResult);
 
   return allTypes;
 }
@@ -5888,7 +6226,7 @@ bool nsTextFrame::PaintTextWithSelectionColors(
     const UniquePtr<SelectionDetails>& aDetails,
     SelectionTypeMask* aAllSelectionTypeMask, const ClipEdges& aClipEdges) {
   bool anyBackgrounds = false;
-  AutoTArray<SelectionRange, 8> selectionRanges;
+  AutoTArray<PriorityOrderedSelectionsForRange, 8> selectionRanges;
 
   *aAllSelectionTypeMask =
       ResolveSelections(aParams, aDetails.get(), selectionRanges,
@@ -5899,7 +6237,6 @@ bool nsTextFrame::PaintTextWithSelectionColors(
                : aParams.textBaselinePt.x - aParams.framePt.x;
   gfxFloat iOffset, hyphenWidth;
   Range range;  // in transformed string
-  TextRangeStyle rangeStyle;
 
   const gfxTextRun::Range& contentRange = aParams.contentRange;
   auto* textDrawer = aParams.context->GetTextDrawer();
@@ -5909,39 +6246,47 @@ bool nsTextFrame::PaintTextWithSelectionColors(
         aParams.textPaintStyle->PresContext()->AppUnitsPerDevPixel();
     SelectionRangeIterator iterator(selectionRanges, contentRange,
                                     *aParams.provider, mTextRun, startIOffset);
-    SelectionType selectionType;
-    RefPtr<const nsAtom> highlightName;
+    AutoTArray<SelectionType, 1> selectionTypes;
+    AutoTArray<RefPtr<nsAtom>, 1> highlightNames;
+    AutoTArray<TextRangeStyle, 1> rangeStyles;
     while (iterator.GetNextSegment(&iOffset, &range, &hyphenWidth,
-                                   &selectionType, &highlightName,
-                                   &rangeStyle)) {
-      nscolor foreground, background;
-      GetSelectionTextColors(selectionType, highlightName,
-                             *aParams.textPaintStyle, rangeStyle, &foreground,
-                             &background);
-      // Draw background color
+                                   selectionTypes, highlightNames,
+                                   rangeStyles)) {
+      nscolor foreground(0), background(0);
       gfxFloat advance =
           hyphenWidth + mTextRun->GetAdvanceWidth(range, aParams.provider);
-      if (NS_GET_A(background) > 0) {
-        nsRect bgRect;
-        gfxFloat offs = iOffset - (mTextRun->IsInlineReversed() ? advance : 0);
-        if (vertical) {
-          bgRect = nsRect(aParams.framePt.x, aParams.framePt.y + offs,
-                          GetSize().width, advance);
-        } else {
-          bgRect = nsRect(aParams.framePt.x + offs, aParams.framePt.y, advance,
-                          GetSize().height);
-        }
+      nsRect bgRect;
+      gfxFloat offs = iOffset - (mTextRun->IsInlineReversed() ? advance : 0);
+      if (vertical) {
+        bgRect = nsRect(nscoord(aParams.framePt.x),
+                        nscoord(aParams.framePt.y + offs), GetSize().width,
+                        nscoord(advance));
+      } else {
+        bgRect = nsRect(nscoord(aParams.framePt.x + offs),
+                        nscoord(aParams.framePt.y), nscoord(advance),
+                        GetSize().height);
+      }
 
-        LayoutDeviceRect selectionRect =
-            LayoutDeviceRect::FromAppUnits(bgRect, appUnitsPerDevPixel);
+      LayoutDeviceRect selectionRect =
+          LayoutDeviceRect::FromAppUnits(bgRect, appUnitsPerDevPixel);
+      // The elements in `selectionTypes` are ordered ascending by their
+      // priority. To account for non-opaque overlapping selections, all
+      // selection backgrounds are painted.
+      for (size_t index = 0; index < selectionTypes.Length(); ++index) {
+        GetSelectionTextColors(selectionTypes[index], highlightNames[index],
+                               *aParams.textPaintStyle, rangeStyles[index],
+                               &foreground, &background);
 
-        if (textDrawer) {
-          textDrawer->AppendSelectionRect(selectionRect,
-                                          ToDeviceColor(background));
-        } else {
-          PaintSelectionBackground(*aParams.context->GetDrawTarget(),
-                                   background, aParams.dirtyRect, selectionRect,
-                                   aParams.callbacks);
+        // Draw background color
+        if (NS_GET_A(background) > 0) {
+          if (textDrawer) {
+            textDrawer->AppendSelectionRect(selectionRect,
+                                            ToDeviceColor(background));
+          } else {
+            PaintSelectionBackground(*aParams.context->GetDrawTarget(),
+                                     background, aParams.dirtyRect,
+                                     selectionRect, aParams.callbacks);
+          }
         }
       }
       iterator.UpdateWithAdvance(advance);
@@ -5949,7 +6294,7 @@ bool nsTextFrame::PaintTextWithSelectionColors(
   }
 
   gfxFloat advance;
-  DrawTextParams params(aParams.context);
+  DrawTextParams params(aParams.context, PresContext()->FontPaletteCache());
   params.dirtyRect = aParams.dirtyRect;
   params.framePt = aParams.framePt;
   params.provider = aParams.provider;
@@ -5959,27 +6304,46 @@ bool nsTextFrame::PaintTextWithSelectionColors(
   params.callbacks = aParams.callbacks;
   params.glyphRange = aParams.glyphRange;
   params.fontPalette = StyleFont()->GetFontPaletteAtom();
-  params.paletteValueSet = PresContext()->GetFontPaletteValueSet();
+  params.hasTextShadow = !StyleText()->mTextShadow.IsEmpty();
 
   PaintShadowParams shadowParams(aParams);
   shadowParams.provider = aParams.provider;
+  shadowParams.callbacks = aParams.callbacks;
   shadowParams.clipEdges = &aClipEdges;
 
   // Draw text
   const nsStyleText* textStyle = StyleText();
   SelectionRangeIterator iterator(selectionRanges, contentRange,
                                   *aParams.provider, mTextRun, startIOffset);
-  SelectionType selectionType;
-  RefPtr<const nsAtom> highlightName;
-  while (iterator.GetNextSegment(&iOffset, &range, &hyphenWidth, &selectionType,
-                                 &highlightName, &rangeStyle)) {
-    nscolor foreground, background;
+  AutoTArray<SelectionType, 1> selectionTypes;
+  AutoTArray<RefPtr<nsAtom>, 1> highlightNames;
+  AutoTArray<TextRangeStyle, 1> rangeStyles;
+  while (iterator.GetNextSegment(&iOffset, &range, &hyphenWidth, selectionTypes,
+                                 highlightNames, rangeStyles)) {
+    nscolor foreground(0), background(0);
     if (aParams.IsGenerateTextMask()) {
       foreground = NS_RGBA(0, 0, 0, 255);
     } else {
-      GetSelectionTextColors(selectionType, highlightName,
-                             *aParams.textPaintStyle, rangeStyle, &foreground,
-                             &background);
+      nscolor tmpForeground(0);
+      bool colorHasBeenSet = false;
+      for (size_t index = 0; index < selectionTypes.Length(); ++index) {
+        if (selectionTypes[index] == SelectionType::eHighlight) {
+          if (aParams.textPaintStyle->GetCustomHighlightTextColor(
+                  highlightNames[index], &tmpForeground)) {
+            foreground = tmpForeground;
+            colorHasBeenSet = true;
+          }
+
+        } else {
+          GetSelectionTextColors(selectionTypes[index], highlightNames[index],
+                                 *aParams.textPaintStyle, rangeStyles[index],
+                                 &foreground, &background);
+          colorHasBeenSet = true;
+        }
+      }
+      if (!colorHasBeenSet) {
+        foreground = tmpForeground;
+      }
     }
 
     gfx::Point textBaselinePt =
@@ -5990,7 +6354,9 @@ bool nsTextFrame::PaintTextWithSelectionColors(
     // Determine what shadow, if any, to draw - either from textStyle
     // or from the ::-moz-selection pseudo-class if specified there
     Span<const StyleSimpleShadow> shadows = textStyle->mTextShadow.AsSpan();
-    GetSelectionTextShadow(selectionType, *aParams.textPaintStyle, &shadows);
+    for (auto selectionType : selectionTypes) {
+      GetSelectionTextShadow(selectionType, *aParams.textPaintStyle, &shadows);
+    }
     if (!shadows.IsEmpty()) {
       nscoord startEdge = iOffset;
       if (mTextRun->IsInlineReversed()) {
@@ -6024,7 +6390,7 @@ void nsTextFrame::PaintTextSelectionDecorations(
     return;
   }
 
-  AutoTArray<SelectionRange, 8> selectionRanges;
+  AutoTArray<PriorityOrderedSelectionsForRange, 8> selectionRanges;
   ResolveSelections(aParams, aDetails.get(), selectionRanges, aSelectionType);
 
   RefPtr<gfxFont> firstFont =
@@ -6056,32 +6422,34 @@ void nsTextFrame::PaintTextSelectionDecorations(
   } else {
     pt.y = (aParams.textBaselinePt.y - mAscent) / app;
   }
-  SelectionType nextSelectionType;
-  RefPtr<const nsAtom> highlightName;
-  TextRangeStyle selectedStyle;
+  AutoTArray<SelectionType, 1> nextSelectionTypes;
+  AutoTArray<RefPtr<nsAtom>, 1> highlightNames;
+  AutoTArray<TextRangeStyle, 1> selectedStyles;
 
   while (iterator.GetNextSegment(&iOffset, &range, &hyphenWidth,
-                                 &nextSelectionType, &highlightName,
-                                 &selectedStyle)) {
+                                 nextSelectionTypes, highlightNames,
+                                 selectedStyles)) {
     gfxFloat advance =
         hyphenWidth + mTextRun->GetAdvanceWidth(range, aParams.provider);
-    if (nextSelectionType == aSelectionType) {
-      if (verticalRun) {
-        pt.y = (aParams.framePt.y + iOffset -
-                (mTextRun->IsInlineReversed() ? advance : 0)) /
-               app;
-      } else {
-        pt.x = (aParams.framePt.x + iOffset -
-                (mTextRun->IsInlineReversed() ? advance : 0)) /
-               app;
+    for (size_t index = 0; index < nextSelectionTypes.Length(); ++index) {
+      if (nextSelectionTypes[index] == aSelectionType) {
+        if (verticalRun) {
+          pt.y = (aParams.framePt.y + iOffset -
+                  (mTextRun->IsInlineReversed() ? advance : 0)) /
+                 app;
+        } else {
+          pt.x = (aParams.framePt.x + iOffset -
+                  (mTextRun->IsInlineReversed() ? advance : 0)) /
+                 app;
+        }
+        gfxFloat width = Abs(advance) / app;
+        gfxFloat xInFrame = pt.x - (aParams.framePt.x / app);
+        DrawSelectionDecorations(aParams.context, aParams.dirtyRect,
+                                 aSelectionType, *aParams.textPaintStyle,
+                                 selectedStyles[index], pt, xInFrame, width,
+                                 mAscent / app, decorationMetrics,
+                                 aParams.callbacks, verticalRun, kDecoration);
       }
-      gfxFloat width = Abs(advance) / app;
-      gfxFloat xInFrame = pt.x - (aParams.framePt.x / app);
-      DrawSelectionDecorations(aParams.context, aParams.dirtyRect,
-                               aSelectionType, *aParams.textPaintStyle,
-                               selectedStyle, pt, xInFrame, width,
-                               mAscent / app, decorationMetrics,
-                               aParams.callbacks, verticalRun, kDecoration);
     }
     iterator.UpdateWithAdvance(advance);
   }
@@ -6172,10 +6540,11 @@ void nsTextFrame::DrawEmphasisMarks(gfxContext* aContext, WritingMode aWM,
   }
   if (!isTextCombined) {
     mTextRun->DrawEmphasisMarks(aContext, info->textRun.get(), info->advance,
-                                pt, aRange, aProvider);
+                                pt, aRange, aProvider,
+                                PresContext()->FontPaletteCache());
   } else {
     pt.y += (GetSize().height - info->advance) / 2;
-    gfxTextRun::DrawParams params(aContext);
+    gfxTextRun::DrawParams params(aContext, PresContext()->FontPaletteCache());
     info->textRun->Draw(Range(info->textRun.get()), pt, params);
   }
 }
@@ -6217,7 +6586,8 @@ nscolor nsTextFrame::GetCaretColorAt(int32_t aOffset) {
         (selectionType == SelectionType::eNone ||
          sdptr->mSelectionType < selectionType)) {
       nscolor foreground, background;
-      if (GetSelectionTextColors(sdptr->mSelectionType, sdptr->mHighlightName,
+      if (GetSelectionTextColors(sdptr->mSelectionType,
+                                 sdptr->mHighlightData.mHighlightName,
                                  textPaintStyle, sdptr->mTextRangeStyle,
                                  &foreground, &background)) {
         if (!isSolidTextColor && NS_IS_SELECTION_SPECIAL_COLOR(foreground)) {
@@ -6501,13 +6871,14 @@ void nsTextFrame::PaintText(const PaintTextParams& aParams,
     shadowParams.textBaselinePt = textBaselinePt;
     shadowParams.leftSideOffset = snappedStartEdge;
     shadowParams.provider = &provider;
+    shadowParams.callbacks = aParams.callbacks;
     shadowParams.foregroundColor = foregroundColor;
     shadowParams.clipEdges = &clipEdges;
     PaintShadows(textStyle->mTextShadow.AsSpan(), shadowParams);
   }
 
   gfxFloat advanceWidth;
-  DrawTextParams params(aParams.context);
+  DrawTextParams params(aParams.context, PresContext()->FontPaletteCache());
   params.dirtyRect = aParams.dirtyRect;
   params.framePt = aParams.framePt;
   params.provider = &provider;
@@ -6522,7 +6893,7 @@ void nsTextFrame::PaintText(const PaintTextParams& aParams,
   params.callbacks = aParams.callbacks;
   params.glyphRange = range;
   params.fontPalette = StyleFont()->GetFontPaletteAtom();
-  params.paletteValueSet = PresContext()->GetFontPaletteValueSet();
+  params.hasTextShadow = !StyleText()->mTextShadow.IsEmpty();
 
   DrawText(range, textBaselinePt, params);
 }
@@ -6532,15 +6903,16 @@ static void DrawTextRun(const gfxTextRun* aTextRun,
                         gfxTextRun::Range aRange,
                         const nsTextFrame::DrawTextRunParams& aParams,
                         nsTextFrame* aFrame) {
-  gfxTextRun::DrawParams params(aParams.context);
+  gfxTextRun::DrawParams params(aParams.context, aParams.paletteCache);
   params.provider = aParams.provider;
   params.advanceWidth = aParams.advanceWidth;
   params.contextPaint = aParams.contextPaint;
   params.fontPalette = aParams.fontPalette;
-  params.paletteValueSet = aParams.paletteValueSet;
   params.callbacks = aParams.callbacks;
+  params.hasTextShadow = aParams.hasTextShadow;
   if (aParams.callbacks) {
-    aParams.callbacks->NotifyBeforeText(aParams.textColor);
+    aParams.callbacks->NotifyBeforeText(aParams.paintingShadows,
+                                        aParams.textColor);
     params.drawMode = DrawMode::GLYPH_PATH;
     aTextRun->Draw(aRange, aTextBaselinePt, params);
     aParams.callbacks->NotifyAfterText();
@@ -6681,6 +7053,7 @@ void nsTextFrame::DrawTextRunAndDecorations(
   params.callbacks = aParams.callbacks;
   params.glyphRange = aParams.glyphRange;
   params.provider = aParams.provider;
+  params.paintingShadows = aParams.paintingShadows;
   // pt is the physical point where the decoration is to be drawn,
   // relative to the frame; one of its coordinates will be updated below.
   params.pt = Point(x / app, y / app);
@@ -6700,6 +7073,9 @@ void nsTextFrame::DrawTextRunAndDecorations(
       scaledRestorer.SetContext(aParams.context);
       gfxMatrix unscaled = aParams.context->CurrentMatrixDouble();
       gfxPoint pt(x / app, y / app);
+      if (GetTextRun(nsTextFrame::eInflated)->IsRightToLeft()) {
+        pt.x += gfxFloat(frameSize.width) / app;
+      }
       unscaled.PreTranslate(pt)
           .PreScale(1.0f / scaleFactor, 1.0f)
           .PreTranslate(-pt);
@@ -7016,8 +7392,9 @@ nsIFrame::ContentOffsets nsTextFrame::GetCharacterOffsetAtFramePointInternal(
 
   offsets.content = GetContent();
   offsets.offset = offsets.secondaryOffset = selectedOffset;
-  offsets.associate = mContentOffset == offsets.offset ? CARET_ASSOCIATE_AFTER
-                                                       : CARET_ASSOCIATE_BEFORE;
+  offsets.associate = mContentOffset == offsets.offset
+                          ? CaretAssociationHint::After
+                          : CaretAssociationHint::Before;
   return offsets;
 }
 
@@ -7050,8 +7427,12 @@ bool nsTextFrame::CombineSelectionUnderlineRect(nsPresContext* aPresContext,
       ComputeDescentLimitForSelectionUnderline(aPresContext, metrics);
   params.vertical = verticalRun;
 
-  EnsureTextRun(nsTextFrame::eInflated);
-  params.sidewaysLeft = mTextRun ? mTextRun->IsSidewaysLeft() : false;
+  if (verticalRun) {
+    EnsureTextRun(nsTextFrame::eInflated);
+    params.sidewaysLeft = mTextRun ? mTextRun->IsSidewaysLeft() : false;
+  } else {
+    params.sidewaysLeft = false;
+  }
 
   UniquePtr<SelectionDetails> details = GetSelectionDetails();
   for (SelectionDetails* sd = details.get(); sd; sd = sd->mNext.get()) {
@@ -7065,7 +7446,7 @@ bool nsTextFrame::CombineSelectionUnderlineRect(nsPresContext* aPresContext,
     }
 
     float relativeSize;
-    int32_t index = nsTextPaintStyle::GetUnderlineStyleIndexForSelectionType(
+    auto index = nsTextPaintStyle::GetUnderlineStyleIndexForSelectionType(
         sd->mSelectionType);
     if (sd->mSelectionType == SelectionType::eSpellCheck) {
       if (!nsTextPaintStyle::GetSelectionUnderline(
@@ -7247,13 +7628,13 @@ nsPoint nsTextFrame::GetPointFromIterator(const gfxSkipCharsIterator& aIter,
     }
   } else {
     point.y = 0;
+    if (Style()->IsTextCombined()) {
+      iSize *= GetTextCombineScaleFactor(this);
+    }
     if (mTextRun->IsInlineReversed()) {
       point.x = mRect.width - iSize;
     } else {
       point.x = iSize;
-    }
-    if (Style()->IsTextCombined()) {
-      point.x *= GetTextCombineScaleFactor(this);
     }
   }
   return point;
@@ -7314,27 +7695,34 @@ nsresult nsTextFrame::GetCharacterRectsInRange(int32_t aInOffset,
   // place if it's positioned there
   properties.InitializeForDisplay(false);
 
+  // Initialize iter; this will call FindClusterStart if necessary to align
+  // iter to a cluster boundary.
   UpdateIteratorFromOffset(properties, aInOffset, iter);
+  nsPoint point = GetPointFromIterator(iter, properties);
 
   const int32_t kContentEnd = GetContentEnd();
   const int32_t kEndOffset = std::min(aInOffset + aLength, kContentEnd);
-  while (aInOffset < kEndOffset) {
-    if (!iter.IsOriginalCharSkipped() &&
-        !mTextRun->IsClusterStart(iter.GetSkippedOffset())) {
-      FindClusterStart(mTextRun,
-                       properties.GetStart().GetOriginalOffset() +
-                           properties.GetOriginalLength(),
-                       &iter);
-    }
 
-    nsPoint point = GetPointFromIterator(iter, properties);
-    nsRect rect;
-    rect.x = point.x;
-    rect.y = point.y;
+  if (aInOffset >= kEndOffset) {
+    return NS_OK;
+  }
 
+  if (!aRects.SetCapacity(aRects.Length() + kEndOffset - aInOffset,
+                          mozilla::fallible)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  do {
+    // We'd like to assert here that |point| matches
+    // |GetPointFromIterator(iter, properties)|, which in principle should be
+    // true; however, testcases with vast dimensions can lead to coordinate
+    // overflow and disrupt the calculations. So we've dropped the assertion
+    // to avoid tripping the fuzzer unnecessarily.
+
+    // Measure to the end of the cluster.
     nscoord iSize = 0;
+    gfxSkipCharsIterator nextIter(iter);
     if (aInOffset < kContentEnd) {
-      gfxSkipCharsIterator nextIter(iter);
       nextIter.AdvanceOriginal(1);
       if (!nextIter.IsOriginalCharSkipped() &&
           !mTextRun->IsClusterStart(nextIter.GetSkippedOffset()) &&
@@ -7348,6 +7736,12 @@ nsresult nsTextFrame::GetCharacterRectsInRange(int32_t aInOffset,
       iSize = NSToCoordCeilClamped(advance);
     }
 
+    // Compute the cluster rect, depending on directionality, and update
+    // point to the origin we'll need for the next cluster.
+    nsRect rect;
+    rect.x = point.x;
+    rect.y = point.y;
+
     if (mTextRun->IsVertical()) {
       rect.width = mRect.width;
       rect.height = iSize;
@@ -7356,28 +7750,39 @@ nsresult nsTextFrame::GetCharacterRectsInRange(int32_t aInOffset,
         // bottom left instead of the top left. Move the origin to the top left
         // by subtracting the character's height.
         rect.y -= rect.height;
+        point.y -= iSize;
+      } else {
+        point.y += iSize;
       }
     } else {
+      if (Style()->IsTextCombined()) {
+        // The scale factor applies to the inline advance of the glyphs, so it
+        // affects both the rect width and the origin point for the next glyph.
+        iSize *= GetTextCombineScaleFactor(this);
+      }
       rect.width = iSize;
       rect.height = mRect.height;
-      if (Style()->IsTextCombined()) {
-        rect.width *= GetTextCombineScaleFactor(this);
-      }
       if (mTextRun->IsInlineReversed()) {
         // The iterator above returns a point with the origin at the
         // top right instead of the top left. Move the origin to the top left by
-        // subtracting the character's width. This is intentionally done after
-        // GetTextCombineScaleFactor() so we use the final, scaled width.
-        rect.x -= rect.width;
+        // subtracting the character's width.
+        rect.x -= iSize;
+        point.x -= iSize;
+      } else {
+        point.x += iSize;
       }
     }
-    aRects.AppendElement(rect);
-    aInOffset++;
-    // Don't advance iter if we've reached the end
-    if (aInOffset < kEndOffset) {
-      iter.AdvanceOriginal(1);
+
+    // Set the rect for all characters in the cluster.
+    int32_t end = std::min(kEndOffset, nextIter.GetOriginalOffset());
+    while (aInOffset < end) {
+      aRects.AppendElement(rect);
+      aInOffset++;
     }
-  }
+
+    // Advance iter for the next cluster.
+    iter = nextIter;
+  } while (aInOffset < kEndOffset);
 
   return NS_OK;
 }
@@ -7658,32 +8063,8 @@ bool ClusterIterator::IsNewline() const {
 
 bool ClusterIterator::IsPunctuation() const {
   NS_ASSERTION(mCharIndex >= 0, "No cluster selected");
-  // Return true for all Punctuation categories (Unicode general category P?),
-  // and also for Symbol categories (S?) except for Modifier Symbol, which is
-  // kept together with any adjacent letter/number. (Bug 1066756)
   const char16_t ch = mFrag->CharAt(AssertedCast<uint32_t>(mCharIndex));
-  const uint8_t cat = unicode::GetGeneralCategory(ch);
-  switch (cat) {
-    case HB_UNICODE_GENERAL_CATEGORY_CONNECT_PUNCTUATION: /* Pc */
-      if (ch == '_' && !StaticPrefs::layout_word_select_stop_at_underscore()) {
-        return false;
-      }
-      [[fallthrough]];
-    case HB_UNICODE_GENERAL_CATEGORY_DASH_PUNCTUATION:    /* Pd */
-    case HB_UNICODE_GENERAL_CATEGORY_CLOSE_PUNCTUATION:   /* Pe */
-    case HB_UNICODE_GENERAL_CATEGORY_FINAL_PUNCTUATION:   /* Pf */
-    case HB_UNICODE_GENERAL_CATEGORY_INITIAL_PUNCTUATION: /* Pi */
-    case HB_UNICODE_GENERAL_CATEGORY_OTHER_PUNCTUATION:   /* Po */
-    case HB_UNICODE_GENERAL_CATEGORY_OPEN_PUNCTUATION:    /* Ps */
-    case HB_UNICODE_GENERAL_CATEGORY_CURRENCY_SYMBOL:     /* Sc */
-    // Deliberately omitted:
-    // case HB_UNICODE_GENERAL_CATEGORY_MODIFIER_SYMBOL:     /* Sk */
-    case HB_UNICODE_GENERAL_CATEGORY_MATH_SYMBOL:  /* Sm */
-    case HB_UNICODE_GENERAL_CATEGORY_OTHER_SYMBOL: /* So */
-      return true;
-    default:
-      return false;
-  }
+  return mozilla::IsPunctuationForWordSelect(ch);
 }
 
 int32_t ClusterIterator::GetAfterInternal() const {
@@ -8869,7 +9250,7 @@ bool nsTextFrame::IsFloatingFirstLetterChild() const {
 
 bool nsTextFrame::IsInitialLetterChild() const {
   nsIFrame* frame = GetParent();
-  return frame && frame->StyleTextReset()->mInitialLetterSize != 0.0f &&
+  return frame && frame->StyleTextReset()->mInitialLetter.size != 0.0f &&
          frame->IsLetterFrame();
 }
 
@@ -8884,7 +9265,6 @@ void nsTextFrame::Reflow(nsPresContext* aPresContext, ReflowOutput& aMetrics,
                          nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsTextFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aMetrics, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   InvalidateSelectionState();
@@ -9214,7 +9594,8 @@ void nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
   }
   bool canTrimTrailingWhitespace = !textStyle->WhiteSpaceIsSignificant() ||
                                    HasAnyStateBits(TEXT_IS_IN_TOKEN_MATHML);
-  bool isBreakSpaces = textStyle->mWhiteSpace == StyleWhiteSpace::BreakSpaces;
+  bool isBreakSpaces =
+      textStyle->mWhiteSpaceCollapse == StyleWhiteSpaceCollapse::BreakSpaces;
   // allow whitespace to overflow the container
   bool whitespaceCanHang = textStyle->WhiteSpaceCanHangOrVisuallyCollapse();
   gfxBreakPriority breakPriority = aLineLayout.LastOptionalBreakPriority();
@@ -9228,7 +9609,8 @@ void nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
   uint32_t transformedCharsFit = mTextRun->BreakAndMeasureText(
       transformedOffset, transformedLength, HasAnyStateBits(TEXT_START_OF_LINE),
       availWidth, provider, suppressBreak, boundingBoxType, aDrawTarget,
-      textStyle->WordCanWrap(this), isBreakSpaces,
+      textStyle->WordCanWrap(this), textStyle->WhiteSpaceCanWrap(this),
+      isBreakSpaces,
       // The following are output parameters:
       canTrimTrailingWhitespace || whitespaceCanHang ? &trimmableWS : nullptr,
       textMetrics, usedHyphenation, transformedLastBreak,
@@ -9517,6 +9899,9 @@ void nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
   if (completedFirstLetter) {
     aLineLayout.SetFirstLetterStyleOK(false);
     aStatus.SetFirstLetterComplete();
+  }
+  if (brokeText && breakPriority == gfxBreakPriority::eWordWrapBreak) {
+    aLineLayout.SetUsedOverflowWrap();
   }
 
   // Updated the cached NewlineProperty, or delete it.
@@ -9981,9 +10366,9 @@ bool nsTextFrame::IsEmpty() {
     return true;
   }
 
-  bool isEmpty =
-      IsAllWhitespace(TextFragment(), textStyle->mWhiteSpace !=
-                                          mozilla::StyleWhiteSpace::PreLine);
+  bool isEmpty = IsAllWhitespace(TextFragment(),
+                                 textStyle->mWhiteSpaceCollapse !=
+                                     StyleWhiteSpaceCollapse::PreserveBreaks);
   AddStateBits(isEmpty ? TEXT_IS_ONLY_WHITESPACE : TEXT_ISNOT_ONLY_WHITESPACE);
   return isEmpty;
 }
@@ -10108,7 +10493,7 @@ Maybe<nscoord> nsTextFrame::GetNaturalBaselineBOffset(
   if (!aWM.IsOrthogonalTo(GetWritingMode())) {
     if (aWM.IsCentralBaseline()) {
       return Some(GetLogicalUsedBorderAndPadding(aWM).BStart(aWM) +
-                  ContentSize(aWM).BSize(aWM) / 2);
+                  ContentBSize(aWM) / 2);
     }
     return Some(mAscent);
   }

@@ -2,10 +2,10 @@ fuzzy-if(winWidget,47-127,221-254) == simple.svg simple-ref.html
 == simple-2.svg simple.svg
 fuzzy-if(winWidget,47-127,221-254) == simple-underline.svg simple-underline-ref.html
 == simple-underline-scaled.svg simple-underline-scaled-ref.svg
-fuzzy-if(winWidget,47-166,255-318) fuzzy-if(OSX,0-1,0-1) == simple-anchor-end-bidi.svg simple-anchor-end-bidi-ref.html
+fuzzy-if(winWidget,47-166,255-318) fuzzy-if(cocoaWidget,0-1,0-1) == simple-anchor-end-bidi.svg simple-anchor-end-bidi-ref.html
 fuzzy-if(winWidget,47-139,181-204) == simple-anchor-end-rtl.svg simple-anchor-end-rtl-ref.html
 fuzzy-if(winWidget,47-137,181-250) == simple-anchor-end.svg simple-anchor-end-ref.html
-fuzzy-if(dwrite,0-104,0-131) fuzzy-if(cocoaWidget,0-143,0-124) fuzzy-if(!(gtkWidget||geckoview),79-200,59-319) == simple-anchor-middle-bidi.svg simple-anchor-middle-bidi-ref.html
+fuzzy-if(winWidget,0-104,0-131) fuzzy-if(cocoaWidget,0-143,0-124) fuzzy-if(!(gtkWidget||geckoview),79-200,59-319) == simple-anchor-middle-bidi.svg simple-anchor-middle-bidi-ref.html
 fuzzy-if(winWidget,47-138,188-207) == simple-anchor-middle-rtl.svg simple-anchor-middle-rtl-ref.html
 fuzzy(0-111,0-81) fuzzy-if(winWidget,47-181,221-257) == simple-anchor-middle.svg simple-anchor-middle-ref.html
 fuzzy-if(winWidget,47-138,260-319) == simple-bidi.svg simple-bidi-ref.html
@@ -25,7 +25,7 @@ fuzzy-if(winWidget,47-138,260-319) == simple-bidi.svg simple-bidi-ref.html
 == simple-dx-rtl-2.svg simple-dx-rtl-2-ref.svg
 
 == simple-fill-color-dynamic.svg simple-fill-color-dynamic-ref.svg
-fuzzy-if(winWidget,47-129,221-254) fuzzy-if(OSX,23-65,195-196) == simple-fill-color.svg simple-fill-color-ref.html
+fuzzy-if(winWidget,47-129,221-254) fuzzy-if(cocoaWidget,23-65,195-196) == simple-fill-color.svg simple-fill-color-ref.html
 == simple-fill-gradient.svg simple-fill-gradient-ref.svg
 == simple-fill-none.svg simple.svg
 == simple-pointer-events.svg simple.svg
@@ -127,13 +127,13 @@ fuzzy(0-1,0-15) == textpath.svg textpath-ref.svg
 
 == textLength.svg textLength-ref.svg
 fuzzy(0-1,0-200) == textLength-2.svg textLength-2-ref.svg
-fuzzy(0-4,0-100) == textLength-3.svg textLength-3-ref.svg
+fuzzy(0-4,0-100) fuzzy-if(Android,0-4,0-2100) == textLength-3.svg textLength-3-ref.svg
 == textLength-4.svg textLength-4-ref.svg
 == textLength-5.svg textLength-5-ref.svg
 == textLength-6.svg textLength-6-ref.svg
 
 # text-shadow
-fuzzy(0-127,0-5) fuzzy-if(Android,0-127,0-12) == text-shadow.svg text-shadow-ref.svg
+== text-shadow.svg text-shadow-ref.svg
 
 # vertical text
 == vertical-01.svg vertical-01-ref.svg
@@ -173,7 +173,7 @@ fuzzy(0-127,0-5) fuzzy-if(Android,0-127,0-12) == text-shadow.svg text-shadow-ref
 == dynamic-dominant-baseline.svg dynamic-dominant-baseline-ref.svg
 == dynamic-multiple-x.svg dynamic-multiple-x-ref.svg
 fuzzy(0-1,0-200) == dynamic-non-scaling-stroke.svg dynamic-non-scaling-stroke-ref.svg #Bug 885316
-fuzzy(0-127,0-5) fuzzy-if(Android,0-127,0-41) == dynamic-text-shadow.svg text-shadow-ref.svg
+== dynamic-text-shadow.svg text-shadow-ref.svg
 
 # text and masks
 fuzzy-if(winWidget,0-50,0-224) == mask-applied.svg mask-applied-ref.svg
@@ -202,15 +202,15 @@ fuzzy(0-1,0-600) needs-focus == selectSubString-2.svg selectSubString-2-ref.svg
 fuzzy(0-1,0-250) needs-focus == selectSubString-3.svg selectSubString-3-ref.svg
 fuzzy-if(!geckoview,0-1,0-237) needs-focus fuzzy-if(winWidget,55-148,200-254) == simple-selection.svg simple-selection-ref.html
 fuzzy(0-1,0-575) needs-focus fuzzy-if(winWidget,55-148,200-318) == simple-bidi-selection.svg simple-bidi-selection-ref.html
-fuzzy(0-1,0-237) needs-focus fuzzy-if(winWidget,55-148,200-254) fuzzy-if(OSX,1-65,19-196) == simple-fill-color-selection.svg simple-fill-color-selection-ref.html
-fuzzy(0-1,0-222) needs-focus fuzzy-if(winWidget,125-148,221-254) fuzzy-if(/^Windows\x20NT\x206\.1/.test(http.oscpu),55-56,200-200) == simple-underline-selection.svg simple-underline-selection-ref.html # Bug 1392106
-fuzzy(0-1,0-934) needs-focus fuzzy-if(Android13,0-3,0-926) fuzzy-if(winWidget,134-152,432-501) fuzzy-if(/^Windows\x20NT\x206\.1/.test(http.oscpu),55-56,382-382) == multiple-text-selection.svg multiple-text-selection-ref.html # Bug 1392106
+fuzzy(0-1,0-237) needs-focus fuzzy-if(winWidget,55-148,200-254) fuzzy-if(cocoaWidget,1-65,19-196) == simple-fill-color-selection.svg simple-fill-color-selection-ref.html
+fuzzy(0-1,0-222) needs-focus fuzzy-if(winWidget,125-148,221-254) == simple-underline-selection.svg simple-underline-selection-ref.html # Bug 1392106
+fuzzy(0-1,0-934) needs-focus fuzzy-if(Android13,0-3,0-926) fuzzy-if(winWidget,134-152,432-501) == multiple-text-selection.svg multiple-text-selection-ref.html # Bug 1392106
 needs-focus == multiple-chunks-selection.svg multiple-chunks-selection-ref.svg
 fuzzy(0-1,0-200) needs-focus == textpath-selection.svg textpath-selection-ref.svg
 
 # letter-spacing and word-spacing
-== simple-letter-spacing.svg simple-letter-spacing-ref.svg
+pref(layout.css.letter-spacing.model,0) == simple-letter-spacing.svg simple-letter-spacing-ref.svg
 == simple-word-spacing.svg simple-word-spacing-ref.svg
-== multiple-chunks-letter-spacing.svg multiple-chunks-letter-spacing-ref.svg
+pref(layout.css.letter-spacing.model,0) == multiple-chunks-letter-spacing.svg multiple-chunks-letter-spacing-ref.svg
 
 == tspan-shaping.svg tspan-shaping-ref.svg

@@ -25,7 +25,6 @@ struct nsTransformedCharStyle final {
       : mFont(aStyle->StyleFont()->mFont),
         mLanguage(aStyle->StyleFont()->mLanguage),
         mPresContext(aPresContext),
-        mScriptSizeMultiplier(aStyle->StyleFont()->mScriptSizeMultiplier),
         mTextTransform(aStyle->StyleText()->mTextTransform),
         mMathVariant(aStyle->StyleFont()->mMathVariant),
         mExplicitLanguage(aStyle->StyleFont()->mExplicitLanguage) {}
@@ -33,7 +32,6 @@ struct nsTransformedCharStyle final {
   nsFont mFont;
   RefPtr<nsAtom> mLanguage;
   RefPtr<nsPresContext> mPresContext;
-  float mScriptSizeMultiplier;
   mozilla::StyleTextTransform mTextTransform;
   mozilla::StyleMathVariant mMathVariant;
   bool mExplicitLanguage;
@@ -204,7 +202,10 @@ class nsTransformedTextRun final : public gfxTextRun {
         mOwnsFactory(aOwnsFactory),
         mNeedsRebuild(true) {
     mCharacterGlyphs = reinterpret_cast<CompressedGlyph*>(this + 1);
+    SetEmergencyWrapPositions();
   }
+
+  void SetEmergencyWrapPositions();
 };
 
 /**

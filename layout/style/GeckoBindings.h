@@ -149,25 +149,19 @@ const mozilla::PreferenceSheet::Prefs* Gecko_GetPrefSheetPrefs(
     const mozilla::dom::Document*);
 
 bool Gecko_IsTableBorderNonzero(const mozilla::dom::Element* element);
-bool Gecko_IsBrowserFrame(const mozilla::dom::Element* element);
 bool Gecko_IsSelectListBox(const mozilla::dom::Element* element);
 
 // Attributes.
-#define SERVO_DECLARE_ELEMENT_ATTR_MATCHING_FUNCTIONS(prefix_, implementor_)   \
-  nsAtom* prefix_##LangValue(implementor_ element);                            \
-  bool prefix_##HasAttr(implementor_ element, nsAtom* ns, nsAtom* name);       \
-  bool prefix_##AttrEquals(implementor_ element, nsAtom* ns, nsAtom* name,     \
-                           nsAtom* str, bool ignoreCase);                      \
-  bool prefix_##AttrDashEquals(implementor_ element, nsAtom* ns, nsAtom* name, \
-                               nsAtom* str, bool ignore_case);                 \
-  bool prefix_##AttrIncludes(implementor_ element, nsAtom* ns, nsAtom* name,   \
-                             nsAtom* str, bool ignore_case);                   \
-  bool prefix_##AttrHasSubstring(implementor_ element, nsAtom* ns,             \
-                                 nsAtom* name, nsAtom* str, bool ignore_case); \
-  bool prefix_##AttrHasPrefix(implementor_ element, nsAtom* ns, nsAtom* name,  \
-                              nsAtom* str, bool ignore_case);                  \
-  bool prefix_##AttrHasSuffix(implementor_ element, nsAtom* ns, nsAtom* name,  \
-                              nsAtom* str, bool ignore_case);
+#define SERVO_DECLARE_ELEMENT_ATTR_MATCHING_FUNCTIONS(prefix_, implementor_) \
+  nsAtom* prefix_##LangValue(implementor_ element);
+
+bool Gecko_AttrEquals(const nsAttrValue*, const nsAtom*, bool aIgnoreCase);
+bool Gecko_AttrDashEquals(const nsAttrValue*, const nsAtom*, bool aIgnoreCase);
+bool Gecko_AttrIncludes(const nsAttrValue*, const nsAtom*, bool aIgnoreCase);
+bool Gecko_AttrHasSubstring(const nsAttrValue*, const nsAtom*,
+                            bool aIgnoreCase);
+bool Gecko_AttrHasPrefix(const nsAttrValue*, const nsAtom*, bool aIgnoreCase);
+bool Gecko_AttrHasSuffix(const nsAttrValue*, const nsAtom*, bool aIgnoreCase);
 
 bool Gecko_AssertClassAttrValueIsSane(const nsAttrValue*);
 const nsAttrValue* Gecko_GetSVGAnimatedClass(const mozilla::dom::Element*);
@@ -226,14 +220,6 @@ bool Gecko_StyleViewTimelinesEquals(
     const nsStyleAutoArray<mozilla::StyleViewTimeline>*,
     const nsStyleAutoArray<mozilla::StyleViewTimeline>*);
 
-void Gecko_CopyAnimationNames(
-    nsStyleAutoArray<mozilla::StyleAnimation>* aDest,
-    const nsStyleAutoArray<mozilla::StyleAnimation>* aSrc);
-
-// This function takes an already addrefed nsAtom
-void Gecko_SetAnimationName(mozilla::StyleAnimation* aStyleAnimation,
-                            nsAtom* aAtom);
-
 void Gecko_UpdateAnimations(const mozilla::dom::Element* aElementOrPseudo,
                             const mozilla::ComputedStyle* aOldComputedValues,
                             const mozilla::ComputedStyle* aComputedValues,
@@ -264,11 +250,13 @@ double Gecko_GetPositionInSegment(const mozilla::AnimationPropertySegment*,
 
 // Get servo's AnimationValue for |aProperty| from the cached base style
 // |aBaseStyles|.
-// |aBaseStyles| is nsRefPtrHashtable<nsUint32HashKey, StyleAnimationValue>.
+// |aBaseStyles| is nsRefPtrHashtable<nsGenericHashKey<AnimatedPropertyID>,
+// StyleAnimationValue>.
 // We use RawServoAnimationValueTableBorrowed to avoid exposing
 // nsRefPtrHashtable in FFI.
 const mozilla::StyleAnimationValue* Gecko_AnimationGetBaseStyle(
-    const RawServoAnimationValueTable* aBaseStyles, nsCSSPropertyID aProperty);
+    const RawServoAnimationValueTable* aBaseStyles,
+    const mozilla::AnimatedPropertyID* aProperty);
 
 void Gecko_StyleTransition_SetUnsupportedProperty(
     mozilla::StyleTransition* aTransition, nsAtom* aAtom);
@@ -327,23 +315,6 @@ void Gecko_SetImageOrientationAsFromImage(nsStyleVisibility* aVisibility);
 void Gecko_CopyImageOrientationFrom(nsStyleVisibility* aDst,
                                     const nsStyleVisibility* aSrc);
 
-// Counter style.
-void Gecko_CounterStyle_ToPtr(const mozilla::StyleCounterStyle*,
-                              mozilla::CounterStylePtr*);
-
-void Gecko_SetCounterStyleToNone(mozilla::CounterStylePtr*);
-
-void Gecko_SetCounterStyleToString(mozilla::CounterStylePtr* ptr,
-                                   const nsACString* symbol);
-
-void Gecko_CopyCounterStyle(mozilla::CounterStylePtr* dst,
-                            const mozilla::CounterStylePtr* src);
-
-nsAtom* Gecko_CounterStyle_GetName(const mozilla::CounterStylePtr* ptr);
-
-const mozilla::AnonymousCounterStyle* Gecko_CounterStyle_GetAnonymous(
-    const mozilla::CounterStylePtr* ptr);
-
 // list-style-image style.
 void Gecko_SetListStyleImageNone(nsStyleList* style_struct);
 
@@ -386,20 +357,6 @@ const mozilla::ServoElementSnapshot* Gecko_GetElementSnapshot(
 
 // Have we seen this pointer before?
 bool Gecko_HaveSeenPtr(mozilla::SeenPtrs* table, const void* ptr);
-
-// `array` must be an nsTArray
-// If changing this signature, please update the
-// friend function declaration in nsTArray.h
-void Gecko_EnsureTArrayCapacity(void* array, size_t capacity, size_t elem_size);
-
-// Same here, `array` must be an nsTArray<T>, for some T.
-//
-// Important note: Only valid for POD types, since destructors won't be run
-// otherwise. This is ensured with rust traits for the relevant structs.
-void Gecko_ClearPODTArray(void* array, size_t elem_size, size_t elem_align);
-
-void Gecko_ResizeTArrayForStrings(nsTArray<nsString>* array, uint32_t length);
-void Gecko_ResizeAtomArray(nsTArray<RefPtr<nsAtom>>* array, uint32_t length);
 
 void Gecko_EnsureImageLayersLength(nsStyleImageLayers* layers, size_t len,
                                    nsStyleImageLayers::LayerType layer_type);
@@ -449,12 +406,6 @@ mozilla::Keyframe* Gecko_GetOrCreateFinalKeyframe(
     nsTArray<mozilla::Keyframe>* keyframes,
     const mozilla::StyleComputedTimingFunction* timingFunction,
     const mozilla::dom::CompositeOperationOrAuto composition);
-
-// Appends and returns a new PropertyValuePair to |aProperties| initialized with
-// its mProperty member set to |aProperty| and all other members initialized to
-// their default values.
-mozilla::PropertyValuePair* Gecko_AppendPropertyValuePair(
-    nsTArray<mozilla::PropertyValuePair>*, nsCSSPropertyID aProperty);
 
 void Gecko_ResetFilters(nsStyleEffects* effects, size_t new_len);
 
@@ -514,6 +465,7 @@ struct GeckoFontMetrics {
   mozilla::Length mCapHeight;  // negatives indicate not found.
   mozilla::Length mIcWidth;    // negatives indicate not found.
   mozilla::Length mAscent;
+  mozilla::Length mComputedEmSize;
   float mScriptPercentScaleDown;        // zero is invalid or means not found.
   float mScriptScriptPercentScaleDown;  // zero is invalid or means not found.
 };
@@ -530,8 +482,19 @@ mozilla::StyleSheet* Gecko_StyleSheet_Clone(
 
 void Gecko_StyleSheet_AddRef(const mozilla::StyleSheet* aSheet);
 void Gecko_StyleSheet_Release(const mozilla::StyleSheet* aSheet);
+
+struct GeckoImplicitScopeRoot {
+  const mozilla::dom::Element* mHost;
+  const mozilla::dom::Element* mRoot;
+  bool mConstructed;
+};
+GeckoImplicitScopeRoot Gecko_StyleSheet_ImplicitScopeRoot(
+    const mozilla::StyleSheet* aSheet);
+
 bool Gecko_IsDocumentBody(const mozilla::dom::Element* element);
 
+bool Gecko_IsDarkColorScheme(const mozilla::dom::Document*,
+                             const mozilla::StyleColorScheme*);
 nscolor Gecko_ComputeSystemColor(mozilla::StyleSystemColor,
                                  const mozilla::dom::Document*,
                                  const mozilla::StyleColorScheme*);
@@ -591,9 +554,7 @@ const nsTArray<mozilla::dom::Element*>* Gecko_Document_GetElementsWithId(
 const nsTArray<mozilla::dom::Element*>* Gecko_ShadowRoot_GetElementsWithId(
     const mozilla::dom::ShadowRoot*, nsAtom* aId);
 
-// Check the value of the given bool preference. The pref name needs to
-// be null-terminated.
-bool Gecko_GetBoolPrefValue(const char* pref_name);
+bool Gecko_ComputeBoolPrefMediaQuery(nsAtom*);
 
 // Check whether font format/tech is supported.
 bool Gecko_IsFontFormatSupported(
@@ -611,15 +572,16 @@ bool Gecko_IsMainThread();
 // Returns true if we're currently on a DOM worker thread.
 bool Gecko_IsDOMWorkerThread();
 
+// Returns the preferred number of style threads to use, or -1 for no
+// preference.
+int32_t Gecko_GetNumStyleThreads();
+
 // Media feature helpers.
 //
 // Defined in nsMediaFeatures.cpp.
 mozilla::StyleDisplayMode Gecko_MediaFeatures_GetDisplayMode(
     const mozilla::dom::Document*);
 
-bool Gecko_MediaFeatures_WindowsNonNativeMenus(const mozilla::dom::Document*);
-
-bool Gecko_MediaFeatures_ShouldAvoidNativeTheme(const mozilla::dom::Document*);
 bool Gecko_MediaFeatures_UseOverlayScrollbars(const mozilla::dom::Document*);
 int32_t Gecko_MediaFeatures_GetColorDepth(const mozilla::dom::Document*);
 int32_t Gecko_MediaFeatures_GetMonochromeBitsPerPixel(
@@ -657,6 +619,7 @@ float Gecko_MediaFeatures_GetDevicePixelRatio(const mozilla::dom::Document*);
 
 bool Gecko_MediaFeatures_IsResourceDocument(const mozilla::dom::Document*);
 bool Gecko_MediaFeatures_MatchesPlatform(mozilla::StylePlatform);
+mozilla::StyleGtkThemeFamily Gecko_MediaFeatures_GtkThemeFamily();
 
 void Gecko_GetSafeAreaInsets(const nsPresContext*, float*, float*, float*,
                              float*);

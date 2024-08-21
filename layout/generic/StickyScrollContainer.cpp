@@ -12,9 +12,9 @@
 #include "StickyScrollContainer.h"
 
 #include "mozilla/OverflowChangedTracker.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "nsIFrame.h"
 #include "nsIFrameInlines.h"
-#include "nsIScrollableFrame.h"
 #include "nsLayoutUtils.h"
 
 namespace mozilla {
@@ -22,33 +22,34 @@ namespace mozilla {
 NS_DECLARE_FRAME_PROPERTY_DELETABLE(StickyScrollContainerProperty,
                                     StickyScrollContainer)
 
-StickyScrollContainer::StickyScrollContainer(nsIScrollableFrame* aScrollFrame)
-    : mScrollFrame(aScrollFrame), mScrollPosition() {
-  mScrollFrame->AddScrollPositionListener(this);
+StickyScrollContainer::StickyScrollContainer(
+    ScrollContainerFrame* aScrollContainerFrame)
+    : mScrollContainerFrame(aScrollContainerFrame) {
+  mScrollContainerFrame->AddScrollPositionListener(this);
 }
 
 StickyScrollContainer::~StickyScrollContainer() {
-  mScrollFrame->RemoveScrollPositionListener(this);
+  mScrollContainerFrame->RemoveScrollPositionListener(this);
 }
 
 // static
 StickyScrollContainer* StickyScrollContainer::GetStickyScrollContainerForFrame(
     nsIFrame* aFrame) {
-  nsIScrollableFrame* scrollFrame = nsLayoutUtils::GetNearestScrollableFrame(
-      aFrame->GetParent(), nsLayoutUtils::SCROLLABLE_SAME_DOC |
-                               nsLayoutUtils::SCROLLABLE_STOP_AT_PAGE |
-                               nsLayoutUtils::SCROLLABLE_INCLUDE_HIDDEN);
-  if (!scrollFrame) {
+  ScrollContainerFrame* scrollContainerFrame =
+      nsLayoutUtils::GetNearestScrollContainerFrame(
+          aFrame->GetParent(), nsLayoutUtils::SCROLLABLE_SAME_DOC |
+                                   nsLayoutUtils::SCROLLABLE_STOP_AT_PAGE |
+                                   nsLayoutUtils::SCROLLABLE_INCLUDE_HIDDEN);
+  if (!scrollContainerFrame) {
     // We might not find any, for instance in the case of
     // <html style="position: fixed">
     return nullptr;
   }
-  nsIFrame* frame = do_QueryFrame(scrollFrame);
   StickyScrollContainer* s =
-      frame->GetProperty(StickyScrollContainerProperty());
+      scrollContainerFrame->GetProperty(StickyScrollContainerProperty());
   if (!s) {
-    s = new StickyScrollContainer(scrollFrame);
-    frame->SetProperty(StickyScrollContainerProperty(), s);
+    s = new StickyScrollContainer(scrollContainerFrame);
+    scrollContainerFrame->SetProperty(StickyScrollContainerProperty(), s);
   }
   return s;
 }
@@ -56,18 +57,18 @@ StickyScrollContainer* StickyScrollContainer::GetStickyScrollContainerForFrame(
 // static
 void StickyScrollContainer::NotifyReparentedFrameAcrossScrollFrameBoundary(
     nsIFrame* aFrame, nsIFrame* aOldParent) {
-  nsIScrollableFrame* oldScrollFrame = nsLayoutUtils::GetNearestScrollableFrame(
-      aOldParent, nsLayoutUtils::SCROLLABLE_SAME_DOC |
-                      nsLayoutUtils::SCROLLABLE_INCLUDE_HIDDEN);
-  if (!oldScrollFrame) {
+  ScrollContainerFrame* oldScrollContainerFrame =
+      nsLayoutUtils::GetNearestScrollContainerFrame(
+          aOldParent, nsLayoutUtils::SCROLLABLE_SAME_DOC |
+                          nsLayoutUtils::SCROLLABLE_INCLUDE_HIDDEN);
+  if (!oldScrollContainerFrame) {
     // XXX maybe aFrame has sticky descendants that can be sticky now, but
     // we aren't going to handle that.
     return;
   }
 
   StickyScrollContainer* oldSSC =
-      static_cast<nsIFrame*>(do_QueryFrame(oldScrollFrame))
-          ->GetProperty(StickyScrollContainerProperty());
+      oldScrollContainerFrame->GetProperty(StickyScrollContainerProperty());
   if (!oldSSC) {
     // aOldParent had no sticky descendants, so aFrame doesn't have any sticky
     // descendants, and we're done here.
@@ -106,17 +107,17 @@ static nscoord ComputeStickySideOffset(
 
 // static
 void StickyScrollContainer::ComputeStickyOffsets(nsIFrame* aFrame) {
-  nsIScrollableFrame* scrollableFrame =
-      nsLayoutUtils::GetNearestScrollableFrame(
+  ScrollContainerFrame* scrollContainerFrame =
+      nsLayoutUtils::GetNearestScrollContainerFrame(
           aFrame->GetParent(), nsLayoutUtils::SCROLLABLE_SAME_DOC |
                                    nsLayoutUtils::SCROLLABLE_INCLUDE_HIDDEN);
 
-  if (!scrollableFrame) {
+  if (!scrollContainerFrame) {
     // Bail.
     return;
   }
 
-  nsSize scrollContainerSize = scrollableFrame->GetScrolledFrame()
+  nsSize scrollContainerSize = scrollContainerFrame->GetScrolledFrame()
                                    ->GetContentRectRelativeToSelf()
                                    .Size();
 
@@ -142,9 +143,10 @@ void StickyScrollContainer::ComputeStickyOffsets(nsIFrame* aFrame) {
   }
 }
 
-static nscoord gUnboundedNegative = nscoord_MIN / 2;
-static nscoord gUnboundedExtent = nscoord_MAX;
-static nscoord gUnboundedPositive = gUnboundedNegative + gUnboundedExtent;
+static constexpr nscoord gUnboundedNegative = nscoord_MIN / 2;
+static constexpr nscoord gUnboundedExtent = nscoord_MAX;
+static constexpr nscoord gUnboundedPositive =
+    gUnboundedNegative + gUnboundedExtent;
 
 void StickyScrollContainer::ComputeStickyLimits(nsIFrame* aFrame,
                                                 nsRect* aStick,
@@ -165,7 +167,7 @@ void StickyScrollContainer::ComputeStickyLimits(nsIFrame* aFrame,
     return;
   }
 
-  nsIFrame* scrolledFrame = mScrollFrame->GetScrolledFrame();
+  nsIFrame* scrolledFrame = mScrollContainerFrame->GetScrolledFrame();
   nsIFrame* cbFrame = aFrame->GetContainingBlock();
   NS_ASSERTION(cbFrame == scrolledFrame ||
                    nsLayoutUtils::IsProperAncestorFrame(scrolledFrame, cbFrame),
@@ -185,20 +187,27 @@ void StickyScrollContainer::ComputeStickyLimits(nsIFrame* aFrame,
 
   // Containing block limits for the position of aFrame relative to its parent.
   // The margin box of the sticky element stays within the content box of the
-  // contaning-block element.
+  // containing-block element.
   if (cbFrame == scrolledFrame) {
     // cbFrame is the scrolledFrame, and it won't have continuations. Unlike the
-    // else clause, we consider scrollable overflow rect because and the union
-    // of its in-flow rects doesn't include the scrollable overflow area.
+    // else clause, we consider scrollable overflow rect because the union of
+    // its in-flow rects doesn't include the scrollable overflow area. We need
+    // to subtract the padding however, which _is_ included in the scrollable
+    // area, since we want the content box.
+    MOZ_ASSERT(cbFrame->GetUsedBorder() == nsMargin(),
+               "How did the ::-moz-scrolled-frame end up with border?");
     *aContain = cbFrame->ScrollableOverflowRectRelativeToSelf();
+    aContain->Deflate(cbFrame->GetUsedPadding());
     nsLayoutUtils::TransformRect(cbFrame, aFrame->GetParent(), *aContain);
   } else {
     *aContain = nsLayoutUtils::GetAllInFlowRectsUnion(
-        cbFrame, aFrame->GetParent(), nsLayoutUtils::RECTS_USE_CONTENT_BOX);
+        cbFrame, aFrame->GetParent(),
+        nsLayoutUtils::GetAllInFlowRectsFlag::UseContentBox);
   }
 
   nsRect marginRect = nsLayoutUtils::GetAllInFlowRectsUnion(
-      aFrame, aFrame->GetParent(), nsLayoutUtils::RECTS_USE_MARGIN_BOX);
+      aFrame, aFrame->GetParent(),
+      nsLayoutUtils::GetAllInFlowRectsFlag::UseMarginBoxWithAutoResolvedAsZero);
 
   // Deflate aContain by the difference between the union of aFrame's
   // continuations' margin boxes and the union of their border boxes, so that
@@ -367,7 +376,7 @@ void StickyScrollContainer::UpdatePositions(nsPoint aScrollPosition,
                                             nsIFrame* aSubtreeRoot) {
 #ifdef DEBUG
   {
-    nsIFrame* scrollFrameAsFrame = do_QueryFrame(mScrollFrame);
+    nsIFrame* scrollFrameAsFrame = do_QueryFrame(mScrollContainerFrame);
     NS_ASSERTION(!aSubtreeRoot || aSubtreeRoot == scrollFrameAsFrame,
                  "If reflowing, should be reflowing the scroll frame");
   }

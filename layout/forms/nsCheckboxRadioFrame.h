@@ -14,8 +14,6 @@
 
 /**
  * nsCheckboxRadioFrame is used for radio buttons and checkboxes.
- * It also has a static method (GetUsableScreenRect) that is used by
- * other form controls.
  */
 class nsCheckboxRadioFrame final : public nsAtomicContainerFrame,
                                    public nsIFormControlFrame {
@@ -27,20 +25,15 @@ class nsCheckboxRadioFrame final : public nsAtomicContainerFrame,
                                 nsPresContext* aPresContext);
 
   // nsIFrame replacements
-  virtual bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsAtomicContainerFrame::IsFrameOfType(
-        aFlags & ~(nsIFrame::eReplaced | nsIFrame::eReplacedContainsBlock));
-  }
-
-  virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
-                                const nsDisplayListSet& aLists) override;
+  void BuildDisplayList(nsDisplayListBuilder* aBuilder,
+                        const nsDisplayListSet& aLists) override;
 
   /**
    * Both GetMinISize and GetPrefISize will return whatever GetIntrinsicISize
    * returns.
    */
-  virtual nscoord GetMinISize(gfxContext* aRenderingContext) override;
-  virtual nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord GetMinISize(gfxContext* aRenderingContext) override;
+  nscoord GetPrefISize(gfxContext* aRenderingContext) override;
 
   /**
    * Our auto size is just intrinsic width and intrinsic height.
@@ -57,9 +50,9 @@ class nsCheckboxRadioFrame final : public nsAtomicContainerFrame,
    * Respond to a gui event
    * @see nsIFrame::HandleEvent
    */
-  virtual nsresult HandleEvent(nsPresContext* aPresContext,
-                               mozilla::WidgetGUIEvent* aEvent,
-                               nsEventStatus* aEventStatus) override;
+  nsresult HandleEvent(nsPresContext* aPresContext,
+                       mozilla::WidgetGUIEvent* aEvent,
+                       nsEventStatus* aEventStatus) override;
 
   Maybe<nscoord> GetNaturalBaselineBOffset(
       mozilla::WritingMode aWM, BaselineSharingGroup aBaselineGroup,
@@ -69,29 +62,27 @@ class nsCheckboxRadioFrame final : public nsAtomicContainerFrame,
    * Respond to the request to resize and/or reflow
    * @see nsIFrame::Reflow
    */
-  virtual void Reflow(nsPresContext* aCX, ReflowOutput& aDesiredSize,
-                      const ReflowInput& aReflowInput,
-                      nsReflowStatus& aStatus) override;
+  void Reflow(nsPresContext* aCX, ReflowOutput& aDesiredSize,
+              const ReflowInput& aReflowInput,
+              nsReflowStatus& aStatus) override;
 
   // new behavior
 
-  virtual void SetFocus(bool aOn = true, bool aRepaint = false) override;
+  void SetFocus(bool aOn = true, bool aRepaint = false) override;
 
   // nsIFormControlFrame
-  virtual nsresult SetFormProperty(nsAtom* aName,
-                                   const nsAString& aValue) override;
+  nsresult SetFormProperty(nsAtom* aName, const nsAString& aValue) override;
+
+#ifdef DEBUG_FRAME_DUMP
+  nsresult GetFrameName(nsAString& aResult) const override {
+    return MakeFrameName(u"CheckboxRadio"_ns, aResult);
+  }
+#endif
 
  protected:
   virtual ~nsCheckboxRadioFrame();
 
   nscoord DefaultSize();
-
-  /**
-   * Get the state of the checked attribute.
-   * @param aState set to true if the checked attribute is set,
-   * false if the checked attribute has been removed
-   */
-  void GetCurrentCheckState(bool* aState);
 };
 
 #endif

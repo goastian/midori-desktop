@@ -36,7 +36,7 @@ var coltest = [
 "min-height:4px", "min-height:4px; max-width: 30px"
 ];
 var results = [
-"24px", "48px", "24px", "24px", "24px", "24px", "80px", "24px", "24px", "24px",
+"360px", "360px", "360px", "24px", "24px", "360px", "80px", "12px", "20px", "24px",
 "24px", "24px", "24px"
 ];
 
@@ -51,7 +51,7 @@ for (var i = 0; i < coltest.length; ++i) {
   img.setAttribute("src","support/lime-24x2.png");
   img.setAttribute("style",coltest[i] + "; min-width:"+ results[i]);
   grid.appendChild(img);
-  document.body.appendChild(document.createTextNode("24x2.png -- "+coltest[i]+'\n'));
+  document.body.appendChild(document.createTextNode(`Test ${i+1}: 24x2.png -- ${coltest[i]}`));
   document.body.appendChild(document.createElement('br'));
   document.body.appendChild(grid);
   document.body.appendChild(document.createElement('br'));

@@ -50,14 +50,6 @@ class SVGForeignObjectFrame final : public nsContainerFrame,
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         const nsDisplayListSet& aLists) override;
 
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    if (aFlags & eSupportsContainLayoutAndPaint) {
-      return false;
-    }
-
-    return nsContainerFrame::IsFrameOfType(aFlags & ~nsIFrame::eSVG);
-  }
-
   bool IsSVGTransformed(Matrix* aOwnTransform,
                         Matrix* aFromParentTransform) const override;
 
@@ -93,8 +85,6 @@ class SVGForeignObjectFrame final : public nsContainerFrame,
   bool IsDisabled() const { return mRect.width <= 0 || mRect.height <= 0; }
 
   UniquePtr<gfxMatrix> mCanvasTM;
-
-  bool mInReflow;
 };
 
 }  // namespace mozilla

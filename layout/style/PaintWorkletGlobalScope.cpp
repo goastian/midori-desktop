@@ -21,21 +21,9 @@ PaintWorkletImpl* PaintWorkletGlobalScope::Impl() const {
 
 bool PaintWorkletGlobalScope::WrapGlobalObject(
     JSContext* aCx, JS::MutableHandle<JSObject*> aReflector) {
-  JS::RealmOptions options;
-
-  // TODO(bug 1834744)
-  options.behaviors().setShouldResistFingerprinting(
-      ShouldResistFingerprinting(RFPTarget::IsAlwaysEnabledForPrecompute));
-
-  // The SharedArrayBuffer global constructor property should not be present in
-  // a fresh global object when shared memory objects aren't allowed (because
-  // COOP/COEP support isn't enabled, or because COOP/COEP don't act to isolate
-  // this worker to a separate process).
-  options.creationOptions().setDefineSharedArrayBufferConstructor(
-      IsSharedMemoryAllowed());
-
+  JS::RealmOptions options = CreateRealmOptions();
   return PaintWorkletGlobalScope_Binding::Wrap(
-      aCx, this, this, options, nsJSPrincipals::get(mImpl->Principal()), true,
+      aCx, this, this, options, nsJSPrincipals::get(mImpl->Principal()),
       aReflector);
 }
 

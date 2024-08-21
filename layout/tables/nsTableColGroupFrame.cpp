@@ -315,10 +315,10 @@ nsIFrame::LogicalSides nsTableColGroupFrame::GetLogicalSkipSides() const {
   }
 
   if (GetPrevInFlow()) {
-    skip |= eLogicalSideBitsBStart;
+    skip += LogicalSide::BStart;
   }
   if (GetNextInFlow()) {
-    skip |= eLogicalSideBitsBEnd;
+    skip += LogicalSide::BEnd;
   }
   return skip;
 }
@@ -329,7 +329,6 @@ void nsTableColGroupFrame::Reflow(nsPresContext* aPresContext,
                                   nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsTableColGroupFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
   NS_ASSERTION(nullptr != mContent, "bad state -- null content for frame");
 
@@ -338,22 +337,21 @@ void nsTableColGroupFrame::Reflow(nsPresContext* aPresContext,
   if (collapseGroup) {
     GetTableFrame()->SetNeedToCollapse(true);
   }
-  // for every content child that (is a column thingy and does not already have
-  // a frame) create a frame and adjust it's style
 
-  for (nsIFrame* kidFrame = mFrames.FirstChild(); kidFrame;
-       kidFrame = kidFrame->GetNextSibling()) {
+  const WritingMode wm = GetWritingMode();
+  for (nsIFrame* kidFrame : mFrames) {
     // Give the child frame a chance to reflow, even though we know it'll have 0
     // size
     ReflowOutput kidSize(aReflowInput);
     ReflowInput kidReflowInput(aPresContext, aReflowInput, kidFrame,
                                LogicalSize(kidFrame->GetWritingMode()));
-
+    const LogicalPoint dummyPos(wm);
+    const nsSize dummyContainerSize;
     nsReflowStatus status;
-    ReflowChild(kidFrame, aPresContext, kidSize, kidReflowInput, 0, 0,
-                ReflowChildFlags::Default, status);
-    FinishReflowChild(kidFrame, aPresContext, kidSize, &kidReflowInput, 0, 0,
-                      ReflowChildFlags::Default);
+    ReflowChild(kidFrame, aPresContext, kidSize, kidReflowInput, wm, dummyPos,
+                dummyContainerSize, ReflowChildFlags::Default, status);
+    FinishReflowChild(kidFrame, aPresContext, kidSize, &kidReflowInput, wm,
+                      dummyPos, dummyContainerSize, ReflowChildFlags::Default);
   }
 
   aDesiredSize.ClearSize();
@@ -393,30 +391,6 @@ nsTableColFrame* nsTableColGroupFrame::GetNextColumn(nsIFrame* aChildFrame) {
 }
 
 int32_t nsTableColGroupFrame::GetSpan() { return StyleTable()->mXSpan; }
-
-void nsTableColGroupFrame::SetContinuousBCBorderWidth(LogicalSide aForSide,
-                                                      BCPixelSize aPixelValue) {
-  switch (aForSide) {
-    case eLogicalSideBStart:
-      mBStartContBorderWidth = aPixelValue;
-      return;
-    case eLogicalSideBEnd:
-      mBEndContBorderWidth = aPixelValue;
-      return;
-    default:
-      NS_ERROR("invalid side arg");
-  }
-}
-
-void nsTableColGroupFrame::GetContinuousBCBorderWidth(WritingMode aWM,
-                                                      LogicalMargin& aBorder) {
-  int32_t d2a = PresContext()->AppUnitsPerDevPixel();
-  nsTableColFrame* col =
-      GetTableFrame()->GetColFrame(mStartColIndex + mColCount - 1);
-  col->GetContinuousBCBorderWidth(aWM, aBorder);
-  aBorder.BStart(aWM) = BC_BORDER_END_HALF_COORD(d2a, mBStartContBorderWidth);
-  aBorder.BEnd(aWM) = BC_BORDER_START_HALF_COORD(d2a, mBEndContBorderWidth);
-}
 
 /* ----- global methods ----- */
 

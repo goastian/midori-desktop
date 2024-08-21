@@ -11,6 +11,7 @@
 
 * {
   writing-mode: horizontal-tb !important;
+  font-size: math;
 }
 
 /**************************************************************************/
@@ -32,6 +33,7 @@ math {
   text-rendering: optimizeLegibility;
   -moz-float-edge: margin-box;
   math-style: compact;
+  math-depth: 0;
 }
 math[display="block" i] {
   display: block;
@@ -41,25 +43,6 @@ math[display="block" i] {
 math[display="inline" i] {
   display: inline;
   math-style: compact;
-}
-
-/**************************************************************************/
-/* Token elements                                                         */
-/**************************************************************************/
-
-@media not (-moz-mathml-core-ms) {
-  ms {
-    display: inline;
-  }
-  ms:before, ms:after {
-    content: "\0022"
-  }
-  ms[lquote]:before {
-    content: attr(lquote)
-  }
-  ms[rquote]:after {
-    content: attr(rquote)
-  }
 }
 
 /**************************************************************************/
@@ -82,8 +65,6 @@ math[display="inline" i] {
    - fontstyle -> font-style                              (deprecated)
    - fontweight -> font-weight                            (deprecated)
    - mathvariant -> -moz-math-variant
-   - scriptsizemultiplier -> -moz-script-size-multiplier
-   - scriptminsize -> -moz-script-min-size
    - scriptlevel -> math-depth
    - mathsize -> font-size
    - mathcolor -> color
@@ -319,12 +300,19 @@ mphantom {
     visibility: hidden;
 }
 
-@media (-moz-mathml-core-maction-and-semantics) {
-  /* Implement MathML Core's semantics/maction support
-     https://w3c.github.io/mathml-core/#dfn-semantics
-     https://w3c.github.io/mathml-core/#dfn-maction */
-  maction > :not(:first-child),
-  semantics > :not(:first-child) {
-    display: none;
+/* Implement MathML Core's semantics/maction support
+   https://w3c.github.io/mathml-core/#dfn-semantics
+   https://w3c.github.io/mathml-core/#dfn-maction */
+maction > :not(:first-child),
+semantics > :not(:first-child) {
+  display: none;
+}
+
+/* stylelint-disable-next-line media-query-no-invalid */
+@media (-moz-bool-pref: "mathml.legacy_mathvariant_attribute.disabled") {
+  /* Implement MathML Core's automatic italic on mi.
+     https://w3c.github.io/mathml-core/#the-mathvariant-attribute */
+  mi {
+    text-transform: math-auto;
   }
 }

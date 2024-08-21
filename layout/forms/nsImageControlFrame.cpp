@@ -45,7 +45,7 @@ class nsImageControlFrame final : public nsImageFrame,
   }
 #endif
 
-  Maybe<Cursor> GetCursor(const nsPoint&) final;
+  Cursor GetCursor(const nsPoint&) final;
 
   // nsIFormContromFrame
   void SetFocus(bool aOn, bool aRepaint) final;
@@ -97,7 +97,6 @@ void nsImageControlFrame::Reflow(nsPresContext* aPresContext,
                                  const ReflowInput& aReflowInput,
                                  nsReflowStatus& aStatus) {
   DO_GLOBAL_REFLOW_COUNT("nsImageControlFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
   return nsImageFrame::Reflow(aPresContext, aDesiredSize, aReflowInput,
                               aStatus);
@@ -137,12 +136,12 @@ nsresult nsImageControlFrame::HandleEvent(nsPresContext* aPresContext,
 
 void nsImageControlFrame::SetFocus(bool aOn, bool aRepaint) {}
 
-Maybe<nsIFrame::Cursor> nsImageControlFrame::GetCursor(const nsPoint&) {
+nsIFrame::Cursor nsImageControlFrame::GetCursor(const nsPoint&) {
   StyleCursorKind kind = StyleUI()->Cursor().keyword;
   if (kind == StyleCursorKind::Auto) {
     kind = StyleCursorKind::Pointer;
   }
-  return Some(Cursor{kind, AllowCustomCursorImage::Yes});
+  return Cursor{kind, AllowCustomCursorImage::Yes};
 }
 
 nsresult nsImageControlFrame::SetFormProperty(nsAtom* aName,

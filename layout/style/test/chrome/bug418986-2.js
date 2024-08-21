@@ -1,5 +1,7 @@
 // # Bug 418986, part 2.
 
+/* eslint-disable mozilla/no-comparison-or-assignment-inside-ok */
+
 const is_chrome_window = window.location.protocol === "chrome:";
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
@@ -49,16 +51,11 @@ var expected_values = [
 // These media queries return value 0 or 1 when the pref is off.
 // When the pref is on, they should not match.
 var suppressed_toggles = [
-  "-moz-mac-graphite-theme",
   // Not available on most OSs.
-  //  "-moz-maemo-classic",
   "-moz-scrollbar-end-backward",
   "-moz-scrollbar-end-forward",
   "-moz-scrollbar-start-backward",
   "-moz-scrollbar-start-forward",
-  "-moz-windows-compositor",
-  "-moz-windows-default-theme",
-  "-moz-windows-glass",
   "-moz-gtk-csd-available",
   "-moz-gtk-csd-minimize-button",
   "-moz-gtk-csd-maximize-button",
@@ -70,12 +67,6 @@ var toggles_enabled_in_content = [];
 
 // Read the current OS.
 var OS = SpecialPowers.Services.appinfo.OS;
-
-// If we are using Windows, add an extra toggle only
-// available on that OS.
-if (OS === "WINNT") {
-  suppressed_toggles.push("-moz-windows-classic");
-}
 
 // __keyValMatches(key, val)__.
 // Runs a media query and returns true if key matches to val.

@@ -2504,9 +2504,11 @@ nsFloatManager::ShapeInfo::CreateBasicShape(const StyleBasicShape& aBasicShape,
     case StyleBasicShape::Tag::Ellipse:
       return CreateCircleOrEllipse(aBasicShape, aShapeMargin, aFrame,
                                    aShapeBoxRect, aWM, aContainerSize);
-    case StyleBasicShape::Tag::Inset:
+    case StyleBasicShape::Tag::Rect:
       return CreateInset(aBasicShape, aShapeMargin, aFrame, aShapeBoxRect, aWM,
                          aContainerSize);
+    case StyleBasicShape::Tag::PathOrShape:
+      MOZ_ASSERT_UNREACHABLE("Unsupported basic shape");
   }
   return nullptr;
 }
@@ -2522,14 +2524,15 @@ nsFloatManager::ShapeInfo::CreateInset(const StyleBasicShape& aBasicShape,
   // https://drafts.csswg.org/css-shapes-1/#funcdef-inset
   nsRect physicalShapeBoxRect =
       aShapeBoxRect.GetPhysicalRect(aWM, aContainerSize);
-  const nsRect insetRect =
-      ShapeUtils::ComputeInsetRect(aBasicShape, physicalShapeBoxRect);
+  const nsRect insetRect = ShapeUtils::ComputeInsetRect(
+      aBasicShape.AsRect().rect, physicalShapeBoxRect);
 
   nsRect logicalInsetRect = ConvertToFloatLogical(
       LogicalRect(aWM, insetRect, aContainerSize), aWM, aContainerSize);
   nscoord physicalRadii[8];
-  bool hasRadii = ShapeUtils::ComputeInsetRadii(
-      aBasicShape, physicalShapeBoxRect, insetRect, physicalRadii);
+  bool hasRadii = ShapeUtils::ComputeRectRadii(aBasicShape.AsRect().round,
+                                               physicalShapeBoxRect, insetRect,
+                                               physicalRadii);
 
   // With a zero shape-margin, we will be able to use the fast constructor.
   if (aShapeMargin == 0) {
@@ -2831,8 +2834,8 @@ nsFloatManager::ShapeInfo::ConvertToFloatLogical(const nscoord aRadii[8],
 
   // Get the physical side for line-left and line-right since border radii
   // are on the physical axis.
-  Side lineLeftSide =
-      aWM.PhysicalSide(aWM.LogicalSideForLineRelativeDir(eLineRelativeDirLeft));
+  Side lineLeftSide = aWM.PhysicalSide(
+      aWM.LogicalSideForLineRelativeDir(LineRelativeDir::Left));
   logicalRadii[eCornerTopLeftX] =
       aRadii[SideToHalfCorner(lineLeftSide, true, false)];
   logicalRadii[eCornerTopLeftY] =
@@ -2843,7 +2846,7 @@ nsFloatManager::ShapeInfo::ConvertToFloatLogical(const nscoord aRadii[8],
       aRadii[SideToHalfCorner(lineLeftSide, false, true)];
 
   Side lineRightSide = aWM.PhysicalSide(
-      aWM.LogicalSideForLineRelativeDir(eLineRelativeDirRight));
+      aWM.LogicalSideForLineRelativeDir(LineRelativeDir::Right));
   logicalRadii[eCornerTopRightX] =
       aRadii[SideToHalfCorner(lineRightSide, false, false)];
   logicalRadii[eCornerTopRightY] =

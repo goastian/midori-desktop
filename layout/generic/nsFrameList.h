@@ -34,7 +34,6 @@ class FrameChildList;
 enum class FrameChildListID {
   // The individual concrete child lists.
   Principal,
-  Popup,
   Caption,
   ColGroup,
   Absolute,
@@ -176,10 +175,11 @@ class nsFrameList {
   [[nodiscard]] nsFrameList TakeFramesAfter(nsIFrame* aFrame);
 
   /**
-   * Take the first frame (if any) out of the frame list.
-   * @return the first child, or nullptr if the list is empty
+   * Take the first (or last) child (if any) out of the frame list.
+   * @return the first (or last) child, or nullptr if the list is empty
    */
   nsIFrame* RemoveFirstChild();
+  nsIFrame* RemoveLastChild();
 
   /**
    * The following two functions are intended to be used in concert for

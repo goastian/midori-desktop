@@ -19,6 +19,8 @@
 class nsSplittableFrame : public nsIFrame {
  public:
   NS_DECL_ABSTRACT_FRAME(nsSplittableFrame)
+  NS_DECL_QUERYFRAME_TARGET(nsSplittableFrame)
+  NS_DECL_QUERYFRAME
 
   void Init(nsIContent* aContent, nsContainerFrame* aParent,
             nsIFrame* aPrevInFlow) override;
@@ -36,7 +38,8 @@ class nsSplittableFrame : public nsIFrame {
    *
    * A "flow" is a chain of fluid continuations.
    *
-   * For more information, see https://wiki.mozilla.org/Gecko:Continuation_Model
+   * For more information, see
+   * https://firefox-source-docs.mozilla.org/layout/LayoutOverview.html#fragmentation
    */
 
   // Get the previous/next continuation, regardless of its type (fluid or
@@ -44,12 +47,17 @@ class nsSplittableFrame : public nsIFrame {
   nsIFrame* GetPrevContinuation() const final;
   nsIFrame* GetNextContinuation() const final;
 
-  // Set a previous/next non-fluid continuation.
+  // Set a previous non-fluid continuation.
   void SetPrevContinuation(nsIFrame*) final;
+
+  // Set a next non-fluid continuation.
+  //
+  // WARNING: this method updates caches for next-continuations, so it has O(n)
+  // time complexity over the length of next-continuations in the chain.
   void SetNextContinuation(nsIFrame*) final;
 
   // Get the first/last continuation for this frame.
-  nsIFrame* FirstContinuation() const override;
+  nsIFrame* FirstContinuation() const final;
   nsIFrame* LastContinuation() const final;
 
 #ifdef DEBUG
@@ -62,8 +70,13 @@ class nsSplittableFrame : public nsIFrame {
   nsIFrame* GetPrevInFlow() const final;
   nsIFrame* GetNextInFlow() const final;
 
-  // Set a previous/next fluid continuation.
+  // Set a previous fluid continuation.
   void SetPrevInFlow(nsIFrame*) final;
+
+  // Set a next fluid continuation.
+  //
+  // WARNING: this method updates caches for next-continuations, so it has O(n)
+  // time complexity over the length of next-continuations in the chain.
   void SetNextInFlow(nsIFrame*) final;
 
   // Get the first/last frame in the current flow.
@@ -78,9 +91,15 @@ class nsSplittableFrame : public nsIFrame {
  protected:
   nsSplittableFrame(ComputedStyle* aStyle, nsPresContext* aPresContext,
                     ClassID aID)
-      : nsIFrame(aStyle, aPresContext, aID),
-        mPrevContinuation(nullptr),
-        mNextContinuation(nullptr) {}
+      : nsIFrame(aStyle, aPresContext, aID) {}
+
+  // Update the first-continuation and first-in-flow cache for this frame and
+  // the next-continuations in the chain.
+  //
+  // Note: this function assumes that the first-continuation and first-in-flow
+  // caches are already up-to-date on this frame's
+  // prev-continuation/prev-in-flow frame (if there is such a frame).
+  void UpdateFirstContinuationAndFirstInFlowCache();
 
   /**
    * Return the sum of the block-axis content size of our previous
@@ -94,6 +113,20 @@ class nsSplittableFrame : public nsIFrame {
    * multiple times in the same reflow is wasteful, but not an error.
    */
   nscoord CalcAndCacheConsumedBSize();
+
+  /**
+   * This static wrapper over CalcAndCacheConsumedBSize() is intended for a
+   * specific scenario where an nsSplittableFrame's subclass needs to access
+   * another subclass' consumed block-size. For ordinary use cases,
+   * CalcAndCacheConsumedBSize() should be called.
+   *
+   * This has the same requirements as CalcAndCacheConsumedBSize(). In
+   * particular, classes that call this are _required_ to call this at least
+   * once for each reflow.
+   */
+  static nscoord ConsumedBSize(nsSplittableFrame* aFrame) {
+    return aFrame->CalcAndCacheConsumedBSize();
+  }
 
   /**
    * Retrieve the effective computed block size of this frame, which is the
@@ -126,8 +159,8 @@ class nsSplittableFrame : public nsIFrame {
     return GetBlockLevelLogicalSkipSides(false);
   };
 
-  nsIFrame* mPrevContinuation;
-  nsIFrame* mNextContinuation;
+  nsIFrame* mPrevContinuation = nullptr;
+  nsIFrame* mNextContinuation = nullptr;
 };
 
 #endif /* nsSplittableFrame_h___ */

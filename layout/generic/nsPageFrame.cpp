@@ -9,6 +9,7 @@
 #include "mozilla/AppUnits.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/StaticPrefs_layout.h"
+#include "mozilla/StaticPrefs_print.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/intl/Segmenter.h"
 #include "gfxContext.h"
@@ -213,7 +214,6 @@ void nsPageFrame::Reflow(nsPresContext* aPresContext,
                          nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsPageFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aReflowOutput, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
   MOZ_ASSERT(mPD, "Need a pointer to nsSharedPageData before reflow starts");
 
@@ -540,6 +540,69 @@ static std::tuple<uint32_t, uint32_t> GetRowAndColFromIdx(uint32_t aIdxOnSheet,
   return {aIdxOnSheet / aNumCols, aIdxOnSheet % aNumCols};
 }
 
+// The minimum ratio for which we will center the page on the sheet when using
+// auto-detect logic.
+// Note that this ratio is of the content's size to the sheet size scaled to be
+// in content space, and so the actual ratio will always be from 0.0 to 1.0,
+// with this marking the smallest ratio we consider a near-miss.
+// The ratio of A4 on Letter is 0.915034. A threshold of 0.9 will ensure that
+// A4 on Letter works, as well as other near-misses.
+//
+// The ratio is computed as so:
+// scale = min(1, sheetHeight / pageHeight, sheetWidth / pageWidth)
+//
+// Where pageSize is pageWidth or pageHeight, and sheetSize is sheetWidth or
+// sheetHeight, respectively:
+// scaledPageSize = pageSize * scale
+// ratio = scaledPageSize / sheetSize
+//
+// A4 (210mm x 297mm) on US Letter (215.9mm x 279.4mm) is derived as so:
+// scale = min(1, 215.9 / 210, 279.4 / 297) = 0.9407407407..
+//
+// Using the widths:
+// scaledPageSize = (210 * 0.940741) = 197.556
+// ratio = 197.556 / 215.9 = 0.915034
+//
+// See nsPageFrame::ComputeSinglePPSPageSizeScale for scale calculation, and
+// OffsetToCenterPage for ratio calculation.
+constexpr float kCenterPageRatioThreshold = 0.9f;
+
+// Numeric values for the pref "print.center_page_on_sheet"
+enum {
+  kPrintCenterPageOnSheetNever = 0,
+  kPrintCenterPageOnSheetAlways = 1,
+  kPrintCenterPageOnSheetAuto = 2
+};
+
+// Returns an offset to center the page on the sheet, with a given scale.
+// When no centering can/should happen, this will avoid extra calculations and
+// return 0.0f.
+// This takes into account the value of the pref "print.center_page_on_sheet".
+static float OffsetToCenterPage(nscoord aContentSize, nscoord aSheetSize,
+                                float aScale, float aAppUnitsPerPixel) {
+  MOZ_ASSERT(aScale <= 1.0f && aScale > 0.0f,
+             "Scale must be in the range (0,1]");
+  const unsigned centerPagePref = StaticPrefs::print_center_page_on_sheet();
+  if (centerPagePref == kPrintCenterPageOnSheetNever) {
+    return 0.0f;
+  }
+
+  // Determine the ratio of scaled page to the sheet size.
+  const float sheetSize =
+      NSAppUnitsToFloatPixels(aSheetSize, aAppUnitsPerPixel);
+  const float scaledContentSize =
+      NSAppUnitsToFloatPixels(aContentSize, aAppUnitsPerPixel) * aScale;
+  const float ratio = scaledContentSize / sheetSize;
+
+  // If the ratio is within the threshold, or the pref indicates we should
+  // always center the page, return half the difference to form the offset.
+  if (centerPagePref == kPrintCenterPageOnSheetAlways ||
+      ratio >= kCenterPageRatioThreshold) {
+    return (sheetSize - scaledContentSize) * 0.5f;
+  }
+  return 0.0f;
+}
+
 // Helper for BuildDisplayList:
 static gfx::Matrix4x4 ComputePagesPerSheetAndPageSizeTransform(
     const nsIFrame* aFrame, float aAppUnitsPerPixel) {
@@ -550,20 +613,60 @@ static gfx::Matrix4x4 ComputePagesPerSheetAndPageSizeTransform(
   nsSharedPageData* pd = pageFrame->GetSharedPageData();
   const auto* ppsInfo = pd->PagesPerSheetInfo();
 
+  const nsContainerFrame* const parentFrame = pageFrame->GetParent();
+  MOZ_ASSERT(parentFrame->IsPrintedSheetFrame(),
+             "Parent of nsPageFrame should be PrintedSheetFrame");
+  const auto* sheetFrame = static_cast<const PrintedSheetFrame*>(parentFrame);
+
+  const double rotation =
+      pageFrame->GetPageOrientationRotation(pageFrame->GetSharedPageData());
+
   gfx::Matrix4x4 transform;
 
   if (ppsInfo->mNumPages == 1) {
-    float scale = pageFrame->ComputeSinglePPSPageSizeScale(contentPageSize);
-    transform = gfx::Matrix4x4::Scaling(scale, scale, 1);
+    const nsSize sheetSize = sheetFrame->GetSizeForChildren();
+    if (rotation != 0.0) {
+      const bool sheetIsPortrait = sheetSize.width < sheetSize.height;
+      const bool rotatingClockwise = rotation > 0.0;
+
+      // rotation point:
+      int32_t x, y;
+      if (rotatingClockwise != sheetIsPortrait) {
+        // rotating portrait clockwise, or landscape counterclockwise
+        x = y = std::min(sheetSize.width, sheetSize.height) / 2;
+      } else {
+        // rotating portrait counterclockwise, or landscape clockwise
+        x = y = std::max(sheetSize.width, sheetSize.height) / 2;
+      }
+
+      transform = gfx::Matrix4x4::Translation(
+          NSAppUnitsToFloatPixels(x, aAppUnitsPerPixel),
+          NSAppUnitsToFloatPixels(y, aAppUnitsPerPixel), 0);
+      transform.RotateZ(rotation);
+      transform.PreTranslate(NSAppUnitsToFloatPixels(-x, aAppUnitsPerPixel),
+                             NSAppUnitsToFloatPixels(-y, aAppUnitsPerPixel), 0);
+    }
+
+    // If the difference in horizontal size, after scaling, is relatively small
+    // then center the page on the sheet.
+    const float scale =
+        pageFrame->ComputeSinglePPSPageSizeScale(contentPageSize);
+    const float centeringOffset = OffsetToCenterPage(
+        contentPageSize.width, sheetSize.width, scale, aAppUnitsPerPixel);
+
+    // Only bother with the translation if it is at least one pixel.
+    // It's possible for a mismatch in the paper size reported by the print
+    // server and the paper size from Gecko to lead to small offsets, or
+    // even (in combination with floating point error) a very small negative
+    // offset. Do not apply an offset in those cases.
+    if (centeringOffset >= 1.0f) {
+      transform.PreTranslate(centeringOffset, 0, 0);
+    }
+    transform.PreScale(scale, scale, 1);
     return transform;
   }
 
   // The multiple pages-per-sheet case.
-
-  const nsContainerFrame* const parentFrame = pageFrame->GetParent();
-  MOZ_ASSERT(parentFrame->IsPrintedSheetFrame(),
-             "Parent of nsPageFrame should be PrintedSheetFrame");
-  auto* sheetFrame = static_cast<const PrintedSheetFrame*>(parentFrame);
 
   // Begin with the translation of the page to its pages-per-sheet grid "cell"
   // (the grid origin accounts for the sheet's unwriteable margins):
@@ -604,47 +707,46 @@ static gfx::Matrix4x4 ComputePagesPerSheetAndPageSizeTransform(
   transform.PreTranslate(dx, dy, 0.0f);
   transform.PreScale(scale, scale, 1.0f);
 
-  // Apply 'page-orientation' to any applicable pages:
-  if (StaticPrefs::layout_css_page_orientation_enabled()) {
-    const StylePageOrientation& orientation =
-        pageFrame->PageContentFrame()->StylePage()->mPageOrientation;
+  // Apply 'page-orientation' rotation, if applicable:
+  if (rotation != 0.0) {
+    // We've already translated and scaled the page to fit the cell, ignoring
+    // rotation. Here we rotate the page around its center and, if necessary,
+    // also scale it to fit it to its cell for its orientation change.
 
-    double angle = 0.0;
-    if (orientation == StylePageOrientation::RotateLeft) {
-      angle = -M_PI / 2.0;
-    } else if (orientation == StylePageOrientation::RotateRight) {
-      angle = M_PI / 2.0;
-    }
-
-    if (angle != 0.0) {
-      float cellRatio = float(sheetFrame->GetGridCellWidth()) /
-                        float(sheetFrame->GetGridCellHeight());
+    float fitScale = 1.0f;
+    if (MOZ_LIKELY(cellWidth != cellHeight &&
+                   contentPageSize.width != contentPageSize.height)) {
+      // If neither the cell nor the page are square, the scale must change.
+      float cellRatio = float(cellWidth) / float(cellHeight);
       float pageRatio =
           float(contentPageSize.width) / float(contentPageSize.height);
-      // To fit into the available space on a sheet, a page typically needs to
-      // be scaled. If rotated 90 degrees, the scale will be different (assuming
-      // the page size is rectangular, not square). This variable flags whether
-      // the scale at the default rotation is the smaller of the two scales.
-      bool isSmallerOfRotatedScales = floor(cellRatio) != floor(pageRatio);
-      float fitScale = cellRatio;
-      if (isSmallerOfRotatedScales != bool(floor(fitScale))) {
-        fitScale = 1.0f / cellRatio;
+      const bool orientationWillMatchAfterRotation =
+          floor(cellRatio) != floor(pageRatio);
+      if (cellRatio > 1.0f) {
+        cellRatio = 1.0f / cellRatio;  // normalize
       }
-
-      transform.PreTranslate(
-          NSAppUnitsToFloatPixels(contentPageSize.width / 2, aAppUnitsPerPixel),
-          NSAppUnitsToFloatPixels(contentPageSize.height / 2,
-                                  aAppUnitsPerPixel),
-          0);
-      transform.PreScale(fitScale, fitScale, 1.0f);
-      transform.RotateZ(angle);
-      transform.PreTranslate(
-          NSAppUnitsToFloatPixels(-contentPageSize.width / 2,
-                                  aAppUnitsPerPixel),
-          NSAppUnitsToFloatPixels(-contentPageSize.height / 2,
-                                  aAppUnitsPerPixel),
-          0);
+      if (pageRatio > 1.0f) {
+        pageRatio = 1.0f / pageRatio;  // normalize
+      }
+      fitScale = std::max(cellRatio, pageRatio);
+      if (orientationWillMatchAfterRotation) {
+        // Scale up, not down
+        fitScale = 1.0f / fitScale;
+      }
     }
+
+    transform.PreTranslate(
+        NSAppUnitsToFloatPixels(contentPageSize.width / 2, aAppUnitsPerPixel),
+        NSAppUnitsToFloatPixels(contentPageSize.height / 2, aAppUnitsPerPixel),
+        0);
+    if (MOZ_LIKELY(fitScale != 1.0f)) {
+      transform.PreScale(fitScale, fitScale, 1.0f);
+    }
+    transform.RotateZ(rotation);
+    transform.PreTranslate(
+        NSAppUnitsToFloatPixels(-contentPageSize.width / 2, aAppUnitsPerPixel),
+        NSAppUnitsToFloatPixels(-contentPageSize.height / 2, aAppUnitsPerPixel),
+        0);
   }
 
   return transform;
@@ -734,7 +836,7 @@ float nsPageFrame::ComputeSinglePPSPageSizeScale(
   // content uses "@page {size: ...}" to specify a page size for the content.
   float scale = 1.0f;
 
-  const nsSize sheetSize = sheet->GetPrecomputedSheetSize();
+  const nsSize sheetSize = sheet->GetSizeForChildren();
   nscoord contentPageHeight = aContentPageSize.height;
   // Scale down if the target is too wide.
   if (aContentPageSize.width > sheetSize.width) {
@@ -751,33 +853,30 @@ float nsPageFrame::ComputeSinglePPSPageSizeScale(
   return scale;
 }
 
-nsIFrame* nsPageFrame::FirstContinuation() const {
-  // Walk up to our grandparent, and then to down the grandparent's first
-  // child, and then that frame's first child.
-  // At every step we assert the frames are the type we expect them to be.
-  const nsContainerFrame* const parent = GetParent();
-  MOZ_ASSERT(parent && parent->IsPrintedSheetFrame(),
-             "Parent of nsPageFrame should be PrintedSheetFrame");
-  const nsContainerFrame* const pageSequenceFrame = parent->GetParent();
-  MOZ_ASSERT(pageSequenceFrame && pageSequenceFrame->IsPageSequenceFrame(),
-             "Parent of PrintedSheetFrame should be nsPageSequenceFrame");
-  const nsIFrame* const firstPrintedSheetFrame =
-      pageSequenceFrame->PrincipalChildList().FirstChild();
-  MOZ_ASSERT(
-      firstPrintedSheetFrame && firstPrintedSheetFrame->IsPrintedSheetFrame(),
-      "Should have at least one child in nsPageSequenceFrame, and all "
-      "children of nsPageSequenceFrame should be PrintedSheetFrames");
-  nsIFrame* const firstPageFrame =
-      static_cast<const nsContainerFrame*>(firstPrintedSheetFrame)
-          ->PrincipalChildList()
-          .FirstChild();
-  MOZ_ASSERT(firstPageFrame && firstPageFrame->IsPageFrame(),
-             "Should have at least one child in PrintedSheetFrame, and all "
-             "children of PrintedSheetFrame should be nsPageFrames");
-  MOZ_ASSERT(!firstPageFrame->GetPrevContinuation(),
-             "First descendent of nsPageSequenceFrame should not have a "
-             "previous continuation");
-  return firstPageFrame;
+double nsPageFrame::GetPageOrientationRotation(nsSharedPageData* aPD) const {
+  if (!StaticPrefs::layout_css_page_orientation_enabled()) {
+    return 0.0;
+  }
+
+  if (aPD->PagesPerSheetInfo()->mNumPages == 1 && !PresContext()->IsScreen() &&
+      aPD->mPrintSettings->GetOutputFormat() !=
+          nsIPrintSettings::kOutputFormatPDF) {
+    // In the single page-per-sheet case we rotate the page by essentially
+    // rotating the entire sheet. But we can't do that when the output device
+    // doesn't support mixed sheet orientations.
+    return 0.0;
+  }
+
+  const StylePageOrientation& orientation =
+      PageContentFrame()->StylePage()->mPageOrientation;
+
+  if (orientation == StylePageOrientation::RotateLeft) {
+    return -M_PI / 2.0;
+  }
+  if (orientation == StylePageOrientation::RotateRight) {
+    return M_PI / 2.0;
+  }
+  return 0.0;
 }
 
 void nsPageFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
@@ -915,7 +1014,6 @@ void nsPageBreakFrame::Reflow(nsPresContext* aPresContext,
                               const ReflowInput& aReflowInput,
                               nsReflowStatus& aStatus) {
   DO_GLOBAL_REFLOW_COUNT("nsPageBreakFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aReflowOutput, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   // Override reflow, since we don't want to deal with what our

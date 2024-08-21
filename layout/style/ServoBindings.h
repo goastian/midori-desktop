@@ -77,7 +77,8 @@ BASIC_RULE_FUNCS_LOCKED(Keyframes)
 GROUP_RULE_FUNCS_UNLOCKED(Media)
 GROUP_RULE_FUNCS_UNLOCKED(Document)
 BASIC_RULE_FUNCS_UNLOCKED(Namespace)
-BASIC_RULE_FUNCS_LOCKED(Page)
+BASIC_RULE_FUNCS_UNLOCKED(Margin)
+GROUP_RULE_FUNCS_LOCKED(Page)
 BASIC_RULE_FUNCS_UNLOCKED(Property)
 GROUP_RULE_FUNCS_UNLOCKED(Supports)
 GROUP_RULE_FUNCS_UNLOCKED(LayerBlock)
@@ -87,6 +88,8 @@ BASIC_RULE_FUNCS_UNLOCKED(FontPaletteValues)
 BASIC_RULE_FUNCS_LOCKED(FontFace)
 BASIC_RULE_FUNCS_LOCKED(CounterStyle)
 GROUP_RULE_FUNCS_UNLOCKED(Container)
+GROUP_RULE_FUNCS_UNLOCKED(Scope)
+GROUP_RULE_FUNCS_UNLOCKED(StartingStyle)
 
 #undef GROUP_RULE_FUNCS_LOCKED
 #undef GROUP_RULE_FUNCS_UNLOCKED
@@ -102,7 +105,6 @@ GROUP_RULE_FUNCS_UNLOCKED(Container)
   bool Servo_##type_##_Deserialize(mozilla::ipc::ByteBuf* input, type_* v); \
   bool Servo_##type_##_Serialize(const type_* v, mozilla::ipc::ByteBuf* output);
 
-using RayFunction = StyleRayFunction<StyleAngle>;
 BASIC_SERDE_FUNCS(LengthPercentage)
 BASIC_SERDE_FUNCS(StyleRotate)
 BASIC_SERDE_FUNCS(StyleScale)
@@ -111,6 +113,7 @@ BASIC_SERDE_FUNCS(StyleTransform)
 BASIC_SERDE_FUNCS(StyleOffsetPath)
 BASIC_SERDE_FUNCS(StyleOffsetRotate)
 BASIC_SERDE_FUNCS(StylePositionOrAuto)
+BASIC_SERDE_FUNCS(StyleOffsetPosition)
 BASIC_SERDE_FUNCS(StyleComputedTimingFunction)
 
 #undef BASIC_SERDE_FUNCS

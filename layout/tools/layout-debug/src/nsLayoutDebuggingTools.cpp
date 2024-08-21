@@ -8,12 +8,11 @@
 
 #include "nsIDocShell.h"
 #include "nsPIDOMWindow.h"
-#include "nsIContentViewer.h"
+#include "nsIDocumentViewer.h"
 #include "nsIPrintSettings.h"
 #include "nsIPrintSettingsService.h"
 
 #include "nsAtom.h"
-#include "nsQuickSort.h"
 
 #include "nsIContent.h"
 
@@ -21,8 +20,6 @@
 #include "nsCSSFrameConstructor.h"
 #include "nsViewManager.h"
 #include "nsIFrame.h"
-
-#include "nsLayoutCID.h"
 
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Element.h"
@@ -32,17 +29,17 @@
 using namespace mozilla;
 using mozilla::dom::Document;
 
-static already_AddRefed<nsIContentViewer> doc_viewer(nsIDocShell* aDocShell) {
+static already_AddRefed<nsIDocumentViewer> doc_viewer(nsIDocShell* aDocShell) {
   if (!aDocShell) return nullptr;
-  nsCOMPtr<nsIContentViewer> result;
-  aDocShell->GetContentViewer(getter_AddRefs(result));
-  return result.forget();
+  nsCOMPtr<nsIDocumentViewer> viewer;
+  aDocShell->GetDocViewer(getter_AddRefs(viewer));
+  return viewer.forget();
 }
 
 static PresShell* GetPresShell(nsIDocShell* aDocShell) {
-  nsCOMPtr<nsIContentViewer> cv = doc_viewer(aDocShell);
-  if (!cv) return nullptr;
-  return cv->GetPresShell();
+  nsCOMPtr<nsIDocumentViewer> viewer = doc_viewer(aDocShell);
+  if (!viewer) return nullptr;
+  return viewer->GetPresShell();
 }
 
 static nsViewManager* view_manager(nsIDocShell* aDocShell) {
@@ -55,10 +52,11 @@ static nsViewManager* view_manager(nsIDocShell* aDocShell) {
 
 #ifdef DEBUG
 static already_AddRefed<Document> document(nsIDocShell* aDocShell) {
-  nsCOMPtr<nsIContentViewer> cv(doc_viewer(aDocShell));
-  if (!cv) return nullptr;
-  RefPtr<Document> result = cv->GetDocument();
-  return result.forget();
+  nsCOMPtr<nsIDocumentViewer> viewer(doc_viewer(aDocShell));
+  if (!viewer) {
+    return nullptr;
+  }
+  return do_AddRef(viewer->GetDocument());
 }
 #endif
 
@@ -125,8 +123,8 @@ nsLayoutDebuggingTools::SetPagedMode(bool aPagedMode) {
   printSettings->SetPrintBGColors(true);
   printSettings->SetPrintBGImages(true);
 
-  nsCOMPtr<nsIContentViewer> contentViewer(doc_viewer(mDocShell));
-  contentViewer->SetPageModeForTesting(aPagedMode, printSettings);
+  nsCOMPtr<nsIDocumentViewer> docViewer(doc_viewer(mDocShell));
+  docViewer->SetPageModeForTesting(aPagedMode, printSettings);
 
   ForceRefresh();
   return NS_OK;

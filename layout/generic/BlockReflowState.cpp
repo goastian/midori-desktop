@@ -27,54 +27,32 @@
 using namespace mozilla;
 using namespace mozilla::layout;
 
-BlockReflowState::BlockReflowState(const ReflowInput& aReflowInput,
-                                   nsPresContext* aPresContext,
-                                   nsBlockFrame* aFrame, bool aBStartMarginRoot,
-                                   bool aBEndMarginRoot,
-                                   bool aBlockNeedsFloatManager,
-                                   const nscoord aConsumedBSize,
-                                   const nscoord aEffectiveContentBoxBSize)
+BlockReflowState::BlockReflowState(
+    const ReflowInput& aReflowInput, nsPresContext* aPresContext,
+    nsBlockFrame* aFrame, bool aBStartMarginRoot, bool aBEndMarginRoot,
+    bool aBlockNeedsFloatManager, const nscoord aConsumedBSize,
+    const nscoord aEffectiveContentBoxBSize, const nscoord aInset)
     : mBlock(aFrame),
       mPresContext(aPresContext),
       mReflowInput(aReflowInput),
       mContentArea(aReflowInput.GetWritingMode()),
+      mInsetForBalance(aInset),
+      mContainerSize(aReflowInput.ComputedSizeAsContainerIfConstrained()),
       mPushedFloats(nullptr),
       mOverflowTracker(nullptr),
       mBorderPadding(
           mReflowInput
               .ComputedLogicalBorderPadding(mReflowInput.GetWritingMode())
               .ApplySkipSides(aFrame->PreReflowBlockLevelLogicalSkipSides())),
-      mPrevBEndMargin(),
       mMinLineHeight(aReflowInput.GetLineHeight()),
       mLineNumber(0),
       mTrailingClearFromPIF(StyleClear::None),
-      mConsumedBSize(aConsumedBSize) {
+      mConsumedBSize(aConsumedBSize),
+      mAlignContentShift(mBlock->GetAlignContentShift()) {
   NS_ASSERTION(mConsumedBSize != NS_UNCONSTRAINEDSIZE,
                "The consumed block-size should be constrained!");
 
   WritingMode wm = aReflowInput.GetWritingMode();
-
-  // Note that mContainerSize is the physical size, needed to
-  // convert logical block-coordinates in vertical-rl writing mode
-  // (measured from a RHS origin) to physical coordinates within the
-  // containing block.
-  // If aReflowInput doesn't have a constrained ComputedWidth(), we set
-  // mContainerSize.width to zero, which means lines will be positioned
-  // (physically) incorrectly; we will fix them up at the end of
-  // nsBlockFrame::Reflow, after we know the total block-size of the
-  // frame.
-  mContainerSize.width = aReflowInput.ComputedWidth();
-  if (mContainerSize.width == NS_UNCONSTRAINEDSIZE) {
-    mContainerSize.width = 0;
-  }
-
-  mContainerSize.width += mBorderPadding.LeftRight(wm);
-
-  // For now at least, we don't do that fix-up for mContainerHeight.
-  // It's only used in nsBidiUtils::ReorderFrames for vertical rtl
-  // writing modes, which aren't fully supported for the time being.
-  mContainerSize.height =
-      aReflowInput.ComputedHeight() + mBorderPadding.TopBottom(wm);
 
   if (aBStartMarginRoot || 0 != mBorderPadding.BStart(wm)) {
     mFlags.mIsBStartMarginRoot = true;
@@ -110,8 +88,8 @@ BlockReflowState::BlockReflowState(const ReflowInput& aReflowInput,
   // the "overflow" property. When we don't have a specified style block-size,
   // then we may end up limiting our block-size if the available block-size is
   // constrained (this situation occurs when we are paginated).
-  if (const nscoord availableBSize = aReflowInput.AvailableBSize();
-      availableBSize != NS_UNCONSTRAINEDSIZE) {
+  const nscoord availableBSize = aReflowInput.AvailableBSize();
+  if (availableBSize != NS_UNCONSTRAINEDSIZE) {
     // We are in a paginated situation. The block-end edge of the available
     // space to reflow the children is within our block-end border and padding.
     // If we're cloning our border and padding, and we're going to request
@@ -135,8 +113,32 @@ BlockReflowState::BlockReflowState(const ReflowInput& aReflowInput,
   mContentArea.IStart(wm) = mBorderPadding.IStart(wm);
   mBCoord = mContentArea.BStart(wm) = mBorderPadding.BStart(wm);
 
+  // Account for existing cached shift, we'll re-position in AlignContent() if
+  // needed.
+  if (mAlignContentShift) {
+    mBCoord += mAlignContentShift;
+    mContentArea.BStart(wm) += mAlignContentShift;
+
+    if (availableBSize != NS_UNCONSTRAINEDSIZE) {
+      mContentArea.BSize(wm) += mAlignContentShift;
+    }
+  }
+
   mPrevChild = nullptr;
   mCurrentLine = aFrame->LinesEnd();
+}
+
+void BlockReflowState::UndoAlignContentShift() {
+  if (!mAlignContentShift) {
+    return;
+  }
+
+  mBCoord -= mAlignContentShift;
+  mContentArea.BStart(mReflowInput.GetWritingMode()) -= mAlignContentShift;
+
+  if (mReflowInput.AvailableBSize() != NS_UNCONSTRAINEDSIZE) {
+    mContentArea.BSize(mReflowInput.GetWritingMode()) -= mAlignContentShift;
+  }
 }
 
 void BlockReflowState::ComputeFloatAvoidingOffsets(

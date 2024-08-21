@@ -40,7 +40,7 @@ static bool IsOptionInteractivelySelectable(HTMLSelectElement& aSelect,
   // options in a display: contents subtree interactively.
   // test_select_key_navigation_bug1498769.html tests for this and should
   // probably be changed (and this loop removed) or alternatively
-  // SelectChild.jsm should be changed to match it.
+  // SelectChild.sys.mjs should be changed to match it.
   for (Element* el = &aOption; el && el != &aSelect;
        el = el->GetParentElement()) {
     if (Servo_Element_IsDisplayContents(el)) {
@@ -278,8 +278,8 @@ void HTMLSelectEventListener::Detach() {
             if (!element->IsCombobox() ||
                 !element->GetPrimaryFrame(FlushType::Frames)) {
               nsContentUtils::DispatchChromeEvent(
-                  element->OwnerDoc(), ToSupports(element.get()),
-                  u"mozhidedropdown"_ns, CanBubble::eYes, Cancelable::eNo);
+                  element->OwnerDoc(), element, u"mozhidedropdown"_ns,
+                  CanBubble::eYes, Cancelable::eNo);
             }
           }));
     }
@@ -377,15 +377,7 @@ void HTMLSelectEventListener::ComboboxMightHaveChanged() {
 
 void HTMLSelectEventListener::FireOnInputAndOnChange() {
   RefPtr<HTMLSelectElement> element = mElement;
-  // Dispatch the input event.
-  DebugOnly<nsresult> rvIgnored = nsContentUtils::DispatchInputEvent(element);
-  NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
-                       "Failed to dispatch input event");
-
-  // Dispatch the change event.
-  nsContentUtils::DispatchTrustedEvent(element->OwnerDoc(), ToSupports(element),
-                                       u"change"_ns, CanBubble::eYes,
-                                       Cancelable::eNo);
+  element->UserFinishedInteracting(/* aChanged = */ true);
 }
 
 static void FireDropDownEvent(HTMLSelectElement* aElement, bool aShow,
@@ -397,8 +389,7 @@ static void FireDropDownEvent(HTMLSelectElement* aElement, bool aShow,
     }
     return u"mozhidedropdown"_ns;
   }();
-  nsContentUtils::DispatchChromeEvent(aElement->OwnerDoc(),
-                                      ToSupports(aElement), eventName,
+  nsContentUtils::DispatchChromeEvent(aElement->OwnerDoc(), aElement, eventName,
                                       CanBubble::eYes, Cancelable::eNo);
 }
 
@@ -421,7 +412,10 @@ nsresult HTMLSelectEventListener::MouseDown(dom::Event* aMouseEvent) {
   }
 
   if (mIsCombobox) {
-    uint16_t inputSource = mouseEvent->MozInputSource();
+    // inputSource is used to apply padding for touch events, but
+    // the dropdown is rendered in another process, the webpage won't
+    // have access to it. It is fine to use CallerType::System here.
+    uint16_t inputSource = mouseEvent->InputSource(CallerType::System);
     if (mElement->OpenInParentProcess()) {
       nsCOMPtr<nsIContent> target = do_QueryInterface(aMouseEvent->GetTarget());
       if (target && target->IsHTMLElement(nsGkAtoms::option)) {
@@ -524,7 +518,14 @@ nsresult HTMLSelectEventListener::KeyPress(dom::Event* aKeyEvent) {
     mControlSelectMode = false;
   }
 
-  bool isControlOrMeta = keyEvent->IsControl() || keyEvent->IsMeta();
+  const bool isControlOrMeta =
+      keyEvent->IsControl()
+#if !defined(XP_WIN) && !defined(MOZ_WIDGET_GTK)
+      // Ignore Windows Logo key press in Win/Linux because it's not a usual
+      // modifier for applications.  Here wants to check "Accel" like modifier.
+      || keyEvent->IsMeta()
+#endif
+      ;
   if (isControlOrMeta && keyEvent->mCharCode != ' ') {
     return NS_OK;
   }
@@ -707,7 +708,14 @@ nsresult HTMLSelectEventListener::KeyDown(dom::Event* aKeyEvent) {
   // this is the new index to set
   int32_t newIndex = kNothingSelected;
 
-  bool isControlOrMeta = keyEvent->IsControl() || keyEvent->IsMeta();
+  bool isControlOrMeta =
+      keyEvent->IsControl()
+#if !defined(XP_WIN) && !defined(MOZ_WIDGET_GTK)
+      // Ignore Windows Logo key press in Win/Linux because it's not a usual
+      // modifier for applications.  Here wants to check "Accel" like modifier.
+      || keyEvent->IsMeta()
+#endif
+      ;
   // Don't try to handle multiple-select pgUp/pgDown in single-select lists.
   if (isControlOrMeta && !mElement->Multiple() &&
       (keyEvent->mKeyCode == NS_VK_PAGE_UP ||

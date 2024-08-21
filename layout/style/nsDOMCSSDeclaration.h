@@ -63,8 +63,8 @@ class nsDOMCSSDeclaration : public nsICSSDeclaration {
    * Method analogous to CSSStyleDeclaration::GetPropertyValue,
    * which obeys all the same restrictions.
    */
-  virtual nsresult GetPropertyValue(const nsCSSPropertyID aPropID,
-                                    nsACString& aValue);
+  virtual void GetPropertyValue(const nsCSSPropertyID aPropID,
+                                nsACString& aValue);
 
   /**
    * Method analogous to CSSStyleDeclaration::SetProperty.  This
@@ -81,8 +81,8 @@ class nsDOMCSSDeclaration : public nsICSSDeclaration {
   void GetCssText(nsACString& aCssText) override;
   void SetCssText(const nsACString& aCssText, nsIPrincipal* aSubjectPrincipal,
                   mozilla::ErrorResult& aRv) override;
-  NS_IMETHOD GetPropertyValue(const nsACString& propertyName,
-                              nsACString& _retval) override;
+  void GetPropertyValue(const nsACString& propertyName,
+                        nsACString& _retval) override;
   void RemoveProperty(const nsACString& propertyName, nsACString& _retval,
                       mozilla::ErrorResult& aRv) override;
   void GetPropertyPriority(const nsACString& propertyName,
@@ -93,32 +93,6 @@ class nsDOMCSSDeclaration : public nsICSSDeclaration {
   uint32_t Length() override;
 
   // WebIDL interface for CSS2Properties
-#define CSS_PROP_PUBLIC_OR_PRIVATE(publicname_, privatename_) publicname_
-#define CSS_PROP(id_, method_)                                                 \
-  void Get##method_(nsACString& aValue, mozilla::ErrorResult& rv) {            \
-    rv = GetPropertyValue(eCSSProperty_##id_, aValue);                         \
-  }                                                                            \
-                                                                               \
-  void Set##method_(const nsACString& aValue, nsIPrincipal* aSubjectPrincipal, \
-                    mozilla::ErrorResult& aRv) {                               \
-    SetPropertyValue(eCSSProperty_##id_, aValue, aSubjectPrincipal, aRv);      \
-  }
-
-#define CSS_PROP_LIST_EXCLUDE_INTERNAL
-#define CSS_PROP_LIST_EXCLUDE_NOT_IN_STYLE
-#define CSS_PROP_LONGHAND(name_, id_, method_, ...) CSS_PROP(id_, method_)
-#define CSS_PROP_SHORTHAND(name_, id_, method_, ...) CSS_PROP(id_, method_)
-#define CSS_PROP_ALIAS(name_, aliasid_, id_, method_, ...) \
-  CSS_PROP(id_, method_)
-#include "mozilla/ServoCSSPropList.h"
-#undef CSS_PROP_ALIAS
-#undef CSS_PROP_SHORTHAND
-#undef CSS_PROP_LONGHAND
-#undef CSS_PROP_LIST_EXCLUDE_INTERNAL
-#undef CSS_PROP_LIST_EXCLUDE_NOT_IN_STYLE
-#undef CSS_PROP
-#undef CSS_PROP_PUBLIC_OR_PRIVATE
-
   virtual void IndexedGetter(uint32_t aIndex, bool& aFound,
                              nsACString& aPropName) override;
 
@@ -164,7 +138,7 @@ class nsDOMCSSDeclaration : public nsICSSDeclaration {
   // Document that we must call BeginUpdate/EndUpdate on around the
   // calls to SetCSSDeclaration and the style rule mutation that leads
   // to it.
-  virtual mozilla::dom::Document* DocToUpdate() = 0;
+  virtual mozilla::dom::Document* DocToUpdate() { return nullptr; }
 
   // mUrlExtraData returns URL data for parsing url values in
   // CSS. Returns nullptr on failure. If mUrlExtraData is nullptr,

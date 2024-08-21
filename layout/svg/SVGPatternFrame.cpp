@@ -65,7 +65,7 @@ nsresult SVGPatternFrame::AttributeChanged(int32_t aNameSpaceID,
        aAttribute == nsGkAtoms::width || aAttribute == nsGkAtoms::height ||
        aAttribute == nsGkAtoms::preserveAspectRatio ||
        aAttribute == nsGkAtoms::viewBox)) {
-    SVGObserverUtils::InvalidateDirectRenderingObservers(this);
+    SVGObserverUtils::InvalidateRenderingObservers(this);
   }
 
   if ((aNameSpaceID == kNameSpaceID_XLink ||
@@ -75,7 +75,7 @@ nsresult SVGPatternFrame::AttributeChanged(int32_t aNameSpaceID,
     SVGObserverUtils::RemoveTemplateObserver(this);
     mNoHRefURI = false;
     // And update whoever references us
-    SVGObserverUtils::InvalidateDirectRenderingObservers(this);
+    SVGObserverUtils::InvalidateRenderingObservers(this);
   }
 
   return SVGPaintServerFrame::AttributeChanged(aNameSpaceID, aAttribute,
@@ -212,8 +212,6 @@ void SVGPatternFrame::PaintChildren(DrawTarget* aDrawTarget,
                                     SVGPatternFrame* aPatternWithChildren,
                                     nsIFrame* aSource, float aGraphicOpacity,
                                     imgDrawingParams& aImgParams) {
-  nsIFrame* firstKid = aPatternWithChildren->mFrames.FirstChild();
-
   gfxContext ctx(aDrawTarget);
   gfxGroupForBlendAutoSaveRestore autoGroupForBlend(&ctx);
 
@@ -235,7 +233,7 @@ void SVGPatternFrame::PaintChildren(DrawTarget* aDrawTarget,
   // give back a clear surface if there's a loop
   if (!aPatternWithChildren->HasAnyStateBits(NS_FRAME_DRAWING_AS_PAINTSERVER)) {
     AutoSetRestorePaintServerState paintServer(aPatternWithChildren);
-    for (nsIFrame* kid = firstKid; kid; kid = kid->GetNextSibling()) {
+    for (auto* kid : aPatternWithChildren->mFrames) {
       gfxMatrix tm = *(aPatternWithChildren->mCTM);
 
       // The CTM of each frame referencing us can be different
@@ -469,7 +467,7 @@ gfxMatrix SVGPatternFrame::GetPatternTransform() {
   SVGAnimatedTransformList* animTransformList =
       GetPatternTransformList(GetContent());
   if (!animTransformList) {
-    return gfxMatrix();
+    return SVGUtils::GetTransformMatrixInUserSpace(this);
   }
 
   return animTransformList->GetAnimValue().GetConsolidationMatrix();
@@ -646,16 +644,16 @@ gfxMatrix SVGPatternFrame::ConstructCTM(const SVGAnimatedViewBox& aViewBox,
     // If we're dealing with an SVG target only retrieve the context once.
     // Calling the nsIFrame* variant of GetAnimValue would look it up on
     // every call.
-    viewportWidth =
-        GetLengthValue(SVGPatternElement::ATTR_WIDTH)->GetAnimValue(ctx);
-    viewportHeight =
-        GetLengthValue(SVGPatternElement::ATTR_HEIGHT)->GetAnimValue(ctx);
+    viewportWidth = GetLengthValue(SVGPatternElement::ATTR_WIDTH)
+                        ->GetAnimValueWithZoom(ctx);
+    viewportHeight = GetLengthValue(SVGPatternElement::ATTR_HEIGHT)
+                         ->GetAnimValueWithZoom(ctx);
   } else {
     // No SVG target, call the nsIFrame* variant of GetAnimValue.
-    viewportWidth =
-        GetLengthValue(SVGPatternElement::ATTR_WIDTH)->GetAnimValue(aTarget);
-    viewportHeight =
-        GetLengthValue(SVGPatternElement::ATTR_HEIGHT)->GetAnimValue(aTarget);
+    viewportWidth = GetLengthValue(SVGPatternElement::ATTR_WIDTH)
+                        ->GetAnimValueWithZoom(aTarget);
+    viewportHeight = GetLengthValue(SVGPatternElement::ATTR_HEIGHT)
+                         ->GetAnimValueWithZoom(aTarget);
   }
 
   if (viewportWidth <= 0.0f || viewportHeight <= 0.0f) {
@@ -690,13 +688,9 @@ already_AddRefed<gfxPattern> SVGPatternFrame::GetPaintServerPattern(
     return nullptr;
   }
 
-  RefPtr<gfxPattern> pattern = new gfxPattern(surface, pMatrix);
-
-  if (!pattern) {
-    return nullptr;
-  }
-
+  auto pattern = MakeRefPtr<gfxPattern>(surface, pMatrix);
   pattern->SetExtend(ExtendMode::REPEAT);
+
   return pattern.forget();
 }
 

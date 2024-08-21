@@ -31,16 +31,8 @@ class SVGFEUnstyledLeafFrame final : public nsIFrame {
  public:
   NS_DECL_FRAMEARENA_HELPERS(SVGFEUnstyledLeafFrame)
 
-  virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
-                                const nsDisplayListSet& aLists) override {}
-
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    if (aFlags & eSupportsContainLayoutAndPaint) {
-      return false;
-    }
-
-    return nsIFrame::IsFrameOfType(aFlags & ~(nsIFrame::eSVG));
-  }
+  void BuildDisplayList(nsDisplayListBuilder* aBuilder,
+                        const nsDisplayListSet& aLists) override {}
 
 #ifdef DEBUG_FRAME_DUMP
   nsresult GetFrameName(nsAString& aResult) const override {
@@ -48,8 +40,8 @@ class SVGFEUnstyledLeafFrame final : public nsIFrame {
   }
 #endif
 
-  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
-                                    int32_t aModType) override;
+  nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                            int32_t aModType) override;
 
   bool ComputeCustomOverflow(OverflowAreas& aOverflowAreas) override {
     // We don't maintain a ink overflow rect
@@ -73,13 +65,12 @@ nsresult SVGFEUnstyledLeafFrame::AttributeChanged(int32_t aNameSpaceID,
                                                   nsAtom* aAttribute,
                                                   int32_t aModType) {
   auto* element =
-      static_cast<mozilla::dom::SVGFEUnstyledElement*>(GetContent());
+      static_cast<mozilla::dom::SVGFilterPrimitiveChildElement*>(GetContent());
   if (element->AttributeAffectsRendering(aNameSpaceID, aAttribute)) {
     MOZ_ASSERT(
         GetParent()->GetParent()->IsSVGFilterFrame(),
         "Observers observe the filter, so that's what we must invalidate");
-    SVGObserverUtils::InvalidateDirectRenderingObservers(
-        GetParent()->GetParent());
+    SVGObserverUtils::InvalidateRenderingObservers(GetParent()->GetParent());
   }
 
   return nsIFrame::AttributeChanged(aNameSpaceID, aAttribute, aModType);

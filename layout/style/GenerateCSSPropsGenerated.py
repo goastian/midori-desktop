@@ -39,7 +39,7 @@ def generate(output, dataFile):
     raw_properties = runpy.run_path(dataFile)["data"]
     properties = [
         PropertyWrapper(i, p)
-        for i, p in enumerate(raw_properties)
+        for i, p in enumerate(raw_properties.values())
         if p.type() != "alias"
     ]
 
@@ -62,7 +62,7 @@ def generate(output, dataFile):
         "const int32_t nsCSSProps::"
         "kIDLNameSortPositionTable[eCSSProperty_COUNT] = {\n"
     )
-    for (p, position) in ps:
+    for p, position in ps:
         output.write("  {},\n".format(position))
     output.write("};\n\n")
 
@@ -70,7 +70,7 @@ def generate(output, dataFile):
     output.write(
         "const nsCSSProps::PropertyPref " "nsCSSProps::kPropertyPrefTable[] = {\n"
     )
-    for p in raw_properties:
+    for p in raw_properties.values():
         if not p.pref:
             continue
         if p.type() != "alias":

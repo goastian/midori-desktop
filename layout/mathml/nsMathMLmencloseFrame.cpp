@@ -157,8 +157,7 @@ void nsMathMLmencloseFrame::InitNotations() {
 
   nsAutoString value;
 
-  if (mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::notation_,
-                                     value)) {
+  if (mContent->AsElement()->GetAttr(nsGkAtoms::notation_, value)) {
     // parse the notation attribute
     nsWhitespaceTokenizer tokenizer(value);
 
@@ -206,8 +205,6 @@ void nsMathMLmencloseFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   /////////////
   // paint the menclosed content
   nsMathMLContainerFrame::BuildDisplayList(aBuilder, aLists);
-
-  if (NS_MATHML_HAS_ERROR(mPresentationData.flags)) return;
 
   nsRect mencloseRect = nsIFrame::GetRect();
   mencloseRect.x = mencloseRect.y = 0;
@@ -323,7 +320,7 @@ nsresult nsMathMLmencloseFrame::PlaceInternal(DrawTarget* aDrawTarget,
   ReflowOutput baseSize(aDesiredSize.GetWritingMode());
   nsresult rv = nsMathMLContainerFrame::Place(aDrawTarget, false, baseSize);
 
-  if (NS_MATHML_HAS_ERROR(mPresentationData.flags) || NS_FAILED(rv)) {
+  if (NS_FAILED(rv)) {
     DidReflowChildren(PrincipalChildList().FirstChild());
     return rv;
   }

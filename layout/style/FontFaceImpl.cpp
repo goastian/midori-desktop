@@ -106,7 +106,7 @@ static FontFaceLoadStatus LoadStateToStatus(
 already_AddRefed<FontFaceImpl> FontFaceImpl::CreateForRule(
     FontFace* aOwner, FontFaceSetImpl* aFontFaceSet,
     StyleLockedFontFaceRule* aRule) {
-  RefPtr<FontFaceImpl> obj = new FontFaceImpl(aOwner, aFontFaceSet);
+  auto obj = MakeRefPtr<FontFaceImpl>(aOwner, aFontFaceSet);
   obj->mRule = aRule;
   obj->mSourceType = eSourceType_FontFaceRule;
   obj->mInFontFaceSet = true;
@@ -472,8 +472,7 @@ bool FontFaceImpl::SetDescriptors(const nsACString& aFamily,
        !setDesc(eCSSFontDesc_FontVariationSettings,
                 aDescriptors.mVariationSettings)) ||
       !setDesc(eCSSFontDesc_Display, aDescriptors.mDisplay) ||
-      (StaticPrefs::layout_css_font_metrics_overrides_enabled() &&
-       (!setDesc(eCSSFontDesc_AscentOverride, aDescriptors.mAscentOverride) ||
+      ((!setDesc(eCSSFontDesc_AscentOverride, aDescriptors.mAscentOverride) ||
         !setDesc(eCSSFontDesc_DescentOverride, aDescriptors.mDescentOverride) ||
         !setDesc(eCSSFontDesc_LineGapOverride,
                  aDescriptors.mLineGapOverride))) ||
@@ -724,7 +723,7 @@ gfxCharacterMap* FontFaceImpl::GetUnicodeRangeAsCharacterMap() {
 
   Span<const StyleUnicodeRange> ranges(rangesPtr, len);
   if (!ranges.IsEmpty()) {
-    RefPtr<gfxCharacterMap> charMap = new gfxCharacterMap();
+    auto charMap = MakeRefPtr<gfxCharacterMap>();
     for (auto& range : ranges) {
       charMap->SetRange(range.start, range.end);
     }

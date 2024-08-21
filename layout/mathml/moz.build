@@ -8,18 +8,14 @@ with Files("**"):
     BUG_COMPONENT = ("Core", "MathML")
 
 if CONFIG["ENABLE_TESTS"]:
-    MOCHITEST_MANIFESTS += [
-        "tests/mochitest.ini",
-    ]
     MOCHITEST_CHROME_MANIFESTS += [
-        "tests/chrome.ini",
+        "tests/chrome.toml",
     ]
 
 UNIFIED_SOURCES += [
     "nsMathMLChar.cpp",
     "nsMathMLContainerFrame.cpp",
     "nsMathMLFrame.cpp",
-    "nsMathMLmactionFrame.cpp",
     "nsMathMLmencloseFrame.cpp",
     "nsMathMLmfracFrame.cpp",
     "nsMathMLmmultiscriptsFrame.cpp",
@@ -32,12 +28,15 @@ UNIFIED_SOURCES += [
     "nsMathMLmtableFrame.cpp",
     "nsMathMLmunderoverFrame.cpp",
     "nsMathMLOperators.cpp",
-    "nsMathMLSelectedFrame.cpp",
-    "nsMathMLsemanticsFrame.cpp",
     "nsMathMLTokenFrame.cpp",
 ]
 
-EXPORTS += ["nsIMathMLFrame.h", "nsMathMLOperators.h"]
+EXPORTS += [
+    "nsIMathMLFrame.h",
+    "nsMathMLContainerFrame.h",
+    "nsMathMLFrame.h",
+    "nsMathMLOperators.h",
+]
 
 include("/ipc/chromium/chromium-config.mozbuild")
 

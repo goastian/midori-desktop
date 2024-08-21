@@ -211,7 +211,7 @@ static void UpdateOldAnimationPropertiesWithNew(
 
 static already_AddRefed<dom::AnimationTimeline> GetNamedProgressTimeline(
     dom::Document* aDocument, const NonOwningAnimationTarget& aTarget,
-    const nsAtom* aName) {
+    nsAtom* aName) {
   // A named progress timeline is referenceable in animation-timeline by:
   // 1. the declaring element itself
   // 2. that element’s descendants
@@ -259,7 +259,7 @@ static already_AddRefed<dom::AnimationTimeline> GetTimeline(
   switch (aStyleTimeline.tag) {
     case StyleAnimationTimeline::Tag::Timeline: {
       // Check scroll-timeline-name property or view-timeline-property.
-      const nsAtom* name = aStyleTimeline.AsTimeline().AsAtom();
+      nsAtom* name = aStyleTimeline.AsTimeline().AsAtom();
       return name != nsGkAtoms::_empty
                  ? GetNamedProgressTimeline(aPresContext->Document(), aTarget,
                                             name)
@@ -318,6 +318,7 @@ static already_AddRefed<CSSAnimation> BuildAnimation(
   RefPtr<CSSAnimation> oldAnim =
       PopExistingAnimation(animationName, aCollection);
 
+  const auto composition = StyleToDom(aStyle.GetAnimationComposition(animIdx));
   if (oldAnim) {
     // Copy over the start times and (if still paused) pause starts
     // for each animation (matching on name only) that was also in the
@@ -329,20 +330,19 @@ static already_AddRefed<CSSAnimation> BuildAnimation(
     // In order to honor what the spec said, we'd copy more data over.
     UpdateOldAnimationPropertiesWithNew(
         *oldAnim, std::move(timing), std::move(keyframes), isStylePaused,
-        oldAnim->GetOverriddenProperties(), aBuilder, timeline,
-        aStyle.GetAnimationComposition(animIdx));
+        oldAnim->GetOverriddenProperties(), aBuilder, timeline, composition);
     return oldAnim.forget();
   }
 
-  KeyframeEffectParams effectOptions(aStyle.GetAnimationComposition(animIdx));
-  RefPtr<KeyframeEffect> effect = new dom::CSSAnimationKeyframeEffect(
+  KeyframeEffectParams effectOptions(composition);
+  auto effect = MakeRefPtr<dom::CSSAnimationKeyframeEffect>(
       aPresContext->Document(),
       OwningAnimationTarget(aTarget.mElement, aTarget.mPseudoType),
       std::move(timing), effectOptions);
 
   aBuilder.SetKeyframes(*effect, std::move(keyframes), timeline);
 
-  RefPtr<CSSAnimation> animation = new CSSAnimation(
+  auto animation = MakeRefPtr<CSSAnimation>(
       aPresContext->Document()->GetScopeObject(), animationName);
   animation->SetOwningElement(
       OwningElementRef(*aTarget.mElement, aTarget.mPseudoType));

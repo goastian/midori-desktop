@@ -60,10 +60,6 @@ struct RetainedDisplayListData {
     return GetFlags(aFrame).contains(FrameFlag::HasProps);
   }
 
-  bool HadWillChange(nsIFrame* aFrame) const {
-    return GetFlags(aFrame).contains(FrameFlag::HadWillChange);
-  }
-
   /**
    * Returns an iterator to the underlying frame storage.
    */
@@ -75,6 +71,8 @@ struct RetainedDisplayListData {
   bool AtModifiedFrameLimit() {
     return mModifiedFrameCount >= mModifiedFrameLimit;
   }
+
+  bool GetModifiedFrameCount() { return mModifiedFrameCount; }
 
   /**
    * Removes the given |aFrame| from this RetainedDisplayListData.
@@ -198,11 +196,6 @@ class RetainedDisplayListBuilder {
   void IncrementSubDocPresShellPaintCount(nsDisplayItem* aItem);
 
   /**
-   * Invalidates the current and previous caret frame if they have changed.
-   */
-  void InvalidateCaretFramesIfNeeded();
-
-  /**
    * A simple early exit heuristic to avoid slow partial display list rebuilds.
    * Returns true if a partial display list build should be attempted.
    */
@@ -270,7 +263,6 @@ class RetainedDisplayListBuilder {
 
   nsDisplayListBuilder mBuilder;
   RetainedDisplayList mList;
-  WeakFrame mPreviousCaret;
   RetainedDisplayListMetrics mMetrics;
   RetainedDisplayListData mData;
 };

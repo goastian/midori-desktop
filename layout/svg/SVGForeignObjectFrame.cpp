@@ -42,7 +42,7 @@ NS_IMPL_FRAMEARENA_HELPERS(SVGForeignObjectFrame)
 
 SVGForeignObjectFrame::SVGForeignObjectFrame(ComputedStyle* aStyle,
                                              nsPresContext* aPresContext)
-    : nsContainerFrame(aStyle, aPresContext, kClassID), mInReflow(false) {
+    : nsContainerFrame(aStyle, aPresContext, kClassID) {
   AddStateBits(NS_FRAME_REFLOW_ROOT | NS_FRAME_MAY_BE_TRANSFORMED |
                NS_FRAME_SVG_LAYOUT | NS_FRAME_FONT_INFLATION_CONTAINER |
                NS_FRAME_FONT_INFLATION_FLOW_ROOT);
@@ -120,8 +120,7 @@ void SVGForeignObjectFrame::Reflow(nsPresContext* aPresContext,
 
   NS_ASSERTION(!aReflowInput.mParentReflowInput,
                "should only get reflow from being reflow root");
-  NS_ASSERTION(aReflowInput.ComputedWidth() == GetSize().width &&
-                   aReflowInput.ComputedHeight() == GetSize().height,
+  NS_ASSERTION(aReflowInput.ComputedSize() == GetLogicalSize(),
                "reflow roots should be reflowed at existing size and "
                "svg.css should ensure we have no padding/border/margin");
 
@@ -412,8 +411,6 @@ void SVGForeignObjectFrame::DoReflow() {
   UniquePtr<gfxContext> renderingContext =
       presContext->PresShell()->CreateReferenceRenderingContext();
 
-  mInReflow = true;
-
   WritingMode wm = kid->GetWritingMode();
   ReflowInput reflowInput(presContext, kid, renderingContext.get(),
                           LogicalSize(wm, ISize(wm), NS_UNCONSTRAINEDSIZE));
@@ -438,8 +435,6 @@ void SVGForeignObjectFrame::DoReflow() {
                "unexpected size");
   FinishReflowChild(kid, presContext, desiredSize, &reflowInput, 0, 0,
                     ReflowChildFlags::NoMoveFrame);
-
-  mInReflow = false;
 }
 
 void SVGForeignObjectFrame::AppendDirectlyOwnedAnonBoxes(

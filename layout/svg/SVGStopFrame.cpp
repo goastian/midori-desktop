@@ -37,23 +37,15 @@ class SVGStopFrame : public nsIFrame {
 
   // nsIFrame interface:
 #ifdef DEBUG
-  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
-                    nsIFrame* aPrevInFlow) override;
+  void Init(nsIContent* aContent, nsContainerFrame* aParent,
+            nsIFrame* aPrevInFlow) override;
 #endif
 
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         const nsDisplayListSet& aLists) override {}
 
-  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
-                                    int32_t aModType) override;
-
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    if (aFlags & eSupportsContainLayoutAndPaint) {
-      return false;
-    }
-
-    return nsIFrame::IsFrameOfType(aFlags & ~(nsIFrame::eSVG));
-  }
+  nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                            int32_t aModType) override;
 
 #ifdef DEBUG_FRAME_DUMP
   nsresult GetFrameName(nsAString& aResult) const override {
@@ -86,7 +78,7 @@ nsresult SVGStopFrame::AttributeChanged(int32_t aNameSpaceID,
     MOZ_ASSERT(
         static_cast<SVGGradientFrame*>(do_QueryFrame(GetParent())),
         "Observers observe the gradient, so that's what we must invalidate");
-    SVGObserverUtils::InvalidateDirectRenderingObservers(GetParent());
+    SVGObserverUtils::InvalidateRenderingObservers(GetParent());
   }
 
   return nsIFrame::AttributeChanged(aNameSpaceID, aAttribute, aModType);

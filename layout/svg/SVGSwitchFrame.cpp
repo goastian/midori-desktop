@@ -35,8 +35,8 @@ class SVGSwitchFrame final : public SVGGFrame {
   NS_DECL_FRAMEARENA_HELPERS(SVGSwitchFrame)
 
 #ifdef DEBUG
-  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
-                    nsIFrame* aPrevInFlow) override;
+  void Init(nsIContent* aContent, nsContainerFrame* aParent,
+            nsIFrame* aPrevInFlow) override;
 #endif
 
 #ifdef DEBUG_FRAME_DUMP
@@ -45,16 +45,16 @@ class SVGSwitchFrame final : public SVGGFrame {
   }
 #endif
 
-  virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
-                                const nsDisplayListSet& aLists) override;
+  void BuildDisplayList(nsDisplayListBuilder* aBuilder,
+                        const nsDisplayListSet& aLists) override;
 
   // ISVGDisplayableFrame interface:
-  virtual void PaintSVG(gfxContext& aContext, const gfxMatrix& aTransform,
-                        imgDrawingParams& aImgParams) override;
+  void PaintSVG(gfxContext& aContext, const gfxMatrix& aTransform,
+                imgDrawingParams& aImgParams) override;
   nsIFrame* GetFrameForPoint(const gfxPoint& aPoint) override;
   void ReflowSVG() override;
-  virtual SVGBBox GetBBoxContribution(const Matrix& aToBBoxUserspace,
-                                      uint32_t aFlags) override;
+  SVGBBox GetBBoxContribution(const Matrix& aToBBoxUserspace,
+                              uint32_t aFlags) override;
 
  private:
   nsIFrame* GetActiveChildFrame();
@@ -89,8 +89,7 @@ void SVGSwitchFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
 
 void SVGSwitchFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
                                       const nsDisplayListSet& aLists) {
-  nsIFrame* kid = GetActiveChildFrame();
-  if (kid) {
+  if (auto* kid = GetActiveChildFrame()) {
     BuildDisplayListForChild(aBuilder, kid, aLists);
   }
 }
@@ -104,8 +103,7 @@ void SVGSwitchFrame::PaintSVG(gfxContext& aContext, const gfxMatrix& aTransform,
     return;
   }
 
-  nsIFrame* kid = GetActiveChildFrame();
-  if (kid) {
+  if (auto* kid = GetActiveChildFrame()) {
     gfxMatrix tm = aTransform;
     if (kid->GetContent()->IsSVGElement()) {
       tm = SVGUtils::GetTransformMatrixInUserSpace(kid) * tm;
@@ -119,10 +117,9 @@ nsIFrame* SVGSwitchFrame::GetFrameForPoint(const gfxPoint& aPoint) {
   return nullptr;
 }
 
-static bool shouldReflowSVGTextFrameInside(nsIFrame* aFrame) {
-  return aFrame->IsFrameOfType(nsIFrame::eSVG | nsIFrame::eSVGContainer) ||
-         aFrame->IsSVGForeignObjectFrame() ||
-         !aFrame->IsFrameOfType(nsIFrame::eSVG);
+static bool ShouldReflowSVGTextFrameInside(const nsIFrame* aFrame) {
+  return aFrame->IsSVGContainerFrame() || aFrame->IsSVGForeignObjectFrame() ||
+         !aFrame->IsSVGFrame();
 }
 
 void SVGSwitchFrame::AlwaysReflowSVGTextFrameDoForOneKid(nsIFrame* aKid) {
@@ -135,7 +132,7 @@ void SVGSwitchFrame::AlwaysReflowSVGTextFrameDoForOneKid(nsIFrame* aKid) {
                "A non-display SVGTextFrame directly contained in a display "
                "container?");
     static_cast<SVGTextFrame*>(aKid)->ReflowSVG();
-  } else if (shouldReflowSVGTextFrameInside(aKid)) {
+  } else if (ShouldReflowSVGTextFrameInside(aKid)) {
     if (!aKid->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
       for (nsIFrame* kid : aKid->PrincipalChildList()) {
         AlwaysReflowSVGTextFrameDoForOneKid(kid);
@@ -154,7 +151,7 @@ void SVGSwitchFrame::AlwaysReflowSVGTextFrameDoForOneKid(nsIFrame* aKid) {
 
 void SVGSwitchFrame::ReflowAllSVGTextFramesInsideNonActiveChildren(
     nsIFrame* aActiveChild) {
-  for (nsIFrame* kid = mFrames.FirstChild(); kid; kid = kid->GetNextSibling()) {
+  for (auto* kid : mFrames) {
     if (aActiveChild == kid) {
       continue;
     }
@@ -192,23 +189,21 @@ void SVGSwitchFrame::ReflowSVG() {
 
   OverflowAreas overflowRects;
 
-  nsIFrame* child = GetActiveChildFrame();
+  auto* child = GetActiveChildFrame();
   ReflowAllSVGTextFramesInsideNonActiveChildren(child);
 
   ISVGDisplayableFrame* svgChild = do_QueryFrame(child);
-  if (svgChild) {
-    MOZ_ASSERT(!child->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY),
-               "Check for this explicitly in the |if|, then");
+  if (svgChild && !child->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
     svgChild->ReflowSVG();
 
     // We build up our child frame overflows here instead of using
     // nsLayoutUtils::UnionChildOverflow since SVG frame's all use the same
     // frame list, and we're iterating over that list now anyway.
     ConsiderChildOverflow(overflowRects, child);
-  } else if (child && shouldReflowSVGTextFrameInside(child)) {
-    MOZ_ASSERT(child->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY) ||
-                   !child->IsFrameOfType(nsIFrame::eSVG),
-               "Check for this explicitly in the |if|, then");
+  } else if (child && ShouldReflowSVGTextFrameInside(child)) {
+    MOZ_ASSERT(
+        child->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY) || !child->IsSVGFrame(),
+        "Check for this explicitly in the |if|, then");
     ReflowSVGNonDisplayText(child);
   }
 
@@ -229,9 +224,8 @@ void SVGSwitchFrame::ReflowSVG() {
 
 SVGBBox SVGSwitchFrame::GetBBoxContribution(const Matrix& aToBBoxUserspace,
                                             uint32_t aFlags) {
-  nsIFrame* kid = GetActiveChildFrame();
-  ISVGDisplayableFrame* svgKid = do_QueryFrame(kid);
-  if (svgKid) {
+  auto* kid = GetActiveChildFrame();
+  if (ISVGDisplayableFrame* svgKid = do_QueryFrame(kid)) {
     nsIContent* content = kid->GetContent();
     gfxMatrix transform = ThebesMatrix(aToBBoxUserspace);
     if (content->IsSVGElement()) {
@@ -245,18 +239,10 @@ SVGBBox SVGSwitchFrame::GetBBoxContribution(const Matrix& aToBBoxUserspace,
 }
 
 nsIFrame* SVGSwitchFrame::GetActiveChildFrame() {
-  nsIContent* activeChild =
+  auto* activeChild =
       static_cast<dom::SVGSwitchElement*>(GetContent())->GetActiveChild();
 
-  if (activeChild) {
-    for (nsIFrame* kid = mFrames.FirstChild(); kid;
-         kid = kid->GetNextSibling()) {
-      if (activeChild == kid->GetContent()) {
-        return kid;
-      }
-    }
-  }
-  return nullptr;
+  return activeChild ? activeChild->GetPrimaryFrame() : nullptr;
 }
 
 }  // namespace mozilla

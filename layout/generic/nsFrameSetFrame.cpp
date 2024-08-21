@@ -89,7 +89,7 @@ class nsHTMLFramesetBorderFrame final : public nsLeafFrame {
                                WidgetGUIEvent* aEvent,
                                nsEventStatus* aEventStatus) override;
 
-  Maybe<Cursor> GetCursor(const nsPoint&) override;
+  Cursor GetCursor(const nsPoint&) override;
 
   virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                                 const nsDisplayListSet& aLists) override;
@@ -630,13 +630,13 @@ nsresult nsHTMLFramesetFrame::HandleEvent(nsPresContext* aPresContext,
   return NS_OK;
 }
 
-Maybe<nsIFrame::Cursor> nsHTMLFramesetFrame::GetCursor(const nsPoint&) {
+nsIFrame::Cursor nsHTMLFramesetFrame::GetCursor(const nsPoint&) {
   auto kind = StyleCursorKind::Default;
   if (mDragger) {
     kind = mDragger->mVertical ? StyleCursorKind::EwResize
                                : StyleCursorKind::NsResize;
   }
-  return Some(Cursor{kind, AllowCustomCursorImage::No});
+  return Cursor{kind, AllowCustomCursorImage::No};
 }
 
 void nsHTMLFramesetFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
@@ -760,7 +760,6 @@ void nsHTMLFramesetFrame::Reflow(nsPresContext* aPresContext,
                                  nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsHTMLFramesetFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   mozilla::PresShell* presShell = aPresContext->PresShell();
@@ -1083,7 +1082,7 @@ bool nsHTMLFramesetFrame::GetNoResize(nsIFrame* aChildFrame) {
   nsIContent* content = aChildFrame->GetContent();
 
   return content && content->IsElement() &&
-         content->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::noresize);
+         content->AsElement()->HasAttr(nsGkAtoms::noresize);
 }
 
 bool nsHTMLFramesetFrame::CanChildResize(bool aVertical, bool aLeft,
@@ -1312,7 +1311,6 @@ void nsHTMLFramesetBorderFrame::Reflow(nsPresContext* aPresContext,
                                        const ReflowInput& aReflowInput,
                                        nsReflowStatus& aStatus) {
   DO_GLOBAL_REFLOW_COUNT("nsHTMLFramesetBorderFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   // Override Reflow(), since we don't want to deal with what our
@@ -1454,12 +1452,12 @@ nsresult nsHTMLFramesetBorderFrame::HandleEvent(nsPresContext* aPresContext,
   return NS_OK;
 }
 
-Maybe<nsIFrame::Cursor> nsHTMLFramesetBorderFrame::GetCursor(const nsPoint&) {
+nsIFrame::Cursor nsHTMLFramesetBorderFrame::GetCursor(const nsPoint&) {
   auto kind = StyleCursorKind::Default;
   if (mCanResize) {
     kind = mVertical ? StyleCursorKind::EwResize : StyleCursorKind::NsResize;
   }
-  return Some(Cursor{kind, AllowCustomCursorImage::No});
+  return Cursor{kind, AllowCustomCursorImage::No};
 }
 
 #ifdef DEBUG_FRAME_DUMP

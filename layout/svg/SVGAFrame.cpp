@@ -29,13 +29,13 @@ class SVGAFrame final : public SVGDisplayContainerFrame {
   NS_DECL_FRAMEARENA_HELPERS(SVGAFrame)
 
 #ifdef DEBUG
-  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
-                    nsIFrame* aPrevInFlow) override;
+  void Init(nsIContent* aContent, nsContainerFrame* aParent,
+            nsIFrame* aPrevInFlow) override;
 #endif
 
   // nsIFrame:
-  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
-                                    int32_t aModType) override;
+  nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                            int32_t aModType) override;
 
 #ifdef DEBUG_FRAME_DUMP
   nsresult GetFrameName(nsAString& aResult) const override {
@@ -80,20 +80,6 @@ nsresult SVGAFrame::AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
     // return nsChangeHint_UpdateOverflow for "transform" attribute changes
     // and cause DoApplyRenderingChangeToTree to make the SchedulePaint call.
     NotifySVGChanged(TRANSFORM_CHANGED);
-  }
-
-  // Currently our SMIL implementation does not modify the DOM attributes. Once
-  // we implement the SVG 2 SMIL behaviour this can be removed
-  // SVGAElement::SetAttr/UnsetAttr's ResetLinkState() call will be sufficient.
-  if (aModType == dom::MutationEvent_Binding::SMIL &&
-      aAttribute == nsGkAtoms::href &&
-      (aNameSpaceID == kNameSpaceID_None ||
-       aNameSpaceID == kNameSpaceID_XLink)) {
-    auto* content = static_cast<dom::SVGAElement*>(GetContent());
-
-    // SMIL may change whether an <a> element is a link, in which case we will
-    // need to update the link state.
-    content->ResetLinkState(true, content->ElementHasHref());
   }
 
   return NS_OK;

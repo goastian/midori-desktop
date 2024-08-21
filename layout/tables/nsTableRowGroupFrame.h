@@ -33,8 +33,6 @@ struct TableRowGroupReflowInput;
  */
 class nsTableRowGroupFrame final : public nsContainerFrame,
                                    public nsILineIterator {
-  using TableRowGroupReflowInput = mozilla::TableRowGroupReflowInput;
-
  public:
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsTableRowGroupFrame)
@@ -97,8 +95,8 @@ class nsTableRowGroupFrame final : public nsContainerFrame,
   nsresult GetFrameName(nsAString& aResult) const override;
 #endif
 
-  nsTableRowFrame* GetFirstRow();
-  nsTableRowFrame* GetLastRow();
+  nsTableRowFrame* GetFirstRow() const;
+  nsTableRowFrame* GetLastRow() const;
 
   nsTableFrame* GetTableFrame() const {
     nsIFrame* parent = GetParent();
@@ -142,7 +140,7 @@ class nsTableRowGroupFrame final : public nsContainerFrame,
    * @param aHeaderFooterFrame the original header or footer row group frame
    * that was repeated
    */
-  nsresult InitRepeatedFrame(nsTableRowGroupFrame* aHeaderFooterFrame);
+  void InitRepeatedFrame(nsTableRowGroupFrame* aHeaderFooterFrame);
 
   /**
    * Get the total bsize of all the row rects
@@ -151,21 +149,6 @@ class nsTableRowGroupFrame final : public nsContainerFrame,
 
   mozilla::LogicalMargin GetBCBorderWidth(mozilla::WritingMode aWM);
 
-  /**
-   * Gets inner border widths before collapsing with cell borders
-   * Caller must get bstart border from previous row group or from table
-   * GetContinuousBCBorderWidth will not overwrite aBorder.BStart()
-   * see nsTablePainter about continuous borders
-   */
-  void GetContinuousBCBorderWidth(mozilla::WritingMode aWM,
-                                  mozilla::LogicalMargin& aBorder);
-
-  /**
-   * Sets full border widths before collapsing with cell borders
-   * @param aForSide - side to set; only IEnd, IStart, BEnd are valid
-   */
-  void SetContinuousBCBorderWidth(mozilla::LogicalSide aForSide,
-                                  BCPixelSize aPixelValue);
   /**
    * Adjust to the effect of visibility:collapse on the row group and
    * its children
@@ -290,14 +273,6 @@ class nsTableRowGroupFrame final : public nsContainerFrame,
   bool CanProvideLineIterator() const final { return true; }
   nsILineIterator* GetLineIterator() final { return this; }
 
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    if (aFlags & (eSupportsContainLayoutAndPaint | eSupportsAspectRatio)) {
-      return false;
-    }
-
-    return nsContainerFrame::IsFrameOfType(aFlags & ~(nsIFrame::eTablePart));
-  }
-
   void InvalidateFrame(uint32_t aDisplayItemKey = 0,
                        bool aRebuildDisplayItems = true) override;
   void InvalidateFrameWithRect(const nsRect& aRect,
@@ -309,14 +284,15 @@ class nsTableRowGroupFrame final : public nsContainerFrame,
   explicit nsTableRowGroupFrame(ComputedStyle* aStyle,
                                 nsPresContext* aPresContext);
 
-  void InitChildReflowInput(nsPresContext& aPresContext, bool aBorderCollapse,
+  void InitChildReflowInput(nsPresContext* aPresContext, bool aBorderCollapse,
                             ReflowInput& aReflowInput);
 
   LogicalSides GetLogicalSkipSides() const override;
 
   void PlaceChild(nsPresContext* aPresContext,
-                  TableRowGroupReflowInput& aReflowInput, nsIFrame* aKidFrame,
-                  const ReflowInput& aKidReflowInput, mozilla::WritingMode aWM,
+                  mozilla::TableRowGroupReflowInput& aReflowInput,
+                  nsIFrame* aKidFrame, const ReflowInput& aKidReflowInput,
+                  mozilla::WritingMode aWM,
                   const mozilla::LogicalPoint& aKidPosition,
                   const nsSize& aContainerSize, ReflowOutput& aDesiredSize,
                   const nsRect& aOriginalKidRect,
@@ -335,38 +311,35 @@ class nsTableRowGroupFrame final : public nsContainerFrame,
    * @param   aReflowInput current inline state
    */
   void ReflowChildren(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
-                      TableRowGroupReflowInput& aReflowInput,
+                      mozilla::TableRowGroupReflowInput& aReflowInput,
                       nsReflowStatus& aStatus,
                       bool* aPageBreakBeforeEnd = nullptr);
 
-  nsresult SplitRowGroup(nsPresContext* aPresContext,
-                         ReflowOutput& aDesiredSize,
-                         const ReflowInput& aReflowInput,
-                         nsTableFrame* aTableFrame, nsReflowStatus& aStatus,
-                         bool aRowForcedPageBreak);
+  void SplitRowGroup(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
+                     const ReflowInput& aReflowInput, nsTableFrame* aTableFrame,
+                     nsReflowStatus& aStatus, bool aRowForcedPageBreak);
 
-  void SplitSpanningCells(nsPresContext& aPresContext,
+  void SplitSpanningCells(nsPresContext* aPresContext,
                           const ReflowInput& aReflowInput,
-                          nsTableFrame& aTableFrame, nsTableRowFrame& aFirstRow,
-                          nsTableRowFrame& aLastRow, bool aFirstRowIsTopOfPage,
-                          nscoord aSpanningRowBottom,
+                          nsTableFrame* aTableFrame, nsTableRowFrame* aFirstRow,
+                          nsTableRowFrame* aLastRow, bool aFirstRowIsTopOfPage,
+                          nscoord aSpanningRowBEnd,
+                          const nsSize& aContainerSize,
                           nsTableRowFrame*& aContRowFrame,
                           nsTableRowFrame*& aFirstTruncatedRow,
-                          nscoord& aDesiredHeight);
+                          nscoord& aDesiredBSize);
 
-  void CreateContinuingRowFrame(nsIFrame& aRowFrame, nsIFrame** aContRowFrame);
+  /**
+   * Create a continuing table row frame, add it to the child list, and then
+   * push it and its later siblings to our overflow frames list.
+   */
+  nsTableRowFrame* CreateContinuingRowFrame(nsIFrame* aRowFrame);
 
   bool IsSimpleRowFrame(nsTableFrame* aTableFrame, nsTableRowFrame* aRowFrame);
 
   void GetNextRowSibling(nsIFrame** aRowFrame);
 
   void UndoContinuedRow(nsPresContext* aPresContext, nsTableRowFrame* aRow);
-
- private:
-  // border widths in pixels in the collapsing border model
-  BCPixelSize mIEndContBorderWidth = 0;
-  BCPixelSize mBEndContBorderWidth = 0;
-  BCPixelSize mIStartContBorderWidth = 0;
 
  public:
   bool IsRepeatable() const;
@@ -401,11 +374,4 @@ inline void nsTableRowGroupFrame::SetHasStyleBSize(bool aValue) {
   }
 }
 
-inline void nsTableRowGroupFrame::GetContinuousBCBorderWidth(
-    mozilla::WritingMode aWM, mozilla::LogicalMargin& aBorder) {
-  int32_t d2a = PresContext()->AppUnitsPerDevPixel();
-  aBorder.IEnd(aWM) = BC_BORDER_START_HALF_COORD(d2a, mIEndContBorderWidth);
-  aBorder.BEnd(aWM) = BC_BORDER_START_HALF_COORD(d2a, mBEndContBorderWidth);
-  aBorder.IStart(aWM) = BC_BORDER_END_HALF_COORD(d2a, mIStartContBorderWidth);
-}
 #endif

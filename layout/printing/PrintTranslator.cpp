@@ -10,6 +10,7 @@
 #include "nsDeviceContext.h"
 #include "mozilla/gfx/RecordedEvent.h"
 #include "mozilla/gfx/RecordingTypes.h"
+#include "mozilla/ProfilerMarkers.h"
 #include "mozilla/UniquePtr.h"
 #include "InlineTranslator.h"
 
@@ -26,6 +27,9 @@ PrintTranslator::PrintTranslator(nsDeviceContext* aDeviceContext)
 }
 
 bool PrintTranslator::TranslateRecording(PRFileDescStream& aRecording) {
+  AUTO_PROFILER_MARKER_TEXT("PrintTranslator", LAYOUT_Printing, {},
+                            "PrintTranslator::TranslateRecording"_ns);
+
   uint32_t magicInt;
   ReadElement(aRecording, magicInt);
   if (magicInt != mozilla::gfx::kMagicInt) {
@@ -44,7 +48,7 @@ bool PrintTranslator::TranslateRecording(PRFileDescStream& aRecording) {
     return false;
   }
 
-  int32_t eventType;
+  uint8_t eventType = RecordedEvent::EventType::INVALID;
   ReadElement(aRecording, eventType);
   while (aRecording.good()) {
     bool success = RecordedEvent::DoWithEventFromStream(

@@ -18,18 +18,13 @@
    To change the list of properties, see ServoCSSPropList.h
 
  */
-enum nsCSSPropertyID {
+enum nsCSSPropertyID : int32_t {
   eCSSProperty_UNKNOWN = -1,
 
 $property_ids
 
   // Some of the values below could probably overlap with each other
   // if we had a need for them to do so.
-
-  // Extra values for use in the values of the 'transition-property'
-  // property.
-  eCSSPropertyExtra_no_properties,
-  eCSSPropertyExtra_all_properties,
 
   // Extra value to represent custom properties (--*).
   eCSSPropertyExtra_variable,
@@ -43,7 +38,7 @@ const nsCSSPropertyID
 const nsCSSPropertyID
   eCSSProperty_COUNT = $shorthand_count;
 const nsCSSPropertyID
-  eCSSProperty_COUNT_with_aliases = eCSSPropertyExtra_no_properties;
+  eCSSProperty_COUNT_with_aliases = eCSSPropertyExtra_variable;
 
 namespace mozilla {
 

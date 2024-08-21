@@ -6,14 +6,13 @@
 
 #include "ContainStyleScopeManager.h"
 
-#include "mozilla/ComputedStyle.h"
 #include "mozilla/ServoStyleSet.h"
+#include "nsIContentInlines.h"
 #include "CounterStyleManager.h"
 #include "nsCounterManager.h"
 #include "nsIContent.h"
-#include "nsIContentInlines.h"
 #include "nsIFrame.h"
-#include "nsLayoutUtils.h"
+#include "nsContentUtils.h"
 #include "nsQuoteList.h"
 
 namespace mozilla {
@@ -21,8 +20,9 @@ namespace mozilla {
 nsGenConNode* ContainStyleScope::GetPrecedingElementInGenConList(
     nsGenConList* aList) {
   auto IsAfter = [this](nsGenConNode* aNode) {
-    return nsLayoutUtils::CompareTreePosition(
-               mContent, aNode->mPseudoFrame->GetContent()) > 0;
+    return nsContentUtils::CompareTreePosition<TreeKind::Flat>(
+               mContent, aNode->mPseudoFrame->GetContent(),
+               /* aCommonAncestor = */ nullptr) > 0;
   };
   return aList->BinarySearch(IsAfter);
 }
@@ -190,28 +190,39 @@ static bool GetFirstCounterValueForScopeAndFrame(ContainStyleScope* aScope,
 
 void ContainStyleScopeManager::GetSpokenCounterText(nsIFrame* aFrame,
                                                     nsAString& aText) {
+  using Tag = StyleCounterStyle::Tag;
+  const auto& listStyleType = aFrame->StyleList()->mListStyleType;
+  switch (listStyleType.tag) {
+    case Tag::None:
+      return;
+    case Tag::String:
+      listStyleType.AsString().AsAtom()->ToString(aText);
+      return;
+    case Tag::Symbols:
+    case Tag::Name:
+      break;
+  }
+
   CounterValue ordinal = 1;
   GetFirstCounterValueForScopeAndFrame(&GetRootScope(), aFrame, ordinal);
 
-  CounterStyle* counterStyle =
-      aFrame->PresContext()->CounterStyleManager()->ResolveCounterStyle(
-          aFrame->StyleList()->mCounterStyle);
-  nsAutoString text;
-  bool isBullet;
-  counterStyle->GetSpokenCounterText(ordinal, aFrame->GetWritingMode(), text,
+  aFrame->PresContext()->CounterStyleManager()->WithCounterStyleNameOrSymbols(
+      listStyleType, [&](CounterStyle* aStyle) {
+        nsAutoString text;
+        bool isBullet;
+        aStyle->GetSpokenCounterText(ordinal, aFrame->GetWritingMode(), text,
                                      isBullet);
-  if (isBullet) {
-    aText = text;
-    if (!counterStyle->IsNone()) {
-      aText.Append(' ');
-    }
-  } else {
-    counterStyle->GetPrefix(aText);
-    aText += text;
-    nsAutoString suffix;
-    counterStyle->GetSuffix(suffix);
-    aText += suffix;
-  }
+        if (isBullet) {
+          aText = text;
+          aText.Append(' ');
+        } else {
+          aStyle->GetPrefix(aText);
+          aText += text;
+          nsAutoString suffix;
+          aStyle->GetSuffix(suffix);
+          aText += suffix;
+        }
+      });
 }
 #endif
 

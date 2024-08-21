@@ -126,20 +126,14 @@ NS_QUERYFRAME_TAIL_INHERITING(SVGDisplayContainerFrame)
 
 /* virtual */
 nscoord SVGOuterSVGFrame::GetMinISize(gfxContext* aRenderingContext) {
-  nscoord result;
-  DISPLAY_MIN_INLINE_SIZE(this, result);
-
-  // If this ever changes to return something other than zero, then
-  // nsSubDocumentFrame::GetMinISize will also need to change.
-  result = nscoord(0);
-
-  return result;
+  auto size = GetIntrinsicSize();
+  const auto& iSize = GetWritingMode().IsVertical() ? size.height : size.width;
+  return iSize.valueOr(0);
 }
 
 /* virtual */
 nscoord SVGOuterSVGFrame::GetPrefISize(gfxContext* aRenderingContext) {
   nscoord result;
-  DISPLAY_PREF_INLINE_SIZE(this, result);
 
   SVGSVGElement* svg = static_cast<SVGSVGElement*>(GetContent());
   WritingMode wm = GetWritingMode();
@@ -164,7 +158,8 @@ nscoord SVGOuterSVGFrame::GetPrefISize(gfxContext* aRenderingContext) {
       result = nscoord(0);
     }
   } else {
-    result = nsPresContext::CSSPixelsToAppUnits(isize.GetAnimValue(svg));
+    result =
+        nsPresContext::CSSPixelsToAppUnits(isize.GetAnimValueWithZoom(svg));
     if (result < 0) {
       result = nscoord(0);
     }
@@ -182,7 +177,7 @@ IntrinsicSize SVGOuterSVGFrame::GetIntrinsicSize() {
   if (containAxes.IsBoth()) {
     // Intrinsic size of 'contain:size' replaced elements is determined by
     // contain-intrinsic-size, defaulting to 0x0.
-    return containAxes.ContainIntrinsicSize(IntrinsicSize(0, 0), *this);
+    return FinishIntrinsicSize(containAxes, IntrinsicSize(0, 0));
   }
 
   SVGSVGElement* content = static_cast<SVGSVGElement*>(GetContent());
@@ -195,17 +190,17 @@ IntrinsicSize SVGOuterSVGFrame::GetIntrinsicSize() {
 
   if (!width.IsPercentage()) {
     nscoord val =
-        nsPresContext::CSSPixelsToAppUnits(width.GetAnimValue(content));
+        nsPresContext::CSSPixelsToAppUnits(width.GetAnimValueWithZoom(content));
     intrinsicSize.width.emplace(std::max(val, 0));
   }
 
   if (!height.IsPercentage()) {
-    nscoord val =
-        nsPresContext::CSSPixelsToAppUnits(height.GetAnimValue(content));
+    nscoord val = nsPresContext::CSSPixelsToAppUnits(
+        height.GetAnimValueWithZoom(content));
     intrinsicSize.height.emplace(std::max(val, 0));
   }
 
-  return containAxes.ContainIntrinsicSize(intrinsicSize, *this);
+  return FinishIntrinsicSize(containAxes, intrinsicSize);
 }
 
 /* virtual */
@@ -325,7 +320,6 @@ void SVGOuterSVGFrame::Reflow(nsPresContext* aPresContext,
                               nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("SVGOuterSVGFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
   NS_FRAME_TRACE(
       NS_FRAME_TRACE_CALLS,
@@ -334,12 +328,8 @@ void SVGOuterSVGFrame::Reflow(nsPresContext* aPresContext,
 
   MOZ_ASSERT(HasAnyStateBits(NS_FRAME_IN_REFLOW), "frame is not in reflow");
 
-  aDesiredSize.Width() =
-      aReflowInput.ComputedWidth() +
-      aReflowInput.ComputedPhysicalBorderPadding().LeftRight();
-  aDesiredSize.Height() =
-      aReflowInput.ComputedHeight() +
-      aReflowInput.ComputedPhysicalBorderPadding().TopBottom();
+  const auto wm = GetWritingMode();
+  aDesiredSize.SetSize(wm, aReflowInput.ComputedSizeWithBorderPadding(wm));
 
   NS_ASSERTION(!GetPrevInFlow(), "SVG can't currently be broken across pages.");
 
@@ -356,14 +346,12 @@ void SVGOuterSVGFrame::Reflow(nsPresContext* aPresContext,
   // If our SVG viewport has changed, update our content and notify.
   // http://www.w3.org/TR/SVG11/coords.html#ViewportSpace
 
-  svgFloatSize newViewportSize(
+  gfx::Size newViewportSize(
       nsPresContext::AppUnitsToFloatCSSPixels(aReflowInput.ComputedWidth()),
       nsPresContext::AppUnitsToFloatCSSPixels(aReflowInput.ComputedHeight()));
 
-  svgFloatSize oldViewportSize = svgElem->GetViewportSize();
-
   uint32_t changeBits = 0;
-  if (newViewportSize != oldViewportSize) {
+  if (newViewportSize != svgElem->GetViewportSize()) {
     // When our viewport size changes, we may need to update the overflow rects
     // of our child frames. This is the case if:
     //

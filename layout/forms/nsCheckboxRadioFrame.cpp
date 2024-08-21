@@ -52,18 +52,12 @@ void nsCheckboxRadioFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
 
 /* virtual */
 nscoord nsCheckboxRadioFrame::GetMinISize(gfxContext* aRenderingContext) {
-  nscoord result;
-  DISPLAY_MIN_INLINE_SIZE(this, result);
-  result = StyleDisplay()->HasAppearance() ? DefaultSize() : 0;
-  return result;
+  return StyleDisplay()->HasAppearance() ? DefaultSize() : 0;
 }
 
 /* virtual */
 nscoord nsCheckboxRadioFrame::GetPrefISize(gfxContext* aRenderingContext) {
-  nscoord result;
-  DISPLAY_PREF_INLINE_SIZE(this, result);
-  result = StyleDisplay()->HasAppearance() ? DefaultSize() : 0;
-  return result;
+  return StyleDisplay()->HasAppearance() ? DefaultSize() : 0;
 }
 
 /* virtual */
@@ -76,13 +70,9 @@ LogicalSize nsCheckboxRadioFrame::ComputeAutoSize(
   if (!StyleDisplay()->HasAppearance()) {
     return size;
   }
-
-  // Note: this call always set the BSize to NS_UNCONSTRAINEDSIZE.
-  size = nsAtomicContainerFrame::ComputeAutoSize(
+  return nsAtomicContainerFrame::ComputeAutoSize(
       aRC, aWM, aCBSize, aAvailableISize, aMargin, aBorderPadding,
       aSizeOverrides, aFlags);
-  size.BSize(aWM) = DefaultSize();
-  return size;
 }
 
 Maybe<nscoord> nsCheckboxRadioFrame::GetNaturalBaselineBOffset(
@@ -106,7 +96,7 @@ Maybe<nscoord> nsCheckboxRadioFrame::GetNaturalBaselineBOffset(
 
   if (aWM.IsCentralBaseline()) {
     return Some(GetLogicalUsedBorderAndPadding(aWM).BStart(aWM) +
-                ContentSize(aWM).BSize(aWM) / 2);
+                ContentBSize(aWM) / 2);
   }
   // This is for compatibility with Chrome, Safari and Edge (Dec 2016).
   // Treat radio buttons and checkboxes as having an intrinsic baseline
@@ -125,7 +115,6 @@ void nsCheckboxRadioFrame::Reflow(nsPresContext* aPresContext,
                                   nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsCheckboxRadioFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
   NS_FRAME_TRACE(
       NS_FRAME_TRACE_CALLS,
@@ -133,10 +122,13 @@ void nsCheckboxRadioFrame::Reflow(nsPresContext* aPresContext,
        aReflowInput.AvailableWidth(), aReflowInput.AvailableHeight()));
 
   const auto wm = aReflowInput.GetWritingMode();
-  aDesiredSize.SetSize(wm, aReflowInput.ComputedSizeWithBorderPadding(wm));
-
+  const auto contentBoxSize =
+      aReflowInput.ComputedSizeWithBSizeFallback([&] { return DefaultSize(); });
+  aDesiredSize.SetSize(
+      wm,
+      contentBoxSize + aReflowInput.ComputedLogicalBorderPadding(wm).Size(wm));
   if (nsLayoutUtils::FontSizeInflationEnabled(aPresContext)) {
-    float inflation = nsLayoutUtils::FontSizeInflationFor(this);
+    const float inflation = nsLayoutUtils::FontSizeInflationFor(this);
     aDesiredSize.Width() *= inflation;
     aDesiredSize.Height() *= inflation;
   }
@@ -159,13 +151,6 @@ nsresult nsCheckboxRadioFrame::HandleEvent(nsPresContext* aPresContext,
     return nsIFrame::HandleEvent(aPresContext, aEvent, aEventStatus);
   }
   return NS_OK;
-}
-
-void nsCheckboxRadioFrame::GetCurrentCheckState(bool* aState) {
-  HTMLInputElement* inputElement = HTMLInputElement::FromNode(mContent);
-  if (inputElement) {
-    *aState = inputElement->Checked();
-  }
 }
 
 nsresult nsCheckboxRadioFrame::SetFormProperty(nsAtom* aName,

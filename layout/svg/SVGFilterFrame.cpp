@@ -88,9 +88,7 @@ const SVGAnimatedLength* SVGFilterFrame::GetLengthValue(uint32_t aIndex,
 const SVGFilterElement* SVGFilterFrame::GetFilterContent(nsIContent* aDefault) {
   for (nsIContent* child = mContent->GetFirstChild(); child;
        child = child->GetNextSibling()) {
-    RefPtr<SVGFE> primitive;
-    CallQueryInterface(child, (SVGFE**)getter_AddRefs(primitive));
-    if (primitive) {
+    if (child->IsSVGFilterPrimitiveElement()) {
       return static_cast<SVGFilterElement*>(GetContent());
     }
   }
@@ -129,15 +127,12 @@ SVGFilterFrame* SVGFilterFrame::GetReferencedFilter() {
   };
 
   nsIFrame* tframe = SVGObserverUtils::GetAndObserveTemplate(this, GetHref);
-  if (tframe) {
-    LayoutFrameType frameType = tframe->Type();
-    if (frameType == LayoutFrameType::SVGFilter) {
-      return static_cast<SVGFilterFrame*>(tframe);
-    }
-    // We don't call SVGObserverUtils::RemoveTemplateObserver and set
-    // `mNoHRefURI = false` here since we want to be invalidated if the ID
-    // specified by our href starts resolving to a different/valid element.
+  if (tframe && tframe->IsSVGFilterFrame()) {
+    return static_cast<SVGFilterFrame*>(tframe);
   }
+  // We don't call SVGObserverUtils::RemoveTemplateObserver and set
+  // `mNoHRefURI = false` here since we want to be invalidated if the ID
+  // specified by our href starts resolving to a different/valid element.
 
   return nullptr;
 }
@@ -150,7 +145,7 @@ nsresult SVGFilterFrame::AttributeChanged(int32_t aNameSpaceID,
        aAttribute == nsGkAtoms::width || aAttribute == nsGkAtoms::height ||
        aAttribute == nsGkAtoms::filterUnits ||
        aAttribute == nsGkAtoms::primitiveUnits)) {
-    SVGObserverUtils::InvalidateDirectRenderingObservers(this);
+    SVGObserverUtils::InvalidateRenderingObservers(this);
   } else if ((aNameSpaceID == kNameSpaceID_XLink ||
               aNameSpaceID == kNameSpaceID_None) &&
              aAttribute == nsGkAtoms::href) {
@@ -158,7 +153,7 @@ nsresult SVGFilterFrame::AttributeChanged(int32_t aNameSpaceID,
     SVGObserverUtils::RemoveTemplateObserver(this);
     mNoHRefURI = false;
     // And update whoever references us
-    SVGObserverUtils::InvalidateDirectRenderingObservers(this);
+    SVGObserverUtils::InvalidateRenderingObservers(this);
   }
   return SVGContainerFrame::AttributeChanged(aNameSpaceID, aAttribute,
                                              aModType);

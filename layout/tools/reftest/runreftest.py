@@ -106,7 +106,6 @@ if sys.version_info[0] == 3:
             raise value_.with_traceback(tb_)
         raise value_
 
-
 else:
     exec("def reraise_(tp_, value_, tb_=None):\n    raise tp_, value_, tb_\n")
 
@@ -253,7 +252,7 @@ class ReftestResolver(object):
                 rv = [
                     (
                         os.path.join(dirname, default_manifest),
-                        r".*%s(?:[#?].*)?$" % pathname.replace("?", "\?"),
+                        r".*%s(?:[#?].*)?$" % pathname.replace("?", r"\?"),
                     )
                 ]
 
@@ -370,14 +369,14 @@ class RefTest(object):
         locations.add_host(server, scheme="http", port=port)
         locations.add_host(server, scheme="https", port=port)
 
-        sandbox_whitelist_paths = options.sandboxReadWhitelist
+        sandbox_allowlist_paths = options.sandboxReadWhitelist
         if platform.system() == "Linux" or platform.system() in (
             "Windows",
             "Microsoft",
         ):
             # Trailing slashes are needed to indicate directories on Linux and Windows
-            sandbox_whitelist_paths = map(
-                lambda p: os.path.join(p, ""), sandbox_whitelist_paths
+            sandbox_allowlist_paths = map(
+                lambda p: os.path.join(p, ""), sandbox_allowlist_paths
             )
 
         addons = []
@@ -403,7 +402,7 @@ class RefTest(object):
         kwargs = {
             "addons": addons,
             "locations": locations,
-            "whitelistpaths": sandbox_whitelist_paths,
+            "allowlistpaths": sandbox_allowlist_paths,
         }
         if profile_to_clone:
             profile = mozprofile.Profile.clone(profile_to_clone, **kwargs)
@@ -475,6 +474,9 @@ class RefTest(object):
         # config specific flags
         prefs["sandbox.apple_silicon"] = mozinfo.info.get("apple_silicon", False)
 
+        prefs["sandbox.mozinfo"] = json.dumps(mozinfo.info)
+        prefs["sandbox.os_version"] = mozinfo.info.get("os_version", "")
+
         # Set tests to run or manifests to parse.
         if tests:
             testlist = os.path.join(profile.profile, "reftests.json")
@@ -483,11 +485,6 @@ class RefTest(object):
             prefs["reftest.tests"] = testlist
         elif manifests:
             prefs["reftest.manifests"] = json.dumps(manifests)
-
-        # Unconditionally update the e10s pref, default True
-        prefs["browser.tabs.remote.autostart"] = True
-        if not options.e10s:
-            prefs["browser.tabs.remote.autostart"] = False
 
         # default fission to True
         prefs["fission.autostart"] = True
@@ -499,22 +496,6 @@ class RefTest(object):
                 prefs["reftest.totalChunks"] = options.totalChunks
             if options.thisChunk:
                 prefs["reftest.thisChunk"] = options.thisChunk
-
-        # Bug 1262954: For winXP + e10s disable acceleration
-        if (
-            platform.system() in ("Windows", "Microsoft")
-            and "5.1" in platform.version()
-            and options.e10s
-        ):
-            prefs["layers.acceleration.disabled"] = True
-
-        # Bug 1300355: Disable canvas cache for win7 as it uses
-        # too much memory and causes OOMs.
-        if (
-            platform.system() in ("Windows", "Microsoft")
-            and "6.1" in platform.version()
-        ):
-            prefs["reftest.nocache"] = True
 
         if options.marionette:
             # options.marionette can specify host:port
@@ -542,9 +523,7 @@ class RefTest(object):
 
         self.copyExtraFilesToProfile(options, profile)
 
-        self.log.info(
-            "Running with e10s: {}".format(prefs["browser.tabs.remote.autostart"])
-        )
+        self.log.info("Running with e10s: {}".format(options.e10s))
         self.log.info("Running with fission: {}".format(prefs["fission.autostart"]))
 
         return profile
@@ -558,10 +537,6 @@ class RefTest(object):
             xrePath=options.xrePath, debugger=options.debugger
         )
         browserEnv["XPCOM_DEBUG_BREAK"] = "stack"
-        if options.topsrcdir:
-            browserEnv["MOZ_DEVELOPER_REPO_DIR"] = options.topsrcdir
-        if hasattr(options, "topobjdir"):
-            browserEnv["MOZ_DEVELOPER_OBJ_DIR"] = options.topobjdir
 
         if mozinfo.info["asan"]:
             # Disable leak checking for reftests for now
@@ -596,6 +571,9 @@ class RefTest(object):
 
         if options.headless:
             browserEnv["MOZ_HEADLESS"] = "1"
+
+        if not options.e10s:
+            browserEnv["MOZ_FORCE_DISABLE_E10S"] = "1"
 
         return browserEnv
 
@@ -671,13 +649,13 @@ class RefTest(object):
         ]
 
         stepResults = {}
-        for (descr, step) in steps:
+        for descr, step in steps:
             stepResults[descr] = "not run / incomplete"
 
         startTime = datetime.now()
         maxTime = timedelta(seconds=options.verify_max_time)
         finalResult = "PASSED"
-        for (descr, step) in steps:
+        for descr, step in steps:
             if (datetime.now() - startTime) > maxTime:
                 self.log.info("::: Test verification is taking too long: Giving up!")
                 self.log.info(
@@ -749,7 +727,7 @@ class RefTest(object):
         # First job is only needs-focus tests.  Remaining jobs are
         # non-needs-focus and chunked.
         perProcessArgs[0].insert(-1, "--focus-filter-mode=needs-focus")
-        for (chunkNumber, jobArgs) in enumerate(perProcessArgs[1:], start=1):
+        for chunkNumber, jobArgs in enumerate(perProcessArgs[1:], start=1):
             jobArgs[-1:-1] = [
                 "--focus-filter-mode=non-needs-focus",
                 "--total-chunks=%d" % jobsWithoutFocus,
@@ -789,16 +767,16 @@ class RefTest(object):
         # Output the summaries that the ReftestThread filters suppressed.
         summaryObjects = [defaultdict(int) for s in summaryLines]
         for t in threads:
-            for (summaryObj, (text, categories)) in zip(summaryObjects, summaryLines):
+            for summaryObj, (text, categories) in zip(summaryObjects, summaryLines):
                 threadMatches = t.summaryMatches[text]
-                for (attribute, description) in categories:
+                for attribute, description in categories:
                     amount = int(threadMatches.group(attribute) if threadMatches else 0)
                     summaryObj[attribute] += amount
                 amount = int(threadMatches.group("total") if threadMatches else 0)
                 summaryObj["total"] += amount
 
         print("REFTEST INFO | Result summary:")
-        for (summaryObj, (text, categories)) in zip(summaryObjects, summaryLines):
+        for summaryObj, (text, categories) in zip(summaryObjects, summaryLines):
             details = ", ".join(
                 [
                     "%d %s" % (summaryObj[attribute], description)
@@ -882,7 +860,6 @@ class RefTest(object):
         valgrindSuppFiles=None,
         **profileArgs
     ):
-
         if cmdargs is None:
             cmdargs = []
         cmdargs = cmdargs[:]
@@ -1027,12 +1004,8 @@ class RefTest(object):
             status = 1
 
         if status and not crashed:
-            msg = (
-                "TEST-UNEXPECTED-FAIL | %s | application terminated with exit code %s"
-                % (self.lastTestSeen, status)
-            )
-            # use process_output so message is logged verbatim
-            self.log.process_output(None, msg)
+            msg = "application terminated with exit code %s" % (status)
+            self.log.shutdown_failure(group=self.lastTestSeen, message=msg)
 
         runner.cleanup()
         self.cleanup(profile.profile)
@@ -1045,7 +1018,7 @@ class RefTest(object):
         return status
 
     def getActiveTests(self, manifests, options, testDumpFile=None):
-        # These prefs will cause reftest.jsm to parse the manifests,
+        # These prefs will cause reftest.sys.mjs to parse the manifests,
         # dump the resulting tests to a file, and exit.
         prefs = {
             "reftest.manifests": json.dumps(manifests),

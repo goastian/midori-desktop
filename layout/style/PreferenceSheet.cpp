@@ -11,7 +11,7 @@
 #include "mozilla/Encoding.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPrefs_browser.h"
-#include "mozilla/StaticPrefs_devtools.h"
+#include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/StaticPrefs_widget.h"
 #include "mozilla/StaticPrefs_ui.h"
 #include "mozilla/Telemetry.h"
@@ -53,14 +53,6 @@ static void GetColor(const char* aPrefName, ColorScheme aColorScheme,
 }
 
 auto PreferenceSheet::PrefsKindFor(const Document& aDoc) -> PrefsKind {
-  // DevTools documents run in a content frame but should temporarily use
-  // chrome preferences, in particular to avoid applying High Contrast mode
-  // colors. See Bug 1575766.
-  if (aDoc.IsDevToolsDocument() &&
-      StaticPrefs::devtools_toolbox_force_chrome_prefs()) {
-    return PrefsKind::Chrome;
-  }
-
   if (aDoc.IsInChromeDocShell()) {
     return PrefsKind::Chrome;
   }
@@ -92,7 +84,8 @@ static bool UseStandinsForNativeColors() {
              "we want to have consistent colors across the browser if RFP is "
              "enabled, so we check the global preference"
              "not excluding chrome browsers or webpages, so we call the legacy "
-             "RFP function to prevent that") ||
+             "RFP function to prevent that",
+             RFPTarget::UseStandinsForNativeColors) ||
          StaticPrefs::ui_use_standins_for_native_colors();
 }
 
@@ -155,15 +148,6 @@ void PreferenceSheet::Prefs::LoadColors(bool aIsLight) {
     }
   }
 
-  {
-    // These two are not color-scheme dependent, as we don't rebuild the
-    // preference sheet based on effective color scheme.
-    GetColor("browser.display.focus_text_color", ColorScheme::Light,
-             colors.mFocusText);
-    GetColor("browser.display.focus_background_color", ColorScheme::Light,
-             colors.mFocusBackground);
-  }
-
   // Wherever we got the default background color from, ensure it is opaque.
   colors.mDefaultBackground =
       NS_ComposeColors(NS_RGB(0xFF, 0xFF, 0xFF), colors.mDefaultBackground);
@@ -175,6 +159,29 @@ bool PreferenceSheet::Prefs::NonNativeThemeShouldBeHighContrast() const {
   // specially in dark themes mode.
   return StaticPrefs::widget_non_native_theme_always_high_contrast() ||
          !mUseDocumentColors;
+}
+
+auto PreferenceSheet::ColorSchemeSettingForChrome()
+    -> ChromeColorSchemeSetting {
+  switch (StaticPrefs::browser_theme_toolbar_theme()) {
+    case 0:  // Dark
+      return ChromeColorSchemeSetting::Dark;
+    case 1:  // Light
+      return ChromeColorSchemeSetting::Light;
+    default:
+      return ChromeColorSchemeSetting::System;
+  }
+}
+
+ColorScheme PreferenceSheet::ThemeDerivedColorSchemeForContent() {
+  switch (StaticPrefs::browser_theme_content_theme()) {
+    case 0:  // Dark
+      return ColorScheme::Dark;
+    case 1:  // Light
+      return ColorScheme::Light;
+    default:
+      return LookAndFeel::SystemColorScheme();
+  }
 }
 
 void PreferenceSheet::Prefs::Load(bool aIsChrome) {
@@ -193,35 +200,47 @@ void PreferenceSheet::Prefs::Load(bool aIsChrome) {
   LoadColors(true);
   LoadColors(false);
 
-  mColorSchemeChoice = [&] {
-    // When not forcing colors, we use the standard mechanism, the document is
-    // in control taking into account user preferences if it wishes to.
-    if (mUseDocumentColors) {
-      return ColorSchemeChoice::Standard;
-    }
+  // When forcing the pref colors, we need to forcibly use the light color-set,
+  // as those are the colors exposed to the user in the colors dialog.
+  mMustUseLightColorSet = mUsePrefColors && !mUseDocumentColors;
 #ifdef XP_WIN
+  if (mUseAccessibilityTheme && (mIsChrome || !mUseDocumentColors)) {
     // Windows overrides the light colors with the HCM colors when HCM is
-    // active, so make sure to always use the light system colors in that case.
-    // For the same reason, we need to force the light color set to be used.
-    if (mUseAccessibilityTheme) {
-      mMustUseLightColorSet = true;
-      return ColorSchemeChoice::Light;
-    }
+    // active, so make sure to always use the light system colors in that case,
+    // and also make sure that we always use the light color set for the same
+    // reason.
+    mMustUseLightSystemColors = mMustUseLightColorSet = true;
+  }
 #endif
-    // When forcing preference colors, we derive a color-scheme from those. That
-    // way we can use the system colors more appropriately suited for the user,
-    // avoiding contrast issues like bug 1762018.
-    if (mUsePrefColors) {
-      // We need to forcibly use the light color-set for this case too, as those
-      // are the colors exposed to the user in the preferences page.
-      mMustUseLightColorSet = true;
-      return LookAndFeel::IsDarkColor(mLightColors.mDefaultBackground)
-                 ? ColorSchemeChoice::Dark
-                 : ColorSchemeChoice::Light;
+
+  mColorScheme = [&] {
+    if (aIsChrome) {
+      switch (ColorSchemeSettingForChrome()) {
+        case ChromeColorSchemeSetting::Light:
+          return ColorScheme::Light;
+        case ChromeColorSchemeSetting::Dark:
+          return ColorScheme::Dark;
+        case ChromeColorSchemeSetting::System:
+          break;
+      }
+      return LookAndFeel::SystemColorScheme();
     }
-    // When using system colors, we can generally just use the preferred color
-    // scheme of the document unconditionally (modulo the HCM case above).
-    return ColorSchemeChoice::UserPreferred;
+    if (mMustUseLightColorSet) {
+      // When forcing colors in a way such as color-scheme isn't respected, we
+      // compute a preference based on the darkness of
+      // our background.
+      return LookAndFeel::IsDarkColor(mLightColors.mDefaultBackground)
+                 ? ColorScheme::Dark
+                 : ColorScheme::Light;
+    }
+    switch (StaticPrefs::layout_css_prefers_color_scheme_content_override()) {
+      case 0:
+        return ColorScheme::Dark;
+      case 1:
+        return ColorScheme::Light;
+      default:
+        return ThemeDerivedColorSchemeForContent();
+    }
   }();
 }
 
@@ -234,18 +253,21 @@ void PreferenceSheet::Initialize() {
   sContentPrefs.Load(false);
   sChromePrefs.Load(true);
   sPrintPrefs = sContentPrefs;
-  if (!sPrintPrefs.mUseDocumentColors) {
+  {
     // For printing, we always use a preferred-light color scheme.
-    //
-    // When overriding document colors, we ignore the `color-scheme` property,
-    // but we still don't want to use the system colors (which might be dark,
-    // despite having made it into mLightColors), because it both wastes ink and
-    // it might interact poorly with the color adjustments we do while printing.
-    //
-    // So we override the light colors with our hardcoded default colors, and
-    // force the use of stand-ins.
-    sPrintPrefs.mLightColors = Prefs().mLightColors;
-    sPrintPrefs.mUseStandins = true;
+    sPrintPrefs.mColorScheme = ColorScheme::Light;
+    if (!sPrintPrefs.mUseDocumentColors) {
+      // When overriding document colors, we ignore the `color-scheme` property,
+      // but we still don't want to use the system colors (which might be dark,
+      // despite having made it into mLightColors), because it both wastes ink
+      // and it might interact poorly with the color adjustments we do while
+      // printing.
+      //
+      // So we override the light colors with our hardcoded default colors, and
+      // force the use of stand-ins.
+      sPrintPrefs.mLightColors = Prefs().mLightColors;
+      sPrintPrefs.mUseStandins = true;
+    }
   }
 
   nsAutoString useDocumentColorPref;
@@ -287,11 +309,12 @@ void PreferenceSheet::Initialize() {
                        StaticPrefs::browser_display_permit_backplate());
   Telemetry::ScalarSet(Telemetry::ScalarID::A11Y_USE_SYSTEM_COLORS,
                        StaticPrefs::browser_display_use_system_colors());
+  Telemetry::ScalarSet(Telemetry::ScalarID::A11Y_ALWAYS_UNDERLINE_LINKS,
+                       StaticPrefs::layout_css_always_underline_links());
 }
 
 bool PreferenceSheet::AffectedByPref(const nsACString& aPref) {
   const char* prefNames[] = {
-      StaticPrefs::GetPrefName_devtools_toolbox_force_chrome_prefs(),
       StaticPrefs::GetPrefName_privacy_resistFingerprinting(),
       StaticPrefs::GetPrefName_ui_use_standins_for_native_colors(),
       "browser.anchor_color",

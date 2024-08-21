@@ -55,6 +55,10 @@ class nsDOMCSSAttributeDeclaration final : public nsDOMCSSDeclaration {
                         const SVGAnimatedLength& aLength);
   nsresult SetSMILValue(const nsCSSPropertyID,
                         const mozilla::SVGAnimatedPathSegList& aPath);
+  void ClearSMILValue(const nsCSSPropertyID aPropID) {
+    // Put empty string in override style for our property
+    SetPropertyValue(aPropID, ""_ns, nullptr, mozilla::IgnoreErrors());
+  }
 
   void SetPropertyValue(const nsCSSPropertyID aPropID, const nsACString& aValue,
                         nsIPrincipal* aSubjectPrincipal,
@@ -79,7 +83,7 @@ class nsDOMCSSAttributeDeclaration final : public nsDOMCSSDeclaration {
   nsresult SetCSSDeclaration(
       mozilla::DeclarationBlock* aDecl,
       mozilla::MutationClosureData* aClosureData) override;
-  mozilla::dom::Document* DocToUpdate() override;
+  mozilla::dom::Document* DocToUpdate() final;
 
   RefPtr<Element> mElement;
 

@@ -12,7 +12,6 @@
 #include "nsGkAtoms.h"
 #include "nsComboboxControlFrame.h"
 #include "nsFontMetrics.h"
-#include "nsIScrollableFrame.h"
 #include "nsCSSRendering.h"
 #include "nsLayoutUtils.h"
 #include "nsDisplayList.h"
@@ -55,7 +54,7 @@ NS_IMPL_FRAMEARENA_HELPERS(nsListControlFrame)
 
 nsListControlFrame::nsListControlFrame(ComputedStyle* aStyle,
                                        nsPresContext* aPresContext)
-    : nsHTMLScrollFrame(aStyle, aPresContext, kClassID, false),
+    : ScrollContainerFrame(aStyle, aPresContext, kClassID, false),
       mMightNeedSecondPass(false),
       mHasPendingInterruptAtStartOfReflow(false),
       mForceSelection(false) {
@@ -85,7 +84,7 @@ void nsListControlFrame::Destroy(DestroyContext& aContext) {
   // event listener can outlive the frame.
 
   mEventListener->Detach();
-  nsHTMLScrollFrame::Destroy(aContext);
+  ScrollContainerFrame::Destroy(aContext);
 }
 
 void nsListControlFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
@@ -99,7 +98,7 @@ void nsListControlFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
 
   DO_GLOBAL_REFLOW_COUNT_DSP("nsListControlFrame");
 
-  nsHTMLScrollFrame::BuildDisplayList(aBuilder, aLists);
+  ScrollContainerFrame::BuildDisplayList(aBuilder, aLists);
 }
 
 HTMLOptionElement* nsListControlFrame::GetCurrentOption() const {
@@ -170,7 +169,7 @@ NS_QUERYFRAME_HEAD(nsListControlFrame)
   NS_QUERYFRAME_ENTRY(nsIFormControlFrame)
   NS_QUERYFRAME_ENTRY(nsISelectControlFrame)
   NS_QUERYFRAME_ENTRY(nsListControlFrame)
-NS_QUERYFRAME_TAIL_INHERITING(nsHTMLScrollFrame)
+NS_QUERYFRAME_TAIL_INHERITING(ScrollContainerFrame)
 
 #ifdef ACCESSIBILITY
 a11y::AccType nsListControlFrame::AccessibleType() {
@@ -230,34 +229,30 @@ nscoord nsListControlFrame::CalcBSizeOfARow() {
 }
 
 nscoord nsListControlFrame::GetPrefISize(gfxContext* aRenderingContext) {
-  nscoord result;
-  DISPLAY_PREF_INLINE_SIZE(this, result);
-
   // Always add scrollbar inline sizes to the pref-inline-size of the
   // scrolled content. Combobox frames depend on this happening in the
   // dropdown, and standalone listboxes are overflow:scroll so they need
   // it too.
   WritingMode wm = GetWritingMode();
   Maybe<nscoord> containISize = ContainIntrinsicISize();
-  result = containISize ? *containISize
-                        : GetScrolledFrame()->GetPrefISize(aRenderingContext);
+  nscoord result = containISize
+                       ? *containISize
+                       : GetScrolledFrame()->GetPrefISize(aRenderingContext);
   LogicalMargin scrollbarSize(wm, GetDesiredScrollbarSizes());
   result = NSCoordSaturatingAdd(result, scrollbarSize.IStartEnd(wm));
   return result;
 }
 
 nscoord nsListControlFrame::GetMinISize(gfxContext* aRenderingContext) {
-  nscoord result;
-  DISPLAY_MIN_INLINE_SIZE(this, result);
-
   // Always add scrollbar inline sizes to the min-inline-size of the
   // scrolled content. Combobox frames depend on this happening in the
   // dropdown, and standalone listboxes are overflow:scroll so they need
   // it too.
   WritingMode wm = GetWritingMode();
   Maybe<nscoord> containISize = ContainIntrinsicISize();
-  result = containISize ? *containISize
-                        : GetScrolledFrame()->GetMinISize(aRenderingContext);
+  nscoord result = containISize
+                       ? *containISize
+                       : GetScrolledFrame()->GetMinISize(aRenderingContext);
   LogicalMargin scrollbarSize(wm, GetDesiredScrollbarSizes());
   result += scrollbarSize.IStartEnd(wm);
 
@@ -344,7 +339,7 @@ void nsListControlFrame::Reflow(nsPresContext* aPresContext,
     state.SetComputedBSize(*containBSize);
   }
 
-  nsHTMLScrollFrame::Reflow(aPresContext, aDesiredSize, state, aStatus);
+  ScrollContainerFrame::Reflow(aPresContext, aDesiredSize, state, aStatus);
 
   if (!mMightNeedSecondPass) {
     NS_ASSERTION(!autoBSize || BSizeOfARow() == oldBSizeOfARow,
@@ -388,9 +383,9 @@ void nsListControlFrame::Reflow(nsPresContext* aPresContext,
   // XXXbz We're just changing the block size here; do we need to dirty
   // ourselves or anything like that?  We might need to, per the letter
   // of the reflow protocol, but things seem to work fine without it...
-  // Is that just an implementation detail of nsHTMLScrollFrame that
+  // Is that just an implementation detail of ScrollContainerFrame that
   // we're depending on?
-  nsHTMLScrollFrame::DidReflow(aPresContext, &state);
+  ScrollContainerFrame::DidReflow(aPresContext, &state);
 
   // Now compute the block size we want to have
   nscoord computedBSize = CalcIntrinsicBSize(BSizeOfARow(), length);
@@ -399,9 +394,9 @@ void nsListControlFrame::Reflow(nsPresContext* aPresContext,
 
   // XXXbz to make the ascent really correct, we should add our
   // mComputedPadding.top to it (and subtract it from descent).  Need that
-  // because nsGfxScrollFrame just adds in the border....
+  // because ScrollContainerFrame just adds in the border....
   aStatus.Reset();
-  nsHTMLScrollFrame::Reflow(aPresContext, aDesiredSize, state, aStatus);
+  ScrollContainerFrame::Reflow(aPresContext, aDesiredSize, state, aStatus);
 }
 
 bool nsListControlFrame::ShouldPropagateComputedBSizeToScrolledContent() const {
@@ -650,12 +645,12 @@ nsresult nsListControlFrame::HandleEvent(nsPresContext* aPresContext,
   if (nsEventStatus_eConsumeNoDefault == *aEventStatus) return NS_OK;
 
   // disabled state affects how we're selected, but we don't want to go through
-  // nsHTMLScrollFrame if we're disabled.
+  // ScrollContainerFrame if we're disabled.
   if (IsContentDisabled()) {
     return nsIFrame::HandleEvent(aPresContext, aEvent, aEventStatus);
   }
 
-  return nsHTMLScrollFrame::HandleEvent(aPresContext, aEvent, aEventStatus);
+  return ScrollContainerFrame::HandleEvent(aPresContext, aEvent, aEventStatus);
 }
 
 //---------------------------------------------------------
@@ -663,13 +658,17 @@ void nsListControlFrame::SetInitialChildList(ChildListID aListID,
                                              nsFrameList&& aChildList) {
   if (aListID == FrameChildListID::Principal) {
     // First check to see if all the content has been added
-    mIsAllContentHere = mContent->IsDoneAddingChildren();
+    mIsAllContentHere = Select().IsDoneAddingChildren();
     if (!mIsAllContentHere) {
       mIsAllFramesHere = false;
       mHasBeenInitialized = false;
     }
   }
-  nsHTMLScrollFrame::SetInitialChildList(aListID, std::move(aChildList));
+  ScrollContainerFrame::SetInitialChildList(aListID, std::move(aChildList));
+}
+
+bool nsListControlFrame::GetMultiple() const {
+  return mContent->AsElement()->HasAttr(nsGkAtoms::multiple);
 }
 
 HTMLSelectElement& nsListControlFrame::Select() const {
@@ -679,7 +678,7 @@ HTMLSelectElement& nsListControlFrame::Select() const {
 //---------------------------------------------------------
 void nsListControlFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
                               nsIFrame* aPrevInFlow) {
-  nsHTMLScrollFrame::Init(aContent, aParent, aPrevInFlow);
+  ScrollContainerFrame::Init(aContent, aParent, aPrevInFlow);
 
   // we shouldn't have to unregister this listener because when
   // our frame goes away all these content node go away as well
@@ -807,12 +806,8 @@ nsListControlFrame::DoneAddingChildren(bool aIsDone) {
 
 NS_IMETHODIMP
 nsListControlFrame::AddOption(int32_t aIndex) {
-#ifdef DO_REFLOW_DEBUG
-  printf("---- Id: %d nsLCF %p Added Option %d\n", mReflowId, this, aIndex);
-#endif
-
   if (!mIsAllContentHere) {
-    mIsAllContentHere = mContent->IsDoneAddingChildren();
+    mIsAllContentHere = Select().IsDoneAddingChildren();
     if (!mIsAllContentHere) {
       mIsAllFramesHere = false;
       mHasBeenInitialized = false;
@@ -982,7 +977,7 @@ void nsListControlFrame::DidReflow(nsPresContext* aPresContext,
   bool wasInterrupted = !mHasPendingInterruptAtStartOfReflow &&
                         aPresContext->HasPendingInterrupt();
 
-  nsHTMLScrollFrame::DidReflow(aPresContext, aReflowInput);
+  ScrollContainerFrame::DidReflow(aPresContext, aReflowInput);
 
   if (mNeedToReset && !wasInterrupted) {
     mNeedToReset = false;

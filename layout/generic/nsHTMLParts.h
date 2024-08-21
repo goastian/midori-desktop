@@ -48,19 +48,14 @@ nsBlockFrame* NS_NewBlockFrame(mozilla::PresShell* aPresShell,
 // attribute of its *grandparent* content node.
 nsresult NS_NewAttributeContent(nsNodeInfoManager* aNodeInfoManager,
                                 int32_t aNameSpaceID, nsAtom* aAttrName,
-                                nsIContent** aResult);
+                                nsAtom* aFallback, nsIContent** aResult);
 
 // Create a basic area frame but the GetFrameForPoint is overridden to always
 // return the option frame
 // By default, area frames will extend
 // their height to cover any children that "stick out".
 nsContainerFrame* NS_NewSelectsAreaFrame(mozilla::PresShell* aPresShell,
-                                         mozilla::ComputedStyle* aStyle,
-                                         nsFrameState aFlags);
-
-// Create a block formatting context blockframe
-nsBlockFrame* NS_NewBlockFormattingContext(mozilla::PresShell* aPresShell,
-                                           mozilla::ComputedStyle* aStyle);
+                                         mozilla::ComputedStyle* aStyle);
 
 nsIFrame* NS_NewBRFrame(mozilla::PresShell* aPresShell,
                         mozilla::ComputedStyle* aStyle);
@@ -118,8 +113,11 @@ nsPageContentFrame* NS_NewPageContentFrame(
 nsIFrame* NS_NewPageBreakFrame(mozilla::PresShell* aPresShell,
                                mozilla::ComputedStyle* aStyle);
 class nsFirstLetterFrame;
-nsFirstLetterFrame* NS_NewFirstLetterFrame(mozilla::PresShell* aPresShell,
-                                           mozilla::ComputedStyle* aStyle);
+nsFirstLetterFrame* NS_NewFirstLetterFrame(mozilla::PresShell*,
+                                           mozilla::ComputedStyle*);
+class nsFirstLetterFrame;
+nsFirstLetterFrame* NS_NewFloatingFirstLetterFrame(mozilla::PresShell*,
+                                                   mozilla::ComputedStyle*);
 class nsFirstLineFrame;
 nsFirstLineFrame* NS_NewFirstLineFrame(mozilla::PresShell* aPresShell,
                                        mozilla::ComputedStyle* aStyle);
@@ -144,8 +142,7 @@ nsIFrame* NS_NewTextControlFrame(mozilla::PresShell* aPresShell,
 nsListControlFrame* NS_NewListControlFrame(mozilla::PresShell* aPresShell,
                                            mozilla::ComputedStyle* aStyle);
 nsComboboxControlFrame* NS_NewComboboxControlFrame(
-    mozilla::PresShell* aPresShell, mozilla::ComputedStyle* aStyle,
-    nsFrameState aFlags);
+    mozilla::PresShell* aPresShell, mozilla::ComputedStyle* aStyle);
 nsIFrame* NS_NewProgressFrame(mozilla::PresShell* aPresShell,
                               mozilla::ComputedStyle* aStyle);
 nsIFrame* NS_NewMeterFrame(mozilla::PresShell* aPresShell,

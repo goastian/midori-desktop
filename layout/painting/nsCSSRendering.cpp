@@ -23,6 +23,7 @@
 #include "mozilla/HashFunctions.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/SVGImageContext.h"
 #include "gfxFont.h"
@@ -43,7 +44,6 @@
 #include "nsCSSAnonBoxes.h"
 #include "nsIContent.h"
 #include "mozilla/dom/DocumentInlines.h"
-#include "nsIScrollableFrame.h"
 #include "imgIContainer.h"
 #include "ImageOps.h"
 #include "nsCSSColorUtils.h"
@@ -339,8 +339,7 @@ struct InlineBackgroundData {
     if (mBidiEnabled) {
       // Find the line container frame
       mLineContainer = aFrame;
-      while (mLineContainer &&
-             mLineContainer->IsFrameOfType(nsIFrame::eLineParticipant)) {
+      while (mLineContainer && mLineContainer->IsLineParticipant()) {
         mLineContainer = mLineContainer->GetParent();
       }
 
@@ -962,9 +961,10 @@ nsCSSRendering::CreateBorderRendererForNonThemedOutline(
     return Nothing();
   }
 
-  const nscoord offset = ourOutline->mOutlineOffset.ToAppUnits();
   nsRect innerRect = aInnerRect;
-  innerRect.Inflate(offset);
+
+  const nsSize effectiveOffset = ourOutline->EffectiveOffsetFor(innerRect);
+  innerRect.Inflate(effectiveOffset);
 
   // If the dirty rect is completely inside the border area (e.g., only the
   // content is being painted), then we can skip out now
@@ -975,7 +975,7 @@ nsCSSRendering::CreateBorderRendererForNonThemedOutline(
     return Nothing();
   }
 
-  nscoord width = ourOutline->GetOutlineWidth();
+  const nscoord width = ourOutline->GetOutlineWidth();
 
   StyleBorderStyle outlineStyle;
   // Themed outlines are handled by our callers, if supported.
@@ -1009,10 +1009,13 @@ nsCSSRendering::CreateBorderRendererForNonThemedOutline(
     RectCornerRadii innerRadii;
     ComputePixelRadii(twipsRadii, oneDevPixel, &innerRadii);
 
-    Float devPixelOffset = aPresContext->AppUnitsToFloatDevPixels(offset);
-    const Float widths[4] = {
-        outlineWidths[0] + devPixelOffset, outlineWidths[1] + devPixelOffset,
-        outlineWidths[2] + devPixelOffset, outlineWidths[3] + devPixelOffset};
+    const auto devPxOffset = LayoutDeviceSize::FromAppUnits(
+        effectiveOffset, aPresContext->AppUnitsPerDevPixel());
+
+    const Float widths[4] = {outlineWidths[0] + devPxOffset.Height(),
+                             outlineWidths[1] + devPxOffset.Width(),
+                             outlineWidths[2] + devPxOffset.Height(),
+                             outlineWidths[3] + devPxOffset.Width()};
     nsCSSBorderRenderer::ComputeOuterRadii(innerRadii, widths, &outlineRadii);
   }
 
@@ -1135,11 +1138,11 @@ void nsImageRenderer::ComputeObjectAnchorPoint(const Position& aPos,
 static nsIFrame* GetPageSequenceForCanvas(const nsIFrame* aCanvasFrame) {
   MOZ_ASSERT(aCanvasFrame->IsCanvasFrame(), "not a canvas frame");
   nsPresContext* pc = aCanvasFrame->PresContext();
-  if (!pc->IsPrintingOrPrintPreview()) {
+  if (!pc->IsRootPaginatedDocument()) {
     return nullptr;
   }
   auto* ps = pc->PresShell()->GetPageSequenceFrame();
-  if (!ps) {
+  if (NS_WARN_IF(!ps)) {
     return nullptr;
   }
   if (ps->GetParent() != aCanvasFrame) {
@@ -1148,10 +1151,9 @@ static nsIFrame* GetPageSequenceForCanvas(const nsIFrame* aCanvasFrame) {
   return ps;
 }
 
-auto nsCSSRendering::FindEffectiveBackgroundColor(nsIFrame* aFrame,
-                                                  bool aStopAtThemed,
-                                                  bool aPreferBodyToCanvas)
-    -> EffectiveBackgroundColor {
+auto nsCSSRendering::FindEffectiveBackgroundColor(
+    nsIFrame* aFrame, bool aStopAtThemed,
+    bool aPreferBodyToCanvas) -> EffectiveBackgroundColor {
   MOZ_ASSERT(aFrame);
   nsPresContext* pc = aFrame->PresContext();
   auto BgColorIfNotTransparent = [&](nsIFrame* aFrame) -> Maybe<nscolor> {
@@ -1898,10 +1900,6 @@ bool nsCSSRendering::CanBuildWebRenderDisplayItemsForStyleImageLayer(
   const auto& styleImage =
       aBackgroundStyle->mImage.mLayers[aLayer].mImage.FinalImage();
   if (styleImage.IsImageRequestType()) {
-    if (styleImage.IsRect()) {
-      return false;
-    }
-
     imgRequestProxy* requestProxy = styleImage.GetImageRequest();
     if (!requestProxy) {
       return false;
@@ -2029,23 +2027,59 @@ static bool IsHTMLStyleGeometryBox(StyleGeometryBox aBox) {
           aBox == StyleGeometryBox::MarginBox);
 }
 
-static StyleGeometryBox ComputeBoxValue(nsIFrame* aForFrame,
-                                        StyleGeometryBox aBox) {
+static StyleGeometryBox ComputeBoxValueForOrigin(nsIFrame* aForFrame,
+                                                 StyleGeometryBox aBox) {
+  // The mapping for mask-origin is from
+  // https://drafts.fxtf.org/css-masking/#the-mask-origin
   if (!aForFrame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT)) {
     // For elements with associated CSS layout box, the values fill-box,
-    // stroke-box and view-box compute to the initial value of mask-clip.
+    // stroke-box and view-box compute to the initial value of mask-origin.
     if (IsSVGStyleGeometryBox(aBox)) {
       return StyleGeometryBox::BorderBox;
     }
   } else {
     // For SVG elements without associated CSS layout box, the values
-    // content-box, padding-box, border-box and margin-box compute to fill-box.
+    // content-box, padding-box, border-box compute to fill-box.
     if (IsHTMLStyleGeometryBox(aBox)) {
       return StyleGeometryBox::FillBox;
     }
   }
 
   return aBox;
+}
+
+static StyleGeometryBox ComputeBoxValueForClip(const nsIFrame* aForFrame,
+                                               StyleGeometryBox aBox) {
+  // The mapping for mask-clip is from
+  // https://drafts.fxtf.org/css-masking/#the-mask-clip
+  if (aForFrame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT)) {
+    // For SVG elements without associated CSS layout box, the used values for
+    // content-box and padding-box compute to fill-box and for border-box and
+    // margin-box compute to stroke-box.
+    switch (aBox) {
+      case StyleGeometryBox::ContentBox:
+      case StyleGeometryBox::PaddingBox:
+        return StyleGeometryBox::FillBox;
+      case StyleGeometryBox::BorderBox:
+      case StyleGeometryBox::MarginBox:
+        return StyleGeometryBox::StrokeBox;
+      default:
+        return aBox;
+    }
+  }
+
+  // For elements with associated CSS layout box, the used values for fill-box
+  // compute to content-box and for stroke-box and view-box compute to
+  // border-box.
+  switch (aBox) {
+    case StyleGeometryBox::FillBox:
+      return StyleGeometryBox::ContentBox;
+    case StyleGeometryBox::StrokeBox:
+    case StyleGeometryBox::ViewBox:
+      return StyleGeometryBox::BorderBox;
+    default:
+      return aBox;
+  }
 }
 
 bool nsCSSRendering::ImageLayerClipState::IsValid() const {
@@ -2069,16 +2103,17 @@ void nsCSSRendering::GetImageLayerClip(
     const nsRect& aCallerDirtyRect, bool aWillPaintBorder,
     nscoord aAppUnitsPerPixel,
     /* out */ ImageLayerClipState* aClipState) {
-  StyleGeometryBox layerClip = ComputeBoxValue(aForFrame, aLayer.mClip);
+  StyleGeometryBox layerClip = ComputeBoxValueForClip(aForFrame, aLayer.mClip);
   if (IsSVGStyleGeometryBox(layerClip)) {
     MOZ_ASSERT(aForFrame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT));
 
     // The coordinate space of clipArea is svg user space.
-    nsRect clipArea = nsLayoutUtils::ComputeGeometryBox(aForFrame, layerClip);
+    nsRect clipArea =
+        nsLayoutUtils::ComputeSVGReferenceRect(aForFrame, layerClip);
 
     nsRect strokeBox = (layerClip == StyleGeometryBox::StrokeBox)
                            ? clipArea
-                           : nsLayoutUtils::ComputeGeometryBox(
+                           : nsLayoutUtils::ComputeSVGReferenceRect(
                                  aForFrame, StyleGeometryBox::StrokeBox);
     nsRect clipAreaRelativeToStrokeBox = clipArea - strokeBox.TopLeft();
 
@@ -2138,7 +2173,7 @@ void nsCSSRendering::GetImageLayerClip(
 
   aClipState->mBGClipArea = clipBorderArea;
 
-  if (aForFrame->IsScrollFrame() &&
+  if (aForFrame->IsScrollContainerFrame() &&
       StyleImageLayerAttachment::Local == aLayer.mAttachment) {
     // As of this writing, this is still in discussion in the CSS Working Group
     // http://lists.w3.org/Archives/Public/www-style/2013Jul/0250.html
@@ -2148,15 +2183,15 @@ void nsCSSRendering::GetImageLayerClip(
     // like the content. (See below.)
     // Therefore, only 'content-box' makes a difference here.
     if (layerClip == StyleGeometryBox::ContentBox) {
-      nsIScrollableFrame* scrollableFrame = do_QueryFrame(aForFrame);
+      ScrollContainerFrame* scrollContainerFrame = do_QueryFrame(aForFrame);
       // Clip at a rectangle attached to the scrolled content.
       aClipState->mHasAdditionalBGClipArea = true;
       aClipState->mAdditionalBGClipArea =
           nsRect(aClipState->mBGClipArea.TopLeft() +
-                     scrollableFrame->GetScrolledFrame()->GetPosition()
+                     scrollContainerFrame->GetScrolledFrame()->GetPosition()
                      // For the dir=rtl case:
-                     + scrollableFrame->GetScrollRange().TopLeft(),
-                 scrollableFrame->GetScrolledRect().Size());
+                     + scrollContainerFrame->GetScrollRange().TopLeft(),
+                 scrollContainerFrame->GetScrolledRect().Size());
       nsMargin padding = aForFrame->GetUsedPadding();
       // padding-bottom is ignored on scrollable frames:
       // https://bugzilla.mozilla.org/show_bug.cgi?id=748518
@@ -2708,17 +2743,19 @@ nsRect nsCSSRendering::ComputeImageLayerPositioningArea(
   // may need  it to compute the effective image size for a CSS gradient.
   nsRect positionArea;
 
-  StyleGeometryBox layerOrigin = ComputeBoxValue(aForFrame, aLayer.mOrigin);
+  StyleGeometryBox layerOrigin =
+      ComputeBoxValueForOrigin(aForFrame, aLayer.mOrigin);
 
   if (IsSVGStyleGeometryBox(layerOrigin)) {
     MOZ_ASSERT(aForFrame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT));
     *aAttachedToFrame = aForFrame;
 
-    positionArea = nsLayoutUtils::ComputeGeometryBox(aForFrame, layerOrigin);
+    positionArea =
+        nsLayoutUtils::ComputeSVGReferenceRect(aForFrame, layerOrigin);
 
     nsPoint toStrokeBoxOffset = nsPoint(0, 0);
     if (layerOrigin != StyleGeometryBox::StrokeBox) {
-      nsRect strokeBox = nsLayoutUtils::ComputeGeometryBox(
+      nsRect strokeBox = nsLayoutUtils::ComputeSVGReferenceRect(
           aForFrame, StyleGeometryBox::StrokeBox);
       toStrokeBoxOffset = positionArea.TopLeft() - strokeBox.TopLeft();
     }
@@ -2731,13 +2768,14 @@ nsRect nsCSSRendering::ComputeImageLayerPositioningArea(
 
   LayoutFrameType frameType = aForFrame->Type();
   nsIFrame* geometryFrame = aForFrame;
-  if (MOZ_UNLIKELY(frameType == LayoutFrameType::Scroll &&
+  if (MOZ_UNLIKELY(frameType == LayoutFrameType::ScrollContainer &&
                    StyleImageLayerAttachment::Local == aLayer.mAttachment)) {
-    nsIScrollableFrame* scrollableFrame = do_QueryFrame(aForFrame);
-    positionArea = nsRect(scrollableFrame->GetScrolledFrame()->GetPosition()
-                              // For the dir=rtl case:
-                              + scrollableFrame->GetScrollRange().TopLeft(),
-                          scrollableFrame->GetScrolledRect().Size());
+    ScrollContainerFrame* scrollContainerFrame = do_QueryFrame(aForFrame);
+    positionArea =
+        nsRect(scrollContainerFrame->GetScrolledFrame()->GetPosition()
+                   // For the dir=rtl case:
+                   + scrollContainerFrame->GetScrollRange().TopLeft(),
+               scrollContainerFrame->GetScrolledRect().Size());
     // The ScrolledRect’s size does not include the borders or scrollbars,
     // reverse the handling of background-origin
     // compared to the common case below.
@@ -2745,7 +2783,7 @@ nsRect nsCSSRendering::ComputeImageLayerPositioningArea(
       nsMargin border = geometryFrame->GetUsedBorder();
       border.ApplySkipSides(geometryFrame->GetSkipSides());
       positionArea.Inflate(border);
-      positionArea.Inflate(scrollableFrame->GetActualScrollbarSizes());
+      positionArea.Inflate(scrollContainerFrame->GetActualScrollbarSizes());
     } else if (layerOrigin != StyleGeometryBox::PaddingBox) {
       nsMargin padding = geometryFrame->GetUsedPadding();
       padding.ApplySkipSides(geometryFrame->GetSkipSides());
@@ -2822,10 +2860,9 @@ nsRect nsCSSRendering::ComputeImageLayerPositioningArea(
 
       if (!pageContentFrame) {
         // Subtract the size of scrollbars.
-        nsIScrollableFrame* scrollableFrame =
-            aPresContext->PresShell()->GetRootScrollFrameAsScrollable();
-        if (scrollableFrame) {
-          nsMargin scrollbars = scrollableFrame->GetActualScrollbarSizes();
+        if (ScrollContainerFrame* sf =
+                aPresContext->PresShell()->GetRootScrollContainerFrame()) {
+          nsMargin scrollbars = sf->GetActualScrollbarSizes();
           positionArea.Deflate(scrollbars);
         }
       }

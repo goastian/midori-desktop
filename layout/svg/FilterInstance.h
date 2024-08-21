@@ -28,6 +28,7 @@ class nsIFrame;
 struct WrFiltersHolder;
 
 namespace mozilla {
+class SVGFilterFrame;
 
 namespace dom {
 class UserSpaceMetrics;
@@ -79,8 +80,8 @@ class FilterInstance {
    */
   static FilterDescription GetFilterDescription(
       nsIContent* aFilteredElement, Span<const StyleFilter> aFilterChain,
-      bool aFilterInputIsTainted, const UserSpaceMetrics& aMetrics,
-      const gfxRect& aBBox,
+      nsISupports* aFiltersObserverList, bool aFilterInputIsTainted,
+      const UserSpaceMetrics& aMetrics, const gfxRect& aBBox,
       nsTArray<RefPtr<SourceSurface>>& aOutAdditionalImages);
 
   /**
@@ -89,13 +90,12 @@ class FilterInstance {
    *   frame space (i.e. relative to its origin, the top-left corner of its
    *   border box).
    */
-  static void PaintFilteredFrame(nsIFrame* aFilteredFrame,
-                                 Span<const StyleFilter> aFilterChain,
-                                 gfxContext* aCtx,
-                                 const SVGFilterPaintCallback& aPaintCallback,
-                                 const nsRegion* aDirtyArea,
-                                 imgDrawingParams& aImgParams,
-                                 float aOpacity = 1.0f);
+  static void PaintFilteredFrame(
+      nsIFrame* aFilteredFrame, Span<const StyleFilter> aFilterChain,
+      const nsTArray<SVGFilterFrame*>& aFilterFrames, gfxContext* aCtx,
+      const SVGFilterPaintCallback& aPaintCallback, const nsRegion* aDirtyArea,
+      imgDrawingParams& aImgParams, float aOpacity = 1.0f,
+      const gfxRect* aOverrideBBox = nullptr);
 
   /**
    * Returns the post-filter area that could be dirtied when the given
@@ -113,7 +113,8 @@ class FilterInstance {
    *   to aFilteredFrame, in app units.
    */
   static nsRegion GetPreFilterNeededArea(
-      nsIFrame* aFilteredFrame, const nsRegion& aPostFilterDirtyRegion);
+      nsIFrame* aFilteredFrame, const nsTArray<SVGFilterFrame*>& aFilterFrames,
+      const nsRegion& aPostFilterDirtyRegion);
 
   /**
    * Returns the post-filter ink overflow rect (paint bounds) of
@@ -124,7 +125,8 @@ class FilterInstance {
    *   aFilteredFrame, if non-null.
    */
   static Maybe<nsRect> GetPostFilterBounds(
-      nsIFrame* aFilteredFrame, const gfxRect* aOverrideBBox = nullptr,
+      nsIFrame* aFilteredFrame, const nsTArray<SVGFilterFrame*>& aFilterFrames,
+      const gfxRect* aOverrideBBox = nullptr,
       const nsRect* aPreFilterBounds = nullptr);
 
   /**
@@ -136,7 +138,8 @@ class FilterInstance {
   static bool BuildWebRenderFilters(
       nsIFrame* aFilteredFrame,
       mozilla::Span<const mozilla::StyleFilter> aFilters,
-      WrFiltersHolder& aWrFilters, bool& aInitialized);
+      StyleFilterType aStyleFilterType, WrFiltersHolder& aWrFilters,
+      bool& aInitialized);
 
  private:
   /**
@@ -145,6 +148,7 @@ class FilterInstance {
    * @param aTargetContent The filtered element itself.
    * @param aMetrics The metrics to resolve SVG lengths against.
    * @param aFilterChain The list of filters to apply.
+   * @param aFilterFrames The frames for the filters in the chain.
    * @param aFilterInputIsTainted Describes whether the SourceImage /
    *   SourceAlpha input is tainted. This affects whether feDisplacementMap
    *   will respect the filter input as its map input.
@@ -166,6 +170,7 @@ class FilterInstance {
   FilterInstance(
       nsIFrame* aTargetFrame, nsIContent* aTargetContent,
       const UserSpaceMetrics& aMetrics, Span<const StyleFilter> aFilterChain,
+      const nsTArray<SVGFilterFrame*>& aFilterFrames,
       bool aFilterInputIsTainted,
       const SVGIntegrationUtils::SVGFilterPaintCallback& aPaintCallback,
       const gfxMatrix& aPaintTransform,
@@ -177,7 +182,8 @@ class FilterInstance {
   static bool BuildWebRenderFiltersImpl(
       nsIFrame* aFilteredFrame,
       mozilla::Span<const mozilla::StyleFilter> aFilters,
-      WrFiltersHolder& aWrFilters, bool& aInitialized);
+      StyleFilterType aStyleFilterType, WrFiltersHolder& aWrFilters,
+      bool& aInitialized);
 
   /**
    * Returns true if the filter instance was created successfully.
@@ -269,7 +275,8 @@ class FilterInstance {
    * whether the SourceGraphic is tainted.
    */
   nsresult BuildPrimitives(Span<const StyleFilter> aFilterChain,
-                           nsIFrame* aTargetFrame, bool aFilterInputIsTainted);
+                           const nsTArray<SVGFilterFrame*>& aFilterFrames,
+                           bool aFilterInputIsTainted);
 
   /**
    * Add to the list of FilterPrimitiveDescriptions for a particular SVG
@@ -278,7 +285,8 @@ class FilterInstance {
    * tainted.
    */
   nsresult BuildPrimitivesForFilter(
-      const StyleFilter& aFilter, nsIFrame* aTargetFrame, bool aInputIsTainted,
+      const StyleFilter& aFilter, SVGFilterFrame* aFilterFrame,
+      bool aInputIsTainted,
       nsTArray<FilterPrimitiveDescription>& aPrimitiveDescriptions);
 
   /**

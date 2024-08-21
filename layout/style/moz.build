@@ -22,6 +22,9 @@ with Files("nsDOM*"):
 with Files("AnimationCollection.*"):
     BUG_COMPONENT = ("Core", "CSS Transitions and Animations")
 
+with Files("AnimatedPropertyID*"):
+    BUG_COMPONENT = ("Core", "CSS Transitions and Animations")
+
 with Files("AnimationCommon.*"):
     BUG_COMPONENT = ("Core", "CSS Transitions and Animations")
 
@@ -53,6 +56,7 @@ EXPORTS += [
     "nsCSSValue.h",
     "nsDOMCSSAttrDeclaration.h",
     "nsDOMCSSDeclaration.h",
+    "nsFontFaceLoader.h",
     "nsICSSDeclaration.h",
     "nsICSSLoaderObserver.h",
     "nsStyleAutoArray.h",
@@ -67,8 +71,10 @@ EXPORTS += [
 
 EXPORTS.mozilla += [
     "!ServoCSSPropList.h",
+    "AnimatedPropertyID.h",
+    "AnimatedPropertyIDSet.h",
     "AnimationCollection.h",
-    "BindingStyleRule.h",
+    "AttributeStyles.h",
     "CachedInheritingStyles.h",
     "ComputedStyle.h",
     "ComputedStyleInlines.h",
@@ -76,12 +82,13 @@ EXPORTS.mozilla += [
     "CSSPropFlags.h",
     "DeclarationBlock.h",
     "DocumentStyleRootIterator.h",
+    "FontLoaderUtils.h",
     "FontPreloader.h",
     "GeckoBindings.h",
     "GlobalStyleSheetCache.h",
     "ImportScanner.h",
     "LayerAnimationInfo.h",
-    "MappedDeclarations.h",
+    "MappedDeclarationsBuilder.h",
     "MediaFeatureChange.h",
     "PostTraversalTask.h",
     "PreferenceSheet.h",
@@ -131,12 +138,15 @@ EXPORTS.mozilla.dom += [
     "CSSKeyframesRule.h",
     "CSSLayerBlockRule.h",
     "CSSLayerStatementRule.h",
+    "CSSMarginRule.h",
     "CSSMediaRule.h",
     "CSSMozDocumentRule.h",
     "CSSNamespaceRule.h",
     "CSSPageRule.h",
     "CSSPropertyRule.h",
     "CSSRuleList.h",
+    "CSSScopeRule.h",
+    "CSSStartingStyleRule.h",
     "CSSStyleRule.h",
     "CSSSupportsRule.h",
     "CSSValue.h",
@@ -167,7 +177,7 @@ EXPORTS.mozilla.css += [
 
 UNIFIED_SOURCES += [
     "AnimationCollection.cpp",
-    "BindingStyleRule.cpp",
+    "AttributeStyles.cpp",
     "CachedInheritingStyles.cpp",
     "ComputedStyle.cpp",
     "CounterStyleManager.cpp",
@@ -182,12 +192,15 @@ UNIFIED_SOURCES += [
     "CSSKeyframesRule.cpp",
     "CSSLayerBlockRule.cpp",
     "CSSLayerStatementRule.cpp",
+    "CSSMarginRule.cpp",
     "CSSMediaRule.cpp",
     "CSSMozDocumentRule.cpp",
     "CSSNamespaceRule.cpp",
     "CSSPageRule.cpp",
     "CSSPropertyRule.cpp",
     "CSSRuleList.cpp",
+    "CSSScopeRule.cpp",
+    "CSSStartingStyleRule.cpp",
     "CSSStyleRule.cpp",
     "CSSSupportsRule.cpp",
     "DeclarationBlock.cpp",
@@ -200,6 +213,7 @@ UNIFIED_SOURCES += [
     "FontFaceSetImpl.cpp",
     "FontFaceSetIterator.cpp",
     "FontFaceSetWorkerImpl.cpp",
+    "FontLoaderUtils.cpp",
     "FontPreloader.cpp",
     "GeckoBindings.cpp",
     "GlobalStyleSheetCache.cpp",
@@ -208,7 +222,7 @@ UNIFIED_SOURCES += [
     "ImportScanner.cpp",
     "LayerAnimationInfo.cpp",
     "Loader.cpp",
-    "MappedDeclarations.cpp",
+    "MappedDeclarationsBuilder.cpp",
     "MediaList.cpp",
     "MediaQueryList.cpp",
     "nsAnimationManager.cpp",
@@ -222,8 +236,6 @@ UNIFIED_SOURCES += [
     "nsDOMCSSValueList.cpp",
     "nsFontFaceLoader.cpp",
     "nsFontFaceUtils.cpp",
-    "nsHTMLCSSStyleSheet.cpp",
-    "nsHTMLStyleSheet.cpp",
     "nsICSSDeclaration.cpp",
     "nsMediaFeatures.cpp",
     "nsROCSSPrimitiveValue.cpp",
@@ -276,6 +288,7 @@ RESOURCE_FILES += [
 
 CONTENT_ACCESSIBLE_FILES += [
     "ImageDocument.css",
+    "res/accessiblecaret.css",
     "res/details.css",
     "res/plaintext.css",
     "res/searchfield-cancel.svg",

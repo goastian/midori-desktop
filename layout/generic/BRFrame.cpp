@@ -6,6 +6,7 @@
 
 /* rendering object for HTML <br> elements */
 
+#include "mozilla/CaretAssociationHint.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/dom/HTMLBRElement.h"
 #include "gfxContext.h"
@@ -63,11 +64,6 @@ class BRFrame final : public nsIFrame {
       WritingMode aWM, BaselineSharingGroup aBaselineGroup,
       BaselineExportContext) const override;
 
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsIFrame::IsFrameOfType(
-        aFlags & ~(nsIFrame::eReplaced | nsIFrame::eLineParticipant));
-  }
-
 #ifdef ACCESSIBILITY
   mozilla::a11y::AccType AccessibleType() override;
 #endif
@@ -102,7 +98,6 @@ void BRFrame::Reflow(nsPresContext* aPresContext, ReflowOutput& aMetrics,
                      const ReflowInput& aReflowInput, nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("BRFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aMetrics, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   WritingMode wm = aReflowInput.GetWritingMode();
@@ -190,18 +185,10 @@ void BRFrame::AddInlinePrefISize(gfxContext* aRenderingContext,
 }
 
 /* virtual */
-nscoord BRFrame::GetMinISize(gfxContext* aRenderingContext) {
-  nscoord result = 0;
-  DISPLAY_MIN_INLINE_SIZE(this, result);
-  return result;
-}
+nscoord BRFrame::GetMinISize(gfxContext* aRenderingContext) { return 0; }
 
 /* virtual */
-nscoord BRFrame::GetPrefISize(gfxContext* aRenderingContext) {
-  nscoord result = 0;
-  DISPLAY_PREF_INLINE_SIZE(this, result);
-  return result;
-}
+nscoord BRFrame::GetPrefISize(gfxContext* aRenderingContext) { return 0; }
 
 Maybe<nscoord> BRFrame::GetNaturalBaselineBOffset(
     WritingMode aWM, BaselineSharingGroup aBaselineGroup,
@@ -219,7 +206,7 @@ nsIFrame::ContentOffsets BRFrame::CalcContentOffsetsFromFramePoint(
   if (offsets.content) {
     offsets.offset = offsets.content->ComputeIndexOf_Deprecated(mContent);
     offsets.secondaryOffset = offsets.offset;
-    offsets.associate = CARET_ASSOCIATE_AFTER;
+    offsets.associate = CaretAssociationHint::After;
   }
   return offsets;
 }

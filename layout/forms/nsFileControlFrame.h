@@ -35,6 +35,10 @@ class nsFileControlFrame final : public nsBlockFrame,
   void Init(nsIContent* aContent, nsContainerFrame* aParent,
             nsIFrame* aPrevInFlow) override;
 
+  void Reflow(nsPresContext* aPresContext, ReflowOutput& aReflowOutput,
+              const ReflowInput& aReflowInput,
+              nsReflowStatus& aStatus) override;
+
   // nsIFormControlFrame
   nsresult SetFormProperty(nsAtom* aName, const nsAString& aValue) override;
   void SetFocus(bool aOn, bool aRepaint) override;
@@ -109,11 +113,6 @@ class nsFileControlFrame final : public nsBlockFrame,
     bool CanDropTheseFiles(mozilla::dom::DataTransfer* aDataTransfer,
                            bool aSupportsMultiple);
   };
-
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsBlockFrame::IsFrameOfType(
-        aFlags & ~(nsIFrame::eReplaced | nsIFrame::eReplacedContainsBlock));
-  }
 
   /**
    * The text box input.

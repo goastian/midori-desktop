@@ -19,6 +19,7 @@ class nsISelectionController;
 class EditorInitializerEntryTracker;
 namespace mozilla {
 class AutoTextControlHandlingState;
+class ScrollContainerFrame;
 class TextEditor;
 class TextControlState;
 enum class PseudoStyleType : uint8_t;
@@ -58,18 +59,10 @@ class nsTextControlFrame : public nsContainerFrame,
    */
   MOZ_CAN_RUN_SCRIPT_BOUNDARY void Destroy(DestroyContext&) override;
 
-  nsIScrollableFrame* GetScrollTargetFrame() const override;
+  mozilla::ScrollContainerFrame* GetScrollTargetFrame() const override;
 
   nscoord GetMinISize(gfxContext* aRenderingContext) override;
   nscoord GetPrefISize(gfxContext* aRenderingContext) override;
-
-  mozilla::LogicalSize ComputeAutoSize(
-      gfxContext* aRenderingContext, mozilla::WritingMode aWM,
-      const mozilla::LogicalSize& aCBSize, nscoord aAvailableISize,
-      const mozilla::LogicalSize& aMargin,
-      const mozilla::LogicalSize& aBorderPadding,
-      const mozilla::StyleSizeOverrides& aSizeOverrides,
-      mozilla::ComputeSizeFlags aFlags) override;
 
   void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
               const ReflowInput& aReflowInput,
@@ -77,13 +70,10 @@ class nsTextControlFrame : public nsContainerFrame,
 
   Maybe<nscoord> GetNaturalBaselineBOffset(
       mozilla::WritingMode aWM, BaselineSharingGroup aBaselineGroup,
-      BaselineExportContext) const override {
-    if (!IsSingleLineTextControl()) {
-      return Nothing{};
-    }
-    NS_ASSERTION(!IsSubtreeDirty(), "frame must not be dirty");
-    return GetSingleLineTextControlBaseline(this, mFirstBaseline, aWM,
-                                            aBaselineGroup);
+      BaselineExportContext aExportContext) const override;
+
+  BaselineSharingGroup GetDefaultBaselineSharingGroup() const override {
+    return BaselineSharingGroup::Last;
   }
 
   static Maybe<nscoord> GetSingleLineTextControlBaseline(
@@ -109,11 +99,6 @@ class nsTextControlFrame : public nsContainerFrame,
     return NS_OK;
   }
 #endif
-
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsContainerFrame::IsFrameOfType(
-        aFlags & ~(nsIFrame::eReplaced | nsIFrame::eReplacedContainsBlock));
-  }
 
   // nsIAnonymousContentCreator
   nsresult CreateAnonymousContent(nsTArray<ContentInfo>& aElements) override;
@@ -141,7 +126,12 @@ class nsTextControlFrame : public nsContainerFrame,
                     SelectionDirection = SelectionDirection::None) override;
   NS_IMETHOD GetOwnedSelectionController(
       nsISelectionController** aSelCon) override;
-  nsFrameSelection* GetOwnedFrameSelection() override;
+  nsFrameSelection* GetOwnedFrameSelection() override {
+    return ControlElement()->GetConstFrameSelection();
+  }
+  nsISelectionController* GetSelectionController() {
+    return ControlElement()->GetSelectionController();
+  }
 
   void PlaceholderChanged(const nsAttrValue* aOld, const nsAttrValue* aNew);
 
@@ -166,15 +156,7 @@ class nsTextControlFrame : public nsContainerFrame,
   /** handler for attribute changes to mContent */
   MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult AttributeChanged(
       int32_t aNameSpaceID, nsAtom* aAttribute, int32_t aModType) override;
-
-  void GetText(nsString& aText);
-
-  /**
-   * TextEquals() is designed for internal use so that aValue shouldn't
-   * include \r character.  It should be handled before calling this with
-   * nsContentUtils::PlatformToDOMLineBreaks().
-   */
-  bool TextEquals(const nsAString& aText) const;
+  void ElementStateChanged(mozilla::dom::ElementState aStates) override;
 
   nsresult PeekOffset(mozilla::PeekOffsetStruct* aPos) override;
 
@@ -186,13 +168,16 @@ class nsTextControlFrame : public nsContainerFrame,
   void ScrollSelectionIntoViewAsync(ScrollAncestors = ScrollAncestors::No);
 
  protected:
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY void HandleReadonlyOrDisabledChange();
+
   /**
    * Launch the reflow on the child frames - see nsTextControlFrame::Reflow()
    */
-  void ReflowTextControlChild(nsIFrame* aFrame, nsPresContext* aPresContext,
+  void ReflowTextControlChild(nsIFrame* aKid, nsPresContext* aPresContext,
                               const ReflowInput& aReflowInput,
                               nsReflowStatus& aStatus,
                               ReflowOutput& aParentDesiredSize,
+                              const mozilla::LogicalSize& aParentContentBoxSize,
                               nscoord& aButtonBoxISize);
 
  public:
@@ -205,23 +190,29 @@ class nsTextControlFrame : public nsContainerFrame,
 
   Element* GetPlaceholderNode() const { return mPlaceholderDiv; }
 
-  Element* GetRevealButton() const { return mRevealButton; }
+  Element* GetButton() const { return mButton; }
+
+  bool IsButtonBox(const nsIFrame* aFrame) const {
+    return aFrame->GetContent() == GetButton();
+  }
 
   // called by the focus listener
   nsresult MaybeBeginSecureKeyboardInput();
   void MaybeEndSecureKeyboardInput();
 
-#define DEFINE_TEXTCTRL_CONST_FORWARDER(type, name)          \
-  type name() const {                                        \
-    mozilla::TextControlElement* textControlElement =        \
-        mozilla::TextControlElement::FromNode(GetContent()); \
-    return textControlElement->name();                       \
+  mozilla::TextControlElement* ControlElement() const {
+    MOZ_ASSERT(mozilla::TextControlElement::FromNode(GetContent()));
+    return static_cast<mozilla::TextControlElement*>(GetContent());
   }
+
+#define DEFINE_TEXTCTRL_CONST_FORWARDER(type, name) \
+  type name() const { return ControlElement()->name(); }
 
   DEFINE_TEXTCTRL_CONST_FORWARDER(bool, IsSingleLineTextControl)
   DEFINE_TEXTCTRL_CONST_FORWARDER(bool, IsTextArea)
   DEFINE_TEXTCTRL_CONST_FORWARDER(bool, IsPasswordTextControl)
-  DEFINE_TEXTCTRL_CONST_FORWARDER(int32_t, GetCols)
+  DEFINE_TEXTCTRL_CONST_FORWARDER(Maybe<int32_t>, GetCols)
+  DEFINE_TEXTCTRL_CONST_FORWARDER(int32_t, GetColsOrDefault)
   DEFINE_TEXTCTRL_CONST_FORWARDER(int32_t, GetRows)
 
 #undef DEFINE_TEXTCTRL_CONST_FORWARDER
@@ -273,7 +264,7 @@ class nsTextControlFrame : public nsContainerFrame,
    * @returns false if it does not exist
    */
   bool AttributeExists(nsAtom* aAtt) const {
-    return mContent && mContent->AsElement()->HasAttr(kNameSpaceID_None, aAtt);
+    return mContent && mContent->AsElement()->HasAttr(aAtt);
   }
 
   /**
@@ -286,8 +277,7 @@ class nsTextControlFrame : public nsContainerFrame,
   // etc.  Just the size of our actual area for the text (and the scrollbars,
   // for <textarea>).
   mozilla::LogicalSize CalcIntrinsicSize(gfxContext* aRenderingContext,
-                                         mozilla::WritingMode aWM,
-                                         float aFontSizeInflation) const;
+                                         mozilla::WritingMode aWM) const;
 
  private:
   // helper methods
@@ -335,9 +325,9 @@ class nsTextControlFrame : public nsContainerFrame,
   RefPtr<Element> mRootNode;
   RefPtr<Element> mPlaceholderDiv;
   RefPtr<Element> mPreviewDiv;
-  // The Reveal Password button.  Only used for type=password, nullptr
-  // otherwise.
-  RefPtr<Element> mRevealButton;
+  // If we have type=password, number, or search, then mButton is our
+  // reveal-password, spinner, or search button box. Otherwise, it's nullptr.
+  RefPtr<Element> mButton;
   RefPtr<nsAnonDivObserver> mMutationObserver;
   // Cache of the |.value| of <input> or <textarea> element without hard-wrap.
   // If its IsVoid() returns true, it doesn't cache |.value|.

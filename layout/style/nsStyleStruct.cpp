@@ -89,17 +89,18 @@ bool StyleCssUrlData::operator==(const StyleCssUrlData& aOther) const {
 
 StyleLoadData::~StyleLoadData() { Gecko_LoadData_Drop(this); }
 
-already_AddRefed<nsIURI> StyleComputedUrl::ResolveLocalRef(nsIURI* aURI) const {
+already_AddRefed<nsIURI> StyleComputedUrl::ResolveLocalRef(
+    nsIURI* aBase) const {
   nsCOMPtr<nsIURI> result = GetURI();
   if (result && IsLocalRef()) {
     nsCString ref;
     result->GetRef(ref);
 
-    nsresult rv = NS_MutateURI(aURI).SetRef(ref).Finalize(result);
+    nsresult rv = NS_MutateURI(aBase).SetRef(ref).Finalize(result);
 
     if (NS_FAILED(rv)) {
       // If setting the ref failed, just return the original URI.
-      result = aURI;
+      result = aBase;
     }
   }
   return result.forget();
@@ -192,7 +193,7 @@ void Gecko_LoadData_Drop(StyleLoadData* aData) {
     // We want to dispatch this async to prevent reentrancy issues, as
     // imgRequestProxy going away can destroy documents, etc, see bug 1677555.
     auto task = MakeRefPtr<StyleImageRequestCleanupTask>(*aData);
-    SchedulerGroup::Dispatch(TaskCategory::Other, task.forget());
+    SchedulerGroup::Dispatch(task.forget());
   }
 
   // URIs are safe to refcount from any thread.
@@ -210,14 +211,14 @@ nsStyleFont::nsStyleFont(const nsStyleFont& aSrc)
       mFontSizeKeyword(aSrc.mFontSizeKeyword),
       mFontPalette(aSrc.mFontPalette),
       mMathDepth(aSrc.mMathDepth),
+      mLineHeight(aSrc.mLineHeight),
+      mMinFontSizeRatio(aSrc.mMinFontSizeRatio),
       mMathVariant(aSrc.mMathVariant),
       mMathStyle(aSrc.mMathStyle),
-      mMinFontSizeRatio(aSrc.mMinFontSizeRatio),
       mExplicitLanguage(aSrc.mExplicitLanguage),
       mXTextScale(aSrc.mXTextScale),
       mScriptUnconstrainedSize(aSrc.mScriptUnconstrainedSize),
       mScriptMinSize(aSrc.mScriptMinSize),
-      mScriptSizeMultiplier(aSrc.mScriptSizeMultiplier),
       mLanguage(aSrc.mLanguage) {
   MOZ_COUNT_CTOR(nsStyleFont);
 }
@@ -239,13 +240,13 @@ nsStyleFont::nsStyleFont(const Document& aDocument)
       mFontSizeKeyword(StyleFontSizeKeyword::Medium),
       mFontPalette(StyleFontPalette::Normal()),
       mMathDepth(0),
+      mLineHeight(StyleLineHeight::Normal()),
       mMathVariant(StyleMathVariant::None),
       mMathStyle(StyleMathStyle::Normal),
       mXTextScale(InitialTextScale(aDocument)),
       mScriptUnconstrainedSize(mSize),
       mScriptMinSize(Length::FromPixels(
           CSSPixel::FromPoints(kMathMLDefaultScriptMinSizePt))),
-      mScriptSizeMultiplier(kMathMLDefaultScriptSizeMultiplier),
       mLanguage(aDocument.GetLanguageForStyle()) {
   MOZ_COUNT_CTOR(nsStyleFont);
   MOZ_ASSERT(NS_IsMainThread());
@@ -266,7 +267,8 @@ nsChangeHint nsStyleFont::CalcDifference(const nsStyleFont& aNewData) const {
       mExplicitLanguage != aNewData.mExplicitLanguage ||
       mMathVariant != aNewData.mMathVariant ||
       mMathStyle != aNewData.mMathStyle ||
-      mMinFontSizeRatio != aNewData.mMinFontSizeRatio) {
+      mMinFontSizeRatio != aNewData.mMinFontSizeRatio ||
+      mLineHeight != aNewData.mLineHeight) {
     return NS_STYLE_HINT_REFLOW;
   }
 
@@ -288,8 +290,7 @@ nsChangeHint nsStyleFont::CalcDifference(const nsStyleFont& aNewData) const {
   // XXX Should any of these cause a non-nsChangeHint_NeutralChange change?
   if (mMathDepth != aNewData.mMathDepth ||
       mScriptUnconstrainedSize != aNewData.mScriptUnconstrainedSize ||
-      mScriptMinSize != aNewData.mScriptMinSize ||
-      mScriptSizeMultiplier != aNewData.mScriptSizeMultiplier) {
+      mScriptMinSize != aNewData.mScriptMinSize) {
     return nsChangeHint_NeutralChange;
   }
 
@@ -308,7 +309,7 @@ static StyleRect<T> StyleRectWithAllSides(const T& aSide) {
   return {aSide, aSide, aSide, aSide};
 }
 
-nsStyleMargin::nsStyleMargin(const Document& aDocument)
+nsStyleMargin::nsStyleMargin()
     : mMargin(StyleRectWithAllSides(
           LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Zero()))),
       mScrollMargin(StyleRectWithAllSides(StyleLength{0.})),
@@ -346,7 +347,7 @@ nsChangeHint nsStyleMargin::CalcDifference(
   return hint;
 }
 
-nsStylePadding::nsStylePadding(const Document& aDocument)
+nsStylePadding::nsStylePadding()
     : mPadding(StyleRectWithAllSides(LengthPercentage::Zero())),
       mScrollPadding(StyleRectWithAllSides(LengthPercentageOrAuto::Auto())) {
   MOZ_COUNT_CTOR(nsStylePadding);
@@ -386,7 +387,7 @@ static inline BorderRadius ZeroBorderRadius() {
   return {{{zero, zero}}, {{zero, zero}}, {{zero, zero}}, {{zero, zero}}};
 }
 
-nsStyleBorder::nsStyleBorder(const Document& aDocument)
+nsStyleBorder::nsStyleBorder()
     : mBorderRadius(ZeroBorderRadius()),
       mBorderImageSource(StyleImage::None()),
       mBorderImageWidth(
@@ -435,8 +436,6 @@ nsStyleBorder::nsStyleBorder(const nsStyleBorder& aSrc)
     mBorderStyle[side] = aSrc.mBorderStyle[side];
   }
 }
-
-nsStyleBorder::~nsStyleBorder() { MOZ_COUNT_DTOR(nsStyleBorder); }
 
 void nsStyleBorder::TriggerImageLoads(Document& aDocument,
                                       const nsStyleBorder* aOldStyle) {
@@ -544,7 +543,7 @@ nsChangeHint nsStyleBorder::CalcDifference(
   return nsChangeHint(0);
 }
 
-nsStyleOutline::nsStyleOutline(const Document& aDocument)
+nsStyleOutline::nsStyleOutline()
     : mOutlineWidth(kMediumBorderWidth),
       mOutlineOffset({0.0f}),
       mOutlineColor(StyleColor::CurrentColor()),
@@ -589,24 +588,33 @@ nsChangeHint nsStyleOutline::CalcDifference(
   return nsChangeHint(0);
 }
 
+nsSize nsStyleOutline::EffectiveOffsetFor(const nsRect& aRect) const {
+  const nscoord offset = mOutlineOffset.ToAppUnits();
+
+  if (offset >= 0) {
+    // Fast path for non-negative offset values
+    return nsSize(offset, offset);
+  }
+
+  return nsSize(std::max(offset, -(aRect.Width() / 2)),
+                std::max(offset, -(aRect.Height() / 2)));
+}
+
 // --------------------
 // nsStyleList
 //
-nsStyleList::nsStyleList(const Document& aDocument)
+nsStyleList::nsStyleList()
     : mListStylePosition(StyleListStylePosition::Outside),
+      mListStyleType(StyleCounterStyle::Name({StyleAtom(nsGkAtoms::disc)})),
       mQuotes(StyleQuotes::Auto()),
       mListStyleImage(StyleImage::None()) {
   MOZ_COUNT_CTOR(nsStyleList);
   MOZ_ASSERT(NS_IsMainThread());
-
-  mCounterStyle = nsGkAtoms::disc;
 }
-
-nsStyleList::~nsStyleList() { MOZ_COUNT_DTOR(nsStyleList); }
 
 nsStyleList::nsStyleList(const nsStyleList& aSource)
     : mListStylePosition(aSource.mListStylePosition),
-      mCounterStyle(aSource.mCounterStyle),
+      mListStyleType(aSource.mListStyleType),
       mQuotes(aSource.mQuotes),
       mListStyleImage(aSource.mListStyleImage) {
   MOZ_COUNT_CTOR(nsStyleList);
@@ -619,8 +627,8 @@ void nsStyleList::TriggerImageLoads(Document& aDocument,
       aDocument, aOldStyle ? &aOldStyle->mListStyleImage : nullptr);
 }
 
-nsChangeHint nsStyleList::CalcDifference(
-    const nsStyleList& aNewData, const nsStyleDisplay& aOldDisplay) const {
+nsChangeHint nsStyleList::CalcDifference(const nsStyleList& aNewData,
+                                         const ComputedStyle& aOldStyle) const {
   // If the quotes implementation is ever going to change we might not need
   // a framechange here and a reflow should be sufficient.  See bug 35768.
   if (mQuotes != aNewData.mQuotes) {
@@ -628,25 +636,18 @@ nsChangeHint nsStyleList::CalcDifference(
   }
   nsChangeHint hint = nsChangeHint(0);
   // Only elements whose display value is list-item can be affected by
-  // list-style-position and list-style-type. If the old display struct
-  // doesn't exist, assume it isn't affected by display value at all,
-  // and thus these properties should not affect it either. This also
-  // relies on that when the display value changes from something else
-  // to list-item, that change itself would cause ReconstructFrame.
-  if (aOldDisplay.IsListItem()) {
-    if (mListStylePosition != aNewData.mListStylePosition ||
-        mCounterStyle != aNewData.mCounterStyle ||
-        mListStyleImage != aNewData.mListStyleImage) {
+  // list-style-{position,type,image}. This also relies on that when the display
+  // value changes from something else to list-item, that change itself would
+  // cause ReconstructFrame.
+  if (mListStylePosition != aNewData.mListStylePosition ||
+      mListStyleType != aNewData.mListStyleType ||
+      mListStyleImage != aNewData.mListStyleImage) {
+    if (aOldStyle.StyleDisplay()->IsListItem()) {
       return nsChangeHint_ReconstructFrame;
     }
-  } else if (mListStylePosition != aNewData.mListStylePosition ||
-             mCounterStyle != aNewData.mCounterStyle) {
+    // list-style-image may affect nsImageFrame for XUL elements, but that is
+    // dealt with explicitly in nsImageFrame::DidSetComputedStyle.
     hint = nsChangeHint_NeutralChange;
-  }
-  // list-style-image and -moz-image-region may affect some XUL elements
-  // regardless of display value, so we still need to check them.
-  if (mListStyleImage != aNewData.mListStyleImage) {
-    return NS_STYLE_HINT_REFLOW;
   }
   return hint;
 }
@@ -662,7 +663,7 @@ already_AddRefed<nsIURI> nsStyleList::GetListStyleImageURI() const {
 // --------------------
 // nsStyleXUL
 //
-nsStyleXUL::nsStyleXUL(const Document& aDocument)
+nsStyleXUL::nsStyleXUL()
     : mBoxFlex(0.0f),
       mBoxOrdinal(1),
       mBoxAlign(StyleBoxAlign::Stretch),
@@ -671,8 +672,6 @@ nsStyleXUL::nsStyleXUL(const Document& aDocument)
       mBoxPack(StyleBoxPack::Start) {
   MOZ_COUNT_CTOR(nsStyleXUL);
 }
-
-nsStyleXUL::~nsStyleXUL() { MOZ_COUNT_DTOR(nsStyleXUL); }
 
 nsStyleXUL::nsStyleXUL(const nsStyleXUL& aSource)
     : mBoxFlex(aSource.mBoxFlex),
@@ -700,10 +699,8 @@ nsChangeHint nsStyleXUL::CalcDifference(const nsStyleXUL& aNewData) const {
 // --------------------
 // nsStyleColumn
 //
-/* static */ const uint32_t nsStyleColumn::kMaxColumnCount;
-/* static */ const uint32_t nsStyleColumn::kColumnCountAuto;
 
-nsStyleColumn::nsStyleColumn(const Document& aDocument)
+nsStyleColumn::nsStyleColumn()
     : mColumnWidth(LengthOrAuto::Auto()),
       mColumnRuleColor(StyleColor::CurrentColor()),
       mColumnRuleStyle(StyleBorderStyle::None),
@@ -711,8 +708,6 @@ nsStyleColumn::nsStyleColumn(const Document& aDocument)
       mActualColumnRuleWidth(0) {
   MOZ_COUNT_CTOR(nsStyleColumn);
 }
-
-nsStyleColumn::~nsStyleColumn() { MOZ_COUNT_DTOR(nsStyleColumn); }
 
 nsStyleColumn::nsStyleColumn(const nsStyleColumn& aSource)
     : mColumnCount(aSource.mColumnCount),
@@ -761,7 +756,7 @@ using SVGPaintFallback = StyleGenericSVGPaintFallback<StyleColor>;
 // --------------------
 // nsStyleSVG
 //
-nsStyleSVG::nsStyleSVG(const Document& aDocument)
+nsStyleSVG::nsStyleSVG()
     : mFill{StyleSVGPaintKind::Color(StyleColor::Black()),
             SVGPaintFallback::Unset()},
       mStroke{StyleSVGPaintKind::None(), SVGPaintFallback::Unset()},
@@ -789,8 +784,6 @@ nsStyleSVG::nsStyleSVG(const Document& aDocument)
       mTextAnchor(StyleTextAnchor::Start) {
   MOZ_COUNT_CTOR(nsStyleSVG);
 }
-
-nsStyleSVG::~nsStyleSVG() { MOZ_COUNT_DTOR(nsStyleSVG); }
 
 nsStyleSVG::nsStyleSVG(const nsStyleSVG& aSource)
     : mFill(aSource.mFill),
@@ -901,7 +894,7 @@ nsChangeHint nsStyleSVG::CalcDifference(const nsStyleSVG& aNewData) const {
 // --------------------
 // nsStyleSVGReset
 //
-nsStyleSVGReset::nsStyleSVGReset(const Document& aDocument)
+nsStyleSVGReset::nsStyleSVGReset()
     : mX(LengthPercentage::Zero()),
       mY(LengthPercentage::Zero()),
       mCx(LengthPercentage::Zero()),
@@ -921,8 +914,6 @@ nsStyleSVGReset::nsStyleSVGReset(const Document& aDocument)
       mD(StyleDProperty::None()) {
   MOZ_COUNT_CTOR(nsStyleSVGReset);
 }
-
-nsStyleSVGReset::~nsStyleSVGReset() { MOZ_COUNT_DTOR(nsStyleSVGReset); }
 
 nsStyleSVGReset::nsStyleSVGReset(const nsStyleSVGReset& aSource)
     : mX(aSource.mX),
@@ -1030,6 +1021,13 @@ bool nsStyleSVGReset::HasMask() const {
 // nsStylePage
 //
 
+nsStylePage::nsStylePage(const nsStylePage& aSrc)
+    : mSize(aSrc.mSize),
+      mPage(aSrc.mPage),
+      mPageOrientation(aSrc.mPageOrientation) {
+  MOZ_COUNT_CTOR(nsStylePage);
+}
+
 nsChangeHint nsStylePage::CalcDifference(const nsStylePage& aNewData) const {
   // Page rule styling only matters when printing or using print preview.
   if (aNewData.mSize != mSize || aNewData.mPage != mPage ||
@@ -1042,7 +1040,7 @@ nsChangeHint nsStylePage::CalcDifference(const nsStylePage& aNewData) const {
 // --------------------
 // nsStylePosition
 //
-nsStylePosition::nsStylePosition(const Document& aDocument)
+nsStylePosition::nsStylePosition()
     : mObjectPosition(Position::FromPercentage(0.5f)),
       mOffset(StyleRectWithAllSides(LengthPercentageOrAuto::Auto())),
       mWidth(StyleSize::Auto()),
@@ -1051,6 +1049,12 @@ nsStylePosition::nsStylePosition(const Document& aDocument)
       mHeight(StyleSize::Auto()),
       mMinHeight(StyleSize::Auto()),
       mMaxHeight(StyleMaxSize::None()),
+      mPositionAnchor(StylePositionAnchor::Auto()),
+      mPositionVisibility(StylePositionVisibility::ALWAYS),
+      mPositionTryOptions(StylePositionTryOptions()),
+      mPositionTryOrder(StylePositionTryOrder::Normal),
+      mInsetArea(StyleInsetArea{StyleInsetAreaKeyword::None,
+                                StyleInsetAreaKeyword::None}),
       mFlexBasis(StyleFlexBasis::Size(StyleSize::Auto())),
       mAspectRatio(StyleAspectRatio::Auto()),
       mGridAutoFlow(StyleGridAutoFlow::ROW),
@@ -1088,12 +1092,8 @@ nsStylePosition::nsStylePosition(const Document& aDocument)
   // mGrid{Column,Row}{Start,End}: false/0/empty values for 'auto'
 }
 
-nsStylePosition::~nsStylePosition() { MOZ_COUNT_DTOR(nsStylePosition); }
-
 nsStylePosition::nsStylePosition(const nsStylePosition& aSource)
-    : mAlignTracks(aSource.mAlignTracks),
-      mJustifyTracks(aSource.mJustifyTracks),
-      mObjectPosition(aSource.mObjectPosition),
+    : mObjectPosition(aSource.mObjectPosition),
       mOffset(aSource.mOffset),
       mWidth(aSource.mWidth),
       mMinWidth(aSource.mMinWidth),
@@ -1101,6 +1101,11 @@ nsStylePosition::nsStylePosition(const nsStylePosition& aSource)
       mHeight(aSource.mHeight),
       mMinHeight(aSource.mMinHeight),
       mMaxHeight(aSource.mMaxHeight),
+      mPositionAnchor(aSource.mPositionAnchor),
+      mPositionVisibility(aSource.mPositionVisibility),
+      mPositionTryOptions(aSource.mPositionTryOptions),
+      mPositionTryOrder(aSource.mPositionTryOrder),
+      mInsetArea(aSource.mInsetArea),
       mFlexBasis(aSource.mFlexBasis),
       mGridAutoColumns(aSource.mGridAutoColumns),
       mGridAutoRows(aSource.mGridAutoRows),
@@ -1146,8 +1151,7 @@ static bool IsAutonessEqual(const StyleRect<LengthPercentageOrAuto>& aSides1,
 }
 
 nsChangeHint nsStylePosition::CalcDifference(
-    const nsStylePosition& aNewData,
-    const nsStyleVisibility& aOldStyleVisibility) const {
+    const nsStylePosition& aNewData, const ComputedStyle& aOldStyle) const {
   if (mGridTemplateColumns.IsMasonry() !=
           aNewData.mGridTemplateColumns.IsMasonry() ||
       mGridTemplateRows.IsMasonry() != aNewData.mGridTemplateRows.IsMasonry()) {
@@ -1192,9 +1196,7 @@ nsChangeHint nsStylePosition::CalcDifference(
   }
 
   if (mAlignItems != aNewData.mAlignItems ||
-      mAlignSelf != aNewData.mAlignSelf ||
-      mJustifyTracks != aNewData.mJustifyTracks ||
-      mAlignTracks != aNewData.mAlignTracks) {
+      mAlignSelf != aNewData.mAlignSelf) {
     return hint | nsChangeHint_AllReflowHints;
   }
 
@@ -1265,17 +1267,32 @@ nsChangeHint nsStylePosition::CalcDifference(
                        mMinHeight != aNewData.mMinHeight ||
                        mMaxHeight != aNewData.mMaxHeight;
 
-  // It doesn't matter whether we're looking at the old or new visibility
-  // struct, since a change between vertical and horizontal writing-mode will
-  // cause a reframe.
-  bool isVertical = aOldStyleVisibility.mWritingMode !=
-                    StyleWritingModeProperty::HorizontalTb;
-  if (isVertical ? widthChanged : heightChanged) {
-    hint |= nsChangeHint_ReflowHintsForBSizeChange;
+  if (widthChanged || heightChanged) {
+    // It doesn't matter whether we're looking at the old or new visibility
+    // struct, since a change between vertical and horizontal writing-mode will
+    // cause a reframe.
+    const bool isVertical = aOldStyle.StyleVisibility()->mWritingMode !=
+                            StyleWritingModeProperty::HorizontalTb;
+    if (isVertical ? widthChanged : heightChanged) {
+      hint |= nsChangeHint_ReflowHintsForBSizeChange;
+    }
+    if (isVertical ? heightChanged : widthChanged) {
+      hint |= nsChangeHint_ReflowHintsForISizeChange;
+    }
   }
 
-  if (isVertical ? heightChanged : widthChanged) {
-    hint |= nsChangeHint_ReflowHintsForISizeChange;
+  if (mPositionAnchor != aNewData.mPositionAnchor) {
+    // 'position-anchor' provides a default anchor for other anchor positioning
+    // properties in the event that they don't specify one explicitly.
+    // TODO(jwatt): Re-evaluate what we're doing here.
+    hint |= nsChangeHint_NeutralChange;
+  }
+
+  if (mPositionVisibility != aNewData.mPositionVisibility ||
+      mPositionTryOptions != aNewData.mPositionTryOptions ||
+      mPositionTryOrder != aNewData.mPositionTryOrder ||
+      mInsetArea != aNewData.mInsetArea) {
+    hint |= nsChangeHint_NeutralChange;
   }
 
   if (mAspectRatio != aNewData.mAspectRatio) {
@@ -1343,12 +1360,10 @@ StyleJustifySelf nsStylePosition::UsedJustifySelf(
 // nsStyleTable
 //
 
-nsStyleTable::nsStyleTable(const Document& aDocument)
+nsStyleTable::nsStyleTable()
     : mLayoutStrategy(StyleTableLayout::Auto), mXSpan(1) {
   MOZ_COUNT_CTOR(nsStyleTable);
 }
-
-nsStyleTable::~nsStyleTable() { MOZ_COUNT_DTOR(nsStyleTable); }
 
 nsStyleTable::nsStyleTable(const nsStyleTable& aSource)
     : mLayoutStrategy(aSource.mLayoutStrategy), mXSpan(aSource.mXSpan) {
@@ -1366,22 +1381,16 @@ nsChangeHint nsStyleTable::CalcDifference(const nsStyleTable& aNewData) const {
 // -----------------------
 // nsStyleTableBorder
 
-nsStyleTableBorder::nsStyleTableBorder(const Document& aDocument)
-    : mBorderSpacingCol(0),
-      mBorderSpacingRow(0),
+nsStyleTableBorder::nsStyleTableBorder()
+    : mBorderSpacing{Length::Zero(), Length::Zero()},
       mBorderCollapse(StyleBorderCollapse::Separate),
       mCaptionSide(StyleCaptionSide::Top),
       mEmptyCells(StyleEmptyCells::Show) {
   MOZ_COUNT_CTOR(nsStyleTableBorder);
 }
 
-nsStyleTableBorder::~nsStyleTableBorder() {
-  MOZ_COUNT_DTOR(nsStyleTableBorder);
-}
-
 nsStyleTableBorder::nsStyleTableBorder(const nsStyleTableBorder& aSource)
-    : mBorderSpacingCol(aSource.mBorderSpacingCol),
-      mBorderSpacingRow(aSource.mBorderSpacingRow),
+    : mBorderSpacing(aSource.mBorderSpacing),
       mBorderCollapse(aSource.mBorderCollapse),
       mCaptionSide(aSource.mCaptionSide),
       mEmptyCells(aSource.mEmptyCells) {
@@ -1397,17 +1406,14 @@ nsChangeHint nsStyleTableBorder::CalcDifference(
   if (mBorderCollapse != aNewData.mBorderCollapse) {
     return nsChangeHint_ReconstructFrame;
   }
-
-  if ((mCaptionSide == aNewData.mCaptionSide) &&
-      (mBorderSpacingCol == aNewData.mBorderSpacingCol) &&
-      (mBorderSpacingRow == aNewData.mBorderSpacingRow)) {
-    if (mEmptyCells == aNewData.mEmptyCells) {
-      return nsChangeHint(0);
-    }
-    return NS_STYLE_HINT_VISUAL;
-  } else {
+  if (mCaptionSide != aNewData.mCaptionSide ||
+      mBorderSpacing != aNewData.mBorderSpacing) {
     return NS_STYLE_HINT_REFLOW;
   }
+  if (mEmptyCells != aNewData.mEmptyCells) {
+    return NS_STYLE_HINT_VISUAL;
+  }
+  return nsChangeHint(0);
 }
 
 template <typename T>
@@ -1441,58 +1447,6 @@ bool StyleGradient::IsOpaque() const {
   return GradientItemsAreOpaque(AsConic().items.AsSpan());
 }
 
-static int32_t ConvertToPixelCoord(const StyleNumberOrPercentage& aCoord,
-                                   int32_t aPercentScale) {
-  double pixelValue;
-  if (aCoord.IsNumber()) {
-    pixelValue = aCoord.AsNumber();
-  } else {
-    MOZ_ASSERT(aCoord.IsPercentage());
-    pixelValue = aCoord.AsPercentage()._0 * aPercentScale;
-  }
-  MOZ_ASSERT(pixelValue >= 0, "we ensured non-negative while parsing");
-  pixelValue = std::min(pixelValue, double(INT32_MAX));  // avoid overflow
-  return NS_lround(pixelValue);
-}
-
-template <>
-Maybe<StyleImage::ActualCropRect> StyleImage::ComputeActualCropRect() const {
-  MOZ_ASSERT(IsRect(),
-             "This function is designed to be used only image-rect images");
-
-  imgRequestProxy* req = GetImageRequest();
-  if (!req) {
-    return Nothing();
-  }
-
-  nsCOMPtr<imgIContainer> imageContainer;
-  req->GetImage(getter_AddRefs(imageContainer));
-  if (!imageContainer) {
-    return Nothing();
-  }
-
-  nsIntSize imageSize;
-  imageContainer->GetWidth(&imageSize.width);
-  imageContainer->GetHeight(&imageSize.height);
-  if (imageSize.width <= 0 || imageSize.height <= 0) {
-    return Nothing();
-  }
-
-  auto& rect = AsRect();
-
-  int32_t left = ConvertToPixelCoord(rect->left, imageSize.width);
-  int32_t top = ConvertToPixelCoord(rect->top, imageSize.height);
-  int32_t right = ConvertToPixelCoord(rect->right, imageSize.width);
-  int32_t bottom = ConvertToPixelCoord(rect->bottom, imageSize.height);
-
-  // IntersectRect() returns an empty rect if we get negative width or height
-  nsIntRect cropRect(left, top, right - left, bottom - top);
-  nsIntRect imageRect(nsIntPoint(0, 0), imageSize);
-  auto finalRect = imageRect.Intersect(cropRect);
-  bool isEntireImage = finalRect.IsEqualInterior(imageRect);
-  return Some(ActualCropRect{finalRect, isEntireImage});
-}
-
 template <>
 bool StyleImage::IsOpaque() const {
   if (IsImageSet()) {
@@ -1518,19 +1472,7 @@ bool StyleImage::IsOpaque() const {
   GetImageRequest()->GetImage(getter_AddRefs(imageContainer));
   MOZ_ASSERT(imageContainer, "IsComplete() said image container is ready");
 
-  // Check if the crop region of the image is opaque.
-  if (imageContainer->WillDrawOpaqueNow()) {
-    if (!IsRect()) {
-      return true;
-    }
-
-    // Must make sure if the crop rect contains at least a pixel.
-    // XXX Is this optimization worth it? Maybe I should just return false.
-    auto croprect = ComputeActualCropRect();
-    return croprect && !croprect->mRect.IsEmpty();
-  }
-
-  return false;
+  return imageContainer->WillDrawOpaqueNow();
 }
 
 template <>
@@ -1541,8 +1483,7 @@ bool StyleImage::IsComplete() const {
     case Tag::Gradient:
     case Tag::Element:
       return true;
-    case Tag::Url:
-    case Tag::Rect: {
+    case Tag::Url: {
       if (!IsResolved()) {
         return false;
       }
@@ -1573,8 +1514,7 @@ bool StyleImage::IsSizeAvailable() const {
     case Tag::Gradient:
     case Tag::Element:
       return true;
-    case Tag::Url:
-    case Tag::Rect: {
+    case Tag::Url: {
       imgRequestProxy* req = GetImageRequest();
       if (!req) {
         return false;
@@ -1599,15 +1539,15 @@ void StyleImage::ResolveImage(Document& aDoc, const StyleImage* aOld) {
   if (IsResolved()) {
     return;
   }
-  auto* old = aOld ? aOld->GetImageRequestURLValue() : nullptr;
-  auto* url = GetImageRequestURLValue();
+  const auto* old = aOld ? aOld->GetImageRequestURLValue() : nullptr;
+  const auto* url = GetImageRequestURLValue();
   // We could avoid this const_cast generating more code but it's not really
   // worth it.
   const_cast<StyleComputedImageUrl*>(url)->ResolveImage(aDoc, old);
 }
 
 template <>
-ImageResolution StyleImage::GetResolution() const {
+ImageResolution StyleImage::GetResolution(const ComputedStyle& aStyle) const {
   ImageResolution resolution;
   if (imgRequestProxy* request = GetImageRequest()) {
     RefPtr<imgIContainer> image;
@@ -1624,28 +1564,10 @@ ImageResolution StyleImage::GetResolution() const {
       resolution.ScaleBy(r);
     }
   }
+  if (aStyle.EffectiveZoom() != StyleZoom::ONE) {
+    resolution.ScaleBy(1.0f / aStyle.EffectiveZoom().ToFloat());
+  }
   return resolution;
-}
-
-template <>
-Maybe<CSSIntSize> StyleImage::GetIntrinsicSize() const {
-  imgRequestProxy* request = GetImageRequest();
-  if (!request) {
-    return Nothing();
-  }
-  RefPtr<imgIContainer> image;
-  request->GetImage(getter_AddRefs(image));
-  if (!image) {
-    return Nothing();
-  }
-  // FIXME(emilio): Seems like this should be smarter about unspecified width /
-  // height, aspect ratio, etc, but this preserves the current behavior of our
-  // only caller for now...
-  int32_t w = 0, h = 0;
-  image->GetWidth(&w);
-  image->GetHeight(&h);
-  GetResolution().ApplyTo(w, h);
-  return Some(CSSIntSize{w, h});
 }
 
 // --------------------
@@ -1695,8 +1617,6 @@ nsStyleImageLayers::nsStyleImageLayers(nsStyleImageLayers::LayerType aType)
       mBlendModeCount(1),
       mCompositeCount(1),
       mLayers(nsStyleAutoArray<Layer>::WITH_SINGLE_INITIAL_ELEMENT) {
-  MOZ_COUNT_CTOR(nsStyleImageLayers);
-
   // Ensure first layer is initialized as specified layer type
   mLayers[0].Initialize(aType);
 }
@@ -1713,9 +1633,7 @@ nsStyleImageLayers::nsStyleImageLayers(const nsStyleImageLayers& aSource)
       mMaskModeCount(aSource.mMaskModeCount),
       mBlendModeCount(aSource.mBlendModeCount),
       mCompositeCount(aSource.mCompositeCount),
-      mLayers(aSource.mLayers.Clone()) {
-  MOZ_COUNT_CTOR(nsStyleImageLayers);
-}
+      mLayers(aSource.mLayers.Clone()) {}
 
 static bool AnyLayerIsElementImage(const nsStyleImageLayers& aLayers) {
   NS_FOR_VISIBLE_IMAGE_LAYERS_BACK_TO_FRONT(i, aLayers) {
@@ -1866,7 +1784,7 @@ static bool SizeDependsOnPositioningAreaSize(const StyleBackgroundSize& aSize,
   }
 
   MOZ_ASSERT(aSize.IsExplicitSize());
-  auto& size = aSize.explicit_size;
+  const auto& size = aSize.AsExplicitSize();
 
   // If either dimension contains a non-zero percentage, rendering for that
   // dimension straightforwardly depends on frame size.
@@ -1945,8 +1863,6 @@ nsStyleImageLayers::Layer::~Layer() = default;
 
 void nsStyleImageLayers::Layer::Initialize(
     nsStyleImageLayers::LayerType aType) {
-  mRepeat.SetInitialValues();
-
   mPosition = Position::FromPercentage(0.);
 
   if (aType == LayerType::Background) {
@@ -2026,8 +1942,8 @@ void nsStyleImageLayers::FillAllLayers(uint32_t aMaxItemCount) {
 
 static bool UrlValuesEqual(const StyleImage& aImage,
                            const StyleImage& aOtherImage) {
-  auto* url = aImage.GetImageRequestURLValue();
-  auto* other = aOtherImage.GetImageRequestURLValue();
+  const auto* url = aImage.GetImageRequestURLValue();
+  const auto* other = aOtherImage.GetImageRequestURLValue();
   return url == other || (url && other && *url == *other);
 }
 
@@ -2055,7 +1971,7 @@ nsChangeHint nsStyleImageLayers::Layer::CalcDifference(
 // nsStyleBackground
 //
 
-nsStyleBackground::nsStyleBackground(const Document& aDocument)
+nsStyleBackground::nsStyleBackground()
     : mImage(nsStyleImageLayers::LayerType::Background),
       mBackgroundColor(StyleColor::Transparent()) {
   MOZ_COUNT_CTOR(nsStyleBackground);
@@ -2065,8 +1981,6 @@ nsStyleBackground::nsStyleBackground(const nsStyleBackground& aSource)
     : mImage(aSource.mImage), mBackgroundColor(aSource.mBackgroundColor) {
   MOZ_COUNT_CTOR(nsStyleBackground);
 }
-
-nsStyleBackground::~nsStyleBackground() { MOZ_COUNT_DTOR(nsStyleBackground); }
 
 void nsStyleBackground::TriggerImageLoads(Document& aDocument,
                                           const nsStyleBackground* aOldStyle) {
@@ -2117,37 +2031,13 @@ bool nsStyleBackground::IsTransparent(const ComputedStyle* aStyle) const {
 
 StyleTransition::StyleTransition(const StyleTransition& aCopy) = default;
 
-void StyleTransition::SetInitialValues() {
-  mTimingFunction =
-      StyleComputedTimingFunction::Keyword(StyleTimingKeyword::Ease);
-  mDuration = {0.0};
-  mDelay = {0.0};
-  mProperty = eCSSPropertyExtra_all_properties;
-}
-
 bool StyleTransition::operator==(const StyleTransition& aOther) const {
   return mTimingFunction == aOther.mTimingFunction &&
          mDuration == aOther.mDuration && mDelay == aOther.mDelay &&
-         mProperty == aOther.mProperty &&
-         (mProperty != eCSSProperty_UNKNOWN ||
-          mUnknownProperty == aOther.mUnknownProperty);
+         mProperty == aOther.mProperty && mBehavior == aOther.mBehavior;
 }
 
 StyleAnimation::StyleAnimation(const StyleAnimation& aCopy) = default;
-
-void StyleAnimation::SetInitialValues() {
-  mTimingFunction =
-      StyleComputedTimingFunction::Keyword(StyleTimingKeyword::Ease);
-  mDuration = {0.0};
-  mDelay = {0.0};
-  mName = nsGkAtoms::_empty;
-  mDirection = dom::PlaybackDirection::Normal;
-  mFillMode = dom::FillMode::None;
-  mPlayState = StyleAnimationPlayState::Running;
-  mIterationCount = {1.0f};
-  mComposition = dom::CompositeOperation::Replace;
-  mTimeline = StyleAnimationTimeline::Auto();
-}
 
 bool StyleAnimation::operator==(const StyleAnimation& aOther) const {
   return mTimingFunction == aOther.mTimingFunction &&
@@ -2161,7 +2051,7 @@ bool StyleAnimation::operator==(const StyleAnimation& aOther) const {
 // --------------------
 // nsStyleDisplay
 //
-nsStyleDisplay::nsStyleDisplay(const Document& aDocument)
+nsStyleDisplay::nsStyleDisplay()
     : mDisplay(StyleDisplay::Inline),
       mOriginalDisplay(StyleDisplay::Inline),
       mContentVisibility(StyleContentVisibility::Visible),
@@ -2192,11 +2082,12 @@ nsStyleDisplay::nsStyleDisplay(const Document& aDocument)
       mOverflowAnchor(StyleOverflowAnchor::Auto),
       mScrollSnapAlign{StyleScrollSnapAlignKeyword::None,
                        StyleScrollSnapAlignKeyword::None},
+      mScrollSnapStop{StyleScrollSnapStop::Normal},
       mScrollSnapType{StyleScrollSnapAxis::Both,
                       StyleScrollSnapStrictness::None},
       mBackfaceVisibility(StyleBackfaceVisibility::Visible),
       mTransformStyle(StyleTransformStyle::Flat),
-      mTransformBox(StyleGeometryBox::BorderBox),
+      mTransformBox(StyleTransformBox::ViewBox),
       mRotate(StyleRotate::None()),
       mTranslate(StyleTranslate::None()),
       mScale(StyleScale::None()),
@@ -2205,7 +2096,7 @@ nsStyleDisplay::nsStyleDisplay(const Document& aDocument)
       mOffsetDistance(LengthPercentage::Zero()),
       mOffsetRotate{true, StyleAngle{0.0}},
       mOffsetAnchor(StylePositionOrAuto::Auto()),
-      mOffsetPosition(StyleOffsetPosition::Auto()),
+      mOffsetPosition(StyleOffsetPosition::Normal()),
       mTransformOrigin{LengthPercentage::FromPercentage(0.5),
                        LengthPercentage::FromPercentage(0.5),
                        {0.}},
@@ -2216,7 +2107,8 @@ nsStyleDisplay::nsStyleDisplay(const Document& aDocument)
       mBaselineSource(StyleBaselineSource::Auto),
       mWebkitLineClamp(0),
       mShapeMargin(LengthPercentage::Zero()),
-      mShapeOutside(StyleShapeOutside::None()) {
+      mShapeOutside(StyleShapeOutside::None()),
+      mAnchorScope(StyleAnchorScope::None()) {
   MOZ_COUNT_CTOR(nsStyleDisplay);
 }
 
@@ -2250,6 +2142,7 @@ nsStyleDisplay::nsStyleDisplay(const nsStyleDisplay& aSource)
       mOverscrollBehaviorY(aSource.mOverscrollBehaviorY),
       mOverflowAnchor(aSource.mOverflowAnchor),
       mScrollSnapAlign(aSource.mScrollSnapAlign),
+      mScrollSnapStop(aSource.mScrollSnapStop),
       mScrollSnapType(aSource.mScrollSnapType),
       mBackfaceVisibility(aSource.mBackfaceVisibility),
       mTransformStyle(aSource.mTransformStyle),
@@ -2273,20 +2166,20 @@ nsStyleDisplay::nsStyleDisplay(const nsStyleDisplay& aSource)
       mWebkitLineClamp(aSource.mWebkitLineClamp),
       mShapeImageThreshold(aSource.mShapeImageThreshold),
       mShapeMargin(aSource.mShapeMargin),
-      mShapeOutside(aSource.mShapeOutside) {
+      mShapeOutside(aSource.mShapeOutside),
+      mAnchorName(aSource.mAnchorName),
+      mAnchorScope(aSource.mAnchorScope) {
   MOZ_COUNT_CTOR(nsStyleDisplay);
 }
-
-nsStyleDisplay::~nsStyleDisplay() { MOZ_COUNT_DTOR(nsStyleDisplay); }
 
 void nsStyleDisplay::TriggerImageLoads(Document& aDocument,
                                        const nsStyleDisplay* aOldStyle) {
   MOZ_ASSERT(NS_IsMainThread());
 
   if (mShapeOutside.IsImage()) {
-    auto* old = aOldStyle && aOldStyle->mShapeOutside.IsImage()
-                    ? &aOldStyle->mShapeOutside.AsImage()
-                    : nullptr;
+    const auto* old = aOldStyle && aOldStyle->mShapeOutside.IsImage()
+                          ? &aOldStyle->mShapeOutside.AsImage()
+                          : nullptr;
     // Const-cast is ugly but legit, we could avoid it by generating mut-casts
     // with cbindgen.
     const_cast<StyleImage&>(mShapeOutside.AsImage())
@@ -2361,6 +2254,7 @@ static bool AppearanceValueAffectsFrames(StyleAppearance aAppearance,
       // We need to reframe since this affects the spinbox creation in
       // nsNumber/SearchControlFrame::CreateAnonymousContent.
       return aDefaultAppearance == StyleAppearance::NumberInput ||
+             aDefaultAppearance == StyleAppearance::PasswordInput ||
              aDefaultAppearance == StyleAppearance::Searchfield;
     case StyleAppearance::Menulist:
       // This affects the menulist button creation.
@@ -2371,22 +2265,10 @@ static bool AppearanceValueAffectsFrames(StyleAppearance aAppearance,
 }
 
 nsChangeHint nsStyleDisplay::CalcDifference(
-    const nsStyleDisplay& aNewData, const nsStylePosition& aOldPosition) const {
-  if (mDisplay != aNewData.mDisplay || mContain != aNewData.mContain ||
+    const nsStyleDisplay& aNewData, const ComputedStyle& aOldStyle) const {
+  if (mDisplay != aNewData.mDisplay ||
       (mFloat == StyleFloat::None) != (aNewData.mFloat == StyleFloat::None) ||
       mTopLayer != aNewData.mTopLayer || mResize != aNewData.mResize) {
-    return nsChangeHint_ReconstructFrame;
-  }
-
-  // `content-visibility` can impact whether or not this frame has containment,
-  // so we reconstruct the frame like we do above.
-  // TODO: We should avoid reconstruction here, per bug 1765615.
-  if (mContentVisibility != aNewData.mContentVisibility) {
-    return nsChangeHint_ReconstructFrame;
-  }
-
-  // Same issue as above for now.
-  if (mContainerType != aNewData.mContainerType) {
     return nsChangeHint_ReconstructFrame;
   }
 
@@ -2403,6 +2285,21 @@ nsChangeHint nsStyleDisplay::CalcDifference(
   }
 
   auto hint = nsChangeHint(0);
+  const auto containmentDiff =
+      mEffectiveContainment ^ aNewData.mEffectiveContainment;
+  if (containmentDiff) {
+    if (containmentDiff & StyleContain::STYLE) {
+      // Style containment affects counters so we need to re-frame.
+      return nsChangeHint_ReconstructFrame;
+    }
+    if (containmentDiff & (StyleContain::PAINT | StyleContain::LAYOUT)) {
+      // Paint and layout containment boxes are absolutely/fixed positioning
+      // containers.
+      hint |= nsChangeHint_UpdateContainingBlock;
+    }
+    // The other container types only need a reflow.
+    hint |= nsChangeHint_AllReflowHints | nsChangeHint_RepaintFrame;
+  }
   if (mPosition != aNewData.mPosition) {
     if (IsAbsolutelyPositionedStyle() ||
         aNewData.IsAbsolutelyPositionedStyle()) {
@@ -2444,12 +2341,15 @@ nsChangeHint nsStyleDisplay::CalcDifference(
     const bool isScrollable = IsScrollableOverflow();
     if (isScrollable != aNewData.IsScrollableOverflow()) {
       // We may need to construct or destroy a scroll frame as a result of this
-      // change.
-      hint |= nsChangeHint_ScrollbarChange;
+      // change. If we don't, we still need to update our overflow in some cases
+      // (like svg:foreignObject), which ignore the scrollable-ness of our
+      // overflow.
+      hint |= nsChangeHint_ScrollbarChange | nsChangeHint_UpdateOverflow |
+              nsChangeHint_RepaintFrame;
     } else if (isScrollable) {
       if (ScrollbarGenerationChanged(*this, aNewData)) {
         // We might need to reframe in the case of hidden -> non-hidden case
-        // though, since nsHTMLScrollFrame::CreateAnonymousContent avoids
+        // though, since ScrollContainerFrame::CreateAnonymousContent avoids
         // creating scrollbars altogether for overflow: hidden. That seems it
         // could create some interesting perf cliffs...
         hint |= nsChangeHint_ScrollbarChange;
@@ -2468,12 +2368,13 @@ nsChangeHint nsStyleDisplay::CalcDifference(
   }
 
   if (mScrollbarGutter != aNewData.mScrollbarGutter) {
-    if (IsScrollableOverflow()) {
+    if (IsScrollableOverflow() || aOldStyle.IsRootElementStyle()) {
       // Changing scrollbar-gutter affects available inline-size of a inner
-      // scrolled frame, so we need a reflow for scrollbar change.
+      // scrolled frame, so we need a reflow for scrollbar change. Note that the
+      // root is always scrollable in HTML, even if its style doesn't say so.
       hint |= nsChangeHint_ReflowHintsForScrollbarChange;
     } else {
-      // scrollbar-gutter only applies to the scroll containers.
+      // scrollbar-gutter only applies to scroll containers.
       hint |= nsChangeHint_NeutralChange;
     }
   }
@@ -2603,7 +2504,7 @@ nsChangeHint nsStyleDisplay::CalcDifference(
     // since a change on whether we need a hypothetical position would trigger
     // reflow anyway.
     if (IsAbsolutelyPositionedStyle() &&
-        aOldPosition.NeedsHypotheticalPositionIfAbsPos()) {
+        aOldStyle.StylePosition()->NeedsHypotheticalPositionIfAbsPos()) {
       hint |=
           nsChangeHint_NeedReflow | nsChangeHint_ReflowChangesSizeOrPosition;
     } else {
@@ -2631,9 +2532,16 @@ nsChangeHint nsStyleDisplay::CalcDifference(
   // TODO(emilio): Figure out change hints for container-name, maybe it needs to
   // be handled by the style system as a special-case (since it changes
   // container-query selection on descendants).
+  // container-type / contain / content-visibility are handled by the
+  // mEffectiveContainment check.
   if (!hint && (mWillChange != aNewData.mWillChange ||
                 mOverflowAnchor != aNewData.mOverflowAnchor ||
-                mContainerName != aNewData.mContainerName)) {
+                mContentVisibility != aNewData.mContentVisibility ||
+                mContainerType != aNewData.mContainerType ||
+                mContain != aNewData.mContain ||
+                mContainerName != aNewData.mContainerName ||
+                mAnchorName != aNewData.mAnchorName ||
+                mAnchorScope != aNewData.mAnchorScope)) {
     hint |= nsChangeHint_NeutralChange;
   }
 
@@ -2775,12 +2683,9 @@ StyleImageOrientation nsStyleVisibility::UsedImageOrientation(
 // nsStyleContent
 //
 
-nsStyleContent::nsStyleContent(const Document& aDocument)
-    : mContent(StyleContent::Normal()) {
+nsStyleContent::nsStyleContent() : mContent(StyleContent::Normal()) {
   MOZ_COUNT_CTOR(nsStyleContent);
 }
-
-nsStyleContent::~nsStyleContent() { MOZ_COUNT_DTOR(nsStyleContent); }
 
 nsStyleContent::nsStyleContent(const nsStyleContent& aSource)
     : mContent(aSource.mContent),
@@ -2812,21 +2717,20 @@ void nsStyleContent::TriggerImageLoads(Document& aDoc,
   }
 
   Span<const StyleContentItem> oldItems;
-  if (aOld && aOld->mContent.IsItems()) {
-    oldItems = aOld->mContent.AsItems().AsSpan();
+  if (aOld) {
+    oldItems = aOld->NonAltContentItems();
   }
 
-  auto items = mContent.AsItems().AsSpan();
-
+  auto items = NonAltContentItems();
   for (size_t i = 0; i < items.Length(); ++i) {
-    auto& item = items[i];
+    const auto& item = items[i];
     if (!item.IsImage()) {
       continue;
     }
-    auto& image = item.AsImage();
-    auto* oldImage = i < oldItems.Length() && oldItems[i].IsImage()
-                         ? &oldItems[i].AsImage()
-                         : nullptr;
+    const auto& image = item.AsImage();
+    const auto* oldImage = i < oldItems.Length() && oldItems[i].IsImage()
+                               ? &oldItems[i].AsImage()
+                               : nullptr;
     const_cast<StyleImage&>(image).ResolveImage(aDoc, oldImage);
   }
 }
@@ -2835,13 +2739,11 @@ void nsStyleContent::TriggerImageLoads(Document& aDoc,
 // nsStyleTextReset
 //
 
-nsStyleTextReset::nsStyleTextReset(const Document& aDocument)
-    : mTextOverflow(),
-      mTextDecorationLine(StyleTextDecorationLine::NONE),
+nsStyleTextReset::nsStyleTextReset()
+    : mTextDecorationLine(StyleTextDecorationLine::NONE),
       mTextDecorationStyle(StyleTextDecorationStyle::Solid),
       mUnicodeBidi(StyleUnicodeBidi::Normal),
-      mInitialLetterSink(0),
-      mInitialLetterSize(0.0f),
+      mInitialLetter{0, 0},
       mTextDecorationColor(StyleColor::CurrentColor()),
       mTextDecorationThickness(StyleTextDecorationLength::Auto()) {
   MOZ_COUNT_CTOR(nsStyleTextReset);
@@ -2852,20 +2754,16 @@ nsStyleTextReset::nsStyleTextReset(const nsStyleTextReset& aSource)
       mTextDecorationLine(aSource.mTextDecorationLine),
       mTextDecorationStyle(aSource.mTextDecorationStyle),
       mUnicodeBidi(aSource.mUnicodeBidi),
-      mInitialLetterSink(aSource.mInitialLetterSink),
-      mInitialLetterSize(aSource.mInitialLetterSize),
+      mInitialLetter(aSource.mInitialLetter),
       mTextDecorationColor(aSource.mTextDecorationColor),
       mTextDecorationThickness(aSource.mTextDecorationThickness) {
   MOZ_COUNT_CTOR(nsStyleTextReset);
 }
 
-nsStyleTextReset::~nsStyleTextReset() { MOZ_COUNT_DTOR(nsStyleTextReset); }
-
 nsChangeHint nsStyleTextReset::CalcDifference(
     const nsStyleTextReset& aNewData) const {
   if (mUnicodeBidi != aNewData.mUnicodeBidi ||
-      mInitialLetterSink != aNewData.mInitialLetterSink ||
-      mInitialLetterSize != aNewData.mInitialLetterSize) {
+      mInitialLetter != aNewData.mInitialLetter) {
     return NS_STYLE_HINT_REFLOW;
   }
 
@@ -2879,12 +2777,9 @@ nsChangeHint nsStyleTextReset::CalcDifference(
            nsChangeHint_SchedulePaint;
   }
 
-  // Repaint for decoration color changes
-  if (mTextDecorationColor != aNewData.mTextDecorationColor) {
-    return nsChangeHint_RepaintFrame;
-  }
-
-  if (mTextOverflow != aNewData.mTextOverflow) {
+  // Repaint for decoration color changes or text-overflow.
+  if (mTextDecorationColor != aNewData.mTextDecorationColor ||
+      mTextOverflow != aNewData.mTextOverflow) {
     return nsChangeHint_RepaintFrame;
   }
 
@@ -2905,11 +2800,10 @@ static StyleAbsoluteColor DefaultColor(const Document& aDocument) {
 nsStyleText::nsStyleText(const Document& aDocument)
     : mColor(DefaultColor(aDocument)),
       mForcedColorAdjust(StyleForcedColorAdjust::Auto),
-      mTextTransform(StyleTextTransform::None()),
+      mTextTransform(StyleTextTransform::NONE),
       mTextAlign(StyleTextAlign::Start),
       mTextAlignLast(StyleTextAlignLast::Auto),
       mTextJustify(StyleTextJustify::Auto),
-      mWhiteSpace(StyleWhiteSpace::Normal),
       mHyphens(StyleHyphens::Manual),
       mRubyAlign(StyleRubyAlign::SpaceAround),
       mRubyPosition(StyleRubyPosition::AlternateOver),
@@ -2926,8 +2820,6 @@ nsStyleText::nsStyleText(const Document& aDocument)
       mTabSize(StyleNonNegativeLengthOrNumber::Number(8.f)),
       mWordSpacing(LengthPercentage::Zero()),
       mLetterSpacing({0.}),
-      mLineHeight(StyleLineHeight::Normal()),
-      mTextIndent(LengthPercentage::Zero()),
       mTextUnderlineOffset(LengthPercentageOrAuto::Auto()),
       mTextDecorationSkipInk(StyleTextDecorationSkipInk::Auto),
       mTextUnderlinePosition(StyleTextUnderlinePosition::AUTO),
@@ -2948,7 +2840,8 @@ nsStyleText::nsStyleText(const nsStyleText& aSource)
       mTextAlign(aSource.mTextAlign),
       mTextAlignLast(aSource.mTextAlignLast),
       mTextJustify(aSource.mTextJustify),
-      mWhiteSpace(aSource.mWhiteSpace),
+      mWhiteSpaceCollapse(aSource.mWhiteSpaceCollapse),
+      mTextWrapMode(aSource.mTextWrapMode),
       mLineBreak(aSource.mLineBreak),
       mWordBreak(aSource.mWordBreak),
       mOverflowWrap(aSource.mOverflowWrap),
@@ -2966,7 +2859,6 @@ nsStyleText::nsStyleText(const nsStyleText& aSource)
       mTabSize(aSource.mTabSize),
       mWordSpacing(aSource.mWordSpacing),
       mLetterSpacing(aSource.mLetterSpacing),
-      mLineHeight(aSource.mLineHeight),
       mTextIndent(aSource.mTextIndent),
       mTextUnderlineOffset(aSource.mTextUnderlineOffset),
       mTextDecorationSkipInk(aSource.mTextDecorationSkipInk),
@@ -2975,11 +2867,10 @@ nsStyleText::nsStyleText(const nsStyleText& aSource)
       mTextShadow(aSource.mTextShadow),
       mTextEmphasisStyle(aSource.mTextEmphasisStyle),
       mHyphenateCharacter(aSource.mHyphenateCharacter),
-      mWebkitTextSecurity(aSource.mWebkitTextSecurity) {
+      mWebkitTextSecurity(aSource.mWebkitTextSecurity),
+      mTextWrapStyle(aSource.mTextWrapStyle) {
   MOZ_COUNT_CTOR(nsStyleText);
 }
-
-nsStyleText::~nsStyleText() { MOZ_COUNT_DTOR(nsStyleText); }
 
 nsChangeHint nsStyleText::CalcDifference(const nsStyleText& aNewData) const {
   if (WhiteSpaceOrNewlineIsSignificant() !=
@@ -2997,7 +2888,8 @@ nsChangeHint nsStyleText::CalcDifference(const nsStyleText& aNewData) const {
   if ((mTextAlign != aNewData.mTextAlign) ||
       (mTextAlignLast != aNewData.mTextAlignLast) ||
       (mTextTransform != aNewData.mTextTransform) ||
-      (mWhiteSpace != aNewData.mWhiteSpace) ||
+      (mWhiteSpaceCollapse != aNewData.mWhiteSpaceCollapse) ||
+      (mTextWrapMode != aNewData.mTextWrapMode) ||
       (mLineBreak != aNewData.mLineBreak) ||
       (mWordBreak != aNewData.mWordBreak) ||
       (mOverflowWrap != aNewData.mOverflowWrap) ||
@@ -3005,13 +2897,13 @@ nsChangeHint nsStyleText::CalcDifference(const nsStyleText& aNewData) const {
       (mRubyPosition != aNewData.mRubyPosition) ||
       (mTextSizeAdjust != aNewData.mTextSizeAdjust) ||
       (mLetterSpacing != aNewData.mLetterSpacing) ||
-      (mLineHeight != aNewData.mLineHeight) ||
       (mTextIndent != aNewData.mTextIndent) ||
       (mTextJustify != aNewData.mTextJustify) ||
       (mWordSpacing != aNewData.mWordSpacing) ||
       (mTabSize != aNewData.mTabSize) ||
       (mHyphenateCharacter != aNewData.mHyphenateCharacter) ||
-      (mWebkitTextSecurity != aNewData.mWebkitTextSecurity)) {
+      (mWebkitTextSecurity != aNewData.mWebkitTextSecurity) ||
+      (mTextWrapStyle != aNewData.mTextWrapStyle)) {
     return NS_STYLE_HINT_REFLOW;
   }
 
@@ -3086,11 +2978,12 @@ LogicalSide nsStyleText::TextEmphasisSide(WritingMode aWM) const {
 // nsStyleUI
 //
 
-nsStyleUI::nsStyleUI(const Document& aDocument)
+nsStyleUI::nsStyleUI()
     : mInert(StyleInert::None),
+      mMozTheme(StyleMozTheme::Auto),
       mUserInput(StyleUserInput::Auto),
       mUserModify(StyleUserModify::ReadOnly),
-      mUserFocus(StyleUserFocus::None),
+      mUserFocus(StyleUserFocus::Normal),
       mPointerEvents(StylePointerEvents::Auto),
       mCursor{{}, StyleCursorKind::Auto},
       mAccentColor(StyleColorOrAuto::Auto()),
@@ -3102,6 +2995,7 @@ nsStyleUI::nsStyleUI(const Document& aDocument)
 
 nsStyleUI::nsStyleUI(const nsStyleUI& aSource)
     : mInert(aSource.mInert),
+      mMozTheme(aSource.mMozTheme),
       mUserInput(aSource.mUserInput),
       mUserModify(aSource.mUserModify),
       mUserFocus(aSource.mUserFocus),
@@ -3114,8 +3008,6 @@ nsStyleUI::nsStyleUI(const nsStyleUI& aSource)
   MOZ_COUNT_CTOR(nsStyleUI);
 }
 
-nsStyleUI::~nsStyleUI() { MOZ_COUNT_DTOR(nsStyleUI); }
-
 void nsStyleUI::TriggerImageLoads(Document& aDocument,
                                   const nsStyleUI* aOldStyle) {
   MOZ_ASSERT(NS_IsMainThread());
@@ -3124,7 +3016,7 @@ void nsStyleUI::TriggerImageLoads(Document& aDocument,
   auto oldCursorImages = aOldStyle ? aOldStyle->mCursor.images.AsSpan()
                                    : Span<const StyleCursorImage>();
   for (size_t i = 0; i < cursorImages.Length(); ++i) {
-    auto& cursor = cursorImages[i];
+    const auto& cursor = cursorImages[i];
     const auto* oldCursorImage =
         oldCursorImages.Length() > i ? &oldCursorImages[i].image : nullptr;
     const_cast<StyleCursorImage&>(cursor).image.ResolveImage(aDocument,
@@ -3169,6 +3061,7 @@ nsChangeHint nsStyleUI::CalcDifference(const nsStyleUI& aNewData) const {
   if (mCaretColor != aNewData.mCaretColor ||
       mAccentColor != aNewData.mAccentColor ||
       mScrollbarColor != aNewData.mScrollbarColor ||
+      mMozTheme != aNewData.mMozTheme ||
       mColorScheme != aNewData.mColorScheme) {
     hint |= nsChangeHint_RepaintFrame;
   }
@@ -3180,14 +3073,14 @@ nsChangeHint nsStyleUI::CalcDifference(const nsStyleUI& aNewData) const {
 // nsStyleUIReset
 //
 
-nsStyleUIReset::nsStyleUIReset(const Document& aDocument)
+nsStyleUIReset::nsStyleUIReset()
     : mUserSelect(StyleUserSelect::Auto),
       mScrollbarWidth(StyleScrollbarWidth::Auto),
       mMozForceBrokenImageIcon(false),
       mMozSubtreeHiddenOnlyVisually(false),
       mIMEMode(StyleImeMode::Auto),
       mWindowDragging(StyleWindowDragging::Default),
-      mWindowShadow(StyleWindowShadow::Default),
+      mWindowShadow(StyleWindowShadow::Auto),
       mWindowOpacity(1.0),
       mMozWindowInputRegionMargin(StyleLength::Zero()),
       mWindowTransformOrigin{LengthPercentage::FromPercentage(0.5),
@@ -3199,6 +3092,7 @@ nsStyleUIReset::nsStyleUIReset(const Document& aDocument)
       mTransitionDurationCount(1),
       mTransitionDelayCount(1),
       mTransitionPropertyCount(1),
+      mTransitionBehaviorCount(1),
       mAnimations(
           nsStyleAutoArray<StyleAnimation>::WITH_SINGLE_INITIAL_ELEMENT),
       mAnimationTimingFunctionCount(1),
@@ -3221,8 +3115,6 @@ nsStyleUIReset::nsStyleUIReset(const Document& aDocument)
       mViewTimelineAxisCount(1),
       mViewTimelineInsetCount(1) {
   MOZ_COUNT_CTOR(nsStyleUIReset);
-  mTransitions[0].SetInitialValues();
-  mAnimations[0].SetInitialValues();
 }
 
 nsStyleUIReset::nsStyleUIReset(const nsStyleUIReset& aSource)
@@ -3242,6 +3134,7 @@ nsStyleUIReset::nsStyleUIReset(const nsStyleUIReset& aSource)
       mTransitionDurationCount(aSource.mTransitionDurationCount),
       mTransitionDelayCount(aSource.mTransitionDelayCount),
       mTransitionPropertyCount(aSource.mTransitionPropertyCount),
+      mTransitionBehaviorCount(aSource.mTransitionBehaviorCount),
       mAnimations(aSource.mAnimations.Clone()),
       mAnimationTimingFunctionCount(aSource.mAnimationTimingFunctionCount),
       mAnimationDurationCount(aSource.mAnimationDurationCount),
@@ -3262,8 +3155,6 @@ nsStyleUIReset::nsStyleUIReset(const nsStyleUIReset& aSource)
       mViewTimelineInsetCount(aSource.mViewTimelineInsetCount) {
   MOZ_COUNT_CTOR(nsStyleUIReset);
 }
-
-nsStyleUIReset::~nsStyleUIReset() { MOZ_COUNT_DTOR(nsStyleUIReset); }
 
 nsChangeHint nsStyleUIReset::CalcDifference(
     const nsStyleUIReset& aNewData) const {
@@ -3302,6 +3193,7 @@ nsChangeHint nsStyleUIReset::CalcDifference(
        mTransitionDurationCount != aNewData.mTransitionDurationCount ||
        mTransitionDelayCount != aNewData.mTransitionDelayCount ||
        mTransitionPropertyCount != aNewData.mTransitionPropertyCount ||
+       mTransitionBehaviorCount != aNewData.mTransitionBehaviorCount ||
        mAnimations != aNewData.mAnimations ||
        mAnimationTimingFunctionCount !=
            aNewData.mAnimationTimingFunctionCount ||
@@ -3345,7 +3237,7 @@ StyleScrollbarWidth nsStyleUIReset::ScrollbarWidth() const {
 // nsStyleEffects
 //
 
-nsStyleEffects::nsStyleEffects(const Document&)
+nsStyleEffects::nsStyleEffects()
     : mClip(StyleClipRectOrAuto::Auto()),
       mOpacity(1.0f),
       mMixBlendMode(StyleBlend::Normal) {
@@ -3362,8 +3254,6 @@ nsStyleEffects::nsStyleEffects(const nsStyleEffects& aSource)
   MOZ_COUNT_CTOR(nsStyleEffects);
 }
 
-nsStyleEffects::~nsStyleEffects() { MOZ_COUNT_DTOR(nsStyleEffects); }
-
 static bool AnyAutonessChanged(const StyleClipRectOrAuto& aOld,
                                const StyleClipRectOrAuto& aNew) {
   if (aOld.IsAuto() != aNew.IsAuto()) {
@@ -3372,8 +3262,8 @@ static bool AnyAutonessChanged(const StyleClipRectOrAuto& aOld,
   if (aOld.IsAuto()) {
     return false;
   }
-  auto& oldRect = aOld.AsRect();
-  auto& newRect = aNew.AsRect();
+  const auto& oldRect = aOld.AsRect();
+  const auto& newRect = aNew.AsRect();
   return oldRect.top.IsAuto() != newRect.top.IsAuto() ||
          oldRect.right.IsAuto() != newRect.right.IsAuto() ||
          oldRect.bottom.IsAuto() != newRect.bottom.IsAuto() ||
@@ -3453,20 +3343,20 @@ static bool TransformOperationHasPercent(const StyleTransformOperation& aOp) {
     case StyleTransformOperation::Tag::TranslateZ:
       return false;
     case StyleTransformOperation::Tag::Translate3D: {
-      auto& translate = aOp.AsTranslate3D();
+      const auto& translate = aOp.AsTranslate3D();
       // NOTE(emilio): z translation is a `<length>`, so can't have percentages.
       return translate._0.HasPercent() || translate._1.HasPercent();
     }
     case StyleTransformOperation::Tag::Translate: {
-      auto& translate = aOp.AsTranslate();
+      const auto& translate = aOp.AsTranslate();
       return translate._0.HasPercent() || translate._1.HasPercent();
     }
     case StyleTransformOperation::Tag::AccumulateMatrix: {
-      auto& accum = aOp.AsAccumulateMatrix();
+      const auto& accum = aOp.AsAccumulateMatrix();
       return accum.from_list.HasPercent() || accum.to_list.HasPercent();
     }
     case StyleTransformOperation::Tag::InterpolateMatrix: {
-      auto& interpolate = aOp.AsInterpolateMatrix();
+      const auto& interpolate = aOp.AsInterpolateMatrix();
       return interpolate.from_list.HasPercent() ||
              interpolate.to_list.HasPercent();
     }
@@ -3513,7 +3403,7 @@ void StyleCalcNode::ScaleLengthsBy(float aScale) {
 
   switch (tag) {
     case Tag::Leaf: {
-      auto& leaf = AsLeaf();
+      const auto& leaf = AsLeaf();
       if (leaf.IsLength()) {
         // This const_cast could be removed by generating more mut-casts, if
         // needed.
@@ -3522,7 +3412,7 @@ void StyleCalcNode::ScaleLengthsBy(float aScale) {
       break;
     }
     case Tag::Clamp: {
-      auto& clamp = AsClamp();
+      const auto& clamp = AsClamp();
       ScaleNode(*clamp.min);
       ScaleNode(*clamp.center);
       ScaleNode(*clamp.max);
@@ -3535,19 +3425,25 @@ void StyleCalcNode::ScaleLengthsBy(float aScale) {
       break;
     }
     case Tag::ModRem: {
-      const auto& mod_rem = AsModRem();
-      ScaleNode(*mod_rem.dividend);
-      ScaleNode(*mod_rem.divisor);
+      const auto& modRem = AsModRem();
+      ScaleNode(*modRem.dividend);
+      ScaleNode(*modRem.divisor);
       break;
     }
     case Tag::MinMax: {
-      for (auto& child : AsMinMax()._0.AsSpan()) {
+      for (const auto& child : AsMinMax()._0.AsSpan()) {
         ScaleNode(child);
       }
       break;
     }
     case Tag::Sum: {
-      for (auto& child : AsSum().AsSpan()) {
+      for (const auto& child : AsSum().AsSpan()) {
+        ScaleNode(child);
+      }
+      break;
+    }
+    case Tag::Product: {
+      for (const auto& child : AsProduct().AsSpan()) {
         ScaleNode(child);
       }
       break;
@@ -3557,194 +3453,49 @@ void StyleCalcNode::ScaleLengthsBy(float aScale) {
       ScaleNode(*negate);
       break;
     }
+    case Tag::Invert: {
+      const auto& invert = AsInvert();
+      ScaleNode(*invert);
+      break;
+    }
     case Tag::Hypot: {
       for (const auto& child : AsHypot().AsSpan()) {
         ScaleNode(child);
       }
       break;
     }
-  }
-}
-
-template <>
-template <typename ResultT, typename PercentageConverter>
-ResultT StyleCalcNode::ResolveInternal(ResultT aPercentageBasis,
-                                       PercentageConverter aConverter) const {
-  static_assert(std::is_same_v<decltype(aConverter(1.0f)), ResultT>);
-  static_assert(std::is_same_v<ResultT, nscoord> ||
-                std::is_same_v<ResultT, CSSCoord>);
-
-  switch (tag) {
-    case Tag::Leaf: {
-      auto& leaf = AsLeaf();
-      if (leaf.IsPercentage()) {
-        return aConverter(leaf.AsPercentage()._0 * aPercentageBasis);
-      }
-      if constexpr (std::is_same_v<ResultT, nscoord>) {
-        return leaf.AsLength().ToAppUnits();
-      } else {
-        return leaf.AsLength().ToCSSPixels();
-      }
+    case Tag::Abs: {
+      const auto& abs = AsAbs();
+      ScaleNode(*abs);
+      break;
     }
-    case Tag::Negate: {
-      const auto& negate = AsNegate();
-      auto value = negate->ResolveInternal(aPercentageBasis, aConverter);
-      return -value;
-    }
-    case Tag::Clamp: {
-      auto& clamp = AsClamp();
-      auto min = clamp.min->ResolveInternal(aPercentageBasis, aConverter);
-      auto center = clamp.center->ResolveInternal(aPercentageBasis, aConverter);
-      auto max = clamp.max->ResolveInternal(aPercentageBasis, aConverter);
-      return std::max(min, std::min(center, max));
-    }
-    case Tag::Round: {
-      const auto& round = AsRound();
-
-      // Make sure to do the math in CSS pixels, so that floor() and ceil()
-      // below round to an integer number of CSS pixels, not app units.
-      CSSCoord step, value;
-      if constexpr (std::is_same_v<ResultT, CSSCoord>) {
-        step = round.step->ResolveInternal(aPercentageBasis, aConverter);
-        value = round.value->ResolveInternal(aPercentageBasis, aConverter);
-      } else {
-        step = CSSPixel::FromAppUnits(
-            round.step->ResolveInternal(aPercentageBasis, aConverter));
-        value = CSSPixel::FromAppUnits(
-            round.value->ResolveInternal(aPercentageBasis, aConverter));
-      }
-
-      const float div = value / step;
-      const CSSCoord lowerBound = std::floor(div) * step;
-      const CSSCoord upperBound = std::ceil(div) * step;
-      const CSSCoord result = [&] {
-        switch (round.strategy) {
-          case StyleRoundingStrategy::Nearest:
-            // In case of a tie, use the upper bound
-            if (value - lowerBound < upperBound - value) {
-              return lowerBound;
-            }
-            return upperBound;
-          case StyleRoundingStrategy::Up:
-            return upperBound;
-          case StyleRoundingStrategy::Down:
-            return lowerBound;
-          case StyleRoundingStrategy::ToZero:
-            // In case of a tie, use the upper bound
-            return std::abs(lowerBound) < std::abs(upperBound) ? lowerBound
-                                                               : upperBound;
-        }
-        MOZ_ASSERT_UNREACHABLE("Unknown rounding strategy");
-        return CSSCoord(0);
-      }();
-
-      if constexpr (std::is_same_v<ResultT, CSSCoord>) {
-        return result;
-      } else {
-        return CSSPixel::ToAppUnits(result);
-      }
-    }
-    case Tag::ModRem: {
-      const auto& mod_rem = AsModRem();
-
-      // Make sure to do the math in CSS pixels, so that floor() and trunc()
-      // below round to an integer number of CSS pixels, not app units.
-      CSSCoord dividend, divisor;
-      if constexpr (std::is_same_v<ResultT, CSSCoord>) {
-        dividend =
-            mod_rem.dividend->ResolveInternal(aPercentageBasis, aConverter);
-        divisor =
-            mod_rem.divisor->ResolveInternal(aPercentageBasis, aConverter);
-      } else {
-        dividend = CSSPixel::FromAppUnits(
-            mod_rem.dividend->ResolveInternal(aPercentageBasis, aConverter));
-        divisor = CSSPixel::FromAppUnits(
-            mod_rem.divisor->ResolveInternal(aPercentageBasis, aConverter));
-      }
-
-      const CSSCoord result =
-          mod_rem.op == StyleModRemOp::Mod
-              ? dividend - divisor * std::floor(dividend / divisor)
-              : dividend - divisor * std::trunc(dividend / divisor);
-
-      if constexpr (std::is_same_v<ResultT, CSSCoord>) {
-        return result;
-      } else {
-        return CSSPixel::ToAppUnits(result);
-      }
-    }
-    case Tag::MinMax: {
-      auto children = AsMinMax()._0.AsSpan();
-      StyleMinMaxOp op = AsMinMax()._1;
-
-      ResultT result =
-          children[0].ResolveInternal(aPercentageBasis, aConverter);
-      for (auto& child : children.From(1)) {
-        ResultT candidate = child.ResolveInternal(aPercentageBasis, aConverter);
-        if (op == StyleMinMaxOp::Max) {
-          result = std::max(result, candidate);
-        } else {
-          result = std::min(result, candidate);
-        }
-      }
-      return result;
-    }
-    case Tag::Sum: {
-      ResultT result = 0;
-      for (auto& child : AsSum().AsSpan()) {
-        result += child.ResolveInternal(aPercentageBasis, aConverter);
-      }
-      return result;
-    }
-    case Tag::Hypot: {
-      //  Doing math in CSS pixels to avoid exceeding integer range of app units
-      CSSCoord result = 0;
-      for (const auto& child : AsHypot().AsSpan()) {
-        CSSCoord value;
-        if constexpr (std::is_same_v<ResultT, CSSCoord>) {
-          value = child.ResolveInternal(aPercentageBasis, aConverter);
-        } else {
-          value = CSSPixel::FromAppUnits(
-              child.ResolveInternal(aPercentageBasis, aConverter));
-        }
-        result += std::pow(value, 2);
-      }
-      result = std::sqrt(result);
-
-      if constexpr (std::is_same_v<ResultT, CSSCoord>) {
-        return result;
-      } else {
-        return CSSPixel::ToAppUnits(result);
-      }
+    case Tag::Sign: {
+      const auto& sign = AsSign();
+      ScaleNode(*sign);
+      break;
     }
   }
-
-  MOZ_ASSERT_UNREACHABLE("Unknown calc node");
-  return 0;
-}
-
-template <>
-CSSCoord StyleCalcNode::ResolveToCSSPixels(CSSCoord aBasis) const {
-  CSSCoord result =
-      ResolveInternal(aBasis, [](CSSCoord aPercent) { return aPercent; });
-  if (std::isnan(float(result))) {
-    return 0.0f;  // This matches style::values::normalize
-  }
-  return result;
-}
-
-template <>
-nscoord StyleCalcNode::Resolve(nscoord aBasis,
-                               CoordPercentageRounder aRounder) const {
-  return ResolveInternal(aBasis, aRounder);
 }
 
 bool nsStyleDisplay::PrecludesSizeContainmentOrContentVisibilityWithFrame(
     const nsIFrame& aFrame) const {
-  // Note: The spec for size containment says it should have no effect on
-  // non-atomic, inline-level boxes.
-  bool isNonReplacedInline = aFrame.IsFrameOfType(nsIFrame::eLineParticipant) &&
-                             !aFrame.IsFrameOfType(nsIFrame::eReplaced);
+  // The spec says that in the case of SVG, the contain property only applies
+  // to <svg> elements that have an associated CSS layout box.
+  // https://drafts.csswg.org/css-contain/#contain-property
+  // Internal SVG elements do not use the standard CSS box model, and wouldn't
+  // be affected by size containment. By disabling it we prevent them from
+  // becoming query containers for size features.
+  if (aFrame.HasAnyStateBits(NS_FRAME_SVG_LAYOUT)) {
+    return true;
+  }
+
+  // Note: The spec for size containment says it should have no effect
+  // - on non-atomic, inline-level boxes.
+  // - on internal ruby boxes.
+  // - if inner display type is table.
+  // - on internal table boxes.
+  // https://drafts.csswg.org/css-contain/#containment-size
+  bool isNonReplacedInline = aFrame.IsLineParticipant() && !aFrame.IsReplaced();
   return isNonReplacedInline || IsInternalRubyDisplayType() ||
          DisplayInside() == mozilla::StyleDisplayInside::Table ||
          IsInnerTableStyle();
@@ -3758,13 +3509,6 @@ ContainSizeAxes nsStyleDisplay::GetContainSizeAxes(
   }
 
   if (PrecludesSizeContainmentOrContentVisibilityWithFrame(aFrame)) {
-    return ContainSizeAxes(false, false);
-  }
-
-  // Internal SVG elements do not use the standard CSS box model, and wouldn't
-  // be affected by size containment. By disabling it we prevent them from
-  // becoming query containers for size features.
-  if (aFrame.HasAnyStateBits(NS_FRAME_SVG_LAYOUT)) {
     return ContainSizeAxes(false, false);
   }
 
@@ -3786,6 +3530,8 @@ StyleContentVisibility nsStyleDisplay::ContentVisibility(
   if (MOZ_LIKELY(mContentVisibility == StyleContentVisibility::Visible)) {
     return StyleContentVisibility::Visible;
   }
+  // content-visibility applies to elements for which size containment applies.
+  // https://drafts.csswg.org/css-contain/#content-visibility
   if (PrecludesSizeContainmentOrContentVisibilityWithFrame(aFrame)) {
     return StyleContentVisibility::Visible;
   }
@@ -3801,14 +3547,17 @@ static nscoord Resolve(const StyleContainIntrinsicSize& aSize,
   if (aSize.IsLength()) {
     return aSize.AsLength().ToAppUnits();
   }
-  MOZ_ASSERT(aSize.IsAutoLength());
+  MOZ_ASSERT(aSize.HasAuto());
   if (const auto* element = Element::FromNodeOrNull(aFrame.GetContent())) {
-    Maybe<float> lastSize = aAxis == eLogicalAxisBlock
+    Maybe<float> lastSize = aAxis == LogicalAxis::Block
                                 ? element->GetLastRememberedBSize()
                                 : element->GetLastRememberedISize();
     if (lastSize && aFrame.HidesContent()) {
       return CSSPixel::ToAppUnits(*lastSize);
     }
+  }
+  if (aSize.IsAutoNone()) {
+    return aNoneValue;
   }
   return aSize.AsAutoLength().ToAppUnits();
 }
@@ -3820,7 +3569,7 @@ Maybe<nscoord> ContainSizeAxes::ContainIntrinsicBSize(
   }
   const StyleContainIntrinsicSize& bSize =
       aFrame.StylePosition()->ContainIntrinsicBSize(aFrame.GetWritingMode());
-  return Some(Resolve(bSize, aNoneValue, aFrame, eLogicalAxisBlock));
+  return Some(Resolve(bSize, aNoneValue, aFrame, LogicalAxis::Block));
 }
 
 Maybe<nscoord> ContainSizeAxes::ContainIntrinsicISize(
@@ -3830,7 +3579,7 @@ Maybe<nscoord> ContainSizeAxes::ContainIntrinsicISize(
   }
   const StyleContainIntrinsicSize& iSize =
       aFrame.StylePosition()->ContainIntrinsicISize(aFrame.GetWritingMode());
-  return Some(Resolve(iSize, aNoneValue, aFrame, eLogicalAxisInline));
+  return Some(Resolve(iSize, aNoneValue, aFrame, LogicalAxis::Inline));
 }
 
 nsSize ContainSizeAxes::ContainSize(const nsSize& aUncontainedSize,

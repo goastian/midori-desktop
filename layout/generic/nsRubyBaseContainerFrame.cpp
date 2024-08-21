@@ -237,16 +237,6 @@ void nsRubyBaseContainerFrame::AddInlinePrefISize(
 }
 
 /* virtual */
-bool nsRubyBaseContainerFrame::IsFrameOfType(uint32_t aFlags) const {
-  if (aFlags & (eSupportsCSSTransforms | eSupportsContainLayoutAndPaint |
-                eSupportsAspectRatio)) {
-    return false;
-  }
-  return nsContainerFrame::IsFrameOfType(aFlags &
-                                         ~(nsIFrame::eLineParticipant));
-}
-
-/* virtual */
 bool nsRubyBaseContainerFrame::CanContinueTextRun() const { return true; }
 
 /* virtual */
@@ -285,7 +275,6 @@ void nsRubyBaseContainerFrame::Reflow(nsPresContext* aPresContext,
                                       nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsRubyBaseContainerFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   if (!aReflowInput.mLineLayout) {

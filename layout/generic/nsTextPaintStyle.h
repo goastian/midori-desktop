@@ -9,9 +9,10 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/ComputedStyle.h"
+#include "mozilla/EnumeratedArray.h"
 #include "mozilla/Span.h"
 
-#include "nsAtom.h"
+#include "nsAtomHashKeys.h"
 #include "nsISelectionController.h"
 #include "nsTHashMap.h"
 
@@ -47,26 +48,39 @@ class MOZ_STACK_CLASS nsTextPaintStyle {
   nscolor GetWebkitTextStrokeColor();
   float GetWebkitTextStrokeWidth();
 
+  // Index used to look up styles for different types of selection.
+  enum class SelectionStyleIndex : uint8_t {
+    RawInput = 0,
+    SelRawText,
+    ConvText,
+    SelConvText,
+    SpellChecker,
+    // Not an actual enum value; used to size the array of styles.
+    Count,
+  };
+
   /**
    * Compute the colors for normally-selected text. Returns false if
    * the normal selection is not being displayed.
    */
   bool GetSelectionColors(nscolor* aForeColor, nscolor* aBackColor);
   void GetHighlightColors(nscolor* aForeColor, nscolor* aBackColor);
+  void GetTargetTextColors(nscolor* aForeColor, nscolor* aBackColor);
   // Computes colors for custom highlights.
   // Returns false if there are no rules associated with `aHighlightName`.
-  bool GetCustomHighlightColors(const nsAtom* aHighlightName,
-                                nscolor* aForeColor, nscolor* aBackColor);
+  bool GetCustomHighlightTextColor(nsAtom* aHighlightName, nscolor* aForeColor);
+  bool GetCustomHighlightBackgroundColor(nsAtom* aHighlightName,
+                                         nscolor* aBackColor);
   void GetURLSecondaryColor(nscolor* aForeColor);
-  void GetIMESelectionColors(int32_t aIndex, nscolor* aForeColor,
+  void GetIMESelectionColors(SelectionStyleIndex aIndex, nscolor* aForeColor,
                              nscolor* aBackColor);
   // if this returns false, we don't need to draw underline.
-  bool GetSelectionUnderlineForPaint(int32_t aIndex, nscolor* aLineColor,
-                                     float* aRelativeSize,
+  bool GetSelectionUnderlineForPaint(SelectionStyleIndex aIndex,
+                                     nscolor* aLineColor, float* aRelativeSize,
                                      StyleTextDecorationStyle* aStyle);
 
   // if this returns false, we don't need to draw underline.
-  static bool GetSelectionUnderline(nsIFrame*, int32_t aIndex,
+  static bool GetSelectionUnderline(nsIFrame*, SelectionStyleIndex aIndex,
                                     nscolor* aLineColor, float* aRelativeSize,
                                     StyleTextDecorationStyle* aStyle);
 
@@ -76,30 +90,22 @@ class MOZ_STACK_CLASS nsTextPaintStyle {
 
   nsPresContext* PresContext() const { return mPresContext; }
 
-  enum {
-    eIndexRawInput = 0,
-    eIndexSelRawText,
-    eIndexConvText,
-    eIndexSelConvText,
-    eIndexSpellChecker
-  };
-
-  static int32_t GetUnderlineStyleIndexForSelectionType(
+  static SelectionStyleIndex GetUnderlineStyleIndexForSelectionType(
       SelectionType aSelectionType) {
     switch (aSelectionType) {
       case SelectionType::eIMERawClause:
-        return eIndexRawInput;
+        return SelectionStyleIndex::RawInput;
       case SelectionType::eIMESelectedRawClause:
-        return eIndexSelRawText;
+        return SelectionStyleIndex::SelRawText;
       case SelectionType::eIMEConvertedClause:
-        return eIndexConvText;
+        return SelectionStyleIndex::ConvText;
       case SelectionType::eIMESelectedClause:
-        return eIndexSelConvText;
+        return SelectionStyleIndex::SelConvText;
       case SelectionType::eSpellCheck:
-        return eIndexSpellChecker;
+        return SelectionStyleIndex::SpellChecker;
       default:
         NS_WARNING("non-IME selection type");
-        return eIndexRawInput;
+        return SelectionStyleIndex::RawInput;
     }
   }
 
@@ -118,7 +124,7 @@ class MOZ_STACK_CLASS nsTextPaintStyle {
   nscolor mSelectionTextColor;
   nscolor mSelectionBGColor;
   RefPtr<ComputedStyle> mSelectionPseudoStyle;
-  nsTHashMap<RefPtr<const nsAtom>, RefPtr<ComputedStyle>>
+  nsTHashMap<RefPtr<nsAtom>, RefPtr<ComputedStyle>>
       mCustomHighlightPseudoStyles;
 
   // Common data
@@ -133,21 +139,23 @@ class MOZ_STACK_CLASS nsTextPaintStyle {
   // and background color are swapped if it's needed. And also line color will
   // be resolved from them.
   struct nsSelectionStyle {
-    bool mInit;
     nscolor mTextColor;
     nscolor mBGColor;
     nscolor mUnderlineColor;
     StyleTextDecorationStyle mUnderlineStyle;
     float mUnderlineRelativeSize;
   };
-  nsSelectionStyle mSelectionStyle[5];
+  mozilla::EnumeratedArray<SelectionStyleIndex,
+                           mozilla::Maybe<nsSelectionStyle>,
+                           size_t(SelectionStyleIndex::Count)>
+      mSelectionStyle;
 
   // Color initializations
   void InitCommonColors();
   bool InitSelectionColorsAndShadow();
 
-  nsSelectionStyle* GetSelectionStyle(int32_t aIndex);
-  void InitSelectionStyle(int32_t aIndex);
+  nsSelectionStyle* SelectionStyle(SelectionStyleIndex aIndex);
+  nsSelectionStyle InitSelectionStyle(SelectionStyleIndex aIndex);
 
   // Ensures sufficient contrast between the frame background color and the
   // selection background color, and swaps the selection text and background

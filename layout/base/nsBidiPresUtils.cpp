@@ -47,9 +47,10 @@ using BidiClass = intl::BidiClass;
 using BidiDirection = intl::BidiDirection;
 using BidiEmbeddingLevel = intl::BidiEmbeddingLevel;
 
-static const char16_t kSpace = 0x0020;
+static const char16_t kNextLine = 0x0085;
 static const char16_t kZWSP = 0x200B;
 static const char16_t kLineSeparator = 0x2028;
+static const char16_t kParagraphSeparator = 0x2029;
 static const char16_t kObjectSubstitute = 0xFFFC;
 static const char16_t kLRE = 0x202A;
 static const char16_t kRLE = 0x202B;
@@ -60,11 +61,12 @@ static const char16_t kLRI = 0x2066;
 static const char16_t kRLI = 0x2067;
 static const char16_t kFSI = 0x2068;
 static const char16_t kPDI = 0x2069;
-// All characters with Bidi type Segment Separator or Block Separator
+// All characters with Bidi type Segment Separator or Block Separator.
+// This should be kept in sync with the table in ReplaceSeparators.
 static const char16_t kSeparators[] = {
-    char16_t('\t'), char16_t('\r'),   char16_t('\n'), char16_t(0xb),
-    char16_t(0x1c), char16_t(0x1d),   char16_t(0x1e), char16_t(0x1f),
-    char16_t(0x85), char16_t(0x2029), char16_t(0)};
+    char16_t('\t'), char16_t('\r'),      char16_t('\n'), char16_t(0xb),
+    char16_t(0x1c), char16_t(0x1d),      char16_t(0x1e), char16_t(0x1f),
+    kNextLine,      kParagraphSeparator, char16_t(0)};
 
 #define NS_BIDI_CONTROL_FRAME ((nsIFrame*)0xfffb1d1)
 
@@ -478,115 +480,99 @@ struct MOZ_STACK_CLASS BidiParagraphData {
   }
 };
 
-struct MOZ_STACK_CLASS BidiLineData {
-  AutoTArray<nsIFrame*, 16> mLogicalFrames;
-  AutoTArray<nsIFrame*, 16> mVisualFrames;
-  AutoTArray<int32_t, 16> mIndexMap;
-  AutoTArray<BidiEmbeddingLevel, 16> mLevels;
-  bool mIsReordered;
-
+class MOZ_STACK_CLASS BidiLineData {
+ public:
   BidiLineData(nsIFrame* aFirstFrameOnLine, int32_t aNumFramesOnLine) {
-    /**
-     * Initialize the logically-ordered array of frames using the top-level
-     * frames of a single line
-     */
-    bool isReordered = false;
-    bool hasRTLFrames = false;
-    bool hasVirtualControls = false;
-
+    // Initialize the logically-ordered array of frames using the top-level
+    // frames of a single line
     auto appendFrame = [&](nsIFrame* frame, BidiEmbeddingLevel level) {
       mLogicalFrames.AppendElement(frame);
       mLevels.AppendElement(level);
       mIndexMap.AppendElement(0);
-      if (level.IsRTL()) {
-        hasRTLFrames = true;
-      }
     };
 
-    bool firstFrame = true;
     for (nsIFrame* frame = aFirstFrameOnLine; frame && aNumFramesOnLine--;
          frame = frame->GetNextSibling()) {
       FrameBidiData bidiData = nsBidiPresUtils::GetFrameBidiData(frame);
-      // Ignore virtual control before the first frame. Doing so should
-      // not affect the visual result, but could avoid running into the
-      // stripping code below for many cases.
-      if (!firstFrame && bidiData.precedingControl != kBidiLevelNone) {
+      if (bidiData.precedingControl != kBidiLevelNone) {
         appendFrame(NS_BIDI_CONTROL_FRAME, bidiData.precedingControl);
-        hasVirtualControls = true;
       }
       appendFrame(frame, bidiData.embeddingLevel);
-      firstFrame = false;
     }
 
     // Reorder the line
-    BidiEngine::ReorderVisual(mLevels.Elements(), FrameCount(),
+    BidiEngine::ReorderVisual(mLevels.Elements(), mLevels.Length(),
                               mIndexMap.Elements());
 
-    // Strip virtual frames
-    if (hasVirtualControls) {
-      auto originalCount = mLogicalFrames.Length();
-      AutoTArray<int32_t, 16> realFrameMap;
-      realFrameMap.SetCapacity(originalCount);
-      size_t count = 0;
-      for (auto i : IntegerRange(originalCount)) {
-        if (mLogicalFrames[i] == NS_BIDI_CONTROL_FRAME) {
-          realFrameMap.AppendElement(-1);
-        } else {
-          mLogicalFrames[count] = mLogicalFrames[i];
-          mLevels[count] = mLevels[i];
-          realFrameMap.AppendElement(count);
-          count++;
-        }
+    // Collect the frames in visual order, omitting virtual controls
+    // and noting whether frames are reordered.
+    for (uint32_t i = 0; i < mIndexMap.Length(); i++) {
+      nsIFrame* frame = mLogicalFrames[mIndexMap[i]];
+      if (frame == NS_BIDI_CONTROL_FRAME) {
+        continue;
       }
-      // Only keep index map for real frames.
-      for (size_t i = 0, j = 0; i < originalCount; ++i) {
-        auto newIndex = realFrameMap[mIndexMap[i]];
-        if (newIndex != -1) {
-          mIndexMap[j] = newIndex;
-          j++;
-        }
-      }
-      mLogicalFrames.TruncateLength(count);
-      mLevels.TruncateLength(count);
-      mIndexMap.TruncateLength(count);
-    }
-
-    for (int32_t i = 0; i < FrameCount(); i++) {
-      mVisualFrames.AppendElement(LogicalFrameAt(mIndexMap[i]));
-      if (i != mIndexMap[i]) {
-        isReordered = true;
+      mVisualFrameIndex.AppendElement(mIndexMap[i]);
+      if (int32_t(i) != mIndexMap[i]) {
+        mIsReordered = true;
       }
     }
-
-    // If there's an RTL frame, assume the line is reordered
-    mIsReordered = isReordered || hasRTLFrames;
   }
 
-  int32_t FrameCount() const { return mLogicalFrames.Length(); }
+  uint32_t LogicalFrameCount() const { return mLogicalFrames.Length(); }
+  uint32_t VisualFrameCount() const { return mVisualFrameIndex.Length(); }
 
-  nsIFrame* LogicalFrameAt(int32_t aIndex) const {
+  nsIFrame* LogicalFrameAt(uint32_t aIndex) const {
     return mLogicalFrames[aIndex];
   }
 
-  nsIFrame* VisualFrameAt(int32_t aIndex) const {
-    return mVisualFrames[aIndex];
+  nsIFrame* VisualFrameAt(uint32_t aIndex) const {
+    return mLogicalFrames[mVisualFrameIndex[aIndex]];
   }
+
+  std::pair<nsIFrame*, BidiEmbeddingLevel> VisualFrameAndLevelAt(
+      uint32_t aIndex) const {
+    int32_t index = mVisualFrameIndex[aIndex];
+    return std::pair(mLogicalFrames[index], mLevels[index]);
+  }
+
+  bool IsReordered() const { return mIsReordered; }
+
+  void InitContinuationStates(nsContinuationStates* aContinuationStates) const {
+    for (auto* frame : mLogicalFrames) {
+      if (frame != NS_BIDI_CONTROL_FRAME) {
+        nsBidiPresUtils::InitContinuationStates(frame, aContinuationStates);
+      }
+    }
+  }
+
+ private:
+  AutoTArray<nsIFrame*, 16> mLogicalFrames;
+  AutoTArray<int32_t, 16> mVisualFrameIndex;
+  AutoTArray<int32_t, 16> mIndexMap;
+  AutoTArray<BidiEmbeddingLevel, 16> mLevels;
+  bool mIsReordered = false;
 };
 
 #ifdef DEBUG
 extern "C" {
-void MOZ_EXPORT DumpFrameArray(const nsTArray<nsIFrame*>& aFrames) {
-  for (nsIFrame* frame : aFrames) {
+void MOZ_EXPORT DumpBidiLine(BidiLineData* aData, bool aVisualOrder) {
+  auto dump = [](nsIFrame* frame) {
     if (frame == NS_BIDI_CONTROL_FRAME) {
       fprintf_stderr(stderr, "(Bidi control frame)\n");
     } else {
       frame->List();
     }
-  }
-}
+  };
 
-void MOZ_EXPORT DumpBidiLine(BidiLineData* aData, bool aVisualOrder) {
-  DumpFrameArray(aVisualOrder ? aData->mVisualFrames : aData->mLogicalFrames);
+  if (aVisualOrder) {
+    for (uint32_t i = 0; i < aData->VisualFrameCount(); i++) {
+      dump(aData->VisualFrameAt(i));
+    }
+  } else {
+    for (uint32_t i = 0; i < aData->LogicalFrameCount(); i++) {
+      dump(aData->LogicalFrameAt(i));
+    }
+  }
 }
 }
 #endif
@@ -598,7 +584,7 @@ static bool IsBidiSplittable(nsIFrame* aFrame) {
   MOZ_ASSERT(aFrame);
   // Bidi inline containers should be split, unless they're line frames.
   LayoutFrameType frameType = aFrame->Type();
-  return (aFrame->IsFrameOfType(nsIFrame::eBidiInlineContainer) &&
+  return (aFrame->IsBidiInlineContainer() &&
           frameType != LayoutFrameType::Line) ||
          frameType == LayoutFrameType::Text;
 }
@@ -607,7 +593,7 @@ static bool IsBidiSplittable(nsIFrame* aFrame) {
 static bool IsBidiLeaf(const nsIFrame* aFrame) {
   nsIFrame* kid = aFrame->PrincipalChildList().FirstChild();
   if (kid) {
-    if (aFrame->IsFrameOfType(nsIFrame::eBidiInlineContainer) ||
+    if (aFrame->IsBidiInlineContainer() ||
         RubyUtils::IsRubyBox(aFrame->Type())) {
       return false;
     }
@@ -870,11 +856,32 @@ nsresult nsBidiPresUtils::Resolve(nsBlockFrame* aBlockFrame) {
   return ResolveParagraph(&bpd);
 }
 
+// In ResolveParagraph, we previously used ReplaceChar(kSeparators, kSpace)
+// to convert separators to spaces, but this hard-coded implementation is
+// substantially faster than the general-purpose ReplaceChar function.
+// This must be kept in sync with the definition of kSeparators.
+static inline void ReplaceSeparators(nsString& aText, size_t aStartIndex = 0) {
+  for (char16_t* cp = aText.BeginWriting() + aStartIndex;
+       cp < aText.EndWriting(); cp++) {
+    if (MOZ_UNLIKELY(*cp < char16_t(' '))) {
+      static constexpr char16_t SeparatorToSpace[32] = {
+          0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, ' ',  ' ',
+          ' ',  0x0c, ' ',  0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+          0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, ' ',  ' ',  ' ',  ' ',
+      };
+      *cp = SeparatorToSpace[*cp];
+    } else if (MOZ_UNLIKELY(*cp == kNextLine || *cp == kParagraphSeparator)) {
+      *cp = ' ';
+    }
+  }
+}
+
 nsresult nsBidiPresUtils::ResolveParagraph(BidiParagraphData* aBpd) {
   if (aBpd->BufferLength() < 1) {
     return NS_OK;
   }
-  aBpd->mBuffer.ReplaceChar(kSeparators, kSpace);
+
+  ReplaceSeparators(aBpd->mBuffer);
 
   int32_t runCount;
 
@@ -997,10 +1004,12 @@ nsresult nsBidiPresUtils::ResolveParagraph(BidiParagraphData* aBpd) {
       if (++numRun >= runCount) {
         // We've run out of runs of text; but don't forget to store bidi data
         // to the frame before breaking out of the loop (bug 1426042).
-        storeBidiDataToFrame();
-        if (isTextFrame) {
-          frame->AdjustOffsetsForBidi(contentOffset,
-                                      contentOffset + fragmentLength);
+        if (frame != NS_BIDI_CONTROL_FRAME) {
+          storeBidiDataToFrame();
+          if (isTextFrame) {
+            frame->AdjustOffsetsForBidi(contentOffset,
+                                        contentOffset + fragmentLength);
+          }
         }
         break;
       }
@@ -1209,8 +1218,7 @@ void nsBidiPresUtils::TraverseFrames(nsIFrame* aCurrentFrame,
     char16_t controlChar = 0;
     char16_t overrideChar = 0;
     LayoutFrameType frameType = frame->Type();
-    if (frame->IsFrameOfType(nsIFrame::eBidiInlineContainer) ||
-        RubyUtils::IsRubyBox(frameType)) {
+    if (frame->IsBidiInlineContainer() || RubyUtils::IsRubyBox(frameType)) {
       if (!frame->HasAnyStateBits(NS_FRAME_FIRST_REFLOW)) {
         nsContainerFrame* c = static_cast<nsContainerFrame*>(frame);
         MOZ_ASSERT(c == do_QueryFrame(frame),
@@ -1505,8 +1513,19 @@ nscoord nsBidiPresUtils::ReorderFrames(nsIFrame* aFirstFrameOnLine,
     aStart = 0;
   }
 
+  // No need to bidi-reorder the line if there's only a single frame.
+  if (aNumFramesOnLine == 1) {
+    auto bidiData = nsBidiPresUtils::GetFrameBidiData(aFirstFrameOnLine);
+    nsContinuationStates continuationStates;
+    InitContinuationStates(aFirstFrameOnLine, &continuationStates);
+    return aStart + RepositionFrame(aFirstFrameOnLine,
+                                    bidiData.embeddingLevel.IsLTR(), aStart,
+                                    &continuationStates, aLineWM, false,
+                                    containerSize);
+  }
+
   BidiLineData bld(aFirstFrameOnLine, aNumFramesOnLine);
-  return RepositionInlineFrames(&bld, aLineWM, containerSize, aStart);
+  return RepositionInlineFrames(bld, aLineWM, containerSize, aStart);
 }
 
 nsIFrame* nsBidiPresUtils::GetFirstLeaf(nsIFrame* aFrame) {
@@ -1856,40 +1875,30 @@ void nsBidiPresUtils::InitContinuationStates(
 }
 
 /* static */
-nscoord nsBidiPresUtils::RepositionInlineFrames(BidiLineData* aBld,
+nscoord nsBidiPresUtils::RepositionInlineFrames(const BidiLineData& aBld,
                                                 WritingMode aLineWM,
                                                 const nsSize& aContainerSize,
                                                 nscoord aStart) {
-  nscoord start = aStart;
-  nsIFrame* frame;
-  int32_t count = aBld->mVisualFrames.Length();
-  int32_t index;
   nsContinuationStates continuationStates;
+  aBld.InitContinuationStates(&continuationStates);
 
-  // Initialize continuation states to (nullptr, 0) for
-  // each frame on the line.
-  for (index = 0; index < count; index++) {
-    InitContinuationStates(aBld->VisualFrameAt(index), &continuationStates);
-  }
-
-  // Reposition frames in visual order
-  int32_t step, limit;
   if (aLineWM.IsBidiLTR()) {
-    index = 0;
-    step = 1;
-    limit = count;
+    for (auto index : IntegerRange(aBld.VisualFrameCount())) {
+      auto [frame, level] = aBld.VisualFrameAndLevelAt(index);
+      aStart +=
+          RepositionFrame(frame, level.IsLTR(), aStart, &continuationStates,
+                          aLineWM, false, aContainerSize);
+    }
   } else {
-    index = count - 1;
-    step = -1;
-    limit = -1;
+    for (auto index : Reversed(IntegerRange(aBld.VisualFrameCount()))) {
+      auto [frame, level] = aBld.VisualFrameAndLevelAt(index);
+      aStart +=
+          RepositionFrame(frame, level.IsLTR(), aStart, &continuationStates,
+                          aLineWM, false, aContainerSize);
+    }
   }
-  for (; index != limit; index += step) {
-    frame = aBld->VisualFrameAt(index);
-    start += RepositionFrame(
-        frame, !(aBld->mLevels[aBld->mIndexMap[index]].IsRTL()), start,
-        &continuationStates, aLineWM, false, aContainerSize);
-  }
-  return start;
+
+  return aStart;
 }
 
 bool nsBidiPresUtils::CheckLineOrder(nsIFrame* aFirstFrameOnLine,
@@ -1897,16 +1906,15 @@ bool nsBidiPresUtils::CheckLineOrder(nsIFrame* aFirstFrameOnLine,
                                      nsIFrame** aFirstVisual,
                                      nsIFrame** aLastVisual) {
   BidiLineData bld(aFirstFrameOnLine, aNumFramesOnLine);
-  int32_t count = bld.FrameCount();
 
   if (aFirstVisual) {
     *aFirstVisual = bld.VisualFrameAt(0);
   }
   if (aLastVisual) {
-    *aLastVisual = bld.VisualFrameAt(count - 1);
+    *aLastVisual = bld.VisualFrameAt(bld.VisualFrameCount() - 1);
   }
 
-  return bld.mIsReordered;
+  return bld.IsReordered();
 }
 
 nsIFrame* nsBidiPresUtils::GetFrameToRightOf(const nsIFrame* aFrame,
@@ -1914,9 +1922,11 @@ nsIFrame* nsBidiPresUtils::GetFrameToRightOf(const nsIFrame* aFrame,
                                              int32_t aNumFramesOnLine) {
   BidiLineData bld(aFirstFrameOnLine, aNumFramesOnLine);
 
-  int32_t count = bld.mVisualFrames.Length();
+  int32_t count = bld.VisualFrameCount();
 
-  if (aFrame == nullptr && count) return bld.VisualFrameAt(0);
+  if (!aFrame && count) {
+    return bld.VisualFrameAt(0);
+  }
 
   for (int32_t i = 0; i < count - 1; i++) {
     if (bld.VisualFrameAt(i) == aFrame) {
@@ -1932,9 +1942,11 @@ nsIFrame* nsBidiPresUtils::GetFrameToLeftOf(const nsIFrame* aFrame,
                                             int32_t aNumFramesOnLine) {
   BidiLineData bld(aFirstFrameOnLine, aNumFramesOnLine);
 
-  int32_t count = bld.mVisualFrames.Length();
+  int32_t count = bld.VisualFrameCount();
 
-  if (aFrame == nullptr && count) return bld.VisualFrameAt(count - 1);
+  if (!aFrame && count) {
+    return bld.VisualFrameAt(count - 1);
+  }
 
   for (int32_t i = 1; i < count; i++) {
     if (bld.VisualFrameAt(i) == aFrame) {
@@ -2362,6 +2374,12 @@ void nsBidiPresUtils::ProcessSimpleRun(const char16_t* aText, size_t aLength,
                                        nsBidiPositionResolve* aPosResolve,
                                        int32_t aPosResolveCount,
                                        nscoord* aWidth) {
+  if (!aLength) {
+    if (aWidth) {
+      *aWidth = 0;
+    }
+    return;
+  }
   // Get bidi class from the first (or only) character.
   uint32_t ch = aText[0];
   if (aLength > 1 && NS_IS_HIGH_SURROGATE(ch) &&
@@ -2469,9 +2487,19 @@ nsresult nsBidiPresUtils::ProcessTextForRenderingContext(
   nsIRenderingContextBidiProcessor processor(&aRenderingContext,
                                              aTextRunConstructionDrawTarget,
                                              &aFontMetrics, nsPoint(aX, aY));
-  nsAutoString text(aText, aLength);
-  text.ReplaceChar(kSeparators, ' ');
-  return ProcessText(text.BeginReading(), text.Length(), aBaseLevel,
+  nsDependentSubstring text(aText, aLength);
+  auto separatorIndex = text.FindCharInSet(kSeparators);
+  if (separatorIndex == kNotFound) {
+    return ProcessText(text.BeginReading(), text.Length(), aBaseLevel,
+                       aPresContext, processor, aMode, aPosResolve,
+                       aPosResolveCount, aWidth, aPresContext->BidiEngine());
+  }
+
+  // We need to replace any block or segment separators with space for bidi
+  // processing, so make a local copy.
+  nsAutoString localText(text);
+  ReplaceSeparators(localText, separatorIndex);
+  return ProcessText(localText.BeginReading(), localText.Length(), aBaseLevel,
                      aPresContext, processor, aMode, aPosResolve,
                      aPosResolveCount, aWidth, aPresContext->BidiEngine());
 }

@@ -13,6 +13,7 @@
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/HashTable.h"
+#include "nsAtomHashKeys.h"
 #include "nsContainerFrame.h"
 #include "nsILineIterator.h"
 
@@ -105,12 +106,10 @@ class nsGridContainerFrame final : public nsContainerFrame,
   using NamedArea = mozilla::StyleNamedArea;
 
   template <typename T>
-  using PerBaseline = mozilla::EnumeratedArray<BaselineSharingGroup,
-                                               BaselineSharingGroup(2), T>;
+  using PerBaseline = mozilla::EnumeratedArray<BaselineSharingGroup, T, 2>;
 
   template <typename T>
-  using PerLogicalAxis =
-      mozilla::EnumeratedArray<LogicalAxis, LogicalAxis(2), T>;
+  using PerLogicalAxis = mozilla::EnumeratedArray<LogicalAxis, T, 2>;
 
   // nsIFrame overrides
   void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
@@ -122,10 +121,6 @@ class nsGridContainerFrame final : public nsContainerFrame,
   nscoord GetMinISize(gfxContext* aRenderingContext) override;
   nscoord GetPrefISize(gfxContext* aRenderingContext) override;
   void MarkIntrinsicISizesDirty() override;
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsContainerFrame::IsFrameOfType(
-        aFlags & ~nsIFrame::eCanContainOverflowContainers);
-  }
 
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         const nsDisplayListSet& aLists) override;
@@ -213,21 +208,8 @@ class nsGridContainerFrame final : public nsContainerFrame,
     return GetProperty(GridFragmentInfo());
   }
 
-  struct AtomKey {
-    RefPtr<nsAtom> mKey;
-
-    explicit AtomKey(nsAtom* aAtom) : mKey(aAtom) {}
-
-    using Lookup = nsAtom*;
-
-    static mozilla::HashNumber hash(const Lookup& aKey) { return aKey->hash(); }
-
-    static bool match(const AtomKey& aFirst, const Lookup& aSecond) {
-      return aFirst.mKey == aSecond;
-    }
-  };
-
-  using ImplicitNamedAreas = mozilla::HashMap<AtomKey, NamedArea, AtomKey>;
+  using ImplicitNamedAreas =
+      mozilla::HashMap<mozilla::AtomHashKey, NamedArea, mozilla::AtomHashKey>;
   NS_DECLARE_FRAME_PROPERTY_DELETABLE(ImplicitNamedAreasProperty,
                                       ImplicitNamedAreas)
   ImplicitNamedAreas* GetImplicitNamedAreas() const {
@@ -251,12 +233,12 @@ class nsGridContainerFrame final : public nsContainerFrame,
 
   /** Return true if this frame is subgridded in its aAxis. */
   bool IsSubgrid(LogicalAxis aAxis) const {
-    return HasAnyStateBits(aAxis == mozilla::eLogicalAxisBlock
+    return HasAnyStateBits(aAxis == mozilla::LogicalAxis::Block
                                ? NS_STATE_GRID_IS_ROW_SUBGRID
                                : NS_STATE_GRID_IS_COL_SUBGRID);
   }
-  bool IsColSubgrid() const { return IsSubgrid(mozilla::eLogicalAxisInline); }
-  bool IsRowSubgrid() const { return IsSubgrid(mozilla::eLogicalAxisBlock); }
+  bool IsColSubgrid() const { return IsSubgrid(mozilla::LogicalAxis::Inline); }
+  bool IsRowSubgrid() const { return IsSubgrid(mozilla::LogicalAxis::Block); }
   /** Return true if this frame is subgridded in any axis. */
   bool IsSubgrid() const {
     return HasAnyStateBits(NS_STATE_GRID_IS_ROW_SUBGRID |
@@ -265,7 +247,7 @@ class nsGridContainerFrame final : public nsContainerFrame,
 
   /** Return true if this frame has an item that is subgridded in our aAxis. */
   bool HasSubgridItems(LogicalAxis aAxis) const {
-    return HasAnyStateBits(aAxis == mozilla::eLogicalAxisBlock
+    return HasAnyStateBits(aAxis == mozilla::LogicalAxis::Block
                                ? NS_STATE_GRID_HAS_ROW_SUBGRID_ITEM
                                : NS_STATE_GRID_HAS_COL_SUBGRID_ITEM);
   }
@@ -274,6 +256,28 @@ class nsGridContainerFrame final : public nsContainerFrame,
     return HasAnyStateBits(NS_STATE_GRID_HAS_ROW_SUBGRID_ITEM |
                            NS_STATE_GRID_HAS_COL_SUBGRID_ITEM);
   }
+  /**
+   * Return true if the grid item aChild should stretch in its aAxis (i.e. aAxis
+   * is in the aChild's writing-mode).
+   *
+   * Note: this method does *not* consider the grid item's aspect-ratio and
+   * natural size in the axis when the self-alignment value is 'normal' per
+   * https://drafts.csswg.org/css-grid/#grid-item-sizing
+   */
+  bool GridItemShouldStretch(const nsIFrame* aChild, LogicalAxis aAxis) const;
+
+  /**
+   * Returns true if aFrame forms an independent formatting context and hence
+   * should be inhibited from being a subgrid (i.e. if the used value of
+   * 'grid-template-{rows,columns}:subgrid' should be 'none').
+   * https://drafts.csswg.org/css-grid-2/#subgrid-listing
+   *
+   * (Note this only makes sense to call if aFrame is itself either a grid
+   * container frame or a wrapper frame for a grid container frame, e.g. a
+   * scroll container frame for a scrollable grid.  Having said that, this is
+   * technically safe to call on any non-null frame.)
+   */
+  static bool ShouldInhibitSubgridDueToIFC(const nsIFrame* aFrame);
 
   /**
    * Return a container grid frame for the supplied frame, if available.
@@ -350,6 +354,9 @@ class nsGridContainerFrame final : public nsContainerFrame,
   using LineNameList =
       const mozilla::StyleOwnedSlice<mozilla::StyleCustomIdent>;
   void AddImplicitNamedAreas(mozilla::Span<LineNameList>);
+  using StyleLineNameListValue =
+      const mozilla::StyleGenericLineNameListValue<mozilla::StyleInteger>;
+  void AddImplicitNamedAreas(mozilla::Span<StyleLineNameListValue>);
 
   /**
    * Reflow and place our children.
@@ -368,10 +375,10 @@ class nsGridContainerFrame final : public nsContainerFrame,
                          mozilla::IntrinsicISizeType aConstraint);
 
   nscoord GetBBaseline(BaselineSharingGroup aBaselineGroup) const {
-    return mBaseline[mozilla::eLogicalAxisBlock][aBaselineGroup];
+    return mBaseline[mozilla::LogicalAxis::Block][aBaselineGroup];
   }
   nscoord GetIBaseline(BaselineSharingGroup aBaselineGroup) const {
-    return mBaseline[mozilla::eLogicalAxisInline][aBaselineGroup];
+    return mBaseline[mozilla::LogicalAxis::Inline][aBaselineGroup];
   }
 
   /**
@@ -402,7 +409,7 @@ class nsGridContainerFrame final : public nsContainerFrame,
   /**
    * Synthesize a Grid container baseline for aGroup.
    */
-  nscoord SynthesizeBaseline(const FindItemInGridOrderResult& aItem,
+  nscoord SynthesizeBaseline(const FindItemInGridOrderResult& aGridOrderItem,
                              LogicalAxis aAxis, BaselineSharingGroup aGroup,
                              const nsSize& aCBPhysicalSize, nscoord aCBSize,
                              WritingMode aCBWM);
@@ -443,9 +450,6 @@ class nsGridContainerFrame final : public nsContainerFrame,
    * NS_STATE_GRID_IS_ROW/COL_MASONRY bits we ought to have.
    */
   nsFrameState ComputeSelfSubgridMasonryBits() const;
-
-  /** Helper for ComputeSelfSubgridMasonryBits(). */
-  bool WillHaveAtLeastOneTrackInAxis(LogicalAxis aAxis) const;
 
  private:
   // Helpers for ReflowChildren
@@ -524,6 +528,10 @@ class nsGridContainerFrame final : public nsContainerFrame,
   void StoreUsedTrackSizes(LogicalAxis aAxis,
                            const nsTArray<TrackSize>& aSizes);
 
+  // The internal implementation for AddImplicitNamedAreas().
+  void AddImplicitNamedAreasInternal(LineNameList& aNameList,
+                                     ImplicitNamedAreas*& aAreas);
+
   /**
    * Cached values to optimize GetMinISize/GetPrefISize.
    */
@@ -558,12 +566,8 @@ class nsGridContainerFrame final : public nsContainerFrame,
       if (aFrame->IsSubtreeDirty()) {
         return false;
       }
-
-      if (!CanCacheMeasurement(aFrame, aCBSize)) {
-        return false;
-      }
-
-      return mKey == Key(aFrame, aCBSize);
+      const mozilla::Maybe<Key> maybeKey = Key::TryHash(aFrame, aCBSize);
+      return maybeKey.isSome() && mKey == *maybeKey;
     }
 
     static bool CanCacheMeasurement(const nsIFrame* aFrame,
@@ -575,55 +579,54 @@ class nsGridContainerFrame final : public nsContainerFrame,
 
     void Update(const nsIFrame* aFrame, const LogicalSize& aCBSize,
                 const nscoord aBSize) {
-      MOZ_ASSERT(CanCacheMeasurement(aFrame, aCBSize));
-      mKey.mHashKey = Key::GenerateHash(aFrame, aCBSize);
+      mKey.UpdateHash(aFrame, aCBSize);
       mBSize = aBSize;
     }
 
    private:
-    struct Key {
+    class Key {
       // mHashKey is generated by combining these 2 variables together
       //   1. The containing block size in the item's inline axis used
       //   for measuring reflow
       //   2. The item's baseline padding property
       uint32_t mHashKey;
 
+      explicit Key(uint32_t aHashKey) : mHashKey(aHashKey) {}
+
+     public:
       Key() = default;
 
       Key(const nsIFrame* aFrame, const LogicalSize& aCBSize) {
-        MOZ_ASSERT(CanHash(aFrame, aCBSize));
-        mHashKey = GenerateHash(aFrame, aCBSize);
+        UpdateHash(aFrame, aCBSize);
       }
 
       void UpdateHash(const nsIFrame* aFrame, const LogicalSize& aCBSize) {
-        MOZ_ASSERT(CanHash(aFrame, aCBSize));
-        mHashKey = GenerateHash(aFrame, aCBSize);
+        const mozilla::Maybe<Key> maybeKey = TryHash(aFrame, aCBSize);
+        MOZ_ASSERT(maybeKey.isSome());
+        mHashKey = maybeKey->mHashKey;
       }
 
-      static uint32_t GenerateHash(const nsIFrame* aFrame,
-                                   const LogicalSize& aCBSize) {
-        MOZ_ASSERT(CanHash(aFrame, aCBSize));
-
-        nscoord gridAreaISize = aCBSize.ISize(aFrame->GetWritingMode());
-        nscoord bBaselinePaddingProperty =
+      static mozilla::Maybe<Key> TryHash(const nsIFrame* aFrame,
+                                         const LogicalSize& aCBSize) {
+        const nscoord gridAreaISize = aCBSize.ISize(aFrame->GetWritingMode());
+        const nscoord bBaselinePaddingProperty =
             abs(aFrame->GetProperty(nsIFrame::BBaselinePadProperty()));
 
-        uint_fast8_t bitsNeededForISize = mozilla::FloorLog2(gridAreaISize) + 1;
+        const uint_fast8_t bitsNeededForISize =
+            mozilla::FloorLog2(gridAreaISize) + 1;
 
-        return (gridAreaISize << (32 - bitsNeededForISize)) |
-               bBaselinePaddingProperty;
+        const uint_fast8_t bitsNeededForBBaselinePadding =
+            mozilla::FloorLog2(bBaselinePaddingProperty) + 1;
+        if (bitsNeededForISize + bitsNeededForBBaselinePadding > 32) {
+          return mozilla::Nothing();
+        }
+        const uint32_t hashKey = (gridAreaISize << (32 - bitsNeededForISize)) |
+                                 bBaselinePaddingProperty;
+        return mozilla::Some(Key(hashKey));
       }
 
       static bool CanHash(const nsIFrame* aFrame, const LogicalSize& aCBSize) {
-        uint_fast8_t bitsNeededForISize =
-            mozilla::FloorLog2(aCBSize.ISize(aFrame->GetWritingMode())) + 1;
-
-        uint_fast8_t bitsNeededForBBaselinePadding =
-            mozilla::FloorLog2(
-                abs(aFrame->GetProperty(nsIFrame::BBaselinePadProperty()))) +
-            1;
-
-        return bitsNeededForISize + bitsNeededForBBaselinePadding <= 32;
+        return TryHash(aFrame, aCBSize).isSome();
       }
 
       bool operator==(const Key& aOther) const {

@@ -70,7 +70,7 @@ void TimelineManager::UpdateTimelines(Element* aElement,
 
 template <typename TimelineType>
 static already_AddRefed<TimelineType> PopExistingTimeline(
-    const nsAtom* aName, TimelineCollection<TimelineType>* aCollection) {
+    nsAtom* aName, TimelineCollection<TimelineType>* aCollection) {
   if (!aCollection) {
     return nullptr;
   }
@@ -166,6 +166,22 @@ void TimelineManager::DoUpdateTimelines(
   // FIXME: Bug 1774060. We may have to restyle the animations which use the
   // dropped timelines. Or rely on restyling the subtree and the following
   // siblings when mutating {scroll|view}-timeline-name.
+}
+
+void TimelineManager::UpdateHiddenByContentVisibilityForAnimations() {
+  for (auto* scrollTimelineCollection : mScrollTimelineCollections) {
+    for (ScrollTimeline* timeline :
+         scrollTimelineCollection->Timelines().Values()) {
+      timeline->UpdateHiddenByContentVisibility();
+    }
+  }
+
+  for (auto* viewTimelineCollection : mViewTimelineCollections) {
+    for (ViewTimeline* timeline :
+         viewTimelineCollection->Timelines().Values()) {
+      timeline->UpdateHiddenByContentVisibility();
+    }
+  }
 }
 
 }  // namespace mozilla

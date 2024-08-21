@@ -37,17 +37,9 @@ class SVGFELeafFrame final : public nsIFrame {
   NS_DECL_FRAMEARENA_HELPERS(SVGFELeafFrame)
 
 #ifdef DEBUG
-  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
-                    nsIFrame* aPrevInFlow) override;
+  void Init(nsIContent* aContent, nsContainerFrame* aParent,
+            nsIFrame* aPrevInFlow) override;
 #endif
-
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    if (aFlags & eSupportsContainLayoutAndPaint) {
-      return false;
-    }
-
-    return nsIFrame::IsFrameOfType(aFlags & ~(nsIFrame::eSVG));
-  }
 
 #ifdef DEBUG_FRAME_DUMP
   nsresult GetFrameName(nsAString& aResult) const override {
@@ -55,8 +47,8 @@ class SVGFELeafFrame final : public nsIFrame {
   }
 #endif
 
-  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
-                                    int32_t aModType) override;
+  nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                            int32_t aModType) override;
 
   bool ComputeCustomOverflow(OverflowAreas& aOverflowAreas) override {
     // We don't maintain a ink overflow rect
@@ -79,8 +71,7 @@ NS_IMPL_FRAMEARENA_HELPERS(SVGFELeafFrame)
 #ifdef DEBUG
 void SVGFELeafFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
                           nsIFrame* aPrevInFlow) {
-  nsCOMPtr<SVGFE> filterPrimitive = do_QueryInterface(aContent);
-  NS_ASSERTION(filterPrimitive,
+  NS_ASSERTION(aContent->IsSVGFilterPrimitiveElement(),
                "Trying to construct an SVGFELeafFrame for a "
                "content element that doesn't support the right interfaces");
 
@@ -91,12 +82,13 @@ void SVGFELeafFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
 nsresult SVGFELeafFrame::AttributeChanged(int32_t aNameSpaceID,
                                           nsAtom* aAttribute,
                                           int32_t aModType) {
-  auto* element = static_cast<mozilla::dom::SVGFE*>(GetContent());
+  auto* element =
+      static_cast<mozilla::dom::SVGFilterPrimitiveElement*>(GetContent());
   if (element->AttributeAffectsRendering(aNameSpaceID, aAttribute)) {
     MOZ_ASSERT(
         GetParent()->IsSVGFilterFrame(),
         "Observers observe the filter, so that's what we must invalidate");
-    SVGObserverUtils::InvalidateDirectRenderingObservers(GetParent());
+    SVGObserverUtils::InvalidateRenderingObservers(GetParent());
   }
 
   return nsIFrame::AttributeChanged(aNameSpaceID, aAttribute, aModType);

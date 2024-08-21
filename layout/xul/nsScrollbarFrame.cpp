@@ -16,7 +16,6 @@
 #include "nsScrollbarButtonFrame.h"
 #include "nsContentCreatorFunctions.h"
 #include "nsGkAtoms.h"
-#include "nsIScrollableFrame.h"
 #include "nsIScrollbarMediator.h"
 #include "nsStyleConsts.h"
 #include "nsIContent.h"
@@ -25,6 +24,7 @@
 #include "mozilla/PresShell.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/MutationEventBinding.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/StaticPrefs_apz.h"
 
 using namespace mozilla;
@@ -160,19 +160,19 @@ nsresult nsScrollbarFrame::AttributeChanged(int32_t aNameSpaceID,
   // Update value in our children
   UpdateChildrenAttributeValue(aAttribute, true);
 
-  // if the current position changes, notify any nsGfxScrollFrame
+  // if the current position changes, notify any ScrollContainerFrame
   // parent we may have
   if (aAttribute != nsGkAtoms::curpos) {
     return rv;
   }
 
-  nsIScrollableFrame* scrollable = do_QueryFrame(GetParent());
-  if (!scrollable) {
+  ScrollContainerFrame* scrollContainerFrame = do_QueryFrame(GetParent());
+  if (!scrollContainerFrame) {
     return rv;
   }
 
   nsCOMPtr<nsIContent> content(mContent);
-  scrollable->CurPosAttributeChanged(content);
+  scrollContainerFrame->CurPosAttributeChanged(content);
   return rv;
 }
 
@@ -214,11 +214,11 @@ nsIScrollbarMediator* nsScrollbarFrame::GetScrollbarMediator() {
     return nullptr;
   }
   nsIFrame* f = mScrollbarMediator->GetPrimaryFrame();
-  nsIScrollableFrame* scrollFrame = do_QueryFrame(f);
+  ScrollContainerFrame* scrollContainerFrame = do_QueryFrame(f);
   nsIScrollbarMediator* sbm;
 
-  if (scrollFrame) {
-    nsIFrame* scrolledFrame = scrollFrame->GetScrolledFrame();
+  if (scrollContainerFrame) {
+    nsIFrame* scrolledFrame = scrollContainerFrame->GetScrolledFrame();
     sbm = do_QueryFrame(scrolledFrame);
     if (sbm) {
       return sbm;
@@ -226,7 +226,7 @@ nsIScrollbarMediator* nsScrollbarFrame::GetScrollbarMediator() {
   }
   sbm = do_QueryFrame(f);
   if (f && !sbm) {
-    f = f->PresShell()->GetRootScrollFrame();
+    f = f->PresShell()->GetRootScrollContainerFrame();
     if (f && f->GetContent() == mScrollbarMediator) {
       return do_QueryFrame(f);
     }

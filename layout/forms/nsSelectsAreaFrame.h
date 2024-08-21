@@ -15,23 +15,29 @@ class PresShell;
 
 class nsSelectsAreaFrame final : public nsBlockFrame {
  public:
+  NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(nsSelectsAreaFrame)
 
   friend nsContainerFrame* NS_NewSelectsAreaFrame(mozilla::PresShell* aShell,
-                                                  ComputedStyle* aStyle,
-                                                  nsFrameState aFlags);
+                                                  ComputedStyle* aStyle);
 
-  virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
-                                const nsDisplayListSet& aLists) override;
+  void BuildDisplayList(nsDisplayListBuilder* aBuilder,
+                        const nsDisplayListSet& aLists) override;
 
   void BuildDisplayListInternal(nsDisplayListBuilder* aBuilder,
                                 const nsDisplayListSet& aLists);
 
-  virtual void Reflow(nsPresContext* aCX, ReflowOutput& aDesiredSize,
-                      const ReflowInput& aReflowInput,
-                      nsReflowStatus& aStatus) override;
+  void Reflow(nsPresContext* aCX, ReflowOutput& aDesiredSize,
+              const ReflowInput& aReflowInput,
+              nsReflowStatus& aStatus) override;
 
   nscoord BSizeOfARow() const { return mBSizeOfARow; }
+
+#ifdef DEBUG_FRAME_DUMP
+  nsresult GetFrameName(nsAString& aResult) const override {
+    return MakeFrameName(u"SelectsArea"_ns, aResult);
+  }
+#endif
 
  protected:
   explicit nsSelectsAreaFrame(ComputedStyle* aStyle,

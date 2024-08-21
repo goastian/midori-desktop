@@ -12,22 +12,24 @@
 #include "mozilla/TimeStamp.h"
 
 class nsFrameList;
-class nsHTMLScrollFrame;
 class nsIFrame;
-class nsIScrollableFrame;
+
+namespace mozilla {
+class ScrollContainerFrame;
+}
 
 namespace mozilla::layout {
 
 /**
- * A scroll anchor container finds a descendent element of a scrollable frame
- * to be an anchor node. After every reflow, the scroll anchor will apply
+ * A scroll anchor container finds a descendent element of a scroll container
+ * frame to be an anchor node. After every reflow, the scroll anchor will apply
  * scroll adjustments to keep the anchor node in the same relative position.
  *
  * See: https://drafts.csswg.org/css-scroll-anchoring/
  */
 class ScrollAnchorContainer final {
  public:
-  explicit ScrollAnchorContainer(nsHTMLScrollFrame* aScrollFrame);
+  explicit ScrollAnchorContainer(ScrollContainerFrame* aScrollFrame);
   ~ScrollAnchorContainer();
 
   /**
@@ -43,17 +45,18 @@ class ScrollAnchorContainer final {
   nsIFrame* AnchorNode() const { return mAnchorNode; }
 
   // The owner of this scroll anchor container.
-  nsHTMLScrollFrame* Frame() const;
+  ScrollContainerFrame* Frame() const;
 
   /**
-   * Returns the frame that owns this scroll anchor container as a scrollable
-   * frame. This is always non-null.
+   * Returns the scroll container frame that owns this scroll anchor container.
+   * This is always non-null.
    */
-  nsIScrollableFrame* ScrollableFrame() const;
+  ScrollContainerFrame* ScrollContainer() const;
 
   /**
-   * Find a suitable anchor node among the descendants of the scrollable frame.
-   * This should only be called after the scroll anchor has been invalidated.
+   * Find a suitable anchor node among the descendants of the scroll container
+   * frame. This should only be called after the scroll anchor has been
+   * invalidated.
    */
   void SelectAnchor();
 

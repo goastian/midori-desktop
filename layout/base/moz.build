@@ -33,7 +33,6 @@ if CONFIG["MOZ_DEBUG"]:
 XPIDL_MODULE = "layout_base"
 
 EXPORTS += [
-    "CaretAssociationHint.h",
     "FrameProperties.h",
     "LayoutConstants.h",
     "LayoutLogging.h",
@@ -48,7 +47,6 @@ EXPORTS += [
     "nsFrameManager.h",
     "nsFrameTraversal.h",
     "nsGenConList.h",
-    "nsIFrameTraversal.h",
     "nsIPercentBSizeObserver.h",
     "nsIReflowCallback.h",
     "nsLayoutUtils.h",
@@ -73,6 +71,7 @@ EXPORTS.mozilla += [
     "AccessibleCaretEventHub.h",
     "ArenaObjectID.h",
     "Baseline.h",
+    "CaretAssociationHint.h",
     "ContainStyleScopeManager.h",
     "DepthOrderedFrameList.h",
     "DisplayPortUtils.h",
@@ -183,7 +182,7 @@ IPDL_SOURCES += [
 
 FINAL_LIBRARY = "xul"
 
-BROWSER_CHROME_MANIFESTS += ["tests/browser.ini"]
-MARIONETTE_LAYOUT_MANIFESTS += ["tests/marionette/manifest.ini"]
-MOCHITEST_MANIFESTS += ["tests/mochitest.ini"]
-MOCHITEST_CHROME_MANIFESTS += ["tests/chrome/chrome.ini"]
+BROWSER_CHROME_MANIFESTS += ["tests/browser.toml"]
+MARIONETTE_MANIFESTS += ["tests/marionette/manifest.toml"]
+MOCHITEST_MANIFESTS += ["tests/mochitest.toml"]
+MOCHITEST_CHROME_MANIFESTS += ["tests/chrome/chrome.toml"]

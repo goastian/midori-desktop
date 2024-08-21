@@ -30,7 +30,7 @@ def generate_data(output, template):
     )
 
     # Add all relevant files into the dependencies of the generated file.
-    DEP_EXTS = [".py", ".rs", ".zip"]
+    DEP_EXTS = [".py", ".rs"]
     deps = set()
     for path, dirs, files in os.walk(SERVO_PROP_BASE):
         for file in files:
@@ -81,7 +81,7 @@ def generate_header(output, data):
         "shorthand": "CSS_PROP_SHORTHAND",
         "alias": "CSS_PROP_ALIAS",
     }
-    for prop in data:
+    for prop in data.values():
         is_internal = "Internal" in prop.flags
         flags = " | ".join(
             "CSSPropFlags::{}".format(flag)

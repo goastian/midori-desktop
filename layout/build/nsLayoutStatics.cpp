@@ -10,10 +10,8 @@
 #include "nscore.h"
 
 #include "mozilla/intl/AppDateTimeFormat.h"
-#include "MediaManager.h"
 #include "mozilla/dom/ServiceWorkerRegistrar.h"
 #include "nsAttrValue.h"
-#include "nsColorNames.h"
 #include "nsComputedDOMStyle.h"
 #include "nsContentDLF.h"
 #include "nsContentUtils.h"
@@ -27,7 +25,8 @@
 #include "mozilla/dom/PopupBlocker.h"
 #include "nsIFrame.h"
 #include "nsFrameState.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsGkAtoms.h"
 #include "nsImageFrame.h"
 #include "mozilla/GlobalStyleSheetCache.h"
@@ -48,7 +47,6 @@
 #include "mozilla/dom/HTMLDNSPrefetch.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "mozilla/dom/SVGElementFactory.h"
-#include "nsLanguageAtomService.h"
 #include "nsMathMLAtoms.h"
 #include "nsMathMLOperators.h"
 #include "Navigator.h"
@@ -59,7 +57,6 @@
 #include "ActiveLayerTracker.h"
 #include "AnimationCommon.h"
 #include "LayerAnimationInfo.h"
-#include "mozilla/TimelineConsumers.h"
 
 #include "AudioChannelService.h"
 #include "mozilla/dom/PromiseDebugging.h"
@@ -105,11 +102,6 @@
 #include "mozilla/dom/AbstractRange.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/WebIDLGlobalNameHash.h"
-#include "mozilla/dom/U2FTokenManager.h"
-#include "mozilla/dom/WebAuthnController.h"
-#ifdef OS_WIN
-#  include "mozilla/dom/WinWebAuthnManager.h"
-#endif
 #include "mozilla/dom/PointerEventHandler.h"
 #include "mozilla/dom/RemoteWorkerService.h"
 #include "mozilla/dom/BlobURLProtocolHandler.h"
@@ -117,6 +109,7 @@
 #include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/MIDIPlatformService.h"
 #include "mozilla/dom/quota/ActorsParent.h"
+#include "mozilla/dom/quota/StringifyUtils.h"
 #include "mozilla/dom/localstorage/ActorsParent.h"
 #include "mozilla/net/UrlClassifierFeatureFactory.h"
 #include "mozilla/RemoteLazyInputStreamStorage.h"
@@ -149,8 +142,7 @@ nsresult nsLayoutStatics::Initialize() {
 
   ContentParent::StartUp();
 
-  nsCSSProps::AddRefTable();
-  nsColorNames::AddRefTable();
+  nsCSSProps::Init();
 
 #ifdef DEBUG
   nsCSSPseudoElements::AssertAtoms();
@@ -191,9 +183,6 @@ nsresult nsLayoutStatics::Initialize() {
 
   nsMathMLOperators::AddRefTable();
 
-#ifdef DEBUG
-  nsIFrame::DisplayReflowStartup();
-#endif
   Attr::Initialize();
 
   PopupBlocker::Initialize();
@@ -229,7 +218,6 @@ nsresult nsLayoutStatics::Initialize() {
   }
 
   DecoderDoctorLogger::Init();
-  MediaManager::StartupInit();
   CubebUtils::InitLibrary();
 
   nsHtml5Module::InitializeStatics();
@@ -262,13 +250,6 @@ nsresult nsLayoutStatics::Initialize() {
   // This must be initialized on the main-thread.
   mozilla::RemoteLazyInputStreamStorage::Initialize();
 
-  mozilla::dom::U2FTokenManager::Initialize();
-  mozilla::dom::WebAuthnController::Initialize();
-
-#ifdef OS_WIN
-  mozilla::dom::WinWebAuthnManager::Initialize();
-#endif
-
   if (XRE_IsParentProcess()) {
     // On content process we initialize these components when PContentChild is
     // fully initialized.
@@ -279,6 +260,10 @@ nsresult nsLayoutStatics::Initialize() {
 
   // Reporting API.
   ReportingHeader::Initialize();
+
+  InitializeScopedLogExtraInfo();
+
+  Stringifyable::InitTLS();
 
   if (XRE_IsParentProcess()) {
     InitializeQuotaManager();
@@ -332,16 +317,10 @@ void nsLayoutStatics::Shutdown() {
   HTMLDNSPrefetch::Shutdown();
   nsCSSRendering::Shutdown();
   StaticPresData::Shutdown();
-  nsLanguageAtomService::Shutdown();
-#ifdef DEBUG
-  nsIFrame::DisplayReflowShutdown();
-#endif
   nsCellMap::Shutdown();
   ActiveLayerTracker::Shutdown();
 
   // Release all of our atoms
-  nsColorNames::ReleaseTable();
-  nsCSSProps::ReleaseTable();
   nsRepeatService::Shutdown();
 
   nsXULContentUtils::Finish();

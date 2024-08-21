@@ -78,7 +78,8 @@ nsLineLayout::nsLineLayout(nsPresContext* aPresContext,
       mDirtyNextLine(false),
       mLineAtStart(false),
       mHasRuby(false),
-      mSuppressLineWrap(LineContainerFrame()->IsInSVGTextSubtree())
+      mSuppressLineWrap(LineContainerFrame()->IsInSVGTextSubtree()),
+      mUsedOverflowWrap(false)
 #ifdef DEBUG
       ,
       mSpansAllocated(0),
@@ -140,7 +141,8 @@ void nsLineLayout::BeginLineReflow(nscoord aICoord, nscoord aBCoord,
                                    nscoord aISize, nscoord aBSize,
                                    bool aImpactedByFloats, bool aIsTopOfPage,
                                    WritingMode aWritingMode,
-                                   const nsSize& aContainerSize) {
+                                   const nsSize& aContainerSize,
+                                   nscoord aInset) {
   NS_ASSERTION(nullptr == mRootSpan, "bad linelayout user");
   LAYOUT_WARN_IF_FALSE(aISize != NS_UNCONSTRAINEDSIZE,
                        "have unconstrained width; this should only result from "
@@ -193,6 +195,9 @@ void nsLineLayout::BeginLineReflow(nscoord aICoord, nscoord aBCoord,
   psd->mIStart = aICoord;
   psd->mICoord = aICoord;
   psd->mIEnd = aICoord + aISize;
+  // Set up inset to be used for text-wrap:balance implementation, but only if
+  // the available size is greater than inset.
+  psd->mInset = aISize > aInset ? aInset : 0;
   mContainerSize = aContainerSize;
 
   mBStartEdge = aBCoord;
@@ -200,21 +205,38 @@ void nsLineLayout::BeginLineReflow(nscoord aICoord, nscoord aBCoord,
   psd->mNoWrap = !mStyleText->WhiteSpaceCanWrapStyle() || mSuppressLineWrap;
   psd->mWritingMode = aWritingMode;
 
-  // If this is the first line of a block then see if the text-indent
-  // property amounts to anything.
+  // Determine if this is the first line of the block (or first after a hard
+  // line-break, if `each-line` is in effect).
+  nsIFrame* containerFrame = LineContainerFrame();
+  if (!containerFrame->IsRubyTextContainerFrame()) {
+    bool isFirstLineOrAfterHardBreak = [&] {
+      if (mLineNumber > 0) {
+        return mStyleText->mTextIndent.each_line && GetLine() &&
+               !GetLine()->prev()->IsLineWrapped();
+      }
+      if (nsBlockFrame* prevBlock =
+              do_QueryFrame(containerFrame->GetPrevInFlow())) {
+        return mStyleText->mTextIndent.each_line &&
+               (prevBlock->Lines().empty() ||
+                !prevBlock->LinesEnd().prev()->IsLineWrapped());
+      }
+      return true;
+    }();
 
-  if (0 == mLineNumber && !HasPrevInFlow(LineContainerFrame())) {
-    nscoord pctBasis = mLineContainerRI.ComputedISize();
-    mTextIndent = mStyleText->mTextIndent.Resolve(pctBasis);
-    psd->mICoord += mTextIndent;
+    // Resolve and apply the text-indent value if this line requires it.
+    // The `hanging` option inverts which lines are to be indented.
+    if (isFirstLineOrAfterHardBreak != mStyleText->mTextIndent.hanging) {
+      nscoord pctBasis = mLineContainerRI.ComputedISize();
+      mTextIndent = mStyleText->mTextIndent.length.Resolve(pctBasis);
+      psd->mICoord += mTextIndent;
+    }
   }
 
-  PerFrameData* pfd = NewPerFrameData(LineContainerFrame());
+  PerFrameData* pfd = NewPerFrameData(containerFrame);
   pfd->mAscent = 0;
   pfd->mSpan = psd;
   psd->mFrame = pfd;
-  nsIFrame* frame = LineContainerFrame();
-  if (frame->IsRubyTextContainerFrame()) {
+  if (containerFrame->IsRubyTextContainerFrame()) {
     // Ruby text container won't be reflowed via ReflowFrame, hence the
     // relative positioning information should be recorded here.
     MOZ_ASSERT(mBaseLineLayout != this);
@@ -230,7 +252,7 @@ void nsLineLayout::BeginLineReflow(nscoord aICoord, nscoord aBCoord,
   }
 }
 
-void nsLineLayout::EndLineReflow() {
+bool nsLineLayout::EndLineReflow() {
 #ifdef NOISY_REFLOW
   LineContainerFrame()->ListTag(stdout);
   printf(": EndLineReflow: width=%d\n",
@@ -261,6 +283,8 @@ void nsLineLayout::EndLineReflow() {
     maxFramesAllocated = mFramesAllocated;
   }
 #endif
+
+  return mUsedOverflowWrap;
 }
 
 // XXX swtich to a single mAvailLineWidth that we adjust as each frame
@@ -372,8 +396,10 @@ nsLineLayout::PerSpanData* nsLineLayout::NewPerSpanData() {
   psd->mFrame = nullptr;
   psd->mFirstFrame = nullptr;
   psd->mLastFrame = nullptr;
+  psd->mReflowInput = nullptr;
   psd->mContainsFloat = false;
   psd->mHasNonemptyContent = false;
+  psd->mBaseline = nullptr;
 
 #ifdef DEBUG
   outerLineLayout->mSpansAllocated++;
@@ -406,6 +432,7 @@ void nsLineLayout::BeginSpan(nsIFrame* aFrame,
   psd->mIStart = aIStart;
   psd->mICoord = aIStart;
   psd->mIEnd = aIEnd;
+  psd->mInset = 0;  // inset applies only to the root span
   psd->mBaseline = aBaseline;
 
   nsIFrame* frame = aSpanReflowInput->mFrame;
@@ -710,8 +737,7 @@ static bool IsPercentageAware(const nsIFrame* aFrame, WritingMode aWM) {
           disp->DisplayInside() == StyleDisplayInside::Table)) ||
         fType == LayoutFrameType::HTMLButtonControl ||
         fType == LayoutFrameType::GfxButtonControl ||
-        fType == LayoutFrameType::FieldSet ||
-        fType == LayoutFrameType::ComboboxDisplay) {
+        fType == LayoutFrameType::FieldSet) {
       return true;
     }
 
@@ -801,7 +827,7 @@ void nsLineLayout::ReflowFrame(nsIFrame* aFrame, nsReflowStatus& aReflowStatus,
                        "have unconstrained width; this should only result from "
                        "very large sizes, not attempts at intrinsic width "
                        "calculation");
-  nscoord availableSpaceOnLine = psd->mIEnd - psd->mICoord;
+  nscoord availableSpaceOnLine = psd->mIEnd - psd->mICoord - psd->mInset;
 
   // Setup reflow input for reflowing the frame
   Maybe<ReflowInput> reflowInputHolder;
@@ -1355,7 +1381,7 @@ void nsLineLayout::PlaceFrame(PerFrameData* pfd, ReflowOutput& aMetrics) {
     // vertically aligned, which happens after this.
     const auto baselineSource = pfd->mFrame->StyleDisplay()->mBaselineSource;
     if (baselineSource == StyleBaselineSource::Auto ||
-        pfd->mFrame->IsFrameOfType(nsIFrame::eLineParticipant)) {
+        pfd->mFrame->IsLineParticipant()) {
       if (aMetrics.BlockStartAscent() == ReflowOutput::ASK_FOR_BASELINE) {
         pfd->mAscent = pfd->mFrame->GetLogicalBaseline(lineWM);
       } else {
@@ -1689,10 +1715,10 @@ void nsLineLayout::AdjustLeadings(nsIFrame* spanFrame, PerSpanData* psd,
   if (aStyleText->HasEffectiveTextEmphasis()) {
     nscoord bsize = GetBSizeOfEmphasisMarks(spanFrame, aInflation);
     LogicalSide side = aStyleText->TextEmphasisSide(mRootSpan->mWritingMode);
-    if (side == eLogicalSideBStart) {
+    if (side == LogicalSide::BStart) {
       requiredStartLeading += bsize;
     } else {
-      MOZ_ASSERT(side == eLogicalSideBEnd,
+      MOZ_ASSERT(side == LogicalSide::BEnd,
                  "emphasis marks must be in block axis");
       requiredEndLeading += bsize;
     }
@@ -1736,6 +1762,21 @@ static float GetInflationForBlockDirAlignment(nsIFrame* aFrame,
         ->GetFontSizeScaleFactor();
   }
   return nsLayoutUtils::FontSizeInflationInner(aFrame, aInflationMinFontSize);
+}
+
+bool nsLineLayout::ShouldApplyLineHeightInPreserveWhiteSpace(
+    const PerSpanData* psd) {
+  if (psd->mFrame->mFrame->Style()->IsAnonBox()) {
+    // e.g. An empty `input[type=button]` should still be line-height sized.
+    return true;
+  }
+
+  for (PerFrameData* pfd = psd->mFirstFrame; pfd; pfd = pfd->mNext) {
+    if (!pfd->mIsEmpty) {
+      return true;
+    }
+  }
+  return false;
 }
 
 #define BLOCKDIR_ALIGN_FRAMES_NO_MINIMUM nscoord_MAX
@@ -1889,9 +1930,8 @@ void nsLineLayout::VerticalAlignFrames(PerSpanData* psd) {
 
     // Special-case for a ::first-letter frame, set the line height to
     // the frame block size if the user has left line-height == normal
-    const nsStyleText* styleText = spanFrame->StyleText();
     if (spanFramePFD->mIsLetterFrame && !spanFrame->GetPrevInFlow() &&
-        styleText->mLineHeight.IsNormal()) {
+        spanFrame->StyleFont()->mLineHeight.IsNormal()) {
       logicalBSize = spanFramePFD->mBounds.BSize(lineWM);
     }
 
@@ -1899,7 +1939,8 @@ void nsLineLayout::VerticalAlignFrames(PerSpanData* psd) {
     psd->mBStartLeading = leading / 2;
     psd->mBEndLeading = leading - psd->mBStartLeading;
     psd->mLogicalBSize = logicalBSize;
-    AdjustLeadings(spanFrame, psd, styleText, inflation, &zeroEffectiveSpanBox);
+    AdjustLeadings(spanFrame, psd, spanFrame->StyleText(), inflation,
+                   &zeroEffectiveSpanBox);
 
     if (zeroEffectiveSpanBox) {
       // When the span-box is to be ignored, zero out the initial
@@ -2195,7 +2236,7 @@ void nsLineLayout::VerticalAlignFrames(PerSpanData* psd) {
         // Only consider text frames if they're not empty and
         // line-height=normal.
         canUpdate = pfd->mIsNonWhitespaceTextFrame &&
-                    frame->StyleText()->mLineHeight.IsNormal();
+                    frame->StyleFont()->mLineHeight.IsNormal();
       } else {
         canUpdate = !pfd->mIsPlaceholder;
       }
@@ -2272,7 +2313,9 @@ void nsLineLayout::VerticalAlignFrames(PerSpanData* psd) {
       }
     }
     if (applyMinLH) {
-      if (psd->mHasNonemptyContent || preMode || mHasMarker) {
+      if (psd->mHasNonemptyContent ||
+          (preMode && ShouldApplyLineHeightInPreserveWhiteSpace(psd)) ||
+          mHasMarker) {
 #ifdef NOISY_BLOCKDIR_ALIGN
         printf("  [span]==> adjusting min/maxBCoord: currentValues: %d,%d",
                minBCoord, maxBCoord);
@@ -2300,7 +2343,7 @@ void nsLineLayout::VerticalAlignFrames(PerSpanData* psd) {
               delta = emphasisHeight;
             }
             LogicalSide side = mStyleText->TextEmphasisSide(lineWM);
-            if (side == eLogicalSideBStart) {
+            if (side == LogicalSide::BStart) {
               blockStart -= delta;
             } else {
               blockEnd += delta;
@@ -3230,7 +3273,6 @@ void nsLineLayout::TextAlignLine(nsLineBox* aLine, bool aIsLastLine) {
       }
 
       case StyleTextAlign::Start:
-      case StyleTextAlign::Char:
         // Default alignment is to start edge so do nothing, except to apply
         // any "reverse-hang" amount resulting from reversed-direction trailing
         // space.
