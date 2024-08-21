@@ -69,23 +69,11 @@ interface nsIAppWindow : nsISupports
   [noscript,notxpcom] LiveResizeListenerArray getLiveResizeListeners();
 
   /**
-   * Tell this window that it has picked up a child XUL window
-   * @param aChild the child window being added
-   */
-  void addChildWindow(in nsIAppWindow aChild);
-
-  /**
    * Returns the difference between the inner window size (client size) and the
    * outer window size, in CSS pixels.
    */
   [infallible] readonly attribute unsigned long outerToInnerHeightDifferenceInCSSPixels;
   [infallible] readonly attribute unsigned long outerToInnerWidthDifferenceInCSSPixels;
-
-  /**
-   * Tell this window that it has lost a child XUL window
-   * @param aChild the child window being removed
-   */
-  void removeChildWindow(in nsIAppWindow aChild);
 
   /**
    * Move the window to a centered position.
@@ -113,7 +101,7 @@ interface nsIAppWindow : nsISupports
    * Locks the aspect ratio for a window.
    * @param aShouldLock boolean
    */
-  void lockAspectRatio(in bool aShouldLock);
+  void lockAspectRatio(in boolean aShouldLock);
 
   const unsigned long lowestZ = 0;
   const unsigned long loweredZ = 4;  /* "alwaysLowered" attribute */
@@ -164,4 +152,11 @@ interface nsIAppWindow : nsISupports
    * Since readback of Windows DirectComposition is very slow.
    */
   void needFastSnaphot();
+
+  /**
+   * Ask the PopupManager to rollup all popups.
+   * Can be used by popup-like elements to close other popups when shown.
+   * Note that tooltips and noautohide popups won't be closed.
+   */
+  void rollupAllPopups();
 };

@@ -10,8 +10,8 @@
 #include "AppWindow.h"
 
 // Interfaces needed to be included
+#include "nsGlobalWindowOuter.h"
 #include "nsIDOMWindow.h"
-#include "nsIDOMChromeWindow.h"
 #include "nsIBrowserDOMWindow.h"
 #include "nsIOpenWindowInfo.h"
 #include "nsIPrompt.h"
@@ -39,8 +39,10 @@
 #endif
 
 #include "mozilla/Preferences.h"
+#include "mozilla/Try.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ScriptSettings.h"
+#include "mozilla/dom/UserActivation.h"
 
 using namespace mozilla;
 
@@ -512,8 +514,10 @@ NS_IMETHODIMP
 nsContentTreeOwner::ProvideWindow(
     nsIOpenWindowInfo* aOpenWindowInfo, uint32_t aChromeFlags,
     bool aCalledFromJS, nsIURI* aURI, const nsAString& aName,
-    const nsACString& aFeatures, bool aForceNoOpener, bool aForceNoReferrer,
-    bool aIsPopupRequested, nsDocShellLoadState* aLoadState, bool* aWindowIsNew,
+    const nsACString& aFeatures,
+    const mozilla::dom::UserActivation::Modifiers& aModifiers,
+    bool aForceNoOpener, bool aForceNoReferrer, bool aIsPopupRequested,
+    nsDocShellLoadState* aLoadState, bool* aWindowIsNew,
     dom::BrowsingContext** aReturn) {
   NS_ENSURE_ARG_POINTER(aOpenWindowInfo);
 
@@ -535,10 +539,11 @@ nsContentTreeOwner::ProvideWindow(
 #endif
 
   int32_t openLocation = nsWindowWatcher::GetWindowOpenLocation(
-      parent->GetDOMWindow(), aChromeFlags, aCalledFromJS,
+      parent->GetDOMWindow(), aChromeFlags, aModifiers, aCalledFromJS,
       aOpenWindowInfo->GetIsForPrinting());
 
   if (openLocation != nsIBrowserDOMWindow::OPEN_NEWTAB &&
+      openLocation != nsIBrowserDOMWindow::OPEN_NEWTAB_BACKGROUND &&
       openLocation != nsIBrowserDOMWindow::OPEN_CURRENTWINDOW &&
       openLocation != nsIBrowserDOMWindow::OPEN_PRINT_BROWSER) {
     // Just open a window normally
@@ -547,15 +552,14 @@ nsContentTreeOwner::ProvideWindow(
 
   nsCOMPtr<mozIDOMWindowProxy> domWin;
   mAppWindow->GetWindowDOMWindow(getter_AddRefs(domWin));
-  nsCOMPtr<nsIDOMChromeWindow> chromeWin = do_QueryInterface(domWin);
-  if (!chromeWin) {
+  if (!domWin || !nsGlobalWindowOuter::Cast(domWin)->IsChromeWindow()) {
     // Really odd... but whatever
     NS_WARNING("AppWindow's DOMWindow is not a chrome window");
     return NS_OK;
   }
 
-  nsCOMPtr<nsIBrowserDOMWindow> browserDOMWin;
-  chromeWin->GetBrowserDOMWindow(getter_AddRefs(browserDOMWin));
+  nsCOMPtr<nsIBrowserDOMWindow> browserDOMWin =
+      nsGlobalWindowOuter::Cast(domWin)->GetBrowserDOMWindow();
   if (!browserDOMWin) {
     return NS_OK;
   }

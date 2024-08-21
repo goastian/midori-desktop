@@ -20,12 +20,13 @@
 #include "nsQueryObject.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/Sprintf.h"
+#include "mozilla/Try.h"
 
 // Interfaces needed to be included
 #include "nsGlobalWindowOuter.h"
 #include "nsIAppShell.h"
 #include "nsIAppShellService.h"
-#include "nsIContentViewer.h"
+#include "nsIDocumentViewer.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "nsPIDOMWindow.h"
@@ -45,7 +46,6 @@
 #include "nsStyleConsts.h"
 #include "nsPresContext.h"
 #include "nsContentUtils.h"
-#include "nsGlobalWindow.h"
 #include "nsXULTooltipListener.h"
 #include "nsXULPopupManager.h"
 #include "nsFocusManager.h"
@@ -78,7 +78,7 @@
 
 #include "mozilla/dom/DocumentL10n.h"
 
-#ifdef XP_MACOSX
+#if defined(XP_MACOSX) || defined(MOZ_WIDGET_GTK)
 #  include "mozilla/widget/NativeMenuSupport.h"
 #  define USE_NATIVE_MENUS
 #endif
@@ -332,10 +332,10 @@ NS_IMETHODIMP AppWindow::SetZLevel(uint32_t aLevel) {
   mediator->SetZLevel(this, aLevel);
   PersistentAttributesDirty(PersistentAttribute::Misc, Sync);
 
-  nsCOMPtr<nsIContentViewer> cv;
-  mDocShell->GetContentViewer(getter_AddRefs(cv));
-  if (cv) {
-    RefPtr<dom::Document> doc = cv->GetDocument();
+  nsCOMPtr<nsIDocumentViewer> viewer;
+  mDocShell->GetDocViewer(getter_AddRefs(viewer));
+  if (viewer) {
+    RefPtr<dom::Document> doc = viewer->GetDocument();
     if (doc) {
       ErrorResult rv;
       RefPtr<dom::Event> event =
@@ -476,16 +476,6 @@ AppWindow::GetLiveResizeListeners() {
   return listeners;
 }
 
-NS_IMETHODIMP AppWindow::AddChildWindow(nsIAppWindow* aChild) {
-  // we're not really keeping track of this right now
-  return NS_OK;
-}
-
-NS_IMETHODIMP AppWindow::RemoveChildWindow(nsIAppWindow* aChild) {
-  // we're not really keeping track of this right now
-  return NS_OK;
-}
-
 NS_IMETHODIMP AppWindow::ShowModal() {
   AUTO_PROFILER_LABEL("AppWindow::ShowModal", OTHER);
 
@@ -498,6 +488,16 @@ NS_IMETHODIMP AppWindow::ShowModal() {
   // Store locally so it doesn't die on us
   nsCOMPtr<nsIWidget> window = mWindow;
   nsCOMPtr<nsIAppWindow> tempRef = this;
+
+#ifdef USE_NATIVE_MENUS
+  if (!gfxPlatform::IsHeadless()) {
+    // On macOS, for modals created early in startup. (e.g.
+    // ProfileManager/ProfileDowngrade) this creates a fallback menu for the
+    // menu bar which only contains a "Quit" menu item. This allows the user to
+    // quit the application in a regular way with cmd+Q.
+    widget::NativeMenuSupport::CreateNativeMenuBar(mWindow, nullptr);
+  }
+#endif
 
   window->SetModal(true);
   mContinueModalLoop = true;
@@ -531,6 +531,13 @@ NS_IMETHODIMP AppWindow::ShowModal() {
   */
 
   return mModalStatus;
+}
+
+NS_IMETHODIMP AppWindow::RollupAllPopups() {
+  if (nsXULPopupManager* pm = nsXULPopupManager::GetInstance()) {
+    pm->Rollup({});
+  }
+  return NS_OK;
 }
 
 //*****************************************************************************
@@ -569,11 +576,9 @@ NS_IMETHODIMP AppWindow::Destroy() {
   nsCOMPtr<nsIAppShellService> appShell(
       do_GetService(NS_APPSHELLSERVICE_CONTRACTID));
   NS_ASSERTION(appShell, "Couldn't get appShell... xpcom shutdown?");
-  if (appShell)
+  if (appShell) {
     appShell->UnregisterTopLevelWindow(static_cast<nsIAppWindow*>(this));
-
-  nsCOMPtr<nsIAppWindow> parentWindow(do_QueryReferent(mParentWindow));
-  if (parentWindow) parentWindow->RemoveChildWindow(this);
+  }
 
   // Remove modality (if any) and hide while destroying. More than
   // a convenience, the hide prevents user interaction with the partially
@@ -1109,17 +1114,8 @@ NS_IMETHODIMP AppWindow::GetAvailScreenSize(int32_t* aAvailWidth,
   RefPtr<nsScreen> screen = window->GetScreen();
   NS_ENSURE_STATE(screen);
 
-  ErrorResult rv;
-  *aAvailWidth = screen->GetAvailWidth(rv);
-  if (NS_WARN_IF(rv.Failed())) {
-    return rv.StealNSResult();
-  }
-
-  *aAvailHeight = screen->GetAvailHeight(rv);
-  if (NS_WARN_IF(rv.Failed())) {
-    return rv.StealNSResult();
-  }
-
+  *aAvailWidth = screen->AvailWidth();
+  *aAvailHeight = screen->AvailHeight();
   return NS_OK;
 }
 
@@ -1642,30 +1638,33 @@ void AppWindow::SyncAttributesToWidget() {
 
   NS_ENSURE_TRUE_VOID(mWindow);
 
+  // Only change blank window status once we're loaded, so that a
+  // partially-loaded browser window doesn't start painting early.
+  if (mChromeLoaded) {
+    mWindow->SetIsEarlyBlankWindow(attr.EqualsLiteral("navigator:blank"));
+    NS_ENSURE_TRUE_VOID(mWindow);
+  }
+
   // "icon" attribute
   windowElement->GetAttribute(u"icon"_ns, attr);
   if (!attr.IsEmpty()) {
     mWindow->SetIcon(attr);
-
     NS_ENSURE_TRUE_VOID(mWindow);
   }
 
   // "drawtitle" attribute
   windowElement->GetAttribute(u"drawtitle"_ns, attr);
   mWindow->SetDrawsTitle(attr.LowerCaseEqualsLiteral("true"));
-
   NS_ENSURE_TRUE_VOID(mWindow);
 
   // "toggletoolbar" attribute
   windowElement->GetAttribute(u"toggletoolbar"_ns, attr);
   mWindow->SetShowsToolbarButton(attr.LowerCaseEqualsLiteral("true"));
-
   NS_ENSURE_TRUE_VOID(mWindow);
 
   // "macnativefullscreen" attribute
   windowElement->GetAttribute(u"macnativefullscreen"_ns, attr);
   mWindow->SetSupportsNativeFullscreen(attr.LowerCaseEqualsLiteral("true"));
-
   NS_ENSURE_TRUE_VOID(mWindow);
 
   // "macanimationtype" attribute
@@ -1715,6 +1714,11 @@ static void ConvertWindowSize(nsIAppWindow* aWin, const nsAtom* aAttr,
 }
 
 nsresult AppWindow::GetPersistentValue(const nsAtom* aAttr, nsAString& aValue) {
+  if (!XRE_IsParentProcess()) {
+    // The XULStore is only available in the parent process.
+    return NS_ERROR_UNEXPECTED;
+  }
+
   nsCOMPtr<dom::Element> docShellElement = GetWindowDOMElement();
   if (!docShellElement) {
     return NS_ERROR_FAILURE;
@@ -1952,6 +1956,11 @@ nsresult AppWindow::MaybeSaveEarlyWindowPersistentValues(
 
 nsresult AppWindow::SetPersistentValue(const nsAtom* aAttr,
                                        const nsAString& aValue) {
+  if (!XRE_IsParentProcess()) {
+    // The XULStore is only available in the parent process.
+    return NS_ERROR_UNEXPECTED;
+  }
+
   nsAutoString uri;
   nsAutoString windowElementId;
   nsresult rv = GetDocXulStoreKeys(uri, windowElementId);
@@ -2135,11 +2144,11 @@ NS_IMETHODIMP AppWindow::GetWindowDOMWindow(mozIDOMWindowProxy** aDOMWindow) {
 dom::Element* AppWindow::GetWindowDOMElement() const {
   NS_ENSURE_TRUE(mDocShell, nullptr);
 
-  nsCOMPtr<nsIContentViewer> cv;
-  mDocShell->GetContentViewer(getter_AddRefs(cv));
-  NS_ENSURE_TRUE(cv, nullptr);
+  nsCOMPtr<nsIDocumentViewer> viewer;
+  mDocShell->GetDocViewer(getter_AddRefs(viewer));
+  NS_ENSURE_TRUE(viewer, nullptr);
 
-  const dom::Document* document = cv->GetDocument();
+  const dom::Document* document = viewer->GetDocument();
   NS_ENSURE_TRUE(document, nullptr);
 
   return document->GetRootElement();
@@ -2642,9 +2651,9 @@ void AppWindow::LoadPersistentWindowState() {
 void AppWindow::IntrinsicallySizeShell(const CSSIntSize& aWindowDiff,
                                        int32_t& aSpecWidth,
                                        int32_t& aSpecHeight) {
-  nsCOMPtr<nsIContentViewer> cv;
-  mDocShell->GetContentViewer(getter_AddRefs(cv));
-  if (!cv) {
+  nsCOMPtr<nsIDocumentViewer> viewer;
+  mDocShell->GetDocViewer(getter_AddRefs(viewer));
+  if (!viewer) {
     return;
   }
   RefPtr<nsDocShell> docShell = mDocShell;
@@ -2667,11 +2676,12 @@ void AppWindow::IntrinsicallySizeShell(const CSSIntSize& aWindowDiff,
     }
   }
 
-  Maybe<CSSIntSize> size = cv->GetContentSize(maxWidth, maxHeight, prefWidth);
+  Maybe<CSSIntSize> size =
+      viewer->GetContentSize(maxWidth, maxHeight, prefWidth);
   if (!size) {
     return;
   }
-  nsPresContext* pc = cv->GetPresContext();
+  nsPresContext* pc = viewer->GetPresContext();
   MOZ_ASSERT(pc, "Should have pres context");
 
   int32_t width = pc->CSSPixelsToDevPixels(size->width);
@@ -2702,7 +2712,8 @@ void AppWindow::SizeShell() {
   // once we have primary content.
   if (nsContentUtils::ShouldResistFingerprinting(
           "if RFP is enabled we want to round the dimensions of the new"
-          "new pop up window regardless of their origin") &&
+          "new pop up window regardless of their origin",
+          RFPTarget::RoundWindowSize) &&
       windowType.EqualsLiteral("navigator:browser")) {
     // Once we've got primary content, force dimensions.
     if (mPrimaryContentShell || mPrimaryBrowserParent) {
@@ -2953,15 +2964,6 @@ void AppWindow::SizeModeChanged(nsSizeMode aSizeMode) {
   // then need to be different.
 }
 
-void AppWindow::UIResolutionChanged() {
-  nsCOMPtr<nsPIDOMWindowOuter> ourWindow =
-      mDocShell ? mDocShell->GetWindow() : nullptr;
-  if (ourWindow) {
-    ourWindow->DispatchCustomEvent(u"resolutionchange"_ns,
-                                   ChromeOnlyDispatch::eYes);
-  }
-}
-
 void AppWindow::FullscreenWillChange(bool aInFullscreen) {
   if (mDocShell) {
     if (nsCOMPtr<nsPIDOMWindowOuter> ourWindow = mDocShell->GetWindow()) {
@@ -2970,20 +2972,19 @@ void AppWindow::FullscreenWillChange(bool aInFullscreen) {
   }
   MOZ_ASSERT(mFullscreenChangeState == FullscreenChangeState::NotChanging);
 
-  int32_t winWidth = 0;
-  int32_t winHeight = 0;
-  GetSize(&winWidth, &winHeight);
+  CSSToLayoutDeviceScale scale = UnscaledDevicePixelsPerCSSPixel();
+  CSSIntSize windowSizeCSS = RoundedToInt(GetSize() / scale);
 
-  int32_t screenWidth = 0;
-  int32_t screenHeight = 0;
-  GetAvailScreenSize(&screenWidth, &screenHeight);
+  CSSIntSize screenSizeCSS;
+  GetAvailScreenSize(&screenSizeCSS.width, &screenSizeCSS.height);
 
   // Check if the window is already at the expected dimensions. If it is, set
   // the fullscreen change state to WidgetResized to avoid waiting for a resize
   // event. On macOS, a fullscreen window could be slightly higher than
   // available screen size because of the OS menu bar isn't yet hidden.
   mFullscreenChangeState =
-      (aInFullscreen == (winWidth == screenWidth && winHeight >= screenHeight))
+      (aInFullscreen == (windowSizeCSS.width == screenSizeCSS.width &&
+                         windowSizeCSS.height >= screenSizeCSS.height))
           ? FullscreenChangeState::WidgetResized
           : FullscreenChangeState::WillChange;
 }
@@ -3018,6 +3019,9 @@ void AppWindow::FullscreenChanged(bool aInFullscreen) {
 
 void AppWindow::FinishFullscreenChange(bool aInFullscreen) {
   mFullscreenChangeState = FullscreenChangeState::NotChanging;
+  if (nsXULPopupManager* pm = nsXULPopupManager::GetInstance()) {
+    pm->Rollup({});
+  }
   if (mDocShell) {
     if (nsCOMPtr<nsPIDOMWindowOuter> ourWindow = mDocShell->GetWindow()) {
       ourWindow->FinishFullscreenChange(aInFullscreen);
@@ -3129,7 +3133,16 @@ struct LoadNativeMenusListener {
   nsCOMPtr<nsIWidget> mParentWindow;
 };
 
-static bool sHiddenWindowLoadedNativeMenus = false;
+// On macOS the hidden window is created eagerly, and we want to wait for it to
+// load the native menus.
+static bool sWaitingForHiddenWindowToLoadNativeMenus =
+#  ifdef XP_MACOSX
+    true
+#  else
+    false
+#  endif
+    ;
+
 static nsTArray<LoadNativeMenusListener> sLoadNativeMenusListeners;
 
 static void BeginLoadNativeMenus(Document* aDoc, nsIWidget* aParentWindow);
@@ -3140,25 +3153,18 @@ static void LoadNativeMenus(Document* aDoc, nsIWidget* aParentWindow) {
   // Find the menubar tag (if there is more than one, we ignore all but
   // the first).
   nsCOMPtr<nsINodeList> menubarElements = aDoc->GetElementsByTagNameNS(
-      nsLiteralString(
-          u"http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"),
+      u"http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"_ns,
       u"menubar"_ns);
 
-  nsCOMPtr<nsINode> menubarNode;
+  RefPtr<Element> menubar;
   if (menubarElements) {
-    menubarNode = menubarElements->Item(0);
+    menubar = Element::FromNodeOrNull(menubarElements->Item(0));
   }
 
-  using widget::NativeMenuSupport;
-  if (menubarNode) {
-    nsCOMPtr<Element> menubarContent(do_QueryInterface(menubarNode));
-    NativeMenuSupport::CreateNativeMenuBar(aParentWindow, menubarContent);
-  } else {
-    NativeMenuSupport::CreateNativeMenuBar(aParentWindow, nullptr);
-  }
+  widget::NativeMenuSupport::CreateNativeMenuBar(aParentWindow, menubar);
 
-  if (!sHiddenWindowLoadedNativeMenus) {
-    sHiddenWindowLoadedNativeMenus = true;
+  if (sWaitingForHiddenWindowToLoadNativeMenus) {
+    sWaitingForHiddenWindowToLoadNativeMenus = false;
     for (auto& listener : sLoadNativeMenusListeners) {
       BeginLoadNativeMenus(listener.mDocument, listener.mParentWindow);
     }
@@ -3197,13 +3203,11 @@ class L10nReadyPromiseHandler final : public dom::PromiseNativeHandler {
 NS_IMPL_ISUPPORTS0(L10nReadyPromiseHandler)
 
 static void BeginLoadNativeMenus(Document* aDoc, nsIWidget* aParentWindow) {
-  RefPtr<DocumentL10n> l10n = aDoc->GetL10n();
-  if (l10n) {
+  if (RefPtr<DocumentL10n> l10n = aDoc->GetL10n()) {
     // Wait for l10n to be ready so the menus are localized.
     RefPtr<Promise> promise = l10n->Ready();
     MOZ_ASSERT(promise);
-    RefPtr<L10nReadyPromiseHandler> handler =
-        new L10nReadyPromiseHandler(aDoc, aParentWindow);
+    RefPtr handler = new L10nReadyPromiseHandler(aDoc, aParentWindow);
     promise->AppendNativeHandler(handler);
   } else {
     // Something went wrong loading the doc and l10n wasn't created. This
@@ -3314,16 +3318,11 @@ AppWindow::OnStateChange(nsIWebProgress* aProgress, nsIRequest* aRequest,
   // commands
   ///////////////////////////////
   if (!gfxPlatform::IsHeadless()) {
-    nsCOMPtr<nsIContentViewer> cv;
-    mDocShell->GetContentViewer(getter_AddRefs(cv));
-    if (cv) {
-      RefPtr<Document> menubarDoc = cv->GetDocument();
-      if (menubarDoc) {
-        if (mIsHiddenWindow || sHiddenWindowLoadedNativeMenus) {
-          BeginLoadNativeMenus(menubarDoc, mWindow);
-        } else {
-          sLoadNativeMenusListeners.EmplaceBack(menubarDoc, mWindow);
-        }
+    if (RefPtr<Document> menubarDoc = mDocShell->GetExtantDocument()) {
+      if (mIsHiddenWindow || !sWaitingForHiddenWindowToLoadNativeMenus) {
+        BeginLoadNativeMenus(menubarDoc, mWindow);
+      } else {
+        sLoadNativeMenusListeners.EmplaceBack(menubarDoc, mWindow);
       }
     }
   }
@@ -3380,10 +3379,10 @@ bool AppWindow::ExecuteCloseHandler() {
   }
 
   if (eventTarget) {
-    nsCOMPtr<nsIContentViewer> contentViewer;
-    mDocShell->GetContentViewer(getter_AddRefs(contentViewer));
-    if (contentViewer) {
-      RefPtr<nsPresContext> presContext = contentViewer->GetPresContext();
+    nsCOMPtr<nsIDocumentViewer> viewer;
+    mDocShell->GetDocViewer(getter_AddRefs(viewer));
+    if (viewer) {
+      RefPtr<nsPresContext> presContext = viewer->GetPresContext();
 
       nsEventStatus status = nsEventStatus_eIgnore;
       WidgetMouseEvent event(true, eClose, nullptr, WidgetMouseEvent::eReal);
@@ -3453,11 +3452,6 @@ bool AppWindow::WidgetListenerDelegate::RequestWindowClose(nsIWidget* aWidget) {
 void AppWindow::WidgetListenerDelegate::SizeModeChanged(nsSizeMode aSizeMode) {
   RefPtr<AppWindow> holder = mAppWindow;
   holder->SizeModeChanged(aSizeMode);
-}
-
-void AppWindow::WidgetListenerDelegate::UIResolutionChanged() {
-  RefPtr<AppWindow> holder = mAppWindow;
-  holder->UIResolutionChanged();
 }
 
 void AppWindow::WidgetListenerDelegate::MacFullscreenMenubarOverlapChanged(
