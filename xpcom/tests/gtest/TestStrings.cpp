@@ -10,7 +10,7 @@
 #include "nsCharSeparatedTokenizer.h"
 #include "nsPrintfCString.h"
 #include "nsString.h"
-#include "nsStringBuffer.h"
+#include "mozilla/StringBuffer.h"
 #include "nsReadableUtils.h"
 #include "nsCRTGlue.h"
 #include "mozilla/RefPtr.h"
@@ -34,12 +34,6 @@
     }                                                 \
   });
 
-// Disable the C++ 2a warning. See bug #1509926
-#if defined(__clang__) && (__clang_major__ >= 6)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wc++2a-compat"
-#endif
-
 namespace TestStrings {
 
 using mozilla::BlackBox;
@@ -50,6 +44,7 @@ using mozilla::Maybe;
 using mozilla::Nothing;
 using mozilla::Some;
 using mozilla::Span;
+using mozilla::StringBuffer;
 
 #define TestExample1                                                           \
   "Sed ut perspiciatis unde omnis iste natus error sit voluptatem "            \
@@ -1178,22 +1173,20 @@ TEST_F(Strings, rfindcharinset) {
 TEST_F(Strings, stringbuffer) {
   const char kData[] = "hello world";
 
-  RefPtr<nsStringBuffer> buf;
+  RefPtr<StringBuffer> buf;
 
-  buf = nsStringBuffer::Alloc(sizeof(kData));
+  buf = StringBuffer::Alloc(sizeof(kData));
   EXPECT_TRUE(!!buf);
 
-  buf = nsStringBuffer::Alloc(sizeof(kData));
+  buf = StringBuffer::Alloc(sizeof(kData));
   EXPECT_TRUE(!!buf);
   char* data = (char*)buf->Data();
   memcpy(data, kData, sizeof(kData));
 
   nsCString str;
-  buf->ToString(sizeof(kData) - 1, str);
+  str.Assign(buf, sizeof(kData) - 1);
 
-  nsStringBuffer* buf2;
-  buf2 = nsStringBuffer::FromString(str);
-
+  StringBuffer* buf2 = str.GetStringBuffer();
   EXPECT_EQ(buf, buf2);
 }
 
@@ -1289,7 +1282,30 @@ TEST_F(Strings, string_tointeger) {
     int32_t result = nsAutoCString(t->str).ToInteger(&rv, t->radix);
     EXPECT_EQ(rv, t->rv);
     EXPECT_EQ(result, t->result);
-    result = nsAutoCString(t->str).ToInteger(&rv, t->radix);
+  }
+}
+
+struct ToUnsignedIntegerTest {
+  const char* str;
+  uint32_t radix;
+  uint32_t result;
+  nsresult rv;
+};
+
+static const ToUnsignedIntegerTest kToUnsignedIntegerTests[] = {
+    {"123", 10, 123, NS_OK},
+    {"7b", 16, 123, NS_OK},
+    {"90194313659", 10, 0, NS_ERROR_ILLEGAL_VALUE},
+    {"ffffffff", 16, 0xffffffff, NS_OK},
+    {"4294967295", 10, 4294967295, NS_OK},
+    {"8abc1234", 16, 0x8abc1234, NS_OK},
+    {"-194313659", 10, 0, NS_ERROR_ILLEGAL_VALUE},
+    {nullptr, 0, 0, NS_OK}};
+
+TEST_F(Strings, string_to_unsigned_integer) {
+  nsresult rv;
+  for (const ToUnsignedIntegerTest* t = kToUnsignedIntegerTests; t->str; ++t) {
+    uint32_t result = nsAutoCString(t->str).ToUnsignedInteger(&rv, t->radix);
     EXPECT_EQ(rv, t->rv);
     EXPECT_EQ(result, t->result);
   }
@@ -2268,6 +2284,30 @@ TEST_F(Strings, printf) {
     create_printf_strings(format, (char*)anotherString);
     verify_printf_strings(expectedOutput);
   }
+  {
+    const char* format = "RightJustify %8s";
+    const char* expectedOutput = "RightJustify      foo";
+    create_printf_strings(format, "foo");
+    verify_printf_strings(expectedOutput);
+  }
+  {
+    const char* format = "LeftJustify %-8s";
+    const char* expectedOutput = "LeftJustify foo     ";
+    create_printf_strings(format, "foo");
+    verify_printf_strings(expectedOutput);
+  }
+  {
+    const char* format = "RightJustify2 %*s";
+    const char* expectedOutput = "RightJustify2      foo";
+    create_printf_strings(format, 8, "foo");
+    verify_printf_strings(expectedOutput);
+  }
+  {
+    const char* format = "LeftJustify2 %-*s";
+    const char* expectedOutput = "LeftJustify2 foo     ";
+    create_printf_strings(format, 8, "foo");
+    verify_printf_strings(expectedOutput);
+  }
 }
 
 // We don't need these macros following the printf test.
@@ -2795,7 +2835,3 @@ static_assert(*testStringA.EndReading() == 0);
 static_assert(testStringA.EndReading() - testStringA.BeginReading() == 1);
 
 }  // namespace TestStrings
-
-#if defined(__clang__) && (__clang_major__ >= 6)
-#  pragma clang diagnostic pop
-#endif

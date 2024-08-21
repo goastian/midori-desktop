@@ -15,7 +15,6 @@ XPIDL_SOURCES += [
     "nsIInterfaceRequestor.idl",
     "nsIMemoryInfoDumper.idl",
     "nsIMemoryReporter.idl",
-    "nsIMessageLoop.idl",
     "nsISecurityConsoleMessage.idl",
     "nsISupports.idl",
     "nsIUUIDGenerator.idl",
@@ -28,18 +27,25 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
     XPIDL_SOURCES += [
         "nsIMacPreferencesReader.idl",
     ]
-    EXPORTS += [
-        "nsObjCExceptions.h",
-    ]
     EXPORTS.mozilla += [
         "MacHelpers.h",
-        "MacStringHelpers.h",
         "nsMacPreferencesReader.h",
     ]
     UNIFIED_SOURCES += [
         "MacHelpers.mm",
-        "MacStringHelpers.mm",
         "nsMacPreferencesReader.mm",
+    ]
+if CONFIG["OS_ARCH"] == "Darwin":
+    EXPORTS += [
+        "CFTypeRefPtr.h",
+        "nsObjCExceptions.h",
+    ]
+    EXPORTS.mozilla += [
+        "DarwinObjectPtr.h",
+        "MacStringHelpers.h",
+    ]
+    UNIFIED_SOURCES += [
+        "MacStringHelpers.mm",
         "nsObjCExceptions.mm",
     ]
 
@@ -181,7 +187,6 @@ UNIFIED_SOURCES += [
     "nsMemoryImpl.cpp",
     "nsMemoryInfoDumper.cpp",
     "nsMemoryReporterManager.cpp",
-    "nsMessageLoop.cpp",
     "NSPRLogModulesParser.cpp",
     "nsSecurityConsoleMessage.cpp",
     "nsSystemInfo.cpp",
@@ -259,3 +264,15 @@ LOCAL_INCLUDES += [
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
+
+if CONFIG["MOZ_PHC"]:
+    EXPORTS.mozilla += [
+        "PHCManager.h",
+    ]
+
+    DEFINES["MOZ_PHC"] = 1
+
+    UNIFIED_SOURCES += ["PHCManager.cpp"]
+
+with Files("PHCManager.*"):
+    BUG_COMPONENT = ("Core", "Memory Allocator")

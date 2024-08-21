@@ -10,21 +10,21 @@
 #include "mozilla/EnumeratedArray.h"
 #include "nsCycleCollectionTraversalCallback.h"
 
-template <typename IndexType, IndexType SizeAsEnumValue, typename ValueType>
+template <typename IndexType, typename ValueType, size_t Size>
 inline void ImplCycleCollectionUnlink(
-    mozilla::EnumeratedArray<IndexType, SizeAsEnumValue, ValueType>& aField) {
-  for (size_t i = 0; i < size_t(SizeAsEnumValue); ++i) {
+    mozilla::EnumeratedArray<IndexType, ValueType, Size>& aField) {
+  for (size_t i = 0; i < Size; ++i) {
     aField[IndexType(i)] = nullptr;
   }
 }
 
-template <typename IndexType, IndexType SizeAsEnumValue, typename ValueType>
+template <typename IndexType, typename ValueType, size_t Size>
 inline void ImplCycleCollectionTraverse(
     nsCycleCollectionTraversalCallback& aCallback,
-    mozilla::EnumeratedArray<IndexType, SizeAsEnumValue, ValueType>& aField,
+    mozilla::EnumeratedArray<IndexType, ValueType, Size>& aField,
     const char* aName, uint32_t aFlags = 0) {
   aFlags |= CycleCollectionEdgeNameArrayFlag;
-  for (size_t i = 0; i < size_t(SizeAsEnumValue); ++i) {
+  for (size_t i = 0; i < Size; ++i) {
     ImplCycleCollectionTraverse(aCallback, aField[IndexType(i)], aName, aFlags);
   }
 }

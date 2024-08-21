@@ -16,17 +16,10 @@
 
 #include "nsTArray.h"
 
-#include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/HalTypes.h"
 #include "mozilla/Monitor.h"
 #include "mozilla/ProfilerUtils.h"
-#include "mozilla/UniquePtr.h"
-
-#include <algorithm>
-
-namespace mozilla {
-class TimeStamp;
-}  // namespace mozilla
 
 // Enable this to compute lots of interesting statistics and print them out when
 // PrintStatistics() is called.
@@ -82,6 +75,14 @@ class TimerThread final : public mozilla::Runnable, public nsIObserver {
 
   void PostTimerEvent(already_AddRefed<nsTimerImpl> aTimerRef)
       MOZ_REQUIRES(mMonitor);
+
+  // Using atomic because this value is written to in one place, and read from
+  // in another, and those two locations are likely to be executed from separate
+  // threads. Reads/writes to an aligned value this size should be atomic even
+  // without using std::atomic, but doing this explicitly provides a good
+  // reminder that this is accessed from multiple threads.
+  std::atomic<mozilla::hal::ProcessPriority> mCachedPriority =
+      mozilla::hal::PROCESS_PRIORITY_UNKNOWN;
 
   nsCOMPtr<nsIThread> mThread;
   // Lock ordering requirements:
@@ -179,6 +180,10 @@ class TimerThread final : public mozilla::Runnable, public nsIObserver {
                                             TimeDuration minDelay,
                                             TimeDuration maxDelay) const;
 
+#ifdef XP_WIN
+  UINT ComputeDesiredTimerPeriod() const;
+#endif
+
 #ifdef DEBUG
   // Checks mTimers to see if any entries are out of order or any cached
   // timeouts are incorrect and will assert if any inconsistency is found. Has
@@ -239,5 +244,4 @@ class TimerThread final : public mozilla::Runnable, public nsIObserver {
   void PrintStatistics() const;
 #endif
 };
-
 #endif /* TimerThread_h___ */

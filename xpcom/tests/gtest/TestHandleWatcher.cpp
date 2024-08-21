@@ -51,7 +51,7 @@ using HandleWatcher = mozilla::HandleWatcher;
   // implementation details from the MOZ_CRASH* family of macros
   MOZ_Crash(file, static_cast<int>(line),
             MOZ_CrashPrintf("%s gave nsresult %s(%" PRIX32 ")", expr,
-                            mozilla::GetStaticErrorName(res), res));
+                            mozilla::GetStaticErrorName(res), uint32_t(res)));
 }
 
 // UNWRAP: testing-oriented variant of Result::unwrap.
@@ -101,8 +101,9 @@ class TestHandleWatcher : public testing::Test {
  private:
   static bool sIsLive;  // just for confirmation
   static void AssertIsLive() {
-    MOZ_ASSERT(sIsLive,
-               "attempted to use `class TestHandleWatcher` outside test group");
+    MOZ_RELEASE_ASSERT(
+        sIsLive,
+        "attempted to use `class TestHandleWatcher` outside test group");
   }
 
   static RefPtr<mozilla::SharedThreadPool> sPool;
@@ -339,7 +340,7 @@ struct ActivationTestSetup {
 
  private:
   nsIEventTarget* GetQueue(TargetType targetTyoe) {
-    MOZ_ASSERT(NS_IsMainThread());
+    MOZ_RELEASE_ASSERT(NS_IsMainThread());
     switch (targetTyoe) {
       case TargetType::Main:
         return NS_GetCurrentThread();
@@ -378,9 +379,9 @@ struct ActivationTestSetup {
   }
 
   bool Execute() {
-    MOZ_ASSERT(NS_IsMainThread());
+    MOZ_RELEASE_ASSERT(NS_IsMainThread());
     bool const spin = SpinEventLoopUntil([this] {
-                        MOZ_ASSERT(NS_IsMainThread());
+                        MOZ_RELEASE_ASSERT(NS_IsMainThread());
                         return run.load();
                       }).ok();
     return spin && watcher.IsStopped();

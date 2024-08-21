@@ -44,7 +44,7 @@ PrepareAndDispatch(nsXPTCStubBase * self, uint32_t methodIndex,
     if (!info)
         return NS_ERROR_UNEXPECTED;
 
-    paramCount = info->GetParamCount();
+    paramCount = info->ParamCount();
 
     const uint8_t indexOfJSContext = info->IndexOfJSContext();
 
@@ -54,7 +54,7 @@ PrepareAndDispatch(nsXPTCStubBase * self, uint32_t methodIndex,
     uint64_t value;
 
     for (i = 0; i < paramCount; i++) {
-        const nsXPTParamInfo& param = info->GetParam(i);
+        const nsXPTParamInfo& param = info->Param(i);
         const nsXPTType& type = param.GetType();
         nsXPTCMiniVariant* dp = &paramBuffer[i];
 

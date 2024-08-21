@@ -108,8 +108,7 @@ static HWND GetMostRecentNavigatorHWND() {
   }
 
   nsCOMPtr<mozIDOMWindowProxy> navWin;
-  rv = winMediator->GetMostRecentWindow(u"navigator:browser",
-                                        getter_AddRefs(navWin));
+  rv = winMediator->GetMostRecentBrowserWindow(getter_AddRefs(navWin));
   if (NS_FAILED(rv) || !navWin) {
     return nullptr;
   }
@@ -325,6 +324,8 @@ static nsresult ConvertWinError(DWORD aWinErr) {
     case ERROR_DEVICE_NOT_CONNECTED:
       [[fallthrough]];  // to NS_ERROR_FILE_DEVICE_FAILURE
     case ERROR_DEV_NOT_EXIST:
+      [[fallthrough]];  // to NS_ERROR_FILE_DEVICE_FAILURE
+    case ERROR_INVALID_FUNCTION:
       [[fallthrough]];  // to NS_ERROR_FILE_DEVICE_FAILURE
     case ERROR_IO_DEVICE:
       rv = NS_ERROR_FILE_DEVICE_FAILURE;
@@ -671,10 +672,12 @@ static nsresult OpenDir(const nsString& aName, nsDir** aDir) {
 
   filename.ReplaceChar(L'/', L'\\');
 
-  // FindFirstFileW Will have a last error of ERROR_DIRECTORY if
+  // FindFirstFileExW Will have a last error of ERROR_DIRECTORY if
   // <file_path>\* is passed in.  If <unknown_path>\* is passed in then
   // ERROR_PATH_NOT_FOUND will be the last error.
-  d->handle = ::FindFirstFileW(filename.get(), &(d->data));
+  d->handle = ::FindFirstFileExW(filename.get(), FindExInfoBasic, &(d->data),
+                                 FindExSearchNameMatch, nullptr,
+                                 FIND_FIRST_EX_LARGE_FETCH);
 
   if (d->handle == INVALID_HANDLE_VALUE) {
     delete d;

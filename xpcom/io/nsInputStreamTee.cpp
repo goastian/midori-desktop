@@ -10,6 +10,7 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/IntegerPrintfMacros.h"
 #include "nsIInputStreamTee.h"
 #include "nsIInputStream.h"
 #include "nsIOutputStream.h"
@@ -128,7 +129,7 @@ class nsInputStreamTeeWriteEvent : public Runnable {
 };
 
 nsInputStreamTee::nsInputStreamTee()
-    : mWriter(nullptr), mClosure(nullptr), mLock(), mSinkIsValid(true) {}
+    : mWriter(nullptr), mClosure(nullptr), mSinkIsValid(true) {}
 
 bool nsInputStreamTee::SinkIsValid() {
   MutexAutoLock lock(*mLock);

@@ -80,13 +80,10 @@
 #include "mozilla/Sprintf.h"
 #include "mozilla/StaticPrefs_javascript.h"
 #include "mozilla/Telemetry.h"
-#include "mozilla/TimelineConsumers.h"
-#include "mozilla/TimelineMarker.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/AutoEntryScript.h"
 #include "mozilla/dom/DOMJSClass.h"
 #include "mozilla/dom/JSExecutionManager.h"
-#include "mozilla/dom/ProfileTimelineMarkerBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseBinding.h"
 #include "mozilla/dom/PromiseDebugging.h"
@@ -100,7 +97,6 @@
 #include "nsDOMJSUtils.h"
 #include "nsExceptionHandler.h"
 #include "nsJSUtils.h"
-#include "nsStringBuffer.h"
 #include "nsWrapperCache.h"
 #include "prenv.h"
 
@@ -470,8 +466,8 @@ void TraversalTracer::onChild(JS::GCCellPtr aThing, const char* name) {
 // CycleCollectedJSRuntime. It should never be used directly.
 static const JSZoneParticipant sJSZoneCycleCollectorGlobal;
 
-static void JSObjectsTenuredCb(JSContext* aContext, void* aData) {
-  static_cast<CycleCollectedJSRuntime*>(aData)->JSObjectsTenured();
+static void JSObjectsTenuredCb(JS::GCContext* aGCContext, void* aData) {
+  static_cast<CycleCollectedJSRuntime*>(aData)->JSObjectsTenured(aGCContext);
 }
 
 static void MozCrashWarningReporter(JSContext*, JSErrorReport*) {
@@ -678,7 +674,6 @@ CycleCollectedJSRuntime::CycleCollectedJSRuntime(JSContext* aCx)
       mJSRuntime(JS_GetRuntime(aCx)),
       mHasPendingIdleGCTask(false),
       mPrevGCSliceCallback(nullptr),
-      mPrevGCNurseryCollectionCallback(nullptr),
       mOutOfMemoryState(OOMState::OK),
       mLargeAllocationFailureState(OOMState::OK)
 #ifdef DEBUG
@@ -703,17 +698,7 @@ CycleCollectedJSRuntime::CycleCollectedJSRuntime(JSContext* aCx)
   JS_SetGCCallback(aCx, GCCallback, this);
   mPrevGCSliceCallback = JS::SetGCSliceCallback(aCx, GCSliceCallback);
 
-  if (NS_IsMainThread()) {
-    // We would like to support all threads here, but the way timeline consumers
-    // are set up currently, you can either add a marker for one specific
-    // docshell, or for every consumer globally. We would like to add a marker
-    // for every consumer observing anything on this thread, but that is not
-    // currently possible. For now, add global markers only when we are on the
-    // main thread, since the UI for this tracing data only displays data
-    // relevant to the main-thread.
-    mPrevGCNurseryCollectionCallback =
-        JS::SetGCNurseryCollectionCallback(aCx, GCNurseryCollectionCallback);
-  }
+  JS::AddGCNurseryCollectionCallback(aCx, GCNurseryCollectionCallback, this);
 
   JS_SetObjectsTenuredCallback(aCx, JSObjectsTenuredCb, this);
   JS::SetOutOfMemoryCallback(aCx, OutOfMemoryCallback, this);
@@ -755,7 +740,7 @@ class JSLeakTracer : public JS::CallbackTracer {
 };
 #endif
 
-void CycleCollectedJSRuntime::Shutdown(JSContext* cx) {
+void CycleCollectedJSRuntime::Shutdown(JSContext* aCx) {
 #ifdef MOZ_JS_DEV_ERROR_INTERCEPTOR
   mErrorInterceptor.Shutdown(mJSRuntime);
 #endif  // MOZ_JS_DEV_ERROR_INTERCEPTOR
@@ -772,7 +757,9 @@ void CycleCollectedJSRuntime::Shutdown(JSContext* cx) {
   mShutdownCalled = true;
 #endif
 
-  JS_SetDestroyZoneCallback(cx, nullptr);
+  JS_SetDestroyZoneCallback(aCx, nullptr);
+
+  JS::RemoveGCNurseryCollectionCallback(aCx, GCNurseryCollectionCallback, this);
 }
 
 CycleCollectedJSRuntime::~CycleCollectedJSRuntime() {
@@ -818,7 +805,7 @@ void CycleCollectedJSRuntime::DescribeGCThing(
       // Nothing else to do!
     } else if (js::IsFunctionObject(obj)) {
       JSFunction* fun = JS_GetObjectFunction(obj);
-      JSString* str = JS_GetFunctionDisplayId(fun);
+      JSString* str = JS_GetMaybePartialFunctionDisplayId(fun);
       if (str) {
         JSLinearString* linear = JS_ASSERT_STRING_IS_LINEAR(str);
         nsAutoString chars;
@@ -1036,6 +1023,33 @@ void CycleCollectedJSRuntime::GCCallback(JSContext* aContext,
   self->OnGC(aContext, aStatus, aReason);
 }
 
+struct GCMajorMarker : public BaseMarkerType<GCMajorMarker> {
+  static constexpr const char* Name = "GCMajor";
+  static constexpr const char* Description =
+      "Summary data for an entire major GC, encompassing a set of "
+      "incremental slices. The main thread is not blocked for the "
+      "entire major GC interval, only for the individual slices.";
+
+  using MS = MarkerSchema;
+  static constexpr MS::PayloadField PayloadFields[] = {
+      {"timings", MS::InputType::CString, "GC timings"}};
+
+  static constexpr MS::Location Locations[] = {MS::Location::MarkerChart,
+                                               MS::Location::MarkerTable,
+                                               MS::Location::TimelineMemory};
+  static constexpr MS::ETWMarkerGroup Group = MS::ETWMarkerGroup::Memory;
+
+  static void StreamJSONMarkerData(
+      mozilla::baseprofiler::SpliceableJSONWriter& aWriter,
+      const mozilla::ProfilerString8View& aTimingJSON) {
+    if (aTimingJSON.Length() != 0) {
+      aWriter.SplicedJSONProperty("timings", aTimingJSON);
+    } else {
+      aWriter.NullProperty("timings");
+    }
+  }
+};
+
 /* static */
 void CycleCollectedJSRuntime::GCSliceCallback(JSContext* aContext,
                                               JS::GCProgress aProgress,
@@ -1045,34 +1059,6 @@ void CycleCollectedJSRuntime::GCSliceCallback(JSContext* aContext,
 
   if (profiler_thread_is_being_profiled_for_markers()) {
     if (aProgress == JS::GC_CYCLE_END) {
-      struct GCMajorMarker {
-        static constexpr mozilla::Span<const char> MarkerTypeName() {
-          return mozilla::MakeStringSpan("GCMajor");
-        }
-        static void StreamJSONMarkerData(
-            mozilla::baseprofiler::SpliceableJSONWriter& aWriter,
-            const mozilla::ProfilerString8View& aTimingJSON) {
-          if (aTimingJSON.Length() != 0) {
-            aWriter.SplicedJSONProperty("timings", aTimingJSON);
-          } else {
-            aWriter.NullProperty("timings");
-          }
-        }
-        static mozilla::MarkerSchema MarkerTypeDisplay() {
-          using MS = mozilla::MarkerSchema;
-          MS schema{MS::Location::MarkerChart, MS::Location::MarkerTable,
-                    MS::Location::TimelineMemory};
-          schema.AddStaticLabelValue(
-              "Description",
-              "Summary data for an entire major GC, encompassing a set of "
-              "incremental slices. The main thread is not blocked for the "
-              "entire major GC interval, only for the individual slices.");
-          // No display instructions here, there is special handling in the
-          // front-end.
-          return schema;
-        }
-      };
-
       profiler_add_marker("GCMajor", baseprofiler::category::GCCC,
                           MarkerTiming::Interval(aDesc.startTime(aContext),
                                                  aDesc.endTime(aContext)),
@@ -1131,57 +1117,12 @@ void CycleCollectedJSRuntime::GCSliceCallback(JSContext* aContext,
   }
 }
 
-class MinorGCMarker : public TimelineMarker {
- private:
-  JS::GCReason mReason;
-
- public:
-  MinorGCMarker(MarkerTracingType aTracingType, JS::GCReason aReason)
-      : TimelineMarker("MinorGC", aTracingType, MarkerStackRequest::NO_STACK),
-        mReason(aReason) {
-    MOZ_ASSERT(aTracingType == MarkerTracingType::START ||
-               aTracingType == MarkerTracingType::END);
-  }
-
-  MinorGCMarker(JS::GCNurseryProgress aProgress, JS::GCReason aReason)
-      : TimelineMarker(
-            "MinorGC",
-            aProgress == JS::GCNurseryProgress::GC_NURSERY_COLLECTION_START
-                ? MarkerTracingType::START
-                : MarkerTracingType::END,
-            MarkerStackRequest::NO_STACK),
-        mReason(aReason) {}
-
-  virtual void AddDetails(JSContext* aCx,
-                          dom::ProfileTimelineMarker& aMarker) override {
-    TimelineMarker::AddDetails(aCx, aMarker);
-
-    if (GetTracingType() == MarkerTracingType::START) {
-      auto reason = JS::ExplainGCReason(mReason);
-      aMarker.mCauseName.Construct(NS_ConvertUTF8toUTF16(reason));
-    }
-  }
-
-  virtual UniquePtr<AbstractTimelineMarker> Clone() override {
-    auto clone = MakeUnique<MinorGCMarker>(GetTracingType(), mReason);
-    clone->SetCustomTime(GetTime());
-    return UniquePtr<AbstractTimelineMarker>(std::move(clone));
-  }
-};
-
 /* static */
 void CycleCollectedJSRuntime::GCNurseryCollectionCallback(
-    JSContext* aContext, JS::GCNurseryProgress aProgress,
-    JS::GCReason aReason) {
-  CycleCollectedJSRuntime* self = CycleCollectedJSRuntime::Get();
-  MOZ_ASSERT(CycleCollectedJSContext::Get()->Context() == aContext);
-  MOZ_ASSERT(NS_IsMainThread());
-
-  if (!TimelineConsumers::IsEmpty()) {
-    UniquePtr<AbstractTimelineMarker> abstractMarker(
-        MakeUnique<MinorGCMarker>(aProgress, aReason));
-    TimelineConsumers::AddMarkerForAllObservedDocShells(abstractMarker);
-  }
+    JSContext* aContext, JS::GCNurseryProgress aProgress, JS::GCReason aReason,
+    void* data) {
+  CycleCollectedJSRuntime* self = static_cast<CycleCollectedJSRuntime*>(data);
+  MOZ_ASSERT(self->GetContext()->Context() == aContext);
 
   TimeStamp now = TimeStamp::Now();
   if (aProgress == JS::GCNurseryProgress::GC_NURSERY_COLLECTION_START) {
@@ -1227,10 +1168,6 @@ void CycleCollectedJSRuntime::GCNurseryCollectionCallback(
         GCMinorMarker{},
         ProfilerString8View::WrapNullTerminatedString(
             JS::MinorGcToJSON(aContext).get()));
-  }
-
-  if (self->mPrevGCNurseryCollectionCallback) {
-    self->mPrevGCNurseryCollectionCallback(aContext, aProgress, aReason);
   }
 }
 
@@ -1444,7 +1381,7 @@ bool CycleCollectedJSRuntime::TraceNativeGrayRoots(
     TraceAdditionalNativeGrayRoots(aTracer);
 
     mHolderIter.emplace(mJSHolders, aWhich);
-    aBudget.stepAndForceCheck();
+    aBudget.forceCheck();
   } else {
     // Holders may have been removed between slices, so we may need to update
     // the iterator.
@@ -1609,19 +1546,26 @@ void CycleCollectedJSRuntime::GarbageCollect(JS::GCOptions aOptions,
   JS::NonIncrementalGC(cx, aOptions, aReason);
 }
 
-void CycleCollectedJSRuntime::JSObjectsTenured() {
-  JSContext* cx = CycleCollectedJSContext::Get()->Context();
-  for (auto iter = mNurseryObjects.Iter(); !iter.Done(); iter.Next()) {
+void CycleCollectedJSRuntime::JSObjectsTenured(JS::GCContext* aGCContext) {
+  NurseryObjectsVector objects;
+  std::swap(objects, mNurseryObjects);
+
+  for (auto iter = objects.Iter(); !iter.Done(); iter.Next()) {
     nsWrapperCache* cache = iter.Get();
     JSObject* wrapper = cache->GetWrapperMaybeDead();
     MOZ_DIAGNOSTIC_ASSERT(wrapper);
-    if (!JS::ObjectIsTenured(wrapper)) {
+
+    if (js::gc::InCollectedNurseryRegion(wrapper)) {
       MOZ_ASSERT(!cache->PreservingWrapper());
-      js::gc::FinalizeDeadNurseryObject(cx, wrapper);
+      const JSClass* jsClass = JS::GetClass(wrapper);
+      jsClass->doFinalize(aGCContext, wrapper);
+      continue;
+    }
+
+    if (js::gc::IsInsideNursery(wrapper)) {
+      mNurseryObjects.InfallibleAppend(cache);
     }
   }
-
-  mNurseryObjects.Clear();
 }
 
 void CycleCollectedJSRuntime::NurseryWrapperAdded(nsWrapperCache* aCache) {
@@ -1723,8 +1667,7 @@ void IncrementalFinalizeRunnable::ReleaseNow(bool aLimited) {
           break;
         }
       } else {
-        while (!function.run(UINT32_MAX, function.data))
-          ;
+        while (!function.run(UINT32_MAX, function.data));
         ++mFinalizeFunctionToRun;
       }
     } while (mFinalizeFunctionToRun < mDeferredFinalizeFunctions.Length());
@@ -1841,8 +1784,8 @@ void CycleCollectedJSRuntime::AnnotateAndSetOutOfMemory(OOMState* aStatePtr,
           ? CrashReporter::Annotation::JSOutOfMemory
           : CrashReporter::Annotation::JSLargeAllocationFailure;
 
-  CrashReporter::AnnotateCrashReport(
-      annotation, nsDependentCString(OOMStateToString(aNewState)));
+  CrashReporter::RecordAnnotationCString(annotation,
+                                         OOMStateToString(aNewState));
 }
 
 void CycleCollectedJSRuntime::OnGC(JSContext* aContext, JSGCStatus aStatus,

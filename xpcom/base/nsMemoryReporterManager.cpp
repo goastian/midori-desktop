@@ -13,6 +13,7 @@
 #include "nsProxyRelease.h"
 #include "nsServiceManagerUtils.h"
 #include "nsITimer.h"
+#include "nsThreadManager.h"
 #include "nsThreadUtils.h"
 #include "nsPIDOMWindow.h"
 #include "nsIObserverService.h"
@@ -43,7 +44,7 @@
 #include "mozilla/ipc/UtilityProcessManager.h"
 #include "mozilla/ipc/FileDescriptorUtils.h"
 #ifdef MOZ_PHC
-#  include "replace_malloc_bridge.h"
+#  include "PHC.h"
 #endif
 
 #ifdef MOZ_WIDGET_ANDROID
@@ -1246,7 +1247,7 @@ NS_IMPL_ISUPPORTS(PageFaultsHardReporter, nsIMemoryReporter)
 #ifdef HAVE_JEMALLOC_STATS
 
 static size_t HeapOverhead(const jemalloc_stats_t& aStats) {
-  return aStats.waste + aStats.bookkeeping + aStats.page_cache +
+  return aStats.waste + aStats.bookkeeping + aStats.pages_dirty +
          aStats.bin_unused;
 }
 
@@ -1277,7 +1278,7 @@ class JemallocHeapReporter final : public nsIMemoryReporter {
 
     // clang-format off
     MOZ_COLLECT_REPORT(
-      "heap-committed/allocated", KIND_OTHER, UNITS_BYTES, stats.allocated,
+      "heap/committed/allocated", KIND_OTHER, UNITS_BYTES, stats.allocated,
 "Memory mapped by the heap allocator that is currently allocated to the "
 "application.  This may exceed the amount of memory requested by the "
 "application because the allocator regularly rounds up request sizes. (The "
@@ -1285,14 +1286,14 @@ class JemallocHeapReporter final : public nsIMemoryReporter {
 
     MOZ_COLLECT_REPORT(
       "heap-allocated", KIND_OTHER, UNITS_BYTES, stats.allocated,
-"The same as 'heap-committed/allocated'.");
+"The same as 'heap/committed/allocated'.");
 
-    // We mark this and the other heap-overhead reporters as KIND_NONHEAP
+    // We mark this and the other heap/committed/overhead reporters as KIND_NONHEAP
     // because KIND_HEAP memory means "counted in heap-allocated", which
     // this is not.
     for (auto& bin : bin_stats) {
       MOZ_ASSERT(bin.size);
-      nsPrintfCString path("explicit/heap-overhead/bin-unused/bin-%zu",
+      nsPrintfCString path("heap/committed/bin-unused/bin-%zu",
           bin.size);
       aHandleReport->Callback(EmptyCString(), path, KIND_NONHEAP, UNITS_BYTES,
         bin.bytes_unused,
@@ -1303,50 +1304,77 @@ class JemallocHeapReporter final : public nsIMemoryReporter {
 
     if (stats.waste > 0) {
       MOZ_COLLECT_REPORT(
-        "explicit/heap-overhead/waste", KIND_NONHEAP, UNITS_BYTES,
+        "heap/committed/waste", KIND_NONHEAP, UNITS_BYTES,
         stats.waste,
 "Committed bytes which do not correspond to an active allocation and which the "
 "allocator is not intentionally keeping alive (i.e., not "
-"'explicit/heap-overhead/{bookkeeping,page-cache,bin-unused}').");
+"'heap/{bookkeeping,unused-pages,bin-unused}').");
     }
 
     MOZ_COLLECT_REPORT(
-      "explicit/heap-overhead/bookkeeping", KIND_NONHEAP, UNITS_BYTES,
+      "heap/committed/bookkeeping", KIND_NONHEAP, UNITS_BYTES,
       stats.bookkeeping,
 "Committed bytes which the heap allocator uses for internal data structures.");
 
     MOZ_COLLECT_REPORT(
-      "explicit/heap-overhead/page-cache", KIND_NONHEAP, UNITS_BYTES,
-      stats.page_cache,
+      "heap/committed/unused-pages/dirty", KIND_NONHEAP, UNITS_BYTES,
+      stats.pages_dirty,
 "Memory which the allocator could return to the operating system, but hasn't. "
 "The allocator keeps this memory around as an optimization, so it doesn't "
 "have to ask the OS the next time it needs to fulfill a request. This value "
 "is typically not larger than a few megabytes.");
 
     MOZ_COLLECT_REPORT(
-      "heap-committed/overhead", KIND_OTHER, UNITS_BYTES,
-      HeapOverhead(stats),
-"The sum of 'explicit/heap-overhead/*'.");
-
+      "heap/decommitted/unused-pages/fresh", KIND_OTHER, UNITS_BYTES, stats.pages_fresh,
+"Amount of memory currently mapped but has never been used.");
+    // A duplicate entry in the decommitted part of the tree.
     MOZ_COLLECT_REPORT(
-      "heap-mapped", KIND_OTHER, UNITS_BYTES, stats.mapped,
-"Amount of memory currently mapped. Includes memory that is uncommitted, i.e. "
-"neither in physical memory nor paged to disk.");
+      "decommitted/heap/unused-pages/fresh", KIND_OTHER, UNITS_BYTES, stats.pages_fresh,
+"Amount of memory currently mapped but has never been used.");
 
+// On MacOS madvised memory is still counted in the resident set until the OS
+// actually decommits it.
+#ifdef XP_MACOSX
+#define MADVISED_GROUP "committed"
+#else
+#define MADVISED_GROUP "decommitted"
+#endif
+    MOZ_COLLECT_REPORT(
+      "heap/" MADVISED_GROUP "/unused-pages/madvised", KIND_OTHER, UNITS_BYTES,
+      stats.pages_madvised,
+"Amount of memory currently mapped, not used and that the OS should remove "
+"from the application's resident set.");
+    // A duplicate entry in the decommitted part of the tree.
+    MOZ_COLLECT_REPORT(
+      "decommitted/heap/unused-pages/madvised", KIND_OTHER, UNITS_BYTES, stats.pages_madvised,
+"Amount of memory currently mapped, not used and that the OS should remove "
+"from the application's resident set.");
+
+    {
+      size_t decommitted = stats.mapped - stats.allocated - stats.waste - stats.pages_dirty - stats.pages_fresh - stats.bookkeeping - stats.bin_unused;
+      MOZ_COLLECT_REPORT(
+        "heap/decommitted/unmapped", KIND_OTHER, UNITS_BYTES, decommitted,
+  "Amount of memory currently mapped but not committed, "
+  "neither in physical memory nor paged to disk.");
+      MOZ_COLLECT_REPORT(
+        "decommitted/heap/decommitted", KIND_OTHER, UNITS_BYTES, decommitted,
+  "Amount of memory currently mapped but not committed, "
+  "neither in physical memory nor paged to disk.");
+    }
     MOZ_COLLECT_REPORT(
       "heap-chunksize", KIND_OTHER, UNITS_BYTES, stats.chunksize,
       "Size of chunks.");
 
 #ifdef MOZ_PHC
     mozilla::phc::MemoryUsage usage;
-    ReplaceMalloc::PHCMemoryUsage(usage);
+    mozilla::phc::PHCMemoryUsage(usage);
 
     MOZ_COLLECT_REPORT(
-      "explicit/heap-overhead/phc/metadata", KIND_NONHEAP, UNITS_BYTES,
+      "explicit/phc/metadata", KIND_NONHEAP, UNITS_BYTES,
       usage.mMetadataBytes,
 "Memory used by PHC to store stacks and other metadata for each allocation");
     MOZ_COLLECT_REPORT(
-      "explicit/heap-overhead/phc/fragmentation", KIND_NONHEAP, UNITS_BYTES,
+      "explicit/phc/fragmentation", KIND_NONHEAP, UNITS_BYTES,
       usage.mFragmentationBytes,
 "The amount of memory lost due to rounding up allocations to the next page "
 "size. "
@@ -1424,80 +1452,87 @@ class ThreadsReporter final : public nsIMemoryReporter {
     size_t wrapperSizes = 0;
     size_t threadCount = 0;
 
-    for (auto* thread : nsThread::Enumerate()) {
-      threadCount++;
-      eventQueueSizes += thread->SizeOfEventQueues(MallocSizeOf);
-      wrapperSizes += thread->ShallowSizeOfIncludingThis(MallocSizeOf);
+    {
+      nsThreadManager& tm = nsThreadManager::get();
+      OffTheBooksMutexAutoLock lock(tm.ThreadListMutex());
+      for (auto* thread : tm.ThreadList()) {
+        threadCount++;
+        eventQueueSizes += thread->SizeOfEventQueues(MallocSizeOf);
+        wrapperSizes += thread->ShallowSizeOfIncludingThis(MallocSizeOf);
 
-      if (!thread->StackBase()) {
-        continue;
-      }
+        if (!thread->StackBase()) {
+          continue;
+        }
 
 #if defined(XP_LINUX)
-      int idx = mappings.BinaryIndexOf(thread->StackBase());
-      if (idx < 0) {
-        continue;
-      }
-      // Referenced() is the combined size of all pages in the region which have
-      // ever been touched, and are therefore consuming memory. For stack
-      // regions, these pages are guaranteed to be un-shared unless we fork
-      // after creating threads (which we don't).
-      size_t privateSize = mappings[idx].Referenced();
+        int idx = mappings.BinaryIndexOf(thread->StackBase());
+        if (idx < 0) {
+          continue;
+        }
+        // Referenced() is the combined size of all pages in the region which
+        // have ever been touched, and are therefore consuming memory. For stack
+        // regions, these pages are guaranteed to be un-shared unless we fork
+        // after creating threads (which we don't).
+        size_t privateSize = mappings[idx].Referenced();
 
-      // On Linux, we have to be very careful matching memory regions to thread
-      // stacks.
-      //
-      // To begin with, the kernel only reports VM stats for regions of all
-      // adjacent pages with the same flags, protection, and backing file.
-      // There's no way to get finer-grained usage information for a subset of
-      // those pages.
-      //
-      // Stack segments always have a guard page at the bottom of the stack
-      // (assuming we only support stacks that grow down), so there's no danger
-      // of them being merged with other stack regions. At the top, there's no
-      // protection page, and no way to allocate one without using pthreads
-      // directly and allocating our own stacks. So we get around the problem by
-      // adding an extra VM flag (NOHUGEPAGES) to our stack region, which we
-      // don't expect to be set on any heap regions. But this is not fool-proof.
-      //
-      // A second kink is that different C libraries (and different versions
-      // thereof) report stack base locations and sizes differently with regard
-      // to the guard page. For the libraries that include the guard page in the
-      // stack size base pointer, we need to adjust those values to compensate.
-      // But it's possible that our logic will get out of sync with library
-      // changes, or someone will compile with an unexpected library.
-      //
-      //
-      // The upshot of all of this is that there may be configurations that our
-      // special cases don't cover. And if there are, we want to know about it.
-      // So assert that total size of the memory region we're reporting actually
-      // matches the allocated size of the thread stack.
+        // On Linux, we have to be very careful matching memory regions to
+        // thread stacks.
+        //
+        // To begin with, the kernel only reports VM stats for regions of all
+        // adjacent pages with the same flags, protection, and backing file.
+        // There's no way to get finer-grained usage information for a subset of
+        // those pages.
+        //
+        // Stack segments always have a guard page at the bottom of the stack
+        // (assuming we only support stacks that grow down), so there's no
+        // danger of them being merged with other stack regions. At the top,
+        // there's no protection page, and no way to allocate one without using
+        // pthreads directly and allocating our own stacks. So we get around the
+        // problem by adding an extra VM flag (NOHUGEPAGES) to our stack region,
+        // which we don't expect to be set on any heap regions. But this is not
+        // fool-proof.
+        //
+        // A second kink is that different C libraries (and different versions
+        // thereof) report stack base locations and sizes differently with
+        // regard to the guard page. For the libraries that include the guard
+        // page in the stack size base pointer, we need to adjust those values
+        // to compensate. But it's possible that our logic will get out of sync
+        // with library changes, or someone will compile with an unexpected
+        // library.
+        //
+        //
+        // The upshot of all of this is that there may be configurations that
+        // our special cases don't cover. And if there are, we want to know
+        // about it. So assert that total size of the memory region we're
+        // reporting actually matches the allocated size of the thread stack.
 #  ifndef ANDROID
-      MOZ_ASSERT(mappings[idx].Size() == thread->StackSize(),
-                 "Mapping region size doesn't match stack allocation size");
+        MOZ_ASSERT(mappings[idx].Size() == thread->StackSize(),
+                   "Mapping region size doesn't match stack allocation size");
 #  endif
 #elif defined(XP_WIN)
-      auto memInfo = MemoryInfo::Get(thread->StackBase(), thread->StackSize());
-      size_t privateSize = memInfo.Committed();
+        auto memInfo =
+            MemoryInfo::Get(thread->StackBase(), thread->StackSize());
+        size_t privateSize = memInfo.Committed();
 #else
-      size_t privateSize = thread->StackSize();
-      MOZ_ASSERT_UNREACHABLE(
-          "Shouldn't have stack base pointer on this "
-          "platform");
+        size_t privateSize = thread->StackSize();
+        MOZ_ASSERT_UNREACHABLE(
+            "Shouldn't have stack base pointer on this "
+            "platform");
 #endif
 
-      nsCString threadName;
-      thread->GetThreadName(threadName);
-      threads.AppendElement(ThreadData{
-          std::move(threadName),
-          thread->ThreadId(),
-          // On Linux, it's possible (but unlikely) that our stack region will
-          // have been merged with adjacent heap regions, in which case we'll
-          // get combined size information for both. So we take the minimum of
-          // the reported private size and the requested stack size to avoid the
-          // possible of majorly over-reporting in that case.
-          std::min(privateSize, thread->StackSize()),
-      });
+        nsCString threadName;
+        thread->GetThreadName(threadName);
+        threads.AppendElement(ThreadData{
+            std::move(threadName),
+            thread->ThreadId(),
+            // On Linux, it's possible (but unlikely) that our stack region will
+            // have been merged with adjacent heap regions, in which case we'll
+            // get combined size information for both. So we take the minimum of
+            // the reported private size and the requested stack size to avoid
+            // the possible of majorly over-reporting in that case.
+            std::min(privateSize, thread->StackSize()),
+        });
+      }
     }
 
     for (auto& thread : threads) {
@@ -2237,7 +2272,6 @@ nsMemoryReporterManager::PendingProcessesState::PendingProcessesState(
     : mGeneration(aGeneration),
       mAnonymize(aAnonymize),
       mMinimize(aMinimize),
-      mChildrenPending(),
       mNumProcessesRunning(1),  // reporting starts with the parent
       mNumProcessesCompleted(0),
       mConcurrencyLimit(aConcurrencyLimit),

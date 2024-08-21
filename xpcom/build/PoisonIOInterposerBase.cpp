@@ -6,7 +6,6 @@
 
 #include "mozilla/Maybe.h"
 #include "mozilla/Mutex.h"
-#include "mozilla/Scoped.h"
 #include "mozilla/UniquePtr.h"
 
 #include <algorithm>
@@ -22,56 +21,34 @@
 // Auxiliary method to convert file descriptors to ids
 #if defined(XP_WIN)
 #  include <io.h>
-inline mozilla::Maybe<intptr_t> FileDescriptorToHandle(int aFd) {
+inline mozilla::Maybe<platform_handle_t> FileDescriptorToHandle(int aFd) {
   intptr_t handle = _get_osfhandle(aFd);
   if ((handle == -1) || (handle == -2)) {
     // -1: Invalid handle. -2: stdin/out/err not associated with a stream.
     return mozilla::Nothing();
   }
-  return mozilla::Some(handle);
+  return mozilla::Some<platform_handle_t>(
+      reinterpret_cast<platform_handle_t>(handle));
 }
 #else
-inline mozilla::Maybe<intptr_t> FileDescriptorToHandle(int aFd) {
-  return mozilla::Some<intptr_t>(aFd);
+inline mozilla::Maybe<platform_handle_t> FileDescriptorToHandle(int aFd) {
+  return mozilla::Some<platform_handle_t>(static_cast<platform_handle_t>(aFd));
 }
 #endif /* if not XP_WIN */
 
 namespace {
 
-struct DebugFilesAutoLockTraits {
-  typedef PRLock* type;
-  typedef const PRLock* const_type;
-  static const_type empty() { return nullptr; }
-  static void release(type aL) { PR_Unlock(aL); }
-};
-
-class DebugFilesAutoLock : public mozilla::Scoped<DebugFilesAutoLockTraits> {
-  static PRLock* Lock;
-
+class DebugFilesAutoLock final {
  public:
   static PRLock* getDebugFileIDsLock() {
-    // On windows this static is not thread safe, but we know that the first
-    // call is from
-    // * An early registration of a debug FD or
-    // * The call to InitWritePoisoning.
-    // Since the early debug FDs are logs created early in the main thread
-    // and no writes are trapped before InitWritePoisoning, we are safe.
-    if (!Lock) {
-      Lock = PR_NewLock();
-    }
-
-    // We have to use something lower level than a mutex. If we don't, we
-    // can get recursive in here when called from logging a call to free.
-    return Lock;
+    static PRLock* sLock = PR_NewLock();
+    return sLock;
   }
 
-  DebugFilesAutoLock()
-      : mozilla::Scoped<DebugFilesAutoLockTraits>(getDebugFileIDsLock()) {
-    PR_Lock(get());
-  }
+  DebugFilesAutoLock() { PR_Lock(getDebugFileIDsLock()); }
+
+  ~DebugFilesAutoLock() { PR_Unlock(getDebugFileIDsLock()); }
 };
-
-PRLock* DebugFilesAutoLock::Lock;
 
 // The ChunkedList<T> class implements, at the high level, a non-iterable
 // list of instances of T. Its goal is to be somehow minimalist for the
@@ -185,7 +162,7 @@ class ChunkedList {
   }
 };
 
-typedef ChunkedList<intptr_t> FdList;
+typedef ChunkedList<platform_handle_t> FdList;
 
 // Return a list used to hold the IDs of the current debug files. On unix
 // an ID is a file descriptor. On Windows it is a file HANDLE.
@@ -200,7 +177,7 @@ namespace mozilla {
 
 // Auxiliary Method to test if a file descriptor is registered to be ignored
 // by the poisoning IO interposer
-bool IsDebugFile(intptr_t aFileID) {
+bool IsDebugFile(platform_handle_t aFileID) {
   return getDebugFileIDs().Contains(aFileID);
 }
 
@@ -208,7 +185,7 @@ bool IsDebugFile(intptr_t aFileID) {
 
 extern "C" {
 
-void MozillaRegisterDebugHandle(intptr_t aHandle) {
+void MozillaRegisterDebugHandle(platform_handle_t aHandle) {
   DebugFilesAutoLock lockedScope;
   FdList& DebugFileIDs = getDebugFileIDs();
   MOZ_ASSERT(!DebugFileIDs.Contains(aHandle));
@@ -216,7 +193,7 @@ void MozillaRegisterDebugHandle(intptr_t aHandle) {
 }
 
 void MozillaRegisterDebugFD(int aFd) {
-  mozilla::Maybe<intptr_t> handle = FileDescriptorToHandle(aFd);
+  mozilla::Maybe<platform_handle_t> handle = FileDescriptorToHandle(aFd);
   if (!handle.isSome()) {
     return;
   }
@@ -231,7 +208,7 @@ void MozillaRegisterDebugFILE(FILE* aFile) {
   MozillaRegisterDebugFD(fd);
 }
 
-void MozillaUnRegisterDebugHandle(intptr_t aHandle) {
+void MozillaUnRegisterDebugHandle(platform_handle_t aHandle) {
   DebugFilesAutoLock lockedScope;
   FdList& DebugFileIDs = getDebugFileIDs();
   MOZ_ASSERT(DebugFileIDs.Contains(aHandle));
@@ -239,7 +216,7 @@ void MozillaUnRegisterDebugHandle(intptr_t aHandle) {
 }
 
 void MozillaUnRegisterDebugFD(int aFd) {
-  mozilla::Maybe<intptr_t> handle = FileDescriptorToHandle(aFd);
+  mozilla::Maybe<platform_handle_t> handle = FileDescriptorToHandle(aFd);
   if (!handle.isSome()) {
     return;
   }
@@ -258,11 +235,11 @@ void MozillaUnRegisterDebugFILE(FILE* aFile) {
 }  // extern "C"
 
 #ifdef MOZ_REPLACE_MALLOC
-void mozilla::DebugFdRegistry::RegisterHandle(intptr_t aHandle) {
+void mozilla::DebugFdRegistry::RegisterHandle(platform_handle_t aHandle) {
   MozillaRegisterDebugHandle(aHandle);
 }
 
-void mozilla::DebugFdRegistry::UnRegisterHandle(intptr_t aHandle) {
+void mozilla::DebugFdRegistry::UnRegisterHandle(platform_handle_t aHandle) {
   MozillaUnRegisterDebugHandle(aHandle);
 }
 #endif

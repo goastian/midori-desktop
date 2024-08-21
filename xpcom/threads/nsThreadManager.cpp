@@ -20,6 +20,8 @@
 #include "mozilla/EventQueue.h"
 #include "mozilla/InputTaskManager.h"
 #include "mozilla/Mutex.h"
+#include "mozilla/NeverDestroyed.h"
+#include "mozilla/Perfetto.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ProfilerMarkers.h"
 #include "mozilla/SpinEventLoopUntil.h"
@@ -52,8 +54,7 @@ class BackgroundEventTarget final : public nsIEventTarget,
 
   nsresult Init();
 
-  already_AddRefed<nsISerialEventTarget> CreateBackgroundTaskQueue(
-      const char* aName);
+  already_AddRefed<TaskQueue> CreateBackgroundTaskQueue(const char* aName);
 
   void BeginShutdown(nsTArray<RefPtr<ShutdownPromise>>&);
   void FinishShutdown();
@@ -85,13 +86,17 @@ nsresult BackgroundEventTarget::Init() {
   rv = pool->SetIdleThreadLimit(1);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // Leave threads alive for up to 5 minutes
-  rv = pool->SetIdleThreadTimeout(300000);
+  // Leave the base idle thread alive for up to 5 minutes
+  rv = pool->SetIdleThreadMaximumTimeout(300000);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // Leave excess idle threads alive for up to 1 second
+  rv = pool->SetIdleThreadGraceTimeout(1000);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Initialize the background I/O event target.
   nsCOMPtr<nsIThreadPool> ioPool(new nsThreadPool());
-  NS_ENSURE_TRUE(pool, NS_ERROR_FAILURE);
+  NS_ENSURE_TRUE(ioPool, NS_ERROR_FAILURE);
 
   // The io pool spends a lot of its time blocking on io, so we want to offload
   // these jobs on a lower priority if available.
@@ -107,14 +112,22 @@ nsresult BackgroundEventTarget::Init() {
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Thread limit of 4 makes deadlock during synchronous dispatch less likely.
+  // TODO: This pool is meant to host blocking (file, network) IO, so we might
+  // want to configure an even higher limit to allow more parallel operations
+  // to find another thread. But first we should audit the existing uses of
+  // NS_DISPATCH_EVENT_MAY_BLOCK if they are not just CPU heavy runnables.
   rv = ioPool->SetThreadLimit(4);
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = ioPool->SetIdleThreadLimit(1);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // Leave threads alive for up to 5 minutes
-  rv = ioPool->SetIdleThreadTimeout(300000);
+  // Leave allowed idle threads alive for up to 5 minutes
+  rv = ioPool->SetIdleThreadMaximumTimeout(300000);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // Leave excess idle threads alive for up to 500ms seconds
+  rv = ioPool->SetIdleThreadGraceTimeout(500);
   NS_ENSURE_SUCCESS(rv, rv);
 
   pool.swap(mPool);
@@ -141,25 +154,17 @@ BackgroundEventTarget::IsOnCurrentThread(bool* aValue) {
 NS_IMETHODIMP
 BackgroundEventTarget::Dispatch(already_AddRefed<nsIRunnable> aRunnable,
                                 uint32_t aFlags) {
-  // We need to be careful here, because if an event is getting dispatched here
-  // from within TaskQueue::Runner::Run, it will be dispatched with
-  // NS_DISPATCH_AT_END, but we might not be running the event on the same
-  // pool, depending on which pool we were on and the dispatch flags.  If we
-  // dispatch an event with NS_DISPATCH_AT_END to the wrong pool, the pool
-  // may not process the event in a timely fashion, which can lead to deadlock.
-  uint32_t flags = aFlags & ~NS_DISPATCH_EVENT_MAY_BLOCK;
+  // Select the right destination and clear the special flag.
   bool mayBlock = bool(aFlags & NS_DISPATCH_EVENT_MAY_BLOCK);
   nsCOMPtr<nsIThreadPool>& pool = mayBlock ? mIOPool : mPool;
+  uint32_t flags = aFlags & ~NS_DISPATCH_EVENT_MAY_BLOCK;
 
-  // If we're already running on the pool we want to dispatch to, we can
-  // unconditionally add NS_DISPATCH_AT_END to indicate that we shouldn't spin
-  // up a new thread.
-  //
-  // Otherwise, we should remove NS_DISPATCH_AT_END so we don't run into issues
-  // like those in the above comment.
-  if (pool->IsOnCurrentThread()) {
-    flags |= NS_DISPATCH_AT_END;
-  } else {
+  // If an event is dispatched with NS_DISPATCH_AT_END, it is intended to run
+  // on the same thread on the same pool it is dispatched from, but we might
+  // not want to run the event on the same pool depending on the above choice.
+  // If we dispatch an event with NS_DISPATCH_AT_END to the wrong pool, the
+  // pool may not process the event in a timely fashion or even deadlock.
+  if (flags & NS_DISPATCH_AT_END && !pool->IsOnCurrentThread()) {
     flags &= ~NS_DISPATCH_AT_END;
   }
 
@@ -203,8 +208,8 @@ void BackgroundEventTarget::FinishShutdown() {
   mIOPool->Shutdown();
 }
 
-already_AddRefed<nsISerialEventTarget>
-BackgroundEventTarget::CreateBackgroundTaskQueue(const char* aName) {
+already_AddRefed<TaskQueue> BackgroundEventTarget::CreateBackgroundTaskQueue(
+    const char* aName) {
   return TaskQueue::Create(do_AddRef(this), aName).forget();
 }
 
@@ -237,8 +242,6 @@ void AssertIsOnMainThread() { MOZ_ASSERT(NS_IsMainThread(), "Wrong thread!"); }
 
 #endif
 
-typedef nsTArray<NotNull<RefPtr<nsThread>>> nsThreadArray;
-
 //-----------------------------------------------------------------------------
 
 /* static */
@@ -260,21 +263,29 @@ NS_IMPL_CI_INTERFACE_GETTER(nsThreadManager, nsIThreadManager)
 //-----------------------------------------------------------------------------
 
 /*static*/ nsThreadManager& nsThreadManager::get() {
-  static nsThreadManager sInstance;
-  return sInstance;
+  static NeverDestroyed<nsThreadManager> sInstance;
+  return *sInstance;
 }
 
 nsThreadManager::nsThreadManager()
-    : mCurThreadIndex(0), mMainPRThread(nullptr), mInitialized(false) {}
+    : mCurThreadIndex(0),
+      mMutex("nsThreadManager::mMutex"),
+      mState(State::eUninit) {}
 
 nsThreadManager::~nsThreadManager() = default;
 
 nsresult nsThreadManager::Init() {
+  // Initialize perfetto if on Android.
+  InitPerfetto();
+
   // Child processes need to initialize the thread manager before they
   // initialize XPCOM in order to set up the crash reporter. This leads to
   // situations where we get initialized twice.
-  if (mInitialized) {
-    return NS_OK;
+  {
+    OffTheBooksMutexAutoLock lock(mMutex);
+    if (mState > State::eUninit) {
+      return NS_OK;
+    }
   }
 
   if (PR_NewThreadPrivateIndex(&mCurThreadIndex, ReleaseThread) == PR_FAILURE) {
@@ -305,18 +316,18 @@ nsresult nsThreadManager::Init() {
   RefPtr<ThreadEventQueue> synchronizedQueue =
       new ThreadEventQueue(std::move(queue), true);
 
-  mMainThread = new nsThread(WrapNotNull(synchronizedQueue),
-                             nsThread::MAIN_THREAD, {.stackSize = 0});
+  mMainThread =
+      new nsThread(WrapNotNull(synchronizedQueue), nsThread::MAIN_THREAD,
+                   {0, false, false, Some(W3_LONGTASK_BUSY_WINDOW_MS)});
 
   nsresult rv = mMainThread->InitCurrentThread();
   if (NS_FAILED(rv)) {
     mMainThread = nullptr;
     return rv;
   }
-
-  // We need to keep a pointer to the current thread, so we can satisfy
-  // GetIsMainThread calls that occur post-Shutdown.
-  mMainThread->GetPRThread(&mMainPRThread);
+#ifdef MOZ_MEMORY
+  jemalloc_set_main_thread();
+#endif
 
   // Init AbstractThread.
   AbstractThread::InitTLS();
@@ -328,9 +339,13 @@ nsresult nsThreadManager::Init() {
   rv = target->Init();
   NS_ENSURE_SUCCESS(rv, rv);
 
-  mBackgroundEventTarget = std::move(target);
+  {
+    OffTheBooksMutexAutoLock lock(mMutex);
 
-  mInitialized = true;
+    mBackgroundEventTarget = std::move(target);
+
+    mState = State::eActive;
+  }
 
   return NS_OK;
 }
@@ -338,29 +353,27 @@ nsresult nsThreadManager::Init() {
 void nsThreadManager::ShutdownNonMainThreads() {
   MOZ_ASSERT(NS_IsMainThread(), "shutdown not called from main thread");
 
-  // Prevent further access to the thread manager (no more new threads!)
-  //
-  // What happens if shutdown happens before NewThread completes?
-  // We Shutdown() the new thread, and return error if we've started Shutdown
-  // between when NewThread started, and when the thread finished initializing
-  // and registering with ThreadManager.
-  //
-  mInitialized = false;
-
   // Empty the main thread event queue before we begin shutting down threads.
   NS_ProcessPendingEvents(mMainThread);
 
   mMainThread->mEvents->RunShutdownTasks();
 
+  RefPtr<BackgroundEventTarget> backgroundEventTarget;
+  {
+    OffTheBooksMutexAutoLock lock(mMutex);
+    MOZ_ASSERT(mState == State::eActive, "shutdown called multiple times");
+    backgroundEventTarget = mBackgroundEventTarget;
+  }
+
   nsTArray<RefPtr<ShutdownPromise>> promises;
-  mBackgroundEventTarget->BeginShutdown(promises);
+  backgroundEventTarget->BeginShutdown(promises);
 
   bool taskQueuesShutdown = false;
   // It's fine to capture everything by reference in the Then handler since it
   // runs before we exit the nested event loop, thanks to the SpinEventLoopUntil
   // below.
   ShutdownPromise::All(mMainThread, promises)->Then(mMainThread, __func__, [&] {
-    mBackgroundEventTarget->FinishShutdown();
+    backgroundEventTarget->FinishShutdown();
     taskQueuesShutdown = true;
   });
 
@@ -374,12 +387,21 @@ void nsThreadManager::ShutdownNonMainThreads() {
       mMainThread);
 
   {
-    // We gather the threads into a list, so that we avoid holding the
-    // enumerator lock while calling nsIThread::Shutdown.
+    // Prevent new nsThreads from being created, and collect a list of threads
+    // which need to be shut down.
+    //
+    // We don't prevent new thread creation until we've shut down background
+    // task queues, to ensure that they are able to start thread pool threads
+    // for shutdown tasks.
     nsTArray<RefPtr<nsThread>> threadsToShutdown;
-    for (auto* thread : nsThread::Enumerate()) {
-      if (thread->ShutdownRequired()) {
-        threadsToShutdown.AppendElement(thread);
+    {
+      OffTheBooksMutexAutoLock lock(mMutex);
+      mState = State::eShutdown;
+
+      for (auto* thread : mThreadList) {
+        if (thread->ShutdownRequired()) {
+          threadsToShutdown.AppendElement(thread);
+        }
       }
     }
 
@@ -392,23 +414,30 @@ void nsThreadManager::ShutdownNonMainThreads() {
     // threads to shutdown.  This means that we have to preserve a mostly
     // functioning world until such time as the threads exit.
 
-    // Shutdown all threads that require it (join with threads that we created).
-    for (auto& thread : threadsToShutdown) {
-      thread->Shutdown();
+    // As we're going to be waiting for all asynchronous shutdowns below, we
+    // can begin asynchronously shutting down all XPCOM threads here, rather
+    // than shutting each thread down one-at-a-time.
+    for (const auto& thread : threadsToShutdown) {
+      thread->AsyncShutdown();
     }
   }
 
   // NB: It's possible that there are events in the queue that want to *start*
-  // an asynchronous shutdown. But we have already shutdown the threads above,
-  // so there's no need to worry about them. We only have to wait for all
-  // in-flight asynchronous thread shutdowns to complete.
+  // an asynchronous shutdown. But we have already started async shutdown of
+  // the threads above, so there's no need to worry about them. We only have to
+  // wait for all in-flight asynchronous thread shutdowns to complete.
   mMainThread->WaitForAllAsynchronousShutdowns();
 
   // There are no more background threads at this point.
 }
 
 void nsThreadManager::ShutdownMainThread() {
-  MOZ_ASSERT(!mInitialized, "Must have called BeginShutdown");
+#ifdef DEBUG
+  {
+    OffTheBooksMutexAutoLock lock(mMutex);
+    MOZ_ASSERT(mState == State::eShutdown, "Must have called BeginShutdown");
+  }
+#endif
 
   // Do NS_ProcessPendingEvents but with special handling to set
   // mEventsAreDoomed atomically with the removal of the last event. This means
@@ -427,12 +456,18 @@ void nsThreadManager::ShutdownMainThread() {
   // have been processed.
   mMainThread->SetObserver(nullptr);
 
+  OffTheBooksMutexAutoLock lock(mMutex);
   mBackgroundEventTarget = nullptr;
 }
 
 void nsThreadManager::ReleaseMainThread() {
-  MOZ_ASSERT(!mInitialized, "Must have called BeginShutdown");
-  MOZ_ASSERT(!mBackgroundEventTarget, "Must have called ShutdownMainThread");
+#ifdef DEBUG
+  {
+    OffTheBooksMutexAutoLock lock(mMutex);
+    MOZ_ASSERT(mState == State::eShutdown, "Must have called BeginShutdown");
+    MOZ_ASSERT(!mBackgroundEventTarget, "Must have called ShutdownMainThread");
+  }
+#endif
   MOZ_ASSERT(mMainThread);
 
   // Release main thread object.
@@ -447,6 +482,14 @@ void nsThreadManager::RegisterCurrentThread(nsThread& aThread) {
 
   aThread.AddRef();  // for TLS entry
   PR_SetThreadPrivate(mCurThreadIndex, &aThread);
+
+#ifdef DEBUG
+  {
+    OffTheBooksMutexAutoLock lock(mMutex);
+    MOZ_ASSERT(aThread.isInList(),
+               "Thread was not added to the thread list before registering!");
+  }
+#endif
 }
 
 void nsThreadManager::UnregisterCurrentThread(nsThread& aThread) {
@@ -456,18 +499,18 @@ void nsThreadManager::UnregisterCurrentThread(nsThread& aThread) {
   // Ref-count balanced via ReleaseThread
 }
 
-nsThread* nsThreadManager::CreateCurrentThread(
-    SynchronizedEventQueue* aQueue, nsThread::MainThreadFlag aMainThread) {
+// Not to be used for MainThread!
+nsThread* nsThreadManager::CreateCurrentThread(SynchronizedEventQueue* aQueue) {
   // Make sure we don't have an nsThread yet.
   MOZ_ASSERT(!PR_GetThreadPrivate(mCurThreadIndex));
 
-  if (!mInitialized) {
+  if (!AllowNewXPCOMThreads()) {
     return nullptr;
   }
 
-  RefPtr<nsThread> thread =
-      new nsThread(WrapNotNull(aQueue), aMainThread, {.stackSize = 0});
-  if (!thread || NS_FAILED(thread->InitCurrentThread())) {
+  RefPtr<nsThread> thread = new nsThread(
+      WrapNotNull(aQueue), nsThread::NOT_MAIN_THREAD, {.stackSize = 0});
+  if (NS_FAILED(thread->InitCurrentThread())) {
     return nullptr;
   }
 
@@ -476,21 +519,30 @@ nsThread* nsThreadManager::CreateCurrentThread(
 
 nsresult nsThreadManager::DispatchToBackgroundThread(nsIRunnable* aEvent,
                                                      uint32_t aDispatchFlags) {
-  if (!mInitialized) {
-    return NS_ERROR_FAILURE;
+  RefPtr<BackgroundEventTarget> backgroundTarget;
+  {
+    OffTheBooksMutexAutoLock lock(mMutex);
+    if (!AllowNewXPCOMThreadsLocked() || !mBackgroundEventTarget) {
+      return NS_ERROR_FAILURE;
+    }
+    backgroundTarget = mBackgroundEventTarget;
   }
 
-  nsCOMPtr<nsIEventTarget> backgroundTarget(mBackgroundEventTarget);
   return backgroundTarget->Dispatch(aEvent, aDispatchFlags);
 }
 
-already_AddRefed<nsISerialEventTarget>
-nsThreadManager::CreateBackgroundTaskQueue(const char* aName) {
-  if (!mInitialized) {
-    return nullptr;
+already_AddRefed<TaskQueue> nsThreadManager::CreateBackgroundTaskQueue(
+    const char* aName) {
+  RefPtr<BackgroundEventTarget> backgroundTarget;
+  {
+    OffTheBooksMutexAutoLock lock(mMutex);
+    if (!AllowNewXPCOMThreadsLocked() || !mBackgroundEventTarget) {
+      return nullptr;
+    }
+    backgroundTarget = mBackgroundEventTarget;
   }
 
-  return mBackgroundEventTarget->CreateBackgroundTaskQueue(aName);
+  return backgroundTarget->CreateBackgroundTaskQueue(aName);
 }
 
 nsThread* nsThreadManager::GetCurrentThread() {
@@ -500,7 +552,9 @@ nsThread* nsThreadManager::GetCurrentThread() {
     return static_cast<nsThread*>(data);
   }
 
-  if (!mInitialized) {
+  // Keep this function working early during startup or late during shutdown on
+  // the main thread.
+  if (!AllowNewXPCOMThreads() || NS_IsMainThread()) {
     return nullptr;
   }
 
@@ -509,8 +563,11 @@ nsThread* nsThreadManager::GetCurrentThread() {
   // We assume that if we're implicitly creating a thread here that it doesn't
   // want an event queue. Any thread which wants an event queue should
   // explicitly create its nsThread wrapper.
+  //
+  // nsThread::InitCurrentThread() will check AllowNewXPCOMThreads, and return
+  // an error if we're too late in shutdown to create new XPCOM threads.
   RefPtr<nsThread> thread = new nsThread();
-  if (!thread || NS_FAILED(thread->InitCurrentThread())) {
+  if (NS_FAILED(thread->InitCurrentThread())) {
     return nullptr;
   }
 
@@ -518,8 +575,11 @@ nsThread* nsThreadManager::GetCurrentThread() {
 }
 
 bool nsThreadManager::IsNSThread() const {
-  if (!mInitialized) {
-    return false;
+  {
+    OffTheBooksMutexAutoLock lock(mMutex);
+    if (mState == State::eUninit) {
+      return false;
+    }
   }
   if (auto* thread = (nsThread*)PR_GetThreadPrivate(mCurThreadIndex)) {
     return thread->EventQueue();
@@ -533,33 +593,19 @@ nsThreadManager::NewNamedThread(
     nsIThread** aResult) {
   // Note: can be called from arbitrary threads
 
-  // No new threads during Shutdown
-  if (NS_WARN_IF(!mInitialized)) {
-    return NS_ERROR_NOT_INITIALIZED;
-  }
-
   [[maybe_unused]] TimeStamp startTime = TimeStamp::Now();
 
   RefPtr<ThreadEventQueue> queue =
       new ThreadEventQueue(MakeUnique<EventQueue>());
   RefPtr<nsThread> thr =
       new nsThread(WrapNotNull(queue), nsThread::NOT_MAIN_THREAD, aOptions);
-  nsresult rv =
-      thr->Init(aName);  // Note: blocks until the new thread has been set up
+
+  // Note: nsThread::Init() will check AllowNewXPCOMThreads, and return an
+  // error if we're too late in shutdown to create new XPCOM threads. If we
+  // aren't, the thread will be synchronously added to mThreadList.
+  nsresult rv = thr->Init(aName);
   if (NS_FAILED(rv)) {
     return rv;
-  }
-
-  // At this point, we expect that the thread has been registered in
-  // mThreadByPRThread; however, it is possible that it could have also been
-  // replaced by now, so we cannot really assert that it was added.  Instead,
-  // kill it if we entered Shutdown() during/before Init()
-
-  if (NS_WARN_IF(!mInitialized)) {
-    if (thr->ShutdownRequired()) {
-      thr->Shutdown();  // ok if it happens multiple times
-    }
-    return NS_ERROR_NOT_INITIALIZED;
   }
 
   PROFILER_MARKER_TEXT(
@@ -634,11 +680,11 @@ void AutoNestedEventLoopAnnotation::AnnotateXPCOMSpinEventLoopStack(
   if (aStack.Length() > 0) {
     nsCString prefixedStack(XRE_GetProcessTypeString());
     prefixedStack += ": "_ns + aStack;
-    CrashReporter::AnnotateCrashReport(
+    CrashReporter::RecordAnnotationNSCString(
         CrashReporter::Annotation::XPCOMSpinEventLoopStack, prefixedStack);
   } else {
-    CrashReporter::AnnotateCrashReport(
-        CrashReporter::Annotation::XPCOMSpinEventLoopStack, ""_ns);
+    CrashReporter::UnrecordAnnotation(
+        CrashReporter::Annotation::XPCOMSpinEventLoopStack);
   }
 }
 
@@ -795,4 +841,9 @@ nsThreadManager::DispatchDirectTaskToCurrentThread(nsIRunnable* aEvent) {
   NS_ENSURE_STATE(aEvent);
   nsCOMPtr<nsIRunnable> runnable = aEvent;
   return GetCurrentThread()->DispatchDirectTask(runnable.forget());
+}
+
+bool nsThreadManager::AllowNewXPCOMThreads() {
+  mozilla::OffTheBooksMutexAutoLock lock(mMutex);
+  return AllowNewXPCOMThreadsLocked();
 }

@@ -17,6 +17,7 @@ TypeMap = {
     # builtins
     "boolean": "TD_BOOL",
     "void": "TD_VOID",
+    "int8_t": "TD_INT8",
     "int16_t": "TD_INT16",
     "int32_t": "TD_INT32",
     "int64_t": "TD_INT64",
@@ -24,19 +25,14 @@ TypeMap = {
     "uint16_t": "TD_UINT16",
     "uint32_t": "TD_UINT32",
     "uint64_t": "TD_UINT64",
-    "octet": "TD_UINT8",
-    "short": "TD_INT16",
-    "long": "TD_INT32",
-    "long long": "TD_INT64",
-    "unsigned short": "TD_UINT16",
-    "unsigned long": "TD_UINT32",
-    "unsigned long long": "TD_UINT64",
+    "nsresult": "TD_UINT32",
     "float": "TD_FLOAT",
     "double": "TD_DOUBLE",
     "char": "TD_CHAR",
     "string": "TD_PSTRING",
     "wchar": "TD_WCHAR",
     "wstring": "TD_PWSTRING",
+    "char16_t": "TD_UINT16",
     # special types
     "nsid": "TD_NSID",
     "astring": "TD_ASTRING",
@@ -51,7 +47,7 @@ def flags(*flags):
     return [flag for flag, cond in flags if cond]
 
 
-def get_type(type, calltype, iid_is=None, size_is=None):
+def get_type(type, calltype, iid_is=None, size_is=None, needs_scriptable=None):
     while isinstance(type, xpidl.Typedef):
         type = type.realtype
 
@@ -67,7 +63,7 @@ def get_type(type, calltype, iid_is=None, size_is=None):
         #     This allows Arrays of InterfaceIs types to work.
         return {
             "tag": "TD_ARRAY",
-            "element": get_type(type.type, calltype, iid_is),
+            "element": get_type(type.type, calltype, iid_is, None, needs_scriptable),
         }
 
     if isinstance(type, xpidl.LegacyArray):
@@ -76,10 +72,12 @@ def get_type(type, calltype, iid_is=None, size_is=None):
         return {
             "tag": "TD_LEGACY_ARRAY",
             "size_is": size_is,
-            "element": get_type(type.type, calltype, iid_is),
+            "element": get_type(type.type, calltype, iid_is, None, needs_scriptable),
         }
 
     if isinstance(type, xpidl.Interface) or isinstance(type, xpidl.Forward):
+        if isinstance(needs_scriptable, set):
+            needs_scriptable.add(type.name)
         return {
             "tag": "TD_INTERFACE_TYPE",
             "name": type.name,
@@ -136,7 +134,7 @@ def mk_method(method, params, getter=0, setter=0, optargc=0, hasretval=0, symbol
         "flags": flags(
             ("getter", getter),
             ("setter", setter),
-            ("hidden", method.noscript or method.notxpcom),
+            ("hidden", not method.isScriptable()),
             ("optargc", optargc),
             ("jscontext", method.implicit_jscontext),
             ("hasretval", hasretval),
@@ -167,6 +165,9 @@ def build_interface(iface):
     consts = []
     methods = []
 
+    # Interfaces referenced from scriptable members need to be [scriptable].
+    needs_scriptable = set()
+
     def build_const(c):
         consts.append(
             {
@@ -186,7 +187,7 @@ def build_interface(iface):
                 }
             )
 
-    def build_method(m):
+    def build_method(m, needs_scriptable=None):
         params = []
         for p in m.params:
             params.append(
@@ -196,6 +197,7 @@ def build_interface(iface):
                         p.paramtype,
                         iid_is=attr_param_idx(p, m, "iid_is"),
                         size_is=attr_param_idx(p, m, "size_is"),
+                        needs_scriptable=needs_scriptable,
                     ),
                     in_=p.paramtype.count("in"),
                     out=p.paramtype.count("out"),
@@ -206,33 +208,36 @@ def build_interface(iface):
         hasretval = len(m.params) > 0 and m.params[-1].retval
         if not m.notxpcom and m.realtype.name != "void":
             hasretval = True
-            params.append(mk_param(get_type(m.realtype, "out"), out=1))
+            type = get_type(m.realtype, "out", needs_scriptable=needs_scriptable)
+            params.append(mk_param(type, out=1))
 
         methods.append(
             mk_method(m, params, optargc=m.optional_argc, hasretval=hasretval)
         )
 
-    def build_attr(a):
+    def build_attr(a, needs_scriptable=None):
         assert a.realtype.name != "void"
+
         # Write the getter
         getter_params = []
         if not a.notxpcom:
-            getter_params.append(mk_param(get_type(a.realtype, "out"), out=1))
+            type = get_type(a.realtype, "out", needs_scriptable=needs_scriptable)
+            getter_params.append(mk_param(type, out=1))
 
         methods.append(mk_method(a, getter_params, getter=1, hasretval=1))
 
         # And maybe the setter
         if not a.readonly:
-            param = mk_param(get_type(a.realtype, "in"), in_=1)
-            methods.append(mk_method(a, [param], setter=1))
+            type = get_type(a.realtype, "in", needs_scriptable=needs_scriptable)
+            methods.append(mk_method(a, [mk_param(type, in_=1)], setter=1))
 
     for member in iface.members:
         if isinstance(member, xpidl.ConstMember):
             build_const(member)
         elif isinstance(member, xpidl.Attribute):
-            build_attr(member)
+            build_attr(member, member.isScriptable() and needs_scriptable)
         elif isinstance(member, xpidl.Method):
-            build_method(member)
+            build_method(member, member.isScriptable() and needs_scriptable)
         elif isinstance(member, xpidl.CEnum):
             build_cenum(member)
         elif isinstance(member, xpidl.CDATA):
@@ -240,12 +245,24 @@ def build_interface(iface):
         else:
             raise Exception("Unexpected interface member: %s" % member)
 
+    for ref in set(needs_scriptable):
+        p = iface.idl.getName(xpidl.TypeId(ref), None)
+        if isinstance(p, xpidl.Interface):
+            needs_scriptable.remove(ref)
+            if not p.attributes.scriptable:
+                raise Exception(
+                    f"Scriptable member in {iface.name} references non-scriptable {ref}. "
+                    "The interface must be marked as [scriptable], "
+                    "or the referencing member with [noscript]."
+                )
+
     return {
         "name": iface.name,
         "uuid": iface.attributes.uuid,
         "methods": methods,
         "consts": consts,
         "parent": iface.base,
+        "needs_scriptable": sorted(needs_scriptable),
         "flags": flags(
             ("function", iface.attributes.function),
             ("builtinclass", iface.attributes.builtinclass),

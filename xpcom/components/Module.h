@@ -19,23 +19,24 @@ namespace Module {
 // Note: This must be kept in sync with the selector matching in
 // nsComponentManager.cpp.
 enum ProcessSelector {
-  ANY_PROCESS = 0x0,
-  MAIN_PROCESS_ONLY = 0x1,
-  CONTENT_PROCESS_ONLY = 0x2,
+  ANY_PROCESS = 0,
+  MAIN_PROCESS_ONLY = 1 << 0,
+  CONTENT_PROCESS_ONLY = 1 << 1,
 
   /**
-   * By default, modules are not loaded in the GPU, VR, Socket, RDD, Utility
-   * and IPDLUnitTest processes, even if ANY_PROCESS is specified. This flag
-   * enables a module in the relevant process.
+   * By default, modules are not loaded in the GPU, VR, Socket, RDD, Utility,
+   * GMPlugin and IPDLUnitTest processes, even if ANY_PROCESS is specified.
+   * This flag enables a module in the relevant process.
    *
    * NOTE: IPDLUnitTest does not have its own flag, and will only load a
    * module if it is enabled in all processes.
    */
-  ALLOW_IN_GPU_PROCESS = 0x4,
-  ALLOW_IN_VR_PROCESS = 0x8,
-  ALLOW_IN_SOCKET_PROCESS = 0x10,
-  ALLOW_IN_RDD_PROCESS = 0x20,
-  ALLOW_IN_UTILITY_PROCESS = 0x30,
+  ALLOW_IN_GPU_PROCESS = 1 << 2,
+  ALLOW_IN_VR_PROCESS = 1 << 3,
+  ALLOW_IN_SOCKET_PROCESS = 1 << 4,
+  ALLOW_IN_RDD_PROCESS = 1 << 5,
+  ALLOW_IN_UTILITY_PROCESS = 1 << 6,
+  ALLOW_IN_GMPLUGIN_PROCESS = 1 << 7,
   ALLOW_IN_GPU_AND_MAIN_PROCESS = ALLOW_IN_GPU_PROCESS | MAIN_PROCESS_ONLY,
   ALLOW_IN_GPU_AND_VR_PROCESS = ALLOW_IN_GPU_PROCESS | ALLOW_IN_VR_PROCESS,
   ALLOW_IN_GPU_AND_SOCKET_PROCESS =
@@ -53,11 +54,15 @@ enum ProcessSelector {
       ALLOW_IN_SOCKET_PROCESS,
   ALLOW_IN_GPU_RDD_VR_SOCKET_AND_UTILITY_PROCESS =
       ALLOW_IN_GPU_PROCESS | ALLOW_IN_RDD_PROCESS | ALLOW_IN_VR_PROCESS |
-      ALLOW_IN_SOCKET_PROCESS | ALLOW_IN_UTILITY_PROCESS
+      ALLOW_IN_SOCKET_PROCESS | ALLOW_IN_UTILITY_PROCESS,
+  ALLOW_IN_GPU_RDD_VR_SOCKET_UTILITY_AND_GMPLUGIN_PROCESS =
+      ALLOW_IN_GPU_PROCESS | ALLOW_IN_RDD_PROCESS | ALLOW_IN_VR_PROCESS |
+      ALLOW_IN_SOCKET_PROCESS | ALLOW_IN_UTILITY_PROCESS |
+      ALLOW_IN_GMPLUGIN_PROCESS
 };
 
-static constexpr size_t kMaxProcessSelector =
-    size_t(ProcessSelector::ALLOW_IN_GPU_RDD_VR_SOCKET_AND_UTILITY_PROCESS);
+static constexpr size_t kMaxProcessSelector = size_t(
+    ProcessSelector::ALLOW_IN_GPU_RDD_VR_SOCKET_UTILITY_AND_GMPLUGIN_PROCESS);
 
 /**
  * This allows category entries to be marked so that they are or are

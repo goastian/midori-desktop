@@ -562,71 +562,40 @@ using RunnableFunctionImpl =
 
 namespace detail {
 
-template <typename CVRemoved>
-struct IsRefcountedSmartPointerHelper : std::false_type {};
-
-template <typename Pointee>
-struct IsRefcountedSmartPointerHelper<RefPtr<Pointee>> : std::true_type {};
-
-template <typename Pointee>
-struct IsRefcountedSmartPointerHelper<nsCOMPtr<Pointee>> : std::true_type {};
-
-}  // namespace detail
-
 template <typename T>
-struct IsRefcountedSmartPointer
-    : detail::IsRefcountedSmartPointerHelper<std::remove_cv_t<T>> {};
-
-namespace detail {
-
-template <typename T, typename CVRemoved>
 struct RemoveSmartPointerHelper {
-  typedef T Type;
+  using Type = T;
 };
-
-template <typename T, typename Pointee>
-struct RemoveSmartPointerHelper<T, RefPtr<Pointee>> {
-  typedef Pointee Type;
-};
-
-template <typename T, typename Pointee>
-struct RemoveSmartPointerHelper<T, nsCOMPtr<Pointee>> {
-  typedef Pointee Type;
-};
-
-}  // namespace detail
 
 template <typename T>
-struct RemoveSmartPointer
-    : detail::RemoveSmartPointerHelper<T, std::remove_cv_t<T>> {};
+struct RemoveSmartPointerHelper<RefPtr<T>> {
+  using Type = T;
+};
 
-namespace detail {
+template <typename T>
+struct RemoveSmartPointerHelper<nsCOMPtr<T>> {
+  using Type = T;
+};
 
-template <typename T, typename CVRemoved>
+template <typename T>
 struct RemoveRawOrSmartPointerHelper {
-  typedef T Type;
+  using Type = typename RemoveSmartPointerHelper<T>::Type;
 };
 
-template <typename T, typename Pointee>
-struct RemoveRawOrSmartPointerHelper<T, Pointee*> {
-  typedef Pointee Type;
-};
-
-template <typename T, typename Pointee>
-struct RemoveRawOrSmartPointerHelper<T, RefPtr<Pointee>> {
-  typedef Pointee Type;
-};
-
-template <typename T, typename Pointee>
-struct RemoveRawOrSmartPointerHelper<T, nsCOMPtr<Pointee>> {
-  typedef Pointee Type;
+template <typename T>
+struct RemoveRawOrSmartPointerHelper<T*> {
+  using Type = T;
 };
 
 }  // namespace detail
 
 template <typename T>
-struct RemoveRawOrSmartPointer
-    : detail::RemoveRawOrSmartPointerHelper<T, std::remove_cv_t<T>> {};
+using RemoveSmartPointer =
+    typename detail::RemoveSmartPointerHelper<std::remove_cv_t<T>>::Type;
+
+template <typename T>
+using RemoveRawOrSmartPointer =
+    typename detail::RemoveRawOrSmartPointerHelper<std::remove_cv_t<T>>::Type;
 
 }  // namespace mozilla
 
@@ -797,23 +766,22 @@ struct nsRunnableMethodTraits;
 template <typename PtrType, class C, typename R, bool Owning,
           mozilla::RunnableKind Kind, typename... As>
 struct nsRunnableMethodTraits<PtrType, R (C::*)(As...), Owning, Kind> {
-  typedef typename mozilla::RemoveRawOrSmartPointer<PtrType>::Type class_type;
+  using class_type = mozilla::RemoveRawOrSmartPointer<PtrType>;
   static_assert(std::is_base_of<C, class_type>::value,
                 "Stored class must inherit from method's class");
-  typedef R return_type;
-  typedef nsRunnableMethod<C, R, Owning, Kind> base_type;
+  using return_type = R;
+  using base_type = nsRunnableMethod<C, R, Owning, Kind>;
   static const bool can_cancel = Kind == mozilla::RunnableKind::Cancelable;
 };
 
 template <typename PtrType, class C, typename R, bool Owning,
           mozilla::RunnableKind Kind, typename... As>
 struct nsRunnableMethodTraits<PtrType, R (C::*)(As...) const, Owning, Kind> {
-  typedef const typename mozilla::RemoveRawOrSmartPointer<PtrType>::Type
-      class_type;
+  using class_type = const mozilla::RemoveRawOrSmartPointer<PtrType>;
   static_assert(std::is_base_of<C, class_type>::value,
                 "Stored class must inherit from method's class");
-  typedef R return_type;
-  typedef nsRunnableMethod<C, R, Owning, Kind> base_type;
+  using return_type = R;
+  using base_type = nsRunnableMethod<C, R, Owning, Kind>;
   static const bool can_cancel = Kind == mozilla::RunnableKind::Cancelable;
 };
 
@@ -822,22 +790,22 @@ template <typename PtrType, class C, typename R, bool Owning,
           mozilla::RunnableKind Kind, typename... As>
 struct nsRunnableMethodTraits<PtrType, R (__stdcall C::*)(As...), Owning,
                               Kind> {
-  typedef typename mozilla::RemoveRawOrSmartPointer<PtrType>::Type class_type;
+  using class_type = mozilla::RemoveRawOrSmartPointer<PtrType>;
   static_assert(std::is_base_of<C, class_type>::value,
                 "Stored class must inherit from method's class");
-  typedef R return_type;
-  typedef nsRunnableMethod<C, R, Owning, Kind> base_type;
+  using return_type = R;
+  using base_type = nsRunnableMethod<C, R, Owning, Kind>;
   static const bool can_cancel = Kind == mozilla::RunnableKind::Cancelable;
 };
 
 template <typename PtrType, class C, typename R, bool Owning,
           mozilla::RunnableKind Kind>
 struct nsRunnableMethodTraits<PtrType, R (NS_STDCALL C::*)(), Owning, Kind> {
-  typedef typename mozilla::RemoveRawOrSmartPointer<PtrType>::Type class_type;
+  using class_type = mozilla::RemoveRawOrSmartPointer<PtrType>;
   static_assert(std::is_base_of<C, class_type>::value,
                 "Stored class must inherit from method's class");
-  typedef R return_type;
-  typedef nsRunnableMethod<C, R, Owning, Kind> base_type;
+  using return_type = R;
+  using base_type = nsRunnableMethod<C, R, Owning, Kind>;
   static const bool can_cancel = Kind == mozilla::RunnableKind::Cancelable;
 };
 
@@ -845,12 +813,11 @@ template <typename PtrType, class C, typename R, bool Owning,
           mozilla::RunnableKind Kind, typename... As>
 struct nsRunnableMethodTraits<PtrType, R (__stdcall C::*)(As...) const, Owning,
                               Kind> {
-  typedef const typename mozilla::RemoveRawOrSmartPointer<PtrType>::Type
-      class_type;
+  using class_type = const mozilla::RemoveRawOrSmartPointer<PtrType>;
   static_assert(std::is_base_of<C, class_type>::value,
                 "Stored class must inherit from method's class");
-  typedef R return_type;
-  typedef nsRunnableMethod<C, R, Owning, Kind> base_type;
+  using return_type = R;
+  using base_type = nsRunnableMethod<C, R, Owning, Kind>;
   static const bool can_cancel = Kind == mozilla::RunnableKind::Cancelable;
 };
 
@@ -858,12 +825,11 @@ template <typename PtrType, class C, typename R, bool Owning,
           mozilla::RunnableKind Kind>
 struct nsRunnableMethodTraits<PtrType, R (NS_STDCALL C::*)() const, Owning,
                               Kind> {
-  typedef const typename mozilla::RemoveRawOrSmartPointer<PtrType>::Type
-      class_type;
+  using class_type = const mozilla::RemoveRawOrSmartPointer<PtrType>;
   static_assert(std::is_base_of<C, class_type>::value,
                 "Stored class must inherit from method's class");
-  typedef R return_type;
-  typedef nsRunnableMethod<C, R, Owning, Kind> base_type;
+  using return_type = R;
+  using base_type = nsRunnableMethod<C, R, Owning, Kind>;
   static const bool can_cancel = Kind == mozilla::RunnableKind::Cancelable;
 };
 #  endif
@@ -881,19 +847,6 @@ struct IsParameterStorageClass : public std::false_type {};
 // store arguments, and how to pass them to the target method.
 
 template <typename T>
-struct StoreCopyPassByValue {
-  using stored_type = std::decay_t<T>;
-  typedef stored_type passed_type;
-  stored_type m;
-  template <typename A>
-  MOZ_IMPLICIT StoreCopyPassByValue(A&& a) : m(std::forward<A>(a)) {}
-  passed_type PassAsParameter() { return m; }
-};
-template <typename S>
-struct IsParameterStorageClass<StoreCopyPassByValue<S>>
-    : public std::true_type {};
-
-template <typename T>
 struct StoreCopyPassByConstLRef {
   using stored_type = std::decay_t<T>;
   typedef const stored_type& passed_type;
@@ -905,19 +858,6 @@ struct StoreCopyPassByConstLRef {
 template <typename S>
 struct IsParameterStorageClass<StoreCopyPassByConstLRef<S>>
     : public std::true_type {};
-
-template <typename T>
-struct StoreCopyPassByLRef {
-  using stored_type = std::decay_t<T>;
-  typedef stored_type& passed_type;
-  stored_type m;
-  template <typename A>
-  MOZ_IMPLICIT StoreCopyPassByLRef(A&& a) : m(std::forward<A>(a)) {}
-  passed_type PassAsParameter() { return m; }
-};
-template <typename S>
-struct IsParameterStorageClass<StoreCopyPassByLRef<S>> : public std::true_type {
-};
 
 template <typename T>
 struct StoreCopyPassByRRef {
@@ -996,32 +936,6 @@ template <typename S>
 struct IsParameterStorageClass<StoreConstPtrPassByConstPtr<S>>
     : public std::true_type {};
 
-template <typename T>
-struct StoreCopyPassByConstPtr {
-  typedef T stored_type;
-  typedef const T* passed_type;
-  stored_type m;
-  template <typename A>
-  MOZ_IMPLICIT StoreCopyPassByConstPtr(A&& a) : m(std::forward<A>(a)) {}
-  passed_type PassAsParameter() { return &m; }
-};
-template <typename S>
-struct IsParameterStorageClass<StoreCopyPassByConstPtr<S>>
-    : public std::true_type {};
-
-template <typename T>
-struct StoreCopyPassByPtr {
-  typedef T stored_type;
-  typedef T* passed_type;
-  stored_type m;
-  template <typename A>
-  MOZ_IMPLICIT StoreCopyPassByPtr(A&& a) : m(std::forward<A>(a)) {}
-  passed_type PassAsParameter() { return &m; }
-};
-template <typename S>
-struct IsParameterStorageClass<StoreCopyPassByPtr<S>> : public std::true_type {
-};
-
 namespace detail {
 
 template <typename>
@@ -1035,69 +949,8 @@ template <class>
 static auto HasRefCountMethodsTest(long) -> std::false_type;
 
 template <class T>
-struct HasRefCountMethods : decltype(HasRefCountMethodsTest<T>(0)) {};
-
-template <typename TWithoutPointer>
-struct NonnsISupportsPointerStorageClass
-    : std::conditional<
-          std::is_const_v<TWithoutPointer>,
-          StoreConstPtrPassByConstPtr<std::remove_const_t<TWithoutPointer>>,
-          StorePtrPassByPtr<TWithoutPointer>> {
-  using Type = typename NonnsISupportsPointerStorageClass::conditional::type;
-};
-
-template <typename TWithoutPointer>
-struct PointerStorageClass
-    : std::conditional<
-          HasRefCountMethods<TWithoutPointer>::value,
-          StoreRefPtrPassByPtr<TWithoutPointer>,
-          typename NonnsISupportsPointerStorageClass<TWithoutPointer>::Type> {
-  using Type = typename PointerStorageClass::conditional::type;
-};
-
-template <typename TWithoutRef>
-struct LValueReferenceStorageClass
-    : std::conditional<
-          std::is_const_v<TWithoutRef>,
-          StoreConstRefPassByConstLRef<std::remove_const_t<TWithoutRef>>,
-          StoreRefPassByLRef<TWithoutRef>> {
-  using Type = typename LValueReferenceStorageClass::conditional::type;
-};
-
-template <typename T>
-struct SmartPointerStorageClass
-    : std::conditional<
-          mozilla::IsRefcountedSmartPointer<T>::value,
-          StoreRefPtrPassByPtr<typename mozilla::RemoveSmartPointer<T>::Type>,
-          StoreCopyPassByConstLRef<T>> {
-  using Type = typename SmartPointerStorageClass::conditional::type;
-};
-
-template <typename T>
-struct NonLValueReferenceStorageClass
-    : std::conditional<std::is_rvalue_reference_v<T>,
-                       StoreCopyPassByRRef<std::remove_reference_t<T>>,
-                       typename SmartPointerStorageClass<T>::Type> {
-  using Type = typename NonLValueReferenceStorageClass::conditional::type;
-};
-
-template <typename T>
-struct NonPointerStorageClass
-    : std::conditional<std::is_lvalue_reference_v<T>,
-                       typename LValueReferenceStorageClass<
-                           std::remove_reference_t<T>>::Type,
-                       typename NonLValueReferenceStorageClass<T>::Type> {
-  using Type = typename NonPointerStorageClass::conditional::type;
-};
-
-template <typename T>
-struct NonParameterStorageClass
-    : std::conditional<
-          std::is_pointer_v<T>,
-          typename PointerStorageClass<std::remove_pointer_t<T>>::Type,
-          typename NonPointerStorageClass<T>::Type> {
-  using Type = typename NonParameterStorageClass::conditional::type;
-};
+constexpr static bool HasRefCountMethods =
+    decltype(HasRefCountMethodsTest<T>(0))::value;
 
 // Choose storage&passing strategy based on preferred storage type:
 // - If IsParameterStorageClass<T>::value is true, use as-is.
@@ -1111,18 +964,86 @@ struct NonParameterStorageClass
 // - RefPtr<T>, nsCOMPtr<T>
 //             -> StoreRefPtrPassByPtr<T>        :Store RefPtr<T>, pass T*
 // - Other T   -> StoreCopyPassByConstLRef<T>    :Store T, pass const T&.
-// Other available explicit options:
-// -              StoreCopyPassByValue<T>        :Store T, pass T.
-// -              StoreCopyPassByLRef<T>         :Store T, pass T& (of copy!)
-// -              StoreCopyPassByConstPtr<T>     :Store T, pass const T*
-// -              StoreCopyPassByPtr<T>          :Store T, pass T* (of copy!)
-// Or create your own class with PassAsParameter() method, optional
-// clean-up in destructor, and with associated IsParameterStorageClass<>.
+//
+// For anything less common, please use a lambda function rather than devising
+// new parameter-storage classes. (In fact, consider doing that anyway.)
+
 template <typename T>
-struct ParameterStorage
-    : std::conditional<IsParameterStorageClass<T>::value, T,
-                       typename NonParameterStorageClass<T>::Type> {
-  using Type = typename ParameterStorage::conditional::type;
+struct OtherParameterStorage;
+
+// The `IsParameterStorageClass` and `RC*` cases must be handled separately (see
+// `ParameterStorageHelper`, below) until we can use C++20 concepts.
+
+template <typename T>
+struct OtherParameterStorage<const T*> {
+  using Type = StoreConstPtrPassByConstPtr<T>;
+};
+
+template <typename T>
+struct OtherParameterStorage<T*> {
+  using Type = StorePtrPassByPtr<T>;
+};
+
+template <typename T>
+struct OtherParameterStorage<const T&> {
+  using Type = StoreConstRefPassByConstLRef<T>;
+};
+
+template <typename T>
+struct OtherParameterStorage<T&> {
+  using Type = StoreRefPassByLRef<T>;
+};
+
+template <typename T>
+struct OtherParameterStorage<RefPtr<T>> {
+  using Type = StoreRefPtrPassByPtr<T>;
+};
+
+template <typename T>
+struct OtherParameterStorage<nsCOMPtr<T>> {
+  using Type = StoreRefPtrPassByPtr<T>;
+};
+
+template <typename T>
+struct OtherParameterStorage<T&&> {
+  using Type = StoreCopyPassByRRef<T>;
+};
+
+template <typename T>
+struct OtherParameterStorage<const T&&> {
+  // This is good advice regardless of the types you're handling.
+  static_assert(!SFINAE1True<T>::value, "please use a lambda function");
+};
+
+// default impl.
+template <typename T>
+struct OtherParameterStorage {
+  using Type = StoreCopyPassByConstLRef<T>;
+};
+
+template <typename T, bool A = IsParameterStorageClass<T>::value,
+          bool B = std::is_pointer_v<T> &&
+                   HasRefCountMethods<std::remove_pointer_t<T>>>
+struct ParameterStorageHelper;
+
+template <typename T, bool B>
+struct ParameterStorageHelper<T, true, B> {
+  using Type = T;
+};
+
+template <typename T>
+struct ParameterStorageHelper<T, false, true> {
+  using Type = StoreRefPtrPassByPtr<std::remove_pointer_t<T>>;
+};
+
+template <typename T>
+struct ParameterStorageHelper<T, false, false> {
+  using Type = typename OtherParameterStorage<std::remove_cv_t<T>>::Type;
+};
+
+template <typename T>
+struct ParameterStorage {
+  using Type = typename ParameterStorageHelper<T>::Type;
 };
 
 template <class T>

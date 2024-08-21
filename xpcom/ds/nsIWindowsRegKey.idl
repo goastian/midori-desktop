@@ -79,19 +79,6 @@ interface nsIWindowsRegKey : nsISupports
   const unsigned long TYPE_INT64  = 11; // REG_QWORD
 
   /**
-   * This attribute exposes the native HKEY and is available to provide C++
-   * consumers with the flexibility of making other Windows registry API calls
-   * that are not exposed via this interface.
-   *
-   * It is possible to initialize this object by setting an HKEY on it.  In
-   * that case, it is the responsibility of the consumer setting the HKEY to
-   * ensure that it is a valid HKEY.
-   *
-   * WARNING: Setting the key does not close the old key.
-   */
-  [noscript] attribute HKEY key;
-
-  /**
    * This method closes the key.  If the key is already closed, then this
    * method does nothing.
    */
@@ -304,33 +291,4 @@ interface nsIWindowsRegKey : nsISupports
    *        The data for the value to modify.
    */
   void writeBinaryValue(in AString name, in ACString data);
-
-  /**
-   * This method starts watching the key to see if any of its values have
-   * changed.  The key must have been opened with mode including ACCESS_NOTIFY.
-   * If recurse is true, then this key and any of its descendant keys are
-   * watched.  Otherwise, only this key is watched.
-   *
-   * @param recurse
-   *        Indicates whether or not to also watch child keys.
-   */
-  void startWatching(in boolean recurse);
-
-  /**
-   * This method stops any watching of the key initiated by a call to
-   * startWatching.  This method does nothing if the key is not being watched.
-   */
-  void stopWatching();
-
-  /**
-   * This method returns true if the key is being watched for changes (i.e.,
-   * if startWatching() was called).
-   */
-  boolean isWatching();
-
-  /**
-   * This method returns true if the key has changed and false otherwise.
-   * This method will always return false if startWatching was not called.
-   */
-  boolean hasChanged();
 };

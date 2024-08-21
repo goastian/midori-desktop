@@ -88,6 +88,7 @@ modules["ERRORRESULT"] = Mod(43)
 # Win32 system error codes, which are not mapped to a specific other value,
 # see Bug 1686041.
 modules["WIN32"] = Mod(44)
+modules["WDBA"] = Mod(45)
 
 # NS_ERROR_MODULE_GENERAL should be used by modules that do not
 # care if return code values overlap. Callers of methods that
@@ -344,6 +345,11 @@ with modules["NETWORK"]:
     errors["NS_ERROR_NON_LOCAL_CONNECTION_REFUSED"] = FAILURE(88)
     # Connection to a sts host without a hsts header.
     errors["NS_ERROR_BAD_HSTS_CERT"] = FAILURE(89)
+    # Error parsing the status line of an HTTP response
+    errors["NS_ERROR_PARSING_HTTP_STATUS_LINE"] = FAILURE(90)
+    # The user refused to navigate to a potentially unsafe URL with
+    # embedded credentials/superfluos authentication.
+    errors["NS_ERROR_SUPERFLUOS_AUTH"] = FAILURE(91)
 
     # XXX really need to better rationalize these error codes.  are consumers of
     # necko really expected to know how to discern the meaning of these??
@@ -752,6 +758,8 @@ with modules["DOM"]:
     # https://html.spec.whatwg.org/multipage/origin.html#cross-origin-opener-policies
     errors["NS_ERROR_DOM_COOP_FAILED"] = FAILURE(1041)
 
+    errors["NS_ERROR_DOM_INVALID_HEADER_VALUE"] = FAILURE(1042)
+
     # May be used to indicate when e.g. setting a property value didn't
     # actually change the value, like for obj.foo = "bar"; obj.foo = "bar";
     # the second assignment throws NS_SUCCESS_DOM_NO_OPERATION.
@@ -894,9 +902,8 @@ with modules["SECURITY"]:
     errors["NS_ERROR_XFO_VIOLATION"] = FAILURE(96)
 
     # Error code for CSP
-    errors["NS_ERROR_CSP_NAVIGATE_TO_VIOLATION"] = FAILURE(97)
-    errors["NS_ERROR_CSP_FORM_ACTION_VIOLATION"] = FAILURE(98)
-    errors["NS_ERROR_CSP_FRAME_ANCESTOR_VIOLATION"] = FAILURE(99)
+    errors["NS_ERROR_CSP_FORM_ACTION_VIOLATION"] = FAILURE(97)
+    errors["NS_ERROR_CSP_FRAME_ANCESTOR_VIOLATION"] = FAILURE(98)
 
     # Error code for Sub-Resource Integrity
     errors["NS_ERROR_SRI_CORRUPT"] = FAILURE(200)
@@ -1170,11 +1177,13 @@ with modules["DOM_MEDIA"]:
     # Internal CDM error
     errors["NS_ERROR_DOM_MEDIA_CDM_NO_SESSION_ERR"] = FAILURE(50)
     errors["NS_ERROR_DOM_MEDIA_CDM_SESSION_OPERATION_ERR"] = FAILURE(51)
+    errors["NS_ERROR_DOM_MEDIA_CDM_HDCP_NOT_SUPPORT"] = FAILURE(52)
 
     # Internal platform-related errors
     errors["NS_ERROR_DOM_MEDIA_CUBEB_INITIALIZATION_ERR"] = FAILURE(101)
     errors["NS_ERROR_DOM_MEDIA_EXTERNAL_ENGINE_NOT_SUPPORTED_ERR"] = FAILURE(102)
     errors["NS_ERROR_DOM_MEDIA_CDM_PROXY_NOT_SUPPORTED_ERR"] = FAILURE(103)
+    errors["NS_ERROR_DOM_MEDIA_DENIED_IN_NON_UTILITY"] = FAILURE(104)
 
 # =======================================================================
 # 42: NS_ERROR_MODULE_URL_CLASSIFIER
@@ -1214,6 +1223,16 @@ with modules["ERRORRESULT"]:
     errors["NS_ERROR_INTERNAL_ERRORRESULT_TYPEERROR"] = FAILURE(4)
     # Used to indicate that we want to throw a RangeError.
     errors["NS_ERROR_INTERNAL_ERRORRESULT_RANGEERROR"] = FAILURE(5)
+
+
+# =======================================================================
+# 45: NS_ERROR_MODULE_WDBA
+# =======================================================================
+with modules["WDBA"]:
+    errors["NS_ERROR_WDBA_NO_PROGID"] = FAILURE(1)
+    errors["NS_ERROR_WDBA_HASH_CHECK"] = FAILURE(2)
+    errors["NS_ERROR_WDBA_REJECTED"] = FAILURE(3)
+    errors["NS_ERROR_WDBA_BUILD"] = FAILURE(4)
 
 
 # =======================================================================

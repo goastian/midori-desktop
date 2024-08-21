@@ -11,9 +11,14 @@
 #include <stdio.h>
 
 #include "mozilla/FileUtils.h"
-#include "mozilla/Result.h"
+#include "mozilla/ScopeExit.h"
+#include "mozilla/Try.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/UniquePtrExtensions.h"
+
+#if defined(XP_WIN) && defined(_M_X64) && defined(MOZ_DIAGNOSTIC_ASSERT_ENABLED)
+#  include "mozilla/WindowsDiagnostics.h"
+#endif  // XP_WIN && _M_X64 && MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
 using namespace mozilla;
 
@@ -38,7 +43,6 @@ using LibHandleResult = ::mozilla::Result<LibHandleType, DLErrorType>;
 
 #if defined(XP_WIN)
 #  include <mbstring.h>
-#  include "mozilla/WindowsVersion.h"
 #  include "mozilla/PreXULSkeletonUI.h"
 
 static LibHandleResult GetLibHandle(pathstr_t aDependentLib) {
@@ -167,18 +171,6 @@ inline FILE* TS_tfopen(const char* aPath, const char* aMode) {
 }
 #endif
 
-/* RAII wrapper for FILE descriptors */
-struct ScopedCloseFileTraits {
-  typedef FILE* type;
-  static type empty() { return nullptr; }
-  static void release(type aFile) {
-    if (aFile) {
-      fclose(aFile);
-    }
-  }
-};
-typedef Scoped<ScopedCloseFileTraits> ScopedCloseFile;
-
 #if !defined(MOZ_LINKER) && !defined(__ANDROID__)
 static void XPCOMGlueUnload() {
   while (sTop) {
@@ -276,8 +268,12 @@ static XPCOMGlueLoadResult XPCOMGlueLoad(
     strcat(xpcomDir, ".gtest");
   }
 
-  ScopedCloseFile flist;
-  flist = TS_tfopen(xpcomDir, READ_TEXTMODE);
+  const auto flist = TS_tfopen(xpcomDir, READ_TEXTMODE);
+  const auto cleanup = MakeScopeExit([&]() {
+    if (flist) {
+      fclose(flist);
+    }
+  });
   if (!flist) {
     return Err(AsVariant(NS_ERROR_FAILURE));
   }
@@ -301,13 +297,6 @@ static XPCOMGlueLoadResult XPCOMGlueLoad(
     if (l == 0 || *buffer == '#') {
       continue;
     }
-#  ifdef XP_WIN
-    // There is no point in reading Universal CRT forwarder DLLs ahead on
-    // Windows 10 because they will not be touched later.
-    if (IsWin10OrLater() && !strncmp(buffer, "api-", 4)) {
-      continue;
-    }
-#  endif
 
     // cut the trailing newline, if present
     if (buffer[l - 1] == '\n') {
@@ -407,6 +396,61 @@ BootstrapResult GetBootstrap(const char* aXPCOMFile,
   if (!sTop) {
     return Err(AsVariant(NS_ERROR_NOT_AVAILABLE));
   }
+
+#if defined(XP_WIN) && defined(_M_X64) && defined(MOZ_DIAGNOSTIC_ASSERT_ENABLED)
+  auto check = reinterpret_cast<decltype(&XRE_CheckBlockScopeStaticVarInit)>(
+      GetSymbol(sTop->libHandle, "XRE_CheckBlockScopeStaticVarInit"));
+  MOZ_DIAGNOSTIC_ASSERT(check);
+
+  // Detect bug 1816848 ahead of the usual crash location.
+  uint32_t xulTlsIndex = 0;
+  if (!check(&xulTlsIndex)) {
+    // Unload xul, then load it again while recording single-step data.
+    XPCOMGlueUnload();
+
+    static constexpr int kMaxStepsNtdll = 0xc000;
+    static constexpr int kMaxErrorStatesNtdll = 0x200;
+    using NtdllSingleStepData =
+        ModuleSingleStepData<kMaxStepsNtdll, kMaxErrorStatesNtdll>;
+
+    XPCOMGlueLoadResult result = Err(AsVariant(NS_ERROR_FAILURE));
+    WindowsDiagnosticsError rv = CollectModuleSingleStepData<
+        kMaxStepsNtdll, kMaxErrorStatesNtdll>(
+        L"ntdll.dll",
+        [&result, &file, aLibLoadingStrategy]() {
+          result = XPCOMGlueLoad(file.get(), aLibLoadingStrategy);
+        },
+        [&result, xulTlsIndex](const NtdllSingleStepData& aData) {
+          bool didReload = false;
+          bool isStillBroken = false;
+          uint32_t newXulTlsIndex = 0;
+          if (result.isOk() && sTop) {
+            auto check =
+                reinterpret_cast<decltype(&XRE_CheckBlockScopeStaticVarInit)>(
+                    GetSymbol(sTop->libHandle,
+                              "XRE_CheckBlockScopeStaticVarInit"));
+            if (check) {
+              didReload = true;
+              isStillBroken = !check(&newXulTlsIndex);
+            }
+          }
+
+          // Crashing here gives access to the single-step data on stack.
+          MOZ_CRASH_UNSAFE_PRINTF(
+              "Detected lack of initialization of block-scope static variables "
+              "in xul, got single-step data (didReload=%d, isStillBroken=%d, "
+              "xulTlsIndex=%u, newXulTlsIndex=%u)",
+              didReload, isStillBroken, xulTlsIndex, newXulTlsIndex);
+        },
+        InstructionFilter::CallRet);
+
+    MOZ_CRASH_UNSAFE_PRINTF(
+        "Detected lack of initialization of block-scope static variables in "
+        "xul, failed to collect single-step data (rv=%d)",
+        static_cast<int>(rv));
+  }
+#endif  // XP_WIN && _M_X64 && MOZ_DIAGNOSTIC_ASSERT_ENABLED
+
   GetBootstrapType func =
       (GetBootstrapType)GetSymbol(sTop->libHandle, "XRE_GetBootstrap");
   if (!func) {

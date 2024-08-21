@@ -22,14 +22,14 @@ PrepareAndDispatch(uint32_t methodIndex, nsXPTCStubBase* self, uint32_t* args)
     NS_ASSERTION(self,"no self");
 
     self->mEntry->GetMethodInfo(uint16_t(methodIndex), &info);
-    paramCount = info->GetParamCount();
+    paramCount = info->ParamCount();
 
     const uint8_t indexOfJSContext = info->IndexOfJSContext();
 
     uint32_t* ap = args;
     for(i = 0; i < paramCount; i++, ap++)
     {
-        const nsXPTParamInfo& param = info->GetParam(i);
+        const nsXPTParamInfo& param = info->Param(i);
         const nsXPTType& type = param.GetType();
         nsXPTCMiniVariant* dp = &paramBuffer[i];
 

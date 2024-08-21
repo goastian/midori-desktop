@@ -12,17 +12,14 @@
 #include "mozilla/IdlePeriodState.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/Mutex.h"
-#include "mozilla/StaticMutex.h"
+#include "mozilla/StaticPtr.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/EventQueue.h"
 #include "nsISupportsImpl.h"
-#include "nsIEventTarget.h"
 
 #include <atomic>
-#include <memory>
 #include <vector>
 #include <set>
-#include <list>
 #include <stack>
 
 class nsIRunnable;
@@ -111,16 +108,31 @@ class TaskManager {
 };
 
 // A Task is the the base class for any unit of work that may be scheduled.
+//
 // Subclasses may specify their priority and whether they should be bound to
-// the Gecko Main thread. When not bound to the main thread tasks may be
-// executed on any available thread (including the main thread), but they may
-// also be executed in parallel to any other task they do not have a dependency
-// relationship with. Tasks will be run in order of object creation.
+// either the Gecko Main thread or off main thread. When not bound to the main
+// thread tasks may be executed on any available thread excluding the main
+// thread, but they may also be executed in parallel to any other task they do
+// not have a dependency relationship with.
+//
+// Tasks will be run in order of object creation.
 class Task {
  public:
+  enum class Kind : uint8_t {
+    // This task should be executed on any available thread excluding the Gecko
+    // Main thread.
+    OffMainThreadOnly,
+
+    // This task should be executed on the Gecko Main thread.
+    MainThreadOnly
+
+    // NOTE: "any available thread including the main thread" option is not
+    //       supported (See bug 1839102).
+  };
+
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(Task)
 
-  bool IsMainThreadOnly() { return mMainThreadOnly; }
+  Kind GetKind() { return mKind; }
 
   // This returns the current task priority with its modifier applied.
   uint32_t GetPriority() { return mPriority + mPriorityModifier; }
@@ -148,7 +160,7 @@ class Task {
   // This sets the TaskManager for the current task. Calling this after the
   // task has been added to the TaskController results in undefined behavior.
   void SetManager(TaskManager* aManager) {
-    MOZ_ASSERT(mMainThreadOnly);
+    MOZ_ASSERT(mKind == Kind::MainThreadOnly);
     MOZ_ASSERT(!mIsInGraph);
     mTaskManager = aManager;
   }
@@ -178,15 +190,12 @@ class Task {
 #endif
 
  protected:
-  Task(bool aMainThreadOnly,
+  Task(Kind aKind,
        uint32_t aPriority = static_cast<uint32_t>(kDefaultPriorityValue))
-      : mMainThreadOnly(aMainThreadOnly),
-        mSeqNo(sCurrentTaskSeqNo++),
-        mPriority(aPriority) {}
+      : mKind(aKind), mSeqNo(sCurrentTaskSeqNo++), mPriority(aPriority) {}
 
-  Task(bool aMainThreadOnly,
-       EventQueuePriority aPriority = kDefaultPriorityValue)
-      : mMainThreadOnly(aMainThreadOnly),
+  Task(Kind aKind, EventQueuePriority aPriority = kDefaultPriorityValue)
+      : mKind(aKind),
         mSeqNo(sCurrentTaskSeqNo++),
         mPriority(static_cast<uint32_t>(aPriority)) {}
 
@@ -194,9 +203,14 @@ class Task {
 
   friend class TaskController;
 
-  // When this returns false, the task is considered incomplete and will be
-  // rescheduled at the current 'mPriority' level.
-  virtual bool Run() = 0;
+  enum class TaskResult {
+    Complete,
+    Incomplete,
+  };
+
+  // When this returns TaskResult::Incomplete, it will be rescheduled at the
+  // current 'mPriority' level.
+  virtual TaskResult Run() = 0;
 
  private:
   Task* GetHighestPriorityDependency();
@@ -220,7 +234,7 @@ class Task {
   RefPtr<TaskManager> mTaskManager;
 
   // Access to these variables is protected by the GraphMutex.
-  bool mMainThreadOnly;
+  Kind mKind;
   bool mCompleted = false;
   bool mInProgress = false;
 #ifdef DEBUG
@@ -281,7 +295,10 @@ class TaskController {
  public:
   TaskController();
 
-  static TaskController* Get();
+  static TaskController* Get() {
+    MOZ_ASSERT(sSingleton.get());
+    return sSingleton.get();
+  }
 
   static void Initialize();
 
@@ -346,6 +363,7 @@ class TaskController {
 
  private:
   friend void ThreadFuncPoolThread(void* aIndex);
+  static StaticAutoPtr<TaskController> sSingleton;
 
   void InitializeThreadPool();
 
@@ -368,12 +386,8 @@ class TaskController {
   void ProcessUpdatedPriorityModifier(TaskManager* aManager);
 
   void ShutdownThreadPoolInternal();
-  void ShutdownInternal();
 
   void RunPoolThread();
-
-  static std::unique_ptr<TaskController> sSingleton;
-  static StaticMutex sSingletonMutex MOZ_UNANNOTATED;
 
   // This protects access to the task graph.
   Mutex mGraphMutex MOZ_UNANNOTATED;

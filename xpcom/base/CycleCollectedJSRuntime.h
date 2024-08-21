@@ -281,7 +281,7 @@ class CycleCollectedJSRuntime {
                               const JS::GCDescription& aDesc);
   static void GCNurseryCollectionCallback(JSContext* aContext,
                                           JS::GCNurseryProgress aProgress,
-                                          JS::GCReason aReason);
+                                          JS::GCReason aReason, void* data);
   static void OutOfMemoryCallback(JSContext* aContext, void* aData);
 
   static bool ContextCallback(JSContext* aCx, unsigned aOperation, void* aData);
@@ -289,7 +289,7 @@ class CycleCollectedJSRuntime {
   static void* BeforeWaitCallback(uint8_t* aMemory);
   static void AfterWaitCallback(void* aCookie);
 
-  virtual void TraceNativeBlackRoots(JSTracer* aTracer){};
+  virtual void TraceNativeBlackRoots(JSTracer* aTracer) {};
 
 #ifdef NS_BUILD_REFCNT_LOGGING
   void TraceAllNativeGrayRoots(JSTracer* aTracer);
@@ -414,7 +414,7 @@ class CycleCollectedJSRuntime {
   // storage), because we do not want to keep it alive.  nsWrapperCache handles
   // this for us via its "object moved" handling.
   void NurseryWrapperAdded(nsWrapperCache* aCache);
-  void JSObjectsTenured();
+  void JSObjectsTenured(JS::GCContext* aGCContext);
 
   void DeferredFinalize(DeferredFinalizeAppendFunction aAppendFunc,
                         DeferredFinalizeFunction aFunc, void* aThing);
@@ -458,15 +458,13 @@ class CycleCollectedJSRuntime {
   bool mHasPendingIdleGCTask;
 
   JS::GCSliceCallback mPrevGCSliceCallback;
-  JS::GCNurseryCollectionCallback mPrevGCNurseryCollectionCallback;
 
   mozilla::TimeStamp mLatestNurseryCollectionStart;
 
   JSHolderMap mJSHolders;
   Maybe<JSHolderMap::Iter> mHolderIter;
 
-  typedef nsTHashMap<nsFuncPtrHashKey<DeferredFinalizeFunction>, void*>
-      DeferredFinalizerTable;
+  using DeferredFinalizerTable = nsTHashMap<DeferredFinalizeFunction, void*>;
   DeferredFinalizerTable mDeferredFinalizerTable;
 
   RefPtr<IncrementalFinalizeRunnable> mFinalizeRunnable;
@@ -475,8 +473,9 @@ class CycleCollectedJSRuntime {
   OOMState mLargeAllocationFailureState;
 
   static const size_t kSegmentSize = 512;
-  SegmentedVector<nsWrapperCache*, kSegmentSize, InfallibleAllocPolicy>
-      mNurseryObjects;
+  using NurseryObjectsVector =
+      SegmentedVector<nsWrapperCache*, kSegmentSize, InfallibleAllocPolicy>;
+  NurseryObjectsVector mNurseryObjects;
 
   nsTHashSet<JS::Zone*> mZonesWaitingForGC;
 

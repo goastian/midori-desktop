@@ -13,7 +13,11 @@
 
 namespace mozilla {
 
-nsresult CopyCocoaStringToXPCOMString(NSString* aFrom, nsAString& aTo);
+void CopyNSStringToXPCOMString(const NSString* aFrom, nsAString& aTo);
+
+NSString* XPCOMStringToNSString(const nsAString& aFrom);
+
+NSString* XPCOMStringToNSString(const nsACString& aFrom);
 
 }  // namespace mozilla
 

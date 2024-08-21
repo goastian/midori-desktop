@@ -8,6 +8,7 @@
 #define mozilla_MemoryTelemetry_h
 
 #include "mozilla/TimeStamp.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/Result.h"
 #include "nsIObserver.h"
 #include "nsITimer.h"
@@ -40,10 +41,14 @@ class MemoryTelemetry final : public nsIObserver,
       const std::function<void()>& aCompletionCallback = nullptr);
 
   /**
-   * Does expensive initialization, which should happen only after startup has
-   * completed, and the event loop is idle.
+   * Called to signal that we can begin collecting telemetry.
    */
-  nsresult DelayedInit();
+  void DelayedInit();
+
+  /**
+   * Notify that the browser is active and telemetry should be recorded soon.
+   */
+  void Poke();
 
   nsresult Shutdown();
 
@@ -57,14 +62,19 @@ class MemoryTelemetry final : public nsIObserver,
   static Result<uint32_t, nsresult> GetOpenTabsCount();
 
   void GatherTotalMemory();
-  nsresult FinishGatheringTotalMemory(int64_t aTotalMemory,
+  nsresult FinishGatheringTotalMemory(Maybe<int64_t> aTotalMemory,
                                       const nsTArray<int64_t>& aChildSizes);
 
   nsCOMPtr<nsIEventTarget> mThreadPool;
 
   bool mGatheringTotalMemory = false;
 
-  TimeStamp mLastPoll{};
+  TimeStamp mLastRun{};
+  TimeStamp mLastPoke{};
+  nsCOMPtr<nsITimer> mTimer;
+
+  // True if startup is finished and it's okay to start gathering telemetry.
+  bool mCanRun = false;
 };
 
 }  // namespace mozilla

@@ -306,38 +306,17 @@ static void SetupCurrentThreadForChaosMode() {
 namespace {
 
 struct ThreadInitData {
-  nsThread* thread;
+  RefPtr<nsThread> thread;
   nsCString name;
 };
 
 }  // namespace
 
-/* static */ mozilla::OffTheBooksMutex& nsThread::ThreadListMutex() {
-  static StaticLocalAutoPtr<OffTheBooksMutex> sMutex(
-      new OffTheBooksMutex("nsThread::ThreadListMutex"));
-  return *sMutex;
-}
-
-/* static */ LinkedList<nsThread>& nsThread::ThreadList() {
-  static StaticLocalAutoPtr<LinkedList<nsThread>> sList(
-      new LinkedList<nsThread>());
-  return *sList;
-}
-
-/* static */
-nsThreadEnumerator nsThread::Enumerate() { return {}; }
-
-void nsThread::AddToThreadList() {
-  OffTheBooksMutexAutoLock mal(ThreadListMutex());
-  MOZ_ASSERT(!isInList());
-
-  ThreadList().insertBack(this);
-}
-
 void nsThread::MaybeRemoveFromThreadList() {
-  OffTheBooksMutexAutoLock mal(ThreadListMutex());
+  nsThreadManager& tm = nsThreadManager::get();
+  OffTheBooksMutexAutoLock mal(tm.ThreadListMutex());
   if (isInList()) {
-    removeFrom(ThreadList());
+    removeFrom(tm.ThreadList());
   }
 }
 
@@ -346,7 +325,7 @@ void nsThread::ThreadFunc(void* aArg) {
   using mozilla::ipc::BackgroundChild;
 
   UniquePtr<ThreadInitData> initData(static_cast<ThreadInitData*>(aArg));
-  nsThread* self = initData->thread;  // strong reference
+  RefPtr<nsThread>& self = initData->thread;
 
   MOZ_ASSERT(self->mEventTarget);
   MOZ_ASSERT(self->mEvents);
@@ -468,7 +447,6 @@ void nsThread::ThreadFunc(void* aArg) {
   // The PRThread will be deleted in PR_JoinThread(), so clear references.
   self->mThread = nullptr;
   self->mEventTarget->ClearCurrentThread();
-  NS_RELEASE(self);
 }
 
 void nsThread::InitCommon() {
@@ -547,7 +525,6 @@ void nsThread::InitCommon() {
   }
 
   InitThreadLocalVariables();
-  AddToThreadList();
 }
 
 //-----------------------------------------------------------------------------
@@ -578,7 +555,8 @@ nsThread::nsThread(NotNull<SynchronizedEventQueue*> aQueue,
 #ifdef EARLY_BETA_OR_EARLIER
       mLastWakeupCheckTime(TimeStamp::Now()),
 #endif
-      mPerformanceCounterState(mNestedEventLoopDepth, mIsMainThread) {
+      mPerformanceCounterState(mNestedEventLoopDepth, mIsMainThread,
+                               aOptions.longTaskLength) {
 #if !(defined(XP_WIN) || defined(XP_MACOSX))
   MOZ_ASSERT(!mIsUiThread,
              "Non-main UI threads are only supported on Windows and macOS");
@@ -609,7 +587,7 @@ nsThread::nsThread()
 #ifdef EARLY_BETA_OR_EARLIER
       mLastWakeupCheckTime(TimeStamp::Now()),
 #endif
-      mPerformanceCounterState(mNestedEventLoopDepth, mIsMainThread) {
+      mPerformanceCounterState(mNestedEventLoopDepth) {
   MOZ_ASSERT(!NS_IsMainThread());
 }
 
@@ -625,26 +603,39 @@ nsresult nsThread::Init(const nsACString& aName) {
   MOZ_ASSERT(mEventTarget);
   MOZ_ASSERT(!mThread);
 
-  NS_ADDREF_THIS();
-
   SetThreadNameInternal(aName);
 
-  mShutdownRequired = true;
-
-  UniquePtr<ThreadInitData> initData(
-      new ThreadInitData{this, nsCString(aName)});
-
   PRThread* thread = nullptr;
-  // ThreadFunc is responsible for setting mThread
-  if (!(thread = PR_CreateThread(PR_USER_THREAD, ThreadFunc, initData.get(),
-                                 PR_PRIORITY_NORMAL, PR_GLOBAL_THREAD,
-                                 PR_JOINABLE_THREAD, mStackSize))) {
-    NS_RELEASE_THIS();
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
 
-  // The created thread now owns initData, so release our ownership of it.
-  Unused << initData.release();
+  nsThreadManager& tm = nsThreadManager::get();
+  {
+    OffTheBooksMutexAutoLock lock(tm.ThreadListMutex());
+    if (!tm.AllowNewXPCOMThreadsLocked()) {
+      return NS_ERROR_NOT_INITIALIZED;
+    }
+
+    // We need to fully start the thread while holding the thread list lock, as
+    // the next acquire of the lock could try to shut down this thread (e.g.
+    // during xpcom shutdown), which would hang if `PR_CreateThread` failed.
+
+    UniquePtr<ThreadInitData> initData(
+        new ThreadInitData{this, nsCString(aName)});
+
+    // ThreadFunc is responsible for setting mThread
+    if (!(thread = PR_CreateThread(PR_USER_THREAD, ThreadFunc, initData.get(),
+                                   PR_PRIORITY_NORMAL, PR_GLOBAL_THREAD,
+                                   PR_JOINABLE_THREAD, mStackSize))) {
+      return NS_ERROR_OUT_OF_MEMORY;
+    }
+
+    // The created thread now owns initData, so release our ownership of it.
+    Unused << initData.release();
+
+    // The thread has successfully started, so we can mark it as requiring
+    // shutdown & add it to the thread list.
+    mShutdownRequired = true;
+    tm.ThreadList().insertBack(this);
+  }
 
   // Note: we set these both here and inside ThreadFunc, to what should be
   // the same value. This is because calls within ThreadFunc need these values
@@ -658,10 +649,21 @@ nsresult nsThread::Init(const nsACString& aName) {
 
 nsresult nsThread::InitCurrentThread() {
   mThread = PR_GetCurrentThread();
+
+  nsThreadManager& tm = nsThreadManager::get();
+  {
+    OffTheBooksMutexAutoLock lock(tm.ThreadListMutex());
+    // NOTE: We don't check AllowNewXPCOMThreads here, as threads initialized
+    // this way do not need shutdown, so are OK to create after nsThreadManager
+    // shutdown. In addition, the main thread is initialized this way, which
+    // happens before AllowNewXPCOMThreads begins to return true.
+    tm.ThreadList().insertBack(this);
+  }
+
   SetupCurrentThreadForChaosMode();
   InitCommon();
 
-  nsThreadManager::get().RegisterCurrentThread(*this);
+  tm.RegisterCurrentThread(*this);
   return NS_OK;
 }
 
@@ -827,8 +829,6 @@ nsThread::BeginShutdown(nsIThreadShutdown** aShutdown) {
     return NS_ERROR_UNEXPECTED;
   }
   MOZ_ASSERT(mThread);
-
-  MaybeRemoveFromThreadList();
 
   RefPtr<nsThread> currentThread = nsThreadManager::get().GetCurrentThread();
 
@@ -1038,46 +1038,6 @@ void canary_alarm_handler(int signum) {
     }                                                                      \
   } while (0)
 
-#ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
-// static
-bool nsThread::GetLabeledRunnableName(nsIRunnable* aEvent, nsACString& aName,
-                                      EventQueuePriority aPriority) {
-  bool labeled = false;
-  if (RefPtr<SchedulerGroup::Runnable> groupRunnable = do_QueryObject(aEvent)) {
-    labeled = true;
-    MOZ_ALWAYS_TRUE(NS_SUCCEEDED(groupRunnable->GetName(aName)));
-  } else if (nsCOMPtr<nsINamed> named = do_QueryInterface(aEvent)) {
-    MOZ_ALWAYS_TRUE(NS_SUCCEEDED(named->GetName(aName)));
-  } else {
-    aName.AssignLiteral("non-nsINamed runnable");
-  }
-  if (aName.IsEmpty()) {
-    aName.AssignLiteral("anonymous runnable");
-  }
-
-  if (!labeled && aPriority > EventQueuePriority::InputHigh) {
-    aName.AppendLiteral("(unlabeled)");
-  }
-
-  return labeled;
-}
-#endif
-
-mozilla::PerformanceCounter* nsThread::GetPerformanceCounter(
-    nsIRunnable* aEvent) const {
-  return GetPerformanceCounterBase(aEvent);
-}
-
-// static
-mozilla::PerformanceCounter* nsThread::GetPerformanceCounterBase(
-    nsIRunnable* aEvent) {
-  RefPtr<SchedulerGroup::Runnable> docRunnable = do_QueryObject(aEvent);
-  if (docRunnable) {
-    return docRunnable->GetPerformanceCounter();
-  }
-  return nullptr;
-}
-
 size_t nsThread::ShallowSizeOfIncludingThis(
     mozilla::MallocSizeOf aMallocSizeOf) const {
   size_t n = 0;
@@ -1228,8 +1188,7 @@ nsThread::ProcessNextEvent(bool aMayWait, bool* aResult) {
 
       Maybe<PerformanceCounterState::Snapshot> snapshot;
       if (!usingTaskController) {
-        snapshot.emplace(mPerformanceCounterState.RunnableWillRun(
-            GetPerformanceCounter(event), now, false));
+        snapshot.emplace(mPerformanceCounterState.RunnableWillRun(now, false));
       }
 
       mLastEventStart = now;
@@ -1504,18 +1463,18 @@ void nsThreadShutdownContext::MarkCompleted() {
 
 namespace mozilla {
 PerformanceCounterState::Snapshot PerformanceCounterState::RunnableWillRun(
-    PerformanceCounter* aCounter, TimeStamp aNow, bool aIsIdleRunnable) {
-  if (IsNestedRunnable()) {
+    TimeStamp aNow, bool aIsIdleRunnable) {
+  if (mIsMainThread && IsNestedRunnable()) {
     // Flush out any accumulated time that should be accounted to the
-    // current runnable before we start running a nested runnable.
+    // current runnable before we start running a nested runnable.  Don't
+    // do this for non-mainthread threads that may be running their own
+    // event loops, like SocketThread.
     MaybeReportAccumulatedTime("nested runnable"_ns, aNow);
   }
 
-  Snapshot snapshot(mCurrentEventLoopDepth, mCurrentPerformanceCounter,
-                    mCurrentRunnableIsIdleRunnable);
+  Snapshot snapshot(mCurrentEventLoopDepth, mCurrentRunnableIsIdleRunnable);
 
   mCurrentEventLoopDepth = mNestedEventLoopDepth;
-  mCurrentPerformanceCounter = aCounter;
   mCurrentRunnableIsIdleRunnable = aIsIdleRunnable;
   mCurrentTimeSliceStart = aNow;
 
@@ -1531,15 +1490,14 @@ void PerformanceCounterState::RunnableDidRun(const nsCString& aName,
   // We may not need the current timestamp; don't bother computing it if we
   // don't.
   TimeStamp now;
-  if (mCurrentPerformanceCounter || mIsMainThread || IsNestedRunnable()) {
+  if (mLongTaskLength.isSome() || IsNestedRunnable()) {
     now = TimeStamp::Now();
   }
-  if (mCurrentPerformanceCounter || mIsMainThread) {
+  if (mLongTaskLength.isSome()) {
     MaybeReportAccumulatedTime(aName, now);
   }
 
   // And now restore the rest of our state.
-  mCurrentPerformanceCounter = std::move(aSnapshot.mOldPerformanceCounter);
   mCurrentRunnableIsIdleRunnable = aSnapshot.mOldIsIdleRunnable;
   if (IsNestedRunnable()) {
     // Reset mCurrentTimeSliceStart to right now, so our parent runnable's
@@ -1555,18 +1513,11 @@ void PerformanceCounterState::MaybeReportAccumulatedTime(const nsCString& aName,
                                                          TimeStamp aNow) {
   MOZ_ASSERT(mCurrentTimeSliceStart,
              "How did we get here if we're not in a timeslice?");
-
-  if (!mCurrentPerformanceCounter && !mIsMainThread) {
-    // No one cares about this timeslice.
+  if (!mLongTaskLength.isSome()) {
     return;
   }
 
   TimeDuration duration = aNow - mCurrentTimeSliceStart;
-  if (mCurrentPerformanceCounter) {
-    mCurrentPerformanceCounter->IncrementExecutionDuration(
-        duration.ToMicroseconds());
-  }
-
 #ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   if (mIsMainThread && duration.ToMilliseconds() > LONGTASK_TELEMETRY_MS) {
     Telemetry::Accumulate(Telemetry::EVENT_LONGTASK, aName,
@@ -1575,7 +1526,7 @@ void PerformanceCounterState::MaybeReportAccumulatedTime(const nsCString& aName,
 #endif
 
   // Long tasks only matter on the main thread.
-  if (mIsMainThread && duration.ToMilliseconds() > LONGTASK_BUSY_WINDOW_MS) {
+  if (duration.ToMilliseconds() >= mLongTaskLength.value()) {
     // Idle events (gc...) don't *really* count here
     if (!mCurrentRunnableIsIdleRunnable) {
       mLastLongNonIdleTaskEnd = aNow;

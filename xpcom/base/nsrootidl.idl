@@ -11,7 +11,6 @@
 
 #include "nscore.h"
 #include "nsID.h"
-typedef int64_t PRTime;
 
 /*
  * Forward declarations for new string types
@@ -29,24 +28,9 @@ class Promise;
 } // namespace dom
 } // namespace mozilla
 
-/*
- * Start commenting out the C++ versions of the below in the output header
- */
-#if 0
 %}
 
-typedef boolean             bool   ;
-typedef octet               uint8_t  ;
-typedef unsigned short      uint16_t ;
-typedef unsigned short      char16_t;
-typedef unsigned long       uint32_t ;
-typedef unsigned long long  uint64_t ;
-typedef long long           PRTime   ;
-typedef short               int16_t  ;
-typedef long                int32_t  ;
-typedef long long           int64_t  ;
-
-typedef unsigned long       nsresult ;
+typedef long long PRTime;
 
 // If we ever want to use `size_t` in scriptable interfaces, this will need to
 // be built into the xpidl compiler, as the size varies based on platform.
@@ -96,10 +80,3 @@ typedef unsigned long       nsresult ;
               native jsid(jsid);
 
 [ptr, promise] native Promise(ignored);
-
-%{C++
-/*
- * End commenting out the C++ versions of the above in the output header
- */
-#endif
-%}

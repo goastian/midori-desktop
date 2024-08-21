@@ -9,10 +9,6 @@
 
 #include "xptcprivate.h"
 
-#if _HPUX
-#error "This code is for HP-PA RISC 32 bit mode only"
-#endif
-
 extern "C" nsresult ATTRIBUTE_USED
 PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex,
   uint32_t* args, uint32_t* floatargs)
@@ -37,13 +33,13 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex,
   if (!info)
     return NS_ERROR_UNEXPECTED;
 
-  paramCount = info->GetParamCount();
+  paramCount = info->ParamCount();
 
   const uint8_t indexOfJSContext = info->IndexOfJSContext();
 
   for(i = 0; i < paramCount; ++i, --args)
   {
-    const nsXPTParamInfo& param = info->GetParam(i);
+    const nsXPTParamInfo& param = info->Param(i);
     const nsXPTType& type = param.GetType();
     nsXPTCMiniVariant* dp = &paramBuffer[i];
 

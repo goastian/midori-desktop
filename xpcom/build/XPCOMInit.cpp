@@ -63,10 +63,10 @@
 
 #include "nsAtomTable.h"
 #include "nsISupportsImpl.h"
+#include "nsLanguageAtomService.h"
 
 #include "nsSystemInfo.h"
 #include "nsMemoryReporterManager.h"
-#include "nsMessageLoop.h"
 #include "nss.h"
 #include "nsNSSComponent.h"
 
@@ -90,6 +90,9 @@
 #include "mozilla/AvailableMemoryTracker.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/CountingAllocatorBase.h"
+#ifdef MOZ_PHC
+#  include "mozilla/PHCManager.h"
+#endif
 #include "mozilla/UniquePtr.h"
 #include "mozilla/ServoStyleConsts.h"
 
@@ -102,6 +105,7 @@
 
 #include "jsapi.h"
 #include "js/Initialization.h"
+#include "js/Prefs.h"
 #include "mozilla/StaticPrefs_javascript.h"
 #include "XPCSelfHostedShmem.h"
 
@@ -229,6 +233,14 @@ static void InitializeJS() {
   JS::SetAVXEnabled(mozilla::StaticPrefs::javascript_options_wasm_simd_avx());
 #endif
 
+  if (XRE_IsParentProcess() &&
+      mozilla::StaticPrefs::javascript_options_main_process_disable_jit()) {
+    JS::DisableJitBackend();
+  }
+
+  // Set all JS::Prefs.
+  SET_JS_PREFS_FROM_BROWSER_PREFS;
+
   const char* jsInitFailureReason = JS_InitWithFailureDiagnostic();
   if (jsInitFailureReason) {
     MOZ_CRASH_UNSAFE(jsInitFailureReason);
@@ -313,6 +325,8 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
+
+  // Initialise the profiler
   AUTO_PROFILER_INIT2;
 
   // Set up the timer globals/timer thread
@@ -363,11 +377,16 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
   nsDirectoryService::gService->Set(NS_XPCOM_LIBRARY_FILE, xpcomLib);
 
   if (!mozilla::Omnijar::IsInitialized()) {
+    // If you added a new process type that uses NS_InitXPCOM, and you're
+    // *sure* you don't want NS_InitMinimalXPCOM: in addition to everything
+    // else you'll probably have to do, please add it to the case in
+    // GeckoChildProcessHost.cpp which sets the greomni/appomni flags.
+    MOZ_ASSERT(XRE_IsParentProcess() || XRE_IsContentProcess());
     mozilla::Omnijar::Init();
   }
 
   if ((sCommandLineWasInitialized = !CommandLine::IsInitialized())) {
-#ifdef OS_WIN
+#ifdef XP_WIN
     CommandLine::Init(0, nullptr);
 #else
     nsCOMPtr<nsIFile> binaryFile;
@@ -436,10 +455,21 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
     NS_ADDREF(*aResult = nsComponentManagerImpl::gComponentManager);
   }
 
+#ifdef MOZ_PHC
+  // This is the earliest possible moment we can start PHC while still being
+  // able to read prefs.
+  mozilla::InitPHCState();
+#endif
+
   // After autoreg, but before we actually instantiate any components,
   // add any services listed in the "xpcom-directory-providers" category
   // to the directory service.
   nsDirectoryService::gService->RegisterCategoryProviders();
+
+  // Now that both the profiler and directory services have been started
+  // we can find the download directory, where the profiler can write
+  // profiles if necessary
+  profiler_lookup_download_directory();
 
   // Init mozilla::SharedThreadPool (which needs the service manager).
   mozilla::SharedThreadPool::InitStatics();
@@ -621,6 +651,13 @@ nsresult ShutdownXPCOM(nsIServiceManager* aServMgr) {
       observerService->Shutdown();
     }
 
+#ifdef NS_FREE_PERMANENT_DATA
+    // In leak-checking / ASAN / etc. builds, shut down the Servo thread-pool,
+    // which will wait for all the work to be done. For other builds, we don't
+    // really want to wait on shutdown for possibly slow tasks.
+    Servo_ShutdownThreadPool();
+#endif
+
     // XPCOMShutdownFinal is the default phase for ClearOnShutdown.
     // This AdvanceShutdownPhase will thus free most ClearOnShutdown()'ed
     // smart pointers. Some destructors may fire extra main thread runnables
@@ -749,19 +786,15 @@ nsresult ShutdownXPCOM(nsIServiceManager* aServMgr) {
   nsComponentManagerImpl::gComponentManager = nullptr;
   nsCategoryManager::Destroy();
 
+  nsLanguageAtomService::Shutdown();
+
   GkRust_Shutdown();
 
 #ifdef NS_FREE_PERMANENT_DATA
-  // By the time we're shutting down, there may still be async parse tasks going
-  // on in the Servo thread-pool. This is fairly uncommon, though not
-  // impossible. CSS parsing heavily uses the atom table, so obviously it's not
-  // fine to get rid of it.
-  //
-  // In leak-checking / ASAN / etc. builds, shut down the servo thread-pool,
-  // which will wait for all the work to be done. For other builds, we don't
-  // really want to wait on shutdown for possibly slow tasks. So just leak the
-  // atom table in those.
-  Servo_ShutdownThreadPool();
+  // As we do shutdown Servo only in leak-checking builds, there may still
+  // be async parse tasks going on in the Servo thread-pool in other builds.
+  // CSS parsing heavily uses the atom table, so we can safely drop it only
+  // if Servo has been stopped, too.
   NS_ShutdownAtomTable();
 #endif
 

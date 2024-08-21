@@ -12,23 +12,42 @@
 
 namespace mozilla {
 
-nsresult CopyCocoaStringToXPCOMString(NSString* aFrom, nsAString& aTo) {
-  NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
+void CopyNSStringToXPCOMString(const NSString* aFrom, nsAString& aTo) {
+  NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
+
+  if (!aFrom) {
+    aTo.Truncate();
+    return;
+  }
 
   NSUInteger len = [aFrom length];
   if (len > std::numeric_limits<nsAString::size_type>::max()) {
-    return NS_ERROR_OUT_OF_MEMORY;
+    aTo.AllocFailed(std::numeric_limits<nsAString::size_type>::max());
   }
 
-  if (!aTo.SetLength(len, mozilla::fallible)) {
-    return NS_ERROR_OUT_OF_MEMORY;
+  aTo.SetLength(len);
+  [aFrom getCharacters:reinterpret_cast<unichar*>(aTo.BeginWriting())
+                 range:NSMakeRange(0, len)];
+
+  NS_OBJC_END_TRY_IGNORE_BLOCK;
+}
+
+NSString* XPCOMStringToNSString(const nsAString& aFrom) {
+  if (aFrom.IsEmpty()) {
+    return [NSString string];
   }
+  return [NSString stringWithCharacters:reinterpret_cast<const unichar*>(
+                                            aFrom.BeginReading())
+                                 length:aFrom.Length()];
+}
 
-  [aFrom getCharacters:reinterpret_cast<unichar*>(aTo.BeginWriting()) range:NSMakeRange(0, len)];
-
-  return NS_OK;
-
-  NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);
+NSString* XPCOMStringToNSString(const nsACString& aFrom) {
+  if (aFrom.IsEmpty()) {
+    return [NSString string];
+  }
+  return [[[NSString alloc] initWithBytes:aFrom.BeginReading()
+                                   length:aFrom.Length()
+                                 encoding:NSUTF8StringEncoding] autorelease];
 }
 
 }  // namespace mozilla

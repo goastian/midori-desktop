@@ -23,7 +23,7 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex,
     self->mEntry->GetMethodInfo(uint16_t(methodIndex), &info);
     NS_ASSERTION(info,"no info");
 
-    paramCount = info->GetParamCount();
+    paramCount = info->ParamCount();
 
     const uint8_t indexOfJSContext = info->IndexOfJSContext();
 
@@ -31,7 +31,7 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex,
 
     for(i = 0; i < paramCount; i++)
     {
-        const nsXPTParamInfo& param = info->GetParam(i);
+        const nsXPTParamInfo& param = info->Param(i);
         const nsXPTType& type = param.GetType();
         nsXPTCMiniVariant* dp = &paramBuffer[i];
 

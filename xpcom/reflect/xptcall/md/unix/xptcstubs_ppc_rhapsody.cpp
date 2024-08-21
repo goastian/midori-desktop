@@ -61,10 +61,10 @@ PrepareAndDispatch(
   self->mEntry->GetMethodInfo(uint16_t(methodIndex), &methodInfo);
   NS_ASSERTION(methodInfo, "no method info");
 
-  paramCount = methodInfo->GetParamCount();
+  paramCount = methodInfo->ParamCount();
 
   for(i = 0; i < paramCount; i++, argIndex++) {
-    const nsXPTParamInfo &param = methodInfo->GetParam(i);
+    const nsXPTParamInfo &param = methodInfo->Param(i);
     const nsXPTType      &type  = param.GetType();
     nsXPTCMiniVariant    *dp    = &paramBuffer[i];
     uint32_t              theParam;

@@ -176,14 +176,14 @@ bool LimitFileToLessThanSize(const char* aFilename, uint32_t aSize,
       return false;
     }
 
-    if (fseek(file, 0, SEEK_END)) {
+    if (fseek(file.get(), 0, SEEK_END)) {
       // If we can't seek for some reason, better to just not limit the log at
       // all and hope to sort out large logs upon further analysis.
       return false;
     }
 
     // `ftell` returns a positive `long`, which might be more than 32 bits.
-    uint64_t fileSize = static_cast<uint64_t>(ftell(file));
+    uint64_t fileSize = static_cast<uint64_t>(ftell(file.get()));
 
     if (fileSize <= aSize) {
       return true;
@@ -192,14 +192,14 @@ bool LimitFileToLessThanSize(const char* aFilename, uint32_t aSize,
     uint64_t minBytesToDrop = fileSize - aSize;
     uint64_t numBytesDropped = 0;
 
-    if (fseek(file, 0, SEEK_SET)) {
+    if (fseek(file.get(), 0, SEEK_SET)) {
       // Same as above: if we can't seek, hope for the best.
       return false;
     }
 
     ScopedCloseFile temp;
 
-#if defined(OS_WIN)
+#if defined(XP_WIN)
     // This approach was cribbed from
     // https://searchfox.org/mozilla-central/rev/868935867c6241e1302e64cf9be8f56db0fd0d1c/xpcom/build/LateWriteChecks.cpp#158.
     HANDLE hFile;
@@ -222,7 +222,7 @@ bool LimitFileToLessThanSize(const char* aFilename, uint32_t aSize,
     }
 
     temp.reset(_fdopen(fd, "ab"));
-#elif defined(OS_POSIX)
+#elif defined(XP_UNIX)
 
     // Coverity would prefer us to set a secure umask before using `mkstemp`.
     // However, the umask is process-wide, so setting it may lead to difficult
@@ -250,11 +250,12 @@ bool LimitFileToLessThanSize(const char* aFilename, uint32_t aSize,
     // `fgets` always null terminates.  If the line is too long, it won't
     // include a trailing '\n' but will be null-terminated.
     UniquePtr<char[]> line = MakeUnique<char[]>(aLongLineSize + 1);
-    while (fgets(line.get(), aLongLineSize + 1, file)) {
+    while (fgets(line.get(), aLongLineSize + 1, file.get())) {
       if (numBytesDropped >= minBytesToDrop) {
-        if (fputs(line.get(), temp) < 0) {
+        if (fputs(line.get(), temp.get()) < 0) {
           NS_WARNING(
-              nsPrintfCString("fputs failed: ferror %d\n", ferror(temp)).get());
+              nsPrintfCString("fputs failed: ferror %d\n", ferror(temp.get()))
+                  .get());
           failedToWrite = true;
           break;
         }
@@ -273,13 +274,13 @@ bool LimitFileToLessThanSize(const char* aFilename, uint32_t aSize,
     return false;
   }
 
-#if defined(OS_WIN)
+#if defined(XP_WIN)
   if (!::ReplaceFileA(aFilename, tempFilename, nullptr, 0, 0, 0)) {
     NS_WARNING(
         nsPrintfCString("ReplaceFileA failed: %lu\n", GetLastError()).get());
     return false;
   }
-#elif defined(OS_POSIX)
+#elif defined(XP_UNIX)
   if (rename(tempFilename, aFilename)) {
     NS_WARNING(
         nsPrintfCString("rename failed: %s (%d)\n", strerror(errno), errno)
@@ -773,6 +774,13 @@ class LogModuleManager {
     }
   }
 
+  void DisableModules() {
+    OffTheBooksMutexAutoLock guard(mModulesLock);
+    for (auto& m : mModules) {
+      (*(m.GetModifiableData()))->SetLevel(LogLevel::Disabled);
+    }
+  }
+
  private:
   OffTheBooksMutex mModulesLock;
   nsClassHashtable<nsCharPtrHashKey, LogModule> mModules;
@@ -839,6 +847,8 @@ void LogModule::SetIsSync(bool aIsSync) {
 void LogModule::SetCaptureStacks(bool aCaptureStacks) {
   sLogModuleManager->SetCaptureStacks(aCaptureStacks);
 }
+
+void LogModule::DisableModules() { sLogModuleManager->DisableModules(); }
 
 // This function is defined in gecko_logger/src/lib.rs
 // We mirror the level in rust code so we don't get forwarded all of the

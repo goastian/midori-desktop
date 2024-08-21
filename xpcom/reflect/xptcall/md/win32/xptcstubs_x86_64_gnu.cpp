@@ -35,7 +35,7 @@ PrepareAndDispatch(nsXPTCStubBase * self, uint32_t methodIndex,
     self->mEntry->GetMethodInfo(uint16_t(methodIndex), &info);
     NS_ASSERTION(info, "no method info");
 
-    paramCount = info->GetParamCount();
+    paramCount = info->ParamCount();
 
     //
     // setup variant array pointer
@@ -48,7 +48,7 @@ PrepareAndDispatch(nsXPTCStubBase * self, uint32_t methodIndex,
 
     for(i = 0; i < paramCount; i++)
     {
-        const nsXPTParamInfo& param = info->GetParam(i);
+        const nsXPTParamInfo& param = info->Param(i);
         const nsXPTType& type = param.GetType();
         nsXPTCMiniVariant* dp = &paramBuffer[i];
 

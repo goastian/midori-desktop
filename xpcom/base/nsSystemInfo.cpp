@@ -15,6 +15,8 @@
 #include "mozilla/LazyIdleThread.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/Sprintf.h"
+#include "mozilla/Try.h"
+#include "mozilla/Vector.h"
 #include "jsapi.h"
 #include "js/PropertyAndElement.h"  // JS_SetProperty
 #include "mozilla/dom/Promise.h"
@@ -798,51 +800,347 @@ nsresult CollectProcessInfo(ProcessInfo& info) {
     std::map<nsCString, nsCString> keyValuePairs;
     SimpleParseKeyValuePairs("/proc/cpuinfo", keyValuePairs);
 
+#  if defined(__arm__) || defined(__aarch64__)
+    // The tables below were taken from
+    // https://raw.githubusercontent.com/util-linux/util-linux/e3192bfd1dd129c70f5416e1464135d8cd22c956/sys-utils/lscpu-arm.c
+
+    /* clang-format off */
+    struct id_part {
+        const int id;
+        const char* name;
+    };
+
+    static const struct id_part arm_part[] = {
+        { 0x810, "ARM810" },
+        { 0x920, "ARM920" },
+        { 0x922, "ARM922" },
+        { 0x926, "ARM926" },
+        { 0x940, "ARM940" },
+        { 0x946, "ARM946" },
+        { 0x966, "ARM966" },
+        { 0xa20, "ARM1020" },
+        { 0xa22, "ARM1022" },
+        { 0xa26, "ARM1026" },
+        { 0xb02, "ARM11 MPCore" },
+        { 0xb36, "ARM1136" },
+        { 0xb56, "ARM1156" },
+        { 0xb76, "ARM1176" },
+        { 0xc05, "Cortex-A5" },
+        { 0xc07, "Cortex-A7" },
+        { 0xc08, "Cortex-A8" },
+        { 0xc09, "Cortex-A9" },
+        { 0xc0d, "Cortex-A17" },	/* Originally A12 */
+        { 0xc0f, "Cortex-A15" },
+        { 0xc0e, "Cortex-A17" },
+        { 0xc14, "Cortex-R4" },
+        { 0xc15, "Cortex-R5" },
+        { 0xc17, "Cortex-R7" },
+        { 0xc18, "Cortex-R8" },
+        { 0xc20, "Cortex-M0" },
+        { 0xc21, "Cortex-M1" },
+        { 0xc23, "Cortex-M3" },
+        { 0xc24, "Cortex-M4" },
+        { 0xc27, "Cortex-M7" },
+        { 0xc60, "Cortex-M0+" },
+        { 0xd01, "Cortex-A32" },
+        { 0xd02, "Cortex-A34" },
+        { 0xd03, "Cortex-A53" },
+        { 0xd04, "Cortex-A35" },
+        { 0xd05, "Cortex-A55" },
+        { 0xd06, "Cortex-A65" },
+        { 0xd07, "Cortex-A57" },
+        { 0xd08, "Cortex-A72" },
+        { 0xd09, "Cortex-A73" },
+        { 0xd0a, "Cortex-A75" },
+        { 0xd0b, "Cortex-A76" },
+        { 0xd0c, "Neoverse-N1" },
+        { 0xd0d, "Cortex-A77" },
+        { 0xd0e, "Cortex-A76AE" },
+        { 0xd13, "Cortex-R52" },
+        { 0xd15, "Cortex-R82" },
+        { 0xd16, "Cortex-R52+" },
+        { 0xd20, "Cortex-M23" },
+        { 0xd21, "Cortex-M33" },
+        { 0xd22, "Cortex-M55" },
+        { 0xd23, "Cortex-M85" },
+        { 0xd40, "Neoverse-V1" },
+        { 0xd41, "Cortex-A78" },
+        { 0xd42, "Cortex-A78AE" },
+        { 0xd43, "Cortex-A65AE" },
+        { 0xd44, "Cortex-X1" },
+        { 0xd46, "Cortex-A510" },
+        { 0xd47, "Cortex-A710" },
+        { 0xd48, "Cortex-X2" },
+        { 0xd49, "Neoverse-N2" },
+        { 0xd4a, "Neoverse-E1" },
+        { 0xd4b, "Cortex-A78C" },
+        { 0xd4c, "Cortex-X1C" },
+        { 0xd4d, "Cortex-A715" },
+        { 0xd4e, "Cortex-X3" },
+        { 0xd4f, "Neoverse-V2" },
+        { 0xd80, "Cortex-A520" },
+        { 0xd81, "Cortex-A720" },
+        { 0xd82, "Cortex-X4" },
+        { 0xd84, "Neoverse-V3" },
+        { 0xd8e, "Neoverse-N3" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part brcm_part[] = {
+        { 0x0f, "Brahma-B15" },
+        { 0x100, "Brahma-B53" },
+        { 0x516, "ThunderX2" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part dec_part[] = {
+        { 0xa10, "SA110" },
+        { 0xa11, "SA1100" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part cavium_part[] = {
+        { 0x0a0, "ThunderX" },
+        { 0x0a1, "ThunderX-88XX" },
+        { 0x0a2, "ThunderX-81XX" },
+        { 0x0a3, "ThunderX-83XX" },
+        { 0x0af, "ThunderX2-99xx" },
+        { 0x0b0, "OcteonTX2" },
+        { 0x0b1, "OcteonTX2-98XX" },
+        { 0x0b2, "OcteonTX2-96XX" },
+        { 0x0b3, "OcteonTX2-95XX" },
+        { 0x0b4, "OcteonTX2-95XXN" },
+        { 0x0b5, "OcteonTX2-95XXMM" },
+        { 0x0b6, "OcteonTX2-95XXO" },
+        { 0x0b8, "ThunderX3-T110" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part apm_part[] = {
+        { 0x000, "X-Gene" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part qcom_part[] = {
+        { 0x00f, "Scorpion" },
+        { 0x02d, "Scorpion" },
+        { 0x04d, "Krait" },
+        { 0x06f, "Krait" },
+        { 0x201, "Kryo" },
+        { 0x205, "Kryo" },
+        { 0x211, "Kryo" },
+        { 0x800, "Falkor-V1/Kryo" },
+        { 0x801, "Kryo-V2" },
+        { 0x802, "Kryo-3XX-Gold" },
+        { 0x803, "Kryo-3XX-Silver" },
+        { 0x804, "Kryo-4XX-Gold" },
+        { 0x805, "Kryo-4XX-Silver" },
+        { 0xc00, "Falkor" },
+        { 0xc01, "Saphira" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part samsung_part[] = {
+        { 0x001, "exynos-m1" },
+        { 0x002, "exynos-m3" },
+        { 0x003, "exynos-m4" },
+        { 0x004, "exynos-m5" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part nvidia_part[] = {
+        { 0x000, "Denver" },
+        { 0x003, "Denver 2" },
+        { 0x004, "Carmel" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part marvell_part[] = {
+        { 0x131, "Feroceon-88FR131" },
+        { 0x581, "PJ4/PJ4b" },
+        { 0x584, "PJ4B-MP" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part apple_part[] = {
+        { 0x000, "Swift" },
+        { 0x001, "Cyclone" },
+        { 0x002, "Typhoon" },
+        { 0x003, "Typhoon/Capri" },
+        { 0x004, "Twister" },
+        { 0x005, "Twister/Elba/Malta" },
+        { 0x006, "Hurricane" },
+        { 0x007, "Hurricane/Myst" },
+        { 0x008, "Monsoon" },
+        { 0x009, "Mistral" },
+        { 0x00b, "Vortex" },
+        { 0x00c, "Tempest" },
+        { 0x00f, "Tempest-M9" },
+        { 0x010, "Vortex/Aruba" },
+        { 0x011, "Tempest/Aruba" },
+        { 0x012, "Lightning" },
+        { 0x013, "Thunder" },
+        { 0x020, "Icestorm-A14" },
+        { 0x021, "Firestorm-A14" },
+        { 0x022, "Icestorm-M1" },
+        { 0x023, "Firestorm-M1" },
+        { 0x024, "Icestorm-M1-Pro" },
+        { 0x025, "Firestorm-M1-Pro" },
+        { 0x026, "Thunder-M10" },
+        { 0x028, "Icestorm-M1-Max" },
+        { 0x029, "Firestorm-M1-Max" },
+        { 0x030, "Blizzard-A15" },
+        { 0x031, "Avalanche-A15" },
+        { 0x032, "Blizzard-M2" },
+        { 0x033, "Avalanche-M2" },
+        { 0x034, "Blizzard-M2-Pro" },
+        { 0x035, "Avalanche-M2-Pro" },
+        { 0x036, "Sawtooth-A16" },
+        { 0x037, "Everest-A16" },
+        { 0x038, "Blizzard-M2-Max" },
+        { 0x039, "Avalanche-M2-Max" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part faraday_part[] = {
+        { 0x526, "FA526" },
+        { 0x626, "FA626" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part intel_part[] = {
+        { 0x200, "i80200" },
+        { 0x210, "PXA250A" },
+        { 0x212, "PXA210A" },
+        { 0x242, "i80321-400" },
+        { 0x243, "i80321-600" },
+        { 0x290, "PXA250B/PXA26x" },
+        { 0x292, "PXA210B" },
+        { 0x2c2, "i80321-400-B0" },
+        { 0x2c3, "i80321-600-B0" },
+        { 0x2d0, "PXA250C/PXA255/PXA26x" },
+        { 0x2d2, "PXA210C" },
+        { 0x411, "PXA27x" },
+        { 0x41c, "IPX425-533" },
+        { 0x41d, "IPX425-400" },
+        { 0x41f, "IPX425-266" },
+        { 0x682, "PXA32x" },
+        { 0x683, "PXA930/PXA935" },
+        { 0x688, "PXA30x" },
+        { 0x689, "PXA31x" },
+        { 0xb11, "SA1110" },
+        { 0xc12, "IPX1200" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part fujitsu_part[] = {
+        { 0x001, "A64FX" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part hisi_part[] = {
+        { 0xd01, "TaiShan-v110" },	/* used in Kunpeng-920 SoC */
+        { 0xd02, "TaiShan-v120" },	/* used in Kirin 990A and 9000S SoCs */
+        { 0xd40, "Cortex-A76" },	/* HiSilicon uses this ID though advertises A76 */
+        { 0xd41, "Cortex-A77" },	/* HiSilicon uses this ID though advertises A77 */
+        { -1, "unknown" },
+    };
+
+    static const struct id_part ampere_part[] = {
+        { 0xac3, "Ampere-1" },
+        { 0xac4, "Ampere-1a" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part ft_part[] = {
+        { 0x303, "FTC310" },
+        { 0x660, "FTC660" },
+        { 0x661, "FTC661" },
+        { 0x662, "FTC662" },
+        { 0x663, "FTC663" },
+        { 0x664, "FTC664" },
+        { 0x862, "FTC862" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part ms_part[] = {
+        { 0xd49, "Azure-Cobalt-100" },
+        { -1, "unknown" },
+    };
+
+    static const struct id_part unknown_part[] = {
+        { -1, "unknown" },
+    };
+
+    struct hw_impl {
+       const int    id;
+       const struct id_part     *parts;
+       const char   *name;
+    };
+
+    static const struct hw_impl hw_implementer[] = {
+        { 0x41, arm_part,     "ARM" },
+        { 0x42, brcm_part,    "Broadcom" },
+        { 0x43, cavium_part,  "Cavium" },
+        { 0x44, dec_part,     "DEC" },
+        { 0x46, fujitsu_part, "FUJITSU" },
+        { 0x48, hisi_part,    "HiSilicon" },
+        { 0x49, unknown_part, "Infineon" },
+        { 0x4d, unknown_part, "Motorola/Freescale" },
+        { 0x4e, nvidia_part,  "NVIDIA" },
+        { 0x50, apm_part,     "APM" },
+        { 0x51, qcom_part,    "Qualcomm" },
+        { 0x53, samsung_part, "Samsung" },
+        { 0x56, marvell_part, "Marvell" },
+        { 0x61, apple_part,   "Apple" },
+        { 0x66, faraday_part, "Faraday" },
+        { 0x69, intel_part,   "Intel" },
+        { 0x6d, ms_part,      "Microsoft" },
+        { 0x70, ft_part,      "Phytium" },
+        { 0xc0, ampere_part,  "Ampere" },
+        { -1,   unknown_part, "unknown" },
+    };
+    /* clang-format on */
+
+    // cpuFamily from "CPU implementer". Technically, this is only the vendor,
+    // but this is the closed to a family we can get.
+    (void)Tokenizer(keyValuePairs["CPU implementer"_ns])
+        .ReadHexadecimal(&cpuFamily);
+
+    // cpuModel from "CPU part". Not exactly a model number, but close enough,
+    // and that's what lscpu uses.
+    (void)Tokenizer(keyValuePairs["CPU part"_ns]).ReadHexadecimal(&cpuModel);
+
+    // cpuStepping from "CPU variant" (that's what lscpu uses).
+    (void)Tokenizer(keyValuePairs["CPU variant"_ns])
+        .ReadHexadecimal(&cpuStepping);
+
+    for (auto& hw_impl : hw_implementer) {
+      if (hw_impl.id == (int)cpuFamily) {
+        info.cpuVendor.Assign(hw_impl.name);
+        for (auto* p = &hw_impl.parts[0]; p->id != -1; ++p) {
+          if (p->id == (int)cpuModel) {
+            info.cpuName.Assign(p->name);
+          }
+        }
+      }
+    }
+#  else
     // cpuVendor from "vendor_id"
     info.cpuVendor.Assign(keyValuePairs["vendor_id"_ns]);
 
     // cpuName from "model name"
     info.cpuName.Assign(keyValuePairs["model name"_ns]);
 
-    {
-      // cpuFamily from "cpu family"
-      Tokenizer::Token t;
-      Tokenizer p(keyValuePairs["cpu family"_ns]);
-      if (p.Next(t) && t.Type() == Tokenizer::TOKEN_INTEGER &&
-          t.AsInteger() <= INT32_MAX) {
-        cpuFamily = static_cast<int32_t>(t.AsInteger());
-      }
-    }
+    // cpuFamily from "cpu family"
+    (void)Tokenizer(keyValuePairs["cpu family"_ns]).ReadInteger(&cpuFamily);
 
-    {
-      // cpuModel from "model"
-      Tokenizer::Token t;
-      Tokenizer p(keyValuePairs["model"_ns]);
-      if (p.Next(t) && t.Type() == Tokenizer::TOKEN_INTEGER &&
-          t.AsInteger() <= INT32_MAX) {
-        cpuModel = static_cast<int32_t>(t.AsInteger());
-      }
-    }
+    // cpuModel from "model"
+    (void)Tokenizer(keyValuePairs["model"_ns]).ReadInteger(&cpuModel);
 
-    {
-      // cpuStepping from "stepping"
-      Tokenizer::Token t;
-      Tokenizer p(keyValuePairs["stepping"_ns]);
-      if (p.Next(t) && t.Type() == Tokenizer::TOKEN_INTEGER &&
-          t.AsInteger() <= INT32_MAX) {
-        cpuStepping = static_cast<int32_t>(t.AsInteger());
-      }
-    }
-
-    {
-      // physicalCPUs from "cpu cores"
-      Tokenizer::Token t;
-      Tokenizer p(keyValuePairs["cpu cores"_ns]);
-      if (p.Next(t) && t.Type() == Tokenizer::TOKEN_INTEGER &&
-          t.AsInteger() <= INT32_MAX) {
-        physicalCPUs = static_cast<int32_t>(t.AsInteger());
-      }
-    }
+    // cpuStepping from "stepping"
+    (void)Tokenizer(keyValuePairs["stepping"_ns]).ReadInteger(&cpuStepping);
+#  endif
   }
 
   {
@@ -851,12 +1149,8 @@ nsresult CollectProcessInfo(ProcessInfo& info) {
         "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq");
     std::string line;
     if (getline(input, line)) {
-      Tokenizer::Token t;
-      Tokenizer p(line.c_str());
-      if (p.Next(t) && t.Type() == Tokenizer::TOKEN_INTEGER &&
-          t.AsInteger() <= INT32_MAX) {
-        cpuSpeed = static_cast<int32_t>(t.AsInteger() / 1000);
-      }
+      (void)Tokenizer(line.c_str()).ReadInteger(&cpuSpeed);
+      cpuSpeed /= 1000;
     }
   }
 
@@ -865,12 +1159,7 @@ nsresult CollectProcessInfo(ProcessInfo& info) {
     std::ifstream input("/sys/devices/system/cpu/cpu0/cache/index2/size");
     std::string line;
     if (getline(input, line)) {
-      Tokenizer::Token t;
-      Tokenizer p(line.c_str(), nullptr, "K");
-      if (p.Next(t) && t.Type() == Tokenizer::TOKEN_INTEGER &&
-          t.AsInteger() <= INT32_MAX) {
-        cacheSizeL2 = static_cast<int32_t>(t.AsInteger());
-      }
+      (void)Tokenizer(line.c_str(), nullptr, "K").ReadInteger(&cacheSizeL2);
     }
   }
 
@@ -879,16 +1168,111 @@ nsresult CollectProcessInfo(ProcessInfo& info) {
     std::ifstream input("/sys/devices/system/cpu/cpu0/cache/index3/size");
     std::string line;
     if (getline(input, line)) {
-      Tokenizer::Token t;
-      Tokenizer p(line.c_str(), nullptr, "K");
-      if (p.Next(t) && t.Type() == Tokenizer::TOKEN_INTEGER &&
-          t.AsInteger() <= INT32_MAX) {
-        cacheSizeL3 = static_cast<int32_t>(t.AsInteger());
-      }
+      (void)Tokenizer(line.c_str(), nullptr, "K").ReadInteger(&cacheSizeL3);
     }
   }
 
   info.cpuCount = PR_GetNumberOfProcessors();
+  int max_cpu_bits = [&] {
+    // PR_GetNumberOfProcessors gets the value from
+    // /sys/devices/system/cpu/present, but the number of bits in the CPU masks
+    // we're going to read below can be larger (for instance, on the 32-core
+    // 64-threads Threadripper 3970X, PR_GetNumberOfProcessors returns 64, but
+    // the number of bits in the CPU masks is 128). That number of bits is
+    // correlated with the number of CPUs possible (which is different from the
+    // number of CPUs present).
+    std::ifstream input("/sys/devices/system/cpu/possible");
+    std::string line;
+    if (getline(input, line)) {
+      int num;
+      Tokenizer p(line.c_str());
+      // The expected format is `0-n` where n is the number of CPUs possible
+      // - 1.
+      if (p.ReadInteger(&num) && num == 0 && p.CheckChar('-') &&
+          p.ReadInteger(&num) && p.CheckEOF()) {
+        return num + 1;
+      }
+    }
+    // If we weren't able to get the value from /sys/devices/system/cpu/possible
+    // from some reason, fallback to cpuCount, it might work.
+    return info.cpuCount;
+  }();
+
+  // /proc/cpuinfo doesn't have a cross-architecture way of counting physical
+  // cores. On x86, one could look at the number of unique combinations of
+  // `physical id` and `core id` or `cpu cores`, but those are not present on
+  // e.g. aarch64. (and that might not even be enough for NUMA nodes, but
+  // realistically, there probably aren't a lot of people running this code
+  // on such machines)
+  // As a shortcut on x86, you'd think you could just multiply the last
+  // physical id + 1 with the last core id + 1, but at least core ids are not
+  // even necessarily adjacent. (notably, on 13th or 14th generation Intel
+  // CPUs, they go in increments of 4 for performance cores, and then 1 after
+  // hitting the first efficiency core)
+  // /sys/devices/system/cpu/cpu*/topology/core_cpus does show which logical
+  // cores are associated together, such that running the command:
+  //   sort -u /sys/devices/system/cpu/cpu*/topology/core_cpus | wc -l
+  // gives a count of physical cores.
+  // There are cpuCount /sys/devices/system/cpu/cpu* directories, and they
+  // are monotonically increasing.
+  // We're going to kind of do that, but reading the actual bitmasks contained
+  // in those files.
+  constexpr int mask_bits = sizeof(uint32_t) * 8;
+
+  Vector<uint32_t> cpumasks;
+  physicalCPUs = [&] {
+    int cores = 0;
+    if (!cpumasks.appendN(0, (max_cpu_bits + mask_bits - 1) / mask_bits)) {
+      return -1;
+    }
+    for (int32_t cpu = 0; cpu < info.cpuCount; ++cpu) {
+      nsPrintfCString core_cpus(
+          "/sys/devices/system/cpu/cpu%d/topology/core_cpus", cpu);
+      std::ifstream input(core_cpus.Data());
+      // Kernel versions before 5.3 didn't have core_cpus, they had
+      // thread_siblings instead, with the same content. As of writing, kernel
+      // version 6.9 still has both, but thread_siblings has been deprecated
+      // since the introduction of core_cpus.
+      if (input.fail()) {
+        core_cpus.Truncate(core_cpus.Length() - sizeof("core_cpus") + 1);
+        core_cpus.AppendLiteral("thread_siblings");
+        input.open(core_cpus.Data());
+      }
+      std::string line;
+      if (!getline(input, line)) {
+        return -1;
+      }
+      Tokenizer p(line.c_str());
+      bool unknown_core = false;
+      // The format of the file is `bitmask0,bitmask1,..,bitmaskn`
+      // where each bitmask is 32-bits wide, and there are as many as
+      // necessary to print max_cpu_bits bits.
+      for (auto& mask : cpumasks) {
+        uint32_t m;
+        if (NS_WARN_IF(!p.ReadHexadecimal(&m, /* aPrefixed = */ false))) {
+          return -1;
+        }
+        if (!p.CheckEOF() && !p.CheckChar(',')) {
+          return -1;
+        }
+        // We're keeping track of all the CPU bits we've seen so far.
+        // If we're now seeing one that has never been set, it means
+        // we're seeing a new physical core (as opposed to a logical
+        // core). We don't want to end the loop now, though, because
+        // we also want to track all the bits we're seeing, in case
+        // subsequent masks have new bits as well.
+        if ((mask & m) != m) {
+          unknown_core = true;
+        }
+        mask |= m;
+      }
+      if (unknown_core) {
+        cores++;
+      }
+    }
+    return cores;
+  }();
+
 #else
   info.cpuCount = PR_GetNumberOfProcessors();
 #endif
@@ -931,7 +1315,7 @@ nsresult CollectProcessInfo(ProcessInfo& info) {
   return NS_OK;
 }
 
-#if defined(XP_WIN) && (_WIN32_WINNT < 0x0A00)
+#if defined(__MINGW32__)
 WINBASEAPI
 BOOL WINAPI IsUserCetAvailableInEnvironment(_In_ DWORD UserCetEnvironment);
 
@@ -973,6 +1357,12 @@ nsresult nsSystemInfo::Init() {
   SetInt32Property(u"memmapalign"_ns, PR_GetMemMapAlignment());
   SetUint64Property(u"memsize"_ns, PR_GetPhysicalMemorySize());
   SetUint32Property(u"umask"_ns, nsSystemInfo::gUserUmask);
+
+#ifdef HAVE_64BIT_BUILD
+  SetUint32Property(u"archbits"_ns, 64);
+#else
+  SetUint32Property(u"archbits"_ns, 32);
+#endif
 
   uint64_t virtualMem = 0;
 
@@ -1060,6 +1450,15 @@ nsresult nsSystemInfo::Init() {
   rv = SetPropertyAsBool(u"hasUserCET"_ns, hasUserCET);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
+  }
+
+  if (XRE_IsParentProcess()) {
+    nsString pointerExplanation;
+    widget::WinUtils::GetPointerExplanation(&pointerExplanation);
+    rv = SetPropertyAsAString(u"pointingDevices"_ns, pointerExplanation);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
   }
 
 #endif
@@ -1360,7 +1759,8 @@ JSObject* GetJSObjForProcessInfo(JSContext* aCx, const ProcessInfo& info) {
   JS::Rooted<JS::Value> valCountInfo(aCx, JS::Int32Value(info.cpuCount));
   JS_SetProperty(aCx, jsInfo, "count", valCountInfo);
 
-  JS::Rooted<JS::Value> valCoreInfo(aCx, JS::Int32Value(info.cpuCores));
+  JS::Rooted<JS::Value> valCoreInfo(
+      aCx, info.cpuCores ? JS::Int32Value(info.cpuCores) : JS::NullValue());
   JS_SetProperty(aCx, jsInfo, "cores", valCoreInfo);
 
   JSString* strVendor =

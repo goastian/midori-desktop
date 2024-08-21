@@ -56,14 +56,15 @@ class UUIDRepr(object):
 # values don't matter, since the code generator emits symbolic constants for
 # these values, but we use the same values as the enum constants for clarity.
 class ProcessSelector:
-    ANY_PROCESS = 0x0
-    MAIN_PROCESS_ONLY = 0x1
-    CONTENT_PROCESS_ONLY = 0x2
-    ALLOW_IN_GPU_PROCESS = 0x4
-    ALLOW_IN_VR_PROCESS = 0x8
-    ALLOW_IN_SOCKET_PROCESS = 0x10
-    ALLOW_IN_RDD_PROCESS = 0x20
-    ALLOW_IN_UTILITY_PROCESS = 0x30
+    ANY_PROCESS = 0
+    MAIN_PROCESS_ONLY = 1 << 0
+    CONTENT_PROCESS_ONLY = 1 << 1
+    ALLOW_IN_GPU_PROCESS = 1 << 2
+    ALLOW_IN_VR_PROCESS = 1 << 3
+    ALLOW_IN_SOCKET_PROCESS = 1 << 4
+    ALLOW_IN_RDD_PROCESS = 1 << 5
+    ALLOW_IN_UTILITY_PROCESS = 1 << 6
+    ALLOW_IN_GMPLUGIN_PROCESS = 1 << 7
     ALLOW_IN_GPU_AND_MAIN_PROCESS = ALLOW_IN_GPU_PROCESS | MAIN_PROCESS_ONLY
     ALLOW_IN_GPU_AND_SOCKET_PROCESS = ALLOW_IN_GPU_PROCESS | ALLOW_IN_SOCKET_PROCESS
     ALLOW_IN_GPU_AND_VR_PROCESS = ALLOW_IN_GPU_PROCESS | ALLOW_IN_VR_PROCESS
@@ -93,6 +94,14 @@ class ProcessSelector:
         | ALLOW_IN_SOCKET_PROCESS
         | ALLOW_IN_UTILITY_PROCESS
     )
+    ALLOW_IN_GPU_RDD_VR_SOCKET_UTILITY_AND_GMPLUGIN_PROCESS = (
+        ALLOW_IN_GPU_PROCESS
+        | ALLOW_IN_RDD_PROCESS
+        | ALLOW_IN_VR_PROCESS
+        | ALLOW_IN_SOCKET_PROCESS
+        | ALLOW_IN_UTILITY_PROCESS
+        | ALLOW_IN_GMPLUGIN_PROCESS
+    )
 
 
 # Maps ProcessSelector constants to the name of the corresponding
@@ -114,6 +123,7 @@ PROCESSES = {
     ProcessSelector.ALLOW_IN_GPU_RDD_SOCKET_AND_UTILITY_PROCESS: "ALLOW_IN_GPU_RDD_SOCKET_AND_UTILITY_PROCESS",  # NOQA: E501
     ProcessSelector.ALLOW_IN_GPU_RDD_VR_AND_SOCKET_PROCESS: "ALLOW_IN_GPU_RDD_VR_AND_SOCKET_PROCESS",  # NOQA: E501
     ProcessSelector.ALLOW_IN_GPU_RDD_VR_SOCKET_AND_UTILITY_PROCESS: "ALLOW_IN_GPU_RDD_VR_SOCKET_AND_UTILITY_PROCESS",  # NOQA: E501
+    ProcessSelector.ALLOW_IN_GPU_RDD_VR_SOCKET_UTILITY_AND_GMPLUGIN_PROCESS: "ALLOW_IN_GPU_RDD_VR_SOCKET_UTILITY_AND_GMPLUGIN_PROCESS",  # NOQA: E501
 }
 
 
@@ -910,14 +920,18 @@ def gen_substs(manifests):
 
     cid_phf = PerfectHash(modules, PHF_SIZE, key=lambda module: module.cid.bytes)
 
-    contract_phf = PerfectHash(contracts, PHF_SIZE, key=lambda entry: entry.contract)
+    contract_phf = PerfectHash(
+        contracts, PHF_SIZE, key=lambda entry: entry.contract.encode()
+    )
 
     js_services_phf = PerfectHash(
-        list(js_services.values()), PHF_SIZE, key=lambda entry: entry.js_name
+        list(js_services.values()), PHF_SIZE, key=lambda entry: entry.js_name.encode()
     )
 
     protocol_handlers_phf = PerfectHash(
-        list(protocol_handlers.values()), TINY_PHF_SIZE, key=lambda entry: entry.scheme
+        list(protocol_handlers.values()),
+        TINY_PHF_SIZE,
+        key=lambda entry: entry.scheme.encode(),
     )
 
     js_services_json = {}
@@ -935,7 +949,7 @@ def gen_substs(manifests):
     substs["contract_count"] = len(contracts)
     substs["protocol_handler_count"] = len(protocol_handlers)
 
-    substs["default_protocol_handler_idx"] = protocol_handlers_phf.get_index("default")
+    substs["default_protocol_handler_idx"] = protocol_handlers_phf.get_index(b"default")
 
     gen_module_funcs(substs, module_funcs)
 
@@ -943,6 +957,9 @@ def gen_substs(manifests):
 
     substs["component_jsms"] = (
         "\n".join(" %s," % strings.entry_to_cxx(jsm) for jsm in sorted(jsms)) + "\n"
+    )
+    substs["define_has_component_jsms"] = (
+        "#define HAS_COMPONENT_JSMS" if len(jsms) > 0 else ""
     )
     substs["component_esmodules"] = (
         "\n".join(
@@ -1011,7 +1028,9 @@ def gen_substs(manifests):
         key_length="aKey.Length()",
     )
 
-    substs["js_services_json"] = json.dumps(js_services_json, sort_keys=True, indent=4)
+    substs["js_services_json"] = (
+        json.dumps(js_services_json, sort_keys=True, indent=2) + "\n"
+    )
 
     # Do this only after everything else has been emitted so we're sure the
     # string table is complete.

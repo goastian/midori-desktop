@@ -9,6 +9,7 @@ import json
 from collections import OrderedDict
 
 import buildconfig
+from mozbuild.util import memoize
 from perfecthash import PerfectHash
 
 # Pick a nice power-of-two size for our intermediate PHF tables.
@@ -135,6 +136,7 @@ def split_iid(iid):  # Get the individual components out of an IID string.
     return tuple(split_at_idxs(iid, (8, 4, 4, 2, 2, 2, 2, 2, 2, 2, 2)))
 
 
+@memoize
 def iid_bytes(iid):  # Get the byte representation of the IID for hashing.
     bs = bytearray()
     for num in split_iid(iid):
@@ -148,7 +150,7 @@ def iid_bytes(iid):  # Get the byte representation of the IID for hashing.
 
 # Split a 16-bit integer into its high and low 8 bits
 def splitint(i):
-    assert i < 2 ** 16
+    assert i < 2**16
     return (i >> 8, i & 0xFF)
 
 
@@ -283,10 +285,6 @@ def link_to_cpp(interfaces, fd, header_fd):
         tag = type["tag"]
         d1 = d2 = 0
 
-        # TD_VOID is used for types that can't be represented in JS, so they
-        # should not be represented in the XPT info.
-        assert tag != "TD_VOID"
-
         if tag == "TD_LEGACY_ARRAY":
             d1 = type["size_is"]
             d2 = lower_extra_type(type["element"])
@@ -332,34 +330,15 @@ def link_to_cpp(interfaces, fd, header_fd):
             )
         )
 
-    def is_type_reflectable(type):
-        # All native types end up getting tagged as void*, or as wrapper types around void*
-        if type["tag"] == "TD_VOID":
-            return False
-        if type["tag"] in ("TD_ARRAY", "TD_LEGACY_ARRAY"):
-            return is_type_reflectable(type["element"])
-        return True
-
-    def is_method_reflectable(method):
-        if "hidden" in method["flags"]:
-            return False
-
-        for param in method["params"]:
-            # Reflected methods can't use non-reflectable types.
-            if not is_type_reflectable(param["type"]):
-                return False
-
-        return True
-
-    def lower_method(method, ifacename):
+    def lower_method(method, ifacename, builtinclass):
         methodname = "%s::%s" % (ifacename, method["name"])
 
         isSymbol = "symbol" in method["flags"]
-        reflectable = is_method_reflectable(method)
+        reflectable = "hidden" not in method["flags"]
 
-        if not reflectable:
-            # Hide the parameters of methods that can't be called from JS to
-            # reduce the size of the file.
+        if not reflectable and builtinclass:
+            # Hide the parameters of methods that can't be called from JS and
+            # are on builtinclass interfaces to reduce the size of the file.
             paramidx = name = numparams = 0
         else:
             if isSymbol:
@@ -440,6 +419,8 @@ def link_to_cpp(interfaces, fd, header_fd):
         assert method_cnt < 250, "%s has too many methods" % iface["name"]
         assert const_cnt < 256, "%s has too many constants" % iface["name"]
 
+        builtinclass = "builtinclass" in iface["flags"]
+
         # Store the lowered interface as 'cxx' on the iface object.
         iface["cxx"] = nsXPTInterfaceInfo(
             "%d = %s" % (iface["idx"], iface["name"]),
@@ -451,14 +432,14 @@ def link_to_cpp(interfaces, fd, header_fd):
             mConsts=len(consts),
             mNumConsts=const_cnt,
             # Flags
-            mBuiltinClass="builtinclass" in iface["flags"],
+            mBuiltinClass=builtinclass,
             mMainProcessScriptableOnly="main_process_only" in iface["flags"],
             mFunction="function" in iface["flags"],
         )
 
         # Lower methods and constants used by this interface
         for method in iface["methods"]:
-            lower_method(method, iface["name"])
+            lower_method(method, iface["name"], builtinclass)
         for const in iface["consts"]:
             lower_const(const, iface["name"])
 
@@ -624,6 +605,16 @@ def link_and_write(files, outfile, outheader):
         assert interface["name"] not in names, "duplicated name %s" % interface["name"]
         iids.add(interface["uuid"])
         names.add(interface["name"])
+
+    # All forwards referenced from scriptable members must be known (as scriptable).
+    for iface in interfaces:
+        for ref in iface["needs_scriptable"]:
+            if not ref in names:
+                raise Exception(
+                    f"Scriptable member in {iface['name']} references unknown {ref}. "
+                    "Forward must be a known and [scriptable] interface, "
+                    "or the referencing member marked with [noscript]."
+                )
 
     link_to_cpp(interfaces, outfile, outheader)
 

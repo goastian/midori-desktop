@@ -122,10 +122,13 @@ class Builtin(object):
     kind = "builtin"
     location = BuiltinLocation
 
-    def __init__(self, name, nativename, rustname, signed=False, maybeConst=False):
+    def __init__(
+        self, name, nativename, rustname, tsname, signed=False, maybeConst=False
+    ):
         self.name = name
         self.nativename = nativename
         self.rustname = rustname
+        self.tsname = tsname
         self.signed = signed
         self.maybeConst = maybeConst
 
@@ -171,34 +174,64 @@ class Builtin(object):
 
         return "%s%s" % ("*mut " if "out" in calltype else "", rustname)
 
+    def tsType(self):
+        if self.tsname:
+            return self.tsname
+
+        raise TSNoncompat(f"Builtin type {self.name} unsupported in TypeScript")
+
 
 builtinNames = [
-    Builtin("boolean", "bool", "bool"),
-    Builtin("void", "void", "libc::c_void"),
-    Builtin("octet", "uint8_t", "u8", False, True),
-    Builtin("short", "int16_t", "i16", True, True),
-    Builtin("long", "int32_t", "i32", True, True),
-    Builtin("long long", "int64_t", "i64", True, True),
-    Builtin("unsigned short", "uint16_t", "u16", False, True),
-    Builtin("unsigned long", "uint32_t", "u32", False, True),
-    Builtin("unsigned long long", "uint64_t", "u64", False, True),
-    Builtin("float", "float", "libc::c_float", True, False),
-    Builtin("double", "double", "libc::c_double", True, False),
-    Builtin("char", "char", "libc::c_char", True, False),
-    Builtin("string", "char *", "*const libc::c_char", False, False),
-    Builtin("wchar", "char16_t", "u16", False, False),
-    Builtin("wstring", "char16_t *", "*const u16", False, False),
+    Builtin("boolean", "bool", "bool", "boolean"),
+    Builtin("void", "void", "libc::c_void", "void"),
+    Builtin("int8_t", "int8_t", "i8", "i8", True, True),
+    Builtin("int16_t", "int16_t", "i16", "i16", True, True),
+    Builtin("int32_t", "int32_t", "i32", "i32", True, True),
+    Builtin("int64_t", "int64_t", "i64", "i64", True, True),
+    Builtin("uint8_t", "uint8_t", "u8", "u8", False, True),
+    Builtin("uint16_t", "uint16_t", "u16", "u16", False, True),
+    Builtin("uint32_t", "uint32_t", "u32", "u32", False, True),
+    Builtin("uint64_t", "uint64_t", "u64", "u64", False, True),
+    Builtin("nsresult", "nsresult", "nserror::nsresult", "nsresult"),
+    Builtin("float", "float", "libc::c_float", "float"),
+    Builtin("double", "double", "libc::c_double", "double"),
+    Builtin("char", "char", "libc::c_char", "string"),
+    Builtin("string", "char *", "*const libc::c_char", "string"),
+    Builtin("wchar", "char16_t", "u16", "string"),
+    Builtin("wstring", "char16_t *", "*const u16", "string"),
+    # NOTE: char16_t is the same type as `wchar` in C++, however it is reflected
+    # into JS as an integer, allowing it to be used in constants.
+    # This inconsistency sucks, but reflects existing usage so unfortunately
+    # isn't very easy to change.
+    Builtin("char16_t", "char16_t", "u16", "u16", False, True),
     # As seen in mfbt/RefCountType.h, this type has special handling to
     # maintain binary compatibility with MSCOM's IUnknown that cannot be
     # expressed in XPIDL.
     Builtin(
-        "MozExternalRefCountType", "MozExternalRefCountType", "MozExternalRefCountType"
+        "MozExternalRefCountType",
+        "MozExternalRefCountType",
+        "MozExternalRefCountType",
+        None,
     ),
+]
+
+# Allow using more C-style names for the basic integer types.
+builtinAlias = [
+    ("octet", "uint8_t"),
+    ("unsigned short", "uint16_t"),
+    ("unsigned long", "uint32_t"),
+    ("unsigned long long", "uint64_t"),
+    ("short", "int16_t"),
+    ("long", "int32_t"),
+    ("long long", "int64_t"),
 ]
 
 builtinMap = {}
 for b in builtinNames:
     builtinMap[b.name] = b
+
+for alias, name in builtinAlias:
+    builtinMap[alias] = builtinMap[name]
 
 
 class Location(object):
@@ -300,6 +333,16 @@ class RustNoncompat(Exception):
     This exception is raised when a particular type or function cannot be safely exposed to
     rust code
     """
+
+    def __init__(self, reason):
+        self.reason = reason
+
+    def __str__(self):
+        return self.reason
+
+
+class TSNoncompat(Exception):
+    """Raised when a type cannot be exposed to TypeScript."""
 
     def __init__(self, reason):
         self.reason = reason
@@ -458,7 +501,7 @@ class CDATA(object):
 class Typedef(object):
     kind = "typedef"
 
-    def __init__(self, type, name, location, doccomments):
+    def __init__(self, type, name, attlist, location, doccomments):
         self.type = type
         self.name = name
         self.location = location
@@ -478,10 +521,12 @@ class Typedef(object):
         return "%s %s" % (self.name, "*" if "out" in calltype else "")
 
     def rustType(self, calltype):
-        if self.name == "nsresult":
-            return "%s::nserror::nsresult" % ("*mut " if "out" in calltype else "")
-
         return "%s%s" % ("*mut " if "out" in calltype else "", self.name)
+
+    def tsType(self):
+        # Make sure that underlying type is supported: doesn't throw TSNoncompat.
+        self.realtype.tsType()
+        return self.name
 
     def __str__(self):
         return "typedef %s %s\n" % (self.type, self.name)
@@ -523,6 +568,9 @@ class Forward(object):
         if calltype == "element":
             return "Option<RefPtr<%s>>" % self.name
         return "%s*const %s" % ("*mut" if "out" in calltype else "", self.name)
+
+    def tsType(self):
+        return self.name
 
     def __str__(self):
         return "forward-declared %s\n" % self.name
@@ -701,6 +749,21 @@ class Native(object):
 
         raise RustNoncompat("native type %s unsupported" % self.nativename)
 
+    ts_special = {
+        "astring": "string",
+        "cstring": "string",
+        "jsval": "any",
+        "nsid": "nsID",
+        "promise": "Promise<any>",
+        "utf8string": "string",
+    }
+
+    def tsType(self):
+        if type := self.ts_special.get(self.specialtype, None):
+            return type
+
+        raise TSNoncompat(f"Native type {self.name} unsupported in TypeScript")
+
     def __str__(self):
         return "native %s(%s)\n" % (self.name, self.nativename)
 
@@ -748,6 +811,9 @@ class WebIDL(object):
     def rustType(self, calltype, const=False):
         # Just expose the type as a void* - we can't do any better.
         return "%s*const libc::c_void" % ("*mut " if "out" in calltype else "")
+
+    def tsType(self):
+        return self.name
 
     def __str__(self):
         return "webidl %s\n" % self.name
@@ -833,6 +899,23 @@ class Interface(object):
                     "builtinclass '%s'" % (self.name, self.base),
                     self.location,
                 )
+
+            if realbase.attributes.rust_sync and not self.attributes.rust_sync:
+                raise IDLError(
+                    "interface '%s' is not rust_sync but derives from rust_sync '%s'"
+                    % (self.name, self.base),
+                    self.location,
+                )
+
+            if (
+                self.attributes.rust_sync
+                and self.attributes.scriptable
+                and not self.attributes.builtinclass
+            ):
+                raise IDLError(
+                    "interface '%s' is rust_sync but is not builtinclass" % self.name,
+                    self.location,
+                )
         elif self.name != "nsISupports":
             raise IDLError(
                 "Interface '%s' must inherit from nsISupports" % self.name,
@@ -906,6 +989,9 @@ class Interface(object):
             total += realbase.countEntries()
         return total
 
+    def tsType(self):
+        return self.name
+
 
 class InterfaceAttributes(object):
     uuid = None
@@ -913,6 +999,7 @@ class InterfaceAttributes(object):
     builtinclass = False
     function = False
     main_process_scriptable_only = False
+    rust_sync = False
 
     def setuuid(self, value):
         self.uuid = value.lower()
@@ -929,6 +1016,9 @@ class InterfaceAttributes(object):
     def setmain_process_scriptable_only(self):
         self.main_process_scriptable_only = True
 
+    def setrust_sync(self):
+        self.rust_sync = True
+
     actions = {
         "uuid": (True, setuuid),
         "scriptable": (False, setscriptable),
@@ -936,6 +1026,7 @@ class InterfaceAttributes(object):
         "function": (False, setfunction),
         "object": (False, lambda self: True),
         "main_process_scriptable_only": (False, setmain_process_scriptable_only),
+        "rust_sync": (False, setrust_sync),
     }
 
     def __init__(self, attlist, location):
@@ -970,6 +1061,8 @@ class InterfaceAttributes(object):
             l.append("\tfunction\n")
         if self.main_process_scriptable_only:
             l.append("\tmain_process_scriptable_only\n")
+        if self.rust_sync:
+            l.append("\trust_sync\n")
         return "".join(l)
 
 
@@ -991,7 +1084,7 @@ class ConstMember(object):
             basetype = basetype.realtype
         if not isinstance(basetype, Builtin) or not basetype.maybeConst:
             raise IDLError(
-                "const may only be a short or long type, not %s" % self.type,
+                "const may only be an integer type, not %s" % self.type.name,
                 self.location,
             )
 
@@ -999,8 +1092,8 @@ class ConstMember(object):
         # Value is a lambda. Resolve it.
         self.value = self.valueFn(self.iface)
 
-        min_val = -(2 ** 31) if basetype.signed else 0
-        max_val = 2 ** 31 - 1 if basetype.signed else 2 ** 32 - 1
+        min_val = -(2**31) if basetype.signed else 0
+        max_val = 2**31 - 1 if basetype.signed else 2**32 - 1
         if self.value < min_val or self.value > max_val:
             raise IDLError(
                 "xpidl constants must fit within %s"
@@ -1086,6 +1179,9 @@ class CEnum(object):
     def rustType(self, calltype):
         return "%s u%d" % ("*mut" if "out" in calltype else "", self.width)
 
+    def tsType(self):
+        return f"{self.iface.name}.{self.basename}"
+
     def __str__(self):
         body = ", ".join("%s = %s" % v for v in self.variants)
         return "\tcenum %s : %d { %s };\n" % (self.name, self.width, body)
@@ -1120,19 +1216,24 @@ def ensureInfallibleIsSound(methodOrAttribute):
 
     if methodOrAttribute.notxpcom:
         raise IDLError(
-            "[infallible] does not make sense for a [notxpcom] " "method or attribute",
+            "[infallible] does not make sense for a [notxpcom] method or attribute",
             methodOrAttribute.location,
         )
 
 
 # An interface cannot be implemented by JS if it has a notxpcom or nostdcall
-# method or attribute, so it must be marked as builtinclass.
+# method or attribute, or uses a by-value native type, so it must be marked as
+# builtinclass.
 def ensureBuiltinClassIfNeeded(methodOrAttribute):
     iface = methodOrAttribute.iface
     if not iface.attributes.scriptable or iface.attributes.builtinclass:
         return
     if iface.name == "nsISupports":
         return
+
+    # notxpcom and nostdcall types change calling conventions, which breaks
+    # xptcall wrappers. We cannot allow XPCWrappedJS to be created for
+    # interfaces with these methods.
     if methodOrAttribute.notxpcom:
         raise IDLError(
             (
@@ -1151,6 +1252,84 @@ def ensureBuiltinClassIfNeeded(methodOrAttribute):
             % (iface.name, methodOrAttribute.kind, methodOrAttribute.name),
             methodOrAttribute.location,
         )
+
+    # Methods with custom native parameters passed without indirection cannot be
+    # safely handled by xptcall (as it cannot know the calling stack/register
+    # layout), so require the interface to be builtinclass.
+    #
+    # Only "in" parameters and writable attributes are checked, as other
+    # parameters are always passed indirectly, so do not impact calling
+    # conventions.
+    def typeNeedsBuiltinclass(type):
+        inner = type
+        while inner.kind == "typedef":
+            inner = inner.realtype
+        return (
+            inner.kind == "native"
+            and inner.specialtype is None
+            and inner.modifier is None
+        )
+
+    if methodOrAttribute.kind == "method":
+        for p in methodOrAttribute.params:
+            if p.paramtype == "in" and typeNeedsBuiltinclass(p.realtype):
+                raise IDLError(
+                    (
+                        "scriptable interface '%s' must be marked [builtinclass] "
+                        "because it contains method '%s' with a by-value custom native "
+                        "parameter '%s'"
+                    )
+                    % (iface.name, methodOrAttribute.name, p.name),
+                    methodOrAttribute.location,
+                )
+    elif methodOrAttribute.kind == "attribute" and not methodOrAttribute.readonly:
+        if typeNeedsBuiltinclass(methodOrAttribute.realtype):
+            raise IDLError(
+                (
+                    "scriptable interface '%s' must be marked [builtinclass] because it "
+                    "contains writable attribute '%s' with a by-value custom native type"
+                )
+                % (iface.name, methodOrAttribute.name),
+                methodOrAttribute.location,
+            )
+
+
+def ensureNoscriptIfNeeded(methodOrAttribute):
+    if not methodOrAttribute.isScriptable():
+        return
+
+    # NOTE: We can't check forward-declared interfaces to see if they're
+    # scriptable, as the information about whether they're scriptable is not
+    # known here.
+    def typeNeedsNoscript(type):
+        if type.kind in ["array", "legacyarray"]:
+            return typeNeedsNoscript(type.type)
+        if type.kind == "typedef":
+            return typeNeedsNoscript(type.realtype)
+        if type.kind == "native":
+            return type.specialtype is None
+        if type.kind == "interface":
+            return not type.attributes.scriptable
+        return False
+
+    if typeNeedsNoscript(methodOrAttribute.realtype):
+        raise IDLError(
+            "%s '%s' must be marked [noscript] because it has a non-scriptable type"
+            % (methodOrAttribute.kind, methodOrAttribute.name),
+            methodOrAttribute.location,
+        )
+    if methodOrAttribute.kind == "method":
+        for p in methodOrAttribute.params:
+            # iid_is arguments have their type ignored, so shouldn't be checked.
+            if not p.iid_is and typeNeedsNoscript(p.realtype):
+                raise IDLError(
+                    (
+                        "method '%s' must be marked [noscript] because it has a "
+                        "non-scriptable parameter '%s'"
+                    )
+                    % (methodOrAttribute.name, p.name),
+                    methodOrAttribute.location,
+                )
 
 
 class Attribute(object):
@@ -1240,6 +1419,7 @@ class Attribute(object):
 
         ensureInfallibleIsSound(self)
         ensureBuiltinClassIfNeeded(self)
+        ensureNoscriptIfNeeded(self)
 
     def toIDL(self):
         attribs = attlistToIDL(self.attlist)
@@ -1326,9 +1506,6 @@ class Method(object):
         self.iface = iface
         self.realtype = self.iface.idl.getName(self.type, self.location)
 
-        ensureInfallibleIsSound(self)
-        ensureBuiltinClassIfNeeded(self)
-
         for p in self.params:
             p.resolve(self)
         for p in self.params:
@@ -1347,9 +1524,9 @@ class Method(object):
                         "size_is parameter of an input must also be an input",
                         p.location,
                     )
-                if getBuiltinOrNativeTypeName(size_param.realtype) != "unsigned long":
+                if getBuiltinOrNativeTypeName(size_param.realtype) != "uint32_t":
                     raise IDLError(
-                        "size_is parameter must have type 'unsigned long'",
+                        "size_is parameter must have type 'uint32_t'",
                         p.location,
                     )
             if p.iid_is:
@@ -1367,6 +1544,10 @@ class Method(object):
                         "iid_is parameter must be an nsIID",
                         self.location,
                     )
+
+        ensureInfallibleIsSound(self)
+        ensureBuiltinClassIfNeeded(self)
+        ensureNoscriptIfNeeded(self)
 
     def isScriptable(self):
         if not self.iface.attributes.scriptable:
@@ -1499,8 +1680,22 @@ class Param(object):
             self.name,
         )
 
+    def tsType(self):
+        # A generic retval param type needs special handling.
+        if self.retval and self.iid_is:
+            return "nsQIResult"
+
+        type = self.realtype.tsType()
+        if self.paramtype == "inout":
+            return f"InOutParam<{type}>"
+        if self.paramtype == "out":
+            return f"OutParam<{type}>"
+        return type
+
 
 class LegacyArray(object):
+    kind = "legacyarray"
+
     def __init__(self, basetype):
         self.type = basetype
         self.location = self.type.location
@@ -1530,6 +1725,9 @@ class LegacyArray(object):
             "*const " if const else "*mut ",
             self.type.rustType("legacyelement"),
         )
+
+    def tsType(self):
+        return self.type.tsType() + "[]"
 
 
 class Array(object):
@@ -1570,13 +1768,16 @@ class Array(object):
         else:
             return base
 
+    def tsType(self):
+        return self.type.tsType() + "[]"
+
 
 TypeId = namedtuple("TypeId", "name params")
 
 
 # Make str(TypeId) produce a nicer value
-TypeId.__str__ = (
-    lambda self: "%s<%s>" % (self.name, ", ".join(str(p) for p in self.params))
+TypeId.__str__ = lambda self: (
+    "%s<%s>" % (self.name, ", ".join(str(p) for p in self.params))
     if self.params is not None
     else self.name
 )
@@ -1727,12 +1928,13 @@ class IDLParser(object):
         p[0].insert(0, p[1])
 
     def p_typedef(self, p):
-        """typedef : TYPEDEF type IDENTIFIER ';'"""
+        """typedef : attributes TYPEDEF type IDENTIFIER ';'"""
         p[0] = Typedef(
-            type=p[2],
-            name=p[3],
-            location=self.getLocation(p, 1),
-            doccomments=p.slice[1].doccomments,
+            type=p[3],
+            name=p[4],
+            attlist=p[1]["attlist"],
+            location=self.getLocation(p, 2),
+            doccomments=getattr(p[1], "doccomments", []) + p.slice[2].doccomments,
         )
 
     def p_native(self, p):

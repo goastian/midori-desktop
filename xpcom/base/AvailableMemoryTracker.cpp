@@ -7,7 +7,7 @@
 #include "mozilla/AvailableMemoryTracker.h"
 
 #if defined(XP_WIN)
-#  include "mozilla/WindowsVersion.h"
+#  include <windows.h>
 #  include "nsIMemoryReporter.h"
 #endif
 
@@ -34,8 +34,7 @@ namespace {
 
 #if defined(XP_WIN)
 
-#  if (NTDDI_VERSION < NTDDI_WINBLUE) || \
-      (NTDDI_VERSION == NTDDI_WINBLUE && !defined(WINBLUE_KBSPRING14))
+#  if defined(__MINGW32__)
 // Definitions for heap optimization that require the Windows SDK to target the
 // Windows 8.1 Update
 static const HEAP_INFORMATION_CLASS HeapOptimizeResources =
@@ -116,15 +115,11 @@ nsJemallocFreeDirtyPagesRunnable::Run() {
 
 #if defined(XP_WIN)
 void nsJemallocFreeDirtyPagesRunnable::OptimizeSystemHeap() {
-  // HeapSetInformation exists prior to Windows 8.1, but the
-  // HeapOptimizeResources information class does not.
-  if (IsWin8Point1OrLater()) {
-    HEAP_OPTIMIZE_RESOURCES_INFORMATION heapOptInfo = {
-        HEAP_OPTIMIZE_RESOURCES_CURRENT_VERSION};
+  HEAP_OPTIMIZE_RESOURCES_INFORMATION heapOptInfo = {
+      HEAP_OPTIMIZE_RESOURCES_CURRENT_VERSION};
 
-    ::HeapSetInformation(nullptr, HeapOptimizeResources, &heapOptInfo,
-                         sizeof(heapOptInfo));
-  }
+  ::HeapSetInformation(nullptr, HeapOptimizeResources, &heapOptInfo,
+                       sizeof(heapOptInfo));
 }
 #endif  // defined(XP_WIN)
 

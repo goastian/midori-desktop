@@ -32,14 +32,14 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex,
     self->mEntry->GetMethodInfo(uint16_t(methodIndex), &info);
     NS_ASSERTION(info,"no method info");
 
-    paramCount = info->GetParamCount();
+    paramCount = info->ParamCount();
 
     const uint8_t indexOfJSContext = info->IndexOfJSContext();
 
     uint32_t* ap = args;
     for(i = 0; i < paramCount; i++, ap++)
     {
-        const nsXPTParamInfo& param = info->GetParam(i);
+        const nsXPTParamInfo& param = info->Param(i);
         const nsXPTType& type = param.GetType();
         nsXPTCMiniVariant* dp = &paramBuffer[i];
 
@@ -82,12 +82,7 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex,
 
 } // extern "C"
 
-static
-__attribute__((naked))
-// Compiler-inserted instrumentation is going to botch our assembly below,
-// so forbid the compiler from doing that.
-__attribute__((no_instrument_function))
-void SharedStub(void)
+static MOZ_NAKED void SharedStub(void)
 {
     __asm {
         push ebp            // set up simple stack frame
@@ -113,7 +108,7 @@ void SharedStub(void)
 
 // these macros get expanded (many times) in the file #included below
 #define STUB_ENTRY(n) \
-__attribute__((naked)) nsresult __stdcall nsXPTCStubBase::Stub##n() \
+MOZ_NAKED nsresult __stdcall nsXPTCStubBase::Stub##n() \
 { __asm mov ecx, n __asm jmp SharedStub }
 
 #define SENTINEL_ENTRY(n) \

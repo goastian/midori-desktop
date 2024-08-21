@@ -127,8 +127,7 @@ class WinIOAutoObservation : public mozilla::IOInterposeObserver::Observation {
   WinIOAutoObservation(mozilla::IOInterposeObserver::Operation aOp,
                        HANDLE aFileHandle, const LARGE_INTEGER* aOffset)
       : mozilla::IOInterposeObserver::Observation(
-            aOp, sReference,
-            !mozilla::IsDebugFile(reinterpret_cast<intptr_t>(aFileHandle))),
+            aOp, sReference, !mozilla::IsDebugFile(aFileHandle)),
         mFileHandle(aFileHandle),
         mFileHandleType(GetFileType(aFileHandle)),
         mHasQueriedFilename(false) {
@@ -440,7 +439,9 @@ void InitPoisonIOInterposer() {
 
   // Bug 1679741: Kingsoft Internet Security calls NtReadFile in their thread
   // simultaneously when we're applying a hook on NtReadFile.
-  if (::GetModuleHandleW(L"kwsui64.dll")) {
+  // Bug 1705042: Symantec applies its own hook on NtReadFile, and ends up
+  // overwriting part of ours in an incompatible way.
+  if (::GetModuleHandleW(L"kwsui64.dll") || ::GetModuleHandleW(L"ffm64.dll")) {
     return;
   }
 

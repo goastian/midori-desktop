@@ -22,7 +22,6 @@
 #include "nsReadableUtils.h"
 #include "nsCRT.h"
 #include "nsPrintfCString.h"
-#include "nsQuickSort.h"
 #include "nsEnumeratorUtils.h"
 #include "nsThreadUtils.h"
 #include "mozilla/ArenaAllocatorExtensions.h"
@@ -210,12 +209,10 @@ static nsresult CreateEntryEnumerator(nsTHashtable<CategoryLeaf>& aTable,
     }
   }
 
-  entries.Sort(
-      [](nsICategoryEntry* aA, nsICategoryEntry* aB, void*) {
-        return strcmp(CategoryEntry::Cast(aA)->Key(),
-                      CategoryEntry::Cast(aB)->Key());
-      },
-      nullptr);
+  entries.Sort([](nsICategoryEntry* aA, nsICategoryEntry* aB) {
+    return strcmp(CategoryEntry::Cast(aA)->Key(),
+                  CategoryEntry::Cast(aB)->Key());
+  });
 
   return NS_NewArrayEnumerator(aResult, entries, NS_GET_IID(nsICategoryEntry));
 }
@@ -303,6 +300,7 @@ nsresult CategoryNode::Enumerate(nsISimpleEnumerator** aResult) {
 size_t CategoryNode::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) {
   // We don't measure the strings pointed to by the entries because the
   // pointers are non-owning.
+  MutexAutoLock lock(mLock);
   return mTable.ShallowSizeOfExcludingThis(aMallocSizeOf);
 }
 
@@ -346,10 +344,7 @@ nsresult nsCategoryManager::Create(REFNSIID aIID, void** aResult) {
 }
 
 nsCategoryManager::nsCategoryManager()
-    : mArena(),
-      mTable(),
-      mLock("nsCategoryManager"),
-      mSuppressNotifications(false) {}
+    : mLock("nsCategoryManager"), mSuppressNotifications(false) {}
 
 void nsCategoryManager::InitMemoryReporter() {
   RegisterWeakMemoryReporter(this);
@@ -384,6 +379,8 @@ nsCategoryManager::CollectReports(nsIHandleReportCallback* aHandleReport,
 
 size_t nsCategoryManager::SizeOfIncludingThis(
     mozilla::MallocSizeOf aMallocSizeOf) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MutexAutoLock lock(mLock);
   size_t n = aMallocSizeOf(this);
 
   n += mArena.SizeOfExcludingThis(aMallocSizeOf);
@@ -496,6 +493,7 @@ void nsCategoryManager::AddCategoryEntry(const nsACString& aCategoryName,
                                          const nsACString& aEntryName,
                                          const nsACString& aValue,
                                          bool aReplace, nsACString& aOldValue) {
+  MOZ_ASSERT(NS_IsMainThread());
   aOldValue.SetIsVoid(true);
 
   // Before we can insert a new entry, we'll need to

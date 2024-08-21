@@ -6,7 +6,6 @@
 
 #include "mozilla/TaskQueue.h"
 
-#include "mozilla/DelayedRunnable.h"
 #include "mozilla/ProfilerRunnable.h"
 #include "nsIEventTarget.h"
 #include "nsITargetShutdownTask.h"
@@ -239,8 +238,7 @@ nsresult TaskQueue::Runner::Run() {
       mon.NotifyAll();
       return NS_OK;
     }
-    event = std::move(mQueue->mTasks.FirstElement());
-    mQueue->mTasks.Pop();
+    event = mQueue->mTasks.Pop();
   }
   MOZ_ASSERT(event.event);
 

@@ -22,13 +22,10 @@
 #include "mozilla/ProfilerMarkers.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/Telemetry.h"
-#include "mozilla/TimelineConsumers.h"
-#include "mozilla/TimelineMarker.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/DOMJSClass.h"
 #include "mozilla/dom/FinalizationRegistryBinding.h"
-#include "mozilla/dom/ProfileTimelineMarkerBinding.h"
 #include "mozilla/dom/PromiseBinding.h"
 #include "mozilla/dom/PromiseDebugging.h"
 #include "mozilla/dom/PromiseRejectionEvent.h"
@@ -44,7 +41,6 @@
 #include "nsDOMMutationObserver.h"
 #include "nsJSUtils.h"
 #include "nsPIDOMWindow.h"
-#include "nsStringBuffer.h"
 #include "nsThread.h"
 #include "nsThreadUtils.h"
 #include "nsWrapperCache.h"
@@ -399,7 +395,7 @@ void CycleCollectedJSContext::PromiseRejectionTrackerCallback(
                                                init);
 
         RefPtr<AsyncEventDispatcher> asyncDispatcher =
-            new AsyncEventDispatcher(owner, event);
+            new AsyncEventDispatcher(owner, event.forget());
         asyncDispatcher->PostDOMEvent();
       }
     }

@@ -17,6 +17,7 @@
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/StaticMutex.h"
+#include "mozilla/Try.h"
 #include "nsThreadManager.h"
 #include "nsThreadUtils.h"
 #include "pratom.h"
@@ -645,8 +646,9 @@ void nsTimerImpl::Fire(int32_t aGeneration) {
 
   AUTO_PROFILER_LABEL("nsTimerImpl::Fire", OTHER);
 
-  TimeStamp fireTime = TimeStamp::Now();
+  TimeStamp fireTime;
   if (MOZ_LOG_TEST(GetTimerLog(), LogLevel::Debug)) {
+    fireTime = TimeStamp::Now();
     TimeDuration delta = fireTime - oldTimeout;
     int32_t d = delta.ToMilliseconds();  // delta in ms
     {

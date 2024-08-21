@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "SpecialSystemDirectory.h"
+#include "mozilla/Try.h"
 #include "nsString.h"
 #include "nsDependentString.h"
 #include "nsIXULAppInfo.h"
@@ -93,26 +94,6 @@ static nsresult GetWindowsFolder(int aFolder, nsIFile** aFile) {
   return NS_NewLocalFile(nsDependentString(path, len), true, aFile);
 }
 
-#  if WINVER < 0x0601
-__inline HRESULT SHLoadLibraryFromKnownFolder(REFKNOWNFOLDERID aFolderId,
-                                              DWORD aMode, REFIID riid,
-                                              void** ppv) {
-  *ppv = nullptr;
-  IShellLibrary* plib;
-  HRESULT hr = CoCreateInstance(CLSID_ShellLibrary, nullptr,
-                                CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&plib));
-  if (SUCCEEDED(hr)) {
-    hr = plib->LoadLibraryFromKnownFolder(aFolderId, aMode);
-    if (SUCCEEDED(hr)) {
-      hr = plib->QueryInterface(riid, ppv);
-    }
-    plib->Release();
-  }
-  return hr;
-}
-#  endif
-
-#  if defined(MOZ_THUNDERBIRD) || defined(MOZ_SUITE)
 /*
  * Return the default save-to location for the Windows Library passed in
  * through aFolderId.
@@ -140,7 +121,6 @@ static nsresult GetLibrarySaveToPath(int aFallbackFolderId,
 
   return GetWindowsFolder(aFallbackFolderId, aFile);
 }
-#  endif
 
 /**
  * Provides a fallback for getting the path to APPDATA or LOCALAPPDATA by
@@ -545,6 +525,9 @@ nsresult GetSpecialSystemDirectory(SystemDirectories aSystemSystemDirectory,
     case Mac_UserDesktopDirectory: {
       return GetOSXFolderType(kUserDomain, kDesktopFolderType, aFile);
     }
+    case Mac_UserDocumentsDirectory: {
+      return GetOSXFolderType(kUserDomain, kDocumentsFolderType, aFile);
+    }
     case Mac_LocalApplicationsDirectory: {
       return GetOSXFolderType(kLocalDomain, kApplicationsFolderType, aFile);
     }
@@ -692,12 +675,10 @@ nsresult GetSpecialSystemDirectory(SystemDirectories aSystemSystemDirectory,
       }
       return rv;
     }
-#  if defined(MOZ_THUNDERBIRD) || defined(MOZ_SUITE)
     case Win_Documents: {
       return GetLibrarySaveToPath(CSIDL_MYDOCUMENTS, FOLDERID_DocumentsLibrary,
                                   aFile);
     }
-#  endif
 #endif  // XP_WIN
 
 #if defined(XP_UNIX)
@@ -705,6 +686,7 @@ nsresult GetSpecialSystemDirectory(SystemDirectories aSystemSystemDirectory,
       return GetUnixHomeDir(aFile);
 
     case Unix_XDG_Desktop:
+    case Unix_XDG_Documents:
     case Unix_XDG_Download:
       return GetUnixXDGUserDirectory(aSystemSystemDirectory, aFile);
 
@@ -728,7 +710,7 @@ nsresult GetOSXFolderType(short aDomain, OSType aFolderType,
     nsCOMPtr<nsILocalFileMac> localMacFile(do_QueryInterface(*aLocalFile));
     if (localMacFile) {
       rv = localMacFile->InitWithCFURL(
-          CocoaFileUtils::GetTemporaryFolderCFURLRef());
+          CocoaFileUtils::GetTemporaryFolder().get());
     }
     return rv;
   }

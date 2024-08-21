@@ -308,7 +308,7 @@ class FindExpirationTimeState final {
   // Create timers, with aNumLowPriority low priority timers first in the queue
   void InitTimers(uint32_t aNumLowPriority, uint32_t aType) {
     // aType is just for readability.
-    MOZ_ASSERT(aType == nsITimer::TYPE_ONE_SHOT_LOW_PRIORITY);
+    MOZ_RELEASE_ASSERT(aType == nsITimer::TYPE_ONE_SHOT_LOW_PRIORITY);
     InitTimers(aNumLowPriority, nsITimer::TYPE_ONE_SHOT_LOW_PRIORITY, nullptr);
   }
 
@@ -345,8 +345,12 @@ class FindExpirationTimeState final {
     } while (true);
 
     mBefore = TimeStamp::Now();
-    mMiddle = mBefore + TimeDuration::FromMilliseconds(
-                            kTimerOffset + kTimerInterval * kNumTimers / 2);
+    // To avoid getting exactly the same time for a timer and mMiddle, subtract
+    // 50 ms.
+    mMiddle = mBefore +
+              TimeDuration::FromMilliseconds(kTimerOffset +
+                                             kTimerInterval * kNumTimers / 2) -
+              TimeDuration::FromMilliseconds(50);
     for (uint32_t i = 0; i < kNumTimers; ++i) {
       nsCOMPtr<nsITimer> timer = NS_NewTimer();
       ASSERT_TRUE(timer);

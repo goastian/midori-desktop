@@ -58,6 +58,7 @@
 
 #include "mozilla/Logging.h"
 #include "LogModulePrefWatcher.h"
+#include "xpcpublic.h"
 
 #ifdef MOZ_MEMORY
 #  include "mozmemory.h"
@@ -113,6 +114,10 @@ bool ProcessSelectorMatches(ProcessSelector aSelector) {
 
   if (type == GeckoProcessType_Utility) {
     return !!(aSelector & Module::ALLOW_IN_UTILITY_PROCESS);
+  }
+
+  if (type == GeckoProcessType_GMPlugin) {
+    return !!(aSelector & Module::ALLOW_IN_GMPLUGIN_PROCESS);
   }
 
   // Only allow XPCOM modules which can be loaded in all processes to be loaded
@@ -294,6 +299,8 @@ nsresult nsComponentManagerImpl::Init() {
         ProcessSelectorMatches(ProcessSelector::ALLOW_IN_SOCKET_PROCESS);
     gProcessMatchTable[size_t(ProcessSelector::ALLOW_IN_RDD_PROCESS)] =
         ProcessSelectorMatches(ProcessSelector::ALLOW_IN_RDD_PROCESS);
+    gProcessMatchTable[size_t(ProcessSelector::ALLOW_IN_GMPLUGIN_PROCESS)] =
+        ProcessSelectorMatches(ProcessSelector::ALLOW_IN_GMPLUGIN_PROCESS);
     gProcessMatchTable[size_t(ProcessSelector::ALLOW_IN_GPU_AND_MAIN_PROCESS)] =
         ProcessSelectorMatches(ProcessSelector::ALLOW_IN_GPU_AND_MAIN_PROCESS);
     gProcessMatchTable[size_t(ProcessSelector::ALLOW_IN_GPU_AND_VR_PROCESS)] =
@@ -326,6 +333,12 @@ nsresult nsComponentManagerImpl::Init() {
         ProcessSelector::ALLOW_IN_GPU_RDD_VR_SOCKET_AND_UTILITY_PROCESS)] =
         ProcessSelectorMatches(
             ProcessSelector::ALLOW_IN_GPU_RDD_VR_SOCKET_AND_UTILITY_PROCESS);
+    gProcessMatchTable[size_t(
+        ProcessSelector::
+            ALLOW_IN_GPU_RDD_VR_SOCKET_UTILITY_AND_GMPLUGIN_PROCESS)] =
+        ProcessSelectorMatches(
+            ProcessSelector::
+                ALLOW_IN_GPU_RDD_VR_SOCKET_UTILITY_AND_GMPLUGIN_PROCESS);
   }
 
   MOZ_ASSERT(NOT_INITIALIZED == mStatus);
@@ -345,6 +358,10 @@ nsresult nsComponentManagerImpl::Init() {
     }
   }
 
+  // This needs to be initialized late enough, so that preferences service can
+  // be accessed but before the IO service, and we want it in all process types.
+  xpc::ReadOnlyPage::Init();
+
   bool loadChromeManifests;
   switch (XRE_GetProcessType()) {
     // We are going to assume that only a select few (see below) process types
@@ -360,7 +377,6 @@ nsresult nsComponentManagerImpl::Init() {
     // processes really need chrome manifests...?
     case GeckoProcessType_Default:
     case GeckoProcessType_Content:
-    case GeckoProcessType_GMPlugin:
       loadChromeManifests = true;
       break;
   }

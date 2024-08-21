@@ -65,11 +65,6 @@ class nsAvailableMemoryWatcher final : public nsITimerCallback,
   void StopPollingIfUserIdle(const MutexAutoLock&) MOZ_REQUIRES(mMutex);
   void OnUserInteracting(const MutexAutoLock&) MOZ_REQUIRES(mMutex);
 
-  // The publicly available methods (::Observe() and ::Notify()) are called on
-  // the main thread while the ::LowMemoryCallback() method is called by an
-  // external thread. All functions called from those must acquire a lock on
-  // this mutex before accessing the object's fields to prevent races.
-  Mutex mMutex;
   nsCOMPtr<nsITimer> mTimer MOZ_GUARDED_BY(mMutex);
   nsAutoHandle mLowMemoryHandle MOZ_GUARDED_BY(mMutex);
   HANDLE mWaitHandle MOZ_GUARDED_BY(mMutex);
@@ -99,8 +94,7 @@ NS_IMPL_ISUPPORTS_INHERITED(nsAvailableMemoryWatcher,
                             nsITimerCallback, nsINamed)
 
 nsAvailableMemoryWatcher::nsAvailableMemoryWatcher()
-    : mMutex("low memory callback mutex"),
-      mWaitHandle(nullptr),
+    : mWaitHandle(nullptr),
       mPolling(false),
       mNeedToRestartTimerOnUserInteracting(false),
       mUnderMemoryPressure(false),
@@ -126,6 +120,12 @@ nsresult nsAvailableMemoryWatcher::Init() {
   if (!RegisterMemoryResourceHandler(lock)) {
     return NS_ERROR_FAILURE;
   }
+
+  static_assert(sizeof(sNumLowPhysicalMemEvents) == sizeof(uint32_t));
+
+  CrashReporter::RegisterAnnotationU32(
+      CrashReporter::Annotation::LowPhysicalMemoryEvents,
+      reinterpret_cast<uint32_t*>(&sNumLowPhysicalMemEvents));
 
   return NS_OK;
 }
@@ -178,9 +178,6 @@ VOID CALLBACK nsAvailableMemoryWatcher::LowMemoryCallback(PVOID aContext,
 // static
 void nsAvailableMemoryWatcher::RecordLowMemoryEvent() {
   sNumLowPhysicalMemEvents++;
-  CrashReporter::AnnotateCrashReport(
-      CrashReporter::Annotation::LowPhysicalMemoryEvents,
-      sNumLowPhysicalMemEvents);
 }
 
 bool nsAvailableMemoryWatcher::RegisterMemoryResourceHandler(
@@ -290,7 +287,7 @@ void nsAvailableMemoryWatcher::OnHighMemory(const MutexAutoLock& aLock) {
   MOZ_ASSERT(NS_IsMainThread());
 
   if (mUnderMemoryPressure) {
-    RecordTelemetryEventOnHighMemory();
+    RecordTelemetryEventOnHighMemory(aLock);
     NS_NotifyOfEventualMemoryPressure(MemoryPressureState::NoPressure);
   }
 

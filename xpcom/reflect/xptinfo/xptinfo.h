@@ -477,15 +477,6 @@ struct nsXPTMethodInfo {
 
   bool GetId(JSContext* aCx, jsid& aId) const;
 
-  /////////////////////////////////////////////
-  // nsXPTMethodInfo backwards compatibility //
-  /////////////////////////////////////////////
-
-  const char* GetName() const { return Name(); }
-
-  uint8_t GetParamCount() const { return ParamCount(); }
-  const nsXPTParamInfo& GetParam(uint8_t aIndex) const { return Param(aIndex); }
-
   ////////////////////////////////////////////////////////////////
   // Ensure these fields are in the same order as xptcodegen.py //
   ////////////////////////////////////////////////////////////////

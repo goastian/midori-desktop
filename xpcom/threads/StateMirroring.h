@@ -4,22 +4,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#if !defined(StateMirroring_h_)
-#  define StateMirroring_h_
+#ifndef XPCOM_THREADS_STATEMIRRORING_H_
+#define XPCOM_THREADS_STATEMIRRORING_H_
 
-#  include <cstddef>
-#  include "mozilla/AbstractThread.h"
-#  include "mozilla/AlreadyAddRefed.h"
-#  include "mozilla/Assertions.h"
-#  include "mozilla/Logging.h"
-#  include "mozilla/Maybe.h"
-#  include "mozilla/RefPtr.h"
-#  include "mozilla/StateWatching.h"
-#  include "nsCOMPtr.h"
-#  include "nsIRunnable.h"
-#  include "nsISupports.h"
-#  include "nsTArray.h"
-#  include "nsThreadUtils.h"
+#include <cstddef>
+#include "mozilla/AbstractThread.h"
+#include "mozilla/AlreadyAddRefed.h"
+#include "mozilla/Assertions.h"
+#include "mozilla/Logging.h"
+#include "mozilla/Maybe.h"
+#include "mozilla/RefPtr.h"
+#include "mozilla/StateWatching.h"
+#include "nsCOMPtr.h"
+#include "nsIRunnable.h"
+#include "nsISupports.h"
+#include "nsTArray.h"
+#include "nsThreadUtils.h"
 
 /*
  * The state-mirroring machinery allows pieces of interesting state to be
@@ -51,9 +51,9 @@ namespace mozilla {
 // Mirror<T> and Canonical<T> inherit WatchTarget, so we piggy-back on the
 // logging that WatchTarget already does. Given that, it makes sense to share
 // the same log module.
-#  define MIRROR_LOG(x, ...)       \
-    MOZ_ASSERT(gStateWatchingLog); \
-    MOZ_LOG(gStateWatchingLog, LogLevel::Debug, (x, ##__VA_ARGS__))
+#define MIRROR_LOG(x, ...)       \
+  MOZ_ASSERT(gStateWatchingLog); \
+  MOZ_LOG(gStateWatchingLog, LogLevel::Debug, (x, ##__VA_ARGS__))
 
 template <typename T>
 class AbstractMirror;
@@ -90,6 +90,7 @@ class AbstractMirror {
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(AbstractMirror)
   AbstractMirror(AbstractThread* aThread) : mOwnerThread(aThread) {}
+  virtual void ConnectedOnCanonicalThread(AbstractCanonical<T>* aCanonical) = 0;
   virtual void UpdateValue(const T& aNewValue) = 0;
   virtual void NotifyDisconnected() = 0;
 
@@ -135,6 +136,16 @@ class Canonical {
       MIRROR_LOG("%s [%p] initialized", mName, this);
       MOZ_ASSERT(aThread->SupportsTailDispatch(),
                  "Can't get coherency without tail dispatch");
+    }
+
+    void ConnectMirror(AbstractMirror<T>* aMirror) {
+      MIRROR_LOG("%s [%p] canonical-init connecting mirror %p", mName, this,
+                 aMirror);
+      MOZ_ASSERT(OwnerThread()->IsCurrentThreadIn());
+      MOZ_ASSERT(OwnerThread()->RequiresTailDispatch(aMirror->OwnerThread()),
+                 "Can't get coherency without tail dispatch");
+      aMirror->ConnectedOnCanonicalThread(this);
+      AddMirror(aMirror);
     }
 
     void AddMirror(AbstractMirror<T>* aMirror) override {
@@ -231,7 +242,6 @@ class Canonical {
     already_AddRefed<nsIRunnable> MakeNotifier(AbstractMirror<T>* aMirror) {
       return NewRunnableMethod<T>("AbstractMirror::UpdateValue", aMirror,
                                   &AbstractMirror<T>::UpdateValue, mValue);
-      ;
     }
 
     T mValue;
@@ -240,9 +250,19 @@ class Canonical {
   };
 
  public:
-  // NB: Because mirror-initiated disconnection can race with canonical-
-  // initiated disconnection, a canonical should never be reinitialized.
-  // Forward control operations to the Impl.
+  /*
+   * Connect this Canonical to aMirror. Note that the canonical value starts
+   * being mirrored to aMirror immediately, and requires one thread hop to
+   * aMirror's owning thread before the connection is established.
+   *
+   * Note that this could race with Mirror::DisconnectIfConnected(). It is up to
+   * the caller to provide the guarantee that disconnection happens after the
+   * connection has been established. There is no race between this and
+   * DisconnectAll().
+   */
+  void ConnectMirror(AbstractMirror<T>* aMirror) {
+    return mImpl->ConnectMirror(aMirror);
+  }
   void DisconnectAll() { return mImpl->DisconnectAll(); }
 
   // Access to the Impl.
@@ -291,6 +311,7 @@ class Mirror {
     // that, we require manual disconnection so that callers can put things in
     // the right place.
     MOZ_DIAGNOSTIC_ASSERT(!mImpl->IsConnected());
+    mImpl->AssertNoIncomingConnects();
   }
 
  private:
@@ -312,7 +333,29 @@ class Mirror {
       return mValue;
     }
 
-    virtual void UpdateValue(const T& aNewValue) override {
+    void ConnectedOnCanonicalThread(AbstractCanonical<T>* aCanonical) override {
+      MOZ_ASSERT(aCanonical->OwnerThread()->IsCurrentThreadIn());
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+      ++mIncomingConnects;
+#endif
+      OwnerThread()->DispatchStateChange(
+          NewRunnableMethod<StoreRefPtrPassByPtr<AbstractCanonical<T>>>(
+              "Mirror::Impl::SetCanonical", this, &Impl::SetCanonical,
+              aCanonical));
+    }
+
+    void SetCanonical(AbstractCanonical<T>* aCanonical) {
+      MIRROR_LOG("%s [%p] Canonical-init setting canonical %p", mName, this,
+                 aCanonical);
+      MOZ_ASSERT(OwnerThread()->IsCurrentThreadIn());
+      MOZ_ASSERT(!IsConnected());
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+      --mIncomingConnects;
+#endif
+      mCanonical = aCanonical;
+    }
+
+    void UpdateValue(const T& aNewValue) override {
       MOZ_ASSERT(OwnerThread()->IsCurrentThreadIn());
       if (mValue != aNewValue) {
         mValue = aNewValue;
@@ -320,7 +363,7 @@ class Mirror {
       }
     }
 
-    virtual void NotifyDisconnected() override {
+    void NotifyDisconnected() override {
       MIRROR_LOG("%s [%p] Notifed of disconnection from %p", mName, this,
                  mCanonical.get());
       MOZ_ASSERT(OwnerThread()->IsCurrentThreadIn());
@@ -344,7 +387,6 @@ class Mirror {
       mCanonical = aCanonical;
     }
 
-   public:
     void DisconnectIfConnected() {
       MOZ_ASSERT(OwnerThread()->IsCurrentThreadIn());
       if (!IsConnected()) {
@@ -361,16 +403,34 @@ class Mirror {
       mCanonical = nullptr;
     }
 
+    void AssertNoIncomingConnects() {
+      MOZ_DIAGNOSTIC_ASSERT(mIncomingConnects == 0);
+    }
+
    protected:
     ~Impl() { MOZ_DIAGNOSTIC_ASSERT(!IsConnected()); }
 
    private:
     T mValue;
     RefPtr<AbstractCanonical<T>> mCanonical;
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    std::atomic<size_t> mIncomingConnects = 0;
+#endif
   };
 
  public:
   // Forward control operations to the Impl<T>.
+  /*
+   * Connect aCanonical to this Mirror. Note that this requires one thread hop
+   * back to aCanonical's owning thread before the canonical value starts
+   * being mirrored, and another to our owning thread before the connection is
+   * established.
+   *
+   * Note that this mirror-initialized connection could race with
+   * Canonical::DisconnectAll(). It is up to the caller to provide the guarantee
+   * that disconnection happens after the connection has been established. There
+   * is no race between this and DisconnectIfConnected().
+   */
   void Connect(AbstractCanonical<T>* aCanonical) { mImpl->Connect(aCanonical); }
   void DisconnectIfConnected() { mImpl->DisconnectIfConnected(); }
 
@@ -386,7 +446,7 @@ class Mirror {
   RefPtr<Impl> mImpl;
 };
 
-#  undef MIRROR_LOG
+#undef MIRROR_LOG
 
 }  // namespace mozilla
 
