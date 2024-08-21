@@ -21,6 +21,8 @@
 
 namespace mozilla::ipc {
 
+class GeckoChildProcessHost;
+
 class NodeController final : public mojo::core::ports::NodeDelegate,
                              public NodeChannel::Listener {
   using NodeName = mojo::core::ports::NodeName;
@@ -90,14 +92,15 @@ class NodeController final : public mojo::core::ports::NodeDelegate,
   // reference to the `NodeChannel` created for the new process. The port can
   // immediately have messages sent to it.
   std::tuple<ScopedPort, RefPtr<NodeChannel>> InviteChildProcess(
-      UniquePtr<IPC::Channel> aChannel);
+      UniquePtr<IPC::Channel> aChannel,
+      GeckoChildProcessHost* aChildProcessHost);
 
   // Called as the IO thread is started in the parent process.
   static void InitBrokerProcess();
 
   // Called as the IO thread is started in a child process.
   static ScopedPort InitChildProcess(UniquePtr<IPC::Channel> aChannel,
-                                     int32_t aParentPid = -1);
+                                     base::ProcessId aParentPid);
 
   // Called when the IO thread is torn down.
   static void CleanUp();
@@ -118,6 +121,11 @@ class NodeController final : public mojo::core::ports::NodeDelegate,
   // Stop communicating with this peer. Must be called on the IO thread.
   void DropPeer(NodeName aNodeName);
 
+  // Ensure that there is a direct connection to a remote node, requesting an
+  // introduction if there is not.
+  // If provided, will optionally send an event to the remote node.
+  void ContactRemotePeer(const NodeName& aNode, UniquePtr<Event> aEvent);
+
   // Message Handlers
   void OnEventMessage(const NodeName& aFromNode,
                       UniquePtr<IPC::Message> aMessage) override;
@@ -135,6 +143,7 @@ class NodeController final : public mojo::core::ports::NodeDelegate,
   void ForwardEvent(const NodeName& aNode, UniquePtr<Event> aEvent) override;
   void BroadcastEvent(UniquePtr<Event> aEvent) override;
   void PortStatusChanged(const PortRef& aPortRef) override;
+  void ObserveRemoteNode(const NodeName& aNode) override;
 
   const NodeName mName;
   const UniquePtr<Node> mNode;

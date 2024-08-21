@@ -12,7 +12,9 @@
 #include "mozilla/UniquePtr.h"
 #include "base/process.h"
 #include "nsExceptionHandler.h"
+#include "nsIFile.h"
 #include "nsThreadUtils.h"
+#include "mozilla/ipc/GeckoChildProcessHost.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 
 namespace mozilla {
@@ -36,8 +38,7 @@ class CrashReporterHost {
 
   // Given an existing minidump for a crashed child process, take ownership of
   // it from IPDL. After this, FinalizeCrashReport may be called.
-  RefPtr<nsIFile> TakeCrashedChildMinidump(base::ProcessId aPid,
-                                           uint32_t* aOutSequence);
+  RefPtr<nsIFile> TakeCrashedChildMinidump(base::ProcessId aPid);
 
   // Replace the stored minidump with a new one. After this,
   // FinalizeCrashReport may be called.
@@ -55,15 +56,19 @@ class CrashReporterHost {
   // GenerateCrashReport does. After this, FinalizeCrashReport may be called.
   //
   // This calls TakeCrashedChildMinidump and FinalizeCrashReport.
-  template <typename Toplevel>
-  bool GenerateMinidumpAndPair(Toplevel* aToplevelProtocol,
+  bool GenerateMinidumpAndPair(GeckoChildProcessHost* aChildProcessHost,
                                const nsACString& aPairName) {
-    ScopedProcessHandle childHandle;
+    auto childHandle = base::kInvalidProcessHandle;
+    const auto cleanup = MakeScopeExit([&]() {
+      if (childHandle && childHandle != base::kInvalidProcessHandle) {
+        base::CloseProcessHandle(childHandle);
+      }
+    });
 #ifdef XP_MACOSX
-    childHandle = aToplevelProtocol->Process()->GetChildTask();
+    childHandle = aChildProcessHost->GetChildTask();
 #else
-    if (!base::OpenPrivilegedProcessHandle(aToplevelProtocol->OtherPid(),
-                                           &childHandle.rwget())) {
+    if (!base::OpenPrivilegedProcessHandle(
+            aChildProcessHost->GetChildProcessId(), &childHandle)) {
       NS_WARNING("Failed to open child process handle.");
       return false;
     }
@@ -79,10 +84,10 @@ class CrashReporterHost {
     return CrashReporter::GetIDFromMinidump(targetDump, mDumpID);
   }
 
-  void AddAnnotation(CrashReporter::Annotation aKey, bool aValue);
-  void AddAnnotation(CrashReporter::Annotation aKey, int aValue);
-  void AddAnnotation(CrashReporter::Annotation aKey, unsigned int aValue);
-  void AddAnnotation(CrashReporter::Annotation aKey, const nsACString& aValue);
+  void AddAnnotationBool(CrashReporter::Annotation aKey, bool aValue);
+  void AddAnnotationU32(CrashReporter::Annotation aKey, uint32_t aValue);
+  void AddAnnotationNSCString(CrashReporter::Annotation aKey,
+                              const nsACString& aValue);
 
   bool HasMinidump() const { return !mDumpID.IsEmpty(); }
   const nsString& MinidumpID() const {

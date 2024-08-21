@@ -12,6 +12,7 @@ include protocol PJSOracle;
 
 #if defined(XP_WIN)
 include protocol PWindowsUtils;
+include protocol PWinFileDialog;
 #endif
 
 #if defined(MOZ_SANDBOX) && defined(MOZ_DEBUG) && defined(ENABLE_TESTS)
@@ -19,6 +20,8 @@ include protocol PSandboxTesting;
 #endif
 
 include "mozilla/ipc/ByteBufUtils.h";
+
+include GraphicsMessages;
 
 using mozilla::dom::NativeThreadId from "mozilla/dom/NativeThreadId.h";
 
@@ -44,7 +47,8 @@ namespace ipc {
 // one instance of this protocol, with the UtilityProcessParent living on the main thread
 // of the main process and the UtilityProcessChild living on the main thread of the Utility
 // process.
-[NeedsOtherPid] protocol PUtilityProcess
+[NeedsOtherPid, ChildProc=Utility]
+protocol PUtilityProcess
 {
 parent:
   async InitCrashReporter(NativeThreadId threadId);
@@ -96,12 +100,13 @@ child:
 
   async TestTelemetryProbes();
 
-  async StartUtilityAudioDecoderService(Endpoint<PUtilityAudioDecoderParent> aEndpoint);
+  async StartUtilityAudioDecoderService(Endpoint<PUtilityAudioDecoderParent> aEndpoint, GfxVarUpdate[] updates);
 
   async StartJSOracleService(Endpoint<PJSOracleChild> aEndpoint);
 
 #if defined(XP_WIN)
   async StartWindowsUtilsService(Endpoint<PWindowsUtilsChild> aEndpoint);
+  async StartWinFileDialogService(Endpoint<PWinFileDialogChild> aEndpoint);
 
   async GetUntrustedModulesData() returns (UntrustedModulesData? data);
 

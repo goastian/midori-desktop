@@ -10,7 +10,6 @@
 #include "base/file_path.h"
 #include "base/process_util.h"
 #include "base/waitable_event.h"
-#include "chrome/common/child_process_host.h"
 #include "chrome/common/ipc_message.h"
 #include "mojo/core/ports/port_ref.h"
 
@@ -33,6 +32,10 @@
 #include "nsExceptionHandler.h"
 #include "nsXULAppAPI.h"  // for GeckoProcessType
 #include "nsString.h"
+
+#if defined(XP_IOS)
+#  include "mozilla/ipc/ExtensionKitUtils.h"
+#endif
 
 #if defined(XP_WIN) && defined(MOZ_SANDBOX)
 #  include "sandboxBroker.h"
@@ -60,7 +63,7 @@ namespace ipc {
 typedef mozilla::MozPromise<base::ProcessHandle, LaunchError, false>
     ProcessHandlePromise;
 
-class GeckoChildProcessHost : public ChildProcessHost,
+class GeckoChildProcessHost : public SupportsWeakPtr,
                               public LinkedListElement<GeckoChildProcessHost> {
  protected:
   typedef mozilla::Monitor Monitor;
@@ -117,23 +120,15 @@ class GeckoChildProcessHost : public ChildProcessHost,
   bool SyncLaunch(StringVector aExtraOpts = StringVector(),
                   int32_t timeoutMs = 0);
 
-  virtual void OnChannelConnected(base::ProcessId peer_pid) override;
-  virtual void OnMessageReceived(UniquePtr<IPC::Message> aMsg) override;
-  virtual void OnChannelError() override;
-  virtual void GetQueuedMessages(
-      std::queue<UniquePtr<IPC::Message>>& queue) override;
+  virtual void OnChannelConnected(base::ProcessId peer_pid);
 
   // Resolves to the process handle when it's available (see
   // LaunchAndWaitForProcessHandle); use with AsyncLaunch.
   RefPtr<ProcessHandlePromise> WhenProcessHandleReady();
 
-  void InitializeChannel(
-      const std::function<void(IPC::Channel*)>& aChannelReady);
+  void InitializeChannel(IPC::Channel::ChannelHandle&& aServerHandle);
 
-  virtual bool CanShutdown() override { return true; }
-
-  IPC::Channel* GetChannel() { return channelp(); }
-  ChannelId GetChannelId() { return channel_id(); }
+  virtual bool CanShutdown() { return true; }
 
   UntypedEndpoint TakeInitialEndpoint() {
     return UntypedEndpoint{PrivateIPDLInterface{}, std::move(mInitialPort),
@@ -160,7 +155,7 @@ class GeckoChildProcessHost : public ChildProcessHost,
 
   GeckoProcessType GetProcessType() { return mProcessType; }
 
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
   task_t GetChildTask();
 #endif
 
@@ -216,7 +211,7 @@ class GeckoChildProcessHost : public ChildProcessHost,
   friend class WindowsProcessLauncher;
 
  protected:
-  ~GeckoChildProcessHost();
+  virtual ~GeckoChildProcessHost();
   GeckoProcessType mProcessType;
   bool mIsFileContent;
   Monitor mMonitor;
@@ -272,8 +267,14 @@ class GeckoChildProcessHost : public ChildProcessHost,
 
   mozilla::RWLock mHandleLock;
   ProcessHandle mChildProcessHandle MOZ_GUARDED_BY(mHandleLock);
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
   task_t mChildTask MOZ_GUARDED_BY(mHandleLock);
+#endif
+#if defined(MOZ_WIDGET_UIKIT)
+  Maybe<ExtensionKitProcess> mExtensionKitProcess MOZ_GUARDED_BY(mHandleLock);
+  DarwinObjectPtr<xpc_connection_t> mXPCConnection MOZ_GUARDED_BY(mHandleLock);
+  UniqueBEProcessCapabilityGrant mForegroundCapabilityGrant
+      MOZ_GUARDED_BY(mHandleLock);
 #endif
   RefPtr<ProcessHandlePromise> mHandlePromise;
 
@@ -303,15 +304,6 @@ class GeckoChildProcessHost : public ChildProcessHost,
 
   // Removes the instance from sGeckoChildProcessHosts
   void RemoveFromProcessList();
-
-  // In between launching the subprocess and handing off its IPC
-  // channel, there's a small window of time in which *we* might still
-  // be the channel listener, and receive messages.  That's bad
-  // because we have no idea what to do with those messages.  So queue
-  // them here until we hand off the eventual listener.
-  //
-  // FIXME/cjones: this strongly indicates bad design.  Shame on us.
-  std::queue<UniquePtr<IPC::Message>> mQueue;
 
   // Linux-Only. Set this up before we're called from a different thread.
   nsCString mTmpDirName;

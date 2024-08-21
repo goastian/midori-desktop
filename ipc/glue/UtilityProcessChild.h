@@ -11,6 +11,9 @@
 #include "mozilla/UniquePtr.h"
 #include "ChildProfilerController.h"
 
+#if defined(MOZ_SANDBOX) && defined(MOZ_DEBUG) && defined(ENABLE_TESTS)
+#  include "mozilla/PSandboxTestingChild.h"
+#endif
 #include "mozilla/PRemoteDecoderManagerParent.h"
 #include "mozilla/ipc/AsyncBlockers.h"
 #include "mozilla/dom/JSOracleChild.h"
@@ -60,7 +63,8 @@ class UtilityProcessChild final : public PUtilityProcessChild {
   mozilla::ipc::IPCResult RecvTestTelemetryProbes();
 
   mozilla::ipc::IPCResult RecvStartUtilityAudioDecoderService(
-      Endpoint<PUtilityAudioDecoderParent>&& aEndpoint);
+      Endpoint<PUtilityAudioDecoderParent>&& aEndpoint,
+      nsTArray<gfx::GfxVarUpdate>&& aUpdates);
 
   mozilla::ipc::IPCResult RecvStartJSOracleService(
       Endpoint<dom::PJSOracleChild>&& aEndpoint);
@@ -68,6 +72,9 @@ class UtilityProcessChild final : public PUtilityProcessChild {
 #if defined(XP_WIN)
   mozilla::ipc::IPCResult RecvStartWindowsUtilsService(
       Endpoint<PWindowsUtilsChild>&& aEndpoint);
+
+  mozilla::ipc::IPCResult RecvStartWinFileDialogService(
+      Endpoint<PWinFileDialogChild>&& aEndpoint);
 
   mozilla::ipc::IPCResult RecvGetUntrustedModulesData(
       GetUntrustedModulesDataResolver&& aResolver);

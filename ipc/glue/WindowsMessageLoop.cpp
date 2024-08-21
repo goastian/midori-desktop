@@ -19,7 +19,7 @@
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/mscom/Utils.h"
-#include "mozilla/PaintTracker.h"
+#include "mozilla/StaticPtr.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/WindowsProcessMitigations.h"
 
@@ -85,12 +85,11 @@ extern UINT sAppShellGeckoMsgId;
 namespace {
 
 const wchar_t kOldWndProcProp[] = L"MozillaIPCOldWndProc";
-const wchar_t k3rdPartyWindowProp[] = L"Mozilla3rdPartyWindow";
 
 // This isn't defined before Windows XP.
 enum { WM_XP_THEMECHANGED = 0x031A };
 
-nsTArray<HWND>* gNeuteredWindows = nullptr;
+static StaticAutoPtr<AutoTArray<HWND, 20>> gNeuteredWindows;
 
 typedef nsTArray<UniquePtr<DeferredMessage>> DeferredMessageArray;
 DeferredMessageArray* gDeferredMessages = nullptr;
@@ -373,13 +372,11 @@ ProcessOrDeferMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
       // This should be safe, and needs to be sync.
 #if defined(ACCESSIBILITY)
     case WM_GETOBJECT: {
-      if (!::GetPropW(hwnd, k3rdPartyWindowProp)) {
-        LONG objId = static_cast<LONG>(lParam);
-        if (objId == OBJID_CLIENT || objId == MOZOBJID_UIAROOT) {
-          WNDPROC oldWndProc = (WNDPROC)GetProp(hwnd, kOldWndProcProp);
-          if (oldWndProc) {
-            return CallWindowProcW(oldWndProc, hwnd, uMsg, wParam, lParam);
-          }
+      LONG objId = static_cast<LONG>(lParam);
+      if (objId == OBJID_CLIENT || objId == MOZOBJID_UIAROOT) {
+        WNDPROC oldWndProc = (WNDPROC)GetProp(hwnd, kOldWndProcProp);
+        if (oldWndProc) {
+          return CallWindowProcW(oldWndProc, hwnd, uMsg, wParam, lParam);
         }
       }
       return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -461,13 +458,6 @@ static bool WindowIsDeferredWindow(HWND hWnd) {
     return true;
   }
 
-  // Plugin windows that can trigger ipc calls in child:
-  // 'ShockwaveFlashFullScreen' - flash fullscreen window
-  if (className.EqualsLiteral("ShockwaveFlashFullScreen")) {
-    SetPropW(hWnd, k3rdPartyWindowProp, (HANDLE)1);
-    return true;
-  }
-
   return false;
 }
 
@@ -502,7 +492,6 @@ bool NeuterWindowProcedure(HWND hWnd) {
     NS_WARNING("SetProp failed!");
     SetWindowLongPtr(hWnd, GWLP_WNDPROC, currentWndProc);
     RemovePropW(hWnd, kOldWndProcProp);
-    RemovePropW(hWnd, k3rdPartyWindowProp);
     return false;
   }
 
@@ -523,7 +512,6 @@ void RestoreWindowProcedure(HWND hWnd) {
                  "This should never be switched out from under us!");
   }
   RemovePropW(hWnd, kOldWndProcProp);
-  RemovePropW(hWnd, k3rdPartyWindowProp);
 }
 
 LRESULT CALLBACK CallWindowProcedureHook(int nCode, WPARAM wParam,
@@ -629,7 +617,6 @@ void InitUIThread() {
 }  // namespace ipc
 }  // namespace mozilla
 
-// See SpinInternalEventLoop below
 MessageChannel::SyncStackFrame::SyncStackFrame(MessageChannel* channel)
     : mSpinNestedEvents(false),
       mListenerNotified(false),
@@ -648,7 +635,6 @@ MessageChannel::SyncStackFrame::SyncStackFrame(MessageChannel* channel)
   if (!mStaticPrev) {
     NS_ASSERTION(!gNeuteredWindows, "Should only set this once!");
     gNeuteredWindows = new AutoTArray<HWND, 20>();
-    NS_ASSERTION(gNeuteredWindows, "Out of memory!");
   }
 }
 
@@ -667,7 +653,6 @@ MessageChannel::SyncStackFrame::~SyncStackFrame() {
 
   if (!mStaticPrev) {
     NS_ASSERTION(gNeuteredWindows, "Bad pointer!");
-    delete gNeuteredWindows;
     gNeuteredWindows = nullptr;
   }
 }
@@ -700,65 +685,6 @@ void MessageChannel::ProcessNativeEventsInInterruptCall() {
   }
 
   mTopFrame->mSpinNestedEvents = true;
-}
-
-// Spin loop is called in place of WaitFor*Notify when modal ui is being shown
-// in a child. There are some intricacies in using it however. Spin loop is
-// enabled for a particular Interrupt frame by the client calling
-// MessageChannel::ProcessNativeEventsInInterrupt().
-// This call can be nested for multiple Interrupt frames in a single plugin or
-// multiple unrelated plugins.
-void MessageChannel::SpinInternalEventLoop() {
-  if (mozilla::PaintTracker::IsPainting()) {
-    MOZ_CRASH("Don't spin an event loop while painting.");
-  }
-
-  NS_ASSERTION(mTopFrame && mTopFrame->mSpinNestedEvents,
-               "Spinning incorrectly");
-
-  // Nested windows event loop we trigger when the child enters into modal
-  // event loops.
-
-  // Note, when we return, we always reset the notify worker event. So there's
-  // no need to reset it on return here.
-
-  do {
-    MSG msg = {0};
-
-    // Don't get wrapped up in here if the child connection dies.
-    {
-      MonitorAutoLock lock(*mMonitor);
-      if (!Connected()) {
-        return;
-      }
-    }
-
-    // Retrieve window or thread messages
-    if (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-      // The child UI should have been destroyed before the app is closed, in
-      // which case, we should never get this here.
-      if (msg.message == WM_QUIT) {
-        NS_ERROR("WM_QUIT received in SpinInternalEventLoop!");
-      } else {
-        TranslateMessage(&msg);
-        ::DispatchMessageW(&msg);
-        return;
-      }
-    }
-
-    // Note, give dispatching windows events priority over checking if
-    // mEvent is signaled, otherwise heavy ipc traffic can cause jittery
-    // playback of video. We'll exit out on each disaptch above, so ipc
-    // won't get starved.
-
-    // Wait for UI events or a signal from the io thread.
-    DWORD result =
-        MsgWaitForMultipleObjects(1, &mEvent, FALSE, INFINITE, QS_ALLINPUT);
-    if (result == WAIT_OBJECT_0) {
-      // Our NotifyWorkerThread event was signaled
-      return;
-    }
-  } while (true);
 }
 
 static HHOOK gWindowHook;

@@ -29,11 +29,15 @@ enum SandboxingKind : uint64_t {
 #endif
 #ifdef XP_WIN
   WINDOWS_UTILS,
+  WINDOWS_FILE_DIALOG,
 #endif
 
   COUNT,
 
 };
+
+bool IsUtilitySandboxEnabled(const char* envVar, SandboxingKind aKind);
+bool IsUtilitySandboxEnabled(SandboxingKind aKind);
 
 }  // namespace ipc
 

@@ -6,8 +6,6 @@
 
 #include "base/string_util.h"
 
-#include "build/build_config.h"
-
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
@@ -45,9 +43,9 @@ struct ToUnsigned<signed char> {
 };
 template <>
 struct ToUnsigned<wchar_t> {
-#if defined(WCHAR_T_IS_UTF16)
+#if defined(XP_WIN)
   typedef unsigned short Unsigned;
-#elif defined(WCHAR_T_IS_UTF32)
+#else
   typedef uint32_t Unsigned;
 #endif
 };
@@ -113,9 +111,9 @@ class String16ToLongTraits {
   static const int kBase = 10;
   static inline value_type convert_func(const string_type::value_type* str,
                                         string_type::value_type** endptr) {
-#if defined(WCHAR_T_IS_UTF16)
+#if defined(XP_WIN)
     return wcstol(str, endptr, kBase);
-#elif defined(WCHAR_T_IS_UTF32)
+#else
     std::string ascii_string = UTF16ToASCII(string16(str));
     char* ascii_end = NULL;
     value_type ret = strtol(ascii_string.c_str(), &ascii_end, kBase);
@@ -138,9 +136,9 @@ class StringToInt64Traits {
   static const int kBase = 10;
   static inline value_type convert_func(const string_type::value_type* str,
                                         string_type::value_type** endptr) {
-#ifdef OS_WIN
+#ifdef XP_WIN
     return _strtoi64(str, endptr, kBase);
-#else  // assume OS_POSIX
+#else  // assume XP_UNIX
     return strtoll(str, endptr, kBase);
 #endif
   }
@@ -156,9 +154,9 @@ class String16ToInt64Traits {
   static const int kBase = 10;
   static inline value_type convert_func(const string_type::value_type* str,
                                         string_type::value_type** endptr) {
-#ifdef OS_WIN
+#ifdef XP_WIN
     return _wcstoi64(str, endptr, kBase);
-#else  // assume OS_POSIX
+#else  // assume XP_UNIX
     std::string ascii_string = UTF16ToASCII(string16(str));
     char* ascii_end = NULL;
     value_type ret = strtoll(ascii_string.c_str(), &ascii_end, kBase);
@@ -319,7 +317,7 @@ static bool DoIsStringASCII(const STR& str) {
 
 bool IsStringASCII(const std::wstring& str) { return DoIsStringASCII(str); }
 
-#if !defined(WCHAR_T_IS_UTF16)
+#if !defined(XP_WIN)
 bool IsStringASCII(const string16& str) { return DoIsStringASCII(str); }
 #endif
 
@@ -355,7 +353,7 @@ static void StringAppendVT(StringType* dst,
   va_list backup_ap;
   base_va_copy(backup_ap, ap);
 
-#if !defined(OS_WIN)
+#if !defined(XP_WIN)
   errno = 0;
 #endif
   int result = vsnprintfT(stack_buf, arraysize(stack_buf), format, backup_ap);
@@ -371,7 +369,7 @@ static void StringAppendVT(StringType* dst,
   int mem_length = arraysize(stack_buf);
   while (true) {
     if (result < 0) {
-#if !defined(OS_WIN)
+#if !defined(XP_WIN)
       // On Windows, vsnprintfT always returns the number of characters in a
       // fully-formatted string, so if we reach this point, something else is
       // wrong and no amount of buffer-doubling is going to fix it.
@@ -623,7 +621,7 @@ void SplitString(const std::string& str, char s, std::vector<std::string>* r) {
 
 // XXX Sigh.
 
-#if !defined(ARCH_CPU_64_BITS)
+#if !defined(HAVE_64BIT_BUILD)
 bool StringToInt(const std::string& input, int* output) {
   COMPILE_ASSERT(sizeof(int) == sizeof(long), cannot_strtol_to_int);
   return StringToNumber<StringToLongTraits>(input,
@@ -656,7 +654,7 @@ bool StringToInt(const string16& input, int* output) {
   *output = static_cast<int>(tmp);
   return true;
 }
-#endif  //  !defined(ARCH_CPU_64_BITS)
+#endif  //  !defined(HAVE_64BIT_BUILD)
 
 bool StringToInt64(const std::string& input, int64_t* output) {
   return StringToNumber<StringToInt64Traits>(input, output);

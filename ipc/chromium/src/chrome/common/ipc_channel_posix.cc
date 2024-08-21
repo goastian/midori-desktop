@@ -10,13 +10,13 @@
 #include <fcntl.h>
 #include <limits.h>
 #include "mozilla/Mutex.h"
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
 #  include <mach/message.h>
 #  include <mach/port.h>
 #  include "mozilla/UniquePtrExtensions.h"
 #  include "chrome/common/mach_ipc_mac.h"
 #endif
-#if defined(OS_MACOSX) || defined(OS_NETBSD)
+#if defined(XP_DARWIN) || defined(XP_NETBSD)
 #  include <sched.h>
 #endif
 #include <stddef.h>
@@ -33,6 +33,7 @@
 #include "base/command_line.h"
 #include "base/eintr_wrapper.h"
 #include "base/logging.h"
+#include "base/process.h"
 #include "base/process_util.h"
 #include "base/string_util.h"
 #include "chrome/common/chrome_switches.h"
@@ -83,8 +84,8 @@ namespace {
 // This is the file descriptor number that a client process expects to find its
 // IPC socket.
 static int gClientChannelFd =
-#if defined(MOZ_WIDGET_ANDROID)
-    // On android the fd is set at the time of child creation.
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+    // On android/ios the fd is set at the time of child creation.
     -1
 #else
     3
@@ -134,31 +135,18 @@ static inline ssize_t corrected_sendmsg(int socket,
 }  // namespace
 //------------------------------------------------------------------------------
 
-#if defined(MOZ_WIDGET_ANDROID)
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
 void Channel::SetClientChannelFd(int fd) { gClientChannelFd = fd; }
-#endif  // defined(MOZ_WIDGET_ANDROID)
+#endif  // defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
 
-Channel::ChannelImpl::ChannelImpl(const ChannelId& channel_id, Mode mode,
-                                  Listener* listener)
-    : chan_cap_("ChannelImpl::SendMutex",
-                MessageLoopForIO::current()->SerialEventTarget()) {
-  Init(mode, listener);
-
-  if (!CreatePipe(mode)) {
-    CHROMIUM_LOG(WARNING) << "Unable to create pipe in "
-                          << (mode == MODE_SERVER ? "server" : "client")
-                          << " mode error(" << strerror(errno) << ").";
-    return;
-  }
-
-  EnqueueHelloMessage();
-}
+int Channel::GetClientChannelHandle() { return gClientChannelFd; }
 
 Channel::ChannelImpl::ChannelImpl(ChannelHandle pipe, Mode mode,
-                                  Listener* listener)
+                                  base::ProcessId other_pid)
     : chan_cap_("ChannelImpl::SendMutex",
-                MessageLoopForIO::current()->SerialEventTarget()) {
-  Init(mode, listener);
+                MessageLoopForIO::current()->SerialEventTarget()),
+      other_pid_(other_pid) {
+  Init(mode);
   SetPipe(pipe.release());
 
   EnqueueHelloMessage();
@@ -190,7 +178,7 @@ bool Channel::ChannelImpl::PipeBufHasSpaceAfter(size_t already_written) {
          static_cast<size_t>(pipe_buf_len_) > already_written;
 }
 
-void Channel::ChannelImpl::Init(Mode mode, Listener* listener) {
+void Channel::ChannelImpl::Init(Mode mode) {
   // Verify that we fit in a "quantum-spaced" jemalloc bucket.
   static_assert(sizeof(*this) <= 512, "Exceeded expected size class");
 
@@ -207,36 +195,11 @@ void Channel::ChannelImpl::Init(Mode mode, Listener* listener) {
   input_buf_ = mozilla::MakeUnique<char[]>(Channel::kReadBufferSize);
   input_cmsg_buf_ = mozilla::MakeUnique<char[]>(kControlBufferSize);
   SetPipe(-1);
-  client_pipe_ = -1;
-  listener_ = listener;
   waiting_connect_ = true;
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
   last_pending_fd_id_ = 0;
   other_task_ = nullptr;
 #endif
-}
-
-bool Channel::ChannelImpl::CreatePipe(Mode mode) {
-  chan_cap_.NoteExclusiveAccess();
-
-  DCHECK(pipe_ == -1);
-
-  if (mode == MODE_SERVER) {
-    ChannelHandle server, client;
-    if (!Channel::CreateRawPipe(&server, &client)) {
-      return false;
-    }
-
-    SetPipe(server.release());
-    client_pipe_ = client.release();
-  } else {
-    static mozilla::Atomic<bool> consumed(false);
-    CHECK(!consumed.exchange(true))
-    << "child process main channel can be created only once";
-    SetPipe(gClientChannelFd);
-  }
-
-  return true;
 }
 
 bool Channel::ChannelImpl::EnqueueHelloMessage() {
@@ -251,20 +214,25 @@ bool Channel::ChannelImpl::EnqueueHelloMessage() {
   return true;
 }
 
-bool Channel::ChannelImpl::Connect() {
+bool Channel::ChannelImpl::Connect(Listener* listener) {
   IOThread().AssertOnCurrentThread();
   mozilla::MutexAutoLock lock(SendMutex());
-  return ConnectLocked();
-}
-
-bool Channel::ChannelImpl::ConnectLocked() {
   chan_cap_.NoteExclusiveAccess();
 
   if (pipe_ == -1) {
     return false;
   }
 
-#if defined(OS_MACOSX)
+  listener_ = listener;
+
+  return ContinueConnect();
+}
+
+bool Channel::ChannelImpl::ContinueConnect() {
+  chan_cap_.NoteExclusiveAccess();
+  MOZ_ASSERT(pipe_ != -1);
+
+#if defined(XP_DARWIN)
   // If we're still waiting for our peer task to be provided, don't start
   // listening yet. We'll start receiving messages once the task_t is set.
   if (accept_mach_ports_ && privileged_ && !other_task_) {
@@ -278,6 +246,16 @@ bool Channel::ChannelImpl::ConnectLocked() {
   waiting_connect_ = false;
 
   return ProcessOutgoingMessages();
+}
+
+void Channel::ChannelImpl::SetOtherPid(base::ProcessId other_pid) {
+  IOThread().AssertOnCurrentThread();
+  mozilla::MutexAutoLock lock(SendMutex());
+  chan_cap_.NoteExclusiveAccess();
+  MOZ_RELEASE_ASSERT(
+      other_pid_ == base::kInvalidProcessId || other_pid_ == other_pid,
+      "Multiple sources of SetOtherPid disagree!");
+  other_pid_ = other_pid;
 }
 
 bool Channel::ChannelImpl::ProcessIncomingMessages() {
@@ -498,7 +476,7 @@ bool Channel::ChannelImpl::ProcessIncomingMessages() {
           return false;
         }
 
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
         // Send a message to the other side, indicating that we are now
         // responsible for closing the descriptor.
         auto fdAck = mozilla::MakeUnique<Message>(MSG_ROUTING_NONE,
@@ -536,7 +514,7 @@ bool Channel::ChannelImpl::ProcessIncomingMessages() {
         int32_t other_pid = MessageIterator(m).NextInt();
         SetOtherPid(other_pid);
         listener_->OnChannelConnected(other_pid);
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
       } else if (m.routing_id() == MSG_ROUTING_NONE &&
                  m.type() == RECEIVED_FDS_MESSAGE_TYPE) {
         DCHECK(m.fd_cookie() != 0);
@@ -544,7 +522,7 @@ bool Channel::ChannelImpl::ProcessIncomingMessages() {
 #endif
       } else {
         mozilla::LogIPCMessage::Run run(&m);
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
         if (!AcceptMachPorts(m)) {
           return false;
         }
@@ -590,7 +568,7 @@ bool Channel::ChannelImpl::ProcessOutgoingMessages() {
     char cmsgBuf[kControlBufferSize];
 
     if (partial_write_.isNothing()) {
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
       if (!TransferMachPorts(*msg)) {
         return false;
       }
@@ -605,7 +583,7 @@ bool Channel::ChannelImpl::ProcessOutgoingMessages() {
       }
 
       msg->header()->num_handles = msg->attached_handles_.Length();
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
       if (!msg->attached_handles_.IsEmpty()) {
         msg->set_fd_cookie(++last_pending_fd_id_);
       }
@@ -692,7 +670,7 @@ bool Channel::ChannelImpl::ProcessOutgoingMessages() {
           // Not an error; the sendmsg would have blocked, so return to the
           // event loop and try again later.
           break;
-#if defined(OS_MACOSX) || defined(OS_NETBSD)
+#if defined(XP_DARWIN) || defined(XP_NETBSD)
           // (Note: this comment is copied from https://crrev.com/86c3d9ef4fdf6;
           // see also bug 1142693 comment #73.)
           //
@@ -763,7 +741,7 @@ bool Channel::ChannelImpl::ProcessOutgoingMessages() {
                  "not all handles were sent");
       partial_write_.reset();
 
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
       if (!msg->attached_handles_.IsEmpty()) {
         pending_fds_.push_back(PendingDescriptors{
             msg->fd_cookie(), std::move(msg->attached_handles_)});
@@ -825,22 +803,6 @@ bool Channel::ChannelImpl::Send(mozilla::UniquePtr<Message> message) {
   return true;
 }
 
-void Channel::ChannelImpl::GetClientFileDescriptorMapping(int* src_fd,
-                                                          int* dest_fd) const {
-  IOThread().AssertOnCurrentThread();
-  DCHECK(mode_ == MODE_SERVER);
-  *src_fd = client_pipe_;
-  *dest_fd = gClientChannelFd;
-}
-
-void Channel::ChannelImpl::CloseClientFileDescriptor() {
-  IOThread().AssertOnCurrentThread();
-  if (client_pipe_ != -1) {
-    IGNORE_EINTR(close(client_pipe_));
-    client_pipe_ = -1;
-  }
-}
-
 // Called by libevent when we can read from th pipe without blocking.
 void Channel::ChannelImpl::OnFileCanReadWithoutBlocking(int fd) {
   IOThread().AssertOnCurrentThread();
@@ -856,7 +818,7 @@ void Channel::ChannelImpl::OnFileCanReadWithoutBlocking(int fd) {
   }
 }
 
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
 void Channel::ChannelImpl::CloseDescriptors(uint32_t pending_fd_id) {
   mozilla::MutexAutoLock lock(SendMutex());
   chan_cap_.NoteExclusiveAccess();
@@ -922,10 +884,6 @@ void Channel::ChannelImpl::CloseLocked() {
     IGNORE_EINTR(close(pipe_));
     SetPipe(-1);
   }
-  if (client_pipe_ != -1) {
-    IGNORE_EINTR(close(client_pipe_));
-    client_pipe_ = -1;
-  }
 
   while (!output_queue_.IsEmpty()) {
     OutputQueuePop();
@@ -938,14 +896,14 @@ void Channel::ChannelImpl::CloseLocked() {
   }
   input_overflow_fds_.clear();
 
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
   pending_fds_.clear();
 
   other_task_ = nullptr;
 #endif
 }
 
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
 void Channel::ChannelImpl::SetOtherMachTask(task_t task) {
   IOThread().AssertOnCurrentThread();
   mozilla::MutexAutoLock lock(SendMutex());
@@ -958,7 +916,7 @@ void Channel::ChannelImpl::SetOtherMachTask(task_t task) {
   MOZ_ASSERT(accept_mach_ports_ && privileged_ && waiting_connect_);
   other_task_ = mozilla::RetainMachSendRight(task);
   // Now that `other_task_` is provided, we can continue connecting.
-  ConnectLocked();
+  ContinueConnect();
 }
 
 void Channel::ChannelImpl::StartAcceptingMachPorts(Mode mode) {
@@ -1218,43 +1176,30 @@ bool Channel::ChannelImpl::TransferMachPorts(Message& msg) {
 
 //------------------------------------------------------------------------------
 // Channel's methods simply call through to ChannelImpl.
-Channel::Channel(const ChannelId& channel_id, Mode mode, Listener* listener)
-    : channel_impl_(new ChannelImpl(channel_id, mode, listener)) {
-  MOZ_COUNT_CTOR(IPC::Channel);
-}
-
-Channel::Channel(ChannelHandle pipe, Mode mode, Listener* listener)
-    : channel_impl_(new ChannelImpl(std::move(pipe), mode, listener)) {
+Channel::Channel(ChannelHandle pipe, Mode mode, base::ProcessId other_pid)
+    : channel_impl_(new ChannelImpl(std::move(pipe), mode, other_pid)) {
   MOZ_COUNT_CTOR(IPC::Channel);
 }
 
 Channel::~Channel() { MOZ_COUNT_DTOR(IPC::Channel); }
 
-bool Channel::Connect() { return channel_impl_->Connect(); }
+bool Channel::Connect(Listener* listener) {
+  return channel_impl_->Connect(listener);
+}
 
 void Channel::Close() { channel_impl_->Close(); }
-
-Channel::Listener* Channel::set_listener(Listener* listener) {
-  return channel_impl_->set_listener(listener);
-}
 
 bool Channel::Send(mozilla::UniquePtr<Message> message) {
   return channel_impl_->Send(std::move(message));
 }
 
-void Channel::GetClientFileDescriptorMapping(int* src_fd, int* dest_fd) const {
-  return channel_impl_->GetClientFileDescriptorMapping(src_fd, dest_fd);
+void Channel::SetOtherPid(base::ProcessId other_pid) {
+  channel_impl_->SetOtherPid(other_pid);
 }
-
-void Channel::CloseClientFileDescriptor() {
-  channel_impl_->CloseClientFileDescriptor();
-}
-
-int32_t Channel::OtherPid() const { return channel_impl_->OtherPid(); }
 
 bool Channel::IsClosed() const { return channel_impl_->IsClosed(); }
 
-#if defined(OS_MACOSX)
+#if defined(XP_DARWIN)
 void Channel::SetOtherMachTask(task_t task) {
   channel_impl_->SetOtherMachTask(task);
 }
@@ -1263,12 +1208,6 @@ void Channel::StartAcceptingMachPorts(Mode mode) {
   channel_impl_->StartAcceptingMachPorts(mode);
 }
 #endif
-
-// static
-Channel::ChannelId Channel::GenerateVerifiedChannelID() { return {}; }
-
-// static
-Channel::ChannelId Channel::ChannelIDForCurrentProcess() { return {}; }
 
 // static
 bool Channel::CreateRawPipe(ChannelHandle* server, ChannelHandle* client) {

@@ -8,12 +8,16 @@ import sys
 
 from ipdl.ast import CxxInclude, Decl, Loc, QualifiedId, StructDecl
 from ipdl.ast import UnionDecl, UsingStmt, Visitor, StringLiteral
-from ipdl.ast import ASYNC, SYNC, INTR
+from ipdl.ast import ASYNC, SYNC
 from ipdl.ast import IN, OUT, INOUT
 from ipdl.ast import NOT_NESTED, INSIDE_SYNC_NESTED, INSIDE_CPOW_NESTED
 from ipdl.ast import priorityList
 import ipdl.builtin as builtin
 from ipdl.util import hash_str
+
+# Used to get the list of Gecko process types
+# xpcom/geckoprocesstypes_generator/geckoprocesstypes/__init__.py
+import geckoprocesstypes
 
 _DELETE_MSG = "__delete__"
 
@@ -296,9 +300,6 @@ class SendSemanticsType(IPDLType):
     def isSync(self):
         return self.sendSemantics == SYNC
 
-    def isInterrupt(self):
-        return self.sendSemantics is INTR
-
     def sendSemanticsSatisfiedBy(self, greater):
         def _unwrap(nr):
             if isinstance(nr, dict):
@@ -318,16 +319,9 @@ class SendSemanticsType(IPDLType):
         if lnr0 < gnr0 or lnr1 > gnr1:
             return False
 
-        # Protocols that use intr semantics are not allowed to use
-        # message nesting.
-        if greater.isInterrupt() and lesser.nestedRange != (NOT_NESTED, NOT_NESTED):
-            return False
-
         if lesser.isAsync():
             return True
         elif lesser.isSync() and not greater.isAsync():
-            return True
-        elif greater.isInterrupt():
             return True
 
         return False
@@ -387,7 +381,7 @@ class MessageType(SendSemanticsType):
         return self.direction is INOUT
 
     def hasReply(self):
-        return len(self.returns) or self.isSync() or self.isInterrupt()
+        return len(self.returns) or self.isSync()
 
     def hasImplicitActorParam(self):
         return self.isCtor()
@@ -981,6 +975,13 @@ class GatherDecls(TcheckVisitor):
 
             p = tu.protocol
 
+            proc_options = [
+                "any",
+                "anychild",  # non-Parent process
+                "anydom",  # Parent or Content process
+                "compositor",  # Parent or GPU process
+            ] + [p.proc_typename for p in geckoprocesstypes.process_types]
+
             self.checkAttributes(
                 p.attributes,
                 {
@@ -989,6 +990,8 @@ class GatherDecls(TcheckVisitor):
                     "NeedsOtherPid": None,
                     "ChildImpl": ("virtual", StringLiteral),
                     "ParentImpl": ("virtual", StringLiteral),
+                    "ChildProc": proc_options,
+                    "ParentProc": proc_options,
                 },
             )
 
@@ -1258,9 +1261,6 @@ class GatherDecls(TcheckVisitor):
             managed.manager = p
             managed.accept(self)
 
-        if not (p.managers or p.messageDecls or p.managesStmts):
-            self.error(p.loc, "top-level protocol `%s' cannot be empty", p.name)
-
         setattr(self, "currentProtocolDecl", p.decl)
         for msg in p.messageDecls:
             msg.accept(self)
@@ -1278,8 +1278,15 @@ class GatherDecls(TcheckVisitor):
         if not p.decl.type.isToplevel() and p.decl.type.needsotherpid:
             self.error(p.loc, "[NeedsOtherPid] only applies to toplevel protocols")
 
-        if p.decl.type.isToplevel() and not p.decl.type.isRefcounted():
-            self.error(p.loc, "Toplevel protocols cannot be [ManualDealloc]")
+        if p.decl.type.isToplevel():
+            if not p.decl.type.isRefcounted():
+                self.error(p.loc, "Toplevel protocols cannot be [ManualDealloc]")
+
+            if "ChildProc" not in p.attributes:
+                self.error(p.loc, "Toplevel protocols must specify [ChildProc]")
+
+        if p.decl.type.isManager() and not p.decl.type.isRefcounted():
+            self.error(p.loc, "[ManualDealloc] protocols cannot be managers")
 
         # FIXME/cjones declare all the little C++ thingies that will
         # be generated.  they're not relevant to IPDL itself, but
@@ -1355,24 +1362,10 @@ class GatherDecls(TcheckVisitor):
                 "Priority": priorityList,
                 "ReplyPriority": priorityList,
                 "Nested": ("not", "inside_sync", "inside_cpow"),
-                "LegacyIntr": None,
                 "VirtualSendImpl": None,
                 "LazySend": None,
             },
         )
-
-        if md.sendSemantics is INTR and "LegacyIntr" not in md.attributes:
-            self.error(
-                loc,
-                "intr message `%s' allowed only with [LegacyIntr]; DO NOT USE IN SHIPPING CODE",
-                msgname,
-            )
-
-        if md.sendSemantics is INTR and "Priority" in md.attributes:
-            self.error(loc, "intr message `%s' cannot specify [Priority]", msgname)
-
-        if md.sendSemantics is INTR and "Nested" in md.attributes:
-            self.error(loc, "intr message `%s' cannot specify [Nested]", msgname)
 
         if md.sendSemantics is not ASYNC and "LazySend" in md.attributes:
             self.error(loc, "non-async message `%s' cannot specify [LazySend]", msgname)
@@ -1407,6 +1400,10 @@ class GatherDecls(TcheckVisitor):
             # if we error here, no big deal; move on to find more
 
         if _DELETE_MSG == msgname:
+            if md.sendSemantics is not ASYNC:
+                self.error(loc, "destructor must be async")
+            if md.outParams:
+                self.error(loc, "destructors cannot return values")
             isdtor = True
             cdtype = self.currentProtocolDecl.type
 
@@ -1610,11 +1607,6 @@ class CheckTypes(TcheckVisitor):
                     mgrtype.name(),
                 )
 
-        if ptype.isInterrupt() and ptype.nestedRange != (NOT_NESTED, NOT_NESTED):
-            self.error(
-                p.decl.loc, "intr protocol `%s' cannot specify [NestedUpTo]", p.name
-            )
-
         if ptype.isToplevel():
             cycles = checkcycles(p.decl.type)
             if cycles:
@@ -1724,7 +1716,6 @@ class CheckTypes(TcheckVisitor):
             )
 
         if mtype.compress and (not mtype.isAsync() or mtype.isCtor() or mtype.isDtor()):
-
             if mtype.isCtor() or mtype.isDtor():
                 message_type = "constructor" if mtype.isCtor() else "destructor"
                 error_message = (

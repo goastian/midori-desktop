@@ -10,6 +10,7 @@
 #include "chrome/common/ipc_message.h"
 #include "mojo/core/ports/name.h"
 #include "mojo/core/ports/node.h"
+#include "mojo/core/ports/port_locker.h"
 #include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/RandomNum.h"
 #include "mozilla/StaticPtr.h"
@@ -306,67 +307,78 @@ void NodeController::DropPeer(NodeName aNodeName) {
   mNode->LostConnectionToNode(aNodeName);
 }
 
-void NodeController::ForwardEvent(const NodeName& aNode,
-                                  UniquePtr<Event> aEvent) {
-  if (aNode == mName) {
-    (void)mNode->AcceptEvent(std::move(aEvent));
-  } else {
-    // On Windows and macOS, messages holding HANDLEs or mach ports must be
-    // relayed via the broker process so it can transfer ownership.
-    bool needsRelay = false;
-#if defined(XP_WIN) || defined(XP_MACOSX)
-    if (!IsBroker() && aNode != kBrokerNodeName &&
-        aEvent->type() == Event::kUserMessage) {
-      auto* userEvent = static_cast<UserMessageEvent*>(aEvent.get());
-      needsRelay =
-          userEvent->HasMessage() &&
-          userEvent->GetMessage<IPC::Message>()->num_relayed_attachments() > 0;
-    }
+void NodeController::ContactRemotePeer(const NodeName& aNode,
+                                       UniquePtr<Event> aEvent) {
+  // On Windows and macOS, messages holding HANDLEs or mach ports must be
+  // relayed via the broker process so it can transfer ownership.
+  bool needsRelay = false;
+#if defined(XP_WIN) || defined(XP_DARWIN)
+  if (aEvent && !IsBroker() && aNode != kBrokerNodeName &&
+      aEvent->type() == Event::kUserMessage) {
+    auto* userEvent = static_cast<UserMessageEvent*>(aEvent.get());
+    needsRelay =
+        userEvent->HasMessage() &&
+        userEvent->GetMessage<IPC::Message>()->num_relayed_attachments() > 0;
+  }
 #endif
 
-    UniquePtr<IPC::Message> message =
+  UniquePtr<IPC::Message> message;
+  if (aEvent) {
+    message =
         SerializeEventMessage(std::move(aEvent), needsRelay ? &aNode : nullptr);
     MOZ_ASSERT(message->is_relay() == needsRelay,
                "Message relay status set incorrectly");
+  }
 
-    RefPtr<NodeChannel> peer;
-    RefPtr<NodeChannel> broker;
-    bool needsIntroduction = false;
-    {
-      auto state = mState.Lock();
+  RefPtr<NodeChannel> peer;
+  RefPtr<NodeChannel> broker;
+  bool needsIntroduction = false;
+  bool needsBroker = needsRelay;
+  {
+    auto state = mState.Lock();
 
-      // Check if we know this peer. If we don't, we'll need to request an
-      // introduction.
-      peer = state->mPeers.Get(aNode);
-      if (!peer || needsRelay) {
-        if (IsBroker()) {
-          NODECONTROLLER_WARNING("Ignoring message '%s' to unknown peer %s",
-                                 message->name(), ToString(aNode).c_str());
-          return;
-        }
-
-        broker = state->mPeers.Get(kBrokerNodeName);
-        if (!broker) {
-          NODECONTROLLER_WARNING(
-              "Ignoring message '%s' to peer %s due to a missing broker",
-              message->name(), ToString(aNode).c_str());
-          return;
-        }
-
-        if (!needsRelay) {
-          auto& queue =
-              state->mPendingMessages.LookupOrInsertWith(aNode, [&]() {
-                needsIntroduction = true;
-                return Queue<UniquePtr<IPC::Message>, 64>{};
-              });
-          queue.Push(std::move(message));
-        }
+    // Check if we know this peer. If we don't, we'll need to request an
+    // introduction.
+    peer = state->mPeers.Get(aNode);
+    if (!peer) {
+      // We don't know the peer, check if we've already requested an
+      // introduction, or if we need to request a new one.
+      auto& queue = state->mPendingMessages.LookupOrInsertWith(aNode, [&]() {
+        needsIntroduction = true;
+        needsBroker = true;
+        return Queue<UniquePtr<IPC::Message>, 64>{};
+      });
+      // If we aren't relaying, queue up the message to be sent.
+      if (message && !needsRelay) {
+        queue.Push(std::move(message));
       }
     }
 
-    MOZ_ASSERT(!needsIntroduction || !needsRelay,
-               "Only one of the two should ever be set");
+    if (needsBroker && !IsBroker()) {
+      broker = state->mPeers.Get(kBrokerNodeName);
+    }
+  }
 
+  if (needsBroker && !broker) {
+    NODECONTROLLER_WARNING(
+        "Dropping message '%s'; no connection to unknown peer %s",
+        message ? message->name() : "<null>", ToString(aNode).c_str());
+    if (needsIntroduction) {
+      // We have no broker and will never be able to be introduced to this node.
+      // Queue a task to clean up any ports connected to it.
+      XRE_GetIOMessageLoop()->PostTask(NewRunnableMethod<NodeName>(
+          "NodeController::DropPeer", this, &NodeController::DropPeer, aNode));
+    }
+    return;
+  }
+
+  if (needsIntroduction) {
+    NODECONTROLLER_LOG(LogLevel::Info, "Requesting introduction to peer %s",
+                       ToString(aNode).c_str());
+    broker->RequestIntroduction(aNode);
+  }
+
+  if (message) {
     if (needsRelay) {
       NODECONTROLLER_LOG(LogLevel::Info,
                          "Relaying message '%s' for peer %s due to %" PRIu32
@@ -375,12 +387,19 @@ void NodeController::ForwardEvent(const NodeName& aNode,
                          message->num_relayed_attachments());
       MOZ_ASSERT(message->num_relayed_attachments() > 0 && broker);
       broker->SendEventMessage(std::move(message));
-    } else if (needsIntroduction) {
-      MOZ_ASSERT(broker);
-      broker->RequestIntroduction(aNode);
     } else if (peer) {
       peer->SendEventMessage(std::move(message));
     }
+  }
+}
+
+void NodeController::ForwardEvent(const NodeName& aNode,
+                                  UniquePtr<Event> aEvent) {
+  MOZ_ASSERT(aEvent, "cannot forward null event");
+  if (aNode == mName) {
+    (void)mNode->AcceptEvent(mName, std::move(aEvent));
+  } else {
+    ContactRemotePeer(aNode, std::move(aEvent));
   }
 }
 
@@ -414,6 +433,11 @@ void NodeController::PortStatusChanged(const PortRef& aPortRef) {
   }
 }
 
+void NodeController::ObserveRemoteNode(const NodeName& aNode) {
+  MOZ_ASSERT(aNode != mName);
+  ContactRemotePeer(aNode, nullptr);
+}
+
 void NodeController::OnEventMessage(const NodeName& aFromNode,
                                     UniquePtr<IPC::Message> aMessage) {
   AssertIOThread();
@@ -438,7 +462,7 @@ void NodeController::OnEventMessage(const NodeName& aFromNode,
   }
 
   NodeName fromNode = aFromNode;
-#if defined(XP_WIN) || defined(XP_MACOSX)
+#if defined(XP_WIN) || defined(XP_DARWIN)
   if (isRelay) {
     if (event->type() != Event::kUserMessage) {
       NODECONTROLLER_WARNING(
@@ -543,7 +567,7 @@ void NodeController::OnEventMessage(const NodeName& aFromNode,
     }
   }
 
-  (void)mNode->AcceptEvent(std::move(event));
+  (void)mNode->AcceptEvent(fromNode, std::move(event));
 }
 
 void NodeController::OnBroadcast(const NodeName& aFromNode,
@@ -575,9 +599,9 @@ void NodeController::OnBroadcast(const NodeName& aFromNode,
     // NOTE: This `clone` operation is only supported for a limited number of
     // message types by the ports API, which provides some extra security by
     // only allowing those specific types of messages to be broadcasted.
-    // Messages which don't support `Clone` cannot be broadcast, and the ports
-    // library will not attempt to broadcast them.
-    auto clone = event->Clone();
+    // Messages which don't support `CloneForBroadcast` cannot be broadcast, and
+    // the ports library will not attempt to broadcast them.
+    auto clone = event->CloneForBroadcast();
     if (!clone) {
       NODECONTROLLER_WARNING("Attempt to broadcast unsupported message");
       break;
@@ -610,8 +634,9 @@ void NodeController::OnIntroduce(const NodeName& aFromNode,
     return;
   }
 
-  auto channel = MakeUnique<IPC::Channel>(std::move(aIntroduction.mHandle),
-                                          aIntroduction.mMode, nullptr);
+  auto channel =
+      MakeUnique<IPC::Channel>(std::move(aIntroduction.mHandle),
+                               aIntroduction.mMode, aIntroduction.mOtherPid);
   auto nodeChannel = MakeRefPtr<NodeChannel>(
       aIntroduction.mName, std::move(channel), this, aIntroduction.mOtherPid);
 
@@ -713,8 +738,6 @@ void NodeController::OnAcceptInvite(const NodeName& aFromNode,
   Invite invite;
   {
     auto state = mState.Lock();
-    MOZ_ASSERT(state->mPendingMessages.IsEmpty(),
-               "Shouldn't have pending messages in broker");
 
     // Try to remove the source node from our invites list and insert it into
     // our peers map under the new name.
@@ -752,7 +775,8 @@ static mojo::core::ports::NodeName RandomNodeName() {
 }
 
 std::tuple<ScopedPort, RefPtr<NodeChannel>> NodeController::InviteChildProcess(
-    UniquePtr<IPC::Channel> aChannel) {
+    UniquePtr<IPC::Channel> aChannel,
+    GeckoChildProcessHost* aChildProcessHost) {
   MOZ_ASSERT(IsBroker());
   AssertIOThread();
 
@@ -762,7 +786,8 @@ std::tuple<ScopedPort, RefPtr<NodeChannel>> NodeController::InviteChildProcess(
   auto ports = CreatePortPair();
   auto inviteName = RandomNodeName();
   auto nodeChannel =
-      MakeRefPtr<NodeChannel>(inviteName, std::move(aChannel), this);
+      MakeRefPtr<NodeChannel>(inviteName, std::move(aChannel), this,
+                              base::kInvalidProcessId, aChildProcessHost);
   {
     auto state = mState.Lock();
     MOZ_DIAGNOSTIC_ASSERT(!state->mPeers.Contains(inviteName),
@@ -773,7 +798,7 @@ std::tuple<ScopedPort, RefPtr<NodeChannel>> NodeController::InviteChildProcess(
                                    Invite{nodeChannel, ports.second.Release()});
   }
 
-  nodeChannel->Start(/* aCallConnect */ false);
+  nodeChannel->Start();
   return std::tuple{std::move(ports.first), std::move(nodeChannel)};
 }
 
@@ -784,7 +809,7 @@ void NodeController::InitBrokerProcess() {
 }
 
 ScopedPort NodeController::InitChildProcess(UniquePtr<IPC::Channel> aChannel,
-                                            int32_t aParentPid) {
+                                            base::ProcessId aParentPid) {
   AssertIOThread();
   MOZ_ASSERT(!gNodeController);
 
@@ -793,6 +818,15 @@ ScopedPort NodeController::InitChildProcess(UniquePtr<IPC::Channel> aChannel,
 
   auto ports = gNodeController->CreatePortPair();
   PortRef toMerge = ports.second.Release();
+
+  // Mark the port as expecting a pending merge. This is a duplicate of the
+  // information tracked by `mPendingMerges`, and was added by upstream
+  // chromium.
+  // See https://chromium-review.googlesource.com/c/chromium/src/+/3289065
+  {
+    mojo::core::ports::SinglePortLocker locker(&toMerge);
+    locker.port()->pending_merge_peer = true;
+  }
 
   auto nodeChannel = MakeRefPtr<NodeChannel>(
       kBrokerNodeName, std::move(aChannel), gNodeController, aParentPid);
@@ -805,7 +839,7 @@ ScopedPort NodeController::InitChildProcess(UniquePtr<IPC::Channel> aChannel,
         .AppendElement(toMerge);
   }
 
-  nodeChannel->Start(/* aCallConnect */ true);
+  nodeChannel->Start();
   nodeChannel->AcceptInvite(nodeName, toMerge.name());
   return std::move(ports.first);
 }
@@ -826,6 +860,9 @@ void NodeController::CleanUp() {
     for (const auto& chan : state->mPeers) {
       lostConnections.AppendElement(chan.GetKey());
       channelsToClose.AppendElement(chan.GetData());
+    }
+    for (const auto& pending : state->mPendingMessages.Keys()) {
+      lostConnections.AppendElement(pending);
     }
     for (const auto& invite : state->mInvites.Values()) {
       channelsToClose.AppendElement(invite.mChannel);

@@ -31,7 +31,7 @@ async function findGenericAudioDecoder() {
       );
     }
   );
-  ok(audioDecoders.length === 1, "Only one audio decoder present");
+  Assert.strictEqual(audioDecoders.length, 1, "Only one audio decoder present");
   return audioDecoders[0].pid;
 }
 
@@ -42,7 +42,7 @@ add_setup(async function setup() {
 });
 
 add_task(async function testKill() {
-  await runTest("small-shot.ogg", "Utility Generic", "vorbis audio decoder");
+  await runTest("small-shot.ogg", "Utility Generic", "ffvpx audio decoder");
 
   await cleanUtilityProcessShutdown(
     "audioDecoder_Generic",
@@ -50,7 +50,7 @@ add_task(async function testKill() {
   );
 
   info("Waiting 15s to trigger mShutdownBlockers assertions");
-  await new Promise((resolve, reject) => {
+  await new Promise(resolve => {
     /* eslint-disable mozilla/no-arbitrary-setTimeout */
     setTimeout(resolve, 15 * 1000);
   });
@@ -59,15 +59,15 @@ add_task(async function testKill() {
 });
 
 add_task(async function testShutdown() {
-  await runTest("small-shot.ogg", "Utility Generic", "vorbis audio decoder");
+  await runTest("small-shot.ogg", "Utility Generic", "ffvpx audio decoder");
 
   const audioDecoderPid = await findGenericAudioDecoder();
-  ok(audioDecoderPid > 0, `Valid PID found: ${audioDecoderPid}`);
+  Assert.greater(audioDecoderPid, 0, `Valid PID found: ${audioDecoderPid}`);
 
   await cleanUtilityProcessShutdown("audioDecoder_Generic");
 
   info("Waiting 15s to trigger mShutdownBlockers assertions");
-  await new Promise((resolve, reject) => {
+  await new Promise(resolve => {
     /* eslint-disable mozilla/no-arbitrary-setTimeout */
     setTimeout(resolve, 15 * 1000);
   });

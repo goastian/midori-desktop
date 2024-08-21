@@ -36,11 +36,11 @@ const int64_t kint64min = ((int64_t)GG_LONGLONG(0x8000000000000000));
 const int64_t kint64max = ((int64_t)GG_LONGLONG(0x7FFFFFFFFFFFFFFF));
 
 // Platform- and hardware-dependent printf specifiers
-#if defined(OS_POSIX)
+#if defined(XP_UNIX)
 #  define PRId64L "I64d"
 #  define PRIu64L "I64u"
 #  define PRIx64L "I64x"
-#elif defined(OS_WIN)
+#else
 #  define PRId64L L"I64d"
 #  define PRIu64L L"I64u"
 #  define PRIx64L L"I64x"

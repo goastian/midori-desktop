@@ -8,11 +8,10 @@
 #define BASE_LOCK_IMPL_H_
 
 #include "base/basictypes.h"
-#include "build/build_config.h"
 
-#if defined(OS_WIN)
+#if defined(XP_WIN)
 #  include <windows.h>
-#elif defined(OS_POSIX)
+#else
 #  include <pthread.h>
 #endif
 
@@ -24,9 +23,9 @@ namespace internal {
 // should instead use Lock.
 class LockImpl {
  public:
-#if defined(OS_WIN)
+#if defined(XP_WIN)
   using NativeHandle = SRWLOCK;
-#elif defined(OS_POSIX)
+#else
   using NativeHandle = pthread_mutex_t;
 #endif
 
@@ -49,7 +48,7 @@ class LockImpl {
   // unnecessary.
   NativeHandle* native_handle() { return &native_handle_; }
 
-#if defined(OS_POSIX)
+#if defined(XP_UNIX)
   // Whether this lock will attempt to use priority inheritance.
   static bool PriorityInheritanceAvailable();
 #endif

@@ -55,7 +55,7 @@ just needs endpoints to be bound judiciously at runtime.  The example in
 :ref:`Connecting With Other Processes` shows one way this can be done.  It
 also shows that, without proper plain-language documentation of *all* of the
 ways endpoints are configured, this can quickly lead to unmaintainable code.
-Be sure to document your endpoint bindings throroughly!!!
+Be sure to document your endpoint bindings thoroughly!!!
 
 .. _Chromium Mojo: https://chromium.googlesource.com/chromium/src/+/refs/heads/main/mojo/core/README.md#Port
 
@@ -73,8 +73,8 @@ order is well defined since the related actor can only send from one thread.
 
 .. warning::
     There are a few (rare) exceptions to the message order guarantee.  They
-    include  `synchronous nested`_  messages, `interrupt`_ messages, and
-    messages with a ``[Priority]`` or ``[Compress]`` annotation.
+    include  `synchronous nested`_  messages and messages with a ``[Priority]``
+    or ``[Compress]`` annotation.
 
 An IPDL protocol file specifies the messages that may be sent between parent
 and child actors, as well as the direction and payload of those messages.
@@ -85,13 +85,10 @@ running in the actor's thread's ``MessageLoop``.
 
 .. note::
     Not all IPDL messages are asynchronous.  Again, we run into exceptions for
-    messages that are synchronous, `synchronous nested`_ or `interrupt`_.  Use
-    of synchronous and nested messages is strongly discouraged but may not
-    always be avoidable.  They will be defined later, along with superior
-    alternatives to both that should work in nearly all cases.  Interrupt
-    messages were prone to misuse and are deprecated, with removal expected in
-    the near future
-    (`Bug 1729044 <https://bugzilla.mozilla.org/show_bug.cgi?id=1729044>`_).
+    messages that are synchronous or `synchronous nested`_.  Use of synchronous
+    and nested messages is strongly discouraged but may not always be avoidable.
+    They will be defined later, along with superior alternatives to both that
+    should work in nearly all cases.
 
 Protocol files are compiled by the *IPDL compiler* in an early stage of the
 build process.  The compiler generates C++ code that reflects the protocol.
@@ -120,7 +117,6 @@ and `here
     ``chromium-config.mozbuild`` in its ``moz.build`` file.  See `Using The
     IPDL compiler`_ for a complete list of required build changes.
 
-.. _interrupt: `The Old Ways`_
 .. _synchronous nested: `The Rest`_
 
 The Steps To Making A New Actor
@@ -194,7 +190,7 @@ To build IPDL files, list them (alphabetically sorted) in a ``moz.build`` file.
 In this example, the ``.ipdl`` and ``.ipdlh`` files would be alongside a
 ``moz.build`` containing:
 
-.. code-block:: c++
+.. code-block:: python
 
     IPDL_SOURCES += [
         "MyTypes.ipdlh",
@@ -216,7 +212,7 @@ are in the proper scope.  If it isn't included, the build will fail with
 ``#include`` errors in both your actor code and some internal ipc headers.  For
 example:
 
-.. code-block:: c++
+.. code-block::
 
     c:/mozilla-src/mozilla-unified/obj-64/dist/include\ipc/IPCMessageUtils.h(13,10): fatal error: 'build/build_config.h' file not found
 
@@ -245,7 +241,7 @@ Referencing Externally Defined Data Types: IPDL Includes
 Let's begin with ``PMyManager.ipdl``.  It starts by including types that it
 will need from other places:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     include protocol PMyManaged;
     include MyTypes;                          // for MyActorPair
@@ -286,7 +282,7 @@ Namespaces
 
 From the IPDL file:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     namespace mozilla {
     namespace myns {
@@ -314,7 +310,7 @@ Generating IPDL-Aware C++ Data Types: IPDL Structs and Unions
 
 ``PMyManager.ipdl`` and ``MyTypes.ipdlh`` define:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     [Comparable] union MyUnion {
         float;
@@ -349,8 +345,9 @@ The real point of any ``.ipdl`` file is that each defines exactly one actor
 protocol.  The definition always matches the ``.ipdl`` filename.  Repeating the
 one in ``PMyManager.ipdl``:
 
-.. code-block:: c++
+.. code-block:: cpp
 
+    [ChildProc=Content]
     sync protocol PMyManager {
         manages PMyManaged;
 
@@ -385,10 +382,6 @@ the options for the actor-blocking policy of messages:
 ``sync``                Actor has ``async`` capabilities and adds  ``sync``
                         messages.  ``sync`` messages
                         can only be sent from the child actor to the parent.
-``intr`` (deprecated)   Actor has ``sync`` capabilities and adds ``intr``
-                        messages.  Some messages can be received while an actor
-                        waits for an ``intr`` response.  This type will be
-                        removed soon.
 ======================= =======================================================
 
 Beyond these protocol blocking strategies, IPDL supports annotations that
@@ -406,13 +399,19 @@ They will be discussed further in `Nested messages`_.
                                response.
 ============================== ================================================
 
+In addition, top-level protocols are annotated with which processes each side
+should be bound into using the ``[ParentProc=*]`` and ``[ChildProc=*]``
+attributes.  The ``[ParentProc]`` attribute is optional, and defaults to the
+``Parent`` process.  The ``[ChildProc]`` attribute is required.  See `Process
+Type Attributes`_ for possible values.
+
 The ``manages`` clause tells IPDL that ``PMyManager`` manages the
 ``PMyManaged`` actor that was previously ``include`` d.  As with any managed
 protocol, it must also be the case that ``PMyManaged.ipdl`` includes
 ``PMyManager`` and declares that ``PMyManaged`` is ``managed`` by
 ``PMyManager``.  Recalling the code:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     // PMyManaged.ipdl
     include protocol PMyManager;
@@ -451,7 +450,7 @@ Declaring IPDL Messages
 
 The final part of the actor definition is the declaration of messages:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     sync protocol PMyManager {
       // ...
@@ -461,7 +460,7 @@ The final part of the actor definition is the declaration of messages:
             returns (int32_t x, int32_t y, MyUnion aUnion);
         async PMyManaged();
       both:
-        [Tainted] async AnotherMsg(MyActorEnum aEnum, int32_t aNumber)
+        [Tainted] async AnotherMsg(MyActorEnum aEnum, int32_t a number)
             returns (MyOtherData aOtherData);
     };
 
@@ -531,8 +530,6 @@ resembles the list in `Defining Actors`_:
 ``sync``               Actor has ``async`` capabilities and adds  ``sync``
                        messages.  ``sync`` messages can only be sent from the
                        child actor to the parent.
-``intr`` (deprecated)  Actor has ``sync`` capabilities and adds ``intr``
-                       messages.  This type will be removed soon.
 ====================== ========================================================
 
 The policy defines whether an actor will wait for a response when it sends a
@@ -646,18 +643,13 @@ for use in IPDL files:
 ``sync/async``                These are used in two cases: (1) to indicate
                               whether a message blocks as it waits for a result
                               and (2) because an actor that contains ``sync``
-                              messages must itself be labeled ``sync`` or
-                              ``intr``.
+                              messages must itself be labeled ``sync``.
 ``[NestedUpTo=inside_sync]``  Indicates that an actor contains
                               [Nested=inside_sync] messages, in addition to
                               normal messages.
 ``[NestedUpTo=inside_cpow]``  Indicates that an actor contains
                               [Nested=inside_cpow] messages, in addition to
                               normal messages.
-``intr``                      Used to indicate either that (1) an actor
-                              contains ``sync``, ``async`` and (deprecated)
-                              ``intr`` messages, or (2) a message is ``intr``
-                              type.
 ``[Nested=inside_sync]``      Indicates that the message can be handled while
                               waiting for lower-priority, or in-message-thread,
                               sync responses.
@@ -730,7 +722,62 @@ for use in IPDL files:
                               ``Recv`` methods should be used instead of direct
                               function calls.  *New uses of this attribute are
                               discouraged.*
+``[ChildProc=...]``           Indicates which process the child side of the actor
+                              is expected to be bound in.  This will be release
+                              asserted when creating the actor.  Required for
+                              top-level actors.  See `Process Type Attributes`_
+                              for possible values.
+``[ParentProc=...]``          Indicates which process the parent side of the
+                              actor is expected to be bound in.  This will be
+                              release asserted when creating the actor.
+                              Defaults to ``Parent`` for top-level actors.  See
+                              `Process Type Attributes`_ for possible values.
 ============================= =================================================
+
+.. _Process Type Attributes:
+
+Process Type Attributes
+^^^^^^^^^^^^^^^^^^^^^^^
+
+The following are valid values for the ``[ChildProc=...]`` and
+``[ParentProc=...]`` attributes on protocols, each corresponding to a specific
+process type:
+
+============================= =================================================
+``Parent``                    The primary "parent" or "main" process
+``Content``                   A content process, such as those used to host web
+                              pages, workers, and extensions
+``IPDLUnitTest``              Test-only process used in IPDL gtests
+``GMPlugin``                  Gecko Media Plugin (GMP) process
+``GPU``                       GPU process
+``VR``                        VR process
+``RDD``                       Remote Data Decoder (RDD) process
+``Socket``                    Socket/Networking process
+``RemoteSandboxBroker``       Remote Sandbox Broker process
+``ForkServer``                Fork Server process
+``Utility``                   Utility process
+============================= =================================================
+
+The attributes also support some wildcard values, which can be used when an
+actor can be bound in multiple processes.  If you are adding an actor which
+needs a new wildcard value, please reach out to the IPC team, and we can add one
+for your use-case.  They are as follows:
+
+============================= =================================================
+``any``                       Any process.  If a more specific value is
+                              applicable, it should be preferred where possible.
+``anychild``                  Any process other than ``Parent``.  Often used for
+                              utility actors which are bound on a per-process
+                              basis, such as profiling.
+``compositor``                Either the ``GPU`` or ``Parent`` process.  Often
+                              used for actors bound to the compositor thread.
+``anydom``                    Either the ``Parent`` or a ``Content`` process.
+                              Often used for actors used to implement DOM APIs.
+============================= =================================================
+
+Note that these assertions do not provide security guarantees, and are primarily
+intended for use when auditing and as documentation for how actors are being
+used.
 
 
 The C++ Interface
@@ -767,7 +814,7 @@ binary data format for a type.  Both options are available.
 We haven't seen any of this C++ yet.  Let's look at the data types included
 from ``MyDataTypes.h``:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     // MyDataTypes.h
     namespace mozilla::myns {
@@ -840,7 +887,7 @@ should only allocate a ``MyUnusedData`` to return if it so desires.
 These are straight-forward implementations of the ``ParamTraits`` methods for
 ``MyData``:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     /* static */ void IPC::ParamTraits<MyData>::Write(MessageWriter* m, const paramType& in) {
         WriteParam(m, in.s);
@@ -893,7 +940,7 @@ them.  The generated ``ParamTraits`` confirm that the enum is in valid range;
 ``Read`` will return false otherwise.  As an example, here is the
 ``MyActorEnum`` included from ``MyActorUtils.h``:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     enum MyActorEnum { e1, e2, e3, e4, e5 };
 
@@ -908,7 +955,7 @@ IPDL structs and unions become C++ classes that provide interfaces that are
 fairly self-explanatory.  Recalling ``MyUnion`` and ``MyActorPair`` from
 `IPDL Structs and Unions`_ :
 
-.. code-block:: c++
+.. code-block:: cpp
 
     union MyUnion {
         float;
@@ -922,7 +969,7 @@ fairly self-explanatory.  Recalling ``MyUnion`` and ``MyActorPair`` from
 
 These compile to:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     class MyUnion {
         enum Type { Tfloat, TMyOtherData };
@@ -985,7 +1032,7 @@ that declare our actor implementation subclasses (``MyManagerParent.h`` and
 
 So ``MyManagerParent.h`` looks like this:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     #include "PMyManagerParent.h"
 
@@ -998,7 +1045,7 @@ So ``MyManagerParent.h`` looks like this:
         IPCResult Recv__delete__(const nsString& aNote);
         IPCResult RecvSomeMsg(const Maybe<MyActorPair>& aActors, const nsTArray<MyData>& aMyData,
                               int32_t* x, int32_t* y, MyUnion* aUnion);
-        IPCResult RecvAnotherMsg(const Tainted<MyActorEnum>& aEnum, const Tainted<int32_t>& aNumber,
+        IPCResult RecvAnotherMsg(const Tainted<MyActorEnum>& aEnum, const Tainted<int32_t>& a number,
                                  AnotherMsgResolver&& aResolver);
 
         already_AddRefed<PMyManagerParent> AllocPMyManagedParent();
@@ -1041,15 +1088,15 @@ returns a value: ``AnotherMsg``.  This is done with ``SendAnotherMsg``, which
 is defined automatically by IPDL in the base class ``PMyManagerParent``.  There
 are two signatures for ``Send`` and they look like this:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     // Return a Promise that IPDL will resolve with the response or reject.
     RefPtr<MozPromise<MyOtherData, ResponseRejectReason, true>>
-    SendAnotherMsg(const MyActorEnum& aEnum, int32_t aNumber);
+    SendAnotherMsg(const MyActorEnum& aEnum, int32_t a number);
 
     // Provide callbacks to process response / reject.  The callbacks are just
     // std::functions.
-    void SendAnotherMsg(const MyActorEnum& aEnum, int32_t aNumber,
+    void SendAnotherMsg(const MyActorEnum& aEnum, int32_t a number,
         ResolveCallback<MyOtherData>&& aResolve, RejectCallback&& aReject);
 
 The response is usually handled by lambda functions defined at the site of the
@@ -1074,7 +1121,7 @@ simpler form; they return a ``bool`` indicating success or failure and return
 response values in non-const parameters, as the ``Recv`` methods do.  For
 example, ``PMyManagerChild`` defines this to send the sync message ``SomeMsg``:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     // generated in PMyManagerChild
     bool SendSomeMsg(const Maybe<MyActorPair>& aActors, const nsTArray<MyData>& aMyData,
@@ -1192,7 +1239,7 @@ beneficial to have it receive some final data.
 
 The relevant part of the parent class looks like this:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     class MyManagerParent : public PMyManagerParent {
         already_AddRefed<PMyManagedParent> AllocPMyManagedParent();
@@ -1218,7 +1265,7 @@ operational.
 The ``Send`` method for a constructor is similarly different from other
 ``Send`` methods.  In the child actor, ours looks like this:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     IPCResult SendPMyManagedConstructor(PMyManagedChild* aActor);
 
@@ -1244,7 +1291,7 @@ endpoint.
     cannot safely be a class instance method.  Instead, unlike other ``Send``
     methods, it's a ``static`` class method and takes the actor as a parameter:
 
-    .. code-block:: c++
+    .. code-block:: cpp
 
         static IPCResult Send__delete__(PMyManagerChild* aToDelete);
 
@@ -1358,7 +1405,7 @@ The most common way to create new top level actors is by creating a pair of
 connected Endpoints and sending one to the other actor.  This is done exactly
 the way it sounds.  For example:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     bool MyPreexistingActorParent::MakeMyActor() {
         Endpoint<PMyActorParent> parentEnd;
@@ -1395,7 +1442,7 @@ receiving them as well.
 ``MyPreexistingActorChild`` still has to receive the create message.  The code
 for that handler is pretty similar:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     IPCResult MyPreexistingActorChild::RecvCreateMyActorChild(Endpoint<PMyActorChild>&& childEnd) {
         RefPtr<MyActorChild> child = new MyActorChild;
@@ -1519,7 +1566,7 @@ with normal managees but, instead of ``new``-ing the child actor and then
 passing it in a ``SendFooConstructor`` call, background actors issue the send
 call to the ``BackgroundChild`` manager, which returns the new child:
 
-.. code-block:: c++
+.. code-block:: cpp
 
     // Bind our new PMyBackgroundActorChild to the current thread.
     PBackgroundChild* bc = BackgroundChild::GetOrCreateForCurrentThread();
@@ -1756,11 +1803,19 @@ The environment variable ``MOZ_IPC_MESSAGE_LOG`` controls the logging of IPC
 messages.  It logs details about the transmission and reception of messages.
 This isn't controlled by ``MOZ_LOG`` -- it is a separate system.  Set this
 variable to ``1`` to log information on all IPDL messages, or specify a
-comma-separated list of **top-level** protocols to log (e.g.
-``MOZ_IPC_MESSAGE_LOG="PMyManagerChild,PMyManagedParent,PMyManagedChild"``).
+comma-separated list of protocols to log.
+If the ``Child`` or ``Parent`` suffix is given, then only activity on the given
+side is logged; otherwise, both sides are logged.  All protocol names must
+include the ``P`` prefix.
+
+For example:
+
+.. code-block::
+
+    MOZ_IPC_MESSAGE_LOG="PMyManagerChild,PMyManaged"
+
+This requests logging of child-side activity on ``PMyManager``, and both
+parent- and child-side activity on ``PMyManaged``.
+
 :ref:`Debugging with IPDL Logging` has an example where IPDL logging is useful
 in tracking down a bug.
-
-.. important::
-    The preceding ``P`` and the ``Parent`` or ``Child`` suffix are required
-    when listing individual protocols in ``MOZ_IPC_MESSAGE_LOG``.

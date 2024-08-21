@@ -90,7 +90,7 @@ static bool SerializeLazyInputStream(nsIInputStream* aStream,
     return false;
   }
 
-  aValue.stream() = RemoteLazyInputStreamParams(lazyStream);
+  aValue.stream() = RemoteLazyInputStreamParams(WrapNotNull(lazyStream));
 
   return true;
 }
@@ -131,7 +131,7 @@ bool SerializeIPCStream(already_AddRefed<nsIInputStream> aInputStream,
 
   InputStreamHelper::SerializeInputStreamAsPipe(stream, aValue.stream());
   if (aValue.stream().type() == InputStreamParams::T__None) {
-    MOZ_ASSERT_UNREACHABLE("Serializing as a pipe failed");
+    // This can fail from OOM, etc.  We will likely MOZ_CRASH now
     return false;
   }
   return true;

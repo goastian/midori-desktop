@@ -69,13 +69,12 @@
 
 #include "base/basictypes.h"
 #include "base/lock.h"
-#include "build/build_config.h"
 
-#if defined(OS_POSIX)
+#if defined(XP_UNIX)
 #  include <pthread.h>
 #endif
 
-#if defined(OS_WIN)
+#if defined(XP_WIN)
 #  include <windows.h>
 #endif
 
@@ -103,10 +102,10 @@ class ConditionVariable {
   void Signal();
 
  private:
-#if defined(OS_WIN)
+#if defined(XP_WIN)
   CONDITION_VARIABLE cv_;
   SRWLOCK* const srwlock_;
-#elif defined(OS_POSIX)
+#else
   pthread_cond_t condition_;
   pthread_mutex_t* user_mutex_;
 #endif

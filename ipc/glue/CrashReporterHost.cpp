@@ -25,7 +25,7 @@ CrashReporterHost::CrashReporterHost(GeckoProcessType aProcessType,
       mFinalized(false) {}
 
 bool CrashReporterHost::GenerateCrashReport(base::ProcessId aPid) {
-  if (!TakeCrashedChildMinidump(aPid, nullptr)) {
+  if (!TakeCrashedChildMinidump(aPid)) {
     return false;
   }
 
@@ -35,13 +35,13 @@ bool CrashReporterHost::GenerateCrashReport(base::ProcessId aPid) {
 }
 
 RefPtr<nsIFile> CrashReporterHost::TakeCrashedChildMinidump(
-    base::ProcessId aPid, uint32_t* aOutSequence) {
+    base::ProcessId aPid) {
   CrashReporter::AnnotationTable annotations;
   MOZ_ASSERT(!HasMinidump());
 
   RefPtr<nsIFile> crashDump;
   if (!CrashReporter::TakeMinidumpForChild(aPid, getter_AddRefs(crashDump),
-                                           annotations, aOutSequence)) {
+                                           annotations)) {
     return nullptr;
   }
   if (!AdoptMinidump(crashDump, annotations)) {
@@ -153,27 +153,26 @@ void CrashReporterHost::NotifyCrashService(GeckoProcessType aProcessType,
                          getter_AddRefs(promise));
 }
 
-void CrashReporterHost::AddAnnotation(CrashReporter::Annotation aKey,
-                                      bool aValue) {
+void CrashReporterHost::AddAnnotationBool(CrashReporter::Annotation aKey,
+                                          bool aValue) {
+  MOZ_ASSERT(TypeOfAnnotation(aKey) == CrashReporter::AnnotationType::Boolean,
+             "Wrong annotation type");
   mExtraAnnotations[aKey] = aValue ? "1"_ns : "0"_ns;
 }
 
-void CrashReporterHost::AddAnnotation(CrashReporter::Annotation aKey,
-                                      int aValue) {
+void CrashReporterHost::AddAnnotationU32(CrashReporter::Annotation aKey,
+                                         uint32_t aValue) {
+  MOZ_ASSERT(TypeOfAnnotation(aKey) == CrashReporter::AnnotationType::U32,
+             "Wrong annotation type");
   nsAutoCString valueString;
   valueString.AppendInt(aValue);
   mExtraAnnotations[aKey] = valueString;
 }
 
-void CrashReporterHost::AddAnnotation(CrashReporter::Annotation aKey,
-                                      unsigned int aValue) {
-  nsAutoCString valueString;
-  valueString.AppendInt(aValue);
-  mExtraAnnotations[aKey] = valueString;
-}
-
-void CrashReporterHost::AddAnnotation(CrashReporter::Annotation aKey,
-                                      const nsACString& aValue) {
+void CrashReporterHost::AddAnnotationNSCString(CrashReporter::Annotation aKey,
+                                               const nsACString& aValue) {
+  MOZ_ASSERT(TypeOfAnnotation(aKey) == CrashReporter::AnnotationType::String,
+             "Wrong annotation type");
   mExtraAnnotations[aKey] = aValue;
 }
 

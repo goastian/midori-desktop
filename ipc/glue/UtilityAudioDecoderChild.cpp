@@ -19,6 +19,12 @@
 #  include "mozilla/layers/VideoBridgeUtils.h"
 #endif
 
+#ifdef MOZ_WMF_CDM
+#  include "mozilla/dom/Promise.h"
+#  include "mozilla/EMEUtils.h"
+#  include "mozilla/PMFCDM.h"
+#endif
+
 namespace mozilla::ipc {
 
 NS_IMETHODIMP UtilityAudioDecoderChildShutdownObserver::Observe(
@@ -36,8 +42,8 @@ NS_IMETHODIMP UtilityAudioDecoderChildShutdownObserver::Observe(
 
 NS_IMPL_ISUPPORTS(UtilityAudioDecoderChildShutdownObserver, nsIObserver);
 
-static EnumeratedArray<SandboxingKind, SandboxingKind::COUNT,
-                       StaticRefPtr<UtilityAudioDecoderChild>>
+static EnumeratedArray<SandboxingKind, StaticRefPtr<UtilityAudioDecoderChild>,
+                       size_t(SandboxingKind::COUNT)>
     sAudioDecoderChilds;
 
 UtilityAudioDecoderChild::UtilityAudioDecoderChild(SandboxingKind aKind)
@@ -48,6 +54,40 @@ UtilityAudioDecoderChild::UtilityAudioDecoderChild(SandboxingKind aKind)
     auto* obs = new UtilityAudioDecoderChildShutdownObserver(aKind);
     observerService->AddObserver(obs, "ipc:utility-shutdown", false);
   }
+}
+
+nsresult UtilityAudioDecoderChild::BindToUtilityProcess(
+    RefPtr<UtilityProcessParent> aUtilityParent) {
+  Endpoint<PUtilityAudioDecoderChild> utilityAudioDecoderChildEnd;
+  Endpoint<PUtilityAudioDecoderParent> utilityAudioDecoderParentEnd;
+  nsresult rv = PUtilityAudioDecoder::CreateEndpoints(
+      aUtilityParent->OtherPid(), base::GetCurrentProcId(),
+      &utilityAudioDecoderParentEnd, &utilityAudioDecoderChildEnd);
+
+  if (NS_FAILED(rv)) {
+    MOZ_ASSERT(false, "Protocol endpoints failure");
+    return NS_ERROR_FAILURE;
+  }
+
+  nsTArray<gfx::GfxVarUpdate> updates;
+#ifdef MOZ_WMF_MEDIA_ENGINE
+  // Only MFCDM process needs gfxVars
+  if (mSandbox == SandboxingKind::MF_MEDIA_ENGINE_CDM) {
+    updates = gfx::gfxVars::FetchNonDefaultVars();
+  }
+#endif
+  if (!aUtilityParent->SendStartUtilityAudioDecoderService(
+          std::move(utilityAudioDecoderParentEnd), std::move(updates))) {
+    MOZ_ASSERT(false, "StartUtilityAudioDecoder service failure");
+    return NS_ERROR_FAILURE;
+  }
+
+  Bind(std::move(utilityAudioDecoderChildEnd));
+
+  PROFILER_MARKER_UNTYPED("UtilityAudioDecoderChild::BindToUtilityProcess", IPC,
+                          MarkerOptions(MarkerTiming::IntervalUntilNowFrom(
+                              mAudioDecoderChildStart)));
+  return NS_OK;
 }
 
 void UtilityAudioDecoderChild::ActorDestroy(ActorDestroyReason aReason) {
@@ -104,13 +144,8 @@ mozilla::ipc::IPCResult
 UtilityAudioDecoderChild::RecvCompleteCreatedVideoBridge() {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mSandbox == SandboxingKind::MF_MEDIA_ENGINE_CDM);
-  mHasCreatedVideoBridge = true;
+  mHasCreatedVideoBridge = State::Created;
   return IPC_OK();
-}
-
-bool UtilityAudioDecoderChild::HasCreatedVideoBridge() const {
-  MOZ_ASSERT(NS_IsMainThread());
-  return mHasCreatedVideoBridge;
 }
 
 void UtilityAudioDecoderChild::OnVarChanged(const gfx::GfxVarUpdate& aVar) {
@@ -121,7 +156,7 @@ void UtilityAudioDecoderChild::OnVarChanged(const gfx::GfxVarUpdate& aVar) {
 void UtilityAudioDecoderChild::OnCompositorUnexpectedShutdown() {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mSandbox == SandboxingKind::MF_MEDIA_ENGINE_CDM);
-  mHasCreatedVideoBridge = false;
+  mHasCreatedVideoBridge = State::None;
   CreateVideoBridge();
 }
 
@@ -129,9 +164,11 @@ bool UtilityAudioDecoderChild::CreateVideoBridge() {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mSandbox == SandboxingKind::MF_MEDIA_ENGINE_CDM);
 
-  if (HasCreatedVideoBridge()) {
+  // Creating or already created, avoiding reinit a bridge.
+  if (mHasCreatedVideoBridge != State::None) {
     return true;
   }
+  mHasCreatedVideoBridge = State::Creating;
 
   // Build content device data first; this ensure that the GPU process is fully
   // ready.
@@ -164,12 +201,63 @@ bool UtilityAudioDecoderChild::CreateVideoBridge() {
     return false;
   }
 
-  nsTArray<gfx::GfxVarUpdate> updates = gfx::gfxVars::FetchNonDefaultVars();
   gpuManager->InitVideoBridge(
       std::move(parentPipe),
       layers::VideoBridgeSource::MFMediaEngineCDMProcess);
-  SendInitVideoBridge(std::move(childPipe), updates, contentDeviceData);
+  SendInitVideoBridge(std::move(childPipe), contentDeviceData);
   return true;
+}
+#endif
+
+#ifdef MOZ_WMF_CDM
+void UtilityAudioDecoderChild::GetKeySystemCapabilities(
+    dom::Promise* aPromise) {
+  EME_LOG("Ask capabilities for all supported CDMs");
+  SendGetKeySystemCapabilities()->Then(
+      NS_GetCurrentThread(), __func__,
+      [promise = RefPtr<dom::Promise>(aPromise)](
+          CopyableTArray<MFCDMCapabilitiesIPDL>&& result) {
+        FallibleTArray<dom::CDMInformation> cdmInfo;
+        for (const auto& capabilities : result) {
+          EME_LOG("Received capabilities for %s",
+                  NS_ConvertUTF16toUTF8(capabilities.keySystem()).get());
+          for (const auto& v : capabilities.videoCapabilities()) {
+            for (const auto& scheme : v.encryptionSchemes()) {
+              EME_LOG("  capabilities: video=%s, scheme=%s",
+                      NS_ConvertUTF16toUTF8(v.contentType()).get(),
+                      CryptoSchemeToString(scheme));
+            }
+          }
+          for (const auto& a : capabilities.audioCapabilities()) {
+            for (const auto& scheme : a.encryptionSchemes()) {
+              EME_LOG("  capabilities: audio=%s, scheme=%s",
+                      NS_ConvertUTF16toUTF8(a.contentType()).get(),
+                      CryptoSchemeToString(scheme));
+            }
+          }
+          auto* info = cdmInfo.AppendElement(fallible);
+          if (!info) {
+            promise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
+            return;
+          }
+          info->mKeySystemName = capabilities.keySystem();
+
+          KeySystemConfig config;
+          MFCDMCapabilitiesIPDLToKeySystemConfig(capabilities, config);
+          info->mCapabilities = config.GetDebugInfo();
+          info->mClearlead =
+              DoesKeySystemSupportClearLead(info->mKeySystemName);
+          if (capabilities.isHDCP22Compatible()) {
+            info->mIsHDCP22Compatible = *capabilities.isHDCP22Compatible();
+          }
+        }
+        promise->MaybeResolve(cdmInfo);
+      },
+      [promise = RefPtr<dom::Promise>(aPromise)](
+          const mozilla::ipc::ResponseRejectReason& aReason) {
+        EME_LOG("IPC failure for GetKeySystemCapabilities!");
+        promise->MaybeReject(NS_ERROR_DOM_MEDIA_CDM_ERR);
+      });
 }
 #endif
 

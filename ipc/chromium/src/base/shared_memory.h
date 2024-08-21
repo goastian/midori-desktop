@@ -7,9 +7,7 @@
 #ifndef BASE_SHARED_MEMORY_H_
 #define BASE_SHARED_MEMORY_H_
 
-#include "build/build_config.h"
-
-#if defined(OS_POSIX)
+#if defined(XP_UNIX)
 #  include <sys/types.h>
 #  include <semaphore.h>
 #endif
@@ -94,11 +92,11 @@ class SharedMemory {
   void* memory() const { return memory_.get(); }
 
   // Extracts the underlying file handle, returning a RAII type.
-  // This unmaps the memory as a side-effect (and cleans up any OS-specific
-  // resources).
-  mozilla::UniqueFileHandle TakeHandle() {
+  // If `unmap_view` is true, this unmaps the memory as a side-effect (and
+  // cleans up any OS-specific resources).
+  mozilla::UniqueFileHandle TakeHandle(bool unmap_view = true) {
     mozilla::UniqueFileHandle handle = std::move(mapped_file_);
-    Close();
+    Close(unmap_view);
     return handle;
   }
 
@@ -149,7 +147,7 @@ class SharedMemory {
   // something there in the meantime.
   static void* FindFreeAddressSpace(size_t size);
 
-#ifdef OS_POSIX
+#ifdef XP_UNIX
   // If named POSIX shm is being used, append the prefix (including
   // the leading '/') that would be used by a process with the given
   // pid to the given string and return true.  If not, return false.
@@ -165,7 +163,7 @@ class SharedMemory {
   // Unmapping shared memory requires the mapped size on Unix but not
   // Windows; this encapsulates that difference.
   struct MappingDeleter {
-#ifdef OS_POSIX
+#ifdef XP_UNIX
     // A default-constructed deleter must be used only with nullptr
     // (to allow default-constructing UniqueMapping).  A deleter with
     // a size must be used at most once.
@@ -180,11 +178,11 @@ class SharedMemory {
   UniqueMapping memory_;
   size_t max_size_ = 0;
   mozilla::UniqueFileHandle mapped_file_;
-#if defined(OS_WIN)
+#if defined(XP_WIN)
   // If true indicates this came from an external source so needs extra checks
   // before being mapped.
   bool external_section_ = false;
-#elif defined(OS_POSIX) && !defined(ANDROID)
+#elif !defined(ANDROID)
   mozilla::UniqueFileHandle frozen_file_;
   bool is_memfd_ = false;
 #endif

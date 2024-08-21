@@ -8,8 +8,6 @@
 #define BASE_DIR_READER_POSIX_H_
 #pragma once
 
-#include "build/build_config.h"
-
 // This header provides a class, DirReaderPosix, which allows one to open and
 // read from directories without allocating memory. For the interface, see
 // the generic fallback in dir_reader_fallback.h.
@@ -20,9 +18,11 @@
 // seems worse than falling back to enumerating all file descriptors so we will
 // probably never implement this on the Mac.
 
-#if defined(OS_LINUX)
+#if defined(XP_LINUX)
 #  include "base/dir_reader_linux.h"
-#elif defined(OS_BSD) && !defined(__GLIBC__)
+#elif (defined(__DragonFly__) || defined(XP_FREEBSD) || defined(XP_NETBSD) || \
+       defined(XP_OPENBSD)) &&                                                \
+    !defined(__GLIBC__)
 #  include "base/dir_reader_bsd.h"
 #else
 #  include "base/dir_reader_fallback.h"
@@ -30,9 +30,11 @@
 
 namespace base {
 
-#if defined(OS_LINUX)
+#if defined(XP_LINUX)
 typedef DirReaderLinux DirReaderPosix;
-#elif defined(OS_BSD) && !defined(__GLIBC__)
+#elif (defined(__DragonFly__) || defined(XP_FREEBSD) || defined(XP_NETBSD) || \
+       defined(XP_OPENBSD)) &&                                                \
+    !defined(__GLIBC__)
 typedef DirReaderBSD DirReaderPosix;
 #else
 typedef DirReaderFallback DirReaderPosix;

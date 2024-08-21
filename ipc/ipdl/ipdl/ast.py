@@ -254,37 +254,31 @@ class UsingStmt(Node):
 # "singletons"
 
 
-class PrettyPrinted:
-    @classmethod
+class PrettyPrinted(type):
     def __hash__(cls):
         return hash_str(cls.pretty)
 
-    @classmethod
     def __str__(cls):
         return cls.pretty
 
 
-class ASYNC(PrettyPrinted):
+class ASYNC(metaclass=PrettyPrinted):
     pretty = "async"
 
 
-class INTR(PrettyPrinted):
-    pretty = "intr"
-
-
-class SYNC(PrettyPrinted):
+class SYNC(metaclass=PrettyPrinted):
     pretty = "sync"
 
 
-class INOUT(PrettyPrinted):
+class INOUT(metaclass=PrettyPrinted):
     pretty = "inout"
 
 
-class IN(PrettyPrinted):
+class IN(metaclass=PrettyPrinted):
     pretty = "in"
 
 
-class OUT(PrettyPrinted):
+class OUT(metaclass=PrettyPrinted):
     pretty = "out"
 
 
@@ -314,6 +308,15 @@ class Protocol(NamespacedNode):
         attr = self.attributes.get(side.capitalize() + "Impl")
         if attr is not None:
             return attr.value
+        return None
+
+    def procAttribute(self, side):
+        assert side in ("parent", "child")
+        attr = self.attributes.get(side.capitalize() + "Proc")
+        if attr is not None:
+            return attr.value
+        elif side == "parent" and len(self.managers) == 0:
+            return "Parent"  # Default for toplevel actors
         return None
 
 

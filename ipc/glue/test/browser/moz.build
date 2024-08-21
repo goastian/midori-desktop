@@ -5,8 +5,11 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 BROWSER_CHROME_MANIFESTS += [
-    "browser.ini",
-    "browser_audio_shutdown.ini",
-    "browser_child_hang.ini",
+    "browser.toml",
+    "browser_audio_fallback.toml",
+    "browser_audio_fallback_content.toml",
+    "browser_audio_locked.toml",
+    "browser_audio_shutdown.toml",
+    "browser_child_hang.toml",
 ]
-MOCHITEST_MANIFESTS += ["mochitest_audio_off.ini", "mochitest_audio_on.ini"]
+MOCHITEST_MANIFESTS += ["mochitest_audio_off.toml", "mochitest_audio_on.toml"]

@@ -17,21 +17,21 @@
 // standard intends to allow pthread_t to be a structure.  This means you
 // should not initialize it to a value, like 0.  If it's a member variable, the
 // constructor can safely "value initialize" using () in the initializer list.
-#if defined(OS_WIN)
+#if defined(XP_WIN)
 #  include <windows.h>
 typedef DWORD PlatformThreadId;
 typedef void* PlatformThreadHandle;  // HANDLE
-#elif defined(OS_POSIX)
+#else
 #  include <pthread.h>
 typedef pthread_t PlatformThreadHandle;
-#  if defined(OS_LINUX) || defined(OS_OPENBSD) || defined(OS_SOLARIS) || \
+#  if defined(XP_LINUX) || defined(XP_OPENBSD) || defined(XP_SOLARIS) || \
       defined(__GLIBC__)
 #    include <unistd.h>
 typedef pid_t PlatformThreadId;
-#  elif defined(OS_BSD)
+#  elif defined(__DragonFly__) || defined(XP_FREEBSD) || defined(XP_NETBSD)
 #    include <sys/types.h>
 typedef lwpid_t PlatformThreadId;
-#  elif defined(OS_MACOSX) || defined(OS_IOS)
+#  elif defined(XP_DARWIN)
 #    include <mach/mach.h>
 typedef mach_port_t PlatformThreadId;
 #  endif

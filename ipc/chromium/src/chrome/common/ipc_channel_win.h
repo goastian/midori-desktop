@@ -15,6 +15,7 @@
 #include <string>
 
 #include "base/message_loop.h"
+#include "base/process.h"
 #include "base/task.h"
 #include "nsISupportsImpl.h"
 
@@ -31,30 +32,17 @@ class Channel::ChannelImpl : public MessageLoopForIO::IOHandler {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_DELETE_ON_EVENT_TARGET(
       ChannelImpl, IOThread().GetEventTarget());
 
-  using ChannelId = Channel::ChannelId;
   using ChannelHandle = Channel::ChannelHandle;
 
   // Mirror methods of Channel, see ipc_channel.h for description.
-  ChannelImpl(const ChannelId& channel_id, Mode mode, Listener* listener);
-  ChannelImpl(ChannelHandle pipe, Mode mode, Listener* listener);
-  bool Connect() MOZ_EXCLUDES(SendMutex());
+  ChannelImpl(ChannelHandle pipe, Mode mode, base::ProcessId other_pid);
+  bool Connect(Listener* listener) MOZ_EXCLUDES(SendMutex());
   void Close() MOZ_EXCLUDES(SendMutex());
   void StartAcceptingHandles(Mode mode) MOZ_EXCLUDES(SendMutex());
-  Listener* set_listener(Listener* listener) {
-    IOThread().AssertOnCurrentThread();
-    chan_cap_.NoteOnIOThread();
-    Listener* old = listener_;
-    listener_ = listener;
-    return old;
-  }
   // NOTE: `Send` may be called on threads other than the I/O thread.
   bool Send(mozilla::UniquePtr<Message> message) MOZ_EXCLUDES(SendMutex());
 
-  int32_t OtherPid() {
-    IOThread().AssertOnCurrentThread();
-    chan_cap_.NoteOnIOThread();
-    return other_pid_;
-  }
+  void SetOtherPid(base::ProcessId other_pid);
 
   // See the comment in ipc_channel.h for info on IsClosed()
   // NOTE: `IsClosed` may be called on threads other than the I/O thread.
@@ -73,22 +61,15 @@ class Channel::ChannelImpl : public MessageLoopForIO::IOHandler {
     }
   }
 
-  void Init(Mode mode, Listener* listener)
-      MOZ_REQUIRES(SendMutex(), IOThread());
+  void Init(Mode mode) MOZ_REQUIRES(SendMutex(), IOThread());
 
   void OutputQueuePush(mozilla::UniquePtr<Message> msg)
       MOZ_REQUIRES(SendMutex());
   void OutputQueuePop() MOZ_REQUIRES(SendMutex());
 
-  const ChannelId PipeName(const ChannelId& channel_id, int32_t* secret) const;
-  bool CreatePipe(const ChannelId& channel_id, Mode mode)
-      MOZ_REQUIRES(SendMutex(), IOThread());
-  void SetOtherPid(int other_pid) MOZ_REQUIRES(IOThread())
-      MOZ_EXCLUDES(SendMutex());
   bool EnqueueHelloMessage() MOZ_REQUIRES(SendMutex(), IOThread());
   void CloseLocked() MOZ_REQUIRES(SendMutex(), IOThread());
 
-  bool ProcessConnection() MOZ_REQUIRES(SendMutex(), IOThread());
   bool ProcessIncomingMessages(MessageLoopForIO::IOContext* context,
                                DWORD bytes_read, bool was_pending)
       MOZ_REQUIRES(IOThread());
@@ -155,14 +136,7 @@ class Channel::ChannelImpl : public MessageLoopForIO::IOHandler {
   // buffers of this message.
   mozilla::UniquePtr<Message> incoming_message_ MOZ_GUARDED_BY(IOThread());
 
-  // Timer started when a MODE_SERVER channel begins waiting for a connection,
-  // and cancelled when the connection completes. Will produce an error if no
-  // connection occurs before the timeout.
-  nsCOMPtr<nsITimer> connect_timeout_ MOZ_GUARDED_BY(IOThread());
-
-  // Will be set to `true` until `Connect()` has been called, and, if in
-  // server-mode, the client has connected. The `input_state_` is used to wait
-  // for the client to connect in overlapped mode.
+  // Will be set to `true` until `Connect()` has been called.
   bool waiting_connect_ MOZ_GUARDED_BY(chan_cap_) = true;
 
   // This flag is set when processing incoming messages.  It is used to
@@ -172,17 +146,8 @@ class Channel::ChannelImpl : public MessageLoopForIO::IOHandler {
 
   // We keep track of the PID of the other side of this channel so that we can
   // record this when generating logs of IPC messages.
-  int32_t other_pid_ MOZ_GUARDED_BY(chan_cap_) = -1;
-
-  // This is a unique per-channel value used to authenticate the client end of
-  // a connection. If the value is non-zero, the client passes it in the hello
-  // and the host validates. (We don't send the zero value to preserve IPC
-  // compatibility with existing clients that don't validate the channel.)
-  int32_t shared_secret_ MOZ_GUARDED_BY(IOThread()) = 0;
-
-  // In server-mode, we wait for the channel at the other side of the pipe to
-  // send us back our shared secret, if we are using one.
-  bool waiting_for_shared_secret_ MOZ_GUARDED_BY(IOThread()) = false;
+  base::ProcessId other_pid_ MOZ_GUARDED_BY(chan_cap_) =
+      base::kInvalidProcessId;
 
   // Whether or not to accept handles from a remote process, and whether this
   // process is the privileged side of a IPC::Channel which can transfer

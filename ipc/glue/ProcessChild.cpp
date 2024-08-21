@@ -21,7 +21,6 @@
 
 #include "nsAppRunner.h"
 #include "mozilla/AppShutdown.h"
-#include "mozilla/ipc/CrashReporterClient.h"
 #include "mozilla/ipc/IOThreadChild.h"
 #include "mozilla/GeckoArgs.h"
 
@@ -29,16 +28,21 @@ namespace mozilla {
 namespace ipc {
 
 ProcessChild* ProcessChild::gProcessChild;
+StaticMutex ProcessChild::gIPCShutdownStateLock;
+nsCString ProcessChild::gIPCShutdownStateAnnotation;
 
 static Atomic<bool> sExpectingShutdown(false);
 
 ProcessChild::ProcessChild(ProcessId aParentPid, const nsID& aMessageChannelId)
-    : ChildProcess(new IOThreadChild()),
+    : ChildProcess(new IOThreadChild(aParentPid)),
       mUILoop(MessageLoop::current()),
       mParentPid(aParentPid),
       mMessageChannelId(aMessageChannelId) {
   MOZ_ASSERT(mUILoop, "UILoop should be created by now");
   MOZ_ASSERT(!gProcessChild, "should only be one ProcessChild");
+  CrashReporter::RegisterAnnotationNSCString(
+      CrashReporter::Annotation::IPCShutdownState,
+      &gIPCShutdownStateAnnotation);
   gProcessChild = this;
 }
 
@@ -81,7 +85,7 @@ static void ReallySleep(int aSeconds) {
   struct ::timespec snooze = {aSeconds, 0};
   HANDLE_EINTR(nanosleep(&snooze, &snooze));
 }
-#  elif defined(XP_WIN)
+#  else
 static void ReallySleep(int aSeconds) { ::Sleep(aSeconds * 1000); }
 #  endif  // Unix/Win
 static void SleepIfEnv(const char* aName) {
@@ -101,14 +105,14 @@ ProcessChild::~ProcessChild() {
   // we'll get into late IPC shutdown with processes still running.
   SleepIfEnv("MOZ_TEST_CHILD_EXIT_HANG");
 #endif
+  gIPCShutdownStateAnnotation = ""_ns;
   gProcessChild = nullptr;
 }
 
 /* static */
 void ProcessChild::NotifiedImpendingShutdown() {
   sExpectingShutdown = true;
-  CrashReporter::AppendToCrashReportAnnotation(
-      CrashReporter::Annotation::IPCShutdownState,
+  ProcessChild::AppendToIPCShutdownStateAnnotation(
       "NotifiedImpendingShutdown"_ns);
 }
 

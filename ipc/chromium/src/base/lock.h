@@ -10,14 +10,13 @@
 #include "base/basictypes.h"
 #include "base/lock_impl.h"
 #include "base/platform_thread.h"
-#include "build/build_config.h"
 
 // A convenient wrapper for an OS specific critical section.
 class Lock {
  public:
   // Optimized wrapper implementation
-  Lock() : lock_() {}
-  ~Lock() {}
+  Lock() = default;
+  ~Lock() = default;
   void Acquire() { lock_.Lock(); }
   void Release() { lock_.Unlock(); }
 
@@ -33,26 +32,22 @@ class Lock {
   // Whether Lock mitigates priority inversion when used from different thread
   // priorities.
   static bool HandlesMultipleThreadPriorities() {
-#if defined(OS_POSIX)
+#if defined(XP_UNIX)
     // POSIX mitigates priority inversion by setting the priority of a thread
     // holding a Lock to the maximum priority of any other thread waiting on it.
     return base::internal::LockImpl::PriorityInheritanceAvailable();
-#elif defined(OS_WIN)
+#else
     // Windows mitigates priority inversion by randomly boosting the priority of
     // ready threads.
     // https://msdn.microsoft.com/library/windows/desktop/ms684831.aspx
     return true;
-#else
-#  error Unsupported platform
 #endif
   }
 
-#if defined(OS_POSIX) || defined(OS_WIN)
   // Both Windows and POSIX implementations of ConditionVariable need to be
   // able to see our lock and tweak our debugging counters, as they release and
   // acquire locks inside of their condition variable APIs.
   friend class ConditionVariable;
-#endif
 
  private:
   // Platform specific underlying lock implementation.

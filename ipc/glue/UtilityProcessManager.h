@@ -24,6 +24,10 @@ class JSOracleParent;
 class WindowsUtilsParent;
 }  // namespace dom
 
+namespace widget::filedialog {
+class ProcessProxy;
+}  // namespace widget::filedialog
+
 namespace ipc {
 
 class UtilityProcessParent;
@@ -35,26 +39,30 @@ class UtilityProcessManager final : public UtilityProcessHost::Listener {
   friend class UtilityProcessParent;
 
  public:
+  template <typename T>
+  using LaunchPromise = MozPromise<T, LaunchError, true>;
+  template <typename T>
+  using SharedLaunchPromise = MozPromise<T, LaunchError, false>;
+
   using StartRemoteDecodingUtilityPromise =
-      MozPromise<Endpoint<PRemoteDecoderManagerChild>, nsresult, true>;
+      LaunchPromise<Endpoint<PRemoteDecoderManagerChild>>;
   using JSOraclePromise = GenericNonExclusivePromise;
 
-  using WindowsUtilsPromise =
-      MozPromise<RefPtr<dom::WindowsUtilsParent>, nsresult, true>;
-
-  static void Initialize();
-  static void Shutdown();
+#ifdef XP_WIN
+  using WindowsUtilsPromise = LaunchPromise<RefPtr<dom::WindowsUtilsParent>>;
+  using WinFileDialogPromise = LaunchPromise<widget::filedialog::ProcessProxy>;
+#endif
 
   static RefPtr<UtilityProcessManager> GetSingleton();
 
   static RefPtr<UtilityProcessManager> GetIfExists();
 
   // Launch a new Utility process asynchronously
-  RefPtr<GenericNonExclusivePromise> LaunchProcess(SandboxingKind aSandbox);
+  RefPtr<SharedLaunchPromise<Ok>> LaunchProcess(SandboxingKind aSandbox);
 
   template <typename Actor>
-  RefPtr<GenericNonExclusivePromise> StartUtility(RefPtr<Actor> aActor,
-                                                  SandboxingKind aSandbox);
+  RefPtr<LaunchPromise<Ok>> StartUtility(RefPtr<Actor> aActor,
+                                         SandboxingKind aSandbox);
 
   RefPtr<StartRemoteDecodingUtilityPromise> StartProcessForRemoteMediaDecoding(
       base::ProcessId aOtherProcess, dom::ContentParentId aChildId,
@@ -69,6 +77,10 @@ class UtilityProcessManager final : public UtilityProcessHost::Listener {
   // Releases the WindowsUtils actor so that it can be destroyed.
   // Subsequent attempts to use WindowsUtils will create a new process.
   void ReleaseWindowsUtils();
+
+  // Get a new Windows file-dialog utility-process actor. These are never
+  // reused; this will always return a fresh actor.
+  RefPtr<WinFileDialogPromise> CreateWinFileDialogActor();
 #endif
 
   void OnProcessUnexpectedShutdown(UtilityProcessHost* aHost);
@@ -167,6 +179,8 @@ class UtilityProcessManager final : public UtilityProcessHost::Listener {
 
   UtilityProcessManager();
 
+  void Init();
+
   void DestroyProcess(SandboxingKind aSandbox);
 
   bool IsShutdown() const;
@@ -175,7 +189,7 @@ class UtilityProcessManager final : public UtilityProcessHost::Listener {
    public:
     NS_DECL_ISUPPORTS
     NS_DECL_NSIOBSERVER
-    explicit Observer(RefPtr<UtilityProcessManager> aManager);
+    explicit Observer(UtilityProcessManager* aManager);
 
    protected:
     ~Observer() = default;
@@ -190,11 +204,11 @@ class UtilityProcessManager final : public UtilityProcessHost::Listener {
    public:
     NS_INLINE_DECL_THREADSAFE_REFCOUNTING(ProcessFields);
 
-    explicit ProcessFields(SandboxingKind aSandbox) : mSandbox(aSandbox){};
+    explicit ProcessFields(SandboxingKind aSandbox) : mSandbox(aSandbox) {};
 
     // Promise will be resolved when this Utility process has been fully started
     // and configured. Only accessed on the main thread.
-    RefPtr<GenericNonExclusivePromise> mLaunchPromise;
+    RefPtr<SharedLaunchPromise<Ok>> mLaunchPromise;
 
     uint32_t mNumProcessAttempts = 0;
     uint32_t mNumUnexpectedCrashes = 0;
@@ -216,7 +230,8 @@ class UtilityProcessManager final : public UtilityProcessHost::Listener {
     ~ProcessFields() = default;
   };
 
-  EnumeratedArray<SandboxingKind, SandboxingKind::COUNT, RefPtr<ProcessFields>>
+  EnumeratedArray<SandboxingKind, RefPtr<ProcessFields>,
+                  size_t(SandboxingKind::COUNT)>
       mProcesses;
 
   RefPtr<ProcessFields> GetProcess(SandboxingKind);

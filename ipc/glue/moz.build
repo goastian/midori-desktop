@@ -42,7 +42,6 @@ EXPORTS.mozilla.ipc += [
     "IPDLParamTraits.h",
     "IPDLStructMember.h",
     "LaunchError.h",
-    "LibrarySandboxPreload.h",
     "MessageChannel.h",
     "MessageLink.h",
     "MessagePump.h",
@@ -106,24 +105,16 @@ if CONFIG["OS_ARCH"] == "WINNT":
     SOURCES += [
         "CrossProcessSemaphore_windows.cpp",
     ]
-elif CONFIG["OS_ARCH"] != "Darwin":
-    UNIFIED_SOURCES += [
-        "CrossProcessSemaphore_posix.cpp",
+elif CONFIG["OS_ARCH"] == "Darwin":
+    SOURCES += [
+        "CrossProcessSemaphore_mach.cpp",
     ]
 else:
     UNIFIED_SOURCES += [
-        "CrossProcessSemaphore_unimplemented.cpp",
+        "CrossProcessSemaphore_posix.cpp",
     ]
 
-# Android has its own,
-# almost-but-not-quite-compatible-with-POSIX-or-/dev/shm shared memory
-# impl.
-if CONFIG["OS_TARGET"] == "Android":
-    EXPORTS.mozilla.ipc += ["SharedMemoryBasic_android.h"]
-    UNIFIED_SOURCES += [
-        "SharedMemoryBasic_android.cpp",
-    ]
-elif CONFIG["OS_ARCH"] == "Darwin":
+if CONFIG["OS_ARCH"] == "Darwin":
     EXPORTS.mozilla.ipc += ["SharedMemoryBasic_mach.h"]
     SOURCES += [
         "SharedMemoryBasic_mach.mm",
@@ -134,10 +125,20 @@ else:
 if CONFIG["OS_ARCH"] == "Linux":
     UNIFIED_SOURCES += [
         "ProcessUtils_linux.cpp",
+        "SetProcessTitle.cpp",
+    ]
+    EXPORTS.mozilla.ipc += [
+        "SetProcessTitle.h",
     ]
 elif CONFIG["OS_ARCH"] in ("DragonFly", "FreeBSD", "NetBSD", "OpenBSD"):
-    UNIFIED_SOURCES += ["ProcessUtils_bsd.cpp"]
-elif CONFIG["OS_ARCH"] == "Darwin":
+    UNIFIED_SOURCES += [
+        "ProcessUtils_bsd.cpp",
+        "SetProcessTitle.cpp",
+    ]
+    EXPORTS.mozilla.ipc += [
+        "SetProcessTitle.h",
+    ]
+elif CONFIG["TARGET_OS"] == "OSX":
     UNIFIED_SOURCES += ["ProcessUtils_mac.mm"]
 else:
     UNIFIED_SOURCES += [
@@ -150,6 +151,14 @@ if CONFIG["OS_ARCH"] != "WINNT":
     ]
     UNIFIED_SOURCES += [
         "FileDescriptorShuffle.cpp",
+    ]
+
+if CONFIG["TARGET_OS"] == "iOS":
+    EXPORTS.mozilla.ipc += [
+        "ExtensionKitUtils.h",
+    ]
+    UNIFIED_SOURCES += [
+        "ExtensionKitUtils.mm",
     ]
 
 EXPORTS.ipc += [
@@ -174,8 +183,6 @@ UNIFIED_SOURCES += [
     "InputStreamUtils.cpp",
     "IPCMessageUtilsSpecializations.cpp",
     "IPCStreamUtils.cpp",
-    "LaunchError.cpp",
-    "LibrarySandboxPreload.cpp",
     "MessageChannel.cpp",
     "MessageLink.cpp",
     "MessagePump.cpp",
@@ -201,6 +208,7 @@ UNIFIED_SOURCES += [
     "UtilityProcessImpl.cpp",
     "UtilityProcessManager.cpp",
     "UtilityProcessParent.cpp",
+    "UtilityProcessSandboxing.cpp",
 ]
 
 SOURCES += [
@@ -283,10 +291,17 @@ include("/ipc/chromium/chromium-config.mozbuild")
 
 FINAL_LIBRARY = "xul"
 
-if CONFIG["OS_ARCH"] == "Darwin":
+if CONFIG["TARGET_OS"] == "OSX":
     OS_LIBS += ["bsm"]  # for audit_token_to_pid
+elif CONFIG["TARGET_OS"] == "iOS":
+    OS_LIBS += ["-framework BrowserEngineKit"]
 
-for var in ("MOZ_CHILD_PROCESS_NAME", "MOZ_CHILD_PROCESS_BUNDLE"):
+for var in (
+    "MOZ_CHILD_PROCESS_NAME",
+    "MOZ_CHILD_PROCESS_BUNDLENAME",
+    "MOZ_EME_PROCESS_NAME_BRANDED",
+    "MOZ_EME_PROCESS_BUNDLENAME",
+):
     DEFINES[var] = '"%s"' % CONFIG[var]
 
 if CONFIG["MOZ_SANDBOX"] and CONFIG["OS_ARCH"] == "WINNT":

@@ -6,7 +6,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef ipc_glue_MessageChannel_h
-#define ipc_glue_MessageChannel_h 1
+#define ipc_glue_MessageChannel_h
 
 #include "ipc/EnumSerializer.h"
 #include "mozilla/Atomics.h"
@@ -14,9 +14,9 @@
 #include "mozilla/LinkedList.h"
 #include "mozilla/Monitor.h"
 #include "mozilla/Vector.h"
-#if defined(OS_WIN)
+#if defined(XP_WIN)
 #  include "mozilla/ipc/Neutering.h"
-#endif  // defined(OS_WIN)
+#endif  // defined(XP_WIN)
 
 #include <functional>
 #include <map>
@@ -197,9 +197,19 @@ class MessageChannel : HasResultCodes {
   // Close the underlying transport channel.
   void Close() MOZ_EXCLUDES(*mMonitor);
 
-  // Close the underlying transport channel, treating the closure as a
-  // connection error.
-  void CloseWithError() MOZ_EXCLUDES(*mMonitor);
+  // Induce an error in this MessageChannel's connection.
+  //
+  // After this method is called, no more message notifications will be
+  // delivered to the listener, and the channel will be unable to send or
+  // receive future messages, as if the peer dropped the connection
+  // unexpectedly.
+  //
+  // The OnChannelError notification will be delivered either asynchronously or
+  // during an explicit call to Close(), whichever happens first.
+  //
+  // NOTE: If SetAbortOnError(true) has been called on this MessageChannel,
+  // calling this function will immediately exit the current process.
+  void InduceConnectionError() MOZ_EXCLUDES(*mMonitor);
 
   void SetAbortOnError(bool abort) MOZ_EXCLUDES(*mMonitor) {
     MonitorAutoLock lock(*mMonitor);
@@ -282,6 +292,11 @@ class MessageChannel : HasResultCodes {
 
   void CancelCurrentTransaction() MOZ_EXCLUDES(*mMonitor);
 
+  // Return whether the current transaction is complete.
+  //
+  // This is intended only for tests.
+  bool TestOnlyIsTransactionComplete() const MOZ_EXCLUDES(*mMonitor);
+
   // IsClosed and NumQueuedMessages are safe to call from any thread, but
   // may provide an out-of-date value.
   bool IsClosed() MOZ_EXCLUDES(*mMonitor) {
@@ -316,7 +331,7 @@ class MessageChannel : HasResultCodes {
   }
 #endif
 
-#ifdef OS_WIN
+#ifdef XP_WIN
   struct MOZ_STACK_CLASS SyncStackFrame {
     explicit SyncStackFrame(MessageChannel* channel);
     ~SyncStackFrame();
@@ -352,10 +367,7 @@ class MessageChannel : HasResultCodes {
  public:
   void ProcessNativeEventsInInterruptCall();
   static void NotifyGeckoEventDispatch();
-
- private:
-  void SpinInternalEventLoop();
-#endif  // defined(OS_WIN)
+#endif  // defined(XP_WIN)
 
  private:
   void PostErrorNotifyTask() MOZ_REQUIRES(*mMonitor);
@@ -761,7 +773,7 @@ class MessageChannel : HasResultCodes {
   // Map of async Callbacks that are still waiting replies.
   CallbackMap mPendingResponses;
 
-#ifdef OS_WIN
+#ifdef XP_WIN
   HANDLE mEvent;
 #endif
 

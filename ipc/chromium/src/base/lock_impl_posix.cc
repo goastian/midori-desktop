@@ -22,7 +22,7 @@ namespace internal {
 // Lock::PriorityInheritanceAvailable still must be checked as the code may
 // compile but the underlying platform still may not correctly support priority
 // inheritance locks.
-#if defined(OS_NACL) || defined(OS_ANDROID)
+#if defined(ANDROID)
 #  define PRIORITY_INHERITANCE_LOCKS_POSSIBLE() 0
 #else
 #  define PRIORITY_INHERITANCE_LOCKS_POSSIBLE() 1
@@ -72,7 +72,7 @@ void LockImpl::Unlock() {
 
 // static
 bool LockImpl::PriorityInheritanceAvailable() {
-#if PRIORITY_INHERITANCE_LOCKS_POSSIBLE() && defined(OS_MACOSX)
+#if PRIORITY_INHERITANCE_LOCKS_POSSIBLE() && defined(XP_DARWIN)
   return true;
 #else
   // Security concerns prevent the use of priority inheritance mutexes on Linux.

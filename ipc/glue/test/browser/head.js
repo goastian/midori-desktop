@@ -21,7 +21,7 @@ async function startUtilityProcess(actors = []) {
 
 // Returns an array of process infos for utility processes of the given type
 // or all utility processes if actor is not defined.
-async function getUtilityProcesses(actor = undefined) {
+async function getUtilityProcesses(actor = undefined, options = {}) {
   let procInfos = (await ChromeUtils.requestProcInfo()).children.filter(p => {
     return (
       p.type === "utility" &&
@@ -30,20 +30,28 @@ async function getUtilityProcesses(actor = undefined) {
     );
   });
 
-  info(`Utility process infos = ${JSON.stringify(procInfos)}`);
+  if (!options?.quiet) {
+    info(`Utility process infos = ${JSON.stringify(procInfos)}`);
+  }
   return procInfos;
 }
 
-async function getUtilityPid(actor) {
-  let process = await getUtilityProcesses(actor);
-  is(process.length, 1, `exactly one ${actor} process exists`);
-  return process[0].pid;
+async function tryGetUtilityPid(actor, options = {}) {
+  let process = await getUtilityProcesses(actor, options);
+  if (!options?.quiet) {
+    Assert.lessOrEqual(
+      process.length,
+      1,
+      `at most one ${actor} process exists`
+    );
+  }
+  return process[0]?.pid;
 }
 
 async function checkUtilityExists(actor) {
   info(`Looking for a running ${actor} utility process`);
-  const utilityPid = await getUtilityPid(actor);
-  ok(utilityPid > 0, `Found ${actor} utility process ${utilityPid}`);
+  const utilityPid = await tryGetUtilityPid(actor);
+  Assert.greater(utilityPid, 0, `Found ${actor} utility process ${utilityPid}`);
   return utilityPid;
 }
 
@@ -55,8 +63,12 @@ async function checkUtilityExists(actor) {
 async function cleanUtilityProcessShutdown(actor, preferKill = false) {
   info(`${preferKill ? "Kill" : "Clean shutdown"} Utility Process ${actor}`);
 
-  const utilityPid = await getUtilityPid(actor);
-  ok(utilityPid !== undefined, `Must have PID for ${actor} utility process`);
+  const utilityPid = await tryGetUtilityPid(actor);
+  Assert.notStrictEqual(
+    utilityPid,
+    undefined,
+    `Must have PID for ${actor} utility process`
+  );
 
   const utilityProcessGone = TestUtils.topicObserved(
     "ipc:utility-shutdown",
@@ -110,19 +122,19 @@ function audioTestData() {
       expectations: {
         Android: {
           process: "Utility Generic",
-          decoder: "vorbis audio decoder",
+          decoder: "ffvpx audio decoder",
         },
         Linux: {
           process: "Utility Generic",
-          decoder: "vorbis audio decoder",
+          decoder: "ffvpx audio decoder",
         },
         WINNT: {
           process: "Utility Generic",
-          decoder: "vorbis audio decoder",
+          decoder: "ffvpx audio decoder",
         },
         Darwin: {
           process: "Utility Generic",
-          decoder: "vorbis audio decoder",
+          decoder: "ffvpx audio decoder",
         },
       },
     },
@@ -135,20 +147,12 @@ function audioTestData() {
           decoder: "ffvpx audio decoder",
         },
         WINNT: {
-          process: SpecialPowers.getBoolPref("media.ffvpx.mp3.enabled")
-            ? "Utility Generic"
-            : "Utility WMF",
-          decoder: SpecialPowers.getBoolPref("media.ffvpx.mp3.enabled")
-            ? "ffvpx audio decoder"
-            : "wmf audio decoder",
+          process: "Utility Generic",
+          decoder: "ffvpx audio decoder",
         },
         Darwin: {
-          process: SpecialPowers.getBoolPref("media.ffvpx.mp3.enabled")
-            ? "Utility Generic"
-            : "Utility AppleMedia",
-          decoder: SpecialPowers.getBoolPref("media.ffvpx.mp3.enabled")
-            ? "ffvpx audio decoder"
-            : "apple coremedia decoder",
+          process: "Utility Generic",
+          decoder: "ffvpx audio decoder",
         },
       },
     },
@@ -191,6 +195,32 @@ function audioTestData() {
   ];
 }
 
+function audioTestDataEME() {
+  return [
+    {
+      src: {
+        audioFile:
+          "https://example.com/browser/ipc/glue/test/browser/short-aac-encrypted-audio.mp4",
+        sourceBuffer: "audio/mp4",
+      },
+      expectations: {
+        Linux: {
+          process: "Utility Generic",
+          decoder: "ffmpeg audio decoder",
+        },
+        WINNT: {
+          process: "Utility WMF",
+          decoder: "wmf audio decoder",
+        },
+        Darwin: {
+          process: "Utility AppleMedia",
+          decoder: "apple coremedia decoder",
+        },
+      },
+    },
+  ];
+}
+
 async function addMediaTab(src) {
   const tab = BrowserTestUtils.addTab(gBrowser, "about:blank", {
     forceNewProcess: true,
@@ -201,17 +231,44 @@ async function addMediaTab(src) {
   return tab;
 }
 
+async function addMediaTabWithEME(sourceBuffer, audioFile) {
+  const tab = BrowserTestUtils.addTab(
+    gBrowser,
+    "https://example.com/browser/",
+    {
+      forceNewProcess: true,
+    }
+  );
+  const browser = gBrowser.getBrowserForTab(tab);
+  await BrowserTestUtils.browserLoaded(browser);
+  await SpecialPowers.spawn(
+    browser,
+    [sourceBuffer, audioFile],
+    createAudioElementEME
+  );
+  return tab;
+}
+
 async function play(
   tab,
   expectUtility,
   expectDecoder,
   expectContent = false,
-  expectJava = false
+  expectJava = false,
+  expectError = false,
+  withEME = false
 ) {
   let browser = tab.linkedBrowser;
   return SpecialPowers.spawn(
     browser,
-    [expectUtility, expectDecoder, expectContent, expectJava],
+    [
+      expectUtility,
+      expectDecoder,
+      expectContent,
+      expectJava,
+      expectError,
+      withEME,
+    ],
     checkAudioDecoder
   );
 }
@@ -234,16 +291,56 @@ async function createAudioElement(src) {
   doc.body.appendChild(audio);
 }
 
+async function createAudioElementEME(sourceBuffer, audioFile) {
+  // Helper to clone data into content so the EME helper can use the data.
+  function cloneIntoContent(data) {
+    return Cu.cloneInto(data, content.wrappedJSObject);
+  }
+
+  // Load the EME helper into content.
+  Services.scriptloader.loadSubScript(
+    "chrome://mochitests/content/browser/ipc/glue/test/browser/eme_standalone.js",
+    content
+  );
+
+  let audio = content.document.createElement("audio");
+  audio.setAttribute("controls", "true");
+  audio.setAttribute("loop", true);
+  audio.setAttribute("_sourceBufferType", sourceBuffer);
+  audio.setAttribute("_audioUrl", audioFile);
+  content.document.body.appendChild(audio);
+
+  let emeHelper = new content.wrappedJSObject.EmeHelper();
+  emeHelper.SetKeySystem(
+    content.wrappedJSObject.EmeHelper.GetClearkeyKeySystemString()
+  );
+  emeHelper.SetInitDataTypes(cloneIntoContent(["keyids", "cenc"]));
+  emeHelper.SetAudioCapabilities(
+    cloneIntoContent([{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }])
+  );
+  emeHelper.AddKeyIdAndKey(
+    "2cdb0ed6119853e7850671c3e9906c3c",
+    "808B9ADAC384DE1E4F56140F4AD76194"
+  );
+  emeHelper.onerror = error => {
+    is(false, `Got unexpected error from EME helper: ${error}`);
+  };
+  await emeHelper.ConfigureEme(audio);
+  // Done setting up EME.
+}
+
 async function checkAudioDecoder(
   expectedProcess,
   expectedDecoder,
   expectContent = false,
-  expectJava = false
+  expectJava = false,
+  expectError = false,
+  withEME = false
 ) {
   const doc = typeof content !== "undefined" ? content.document : document;
   let audio = doc.querySelector("audio");
   const checkPromise = new Promise((resolve, reject) => {
-    const timeUpdateHandler = async ev => {
+    const timeUpdateHandler = async () => {
       const debugInfo = await SpecialPowers.wrap(audio).mozRequestDebugInfo();
       const audioDecoderName = debugInfo.decoder.reader.audioDecoderName;
 
@@ -258,7 +355,7 @@ async function checkAudioDecoder(
         audioDecoderName.indexOf(`(${expectedProcess} remote)`) > 0;
       const isJavaRemote = audioDecoderName.indexOf("(remote)") > 0;
       const isOk =
-        (isExpectedProcess && !isJavaRemote && !expectContent && !expectJava) || // Running in Utility/RDD
+        (isExpectedProcess && !isJavaRemote && !expectContent && !expectJava) || // Running in Utility
         (expectJava && !isExpectedProcess && isJavaRemote) || // Running in Java remote
         (expectContent && !isExpectedProcess && !isJavaRemote); // Running in Content
 
@@ -274,7 +371,7 @@ async function checkAudioDecoder(
       }
     };
 
-    const startPlaybackHandler = async ev => {
+    const startPlaybackHandler = async () => {
       ok(
         await audio.play().then(
           _ => true,
@@ -286,14 +383,54 @@ async function checkAudioDecoder(
       audio.addEventListener("timeupdate", timeUpdateHandler, { once: true });
     };
 
+    audio.addEventListener("error", async () => {
+      info(
+        `Received HTML media error: ${audio.error.code}: ${audio.error.message}`
+      );
+      if (expectError) {
+        const w = typeof content !== "undefined" ? content.window : window;
+        ok(
+          audio.error.code === w.MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED ||
+            w.MediaError.MEDIA_ERR_DECODE,
+          "Media supported but decoding failed"
+        );
+        resolve();
+      } else {
+        info(`Unexpected error`);
+        reject();
+      }
+    });
+
     audio.addEventListener("canplaythrough", startPlaybackHandler, {
       once: true,
     });
   });
 
-  // We need to make sure the decoder is ready before play()ing otherwise we
-  // could get into bad situations
-  audio.load();
+  if (!withEME) {
+    // We need to make sure the decoder is ready before play()ing otherwise we
+    // could get into bad situations
+    audio.load();
+  } else {
+    // For EME we need to create and load content ourselves. We do this here
+    // because if we do it in createAudioElementEME() above then we end up
+    // with events fired before we get a chance to listen to them here
+    async function once(target, name) {
+      return new Promise(r => target.addEventListener(name, r, { once: true }));
+    }
+
+    // Setup MSE.
+    const ms = new content.wrappedJSObject.MediaSource();
+    audio.src = content.wrappedJSObject.URL.createObjectURL(ms);
+    await once(ms, "sourceopen");
+    const sb = ms.addSourceBuffer(audio.getAttribute("_sourceBufferType"));
+    let fetchResponse = await content.fetch(audio.getAttribute("_audioUrl"));
+    let dataBuffer = await fetchResponse.arrayBuffer();
+    sb.appendBuffer(dataBuffer);
+    await once(sb, "updateend");
+    ms.endOfStream();
+    await once(ms, "sourceended");
+  }
+
   return checkPromise;
 }
 
@@ -304,6 +441,7 @@ async function runMochitestUtilityAudio(
     expectDecoder,
     expectContent = false,
     expectJava = false,
+    expectError = false,
   } = {}
 ) {
   info(`Add media: ${src}`);
@@ -316,7 +454,8 @@ async function runMochitestUtilityAudio(
     expectUtility,
     expectDecoder,
     expectContent,
-    expectJava
+    expectJava,
+    expectError
   );
 
   info(`Pause media: ${src}`);
@@ -352,8 +491,9 @@ async function crashSomeUtility(utilityPid, actorsCheck) {
 
   info(`Waiting for utility process ${utilityPid} to go away.`);
   let [subject, data] = await utilityProcessGone;
-  ok(
-    parseInt(data, 10) === utilityPid,
+  Assert.strictEqual(
+    parseInt(data, 10),
+    utilityPid,
     `Should match the crashed PID ${utilityPid} with ${data}`
   );
   ok(
@@ -379,7 +519,7 @@ async function crashSomeUtility(utilityPid, actorsCheck) {
       ),
       "Record should be a utility process crash"
     );
-    ok(crash.id === dumpID, "Record should have an ID");
+    Assert.strictEqual(crash.id, dumpID, "Record should have an ID");
     ok(
       actorsCheck(crash.metadata.UtilityActorsName),
       `Record should have the correct actors name for: ${crash.metadata.UtilityActorsName}`
@@ -415,10 +555,18 @@ async function crashSomeUtilityActor(
 ) {
   // Get PID for utility type
   const procInfos = await getUtilityProcesses(actor);
-  ok(
-    procInfos.length == 1,
+  Assert.equal(
+    procInfos.length,
+    1,
     `exactly one ${actor} utility process should be found`
   );
   const utilityPid = procInfos[0].pid;
   return crashSomeUtility(utilityPid, actorsCheck);
+}
+
+function isNightlyOnly() {
+  const { AppConstants } = ChromeUtils.importESModule(
+    "resource://gre/modules/AppConstants.sys.mjs"
+  );
+  return AppConstants.NIGHTLY_BUILD;
 }

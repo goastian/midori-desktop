@@ -5,14 +5,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "UtilityProcessChild.h"
 
-#include "mozilla/ipc/UtilityProcessManager.h"
-#include "mozilla/ipc/UtilityProcessSandboxing.h"
+#include "mozilla/AppShutdown.h"
+#include "mozilla/Logging.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/JSOracleChild.h"
 #include "mozilla/dom/MemoryReportRequest.h"
 #include "mozilla/ipc/CrashReporterClient.h"
 #include "mozilla/ipc/Endpoint.h"
-#include "mozilla/AppShutdown.h"
+#include "mozilla/ipc/UtilityProcessManager.h"
+#include "mozilla/ipc/UtilityProcessSandboxing.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/RemoteDecoderManagerParent.h"
 
@@ -33,6 +34,7 @@
 #if defined(XP_WIN)
 #  include "mozilla/WinDllServices.h"
 #  include "mozilla/dom/WindowsUtilsChild.h"
+#  include "mozilla/widget/filedialog/WinFileDialogChild.h"
 #endif
 
 #include "nsDebugImpl.h"
@@ -117,13 +119,12 @@ bool UtilityProcessChild::Init(mozilla::ipc::UntypedEndpoint&& aEndpoint,
   // At the moment, only ORB uses JSContext in the
   // Utility Process and ORB uses GENERIC_UTILITY
   if (mSandbox == SandboxingKind::GENERIC_UTILITY) {
-    JS::DisableJitBackend();
-    if (!JS_Init()) {
+    if (!JS_FrontendOnlyInit()) {
       return false;
     }
 #if defined(__OpenBSD__) && defined(MOZ_SANDBOX)
     // Bug 1823458: delay pledge initialization, otherwise
-    // JS_Init triggers sysctl(KERN_PROC_ID) which isnt
+    // JS_FrontendOnlyInit triggers sysctl(KERN_PROC_ID) which isnt
     // permitted with the current pledge.utility config
     StartOpenBSDSandbox(GeckoProcessType_Utility, mSandbox);
 #endif
@@ -144,7 +145,7 @@ bool UtilityProcessChild::Init(mozilla::ipc::UntypedEndpoint&& aEndpoint,
         StaticMutexAutoLock lock(sUtilityProcessChildMutex);
         sUtilityProcessChild = nullptr;
         if (sandboxKind == SandboxingKind::GENERIC_UTILITY) {
-          JS_ShutDown();
+          JS_FrontendOnlyShutDown();
         }
       },
       ShutdownPhase::XPCOMShutdownFinal);
@@ -260,13 +261,15 @@ mozilla::ipc::IPCResult UtilityProcessChild::RecvTestTelemetryProbes() {
 
 mozilla::ipc::IPCResult
 UtilityProcessChild::RecvStartUtilityAudioDecoderService(
-    Endpoint<PUtilityAudioDecoderParent>&& aEndpoint) {
+    Endpoint<PUtilityAudioDecoderParent>&& aEndpoint,
+    nsTArray<gfx::GfxVarUpdate>&& aUpdates) {
   PROFILER_MARKER_UNTYPED(
       "UtilityProcessChild::RecvStartUtilityAudioDecoderService", MEDIA,
       MarkerOptions(MarkerTiming::IntervalUntilNowFrom(mChildStartTime)));
-  mUtilityAudioDecoderInstance = new UtilityAudioDecoderParent();
+  mUtilityAudioDecoderInstance =
+      new UtilityAudioDecoderParent(std::move(aUpdates));
   if (!mUtilityAudioDecoderInstance) {
-    return IPC_FAIL(this, "Failing to create UtilityAudioDecoderParent");
+    return IPC_FAIL(this, "Failed to create UtilityAudioDecoderParent");
   }
 
   mUtilityAudioDecoderInstance->Start(std::move(aEndpoint));
@@ -280,7 +283,7 @@ mozilla::ipc::IPCResult UtilityProcessChild::RecvStartJSOracleService(
       MarkerOptions(MarkerTiming::IntervalUntilNowFrom(mChildStartTime)));
   mJSOracleInstance = new mozilla::dom::JSOracleChild();
   if (!mJSOracleInstance) {
-    return IPC_FAIL(this, "Failing to create JSOracleParent");
+    return IPC_FAIL(this, "Failed to create JSOracleParent");
   }
 
   mJSOracleInstance->Start(std::move(aEndpoint));
@@ -300,6 +303,25 @@ mozilla::ipc::IPCResult UtilityProcessChild::RecvStartWindowsUtilsService(
 
   [[maybe_unused]] bool ok = std::move(aEndpoint).Bind(mWindowsUtilsInstance);
   MOZ_ASSERT(ok);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult UtilityProcessChild::RecvStartWinFileDialogService(
+    Endpoint<widget::filedialog::PWinFileDialogChild>&& aEndpoint) {
+  PROFILER_MARKER_UNTYPED(
+      "UtilityProcessChild::RecvStartWinFileDialogService", OTHER,
+      MarkerOptions(MarkerTiming::IntervalUntilNowFrom(mChildStartTime)));
+
+  auto instance = MakeRefPtr<widget::filedialog::WinFileDialogChild>();
+  if (!instance) {
+    return IPC_FAIL(this, "Failed to create WinFileDialogChild");
+  }
+
+  bool const ok = std::move(aEndpoint).Bind(instance.get());
+  if (!ok) {
+    return IPC_FAIL(this, "Failed to bind created WinFileDialogChild");
+  }
+
   return IPC_OK();
 }
 

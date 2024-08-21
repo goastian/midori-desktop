@@ -244,16 +244,16 @@ FilePath FilePath::Append(const FilePath& component) const {
 
 FilePath FilePath::AppendASCII(const std::string& component) const {
   DCHECK(IsStringASCII(component));
-#if defined(OS_WIN)
+#if defined(XP_WIN)
   return Append(ASCIIToWide(component));
-#elif defined(OS_POSIX)
+#else
   return Append(component);
 #endif
 }
 
 bool FilePath::IsAbsolute() const { return IsPathAbsolute(path_); }
 
-#if defined(OS_POSIX)
+#if defined(XP_UNIX)
 // See file_path.h for a discussion of the encoding of paths on POSIX
 // platforms.  These *Hack() functions are not quite correct, but they're
 // only temporary while we fix the remainder of the code.
@@ -266,7 +266,7 @@ FilePath FilePath::FromWStringHack(const std::wstring& wstring) {
 std::wstring FilePath::ToWStringHack() const {
   return base::SysNativeMBToWide(path_);
 }
-#elif defined(OS_WIN)
+#else
 // static
 FilePath FilePath::FromWStringHack(const std::wstring& wstring) {
   return FilePath(wstring);

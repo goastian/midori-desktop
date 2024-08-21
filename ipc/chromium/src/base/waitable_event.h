@@ -9,11 +9,11 @@
 
 #include "base/basictypes.h"
 
-#if defined(OS_WIN)
+#if defined(XP_WIN)
 #  include <windows.h>
 #endif
 
-#if defined(OS_POSIX)
+#if defined(XP_UNIX)
 #  include <list>
 #  include <utility>
 #  include "base/condition_variable.h"
@@ -75,7 +75,7 @@ class WaitableEvent {
   // does not necessarily mean that max_time was exceeded.
   bool TimedWait(const TimeDelta& max_time);
 
-#if defined(OS_WIN)
+#if defined(XP_WIN)
   HANDLE handle() const { return handle_; }
 #endif
 
@@ -121,7 +121,7 @@ class WaitableEvent {
  private:
   friend class WaitableEventWatcher;
 
-#if defined(OS_WIN)
+#if defined(XP_WIN)
   HANDLE handle_;
 #else
   // On Windows, one can close a HANDLE which is currently being waited on. The

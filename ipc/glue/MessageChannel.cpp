@@ -42,7 +42,7 @@
 #include "nsPrintfCString.h"
 #include "nsThreadUtils.h"
 
-#ifdef OS_WIN
+#ifdef XP_WIN
 #  include "mozilla/gfx/Logging.h"
 #endif
 
@@ -438,7 +438,7 @@ MessageChannel::MessageChannel(const char* aName, IToplevelProtocol* aListener)
     : mName(aName), mListener(aListener), mMonitor(new RefCountedMonitor()) {
   MOZ_COUNT_CTOR(ipc::MessageChannel);
 
-#ifdef OS_WIN
+#ifdef XP_WIN
   mEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
   MOZ_RELEASE_ASSERT(mEvent, "CreateEvent failed! Nothing is going to work!");
 #endif
@@ -452,7 +452,7 @@ MessageChannel::~MessageChannel() {
   MonitorAutoLock lock(*mMonitor);
   MOZ_RELEASE_ASSERT(!mOnCxxStack,
                      "MessageChannel destroyed while code on CxxStack");
-#ifdef OS_WIN
+#ifdef XP_WIN
   if (mEvent) {
     BOOL ok = CloseHandle(mEvent);
     mEvent = nullptr;
@@ -473,9 +473,8 @@ MessageChannel::~MessageChannel() {
   // would be unsafe to invoke our listener's callbacks, and we may be being
   // destroyed on a thread other than `mWorkerThread`.
   if (!IsClosedLocked()) {
-    CrashReporter::AnnotateCrashReport(
-        CrashReporter::Annotation::IPCFatalErrorProtocol,
-        nsDependentCString(mName));
+    CrashReporter::RecordAnnotationCString(
+        CrashReporter::Annotation::IPCFatalErrorProtocol, mName);
     switch (mChannelState) {
       case ChannelConnected:
         MOZ_CRASH(
@@ -537,6 +536,12 @@ int32_t MessageChannel::CurrentNestedInsideSyncTransaction() const {
   return mTransactionStack->TransactionID();
 }
 
+bool MessageChannel::TestOnlyIsTransactionComplete() const {
+  AssertWorkerThread();
+  MonitorAutoLock lock(*mMonitor);
+  return !mTransactionStack || mTransactionStack->IsComplete();
+}
+
 bool MessageChannel::AwaitingSyncReply() const {
   mMonitor->AssertCurrentThreadOwns();
   return mTransactionStack ? mTransactionStack->AwaitingSyncReply() : false;
@@ -559,17 +564,6 @@ int MessageChannel::DispatchingSyncMessageNestedLevel() const {
   return mTransactionStack
              ? mTransactionStack->DispatchingSyncMessageNestedLevel()
              : 0;
-}
-
-static const char* StringFromIPCSide(Side side) {
-  switch (side) {
-    case ChildSide:
-      return "Child";
-    case ParentSide:
-      return "Parent";
-    default:
-      return "Unknown";
-  }
 }
 
 static void PrintErrorMessage(Side side, const char* channelName,
@@ -941,13 +935,13 @@ bool MessageChannel::MaybeInterceptSpecialIOMessage(const Message& aMsg) {
       // ourselves as "Closing".
       mLink->Close();
       mChannelState = ChannelClosing;
-      if (LoggingEnabled()) {
+      if (LoggingEnabledFor(mListener->GetProtocolName(), mSide)) {
         printf(
-            "[%s %u] NOTE: %s actor received `Goodbye' message.  Closing "
+            "[%s %u] NOTE: %s%s actor received `Goodbye' message.  Closing "
             "channel.\n",
             XRE_GeckoProcessTypeToString(XRE_GetProcessType()),
             static_cast<uint32_t>(base::GetCurrentProcId()),
-            (mSide == ChildSide) ? "child" : "parent");
+            mListener->GetProtocolName(), StringFromIPCSide(mSide));
       }
 
       // Notify the worker thread that the connection has been closed, as we
@@ -1235,7 +1229,7 @@ bool MessageChannel::Send(UniquePtr<Message> aMsg, UniquePtr<Message>* aReply) {
 
   RefPtr<ActorLifecycleProxy> proxy = Listener()->GetLifecycleProxy();
 
-#ifdef OS_WIN
+#ifdef XP_WIN
   SyncStackFrame frame(this);
   NeuteredWindowRegion neuteredRgn(mFlags &
                                    REQUIRE_DEFERRED_MESSAGE_PROTECTION);
@@ -1610,9 +1604,13 @@ nsresult MessageChannel::MessageTask::Run() {
     return NS_OK;
   }
 
+  Channel()->AssertWorkerThread();
+  mMonitor->AssertSameMonitor(*Channel()->mMonitor);
+
 #ifdef FUZZING_SNAPSHOT
   if (!mIsFuzzMsg) {
-    if (fuzzing::Nyx::instance().started()) {
+    if (fuzzing::Nyx::instance().started() && XRE_IsParentProcess() &&
+        Channel()->IsCrossProcess()) {
       // Once we started fuzzing, prevent non-fuzzing tasks from being
       // run and potentially blocking worker threads.
       //
@@ -1628,8 +1626,6 @@ nsresult MessageChannel::MessageTask::Run() {
   }
 #endif
 
-  Channel()->AssertWorkerThread();
-  mMonitor->AssertSameMonitor(*Channel()->mMonitor);
   proxy = Channel()->Listener()->GetLifecycleProxy();
   Channel()->RunMessage(proxy, *this);
 
@@ -1714,6 +1710,13 @@ void MessageChannel::DispatchMessage(ActorLifecycleProxy* aProxy,
 
   UniquePtr<Message> reply;
 
+#ifdef FUZZING_SNAPSHOT
+  if (IsCrossProcess()) {
+    aMsg = mozilla::fuzzing::IPCFuzzController::instance().replaceIPCMessage(
+        std::move(aMsg));
+  }
+#endif
+
   IPC_LOG("DispatchMessage: seqno=%d, xid=%d", aMsg->seqno(),
           aMsg->transaction_id());
   AddProfilerMarker(*aMsg, MessageDirection::eReceiving);
@@ -1746,6 +1749,12 @@ void MessageChannel::DispatchMessage(ActorLifecycleProxy* aProxy,
       reply = nullptr;
     }
   }
+
+#ifdef FUZZING_SNAPSHOT
+  if (aMsg->IsFuzzMsg()) {
+    mozilla::fuzzing::IPCFuzzController::instance().syncAfterReplace();
+  }
+#endif
 
   if (reply && ChannelConnected == mChannelState) {
     IPC_LOG("Sending reply seqno=%d, xid=%d", aMsg->seqno(),
@@ -1838,7 +1847,7 @@ bool MessageChannel::WaitResponse(bool aWaitTimedOut) {
   return true;
 }
 
-#ifndef OS_WIN
+#ifndef XP_WIN
 bool MessageChannel::WaitForSyncNotify() {
   AssertWorkerThread();
 #  ifdef DEBUG
@@ -1945,6 +1954,10 @@ void MessageChannel::ReportMessageRouteError(const char* channelName) const {
 bool MessageChannel::MaybeHandleError(Result code, const Message& aMsg,
                                       const char* channelName) {
   if (MsgProcessed == code) return true;
+
+#ifdef FUZZING_SNAPSHOT
+  mozilla::fuzzing::IPCFuzzController::instance().OnMessageError(code, aMsg);
+#endif
 
   const char* errorMsg = nullptr;
   switch (code) {
@@ -2107,29 +2120,33 @@ class GoodbyeMessage : public IPC::Message {
   }
 };
 
-void MessageChannel::CloseWithError() {
-  AssertWorkerThread();
+void MessageChannel::InduceConnectionError() {
+  MonitorAutoLock lock(*mMonitor);
 
-  // This lock guard may be reset by `NotifyMaybeChannelError` before invoking
-  // listener callbacks which may destroy this `MessageChannel`.
-  ReleasableMonitorAutoLock lock(*mMonitor);
-
+  // Either connected or closing, immediately convert to an error and notify.
   switch (mChannelState) {
-    case ChannelError:
-      // Already errored, ensure we notify if we haven't yet.
-      NotifyMaybeChannelError(lock);
-      return;
-    case ChannelClosed:
-      // Already closed, we can't do anything.
-      return;
-    default:
-      // Either connected or closing, immediately convert to an error, and
-      // notify.
-      MOZ_ASSERT(mChannelState == ChannelConnected ||
-                 mChannelState == ChannelClosing);
+    case ChannelConnected:
+      // The channel is still actively connected. Immediately shut down the
+      // connection with our peer and simulate it invoking
+      // OnChannelErrorFromLink on us.
+      //
+      // This will update the state to ChannelError, preventing new messages
+      // from being processed, leading to an error being reported asynchronously
+      // to our listener.
       mLink->Close();
+      OnChannelErrorFromLink();
+      return;
+
+    case ChannelClosing:
+      // An notify task has already been posted. Update mChannelState to stop
+      // processing new messages and treat the notification as an error.
       mChannelState = ChannelError;
-      NotifyMaybeChannelError(lock);
+      return;
+
+    default:
+      // Either already closed or errored. Nothing to do.
+      MOZ_ASSERT(mChannelState == ChannelClosed ||
+                 mChannelState == ChannelError);
       return;
   }
 }
@@ -2212,8 +2229,7 @@ void MessageChannel::DebugAbort(const char* file, int line, const char* cond,
   printf_stderr(
       "###!!! [MessageChannel][%s][%s:%d] "
       "Assertion (%s) failed.  %s %s\n",
-      mSide == ChildSide ? "Child" : "Parent", file, line, cond, why,
-      reply ? "(reply)" : "");
+      StringFromIPCSide(mSide), file, line, cond, why, reply ? "(reply)" : "");
 
   MessageQueue pending = std::move(mPending);
   while (!pending.isEmpty()) {

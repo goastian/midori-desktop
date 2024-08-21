@@ -3,11 +3,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 #include "ForkServiceChild.h"
 #include "ForkServer.h"
-#include "mozilla/ipc/IPDLParamTraits.h"
+#include "mozilla/Atomics.h"
 #include "mozilla/Logging.h"
 #include "mozilla/ipc/GeckoChildProcessHost.h"
+#include "mozilla/ipc/IPDLParamTraits.h"
 #include "mozilla/ipc/ProtocolMessageUtils.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/Services.h"
@@ -23,6 +25,7 @@ namespace ipc {
 extern LazyLogModule gForkServiceLog;
 
 mozilla::UniquePtr<ForkServiceChild> ForkServiceChild::sForkServiceChild;
+Atomic<bool> ForkServiceChild::sForkServiceUsed;
 
 static bool ConfigurePipeFd(int aFd) {
   int flags = fcntl(aFd, F_GETFD, 0);
@@ -55,6 +58,7 @@ void ForkServiceChild::StartForkServer() {
     return;
   }
 
+  sForkServiceUsed = true;
   sForkServiceChild =
       mozilla::MakeUnique<ForkServiceChild>(server.release(), subprocess);
 }
@@ -72,15 +76,18 @@ ForkServiceChild::~ForkServiceChild() {
 }
 
 Result<Ok, LaunchError> ForkServiceChild::SendForkNewSubprocess(
-    const nsTArray<nsCString>& aArgv, const nsTArray<EnvVar>& aEnvMap,
-    const nsTArray<FdMapping>& aFdsRemap, pid_t* aPid) {
+    const Args& aArgs, pid_t* aPid) {
   mRecvPid = -1;
   IPC::Message msg(MSG_ROUTING_CONTROL, Msg_ForkNewSubprocess__ID);
 
   IPC::MessageWriter writer(msg);
-  WriteIPDLParam(&writer, nullptr, aArgv);
-  WriteIPDLParam(&writer, nullptr, aEnvMap);
-  WriteIPDLParam(&writer, nullptr, aFdsRemap);
+#if defined(XP_LINUX) && defined(MOZ_SANDBOX)
+  WriteIPDLParam(&writer, nullptr, aArgs.mForkFlags);
+  WriteIPDLParam(&writer, nullptr, aArgs.mChroot);
+#endif
+  WriteIPDLParam(&writer, nullptr, aArgs.mArgv);
+  WriteIPDLParam(&writer, nullptr, aArgs.mEnv);
+  WriteIPDLParam(&writer, nullptr, aArgs.mFdsRemap);
   if (!mTcver->Send(msg)) {
     MOZ_LOG(gForkServiceLog, LogLevel::Verbose,
             ("the pipe to the fork server is closed or having errors"));

@@ -13,7 +13,7 @@
 
 namespace base {
 
-#if defined(OS_WIN)
+#if defined(XP_WIN)
 
 typedef std::wstring NativeEnvironmentString;
 typedef std::map<NativeEnvironmentString, NativeEnvironmentString>
@@ -36,7 +36,7 @@ typedef std::map<NativeEnvironmentString, NativeEnvironmentString>
 NativeEnvironmentString AlterEnvironment(const wchar_t* env,
                                          const EnvironmentMap& changes);
 
-#elif defined(OS_POSIX)
+#else
 
 typedef std::string NativeEnvironmentString;
 typedef std::map<NativeEnvironmentString, NativeEnvironmentString>

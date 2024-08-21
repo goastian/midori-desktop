@@ -98,7 +98,7 @@ void SharedPreferenceSerializer::AddSharedPrefCmdLineArgs(
   geckoargs::sPrefMapSize.Put((uintptr_t)(GetPrefMapSize()), aExtraOpts);
 }
 
-#ifdef ANDROID
+#if defined(ANDROID) || defined(XP_IOS)
 static int gPrefsFd = -1;
 static int gPrefMapFd = -1;
 
@@ -145,8 +145,8 @@ bool SharedPreferenceDeserializer::DeserializeFromSharedMemory(
     return false;
   }
 
-#ifdef ANDROID
-  // Android is different; get the FD via gPrefsFd instead of a fixed fd.
+#if defined(ANDROID) || defined(XP_IOS)
+  // Android/iOS is different; get the FD via gPrefsFd instead of a fixed fd.
   MOZ_RELEASE_ASSERT(gPrefsFd != -1);
   prefsHandle = Some(UniqueFileHandle(gPrefsFd));
 
@@ -195,8 +195,8 @@ static const int kJSInitFileDescriptor = 11;
 
 void ExportSharedJSInit(mozilla::ipc::GeckoChildProcessHost& procHost,
                         std::vector<std::string>& aExtraOpts) {
-#ifdef ANDROID
-  // The code to support Android is added in a follow-up patch.
+#if defined(ANDROID) || defined(XP_IOS)
+  // The code to support Android/iOS is added in a follow-up patch.
   return;
 #else
   auto& shmem = xpc::SelfHostedShmem::GetSingleton();

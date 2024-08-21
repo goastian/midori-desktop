@@ -148,7 +148,7 @@ void UtilityProcessParent::ActorDestroy(ActorDestroyReason aWhy) {
             actorsName += ", "_ns + GetUtilityActorName(actor);
           }
         }
-        mCrashReporter->AddAnnotation(
+        mCrashReporter->AddAnnotationNSCString(
             CrashReporter::Annotation::UtilityActorsName, actorsName);
       }
 #endif
@@ -162,6 +162,8 @@ void UtilityProcessParent::ActorDestroy(ActorDestroyReason aWhy) {
     if (!dumpID.IsEmpty()) {
       props->SetPropertyAsAString(u"dumpID"_ns, dumpID);
     }
+
+    MaybeTerminateProcess();
   }
 
   nsAutoString pid;

@@ -77,6 +77,9 @@ class BackgroundParent final {
 
   static uint64_t GetChildID(PBackgroundParent* aBackgroundActor);
 
+  static void KillHardAsync(PBackgroundParent* aBackgroundActor,
+                            const nsACString& aReason);
+
  private:
   // Only called by ContentParent for cross-process actors.
   static bool AllocStarter(ContentParent* aContent,
@@ -102,10 +105,6 @@ inline void AssertIsOnBackgroundThread() {}
 #endif  // DEBUG
 
 inline void AssertIsInMainProcess() { MOZ_ASSERT(XRE_IsParentProcess()); }
-
-inline void AssertIsInMainOrSocketProcess() {
-  MOZ_ASSERT(XRE_IsParentProcess() || XRE_IsSocketProcess());
-}
 
 }  // namespace ipc
 }  // namespace mozilla
