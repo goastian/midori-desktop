@@ -37,35 +37,16 @@ class imgMemoryReporter;
 namespace mozilla {
 namespace dom {
 class Document;
-}
+enum class FetchPriority : uint8_t;
+}  // namespace dom
 }  // namespace mozilla
 
 class imgCacheEntry {
  public:
+  NS_INLINE_DECL_REFCOUNTING(imgCacheEntry)
+
   imgCacheEntry(imgLoader* loader, imgRequest* request,
                 bool aForcePrincipalCheck);
-  ~imgCacheEntry();
-
-  nsrefcnt AddRef() {
-    MOZ_ASSERT(int32_t(mRefCnt) >= 0, "illegal refcnt");
-    NS_ASSERT_OWNINGTHREAD(imgCacheEntry);
-    ++mRefCnt;
-    NS_LOG_ADDREF(this, mRefCnt, "imgCacheEntry", sizeof(*this));
-    return mRefCnt;
-  }
-
-  nsrefcnt Release() {
-    MOZ_ASSERT(0 != mRefCnt, "dup release");
-    NS_ASSERT_OWNINGTHREAD(imgCacheEntry);
-    --mRefCnt;
-    NS_LOG_RELEASE(this, mRefCnt, "imgCacheEntry");
-    if (mRefCnt == 0) {
-      mRefCnt = 1; /* stabilize */
-      delete this;
-      return 0;
-    }
-    return mRefCnt;
-  }
 
   uint32_t GetDataSize() const { return mDataSize; }
   void SetDataSize(uint32_t aDataSize) {
@@ -85,9 +66,23 @@ class imgCacheEntry {
   void UpdateLoadTime();
 
   uint32_t GetExpiryTime() const { return mExpiryTime; }
-  void SetExpiryTime(uint32_t aExpiryTime) {
-    mExpiryTime = aExpiryTime;
-    Touch();
+  void AccumulateExpiryTime(uint32_t aExpiryTime, bool aForceTouch = false) {
+    // 0 means "doesn't expire".
+    // Otherwise, calculate the minimum value.
+    if (aExpiryTime == 0) {
+      if (aForceTouch) {
+        Touch();
+      }
+      return;
+    }
+    if (mExpiryTime == 0 || aExpiryTime < mExpiryTime) {
+      mExpiryTime = aExpiryTime;
+      Touch();
+    } else {
+      if (aForceTouch) {
+        Touch();
+      }
+    }
   }
 
   bool GetMustValidate() const { return mMustValidate; }
@@ -127,11 +122,9 @@ class imgCacheEntry {
 
   // Private, unimplemented copy constructor.
   imgCacheEntry(const imgCacheEntry&);
+  ~imgCacheEntry();
 
  private:  // data
-  nsAutoRefCnt mRefCnt;
-  NS_DECL_OWNINGTHREAD
-
   imgLoader* mLoader;
   RefPtr<imgRequest> mRequest;
   uint32_t mDataSize;
@@ -260,7 +253,8 @@ class imgLoader final : public imgILoader,
       nsLoadFlags aLoadFlags, nsISupports* aCacheKey,
       nsContentPolicyType aContentPolicyType, const nsAString& initiatorType,
       bool aUseUrgentStartForChannel, bool aLinkPreload,
-      uint64_t aEarlyHintPreloaderId, imgRequestProxy** _retval);
+      uint64_t aEarlyHintPreloaderId,
+      mozilla::dom::FetchPriority aFetchPriority, imgRequestProxy** _retval);
 
   [[nodiscard]] nsresult LoadImageWithChannel(
       nsIChannel* channel, imgINotificationObserver* aObserver,
@@ -371,7 +365,8 @@ class imgLoader final : public imgILoader,
                      bool aCanMakeNewChannel, bool* aNewChannelCreated,
                      imgRequestProxy** aProxyRequest,
                      nsIPrincipal* aTriggeringPrincipal, mozilla::CORSMode,
-                     bool aLinkPreload, uint64_t aEarlyHintPreloaderId);
+                     bool aLinkPreload, uint64_t aEarlyHintPreloaderId,
+                     mozilla::dom::FetchPriority aFetchPriority);
 
   bool ValidateRequestWithNewChannel(
       imgRequest* request, nsIURI* aURI, nsIURI* aInitialDocumentURI,
@@ -381,15 +376,14 @@ class imgLoader final : public imgILoader,
       nsLoadFlags aLoadFlags, nsContentPolicyType aContentPolicyType,
       imgRequestProxy** aProxyRequest, nsIPrincipal* aLoadingPrincipal,
       mozilla::CORSMode, bool aLinkPreload, uint64_t aEarlyHintPreloaderId,
-      bool* aNewChannelCreated);
+      mozilla::dom::FetchPriority aFetchPriority, bool* aNewChannelCreated);
 
-  void NotifyObserversForCachedImage(imgCacheEntry* aEntry, imgRequest* request,
-                                     nsIURI* aURI,
-                                     nsIReferrerInfo* aReferrerInfo,
-                                     mozilla::dom::Document* aLoadingDocument,
-                                     nsIPrincipal* aLoadingPrincipal,
-                                     mozilla::CORSMode,
-                                     uint64_t aEarlyHintPreloaderId);
+  void NotifyObserversForCachedImage(
+      imgCacheEntry* aEntry, imgRequest* request, nsIURI* aURI,
+      nsIReferrerInfo* aReferrerInfo, mozilla::dom::Document* aLoadingDocument,
+      nsIPrincipal* aTriggeringPrincipal, mozilla::CORSMode,
+      uint64_t aEarlyHintPreloaderId,
+      mozilla::dom::FetchPriority aFetchPriority);
   // aURI may be different from imgRequest's URI in the case of blob URIs, as we
   // can share requests with different URIs.
   nsresult CreateNewProxyForRequest(imgRequest* aRequest, nsIURI* aURI,
@@ -437,8 +431,7 @@ class imgLoader final : public imgILoader,
 #include "nsIStreamListener.h"
 #include "nsIThreadRetargetableStreamListener.h"
 
-class ProxyListener : public nsIStreamListener,
-                      public nsIThreadRetargetableStreamListener {
+class ProxyListener : public nsIThreadRetargetableStreamListener {
  public:
   explicit ProxyListener(nsIStreamListener* dest);
 
@@ -486,8 +479,7 @@ class nsProgressNotificationProxy final : public nsIProgressEventSink,
 
 #include "nsCOMArray.h"
 
-class imgCacheValidator : public nsIStreamListener,
-                          public nsIThreadRetargetableStreamListener,
+class imgCacheValidator : public nsIThreadRetargetableStreamListener,
                           public nsIChannelEventSink,
                           public nsIInterfaceRequestor,
                           public nsIAsyncVerifyRedirectCallback {

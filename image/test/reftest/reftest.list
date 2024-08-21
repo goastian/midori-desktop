@@ -19,6 +19,9 @@ include pngsuite-palettes/reftest.list
 include pngsuite-transparency/reftest.list
 include pngsuite-zlib/reftest.list
 
+# PNG tests
+include png/reftest.list
+
 # BMP tests
 skip-if(Android) include bmp/reftest.list
 
@@ -29,7 +32,7 @@ skip-if(Android) include ico/reftest.list
 include jpeg/reftest.list
 
 # JXL tests
-skip-if(Android||!jxl) include jxl/reftest.list
+skip-if(Android||release_or_beta) include jxl/reftest.list
 
 # GIF tests
 include gif/reftest.list

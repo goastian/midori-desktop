@@ -189,9 +189,9 @@ LexerTransition<nsJXLDecoder::State> nsJXLDecoder::ReadJXLData(
       case JXL_DEC_COLOR_ENCODING: {
         size_t size = 0;
         JXL_TRY(JxlDecoderGetICCProfileSize(
-            mDecoder.get(), &mFormat, JXL_COLOR_PROFILE_TARGET_DATA, &size))
+            mDecoder.get(), JXL_COLOR_PROFILE_TARGET_DATA, &size))
         std::vector<uint8_t> icc_profile(size);
-        JXL_TRY(JxlDecoderGetColorAsICCProfile(mDecoder.get(), &mFormat,
+        JXL_TRY(JxlDecoderGetColorAsICCProfile(mDecoder.get(),
                                                JXL_COLOR_PROFILE_TARGET_DATA,
                                                icc_profile.data(), size))
 

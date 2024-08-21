@@ -25,7 +25,7 @@ struct ImageEnablementCookie {
   const nsLiteralCString mMimeType;
 };
 
-static void UpdateContentViewerRegistration(const char* aPref, void* aData) {
+static void UpdateDocumentViewerRegistration(const char* aPref, void* aData) {
   auto* cookie = static_cast<ImageEnablementCookie*>(aData);
 
   nsCOMPtr<nsICategoryManager> catMan =
@@ -60,14 +60,10 @@ nsresult mozilla::image::EnsureModuleInitialized() {
       mozilla::StaticPrefs::image_avif_enabled, "image/avif"_ns};
   static ImageEnablementCookie kJXLCookie = {
       mozilla::StaticPrefs::image_jxl_enabled, "image/jxl"_ns};
-  static ImageEnablementCookie kWebPCookie = {
-      mozilla::StaticPrefs::image_webp_enabled, "image/webp"_ns};
-  Preferences::RegisterCallbackAndCall(UpdateContentViewerRegistration,
+  Preferences::RegisterCallbackAndCall(UpdateDocumentViewerRegistration,
                                        "image.avif.enabled", &kAVIFCookie);
-  Preferences::RegisterCallbackAndCall(UpdateContentViewerRegistration,
+  Preferences::RegisterCallbackAndCall(UpdateDocumentViewerRegistration,
                                        "image.jxl.enabled", &kJXLCookie);
-  Preferences::RegisterCallbackAndCall(UpdateContentViewerRegistration,
-                                       "image.webp.enabled", &kWebPCookie);
 
   mozilla::image::ShutdownTracker::Initialize();
   mozilla::image::ImageFactory::Initialize();

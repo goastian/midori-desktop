@@ -10,8 +10,6 @@
 #include "nsISupports.h"
 #include "nsRect.h"
 
-class nsIEventTarget;
-
 namespace mozilla {
 namespace image {
 
@@ -42,10 +40,6 @@ class IProgressObserver : public SupportsWeakPtr {
   virtual bool NotificationsDeferred() const = 0;
   virtual void MarkPendingNotify() = 0;
   virtual void ClearPendingNotify() = 0;
-
-  virtual already_AddRefed<nsIEventTarget> GetEventTarget() const {
-    return nullptr;
-  }
 
  protected:
   virtual ~IProgressObserver() = default;

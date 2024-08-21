@@ -18,12 +18,12 @@
 #include "mozilla/dom/SVGSVGElement.h"
 #include "mozilla/dom/SVGDocument.h"
 #include "mozilla/gfx/2D.h"
-#include "mozilla/PendingAnimationTracker.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/StaticPrefs_image.h"
 #include "mozilla/SVGObserverUtils.h"  // for SVGRenderingObserver
+#include "mozilla/SVGUtils.h"
 
 #include "nsIStreamListener.h"
 #include "nsMimeTypes.h"
@@ -63,8 +63,7 @@ class SVGRootRenderingObserver final : public SVGRenderingObserver {
 
   SVGRootRenderingObserver(SVGDocumentWrapper* aDocWrapper,
                            VectorImage* aVectorImage)
-      : SVGRenderingObserver(),
-        mDocWrapper(aDocWrapper),
+      : mDocWrapper(aDocWrapper),
         mVectorImage(aVectorImage),
         mHonoringInvalidations(true) {
     MOZ_ASSERT(mDocWrapper, "Need a non-null SVG document wrapper");
@@ -454,12 +453,14 @@ VectorImage::GetWidth(int32_t* aWidth) {
   MOZ_ASSERT(rootElem,
              "Should have a root SVG elem, since we finished "
              "loading without errors");
-  int32_t rootElemWidth = rootElem->GetIntrinsicWidth();
-  if (rootElemWidth < 0) {
+  LengthPercentage rootElemWidth = rootElem->GetIntrinsicWidth();
+
+  if (!rootElemWidth.IsLength()) {
     *aWidth = 0;
     return NS_ERROR_FAILURE;
   }
-  *aWidth = rootElemWidth;
+
+  *aWidth = SVGUtils::ClampToInt(rootElemWidth.AsLength().ToCSSPixels());
   return NS_OK;
 }
 
@@ -482,11 +483,6 @@ VectorImage::RequestRefresh(const TimeStamp& aTime) {
   if (!doc) {
     // We are racing between shutdown and a refresh.
     return;
-  }
-
-  PendingAnimationTracker* tracker = doc->GetPendingAnimationTracker();
-  if (tracker && ShouldAnimate()) {
-    tracker->TriggerPendingAnimationsOnNextTick(aTime);
   }
 
   EvaluateAnimation();
@@ -517,7 +513,7 @@ void VectorImage::SendInvalidationNotifications() {
   mHasPendingInvalidation = false;
 
   if (SurfaceCache::InvalidateImage(ImageKey(this))) {
-    // If we still have recordings in the cache, make sure we handle future
+    // If we had any surface providers in the cache, make sure we handle future
     // invalidations.
     MOZ_ASSERT(mRenderingObserver, "Should have a rendering observer by now");
     mRenderingObserver->ResumeHonoringInvalidations();
@@ -549,12 +545,14 @@ VectorImage::GetHeight(int32_t* aHeight) {
   MOZ_ASSERT(rootElem,
              "Should have a root SVG elem, since we finished "
              "loading without errors");
-  int32_t rootElemHeight = rootElem->GetIntrinsicHeight();
-  if (rootElemHeight < 0) {
+  LengthPercentage rootElemHeight = rootElem->GetIntrinsicHeight();
+
+  if (!rootElemHeight.IsLength()) {
     *aHeight = 0;
     return NS_ERROR_FAILURE;
   }
-  *aHeight = rootElemHeight;
+
+  *aHeight = SVGUtils::ClampToInt(rootElemHeight.AsLength().ToCSSPixels());
   return NS_OK;
 }
 
@@ -663,14 +661,16 @@ VectorImage::GetFrame(uint32_t aWhichFrame, uint32_t aFlags) {
   MOZ_ASSERT(svgElem,
              "Should have a root SVG elem, since we finished "
              "loading without errors");
-  nsIntSize imageIntSize(svgElem->GetIntrinsicWidth(),
-                         svgElem->GetIntrinsicHeight());
-
-  if (imageIntSize.IsEmpty()) {
-    // We'll get here if our SVG doc has a percent-valued or negative width or
-    // height.
+  LengthPercentage width = svgElem->GetIntrinsicWidth();
+  LengthPercentage height = svgElem->GetIntrinsicHeight();
+  if (!width.IsLength() || !height.IsLength()) {
+    // The SVG is lacking a definite size for its width or height, so we do not
+    // know how big of a surface to generate. Hence, we just bail.
     return nullptr;
   }
+
+  nsIntSize imageIntSize(SVGUtils::ClampToInt(width.AsLength().ToCSSPixels()),
+                         SVGUtils::ClampToInt(height.AsLength().ToCSSPixels()));
 
   return GetFrameAtSize(imageIntSize, aWhichFrame, aFlags);
 }
@@ -796,8 +796,11 @@ VectorImage::GetImageProvider(WindowRenderer* aRenderer,
       mHaveAnimations ? PlaybackType::eAnimated : PlaybackType::eStatic;
   auto surfaceFlags = ToSurfaceFlags(aFlags);
 
-  SurfaceKey surfaceKey =
-      VectorSurfaceKey(aSize, aRegion, aSVGContext, surfaceFlags, playbackType);
+  SVGImageContext newSVGContext = aSVGContext;
+  bool contextPaint = MaybeRestrictSVGContext(newSVGContext, aFlags);
+
+  SurfaceKey surfaceKey = VectorSurfaceKey(aSize, aRegion, newSVGContext,
+                                           surfaceFlags, playbackType);
   if ((aFlags & FLAG_SYNC_DECODE) || !(aFlags & FLAG_HIGH_QUALITY_SCALING)) {
     result = SurfaceCache::Lookup(ImageKey(this), surfaceKey,
                                   /* aMarkUsed = */ true);
@@ -870,10 +873,9 @@ VectorImage::GetImageProvider(WindowRenderer* aRenderer,
     // we cannot cache.
     SVGDrawingParameters params(
         nullptr, rasterSize, aSize, ImageRegion::Create(rasterSize),
-        SamplingFilter::POINT, aSVGContext, animTime, aFlags, 1.0);
+        SamplingFilter::POINT, newSVGContext, animTime, aFlags, 1.0);
 
     RefPtr<gfxDrawable> svgDrawable = CreateSVGDrawable(params);
-    bool contextPaint = aSVGContext.GetContextPaint();
     AutoRestoreSVGState autoRestore(params, mSVGDocumentWrapper, contextPaint);
 
     mSVGDocumentWrapper->UpdateViewportBounds(params.viewportSize);
@@ -1555,12 +1557,7 @@ void VectorImage::InvalidateObserversOnNextRefreshDriverTick() {
   // set by InvalidateFrameInternal in layout/generic/nsFrame.cpp. These bits
   // get cleared when we repaint the SVG into a surface by
   // nsIFrame::ClearInvalidationStateBits in nsDisplayList::PaintRoot.
-  nsCOMPtr<nsIEventTarget> eventTarget;
-  if (mProgressTracker) {
-    eventTarget = mProgressTracker->GetEventTarget();
-  } else {
-    eventTarget = do_GetMainThread();
-  }
+  nsCOMPtr<nsIEventTarget> eventTarget = do_GetMainThread();
 
   RefPtr<VectorImage> self(this);
   nsCOMPtr<nsIRunnable> ev(NS_NewRunnableFunction(

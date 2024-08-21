@@ -170,8 +170,7 @@ class imgFrame {
   already_AddRefed<SourceSurface> GetSourceSurface();
 
   struct AddSizeOfCbData : public SourceSurface::SizeOfInfo {
-    AddSizeOfCbData()
-        : SourceSurface::SizeOfInfo(), mIndex(0), mFinished(false) {}
+    AddSizeOfCbData() : mIndex(0), mFinished(false) {}
 
     size_t mIndex;
     bool mFinished;
@@ -282,7 +281,7 @@ class DrawableFrameRef final {
   typedef gfx::DataSourceSurface DataSourceSurface;
 
  public:
-  DrawableFrameRef() {}
+  DrawableFrameRef() = default;
 
   explicit DrawableFrameRef(imgFrame* aFrame) : mFrame(aFrame) {
     MOZ_ASSERT(aFrame);
@@ -374,7 +373,7 @@ class RawAccessFrameRef final {
     aOther.mData = nullptr;
   }
 
-  ~RawAccessFrameRef() {}
+  ~RawAccessFrameRef() = default;
 
   RawAccessFrameRef& operator=(RawAccessFrameRef&& aOther) {
     MOZ_ASSERT(this != &aOther, "Self-moves are prohibited");

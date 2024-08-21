@@ -17,7 +17,7 @@
 #include "mozilla/dom/SVGSVGElement.h"
 #include "nsICategoryManager.h"
 #include "nsIChannel.h"
-#include "nsIContentViewer.h"
+#include "nsIDocumentViewer.h"
 #include "nsIDocumentLoaderFactory.h"
 #include "nsIHttpChannel.h"
 #include "nsIObserverService.h"
@@ -54,6 +54,7 @@ SVGDocumentWrapper::~SVGDocumentWrapper() {
 }
 
 void SVGDocumentWrapper::DestroyViewer() {
+  MOZ_ASSERT(NS_IsMainThread());
   if (mViewer) {
     mViewer->GetDocument()->OnPageHide(false, nullptr);
     mViewer->Close(nullptr);
@@ -258,7 +259,7 @@ SVGDocumentWrapper::Observe(nsISupports* aSubject, const char* aTopic,
 // This method is largely cribbed from
 // nsExternalResourceMap::PendingLoad::SetupViewer.
 nsresult SVGDocumentWrapper::SetupViewer(nsIRequest* aRequest,
-                                         nsIContentViewer** aViewer,
+                                         nsIDocumentViewer** aViewer,
                                          nsILoadGroup** aLoadGroup) {
   nsCOMPtr<nsIChannel> chan(do_QueryInterface(aRequest));
   NS_ENSURE_TRUE(chan, NS_ERROR_UNEXPECTED);
@@ -282,20 +283,14 @@ nsresult SVGDocumentWrapper::SetupViewer(nsIRequest* aRequest,
   NS_ENSURE_TRUE(newLoadGroup, NS_ERROR_OUT_OF_MEMORY);
   newLoadGroup->SetLoadGroup(loadGroup);
 
-  nsCOMPtr<nsICategoryManager> catMan =
-      do_GetService(NS_CATEGORYMANAGER_CONTRACTID);
-  NS_ENSURE_TRUE(catMan, NS_ERROR_NOT_AVAILABLE);
-  nsCString contractId;
-  nsresult rv = catMan->GetCategoryEntry("Gecko-Content-Viewers", IMAGE_SVG_XML,
-                                         contractId);
-  NS_ENSURE_SUCCESS(rv, rv);
   nsCOMPtr<nsIDocumentLoaderFactory> docLoaderFactory =
-      do_GetService(contractId.get());
+      nsContentUtils::FindInternalDocumentViewer(
+          nsLiteralCString(IMAGE_SVG_XML));
   NS_ENSURE_TRUE(docLoaderFactory, NS_ERROR_NOT_AVAILABLE);
 
-  nsCOMPtr<nsIContentViewer> viewer;
+  nsCOMPtr<nsIDocumentViewer> viewer;
   nsCOMPtr<nsIStreamListener> listener;
-  rv = docLoaderFactory->CreateInstance(
+  nsresult rv = docLoaderFactory->CreateInstance(
       "external-resource", chan, newLoadGroup, nsLiteralCString(IMAGE_SVG_XML),
       nullptr, nullptr, getter_AddRefs(listener), getter_AddRefs(viewer));
   NS_ENSURE_SUCCESS(rv, rv);

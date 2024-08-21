@@ -16,6 +16,7 @@
 #include "mozilla/StaticPrefs_image.h"
 #include "mozilla/TaskController.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/AppShutdown.h"
 #include "nsCOMPtr.h"
 #include "nsIObserverService.h"
 #include "nsThreadManager.h"
@@ -132,19 +133,25 @@ DecodePool::Observe(nsISupports*, const char* aTopic, const char16_t*) {
   return NS_OK;
 }
 
-bool DecodePool::IsShuttingDown() const { return mShuttingDown; }
+/* static */ bool DecodePool::IsShuttingDown() {
+  if (MOZ_UNLIKELY(!sSingleton)) {
+    return AppShutdown::IsInOrBeyond(ShutdownPhase::XPCOMShutdownThreads);
+  }
+
+  return sSingleton->mShuttingDown;
+}
 
 class DecodingTask final : public Task {
  public:
   explicit DecodingTask(RefPtr<IDecodingTask>&& aTask)
-      : Task(false, aTask->Priority() == TaskPriority::eLow
-                        ? EventQueuePriority::Normal
-                        : EventQueuePriority::RenderBlocking),
+      : Task(Kind::OffMainThreadOnly, aTask->Priority() == TaskPriority::eLow
+                                          ? EventQueuePriority::Normal
+                                          : EventQueuePriority::RenderBlocking),
         mTask(aTask) {}
 
-  bool Run() override {
+  TaskResult Run() override {
     mTask->Run();
-    return true;
+    return TaskResult::Complete;
   }
 
 #ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY

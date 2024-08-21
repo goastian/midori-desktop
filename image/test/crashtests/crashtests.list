@@ -22,10 +22,10 @@ load 1235605.gif
 load 1241728-1.html
 load 1241729-1.html
 load 1242093-1.html
-skip-if(/^Windows\x20NT\x2010\.0/.test(http.oscpu)&&/^aarch64-msvc/.test(xulRuntime.XPCOMABI)) load 1242778-1.png
+load 1242778-1.png
 load 1249576-1.png
 load 1253362-1.html
-skip-if(Android&&browserIsRemote) load 1355898-1.html # bug 1507207
+skip-if(Android) load 1355898-1.html # bug 1507207
 load 1375842-1.html
 load 1413762-1.gif
 pref(image.downscale-during-decode.enabled,true) load 1443232-1.html
@@ -63,22 +63,23 @@ load truncated-second-frame.png # Bug 863975
 load 1509998.gif
 
 load 1526717-1.html
-skip-if(ThreadSanitizer) pref(widget.windows.window_occlusion_tracking.enabled,false) load 1629490-1.html # Bug 1819154
+skip-if(ThreadSanitizer) load 1629490-1.html
 
-pref(widget.windows.window_occlusion_tracking.enabled,false) HTTP load 1634839-1.html # Bug 1819154
-pref(widget.windows.window_occlusion_tracking.enabled,false) HTTP load 1634839-2.html # Bug 1819154
+HTTP load 1634839-1.html
+HTTP load 1634839-2.html
 pref(image.animated.decode-on-demand.batch-size,1) pref(image.animated.decode-on-demand.threshold-kb,0) HTTP load 1676172-1.html
 pref(browser.soft_reload.only_force_validate_top_level_document,false) HTTP load 1763581-1.html
 load 1765871-1.jpg
 
 load 1814561.avif
 load 1814708.avif
-
 load 1814553.avif
-
 load 1814677.avif
-
 load 1814741.avif
-
 load 1814774.avif
 load 1817108.avif
+load 1848717-1.avif
+load 1852649.webp
+HTTP load 1862059-1.html
+load 1885209-1.html
+load 1898606.jpg

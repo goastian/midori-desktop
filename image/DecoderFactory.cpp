@@ -79,8 +79,7 @@ DecoderType DecoderFactory::GetDecoderType(const char* aMimeType) {
     type = DecoderType::ICON;
 
     // WebP
-  } else if (!strcmp(aMimeType, IMAGE_WEBP) &&
-             StaticPrefs::image_webp_enabled()) {
+  } else if (!strcmp(aMimeType, IMAGE_WEBP)) {
     type = DecoderType::WEBP;
 
     // AVIF
@@ -234,15 +233,13 @@ nsresult DecoderFactory::CreateAnimationDecoder(
     return NS_ERROR_INVALID_ARG;
   }
 
-  bool validDecoderType = (aType == DecoderType::GIF ||
-                           aType == DecoderType::PNG ||
-                           aType == DecoderType::WEBP ||
-                           aType == DecoderType::AVIF);
+  MOZ_ASSERT(aType == DecoderType::GIF || aType == DecoderType::PNG ||
+                 aType == DecoderType::WEBP || aType == DecoderType::AVIF
 #ifdef MOZ_JXL
-  validDecoderType = validDecoderType || aType == DecoderType::JXL;
+                 || aType == DecoderType::JXL,
+#else
+             ,
 #endif
-
-  MOZ_ASSERT(validDecoderType,
              "Calling CreateAnimationDecoder for non-animating DecoderType");
 
   // Create an anonymous decoder. Interaction with the SurfaceCache and the
@@ -296,15 +293,14 @@ already_AddRefed<Decoder> DecoderFactory::CloneAnimationDecoder(
   // get scheduled yet, or it has only decoded the first frame and has yet to
   // rediscover it is animated).
   DecoderType type = aDecoder->GetType();
-  bool validDecoderType = (type == DecoderType::GIF ||
-                           type == DecoderType::PNG ||
-                           type == DecoderType::WEBP ||
-                           type == DecoderType::AVIF);
+  MOZ_ASSERT(type == DecoderType::GIF || type == DecoderType::PNG ||
+                 type == DecoderType::WEBP || type == DecoderType::AVIF
 #ifdef MOZ_JXL
-  validDecoderType = validDecoderType || type == DecoderType::JXL;
+                 || type == DecoderType::JXL,
+#else
+             ,
 #endif
 
-  MOZ_ASSERT(validDecoderType,
              "Calling CloneAnimationDecoder for non-animating DecoderType");
 
   RefPtr<Decoder> decoder = GetDecoder(type, nullptr, /* aIsRedecode = */ true);

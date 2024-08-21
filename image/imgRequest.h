@@ -41,8 +41,7 @@ class ProgressTracker;
 
 struct NewPartResult;
 
-class imgRequest final : public nsIStreamListener,
-                         public nsIThreadRetargetableStreamListener,
+class imgRequest final : public nsIThreadRetargetableStreamListener,
                          public nsIChannelEventSink,
                          public nsIInterfaceRequestor,
                          public nsIAsyncVerifyRedirectCallback {
@@ -100,9 +99,9 @@ class imgRequest final : public nsIStreamListener,
 
   // Set the cache validation information (expiry time, whether we must
   // validate, etc) on the cache entry based on the request information.
-  // If this function is called multiple times, the information set earliest
-  // wins.
-  static void SetCacheValidation(imgCacheEntry* aEntry, nsIRequest* aRequest);
+  // If this function is called multiple times, the most strict value wins.
+  static void SetCacheValidation(imgCacheEntry* aEntry, nsIRequest* aRequest,
+                                 bool aForceTouch = false);
 
   bool GetMultipart() const;
 
@@ -203,12 +202,18 @@ class imgRequest final : public nsIStreamListener,
 
   bool IsCrossSiteNoCORSRequest() const { return mIsCrossSiteNoCORSRequest; }
 
+  bool ShouldReportRenderTimeForLCP() const {
+    return mShouldReportRenderTimeForLCP;
+  }
+
  private:
   friend class FinishPreparingForNewPartRunnable;
 
   virtual ~imgRequest();
 
   void FinishPreparingForNewPart(const NewPartResult& aResult);
+
+  void UpdateShouldReportRenderTimeForLCP();
 
   void Cancel(nsresult aStatus);
 
@@ -276,6 +281,10 @@ class imgRequest final : public nsIStreamListener,
   bool mImageAvailable;
   bool mIsDeniedCrossSiteCORSRequest;
   bool mIsCrossSiteNoCORSRequest;
+
+  bool mShouldReportRenderTimeForLCP;
+  // SVGs can't be OffMainThread for example
+  bool mOffMainThreadData = false;
 
   mutable mozilla::Mutex mMutex;
 

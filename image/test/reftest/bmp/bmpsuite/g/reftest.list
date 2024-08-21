@@ -74,7 +74,7 @@ fuzzy(0-1,0-996) == pal8os2.bmp pal8.png
 # "A v4 bitmap. I’m not sure that the gamma and chromaticity values in this
 # file are sensible, because I can’t find any detailed documentation of them."
 # [We seem to handle the profile wrong in QCMS. See bug 1619332.]
-fuzzy-if((/^Windows\x20NT\x2010\.0/.test(http.oscpu)&&/^aarch64-msvc/.test(xulRuntime.XPCOMABI)),1-4,899-6376) fuzzy-if(!(/^Windows\x20NT\x2010\.0/.test(http.oscpu)&&/^aarch64-msvc/.test(xulRuntime.XPCOMABI)),3-3,6376-6376) fuzzy-if(appleSilicon,4-4,6376-6376) == pal8v4.bmp pal8.png #bug 1619847
+fuzzy-if(!appleSilicon,3-3,6376-6376) fuzzy-if(appleSilicon,4-4,6376-6376) == pal8v4.bmp pal8.png #bug 1619847
 
 # BMP: bihsize=124, 127 x 64, bpp=8, compression=0, colors=252
 # "A v5 bitmap. Version 5 has additional colorspace options over v4, so it is
@@ -96,11 +96,11 @@ fuzzy(0-1,0-1296) == rgb16bfdef.bmp rgb16.png
 # bits. This is a standard 16-bit format, even supported by old versions of
 # Windows that don’t support any other non-default 16-bit formats. The whitest
 # colors should be displayed as pure white: (255,255,255), not (248,252,248)."
-fuzzy(0-1,0-1296) == rgb16.bmp rgb16.png
+fuzzy(1-1,1516-1516) == rgb16-565.bmp rgb16-565.png
 
 # BMP: bihsize=40, 127 x 64, bpp=16, compression=3, colors=256
 # "A 16-bit image with both a BITFIELDS segment and a palette."
-fuzzy(0-1,0-1516) == rgb16.bmp rgb16.png
+fuzzy(1-1,1516-1516) == rgb16-565pal.bmp rgb16-565.png
 
 # BMP: bihsize=40, 127 x 64, bpp=24, compression=0, colors=0
 # "A perfectly ordinary 24-bit (truecolor) image."

@@ -63,6 +63,7 @@ imgRequest::imgRequest(imgLoader* aLoader, const ImageCacheKey& aCacheKey)
       mImageAvailable(false),
       mIsDeniedCrossSiteCORSRequest(false),
       mIsCrossSiteNoCORSRequest(false),
+      mShouldReportRenderTimeForLCP(false),
       mMutex("imgRequest"),
       mProgressTracker(new ProgressTracker()),
       mIsMultiPartChannel(false),
@@ -333,8 +334,7 @@ void imgRequest::Cancel(nsresult aStatus) {
   if (NS_IsMainThread()) {
     ContinueCancel(aStatus);
   } else {
-    RefPtr<ProgressTracker> progressTracker = GetProgressTracker();
-    nsCOMPtr<nsIEventTarget> eventTarget = progressTracker->GetEventTarget();
+    nsCOMPtr<nsIEventTarget> eventTarget = GetMainThreadSerialEventTarget();
     nsCOMPtr<nsIRunnable> ev = new imgRequestMainThreadCancel(this, aStatus);
     eventTarget->Dispatch(ev.forget(), NS_DISPATCH_NORMAL);
   }
@@ -579,9 +579,9 @@ void imgRequest::UpdateCacheEntrySize() {
 }
 
 void imgRequest::SetCacheValidation(imgCacheEntry* aCacheEntry,
-                                    nsIRequest* aRequest) {
-  /* get the expires info */
-  if (!aCacheEntry || aCacheEntry->GetExpiryTime() != 0) {
+                                    nsIRequest* aRequest,
+                                    bool aForceTouch /* = false */) {
+  if (!aCacheEntry) {
     return;
   }
 
@@ -605,7 +605,7 @@ void imgRequest::SetCacheValidation(imgCacheEntry* aCacheEntry,
     info.mExpirationTime.emplace(nsContentUtils::SecondsFromPRTime(PR_Now()) -
                                  1);
   }
-  aCacheEntry->SetExpiryTime(*info.mExpirationTime);
+  aCacheEntry->AccumulateExpiryTime(*info.mExpirationTime, aForceTouch);
   // Cache entries default to not needing to validate. We ensure that
   // multiple calls to this function don't override an earlier decision to
   // validate by making validation a one-way decision.
@@ -641,6 +641,7 @@ imgRequest::OnStartRequest(nsIRequest* aRequest) {
     mIsCrossSiteNoCORSRequest = loadInfo->GetTainting() == LoadTainting::Opaque;
   }
 
+  UpdateShouldReportRenderTimeForLCP();
   // Figure out if we're multipart.
   nsCOMPtr<nsIMultiPartChannel> multiPartChannel = do_QueryInterface(aRequest);
   {
@@ -689,7 +690,7 @@ imgRequest::OnStartRequest(nsIRequest* aRequest) {
     }
   }
 
-  SetCacheValidation(mCacheEntry, aRequest);
+  SetCacheValidation(mCacheEntry, aRequest, /* aForceTouch = */ true);
 
   // Shouldn't we be dead already if this gets hit?
   // Probably multipart/x-mixed-replace...
@@ -710,16 +711,17 @@ imgRequest::OnStartRequest(nsIRequest* aRequest) {
     nsAutoCString mimeType;
     nsresult rv = channel->GetContentType(mimeType);
     if (NS_SUCCEEDED(rv) && !mimeType.EqualsLiteral(IMAGE_SVG_XML)) {
+      mOffMainThreadData = true;
       // Retarget OnDataAvailable to the DecodePool's IO thread.
       nsCOMPtr<nsISerialEventTarget> target =
           DecodePool::Singleton()->GetIOEventTarget();
       rv = retargetable->RetargetDeliveryTo(target);
+      MOZ_LOG(gImgLog, LogLevel::Warning,
+              ("[this=%p] imgRequest::OnStartRequest -- "
+               "RetargetDeliveryTo rv %" PRIu32 "=%s\n",
+               this, static_cast<uint32_t>(rv),
+               NS_SUCCEEDED(rv) ? "succeeded" : "failed"));
     }
-    MOZ_LOG(gImgLog, LogLevel::Warning,
-            ("[this=%p] imgRequest::OnStartRequest -- "
-             "RetargetDeliveryTo rv %" PRIu32 "=%s\n",
-             this, static_cast<uint32_t>(rv),
-             NS_SUCCEEDED(rv) ? "succeeded" : "failed"));
   }
 
   return NS_OK;
@@ -729,8 +731,6 @@ NS_IMETHODIMP
 imgRequest::OnStopRequest(nsIRequest* aRequest, nsresult status) {
   LOG_FUNC(gImgLog, "imgRequest::OnStopRequest");
   MOZ_ASSERT(NS_IsMainThread(), "Can't send notifications off-main-thread");
-
-  RefPtr<Image> image = GetImage();
 
   RefPtr<imgRequest> strongThis = this;
 
@@ -744,6 +744,9 @@ imgRequest::OnStopRequest(nsIRequest* aRequest, nsresult status) {
   if (isMultipart && newPartPending) {
     OnDataAvailable(aRequest, nullptr, 0, 0);
   }
+
+  // Get this after OnDataAvailable because that might have created the image.
+  RefPtr<Image> image = GetImage();
 
   // XXXldb What if this is a non-last part of a multipart request?
   // xxx before we release our reference to mRequest, lets
@@ -833,10 +836,11 @@ static nsresult sniff_mimetype_callback(nsIInputStream* in, void* closure,
 /** nsThreadRetargetableStreamListener methods **/
 NS_IMETHODIMP
 imgRequest::CheckListenerChain() {
-  // TODO Might need more checking here.
-  NS_ASSERTION(NS_IsMainThread(), "Should be on the main thread!");
-  return NS_OK;
+  return mOffMainThreadData ? NS_OK : NS_ERROR_NO_INTERFACE;
 }
+
+NS_IMETHODIMP
+imgRequest::OnDataFinished(nsresult) { return NS_OK; }
 
 /** nsIStreamListener methods **/
 
@@ -1022,24 +1026,21 @@ imgRequest::OnDataAvailable(nsIRequest* aRequest, nsIInputStream* aInStr,
 
     if (result.mImage) {
       image = result.mImage;
-      nsCOMPtr<nsIEventTarget> eventTarget;
 
       // Update our state to reflect this new part.
       {
         MutexAutoLock lock(mMutex);
         mImage = image;
 
-        // We only get an event target if we are not on the main thread, because
-        // we have to dispatch in that case. If we are on the main thread, but
-        // on a different scheduler group than ProgressTracker would give us,
-        // that is okay because nothing in imagelib requires that, just our
-        // listeners (which have their own checks).
-        if (!NS_IsMainThread()) {
-          eventTarget = mProgressTracker->GetEventTarget();
-          MOZ_ASSERT(eventTarget);
-        }
-
         mProgressTracker = nullptr;
+      }
+
+      // We only get an event target if we are not on the main thread, because
+      // we have to dispatch in that case.
+      nsCOMPtr<nsIEventTarget> eventTarget;
+      if (!NS_IsMainThread()) {
+        eventTarget = GetMainThreadSerialEventTarget();
+        MOZ_ASSERT(eventTarget);
       }
 
       // Some property objects are not threadsafe, and we need to send
@@ -1228,4 +1229,14 @@ imgRequest::OnRedirectVerifyCallback(nsresult result) {
   mRedirectCallback->OnRedirectVerifyCallback(NS_OK);
   mRedirectCallback = nullptr;
   return NS_OK;
+}
+
+void imgRequest::UpdateShouldReportRenderTimeForLCP() {
+  if (mTimedChannel) {
+    bool allRedirectPassTAO = false;
+    mTimedChannel->GetAllRedirectsPassTimingAllowCheck(&allRedirectPassTAO);
+    mShouldReportRenderTimeForLCP =
+        mTimedChannel->TimingAllowCheck(mTriggeringPrincipal) &&
+        allRedirectPassTAO;
+  }
 }

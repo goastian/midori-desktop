@@ -181,7 +181,7 @@ class CachedSurface {
     return aMallocSizeOf(this) + aMallocSizeOf(mProvider.get());
   }
 
-  void InvalidateRecording() { mProvider->InvalidateRecording(); }
+  void InvalidateSurface() { mProvider->InvalidateSurface(); }
 
   // A helper type used by SurfaceCacheImpl::CollectSizeOfSurfaces.
   struct MOZ_STACK_CLASS SurfaceMemoryReport {
@@ -543,13 +543,14 @@ class ImageSurfaceCache {
   bool Invalidate(Function&& aRemoveCallback) {
     // Remove all non-blob recordings from the cache. Invalidate any blob
     // recordings.
-    bool foundRecording = false;
+    bool found = false;
     for (auto iter = mSurfaces.Iter(); !iter.Done(); iter.Next()) {
       NotNull<CachedSurface*> current = WrapNotNull(iter.UserData());
 
+      found = true;
+      current->InvalidateSurface();
+
       if (current->GetSurfaceKey().Flags() & SurfaceFlags::RECORD_BLOB) {
-        foundRecording = true;
-        current->InvalidateRecording();
         continue;
       }
 
@@ -558,7 +559,7 @@ class ImageSurfaceCache {
     }
 
     AfterMaybeRemove();
-    return foundRecording;
+    return found;
   }
 
   IntSize SuggestedSize(const IntSize& aSize) const {
@@ -1899,6 +1900,10 @@ bool SurfaceCache::IsLegalSize(const IntSize& aSize) {
     NS_WARNING("width or height too large");
     return false;
   }
+  const int32_t maxSize = StaticPrefs::image_mem_max_legal_imgframe_size_kb();
+  if (MOZ_UNLIKELY(maxSize > 0 && requiredBytes.value() / 1024 > maxSize)) {
+    return false;
+  }
   return true;
 }
 
@@ -1941,6 +1946,7 @@ void SurfaceCache::ReleaseImageOnMainThread(
   // Don't try to dispatch the release after shutdown, we'll just leak the
   // runnable.
   if (AppShutdown::IsInOrBeyond(ShutdownPhase::XPCOMShutdownFinal)) {
+    Unused << aImage;
     return;
   }
 
